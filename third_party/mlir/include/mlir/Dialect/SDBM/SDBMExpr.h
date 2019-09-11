@@ -38,7 +38,7 @@ namespace detail {
 struct SDBMExprStorage;
 struct SDBMBinaryExprStorage;
 struct SDBMDiffExprStorage;
-struct SDBMPositiveExprStorage;
+struct SDBMTermExprStorage;
 struct SDBMConstantExprStorage;
 struct SDBMNegExprStorage;
 } // namespace detail
@@ -176,10 +176,12 @@ public:
   }
 };
 
-/// SDBM positive variable expression can be one of:
+/// SDBM term expression can be one of:
 ///  - single variable expression;
 ///  - stripe expression.
-class SDBMPositiveExpr : public SDBMVaryingExpr {
+/// Stripe expressions are treated as terms since, in the SDBM domain, they are
+/// attached to temporary variables and can appear anywhere a variable can.
+class SDBMTermExpr : public SDBMVaryingExpr {
 public:
   using SDBMVaryingExpr::SDBMVaryingExpr;
 
@@ -209,40 +211,38 @@ public:
   SDBMConstantExpr getRHS() const;
 };
 
-/// SDBM difference expression.  Both LHS and RHS are positive variable
-/// expressions.
+/// SDBM difference expression.  Both LHS and RHS are SDBM term expressions.
 class SDBMDiffExpr : public SDBMVaryingExpr {
 public:
   using ImplType = detail::SDBMDiffExprStorage;
   using SDBMVaryingExpr::SDBMVaryingExpr;
 
   /// Obtain or create a difference expression unique'ed in the given context.
-  static SDBMDiffExpr get(SDBMPositiveExpr lhs, SDBMPositiveExpr rhs);
+  static SDBMDiffExpr get(SDBMTermExpr lhs, SDBMTermExpr rhs);
 
   static bool isClassFor(const SDBMExpr &expr) {
     return expr.getKind() == SDBMExprKind::Diff;
   }
 
-  SDBMPositiveExpr getLHS() const;
-  SDBMPositiveExpr getRHS() const;
+  SDBMTermExpr getLHS() const;
+  SDBMTermExpr getRHS() const;
 };
 
-/// SDBM stripe expression "x # C" where "x" is a positive variable expression,
-/// "C" is a constant expression and "#" is the stripe operator defined as:
+/// SDBM stripe expression "x # C" where "x" is a term expression, "C" is a
+/// constant expression and "#" is the stripe operator defined as:
 ///   x # C = x - x mod C.
-class SDBMStripeExpr : public SDBMPositiveExpr {
+class SDBMStripeExpr : public SDBMTermExpr {
 public:
   using ImplType = detail::SDBMBinaryExprStorage;
-  using SDBMPositiveExpr::SDBMPositiveExpr;
+  using SDBMTermExpr::SDBMTermExpr;
 
   static bool isClassFor(const SDBMExpr &expr) {
     return expr.getKind() == SDBMExprKind::Stripe;
   }
 
-  static SDBMStripeExpr get(SDBMPositiveExpr var,
-                            SDBMConstantExpr stripeFactor);
+  static SDBMStripeExpr get(SDBMTermExpr var, SDBMConstantExpr stripeFactor);
 
-  SDBMPositiveExpr getVar() const;
+  SDBMTermExpr getVar() const;
   SDBMConstantExpr getStripeFactor() const;
 };
 
@@ -250,10 +250,10 @@ public:
 /// a symbol identifier.  When used to define SDBM functions, dimensions are
 /// interpreted as function arguments while symbols are treated as unknown but
 /// constant values, hence the name.
-class SDBMInputExpr : public SDBMPositiveExpr {
+class SDBMInputExpr : public SDBMTermExpr {
 public:
-  using ImplType = detail::SDBMPositiveExprStorage;
-  using SDBMPositiveExpr::SDBMPositiveExpr;
+  using ImplType = detail::SDBMTermExprStorage;
+  using SDBMTermExpr::SDBMTermExpr;
 
   static bool isClassFor(const SDBMExpr &expr) {
     return expr.getKind() == SDBMExprKind::DimId ||
@@ -267,7 +267,7 @@ public:
 /// when defining functions using SDBM expressions.
 class SDBMDimExpr : public SDBMInputExpr {
 public:
-  using ImplType = detail::SDBMPositiveExprStorage;
+  using ImplType = detail::SDBMTermExprStorage;
   using SDBMInputExpr::SDBMInputExpr;
 
   /// Obtain or create a dimension expression unique'ed in the given dialect
@@ -283,7 +283,7 @@ public:
 /// defining functions using SDBM expressions.
 class SDBMSymbolExpr : public SDBMInputExpr {
 public:
-  using ImplType = detail::SDBMPositiveExprStorage;
+  using ImplType = detail::SDBMTermExprStorage;
   using SDBMInputExpr::SDBMInputExpr;
 
   /// Obtain or create a symbol expression unique'ed in the given dialect (which
@@ -303,13 +303,13 @@ public:
   using SDBMVaryingExpr::SDBMVaryingExpr;
 
   /// Obtain or create a negation expression unique'ed in the given context.
-  static SDBMNegExpr get(SDBMPositiveExpr var);
+  static SDBMNegExpr get(SDBMTermExpr var);
 
   static bool isClassFor(const SDBMExpr &expr) {
     return expr.getKind() == SDBMExprKind::Neg;
   }
 
-  SDBMPositiveExpr getVar() const;
+  SDBMTermExpr getVar() const;
 };
 
 /// A visitor class for SDBM expressions.  Calls the kind-specific function
@@ -352,10 +352,10 @@ protected:
   void visitNeg(SDBMNegExpr) {}
   void visitConstant(SDBMConstantExpr) {}
 
-  /// Default implementation of visitPositive dispatches to the special
+  /// Default implementation of visitTerm dispatches to the special
   /// functions for stripes and other variables.  Concrete visitors can override
   /// it.
-  Result visitPositive(SDBMPositiveExpr expr) {
+  Result visitTerm(SDBMTermExpr expr) {
     auto *derived = static_cast<Derived *>(this);
     if (expr.getKind() == SDBMExprKind::Stripe)
       return derived->visitStripe(expr.cast<SDBMStripeExpr>());
@@ -379,8 +379,8 @@ protected:
   /// override it to visit all variables and negations instead.
   Result visitVarying(SDBMVaryingExpr expr) {
     auto *derived = static_cast<Derived *>(this);
-    if (auto var = expr.dyn_cast<SDBMPositiveExpr>())
-      return derived->visitPositive(var);
+    if (auto var = expr.dyn_cast<SDBMTermExpr>())
+      return derived->visitTerm(var);
     else if (auto neg = expr.dyn_cast<SDBMNegExpr>())
       return derived->visitNeg(neg);
     else if (auto sum = expr.dyn_cast<SDBMSumExpr>())
@@ -486,22 +486,20 @@ template <> struct DenseMapInfo<mlir::SDBMVaryingExpr> {
   }
 };
 
-// SDBMPositiveExpr hash just like pointers.
-template <> struct DenseMapInfo<mlir::SDBMPositiveExpr> {
-  static mlir::SDBMPositiveExpr getEmptyKey() {
+// SDBMTermExpr hash just like pointers.
+template <> struct DenseMapInfo<mlir::SDBMTermExpr> {
+  static mlir::SDBMTermExpr getEmptyKey() {
     auto *pointer = llvm::DenseMapInfo<void *>::getEmptyKey();
-    return mlir::SDBMPositiveExpr(
-        static_cast<mlir::SDBMExpr::ImplType *>(pointer));
+    return mlir::SDBMTermExpr(static_cast<mlir::SDBMExpr::ImplType *>(pointer));
   }
-  static mlir::SDBMPositiveExpr getTombstoneKey() {
+  static mlir::SDBMTermExpr getTombstoneKey() {
     auto *pointer = llvm::DenseMapInfo<void *>::getTombstoneKey();
-    return mlir::SDBMPositiveExpr(
-        static_cast<mlir::SDBMExpr::ImplType *>(pointer));
+    return mlir::SDBMTermExpr(static_cast<mlir::SDBMExpr::ImplType *>(pointer));
   }
-  static unsigned getHashValue(mlir::SDBMPositiveExpr expr) {
+  static unsigned getHashValue(mlir::SDBMTermExpr expr) {
     return expr.hash_value();
   }
-  static bool isEqual(mlir::SDBMPositiveExpr lhs, mlir::SDBMPositiveExpr rhs) {
+  static bool isEqual(mlir::SDBMTermExpr lhs, mlir::SDBMTermExpr rhs) {
     return lhs == rhs;
   }
 };
