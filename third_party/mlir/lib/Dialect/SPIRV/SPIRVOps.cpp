@@ -27,6 +27,7 @@
 #include "mlir/IR/Function.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/StandardTypes.h"
+#include "mlir/Support/Functional.h"
 #include "mlir/Support/StringExtras.h"
 
 using namespace mlir;
@@ -309,6 +310,28 @@ static void printVariableDecorations(Operation *op, OpAsmPrinter *printer,
   }
 
   printer->printOptionalAttrDict(op->getAttrs(), elidedAttrs);
+}
+
+// Extracts an element from the given `composite` by following the given
+// `indices`. Returns a null Attribute if error happens.
+static Attribute extractCompositeElement(Attribute composite,
+                                         ArrayRef<unsigned> indices) {
+  // Return composite itself if we reach the end of the index chain.
+  if (indices.empty())
+    return composite;
+
+  if (auto vector = composite.dyn_cast<ElementsAttr>()) {
+    assert(indices.size() == 1 && "must have exactly one index for a vector");
+    return vector.getValue({indices[0]});
+  }
+
+  if (auto array = composite.dyn_cast<ArrayAttr>()) {
+    assert(!indices.empty() && "must have at least one index for an array");
+    return extractCompositeElement(array.getValue()[indices[0]],
+                                   indices.drop_front());
+  }
+
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
@@ -700,6 +723,16 @@ static LogicalResult verify(spirv::CompositeExtractOp compExOp) {
   return success();
 }
 
+OpFoldResult spirv::CompositeExtractOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.size() == 1 && "spv.CompositeExtract expects one operand");
+  auto indexVector = functional::map(
+      [](Attribute attr) {
+        return static_cast<unsigned>(attr.cast<IntegerAttr>().getInt());
+      },
+      indices());
+  return extractCompositeElement(operands[0], indexVector);
+}
+
 //===----------------------------------------------------------------------===//
 // spv.constant
 //===----------------------------------------------------------------------===//
@@ -768,7 +801,7 @@ static LogicalResult verify(spirv::ConstantOp constOp) {
 }
 
 OpFoldResult spirv::ConstantOp::fold(ArrayRef<Attribute> operands) {
-  assert(operands.empty() && "constant has no operands");
+  assert(operands.empty() && "spv.constant has no operands");
   return value();
 }
 
