@@ -241,7 +241,7 @@ class StudentT(distribution.Distribution):
     return constant_op.constant([], dtype=math_ops.int32)
 
   def _event_shape(self):
-    return tensor_shape.scalar()
+    return tensor_shape.TensorShape([])
 
   def _sample_n(self, n, seed=None):
     # The sampling method comes from the fact that if:

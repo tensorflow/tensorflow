@@ -142,6 +142,26 @@ HloInstruction* HloComputation::AddEntryComputationParameter(
   return instructions_.back().get();
 }
 
+Status HloComputation::ReplaceEntryComputationParameter(
+    int64 param_no, HloInstruction* old_instruction,
+    std::unique_ptr<HloInstruction> instruction) {
+  CHECK_GE(param_no, 0);
+  CHECK_LT(param_no, param_instructions_.size());
+  CHECK_EQ(instruction->opcode(), HloOpcode::kParameter);
+  CHECK(parent()->entry_computation() == this);
+
+  HloModuleConfig config = parent()->config();
+  *config.mutable_entry_computation_layout()->mutable_parameter_layout(
+      param_no) = ShapeLayout(instruction->shape());
+  parent()->set_config(config);
+
+  instruction->set_parent(this);
+  param_instructions_[param_no] = instruction.get();
+  AddInstructionInternal(std::move(instruction));
+
+  return ForceRemoveInstruction(old_instruction);
+}
+
 Status HloComputation::RemoveParameter(int64 param_no) {
   CHECK_GE(param_no, 0);
   CHECK_LT(param_no, param_instructions_.size());
@@ -229,7 +249,7 @@ bool HloComputation::HasSideEffect() const {
 }
 
 Status HloComputation::RemoveInstructionAndUnusedOperands(
-    HloInstruction* instruction) {
+    HloInstruction* instruction, std::function<void(HloInstruction*)> cleanup) {
   TF_RET_CHECK(root_instruction() != instruction);
 
   TF_RET_CHECK(instruction->user_count() == 0);
@@ -251,6 +271,9 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
       worklist.push(item->mutable_operand(i));
     }
 
+    if (cleanup) {
+      cleanup(item);
+    }
     TF_RETURN_IF_ERROR(RemoveInstruction(item));
     removed.insert(item);
   }
@@ -509,11 +532,12 @@ string HloComputation::ToString(
     if (options.print_percent()) {
       s << "%";
     }
-    s << name() << " ";
+    s << PrintName(name(), options.print_ids()) << " ";
   }
 
   if (options.print_program_shape()) {
-    s << ShapeUtil::HumanString(ComputeProgramShape()) << " ";
+    s << ShapeUtil::HumanString(ComputeProgramShape(options.print_ids()))
+      << " ";
   }
   s << "{\n";
   {
@@ -730,12 +754,13 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyInstructionWithCustomCopier(
   return DeepCopyHelper(instruction, &index, copy_leaf);
 }
 
-ProgramShape HloComputation::ComputeProgramShape() const {
+ProgramShape HloComputation::ComputeProgramShape(bool include_ids) const {
   ProgramShape program_shape;
 
   for (auto* param_instruction : param_instructions_) {
     *program_shape.add_parameters() = param_instruction->shape();
-    *program_shape.add_parameter_names() = param_instruction->name();
+    *program_shape.add_parameter_names() =
+        PrintName(param_instruction->name(), include_ids);
   }
   *program_shape.mutable_result() = root_instruction_->shape();
 
@@ -787,6 +812,13 @@ Status HloComputation::ReplaceWithNewInstruction(
                             AddInstruction(std::move(new_instruction)));
 }
 
+Status HloComputation::ReplaceWithNewEntryComputationParameter(
+    HloInstruction* old_instruction,
+    std::unique_ptr<HloInstruction> new_instruction) {
+  return ReplaceInstruction(old_instruction, AddEntryComputationParameter(
+                                                 std::move(new_instruction)));
+}
+
 Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
                                           HloInstruction* new_instruction) {
   TF_RET_CHECK(
@@ -805,6 +837,18 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
   if (new_instruction->metadata().op_name().empty()) {
     new_instruction->set_metadata(old_instruction->metadata());
   }
+  if (new_instruction->frontend_attributes().map().empty()) {
+    new_instruction->set_frontend_attributes(
+        old_instruction->frontend_attributes());
+  }
+
+  // Like the metadata above, if the user didn't specify any sharding
+  // information on the new instruction we should copy the old sharding
+  // information (if any).
+  if (!new_instruction->has_sharding()) {
+    new_instruction->set_sharding(old_instruction->sharding_ptr());
+  }
+
   TF_RETURN_IF_ERROR(old_instruction->ReplaceAllUsesWith(new_instruction));
   return RemoveInstructionAndUnusedOperands(old_instruction);
 }
@@ -826,25 +870,6 @@ std::vector<HloInstruction*> HloComputation::CollectUnreachableRoots() const {
   return unreachable_roots;
 }
 
-template <typename HloInstructionPtr>
-Status HloComputation::Accept(
-    DfsHloVisitorBase<HloInstructionPtr>* visitor) const {
-  // Visit unreachable roots. Beware that the visitor might delete the currently
-  // visited root, which would invalidate iterators if the unreachable roots
-  // weren't computed ahead of time.
-  for (HloInstruction* root : CollectUnreachableRoots()) {
-    VLOG(3) << "Traversing unreachable root: " << root->ToString();
-    // Call FinishVisit only at the end.
-    TF_RETURN_IF_ERROR(root->Accept(visitor, /*call_finish_visit=*/false));
-  }
-  // Visit the computation root instruction last.
-  return root_instruction()->Accept(visitor, /*call_finish_visit=*/true);
-}
-
-// Explicit instantiations.
-template Status HloComputation::Accept(DfsHloVisitor* visitor) const;
-template Status HloComputation::Accept(ConstDfsHloVisitor* visitor) const;
-
 Status HloComputation::AcceptWithOperandOrder(
     DfsHloVisitor* visitor,
     const HloInstruction::CompareFunction& operand_order) const {
@@ -860,42 +885,6 @@ Status HloComputation::AcceptWithOperandOrder(
   return root_instruction()->AcceptWithOperandOrder(visitor, operand_order,
                                                     /*call_finish_visit=*/true);
 }
-
-template <typename HloInstructionPtr>
-Status HloComputation::AcceptOrdered(
-    DfsHloVisitorBase<HloInstructionPtr>* visitor,
-    absl::Span<HloInstruction* const> order) const {
-  VLOG(3) << "Accepting visitor with order.";
-  for (HloInstruction* root : CollectUnreachableRoots()) {
-    TF_RET_CHECK(absl::c_linear_search(order, root)) << root->ToString();
-  }
-  TF_RET_CHECK(order.size() == instruction_count());
-  absl::flat_hash_set<const HloInstruction*> visited;
-  for (const HloInstruction* instruction : order) {
-    VLOG(3) << "Visiting ordered: " << instruction->ToString();
-    TF_RET_CHECK(instruction_iterators_.contains(instruction))
-        << "Instruction " << instruction->name() << " is not in computation "
-        << name();
-    TF_RET_CHECK(!visited.contains(instruction))
-        << "Instruction " << instruction->name()
-        << " appears more than once in order";
-    HloInstruction* mutable_instruction =
-        const_cast<HloInstruction*>(instruction);
-    TF_RETURN_IF_ERROR(visitor->Preprocess(mutable_instruction));
-    TF_RETURN_IF_ERROR(mutable_instruction->Visit(visitor));
-    visitor->SetVisited(*mutable_instruction);
-    TF_RETURN_IF_ERROR(visitor->Postprocess(mutable_instruction));
-    visited.insert(instruction);
-  }
-  TF_RETURN_IF_ERROR(visitor->FinishVisit(root_instruction()));
-  return Status::OK();
-}
-
-// Explicit instantiations.
-template Status HloComputation::AcceptOrdered(
-    DfsHloVisitor*, absl::Span<HloInstruction* const>) const;
-template Status HloComputation::AcceptOrdered(
-    ConstDfsHloVisitor*, absl::Span<HloInstruction* const>) const;
 
 std::unique_ptr<HloComputation> HloComputation::Clone(
     const string& suffix, HloCloneContext* context) {

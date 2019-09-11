@@ -98,10 +98,10 @@ TEST(ConvertGraphdefMemmappedFormatTest, NotSupportedTypesConvert) {
   constexpr int kTensorHeight = 100;
   const TensorShape kTestTensorShape({kTensorWidth, kTensorHeight});
   Tensor test_tensor1(DT_STRING, kTestTensorShape);
-  test::FillFn<string>(&test_tensor1, [](int) -> string { return "ABC"; });
+  test::FillFn<tstring>(&test_tensor1, [](int) -> string { return "ABC"; });
 
   Tensor test_tensor2(DT_STRING, kTestTensorShape);
-  test::FillFn<string>(&test_tensor2, [](int) -> string { return "XYZ"; });
+  test::FillFn<tstring>(&test_tensor2, [](int) -> string { return "XYZ"; });
   auto root = Scope::NewRootScope().ExitOnError();
   Output m = ops::Add(root, test_tensor1, test_tensor2);
   const string result_name = m.node()->name();

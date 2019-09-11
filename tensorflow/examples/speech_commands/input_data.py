@@ -232,15 +232,16 @@ class AudioProcessor(object):
       try:
         filepath, _ = urllib.request.urlretrieve(data_url, filepath, _progress)
       except:
-        tf.compat.v1.logging.error('Failed to download URL: %s to folder: %s', data_url,
-                         filepath)
-        tf.compat.v1.logging.error('Please make sure you have enough free space and'
-                         ' an internet connection')
+        tf.compat.v1.logging.error(
+            'Failed to download URL: %s to folder: %s', data_url, filepath)
+        tf.compat.v1.logging.error(
+            'Please make sure you have enough free space and'
+            ' an internet connection')
         raise
       print()
       statinfo = os.stat(filepath)
-      tf.compat.v1.logging.info('Successfully downloaded %s (%d bytes)', filename,
-                      statinfo.st_size)
+      tf.compat.v1.logging.info('Successfully downloaded %s (%d bytes)',
+                                filename, statinfo.st_size)
     tarfile.open(filepath, 'r:gz').extractall(dest_directory)
 
   def prepare_data_index(self, silence_percentage, unknown_percentage,
@@ -447,7 +448,9 @@ class AudioProcessor(object):
             strides=[1, model_settings['average_window_width']],
             pooling_type='AVG',
             padding='SAME')
-        tf.compat.v1.summary.image('shrunk_spectrogram', self.output_, max_outputs=1)
+        tf.compat.v1.summary.image('shrunk_spectrogram',
+                                   self.output_,
+                                   max_outputs=1)
       elif model_settings['preprocess'] == 'mfcc':
         self.output_ = contrib_audio.mfcc(
             spectrogram,
@@ -489,8 +492,8 @@ class AudioProcessor(object):
       # default)
       self.merged_summaries_ = tf.compat.v1.summary.merge_all(scope='data')
       if summaries_dir:
-        self.summary_writer_ = tf.compat.v1.summary.FileWriter(summaries_dir + '/data',
-                                                     tf.compat.v1.get_default_graph())
+        self.summary_writer_ = tf.compat.v1.summary.FileWriter(
+            summaries_dir + '/data', tf.compat.v1.get_default_graph())
 
   def set_size(self, mode):
     """Calculates the number of samples in the dataset partition.

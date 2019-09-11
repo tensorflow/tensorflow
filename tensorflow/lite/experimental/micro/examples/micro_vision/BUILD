@@ -1,5 +1,5 @@
 # Description:
-#   TensorFlow Lite microcontroller example.
+#   TensorFlow Lite for Microcontrollers Vision Example.
 
 load(
     "//tensorflow/lite/experimental/micro/testing:micro_test.bzl",

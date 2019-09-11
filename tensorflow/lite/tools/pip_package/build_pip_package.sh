@@ -14,33 +14,30 @@
 # limitations under the License.
 # ==============================================================================
 
+# TODO(dkovalev): b/140445440 -- Implement test coverage for this script.
 set -e
 
-PYTHON="${PYTHON:-python}"
-
-# Find where this script lives and then the Tensorflow root.
+PYTHON="${PYTHON:-python3}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 export TENSORFLOW_SRC_ROOT="${SCRIPT_DIR}/../../../.."
-export TENSORFLOW_VERSION=`grep "_VERSION = " "${TENSORFLOW_SRC_ROOT}/tensorflow/tools/pip_package/setup.py" | cut -d'=' -f 2 | sed "s/[ '-]//g"`;
-
+export TENSORFLOW_VERSION=$(grep "_VERSION = " "${TENSORFLOW_SRC_ROOT}/tensorflow/tools/pip_package/setup.py" | cut -d'=' -f 2 | sed "s/[ '-]//g");
 TFLITE_ROOT="${TENSORFLOW_SRC_ROOT}/tensorflow/lite"
-
-# Build a pip build tree.
 BUILD_ROOT="/tmp/tflite_pip/${PYTHON}"
+
+# Build source tree.
 rm -rf "${BUILD_ROOT}"
-mkdir -p "${BUILD_ROOT}/tflite_runtime/"
-
-# Copy necessary source files.
+mkdir -p "${BUILD_ROOT}/tflite_runtime"
+cp -r "${TFLITE_ROOT}/tools/pip_package/debian" \
+      "${TFLITE_ROOT}/python/interpreter_wrapper" \
+      "${TFLITE_ROOT}/tools/pip_package/setup.py" \
+      "${TFLITE_ROOT}/tools/pip_package/MANIFEST.in" \
+      "${BUILD_ROOT}"
+cp "${TFLITE_ROOT}/python/interpreter.py" \
+   "${BUILD_ROOT}/tflite_runtime"
 touch "${BUILD_ROOT}/tflite_runtime/__init__.py"
-cp -r "${TFLITE_ROOT}/python/interpreter_wrapper" "${BUILD_ROOT}"
-cp "${TFLITE_ROOT}/python/interpreter.py" "${BUILD_ROOT}/tflite_runtime/"
-cp "${TFLITE_ROOT}/tools/pip_package/setup.py" "${BUILD_ROOT}"
-cp "${TFLITE_ROOT}/tools/pip_package/MANIFEST.in" "${BUILD_ROOT}"
 
-# Build wheel file.
+# Build python wheel.
 cd "${BUILD_ROOT}"
-
 if [[ "${TENSORFLOW_TARGET}" == "rpi" ]]; then
   ${PYTHON} setup.py bdist_wheel --plat-name=linux-armv7l
 elif [[ "${TENSORFLOW_TARGET}" == "aarch64" ]]; then
@@ -49,3 +46,27 @@ else
   ${PYTHON} setup.py bdist_wheel
 fi
 
+# Build debian package.
+if [[ "${BUILD_DEB}" != "y" ]]; then
+  exit 0
+fi
+
+PYTHON_VERSION=$(${PYTHON} -c "import sys;print(sys.version_info.major)")
+if [[ ${PYTHON_VERSION} != 3 ]]; then
+  echo "Debian package can only be generated for python3." >&2
+  exit 1
+fi
+
+DEB_VERSION=$(dpkg-parsechangelog --show-field Version | cut -d- -f1)
+if [[ "${DEB_VERSION}" != "${TENSORFLOW_VERSION}" ]]; then
+  echo "Debian package version (${DEB_VERSION}) doesn't match TensorFlow version (${TENSORFLOW_VERSION})" >&2
+  exit 1
+fi
+
+if [[ "${TENSORFLOW_TARGET}" == "rpi" ]]; then
+  dpkg-buildpackage -b -rfakeroot -us -uc -tc -d -a armhf
+elif [[ "${TENSORFLOW_TARGET}" == "aarch64" ]]; then
+  dpkg-buildpackage -b -rfakeroot -us -uc -tc -d -a arm64
+else
+  dpkg-buildpackage -b -rfakeroot -us -uc -tc
+fi

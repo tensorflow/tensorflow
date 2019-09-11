@@ -155,6 +155,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
+from tensorflow.python.util.compat import collections_abc
 
 # Imports the core `InputLayer` symbol in contrib during development.
 InputLayer = fc_core.InputLayer  # pylint: disable=invalid-name
@@ -1403,7 +1404,7 @@ def shared_embedding_columns(sparse_id_columns,
       least one element of `sparse_id_columns` is not a `SparseColumn` or a
       `WeightedSparseColumn`.
   """
-  if (not isinstance(sparse_id_columns, collections.Sequence) or
+  if (not isinstance(sparse_id_columns, collections_abc.Sequence) or
       isinstance(sparse_id_columns, six.string_types)):
     raise TypeError(
         "sparse_id_columns must be a non-string sequence (ex: list or tuple) "

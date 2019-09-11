@@ -79,14 +79,14 @@ class KernelAndDevice : public core::RefCounted {
   // TODO(ashankar): Handle list-valued inputs.
   virtual Status Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
                      std::vector<Tensor>* outputs, NodeExecStats* stats,
-                     StepStats* step_stats,
-                     GraphCollector* graph_collector) = 0;
+                     StepStats* step_stats, GraphCollector* graph_collector,
+                     CancellationManager* cancellation_manager) = 0;
 
   virtual Status Run(ScopedStepContainer* step_container,
                      const gtl::InlinedVector<TensorValue, 4>& inputs,
                      std::vector<Tensor>* outputs, NodeExecStats* stats,
-                     StepStats* step_stats,
-                     GraphCollector* graph_collector) = 0;
+                     StepStats* step_stats, GraphCollector* graph_collector,
+                     CancellationManager* cancellation_manager) = 0;
 
   virtual Device* InputDevice(int i) const = 0;
   virtual Device* OutputDevice(int idx) const = 0;
@@ -115,11 +115,6 @@ class KernelAndDevice : public core::RefCounted {
  protected:
   std::function<void(std::function<void()>)>* get_runner() const;
 
-  // TODO(apassos) Consider a shared cancellation manager. Note that this
-  // cancellation manager is not useful to actually cancel anything, and is
-  // provided here only for the few kernels which can't handle one being
-  // missing.
-  CancellationManager cm_;
   Device* const device_;               // can be null
   Device* const host_cpu_device_;      // non-null
   FunctionLibraryRuntime* const flr_;  // can be null
@@ -137,24 +132,27 @@ class KernelAndDeviceOp final : public KernelAndDevice {
       FunctionLibraryRuntime* flr,
       std::function<void(std::function<void()>)>* runner,
       std::unique_ptr<CollectiveExecutor::Handle> collective_executor,
-      Device* host_cpu_device)
+      Device* host_cpu_device, const bool compile_with_xla = false)
       : KernelAndDevice(flr, runner, std::move(collective_executor),
                         host_cpu_device),
         rendez_(rendez),
-        log_memory_(log_memory) {}
+        log_memory_(log_memory),
+        compile_with_xla_(compile_with_xla) {}
 
-  virtual ~KernelAndDeviceOp();
+  ~KernelAndDeviceOp() override {}
 
   Status Init(const NodeDef& ndef, GraphCollector* graph_collector) override;
 
   Status Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
              std::vector<Tensor>* outputs, NodeExecStats* stats,
-             StepStats* step_stats, GraphCollector* graph_collector) override;
+             StepStats* step_stats, GraphCollector* graph_collector,
+             CancellationManager* cancellation_manager) override;
 
   Status Run(ScopedStepContainer* step_container,
              const gtl::InlinedVector<TensorValue, 4>& inputs,
              std::vector<Tensor>* outputs, NodeExecStats* stats,
-             StepStats* step_stats, GraphCollector* graph_collector) override;
+             StepStats* step_stats, GraphCollector* graph_collector,
+             CancellationManager* cancellation_manager) override;
 
   const OpKernel* kernel() const override { return kernel_.get(); }
 
@@ -175,15 +173,7 @@ class KernelAndDeviceOp final : public KernelAndDevice {
   Rendezvous* const rendez_;
   checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_;
   const bool log_memory_;
-
-  // For deferred ops, AsyncOpKernel::DoneCallback is called once the op is
-  // enqueued to device. The execution of the op may not finish when
-  // device_->Compute returns. We rely on no_deferred_ops_cv_ to know when the
-  // execution has finished.
-  // Available via OpKernelContext to every OpKernel invocation.
-  mutex num_deferred_ops_mu_;
-  condition_variable no_deferred_ops_cv_;
-  int64 num_deferred_ops_ GUARDED_BY(num_deferred_ops_mu_) = 0;
+  const bool compile_with_xla_;
 };
 
 // Represents a multi-device function. Functions can also be run using
@@ -197,7 +187,6 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
   KernelAndDeviceFunc(
       FunctionLibraryRuntime* flr, ProcessFunctionLibraryRuntime* pflr,
       std::vector<Device*> input_devices,
-      std::unordered_map<int, TensorShape> input_tensor_shapes,
       std::unordered_map<int, DtypeAndPartialTensorShape>
           input_resource_dtypes_and_shapes,
       std::function<void(std::function<void()>)>* runner,
@@ -209,7 +198,6 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
         pflr_(pflr),
         handle_(kInvalidHandle),
         input_devices_(std::move(input_devices)),
-        input_tensor_shapes_(std::move(input_tensor_shapes)),
         input_resource_dtypes_and_shapes_(
             std::move(input_resource_dtypes_and_shapes)),
         name_(name),
@@ -221,11 +209,13 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
 
   Status Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
              std::vector<Tensor>* outputs, NodeExecStats* stats,
-             StepStats* step_stats, GraphCollector* graph_collector) override;
+             StepStats* step_stats, GraphCollector* graph_collector,
+             CancellationManager* cancellation_manager) override;
   Status Run(ScopedStepContainer* step_container,
              const gtl::InlinedVector<TensorValue, 4>& inputs,
              std::vector<Tensor>* outputs, NodeExecStats* stats,
-             StepStats* step_stats, GraphCollector* graph_collector) override;
+             StepStats* step_stats, GraphCollector* graph_collector,
+             CancellationManager* cancellation_manager) override;
 
   const OpKernel* kernel() const override { return nullptr; }
 
@@ -250,7 +240,6 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
   // CPU devices are not null. Resource handles' devices are actual backing
   // devices.
   std::vector<Device*> input_devices_;
-  std::unordered_map<int, TensorShape> input_tensor_shapes_;
   std::unordered_map<int, DtypeAndPartialTensorShape>
       input_resource_dtypes_and_shapes_;
 

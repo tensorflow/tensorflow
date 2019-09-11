@@ -4087,40 +4087,38 @@ class LegacyFullyConnectedTest(test.TestCase):
     self.assertEqual('MatMul', y.op.type)
 
   def test_regularizer(self):
-    cnt = [0]
     tensor = constant_op.constant(5.0)
 
     def test_fn(_):
-      cnt[0] += 1
       return tensor
 
     _layers.legacy_fully_connected(self.input, 2, weight_regularizer=test_fn)
 
-    self.assertEqual([tensor],
-                     ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES))
-    self.assertEqual(1, cnt[0])
+    regs = [
+        ops.convert_to_tensor(r)
+        for r in ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
+    ]
+    self.assertEqual([tensor], regs)
 
   def test_regularizer_with_multiple_variables(self):
-    cnt = [0]
     tensor = constant_op.constant(5.0)
 
     def test_fn(_):
-      cnt[0] += 1
       return tensor
 
     _layers.legacy_fully_connected(self.input, 2, weight_regularizer=test_fn)
     _layers.legacy_fully_connected(self.input, 2, weight_regularizer=test_fn)
 
-    self.assertEqual([tensor, tensor],
-                     ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES))
-    self.assertEqual(2, cnt[0])
+    regs = [
+        ops.convert_to_tensor(r)
+        for r in ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
+    ]
+    self.assertEqual([tensor, tensor], regs)
 
   def test_regularizer_with_variable_reuse(self):
-    cnt = [0]
     tensor = constant_op.constant(5.0)
 
     def test_fn(_):
-      cnt[0] += 1
       return tensor
 
     with variable_scope.variable_scope('test') as vs:
@@ -4129,9 +4127,11 @@ class LegacyFullyConnectedTest(test.TestCase):
     with variable_scope.variable_scope(vs, reuse=True):
       _layers.legacy_fully_connected(self.input, 2, weight_regularizer=test_fn)
 
-    self.assertEqual([tensor],
-                     ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES))
-    self.assertEqual(1, cnt[0])
+    regs = [
+        ops.convert_to_tensor(r)
+        for r in ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
+    ]
+    self.assertEqual([tensor], regs)
 
   def test_empty_x_results_in_empty_output(self):
     # Empty x is common if someone masks their input with tf.boolean_mask in

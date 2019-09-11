@@ -32,74 +32,6 @@ limitations under the License.
 namespace tensorflow {
 namespace gtl {
 
-// Returns a char* pointing to the beginning of a string's internal buffer.
-// The result is a valid "null-terminated byte string", even if *str is empty.
-// Up to C++14 it is not valid to *write* to the null terminator; as of C++17,
-// it is valid to write zero to the null terminator (but not any other value).
-inline char* string_as_array(string* str) { return &*str->begin(); }
-
-// The following vector_as_array functions return raw pointers to the underlying
-// data buffer. The return value is unspecified (but valid) if the input range
-// is empty.
-template <typename T, typename Allocator>
-inline T* vector_as_array(std::vector<T, Allocator>* v) {
-  return v->data();
-}
-
-template <typename T, typename Allocator>
-inline const T* vector_as_array(const std::vector<T, Allocator>* v) {
-  return v->data();
-}
-
-namespace gtl_internal {
-
-// HasMember is true_type or false_type, depending on whether or not
-// T has a __resize_default_init member. Resize will call the
-// __resize_default_init member if it exists, and will call the resize
-// member otherwise.
-template <typename string_type, typename = void>
-struct ResizeUninitializedTraits {
-  using HasMember = std::false_type;
-  static void Resize(string_type* s, size_t new_size) { s->resize(new_size); }
-};
-
-// __resize_default_init is provided by libc++ >= 8.0 and by Google's internal
-// ::string implementation.
-template <typename string_type>
-struct ResizeUninitializedTraits<
-    string_type, absl::void_t<decltype(std::declval<string_type&>()
-                                           .__resize_default_init(237))> > {
-  using HasMember = std::true_type;
-  static void Resize(string_type* s, size_t new_size) {
-    s->__resize_default_init(new_size);
-  }
-};
-
-}  // namespace gtl_internal
-
-// Like str->resize(new_size), except any new characters added to "*str" as a
-// result of resizing may be left uninitialized, rather than being filled with
-// '0' bytes. Typically used when code is then going to overwrite the backing
-// store of the string with known data.
-inline void STLStringResizeUninitialized(string* s, size_t new_size) {
-  gtl_internal::ResizeUninitializedTraits<string>::Resize(s, new_size);
-}
-
-// Calls delete (non-array version) on the SECOND item (pointer) in each pair in
-// the range [begin, end).
-//
-// Note: If you're calling this on an entire container, you probably want to
-// call STLDeleteValues(&container) instead, or use ValueDeleter.
-template <typename ForwardIterator>
-void STLDeleteContainerPairSecondPointers(ForwardIterator begin,
-                                          ForwardIterator end) {
-  while (begin != end) {
-    ForwardIterator temp = begin;
-    ++begin;
-    delete temp->second;
-  }
-}
-
 // Deletes all the elements in an STL container and clears the container. This
 // function is suitable for use with a vector, set, hash_set, or any other STL
 // container which defines sensible begin(), end(), and clear() methods.
@@ -130,13 +62,6 @@ void STLDeleteValues(T* container) {
     delete temp->second;
   }
   container->clear();
-}
-
-// Sorts and removes duplicates from a sequence container.
-template <typename T>
-inline void STLSortAndRemoveDuplicates(T* v) {
-  std::sort(v->begin(), v->end());
-  v->erase(std::unique(v->begin(), v->end()), v->end());
 }
 
 }  // namespace gtl

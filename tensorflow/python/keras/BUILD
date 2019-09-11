@@ -3,7 +3,6 @@
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -145,11 +144,12 @@ py_library(
         ":tf_utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:auto_control_deps",
-        "//tensorflow/python:control_flow_util",
+        "//tensorflow/python:control_flow_v2_func_graphs",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:init_ops_v2",
+        "//tensorflow/python:tf2",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
@@ -296,9 +296,14 @@ py_library(
         "saving/hdf5_format.py",
         "saving/model_config.py",
         "saving/save.py",
+        "saving/saved_model/base_serialization.py",
         "saving/saved_model/constants.py",
+        "saving/saved_model/layer_serialization.py",
         "saving/saved_model/load.py",
+        "saving/saved_model/model_serialization.py",
+        "saving/saved_model/network_serialization.py",
         "saving/saved_model/save.py",
+        "saving/saved_model/save_impl.py",
         "saving/saved_model/serialized_attributes.py",
         "saving/saved_model/utils.py",
         "saving/saved_model_experimental.py",
@@ -492,6 +497,7 @@ py_library(
         ":generic_utils",
         ":tf_utils",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:cudnn_rnn_ops_gen",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:embedding_ops",
@@ -715,6 +721,18 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "temporal_sample_weights_correctness_test",
+    size = "medium",
+    srcs = ["temporal_sample_weights_correctness_test.py"],
+    additional_deps = [
+        ":keras",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 20,
+)
+
+tf_py_test(
     name = "applications_test",
     size = "medium",
     srcs = ["applications/applications_test.py"],
@@ -743,6 +761,7 @@ tf_py_test(
     srcs = ["layers/tensorflow_op_layer_test.py"],
     additional_deps = [
         ":keras",
+        ":saving",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:backprop",
@@ -901,7 +920,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 2,
+    shard_count = 4,
     tags = ["no_windows"],
 )
 
@@ -1112,7 +1131,7 @@ tf_py_test(
 
 tf_py_test(
     name = "wrappers_test",
-    size = "medium",
+    size = "large",
     srcs = ["layers/wrappers_test.py"],
     additional_deps = [
         ":keras",
@@ -1183,8 +1202,6 @@ tf_py_test(
     ],
     shard_count = 6,
     tags = [
-        "no_oss",
-        "no_windows",
         "noasan",  # times out
         "notsan",
         "optonly",  # times out
@@ -1378,7 +1395,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 4,
-    tags = ["notsan"],
+    tags = [
+        "no_oss",
+        "notsan",
+    ],
 )
 
 tf_py_test(
@@ -1490,9 +1510,26 @@ tf_py_test(
     ],
     shard_count = 6,
     tags = [
-        "no_oss",
         "noasan",  # TODO(b/132183295): Re-enable this.
+        "nomac",  # TODO(b/140193633): Re-enable this.
         "notsan",
+    ],
+)
+
+tf_py_test(
+    name = "training_integration_test",
+    size = "medium",
+    srcs = ["engine/training_integration_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 30,
+    tags = [
+        "no_rocm",
+        "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
 )
 
@@ -1546,18 +1583,49 @@ tf_py_test(
     ],
 )
 
+py_library(
+    name = "model_subclassing_test_util",
+    srcs = ["model_subclassing_test_util.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":keras",
+    ],
+)
+
 tf_py_test(
     name = "model_subclassing_test",
     size = "medium",
     srcs = ["model_subclassing_test.py"],
     additional_deps = [
+        ":model_subclassing_test_util",
         ":keras",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 4,
-    tags = ["notsan"],
+    tags = [
+        "no_windows",
+        "notsan",
+    ],
+)
+
+tf_py_test(
+    name = "model_subclassing_compiled_test",
+    size = "medium",
+    srcs = ["model_subclassing_compiled_test.py"],
+    additional_deps = [
+        ":model_subclassing_test_util",
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 4,
+    tags = [
+        "no_windows",
+        "notsan",
+    ],
 )
 
 tf_py_test(
@@ -1635,6 +1703,9 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 4,
+    tags = [
+        "no_windows",
+    ],
 )
 
 tf_py_test(

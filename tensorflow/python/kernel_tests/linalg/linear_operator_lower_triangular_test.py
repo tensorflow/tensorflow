@@ -17,8 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.platform import test
@@ -26,12 +28,13 @@ from tensorflow.python.platform import test
 linalg = linalg_lib
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class LinearOperatorLowerTriangularTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
   @staticmethod
-  def tests_to_skip():
+  def skip_these_tests():
     # Cholesky does not make sense for triangular matrices.
     return ["cholesky"]
 
@@ -100,6 +103,12 @@ class LinearOperatorLowerTriangularTest(
             operator2.to_dense(),
             operator1.to_dense()),
         self.evaluate(operator_matmul.to_dense()))
+
+  def test_tape_safe(self):
+    tril = variables_module.Variable([[1., 0.], [0., 1.]])
+    operator = linalg_lib.LinearOperatorLowerTriangular(
+        tril, is_non_singular=True)
+    self.check_tape_safe(operator)
 
 
 if __name__ == "__main__":

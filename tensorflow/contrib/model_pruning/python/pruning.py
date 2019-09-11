@@ -172,9 +172,11 @@ def get_pruning_hparams():
     nbins: integer
       number of bins to use for histogram computation
     block_height: integer
-      number of rows in a block (defaults to 1)
+      number of rows in a block (defaults to 1), can be -1 in which
+      case it is set to the size of the corresponding weight tensor.
     block_width: integer
-      number of cols in a block (defaults to 1)
+      number of cols in a block (defaults to 1), can be -1 in which
+      case it is set to the size of the corresponding weight tensor.
     block_pooling_function: string
       Whether to perform average (AVG) or max (MAX) pooling in the block
       (default: AVG)
@@ -488,6 +490,10 @@ class Pruning(object):
     squeezed_weights = array_ops.squeeze(weights)
     if squeezed_weights.get_shape().ndims != 2 or block_dims == [1, 1]:
       return self._update_mask(weights, threshold)
+
+    for i in range(2):
+      if block_dims[i] == -1:
+        block_dims[i] = squeezed_weights.get_shape()[i]
 
     if self._block_pooling_function not in ['AVG', 'MAX']:
       raise ValueError('Unknown pooling function for block sparsity: %s' %

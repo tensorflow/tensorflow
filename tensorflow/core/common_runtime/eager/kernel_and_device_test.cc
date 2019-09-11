@@ -45,7 +45,7 @@ class TestEnv {
     devices.push_back(
         DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
     cpu_device_ = devices.back().get();
-    device_mgr_ = absl::make_unique<DeviceMgr>(std::move(devices));
+    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
     OptimizerOptions opts;
     pflr_ = tensorflow::MakeUnique<ProcessFunctionLibraryRuntime>(
         device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, &flib_def_,
@@ -144,7 +144,7 @@ void BM_KernelAndDeviceRun(int iters) {
   TF_CHECK_OK(k.Init(ndef, nullptr));
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
-    TF_CHECK_OK(k.Run(inputs, &outputs, nullptr, nullptr, nullptr));
+    TF_CHECK_OK(k.Run(inputs, &outputs, nullptr, nullptr, nullptr, nullptr));
   }
 }
 BENCHMARK(BM_KernelAndDeviceRun);

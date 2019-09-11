@@ -7,7 +7,7 @@ http_archive(
     sha256 = "5b00383d08dd71f28503736db0500b6fb4dda47489ff5fc6bed42557c07c6ba9",
     strip_prefix = "rules_closure-308b05b2419edb5c8ee0471b67a40403df940149",
     urls = [
-        "http://mirror.tensorflow.org/github.com/bazelbuild/rules_closure/archive/308b05b2419edb5c8ee0471b67a40403df940149.tar.gz",
+        "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/rules_closure/archive/308b05b2419edb5c8ee0471b67a40403df940149.tar.gz",
         "https://github.com/bazelbuild/rules_closure/archive/308b05b2419edb5c8ee0471b67a40403df940149.tar.gz",  # 2019-06-13
     ],
 )
@@ -49,34 +49,34 @@ remote_config_workspace()
 # Apple and Swift rules.
 http_archive(
     name = "build_bazel_rules_apple",
-    sha256 = "23792cd999f97fc97284d1c44cb1324bfdd0bc54aa68ad513fa3705aca3b1f9e",
-    urls = ["https://github.com/bazelbuild/rules_apple/releases/download/0.15.0/rules_apple.0.15.0.tar.gz"],
+    sha256 = "a045a436b642c70fb0c10ca84ff0fd2dcbd59cc89100d597a61e8374afafb366",
+    urls = ["https://github.com/bazelbuild/rules_apple/releases/download/0.18.0/rules_apple.0.18.0.tar.gz"],
 )  # https://github.com/bazelbuild/rules_apple/releases
 http_archive(
+    name = "build_bazel_rules_swift",
+    sha256 = "18cd4df4e410b0439a4935f9ca035bd979993d42372ba79e7f2d4fafe9596ef0",
+    urls = ["https://github.com/bazelbuild/rules_swift/releases/download/0.12.1/rules_swift.0.12.1.tar.gz"],
+)  # https://github.com/bazelbuild/rules_swift/releases
+http_archive(
     name = "build_bazel_apple_support",
-    sha256 = "7356dbd44dea71570a929d1d4731e870622151a5f27164d966dda97305f33471",
-    urls = ["https://github.com/bazelbuild/apple_support/releases/download/0.6.0/apple_support.0.6.0.tar.gz"],
+    sha256 = "122ebf7fe7d1c8e938af6aeaee0efe788a3a2449ece5a8d6a428cb18d6f88033",
+    urls = ["https://github.com/bazelbuild/apple_support/releases/download/0.7.1/apple_support.0.7.1.tar.gz"],
 )  # https://github.com/bazelbuild/apple_support/releases
 http_archive(
     name = "bazel_skylib",
-    sha256 = "2ef429f5d7ce7111263289644d233707dba35e39696377ebab8b0bc701f7818e",
-    urls = ["https://github.com/bazelbuild/bazel-skylib/releases/download/0.8.0/bazel-skylib.0.8.0.tar.gz"],
+    sha256 = "1dde365491125a3db70731e25658dfdd3bc5dbdfd11b840b3e987ecf043c7ca0",
+    urls = ["https://github.com/bazelbuild/bazel-skylib/releases/download/0.9.0/bazel-skylib.0.9.0.tar.gz"],
 )  # https://github.com/bazelbuild/bazel-skylib/releases
-http_archive(
-    name = "build_bazel_rules_swift",
-    sha256 = "9efe9699e9765e6b4a5e063e4a08f6b163cccaf0443f775d935baf5c3cd6ed0e",
-    urls = ["https://github.com/bazelbuild/rules_swift/releases/download/0.9.0/rules_swift.0.9.0.tar.gz"],
-)  # https://github.com/bazelbuild/rules_swift/releases
 http_archive(
     name = "com_github_apple_swift_swift_protobuf",
     type = "zip",
-    strip_prefix = "swift-protobuf-1.5.0/",
-    urls = ["https://github.com/apple/swift-protobuf/archive/1.5.0.zip"],
+    strip_prefix = "swift-protobuf-1.6.0/",
+    urls = ["https://github.com/apple/swift-protobuf/archive/1.6.0.zip"],
 )  # https://github.com/apple/swift-protobuf/releases
 http_file(
     name = "xctestrunner",
     executable = 1,
-    urls = ["https://github.com/google/xctestrunner/releases/download/0.2.7/ios_test_runner.par"],
+    urls = ["https://github.com/google/xctestrunner/releases/download/0.2.9/ios_test_runner.par"],
 )  # https://github.com/google/xctestrunner/releases
 # Use `swift_rules_dependencies` to fetch the toolchains. With the
 # `git_repository` rules above, the following call will skip redefining them.
@@ -104,8 +104,7 @@ http_archive(
     build_file = "//:models.BUILD",
     sha256 = "7efe12a8363f09bc24d7b7a450304a15655a57a7751929b2c1593a71183bb105",
     urls = [
-        "http://storage.googleapis.com/download.tensorflow.org/models/inception_v1.zip",
-        "http://download.tensorflow.org/models/inception_v1.zip",
+        "https://storage.googleapis.com/download.tensorflow.org/models/inception_v1.zip",
     ],
 )
 
@@ -114,8 +113,7 @@ http_archive(
     build_file = "//:models.BUILD",
     sha256 = "bddd81ea5c80a97adfac1c9f770e6f55cbafd7cce4d3bbe15fbeb041e6b8f3e8",
     urls = [
-        "http://storage.googleapis.com/download.tensorflow.org/models/object_detection/ssd_mobilenet_v1_android_export.zip",
-        "http://download.tensorflow.org/models/object_detection/ssd_mobilenet_v1_android_export.zip",
+        "https://storage.googleapis.com/download.tensorflow.org/models/object_detection/ssd_mobilenet_v1_android_export.zip",
     ],
 )
 
@@ -124,8 +122,7 @@ http_archive(
     build_file = "//:models.BUILD",
     sha256 = "859edcddf84dddb974c36c36cfc1f74555148e9c9213dedacf1d6b613ad52b96",
     urls = [
-        "http://storage.googleapis.com/download.tensorflow.org/models/mobile_multibox_v1a.zip",
-        "http://download.tensorflow.org/models/mobile_multibox_v1a.zip",
+        "https://storage.googleapis.com/download.tensorflow.org/models/mobile_multibox_v1a.zip",
     ],
 )
 
@@ -134,8 +131,7 @@ http_archive(
     build_file = "//:models.BUILD",
     sha256 = "3d374a730aef330424a356a8d4f04d8a54277c425e274ecb7d9c83aa912c6bfa",
     urls = [
-        "http://storage.googleapis.com/download.tensorflow.org/models/stylize_v1.zip",
-        "http://download.tensorflow.org/models/stylize_v1.zip",
+        "https://storage.googleapis.com/download.tensorflow.org/models/stylize_v1.zip",
     ],
 )
 
@@ -144,7 +140,6 @@ http_archive(
     build_file = "//:models.BUILD",
     sha256 = "c3ec4fea3158eb111f1d932336351edfe8bd515bb6e87aad4f25dbad0a600d0c",
     urls = [
-        "http://storage.googleapis.com/download.tensorflow.org/models/speech_commands_v0.01.zip",
-        "http://download.tensorflow.org/models/speech_commands_v0.01.zip",
+        "https://storage.googleapis.com/download.tensorflow.org/models/speech_commands_v0.01.zip",
     ],
 )

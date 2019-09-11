@@ -45,6 +45,13 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.restrict_same_input_output_scale = true;
       property.version = 2;
       break;
+    case BuiltinOperator_SPLIT:
+      property.arbitrary_outputs = true;
+      // We skip input 0 since it is the split dim which is not real valued.
+      property.inputs = {{1, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 2;
+      break;
     case BuiltinOperator_CONCATENATION:
       property.arbitrary_inputs = true;
       property.outputs = {{0, {}}};
@@ -59,7 +66,7 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.inputs = {{0, {}}, {1, tensor_property}};
       property.outputs = {{0, {}}};
       property.biases = {2};
-      property.version = 2;
+      property.version = 3;
       break;
     }
     case BuiltinOperator_DEPTHWISE_CONV_2D: {
@@ -86,6 +93,13 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       // Comparisons have no quantizable outputs.
       property.version = 2;
       break;
+    case BuiltinOperator_EXPAND_DIMS:
+      // We skip input 1 as it is not real valued (it's the index of axis) and
+      // hence does not need to be quantized.
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 1;
+      break;
     case BuiltinOperator_FULLY_CONNECTED: {
       TensorProperty tensor_property;
       tensor_property.symmetric = true;
@@ -101,6 +115,12 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.restrict_same_input_output_scale = true;
       property.version = 2;
       break;
+    case BuiltinOperator_HARD_SWISH: {
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 1;
+      break;
+    }
     case BuiltinOperator_LOG_SOFTMAX: {
       property.inputs = {{0, {}}};
       // LogSoftmax requires output with 16/256 as scale and 127 as zero point.
@@ -171,6 +191,12 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.outputs = {{0, {}}};
       property.version = 2;
       break;
+    case BuiltinOperator_RELU6: {
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 2;
+      break;
+    }
     case BuiltinOperator_RESHAPE:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};

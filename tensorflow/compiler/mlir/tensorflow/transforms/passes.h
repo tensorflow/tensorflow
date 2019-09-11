@@ -16,25 +16,73 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PASSES_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PASSES_H_
 
+#include <memory>
+
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 
 namespace mlir {
 namespace TF {
 // Transforms functional control flow operations in the standard TensorFlow
 // dialect to MLIR Control Flow Graph (CFG) form.
-FunctionPassBase *CreateTFFunctionalControlFlowToCFG();
+std::unique_ptr<FunctionPassBase> CreateTFFunctionalControlFlowToCFG();
+
+// Materialize the MlirPassthroughOp by replacing it with the MLIR module
+// attached as an attribute.
+std::unique_ptr<FunctionPassBase> CreateMaterializePassthroughOpPass();
 
 // Optimizes Tensorflow graph.
-FunctionPassBase *CreateTFOptimizePass();
+std::unique_ptr<FunctionPassBase> CreateTFOptimizePass();
 
 }  // namespace TF
 
 namespace TFControlFlow {
 // Raises from the "TensorFlow Control Flow" dialect to the standard TensorFlow
 // dialect.
-FunctionPassBase *CreateRaiseTFControlFlowPass();
+std::unique_ptr<FunctionPassBase> CreateRaiseTFControlFlowPass();
 
 }  // namespace TFControlFlow
+
+namespace tf_executor {
+class GraphOp;
+
+// Returns a pass that folds switch nodes with constant predicates.
+std::unique_ptr<FunctionPassBase> CreateSwitchFoldPass();
+
+// Create a pass to merge IslandOps from TFExecutor dialect.
+std::unique_ptr<FunctionPassBase> CreateTFExecutorIslandCoarseningPass();
+
+// Create a pass to prune tf_executor.graph from dead nodes.
+std::unique_ptr<FunctionPassBase> CreateTFExecutorGraphPruningPass();
+
+// Prune a tf_executor.graph operation from dead nodes.
+void prune_graph(GraphOp graph);
+
+}  // namespace tf_executor
+
+namespace TFDevice {
+// Creates a pass that forms clusters from instructions that are assigned to
+// same device.
+std::unique_ptr<FunctionPassBase> CreateClusterFormationPass();
+
+// Creates a pass that outlines regions of tf_device.launch operations.
+std::unique_ptr<ModulePassBase> CreateClusterOutliningPass();
+}  // namespace TFDevice
+
+namespace TFTPU {
+// Creates a pass that forms clusters from operations of the same
+// `_tpu_replicate` attribute.
+std::unique_ptr<FunctionPassBase> CreateTPUClusterFormationPass();
+
+// Creates a pass that rewrites `tf_device.launch_func` on TPUs into TPU runtime
+// ops
+std::unique_ptr<ModulePassBase> CreateTPURewritePass();
+
+// Populates the supplied passmanager with the passes required to run the
+// bridge. NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
+void createTPUBridge(PassManager& bridge);
+
+}  // namespace TFTPU
+
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PASSES_H_

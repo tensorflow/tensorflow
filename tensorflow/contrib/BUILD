@@ -1,7 +1,6 @@
 # Description:
 #   contains parts of TensorFlow that are experimental or unstable and which are not supported.
 
-load("//third_party/mpi:mpi.bzl", "if_mpi")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 package(
@@ -42,7 +41,6 @@ py_library(
         "//tensorflow/contrib/factorization:factorization_py",
         "//tensorflow/contrib/feature_column:feature_column_py",
         "//tensorflow/contrib/framework:framework_py",
-        "//tensorflow/contrib/gan",
         "//tensorflow/contrib/graph_editor:graph_editor_py",
         "//tensorflow/contrib/grid_rnn:grid_rnn_py",
         "//tensorflow/contrib/hadoop",
@@ -109,25 +107,7 @@ py_library(
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:util",
         "//tensorflow/python/estimator:estimator_py",
-    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:no_kafka_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/kafka",
-        ],
-    }) + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:no_aws_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/kinesis",
-        ],
-    }) + select({
+    ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
@@ -146,15 +126,6 @@ py_library(
         "//conditions:default": [
             "//tensorflow/contrib/bigtable",
             "//tensorflow/contrib/cloud:cloud_py",
-        ],
-    }) + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:no_ignite_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/ignite",
         ],
     }),
 )
@@ -176,25 +147,7 @@ cc_library(
         "//tensorflow/contrib/tensor_forest:stats_ops_kernels",
         "//tensorflow/contrib/tensor_forest:tensor_forest_kernels",
         "//tensorflow/contrib/text:all_kernels",
-    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:no_kafka_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/kafka:dataset_kernels",
-        ],
-    }) + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:no_aws_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/kinesis:dataset_kernels",
-        ],
-    }) + if_not_windows([
+    ] + if_not_windows([
         "//tensorflow/contrib/tensorrt:trt_op_kernels",
     ]),
 )
@@ -216,34 +169,7 @@ cc_library(
         "//tensorflow/contrib/tensor_forest:stats_ops_op_lib",
         "//tensorflow/contrib/tensor_forest:tensor_forest_ops_op_lib",
         "//tensorflow/contrib/text:all_ops",
-    ] + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:no_kafka_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/kafka:dataset_ops_op_lib",
-        ],
-    }) + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:no_aws_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/kinesis:dataset_ops_op_lib",
-        ],
-    }) + if_not_windows([
+    ] + if_not_windows([
         "//tensorflow/compiler/tf2tensorrt:trt_op_libs",
-    ]) + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:no_ignite_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/ignite:dataset_ops_op_lib",
-        ],
-    }),
+    ]),
 )

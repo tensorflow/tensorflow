@@ -390,12 +390,12 @@ TEST_F(MultiOutputFusionTest,
       fusion.1 = (f32[8,1,5,16,1,2]{5,4,3,2,1,0},
         f32[8,1,5,16,1,2]{5,4,3,2,1,0}) fusion(p0), kind=kLoop,
         calls=fused_computation_1
-      fusion.2 = f32[8,1,5,1,2]{4,3,2,1,0} fusion(p0), kind=kLoop,
+      fusion.2 = f32[1,5,1,2]{3,2,1,0} fusion(p0), kind=kLoop,
         calls=fused_computation_2
       gte0 = f32[8,1,5,16,1,2]{5,4,3,2,1,0} get-tuple-element(fusion.1), index=0
       gte1 = f32[8,1,5,16,1,2]{5,4,3,2,1,0} get-tuple-element(fusion.1), index=1
       ROOT root = (f32[8,1,5,16,1,2]{5,4,3,2,1,0},
-        f32[8,1,5,16,1,1]{5,4,3,2,1,0}, f32[8,1,5,1,1]{4,3,2,1,0})
+        f32[8,1,5,16,1,1]{5,4,3,2,1,0}, f32[1,5,1,2]{3,2,1,0})
         tuple(gte0, gte1, fusion.2)
     })"))
                     .ValueOrDie();
@@ -520,7 +520,7 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionDoNotFuseLoopReduceFusion) {
       p0 = f32[2,2,2]{2,1,0} parameter(0)
       p1 = f32[2,2,2]{2,1,0} parameter(1)
       element_wise = f32[2,2,2]{2,1,0} fusion(p0, p1), kind=kLoop, calls=fused_element_wise
-      fusion = (f32[2,2]{1,0}, f32[2,2]{1,0}) fusion(element_wise), kind=kLoop, calls=fused_reduce
+      fusion = f32[2,2]{1,0} fusion(element_wise), kind=kLoop, calls=fused_reduce
       ROOT root = (f32[2,2]{1,0}, f32[2,2,2]{2,1,0}) tuple(fusion, element_wise)
     })"))
                     .ValueOrDie();

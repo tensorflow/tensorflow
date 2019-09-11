@@ -92,9 +92,6 @@ struct GemmImplUsingGemmlowp<
 
     using ColVectorMap =
         gemmlowp::VectorMap<const int32, gemmlowp::VectorShape::Col>;
-    ColVectorMap bias_vector(params.bias, lhs_params.rows);
-    gemmlowp::OutputStageBiasAddition<ColVectorMap> bias_addition_stage;
-    bias_addition_stage.bias_vector = bias_vector;
     gemmlowp::OutputStageScaleInt32ByFixedPointAndExponent scale_stage;
     scale_stage.result_offset_after_shift = dst_params.zero_point;
     scale_stage.result_fixedpoint_multiplier = params.multiplier_fixedpoint;
@@ -105,12 +102,25 @@ struct GemmImplUsingGemmlowp<
     clamp_stage.min = params.clamp_min;
     clamp_stage.max = params.clamp_max;
     SaturatingCastStageType saturating_cast_stage;
-    auto output_pipeline = std::make_tuple(bias_addition_stage, scale_stage,
-                                           clamp_stage, saturating_cast_stage);
     using BitDepthParams = typename GemmlowpBitDepthParams<SrcScalar>::Type;
-    gemmlowp::GemmWithOutputPipeline<SrcScalar, DstScalar, BitDepthParams>(
-        context->gemmlowp_context(), gemmlowp_lhs, gemmlowp_rhs, &gemmlowp_dst,
-        -lhs_params.zero_point, -rhs_params.zero_point, output_pipeline);
+    if (params.bias) {
+      ColVectorMap bias_vector(params.bias, lhs_params.rows);
+      gemmlowp::OutputStageBiasAddition<ColVectorMap> bias_addition_stage;
+      bias_addition_stage.bias_vector = bias_vector;
+      auto output_pipeline = std::make_tuple(
+          bias_addition_stage, scale_stage, clamp_stage, saturating_cast_stage);
+      gemmlowp::GemmWithOutputPipeline<SrcScalar, DstScalar, BitDepthParams>(
+          context->gemmlowp_context(), gemmlowp_lhs, gemmlowp_rhs,
+          &gemmlowp_dst, -lhs_params.zero_point, -rhs_params.zero_point,
+          output_pipeline);
+    } else {
+      auto output_pipeline =
+          std::make_tuple(scale_stage, clamp_stage, saturating_cast_stage);
+      gemmlowp::GemmWithOutputPipeline<SrcScalar, DstScalar, BitDepthParams>(
+          context->gemmlowp_context(), gemmlowp_lhs, gemmlowp_rhs,
+          &gemmlowp_dst, -lhs_params.zero_point, -rhs_params.zero_point,
+          output_pipeline);
+    }
   }
 };
 

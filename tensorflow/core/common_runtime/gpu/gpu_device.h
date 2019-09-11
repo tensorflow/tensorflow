@@ -67,11 +67,6 @@ class BaseGPUDevice : public LocalDevice {
   // completes.
   bool RequiresRecordingAccessedTensors() const override;
 
-  // GPU kernel execution requires us to use `tracing::ScopedAnnotation()`
-  // rather than `tracing::ScopedActivity()`, in order to relate asynchronously
-  // launched GPU kernels to the OpKernel.
-  bool TraceUsingAnnotations() const { return true; }
-
   void ConsumeListOfAccessedTensors(
       DeviceContext* device_context,
       const TensorReferenceVector& tensor_refs) override;
@@ -142,6 +137,9 @@ class BaseGPUDevice : public LocalDevice {
   friend class GPUDeviceTestHelper;
   struct StreamGroup {
     se::Stream* compute = nullptr;
+#if TENSORFLOW_USE_ROCM
+    se::Stream* nccl = nullptr;
+#endif
     se::Stream* host_to_device = nullptr;
     se::Stream* device_to_host = nullptr;
     gtl::InlinedVector<se::Stream*, 4> device_to_device;

@@ -1077,10 +1077,15 @@ class HloConvolutionInstruction : public HloInstruction {
   // The number of feature groups. Must be a divisor of the input feature
   // dimension and output feature dimension.
   int64 feature_group_count() const { return feature_group_count_; }
-
+  void set_feature_group_count(int64 num_feature_groups) {
+    feature_group_count_ = num_feature_groups;
+  }
   // The number of feature groups. Must be a divisor of the input batch
   // dimension.
   int64 batch_group_count() const { return batch_group_count_; }
+  void set_batch_group_count(int64 num_batch_groups) {
+    batch_group_count_ = num_batch_groups;
+  }
 
   // Returns the information used to tell the implementation information about
   // what sort of precision is requested. The meaning of the field is backend
@@ -1401,13 +1406,17 @@ class HloGatherInstruction : public HloInstruction {
       const Shape& shape, HloInstruction* operand,
       HloInstruction* start_indices,
       const GatherDimensionNumbers& gather_dim_numbers,
-      absl::Span<const int64> slice_sizes);
+      absl::Span<const int64> slice_sizes, bool indices_are_sorted);
   const GatherDimensionNumbers& gather_dimension_numbers() const {
     CHECK(gather_dimension_numbers_ != nullptr);
     return *gather_dimension_numbers_;
   }
   absl::Span<const int64> gather_slice_sizes() const {
     return gather_slice_sizes_;
+  }
+  bool indices_are_sorted() const { return indices_are_sorted_; }
+  void set_indices_are_sorted(bool indices_are_sorted) {
+    indices_are_sorted_ = indices_are_sorted;
   }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
@@ -1434,6 +1443,7 @@ class HloGatherInstruction : public HloInstruction {
 
   std::unique_ptr<GatherDimensionNumbers> gather_dimension_numbers_;
   std::vector<int64> gather_slice_sizes_;
+  bool indices_are_sorted_;
 };
 
 class HloScatterInstruction : public HloInstruction {
@@ -1442,11 +1452,17 @@ class HloScatterInstruction : public HloInstruction {
       const Shape& shape, HloInstruction* operand,
       HloInstruction* scatter_indices, HloInstruction* updates,
       HloComputation* update_computation,
-      const ScatterDimensionNumbers& scatter_dim_numbers);
+      const ScatterDimensionNumbers& scatter_dim_numbers,
+      bool indices_are_sorted, bool unique_indices);
   const ScatterDimensionNumbers& scatter_dimension_numbers() const {
     CHECK(scatter_dimension_numbers_ != nullptr);
     return *scatter_dimension_numbers_;
   }
+  bool indices_are_sorted() const { return indices_are_sorted_; }
+  void set_indices_are_sorted(bool indices_are_sorted) {
+    indices_are_sorted_ = indices_are_sorted;
+  }
+  bool unique_indices() const override { return unique_indices_; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -1473,6 +1489,8 @@ class HloScatterInstruction : public HloInstruction {
       HloCloneContext* context) const override;
 
   std::unique_ptr<ScatterDimensionNumbers> scatter_dimension_numbers_;
+  bool indices_are_sorted_;
+  bool unique_indices_;
 };
 
 class HloIotaInstruction : public HloInstruction {

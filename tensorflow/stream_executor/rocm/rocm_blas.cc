@@ -1849,7 +1849,7 @@ port::Status ROCMBlas::AllocateStridedBuffer(
   if (scratch_allocator != nullptr) {
     SE_ASSIGN_OR_RETURN(
         DeviceMemory<uint8> batch_matrix_bytes,
-        scratch_allocator->AllocateBytes(stream, matrix_batch_byte_size));
+        scratch_allocator->AllocateBytes(matrix_batch_byte_size));
     *device_memory = DeviceMemory<MAPPED_T>(batch_matrix_bytes);
   } else {
     assert(temp_memory != nullptr);
@@ -2407,6 +2407,11 @@ bool ROCMBlas::DoBlasGemmStridedBatched(
              << "for the \"complex<double>\" dataype";
   return false;
 }
+
+port::Status ROCMBlas::GetVersion(string *version) {
+  return port::UnimplementedError("");
+}
+
 }  // namespace gpu
 
 void initialize_rocblas() {

@@ -110,7 +110,7 @@ TFLite
 
 *   `ground_truth_proto`: `string` \
     Path to file containing tflite::evaluation::ObjectDetectionGroundTruth proto
-    in text format.
+    in text format. If left empty, mAP numbers are not provided.
 
 The above two parameters can be prepared using the `preprocess_coco_minival`
 script included in this folder.
@@ -128,6 +128,21 @@ The following optional parameters can be used to modify the inference runtime:
 *   `delegate`: `string` \
     If provided, tries to use the specified delegate for accuracy evaluation.
     Valid values: "nnapi", "gpu".
+
+### Debug Mode
+
+The script also supports a debug mode with the following parameter:
+
+*   `debug_mode`: `boolean` \
+    Whether to enable debug mode. Per-image predictions are written to the
+    output file along with metrics. NOTE: Its not possible to parse the output
+    file as a proto in this mode, since it contains demarcations between
+    per-file outputs for readability.
+
+This mode lets you debug the output of an object detection model that isn't
+necessarily trained on the COCO dataset (by leaving `ground_truth_proto` empty).
+The model output signature would still need to follow the convention mentioned
+above, and you we still need an output labels file.
 
 ## Preprocessing the minival dataset
 

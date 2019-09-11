@@ -10,7 +10,7 @@ load(
     "py_test",
     "tf_cc_test",
 )
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
+load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library")
 # Placeholder: load("//tensorflow:tensorflow.bzl", "tf_portable_proto_lib")
 
 package(
@@ -303,8 +303,7 @@ cc_library(
     hdrs = ["signature.h"],
     deprecation = "No longer supported. Switch to SavedModel immediately.",
     visibility = ["//visibility:public"],
-    deps = [
-    ] + if_not_mobile([
+    deps = if_not_mobile([
         ":manifest_proto_cc",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",

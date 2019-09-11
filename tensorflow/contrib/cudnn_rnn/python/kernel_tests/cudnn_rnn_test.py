@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import collections
 import functools
 import itertools
 import os
@@ -59,6 +58,7 @@ from tensorflow.python.training import momentum
 from tensorflow.python.training import rmsprop
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training.tracking import util as trackable_utils
+from tensorflow.python.util.compat import collections_abc
 
 
 CUDNN_LSTM = cudnn_rnn_ops.CUDNN_LSTM
@@ -1131,7 +1131,7 @@ class CudnnRNNTestTraining(test_util.TensorFlowTestCase):
     return numeric_grad.reshape(x_shape)
 
   def _GetShape(self, sess, inputs):
-    if not isinstance(inputs, collections.Iterable):
+    if not isinstance(inputs, collections_abc.Iterable):
       return sess.run(array_ops.shape(inputs))
     else:
       return sess.run([array_ops.shape(x) for x in inputs])

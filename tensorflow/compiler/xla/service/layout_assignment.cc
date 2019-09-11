@@ -619,8 +619,9 @@ Status LayoutAssignment::AddMandatoryConstraints(
         TF_RET_CHECK(instruction->branch_computation(j)->num_parameters() == 1);
         ComputationLayout& branch_computation_layout =
             FindOrDie(computation_layouts_, instruction->branch_computation(k));
-        if (branch_computation_layout.result_layout() !=
-            best_branch_computation_layout.result_layout()) {
+        if (!branch_computation_layout.result_layout().MatchesLayoutInShape(
+                best_branch_computation_layout.result_layout().shape(),
+                /*minor_to_major_only=*/true)) {
           computation_layouts_.erase(instruction->branch_computation(k));
           InsertOrDie(&conditional_mismatch_,
                       instruction->branch_computation(k),
@@ -715,8 +716,10 @@ Status CheckConditionalLayout(
     absl::Span<const ComputationLayout> branch_computation_layouts) {
   for (int j = 0; j < instruction->branch_count(); ++j) {
     const HloInstruction* branch_operand = instruction->operand(j + 1);
-    TF_RET_CHECK(branch_computation_layouts[0].result_layout() ==
-                 branch_computation_layouts[j].result_layout());
+    TF_RET_CHECK(
+        branch_computation_layouts[0].result_layout().MatchesLayoutInShape(
+            branch_computation_layouts[j].result_layout().shape(),
+            /*minor_to_major_only=*/true));
     TF_RET_CHECK(
         branch_computation_layouts[j].result_layout().MatchesLayoutInShape(
             instruction->shape(), /*minor_to_major_only=*/true));
@@ -852,6 +855,30 @@ Status LayoutAssignment::CopyOperandIfLayoutsDiffer(
   }
   VLOG(4) << "Operand " << operand->ToString() << " layout does not match "
           << operand_layout.ToString() << " in " << instruction->ToString();
+
+  // If the operand is only used by a conditional, do the copy inside the branch
+  // to avoid overhead for other branches.
+  if (instruction->opcode() == HloOpcode::kConditional && operand_no > 0 &&
+      instruction->operand(operand_no)->user_count() == 1) {
+    auto branch_comp = instruction->branch_computation(operand_no - 1);
+    auto param = branch_comp->parameter_instruction(0);
+    *param->mutable_shape() = operand->shape();
+    auto param_users = param->users();
+    TF_ASSIGN_OR_RETURN(HloInstruction * param_copy,
+                        CreateCopyWithNewLayout(operand_layout.shape(), param));
+    for (auto user : param_users) {
+      TF_RETURN_IF_ERROR(param->ReplaceUseWithDifferentShape(user, param_copy));
+    }
+    VLOG(4) << "New copy of " << operand->ToString() << " is "
+            << param_copy->ToString();
+    if (param == branch_comp->root_instruction()) {
+      branch_comp->set_root_instruction(param_copy,
+                                        /*accept_different_shape=*/true);
+    }
+    *FindOrDie(computation_layouts_, branch_comp).mutable_parameter_layout(0) =
+        ShapeLayout(operand->shape());
+    return Status::OK();
+  }
 
   TF_ASSIGN_OR_RETURN(HloInstruction * operand_copy,
                       CreateCopyWithNewLayout(operand_layout.shape(), operand));

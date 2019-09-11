@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -66,14 +65,8 @@ def bytes_produced_stats(tag):
   """
 
   def _apply_fn(dataset):
-    if compat.forward_compatible(2019, 8, 3):
-      return _StatsDataset(
-          dataset, gen_experimental_dataset_ops.bytes_produced_stats_dataset,
-          tag)
-    else:
-      return _StatsDataset(
-          dataset, gen_experimental_dataset_ops
-          .experimental_bytes_produced_stats_dataset, tag)
+    return _StatsDataset(
+        dataset, gen_experimental_dataset_ops.bytes_produced_stats_dataset, tag)
 
   return _apply_fn
 
@@ -95,14 +88,8 @@ def latency_stats(tag):
   """
 
   def _apply_fn(dataset):
-    if compat.forward_compatible(2019, 8, 3):
-      return _StatsDataset(
-          dataset,
-          gen_experimental_dataset_ops.latency_stats_dataset, tag)
-    else:
-      return _StatsDataset(
-          dataset,
-          gen_experimental_dataset_ops.experimental_latency_stats_dataset, tag)
+    return _StatsDataset(
+        dataset, gen_experimental_dataset_ops.latency_stats_dataset, tag)
 
   return _apply_fn
 

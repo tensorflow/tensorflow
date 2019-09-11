@@ -410,9 +410,9 @@ Status HloEvaluator::HandleGetDimensionSize(
   }
 
   const Shape& shape = get_dimension_size->operand(0)->shape();
-  Literal output(ShapeUtil::MakeShape(U32, {}));
+  Literal output(ShapeUtil::MakeShape(S32, {}));
   output.PopulateWithValue(
-      static_cast<uint32>(shape.dimensions(get_dimension_size->dimension())));
+      static_cast<int32>(shape.dimensions(get_dimension_size->dimension())));
   evaluated_[get_dimension_size] = std::move(output);
   return Status::OK();
 }
@@ -919,9 +919,8 @@ void Dft1D(int64 length, int64 start, int64 stride, bool inverse,
 
 // Helper to reverse the order of dimension lengths in the passed-in literal.
 std::vector<int64> GetDimensionLengths(const Literal& literal) {
-  std::vector<int64> lengths = literal.shape().dimensions();
-  absl::c_reverse(lengths);
-  return lengths;
+  auto dimensions = literal.shape().dimensions();
+  return std::vector<int64>(dimensions.rbegin(), dimensions.rend());
 }
 
 // Helper to compute strides for creating linear indices into multidimensional
@@ -1543,8 +1542,9 @@ class OutputBatchIndexToInputIndex {
     int64 index_vector_dim = dim_numbers_.index_vector_dim();
     for (int64 i = 0, e = index_vector_.size(); i < e; i++) {
       index_vector_index_[index_vector_dim] = i;
-      TF_ASSIGN_OR_RETURN(index_vector_[i],
-                          start_indices_.GetIntegralAsS64(index_vector_index_));
+      // TODO(george): OK what should happen here?
+      // seems OK to crash though.
+      index_vector_[i] = *start_indices_.GetIntegralAsS64(index_vector_index_);
     }
     return Status::OK();
   }
@@ -1719,6 +1719,10 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
       /*output_shape=*/shape);
 
   const Shape& operand_shape = operand.shape();
+  if (ShapeUtil::IsZeroElementArray(operand_shape)) {
+    evaluated_[gather] = std::move(result);
+    return Status::OK();
+  }
 
   auto gather_inner_loop_body =
       [&](absl::Span<const int64> output_window_index,
@@ -2295,12 +2299,10 @@ static StatusOr<bool> GenerateReduceOutputElement(
   }
 
   if (use_fast_add) {
-    TF_ASSIGN_OR_RETURN(double computed_result,
-                        init_values[0]->GetAsDouble({}));
+    double computed_result = *init_values[0]->GetAsDouble({});
     auto reduction_step =
         [&](absl::Span<const int64> input_index) -> StatusOr<bool> {
-      TF_ASSIGN_OR_RETURN(double argument,
-                          input_args[0]->GetAsDouble(input_index));
+      double argument = *input_args[0]->GetAsDouble(input_index);
       computed_result += argument;
       return true;
     };
@@ -2374,7 +2376,6 @@ Status HloEvaluator::HandleReduce(HloInstruction* instr) {
     arg_dim_steps[dim] = 1;
     arg_dim_counts[dim] = arg_dimensions[dim];
   }
-  auto reduced_dimensions = arg_shape.dimensions();
 
   // Map each dimension in the result to a dimension in arg that isn't
   // being reduced.

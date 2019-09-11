@@ -173,51 +173,37 @@ class Constant(Initializer):
     of the `value` list, even reshaped, as shown in the two commented lines
     below the `value` list initialization.
 
-  ```python
-    >>> import numpy as np
-    >>> import tensorflow as tf
-
-    >>> value = [0, 1, 2, 3, 4, 5, 6, 7]
-    >>> # value = np.array(value)
-    >>> # value = value.reshape([2, 4])
-    >>> init = tf.compat.v1.constant_initializer(value)
-
-    >>> print('fitting shape:')
-    >>> with tf.compat.v1.Session():
-    >>>   x = tf.compat.v1.get_variable('x', shape=[2, 4], initializer=init)
-    >>>   x.initializer.run()
-    >>>   print(x.eval())
-
-    fitting shape:
-    [[ 0.  1.  2.  3.]
-     [ 4.  5.  6.  7.]]
-
-    >>> print('larger shape:')
-    >>> with tf.compat.v1.Session():
-    >>>   x = tf.compat.v1.get_variable('x', shape=[3, 4], initializer=init)
-    >>>   x.initializer.run()
-    >>>   print(x.eval())
-
-    larger shape:
-    [[ 0.  1.  2.  3.]
-     [ 4.  5.  6.  7.]
-     [ 7.  7.  7.  7.]]
-
-    >>> print('smaller shape:')
-    >>> with tf.compat.v1.Session():
-    >>>   x = tf.compat.v1.get_variable('x', shape=[2, 3], initializer=init)
-
-    ValueError: Too many elements provided. Needed at most 6, but received 8
-
-    >>> print('shape verification:')
-    >>> init_verify = tf.compat.v1.constant_initializer(value,
-    verify_shape=True)
-    >>> with tf.compat.v1.Session():
-    >>>   x = tf.compat.v1.get_variable('x', shape=[3, 4],
-    initializer=init_verify)
-
-    TypeError: Expected Tensor's shape: (3, 4), got (8,).
-  ```
+  >>> value = [0, 1, 2, 3, 4, 5, 6, 7]
+  >>> init = tf.compat.v1.constant_initializer(value)
+  >>> # fitting shape
+  >>> with tf.compat.v1.Session():
+  ...   x = tf.compat.v1.get_variable('x', shape=[2, 4], initializer=init)
+  ...   x.initializer.run()
+  ...   print(x.eval())
+  [[0. 1. 2. 3.]
+   [4. 5. 6. 7.]]
+  >>> # Larger shape
+  >>> with tf.compat.v1.Session():
+  ...   y = tf.compat.v1.get_variable('y', shape=[3, 4], initializer=init)
+  ...   y.initializer.run()
+  ...   print(y.eval())
+  [[0.  1.  2.  3.]
+   [4.  5.  6.  7.]
+   [7.  7.  7.  7.]]
+  >>> # Smaller shape
+  >>> with tf.compat.v1.Session():
+  ...   z = tf.compat.v1.get_variable('z', shape=[2, 3], initializer=init)
+  Traceback (most recent call last):
+  ...
+  ValueError: Too many elements provided. Needed at most 6, but received 8
+  >>> # Shape verification
+  >>> init_verify = tf.compat.v1.constant_initializer(value, verify_shape=True)
+  >>> with tf.compat.v1.Session():
+  ...  u = tf.compat.v1.get_variable('u', shape=[3, 4],
+  ...                                initializer=init_verify)
+  Traceback (most recent call last):
+  ...
+  TypeError: Expected Tensor's shape: (3, 4), got (8,).
   """
 
   @deprecated_args(None,

@@ -161,6 +161,47 @@ class AdagradOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
+  def testBasicWithLargeEpsilon(self):
+    with self.cached_session():
+      var0_np = np.array([1.0, 2.0])
+      var1_np = np.array([3.0, 4.0])
+      grads0_np = np.array([0.1, 0.1])
+      grads1_np = np.array([0.01, 0.01])
+      var0 = resource_variable_ops.ResourceVariable(var0_np)
+      var1 = resource_variable_ops.ResourceVariable(var1_np)
+      grads0 = constant_op.constant(grads0_np)
+      grads1 = constant_op.constant(grads1_np)
+
+      learning_rate = 3.0
+
+      ada_opt = adagrad.Adagrad(learning_rate, epsilon=1.0)
+
+      accum0_np = np.array([0.1, 0.1])
+      accum1_np = np.array([0.1, 0.1])
+
+      if not context.executing_eagerly():
+        ada_update = ada_opt.apply_gradients(
+            zip([grads0, grads1], [var0, var1]))
+        self.evaluate(variables.global_variables_initializer())
+
+      # Fetch params to validate initial values
+      v0_val, v1_val = self.evaluate([var0, var1])
+      self.assertAllClose([1.0, 2.0], v0_val)
+      self.assertAllClose([3.0, 4.0], v1_val)
+
+      # Run 3 steps of adagrad
+      for _ in range(3):
+        if not context.executing_eagerly():
+          self.evaluate(ada_update)
+        else:
+          ada_opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+        var0_np, accum0_np = adagrad_update_numpy(var0_np, accum0_np, grads0_np,
+                                                  3.0, 1.0)
+        var1_np, accum1_np = adagrad_update_numpy(var1_np, accum1_np, grads1_np,
+                                                  3.0, 1.0)
+        self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
+        self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
+
   def testBasicWithLearningRateInverseTimeDecay(self):
     for dtype in [dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -307,6 +348,41 @@ class AdagradOptimizerTest(test.TestCase):
               grads1_np[grads1_np_indices], learning_rate)
           self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
+
+  @test_util.run_deprecated_v1
+  def testSparseSingleVarDim(self):
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      with self.cached_session():
+        var0_np = np.array([1.0], dtype=dtype.as_numpy_dtype)
+        grads0_np = np.array([0.1], dtype=dtype.as_numpy_dtype)
+
+        var0 = resource_variable_ops.ResourceVariable(var0_np)
+        grads0_np_indices = np.array([0], dtype=np.int32)
+        grads0 = ops.IndexedSlices(
+            constant_op.constant(grads0_np[grads0_np_indices]),
+            constant_op.constant(grads0_np_indices), constant_op.constant([3]))
+        learning_rate = 3.0
+        ada_opt = adagrad.Adagrad(learning_rate, epsilon=1.)
+        ada_update = ada_opt.apply_gradients(zip([grads0], [var0]))
+        variables.global_variables_initializer().run()
+
+        # Fetch params to validate initial values
+        self.assertAllClose([1.0], var0.eval())
+
+        accum0_np = np.array([0.1], dtype=dtype.as_numpy_dtype)
+
+        # Run 3 step of sgd
+        for _ in range(3):
+          ada_update.run()
+
+          var0_np, accum0_np = sparse_adagrad_update_numpy(
+              var0_np,
+              accum0_np,
+              grads0_np_indices,
+              grads0_np[grads0_np_indices],
+              learning_rate,
+              epsilon=1.)
+          self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
 
   @test_util.run_deprecated_v1
   def testSparseRepeatedIndices(self):

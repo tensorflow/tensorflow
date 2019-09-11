@@ -41,9 +41,11 @@ namespace xla {
 //
 // Anyway this is relatively safe as-is because hlo_evaluator_typed_visitor.h is
 // a "private" header that's not exposed outside of hlo_evaluator.cc.
+//
+// Not using an alias template to work around MSVC 14.00 bug.
 template <typename T>
-using is_complex_t =
-    absl::disjunction<std::is_same<T, complex64>, std::is_same<T, complex128>>;
+struct is_complex_t : absl::disjunction<std::is_same<T, complex64>,
+                                        std::is_same<T, complex128>> {};
 
 // ToArithmeticSafeType(T t):
 //  - converts `t` to the bitwise-equivalent `unsigned T` if T is a signed
@@ -64,6 +66,30 @@ template <typename T,
 T ToArithmeticSafeType(T t) {
   return std::move(t);
 }
+
+// UintWithSize<N> gets an unsigned integer with the given size in bytes.
+template <size_t Bytes>
+struct UintWithSize {};
+
+template <>
+struct UintWithSize<1> {
+  using type = uint8;
+};
+
+template <>
+struct UintWithSize<2> {
+  using type = uint16;
+};
+
+template <>
+struct UintWithSize<4> {
+  using type = uint32;
+};
+
+template <>
+struct UintWithSize<8> {
+  using type = uint64;
+};
 
 // Templated DfsHloVisitor for use by HloEvaluator.
 //
@@ -1363,9 +1389,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
               *(accumulate_index_locations[i].second) = accumulate_index[i];
             }
 
+            ElementwiseT lhs_val(lhs_literal.Get<ReturnT>(lhs_index));
+            ElementwiseT rhs_val(rhs_literal.Get<ReturnT>(rhs_index));
             result_val +=
-                static_cast<ElementwiseT>(lhs_literal.Get<ReturnT>(lhs_index)) *
-                static_cast<ElementwiseT>(rhs_literal.Get<ReturnT>(rhs_index));
+                ToArithmeticSafeType(lhs_val) * ToArithmeticSafeType(rhs_val);
 
             // If there are no contracting dimension accumulate_index_sizes is
             // empty, do not try to count down from -1 to 0 since it is and
@@ -2009,8 +2036,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       int64 index_vector_dim = dim_numbers_.index_vector_dim();
       for (int64 i = 0, e = index_vector_.size(); i < e; i++) {
         index_vector_index_[index_vector_dim] = i;
-        TF_ASSIGN_OR_RETURN(index_vector_[i], scatter_indices_.GetIntegralAsS64(
-                                                  index_vector_index_));
+        index_vector_[i] =
+            *scatter_indices_.GetIntegralAsS64(index_vector_index_);
       }
       return Status::OK();
     }
@@ -2387,48 +2414,57 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return HandleCos<ElementwiseT>(cos);
   }
 
-  template <typename NativeT, typename std::enable_if<std::is_same<
-                                  float, NativeT>::value>::type* = nullptr>
+  template <typename NativeT,
+            typename std::enable_if<
+                std::is_same<NativeT, float>::value ||
+                std::is_same<NativeT, double>::value>::type* = nullptr>
   Status HandleReducePrecision(HloInstruction* reduce_precision) {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[reduce_precision],
-        ElementWiseUnaryOp(reduce_precision, [reduce_precision](
-                                                 ElementwiseT elem) {
-          uint32_t value_as_int = absl::bit_cast<uint32_t>(elem);
-          const uint32_t mantissa_bits = reduce_precision->mantissa_bits();
-          const uint32_t exponent_bits = reduce_precision->exponent_bits();
+        ElementWiseUnaryOp(reduce_precision, [&](ElementwiseT elem) {
+          const uint32 src_mantissa_bits =
+              std::numeric_limits<NativeT>::digits - 1;
+          const uint32 src_exponent_bits =
+              8 * sizeof(NativeT) - src_mantissa_bits - 1;
+          const uint32 dest_mantissa_bits = reduce_precision->mantissa_bits();
+          const uint32 dest_exponent_bits = reduce_precision->exponent_bits();
+
+          using Uint = typename UintWithSize<sizeof(NativeT)>::type;
+          Uint value_as_int = absl::bit_cast<Uint>(elem);
 
           // Code is based on the CPU/GPU implementation in LLVM-emitting code.
           //
-          // Bits in float type:
+          // Bits in float32 type:
           //   mantissa : bits [0:22]
           //   exponent : bits [23:30]
           //   sign     : bits [31]
-          if (mantissa_bits < 23) {
-            const uint32_t last_mantissa_bit_mask = 1u << (23 - mantissa_bits);
+          if (dest_mantissa_bits < src_mantissa_bits) {
+            const Uint last_mantissa_bit_mask =
+                Uint{1} << (src_mantissa_bits - dest_mantissa_bits);
 
             // Compute rounding bias for round-to-nearest with ties to even.
             // This is equal to a base value of 0111... plus one bit if the last
             // remaining mantissa bit is 1.
-            const uint32_t base_rounding_bias =
-                (last_mantissa_bit_mask >> 1) - 1;
-            const uint32_t x_last_mantissa_bit =
-                (value_as_int & last_mantissa_bit_mask) >> (23 - mantissa_bits);
-            const uint32_t x_rounding_bias =
+            const Uint base_rounding_bias = (last_mantissa_bit_mask >> 1) - 1;
+            const Uint x_last_mantissa_bit =
+                (value_as_int & last_mantissa_bit_mask) >>
+                (src_mantissa_bits - dest_mantissa_bits);
+            const Uint x_rounding_bias =
                 x_last_mantissa_bit + base_rounding_bias;
 
             // Add rounding bias, and mask out truncated bits.  Note that the
             // case where adding the rounding bias overflows into the exponent
             // bits is correct; the non-masked mantissa bits will all be zero,
             // and the exponent will be incremented by one.
-            const uint32_t truncation_mask = ~(last_mantissa_bit_mask - 1);
+            const Uint truncation_mask = ~(last_mantissa_bit_mask - 1);
             value_as_int = value_as_int + x_rounding_bias;
             value_as_int = value_as_int & truncation_mask;
           }
-          if (exponent_bits < 8) {
+          if (dest_exponent_bits < src_exponent_bits) {
             // Masks for f32 values.
-            const uint32_t f32_sign_bit_mask = 1u << 31;
-            const uint32_t f32_exp_bits_mask = 0xffu << 23;
+            const Uint sign_bit_mask = Uint{1} << 8 * sizeof(NativeT) - 1;
+            const Uint exp_bits_mask = (Uint{1 << src_exponent_bits} - 1)
+                                       << src_mantissa_bits;
 
             // An exponent of 2^(n-1)-1 -- that is, 0111... with the zero in the
             // most- significant bit -- is equal to 1.0f for all exponent sizes.
@@ -2442,23 +2478,24 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
             // is (2^7-1) - 2^(n-1)-1.
             //
             // Note that we have already checked that exponents_bits >= 1.
-            const uint32_t f32_exponent_bias = (1 << 7) - 1;
-            const uint32_t reduced_exponent_bias =
-                (1 << (exponent_bits - 1)) - 1;
-            const uint32_t reduced_max_exponent =
-                f32_exponent_bias + reduced_exponent_bias;
-            const uint32_t reduced_min_exponent =
-                f32_exponent_bias - reduced_exponent_bias;
+            const Uint exponent_bias = (Uint{1} << (src_exponent_bits - 1)) - 1;
+            const Uint reduced_exponent_bias =
+                (1 << (dest_exponent_bits - 1)) - 1;
+            const Uint reduced_max_exponent =
+                exponent_bias + reduced_exponent_bias;
+            const Uint reduced_min_exponent =
+                exponent_bias - reduced_exponent_bias;
 
             // Do we overflow or underflow?
-            const uint32_t x_exponent = value_as_int & f32_exp_bits_mask;
-            const bool x_overflows = x_exponent > (reduced_max_exponent << 23);
+            const Uint x_exponent = value_as_int & exp_bits_mask;
+            const bool x_overflows =
+                x_exponent > (reduced_max_exponent << src_mantissa_bits);
             const bool x_underflows =
-                x_exponent <= (reduced_min_exponent << 23);
+                x_exponent <= (reduced_min_exponent << src_mantissa_bits);
 
             // Compute appropriately-signed values of zero and infinity.
-            const uint32_t x_signed_zero = value_as_int & f32_sign_bit_mask;
-            const uint32_t x_signed_inf = x_signed_zero | f32_exp_bits_mask;
+            const Uint x_signed_zero = value_as_int & sign_bit_mask;
+            const Uint x_signed_inf = x_signed_zero | exp_bits_mask;
 
             // Force to zero or infinity if overflow or underflow.  (Note that
             // this truncates all denormal values to zero, rather than rounding
@@ -2467,21 +2504,15 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
             value_as_int = x_underflows ? x_signed_zero : value_as_int;
           }
 
-          float reduced_result = absl::bit_cast<float>(value_as_int);
+          NativeT reduced_result = absl::bit_cast<NativeT>(value_as_int);
           if (std::isnan(elem)) {
-            reduced_result = mantissa_bits > 0
+            reduced_result = dest_mantissa_bits > 0
                                  ? elem
-                                 : std::numeric_limits<float>::infinity();
+                                 : std::numeric_limits<NativeT>::infinity();
           }
           return reduced_result;
         }));
     return Status::OK();
-  }
-
-  template <typename NativeT, typename std::enable_if<std::is_same<
-                                  double, NativeT>::value>::type* = nullptr>
-  Status HandleReducePrecision(HloInstruction* reduce_precision) {
-    return InvalidArgument("Double is not supported for reduce precision");
   }
 
   template <

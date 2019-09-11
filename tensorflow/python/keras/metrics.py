@@ -30,11 +30,11 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.losses import binary_crossentropy
 from tensorflow.python.keras.losses import categorical_crossentropy
 from tensorflow.python.keras.losses import categorical_hinge
-from tensorflow.python.keras.losses import cosine_similarity
 from tensorflow.python.keras.losses import hinge
 from tensorflow.python.keras.losses import kullback_leibler_divergence
 from tensorflow.python.keras.losses import logcosh
@@ -64,7 +64,7 @@ from tensorflow.tools.docs import doc_controls
 
 @keras_export('keras.metrics.Metric')
 @six.add_metaclass(abc.ABCMeta)
-class Metric(Layer):
+class Metric(base_layer.Layer):
   """Encapsulates metric logic and state.
 
   Usage:
@@ -136,7 +136,10 @@ class Metric(Layer):
     super(Metric, self).__init__(name=name, dtype=dtype, **kwargs)
     self.stateful = True  # All metric layers are stateful.
     self.built = True
-    self._dtype = K.floatx() if dtype is None else dtypes.as_dtype(dtype).name
+    if not base_layer_utils.v2_dtype_behavior_enabled():
+      # We only do this when the V2 behavior is not enabled, as when it is
+      # enabled, the dtype already defaults to floatx.
+      self._dtype = K.floatx() if dtype is None else dtypes.as_dtype(dtype).name
 
   def __new__(cls, *args, **kwargs):
     obj = super(Metric, cls).__new__(cls)
@@ -2801,13 +2804,20 @@ def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
   return math_ops.cast(
       nn.in_top_k(y_pred, math_ops.cast(y_true, 'int32'), k), K.floatx())
 
+
+def cosine_proximity(y_true, y_pred, axis=-1):
+  """Computes the cosine similarity between labels and predictions."""
+  y_true = nn.l2_normalize(y_true, axis=axis)
+  y_pred = nn.l2_normalize(y_pred, axis=axis)
+  return math_ops.reduce_sum(y_true * y_pred, axis=axis)
+
 # Aliases
 
 mse = MSE = mean_squared_error
 mae = MAE = mean_absolute_error
 mape = MAPE = mean_absolute_percentage_error
 msle = MSLE = mean_squared_logarithmic_error
-cosine_proximity = cosine_similarity
+cosine_similarity = cosine_proximity
 
 
 def clone_metric(metric):

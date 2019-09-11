@@ -239,7 +239,7 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
   TF_RETURN_IF_ERROR(cpu_factory->CreateDevices(
       options, "/job:localhost/replica:0/task:0", &devices));
   Device* cpu_device = devices[0].get();
-  std::unique_ptr<DeviceMgr> dvc_mgr(new DeviceMgr(std::move(devices)));
+  auto dvc_mgr = absl::make_unique<StaticDeviceMgr>(std::move(devices));
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              graph_def.library());
   Env* env = Env::Default();
@@ -267,8 +267,8 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
   graph_ctor_opts.expect_device_spec = false;
   std::unique_ptr<Graph> graphptr(new Graph(function_library));
 
-  TF_RETURN_IF_ERROR(
-      ConvertGraphDefToGraph(graph_ctor_opts, graph_def, graphptr.get()));
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
+      graph_ctor_opts, std::move(graph_def), graphptr.get()));
 
   // Optimize the graph.
   ::tensorflow::GraphOptimizer optimizer(*optimizer_opts);

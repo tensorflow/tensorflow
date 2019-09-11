@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -42,6 +43,9 @@ Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const std::vector<Tensor>& input_element,
     int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
     StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator);
+
+Status IsNodeStateful(const FunctionLibraryDefinition& library,
+                      const NodeDef& node);
 
 // `InstantiatedCapturedFunction` encapsulates all the runtime support needed
 // to execute a tensorflow function.
@@ -93,6 +97,7 @@ class InstantiatedCapturedFunction {
       FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
       DataTypeVector ret_types,
       std::function<void(std::function<void()>)> runner,
+      CancellationManager* cancellation_manager,
       CapturedFunction* captured_func);
 
   // Determines whether a rendezvous object should be created when running the
@@ -105,6 +110,7 @@ class InstantiatedCapturedFunction {
   const FunctionLibraryRuntime::Handle f_handle_;
   const DataTypeVector ret_types_;
   std::function<void(std::function<void()>)> captured_runner_;
+  CancellationManager* cancellation_manager_;
   CapturedFunction* const captured_func_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(InstantiatedCapturedFunction);
@@ -200,6 +206,15 @@ class CapturedFunction {
   Status Instantiate(IteratorContext* ctx,
                      std::unique_ptr<InstantiatedCapturedFunction>*
                          instantiated_captured_function);
+
+  // Determines whether the captured function is stateful.
+  //
+  // TODO(jsimsa): Remove this method once all users of `CapturedFunction`
+  // migrate to `CheckExternalState`.
+  bool IsStateful() const;
+
+  // Determines whether the captured function is stateful.
+  Status CheckExternalState() const;
 
   // Returns the additional captured inputs that will be passed to the function.
   const std::vector<Tensor>& captured_inputs() const {

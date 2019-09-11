@@ -227,7 +227,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
           array_ops.check_numerics(
               constant_op.constant(1.0) / constant_op.constant(0.0), "oops"))
       dataset = dataset.apply(batching.map_and_batch(lambda x: x, 14))
-      get_next = self.getNext(dataset)
+      get_next = self.getNext(dataset, requires_initialization=True)
       self.evaluate(get_next())
 
   def testMapAndBatchShapeMismatch(self):

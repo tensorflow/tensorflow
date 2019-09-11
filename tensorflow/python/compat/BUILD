@@ -12,6 +12,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
     ],

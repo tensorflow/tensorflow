@@ -21,11 +21,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler_options.h"
-#include "tensorflow/lite/delegates/gpu/gl/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/gl/object.h"
 #include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
@@ -62,6 +62,9 @@ struct GeneratedCode {
 
   // A list of objects to bind before shader could be executed.
   std::vector<std::pair<std::string, Object>> objects;
+
+  // A list of shared variables in the shader program.
+  std::vector<Variable> shared_variables;
 
   // Compute shader operate on an abstract concept of work groups, each
   // three-dimensional. The number of work groups to be executed is defined by
@@ -100,6 +103,9 @@ class NodeShader {
   // Generates shader code for a node. The code should be just a function body.
   virtual Status GenerateCode(const GenerationContext& ctx,
                               GeneratedCode* generated_code) const = 0;
+
+  // Limit the size of the const offsets array
+  static constexpr int kMaxConstArraySize = 9;
 };
 
 }  // namespace gl

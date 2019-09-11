@@ -76,7 +76,7 @@ class RaggedMapInnerValuesOpTest(test_util.TensorFlowTestCase):
     x = ragged_factory_ops.constant([['a', 'b', 'c'], [], ['d', 'e']])
     y = ragged_factory_ops.constant([['A', 'B', 'C'], [], ['D', 'E']])
     self.assertRaggedMapInnerValuesReturns(
-        op=array_ops.where,
+        op=array_ops.where_v2,
         args=(condition, x, y),
         expected=[[b'a', b'b', b'C'], [], [b'd', b'E']])
 

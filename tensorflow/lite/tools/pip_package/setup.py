@@ -43,8 +43,8 @@ TENSORFLOW_DIR = os.environ['TENSORFLOW_SRC_ROOT']
 # Setup cross compiling
 TARGET = os.environ.get('TENSORFLOW_TARGET', None)
 if TARGET == 'rpi':
-  os.environ['CXX'] = 'arm-linux-gnueabihf-g++'
-  os.environ['CC'] = 'arm-linux-gnueabihf-gcc'
+  os.environ['CXX'] = 'arm-rpi-linux-gnueabihf-g++'
+  os.environ['CC'] = 'arm-rpi-linux-gnueabihf-gcc'
 elif TARGET == 'aarch64':
   os.environ['CXX'] = 'aarch64-linux-gnu-g++'
   os.environ['CC'] = 'aarch64-linux-gnu-gcc'
@@ -149,20 +149,22 @@ ext = Extension(
     libraries=[LIB_TFLITE],
     library_dirs=[LIB_TFLITE_DIR])
 
-
 setup(
-    name=PACKAGE_NAME,
+    name=PACKAGE_NAME.replace('_', '-'),
     version=PACKAGE_VERSION,
     description=DOCLINES[0],
     long_description='\n'.join(DOCLINES[2:]),
     url='https://www.tensorflow.org/lite/',
-    author='Google Inc.',
+    author='Google, LLC',
     author_email='packages@tensorflow.org',
     license='Apache 2.0',
     include_package_data=True,
     keywords='tflite tensorflow tensor machine learning',
     packages=find_packages(exclude=[]),
     ext_modules=[ext],
+    install_requires=[
+        'numpy >= 1.12.1',
+    ],
     cmdclass={
         'build_ext': CustomBuildExt,
         'build_py': CustomBuildPy,

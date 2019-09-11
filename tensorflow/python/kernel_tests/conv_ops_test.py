@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import os
 import time
 
@@ -47,6 +46,7 @@ from tensorflow.python.ops import variables
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
+from tensorflow.python.util.compat import collections_abc
 
 
 def GetShrunkInceptionShapes(shrink=10):
@@ -163,12 +163,15 @@ def GetTestConfigs():
 class Conv2DTest(test.TestCase):
 
   def _DtypesToTest(self, use_gpu):
+    # double datatype is currently not supported for convolution ops
+    # on the ROCm platform
+    optional_float64 = [] if test.is_built_with_rocm() else [dtypes.float64]
     if use_gpu and not test_util.GpuSupportsHalfMatMulAndConv():
-      return [dtypes.float32, dtypes.float64]
+      return [dtypes.float32] + optional_float64
     else:
       # It is important that float32 comes before float16 here,
       # as we will be using its gradients as reference for fp16 gradients.
-      return [dtypes.float32, dtypes.float16, dtypes.float64]
+      return [dtypes.float32, dtypes.float16] + optional_float64
 
   def _CreateNumpyTensor(self, shape):
     total_size = 1
@@ -266,7 +269,7 @@ class Conv2DTest(test.TestCase):
     with test_util.device(use_gpu):
       t1 = constant_op.constant(x1, shape=tensor_in_sizes)
       t2 = constant_op.constant(x2, shape=filter_in_sizes)
-      if isinstance(stride, collections.Iterable):
+      if isinstance(stride, collections_abc.Iterable):
         strides = list(stride)
       else:
         strides = [stride, stride]

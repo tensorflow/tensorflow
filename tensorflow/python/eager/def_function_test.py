@@ -391,7 +391,8 @@ class DefFunctionTest(test.TestCase):
         outputs.append(inputs[t])
       return outputs
 
-    with self.assertRaisesRegexp(ValueError, 'inner'):
+    with self.assertRaisesRegexp(errors.InaccessibleTensorError,
+                                 'defined in another function or code block'):
       f(array_ops.zeros(shape=(8, 42, 3)))
 
   def testRuntimeErrorNotSticky(self):

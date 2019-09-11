@@ -1,4 +1,4 @@
-// RUN: tf-opt -xla-legalize-tf %s | FileCheck %s
+// RUN: tf-opt -xla-legalize-tf %s | FileCheck %s --dump-input-on-failure
 
 //===----------------------------------------------------------------------===//
 // BatchNorm op legalizations.
@@ -6,7 +6,7 @@
 
 // CHECK-LABEL: fusedBatchNorm_notraining
 func @fusedBatchNorm_notraining(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>, %arg3: tensor<8xf32>, %arg4: tensor<8xf32>) -> (tensor<8x8x8x8xf32>) {
-  // CHECK-NEXT: "xla.batch_norm_inference"(%arg0, %arg1, %arg2, %arg3, %arg4) {epsilon = 1.000000e-03 : f32, feature_index = 3 : i64} : (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> tensor<8x8x8x8xf32>
+  // CHECK-NEXT: "xla_hlo.batch_norm_inference"(%arg0, %arg1, %arg2, %arg3, %arg4) {epsilon = 1.000000e-03 : f32, feature_index = 3 : i64} : (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> tensor<8x8x8x8xf32>
   %0:5 = "tf.FusedBatchNorm"(%arg0, %arg1, %arg2, %arg3, %arg4) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", epsilon = 0.001 : f32, is_training = false} : (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>)
   return %0#0 : tensor<8x8x8x8xf32>
 }
@@ -25,14 +25,14 @@ func @fusedBatchNorm_training(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32>, 
 
 // CHECK-LABEL: func @biasAdd_NHWC
 func @biasAdd_NHWC(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) -> tensor<1x32x10x32xi32> {
-  // CHECK-NEXT: %0 = "xla.add"(%arg0, %arg1) {broadcast_dimensions = dense<3> : tensor<1xi64>}
+  // CHECK-NEXT: %0 = "xla_hlo.add"(%arg0, %arg1) {broadcast_dimensions = dense<3> : tensor<1xi64>}
   %0 = "tf.BiasAdd"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", data_format = "NHWC"} : (tensor<1x32x10x32xi32>, tensor<32xi32>) -> tensor<1x32x10x32xi32>
   return %0 : tensor<1x32x10x32xi32>
 }
 
 // CHECK-LABEL: func @biasAdd_NCHW
 func @biasAdd_NCHW(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) -> tensor<1x32x10x32xi32> {
-  // CHECK-NEXT: %0 = "xla.add"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>}
+  // CHECK-NEXT: %0 = "xla_hlo.add"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>}
   %0 = "tf.BiasAdd"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", data_format = "NCHW"} : (tensor<1x32x10x32xi32>, tensor<32xi32>) -> tensor<1x32x10x32xi32>
   return %0 : tensor<1x32x10x32xi32>
 }
@@ -42,14 +42,14 @@ func @biasAdd_NCHW(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) -> tens
 
 // CHECK-LABEL: func @biasAdd_NHWC_invalid
 func @biasAdd_NHWC_invalid(%arg0: tensor<1x32x10x2xi32>, %arg1: tensor<32xi32>) -> tensor<1x32x10x2xi32> {
-  // CHECK-NOT: xla.add
+  // CHECK-NOT: xla_hlo.add
   %0 = "tf.BiasAdd"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", data_format = "NHWC"} : (tensor<1x32x10x2xi32>, tensor<32xi32>) -> tensor<1x32x10x2xi32>
   return %0 : tensor<1x32x10x2xi32>
 }
 
 // CHECK-LABEL: func @biasAdd_NCHW_invalid
 func @biasAdd_NCHW_invalid(%arg0: tensor<1x10x10x32xi32>, %arg1: tensor<32xi32>) -> tensor<1x10x10x32xi32> {
-  // CHECK-NOT: xla.add
+  // CHECK-NOT: xla_hlo.add
   %0 = "tf.BiasAdd"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", data_format = "NCHW"} : (tensor<1x10x10x32xi32>, tensor<32xi32>) -> tensor<1x10x10x32xi32>
   return %0 : tensor<1x10x10x32xi32>
 }
@@ -60,29 +60,31 @@ func @biasAdd_NCHW_invalid(%arg0: tensor<1x10x10x32xi32>, %arg1: tensor<32xi32>)
 
 // CHECK-LABEL: func @add
 func @add(%arg0: tensor<2xi32>) -> tensor<2xi32> {
-  // CHECK-NEXT:  %0 = xla.add %arg0, %arg0 : tensor<2xi32>
-  // CHECK-NEXT:  return %0 : tensor<2xi32>
+  // CHECK-NEXT:  %[[SUM0:.*]] = xla_hlo.add %arg0, %arg0 : tensor<2xi32>
+  // CHECK-NEXT:  %[[SUM1:.*]] = xla_hlo.add %[[SUM0]], %arg0 : tensor<2xi32>
+  // CHECK-NEXT:  return %[[SUM1]] : tensor<2xi32>
   %0 = "tf.Add"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
-  return %0: tensor<2xi32>
+  %1 = "tf.AddV2"(%0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  return %1: tensor<2xi32>
 }
 
 // CHECK-LABEL: func @broadcast_add
 func @broadcast_add(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
-  // CHECK-NEXT: "xla.add"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>}
+  // CHECK-NEXT: "xla_hlo.add"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>}
   %0 = "tf.Add"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
   return %0: tensor<1x2xi32>
 }
 
 // CHECK-LABEL: func @broadcast_multi_dim_add
 func @broadcast_multi_dim_add(%arg0: tensor<4x1x1xi32>, %arg1: tensor<4x4x4x4xi32>) -> tensor<4x4x4x4xi32> {
-  // CHECK-NEXT: "xla.add"(%arg0, %arg1) {broadcast_dimensions = dense<[1, 2, 3]> : tensor<3xi64>}
+  // CHECK-NEXT: "xla_hlo.add"(%arg0, %arg1) {broadcast_dimensions = dense<[1, 2, 3]> : tensor<3xi64>}
   %0 = "tf.Add"(%arg0, %arg1) : (tensor<4x1x1xi32>, tensor<4x4x4x4xi32>) -> tensor<4x4x4x4xi32>
   return %0: tensor<4x4x4x4xi32>
 }
 
 // CHECK-LABEL: func @div
 func @div(%arg0: tensor<2xi32>) -> tensor<2xi32> {
-  // CHECK-NEXT:  %0 = xla.div %arg0, %arg0 : tensor<2xi32>
+  // CHECK-NEXT:  %0 = xla_hlo.div %arg0, %arg0 : tensor<2xi32>
   // CHECK-NEXT:  return %0 : tensor<2xi32>
   %0 = "tf.Div"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
   return %0: tensor<2xi32>
@@ -90,14 +92,14 @@ func @div(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 
 // CHECK-LABEL: func @broadcast_div
 func @broadcast_div(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
-  // CHECK-NEXT: "xla.div"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>}
+  // CHECK-NEXT: "xla_hlo.div"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>}
   %0 = "tf.Div"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
   return %0: tensor<1x2xi32>
 }
 
 // CHECK-LABEL: func @mul
 func @mul(%arg0: tensor<2xi32>) -> tensor<2xi32> {
-  // CHECK-NEXT:  %0 = xla.mul %arg0, %arg0 : tensor<2xi32>
+  // CHECK-NEXT:  %0 = xla_hlo.mul %arg0, %arg0 : tensor<2xi32>
   // CHECK-NEXT:  return %0 : tensor<2xi32>
   %0 = "tf.Mul"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
   return %0: tensor<2xi32>
@@ -105,28 +107,28 @@ func @mul(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 
 // CHECK-LABEL: func @broadcast_mul
 func @broadcast_mul(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
-  // CHECK-NEXT: "xla.mul"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>}
+  // CHECK-NEXT: "xla_hlo.mul"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>}
   %0 = "tf.Mul"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
   return %0: tensor<1x2xi32>
 }
 
 // CHECK-LABEL: func @real_div
 func @real_div(%arg0: tensor<2xi32>) -> tensor<2xi32> {
-  // CHECK-NEXT:  %0 = xla.div %arg0, %arg0 : tensor<2xi32>
+  // CHECK-NEXT:  %0 = xla_hlo.div %arg0, %arg0 : tensor<2xi32>
   %0 = "tf.RealDiv"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
   return %0: tensor<2xi32>
 }
 
 // CHECK-LABEL: func @broadcast_real_div
 func @broadcast_real_div(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
-  // CHECK-NEXT: "xla.div"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>}
+  // CHECK-NEXT: "xla_hlo.div"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>}
   %0 = "tf.RealDiv"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
   return %0: tensor<1x2xi32>
 }
 
 // CHECK-LABEL: func @sub
 func @sub(%arg0: tensor<2xi32>) -> tensor<2xi32> {
-  // CHECK-NEXT:  %0 = xla.sub %arg0, %arg0 : tensor<2xi32>
+  // CHECK-NEXT:  %0 = xla_hlo.sub %arg0, %arg0 : tensor<2xi32>
   // CHECK-NEXT:  return %0 : tensor<2xi32>
   %0 = "tf.Sub"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
   return %0: tensor<2xi32>
@@ -134,7 +136,7 @@ func @sub(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 
 // CHECK-LABEL: func @broadcast_sub
 func @broadcast_sub(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
-  // CHECK-NEXT: "xla.sub"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>}
+  // CHECK-NEXT: "xla_hlo.sub"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>}
   %0 = "tf.Sub"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
   return %0: tensor<1x2xi32>
 }
@@ -156,11 +158,40 @@ func @identity(%arg0: tensor<1xi32>) -> tensor<1xi32> {
 
 // CHECK-LABEL: @const
 func @const() -> tensor<2xi32> {
-  // tf.Const is legalized into xla.constant, which is folded into constant.
+  // tf.Const is legalized into xla_hlo.constant, which is folded into constant.
 
   // CHECK-NEXT: constant dense<0> : tensor<2xi32>
   %0 = "tf.Const"() {device = "", name = "", dtype = "tfdtype$DT_INT32", value = dense<0> : tensor<2xi32>} : () -> (tensor<2xi32>)
   return %0: tensor<2xi32>
+}
+
+//===----------------------------------------------------------------------===//
+// Matmul op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: matmul_notranspose
+func @matmul_notranspose(%arg0: tensor<5x7xf32>, %arg1: tensor<7x11xf32>) -> tensor<5x11xf32> {
+  // CHECK: "xla_hlo.dot"(%arg0, %arg1)
+  %0 = "tf.MatMul"(%arg0, %arg1) {transpose_a = false, transpose_b = false} : (tensor<5x7xf32>, tensor<7x11xf32>) -> tensor<5x11xf32>
+
+  return %0 : tensor<5x11xf32>
+}
+
+//===----------------------------------------------------------------------===//
+// MaxPool op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: maxpool_valid_padding
+// CHECK-SAME: %[[ARG:.*]]: tensor
+func @maxpool_valid_padding(%arg0: tensor<2x12x20x7xi32>) -> tensor<2x3x5x7xi32> {
+  // CHECK: %[[INIT:.*]] = constant dense<-2147483648> : tensor<i32>
+  // CHECK: "xla_hlo.reduce_window"(%[[ARG]], %[[INIT]])
+  // CHECK: xla_hlo.max
+  // CHECK: xla_hlo.return
+  // CHECK: {window_dimensions = dense<[1, 2, 2, 1]> : tensor<4xi64>, window_strides = dense<[1, 4, 4, 1]> : tensor<4xi64>}
+
+  %0 = "tf.MaxPool"(%arg0) {data_format = "NHWC", ksize = [1, 2, 2, 1], padding = "VALID", strides = [1, 4, 4, 1]} : (tensor<2x12x20x7xi32>) -> tensor<2x3x5x7xi32>
+  return %0 : tensor<2x3x5x7xi32>
 }
 
 //===----------------------------------------------------------------------===//
@@ -170,7 +201,7 @@ func @const() -> tensor<2xi32> {
 // CHECK-LABEL: func @relu
 func @relu(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   // CHECK-NEXT: %cst = constant dense<0> : tensor<1xi32>
-  // CHECK-NEXT: %0 = xla.max %arg0, %cst : tensor<1xi32>
+  // CHECK-NEXT: %0 = xla_hlo.max %arg0, %cst : tensor<1xi32>
   %0 = "tf.Relu"(%arg0) : (tensor<1xi32>) -> tensor<1xi32>
   return %0: tensor<1xi32>
 }
@@ -179,9 +210,67 @@ func @relu(%arg0: tensor<1xi32>) -> tensor<1xi32> {
 func @relu6(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   // CHECK-NEXT: %cst = constant dense<0> : tensor<1xi32>
   // CHECK-NEXT: %cst_0 = constant dense<6> : tensor<1xi32>
-  // CHECK-NEXT: %0 = "xla.clamp"(%cst, %arg0, %cst_0) : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
+  // CHECK-NEXT: %0 = "xla_hlo.clamp"(%cst, %arg0, %cst_0) : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
   %0 = "tf.Relu6"(%arg0) : (tensor<1xi32>) -> tensor<1xi32>
   return %0: tensor<1xi32>
+}
+
+//===----------------------------------------------------------------------===//
+// Softmax op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @simple_softmax
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<2x3xf32>)
+func @simple_softmax(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  // CHECK: %[[NEG_INF:.*]] = constant dense<0xFF800000> : tensor<f32>
+  // CHECK: %[[ZERO:.*]] = constant dense<0.000000e+00> : tensor<f32>
+
+  // Verify reduce op for max computation and its body.
+  // CHECK: %[[MAX:.*]] = "xla_hlo.reduce"(%[[ARG0]], %[[NEG_INF]])
+  // CHECK:  xla_hlo.max
+  // CHECK: "xla_hlo.return"
+  // CHECK: {dimensions = dense<1> : tensor<1xi64>} : (tensor<2x3xf32>, tensor<f32>) -> tensor<2xf32>
+
+  // CHECK: %[[SHIFTED_INP:.*]] = "xla_hlo.sub"(%[[ARG0]], %[[MAX]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
+  // CHECK: %[[EXP:.*]] = "xla_hlo.exp"(%[[SHIFTED_INP]])
+
+  // Verify reduce op for summation and its body.
+  // CHECK: %[[SUM:.*]] = "xla_hlo.reduce"(%[[EXP]], %[[ZERO]])
+  // CHECK:  xla_hlo.add
+  // CHECK: "xla_hlo.return"
+  // CHECK: {dimensions = dense<1> : tensor<1xi64>}
+
+  // CHECK: %[[RESULT:.*]] = "xla_hlo.div"(%[[EXP]], %[[SUM]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
+  // return %[[RESULT]]
+
+  %0 = "tf.Softmax"(%arg0) : (tensor<2x3xf32>) -> tensor<2x3xf32>
+  return %0: tensor<2x3xf32>
+}
+
+// CHECK-LABEL: bf16_softmax
+func @bf16_softmax(%arg0: tensor<2x3xbf16>) -> tensor<2x3xbf16> {
+  // Verify that conversion to f32 and then back to bf16 are introduced.
+
+  // CHECK: "xla_hlo.convert"({{.*}}) : (tensor<2x3xbf16>) -> tensor<2x3xf32>
+  // CHECK: "xla_hlo.convert"({{.*}}) : (tensor<2xf32>) -> tensor<2xbf16>
+
+  %0 = "tf.Softmax"(%arg0) : (tensor<2x3xbf16>) -> tensor<2x3xbf16>
+  return %0: tensor<2x3xbf16>
+}
+
+// CHECK-LABEL: rank4_softmax
+func @rank4_softmax(%arg0: tensor<2x3x4x5xf16>) -> tensor<2x3x4x5xf16> {
+  // Verify that reduce op dimensions and broadcast dimensions are correct.
+
+  // CHECK: "xla_hlo.reduce"
+  // CHECK: dimensions = dense<3>
+
+  // CHECK: "xla_hlo.reduce"
+  // CHECK: dimensions = dense<3>
+
+  // CHECK: "xla_hlo.div"{{.*}} {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>}
+  %0 = "tf.Softmax"(%arg0) : (tensor<2x3x4x5xf16>) -> tensor<2x3x4x5xf16>
+  return %0: tensor<2x3x4x5xf16>
 }
 
 //===----------------------------------------------------------------------===//
@@ -190,7 +279,7 @@ func @relu6(%arg0: tensor<1xi32>) -> tensor<1xi32> {
 
 // CHECK-LABEL: reshape
 func @reshape(%arg0: tensor<2xf32>, %arg1: tensor<2xi32>) -> tensor<1x1xf32> {
-  // CHECK:  %0 = "xla.reshape"(%arg0) : (tensor<2xf32>) -> tensor<1x1xf32>
+  // CHECK:  %0 = "xla_hlo.reshape"(%arg0) : (tensor<2xf32>) -> tensor<1x1xf32>
   %0 = "tf.Reshape"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xi32>) -> tensor<1x1xf32>
   return %0 : tensor<1x1xf32>
 }
@@ -204,7 +293,7 @@ func @reshape_dynamic(%arg0: tensor<*xf32>, %arg1: tensor<2xi32>) -> tensor<?x?x
 
 // CHECK-LABEL: squeeze
 func @squeeze(%arg0: tensor<1x1x10xf32>) -> tensor<1x10xf32> {
-  // CHECK-NEXT: %0 = "xla.reshape"(%arg0) : (tensor<1x1x10xf32>) -> tensor<1x10xf32>
+  // CHECK-NEXT: %0 = "xla_hlo.reshape"(%arg0) : (tensor<1x1x10xf32>) -> tensor<1x10xf32>
   %0 = "tf.Squeeze"(%arg0) : (tensor<1x1x10xf32>) -> tensor<1x10xf32>
   return %0 : tensor<1x10xf32>
 }

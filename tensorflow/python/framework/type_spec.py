@@ -22,7 +22,7 @@ import abc
 import numpy as np
 import six
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import _pywrap_utils
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
@@ -49,6 +49,13 @@ class TypeSpec(object):
   A `tf.TypeSpec` provides metadata describing an object accepted or returned
   by TensorFlow APIs.  Concrete subclasses, such as `tf.TensorSpec` and
   `tf.RaggedTensorSpec`, are used to describe different value types.
+
+  For example, `tf.function`'s `input_signature` argument accepts a list
+  (or nested structure) of `TypeSpec`s.
+
+  Creating new subclasses of TypeSpec (outside of TensorFlow core) is not
+  currently supported.  In particular, we may make breaking changes to the
+  private methods and properties defined by this base class.
   """
   # === Subclassing ===
   #
@@ -253,7 +260,8 @@ class TypeSpec(object):
 
   def __eq__(self, other):
     # pylint: disable=protected-access
-    return self.__get_cmp_key() == other.__get_cmp_key()
+    return (type(other) is type(self) and
+            self.__get_cmp_key() == other.__get_cmp_key())
 
   def __ne__(self, other):
     return not self == other
@@ -538,4 +546,4 @@ def register_type_spec_from_value_converter(type_object, converter_fn,
       (type_object, converter_fn, allow_subclass))
 
 
-pywrap_tensorflow.RegisterType("TypeSpec", TypeSpec)
+_pywrap_utils.RegisterType("TypeSpec", TypeSpec)

@@ -17,8 +17,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/while_util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -52,6 +54,8 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
   Status HandleTranspose(HloInstruction* hlo) override;
 
   Status HandleReshape(HloInstruction* hlo) override;
+
+  Status HandleSort(HloInstruction* hlo) override;
 
   Status HandlePad(HloInstruction* hlo) override;
 
@@ -157,6 +161,29 @@ Status DynamicDimensionInferenceVisitor::HandleBroadcast(HloInstruction* hlo) {
         int64 broadcast_dim = hlo->dimensions(dimension);
         parent_->SetDynamicSize(hlo, {}, broadcast_dim, dynamic_size,
                                 constraint);
+        return Status::OK();
+      });
+}
+
+Status DynamicDimensionInferenceVisitor::HandleSort(HloInstruction* hlo) {
+  return ForEachOperandDynamicDimension(
+      hlo, [&](HloInstruction* operand, ShapeIndex index,
+               int64 dynamic_dimension, int64 operand_index,
+               HloInstruction* dynamic_size, DimensionConstraint constraint) {
+        HloSortInstruction* sort = Cast<HloSortInstruction>(hlo);
+        int64 sort_dimension = sort->sort_dimension();
+        if (sort_dimension == dynamic_dimension) {
+          return Unimplemented(
+              "Dynamic dimension on sorting dimension is not supported");
+        }
+        if (sort->values_count() == 0) {
+          parent_->SetDynamicSize(hlo, {}, dynamic_dimension, dynamic_size,
+                                  constraint);
+        } else {
+          parent_->SetDynamicSize(hlo, {operand_index}, dynamic_dimension,
+                                  dynamic_size, constraint);
+        }
+
         return Status::OK();
       });
 }
@@ -436,7 +463,7 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
                 reshape->shape().dimensions(0) / operand->shape().dimensions(0);
             HloInstruction* multiplier_hlo =
                 hlo->parent()->AddInstruction(HloInstruction::CreateConstant(
-                    LiteralUtil::CreateR0<uint32>(multiplier)));
+                    LiteralUtil::CreateR0<int32>(multiplier)));
 
             HloInstruction* new_dynamic_size =
                 hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
@@ -611,7 +638,7 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
                 reshape->shape().dimensions(dynamic_dimension);
             HloInstruction* divisor_hlo =
                 hlo->parent()->AddInstruction(HloInstruction::CreateConstant(
-                    LiteralUtil::CreateR0<uint32>(divisor)));
+                    LiteralUtil::CreateR0<int32>(divisor)));
 
             HloInstruction* new_dynamic_size =
                 hlo->parent()->AddInstruction(HloInstruction::CreateBinary(

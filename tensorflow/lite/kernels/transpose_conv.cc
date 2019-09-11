@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/kernels/cpu_backend_support.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/eigen_support.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -86,13 +86,11 @@ struct OpData {
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   auto* data = new OpData;
   eigen_support::IncrementUsageCounter(context);
-  cpu_backend_support::IncrementUsageCounter(context);
   return data;
 }
 
 void Free(TfLiteContext* context, void* buffer) {
   eigen_support::DecrementUsageCounter(context);
-  cpu_backend_support::DecrementUsageCounter(context);
   delete reinterpret_cast<OpData*>(buffer);
 }
 
@@ -338,7 +336,7 @@ void EvalFloat(TfLiteContext* context, const TfLiteTransposeConvParams* params,
           GetTensorData<float>(transposed_weights), GetTensorShape(output),
           GetTensorData<float>(output), GetTensorShape(col2im),
           GetTensorData<float>(col2im),
-          cpu_backend_support::GetFromContext(context));
+          CpuBackendContext::GetFromContext(context));
       break;
     }
   }

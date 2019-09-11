@@ -76,6 +76,7 @@ class ApplyMask : public NodeShader {
     *generated_code = {
         /*parameters=*/{},
         /*objects=*/{},
+        /*shared_variables=*/{},
         /*workload=*/uint3(),
         /*workgroup=*/uint3(),
         /*source_code=*/std::move(source),
@@ -99,6 +100,7 @@ class MultiplyScalar : public NodeShader {
       *generated_code = {
           /*parameters=*/{{"scalar", *scalar}},
           /*objects=*/{},
+          /*shared_variables=*/{},
           /*workload=*/uint3(),
           /*workgroup=*/uint3(),
           /*source_code=*/"value_0 *= $scalar$;",
@@ -113,6 +115,7 @@ class MultiplyScalar : public NodeShader {
       *generated_code = {
           /*parameters=*/{},
           /*objects=*/{{"mul_buffer", MakeReadonlyObject(muls->data)}},
+          /*shared_variables=*/{},
           // Declare workload explicitly because shader depends on gid.z.
           /*workload=*/
           uint3(shape.w, shape.h, IntegralDivideRoundUp(shape.c, 4)),

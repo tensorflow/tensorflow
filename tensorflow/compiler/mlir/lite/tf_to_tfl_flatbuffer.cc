@@ -31,6 +31,11 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
+namespace mlir {
+/// Create a pass to convert from the TFExecutor to the TF control dialect.
+std::unique_ptr<FunctionPassBase> CreateTFExecutorToControlDialectConversion();
+}  // namespace mlir
+
 namespace tensorflow {
 
 using mlir::MLIRContext;
@@ -79,79 +84,23 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
     return tensorflow::GraphdefToSplattedMlirTranslateFunction(
         input_filename, debug_info_file, input_arrays, input_dtypes,
         input_shapes, output_arrays, inference_type, min_values, max_values,
-        prune_unused_nodes, context);
+        prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
+        /*graph_as_function=*/false, context);
   }
   return tensorflow::GraphdefToMlirTranslateFunction(
       input_filename, debug_info_file, input_arrays, input_dtypes, input_shapes,
       output_arrays, inference_type, min_values, max_values, prune_unused_nodes,
-      context);
+      /*convert_legacy_fed_inputs=*/true, /*graph_as_function=*/false, context);
 }
 
-bool ShouldRunQuantizePasses(mlir::ModuleOp m) {
-  if (mlir::FuncOp main_fn = m.lookupSymbol<mlir::FuncOp>("main")) {
-    return main_fn.getAttrOfType<mlir::UnitAttr>("tf.quantize") !=
-           mlir::Attribute();
-  }
-  return false;
-}
-
-void AddTFToTFLConversionPasses(bool emit_builtin_tflite_ops, bool run_quantize,
-                                bool emit_quant_adaptor_ops,
-                                bool lower_tensor_list_ops,
-                                mlir::PassManager *pass_manager) {
-  pass_manager->addPass(mlir::TFControlFlow::CreateRaiseTFControlFlowPass());
-
-  if (lower_tensor_list_ops) {
-    // Execute this pass before `CanonicalizerPass` in case some TensorList
-    // ops are constant folded into variant types.
-    // TODO(b/137125056): Move this pass after `CanonicalizerPass` after we
-    // handle constant ops that produce `TensorList`.
-    // TODO(haoliang): Add this pass by default.
-    pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass());
-  }
-
-  // TODO(jpienaar): Revise post dialect constants.
-  pass_manager->addPass(mlir::TF::CreateDecodeConstantPass());
-  // Canonicalization includes const folding, which is utilized here to optimize
-  // away ops that can't get constant folded after PrepareTF pass. For example,
-  // tf.Conv2D is split into tf.Transpose and tfl.Conv2D.
-  pass_manager->addPass(mlir::createCanonicalizerPass());
-
-  // The below passes only make sense if Builtin TFLite ops are enabled
-  // for emission.
-  if (emit_builtin_tflite_ops) {
-    // Prepare for TFLite dialect, rerun canonicalization, and then legalize to
-    // the TFLite dialect.
-    pass_manager->addPass(mlir::TFL::CreatePrepareTFPass());
-    pass_manager->addPass(mlir::createCanonicalizerPass());
-    pass_manager->addPass(mlir::TFL::CreateLegalizeTFPass());
-    pass_manager->addPass(mlir::TFL::CreateOptimizePass());
-    if (run_quantize) {
-      pass_manager->addPass(mlir::TFL::CreatePrepareQuantizePass(
-          /*quantize_sign=*/false));
-      pass_manager->addPass(mlir::TFL::CreateQuantizePass());
-      pass_manager->addPass(
-          mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
-    }
-    pass_manager->addPass(mlir::createCanonicalizerPass());
-    pass_manager->addPass(mlir::createCSEPass());
-  }
-}
-
-Status ConvertTFControlFlowToTFLOrFlatbuffer(
+Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
     bool emit_select_tf_ops, bool emit_custom_ops, bool emit_quant_adaptor_ops,
-    bool lower_tensor_list_ops, std::string *result) {
+    bool lower_tensor_list_ops, std::string *result,
+    mlir::PassManager *pass_manager) {
   mlir::StatusScopedDiagnosticHandler statusHandler(module.getContext(),
                                                     /*propagate=*/true);
-  mlir::PassManager pm;
-  bool run_quantize = ShouldRunQuantizePasses(module);
-
-  AddTFToTFLConversionPasses(emit_builtin_tflite_ops, run_quantize,
-                             emit_quant_adaptor_ops, lower_tensor_list_ops,
-                             &pm);
-
-  if (failed(pm.run(module))) {
+  if (failed(pass_manager->run(module))) {
     return statusHandler.ConsumeStatus();
   }
 

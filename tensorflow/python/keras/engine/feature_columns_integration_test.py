@@ -49,8 +49,6 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_sequential_model(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     columns = [fc.numeric_column('a')]
     model = keras.models.Sequential([
         fc.DenseFeatures(columns),
@@ -62,7 +60,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         loss='categorical_crossentropy',
         metrics=['accuracy'],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     x = {'a': np.random.random((10, 1))}
     y = np.random.randint(20, size=(10, 1))
@@ -74,8 +72,6 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_sequential_model_with_ds_input(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     columns = [fc.numeric_column('a')]
     model = keras.models.Sequential([
         fc.DenseFeatures(columns),
@@ -87,7 +83,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         loss='categorical_crossentropy',
         metrics=['accuracy'],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     y = np.random.randint(20, size=(100, 1))
     y = keras.utils.to_categorical(y, num_classes=20)
@@ -141,8 +137,6 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_subclassed_model_with_feature_columns(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     col_a = fc.numeric_column('a')
     col_b = fc.numeric_column('b')
 
@@ -153,7 +147,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         loss='categorical_crossentropy',
         metrics=['accuracy'],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     x = {'a': np.random.random((10, 1)), 'b': np.random.random((10, 1))}
     y = np.random.randint(20, size=(10, 1))
@@ -165,8 +159,6 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_subclassed_model_with_feature_columns_with_ds_input(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     col_a = fc.numeric_column('a')
     col_b = fc.numeric_column('b')
 
@@ -177,7 +169,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         loss='categorical_crossentropy',
         metrics=['accuracy'],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     y = np.random.randint(20, size=(100, 1))
     y = keras.utils.to_categorical(y, num_classes=20)

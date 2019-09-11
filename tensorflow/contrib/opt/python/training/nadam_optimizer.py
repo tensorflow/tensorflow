@@ -24,13 +24,36 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.training import adam
 from tensorflow.python.training import training_ops
+from tensorflow.python.util import deprecation
 
 
 class NadamOptimizer(adam.AdamOptimizer):
   """Optimizer that implements the Nadam algorithm.
 
   See [Dozat, T., 2015](http://cs229.stanford.edu/proj2015/054_report.pdf).
+
+  WARNING: due to a known issue this optimizer does not use nesterov momentum
+  on TPUs or when using XLA in general. This is deprecated; instead prefer
+  tf.keras.optimizers.Nadam which does the right thing.
   """
+
+  @deprecation.deprecated(
+      None, "WARNING: wrong behavior with XLA. Use tf.keras.optimizers.Nadam.")
+  def __init__(
+      self,
+      learning_rate=0.001,
+      beta1=0.9,
+      beta2=0.999,
+      epsilon=1e-08,
+      use_locking=False,
+      name="Adam"):
+    super(NadamOptimizer, self).__init__(
+        learning_rate=learning_rate,
+        beta1=beta1,
+        beta2=beta2,
+        epsilon=epsilon,
+        use_locking=use_locking,
+        name=name)
 
   def _apply_dense(self, grad, var):
     m = self.get_slot(var, "m")

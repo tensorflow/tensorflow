@@ -22,13 +22,10 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import, line-too-long
-from tensorflow.python.pywrap_tensorflow import DeleteStatSummarizer
-from tensorflow.python.pywrap_tensorflow import NewStatSummarizer
-from tensorflow.python.pywrap_tensorflow import StatSummarizer
+from tensorflow.python._pywrap_stat_summarizer import StatSummarizer
 
 from tensorflow.python.util.all_util import remove_undocumented
 
-_allowed_symbols = ['DeleteStatSummarizer', 'NewStatSummarizer',
-                    'StatSummarizer']
+_allowed_symbols = ['StatSummarizer']
 
 remove_undocumented(__name__, _allowed_symbols)

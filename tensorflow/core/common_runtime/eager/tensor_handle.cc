@@ -53,6 +53,13 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+#if !defined(IS_MOBILE_PLATFORM)
+const int64 kInvalidOpId = -1;
+const int32 kInvalidOutputNum = -1;
+#endif
+}  // namespace
+
 Status TensorHandle::GetResourceHandleDtypesAndShapes(
     std::vector<DtypeAndPartialTensorShape>* result) {
   if (IsRemote()) {
@@ -109,8 +116,8 @@ TensorHandle::TensorHandle(std::unique_ptr<LocalTensorHandleData> t,
       op_device_(op_device),
       resource_device_(nullptr),
 #if !defined(IS_MOBILE_PLATFORM)
-      remote_op_id_(-1),
-      remote_output_num_(-1),
+      remote_op_id_(kInvalidOpId),
+      remote_output_num_(kInvalidOutputNum),
 #endif
       ctx_(ctx),
       is_remote_(false),
@@ -128,8 +135,8 @@ TensorHandle::TensorHandle(std::unique_ptr<LocalTensorHandleData> t,
       op_device_(op_device),
       resource_device_(GetResourceDevice(resource_handle, ctx)),
 #if !defined(IS_MOBILE_PLATFORM)
-      remote_op_id_(-1),
-      remote_output_num_(-1),
+      remote_op_id_(kInvalidOpId),
+      remote_output_num_(kInvalidOutputNum),
 #endif
       ctx_(ctx),
       is_remote_(false),
@@ -159,8 +166,8 @@ TensorHandle::TensorHandle(std::unique_ptr<AsyncLocalTensorHandleData> t,
       op_device_(op_device),
       resource_device_(resource_device),
 #if !defined(IS_MOBILE_PLATFORM)
-      remote_op_id_(-1),
-      remote_output_num_(-1),
+      remote_op_id_(kInvalidOpId),
+      remote_output_num_(kInvalidOutputNum),
 #endif
       ctx_(ctx),
       is_remote_(false),
@@ -250,8 +257,8 @@ TensorHandle::TensorHandle(OutputGraphNode symbolic_tensor, DataType dtype)
       op_device_(nullptr),
       resource_device_(nullptr),
 #if !defined(IS_MOBILE_PLATFORM)
-      remote_op_id_(-1),
-      remote_output_num_(-1),
+      remote_op_id_(kInvalidOpId),
+      remote_output_num_(kInvalidOutputNum),
 #endif
       ctx_(nullptr),
       is_remote_(false),
@@ -326,9 +333,22 @@ Status TensorHandle::RemoteAddress(Device* d, int64* op_id,
         "Could not find remote mirror for specified device");
   }
 
+  if (remote_op_id_ == kInvalidOpId ||
+      remote_output_num_ == kInvalidOutputNum) {
+    return errors::InvalidArgument("Remote handle (op_id:", remote_op_id_,
+                                   ", output_num:", remote_output_num_,
+                                   ") is not set.");
+  }
   *op_id = remote_op_id_;
   *output_num = remote_output_num_;
   return Status::OK();
+}
+
+void TensorHandle::SetRemoteOpIdAndOutputNumToLocalTensorHandle(
+    const int64 op_id, const int32 output_num) {
+  DCHECK(!is_remote_);
+  remote_op_id_ = op_id;
+  remote_output_num_ = output_num;
 }
 
 bool TensorHandle::HasRemoteMirror(Device* d) {

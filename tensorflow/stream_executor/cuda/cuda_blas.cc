@@ -2179,11 +2179,11 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
   // whether a scratch allocator was passed.
   if (scratch_allocator != nullptr) {
     SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> a_bytes,
-                        scratch_allocator->AllocateBytes(stream, size));
+                        scratch_allocator->AllocateBytes(size));
     SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> b_bytes,
-                        scratch_allocator->AllocateBytes(stream, size));
+                        scratch_allocator->AllocateBytes(size));
     SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> c_bytes,
-                        scratch_allocator->AllocateBytes(stream, size));
+                        scratch_allocator->AllocateBytes(size));
     a = DeviceMemory<CUDA_T *>(a_bytes);
     b = DeviceMemory<CUDA_T *>(b_bytes);
     c = DeviceMemory<CUDA_T *>(c_bytes);
@@ -2792,6 +2792,18 @@ bool CUDABlas::DoBlasTrsm(Stream *stream, blas::Side side,
                         CUDABlasTranspose(transa), CUDABlasDiagonal(diag), m, n,
                         GpuComplex(&alpha), GpuComplex(GpuMemory(a)), lda,
                         GpuComplex(GpuMemoryMutable(b)), ldb);
+}
+
+port::Status CUDABlas::GetVersion(string *version) {
+  absl::MutexLock lock(&mu_);
+
+  int v;
+  auto status = cublasGetVersion(blas_, &v);
+  if (status != CUBLAS_STATUS_SUCCESS) {
+    return port::InternalError(ToString(status));
+  }
+  *version = std::to_string(v);
+  return port::Status::OK();
 }
 
 }  // namespace gpu

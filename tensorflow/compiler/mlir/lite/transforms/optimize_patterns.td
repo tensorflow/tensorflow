@@ -16,7 +16,7 @@ limitations under the License.
 // This is the optimization pattern definition file for TensorFlow Lite.
 
 include "mlir/IR/OpBase.td"
-include "mlir/StandardOps/Ops.td"
+include "mlir/Dialect/StandardOps/Ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 
 def F32ElementsAttr : ElementsAttrBase<
@@ -110,3 +110,40 @@ def : Pat<(TFL_MulOp (TFL_DepthwiseConv2DOp $input,
 // with the same scale. We want to remove the redundancy.
 // TODO(fengliuai): move this to the sanity check of pre-quantize pass.
 def : Pat<(TFL_QuantizeOp (TFL_DequantizeOp $in), $qt), (replaceWithValue $in)>;
+
+// Constraint that makes sure both operands are the same operands.
+def EqualOperands : Constraint<CPred<"$0 == $1">>;
+
+// Checks if the operand has rank == n
+class OperandHasRank<int n> : Constraint<
+  CPred<"$0->getType().cast<ShapedType>().getRank() == " # n>>;
+
+// This pattern constructs L2NormalizationOp from
+// Mul->Rsqrt->Sum->Square
+// Currently L2Normalization doesn't support activation function
+// in TFLite.
+def : Pat<(TFL_MulOp $operand1,
+                     (TFL_RsqrtOp
+                        (TFL_SumOp
+                           (TFL_SquareOp $square_operand),
+                           (ConstantOp I32ElementsAttr:$constant),
+                           $keep_dims)),
+                     TFL_AF_None),
+           (TFL_L2NormalizationOp $operand1, TFL_AF_None),
+           [(EqualOperands $operand1, $square_operand),
+            (OperandHasRank<1> $operand1)]>;
+
+// This pattern constructs L2NormalizationOp from
+// Div->sqrt->Sum->Square
+// Currently L2Normalization doesn't support activation function
+// in TFLite.
+def : Pat<(TFL_DivOp $operand1,
+                     (TFL_SqrtOp
+                        (TFL_SumOp
+                           (TFL_SquareOp $square_operand),
+                           (ConstantOp I32ElementsAttr:$constant),
+                           $keep_dims)),
+                     TFL_AF_None),
+           (TFL_L2NormalizationOp $operand1, TFL_AF_None),
+           [(EqualOperands $operand1, $square_operand),
+            (OperandHasRank<1> $operand1)]>;

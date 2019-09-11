@@ -61,9 +61,9 @@ template <>
 struct conjunction<> : std::true_type {};
 
 // A type trait that is valid when all elements in a parameter pack are of
-// integral type.
-template <typename... T>
-using pack_is_integral = conjunction<std::is_integral<T>...>;
+// integral type. Not using an alias template to work around MSVC 14.00 bug.
+template <typename... Ts>
+struct pack_is_integral : conjunction<std::is_integral<Ts>...> {};
 
 // Compares three same-sized vectors elementwise. For each item in `values`,
 // returns false if any of values[i] is outside the half-open range [starts[i],

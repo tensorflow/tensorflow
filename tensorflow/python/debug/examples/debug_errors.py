@@ -19,11 +19,14 @@ from __future__ import print_function
 
 import argparse
 import sys
+import tempfile
 
 import numpy as np
-import tensorflow as tf
+import tensorflow
 
 from tensorflow.python import debug as tf_debug
+
+tf = tensorflow.compat.v1
 
 
 def main(_):
@@ -41,10 +44,12 @@ def main(_):
   z = tf.matmul(m, v, name="z")
 
   if FLAGS.debug:
+    config_file_path = (tempfile.mktemp(".tfdbg_config")
+                        if FLAGS.use_random_config_path else None)
     sess = tf_debug.LocalCLIDebugWrapperSession(
         sess,
         ui_type=FLAGS.ui_type,
-        use_random_config_path=FLAGS.use_random_config_path)
+        config_file_path=config_file_path)
 
   if FLAGS.error == "shape_mismatch":
     print(sess.run(y, feed_dict={ph_float: np.array([[0.0], [1.0], [2.0]])}))

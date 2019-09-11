@@ -26,8 +26,41 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/stream_executor/device_description.h"
 
 namespace xla {
+
+StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStream(
+    const ServiceExecutableRunOptions* run_options,
+    absl::Span<const ShapedBuffer* const> arguments,
+    HloExecutionProfile* hlo_execution_profile) {
+  StatusOr<ScopedShapedBuffer> result =
+      ExecuteAsyncOnStream(run_options, arguments, hlo_execution_profile);
+  Status blocking_status = run_options->stream()->BlockHostUntilDone();
+  TF_RETURN_IF_ERROR(result.status());
+  TF_RETURN_IF_ERROR(blocking_status);
+  return result;
+}
+
+StatusOr<ExecutionOutput> Executable::ExecuteOnStream(
+    const ServiceExecutableRunOptions* run_options,
+    std::vector<ShapeTree<xla::MaybeOwningDeviceMemory>> arguments,
+    HloExecutionProfile* hlo_execution_profile) {
+  StatusOr<ExecutionOutput> result = ExecuteAsyncOnStream(
+      run_options, std::move(arguments), hlo_execution_profile);
+  Status blocking_status = run_options->stream()->BlockHostUntilDone();
+  TF_RETURN_IF_ERROR(result.status());
+  TF_RETURN_IF_ERROR(blocking_status);
+  return result;
+}
+
+StatusOr<ExecutionOutput> Executable::ExecuteAsyncOnStream(
+    const ServiceExecutableRunOptions* /*run_options*/,
+    std::vector<ShapeTree<xla::MaybeOwningDeviceMemory>> /*arguments*/,
+    HloExecutionProfile* /*hlo_execution_profile*/) {
+  return Unimplemented(
+      "MaybeOwningDeviceMemory version of overload is not implemented ");
+}
 
 StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
     absl::Span<const ServiceExecutableRunOptions> run_options,
@@ -49,8 +82,9 @@ StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
     // We cannot BlockHostUntilDone() on the already-launched executions in case
     // of error, since if the executions communicate, the initially launched
     // executions may never complete if not all executions are running.
-    TF_ASSIGN_OR_RETURN(auto rv,
-                        ExecuteAsyncOnStream(&run_options[i], arguments[i]));
+    TF_ASSIGN_OR_RETURN(
+        auto rv, ExecuteAsyncOnStream(&run_options[i], arguments[i],
+                                      /*hlo_execution_profile=*/nullptr));
     return_values.push_back(std::move(rv));
   }
   for (const auto& options : run_options) {
@@ -61,27 +95,39 @@ StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
 }
 
 StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
-    const ServiceExecutableRunOptions* run_options, ExecutionProfile* profile,
+    const ServiceExecutableRunOptions* run_options,
+    absl::Span<const ShapedBuffer* const> arguments) {
+  StatusOr<ScopedShapedBuffer> result =
+      ExecuteAsyncOnStreamWrapper(run_options, arguments);
+  Status block_status = run_options->stream()->BlockHostUntilDone();
+  TF_RETURN_IF_ERROR(result.status());
+  TF_RETURN_IF_ERROR(block_status);
+  return result;
+}
+
+StatusOr<ScopedShapedBuffer> Executable::ExecuteAsyncOnStreamWrapper(
+    const ServiceExecutableRunOptions* run_options,
     absl::Span<const ShapedBuffer* const> arguments) {
   se::Stream* stream = run_options->stream();
-  std::unique_ptr<se::Timer> timer;
+  std::shared_ptr<se::Timer> timer;
+  ExecutionProfile* profile = run_options->run_options().execution_profile();
   if (profile != nullptr) {
-    timer.reset(new se::Timer(stream->parent()));
+    timer = std::make_shared<se::Timer>(stream->parent());
     stream->InitTimer(timer.get()).ThenStartTimer(timer.get());
   }
 
   VLOG(1) << "enqueueing executable on stream...";
   // If the profiling flag isn't enabled, we pass nullptr as the profile to
   // indicate profiling is not requested.
-  std::unique_ptr<HloExecutionProfile> profile_ptr =
+  std::shared_ptr<HloExecutionProfile> profile_ptr =
       module_config().debug_options().xla_hlo_profile() &&
               hlo_profiling_enabled()
-          ? absl::make_unique<HloExecutionProfile>(&hlo_profile_printer_data(),
-                                                   &hlo_profile_index_map())
+          ? std::make_shared<HloExecutionProfile>(&hlo_profile_printer_data(),
+                                                  &hlo_profile_index_map())
           : nullptr;
 
   StatusOr<ScopedShapedBuffer> return_value =
-      ExecuteOnStream(run_options, arguments, profile_ptr.get());
+      ExecuteAsyncOnStream(run_options, arguments, profile_ptr.get());
   if (!return_value.status().ok()) {
     if (profile != nullptr) {
       // Ensure the ThenStartTimer call has completed before we destroy timer.
@@ -96,30 +142,19 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
   }
 
   if (profile != nullptr) {
-    VLOG(1) << "enqueueing 'stop timer' and blocking host until done...";
+    VLOG(1) << "enqueueing 'stop timer' and profiling callback...";
     stream->ThenStopTimer(timer.get());
-    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
-    VLOG(1) << "done with block-host-until-done";
 
+    // We block instead of using an async callback because reading the timer
+    // value may call back into the driver on GPU, which is not allowed.
+    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+
+    const int64 executable_size_in_bytes = SizeOfGeneratedCodeInBytes();
     // Merge in run-time profile information from execution_profile.
-    //
-    // TODO(b/71713097): This is buggy -- even though the mutex takes care of
-    // C++ level races, some other concurrent ExecuteOnStreamWrapper call could
-    // have rewritten the execution_profile before we get to it.
-    profile->MergeFrom(execution_profile());
 
     // Overall execution time (in nanoseconds) from the executor timer.
-    if (stream->ok()) {
-      // Don't read timer->Nanoseconds() if the stream isn't OK -- that's
-      // illegal.
-      profile->set_compute_and_transfer_time_ns(timer->Nanoseconds());
-    }
+    profile->set_compute_and_transfer_time_ns(timer->Nanoseconds());
 
-    // TODO(b/28123297): On GPU we end up including transfer time in
-    // the compute time this way. Instead, we should get the correct
-    // value by measuring it. Setting the field here at least lets
-    // benchmarks provide *some* value for GPU computations.
-    //
     // TODO(b/28447609): The value in compute_and_transfer_time_ns is actually
     // the compute time without the transfer time, so this way we get the
     // correct compute time. We should instead have the correct value for
@@ -128,21 +163,23 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
       profile->set_compute_time_ns(profile->compute_and_transfer_time_ns());
     }
 
-    const int64 executable_size_in_bytes = SizeInBytes();
     if (executable_size_in_bytes != 0) {
       profile->set_executable_size_in_bytes(executable_size_in_bytes);
     }
   }
 
   if (profile_ptr != nullptr) {
-    XLA_LOG_LINES(
-        tensorflow::INFO,
-        profile_ptr->ToString(stream->parent()->GetDeviceDescription()));
+    const se::DeviceDescription* device_description =
+        &stream->parent()->GetDeviceDescription();
+    stream->ThenDoHostCallback([profile_ptr, device_description]() {
+      XLA_LOG_LINES(tensorflow::INFO,
+                    profile_ptr->ToString(*device_description));
+    });
   }
 
   return return_value;
 }
 
-int64 Executable::SizeInBytes() { return -1; }
+int64 Executable::SizeOfGeneratedCodeInBytes() { return -1; }
 
 }  // namespace xla

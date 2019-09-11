@@ -90,7 +90,8 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
       window_stride_ms, feature_bin_count, preprocess)
   runtime_settings = {'clip_stride_ms': clip_stride_ms}
 
-  wav_data_placeholder = tf.compat.v1.placeholder(tf.string, [], name='wav_data')
+  wav_data_placeholder = tf.compat.v1.placeholder(tf.string, [],
+                                                  name='wav_data')
   decoded_sample_data = contrib_audio.decode_wav(
       wav_data_placeholder,
       desired_channels=1,

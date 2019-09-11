@@ -36,7 +36,8 @@ Worker::Worker(WorkerEnv* env) : env_(env), recent_request_ids_(100000) {
 }
 
 void Worker::GetStatusAsync(const GetStatusRequest* request,
-                            GetStatusResponse* response, StatusCallback done) {
+                            GetStatusResponse* response, bool fail_fast,
+                            StatusCallback done) {
   DeviceMgr* dm = env_->device_mgr;
   std::vector<DeviceAttributes> devices;
   dm->ListDeviceAttributes(&devices);
@@ -196,8 +197,7 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
   ProfilerSession* profiler_session = nullptr;
   if (collector && request->exec_opts().record_timeline()) {
     // If timeline was requested, assume we want hardware level tracing.
-    profiler_session =
-        ProfilerSession::Create(/*ProfilerContext*/ nullptr).release();
+    profiler_session = ProfilerSession::Create().release();
   }
   CancellationManager* cm = new CancellationManager;
   opts->SetCancelCallback([this, cm, step_id]() {

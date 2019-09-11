@@ -115,7 +115,7 @@ const char* const kUTF8Unit = "UTF8_CHAR";
 Tensor GetTestTensor(int batch) {
   const int sz = TF_ARRAYSIZE(ascii_lines);
   Tensor t(DT_STRING, {batch});
-  auto s = t.flat<string>();
+  auto s = t.flat<tstring>();
   for (int i = 0; i < batch; ++i) {
     s(i) = ascii_lines[i % sz];
   }
@@ -125,7 +125,7 @@ Tensor GetTestTensor(int batch) {
 Tensor GetTestUTF8Tensor(int batch) {
   const int sz = TF_ARRAYSIZE(unicode_lines);
   Tensor t(DT_STRING, {batch});
-  auto s = t.flat<string>();
+  auto s = t.flat<tstring>();
   for (int i = 0; i < batch; ++i) {
     s(i) = unicode_lines[i % sz];
   }

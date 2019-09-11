@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/collective_nccl_reducer.h"
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/common_runtime/collective_util.h"
 #include "tensorflow/core/nccl/nccl_manager.h"
@@ -22,42 +22,8 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
+
 namespace {
-string NcclCollectiveKey(const string& exec_key, int step_id) {
-  return strings::StrCat(exec_key, ":", step_id);
-}
-}  // namespace
-
-NcclReducer::NcclReducer() : col_ctx_(nullptr), col_params_(nullptr) {}
-
-Status NcclReducer::InitializeCollectiveParams(CollectiveParams* col_params) {
-  if (col_params->instance.type != REDUCTION_COLLECTIVE ||
-      col_params->instance.impl_details.collective_name != "NcclReduce") {
-    return errors::Internal("Unexpected collective type ",
-                            col_params->instance.type, " expected ",
-                            REDUCTION_COLLECTIVE, "; or collective name ",
-                            col_params->instance.impl_details.collective_name,
-                            " expected NcclReduce");
-  } else {
-    return Status::OK();
-  }
-}
-
-Status NcclReducer::InitializeCollectiveContext(CollectiveContext* col_ctx) {
-  col_ctx_ = col_ctx;
-  col_params_ = &col_ctx->col_params;
-  return collective_util::InitializeDeviceAndLocality(
-      col_ctx->dev_mgr, col_ctx->device_name, &col_ctx->device,
-      &col_ctx->device_locality);
-}
-
-Status NcclReducer::InitializeCollectiveGroupRuntimeDetails(
-    CollGroupRuntimeDetails* col_group_runtime_details) {
-  col_group_runtime_details->communicator_key =
-      NcclManager::instance()->GenerateCommunicatorKey();
-  return Status::OK();
-}
-
 Status ReductionOp(const string& merge_op, ncclRedOp_t* reduction_op) {
   if (merge_op == "Add") {
     *reduction_op = ncclSum;
@@ -70,6 +36,7 @@ Status ReductionOp(const string& merge_op, ncclRedOp_t* reduction_op) {
                             merge_op);
   }
 }
+}  // namespace
 
 void NcclReducer::Run(StatusCallback done) {
   ncclRedOp_t reduction_op;
@@ -86,22 +53,31 @@ void NcclReducer::Run(StatusCallback done) {
     // Create an on-device scalar value from group_size_.
     // TODO(ayushd, tucker): avoid this copy by either reusing across
     // invocations or providing the scalar to the kernel in host memory.
-    Tensor group_size_val(col_ctx_->output->dtype(), TensorShape({}));
+    Tensor group_size_val;
     switch (col_ctx_->output->dtype()) {
+      case DT_HALF:
+        group_size_val =
+            Tensor(static_cast<Eigen::half>(col_params_->group.group_size));
+        break;
       case DT_FLOAT:
-        group_size_val.scalar<float>()() = col_params_->group.group_size;
+        group_size_val =
+            Tensor(static_cast<float>(col_params_->group.group_size));
         break;
       case DT_DOUBLE:
-        group_size_val.scalar<double>()() = col_params_->group.group_size;
+        group_size_val =
+            Tensor(static_cast<double>(col_params_->group.group_size));
         break;
       case DT_INT32:
-        group_size_val.scalar<int32>()() = col_params_->group.group_size;
+        group_size_val =
+            Tensor(static_cast<int32>(col_params_->group.group_size));
         break;
       case DT_INT64:
-        group_size_val.scalar<int64>()() = col_params_->group.group_size;
+        group_size_val =
+            Tensor(static_cast<int64>(col_params_->group.group_size));
         break;
       default:
-        done(errors::Internal("Unsupported type ", col_ctx_->output->dtype()));
+        done(errors::Internal("Unsupported type ",
+                              DataTypeString(col_ctx_->output->dtype())));
         return;
     }
     group_size = Tensor(
@@ -142,9 +118,8 @@ void NcclReducer::Run(StatusCallback done) {
     nccl_done.Notify();
   };
   auto participant = absl::make_unique<NcclManager::Participant>(
-      compute_stream->parent(), compute_stream, gpu_info->event_mgr,
-      gpu_info->gpu_id, col_ctx_->input, col_ctx_->output,
-      col_params_->default_rank, std::move(done_callback));
+      compute_stream->parent(), compute_stream, gpu_info, col_ctx_->input,
+      col_ctx_->output, col_params_->default_rank, std::move(done_callback));
   VLOG(1) << "NcclReducer calling NcclManager::AddToAllReduce num_tasks "
           << col_params_->group.num_tasks << " current task "
           << col_params_->instance.task_names[col_params_->default_rank]
@@ -155,7 +130,7 @@ void NcclReducer::Run(StatusCallback done) {
   NcclManager::instance()->AddToAllReduce(
       std::move(participant),
       {nccl_collective_key, num_local_devices, num_global_devices,
-       col_params_->group.runtime_details.communicator_key},
+       col_params_->group.runtime_details.communicator_key, /*source_rank=*/-1},
       reduction_op);
 
   // NOTE(ayushd): We need to synchronize NCCL launches across nodes to prevent
@@ -215,4 +190,4 @@ REGISTER_COLLECTIVE(NcclReduce, NcclReducer);
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -201,8 +201,8 @@ class BackendUtilsTest(test.TestCase):
                      initial_learning_phase_outside_graph)
 
     with keras.backend.get_graph().as_default():
-      self.assertEqual(keras.backend.learning_phase(),
-                       initial_learning_phase_in_graph)
+      self.assertIs(keras.backend.learning_phase(),
+                    initial_learning_phase_in_graph)
 
     self.assertEqual(keras.backend.learning_phase(),
                      initial_learning_phase_outside_graph)
@@ -272,6 +272,13 @@ class BackendUtilsTest(test.TestCase):
     y = keras.backend.print_tensor(x, 'eager=%s' % context.executing_eagerly())
     f = keras.backend.function(x, y)
     f(0)
+
+  def test_cast_to_floatx(self):
+    x = keras.backend.variable(1, dtype='float64')
+    x = keras.backend.cast_to_floatx(x)
+    self.assertEqual(x.dtype.name, 'float32')
+    x = keras.backend.cast_to_floatx(2)
+    self.assertEqual(x.dtype.name, 'float32')
 
 
 @test_util.run_all_in_graph_and_eager_modes

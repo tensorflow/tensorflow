@@ -59,6 +59,8 @@ class WindowDataset : public DatasetBase {
 
   string DebugString() const override { return kWindowDataset; }
 
+  Status CheckExternalState() const override { return Status::OK(); }
+
  protected:
   // TODO(b/110981596): Support checkpointing.
   Status AsGraphDefInternal(SerializationContext* ctx,

@@ -26,7 +26,9 @@ from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import function_deserialization
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import signature_serialization
@@ -103,23 +105,49 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
                    wrapped.graph.as_graph_element(saver_def.restore_op_name)])
       initializer, _ = restore_fn(constant_op.constant(self._variables_path))
       if not ops.executing_eagerly_outside_functions():
+        # Add the initialization operation to the table initializers collection
+        # in case we don't have any lifted variables to attach it to. There
+        # isn't another great place to put it.
+        ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, initializer)
+        one_unlifted = False
         for variable in wrapped.graph.get_collection_ref(
             ops.GraphKeys.GLOBAL_VARIABLES):
+          if variable.graph is wrapped.graph:
+            one_unlifted = True
           # pylint: disable=protected-access
           variable._initializer_op = initializer
           # pylint: enable=protected-access
+        if one_unlifted:
+          logging.warning(
+              "Some variables could not be lifted out of a loaded function. "
+              "Run the tf.initializers.tables_initializer() operation to "
+              "restore these variables.")
 
   def _extract_signatures(self, wrapped, meta_graph_def):
     """Creates ConcreteFunctions for signatures in `meta_graph_def`."""
     signature_functions = {}
     for signature_key, signature_def in meta_graph_def.signature_def.items():
       if signature_def.inputs:
-        input_names, input_specs = zip(*signature_def.inputs.items())
+        original_input_names, input_specs = zip(*signature_def.inputs.items())
       else:
-        input_names = []
+        original_input_names = []
         input_specs = []
       # TODO(allenl): Support optional arguments
-      feeds = [wrapped.graph.as_graph_element(inp.name) for inp in input_specs]
+      feeds = [
+          wrap_function._get_element_from_tensor_info(input_spec, wrapped.graph)  # pylint: disable=protected-access
+          for input_spec in input_specs
+      ]
+      input_names = []
+      for original_input_name, feed in zip(original_input_names, feeds):
+        if isinstance(feed, sparse_tensor.SparseTensor):
+          # We have to give explicit name for SparseTensor arguments, because
+          # these are not present in the TensorInfo.
+          indices_name = "%s_indices" % original_input_name
+          values_name = "%s_values" % original_input_name
+          dense_shape_name = "%s_dense_shape" % original_input_name
+          input_names.extend([indices_name, values_name, dense_shape_name])
+        else:
+          input_names.append(original_input_name)
       fetches = {name: out for name, out in signature_def.outputs.items()}
       try:
         signature_fn = wrapped.prune(feeds=feeds, fetches=fetches)
@@ -161,8 +189,8 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     # we don't have duplicates or name collisions.
     meta_graph_def.graph_def.library.Clear()
     for function in functions.values():
-      meta_graph_def.graph_def.library.function.append(
-          function._inference_function.definition)  # pylint: disable=protected-access
+      meta_graph_def.graph_def.library.function.add().CopyFrom(
+          function.function_def)
     # We've renamed functions and shared names. We need the same operation on
     # the GraphDef itself for consistency.
     for node_def in meta_graph_def.graph_def.node:
@@ -188,7 +216,7 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     for tensor_name, value in loader_impl.get_asset_tensors(
         self._export_dir, meta_graph_def).items():
       asset_feed_tensors.append(wrapped.graph.as_graph_element(tensor_name))
-      asset_paths.append(tracking.TrackableAsset(value))
+      asset_paths.append(tracking.Asset(value))
     init_fn = wrapped.prune(
         feeds=asset_feed_tensors,
         fetches=[init_anchor, wrapped.graph.as_graph_element(init_op)])

@@ -106,6 +106,9 @@ std::map<string, string> kBrokenTests = {
 
     // Select kernel doesn't support broadcasting yet.
     {R"(^\/where.*1,2,3,1)", "134692786"},
+
+    // Strided slice doesn't support ellipsis.
+    {R"(strided_slice.*Ellipsis)", "138098220"},
 };
 
 // Additional list of tests that are expected to fail when
@@ -262,7 +265,9 @@ TEST_P(OpsTest, RunZipTests) {
 
   std::ifstream tflite_stream(tflite_test_case);
   ASSERT_TRUE(tflite_stream.is_open()) << tflite_test_case;
-  tflite::testing::TfLiteDriver test_driver(FLAGS_use_nnapi);
+  tflite::testing::TfLiteDriver test_driver(
+      FLAGS_use_nnapi ? TfLiteDriver::DelegateType::kNnapi
+                      : TfLiteDriver::DelegateType::kNone);
 
   if (test_path.find("fully_quantize=True") != std::string::npos) {
     // TODO(b/134594898): Tighten this constraint.

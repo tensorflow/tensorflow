@@ -47,6 +47,8 @@ import traceback
 import numpy as np
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import _pywrap_utils
+from tensorflow.python import _pywrap_tfprof
 
 # Protocol buffers
 from tensorflow.core.framework.graph_pb2 import *
@@ -142,6 +144,13 @@ from tensorflow.python.eager.remote import connect_to_remote_host
 from tensorflow.python.eager.def_function import function
 from tensorflow.python.framework.ops import enable_eager_execution
 
+# Check whether TF2_BEHAVIOR is turned on.
+from tensorflow.python.eager import monitoring as _monitoring
+from tensorflow.python import tf2 as _tf2
+_tf2_gauge = _monitoring.BoolGauge('/tensorflow/api/tf2_enable',
+                                   'Environment variable TF2_BEHAVIOR is set".')
+_tf2_gauge.get_cell().set(_tf2.enabled())
+
 # Necessary for the symbols in this module to be taken into account by
 # the namespace management system (API decorators).
 from tensorflow.python.ops import rnn
@@ -150,6 +159,9 @@ from tensorflow.python.ops import rnn_cell
 # XLA JIT compiler APIs.
 from tensorflow.python.compiler.xla import jit
 from tensorflow.python.compiler.xla import xla
+
+# MLIR APIs.
+from tensorflow.python.compiler.mlir import mlir
 
 # Required due to `rnn` and `rnn_cell` not being imported in `nn` directly
 # (due to a circular dependency issue: rnn depends on layers).

@@ -17,23 +17,28 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
 from tensorflow.python.data.experimental.ops import unique
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
 class UniqueDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+    dataset_serialization_test_base.DatasetSerializationTestBase,
+    parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testUnique(self):
 
     def build_dataset(num_elements, unique_elem_range):
       return dataset_ops.Dataset.range(num_elements).map(
           lambda x: x % unique_elem_range).apply(unique.unique())
 
-    self.run_core_tests(lambda: build_dataset(200, 100),
-                        lambda: build_dataset(40, 100), 100)
+    self.run_core_tests(lambda: build_dataset(200, 100), 100)
 
 
 if __name__ == "__main__":

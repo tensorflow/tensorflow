@@ -136,10 +136,6 @@ struct CanonicalDebugOptions {
   bool dump_snapshots;
 };
 
-string FilenameFor(const HloModule& module, string_view suffix) {
-  return StrFormat("module_%04d.%s", module.unique_id(), suffix);
-}
-
 void DumpToFileInDirImpl(string_view filename, string_view contents,
                          const CanonicalDebugOptions& opts) {
   if (opts.dumping_to_stdout()) {
@@ -262,6 +258,10 @@ static auto& module_id_to_step_number GUARDED_BY(mu) =
     *new absl::flat_hash_map<int64, int64>();
 
 }  // namespace
+
+string FilenameFor(const HloModule& module, string_view suffix) {
+  return StrFormat("module_%04d.%s", module.unique_id(), suffix);
+}
 
 void DumpToFileInDir(const HloModule& module, string_view suffix,
                      string_view contents) {

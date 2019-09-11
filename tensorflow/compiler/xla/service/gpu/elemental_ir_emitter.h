@@ -100,13 +100,6 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
                                      llvm::Value* lhs_value,
                                      llvm::Value* rhs_value);
 
-  // Emits IR to call a device function named "callee_name" on the given
-  // operand. Returns the IR value that represents the return value.
-  llvm::Value* EmitDeviceFunctionCall(
-      const string& callee_name, absl::Span<llvm::Value* const> operands,
-      absl::Span<const PrimitiveType> input_type, PrimitiveType output_type,
-      absl::Span<const llvm::Attribute::AttrKind> attributes);
-
   // Emits IR to call an LLVM intrinsic of type [T] -> T.  Adjusts
   // callee_name according to T.  Returns the IR value that represents the
   // return value of the function.

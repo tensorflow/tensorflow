@@ -1,12 +1,12 @@
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s --dump-input-on-failure
+
 
 // CHECK: {
 // CHECK-NEXT:   version: 3,
 // CHECK-NEXT:   operator_codes: [ {
 // CHECK-NEXT:     builtin_code: LESS
 // CHECK-NEXT:   }, {
-// CHECK-NEXT:     builtin_code: CUSTOM,
-// CHECK-NEXT:     custom_code: "Experimental_If"
+// CHECK-NEXT:     builtin_code: IF
 // CHECK-NEXT:   }, {
 // CHECK-EMPTY:
 // CHECK-NEXT:   }, {
@@ -52,8 +52,12 @@
 // CHECK-NEXT:       opcode_index: 1,
 // CHECK-NEXT:       inputs: [ 2, 0, 1 ],
 // CHECK-NEXT:       outputs: [ 3 ],
-// CHECK-NEXT:       custom_options: [ 116, 104, 101, 110, 95, 115, 117, 98, 103, 114, 97, 112, 104, 95, 105, 110, 100, 101, 120, 0, 101, 108, 115, 101, 95, 115, 117, 98, 103, 114, 97, 112, 104, 95, 105, 110, 100, 101, 120, 0, 2, 21, 42, 2, 1, 2, 2, 1, 4, 4, 4, 36, 1 ]
-// CHECK-NEXT:     } ]
+// CHECK-NEXT:       builtin_options_type: IfOptions,
+// CHECK-NEXT:       builtin_options: {
+// CHECK-NEXT:         then_subgraph_index: 1,
+// CHECK-NEXT:         else_subgraph_index: 2
+// CHECK-NEXT:       }
+// CHECK-NEXT:     } ],
 // CHECK-NEXT:     name: "main"
 // CHECK-NEXT:   }, {
 // CHECK-NEXT:     tensors: [ {
@@ -88,7 +92,7 @@
 // CHECK-NEXT:       builtin_options: {
 // CHECK-EMPTY:
 // CHECK-NEXT:       }
-// CHECK-NEXT:     } ]
+// CHECK-NEXT:     } ],
 // CHECK-NEXT:     name: "cond_true"
 // CHECK-NEXT:   }, {
 // CHECK-NEXT:     tensors: [ {
@@ -123,7 +127,7 @@
 // CHECK-NEXT:       builtin_options: {
 // CHECK-EMPTY:
 // CHECK-NEXT:       }
-// CHECK-NEXT:     } ]
+// CHECK-NEXT:     } ],
 // CHECK-NEXT:     name: "cond_false"
 // CHECK-NEXT:   } ],
 // CHECK-NEXT:   description: "MLIR Converted.",
@@ -156,7 +160,7 @@ func @main(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
   %0 = "tfl.pseudo_input"(%arg0) : (tensor<1xf32>) -> tensor<1xf32>
   %1 = "tfl.pseudo_input"(%arg1) : (tensor<1xf32>) -> tensor<1xf32>
   %2 = "tfl.less"(%0, %1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xi1>
-  %3 = "tf.If"(%2, %0, %1) {else_branch = @cond_false, then_branch = @cond_true} : (tensor<1xi1>, tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  %3 = "tf.If"(%2, %0, %1) {else_branch = @cond_false, then_branch = @cond_true, is_stateless = false} : (tensor<1xi1>, tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
   return %3 : tensor<1xf32>
 }
 

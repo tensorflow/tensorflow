@@ -811,16 +811,22 @@ class SymbolicShapeRefiner {
           ctx->input_tensor_protos[dst_input] = tensor_proto;
 
           if (!ic->FullyDefined(input_tensors_as_shapes[dst_input])) {
-            // Shape from a Const is not fully defined when the Const has
-            // value -1 (e.g., Reshape(x, Const(-1)) to reshape an arbitrary
-            // tensor x to a vector).
+            // Tensorflow uses '-1' to encode unknown shape or dimension:
+            //
+            //      -1  : unknown shape
+            //     [-1] : vector of unknown size
+            // [-1, -1] : matrix of unknown size
+            //
+            // For example `tf.reshape(x, [-1])` will reshape an arbitrary
+            // tensor x to a vector.
+            //
             // It's possible that the same Const with -1 is used in many
             // places, but that doesn't mean the resultant shapes are
             // identical. e.g., x1 = Reshape(x, c) and y1 = Reshape(y, c),
-            // where c is -1. In this case, shape inference yields both x1 and
+            // where c is [-1]. In this case, shape inference yields both x1 and
             // y1 as rank 1, size unknown, but still the shapes of x1 and y1
-            // can be different. (even if we use different Const(-1) for x1
-            // and x2, graph optimzier may merge them to single Const through
+            // can be different. (even if we use different Const([-1]) for x1
+            // and x2, graph optimizer may merge them to single Const through
             // duplicate removal.)
             // If we reuse output_tensors_as_shapes to input_tensors_as_shapes
             // by copying ShapeHandle, they share the same Shape object, and
@@ -1755,9 +1761,14 @@ class SymbolicShapeRefiner {
       // Scalar constant.
       int64 value = tensor.dtype() == DT_INT32 ? tensor.flat<int32>()(0)
                                                : tensor.flat<int64>()(0);
-      // Ideally, values can be < -1, but MakeDim() fails with a value < -1.
-      // It's a limitation as we use ShapeHandle as a means to pass values.
-      if (value >= -1) {
+      if (value == -1) {
+        // Scalar value -1 represents an unknown shape. If we would try to
+        // MakeShape(MakeDim) with it, we would get vector of unknown size.
+        *tensors_as_shapes = ic->UnknownShape();
+        return true;
+      } else if (value >= 0) {
+        // Ideally, values can be < -1, but MakeDim() fails with a value < -1.
+        // It's a limitation as we use ShapeHandle as a means to pass values.
         *tensors_as_shapes = ic->MakeShape({ic->MakeDim(value)});
         return true;
       }

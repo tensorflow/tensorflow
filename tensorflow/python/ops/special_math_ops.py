@@ -169,7 +169,7 @@ def _enclosing_tpu_context():
 
 @tf_export('einsum', 'linalg.einsum')
 def einsum(equation, *inputs, **kwargs):
-  """A generalized contraction between tensors of arbitrary dimension.
+  """Tensor contraction over specified indices and outer product.
 
   This function returns a tensor whose elements are defined by `equation`,
   which is written in a shorthand form inspired by the Einstein summation
@@ -197,29 +197,29 @@ def einsum(equation, *inputs, **kwargs):
 
   ```python
   # Matrix multiplication
-  >>> einsum('ij,jk->ik', m0, m1)  # output[i,k] = sum_j m0[i,j] * m1[j, k]
+  einsum('ij,jk->ik', m0, m1)  # output[i,k] = sum_j m0[i,j] * m1[j, k]
 
   # Dot product
-  >>> einsum('i,i->', u, v)  # output = sum_i u[i]*v[i]
+  einsum('i,i->', u, v)  # output = sum_i u[i]*v[i]
 
   # Outer product
-  >>> einsum('i,j->ij', u, v)  # output[i,j] = u[i]*v[j]
+  einsum('i,j->ij', u, v)  # output[i,j] = u[i]*v[j]
 
   # Transpose
-  >>> einsum('ij->ji', m)  # output[j,i] = m[i,j]
+  einsum('ij->ji', m)  # output[j,i] = m[i,j]
 
   # Trace
-  >>> einsum('ii', m)  # output[j,i] = trace(m) = sum_i m[i, i]
+  einsum('ii', m)  # output[j,i] = trace(m) = sum_i m[i, i]
 
   # Batch matrix multiplication
-  >>> einsum('aij,ajk->aik', s, t)  # out[a,i,k] = sum_j s[a,i,j] * t[a, j, k]
+  einsum('aij,ajk->aik', s, t)  # out[a,i,k] = sum_j s[a,i,j] * t[a, j, k]
   ```
 
   To enable and control broadcasting, use an ellipsis.  For example, to do
   batch matrix multiplication, you could use:
 
   ```python
-  >>> einsum('...ij,...jk->...ik', u, v)
+  einsum('...ij,...jk->...ik', u, v)
   ```
 
   This function behaves like `numpy.einsum`, but does not support:
@@ -521,7 +521,7 @@ def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
 
 def _transpose_if_necessary(tensor, perm):
   """Like transpose(), but avoids creating a new tensor if possible."""
-  if perm != range(len(perm)):
+  if perm != list(range(len(perm))):
     return array_ops.transpose(tensor, perm=perm)
   else:
     return tensor
@@ -533,7 +533,8 @@ def _reshape_if_necessary(tensor, new_shape):
   new_shape = tuple(-1 if x is None else x for x in new_shape)
   cur_shape = tuple(x.value for x in tensor.get_shape().dims)
   if (len(new_shape) == len(cur_shape) and
-      all(d0 == d1 or d1 == -1 for d0, d1 in zip(cur_shape, new_shape))):
+      all(not isinstance(d1, ops.Tensor) and (d0 == d1 or d1 == -1)
+          for d0, d1 in zip(cur_shape, new_shape))):
     return tensor
   else:
     return array_ops.reshape(tensor, new_shape)

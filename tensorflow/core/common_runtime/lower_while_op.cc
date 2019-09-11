@@ -58,10 +58,9 @@ class LowerWhileHelper {
  public:
   static Status Run(Node* while_op, const NameAttrList& cond_fn,
                     const NameAttrList& body_fn, int parallel_iterations,
-                    Graph* graph, const FunctionLibraryDefinition& flib,
-                    bool keep_node_fetchable) {
+                    Graph* graph, bool keep_node_fetchable) {
     LowerWhileHelper helper(while_op, cond_fn, body_fn, parallel_iterations,
-                            graph, flib, keep_node_fetchable);
+                            graph, keep_node_fetchable);
     return helper.RunInternal();
   }
 
@@ -71,8 +70,7 @@ class LowerWhileHelper {
   // the given graph.
   LowerWhileHelper(Node* while_op, const NameAttrList& cond_fn,
                    const NameAttrList& body_fn, int parallel_iterations,
-                   Graph* graph, const FunctionLibraryDefinition& flib,
-                   bool keep_node_fetchable);
+                   Graph* graph, bool keep_node_fetchable);
 
   Status RunInternal();
 
@@ -136,7 +134,6 @@ class LowerWhileHelper {
   // used as a source of outgoing control edges from lowered While node.
   Node* lowered_while_executed_;
   Graph* graph_;
-  const FunctionLibraryDefinition& flib_;
   // Name of the `while_op_`.
   string name_;
   // Max number of parallel_iterations for the while loop.
@@ -159,11 +156,9 @@ class LowerWhileHelper {
 LowerWhileHelper::LowerWhileHelper(Node* while_op, const NameAttrList& cond_fn,
                                    const NameAttrList& body_fn,
                                    int parallel_iterations, Graph* graph,
-                                   const FunctionLibraryDefinition& flib,
                                    bool keep_node_fetchable)
     : while_op_(while_op),
       graph_(graph),
-      flib_(flib),
       name_(while_op->name()),
       parallel_iterations_(parallel_iterations),
       keep_node_fetchable_(keep_node_fetchable),
@@ -417,7 +412,6 @@ string LowerWhileHelper::NewName(const string& infix) {
 }  // namespace
 
 Status RewriteWhileNode(Node* n, Graph* g,
-                        const FunctionLibraryDefinition& flib,
                         bool keep_node_fetchable) {
   VLOG(2) << "Lower While node (keep_node_fetchable=" << keep_node_fetchable
           << "): " << SummarizeNode(*n);
@@ -438,7 +432,7 @@ Status RewriteWhileNode(Node* n, Graph* g,
 
   TF_RETURN_IF_ERROR(LowerWhileHelper::Run(
       n, cond_attr->func(), body_attr->func(), parallel_iterations_attr->i(), g,
-      flib, keep_node_fetchable));
+      keep_node_fetchable));
   g->RemoveNode(n);
 
   return Status::OK();

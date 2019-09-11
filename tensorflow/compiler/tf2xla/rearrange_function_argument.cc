@@ -527,7 +527,7 @@ Status RearrangeFunctionArguments(
 
   // Rewrite If/While nodes.
   for (Node* n : g->nodes()) {
-    if (n->type_string() == "While") {
+    if (n->IsWhileNode()) {
       bool node_rewritten;
       TF_RETURN_IF_ERROR(MaybeRewriteWhileNode(get_function_body_fn, g, n, fld,
                                                &node_rewritten));

@@ -147,8 +147,8 @@ class XlaBuilder {
   // Sets OpMetadata that will be added to all instructions until cleared.
   //
   // OpMetadata is often applied to a series of XLA HLO instructions. As a
-  // result, OpMetadata is set on the Computation Builder. All subsequent
-  // instructions generated via this Computation Builder will have the same
+  // result, OpMetadata is set on the computation builder. All subsequent
+  // instructions generated via this computation builder will have the same
   // OpMetadata attached until a call to ClearOpMetadata.
   void SetOpMetadata(OpMetadata metadata) { metadata_ = std::move(metadata); }
 
@@ -157,6 +157,35 @@ class XlaBuilder {
 
   // Sets an OpSharding that will be attached to all instructions until cleared.
   void SetSharding(const OpSharding& sharding) { sharding_ = sharding; }
+
+  // Sets the FrontendAttributes that will be added to all instructions until
+  // cleared.
+  //
+  // FrontendAttributes are often applied to a series of XLA HLO instructions.
+  // As a result they are set on the computation builder and all the
+  // instructions generated via the computation builder will have the same
+  // frontend attributes attached to them.
+  void SetFrontendAttributes(const FrontendAttributes& frontend_attributes) {
+    frontend_attributes_ = frontend_attributes;
+  }
+
+  // Swap the passed FrontendAttributes with the ones currently set.
+  //
+  // Return the old attributes.
+  FrontendAttributes SwapFrontendAttributes(
+      const FrontendAttributes& frontend_attributes) {
+    FrontendAttributes old_attributes = std::move(frontend_attributes_);
+    frontend_attributes_ = frontend_attributes;
+    return old_attributes;
+  }
+
+  // Returns the FrontendAttributes that will be attached to all instructions.
+  const FrontendAttributes& frontend_attributes() const {
+    return frontend_attributes_;
+  }
+
+  // Clears all the frontend attributes.
+  void ClearFrontendAttributes() { frontend_attributes_.Clear(); }
 
   // Clears the sharding. Ops will be sharded according to the default placement
   // policy.
@@ -229,7 +258,8 @@ class XlaBuilder {
   // compile-time constant (see `IsConstant`), returns an error.
   //
   // This will copy the needed ops/computations to the subgraph.
-  StatusOr<XlaComputation> BuildConstantSubGraph(const XlaOp& root_op);
+  StatusOr<XlaComputation> BuildConstantSubGraph(
+      XlaOp root_op, bool dynamic_dimension_is_uint_max = false);
 
   // Returns the first error that was encountered while building the
   // computation. When an error is encountered, by default we return a vacuous
@@ -313,6 +343,16 @@ class XlaBuilder {
     // Specifies the index of the aliased buffer in the parameter
     ShapeIndex param_index;
   };
+
+  // Looks up the HloInstruction and sets the frontend attribute "attribute" to
+  // "value".
+  //
+  // If the attribute already existed then its value is updated.
+  //
+  // Note: the attribute is only added to the HloInstruction, not to the
+  // builder.
+  Status SetInstructionFrontendAttribute(XlaOp op, string attribute,
+                                         string value);
 
  private:
   // Build helper which takes the id of the root operation..
@@ -547,11 +587,13 @@ class XlaBuilder {
 
   XlaOp Gather(const XlaOp& input, const XlaOp& start_indices,
                const GatherDimensionNumbers& dimension_numbers,
-               absl::Span<const int64> slice_sizes);
+               absl::Span<const int64> slice_sizes,
+               bool indices_are_sorted = false);
 
   XlaOp Scatter(const XlaOp& input, const XlaOp& scatter_indices,
                 const XlaOp& updates, const XlaComputation& update_computation,
-                const ScatterDimensionNumbers& dimension_numbers);
+                const ScatterDimensionNumbers& dimension_numbers,
+                bool indices_are_sorted = false, bool unique_indices = false);
 
   void Send(const XlaOp& operand, const ChannelHandle& handle);
   XlaOp SendWithToken(const XlaOp& operand, const XlaOp& token,
@@ -593,9 +635,11 @@ class XlaBuilder {
   void AddCalledComputation(const XlaComputation& computation,
                             HloInstructionProto* instr);
 
-  StatusOr<const HloInstructionProto*> LookUpInstruction(const XlaOp& op) const;
+  StatusOr<const HloInstructionProto*> LookUpInstruction(XlaOp op) const;
   StatusOr<const HloInstructionProto*> LookUpInstructionByHandle(
       int64 handle) const;
+  StatusOr<HloInstructionProto*> LookUpMutableInstruction(XlaOp op);
+  StatusOr<HloInstructionProto*> LookUpMutableInstructionByHandle(int64 handle);
 
   // Internal helper method that does the building for an arbitrary unary op.
   XlaOp UnaryOp(HloOpcode unop, const XlaOp& operand);
@@ -648,14 +692,6 @@ class XlaBuilder {
   Status VerifyConvolution(
       const Shape& lhs_shape, const Shape& rhs_shape,
       const ConvolutionDimensionNumbers& dimension_numbers) const;
-
-  // Helper function for creating a Window proto from user-supplied data.
-  // Returns error if the user-supplied data was invalid.
-  StatusOr<Window> MakeWindow(absl::Span<const int64> window_dimensions,
-                              absl::Span<const int64> window_strides,
-                              absl::Span<const std::pair<int64, int64>> padding,
-                              absl::Span<const int64> lhs_dilation,
-                              absl::Span<const int64> rhs_dilation) const;
 
   int64 GetNextId() { return ++next_id_; }
 
@@ -712,6 +748,8 @@ class XlaBuilder {
   bool die_immediately_on_error_ = false;
 
   XlaBuilder* parent_builder_{nullptr};
+
+  FrontendAttributes frontend_attributes_;
 
   friend XlaOp Parameter(XlaBuilder* builder, int64 parameter_number,
                          const Shape& shape, const string& name,
@@ -968,10 +1006,12 @@ class XlaBuilder {
                                const int mantissa_bits);
   friend XlaOp Gather(XlaOp input, XlaOp start_indices,
                       const GatherDimensionNumbers& dimension_numbers,
-                      absl::Span<const int64> slice_sizes);
+                      absl::Span<const int64> slice_sizes,
+                      bool indices_are_sorted);
   friend XlaOp Scatter(XlaOp input, XlaOp scatter_indices, XlaOp updates,
                        const XlaComputation& update_computation,
-                       const ScatterDimensionNumbers& dimension_numbers);
+                       const ScatterDimensionNumbers& dimension_numbers,
+                       bool indices_are_sorted, bool unique_indices);
   friend void Send(XlaOp operand, const ChannelHandle& handle);
   friend XlaOp Recv(XlaBuilder* builder, const Shape& shape,
                     const ChannelHandle& handle);
@@ -1038,6 +1078,27 @@ class XlaScopedShardingAssignment {
   absl::optional<OpSharding> prev_sharding_;
 };
 
+// RAII-style object: save the current builder's frontend attributes, and merge
+// them with the new ones on construction.
+// Restore the original attributes on destruction.
+class XlaScopedFrontendAttributesAssignment {
+ public:
+  XlaScopedFrontendAttributesAssignment(xla::XlaBuilder* builder,
+                                        FrontendAttributes attributes)
+      : builder_(builder) {
+    saved_ = builder_->SwapFrontendAttributes(attributes);
+  }
+
+  ~XlaScopedFrontendAttributesAssignment() {
+    builder_->SetFrontendAttributes(saved_);
+  }
+
+ private:
+  xla::XlaBuilder* const builder_;
+  FrontendAttributes saved_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(XlaScopedFrontendAttributesAssignment);
+};
 // Free functions for building XlaOps. The intention is that these will
 // become the public API for building XlaOps rather than calling methods on
 // XlaBuilder directly.
@@ -1802,12 +1863,14 @@ XlaOp ReducePrecision(XlaOp operand, const int exponent_bits,
 // Enqueues a Gather node onto the computation.
 XlaOp Gather(XlaOp input, XlaOp start_indices,
              const GatherDimensionNumbers& dimension_numbers,
-             absl::Span<const int64> slice_sizes);
+             absl::Span<const int64> slice_sizes,
+             bool indices_are_sorted = false);
 
 // Enqueues a Scatter node onto the computation.
 XlaOp Scatter(XlaOp input, XlaOp scatter_indices, XlaOp updates,
               const XlaComputation& update_computation,
-              const ScatterDimensionNumbers& dimension_numbers);
+              const ScatterDimensionNumbers& dimension_numbers,
+              bool indices_are_sorted = false, bool unique_indices = false);
 
 // Enqueues a Send node onto the computation for device-to-device
 // communication. This operation sends the given operand to

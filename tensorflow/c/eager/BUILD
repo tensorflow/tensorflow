@@ -8,12 +8,11 @@ load(
     "tfe_xla_copts",
 )
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_additional_device_tracer_test_flags",
+    "//tensorflow/core/platform:default/build_config.bzl",
     "tf_kernel_tests_linkstatic",
 )
 load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "//tensorflow/core/platform:default/build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 
@@ -37,6 +36,7 @@ tf_cuda_library(
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            "@com_google_absl//absl/container:fixed_array",
             "//tensorflow/c:c_api",
             "//tensorflow/c:c_api_internal",
             "//tensorflow/core:core_cpu",
@@ -75,10 +75,11 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:remote_device",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime:worker_env",
-        "//tensorflow/core/profiler/lib:profiler_eager_lib",
+        "//tensorflow/core/profiler/lib:profiler_lib",
         "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core:gpu_runtime",
     ],
+    alwayslink = 1,
 )
 
 tf_cuda_library(
@@ -117,7 +118,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_service",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
-        "//tensorflow/core/profiler/lib:profiler_eager_lib",
+        "//tensorflow/core/profiler/lib:profiler_lib",
         "//tensorflow/core/profiler/lib:profiler_session",
     ],
 )
@@ -156,6 +157,7 @@ tf_cuda_cc_test(
     ],
     deps = [
         ":c_api",
+        ":c_api_experimental",
         ":c_api_internal",
         ":c_api_test_util",
         "//tensorflow/c:c_test_util",
@@ -225,6 +227,7 @@ tf_cuda_library(
         "//tensorflow/core/profiler/rpc/client:capture_profile",
         "//tensorflow/core:gpu_runtime",
     ],
+    alwayslink = 1,
 )
 
 tf_cuda_cc_test(
@@ -233,11 +236,12 @@ tf_cuda_cc_test(
     srcs = [
         "c_api_experimental_test.cc",
     ],
-    args =
-        ["--heap_check=local"] + tf_additional_device_tracer_test_flags(),
+    args = ["--heap_check=local"],
+    extra_copts = tfe_xla_copts(),
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
+        ":c_api",
         ":c_api_experimental",
         ":c_api_test_util",
         "//tensorflow/c:c_test_util",

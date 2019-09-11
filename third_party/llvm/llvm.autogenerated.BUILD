@@ -400,7 +400,7 @@ filegroup(
 
 py_binary(
     name = "lit",
-    srcs = ["utils/lit/lit.py"] + glob(["utils/lit/lit/*.py"]),
+    srcs = ["utils/lit/lit.py"] + glob(["utils/lit/lit/**/*.py"]),
 )
 
 cc_binary(
@@ -472,6 +472,7 @@ cc_library(
         ":selection_dag",
         ":support",
         ":target",
+        ":transform_utils",
     ],
 )
 
@@ -2777,6 +2778,7 @@ cc_library(
     deps = [
         ":config",
         ":debug_info_code_view",
+        ":mc",
         ":object",
         ":support",
     ],

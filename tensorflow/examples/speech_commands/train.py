@@ -86,8 +86,8 @@ FLAGS = None
 
 
 def main(_):
-  # We want to see all the logging messages for this tutorial.
-  tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
+  # Set the verbosity based on flags (default is INFO, so we see all messages)
+  tf.compat.v1.logging.set_verbosity(FLAGS.verbosity)
 
   # Start a new TensorFlow session.
   sess = tf.compat.v1.InteractiveSession()
@@ -155,16 +155,19 @@ def main(_):
         labels=ground_truth_input, logits=logits)
   if FLAGS.quantize:
     tf.contrib.quantize.create_training_graph(quant_delay=0)
-  with tf.compat.v1.name_scope('train'), tf.control_dependencies(control_dependencies):
+  with tf.compat.v1.name_scope('train'), tf.control_dependencies(
+      control_dependencies):
     learning_rate_input = tf.compat.v1.placeholder(
         tf.float32, [], name='learning_rate_input')
     train_step = tf.compat.v1.train.GradientDescentOptimizer(
         learning_rate_input).minimize(cross_entropy_mean)
   predicted_indices = tf.argmax(input=logits, axis=1)
   correct_prediction = tf.equal(predicted_indices, ground_truth_input)
-  confusion_matrix = tf.math.confusion_matrix(
-      labels=ground_truth_input, predictions=predicted_indices, num_classes=label_count)
-  evaluation_step = tf.reduce_mean(input_tensor=tf.cast(correct_prediction, tf.float32))
+  confusion_matrix = tf.math.confusion_matrix(labels=ground_truth_input,
+                                              predictions=predicted_indices,
+                                              num_classes=label_count)
+  evaluation_step = tf.reduce_mean(input_tensor=tf.cast(correct_prediction,
+                                                        tf.float32))
   with tf.compat.v1.get_default_graph().name_scope('eval'):
     tf.compat.v1.summary.scalar('cross_entropy', cross_entropy_mean)
     tf.compat.v1.summary.scalar('accuracy', evaluation_step)
@@ -177,8 +180,9 @@ def main(_):
   # Merge all the summaries and write them out to /tmp/retrain_logs (by default)
   merged_summaries = tf.compat.v1.summary.merge_all(scope='eval')
   train_writer = tf.compat.v1.summary.FileWriter(FLAGS.summaries_dir + '/train',
-                                       sess.graph)
-  validation_writer = tf.compat.v1.summary.FileWriter(FLAGS.summaries_dir + '/validation')
+                                                 sess.graph)
+  validation_writer = tf.compat.v1.summary.FileWriter(
+      FLAGS.summaries_dir + '/validation')
 
   tf.compat.v1.global_variables_initializer().run()
 
@@ -192,7 +196,7 @@ def main(_):
 
   # Save graph.pbtxt.
   tf.io.write_graph(sess.graph_def, FLAGS.train_dir,
-                       FLAGS.model_architecture + '.pbtxt')
+                    FLAGS.model_architecture + '.pbtxt')
 
   # Save list of words.
   with gfile.GFile(
@@ -230,9 +234,10 @@ def main(_):
             dropout_prob: 0.5
         })
     train_writer.add_summary(train_summary, training_step)
-    tf.compat.v1.logging.info('Step #%d: rate %f, accuracy %.1f%%, cross entropy %f' %
-                    (training_step, learning_rate_value, train_accuracy * 100,
-                     cross_entropy_value))
+    tf.compat.v1.logging.info(
+        'Step #%d: rate %f, accuracy %.1f%%, cross entropy %f' %
+        (training_step, learning_rate_value, train_accuracy * 100,
+         cross_entropy_value))
     is_last_step = (training_step == training_steps_max)
     if (training_step % FLAGS.eval_step_interval) == 0 or is_last_step:
       set_size = audio_processor.set_size('validation')
@@ -260,14 +265,15 @@ def main(_):
           total_conf_matrix += conf_matrix
       tf.compat.v1.logging.info('Confusion Matrix:\n %s' % (total_conf_matrix))
       tf.compat.v1.logging.info('Step %d: Validation accuracy = %.1f%% (N=%d)' %
-                      (training_step, total_accuracy * 100, set_size))
+                                (training_step, total_accuracy * 100, set_size))
 
     # Save the model checkpoint periodically.
     if (training_step % FLAGS.save_step_interval == 0 or
         training_step == training_steps_max):
       checkpoint_path = os.path.join(FLAGS.train_dir,
                                      FLAGS.model_architecture + '.ckpt')
-      tf.compat.v1.logging.info('Saving to "%s-%d"', checkpoint_path, training_step)
+      tf.compat.v1.logging.info('Saving to "%s-%d"', checkpoint_path,
+                                training_step)
       saver.save(sess, checkpoint_path, global_step=training_step)
 
   set_size = audio_processor.set_size('testing')
@@ -290,10 +296,9 @@ def main(_):
       total_conf_matrix = conf_matrix
     else:
       total_conf_matrix += conf_matrix
-  tf.compat.v1.logging.info('Confusion Matrix:\n %s' % (total_conf_matrix))
-  tf.compat.v1.logging.info('Final test accuracy = %.1f%% (N=%d)' % (total_accuracy * 100,
-                                                           set_size))
-
+  tf.compat.v1.logging.warn('Confusion Matrix:\n %s' % (total_conf_matrix))
+  tf.compat.v1.logging.warn('Final test accuracy = %.1f%% (N=%d)' %
+                            (total_accuracy * 100, set_size))
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
@@ -301,7 +306,7 @@ if __name__ == '__main__':
       '--data_url',
       type=str,
       # pylint: disable=line-too-long
-      default='http://download.tensorflow.org/data/speech_commands_v0.02.tar.gz',
+      default='https://storage.googleapis.com/download.tensorflow.org/data/speech_commands_v0.02.tar.gz',
       # pylint: enable=line-too-long
       help='Location of speech training data archive on the web.')
   parser.add_argument(
@@ -447,6 +452,34 @@ if __name__ == '__main__':
       type=str,
       default='mfcc',
       help='Spectrogram processing mode. Can be "mfcc", "average", or "micro"')
+
+  # Function used to parse --verbosity argument
+  def verbosity_arg(value):
+    """Parses verbosity argument.
+
+    Args:
+      value: A member of tf.logging.
+    Raises:
+      ArgumentTypeError: Not an expected value.
+    """
+    value = value.upper()
+    if value == 'INFO':
+      return tf.compat.v1.logging.INFO
+    elif value == 'DEBUG':
+      return tf.compat.v1.logging.DEBUG
+    elif value == 'ERROR':
+      return tf.compat.v1.logging.ERROR
+    elif value == 'FATAL':
+      return tf.compat.v1.logging.FATAL
+    elif value == 'WARN':
+      return tf.compat.v1.logging.WARN
+    else:
+      raise argparse.ArgumentTypeError('Not an expected value')
+  parser.add_argument(
+      '--verbosity',
+      type=verbosity_arg,
+      default=tf.compat.v1.logging.INFO,
+      help='Log verbosity. Can be "INFO", "DEBUG", "ERROR", "FATAL", or "WARN"')
 
   FLAGS, unparsed = parser.parse_known_args()
   tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)

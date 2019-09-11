@@ -38,6 +38,12 @@ import six as _six
 
 from tensorflow.python.util.tf_export import tf_export
 
+try:
+  # This import only works on python 3.3 and above.
+  import collections.abc as collections_abc  # pylint: disable=unused-import
+except ImportError:
+  import collections as collections_abc  # pylint: disable=unused-import
+
 
 def as_bytes(bytes_or_text, encoding='utf-8'):
   """Converts `bytearray`, `bytes`, or unicode python input types to `bytes`.
@@ -137,18 +143,18 @@ def path_to_str(path):
     `os.PathLike` object
 
   Examples:
-  ```python3
-  >>> tf.compat.path_to_str('C:\XYZ\tensorflow\./.././tensorflow')
+  ```python
+  $ tf.compat.path_to_str('C:\XYZ\tensorflow\./.././tensorflow')
   'C:\XYZ\tensorflow\./.././tensorflow' # Windows OS
-  >>> tf.compat.path_to_str(Path('C:\XYZ\tensorflow\./.././tensorflow'))
+  $ tf.compat.path_to_str(Path('C:\XYZ\tensorflow\./.././tensorflow'))
   'C:\XYZ\tensorflow\..\tensorflow' # Windows OS
-  >>> tf.compat.path_to_str(Path('./corpus'))
+  $ tf.compat.path_to_str(Path('./corpus'))
   'corpus' # Linux OS
-  >>> tf.compat.path_to_str('./.././Corpus')
+  $ tf.compat.path_to_str('./.././Corpus')
   './.././Corpus' # Linux OS
-  >>> tf.compat.path_to_str(Path('./.././Corpus'))
+  $ tf.compat.path_to_str(Path('./.././Corpus'))
   '../Corpus' # Linux OS
-  >>> tf.compat.path_to_str(Path('./..////../'))
+  $ tf.compat.path_to_str(Path('./..////../'))
   '../..' # Linux OS
 
   ```

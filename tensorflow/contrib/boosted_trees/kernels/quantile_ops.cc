@@ -324,7 +324,7 @@ class QuantileAccumulatorAddSummariesOp : public OpKernel {
                 context,
                 ParseProtoUnlimited(
                     summary_proto,
-                    summary_list[resource_handle_idx].scalar<string>()()),
+                    summary_list[resource_handle_idx].scalar<tstring>()()),
                 errors::InvalidArgument("Unable to parse quantile summary."));
             std::vector<QuantileSummaryEntry> entries;
             entries.reserve(summary_proto->entries_size());
@@ -398,7 +398,7 @@ class MakeQuantileSummariesOp : public OpKernel {
         // Output to tensor.
         Tensor* output_t = nullptr;
         OP_REQUIRES_OK(context, output_list->allocate(index, {}, &output_t));
-        summary_proto->SerializeToString(&output_t->scalar<string>()());
+        SerializeToTString(*summary_proto, &output_t->scalar<tstring>()());
       };
 
       // These are blocks of ranges. We are iterating over both sparse and
@@ -494,7 +494,7 @@ class QuantileAccumulatorSerializeOp : public OpKernel {
     for (const auto& summary : stream.SerializeInternalSummaries()) {
       CopySummaryToProto(summary, stream_proto->add_summaries());
     }
-    stream_proto->SerializeToString(&stream_state_t->scalar<string>()());
+    SerializeToTString(*stream_proto, &stream_state_t->scalar<tstring>()());
     Tensor* buckets_t = nullptr;
     OP_REQUIRES_OK(
         context,
@@ -543,7 +543,7 @@ class QuantileAccumulatorDeserializeOp : public OpKernel {
     ::boosted_trees::QuantileStreamState state_proto;
     OP_REQUIRES(
         context,
-        ParseProtoUnlimited(&state_proto, stream_state_t->scalar<string>()()),
+        ParseProtoUnlimited(&state_proto, stream_state_t->scalar<tstring>()()),
         errors::InvalidArgument("Unabnle to parse quantile stream state."));
     std::vector<QuantileSummary> summaries;
     summaries.reserve(state_proto.summaries_size());
@@ -669,7 +669,7 @@ class QuantileAccumulatorFlushSummaryOp : public OpKernel {
     Tensor* output_t = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape({}), &output_t));
-    summary_proto->SerializeToString(&output_t->scalar<string>()());
+    SerializeToTString(*summary_proto, &output_t->scalar<tstring>()());
     streams_resource->Reset(next_stamp_token);
   }
 };

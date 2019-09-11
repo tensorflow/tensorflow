@@ -25,6 +25,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import node as node_module
+from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.util.tf_export import keras_export
 
@@ -102,6 +103,7 @@ class InputLayer(base_layer.Layer):
     super(InputLayer, self).__init__(dtype=dtype, name=name)
     self.built = True
     self.sparse = sparse
+    self.ragged = ragged
     self.batch_size = batch_size
     self.supports_masking = True
 
@@ -152,9 +154,14 @@ class InputLayer(base_layer.Layer):
         'batch_input_shape': self._batch_input_shape,
         'dtype': self.dtype,
         'sparse': self.sparse,
+        'ragged': self.ragged,
         'name': self.name
     }
     return config
+
+  @property
+  def _trackable_saved_model_saver(self):
+    return layer_serialization.InputLayerSavedModelSaver(self)
 
 
 @keras_export('keras.layers.Input', 'keras.Input')
@@ -204,7 +211,8 @@ def Input(  # pylint: disable=invalid-name
           values of 'None' in the 'shape' argument represent ragged dimensions.
           For more information about RaggedTensors, see
           https://www.tensorflow.org/guide/ragged_tensors.
-      **kwargs: deprecated arguments support.
+      **kwargs: deprecated arguments support. Supports `batch_shape` and
+          `batch_input_shape`.
 
   Returns:
     A `tensor`.
@@ -235,15 +243,21 @@ def Input(  # pylint: disable=invalid-name
     raise ValueError(
         'Cannot set both sparse and ragged to True in a Keras input.')
 
-  batch_shape = None
-  if 'batch_shape' in kwargs:
-    batch_shape = kwargs.pop('batch_shape')
-    if shape and batch_shape:
-      raise ValueError('Only provide the shape OR '
-                       'batch_shape argument to '
-                       'Input, not both at the same time.')
-    batch_size = batch_shape[0]
-    shape = batch_shape[1:]
+  input_layer_config = {'name': name, 'dtype': dtype, 'sparse': sparse,
+                        'ragged': ragged, 'input_tensor': tensor}
+
+  batch_input_shape = kwargs.pop('batch_input_shape',
+                                 kwargs.pop('batch_shape', None))
+  if shape and batch_input_shape:
+    raise ValueError('Only provide the `shape` OR `batch_input_shape` argument '
+                     'to Input, not both at the same time.')
+  if batch_input_shape:
+    shape = batch_input_shape[1:]
+    input_layer_config.update({'batch_input_shape': batch_input_shape})
+  else:
+    input_layer_config.update(
+        {'batch_size': batch_size, 'input_shape': shape})
+
   if kwargs:
     raise ValueError('Unrecognized keyword arguments:', kwargs.keys())
 
@@ -253,23 +267,7 @@ def Input(  # pylint: disable=invalid-name
                      '`shape` does not include the batch '
                      'dimension.')
 
-  if batch_shape:
-    input_layer = InputLayer(
-        batch_input_shape=batch_shape,
-        name=name,
-        dtype=dtype,
-        sparse=sparse,
-        ragged=ragged,
-        input_tensor=tensor)
-  else:
-    input_layer = InputLayer(
-        input_shape=shape,
-        batch_size=batch_size,
-        name=name,
-        dtype=dtype,
-        sparse=sparse,
-        ragged=ragged,
-        input_tensor=tensor)
+  input_layer = InputLayer(**input_layer_config)
 
   # Return tensor including `_keras_history`.
   # Note that in this case train_output and test_output are the same pointer.

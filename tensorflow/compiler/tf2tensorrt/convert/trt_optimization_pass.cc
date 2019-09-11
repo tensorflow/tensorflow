@@ -67,9 +67,6 @@ Status TRTOptimizationPass::Init(
   if (params.count("use_calibration")) {
     use_calibration_ = params.at("use_calibration").b();
   }
-  if (params.count("use_function_backup")) {
-    use_function_backup_ = params.at("use_function_backup").b();
-  }
   return Status::OK();
 }
 
@@ -193,31 +190,30 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
     LOG(INFO) << CurrentStackTrace();
     PrintDebugInfo(cluster, item);
   }
-  int max_dim = -1;
-  if (!item.feed.empty()) {
-    for (const auto& f : item.feed) {
-      const auto& shape = f.second.shape();
-      if (shape.dims() > 0) {
-        if (shape.dim_size(0) > max_dim) max_dim = shape.dim_size(0);
+  if (!is_dynamic_op_) {
+    int max_batch_dim = -1;
+    if (!item.feed.empty()) {
+      for (const auto& f : item.feed) {
+        const auto& shape = f.second.shape();
+        if (shape.dims() > 0) {
+          if (shape.dim_size(0) > max_batch_dim)
+            max_batch_dim = shape.dim_size(0);
+          VLOG(2) << "Setting max_batch_dim to " << max_batch_dim
+                  << " using batch dimension of " << f.first << " with shape "
+                  << shape;
+        }
       }
     }
-  }
-  if (maximum_batch_size_ < 0) {  // automatic batch size from input
-    if (max_dim > 0) {
-      maximum_batch_size_ = max_dim;
-      VLOG(1) << "Setting maximum batch size to " << max_dim;
-    } else {
-      maximum_batch_size_ = 128;
-      LOG(WARNING) << "Maximum batch size is not set"
-                      " and can't be deduced from inputs setting it to"
-                   << maximum_batch_size_
-                   << ". Suggest configuring it from configuration parameters";
-    }
-  } else {
-    if (max_dim > maximum_batch_size_) {
-      LOG(WARNING) << "Configured batch size " << maximum_batch_size_
-                   << " is less than input batch size " << max_dim
-                   << " adjusting maximum batch size to match input batch size";
+    if (max_batch_dim > maximum_batch_size_) {
+      return errors::InvalidArgument(
+          "Specified max_batch_size=", maximum_batch_size_,
+          " is less than maximum batch dimension of inputs (", max_batch_dim,
+          "). ", "To continue, set max_batch_size to >= ", max_batch_dim);
+    } else if (max_batch_dim < maximum_batch_size_) {
+      LOG(INFO) << "Specified max_batch_size=" << maximum_batch_size_
+                << " is larger than maximum batch dimension of inputs ("
+                << max_batch_dim << "). "
+                << "This can result in poor performance.";
     }
   }
   grappler::GraphProperties static_graph_properties(item);
@@ -259,7 +255,6 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   cp.is_dyn_op = is_dynamic_op_;
   cp.max_cached_engines = max_cached_batches_;
   cp.use_calibration = use_calibration_;
-  cp.use_function_backup = use_function_backup_;
   auto status = ConvertAfterShapes(cp);
   VLOG(1) << "Returning from " << name_;
   return status;

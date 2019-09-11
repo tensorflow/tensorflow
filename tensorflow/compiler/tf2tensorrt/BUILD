@@ -17,18 +17,12 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
+    "//tensorflow/core/platform:default/build_config.bzl",
     "tf_additional_all_protos",
     "tf_proto_library",
 )
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 # Placeholder for Google-internal load statements.
-
-# NOTE: we always assume that if_static returns "otherwise" list in open source.
-load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
-    "if_static",
-)
 
 package(
     default_visibility = ["//visibility:public"],
@@ -53,10 +47,10 @@ cc_library(
 
 alias(
     name = "tensorrt_lib",
-    actual = if_static(
-        "@local_config_tensorrt//:tensorrt",
-        ":tensorrt_stub",
-    ),
+    actual = select({
+        "//tensorflow:oss": ":tensorrt_stub",
+        "//conditions:default": "@local_config_tensorrt//:tensorrt",
+    }),
     visibility = ["//visibility:private"],
 )
 
@@ -97,10 +91,17 @@ cc_library(
         ":utils",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@local_config_cuda//cuda:cuda_headers",
+        "//tensorflow/core:core_cpu_lib_no_ops",
+        "//tensorflow/core:framework",
         "//tensorflow/core:gpu_headers_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:stream_executor",
         "//tensorflow/core:stream_executor_headers_lib",
         "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/stream_executor/lib",
     ] + if_tensorrt([":tensorrt_lib"]) + tf_custom_op_library_additional_deps(),
     alwayslink = 1,
 )
@@ -168,8 +169,12 @@ tf_cuda_cc_test(
         ":trt_op_kernels",
         ":trt_op_libs",
         ":trt_resources",
+        ":trt_conversion",
+        ":utils",
         "@com_google_googletest//:gtest",
+        "@com_google_absl//absl/strings",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:function_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core:framework",
@@ -235,12 +240,10 @@ tf_custom_op_py_library(
 tf_cuda_library(
     name = "trt_resources",
     srcs = [
-        "utils/calibration_resource.cc",
         "utils/trt_int8_calibrator.cc",
         "utils/trt_lru_cache.cc",
     ],
     hdrs = [
-        "utils/calibration_resource.h",
         "utils/trt_int8_calibrator.h",
         "utils/trt_lru_cache.h",
     ],
@@ -250,6 +253,9 @@ tf_cuda_library(
         ":utils",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_lite",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:lib_proto_parsing",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
@@ -320,11 +326,13 @@ tf_cuda_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:devices",
@@ -489,7 +497,10 @@ cc_library(
     srcs = ["utils/py_utils.cc"],
     hdrs = ["utils/py_utils.h"],
     copts = tf_copts(),
-    deps = if_tensorrt([":tensorrt_lib"]),
+    deps = if_tensorrt([
+        ":tensorrt_lib",
+        "//tensorflow/stream_executor/platform:dso_loader",
+    ]),
 )
 
 tf_py_wrap_cc(

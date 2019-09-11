@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
@@ -41,31 +40,27 @@ class _ParseExampleDataset(dataset_ops.UnaryDataset):
     self._num_parallel_calls = num_parallel_calls
     # pylint: disable=protected-access
     self._features = parsing_ops._prepend_none_dimension(features)
-    # sparse_keys and dense_keys come back sorted here.
-    (sparse_keys, sparse_types, dense_keys, dense_types, dense_defaults,
-     dense_shapes) = parsing_ops._features_to_raw_params(
-         self._features, [
-             parsing_ops.VarLenFeature, parsing_ops.SparseFeature,
-             parsing_ops.FixedLenFeature, parsing_ops.FixedLenSequenceFeature
-         ])
-    # TODO(b/112859642): Pass sparse_index and sparse_values for SparseFeature.
-    (_, dense_defaults_vec, sparse_keys, sparse_types, dense_keys, dense_shapes,
-     dense_shape_as_shape) = parsing_ops._process_raw_parameters(
-         None, dense_defaults, sparse_keys, sparse_types, dense_keys,
-         dense_types, dense_shapes)
+    # TODO(b/112859642): Pass sparse_index and sparse_values for SparseFeature
+    params = parsing_ops._ParseOpParams.from_features(self._features, [
+        parsing_ops.VarLenFeature, parsing_ops.SparseFeature,
+        parsing_ops.FixedLenFeature, parsing_ops.FixedLenSequenceFeature
+    ])
     # pylint: enable=protected-access
-    self._sparse_keys = sparse_keys
-    self._sparse_types = sparse_types
-    self._dense_keys = dense_keys
-    self._dense_defaults = dense_defaults_vec
-    self._dense_shapes = dense_shapes
-    self._dense_types = dense_types
+    self._sparse_keys = params.sparse_keys
+    self._sparse_types = params.sparse_types
+    self._dense_keys = params.dense_keys
+    self._dense_defaults = params.dense_defaults_vec
+    self._dense_shapes = params.dense_shapes_as_proto
+    self._dense_types = params.dense_types
+    dense_shape_as_shape = params.dense_shapes
     input_dataset_shape = dataset_ops.get_legacy_output_shapes(
         self._input_dataset)
     dense_output_shapes = [input_dataset_shape.concatenate(shape)
                            for shape in dense_shape_as_shape]
-    sparse_output_shapes = [input_dataset_shape.concatenate([None])
-                            for _ in range(len(sparse_keys))]
+    sparse_output_shapes = [
+        input_dataset_shape.concatenate([None])
+        for _ in range(len(self._sparse_keys))
+    ]
 
     output_shapes = dict(
         zip(self._dense_keys + self._sparse_keys,
@@ -81,28 +76,16 @@ class _ParseExampleDataset(dataset_ops.UnaryDataset):
     self._element_spec = structure.convert_legacy_structure(
         output_types, output_shapes, output_classes)
 
-    if compat.forward_compatible(2019, 8, 3):
-      variant_tensor = (
-          gen_experimental_dataset_ops.parse_example_dataset(
-              self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-              self._num_parallel_calls,
-              self._dense_defaults,
-              self._sparse_keys,
-              self._dense_keys,
-              self._sparse_types,
-              self._dense_shapes,
-              **self._flat_structure))
-    else:
-      variant_tensor = (
-          gen_experimental_dataset_ops.experimental_parse_example_dataset(
-              self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-              self._num_parallel_calls,
-              self._dense_defaults,
-              self._sparse_keys,
-              self._dense_keys,
-              self._sparse_types,
-              self._dense_shapes,
-              **self._flat_structure))
+    variant_tensor = (
+        gen_experimental_dataset_ops.parse_example_dataset(
+            self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+            self._num_parallel_calls,
+            self._dense_defaults,
+            self._sparse_keys,
+            self._dense_keys,
+            self._sparse_types,
+            self._dense_shapes,
+            **self._flat_structure))
     super(_ParseExampleDataset, self).__init__(input_dataset, variant_tensor)
 
   @property

@@ -23,7 +23,7 @@ namespace tensorflow {
 namespace grappler {
 
 // This optimizer changes the batch size of the output dataset by dividing the
-// current batch size by parameter `num_workers`. Currently, this works only
+// current batch size by parameter `num_replicas`. Currently, this works only
 // for very simple pipelines with a single BatchDatasetV2 transformation.
 class RebatchOptimizer : public TFDataOptimizerBase {
  public:
@@ -31,6 +31,8 @@ class RebatchOptimizer : public TFDataOptimizerBase {
   ~RebatchOptimizer() override = default;
 
   string name() const override { return "tf_data_rebatcher"; }
+
+  bool UsesFunctionLibrary() const override { return true; }
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override;
@@ -43,7 +45,8 @@ class RebatchOptimizer : public TFDataOptimizerBase {
                 const GraphDef& optimize_output, double result) override;
 
  private:
-  int64 num_workers_;
+  int64 num_replicas_;
+  bool use_fallback_;
 };
 
 }  // namespace grappler

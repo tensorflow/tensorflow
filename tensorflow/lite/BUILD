@@ -29,14 +29,6 @@ config_setting(
     },
 )
 
-# Enables inclusion of select TensorFlow kernels via the TF Lite Flex delegate.
-# WARNING: This build flag is experimental and subject to change.
-config_setting(
-    name = "with_select_tf_ops",
-    define_values = {"with_select_tf_ops": "true"},
-    visibility = ["//visibility:public"],
-)
-
 TFLITE_DEFAULT_COPTS = if_not_windows([
     "-Wall",
     "-Wno-comment",
@@ -95,6 +87,16 @@ cc_library(
 )
 
 cc_library(
+    name = "external_cpu_backend_context",
+    srcs = ["external_cpu_backend_context.cc"],
+    hdrs = ["external_cpu_backend_context.h"],
+    copts = TFLITE_DEFAULT_COPTS,
+    deps = [
+        "//tensorflow/lite/c:c_api_internal",
+    ],
+)
+
+cc_library(
     name = "graph_info",
     hdrs = ["graph_info.h"],
     copts = TFLITE_DEFAULT_COPTS,
@@ -139,7 +141,7 @@ exports_files(["builtin_ops.h"])
 cc_library(
     name = "string",
     hdrs = [
-        "string.h",
+        "string_type.h",
     ],
     copts = TFLITE_DEFAULT_COPTS,
 )
@@ -201,6 +203,7 @@ cc_library(
     deps = [
         ":allocation",
         ":arena_planner",
+        ":external_cpu_backend_context",
         ":graph_info",
         ":memory_planner",
         ":minimal_logging",
@@ -211,14 +214,10 @@ cc_library(
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+        "//tensorflow/lite/experimental/resource_variable",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/schema:schema_fbs",
-    ] + select({
-        ":with_select_tf_ops": [
-            "//tensorflow/lite/delegates/flex:delegate",
-        ],
-        "//conditions:default": [],
-    }),
+    ],
 )
 
 cc_library(
@@ -316,6 +315,7 @@ cc_test(
         "testdata/2_subgraphs.bin",
         "testdata/empty_model.bin",
         "testdata/multi_add_flex.bin",
+        "testdata/test_min_runtime.bin",
         "testdata/test_model.bin",
         "testdata/test_model_broken.bin",
     ],

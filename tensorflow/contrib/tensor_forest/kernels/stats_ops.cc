@@ -56,7 +56,7 @@ class CreateFertileStatsVariableOp : public OpKernel {
                 errors::InvalidArgument("Stats config must be a scalar."));
     auto* result = new FertileStatsResource(param_proto_);
     FertileStats stats;
-    if (!ParseProtoUnlimited(&stats, stats_config_t->scalar<string>()())) {
+    if (!ParseProtoUnlimited(&stats, stats_config_t->scalar<tstring>()())) {
       result->Unref();
       OP_REQUIRES(context, false,
                   errors::InvalidArgument("Unable to parse stats config."));
@@ -98,7 +98,7 @@ class FertileStatsSerializeOp : public OpKernel {
 
     FertileStats stats;
     fertile_stats_resource->PackToProto(&stats);
-    output_config_t->scalar<string>()() = stats.SerializeAsString();
+    output_config_t->scalar<tstring>()() = stats.SerializeAsString();
   }
 
  private:
@@ -128,9 +128,10 @@ class FertileStatsDeserializeOp : public OpKernel {
     // Deallocate all the previous objects on the resource.
     fertile_stats_resource->Reset();
     FertileStats stats;
-    OP_REQUIRES(context,
-                ParseProtoUnlimited(&stats, stats_config_t->scalar<string>()()),
-                errors::InvalidArgument("Unable to parse stats config."));
+    OP_REQUIRES(
+        context,
+        ParseProtoUnlimited(&stats, stats_config_t->scalar<tstring>()()),
+        errors::InvalidArgument("Unable to parse stats config."));
 
     fertile_stats_resource->ExtractFromProto(stats);
     fertile_stats_resource->MaybeInitialize();

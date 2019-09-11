@@ -91,7 +91,7 @@ Status GetCompileTimeConstInputs(const NodeDef& node, const OpKernel* op_kernel,
                                  FunctionLibraryRuntime* flib_runtime) {
   DCHECK(op_def != nullptr || op_kernel != nullptr);
   // TODO(b/124403063): Implement similar functionality for function call nodes.
-  if (node.op() == "While") {
+  if (node.op() == "While" || node.op() == "StatelessWhile") {
     // For While nodes, recurse into the body and cond graphs.
     const FunctionBody* fcond = nullptr;
     const FunctionBody* fbody = nullptr;

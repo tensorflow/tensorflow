@@ -494,7 +494,8 @@ __device__ __inline__ T ComputeSum(IN_T in_, const int plane,
 }
 
 template <typename IN_T, typename Op>
-__global__ void ColumnReduceInToTempKernel(void* temp, int temp_in_offset,
+__global__ void ColumnReduceInToTempKernel(void* __restrict__ temp,
+                                           int temp_in_offset,
                                            int temp_out_offset, IN_T in,
                                            int num_planes, int num_rows,
                                            int num_cols, Op op) {
@@ -524,9 +525,10 @@ __global__ void ColumnReduceInToTempKernel(void* temp, int temp_in_offset,
 }
 
 template <typename T, typename OUT_T, typename Op>
-__global__ void ColumnReduceTempToOutKernel(void* temp, int temp_in_offset,
-                                            T in, OUT_T out, int num_planes,
-                                            int num_rows, int num_cols, Op op) {
+__global__ void ColumnReduceTempToOutKernel(void* __restrict__ temp,
+                                            int temp_in_offset, T in, OUT_T out,
+                                            int num_planes, int num_rows,
+                                            int num_cols, Op op) {
   typedef typename std::iterator_traits<T>::value_type value_type;
   value_type* t = (value_type*)temp;
   const int tid = threadIdx.x;
@@ -554,7 +556,7 @@ __global__ void ColumnReduceTempToOutKernel(void* temp, int temp_in_offset,
 
   if (tid >= planes_per_block * elems_per_plane || plane >= num_planes) return;
 
-  extern __shared__ char ss[];
+  GPU_DYNAMIC_SHARED_MEM_DECL(8, char, ss);
   value_type* const smem = reinterpret_cast<value_type*>(ss);
 
   if (temp_in_offset == -1) {
@@ -888,7 +890,7 @@ void Launch3DYReductionSimple(OpKernelContext* ctx, OUT_T out, IN_T in,
 template <typename T, typename Op, typename OUT_T, typename IN_T>
 void Launch3DYReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int extent_x,
                         int extent_y, int extent_z, Op op, T init,
-                        const cudaStream_t& cu_stream) {
+                        const gpuStream_t& cu_stream) {
   int threads_per_block = 128;
 
   int n_group_in = extent_y;
@@ -923,10 +925,10 @@ void Launch3DYReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int extent_x,
     int n_group_out = std::max(1, n_group_in / (2 * kUnroll));
     num_blocks =
         Eigen::divup(extent_x * n_group_out * n_size, threads_per_block);
-    ColumnReduceInToTempKernel<IN_T, Op>
-        <<<num_blocks, threads_per_block, 0, cu_stream>>>(
-            (void*)(temp_storage.flat<int8_t>().data()), temp_in_offset,
-            temp_out_offset, in, extent_x, n_group_in, extent_z, op);
+    TF_CHECK_OK(GpuLaunchKernel(
+        ColumnReduceInToTempKernel<IN_T, Op>, num_blocks, threads_per_block, 0,
+        cu_stream, (void*)(temp_storage.flat<int8_t>().data()), temp_in_offset,
+        temp_out_offset, in, extent_x, n_group_in, extent_z, op));
 
     n_group_in = n_group_out;
     temp_in_offset = temp_out_offset;
@@ -940,10 +942,11 @@ void Launch3DYReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int extent_x,
     num_blocks = Eigen::divup(extent_x * n_size, threads_per_block);
   }
 
-  ColumnReduceTempToOutKernel<<<num_blocks, threads_per_block,
-                                2 * sizeof(T) * threads_per_block, cu_stream>>>(
+  TF_CHECK_OK(GpuLaunchKernel(
+      ColumnReduceTempToOutKernel<IN_T, OUT_T, Op>, num_blocks,
+      threads_per_block, 2 * sizeof(T) * threads_per_block, cu_stream,
       (void*)(temp_storage.flat<int8_t>().data()), temp_in_offset, in, out,
-      extent_x, n_group_in, extent_z, op);
+      extent_x, n_group_in, extent_z, op));
 }
 
 template <typename T, typename Op, typename OUT_T, typename IN_T>

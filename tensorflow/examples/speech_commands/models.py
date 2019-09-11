@@ -194,8 +194,9 @@ def create_single_fc_model(fingerprint_input, model_settings, is_training):
       name='weights',
       initializer=tf.compat.v1.truncated_normal_initializer(stddev=0.001),
       shape=[fingerprint_size, label_count])
-  bias = tf.compat.v1.get_variable(
-      name='bias', initializer=tf.compat.v1.zeros_initializer, shape=[label_count])
+  bias = tf.compat.v1.get_variable(name='bias',
+                                   initializer=tf.compat.v1.zeros_initializer,
+                                   shape=[label_count])
   logits = tf.matmul(fingerprint_input, weights) + bias
   if is_training:
     return logits, dropout_prob
@@ -268,14 +269,20 @@ def create_conv_model(fingerprint_input, model_settings, is_training):
       name='first_bias',
       initializer=tf.compat.v1.zeros_initializer,
       shape=[first_filter_count])
-  first_conv = tf.nn.conv2d(input=fingerprint_4d, filters=first_weights, strides=[1, 1, 1, 1],
+
+  first_conv = tf.nn.conv2d(input=fingerprint_4d,
+                            filters=first_weights,
+                            strides=[1, 1, 1, 1],
                             padding='SAME') + first_bias
   first_relu = tf.nn.relu(first_conv)
   if is_training:
     first_dropout = tf.nn.dropout(first_relu, 1 - (dropout_prob))
   else:
     first_dropout = first_relu
-  max_pool = tf.nn.max_pool2d(input=first_dropout, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
+  max_pool = tf.nn.max_pool2d(input=first_dropout,
+                              ksize=[1, 2, 2, 1],
+                              strides=[1, 2, 2, 1],
+                              padding='SAME')
   second_filter_width = 4
   second_filter_height = 10
   second_filter_count = 64
@@ -290,11 +297,13 @@ def create_conv_model(fingerprint_input, model_settings, is_training):
       name='second_bias',
       initializer=tf.compat.v1.zeros_initializer,
       shape=[second_filter_count])
-  second_conv = tf.nn.conv2d(input=max_pool, filters=second_weights, strides=[1, 1, 1, 1],
+  second_conv = tf.nn.conv2d(input=max_pool,
+                             filters=second_weights,
+                             strides=[1, 1, 1, 1],
                              padding='SAME') + second_bias
   second_relu = tf.nn.relu(second_conv)
   if is_training:
-    second_dropout = tf.nn.dropout(second_relu, 1 - (dropout_prob))
+    second_dropout = tf.compat.v1.nn.dropout(second_relu, dropout_prob)
   else:
     second_dropout = second_relu
   second_conv_shape = second_dropout.get_shape()
@@ -549,7 +558,8 @@ def create_low_latency_svdf_model(fingerprint_input, model_settings,
     num_new_frames = tf.cond(
         pred=tf.equal(first_time_flag, 1),
         true_fn=lambda: input_time_size,
-        false_fn=lambda: int(runtime_settings['clip_stride_ms'] / window_stride_ms))
+        false_fn=lambda: int(runtime_settings['clip_stride_ms'] /
+                             window_stride_ms))
   first_time_flag = 0
   new_fingerprint_input = fingerprint_input[
       :, -num_new_frames*input_frequency_size:]
@@ -566,8 +576,10 @@ def create_low_latency_svdf_model(fingerprint_input, model_settings,
   weights_frequency = tf.expand_dims(weights_frequency, 1)
   # Convolve the 1D feature filters sliding over the time dimension.
   # activations_time: [batch, num_new_frames, num_filters]
-  activations_time = tf.nn.conv1d(
-      input=new_fingerprint_input, filters=weights_frequency, stride=input_frequency_size, padding='VALID')
+  activations_time = tf.nn.conv1d(input=new_fingerprint_input,
+                                  filters=weights_frequency,
+                                  stride=input_frequency_size,
+                                  padding='VALID')
   # Rearrange such that we can perform the batched matmul.
   # activations_time: [num_filters, batch, num_new_frames]
   activations_time = tf.transpose(a=activations_time, perm=[2, 0, 1])
@@ -602,8 +614,9 @@ def create_low_latency_svdf_model(fingerprint_input, model_settings,
   units_output = tf.transpose(a=units_output)
 
   # Appy bias.
-  bias = tf.compat.v1.get_variable(
-      name='bias', initializer=tf.compat.v1.zeros_initializer, shape=[num_units])
+  bias = tf.compat.v1.get_variable(name='bias',
+                                   initializer=tf.compat.v1.zeros_initializer,
+                                   shape=[num_units])
   first_bias = tf.nn.bias_add(units_output, bias)
 
   # Relu.
@@ -716,9 +729,10 @@ def create_tiny_conv_model(fingerprint_input, model_settings, is_training):
       shape=[first_filter_count])
   first_conv_stride_x = 2
   first_conv_stride_y = 2
-  first_conv = tf.nn.conv2d(input=fingerprint_4d, filters=first_weights,
-                            strides=[1, first_conv_stride_y, first_conv_stride_x, 1],
-                            padding='SAME') + first_bias
+  first_conv = tf.nn.conv2d(
+      input=fingerprint_4d, filters=first_weights,
+      strides=[1, first_conv_stride_y, first_conv_stride_x, 1],
+      padding='SAME') + first_bias
   first_relu = tf.nn.relu(first_conv)
   if is_training:
     first_dropout = tf.nn.dropout(first_relu, 1 - (dropout_prob))
@@ -821,12 +835,15 @@ def create_tiny_embedding_conv_model(fingerprint_input, model_settings,
       shape=[first_filter_count])
   first_conv_stride_x = 2
   first_conv_stride_y = 2
-  first_conv = tf.nn.conv2d(input=fingerprint_4d, filters=first_weights,
-                            strides=[1, first_conv_stride_y, first_conv_stride_x, 1],
-                            padding='SAME') + first_bias
+  
+  first_conv = tf.nn.conv2d(
+      input=fingerprint_4d, filters=first_weights,
+      strides=[1, first_conv_stride_y, first_conv_stride_x, 1],
+      padding='SAME') + first_bias
   first_relu = tf.nn.relu(first_conv)
   if is_training:
     first_dropout = tf.nn.dropout(first_relu, 1 - (dropout_prob))
+
   else:
     first_dropout = first_relu
 
@@ -846,9 +863,10 @@ def create_tiny_embedding_conv_model(fingerprint_input, model_settings,
       shape=[second_filter_count])
   second_conv_stride_x = 8
   second_conv_stride_y = 8
-  second_conv = tf.nn.conv2d(input=first_dropout, filters=second_weights,
-                             strides=[1, second_conv_stride_y, second_conv_stride_x, 1],
-                             padding='SAME') + second_bias
+  second_conv = tf.nn.conv2d(
+      input=first_dropout, filters=second_weights,
+      strides=[1, second_conv_stride_y, second_conv_stride_x, 1],
+      padding='SAME') + second_bias
   second_relu = tf.nn.relu(second_conv)
   if is_training:
     second_dropout = tf.nn.dropout(second_relu, 1 - (dropout_prob))

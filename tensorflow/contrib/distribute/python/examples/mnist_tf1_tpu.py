@@ -129,13 +129,15 @@ def main(argv):
       with tf.control_dependencies([update_loss, update_accuracy]):
         return tf.identity(loss)
 
-    train_iterator = strategy.make_dataset_iterator(train_ds)
-    test_iterator = strategy.make_dataset_iterator(test_ds)
+    train_iterator = strategy.experimental_distribute_dataset(
+        train_ds).make_initializable_iterator()
+    test_iterator = strategy.experimental_distribute_dataset(
+        test_ds).make_initializable_iterator()
 
-    dist_train = strategy.unwrap(
-        strategy.experimental_run(train_step, train_iterator))
-    dist_test = strategy.unwrap(
-        strategy.experimental_run(test_step, test_iterator))
+    dist_train = strategy.experimental_local_results(
+        strategy.experimental_run_v2(train_step, args=(next(train_iterator),)))
+    dist_test = strategy.experimental_local_results(
+        strategy.experimental_run_v2(test_step, args=(next(test_iterator),)))
 
     training_loss_result = training_loss.result()
     training_accuracy_result = training_accuracy.result()

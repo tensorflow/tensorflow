@@ -45,6 +45,9 @@ CRemoteRendezvous::CRemoteRendezvous(const WorkerEnv* env, int64 step_id,
 void CRemoteRendezvous::RecvFromRemoteAsync(const Rendezvous::ParsedKey& parsed,
                                             const Rendezvous::Args& args,
                                             DoneCallback done) {
+  if (args.cancellation_manager != nullptr) {
+    VLOG(1) << "WARNING: CRemoteRendezvous does not support cancellation.";
+  }
   TF_ParsedKey key;
   key.src_device = parsed.src_device.data();
   key.src_device_len = parsed.src_device.size();

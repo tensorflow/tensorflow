@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -117,10 +118,11 @@ struct TensorData {
 
 class SingleOpResolver : public OpResolver {
  public:
-  SingleOpResolver(const BuiltinOperator op, TfLiteRegistration* registration)
+  SingleOpResolver(const BuiltinOperator op, TfLiteRegistration* registration,
+                   int version = 1)
       : op_(op), registration_(*registration) {
     registration_.builtin_code = static_cast<int32_t>(op);
-    registration_.version = 1;
+    registration_.version = version;
   }
   const TfLiteRegistration* FindOp(BuiltinOperator op,
                                    int version) const override {
@@ -141,7 +143,7 @@ class SingleOpResolver : public OpResolver {
 class SingleOpModel {
  public:
   SingleOpModel() {}
-  ~SingleOpModel() {}
+  ~SingleOpModel();
 
   // Set a function callback that is run right after graph is prepared
   // that allows applying external delegates. This is useful for testing
@@ -149,6 +151,8 @@ class SingleOpModel {
   void SetApplyDelegate(std::function<void(Interpreter*)> apply_delegate_fn) {
     apply_delegate_fn_ = apply_delegate_fn;
   }
+
+  void ApplyDelegate();
 
   // Copying or assignment is disallowed to simplify ownership semantics.
   SingleOpModel(const SingleOpModel&) = delete;
@@ -233,7 +237,7 @@ class SingleOpModel {
     auto* params =
         reinterpret_cast<TfLiteAffineQuantization*>(t->quantization.params);
     for (int i = 0; i < num_inputs; ++i) {
-      quantized_output[i] = input_data[i] * params->scale->data[i];
+      quantized_output[i] = input_data[i] / params->scale->data[i];
     }
     PopulateTensor(index, /*offset=*/0, quantized_output.data(),
                    quantized_output.data() + quantized_output.size());
@@ -254,13 +258,14 @@ class SingleOpModel {
   // Build the interpreter for this model. Also, resize and allocate all
   // tensors given the shapes of the inputs.
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
-                        int num_threads, bool allow_fp32_relax_to_fp16);
+                        int num_threads, bool allow_fp32_relax_to_fp16,
+                        bool apply_delegate = true);
 
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                         int num_threads);
 
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
-                        bool allow_fp32_relax_to_fp16);
+                        bool allow_fp32_relax_to_fp16, bool apply_delegate);
 
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes);
 
@@ -288,9 +293,11 @@ class SingleOpModel {
       auto* t = interpreter_->tensor(index);
       CHECK(t) << "No tensor with index " << index << ".";
       CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
-      CHECK(v) << "Type mismatch for tensor with index " << index
-               << ". Requested " << typeToTfLiteType<T>() << ", got "
-               << t->type;
+      CHECK_EQ(t->type, typeToTfLiteType<T>())
+          << "Type mismatch for tensor with index " << index << ". Requested "
+          << TfLiteTypeGetName(typeToTfLiteType<T>()) << ", got "
+          << TfLiteTypeGetName(t->type) << ".";
+      LOG(FATAL) << "Unknown tensor error.";
     }
     for (const T& f : data) {
       *v = f;
@@ -308,9 +315,11 @@ class SingleOpModel {
       auto* t = interpreter_->tensor(index);
       CHECK(t) << "No tensor with index " << index << ".";
       CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
-      CHECK(v) << "Type mismatch for tensor with index " << index
-               << ". Requested " << typeToTfLiteType<T>() << ", got "
-               << t->type;
+      CHECK_EQ(t->type, typeToTfLiteType<T>())
+          << "Type mismatch for tensor with index " << index << ". Requested "
+          << TfLiteTypeGetName(typeToTfLiteType<T>()) << ", got "
+          << TfLiteTypeGetName(t->type) << ".";
+      LOG(FATAL) << "Unknown tensor error.";
     }
     for (const T& f : data) {
       *v = f;
@@ -353,6 +362,7 @@ class SingleOpModel {
 
   // Enables NNAPI delegate application during interpreter creation.
   static void SetForceUseNnapi(bool use_nnapi);
+  static bool GetForceUseNnapi();
 
  protected:
   int32_t GetTensorSize(int index) const;
@@ -539,6 +549,34 @@ class SingleOpModel {
     t->quantization.params = affine_quantization;
     return q;
   }
+
+  // Checks if acceleration has been done as expected.
+  // Currently supports only NNAPI.
+  // It verifies if the test was configured to run with NNAPI acceleration
+  // or not (SetForceUseNnapi(true)).
+  // In affirmative case it checks if:
+  // - the test case has been listed in the list of nnapi-accelerated cases
+  // - the test is running on a device (NNAPI has been loaded)
+  //
+  // The list of nnapi-accelerated test cases is a file containing regex to
+  // include or exclude specific test cases plus the minimum android SDK version
+  // the acceleration should be enabled for. For example:
+  // To enable the test BorderFloat in TopKV2OpTest only from
+  // android_sdk_version 29:
+  //
+  // TopKV2OpTest/BorderFloat,29
+  //
+  // And to have it always excluded while enabling all other Float tests
+  // (the order of the rules is important, the first one matching is used):
+  //
+  // -TopKV2OpTest/BorderFloat
+  // TopKV2OpTest/.+Float
+
+  void ValidateAcceleration();
+
+  // If the test was configured to use NNAPI and NNAPI was actually loaded,
+  // checks if the single operation in the model has been accelerated.
+  void ExpectOpAcceleratedWithNnapi(const std::string& test_id);
 
   std::map<int, TensorData> tensor_data_;
   std::vector<int32_t> inputs_;

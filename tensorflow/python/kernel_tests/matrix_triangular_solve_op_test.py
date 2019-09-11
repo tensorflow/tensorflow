@@ -172,6 +172,7 @@ class MatrixTriangularSolveOpTest(test.TestCase):
         self._verifySolve(matrix, rhs, batch_dims=[2, 3])
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("XLA cannot throw assertion errors during a kernel.")
   def testNotInvertible(self):
     # The input should be invertible.
     # The matrix is singular because it has a zero on the diagonal.
@@ -188,6 +189,7 @@ class MatrixTriangularSolveOpTest(test.TestCase):
     self._verifySolve(np.empty([2, 0, 0]), np.empty([2, 0, 0]), lower=False)
     self._verifySolve(
         np.empty([2, 0, 0]), np.empty([2, 0, 0]), lower=True, batch_dims=[3, 2])
+    self._verifySolve(np.empty([0, 0]), np.empty([0, 0]), lower=True)
 
 
 if __name__ == "__main__":

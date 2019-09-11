@@ -88,6 +88,44 @@ def get_distributed_dataset(dataset,
         input_context=input_context)
 
 
+def get_distributed_datasets_from_function(dataset_fn,
+                                           input_workers,
+                                           input_contexts,
+                                           strategy):
+  """Returns a wrapped tf.data.DatasetV1 or tf.data.DatasetV2 instance.
+
+  This is a common function that is used by all strategies to return the right
+  tf.data.Dataset wrapped instance depending on if we are in graph or eager
+  mode.
+
+  Args:
+    dataset_fn: a function that returns a tf.data.DatasetV1 or tf.data.DatasetV2
+        instance.
+    input_workers: an InputWorkers object which specifies devices on which
+        iterators should be created.
+    input_contexts: A list of `InputContext` instances to be passed to call(s)
+        to `dataset_fn`. Length and order should match worker order in
+        `worker_device_pairs`.
+    strategy: a `tf.distribute.Strategy` object, used to run all-reduce to
+        handle last partial batch.
+
+  Returns:
+    A wrapped tf.data.DatasetV1 or tf.data.DatasetV2 instance.
+  """
+  if ops.executing_eagerly_outside_functions():
+    return DistributedDatasetsFromFunction(
+        dataset_fn,
+        input_workers,
+        input_contexts,
+        strategy)
+  else:
+    return DistributedDatasetsFromFunctionV1(
+        dataset_fn,
+        input_workers,
+        input_contexts,
+        strategy)
+
+
 class InputWorkers(object):
   """A 1-to-many mapping from input worker devices to compute devices."""
 
@@ -443,7 +481,9 @@ class DistributedDataset(_IterableInput):
     # pipeline and only receive its own shard of the dataset.
     if split_batch_by:
       try:
-        dataset = distribute._RebatchDataset(dataset, split_batch_by)  # pylint: disable=protected-access
+        # pylint: disable=protected-access
+        with ops.colocate_with(dataset._variant_tensor):
+          dataset = distribute._RebatchDataset(dataset, split_batch_by)
       except errors.InvalidArgumentError as e:
         if "without encountering a batch" in str(e):
           six.reraise(
@@ -457,41 +497,48 @@ class DistributedDataset(_IterableInput):
         else:
           raise
 
+    # TODO(b/138745411): Remove once stateful transformations are supported.
+    options = dataset_ops.Options()
+    options.experimental_distribute._make_stateless = True  # pylint: disable=protected-access
+    dataset = dataset.with_options(options)
+
     self._cloned_datasets = []
     if input_context:
       # Between-graph where we rely on the input_context for sharding
       assert input_workers.num_workers == 1
-      dataset = input_ops.auto_shard_dataset(  # pylint: disable=protected-access
-          dataset, input_context.num_input_pipelines,
-          input_context.input_pipeline_id)
+      dataset = input_ops.auto_shard_dataset(dataset,
+                                             input_context.num_input_pipelines,
+                                             input_context.input_pipeline_id)
       self._cloned_datasets.append(dataset)
     else:
+      replicated_ds = distribute.replicate(dataset,
+                                           input_workers.worker_devices)
       for i, worker in enumerate(input_workers.worker_devices):
         with ops.device(worker):
-          cloned_dataset = dataset
-          if not context.executing_eagerly():
-            cloned_dataset = input_ops._clone_dataset(dataset)  # pylint: disable=protected-access
-            cloned_dataset = cloned_dataset.with_options(dataset.options())
-          # TODO(b/129506833): Figure out between graph cases
-          cloned_dataset = input_ops.auto_shard_dataset(  # pylint: disable=protected-access
+          cloned_dataset = replicated_ds[worker]
+          cloned_dataset = cloned_dataset.with_options(dataset.options())
+          cloned_dataset = input_ops.auto_shard_dataset(
               cloned_dataset, len(input_workers.worker_devices), i)
           self._cloned_datasets.append(cloned_dataset)
 
     self._input_workers = input_workers
+    # TODO(anjalisridhar): Identify if we need to set this property on the
+    # iterator.
     self.element_spec = dataset.element_spec
     self._strategy = strategy
 
   def __iter__(self):
-    if (context.executing_eagerly() or
-        ops.executing_eagerly_outside_functions()):
-      worker_iterators = _create_iterators_per_worker(self._cloned_datasets,
-                                                      self._input_workers)
-      iterator = DistributedIterator(self._input_workers, worker_iterators,
-                                     self._strategy)
-      iterator.element_spec = self.element_spec
-      return iterator
-    raise RuntimeError("__iter__() is only supported inside of tf.function "
-                       "or when eager execution is enabled.")
+    if not (context.executing_eagerly() or
+            ops.get_default_graph().building_function):
+      raise RuntimeError("__iter__() is only supported inside of tf.function "
+                         "or when eager execution is enabled.")
+
+    worker_iterators = _create_iterators_per_worker(self._cloned_datasets,
+                                                    self._input_workers)
+    iterator = DistributedIterator(self._input_workers, worker_iterators,
+                                   self._strategy)
+    iterator.element_spec = self.element_spec  # pylint: disable=protected-access
+    return iterator
 
 
 class DistributedDatasetV1(DistributedDataset):
@@ -512,7 +559,18 @@ class DistributedDatasetV1(DistributedDataset):
         input_context=input_context)
 
   def make_one_shot_iterator(self):
-    """Get a one time use iterator for DistributedDatasetV1."""
+    """Get a one time use iterator for DistributedDatasetV1.
+
+    Note: This API is deprecated. Please use `for ... in dataset:` to iterate
+    over the dataset or `iter` to create an iterator.
+
+    Returns:
+      A DistributedIteratorV1 instance.
+    """
+    return self._make_one_shot_iterator()
+
+  def _make_one_shot_iterator(self):
+    """Get an iterator for DistributedDatasetV1."""
     # Graph mode with one shot iterator is disabled because we have to call
     # `initialize` on the iterator which is only required if we are using a
     # tf.distribute strategy.
@@ -522,12 +580,24 @@ class DistributedDatasetV1(DistributedDataset):
     return self._get_iterator()
 
   def make_initializable_iterator(self):
+    """Get an initializable iterator for DistributedDatasetV1.
+
+    Note: This API is deprecated. Please use
+    `tf.compat.v1.data.make_initializable_iterator(dataset)` to create an
+    initializable iterator.
+
+    Returns:
+      A DistributedIteratorV1 instance.
+    """
+    return self._make_initializable_iterator()
+
+  def _make_initializable_iterator(self, shared_name=None):  # pylint: disable=unused-argument
     """Get an initializable iterator for DistributedDatasetV1."""
     # Eager mode generates already initialized iterators. Hence we cannot create
     # an initializable iterator.
     if context.executing_eagerly():
       raise ValueError("Cannot create initializable iterator in Eager mode. "
-                       "Please use `make_one_shot_iterator` instead.")
+                       "Please use `iter()` instead.")
     return self._get_iterator()
 
   def _get_iterator(self):
@@ -535,7 +605,7 @@ class DistributedDatasetV1(DistributedDataset):
                                                     self._input_workers)
     iterator = DistributedIteratorV1(self._input_workers, worker_iterators,
                                      self._strategy)
-    iterator.element_spec = self.element_spec
+    iterator.element_spec = self.element_spec  # pylint: disable=protected-access
     return iterator
 
 
@@ -570,16 +640,43 @@ class DistributedDatasetsFromFunction(_IterableInput):
     self._strategy = strategy
 
   def __iter__(self):
-    iterators = []
-    for i, ctx in enumerate(self._input_contexts):
-      worker = self._input_workers.worker_devices[i]
-      with ops.device(worker):
-        dataset = self._dataset_fn(ctx)
-        devices = self._input_workers.compute_devices_for_worker(i)
-        iterator = _SingleWorkerDatasetIterator(dataset, worker, devices)
-        iterators.append(iterator)
+    if not (context.executing_eagerly() or
+            ops.get_default_graph().building_function):
+      raise RuntimeError("__iter__() is only supported inside of tf.function "
+                         "or when eager execution is enabled.")
 
+    iterators = _create_iterators_per_worker_with_input_context(
+        self._input_contexts, self._input_workers, self._dataset_fn)
     return DistributedIterator(self._input_workers, iterators, self._strategy)
+
+
+class DistributedDatasetsFromFunctionV1(DistributedDatasetsFromFunction):
+  """Inputs created from dataset function."""
+
+  def _make_initializable_iterator(self, shared_name=None):
+    """Get an initializable iterator for DistributedDatasetsFromFunctionV1."""
+    del shared_name  # Unused
+    # Eager mode generates already initialized iterators. Hence we cannot create
+    # an initializable iterator.
+    if context.executing_eagerly():
+      raise ValueError("Cannot create initializable iterator in Eager mode. "
+                       "Please use `iter()` instead.")
+    return self._get_iterator()
+
+  def _make_one_shot_iterator(self):
+    """Get an iterator for iterating over DistributedDatasetsFromFunctionV1."""
+    # Graph mode with one shot iterator is disabled because we have to call
+    # `initialize` on the iterator which is only required if we are using a
+    # tf.distribute strategy.
+    if not context.executing_eagerly():
+      raise ValueError("Cannot create a one shot iterator. Please use "
+                       "`make_initializable_iterator()` instead.")
+    return self._get_iterator()
+
+  def _get_iterator(self):
+    iterators = _create_iterators_per_worker_with_input_context(
+        self._input_contexts, self._input_workers, self._dataset_fn)
+    return DistributedIteratorV1(self._input_workers, iterators, self._strategy)
 
 
 # TODO(anjalisridhar): This class will be soon be removed in favor of newer
@@ -668,7 +765,7 @@ class DatasetIterator(DistributedIteratorV1):
         dist_dataset._cloned_datasets, input_workers)  # pylint: disable=protected-access
     super(DatasetIterator, self).__init__(
         input_workers,
-        worker_iterators,
+        worker_iterators,  # pylint: disable=protected-access
         strategy)
     self.element_spec = dist_dataset.element_spec  # pylint: disable=protected-access
 
@@ -796,7 +893,7 @@ class _SingleWorkerDatasetIterator(object):
     Returns:
       A list of any initializer ops that should be run.
     """
-    if context.executing_eagerly():
+    if ops.executing_eagerly_outside_functions():
       self._iterator._eager_reset()  # pylint: disable=protected-access
       return []
     else:
@@ -859,6 +956,25 @@ def _create_iterators_per_worker(worker_datasets, input_workers):
       worker_devices = input_workers.compute_devices_for_worker(i)
       iterator = _SingleWorkerDatasetIterator(worker_datasets[i], worker,
                                               worker_devices)
+      iterators.append(iterator)
+  return iterators
+
+
+def _create_iterators_per_worker_with_input_context(input_contexts,
+                                                    input_workers,
+                                                    dataset_fn):
+  """Create a multidevice iterator per workers given a dataset function."""
+  iterators = []
+  for i, ctx in enumerate(input_contexts):
+    worker = input_workers.worker_devices[i]
+    with ops.device(worker):
+      dataset = dataset_fn(ctx)
+      # TODO(b/138745411): Remove once stateful transformations are supported.
+      options = dataset_ops.Options()
+      options.experimental_distribute._make_stateless = True  # pylint: disable=protected-access
+      dataset = dataset.with_options(options)
+      devices = input_workers.compute_devices_for_worker(i)
+      iterator = _SingleWorkerDatasetIterator(dataset, worker, devices)
       iterators.append(iterator)
   return iterators
 

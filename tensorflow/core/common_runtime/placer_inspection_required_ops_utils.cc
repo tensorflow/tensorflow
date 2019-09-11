@@ -185,7 +185,8 @@ Status AddInputIdentity(Node* node, int input_idx, Graph* graph,
 
   VLOG(6) << "Adding identity into " << edge->src()->name() << ":"
           << edge->src_output() << " -> " << edge->dst()->name() << ":"
-          << input_idx << " :" << identity_def.DebugString();
+          << input_idx << " \n"
+          << identity_def.DebugString();
 
   Status status;
   Node* identity_node = graph->AddNode(identity_def, &status);
@@ -197,10 +198,16 @@ Status AddInputIdentity(Node* node, int input_idx, Graph* graph,
   // Replace node's `input_idx` input with the new identity's 0'th output
   TF_RETURN_IF_ERROR(graph->UpdateEdge(identity_node, 0, node, input_idx));
 
-  VLOG(6) << "Successfully inserted identity. Modified node: "
+  VLOG(6) << "Successfully inserted identity. Modified node: \n"
           << node->DebugString();
   return Status::OK();
 }
+
+struct EdgePtrCompare {
+  bool operator()(const Edge* lhs, const Edge* rhs) const {
+    return lhs->id() < rhs->id();
+  }
+};
 
 Status AddOutputIdentities(Node* node, Graph* graph,
                            std::unordered_set<string>* node_names) {
@@ -230,8 +237,9 @@ Status AddOutputIdentities(Node* node, Graph* graph,
   // Copy the set of edges since EdgeSet does not allow modifications
   // to graph edges during iteration.
   const EdgeSet& out_edges = node->out_edges();
-  std::unordered_set<const Edge*> edge_set(out_edges.begin(), out_edges.end());
-  for (const Edge* edge : edge_set) {
+  std::vector<const Edge*> edge_vector(out_edges.begin(), out_edges.end());
+  std::sort(edge_vector.begin(), edge_vector.end(), EdgePtrCompare());
+  for (const Edge* edge : edge_vector) {
     if (edge->IsControlEdge()) {
       continue;
     }
@@ -245,7 +253,7 @@ Status AddOutputIdentities(Node* node, Graph* graph,
     Node* identity_node;
     TF_RETURN_IF_ERROR(add_identity(src_output, identity_name, &identity_node));
     VLOG(6) << "Adding identity into " << node->name() << ":" << src_output
-            << " -> " << dst->name() << ":" << dst_input << ": "
+            << " -> " << dst->name() << ":" << dst_input << " \n"
             << identity_node->DebugString();
 
     // Make original dst node consume the new identity's output instead of
@@ -263,7 +271,8 @@ Status AddOutputIdentities(Node* node, Graph* graph,
     Node* identity_node;
     TF_RETURN_IF_ERROR(add_identity(output_idx, identity_name, &identity_node));
     VLOG(6) << "Added identity into " << node->name() << ":" << output_idx
-            << " -> <no consumer>: " << identity_node->DebugString();
+            << " -> <no consumer>: \n"
+            << identity_node->DebugString();
   }
   return Status::OK();
 }

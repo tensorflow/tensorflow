@@ -85,6 +85,64 @@ TEST(GraphUtilsTest, AddScalarConstNodeString) {
   EXPECT_EQ(string_node->attr().at("value").tensor().string_val(0), "hello");
 }
 
+TEST(GraphUtilsTest, GetScalarConstNodeInt64) {
+  GraphDef graph_def;
+  MutableGraphView graph(&graph_def);
+  NodeDef* int64_node = AddScalarConstNode<int64>(128, &graph);
+  int64 result;
+  EXPECT_TRUE(GetScalarConstNodeValue<int64>(*int64_node, &result).ok());
+  EXPECT_EQ(result, 128);
+}
+
+TEST(GraphUtilsTest, GetScalarConstNodeBool) {
+  GraphDef graph_def;
+  MutableGraphView graph(&graph_def);
+  NodeDef* bool_node = AddScalarConstNode<bool>(true, &graph);
+  bool result;
+  EXPECT_TRUE(GetScalarConstNodeValue<bool>(*bool_node, &result).ok());
+  EXPECT_EQ(result, true);
+}
+
+TEST(GraphUtilsTest, GetScalarConstNodeErrorWithNonConst) {
+  GraphDef graph_def;
+  MutableGraphView graph(&graph_def);
+  NodeDef* non_const = AddScalarPlaceholder(DT_INT64, &graph);
+  int64 result;
+  Status s = GetScalarConstNodeValue<int64>(*non_const, &result);
+  EXPECT_FALSE(s.ok());
+  EXPECT_EQ(s.error_message(),
+            "Node Placeholder is not a Const node. Op: Placeholder");
+}
+
+TEST(GraphUtilsTest, GetScalarConstNodeErrorWithType) {
+  GraphDef graph_def;
+  MutableGraphView graph(&graph_def);
+  NodeDef* int64_node = AddScalarConstNode<int64>(128, &graph);
+  bool result;
+  Status s = GetScalarConstNodeValue<bool>(*int64_node, &result);
+  EXPECT_FALSE(s.ok());
+  EXPECT_EQ(s.error_message(),
+            "Node Const should have type bool but has type: int64");
+}
+
+TEST(GraphUtilsTest, GetScalarConstNodeErrorWithVector) {
+  NodeDef node;
+  node.set_name("Const");
+  node.set_op("Const");
+
+  (*node.mutable_attr())["dtype"].set_type(DT_INT64);
+  auto tensor = (*node.mutable_attr())["value"].mutable_tensor();
+  tensor->set_dtype(DT_INT64);
+  tensor->mutable_tensor_shape()->mutable_dim()->Add()->set_size(1);
+  tensor->add_int64_val(128);
+
+  int64 result;
+  Status s = GetScalarConstNodeValue<int64>(node, &result);
+  EXPECT_FALSE(s.ok());
+  EXPECT_EQ(s.error_message(),
+            "Node Const should be a scalar but has shape: [1]");
+}
+
 TEST(GraphUtilsTest, Compare) {
   GraphDef graph_def_a;
   MutableGraphView graph_a(&graph_def_a);

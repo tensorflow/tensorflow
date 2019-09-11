@@ -24,6 +24,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":check_numerics_callback",
         ":debug_data",
         ":debug_gradients",
         ":debug_graphs",
@@ -51,6 +52,18 @@ py_library(
     ] + if_not_windows([
         ":debug_examples",
     ]),
+)
+
+py_library(
+    name = "check_numerics_callback",
+    srcs = ["lib/check_numerics_callback.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":source_utils",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:op_callbacks",
+        "//third_party/py/numpy",
+    ],
 )
 
 py_library(
@@ -473,7 +486,6 @@ py_library(
     deps = [
         ":debug_py",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/examples/tutorials/mnist:input_data",
     ],
 )
 
@@ -557,6 +569,23 @@ py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
         "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "check_numerics_callback_test",
+    size = "small",
+    srcs = ["lib/check_numerics_callback_test.py"],
+    additional_deps = [
+        ":check_numerics_callback",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/keras",
     ],
 )
 
@@ -797,6 +826,22 @@ py_library(
         "//tensorflow/python:errors",
         "//tensorflow/python:variables",
     ],
+)
+
+cuda_py_test(
+    name = "debug_grappler_test",
+    size = "small",
+    srcs = ["lib/debug_grappler_test.py"],
+    additional_deps = [
+        ":debug_data",
+        ":debug_utils",
+        "//tensorflow/python:client",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
+    ],
+    xla_enable_strict_auto_jit = False,  # Tests TF:Classic implementation
 )
 
 cuda_py_test(
@@ -1171,7 +1216,6 @@ sh_test(
         ":offline_analyzer",
     ],
     tags = [
-        "no_oss",  # TODO(b/137652456): remove when fixed
         "no_windows",
     ],
 )

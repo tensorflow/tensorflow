@@ -54,7 +54,7 @@ class GradientCheckerTest(test.TestCase):
     error = gradient_checker.max_error(*gradient_checker.compute_gradient(
         lambda x1: math_ops.add(x1, x2), [x1]))
     tf_logging.info("x1 error = %f", error)
-    assert error < 1e-4
+    self.assertLess(error, 1e-4)
 
   def testAddCustomized(self):
     size = (2, 3)
@@ -66,7 +66,7 @@ class GradientCheckerTest(test.TestCase):
         lambda x2: math_ops.add(x1, x2),
         [x2], delta=1e-2))
     tf_logging.info("x2 error = %f", error)
-    assert error < 1e-10
+    self.assertLess(error, 1e-10)
 
   def testGather(self):
     def f(params):
@@ -80,7 +80,7 @@ class GradientCheckerTest(test.TestCase):
     error = gradient_checker.max_error(*gradient_checker.compute_gradient(
         f, [params]))
     tf_logging.info("gather error = %f", error)
-    assert error < 1e-4
+    self.assertLess(error, 1e-4)
 
   def testNestedGather(self):
     def f(params):
@@ -97,7 +97,7 @@ class GradientCheckerTest(test.TestCase):
     error = gradient_checker.max_error(*gradient_checker.compute_gradient(
         f, [params]))
     tf_logging.info("nested gather error = %f", error)
-    assert error < 1e-4
+    self.assertLess(error, 1e-4)
 
   def testComplexMul(self):
     c = constant_op.constant(5 + 7j, dtype=dtypes.complex64)
@@ -141,6 +141,22 @@ class GradientCheckerTest(test.TestCase):
       self.assertEqual(grad[0].shape, (0, 0))
     error = gradient_checker.max_error(*gradient_checker.compute_gradient(
         f, [x]))
+    self.assertEqual(error, 0)
+
+  def testEmptyMatMul(self):
+
+    def f(x, y):
+      return math_ops.matmul(x, y)
+
+    x = constant_op.constant(
+        np.random.random_sample((0, 3)), dtype=dtypes.float32)
+    y = constant_op.constant(
+        np.random.random_sample((3, 4)), dtype=dtypes.float32)
+    for grad in gradient_checker.compute_gradient(f, [x, y]):
+      self.assertEqual(grad[0].shape, (0, 0))
+      self.assertEqual(grad[1].shape, (12, 0))
+    error = gradient_checker.max_error(
+        *gradient_checker.compute_gradient(f, [x, y]))
     self.assertEqual(error, 0)
 
   def testEmptyFails(self):

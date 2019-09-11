@@ -658,18 +658,20 @@ REGISTER_OP("RandomDataset")
 
 REGISTER_OP("ExperimentalRebatchDataset")
     .Input("input_dataset: variant")
-    .Input("num_workers: int64")
+    .Input("num_replicas: int64")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("use_fallback: bool = true")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("RebatchDataset")
     .Input("input_dataset: variant")
-    .Input("num_workers: int64")
+    .Input("num_replicas: int64")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("use_fallback: bool = true")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("SamplingDataset")
@@ -810,6 +812,11 @@ REGISTER_OP("SnapshotDataset")
     .Attr("pending_snapshot_expiry_seconds: int = 86400")  // 1 day default
     .Attr("num_reader_threads: int = 1")
     .Attr("reader_buffer_size: int = 1")
+    .Attr("num_writer_threads: int = 1")
+    .Attr("writer_buffer_size: int = 1")
+    .Attr("shuffle_on_read: bool = false")
+    .Attr("seed: int = 0")
+    .Attr("seed2: int = 0")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // snapshot_path should be a scalar.

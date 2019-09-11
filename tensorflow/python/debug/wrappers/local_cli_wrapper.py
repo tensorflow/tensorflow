@@ -54,7 +54,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
                log_usage=True,
                ui_type="curses",
                thread_name_filter=None,
-               use_random_config_path=False):
+               config_file_path=False):
     """Constructor of LocalCLIDebugWrapperSession.
 
     Args:
@@ -69,8 +69,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         (curses | readline)
       thread_name_filter: Regular-expression white list for thread name. See
         the doc of `BaseDebugWrapperSession` for details.
-      use_random_config_path: If true, set config file path to a random file in
-        the temporary directory.
+      config_file_path: Optional override to the default configuration file
+        path, which is at `${HOME}/.tfdbg_config`.
 
     Raises:
       ValueError: If dump_root is an existing and non-empty directory or if
@@ -127,9 +127,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     self._is_run_start = True
     self._ui_type = ui_type
     self._config = None
-    if use_random_config_path:
-      self._config = cli_config.CLIConfig(
-          config_file_path=os.path.join(tempfile.mkdtemp(), ".tfdbg_config"))
+    if config_file_path:
+      self._config = cli_config.CLIConfig(config_file_path=config_file_path)
 
   def _is_disk_usage_reset_each_run(self):
     # The dumped tensors are all cleaned up after every Session.run
