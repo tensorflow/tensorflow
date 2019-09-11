@@ -897,5 +897,59 @@ std::vector<FunctionDef> MapDatasetParams::func_lib() const {
   return func_lib_;
 }
 
+TensorSliceDatasetParams::TensorSliceDatasetParams(
+    std::vector<Tensor> components, string node_name)
+    : DatasetParams(TensorSliceDtypes(components),
+                    TensorSliceShapes(components), std::move(node_name),
+                    DatasetParamsType::TensorSlice),
+      components_(std::move(components)) {}
+
+Status TensorSliceDatasetParams::GetInputs(
+    gtl::InlinedVector<TensorValue, 4>* inputs) {
+  for (auto& component : components_) {
+    inputs->emplace_back(TensorValue(&component));
+  }
+  return Status::OK();
+}
+
+Status TensorSliceDatasetParams::GetInputPlaceholder(
+    std::vector<string>* input_placeholder) const {
+  input_placeholder->reserve(components_.size());
+  for (int i = 0; i < components_.size(); ++i) {
+    input_placeholder->emplace_back(
+        absl::StrCat(TensorSliceDatasetOp::kComponents, "_", i));
+  }
+  return Status::OK();
+}
+
+Status TensorSliceDatasetParams::GetAttributes(
+    AttributeVector* attr_vector) const {
+  *attr_vector = {{TensorSliceDatasetOp::kToutputTypes, output_dtypes_},
+                  {TensorSliceDatasetOp::kOutputShapes, output_shapes_}};
+  return Status::OK();
+}
+
+DataTypeVector TensorSliceDatasetParams::TensorSliceDtypes(
+    const std::vector<Tensor>& input_components) {
+  DataTypeVector dtypes;
+  for (const auto& component : input_components) {
+    dtypes.emplace_back(component.dtype());
+  }
+  return dtypes;
+}
+
+std::vector<PartialTensorShape> TensorSliceDatasetParams::TensorSliceShapes(
+    const std::vector<Tensor>& input_components) {
+  std::vector<PartialTensorShape> shapes;
+  for (const auto& component : input_components) {
+    gtl::InlinedVector<int64, 4> partial_dim_sizes;
+    for (int i = 1; i < component.dims(); ++i) {
+      partial_dim_sizes.push_back(component.dim_size(i));
+    }
+    shapes.emplace_back(std::move(partial_dim_sizes));
+  }
+  return shapes;
+}
+
 }  // namespace data
 }  // namespace tensorflow

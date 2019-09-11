@@ -30,13 +30,10 @@ limitations under the License.
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/graph/graph_constructor.h"
-#include "tensorflow/core/kernels/data/batch_dataset_op.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/iterator_ops.h"
-#include "tensorflow/core/kernels/data/map_dataset_op.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
-#include "tensorflow/core/kernels/data/take_dataset_op.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
@@ -110,6 +107,25 @@ Status WriteDataToTFRecordFile(const string& filename,
                                const std::vector<absl::string_view>& records,
                                const CompressionParams& params);
 
+<<<<<<< HEAD
+=======
+enum class DatasetParamsType {
+  Range,
+  Batch,
+  Map,
+  MapAndBatch,
+  Sampling,
+  FromTensor,
+  TensorSlice,
+  Cache,
+};
+
+// Returns a string representation for the given dataset parameter type. Note
+// that the return string needs to be same with `kDatasetType` for each dataset
+// parameter type.
+string ToString(DatasetParamsType type);
+
+>>>>>>> Refactor CacheDatasetOpTest
 // Provides the parameters for running the dataset op.
 class DatasetParams {
  public:
@@ -291,6 +307,29 @@ class MapDatasetParams : public DatasetParams {
   DataTypeVector type_arguments_;
   bool use_inter_op_parallelism_;
   bool preserve_cardinality_;
+};
+
+// `TensorSliceDatasetParams` is a common dataset parameter type that are used
+// in testing.
+class TensorSliceDatasetParams : public DatasetParams {
+ public:
+  TensorSliceDatasetParams(std::vector<Tensor> components, string node_name);
+
+  Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override;
+
+  Status GetInputPlaceholder(
+      std::vector<string>* input_placeholder) const override;
+
+  Status GetAttributes(AttributeVector* attr_vector) const override;
+
+ private:
+  DataTypeVector TensorSliceDtypes(const std::vector<Tensor>& input_components);
+
+  std::vector<PartialTensorShape> TensorSliceShapes(
+      const std::vector<Tensor>& input_components);
+
+ public:
+  std::vector<Tensor> components_;
 };
 
 template <typename T>
@@ -624,7 +663,12 @@ class DatasetOpsTestBase : public ::testing::Test {
 class DatasetOpsTestBaseV2 : public DatasetOpsTestBase {
  public:
   // Initializes the required members for running the unit tests.
-  Status Initialize(DatasetParams& dataset_params);
+  virtual Status Initialize(DatasetParams& dataset_params);
+
+ protected:
+  // Make destructor protected so that DatasetOpsTestBaseV2 objects cannot
+  // be instantiated directly. Only subclasses can be instantiated.
+  virtual ~DatasetOpsTestBaseV2(){};
 
  private:
   // Creates the dataset op kernel.
