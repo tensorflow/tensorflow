@@ -1257,14 +1257,19 @@ Status BufferAssigner::AssignBuffersForComputations(
           return a_size > b_size;  // use ">" for decreasing size.
         }
 
+        // Values which live out the computation lifetime will be assigned
+        // first, as they can not be given to the heap simulator.
         const bool a_live_out = alias_analysis.BufferLivesOut(*a);
         const bool b_live_out = alias_analysis.BufferLivesOut(*b);
         if (a_live_out != b_live_out) {
           return a_live_out;
         }
+
+        // Process values in the reverse postorder, since we have to start
+        // with the last value.
         auto compare = [&post_order_position](const HloValue* value1,
                                               const HloValue* value2) {
-          return post_order_position.at(value1->instruction()) <
+          return post_order_position.at(value1->instruction()) >
                  post_order_position.at(value2->instruction());
         };
         const HloValue* a_min = *absl::c_min_element(a->values(), compare);
