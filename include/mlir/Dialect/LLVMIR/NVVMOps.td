@@ -25,14 +25,26 @@
 
 include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
 
+//===----------------------------------------------------------------------===//
+// NVVM dialect definitions
+//===----------------------------------------------------------------------===//
+
 def NVVM_Dialect : Dialect {
   let name = "nvvm";
   let cppNamespace = "NVVM";
 }
 
+//===----------------------------------------------------------------------===//
+// NVVM op definitions
+//===----------------------------------------------------------------------===//
+
 class NVVM_Op<string mnemonic, list<OpTrait> traits = []> :
   LLVM_OpBase<NVVM_Dialect, mnemonic, traits> {
 }
+
+//===----------------------------------------------------------------------===//
+// NVVM special register op definitions
+//===----------------------------------------------------------------------===//
 
 class NVVM_SpecialRegisterOp<string mnemonic,
     list<OpTrait> traits = []> :
@@ -44,20 +56,32 @@ class NVVM_SpecialRegisterOp<string mnemonic,
   let printer = [{ printNVVMIntrinsicOp(p, this->getOperation()); }];
 }
 
+//===----------------------------------------------------------------------===//
+// Lane index and range
 def NVVM_LaneIdOp : NVVM_SpecialRegisterOp<"read.ptx.sreg.laneid">;
 def NVVM_WarpSizeOp : NVVM_SpecialRegisterOp<"read.ptx.sreg.warpsize">;
+
+//===----------------------------------------------------------------------===//
+// Thread index and range
 def NVVM_ThreadIdXOp : NVVM_SpecialRegisterOp<"read.ptx.sreg.tid.x">;
 def NVVM_ThreadIdYOp : NVVM_SpecialRegisterOp<"read.ptx.sreg.tid.y">;
 def NVVM_ThreadIdZOp : NVVM_SpecialRegisterOp<"read.ptx.sreg.tid.z">;
 def NVVM_BlockDimXOp : NVVM_SpecialRegisterOp<"read.ptx.sreg.ntid.x">;
 def NVVM_BlockDimYOp : NVVM_SpecialRegisterOp<"read.ptx.sreg.ntid.y">;
 def NVVM_BlockDimZOp : NVVM_SpecialRegisterOp<"read.ptx.sreg.ntid.z">;
+
+//===----------------------------------------------------------------------===//
+// Block index and range
 def NVVM_BlockIdXOp : NVVM_SpecialRegisterOp<"read.ptx.sreg.ctaid.x">;
 def NVVM_BlockIdYOp : NVVM_SpecialRegisterOp<"read.ptx.sreg.ctaid.y">;
 def NVVM_BlockIdZOp : NVVM_SpecialRegisterOp<"read.ptx.sreg.ctaid.z">;
 def NVVM_GridDimXOp : NVVM_SpecialRegisterOp<"read.ptx.sreg.nctaid.x">;
 def NVVM_GridDimYOp : NVVM_SpecialRegisterOp<"read.ptx.sreg.nctaid.y">;
 def NVVM_GridDimZOp : NVVM_SpecialRegisterOp<"read.ptx.sreg.nctaid.z">;
+
+//===----------------------------------------------------------------------===//
+// NVVM synchronization op definitions
+//===----------------------------------------------------------------------===//
 
 def NVVM_Barrier0Op : NVVM_Op<"barrier0"> {
   string llvmBuilder = [{
