@@ -158,6 +158,7 @@ class StepStatsCuptiTracerAdaptor : public CuptiTraceCollector {
               !annotation_stack.empty()
                   ? std::string(annotation_stack.back().name)
                   : port::MaybeAbiDemangle(event.name.c_str());
+          ns->set_node_name(activity_name);
           switch (event.type) {
             case CuptiTracerEventType::Kernel: {
               const std::string details = strings::Printf(
@@ -200,7 +201,6 @@ class StepStatsCuptiTracerAdaptor : public CuptiTraceCollector {
               ns->set_timeline_label(activity_name);
               collector->Save(stream_device, ns);
           }
-          ns->set_node_name(std::move(activity_name));
         }
       }
     }
