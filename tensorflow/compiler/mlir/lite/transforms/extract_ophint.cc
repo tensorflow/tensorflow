@@ -378,6 +378,10 @@ void PreprocessTopoSortGraph(
         Operation* input_op = op.getOperand(i)->getDefiningOp();
         if (input_op) input_ops.insert(input_op);
       }
+      if (input_ops.empty()) {
+        init_queue->push(&op);
+        continue;
+      }
       operation_to_in_degrees->try_emplace(&op, input_ops.size());
       for (auto* input_op : input_ops) {
         auto preceeding_op_it = operation_to_ouputs->find(input_op);
