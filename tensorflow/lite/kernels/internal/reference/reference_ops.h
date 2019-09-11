@@ -3046,11 +3046,9 @@ inline void ArgMax(const RuntimeShape& input1_shape, const T1* input1_data,
 }
 
 template <typename T>
-inline void TransposeImpl(const TransposeParams& params,
-                          const RuntimeShape& unextended_input_shape,
-                          const T* input_data,
-                          const RuntimeShape& unextended_output_shape,
-                          T* output_data) {
+void Transpose(const TransposeParams& params,
+               const RuntimeShape& unextended_input_shape, const T* input_data,
+               const RuntimeShape& unextended_output_shape, T* output_data) {
   const int unextended_output_size = unextended_output_shape.DimensionsCount();
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_size, 4);
@@ -3095,42 +3093,6 @@ inline void TransposeImpl(const TransposeParams& params,
         }
       }
     }
-  }
-}
-
-template <typename T>
-void Transpose(const TransposeParams& params,
-               const RuntimeShape& unextended_input_shape, const T* input_data,
-               const RuntimeShape& unextended_output_shape, T* output_data) {
-  // Transpose kernel only does rearranging values not numeric evaluations on
-  // each cell. It's safe to implement per size of scalar type and this trick
-  // keeps the total code size in a reasonable range.
-  switch (sizeof(T)) {
-    case 1:
-      TransposeImpl<int8_t>(params, unextended_input_shape,
-                            reinterpret_cast<const int8_t*>(input_data),
-                            unextended_output_shape,
-                            reinterpret_cast<int8_t*>(output_data));
-      break;
-    case 2:
-      TransposeImpl<int16_t>(params, unextended_input_shape,
-                             reinterpret_cast<const int16_t*>(input_data),
-                             unextended_output_shape,
-                             reinterpret_cast<int16_t*>(output_data));
-      break;
-
-    case 4:
-      TransposeImpl<int32_t>(params, unextended_input_shape,
-                             reinterpret_cast<const int32_t*>(input_data),
-                             unextended_output_shape,
-                             reinterpret_cast<int32_t*>(output_data));
-      break;
-    case 8:
-      TransposeImpl<int64_t>(params, unextended_input_shape,
-                             reinterpret_cast<const int64_t*>(input_data),
-                             unextended_output_shape,
-                             reinterpret_cast<int64_t*>(output_data));
-      break;
   }
 }
 

@@ -98,6 +98,7 @@ using reference_ops::SpaceToBatchND;
 using reference_ops::Split;
 using reference_ops::StridedSlice;
 using reference_ops::Sub16;
+using reference_ops::Transpose;
 
 // TODO(b/80247582) Remove this constant.
 // This will be phased out as the shifts are revised with more thought. Use of a
@@ -179,12 +180,6 @@ struct TTypes {
   typedef Eigen::TensorMap<
       Eigen::Tensor<const T, 2, Eigen::RowMajor, IndexType>>
       UnalignedConstMatrix;
-  typedef Eigen::TensorMap<
-      Eigen::Tensor<const T, NDIMS, Eigen::RowMajor, IndexType>, Eigen::Aligned>
-      ConstTensor;
-  typedef Eigen::TensorMap<Eigen::Tensor<T, NDIMS, Eigen::RowMajor, IndexType>,
-                           Eigen::Aligned>
-      Tensor;
 };
 
 // TODO(b/62193649): this function is only needed as long
@@ -6696,171 +6691,6 @@ inline void Logistic16bitPercision(const LogisticParams& params,
       output_val = static_cast<int8>(output_val_s16);
     }
     output_data[c] = output_val;
-  }
-}
-
-// Transpose2DOn32bitMatrix only deals with typical 2D matrix transpose ops.
-inline void Transpose2DOn32bitMatrix(const TransposeParams& params,
-                                     const RuntimeShape& input_shape,
-                                     const int32_t* input_data,
-                                     const RuntimeShape& output_shape,
-                                     int32_t* output_data) {
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 2);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 2);
-  TFLITE_DCHECK_EQ(params.perm_count, 2);
-  TFLITE_DCHECK_EQ(params.perm[0], 1);
-  TFLITE_DCHECK_EQ(params.perm[1], 0);
-
-  const int d0 = input_shape.DimsData()[0];
-  const int d1 = input_shape.DimsData()[1];
-#ifdef USE_NEON
-  const int kLines = 4;
-  const int kSkipSize = (kLines - 1) * d1;
-#endif
-
-  const int32_t* input = input_data;
-
-  int i = 0;
-#ifdef USE_NEON
-  for (; i <= d0 - kLines; i += kLines) {
-    int32_t* output = output_data + i;
-
-    const int32_t* input_ptr = input;
-    __builtin_prefetch(input_ptr, 0, 3);
-    input_ptr += d1;
-    __builtin_prefetch(input_ptr, 0, 3);
-    input_ptr += d1;
-    __builtin_prefetch(input_ptr, 0, 3);
-    input_ptr += d1;
-    __builtin_prefetch(input_ptr, 0, 3);
-
-    int j = 0;
-    for (; j <= d1 - kLines; j += kLines) {
-      input_ptr = input;
-      int32x4_t a0 = vld1q_s32(input);
-      input_ptr += d1;
-      int32x4_t a1 = vld1q_s32(input_ptr);
-      input_ptr += d1;
-      int32x4_t a2 = vld1q_s32(input_ptr);
-      input_ptr += d1;
-      int32x4_t a3 = vld1q_s32(input_ptr);
-
-      int32x4x2_t tmp1 = vuzpq_s32(a0, a2);
-      int32x4x2_t tmp2 = vuzpq_s32(a1, a3);
-      int32x4x2_t tmp3 = vtrnq_s32(tmp1.val[0], tmp2.val[0]);
-      int32x4x2_t tmp4 = vtrnq_s32(tmp1.val[1], tmp2.val[1]);
-
-      vst1q_s32(output, tmp3.val[0]);
-      output += d0;
-      vst1q_s32(output, tmp4.val[0]);
-      output += d0;
-      vst1q_s32(output, tmp3.val[1]);
-      output += d0;
-      vst1q_s32(output, tmp4.val[1]);
-      output += d0;
-      input += kLines;
-    }
-    if (j == d1) {
-      input += kSkipSize;
-    } else {
-      for (int p = 0; p < kLines; ++p) {
-        for (int q = 0; q < d1 - j; ++q) {
-          *(output + q * d0 + p) = *(input + p * d1 + q);
-        }
-      }
-      input += (d1 - j) + kSkipSize;
-    }
-  }
-#endif
-  for (; i < d0; ++i) {
-    int32_t* output = output_data + i;
-    for (int j = 0; j < d1; ++j) {
-      *output = *input;
-      output += d0;
-      ++input;
-    }
-  }
-}
-
-template <typename T>
-inline void TransposeImpl(const TransposeParams& params,
-                          const RuntimeShape& unextended_input_shape,
-                          const T* input_data,
-                          const RuntimeShape& unextended_output_shape,
-                          T* output_data) {
-  const int unextended_output_size = unextended_input_shape.DimensionsCount();
-  const RuntimeShape input_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-  const int input_ext_size = 4 - unextended_input_shape.DimensionsCount();
-  const int output_ext_size = 4 - unextended_output_size;
-
-  // The perm data is extended to match the output, each index incremented by
-  // the amount of front padding of the input shape.
-  int extended_perm[4];
-  for (int i = 0; i < output_ext_size; ++i) {
-    extended_perm[i] = i;
-  }
-  for (int i = 0; i < unextended_output_size; ++i) {
-    extended_perm[i + output_ext_size] = params.perm[i] + input_ext_size;
-  }
-
-  Eigen::array<int, 4> p;
-  for (int i = 0; i < 4; ++i) p[i] = extended_perm[i];
-  Eigen::DSizes<Eigen::DenseIndex, 4> input_dsizes;
-  for (int d = 0; d < 4; d++) {
-    input_dsizes[d] = static_cast<Eigen::DenseIndex>(input_shape.Dims(d));
-  }
-  Eigen::DSizes<Eigen::DenseIndex, 4> output_dsizes;
-  for (int d = 0; d < 4; d++) {
-    output_dsizes[d] = static_cast<Eigen::DenseIndex>(output_shape.Dims(d));
-  }
-
-  auto x = typename TTypes<T, 4>::ConstTensor(input_data, input_dsizes);
-  auto y = typename TTypes<T, 4>::Tensor(output_data, output_dsizes);
-  y = x.shuffle(p);
-}
-
-template <typename T>
-void Transpose(const TransposeParams& params,
-               const RuntimeShape& unextended_input_shape, const T* input_data,
-               const RuntimeShape& unextended_output_shape, T* output_data) {
-  const int unextended_output_size = unextended_output_shape.DimensionsCount();
-  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_size, 4);
-  TFLITE_DCHECK_EQ(unextended_output_size, params.perm_count);
-
-  // Transpose kernel only does rearranging values not numeric evaluations on
-  // each cell. It's safe to implement per size of scalar type and this trick
-  // keeps the total code size in a reasonable range.
-  switch (sizeof(T)) {
-    case 1:
-      // TODO(jaesung): Find a good 2d transpose implementation for 8-bit
-      // matrices.
-      TransposeImpl(params, unextended_input_shape,
-                    reinterpret_cast<const int8_t*>(input_data),
-                    unextended_output_shape,
-                    reinterpret_cast<int8_t*>(output_data));
-      break;
-    case 4:
-      if (unextended_input_shape.DimensionsCount() == 2 &&
-          params.perm[0] == 1 && params.perm[1] == 0) {
-        Transpose2DOn32bitMatrix(params, unextended_input_shape,
-                                 reinterpret_cast<const int32_t*>(input_data),
-                                 unextended_output_shape,
-                                 reinterpret_cast<int32_t*>(output_data));
-        return;
-      }
-      TransposeImpl(params, unextended_input_shape,
-                    reinterpret_cast<const int32_t*>(input_data),
-                    unextended_output_shape,
-                    reinterpret_cast<int32_t*>(output_data));
-      break;
-    default:
-      // Reroute to the reference version if the given size is not common.
-      reference_ops::Transpose(params, unextended_input_shape, input_data,
-                               unextended_output_shape, output_data);
   }
 }
 

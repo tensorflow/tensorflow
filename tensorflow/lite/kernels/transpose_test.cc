@@ -233,28 +233,6 @@ TEST(TransposeTest, Test2DInputConstTensor) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 2, 4, 1, 3, 5}));
 }
 
-TEST(TransposeTest, Test2D4x4KernelTestLeftOverRightSide) {
-  TransposeOpConstModel m({4, 6}, {2}, {1, 0});
-  m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
-              12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
-  m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({6, 4}));
-  EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({0, 6, 12, 18, 1, 7,  13, 19, 2, 8,  14, 20,
-                                3, 9, 15, 21, 4, 10, 16, 22, 5, 11, 17, 23}));
-}
-
-TEST(TransposeTest, Test2D4x4KernelTest2LeftOverBottomSide) {
-  TransposeOpConstModel m({6, 4}, {2}, {1, 0});
-  m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
-              12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
-  m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 6}));
-  EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({0, 4, 8,  12, 16, 20, 1, 5, 9,  13, 17, 21,
-                                2, 6, 10, 14, 18, 22, 3, 7, 11, 15, 19, 23}));
-}
-
 TEST(TransposeTest, Test2DInputDynamicTensor) {
   TransposeOpDynamicModel m({3, 2}, {2});
   m.SetInput({0, 1, 2, 3, 4, 5});
