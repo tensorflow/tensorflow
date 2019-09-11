@@ -13,12 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <string.h>
-
 #include <vector>
-
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -32,7 +29,6 @@ namespace exp {
 // This file has reference implementation of Exp.
 enum KernelType {
   kReference,
-  kGenericOptimized,
 };
 
 struct ExpContext {
@@ -57,8 +53,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   ExpContext op_context(context, node);
-  switch (op_context.input->type) {
-    case kTfLiteFloat32:
+
 #define TF_LITE_EXP(kernel_type, data_type)                               \
   kernel_type::Exp<data_type>(GetTensorData<data_type>(op_context.input), \
                               NumElements(op_context.input),              \
@@ -66,18 +61,18 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   // TODO(kanlig): supports half, bfloat16, float64, complex64, and complex128.
   if (kernel_type == kReference) {
-    TF_LITE_EXP(reference_ops, float);
-  } else {
-    TF_LITE_EXP(optimized_ops, float);
+    switch (op_context.input->type) {
+      case kTfLiteFloat32:
+        TF_LITE_EXP(reference_ops, float);
+        break;
+      default:
+        context->ReportError(context,
+                             "Type %d is currently not supported by Exp.",
+                             op_context.input->type);
+        return kTfLiteError;
+    }
   }
 #undef TF_LITE_EXP
-  break;
-    default:
-      context->ReportError(context,
-                           "Type %d is currently not supported by Exp.",
-                           op_context.input->type);
-      return kTfLiteError;
-  }
   return kTfLiteOk;
 }
 
@@ -89,13 +84,8 @@ TfLiteRegistration* Register_EXP_REF() {
   return &r;
 }
 
-TfLiteRegistration* Register_EXP_GENERIC_OPT() {
-  static TfLiteRegistration r = {nullptr, nullptr, exp::Prepare,
-                                 exp::Eval<exp::kGenericOptimized>};
-  return &r;
-}
-
-TfLiteRegistration* Register_EXP() { return Register_EXP_GENERIC_OPT(); }
+// TODO(kanlig): add optimized implementation of Exp.
+TfLiteRegistration* Register_EXP() { return Register_EXP_REF(); }
 
 }  // namespace builtin
 }  // namespace ops

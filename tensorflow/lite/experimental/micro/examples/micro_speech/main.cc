@@ -37,7 +37,7 @@ int main(int argc, char* argv[]) {
   if (model->version() != TFLITE_SCHEMA_VERSION) {
     error_reporter->Report(
         "Model provided is schema version %d not equal "
-        "to supported version %d.\n",
+        "to supported version %d.",
         model->version(), TFLITE_SCHEMA_VERSION);
     return 1;
   }

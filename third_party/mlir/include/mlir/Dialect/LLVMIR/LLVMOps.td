@@ -442,10 +442,10 @@ def LLVM_UnreachableOp : LLVM_TerminatorOp<"unreachable", []> {
   let printer = [{ *p << getOperationName(); }];
 }
 
-// Pseudo-operations (do not appear in LLVM IR but necessary for the dialect to
-// work correctly).
+// Auxiliary operations (do not appear in LLVM IR but necessary for the dialect
+// to work correctly).
 def LLVM_AddressOfOp
-    : LLVM_OneResultOp<"addressof">,
+    : LLVM_OneResultOp<"mlir.addressof">,
       Arguments<(ins SymbolRefAttr:$global_name)> {
   let builders = [
     OpBuilder<"Builder *builder, OperationState *result, LLVMType resType, "
@@ -461,7 +461,8 @@ def LLVM_AddressOfOp
   ];
 
   let extraClassDeclaration = [{
-    /// Return the llvm.global operation that defined the value referenced here.
+    /// Return the llvm.mlir.global operation that defined the value referenced
+    /// here.
     GlobalOp getGlobal();
   }];
 
@@ -471,7 +472,7 @@ def LLVM_AddressOfOp
 }
 
 def LLVM_GlobalOp
-    : LLVM_ZeroResultOp<"global">,
+    : LLVM_ZeroResultOp<"mlir.global">,
       Arguments<(ins TypeAttr:$type, UnitAttr:$constant, StrAttr:$sym_name,
                  AnyAttr:$value)> {
 
@@ -534,13 +535,13 @@ def LLVM_LLVMFuncOp : LLVM_ZeroResultOp<"func",
   }];
 }
 
-def LLVM_UndefOp : LLVM_OneResultOp<"undef", [NoSideEffect]>,
+def LLVM_UndefOp : LLVM_OneResultOp<"mlir.undef", [NoSideEffect]>,
                    LLVM_Builder<"$res = llvm::UndefValue::get($_resultType);"> {
   let parser = [{ return parseUndefOp(parser, result); }];
   let printer = [{ printUndefOp(p, *this); }];
 }
 def LLVM_ConstantOp
-    : LLVM_OneResultOp<"constant", [NoSideEffect]>,
+    : LLVM_OneResultOp<"mlir.constant", [NoSideEffect]>,
       Arguments<(ins AnyAttr:$value)>,
       LLVM_Builder<"$res = getLLVMConstant($_resultType, $value, $_location);">
 {

@@ -244,3 +244,19 @@ def get_assets_dir(export_dir):
   return os.path.join(
       compat.as_text(export_dir),
       compat.as_text(constants.ASSETS_DIRECTORY))
+
+
+def get_or_create_debug_dir(export_dir):
+  """Returns path to the debug sub-directory, creating if it does not exist."""
+  debug_dir = get_debug_dir(export_dir)
+
+  if not file_io.file_exists(debug_dir):
+    file_io.recursive_create_dir(debug_dir)
+
+  return debug_dir
+
+
+def get_debug_dir(export_dir):
+  """Returns path to the debug sub-directory in the SavedModel."""
+  return os.path.join(
+      compat.as_text(export_dir), compat.as_text(constants.DEBUG_DIRECTORY))

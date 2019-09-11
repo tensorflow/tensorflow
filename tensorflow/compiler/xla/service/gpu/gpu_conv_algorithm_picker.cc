@@ -37,7 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
-#include "tensorflow/stream_executor/redzone_allocator.h"
+#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 
 namespace xla {
 namespace gpu {
@@ -191,7 +191,6 @@ StatusOr<bool> CheckRedzones(const se::RedzoneAllocator& allocator,
   XLA_SCOPED_LOGGING_TIMER_LEVEL("CudnnConvAlgorithmPicker checking redzones",
                                  2);
   using RedzoneCheckStatus = se::RedzoneAllocator::RedzoneCheckStatus;
-
   TF_ASSIGN_OR_RETURN(RedzoneCheckStatus redzone_check,
                       allocator.CheckRedzones());
 
@@ -337,7 +336,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
   // Allocate space for the input, filter, and output of the convolution.
   se::RedzoneAllocator input_output_allocator(
-      stream, allocator, GpuAsmOptsFromConfig(hlo_module_config));
+      stream, allocator, PtxOptsFromConfig(hlo_module_config));
   std::vector<se::DeviceMemoryBase> operand_buffers;
   for (const auto* operand : instr.operands()) {
     TF_ASSIGN_OR_RETURN(auto buffer,
@@ -396,7 +395,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     }
 
     se::RedzoneAllocator scratch_allocator(
-        stream, allocator, GpuAsmOptsFromConfig(hlo_module_config));
+        stream, allocator, PtxOptsFromConfig(hlo_module_config));
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr.ToString();

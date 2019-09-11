@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
+#include "tensorflow/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/kernel.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
@@ -364,9 +364,9 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
   uint64 buffer_size = lhs_typed.ElementCount();
 
   TF_ASSIGN_OR_RETURN(absl::Span<const uint8> compiled_ptx,
-                      se::cuda::CompilePtxOrGetCached(
-                          executor->device_ordinal(), buffer_compare_ptx,
-                          GpuAsmOptsFromConfig(config)));
+                      se::CompileGpuAsmOrGetCached(executor->device_ordinal(),
+                                                   buffer_compare_ptx,
+                                                   PtxOptsFromConfig(config)));
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ComparisonKernelT<ElementT>> comparison_kernel,

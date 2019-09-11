@@ -102,9 +102,9 @@ cc_library(
     hdrs = ["kernel_lowering.h"],
     deps = [
         "//tensorflow/compiler/mlir/xla:hlo",
+        "//tensorflow/compiler/mlir/xla:lhlo_legalize_to_affine",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service/mlir_gpu/transforms:legalize_to_affine",
         "@com_google_absl//absl/memory",
         "@local_config_mlir//:GPUDialect",
         "@local_config_mlir//:GPUToNVVMTransforms",

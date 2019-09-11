@@ -461,6 +461,10 @@ LogicalResult LowerStaticTensorListPass::RewriteFunction(
         auto c = ConvertTFTensorListPushBack(context);
         rewriter->setInsertionPoint(op);
         c.matchAndRewrite(op, *rewriter);
+      } else if (auto tf_op = llvm::dyn_cast<TF::TensorListLengthOp>(op)) {
+        auto c = TFL::ConvertTFTensorListLength(context);
+        rewriter->setInsertionPoint(op);
+        c.matchAndRewrite(op, *rewriter);
       } else if (auto tf_op = llvm::dyn_cast<TF::WhileOp>(op)) {
         if (op->getAttr("T")) op->removeAttr(Identifier::get("T", context));
         UpdateWhileFunctionType(tf_op);

@@ -103,6 +103,15 @@ void ConstOp::build(Builder* builder, OperationState* result, Attribute value) {
 }
 
 //===----------------------------------------------------------------------===//
+// ConcatOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult ConcatenateOp::fold(ArrayRef<Attribute> operands) {
+  if (getNumOperands() == 1) return getOperand(0);
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // ConvertOp
 //===----------------------------------------------------------------------===//
 

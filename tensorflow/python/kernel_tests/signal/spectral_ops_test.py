@@ -25,7 +25,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import spectral_ops_test_util
 from tensorflow.python.ops.signal import spectral_ops
 from tensorflow.python.ops.signal import window_ops
 from tensorflow.python.platform import test
@@ -80,8 +79,7 @@ class SpectralOpsTest(test.TestCase):
     return output
 
   def _compare(self, signal, frame_length, frame_step, fft_length):
-    with spectral_ops_test_util.fft_kernel_label_map(), (
-        self.cached_session(use_gpu=True)) as sess:
+    with self.cached_session(use_gpu=True) as sess:
       actual_stft = spectral_ops.stft(
           signal, frame_length, frame_step, fft_length, pad_end=False)
       signal_ph = array_ops.placeholder(dtype=dtypes.as_dtype(signal.dtype))
@@ -116,8 +114,7 @@ class SpectralOpsTest(test.TestCase):
           expected_inverse_stft, actual_inverse_stft, 1e-4, 1e-4)
 
   def test_shapes(self):
-    with spectral_ops_test_util.fft_kernel_label_map(), (
-        self.session(use_gpu=True)):
+    with self.session(use_gpu=True):
       signal = np.zeros((512,)).astype(np.float32)
 
       # If fft_length is not provided, the smallest enclosing power of 2 of
@@ -187,8 +184,7 @@ class SpectralOpsTest(test.TestCase):
       # Generate a random white Gaussian signal.
       signal = random_ops.random_normal([signal_length])
 
-      with spectral_ops_test_util.fft_kernel_label_map(), (
-          self.cached_session(use_gpu=True)) as sess:
+      with self.cached_session(use_gpu=True) as sess:
         stft = spectral_ops.stft(signal, frame_length, frame_step, fft_length,
                                  pad_end=False)
         inverse_stft = spectral_ops.inverse_stft(stft, frame_length, frame_step,
@@ -280,8 +276,7 @@ class SpectralOpsTest(test.TestCase):
 
   def test_gradients(self):
     """Test that spectral_ops.stft has a working gradient."""
-    with spectral_ops_test_util.fft_kernel_label_map(), (
-        self.session(use_gpu=True)) as sess:
+    with self.session(use_gpu=True) as sess:
       signal_length = 512
 
       # An all-zero signal has all zero gradients with respect to the sum of the
@@ -299,8 +294,7 @@ class SpectralOpsTest(test.TestCase):
       self.assertFalse((sinusoid_gradient == 0.0).all())
 
   def test_gradients_numerical(self):
-    with spectral_ops_test_util.fft_kernel_label_map(), (
-        self.session(use_gpu=True)):
+    with self.session(use_gpu=True):
       # Tuples of (signal_length, frame_length, frame_step, fft_length,
       # stft_bound, inverse_stft_bound).
       # TODO(rjryan): Investigate why STFT gradient error is so high.

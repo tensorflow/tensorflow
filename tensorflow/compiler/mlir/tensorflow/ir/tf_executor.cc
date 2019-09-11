@@ -536,9 +536,8 @@ LogicalResult Verify(MergeOp merge) {
   if (data_type.isa<ControlType>())
     return merge.emitOpError() << "expects a non-control input";
 
-  // Check that all operands can be broadcasted to a common type compatible with
-  // the result type.
-  Type broadcasted_type = merge.output()->getType();
+  // Check that each operand can be individually broadcasted to the output type.
+  Type output_type = merge.output()->getType();
   for (Type operand_type : merge.getOperandTypes()) {
     if (operand_type.isa<ControlType>()) break;
 
@@ -549,22 +548,13 @@ LogicalResult Verify(MergeOp merge) {
 
     // Variant types may have opaque subtypes information that need not match
     // between the two types so drop them before computing the broadcasted type.
-    Type new_broadcasted_type =
-        OpTrait::util::getBroadcastedType(DropVariantSubTypes(broadcasted_type),
-                                          DropVariantSubTypes(operand_type));
-    if (!new_broadcasted_type)
+    Type broadcasted_type = OpTrait::util::getBroadcastedType(
+        DropVariantSubTypes(output_type), DropVariantSubTypes(operand_type));
+    if (!broadcasted_type)
       return merge.emitOpError()
-             << "expects all operands to be broadcastable"
-             << " but got " << broadcasted_type << " vs " << operand_type;
-    // Use the broadcasted type unless we're losing the rank information here.
-    // This is because for example starting with a result of tensor<4xf32>, if
-    // the first operand is unranked, the broadcasted type will be unranked.
-    // Then any tensor operand will be broadcastable to this unranked type.
-    if (!broadcasted_type.cast<TensorType>().hasRank() ||
-        new_broadcasted_type.cast<TensorType>().hasRank())
-      broadcasted_type = new_broadcasted_type;
+             << "expects all operands to be broadcastable with output type"
+             << " but got " << operand_type << " vs " << output_type;
   }
-
   return success();
 }
 
@@ -1086,6 +1076,35 @@ void IslandOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                            MLIRContext *context) {
   results.insert<DropEmptyIslandNoOperandNoDataResult,
                  DropEmptyIslandNoOperandOneDataResult>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// tf_executor.ControlTrigger
+//===----------------------------------------------------------------------===//
+
+namespace {
+// This pattern matches and removes ControlTriggerOps with no control operands.
+// Control result users will have their relevant operands removed.
+struct DropEmptyControlTrigger : public OpRewritePattern<ControlTriggerOp> {
+  using OpRewritePattern<ControlTriggerOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(ControlTriggerOp op,
+                                     PatternRewriter &rewriter) const override {
+    if (op.getNumOperands() != 0) return matchFailure();
+
+    for (auto &use : llvm::make_early_inc_range(op.control()->getUses()))
+      use.getOwner()->eraseOperand(use.getOperandNumber());
+
+    rewriter.replaceOp(op, {nullptr});
+
+    return matchSuccess();
+  }
+};
+}  // anonymous namespace
+
+void ControlTriggerOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<DropEmptyControlTrigger>(context);
 }
 
 //===----------------------------------------------------------------------===//

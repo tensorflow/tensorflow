@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
-#include "tensorflow/stream_executor/redzone_allocator.h"
+#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 
 namespace xla {
 namespace gpu {
@@ -254,7 +254,7 @@ static StatusOr<bool> RunOnInstruction(HloInstruction* instr,
 
   const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
   se::RedzoneAllocator input_output_allocator(
-      stream, allocator, GpuAsmOptsFromConfig(hlo_module_config));
+      stream, allocator, PtxOptsFromConfig(hlo_module_config));
 
   BufferComparator comparator(instr->shape(), hlo_module_config);
 

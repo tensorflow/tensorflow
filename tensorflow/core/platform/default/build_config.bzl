@@ -228,6 +228,7 @@ def cc_proto_library(
         hdrs = gen_hdrs,
         deps = cc_libs + deps,
         includes = includes,
+        alwayslink = 1,
         **kargs
     )
     native.cc_library(
@@ -678,38 +679,6 @@ def tf_additional_core_deps():
         "//tensorflow:no_aws_support": [],
         "//conditions:default": [
             "//tensorflow/core/platform/s3:s3_file_system",
-        ],
-    })
-
-# TODO(jart, jhseu): Delete when GCP is default on.
-def tf_additional_cloud_op_deps():
-    return select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:api_version_2": [],
-        "//tensorflow:windows_and_api_version_2": [],
-        "//tensorflow:no_gcp_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/cloud:bigquery_reader_ops_op_lib",
-            "//tensorflow/contrib/cloud:gcs_config_ops_op_lib",
-        ],
-    })
-
-# TODO(jhseu): Delete when GCP is default on.
-def tf_additional_cloud_kernel_deps():
-    return select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:api_version_2": [],
-        "//tensorflow:windows_and_api_version_2": [],
-        "//tensorflow:no_gcp_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/cloud/kernels:bigquery_reader_ops",
-            "//tensorflow/contrib/cloud/kernels:gcs_config_ops",
         ],
     })
 

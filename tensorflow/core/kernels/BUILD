@@ -69,6 +69,13 @@ package_group(
     ],
 )
 
+package_group(
+    name = "optimizer_helper_friends",
+    packages = [
+        "//learning/brain/research/lather/...",
+    ],
+)
+
 config_setting(
     # Add "--define tensorflow_xsmm=1" to your build command to use libxsmm for
     # sparse matrix multiplications. You will also need appropriate -mavx*
@@ -515,18 +522,17 @@ tf_cuda_library(
     hdrs = ["gpu_utils.h"],
     deps = [
         ":gpu_util_hdrs",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/types:span",
         "//tensorflow/core:autotuning_proto_cc",
         "//tensorflow/core:conv_autotuning_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:logger",
         "//tensorflow/core:stream_executor",
         "//tensorflow/core/util/proto:proto_utils",
-        "//tensorflow/stream_executor:redzone_allocator",
-    ] + if_cuda([
-        "//tensorflow/stream_executor/cuda:ptxas_utils",
-    ]),
+        "//tensorflow/stream_executor/gpu:asm_compiler",
+        "//tensorflow/stream_executor/gpu:redzone_allocator",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 tf_cc_test(
@@ -701,7 +707,10 @@ cc_library(
     name = "training_op_helpers",
     srcs = ["training_op_helpers.cc"],
     hdrs = ["training_op_helpers.h"],
-    visibility = [":friends"],
+    visibility = [
+        ":friends",
+        ":optimizer_helper_friends",
+    ],
     deps = [
         ":dense_update_functor",
         ":variable_ops",
@@ -3357,8 +3366,9 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/kernels:cuda_solvers",
         "//tensorflow/stream_executor/cuda:cusparse_lib",
-    ],
+    ] + if_cuda(["@cub_archive//:cub"]),
 )
 
 LINALG_DEPS = [
@@ -4252,7 +4262,8 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/util/proto:proto_utils",
-        "//tensorflow/stream_executor:redzone_allocator",
+        "//tensorflow/stream_executor/gpu:asm_compiler",
+        "//tensorflow/stream_executor/gpu:redzone_allocator",
     ] + select({
         ":xsmm_convolutions": [
             "@libxsmm_archive//:xsmm_avx",
@@ -4262,7 +4273,6 @@ tf_kernel_library(
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
         "//tensorflow/stream_executor:tf_allocator_adapter",
-        "//tensorflow/stream_executor/cuda:ptxas_utils",
         "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/core:stream_executor",
     ]) + if_rocm([
@@ -6333,6 +6343,10 @@ filegroup(
         "encode_wav_op.cc",
         "eigen_contraction_kernel.cc",
         "eigen_contraction_kernel.h",
+        "einsum_op_impl_half.cc",
+        "einsum_op_impl_bfloat16.cc",
+        "einsum_op_impl_int32.cc",
+        "einsum_op_impl_int64.cc",
         "einsum_op_impl_float.cc",
         "einsum_op_impl_double.cc",
         "einsum_op_impl_complex64.cc",
@@ -6786,7 +6800,6 @@ tf_cc_binary(
             "-lm",
             "-llog",
             "-pie",
-            "-std=c++11",
         ],
         "//conditions:default": [],
     }),
@@ -6846,7 +6859,6 @@ cc_binary(
             "-lm",
             "-llog",
             "-pie",
-            "-std=c++11",
         ],
         "//conditions:default": [],
     }),
@@ -6932,7 +6944,6 @@ cc_binary(
             "-lm",
             "-llog",
             "-pie",
-            "-std=c++11",
         ],
         "//conditions:default": [],
     }),
@@ -8026,6 +8037,7 @@ cc_library(
         "cwise_ops_gpu_common.cu.h",
         "cwise_ops_gpu_gradients.cu.h",
         "cwise_ops_gradients.h",
+        "fill_functor.h",
         "meta_support.h",
     ],
     deps = [

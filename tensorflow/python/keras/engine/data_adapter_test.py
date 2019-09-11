@@ -291,7 +291,8 @@ class GeneratorDataAdapterTest(DataAdapterTestBase):
 
   def test_batch_size(self):
     adapter = self.adapter_cls(self.generator_input)
-    self.assertEqual(adapter.batch_size(), 5)
+    self.assertEqual(adapter.batch_size(), None)
+    self.assertEqual(adapter.representative_batch_size(), 5)
 
   def test_partial_batch(self):
     adapter = self.adapter_cls(self.generator_input)
@@ -343,7 +344,8 @@ class KerasSequenceAdapterTest(DataAdapterTestBase):
 
   def test_batch_size(self):
     adapter = self.adapter_cls(self.sequence_input)
-    self.assertEqual(adapter.batch_size(), 5)
+    self.assertEqual(adapter.batch_size(), None)
+    self.assertEqual(adapter.representative_batch_size(), 5)
 
   def test_partial_batch(self):
     adapter = self.adapter_cls(self.sequence_input)

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/xla/xla_mlir_translate.h"
 
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
@@ -29,6 +30,18 @@ limitations under the License.
 
 using stream_executor::port::Status;
 using stream_executor::port::StatusOr;  // NOLINT TODO(b/130822468) fix this
+
+// NOLINTNEXTLINE
+static llvm::cl::opt<bool> emit_use_tuple_arg(
+    "emit-use-tuple-args",
+    llvm::cl::desc("Emit HLO modules using tuples as args"),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+static llvm::cl::opt<bool> emit_always_return_tuple(
+    "emit-always-return-tuple",
+    llvm::cl::desc("Emit HLO modules always return tuple"),
+    llvm::cl::init(false));
 
 namespace xla {
 
@@ -122,7 +135,8 @@ static mlir::LogicalResult MlirHloToHloTranslateFunction(
   }
 
   HloProto hloProto;
-  Status status = mlir::ConvertMlirHloToHlo(module, &hloProto);
+  Status status = mlir::ConvertMlirHloToHlo(
+      module, &hloProto, emit_use_tuple_arg, emit_always_return_tuple);
   if (!status.ok()) {
     LOG(ERROR) << "Module conversion failed: " << status;
     return mlir::failure();
@@ -155,7 +169,8 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
   }
 
   HloProto hloProto;
-  Status status = mlir::ConvertMlirHloToHlo(module, &hloProto);
+  Status status = mlir::ConvertMlirHloToHlo(
+      module, &hloProto, emit_use_tuple_arg, emit_always_return_tuple);
   if (!status.ok()) {
     LOG(ERROR) << "Module conversion failed: " << status;
     return mlir::failure();

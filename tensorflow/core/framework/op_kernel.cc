@@ -1244,12 +1244,18 @@ Status FindKernelRegistration(
     TF_RETURN_IF_ERROR(KernelAttrsMatch(iter->second.def, node_attrs, &match));
     if (match) {
       if (*reg != nullptr) {
-        return errors::InvalidArgument(
-            "Multiple OpKernel registrations match NodeDef '",
-            FormatNodeDefForError(node_name, has_experimental_debug_info,
-                                  experimental_debug_info),
-            "': '", (*reg)->def.ShortDebugString(), "' and '",
-            iter->second.def.ShortDebugString(), "'");
+        if ((*reg)->def.priority() == iter->second.def.priority()) {
+          return errors::InvalidArgument(
+              "Multiple OpKernel registrations match NodeDef at the same "
+              "priority '",
+              FormatNodeDefForError(node_name, has_experimental_debug_info,
+                                    experimental_debug_info),
+              "': '", (*reg)->def.ShortDebugString(), "' and '",
+              iter->second.def.ShortDebugString(), "'");
+        } else if ((*reg)->def.priority() > iter->second.def.priority()) {
+          continue;
+        }
+        // iter->second's priority is higher than *reg.
       }
       *reg = &iter->second;
     } else {

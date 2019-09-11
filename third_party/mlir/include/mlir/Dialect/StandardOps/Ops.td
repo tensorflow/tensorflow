@@ -881,7 +881,7 @@ def TensorCastOp : CastOp<"tensor_cast"> {
     operation is invalid if converting to a mismatching constant dimension.
 
     Convert from unknown rank to rank 2 with unknown dimension sizes.
-       %2 = tensor_cast %1 : tensor<??f32> to tensor<?x?xf32>
+       %2 = tensor_cast %1 : tensor<*xf32> to tensor<?x?xf32>
   }];
 
   let arguments = (ins AnyTensor);

@@ -463,7 +463,7 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
                 reshape->shape().dimensions(0) / operand->shape().dimensions(0);
             HloInstruction* multiplier_hlo =
                 hlo->parent()->AddInstruction(HloInstruction::CreateConstant(
-                    LiteralUtil::CreateR0<uint32>(multiplier)));
+                    LiteralUtil::CreateR0<int32>(multiplier)));
 
             HloInstruction* new_dynamic_size =
                 hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
@@ -638,7 +638,7 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
                 reshape->shape().dimensions(dynamic_dimension);
             HloInstruction* divisor_hlo =
                 hlo->parent()->AddInstruction(HloInstruction::CreateConstant(
-                    LiteralUtil::CreateR0<uint32>(divisor)));
+                    LiteralUtil::CreateR0<int32>(divisor)));
 
             HloInstruction* new_dynamic_size =
                 hlo->parent()->AddInstruction(HloInstruction::CreateBinary(

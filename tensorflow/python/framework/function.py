@@ -725,6 +725,11 @@ class _FuncGraph(ops.Graph):
 
   # pylint: disable=g-doc-return-or-yield
 
+  @property
+  def outer_graph(self):
+    """The graph active when this _FuncGraph was created."""
+    return self._outer_graph
+
   @tf_contextlib.contextmanager
   def container(self, container_name):
     """Returns a context manager that specifies the resource container to use.

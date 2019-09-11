@@ -73,7 +73,7 @@ std::string GenerateConvCode(
   c += "    int4 dst_size,                   \n";
   if (!is1x1) {
     c += "    int2 kernel_size,              \n";
-    c += "    int2 dillation,                \n";
+    c += "    int2 dilation,                 \n";
   }
   c += "    int2 stride,                     \n";
   c += "    int2 padding                     \n";
@@ -100,11 +100,11 @@ std::string GenerateConvCode(
     c += "  int2 c1;\n";
     c += "  int filter_offset = 0;\n";
     c += "  for (int y = 0; y < kernel_size.y; ++y) {\n";
-    c += "  c0.y = y * dillation.y + yc0;\n";
-    c += "  c1.y = y * dillation.y + yc1;\n";
+    c += "  c0.y = y * dilation.y + yc0;\n";
+    c += "  c1.y = y * dilation.y + yc1;\n";
     c += "  for (int x = 0; x < kernel_size.x; ++x) {\n";
-    c += "  c0.x = x * dillation.x + xc0;\n";
-    c += "  c1.x = x * dillation.x + xc1;\n";
+    c += "  c0.x = x * dilation.x + xc0;\n";
+    c += "  c1.x = x * dilation.x + xc1;\n";
   }
   c += "  for (int s = 0; s < src_size.w; ++s) {\n";
   std::string fc0 = "(int2)(Z, " + f_y + ")";

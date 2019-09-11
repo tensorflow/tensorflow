@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -87,12 +88,11 @@ bool HloValue::operator!=(const HloValue& other) const {
 }
 
 string HloValue::ToShortString() const {
-  string index_str = defining_instruction()->shape().IsTuple()
-                         ? defining_index().ToString()
-                         : "";
-  return StrCat(id(), " ", is_phi_ ? "PHI " : "",
-                defining_instruction()->name(), index_str, " @",
-                (has_color() ? color().value() : -1));
+  return absl::StrFormat(
+      "<%d %s%s%s%s>", id(), instruction()->name(),
+      instruction()->shape().IsTuple() ? index().ToString() : "",
+      is_phi() ? " (phi)" : "",
+      has_color() ? StrCat(" @", color().value()) : "");
 }
 
 string HloValue::ToString(int indent) const {

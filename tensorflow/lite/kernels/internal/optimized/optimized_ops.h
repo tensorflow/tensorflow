@@ -3917,42 +3917,6 @@ inline void Cast(const RuntimeShape& input_shape, const SrcT* input_data,
   output_map.array() = input_map.array().template cast<DstT>();
 }
 
-template <typename T, typename ScalarOp>
-inline void ElementWise(const T* input_data, const int buffer_size,
-                        T* output_data) {
-  auto input_map = VectorMap<const T>(input_data, buffer_size, 1);
-  auto output_map = VectorMap<T>(output_data, buffer_size, 1);
-  output_map.array() = input_map.array().unaryExpr(ScalarOp());
-}
-
-template <typename T>
-inline void Cos(const T* input_data, const int buffer_size, T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Cos");
-  ElementWise<T, Eigen::internal::scalar_cos_op<T>>(input_data, buffer_size,
-                                                    output_data);
-}
-
-template <typename T>
-inline void Exp(const T* input_data, const int buffer_size, T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Exp");
-  return ElementWise<T, Eigen::internal::scalar_exp_op<T>>(
-      input_data, buffer_size, output_data);
-}
-
-template <typename T>
-inline void Log(const T* input_data, const int buffer_size, T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Log");
-  ElementWise<T, Eigen::internal::scalar_log_op<T>>(input_data, buffer_size,
-                                                    output_data);
-}
-
-template <typename T>
-inline void Sin(const T* input_data, const int buffer_size, T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Sin");
-  ElementWise<T, Eigen::internal::scalar_sin_op<T>>(input_data, buffer_size,
-                                                    output_data);
-}
-
 inline void Floor(const RuntimeShape& input_shape, const float* input_data,
                   const RuntimeShape& output_shape, float* output_data) {
   gemmlowp::ScopedProfilingLabel label("Floor");

@@ -341,10 +341,11 @@ void RemoteCopyNode::RunAsync(StatusCallback done) {
   }
   StartSend();
 
+  const std::shared_ptr<CapturedSharedState>& captured_state = captured_state_;
   auto done_wrapper = std::bind(
-      [this](const StatusCallback& done, const Status& s) {
+      [captured_state](const StatusCallback& done, const Status& s) {
         if (!s.ok() && errors::IsCancelled(s)) {
-          Status send_status = captured_state_->GetSendStatus();
+          Status send_status = captured_state->GetSendStatus();
           if (!send_status.ok()) {
             // In this case, Recv is cancelled because the Send op failed.
             // Return the status of the Send op instead.

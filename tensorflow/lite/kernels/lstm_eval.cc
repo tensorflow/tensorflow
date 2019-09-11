@@ -934,7 +934,7 @@ inline void LstmStepQuantized(
     int32_t layer_norm_output_scale_a, int32_t layer_norm_output_scale_b,
     const int32_t* input_bias_ptr, const int32_t* forget_bias_ptr,
     const int32_t* cell_bias_ptr, const int32_t* output_bias_ptr,
-    int32 quantized_cell_clip, int32 quantized_proj_clip, int32_t cell_scale,
+    int16_t quantized_cell_clip, int8_t quantized_proj_clip, int32_t cell_scale,
     const int32_t* inv_large_value,
     const int32_t* input_to_forget_effective_bias,
     const int32_t* recurrent_to_forget_effective_bias,

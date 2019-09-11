@@ -100,7 +100,7 @@ string DeviceName(const tensorflow::Device* d) {
 tensorflow::Status GetAllRemoteDevices(
     const std::vector<string>& remote_workers,
     tensorflow::WorkerCacheInterface* worker_cache,
-    std::unique_ptr<tensorflow::DeviceMgr>* device_mgr) {
+    std::unique_ptr<tensorflow::DynamicDeviceMgr>* device_mgr) {
   std::vector<std::unique_ptr<tensorflow::Device>> remote_devices;
   tensorflow::Status status;
   // TODO(nareshmodi) do this in parallel instead of serially.
@@ -121,11 +121,10 @@ tensorflow::Status GetAllRemoteDevices(
         });
     n.WaitForNotification();
   }
-  std::unique_ptr<tensorflow::DeviceMgr> remote_device_mgr(
-      new tensorflow::StaticDeviceMgr(std::move(remote_devices)));
-
   TF_RETURN_IF_ERROR(status);
 
+  auto remote_device_mgr = absl::make_unique<tensorflow::DynamicDeviceMgr>();
+  TF_RETURN_IF_ERROR(remote_device_mgr->AddDevices(std::move(remote_devices)));
   *device_mgr = std::move(remote_device_mgr);
   return tensorflow::Status::OK();
 }
@@ -215,7 +214,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
       std::remove(remote_workers.begin(), remote_workers.end(), worker_name),
       remote_workers.end());
 
-  std::unique_ptr<tensorflow::DeviceMgr> remote_device_mgr;
+  std::unique_ptr<tensorflow::DynamicDeviceMgr> remote_device_mgr;
   LOG_AND_RETURN_IF_ERROR(GetAllRemoteDevices(
       remote_workers, grpc_server->master_env()->worker_cache,
       &remote_device_mgr));
@@ -979,9 +978,9 @@ TFE_Op* GetFunc(TFE_Context* ctx, const tensorflow::NameAttrList& func,
                 TF_Status* status) {
   TFE_Op* func_op = TFE_NewOp(ctx, func.name().data(), status);
   for (const auto& attr : func.attr()) {
-    if (TF_GetCode(status) != TF_OK) return nullptr;
+    if (!status->status.ok()) return nullptr;
     SetOpAttrValueScalar(ctx, func_op, attr.second, attr.first.data(), status);
-    if (TF_GetCode(status) != TF_OK) return nullptr;
+    if (!status->status.ok()) return nullptr;
   }
   return func_op;
 }
@@ -1029,7 +1028,7 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
     } break;
     case tensorflow::AttrValue::kFunc: {
       const auto func_op = GetFunc(ctx, default_value.func(), status);
-      if (TF_GetCode(status) != TF_OK) return;
+      if (!status->status.ok()) return;
       // TODO(nareshmodi): TFE_OpSetAttrFunction and TFE_OpSetAttrFunctionList
       // require TFE_Op* and just convert it internally a NameAttrValue, so
       // consider adding an overload to the C API to make this case easier.

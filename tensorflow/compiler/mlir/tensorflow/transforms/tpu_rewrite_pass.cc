@@ -137,7 +137,7 @@ std::string EncapsulateFuncAndSerialize(FuncOp entry_func) {
 Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func,
                           OpBuilder* builder) {
   // TODO(b/139377366): Use tf_tpu.compile build method when it is defined.
-  OperationState compile_op_state(launch_func.getLoc(), "tf.MLIRCompileToTPU");
+  OperationState compile_op_state(launch_func.getLoc(), "tf._TPUCompileMlir");
 
   // Build a shape op for each input to launch_func.
   // TODO(b/139377366): When shape inference is ready, we can use compile time

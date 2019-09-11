@@ -563,9 +563,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       auto scatter_dimension_numbers =
           absl::make_unique<ScatterDimensionNumbers>(
               proto.scatter_dimension_numbers());
-      instruction = CreateScatter(shape, operands(0), operands(1), operands(2),
-                                  computations(0), *scatter_dimension_numbers,
-                                  proto.indices_are_sorted());
+      instruction =
+          CreateScatter(shape, operands(0), operands(1), operands(2),
+                        computations(0), *scatter_dimension_numbers,
+                        proto.indices_are_sorted(), proto.unique_indices());
       break;
     }
     case HloOpcode::kIota:
@@ -1392,11 +1393,11 @@ bool HloInstruction::HasSideEffect() const {
     const Shape& shape, HloInstruction* operand,
     HloInstruction* scatter_indices, HloInstruction* updates,
     HloComputation* update_computation,
-    const ScatterDimensionNumbers& scatter_dim_numbers,
-    bool indices_are_sorted) {
+    const ScatterDimensionNumbers& scatter_dim_numbers, bool indices_are_sorted,
+    bool unique_indices) {
   return absl::make_unique<HloScatterInstruction>(
       shape, operand, scatter_indices, updates, update_computation,
-      scatter_dim_numbers, indices_are_sorted);
+      scatter_dim_numbers, indices_are_sorted, unique_indices);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDomain(
@@ -2208,9 +2209,50 @@ string PrintName(const string& name, bool print_ids) {
 
 namespace {
 
+using DFSStack = absl::InlinedVector<std::pair<int, HloInstruction*>, 16>;
+
 string PrintNameInternal(const string& name, const HloPrintOptions& options) {
   return StrCat(options.print_percent() ? "%" : "",
                 PrintName(name, options.print_ids()));
+}
+
+void PrintCycle(const HloInstruction* child, DFSStack* dfs_stack) {
+  // This set contains HloInstructions from the top of `DFSStack` that might
+  // belong to the cycle, i.e. if  DFSStack :=[back,...,child,...,top], then
+  // `subgraph` := {child,...,top}.
+  absl::flat_hash_set<const HloInstruction*> subgraph;
+  while (!dfs_stack->empty() && dfs_stack->back().second != child) {
+    subgraph.insert(dfs_stack->back().second);
+    dfs_stack->pop_back();
+  }
+  // Start dfs at `child` and find a cycle with all nodes in `subgraph`.
+  absl::flat_hash_set<const HloInstruction*> visited;
+  absl::InlinedVector<const HloInstruction*, 16> dfs;
+  dfs.push_back(child);
+  while (!dfs.empty()) {
+    bool found_next_instr = false;
+    for (const auto& user : dfs.back()->users()) {
+      if (user == child) {
+        dfs.push_back(child);
+        LOG(INFO) << "\n\nDirected cycle:\n  "
+                  << absl::StrJoin(
+                         dfs, "\n  ",
+                         [](std::string* out, const HloInstruction* instr) {
+                           out->append(instr->name());
+                         });
+        return;
+      }
+      if (!subgraph.contains(user) || visited.contains(user)) {
+        continue;
+      }
+      visited.insert(user);
+      dfs.push_back(user);
+      found_next_instr = true;
+    }
+    if (!found_next_instr) {
+      dfs.pop_back();
+    }
+  }
 }
 
 }  // namespace
@@ -2846,8 +2888,6 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
 template Status HloInstruction::Visit(DfsHloVisitor* visitor);
 template Status HloInstruction::Visit(ConstDfsHloVisitor* visitor);
 
-using DFSStack = absl::InlinedVector<std::pair<int, HloInstruction*>, 16>;
-
 // Push "child" onto the dfs_stack if not already visited.  Returns false if a
 // cycle was detected, and true otherwise.
 template <typename Visitor>
@@ -2925,6 +2965,7 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
     const size_t old_dfs_stack_size = dfs_stack.size();
     for (HloInstruction* child : current_node->operands()) {
       if (!TF_PREDICT_TRUE(PushDFSChild(visitor, &dfs_stack, child))) {
+        PrintCycle(child, &dfs_stack);
         return FailedPrecondition(
             "A cycle is detected while visiting instruction %s",
             current_node->ToString());
@@ -2934,6 +2975,7 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
     if (!ignore_control_predecessors) {
       for (HloInstruction* child : current_node->control_predecessors()) {
         if (!TF_PREDICT_TRUE(PushDFSChild(visitor, &dfs_stack, child))) {
+          PrintCycle(child, &dfs_stack);
           return FailedPrecondition(
               "A cycle is detected while visiting instruction %s",
               current_node->ToString());

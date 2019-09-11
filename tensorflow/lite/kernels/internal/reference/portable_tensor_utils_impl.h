@@ -76,12 +76,6 @@ void PortableVectorVectorCwiseProductAccumulate(const float* vector1,
 float PortableVectorVectorDotProduct(const float* vector1, const float* vector2,
                                      int v_size);
 
-// Dot product of two batch vectors.
-void PortableBatchVectorBatchVectorDotProduct(const float* vector1,
-                                              const float* vector2, int v_size,
-                                              int n_batch, float* result,
-                                              int result_stride);
-
 // Cwise product of a vector and a batch-vector.
 void PortableVectorBatchVectorCwiseProduct(const float* vector, int v_size,
                                            const float* batch_vector,
@@ -128,9 +122,6 @@ void PortableApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
 
 void PortableCwiseMul(const int16_t* input_1, const int16_t* input_2,
                       int n_batch, int n_input, int shift, int16_t* output);
-
-void PortableCwiseMul(const int16_t* input_1, const int16_t* input_2,
-                      int n_batch, int n_input, int shift, int8_t* output);
 
 void PortableCwiseMul(const int16_t* input_1, const int16_t* input_2,
                       int32_t multiplier, int32_t shift, int32_t n_batch,

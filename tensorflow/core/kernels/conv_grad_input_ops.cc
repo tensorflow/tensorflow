@@ -54,8 +54,8 @@ limitations under the License.
 #include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
-#include "tensorflow/stream_executor/redzone_allocator.h"
+#include "tensorflow/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
@@ -1155,7 +1155,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
                                                 stream);
 
     se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
-                                      se::cuda::PtxCompilationOptions());
+                                      se::GpuAsmOpts());
 
     se::DeviceMemory<T> in_backprop_ptr_rz(
         WrapRedzoneBestEffort(&rz_allocator, in_backprop_ptr));
@@ -1171,7 +1171,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
                                             ctx);
       se::RedzoneAllocator rz_scratch_allocator(
-          stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions(),
+          stream, &tf_allocator_adapter, se::GpuAsmOpts(),
           /*memory_limit=*/ConvolveBackwardDataScratchSize);
       se::ScratchAllocator* allocator_used =
           !RedzoneCheckDisabled()

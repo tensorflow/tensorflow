@@ -43,7 +43,8 @@ class GPUDeviceContext : public DeviceContext {
 #endif
         host_to_device_stream_(host_to_device_stream),
         device_to_host_stream_(device_to_host_stream),
-        device_to_device_stream_(device_to_device_stream) {}
+        device_to_device_stream_(device_to_device_stream) {
+  }
 
   ~GPUDeviceContext() override {}
 

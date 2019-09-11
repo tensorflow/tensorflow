@@ -237,7 +237,7 @@ class SingleOpModel {
     auto* params =
         reinterpret_cast<TfLiteAffineQuantization*>(t->quantization.params);
     for (int i = 0; i < num_inputs; ++i) {
-      quantized_output[i] = input_data[i] * params->scale->data[i];
+      quantized_output[i] = input_data[i] / params->scale->data[i];
     }
     PopulateTensor(index, /*offset=*/0, quantized_output.data(),
                    quantized_output.data() + quantized_output.size());

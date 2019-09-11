@@ -223,10 +223,10 @@ Status ConvolutionTransposed3x3Thin::AddToQueue(CLCommandQueue* queue) {
 
 bool IsConvolutionTransposed3x3ThinSupported(
     const CLDevice& device, const ConvolutionTransposedAttributes& attr) {
-  return device.IsAdreno() && attr.weights.shape.o <= 8 &&
-         attr.weights.shape.w == 3 && attr.weights.shape.h == 3 &&
-         attr.stride.w == 2 && attr.stride.h == 2 &&
-         attr.padding.prepended.w == 1 && attr.padding.prepended.h == 1;
+  return attr.weights.shape.o <= 8 && attr.weights.shape.w == 3 &&
+         attr.weights.shape.h == 3 && attr.stride.w == 2 &&
+         attr.stride.h == 2 && attr.padding.prepended.w == 1 &&
+         attr.padding.prepended.h == 1;
 }
 
 Status CreateConvolutionTransposed3x3Thin(
