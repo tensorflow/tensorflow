@@ -360,10 +360,12 @@ Operation* BuildFusedFuncOp(StringRef func_name, StringRef fused_func_type,
                             OpBuilder* builder, ModuleOp* module_op) {
   SmallVector<Type, 4> input_types;
   SmallVector<Value*, 4> input_values;
+  SmallVector<int, 4> input_indexes;
   for (const auto& kv : inputs) {
     Value* input = kv.second;
     input_types.push_back(input->getType());
     input_values.push_back(input);
+    input_indexes.push_back(kv.first);
   }
 
   SmallVector<Type, 4> func_output_types;
@@ -378,6 +380,8 @@ Operation* BuildFusedFuncOp(StringRef func_name, StringRef fused_func_type,
   SmallVector<NamedAttribute, 4> attrs;
   attrs.push_back(builder->getNamedAttr(
       kTfLiteFunctionName, builder->getStringAttr(fused_func_type)));
+  attrs.push_back(builder->getNamedAttr(
+      kTfLiteFunctionInputIndex, builder->getI32ArrayAttr(input_indexes)));
   FuncOp func_op = FuncOp::create(insert_before_op->getLoc(), func_name,
                                   function_type, llvm::makeArrayRef(attrs));
   module_op->push_back(func_op);

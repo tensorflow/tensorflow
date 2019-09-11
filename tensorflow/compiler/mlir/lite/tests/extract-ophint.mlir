@@ -120,19 +120,19 @@ func @extractMultipleInputsOutputsOphint() {
 }
 
 // CHECK:  func @d4b1eb00b81211e99426dc4a3e957995(tensor<1x16x16x1xf32>) -> tensor<1x16x16x1xf32>
-// CHECK:    attributes  {_tflite_function_name = "cool_activation"}
+// CHECK:  attributes  {_tflite_function_input_index = [0 : i32], _tflite_function_name = "cool_activation"}
 // CHECK:  func @47393154b9af11e99426dc4a3e957995(tensor<2x1x16x1xf32>) -> tensor<1x16x1xf32>
-// CHECK:    attributes  {_tflite_function_name = "cool_activation_stack"}
+// CHECK:  attributes  {_tflite_function_input_index = [0 : i32], _tflite_function_name = "cool_activation_stack"}
 // CHECK:  func @b703f0f4b9ec11e99426dc4a3e957995(tensor<1x16x1xf32>) -> tensor<1x16x1xf32>
-// CHECK:    attributes  {_tflite_function_name = "cool_activation_first"}
+// CHECK:  attributes  {_tflite_function_input_index = [0 : i32], _tflite_function_name = "cool_activation_first"}
 // CHECK:  func @e31fcf90b9ed11e99426dc4a3e957995(tensor<1x16x1xf32>) -> tensor<1x16x1xf32>
-// CHECK:    attributes  {_tflite_function_name = "cool_activation_last"}
+// CHECK:  attributes  {_tflite_function_input_index = [0 : i32], _tflite_function_name = "cool_activation_last"}
 // CHECK:  func @33fab028b9ef11e99426dc4a3e957995(tensor<1x1x16x1xf32>) -> tensor<1x16x1xf32>
-// CHECK:    attributes  {_tflite_function_name = "cool_activation_pack_input_one"}
+// CHECK:  attributes  {_tflite_function_input_index = [0 : i32], _tflite_function_name = "cool_activation_pack_input_one"}
 // CHECK:  func @b92ed354b9f011e99426dc4a3e957995(tensor<2x1x16x1xf32>) -> tensor<2x1x16x1xf32>
-// CHECK:    attributes  {_tflite_function_name = "cool_activation_stack_input_output"}
+// CHECK:  attributes  {_tflite_function_input_index = [0 : i32], _tflite_function_name = "cool_activation_stack_input_output"}
 // CHECK:  func @a6ca45beb9f411e99426dc4a3e957995(tensor<1x16x1xf32>, tensor<1x16x1xf32>) -> (tensor<1x16x1xf32>, tensor<1x16x1xf32>)
-// CHECK:    attributes  {_tflite_function_name = "cool_activation_multiple_input_output"}
+// CHECK:  attributes  {_tflite_function_input_index = [0 : i32, 1 : i32], _tflite_function_name = "cool_activation_multiple_input_output"}
 
 
 // -----
