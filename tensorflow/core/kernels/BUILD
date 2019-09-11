@@ -3816,7 +3816,7 @@ tf_mkl_kernel_library(
     name = "mkl_matmul_op",
     srcs = [
         "mkl_matmul_op.cc",
-        "mkl_matmul_op_fused.cc"
+        "mkl_matmul_op_fused.cc",
     ],
     hdrs = ["mkl_matmul_ops_common.h"],
     deps = MATH_DEPS + mkl_deps(),
