@@ -379,21 +379,6 @@ cc_library(
 )
 
 tf_python_pybind_extension(
-    name = "_pywrap_tfprof",
-    srcs = ["util/tfprof_wrapper.cc"],
-    module_name = "_pywrap_tfprof",
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/internal:print_model_analysis_hdr",
-        "//third_party/eigen3",
-        "//third_party/python_runtime:headers",
-        "@com_google_absl//absl/strings",
-        "@pybind11",
-    ],
-)
-
-tf_python_pybind_extension(
     name = "_pywrap_utils",
     srcs = ["util/util_wrapper.cc"],
     hdrs = ["util/util.h"],
@@ -5012,6 +4997,7 @@ tf_py_wrap_cc(
         "util/kernel_registry.i",
         "util/py_checkpoint_reader.i",
         "util/scoped_annotation.i",
+        "util/tfprof.i",
         "util/traceme.i",
         "util/transform_graph.i",
         "//tensorflow/compiler/mlir/python:mlir.i",
@@ -5110,7 +5096,6 @@ genrule(
     srcs = [
         ":cpp_python_util",  # util
         "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
-        "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
     ],
     outs = ["pybind_symbol_target_libs_file.txt"],
     cmd = select({

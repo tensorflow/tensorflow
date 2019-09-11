@@ -1,4 +1,4 @@
-[cpp_python_util] # util
+[cpp_python_util]
 tensorflow::swig::IsSequence
 tensorflow::swig::IsSequenceOrComposite
 tensorflow::swig::IsCompositeTensor
@@ -18,17 +18,6 @@ tensorflow::swig::FlattenForData
 tensorflow::swig::AssertSameStructureForData
 tensorflow::swig::RegisterType
 
-[stream_executor_pimpl] # stat_summarizer
+[stream_executor_pimpl]
 stream_executor::StreamExecutor::EnablePeerAccessTo
 stream_executor::StreamExecutor::CanEnablePeerAccessTo
-
-[print_model_analysis] # tfprof
-tensorflow::tfprof::NewProfiler
-tensorflow::tfprof::DeleteProfiler
-tensorflow::tfprof::AddStep
-tensorflow::tfprof::WriteProfile
-tensorflow::tfprof::ProfilerFromFile
-tensorflow::tfprof::Profile
-tensorflow::tfprof::PrintModelAnalysis
-tensorflow::tfprof::SerializeToString
-
