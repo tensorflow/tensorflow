@@ -27,6 +27,7 @@ For information on upgrading your existing TensorFlow 1.x models, please refer t
 * No more global variables with helper methods like `tf.global_variables_initializer` and `tf.get_global_step`.
 * Add toggles `tf.enable_control_flow_v2()` and `tf.disable_control_flow_v2()` for enabling/disabling v2 control flow.
 * Enable v2 control flow as part of `tf.enable_v2_behavior()` and `TF2_BEHAVIOR=1`.
+* Fixes autocomplete for most TensorFlow API references by switching to use relative imports in API __init__.py files.
 
 ## Breaking Changes
 * Many backwards incompatible API changes have been made to clean up the APIs and make them more consistent.
@@ -52,7 +53,8 @@ For information on upgrading your existing TensorFlow 1.x models, please refer t
 * `tf.lite`:
   * Removed `lite.OpHint`, `lite.experimental`, and `lite.constant` from 2.0 API.
 * Tensors are no longer hashable, but instead compare element-wise with `==` and `!=`. Use `tf.compat.v1.disable_tensor_equality()` to return to the previous behavior.
-* removed `tf.string_split` from v2 API.
+* Performing equality operations on Tensors or Variables with incompatible shapes an exception is no longer thrown. Instead `__eq__` returns False and `__ne__` returns True.
+* Removed `tf.string_split` from v2 API.
 * Deprecated the use of `constraint=` and `.constraint` with ResourceVariable.
 * Add `UnifiedGRU` as the new GRU implementation for tf2.0. Change the default recurrent activation function for GRU from `hard_sigmoid` to `sigmoid`, and `reset_after` to True in 2.0. Historically recurrent activation is `hard_sigmoid` since it is fast than 'sigmoid'. With new unified backend between CPU and GPU mode, since the CuDNN kernel is using sigmoid, we change the default for CPU mode to sigmoid as well. With that, the default GRU will be compatible with both CPU and GPU kernel. This will enable user with GPU to use CuDNN kernel by default and get a 10x performance boost in training. Note that this is checkpoint breaking change. If user want to use their 1.x pre-trained checkpoint, please construct the layer with GRU(recurrent_activation='hard_sigmoid', reset_after=False) to fallback to 1.x behavior.
 * CUDNN_INSTALL_PATH, TENSORRT_INSTALL_PATH, NCCL_INSTALL_PATH, NCCL_HDR_PATH are deprecated. Use TF_CUDA_PATHS instead which supports a comma-separated list of base paths that are searched to find CUDA libraries and headers.
@@ -153,6 +155,7 @@ If you are experiencing any issues because of this change, please inform us (fil
   * Add v2 APIs for `AUCCurve` and `AUCSummationMethod` enums.
   * `add_update` can now be passed a zero-arg callable in order to support turning off the update when setting `trainable=False` on a Layer of a Model compiled with `run_eagerly=True`.
   * Standardize the LayerNormalization API by replacing the args `norm_axis` and `params_axis` with `axis`.
+  * Fixed critical bugs that help with DenseFeatures usability in TF2
 
 * `tf.lite`:
   * Added evaluation script for `COCO` minival
@@ -166,8 +169,9 @@ If you are experiencing any issues because of this change, please inform us (fil
   * Post-training quantization tool supports fp16 weights and GPU delegate acceleration for fp16.
   * Add delegate support for `QUANTIZED_16BIT_LSTM`.
   * Extracts `NNAPIDelegateKernel` from nnapi_delegate.cc
-
+  
 * Other:
+  * Fix accidental quadratic graph construction cost in graph-mode `tf.gradients()`.
   * ResourceVariable's gather op supports batch dimensions.
   * ResourceVariable support for `gather_nd`.
   * `ResourceVariable` and `Variable` no longer accepts `constraint` in the constructor, nor expose it as a @property.
@@ -223,8 +227,8 @@ If you are experiencing any issues because of this change, please inform us (fil
   * EagerTensor now supports numpy buffer interface for tensors.
   * This change bumps the version number of the FullyConnected Op to 5.
   * Added new op: `tf.strings.unsorted_segment_join`.
-  * Add HW acceleration support for topK_v2
-  * CloudBigtable version updated to v0.10.0 BEGIN_PUBLIC CloudBigtable version updated to v0.10.0
+  * Add HW acceleration support for `topK_v2`.
+  * CloudBigtable version updated to v0.10.0 BEGIN_PUBLIC CloudBigtable version updated to v0.10.0.
   * Expose `Head` as public API.
   * Added `tf.sparse.from_dense` utility function.
   * Improved ragged tensor support in `TensorFlowTestCase`.
@@ -277,7 +281,7 @@ If you are experiencing any issues because of this change, please inform us (fil
   * Add support for `add_metric` in the graph function mode.
   * Updating cosine similarity loss - removed the negate sign from cosine similarity.
   * Changed default for gradient accumulation for TPU embeddings to true.
-  * Adds summary trace API for collecting graph and profile information.
+  * Adds summary trace API for collecting graph and profile information. 
   
 
 ## Thanks to our Contributors
