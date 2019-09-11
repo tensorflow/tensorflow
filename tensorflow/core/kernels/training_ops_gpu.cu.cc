@@ -306,15 +306,16 @@ struct ApplyAdaMax<GPUDevice, T> {
     bcast[0] = grad.dimension(0);
     Eigen::Sizes<1> single;
     const auto one = static_cast<T>(1.0);
-    m.device(d) =
-        m + (beta1.constant(one) - beta1).reshape(single).broadcast(bcast) *
-                (grad - m);
+    m.device(d) +=
+        (beta1.constant(one) - beta1).reshape(single).broadcast(bcast) *
+        (grad - m);
     v.device(d) =
         (beta2.reshape(single).broadcast(bcast) * v).cwiseMax(grad.abs());
-    var.device(d) -=
-        lr / (beta1_power.constant(one) -
-                 beta1_power).reshape(single).broadcast(bcast) *
-                     (m / (v + epsilon));
+    var.device(d) -= lr.reshape(single).broadcast(bcast) /
+                     (beta1_power.constant(one) - beta1_power)
+                         .reshape(single)
+                         .broadcast(bcast) *
+                     (m / (v + epsilon.reshape(single).broadcast(bcast)));
   }
 };
 
