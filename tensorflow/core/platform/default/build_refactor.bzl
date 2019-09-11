@@ -202,7 +202,13 @@ def tf_instantiate_platform_libraries(names = []):
                     "//tensorflow/core/platform:windows/port.cc",
                 ],
                 hdrs = [
-                    "//tensorflow/core/platform:platform_port_headers",
+                    "//tensorflow/core/platform:cpu_info.h",
+                    "//tensorflow/core/platform:demangle.h",
+                    "//tensorflow/core/platform:host_info.h",
+                    "//tensorflow/core/platform:init_main.h",
+                    "//tensorflow/core/platform:mem.h",
+                    "//tensorflow/core/platform:numa.h",
+                    "//tensorflow/core/platform:snappy.h",
                 ],
                 copts = tf_copts(),
                 deps = [

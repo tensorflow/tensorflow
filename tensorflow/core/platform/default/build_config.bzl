@@ -503,7 +503,7 @@ def tf_additional_lib_srcs(exclude = []):
         "default/*.cc",
         "windows/*.cc",
         "posix/error.cc",
-    ], exclude = exclude)
+    ], exclude = exclude + ["default/port.cc"])
     return select({
         "//tensorflow:windows": windows_srcs,
         "//conditions:default": native.glob([
