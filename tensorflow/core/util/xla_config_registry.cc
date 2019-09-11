@@ -13,17 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/util/xla_config_proxy.h"
+#include "tensorflow/core/util/xla_config_registry.h"
 
 namespace tensorflow {
 
 /*static*/
-OptimizerOptions::GlobalJitLevel XlaConfigProxy::GetGlobalJitLevel(
-    OptimizerOptions::GlobalJitLevel jit_level_in_session_opts) {
-  OptimizerOptions::GlobalJitLevel global_jit_level = jit_level_in_session_opts;
-  ConfigSetterRegistry<OptimizerOptions::GlobalJitLevel>::Global()->Update(
-      global_jit_level);
-  return global_jit_level;
-}
+XlaConfigRegistry::global_jit_level_getter_t
+    XlaConfigRegistry::global_jit_level_getter_;
 
 }  // namespace tensorflow

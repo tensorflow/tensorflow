@@ -2805,7 +2805,7 @@ FRAMEWORK_INTERNAL_PUBLIC_HEADERS = [
     "util/presized_cuckoo_map.h",
     "util/tensor_slice_set.h",
     "util/tensor_slice_util.h",
-    "util/xla_config_proxy.h",
+    "util/xla_config_registry.h",
 ]
 
 tf_cuda_library(
@@ -4141,7 +4141,6 @@ tf_cc_tests(
         "util/tensor_slice_util_test.cc",
         "util/tensor_slice_writer_test.cc",
         "util/work_sharder_test.cc",
-        "util/xla_config_proxy_test.cc",
     ],
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],

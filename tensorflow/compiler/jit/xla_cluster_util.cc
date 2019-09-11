@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tensorflow/core/util/xla_config_proxy.h"
+#include "tensorflow/core/util/xla_config_registry.h"
 
 namespace tensorflow {
 
@@ -389,23 +389,18 @@ XlaAutoClusteringSummary GetXlaAutoClusteringSummary(const Graph& graph) {
   return result;
 }
 
-// Implement and register a setter for OptimizerOptions::GlobalJitLevel, so that
-// the Tensorflow core can query its value.
-bool GlobalJitLevelSetter(OptimizerOptions::GlobalJitLevel& global_jit_level) {
+// Implement and register a callback for querying GlobalJitLevel.
+OptimizerOptions::GlobalJitLevel GlobalJitLevelGetter(
+    OptimizerOptions::GlobalJitLevel jit_level_in_session_opts) {
   XlaGlobalJitLevel xla_global_jit_level =
-      GetXlaGlobalJitLevel(global_jit_level);
+      GetXlaGlobalJitLevel(jit_level_in_session_opts);
   // Take the general flag to avoid the dependency on Tensorflow::Graph.
-  OptimizerOptions::GlobalJitLevel new_jit_level = xla_global_jit_level.general;
+  OptimizerOptions::GlobalJitLevel global_jit_level =
+      xla_global_jit_level.general;
 
-  if (new_jit_level != global_jit_level) {
-    global_jit_level = new_jit_level;
-    return true;
-  } else {
-    return false;
-  }
+  return global_jit_level;
 }
 
-REGISTER_XLA_CONFIG_SETTER(OptimizerOptions::GlobalJitLevel,
-                           GlobalJitLevelSetter);
+REGISTER_XLA_CONFIG_GETTER(GlobalJitLevelGetter);
 
 }  // namespace tensorflow

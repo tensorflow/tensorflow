@@ -51,7 +51,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/ptr_util.h"
-#include "tensorflow/core/util/xla_config_proxy.h"
+#include "tensorflow/core/util/xla_config_registry.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -138,7 +138,7 @@ bool MemoryOptimizerEnabled(
   // and swap-outs and incurs great performance overhead. Remove this check when
   // the XLA JIT can better deal with the concurrency.
   OptimizerOptions::GlobalJitLevel global_jit_level =
-      XlaConfigProxy::GetGlobalJitLevel(jit_level_in_session_opts);
+      XlaConfigRegistry::GetGlobalJitLevel(jit_level_in_session_opts);
   if (mem_opt_type == RewriterConfig::DEFAULT_MEM_OPT &&
       (global_jit_level == OptimizerOptions::ON_1 ||
        global_jit_level == OptimizerOptions::ON_2)) {
