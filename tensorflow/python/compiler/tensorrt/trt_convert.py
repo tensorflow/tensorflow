@@ -192,6 +192,10 @@ def _check_trt_version_compatibility():
   """
   linked_version = wrap_py_utils.get_linked_tensorrt_version()
   loaded_version = wrap_py_utils.get_loaded_tensorrt_version()
+  assert isinstance(linked_version, tuple)
+  assert isinstance(loaded_version, tuple)
+  assert len(linked_version) == 3
+  assert len(loaded_version) == 3
   tf_logging.info("Linked TensorRT version: %s" % str(linked_version))
   tf_logging.info("Loaded TensorRT version: %s" % str(loaded_version))
   if loaded_version < linked_version:
