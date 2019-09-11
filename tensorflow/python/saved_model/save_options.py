@@ -33,9 +33,9 @@ class SaveOptions(object):
   """
 
   # Define object attributes in __slots__ for improved memory and performance.
-  __slots__ = ("namespace_whitelist",)
+  __slots__ = ("namespace_whitelist", "save_debug_info")
 
-  def __init__(self, namespace_whitelist=None):
+  def __init__(self, namespace_whitelist=None, save_debug_info=False):
     """Creates an object that stores options for SavedModel saving.
 
     Args:
@@ -43,9 +43,14 @@ class SaveOptions(object):
         when saving a model. Saving an object that uses namespaced ops must
         explicitly add all namespaces to the whitelist. The namespaced ops must
         be registered into the framework when loading the SavedModel.
+      save_debug_info: Boolean indicating whether debug information is saved.
+        If True, then a debug/saved_model_debug_info.pb file will be written
+        with the contents of a GraphDebugInfo binary protocol buffer containing
+        stack trace information for all ops and functions that are saved.
     """
     self.namespace_whitelist = _validate_namespace_whitelist(
         namespace_whitelist)
+    self.save_debug_info = save_debug_info
 
 
 def _validate_namespace_whitelist(namespace_whitelist):

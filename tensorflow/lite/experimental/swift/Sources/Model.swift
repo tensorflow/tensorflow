@@ -26,7 +26,7 @@ final class Model {
   ///
   /// - Precondition: Initialization can fail if the given `filePath` is invalid.
   /// - Parameters:
-  ///   - filePath: Local file path to a TensorFlow Lite model.
+  ///   - filePath: The local file path to a TensorFlow Lite model.
   init?(filePath: String) {
     guard !filePath.isEmpty, let cModel = TfLiteModelCreateFromFile(filePath) else { return nil }
     self.cModel = cModel

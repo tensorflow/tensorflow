@@ -132,6 +132,9 @@ def TFL_FpOrI32OrI64Tensor : TensorOf<[AnyFloat, TFL_Int32Or64]>;
 // Rank/Shape helpers.
 //===----------------------------------------------------------------------===//
 
+class TFL_OperandIsUnranked<int n> :
+  CPred<"$_op.getOperand(" # n # ")->getType().isa<UnrankedTensorType>()">;
+
 // TODO: Some of these could be generalized and/or moved to more general
 // location.
 // Returns true if the n-th operand has unknown rank or has rank m.
@@ -140,6 +143,17 @@ class TFL_OperandHasRank<int n, int m> :
     Or<[CPred<"$_op.getOperand(" # n # ")->getType().isa<UnrankedTensorType>()">,
       CPred<"$_op.getOperand(" # n #
       ")->getType().cast<ShapedType>().getRank() == " # m>]>>;
+
+// True if operand n is ranked and has a rank > dim.
+class TFL_OperandIsRankedAndHasDim<int n, int dim> : And<[
+  CPred<"$_op.getOperand(" # n # ")->getType().isa<RankedTensorType>()">,
+  CPred<"$_op.getOperand(" # n # ")->getType().cast<ShapedType>().getRank() > "
+  # dim>]>;
+
+class TFL_OperandDimEquals<int n, int dim, int size> : And<[
+  TFL_OperandIsRankedAndHasDim<n, dim>,
+  CPred<"$_op.getOperand(" # n # ")->getType().cast<ShapedType>()"
+      ".getShape()[" # dim # " ] == " # size>]>;
 
 // Returns true if the n-th operand has unknown rank or at least rank m.
 class TFL_OperandHasAtleastRank<int n, int m> :
@@ -154,6 +168,32 @@ class TFL_OperandRankEquals1DimOfOperand<int x, int y> :
       ")->getType().cast<ShapedType>().getRank() == "
       "$_op.getOperand(" # y #
       ")->getType().cast<ShapedType>().getShape()[0]">>;
+
+// True if x_shape[dim] == y_shape[dim].
+class TFL_DimOfOperandEqualsDimOfOperand<int x, int y, int dim> : And<[
+  TFL_OperandIsRankedAndHasDim<x, dim>,
+  TFL_OperandIsRankedAndHasDim<y, dim>,
+  CPred<"$_op.getOperand(" # x #
+    ")->getType().cast<ShapedType>().getShape()[" # dim # "] == "
+    "$_op.getOperand(" # y #
+    ")->getType().cast<ShapedType>().getShape()[" # dim # "]">]>;
+
+// Select operands must satisfy one of the following constraints:
+// All inputs are unranked
+// OR
+// All inputs are ranked AND have equal dim[0] AND X & Y have same rank.
+def SelectShapeConstraints :
+  PredOpTrait<"Select operands meet shape criteria",
+    Or<[
+      And<[
+        TFL_OperandIsUnranked<0>,
+        TFL_OperandIsUnranked<1>,
+        TFL_OperandIsUnranked<2>]>,
+      And<[
+        TFL_DimOfOperandEqualsDimOfOperand<0, 1, 0>,
+        TFL_DimOfOperandEqualsDimOfOperand<0, 2, 0>,
+        CPred<"$_op.getOperand(1)->getType().cast<ShapedType>().getRank() == "
+        "$_op.getOperand(2)->getType().cast<ShapedType>().getRank()">]>]>>;
 
 // This is a quantization-aware version of TCresVTEtIsSameAsOp
 class TFL_TCresVTEtIsSameAsOp<int i, int j> : And<[
@@ -315,7 +355,7 @@ def TFL_AddOp : TFL_Op<"add", [Broadcastable, NoSideEffect, Commutative]> {
 
 // TODO(haoliang): Implement legalization pass after pattern rewrite generator
 // supports variadic inputs.
-def TFL_AddNOp : TFL_Op<"add_n", [Commutative, NoSideEffect]> {
+def TFL_AddNOp : TFL_Op<"add_n", [Commutative, NoSideEffect, SameOperandsAndResultsScale]> {
   let summary = "add_n operator";
 
   let description = [{
@@ -323,11 +363,11 @@ def TFL_AddNOp : TFL_Op<"add_n", [Commutative, NoSideEffect]> {
   }];
 
   let arguments = (ins
-    Variadic<TensorOf<[F32, I32]>>:$inputs
+    Variadic<TensorOf<[F32, I32, QI16, QUI16]>>:$inputs
   );
 
   let results = (outs
-    TensorOf<[F32, I32]>:$sum
+    TensorOf<[F32, I32, QI16, QUI16]>:$sum
   );
 }
 
@@ -680,6 +720,117 @@ def TFL_GreaterEqualOp : TFL_Op<"greater_equal", [
   let hasOptions = 0;
 }
 
+// These ops are named NonMaxSuppressionV4 & NonMaxSuppressionV5 to be
+// consistent with TensorFlow's naming. They are NOT 'versions' of NMS in the
+// sense that one is an incremental change over the other.
+// In reality NonMaxSuppressionV5 implements Soft Non Max Suppression and
+// NonMaxSuppressionV4 performs hard NMS.
+
+def TFL_NonMaxSuppressionV4Op : TFL_Op<"non_max_suppression_v4", [
+  NoSideEffect,
+  // Operand 0 (boxes) should have rank 2 with the dim[1] == 4 (box corners)
+  TFL_OperandHasRank<0, 2>,
+  PredOpTrait<"boxes should have dim[1] == 4",
+      TFL_OperandDimEquals<0, 1, 4>>,
+  // Operand 1 (scores) should be a 1-dim tensor
+  TFL_OperandHasRank<1, 1>,
+  // Other operands are scalar params.
+  TFL_OperandHasRank<2, 0>, TFL_OperandHasRank<3, 0>,
+  TFL_OperandHasRank<4, 0>]> {
+  let summary = [{
+Greedily selects a subset of bounding boxes in descending order of score,
+  }];
+
+  let description = [{
+pruning away boxes that have high intersection-over-union (IOU) overlap
+with previously selected boxes.  Bounding boxes with score less than
+`score_threshold` are removed.  Bounding boxes are supplied as
+[y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+diagonal pair of box corners and the coordinates can be provided as normalized
+(i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+is agnostic to where the origin is in the coordinate system and more
+generally is invariant to orthogonal transformations and translations
+of the coordinate system; thus translating or reflections of the coordinate
+system result in the same boxes being selected by the algorithm.
+The output of this operation is a set of integers indexing into the input
+collection of bounding boxes representing the selected boxes.  The bounding
+box coordinates corresponding to the selected indices can then be obtained
+using the `tf.gather operation`.  For example:
+  selected_indices = tf.image.non_max_suppression_v2(
+      boxes, scores, max_output_size, iou_threshold, score_threshold)
+  selected_boxes = tf.gather(boxes, selected_indices)
+  }];
+
+  let arguments = (ins
+    TFL_FpTensor:$boxes,
+    TFL_FpTensor:$scores,
+    I32Tensor:$max_output_size,
+    TFL_FpTensor:$iou_threshold,
+    TFL_FpTensor:$score_threshold
+  );
+
+  let results = (outs
+    I32Tensor:$selected_indices,
+    I32Tensor:$valid_outputs
+  );
+}
+
+def TFL_NonMaxSuppressionV5Op : TFL_Op<"non_max_suppression_v5", [
+  NoSideEffect,
+  // Operand 0 (boxes) should have rank 2 with the dim[1] == 4 (box corners)
+  TFL_OperandHasRank<0, 2>,
+  PredOpTrait<"boxes should have dim[1] == 4",
+      TFL_OperandDimEquals<0, 1, 4>>,
+  // Operand 1 (scores) should be a 1-dim tensor
+  TFL_OperandHasRank<1, 1>,
+  // Other operands are scalar params.
+  TFL_OperandHasRank<2, 0>, TFL_OperandHasRank<3, 0>,
+  TFL_OperandHasRank<4, 0>, TFL_OperandHasRank<5, 0>]> {
+  let summary = [{
+Greedily selects a subset of bounding boxes in descending order of score,
+  }];
+
+  let description = [{
+pruning away boxes that have high intersection-over-union (IOU) overlap
+with previously selected boxes.  Bounding boxes with score less than
+`score_threshold` are removed.  Bounding boxes are supplied as
+[y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+diagonal pair of box corners and the coordinates can be provided as normalized
+(i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+is agnostic to where the origin is in the coordinate system and more
+generally is invariant to orthogonal transformations and translations
+of the coordinate system; thus translating or reflections of the coordinate
+system result in the same boxes being selected by the algorithm.
+The output of this operation is a set of integers indexing into the input
+collection of bounding boxes representing the selected boxes.  The bounding
+box coordinates corresponding to the selected indices can then be obtained
+using the `tf.gather operation`.  For example:
+  selected_indices = tf.image.non_max_suppression_v2(
+      boxes, scores, max_output_size, iou_threshold, score_threshold)
+  selected_boxes = tf.gather(boxes, selected_indices)
+This op also supports a Soft-NMS (with Gaussian weighting) mode (c.f.
+Bodla et al, https://arxiv.org/abs/1704.04503) where boxes reduce the score
+of other overlapping boxes instead of directly causing them to be pruned.
+To enable this Soft-NMS mode, set the `soft_nms_sigma` parameter to be
+larger than 0.
+  }];
+
+  let arguments = (ins
+    TFL_FpTensor:$boxes,
+    TFL_FpTensor:$scores,
+    I32Tensor:$max_output_size,
+    TFL_FpTensor:$iou_threshold,
+    TFL_FpTensor:$score_threshold,
+    TFL_FpTensor:$soft_nms_sigma
+  );
+
+  let results = (outs
+    I32Tensor:$selected_indices,
+    TFL_FpTensor:$selected_scores,
+    I32Tensor:$valid_outputs
+  );
+}
+
 def TFL_NotEqualOp : TFL_Op<"not_equal", [
     Broadcastable, Commutative, NoSideEffect, NoQuantizableResult]> {
   let summary = "Not_equal operator";
@@ -987,11 +1138,11 @@ def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [NoSideEffect]> {
   }];
 
   let arguments = (ins
-    TensorOf<[F32, QUI8, QI8, I8]>:$input,
+    TensorOf<[F32, QUI8, QI8, QUI16, QI16, I8]>:$input,
     TFL_AFAttr:$fused_activation_function
   );
 
-  let results = (outs TensorOf<[F32, QUI8, QI8, I8]>:$output);
+  let results = (outs TensorOf<[F32, QUI8, QI8, QUI16, QI16, I8]>:$output);
 
   let hasOptions = 1;
 
@@ -1100,9 +1251,9 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
     Computes element-wise Sigmoid of input
   }];
 
-  let arguments = (ins TensorOf<[AnyFloat, QI8, QUI8]>:$x);
+  let arguments = (ins TensorOf<[AnyFloat, QI8, QUI8, QI16, QUI16]>:$x);
 
-  let results = (outs TensorOf<[AnyFloat, QI8, QUI8]>:$y);
+  let results = (outs TensorOf<[AnyFloat, QI8, QUI8, QI16, QUI16]>:$y);
 }
 
 def TFL_LogOp: TFL_Op<"log", [NoSideEffect, SameOperandsAndResultType]> {
@@ -1441,7 +1592,7 @@ def TFL_NegOp: TFL_Op<"neg", [NoSideEffect, SameOperandsAndResultType]> {
   let hasOptions = 0b1;
 }
 
-def TFL_PackOp : TFL_Op<"pack", [NoSideEffect]> {
+def TFL_PackOp : TFL_Op<"pack", [NoSideEffect, SameOperandsAndResultsScale]> {
   let summary = "Packs a list of tensors along a dimension into one tensor";
 
   let description = [{
@@ -1472,14 +1623,14 @@ def TFL_PackOp : TFL_Op<"pack", [NoSideEffect]> {
   }];
 
   let arguments = (ins
-    Variadic<TensorOf<[F32, I8, I16, I32, I64]>>:$values,
+    Variadic<TensorOf<[F32, I8, I16, I32, I64, QI8, QUI8]>>:$values,
 
     I32Attr:$values_count,
     I32Attr:$axis
   );
 
   let results = (outs
-    TensorOf<[F32, I8, I16, I32, I64]>:$output
+    TensorOf<[F32, I8, I16, I32, I64, QI8, QUI8]>:$output
   );
 
   let verifier = [{ return Verify(*this); }];
@@ -1589,6 +1740,8 @@ def TFL_PowOp : TFL_Op<"pow", [Broadcastable, NoSideEffect]> {
   let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
 
   let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+
+  let builders = [TFL_BroadcastableBinaryBuilder];
 }
 
 def TFL_RankOp: TFL_Op<"rank", [NoSideEffect]> {
@@ -1775,8 +1928,7 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2",
 }
 
 def TFL_SelectOp : TFL_Op<"select", [NoSideEffect,
-  // TODO(jpienaar): This is too retrictive, rank 1 input is also allowed.
-  SameOperandsAndResultShape,
+  SelectShapeConstraints,
   PredOpTrait<"operands have same element type", TCopVTEtIsSameAs<1, 2>>,
   PredOpTrait<"operands and result have same element type",
     TCresVTEtIsSameAsOp<0, 1>>]> {
@@ -1940,9 +2092,9 @@ def TFL_TanhOp: TFL_Op<"tanh", [
     Computes element-wise Hyperbolic tangent of input
   }];
 
-  let arguments = (ins TensorOf<[F32, I16, I8, QI8, QUI8, TFL_Uint8]>:$x);
+  let arguments = (ins TensorOf<[F32, I16, I8, QI8, QUI8, QI16, QUI16, TFL_Uint8]>:$x);
 
-  let results = (outs TensorOf<[F32, I16, I8, QI8, QUI8, TFL_Uint8]>:$y);
+  let results = (outs TensorOf<[F32, I16, I8, QI8, QUI8, QI16, QUI16, TFL_Uint8]>:$y);
 }
 
 def TFL_TileOp: TFL_Op<"tile", [NoSideEffect,
@@ -2178,9 +2330,6 @@ def TFL_DepthToSpaceOp: TFL_Op<"depth_to_space", [
   let hasOptions = 1;
 }
 
-def Rank0I32Tensor : Type<And<[I32Tensor.predicate, HasAnyRankOfPred<[0]>]>,
-                          "tensor<i32>">;
-
 def TFL_SplitOp : TFL_Op<"split", [NoSideEffect, SameOperandsAndResultsScale]> {
   let summary = "Splits a tensor into `num_split` tensors along one dimension.";
 
@@ -2191,7 +2340,7 @@ def TFL_SplitOp : TFL_Op<"split", [NoSideEffect, SameOperandsAndResultsScale]> {
   }];
 
   let arguments = (ins
-    Rank0I32Tensor:$split_dim,
+    0DTensorOf<[I32]>:$split_dim,
     TensorOf<[F32, I16, I32, I64, QI8, QUI8]>:$value,
     PositiveI32Attr:$num_splits
   );
@@ -2216,14 +2365,16 @@ def TFL_SplitVOp : TFL_Op<"split_v", [NoSideEffect, SameOperandsAndResultsScale]
 
   let arguments = (ins
     TensorOf<[F32, I16, I32, I64, QI8, QUI8]>:$value,
-    I32Tensor:$size_splits,
-    I32Tensor:$split_dim,
-    I32Attr:$num_splits
+    1DTensorOf<[I32]>:$size_splits,
+    0DTensorOf<[I32]>:$split_dim,
+    PositiveI32Attr:$num_splits
   );
 
   let results = (outs
     Variadic<TensorOf<[F32, I16, I32, I64, QI8, QUI8]>>:$outputs
   );
+
+  let verifier = [{ return Verify(*this); }];
 
   let hasOptions = 1;
 }
@@ -2341,7 +2492,8 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice",
   let hasOptions = 1;
 }
 
-def TFL_CastOp : TFL_Op<"cast", [NoSideEffect, SameOperandsAndResultShape]> {
+def TFL_CastOp : TFL_Op<"cast", [
+    NoSideEffect, SameOperandsAndResultShape, NoQuantizableResult]> {
   let summary = "Cast operator";
 
   let description = [{
@@ -2627,6 +2779,10 @@ Ba et al. “Layer Normalization”
   );
 
   let results = (outs AnyTensor:$output);
+
+  // TODO(fengliuai): customize printer and parser to not display
+  // empty region.
+  let regions = (region AnyRegion:$internal);
 
   let hasOptions = 1;
 

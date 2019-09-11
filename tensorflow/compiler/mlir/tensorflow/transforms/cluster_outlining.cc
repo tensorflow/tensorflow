@@ -35,6 +35,9 @@ namespace TFDevice {
 
 namespace {
 
+constexpr char kDeviceAttr[] = "device";
+constexpr char kFuncAttr[] = "func";
+
 struct ClusterOutliningPass : public ModulePass<ClusterOutliningPass> {
   void runOnModule() override;
 };
@@ -101,17 +104,19 @@ void OutlineLaunch(tf_device::LaunchOp launch_op, ModuleManager* module_manager,
   llvm::SetVector<Value*> live_ins;
   getUsedValuesDefinedAbove(launch_op.body(), launch_op.body(), live_ins);
 
-  StringRef device = launch_op.getAttrOfType<StringAttr>("device").getValue();
+  StringRef device =
+      launch_op.getAttrOfType<StringAttr>(kDeviceAttr).getValue();
 
   FuncOp outlined_func = BuildFunction(device, live_ins.getArrayRef(),
                                        launch_op, module_manager, builder);
+  launch_op.setAttr(builder->getIdentifier(kFuncAttr),
+                    builder->getSymbolRefAttr(outlined_func.getName()));
+
   builder->setInsertionPoint(launch_op);
   tf_device::LaunchFuncOp launch_func_op =
       builder->create<tf_device::LaunchFuncOp>(
           launch_op.getLoc(), outlined_func.getType().getResults(),
-          builder->getStringAttr(device),
-          builder->getSymbolRefAttr(outlined_func.getName()),
-          live_ins.getArrayRef());
+          live_ins.getArrayRef(), launch_op.getAttrs());
 
   launch_op.replaceAllUsesWith(launch_func_op);
   launch_op.erase();

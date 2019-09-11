@@ -218,6 +218,7 @@ py_library(
 
 py_test(
     name = "distribute_coordinator_test",
+    size = "medium",
     srcs = ["distribute_coordinator_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
@@ -1152,9 +1153,10 @@ distribute_py_test(
     name = "ctl_correctness_test",
     srcs = ["ctl_correctness_test.py"],
     main = "ctl_correctness_test.py",
-    shard_count = 3,
+    shard_count = 10,
     tags = [
         "multi_and_single_gpu",
+        "noguitar",  # b/140755528
     ],
     deps = [
         "//tensorflow/python:keras_lib",

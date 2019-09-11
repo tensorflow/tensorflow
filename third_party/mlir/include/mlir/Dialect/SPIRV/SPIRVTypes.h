@@ -49,6 +49,7 @@ enum Kind {
   Pointer,
   RuntimeArray,
   Struct,
+  LAST_SPIRV_TYPE = Struct,
 };
 }
 

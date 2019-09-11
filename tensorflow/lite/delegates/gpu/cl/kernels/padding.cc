@@ -70,9 +70,9 @@ std::string GetPaddingCode(
     code += "    }\n";
   }
   code += "  }\n";
-  code += "  " + dst_tensor.GetAddress("address", "X", "Y", "Z") + "\n";
-  code += PostProcess(linked_operations, "result", "Z", "address");
-  code += "  " + dst_tensor.Write3D("result", "address");
+  const LinkingContext context{"result", "X", "Y", "Z"};
+  code += PostProcess(linked_operations, context);
+  code += "  " + dst_tensor.Write3D("result", "X", "Y", "Z");
   code += "}\n";
 
   return code;

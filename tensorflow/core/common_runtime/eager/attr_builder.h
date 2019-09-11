@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/optional.h"
@@ -95,8 +96,8 @@ class AttrBuilder {
 
   template <class T>
   AttrBuilder& Set(StringPiece attr_name, T&& value) {
-    MayBeInitializeNodeDef();
-    SetInAttrValueMap(node_def_->mutable_attr(), string(attr_name), value);
+    SetAttrValue(value, &attr_tmp_);
+    AddAttrIfNotPresent(attr_name, attr_tmp_);
     cached_cache_key_ = absl::nullopt;
     return *this;
   }
@@ -114,28 +115,21 @@ class AttrBuilder {
       return errors::NotFound("No attr named'", attr_name,
                               "' found in AttrBuilder for ", op_name_);
     }
-    return GetNodeAttr(node_def_, attr_name, value);
+    return GetNodeAttr(AttrSlice(*node_def_), attr_name, value);
   }
 
   tensorflow::Fprint128 CacheKey(const StringPiece device);
 
-  void FillAttrValueMap(AttrValueMap* m) const { FillAttrValueMap(m, true); }
-  const NodeDef& BuildNodeDef();
-
- private:
-  template <class T>
-  using AttrVec = tensorflow::gtl::InlinedVector<std::pair<string, T>, 2>;
-
-  tensorflow::Fprint128 BuildCacheKeyForDevice(const StringPiece device) const;
-
-  void MayBeInitializeNodeDef();
   // Fill `m` with the attr-value pairs set via AttrBuilder::Set() so far, as
   // well as any default attr-value pairs from the associated op_def, if there
   // is one.
-  //
-  // If `include_those_in_node_def` is true, also include any attr-value pairs
-  // from `node_def_`.
-  void FillAttrValueMap(AttrValueMap* m, bool include_those_in_node_def) const;
+  void FillAttrValueMap(AttrValueMap* m) const;
+  const NodeDef& BuildNodeDef();
+
+ private:
+  tensorflow::Fprint128 BuildCacheKeyForDevice(const StringPiece device) const;
+
+  void MayBeInitializeNodeDef();
 
   template <class T>
   void SetInAttrValueMap(AttrValueMap* m, const string& attr_name,
@@ -144,16 +138,16 @@ class AttrBuilder {
         << "Calling SetInAttrValueMap after BuildNodeDef.";
     // If attribute is set more than once, its first value prevails
     if (AttrSlice(m).Find(attr_name) == nullptr) {
-      AttrValue attr_value;
-      SetAttrValue(value, &attr_value);
-      m->insert(AttrValueMap::value_type(attr_name, attr_value));
+      SetAttrValue(value, &attr_tmp_);
+      m->insert(AttrValueMap::value_type(attr_name, attr_tmp_));
     }
   }
 
-  AttrVec<int> int_attrs_;
-  AttrVec<float> float_attrs_;
-  AttrVec<bool> bool_attrs_;
-  AttrVec<tensorflow::DataType> type_attrs_;
+  void AddAttrIfNotPresent(StringPiece attr_name, const AttrValue& value);
+
+  gtl::FlatMap<string, string> encoded_attrs_;
+  mutable AttrValue attr_tmp_;  // For encoding
+
   const string op_name_;
   int num_inputs_;
   std::unique_ptr<NodeDef> node_def_;
@@ -161,17 +155,7 @@ class AttrBuilder {
 
   absl::optional<tensorflow::Fprint128> cached_cache_key_;
   string device_for_cached_cache_key_;
-};  // namespace tensorflow
-
-template <>
-AttrBuilder& AttrBuilder::Set(StringPiece attr_name, int&& value);
-template <>
-AttrBuilder& AttrBuilder::Set(StringPiece attr_name, float&& value);
-template <>
-AttrBuilder& AttrBuilder::Set(StringPiece attr_name, bool&& value);
-template <>
-AttrBuilder& AttrBuilder::Set(StringPiece attr_name,
-                              tensorflow::DataType&& value);
+};
 
 template <>
 Status AttrBuilder::Get(StringPiece attr_name, int* value) const;

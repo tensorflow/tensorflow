@@ -1878,14 +1878,17 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
 
 Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
   const Shape& operand_shape = gather->operand(0)->shape();
+  if (ShapeUtil::IsZeroElementArray(operand_shape)) {
+    return ReplaceInstruction(gather, MakeScalarLike(gather, 0));
+  }
   // If the operand of a gather is very small, it is easier to fuse a
   // sequence of selects.
+  const Shape& index_shape = gather->operand(1)->shape();
   if (operand_shape.rank() == 1 &&
       operand_shape.dimensions(0) <= options_.very_small_gather_size() &&
       gather->gather_dimension_numbers().index_vector_dim() ==
-          gather->operand(1)->shape().rank() &&
+          index_shape.rank() &&
       gather->gather_dimension_numbers().collapsed_slice_dims_size() == 1) {
-    const Shape& index_shape = gather->operand(1)->shape();
     const int64 operand_elements = operand_shape.dimensions(0);
     auto get_value = [&](int64 i) {
       auto slice = computation_->AddInstruction(HloInstruction::CreateSlice(
@@ -2165,13 +2168,34 @@ Status AlgebraicSimplifierVisitor::HandleLog(HloInstruction* log) {
     return Status::OK();
   }
 
-  // ln(pow(A,B)) => B*ln(A)
+  // ln(pow(A,B)) => B*ln(abs(A))
+  // or B*ln(A) if A is complex.
   if (Match(log, m::Log(m::Power(m::Op(&a), m::Op(&b))))) {
+    auto abs_a = ShapeUtil::ElementIsComplex(a->shape())
+                     ? a
+                     : computation_->AddInstruction(HloInstruction::CreateUnary(
+                           log->shape(), HloOpcode::kAbs, a));
+    auto new_log = computation_->AddInstruction(
+        HloInstruction::CreateUnary(log->shape(), HloOpcode::kLog, abs_a));
+    return ReplaceWithNewInstruction(
+        log, HloInstruction::CreateBinary(log->shape(), HloOpcode::kMultiply,
+                                          new_log, b));
+  }
+
+  if (Match(log, m::Log(m::Sqrt(m::Op(&a))))) {
     auto new_log = computation_->AddInstruction(
         HloInstruction::CreateUnary(log->shape(), HloOpcode::kLog, a));
     return ReplaceWithNewInstruction(
         log, HloInstruction::CreateBinary(log->shape(), HloOpcode::kMultiply,
-                                          new_log, b));
+                                          new_log, MakeScalarLike(log, 0.5)));
+  }
+
+  if (Match(log, m::Log(m::Rsqrt(m::Op(&a))))) {
+    auto new_log = computation_->AddInstruction(
+        HloInstruction::CreateUnary(log->shape(), HloOpcode::kLog, a));
+    return ReplaceWithNewInstruction(
+        log, HloInstruction::CreateBinary(log->shape(), HloOpcode::kMultiply,
+                                          new_log, MakeScalarLike(log, -0.5)));
   }
 
   return Status::OK();
@@ -2574,6 +2598,7 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power) {
         power, HloInstruction::CreateUnary(power->shape(), HloOpcode::kExp,
                                            a_times_b));
   }
+
   VLOG(10) << "trying transform [pow(A, 2) => A*A]: " << power->ToString();
   if (IsAll(rhs, 2)) {
     return ReplaceWithNewInstruction(

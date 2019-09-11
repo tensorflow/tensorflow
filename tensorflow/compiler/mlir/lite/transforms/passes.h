@@ -21,8 +21,12 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 
 namespace mlir {
-class FunctionPassBase;
-class ModulePassBase;
+class FuncOp;
+class ModuleOp;
+template <typename T>
+class OpPassBase;
+using FunctionPassBase = OpPassBase<FuncOp>;
+using ModulePassBase = OpPassBase<ModuleOp>;
 
 namespace TFL {
 

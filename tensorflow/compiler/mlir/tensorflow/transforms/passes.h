@@ -26,6 +26,10 @@ namespace TF {
 // dialect to MLIR Control Flow Graph (CFG) form.
 std::unique_ptr<FunctionPassBase> CreateTFFunctionalControlFlowToCFG();
 
+// Materialize the MlirPassthroughOp by replacing it with the MLIR module
+// attached as an attribute.
+std::unique_ptr<FunctionPassBase> CreateMaterializePassthroughOpPass();
+
 // Optimizes Tensorflow graph.
 std::unique_ptr<FunctionPassBase> CreateTFOptimizePass();
 
@@ -41,11 +45,14 @@ std::unique_ptr<FunctionPassBase> CreateRaiseTFControlFlowPass();
 namespace tf_executor {
 class GraphOp;
 
+// Returns a pass that folds switch nodes with constant predicates.
+std::unique_ptr<FunctionPassBase> CreateSwitchFoldPass();
+
 // Create a pass to merge IslandOps from TFExecutor dialect.
 std::unique_ptr<FunctionPassBase> CreateTFExecutorIslandCoarseningPass();
 
 // Create a pass to prune tf_executor.graph from dead nodes.
-FunctionPassBase* CreateTFExecutorGraphPruningPass();
+std::unique_ptr<FunctionPassBase> CreateTFExecutorGraphPruningPass();
 
 // Prune a tf_executor.graph operation from dead nodes.
 void prune_graph(GraphOp graph);
@@ -69,6 +76,11 @@ std::unique_ptr<FunctionPassBase> CreateTPUClusterFormationPass();
 // Creates a pass that rewrites `tf_device.launch_func` on TPUs into TPU runtime
 // ops
 std::unique_ptr<ModulePassBase> CreateTPURewritePass();
+
+// Populates the supplied passmanager with the passes required to run the
+// bridge. NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
+void createTPUBridge(PassManager& bridge);
+
 }  // namespace TFTPU
 
 }  // namespace mlir

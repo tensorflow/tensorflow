@@ -466,6 +466,7 @@ cc_library(
         "mirror_pad.cc",
         "mul.cc",
         "neg.cc",
+        "non_max_suppression.cc",
         "one_hot.cc",
         "pack.cc",
         "pad.cc",
@@ -1849,6 +1850,19 @@ cc_test(
         ":test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "non_max_suppression_test",
+    size = "small",
+    srcs = ["non_max_suppression_test.cc"],
+    deps = [
+        ":builtin_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
         "@com_google_googletest//:gtest",
     ],
 )

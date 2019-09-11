@@ -608,6 +608,12 @@ class OptimizerTest(test.TestCase):
       self.assertLen(opt_vars, 5)
       self.assertEqual('outter/Adam/var_2/m:0', opt_vars[3].name)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testEmptyVarList(self):
+    opt = gradient_descent.SGD(1.)
+    opt.minimize(lambda: constant_op.constant(1.), [])
+    opt.apply_gradients([])
+
 
 @keras_parameterized.run_all_keras_modes
 class OptimizersCompatibilityTest(keras_parameterized.TestCase):

@@ -1,0 +1,7 @@
+path: "tensorflow.mlir.experimental"
+tf_module {
+  member_method {
+    name: "convert_graph_def"
+    argspec: "args=[\'graph_def\'], varargs=None, keywords=None, defaults=None"
+  }
+}

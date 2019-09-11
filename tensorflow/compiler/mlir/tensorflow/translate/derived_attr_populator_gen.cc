@@ -95,6 +95,55 @@ static void EmitInstAttrPopulator(const std::vector<Operator> &ops,
   OUT(0) << "}\n\n";
 }
 
+// Emits TensorFlow derived attribute name collector functions for each of the
+// ops.
+static void EmitOpAttrNameCollector(const std::vector<Operator> &ops,
+                                    raw_ostream *ostream) {
+  raw_ostream &os = *ostream;
+
+  for (const auto &op : ops) {
+    // Emit function signature.
+    auto op_name = op.getCppClassName();
+    OUT(0) << "static void Collect" << op_name
+           << "DerivedAttrsName(mlir::TF::" << op_name
+           << "& op, llvm::SmallDenseSet<llvm::StringRef>* values) {\n";
+
+    // Insert the name for each derived attribute in the set.
+    for (const auto &named_attr : op.getAttributes()) {
+      auto attr_name = named_attr.name;
+      const auto &attr = named_attr.attr;
+      if (!attr.isDerivedAttr()) continue;
+      OUT(2) << "values->insert(\"" << attr_name << "\");\n";
+    }
+
+    OUT(2) << "return;\n";
+    OUT(0) << "}\n\n";
+  }
+}
+
+// Emits TensorFlow derived attribute name collector function taking an
+// Operation as argument.
+static void EmitInstAttrNameCollector(const std::vector<Operator> &ops,
+                                      raw_ostream *ostream) {
+  raw_ostream &os = *ostream;
+
+  // Emit function signature.
+  OUT(0) << "static void CollectDerivedAttrsName(mlir::Operation* op, "
+            "llvm::SmallDenseSet<llvm::StringRef>* values) {\n";
+
+  for (const auto &op : ops) {
+    auto op_name = op.getCppClassName();
+
+    // Emit conditional for the op and then call collect for the op on match.
+    OUT(2) << "if (auto tf_op = llvm::dyn_cast<mlir::TF::" << op_name
+           << ">(op)) {\n";
+    OUT(4) << "Collect" << op_name << "DerivedAttrsName(tf_op, values);\n";
+    OUT(2) << "}\n";
+  }
+  OUT(2) << "return;\n";
+  OUT(0) << "}\n\n";
+}
+
 // The function below has a non-constant reference as that is required by LLVM's
 // TableGenMain.
 // NOLINTNEXTLINE
@@ -124,6 +173,9 @@ static bool DerivedAttrWritersMain(raw_ostream &os, RecordKeeper &records) {
 
   EmitOpAttrPopulators(ops, &os);
   EmitInstAttrPopulator(ops, &os);
+
+  EmitOpAttrNameCollector(ops, &os);
+  EmitInstAttrNameCollector(ops, &os);
 
   return false;
 }

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -203,9 +204,6 @@ XLA_MAKE_BINARY(
     xla::Div(xla::Mul(rhs, XlaHelpers::FloatLiteral(b, input_type(0), 0.5)),
              lhs, extend_dimensions));
 
-XLA_MAKE_BINARY(SquaredDifference,
-                xla::Square(xla::Sub(lhs, rhs, extend_dimensions)));
-
 XLA_MAKE_BINARY(TruncateDiv, xla::Div(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(TruncateMod, xla::Rem(lhs, rhs, extend_dimensions));
 
@@ -222,9 +220,7 @@ XLA_MAKE_BINARY(SigmoidGrad,
                 xla::Mul(xla::Mul(rhs, lhs),
                          xla::Sub(XlaHelpers::One(b, input_type(0)), lhs)));
 
-XLA_MAKE_BINARY(SoftplusGrad,
-                xla::Div(lhs, xla::Add(xla::Exp(xla::Neg(rhs)),
-                                       XlaHelpers::One(b, input_type(1)))));
+XLA_MAKE_BINARY(SoftplusGrad, xla::Mul(lhs, xla::Logistic(rhs)));
 
 // softsigngrad(gradients, features) = gradients / (1 + abs(features)) ** 2
 XLA_MAKE_BINARY(SoftsignGrad,
@@ -237,6 +233,19 @@ XLA_MAKE_BINARY(TanhGrad,
                                        xla::Mul(lhs, lhs))));
 
 XLA_MAKE_BINARY(Pow, xla::Pow(lhs, rhs, extend_dimensions));
+
+xla::XlaOp SquaredDifferenceImpl(DataType dtype, xla::XlaOp x, xla::XlaOp y,
+                                 const std::vector<int64>& extend_dimensions) {
+  auto difference = xla::Sub(x, y, extend_dimensions);
+  if (DataTypeIsComplex(dtype)) {
+    return xla::Conj(difference) * difference;
+  } else {
+    return xla::Square(difference);
+  }
+}
+XLA_MAKE_BINARY(SquaredDifference,
+                SquaredDifferenceImpl(input_type(0), lhs, rhs,
+                                      extend_dimensions));
 
 #undef XLA_MAKE_BINARY
 

@@ -18,7 +18,6 @@ package_group(
         "//tensorflow/compiler/jit/...",
         "//tensorflow/compiler/tests/...",
         "//tensorflow/compiler/tf2xla/...",
-        "//tensorflow/contrib/compiler/...",
         "//tensorflow/python/compiler/...",
     ],
 )
@@ -97,13 +96,39 @@ xla_proto_library(
 )
 
 cc_library(
+    name = "graph_compiler_util",
+    srcs = ["graph_compiler_util.cc"],
+    hdrs = ["graph_compiler_util.h"],
+    visibility = [":friends"],
+    deps = [
+        ":functionalize_control_flow",
+        ":sharding_util",
+        ":tf2xla_proto",
+        ":tf2xla_util",
+        ":xla_compiler",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
     name = "tf2xla",
     srcs = ["tf2xla.cc"],
     hdrs = ["tf2xla.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":common",
-        ":functionalize_control_flow",
+        ":graph_compiler_util",
         ":tf2xla_proto",
         ":tf2xla_util",
         ":xla_compiler",
@@ -434,6 +459,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -557,6 +583,7 @@ cc_library(
     srcs = ["mlir_bridge_pass.cc"],
     hdrs = ["mlir_bridge_pass.h"],
     deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
         "//tensorflow/core:core_cpu_lib",
         "@llvm//:support",

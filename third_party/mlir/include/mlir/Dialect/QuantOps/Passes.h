@@ -28,7 +28,9 @@
 #include <memory>
 
 namespace mlir {
-class FunctionPassBase;
+class FuncOp;
+template <typename T> class OpPassBase;
+using FunctionPassBase = OpPassBase<FuncOp>;
 
 namespace quant {
 

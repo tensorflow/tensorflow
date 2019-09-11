@@ -262,6 +262,7 @@ def cc_proto_library(
         hdrs = gen_hdrs,
         deps = cc_libs + deps,
         includes = includes,
+        alwayslink = 1,
         **kargs
     )
 

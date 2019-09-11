@@ -89,14 +89,7 @@ Status ShaderCodegen::Build(CompiledNodeAttributes attr,
   RETURN_IF_ERROR(add_uniform_parameter(
       {"workload_z", static_cast<int32_t>(attr.code.workload.z)}));
 
-  // NOTE: If the shader has shared variables it will have to use barriers,
-  //       which will conflict with a return at this stage.
-  // Let the user deal with the geometry constraints.
-  const bool has_shared_variables = !attr.code.shared_variables.empty();
-  std::string main_source_code = has_shared_variables ? R"(
-  ivec3 gid = ivec3(gl_GlobalInvocationID.xyz);
-)"
-                                                      : R"(
+  std::string main_source_code = R"(
   ivec3 gid = ivec3(gl_GlobalInvocationID.xyz);
   if (gid.x >= $workload_x$ || gid.y >= $workload_y$ || gid.z >= $workload_z$) {
     return;

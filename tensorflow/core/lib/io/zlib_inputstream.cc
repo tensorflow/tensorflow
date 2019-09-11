@@ -76,7 +76,7 @@ ZlibInputStream::ZlibInputStream(InputStreamInterface* input_stream,
                       zlib_options, false) {}
 
 ZlibInputStream::~ZlibInputStream() {
-  if (z_stream_def_->stream) {
+  if (z_stream_def_->stream && !init_error_) {
     inflateEnd(z_stream_def_->stream.get());
   }
   if (owns_input_stream_) {
@@ -85,6 +85,9 @@ ZlibInputStream::~ZlibInputStream() {
 }
 
 Status ZlibInputStream::Reset() {
+  if (init_error_) {
+    return errors::DataLoss("unable to reset stream, cannot decompress.");
+  }
   TF_RETURN_IF_ERROR(input_stream_->Reset());
   inflateEnd(z_stream_def_->stream.get());
   InitZlibBuffer();
@@ -104,6 +107,10 @@ void ZlibInputStream::InitZlibBuffer() {
   int status =
       inflateInit2(z_stream_def_->stream.get(), zlib_options_.window_bits);
 
+  if (zlib_options_.soft_fail_on_error && status != Z_OK) {
+    init_error_ = true;
+    return;
+  }
   CHECK_EQ(status, Z_OK) << "inflateInit failed with status " << status;
 
   z_stream_def_->stream->next_in = z_stream_def_->input.get();
@@ -187,6 +194,10 @@ size_t ZlibInputStream::NumUnreadBytes() const {
 }
 
 Status ZlibInputStream::ReadNBytes(int64 bytes_to_read, tstring* result) {
+  if (init_error_) {
+    return errors::DataLoss("Unable to decompress Zlib file.");
+  }
+
   result->clear();
   // Read as many bytes as possible from cache.
   bytes_to_read -= ReadBytesFromCache(bytes_to_read, result);

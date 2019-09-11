@@ -345,6 +345,12 @@ Status RegisterPerTableLoadOpsForAlgorithmBody(
     shard_id_attr->set_name("shard_id");
     shard_id_attr->set_type("int");
   }
+  {
+    auto* embedding_config_attr = op_def->add_attr();
+    embedding_config_attr->set_name("config");
+    embedding_config_attr->set_type("string");
+    embedding_config_attr->mutable_default_value()->set_s("");
+  }
   string parameter_descriptions;
   for (const auto& parameter : state_variable_specs) {
     if (parameter.has_user_defined() || is_debug_op) {
@@ -461,6 +467,12 @@ Status RegisterPerTableRetrieveOpsForAlgorithmBody(
     auto* shard_id_attr = op_def->add_attr();
     shard_id_attr->set_name("shard_id");
     shard_id_attr->set_type("int");
+  }
+  {
+    auto* embedding_config_attr = op_def->add_attr();
+    embedding_config_attr->set_name("config");
+    embedding_config_attr->set_type("string");
+    embedding_config_attr->mutable_default_value()->set_s("");
   }
   string parameter_descriptions;
   for (const auto& param : state_variable_specs) {

@@ -104,6 +104,11 @@ void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
   PortableApplySigmoid(input, n_batch, n_input, output);
 }
 
+void ApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
+                int16_t* output) {
+  PortableApplyTanh0(input, n_batch, n_input, output);
+}
+
 void ApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
                 int16_t* output) {
   PortableApplyTanh3(input, n_batch, n_input, output);
@@ -116,11 +121,6 @@ void ApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
 
 void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
               int n_input, int shift, int16_t* output) {
-  PortableCwiseMul(input_1, input_2, n_batch, n_input, shift, output);
-}
-
-void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
-              int n_input, int shift, int8_t* output) {
   PortableCwiseMul(input_1, input_2, n_batch, n_input, shift, output);
 }
 
@@ -177,14 +177,6 @@ float VectorVectorDotProduct(const float* vector1, const float* vector2,
   return NEON_OR_PORTABLE(VectorVectorDotProduct, vector1, vector2, v_size);
 }
 
-void BatchVectorBatchVectorDotProduct(const float* vector1,
-                                      const float* vector2, int v_size,
-                                      int n_batch, float* result,
-                                      int result_stride) {
-  NEON_OR_PORTABLE(BatchVectorBatchVectorDotProduct, vector1, vector2, v_size,
-                   n_batch, result, result_stride);
-}
-
 void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
                           float* batch_vector) {
   PortableVectorBatchVectorAdd(vector, v_size, n_batch, batch_vector);
@@ -201,6 +193,10 @@ void ApplyActivationToVector(const float* vector, int v_size,
 
 void Sub1Vector(const float* vector, int v_size, float* result) {
   NEON_OR_PORTABLE(Sub1Vector, vector, v_size, result);
+}
+
+void Sub1Vector(const int16_t* vector, int v_size, int16_t* result) {
+  PortableSub1Vector(vector, v_size, result);
 }
 
 float Clip(float f, float abs_limit) { return PortableClip(f, abs_limit); }

@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/delegate_data.h"
 #include "tensorflow/lite/delegates/flex/util.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/string.h"
+#include "tensorflow/lite/string_type.h"
 
 // Note: this is part of TF Lite's Flex delegation code which is to be
 // completed soon.
@@ -342,7 +342,7 @@ tensorflow::Status ExecuteFlexOp(TfLiteContext* context, BufferMap* buffer_map,
   int num_retvals = node_data->NumOutputs();
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       EagerExecute(node_data->op(),
-                   node_data->mutable_outputs()->GetTensorHandles(),
+                   node_data->mutable_outputs()->GetTensorHandles()->data(),
                    &num_retvals),
       " (while executing '", node_data->name(), "' via Eager)");
 

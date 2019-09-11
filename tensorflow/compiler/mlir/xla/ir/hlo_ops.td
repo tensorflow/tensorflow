@@ -194,15 +194,24 @@ def HLO_WhileOp: HLO_Op<"while", [NoSideEffect, SameOperandsAndResultType]> {
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_ReduceOp: HLO_Op<"reduce", [NoSideEffect]>, BASE_HLO_ReduceOp {
-
+def HLO_ReduceOp: HLO_Op<"reduce", [
+      NoSideEffect,
+      SingleBlockImplicitTerminator<"ReturnOp">
+    ]>, BASE_HLO_ReduceOp {
+  // TODO(hinsu): Split operands and init into two separate variadic operands
+  // by using SameVariadicOperandSize trait.
   let arguments = (ins
     Variadic<HLO_TensorOrTuple>:$operands_and_init,
-    SymbolRefAttr:$computation,
     ElementsAttr:$dimensions
   );
 
   let results = (outs Variadic<HLO_Tensor>);
+
+  // TODO(hinsu): Verify that the attached body arguments and results are
+  // compatible with reduce op's operands.
+  let regions = (region SizedRegion<1>:$body);
+
+  // TODO(hinsu): Implement custom printer and parser.
 
   // TODO(b/129422361): ReduceOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -478,41 +487,43 @@ def HLO_ClampOp : HLO_Op<"clamp",
 }
 
 def HLO_ConcatenateOp : HLO_Op<"concatenate",
-      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ConcatenateOp {
+    [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ConcatenateOp {
 
-   let arguments = (
-     ins Variadic<HLO_Tensor>:$val,
-         I64Attr: $dimension
-   );
+  let arguments = (
+    ins Variadic<HLO_Tensor>:$val,
+        I64Attr: $dimension
+  );
 
-   let verifier = [{
-     auto firstType = getOperand(0)->getType().cast<RankedTensorType>();
+  let verifier = [{
+    auto firstType = getOperand(0)->getType().cast<RankedTensorType>();
 
-     auto firstShape = firstType.getShape();
-     int numOperands = getNumOperands();
-     for (int i = 1; i < numOperands; i++) {
-       auto secondType = getOperand(i)->getType().cast<RankedTensorType>();
+    auto firstShape = firstType.getShape();
+    int numOperands = getNumOperands();
+    for (int i = 1; i < numOperands; i++) {
+      auto secondType = getOperand(i)->getType().cast<RankedTensorType>();
 
-       if (firstType.getRank() != secondType.getRank()) {
-         return emitOpError(
-             llvm::formatv("operands (0) and ({0}) do not match rank.", i));
-       }
+      if (firstType.getRank() != secondType.getRank()) {
+        return emitOpError(
+            llvm::formatv("operands (0) and ({0}) do not match rank.", i));
+      }
 
-       auto secondShape = secondType.getShape();
-       for (int d = 0; d < firstType.getRank(); ++d) {
-         if (firstShape[d] != secondShape[d] && d != dimension()) {
-           return emitOpError(llvm::formatv(
-               "operands (0) and ({0}) non-concat dimensions do not match "
-               "({1}) != ({2}).",
-               i, llvm::make_range(firstShape.begin(), firstShape.end()),
-               llvm::make_range(secondShape.begin(), secondShape.end())));
-         }
-       }
-     }
-     return success();
-   }];
+      auto secondShape = secondType.getShape();
+      for (int d = 0; d < firstType.getRank(); ++d) {
+        if (firstShape[d] != secondShape[d] && d != dimension()) {
+          return emitOpError(llvm::formatv(
+              "operands (0) and ({0}) non-concat dimensions do not match "
+              "({1}) != ({2}).",
+              i, llvm::make_range(firstShape.begin(), firstShape.end()),
+              llvm::make_range(secondShape.begin(), secondShape.end())));
+        }
+      }
+    }
+    return success();
+  }];
 
-   let results = (outs HLO_Tensor);
+  let results = (outs HLO_Tensor);
+
+  let hasFolder = 1;
 
   // TODO(b/129422361) ConcatOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -764,6 +775,56 @@ def HLO_TransposeOp: HLO_Op<"transpose",
 
     return success();
   }];
+}
+
+def HLO_ReduceWindowOp: HLO_Op<"reduce_window", [
+      NoSideEffect,
+      SameVariadicOperandSize,
+      SingleBlockImplicitTerminator<"ReturnOp">
+    ]>, BASE_HLO_ReduceWindowOp {
+
+  // TODO(hinsu): Verify that padding attribute is 2-d and the remaining
+  // attributes are 1-d. Attributes' leading dimension should match rank of the
+  // inputs.
+  let arguments = (ins
+    Variadic<HLO_TensorOrTuple>:$operands,
+    Variadic<HLO_TensorOrTuple>:$init_values,
+    I64ElementsAttr:$window_dimensions,
+    // If strides or dilations attributes are missing then the default value is
+    // one for each of the input dimensions. Similarly, padding values are zero
+    // for both low and high in each of the dimensions, if not specified.
+    OptionalAttr<I64ElementsAttr>:$window_strides,
+    OptionalAttr<I64ElementsAttr>:$base_dilations,
+    OptionalAttr<I64ElementsAttr>:$window_dilations,
+    OptionalAttr<I64ElementsAttr>:$padding
+  );
+
+  let results = (outs Variadic<HLO_Tensor>);
+
+  // TODO(hinsu): Verify that the attached body arguments and results are
+  // compatible with reduce op's operands.
+  let regions = (region SizedRegion<1>:$body);
+
+  // TODO(b/129422361): ReduceWindowOp has special conversion logic to HLO.
+  let hasCustomHLOConverter = 1;
+
+  // TODO(hinsu): Implement custom printer and parser.
+}
+
+def HLO_ReturnOp : HLO_Op<"return", [Terminator]> {
+  let summary = [{
+    The `hlo.return` operation terminates a region and returns values.
+  }];
+
+  let arguments = (ins
+    Variadic<HLO_TensorOrTuple>:$results
+  );
+
+  // Disable conversion operator for return op as the op is not an actual XLA
+  // instruction and is only used as a terminator for regions.
+  let hasCustomHLOConverter = 1;
+
+  // TODO(hinsu): Implement custom printer and parser.
 }
 
 #endif // HLO_OPS

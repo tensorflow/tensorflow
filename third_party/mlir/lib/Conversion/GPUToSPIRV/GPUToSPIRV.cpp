@@ -142,7 +142,7 @@ void GPUToSPIRVPass::runOnModule() {
   }
 
   /// Dialect conversion to lower the functions with the spirv::ModuleOps.
-  SPIRVBasicTypeConverter basicTypeConverter(context);
+  SPIRVBasicTypeConverter basicTypeConverter;
   SPIRVTypeConverter typeConverter(&basicTypeConverter);
   OwningRewritePatternList patterns;
   patterns.insert<

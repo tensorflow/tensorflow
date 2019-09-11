@@ -94,10 +94,16 @@ public:
   Operation *clone(BlockAndValueMapping &mapper);
   Operation *clone();
 
-  /// Create a deep copy of this operation but keep the operation regions empty.
+  /// Create a partial copy of this operation without traversing into attached
+  /// regions. The new operation will have the same number of regions as the
+  /// original one, but they will be left empty.
   /// Operands are remapped using `mapper` (if present), and `mapper` is updated
   /// to contain the results.
   Operation *cloneWithoutRegions(BlockAndValueMapping &mapper);
+
+  /// Create a partial copy of this operation without traversing into attached
+  /// regions. The new operation will have the same number of regions as the
+  /// original one, but they will be left empty.
   Operation *cloneWithoutRegions();
 
   /// Returns the operation block that contains this operation.
@@ -494,12 +500,21 @@ public:
   /// Walk the operation in postorder, calling the callback for each nested
   /// operation(including this one). The callback method can take any of the
   /// following forms:
-  ///   (void)(Operation*) : Walk all operations opaquely.
+  ///   void(Operation*) : Walk all operations opaquely.
   ///     * op->walk([](Operation *nestedOp) { ...});
-  ///   (void)(OpT) : Walk all operations of the given derived type.
+  ///   void(OpT) : Walk all operations of the given derived type.
   ///     * op->walk([](ReturnOp returnOp) { ...});
-  template <typename FnT> void walk(FnT &&callback) {
-    detail::walkOperations(this, std::forward<FnT>(callback));
+  ///   WalkResult(Operation*|OpT) : Walk operations, but allow for
+  ///                                interruption/cancellation.
+  ///     * op->walk([](... op) {
+  ///         // Interrupt, i.e cancel, the walk based on some invariant.
+  ///         if (some_invariant)
+  ///           return WalkResult::interrupt();
+  ///         return WalkResult::advance();
+  ///       });
+  template <typename FnT, typename RetT = detail::walkResultType<FnT>>
+  RetT walk(FnT &&callback) {
+    return detail::walkOperations(this, std::forward<FnT>(callback));
   }
 
   //===--------------------------------------------------------------------===//
@@ -669,6 +684,33 @@ public:
   /// Initializes the result type iterator to the specified result iterator.
   ResultTypeIterator(ResultIterator it)
       : llvm::mapped_iterator<ResultIterator, Type (*)(Value *)>(it, &unwrap) {}
+};
+
+/// This class implements use iterator for the Operation. This iterates over all
+/// uses of all results of an Operation.
+class UseIterator final
+    : public llvm::iterator_facade_base<UseIterator, std::forward_iterator_tag,
+                                        Operation *> {
+public:
+  /// Initialize UseIterator for op, specify end to return iterator to last use.
+  explicit UseIterator(Operation *op, bool end = false);
+
+  UseIterator &operator++();
+  Operation *operator->() { return use->getOwner(); }
+  Operation *operator*() { return use->getOwner(); }
+
+  bool operator==(const UseIterator &other) const;
+  bool operator!=(const UseIterator &other) const;
+
+private:
+  void skipOverResultsWithNoUsers();
+
+  /// The operation whose uses are being iterated over.
+  Operation *op;
+  /// The result of op whoses uses are being iterated over.
+  Operation::result_iterator res;
+  /// The use of the result.
+  Value::use_iterator use;
 };
 
 // Implement the inline result iterator methods.

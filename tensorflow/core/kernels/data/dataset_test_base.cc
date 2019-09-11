@@ -415,7 +415,7 @@ Status DatasetOpsTestBase::InitFunctionLibraryRuntime(
   std::vector<std::unique_ptr<Device>> devices;
   TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
       options, "/job:localhost/replica:0/task:0", &devices));
-  device_mgr_ = absl::make_unique<DeviceMgr>(std::move(devices));
+  device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
   resource_mgr_ = absl::make_unique<ResourceMgr>("default_container");
 
   FunctionDefLibrary proto;
@@ -532,7 +532,7 @@ Status DatasetOpsTestBase::CreateOpKernelContext(
     attr.set_on_host(on_host);
     allocator_attrs_.emplace_back(attr);
   }
-  params_->output_attr_array = gtl::vector_as_array(&allocator_attrs_);
+  params_->output_attr_array = allocator_attrs_.data();
 
   *context = absl::make_unique<OpKernelContext>(params_.get());
   return Status::OK();

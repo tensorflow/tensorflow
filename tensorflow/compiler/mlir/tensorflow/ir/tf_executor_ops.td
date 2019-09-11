@@ -351,7 +351,7 @@ def TfExecutor_MergeOp : TfExecutor_Op<"Merge",
 
   let results = (outs
     AnyTensor:$output,
-    TensorOf<[I32]>:$valueIndex,
+    TensorOf<[I32]>:$value_index,
     TfeControlType:$control
   );
 }
@@ -593,6 +593,8 @@ def TfExecutor_ControlTriggerOp : TfExecutor_Op<"ControlTrigger",
   );
 
   let verifier = ?;
+
+  let hasCanonicalizer = 1;
 
   let builders = [OpBuilder<
     "Builder *builder, OperationState *result, "

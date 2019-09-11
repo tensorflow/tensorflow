@@ -112,15 +112,6 @@ py_library(
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
         "//tensorflow:windows": [],
-        "//tensorflow:no_aws_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/kinesis",
-        ],
-    }) + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
         "//conditions:default": [
             "//tensorflow/contrib/fused_conv:fused_conv_py",
             "//tensorflow/contrib/tensorrt:init_py",
@@ -135,15 +126,6 @@ py_library(
         "//conditions:default": [
             "//tensorflow/contrib/bigtable",
             "//tensorflow/contrib/cloud:cloud_py",
-        ],
-    }) + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:no_ignite_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/ignite",
         ],
     }),
 )
@@ -165,16 +147,7 @@ cc_library(
         "//tensorflow/contrib/tensor_forest:stats_ops_kernels",
         "//tensorflow/contrib/tensor_forest:tensor_forest_kernels",
         "//tensorflow/contrib/text:all_kernels",
-    ] + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:no_aws_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/kinesis:dataset_kernels",
-        ],
-    }) + if_not_windows([
+    ] + if_not_windows([
         "//tensorflow/contrib/tensorrt:trt_op_kernels",
     ]),
 )
@@ -196,25 +169,7 @@ cc_library(
         "//tensorflow/contrib/tensor_forest:stats_ops_op_lib",
         "//tensorflow/contrib/tensor_forest:tensor_forest_ops_op_lib",
         "//tensorflow/contrib/text:all_ops",
-    ] + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:no_aws_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/kinesis:dataset_ops_op_lib",
-        ],
-    }) + if_not_windows([
+    ] + if_not_windows([
         "//tensorflow/compiler/tf2tensorrt:trt_op_libs",
-    ]) + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:no_ignite_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/ignite:dataset_ops_op_lib",
-        ],
-    }),
+    ]),
 )

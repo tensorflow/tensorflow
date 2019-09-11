@@ -2,7 +2,7 @@
 " Language:   mlir
 " Maintainer: The MLIR team, http://github.com/tensorflow/mlir/
 " Version:      $Revision$
-" Adapted from the LLVM vim indent file
+" Some parts adapted from the LLVM vim syntax file.
 
 if version < 600
   syntax clear
@@ -16,16 +16,22 @@ syn case match
 syn keyword mlirType index f16 f32 f64
 " Integer type.
 syn match mlirType /\<i\d\+\>/
-" Primitive types inside memref, tensor, or vector.
-syn match mlirType /<.*x\s*\zs\(f16\|f32\|f64\|i\d\+\)/
-syn match mlirType /\<memref\ze<.*>/
-syn match mlirType /\<tensor\ze<.*>/
-syn match mlirType /\<vector\ze<.*>/
+
+" Elemental types inside memref, tensor, or vector types.
+syn match mlirType /x\s*\zs\(f16\|f32\|f64\|i\d\+\)/
+
+" Shaped types.
+syn match mlirType /\<memref\ze\s*<.*>/
+syn match mlirType /\<tensor\ze\s*<.*>/
+syn match mlirType /\<vector\ze\s*<.*>/
+
+" vector types inside memref or tensor.
+syn match mlirType /x\s*\zsvector/
 
 " Operations.
 " Core ops (not exhaustive yet).
 " TODO: the list is not exhaustive.
-syn keyword mlirOps alloc addf addi call call_indirect cmpi constant dealloc dma_start dma_wait dim extract_element getTensor load memref_cast mulf muli store select subf subi tensor_cast
+syn keyword mlirOps alloc addf addi call call_indirect cmpi constant dealloc dma_start dma_wait dim extract_element for getTensor if load memref_cast mulf muli store select subf subi tensor_cast
 
 " Affine ops.
 syn match mlirOps /\<affine\.apply\>/
@@ -36,6 +42,8 @@ syn match mlirOps /\<affine\.if\>/
 syn match mlirOps /\<affine\.load\>/
 syn match mlirOps /\<affine\.store\>/
 
+" TODO: dialect name prefixed ops (llvm or std).
+
 " Keywords.
 syn keyword mlirKeyword
       \ else
@@ -45,15 +53,20 @@ syn keyword mlirKeyword
       \ to
 
 " Misc syntax.
-syn match   mlirNoName /[%@!]\d\+\>/
+
 syn match   mlirNumber /-\?\<\d\+\>/
+" Match numbers even in shaped types.
+syn match   mlirNumber /-\?\<\d\+\ze\s*x/
+syn match   mlirNumber /x\s*\zs-\?\d\+\ze\s*x/
+
 syn match   mlirFloat  /-\?\<\d\+\.\d*\(e[+-]\d\+\)\?\>/
 syn match   mlirFloat  /\<0x\x\+\>/
 syn keyword mlirBoolean true false
 syn match   mlirComment /\/\/.*$/
 syn region  mlirString start=/"/ skip=/\\"/ end=/"/
 syn match   mlirLabel /[-a-zA-Z$._][-a-zA-Z$._0-9]*:/
-syn match   mlirIdentifier /[%@][-a-zA-Z$._][-a-zA-Z$._0-9]*/
+syn match   mlirIdentifier /[%@][a-zA-Z$._-][a-zA-Z0-9$._-]*/
+syn match   mlirIdentifier /[%@!]\d\+\>/
 syn match mlirMapSetOutline "#.*$"
 
 " Syntax-highlight lit test commands and bug numbers.
@@ -84,7 +97,6 @@ if version >= 508 || !exists("did_c_syn_inits")
   HiLink mlirKeyword Keyword
   HiLink mlirBoolean Boolean
   HiLink mlirFloat Float
-  HiLink mlirNoName Identifier
   HiLink mlirConstant Constant
   HiLink mlirSpecialComment SpecialComment
   HiLink mlirIdentifier Identifier

@@ -296,8 +296,8 @@ def main(_):
       total_conf_matrix = conf_matrix
     else:
       total_conf_matrix += conf_matrix
-  tf.compat.v1.logging.info('Confusion Matrix:\n %s' % (total_conf_matrix))
-  tf.compat.v1.logging.info('Final test accuracy = %.1f%% (N=%d)' %
+  tf.compat.v1.logging.warn('Confusion Matrix:\n %s' % (total_conf_matrix))
+  tf.compat.v1.logging.warn('Final test accuracy = %.1f%% (N=%d)' %
                             (total_accuracy * 100, set_size))
 
 

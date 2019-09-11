@@ -137,14 +137,15 @@ TfLiteStatus PopulateQuantizedLstmParams(
   auto* proj_params = reinterpret_cast<TfLiteAffineQuantization*>(
       output_tensor->quantization.params);
   if (cell_clip > 0.0) {
-    quantized_lstm_param->quantized_cell_clip =
-        static_cast<int16_t>(cell_clip / cell_params->scale->data[0]);
+    quantized_lstm_param->quantized_cell_clip = static_cast<int32_t>(
+        std::min(std::max(cell_clip / cell_params->scale->data[0], -32768.0f),
+                 32767.0f));
   } else {
     quantized_lstm_param->quantized_cell_clip = 0;
   }
   if (proj_clip > 0.0) {
-    quantized_lstm_param->quantized_proj_clip =
-        static_cast<int8_t>(proj_clip / proj_params->scale->data[0]);
+    quantized_lstm_param->quantized_proj_clip = static_cast<int32_t>(std::min(
+        std::max(proj_clip / proj_params->scale->data[0], -128.0f), 127.0f));
   } else {
     quantized_lstm_param->quantized_proj_clip = 0;
   }
@@ -229,7 +230,7 @@ TfLiteStatus PopulateQuantizedLstmParams(
   float layer_norm_cell_scale = default_scale;
   float layer_norm_output_scale = default_scale;
   float activation_scale = default_scale;
-  float cell_scale = default_scale;
+  int cell_scale = 1;
 
   // Effective scales.
   float effective_input_to_input_scale = default_scale;
@@ -280,7 +281,15 @@ TfLiteStatus PopulateQuantizedLstmParams(
   recurrent_to_forget_weight_scale = recurrent_to_forget_weights->params.scale;
   recurrent_to_cell_weight_scale = recurrent_to_cell_weights->params.scale;
   recurrent_to_output_weight_scale = recurrent_to_output_weights->params.scale;
-  cell_scale = std::pow(2, -11);
+
+  // Get cell state.
+  TfLiteTensor* cell_state =
+      &context->tensors[op_data->cell_state_tensor_index];
+  TF_LITE_ENSURE(context, CheckedLog2(cell_state->params.scale, &cell_scale));
+
+  // TODO(jianlijianli): remove this check once kernel has better tanh support.
+  TF_LITE_ENSURE(context, cell_scale == -11 || cell_scale == -15);
+  quantized_lstm_param->cell_scale = cell_scale;
   input_scale = input->params.scale;
 
   // Calculate effective scales.
@@ -316,13 +325,16 @@ TfLiteStatus PopulateQuantizedLstmParams(
 
   if (use_peephole) {
     if (!use_cifg) {
-      effective_cell_to_input_scale =
-          cell_scale * cell_to_input_weight_scale / intermediate_scale[0];
+      effective_cell_to_input_scale = std::pow(2, cell_scale) *
+                                      cell_to_input_weight_scale /
+                                      intermediate_scale[0];
     }
-    effective_cell_to_forget_scale =
-        cell_scale * cell_to_forget_weight_scale / intermediate_scale[3];
-    effective_cell_to_output_scale =
-        cell_scale * cell_to_output_weight_scale / intermediate_scale[9];
+    effective_cell_to_forget_scale = std::pow(2, cell_scale) *
+                                     cell_to_forget_weight_scale /
+                                     intermediate_scale[3];
+    effective_cell_to_output_scale = std::pow(2, cell_scale) *
+                                     cell_to_output_weight_scale /
+                                     intermediate_scale[9];
   }
 
   // Decompose scales.
@@ -738,54 +750,50 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
 
   // Forget gate.
   TF_LITE_ENSURE_OK(
-      context,
-      PrecomputeZeroPointTimesWeightWithBias(
-          context, input_zero_point, input_to_forget_weights, nullptr,
-          &(quantized_lstm_params->input_to_forget_weight_x_input_zp)));
+      context, PrecomputeZeroPointTimesWeightWithBias(
+                   context, input_zero_point, input_to_forget_weights, nullptr,
+                   &(quantized_lstm_params->input_to_forget_effective_bias)));
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, activation_zero_point, recurrent_to_forget_weights, nullptr,
-          &(quantized_lstm_params
-                ->recurrent_to_forget_weight_x_activation_zp)));
+          &(quantized_lstm_params->recurrent_to_forget_effective_bias)));
   // Modulation gate.
   TF_LITE_ENSURE_OK(
       context, PrecomputeZeroPointTimesWeightWithBias(
                    context, input_zero_point, input_to_cell_weights, nullptr,
-                   &(quantized_lstm_params->input_to_cell_weight_x_input_zp)));
+                   &(quantized_lstm_params->input_to_cell_effective_bias)));
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, activation_zero_point, recurrent_to_cell_weights, nullptr,
-          &(quantized_lstm_params->recurrent_to_cell_weight_x_activation_zp)));
+          &(quantized_lstm_params->recurrent_to_cell_effective_bias)));
   // Output gate.
   TF_LITE_ENSURE_OK(
-      context,
-      PrecomputeZeroPointTimesWeightWithBias(
-          context, input_zero_point, input_to_output_weights, nullptr,
-          &(quantized_lstm_params->input_to_output_weight_x_input_zp)));
+      context, PrecomputeZeroPointTimesWeightWithBias(
+                   context, input_zero_point, input_to_output_weights, nullptr,
+                   &(quantized_lstm_params->input_to_output_effective_bias)));
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, activation_zero_point, recurrent_to_output_weights, nullptr,
-          &(quantized_lstm_params
-                ->recurrent_to_output_weight_x_activation_zp)));
+          &(quantized_lstm_params->recurrent_to_output_effective_bias)));
   // Input gate.
   TF_LITE_ENSURE_OK(
       context, PrecomputeZeroPointTimesWeightWithBias(
                    context, input_zero_point, input_to_input_weights, nullptr,
-                   &(quantized_lstm_params->input_to_input_weight_x_input_zp)));
+                   &(quantized_lstm_params->input_to_input_effective_bias)));
   TF_LITE_ENSURE_OK(
       context,
       PrecomputeZeroPointTimesWeightWithBias(
           context, activation_zero_point, recurrent_to_input_weights, nullptr,
-          &(quantized_lstm_params->recurrent_to_input_weight_x_activation_zp)));
+          &(quantized_lstm_params->recurrent_to_input_effective_bias)));
 
   // Projection bias.
   TF_LITE_ENSURE_OK(context,
                     PrecomputeZeroPointTimesWeightWithBias(
                         context, hidden_zp, projection_weights, projection_bias,
-                        &(quantized_lstm_params->projection_bias_accu)));
+                        &(quantized_lstm_params->projection_effective_bias)));
   return kTfLiteOk;
 }
 

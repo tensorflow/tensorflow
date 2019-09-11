@@ -6090,6 +6090,95 @@ op {
   }
 }
 op {
+  name: "CSRSparseMatrixComponents"
+  input_arg {
+    name: "csr_sparse_matrix"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "row_ptrs"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "col_inds"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "values"
+    type_attr: "type"
+  }
+  attr {
+    name: "type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "CSRSparseMatrixToDense"
+  input_arg {
+    name: "sparse_input"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "dense_output"
+    type_attr: "type"
+  }
+  attr {
+    name: "type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "CSRSparseMatrixToSparseTensor"
+  input_arg {
+    name: "sparse_matrix"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "values"
+    type_attr: "type"
+  }
+  output_arg {
+    name: "dense_shape"
+    type: DT_INT64
+  }
+  attr {
+    name: "type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "CSVDataset"
   input_arg {
     name: "filenames"
@@ -10948,6 +11037,33 @@ op {
   is_stateful: true
 }
 op {
+  name: "DenseToCSRSparseMatrix"
+  input_arg {
+    name: "dense_input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sparse_output"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "DenseToDenseSetOperation"
   input_arg {
     name: "set1"
@@ -11368,6 +11484,13 @@ op {
         s: "MIN_FIRST"
         s: "SCALED"
       }
+    }
+  }
+  attr {
+    name: "axis"
+    type: "int"
+    default_value {
+      i: -1
     }
   }
 }
@@ -12640,6 +12763,13 @@ op {
         type: DT_BOOL
         type: DT_COMPLEX128
       }
+    }
+  }
+  attr {
+    name: "incompatible_shape_error"
+    type: "bool"
+    default_value {
+      b: true
     }
   }
   is_commutative: true
@@ -19111,6 +19241,13 @@ op {
     name: "shard_id"
     type: "int"
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -19155,6 +19292,13 @@ op {
     name: "shard_id"
     type: "int"
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -19194,6 +19338,13 @@ op {
   attr {
     name: "shard_id"
     type: "int"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -19239,6 +19390,13 @@ op {
     name: "shard_id"
     type: "int"
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -19274,6 +19432,13 @@ op {
   attr {
     name: "shard_id"
     type: "int"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -19314,6 +19479,13 @@ op {
   attr {
     name: "shard_id"
     type: "int"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -19359,6 +19531,13 @@ op {
     name: "shard_id"
     type: "int"
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -19398,6 +19577,13 @@ op {
   attr {
     name: "shard_id"
     type: "int"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -19443,6 +19629,13 @@ op {
     name: "shard_id"
     type: "int"
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -19487,6 +19680,13 @@ op {
     name: "shard_id"
     type: "int"
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -19522,6 +19722,13 @@ op {
   attr {
     name: "shard_id"
     type: "int"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -19563,6 +19770,13 @@ op {
     name: "shard_id"
     type: "int"
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -19598,6 +19812,13 @@ op {
   attr {
     name: "shard_id"
     type: "int"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -19639,6 +19860,13 @@ op {
     name: "shard_id"
     type: "int"
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -19678,6 +19906,13 @@ op {
   attr {
     name: "shard_id"
     type: "int"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -19723,6 +19958,13 @@ op {
     name: "shard_id"
     type: "int"
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -19754,6 +19996,13 @@ op {
   attr {
     name: "shard_id"
     type: "int"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -23858,6 +24107,13 @@ op {
       }
     }
   }
+  attr {
+    name: "incompatible_shape_error"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
   is_commutative: true
 }
 op {
@@ -25248,6 +25504,116 @@ op {
     default_value {
       b: false
     }
+  }
+}
+op {
+  name: "ParseExampleV2"
+  input_arg {
+    name: "serialized"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "names"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "sparse_keys"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "dense_keys"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "ragged_keys"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "dense_defaults"
+    type_list_attr: "Tdense"
+  }
+  output_arg {
+    name: "sparse_indices"
+    type: DT_INT64
+    number_attr: "num_sparse"
+  }
+  output_arg {
+    name: "sparse_values"
+    type_list_attr: "sparse_types"
+  }
+  output_arg {
+    name: "sparse_shapes"
+    type: DT_INT64
+    number_attr: "num_sparse"
+  }
+  output_arg {
+    name: "dense_values"
+    type_list_attr: "Tdense"
+  }
+  output_arg {
+    name: "ragged_values"
+    type_list_attr: "ragged_value_types"
+  }
+  output_arg {
+    name: "ragged_row_splits"
+    type_list_attr: "ragged_split_types"
+  }
+  attr {
+    name: "Tdense"
+    type: "list(type)"
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "num_sparse"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "sparse_types"
+    type: "list(type)"
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "ragged_value_types"
+    type: "list(type)"
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "ragged_split_types"
+    type: "list(type)"
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "dense_shapes"
+    type: "list(shape)"
+    has_minimum: true
   }
 }
 op {
@@ -26681,6 +27047,20 @@ op {
         s: "HALF_AWAY_FROM_ZERO"
         s: "HALF_TO_EVEN"
       }
+    }
+  }
+  attr {
+    name: "narrow_range"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "axis"
+    type: "int"
+    default_value {
+      i: -1
     }
   }
 }
@@ -35959,6 +36339,13 @@ op {
     name: "shard_id"
     type: "int"
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -36003,6 +36390,13 @@ op {
     name: "shard_id"
     type: "int"
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -36042,6 +36436,13 @@ op {
   attr {
     name: "shard_id"
     type: "int"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -36087,6 +36488,13 @@ op {
     name: "shard_id"
     type: "int"
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -36122,6 +36530,13 @@ op {
   attr {
     name: "shard_id"
     type: "int"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -36162,6 +36577,13 @@ op {
   attr {
     name: "shard_id"
     type: "int"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -36207,6 +36629,13 @@ op {
     name: "shard_id"
     type: "int"
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -36246,6 +36675,13 @@ op {
   attr {
     name: "shard_id"
     type: "int"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -36291,6 +36727,13 @@ op {
     name: "shard_id"
     type: "int"
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -36335,6 +36778,13 @@ op {
     name: "shard_id"
     type: "int"
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -36370,6 +36820,13 @@ op {
   attr {
     name: "shard_id"
     type: "int"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -36411,6 +36868,13 @@ op {
     name: "shard_id"
     type: "int"
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -36446,6 +36910,13 @@ op {
   attr {
     name: "shard_id"
     type: "int"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -36487,6 +36958,13 @@ op {
     name: "shard_id"
     type: "int"
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -36526,6 +37004,13 @@ op {
   attr {
     name: "shard_id"
     type: "int"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -36571,6 +37056,13 @@ op {
     name: "shard_id"
     type: "int"
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -36602,6 +37094,13 @@ op {
   attr {
     name: "shard_id"
     type: "int"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -41638,6 +42137,324 @@ op {
   }
 }
 op {
+  name: "SparseMatrixAdd"
+  input_arg {
+    name: "a"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "b"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "alpha"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "c"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "SparseMatrixMatMul"
+  input_arg {
+    name: "a"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "b"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "transpose_a"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "transpose_b"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "adjoint_a"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "adjoint_b"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "transpose_output"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "conjugate_output"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "SparseMatrixMul"
+  input_arg {
+    name: "a"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "b"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
+  name: "SparseMatrixNNZ"
+  input_arg {
+    name: "sparse_matrix"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "nnz"
+    type: DT_INT32
+  }
+}
+op {
+  name: "SparseMatrixOrderingAMD"
+  input_arg {
+    name: "input"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "output"
+    type: DT_INT32
+  }
+}
+op {
+  name: "SparseMatrixSoftmax"
+  input_arg {
+    name: "logits"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "softmax"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "SparseMatrixSoftmaxGrad"
+  input_arg {
+    name: "softmax"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "grad_softmax"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "gradient"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "SparseMatrixSparseCholesky"
+  input_arg {
+    name: "input"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "permutation"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "SparseMatrixSparseMatMul"
+  input_arg {
+    name: "a"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "b"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "c"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  attr {
+    name: "transpose_a"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "transpose_b"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "adjoint_a"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "adjoint_b"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "SparseMatrixTranspose"
+  input_arg {
+    name: "input"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "output"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "conjugate"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "SparseMatrixZeros"
+  input_arg {
+    name: "dense_shape"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sparse_matrix"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "SparseReduceMax"
   input_arg {
     name: "input_indices"
@@ -42782,6 +43599,37 @@ op {
     type: "type"
   }
   is_stateful: true
+}
+op {
+  name: "SparseTensorToCSRSparseMatrix"
+  input_arg {
+    name: "indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "dense_shape"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sparse_matrix"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
 }
 op {
   name: "SparseToDense"

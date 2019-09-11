@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import json
 import numpy as np
 
 from tensorflow.python import tf2
@@ -53,7 +52,7 @@ from tensorflow.python.keras.engine import training_v2
 from tensorflow.python.keras.engine import training_v2_utils
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
-from tensorflow.python.keras.saving import saving_utils
+from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
@@ -64,7 +63,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import nest
-from tensorflow.python.util import serialization
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import keras_export
@@ -381,7 +379,7 @@ class Model(network.Network):
       self.predict_function = None
 
       # Collected trainable weights, sorted in topological order.
-      self._collected_trainable_weights = self._unique_trainable_weights
+      self._collected_trainable_weights = self.trainable_weights
 
       # Validate all variables were correctly created in distribution scope.
       if self._distribution_strategy and not self._compile_distribution:
@@ -416,6 +414,9 @@ class Model(network.Network):
   @property
   def metrics_names(self):
     """Returns the model's display labels for all outputs."""
+
+    # This property includes all output names including `loss` and per-output
+    # losses for backward compatibility.
     metrics_names = ['loss']
     if self._is_compiled:
       # Add output loss metric names to the metric names list.
@@ -426,13 +427,8 @@ class Model(network.Network):
             if not e.should_skip_target()
         ])
 
-      # Add compile metrics/weighted metrics' names to the metric names list.
-      metrics_names.extend([m.name for m in self._compile_metric_functions])
-
-    # Add metric names from layers.
-    for layer in self.layers:
-      metrics_names += [m.name for m in layer._metrics]  # pylint: disable=protected-access
-    metrics_names += [m.name for m in self._metrics]
+    # Add all metric names.
+    metrics_names += [m.name for m in self.metrics]
     return metrics_names
 
   @property
@@ -1570,7 +1566,7 @@ class Model(network.Network):
     # Set metric attributes on model.
     self._set_metric_attributes()
 
-    self._collected_trainable_weights = self._unique_trainable_weights
+    self._collected_trainable_weights = self.trainable_weights
 
   def _update_sample_weight_modes(self, sample_weights=None):
     """Updates sample weight modes based on training/eval inputs.
@@ -1775,6 +1771,7 @@ class Model(network.Network):
       return self.callback_model
     return self
 
+  @trackable.no_automatic_dependency_tracking
   def _make_callback_model(self, grouped_model):
     first_replicated_model = self._distribution_strategy.unwrap(
         grouped_model)[0]
@@ -2080,8 +2077,7 @@ class Model(network.Network):
     if not hasattr(self, '_collected_trainable_weights'):
       return
 
-    if (len(self._unique_trainable_weights) !=
-        len(self._collected_trainable_weights)):
+    if len(self.trainable_weights) != len(self._collected_trainable_weights):
       logging.log_first_n(
           logging.WARN, 'Discrepancy between trainable weights and collected'
           ' trainable weights, did you set `model.trainable`'
@@ -2863,17 +2859,6 @@ class Model(network.Network):
       metrics.extend(self.metrics)
     return metrics
 
-  @property
-  def _object_identifier(self):
-    return '_tf_keras_model'
-
-  @property
-  def _tracking_metadata(self):
-    metadata = json.loads(super(Model, self)._tracking_metadata)
-    metadata.update(saving_utils.model_metadata(
-        self, include_optimizer=True, require_config=False))
-    return json.dumps(metadata, default=serialization.get_json_type)
-
   def _assert_compile_was_called(self):
     # Checks whether `compile` has been called. If it has been called,
     # then the optimizer is set. This is different from whether the
@@ -2901,6 +2886,10 @@ class Model(network.Network):
     if not strategy and distribution_strategy_context.has_strategy():
       strategy = distribution_strategy_context.get_strategy()
     return strategy and strategy.extended._in_multi_worker_mode()  # pylint: disable=protected-access
+
+  @property
+  def _trackable_saved_model_saver(self):
+    return model_serialization.ModelSavedModelSaver(self)
 
 
 class DistributedCallbackModel(Model):

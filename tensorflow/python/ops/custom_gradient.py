@@ -316,12 +316,17 @@ def _graph_mode_decorator(f, primals, *args, **kwargs):
           "with `use_resource=False`.")
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
+  if primals is None:
+    inputs = args
+  else:
+    primals = [ops.convert_to_tensor(x) for x in nest.flatten(primals)]
+    inputs = primals + args
   variables_in_tape = frozenset([
       v.experimental_ref() for v in tape.watched_variables()
-  ]) - frozenset(v.experimental_ref() for v in args)
+  ]) - frozenset(v.experimental_ref() for v in inputs)
   variables_in_subgraph = frozenset([
       v.experimental_ref()
-      for v in get_dependent_variables(input_ops=args, output_ops=result)
+      for v in get_dependent_variables(input_ops=inputs, output_ops=result)
   ])
   variables = list(
       [v.deref() for v in variables_in_subgraph.union(variables_in_tape)])
@@ -348,7 +353,6 @@ def _graph_mode_decorator(f, primals, *args, **kwargs):
   if primals is None:
     all_tensors = flat_result + args + variables
   else:
-    primals = [ops.convert_to_tensor(x) for x in nest.flatten(primals)]
     all_tensors = flat_result + primals + variables
 
   def tape_grad_fn(*result_grads):
@@ -396,7 +400,10 @@ def _eager_mode_decorator(f, primals, *args, **kwargs):
   """Implement custom gradient decorator for eager mode."""
   with backprop.GradientTape() as tape:
     result, grad_fn = f(*args, **kwargs)
-  all_inputs = list(args) + list(kwargs.values())
+  if primals is None:
+    all_inputs = list(args) + list(kwargs.values())
+  else:
+    all_inputs = primals
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
   variables = [

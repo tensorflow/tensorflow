@@ -190,8 +190,9 @@ public:
   /// Walk the operation in postorder, calling the callback for each nested
   /// operation(including this one).
   /// See Operation::walk for more details.
-  template <typename FnT> void walk(FnT &&callback) {
-    state->walk(std::forward<FnT>(callback));
+  template <typename FnT, typename RetT = detail::walkResultType<FnT>>
+  RetT walk(FnT &&callback) {
+    return state->walk(std::forward<FnT>(callback));
   }
 
   // These are default implementations of customization hooks.
@@ -904,6 +905,16 @@ public:
 
   /// Return the operation that this refers to.
   Operation *getOperation() { return OpState::getOperation(); }
+
+  /// Create a deep copy of this operation.
+  ConcreteType clone() { return cast<ConcreteType>(getOperation()->clone()); }
+
+  /// Create a partial copy of this operation without traversing into attached
+  /// regions. The new operation will have the same number of regions as the
+  /// original one, but they will be left empty.
+  ConcreteType cloneWithoutRegions() {
+    return cast<ConcreteType>(getOperation()->cloneWithoutRegions());
+  }
 
   /// Return the dialect that this refers to.
   Dialect *getDialect() { return getOperation()->getDialect(); }

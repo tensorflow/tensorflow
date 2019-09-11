@@ -31,6 +31,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -270,7 +271,7 @@ class _SaveableView(object):
         object_map[obj] = new_variable
         resource_map[obj.handle] = new_variable.handle
         self.captured_tensor_node_ids[obj.handle] = node_id
-      elif isinstance(obj, tracking.TrackableAsset):
+      elif isinstance(obj, tracking.Asset):
         _process_asset(obj, asset_info, resource_map)
         self.captured_tensor_node_ids[obj.asset_path] = node_id
 
@@ -498,7 +499,7 @@ _AssetInfo = collections.namedtuple(
         "asset_initializers_by_resource",
         # Map from base asset filenames to full paths
         "asset_filename_map",
-        # Map from TrackableAsset to index of corresponding AssetFileDef
+        # Map from Asset to index of corresponding AssetFileDef
         "asset_index"])
 
 
@@ -546,7 +547,8 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
     namespace_whitelist: List of strings containing whitelisted op namespaces.
 
   Returns:
-    An _AssetInfo, which contains information to help creating the SavedModel.
+    A tuple of (_AssetInfo, Graph) containing the captured assets and
+    exported Graph generated from tracing the saveable_view.
   """
   # List objects from the eager context to make sure Optimizers give us the
   # right Graph-dependent variables.
@@ -662,7 +664,7 @@ def _serialize_object_graph(saveable_view, asset_file_def_index):
 
 def _write_object_proto(obj, proto, asset_file_def_index):
   """Saves an object into SavedObject proto."""
-  if isinstance(obj, tracking.TrackableAsset):
+  if isinstance(obj, tracking.Asset):
     proto.asset.SetInParent()
     proto.asset.asset_file_def_index = asset_file_def_index[obj]
   elif resource_variable_ops.is_resource_variable(obj):
@@ -698,6 +700,28 @@ def _write_object_proto(obj, proto, asset_file_def_index):
           metadata=obj._tracking_metadata)
       # pylint:enable=protected-access
     proto.user_object.CopyFrom(registered_type_proto)
+
+
+def _export_debug_info(exported_graph):
+  """Exports debug information from a graph.
+
+  Args:
+    exported_graph: A Graph that has been created by tracing a saveable view.
+
+  Returns:
+    Corresponding GraphDebugInfo with traces for ops in all functions of the
+    exported_graph.
+  """
+  exported_operations = []
+  for fn_name in exported_graph._functions:  # pylint: disable=protected-access
+    fn = exported_graph._get_function(fn_name)  # pylint: disable=protected-access
+    if not isinstance(fn, defun._EagerDefinedFunction):  # pylint: disable=protected-access
+      continue
+
+    fn_graph = fn.graph
+    for fn_op in fn_graph.get_operations():
+      exported_operations.append((fn_name, fn_op))
+  return error_interpolation.create_graph_debug_info_def(exported_operations)
 
 
 @tf_export("saved_model.save",
@@ -907,6 +931,16 @@ def save(obj, export_dir, signatures=None, options=None):
       saveable_view, asset_info.asset_index)
   meta_graph_def.object_graph_def.CopyFrom(object_graph_proto)
   file_io.atomic_write_string_to_file(path, saved_model.SerializeToString())
+
+  # Save debug info, if requested.
+  if options.save_debug_info:
+    graph_debug_info = _export_debug_info(exported_graph)
+    file_io.atomic_write_string_to_file(
+        os.path.join(
+            utils_impl.get_or_create_debug_dir(export_dir),
+            constants.DEBUG_INFO_FILENAME_PB),
+        graph_debug_info.SerializeToString())
+
   # Clean reference cycles so repeated export()s don't make work for the garbage
   # collector. Before this point we need to keep references to captured
   # constants in the saved graph.
