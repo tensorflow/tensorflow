@@ -173,7 +173,7 @@ TEST(SDBMExpr, Dim) {
   auto generic = static_cast<SDBMExpr>(expr);
   EXPECT_TRUE(generic.isa<SDBMDimExpr>());
   EXPECT_TRUE(generic.isa<SDBMInputExpr>());
-  EXPECT_TRUE(generic.isa<SDBMPositiveExpr>());
+  EXPECT_TRUE(generic.isa<SDBMTermExpr>());
   EXPECT_TRUE(generic.isa<SDBMVaryingExpr>());
 
   // Dimensions are not Symbols.
@@ -195,7 +195,7 @@ TEST(SDBMExpr, Symbol) {
   auto generic = static_cast<SDBMExpr>(expr);
   EXPECT_TRUE(generic.isa<SDBMSymbolExpr>());
   EXPECT_TRUE(generic.isa<SDBMInputExpr>());
-  EXPECT_TRUE(generic.isa<SDBMPositiveExpr>());
+  EXPECT_TRUE(generic.isa<SDBMTermExpr>());
   EXPECT_TRUE(generic.isa<SDBMVaryingExpr>());
 
   // Dimensions are not Symbols.
@@ -228,7 +228,7 @@ TEST(SDBMExpr, Stripe) {
   // Hierarchy is okay.
   auto generic = static_cast<SDBMExpr>(expr);
   EXPECT_TRUE(generic.isa<SDBMStripeExpr>());
-  EXPECT_TRUE(generic.isa<SDBMPositiveExpr>());
+  EXPECT_TRUE(generic.isa<SDBMTermExpr>());
   EXPECT_TRUE(generic.isa<SDBMVaryingExpr>());
 }
 
