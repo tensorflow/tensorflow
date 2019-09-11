@@ -1382,6 +1382,39 @@ class RNNTest(keras_parameterized.TestCase):
     layer.reset_states(new_states)
     model.predict(np.ones((batch, timesteps, input_dim)))
 
+  def test_stateful_rnn_with_initial_state(self):
+    # See https://github.com/tensorflow/tensorflow/issues/32299.
+    batch = 12
+    timesteps = 1
+    input_dim = 8
+    output_dim = 16
+
+    test_inputs = np.full((batch, timesteps, input_dim), 0.5)
+
+    # Define a model with a constant state initialization
+    input_layer = keras.Input(shape=(None, input_dim), batch_size=batch)
+    initial_states = keras.backend.constant(np.ones((batch, output_dim)))
+    rnn_output = keras.layers.GRU(
+        units=output_dim, return_sequences=True, stateful=True)(
+            input_layer, initial_state=initial_states)
+    model = keras.Model(input_layer, rnn_output)
+    model.compile(
+        optimizer=keras.optimizers.RMSprop(), loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+
+    model.reset_states()
+    predict_1 = model.predict(test_inputs)
+    predict_2 = model.predict(test_inputs)
+
+    model.reset_states()
+    predict_3 = model.predict(test_inputs)
+
+    # predict 1 and 2 should be different since the batch 2 should use the state
+    # from batch 1 as the initial state.
+    self.assertNotAllClose(predict_1, predict_2)
+    self.assertAllClose(predict_1, predict_3)
+
   def test_input_dim_length(self):
     simple_rnn = keras.layers.SimpleRNN(5, input_length=10, input_dim=8)
     self.assertEqual(simple_rnn._batch_input_shape, (None, 10, 8))

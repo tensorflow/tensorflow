@@ -790,11 +790,10 @@ class RNN(Layer):
       if len(initial_state) == 0:
         initial_state = None
       inputs = inputs[0]
-    if initial_state is not None:
-      pass
-    elif self.stateful:
+
+    if self.stateful:
       initial_state = self.states
-    else:
+    elif initial_state is None:
       initial_state = self.get_initial_state(inputs)
 
     if len(initial_state) != len(self.states):
