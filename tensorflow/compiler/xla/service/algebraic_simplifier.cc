@@ -166,6 +166,61 @@ bool IsUnstridedSlice(const HloInstruction* hlo) {
                         [](int64 stride) { return stride == 1; });
 }
 
+// Returns bool to determine whether a pair of converts can be eliminated
+bool IsConvertPairNoOp(const HloInstruction* convert) {
+  //                       [operand_convert]          [convert]
+  // (operand_convert_input)->convert-(convert_input)->convert-(dest)
+
+  const HloInstruction* operand_convert = convert->operand(0);
+  Shape operand_convert_input_shape = operand_convert->operand(0)->shape();
+  Shape operand_convert_shape = operand_convert->shape();
+  Shape convert_shape = convert->shape();
+
+  PrimitiveType operand_convert_input_type =
+      operand_convert_input_shape.element_type();
+  PrimitiveType convert_input_type = operand_convert_shape.element_type();
+  PrimitiveType dest_type = convert_shape.element_type();
+
+  // operand_convert_input_type must be equal to dest_type
+  if (operand_convert_input_type != dest_type) {
+    return false;
+  }
+
+  // operand_convert_input_type must be a larger container than
+  // convert_input_type
+  if (ShapeUtil::ByteSizeOfPrimitiveType(convert_input_type) <=
+      ShapeUtil::ByteSizeOfPrimitiveType(operand_convert_input_type)) {
+    return false;
+  }
+
+  // Both operand_convert_input_type and convert_input_type must
+  // be either floating or integral
+  bool is_conversion_floating =
+      ShapeUtil::ElementIsFloating(operand_convert_input_shape) &&
+      ShapeUtil::ElementIsFloating(operand_convert_shape);
+  bool is_conversion_integral =
+      ShapeUtil::ElementIsIntegral(operand_convert_input_shape) &&
+      ShapeUtil::ElementIsIntegral(operand_convert_shape);
+
+  if (!(is_conversion_floating || is_conversion_integral)) {
+    return false;
+  }
+
+  // A conversion pair where operand_convert_input_type is signed and
+  // convert_input_type is unsigned cannot be optimized
+  bool is_conversion_signed_to_unsigned =
+      (ShapeUtil::ElementIsSigned(operand_convert_input_shape) &&
+        !ShapeUtil::ElementIsSigned(operand_convert_shape));
+
+  // If the conversion is integral, only signed to unsigned conversion is
+  // not allowed
+  if (is_conversion_integral && is_conversion_signed_to_unsigned) {
+    return false;
+  }
+
+  return true;
+}
+
 // AlgebraicSimplifierVisitor traverses the HLO computation and reduces certain
 // algebraic expressions to simplified forms. Note: This only supports
 // simplifications that simply look at the operands of an instruction. For the
@@ -2409,14 +2464,31 @@ Status AlgebraicSimplifierVisitor::HandleCompare(HloInstruction* compare) {
   return Status::OK();
 }
 
-// A conversion to the same element type as the operand is a nop and can be
-// removed.  A conversion of a constant can be simplified by making a new
-// constant.
 Status AlgebraicSimplifierVisitor::HandleConvert(HloInstruction* convert) {
   PrimitiveType src_type = convert->operand(0)->shape().element_type();
   PrimitiveType dest_type = convert->shape().element_type();
+  // A conversion to the same element type as the operand is a nop and can be
+  // removed.  A conversion of a constant can be simplified by making a new
+  // constant.
   if (src_type == dest_type) {
     return ReplaceInstruction(convert, convert->mutable_operand(0));
+  }
+
+  // Eliminate a convert pair if it is a no-op. The following are a few
+  // example cases that are being handled:
+  // 1. convert(convert(A, $TYPE1), $TYPE2) is simplified to A if A is of $TYPE2
+  //    and convert(A, $TYPE1) is an upcast
+  // 2. convert(convert(A, $TYPE1),$TYPE2) is simplified to A if A is of $TYPE2
+  //    and convert(A, $TYPE1) is an upcast and is an integral conversion from unsigned to
+  //    signed (only signed to unsigned conversion is NOT allowed)
+  // 3. Tuple(convert(A, $TYPE1) , floor(convert(convert(A, $TYPE1), $TYPE2)),
+  //    convert(convert(A, $TYPE1), $TYPE2)) is simplified to Tuple(convert(A,
+  //    $TYPE1) , floor(A), A) -> a case where the first convert has a
+  //    fan-out
+  if ((convert->operand(0)->opcode() == HloOpcode::kConvert) &&
+      IsConvertPairNoOp(convert)) {
+    return ReplaceInstruction(convert,
+                              convert->mutable_operand(0)->mutable_operand(0));
   }
   return Status::OK();
 }
