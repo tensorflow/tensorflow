@@ -111,6 +111,21 @@ TF_PLATFORM_LIBRARIES = {
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
     },
+    "net": {
+        "name": "net_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:net.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:default/net.cc",
+        ],
+        "deps": [
+            "//tensorflow/core/lib/strings:string_utils",
+            "//tensorflow/core/platform:logging",
+        ],
+        "visibility": ["//visibility:private"],
+        "tags": ["no_oss", "manual"],
+    },
     "notification": {
         "name": "notification_impl",
         "hdrs": [
@@ -150,6 +165,27 @@ TF_PLATFORM_LIBRARIES = {
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
     },
+    "subprocess": {
+        "name": "subprocess_impl",
+        "textual_hdrs": [
+            "//tensorflow/core/platform:default/subprocess.h",
+        ],
+        "hdrs": [
+            "//tensorflow/core/platform:subprocess.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:default/subprocess.cc",
+        ],
+        "deps": [
+            "//tensorflow/core/platform",
+            "//tensorflow/core/platform:logging",
+            "//tensorflow/core/platform:macros",
+            "//tensorflow/core/platform:mutex",
+            "//tensorflow/core/platform:types",
+        ],
+        "tags": ["no_oss", "manual"],
+        "visibility": ["//visibility:private"],
+    },
 }
 
 TF_WINDOWS_PLATFORM_LIBRARIES = {
@@ -166,6 +202,38 @@ TF_WINDOWS_PLATFORM_LIBRARIES = {
         ],
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
+    },
+    "net": {
+        "name": "windows_net_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:net.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:windows/net.cc",
+        ],
+        "deps": [
+            "//tensorflow/core/platform:error",
+            "//tensorflow/core/platform:logging",
+        ],
+        "visibility": ["//visibility:private"],
+        "tags": ["no_oss", "manual"],
+    },
+    "subprocess": {
+        "name": "windows_subprocess_impl",
+        "textual_hdrs": [
+            "//tensorflow/core/platform:windows/subprocess.h",
+        ],
+        "hdrs": [
+            "//tensorflow/core/platform:subprocess.h",
+        ],
+        "deps": [
+            "//tensorflow/core/platform",
+            "//tensorflow/core/platform:logging",
+            "//tensorflow/core/platform:macros",
+            "//tensorflow/core/platform:types",
+        ],
+        "tags": ["no_oss", "manual"],
+        "visibility": ["//visibility:private"],
     },
 }
 

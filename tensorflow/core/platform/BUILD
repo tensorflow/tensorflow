@@ -59,10 +59,12 @@ tf_instantiate_platform_libraries(names = [
     "env_time",
     "human_readable_json",
     "mutex",
+    "net",
     "notification",
     "platform_port",
     "rocm_rocdl_path",
     "strong_hash",
+    "subprocess",
 ])
 
 cc_library(
@@ -244,6 +246,12 @@ cc_library(
     deps = [
         ":mutex_impl",
     ],
+)
+
+cc_library(
+    name = "net",
+    textual_hdrs = ["net.h"],
+    deps = tf_platform_helper_deps("net_impl"),
 )
 
 cc_library(
@@ -456,6 +464,14 @@ cc_library(
         ":strong_hash_impl",
         ":types",
     ],
+)
+
+cc_library(
+    name = "subprocess",
+    textual_hdrs = [
+        "subprocess.h",
+    ],
+    deps = tf_platform_helper_deps("subprocess_impl"),
 )
 
 cc_library(
