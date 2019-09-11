@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_UTIL_XLA_CONFIG_PROXY_H
-#define TENSORFLOW_CORE_UTIL_XLA_CONFIG_PROXY_H
+#ifndef TENSORFLOW_CORE_UTIL_XLA_CONFIG_REGISTRY_H
+#define TENSORFLOW_CORE_UTIL_XLA_CONFIG_REGISTRY_H
 
 #include <functional>
 #include "tensorflow/core/platform/default/logging.h"
@@ -56,4 +56,4 @@ class XlaConfigRegistry {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_UTIL_XLA_CONFIG_PROXY_H
+#endif  // TENSORFLOW_CORE_UTIL_XLA_CONFIG_REGISTRY_H
