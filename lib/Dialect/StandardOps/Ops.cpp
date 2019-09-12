@@ -1011,10 +1011,10 @@ OpFoldResult CmpFOp::fold(ArrayRef<Attribute> operands) {
 
   auto lhs = operands.front().dyn_cast_or_null<FloatAttr>();
   auto rhs = operands.back().dyn_cast_or_null<FloatAttr>();
-  if (!lhs || !rhs ||
-      // TODO(b/122019992) Implement and test constant folding for nan/inf when
-      // it is possible to have constant nan/inf
-      !lhs.getValue().isFinite() || !rhs.getValue().isFinite())
+
+  // TODO(gcmn) We could actually do some intelligent things if we know only one
+  // of the operands, but it's inf or nan.
+  if (!lhs || !rhs)
     return {};
 
   auto val = applyCmpPredicate(getPredicate(), lhs.getValue(), rhs.getValue());
