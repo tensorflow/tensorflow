@@ -1656,9 +1656,7 @@ private:
   // inside the function.
   inline bool IsBiasCacheEmpty(OpKernelContext* context) LOCKS_EXCLUDED(mu_) {
     tf_shared_lock lock(mu_);
-    const Tensor& cached_bias_data_tensor =
-        *cached_bias_data_ptensor_.AccessTensor(context);
-    return (cached_bias_data_tensor.NumElements() == 0);
+    return (cached_bias_data_ptensor_.NumElements() == 0);
   }
 
   // Cache the converted bias in a persistent tensor.
@@ -1669,11 +1667,9 @@ private:
                  const memory *scaled_bias)
       LOCKS_EXCLUDED(mu_) {
     mutex_lock lock(mu_);
-    const Tensor& cached_bias_data_tensor =
-        *cached_bias_data_ptensor_.AccessTensor(context);
 
     // If bias is already cached, there's nothing to do.
-    if (cached_bias_data_tensor.NumElements() > 0) {
+    if (cached_bias_data_ptensor_.NumElements() > 0) {
       return;
     }
 
