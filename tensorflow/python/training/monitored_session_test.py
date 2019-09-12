@@ -27,7 +27,6 @@ import threading
 import time
 import traceback
 
-from tensorflow.contrib.framework.python.ops import variables as variables_lib
 from tensorflow.contrib.testing.python.framework import util_test
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import debug_pb2
@@ -52,6 +51,7 @@ from tensorflow.python.training import coordinator
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.training import training_util
 
 
 class ScaffoldTest(test.TestCase):
@@ -274,7 +274,7 @@ class MonitoredTrainingSessionTest(test.TestCase):
   def test_saving_restoring_checkpoint(self):
     logdir = _test_dir(self.get_temp_dir(), 'test_saving_restoring_checkpoint')
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       do_step = state_ops.assign_add(gstep, 1)
       with monitored_session.MonitoredTrainingSession(
           is_chief=True, checkpoint_dir=logdir) as session:
@@ -289,7 +289,7 @@ class MonitoredTrainingSessionTest(test.TestCase):
   def test_save_checkpoint_steps(self):
     logdir = _test_dir(self.get_temp_dir(), 'test_save_checkpoint_steps')
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       new_gstep = state_ops.assign_add(gstep, 1)
       with monitored_session.MonitoredTrainingSession(
           is_chief=True,
@@ -306,7 +306,7 @@ class MonitoredTrainingSessionTest(test.TestCase):
   def test_save_checkpoint_secs(self):
     logdir = _test_dir(self.get_temp_dir(), 'test_save_checkpoint_secs')
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       new_gstep = state_ops.assign_add(gstep, 1)
       with monitored_session.MonitoredTrainingSession(
           is_chief=True,
@@ -325,7 +325,7 @@ class MonitoredTrainingSessionTest(test.TestCase):
   def test_summaries_steps(self):
     logdir = _test_dir(self.get_temp_dir(), 'test_summaries_steps')
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       new_gstep = state_ops.assign_add(gstep, 1)
       summary.scalar('my_summary_tag', new_gstep * 2)
       with monitored_session.MonitoredTrainingSession(
@@ -343,7 +343,7 @@ class MonitoredTrainingSessionTest(test.TestCase):
   def test_summaries_secs(self):
     logdir = _test_dir(self.get_temp_dir(), 'test_summaries_secs')
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       new_gstep = state_ops.assign_add(gstep, 1)
       summary.scalar('my_summary_tag', new_gstep * 2)
       with monitored_session.MonitoredTrainingSession(
@@ -365,7 +365,7 @@ class MonitoredTrainingSessionTest(test.TestCase):
     logdir = _test_dir(self.get_temp_dir(), 'test_saving_restoring_checkpoint')
     fake_hook = FakeHook()
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       do_step = state_ops.assign_add(gstep, 1)
       with monitored_session.MonitoredTrainingSession(
           is_chief=True,
@@ -414,7 +414,7 @@ class MonitoredTrainingSessionWithDistributeCoordinatorTest(test.TestCase):
 
     logdir = _test_dir(self.get_temp_dir(), 'test_summaries_enabled')
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       new_gstep = state_ops.assign_add(gstep, 1)
       summary.scalar('my_summary_tag', new_gstep * 2)
       with context, monitored_session.MonitoredTrainingSession(
@@ -435,7 +435,7 @@ class MonitoredTrainingSessionWithDistributeCoordinatorTest(test.TestCase):
 
     logdir = _test_dir(self.get_temp_dir(), 'test_summaries_disabled')
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       new_gstep = state_ops.assign_add(gstep, 1)
       summary.scalar('my_summary_tag', new_gstep * 2)
       with context, monitored_session.MonitoredTrainingSession(
@@ -455,7 +455,7 @@ class MonitoredTrainingSessionWithDistributeCoordinatorTest(test.TestCase):
 
     logdir = _test_dir(self.get_temp_dir(), 'test_save_checkpoint_enabled')
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       new_gstep = state_ops.assign_add(gstep, 1)
       with context, monitored_session.MonitoredTrainingSession(
           checkpoint_dir=logdir,
@@ -475,7 +475,7 @@ class MonitoredTrainingSessionWithDistributeCoordinatorTest(test.TestCase):
 
     logdir = _test_dir(self.get_temp_dir(), 'test_save_checkpoint_disabled')
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       new_gstep = state_ops.assign_add(gstep, 1)
       with context, monitored_session.MonitoredTrainingSession(
           checkpoint_dir=logdir,
@@ -496,7 +496,7 @@ class MonitoredTrainingSessionWithDistributeCoordinatorTest(test.TestCase):
 
     logdir = _test_dir(self.get_temp_dir(), 'test_save_checkpoint_disabled')
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       new_gstep = state_ops.assign_add(gstep, 1)
       with context, monitored_session.MonitoredTrainingSession(
           checkpoint_dir=logdir,
@@ -1430,7 +1430,7 @@ class MonitoredSessionTest(test.TestCase):
   def test_last_step(self):
     logdir = _test_dir(self.get_temp_dir(), 'test_last_step')
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       do_step = state_ops.assign_add(gstep, 1)
       # Run till step 3 and save.
       hooks = [basic_session_run_hooks.StopAtStepHook(last_step=3)]
@@ -1465,7 +1465,7 @@ class MonitoredSessionTest(test.TestCase):
   def test_num_steps(self):
     logdir = _test_dir(self.get_temp_dir(), 'test_num_steps')
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       do_step = state_ops.assign_add(gstep, 1)
       # Do 3 steps and save.
       hooks = [basic_session_run_hooks.StopAtStepHook(num_steps=3)]
@@ -1504,7 +1504,7 @@ class MonitoredSessionTest(test.TestCase):
   def test_recovery(self):
     logdir = _test_dir(self.get_temp_dir(), 'test_recovery')
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       do_step = state_ops.assign_add(gstep, 1)
       scaffold = monitored_session.Scaffold()
       # Use a hook to save the model every 100 steps.  It also saves it at
@@ -1536,7 +1536,7 @@ class MonitoredSessionTest(test.TestCase):
   def test_retry_initialization_on_aborted_error(self):
     # Tests that we silently retry on abort during initialization.
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       self.init_raised_aborted_error = False
 
       def _init_fn(scaffold, session):
@@ -1557,7 +1557,7 @@ class MonitoredSessionTest(test.TestCase):
     # Tests that we silently retry on error.  Note that this does not test
     # recovery as we do not use a CheckpointSaver in this test.
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       do_step = state_ops.assign_add(gstep, 1)
       hook = RaiseOnceAtCountN(4, ex)
       with monitored_session.MonitoredSession(hooks=[hook]) as session:
@@ -1587,7 +1587,7 @@ class MonitoredSessionTest(test.TestCase):
     logdir = _test_dir(self.get_temp_dir(),
                        'test_recover_and_retry_on_aborted_error')
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       do_step = state_ops.assign_add(gstep, 1)
       scaffold = monitored_session.Scaffold()
       abort_hook = RaiseOnceAtCountN(
@@ -1615,7 +1615,7 @@ class MonitoredSessionTest(test.TestCase):
   def test_exit_cleanly_on_out_of_range_exception(self):
     # Tests that we stop cleanly when OutOfRange is raised.
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       do_step = state_ops.assign_add(gstep, 1)
       hook = RaiseOnceAtCountN(2, errors_impl.OutOfRangeError(None, None,
                                                               'EOI'))
@@ -1634,7 +1634,7 @@ class MonitoredSessionTest(test.TestCase):
   def test_exit_cleanly_on_stop_iteration_exception(self):
     # Tests that we stop cleanly when OutOfRange is raised.
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       do_step = state_ops.assign_add(gstep, 1)
       hook = RaiseOnceAtCountN(2, StopIteration)
       session = monitored_session.MonitoredSession(hooks=[hook])
@@ -1653,7 +1653,7 @@ class MonitoredSessionTest(test.TestCase):
     # Tests that regular exceptions just pass through a "with
     # MonitoredSession" block and set the session in stop mode.
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       do_step = state_ops.assign_add(gstep, 1)
       hook = RaiseOnceAtCountN(4, RuntimeError('regular exception'))
       session = monitored_session.MonitoredSession(hooks=[hook])
@@ -1675,7 +1675,7 @@ class MonitoredSessionTest(test.TestCase):
     # passes through a "run()" call within a "with MonitoredSession" block and
     # set the session in stop mode.
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       session = monitored_session.MonitoredSession()
       run_performed_without_error = False
       with self.assertRaisesRegexp(RuntimeError, 'a thread wants to stop'):
@@ -1696,7 +1696,7 @@ class MonitoredSessionTest(test.TestCase):
     # passes through returning from a "with MonitoredSession" block and
     # set the session in stop mode.
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       session = monitored_session.MonitoredSession()
       with self.assertRaisesRegexp(RuntimeError, 'a thread wants to stop'):
         with session:
@@ -1714,7 +1714,7 @@ class MonitoredSessionTest(test.TestCase):
   def test_stop_cleanly_when_no_exception_in_with_body(self):
     # Tests that regular exceptions pass through
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       do_step = state_ops.assign_add(gstep, 1)
       session = monitored_session.MonitoredSession()
       with session:
@@ -1728,7 +1728,7 @@ class MonitoredSessionTest(test.TestCase):
   def test_raises_regular_exceptions_in_with_body(self):
     # Tests that regular exceptions in "with body" are seen outside.
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       do_step = state_ops.assign_add(gstep, 1)
       session = monitored_session.MonitoredSession()
       # We should see that exception.
@@ -2184,7 +2184,7 @@ class SingularMonitoredSessionTest(test.TestCase):
 
   def test_do_not_handle_aborted_error(self):
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
 
       class _RaiseAbortedHook(session_run_hook.SessionRunHook):
 
@@ -2204,7 +2204,7 @@ class SingularMonitoredSessionTest(test.TestCase):
   def test_exit_cleanly_on_out_of_range_exception(self):
     # Tests that we stop cleanly when OutOfRange is raised.
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       do_step = state_ops.assign_add(gstep, 1)
       hook = RaiseOnceAtCountN(2, errors_impl.OutOfRangeError(None, None,
                                                               'EOI'))
@@ -2225,7 +2225,7 @@ class SingularMonitoredSessionTest(test.TestCase):
     # passes through a "run()" call within a "with MonitoredSession" block and
     # set the session in stop mode.
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       session = monitored_session.SingularMonitoredSession()
       run_performed_without_error = False
       with self.assertRaisesRegexp(RuntimeError, 'a thread wants to stop'):
@@ -2244,7 +2244,7 @@ class SingularMonitoredSessionTest(test.TestCase):
   def test_stop_cleanly_when_no_exception_in_with_body(self):
     # Tests that regular exceptions pass through
     with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
+      gstep = training_util.get_or_create_global_step()
       do_step = state_ops.assign_add(gstep, 1)
       session = monitored_session.SingularMonitoredSession()
       with session:
