@@ -1711,7 +1711,7 @@ TEST_F(AlgebraicSimplifierTest, ConvertBetweenSameType) {
 }
 
 // Test that convert(convert(A, $TYPE1), $TYPE2) is simplified to A if
-// A is of $TYPE2 and convert(A, $TYP1) is an upcast
+// A is of $TYPE2 and convert(A, $TYP1) is an upcast.
 TEST_F(AlgebraicSimplifierTest, EliminateConvertPairUpCast) {
   auto m = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
@@ -1737,7 +1737,7 @@ TEST_F(AlgebraicSimplifierTest, EliminateConvertPairUpCast) {
 }
 
 // Test that convert(convert(A, $TYPE1), $TYPE2) is NOT simplified to A even if
-// A is of $TYPE2 since convert(A, $TYP1) is a downcast
+// A is of $TYPE2 since convert(A, $TYP1) is a downcast.
 TEST_F(AlgebraicSimplifierTest, DoNotEliminateConvertPairDownCast) {
   auto m = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
@@ -1763,7 +1763,7 @@ TEST_F(AlgebraicSimplifierTest, DoNotEliminateConvertPairDownCast) {
 
 // Test that convert(convert(A, $TYPE1), $TYPE2) is simplified to A if
 // A is of $TYPE2 since convert(A, $TYP1) is an upcast and is a conversion from
-// unsigned to signed which is allowed
+// unsigned to signed which is allowed.
 TEST_F(AlgebraicSimplifierTest, EliminateConvertPairUnsignedToSigned) {
   auto m = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
@@ -1791,7 +1791,7 @@ TEST_F(AlgebraicSimplifierTest, EliminateConvertPairUnsignedToSigned) {
 // Test that Tuple(convert(A, $TYPE1) , floor(convert(convert(A, $TYPE1),
 // $TYPE2)), convert(convert(A, $TYPE1), $TYPE2)) is simplified to
 // Tuple(convert(A, $TYPE1) , floor(A), A) showing a case where the first
-// convert has a fan-out
+// convert has a fan-out.
 TEST_F(AlgebraicSimplifierTest, EliminateConvertPairMultiOut) {
   auto m = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());

@@ -166,54 +166,54 @@ bool IsUnstridedSlice(const HloInstruction* hlo) {
                         [](int64 stride) { return stride == 1; });
 }
 
-// Returns bool to determine whether a pair of converts can be eliminated
+// Returns bool to determine whether a pair of converts can be eliminated.
 bool IsConvertPairNoOp(const HloInstruction* convert) {
-  //                       [operand_convert]          [convert]
-  // (operand_convert_input)->convert-(convert_input)->convert-(dest)
-
+  //    [operand_convert]         [convert]
+  // (src)->convert-(intermediate)->convert-(dest)
   const HloInstruction* operand_convert = convert->operand(0);
-  Shape operand_convert_input_shape = operand_convert->operand(0)->shape();
-  Shape operand_convert_shape = operand_convert->shape();
-  Shape convert_shape = convert->shape();
+  CHECK_EQ(operand_convert->opcode(), HloOpcode::kConvert);
+  const Shape& src_shape = operand_convert->operand(0)->shape();
+  const Shape& intermediate_shape = operand_convert->shape();
+  const Shape& dest_shape = convert->shape();
 
-  PrimitiveType operand_convert_input_type =
-      operand_convert_input_shape.element_type();
-  PrimitiveType convert_input_type = operand_convert_shape.element_type();
-  PrimitiveType dest_type = convert_shape.element_type();
+  const PrimitiveType& src_type =
+      src_shape.element_type();
+  const PrimitiveType& intermediate_type = intermediate_shape.element_type();
+  const PrimitiveType& dest_type = dest_shape.element_type();
 
-  // operand_convert_input_type must be equal to dest_type
-  if (operand_convert_input_type != dest_type) {
+  // src_type must be equal to dest_type.
+  if (src_type != dest_type) {
     return false;
   }
 
-  // operand_convert_input_type must be a larger container than
-  // convert_input_type
-  if (ShapeUtil::ByteSizeOfPrimitiveType(convert_input_type) <=
-      ShapeUtil::ByteSizeOfPrimitiveType(operand_convert_input_type)) {
+  // src_type must be a larger container than
+  // intermediate_type.
+  if (ShapeUtil::ByteSizeOfPrimitiveType(intermediate_type) <=
+      ShapeUtil::ByteSizeOfPrimitiveType(src_type)) {
     return false;
   }
 
-  // Both operand_convert_input_type and convert_input_type must
-  // be either floating or integral
+  // Both src_type and intermediate_type must
+  // be either floating or integral.
   bool is_conversion_floating =
-      ShapeUtil::ElementIsFloating(operand_convert_input_shape) &&
-      ShapeUtil::ElementIsFloating(operand_convert_shape);
+      ShapeUtil::ElementIsFloating(src_shape) &&
+      ShapeUtil::ElementIsFloating(intermediate_shape);
   bool is_conversion_integral =
-      ShapeUtil::ElementIsIntegral(operand_convert_input_shape) &&
-      ShapeUtil::ElementIsIntegral(operand_convert_shape);
+      ShapeUtil::ElementIsIntegral(src_shape) &&
+      ShapeUtil::ElementIsIntegral(intermediate_shape);
 
   if (!(is_conversion_floating || is_conversion_integral)) {
     return false;
   }
 
-  // A conversion pair where operand_convert_input_type is signed and
-  // convert_input_type is unsigned cannot be optimized
+  // A conversion pair where src_type is signed and
+  // intermediate_type is unsigned cannot be optimized.
   bool is_conversion_signed_to_unsigned =
-      (ShapeUtil::ElementIsSigned(operand_convert_input_shape) &&
-        !ShapeUtil::ElementIsSigned(operand_convert_shape));
+      (ShapeUtil::ElementIsSigned(src_shape) &&
+        !ShapeUtil::ElementIsSigned(intermediate_shape));
 
   // If the conversion is integral, only signed to unsigned conversion is
-  // not allowed
+  // not allowed.
   if (is_conversion_integral && is_conversion_signed_to_unsigned) {
     return false;
   }
@@ -2485,7 +2485,7 @@ Status AlgebraicSimplifierVisitor::HandleConvert(HloInstruction* convert) {
   //    convert(convert(A, $TYPE1), $TYPE2)) is simplified to Tuple(convert(A,
   //    $TYPE1) , floor(A), A) -> a case where the first convert has a
   //    fan-out
-  if ((convert->operand(0)->opcode() == HloOpcode::kConvert) &&
+  if (convert->operand(0)->opcode() == HloOpcode::kConvert &&
       IsConvertPairNoOp(convert)) {
     return ReplaceInstruction(convert,
                               convert->mutable_operand(0)->mutable_operand(0));
