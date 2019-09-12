@@ -322,15 +322,15 @@ TEST_F(UtilsTest, DedupControlInputs) {
 TEST_F(UtilsTest, NumNonControlOutputs) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
-  //  *) Round node has control dependency edge from Add, which
-  //     is not on this scheme (ASCII graphics limitation).
-  //
   //   *Round    [Sqrt, Shape]
   //      |           |
   //      |   ctrl    |
   //     Mul ------> Add
   //     / \         / \
   //    x   y       a   b
+  //
+  //  *) Round node has control dependency edge from Add, which
+  //     is not on this scheme (ASCII graphics limitation).
   auto x = ops::Variable(s.WithOpName("x"), {1, 2}, DT_FLOAT);
   auto y = ops::Variable(s.WithOpName("y"), {1, 2}, DT_FLOAT);
   auto a = ops::Variable(s.WithOpName("a"), {1, 2}, DT_FLOAT);
@@ -358,6 +358,25 @@ TEST_F(UtilsTest, NumNonControlOutputs) {
   EXPECT_EQ(NumNonControlOutputs(*add_node, node_map), 2);
   // sqrt is the only data output
   EXPECT_EQ(NumNonControlDataOutputs(*add_node, node_map), 1);
+
+  EXPECT_TRUE(HasControlInputs(*add_node));
+  EXPECT_TRUE(HasRegularInputs(*add_node));
+  EXPECT_TRUE(HasControlOutputs(*add_node, node_map));
+  EXPECT_TRUE(HasRegularOutputs(*add_node, node_map));
+
+  const NodeDef* x_node = node_map.GetNode("x");
+  ASSERT_NE(x_node, nullptr);
+  EXPECT_FALSE(HasControlInputs(*x_node));
+  EXPECT_FALSE(HasRegularInputs(*x_node));
+  EXPECT_FALSE(HasControlOutputs(*x_node, node_map));
+  EXPECT_TRUE(HasRegularOutputs(*x_node, node_map));
+
+  const NodeDef* round_node = node_map.GetNode("round");
+  ASSERT_NE(round_node, nullptr);
+  EXPECT_TRUE(HasControlInputs(*round_node));
+  EXPECT_TRUE(HasRegularInputs(*round_node));
+  EXPECT_FALSE(HasControlOutputs(*round_node, node_map));
+  EXPECT_FALSE(HasRegularOutputs(*round_node, node_map));
 }
 
 TEST(CheckAttrExists, All) {
