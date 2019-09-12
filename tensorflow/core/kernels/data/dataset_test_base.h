@@ -107,25 +107,6 @@ Status WriteDataToTFRecordFile(const string& filename,
                                const std::vector<absl::string_view>& records,
                                const CompressionParams& params);
 
-<<<<<<< HEAD
-=======
-enum class DatasetParamsType {
-  Range,
-  Batch,
-  Map,
-  MapAndBatch,
-  Sampling,
-  FromTensor,
-  TensorSlice,
-  Cache,
-};
-
-// Returns a string representation for the given dataset parameter type. Note
-// that the return string needs to be same with `kDatasetType` for each dataset
-// parameter type.
-string ToString(DatasetParamsType type);
-
->>>>>>> Refactor CacheDatasetOpTest
 // Provides the parameters for running the dataset op.
 class DatasetParams {
  public:

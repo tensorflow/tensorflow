@@ -672,11 +672,16 @@ Status DatasetOpsTestBase::CheckIteratorSaveAndRestore(
       cur_iteration++;
     }
 
-    if (breakpoint >= expected_outputs.size()) {
+    if (dataset_->Cardinality() == kUnknownCardinality) {
+      continue;
+    }
+
+    if (dataset_->Cardinality() == kInfiniteCardinality ||
+        breakpoint < dataset_->Cardinality()) {
+      EXPECT_FALSE(end_of_sequence);
+    } else {
       EXPECT_TRUE(end_of_sequence);
       EXPECT_EQ(expected_outputs_it, expected_outputs.end());
-    } else {
-      EXPECT_FALSE(end_of_sequence);
     }
   }
   return Status::OK();

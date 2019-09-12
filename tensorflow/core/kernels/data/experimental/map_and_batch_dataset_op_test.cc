@@ -87,11 +87,11 @@ class MapAndBatchDatasetParams : public DatasetParams {
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
     *attr_vector = {
-        {MapDatasetOp::kFunc, func_},
-        {MapDatasetOp::kTarguments, type_arguments_},
-        {MapDatasetOp::kOutputShapes, output_shapes_},
-        {MapDatasetOp::kOutputTypes, output_dtypes_},
-        {MapDatasetOp::kPreserveCardinality, preserve_cardinality_}};
+        {MapAndBatchDatasetOp::kFunc, func_},
+        {MapAndBatchDatasetOp::kTarguments, type_arguments_},
+        {MapAndBatchDatasetOp::kOutputShapes, output_shapes_},
+        {MapAndBatchDatasetOp::kOutputTypes, output_dtypes_},
+        {MapAndBatchDatasetOp::kPreserveCardinality, preserve_cardinality_}};
     return Status::OK();
   }
 
