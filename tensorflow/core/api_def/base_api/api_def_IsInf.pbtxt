@@ -5,7 +5,8 @@ op {
 @compatibility(numpy)
 Equivalent to np.isinf
 @end_compatibility
-  Example:
+
+Example:
 
 ```python
 x = tf.constant([5.0, np.inf, 6.8, np.inf])

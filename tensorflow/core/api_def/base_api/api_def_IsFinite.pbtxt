@@ -5,7 +5,8 @@ op {
 @compatibility(numpy)
 Equivalent to np.isfinite
 @end_compatibility
-  Example:
+
+Example:
 
 ```python
 x = tf.constant([5.0, 4.8, 6.8, np.inf, np.nan])
