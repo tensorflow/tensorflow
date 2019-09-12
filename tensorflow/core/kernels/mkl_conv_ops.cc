@@ -1619,7 +1619,7 @@ class MklQuantizedConv2DOp
                                 this->cpu_engine_);
 
         Tbias *bias_data = reinterpret_cast<Tbias*>(scaled_bias_->get_data_handle());
-        if (!is_bias_const_) bias_data;
+        if (!is_bias_const_) return bias_data;
 
         CacheBias(context, conv_fwd_pd, bias_data, scaled_bias_);
       }
