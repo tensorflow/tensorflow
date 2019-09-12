@@ -29,7 +29,9 @@ namespace cl {
 
 Status GPUOperationFromNode(const CreationContext& creation_context,
                             const OperationDef& op_def, ModelHints hints,
-                            const GraphFloat32& graph, const Node& node,
+                            const std::vector<Value<TensorRef<BHWC>>*>& inputs,
+                            const std::vector<Value<TensorRef<BHWC>>*>& outputs,
+                            const Node& node,
                             std::unique_ptr<GPUOperation>* gpu_op);
 
 }  // namespace cl
