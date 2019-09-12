@@ -32,14 +32,9 @@ END
   in_arg {
     name: "num_parallel_calls"
     description: <<END
-If this input is >=1, it bounds the number of datasets from which this instance
-of `ParallelInterleaveDatasetV2` will fetch simultaneously.
-The actual number of parallel calls will depend on the `cycle_length`
-parameter, the number of available CPUs, and the number of available datasets.
-
-If this input is set to -1 (i.e. the constant `tf.data.experimental.AUTOTUNE`
-in the Python API), then the dataset's kernel will choose an upper bound
-automatically.
+Determines the number of threads that should be used for fetching data from
+input datasets in parallel. The Python API `tf.data.experimental.AUTOTUNE` 
+constant can be used to indicate that the level of parallelism should be autotuned.
 END
   }
   attr {
