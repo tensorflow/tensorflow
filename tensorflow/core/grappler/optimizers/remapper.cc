@@ -1527,8 +1527,6 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       continue;
     }
 
-// Remove this once TF-ROCm supports _FusedConv2D
-#if !defined(TENSORFLOW_USE_ROCM)
 #ifdef INTEL_MKL
     ContractionWithBiasAddAndAdd contract_with_bias_and_add;
     ContractionWithBiasAndAddActivation contract_with_bias_and_add_activation;
@@ -1613,7 +1611,6 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       continue;
     }
 #endif  // !INTEL_MKL
-#endif  // !TENSORFLOW_USE_ROCM
 
     // Infer properties lazily in case they are not needed.
     if (!ctx.inferred_graph_properties && RequiresInferredShapes(ctx, i)) {
