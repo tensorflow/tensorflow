@@ -73,6 +73,7 @@ load(
     "if_mobile",
     "if_not_windows",
     "if_windows",
+    "tf_openmp_copts",
     "tf_android_core_proto_headers",
     "tf_android_core_proto_sources",
     "tf_cc_test",
@@ -3240,7 +3241,7 @@ tf_cuda_library(
         "public/version.h",
     ],
     hdrs = CORE_CPU_LIB_HEADERS,
-    copts = tf_copts(),
+    copts = tf_copts() + tf_openmp_copts(),
     deps = [
         ":bfc_allocator",
         ":graph",
