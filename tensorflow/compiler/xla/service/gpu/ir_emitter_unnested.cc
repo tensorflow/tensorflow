@@ -3174,6 +3174,14 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
 
   ReductionCodegenInfo reduction_info =
       ComputeReductionCodegenInfo(unnested_hlo, first_reduce);
+  const KernelMappingScheme& mapping_scheme =
+      reduction_info.GetKernelMappingScheme();
+  LaunchDimensions launch_dimensions(mapping_scheme.GetNumberOfBlocks(),
+                                     mapping_scheme.GetThreadsPerBlock());
+  llvm::Type* index_ty = GetIndexTypeForKernel(
+      unnested_hlo, launch_dimensions.launch_bound(), &b_);
+  EmitPrologueForReduction(unnested_hlo, &reduction_info, reduce_instructions,
+                           index_ty);
   EmitElementFunction emit_reduction_tile =
       [&](const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
           llvm::Value* x_loc, int64 x_iter_num) {
@@ -3182,16 +3190,6 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
                                     reducers, x_iter_num);
       };
 
-  const auto& mapping_scheme = reduction_info.GetKernelMappingScheme();
-  LaunchDimensions launch_dimensions(mapping_scheme.GetNumberOfBlocks(),
-                                     mapping_scheme.GetThreadsPerBlock());
-  llvm::Type* index_ty =
-      reduction_info.IsRowReduction()
-          ? GetIndexTypeForKernel(unnested_hlo,
-                                  launch_dimensions.launch_bound(), &b_)
-          : b_.getInt64Ty();
-  EmitPrologueForReduction(unnested_hlo, &reduction_info, reduce_instructions,
-                           index_ty);
   llvm::Value* lane_id = EmitTilingKernel(
       mapping_scheme, index_ty,
       /*tile_element_generator=*/
