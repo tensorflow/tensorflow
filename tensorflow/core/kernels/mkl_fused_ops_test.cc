@@ -604,7 +604,7 @@ class BiasCacheTest : public OpsTestBase {
             .Input(FakeInput(DT_FLOAT))  // Max-input
             .Input(FakeInput(DT_FLOAT))  // Min-filter
             .Input(FakeInput(DT_FLOAT))  // Max-filter
-            .Input(FakeInput(DT_FLOAT))  // min-output
+            .Input(FakeInput(DT_FLOAT))  // Min-output
             .Input(FakeInput(DT_FLOAT))  // max-output
             .Input(FakeInput(DT_UINT8))  // MKL second tensor
             .Input(FakeInput(DT_UINT8))  // MKl second tensor
