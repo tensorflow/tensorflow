@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <deque>
+#include <memory>
 
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -92,7 +93,7 @@ class MultiDeviceIterator : public ResourceBase {
     ++incarnation_id_;
     *incarnation_id = incarnation_id_;
 
-    multi_device_buffer_ = absl::make_unique<MultiDeviceBuffer>(
+    multi_device_buffer_ = std::make_shared<MultiDeviceBuffer>(
         devices_.size(), max_buffer_size, incarnation_id_, std::move(iterator),
         this);
     return Status::OK();
@@ -100,7 +101,14 @@ class MultiDeviceIterator : public ResourceBase {
 
   void GetNextFromShard(OpKernelContext* ctx, int shard_num,
                         int64 incarnation_id, std::function<void()> done) {
-    tf_shared_lock l(mu_);
+    // We capture the multi-device buffer because we should not be calling the
+    // `done` callback concurrently with holding the lock since the `done`
+    // callback could trigger the MultiDeviceIterator destructor.
+    std::shared_ptr<MultiDeviceBuffer> multi_device_buffer;
+    {
+      tf_shared_lock l(mu_);
+      multi_device_buffer = multi_device_buffer_;
+    }
     IteratorContext::Params params(ctx);
     params.flr = flr_;
     params.function_handle_cache = function_handle_cache_.get();
@@ -118,7 +126,6 @@ class MultiDeviceIterator : public ResourceBase {
     MultiDeviceIteratorCallback callback = std::bind(
         [ctx](const HostBufferElement& elem, const std::function<void()>& done,
               const std::function<void()>& deregister_fn) {
-          // iterator->Unref();
           Status s = elem.status;
           if (!s.ok()) {
             ctx->SetStatus(s);
@@ -134,8 +141,8 @@ class MultiDeviceIterator : public ResourceBase {
         },
         std::placeholders::_1, std::move(done), std::move(deregister_fn));
 
-    multi_device_buffer_->GetNextFromShard(&iter_ctx, shard_num, incarnation_id,
-                                           std::move(callback));
+    multi_device_buffer->GetNextFromShard(&iter_ctx, shard_num, incarnation_id,
+                                          std::move(callback));
   }
 
   const DataTypeVector& output_types() const { return output_types_; }
@@ -394,7 +401,7 @@ class MultiDeviceIterator : public ResourceBase {
   CancellationManager cancellation_manager_;
 
   int64 incarnation_id_ GUARDED_BY(mu_) = 0;
-  std::unique_ptr<MultiDeviceBuffer> multi_device_buffer_ GUARDED_BY(mu_);
+  std::shared_ptr<MultiDeviceBuffer> multi_device_buffer_ GUARDED_BY(mu_);
 };
 
 // Used to generate unique names for anonymous multi device iterators.
@@ -613,9 +620,19 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
         ctx, ctx->input("incarnation_id", &tensor_incarnation_id), done);
     int64 incarnation_id = tensor_incarnation_id->scalar<int64>()();
 
-    core::RefCountPtr<MultiDeviceIterator> iterator;
+    MultiDeviceIterator* iterator;
     OP_REQUIRES_OK_ASYNC(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator), done);
+
+    // NOTE: `iterator` must be unreffed before `done` is called (because `done`
+    // might trigger the entire session/context to be deleted, so we move
+    // the `iterator->Unref()` into a callback wrapper.
+    done = std::bind(
+        [](const DoneCallback& done, MultiDeviceIterator* iterator) {
+          iterator->Unref();
+          done();
+        },
+        std::move(done), iterator);
 
     iterator->GetNextFromShard(ctx, shard_num, incarnation_id, std::move(done));
   }
