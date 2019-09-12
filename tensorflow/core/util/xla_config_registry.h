@@ -41,14 +41,14 @@ class XlaConfigRegistry {
       GlobalJitLevelGetterTy;
 
   static void Register(XlaConfigRegistry::GlobalJitLevelGetterTy getter) {
-    static mutex mu(LINKER_INITIALIZED);
-    mutex_lock l(mu);
+    mutex_lock l(mu_);
     CHECK(!global_jit_level_getter_);
     global_jit_level_getter_ = std::move(getter);
   }
 
   static XlaGlobalJitLevel GetGlobalJitLevel(
       OptimizerOptions::GlobalJitLevel jit_level_in_session_opts) {
+    mutex_lock l(mu_);
     if (!global_jit_level_getter_) {
       return {jit_level_in_session_opts, jit_level_in_session_opts};
     }
@@ -56,7 +56,8 @@ class XlaConfigRegistry {
   }
 
  private:
-  static GlobalJitLevelGetterTy global_jit_level_getter_;
+  static mutex mu_;
+  static GlobalJitLevelGetterTy global_jit_level_getter_ GUARDED_BY(mu_);
 };
 
 #define REGISTER_XLA_CONFIG_GETTER(getter) \

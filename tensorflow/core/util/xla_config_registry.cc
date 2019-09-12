@@ -18,6 +18,9 @@ limitations under the License.
 namespace tensorflow {
 
 /*static*/
+mutex XlaConfigRegistry::mu_(LINKER_INITIALIZED);
+
+/*static*/
 XlaConfigRegistry::GlobalJitLevelGetterTy
     XlaConfigRegistry::global_jit_level_getter_;
 
