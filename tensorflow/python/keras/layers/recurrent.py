@@ -36,7 +36,9 @@ from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
@@ -792,7 +794,19 @@ class RNN(Layer):
       inputs = inputs[0]
 
     if self.stateful:
-      initial_state = self.states
+      if initial_state is not None:
+        # When layer is stateful and initial_state is provided, check if the
+        # recorded state is same as the default value (zeros). Use the recorded
+        # state if it is not same as the default.
+        non_zero_count = math_ops.add_n([math_ops.count_nonzero_v2(s)
+                                         for s in nest.flatten(self.states)])
+        # Set strict = True to keep the original structure of the state.
+        initial_state = control_flow_ops.cond(non_zero_count > 0,
+                                              true_fn=lambda: self.states,
+                                              false_fn=lambda: initial_state,
+                                              strict=True)
+      else:
+        initial_state = self.states
     elif initial_state is None:
       initial_state = self.get_initial_state(inputs)
 
