@@ -657,6 +657,16 @@ class RNNTest(keras_parameterized.TestCase):
     self.assertEqual(len(layer.trainable_weights), 3)
     self.assertEqual(len(layer.non_trainable_weights), 0)
 
+  @parameterized.parameters(
+      [keras.layers.SimpleRNN, keras.layers.GRU, keras.layers.LSTM])
+  def test_rnn_cell_trainability(self, layer_cls):
+    # https://github.com/tensorflow/tensorflow/issues/32369.
+    layer = layer_cls(3, trainable=False)
+    self.assertFalse(layer.cell.trainable)
+
+    layer.trainable = True
+    self.assertTrue(layer.cell.trainable)
+
   def test_state_reuse_with_dropout(self):
     layer_class = keras.layers.SimpleRNN
     embedding_dim = 4
