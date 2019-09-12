@@ -596,7 +596,7 @@ DistributedVarOp = collections.namedtuple(
     "DistributedVarOp", ["name", "graph", "traceback", "type"])
 
 
-class DistributedVariable(DistributedDelegate, variables_lib.AbstractVariable):
+class DistributedVariable(DistributedDelegate, variables_lib.Variable):
   """Holds a map from replica to variables."""
   # TODO(josh11b): Support changing the set of variables if e.g. if new
   # devices are joining or a device is to leave.
