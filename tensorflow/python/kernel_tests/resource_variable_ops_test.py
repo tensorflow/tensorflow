@@ -656,12 +656,6 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       self.assertEqual(v.handle.op.colocation_groups(),
                        v.initializer.inputs[1].op.colocation_groups())
 
-  def testHandleNumpy(self):
-    with context.eager_mode():
-      with self.assertRaises(ValueError):
-        resource_variable_ops.ResourceVariable(
-            1.0, name="handle-numpy").handle.numpy()
-
   def testCountUpTo(self):
     with context.eager_mode():
       v = resource_variable_ops.ResourceVariable(0, name="upto")
@@ -986,7 +980,9 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       x = resource_variable_ops.var_handle_op(
           dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var5",
           container=ops.get_default_graph()._container)
-      with self.assertRaisesOpError("Resource .*/var5/.* does not exist"):
+      with self.assertRaisesOpError(
+          "(Resource .*/var5/.* does not exist|Read of uninitialized variable)"
+      ):
         resource_variable_ops.read_variable_op(x, v.dtype.base_dtype).eval()
 
   @test_util.run_deprecated_v1

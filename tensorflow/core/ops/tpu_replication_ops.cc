@@ -42,6 +42,8 @@ REGISTER_OP("TPUReplicatedInput")
     .Attr("N: int >= 1")
     .Attr("T: type")
     .Attr("is_mirrored_variable: bool = false")
+    // Index of the input. If is_mirrored_variable is true, this is ignored.
+    .Attr("index: int = -1")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle cur = c->input(c->num_inputs() - 1);
       for (int i = c->num_inputs() - 2; i >= 0; --i) {

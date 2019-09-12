@@ -17,12 +17,9 @@ limitations under the License.
  * The includes are intentionally not alphabetically sorted, as the order of
  * includes follows dependency order */
 
-%include "tensorflow/python/pywrap_tfe.i"
-
-%include "tensorflow/python/util/port.i"
 %include "tensorflow/python/util/py_checkpoint_reader.i"
-%include "tensorflow/python/util/stat_summarizer.i"
-%include "tensorflow/python/util/tfprof.i"
+
+%include "tensorflow/python/pywrap_tfe.i"
 
 %include "tensorflow/python/lib/core/py_func.i"
 %include "tensorflow/python/lib/core/py_exception_registry.i"
@@ -58,3 +55,5 @@ limitations under the License.
 
 %include "tensorflow/python/util/traceme.i"
 %include "tensorflow/python/util/scoped_annotation.i"
+
+%include "tensorflow/compiler/mlir/python/mlir.i"

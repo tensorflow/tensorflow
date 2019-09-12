@@ -150,66 +150,60 @@ Tensor FeatureSparseCopy(const std::size_t batch, const string& key,
 int64 CopyIntoSparseTensor(const Tensor& in, const int batch,
                            const int64 offset, Tensor* indices, Tensor* values);
 
+// Check that each dense_shape has known rank and inner dimensions; and
+// update variable_length (whether the outer dimension is None) and
+// elements_per_stride for each denes_shape.
+Status GetDenseShapes(const std::vector<PartialTensorShape>& dense_shapes,
+                      std::vector<bool>* variable_length,
+                      std::vector<std::size_t>* elements_per_stride);
+
 // Parses the attributes passed to ParseExample.
 // REQUIRES: Init must be called after construction.
-class ParseExampleAttrs {
+struct ParseExampleAttrs {
  public:
   template <typename ContextType>
-  Status Init(ContextType* ctx) {
+  Status Init(ContextType* ctx, int op_version = 1) {
     TF_RETURN_IF_ERROR(ctx->GetAttr("sparse_types", &sparse_types));
-    TF_RETURN_IF_ERROR(ctx->GetAttr("Ndense", &num_dense));
-    TF_RETURN_IF_ERROR(ctx->GetAttr("Nsparse", &num_sparse));
     TF_RETURN_IF_ERROR(ctx->GetAttr("Tdense", &dense_types));
     TF_RETURN_IF_ERROR(ctx->GetAttr("dense_shapes", &dense_shapes));
-    // Temporary check until we start allowing a variable length outer
-    // dimension.
-    for (int i = 0; i < dense_shapes.size(); ++i) {
-      bool shape_ok = true;
-      if (dense_shapes[i].dims() == -1) {
-        shape_ok = false;
-      } else {
-        for (int d = 1; d < dense_shapes[i].dims(); ++d) {
-          if (dense_shapes[i].dim_size(d) == -1) {
-            shape_ok = false;
-          }
-        }
-      }
-      if (!shape_ok) {
-        return errors::InvalidArgument(
-            "dense_shapes[", i,
-            "] has unknown rank or unknown inner dimensions: ",
-            dense_shapes[i].DebugString());
-      }
-      TensorShape dense_shape;
-      if (dense_shapes[i].dims() > 0 && dense_shapes[i].dim_size(0) == -1) {
-        variable_length.push_back(true);
-        for (int d = 1; d < dense_shapes[i].dims(); ++d) {
-          dense_shape.AddDim(dense_shapes[i].dim_size(d));
-        }
-      } else {
-        variable_length.push_back(false);
-        dense_shapes[i].AsTensorShape(&dense_shape);
-      }
-      elements_per_stride.push_back(dense_shape.num_elements());
+    TF_RETURN_IF_ERROR(
+        GetDenseShapes(dense_shapes, &variable_length, &elements_per_stride));
+    switch (op_version) {
+      case 1:
+        TF_RETURN_IF_ERROR(ctx->GetAttr("Nsparse", &num_sparse));
+        TF_RETURN_IF_ERROR(ctx->GetAttr("Ndense", &num_dense));
+        break;
+      case 2:
+        TF_RETURN_IF_ERROR(
+            ctx->GetAttr("ragged_value_types", &ragged_value_types));
+        TF_RETURN_IF_ERROR(ctx->GetAttr("num_sparse", &num_sparse));
+        TF_RETURN_IF_ERROR(
+            ctx->GetAttr("ragged_split_types", &ragged_split_types));
+        break;
+      default:
+        return errors::InvalidArgument("Unexpected op_version", op_version);
     }
-    return FinishInit();
+    return FinishInit(op_version);
   }
 
   int64 num_sparse;
   int64 num_dense;
+  int64 num_ragged;
   std::vector<DataType> sparse_types;
   std::vector<DataType> dense_types;
+  std::vector<DataType> ragged_value_types;
+  std::vector<DataType> ragged_split_types;
   std::vector<PartialTensorShape> dense_shapes;
   std::vector<bool> variable_length;
   std::vector<std::size_t> elements_per_stride;
 
  private:
-  Status FinishInit();  // for context-independent parts of Init.
+  Status FinishInit(int op_version);  // for context-independent parts of Init.
 };
 
 // Parses the attributes passed to ParseSingleExample.
 // REQUIRES: Init must be called after construction.
-class ParseSingleExampleAttrs {
+struct ParseSingleExampleAttrs {
  public:
   template <typename ContextType>
   Status Init(ContextType* ctx) {
@@ -227,37 +221,8 @@ class ParseSingleExampleAttrs {
           sparse_keys.size(), ") and sparse_types (", sparse_types.size(), ")");
     }
 
-    // Temporary check until we start allowing a variable length outer
-    // dimension.
-    for (int i = 0; i < dense_shapes.size(); ++i) {
-      bool shape_ok = true;
-      if (dense_shapes[i].dims() == -1) {
-        shape_ok = false;
-      } else {
-        for (int d = 1; d < dense_shapes[i].dims(); ++d) {
-          if (dense_shapes[i].dim_size(d) == -1) {
-            shape_ok = false;
-          }
-        }
-      }
-      if (!shape_ok) {
-        return errors::InvalidArgument(
-            "dense_shapes[", i,
-            "] has unknown rank or unknown inner dimensions: ",
-            dense_shapes[i].DebugString());
-      }
-      TensorShape dense_shape;
-      if (dense_shapes[i].dims() > 0 && dense_shapes[i].dim_size(0) == -1) {
-        variable_length.push_back(true);
-        for (int d = 1; d < dense_shapes[i].dims(); ++d) {
-          dense_shape.AddDim(dense_shapes[i].dim_size(d));
-        }
-      } else {
-        variable_length.push_back(false);
-        dense_shapes[i].AsTensorShape(&dense_shape);
-      }
-      elements_per_stride.push_back(dense_shape.num_elements());
-    }
+    TF_RETURN_IF_ERROR(
+        GetDenseShapes(dense_shapes, &variable_length, &elements_per_stride));
     return FinishInit();
   }
 
@@ -275,7 +240,7 @@ class ParseSingleExampleAttrs {
 
 // Parses the attributes passed to ParseSequenceExample.
 // REQUIRES: Init must be called after construction.
-class ParseSequenceExampleAttrs {
+struct ParseSequenceExampleAttrs {
  public:
   template <typename ContextType>
   Status Init(ContextType* ctx) {
@@ -335,7 +300,7 @@ class ParseSequenceExampleAttrs {
 
 // Parses the attributes passed to ParseSingleSequenceExample.
 // REQUIRES: Init must be called after construction.
-class ParseSingleSequenceExampleAttrs {
+struct ParseSingleSequenceExampleAttrs {
  public:
   template <typename ContextType>
   Status Init(ContextType* ctx) {

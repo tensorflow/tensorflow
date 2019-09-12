@@ -79,6 +79,11 @@ if tf.__version__.startswith('1'):
       'tf.contrib.autograph': ['utils', 'operators'],
       'tf.test': ['mock'],
       'tf.contrib.estimator': ['python'],
+      'tf': ['python', 'core', 'compiler', 'examples', 'tools'],
+      # There's some aliasing between the compats and v1/2s, so it's easier to
+      # block by name and location than by deleting, or hiding objects.
+      'tf.compat.v1.compat': ['v1', 'v2'],
+      'tf.compat.v2.compat': ['v1', 'v2']
   }
 
   DO_NOT_DESCEND_MAP = {

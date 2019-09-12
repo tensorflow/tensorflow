@@ -1,4 +1,3 @@
-# -*- Python -*-
 """Repository rule for TensorRT configuration.
 
 `tensorrt_configure` depends on the following environment variables:

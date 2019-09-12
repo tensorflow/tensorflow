@@ -64,7 +64,8 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
       }
     }
     case OperationType::APPLY_MASK: {
-      SelectApplyMask(op_def, gpu_op);
+      SelectApplyMask(op_def, inputs[0]->tensor.shape, inputs[1]->tensor.shape,
+                      gpu_op);
       return OkStatus();
     }
     case OperationType::CONCAT: {

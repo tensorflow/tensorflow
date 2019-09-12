@@ -204,8 +204,8 @@ private:
 };
 
 /// A flat list of affine equalities and inequalities in the form.
-/// Inequality: c_0*x_0 + c_1*x_1 + .... + c_{n-1}*x_{n-1} == 0
-/// Equality: c_0*x_0 + c_1*x_1 + .... + c_{n-1}*x_{n-1} >= 0
+/// Inequality: c_0*x_0 + c_1*x_1 + .... + c_{n-1}*x_{n-1} >= 0
+/// Equality: c_0*x_0 + c_1*x_1 + .... + c_{n-1}*x_{n-1} == 0
 ///
 /// FlatAffineConstraints stores coefficients in a contiguous buffer (one buffer
 /// for equalities and one for inequalities). The size of each buffer is
@@ -477,7 +477,13 @@ public:
   /// symbolic operands of vMap should match 1:1 (in the same order) with those
   /// of this constraint system, but the latter could have additional trailing
   /// operands.
-  LogicalResult composeMap(AffineValueMap *vMap);
+  LogicalResult composeMap(const AffineValueMap *vMap);
+
+  /// Composes an affine map whose dimensions match one to one to the
+  /// dimensions of this FlatAffineConstraints. The results of the map 'other'
+  /// are added as the leading dimensions of this constraint system. Returns
+  /// failure if 'other' is a semi-affine map.
+  LogicalResult composeMatchingMap(AffineMap other);
 
   /// Projects out (aka eliminates) 'num' identifiers starting at position
   /// 'pos'. The resulting constraint system is the shadow along the dimensions

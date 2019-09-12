@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
@@ -476,7 +477,8 @@ Status ImporterBase::AddNodesToShapeRefiner() {
     auto it = specs_.inputs.find(node->name());
     if (it != specs_.inputs.end()) {
       auto node_name = node->op_def().name();
-      if (node_name != "Placeholder" && node_name != "LegacyFedInput") {
+      if (node_name != "Placeholder" && node_name != "LegacyFedInput" &&
+          node_name != "_Arg") {
         // We do not handle the case where the input node has multple outputs
         if (node->num_outputs() > 1) {
           return errors::FailedPrecondition(absl::StrCat(
@@ -495,6 +497,35 @@ Status ImporterBase::AddNodesToShapeRefiner() {
     // Adds the node to the shape refiner.
     TF_RETURN_WITH_CONTEXT_IF_ERROR(shape_refiner_->AddNode(node),
                                     GetLocationStr(*node));
+
+    // We currently have no other way to get shapes from ReadVariableOp's.
+    // Some graphs seem to have _output_shapes attributes on them, so use that
+    // if possible.
+    // TODO(silvasean): Ideally, we would do this in a separate shape inference
+    // pass to avoid adding complexity to the importer. But right now, we don't
+    // have an MLIR-native shape inference pass, so we need to do this while we
+    // still have the Graph around, i.e. here, in the importer.
+    if (node->op_def().name() == "ReadVariableOp") {
+      // TODO(silvasean): In some graphs, this seems to be annotated on every
+      // node. Why and by whom?
+      // TODO(b/140588338): We should ideally incorporate that information for
+      // all nodes, but right now, this can result in e.g. an Identity node with
+      // signature such as
+      // `(tensor<?x?xf32>) -> tensor<?x9216xf32>` which fails the verifier
+      // (which checks for exact type equality; _output_shapes results in
+      // us shoehorning in the more-precise type on the output).
+      if (const AttrValue* attr = node->attrs().Find("_output_shapes")) {
+        auto& list = attr->list();
+        for (auto shape : llvm::enumerate(list.shape())) {
+          auto* node_context = shape_refiner_->GetContext(node);
+          shape_inference::ShapeHandle handle;
+          TF_RETURN_WITH_CONTEXT_IF_ERROR(
+              node_context->MakeShapeFromShapeProto(shape.value(), &handle),
+              GetLocationStr(*node));
+          node_context->set_output(shape.index(), handle);
+        }
+      }
+    }
 
     // If it is the argument node, the shape handle is set explicitly, so it
     // can be propagated to the body nodes of the function.
@@ -845,10 +876,28 @@ Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
     attributes.push_back(builder_.getNamedAttr(grad_string, gradient_attr));
   }
 
-  // Converts the graph to a MLIR function and adds it to the module. Uses the
-  // default node spec without any inputs or outputs as the function graph has
-  // special '_Arg' and '_Retval' ops for argument and return values.
+  // Converts the graph to a MLIR function and adds it to the module.
+  // We populate the NodeSpec so that all the _Arg ops get their shape
+  // added correctly.
   NodeSpecs specs;
+  for (const auto& name_and_value : func_def->attr()) {
+    if (name_and_value.first == "_input_shapes") {
+      auto& list = name_and_value.second.list();
+      auto& signature = func_def->signature();
+      for (int i = 0; i < list.shape_size(); i++) {
+        auto& input_arg = signature.input_arg(i);
+        auto& array_info = specs.inputs[input_arg.name()];
+        array_info.imported_dtype = input_arg.type();
+        array_info.shape = list.shape(i);
+        // TODO(b/140464702): These fields should not be exposed here.
+        // Seems like a layering violation. Initialize them anyway.
+        array_info.final_dtype = input_arg.type();
+        array_info.min_value = 0.0;
+        array_info.max_value = 0.0;
+      }
+    }
+  }
+
   ImporterBase child_importer(graph_flib_, debug_info_, specs, module_,
                               tf_name_to_mlir_name_);
   TF_RETURN_IF_ERROR(child_importer.PrepareConvert(*fbody->graph));
@@ -1090,9 +1139,10 @@ mlir::Location ImporterBase::GetLocation(const NodeDef& node_def) {
     for (int i = 0, e = original_nodes.size(); i != e; ++i) {
       auto node_name = original_nodes[i];
       auto func_name = (i < original_funcs.size()) ? original_funcs[i] : "";
-      // Use the catenation of function and node names as the lookup key. This
-      // is to match the utility of generating the GraphDebugInfo.
-      node_call_sites.push_back(node_name_to_call_site(func_name + node_name));
+      // Use the catenation of function and node names as the lookup key.
+      // This matches the way that the key is formed on the python side.
+      std::string key = node_name + "@" + func_name;
+      node_call_sites.push_back(node_name_to_call_site(key));
     }
     return mlir::FusedLoc::get(node_call_sites, context_);
   }
@@ -1399,16 +1449,22 @@ StatusOr<mlir::FunctionType> ImporterBase::InferLibFunctionType(
     const FunctionBody& fbody) {
   mlir::Builder builder(context_);
 
+  // The FunctionBody contains a graph with a single-output _Arg node for each
+  // function argument and a single-input _Retval node for each function return
+  // value.
+  //
+  // We already populated the ShapeRefiner with all the information about the
+  // shapes of these graph edges, so we just query it to build the corresponding
+  // MLIR function type signature.
+
   llvm::SmallVector<mlir::Type, 4> arg_types;
   arg_types.reserve(fbody.arg_types.size());
-  for (auto dataType : fbody.arg_types) {
-    mlir::Type element_type;
-    TF_RETURN_IF_ERROR(
-        ::tensorflow::ConvertDataType(dataType, builder, &element_type));
-    // TODO(hinsu): Derive shape of function arguments based on shapes available
-    // at call sites of this function. That way it is possible to have a
-    // partially known shape in some cases instead of unranked tensor types.
-    arg_types.push_back(builder.getTensorType(element_type));
+  for (auto arg : fbody.arg_nodes) {
+    // Find node in the graph using the node id instead of using `arg` directly
+    // because the graph has been cloned.
+    auto* node = graph_->FindNodeId(arg->id());
+    TF_ASSIGN_OR_RETURN(auto type, InferOutputType(*node, /*idx=*/0, builder));
+    arg_types.push_back(type);
   }
 
   llvm::SmallVector<mlir::Type, 4> ret_types;
@@ -1417,9 +1473,6 @@ StatusOr<mlir::FunctionType> ImporterBase::InferLibFunctionType(
     // Find node in the graph using the node id instead of using `ret` directly
     // because the graph has been cloned.
     auto* node = graph_->FindNodeId(ret->id());
-
-    // Return type of the function is type of the only input of the respective
-    // return node in the function.
     TF_ASSIGN_OR_RETURN(auto type, InferInputType(*node, /*idx=*/0, builder));
     ret_types.push_back(type);
   }
@@ -1719,6 +1772,15 @@ StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
     mlir::MLIRContext* context, bool add_default_attributes) {
   return SavedModelImporter::Convert(saved_model.meta_graph_def, debug_info,
                                      add_default_attributes, context);
+}
+
+std::string MlirModuleToString(mlir::ModuleOp module) {
+  std::string txt_module;
+  {
+    llvm::raw_string_ostream os{txt_module};
+    module.print(os);
+  }
+  return txt_module;
 }
 
 }  // namespace tensorflow

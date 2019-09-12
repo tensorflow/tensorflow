@@ -16,7 +16,12 @@ limitations under the License.
 #if GOOGLE_CUDA
 #define EIGEN_USE_GPU
 #include <limits>
+
 #include "absl/strings/str_cat.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "third_party/cub/device/device_radix_sort.cuh"
+#include "third_party/cub/device/device_segmented_radix_sort.cuh"
+#include "third_party/cub/device/device_select.cuh"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -24,10 +29,6 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 #include "tensorflow/stream_executor/stream_executor.h"
-#include "third_party/cub/device/device_radix_sort.cuh"
-#include "third_party/cub/device/device_segmented_radix_sort.cuh"
-#include "third_party/cub/device/device_select.cuh"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #define TF_RETURN_IF_CUDA_ERROR(result)                   \
   do {                                                    \
@@ -609,7 +610,7 @@ class NonMaxSuppressionV2GPUOp : public OpKernel {
     OP_REQUIRES_OK(
         context,
         DoNMS(context, boxes, scores, output_size, iou_threshold_val,
-              /*score_threshold is float min if score threshold is disabled*/
+              /*score_threshold is float lowest if score threshold is disabled*/
               std::numeric_limits<float>::lowest(),
               /*pad_to_max_output*/ false, &num_boxes));
   }

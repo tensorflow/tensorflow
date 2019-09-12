@@ -44,6 +44,10 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h.inc"
 
+namespace mlir {
+#include "tensorflow/compiler/mlir/xla/ir/hlo_structs.cc.inc"
+}  // namespace mlir
+
 using namespace mlir;
 using namespace mlir::xla_hlo;
 
@@ -100,6 +104,15 @@ void ConstOp::build(Builder* builder, OperationState* result, Attribute value) {
   assert(type && "unsupported attribute type for building xla_hlo.constant");
   result->types.push_back(type);
   result->addAttribute("value", value);
+}
+
+//===----------------------------------------------------------------------===//
+// ConcatOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult ConcatenateOp::fold(ArrayRef<Attribute> operands) {
+  if (getNumOperands() == 1) return getOperand(0);
+  return {};
 }
 
 //===----------------------------------------------------------------------===//

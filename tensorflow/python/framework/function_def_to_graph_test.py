@@ -194,42 +194,6 @@ class FunctionDefToGraphDefTest(test.TestCase):
     self.assertEqual(g.node[0].attr["shape"].shape.unknown_rank, False)
     self.assertFalse("shape" in g.node[2].attr)
 
-  @test_util.run_deprecated_v1
-  def testFunctionCallsFromFunction(self):
-    ops.disable_tensor_equality()
-    x = constant_op.constant(5.0)
-    y = constant_op.constant(10.0)
-
-    @function.defun
-    def fn():
-
-      @function.defun
-      def inner_fn():
-        return x + y
-
-      return inner_fn()
-
-    @function.defun
-    def fn2():
-      return 2 * fn()
-
-    fn2_defun = fn2.get_concrete_function()
-
-    # Call `fn2` to make sure `fn` is correctly instantiated so
-    # `function_def_to_graph` can find it.
-    fn2_defun()
-
-    fdef = fn2_defun.function_def
-    func_graph = function_def_to_graph.function_def_to_graph(fdef)
-    with func_graph.as_default():
-      x_ph, y_ph = func_graph.inputs
-      with self.session(graph=func_graph) as sess:
-        self.assertEqual(
-            sess.run(func_graph.outputs[0], feed_dict={
-                x_ph: 5.0,
-                y_ph: 10.0
-            }), 30.0)
-
   def testControlDependencies(self):
 
     v = variables.Variable(1)

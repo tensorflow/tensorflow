@@ -304,6 +304,9 @@ class ShapeUtil {
   // Returns whether the lhs and rhs shapes are identical.
   static bool Equal(const Shape& lhs, const Shape& rhs);
 
+  // As Equal, but does not compare the element type.
+  static bool EqualIgnoringElementType(const Shape& lhs, const Shape& rhs);
+
   // As Equal, but allow one of lhs and rhs to be F16 while the other is F32.
   static bool EqualIgnoringFpPrecision(const Shape& lhs, const Shape& rhs);
 
@@ -734,6 +737,21 @@ class ShapeUtil {
 
   // Compute a hash for `shape`.
   static size_t Hash(const Shape& shape);
+
+  // About 0-2-1 transpose:
+  //
+  // If a shape can be viewed as three logical components 0-1-2 in the order of
+  // major to minor, a 0-2-1-transpose changes the order of such logical
+  // components to 0-2-1. We call the shape being transposed the input shape and
+  // the transposed shape the output shape. The logical view of the input/output
+  // shapes for the transpose are called the 0-1-2/0-2-1 shapes or the
+  // normalized shapes. The original input/output shapes are called unnormalized
+  // shapes.
+  //
+  // If `b` is a 0-2-1 transpose of `a` in 0-1-2, return the dimensions for the
+  // normalized shape of `b` or the 0-2-1 shape.
+  static absl::optional<std::vector<int64>> FindTranspose021(const Shape& a,
+                                                             const Shape& b);
 
  private:
   // Validates the shape size is sane. This makes sure it's safe to do

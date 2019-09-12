@@ -1,5 +1,5 @@
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite", "tflite_ios_per_kernel_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -463,6 +463,28 @@ cc_library(
     ],
 )
 
+objc_library(
+    name = "transpose_conv_test_lib",
+    testonly = 1,
+    srcs = ["transpose_conv_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":test_util",
+        ":transpose_conv",
+    ],
+)
+
+ios_unit_test(
+    name = "transpose_conv_test",
+    testonly = 1,
+    minimum_os_version = "9.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":transpose_conv_test_lib"],
+)
+
 cc_library(
     name = "upsample",
     srcs = ["upsample.cc"],
@@ -509,3 +531,5 @@ objc_library(
 )
 
 tflite_portable_test_suite()
+
+tflite_ios_per_kernel_test()

@@ -21,10 +21,10 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
-from tensorflow.python.ops import manip_ops
 from tensorflow.python.framework import tensor_util as _tensor_util
 from tensorflow.python.ops import array_ops as _array_ops
 from tensorflow.python.ops import gen_spectral_ops
+from tensorflow.python.ops import manip_ops
 from tensorflow.python.ops import math_ops as _math_ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -358,11 +358,11 @@ def fftshift(x, axes=None, name=None):
     x = _ops.convert_to_tensor(x)
     if axes is None:
       axes = tuple(range(x.shape.ndims))
-      shift = [int(dim // 2) for dim in x.shape]
+      shift = _array_ops.shape(x) // 2
     elif isinstance(axes, int):
-      shift = int(x.shape[axes] // 2)
+      shift = _array_ops.shape(x)[axes] // 2
     else:
-      shift = [int((x.shape[ax]) // 2) for ax in axes]
+      shift = _array_ops.gather(_array_ops.shape(x), axes) // 2
 
     return manip_ops.roll(x, shift, axes, name)
 
@@ -399,11 +399,11 @@ def ifftshift(x, axes=None, name=None):
     x = _ops.convert_to_tensor(x)
     if axes is None:
       axes = tuple(range(x.shape.ndims))
-      shift = [-int(dim // 2) for dim in x.shape]
+      shift = -(_array_ops.shape(x) // 2)
     elif isinstance(axes, int):
-      shift = -int(x.shape[axes] // 2)
+      shift = -(_array_ops.shape(x)[axes] // 2)
     else:
-      shift = [-int(x.shape[ax] // 2) for ax in axes]
+      shift = -(_array_ops.gather(_array_ops.shape(x), axes) // 2)
 
     return manip_ops.roll(x, shift, axes, name)
 

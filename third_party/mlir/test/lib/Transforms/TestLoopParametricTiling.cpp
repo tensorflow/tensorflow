@@ -43,7 +43,7 @@ public:
 
   void runOnFunction() override {
     FuncOp func = getFunction();
-    func.walk<loop::ForOp>([this](loop::ForOp op) {
+    func.walk([this](loop::ForOp op) {
       // Ignore nested loops.
       if (op.getParentRegion()->getParentOfType<loop::ForOp>())
         return;

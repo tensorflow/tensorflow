@@ -29,13 +29,13 @@ namespace eager {
 
 // RemoteExecuteNode is an implementation of EagerNode which enqueues
 // an operation via RPC in a remote EagerService.
-class RemoteExecuteNode : public EagerNode {
+class RemoteExecuteNode : public AsyncEagerNode {
  public:
   RemoteExecuteNode(std::unique_ptr<EnqueueRequest> request, Device* device,
                     EagerClient* eager_client,
                     const gtl::InlinedVector<TensorHandle*, 4>& inputs,
                     absl::Span<TensorHandle*> retvals)
-      : EagerNode(),
+      : AsyncEagerNode(),
         request_(std::move(request)),
         device_(device),
         eager_client_(eager_client),
@@ -54,17 +54,29 @@ class RemoteExecuteNode : public EagerNode {
     }
   }
 
-  Status Run() override;
-
-  void Abort(Status status) override {
+  ~RemoteExecuteNode() override {
     for (auto handle : retvals_) {
-      handle->Poison(status);
       handle->Unref();
     }
 
     for (auto handle : inputs_) {
       handle->Unref();
     }
+  }
+
+  void RunAsync(StatusCallback done) override;
+
+  void Abort(Status status) override {
+    for (auto handle : retvals_) {
+      handle->Poison(status);
+    }
+  }
+
+  string DebugString() const override {
+    string out = "[RemoteExecuteNode]";
+    strings::StrAppend(&out, " request: ", request_->DebugString());
+    strings::StrAppend(&out, ", target_device: ", device_->name());
+    return out;
   }
 
  private:

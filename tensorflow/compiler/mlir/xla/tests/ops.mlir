@@ -519,3 +519,16 @@ func @tuple(%arg0: tensor<1xi32>, %arg1: tensor<1x2xf32>) -> tuple<tensor<1xi32>
   %0 = "xla_hlo.tuple"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xf32>) -> tuple<tensor<1xi32>, tensor<1x2xf32>>
   return %0: tuple<tensor<1xi32>, tensor<1x2xf32>>
 }
+
+// -----
+
+// CHECK-LABEL: func @reduce_window
+func @reduce_window(%arg0: tensor<4x4xi32>) -> tensor<2x2xi32> {
+  %cst = constant dense<0> : tensor<i32>
+  %0 = "xla_hlo.reduce_window"(%arg0, %cst) ( {
+    ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):       // no predecessors
+    %6 = "xla_hlo.max"(%arg1, %arg2) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    "xla_hlo.return"(%6) : (tensor<i32>) -> ()
+  }) {window_dimensions = dense<[2, 2]> : tensor<2xi64>, window_strides = dense<[2, 2]> : tensor<2xi64>, padding = dense<[2, 2]> : tensor<2xi64>} : (tensor<4x4xi32>, tensor<i32>) -> tensor<2x2xi32>
+  return %0 : tensor<2x2xi32>
+}

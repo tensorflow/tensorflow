@@ -27,7 +27,7 @@ void OpsTestBase::SetDevice(const DeviceType& device_type,
   CHECK(device_) << "No device provided";
 
   device_ = device.get();
-  device_mgr_ = absl::make_unique<DeviceMgr>(std::move(device));
+  device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(device));
   pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, flib_def_.get(),
       OptimizerOptions());

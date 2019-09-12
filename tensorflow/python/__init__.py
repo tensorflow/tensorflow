@@ -48,6 +48,7 @@ import numpy as np
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import _pywrap_utils
+from tensorflow.python import _pywrap_tfprof
 
 # Protocol buffers
 from tensorflow.core.framework.graph_pb2 import *
@@ -158,6 +159,9 @@ from tensorflow.python.ops import rnn_cell
 # XLA JIT compiler APIs.
 from tensorflow.python.compiler.xla import jit
 from tensorflow.python.compiler.xla import xla
+
+# MLIR APIs.
+from tensorflow.python.compiler.mlir import mlir
 
 # Required due to `rnn` and `rnn_cell` not being imported in `nn` directly
 # (due to a circular dependency issue: rnn depends on layers).

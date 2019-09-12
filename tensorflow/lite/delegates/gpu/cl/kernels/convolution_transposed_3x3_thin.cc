@@ -132,12 +132,13 @@ std::string GenerateConvolutionTransposedCode(
         c += "  {\n";
         c += "    FLT4 result = TO_FLT4(r" + layer + "[" + std::to_string(y) +
              "][" + std::to_string(x) + "]) + bias_val;\n";
+        const LinkingContext context{"result", "X + " + std::to_string(x),
+                                     "Y + " + std::to_string(y), layer};
+        c += PostProcess(linked_operations, context);
         c += "    " +
-             dst_tensor.GetAddress("address", "X + " + std::to_string(x),
-                                   "Y + " + std::to_string(y), layer) +
+             dst_tensor.Write3D("result", context.x_coord, context.y_coord,
+                                context.z_coord) +
              "\n";
-        c += PostProcess(linked_operations, "result", layer, "address");
-        c += "    " + dst_tensor.Write3D("result", "address") + "\n";
         c += "  }\n";
       }
     }
@@ -223,10 +224,10 @@ Status ConvolutionTransposed3x3Thin::AddToQueue(CLCommandQueue* queue) {
 
 bool IsConvolutionTransposed3x3ThinSupported(
     const CLDevice& device, const ConvolutionTransposedAttributes& attr) {
-  return device.IsAdreno() && attr.weights.shape.o <= 8 &&
-         attr.weights.shape.w == 3 && attr.weights.shape.h == 3 &&
-         attr.stride.w == 2 && attr.stride.h == 2 &&
-         attr.padding.prepended.w == 1 && attr.padding.prepended.h == 1;
+  return attr.weights.shape.o <= 8 && attr.weights.shape.w == 3 &&
+         attr.weights.shape.h == 3 && attr.stride.w == 2 &&
+         attr.stride.h == 2 && attr.padding.prepended.w == 1 &&
+         attr.padding.prepended.h == 1;
 }
 
 Status CreateConvolutionTransposed3x3Thin(

@@ -98,7 +98,7 @@ void DeviceResolverDistributed::RefreshRemoteAttributes(
   WorkerInterface* worker = worker_cache_->GetOrCreateWorker(task);
   CHECK(worker) << "Failed to get worker for " << task;
   worker->GetStatusAsync(
-      req, resp, /*fail_fast=*/true,
+      req, resp, /*fail_fast=*/false,
       [this, device, task, req, resp, worker, done](Status s) {
         if (s.ok()) {
           mutex_lock l(mu_);

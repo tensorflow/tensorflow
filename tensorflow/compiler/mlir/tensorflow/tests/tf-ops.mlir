@@ -83,6 +83,15 @@ func @testBitcast(%arg0: tensor<3x4x!tf.uint16>) -> tensor<3x4x!tf.quint16> {
 
 // -----
 
+// CHECK-LABEL: func @testReverseV2
+func @testReverseV2(%arg0: tensor<2x4x3x!tf.uint8>, %arg1: tensor<1xi32>) -> tensor<2x4x3x!tf.uint8> {
+  // CHECK: tf.ReverseV2
+  %0 = "tf.ReverseV2"(%arg0, %arg1) : (tensor<2x4x3x!tf.uint8>, tensor<1xi32>) -> tensor<2x4x3x!tf.uint8>
+  return %0 :  tensor<2x4x3x!tf.uint8>
+}
+
+// -----
+
 func @testIdentityWrongType(%arg0: tensor<4x2x!tf.string>) -> tensor<4x2x!tf.stringref> {
   // expected-error @+1 {{requires all operands to be either same as or ref type of results}}
   %0 = "tf.Identity"(%arg0) : (tensor<4x2x!tf.string>) -> tensor<4x2x!tf.stringref>
@@ -455,6 +464,37 @@ func @testInvalidFakeQuantWithMinMaxVarsWrongMaxType(tensor<8x8x8x8xf32>, tensor
   // expected-error @+1 {{op operand #2 must be tensor of 32-bit float values}}
   %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) : (tensor<8x8x8x8xf32>, tensor<f32>, tensor<i32>) -> tensor<8x8x8x8xf32>
   return %0 : tensor<8x8x8x8xf32>
+}
+
+// -----
+
+// Test valid tf.FakeQuantWithMinMaxVarsPerChannel
+// CHECK-LABEL: func @FakeQuantWithMinMaxVarsPerChannel
+func @FakeQuantWithMinMaxVarsPerChannel(tensor<1x2x3x8xf32>, tensor<8xf32>, tensor<8xf32>) -> tensor<1x2x3x8xf32> {
+^bb0(%arg0: tensor<1x2x3x8xf32>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>):
+  // CHECK: "tf.FakeQuantWithMinMaxVarsPerChannel"(%arg0, %arg1, %arg2) : (tensor<1x2x3x8xf32>, tensor<8xf32>, tensor<8xf32>) -> tensor<1x2x3x8xf32>
+  %0 = "tf.FakeQuantWithMinMaxVarsPerChannel"(%arg0, %arg1, %arg2) : (tensor<1x2x3x8xf32>, tensor<8xf32>, tensor<8xf32>) -> tensor<1x2x3x8xf32>
+  return %0 : tensor<1x2x3x8xf32>
+}
+
+// -----
+
+// Test invalid tf.FakeQuantWithMinMaxVarsPerChannel
+func @FakeQuantWithMinMaxVarsPerChannel_ranked_inputs(tensor<f32>, tensor<8xf32>, tensor<8xf32>) -> tensor<f32> {
+^bb0(%arg0: tensor<f32>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>):
+  // expected-error @+1 {{requires inputs to be at least 1d float tensor}}
+  %0 = "tf.FakeQuantWithMinMaxVarsPerChannel"(%arg0, %arg1, %arg2) : (tensor<f32>, tensor<8xf32>, tensor<8xf32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// -----
+
+// Test invalid tf.FakeQuantWithMinMaxVarsPerChannel
+func @FakeQuantWithMinMaxVarsPerChannel_mismatch_min_max(tensor<1x2x3x8xf32>, tensor<1xf32>, tensor<8xf32>) -> tensor<1x2x3x8xf32> {
+^bb0(%arg0: tensor<1x2x3x8xf32>, %arg1: tensor<1xf32>, %arg2: tensor<8xf32>):
+  // expected-error @+1 {{requires min and max to have same size as last dimension of inputs}}
+  %0 = "tf.FakeQuantWithMinMaxVarsPerChannel"(%arg0, %arg1, %arg2) : (tensor<1x2x3x8xf32>, tensor<1xf32>, tensor<8xf32>) -> tensor<1x2x3x8xf32>
+  return %0 : tensor<1x2x3x8xf32>
 }
 
 // -----
@@ -977,3 +1017,72 @@ func @testConcatV2(%arg: tensor<8x16xf32>, %axis: tensor<1xi32>) -> tensor<?xf32
   return %0 : tensor<?xf32>
 }
 
+// -----
+
+func @testAll(%arg0: tensor<2x2xi1>, %arg1: tensor<i32>) -> tensor<i1> {
+  %0 = "tf.All"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<i32>) -> tensor<i1>
+  return %0 : tensor<i1>
+
+  // CHECK-LABEL: testAll
+  // CHECK: %0 = "tf.All"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<i32>) -> tensor<i1>
+}
+
+// -----
+
+func @testAll64(%arg0: tensor<2x2xi1>, %arg1: tensor<i64>) -> tensor<i1> {
+  %0 = "tf.All"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<i64>) -> tensor<i1>
+  return %0 : tensor<i1>
+
+  // CHECK-LABEL: testAll64
+  // CHECK: %0 = "tf.All"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<i64>) -> tensor<i1>
+}
+
+// -----
+
+func @testAllFloat(%arg0: tensor<2x2xi1>, %arg1: tensor<f32>) -> tensor<i1> {
+  // expected-error @+1 {{'tf.All' op operand #1 must be tensor of 32/64-bit integer values}}
+  %0 = "tf.All"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<f32>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// -----
+
+func @testAllI32(%arg0: tensor<2x2xi32>, %arg1: tensor<f32>) -> tensor<i32> {
+  // expected-error @+1 {{'tf.All' op operand #0 must be tensor of 1-bit integer values}}
+  %0 = "tf.All"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi32>, tensor<f32>) -> tensor<i32>
+  return %0 : tensor<i32>
+}
+
+// -----
+
+func @testEqualOpIncompatibleShapeTrue(%x: tensor<5xf32>, %y: tensor<4xf32>) -> tensor<5xi1> {
+  // expected-error @+1 {{operands don't have broadcast-compatible shapes}}
+  %0 = "tf.Equal"(%x, %y) {incompatible_shape_error = true} : (tensor<5xf32>, tensor<4xf32>) -> tensor<5xi1>
+  return %0 : tensor<5xi1>
+}
+
+// -----
+
+// CHECK-LABEL: testEqualOpIncompatibleShapeFalse
+func @testEqualOpIncompatibleShapeFalse(%x: tensor<5xf32>, %y: tensor<4xf32>) -> tensor<*xi1> {
+  // CHECK: tf.Equal
+  %0 = "tf.Equal"(%x, %y) {incompatible_shape_error = false} : (tensor<5xf32>, tensor<4xf32>) -> tensor<*xi1>
+  return %0 : tensor<*xi1>
+}
+
+// -----
+
+func @testNotEqualOpIncompatibleShapeTrue(%x: tensor<5xf32>, %y: tensor<4xf32>) -> tensor<5xi1> {
+  // expected-error @+1 {{operands don't have broadcast-compatible shapes}}
+  %0 = "tf.NotEqual"(%x, %y) {incompatible_shape_error = true} : (tensor<5xf32>, tensor<4xf32>) -> tensor<5xi1>
+  return %0 : tensor<5xi1>
+}
+
+// -----
+
+// CHECK-LABEL: testNotEqualOpIncompatibleShapeFalse
+func @testNotEqualOpIncompatibleShapeFalse(%x: tensor<5xf32>, %y: tensor<4xf32>) -> tensor<*xi1> {
+  // CHECK: tf.NotEqual
+  %0 = "tf.NotEqual"(%x, %y) {incompatible_shape_error = false} : (tensor<5xf32>, tensor<4xf32>) -> tensor<*xi1>
+  return %0 : tensor<*xi1>
+}

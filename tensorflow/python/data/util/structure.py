@@ -32,6 +32,7 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -410,7 +411,7 @@ def type_spec_from_value(element):
   if spec is not None:
     return spec
 
-  if isinstance(element, dict):
+  if isinstance(element, collections_abc.Mapping):
     # We create a shallow copy in an attempt to preserve the key order.
     #
     # Note that we do not guarantee that the key order is preserved, which is
@@ -418,10 +419,11 @@ def type_spec_from_value(element):
     # `type_spec_from_value` should not assume that the key order of a `dict`
     # in the returned nested structure matches the key order of the
     # corresponding `dict` in the input value.
-    result = element.copy()
-    for k in element:
-      result[k] = type_spec_from_value(element[k])
-    return result
+    if isinstance(element, collections.defaultdict):
+      ctor = lambda items: type(element)(element.default_factory, items)
+    else:
+      ctor = type(element)
+    return ctor([(k, type_spec_from_value(v)) for k, v in element.items()])
 
   if isinstance(element, tuple):
     if hasattr(element, "_fields") and isinstance(

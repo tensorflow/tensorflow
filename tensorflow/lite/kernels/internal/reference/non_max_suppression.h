@@ -172,7 +172,9 @@ inline void NonMaxSuppression(const float* boxes, const int num_boxes,
       if (next_candidate.score == original_score) {
         // Suppression has not occurred, so select next_candidate.
         selected_indices[*num_selected_indices] = next_candidate.index;
-        selected_scores[*num_selected_indices] = next_candidate.score;
+        if (selected_scores) {
+          selected_scores[*num_selected_indices] = next_candidate.score;
+        }
         ++*num_selected_indices;
       }
       if (next_candidate.score > score_threshold) {

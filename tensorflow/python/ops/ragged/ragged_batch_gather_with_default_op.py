@@ -59,16 +59,12 @@ def batch_gather_with_default(params,
     `result.ragged_rank = max(indices.ragged_rank, params.ragged_rank)`.
 
   #### Example:
-    ```python
-    >>> params = tf.ragged.constant([
-          ['a', 'b', 'c'],
-          ['d'],
-          [],
-          ['e']])
-    >>> indices = tf.ragged.constant([[1, 2, -1], [], [], [0, 10]])
-    >>> batch_gather_with_default(params, indices, 'FOO')
-    [['b', 'c', 'FOO'], [], [], ['e', 'FOO']]
-  ```
+
+  >>> params = tf.ragged.constant([['a', 'b', 'c'], ['d'], [], ['e']])
+  >>> indices = tf.ragged.constant([[1, 2, -1], [], [], [0, 10]])
+  >>> batch_gather_with_default(params, indices, 'FOO')
+  <tf.RaggedTensor [[b'b', b'c', b'FOO'], [], [], [b'e', b'FOO']]>
+
   """
   with ops.name_scope(name, 'RaggedBatchGatherWithDefault'):
     params = ragged_tensor.convert_to_tensor_or_ragged_tensor(

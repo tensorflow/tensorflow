@@ -548,33 +548,43 @@ QuantParams QuantizationDriver::GetQuantParamsForSameScaleConstraint(
 }
 
 void QuantizationDriver::PreprocessConstantOps() {
-  fn_.walk<ConstantOp>([&](ConstantOp cst) {
-    // Non-float tensors are neither weights or require quantization.
-    if (!cst.getType().cast<ShapedType>().getElementType().isa<FloatType>()) {
-      return;
-    }
+  fn_.walk([&](ConstantOp cst) {
+    // Non-float tensors are neither weights nor require quantization.
+    auto type = cst.getType().dyn_cast<ShapedType>();
+    if (!type || !type.getElementType().isa<FloatType>()) return;
 
     Value *value = cst.getResult();
     SmallVector<std::pair<Operation *, int>, 4> bias_users;
+    bool used_as_weight = false;
     for (auto &use : value->getUses()) {
       auto spec = GetQuantSpec(use.getOwner());
       auto biases = spec->biases_params;
       Operation *user = use.getOwner();
       int operand_num = use.getOperandNumber();
 
-      // The user doesn't use this value as a bias operand nor require same
-      // scale.
+      // The user doesn't use this value as a bias operand or require same
+      // scale, then this constant is considered to be a weight.
       if (biases.find(operand_num) == biases.end() &&
           !spec->requires_same_scale) {
-        weights_.insert(cst);
+        used_as_weight = true;
       } else {
         bias_users.push_back({user, operand_num});
       }
     }
-    builder_.setInsertionPoint(cst);
-    for (int i = 1; i < bias_users.size(); ++i) {
+
+    // If the constant is used as a weight, this constant will be duplicated for
+    // each bias user, so it isn't shared with the weight usage. Otherwise, the
+    // first bias user can use the original constant and the rest use the
+    // duplications, so we pop bias user from the set.
+    if (used_as_weight) {
+      weights_.insert(cst);
+    } else {
+      bias_users.pop_back();
+      builder_.setInsertionPoint(cst);
+    }
+    for (auto bias_user : bias_users) {
       auto copied = builder_.create<ConstantOp>(cst.getLoc(), cst.getValue());
-      bias_users[i].first->setOperand(bias_users[i].second, copied.getResult());
+      bias_user.first->setOperand(bias_user.second, copied.getResult());
     }
   });
 }

@@ -79,8 +79,12 @@ class RPCState : public GrpcClientCQTag {
 
   void StartCall() {
     context_.reset(new ::grpc::ClientContext());
+#if defined(PLATFORM_GOOGLE)
+    // TODO(b/140260119): set fail_fast to false
     context_->set_wait_for_ready(!fail_fast_);
-
+#else
+    context_->set_wait_for_ready(true);
+#endif  // PLATFORM_GOOGLE
     if (timeout_in_ms_ > 0) {
       context_->set_deadline(
           gpr_time_from_millis(timeout_in_ms_, GPR_TIMESPAN));

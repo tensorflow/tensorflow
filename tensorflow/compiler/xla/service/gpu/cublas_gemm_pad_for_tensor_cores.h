@@ -28,6 +28,9 @@ namespace gpu {
 // are multiples of 8, so that we can use tensor cores.
 //
 // Don't run this pass on GPUs without tensor cores -- it will make them slower!
+//
+// This pass depends on xla::DotDecomposer pass,
+// so it should go strictly later.
 class CublasGemmPadForTensorCores : public HloModulePass {
  public:
   absl::string_view name() const override {

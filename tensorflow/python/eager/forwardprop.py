@@ -20,13 +20,13 @@ from __future__ import print_function
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import execute
 
 from tensorflow.python.framework import ops
 
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
@@ -54,11 +54,14 @@ def _forward_gradient(op_name, attr_tuple, inputs, outputs, tangents):
   Returns:
     A flat list of tangents corresponding to `outputs`.
   """
+  if not outputs:
+    # tape.gradients([], inputs) doesn't make much sense
+    return []
   trainable_inputs = []
   trainable_indices = []
   nontrivial_tangents = []
   for input_index, tensor in enumerate(inputs):
-    if gradients_util.IsTrainable(tensor):
+    if backprop_util.IsTrainable(tensor):
       trainable_inputs.append(tensor)
       trainable_indices.append(input_index)
       nontrivial_tangents.append(tangents[input_index])
@@ -73,7 +76,7 @@ def _forward_gradient(op_name, attr_tuple, inputs, outputs, tangents):
     trainable_outputs = []
     nontrivial_output_indices = []
     for output_index, output in enumerate(outputs):
-      if gradients_util.IsTrainable(output):
+      if backprop_util.IsTrainable(output):
         forwardprop_aids.append(
             array_ops.ones_like(output, name="unused_forwardprop_aid"))
         trainable_outputs.append(output)
@@ -184,7 +187,9 @@ class ForwardGradientAccumulator(object):
             "floating (e.g. tf.float32), got %r", 5, t.dtype)
       g = ops.convert_to_tensor(g, dtype=t.dtype)
       if hasattr(t, "handle"):
-        t = t.handle
+        # Run convert_to_tensor to get the captured handle from whichever
+        # function we're running if necessary.
+        t = ops.convert_to_tensor(t.handle)
       pywrap_tensorflow.TFE_Py_ForwardAccumulatorWatch(self._accumulator, t, g)
 
   def jvp(self, target):
@@ -206,7 +211,7 @@ class ForwardGradientAccumulator(object):
       raise ValueError("Called jvp() without first tracing anything.")
     def _fetch_jvp(tensor):
       if hasattr(tensor, "handle"):
-        tensor = tensor.handle
+        tensor = ops.convert_to_tensor(tensor.handle)
       return pywrap_tensorflow.TFE_Py_ForwardAccumulatorJVP(
           self._accumulator, tensor)
     return nest.map_structure(_fetch_jvp, target)

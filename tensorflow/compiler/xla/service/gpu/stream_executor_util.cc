@@ -220,10 +220,9 @@ Status ExecuteKernelOnStream(const se::KernelBase& kernel,
                                   *kernel_args);
 }
 
-se::cuda::PtxCompilationOptions PtxOptsFromConfig(
-    const HloModuleConfig& hlo_module_config) {
-  return se::cuda::PtxCompilationOptions(
-      hlo_module_config.debug_options().xla_gpu_disable_ptxas_optimizations(),
+se::GpuAsmOpts PtxOptsFromConfig(const HloModuleConfig& hlo_module_config) {
+  return se::GpuAsmOpts(
+      hlo_module_config.debug_options().xla_gpu_disable_gpuasm_optimizations(),
       hlo_module_config.debug_options().xla_gpu_cuda_data_dir());
 }
 

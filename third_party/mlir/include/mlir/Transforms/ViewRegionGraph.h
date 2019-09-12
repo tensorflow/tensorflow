@@ -27,7 +27,9 @@
 #include "llvm/Support/raw_ostream.h"
 
 namespace mlir {
-class FunctionPassBase;
+class FuncOp;
+template <typename T> class OpPassBase;
+using FunctionPassBase = OpPassBase<FuncOp>;
 class Region;
 
 /// Displays the CFG in a window. This is for use from the debugger and

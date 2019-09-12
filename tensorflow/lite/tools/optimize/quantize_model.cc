@@ -297,9 +297,8 @@ TfLiteStatus ApplyConstraints(ModelT* model,
         continue;
       }
       // Basically only Concat passes this check.
-      if (!property.restrict_same_input_output_scale ||
-          (property.inputs.size() == 1 && property.outputs.size() == 1 &&
-           property.biases.empty())) {
+      if (!property.arbitrary_inputs ||
+          !property.restrict_same_input_output_scale) {
         continue;
       }
       // If ApplyConstraints and requant is needed, use the min of min and max
@@ -367,10 +366,24 @@ std::vector<std::pair<int, operator_property::TensorProperty>> GetInputs(
   return inputs;
 }
 
+std::vector<std::pair<int, operator_property::TensorProperty>> GetOutputs(
+    const OperatorT* op, operator_property::OperatorProperty property) {
+  std::vector<std::pair<int, operator_property::TensorProperty>> outputs;
+  if (property.arbitrary_outputs) {
+    for (int i = 0; i < op->outputs.size(); ++i) {
+      outputs.push_back({i, {}});
+    }
+  } else {
+    outputs = property.outputs;
+  }
+  return outputs;
+}
+
 bool ShouldRestrictSameInputOutputScale(
     operator_property::OperatorProperty property) {
-  return (property.inputs.size() == 1 && property.outputs.size() == 1 &&
-          property.biases.empty() && property.restrict_same_input_output_scale);
+  // Ops with multiple inputs (i.e. concat) gets restricted in ApplyConstraints.
+  return (!property.arbitrary_inputs &&
+          property.restrict_same_input_output_scale);
 }
 
 bool IsSubgraphInput(SubGraphT* subgraph, int32_t index) {
@@ -526,23 +539,13 @@ TfLiteStatus QuantizeOpOutput(
 
     const float min = input_tensor->quantization->min[0];
     const float max = input_tensor->quantization->max[0];
-    if (utils::HasMinMax(output_tensor)) {
-      if (output_tensor->quantization->min[0] != min ||
-          output_tensor->quantization->max[0] != max) {
-        printf(
-            "Note the output min/max is different from the input min/max "
-            "for op %s at index %d in subgraph %d. This is legal but "
-            "should happens rarely.\n",
-            EnumNameBuiltinOperator(op_code), op_idx, subgraph_idx);
-      }
-    }
 
     // Apply to output.
     output_tensor->quantization = absl::make_unique<QuantizationParametersT>();
     output_tensor->quantization->scale.push_back(input_scale);
     output_tensor->quantization->zero_point.push_back(input_zero_point);
-    output_tensor->quantization->min.push_back(min);
-    output_tensor->quantization->max.push_back(max);
+    output_tensor->quantization->min = {min};
+    output_tensor->quantization->max = {max};
     output_tensor->type = TensorType_INT8;
   } else if (tensor_property.restriction) {
     const auto scale_and_zp = tensor_property.restricted_value;
@@ -597,7 +600,7 @@ TfLiteStatus QuantizeWeightsInputOutput(
 
       // Quantize operator outputs.
       for (const std::pair<int, operator_property::TensorProperty>& output :
-           property.outputs) {
+           GetOutputs(op, property)) {
         TF_LITE_ENSURE_STATUS(QuantizeOpOutput(
             model, subgraph_idx, op_idx, property, output, error_reporter));
       }

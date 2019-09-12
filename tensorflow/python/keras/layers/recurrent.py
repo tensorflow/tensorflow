@@ -790,11 +790,10 @@ class RNN(Layer):
       if len(initial_state) == 0:
         initial_state = None
       inputs = inputs[0]
-    if initial_state is not None:
-      pass
-    elif self.stateful:
+
+    if self.stateful:
       initial_state = self.states
-    else:
+    elif initial_state is None:
       initial_state = self.get_initial_state(inputs)
 
     if len(initial_state) != len(self.states):
@@ -1374,7 +1373,8 @@ class SimpleRNN(RNN):
         bias_constraint=bias_constraint,
         dropout=dropout,
         recurrent_dropout=recurrent_dropout,
-        dtype=kwargs.get('dtype'))
+        dtype=kwargs.get('dtype'),
+        trainable=kwargs.get('trainable', True))
     super(SimpleRNN, self).__init__(
         cell,
         return_sequences=return_sequences,
@@ -1903,7 +1903,8 @@ class GRU(RNN):
         recurrent_dropout=recurrent_dropout,
         implementation=implementation,
         reset_after=reset_after,
-        dtype=kwargs.get('dtype'))
+        dtype=kwargs.get('dtype'),
+        trainable=kwargs.get('trainable', True))
     super(GRU, self).__init__(
         cell,
         return_sequences=return_sequences,
@@ -2530,7 +2531,8 @@ class LSTM(RNN):
         dropout=dropout,
         recurrent_dropout=recurrent_dropout,
         implementation=implementation,
-        dtype=kwargs.get('dtype'))
+        dtype=kwargs.get('dtype'),
+        trainable=kwargs.get('trainable', True))
     super(LSTM, self).__init__(
         cell,
         return_sequences=return_sequences,

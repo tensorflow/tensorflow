@@ -74,7 +74,6 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python:loss_scale",
     "//tensorflow/python:loss_scale_optimizer",
     "//tensorflow/python:meta_graph_testdata",
-    "//tensorflow/python:spectral_ops_test_util",
     "//tensorflow/python:util_example_parser_configuration",
     "//tensorflow/python/data/benchmarks:benchmark_base",
     "//tensorflow/python/data/experimental/kernel_tests/serialization:dataset_serialization_test_base",
@@ -182,15 +181,6 @@ filegroup(
         "//conditions:default": [
             "@com_github_googleapis_googleapis//:LICENSE",
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
-        ],
-    }) + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:no_kafka_support": [],
-        "//conditions:default": [
-            "@kafka//:LICENSE",
         ],
     }) + select({
         "//tensorflow/core/kernels:xsmm": [

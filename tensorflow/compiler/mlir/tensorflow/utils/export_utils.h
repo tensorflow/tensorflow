@@ -38,8 +38,9 @@ namespace tensorflow {
 
 using stream_executor::port::StatusOr;
 
-// Maps op name in a dialect back to TensorFlow valid op name.
-using OpNameMappingFunc = std::function<StatusOr<std::string>(llvm::StringRef)>;
+// Maps an MLIR op name in the TensorFlow dialect or the TensorFlow control
+// dialect back into a TensorFlow valid op name.
+StatusOr<llvm::StringRef> GetTensorFlowOpName(llvm::StringRef);
 
 // Converts an MLIR operation to TensorFlow NodeDef with given node name. This
 // name should be unique to the graph it is being inserted into. `op_name_func`
@@ -48,8 +49,7 @@ using OpNameMappingFunc = std::function<StatusOr<std::string>(llvm::StringRef)>;
 // any other attributes that should be ignored.
 StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
     const absl::flat_hash_set<absl::string_view>& attrs_to_ignore,
-    mlir::Operation* inst, llvm::StringRef name,
-    OpNameMappingFunc op_name_func);
+    mlir::Operation* inst, llvm::StringRef name);
 
 // Converts MLIR attributes with values to their tensorflow equivalent.
 // "name" and "device" attributes are ignored by default. Use attrs_to_ignore to

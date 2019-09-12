@@ -27,7 +27,9 @@
 
 namespace mlir {
 
-class FunctionPassBase;
+class FuncOp;
+template <typename T> class OpPassBase;
+using FunctionPassBase = OpPassBase<FuncOp>;
 
 /// Creates a pass to check memref accesses in a Function.
 FunctionPassBase *createMemRefBoundCheckPass();

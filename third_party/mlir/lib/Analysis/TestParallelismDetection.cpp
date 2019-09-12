@@ -45,7 +45,7 @@ FunctionPassBase *mlir::createParallelismDetectionTestPass() {
 void TestParallelismDetection::runOnFunction() {
   FuncOp f = getFunction();
   OpBuilder b(f.getBody());
-  f.walk<AffineForOp>([&](AffineForOp forOp) {
+  f.walk([&](AffineForOp forOp) {
     if (isLoopParallel(forOp))
       forOp.emitRemark("parallel loop");
     else

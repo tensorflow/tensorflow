@@ -61,7 +61,6 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
     int exponent;
     QuantizeMultiplier(real_multiplier, &data->output_multiplier, &exponent);
     data->output_shift = -exponent;
-    printf("%d \n", data->output_multiplier);
     TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
         context, params->activation, output, &data->output_activation_min,
         &data->output_activation_max));

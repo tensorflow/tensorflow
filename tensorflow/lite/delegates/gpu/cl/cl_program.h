@@ -29,13 +29,18 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-// ADRENO_FULL_SIMD_LINE:
-//   Adreno can have 2 sizes for SIMD size.
-//   On Adreno 4xx/5xx it is 32/64, on Adreno6xx it is 64/128.
-//   Some our algorithms actually rely on exact size, for example on full
-//   SIMD size, so we need this define.
-//   This define is actually -qcom-accelerate-16-bit, but it controls SIMD size.
-enum class CompilerOptions { ADRENO_FULL_SIMD_LINE, POWERVR_FP16 };
+enum class CompilerOptions {
+  // ADRENO_FULL_SIMD_LINE:
+  //   Adreno can have 2 sizes for SIMD size.
+  //   On Adreno 4xx/5xx it is 32/64, on Adreno6xx it is 64/128.
+  //   Some our algorithms actually rely on exact size, for example on full
+  //   SIMD size, so we need this define.
+  //   This define is actually -qcom-accelerate-16-bit, but it controls SIMD
+  //   size.
+  ADRENO_FULL_SIMD_LINE,
+  POWERVR_FP16,
+  CL_OPT_DISABLE
+};
 
 std::string CompilerOptionsToString(
     const CLDevice& device,

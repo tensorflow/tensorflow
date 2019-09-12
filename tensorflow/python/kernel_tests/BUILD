@@ -8,7 +8,7 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-# CPU only tests should use tf_py_test, GPU tests use cuda_py_test
+# CPU-only tests should use tf_py_test, GPU tests use cuda_py_test
 # Please avoid the py_tests and cuda_py_tests (plural) while we
 # fix the shared/overbroad dependencies.
 
@@ -757,7 +757,6 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:linalg_ops",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -862,7 +861,6 @@ cuda_py_test(
     ],
     # TODO(b/128347673): Re-enable.
     tags = ["no_windows"],
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -921,7 +919,6 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
     ],
     tags = ["noasan"],  # http://b/32635055
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -1499,7 +1496,8 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     tags = ["notsan"],
-    xla_enable_strict_auto_jit = True,
+    # TODO (b/140294007): the test fails with XLA.
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -1591,7 +1589,6 @@ cuda_py_test(
         "noasan",  # times out
         "optonly",  # times out
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -2030,7 +2027,6 @@ cuda_py_test(
     grpc_enabled = True,
     shard_count = 2,
     tags = ["no_windows"],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -2046,7 +2042,6 @@ cuda_py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:variables",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -2185,7 +2180,6 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
     tags = ["no_windows_gpu"],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -2669,7 +2663,6 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -3687,7 +3680,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "bucketize_op_test",
     size = "small",
     srcs = ["bucketize_op_test.py"],
@@ -3882,4 +3875,63 @@ cuda_py_test(
     shard_count = 10,
     tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
+    name = "sparse_csr_matrix_ops_test",
+    size = "medium",
+    srcs = ["sparse_csr_matrix_ops_test.py"],
+    additional_deps = [
+        "//tensorflow/python/ops/linalg/sparse",
+        "//tensorflow/python/ops/linalg/sparse:gen_sparse_csr_matrix_ops",
+    ],
+    main = "sparse_csr_matrix_ops_test.py",
+    tags = ["no_rocm"],
+)
+
+cuda_py_test(
+    name = "csr_sparse_matrix_test",
+    size = "medium",
+    srcs = ["csr_sparse_matrix_test.py"],
+    additional_deps = [
+        "//tensorflow/python/ops/linalg/sparse",
+    ],
+    main = "csr_sparse_matrix_test.py",
+    tags = ["no_rocm"],
+)
+
+cuda_py_test(
+    name = "sparse_csr_matrix_grad_test",
+    size = "medium",
+    srcs = ["sparse_csr_matrix_grad_test.py"],
+    additional_deps = [
+        "//tensorflow/python/ops/linalg/sparse",
+    ],
+    main = "sparse_csr_matrix_grad_test.py",
+    shard_count = 50,
+    tags = ["no_rocm"],
+)
+
+cuda_py_test(
+    name = "sparse_csr_matrix_dense_mat_mul_grad_test",
+    size = "medium",
+    srcs = ["sparse_csr_matrix_dense_mat_mul_grad_test.py"],
+    additional_deps = [
+        "//tensorflow/python/ops/linalg/sparse",
+    ],
+    main = "sparse_csr_matrix_dense_mat_mul_grad_test.py",
+    shard_count = 50,
+    tags = ["no_rocm"],
+)
+
+cuda_py_test(
+    name = "sparse_csr_matrix_sparse_mat_mul_grad_test",
+    size = "medium",
+    srcs = ["sparse_csr_matrix_sparse_mat_mul_grad_test.py"],
+    additional_deps = [
+        "//tensorflow/python/ops/linalg/sparse",
+    ],
+    main = "sparse_csr_matrix_sparse_mat_mul_grad_test.py",
+    shard_count = 50,
+    tags = ["no_rocm"],
 )

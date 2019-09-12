@@ -55,18 +55,16 @@ void MultiplyAdd::SetLinkIndex(int index) {
   add_vec_.SetName(absl::StrCat("mad_add_", index));
 }
 
-std::string MultiplyAdd::GetCoreCode(const std::string& src,
-                                     const std::string& z_coord,
-                                     const std::string& address) const {
-  std::string result = absl::StrCat(src, " = ", src);
+std::string MultiplyAdd::GetCoreCode(const LinkingContext& context) const {
+  std::string result = absl::StrCat(context.var_name, " = ", context.var_name);
   if (use_mul_vec_) {
-    absl::StrAppend(&result, " * ", mul_vec_.ReadLinearFLT4(z_coord));
+    absl::StrAppend(&result, " * ", mul_vec_.ReadLinearFLT4(context.z_coord));
   }
   if (scalar_mul_.Active()) {
     absl::StrAppend(&result, " * (FLT)(", scalar_mul_.GetName(), ")");
   }
   if (use_add_vec_) {
-    absl::StrAppend(&result, " + ", add_vec_.ReadLinearFLT4(z_coord));
+    absl::StrAppend(&result, " + ", add_vec_.ReadLinearFLT4(context.z_coord));
   }
   if (scalar_add_.Active()) {
     absl::StrAppend(&result, " + (FLT)(", scalar_add_.GetName(), ")");

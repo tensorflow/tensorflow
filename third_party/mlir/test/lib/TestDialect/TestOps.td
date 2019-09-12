@@ -50,10 +50,19 @@ def TakesStaticMemRefOp : TEST_Op<"takes_static_memref"> {
   let arguments = (ins AnyStaticShapeMemRef:$x);
 }
 
-def I32TensorRank0Or1Op : TEST_Op<"i32_tensor_rank_0_or_1"> {
+def NDTensorOfOp : TEST_Op<"nd_tensor_of"> {
   let arguments = (ins
-    Type<And<[I32Tensor.predicate, HasAnyRankOfPred<[0, 1]>]>,
-         "tensor<i32> or tensor<?xi32>">:$arg0
+    0DTensorOf<[F32]>:$arg0,
+    1DTensorOf<[F32]>:$arg1,
+    2DTensorOf<[I16]>:$arg2,
+    3DTensorOf<[I16]>:$arg3,
+    4DTensorOf<[I16]>:$arg4
+  );
+}
+
+def MultiTensorRankOf : TEST_Op<"multi_tensor_rank_of"> {
+  let arguments = (ins
+    TensorRankOf<[I8, I32, F32], [0, 1]>:$arg0
   );
 }
 
@@ -153,12 +162,21 @@ def I64EnumAttrOp : TEST_Op<"i64_enum_attr"> {
 // Test Regions
 //===----------------------------------------------------------------------===//
 
+def OneRegionOp : TEST_Op<"one_region_op", []> {
+  let regions = (region AnyRegion);
+}
+
 def TwoRegionOp : TEST_Op<"two_region_op", []> {
   let regions = (region AnyRegion, AnyRegion);
 }
 
 def SizedRegionOp : TEST_Op<"sized_region_op", []> {
   let regions = (region SizedRegion<2>:$my_region, SizedRegion<1>);
+}
+
+def FunctionalRegionOp : TEST_Op<"functional_region_op", []> {
+  let regions = (region AnyRegion:$body);
+  let results = (outs FunctionType);
 }
 
 //===----------------------------------------------------------------------===//
@@ -250,9 +268,15 @@ def SingleBlockImplicitTerminatorOp : TEST_Op<"SingleBlockImplicitTerminator",
   let regions = (region SizedRegion<1>:$region);
 }
 
-def I32ElementsAttributesOp : TEST_Op<"i32ElementsAttr"> {
+def I32ElementsAttrOp : TEST_Op<"i32ElementsAttr"> {
   let arguments = (ins I32ElementsAttr:$attr);
 }
+
+def IsNotScalar : Constraint<CPred<"$0.getType().getRank() != 0">>;
+
+def UpdateAttr : Pat<(I32ElementsAttrOp $attr),
+                     (I32ElementsAttrOp ConstantAttr<I32ElementsAttr, "0">),
+                     [(IsNotScalar $attr)]>;
 
 //===----------------------------------------------------------------------===//
 // Test Patterns
@@ -728,6 +752,20 @@ def IsolatedRegionOp : TEST_Op<"isolated_region", [IsolatedFromAbove]> {
   }];
 
   let arguments = (ins Index:$input);
+  let regions = (region SizedRegion<1>:$region);
+  let parser = [{ return ::parse$cppClass(parser, result); }];
+  let printer = [{ return ::print(p, *this); }];
+}
+
+def WrappingRegionOp : TEST_Op<"wrapping_region",
+    [SingleBlockImplicitTerminator<"TestReturnOp">]> {
+  let summary =  "wrapping region operation";
+  let description = [{
+    Test op wrapping another op in a region, to test calling
+    parseGenericOperation from the custom parser.
+  }];
+
+  let results = (outs Variadic<AnyType>:$outputs);
   let regions = (region SizedRegion<1>:$region);
   let parser = [{ return ::parse$cppClass(parser, result); }];
   let printer = [{ return ::print(p, *this); }];

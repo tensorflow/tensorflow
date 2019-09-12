@@ -163,7 +163,7 @@ class DeviceResDistTest : public ::testing::Test {
           strings::StrCat(worker_name, "/device:", device_type, ":", i), i,
           device_incarnation_base + i));
     }
-    DeviceMgr* dev_mgr = new DeviceMgr(std::move(devices));
+    DeviceMgr* dev_mgr = new StaticDeviceMgr(std::move(devices));
     TestableDeviceResolverDistributed* dev_res =
         new TestableDeviceResolverDistributed(dev_mgr, &wc_, worker_name);
     resolvers_[worker_name] = dev_res;

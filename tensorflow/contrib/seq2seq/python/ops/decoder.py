@@ -410,14 +410,27 @@ def dynamic_decode(decoder,
       """
       (next_outputs, decoder_state, next_inputs,
        decoder_finished) = decoder.step(time, inputs, state)
+      decoder_state_sequence_lengths = False
       if decoder.tracks_own_finished:
         next_finished = decoder_finished
+        lengths = getattr(decoder_state, "lengths", None)
+        if lengths is not None:
+          # sequence lengths are provided by decoder_state.lengths; overwrite
+          # our sequence lengths.
+          decoder_state_sequence_lengths = True
+          sequence_lengths = math_ops.cast(lengths, dtypes.int32)
       else:
         next_finished = math_ops.logical_or(decoder_finished, finished)
-      next_sequence_lengths = array_ops.where(
-          math_ops.logical_not(finished),
-          array_ops.fill(array_ops.shape(sequence_lengths), time + 1),
-          sequence_lengths)
+
+      if decoder_state_sequence_lengths:
+        # Just pass something through the loop; at the next iteration we'll pull
+        # the sequence lengths from the decoder_state again.
+        next_sequence_lengths = sequence_lengths
+      else:
+        next_sequence_lengths = array_ops.where(
+            math_ops.logical_not(finished),
+            array_ops.fill(array_ops.shape(sequence_lengths), time + 1),
+            sequence_lengths)
 
       nest.assert_same_structure(state, decoder_state)
       nest.assert_same_structure(outputs_ta, next_outputs)

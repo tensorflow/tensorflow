@@ -30,8 +30,11 @@
 namespace mlir {
 
 class AffineForOp;
-class FunctionPassBase;
-class ModulePassBase;
+class FuncOp;
+class ModuleOp;
+template <typename T> class OpPassBase;
+using FunctionPassBase = OpPassBase<FuncOp>;
+using ModulePassBase = OpPassBase<ModuleOp>;
 
 /// Creates a constant folding pass. Note that this pass solely provides simple
 /// top-down constant folding functionality; it is intended to be used for
@@ -74,7 +77,9 @@ std::unique_ptr<FunctionPassBase> createLoopUnrollPass(
 std::unique_ptr<FunctionPassBase>
 createLoopUnrollAndJamPass(int unrollJamFactor = -1);
 
-/// Creates an simplification pass for affine structures.
+/// Creates a simplification pass for affine structures (maps and sets). In
+/// addition, this pass also normalizes memrefs to have the trivial (identity)
+/// layout map.
 std::unique_ptr<FunctionPassBase> createSimplifyAffineStructuresPass();
 
 /// Creates a loop fusion pass which fuses loops. Buffers of size less than or

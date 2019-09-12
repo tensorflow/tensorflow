@@ -655,14 +655,40 @@ static LogicalResult Verify(UnpackOp op) {
 static llvm::Optional<int64_t> ExtractConstantIntFromTensor(Value *value) {
   ElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) return {};
-
   IntegerAttr int_attr = attr.getValue(llvm::None).cast<IntegerAttr>();
   return int_attr.getValue().getSExtValue();
 }
 
+// Returns a RankedTensorType which is similar to `input_type` but replaces the
+// dimension size of `dim` with `dim_size`.  For example,
+// `SubstituteRankedTensorTypeDimSize(tensor<3x4xi32>, 1, 2)` returns
+// `tensor<3x2xi32>`.
+static RankedTensorType SubstituteRankedTensorTypeDimSize(
+    RankedTensorType input_type, int64_t dim, int64_t dim_size) {
+  auto shape = input_type.getShape().vec();
+  shape[dim] = dim_size;
+  return RankedTensorType::get(shape, input_type.getElementType());
+}
+
+// Verifies the output tensor types of SplitOp or SplitVOp.
+template <typename ExpectedOutputTypeGetter>
+static LogicalResult VerifySplitOpOutputTypes(
+    Operation *op, int64_t num_splits,
+    ExpectedOutputTypeGetter get_expected_output_type) {
+  for (int64_t i = 0; i < num_splits; ++i) {
+    auto expected_output_type = get_expected_output_type(i);
+    Value *output = op->getResult(i);
+    auto output_type = output->getType().dyn_cast<RankedTensorType>();
+    if (!output_type || output_type != expected_output_type)
+      return op->emitOpError()
+             << "output #" << i << " should be " << expected_output_type;
+  }
+  return success();
+}
+
 static LogicalResult Verify(SplitOp op) {
   int64_t num_splits = op.num_splits().getSExtValue();
-  if (op.getOperation()->getNumResults() != num_splits)
+  if (op.getNumResults() != num_splits)
     return op.emitOpError("output count should match 'num_splits' attribute");
 
   // If 'split_dim' is not a constant, there are no other checks.
@@ -688,21 +714,100 @@ static LogicalResult Verify(SplitOp op) {
   if (dim_size % num_splits != 0)
     return op.emitOpError("'num_splits' should evenly divide 'split_dim' axis");
 
-  // Creates sliced tensor type.
-  auto slice_shape = input_type.getShape().vec();
-  slice_shape[split_dim] = dim_size / num_splits;
-  RankedTensorType slice_type =
-      RankedTensorType::get(slice_shape, input_type.getElementType());
+  // Verifies output tensor types.
+  RankedTensorType expected_output_type = SubstituteRankedTensorTypeDimSize(
+      input_type, split_dim, dim_size / num_splits);
+  return VerifySplitOpOutputTypes(
+      op.getOperation(), num_splits,
+      [expected_output_type](int64_t) { return expected_output_type; });
+}
 
-  // Verifies result tensor types.
-  for (int64_t i = 0; i < num_splits; ++i) {
-    Value *result = op.getResult(i);
-    auto result_type = result->getType().dyn_cast<RankedTensorType>();
-    if (!result_type || result_type != slice_type)
-      return op.emitOpError() << "output #" << i << " should be " << slice_type;
+static LogicalResult Verify(SplitVOp op) {
+  int64_t num_splits = op.num_splits().getSExtValue();
+  if (op.getNumResults() != num_splits)
+    return op.emitOpError("output count should match 'num_splits' attribute");
+
+  // If 'split_dim' is not a constant, there are no other checks.
+  llvm::Optional<int64_t> split_dim_opt =
+      ExtractConstantIntFromTensor(op.split_dim());
+  if (!split_dim_opt) return success();
+
+  // If 'input' is not a ranked tensor, there are no other checks.
+  auto input_type = op.value()->getType().dyn_cast<RankedTensorType>();
+  if (!input_type) return success();
+
+  int64_t split_dim = split_dim_opt.getValue();
+  const int64_t rank = input_type.getRank();
+  if (split_dim < 0) split_dim += rank;
+  if (split_dim < 0 || split_dim >= rank)
+    return op.emitOpError("'split_dim' should be in [-rank, rank)");
+
+  // If the 'split_dim' dimension of the 'input' tensor has a dynamic size,
+  // there are no other checks.
+  const int64_t dim_size = input_type.getDimSize(split_dim);
+  if (ShapedType::isDynamic(dim_size)) return success();
+
+  // If 'size_splits' is not a constant, there are no other checks.
+  ElementsAttr size_splits_attr;
+  if (!matchPattern(op.size_splits(), m_Constant(&size_splits_attr)))
+    return success();
+
+  if (size_splits_attr.getNumElements() != num_splits) {
+    auto size_splits_type =
+        op.size_splits()->getType().cast<RankedTensorType>();
+    RankedTensorType expected_size_splits_type =
+        RankedTensorType::get({num_splits}, size_splits_type.getElementType());
+    return op.emitOpError("'size_splits' should be ")
+           << expected_size_splits_type;
   }
 
-  return success();
+  // Normalizes and verifies 'size_splits'.
+  // Note: TensorFlow allows one -1 element in 'size_splits'.  The -1 element
+  // means the rest of the dimension size.
+  llvm::SmallVector<int64_t, 4> size_splits;
+  size_splits.reserve(num_splits);
+
+  int64_t negative_size_split_loc = -1;
+  int64_t total_size_splits = 0;
+
+  for (int64_t i = 0; i < num_splits; ++i) {
+    auto size_split_attr = size_splits_attr.getValue<IntegerAttr>(i);
+    int64_t size_split = size_split_attr.getValue().getSExtValue();
+    size_splits.push_back(size_split);
+    if (size_split >= 0) {
+      total_size_splits += size_split;
+      continue;
+    }
+    if (size_split < -1)
+      return op.emitOpError(
+          "elements of 'size_splits' should be greater than or equal to -1");
+    if (negative_size_split_loc != -1)
+      return op.emitOpError("'size_splits' can only have one -1");
+    negative_size_split_loc = i;
+  }
+
+  if (negative_size_split_loc != -1) {
+    if (total_size_splits > dim_size)
+      return op.emitOpError(
+          "sum of non-negative elements of 'size_splits' is greater than the "
+          "dimension size of 'split_dim' axis");
+    size_splits[negative_size_split_loc] = dim_size - total_size_splits;
+    total_size_splits = dim_size;
+  }
+
+  if (total_size_splits != dim_size)
+    return op.emitOpError(
+        "sum of 'size_splits' should match the dimension size of 'split_dim' "
+        "axis");
+
+  // Verifies result tensor types.
+  auto get_expected_output_type = [input_type, split_dim,
+                                   &size_splits](int64_t i) {
+    return SubstituteRankedTensorTypeDimSize(input_type, split_dim,
+                                             size_splits[i]);
+  };
+  return VerifySplitOpOutputTypes(op.getOperation(), num_splits,
+                                  get_expected_output_type);
 }
 
 //===----------------------------------------------------------------------===//

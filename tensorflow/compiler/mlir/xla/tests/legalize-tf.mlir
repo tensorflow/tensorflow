@@ -166,6 +166,35 @@ func @const() -> tensor<2xi32> {
 }
 
 //===----------------------------------------------------------------------===//
+// Matmul op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: matmul_notranspose
+func @matmul_notranspose(%arg0: tensor<5x7xf32>, %arg1: tensor<7x11xf32>) -> tensor<5x11xf32> {
+  // CHECK: "xla_hlo.dot"(%arg0, %arg1)
+  %0 = "tf.MatMul"(%arg0, %arg1) {transpose_a = false, transpose_b = false} : (tensor<5x7xf32>, tensor<7x11xf32>) -> tensor<5x11xf32>
+
+  return %0 : tensor<5x11xf32>
+}
+
+//===----------------------------------------------------------------------===//
+// MaxPool op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: maxpool_valid_padding
+// CHECK-SAME: %[[ARG:.*]]: tensor
+func @maxpool_valid_padding(%arg0: tensor<2x12x20x7xi32>) -> tensor<2x3x5x7xi32> {
+  // CHECK: %[[INIT:.*]] = constant dense<-2147483648> : tensor<i32>
+  // CHECK: "xla_hlo.reduce_window"(%[[ARG]], %[[INIT]])
+  // CHECK: xla_hlo.max
+  // CHECK: xla_hlo.return
+  // CHECK: {window_dimensions = dense<[1, 2, 2, 1]> : tensor<4xi64>, window_strides = dense<[1, 4, 4, 1]> : tensor<4xi64>}
+
+  %0 = "tf.MaxPool"(%arg0) {data_format = "NHWC", ksize = [1, 2, 2, 1], padding = "VALID", strides = [1, 4, 4, 1]} : (tensor<2x12x20x7xi32>) -> tensor<2x3x5x7xi32>
+  return %0 : tensor<2x3x5x7xi32>
+}
+
+//===----------------------------------------------------------------------===//
 // Relu op legalizations.
 //===----------------------------------------------------------------------===//
 
@@ -184,6 +213,64 @@ func @relu6(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   // CHECK-NEXT: %0 = "xla_hlo.clamp"(%cst, %arg0, %cst_0) : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
   %0 = "tf.Relu6"(%arg0) : (tensor<1xi32>) -> tensor<1xi32>
   return %0: tensor<1xi32>
+}
+
+//===----------------------------------------------------------------------===//
+// Softmax op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @simple_softmax
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<2x3xf32>)
+func @simple_softmax(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  // CHECK: %[[NEG_INF:.*]] = constant dense<0xFF800000> : tensor<f32>
+  // CHECK: %[[ZERO:.*]] = constant dense<0.000000e+00> : tensor<f32>
+
+  // Verify reduce op for max computation and its body.
+  // CHECK: %[[MAX:.*]] = "xla_hlo.reduce"(%[[ARG0]], %[[NEG_INF]])
+  // CHECK:  xla_hlo.max
+  // CHECK: "xla_hlo.return"
+  // CHECK: {dimensions = dense<1> : tensor<1xi64>} : (tensor<2x3xf32>, tensor<f32>) -> tensor<2xf32>
+
+  // CHECK: %[[SHIFTED_INP:.*]] = "xla_hlo.sub"(%[[ARG0]], %[[MAX]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
+  // CHECK: %[[EXP:.*]] = "xla_hlo.exp"(%[[SHIFTED_INP]])
+
+  // Verify reduce op for summation and its body.
+  // CHECK: %[[SUM:.*]] = "xla_hlo.reduce"(%[[EXP]], %[[ZERO]])
+  // CHECK:  xla_hlo.add
+  // CHECK: "xla_hlo.return"
+  // CHECK: {dimensions = dense<1> : tensor<1xi64>}
+
+  // CHECK: %[[RESULT:.*]] = "xla_hlo.div"(%[[EXP]], %[[SUM]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
+  // return %[[RESULT]]
+
+  %0 = "tf.Softmax"(%arg0) : (tensor<2x3xf32>) -> tensor<2x3xf32>
+  return %0: tensor<2x3xf32>
+}
+
+// CHECK-LABEL: bf16_softmax
+func @bf16_softmax(%arg0: tensor<2x3xbf16>) -> tensor<2x3xbf16> {
+  // Verify that conversion to f32 and then back to bf16 are introduced.
+
+  // CHECK: "xla_hlo.convert"({{.*}}) : (tensor<2x3xbf16>) -> tensor<2x3xf32>
+  // CHECK: "xla_hlo.convert"({{.*}}) : (tensor<2xf32>) -> tensor<2xbf16>
+
+  %0 = "tf.Softmax"(%arg0) : (tensor<2x3xbf16>) -> tensor<2x3xbf16>
+  return %0: tensor<2x3xbf16>
+}
+
+// CHECK-LABEL: rank4_softmax
+func @rank4_softmax(%arg0: tensor<2x3x4x5xf16>) -> tensor<2x3x4x5xf16> {
+  // Verify that reduce op dimensions and broadcast dimensions are correct.
+
+  // CHECK: "xla_hlo.reduce"
+  // CHECK: dimensions = dense<3>
+
+  // CHECK: "xla_hlo.reduce"
+  // CHECK: dimensions = dense<3>
+
+  // CHECK: "xla_hlo.div"{{.*}} {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>}
+  %0 = "tf.Softmax"(%arg0) : (tensor<2x3x4x5xf16>) -> tensor<2x3x4x5xf16>
+  return %0: tensor<2x3x4x5xf16>
 }
 
 //===----------------------------------------------------------------------===//

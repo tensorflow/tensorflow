@@ -137,7 +137,7 @@ public:
 } // end anonymous namespace
 
 static LogicalResult runMLIRPasses(ModuleOp m) {
-  PassManager pm;
+  PassManager pm(m.getContext());
 
   pm.addPass(createGpuKernelOutliningPass());
   pm.addPass(static_cast<std::unique_ptr<ModulePassBase>>(

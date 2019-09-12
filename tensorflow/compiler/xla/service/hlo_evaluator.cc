@@ -410,9 +410,9 @@ Status HloEvaluator::HandleGetDimensionSize(
   }
 
   const Shape& shape = get_dimension_size->operand(0)->shape();
-  Literal output(ShapeUtil::MakeShape(U32, {}));
+  Literal output(ShapeUtil::MakeShape(S32, {}));
   output.PopulateWithValue(
-      static_cast<uint32>(shape.dimensions(get_dimension_size->dimension())));
+      static_cast<int32>(shape.dimensions(get_dimension_size->dimension())));
   evaluated_[get_dimension_size] = std::move(output);
   return Status::OK();
 }
@@ -919,9 +919,8 @@ void Dft1D(int64 length, int64 start, int64 stride, bool inverse,
 
 // Helper to reverse the order of dimension lengths in the passed-in literal.
 std::vector<int64> GetDimensionLengths(const Literal& literal) {
-  std::vector<int64> lengths = literal.shape().dimensions();
-  absl::c_reverse(lengths);
-  return lengths;
+  auto dimensions = literal.shape().dimensions();
+  return std::vector<int64>(dimensions.rbegin(), dimensions.rend());
 }
 
 // Helper to compute strides for creating linear indices into multidimensional
@@ -1720,6 +1719,10 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
       /*output_shape=*/shape);
 
   const Shape& operand_shape = operand.shape();
+  if (ShapeUtil::IsZeroElementArray(operand_shape)) {
+    evaluated_[gather] = std::move(result);
+    return Status::OK();
+  }
 
   auto gather_inner_loop_body =
       [&](absl::Span<const int64> output_window_index,
@@ -2373,7 +2376,6 @@ Status HloEvaluator::HandleReduce(HloInstruction* instr) {
     arg_dim_steps[dim] = 1;
     arg_dim_counts[dim] = arg_dimensions[dim];
   }
-  auto reduced_dimensions = arg_shape.dimensions();
 
   // Map each dimension in the result to a dimension in arg that isn't
   // being reduced.

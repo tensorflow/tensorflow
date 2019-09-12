@@ -57,6 +57,7 @@ cc_library(
         "memory_management/internal.h",
         "memory_management/min_cost_flow_assignment.h",
         "memory_management/naive_assignment.h",
+        "memory_management/types.h",
     ],
     deps = [
         ":shape",

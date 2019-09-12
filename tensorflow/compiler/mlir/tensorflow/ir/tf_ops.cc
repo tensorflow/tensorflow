@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
+#include "mlir/Dialect/Traits.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
@@ -34,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
+#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
@@ -93,6 +95,23 @@ static bool AreCastCompatible(Type a, Type b) {
 
 static bool IsUnknownDimOrRank(int64_t dim_or_rank) {
   return dim_or_rank == -1;
+}
+
+// Returns the tf.Equal/tf.NotEqual result type given `x` and `y` and inputs. If
+// `incompatible_shape_error` is true, reports error if `x` and `y` has
+// incompatible shapes. Otherwise, returns a tensor type with unknown rank.
+static Type DeduceEqualCmpOpType(Builder *builder, Location loc, Value *x,
+                                 Value *y, BoolAttr incompatible_shape_error) {
+  auto result_type =
+      OpTrait::util::getBroadcastedType(x->getType(), y->getType());
+  if (!result_type) {
+    if (incompatible_shape_error.getValue()) {
+      mlir::emitError(loc, "non-broadcastable operands");
+    } else {
+      result_type = builder->getTensorType(builder->getI1Type());
+    }
+  }
+  return result_type;
 }
 
 namespace {
@@ -258,6 +277,26 @@ static LogicalResult Verify(EmptyTensorListOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// EqualOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(EqualOp op) {
+  // If we allow inputs to have incompatible type, then nothing to do.
+  if (!op.incompatible_shape_error()) return success();
+
+  // Otherwise, check inputs are broadcastable.
+  return mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(
+      op.getOperation());
+}
+
+void EqualOp::build(Builder *builder, OperationState *result, Value *x,
+                    Value *y, BoolAttr incompatible_shape_error) {
+  auto result_type = DeduceEqualCmpOpType(builder, result->location, x, y,
+                                          incompatible_shape_error);
+  return build(builder, result, result_type, x, y, incompatible_shape_error);
+}
+
+//===----------------------------------------------------------------------===//
 // FakeQuantWithMinMaxArgsOp
 //===----------------------------------------------------------------------===//
 static LogicalResult Verify(FakeQuantWithMinMaxArgsOp op) {
@@ -275,12 +314,6 @@ static LogicalResult Verify(FakeQuantWithMinMaxArgsOp op) {
   if (rmin >= rmax) {
     return op.emitOpError("range is invalid: [" + Twine(std::to_string(rmin)) +
                           "," + Twine(std::to_string(rmax)) + "]");
-  }
-  // Range must straddle zero.
-  if (rmin > 0.0 || rmax < 0.0) {
-    return op.emitOpError("range failed to straddle zero: [" +
-                          Twine(std::to_string(rmin)) + "," +
-                          Twine(std::to_string(rmax)) + "]");
   }
   int64_t num_bits = op.num_bits().getSExtValue();
   if (num_bits < 2 || num_bits > 16) {
@@ -300,6 +333,37 @@ static LogicalResult Verify(FakeQuantWithMinMaxVarsOp op) {
   if (!isOfRankedFloatTensorType(op.max(), 0))
     return op.emitOpError("requires max to be a 0d float tensor");
 
+  int64_t num_bits = op.num_bits().getSExtValue();
+  if (num_bits < 2 || num_bits > 16) {
+    return op.emitOpError(
+        "requires num_bits to be between 2 and 16, inclusive");
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// FakeQuantWithMinMaxVarsPerChannelOp
+//===----------------------------------------------------------------------===//
+static LogicalResult Verify(FakeQuantWithMinMaxVarsPerChannelOp op) {
+  if (!isOfRankedFloatTensorType(op.min(), 1))
+    return op.emitOpError("requires min to be a 1d float tensor");
+
+  if (!isOfRankedFloatTensorType(op.max(), 1))
+    return op.emitOpError("requires max to be a 1d float tensor");
+
+  Value *inputs = op.inputs();
+  if (!HasRankAtLeast(inputs, 1) ||
+      inputs->getType().isa<UnrankedTensorType>()) {
+    return op.emitError("requires inputs to be at least 1d float tensor");
+  }
+
+  auto inputsType = inputs->getType().cast<ShapedType>();
+  int depth = inputsType.getDimSize(inputsType.getRank() - 1);
+  if (op.min()->getType().cast<ShapedType>().getDimSize(0) != depth ||
+      op.max()->getType().cast<ShapedType>().getDimSize(0) != depth) {
+    return op.emitOpError(
+        "requires min and max to have same size as last dimension of inputs");
+  }
   int64_t num_bits = op.num_bits().getSExtValue();
   if (num_bits < 2 || num_bits > 16) {
     return op.emitOpError(
@@ -469,6 +533,26 @@ void LogicalNotOp::getCanonicalizationPatterns(
 void NegOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
   results.insert<NegNested>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// NotEqualOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(NotEqualOp op) {
+  // If we allow inputs to have incompatible type, then nothing to do.
+  if (!op.incompatible_shape_error()) return success();
+
+  // Otherwise, check inputs are broadcastable.
+  return mlir::OpTrait::impl::verifyCompatibleOperandBroadcast(
+      op.getOperation());
+}
+
+void NotEqualOp::build(Builder *builder, OperationState *result, Value *x,
+                       Value *y, BoolAttr incompatible_shape_error) {
+  auto result_type = DeduceEqualCmpOpType(builder, result->location, x, y,
+                                          incompatible_shape_error);
+  return build(builder, result, result_type, x, y, incompatible_shape_error);
 }
 
 //===----------------------------------------------------------------------===//
@@ -729,6 +813,16 @@ OpFoldResult ShapeOp::fold(ArrayRef<Attribute> operands) {
 
   auto resultType = b.getTensorType({rank}, elementType);
   return b.getDenseElementsAttr(resultType, dimensions);
+}
+
+void ShapeOp::build(Builder *builder, OperationState *result, Value *input,
+                    BoolAttr use32Bit) {
+  auto rankedTensorType = input->getType().dyn_cast<RankedTensorType>();
+  int64_t rank = rankedTensorType ? rankedTensorType.getRank() : -1;
+  auto out_type = use32Bit.getValue() ? builder->getIntegerType(32)
+                                      : builder->getIntegerType(64);
+  return ShapeOp::build(builder, result,
+                        builder->getTensorType({rank}, out_type), input);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1075,11 +1169,7 @@ void TensorFlowDialect::PrintVariantType(VariantType ty,
 Operation *TensorFlowDialect::materializeConstant(OpBuilder &builder,
                                                   Attribute value, Type type,
                                                   Location loc) {
-  // If this is an opaque elements attribute or the result type doesn't match
-  // the attribute type, then generate a tf.Const.
-  if (value.isa<OpaqueElementsAttr>() || value.getType() != type)
-    return builder.create<ConstOp>(loc, type, value);
-  return nullptr;
+  return builder.create<ConstOp>(loc, type, value);
 }
 
 }  // namespace TF

@@ -265,6 +265,13 @@ Status HeapSimulator::RunComputation(
               continue;
             }
 
+            if (!absl::c_linear_search(buffers_freed[i], operand_value)) {
+              // If the operand buffer is not being freed (either because it has
+              // existing users, or it has been reused by other buffers), don't
+              // consider the operand as a candidate of buffer sharing.
+              continue;
+            }
+
             // The instruction that defines the operand value can be different
             // from the actual operand, if directly passing the defining
             // instruction into "CanShareOperandBufferWithUser" it creates a

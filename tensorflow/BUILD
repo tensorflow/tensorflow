@@ -268,18 +268,6 @@ config_setting(
 )
 
 config_setting(
-    name = "no_ignite_support",
-    define_values = {"no_ignite_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "no_kafka_support",
-    define_values = {"no_kafka_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "no_nccl_support",
     define_values = {"no_nccl_support": "true"},
     visibility = ["//visibility:public"],
@@ -306,18 +294,6 @@ config_setting(
 config_setting(
     name = "no_xla_deps_in_cuda",
     define_values = {"no_xla_deps_in_cuda": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_gdr_support",
-    define_values = {"with_gdr_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_verbs_support",
-    define_values = {"with_verbs_support": "true"},
     visibility = ["//visibility:public"],
 )
 
@@ -806,8 +782,8 @@ genrule(
     }),
     outs = ["__init__.py"],
     cmd = select({
-        "api_version_2": "cp $(@D)/_api/v2/v2.py $(OUTS)",
-        "//conditions:default": "cp $(@D)/_api/v1/v1.py $(OUTS)",
+        "api_version_2": "cp $(@D)/_api/v2/v2.py $(OUTS) && sed -i'.original' 's:from . import:from . _api.v2 import:g' $(OUTS)",
+        "//conditions:default": "cp $(@D)/_api/v1/v1.py $(OUTS) && sed -i'.original' 's:from . import:from ._api.v1 import:g' $(OUTS)",
     }),
 )
 
