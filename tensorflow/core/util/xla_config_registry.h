@@ -26,33 +26,37 @@ namespace tensorflow {
 // its status.
 class XlaConfigRegistry {
  public:
+  struct XlaGlobalJitLevel {
+    OptimizerOptions::GlobalJitLevel single_gpu;
+    OptimizerOptions::GlobalJitLevel general;
+  };
+
   // Input is jit_level in session config, and return is the config from
   // XLA, reflecting the effect of the environment variable flags.
-  typedef std::function<OptimizerOptions::GlobalJitLevel(
-      OptimizerOptions::GlobalJitLevel)>
-      global_jit_level_getter_t;
+  typedef std::function<XlaGlobalJitLevel(
+      const OptimizerOptions::GlobalJitLevel&)>
+      GlobalJitLevelGetterTy;
 
-  static bool Register(XlaConfigRegistry::global_jit_level_getter_t getter) {
+  static void Register(XlaConfigRegistry::GlobalJitLevelGetterTy getter) {
     CHECK(!global_jit_level_getter_);
     global_jit_level_getter_ = std::move(getter);
-    return true;
   }
 
-  static OptimizerOptions::GlobalJitLevel GetGlobalJitLevel(
+  static XlaGlobalJitLevel GetGlobalJitLevel(
       OptimizerOptions::GlobalJitLevel jit_level_in_session_opts) {
     if (!global_jit_level_getter_) {
-      return jit_level_in_session_opts;
+      return {jit_level_in_session_opts, jit_level_in_session_opts};
     }
     return global_jit_level_getter_(jit_level_in_session_opts);
   }
 
  private:
-  static global_jit_level_getter_t global_jit_level_getter_;
+  static GlobalJitLevelGetterTy global_jit_level_getter_;
 };
 
 #define REGISTER_XLA_CONFIG_GETTER(getter) \
   static bool registered_##__COUNTER__ =   \
-      ::tensorflow::XlaConfigRegistry::Register(getter)
+      (::tensorflow::XlaConfigRegistry::Register(getter), true)
 
 }  // namespace tensorflow
 

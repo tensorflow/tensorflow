@@ -219,10 +219,7 @@ void RemoveFromXlaCluster(NodeDef* node_def) {
 void RemoveFromXlaCluster(Node* node) { node->ClearAttr(kXlaClusterAttr); }
 
 namespace {
-struct XlaGlobalJitLevel {
-  OptimizerOptions::GlobalJitLevel single_gpu;
-  OptimizerOptions::GlobalJitLevel general;
-};
+typedef XlaConfigRegistry::XlaGlobalJitLevel XlaGlobalJitLevel;
 
 XlaGlobalJitLevel GetXlaGlobalJitLevel(
     const OptimizerOptions::GlobalJitLevel& jit_level_in_session_opts) {
@@ -389,18 +386,7 @@ XlaAutoClusteringSummary GetXlaAutoClusteringSummary(const Graph& graph) {
   return result;
 }
 
-// Implement and register a callback for querying GlobalJitLevel.
-OptimizerOptions::GlobalJitLevel GlobalJitLevelGetter(
-    OptimizerOptions::GlobalJitLevel jit_level_in_session_opts) {
-  XlaGlobalJitLevel xla_global_jit_level =
-      GetXlaGlobalJitLevel(jit_level_in_session_opts);
-  // Take the general flag to avoid the dependency on Tensorflow::Graph.
-  OptimizerOptions::GlobalJitLevel global_jit_level =
-      xla_global_jit_level.general;
-
-  return global_jit_level;
-}
-
-REGISTER_XLA_CONFIG_GETTER(GlobalJitLevelGetter);
+// Register a callback for querying XlaGlobalJitLevel.
+REGISTER_XLA_CONFIG_GETTER(GetXlaGlobalJitLevel);
 
 }  // namespace tensorflow

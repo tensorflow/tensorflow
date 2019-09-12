@@ -18,7 +18,7 @@ limitations under the License.
 namespace tensorflow {
 
 /*static*/
-XlaConfigRegistry::global_jit_level_getter_t
+XlaConfigRegistry::GlobalJitLevelGetterTy
     XlaConfigRegistry::global_jit_level_getter_;
 
 }  // namespace tensorflow

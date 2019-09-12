@@ -127,6 +127,20 @@ bool AutoMixedPrecisionEnabled(RewriterConfig::Toggle opt_level) {
   return false;
 }
 
+bool IsXlaGlobalJitOn(
+    const OptimizerOptions::GlobalJitLevel& jit_level_in_session_opts) {
+  XlaConfigRegistry::XlaGlobalJitLevel xla_global_jit_level =
+      XlaConfigRegistry::GetGlobalJitLevel(jit_level_in_session_opts);
+  // Return true only if XLA JIT is ON for both single-gpu and multi-gpu
+  // graphs. This is a conservative approach that turns off the memory optimizer
+  // when we are sure that all graphs will be processed by XLA JIT.
+  bool is_on = (xla_global_jit_level.single_gpu == OptimizerOptions::ON_1 ||
+                xla_global_jit_level.single_gpu == OptimizerOptions::ON_2) &&
+               (xla_global_jit_level.general == OptimizerOptions::ON_1 ||
+                xla_global_jit_level.general == OptimizerOptions::ON_2);
+  return is_on;
+}
+
 // A helper function to decide whether to enable the memory optimizer.
 bool MemoryOptimizerEnabled(
     RewriterConfig::MemOptType mem_opt_type,
@@ -137,11 +151,8 @@ bool MemoryOptimizerEnabled(
   // loses the concurrency needed to hide the latencies of the inserted swap-ins
   // and swap-outs and incurs great performance overhead. Remove this check when
   // the XLA JIT can better deal with the concurrency.
-  OptimizerOptions::GlobalJitLevel global_jit_level =
-      XlaConfigRegistry::GetGlobalJitLevel(jit_level_in_session_opts);
   if (mem_opt_type == RewriterConfig::DEFAULT_MEM_OPT &&
-      (global_jit_level == OptimizerOptions::ON_1 ||
-       global_jit_level == OptimizerOptions::ON_2)) {
+      IsXlaGlobalJitOn(jit_level_in_session_opts)) {
     return false;
   }
 
