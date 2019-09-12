@@ -2218,9 +2218,9 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
     def __init__(self, dataset):
       self._dataset = dataset
       if eager_context.executing_eagerly():
-        self._iterator = dataset.make_one_shot_iterator()
+        self._iterator = dataset_ops.make_one_shot_iterator(dataset)
       else:
-        self._iterator = dataset.make_initializable_iterator()
+        self._iterator = dataset_ops.make_initializable_iterator(dataset)
 
     def get_next(self):
       return self._iterator.get_next()

@@ -2071,9 +2071,10 @@ class DatasetV1(DatasetV2):
     return DatasetV1Adapter(super(DatasetV1, self).with_options(options))
 
 
-# TODO(b/119044825): Until all `tf.data` unit tests are converted to V2, keep
-# this alias in place.
-Dataset = DatasetV1
+if tf2.enabled():
+  Dataset = DatasetV2
+else:
+  Dataset = DatasetV1
 
 
 class DatasetV1Adapter(DatasetV1):
