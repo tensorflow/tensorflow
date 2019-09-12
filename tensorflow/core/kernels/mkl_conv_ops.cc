@@ -1584,7 +1584,7 @@ class MklQuantizedConv2DOp
             const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
       }
 
-      // Re-scale bias if either of following 2 conditions met:
+      // Re-scale bias if either of following 2 conditions are met:
       // 1. Bias is not const;
       // 2. Bias is const, but bias cache is empty (first iteration).
       if (!is_bias_const_ || IsBiasCacheEmpty(context)) {
