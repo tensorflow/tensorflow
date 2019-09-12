@@ -370,6 +370,28 @@ cc_library(
 )
 
 cc_library(
+    name = "pybind11_absl",
+    hdrs = ["lib/core/pybind11_absl.h"],
+    features = ["-parse_headers"],
+    deps = [
+        "//tensorflow/core/platform:stringpiece",
+        "@pybind11",
+    ],
+)
+
+cc_library(
+    name = "pybind11_status",
+    hdrs = ["lib/core/pybind11_status.h"],
+    features = ["-parse_headers"],
+    deps = [
+        ":py_exception_registry",
+        "//tensorflow/core:lib",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
+cc_library(
     name = "kernel_registry",
     srcs = ["util/kernel_registry.cc"],
     hdrs = ["util/kernel_registry.h"],
