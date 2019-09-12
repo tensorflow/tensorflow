@@ -53,6 +53,7 @@ class ConvPowerVR : public GPUOperation {
   struct ConvParams {
     int3 block_size;
     int3 work_group_size;
+    int3 work_group_launch_order;
     int src_depth_loop_size;
     bool explicit_sync;
     bool x_kernel_is_1;

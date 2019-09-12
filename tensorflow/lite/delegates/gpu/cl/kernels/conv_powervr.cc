@@ -98,15 +98,16 @@ int3 ConvPowerVR::GetGridSize() const {
       IntegralDivideRoundUp(dst_[0]->Height(), conv_params_.block_size.y);
   const int grid_z =
       IntegralDivideRoundUp(dst_[0]->Depth(), conv_params_.block_size.z);
-  const int wg_x =
-      IntegralDivideRoundUp(grid_x, conv_params_.work_group_size.x);
-  const int wg_y =
-      IntegralDivideRoundUp(grid_y, conv_params_.work_group_size.y);
-  const int wg_z =
-      IntegralDivideRoundUp(grid_z, conv_params_.work_group_size.z);
-  return int3(wg_z * conv_params_.work_group_size.x,
-              wg_x * conv_params_.work_group_size.y,
-              wg_y * conv_params_.work_group_size.z);
+  int3 wg;
+  wg.x = IntegralDivideRoundUp(grid_x, conv_params_.work_group_size.x);
+  wg.y = IntegralDivideRoundUp(grid_y, conv_params_.work_group_size.y);
+  wg.z = IntegralDivideRoundUp(grid_z, conv_params_.work_group_size.z);
+  return int3(wg[conv_params_.work_group_launch_order[0]] *
+                  conv_params_.work_group_size.x,
+              wg[conv_params_.work_group_launch_order[1]] *
+                  conv_params_.work_group_size.y,
+              wg[conv_params_.work_group_launch_order[2]] *
+                  conv_params_.work_group_size.z);
 }
 
 Status ConvPowerVR::AddToQueue(CLCommandQueue* queue) {
@@ -156,12 +157,19 @@ std::string GenerateConvPowerVR1x1(
   c += "    int4 src_size,                   \n";
   c += "    int4 dst_size                    \n";
   c += ") {\n";
-  c += "  int X = (get_group_id(1) * " + std::to_string(work_group_size.x) +
-       " + get_local_id(0)) * " + std::to_string(block_size.x) + ";\n";
-  c += "  int Y = (get_group_id(2) * " + std::to_string(work_group_size.y) +
-       " + get_local_id(1)) * " + std::to_string(block_size.y) + ";\n";
-  c += "  int Z = (get_group_id(0) * " + std::to_string(work_group_size.z) +
-       " + get_local_id(2)) * " + std::to_string(block_size.z) + ";\n";
+  int3 launch_remap;
+  launch_remap[conv_params.work_group_launch_order.x] = 0;
+  launch_remap[conv_params.work_group_launch_order.y] = 1;
+  launch_remap[conv_params.work_group_launch_order.z] = 2;
+  c += "  int X = (get_group_id(" + std::to_string(launch_remap[0]) + ") * " +
+       std::to_string(work_group_size.x) + " + get_local_id(0)) * " +
+       std::to_string(block_size.x) + ";\n";
+  c += "  int Y = (get_group_id(" + std::to_string(launch_remap[1]) + ") * " +
+       std::to_string(work_group_size.y) + " + get_local_id(1)) * " +
+       std::to_string(block_size.y) + ";\n";
+  c += "  int Z = (get_group_id(" + std::to_string(launch_remap[2]) + ") * " +
+       std::to_string(work_group_size.z) + " + get_local_id(2)) * " +
+       std::to_string(block_size.z) + ";\n";
   for (int z = 0; z < block_size.z; ++z) {
     for (int y = 0; y < block_size.y; ++y) {
       for (int x = 0; x < block_size.x; ++x) {
@@ -366,6 +374,7 @@ ConvPowerVR::ConvParams GuessBestParams(const CLDevice& device,
   ConvPowerVR::ConvParams conv_params;
   conv_params.block_size = int3(1, 1, 4);
   conv_params.work_group_size = int3(8, 4, 1);
+  conv_params.work_group_launch_order = int3(2, 0, 1);
   conv_params.src_depth_loop_size = 1;
   conv_params.explicit_sync = !device.IsPowerVR();
   const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
