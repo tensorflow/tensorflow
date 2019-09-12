@@ -507,6 +507,7 @@ def tf_additional_lib_srcs(exclude = []):
         "posix/error.cc",
     ], exclude = exclude + [
         "default/env_time.cc",
+        "default/load_library.cc",
         "default/net.cc",
         "default/port.cc",
         "default/subprocess.cc",

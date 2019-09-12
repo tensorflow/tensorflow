@@ -89,6 +89,21 @@ TF_PLATFORM_LIBRARIES = {
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
     },
+    "load_library": {
+        "name": "load_library_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:load_library.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:default/load_library.cc",
+        ],
+        "deps": [
+            "//tensorflow/core/lib/core:errors",
+            "//tensorflow/core/lib/core:status",
+        ],
+        "visibility": ["//visibility:private"],
+        "tags": ["no_oss", "manual"],
+    },
     "mutex": {
         "name": "mutex_impl",
         "hdrs": [
@@ -203,6 +218,22 @@ TF_WINDOWS_PLATFORM_LIBRARIES = {
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
     },
+    "load_library": {
+        "name": "windows_load_library_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:load_library.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:windows/load_library.cc",
+        ],
+        "deps": [
+            "//tensorflow/core/lib/core:errors",
+            "//tensorflow/core/lib/core:status",
+            "//tensorflow/core/platform:windows_wide_char_impl",
+        ],
+        "visibility": ["//visibility:private"],
+        "tags": ["no_oss", "manual"],
+    },
     "net": {
         "name": "windows_net_impl",
         "hdrs": [
@@ -231,6 +262,14 @@ TF_WINDOWS_PLATFORM_LIBRARIES = {
             "//tensorflow/core/platform:logging",
             "//tensorflow/core/platform:macros",
             "//tensorflow/core/platform:types",
+        ],
+        "tags": ["no_oss", "manual"],
+        "visibility": ["//visibility:private"],
+    },
+    "wide_char": {
+        "name": "windows_wide_char_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:windows/wide_char.h",
         ],
         "tags": ["no_oss", "manual"],
         "visibility": ["//visibility:private"],
@@ -296,7 +335,8 @@ def tf_instantiate_platform_libraries(names = []):
                 tags = ["no_oss", "manual"],
             )
         else:
-            native.cc_library(**TF_PLATFORM_LIBRARIES[name])
+            if name in TF_PLATFORM_LIBRARIES:
+                native.cc_library(**TF_PLATFORM_LIBRARIES[name])
             if name in TF_WINDOWS_PLATFORM_LIBRARIES:
                 native.cc_library(**TF_WINDOWS_PLATFORM_LIBRARIES[name])
 
