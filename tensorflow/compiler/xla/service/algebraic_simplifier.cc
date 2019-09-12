@@ -203,18 +203,6 @@ bool IsConvertPairNoOp(const HloInstruction* convert) {
     return false;
   }
 
-  // A conversion pair where src_type is signed and intermediate_type is
-  // unsigned cannot be optimized.
-  bool is_conversion_signed_to_unsigned =
-      (ShapeUtil::ElementIsSigned(src_shape) &&
-        !ShapeUtil::ElementIsSigned(intermediate_shape));
-
-  // If the conversion is integral, only signed to unsigned conversion is not
-  // allowed.
-  if (is_conversion_integral && is_conversion_signed_to_unsigned) {
-    return false;
-  }
-
   return true;
 }
 
