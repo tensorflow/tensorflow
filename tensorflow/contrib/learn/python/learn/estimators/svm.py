@@ -42,7 +42,7 @@ class SVM(estimator.Estimator):
   """Support Vector Machine (SVM) model for binary classification.
 
   THIS CLASS IS DEPRECATED. See
-  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  [contrib/learn/README.md](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/learn/README.md)
   for general migration instructions.
 
   Currently, only linear SVMs are supported. For the underlying optimization
