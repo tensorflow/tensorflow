@@ -1630,13 +1630,13 @@ class MklQuantizedConv2DOp
   }
 
   bool is_bias_const_;
-  PersistentTensor cached_bias_data_ptensor_ GUARDED_BY(mu_);
+  PersistentTensor cached_bias_data_ptensor_ GUARDED_BY(bias_cache_mu_);
 
   memory* input_bias_ = nullptr;
   memory* scaled_bias_ = nullptr;
 
 private:
-  mutex mu_;
+  mutex bias_cache_mu_;
   // Allocate persistent tensors for cached bias data and
   // cached bias memory descriptor (data format)
   void AllocatePersistentTensor(OpKernelContext* context,
@@ -1654,8 +1654,8 @@ private:
   // LOCKS_EXCLUDED annotation ensures that the lock (mu_) cannot
   // be acquired before entering the function, since it is acquired
   // inside the function.
-  inline bool IsBiasCacheEmpty(OpKernelContext* context) LOCKS_EXCLUDED(mu_) {
-    tf_shared_lock lock(mu_);
+  inline bool IsBiasCacheEmpty(OpKernelContext* context) LOCKS_EXCLUDED(bias_cache_mu_) {
+    tf_shared_lock lock(bias_cache_mu_);
     return (cached_bias_data_ptensor_.NumElements() == 0);
   }
 
@@ -1665,8 +1665,8 @@ private:
                  const std::shared_ptr<ConvFwdPd>& conv_fwd_pd,
                  Tbias *bias_data,
                  const memory *scaled_bias)
-      LOCKS_EXCLUDED(mu_) {
-    mutex_lock lock(mu_);
+      LOCKS_EXCLUDED(bias_cache_mu_) {
+    mutex_lock lock(bias_cache_mu_);
 
     // If bias is already cached, there's nothing to do.
     if (cached_bias_data_ptensor_.NumElements() > 0) {
@@ -1683,8 +1683,8 @@ private:
   }
 
   Tbias* GetCachedBias(OpKernelContext* context)
-      LOCKS_EXCLUDED(mu_) {
-    tf_shared_lock lock(mu_);
+      LOCKS_EXCLUDED(bias_cache_mu_) {
+    tf_shared_lock lock(bias_cache_mu_);
     const Tensor& cached_bias_data =
         *cached_bias_data_ptensor_.AccessTensor(context);
 
