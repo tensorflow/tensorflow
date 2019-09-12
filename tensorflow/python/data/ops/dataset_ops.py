@@ -2794,7 +2794,7 @@ class StructuredFunctionWrapper(object):
         # triggers use-after-free. Figure out why and stop excluding functions
         # with PyFunc nodes from garbage collection.
         for node in self._function.function_def.node_def:
-          if node.name == "PyFunc" or node.name == "EagerPyFunc":
+          if "PyFunc" in node.name:
             self._function._garbage_collector.release()
 
         if add_to_graph:
