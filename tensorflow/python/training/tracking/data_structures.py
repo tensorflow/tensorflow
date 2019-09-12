@@ -140,10 +140,16 @@ class TrackableDataStructure(base.Trackable):
 
   def __init__(self):
     # Attributes prefixed with "_self_" for compatibility with
-    # wrapt.ObjectProxy.
+    # wrapt.ObjectProxy. All additional attrs MUST conform to this pattern, as
+    # extending `__slots__` on a subclass of ObjectProxy breaks in a variety of
+    # ways.
     self._self_trainable = True
     self._self_extra_variables = []
-    self._attribute_sentinel = layer_utils.AttributeSentinel(True)
+    self._self_attribute_sentinel = layer_utils.AttributeSentinel(True)
+
+  @property
+  def _attribute_sentinel(self):
+    return self._self_attribute_sentinel
 
   @property
   def trainable(self):
@@ -695,10 +701,6 @@ class _DictWrapper(TrackableDataStructure, wrapt.ObjectProxy):
   keys, reassign values). Like ListWrapper, these mutations mean that
   _DictWrapper will raise an exception on save.
   """
-
-  # We cannot reuse wrapt.ObjectProxy.__slots__, as this will cause pylint
-  # to hang for unknown reasons so we instead hard code "__wrapped__".
-  __slots__ = ("__wrapped__", "_attribute_sentinel",)
 
   def __init__(self, wrapped_dict=None):
     if wrapped_dict is None:
