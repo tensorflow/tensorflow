@@ -145,8 +145,8 @@ bool IsXlaGlobalJitOn(
 bool MemoryOptimizerEnabled(
     RewriterConfig::MemOptType mem_opt_type,
     OptimizerOptions::GlobalJitLevel jit_level_in_session_opts) {
-  // Disable the default memory optimizer when GlobalJitLevel is ON as it hurts
-  // the XLA JIT performance. The (current) XLA clustering can result in loss of
+  // Disable the default memory optimizer when XLA JIT is ON as it hurts the
+  // XLA JIT performance. The (current) XLA clustering can result in loss of
   // concurrency between kernel compute and memory copies. As such, it usually
   // loses the concurrency needed to hide the latencies of the inserted swap-ins
   // and swap-outs and incurs great performance overhead. Remove this check when
