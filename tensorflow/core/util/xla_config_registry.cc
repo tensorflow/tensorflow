@@ -17,11 +17,37 @@ limitations under the License.
 
 namespace tensorflow {
 
-/*static*/
-mutex XlaConfigRegistry::mu_(LINKER_INITIALIZED);
+namespace xla_config_registry {
 
-/*static*/
-XlaConfigRegistry::GlobalJitLevelGetterTy
-    XlaConfigRegistry::global_jit_level_getter_;
+namespace {
+struct GlobalJitLevelState {
+  mutex mu;
+  GlobalJitLevelGetterTy getter;
+};
+
+GlobalJitLevelState* GetSingletonState() {
+  static GlobalJitLevelState* state = new GlobalJitLevelState;
+  return state;
+}
+}  // anonymous
+
+void RegisterGlobalJitLevelGetter(GlobalJitLevelGetterTy getter) {
+  GlobalJitLevelState* state = GetSingletonState();
+  mutex_lock l(state->mu);
+  CHECK(!state->getter);
+  state->getter = std::move(getter);
+}
+
+XlaGlobalJitLevel GetGlobalJitLevel(
+    OptimizerOptions::GlobalJitLevel jit_level_in_session_opts) {
+  GlobalJitLevelState* state = GetSingletonState();
+  mutex_lock l(state->mu);
+  if (!state->getter) {
+    return {jit_level_in_session_opts, jit_level_in_session_opts};
+  }
+  return state->getter(jit_level_in_session_opts);
+}
+
+}  // namespace xla_config_registry
 
 }  // namespace tensorflow

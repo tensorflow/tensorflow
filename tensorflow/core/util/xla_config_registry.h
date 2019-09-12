@@ -23,42 +23,25 @@ limitations under the License.
 
 namespace tensorflow {
 
-// A registry class where XLA can register callbacks for Tensorflow to query
-// its status.
-class XlaConfigRegistry {
- public:
-  // XlaGlobalJitLevel is used by XLA to expose its JIT level for processing
-  // single gpu and general (multi-gpu) graphs.
-  struct XlaGlobalJitLevel {
-    OptimizerOptions::GlobalJitLevel single_gpu;
-    OptimizerOptions::GlobalJitLevel general;
-  };
+namespace xla_config_registry {
 
-  // Input is the jit_level in session config, and return value is the jit_level
-  // from XLA, reflecting the effect of the environment variable flags.
-  typedef std::function<XlaGlobalJitLevel(
-      const OptimizerOptions::GlobalJitLevel&)>
-      GlobalJitLevelGetterTy;
-
-  static void Register(XlaConfigRegistry::GlobalJitLevelGetterTy getter) {
-    mutex_lock l(mu_);
-    CHECK(!global_jit_level_getter_);
-    global_jit_level_getter_ = std::move(getter);
-  }
-
-  static XlaGlobalJitLevel GetGlobalJitLevel(
-      OptimizerOptions::GlobalJitLevel jit_level_in_session_opts) {
-    mutex_lock l(mu_);
-    if (!global_jit_level_getter_) {
-      return {jit_level_in_session_opts, jit_level_in_session_opts};
-    }
-    return global_jit_level_getter_(jit_level_in_session_opts);
-  }
-
- private:
-  static mutex mu_;
-  static GlobalJitLevelGetterTy global_jit_level_getter_ GUARDED_BY(mu_);
+// XlaGlobalJitLevel is used by XLA to expose its JIT level for processing
+// single gpu and general (multi-gpu) graphs.
+struct XlaGlobalJitLevel {
+  OptimizerOptions::GlobalJitLevel single_gpu;
+  OptimizerOptions::GlobalJitLevel general;
 };
+
+// Input is the jit_level in session config, and return value is the jit_level
+// from XLA, reflecting the effect of the environment variable flags.
+typedef std::function<XlaGlobalJitLevel(
+    const OptimizerOptions::GlobalJitLevel&)>
+    GlobalJitLevelGetterTy;
+
+void RegisterGlobalJitLevelGetter(GlobalJitLevelGetterTy getter);
+
+XlaGlobalJitLevel GetGlobalJitLevel(
+    OptimizerOptions::GlobalJitLevel jit_level_in_session_opts);
 
 #define REGISTER_XLA_CONFIG_GETTER(getter) \
   REGISTER_XLA_CONFIG_GETTER_UNIQ_HELPER(__COUNTER__, getter)
@@ -66,9 +49,13 @@ class XlaConfigRegistry {
 #define REGISTER_XLA_CONFIG_GETTER_UNIQ_HELPER(ctr, getter) \
   REGISTER_XLA_CONFIG_GETTER_UNIQ(ctr, getter)
 
-#define REGISTER_XLA_CONFIG_GETTER_UNIQ(ctr, getter)   \
-  static bool xla_config_registry_registration_##ctr = \
-      (::tensorflow::XlaConfigRegistry::Register(getter), true)
+#define REGISTER_XLA_CONFIG_GETTER_UNIQ(ctr, getter)                    \
+  static bool xla_config_registry_registration_##ctr =                  \
+      (::tensorflow::xla_config_registry::RegisterGlobalJitLevelGetter( \
+           getter),                                                     \
+       true)
+
+}  // namespace xla_config_registry
 
 }  // namespace tensorflow
 

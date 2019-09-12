@@ -219,7 +219,7 @@ void RemoveFromXlaCluster(NodeDef* node_def) {
 void RemoveFromXlaCluster(Node* node) { node->ClearAttr(kXlaClusterAttr); }
 
 namespace {
-typedef XlaConfigRegistry::XlaGlobalJitLevel XlaGlobalJitLevel;
+typedef xla_config_registry::XlaGlobalJitLevel XlaGlobalJitLevel;
 
 XlaGlobalJitLevel GetXlaGlobalJitLevel(
     const OptimizerOptions::GlobalJitLevel& jit_level_in_session_opts) {
