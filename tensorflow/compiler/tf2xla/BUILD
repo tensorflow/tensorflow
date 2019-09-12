@@ -5,6 +5,7 @@ load(
 )
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library", "xla_py_proto_library")
 load("//tensorflow:tensorflow.bzl", "tf_portable_proto_library")
+load("//tensorflow/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
 
 package(
     default_visibility = [":internal"],
@@ -210,7 +211,7 @@ cc_library(
         "xla_op_registry.cc",
         "xla_resource.cc",
         "xla_cpu_backend.cc",
-    ] + if_cuda_is_configured([
+    ] + if_cuda_or_rocm([
         "xla_gpu_backend.cc",
     ]),
     hdrs = [
