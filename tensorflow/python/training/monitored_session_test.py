@@ -27,7 +27,6 @@ import threading
 import time
 import traceback
 
-from tensorflow.contrib.testing.python.framework import util_test
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import debug_pb2
 from tensorflow.python.client import session as session_lib
@@ -51,8 +50,16 @@ from tensorflow.python.training import coordinator
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.training import summary_io
 from tensorflow.python.training import training_util
 
+
+def latest_summaries(base_dir):
+  """Parse summary events from latest event file in base_dir."""
+  file_paths = glob.glob(os.path.join(base_dir, 'events.*'))
+  file_path = sorted(file_paths)[-1] if file_paths else None
+  latest_events = summary_io.summary_iterator(file_path) if file_path else []
+  return [e for e in latest_events if e.HasField('summary')]
 
 class ScaffoldTest(test.TestCase):
   """Scaffold tests."""
@@ -335,7 +342,7 @@ class MonitoredTrainingSessionTest(test.TestCase):
           log_step_count_steps=10) as session:
         for _ in range(101):
           session.run(new_gstep)
-    summaries = util_test.latest_summaries(logdir)
+    summaries = latest_summaries(logdir)
     tags = [s.summary.value[0].tag for s in summaries]
     self.assertIn('my_summary_tag', tags)
     self.assertIn('global_step/sec', tags)
@@ -356,7 +363,7 @@ class MonitoredTrainingSessionTest(test.TestCase):
         time.sleep(0.2)
         for _ in range(101):
           session.run(new_gstep)
-    summaries = util_test.latest_summaries(logdir)
+    summaries = latest_summaries(logdir)
     tags = [s.summary.value[0].tag for s in summaries]
     self.assertIn('my_summary_tag', tags)
     self.assertIn('global_step/sec', tags)
@@ -424,7 +431,7 @@ class MonitoredTrainingSessionWithDistributeCoordinatorTest(test.TestCase):
         for _ in range(101):
           session.run(new_gstep)
 
-    summaries = util_test.latest_summaries(logdir)
+    summaries = latest_summaries(logdir)
     tags = [s.summary.value[0].tag for s in summaries]
     self.assertIn('my_summary_tag', tags)
     self.assertIn('global_step/sec', tags)
@@ -446,7 +453,7 @@ class MonitoredTrainingSessionWithDistributeCoordinatorTest(test.TestCase):
           session.run(new_gstep)
 
     # No summary is saved.
-    summaries = util_test.latest_summaries(logdir)
+    summaries = latest_summaries(logdir)
     self.assertEqual(len(summaries), 0)
 
   def test_checkpoint_hook_enabled(self):
