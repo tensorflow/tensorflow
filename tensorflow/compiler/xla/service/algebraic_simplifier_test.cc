@@ -1710,8 +1710,8 @@ TEST_F(AlgebraicSimplifierTest, ConvertBetweenSameType) {
   EXPECT_THAT(computation->root_instruction(), input);
 }
 
-// Test that convert(convert(A, $TYPE1), $TYPE2) is simplified to A if
-// A is of $TYPE2 and convert(A, $TYP1) is an upcast.
+// Test that convert(convert(A, $TYPE1), $TYPE2) is simplified to A if A is of
+// $TYPE2 and convert(A, $TYP1) is an upcast.
 TEST_F(AlgebraicSimplifierTest, EliminateConvertPairUpCast) {
   auto m = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
@@ -1761,9 +1761,9 @@ TEST_F(AlgebraicSimplifierTest, DoNotEliminateConvertPairDownCast) {
               GmockMatch(m::Convert(m::Convert(m::Op().Is(input)))));
 }
 
-// Test that convert(convert(A, $TYPE1), $TYPE2) is simplified to A if
-// A is of $TYPE2 since convert(A, $TYP1) is an upcast and is a conversion from
-// unsigned to signed which is allowed.
+// Test that convert(convert(A, $TYPE1), $TYPE2) is simplified to A if A is of
+// $TYPE2 since convert(A, $TYP1) is an upcast and is a conversion from unsigned
+// to signed which is allowed.
 TEST_F(AlgebraicSimplifierTest, EliminateConvertPairUnsignedToSigned) {
   auto m = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());

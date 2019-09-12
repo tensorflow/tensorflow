@@ -176,25 +176,22 @@ bool IsConvertPairNoOp(const HloInstruction* convert) {
   const Shape& intermediate_shape = operand_convert->shape();
   const Shape& dest_shape = convert->shape();
 
-  const PrimitiveType& src_type =
-      src_shape.element_type();
-  const PrimitiveType& intermediate_type = intermediate_shape.element_type();
-  const PrimitiveType& dest_type = dest_shape.element_type();
+  const PrimitiveType src_type = src_shape.element_type();
+  const PrimitiveType intermediate_type = intermediate_shape.element_type();
+  const PrimitiveType dest_type = dest_shape.element_type();
 
   // src_type must be equal to dest_type.
   if (src_type != dest_type) {
     return false;
   }
 
-  // src_type must be a larger container than
-  // intermediate_type.
+  // src_type must be a larger container than intermediate_type.
   if (ShapeUtil::ByteSizeOfPrimitiveType(intermediate_type) <=
       ShapeUtil::ByteSizeOfPrimitiveType(src_type)) {
     return false;
   }
 
-  // Both src_type and intermediate_type must
-  // be either floating or integral.
+  // Both src_type and intermediate_type must be either floating or integral.
   bool is_conversion_floating =
       ShapeUtil::ElementIsFloating(src_shape) &&
       ShapeUtil::ElementIsFloating(intermediate_shape);
@@ -206,14 +203,14 @@ bool IsConvertPairNoOp(const HloInstruction* convert) {
     return false;
   }
 
-  // A conversion pair where src_type is signed and
-  // intermediate_type is unsigned cannot be optimized.
+  // A conversion pair where src_type is signed and intermediate_type is
+  // unsigned cannot be optimized.
   bool is_conversion_signed_to_unsigned =
       (ShapeUtil::ElementIsSigned(src_shape) &&
         !ShapeUtil::ElementIsSigned(intermediate_shape));
 
-  // If the conversion is integral, only signed to unsigned conversion is
-  // not allowed.
+  // If the conversion is integral, only signed to unsigned conversion is not
+  // allowed.
   if (is_conversion_integral && is_conversion_signed_to_unsigned) {
     return false;
   }
