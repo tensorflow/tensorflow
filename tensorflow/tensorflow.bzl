@@ -1496,7 +1496,7 @@ def tf_kernel_library(
 
 register_extension_info(
     extension_name = "tf_kernel_library",
-    label_regex_for_dep = "{extension_name}(_gpu)?",
+    label_regex_for_dep = "({extension_name}(_gpu)?|libtfkernel_{extension_name}\\.so)",
 )
 
 def tf_mkl_kernel_library(
