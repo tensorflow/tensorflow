@@ -2410,7 +2410,7 @@ class SimplifyAggregation : public ArithmeticOptimizerStage {
   ~SimplifyAggregation() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsAggregate(*node) && NumNonControlInputs(*node) > 0 &&
+    return IsAggregate(*node) && HasRegularInputs(*node) &&
            GetDataTypeFromAttr(*node, "T") !=
                DT_VARIANT;  // TODO(b/119787146): Enable for variants.
   }

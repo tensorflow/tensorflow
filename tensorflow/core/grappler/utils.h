@@ -256,6 +256,15 @@ int NumOutputs(const NodeDef& node, GraphDef* graph);
 // Returns true iff the node has at least one control input.
 bool HasControlInputs(const NodeDef& node);
 
+// Returns true iff the node has at least one regular input.
+bool HasRegularInputs(const NodeDef& node);
+
+// Returns true iff the node has at least one regular output.
+bool HasRegularOutputs(const NodeDef& node, const NodeMap& node_map);
+
+// Returns true iff the node has at least one control output.
+bool HasControlOutputs(const NodeDef& node, const NodeMap& node_map);
+
 // Number of connected non-control inputs.
 int NumNonControlInputs(const NodeDef& node);
 
