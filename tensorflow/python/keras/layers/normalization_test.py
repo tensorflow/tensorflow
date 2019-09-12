@@ -539,6 +539,10 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
         kwargs={'scale': False,
                 'center': False},
         input_shape=(3, 3))
+    testing_utils.layer_test(
+        keras.layers.LayerNormalization,
+        kwargs={'axis': (-3, -2, -1)},
+        input_shape=(64, 64, 3))
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_layernorm_weights(self):
