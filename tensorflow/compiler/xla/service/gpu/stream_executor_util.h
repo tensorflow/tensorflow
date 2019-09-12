@@ -83,8 +83,8 @@ se::GpuAsmOpts PtxOptsFromConfig(const HloModuleConfig& hlo_module_config);
 //
 // Precondition: `buffer_type` is a floating point type, `rng_state` needs to be
 // initalized to zero on the first use.
-void InitializeFloatBuffer(se::Stream* stream, PrimitiveType buffer_type,
-                           int64* rng_state, se::DeviceMemoryBase buffer);
+void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
+                      int64* rng_state, se::DeviceMemoryBase buffer);
 
 }  // namespace gpu
 }  // namespace xla
