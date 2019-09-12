@@ -243,7 +243,7 @@ class ConvertMaxPoolOp : public OpRewritePattern<TF::MaxPoolOp> {
         /*paddings=*/DenseIntElementsAttr());
     BuildReduceBody<xla_hlo::MaxOp>(element_type, &reduce.body(), &rewriter);
 
-    rewriter.replaceOp(op.getOperation(), reduce.getResult(0));
+    rewriter.replaceOp(op, reduce.getResult(0));
     return matchSuccess();
   }
 };
@@ -338,8 +338,8 @@ class ConvertSoftmaxOp : public OpRewritePattern<TF::SoftmaxOp> {
     // Convert the summation result back to the original element type and divide
     // exponentials by the summations.
     sum = rewriter.create<xla_hlo::ConvertOp>(loc, reduce_out_type, sum);
-    rewriter.replaceOpWithNewOp<xla_hlo::DivOp>(op.getOperation(), op.getType(),
-                                                exp, sum, batch_dims);
+    rewriter.replaceOpWithNewOp<xla_hlo::DivOp>(op, op.getType(), exp, sum,
+                                                batch_dims);
     return matchSuccess();
   }
 };
