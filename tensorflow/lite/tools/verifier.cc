@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/tools/verifier.h"
 #include <climits>
 #include "absl/container/flat_hash_set.h"
@@ -402,9 +403,18 @@ bool Verify(const void* buf, size_t len, const OpResolver& resolver,
     ReportError(error_reporter, "Invalid flatbuffer format");
     return false;
   }
-  if (model->version() != TFLITE_SCHEMA_VERSION) {
-    ReportError(error_reporter, "Invalid model version %d", model->version());
+  if (model->version() > TFLITE_SCHEMA_VERSION) {
+    ReportError(error_reporter, 
+        "Model provided is schema version %d higher "
+        "than supported version %d.\n",
+        model->version(), TFLITE_SCHEMA_VERSION);
     return false;
+  } else if (model->version() < TFLITE_SCHEMA_VERSION) {
+    LOG(WARNING) << sprintf(
+        "Model provided is schema version %d, lower than "
+        "currently supported version %d."
+        "Ideally all changes will be backward compatible.\n",
+        model->version(), TFLITE_SCHEMA_VERSION);
   }
   if (!VerifySubGraphs(*model, error_reporter)) {
     return false;

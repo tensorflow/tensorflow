@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_vision/model_settings.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_vision/no_person_image_data.h"
@@ -47,10 +48,16 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   // Map the model into a usable data structure. This doesn't involve any
   // copying or parsing, it's a very lightweight operation.
   const tflite::Model* model = ::tflite::GetModel(g_person_detect_model_data);
-  if (model->version() != TFLITE_SCHEMA_VERSION) {
+  if (model->version() > TFLITE_SCHEMA_VERSION) {
     error_reporter->Report(
-        "Model provided is schema version %d not equal "
-        "to supported version %d.\n",
+        "Model provided is schema version %d higher "
+        "than supported version %d.\n",
+        model->version(), TFLITE_SCHEMA_VERSION);
+  } else if (model->version() < TFLITE_SCHEMA_VERSION) {
+    LOG(WARNING) << sprintf(
+        "Model provided is schema version %d, lower than "
+        "currently supported version %d."
+        "Ideally all changes will be backward compatible.\n",
         model->version(), TFLITE_SCHEMA_VERSION);
   }
 

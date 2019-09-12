@@ -16,6 +16,7 @@ limitations under the License.
 /* This file is a modification of the Tensorflow Micro Lite file
  * micro_speech_test.cc */
 
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/simple_features/simple_features_generator.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/simple_features/tiny_conv_simple_features_model_data.h"
@@ -62,10 +63,16 @@ TF_LITE_MICRO_TEST(TestSimpleFeaturesGenerator) {
   // copying or parsing, it's a very lightweight operation.
   const tflite::Model* model =
       ::tflite::GetModel(g_tiny_conv_simple_features_model_data);
-  if (model->version() != TFLITE_SCHEMA_VERSION) {
+  if (model->version() > TFLITE_SCHEMA_VERSION) {
     error_reporter->Report(
-        "Model provided is schema version %d not equal "
-        "to supported version %d.\n",
+        "Model provided is schema version %d higher "
+        "than supported version %d.\n",
+        model->version(), TFLITE_SCHEMA_VERSION);
+  } else if (model->version() < TFLITE_SCHEMA_VERSION) {
+    LOG(WARNING) << sprintf(
+        "Model provided is schema version %d, lower than "
+        "currently supported version %d."
+        "Ideally all changes will be backward compatible.\n",
         model->version(), TFLITE_SCHEMA_VERSION);
   }
 

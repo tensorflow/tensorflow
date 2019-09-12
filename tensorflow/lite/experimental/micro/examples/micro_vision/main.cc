@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_vision/detection_responder.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_vision/image_provider.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_vision/model_settings.h"
@@ -43,10 +44,16 @@ int main(int argc, char* argv[]) {
   // Map the model into a usable data structure. This doesn't involve any
   // copying or parsing, it's a very lightweight operation.
   const tflite::Model* model = ::tflite::GetModel(g_person_detect_model_data);
-  if (model->version() != TFLITE_SCHEMA_VERSION) {
+  if (model->version() > TFLITE_SCHEMA_VERSION) {
     error_reporter->Report(
-        "Model provided is schema version %d not equal "
-        "to supported version %d.",
+        "Model provided is schema version %d higher "
+        "than supported version %d.\n",
+        model->version(), TFLITE_SCHEMA_VERSION);
+  } else if (model->version() < TFLITE_SCHEMA_VERSION) {
+    LOG(WARNING) << sprintf(
+        "Model provided is schema version %d, lower than "
+        "currently supported version %d."
+        "Ideally all changes will be backward compatible.\n",
         model->version(), TFLITE_SCHEMA_VERSION);
   }
 

@@ -163,12 +163,18 @@ its schema version is compatible with the version we are using:
 ```C++
 const tflite::Model* model =
     ::tflite::GetModel(g_tiny_conv_micro_features_model_data);
-if (model->version() != TFLITE_SCHEMA_VERSION) {
+if (model->version() > TFLITE_SCHEMA_VERSION) {
   error_reporter->Report(
-      "Model provided is schema version %d not equal "
-      "to supported version %d.\n",
+      "Model provided is schema version %d higher "
+      "than supported version %d.\n",
       model->version(), TFLITE_SCHEMA_VERSION);
   return 1;
+} else if (model->version() < TFLITE_SCHEMA_VERSION) {
+  LOG(WARNING) << sprintf(
+      "Model provided is schema version %d, lower than "
+      "currently supported version %d."
+      "Ideally all changes will be backward compatible.\n",
+      model->version(), TFLITE_SCHEMA_VERSION);
 }
 ```
 
