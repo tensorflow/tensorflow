@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
-
+import numpy as np
 import six
 
 from tensorflow.python.distribute import distribution_strategy_context
@@ -759,6 +759,41 @@ class Huber(LossFunctionWrapper):
         huber_loss, name=name, reduction=reduction, delta=delta)
 
 
+class QuantileHuber(LossFunctionWrapper):
+  """Computes the Huber loss between `y_true` and `y_pred` considering quantiles.
+  Given `x = y_true - y_pred`:
+  ```
+  loss = q * |x| - 0.5 * d * q^2                if  x  <  -1*q*d
+  loss = (0.5 * x)/d                            if  x  >= -1*q*d & x<= (1-q)*d
+  loss = (1 - q) * |x| - 0.5 * d * (1 - q)^2    if  x  >  (1-q)*d
+  ```
+  where d is `delta` and q is `quantile`.  See: https://arxiv.org/pdf/1402.4624.pdf
+  Usage with the `compile` API:
+  ```python
+  model = tf.keras.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.keras.losses.QuantileHuber())
+  ```
+  Args:
+    delta: A float, the point where the Huber loss function changes from a
+        quadratic to linear
+    quantile: A float, between 0 and 1. The loss function will try to update the
+        weights of model such that final result will be the quantile fraction of
+        the actual output.
+    reduction: (Optional) Type of reduction to apply to loss.
+    name: Optional name for the object.
+  Returns:
+    Tensor with one quantile scalar loss entry per sample.
+  """
+  def __init__(self,
+               delta=1.0,
+               quantile=0.5,
+               reduction=losses_utils.Reduction.SUM_OVER_BATCH_SIZE,
+               name='quantile_huber_loss'):
+      super(QuantileHuber, self).__init__(
+          quantile_huber_loss, name=name, reduction=reduction,
+          delta=delta, quantile=quantile)
+
+
 @keras_export('keras.metrics.mean_squared_error',
               'keras.metrics.mse',
               'keras.metrics.MSE',
@@ -913,6 +948,37 @@ def huber_loss(y_true, y_pred, delta=1.0):
           ops.convert_to_tensor(0.5, dtype=quadratic.dtype),
           math_ops.multiply(quadratic, quadratic)),
       math_ops.multiply(delta, linear))
+
+
+def quantile_huber_loss(y_true, y_pred, delta=1.0, quantile=0.5):
+  """Computes the Huber loss between `y_true` and `y_pred` considering quantiles.
+  Given `x = y_true - y_pred`:
+  ```
+  loss = q * |x| - 0.5 * d * q^2                if  x  <  -1*q*d
+  loss = (0.5 * x)/d                            if  x  >= -1*q*d & x<= (1-q)*d
+  loss = (1 - q) * |x| - 0.5 * d * (1 - q)^2    if  x  >  (1-q)*d
+  ```
+  where d is `delta` and q is `quantile`.  See: https://arxiv.org/pdf/1402.4624.pdf
+  Args:
+    delta: A float, the point where the Huber loss function changes from a
+        quadratic to linear
+    quantile: A float, between 0 and 1. The loss function will try to update the
+        weights of model such that final result will be the quantile fraction of
+        the actual output.
+    reduction: (Optional) Type of reduction to apply to loss.
+    name: Optional name for the object.
+  Returns:
+    Tensor with one quantile scalar loss entry per sample.
+  """
+  error = y_true - y_pred
+  big_op = (1.0 - quantile) * K.abs(error) - 0.5 * delta * (1.0 - quantile)**2
+  mid_op = (error * error) / (2 * delta)
+  small_op = quantile * K.abs(error) - 0.5 * delta * quantile**2
+  cond1 = K.less_equal(error, (1 - quantile) * delta)
+  result_cond1 = np.where(K.eval(cond1), K.eval(mid_op), K.eval(big_op))
+  cond2 = K.less(error, -1.0 * quantile * delta)
+  result_cond2 = np.where(K.eval(cond2), K.eval(small_op), result_cond1)
+  return K.variable(np.sum(result_cond2, axis=-1))
 
 
 @keras_export('keras.losses.logcosh')
