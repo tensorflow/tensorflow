@@ -5907,6 +5907,7 @@ tf_py_test(
         ":client",
         ":client_testlib",
         ":control_flow_ops",
+        ":fake_summary_writer",
         ":framework",
         ":framework_for_generated_wrappers",
         ":nn_grad",
@@ -5916,7 +5917,6 @@ tf_py_test(
         ":training",
         ":variable_scope",
         ":variables",
-        "//tensorflow/contrib/testing:testing_py",
         "//tensorflow/core:protos_all_py",
     ],
     tags = [
@@ -6086,7 +6086,10 @@ py_library(
     name = "summary",
     srcs = glob(
         ["summary/**/*.py"],
-        exclude = ["**/*test*"],
+        exclude = [
+            "**/fake*",
+            "**/*test*",
+        ],
     ),
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
@@ -6107,6 +6110,19 @@ py_library(
         "//tensorflow/python/distribute:summary_op_util",
         "//tensorflow/python/eager:context",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "fake_summary_writer",
+    testonly = 1,
+    srcs = ["summary/writer/fake_summary_writer.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":framework_test_lib",
+        ":protos_all_py",
+        ":summary",
     ],
 )
 

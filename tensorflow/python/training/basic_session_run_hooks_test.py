@@ -24,7 +24,6 @@ import shutil
 import tempfile
 import time
 
-from tensorflow.contrib.testing.python.framework import fake_summary_writer
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
@@ -43,6 +42,7 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.summary import summary as summary_lib
+from tensorflow.python.summary.writer import fake_summary_writer
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import checkpoint_utils
