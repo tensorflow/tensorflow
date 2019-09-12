@@ -42,6 +42,7 @@ ALL_LOSSES = [keras.losses.mean_squared_error,
               keras.losses.mean_squared_logarithmic_error,
               keras.losses.squared_hinge,
               keras.losses.hinge,
+              keras.losses.quantile_huber_loss,
               keras.losses.categorical_crossentropy,
               keras.losses.binary_crossentropy,
               keras.losses.kullback_leibler_divergence,
@@ -1615,6 +1616,100 @@ class HuberLossTest(test.TestCase):
     loss = h_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
     actual_loss = sample_weight * np.sum(self.expected_losses) / self.batch_size
     self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class QuantileHuberLossTest(test.TestCase):
+
+  def quantile_huber_loss(self, y_true, y_pred, delta=1.0, quantile=0.5):
+    error = y_true - y_pred
+    big_op = (1.0 - quantile) * np.abs(error) - 0.5 * delta * (1.0 - quantile)**2
+    mid_op = (error * error) / (2 * delta)
+    small_op = quantile * np.abs(error) - 0.5 * delta * quantile**2
+    cond1 = np.less_equal(error, (1 - quantile) * delta)
+    result_cond1 = np.where(cond1, mid_op, big_op)
+    cond2 = np.less(error, -1.0 * quantile * delta)
+    result_cond2 = np.where(cond2, small_op, result_cond1)
+    return np.sum(result_cond2, axis=-1)
+
+  def setup(self, delta=1.0, quantile=0.5):
+    self.np_y_pred = np.asarray([.9, .2, .2, .8, .4, .6]).reshape((2, 3))
+    self.np_y_true = np.asarray([1., 0., 1., 1., 0., 0.]).reshape((2, 3))
+
+    self.batch_size = 6
+    self.expected_losses = self.quantile_huber_loss(self.np_y_true, self.np_y_pred,
+                                           delta, quantile)
+
+    self.y_pred = constant_op.constant(self.np_y_pred)
+    self.y_true = constant_op.constant(self.np_y_true)
+
+  def test_config(self):
+    h_obj = keras.losses.QuantileHuber(
+        reduction=losses_utils.ReductionV2.SUM, name='quantile_huber')
+    self.assertEqual(h_obj.name, 'quantile_huber')
+    self.assertEqual(h_obj.reduction, losses_utils.ReductionV2.SUM)
+
+  def test_all_correct(self):
+    self.setup()
+    h_obj = keras.losses.QuantileHuber()
+    loss = h_obj(self.y_true, self.y_true)
+    self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
+
+  def test_unweighted(self):
+    self.setup()
+    h_obj = keras.losses.QuantileHuber()
+    loss = h_obj(self.y_true, self.y_pred)
+    actual_loss = np.sum(self.expected_losses) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
+
+  def test_scalar_weighted(self):
+    self.setup()
+    h_obj = keras.losses.QuantileHuber()
+    sample_weight = 2.3
+    loss = h_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    actual_loss = sample_weight * np.sum(self.expected_losses) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
+
+    # Verify we get the same output when the same input is given
+    loss_2 = h_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), self.evaluate(loss_2), 3)
+
+  def test_sample_weighted(self):
+    self.setup()
+    h_obj = keras.losses.Huber()
+    sample_weight = constant_op.constant((1.2, 3.4), shape=(2, 1))
+
+    loss = h_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    actual_loss = np.multiply(
+        self.expected_losses,
+        np.asarray([1.2, 1.2, 1.2, 3.4, 3.4, 3.4]).reshape((2, 3)))
+    actual_loss = np.sum(actual_loss) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
+
+  def test_timestep_weighted(self):
+    self.setup()
+    h_obj = keras.losses.QuantileHuber()
+    y_pred = self.np_y_pred.reshape((2, 3, 1))
+    y_true = self.np_y_true.reshape((2, 3, 1))
+    expected_losses = self.quantile_huber_loss(y_true, y_pred)
+
+    y_pred = constant_op.constant(y_pred)
+    y_true = constant_op.constant(y_true)
+    sample_weight = np.array([3, 6, 5, 0, 4, 2]).reshape((2, 3, 1))
+    loss = h_obj(
+        y_true,
+        y_pred,
+        sample_weight=constant_op.constant(sample_weight, shape=(2, 3)))
+    actual_loss = np.multiply(expected_losses, sample_weight)
+    actual_loss = np.sum(actual_loss) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
+
+  def test_zero_weighted(self):
+    self.setup()
+    h_obj = keras.losses.QuantileHuber()
+    sample_weight = 0
+    loss = h_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), 0., 3)
 
 
 if __name__ == '__main__':
