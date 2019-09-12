@@ -20,11 +20,13 @@ from __future__ import print_function
 
 import functools
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.kernel_tests.signal import test_util
 from tensorflow.python.ops.signal import window_ops
@@ -58,7 +60,7 @@ def _scipy_raised_cosine(length, symmetric=True, a=0.5, b=0.5):
 
 
 @tf_test_util.run_all_in_graph_and_eager_modes
-class WindowOpsTest(test.TestCase):
+class WindowOpsTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
     super(WindowOpsTest, self).setUp()
@@ -107,7 +109,28 @@ class WindowOpsTest(test.TestCase):
           with g.as_default():
             window = window_fn(100, periodic=periodic, dtype=dtype)
             rewritten_graph = test_util.grappler_optimize(g, [window])
-            self.assertEqual(1, len(rewritten_graph.node))
+            self.assertLen(rewritten_graph.node, 1)
+
+  @parameterized.parameters(
+      # Due to control flow, only MLIR is supported.
+      # Only float32 is supported.
+      (window_ops.hann_window, 10, False, dtypes.float32, True),
+      (window_ops.hann_window, 10, True, dtypes.float32, True),
+      (window_ops.hamming_window, 10, False, dtypes.float32, True),
+      (window_ops.hamming_window, 10, True, dtypes.float32, True))
+  def test_tflite_convert(self, window_fn, window_length, periodic, dtype,
+                          use_mlir):
+    def fn(window_length):
+      return window_fn(window_length, periodic, dtype=dtype)
+
+    tflite_model = test_util.tflite_convert(
+        fn, [tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32)], use_mlir)
+    window_length = np.array(window_length).astype(np.int32)
+    actual_output, = test_util.evaluate_tflite_model(
+        tflite_model, [window_length])
+
+    expected_output = self.evaluate(fn(window_length))
+    self.assertAllClose(actual_output, expected_output, rtol=1e-7, atol=1e-7)
 
 
 if __name__ == '__main__':

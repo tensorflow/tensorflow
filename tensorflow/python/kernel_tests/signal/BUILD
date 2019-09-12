@@ -14,6 +14,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/lite/python:interpreter",
+        "//tensorflow/lite/python:lite",
         "//tensorflow/python:tf_optimizer",
         "//tensorflow/python:training",
     ],
