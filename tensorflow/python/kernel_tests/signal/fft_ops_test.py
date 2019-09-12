@@ -18,10 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
+
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -36,6 +39,18 @@ from tensorflow.python.platform import test
 VALID_FFT_RANKS = (1, 2, 3)
 
 
+def _forward_compat_context(np_dtype):
+  @contextlib.contextmanager
+  def null_context():
+    yield
+  if np_dtype in (np.float64, np.complex128):
+    return compat.forward_compatibility_horizon(2019, 10, 13)
+  else:
+    return null_context()
+
+
+# TODO(rjryan): Investigate precision issues. We should be able to achieve
+# better tolerances, at least for the complex128 tests.
 class BaseFFTOpsTest(test.TestCase):
 
   def _compare(self, x, rank, fft_length=None, use_placeholder=False,
@@ -84,8 +99,9 @@ class BaseFFTOpsTest(test.TestCase):
         loss = math_ops.reduce_sum(math_ops.real(z * math_ops.conj(z)))
         return loss
 
-      ((x_jacob_t, y_jacob_t), (x_jacob_n, y_jacob_n)) = (
-          gradient_checker_v2.compute_gradient(f, [x, y], delta=1e-2))
+      with _forward_compat_context(x.dtype):
+        ((x_jacob_t, y_jacob_t), (x_jacob_n, y_jacob_n)) = (
+            gradient_checker_v2.compute_gradient(f, [x, y], delta=1e-2))
 
     self.assertAllClose(x_jacob_t, x_jacob_n, rtol=rtol, atol=atol)
     self.assertAllClose(y_jacob_t, y_jacob_n, rtol=rtol, atol=atol)
@@ -99,8 +115,9 @@ class BaseFFTOpsTest(test.TestCase):
       loss = math_ops.reduce_sum(math_ops.real(z * math_ops.conj(z)))
       return loss
 
-    (x_jacob_t,), (x_jacob_n,) = gradient_checker_v2.compute_gradient(
-        f, [x], delta=1e-2)
+    with _forward_compat_context(x.dtype):
+      (x_jacob_t,), (x_jacob_n,) = gradient_checker_v2.compute_gradient(
+          f, [x], delta=1e-2)
     self.assertAllClose(x_jacob_t, x_jacob_n, rtol=rtol, atol=atol)
 
 
@@ -174,13 +191,12 @@ class FFTOpsTest(BaseFFTOpsTest):
                   (4,) * dims).astype(np_type), rank, rtol=tol, atol=tol)
 
   def test_large_batch(self):
-    if test.is_gpu_available(cuda_only=True):
-      rank = 1
-      for dims in xrange(rank, rank + 3):
-        for np_type, tol in ((np.complex64, 1e-4), (np.complex128, 1e-5)):
-          self._compare(
-              np.mod(np.arange(np.power(128, dims)), 10).reshape(
-                  (128,) * dims).astype(np_type), rank, rtol=tol, atol=tol)
+    rank = 1
+    for dims in xrange(rank, rank + 3):
+      for np_type, tol in ((np.complex64, 1e-4), (np.complex128, 5e-5)):
+        self._compare(
+            np.mod(np.arange(np.power(128, dims)), 10).reshape(
+                (128,) * dims).astype(np_type), rank, rtol=tol, atol=tol)
 
   # TODO(yangzihao): Disable before we can figure out a way to
   # properly test memory fail for large batch fft.
@@ -277,17 +293,15 @@ class FFTOpsTest(BaseFFTOpsTest):
 @test_util.run_all_in_graph_and_eager_modes
 class RFFTOpsTest(BaseFFTOpsTest):
 
-  def _compare_backward(self, x, rank, fft_length=None, use_placeholder=False):
-    super(RFFTOpsTest, self)._compare_backward(x, rank, fft_length,
-                                               use_placeholder)
-
   def _tf_fft(self, x, rank, fft_length=None, feed_dict=None):
-    with self.cached_session(use_gpu=True) as sess:
+    with _forward_compat_context(x.dtype), self.cached_session(
+        use_gpu=True) as sess:
       return sess.run(
           self._tf_fft_for_rank(rank)(x, fft_length), feed_dict=feed_dict)
 
   def _tf_ifft(self, x, rank, fft_length=None, feed_dict=None):
-    with self.cached_session(use_gpu=True) as sess:
+    with _forward_compat_context(x.dtype), self.cached_session(
+        use_gpu=True) as sess:
       return sess.run(
           self._tf_ifft_for_rank(rank)(x, fft_length), feed_dict=feed_dict)
 
@@ -332,61 +346,74 @@ class RFFTOpsTest(BaseFFTOpsTest):
       raise ValueError("invalid rank")
 
   def test_empty(self):
-    for rank in VALID_FFT_RANKS:
-      for dims in xrange(rank, rank + 3):
-        x = np.zeros((0,) * dims).astype(np.float32)
-        self.assertEqual(x.shape, self._tf_fft(x, rank).shape)
-        x = np.zeros((0,) * dims).astype(np.complex64)
-        self.assertEqual(x.shape, self._tf_ifft(x, rank).shape)
+    for np_rtype, np_ctype in ((np.float32, np.complex64),
+                               (np.float64, np.complex128)):
+      for rank in VALID_FFT_RANKS:
+        for dims in xrange(rank, rank + 3):
+          x = np.zeros((0,) * dims).astype(np_rtype)
+          self.assertEqual(x.shape, self._tf_fft(x, rank).shape)
+          x = np.zeros((0,) * dims).astype(np_ctype)
+          self.assertEqual(x.shape, self._tf_ifft(x, rank).shape)
 
   def test_basic(self):
-    for rank in VALID_FFT_RANKS:
-      for dims in xrange(rank, rank + 3):
-        for size in (5, 6):
-          inner_dim = size // 2 + 1
-          r2c = np.mod(np.arange(np.power(size, dims)), 10).reshape(
-              (size,) * dims)
-          self._compare_forward(r2c.astype(np.float32), rank, (size,) * rank)
-          c2r = np.mod(np.arange(np.power(size, dims - 1) * inner_dim),
-                       10).reshape((size,) * (dims - 1) + (inner_dim,))
-          self._compare_backward(
-              c2r.astype(np.complex64), rank, (size,) * rank)
+    for np_rtype, np_ctype, tol in ((np.float32, np.complex64, 1e-4),
+                                    (np.float64, np.complex128, 5e-5)):
+      for rank in VALID_FFT_RANKS:
+        for dims in xrange(rank, rank + 3):
+          for size in (5, 6):
+            inner_dim = size // 2 + 1
+            r2c = np.mod(np.arange(np.power(size, dims)), 10).reshape(
+                (size,) * dims)
+            self._compare_forward(r2c.astype(np_rtype), rank, (size,) * rank,
+                                  rtol=tol, atol=tol)
+            c2r = np.mod(np.arange(np.power(size, dims - 1) * inner_dim),
+                         10).reshape((size,) * (dims - 1) + (inner_dim,))
+            self._compare_backward(
+                c2r.astype(np_ctype), rank, (size,) * rank, rtol=tol, atol=tol)
 
   def test_large_batch(self):
-    if test.is_gpu_available(cuda_only=True):
-      rank = 1
+    rank = 1
+    for np_rtype, np_ctype, tol in ((np.float32, np.complex64, 1e-4),
+                                    (np.float64, np.complex128, 1e-5)):
       for dims in xrange(rank, rank + 3):
         for size in (64, 128):
           inner_dim = size // 2 + 1
           r2c = np.mod(np.arange(np.power(size, dims)), 10).reshape(
               (size,) * dims)
-          self._compare_forward(r2c.astype(np.float32), rank, (size,) * rank)
+          self._compare_forward(r2c.astype(np_rtype), rank, (size,) * rank,
+                                rtol=tol, atol=tol)
           c2r = np.mod(np.arange(np.power(size, dims - 1) * inner_dim),
                        10).reshape((size,) * (dims - 1) + (inner_dim,))
-          self._compare_backward(c2r.astype(np.complex64), rank, (size,) * rank)
+          self._compare_backward(c2r.astype(np_ctype), rank, (size,) * rank,
+                                 rtol=tol, atol=tol)
 
   def test_placeholder(self):
     if context.executing_eagerly():
       return
-    for rank in VALID_FFT_RANKS:
-      for dims in xrange(rank, rank + 3):
-        for size in (5, 6):
-          inner_dim = size // 2 + 1
-          r2c = np.mod(np.arange(np.power(size, dims)), 10).reshape(
-              (size,) * dims)
-          self._compare_forward(
-              r2c.astype(np.float32),
-              rank, (size,) * rank,
-              use_placeholder=True)
-          c2r = np.mod(np.arange(np.power(size, dims - 1) * inner_dim),
-                       10).reshape((size,) * (dims - 1) + (inner_dim,))
-          self._compare_backward(
-              c2r.astype(np.complex64),
-              rank, (size,) * rank,
-              use_placeholder=True)
+    for np_rtype, np_ctype, tol in ((np.float32, np.complex64, 1e-4),
+                                    (np.float64, np.complex128, 1e-8)):
+      for rank in VALID_FFT_RANKS:
+        for dims in xrange(rank, rank + 3):
+          for size in (5, 6):
+            inner_dim = size // 2 + 1
+            r2c = np.mod(np.arange(np.power(size, dims)), 10).reshape(
+                (size,) * dims)
+            self._compare_forward(
+                r2c.astype(np_rtype),
+                rank, (size,) * rank,
+                use_placeholder=True,
+                rtol=tol, atol=tol)
+            c2r = np.mod(np.arange(np.power(size, dims - 1) * inner_dim),
+                         10).reshape((size,) * (dims - 1) + (inner_dim,))
+            self._compare_backward(
+                c2r.astype(np_ctype),
+                rank, (size,) * rank,
+                use_placeholder=True,
+                rtol=tol, atol=tol)
 
-  def test_fft_lenth(self):
-    if test.is_gpu_available(cuda_only=True):
+  def test_fft_length(self):
+    for np_rtype, np_ctype, tol in ((np.float32, np.complex64, 1e-4),
+                                    (np.float64, np.complex128, 8e-5)):
       for rank in VALID_FFT_RANKS:
         for dims in xrange(rank, rank + 3):
           for size in (5, 6):
@@ -397,36 +424,44 @@ class RFFTOpsTest(BaseFFTOpsTest):
                          10).reshape((size,) * (dims - 1) + (inner_dim,))
             # Test truncation (FFT size < dimensions).
             fft_length = (size - 2,) * rank
-            self._compare_forward(r2c.astype(np.float32), rank, fft_length)
-            self._compare_backward(c2r.astype(np.complex64), rank, fft_length)
+            self._compare_forward(r2c.astype(np_rtype), rank, fft_length,
+                                  rtol=tol, atol=tol)
+            self._compare_backward(c2r.astype(np_ctype), rank, fft_length,
+                                   rtol=tol, atol=tol)
             # Confirm it works with unknown shapes as well.
             if not context.executing_eagerly():
               self._compare_forward(
-                  r2c.astype(np.float32),
+                  r2c.astype(np_rtype),
                   rank,
                   fft_length,
-                  use_placeholder=True)
+                  use_placeholder=True,
+                  rtol=tol, atol=tol)
               self._compare_backward(
-                  c2r.astype(np.complex64),
+                  c2r.astype(np_ctype),
                   rank,
                   fft_length,
-                  use_placeholder=True)
+                  use_placeholder=True,
+                  rtol=tol, atol=tol)
             # Test padding (FFT size > dimensions).
             fft_length = (size + 2,) * rank
-            self._compare_forward(r2c.astype(np.float32), rank, fft_length)
-            self._compare_backward(c2r.astype(np.complex64), rank, fft_length)
+            self._compare_forward(r2c.astype(np_rtype), rank, fft_length,
+                                  rtol=tol, atol=tol)
+            self._compare_backward(c2r.astype(np_ctype), rank, fft_length,
+                                   rtol=tol, atol=tol)
             # Confirm it works with unknown shapes as well.
             if not context.executing_eagerly():
               self._compare_forward(
-                  r2c.astype(np.float32),
+                  r2c.astype(np_rtype),
                   rank,
                   fft_length,
-                  use_placeholder=True)
+                  use_placeholder=True,
+                  rtol=tol, atol=tol)
               self._compare_backward(
-                  c2r.astype(np.complex64),
+                  c2r.astype(np_ctype),
                   rank,
                   fft_length,
-                  use_placeholder=True)
+                  use_placeholder=True,
+                  rtol=tol, atol=tol)
 
   def test_random(self):
     def gen_real(shape):
@@ -442,14 +477,20 @@ class RFFTOpsTest(BaseFFTOpsTest):
       ret = (re + im * 1j).reshape(shape)
       return ret
 
-    for rank in VALID_FFT_RANKS:
-      for dims in xrange(rank, rank + 3):
-        for size in (5, 6):
-          inner_dim = size // 2 + 1
-          self._compare_forward(gen_real((size,) * dims), rank, (size,) * rank)
-          complex_dims = (size,) * (dims - 1) + (inner_dim,)
-          self._compare_backward(
-              gen_complex(complex_dims), rank, (size,) * rank)
+    for np_rtype, np_ctype, tol in ((np.float32, np.complex64, 1e-4),
+                                    (np.float64, np.complex128, 1e-5)):
+      for rank in VALID_FFT_RANKS:
+        for dims in xrange(rank, rank + 3):
+          for size in (5, 6):
+            inner_dim = size // 2 + 1
+            self._compare_forward(gen_real((size,) * dims).astype(np_rtype),
+                                  rank, (size,) * rank,
+                                  rtol=tol, atol=tol)
+            complex_dims = (size,) * (dims - 1) + (inner_dim,)
+            self._compare_backward(
+                gen_complex(complex_dims).astype(np_ctype),
+                rank, (size,) * rank,
+                rtol=tol, atol=tol)
 
   def test_error(self):
     # TODO(rjryan): Fix this test under Eager.
@@ -510,30 +551,36 @@ class RFFTOpsTest(BaseFFTOpsTest):
           self.evaluate(irfft_fn(x, fft_length))
 
   def test_grad_simple(self):
-    for rank in VALID_FFT_RANKS:
-      # rfft3d/irfft3d do not have gradients yet.
-      if rank == 3:
-        continue
-      for dims in xrange(rank, rank + 2):
-        for size in (5, 6):
-          re = np.ones(shape=(size,) * dims, dtype=np.float32)
-          im = -np.ones(shape=(size,) * dims, dtype=np.float32)
-          self._check_grad_real(self._tf_fft_for_rank(rank), re)
-          self._check_grad_complex(
-              self._tf_ifft_for_rank(rank), re, im, result_is_complex=False)
+    for np_rtype, tol in ((np.float32, 1e-3), (np.float64, 1e-10)):
+      for rank in VALID_FFT_RANKS:
+        # rfft3d/irfft3d do not have gradients yet.
+        if rank == 3:
+          continue
+        for dims in xrange(rank, rank + 2):
+          for size in (5, 6):
+            re = np.ones(shape=(size,) * dims, dtype=np_rtype)
+            im = -np.ones(shape=(size,) * dims, dtype=np_rtype)
+            self._check_grad_real(self._tf_fft_for_rank(rank), re,
+                                  rtol=tol, atol=tol)
+            self._check_grad_complex(
+                self._tf_ifft_for_rank(rank), re, im, result_is_complex=False,
+                rtol=tol, atol=tol)
 
   def test_grad_random(self):
-    for rank in VALID_FFT_RANKS:
-      # rfft3d/irfft3d do not have gradients yet.
-      if rank == 3:
-        continue
-      for dims in xrange(rank, rank + 2):
-        for size in (5, 6):
-          re = np.random.rand(*((size,) * dims)).astype(np.float32) * 2 - 1
-          im = np.random.rand(*((size,) * dims)).astype(np.float32) * 2 - 1
-          self._check_grad_real(self._tf_fft_for_rank(rank), re)
-          self._check_grad_complex(
-              self._tf_ifft_for_rank(rank), re, im, result_is_complex=False)
+    for np_rtype, tol in ((np.float32, 1e-2), (np.float64, 1e-10)):
+      for rank in VALID_FFT_RANKS:
+        # rfft3d/irfft3d do not have gradients yet.
+        if rank == 3:
+          continue
+        for dims in xrange(rank, rank + 2):
+          for size in (5, 6):
+            re = np.random.rand(*((size,) * dims)).astype(np_rtype) * 2 - 1
+            im = np.random.rand(*((size,) * dims)).astype(np_rtype) * 2 - 1
+            self._check_grad_real(self._tf_fft_for_rank(rank), re,
+                                  rtol=tol, atol=tol)
+            self._check_grad_complex(
+                self._tf_ifft_for_rank(rank), re, im, result_is_complex=False,
+                rtol=tol, atol=tol)
 
 
 @test_util.run_all_in_graph_and_eager_modes

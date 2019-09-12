@@ -37,6 +37,7 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "fft_ops_test",
+    # TODO(rjryan): Parameterize the test to reduce the time it takes.
     size = "medium",
     srcs = ["fft_ops_test.py"],
     additional_deps = [
@@ -46,7 +47,7 @@ cuda_py_tests(
         "//tensorflow/python:math_ops",
         "//tensorflow/python/ops/signal",
     ],
-    shard_count = 4,
+    shard_count = 8,
     tags = [
         "no_rocm",
         "optonly",
