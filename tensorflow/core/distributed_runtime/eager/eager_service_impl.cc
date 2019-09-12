@@ -367,7 +367,10 @@ Status EagerServiceImpl::RegisterFunction(
   TF_RETURN_IF_ERROR(GetServerContext(request->context_id(), &context));
   core::ScopedUnref context_unref(context);
 
-  return context->Context()->AddFunctionDef(request->function_def());
+  // If the function is a component of a multi-device function, we only need to
+  // register it locally.
+  return context->Context()->AddFunctionDef(request->function_def(),
+                                            request->is_component_function());
 }
 
 Status EagerServiceImpl::SendTensor(const SendTensorRequest* request,
