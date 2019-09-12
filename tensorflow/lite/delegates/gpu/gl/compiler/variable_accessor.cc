@@ -153,7 +153,16 @@ struct SharedVariableDeclarationGenerator {
   template <typename T>
   void operator()(const std::vector<T>& v) const {
     absl::StrAppend(result, "shared highp ", GetVariableType(variable.value),
-                    " ", variable.name, "[", v.size(), "];\n");
+                    " ", variable.name);
+    if (v.empty()) {
+      // Normalize the size of the shared array to that of the WorkGroupSize
+      absl::StrAppend(
+          result,
+          "[gl_WorkGroupSize.z * gl_WorkGroupSize.y * gl_WorkGroupSize.x];\n");
+    } else {
+      // Use the specified size
+      absl::StrAppend(result, "[", v.size(), "];\n");
+    }
   }
 
   const Variable& variable;
