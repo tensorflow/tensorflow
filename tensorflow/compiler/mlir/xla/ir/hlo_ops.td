@@ -196,12 +196,12 @@ def HLO_WhileOp: HLO_Op<"while", [NoSideEffect, SameOperandsAndResultType]> {
 
 def HLO_ReduceOp: HLO_Op<"reduce", [
       NoSideEffect,
+      SameVariadicOperandSize,
       SingleBlockImplicitTerminator<"ReturnOp">
     ]>, BASE_HLO_ReduceOp {
-  // TODO(hinsu): Split operands and init into two separate variadic operands
-  // by using SameVariadicOperandSize trait.
   let arguments = (ins
-    Variadic<HLO_TensorOrTuple>:$operands_and_init,
+    Variadic<HLO_TensorOrTuple>:$operands,
+    Variadic<HLO_TensorOrTuple>:$init_values,
     ElementsAttr:$dimensions
   );
 

@@ -309,7 +309,7 @@ class ConvertSoftmaxOp : public OpRewritePattern<TF::SoftmaxOp> {
         rewriter.getTensorType(reduce_shape, element_type);
     auto init = GetMinValueForType(element_type, loc, &rewriter);
     auto max_logits = rewriter.create<xla_hlo::ReduceOp>(
-        loc, reduce_out_type, ArrayRef<Value *>{logits, init}, reduce_dim);
+        loc, reduce_out_type, logits, init.getResult(), reduce_dim);
     BuildReduceBody<xla_hlo::MaxOp>(element_type, &max_logits.body(),
                                     &rewriter);
     auto shifted_logits = rewriter.create<xla_hlo::SubOp>(
@@ -330,7 +330,8 @@ class ConvertSoftmaxOp : public OpRewritePattern<TF::SoftmaxOp> {
                                     rewriter.getZeroAttr(element_type)));
     Type sum_out_type = rewriter.getTensorType(reduce_shape, sum_element_type);
     auto exp_sum = rewriter.create<xla_hlo::ReduceOp>(
-        loc, sum_out_type, ArrayRef<Value *>{casted_exp, init}, reduce_dim);
+        loc, sum_out_type, casted_exp.getResult(), init.getResult(),
+        reduce_dim);
     BuildReduceBody<xla_hlo::AddOp>(element_type, &exp_sum.body(), &rewriter);
     Value *sum = exp_sum.getResult(0);
 

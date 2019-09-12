@@ -133,7 +133,8 @@ def LHLO_AndOp: LHLO_BinaryElementwiseOp<"and", []>, BASE_HLO_AndOp;
 // TODO(b/139813999): specify required function signature in a type-safe way.
 def LHLO_ReduceOp: LHLO_Op<"reduce", [SameVariadicOperandSize]>, BASE_HLO_ReduceOp {
   let arguments = (ins
-    Variadic<LHLO_BufferOrTuple>:$operands_and_init,
+    Variadic<LHLO_BufferOrTuple>:$operands,
+    Variadic<LHLO_BufferOrTuple>:$init_values,
     Variadic<LHLO_BufferOrTuple>:$out,
     // TODO(hinsu): Attach computation as a region similar to the
     // xla_hlo.reduce op.

@@ -340,8 +340,12 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
           .getOperation();
     }
     case HloOpcode::kReduce: {
+      // Operands in the first half are reduction inputs and the remaining
+      // operands are corresponding initial values.
+      size_t num_inputs = operands.size() / 2;
       auto reduce = func_builder->create<mlir::xla_hlo::ReduceOp>(
-          loc, result_type, operands,
+          loc, result_type, llvm::makeArrayRef(operands).take_front(num_inputs),
+          llvm::makeArrayRef(operands).drop_front(num_inputs),
           ConvertDimensions(instruction->dimensions()));
       TF_RETURN_IF_ERROR(
           ImportComputation(instruction->to_apply(), &reduce.body()));
