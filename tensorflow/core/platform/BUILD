@@ -58,7 +58,6 @@ tf_instantiate_platform_libraries(names = [
     "dynamic_annotations",
     "env_time",
     "human_readable_json",
-    "load_library",
     "mutex",
     "net",
     "notification",
@@ -66,7 +65,6 @@ tf_instantiate_platform_libraries(names = [
     "rocm_rocdl_path",
     "strong_hash",
     "subprocess",
-    "wide_char",
 ])
 
 cc_library(
@@ -222,12 +220,6 @@ cc_library(
     deps = [
         ":human_readable_json_impl",
     ],
-)
-
-cc_library(
-    name = "load_library",
-    textual_hdrs = ["load_library.h"],
-    deps = tf_platform_helper_deps("load_library_impl"),
 )
 
 cc_library(

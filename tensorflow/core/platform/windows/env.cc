@@ -155,18 +155,41 @@ class WindowsEnv : public Env {
   }
 
   Status LoadLibrary(const char* library_filename, void** handle) override {
-    return tensorflow::internal::LoadLibrary(library_filename, handle);
+    std::string file_name = library_filename;
+    std::replace(file_name.begin(), file_name.end(), '/', '\\');
+
+    std::wstring ws_file_name(Utf8ToWideChar(file_name));
+
+    HMODULE hModule = LoadLibraryExW(ws_file_name.c_str(), NULL,
+                                     LOAD_WITH_ALTERED_SEARCH_PATH);
+    if (!hModule) {
+      return errors::NotFound(file_name + " not found");
+    }
+    *handle = hModule;
+    return Status::OK();
   }
 
   Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
                               void** symbol) override {
-    return tensorflow::internal::GetSymbolFromLibrary(handle, symbol_name,
-                                                      symbol);
+    FARPROC found_symbol;
+
+    found_symbol = GetProcAddress((HMODULE)handle, symbol_name);
+    if (found_symbol == NULL) {
+      return errors::NotFound(std::string(symbol_name) + " not found");
+    }
+    *symbol = (void**)found_symbol;
+    return Status::OK();
   }
 
   string FormatLibraryFileName(const string& name,
                                const string& version) override {
-    return tensorflow::internal::FormatLibraryFileName(name, version);
+    string filename;
+    if (version.size() == 0) {
+      filename = name + ".dll";
+    } else {
+      filename = name + version + ".dll";
+    }
+    return filename;
   }
 
   string GetRunfilesDir() override {
