@@ -22,7 +22,7 @@ namespace xla_config_registry {
 namespace {
 struct GlobalJitLevelState {
   mutex mu;
-  GlobalJitLevelGetterTy getter;
+  GlobalJitLevelGetterTy getter GUARDED_BY(mu);
 };
 
 GlobalJitLevelState* GetSingletonState() {
