@@ -60,6 +60,7 @@ std::string GetConcatKernelCode(
   c += "  int X = get_global_id(0);\n";
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
+  c += "  if (Z >= dst_size.w) return;\n";
   for (int i = 0; i < tensors_count; ++i) {
     const std::string offset_name = "dst_offset_" + std::to_string(i);
     const std::string size_name = "src_size_" + std::to_string(i);

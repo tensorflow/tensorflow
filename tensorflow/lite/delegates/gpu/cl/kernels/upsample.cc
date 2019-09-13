@@ -43,7 +43,7 @@ std::string GetUpsampleCode(
   c += "  int X = get_global_id(0);\n";
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
-  c += "  if (X >= dst_size.x || Y >= dst_size.y) { \n";
+  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) { \n";
   c += "    return; \n";
   c += "  } \n";
   c += "  float2 f_coords = (float2)(X, Y) * scale_factor;\n";
