@@ -32,8 +32,9 @@ namespace {
 
 mutex g_op_name_to_attr_type_map_lock(LINKER_INITIALIZED);
 
-std::unordered_map<string, const AttrTypeMap*>* OpNameToAttrTypeMap() {
-  static auto* const m = new std::unordered_map<string, const AttrTypeMap*>;
+tensorflow::gtl::FlatMap<string, const AttrTypeMap*>* OpNameToAttrTypeMap() {
+  static auto* const m =
+      new tensorflow::gtl::FlatMap<string, const AttrTypeMap*>;
   return m;
 }
 
