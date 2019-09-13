@@ -362,6 +362,7 @@ Status GetDeviceForInput(const EagerContext* ctx, TensorHandle* tensor_handle,
     // Use the resource's actual device because it is the device that will
     // influence partitioning the multi-device function.
     const Tensor* tensor;
+    // TODO(fishx): Avoid blocking here.
     TF_RETURN_IF_ERROR(tensor_handle->Tensor(&tensor));
     const ResourceHandle& handle = tensor->flat<ResourceHandle>()(0);
     device_name = handle.device();
@@ -639,7 +640,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
   // input handles are ready before executing them.
   // TODO(b/137118203): Consider executing "cheap" kernels inline for
   // performance.
-  Status s = executor.Async() ? executor.Add(std::move(node)) : node->Run();
+  Status s = executor.AddOrExecute(std::move(node));
   // Since the operation failed, we need to Unref any outputs that were
   // allocated.
   if (!s.ok()) {
@@ -765,14 +766,13 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   }
 
   auto& executor = op->Executor();
-  bool is_async = executor.Async();
   VLOG(4) << "Execute remote eager op: " << op->Name()
-          << " (is async?: " << is_async << ").";
+          << " (is async?: " << executor.Async() << ").";
 
   std::unique_ptr<EagerNode> node(
       new eager::RemoteExecuteNode(std::move(request), op_device, eager_client,
                                    op->Inputs(), {retvals, num_outputs}));
-  Status s = is_async ? executor.Add(std::move(node)) : node->Run();
+  Status s = executor.AddOrExecute(std::move(node));
   // Since the operation failed, we need to Unref any outputs that were
   // allocated.
   if (!s.ok()) {
@@ -903,6 +903,12 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
   TF_RETURN_IF_ERROR(MaybeUpdateOpDevice(op));
 
   bool op_is_local = op->EagerContext()->IsLocalDeviceName(op->GetDeviceName());
+
+  if (!op->Executor().Async()) {
+    // In sync mode, always clear error to maintain the same behavior as before.
+    // TODO(b/141004939): Remove this.
+    op->Executor().ClearError();
+  }
 
   std::unique_ptr<tensorflow::EagerOperation> out_op;
   TF_RETURN_IF_ERROR(EagerOpRewriteRegistry::Global()->RunRewrite(
@@ -1044,7 +1050,7 @@ Status LocalEagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
   // Note that `h` may not be currently ready. However execution order will
   // make sure that `h` is ready before the copy is actually done.
   std::unique_ptr<EagerNode> node(new CopyToDeviceNode(h, *result, dstd, ctx));
-  Status s = executor->Async() ? executor->Add(std::move(node)) : node->Run();
+  Status s = executor->AddOrExecute(std::move(node));
   // Since the operation failed, we need to Unref any outputs that were
   // allocated.
   if (!s.ok()) {
@@ -1064,6 +1070,12 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
   bool sender_is_local = send_device->IsLocal();
 
   bool recver_is_local = device->IsLocal();
+
+  if (!executor->Async()) {
+    // In sync mode, always clear error to maintain the same behavior as before.
+    // TODO(b/141004939): Remove this.
+    executor->ClearError();
+  }
 
   if (sender_is_local && recver_is_local) {
     return LocalEagerCopyToDevice(h, ctx, executor, device, result);
@@ -1105,7 +1117,7 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
     }
     auto node = absl::make_unique<eager::RemoteCopyNode>(
         ctx, executor, h, result[0], device, recv_op_id);
-    Status s = executor->Async() ? executor->Add(std::move(node)) : node->Run();
+    Status s = executor->AddOrExecute(std::move(node));
     if (!s.ok()) {
       result[0]->Unref();
     }

@@ -296,8 +296,7 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
           item.handle_to_decref());
       auto node = absl::make_unique<ClientTensorHandleDeleteNode>(
           context, std::move(handle_to_decref));
-      s = executor.Async() ? context->Context()->Executor().Add(std::move(node))
-                           : node->Run();
+      s = context->Context()->Executor().AddOrExecute(std::move(node));
     } else {
       s = SendTensor(item.send_tensor(), context->Context());
     }
