@@ -242,7 +242,7 @@ func @clamp_scalar(%arg0: tensor<1xi32>, %arg1: tensor<i32>) -> tensor<1xi32> {
 
 // -----
 
-func @clamp_invalid_min_element_type(%arg0: tensor<1xi32>, %arg1: tensor<1xf32>) -> tensor<1xi32> {
+func @clamp_invalid_clamp_element_type(%arg0: tensor<1xi32>, %arg1: tensor<1xf32>) -> tensor<1xi32> {
   // expected-error@+1 {{'xla_hlo.clamp' op requires the same element type for all operands and results}}
   %0 = "xla_hlo.clamp"(%arg1, %arg0, %arg0) : (tensor<1xf32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
   return %0: tensor<1xi32>
@@ -250,7 +250,7 @@ func @clamp_invalid_min_element_type(%arg0: tensor<1xi32>, %arg1: tensor<1xf32>)
 
 // -----
 
-func @clamp_invalid_min_shape(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>) -> tensor<1xi32> {
+func @clamp_invalid_clamp_shape(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>) -> tensor<1xi32> {
   // expected-error@+1 {{min shape [2] is not scalar and does not match operand shape [1]}}
   %0 = "xla_hlo.clamp"(%arg1, %arg0, %arg0) : (tensor<2xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
   return %0: tensor<1xi32>
@@ -258,17 +258,17 @@ func @clamp_invalid_min_shape(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>) -> ten
 
 // -----
 
-func @clamp_invalid_max_element_type(%arg0: tensor<1xi32>, %arg1: tensor<1xf32>) -> tensor<1xi32> {
-  // expected-error@+1 {{'xla_hlo.clamp' op requires the same element type for all operands and results}}
-  %0 = "xla_hlo.clamp"(%arg0, %arg0, %arg1) : (tensor<1xi32>, tensor<1xi32>, tensor<1xf32>) -> tensor<1xi32>
+func @clamp_invalid_min_element_type(%arg0: tensor<1xi32>, %arg1: tensor<1xf32>) -> tensor<1xi32> {
+  // expected-error@+1 {{'xla_hlo.min' op requires the same element type for all operands and results}}
+  %0 = "xla_hlo.min"(%arg0, %arg1) : (tensor<1xi32>, tensor<1xf32>) -> tensor<1xi32>
   return %0: tensor<1xi32>
 }
 
 // -----
 
-func @clamp_invalid_max_shape(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>) -> tensor<1xi32> {
-  // expected-error@+1 {{max shape [2] is not scalar and does not match operand shape [1]}}
-  %0 = "xla_hlo.clamp"(%arg0, %arg0, %arg1) : (tensor<1xi32>, tensor<1xi32>, tensor<2xi32>) -> tensor<1xi32>
+func @clamp_invalid_max_element_type(%arg0: tensor<1xi32>, %arg1: tensor<1xf32>) -> tensor<1xi32> {
+  // expected-error@+1 {{'xla_hlo.max' op requires the same element type for all operands and results}}
+  %0 = "xla_hlo.max"(%arg0, %arg1) : (tensor<1xi32>, tensor<1xf32>) -> tensor<1xi32>
   return %0: tensor<1xi32>
 }
 
@@ -317,6 +317,30 @@ func @tanh(%arg0: tensor<1xf32>) -> tensor<1xf32> {
 func @exp_invalid_result_type(%arg0: tensor<1xf32>) -> tensor<1xf32> {
   // expected-error@+1 {{'xla_hlo.exp' op requires the same type for all operands and results}}
   %0 = "xla_hlo.exp"(%arg0) : (tensor<1xf32>) -> tensor<1xi32>
+  return %0: tensor<1xi32>
+}
+
+// -----
+
+func @floor_invalid_result_type(%arg0: tensor<1xf32>) -> tensor<1xf32> {
+  // expected-error@+1 {{'xla_hlo.floor' op requires the same type for all operands and results}}
+  %0 = "xla_hlo.floor"(%arg0) : (tensor<1xf32>) -> tensor<1xi32>
+  return %0: tensor<1xi32>
+}
+
+// -----
+
+func @log_invalid_result_type(%arg0: tensor<1xf32>) -> tensor<1xf32> {
+  // expected-error@+1 {{'xla_hlo.log' op requires the same type for all operands and results}}
+  %0 = "xla_hlo.log"(%arg0) : (tensor<1xf32>) -> tensor<1xi32>
+  return %0: tensor<1xi32>
+}
+
+// -----
+
+func @rsqrt_invalid_result_type(%arg0: tensor<1xf32>) -> tensor<1xf32> {
+  // expected-error@+1 {{'xla_hlo.rsqrt' op requires the same type for all operands and results}}
+  %0 = "xla_hlo.rsqrt"(%arg0) : (tensor<1xf32>) -> tensor<1xi32>
   return %0: tensor<1xi32>
 }
 
@@ -494,4 +518,56 @@ func @transpose_operand_result_permutation_mismatch(%arg0: tensor<1x2x3x4xi32>) 
 func @tuple(%arg0: tensor<1xi32>, %arg1: tensor<1x2xf32>) -> tuple<tensor<1xi32>, tensor<1x2xf32>> {
   %0 = "xla_hlo.tuple"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xf32>) -> tuple<tensor<1xi32>, tensor<1x2xf32>>
   return %0: tuple<tensor<1xi32>, tensor<1x2xf32>>
+}
+
+// -----
+
+func @tuple_arg_size_mismatch(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tuple<tensor<f32>, tensor<f32>, tensor<f32>> {
+  // expected-error@+1 {{has return type tuple<tensor<f32>, tensor<f32>, tensor<f32>>, but expected tuple<tensor<f32>, tensor<f32>>}}
+  %0 = "xla_hlo.tuple"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<f32>, tensor<f32>>
+  return %0 : tuple<tensor<f32>, tensor<f32>, tensor<f32>>
+}
+
+// -----
+
+func @tuple_type_mismatch(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tuple<tensor<f32>, tensor<i32>> {
+  // expected-error@+1 {{has return type tuple<tensor<f32>, tensor<i32>>, but expected tuple<tensor<f32>, tensor<f32>>}}
+  %0 = "xla_hlo.tuple"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<i32>>
+  return %0 : tuple<tensor<f32>, tensor<i32>>
+}
+
+// -----
+
+func @get_tuple_element(%arg0: tuple<tensor<f32>, tensor<i32>>) -> tensor<f32> {
+  %0 = "xla_hlo.get_tuple_element"(%arg0) {index = 0 : i32} : (tuple<tensor<f32>, tensor<i32>>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// -----
+
+func @get_tuple_element_bad_type(%arg0: tuple<tensor<f32>, tensor<i32>>) -> tensor<i32> {
+  // expected-error@+1 {{has return type tensor<i32>, but expected tensor<f32>}}
+  %0 = "xla_hlo.get_tuple_element"(%arg0) {index = 0 : i32} : (tuple<tensor<f32>, tensor<i32>>) -> tensor<i32>
+  return %0 : tensor<i32>
+}
+
+// -----
+
+func @get_tuple_element_index_out_of_bounds(%arg0: tuple<tensor<f32>, tensor<i32>>) -> tensor<f32> {
+  // expected-error@+1 {{index 2 is out of bounds of operand with size 2}}
+  %0 = "xla_hlo.get_tuple_element"(%arg0) {index = 2 : i32} : (tuple<tensor<f32>, tensor<i32>>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// -----
+
+// CHECK-LABEL: func @reduce_window
+func @reduce_window(%arg0: tensor<4x4xi32>) -> tensor<2x2xi32> {
+  %cst = constant dense<0> : tensor<i32>
+  %0 = "xla_hlo.reduce_window"(%arg0, %cst) ( {
+    ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):       // no predecessors
+    %6 = "xla_hlo.max"(%arg1, %arg2) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    "xla_hlo.return"(%6) : (tensor<i32>) -> ()
+  }) {window_dimensions = dense<[2, 2]> : tensor<2xi64>, window_strides = dense<[2, 2]> : tensor<2xi64>, padding = dense<[2, 2]> : tensor<2xi64>} : (tensor<4x4xi32>, tensor<i32>) -> tensor<2x2xi32>
+  return %0 : tensor<2x2xi32>
 }

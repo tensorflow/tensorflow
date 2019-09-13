@@ -63,6 +63,22 @@ class ModuleTest(test.TestCase):
           'Tensor("range:0", shape=(9,), dtype=int32)',
           str(tf.range(1, 10)))
 
+  def testCompatV2HasCompatV1(self):
+    # pylint: disable=pointless-statement
+    tf.compat.v2.compat.v1.keras
+    # pylint: enable=pointless-statement
+
+  def testSummaryMerged(self):
+    # pylint: disable=pointless-statement
+    tf.summary.image
+    # If we use v2 API, check for create_file_writer,
+    # otherwise check for FileWriter.
+    if '._api.v2' in tf.bitwise.__name__:
+      tf.summary.create_file_writer
+    else:
+      tf.summary.FileWriter
+    # pylint: enable=pointless-statement
+
 
 if __name__ == '__main__':
   test.main()

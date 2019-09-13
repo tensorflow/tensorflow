@@ -18,6 +18,11 @@ limitations under the License.
 
 #include <vector>
 
+// clang-format off
+// Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/platform/platform.h"
+// clang-format on
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -34,6 +39,9 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#if !defined(IS_MOBILE_PLATFORM)
+#include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
+#endif  // IS_MOBILE_PLATFORM
 
 namespace tensorflow {
 
@@ -565,14 +573,6 @@ class FunctionLibraryRuntime {
 
     // This interface is EXPERIMENTAL and subject to change.
     //
-    // For multi-device functions, a mapping from _Arg node index to input
-    // tensor shape.
-    // REQUIRES: if input_tensor_shapes.count(i) > 0 then i-th argument type
-    // must not be DT_RESOURCE.
-    std::unordered_map<int, TensorShape> input_tensor_shapes;
-
-    // This interface is EXPERIMENTAL and subject to change.
-    //
     // For multi-device functions, a mapping from _Arg node index to type and
     // shape for input resources.
     // REQUIRES: if input_resource_dtypes_and_shapes.count(i) > 0 then i-th
@@ -824,6 +824,18 @@ class DistributedFunctionLibraryRuntime {
                    FunctionLibraryRuntime::LocalHandle handle,
                    gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
                    FunctionLibraryRuntime::DoneCallback done) = 0;
+
+#if !defined(IS_MOBILE_PLATFORM)
+  // TODO(yujingzhang): Support outputting tensors on remote devices.
+  virtual void Run(const FunctionLibraryRuntime::Options& opts,
+                   FunctionLibraryRuntime::LocalHandle handle,
+                   const int64 op_id,
+                   absl::Span<eager::RemoteTensorHandle* const> args,
+                   FunctionLibraryRuntime::DoneCallback done) {
+    done(errors::Unimplemented("Unimplemented."));
+  }
+#endif  // IS_MOBILE_PLATFORM
+
   virtual void CleanUp(uint64 step_id,
                        FunctionLibraryRuntime::LocalHandle handle,
                        FunctionLibraryRuntime::DoneCallback done) = 0;

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
@@ -22,6 +23,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -49,6 +51,38 @@ struct TPURewritePass : public ModulePass<TPURewritePass> {
   void runOnModule() override;
 };
 
+// Recursively visits all attributes of `op` to find any Attribute of type
+// `SymbolRefAttr`.
+llvm::SmallVector<SymbolRefAttr, 8> GetAllSymbolRefAttrs(Operation* op) {
+  llvm::SmallVector<SymbolRefAttr, 8> symbol_ref_attrs;
+
+  llvm::SmallVector<Attribute, 8> worklist;
+  for (auto named_attr : op->getAttrs()) {
+    worklist.push_back(named_attr.second);
+  }
+
+  while (!worklist.empty()) {
+    Attribute attr = worklist.pop_back_val();
+
+    if (SymbolRefAttr symbol_ref_attr = attr.dyn_cast<SymbolRefAttr>()) {
+      // Found a SymbolRefAttr, add it to result list.
+      symbol_ref_attrs.push_back(symbol_ref_attr);
+    } else if (ArrayAttr array_attr = attr.dyn_cast<ArrayAttr>()) {
+      // Found an ArrayAttr, add its nested Attributes to worklist for further
+      // inspection.
+      worklist.append(array_attr.begin(), array_attr.end());
+    } else if (DictionaryAttr dict_attr = attr.dyn_cast<DictionaryAttr>()) {
+      // Found a DictionaryAttr, add its nested value Attributes to worklist for
+      // further inspection.
+      for (NamedAttribute named_attr : dict_attr.getValue()) {
+        worklist.push_back(named_attr.second);
+      }
+    }
+  }
+
+  return symbol_ref_attrs;
+}
+
 // Creates a new self-contained module that contains `entry_func` and all
 // referenced functions in `entry_func`. entry_func is renamed to "main".
 // Return value is serialized text formate of newly-created module.
@@ -71,11 +105,7 @@ std::string EncapsulateFuncAndSerialize(FuncOp entry_func) {
     // all found FuncOps to new_module to make sure new_module is
     // self-contained.
     func.walk([&](Operation* op) {
-      for (auto attr : op->getAttrs()) {
-        auto symbol_ref_attr = attr.second.dyn_cast_or_null<SymbolRefAttr>();
-        // Skip non symbol ref attributes.
-        if (!symbol_ref_attr) continue;
-
+      for (auto symbol_ref_attr : GetAllSymbolRefAttrs(op)) {
         FuncOp referenced_func =
             module.lookupSymbol<FuncOp>(symbol_ref_attr.getValue());
 
@@ -109,7 +139,7 @@ std::string EncapsulateFuncAndSerialize(FuncOp entry_func) {
 Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func,
                           OpBuilder* builder) {
   // TODO(b/139377366): Use tf_tpu.compile build method when it is defined.
-  OperationState compile_op_state(launch_func.getLoc(), "tf.MLIRCompileToTPU");
+  OperationState compile_op_state(launch_func.getLoc(), "tf._TPUCompileMlir");
 
   // Build a shape op for each input to launch_func.
   // TODO(b/139377366): When shape inference is ready, we can use compile time
@@ -125,6 +155,9 @@ Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func,
     compile_op_operands.emplace_back(shape_op.getResult());
   }
   compile_op_state.addOperands(compile_op_operands);
+  compile_op_state.addAttribute(
+      "NumDynamicShapes",
+      builder->getI64IntegerAttr(compile_op_operands.size()));
 
   SymbolRefAttr func_attr = launch_func.getAttrOfType<SymbolRefAttr>("func");
   if (!func_attr) {
@@ -135,13 +168,8 @@ Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func,
       func_attr.getValue());
 
   std::string txt_module = EncapsulateFuncAndSerialize(func);
-  compile_op_state.addAttribute("module", builder->getStringAttr(txt_module));
-
-  // Copy all launch_func attributes other than `func`.
-  for (auto attr : launch_func.getAttrs()) {
-    if (attr.first == "func") continue;
-    compile_op_state.attributes.emplace_back(attr);
-  }
+  compile_op_state.addAttribute("mlir_module",
+                                builder->getStringAttr(txt_module));
 
   // Result #0 is a string indicating whether compilation is successful or not.
   compile_op_state.addTypes(
@@ -211,8 +239,21 @@ void BuildTPUCompileSucceededAssertOp(Operation* compile_op,
 // Operations that jit-compiles and executes function in `tf_device.launch_func`
 // on TPU.
 void Rewrite(tf_device::LaunchFuncOp launch_func, OpBuilder* builder) {
+  // Skip non-tpu device launch_func.
+  auto replicate_attr = launch_func.getAttrOfType<StringAttr>("_tpu_replicate");
+  if (!replicate_attr) return;
+
   builder->setInsertionPoint(launch_func);
   Operation* compile_op = BuildCompileOp(launch_func, builder);
+
+  // After rewrite, find if there is a TPUCompilationResultOp in the block with
+  // the same _tpu_replicate attribute and replace it with the result of the
+  // compile op. This op is used as a placeholder to hook during graph creation
+  // the other ops that are intended to consume the compile result.
+  Block* block = launch_func.getOperation()->getBlock();
+  for (auto compile_result_op : block->getOps<TF::TPUCompilationResultOp>())
+    compile_result_op.output()->replaceAllUsesWith(compile_op->getResult(0));
+
   BuildTPUCompileSucceededAssertOp(compile_op, builder);
   // TODO(ycao): Right now we only support single-core case. The right thing to
   // do is to read from launch_func attributes to determine how many execute
@@ -224,10 +265,19 @@ void Rewrite(tf_device::LaunchFuncOp launch_func, OpBuilder* builder) {
 
 void TPURewritePass::runOnModule() {
   OpBuilder builder(&getContext());
-  getModule().walk<tf_device::LaunchFuncOp>([&](tf_device::LaunchFuncOp op) {
-    // Skip non-tpu device launch_func.
-    if (!op.getAttrOfType<StringAttr>("_tpu_replicate")) return;
+  getModule().walk([&](tf_device::LaunchFuncOp op) {
     Rewrite(op, &builder);
+  });
+
+  // Eliminate TPUReplicatedInput and TPUReplicatedOutput now that the rewrite
+  // is complete.
+  getModule().walk([&](Operation* op) {
+    auto op_name = op->getName().getStringRef();
+    if (op_name != "tf.TPUReplicatedInput" &&
+        op_name != "tf.TPUReplicatedOutput")
+      return;
+    op->getResult(0)->replaceAllUsesWith(op->getOperand(0));
+    op->erase();
   });
 
   // TODO(b/139377366): Remove functions that are no longer needed.

@@ -85,6 +85,13 @@ public:
   virtual void printRegion(Region &blocks, bool printEntryBlockArgs = true,
                            bool printBlockTerminators = true) = 0;
 
+  /// Renumber the arguments for the specified region to the same names as the
+  /// SSA values in namesToUse.  This may only be used for IsolatedFromAbove
+  /// operations.  If any entry in namesToUse is null, the corresponding
+  /// argument name is left alone.
+  virtual void shadowRegionArgs(Region &region,
+                                ArrayRef<Value *> namesToUse) = 0;
+
   /// Prints an affine map of SSA ids, where SSA id names are used in place
   /// of dims/symbols.
   /// Operand values must come from single-result sources, and be valid
@@ -109,8 +116,12 @@ public:
   void printFunctionalType(Operation *op) {
     auto &os = getStream();
     os << "(";
-    interleaveComma(op->getNonSuccessorOperands(), os,
-                    [&](Value *operand) { printType(operand->getType()); });
+    interleaveComma(op->getNonSuccessorOperands(), os, [&](Value *operand) {
+      if (operand)
+        printType(operand->getType());
+      else
+        os << "<<NULL>";
+    });
     os << ") -> ";
     if (op->getNumResults() == 1 &&
         !op->getResult(0)->getType().isa<FunctionType>()) {
@@ -201,6 +212,14 @@ public:
   // These methods emit an error and return failure or success. This allows
   // these to be chained together into a linear sequence of || expressions in
   // many cases.
+
+  /// Parse an operation in its generic form.
+  /// The parsed operation is parsed in the current context and inserted in the
+  /// provided block and insertion point. The results produced by this operation
+  /// aren't mapped to any named value in the parser. Returns nullptr on
+  /// failure.
+  virtual Operation *parseGenericOperation(Block *insertBlock,
+                                           Block::iterator insertPt) = 0;
 
   //===--------------------------------------------------------------------===//
   // Token Parsing

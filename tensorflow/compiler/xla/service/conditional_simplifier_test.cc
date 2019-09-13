@@ -328,6 +328,98 @@ ENTRY main {
   EXPECT_EQ(ShapeUtil::TupleElementCount(conditional->shape()), 0);
 }
 
+TEST_F(ConditionalSimplifierTest, SecondTupleElementUnusedAndRemoved) {
+  absl::string_view hlo_string =
+      R"(
+HloModule SecondTupleElementUnusedAndRemoved
+
+on_true {
+  arg_tuple.7 = (f32[10,10]{1,0}) parameter(0)
+  get-tuple-element.9 = f32[10,10]{1,0} get-tuple-element(arg_tuple.7), index=0
+  copy = f32[10,10]{1,0} copy(get-tuple-element.9)
+  ROOT tuple.6 = (f32[10,10]{1,0}, f32[10,10]{1,0}) tuple(copy, get-tuple-element.9)
+}
+
+on_false {
+  constant.17 = f32[] constant(0)
+  constant.18 = f32[] constant(1)
+  rng.19 = f32[10,10]{1,0} rng(constant.17, constant.18), distribution=rng_uniform
+  arg_tuple.14 = (f32[10,10]{1,0}) parameter(0)
+  get-tuple-element.16 = f32[10,10]{1,0} get-tuple-element(arg_tuple.14), index=0
+  ROOT tuple.7 = (f32[10,10]{1,0}, f32[10,10]{1,0}) tuple(rng.19, get-tuple-element.16)
+}
+
+ENTRY main {
+  constant.38 = pred[] constant(true)
+  arg_tuple.30 = (s32[], f32[10,10]{1,0}) parameter(0)
+  get-tuple-element.21 = f32[10,10]{1,0} get-tuple-element(arg_tuple.30), index=1
+  tuple.1 = (f32[10,10]{1,0}) tuple(get-tuple-element.21)
+  conditional = (f32[10,10]{1,0}, f32[10,10]{1,0}) conditional(constant.38, tuple.1, tuple.1), true_computation=on_true, false_computation=on_false
+  get-first-index = f32[10,10]{1,0} get-tuple-element(conditional), index=0
+  ROOT result = (f32[10,10]{1,0}) tuple(get-first-index)
+}
+)";
+  auto status = ParseAndReturnUnverifiedModule(hlo_string);
+  TF_ASSERT_OK(status.status());
+  HloVerifier v(false, false);
+  TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
+  EXPECT_TRUE(
+      ConditionalSimplifier().Run(status.ValueOrDie().get()).ValueOrDie());
+  TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
+  const HloInstruction* conditional =
+      FindInstruction(status.ValueOrDie().get(), "conditional");
+  // The second element of "conditional" result tuple (f32[10,10], f32[10,10])
+  // should be removed since it is not referenced by any GTE instructions
+  // (see "get-first-index" instruction in hlo_string).
+  EXPECT_EQ(ShapeUtil::TupleElementCount(conditional->shape()), 1);
+}
+
+TEST_F(ConditionalSimplifierTest, FirstTupleElementUnusedAndRemoved) {
+  absl::string_view hlo_string =
+      R"(
+HloModule FirstTupleElementUnusedAndRemoved
+
+on_true {
+  arg_tuple.7 = (f32[10,10]{1,0}) parameter(0)
+  get-tuple-element.9 = f32[10,10]{1,0} get-tuple-element(arg_tuple.7), index=0
+  copy = f32[10,10]{1,0} copy(get-tuple-element.9)
+  ROOT tuple.6 = (f32[10,10]{1,0}, f32[10,10]{1,0}) tuple(copy, get-tuple-element.9)
+}
+
+on_false {
+  constant.17 = f32[] constant(0)
+  constant.18 = f32[] constant(1)
+  rng.19 = f32[10,10]{1,0} rng(constant.17, constant.18), distribution=rng_uniform
+  arg_tuple.14 = (f32[10,10]{1,0}) parameter(0)
+  get-tuple-element.16 = f32[10,10]{1,0} get-tuple-element(arg_tuple.14), index=0
+  ROOT tuple.7 = (f32[10,10]{1,0}, f32[10,10]{1,0}) tuple(rng.19, get-tuple-element.16)
+}
+
+ENTRY main {
+  constant.38 = pred[] constant(true)
+  arg_tuple.30 = (s32[], f32[10,10]{1,0}) parameter(0)
+  get-tuple-element.21 = f32[10,10]{1,0} get-tuple-element(arg_tuple.30), index=1
+  tuple.1 = (f32[10,10]{1,0}) tuple(get-tuple-element.21)
+  conditional = (f32[10,10]{1,0}, f32[10,10]{1,0}) conditional(constant.38, tuple.1, tuple.1), true_computation=on_true, false_computation=on_false
+  get-second-index = f32[10,10]{1,0} get-tuple-element(conditional), index=1
+  ROOT result = (f32[10,10]{1,0}) tuple(get-second-index)
+}
+)";
+  auto status = ParseAndReturnUnverifiedModule(hlo_string);
+  TF_ASSERT_OK(status.status());
+  HloVerifier v(false, false);
+  TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
+  EXPECT_TRUE(
+      ConditionalSimplifier().Run(status.ValueOrDie().get()).ValueOrDie());
+  TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
+  const HloInstruction* conditional =
+      FindInstruction(status.ValueOrDie().get(), "conditional");
+  // The first element of "conditional" result tuple (f32[10,10], f32[10,10])
+  // should be removed since it is not referenced by any GTE instructions (see
+  // "get-second-index" instruction in hlo_string).
+  EXPECT_EQ(ShapeUtil::TupleElementCount(conditional->shape()), 1);
+}
+
 }  // namespace
 
 }  // namespace xla

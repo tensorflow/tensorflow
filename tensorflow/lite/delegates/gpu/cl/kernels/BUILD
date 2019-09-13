@@ -74,6 +74,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -175,6 +176,47 @@ cc_test(
     deps = [
         ":cl_test",
         ":conv_constants",
+        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "conv_powervr",
+    srcs = ["conv_powervr.cc"],
+    hdrs = ["conv_powervr.h"],
+    deps = [
+        ":gpu_operation",
+        ":util",
+        "//tensorflow/lite/delegates/gpu/cl:buffer",
+        "//tensorflow/lite/delegates/gpu/cl:cl_device",
+        "//tensorflow/lite/delegates/gpu/cl:linear_storage",
+        "//tensorflow/lite/delegates/gpu/cl:precision",
+        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/cl:tensor_type",
+        "//tensorflow/lite/delegates/gpu/cl:util",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common:types",
+    ],
+)
+
+cc_test(
+    name = "conv_powervr_test",
+    srcs = ["conv_powervr_test.cc"],
+    linkstatic = True,
+    tags = [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        ":conv_powervr",
         "//tensorflow/lite/delegates/gpu/cl:tensor",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -399,6 +441,7 @@ cc_library(
         ":util",
         ":work_group_picking",
         "//tensorflow/lite/delegates/gpu/cl:buffer",
+        "//tensorflow/lite/delegates/gpu/cl:precision",
         "//tensorflow/lite/delegates/gpu/cl:tensor",
         "//tensorflow/lite/delegates/gpu/cl:texture2d",
         "//tensorflow/lite/delegates/gpu/cl:util",
@@ -471,13 +514,14 @@ cc_test(
 )
 
 cc_library(
-    name = "depth_wise_conv_3x3_texture",
-    srcs = ["depth_wise_conv_3x3_texture.cc"],
-    hdrs = ["depth_wise_conv_3x3_texture.h"],
+    name = "depth_wise_conv_3x3",
+    srcs = ["depth_wise_conv_3x3.cc"],
+    hdrs = ["depth_wise_conv_3x3.h"],
     deps = [
         ":gpu_operation",
         ":util",
         ":work_group_picking",
+        "//tensorflow/lite/delegates/gpu/cl:buffer",
         "//tensorflow/lite/delegates/gpu/cl:precision",
         "//tensorflow/lite/delegates/gpu/cl:tensor",
         "//tensorflow/lite/delegates/gpu/cl:texture2d",
@@ -492,8 +536,8 @@ cc_library(
 )
 
 cc_test(
-    name = "depth_wise_conv_3x3_texture_test",
-    srcs = ["depth_wise_conv_3x3_texture_test.cc"],
+    name = "depth_wise_conv_3x3_test",
+    srcs = ["depth_wise_conv_3x3_test.cc"],
     linkstatic = True,
     tags = [
         "linux",
@@ -501,7 +545,7 @@ cc_test(
     ],
     deps = [
         ":cl_test",
-        ":depth_wise_conv_3x3_texture",
+        ":depth_wise_conv_3x3",
         "//tensorflow/lite/delegates/gpu/cl:tensor",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -649,6 +693,7 @@ cc_library(
         ":util",
         "//tensorflow/lite/delegates/gpu/cl:cl_context",
         "//tensorflow/lite/delegates/gpu/cl:linear_storage",
+        "//tensorflow/lite/delegates/gpu/cl:precision",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
@@ -788,6 +833,7 @@ cc_library(
     deps = [
         ":flt_type",
         ":gpu_operation",
+        "//tensorflow/lite/delegates/gpu/cl:precision",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "@com_google_absl//absl/strings",
     ],
@@ -1104,9 +1150,9 @@ cc_library(
     srcs = ["cl_test.cc"],
     hdrs = ["cl_test.h"],
     deps = [
+        ":gpu_operation",
         "//tensorflow/lite/delegates/gpu/cl:environment",
         "//tensorflow/lite/delegates/gpu/cl:opencl_wrapper",
-        "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
@@ -1124,11 +1170,12 @@ test_suite(
         "conv_buffer_1x1_test",
         "conv_buffer_test",
         "conv_constants_test",
+        "conv_powervr_test",
         "conv_texture_test",
         "convolution_transposed_3x3_thin_test",
         "convolution_transposed_test",
         "convolution_transposed_thin_test",
-        "depth_wise_conv_3x3_texture_test",
+        "depth_wise_conv_3x3_test",
         "depth_wise_conv_test",
         "fully_connected_texture_test",
         "hard_swish_test",

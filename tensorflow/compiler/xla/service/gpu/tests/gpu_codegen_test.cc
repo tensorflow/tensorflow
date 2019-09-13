@@ -52,28 +52,5 @@ void GpuCodegenTest::CompileAndVerifyPtx(std::unique_ptr<HloModule> hlo_module,
   EXPECT_TRUE(filecheck_result.ValueOrDie());
 }
 
-void GpuCodegenTest::MatchOptimizedHlo(absl::string_view hlo,
-                                       absl::string_view pattern,
-                                       bool print_operand_shape) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(hlo));
-  HloPrintOptions print_opts;
-  print_opts.set_print_operand_shape(print_operand_shape);
-  StatusOr<bool> filecheck_result =
-      RunFileCheck(optimized_module->ToString(print_opts), pattern);
-  TF_ASSERT_OK(filecheck_result.status());
-  EXPECT_TRUE(filecheck_result.ValueOrDie());
-}
-
-StatusOr<std::unique_ptr<HloModule>> GpuCodegenTest::GetOptimizedModule(
-    absl::string_view hlo) {
-  HloModuleConfig config;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      ParseAndReturnVerifiedModule(hlo, config));
-  return backend().compiler()->RunHloPasses(
-      std::move(module), backend().default_stream_executor(),
-      backend().default_stream_executor()->GetAllocator());
-}
-
 }  // namespace gpu
 }  // namespace xla

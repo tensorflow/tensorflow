@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
@@ -99,17 +98,10 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
 
     self._element_spec = structure.convert_legacy_structure(
         input_types, output_shapes, input_classes)
-    if compat.forward_compatible(2019, 8, 13) or not use_fallback:
-      variant_tensor = ged_ops.rebatch_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          num_replicas=num_replicas,
-          use_fallback=use_fallback,
-          **self._flat_structure)
-    else:
-      variant_tensor = ged_ops.rebatch_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          num_replicas=num_replicas,
-          **self._flat_structure)
+    variant_tensor = ged_ops.rebatch_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        num_replicas=num_replicas,
+        **self._flat_structure)
     super(_RebatchDataset, self).__init__(input_dataset, variant_tensor)
 
   @property
@@ -145,11 +137,17 @@ def replicate(dataset, devices):
     raise TypeError("`dataset` must be a `tf.data.Dataset` object.")
 
   # pylint: disable=protected-access
+  dataset_device = dataset._variant_tensor.device
+
+  datasets = {}
+  if len(devices) == 1 and devices[0] == dataset_device:
+    datasets[devices[0]] = dataset
+    return datasets
+
   with ops.colocate_with(dataset._variant_tensor):
     dataset = dataset._apply_options()
     allow_stateful = dataset.options().experimental_allow_stateful
     graph_def = dataset._as_serialized_graph(allow_stateful=allow_stateful)
-  datasets = {}
   for device in devices:
     ds = _RemoteDataset(graph_def, device, dataset.element_spec)
     datasets[device] = ds

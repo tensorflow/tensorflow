@@ -84,9 +84,9 @@ std::string GetMaxUnoolingKernelCode(
     const auto& s = channels[i];
     code += "  result" + s + "= t_index == ind" + s + "? src" + s + ": 0.0f;\n";
   }
-  code += "  " + dst.GetAddress("address", "X", "Y", "Z") + "\n";
-  code += PostProcess(linked_operations, "result", "Z", "address");
-  code += "  " + dst.Write3D("result", "address");
+  const LinkingContext context{"result", "X", "Y", "Z"};
+  code += PostProcess(linked_operations, context);
+  code += "  " + dst.Write3D("result", "X", "Y", "Z");
   code += "}\n";
 
   return code;

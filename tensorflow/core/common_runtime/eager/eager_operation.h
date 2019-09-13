@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -25,14 +26,15 @@ namespace tensorflow {
 class EagerOperation {
  public:
   EagerOperation(tensorflow::EagerContext* ctx, const char* op,
-                 bool is_function, const tensorflow::AttrTypeMap* t)
+                 bool is_function, const tensorflow::AttrTypeMap* t,
+                 EagerExecutor* executor = nullptr)
       : ctx_(ctx),
         name_(op),
         attrs_(op),
         attr_types_(t),
         device_(nullptr),
         is_function_(is_function),
-        executor_(ctx ? ctx->Executor() : nullptr) {}
+        executor_(executor ? *executor : ctx->Executor()) {}
 
   ~EagerOperation() {
     for (tensorflow::TensorHandle* h : inputs_) {
@@ -82,7 +84,7 @@ class EagerOperation {
     cancellation_manager_ = cancellation_manager;
   }
 
-  EagerExecutor* Executor() { return executor_; }
+  EagerExecutor& Executor() { return executor_; }
 
   string DebugString() const;
 
@@ -97,8 +99,30 @@ class EagerOperation {
   bool use_xla_ = false;
   const bool is_function_;
   CancellationManager* cancellation_manager_ = nullptr;  // Not owned.
-  EagerExecutor* const executor_;                        // Not owned.
+  EagerExecutor& executor_;                              // Not owned.
 };
+
+inline void EagerOperation::AddInput(tensorflow::TensorHandle* h) {
+  h->Ref();
+  inputs_.push_back(h);
+  attrs_.NumInputs(static_cast<int>(inputs_.size()));
+}
+
+inline void EagerOperation::UpdateInput(int i, tensorflow::TensorHandle* h) {
+  tensorflow::TensorHandle** slot = &inputs_[i];
+  tensorflow::TensorHandle* existing = *slot;
+  if (existing != h) {
+    h->Ref();
+    existing->Unref();
+    *slot = h;  // Update inputs_[i] to h
+  }
+}
+
+inline void EagerOperation::ConsumeInput(tensorflow::TensorHandle* h) {
+  inputs_.push_back(h);
+  attrs_.NumInputs(static_cast<int>(inputs_.size()));
+}
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EAGER_OPERATION_H_

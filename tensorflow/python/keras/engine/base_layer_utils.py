@@ -209,6 +209,16 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
       continue
     op = tensor.op  # The Op that created this Tensor.
     if op not in processed_ops:
+      if op.type.startswith('Sparse'):
+        lambda_example = """
+        weights_mult = lambda x: tf.sparse.sparse_dense_matmul(x, weights)
+        output = tf.keras.layers.Lambda(weights_mult)(input)
+        """
+        raise ValueError(
+            'Sparse ops are not supported with functional models with built-in '
+            'layer wrapping. Please wrap the sparse ops in a Lambda layer like'
+            ': \n{lambda_example}\n'.format(lambda_example=lambda_example))
+
       # Recursively set `_keras_history`.
       op_inputs = list(op.inputs)
       constants = {}
@@ -376,6 +386,7 @@ class CallContext(object):
     in_call: Whether currently inside the `call` of a Layer.
     training: Whether currently executing in training or inference mode.
     in_keras_graph: Whether executing inside the Keras Graph.
+    saving: Whether currently saving to SavedModel.
   """
 
   def __init__(self):
@@ -385,9 +396,10 @@ class CallContext(object):
     self.in_call = False
     self.training = None
     self._in_keras_graph = False
+    self.saving = False
 
   @tf_contextlib.contextmanager
-  def enter(self, layer, inputs, build_graph, training):
+  def enter(self, layer, inputs, build_graph, training, saving=None):
     """Push a Layer and its inputs and state onto the current call context."""
     prev_layer = self.layer
     prev_inputs = self.inputs
@@ -395,6 +407,7 @@ class CallContext(object):
     prev_in_call = self.in_call
     prev_training = self.training
     prev_in_keras_graph = self._in_keras_graph
+    prev_saving = self.saving
 
     self.layer = layer
     self.inputs = inputs
@@ -405,6 +418,7 @@ class CallContext(object):
         self._in_keras_graph or
         (build_graph and
          getattr(backend.get_graph(), 'name', None) == 'keras_graph'))
+    self.saving = prev_saving if saving is None else saving
 
     try:
       yield
@@ -415,6 +429,7 @@ class CallContext(object):
       self.in_call = prev_in_call
       self.training = prev_training
       self._in_keras_graph = prev_in_keras_graph
+      self.saving = prev_saving
 
   @property
   def in_keras_graph(self):

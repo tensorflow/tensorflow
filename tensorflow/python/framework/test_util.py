@@ -49,10 +49,12 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python import _pywrap_util_port
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
+from tensorflow.python.compat.compat import forward_compatibility_horizon
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import tape
@@ -276,19 +278,19 @@ def _strip_hash_table_shared_name(graph_def):
 
 
 def IsGoogleCudaEnabled():
-  return pywrap_tensorflow.IsGoogleCudaEnabled()
+  return _pywrap_util_port.IsGoogleCudaEnabled()
 
 
 def IsBuiltWithROCm():
-  return pywrap_tensorflow.IsBuiltWithROCm()
+  return _pywrap_util_port.IsBuiltWithROCm()
 
 
 def GpuSupportsHalfMatMulAndConv():
-  return pywrap_tensorflow.GpuSupportsHalfMatMulAndConv()
+  return _pywrap_util_port.GpuSupportsHalfMatMulAndConv()
 
 
 def IsMklEnabled():
-  return pywrap_tensorflow.IsMklEnabled()
+  return _pywrap_util_port.IsMklEnabled()
 
 
 def InstallStackTraceHandler():
@@ -1226,6 +1228,19 @@ def deprecated_graph_mode_only(func=None):
 run_deprecated_v1 = deprecated_graph_mode_only
 
 
+def run_all_in_deprecated_graph_mode_only(cls):
+  """Execute all tests in a class in graph mode."""
+  base_decorator = deprecated_graph_mode_only
+  for name in dir(cls):
+    if (not name.startswith(unittest.TestLoader.testMethodPrefix) or
+        name == "test_session"):
+      continue
+    value = getattr(cls, name, None)
+    if callable(value):
+      setattr(cls, name, base_decorator(value))
+  return cls
+
+
 def run_v1_only(reason, func=None):
   """Execute the decorated test only if running in v1 mode.
 
@@ -1378,6 +1393,41 @@ def run_cuda_only(func=None):
 
   if func is not None:
     return decorator(func)
+
+  return decorator
+
+
+def with_forward_compatibility_horizons(*horizons):
+  """Executes the decorated test with the specified forward-compat horizons.
+
+  Args:
+    *horizons: A list of (year, month, day) tuples.  If the list includes
+      `None`, then the test will also be run with no forward-compatibility
+      horizon set.
+
+  Returns:
+    A decorator that will execute the test with the specified horizons.
+  """
+  if not horizons:
+    raise ValueError("Expected at least one horizon.")
+  for horizon in horizons:
+    if not ((horizon is None) or
+            (len(horizon) == 3 and all(isinstance(x, int) for x in horizon))):
+      raise ValueError("Bad horizon value: %r" % horizon)
+
+  def decorator(f):
+    if tf_inspect.isclass(f):
+      raise ValueError("`with_forward_compatibility_horizons` only "
+                       "supports test methods.")
+    def decorated(self, *args, **kwargs):
+      for horizon in horizons:
+        if horizon is None:
+          f(self, *args, **kwargs)
+        else:
+          (year, month, day) = horizon
+          with forward_compatibility_horizon(year, month, day):
+            f(self, *args, **kwargs)
+    return decorated
 
   return decorator
 

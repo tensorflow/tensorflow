@@ -258,8 +258,16 @@ int NumOutputs(const NodeDef& node, GraphDef* graph) {
 }
 
 bool HasControlInputs(const NodeDef& node) {
-  int num_inputs = node.input_size();
+  const int num_inputs = node.input_size();
   if (num_inputs > 0 && IsControlInput(node.input(num_inputs - 1))) {
+    return true;
+  }
+  return false;
+}
+
+bool HasRegularInputs(const NodeDef& node) {
+  const int num_inputs = node.input_size();
+  if (num_inputs > 0 && !IsControlInput(node.input(0))) {
     return true;
   }
   return false;
@@ -273,6 +281,34 @@ int NumNonControlInputs(const NodeDef& node) {
     }
   }
   return num_inputs;
+}
+
+bool HasRegularOutputs(const NodeDef& node, const NodeMap& node_map) {
+  for (const NodeDef* output : node_map.GetOutputs(node.name())) {
+    for (const string& node_as_input : output->input()) {
+      if (IsControlInput(node_as_input)) continue;
+
+      TensorId tensor = ParseTensorName(node_as_input);
+      if (tensor.node() == node.name()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool HasControlOutputs(const NodeDef& node, const NodeMap& node_map) {
+  for (const NodeDef* output : node_map.GetOutputs(node.name())) {
+    for (const string& node_as_input : output->input()) {
+      if (!IsControlInput(node_as_input)) continue;
+
+      TensorId tensor = ParseTensorName(node_as_input);
+      if (tensor.node() == node.name()) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 int NumControlOutputs(const NodeDef& node, const NodeMap& node_map) {

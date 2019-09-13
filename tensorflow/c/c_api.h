@@ -435,6 +435,15 @@ TF_CAPI_EXPORT extern int TF_OperationInputListLength(TF_Operation* oper,
 // producer.index) to consumer.oper's input (given by consumer.index).
 TF_CAPI_EXPORT extern TF_Output TF_OperationInput(TF_Input oper_in);
 
+// Get list of all inputs of a specific operation.  `inputs` must point to
+// an array of length at least `max_inputs` (ideally set to
+// TF_OperationNumInputs(oper)).  Beware that a concurrent
+// modification of the graph can increase the number of inputs of
+// an operation.
+TF_CAPI_EXPORT extern void TF_OperationAllInputs(TF_Operation* oper,
+                                                 TF_Output* inputs,
+                                                 int max_inputs);
+
 // Get the number of current consumers of a specific output of an
 // operation.  Note that this number can change when new operations
 // are added to the graph.

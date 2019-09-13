@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management.h"
+#include "tensorflow/lite/delegates/gpu/common/memory_management/types.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_call.h"
@@ -556,7 +557,7 @@ Status Runtime::AssignInternalObjects(std::vector<Object>* shared_objects) {
     if (!usage_records.textures_2d.empty()) {
       ObjectsAssignment<uint2> texture_2d_assignment;
       RETURN_IF_ERROR(AssignObjectsToTensors(usage_records.textures_2d,
-                                             MemoryStrategy::GREEDY,
+                                             MemoryStrategy::GREEDY_IN_ORDER,
                                              &texture_2d_assignment));
       RETURN_IF_ERROR(ApplyTexturesAssignment(
           texture_2d_assignment, usage_records.usage_refs,
@@ -565,7 +566,7 @@ Status Runtime::AssignInternalObjects(std::vector<Object>* shared_objects) {
     if (!usage_records.textures_3d.empty()) {
       ObjectsAssignment<uint3> texture_3d_assignment;
       RETURN_IF_ERROR(AssignObjectsToTensors(usage_records.textures_3d,
-                                             MemoryStrategy::GREEDY,
+                                             MemoryStrategy::GREEDY_IN_ORDER,
                                              &texture_3d_assignment));
       RETURN_IF_ERROR(ApplyTexturesAssignment(
           texture_3d_assignment, usage_records.usage_refs,

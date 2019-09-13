@@ -56,6 +56,8 @@ BenchmarkParams CreateParams(int32_t num_runs, float min_secs, float max_secs) {
                   BenchmarkParam::Create<int32_t>(1024));
   params.AddParam("nnapi_accelerator_name",
                   BenchmarkParam::Create<std::string>(""));
+  params.AddParam("nnapi_execution_preference",
+                  BenchmarkParam::Create<std::string>(""));
   return params;
 }
 

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/profiler_utils.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/trace_events.pb.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 namespace {
@@ -100,6 +101,12 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
     // Create device
     auto* device_stats =
         run_metadata->mutable_step_stats()->mutable_dev_stats(device_id);
+    // Don't generate trace events for "derived or aggregated" devices, the
+    // events in these devices are duplicated from other streams.
+    if (absl::EndsWith(device_stats->device(), "stream:all") ||
+        absl::EndsWith(device_stats->device(), "sync") ||
+        absl::EndsWith(device_stats->device(), "memcpy"))
+      continue;
     profiler::Device device;
     device.set_name(device_stats->device());
     device.set_device_id(device_id);
@@ -116,8 +123,7 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
     (*trace_devices)[device_id] = device;
 
     // Emit events.
-    for (auto node :
-         run_metadata->step_stats().dev_stats(device_id).node_stats()) {
+    for (auto node : device_stats->node_stats()) {
       if (node.all_start_micros() < profile_start_time_micros ||
           node.all_start_micros() + node.all_end_rel_micros() >
               profile_end_time_micros) {
@@ -146,8 +152,21 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
 }
 }  // namespace
 
+/*static*/ std::unique_ptr<ProfilerSession> ProfilerSession::Create(
+    const profiler::ProfilerOptions& options) {
+  return absl::WrapUnique(new ProfilerSession(options));
+}
+
 /*static*/ std::unique_ptr<ProfilerSession> ProfilerSession::Create() {
-  return absl::WrapUnique(new ProfilerSession());
+  int64 host_tracer_level = 2;
+  tensorflow::Status s = ReadInt64FromEnvVar("TF_PROFILER_HOST_TRACER_LEVEL", 2,
+                                             &host_tracer_level);
+  if (!s.ok()) {
+    LOG(WARNING) << "ProfilerSession: " << s.error_message();
+  }
+  profiler::ProfilerOptions options;
+  options.host_tracer_level = host_tracer_level;
+  return Create(options);
 }
 
 Status ProfilerSession::Status() {
@@ -188,7 +207,7 @@ Status ProfilerSession::SerializeToString(string* content) {
   return Status::OK();
 }
 
-ProfilerSession::ProfilerSession()
+ProfilerSession::ProfilerSession(const profiler::ProfilerOptions& options)
     : active_(profiler::AcquireProfilerLock()),
       start_time_micros_(Env::Default()->NowNanos() / EnvTime::kMicrosToNanos) {
   if (!active_) {
@@ -199,7 +218,7 @@ ProfilerSession::ProfilerSession()
 
   LOG(INFO) << "Profiler session started.";
 
-  CreateProfilers(&profilers_);
+  CreateProfilers(options, &profilers_);
   status_ = Status::OK();
 
   for (auto& profiler : profilers_) {

@@ -32,8 +32,9 @@ void mlir::replaceAllUsesInRegionWith(Value *orig, Value *replacement,
   }
 }
 
-void mlir::getUsedValuesDefinedAbove(Region &region, Region &limit,
-                                     llvm::SetVector<Value *> &values) {
+void mlir::visitUsedValuesDefinedAbove(
+    Region &region, Region &limit,
+    llvm::function_ref<void(OpOperand *)> callback) {
   assert(limit.isAncestor(&region) &&
          "expected isolation limit to be an ancestor of the given region");
 
@@ -45,11 +46,30 @@ void mlir::getUsedValuesDefinedAbove(Region &region, Region &limit,
     properAncestors.insert(reg);
   }
 
-  region.walk([&values, &properAncestors](Operation *op) {
-    for (Value *operand : op->getOperands())
-      // Collect values that are used by an operation and defined in a proper
-      // ancestor of region.
-      if (properAncestors.count(operand->getParentRegion()))
-        values.insert(operand);
+  region.walk([callback, &properAncestors](Operation *op) {
+    for (OpOperand &operand : op->getOpOperands())
+      // Callback on values defined in a proper ancestor of region.
+      if (properAncestors.count(operand.get()->getParentRegion()))
+        callback(&operand);
   });
+}
+
+void mlir::visitUsedValuesDefinedAbove(
+    llvm::MutableArrayRef<Region> regions,
+    llvm::function_ref<void(OpOperand *)> callback) {
+  for (Region &region : regions)
+    visitUsedValuesDefinedAbove(region, region, callback);
+}
+
+void mlir::getUsedValuesDefinedAbove(Region &region, Region &limit,
+                                     llvm::SetVector<Value *> &values) {
+  visitUsedValuesDefinedAbove(region, limit, [&](OpOperand *operand) {
+    values.insert(operand->get());
+  });
+}
+
+void mlir::getUsedValuesDefinedAbove(llvm::MutableArrayRef<Region> regions,
+                                     llvm::SetVector<Value *> &values) {
+  for (Region &region : regions)
+    getUsedValuesDefinedAbove(region, region, values);
 }

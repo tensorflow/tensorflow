@@ -66,7 +66,7 @@ class BigQueryReader : public ReaderBase {
     return Status::OK();
   }
 
-  Status ReadLocked(string* key, string* value, bool* produced,
+  Status ReadLocked(tstring* key, tstring* value, bool* produced,
                     bool* at_end) override {
     *at_end = false;
     *produced = false;

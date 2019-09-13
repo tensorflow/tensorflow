@@ -189,7 +189,7 @@ class RingReducerTest : public ::testing::Test {
     if (!dev_mgr_ || device_type == DEVICE_CPU) {
       LOG(INFO) << "resetting dev_mgr for " << local_devices.size()
                 << " devices: ";
-      dev_mgr_ = absl::make_unique<DeviceMgr>(std::move(local_devices));
+      dev_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(local_devices));
     }
     if (!gpu_ring_order_) {
       gpu_ring_order_ = absl::make_unique<string>();

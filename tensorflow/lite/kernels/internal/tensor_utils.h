@@ -102,17 +102,72 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
     const float* scaling_factors, int n_batch, float* __restrict__ result,
     int result_stride);
 
-void MatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, const int32_t* input_zeropoint_times_weights,
-    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
-    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
-    int16_t* output);
+// Multiplies a matrix by a "batched" vector (i.e. a matrix with a batch
+// dimension composed by input vectors independent from each other). The result
+// of the multiplication is accumulated to the passed result buffer.
+// More specifically, for a matrix M of shape [n, i] and a batched-vector
+// of shape [i, batch] it will first compute the product of shape [n, batch].
+// This product will be accumulated to the result buffer,
+// Parameters:
+//     - input: batch vector of size n_batch * n_input
+//     - bias:  vector of size b_input
+//     - input_to_gate_weights: matrix of size n_input * n_output
+//     - multiplier: scalar
+//     - shift: scalar
+//     - n_batch: the batch size
+//     - n_input: the input size
+//     - n_output: the output size
+//     - output_zp: the zero point of the output.
+//     - scratch: batch vector of size n_batch * n_output
+//     - output: the 16 bit output
+// Notes:
+//     - this is used for gate matmul: for non-cifg it is for input, forget,
+//       cell, output gates; for cifg, it is for forget, cell, output gates.
+//     - multiplier and shift combined gives the scale.
+//     - assumes input zero point is 0.
+//     - scratch is created for optimization purpose only.
+//       TODO(jianlijianli): this can be removed if some furture optimization
+//       work makes it unnecesssary.
+void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
+                                         const int32_t* bias,
+                                         const int8_t* input_to_gate_weights,
+                                         int32_t multiplier, int32_t shift,
+                                         int32_t n_batch, int32_t n_input,
+                                         int32_t n_output, int32_t output_zp,
+                                         int32_t* scratch, int16_t* output);
 
-void MatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, const int32_t* input_zeropoint_times_weights,
-    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
-    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
-    int8_t* output);
+// Multiplies a matrix by a "batched" vector (i.e. a matrix with a batch
+// dimension composed by input vectors independent from each other). The result
+// of the multiplication is accumulated to the passed result buffer.
+// More specifically, for a matrix M of shape [n, i] and a batched-vector
+// of shape [i, batch] it will first compute the product of shape [n, batch].
+// This product will be accumulated to the result buffer,
+// Parameters:
+//     - input: batch vector of size n_batch * n_input
+//     - bias:  vector of size b_input
+//     - input_to_gate_weights: matrix of size n_input * n_output
+//     - multiplier: scalar
+//     - shift: scalar
+//     - n_batch: the batch size
+//     - n_input: the input size
+//     - n_output: the output size
+//     - output_zp: the zero point of the output.
+//     - scratch: batch vector of size n_batch * n_output
+//     - output: the 8 bit output
+// Notes:
+//     - this is used for projection matmul.
+//     - multiplier and shift combined gives the scale.
+//     - assumes input zero point is 0.
+//     - scratch is created for optimization purpose only.
+//       TODO(jianlijianli): this can be removed if some furture optimization
+//       work makes it unnecesssary.
+void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
+                                         const int32_t* bias,
+                                         const int8_t* input_to_gate_weights,
+                                         int32_t multiplier, int32_t shift,
+                                         int32_t n_batch, int32_t n_input,
+                                         int32_t n_output, int32_t output_zp,
+                                         int32_t* scratch, int8_t* output);
 
 void ApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
                     const int32_t* bias, int32_t layer_norm_scale_a,
@@ -121,6 +176,9 @@ void ApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
 
 void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
                   int16_t* output);
+
+void ApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
+                int16_t* output);
 
 void ApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
                 int16_t* output);
@@ -133,6 +191,10 @@ void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
 
 void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
               int n_input, int shift, int8_t* output);
+
+void CwiseMul(const int16_t* input_1, const int16_t* input_2,
+              int32_t multiplier, int32_t shift, int32_t n_batch,
+              int32_t n_input, int32_t output_zp, int8_t* output);
 
 void CwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
               int n_input, int16_t* output);
@@ -172,10 +234,17 @@ float VectorVectorDotProduct(const float* vector1, const float* vector2,
 //  x_2_1 * y_2_1 + x_2_2 * y_2_2 + ... + x_2_vsize * y_2_vsize,
 //  ...
 //  x_nbatch_1 * y_nbatch_1 + ... + x_nbatch_vsize * y_nbatch_vsize]
-void BatchVectorBatchVectorDotProduct(const float* vector1,
-                                      const float* vector2, int v_size,
-                                      int n_batch, float* result,
-                                      int result_stride);
+template <typename T>
+inline void BatchVectorBatchVectorDotProduct(const T* vector1, const T* vector2,
+                                             int v_size, int n_batch, T* result,
+                                             int result_stride) {
+  for (int b = 0; b < n_batch; b++) {
+    *result = VectorVectorDotProduct(vector1, vector2, v_size);
+    vector1 += v_size;
+    vector2 += v_size;
+    result += result_stride;
+  }
+}
 
 // Cwise product of a vector and a batch-vector.
 void VectorBatchVectorCwiseProduct(const float* vector, int v_size,
@@ -211,6 +280,10 @@ void ApplyActivationToVector(const float* vector, int v_size,
 
 // Compute "1.0f - elements of vector" (used in CIFG).
 void Sub1Vector(const float* vector, int v_size, float* result);
+
+// Compute "1.0f - elements of vector" (used in CIFG) for int16 input.
+// "vector" has range [0, 32767] because it is the output of sigmoid function.
+void Sub1Vector(const int16_t* vector, int v_size, int16_t* result);
 
 // Multiply all elements of vector with a scalar.
 void VectorScalarMultiply(const int8_t* vector, int v_size, float scale,

@@ -881,7 +881,7 @@ def TensorCastOp : CastOp<"tensor_cast"> {
     operation is invalid if converting to a mismatching constant dimension.
 
     Convert from unknown rank to rank 2 with unknown dimension sizes.
-       %2 = tensor_cast %1 : tensor<??f32> to tensor<?x?xf32>
+       %2 = tensor_cast %1 : tensor<*xf32> to tensor<?x?xf32>
   }];
 
   let arguments = (ins AnyTensor);
@@ -896,6 +896,60 @@ def TensorCastOp : CastOp<"tensor_cast"> {
     TensorType getType() { return getResult()->getType().cast<TensorType>(); }
   }];
 }
+
+def TensorLoadOp : Std_Op<"tensor_load",
+    [SameOperandsAndResultShape, SameOperandsAndResultElementType]> {
+  let summary = "tensor load operation";
+  let description = [{
+    The "tensor_load" operation creates a tensor from a memref, making an
+    independent copy of the element data. The result value is a tensor whose
+    shape and element type match the memref operand.
+
+    Produce a value of tensor<4x?xf32> type.
+       %12 = tensor_load %10 : memref<4x?xf32, #layout, memspace0>
+  }];
+
+  let arguments = (ins AnyMemRef);
+  let results = (outs AnyTensor);
+  // TensorLoadOp is fully verified by traits.
+  let verifier = ?;
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState *result, Value *memref", [{
+      auto memrefType = memref->getType().cast<MemRefType>();
+      auto resultType = builder->getTensorType(memrefType.getShape(),
+          memrefType.getElementType());
+      result->addOperands(memref);
+      result->addTypes(resultType);
+  }]>];
+
+
+  let extraClassDeclaration = [{
+    /// The result of a tensor_load is always a tensor.
+    TensorType getType() { return getResult()->getType().cast<TensorType>(); }
+  }];
+}
+
+def TensorStoreOp : Std_Op<"tensor_store",
+    [SameOperandsShape, SameOperandsElementType]> {
+  let summary = "tensor store operation";
+  let description = [{
+    The "tensor_store" operation stores the contents of a tensor into a memref.
+    The first operand is a value of tensor type, the second operand is a value
+    of memref type. The shapes and element types of these must match, and are
+    specified by the memref type.
+
+    Example:
+       %9 = dim %8, 1 : tensor<4x?xf32>
+       %10 = alloc(%9) : memref<4x?xf32, #layout, memspace0>
+       tensor_store %8, %10 : memref<4x?xf32, #layout, memspace0>
+  }];
+
+  let arguments = (ins AnyTensor:$tensor, AnyMemRef:$memref);
+  // TensorStoreOp is fully verified by traits.
+  let verifier = ?;
+}
+
 
 def XOrOp : IntArithmeticOp<"xor", [Commutative]> {
   let summary = "integer binary xor";

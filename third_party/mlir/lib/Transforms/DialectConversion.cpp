@@ -265,7 +265,7 @@ Operation *ArgConverter::convertArgument(BlockArgument *origArg,
 /// given input and result types.
 Operation *ArgConverter::createCast(ArrayRef<Value *> inputs, Type outputType) {
   return Operation::create(loc, castOpName, inputs, outputType, llvm::None,
-                           llvm::None, 0, false, outputType.getContext());
+                           llvm::None, 0, false);
 }
 
 //===----------------------------------------------------------------------===//
@@ -820,8 +820,10 @@ OperationLegalizer::legalizePattern(Operation *op, RewritePattern *pattern,
   for (unsigned i = curState.numCreatedOperations,
                 e = rewriterImpl.createdOps.size();
        i != e; ++i) {
-    if (failed(legalize(rewriterImpl.createdOps[i], rewriter))) {
-      LLVM_DEBUG(llvm::dbgs() << "-- FAIL: Generated operation was illegal.\n");
+    Operation *op = rewriterImpl.createdOps[i];
+    if (failed(legalize(op, rewriter))) {
+      LLVM_DEBUG(llvm::dbgs() << "-- FAIL: Generated operation '"
+                              << op->getName() << "' was illegal.\n");
       return cleanupFailure();
     }
   }

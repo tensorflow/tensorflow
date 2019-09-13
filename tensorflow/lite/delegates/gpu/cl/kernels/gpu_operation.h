@@ -41,6 +41,17 @@ struct CreationContext {
   ProgramCache* cache;
 };
 
+struct LinkingContext {
+  // variable(FLT4) name to apply subsequent transformations
+  std::string var_name;
+  // x coordinate name (as it appears in kernel) for variable
+  std::string x_coord;
+  // y coordinate name (as it appears in kernel) for variable
+  std::string y_coord;
+  // z coordinate name (as it appears in kernel) for variable
+  std::string z_coord;
+};
+
 struct OperationDef {
   CalculationsPrecision precision;
   std::vector<TensorDescriptor> src_tensors;
@@ -135,9 +146,7 @@ class ElementwiseOperation : public GPUOperation {
   // ElementwiseOperation to generate right names).
   virtual void SetLinkIndex(int index) {}
 
-  virtual std::string GetCoreCode(const std::string& src,
-                                  const std::string& z_coord,
-                                  const std::string& address) const = 0;
+  virtual std::string GetCoreCode(const LinkingContext& context) const = 0;
   virtual std::string GetArgsDeclaration() const { return ""; }
   virtual Status BindArguments(CLKernel* kernel) { return OkStatus(); }
 
@@ -154,18 +163,8 @@ class ElementwiseOperation : public GPUOperation {
 std::string GetArgsDeclaration(
     const std::vector<ElementwiseOperation*>& linked_ops);
 
-// Generates shader code for every elementwise operation in
-// linked_ops.
-// linked_ops - vector of operations pointers
-// var_name - name of variable in shader code that we update/change
-// z_coord - name of variable in shader code for currently processed Z -
-//   coordinate in 3D grid (WHC/XYZ) for tensor, this coordinate is in
-//   layer/slice(group of 4 channels) space not in channels.
-// global_address - name of variable for coordinates in 3D grid (WHC/XYZ) for
-//   tensor, different tensor layouts encode this address differently.
 std::string PostProcess(const std::vector<ElementwiseOperation*>& linked_ops,
-                        const std::string& var_name, const std::string& z_coord,
-                        const std::string& global_address);
+                        const LinkingContext& context);
 
 // Binds arguments to given kernel for elementwise operations in
 // linked_ops.

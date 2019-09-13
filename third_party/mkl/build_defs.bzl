@@ -1,4 +1,3 @@
-# -*- Python -*-
 """Skylark macros for MKL.
 
 if_mkl is a conditional to check if we are building with MKL.

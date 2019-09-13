@@ -17,7 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "absl/types/variant.h"
+#include "absl/types/optional.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/platform/context.h"
@@ -132,29 +132,20 @@ int ThreadPool::NumShardsUsedByTransformRangeConcurrently(
   return NumShardsUsedByFixedBlockSizeScheduling(total, block_size);
 }
 
-void ThreadPool::ParallelFor(
-    int64 total, SchedulingStrategy strategy,
-    absl::variant<AdaptiveSchedulingParams, FixedBlockSizeSchedulingParams>
-        scheduling_params,
-    const std::function<void(int64, int64)>& fn) {
-  switch (strategy) {
-    case SchedulingStrategy::kUnknown: {
-      // Invalid scheduling strategy. Do nothing.
-      break;
-    }
+void ThreadPool::ParallelFor(int64 total,
+                             const SchedulingParams& scheduling_params,
+                             const std::function<void(int64, int64)>& fn) {
+  switch (scheduling_params.strategy()) {
     case SchedulingStrategy::kAdaptive: {
-      const auto* params =
-          absl::get_if<AdaptiveSchedulingParams>(&scheduling_params);
-      if (params) {
-        ParallelFor(total, params->cost_per_unit, fn);
+      if (scheduling_params.cost_per_unit().has_value()) {
+        ParallelFor(total, *scheduling_params.cost_per_unit(), fn);
       }
       break;
     }
     case SchedulingStrategy::kFixedBlockSize: {
-      const auto* params =
-          absl::get_if<FixedBlockSizeSchedulingParams>(&scheduling_params);
-      if (params) {
-        ParallelForFixedBlockSizeScheduling(params->block_size, total, fn);
+      if (scheduling_params.block_size().has_value()) {
+        ParallelForFixedBlockSizeScheduling(
+            total, *scheduling_params.block_size(), fn);
       }
       break;
     }
@@ -164,14 +155,16 @@ void ThreadPool::ParallelFor(
 void ThreadPool::TransformRangeConcurrently(
     const int64 block_size, const int64 total,
     const std::function<void(int64, int64)>& fn) {
-  ParallelFor(total, SchedulingStrategy::kFixedBlockSize,
-              FixedBlockSizeSchedulingParams(block_size), fn);
+  ParallelFor(total,
+              SchedulingParams(SchedulingStrategy::kFixedBlockSize,
+                               absl::nullopt /* cost_per_unit */, block_size),
+              fn);
 }
 
 // This functionality is similar to parallelFor, except that reasoning about
 // the number of shards used is significantly easier.
 void ThreadPool::ParallelForFixedBlockSizeScheduling(
-    const int64 block_size, const int64 total,
+    const int64 total, const int64 block_size,
     const std::function<void(int64, int64)>& fn) {
   const int num_shards_used =
       NumShardsUsedByFixedBlockSizeScheduling(total, block_size);
@@ -236,18 +229,15 @@ void ThreadPool::ParallelForWithWorkerId(
 }
 
 void ThreadPool::ParallelForWithWorkerId(
-    int64 total, SchedulingStrategy strategy,
-    absl::variant<AdaptiveSchedulingParams, FixedBlockSizeSchedulingParams>
-        scheduling_params,
+    int64 total, const SchedulingParams& scheduling_params,
     const std::function<void(int64, int64, int)>& fn) {
-  ParallelFor(total, strategy, scheduling_params,
-              [this, &fn](int64 start, int64 limit) {
-                // We may use the current thread to do some work synchronously.
-                // When calling CurrentThreadId() from outside of the thread
-                // pool, we get -1, so we can shift every id up by 1.
-                int id = CurrentThreadId() + 1;
-                fn(start, limit, id);
-              });
+  ParallelFor(total, scheduling_params, [this, &fn](int64 start, int64 limit) {
+    // We may use the current thread to do some work synchronously.
+    // When calling CurrentThreadId() from outside of the thread
+    // pool, we get -1, so we can shift every id up by 1.
+    int id = CurrentThreadId() + 1;
+    fn(start, limit, id);
+  });
 }
 
 int ThreadPool::NumThreads() const {

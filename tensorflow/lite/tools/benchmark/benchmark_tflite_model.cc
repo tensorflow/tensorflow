@@ -25,6 +25,7 @@ limitations under the License.
 
 #if defined(__ANDROID__)
 #include "tensorflow/lite/delegates/gpu/gl_delegate.h"
+#include "tensorflow/lite/nnapi/nnapi_util.h"
 #endif
 
 #include "tensorflow/lite/kernels/register.h"
@@ -137,7 +138,7 @@ void FillRandomValue(T* ptr, int num_elements,
 
 void FillRandomString(tflite::DynamicBuffer* buffer,
                       const std::vector<int>& sizes,
-                      const std::function<string()>& random_func) {
+                      const std::function<std::string()>& random_func) {
   int num_elements = 1;
   for (int dim : sizes) {
     num_elements *= dim;
@@ -149,7 +150,7 @@ void FillRandomString(tflite::DynamicBuffer* buffer,
 }
 
 TfLiteStatus PopulateInputLayerInfo(
-    const string& names_string, const string& shapes_string,
+    const std::string& names_string, const std::string& shapes_string,
     std::vector<BenchmarkTfLiteModel::InputLayerInfo>* info) {
   info->clear();
   std::vector<std::string> names = Split(names_string, ',');
@@ -294,18 +295,27 @@ void BenchmarkTfLiteModel::LogParams() {
                    << params_.Get<std::string>("input_layer") << "]";
   TFLITE_LOG(INFO) << "Input shapes: ["
                    << params_.Get<std::string>("input_layer_shape") << "]";
+#if defined(__ANDROID__)
   TFLITE_LOG(INFO) << "Use nnapi : [" << params_.Get<bool>("use_nnapi") << "]";
-  if (params_.HasParam("nnapi_execution_preference")) {
+  if (!params_.Get<std::string>("nnapi_execution_preference").empty()) {
     TFLITE_LOG(INFO) << "nnapi execution preference: ["
-                     << params_.Get<string>("nnapi_execution_preference")
+                     << params_.Get<std::string>("nnapi_execution_preference")
                      << "]";
   }
   TFLITE_LOG(INFO) << "Use legacy nnapi : ["
                    << params_.Get<bool>("use_legacy_nnapi") << "]";
-  if (!params_.Get<std::string>("nnapi_accelerator_name").empty()) {
-    TFLITE_LOG(INFO) << "nnapi accelerator name: ["
-                     << params_.Get<string>("nnapi_accelerator_name") << "]";
+  if (params_.Get<bool>("use_nnapi")) {
+    std::string log_string =
+        "nnapi accelerator name: [" +
+        params_.Get<std::string>("nnapi_accelerator_name") + "]";
+    std::string string_device_names_list = nnapi::GetStringDeviceNamesList();
+    // Print available devices when possible
+    if (!string_device_names_list.empty()) {
+      log_string += " (Available: " + string_device_names_list + ")";
+    }
+    TFLITE_LOG(INFO) << log_string;
   }
+#endif
   TFLITE_LOG(INFO) << "Use gpu : [" << params_.Get<bool>("use_gpu") << "]";
 #if defined(__ANDROID__)
   TFLITE_LOG(INFO) << "Allow lower precision in gpu : ["
@@ -494,6 +504,7 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   }
 
   interpreter_->UseNNAPI(params_.Get<bool>("use_legacy_nnapi"));
+  interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
   delegates_ = GetDelegates();
   for (const auto& delegate : delegates_) {
@@ -525,7 +536,6 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     }
   }
 
-  interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
   auto interpreter_inputs = interpreter_->inputs();
 
@@ -631,12 +641,14 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
     if (!accelerator_name.empty()) {
       options.accelerator_name = accelerator_name.c_str();
     }
-    if (params_.HasParam("nnapi_execution_preference")) {
+    std::string string_execution_preference =
+        params_.Get<std::string>("nnapi_execution_preference");
+    // Only set execution preference if user explicitly passes one. Otherwise,
+    // leave it as whatever NNAPI has as the default.
+    if (!string_execution_preference.empty()) {
       tflite::StatefulNnApiDelegate::Options::ExecutionPreference
           execution_preference =
               tflite::StatefulNnApiDelegate::Options::kUndefined;
-      std::string string_execution_preference =
-          params_.Get<std::string>("nnapi_execution_preference");
       if (string_execution_preference == "low_power") {
         execution_preference =
             tflite::StatefulNnApiDelegate::Options::kLowPower;
@@ -646,8 +658,7 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
       } else if (string_execution_preference == "fast_single_answer") {
         execution_preference =
             tflite::StatefulNnApiDelegate::Options::kFastSingleAnswer;
-      } else if (string_execution_preference == "undefined" ||
-                 string_execution_preference.empty()) {
+      } else if (string_execution_preference == "undefined") {
         execution_preference =
             tflite::StatefulNnApiDelegate::Options::kUndefined;
       } else {
@@ -669,7 +680,7 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
         << "`--use_nnapi=true` must be set for the provided NNAPI accelerator ("
         << params_.Get<std::string>("nnapi_accelerator_name")
         << ") to be used.";
-  } else if (params_.HasParam("nnapi_execution_preference")) {
+  } else if (!params_.Get<std::string>("nnapi_execution_preference").empty()) {
     TFLITE_LOG(WARN) << "`--use_nnapi=true` must be set for the provided NNAPI "
                         "execution preference ("
                      << params_.Get<std::string>("nnapi_execution_preference")

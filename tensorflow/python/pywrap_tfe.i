@@ -75,10 +75,12 @@ limitations under the License.
 %rename("%s") TFE_Py_TapeSetRestartOnThread;
 %rename("%s") TFE_Py_TapeSetIsStopped;
 %rename("%s") TFE_Py_TapeSetIsEmpty;
-%rename("%s") TFE_Py_TapeSetShouldRecord;
+%rename("%s") TFE_Py_TapeSetShouldRecordBackprop;
 %rename("%s") TFE_Py_TapeSetPossibleGradientTypes;
 %rename("%s") TFE_Py_TapeSetDeleteTrace;
 %rename("%s") TFE_Py_TapeSetRecordOperation;
+%rename("%s") TFE_Py_TapeSetRecordOperationBackprop;
+%rename("%s") TFE_Py_TapeSetRecordOperationForwardprop;
 %rename("%s") TFE_Py_TapeGradient;
 %rename("%s") TFE_Py_TapeVariableAccessed;
 %rename("%s") TFE_Py_TapeWatch;
@@ -88,6 +90,8 @@ limitations under the License.
 %rename("%s") TFE_Py_ForwardAccumulatorSetRemove;
 %rename("%s") TFE_Py_ForwardAccumulatorWatch;
 %rename("%s") TFE_Py_ForwardAccumulatorJVP;
+%rename("%s") TFE_Py_ForwardAccumulatorPushState;
+%rename("%s") TFE_Py_ForwardAccumulatorPopState;
 %rename("%s") TFE_Py_PackForwardGradients;
 %rename("%s") TFE_NewContextOptions;
 %rename("%s") TFE_ContextOptionsSetConfig;

@@ -40,7 +40,8 @@ static bool OpQuantSpecWriter(raw_ostream &os, RecordKeeper &records) {
       "FixedResultUniformScale<([0-9]+).*(true|false)>"};
   emitSourceFileHeader("Generated Ops Quant Spec Getters", os);
 
-  // Retrieve all the definitions derived from TFL_Op and sort by record name.
+  // Retrieve all the definitions derived from Op defintion and sort by record
+  // name.
   std::vector<Record *> defs = records.getAllDerivedDefinitions("Op");
   llvm::sort(defs, LessRecord());
 
@@ -53,8 +54,7 @@ static bool OpQuantSpecWriter(raw_ostream &os, RecordKeeper &records) {
     for (const auto t : op.getTraits()) {
       if (auto opTrait = llvm::dyn_cast<mlir::tblgen::NativeOpTrait>(&t)) {
         auto trait = opTrait->getTrait();
-        // We only handle TFL specific native op traits.
-        if (!trait.consume_front("OpTrait::TFL::")) continue;
+        if (!trait.consume_front("OpTrait::quant::")) continue;
 
         OUT(2) << "if (auto tfl = llvm::dyn_cast<" << op.getQualCppClassName()
                << ">(op)) {\n";
@@ -73,7 +73,7 @@ static bool OpQuantSpecWriter(raw_ostream &os, RecordKeeper &records) {
           OUT(4) << "for (int i = 0, e = op->getNumResults(); i != e; ++i)\n";
           OUT(6) << "spec->restricted_output_params[std::make_pair("
                  << matches[1] << ", " << matches[2]
-                 << ")].push_back(tfl.OpTrait::TFL::" << trait << "<"
+                 << ")].push_back(tfl.OpTrait::quant::" << trait << "<"
                  << op.getQualCppClassName()
                  << ">::GetResultQuantizedType(i));\n";
           matches.clear();

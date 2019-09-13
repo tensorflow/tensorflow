@@ -426,7 +426,6 @@ tf_cc_test(
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:device_tracer",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -458,5 +457,26 @@ tf_cuda_library(
         "//tensorflow/core/platform:annotation",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "parse_annotation",
+    srcs = ["parse_annotation.cc"],
+    hdrs = ["parse_annotation.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "parse_annotation_test",
+    srcs = ["parse_annotation_test.cc"],
+    deps = [
+        ":parse_annotation",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )

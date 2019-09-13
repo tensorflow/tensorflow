@@ -2176,7 +2176,7 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds,
         }
       }
     }
-    if (NumNonControlInputs(node) == 0) {
+    if (!HasRegularInputs(node)) {
       primary_inputs.insert(&node);
     } else if (IsMerge(node)) {
       merge_nodes.insert(&node);

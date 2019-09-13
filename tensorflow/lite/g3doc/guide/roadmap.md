@@ -1,6 +1,6 @@
 # TensorFlow Lite 2019 Roadmap
 
-**Updated: March 6th, 2019**
+**Updated: August 29, 2019**
 
 The following represents a high level overview of our 2019 plan. You should be
 conscious that this roadmap may change at anytime relative to a range of factors
@@ -14,64 +14,68 @@ roadmap and provide us feedback in the TF Lite discussion groups and forums.
 
 ## Usability
 
-*   **More ops coverage**
-    *   Prioritize many more ops based on user feedback
-*   **Op versioning & signatures**
-    *   Op kernels will get version numbers
-    *   Op kernels will be identifiable by signature
-*   **New Convertor**
-    *   Implementing a new TensorFlow Lite convertor that will better handle
-        graph conversion (i.e. control flow, conditionals etc) and replace TOCO
-*   **Continue to improve TF Select Ops**
-    *   Support more types of conversion utilizing TF Selects such as hash
-        tables, strings etc.
-    *   Support smaller binary size when using select TF ops via op stripping
+*   **New model converter**
+    *   New MLIR-based TensorFlow Lite convertor that better handles graph
+    conversion (e.g., control flow, conditionals, etc...)
+    *   Improved diagnostics and debugging of model conversion failures
+*   **Expanded ops coverage**
+    *   Prioritized op additions based on user feedback
+*   **Improvements to using TensorFlow ops in TensorFlow Lite**
+    *   Pre-built libraries available via Bintray (Android) and Cocoapods (iOS)
+    *   Smaller binary size when using select TF ops via op stripping
 *   **LSTM / RNN support**
-    *   Add full support of conversion for LSTMs and RNNs
-*   **Graph Visualization Tooling**
-    *   Provide enhanced graph visualization tooling
+    *   Full support of conversion for LSTMs and RNNs
 *   **Pre-and-post processing support**
-    *   Add more support for pre-and-post processing of inference
+    *   New support library for model-specific pre-and-post processing
+    *   Utilities for common platform-specific functionality, e.g., loading a
+    model efficiently from assets, or converting a Bitmap to a tensor
 *   **Control Flow & Training on-device**
-    *   Add support for control flow related ops
-    *   Add support for training on-device
-*   **New APIs**
-    *   New C API as core for language bindings and most clients
-    *   Objective-C API for iOS
-    *   SWIFT API for iOS
-    *   Updated Java API for Android
-    *   C# Unity language bindings
-*   **Add more Models**
-    *   Add more models to the support section of the site
+    *   Support for control flow related ops
+    *   Support for training on-device, focused on personalization and transfer
+    learning
+*   **Graph visualization tooling**
+    *   Provide enhanced graph visualization tooling
+*   **More models and examples**
+    *   More models on the support section of the site
+    *   Additional examples to demonstrate model usage as well as new features
+    and APIs, covering different platforms.
+    *   Model customization libraries and tutorials to let beginners to
+    customize those models easily.
 
 ## Performance
 
-*   **More hardware delegates**
-    *   Add support for more hardware delegates
-*   **Support NN API**
-    *   Continually support and improve support for NN API
-*   **Framework Extensibility**
-    *   Enable simplistic overwriting of CPU kernels with customized optimized
-        versions
-*   **GPU Delegate**
-    *   Continue to extend the total support ops for OpenGL and Metal ops
-    *   Open-source
-*   **Improve TFLite CPU performance**
-    *   Optimizations for float and quantized models
+*   **Better tooling**
+    *   Simpler benchmarking and profiling tools for understanding available
+    accelerators and performance tradeoffs
+    *   Public dashboard for tracking performance gains with each release
+*   **Improved CPU performance**
+    *   Continued optimization of float and quantized kernels
+    *   First-class x86 support
+*   **Updated NN API support**
+    *   Full support for new Android Q NN API features, ops and types
+*   **GPU backend optimizations**
+    *   OpenCL and Vulkan support on Android
+    *   Metal and Objective-C CocoaPods for Metal acceleration
+*   **Hexagon DSP backend**
+    *   Initial release of DSP acceleration for pre-Android P devices
 
 ## Optimization
 
-*   **Model Optimization Toolkit**
-    *   Post training quantization + hybrid kernels
-    *   Post Training quantization + fixed-point kernels
-    *   Training with quantization
-*   **More support for more techniques**
-    *   RNN Support
-    *   Sparsity/Pruning
-    *   Lower bit-width support
+*   **Quantization**
+    *   Post training quantization for hybrid kernels -- [Launched](https://medium.com/tensorflow/introducing-the-model-optimization-toolkit-for-tensorflow-254aca1ba0a3){:.external}
+    *   Post training quantization for (8b) fixed-point kernels -- [Launched](https://medium.com/tensorflow/tensorflow-model-optimization-toolkit-post-training-integer-quantization-b4964a1ea9ba){:.external}
+    *   Training with quantization for (8b) fixed-point kernels
+    *   Extend post and during training APIs to (8b) fixed-point RNNs
+    *   Training with quantization for low bit-width (< 8b) fixed-point kernels
+*   **Pruning / sparsity**
+    *   Magnitude based weight pruning during training -- [Launched](https://medium.com/tensorflow/tensorflow-model-optimization-toolkit-pruning-api-42cac9157a6a){:.external}
+    *   Support for sparse model execution
 
 ## Portability
 
 *   **Microcontroller Support**
-    *   Add support for a range of 8-bit, 16-bit and 32-bit MCU architecture use
-        cases for Speech and Image Classification
+    *   Add support for a range of 32-bit MCU architecture use cases for Speech
+    and Image Classification
+    *   Sample code and models for vision and audio data
+    *   Full TF Lite op support on microcontrollers
+    *   Support for more platforms, including CircuitPython support

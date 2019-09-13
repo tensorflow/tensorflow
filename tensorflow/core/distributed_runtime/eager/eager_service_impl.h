@@ -84,8 +84,11 @@ class EagerServiceImpl {
   Status CreateMasterContext(const tensorflow::uint64 context_id,
                              EagerContext* context);
 
+  static const uint64 kInvalidStreamId = 0;
+
   // Used by both Enqueue and StreamingEnqueue RPCs.
-  Status Enqueue(const EnqueueRequest* request, EnqueueResponse* response);
+  Status Enqueue(const EnqueueRequest* request, EnqueueResponse* response,
+                 uint64 stream_id = kInvalidStreamId);
 
   Status WaitQueueDone(const WaitQueueDoneRequest* request,
                        WaitQueueDoneResponse* response);
@@ -186,6 +189,13 @@ class EagerServiceImpl {
 
     void Abort(Status status) override {}
 
+    string DebugString() const override {
+      string out = "[ClientTensorHandleDeleteNode]";
+      strings::StrAppend(&out, " op_id: ", handle_to_delete_->op_id);
+      strings::StrAppend(&out, ", output_num: ", handle_to_delete_->output_num);
+      return out;
+    }
+
    private:
     // Owns one reference.
     ServerContext* const context_;
@@ -194,6 +204,7 @@ class EagerServiceImpl {
 
  private:
   Status ExecuteOp(const Operation& operation, EagerContext* eager_context,
+                   EagerExecutor* eager_executor,
                    QueueResponse* queue_response);
   Status SendTensor(const SendTensorOp& send_tensor,
                     EagerContext* eager_context);

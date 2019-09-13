@@ -100,7 +100,8 @@ mlir::OwningModuleRef SavedModelToMlirImport(
       std::string(saved_model_dir.data(), saved_model_dir.length()), tags,
       &bundle);
   if (!load_status.ok()) {
-    LOG(ERROR) << "Failed to load saved model: " << saved_model_dir;
+    LOG(ERROR) << "Failed to load saved model '" << saved_model_dir
+               << "': " << load_status;
     return nullptr;
   }
 

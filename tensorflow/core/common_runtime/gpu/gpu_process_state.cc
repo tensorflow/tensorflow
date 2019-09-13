@@ -125,9 +125,11 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
     // If true, checks for memory overwrites by writing
     // distinctive patterns on both ends of allocated memory.
     if (useCudaMemoryGuardAllocator()) {
+      LOG(INFO) << "Using memory guard allocator for GPU.";
       gpu_allocator = new GPUDebugAllocator(gpu_allocator, platform_gpu_id);
       gpu_allocator = new GPUNanResetAllocator(gpu_allocator, platform_gpu_id);
     } else if (useCudaMallocAllocator()) {
+      LOG(INFO) << "Using CUDA malloc allocator for GPU.";
       // If true, passes all allocation requests through to cudaMalloc
       // useful for doing memory debugging with tools like cuda-memcheck
       // **WARNING** probably will not work in a multi-gpu scenario

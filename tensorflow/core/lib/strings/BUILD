@@ -29,26 +29,15 @@ cc_library(
 
 cc_library(
     name = "string_utils",
-    srcs = [
-        "numbers.cc",
-        "strcat.cc",
-    ],
     hdrs = [
         "numbers.h",
         "str_util.h",
         "strcat.h",
     ],
     deps = [
-        "//tensorflow/core/lib/gtl:stl_util",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:numbers",
         "//tensorflow/core/platform:str_util",
-        "//tensorflow/core/platform:stringpiece",
-        "//tensorflow/core/platform:stringprintf",
-        "//tensorflow/core/platform:types",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
-        "@double_conversion//:double-conversion",
+        "//tensorflow/core/platform:strcat",
     ],
 )
 
@@ -78,11 +67,9 @@ filegroup(
     name = "legacy_lib_strings_all_srcs",
     srcs = [
         "base64.cc",
-        "numbers.cc",
         "ordered_code.cc",
         "proto_serialization.cc",
         "proto_text_util.cc",
-        "strcat.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -91,10 +78,8 @@ filegroup(
     name = "legacy_lib_strings_all_tests",
     srcs = [
         "base64_test.cc",
-        "numbers_test.cc",
         "ordered_code_test.cc",
         "proto_serialization_test.cc",
-        "strcat_test.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -145,8 +130,6 @@ filegroup(
     name = "legacy_low_level_library_tests",
     srcs = [
         "base64_test.cc",
-        "numbers_test.cc",
-        "strcat_test.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

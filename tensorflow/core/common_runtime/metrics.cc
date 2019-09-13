@@ -61,6 +61,18 @@ auto* tf_data_elements_counter = monitoring::Counter<1>::New(
 auto* tf_data_optimization_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/optimization", "tf.data optimization", "name");
 
+auto* parse_dense_feature_counter = monitoring::Counter<0>::New(
+    "/tensorflow/data/dense_feature",
+    "The number of dense features parsed by ops for parsing tf.Example.");
+
+auto* parse_sparse_feature_counter = monitoring::Counter<0>::New(
+    "/tensorflow/data/sparse_feature",
+    "The number of sparse features parsed by ops for parsing tf.Example.");
+
+auto* parse_ragged_feature_counter = monitoring::Counter<0>::New(
+    "/tensorflow/data/ragged_feature",
+    "The number of ragged features parsed by ops for parsing tf.Example.");
+
 auto* build_graph_calls = monitoring::Counter<0>::New(
     "/tensorflow/core/graph_build_calls",
     "The number of times TensorFlow has created a new client graph. "
@@ -103,6 +115,18 @@ void RecordTFDataElements(const string& name, int64 num_elements) {
 
 void RecordTFDataOptimization(const string& name, int64 num_changes) {
   tf_data_optimization_counter->GetCell(name)->IncrementBy(num_changes);
+}
+
+void RecordParseDenseFeature(int64 num_features) {
+  parse_dense_feature_counter->GetCell()->IncrementBy(num_features);
+}
+
+void RecordParseSparseFeature(int64 num_features) {
+  parse_sparse_feature_counter->GetCell()->IncrementBy(num_features);
+}
+
+void RecordParseRaggedFeature(int64 num_features) {
+  parse_ragged_feature_counter->GetCell()->IncrementBy(num_features);
 }
 
 void RecordGraphInputTensors(const size_t size) {

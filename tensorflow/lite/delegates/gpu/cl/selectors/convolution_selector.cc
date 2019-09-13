@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_buffer_1x1.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_constants.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/conv_powervr.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_texture.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
@@ -35,7 +36,14 @@ Status SelectConvolutionTextureArray(const Convolution2DAttributes& attr,
                                      const OperationDef& op_def,
                                      ModelHints hints,
                                      std::unique_ptr<GPUOperation>* ptr) {
-  if (IsConvConstantsSupported(*creation_context.device, op_def, attr)) {
+  if (creation_context.device->IsPowerVR()) {
+    ConvPowerVR conv;
+    RETURN_IF_ERROR(CreateConvPowerVR(creation_context, op_def, attr, &conv));
+    *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
+    return OkStatus();
+  }
+  if (creation_context.device->IsAdreno() &&
+      IsConvConstantsSupported(*creation_context.device, op_def, attr)) {
     ConvConstants conv;
     RETURN_IF_ERROR(CreateConvConstants(creation_context, op_def, attr, &conv));
     *ptr = absl::make_unique<ConvConstants>(std::move(conv));
@@ -52,7 +60,14 @@ Status SelectConvolutionTexture2D(const Convolution2DAttributes& attr,
                                   const CreationContext& creation_context,
                                   const OperationDef& op_def,
                                   std::unique_ptr<GPUOperation>* ptr) {
-  if (IsConvConstantsSupported(*creation_context.device, op_def, attr)) {
+  if (creation_context.device->IsPowerVR()) {
+    ConvPowerVR conv;
+    RETURN_IF_ERROR(CreateConvPowerVR(creation_context, op_def, attr, &conv));
+    *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
+    return OkStatus();
+  }
+  if (creation_context.device->IsAdreno() &&
+      IsConvConstantsSupported(*creation_context.device, op_def, attr)) {
     ConvConstants conv;
     RETURN_IF_ERROR(CreateConvConstants(creation_context, op_def, attr, &conv));
     *ptr = absl::make_unique<ConvConstants>(std::move(conv));
@@ -68,7 +83,18 @@ Status SelectConvolutionBuffer(const Convolution2DAttributes& attr,
                                const CreationContext& creation_context,
                                const OperationDef& op_def,
                                std::unique_ptr<GPUOperation>* ptr) {
-  if (IsConvBuffer1x1Supported(op_def, attr)) {
+  if (creation_context.device->IsPowerVR()) {
+    ConvPowerVR conv;
+    RETURN_IF_ERROR(CreateConvPowerVR(creation_context, op_def, attr, &conv));
+    *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
+    return OkStatus();
+  }
+  if (creation_context.device->IsAdreno() &&
+      IsConvConstantsSupported(*creation_context.device, op_def, attr)) {
+    ConvConstants conv;
+    RETURN_IF_ERROR(CreateConvConstants(creation_context, op_def, attr, &conv));
+    *ptr = absl::make_unique<ConvConstants>(std::move(conv));
+  } else if (IsConvBuffer1x1Supported(op_def, attr)) {
     ConvBuffer1x1 conv;
     RETURN_IF_ERROR(CreateConvBuffer1x1(creation_context, op_def, attr, &conv));
     *ptr = absl::make_unique<ConvBuffer1x1>(std::move(conv));

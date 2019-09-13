@@ -21,8 +21,12 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 
 namespace mlir {
-class FunctionPassBase;
-class ModulePassBase;
+class FuncOp;
+class ModuleOp;
+template <typename T>
+class OpPassBase;
+using FunctionPassBase = OpPassBase<FuncOp>;
+using ModulePassBase = OpPassBase<ModuleOp>;
 
 namespace TFL {
 
@@ -63,6 +67,10 @@ std::unique_ptr<FunctionPassBase> CreatePrepareCompositeFunctionsPass();
 
 // Creates a instance of the TensorFlow Lite dialect ExtractOphint pass.
 std::unique_ptr<ModulePassBase> CreateExtractOphintPass();
+
+// Creates a instance of the TensorFlow Lite dialect LegalizeOphintFuncOpPass
+// pass. The composite op is created from the ophint extraction pass.
+std::unique_ptr<ModulePassBase> CreateLegalizeOphintFuncOpPass();
 
 }  // namespace TFL
 

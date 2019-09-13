@@ -318,6 +318,7 @@ Token Lexer::lexNumber(const char *tokStart) {
 ///   block-id      ::= '^' suffix-id
 ///   type-id       ::= '!' suffix-id
 ///   suffix-id     ::= digit+ | (letter|id-punct) (letter|id-punct|digit)*
+///   id-punct      ::= `$` | `.` | `_` | `-`
 ///
 Token Lexer::lexPrefixedIdentifier(const char *tokStart) {
   Token::Kind kind;

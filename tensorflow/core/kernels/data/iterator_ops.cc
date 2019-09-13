@@ -355,9 +355,10 @@ FunctionLibraryRuntime* IteratorHandleOp::CreatePrivateFLR(
   // in its resource manager. The existing device will outlive the
   // IteratorResource, because we are storing the IteratorResource
   // in that device's resource manager.
-  *device_mgr = absl::make_unique<DeviceMgr>(RenamedDevice::NewRenamedDevice(
-      ctx->device()->name(), down_cast<Device*>(ctx->device()),
-      false /* owns_underlying */, false /* isolate_session_state */));
+  *device_mgr =
+      absl::make_unique<StaticDeviceMgr>(RenamedDevice::NewRenamedDevice(
+          ctx->device()->name(), down_cast<Device*>(ctx->device()),
+          false /* owns_underlying */, false /* isolate_session_state */));
   *flib_def = absl::make_unique<FunctionLibraryDefinition>(
       *ctx->function_library()->GetFunctionLibraryDefinition());
   *pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(

@@ -2420,7 +2420,6 @@ class FloorDiv : public SimpleOperator<FloorDivOperator> {
   }
 };
 
-// LINT.ThenChange(//tensorflow/lite/toco/tflite/op_version.cc)
 
 namespace {
 // Build a vector containing all the known operators.
@@ -2659,6 +2658,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   return ops;
 }
 }  // namespace
+
+// LINT.ThenChange(//tensorflow/lite/toco/tflite/op_version.cc)
 
 std::map<OperatorType, std::unique_ptr<BaseOperator>> BuildOperatorByTypeMap(
     bool enable_select_tf_ops) {

@@ -1270,12 +1270,65 @@ ops.Tensor._override_operator("__gt__", gen_math_ops.greater)
 ops.Tensor._override_operator("__ge__", gen_math_ops.greater_equal)
 
 
+@tf_export("math.equal", "equal")
+@dispatch.add_dispatch_support
+def equal(x, y, name=None):
+  """Returns the truth value of (x == y) element-wise.
+
+  Usage:
+
+  ```python
+  x = tf.constant([2, 4])
+  y = tf.constant(2)
+  tf.math.equal(x, y) ==> array([True, False])
+
+  x = tf.constant([2, 4])
+  y = tf.constant([2, 4])
+  tf.math.equal(x, y) ==> array([True,  True])
+  ```
+
+  **NOTE**: `Equal` supports broadcasting. More about broadcasting [here](
+  https://docs.scipy.org/doc/numpy-1.13.0/user/basics.broadcasting.html)
+
+  Args:
+    x: A `Tensor` or `SparseTensor` or `IndexedSlices`.
+    y: A `Tensor` or `SparseTensor` or `IndexedSlices`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type bool with the same size as that of x or y.
+  """
+  return gen_math_ops.equal(x, y, name=name)
+
+
+@tf_export("math.not_equal", "not_equal")
+@dispatch.add_dispatch_support
+def not_equal(x, y, name=None):
+  """Returns the truth value of (x != y) element-wise.
+
+  **NOTE**: `NotEqual` supports broadcasting. More about broadcasting [here](
+  https://docs.scipy.org/doc/numpy-1.13.0/user/basics.broadcasting.html)
+
+  Args:
+    x: A `Tensor` or `SparseTensor` or `IndexedSlices`.
+    y: A `Tensor` or `SparseTensor` or `IndexedSlices`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type bool with the same size as that of x or y.
+  """
+  return gen_math_ops.not_equal(x, y, name=name)
+
+
 def tensor_equals(self, other):
   """Compares two tensors element-wise for equality."""
   g = getattr(self, "graph", None)
   if (ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions() and
       (g is None or g._building_function)):  # pylint: disable=protected-access
-    return gen_math_ops.equal(self, other)
+    if fwd_compat.forward_compatible(2019, 9, 25):
+      return gen_math_ops.equal(self, other, incompatible_shape_error=False)
+    else:
+      return gen_math_ops.equal(self, other)
   else:
     # In legacy graph mode, tensor equality is object equality
     return self is other
@@ -1284,7 +1337,10 @@ def tensor_equals(self, other):
 def tensor_not_equals(self, other):
   """Compares two tensors element-wise for equality."""
   if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():
-    return gen_math_ops.not_equal(self, other)
+    if fwd_compat.forward_compatible(2019, 9, 25):
+      return gen_math_ops.not_equal(self, other, incompatible_shape_error=False)
+    else:
+      return gen_math_ops.not_equal(self, other)
   else:
     # In legacy graph mode, tensor equality is object equality
     return self is not other
@@ -2733,7 +2789,7 @@ def matvec(a,
 
   # `a` * `b`
   # [ 58,  64]
-  c = tf.matvec(a, b)
+  c = tf.linalg.matvec(a, b)
 
 
   # 3-D tensor `a`
@@ -2753,7 +2809,7 @@ def matvec(a,
   # `a` * `b`
   # [[ 86, 212],
   #  [410, 563]]
-  c = tf.matvec(a, b)
+  c = tf.linalg.matvec(a, b)
   ```
 
   Args:
@@ -2954,13 +3010,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   Optionally, pass `shape` and `tensor_dtype` for shape and type checking,
   otherwise, these are inferred.
 
-  `accumulate_n` performs the same operation as `tf.math.add_n`, but
-  does not wait for all of its inputs to be ready before beginning to sum.
-  This approach can save memory if inputs are ready at different times, since
-  minimum temporary storage is proportional to the output size rather than the
-  inputs' size.
-
-  `accumulate_n` is differentiable (but wasn't previous to TensorFlow 1.7).
+  `accumulate_n` performs the same operation as `tf.math.add_n`.
 
   For example:
 
@@ -3020,14 +3070,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
     return inputs[0]
   elif len(inputs) == 1 and name is not None:
     return array_ops.identity(inputs[0], name=name)
-  elif context.executing_eagerly():
-    # TemporaryVariable not currently supported in eager mode; fall back
-    # onto AddN for now.
-    # TODO(frreiss) remove this once the lifetime of eager variables gets
-    # addressed
-    return add_n(inputs, name=name)
-  else:
-    return gen_math_ops.accumulate_nv2(inputs, name=name, shape=shape)  # pylint: disable=protected-access
+  return add_n(inputs, name=name)
 
 
 @ops.RegisterGradient("AccumulateNV2")

@@ -26,9 +26,9 @@ limitations under the License.
 // directives can be embedded into the same file as the source.
 TEST(SavedModel, HalfPlusTwo) {
   const char kSavedModel[] = "cc/saved_model/testdata/half_plus_two/00000123";
-  const string saved_model_dir = tensorflow::io::JoinPath(
+  const std::string saved_model_dir = tensorflow::io::JoinPath(
       tensorflow::testing::TensorFlowSrcRoot(), kSavedModel);
-  std::unordered_set<string> tags{tensorflow::kSavedModelTagServe};
+  std::unordered_set<std::string> tags{tensorflow::kSavedModelTagServe};
 
   mlir::MLIRContext context;
   auto module = tensorflow::SavedModelToMlirImport(

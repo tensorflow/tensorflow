@@ -8,8 +8,7 @@ package(
 )
 
 # Todo(bmzhao): Remaining targets to add to this BUILD file are:
-# arena, blocking_counter, errors, notification, status, threadpool
-# threadpool_interface, threadpool_options, + all tests.
+# arena, threadpool + all tests.
 
 cc_library(
     name = "bitmap",
@@ -18,6 +17,15 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
+    ],
+)
+
+cc_library(
+    name = "blocking_counter",
+    hdrs = ["blocking_counter.h"],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:mutex",
     ],
 )
 
@@ -43,6 +51,26 @@ cc_library(
 )
 
 cc_library(
+    name = "errors",
+    hdrs = ["errors.h"],
+    deps = [
+        ":status",
+        "//tensorflow/core/lib/strings:string_utils",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:macros",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "notification",
+    hdrs = ["notification.h"],
+    deps = [
+        "//tensorflow/core/platform:notification",
+    ],
+)
+
+cc_library(
     name = "raw_coding",
     hdrs = ["raw_coding.h"],
     deps = [
@@ -58,10 +86,45 @@ cc_library(
 )
 
 cc_library(
+    name = "status",
+    srcs = ["status.cc"],
+    hdrs = ["status.h"],
+    deps = [
+        ":error_codes_proto_cc",
+        "//tensorflow/core/lib/strings:string_utils",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:stringpiece",
+        "//tensorflow/core/platform:stringprintf",
+        "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/base",
+    ],
+)
+
+cc_library(
     name = "stringpiece",
     hdrs = ["stringpiece.h"],
     deps = [
         "//tensorflow/core/platform:stringpiece",
+    ],
+)
+
+cc_library(
+    name = "threadpool_interface",
+    hdrs = ["threadpool_interface.h"],
+    deps = [
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:types",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "threadpool_options",
+    hdrs = ["threadpool_options.h"],
+    deps = [
+        ":threadpool_interface",
     ],
 )
 

@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import _pywrap_stat_summarizer
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
@@ -36,7 +36,8 @@ class StatSummarizerTest(test.TestCase):
       product = math_ops.matmul(matrix1, matrix2, name=r"product")
 
       graph_def = graph.as_graph_def()
-      ss = pywrap_tensorflow.NewStatSummarizer(graph_def.SerializeToString())
+      ss = _pywrap_stat_summarizer.StatSummarizer(
+          graph_def.SerializeToString())
 
       with self.cached_session() as sess:
         sess.run(variables.global_variables_initializer())
@@ -68,8 +69,6 @@ class StatSummarizerTest(test.TestCase):
 
       # Test that a CDF summed to 100%
       self.assertRegexpMatches(output_string, r"100\.")
-
-      pywrap_tensorflow.DeleteStatSummarizer(ss)
 
 
 if __name__ == "__main__":

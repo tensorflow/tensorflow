@@ -51,12 +51,13 @@ cc_library(
     hdrs = [
         "memory_management.h",
         "memory_management/equality_assignment.h",
-        "memory_management/greedy_assignment.h",
         "memory_management/greedy_by_breadth_assignment.h",
         "memory_management/greedy_by_size_assignment.h",
+        "memory_management/greedy_in_order_assignment.h",
         "memory_management/internal.h",
         "memory_management/min_cost_flow_assignment.h",
         "memory_management/naive_assignment.h",
+        "memory_management/types.h",
     ],
     deps = [
         ":shape",

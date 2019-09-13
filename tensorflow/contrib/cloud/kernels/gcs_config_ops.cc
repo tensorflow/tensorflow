@@ -83,8 +83,9 @@ class GcsCredentialsOpKernel : public OpKernel {
     RetryingGcsFileSystem* gcs = nullptr;
     OP_REQUIRES_OK(ctx, RetrieveGcsFs(ctx, &gcs));
 
-    string json_string;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "json", &json_string));
+    tstring json_string;
+    OP_REQUIRES_OK(ctx,
+                   ParseScalarArgument<tstring>(ctx, "json", &json_string));
 
     Json::Value json;
     Json::Reader reader;

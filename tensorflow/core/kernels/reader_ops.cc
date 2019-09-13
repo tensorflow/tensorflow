@@ -90,9 +90,12 @@ class ReaderReadOp : public ReaderVerbAsyncOpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output("value", TensorShape({}), &value));
 
-    auto key_scalar = key->scalar<string>();
-    auto value_scalar = value->scalar<string>();
-    reader->Read(queue, &key_scalar(), &value_scalar(), context);
+    auto key_scalar = key->scalar<tstring>();
+    auto value_scalar = value->scalar<tstring>();
+    tstring key_out, val_out;
+    reader->Read(queue, &key_out, &val_out, context);
+    key_scalar() = key_out;
+    value_scalar() = val_out;
   }
 };
 
@@ -115,9 +118,9 @@ class ReaderReadUpToOp : public ReaderVerbAsyncOpKernel {
                    GetResourceFromContext(context, "queue_handle", &queue));
     core::ScopedUnref unref_me(queue);
 
-    std::vector<string> keys_vec;
+    std::vector<tstring> keys_vec;
     keys_vec.reserve(num_records);
-    std::vector<string> values_vec;
+    std::vector<tstring> values_vec;
     values_vec.reserve(num_records);
 
     int64 num_actually_read =
@@ -200,7 +203,7 @@ class ReaderSerializeStateOp : public ReaderVerbSyncOpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output("state", TensorShape({}), &output));
     OP_REQUIRES_OK(context,
-                   reader->SerializeState(&output->scalar<string>()()));
+                   reader->SerializeState(&output->scalar<tstring>()()));
   }
 };
 

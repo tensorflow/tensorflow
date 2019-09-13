@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -55,6 +56,15 @@ class HloFunctionImporter {
         function_map_(function_map) {}
 
   StatusOr<mlir::FuncOp> ImportFunction(xla::HloComputation* computation);
+
+  // Imports the given computation in the specified region.
+  tensorflow::Status ImportComputation(HloComputation* computation,
+                                       mlir::Region* region);
+
+  // Imports instructions from the given computation in the specified block.
+  // Assumes that the block already has correct arguments populated.
+  tensorflow::Status ImportInstructions(HloComputation* computation,
+                                        mlir::Block* block);
 
   // Imports an instruction.
   StatusOr<mlir::Operation*> ImportInstruction(xla::HloInstruction* instruction,
@@ -95,8 +105,9 @@ class HloFunctionImporter {
   // Converts Array ref to an ElementsAttr.
   mlir::ElementsAttr Convert(llvm::ArrayRef<int64_t> op_dimensions);
 
-  // Ensures dot instruction has only default contracting and batch dimensions.
-  Status ValidateDotDimensions(xla::HloInstruction* instruction);
+  // Converts the dot dimensions to attributes.
+  mlir::xla_hlo::DotDimensionNumbers ConvertDotDimensionNumbers(
+      xla::HloInstruction* instruction);
 
   mlir::MLIRContext* context_;
   mlir::ModuleOp module_;

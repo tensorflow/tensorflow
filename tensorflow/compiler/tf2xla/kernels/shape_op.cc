@@ -119,7 +119,9 @@ class SizeOp : public XlaOpKernel {
     xla::XlaBuilder* builder = ctx->builder();
     auto size = xla::One(builder, xla::U32);
     for (int64 i = 0; i < rank; ++i) {
-      size = xla::Mul(size, xla::GetDimensionSize(ctx->Input(0), i));
+      size = xla::Mul(
+          size, xla::ConvertElementType(xla::GetDimensionSize(ctx->Input(0), i),
+                                        xla::U32));
     }
     size = xla::ConvertElementType(size, ctx->output_xla_type(0));
     ctx->SetOutput(0, size);

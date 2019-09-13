@@ -32,11 +32,12 @@ static Type GetQuantizedType(Builder builder, Type input_type, double min,
                              double max, int storage_type_width,
                              bool narrow_range, bool is_signed) {
   auto converter =
-      quant::ExpressedToUniformQuantizedConverter::forInputType(input_type);
+      quant::ExpressedToQuantizedConverter::forInputType(input_type);
 
   quant::UniformQuantizedType quantizedEleType = quant::fakeQuantAttrsToType(
       builder.getUnknownLoc(), storage_type_width, min, max, narrow_range,
       converter.expressedType, is_signed);
+  if (!quantizedEleType) return {};
   return converter.convert(quantizedEleType);
 }
 
@@ -79,20 +80,24 @@ Type GetUniformQuantizedTypeForElementsAttr(ElementsAttr attr,
   double min = std::numeric_limits<double>::max();
   double max = std::numeric_limits<double>::min();
   if (auto fp = attr.dyn_cast<DenseFPElementsAttr>()) {
-    for (auto it = fp.begin(), e = fp.end(); it != e; ++it) {
-      double ele_value = FloatAttr::getValueAsDouble(*it);
-      min = std::min(min, ele_value);
-      max = std::max(max, ele_value);
+    // If all the element values are same we don't need to scan the content.
+    if (fp.isSplat()) {
+      min = max =
+          FloatAttr::getValueAsDouble(fp.getSplatValue<llvm::APFloat>());
+    } else {
+      for (auto it = fp.begin(), e = fp.end(); it != e; ++it) {
+        double ele_value = FloatAttr::getValueAsDouble(*it);
+        min = std::min(min, ele_value);
+        max = std::max(max, ele_value);
+      }
     }
-    // The range must straddle zero.
-    if (min > 0.0 || max < 0.0) return {};
     auto type = GetQuantizedType(builder, attr.getType(), min, max,
                                  storage_type_width, narrow_range, is_signed);
     if (auto ele_type = type.dyn_cast_or_null<TensorType>())
       return ele_type.getElementType();
   }
 
-  // The range from SplatElementAttr and other element attribute types  couldn't
+  // The range from SplatElementAttr and other element attribute types couldn't
   // straddle zero, so the quantization parameters couldn't be derived from its
   // range.
   return {};

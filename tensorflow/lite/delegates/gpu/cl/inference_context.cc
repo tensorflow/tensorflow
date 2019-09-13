@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/memory_management.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
+#include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/add_bias.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
@@ -53,21 +54,20 @@ bool IsReady(const std::unordered_set<ValueId>& ready_tensors,
 std::vector<std::pair<ValueId, TensorDescriptor>> GetCLNodeTensors(
     const CLNode& node) {
   std::vector<std::pair<ValueId, TensorDescriptor>> result;
-  for (int i = 0; i < node.operations.size(); ++i) {
-    const OperationDef op_def = node.operations[i]->GetDefinition();
-    const auto& first_range = node.ranges[0];
-    for (int k = first_range.x; k < first_range.y; ++k) {
-      result.push_back({node.inputs[k], op_def.src_tensors[k - first_range.x]});
+  const OperationDef main_def = node.operations[0]->GetDefinition();
+  const auto& first_range = node.ranges[0];
+  for (int k = first_range.x; k < first_range.y; ++k) {
+    result.push_back({node.inputs[k], main_def.src_tensors[k - first_range.x]});
+  }
+  for (int j = 1; j < node.ranges.size(); ++j) {
+    const auto& range = node.ranges[j];
+    const OperationDef op_def = node.operations[j]->GetDefinition();
+    for (int k = range.x; k < range.y; ++k) {
+      result.push_back({node.inputs[k], op_def.src_tensors[k - range.x + 1]});
     }
-    for (int j = 1; j < node.ranges.size(); ++j) {
-      const auto& range = node.ranges[j];
-      for (int k = range.x; k < range.y; ++k) {
-        result.push_back({node.inputs[k], op_def.src_tensors[k - range.x + 1]});
-      }
-    }
-    for (int j = 0; j < node.outputs.size(); ++j) {
-      result.push_back({node.outputs[j], op_def.dst_tensors[j]});
-    }
+  }
+  for (int j = 0; j < node.outputs.size(); ++j) {
+    result.push_back({node.outputs[j], main_def.dst_tensors[j]});
   }
 
   return result;
@@ -75,10 +75,8 @@ std::vector<std::pair<ValueId, TensorDescriptor>> GetCLNodeTensors(
 
 void MergeCLNodes(CLNode* src, CLNode* dst) {
   int offset = dst->inputs.size();
-  for (int j = 0; j < src->inputs.size(); ++j) {
-    if (src->inputs[j] != dst->outputs[0]) {
-      dst->inputs.push_back(src->inputs[j]);
-    }
+  for (int j = 1; j < src->inputs.size(); ++j) {
+    dst->inputs.push_back(src->inputs[j]);
   }
   auto first_range = src->ranges[0];
   dst->ranges.push_back(
@@ -130,9 +128,13 @@ Status InferenceContext::InitFromGraph(const CreateInferenceInfo& create_info,
                                        Environment* env) {
   precision_ = create_info.precision;
   storage_type_ = create_info.storage_type;
-  if (env->device().vendor() == Vendor::MALI) {
+  auto vendor = env->device().vendor();
+  if (vendor == Vendor::MALI) {
     need_flush_ = true;
     need_manual_release_ = true;
+  }
+  if (vendor == Vendor::POWERVR) {
+    need_flush_ = true;
   }
   CopyInAndOutIds(graph);
   CreationContext creation_context;
@@ -182,10 +184,41 @@ Status InferenceContext::ConvertOperations(
     const CreationContext& creation_context, const GraphFloat32& graph,
     ModelHints hints) {
   std::vector<Node*> graph_nodes = graph.nodes();
+  std::map<ValueId, int>
+      tensor_usages;  // keeps latest index of operation that updated tensor
+  for (const auto& input_id : input_ids_) {
+    tensor_usages[input_id] = -1;  // so as inputs "updated" before operation 0,
+                                   // we will mark them with -1
+  }
   for (int i = 0; i < graph_nodes.size(); ++i) {
     const Node& node = *graph_nodes[i];
     auto inputs = graph.FindInputs(node.id);
     auto outputs = graph.FindOutputs(node.id);
+
+    // Reordering of input ids and updating of temporary tensors_usage struct.
+    // This stage is necessary because we are building OperationDef that rely on
+    // order of input ids. But we also should have input id on first position
+    // that potentially can be "linking" tensor and as result eliminated(unused)
+    // We apply it only for ADD operation, because of ADD associativity and
+    // ADD can be linked.
+    // In current approach "linking" tensor can be only latest written
+    // tensor(during linear order of execution) among input tensors.
+    const OperationType op_type = OperationTypeFromString(node.operation.type);
+    if (inputs.size() > 1 && op_type == OperationType::ADD) {
+      int latest_written_tensor_index = 0;
+      int last_usage = tensor_usages[inputs[0]->id];
+      for (int j = 1; j < inputs.size(); ++j) {
+        if (tensor_usages[inputs[j]->id] > last_usage) {
+          last_usage = tensor_usages[inputs[j]->id];
+          latest_written_tensor_index = j;
+        }
+      }
+      std::swap(inputs[0], inputs[latest_written_tensor_index]);
+    }
+    for (const auto& out_id : outputs) {
+      tensor_usages[out_id->id] = i;
+    }
+
     OperationDef op_def;
     op_def.precision = precision_;
     auto data_type = DeduceDataTypeFromPrecision(precision_);
@@ -196,8 +229,8 @@ Status InferenceContext::ConvertOperations(
       op_def.dst_tensors.push_back({data_type, storage_type_});
     }
     std::unique_ptr<GPUOperation> gpu_op;
-    RETURN_IF_ERROR(GPUOperationFromNode(creation_context, op_def, hints, graph,
-                                         node, &gpu_op));
+    RETURN_IF_ERROR(GPUOperationFromNode(creation_context, op_def, hints,
+                                         inputs, outputs, node, &gpu_op));
     CLNode cl_node;
     cl_node.operations.push_back(std::move(gpu_op));
     cl_node.ranges.push_back(int2(0, static_cast<int>(inputs.size())));
@@ -231,14 +264,16 @@ void InferenceContext::Merge() {
       continue;
     }
     std::vector<int> next_nodes;
+    int link_index = 0;
     for (int j = i + 1; j < nodes_.size(); ++j) {
       for (int k = 0; k < nodes_[j].inputs.size(); ++k) {
         if (nodes_[j].inputs[k] == node.outputs[0]) {
           next_nodes.push_back(j);
+          link_index = k;
         }
       }
     }
-    if (next_nodes.size() != 1) {
+    if (next_nodes.size() != 1 || link_index != 0) {
       continue;
     }
     auto& linkable_node = nodes_[next_nodes[0]];

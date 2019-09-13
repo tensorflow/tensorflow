@@ -24,10 +24,11 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-PReLU::PReLU(const OperationDef& definition, const PReLUAttributes& attr)
+PReLU::PReLU(const OperationDef& definition, const PReLUAttributes& attr,
+             CalculationsPrecision scalar_precision)
     : ElementwiseOperation(definition) {
   if (attr.clip != 0) {
-    clip_ = FLT(definition.precision, attr.clip);
+    clip_ = FLT(scalar_precision, attr.clip);
   }
 }
 
@@ -50,24 +51,24 @@ void PReLU::SetLinkIndex(int index) {
   alpha_.SetName(absl::StrCat("prelu_alpha_", index));
 }
 
-std::string PReLU::GetCoreCode(const std::string& src,
-                               const std::string& z_coord,
-                               const std::string& address) const {
+std::string PReLU::GetCoreCode(const LinkingContext& context) const {
   if (!clip_.Active()) {
-    return absl::StrCat(src, " = max((FLT4)(0.0f), ", src,
-                        ") + min((FLT4)(0.0f), ", src, ") * ",
-                        alpha_.ReadLinearFLT4(z_coord), ";\n");
+    return absl::StrCat(context.var_name, " = max((FLT4)(0.0f), ",
+                        context.var_name, ") + min((FLT4)(0.0f), ",
+                        context.var_name, ") * ",
+                        alpha_.ReadLinearFLT4(context.z_coord), ";\n");
   } else {
-    return absl::StrCat(src, " = clamp(", src, ", (FLT4)(0.0f), (FLT4)(",
-                        clip_.GetName(), ")) + min((FLT4)(0.0f), ", src, ") * ",
-                        alpha_.ReadLinearFLT4(z_coord), ";\n");
+    return absl::StrCat(context.var_name, " = clamp(", context.var_name,
+                        ", (FLT4)(0.0f), (FLT4)(", clip_.GetName(),
+                        ")) + min((FLT4)(0.0f), ", context.var_name, ") * ",
+                        alpha_.ReadLinearFLT4(context.z_coord), ";\n");
   }
 }
 
 std::string PReLU::GetArgsDeclaration() const {
   std::string args = absl::StrCat(",\n    ", alpha_.GetDeclaration());
   if (clip_.Active()) {
-    args = absl::StrCat(args, ",\n    ", clip_.GetDeclaration());
+    absl::StrAppend(&args, ",\n    ", clip_.GetDeclaration());
   }
   return args;
 }
@@ -88,7 +89,10 @@ Status CreatePReLU(const CreationContext& creation_context,
   if (!alpha) {
     return InvalidArgumentError("Alpha is missing");
   }
-  *result = PReLU(definition, attr);
+  const auto scalar_precision = creation_context.device->IsPowerVR()
+                                    ? CalculationsPrecision::F32
+                                    : definition.precision;
+  *result = PReLU(definition, attr, scalar_precision);
   RETURN_IF_ERROR(result->UploadParameters(*alpha, creation_context.context));
   result->SetLinkIndex(0);
   return OkStatus();

@@ -132,6 +132,38 @@ def quant_ConstFakeQuant : quant_Op<"const_fake_quant",
   );
 }
 
+def quant_ConstFakeQuantPerAxis : quant_Op<"const_fake_quant_per_axis",
+                                    [SameOperandsAndResultType, NoSideEffect]> {
+  let summary =
+      "Simulates the effect of per axis uniform quantization with const range.";
+
+  let description = [{
+    Given a const min, max, num_bits and narrow_range attribute, applies the
+    same per axis uniform quantization simulation as is done by the TensorFlow
+    fake_quant_with_min_max_vars_per_channel op. See the fakeQuantAttrsToType()
+    utility method and the quant-convert-simulated-quantization pass for futher
+    details.
+  }];
+
+  let arguments = (ins
+    F32Tensor:$inputs,
+    F32ArrayAttr:$min,
+    F32ArrayAttr:$max,
+    // The quantized dimension of the inputs tensor.
+    I64Attr:$axis,
+    // The bitwidth of the quantization; between 2 and 16, inclusive.
+    I64Attr:$num_bits,
+    // Quantization range starts from 0 or 1; starts from 1 if true.
+    DefaultValuedAttr<BoolAttr, "false">:$narrow_range,
+    // The sign of the quantization.
+    DefaultValuedAttr<BoolAttr, "false">:$is_signed
+  );
+
+  let results = (outs
+    F32Tensor:$outputs
+  );
+}
+
 def quant_StatisticsRefOp : quant_Op<"stats_ref", [SameOperandsAndResultType]> {
   let summary =
       "Indicates that statistics are resolved by reference.";

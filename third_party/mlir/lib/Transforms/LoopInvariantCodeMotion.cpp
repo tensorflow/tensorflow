@@ -228,19 +228,13 @@ void LoopInvariantCodeMotion::runOnAffineForOp(AffineForOp forOp) {
   }
 
   LLVM_DEBUG(forOp.getOperation()->print(llvm::dbgs() << "Modified loop\n"));
-
-  // If the for loop body has a single operation (the terminator), erase it.
-  if (forOp.getBody()->getOperations().size() == 1) {
-    assert(isa<AffineTerminatorOp>(forOp.getBody()->front()));
-    forOp.erase();
-  }
 }
 
 void LoopInvariantCodeMotion::runOnFunction() {
   // Walk through all loops in a function in innermost-loop-first order.  This
   // way, we first LICM from the inner loop, and place the ops in
   // the outer loop, which in turn can be further LICM'ed.
-  getFunction().walk<AffineForOp>([&](AffineForOp op) {
+  getFunction().walk([&](AffineForOp op) {
     LLVM_DEBUG(op.getOperation()->print(llvm::dbgs() << "\nOriginal loop\n"));
     runOnAffineForOp(op);
   });

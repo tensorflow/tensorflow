@@ -546,9 +546,7 @@ void TF_SessionPRun_wrapper(TF_Session* session, const char* handle,
 std::vector<TF_Output> GetOperationInputs(TF_Operation* oper) {
   int num_inputs = TF_OperationNumInputs(oper);
   std::vector<TF_Output> inputs(num_inputs);
-  for (int i = 0; i < num_inputs; ++i) {
-    inputs[i] = TF_OperationInput({oper, i});
-  }
+  TF_OperationAllInputs(oper, inputs.data(), inputs.size());
   return inputs;
 }
 

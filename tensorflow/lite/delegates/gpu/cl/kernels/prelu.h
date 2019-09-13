@@ -42,8 +42,7 @@ class PReLU : public ElementwiseOperation {
   PReLU& operator=(const PReLU&) = delete;
 
   void SetLinkIndex(int index) override;
-  std::string GetCoreCode(const std::string& src, const std::string& z_coord,
-                          const std::string& address) const override;
+  std::string GetCoreCode(const LinkingContext& context) const override;
   std::string GetArgsDeclaration() const override;
   Status BindArguments(CLKernel* kernel) override;
 
@@ -52,7 +51,8 @@ class PReLU : public ElementwiseOperation {
                             const PReLUAttributes& attr, PReLU* result);
 
  private:
-  PReLU(const OperationDef& definition, const PReLUAttributes& attr);
+  PReLU(const OperationDef& definition, const PReLUAttributes& attr,
+        CalculationsPrecision scalar_precision);
 
   template <DataType T>
   Status UploadParameters(const ::tflite::gpu::Tensor<Linear, T>& parameters,

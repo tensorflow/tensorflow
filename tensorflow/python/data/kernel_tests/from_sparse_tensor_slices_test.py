@@ -17,21 +17,25 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-@test_util.run_v1_only("deprecated API, no eager or V2 test coverage")
-class FromSparseTensorSlicesTest(test_base.DatasetTestBase):
+class FromSparseTensorSlicesTest(test_base.DatasetTestBase,
+                                 parameterized.TestCase):
 
+  # TODO(jsimsa): Break this down to multiple (parameterized) test cases.
+  @combinations.generate(
+      combinations.combine(tf_api_version=1, mode=["graph"]))
   def testFromSparseTensorSlices(self):
     """Test a dataset based on slices of a `tf.SparseTensor`."""
     st = array_ops.sparse_placeholder(dtypes.float64)
@@ -79,6 +83,11 @@ class FromSparseTensorSlicesTest(test_base.DatasetTestBase):
       sess.run(init_op, feed_dict={st: sparse_feed})
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
+
+  @combinations.generate(combinations.combine(tf_api_version=2, mode=["eager"]))
+  def testFromSparseTensorSlicesError(self):
+    with self.assertRaises(AttributeError):
+      dataset_ops.Dataset.from_sparse_tensor_slices(None)
 
 
 if __name__ == "__main__":

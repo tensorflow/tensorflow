@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
 
+#include "absl/container/fixed_array.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
@@ -209,6 +210,7 @@ Status TensorHandleShape(TensorHandle* handle, TensorShapeProto* proto) {
 
 Status EagerServiceImpl::ExecuteOp(const Operation& operation,
                                    EagerContext* eager_context,
+                                   EagerExecutor* eager_executor,
                                    QueueResponse* queue_response) {
   std::unique_ptr<tensorflow::EagerOperation> op;
   const char* name = operation.name().c_str();  // Shorthand
@@ -224,8 +226,8 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
         ". Make sure the operation or function is "
         "registered in the binary running in this process.");
   }
-  op.reset(
-      new tensorflow::EagerOperation(eager_context, name, is_function, types));
+  op.reset(new tensorflow::EagerOperation(eager_context, name, is_function,
+                                          types, eager_executor));
 
   TF_RETURN_IF_ERROR(op->SetDeviceName(operation.device().c_str()));
 
@@ -252,23 +254,23 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
   TF_RETURN_IF_ERROR(GetNumRetvals(eager_context, operation.name(),
                                    operation.attrs(), &num_retvals));
 
-  tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2> retvals(
-      num_retvals);
+  absl::FixedArray<tensorflow::TensorHandle*> retvals(num_retvals);
   VLOG(3) << "ServerContext: Calling EagerExecute for op " << operation.id();
-  TF_RETURN_IF_ERROR(EagerExecute(op.get(), &retvals, &num_retvals));
-  retvals.resize(num_retvals);
+  TF_RETURN_IF_ERROR(EagerExecute(op.get(), retvals.data(), &num_retvals));
 
-  eager_context->RemoteMgr()->AddOperationOutputs(retvals, operation.id());
+  eager_context->RemoteMgr()->AddOperationOutputs(
+      absl::MakeSpan(retvals.data(), num_retvals), operation.id());
 
-  for (auto* handle : retvals) {
-    TF_RETURN_IF_ERROR(TensorHandleShape(handle, queue_response->add_shape()));
+  for (int i = 0; i < num_retvals; i++) {
+    TF_RETURN_IF_ERROR(
+        TensorHandleShape(retvals[i], queue_response->add_shape()));
   }
 
   return Status::OK();
 }
 
 Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
-                                 EnqueueResponse* response) {
+                                 EnqueueResponse* response, uint64 stream_id) {
   profiler::TraceMe activity(
       [&] {
         return absl::StrCat("EagerService:Enqueue:", request->DebugString());
@@ -278,23 +280,34 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
   TF_RETURN_IF_ERROR(GetServerContext(request->context_id(), &context));
   core::ScopedUnref context_unref(context);
 
-  auto executor = context->Context()->Executor();
+  EagerExecutor& executor =
+      stream_id == kInvalidStreamId
+          ? context->Context()->Executor()
+          : context->Context()->RemoteMgr()->GetOrCreateExecutorForStream(
+                stream_id);
+  Status s;
   for (const auto& item : request->queue()) {
     auto* queue_response = response->add_queue_response();
     if (item.has_operation()) {
-      TF_RETURN_IF_ERROR(
-          ExecuteOp(item.operation(), context->Context(), queue_response));
+      s = ExecuteOp(item.operation(), context->Context(), &executor,
+                    queue_response);
     } else if (item.has_handle_to_decref()) {
       auto handle_to_decref = absl::make_unique<RemoteTensorHandleInternal>(
           item.handle_to_decref());
       auto node = absl::make_unique<ClientTensorHandleDeleteNode>(
           context, std::move(handle_to_decref));
-      TF_RETURN_IF_ERROR(
-          executor->Async()
-              ? context->Context()->Executor()->Add(std::move(node))
-              : node->Run());
+      s = executor.Async() ? context->Context()->Executor().Add(std::move(node))
+                           : node->Run();
     } else {
-      TF_RETURN_IF_ERROR(SendTensor(item.send_tensor(), context->Context()));
+      s = SendTensor(item.send_tensor(), context->Context());
+    }
+
+    if (!s.ok()) {
+      if (stream_id != kInvalidStreamId) {
+        // TODO(b/138847548): Cleanup the executor when StreamCall is deleted.
+        context->Context()->RemoteMgr()->DeleteExecutorForStream(stream_id);
+      }
+      return s;
     }
   }
 
@@ -312,7 +325,7 @@ Status EagerServiceImpl::WaitQueueDone(const WaitQueueDoneRequest* request,
         "EagerServiceImpl::WaitQueueDone is not "
         "implemented for particular op IDs.");
   }
-  return context->Context()->Executor()->WaitForAllPendingNodes();
+  return context->Context()->Executor().WaitForAllPendingNodes();
 }
 
 Status EagerServiceImpl::KeepAlive(const KeepAliveRequest* request,
@@ -354,7 +367,10 @@ Status EagerServiceImpl::RegisterFunction(
   TF_RETURN_IF_ERROR(GetServerContext(request->context_id(), &context));
   core::ScopedUnref context_unref(context);
 
-  return context->Context()->AddFunctionDef(request->function_def());
+  // If the function is a component of a multi-device function, we only need to
+  // register it locally.
+  return context->Context()->AddFunctionDef(request->function_def(),
+                                            request->is_component_function());
 }
 
 Status EagerServiceImpl::SendTensor(const SendTensorRequest* request,
@@ -377,7 +393,7 @@ Status EagerServiceImpl::SendTensor(const SendTensorRequest* request,
     Device* device;
     TF_RETURN_IF_ERROR(
         ctx->FindDeviceFromName(request->device_name().c_str(), &device));
-    TF_RETURN_IF_ERROR(EagerCopyToDevice(tensor_handle, ctx, ctx->Executor(),
+    TF_RETURN_IF_ERROR(EagerCopyToDevice(tensor_handle, ctx, &ctx->Executor(),
                                          device, false, &copied_handle));
     tensors.push_back(copied_handle);
     tensor_handle->Unref();
@@ -405,7 +421,7 @@ Status EagerServiceImpl::SendTensor(const SendTensorOp& send_tensor,
     TF_RETURN_IF_ERROR(eager_context->FindDeviceFromName(
         send_tensor.device_name().c_str(), &device));
     TF_RETURN_IF_ERROR(EagerCopyToDevice(tensor_handle, eager_context,
-                                         eager_context->Executor(), device,
+                                         &eager_context->Executor(), device,
                                          false, &copied_handle));
     tensors.push_back(copied_handle);
     tensor_handle->Unref();
@@ -424,7 +440,7 @@ tensorflow::Status EagerServiceImpl::GetServerContext(
     *server_context = nullptr;
     return errors::InvalidArgument(strings::Printf(
         "Unable to find a context_id matching the specified one "
-        "(%lld). Perhaps the worker was restarted, or the context was GC'd?",
+        "(%llu). Perhaps the worker was restarted, or the context was GC'd?",
         context_id));
   }
 

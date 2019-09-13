@@ -18,6 +18,7 @@ limitations under the License.
 #include <map>
 
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/platform/logging.h"
 
 #ifndef PyObject_HEAD
@@ -59,6 +60,10 @@ class PyExceptionRegistry {
   // Returns the Python exception type corresponding to `code`. Init() must be
   // called before using this function. `code` should not be TF_OK.
   static PyObject* Lookup(TF_Code code);
+
+  static inline PyObject* Lookup(error::Code code) {
+    return Lookup(static_cast<TF_Code>(code));
+  }
 
  private:
   static PyExceptionRegistry* singleton_;

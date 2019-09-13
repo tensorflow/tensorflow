@@ -196,7 +196,7 @@ class StreamExecutorInterface {
 
   // Releases any state associated with the kernel.
   virtual void UnloadKernel(const KernelBase *kernel) {}
-  virtual void *Allocate(uint64 size) = 0;
+  virtual DeviceMemoryBase Allocate(uint64 size) = 0;
   virtual void *GetSubBuffer(DeviceMemoryBase *parent, uint64 offset,
                              uint64 size) = 0;
   virtual void Deallocate(DeviceMemoryBase *mem) = 0;
@@ -384,7 +384,6 @@ class StreamExecutorInterface {
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutorInterface);
 };
-
 
 }  // namespace internal
 }  // namespace stream_executor

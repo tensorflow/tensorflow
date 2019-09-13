@@ -54,6 +54,8 @@ struct QuantizedLstmParameter {
   int32_t effective_cell_to_output_scale_b;
   int32_t effective_proj_scale_a;
   int32_t effective_proj_scale_b;
+  int32_t effective_hidden_scale_a;
+  int32_t effective_hidden_scale_b;
   int32_t layer_norm_input_scale_a;
   int32_t layer_norm_input_scale_b;
   int32_t layer_norm_forget_scale_a;
@@ -63,8 +65,10 @@ struct QuantizedLstmParameter {
   int32_t layer_norm_output_scale_a;
   int32_t layer_norm_output_scale_b;
   // Quantized clip value for cell and projection. Zero value means no clipping.
-  int32_t quantized_cell_clip;
-  int32_t quantized_proj_clip;
+  int16_t quantized_cell_clip;
+  int8_t quantized_proj_clip;
+  int32_t hidden_zp;
+  int32_t cell_scale;
   std::vector<int32_t> inv_large_value;
 
   // The fields are used for pre-computing zero_point * weight.
@@ -72,19 +76,19 @@ struct QuantizedLstmParameter {
   // yet until end of prepare.
 
   // Forget gate.
-  std::unique_ptr<int32_t[]> input_to_forget_weight_x_input_zp;
-  std::unique_ptr<int32_t[]> recurrent_to_forget_weight_x_activation_zp;
+  std::unique_ptr<int32_t[]> input_to_forget_effective_bias;
+  std::unique_ptr<int32_t[]> recurrent_to_forget_effective_bias;
   // Modulation gate.
-  std::unique_ptr<int32_t[]> input_to_cell_weight_x_input_zp;
-  std::unique_ptr<int32_t[]> recurrent_to_cell_weight_x_activation_zp;
+  std::unique_ptr<int32_t[]> input_to_cell_effective_bias;
+  std::unique_ptr<int32_t[]> recurrent_to_cell_effective_bias;
   // Output gate.
-  std::unique_ptr<int32_t[]> input_to_output_weight_x_input_zp;
-  std::unique_ptr<int32_t[]> recurrent_to_output_weight_x_activation_zp;
+  std::unique_ptr<int32_t[]> input_to_output_effective_bias;
+  std::unique_ptr<int32_t[]> recurrent_to_output_effective_bias;
   // Input gate.
-  std::unique_ptr<int32_t[]> input_to_input_weight_x_input_zp;
-  std::unique_ptr<int32_t[]> recurrent_to_input_weight_x_activation_zp;
+  std::unique_ptr<int32_t[]> input_to_input_effective_bias;
+  std::unique_ptr<int32_t[]> recurrent_to_input_effective_bias;
   // Projection.
-  std::unique_ptr<int32_t[]> projection_bias_accu;
+  std::unique_ptr<int32_t[]> projection_effective_bias;
 };
 
 TfLiteStatus EvalFloat(
@@ -171,7 +175,8 @@ TfLiteStatus EvalQuantized(
     const lstm_eval::QuantizedLstmParameter* quantized_lstm_param,
     TfLiteTensor* activation_state, TfLiteTensor* cell_state,
     TfLiteTensor* output, TfLiteTensor* scratch0, TfLiteTensor* scratch1,
-    TfLiteTensor* scratch2, TfLiteTensor* scratch3, TfLiteTensor* scratch4);
+    TfLiteTensor* scratch2, TfLiteTensor* scratch3, TfLiteTensor* scratch4,
+    TfLiteTensor* scratch5);
 
 }  // namespace lstm_eval
 }  // namespace builtin

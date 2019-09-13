@@ -36,7 +36,6 @@ limitations under the License.
 #endif
 
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
@@ -402,8 +401,8 @@ Status ReadFileToString(Env* env, const string& fname, string* data) {
   if (!s.ok()) {
     return s;
   }
-  gtl::STLStringResizeUninitialized(data, file_size);
-  char* p = gtl::string_as_array(data);
+  data->resize(file_size);
+  char* p = &*data->begin();
   StringPiece result;
   s = file->Read(0, file_size, &result, p);
   if (!s.ok()) {
@@ -468,7 +467,9 @@ class FileStream : public ::tensorflow::protobuf::io::ZeroCopyInputStream {
     pos_ += count;
     return true;
   }
-  protobuf_int64 ByteCount() const override { return pos_; }
+  int64_t ByteCount() const override {
+    return pos_;
+  }
   Status status() const { return status_; }
 
   bool Next(const void** data, int* size) override {

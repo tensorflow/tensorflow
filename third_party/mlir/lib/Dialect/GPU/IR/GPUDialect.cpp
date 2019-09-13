@@ -47,6 +47,13 @@ GPUDialect::GPUDialect(MLIRContext *context)
                 >();
 }
 
+template <typename T> static LogicalResult verifyIndexOp(T op) {
+  auto dimension = op.dimension();
+  if (dimension != "x" && dimension != "y" && dimension != "z")
+    return op.emitError("dimension \"") << dimension << "\" is invalid";
+  return success();
+}
+
 #define GET_OP_CLASSES
 #include "mlir/Dialect/GPU/GPUOps.cpp.inc"
 

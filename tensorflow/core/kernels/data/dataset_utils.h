@@ -88,12 +88,6 @@ Status ConnectCancellationManagers(CancellationManager* parent,
                                    CancellationManager* child,
                                    std::function<void()>* deregister_fn);
 
-// Rewrites the input dataset using the given config.
-Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
-                      std::function<RewriterConfig(void)> config_factory,
-                      bool optimize_function_library,
-                      DatasetBase** rewritten_input);
-
 // Returns Status::OK() if `expected` and `received` types match,
 // errors::InvalidArgument otherwise.
 Status VerifyTypesMatch(const DataTypeVector& expected,

@@ -597,7 +597,7 @@ class OpCallbacksTest(test_util.TensorFlowTestCase):
 
       dataset = dataset_ops.Dataset.from_tensor_slices(tensor).batch(2).map(
           map_fn)
-      iterator = dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(dataset)
 
       self.assertAllClose(iterator.next(), np.log([1.25, 2]))
       self.assertAllClose(iterator.next(), np.log([3.25, 5]))

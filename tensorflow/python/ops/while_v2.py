@@ -24,11 +24,10 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.python.compat import compat
+from tensorflow.python.eager import backprop_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph as func_graph_module
-from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -277,11 +276,7 @@ def while_loop(cond,
       body_stateful_ops = [
           op for op in body_graph.get_operations() if op._is_stateful
       ]
-      # TODO(yanhuasun): Remove this after Aug 23, 2019. This is required to
-      # abide by 3-week forward compat window of new TF python op generating
-      # code with stale runtime binaries.
-      if (cond_stateful_ops or body_stateful_ops or
-          not compat.forward_compatible(2019, 8, 23)):
+      if (cond_stateful_ops or body_stateful_ops):
         op_fn = gen_functional_ops._while
       else:
         op_fn = gen_functional_ops.stateless_while
@@ -301,13 +296,15 @@ def while_loop(cond,
     util.maybe_set_lowering_attr(outputs[0].op)
     util.maybe_propagate_compile_time_consts_in_xla(outputs[0].op)
 
-    # Return identities for each output of the While op, rather than the output
-    # of the While op directly. This makes pruning work if the output of
-    # while_loop() is fetched: the lowering pass converts the While outputs into
-    # IdentityN outputs, which if fetched will cause all ops in the body to be
-    # run (since it takes all exit ops as input). After lowering, each output
-    # identity op will end up with only the appropriate exit op as input.
-    outputs = tuple(array_ops.identity(t) for t in outputs)
+    if not ops.get_default_graph().building_function:
+      # In V1 graph mode, return identities for each output of the While op,
+      # rather than the output of the While op directly. This makes pruning work
+      # if the output of while_loop() is fetched: the lowering pass converts the
+      # While outputs into IdentityN outputs, which if fetched will cause all
+      # ops in the body to be run (since it takes all exit ops as input). After
+      # lowering, each output identity op will end up with only the appropriate
+      # exit op as input.
+      outputs = tuple(array_ops.identity(t) for t in outputs)
 
   outputs = _pack_sequence_as(
       orig_loop_vars, outputs[first_loop_var_index:first_loop_var_index +
@@ -515,7 +512,7 @@ def _zeros_like(op_output):
 
 def _is_trainable(tensor):
   """Returns whether the given tensor is trainable."""
-  if not gradients_util.IsTrainable(tensor):
+  if not backprop_util.IsTrainable(tensor):
     return False
 
   # Special case: untrainable accumulator output. The gradients algorithm
@@ -526,12 +523,11 @@ def _is_trainable(tensor):
   if tensor.op.type == "TensorListPopBack" and tensor.value_index == 0:
     assert tensor.dtype == dtypes.variant
     element_type = tensor.op.get_attr("element_dtype")
-    return gradients_util.IsTrainable(element_type)
+    return backprop_util.IsTrainable(element_type)
 
   return True
 
 
-# TODO(srbs): Pull this into common utils for cond_v2 and while_v2.
 def _get_graph(while_op, func_attr_name):
   """Returns `FuncGraph` for the given function attribute.
 
@@ -547,14 +543,7 @@ def _get_graph(while_op, func_attr_name):
       tensor_shape.TensorShape(s) for s in while_op.get_attr("output_shapes")
   ]
   func_name = while_op.get_attr(func_attr_name).name
-  fdef = while_op.graph._get_function(func_name).definition
-  # `while_op.graph` may not be the same as `ops.get_default_graph()` e.g.
-  # if the `while_op` is in the body of another if/while/defun. We build the
-  # `func_graph` with `while_op.graph` as its `outer_graph`. This resembles how
-  # the `FuncGraph` was built in the forward pass. We need this so that we can
-  # appropriately capture references to outer tensors in the nested grad graphs.
-  with while_op.graph.as_default():
-    func_graph = function_def_to_graph.function_def_to_graph(fdef, input_shapes)
+  func_graph = util.get_func_graph(while_op, input_shapes, func_name)
   func_graph._while = while_op
   return func_graph
 

@@ -1,6 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/core/platform:default/build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
-# Placeholder for Google-internal load statements.
+# Placeholder for Google-internal load statements - 2.
 
 package(
     default_visibility = ["//visibility:public"],
@@ -50,6 +50,7 @@ tf_proto_library(
     cc_api_version = 2,
     cc_grpc_version = 1,
     protodeps = [":op_profile_proto"] + tf_additional_all_protos(),
+    provide_cc_alias = True,
 )
 
 tf_proto_library(
@@ -59,6 +60,7 @@ tf_proto_library(
     cc_api_version = 2,
     cc_grpc_version = 1,
     protodeps = [":profiler_service_proto"],
+    provide_cc_alias = True,
 )
 
 tf_proto_library(

@@ -606,16 +606,17 @@ void EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   const TfLiteTensor* input_quantized =
       GetTemporary(context, node, data->input_quantized_index);
   int8_t* quantized_input_ptr_batch = input_quantized->data.int8;
-  float* scaling_factors_ptr =
-      GetTemporary(context, node, data->scaling_factors_index)->data.f;
+  float* scaling_factors_ptr = GetTensorData<float>(
+      GetTemporary(context, node, data->scaling_factors_index));
 
   // Per-batch input quantization for higher accuracy.
   for (int b = 0; b < batch_size; ++b) {
     float unused_min, unused_max;
     const int offset = b * input_size;
     tensor_utils::SymmetricQuantizeFloats(
-        input->data.f + offset, input_size, quantized_input_ptr_batch + offset,
-        &unused_min, &unused_max, &scaling_factors_ptr[b]);
+        GetTensorData<float>(input) + offset, input_size,
+        quantized_input_ptr_batch + offset, &unused_min, &unused_max,
+        &scaling_factors_ptr[b]);
     scaling_factors_ptr[b] *= filter->params.scale;
   }
 
