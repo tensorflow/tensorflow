@@ -290,6 +290,62 @@ ENTRY main {
   EXPECT_EQ(padded, not_padded);
 }
 
+XLA_TEST_F(ExecutionTest, ScatterUpdateF32) {
+  // Test that scattering on indices=[2] is same as scattering on indices=[4]
+  // and dynamic dimension = 2
+  const string hlo_text = R"(
+HloModule TensorFlowScatterV1
+
+update_f32 (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  ROOT rhs = f32[] parameter(1)
+}
+
+ENTRY main {
+  operand = f32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  updates = f32[2,3] parameter(2)
+  dynamic_size = s32[] parameter(3)
+  ROOT scatter = f32[3,3] scatter(operand, indices, updates),
+      to_apply=update_f32,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+
+}
+)";
+
+  auto module_not_padded = GetHloModule(hlo_text);
+
+  Literal operand = LiteralUtil::CreateR2<float>(
+      {{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}, {7.0, 8.0, 9.0}});
+  Literal scatter_indices = LiteralUtil::CreateR1<int32>({0, 2});
+  Literal updates =
+      LiteralUtil::CreateR2<float>({{10.0, 20.0, 30.0}, {70.0, 80.0, 90.0}});
+  // Dynamic Size is 1, pad to 2
+  Literal dynamic_size = LiteralUtil::CreateR0<int32>(1);
+
+  auto module_padded = GetHloModule(hlo_text);
+  // Set up dynamic parameter binding.
+  TF_CHECK_OK(module_padded->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{3, {}},
+      DynamicParameterBinding::DynamicDimension{1, {}, 0}));
+  TF_CHECK_OK(module_padded->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{3, {}},
+      DynamicParameterBinding::DynamicDimension{2, {}, 0}));
+  DynamicPadder padder;
+  TF_CHECK_OK(padder.Run(module_padded.get()).status());
+  Literal not_padded =
+      ExecuteAndTransfer(std::move(module_padded),
+                         {&operand, &scatter_indices, &updates, &dynamic_size});
+  // Although we have two indices, only the first element is updated because of
+  // padding.
+  EXPECT_EQ(LiteralUtil::CreateR2<float>(
+                {{10.0, 20.0, 30.0}, {4.0, 5.0, 6.0}, {7.0, 8.0, 9.0}}),
+            not_padded);
+}
+
 XLA_TEST_F(ExecutionTest, TwoDimensionReduce) {
   // Test that reducing on operand=[2,2] is same as reducing on operand=[4,4]
   // and dynamic dimension = 2

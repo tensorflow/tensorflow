@@ -79,23 +79,14 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
       return inst->mutable_operand(2);
     }
     case HloOpcode::kScatter: {
-      PrimitiveType ptype = inst->shape().element_type();
       if (operand_number != 1) {
         return nullptr;
       }
-      // Use -1 as padding for scatter as output bound updates are not applied.
-      switch (ptype) {
-        case S32:
-          return comp->AddInstruction(
-              HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(-1)));
-        case S64:
-          return comp->AddInstruction(
-              HloInstruction::CreateConstant(LiteralUtil::CreateR0<int64>(-1)));
-        default:
-          return InvalidArgument(
-              "Invalid primitive type %s",
-              primitive_util::LowercasePrimitiveTypeName(ptype));
-      }
+      PrimitiveType indices_ptype =
+          inst->operand(operand_number)->shape().element_type();
+
+      return comp->AddInstruction(
+          HloInstruction::CreateConstant(LiteralUtil::MaxValue(indices_ptype)));
     }
     case HloOpcode::kParameter:
     case HloOpcode::kGather:
