@@ -65,7 +65,6 @@ py_library(
         ":core",
         ":def_function",
         ":execute",
-        ":execution_callbacks",
         ":forwardprop",
         ":forwardprop_util",
         ":function",
@@ -407,30 +406,6 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
         "@six_archive//:six",
-    ],
-)
-
-py_library(
-    name = "execution_callbacks",
-    srcs = ["execution_callbacks.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        ":context",
-        "//tensorflow/python:op_callbacks",
-        "//tensorflow/python:pywrap_tensorflow",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
-    name = "execution_callbacks_test",
-    srcs = ["execution_callbacks_test.py"],
-    additional_deps = [
-        ":execution_callbacks",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
     ],
 )
 
