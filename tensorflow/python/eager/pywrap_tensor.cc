@@ -403,7 +403,9 @@ TFE_TensorHandle* ConvertToEagerTensor(TFE_Context* ctx, PyObject* value,
     if (handle != nullptr) return handle;
     handle = ConvertToEagerTensorUncached(ctx, value, dtype, device_name);
     if (handle == nullptr) return nullptr;
-    cache->Insert(value, dtype, device_name, handle);
+    if (!PyFloat_Check(value) || Py_IS_FINITE(PyFloat_AS_DOUBLE(value))) {
+      cache->Insert(value, dtype, device_name, handle);
+    }
     return handle;
   } else {
     return ConvertToEagerTensorUncached(ctx, value, dtype, device_name);
