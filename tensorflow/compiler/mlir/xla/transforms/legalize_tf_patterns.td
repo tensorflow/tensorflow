@@ -88,6 +88,33 @@ foreach fromToBinPair = [[TF_AddOp, HLO_AddOp],
   def : DirectBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
 //===----------------------------------------------------------------------===//
+// Concat op patterns.
+//===----------------------------------------------------------------------===//
+
+def OneElementAttrPred
+  : CPred<"$_self.cast<ElementsAttr>().getType().getNumElements() == 1">;
+
+def OneElementAttr
+  : ElementsAttrBase<And<[ElementsAttr.predicate, OneElementAttrPred]>,
+                     "Scalar ElementsAttr">;
+
+def GetHLOAxisFromTFAxis : NativeCodeCall<
+  "GetHLOAxisFromTFAxis("
+  "$0, (*$1.begin())->getType().cast<RankedTensorType>().getRank(), "
+  "&$_builder)">;
+
+def HasRankedFirstOperand
+  : Constraint<CPred<"(*$0.begin())->getType().isa<RankedTensorType>()">>;
+
+// Here, we convert from TensorFlow axis format to HLO axis format which
+// doesn't wrap around like TensorFlow and is always positive. For this
+// conversion, use the first input to get inputs rank. Other inputs need not be
+// ranked.
+def : Pat<(TF_ConcatV2Op $inputs, (TF_ConstOp OneElementAttr:$axis), $unused),
+          (HLO_ConcatenateOp $inputs, (GetHLOAxisFromTFAxis $axis, $inputs)),
+          [(HasRankedFirstOperand $inputs)]>;
+
+//===----------------------------------------------------------------------===//
 // Identity op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -128,8 +155,7 @@ def : Pat<(TF_Relu6Op AnyTensor:$input),
 // Unary op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TF_ReshapeOp:$res AnyStaticShapeTensor:$arg, $ignored),
-          (HLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)]>;
-
-def : Pat<(TF_SqueezeOp AnyStaticShapeTensor:$arg, $ignored_dims),
-          (HLO_ReshapeOp $arg)>;
+foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp] in {
+  def : Pat<(TfOp:$res AnyStaticShapeTensor:$arg, $ignored),
+            (HLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)]>;
+}

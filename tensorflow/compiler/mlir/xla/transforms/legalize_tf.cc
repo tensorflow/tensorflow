@@ -15,6 +15,7 @@ limitations under the License.
 
 // This file implements logic for lowering TensorFlow dialect to XLA dialect.
 
+#include <cstdint>
 #include <numeric>
 
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
@@ -49,6 +50,16 @@ static bool isDefaultDataFormat(StringRef format) { return format == "NHWC"; }
 static size_t getFeatureDimension(StringAttr format,
                                   RankedTensorType inputType) {
   return isDefaultDataFormat(format.getValue()) ? inputType.getRank() - 1 : 1;
+}
+
+static IntegerAttr GetHLOAxisFromTFAxis(ElementsAttr attr, int64_t rank,
+                                        Builder *b) {
+  SmallVector<uint64_t, 1> index(attr.getType().getRank(), 0);
+  int64_t axis = attr.getValue<IntegerAttr>(index).getInt();
+  if (axis < 0) {
+    axis += rank;
+  }
+  return b->getI64IntegerAttr(axis);
 }
 
 // Returns minimum value for the given int or float element type.
