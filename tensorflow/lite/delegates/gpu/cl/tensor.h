@@ -57,8 +57,7 @@ class Tensor {
 
   int Depth() const { return IntegralDivideRoundUp(channels_, 4); }
   int4 GetSizeWithDepth() const {
-    return int4(width_, height_, channels_,
-                IntegralDivideRoundUp(channels_, 4));
+    return int4(width_, height_, channels_, Depth());
   }
   cl_mem GetMemoryPtr() const { return memory_; }
 
@@ -86,7 +85,7 @@ class Tensor {
       case TensorStorageType::TEXTURE_2D:
         return ((y * Depth() + d) * width_ + x) * 4 + sub_d;  // HDWC4
       case TensorStorageType::SINGLE_TEXTURE_2D:
-        return (sub_d * height_ + y) * width_ + x;
+        return (y * width_ + x) * channels_ + sub_d;
       case TensorStorageType::UNKNOWN:
         return -1;
     }
