@@ -109,7 +109,7 @@ enum class PassTimingDisplayMode {
 };
 
 /// The main pass manager and pipeline builder.
-class PassManager {
+class PassManager : public OpPassManager {
 public:
   // If verifyPasses is true, the verifier is run after each pass.
   PassManager(MLIRContext *ctx, bool verifyPasses = true);
@@ -121,25 +121,6 @@ public:
 
   /// Disable support for multi-threading within the pass manager.
   void disableMultithreading(bool disable = true);
-
-  //===--------------------------------------------------------------------===//
-  // Pipeline Building
-  //===--------------------------------------------------------------------===//
-
-  /// Allow converting to the impl OpPassManager.
-  operator OpPassManager &() { return opPassManager; }
-
-  /// Add an opaque pass pointer to the current manager. This takes ownership
-  /// over the provided pass pointer.
-  void addPass(std::unique_ptr<Pass> pass);
-
-  /// Allow nesting other operation pass managers.
-  OpPassManager &nest(const OperationName &nestedName) {
-    return opPassManager.nest(nestedName);
-  }
-  template <typename OpT> OpPassManager &nest() {
-    return opPassManager.nest<OpT>();
-  }
 
   //===--------------------------------------------------------------------===//
   // Instrumentations
@@ -169,9 +150,6 @@ public:
       PassTimingDisplayMode displayMode = PassTimingDisplayMode::Pipeline);
 
 private:
-  /// The top level pass manager instance.
-  OpPassManager opPassManager;
-
   /// Flag that specifies if pass timing is enabled.
   bool passTiming : 1;
 
