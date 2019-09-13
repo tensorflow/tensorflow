@@ -1,15 +1,18 @@
 name: Python package
 
-on: [push]
-
+on:
+ push:
+    branches:
+    - master
+    - release/*
 jobs:
   build:
 
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     strategy:
       max-parallel: 4
       matrix:
-        python-version: [2.7, 3.5, 3.6, 3.7]
+        python-version: [3.7]
 
     steps:
     - uses: actions/checkout@v1
