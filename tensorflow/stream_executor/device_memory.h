@@ -129,7 +129,9 @@ class DeviceMemory final : public DeviceMemoryBase {
   // regions, this effectively amounts to a cast from a void*.
   explicit DeviceMemory(const DeviceMemoryBase &other)
       : DeviceMemoryBase(const_cast<DeviceMemoryBase &>(other).opaque(),
-                         other.size()) {}
+                         other.size()) {
+    SetPayload(other.payload());
+  }
 
   // Returns the number of elements of type ElemT that constitute this
   // allocation.
