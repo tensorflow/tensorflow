@@ -223,7 +223,6 @@ class GpuTracer : public profiler::ProfilerInterface {
  public:
   GpuTracer(CuptiTracer* cupti_tracer, CuptiInterface* cupti_interface)
       : cupti_tracer_(cupti_tracer),
-        cupti_interface_(cupti_interface),
         trace_collector_(&step_stats_) {
     VLOG(1) << "GpuTracer created.";
   }
@@ -252,7 +251,6 @@ class GpuTracer : public profiler::ProfilerInterface {
 
   CuptiTracer* cupti_tracer_;
   CuptiTracerOptions options_;
-  CuptiInterface* cupti_interface_;
   StepStats step_stats_;
   StepStatsCollector trace_collector_;
   std::unique_ptr<StepStatsCuptiTracerAdaptor> step_stats_cupti_adaptor_;
@@ -315,8 +313,7 @@ Status GpuTracer::DoStart() {
       &trace_collector_);
 
   tensorflow::tracing::ScopedAnnotation::Enable(true);
-  cupti_tracer_->Enable(options_, cupti_interface_,
-                        step_stats_cupti_adaptor_.get());
+  cupti_tracer_->Enable(options_, step_stats_cupti_adaptor_.get());
   return Status::OK();
 }
 

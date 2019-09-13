@@ -1198,7 +1198,7 @@ absl::string_view AnnotationMap::LookUp(uint32 device_id,
 }
 
 /* static */ CuptiTracer *CuptiTracer::GetCuptiTracerSingleton() {
-  static auto *singleton = new CuptiTracer();
+  static auto *singleton = new CuptiTracer(GetCuptiInterface());
   return singleton;
 }
 
@@ -1222,20 +1222,18 @@ int CuptiTracer::NumGpus() {
 }
 
 void CuptiTracer::Enable(const CuptiTracerOptions &option,
-                         CuptiInterface *cupti_interface,
                          CuptiTraceCollector *collector) {
   option_ = option;
-  cupti_interface_ = cupti_interface;
   collector_ = collector;
   annotation_map_.emplace(option.max_annotation_strings, NumGpus());
 
   if (option_->enable_event_based_activity) {
     option_->enable_activity_api = false;
     cupti_driver_api_hook_.reset(new CuptiDriverApiHookWithCudaEvent(
-        option, cupti_interface, collector, &*annotation_map_));
+        option, cupti_interface_, collector, &*annotation_map_));
   } else {
     cupti_driver_api_hook_.reset(new CuptiDriverApiHookWithActivityApi(
-        option, cupti_interface, collector, &*annotation_map_));
+        option, cupti_interface_, collector, &*annotation_map_));
   }
 
   EnableApiTracing().IgnoreError();
@@ -1254,7 +1252,6 @@ void CuptiTracer::Disable() {
   cupti_driver_api_hook_->Flush().IgnoreError();
   collector_->Flush();
   collector_ = nullptr;
-  cupti_interface_ = nullptr;
   option_.reset();
   cupti_driver_api_hook_.reset();
   annotation_map_.reset();
@@ -1337,6 +1334,7 @@ Status CuptiTracer::DisableActivityTracing() {
     VLOG(1) << "Flushing CUPTI activity buffer";
     RETURN_IF_CUPTI_ERROR(
         cupti_interface_->ActivityFlushAll(CUPTI_ACTIVITY_FLAG_FLUSH_FORCED));
+    LOG(INFO) << "CUPTI activity buffer flushed";
   }
   activity_tracing_enabled_ = false;
   return Status::OK();
@@ -1432,6 +1430,10 @@ void CuptiTracer::ConfigureActivityUnifiedMemoryCounter(bool enable) {
 
 Status CuptiTracer::ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
                                           uint8_t *buffer, size_t size) {
+  if (!activity_tracing_enabled_) {
+    LOG(WARNING) << "CUPTI activity buffer is freed after flush.";
+    return Status::OK();
+  }
   if (cupti_interface_->Disabled()) return errors::Internal("Disabled.");
 
   CUpti_Activity *record = nullptr;

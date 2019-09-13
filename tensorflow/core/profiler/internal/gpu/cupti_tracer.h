@@ -229,8 +229,7 @@ class CuptiTracer {
   // Only one profile session can be live in the same time.
   bool IsAvailable() const;
 
-  void Enable(const CuptiTracerOptions& option, CuptiInterface* cupti_interface,
-              CuptiTraceCollector* collector);
+  void Enable(const CuptiTracerOptions& option, CuptiTraceCollector* collector);
   void Disable();
 
   Status HandleCallback(CUpti_CallbackDomain domain, CUpti_CallbackId cbid,
@@ -243,9 +242,12 @@ class CuptiTracer {
   static uint64 GetTimestamp();
   static int NumGpus();
 
- private:
-  CuptiTracer() : num_gpus_(NumGpus()) {}
+ protected:
+  // protected constructor for injecting mock cupti interface for testing.
+  explicit CuptiTracer(CuptiInterface* cupti_interface)
+      : num_gpus_(NumGpus()), cupti_interface_(cupti_interface) {}
 
+ private:
   Status EnableApiTracing();
   Status EnableActivityTracing();
   Status DisableApiTracing();
