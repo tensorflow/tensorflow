@@ -3835,7 +3835,7 @@ class IdentityCategoricalColumn(
     values = input_tensor.values
     if input_tensor.values.dtype != dtypes.int64:
       values = math_ops.cast(values, dtypes.int64, name='values')
-    if self.default_value:
+    if self.default_value is not None:
       values = math_ops.cast(input_tensor.values, dtypes.int64, name='values')
       num_buckets = math_ops.cast(
           self.num_buckets, dtypes.int64, name='num_buckets')
