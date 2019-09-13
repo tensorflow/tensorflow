@@ -396,10 +396,10 @@ def F16Tensor  : TensorOf<[F16]>;
 def F32Tensor  : TensorOf<[F32]>;
 def F64Tensor  : TensorOf<[F64]>;
 
-// Whether a type is a ranked tensor type.
+// Whether a shaped type is ranked.
 def HasRankPred : CPred<"$_self.cast<ShapedType>().hasRank()">;
 
-// Whether a type is a ranked tensor type with one of the specified ranks.
+// Whether a shaped type has one of the specified ranks.
 class HasAnyRankOfPred<list<int> ranks> : And<[
     HasRankPred,
     Or<!foreach(rank, ranks,
