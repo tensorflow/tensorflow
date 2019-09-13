@@ -51,7 +51,7 @@ class LoaderTest : public ::testing::Test {
   }
 
   void ValidateAssets(const string& export_dir,
-                      const SavedModelBundle& bundle) {
+                      const SavedModelBundleLite& bundle) {
     const string asset_directory =
         io::JoinPath(export_dir, kSavedModelAssetsDirectory);
     const string asset_filename = "foo.txt";
@@ -60,7 +60,7 @@ class LoaderTest : public ::testing::Test {
 
     std::vector<Tensor> path_outputs;
     TF_ASSERT_OK(
-        bundle.session->Run({}, {"filename_tensor:0"}, {}, &path_outputs));
+        bundle.GetSession()->Run({}, {"filename_tensor:0"}, {}, &path_outputs));
     ASSERT_EQ(1, path_outputs.size());
 
     test::ExpectTensorEqual<tstring>(
@@ -68,11 +68,10 @@ class LoaderTest : public ::testing::Test {
   }
 
   void CheckSavedModelBundle(const string& export_dir,
-                             const SavedModelBundle& bundle) {
+                             const SavedModelBundleLite& bundle) {
     ValidateAssets(export_dir, bundle);
-    // Retrieve the regression signature from meta graph def.
-    const auto signature_def_map = bundle.meta_graph_def.signature_def();
-    const auto signature_def = signature_def_map.at("regress_x_to_y");
+    // Retrieve the regression signature from the bundle.
+    const auto& signature_def = bundle.GetSignatures().at("regress_x_to_y");
 
     const string input_name = signature_def.inputs().at(kRegressInputs).name();
     const string output_name =
@@ -87,8 +86,8 @@ class LoaderTest : public ::testing::Test {
     Tensor input =
         test::AsTensor<tstring>(serialized_examples, TensorShape({4}));
     std::vector<Tensor> outputs;
-    TF_ASSERT_OK(bundle.session->Run({{input_name, input}}, {output_name}, {},
-                                     &outputs));
+    TF_ASSERT_OK(bundle.GetSession()->Run({{input_name, input}}, {output_name},
+                                          {}, &outputs));
     ASSERT_EQ(outputs.size(), 1);
     test::ExpectTensorEqual<float>(
         outputs[0],
@@ -101,7 +100,7 @@ class LoaderTest : public ::testing::Test {
 // TODO(sukritiramesh): Increase run iterations and move outside of the test
 // suite.
 TEST_F(LoaderTest, ResourceLeakTest) {
-  SavedModelBundle bundle;
+  SavedModelBundleLite bundle;
   SessionOptions session_options;
   RunOptions run_options;
 
@@ -115,7 +114,7 @@ TEST_F(LoaderTest, ResourceLeakTest) {
 }
 
 TEST_F(LoaderTest, TagMatch) {
-  SavedModelBundle bundle;
+  SavedModelBundleLite bundle;
   SessionOptions session_options;
   RunOptions run_options;
 
@@ -127,7 +126,7 @@ TEST_F(LoaderTest, TagMatch) {
 }
 
 TEST_F(LoaderTest, NoTagMatch) {
-  SavedModelBundle bundle;
+  SavedModelBundleLite bundle;
   RunOptions run_options;
   SessionOptions session_options;
 
@@ -143,7 +142,7 @@ TEST_F(LoaderTest, NoTagMatch) {
 }
 
 TEST_F(LoaderTest, NoTagMatchMultiple) {
-  SavedModelBundle bundle;
+  SavedModelBundleLite bundle;
   RunOptions run_options;
   SessionOptions session_options;
 
@@ -159,7 +158,7 @@ TEST_F(LoaderTest, NoTagMatchMultiple) {
 }
 
 TEST_F(LoaderTest, SessionCreationFailure) {
-  SavedModelBundle bundle;
+  SavedModelBundleLite bundle;
   // Use invalid SessionOptions to cause session creation to fail.  Default
   // options work, so provide an invalid value for the target field.
   SessionOptions session_options;
@@ -177,7 +176,7 @@ TEST_F(LoaderTest, SessionCreationFailure) {
 }
 
 TEST_F(LoaderTest, PbtxtFormat) {
-  SavedModelBundle bundle;
+  SavedModelBundleLite bundle;
   SessionOptions session_options;
   RunOptions run_options;
 
@@ -189,7 +188,7 @@ TEST_F(LoaderTest, PbtxtFormat) {
 }
 
 TEST_F(LoaderTest, MainOpFormat) {
-  SavedModelBundle bundle;
+  SavedModelBundleLite bundle;
   SessionOptions session_options;
   RunOptions run_options;
 
@@ -201,7 +200,7 @@ TEST_F(LoaderTest, MainOpFormat) {
 }
 
 TEST_F(LoaderTest, InvalidExportPath) {
-  SavedModelBundle bundle;
+  SavedModelBundleLite bundle;
   RunOptions run_options;
   SessionOptions session_options;
 
@@ -230,7 +229,7 @@ TEST_F(LoaderTest, MaybeSavedModelDirectory) {
 }
 
 TEST_F(LoaderTest, SavedModelInitOpV2Format) {
-  SavedModelBundle bundle;
+  SavedModelBundleLite bundle;
   SessionOptions session_options;
   RunOptions run_options;
 
