@@ -1580,6 +1580,7 @@ rinfo_.push_back({csinfo_.tanh_grad,
     TryGetNodeAttr(n->def(), "axis", &axis);
     TF_CHECK_OK(GetNodeAttr(n->def(), "mode", &mode_string));
     TF_CHECK_OK(GetNodeAttr(n->def(), "round_mode", &round_mode_string));
+
     if (narrow_range) {
       VLOG(1) << "QuantizeOpRewrite: narrow range is enabled for quantization."
               << "This case is not optimized by Intel MKL, "
@@ -1593,8 +1594,9 @@ rinfo_.push_back({csinfo_.tanh_grad,
               << "thus using Eigen op for Quantize op ";
       return false;
     }
-    if (mode_string != "SCALED" || round_mode_string != "HALF_TO_EVEN") {
-      VLOG(1) << "QuantizeOpRewrite: Mode is not SCALED and/or"
+    if (!((mode_string == "SCALED" && round_mode_string == "HALF_TO_EVEN") ||
+          (mode_string == "MIN_FIRST"))) {
+      VLOG(1) << "QuantizeOpRewrite: Mode is not SCALED or MIN_FIRST and/or"
               << "rounding mode is not HALF_TO_EVEN. "
               << "This case is not optimized by Intel MKL, thus using Eigen op"
               << "for Quantize op ";
@@ -1849,6 +1851,7 @@ rinfo_.push_back({csinfo_.tanh_grad,
   // NOTE: names are alphabetically sorted.
   static void CopyAttrsAll(const Node* orig_node, NodeBuilder* nb,
                            bool change_format = false);
+
   static void CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
                             bool change_format = false);
   static void CopyAttrsConv2DDepthwiseCheckConstFilter(
