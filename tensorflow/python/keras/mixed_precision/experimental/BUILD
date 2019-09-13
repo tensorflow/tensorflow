@@ -98,10 +98,21 @@ py_test(
 )
 
 py_library(
+    name = "loss_scale",
+    srcs = ["loss_scale.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:loss_scale",
+        "//tensorflow/python/keras:generic_utils",
+    ],
+)
+
+py_library(
     name = "loss_scale_optimizer",
     srcs = ["loss_scale_optimizer.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":loss_scale",
         "//tensorflow/python:loss_scale",
         "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
