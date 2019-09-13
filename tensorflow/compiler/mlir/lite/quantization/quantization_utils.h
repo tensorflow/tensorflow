@@ -163,6 +163,9 @@ struct GenericFullQuantizationPattern : public RewritePattern {
 
 // Converts the min/max/storage_type/narrow_range information to a
 // QuantizedType, and then returns the attribute containing the QuantizedType.
+// TODO(b/140464702): This is to convert attribute from the placeholder node to
+// quantized type. We should remove this method once we move aways from the
+// placeholder hack.
 TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, FloatAttr min,
                               FloatAttr max, Type storage_type,
                               bool narrow_range = false,
@@ -170,11 +173,13 @@ TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, FloatAttr min,
 
 // Converts the min/max/num_bits/narrow_range information to a
 // QuantizedType, and then returns the attribute containing the QuantizedType.
-// Note that this method assumes an unsigned quantization type, which is
-// implicitly defined by FakeQuant* ops in TensorFlow.
+// The `min` and `max` arguments can be FloatAttr or DenseFPElementsAttr and
+// returns UniformQuantizedType or UniformQuantizedPerAxisType respectively.
+// `narrow_range` is set to true for weights and `is_signed` is set to true
+// if it is using signed int symmetric quantization.
 TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
                               Attribute max, IntegerAttr num_bits,
-                              BoolAttr narrow_range);
+                              BoolAttr narrow_range, bool is_signed = false);
 
 // Casts the `target` type to a quantized type by using the quantization
 // parameters from the type in the `source` type attribute.

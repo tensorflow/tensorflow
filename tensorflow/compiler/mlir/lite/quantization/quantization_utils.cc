@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 
+#include <cstdint>
+
 #include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:local_config_mlir
 #include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
 #include "mlir/Dialect/QuantOps/QuantizeUtils.h"  // TF:local_config_mlir
 #include "mlir/Dialect/QuantOps/UniformSupport.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 
 namespace mlir {
@@ -28,15 +31,27 @@ namespace TFL {
 
 // Returns the quantized type for the
 // input_type/min/max/storag_type_width/narrow_range.
-static Type GetQuantizedType(Builder builder, Type input_type, double min,
-                             double max, int storage_type_width,
-                             bool narrow_range, bool is_signed) {
+static Type GetQuantizedType(Builder builder, Type input_type,
+                             ArrayRef<double> min, ArrayRef<double> max,
+                             int storage_type_width, bool narrow_range,
+                             bool is_signed) {
   auto converter =
       quant::ExpressedToQuantizedConverter::forInputType(input_type);
 
-  quant::UniformQuantizedType quantizedEleType = quant::fakeQuantAttrsToType(
-      builder.getUnknownLoc(), storage_type_width, min, max, narrow_range,
-      converter.expressedType, is_signed);
+  quant::QuantizedType quantizedEleType;
+  if (min.size() == 1 && max.size() == 1) {
+    quantizedEleType = quant::fakeQuantAttrsToType(
+        builder.getUnknownLoc(), storage_type_width, min[0], max[0],
+        narrow_range, converter.expressedType, is_signed);
+  } else if (min.size() == max.size()) {
+    auto shape = input_type.dyn_cast<ShapedType>();
+    if (!shape || min.size() != shape.getDimSize(shape.getRank() - 1)) {
+      return {};
+    }
+    quantizedEleType = quant::fakeQuantAttrsToType(
+        builder.getUnknownLoc(), storage_type_width, shape.getRank() - 1, min,
+        max, narrow_range, converter.expressedType, is_signed);
+  }
   if (!quantizedEleType) return {};
   return converter.convert(quantizedEleType);
 }
@@ -46,20 +61,40 @@ TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, FloatAttr min,
                               bool narrow_range, bool is_signed) {
   int storage_type_width = storage_type.cast<IntegerType>().getWidth();
   Type final_type = GetQuantizedType(
-      builder, input_type, min.getValueAsDouble(), max.getValueAsDouble(),
+      builder, input_type, {min.getValueAsDouble()}, {max.getValueAsDouble()},
       storage_type_width, narrow_range, is_signed);
   return builder.getTypeAttr(final_type);
 }
 
 TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
                               Attribute max, IntegerAttr num_bits,
-                              BoolAttr narrow_range) {
-  FloatAttr min_value = GetSingleElementAsFloatOrSelf(min);
-  FloatAttr max_value = GetSingleElementAsFloatOrSelf(max);
-  if (!min_value || !max_value) return {};
-  return GetQuantizedTypeAttr(builder, input_type, min_value, max_value,
-                              builder.getIntegerType(num_bits.getInt()),
-                              narrow_range.getValue(), /*is_signed=*/false);
+                              BoolAttr narrow_range, bool is_signed) {
+  SmallVector<double, 4> min_value, max_value;
+  auto mins = min.dyn_cast<DenseFPElementsAttr>();
+  auto maxs = max.dyn_cast<DenseFPElementsAttr>();
+  if (mins && maxs) {
+    min_value.reserve(mins.getNumElements());
+    max_value.reserve(maxs.getNumElements());
+    for (auto it = mins.begin(), e = mins.end(); it != e; ++it) {
+      min_value.push_back(FloatAttr::getValueAsDouble(*it));
+    }
+    for (auto it = maxs.begin(), e = maxs.end(); it != e; ++it) {
+      max_value.push_back(FloatAttr::getValueAsDouble(*it));
+    }
+  } else {
+    auto fmin = min.dyn_cast<FloatAttr>();
+    auto fmax = max.dyn_cast<FloatAttr>();
+    if (fmin && fmax) {
+      min_value.push_back(fmin.getValueAsDouble());
+      max_value.push_back(fmax.getValueAsDouble());
+    } else {
+      return {};
+    }
+  }
+  Type final_type =
+      GetQuantizedType(builder, input_type, min_value, max_value,
+                       num_bits.getInt(), narrow_range.getValue(), is_signed);
+  return builder.getTypeAttr(final_type);
 }
 
 TypeAttr CastQuantizedTypeAttrFromExpressedType(Builder builder,
