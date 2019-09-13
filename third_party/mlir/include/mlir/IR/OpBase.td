@@ -363,6 +363,15 @@ class ShapedContainerType<list<Type> allowedTypes, Pred containerPred, string de
     ContainerType<AnyTypeOf<allowedTypes>, containerPred,
                   "$_self.cast<ShapedType>().getElementType()", descr>;
 
+// Whether a shaped type is ranked.
+def HasRankPred : CPred<"$_self.cast<ShapedType>().hasRank()">;
+
+// Whether a shaped type has one of the specified ranks.
+class HasAnyRankOfPred<list<int> ranks> : And<[
+    HasRankPred,
+    Or<!foreach(rank, ranks,
+                CPred<"$_self.cast<ShapedType>().getRank() == " # rank>)>]>;
+
 // Vector types.
 
 class VectorOf<list<Type> allowedTypes> :
@@ -395,15 +404,6 @@ def BF16Tensor : TensorOf<[BF16]>;
 def F16Tensor  : TensorOf<[F16]>;
 def F32Tensor  : TensorOf<[F32]>;
 def F64Tensor  : TensorOf<[F64]>;
-
-// Whether a shaped type is ranked.
-def HasRankPred : CPred<"$_self.cast<ShapedType>().hasRank()">;
-
-// Whether a shaped type has one of the specified ranks.
-class HasAnyRankOfPred<list<int> ranks> : And<[
-    HasRankPred,
-    Or<!foreach(rank, ranks,
-                CPred<"$_self.cast<ShapedType>().getRank() == " # rank>)>]>;
 
 // Ranked tensor type with one of the specified types and ranks.
 class TensorRankOf<list<Type> allowedTypes, list<int> ranks> :
@@ -439,6 +439,11 @@ def F32MemRef  : MemRefOf<[F32]>;
 def F64MemRef  : MemRefOf<[F64]>;
 
 // TODO(b/130064155) Have an easy way to add another constraint to a type.
+class MemRefRankOf<list<Type> allowedTypes, list<int> ranks> :
+    Type<And<[MemRefOf<allowedTypes>.predicate, HasAnyRankOfPred<ranks>]>,
+         StrJoin<!foreach(rank, ranks, rank # "D"), "/">.result # " " #
+         MemRefOf<allowedTypes>.description>;
+
 class StaticShapeMemRefOf<list<Type> allowedTypes>
     : Type<And<[MemRefOf<allowedTypes>.predicate, HasStaticShapePred]>,
            "statically shaped " # MemRefOf<allowedTypes>.description>;
