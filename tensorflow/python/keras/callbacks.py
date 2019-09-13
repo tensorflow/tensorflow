@@ -140,18 +140,19 @@ def set_callback_parameters(callback_list,
       mode: String. One of ModeKeys.TRAIN, ModeKeys.TEST, or ModeKeys.PREDICT.
         Which loop mode to configure callbacks for.
   """
+  metric_names = model.metrics_names
   for cbk in callback_list:
     if isinstance(cbk, (BaseLogger, ProgbarLogger)):
-      cbk.stateful_metrics = model.metrics_names[1:]  # Exclude `loss`
+      cbk.stateful_metrics = metric_names[1:]  # Exclude `loss`
 
   # Set callback parameters
   callback_metrics = []
   # When we have deferred build scenario with iterator input, we will compile
   # when we standardize first batch of data.
-  if mode != ModeKeys.PREDICT and hasattr(model, 'metrics_names'):
-    callback_metrics = copy.copy(model.metrics_names)
+  if mode != ModeKeys.PREDICT:
+    callback_metrics = copy.copy(metric_names)
     if do_validation:
-      callback_metrics += ['val_' + n for n in model.metrics_names]
+      callback_metrics += ['val_' + n for n in metric_names]
   callback_params = {
       'batch_size': batch_size,
       'epochs': epochs,
@@ -172,10 +173,10 @@ def _is_generator_like(data):
 
 def make_logs(model, logs, outputs, mode, prefix=''):
   """Computes logs for sending to `on_batch_end` methods."""
-  if mode in {ModeKeys.TRAIN, ModeKeys.TEST}:
-    if hasattr(model, 'metrics_names'):
-      for label, output in zip(model.metrics_names, outputs):
-        logs[prefix + label] = output
+  metric_names = model.metrics_names
+  if mode in {ModeKeys.TRAIN, ModeKeys.TEST} and metric_names:
+    for label, output in zip(metric_names, outputs):
+      logs[prefix + label] = output
   else:
     logs['outputs'] = outputs
   return logs
