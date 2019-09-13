@@ -176,12 +176,13 @@ def LHLO_CompareOp: LHLO_Op<"compare", []>, BASE_HLO_CompareOp {
 
 def LHLO_SliceOp: LHLO_Op<
       "slice",
-      [AllTypesMatch<["start_indices", "limit_indices"]>]> {
+      [AllTypesMatch<["start_indices", "limit_indices", "strides"]>]> {
   let arguments = (ins
     LHLO_Buffer:$operand,
     LHLO_Buffer:$output,
     I64ElementsAttr:$start_indices,
-    I64ElementsAttr:$limit_indices
+    I64ElementsAttr:$limit_indices,
+    I64ElementsAttr:$strides
   );
 }
 

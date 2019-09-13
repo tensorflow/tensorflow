@@ -327,7 +327,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
           ->create<mlir::xla_hlo::SliceOp>(
               loc, result_type, operands[0],
               ConvertDimensions(instruction->slice_starts()),
-              ConvertDimensions(instruction->slice_limits()))
+              ConvertDimensions(instruction->slice_limits()),
+              ConvertDimensions(instruction->slice_strides()))
           .getOperation();
     }
     case HloOpcode::kConcatenate: {

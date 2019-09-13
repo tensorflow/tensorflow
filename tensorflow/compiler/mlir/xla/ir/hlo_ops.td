@@ -262,11 +262,12 @@ def HLO_CompareOp: HLO_Op<"compare",
 def HLO_SliceOp: HLO_Op<
       "slice",
       [NoSideEffect, SameOperandsAndResultElementType,
-       AllTypesMatch<["start_indices", "limit_indices"]>]> {
+       AllTypesMatch<["start_indices", "limit_indices", "strides"]>]> {
   let arguments = (ins
     HLO_Tensor:$operand,
     I64ElementsAttr:$start_indices,
-    I64ElementsAttr:$limit_indices
+    I64ElementsAttr:$limit_indices,
+    I64ElementsAttr:$strides
   );
 
   let results = (outs HLO_Tensor);
