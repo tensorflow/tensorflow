@@ -2155,8 +2155,6 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [NoSideEffect, TFL_OperandHasRank<1,0>,
   let hasOptions = 1;
 }
 
-// TODO: Verify result shape a permutation of the first input shape's
-// dimensions.
 def TFL_TransposeOp : TFL_Op<"transpose",
   [NoSideEffect,
    TFL_OperandHasRank<1,1>,
@@ -2180,6 +2178,8 @@ def TFL_TransposeOp : TFL_Op<"transpose",
   let results = (outs
     AnyTensor:$y
   );
+
+  let verifier = [{ return Verify(*this); }];
 
   let hasFolder = 1;
 }

@@ -1151,6 +1151,63 @@ func @transpose_perm_not_i32(%arg0 : tensor<2x2xi32>, %arg1 : tensor<2xf32>) -> 
 
 // -----
 
+func @transpose_perm_size(%arg0 : tensor<2x2xi32>, %arg1 : tensor<3xi32>) -> tensor<2x2xi32> {
+  // expected-error @+1 {{perm tensor elements size is not equal to input tensor rank}}
+  %0 = "tfl.transpose"(%arg0, %arg1) : (tensor<2x2xi32>, tensor<3xi32>) -> tensor<2x2xi32>
+  return %0 : tensor<2x2xi32>
+}
+
+
+// -----
+
+func @transpose_unranked_shape(%arg0 : tensor<*xi32>) -> tensor<2x2xi32> {
+  %cst = constant dense<[1, 0]> : tensor<2xi32>
+  %0 = "tfl.transpose"(%arg0, %cst) : (tensor<*xi32>, tensor<2xi32>) -> tensor<2x2xi32>
+  return %0 : tensor<2x2xi32>
+}
+
+
+// -----
+
+func @transpose_dynamic_shape(%arg0 : tensor<2x?xi32>) -> tensor<?x2xi32> {
+  %cst = constant dense<[1, 0]> : tensor<2xi32>
+  %0 = "tfl.transpose"(%arg0, %cst) : (tensor<2x?xi32>, tensor<2xi32>) -> tensor<?x2xi32>
+  return %0 : tensor<?x2xi32>
+}
+
+
+// -----
+
+func @transpose_perm_axis_invalid(%arg0 : tensor<2x2xi32>) -> tensor<2x2xi32> {
+  %cst = constant dense<[1, -1]> : tensor<2xi32>
+  // expected-error @+1 {{perm[1] must be in [0, rank)}}
+  %0 = "tfl.transpose"(%arg0, %cst) : (tensor<2x2xi32>, tensor<2xi32>) -> tensor<2x2xi32>
+  return %0 : tensor<2x2xi32>
+}
+
+
+// -----
+
+func @transpose_perm_axis_duplicated(%arg0 : tensor<2x2xi32>) -> tensor<2x2xi32> {
+  %cst = constant dense<[1, 1]> : tensor<2xi32>
+  // expected-error @+1 {{perm[1] cannot have duplicated axis}}
+  %0 = "tfl.transpose"(%arg0, %cst) : (tensor<2x2xi32>, tensor<2xi32>) -> tensor<2x2xi32>
+  return %0 : tensor<2x2xi32>
+}
+
+
+// -----
+
+func @transpose_output_type_bad(%arg0 : tensor<3x4x5x6xi32>) -> tensor<3x4x5x6xi32> {
+  %cst = constant dense<[0, 3, 1, 2]> : tensor<4xi32>
+  // expected-error @+1 {{expect output type tensor<3x6x4x5xi32>, got tensor<3x4x5x6xi32>}}
+  %0 = "tfl.transpose"(%arg0, %cst) : (tensor<3x4x5x6xi32>, tensor<4xi32>) -> tensor<3x4x5x6xi32>
+  return %0 : tensor<3x4x5x6xi32>
+}
+
+
+// -----
+
 func @transpose_element_type(%arg0 : tensor<2x2xf32>, %arg1 : tensor<2xi32>) -> tensor<2x2xi32> {
   // expected-error @+1 {{input and output must have same element type}}
   %0 = "tfl.transpose"(%arg0, %arg1) : (tensor<2x2xf32>, tensor<2xi32>) -> tensor<2x2xi32>
