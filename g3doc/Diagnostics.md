@@ -306,5 +306,9 @@ llvm::for_each_n(llvm::parallel::par, 0, opsToProcess.size(),
   handler.setOrderIDForThread(i);
   auto *op = opsToProcess[i];
   ...
+
+  // Notify the handler that we are finished processing diagnostics on this
+  // thread.
+  handler.eraseOrderIDForThread();
 });
 ```

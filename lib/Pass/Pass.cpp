@@ -410,6 +410,12 @@ void OpToOpPassAdaptorParallel::runOnOperation() {
           if (instrumentor)
             instrumentor->runAfterPipeline(pm->getOpName(), parentThreadID);
 
+          // Drop this thread from being tracked by the diagnostic handler.
+          // After this task has finished, the thread may be used outside of
+          // this pass manager context meaning that we don't want to track
+          // diagnostics from it anymore.
+          diagHandler.eraseOrderIDForThread();
+
           // Handle a failed pipeline result.
           if (failed(pipelineResult)) {
             passFailed = true;
