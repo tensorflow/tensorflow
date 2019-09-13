@@ -311,6 +311,7 @@ def tf_copts(
             "//conditions:default": ["-pthread"],
         })
     )
+
 def tf_openmp_copts():
     return if_mkl_lnx_x64(["-fopenmp"])
 
