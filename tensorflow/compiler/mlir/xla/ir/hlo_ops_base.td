@@ -165,7 +165,7 @@ class BASE_HLO_TanhOp {
 // smaller rank shape is broadcast into a larger rank shape. For example,
 // given a 2x3x4 cuboid and a 3x4 matrix, a broadcasting tuple (1,2) means
 // matching the matrix to dimensions 1 and 2 of the cuboid.
-def BroadcastDimAttr : OptionalAttr<ElementsAttr>;
+def BroadcastDimAttr : OptionalAttr<I64ElementsAttr>;
 
 class BASE_HLO_AddOp {
   string summary = "Addition operator";

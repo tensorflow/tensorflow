@@ -144,9 +144,9 @@ def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
 class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
         HLO_Op<mnemonic, traits> {
   let arguments = (ins
-      HLO_Tensor:$lhs,
-      HLO_Tensor:$rhs,
-      BroadcastDimAttr:$broadcast_dimensions
+    HLO_Tensor:$lhs,
+    HLO_Tensor:$rhs,
+    BroadcastDimAttr:$broadcast_dimensions
   );
   let results = (outs HLO_Tensor);
   let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
@@ -206,7 +206,7 @@ def HLO_ReduceOp: HLO_Op<"reduce", [
   let arguments = (ins
     Variadic<HLO_TensorOrTuple>:$operands,
     Variadic<HLO_TensorOrTuple>:$init_values,
-    ElementsAttr:$dimensions
+    I64ElementsAttr:$dimensions
   );
 
   let results = (outs Variadic<HLO_Tensor>);
@@ -247,10 +247,10 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
 def HLO_CompareOp: HLO_Op<"compare",
       [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_CompareOp {
   let arguments = (ins
-      HLO_Tensor:$lhs,
-      HLO_Tensor:$rhs,
-      BroadcastDimAttr:$broadcast_dimensions,
-      HLO_ComparisonDirectionAttr:$comparison_direction
+    HLO_Tensor:$lhs,
+    HLO_Tensor:$rhs,
+    BroadcastDimAttr:$broadcast_dimensions,
+    HLO_ComparisonDirectionAttr:$comparison_direction
   );
   let results = (outs HLO_PredTensor);
 }
@@ -263,10 +263,10 @@ def HLO_SliceOp: HLO_Op<
       "slice",
       [NoSideEffect, SameOperandsAndResultElementType,
        AllTypesMatch<["start_indices", "limit_indices"]>]> {
-  let arguments = (
-    ins HLO_Tensor:$operand,
-    ElementsAttr:$start_indices,
-    ElementsAttr:$limit_indices
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    I64ElementsAttr:$start_indices,
+    I64ElementsAttr:$limit_indices
   );
 
   let results = (outs HLO_Tensor);
@@ -315,7 +315,7 @@ def HLO_BroadcastOp : HLO_Op<"broadcast",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_BroadcastOp {
   let arguments = (ins
     HLO_Tensor:$operand,
-    ElementsAttr:$broadcast_sizes
+    I64ElementsAttr:$broadcast_sizes
   );
 
   let results = (outs HLO_Tensor);
@@ -349,9 +349,9 @@ def HLO_ClampOp : HLO_Op<"clamp",
 def HLO_ConcatenateOp : HLO_Op<"concatenate",
     [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ConcatenateOp {
 
-  let arguments = (
-    ins Variadic<HLO_Tensor>:$val,
-        I64Attr: $dimension
+  let arguments = (ins
+    Variadic<HLO_Tensor>:$val,
+    I64Attr: $dimension
   );
 
   let results = (outs HLO_Tensor);
@@ -392,10 +392,10 @@ def HLO_CopyOp: HLO_Op<"copy", [NoSideEffect, SameOperandsAndResultType]> {
 
 def HLO_DotOp: HLO_Op<"dot", [NoSideEffect]>, BASE_HLO_DotOp {
   let arguments = (
-        ins HLO_Tensor:$lhs,
-        HLO_Tensor:$rhs,
-        HLO_PrecisionConfigAttr:$precision_config
-    );
+    ins HLO_Tensor:$lhs,
+    HLO_Tensor:$rhs,
+    HLO_PrecisionConfigAttr:$precision_config
+  );
   let results = (outs HLO_Tensor);
 }
 
@@ -409,24 +409,24 @@ def DotDimensionNumbers : StructAttr<"DotDimensionNumbers", HLO_Dialect, [
 
 def HLO_DotGeneralOp: HLO_Op<"dot_general", [NoSideEffect]>, BASE_HLO_DotGeneralOp {
   let arguments = (ins
-        HLO_Tensor:$lhs,
-        HLO_Tensor:$rhs,
-        DotDimensionNumbers:$dot_dimension_numbers,
-        HLO_PrecisionConfigAttr:$precision_config
+    HLO_Tensor:$lhs,
+    HLO_Tensor:$rhs,
+    DotDimensionNumbers:$dot_dimension_numbers,
+    HLO_PrecisionConfigAttr:$precision_config
   );
 
   let results = (outs HLO_Tensor);
 }
 
 def HLO_GatherOp: HLO_Op<"gather", [NoSideEffect]>, BASE_HLO_GatherOp {
-  let arguments = (
-      ins HLO_Tensor:$operand,
-          HLO_IntTensor:$start_indices,
-          I64Attr: $index_vector_dim,
-          ElementsAttr: $offset_dims,
-          ElementsAttr: $slice_sizes,
-          ElementsAttr: $collapsed_slice_dims,
-          ElementsAttr: $start_index_map
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    HLO_IntTensor:$start_indices,
+    I64Attr:$index_vector_dim,
+    I64ElementsAttr:$offset_dims,
+    I64ElementsAttr:$slice_sizes,
+    I64ElementsAttr:$collapsed_slice_dims,
+    I64ElementsAttr:$start_index_map
   );
 
   let results = (outs HLO_Tensor);
@@ -464,7 +464,7 @@ def HLO_ReverseOp: HLO_Op<"reverse",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ReverseOp {
   let arguments = (ins
     HLO_Tensor:$operand,
-    ElementsAttr:$dimensions
+    I64ElementsAttr:$dimensions
   );
 
   let results = (outs HLO_Tensor);
@@ -478,9 +478,9 @@ def HLO_PadOp: HLO_Op<"pad",
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_Tensor:$padding_value,
-    ElementsAttr: $edge_padding_low,
-    ElementsAttr: $edge_padding_high,
-    ElementsAttr: $interior_padding
+    I64ElementsAttr: $edge_padding_low,
+    I64ElementsAttr: $edge_padding_high,
+    I64ElementsAttr: $interior_padding
   );
 
   let results = (outs HLO_Tensor);
@@ -497,7 +497,7 @@ def HLO_TransposeOp: HLO_Op<"transpose",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_TransposeOp {
   let arguments = (ins
     HLO_Tensor:$operand,
-    ElementsAttr:$permutation
+    I64ElementsAttr:$permutation
   );
   let results = (outs HLO_Tensor);
 

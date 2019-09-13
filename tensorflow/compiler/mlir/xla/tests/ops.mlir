@@ -50,30 +50,6 @@ func @broadcast(%arg0: tensor<3xi32>) -> tensor<1x2x3xi32> {
 
 // -----
 
-func @broadcast_nonint_sizes(%arg0: tensor<3xi32>) -> tensor<1x2x3xi32> {
-  // expected-error@+1 {{broadcast_sizes must be a DenseIntElementsAttr}}
-  %0 = "xla_hlo.broadcast"(%arg0) {broadcast_sizes = dense<[1.0, 2.0]> : tensor<2xf64>} : (tensor<3xi32>) -> tensor<1x2x3xi32>
-  return %0 : tensor<1x2x3xi32>
-}
-
-// -----
-
-func @broadcast_splat_sizes(%arg0: tensor<3xi32>) -> tensor<1x2x3xi32> {
-  // expected-error@+1 {{broadcast_sizes must be a DenseIntElementsAttr}}
-  %0 = "xla_hlo.broadcast"(%arg0) {broadcast_sizes = dense<2.0> : tensor<2xf64>} : (tensor<3xi32>) -> tensor<1x2x3xi32>
-  return %0 : tensor<1x2x3xi32>
-}
-
-// -----
-
-func @broadcast_sparse_sizes(%arg0: tensor<3xi32>) -> tensor<1x2x3xi32> {
-  // expected-error@+1 {{broadcast_sizes must be a DenseIntElementsAttr}}
-  %0 = "xla_hlo.broadcast"(%arg0) {broadcast_sizes = sparse<[[0, 0], [1, 2]], [1, 5]> : tensor<3x4xi32>} : (tensor<3xi32>) -> tensor<1x2x3xi32>
-  return %0 : tensor<1x2x3xi32>
-}
-
-// -----
-
 func @broadcast_bad_sizes_rank(%arg0: tensor<3xi32>) -> tensor<1x2x3xi32> {
   // expected-error@+1 {{broadcast_sizes has rank 2 instead of rank 1}}
   %0 = "xla_hlo.broadcast"(%arg0) {broadcast_sizes = dense<[[1, 2]]> : tensor<1x2xi64>} : (tensor<3xi32>) -> tensor<1x2x3xi32>
@@ -117,30 +93,6 @@ func @broadcast_in_dim(%arg0: tensor<1x2xi32>) -> tensor<1x2x2xi32> {
 // CHECK-LABEL: func @broadcast_in_dim_zero_rank
 func @broadcast_in_dim_zero_rank(%arg0: tensor<i32>) -> tensor<1x2x3xi32> {
   %0 = "xla_hlo.broadcast_in_dim"(%arg0) : (tensor<i32>) -> tensor<1x2x3xi32>
-  return %0 : tensor<1x2x3xi32>
-}
-
-// -----
-
-func @broadcast_in_dim_bad_nonint_dimensions(%arg0: tensor<1x2xi32>) -> tensor<1x2x3xi32> {
-  // expected-error@+1 {{broadcast_sizes must be a DenseIntElementsAttr}}
-  %0 = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[1.0, 2.0]> : tensor<2xf64>} : (tensor<1x2xi32>) -> tensor<1x2x3xi32>
-  return %0 : tensor<1x2x3xi32>
-}
-
-// -----
-
-func @broadcast_in_dim_bad_splat_dimensions(%arg0: tensor<1x2xi32>) -> tensor<1x2x3xi32> {
-  // expected-error@+1 {{broadcast_sizes must be a DenseIntElementsAttr}}
-  %0 = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<2.0> : tensor<2xf64>} : (tensor<1x2xi32>) -> tensor<1x2x3xi32>
-  return %0 : tensor<1x2x3xi32>
-}
-
-// -----
-
-func @broadcast_in_dim_bad_sparse_dimensions(%arg0: tensor<1x2xi32>) -> tensor<1x2x3xi32> {
-  // expected-error@+1 {{broadcast_sizes must be a DenseIntElementsAttr}}
-  %0 = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = sparse<[[0, 0], [1, 2]], [1, 5]> : tensor<3x4xi32>} : (tensor<1x2xi32>) -> tensor<1x2x3xi32>
   return %0 : tensor<1x2x3xi32>
 }
 
@@ -453,30 +405,6 @@ func @slice_operand_result_mismatch(%arg0: tensor<3x4xi32>) -> tensor<1x4xf32> {
 // CHECK-LABEL: func @transpose
 func @transpose(%arg0: tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32> {
   %0 = "xla_hlo.transpose"(%arg0) {permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>} : (tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32>
-  return %0: tensor<2x1x4x3xi32>
-}
-
-// -----
-
-func @transpose_bad_permutations_float(%arg0: tensor<1x2x3x4xi32>) ->  tensor<2x1x4x3xi32> {
-  // expected-error@+1 {{permutation must be a DenseIntElementsAttr}}
-  %0 = "xla_hlo.transpose"(%arg0) {permutation = dense<[1.0, 0.0, 3.0, 2.0]> : tensor<4xf64>} : (tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32>
-  return %0: tensor<2x1x4x3xi32>
-}
-
-// -----
-
-func @transpose_bad_permutations_splat(%arg0: tensor<1x2x3x4xi32>) ->  tensor<2x1x4x3xi32> {
-  // expected-error@+1 {{permutation must be a DenseIntElementsAttr}}
-  %0 = "xla_hlo.transpose"(%arg0) {permutation = dense<2.0> : tensor<2xf64>} : (tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32>
-  return %0: tensor<2x1x4x3xi32>
-}
-
-// -----
-
-func @transpose_bad_permutations_sparse(%arg0: tensor<1x2x3x4xi32>) ->  tensor<2x1x4x3xi32> {
-  // expected-error@+1 {{permutation must be a DenseIntElementsAttr}}
-  %0 = "xla_hlo.transpose"(%arg0) {permutation = sparse<[[0, 0], [1, 2]], [1, 5]> : tensor<3x4xi32>} : (tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32>
   return %0: tensor<2x1x4x3xi32>
 }
 

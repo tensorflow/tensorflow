@@ -125,12 +125,15 @@ static bool hasValidBiasFeatureDimension(StringAttr format, Value *input,
   return biasType.getDimSize(0) == inputType.getDimSize(featureDim);
 }
 
-/// Return a 1D ElementsAttr for the feature dimension of a BiasAdd.
-static ElementsAttr getBiasFeatureDimension(Builder &b, StringAttr format,
-                                            Value *input) {
-  return b.getDenseIntElementsAttr(
-      b.getTensorType(1, b.getIntegerType(64)),
-      getFeatureDimension(format, input->getType().cast<RankedTensorType>()));
+/// Return a 1D DenseIntElementsAttr for the feature dimension of a BiasAdd.
+static DenseIntElementsAttr getBiasFeatureDimension(Builder &b,
+                                                    StringAttr format,
+                                                    Value *input) {
+  auto inputType = input->getType().cast<RankedTensorType>();
+  size_t featureDim = getFeatureDimension(format, inputType);
+  RankedTensorType type = b.getTensorType(1, b.getIntegerType(64));
+  return DenseIntElementsAttr::get(type, featureDim)
+      .cast<DenseIntElementsAttr>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -154,7 +157,8 @@ static ElementsAttr getSplat(Builder &b, Value *val, T constant) {
   return DenseElementsAttr::get(valType, elementAttr);
 }
 
-static ElementsAttr getBroadcastDimensionsAttr(Builder &b, Value *x, Value *y) {
+static DenseIntElementsAttr getBroadcastDimensionsAttr(Builder &b, Value *x,
+                                                       Value *y) {
   TensorType xType = x->getType().dyn_cast<RankedTensorType>();
   TensorType yType = y->getType().dyn_cast<RankedTensorType>();
   if (xType == yType || !xType || !yType) return {};
@@ -179,8 +183,9 @@ static ElementsAttr getBroadcastDimensionsAttr(Builder &b, Value *x, Value *y) {
   std::iota(broadcastDimensions.begin(), broadcastDimensions.end(),
             maxRank - minRank);
 
-  return b.getDenseIntElementsAttr(
-      b.getTensorType({minRank}, b.getIntegerType(64)), broadcastDimensions);
+  RankedTensorType type = b.getTensorType({minRank}, b.getIntegerType(64));
+  return DenseIntElementsAttr::get<int64_t>(type, broadcastDimensions)
+      .cast<DenseIntElementsAttr>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -189,7 +194,8 @@ static ElementsAttr getBroadcastDimensionsAttr(Builder &b, Value *x, Value *y) {
 
 // Returns a 1-d i64 elements attribute populated with numbers from start to
 // end, excluding.
-static ElementsAttr GetI64AttrForSeq(int start, int end, Builder *builder) {
+static DenseIntElementsAttr GetI64ElementsAttrForSeq(int start, int end,
+                                                     Builder *builder) {
   int size = end - start;
 
   SmallVector<int64_t, 4> vals;
@@ -197,7 +203,8 @@ static ElementsAttr GetI64AttrForSeq(int start, int end, Builder *builder) {
   std::iota(vals.begin(), vals.end(), start);
 
   TensorType ty = builder->getTensorType({size}, builder->getIntegerType(64));
-  return DenseIntElementsAttr::get<int64_t>(ty, vals);
+  return DenseIntElementsAttr::get<int64_t>(ty, vals)
+      .cast<DenseIntElementsAttr>();
 }
 
 // Returns the type to use for accumulating the given type.
@@ -305,8 +312,8 @@ class ConvertSoftmaxOp : public OpRewritePattern<TF::SoftmaxOp> {
     // Note that the TensorFlow Softmax op verifies that the input rank is
     // greater than or equal to one so both of the following sequences are
     // valid.
-    ElementsAttr batch_dims = GetI64AttrForSeq(0, rank - 1, &rewriter);
-    ElementsAttr reduce_dim = GetI64AttrForSeq(rank - 1, rank, &rewriter);
+    auto batch_dims = GetI64ElementsAttrForSeq(0, rank - 1, &rewriter);
+    auto reduce_dim = GetI64ElementsAttrForSeq(rank - 1, rank, &rewriter);
     Location loc = op.getLoc();
 
     // Exponential of input values and then their sum can be very large here.

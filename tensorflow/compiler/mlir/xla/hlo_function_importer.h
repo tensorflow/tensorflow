@@ -99,11 +99,11 @@ class HloFunctionImporter {
       xla::HloInstruction* instruction);
 
   // Converts the dimensions of an HLO instruction into an MLIR attribute.
-  mlir::ElementsAttr ConvertDimensions(
+  mlir::DenseIntElementsAttr ConvertDimensions(
       llvm::ArrayRef<tensorflow::int64> op_dimensions);
 
-  // Converts Array ref to an ElementsAttr.
-  mlir::ElementsAttr Convert(llvm::ArrayRef<int64_t> op_dimensions);
+  // Converts Array ref to an DenseIntElementsAttr.
+  mlir::DenseIntElementsAttr Convert(llvm::ArrayRef<int64_t> op_dimensions);
 
   // Converts the dot dimensions to attributes.
   mlir::xla_hlo::DotDimensionNumbers ConvertDotDimensionNumbers(

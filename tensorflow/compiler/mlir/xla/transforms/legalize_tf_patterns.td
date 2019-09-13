@@ -21,7 +21,7 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
 
 def NullArrayAttr : NativeCodeCall<"ArrayAttr()">;
-def NullElementsAttr : NativeCodeCall<"ElementsAttr()">;
+def NullDenseIntElementsAttr : NativeCodeCall<"DenseIntElementsAttr()">;
 
 //===----------------------------------------------------------------------===//
 // BatchNorm op patterns.
@@ -145,7 +145,7 @@ class ConstantSplat<string value> : NativeCodeCall<
 
 def : Pat<(TF_ReluOp AnyTensor:$input),
           (HLO_MaxOp (ConstantOp (ConstantSplat<"0"> $input)), $input,
-                     (NullElementsAttr))>;
+                     (NullDenseIntElementsAttr))>;
 
 def : Pat<(TF_Relu6Op AnyTensor:$input),
           (HLO_ClampOp (ConstantOp (ConstantSplat<"0"> $input)), $input,

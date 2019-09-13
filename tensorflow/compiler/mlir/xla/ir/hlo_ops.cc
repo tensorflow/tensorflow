@@ -251,13 +251,8 @@ static LogicalResult Verify(TupleOp op) {
 
 // TODO(b/129012527) These should be expressed as type constraints.
 static LogicalResult Verify(BroadcastOp op) {
-  auto sizes = op.broadcast_sizes().dyn_cast<DenseIntElementsAttr>();
-  if (!sizes) {
-    return op.emitOpError(
-        llvm::formatv("broadcast_sizes must be a DenseIntElementsAttr; got {0}",
-                      op.broadcast_sizes()));
-  }
-  auto sizesType = sizes.getType().cast<RankedTensorType>();
+  auto sizes = op.broadcast_sizes();
+  auto sizesType = sizes.getType();
   auto sizesRank = sizesType.getRank();
   if (sizesRank != 1) {
     return op.emitOpError(llvm::formatv(
@@ -312,15 +307,8 @@ static LogicalResult Verify(BroadcastInDimOp op) {
                       operandRank));
   }
 
-  auto dimensions = op.broadcast_dimensions()->dyn_cast<DenseIntElementsAttr>();
-  if (!dimensions) {
-    return op.emitOpError(
-        llvm::formatv("broadcast_sizes must be a DenseIntElementsAttr; got {0}",
-                      op.broadcast_dimensions()));
-  }
-
-  auto dimensionsType =
-      op.broadcast_dimensions()->getType().cast<RankedTensorType>();
+  auto dimensions = *op.broadcast_dimensions();
+  auto dimensionsType = op.broadcast_dimensions()->getType();
   auto dimensionsRank = dimensionsType.getRank();
   if (dimensionsRank != 1) {
     return op.emitOpError(llvm::formatv(
@@ -548,13 +536,7 @@ OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
 }
 
 static LogicalResult Verify(TransposeOp op) {
-  if (!op.permutation().isa<DenseIntElementsAttr>()) {
-    return op.emitOpError(
-        llvm::formatv("permutation must be a DenseIntElementsAttr; got {0}",
-                      op.permutation()));
-  }
-
-  auto permutationType = op.permutation().getType().cast<RankedTensorType>();
+  auto permutationType = op.permutation().getType();
   auto permutationRank = permutationType.getRank();
   if (permutationRank != 1) {
     return op.emitOpError(llvm::formatv(
