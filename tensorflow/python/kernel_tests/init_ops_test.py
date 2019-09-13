@@ -560,6 +560,22 @@ class LinSpaceTest(test.TestCase):
         tf_ans = math_ops.linspace(start, stop, num_constant, axis=axis, name="linspace")
         return self.evaluate(tf_ans)
 
+  def _LinspaceNoneShape(self, start, stop, num, graph_shape=None, axis=0):
+    with ops.Graph().as_default() as graph:
+      num_tensor = array_ops.placeholder(dtypes.int32)
+      start_tensor = array_ops.placeholder(dtypes.float32, shape=graph_shape)
+      stop_tensor = array_ops.placeholder(dtypes.float32, shape=graph_shape)
+      ans_tensor = math_ops.linspace(start, stop, num_tensor, axis=axis, name="linspace")
+
+      with self.session(graph=graph, force_gpu=self.force_gpu) as sess:
+        feed_dict = {
+          start_tensor: start,
+          stop_tensor: stop,
+          num_tensor: num
+        }
+        return sess.run(ans_tensor, feed_dict=feed_dict)
+
+
   def testPositive(self):
     for self.force_gpu in self._gpu_modes():
       self.assertArrayNear(self._LinSpace(1., 5., 1), np.array([1.]), 1e-5)
@@ -622,14 +638,21 @@ class LinSpaceTest(test.TestCase):
 
   def _baseNDArrayCompareToNumpy(self, axis):
     for self.force_gpu in self._gpu_modes():
-      a = np.arange(2 * 3 * 4, dtype=np.float32).reshape((2, 3, 4))
-      b = a * 5
-      num = 10
+      a, b, expected, num = self.create_nd_inputs_and_expected_output(axis)
       actual = self._LinSpace(a, b, num, axis=axis)
-      expected = np.linspace(a, b, num, axis=axis)
-      wrong_indices = np.where(~np.allclose(actual, expected))
-      mess = 'Wrong float answer. Wrong indices: {}'.format(wrong_indices)
-      self.assertTrue(np.allclose(actual, expected), mess)
+      self.assert_close(actual, expected)
+
+  def assert_close(self, actual, expected):
+    wrong_indices = np.where(~np.allclose(actual, expected))
+    mess = 'Wrong float answer. Wrong indices: {}'.format(wrong_indices)
+    self.assertTrue(np.allclose(actual, expected), mess)
+
+  def create_nd_inputs_and_expected_output(self, axis):
+    a = np.arange(2 * 3 * 4, dtype=np.float32).reshape((2, 3, 4))
+    b = a * 5
+    num = 10
+    expected = np.linspace(a, b, num, axis=axis)
+    return a, b, expected, num
 
   def testNDArrayCompareToNumpyDefaultAxis(self):
     self._baseNDArrayCompareToNumpy(0)
@@ -645,6 +668,21 @@ class LinSpaceTest(test.TestCase):
       actual = self._LinSpaceNumConstant(0., 1., 32)
       expected = np.linspace(0., 1., 32)
       self.assertArrayNear(expected, actual, 1e-5)
+
+  def testUnknownShapeAtGraphCreationTime(self):
+    for self.force_gpu in self._gpu_modes():
+      axis = 1
+      a, b, expected, num = self.create_nd_inputs_and_expected_output(axis)
+      actual = self._LinspaceNoneShape(a, b, num, axis=axis, graph_shape=None)
+      self.assert_close(actual, expected)
+
+
+  def testNoneValuesInShapeAtGraphCreationTime(self):
+    for self.force_gpu in self._gpu_modes():
+      axis = 1
+      a, b, expected, num = self.create_nd_inputs_and_expected_output(axis)
+      actual = self._LinspaceNoneShape(a, b, num, axis=axis, graph_shape=(None, None, None))
+      self.assert_close(actual, expected)
 
 
 class DeviceTest(test.TestCase):
