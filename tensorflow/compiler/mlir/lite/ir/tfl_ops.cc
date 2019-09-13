@@ -317,6 +317,34 @@ OpFoldResult AddOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 // TODO(ashwinm): Implement shape inference for Concatenation
 
+OpFoldResult ConcatenationOp::fold(ArrayRef<Attribute> operands) {
+  // Remove all empty values.
+  SmallVector<Value *, 4> non_empty_values;
+  for (Value *value : this->values()) {
+    const auto shaped_type = value->getType().cast<ShapedType>();
+    if (shaped_type.hasStaticShape() && shaped_type.getNumElements() == 0) {
+      continue;
+    }
+    non_empty_values.push_back(value);
+  }
+
+  // All are not empty, do nothing.
+  if (non_empty_values.size() == getNumOperands()) return nullptr;
+
+  // If only one input is non-empty, just return it as the result of folding.
+  if (non_empty_values.size() == 1) {
+    return non_empty_values[0];
+  }
+
+  // Otherwise, build a new concatenation op with non-empty values.
+  mlir::OpBuilder builder(getOperation());
+  auto new_concat = builder.create<TFL::ConcatenationOp>(
+      getLoc(), getType(), non_empty_values,
+      builder.getIntegerAttr(builder.getIntegerType(32), axis()),
+      builder.getStringAttr(fused_activation_function()));
+  return new_concat.getResult();
+}
+
 //===----------------------------------------------------------------------===//
 // GatherOp
 //===----------------------------------------------------------------------===//
