@@ -460,7 +460,7 @@ class DatasetOpsTestBase : public ::testing::Test {
                                   std::vector<Tensor>* const components,
                                   DatasetBase** tensor_slice_dataset);
 
-  // TODO(feihugis): remove this function after all related testes switch to
+  // TODO(feihugis): remove this function after all related tests switch to
   // `DatasetOpsTestBaseV2`.
   // Creates a `RangeDataset` dataset as a variant tensor.
   Status MakeRangeDataset(const Tensor& start, const Tensor& stop,
@@ -469,7 +469,7 @@ class DatasetOpsTestBase : public ::testing::Test {
                           const std::vector<PartialTensorShape>& output_shapes,
                           Tensor* range_dataset);
 
-  // TODO(feihugis): remove this function after all related testes switch to
+  // TODO(feihugis): remove this function after all related tests switch to
   // `DatasetOpsTestBaseV2`.
   // Creates a `TakeDataset` dataset as a variant tensor.
   Status MakeTakeDataset(const Tensor& input_dataset, int64 count,
