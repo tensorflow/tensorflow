@@ -47,9 +47,11 @@ void NcclReducer::Run(StatusCallback done) {
   }
 
   Tensor group_size;
-  Notification group_size_ready;
+  std::unique_ptr<Notification> group_size_ready;
   Status group_size_status;
+  std::unique_ptr<Notification> nccl_done;
   if (col_params_->final_op) {
+    group_size_ready = absl::make_unique<Notification>();
     // Create an on-device scalar value from group_size_.
     // TODO(ayushd, tucker): avoid this copy by either reusing across
     // invocations or providing the scalar to the kernel in host memory.
@@ -85,18 +87,29 @@ void NcclReducer::Run(StatusCallback done) {
         col_ctx_->output->dtype(), TensorShape({}));
     DeviceContext* op_dev_ctx = col_ctx_->op_ctx->op_device_context();
     // Enqueue copy on gpu stream.
+    Notification* copy_note = group_size_ready.get();
     op_dev_ctx->CopyCPUTensorToDevice(
         &group_size_val, col_ctx_->device, &group_size,
-        [&group_size_ready, &group_size_status](const Status& s) {
+        [copy_note, &group_size_status](const Status& s) {
           group_size_status = s;
-          group_size_ready.Notify();
+          copy_note->Notify();
         });
-  } else {
-    group_size_ready.Notify();
+    nccl_done = absl::make_unique<Notification>();
   }
 
-  Notification nccl_done;
   Status nccl_status;
+  // If no final_op, then the NCCL callback is just `done`.  Otherwise we notify
+  // `nccl_done` so that we can then perform `final_op`.
+  StatusCallback done_callback;
+  if (col_params_->final_op) {
+    Notification* nccl_note = nccl_done.get();
+    done_callback = [nccl_note, &nccl_status](const Status& s) {
+      nccl_status = s;
+      nccl_note->Notify();
+    };
+  } else {
+    done_callback = std::move(done);
+  }
   auto* compute_stream = col_ctx_->op_ctx->op_device_context()->stream();
   auto* gpu_info = col_ctx_->op_ctx->device()->tensorflow_gpu_device_info();
   // `AddToAllReduce` performs consistency checks for the NCCL call and enqueues
@@ -113,10 +126,6 @@ void NcclReducer::Run(StatusCallback done) {
       col_params_->instance.task_names[col_params_->default_rank]);
   const string nccl_collective_key =
       NcclCollectiveKey(col_ctx_->exec_key, col_ctx_->step_id);
-  auto done_callback = [&nccl_done, &nccl_status](const Status& s) {
-    nccl_status = s;
-    nccl_done.Notify();
-  };
   auto participant = absl::make_unique<NcclManager::Participant>(
       compute_stream->parent(), compute_stream, gpu_info, col_ctx_->input,
       col_ctx_->output, col_params_->default_rank, std::move(done_callback));
@@ -155,6 +164,8 @@ void NcclReducer::Run(StatusCallback done) {
     // ready to go.
     profiler::TraceMe activity("WaitForDependencies",
                                profiler::TraceMeLevel::kInfo);
+    // TODO(b/80529858): make this entirely non-blocking by converting
+    // `WaitForDependencies` to async function.
     col_ctx_->col_exec->WaitForDependencies(*col_params_);
     NcclManager::instance()->SignalMultiNodeReady(nccl_collective_key);
   }
@@ -167,18 +178,27 @@ void NcclReducer::Run(StatusCallback done) {
     col_ctx_->col_exec->Launched(*col_params_);
   }
 
-  // Wait for nccl op and group_size copy to succeed, then do final_op.
-  {
-    profiler::TraceMe activity("GroupSizeCopy", profiler::TraceMeLevel::kInfo);
-    group_size_ready.WaitForNotification();
+  // If no final_op, then this OpKernel is non-blocking.
+  if (!col_params_->final_op) {
+    return;
   }
+
+  // Wait for nccl op and group_size copy to succeed, then do final_op.  This
+  // kernel needs to wait for both notifications because they execute on
+  // different GPU streams with no ordering guarantees between them.
+  // TODO(b/80529858): make this entirely non-blocking by getting rid of the
+  // waits below and calling final op from the nccl kernel's DoneCallback.
   {
     profiler::TraceMe activity("Nccl", profiler::TraceMeLevel::kInfo);
-    nccl_done.WaitForNotification();
+    nccl_done->WaitForNotification();
+  }
+  {
+    profiler::TraceMe activity("GroupSizeCopy", profiler::TraceMeLevel::kInfo);
+    group_size_ready->WaitForNotification();
   }
   Status final_status =
       group_size_status.ok() ? nccl_status : group_size_status;
-  if (final_status.ok() && col_params_->final_op) {
+  if (final_status.ok()) {
     final_status = collective_util::ComputeBinOp(
         col_ctx_->op_ctx, col_ctx_->op_params, col_ctx_->device,
         col_params_->final_op.get(), col_ctx_->output, &group_size);
