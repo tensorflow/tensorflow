@@ -19,55 +19,6 @@ namespace {
 
 constexpr char kNodeName[] = "take_dataset";
 
-class TakeDatasetParams : public DatasetParams {
- public:
-  template <typename T>
-  TakeDatasetParams(T input_dataset_params, int count,
-                    DataTypeVector output_dtypes,
-                    std::vector<PartialTensorShape> output_shapes,
-                    string node_name)
-      : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
-                      std::move(node_name), DatasetParamsType::Take),
-        count_(CreateTensor<int64>(TensorShape({}), {count})) {
-    auto input_dataset_params_ptr =
-        std::make_shared<T>(std::move(input_dataset_params));
-    input_dataset_params_group_.emplace_back(
-        std::make_pair(std::move(input_dataset_params_ptr), Tensor()));
-  }
-
-  Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override {
-    inputs->reserve(input_dataset_params_group_.size() + 1);
-    for (auto& pair : input_dataset_params_group_) {
-      if (!IsDatasetTensor(pair.second)) {
-        inputs->clear();
-        return errors::Internal(
-            "The input dataset is not populated as the dataset tensor yet.");
-      } else {
-        inputs->emplace_back(TensorValue(&pair.second));
-      }
-    }
-    inputs->emplace_back(TensorValue(&count_));
-    return Status::OK();
-  }
-
-  Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override {
-    input_placeholder->reserve(input_dataset_params_group_.size() + 1);
-    input_placeholder->emplace_back(TakeDatasetOp::kInputDataset);
-    input_placeholder->emplace_back(TakeDatasetOp::kCount);
-    return Status::OK();
-  }
-
-  Status GetAttributes(AttributeVector* attr_vector) const override {
-    *attr_vector = {{TakeDatasetOp::kOutputShapes, output_shapes_},
-                    {TakeDatasetOp::kOutputTypes, output_dtypes_}};
-    return Status::OK();
-  }
-
- private:
-  Tensor count_;
-};
-
 class TakeDatasetOpTest : public DatasetOpsTestBaseV2 {};
 
 // Test case 1: take fewer than input size.

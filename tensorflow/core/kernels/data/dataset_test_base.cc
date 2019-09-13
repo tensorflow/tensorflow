@@ -956,5 +956,35 @@ std::vector<PartialTensorShape> TensorSliceDatasetParams::TensorSliceShapes(
   return shapes;
 }
 
+Status TakeDatasetParams::GetInputs(
+    gtl::InlinedVector<TensorValue, 4>* inputs) {
+  inputs->reserve(input_dataset_params_group_.size() + 1);
+  for (auto& pair : input_dataset_params_group_) {
+    if (!IsDatasetTensor(pair.second)) {
+      inputs->clear();
+      return errors::Internal(
+          "The input dataset is not populated as the dataset tensor yet.");
+    } else {
+      inputs->emplace_back(TensorValue(&pair.second));
+    }
+  }
+  inputs->emplace_back(TensorValue(&count_));
+  return Status::OK();
+}
+
+Status TakeDatasetParams::GetInputPlaceholder(
+    std::vector<string>* input_placeholder) const {
+  input_placeholder->reserve(input_dataset_params_group_.size() + 1);
+  input_placeholder->emplace_back(TakeDatasetOp::kInputDataset);
+  input_placeholder->emplace_back(TakeDatasetOp::kCount);
+  return Status::OK();
+}
+
+Status TakeDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
+  *attr_vector = {{TakeDatasetOp::kOutputShapes, output_shapes_},
+                  {TakeDatasetOp::kOutputTypes, output_dtypes_}};
+  return Status::OK();
+}
+
 }  // namespace data
 }  // namespace tensorflow
