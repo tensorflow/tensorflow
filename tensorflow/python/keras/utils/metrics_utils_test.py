@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 from absl.testing import parameterized
 
 from tensorflow.python.framework import constant_op
@@ -26,6 +27,9 @@ from tensorflow.python.keras.utils import metrics_utils
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
+from tensorflow.python.keras import metrics
+from tensorflow.python.ops import init_ops
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -245,6 +249,28 @@ class RaggedSizeOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):  # pylint: disable=g-error-prone-assert-raises
       [x, y], _ = \
           metrics_utils.ragged_assert_compatible_and_get_flat_values([x, y])
+
+
+class test_update_confusion_matrix_variables(test.TestCase):
+  def _get_test_data(self):
+    variables_to_update = {
+      metrics_utils.ConfusionMatrix.TRUE_POSITIVES: metrics.TruePositives().add_weight('accumulator', shape=(1,),
+        initializer=init_ops.zeros_initializer)
+      }
+    metrics.TruePositives
+    y_true = np.array([[[1, 0], [0, 1]],
+                       [[0, 1], [1, 1]]])
+    y_pred = np.array([[[1, 1], [0, 1]],
+                       [[0, 0], [1, 1]]])
+    sample_weights = np.array([[1, 0],
+                               [1, 0]])
+    return variables_to_update, y_true, y_pred, sample_weights
+
+  def test_sample_weights_slicing(self):
+    variables_to_update, y_true, y_pred, sample_weights = self._get_test_data()
+    metrics_utils.update_confusion_matrix_variables(variables_to_update, y_true, y_pred, thresholds=[0.5], class_id=0,
+      sample_weight=sample_weights)
+    self.assertAlmostEqual(variables_to_update[metrics_utils.ConfusionMatrix.TRUE_POSITIVES].numpy(), 1.0)
 
 
 if __name__ == '__main__':
