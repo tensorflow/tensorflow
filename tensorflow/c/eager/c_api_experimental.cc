@@ -28,6 +28,16 @@ limitations under the License.
 
 using tensorflow::string;
 
+void TFE_OpReset(TFE_Context* ctx, const char* op_or_function_name,
+                 TF_Status* status, TFE_Op* op_to_reset) {
+  if (op_to_reset) {
+    NewOrResetOp(ctx, op_or_function_name, status, op_to_reset);
+  } else {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "op_to_reset should not be nullptr");
+  }
+}
+
 void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h, TF_Status* status) {
   op->operation.ConsumeInput(h->handle);
 }

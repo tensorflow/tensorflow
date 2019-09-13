@@ -30,7 +30,7 @@ string EagerOperation::DebugString() const {
   string out;
   VLOG(1) << "EagerOperation::DebugString() over " << this;
 
-  strings::StrAppend(&out, "Name: ", name_, "\n");
+  strings::StrAppend(&out, "Name: ", Name(), "\n");
   strings::StrAppend(&out, "Device Name: [",
                      DeviceNameUtils::ParsedNameToString(device_name_), "]\n");
   strings::StrAppend(
