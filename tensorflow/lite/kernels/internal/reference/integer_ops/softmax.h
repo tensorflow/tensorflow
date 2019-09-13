@@ -86,7 +86,7 @@ inline void Softmax(const SoftmaxParams& params,
         const int32 shifted_output = unsat_output - 128;
 
         output_data[i * depth + c] =
-            static_cast<int8>(std::max(std::min(shifted_output, 127), -128));
+            static_cast<int8>(std::max(std::min(shifted_output, static_cast<int32>(127)), static_cast<int32>(-128)));
 
       } else {
         output_data[i * depth + c] = -128;
