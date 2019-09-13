@@ -148,6 +148,10 @@ class TensorBHWC : public Tensor {
 
 using TensorPtr = std::shared_ptr<Tensor>;
 
+bool CanCreateTensorWithShape(const CLContext& context, const CLDevice& device,
+                              const BHWC& shape,
+                              const TensorDescriptor& descriptor);
+
 Status AllocateTensorMemory(const CLContext& context, const CLDevice& device,
                             int width, int height, int channels,
                             DataType data_type, TensorStorageType storage_type,
