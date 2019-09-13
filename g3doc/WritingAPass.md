@@ -141,7 +141,7 @@ defined above, let's see some examples:
 
 ```c++
 /// An interesting analysis.
-struct MyAnalysis {
+struct MyFunctionAnalysis {
   // Compute this analysis with the provided operation.
   MyFunctionAnalysis(Operation *op);
 };
