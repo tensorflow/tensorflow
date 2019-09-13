@@ -38,6 +38,10 @@ class HLO_Op<string mnemonic, list<OpTrait> traits> :
     Op<HLO_Dialect, mnemonic, traits> {
   // Whether this operation has a custom conversion to HLO or not.
   bit hasCustomHLOConverter = 0b0;
+
+  // TODO(b/129012527) Much of this custom verification should be expressed as
+  // type constraints.
+  let verifier = [{ return Verify(*this); }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -228,23 +232,6 @@ def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]>, BASE_HLO
 
   let results = (outs HLO_TensorOrTuple);
 
-  let verifier = [{
-    auto indexVal = index().getZExtValue();
-    auto operandType = getOperand()->getType().cast<TupleType>();
-    if (indexVal >= operandType.size()) {
-      return emitOpError(
-          llvm::formatv("index {0} is out of bounds of operand with size {1}",
-                        indexVal, operandType.size()));
-    }
-
-    auto expectedType = operandType.getType(indexVal);
-    if (getType() != expectedType) {
-      return emitOpError(llvm::formatv("has return type {0}, but expected {1}",
-                                       getType(), expectedType));
-    }
-    return success();
-  }];
-
   // GetTupleElementOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
 }
@@ -255,17 +242,6 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
 
   // TupleOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
-
-  let verifier = [{
-    SmallVector<Type, 8> operandTypes = {operand_type_begin(),
-                                         operand_type_end()};
-    auto expectedType = TupleType::get(operandTypes, getContext());
-    if (getType() != expectedType) {
-      return emitOpError(llvm::formatv("has return type {0}, but expected {1}",
-                                       getType(), expectedType));
-    }
-    return success();
-  }];
 }
 
 def HLO_CompareOp: HLO_Op<"compare",
@@ -343,54 +319,6 @@ def HLO_BroadcastOp : HLO_Op<"broadcast",
   );
 
   let results = (outs HLO_Tensor);
-
-  // TODO(b/129012527) These should be expressed as type constraints.
-  let verifier = [{
-    auto sizes = broadcast_sizes().dyn_cast<DenseIntElementsAttr>();
-    if (!sizes) {
-      return emitOpError(llvm::formatv(
-          "broadcast_sizes must be a DenseIntElementsAttr; got {0}",
-          broadcast_sizes()));
-    }
-    auto sizesType = sizes.getType().cast<RankedTensorType>();
-    auto sizesRank = sizesType.getRank();
-    if (sizesRank != 1) {
-      return emitOpError(llvm::formatv(
-          "broadcast_sizes has rank {0} instead of rank 1", sizesRank));
-    }
-
-    auto resultType = getResult()->getType().cast<RankedTensorType>();
-    auto resultRank = resultType.getRank();
-    auto operandType = operand()->getType().cast<RankedTensorType>();
-    auto operandRank = operandType.getRank();
-    auto sizesSize = sizesType.getNumElements();
-    auto expectedRank = operandRank + sizesSize;
-
-    if (resultRank != expectedRank) {
-      return emitOpError(
-          llvm::formatv("result rank ({0}) does not match operand rank "
-                        "({2}) plus size of broadcast_sizes ({3})",
-                        resultRank, operandRank, sizesSize));
-    }
-
-    llvm::SmallVector<int64_t, 10> expectedShape(sizes.getValues<int64_t>());
-
-    auto operandShape = operandType.getShape();
-    expectedShape.insert(expectedShape.end(), operandShape.begin(),
-                         operandShape.end());
-
-    auto resultShape = resultType.getShape();
-    if (resultShape != llvm::makeArrayRef(expectedShape)) {
-      return emitOpError(llvm::formatv(
-          "result has shape [{0}"
-          "] instead of [{1}"
-          "]",
-          llvm::make_range(resultShape.begin(), resultShape.end()),
-          llvm::make_range(expectedShape.begin(), expectedShape.end())));
-    }
-
-    return success();
-  }];
 }
 
 def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
@@ -401,72 +329,6 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
   );
 
   let results = (outs HLO_Tensor);
-
-  // TODO(b/129012527) These should be expressed as type constraints.
-  let verifier = [{
-    auto operandType = operand()->getType().cast<RankedTensorType>();
-    auto operandRank = operandType.getRank();
-    if (!broadcast_dimensions()) {
-      if (operandRank == 0) {
-        return success();
-      }
-      return emitOpError(
-          llvm::formatv("broadcast_dimensions is absent, but required because "
-                        "operand has non-zero rank ({0})",
-                        operandRank));
-    }
-
-    auto dimensions = broadcast_dimensions()->dyn_cast<DenseIntElementsAttr>();
-    if (!dimensions) {
-      return emitOpError(llvm::formatv(
-          "broadcast_sizes must be a DenseIntElementsAttr; got {0}",
-          broadcast_dimensions()));
-    }
-
-    auto dimensionsType = broadcast_dimensions()->getType().cast<RankedTensorType>();
-    auto dimensionsRank = dimensionsType.getRank();
-    if (dimensionsRank != 1) {
-      return emitOpError(
-          llvm::formatv("broadcast_dimensions has rank {0} instead of rank 1",
-                        dimensionsRank));
-    }
-
-    auto dimensionsSize = dimensionsType.getNumElements();
-    if (dimensionsSize != operandRank) {
-      return emitOpError(llvm::formatv(
-          "broadcast_dimensions size ({0}) does not match operand rank ({1})",
-          dimensionsSize, operandRank));
-    }
-
-    auto resultType = getResult()->getType().cast<RankedTensorType>();
-    auto resultRank = resultType.getRank();
-    if (resultRank < operandRank) {
-      return emitOpError(
-          llvm::formatv("result rank ({0}) is less than operand rank ({1})",
-                        resultRank, operandRank));
-    }
-
-    for (int i = 0; i != dimensionsSize; ++i) {
-      auto dimIndex = dimensions.getValue<int64_t>(i);
-      if (dimIndex >= resultRank) {
-        return emitOpError(
-            llvm::formatv("broadcast_dimensions contains invalid value {0} for "
-                          "result result with rank {1}",
-                          dimIndex, resultRank));
-      }
-
-      auto dimSize = operandType.getDimSize(i);
-      auto resultDimSize = resultType.getDimSize(dimIndex);
-      if (dimSize != 1 && dimSize != resultDimSize) {
-        return emitOpError(
-            llvm::formatv("size of operand dimension {0} ({1}) is not equal to "
-                          "1 or size of result dimension {2} ({3})",
-                          i, dimSize, dimIndex, resultDimSize));
-      }
-    }
-
-    return success();
-  }];
 
   // TODO(b/130357376): One of the arguments comes from the new shape, which is
   // not handled by the codegen.
@@ -482,36 +344,6 @@ def HLO_ClampOp : HLO_Op<"clamp",
   );
 
   let results = (outs HLO_Tensor);
-
-  // TODO(b/129012527) These should be expressed as type constraints.
-  let verifier = [{
-    auto operandType = operand()->getType().cast<RankedTensorType>();
-    auto operandShape = operandType.getShape();
-    auto minType = min()->getType().cast<RankedTensorType>();
-
-    auto minShape = minType.getShape();
-    if (minShape != operandShape && minType.getRank() != 0) {
-      return emitOpError(llvm::formatv(
-          "min shape [{0}"
-          "] is not scalar and does not match operand shape [{1}"
-          "]",
-          llvm::make_range(minShape.begin(), minShape.end()),
-          llvm::make_range(operandShape.begin(), operandShape.end())));
-    }
-
-    auto maxType = max()->getType().cast<RankedTensorType>();
-    auto maxShape = maxType.getShape();
-    if (maxShape != operandShape && maxType.getRank() != 0) {
-      return emitOpError(llvm::formatv(
-          "max shape [{0}"
-          "] is not scalar and does not match operand shape [{1}"
-          "]",
-          llvm::make_range(maxShape.begin(), maxShape.end()),
-          llvm::make_range(operandShape.begin(), operandShape.end())));
-    }
-
-    return success();
-  }];
 }
 
 def HLO_ConcatenateOp : HLO_Op<"concatenate",
@@ -521,33 +353,6 @@ def HLO_ConcatenateOp : HLO_Op<"concatenate",
     ins Variadic<HLO_Tensor>:$val,
         I64Attr: $dimension
   );
-
-  let verifier = [{
-    auto firstType = getOperand(0)->getType().cast<RankedTensorType>();
-
-    auto firstShape = firstType.getShape();
-    int numOperands = getNumOperands();
-    for (int i = 1; i < numOperands; i++) {
-      auto secondType = getOperand(i)->getType().cast<RankedTensorType>();
-
-      if (firstType.getRank() != secondType.getRank()) {
-        return emitOpError(
-            llvm::formatv("operands (0) and ({0}) do not match rank.", i));
-      }
-
-      auto secondShape = secondType.getShape();
-      for (int d = 0; d < firstType.getRank(); ++d) {
-        if (firstShape[d] != secondShape[d] && d != dimension()) {
-          return emitOpError(llvm::formatv(
-              "operands (0) and ({0}) non-concat dimensions do not match "
-              "({1}) != ({2}).",
-              i, llvm::make_range(firstShape.begin(), firstShape.end()),
-              llvm::make_range(secondShape.begin(), secondShape.end())));
-        }
-      }
-    }
-    return success();
-  }];
 
   let results = (outs HLO_Tensor);
 
@@ -653,34 +458,6 @@ def HLO_SelectOp: HLO_Op<"select", [NoSideEffect]>, BASE_HLO_SelectOp {
   );
 
   let results = (outs HLO_Tensor);
-
-  // TODO(b/129012527) These should be expressed as type constraints.
-  let verifier = [{
-    auto onTrueType = on_true()->getType().cast<RankedTensorType>();
-    auto onFalseType = on_false()->getType().cast<RankedTensorType>();
-
-    if (onTrueType != onFalseType) {
-      return emitOpError(
-          llvm::formatv("on_true type ({0}) does not match on_false type ({1})",
-                        onTrueType, onFalseType));
-    }
-
-    auto predType = pred()->getType().cast<RankedTensorType>();
-    auto predShape = predType.getShape();
-    auto predRank = predType.getRank();
-    auto selectShape = onTrueType.getShape();
-
-    if (predRank != 0 && predShape != selectShape) {
-      return emitOpError(llvm::formatv(
-          "pred shape ([{0}"
-          "]) is not scalar and does not match operand shapes ([{1}"
-          "])",
-          llvm::make_range(predShape.begin(), predShape.end()),
-          llvm::make_range(selectShape.begin(), selectShape.end())));
-    }
-
-    return success();
-  }];
 }
 
 def HLO_ReverseOp: HLO_Op<"reverse",
@@ -712,51 +489,6 @@ def HLO_PadOp: HLO_Op<"pad",
     Pads the `operand` according to TBD.
   }];
 
-  let verifier = [{
-    auto input_type = operand()->getType().cast<RankedTensorType>();
-    auto pad_type = padding_value()->getType().cast<RankedTensorType>();
-
-    if (pad_type.getRank() != 0) {
-      return emitOpError(llvm::formatv("padding value type should be a rank-0 "
-          "tensor, is rank {0}", pad_type.getRank()));
-    }
-
-    const auto& padding_low = edge_padding_low();
-    if (padding_low.getType().getNumElements() != input_type.getRank()) {
-      return emitOpError(llvm::formatv(
-          "edge_padding_low length ({0}) must match operand rank ({1}).",
-          padding_low.getType().getNumElements(), input_type.getRank()));
-    }
-
-    const auto& padding_high = edge_padding_high();
-    if (padding_high.getType().getNumElements() != input_type.getRank()) {
-      return emitOpError(llvm::formatv(
-          "edge_padding_high length ({0}) must match operand rank ({1}).",
-          padding_high.getType().getNumElements(), input_type.getRank()));
-    }
-
-    auto input_shape = input_type.getShape();
-    auto output_shape = getResult()->getType().cast<RankedTensorType>().getShape();
-    if (input_shape.size() != output_shape.size()) {
-      return emitOpError(llvm::formatv(
-          "Operand rank ({0}) and result rank({0}) should match",
-          input_shape.size(), output_shape.size()));
-    }
-
-    for (int i = 0, e = input_shape.size(); i < e; i++) {
-      int expected_output = input_shape[i]
-          + padding_low.getValue<IntegerAttr>(i).getInt()
-          + padding_high.getValue<IntegerAttr>(i).getInt();
-      if (expected_output != output_shape[i]) {
-        return emitOpError(llvm::formatv("Expected output shape ({0}) and "
-            "output shape ({1}) should match.",
-            expected_output, output_shape[i]));
-      }
-    }
-
-    return success();
-  }];
-
   // TODO(b/129422361): PadOp has a custom constructor for HLO.
   let hasCustomHLOConverter = 1;
 }
@@ -770,58 +502,6 @@ def HLO_TransposeOp: HLO_Op<"transpose",
   let results = (outs HLO_Tensor);
 
   let hasFolder = 1;
-
-  // TODO(b/129012527) These should be expressed as type constraints.
-  let verifier = [{
-    if (!permutation().isa<DenseIntElementsAttr>()) {
-      return emitOpError(
-          llvm::formatv("permutation must be a DenseIntElementsAttr; got {0}",
-                        permutation()));
-    }
-
-    auto permutationType = permutation().getType().cast<RankedTensorType>();
-    auto permutationRank = permutationType.getRank();
-    if (permutationRank != 1) {
-      return emitOpError(llvm::formatv(
-          "permutation has rank {0} instead of rank 1", permutationRank));
-    }
-
-    auto operandType = operand()->getType().cast<RankedTensorType>();
-    auto operandRank = operandType.getRank();
-    auto permutationSize = permutationType.getNumElements();
-    if (permutationSize != operandRank) {
-      return emitOpError(llvm::formatv(
-          "permutation size ({0}) does not match operand rank ({1})",
-          permutationSize, operandRank));
-    }
-
-    auto resultType = getResult()->getType().cast<RankedTensorType>();
-    auto resultRank = resultType.getRank();
-    if (resultRank != operandRank) {
-      return emitOpError(
-          llvm::formatv("result rank ({0}) does not match operand rank ({1})",
-                        resultRank, operandRank));
-    }
-
-    auto resultShape = resultType.getShape();
-
-    auto expectedShape = SmallVector<int64_t, 10>(operandRank);
-    for (int i = 0; i != operandRank; ++i) {
-      auto permutedDim = permutation().getValue<IntegerAttr>(i).getInt();
-      expectedShape[i] = operandType.getDimSize(permutedDim);
-    }
-
-    if (resultShape != llvm::makeArrayRef(expectedShape)) {
-      return emitOpError(llvm::formatv(
-          "result shape is [{0}"
-          "] instead of [{1}"
-          "]",
-          llvm::make_range(resultShape.begin(), resultShape.end()),
-          llvm::make_range(expectedShape.begin(), expectedShape.end())));
-    }
-
-    return success();
-  }];
 }
 
 def HLO_ReduceWindowOp: HLO_Op<"reduce_window", [
