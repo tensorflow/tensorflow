@@ -78,9 +78,8 @@ Status MKLTranspose2D<complex64>(const char trans, const Tensor& in,
   mkl_comatcopy(
       'R', trans, in.dim_size(0), in.dim_size(1), alpha,
       reinterpret_cast<const MKL_Complex8*>(in.flat<complex64>().data()),
-      in.dim_size(1),
-      reinterpret_cast<MKL_Complex8*>(
-          const_cast<complex64*>(out->flat<complex64>().data())),
+      in.dim_size(1), reinterpret_cast<MKL_Complex8*>(const_cast<complex64*>(
+                          out->flat<complex64>().data())),
       in.dim_size(0));
   return Status::OK();
 }
@@ -92,9 +91,8 @@ Status MKLTranspose2D<complex128>(const char trans, const Tensor& in,
   mkl_zomatcopy(
       'R', trans, in.dim_size(0), in.dim_size(1), alpha,
       reinterpret_cast<const MKL_Complex16*>(in.flat<complex128>().data()),
-      in.dim_size(1),
-      reinterpret_cast<MKL_Complex16*>(
-          const_cast<complex128*>(out->flat<complex128>().data())),
+      in.dim_size(1), reinterpret_cast<MKL_Complex16*>(const_cast<complex128*>(
+                          out->flat<complex128>().data())),
       in.dim_size(0));
   return Status::OK();
 }
@@ -145,8 +143,8 @@ Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
     stream(stream::kind::eager).submit(net).wait();
     return Status::OK();
   } catch (mkldnn::error& e) {
-    string error_msg = "Status: " + std::to_string(e.status) +
-                       ", message: " + std::string(e.message) + ", in file " +
+    string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                       std::string(e.message) + ", in file " +
                        std::string(__FILE__) + ":" + std::to_string(__LINE__);
     return errors::Aborted("Operation received an exception:", error_msg);
   }
@@ -184,10 +182,9 @@ Status MklTransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
       case DT_FLOAT:
         return MKLTransposeND<float>(ctx, in, out, perm);
         break;
-      // TODO(nhasabni): Enable this case when we turn on bfloat16 compilation.
-      // case DT_BFLOAT16:
-      //  return MKLTransposeND<bfloat16>(ctx, in, out, perm);
-      //  break;
+      case DT_BFLOAT16:
+        return MKLTransposeND<bfloat16>(ctx, in, out, perm);
+        break;
       // TODO(nhasabni): support other types such as INT8.
       default:
         break;
@@ -232,10 +229,9 @@ Status MklConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
       case DT_FLOAT:
         return MKLTransposeND<float>(ctx, in, out, perm);
         break;
-      // TODO(nhasabni): Enable this case when we turn on bfloat16 compilation.
-      // case DT_BFLOAT16:
-      //  return MKLTransposeND<bfloat16>(ctx, in, out, perm);
-      //  break;
+      case DT_BFLOAT16:
+        return MKLTransposeND<bfloat16>(ctx, in, out, perm);
+        break;
       // TODO(nhasabni): support other types such as INT8.
       default:
         break;
