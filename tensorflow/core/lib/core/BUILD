@@ -91,7 +91,6 @@ cc_library(
     hdrs = ["status.h"],
     deps = [
         ":error_codes_proto_cc",
-        "//tensorflow/core:error_codes_proto_impl_cc",
         "//tensorflow/core/lib/strings:string_utils",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
@@ -134,11 +133,7 @@ tf_proto_library(
     srcs = ["error_codes.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
-    protodeps = [
-        "//tensorflow/core:error_codes_proto_impl",
-    ],
     provide_cc_alias = True,
-    exports = ["//tensorflow/core:error_codes_proto_impl"],
 )
 
 filegroup(

@@ -31,7 +31,6 @@ tensorflow/core/protobuf/config.pb.cc
 tensorflow/core/protobuf/eager_service.pb.cc
 tensorflow/core/protobuf/debug.pb.cc
 tensorflow/core/protobuf/device_properties.pb.cc
-tensorflow/core/protobuf/error_codes.pb.cc
 tensorflow/core/protobuf/meta_graph.pb.cc
 tensorflow/core/protobuf/named_tensor.pb.cc
 tensorflow/core/protobuf/queue_runner.pb.cc
