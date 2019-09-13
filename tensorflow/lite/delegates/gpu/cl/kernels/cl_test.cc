@@ -30,10 +30,9 @@ Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
   std::vector<Tensor> src(src_cpu.size());
   for (int i = 0; i < src_cpu.size(); ++i) {
     auto src_shape = src_cpu[i].shape;
-    RETURN_IF_ERROR(CreateTensor(
-        *creation_context.context, *creation_context.device, src_shape.w,
-        src_shape.h, src_shape.c, op_def.src_tensors[0].data_type,
-        op_def.src_tensors[0].storage_type, &src[i]));
+    RETURN_IF_ERROR(CreateTensor(*creation_context.context,
+                                 *creation_context.device, src_shape,
+                                 op_def.src_tensors[0], &src[i]));
     RETURN_IF_ERROR(src[i].WriteData(creation_context.queue, src_cpu[i]));
     operation->SetSrc(&src[i], i);
   }
@@ -41,10 +40,9 @@ Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
   std::vector<Tensor> dst(dst_cpu.size());
   for (int i = 0; i < dst_cpu.size(); ++i) {
     auto dst_shape = dst_sizes[i];
-    RETURN_IF_ERROR(CreateTensor(
-        *creation_context.context, *creation_context.device, dst_shape.w,
-        dst_shape.h, dst_shape.c, op_def.dst_tensors[0].data_type,
-        op_def.dst_tensors[0].storage_type, &dst[i]));
+    RETURN_IF_ERROR(CreateTensor(*creation_context.context,
+                                 *creation_context.device, dst_shape,
+                                 op_def.dst_tensors[0], &dst[i]));
 
     operation->SetDst(&dst[i], i);
   }

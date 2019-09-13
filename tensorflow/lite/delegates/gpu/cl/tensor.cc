@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_image_format.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
@@ -199,6 +200,21 @@ Status CreateTensor(const CLContext& context, const CLDevice& device, int width,
                                        data_type, storage_type, &memory));
   *result = Tensor(memory.Release(), width, height, channels, data_type,
                    storage_type);
+  return OkStatus();
+}
+
+Status CreateTensor(const CLContext& context, const CLDevice& device,
+                    const BHWC& shape, const TensorDescriptor& descriptor,
+                    Tensor* result) {
+  if (shape.b != 1) {
+    return UnimplementedError("Batch is not supported.");
+  }
+  CLMemory memory;
+  RETURN_IF_ERROR(AllocateTensorMemory(context, device, shape.w, shape.h,
+                                       shape.c, descriptor.data_type,
+                                       descriptor.storage_type, &memory));
+  *result = Tensor(memory.Release(), shape.w, shape.h, shape.c,
+                   descriptor.data_type, descriptor.storage_type);
   return OkStatus();
 }
 

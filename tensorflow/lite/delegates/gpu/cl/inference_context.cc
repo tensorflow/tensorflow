@@ -340,9 +340,8 @@ Status InferenceContext::AllocateMemory(const GraphFloat32& graph,
       if (it == tensors_.end()) {
         const auto& shape = assignment.object_sizes[tensor.first];
         Tensor* t = &tensors_[tensor.first];
-        RETURN_IF_ERROR(CreateTensor(*context, device, shape.w, shape.h,
-                                     shape.c, tensor.second.data_type,
-                                     tensor.second.storage_type, t));
+        RETURN_IF_ERROR(
+            CreateTensor(*context, device, shape, tensor.second, t));
       }
     }
   }

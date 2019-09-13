@@ -157,6 +157,10 @@ Status CreateTensor(const CLContext& context, const CLDevice& device, int width,
                     int height, int channels, DataType data_type,
                     TensorStorageType storage_type, Tensor* result);
 
+Status CreateTensor(const CLContext& context, const CLDevice& device,
+                    const BHWC& shape, const TensorDescriptor& descriptor,
+                    Tensor* result);
+
 Status CreateTensorBHWC(const CLContext& context, const HWC& shape,
                         DataType data_type, void* data, Tensor* result);
 
