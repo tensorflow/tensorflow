@@ -50,6 +50,10 @@ def TakesStaticMemRefOp : TEST_Op<"takes_static_memref"> {
   let arguments = (ins AnyStaticShapeMemRef:$x);
 }
 
+def RankLessThan2I8F32MemRefOp : TEST_Op<"rank_less_than_2_I8_F32_memref"> {
+  let results = (outs MemRefRankOf<[I8, F32], [0, 1]>);
+}
+
 def NDTensorOfOp : TEST_Op<"nd_tensor_of"> {
   let arguments = (ins
     0DTensorOf<[F32]>:$arg0,

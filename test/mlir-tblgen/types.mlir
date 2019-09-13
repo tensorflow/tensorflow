@@ -81,6 +81,33 @@ func @nested_tuple_multi_level_wrong_type() {
 
 // -----
 
+// CHECK-LABEL: func @rank_less_than_2_I8_F32_memref_success
+func @rank_less_than_2_I8_F32_memref_success() {
+  "test.rank_less_than_2_I8_F32_memref"() : () -> (memref<i8>)
+  "test.rank_less_than_2_I8_F32_memref"() : () -> (memref<3xi8>)
+  "test.rank_less_than_2_I8_F32_memref"() : () -> (memref<f32>)
+  "test.rank_less_than_2_I8_F32_memref"() : () -> (memref<1xf32>)
+  return
+}
+
+// -----
+
+func @rank_less_than_2_I8_F32_memref_bad_type() {
+  // expected-error@+1 {{must be 0D/1D memref of 8-bit integer or 32-bit float values}}
+  "test.rank_less_than_2_I8_F32_memref"() : () -> (memref<i16>)
+  return
+}
+
+// -----
+
+func @rank_less_than_2_I8_F32_memref_bad_rank() {
+  // expected-error@+1 {{must be 0D/1D memref of 8-bit integer or 32-bit float values}}
+  "test.rank_less_than_2_I8_F32_memref"() : () -> (memref<1x2xi8>)
+  return
+}
+
+// -----
+
 func @nd_tensor_of_success(%arg0: tensor<f32>, %arg1: tensor<10xf32>, %arg2: tensor<20x30xi16>, %arg3: tensor<40x50x60xi16>, %arg4: tensor<70x80x90x100xi16>) {
   "test.nd_tensor_of"(%arg0, %arg1, %arg2, %arg3, %arg4) : (tensor<f32>, tensor<10xf32>, tensor<20x30xi16>, tensor<40x50x60xi16>, tensor<70x80x90x100xi16>) -> ()
   return
