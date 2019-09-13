@@ -449,10 +449,15 @@ Status DynamicDimensionInferenceVisitor::HandleElementwiseBinary(
 
 Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
-      hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
-               int64 operand_index, HloInstruction* dynamic_size,
-               DimensionConstraint constraint) {
+      hlo,
+      [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
+          int64 operand_index, HloInstruction* dynamic_size,
+          DimensionConstraint constraint) -> Status {
         HloInstruction* reshape = hlo;
+        TF_RET_CHECK(reshape->shape().rank() > 0)
+            << "Reshaping a dynamic dimension into a scalar, which has "
+               "undefined behavior. The offending instruction is: "
+            << reshape->ToString();
         // Reshape is supported as long as it is the most
         // major one and it is combining with other non-dynamic dimensions.
         const int64 output_most_major = reshape->shape().dimensions(0);
