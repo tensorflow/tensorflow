@@ -86,7 +86,7 @@ struct SimplifyAffineStructures
 
 } // end anonymous namespace
 
-std::unique_ptr<FunctionPassBase> mlir::createSimplifyAffineStructuresPass() {
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createSimplifyAffineStructuresPass() {
   return std::make_unique<SimplifyAffineStructures>();
 }
 

@@ -300,6 +300,6 @@ Rewriter<linalg::StoreOp>::matchAndRewrite(linalg::StoreOp store,
 }
 } // namespace
 
-std::unique_ptr<FunctionPassBase> linalg::createLowerLinalgLoadStorePass() {
+std::unique_ptr<OpPassBase<FuncOp>> linalg::createLowerLinalgLoadStorePass() {
   return std::make_unique<LowerLinalgLoadStorePass>();
 }

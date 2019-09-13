@@ -31,7 +31,6 @@ class Operation;
 class Value;
 
 template <typename T> class OpPassBase;
-using FunctionPassBase = OpPassBase<FuncOp>;
 } // namespace mlir
 
 namespace linalg {
@@ -75,7 +74,8 @@ void lowerToLoops(mlir::FuncOp f);
 
 /// Creates a pass that rewrites linalg.load and linalg.store to affine.load and
 /// affine.store operations.
-std::unique_ptr<mlir::FunctionPassBase> createLowerLinalgLoadStorePass();
+std::unique_ptr<mlir::OpPassBase<mlir::FuncOp>>
+createLowerLinalgLoadStorePass();
 
 } // namespace linalg
 

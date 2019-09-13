@@ -153,7 +153,7 @@ llvm::raw_ostream &mlir::writeGraph(llvm::raw_ostream &os, mlir::Block &block,
   return llvm::WriteGraph(os, &block, shortNames, title);
 }
 
-std::unique_ptr<mlir::ModulePassBase>
+std::unique_ptr<mlir::OpPassBase<mlir::ModuleOp>>
 mlir::createPrintOpGraphPass(llvm::raw_ostream &os, bool shortNames,
                              const llvm::Twine &title) {
   return std::make_unique<PrintOpPass>(os, shortNames, title);

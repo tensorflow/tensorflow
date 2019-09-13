@@ -270,7 +270,7 @@ void ControlFlowToCFGPass::runOnFunction() {
     signalPassFailure();
 }
 
-std::unique_ptr<FunctionPassBase> mlir::createLowerToCFGPass() {
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createLowerToCFGPass() {
   return std::make_unique<ControlFlowToCFGPass>();
 }
 

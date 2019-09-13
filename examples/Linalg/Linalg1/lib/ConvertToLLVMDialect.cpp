@@ -440,7 +440,7 @@ struct LowerLinalgToLLVMPass : public ModulePass<LowerLinalgToLLVMPass> {
 };
 } // namespace
 
-ModulePassBase *linalg::createLowerLinalgToLLVMPass() {
+OpPassBase<ModuleOp> *linalg::createLowerLinalgToLLVMPass() {
   return new LowerLinalgToLLVMPass();
 }
 

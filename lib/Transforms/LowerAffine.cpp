@@ -529,7 +529,7 @@ class LowerAffinePass : public FunctionPass<LowerAffinePass> {
 
 /// Lowers If and For operations within a function into their lower level CFG
 /// equivalent blocks.
-std::unique_ptr<FunctionPassBase> mlir::createLowerAffinePass() {
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createLowerAffinePass() {
   return std::make_unique<LowerAffinePass>();
 }
 

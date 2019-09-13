@@ -29,12 +29,11 @@
 namespace mlir {
 class ModuleOp;
 template <typename T> class OpPassBase;
-using ModulePassBase = OpPassBase<ModuleOp>;
 } // namespace mlir
 
 namespace linalg {
 
-mlir::ModulePassBase *createLowerLinalgToLLVMPass();
+mlir::OpPassBase<mlir::ModuleOp> *createLowerLinalgToLLVMPass();
 
 } // namespace linalg
 

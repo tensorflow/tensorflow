@@ -194,7 +194,7 @@ void LowerVectorToLLVMPass::runOnModule() {
   }
 }
 
-ModulePassBase *mlir::createLowerVectorToLLVMPass() {
+OpPassBase<ModuleOp> *mlir::createLowerVectorToLLVMPass() {
   return new LowerVectorToLLVMPass();
 }
 
