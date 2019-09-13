@@ -311,6 +311,7 @@ def tf_copts(android_optimization_level_override = "-O2", is_external = False):
             "//conditions:default": ["-pthread"],
         })
     )
+
 def tf_openmp_copts():
     return if_mkl_lnx_x64(["-fopenmp"])
 
