@@ -565,7 +565,7 @@ class LinSpaceTest(test.TestCase):
       num_tensor = array_ops.placeholder(dtypes.int32)
       start_tensor = array_ops.placeholder(dtypes.float32, shape=graph_shape)
       stop_tensor = array_ops.placeholder(dtypes.float32, shape=graph_shape)
-      ans_tensor = math_ops.linspace(start, stop, num_tensor, axis=axis, name="linspace")
+      ans_tensor = math_ops.linspace(start_tensor, stop_tensor, num_tensor, axis=axis, name="linspace")
 
       with self.session(graph=graph, force_gpu=self.force_gpu) as sess:
         feed_dict = {
