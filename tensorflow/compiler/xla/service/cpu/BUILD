@@ -561,7 +561,7 @@ cc_library(
         "runtime_conv2d_mkl.cc",
     ],
     hdrs = ["runtime_conv2d_mkl.h"],
-    copts = runtime_copts(),
+    copts = runtime_copts() + tf_openmp_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":runtime_conv2d",
