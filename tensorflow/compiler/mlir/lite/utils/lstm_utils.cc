@@ -236,7 +236,7 @@ void ConvertLSTMCellSimpleToFusedLSTM::SetProjection() {
 void ConvertLSTMCellSimpleToFusedLSTM::SetProjectionBias() {
   proj_bias_ = !projection_type_
                    ? none_
-                   : CreateI32SplatConst(&builder_, {n_output_}, 0,
+                   : CreateF32SplatConst(&builder_, {n_output_}, 0,
                                          fused_func_op_.getLoc());
 }
 
