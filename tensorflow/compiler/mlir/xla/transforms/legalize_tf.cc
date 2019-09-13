@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
@@ -364,6 +365,16 @@ void mlir::xla_hlo::legalizeTF(Operation *op) {
   // Add lowering patterns to the list.
   OwningRewritePatternList patterns;
   xla::populateWithGenerated(op->getContext(), &patterns);
+
+  // Add patterns that lower some of the high level TensorFlow ops to lower
+  // level TensorFlow ops. So, we don't have to target all the TensorFlow ops
+  // here for lowering to HLO.
+  //
+  // TODO(b/140964075): Switch to DialectConversion to avoid premature lowering
+  // to lower level TensorFlow ops if we actually want to target the higher
+  // level TensorFlow op directly.
+  mlir::TF::PopulateLoweringTFPatterns(op->getContext(), &patterns);
+
   patterns.insert<mlir::xla::ConvertMaxPoolOp>(op->getContext());
   patterns.insert<mlir::xla::ConvertSoftmaxOp>(op->getContext());
 
