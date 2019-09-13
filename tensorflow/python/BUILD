@@ -5132,6 +5132,7 @@ genrule(
     name = "pybind_symbol_target_libs_file",
     srcs = [
         ":cpp_python_util",  # util
+        "//tensorflow/core:util_port",  # util_port
         "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
     ],
