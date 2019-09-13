@@ -208,6 +208,19 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "tensorflow_test_passes",
+    srcs = [
+        "transforms/lower_tf_pass.cc",
+    ],
+    deps = [
+        ":lower_tf_lib",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Pass",
+    ],
+    alwayslink = 1,
+)
+
 # Library with TensorFlow dialect static initialization.
 cc_library(
     name = "tensorflow_dialect_registration",
@@ -726,4 +739,23 @@ tf_gen_op_wrapper_py(
     name = "gen_mlir_passthrough_op_py",
     out = "gen_mlir_passthrough_op.py",
     deps = [":mlir_passthrough_op"],
+)
+
+# Library to get rewrite patterns lowering within TensorFlow.
+#
+# This is a separate library so that external passes can link only this library
+# without linking any of the other tensorflow passes.
+cc_library(
+    name = "lower_tf_lib",
+    srcs = [
+        "transforms/lower_tf.cc",
+    ],
+    hdrs = [
+        "transforms/lower_tf.h",
+    ],
+    deps = [
+        ":tensorflow",
+        "@local_config_mlir//:IR",
+    ],
+    alwayslink = 1,
 )
