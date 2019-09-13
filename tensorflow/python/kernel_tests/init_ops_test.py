@@ -565,6 +565,7 @@ class LinSpaceTest(test.TestCase):
       num_tensor = array_ops.placeholder(dtypes.int32)
       start_tensor = array_ops.placeholder(dtypes.float32, shape=graph_shape)
       stop_tensor = array_ops.placeholder(dtypes.float32, shape=graph_shape)
+      import pdb; pdb.set_trace()
       ans_tensor = math_ops.linspace(start_tensor, stop_tensor, num_tensor, axis=axis, name="linspace")
 
       with self.session(graph=graph, force_gpu=self.force_gpu) as sess:
@@ -673,7 +674,7 @@ class LinSpaceTest(test.TestCase):
     for self.force_gpu in self._gpu_modes():
       axis = 1
       a, b, expected, num = self.create_nd_inputs_and_expected_output(axis)
-      actual = self._LinspaceNoneShape(a, b, num, axis=axis, graph_shape=None)
+      actual = self._LinspaceNoneShape(a, b, num, axis=axis, graph_shape=(a.shape[0], a.shape[1], None))
       self.assert_close(actual, expected)
 
 

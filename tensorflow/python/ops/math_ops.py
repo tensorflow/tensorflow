@@ -112,14 +112,15 @@ def linspace(start_in, stop_in, num, name=None, axis=0):
     expanded_start = array_ops.expand_dims(start, axis=axis)
     num_int = array_ops.convert_to_int_tensor(num, name='num')
     num = cast(num_int, dtype=start.dtype)
-    shape = expanded_start.get_shape()
-    axis = array_ops.get_positive_axis(axis, shape.ndims)
+    shape = array_ops.shape(expanded_start)
+    ndims = shape.get_shape()[0].value
+    axis = array_ops.get_positive_axis(axis, ndims)
     expanded_stop = array_ops.expand_dims(stop, axis=axis)
     # to avoid having negative values in the range or zero division
     # The result is sliced in the end so a correct result is returned for num == 1.
     range_end = gen_math_ops.maximum(num - 1., 1.)
     delta = (expanded_stop - expanded_start) / range_end
-    shape_range = range(shape.ndims)
+    shape_range = range(ndims)
     ones_like_shape_range = array_ops.ones_like(shape_range)
     axis_tiled = ones_like_shape_range * axis
     # the purpose is to avoid having negative values when repeating
@@ -128,7 +129,7 @@ def linspace(start_in, stop_in, num, name=None, axis=0):
     ones = array_ops.ones_like(num_tiled)
     mask = gen_math_ops.equal(axis_tiled, shape_range)
     # reshape_target is [1. 1. 1. ... 1. num 1. 1. ... 1.], where the index of num is equal to axis
-    reshape_target = array_ops.where_v2(mask, num_tiled, ones)
+    reshape_target = array_ops.where_v2(mask, num_fill, ones)
     # repeats is [shape[0], shape[1] ... shape[n-1], 1, shape[n+1], ... shape[-1]] where n is equal to axis
     repeats = array_ops.where_v2(mask, ones, shape)
     num_range = range(1., range_end, dtype=start.dtype)
