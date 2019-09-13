@@ -102,7 +102,7 @@ from tensorflow.python.util.tf_export import tf_export
 #linspace = gen_math_ops.lin_space
 nextafter = gen_math_ops.next_after
 
-def linspace(start_in, stop_in, num, axis=0, name=None):
+def linspace(start_in, stop_in, num, name=None, axis=0):
   if not isinstance(axis, int):
     raise TypeError('Axis should be an integer. Received an object {0} of type {1}'.format(axis, type(axis)))
   with ops.name_scope(name, 'linspace', [start_in, stop_in]):
