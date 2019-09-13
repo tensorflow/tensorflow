@@ -228,6 +228,23 @@ def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]>, BASE_HLO
 
   let results = (outs HLO_TensorOrTuple);
 
+  let verifier = [{
+    auto indexVal = index().getZExtValue();
+    auto operandType = getOperand()->getType().cast<TupleType>();
+    if (indexVal >= operandType.size()) {
+      return emitOpError(
+          llvm::formatv("index {0} is out of bounds of operand with size {1}",
+                        indexVal, operandType.size()));
+    }
+
+    auto expectedType = operandType.getType(indexVal);
+    if (getType() != expectedType) {
+      return emitOpError(llvm::formatv("has return type {0}, but expected {1}",
+                                       getType(), expectedType));
+    }
+    return success();
+  }];
+
   // GetTupleElementOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
 }
@@ -238,6 +255,17 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
 
   // TupleOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
+
+  let verifier = [{
+    SmallVector<Type, 8> operandTypes = {operand_type_begin(),
+                                         operand_type_end()};
+    auto expectedType = TupleType::get(operandTypes, getContext());
+    if (getType() != expectedType) {
+      return emitOpError(llvm::formatv("has return type {0}, but expected {1}",
+                                       getType(), expectedType));
+    }
+    return success();
+  }];
 }
 
 def HLO_CompareOp: HLO_Op<"compare",
