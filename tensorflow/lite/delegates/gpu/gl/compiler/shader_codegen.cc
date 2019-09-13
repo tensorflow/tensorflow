@@ -34,7 +34,8 @@ ShaderCodegen::ShaderCodegen(const CompilationOptions& options,
 
 Status ShaderCodegen::Build(CompiledNodeAttributes attr,
                             ShaderCode* shader_code) const {
-  VariableAccessor variable_accessor(options_.inline_parameters);
+  VariableAccessor variable_accessor(options_.inline_parameters,
+                                     options_.vulkan_support);
   ObjectAccessor object_accessor(gpu_type_ == GpuType::MALI,
                                  options_.sampler_textures, &variable_accessor);
 
@@ -159,8 +160,8 @@ Status ShaderCodegen::Build(CompiledNodeAttributes attr,
       "precision ", precision, " float;\n",                       //
       object_accessor.GetFunctionsDeclarations(), "\n",           //
       object_accessor.GetObjectDeclarations(), "\n",              //
-      variable_accessor.GetSharedVariableDeclarations(), "\n",    //
       variable_accessor.GetUniformParameterDeclarations(), "\n",  //
+      variable_accessor.GetSharedVariableDeclarations(), "\n",    //
       "void main() {\n",                                          //
       main_source_code,                                           //
       "}");
