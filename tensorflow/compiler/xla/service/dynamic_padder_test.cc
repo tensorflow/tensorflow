@@ -28,7 +28,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/literal_test_util.h"
+#include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -210,6 +213,134 @@ TEST_F(DynamicPadderTest, ReduceWindowNoPadForTrivialWindow) {
   TF_ASSERT_OK(RunPadder().status());
 
   EXPECT_THAT(output->operand(0), op::Parameter());
+}
+
+// Test that dynamic padder has the same result as if not padded.
+class ExecutionTest : public HloTestBase {
+ protected:
+  std::unique_ptr<HloModule> GetHloModule(const string& hlo_text) {
+    HloModuleConfig config;
+    config.set_debug_options(GetDebugOptionsForTest());
+    std::unique_ptr<HloModule> module =
+        ParseAndReturnUnverifiedModule(hlo_text, config).ValueOrDie();
+    return module;
+  }
+};
+
+XLA_TEST_F(ExecutionTest, ScatterUpdate) {
+  // Test that scattering on indices=[2] is same as scattering on indices=[4]
+  // and dynamic dimension = 2
+  const string hlo_text = R"(
+HloModule TensorFlowScatterV1
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[INDICES_BOUND] parameter(1)
+  updates = s32[INDICES_BOUND,3] parameter(2)
+  dynamic_size = s32[] parameter(3)
+  ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+
+}
+)";
+  const string hlo_text_not_padded =
+      absl::StrReplaceAll(hlo_text, {{"INDICES_BOUND", "2"}});
+  auto module_not_padded = GetHloModule(hlo_text_not_padded);
+
+  Literal operand =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Literal scatter_indices = LiteralUtil::CreateR1<int32>({0, 2});
+  Literal updates = LiteralUtil::CreateR2<int32>({{10, 20, 30}, {70, 80, 90}});
+  Literal dynamic_size = LiteralUtil::CreateR0<int32>(2);
+
+  Literal not_padded =
+      ExecuteAndTransfer(std::move(module_not_padded),
+                         {&operand, &scatter_indices, &updates, &dynamic_size});
+
+  // Pad input to 4.
+  const string hlo_text_padded =
+      absl::StrReplaceAll(hlo_text, {{"INDICES_BOUND", "4"}});
+  auto module_padded = GetHloModule(hlo_text_padded);
+  // Set up dynamic parameter binding.
+  TF_CHECK_OK(module_padded->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{3, {}},
+      DynamicParameterBinding::DynamicDimension{1, {}, 0}));
+  TF_CHECK_OK(module_padded->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{3, {}},
+      DynamicParameterBinding::DynamicDimension{2, {}, 0}));
+  // Pad the rest of input with garbage data.
+  Literal scatter_indices_padded = LiteralUtil::CreateR1<int32>({0, 2, 0, 4});
+  Literal updates_padded = LiteralUtil::CreateR2<int32>(
+      {{10, 20, 30}, {70, 80, 90}, {30, 22, 11}, {-1, 20, -1}});
+  DynamicPadder padder;
+  TF_CHECK_OK(padder.Run(module_padded.get()).status());
+  Literal padded = ExecuteAndTransfer(
+      std::move(module_padded),
+      {&operand, &scatter_indices_padded, &updates_padded, &dynamic_size});
+
+  EXPECT_EQ(padded, not_padded);
+}
+
+XLA_TEST_F(ExecutionTest, TwoDimensionReduce) {
+  // Test that reducing on operand=[2,2] is same as reducing on operand=[4,4]
+  // and dynamic dimension = 2
+  const string hlo_text = R"(
+HloModule TensorFlowScatterV1
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  param = s32[INDICES_BOUND, INDICES_BOUND] parameter(0)
+  dynamic_size = s32[] parameter(1)
+  const = s32[] constant(0)
+  ROOT reduce = s32[] reduce(param, const),
+      dimensions={0, 1},
+      to_apply=update_s32
+}
+)";
+  const string hlo_text_not_padded =
+      absl::StrReplaceAll(hlo_text, {{"INDICES_BOUND", "2"}});
+  auto module_not_padded = GetHloModule(hlo_text_not_padded);
+
+  Literal operand = LiteralUtil::CreateR2<int32>({{1, 2}, {4, 5}});
+  Literal dynamic_size = LiteralUtil::CreateR0<int32>(2);
+
+  Literal not_padded = ExecuteAndTransfer(std::move(module_not_padded),
+                                          {&operand, &dynamic_size});
+
+  // Pad input to 4.
+  const string hlo_text_padded =
+      absl::StrReplaceAll(hlo_text, {{"INDICES_BOUND", "4"}});
+  auto module_padded = GetHloModule(hlo_text_padded);
+  // Set up dynamic parameter binding.
+  TF_CHECK_OK(module_padded->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{1, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
+  TF_CHECK_OK(module_padded->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{1, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 1}));
+  // Pad the rest of input with garbage data.
+  Literal operand_padded = LiteralUtil::CreateR2<int32>(
+      {{1, 2, 3, 4}, {4, 5, 6, 7}, {1, 2, 3, 4}, {4, 5, 6, 7}});
+  DynamicPadder padder;
+  TF_CHECK_OK(padder.Run(module_padded.get()).status());
+  Literal padded = ExecuteAndTransfer(std::move(module_padded),
+                                      {&operand_padded, &dynamic_size});
+
+  EXPECT_EQ(padded, not_padded);
 }
 
 }  // namespace

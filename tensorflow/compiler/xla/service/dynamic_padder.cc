@@ -78,9 +78,27 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
     case HloOpcode::kSelectAndScatter: {
       return inst->mutable_operand(2);
     }
+    case HloOpcode::kScatter: {
+      PrimitiveType ptype = inst->shape().element_type();
+      if (operand_number != 1) {
+        return nullptr;
+      }
+      // Use -1 as padding for scatter as output bound updates are not applied.
+      switch (ptype) {
+        case S32:
+          return comp->AddInstruction(
+              HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(-1)));
+        case S64:
+          return comp->AddInstruction(
+              HloInstruction::CreateConstant(LiteralUtil::CreateR0<int64>(-1)));
+        default:
+          return InvalidArgument(
+              "Invalid primitive type %s",
+              primitive_util::LowercasePrimitiveTypeName(ptype));
+      }
+    }
     case HloOpcode::kParameter:
     case HloOpcode::kGather:
-    case HloOpcode::kScatter:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kGetDimensionSize:
@@ -128,17 +146,19 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
     for (HloInstruction* inst : computation->instructions()) {
       for (int64 operand_num = 0; operand_num < inst->operand_count();
            ++operand_num) {
-        HloInstruction* operand = inst->mutable_operand(operand_num);
+        HloInstruction* original_operand = inst->mutable_operand(operand_num);
+        HloInstruction* operand = original_operand;
         if (!operand->shape().IsArray()) {
           continue;
         }
         for (int64 dim = 0; dim < operand->shape().rank(); ++dim) {
           HloInstruction* dynamic_size =
-              dynamic_dimension_inference.GetDynamicSize(operand, {}, dim);
+              dynamic_dimension_inference.GetDynamicSize(original_operand, {},
+                                                         dim);
           if (dynamic_size == nullptr) {
             continue;
           }
-          VLOG(1) << "Has dynamic dimension of operand" << operand_num << " @"
+          VLOG(2) << "Has dynamic dimension of operand" << operand_num << " @"
                   << dim;
 
           if (ShouldSkipPadOnOperand(inst, operand_num, dim)) {

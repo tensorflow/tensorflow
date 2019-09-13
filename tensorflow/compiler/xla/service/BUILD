@@ -2290,7 +2290,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_test(
     name = "dynamic_padder_test",
     srcs = ["dynamic_padder_test.cc"],
     deps = [
@@ -2307,7 +2307,9 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:test",
     ],
 )

@@ -833,20 +833,13 @@ Status DynamicDimensionInferenceVisitor::HandleScatter(HloInstruction* hlo) {
           int64 operand_index, HloInstruction* operand_dynamic_size,
           DimensionConstraint constraint) {
         if (operand_index == 0) {
-          return Unimplemented(
-              "Detects a dynamic dimension on the data input of scatter, which "
-              "is not supported: %s",
-              hlo->ToString());
-        }
-
-        const ScatterDimensionNumbers& scatter_dims =
-            hlo->scatter_dimension_numbers();
-        if (operand_index == 1) {
           parent_->SetDynamicSize(hlo, {}, dimension, operand_dynamic_size,
                                   constraint);
           return Status::OK();
         }
 
+        const ScatterDimensionNumbers& scatter_dims =
+            hlo->scatter_dimension_numbers();
         if (operand_index == 2 &&
             absl::c_linear_search(scatter_dims.update_window_dims(),
                                   dimension)) {
