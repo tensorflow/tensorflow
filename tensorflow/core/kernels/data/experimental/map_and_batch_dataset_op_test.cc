@@ -282,6 +282,12 @@ std::vector<GetNextTestCase<MapAndBatchDatasetParams>> GetNextTestCases() {
 ITERATOR_GET_NEXT_TEST_P(MapAndBatchDatasetOpTest, MapAndBatchDatasetParams,
                          GetNextTestCases())
 
+TEST_F(MapAndBatchDatasetOpTest, DatasetNodeName) {
+  auto dataset_params = MapAndBatchDatasetParams1();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(CheckDatasetNodeName(dataset_params.node_name()));
+}
+
 TEST_F(MapAndBatchDatasetOpTest, DatasetTypeString) {
   auto dataset_params = MapAndBatchDatasetParams1();
   TF_ASSERT_OK(Initialize(dataset_params));
