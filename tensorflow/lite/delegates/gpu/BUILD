@@ -158,6 +158,7 @@ cc_library(
     hdrs = ["spi.h"],
     deps = [
         ":api",
+        "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:status",
     ],
 )
