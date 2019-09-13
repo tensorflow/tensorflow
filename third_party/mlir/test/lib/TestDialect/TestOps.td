@@ -246,6 +246,25 @@ def OperandOneAndResultHaveSameType :
   let results = (outs AnyTensor:$res);
 }
 
+def OperandsHaveSameRank :
+    TEST_Op<"operands_have_same_rank", [AllRanksMatch<["x", "y"]>]> {
+  let arguments = (ins AnyTensor:$x, AnyTensor:$y);
+}
+
+def Operand1AndResultHaveSameRank :
+    TEST_Op<"operand1_and_result_have_same_rank",
+            [AllRanksMatch<["x", "res"]>]> {
+  let arguments = (ins AnyTensor:$x, AnyTensor:$y);
+  let results = (outs AnyTensor:$res);
+}
+
+def Operand1AndResultHaveSameElementCount :
+    TEST_Op<"operand1_and_result_have_same_element_count",
+            [AllElementCountsMatch<["x", "res"]>]> {
+  let arguments = (ins AnyTensor:$x, AnyTensor:$y);
+  let results = (outs AnyTensor:$res);
+}
+
 def IfFirstOperandIsNoneThenSoIsSecond :
     TEST_Op<"if_first_operand_is_none_then_so_is_second", [PredOpTrait<
     "has either both none type operands or first is not none",

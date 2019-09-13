@@ -1410,8 +1410,15 @@ class AllMatchTrait<list<string> names, string operator, string description> :
         "all of {" # StrJoin<names>.result # "} have same " # description,
         AllMatchPred<names, operator>>;
 
+class AllElementCountsMatch<list<string> names> :
+    AllMatchTrait<names, "$_self.getType().cast<ShapedType>().getNumElements()",
+                  "element count">;
+
 class AllElementTypesMatch<list<string> names> :
     AllMatchTrait<names, "getElementTypeOrSelf($_self)", "element type">;
+
+class AllRanksMatch<list<string> names> :
+    AllMatchTrait<names, "$_self.getType().cast<ShapedType>().getRank()", "rank">;
 
 class AllTypesMatch<list<string> names> :
     AllMatchTrait<names, "$_self.getType()", "type">;
