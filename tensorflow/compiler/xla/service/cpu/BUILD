@@ -561,7 +561,7 @@ cc_library(
         "runtime_conv2d_mkl.cc",
     ],
     hdrs = ["runtime_conv2d_mkl.h"],
-    copts = runtime_copts(),
+    copts = runtime_copts() + tf_openmp_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":runtime_conv2d",
@@ -621,7 +621,7 @@ cc_library(
     name = "runtime_matmul_mkl",
     srcs = ["runtime_matmul_mkl.cc"],
     hdrs = ["runtime_matmul_mkl.h"],
-    copts = runtime_copts() + tf_openmp_copts(),
+    copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla:executable_run_options",
