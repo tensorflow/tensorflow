@@ -340,7 +340,7 @@ func @only_allowed_in_last_block() -> () {
 // -----
 
 // Return mismatches function signature
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
   func @work() -> (i32) {
     // expected-error @+1 {{cannot be used in functions returning value}}
     spv.Return

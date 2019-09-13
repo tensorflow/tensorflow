@@ -6,7 +6,7 @@ func @builtin() {
   return
 }
 
-// CHECK-LABEL:  spv.module "Logical" "VulkanKHR"
+// CHECK-LABEL:  spv.module "Logical" "GLSL450"
 // CHECK: spv.globalVariable [[WORKGROUPID:@.*]] built_in("WorkgroupId")
 func @builtin_workgroup_id_x()
   attributes {gpu.kernel} {
@@ -25,7 +25,7 @@ func @builtin() {
   return
 }
 
-// CHECK-LABEL:  spv.module "Logical" "VulkanKHR"
+// CHECK-LABEL:  spv.module "Logical" "GLSL450"
 // CHECK: spv.globalVariable [[WORKGROUPID:@.*]] built_in("WorkgroupId")
 func @builtin_workgroup_id_y()
   attributes {gpu.kernel} {
@@ -44,7 +44,7 @@ func @builtin() {
   return
 }
 
-// CHECK-LABEL:  spv.module "Logical" "VulkanKHR"
+// CHECK-LABEL:  spv.module "Logical" "GLSL450"
 // CHECK: spv.globalVariable [[WORKGROUPID:@.*]] built_in("WorkgroupId")
 func @builtin_workgroup_id_z()
   attributes {gpu.kernel} {
@@ -63,7 +63,7 @@ func @builtin() {
   return
 }
 
-// CHECK-LABEL:  spv.module "Logical" "VulkanKHR"
+// CHECK-LABEL:  spv.module "Logical" "GLSL450"
 // CHECK: spv.globalVariable [[WORKGROUPSIZE:@.*]] built_in("WorkgroupSize")
 func @builtin_workgroup_size_x()
   attributes {gpu.kernel} {
@@ -82,7 +82,7 @@ func @builtin() {
   return
 }
 
-// CHECK-LABEL:  spv.module "Logical" "VulkanKHR"
+// CHECK-LABEL:  spv.module "Logical" "GLSL450"
 // CHECK: spv.globalVariable [[LOCALINVOCATIONID:@.*]] built_in("LocalInvocationId")
 func @builtin_local_id_x()
   attributes {gpu.kernel} {
@@ -101,7 +101,7 @@ func @builtin() {
   return
 }
 
-// CHECK-LABEL:  spv.module "Logical" "VulkanKHR"
+// CHECK-LABEL:  spv.module "Logical" "GLSL450"
 // CHECK: spv.globalVariable [[NUMWORKGROUPS:@.*]] built_in("NumWorkgroups")
 func @builtin_num_workgroups_x()
   attributes {gpu.kernel} {

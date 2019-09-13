@@ -1,6 +1,6 @@
 // RUN: mlir-translate -serialize-spirv %s | mlir-translate -deserialize-spirv | FileCheck %s
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
   spv.globalVariable @globalInvocationID built_in("GlobalInvocationId") : !spv.ptr<vector<3xi32>, Input>
   func @foo() {
     // CHECK: %[[ADDR:.*]] = spv._address_of @globalInvocationID : !spv.ptr<vector<3xi32>, Input>

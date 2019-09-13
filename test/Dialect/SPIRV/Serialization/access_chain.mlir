@@ -1,6 +1,6 @@
 // RUN: mlir-translate -serialize-spirv %s | mlir-translate -deserialize-spirv | FileCheck %s
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
   func @access_chain(%arg0 : !spv.ptr<!spv.array<4x!spv.array<4xf32>>, Function>,
                      %arg1 : i32, %arg2 : i32) {
     // CHECK: {{%.*}} = spv.AccessChain {{%.*}}[{{%.*}}] : !spv.ptr<!spv.array<4 x !spv.array<4 x f32>>, Function>

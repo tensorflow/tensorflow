@@ -1,6 +1,6 @@
 // RUN: mlir-opt -convert-gpu-to-spirv %s -o - | FileCheck %s
 
-// CHECK:       spv.module "Logical" "VulkanKHR" {
+// CHECK:       spv.module "Logical" "GLSL450" {
 // CHECK-NEXT:    spv.globalVariable [[VAR1:@.*]] bind(0, 0) : !spv.ptr<f32, StorageBuffer>
 // CHECK-NEXT:    spv.globalVariable [[VAR2:@.*]] bind(0, 1) : !spv.ptr<!spv.array<12 x f32>, StorageBuffer>
 // CHECK-NEXT:    func @kernel_1

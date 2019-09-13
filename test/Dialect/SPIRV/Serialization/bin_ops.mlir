@@ -1,6 +1,6 @@
 // RUN: mlir-translate -serialize-spirv %s | mlir-translate -deserialize-spirv | FileCheck %s
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
   func @fmul(%arg0 : f32, %arg1 : f32) {
     // CHECK: {{%.*}}= spv.FMul {{%.*}}, {{%.*}} : f32
     %0 = spv.FMul %arg0, %arg1 : f32

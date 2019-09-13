@@ -1,6 +1,6 @@
 // RUN: mlir-translate -serialize-spirv %s | mlir-translate -deserialize-spirv | FileCheck %s
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
   spv.specConstant @condition_scalar = true
   func @select() -> () {
     %0 = spv.constant 4.0 : f32

@@ -4,7 +4,7 @@
 // spv._address_of
 //===----------------------------------------------------------------------===//
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
   spv.globalVariable @var1 : !spv.ptr<!spv.struct<f32, !spv.array<4xf32>>, Input>
   func @access_chain() -> () {
     %0 = spv.constant 1: i32
@@ -18,7 +18,7 @@ spv.module "Logical" "VulkanKHR" {
 
 // -----
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
   spv.globalVariable @var1 : !spv.ptr<!spv.struct<f32, !spv.array<4xf32>>, Input>
   func @foo() -> () {
     // expected-error @+1 {{expected spv.globalVariable symbol}}
@@ -28,7 +28,7 @@ spv.module "Logical" "VulkanKHR" {
 
 // -----
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
   spv.globalVariable @var1 : !spv.ptr<!spv.struct<f32, !spv.array<4xf32>>, Input>
   func @foo() -> () {
     // expected-error @+1 {{result type mismatch with the referenced global variable's type}}
@@ -95,7 +95,7 @@ func @value_result_type_mismatch() -> () {
 // spv.EntryPoint
 //===----------------------------------------------------------------------===//
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
    func @do_nothing() -> () {
      spv.Return
    }
@@ -103,7 +103,7 @@ spv.module "Logical" "VulkanKHR" {
    spv.EntryPoint "GLCompute" @do_nothing
 }
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
    spv.globalVariable @var2 : !spv.ptr<f32, Input>
    spv.globalVariable @var3 : !spv.ptr<f32, Output>
    func @do_something(%arg0 : !spv.ptr<f32, Input>, %arg1 : !spv.ptr<f32, Output>) -> () {
@@ -117,7 +117,7 @@ spv.module "Logical" "VulkanKHR" {
 
 // -----
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
    func @do_nothing() -> () {
      spv.Return
    }
@@ -127,7 +127,7 @@ spv.module "Logical" "VulkanKHR" {
 
 // -----
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
    func @do_nothing() -> () {
      spv.Return
    }
@@ -142,7 +142,7 @@ spv.module "Logical" "VulkanKHR" {
 
 // -----
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
    func @do_nothing() -> () {
      // expected-error @+1 {{'spv.EntryPoint' op failed to verify that op must appear in a 'spv.module' block}}
      spv.EntryPoint "GLCompute" @do_something
@@ -151,7 +151,7 @@ spv.module "Logical" "VulkanKHR" {
 
 // -----
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
    func @do_nothing() -> () {
      spv.Return
    }
@@ -162,7 +162,7 @@ spv.module "Logical" "VulkanKHR" {
 
 // -----
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
    func @do_nothing() -> () {
      spv.Return
    }
@@ -177,13 +177,13 @@ spv.module "Logical" "VulkanKHR" {
 // spv.globalVariable
 //===----------------------------------------------------------------------===//
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
   // CHECK: spv.globalVariable @var0 : !spv.ptr<f32, Input>
   spv.globalVariable @var0 : !spv.ptr<f32, Input>
 }
 
 // TODO: Fix test case after initialization with normal constant is addressed
-// spv.module "Logical" "VulkanKHR" {
+// spv.module "Logical" "GLSL450" {
 //   %0 = spv.constant 4.0 : f32
 //   // CHECK1: spv.Variable init(%0) : !spv.ptr<f32, Private>
 //   spv.globalVariable @var1 init(%0) : !spv.ptr<f32, Private>
@@ -191,7 +191,7 @@ spv.module "Logical" "VulkanKHR" {
 
 // -----
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
   spv.specConstant @sc = 4.0 : f32
   // CHECK: spv.globalVariable @var initializer(@sc) : !spv.ptr<f32, Private>
   spv.globalVariable @var initializer(@sc) : !spv.ptr<f32, Private>
@@ -199,13 +199,13 @@ spv.module "Logical" "VulkanKHR" {
 
 // -----
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
   // CHECK: spv.globalVariable @var0 bind(1, 2) : !spv.ptr<f32, Uniform>
   spv.globalVariable @var0 bind(1, 2) : !spv.ptr<f32, Uniform>
 }
 
 // TODO: Fix test case after initialization with constant is addressed
-// spv.module "Logical" "VulkanKHR" {
+// spv.module "Logical" "GLSL450" {
 //   %0 = spv.constant 4.0 : f32
 //   // CHECK1: spv.globalVariable @var1 initializer(%0) {binding = 5 : i32} : !spv.ptr<f32, Private>
 //   spv.globalVariable @var1 initializer(%0) {binding = 5 : i32} : !spv.ptr<f32, Private>
@@ -213,7 +213,7 @@ spv.module "Logical" "VulkanKHR" {
 
 // -----
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
   // CHECK: spv.globalVariable @var1 built_in("GlobalInvocationID") : !spv.ptr<vector<3xi32>, Input>
   spv.globalVariable @var1 built_in("GlobalInvocationID") : !spv.ptr<vector<3xi32>, Input>
   // CHECK: spv.globalVariable @var2 built_in("GlobalInvocationID") : !spv.ptr<vector<3xi32>, Input>
@@ -222,28 +222,28 @@ spv.module "Logical" "VulkanKHR" {
 
 // -----
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
   // expected-error @+1 {{expected spv.ptr type}}
   spv.globalVariable @var0 : f32
 }
 
 // -----
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
   // expected-error @+1 {{op initializer must be result of a spv.specConstant or spv.globalVariable op}}
   spv.globalVariable @var0 initializer(@var1) : !spv.ptr<f32, Private>
 }
 
 // -----
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
   // expected-error @+1 {{storage class cannot be 'Generic'}}
   spv.globalVariable @var0 : !spv.ptr<f32, Generic>
 }
 
 // -----
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
   func @foo() {
     // expected-error @+1 {{op failed to verify that op must appear in a 'spv.module' block}}
     spv.globalVariable @var0 : !spv.ptr<f32, Input>
@@ -258,25 +258,25 @@ spv.module "Logical" "VulkanKHR" {
 //===----------------------------------------------------------------------===//
 
 // Module without capability and extension
-// CHECK: spv.module "Logical" "VulkanKHR"
-spv.module "Logical" "VulkanKHR" { }
+// CHECK: spv.module "Logical" "GLSL450"
+spv.module "Logical" "GLSL450" { }
 
 // Module with capability and extension
 // CHECK: attributes {capability = ["Shader"], extension = ["SPV_KHR_16bit_storage"]}
-spv.module "Logical" "VulkanKHR" { } attributes {
+spv.module "Logical" "GLSL450" { } attributes {
   capability = ["Shader"],
   extension = ["SPV_KHR_16bit_storage"]
 }
 
 // Module with explict spv._module_end
 // CHECK: spv.module
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
   spv._module_end
 }
 
 // Module with function
 // CHECK: spv.module
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
   func @do_nothing() -> () {
     spv.Return
   }
@@ -310,7 +310,7 @@ spv.module "Logical" "Bla" { }
 
 // Module with multiple blocks
 // expected-error @+1 {{expects region #0 to have 0 or 1 blocks}}
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
 ^first:
   spv.Return
 ^second:
@@ -329,7 +329,7 @@ spv.module "Logical" "VulkanKHR" {
 // -----
 
 // Use non SPIR-V op inside.module
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
   // expected-error @+1 {{'spv.module' can only contain func and spv.* ops}}
   "dialect.op"() : () -> ()
 }
@@ -337,7 +337,7 @@ spv.module "Logical" "VulkanKHR" {
 // -----
 
 // Use non SPIR-V op inside function
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
   func @do_nothing() -> () {
     // expected-error @+1 {{functions in 'spv.module' can only contain spv.* ops}}
     "dialect.op"() : () -> ()
@@ -347,7 +347,7 @@ spv.module "Logical" "VulkanKHR" {
 // -----
 
 // Use external function
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
   // expected-error @+1 {{'spv.module' cannot contain external functions}}
   func @extern() -> ()
 }
@@ -355,7 +355,7 @@ spv.module "Logical" "VulkanKHR" {
 // -----
 
 // Module with nested function
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
   func @outer_func() -> () {
     // expected-error @+1 {{'spv.module' cannot contain nested functions}}
     func @inner_func() -> () {

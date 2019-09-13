@@ -266,7 +266,7 @@ func @composite_extract_result_type_mismatch(%arg0: !spv.array<4xf32>) -> i32 {
 // spv.ExecutionMode
 //===----------------------------------------------------------------------===//
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
    func @do_nothing() -> () {
      spv.Return
    }
@@ -275,7 +275,7 @@ spv.module "Logical" "VulkanKHR" {
    spv.ExecutionMode @do_nothing "ContractionOff"
 }
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
    func @do_nothing() -> () {
      spv.Return
    }
@@ -286,7 +286,7 @@ spv.module "Logical" "VulkanKHR" {
 
 // -----
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
    func @do_nothing() -> () {
      spv.Return
    }
@@ -417,7 +417,7 @@ func @aligned_load_incorrect_attributes() -> () {
 
 // -----
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
   spv.globalVariable @var0 : !spv.ptr<f32, Input>
   // CHECK_LABEL: @simple_load
   func @simple_load() -> () {
@@ -644,7 +644,7 @@ func @aligned_store_incorrect_attributes(%arg0 : f32) -> () {
 
 // -----
 
-spv.module "Logical" "VulkanKHR" {
+spv.module "Logical" "GLSL450" {
   spv.globalVariable @var0 : !spv.ptr<f32, Input>
   func @simple_store(%arg0 : f32) -> () {
     %0 = spv._address_of @var0 : !spv.ptr<f32, Input>
