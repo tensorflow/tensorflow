@@ -140,7 +140,7 @@ static LogicalResult runMLIRPasses(ModuleOp m) {
   PassManager pm(m.getContext());
 
   pm.addPass(createGpuKernelOutliningPass());
-  pm.addPass(static_cast<std::unique_ptr<ModulePassBase>>(
+  pm.addPass(static_cast<std::unique_ptr<OpPassBase<ModuleOp>>>(
       std::make_unique<LowerStandardAndGpuToLLVMAndNVVM>()));
   pm.addPass(createConvertGPUKernelToCubinPass(&compilePtxToCubin));
   pm.addPass(createGenerateCubinAccessorPass());

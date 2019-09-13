@@ -40,7 +40,8 @@ struct LegalizeTF : public FunctionPass<LegalizeTF> {
 };
 }  // end anonymous namespace
 
-std::unique_ptr<mlir::FunctionPassBase> mlir::xla_hlo::createLegalizeTFPass() {
+std::unique_ptr<mlir::OpPassBase<mlir::FuncOp>>
+mlir::xla_hlo::createLegalizeTFPass() {
   return std::make_unique<LegalizeTF>();
 }
 

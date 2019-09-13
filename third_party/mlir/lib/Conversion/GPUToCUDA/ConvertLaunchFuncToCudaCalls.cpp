@@ -369,7 +369,7 @@ void GpuLaunchFuncToCudaCallsPass::translateGpuLaunchCalls(
   launchOp.erase();
 }
 
-std::unique_ptr<mlir::ModulePassBase>
+std::unique_ptr<mlir::OpPassBase<mlir::ModuleOp>>
 mlir::createConvertGpuLaunchFuncToCudaCallsPass() {
   return std::make_unique<GpuLaunchFuncToCudaCallsPass>();
 }

@@ -298,11 +298,6 @@ template <typename T> struct ModulePass : public OpPass<ModuleOp, T> {
   /// Return the current module being transformed.
   ModuleOp getModule() { return this->getOperation(); }
 };
-
-/// Using directives defining legacy base classes.
-// TODO(riverriddle) These should be removed in favor of OpPassBase<T>.
-using FunctionPassBase = OpPassBase<FuncOp>;
-using ModulePassBase = OpPassBase<ModuleOp>;
 } // end namespace mlir
 
 #endif // MLIR_PASS_PASS_H

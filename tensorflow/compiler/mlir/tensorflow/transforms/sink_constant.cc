@@ -90,7 +90,7 @@ static mlir::PassRegistration<ExecutorConstantSinking> pass(
 
 }  // anonymous namespace
 
-std::unique_ptr<FunctionPassBase> CreateTFExecutorConstantSinkingPass() {
+std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorConstantSinkingPass() {
   return std::make_unique<ExecutorConstantSinking>();
 }
 

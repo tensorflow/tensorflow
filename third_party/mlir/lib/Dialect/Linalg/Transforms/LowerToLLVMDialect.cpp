@@ -907,7 +907,8 @@ void LowerLinalgToLLVMPass::runOnModule() {
   }
 }
 
-std::unique_ptr<ModulePassBase> mlir::linalg::createLowerLinalgToLLVMPass() {
+std::unique_ptr<OpPassBase<ModuleOp>>
+mlir::linalg::createLowerLinalgToLLVMPass() {
   return std::make_unique<LowerLinalgToLLVMPass>();
 }
 

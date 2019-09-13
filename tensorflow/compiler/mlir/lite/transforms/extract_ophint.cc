@@ -715,7 +715,7 @@ void ExtractOphintPass::Verify() {
 
 /// Creates an instance of the TensorFlow Lite dialect ExtractOphintPass
 /// pass.
-std::unique_ptr<ModulePassBase> CreateExtractOphintPass() {
+std::unique_ptr<OpPassBase<ModuleOp>> CreateExtractOphintPass() {
   return std::make_unique<ExtractOphintPass>();
 }
 

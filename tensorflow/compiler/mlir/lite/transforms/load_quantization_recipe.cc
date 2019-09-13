@@ -217,7 +217,7 @@ void LoadQuantizationRecipe::runOnFunction() {
 
 // Creates an instance of the TensorFlow Lite dialect LoadQuantizationRecipe
 // pass.
-std::unique_ptr<FunctionPassBase> CreateLoadQuantizationRecipePass() {
+std::unique_ptr<OpPassBase<FuncOp>> CreateLoadQuantizationRecipePass() {
   return absl::make_unique<LoadQuantizationRecipe>();
 }
 

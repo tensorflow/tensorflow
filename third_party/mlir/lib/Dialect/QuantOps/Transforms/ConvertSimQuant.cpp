@@ -147,7 +147,7 @@ void ConvertSimulatedQuantPass::runOnFunction() {
     signalPassFailure();
 }
 
-std::unique_ptr<FunctionPassBase>
+std::unique_ptr<OpPassBase<FuncOp>>
 mlir::quant::createConvertSimulatedQuantPass() {
   return std::make_unique<ConvertSimulatedQuantPass>();
 }

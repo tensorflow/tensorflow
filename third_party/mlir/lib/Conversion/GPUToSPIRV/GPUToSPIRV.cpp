@@ -166,7 +166,7 @@ void GPUToSPIRVPass::runOnModule() {
   }
 }
 
-ModulePassBase *createGPUToSPIRVPass() { return new GPUToSPIRVPass(); }
+OpPassBase<ModuleOp> *createGPUToSPIRVPass() { return new GPUToSPIRVPass(); }
 
 static PassRegistration<GPUToSPIRVPass>
     pass("convert-gpu-to-spirv", "Convert GPU dialect to SPIR-V dialect");

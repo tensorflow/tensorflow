@@ -88,7 +88,7 @@ struct MemRefDataFlowOpt : public FunctionPass<MemRefDataFlowOpt> {
 
 /// Creates a pass to perform optimizations relying on memref dataflow such as
 /// store to load forwarding, elimination of dead stores, and dead allocs.
-std::unique_ptr<FunctionPassBase> mlir::createMemRefDataFlowOptPass() {
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createMemRefDataFlowOptPass() {
   return std::make_unique<MemRefDataFlowOpt>();
 }
 

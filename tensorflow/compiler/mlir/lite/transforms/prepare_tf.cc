@@ -422,7 +422,7 @@ void PrepareTFPass::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
-std::unique_ptr<FunctionPassBase> CreatePrepareTFPass() {
+std::unique_ptr<OpPassBase<FuncOp>> CreatePrepareTFPass() {
   return std::make_unique<PrepareTFPass>();
 }
 

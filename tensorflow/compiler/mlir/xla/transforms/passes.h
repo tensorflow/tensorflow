@@ -26,31 +26,30 @@ class FuncOp;
 class Operation;
 template <typename T>
 class OpPassBase;
-using FunctionPassBase = OpPassBase<FuncOp>;
 class MLIRContext;
 class OwningRewritePatternList;
 
 namespace xla_hlo {
 
 /// Lowers from TF dialect to XLA dialect.
-std::unique_ptr<FunctionPassBase> createLegalizeTFPass();
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeTFPass();
 
 /// Converts the provided Operation as well as all nested operations into XLA
 /// dialect using the conversion patterns registered by the XLA dialect.
 void legalizeTF(Operation* op);
 
 /// Lowers XLA control flow ops to the Standard dialect.
-std::unique_ptr<FunctionPassBase> createLegalizeControlFlowPass();
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeControlFlowPass();
 
 /// Lowers from XLA dialect to Standard dialect.
-std::unique_ptr<FunctionPassBase> createLegalizeToStdPass();
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToStdPass();
 
 }  // namespace xla_hlo
 
 namespace xla_lhlo {
 
 // Lowers LHLO dialect to affine dialect.
-std::unique_ptr<FunctionPassBase> createLegalizeToAffinePass();
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToAffinePass();
 
 }  // namespace xla_lhlo
 }  // namespace mlir

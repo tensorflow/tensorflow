@@ -30,7 +30,6 @@ namespace mlir {
 class Block;
 class ModuleOp;
 template <typename T> class OpPassBase;
-using ModulePassBase = OpPassBase<ModuleOp>;
 
 /// Displays the graph in a window. This is for use from the debugger and
 /// depends on Graphviz to generate the graph.
@@ -42,7 +41,7 @@ llvm::raw_ostream &writeGraph(llvm::raw_ostream &os, Block &block,
                               bool shortNames = false, const Twine &title = "");
 
 /// Creates a pass to print op graphs.
-std::unique_ptr<ModulePassBase>
+std::unique_ptr<OpPassBase<ModuleOp>>
 createPrintOpGraphPass(llvm::raw_ostream &os = llvm::errs(),
                        bool shortNames = false, const llvm::Twine &title = "");
 
