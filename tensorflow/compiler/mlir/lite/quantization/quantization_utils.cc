@@ -114,27 +114,32 @@ Type GetUniformQuantizedTypeForElementsAttr(ElementsAttr attr,
   Builder builder(attr.getContext());
   double min = std::numeric_limits<double>::max();
   double max = std::numeric_limits<double>::min();
-  if (auto fp = attr.dyn_cast<DenseFPElementsAttr>()) {
-    // If all the element values are same we don't need to scan the content.
-    if (fp.isSplat()) {
-      min = max =
-          FloatAttr::getValueAsDouble(fp.getSplatValue<llvm::APFloat>());
-    } else {
-      for (auto it = fp.begin(), e = fp.end(); it != e; ++it) {
-        double ele_value = FloatAttr::getValueAsDouble(*it);
-        min = std::min(min, ele_value);
-        max = std::max(max, ele_value);
-      }
-    }
-    auto type = GetQuantizedType(builder, attr.getType(), min, max,
-                                 storage_type_width, narrow_range, is_signed);
-    if (auto ele_type = type.dyn_cast_or_null<TensorType>())
-      return ele_type.getElementType();
-  }
+  auto fp = attr.dyn_cast<DenseFPElementsAttr>();
+  if (!fp) return {};
 
-  // The range from SplatElementAttr and other element attribute types couldn't
-  // straddle zero, so the quantization parameters couldn't be derived from its
-  // range.
+  // If all the element values are same we don't need to scan the content.
+  if (fp.isSplat()) {
+    double single_value =
+        FloatAttr::getValueAsDouble(fp.getSplatValue<llvm::APFloat>());
+    // the mlir quantization libration can only handle the case min=max=0.0, so
+    // we just avoid quantization if it is any values other than 0.0.
+    // TODO(b/141015060): remove this constraint once the bug is fixed.
+    if (std::fabs(single_value) > std::numeric_limits<double>::epsilon()) {
+      return {};
+    }
+    min = max = single_value;
+  } else {
+    for (auto it = fp.begin(), e = fp.end(); it != e; ++it) {
+      double ele_value = FloatAttr::getValueAsDouble(*it);
+      min = std::min(min, ele_value);
+      max = std::max(max, ele_value);
+    }
+  }
+  auto type = GetQuantizedType(builder, attr.getType(), min, max,
+                               storage_type_width, narrow_range, is_signed);
+  if (auto ele_type = type.dyn_cast_or_null<TensorType>())
+    return ele_type.getElementType();
+
   return {};
 }
 
