@@ -62,8 +62,9 @@ void NeonApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
 void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
                   int n_input, int shift, int16_t* output);
 
-void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
-                  int n_input, int shift, int8_t* output);
+void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2,
+                  int32_t multiplier, int shift, int n_batch, int n_input,
+                  int32_t output_zp, int8_t* output);
 
 void NeonCwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
                   int n_input, int16_t* output);
@@ -130,6 +131,8 @@ void NeonVectorBatchVectorCwiseProductAccumulate(const float* vector,
 
 // Compute "1.0f - elements of vector" (used in CIFG).
 void NeonSub1Vector(const float* vector, int v_size, float* result);
+
+void NeonSub1Vector(const int16_t* vector, int v_size, int16_t* result);
 
 // Clip elements of a vector using a abs_limit value.
 void NeonClipVector(const float* vector, int v_size, float abs_limit,

@@ -25,6 +25,7 @@ from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 
 
 COMPRESSION_GZIP = "GZIP"
+COMPRESSION_SNAPPY = "SNAPPY"
 COMPRESSION_NONE = None
 
 

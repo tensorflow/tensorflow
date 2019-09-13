@@ -816,8 +816,10 @@ class GradientTape(object):
       self._pop_tape()
 
   def _push_tape(self):
+    """Pushes a new tape onto the tape stack."""
     if self._recording:
-      raise ValueError("Tape is already recording.")
+      raise ValueError("Tape is still recording, This can happen if you try to "
+                       "re-enter an already-active tape.")
     if self._tape is None:
       self._tape = tape.push_new_tape(
           persistent=self._persistent,

@@ -26,6 +26,10 @@ namespace TF {
 // dialect to MLIR Control Flow Graph (CFG) form.
 std::unique_ptr<FunctionPassBase> CreateTFFunctionalControlFlowToCFG();
 
+// Materialize the MlirPassthroughOp by replacing it with the MLIR module
+// attached as an attribute.
+std::unique_ptr<FunctionPassBase> CreateMaterializePassthroughOpPass();
+
 // Optimizes Tensorflow graph.
 std::unique_ptr<FunctionPassBase> CreateTFOptimizePass();
 
@@ -53,6 +57,11 @@ std::unique_ptr<FunctionPassBase> CreateTFExecutorGraphPruningPass();
 // Prune a tf_executor.graph operation from dead nodes.
 void prune_graph(GraphOp graph);
 
+// Sink `tf.Const` operations in the LaunchOp region using them. This is
+// performed in order to limit the number of values implicitly captured in this
+// region before outlining.
+std::unique_ptr<FunctionPassBase> CreateTFExecutorConstantSinkingPass();
+
 }  // namespace tf_executor
 
 namespace TFDevice {
@@ -75,7 +84,7 @@ std::unique_ptr<ModulePassBase> CreateTPURewritePass();
 
 // Populates the supplied passmanager with the passes required to run the
 // bridge. NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
-void createTPUBridge(PassManager& bridge);
+void createTPUBridge(OpPassManager& bridge);
 
 }  // namespace TFTPU
 

@@ -129,4 +129,8 @@ try:
   del examples
 except NameError:
   pass
+
+# Manually patch keras and estimator so tf.keras and tf.estimator work
+keras = _sys.modules["tensorflow.keras"]
+if not _root_estimator: estimator = _sys.modules["tensorflow.estimator"]
 # LINT.ThenChange(//tensorflow/virtual_root_template_v2.__init__.py.oss)

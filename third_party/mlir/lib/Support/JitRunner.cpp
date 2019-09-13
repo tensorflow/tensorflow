@@ -81,14 +81,18 @@ static llvm::cl::list<const llvm::PassInfo *, bool, llvm::PassNameParser>
                llvm::cl::cat(optFlags));
 
 // CLI variables for -On options.
-static llvm::cl::opt<bool> optO0("O0", llvm::cl::desc("Run opt O0 passes"),
-                                 llvm::cl::cat(optFlags));
-static llvm::cl::opt<bool> optO1("O1", llvm::cl::desc("Run opt O1 passes"),
-                                 llvm::cl::cat(optFlags));
-static llvm::cl::opt<bool> optO2("O2", llvm::cl::desc("Run opt O2 passes"),
-                                 llvm::cl::cat(optFlags));
-static llvm::cl::opt<bool> optO3("O3", llvm::cl::desc("Run opt O3 passes"),
-                                 llvm::cl::cat(optFlags));
+static llvm::cl::opt<bool>
+    optO0("O0", llvm::cl::desc("Run opt passes and codegen at O0"),
+          llvm::cl::cat(optFlags));
+static llvm::cl::opt<bool>
+    optO1("O1", llvm::cl::desc("Run opt passes and codegen at O1"),
+          llvm::cl::cat(optFlags));
+static llvm::cl::opt<bool>
+    optO2("O2", llvm::cl::desc("Run opt passes and codegen at O2"),
+          llvm::cl::cat(optFlags));
+static llvm::cl::opt<bool>
+    optO3("O3", llvm::cl::desc("Run opt passes and codegen at O3"),
+          llvm::cl::cat(optFlags));
 
 static llvm::cl::OptionCategory clOptionsCategory("linking options");
 static llvm::cl::list<std::string>
@@ -178,14 +182,34 @@ static LogicalResult convertAffineStandardToLLVMIR(ModuleOp module) {
   return manager.run(module);
 }
 
+static llvm::Optional<unsigned> getCommandLineOptLevel() {
+  llvm::Optional<unsigned> optLevel;
+  llvm::SmallVector<std::reference_wrapper<llvm::cl::opt<bool>>, 4> optFlags{
+      optO0, optO1, optO2, optO3};
+
+  // Determine if there is an optimization flag present.
+  for (unsigned j = 0; j < 4; ++j) {
+    auto &flag = optFlags[j].get();
+    if (flag) {
+      optLevel = j;
+      break;
+    }
+  }
+  return optLevel;
+}
+
 // JIT-compile the given module and run "entryPoint" with "args" as arguments.
 static Error
 compileAndExecute(ModuleOp module, StringRef entryPoint,
                   std::function<llvm::Error(llvm::Module *)> transformer,
                   void **args) {
+  Optional<llvm::CodeGenOpt::Level> jitCodeGenOptLevel;
+  if (auto clOptLevel = getCommandLineOptLevel())
+    jitCodeGenOptLevel =
+        static_cast<llvm::CodeGenOpt::Level>(clOptLevel.getValue());
   SmallVector<StringRef, 4> libs(clSharedLibs.begin(), clSharedLibs.end());
-  auto expectedEngine =
-      mlir::ExecutionEngine::create(module, transformer, libs);
+  auto expectedEngine = mlir::ExecutionEngine::create(module, transformer,
+                                                      jitCodeGenOptLevel, libs);
   if (!expectedEngine)
     return expectedEngine.takeError();
 
@@ -296,26 +320,24 @@ int mlir::JitRunnerMain(
   initializeLLVM();
   mlir::initializeLLVMPasses();
 
-  llvm::SmallVector<std::reference_wrapper<llvm::cl::opt<bool>>, 4> optFlags{
-      optO0, optO1, optO2, optO3};
-
   llvm::cl::ParseCommandLineOptions(argc, argv, "MLIR CPU execution driver\n");
 
-  llvm::SmallVector<const llvm::PassInfo *, 4> passes;
-  llvm::Optional<unsigned> optLevel;
+  llvm::Optional<unsigned> optLevel = getCommandLineOptLevel();
+  llvm::SmallVector<std::reference_wrapper<llvm::cl::opt<bool>>, 4> optFlags{
+      optO0, optO1, optO2, optO3};
   unsigned optCLIPosition = 0;
   // Determine if there is an optimization flag present, and its CLI position
   // (optCLIPosition).
   for (unsigned j = 0; j < 4; ++j) {
     auto &flag = optFlags[j].get();
     if (flag) {
-      optLevel = j;
       optCLIPosition = flag.getPosition();
       break;
     }
   }
   // Generate vector of pass information, plus the index at which we should
   // insert any optimization passes in that vector (optPosition).
+  llvm::SmallVector<const llvm::PassInfo *, 4> passes;
   unsigned optPosition = 0;
   for (unsigned i = 0, e = llvmPasses.size(); i < e; ++i) {
     passes.push_back(llvmPasses[i]);

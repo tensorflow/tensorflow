@@ -1388,11 +1388,18 @@ def main():
   if (environ_cp.get('TF_NEED_CUDA') == '1' and
       'TF_CUDA_CONFIG_REPO' not in environ_cp):
 
+    tensor_rt_question = (
+        'Do you wish to build TensorFlow with TensorRT support?  NB! There ' +
+        'are known ODR violations between TensorRT and cuDNN that may result ' +
+        'in application crashes and/or data corruption. Please see ' +
+        'https://github.com/tensorflow/tensorflow/issues/32480 for details.')
+
     set_action_env_var(
         environ_cp,
         'TF_NEED_TENSORRT',
         'TensorRT',
         False,
+        question=tensor_rt_question,
         bazel_config_name='tensorrt')
 
     environ_save = dict(environ_cp)

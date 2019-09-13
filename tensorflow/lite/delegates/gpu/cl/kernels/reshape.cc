@@ -70,9 +70,9 @@ std::string GetReshapeCode(
   c += "    }\n";
   c += "  }\n";
   c += "  FLT4 result = (FLT4)(temps[0], temps[1], temps[2], temps[3]);\n";
-  c += "  " + dst_tensor.GetAddress("dst_adr", "X", "Y", "Z");
-  c += PostProcess(linked_operations, "result", "Z", "dst_adr");
-  c += "  " + dst_tensor.Write3D("result", "dst_adr");
+  const LinkingContext context{"result", "X", "Y", "Z"};
+  c += PostProcess(linked_operations, context);
+  c += "  " + dst_tensor.Write3D("result", "X", "Y", "Z");
   c += "}\n";
   return c;
 }

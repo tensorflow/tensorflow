@@ -347,20 +347,6 @@ void PortableCwiseMul(const int16_t* input_1, const int16_t* input_2,
 }
 
 void PortableCwiseMul(const int16_t* input_1, const int16_t* input_2,
-                      int n_batch, int n_input, int shift, int8_t* output) {
-  for (int batch = 0; batch < n_batch; ++batch) {
-    for (int i = 0; i < n_input; ++i) {
-      const int index = batch * n_input + i;
-      const int16_t a = input_1[index];
-      const int16_t b = input_2[index];
-      const int32_t value = static_cast<int32_t>(a) * static_cast<int32_t>(b);
-      output[index] =
-          static_cast<int8_t>(gemmlowp::RoundingDivideByPOT(value, shift));
-    }
-  }
-}
-
-void PortableCwiseMul(const int16_t* input_1, const int16_t* input_2,
                       int32_t multiplier, int32_t shift, int32_t n_batch,
                       int32_t n_input, int32_t output_zp, int8_t* output) {
   for (int batch = 0; batch < n_batch; ++batch) {

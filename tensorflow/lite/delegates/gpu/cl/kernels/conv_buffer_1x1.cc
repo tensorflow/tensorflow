@@ -170,11 +170,10 @@ std::string GenerateConvBuffer1x1(
       c += "  if (X + " + x_s + " < dst_size.x && Y + " + y_s +
            " < dst_size.y) {\n";
       c += "    FLT4 res = TO_FLT4(r" + i_s + ");\n";
-      c += "  " +
-           dst_tensor.GetAddress("address", "X + " + x_s, "Y + " + y_s, "Z") +
+      const LinkingContext context{"res", "X + " + x_s, "Y + " + y_s, "Z"};
+      c += PostProcess(linked_operations, context);
+      c += "  " + dst_tensor.Write3D("res", "X + " + x_s, "Y + " + y_s, "Z") +
            "\n";
-      c += PostProcess(linked_operations, "res", "Z", "address");
-      c += "  " + dst_tensor.Write3D("res", "address") + "\n";
       c += "  }\n";
     }
   }

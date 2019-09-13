@@ -25,10 +25,7 @@ ios_unit_test(
     name = "Tests",
     size = "small",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
-    tags = TFL_DEFAULT_TAGS + TFL_DISABLED_SANITIZER_TAGS + [
-        "nozapfhahn",  # Fails during coverage build, see b/139134323.
-    ],
-    test_host = ":TestApp",
+    tags = TFL_DEFAULT_TAGS + TFL_DISABLED_SANITIZER_TAGS,
     deps = [
         ":TestsLibrary",
     ],
@@ -38,9 +35,7 @@ swift_library(
     name = "TestsLibrary",
     testonly = 1,
     srcs = glob(["Tests/*.swift"]),
-    tags = TFL_DEFAULT_TAGS + [
-        "nozapfhahn",  # Fails during coverage build, see b/139134323.
-    ],
+    tags = TFL_DEFAULT_TAGS,
     deps = [
         ":Resources",
         ":TensorFlowLite",

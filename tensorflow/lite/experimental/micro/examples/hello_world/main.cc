@@ -33,7 +33,7 @@ int main(int argc, char* argv[]) {
   if (model->version() != TFLITE_SCHEMA_VERSION) {
     error_reporter->Report(
         "Model provided is schema version %d not equal "
-        "to supported version %d.\n",
+        "to supported version %d.",
         model->version(), TFLITE_SCHEMA_VERSION);
     return 1;
   }
@@ -76,7 +76,7 @@ int main(int argc, char* argv[]) {
     // Run inference, and report any error
     TfLiteStatus invoke_status = interpreter.Invoke();
     if (invoke_status != kTfLiteOk) {
-      error_reporter->Report("Invoke failed on x_val: %f\n",
+      error_reporter->Report("Invoke failed on x_val: %f",
                              static_cast<double>(x_val));
       continue;
     }

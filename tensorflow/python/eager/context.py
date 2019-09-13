@@ -186,6 +186,8 @@ class _ThreadLocalData(threading.local):
     self.summary_step = None
     self.function_call_options = None
     self.executor = None
+    self.op_callbacks = []
+    self.invoking_op_callbacks = False
 
 
 ContextSwitch = collections.namedtuple(
@@ -315,10 +317,6 @@ class _TensorCacheDeleter(object):
       return
     if self._context_id in _tensor_caches_map:
       del _tensor_caches_map[self._context_id]
-
-
-# Thread-local stack of execution callbacks.
-_post_execution_callbacks = threading.local()
 
 
 # TODO(agarwal): rename to EagerContext / EagerRuntime ?
@@ -1006,41 +1004,51 @@ class Context(object):
     self.ensure_initialized()
     return bool(pywrap_tensorflow.TFE_ContextHasFunction(self._handle, name))
 
-  def add_post_execution_callback(self, callback):
-    """Add a post-execution callback to the context.
+  def add_op_callback(self, callback):
+    """Add a post-op callback to the context.
 
-    A post-execution callback is invoked immediately after an eager operation or
-    function has finished execution, providing access to the op's type, name
-    input and output tensors. Multiple execution callbacks can be added, in
-    which case the callbacks will be invoked in the order in which they are
-    added.
+    A post-op callback is invoked immediately after an eager operation or
+    function has finished execution or after a op has been added to a graph,
+    providing access to the op's type, name input and output tensors. Multiple
+    op callbacks can be added, in which case the callbacks will be invoked in
+    the order in which they are added.
 
     Args:
       callback: a callable of the signature
-      `f(op_type, op_name, attrs, inputs, outputs)`.
-      `op_type` is the type of the operation that was just executed (e.g.,
-        `MatMul`).
-      `op_name` is the name of the operation that has was just executed. This
-        name is set by the client who created the operation and can be `None` if
-        it is unset.
-      `attrs` contains the attributes of the operation as a `tuple` of
-        alternating attribute names and attribute values.
-      `inputs` is the `list` of input `Tensor`(s) to the op.
-      `outputs` is the `list` of output `Tensor`(s) from the op.
-       Return value(s) from the callback are ignored.
+        `f(op_type, inputs, attrs, outputs, op_name=None, graph=None)`.
+        See doc strings in `op_callbacks.py` for details on the function
+        signature and its semantics.
     """
-    self.post_execution_callbacks.append(callback)
+    if callback not in self._thread_local_data.op_callbacks:
+      self._thread_local_data.op_callbacks.append(callback)
 
-  def clear_post_execution_callbacks(self):
-    """Clear all post-execution callbacks added to the context."""
-    del self.post_execution_callbacks[:]
+  def remove_op_callback(self, callback):
+    """Remove an already-registered op callback.
+
+    Args:
+      callback: The op callback to be removed.
+
+    Raises:
+      KeyError: If `callback` is not already registered.
+    """
+    if callback not in self._thread_local_data.op_callbacks:
+      raise KeyError(
+          "The specified op callback has not been registered, "
+          "and hence cannot be removed.")
+    del self._thread_local_data.op_callbacks[
+        self._thread_local_data.op_callbacks.index(callback)]
 
   @property
-  def post_execution_callbacks(self):
-    """Get the list of post-execution callbacks added to the context."""
-    if not hasattr(_post_execution_callbacks, "callbacks"):
-      _post_execution_callbacks.callbacks = []
-    return _post_execution_callbacks.callbacks
+  def op_callbacks(self):
+    return self._thread_local_data.op_callbacks
+
+  @property
+  def invoking_op_callbacks(self):
+    return self._thread_local_data.invoking_op_callbacks
+
+  @invoking_op_callbacks.setter
+  def invoking_op_callbacks(self, value):
+    self._thread_local_data.invoking_op_callbacks = value
 
   def _initialize_physical_devices(self):
     """Get local devices visible to the system."""

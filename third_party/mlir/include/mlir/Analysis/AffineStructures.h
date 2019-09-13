@@ -204,8 +204,8 @@ private:
 };
 
 /// A flat list of affine equalities and inequalities in the form.
-/// Inequality: c_0*x_0 + c_1*x_1 + .... + c_{n-1}*x_{n-1} == 0
-/// Equality: c_0*x_0 + c_1*x_1 + .... + c_{n-1}*x_{n-1} >= 0
+/// Inequality: c_0*x_0 + c_1*x_1 + .... + c_{n-1}*x_{n-1} >= 0
+/// Equality: c_0*x_0 + c_1*x_1 + .... + c_{n-1}*x_{n-1} == 0
 ///
 /// FlatAffineConstraints stores coefficients in a contiguous buffer (one buffer
 /// for equalities and one for inequalities). The size of each buffer is

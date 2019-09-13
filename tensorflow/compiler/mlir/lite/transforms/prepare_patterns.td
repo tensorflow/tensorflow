@@ -18,6 +18,14 @@ include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 
 def FalseBoolAttr : AttrConstraint<CPred<"!$_self.getValue()">>;
 
+def NonOpaqueElementsAttr : ElementsAttrBase<
+  CPred<"!$_self.isa<OpaqueElementsAttr>()">,
+  "non-opaque constant tensor">;
+
+// Convert to std constant for statically shaped, non-opaque constants.
+def : Pat<(TF_ConstOp:$res NonOpaqueElementsAttr:$value), (ConstantOp $value),
+          [(AnyStaticShapeTensor $res)]>;
+
 // Converts tf.FusedBatchNorm & tf.FusedBatchNormV3 into a sequence of more primitive arithmetic
 // operations. Specifically, performs the following calculation:
 //
@@ -81,8 +89,8 @@ class TFi32<int v> : ConstantAttr<I32ElementsAttr, !cast<string>(v)>;
 def : Pat<(TF_MatMulOp $a, $b, ConstBoolAttrFalse:$at, ConstBoolAttrFalse),
           (TF_MatMulOp $a, (TF_TransposeOp $b, (TF_SubOp (TF_RangeOp
              /*start=*/(TF_RankOp $b),
-             /*limit=*/(ConstantOp TFi32<0>),
-             /*delta=*/(ConstantOp TFi32<-1>)), (ConstantOp TFi32<1>))),
+             /*limit=*/(TF_ConstOp TFi32<0>),
+             /*delta=*/(TF_ConstOp TFi32<-1>)), (TF_ConstOp TFi32<1>))),
            $at, ConstBoolAttrTrue)>;
 
 // Matmul with transpose on a to matmul with explicit transpose op and a not
@@ -90,10 +98,12 @@ def : Pat<(TF_MatMulOp $a, $b, ConstBoolAttrFalse:$at, ConstBoolAttrFalse),
 def : Pat<(TF_MatMulOp $a, $b, ConstBoolAttrTrue, $bt),
           (TF_MatMulOp (TF_TransposeOp $a, (TF_SubOp (TF_RangeOp
              /*start=*/(TF_RankOp $a),
-             /*limit=*/(ConstantOp TFi32<0>),
-             /*delta=*/(ConstantOp TFi32<-1>)), (ConstantOp TFi32<1>))), $b,
+             /*limit=*/(TF_ConstOp TFi32<0>),
+             /*delta=*/(TF_ConstOp TFi32<-1>)), (TF_ConstOp TFi32<1>))), $b,
            ConstBoolAttrFalse, $bt)>;
 
+// Partially supported in TFLite, treated as passthrough IdentityOp
+def : Pat<(TF_CheckNumericsOp $arg, $msg), (TF_IdentityOp $arg)>;
 def : Pat<(TF_SnapshotOp $arg), (TF_IdentityOp $arg)>;
 def : Pat<(TF_StopGradientOp $arg), (TF_IdentityOp $arg)>;
 

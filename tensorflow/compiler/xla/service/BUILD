@@ -945,9 +945,10 @@ cc_library(
     deps = [
         ":service",
         "//tensorflow/compiler/xla/service/gpu:gpu_transfer_manager",
-        "//tensorflow/compiler/xla/service/mlir_gpu:mlir_compiler",
         "//tensorflow/core:stream_executor_no_cuda",
-    ],
+    ] + if_cuda_is_configured([
+        "//tensorflow/compiler/xla/service/mlir_gpu:mlir_compiler",
+    ]),
 )
 
 cc_library(
@@ -2289,7 +2290,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_test(
     name = "dynamic_padder_test",
     srcs = ["dynamic_padder_test.cc"],
     deps = [
@@ -2306,7 +2307,9 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:test",
     ],
 )
@@ -2589,9 +2592,13 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:types",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -2873,6 +2880,7 @@ cc_library(
         ":call_graph",
         ":computation_layout",
         ":hlo",
+        ":hlo_alias_analysis",
         ":hlo_casting_utils",
         ":hlo_dce",
         ":hlo_graph_dumper",

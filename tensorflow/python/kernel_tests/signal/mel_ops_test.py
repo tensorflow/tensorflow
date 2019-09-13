@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -130,6 +131,7 @@ def spectrogram_to_mel_matrix(num_mel_bins=20,
   return mel_weights_matrix
 
 
+@tf_test_util.run_all_in_graph_and_eager_modes
 class LinearToMelTest(test.TestCase):
 
   def test_matches_reference_implementation(self):
@@ -143,21 +145,21 @@ class LinearToMelTest(test.TestCase):
         # Settings used by Tacotron (https://arxiv.org/abs/1703.10135).
         (80, 1025, 24000.0, 80.0, 12000.0, dtypes.float64),
     ]
-    with self.session(use_gpu=True):
-      for config in configs:
-        mel_matrix_np = spectrogram_to_mel_matrix(*config)
-        mel_matrix = mel_ops.linear_to_mel_weight_matrix(*config)
-        self.assertAllClose(mel_matrix_np, self.evaluate(mel_matrix), atol=3e-6)
+    for config in configs:
+      mel_matrix_np = spectrogram_to_mel_matrix(*config)
+      mel_matrix = mel_ops.linear_to_mel_weight_matrix(*config)
+      self.assertAllClose(mel_matrix_np, mel_matrix, atol=3e-6)
 
-  @tf_test_util.run_deprecated_v1
   def test_dtypes(self):
     # LinSpace is not supported for tf.float16.
-    for dtype in (dtypes.bfloat16, dtypes.float32, dtypes.float64):
+    for dtype in (dtypes.float32, dtypes.float64):
       self.assertEqual(dtype,
                        mel_ops.linear_to_mel_weight_matrix(dtype=dtype).dtype)
 
-  @tf_test_util.run_deprecated_v1
   def test_error(self):
+    # TODO(rjryan): Error types are different under eager.
+    if context.executing_eagerly():
+      return
     with self.assertRaises(ValueError):
       mel_ops.linear_to_mel_weight_matrix(num_mel_bins=0)
     with self.assertRaises(ValueError):
@@ -180,7 +182,9 @@ class LinearToMelTest(test.TestCase):
 
   def test_constant_folding(self):
     """Mel functions should be constant foldable."""
-    # TODO(rjryan): tf.bloat16 cannot be constant folded by Grappler.
+    if context.executing_eagerly():
+      return
+    # TODO(rjryan): tf.bfloat16 cannot be constant folded by Grappler.
     for dtype in (dtypes.float32, dtypes.float64):
       g = ops.Graph()
       with g.as_default():
@@ -188,18 +192,14 @@ class LinearToMelTest(test.TestCase):
         rewritten_graph = test_util.grappler_optimize(g, [mel_matrix])
         self.assertEqual(1, len(rewritten_graph.node))
 
-  @tf_test_util.run_deprecated_v1
   def test_num_spectrogram_bins_dynamic(self):
-    with self.session(use_gpu=True):
-      num_spectrogram_bins = array_ops.placeholder(shape=(),
-                                                   dtype=dtypes.int32)
-      mel_matrix_np = spectrogram_to_mel_matrix(
-          20, 129, 8000.0, 125.0, 3800.0)
-      mel_matrix = mel_ops.linear_to_mel_weight_matrix(
-          20, num_spectrogram_bins, 8000.0, 125.0, 3800.0)
-      self.assertAllClose(
-          mel_matrix_np,
-          mel_matrix.eval(feed_dict={num_spectrogram_bins: 129}), atol=3e-6)
+    num_spectrogram_bins = array_ops.placeholder_with_default(
+        ops.convert_to_tensor(129, dtype=dtypes.int32), shape=())
+    mel_matrix_np = spectrogram_to_mel_matrix(
+        20, 129, 8000.0, 125.0, 3800.0)
+    mel_matrix = mel_ops.linear_to_mel_weight_matrix(
+        20, num_spectrogram_bins, 8000.0, 125.0, 3800.0)
+    self.assertAllClose(mel_matrix_np, mel_matrix, atol=3e-6)
 
 
 if __name__ == "__main__":

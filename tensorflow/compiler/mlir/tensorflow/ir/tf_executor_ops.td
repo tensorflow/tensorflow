@@ -594,6 +594,8 @@ def TfExecutor_ControlTriggerOp : TfExecutor_Op<"ControlTrigger",
 
   let verifier = ?;
 
+  let hasCanonicalizer = 1;
+
   let builders = [OpBuilder<
     "Builder *builder, OperationState *result, "
     "ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes = {}",

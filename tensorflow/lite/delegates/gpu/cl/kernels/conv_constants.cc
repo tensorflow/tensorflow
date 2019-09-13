@@ -146,9 +146,9 @@ std::string GenerateConvolutionConstantCode(
     std::string s_i = std::to_string(i);
     c += "  {\n";
     c += "    FLT4 res = TO_FLT4(r[" + s_i + "]) + biases[" + s_i + "];\n";
-    c += "  " + dst_tensor.GetAddress("dst_adr", "X", "Y", s_i) + "\n";
-    c += PostProcess(linked_operations, "res", s_i, "dst_adr");
-    c += "  " + dst_tensor.Write3D("res", "dst_adr");
+    const LinkingContext context{"res", "X", "Y", s_i};
+    c += PostProcess(linked_operations, context);
+    c += "  " + dst_tensor.Write3D("res", "X", "Y", s_i);
     c += "  }\n";
   }
   c += "}\n";
@@ -216,6 +216,11 @@ Status ConvConstants::Compile(const CreationContext& creation_context) {
   if (definition_.precision == CalculationsPrecision::F16 &&
       creation_context.device->IsAdreno3xx()) {
     options.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
+  }
+  if (definition_.precision != CalculationsPrecision::F32 &&
+      creation_context.device->IsPowerVR()) {
+    // BUG, some PowerVRs (GE8320) produce incorrect result without it
+    options.push_back(CompilerOptions::CL_OPT_DISABLE);
   }
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", options, *creation_context.context,

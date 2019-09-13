@@ -14,26 +14,52 @@
 # limitations under the License.
 # ==============================================================================
 
-source gbash.sh || exit 1
+shopt -s expand_aliases  # to work with commands aliases in .sh
 
-set -e  # Exit immediately if a command exits with a non-zero status.
+description="Script for running tests on android devices
+How to use:
+[-h or --help, print instructions]
+[-t or --test_target, test target]
+[-d or --device, select device](optional, if you have few connected devices)"
 
-DEFINE_string test_target
+test_target=""
+alias ADB='adb'
 
-gbash::init_google "$@"
+while [[ "$1" != "" ]]; do
+  case $1 in
+    -t | --test_target)
+      shift
+      test_target=$1
+      ;;
+    -d | --device)
+      shift
+      alias ADB='adb -s '$1''
+      ;;
+    -h | --help)
+      echo "$description"
+      exit
+      ;;
+  esac
+  shift
+done
 
-_DEVICE="${DEVICE:+-s $DEVICE}"
+if [ "$test_target" = "" ]
+then
+echo "No test target provided."
+echo "$description"
+exit
+fi
 
 OPENCL_DIR=/data/local/tmp/opencl_tests/
 
 cleanup_device() {
-  adb ${_DEVICE} shell rm -rf $OPENCL_DIR
+  ADB shell rm -rf $OPENCL_DIR
 }
 
-adb ${_DEVICE} shell mkdir -p $OPENCL_DIR
+ADB shell mkdir -p $OPENCL_DIR
 trap "cleanup_device" EXIT
 
-targets=($(bazel query 'tests('${FLAGS_test_target}')'))
+targets=($(bazel query 'tests('$test_target')'))
 num_targets=${#targets[@]}
 if ((num_targets == 1)); then
   target=${targets[0]}
@@ -41,10 +67,10 @@ if ((num_targets == 1)); then
   bazel build --config=android_arm64 -c opt $target
   test_path=$(echo $target | tr : /)
   exec_path=bazel-bin/$(echo $test_path | cut -c 3-)
-  adb ${_DEVICE} push "$exec_path" $OPENCL_DIR
-  adb ${_DEVICE} shell chmod +x $OPENCL_DIR/$executable
-  adb ${_DEVICE} shell ./$OPENCL_DIR/$executable
-  adb ${_DEVICE} shell rm -f $OPENCL_DIR/$executable
+  ADB push "$exec_path" $OPENCL_DIR
+  ADB shell chmod +x $OPENCL_DIR/$executable
+  ADB shell ./$OPENCL_DIR/$executable
+  ADB shell rm -f $OPENCL_DIR/$executable
 else # Cleaning log records for multiple test targets
   for ((i = 0; i < num_targets; i++)); do
     target=${targets[i]}
@@ -52,9 +78,9 @@ else # Cleaning log records for multiple test targets
     bazel build --config=android_arm64 -c opt $target > /dev/null 2>&1
     test_path=$(echo $target | tr : /)
     exec_path=bazel-bin/$(echo $test_path | cut -c 3-)
-    adb ${_DEVICE} push "$exec_path" $OPENCL_DIR > /dev/null 2>&1
-    adb ${_DEVICE} shell chmod +x $OPENCL_DIR/$executable
-    adb ${_DEVICE} shell ./$OPENCL_DIR/$executable --logtostderr 2> /dev/null | grep '\][[:space:]][a-zA-Z][a-zA-Z0-9_]*\.'
-    adb ${_DEVICE} shell rm -f $OPENCL_DIR/$executable
+    ADB push "$exec_path" $OPENCL_DIR > /dev/null 2>&1
+    ADB shell chmod +x $OPENCL_DIR/$executable
+    ADB shell ./$OPENCL_DIR/$executable --logtostderr 2> /dev/null | grep '\][[:space:]][a-zA-Z][a-zA-Z0-9_]*\.'
+    ADB shell rm -f $OPENCL_DIR/$executable
   done
 fi

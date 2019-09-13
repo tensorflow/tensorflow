@@ -13,7 +13,7 @@ execution is an imperative programming environment that evaluates operations
 immediately, without building graphs. Operations return concrete values instead
 of constructing a computational graph to run later. A detailed guide on eager
 execution is available
-[here](https://github.com/tensorflow/docs/blob/master/site/en/r2/guide/eager.ipynb).
+[here](https://github.com/tensorflow/docs/blob/r2.0rc/site/en/r2/guide/eager.ipynb).
 
 While running imperatively with eager execution makes development and debugging
 more interactive, it doesn't allow for deploying on-device. The `tf.function`
@@ -171,7 +171,7 @@ tf.saved_model.save(root, export_dir, concrete_func)
 ```
 
 Reference the
-[SavedModel guide](https://github.com/tensorflow/docs/blob/master/site/en/r2/guide/saved_model.ipynb)
+[SavedModel guide](https://github.com/tensorflow/docs/blob/r2.0rc/site/en/r2/guide/saved_model.ipynb)
 for detailed instructions on using SavedModels.
 
 ### How do I get a concrete function from the SavedModel?

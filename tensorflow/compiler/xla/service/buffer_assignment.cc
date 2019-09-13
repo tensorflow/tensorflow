@@ -234,8 +234,9 @@ BufferAllocation::Slice BufferAllocation::GetSlice(
 
 void BufferAllocation::AddAssignment(const HloValue& buffer, int64 offset,
                                      int64 size) {
-  VLOG(4) << "Adding the following buffer to allocation #" << index() << " ["
-          << offset << ", " << size << "]: " << buffer;
+  VLOG(4) << "Adding the following buffer to allocation #" << index()
+          << absl::StrFormat(" (size=%d, offset=%d) %s", size, offset,
+                             buffer.ToShortString());
   CHECK(!assigned_buffers_.contains(&buffer))
       << "LogicalBuffer " << buffer << " already assigned to allocation "
       << index_;
@@ -291,6 +292,10 @@ BufferAllocationProto BufferAllocation::ToProto() const {
   return proto;
 }
 
+static bool CompareHloValuesById(const HloValue* a, const HloValue* b) {
+  return a->id() < b->id();
+}
+
 string BufferAllocation::ToString() const {
   string output;
   StrAppendFormat(&output, "allocation %d: %p, size %d", index_, this, size());
@@ -319,15 +324,14 @@ string BufferAllocation::ToString() const {
   for (const auto& buffer_offset_size : assigned_buffers_) {
     sorted_buffers.push_back(buffer_offset_size.first);
   }
-  absl::c_sort(sorted_buffers, [](const HloValue* a, const HloValue* b) {
-    return a->id() < b->id();
-  });
+  absl::c_sort(sorted_buffers, &CompareHloValuesById);
   for (const HloValue* buffer : sorted_buffers) {
     const OffsetSize& offset_size = FindOrDie(assigned_buffers_, buffer);
-    StrAppend(&output, absl::StrFormat(
-                           "  %s [%d,%d]: %s\n", buffer->ToString(),
-                           offset_size.offset, offset_size.size,
-                           ShapeUtil::HumanStringWithLayout(buffer->shape())));
+    StrAppend(&output,
+              absl::StrFormat(
+                  " value: %s (size=%d,offset=%d): %s\n",
+                  buffer->ToShortString(), offset_size.size, offset_size.offset,
+                  ShapeUtil::HumanStringWithLayout(buffer->shape())));
   }
   return output;
 }
@@ -715,8 +719,17 @@ string BufferAssignment::Stats::ToString() const {
 string BufferAssignment::ToString() const {
   string output;
   absl::StrAppend(&output, "BufferAssignment:\n");
+  std::vector<const HloValue*> used_values;
   for (auto& allocation : allocations_) {
     absl::StrAppend(&output, allocation.ToString());
+    for (const auto& p : allocation.assigned_buffers()) {
+      used_values.push_back(p.first);
+    }
+  }
+  absl::StrAppend(&output, "\nUsed values:\n");
+  absl::c_sort(used_values, &CompareHloValuesById);
+  for (const HloValue* value : used_values) {
+    absl::StrAppend(&output, value->ToString());
   }
   return output;
 }
@@ -808,12 +821,18 @@ bool BufferAssigner::LiveRangeInterferes(const HloValue* buffer1,
       auto operand_value = buffer1;
       auto user_value = buffer2;
       if (!can_share_as_operand(user_value, operand_value)) {
+        VLOG(4) << "End of live range of " << buffer1->ToShortString()
+                << " is equal to the start of live range of "
+                << buffer2->ToShortString() << ", buffer cannot be shared.";
         return true;
       }
     } else if (live_range_2.end == live_range_1.start) {
       auto operand_value = buffer2;
       auto user_value = buffer1;
       if (!can_share_as_operand(user_value, operand_value)) {
+        VLOG(4) << "End of live range of " << buffer2->ToShortString()
+                << " is equal to the start of live range of "
+                << buffer1->ToShortString() << ", buffer cannot be shared.";
         return true;
       }
     } else {
@@ -898,6 +917,9 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
     for (const HloValue* new_value : hlo_buffer.values()) {
       if (assignment->hlo_live_range().total_order_scheduled()) {
         if (LiveRangeInterferes(new_value, &assigned_buffer, assignment)) {
+          VLOG(4) << "Can't assign: assignee " << assigned_buffer
+                  << " live range interferes with "
+                  << new_value->ToShortString();
           return false;
         }
       } else if (assignment->hlo_ordering().MayInterfere(
@@ -1235,20 +1257,24 @@ Status BufferAssigner::AssignBuffersForComputations(
           return a_size > b_size;  // use ">" for decreasing size.
         }
 
+        // Values which live out the computation lifetime will be assigned
+        // first, as they can not be given to the heap simulator.
         const bool a_live_out = alias_analysis.BufferLivesOut(*a);
         const bool b_live_out = alias_analysis.BufferLivesOut(*b);
         if (a_live_out != b_live_out) {
           return a_live_out;
         }
+
+        // Process values in the reverse postorder, since we have to start
+        // with the last value.
         auto compare = [&post_order_position](const HloValue* value1,
                                               const HloValue* value2) {
-          return post_order_position.at(value1->instruction()) <
+          return post_order_position.at(value1->instruction()) >
                  post_order_position.at(value2->instruction());
         };
         const HloValue* a_min = *absl::c_min_element(a->values(), compare);
         const HloValue* b_min = *absl::c_min_element(b->values(), compare);
-        return post_order_position.at(a_min->instruction()) <
-               post_order_position.at(b_min->instruction());
+        return compare(a_min, b_min);
       });
 
   std::vector<BufferAllocation::Index> allocation_indices;

@@ -270,6 +270,11 @@ extension Interpreter {
   }
 }
 
+/// A type alias for `Interpreter.Options` to support backwards compatiblity with the deprecated
+/// `InterpreterOptions` struct.
+@available(*, deprecated, renamed: "Interpreter.Options")
+public typealias InterpreterOptions = Interpreter.Options
+
 extension String {
   /// Returns a new `String` initialized by using the given format C array as a template into which
   /// the remaining argument values are substituted according to the user’s default locale.

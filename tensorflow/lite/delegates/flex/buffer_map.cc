@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/lite/delegates/flex/util.h"
-#include "tensorflow/lite/string.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 
 namespace tflite {

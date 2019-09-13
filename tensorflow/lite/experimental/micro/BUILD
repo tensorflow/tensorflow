@@ -13,21 +13,25 @@ cc_library(
     srcs = [
         "debug_log.cc",
         "debug_log_numbers.cc",
+        "memory_helpers.cc",
         "micro_allocator.cc",
         "micro_error_reporter.cc",
         "micro_interpreter.cc",
         "micro_mutable_op_resolver.cc",
-        "simple_tensor_allocator.cc",
+        "simple_memory_allocator.cc",
+        "test_helpers.cc",
     ],
     hdrs = [
         "compatibility.h",
         "debug_log.h",
         "debug_log_numbers.h",
+        "memory_helpers.h",
         "micro_allocator.h",
         "micro_error_reporter.h",
         "micro_interpreter.h",
         "micro_mutable_op_resolver.h",
-        "simple_tensor_allocator.h",
+        "simple_memory_allocator.h",
+        "test_helpers.h",
     ],
     copts = [
         "-Werror",
@@ -37,6 +41,7 @@ cc_library(
     deps = [
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/experimental/micro/memory_planner:greedy_memory_planner",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
@@ -74,9 +79,31 @@ tflite_micro_cc_test(
 )
 
 tflite_micro_cc_test(
-    name = "simple_tensor_allocator_test",
+    name = "simple_memory_allocator_test",
     srcs = [
-        "simple_tensor_allocator_test.cc",
+        "simple_memory_allocator_test.cc",
+    ],
+    deps = [
+        ":micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "micro_allocator_test",
+    srcs = [
+        "micro_allocator_test.cc",
+    ],
+    deps = [
+        ":micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "memory_helpers_test",
+    srcs = [
+        "memory_helpers_test.cc",
     ],
     deps = [
         ":micro_framework",

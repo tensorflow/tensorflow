@@ -14,6 +14,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/lite/python:interpreter",
+        "//tensorflow/lite/python:lite",
         "//tensorflow/python:tf_optimizer",
         "//tensorflow/python:training",
     ],
@@ -27,7 +29,6 @@ cuda_py_tests(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:spectral_ops_test_util",
         "//tensorflow/python/ops/signal",
     ],
     tags = ["no_rocm"],
@@ -36,6 +37,7 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "fft_ops_test",
+    # TODO(rjryan): Parameterize the test to reduce the time it takes.
     size = "medium",
     srcs = ["fft_ops_test.py"],
     additional_deps = [
@@ -43,10 +45,9 @@ cuda_py_tests(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:spectral_ops_test_util",
         "//tensorflow/python/ops/signal",
     ],
-    shard_count = 4,
+    shard_count = 8,
     tags = [
         "no_rocm",
         "optonly",
@@ -76,7 +77,6 @@ cuda_py_tests(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/ops/signal",
-        "//tensorflow/python:spectral_ops_test_util",
     ],
     tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
@@ -133,7 +133,6 @@ cuda_py_tests(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
-        "//tensorflow/python:spectral_ops_test_util",
         "//tensorflow/python/ops/signal",
     ],
     tags = [

@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include <map>
 #include <queue>
+#include <vector>
 
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -353,6 +355,127 @@ struct OphintCompositeOp {
   std::map<int, AggregatedOperand> outputs;
 };
 
+// Preprocess the graph for topo sort. (each operation is a node, while
+// inputs/outputs indictate edges) Assume the graph is acyclic. The preprocess
+// does the following:
+//   Compute each operations's in-degress (how many input nodes they're taken)
+//   Get all consumer operations for every operations. (operation_to_ouputs)
+//   Get the init_queue (those operations will be processed first).
+void PreprocessTopoSortGraph(
+    Block* block, std::queue<Operation*>* init_queue,
+    llvm::DenseMap<Operation*, llvm::DenseSet<Operation*>>* operation_to_ouputs,
+    llvm::DenseMap<Operation*, int>* operation_to_in_degrees) {
+  for (auto& op : *block) {
+    if (&op == block->getTerminator()) continue;
+    if (op.getNumOperands() == 0) {
+      init_queue->push(&op);
+    } else {
+      // The operand of the ops is not a direct indication of the "edge" as we
+      // can have a pack op after a unpack op (they have multiple edges), we
+      // should only count as one.
+      llvm::DenseSet<Operation*> input_ops;
+      for (int i = 0; i < op.getNumOperands(); ++i) {
+        Operation* input_op = op.getOperand(i)->getDefiningOp();
+        if (input_op) input_ops.insert(input_op);
+      }
+      if (input_ops.empty()) {
+        init_queue->push(&op);
+        continue;
+      }
+      operation_to_in_degrees->try_emplace(&op, input_ops.size());
+      for (auto* input_op : input_ops) {
+        auto preceeding_op_it = operation_to_ouputs->find(input_op);
+        if (preceeding_op_it == operation_to_ouputs->end()) {
+          auto result = operation_to_ouputs->try_emplace(
+              input_op, llvm::DenseSet<Operation*>());
+          preceeding_op_it = result.first;
+        }
+        preceeding_op_it->second.insert(&op);
+      }
+    }
+  }
+}
+
+bool IsSideEffectOp(Operation* op) {
+  if (op->hasNoSideEffect()) return false;
+
+  // Identity op has no side effect.
+  // Check the OperationName maybe more elegant here.
+  auto tf_identity_op = dyn_cast_or_null<TF::IdentityOp>(op);
+  if (tf_identity_op) return false;
+  return true;
+}
+
+// It's possible other transformations can benefit from this util function, but
+// since currently there's none, so we only limit this function to the ophint
+// extraction pass. We may refactor this function to extend the usage in future.
+//
+// Assume the graph is disconnected from outside.
+// Also assume the block has no arguments.
+LogicalResult TopoSortOperations(OpBuilder* builder) {
+  std::queue<Operation*> init_queue;
+  llvm::DenseMap<Operation*, llvm::DenseSet<Operation*>> operation_to_ouputs;
+  llvm::DenseMap<Operation*, int> operation_to_in_degrees;
+  std::vector<Operation*> sorted_ops;
+
+  PreprocessTopoSortGraph(builder->getBlock(), &init_queue,
+                          &operation_to_ouputs, &operation_to_in_degrees);
+  while (!init_queue.empty()) {
+    Operation* current_op = init_queue.front();
+    init_queue.pop();
+    sorted_ops.push_back(current_op);
+
+    auto current_op_to_output_it = operation_to_ouputs.find(current_op);
+    if (current_op_to_output_it == operation_to_ouputs.end()) {
+      continue;
+    }
+    for (Operation* output_op : current_op_to_output_it->second) {
+      auto output_op_it = operation_to_in_degrees.find(output_op);
+      if (output_op_it == operation_to_in_degrees.end()) return failure();
+
+      output_op_it->second -= 1;
+      if (output_op_it->second == 0) {
+        init_queue.push(output_op);
+        operation_to_in_degrees.erase(output_op_it);
+      }
+    }
+    operation_to_ouputs.erase(current_op_to_output_it);
+  }
+
+  // Before we performs the sort. We need to make sure we didn't mess the
+  // ordering of original side-effect operations.
+  // It's possible those side-effect operations have no topogocial relations
+  // at all!
+  std::vector<Operation*> original_side_effect_ops;
+  std::vector<Operation*> after_sort_side_effect_ops;
+  for (auto& op : *builder->getBlock()) {
+    if (IsSideEffectOp(&op) && (&op != builder->getBlock()->getTerminator()))
+      original_side_effect_ops.push_back(&op);
+  }
+  for (auto* op : sorted_ops) {
+    if (IsSideEffectOp(op)) after_sort_side_effect_ops.push_back(op);
+  }
+  if (original_side_effect_ops.size() != after_sort_side_effect_ops.size())
+    return failure();
+  for (int i = 0; i < original_side_effect_ops.size(); ++i) {
+    if (original_side_effect_ops[i] != after_sort_side_effect_ops[i])
+      return failure();
+  }
+
+  // Performs the sort.
+  // Ideally it would be nice to just clear the block then write the sorted ops.
+  // But unfortunately that's hard to do.
+  for (int i = sorted_ops.size() - 1; i > 0; --i) {
+    Operation* current_op = sorted_ops[i];
+    for (int j = i - 1; j >= 0; --j) {
+      Operation* prev_op = sorted_ops[j];
+      prev_op->moveBefore(current_op);
+    }
+  }
+
+  return success();
+}
+
 Operation* BuildFusedFuncOp(StringRef func_name, StringRef fused_func_type,
                             Operation* insert_before_op,
                             const std::map<int, Value*>& inputs,
@@ -360,10 +483,12 @@ Operation* BuildFusedFuncOp(StringRef func_name, StringRef fused_func_type,
                             OpBuilder* builder, ModuleOp* module_op) {
   SmallVector<Type, 4> input_types;
   SmallVector<Value*, 4> input_values;
+  SmallVector<int, 4> input_indexes;
   for (const auto& kv : inputs) {
     Value* input = kv.second;
     input_types.push_back(input->getType());
     input_values.push_back(input);
+    input_indexes.push_back(kv.first);
   }
 
   SmallVector<Type, 4> func_output_types;
@@ -378,6 +503,8 @@ Operation* BuildFusedFuncOp(StringRef func_name, StringRef fused_func_type,
   SmallVector<NamedAttribute, 4> attrs;
   attrs.push_back(builder->getNamedAttr(
       kTfLiteFunctionName, builder->getStringAttr(fused_func_type)));
+  attrs.push_back(builder->getNamedAttr(
+      kTfLiteFunctionInputIndex, builder->getI32ArrayAttr(input_indexes)));
   FuncOp func_op = FuncOp::create(insert_before_op->getLoc(), func_name,
                                   function_type, llvm::makeArrayRef(attrs));
   module_op->push_back(func_op);
@@ -507,6 +634,10 @@ LogicalResult ConvertOphintToStub(StringRef stub_name,
   };
 
   builder->getBlock()->walk(removeRemovableOps);
+
+  // Step 8: Topo sort to fix any invalid temporary IRs.
+  if (failed(TopoSortOperations(builder))) return failure();
+
   return success();
 }
 

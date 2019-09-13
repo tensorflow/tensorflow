@@ -56,9 +56,8 @@ namespace {
  */
 bool EnableStreaming() {
   bool result;
-  // TODO(b/139210648): Turn on this flag by default.
   TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE",
-                                 false, &result));
+                                 true, &result));
   return result;
 }
 

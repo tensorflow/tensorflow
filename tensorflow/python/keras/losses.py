@@ -25,6 +25,7 @@ import six
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import tf_utils
@@ -34,6 +35,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops.losses import losses_impl
+from tensorflow.python.ops.losses import util as tf_losses_util
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -213,6 +215,9 @@ class LossFunctionWrapper(Loss):
     Returns:
       Loss values per sample.
     """
+    if tensor_util.is_tensor(y_pred) and tensor_util.is_tensor(y_true):
+      y_pred, y_true = tf_losses_util.squeeze_or_expand_dimensions(
+          y_pred, y_true)
     return self.fn(y_true, y_pred, **self._fn_kwargs)
 
   def get_config(self):

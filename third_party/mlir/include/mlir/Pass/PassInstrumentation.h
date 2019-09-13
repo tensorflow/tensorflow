@@ -25,6 +25,7 @@
 namespace mlir {
 using AnalysisID = ClassID;
 class Operation;
+class OperationName;
 class Pass;
 
 namespace detail {
@@ -37,6 +38,20 @@ struct PassInstrumentorImpl;
 class PassInstrumentation {
 public:
   virtual ~PassInstrumentation() = 0;
+
+  /// A callback to run before a pass pipeline is executed. This function takes
+  /// the name of the operation type being operated on, and a thread id
+  /// corresponding to the parent thread this pipeline was spawned from.
+  /// Note: The parent thread id is collected via llvm::get_threadid().
+  virtual void runBeforePipeline(const OperationName &name,
+                                 uint64_t parentThreadID) {}
+
+  /// A callback to run after a pass pipeline has executed. This function takes
+  /// the name of the operation type being operated on, and a thread id
+  /// corresponding to the parent thread this pipeline was spawned from.
+  /// Note: The parent thread id is collected via llvm::get_threadid().
+  virtual void runAfterPipeline(const OperationName &name,
+                                uint64_t parentThreadID) {}
 
   /// A callback to run before a pass is executed. This function takes a pointer
   /// to the pass to be executed, as well as the current operation being
@@ -75,6 +90,12 @@ public:
   PassInstrumentor(PassInstrumentor &&) = delete;
   PassInstrumentor(const PassInstrumentor &) = delete;
   ~PassInstrumentor();
+
+  /// See PassInstrumentation::runBeforePipeline for details.
+  void runBeforePipeline(const OperationName &name, uint64_t parentThreadID);
+
+  /// See PassInstrumentation::runAfterPipeline for details.
+  void runAfterPipeline(const OperationName &name, uint64_t parentThreadID);
 
   /// See PassInstrumentation::runBeforePass for details.
   void runBeforePass(Pass *pass, Operation *op);

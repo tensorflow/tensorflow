@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 
+#include <algorithm>
 #include <cstdint>
 
 #include "llvm/ADT/APFloat.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
+#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -1165,6 +1167,54 @@ OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
   auto result_type =
       RankedTensorType::get(output_shape, output_type.getElementType());
   return DenseElementsAttr::get(result_type, new_values);
+}
+
+static LogicalResult Verify(TransposeOp op) {
+  auto input_type = op.x()->getType().cast<ShapedType>();
+  auto perm_type = op.perm()->getType().cast<ShapedType>();
+  auto output_type = op.y()->getType().cast<ShapedType>();
+  if (input_type.hasStaticShape() && perm_type.hasStaticShape()) {
+    if (perm_type.getNumElements() != input_type.getRank()) {
+      return op.emitOpError(
+          "perm tensor elements size is not equal to input tensor rank");
+    }
+  }
+
+  DenseIntElementsAttr perm;
+  if (!matchPattern(op.perm(), m_Constant(&perm))) {
+    return success();
+  }
+
+  int index = 0;
+  llvm::SmallVector<int64_t, 4> axes;
+  for (auto axis_int : perm.getValues<APInt>()) {
+    const int64_t axis = axis_int.getSExtValue();
+    if (axis < 0 || (input_type.hasRank() && axis >= input_type.getRank())) {
+      return op.emitOpError(
+          llvm::formatv("perm[{0}] must be in [0, rank)", index));
+    }
+    if (std::count(axes.begin(), axes.end(), axis) > 0) {
+      return op.emitOpError(
+          llvm::formatv("perm[{0}] cannot have duplicated axis", index));
+    }
+    axes.push_back(axis);
+    index++;
+  }
+
+  if (input_type.hasStaticShape() && output_type.hasStaticShape()) {
+    llvm::SmallVector<int64_t, 4> transposed_shape;
+    for (int64_t axis : axes) {
+      transposed_shape.push_back(input_type.getDimSize(axis));
+    }
+    auto expected_output_type =
+        RankedTensorType::get(transposed_shape, input_type.getElementType());
+    if (output_type != expected_output_type) {
+      return op.emitOpError(llvm::formatv("expect output type {0}, got {1}",
+                                          expected_output_type, output_type));
+    }
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

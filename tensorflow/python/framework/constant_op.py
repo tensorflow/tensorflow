@@ -250,7 +250,7 @@ def _constant_impl(
         # We don't have a Fill kernel for bool dtype on GPU. So we first run
         # Fill on CPU and then copy to GPU if needed.
         with ops.device("/device:CPU:0"):
-          x = _eager_fill(shape.as_list(), t.cpu(), ctx)
+          x = _eager_fill(shape.as_list(), _eager_identity(t, ctx), ctx)
         return _eager_identity(x, ctx)
       else:
         return _eager_fill(shape.as_list(), t, ctx)

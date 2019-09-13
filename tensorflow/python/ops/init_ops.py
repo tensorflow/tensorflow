@@ -173,12 +173,8 @@ class Constant(Initializer):
     of the `value` list, even reshaped, as shown in the two commented lines
     below the `value` list initialization.
 
-  ```
   >>> value = [0, 1, 2, 3, 4, 5, 6, 7]
-  >>> # value = np.array(value)
-  >>> # value = value.reshape([2, 4])
   >>> init = tf.compat.v1.constant_initializer(value)
-  >>>
   >>> # fitting shape
   >>> with tf.compat.v1.Session():
   ...   x = tf.compat.v1.get_variable('x', shape=[2, 4], initializer=init)
@@ -186,30 +182,28 @@ class Constant(Initializer):
   ...   print(x.eval())
   [[0. 1. 2. 3.]
    [4. 5. 6. 7.]]
-  >>>
   >>> # Larger shape
   >>> with tf.compat.v1.Session():
-  ...   x = tf.compat.v1.get_variable('x', shape=[3, 4], initializer=init)
-  ...   x.initializer.run()
-  ...   print(x.eval())
-  [[ 0.  1.  2.  3.]
-   [ 4.  5.  6.  7.]
-   [ 7.  7.  7.  7.]]
-  >>>
+  ...   y = tf.compat.v1.get_variable('y', shape=[3, 4], initializer=init)
+  ...   y.initializer.run()
+  ...   print(y.eval())
+  [[0.  1.  2.  3.]
+   [4.  5.  6.  7.]
+   [7.  7.  7.  7.]]
   >>> # Smaller shape
   >>> with tf.compat.v1.Session():
-  ...   x = tf.compat.v1.get_variable('x', shape=[2, 3], initializer=init)
+  ...   z = tf.compat.v1.get_variable('z', shape=[2, 3], initializer=init)
+  Traceback (most recent call last):
+  ...
   ValueError: Too many elements provided. Needed at most 6, but received 8
-  >>>
   >>> # Shape verification
-  >>> init_verify = tf.compat.v1.constant_initializer(value,
-  verify_shape=True)
+  >>> init_verify = tf.compat.v1.constant_initializer(value, verify_shape=True)
   >>> with tf.compat.v1.Session():
-  ...  x = tf.compat.v1.get_variable('x', shape=[3, 4],
-  ...                                 initializer=init_verify)
+  ...  u = tf.compat.v1.get_variable('u', shape=[3, 4],
+  ...                                initializer=init_verify)
+  Traceback (most recent call last):
+  ...
   TypeError: Expected Tensor's shape: (3, 4), got (8,).
-  >>>
-  ```
   """
 
   @deprecated_args(None,

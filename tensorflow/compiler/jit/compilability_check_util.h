@@ -247,7 +247,8 @@ class RecursiveCompilabilityChecker {
            absl::c_any_of(node.output_types(), is_variant);
   }
 
-  bool HasXLAKernel(const Node& node) const;
+  bool HasXLAKernel(const Node& node,
+                    string* uncompilable_reason = nullptr) const;
 
   static void MaybeMarkUncompilableNode(
       const absl::string_view reason,

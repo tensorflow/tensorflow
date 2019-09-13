@@ -46,9 +46,10 @@ void SelectAbs(const OperationDef& op_def, std::unique_ptr<GPUOperation>* ptr) {
   *ptr = absl::make_unique<Abs>(std::move(operation));
 }
 
-void SelectApplyMask(const OperationDef& op_def,
+void SelectApplyMask(const OperationDef& op_def, const BHWC& src_shape,
+                     const BHWC& mask_shape,
                      std::unique_ptr<GPUOperation>* ptr) {
-  ApplyMask operation = CreateApplyMask(op_def);
+  ApplyMask operation = CreateApplyMask(op_def, src_shape, mask_shape);
   *ptr = absl::make_unique<ApplyMask>(std::move(operation));
 }
 

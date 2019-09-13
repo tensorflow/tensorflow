@@ -74,9 +74,9 @@ std::string GetAveragePoolingKernelCode(
   // If window_size==0, window covered nothing. This situation is a sign of
   // incorrectly constructed operation. NaNs are expected as output.
   code += "  FLT4 result = TO_FLT4(r / window_size);\n";
-  code += "  " + dst_tensor.GetAddress("address", "X", "Y", "Z") + "\n";
-  code += PostProcess(linked_operations, "result", "Z", "address");
-  code += "  " + dst_tensor.Write3D("result", "address");
+  const LinkingContext context{"result", "X", "Y", "Z"};
+  code += PostProcess(linked_operations, context);
+  code += "  " + dst_tensor.Write3D("result", "X", "Y", "Z");
   code += "}\n";
 
   return code;
@@ -149,7 +149,8 @@ std::string GetMaxPoolingKernelCode(
   code += "    }\n";
   code += "  }\n";
   code += "  " + dst_tensor.GetAddress("address", "X", "Y", "Z") + "\n";
-  code += PostProcess(linked_operations, "maximum", "Z", "address");
+  const LinkingContext context{"maximum", "X", "Y", "Z"};
+  code += PostProcess(linked_operations, context);
   code += "  " + dst_tensor.Write3D("maximum", "address");
   if (output_indices) {
     code += "  " + indices_tensor.Write3D("indexes", "address");

@@ -188,6 +188,8 @@ StatusOr<FuncOp> LhloDialectEmitter::CreateFunction(
       FuncOp::create(builder_.getUnknownLoc(), instr.name(), function_type);
   mlir_module_.push_back(function);
   function.addEntryBlock();
+  OpBuilder op_builder(function.getBody());
+  op_builder.create<::mlir::ReturnOp>(builder_.getUnknownLoc());
   instruction_to_mlir_func_[&instr] = function;
   return function;
 }

@@ -149,7 +149,12 @@ int main(int argc, char **argv) {
       lower_tensor_list_ops, &result, &pm);
   if (!status.ok()) return kTrFailure;
 
-  auto output = mlir::openOutputFile(output_file_name);
+  std::string error_msg;
+  auto output = mlir::openOutputFile(output_file_name, &error_msg);
+  if (output == nullptr) {
+    llvm::errs() << error_msg << '\n';
+    return kTrFailure;
+  }
   output->os() << result;
   output->keep();
 

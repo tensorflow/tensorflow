@@ -99,7 +99,6 @@ objc_library(
 objc_library(
     name = "metal_delegate_internal",
     hdrs = ["metal_delegate_internal.h"],
-    copts = ["-std=c++11"],
     sdk_frameworks = ["Metal"],
     deps = [
         "//tensorflow/lite/delegates/gpu:metal_delegate",
@@ -159,6 +158,7 @@ cc_library(
     hdrs = ["spi.h"],
     deps = [
         ":api",
+        "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:status",
     ],
 )

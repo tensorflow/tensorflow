@@ -214,6 +214,7 @@ class Layout {
     element_size_in_bits_ = value;
     return *this;
   }
+  static constexpr int64 kDefaultMemorySpace = 0;
   int64 memory_space() const { return memory_space_; }
   Layout& set_memory_space(int64 value) {
     memory_space_ = value;

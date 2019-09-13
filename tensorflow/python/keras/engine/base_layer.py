@@ -302,7 +302,7 @@ class Layer(module.Module):
     self._trainable = trainable
     # A stateful layer is a layer whose updates are run during inference too,
     # for instance stateful RNNs.
-    self.stateful = False
+    self._stateful = False
     # Indicates whether `build` needs to be called upon layer call, to create
     # the layer's weights.
     self.built = False
@@ -908,8 +908,22 @@ class Layer(module.Module):
     return self._name
 
   @property
+  @trackable_layer_utils.cache_recursive_attribute('dynamic')
   def dynamic(self):
+    # NOTE(taylorrobie): Currently self._dynamic is read-only. If that changes
+    #                    then this cache logic must be updated.
     return self._dynamic
+
+  @property
+  @doc_controls.do_not_generate_docs
+  @trackable_layer_utils.cache_recursive_attribute('stateful')
+  def stateful(self):
+    return self._stateful
+
+  @stateful.setter
+  @trackable_layer_utils.invalidate_recursive_cache('stateful')
+  def stateful(self, value):
+    self._stateful = value
 
   @property
   def trainable(self):
@@ -950,7 +964,7 @@ class Layer(module.Module):
   def trainable_weights(self):
     if self.trainable:
       nested = self._gather_children_attribute('trainable_weights')
-      return self._trainable_weights + nested
+      return self._dedup_weights(self._trainable_weights + nested)
     else:
       return []
 
@@ -958,10 +972,12 @@ class Layer(module.Module):
   def non_trainable_weights(self):
     if self.trainable:
       nested = self._gather_children_attribute('non_trainable_weights')
-      return self._non_trainable_weights + nested
+      non_trainable_weights = self._non_trainable_weights + nested
     else:
       nested = self._gather_children_attribute('weights')
-      return self._trainable_weights + self._non_trainable_weights + nested
+      non_trainable_weights = (
+          self._trainable_weights + self._non_trainable_weights + nested)
+    return self._dedup_weights(non_trainable_weights)
 
   @property
   def weights(self):
@@ -2242,6 +2258,7 @@ class Layer(module.Module):
       super(tracking.AutoTrackable, self).__setattr__(
           '_layers',
           [l for l in self._layers if l is not existing_value])
+      self._attribute_sentinel.invalidate_all()
     if isinstance(existing_value, tf_variables.Variable):
       super(tracking.AutoTrackable, self).__setattr__(
           '_trainable_weights',
@@ -2249,6 +2266,13 @@ class Layer(module.Module):
       super(tracking.AutoTrackable, self).__setattr__(
           '_non_trainable_weights',
           [w for w in self._non_trainable_weights if w is not existing_value])
+
+    # Any time we change `_layers` (either by deleting the attribute or by
+    # reassigning it which will call __delattr__ from __setattr__) the topology
+    # of the subgraph of Layers may change. In that case we will need to
+    # recompute any attribute which depends on that subgraph.
+    if name == '_layers':
+      self._attribute_sentinel.invalidate_all()
 
   def __setattr__(self, name, value):
     if (name == '_self_setattr_tracking' or
@@ -2291,6 +2315,8 @@ class Layer(module.Module):
       # container types which compare equal.
       if not any((layer is value for layer in self._layers)):
         self._layers.append(value)
+        if hasattr(value, '_attribute_sentinel'):
+          value._attribute_sentinel.add_parent(self._attribute_sentinel)
         if hasattr(value, '_use_resource_variables'):
           # Legacy layers (V1 tf.layers) must always use
           # resource variables.
@@ -2339,6 +2365,11 @@ class Layer(module.Module):
               getattr(layer, attribute) for layer in nested_layers))
     return []
 
+  @property
+  @tracking.cached_per_instance
+  def _attribute_sentinel(self):
+    return trackable_layer_utils.AttributeSentinel()
+
   # This is a hack so that the is_layer (within
   # training/trackable/layer_utils.py) check doesn't get the weights attr.
   # TODO(b/110718070): Remove when fixed.
@@ -2347,6 +2378,7 @@ class Layer(module.Module):
 
   def _init_call_fn_args(self):
     # Clear cached call function arguments.
+    self.__class__._call_full_argspec.fget.cache.pop(self, None)
     self.__class__._call_fn_args.fget.cache.pop(self, None)
     self.__class__._call_accepts_kwargs.fget.cache.pop(self, None)
 
@@ -2358,8 +2390,15 @@ class Layer(module.Module):
 
   @property
   @tracking.cached_per_instance
+  def _call_full_argspec(self):
+    # Argspec inspection is expensive and the call spec is used often, so it
+    # makes sense to cache the result.
+    return tf_inspect.getfullargspec(self.call)
+
+  @property
+  @tracking.cached_per_instance
   def _call_fn_args(self):
-    all_args = tf_inspect.getfullargspec(self.call).args
+    all_args = self._call_full_argspec.args
     # Scrub `self` that appears if a decorator was applied.
     if all_args and all_args[0] == 'self':
       return all_args[1:]
@@ -2368,7 +2407,7 @@ class Layer(module.Module):
   @property
   @tracking.cached_per_instance
   def _call_accepts_kwargs(self):
-    return tf_inspect.getfullargspec(self.call).varkw is not None
+    return self._call_full_argspec.varkw is not None
 
   @property
   @tracking.cached_per_instance
@@ -2392,14 +2431,13 @@ class Layer(module.Module):
   def _eager_losses(self, losses):
     self._thread_local._eager_losses = losses
 
-  @property
-  def _unique_trainable_weights(self):
-    """Dedupe trainable weights while maintaining order as much as possible."""
-    trainable_weights = self.trainable_weights
+  def _dedup_weights(self, weights):
+    """Dedupe weights while maintaining order as much as possible."""
     output, seen_weights = [], object_identity.ObjectIdentitySet()
-    for w in trainable_weights:
+    for w in weights:
       if w not in seen_weights:
         output.append(w)
+        # Track the Variable's identity to avoid __eq__ issues.
         seen_weights.add(w)
     return output
 

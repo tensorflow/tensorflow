@@ -348,6 +348,7 @@ cuda_py_test(
     shard_count = 32,
     tags = [
         "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
+        "nomsan",  # b/140958724
         # TODO(b/123307453): Add "multi_and_single_gpu",
     ],
     xla_enable_strict_auto_jit = True,
@@ -396,6 +397,7 @@ cuda_py_test(
     # TODO(b/132384649): Enable once fixed.
     tags = [
         "no_oss",
+        "nomsan",  # b/140958724
     ],
     xla_enable_strict_auto_jit = True,
 )
@@ -414,6 +416,7 @@ cuda_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
+        "nomsan",  # b/140958724
     ],
     xla_enable_strict_auto_jit = True,
 )

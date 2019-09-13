@@ -99,7 +99,10 @@ using xla::StatusOr;
 template <typename T>
 using BufferOffset = flatbuffers::Offset<T>;
 
-using CustomOptionsOffset = BufferOffset<flatbuffers::Vector<uint8_t>>;
+template <typename T>
+using VectorBufferOffset = flatbuffers::Offset<flatbuffers::Vector<T>>;
+
+using CustomOptionsOffset = VectorBufferOffset<uint8_t>;
 
 namespace error = tensorflow::error;
 namespace tfl = mlir::TFL;
@@ -414,6 +417,15 @@ class Translator {
       const std::vector<int32_t>& results);
 
   Optional<BufferOffset<tflite::SubGraph>> BuildSubGraph(FuncOp fn);
+
+  // Builds Metadata with the given `name` and buffer `content`.
+  BufferOffset<tflite::Metadata> BuildMetadata(StringRef name,
+                                               StringRef content);
+
+  // Encodes the `tfl.metadata` dictionary attribute of the module to the
+  // metadata section in the final model.
+  Optional<VectorBufferOffset<BufferOffset<tflite::Metadata>>>
+  CreateMetadataVector();
 
   // Uses the tf.entry_function attribute (if set) to initialize the op to name
   // mapping.
@@ -977,6 +989,36 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
       /*name=*/builder_.CreateString(fn.getName().str()));
 }
 
+BufferOffset<tflite::Metadata> Translator::BuildMetadata(StringRef name,
+                                                         StringRef content) {
+  auto buffer_index = buffers_.size();
+  auto buffer_data = builder_.CreateVector(
+      reinterpret_cast<const uint8_t*>(content.data()), content.size());
+  buffers_.push_back(tflite::CreateBuffer(builder_, buffer_data));
+  return tflite::CreateMetadataDirect(builder_, name.data(), buffer_index);
+}
+
+Optional<VectorBufferOffset<BufferOffset<tflite::Metadata>>>
+Translator::CreateMetadataVector() {
+  auto dict_attr = module_.getAttrOfType<mlir::DictionaryAttr>("tfl.metadata");
+  if (!dict_attr) return VectorBufferOffset<BufferOffset<tflite::Metadata>>();
+
+  std::vector<BufferOffset<tflite::Metadata>> metadata;
+  for (const auto& named_attr : dict_attr) {
+    StringRef name = named_attr.first;
+    mlir::Attribute attr = named_attr.second;
+    if (auto content = attr.dyn_cast<StringAttr>()) {
+      metadata.push_back(BuildMetadata(name, content.getValue()));
+    } else {
+      module_.emitError(
+          "all values in tfl.metadata's dictionary key-value pairs should be "
+          "string attributes");
+      return llvm::None;
+    }
+  }
+  return builder_.CreateVector(metadata);
+}
+
 Optional<std::string> Translator::Translate(ModuleOp module,
                                             bool emit_builtin_tflite_ops,
                                             bool emit_select_tf_ops,
@@ -1024,12 +1066,17 @@ Optional<std::string> Translator::TranslateInternal() {
   } else {
     model_description = "MLIR Converted.";
   }
+
   // Build the model and finish the model building process.
   auto description = builder_.CreateString(model_description.data());
+  VectorBufferOffset<int32_t> metadata_buffer = 0;  // Deprecated
+  auto metadata = CreateMetadataVector();
+  if (!metadata) return llvm::None;
+
   auto model = tflite::CreateModel(
       builder_, TFLITE_SCHEMA_VERSION, builder_.CreateVector(opcodes_),
       builder_.CreateVector(subgraphs), description,
-      builder_.CreateVector(buffers_));
+      builder_.CreateVector(buffers_), metadata_buffer, *metadata);
   tflite::FinishModelBuffer(builder_, model);
 
   // Return serialized string for the built FlatBuffer.

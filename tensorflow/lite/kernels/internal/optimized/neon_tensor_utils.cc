@@ -47,9 +47,11 @@ namespace tensor_utils {
 namespace {
 
 constexpr int kFloatValuesPerNeonVector = 4;
+constexpr int kInt16ValuesPerNeonVector = 8;
 
-inline int RoundDownToFloatVectors(int size) {
-  return size & ~(kFloatValuesPerNeonVector - 1);
+template <int PerNeonSize>
+inline int RoundDownVectors(int size) {
+  return size & ~(PerNeonSize - 1);
 }
 
 // Allocates, at least, size bytes of uninitialized storage whose alignment is
@@ -92,14 +94,6 @@ inline int32_t AccumulateNeonLane(const int32x4_t lane) {
 #else
   int64x2_t pairwiseAdded = vpaddlq_s32(lane);
   return vgetq_lane_s64(pairwiseAdded, 0) + vgetq_lane_s64(pairwiseAdded, 1);
-#endif
-}
-
-inline int64_t AccumulateNeonLane64(const int64x2_t lane) {
-#ifdef __aarch64__
-  return vaddvq_s64(lane);
-#else
-  return vgetq_lane_s64(lane, 0) + vgetq_lane_s64(lane, 1);
 #endif
 }
 
@@ -166,7 +160,8 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
   // If v_size is not divisible by the vector size, then we need to process the
   // final few elements sequentially. postamble_start shows the start index
   // where this should happen.
-  const int postamble_start = RoundDownToFloatVectors(m_cols);
+  const int postamble_start =
+      RoundDownVectors<kFloatValuesPerNeonVector>(m_cols);
 
   for (int b = 0; b < n_batch; b++) {
     float* result_in_batch = result + b * m_rows * result_stride;
@@ -820,14 +815,14 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
 inline int64x2x2_t MulAdd(int32x4_t acc, int32x4_t lhs, int32x4_t rhs) {
   int64x2x2_t result;
   const int64x2_t lhs_low = vmovl_s32(vget_low_s32(lhs));
-  const int64x2_t lhs_high = vmovl_s32(vget_low_s32(lhs));
+  const int64x2_t lhs_high = vmovl_s32(vget_high_s32(lhs));
   const int64_t lhs_0 = vgetq_lane_s64(lhs_low, 0);
   const int64_t lhs_1 = vgetq_lane_s64(lhs_low, 1);
   const int64_t lhs_2 = vgetq_lane_s64(lhs_high, 0);
   const int64_t lhs_3 = vgetq_lane_s64(lhs_high, 1);
 
   const int64x2_t rhs_low = vmovl_s32(vget_low_s32(rhs));
-  const int64x2_t rhs_high = vmovl_s32(vget_low_s32(rhs));
+  const int64x2_t rhs_high = vmovl_s32(vget_high_s32(rhs));
   const int64_t rhs_0 = vgetq_lane_s64(rhs_low, 0);
   const int64_t rhs_1 = vgetq_lane_s64(rhs_low, 1);
   const int64_t rhs_2 = vgetq_lane_s64(rhs_high, 0);
@@ -854,7 +849,7 @@ void NeonApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
     int64_t sum_sq = 0;
 
     int j = 0;
-    for (; j <= n_input - 16; j += 16) {
+    for (; j <= n_input - 8; j += 8) {
       const int32 index = i * n_input + j;
       const int16x8_t val_s16 = vld1q_s16(input + index);
       const int32x4_t val_s32_0 = vmovl_s16(vget_low_s16(val_s16));
@@ -863,10 +858,10 @@ void NeonApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
       sum += static_cast<int64_t>(AccumulateNeonLane(val_s32_0));
       sum += static_cast<int64_t>(AccumulateNeonLane(val_s32_1));
 
-      sum_sq += AccumulateNeonLane64(vmovl_s32(vget_low_s32(val_s32_0)));
-      sum_sq += AccumulateNeonLane64(vmovl_s32(vget_high_s32(val_s32_0)));
-      sum_sq += AccumulateNeonLane64(vmovl_s32(vget_low_s32(val_s32_1)));
-      sum_sq += AccumulateNeonLane64(vmovl_s32(vget_high_s32(val_s32_1)));
+      sum_sq += static_cast<int64_t>(
+          AccumulateNeonLane(vmulq_s32(val_s32_0, val_s32_0)));
+      sum_sq += static_cast<int64_t>(
+          AccumulateNeonLane(vmulq_s32(val_s32_1, val_s32_1)));
     }
     for (; j < n_input; ++j) {
       const int32 index = i * n_input + j;
@@ -891,11 +886,11 @@ void NeonApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
 
     j = 0;
     const int32x4_t mean_dup = vdupq_n_s32(mean);
-    for (; j <= n_input - 32; j += 32) {
-      // Load 32 items at once.
+    for (; j <= n_input - 16; j += 16) {
+      // Load 16 items at once.
       const int32 index = i * n_input + j;
       const int16x8_t val_s16_0 = vld1q_s16(input + index);
-      const int16x8_t val_s16_1 = vld1q_s16(input + index + 16);
+      const int16x8_t val_s16_1 = vld1q_s16(input + index + 8);
 
       int32x4x4_t shifted;
       shifted.val[0] = vsubq_s32(
@@ -984,14 +979,20 @@ void NeonApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
     // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
     using F3 = gemmlowp::FixedPoint<int16x8_t, 3>;
 
-    for (; i <= n_input - 16; i += 16) {
+    for (; i <= n_input - 32; i += 32) {
       const int index = batch * n_input + i;
       F3 input0 = F3::FromRaw(vld1q_s16(input + index));
       F3 input1 = F3::FromRaw(vld1q_s16(input + index + 8));
+      F3 input2 = F3::FromRaw(vld1q_s16(input + index + 16));
+      F3 input3 = F3::FromRaw(vld1q_s16(input + index + 24));
       F0 output0 = gemmlowp::logistic(input0);
       F0 output1 = gemmlowp::logistic(input1);
+      F0 output2 = gemmlowp::logistic(input2);
+      F0 output3 = gemmlowp::logistic(input3);
       vst1q_s16(output + index, output0.raw());
       vst1q_s16(output + index + 8, output1.raw());
+      vst1q_s16(output + index + 16, output2.raw());
+      vst1q_s16(output + index + 24, output3.raw());
     }
 #endif  // GEMMLOWP_NEON
     using F0_Scalar = gemmlowp::FixedPoint<int16_t, 0>;
@@ -1005,100 +1006,58 @@ void NeonApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
   }
 }
 
-void NeonApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
-                    int16_t* output) {
+template <int IntegerBits>
+void NeonApplyTanhImpl(const int16_t* input, int32_t n_batch, int32_t n_input,
+                       int16_t* output) {
   for (int batch = 0; batch < n_batch; ++batch) {
     int i = 0;
 #ifdef GEMMLOWP_NEON
     // F0 uses 0 integer bits, range [-1, 1].
     // This is the return type of math functions such as tanh, logistic,
     // whose range is in [-1, 1].
-    using F0 = gemmlowp::FixedPoint<int16x8_t, 0>;
+    using F_In = gemmlowp::FixedPoint<int16x8_t, IntegerBits>;
+    using F_Out = gemmlowp::FixedPoint<int16x8_t, 0>;
 
-    for (; i <= n_input - 16; i += 16) {
+    for (; i <= n_input - 32; i += 32) {
       const int index = batch * n_input + i;
-      F0 input0 = F0::FromRaw(vld1q_s16(input + index));
-      F0 input1 = F0::FromRaw(vld1q_s16(input + index + 8));
-      F0 output0 = gemmlowp::tanh(input0);
-      F0 output1 = gemmlowp::tanh(input1);
+      F_In input0 = F_In::FromRaw(vld1q_s16(input + index));
+      F_In input1 = F_In::FromRaw(vld1q_s16(input + index + 8));
+      F_In input2 = F_In::FromRaw(vld1q_s16(input + index + 16));
+      F_In input3 = F_In::FromRaw(vld1q_s16(input + index + 24));
+      F_Out output0 = gemmlowp::tanh(input0);
+      F_Out output1 = gemmlowp::tanh(input1);
+      F_Out output2 = gemmlowp::tanh(input2);
+      F_Out output3 = gemmlowp::tanh(input3);
       vst1q_s16(output + index, output0.raw());
       vst1q_s16(output + index + 8, output1.raw());
+      vst1q_s16(output + index + 16, output2.raw());
+      vst1q_s16(output + index + 24, output3.raw());
     }
 #endif  // GEMMLOWP_NEON
-    using F0_Scalar = gemmlowp::FixedPoint<int16_t, 0>;
+    using F_In_Scalar = gemmlowp::FixedPoint<int16_t, IntegerBits>;
+    using F_Out_Scalar = gemmlowp::FixedPoint<int16_t, 0>;
     for (; i < n_input; ++i) {
       const int index = batch * n_input + i;
-      F0_Scalar input_f0 = F0_Scalar::FromRaw(input[index]);
-      F0_Scalar output_f0 = gemmlowp::tanh(input_f0);
-      output[index] = output_f0.raw();
+      F_In_Scalar input_in = F_In_Scalar::FromRaw(input[index]);
+      F_Out_Scalar output_out = gemmlowp::tanh(input_in);
+      output[index] = output_out.raw();
     }
   }
+}
+
+void NeonApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
+                    int16_t* output) {
+  NeonApplyTanhImpl<0>(input, n_batch, n_input, output);
 }
 
 void NeonApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
                     int16_t* output) {
-  for (int batch = 0; batch < n_batch; ++batch) {
-    int i = 0;
-#ifdef GEMMLOWP_NEON
-    // F0 uses 0 integer bits, range [-1, 1].
-    // This is the return type of math functions such as tanh, logistic,
-    // whose range is in [-1, 1].
-    using F0 = gemmlowp::FixedPoint<int16x8_t, 0>;
-    // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
-    using F3 = gemmlowp::FixedPoint<int16x8_t, 3>;
-
-    for (; i <= n_input - 16; i += 16) {
-      const int index = batch * n_input + i;
-      F3 input0 = F3::FromRaw(vld1q_s16(input + index));
-      F3 input1 = F3::FromRaw(vld1q_s16(input + index + 8));
-      F0 output0 = gemmlowp::tanh(input0);
-      F0 output1 = gemmlowp::tanh(input1);
-      vst1q_s16(output + index, output0.raw());
-      vst1q_s16(output + index + 8, output1.raw());
-    }
-#endif  // GEMMLOWP_NEON
-    using F0_Scalar = gemmlowp::FixedPoint<int16_t, 0>;
-    using F3_Scalar = gemmlowp::FixedPoint<int16_t, 3>;
-    for (; i < n_input; ++i) {
-      const int index = batch * n_input + i;
-      F3_Scalar input_f3 = F3_Scalar::FromRaw(input[index]);
-      F0_Scalar output_f0 = gemmlowp::tanh(input_f3);
-      output[index] = output_f0.raw();
-    }
-  }
+  NeonApplyTanhImpl<3>(input, n_batch, n_input, output);
 }
 
 void NeonApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
                     int16_t* output) {
-  for (int batch = 0; batch < n_batch; ++batch) {
-    int i = 0;
-#ifdef GEMMLOWP_NEON
-    // F0 uses 0 integer bits, range [-1, 1].
-    // This is the return type of math functions such as tanh, logistic,
-    // whose range is in [-1, 1].
-    using F0 = gemmlowp::FixedPoint<int16x8_t, 0>;
-    // F4 uses 4 integer bits, range [-16, 16], the input range expected here.
-    using F4 = gemmlowp::FixedPoint<int16x8_t, 4>;
-
-    for (; i <= n_input - 16; i += 16) {
-      const int index = batch * n_input + i;
-      F4 input0 = F4::FromRaw(vld1q_s16(input + index));
-      F4 input1 = F4::FromRaw(vld1q_s16(input + index + 8));
-      F0 output0 = gemmlowp::tanh(input0);
-      F0 output1 = gemmlowp::tanh(input1);
-      vst1q_s16(output + index, output0.raw());
-      vst1q_s16(output + index + 8, output1.raw());
-    }
-#endif  // GEMMLOWP_NEON
-    using F0_Scalar = gemmlowp::FixedPoint<int16_t, 0>;
-    using F4_Scalar = gemmlowp::FixedPoint<int16_t, 4>;
-    for (; i < n_input; ++i) {
-      const int index = batch * n_input + i;
-      F4_Scalar input_f4 = F4_Scalar::FromRaw(input[index]);
-      F0_Scalar output_f0 = gemmlowp::tanh(input_f4);
-      output[index] = output_f0.raw();
-    }
-  }
+  NeonApplyTanhImpl<4>(input, n_batch, n_input, output);
 }
 
 void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
@@ -1137,8 +1096,16 @@ void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
   }
 }
 
-void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
-                  int n_input, int shift, int8_t* output) {
+void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2,
+                  int32_t multiplier, int shift, int n_batch, int n_input,
+                  int32_t output_zp, int8_t* output) {
+  const int32_t output_min = std::numeric_limits<int8_t>::min();
+  const int32_t output_max = std::numeric_limits<int8_t>::max();
+
+  const int32x4_t output_zp_dup = vdupq_n_s32(-output_zp);
+  const int32x4_t max_val_dup = vdupq_n_s32(output_max);
+  const int32x4_t min_val_dup = vdupq_n_s32(output_min);
+
   for (int batch = 0; batch < n_batch; ++batch) {
     int i = 0;
     for (; i <= n_input - 8; i += 8) {
@@ -1150,25 +1117,33 @@ void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
       const int32x4_t b_s32_0 = vmovl_s16(vget_low_s16(b));
       const int32x4_t b_s32_1 = vmovl_s16(vget_high_s16(b));
 
-      int32x4_t x_0 = vmulq_s32(a_s32_0, b_s32_0);
-      int32x4_t x_1 = vmulq_s32(a_s32_1, b_s32_1);
-      x_0 = gemmlowp::RoundingDivideByPOT(x_0, shift);
-      x_1 = gemmlowp::RoundingDivideByPOT(x_1, shift);
+      int32x4x2_t temp_val;
+      temp_val.val[0] = vmulq_s32(a_s32_0, b_s32_0);
+      temp_val.val[1] = vmulq_s32(a_s32_1, b_s32_1);
+      temp_val =
+          MultiplyByQuantizedMultiplier2Rows(temp_val, multiplier, shift);
 
-      const int16x8_t result = vcombine_s16(vmovn_s32(x_0), vmovn_s32(x_1));
+      temp_val.val[0] = vaddq_s32(temp_val.val[0], output_zp_dup);
+      temp_val.val[1] = vaddq_s32(temp_val.val[1], output_zp_dup);
+      temp_val.val[0] =
+          vmaxq_s32(vminq_s32(temp_val.val[0], max_val_dup), min_val_dup);
+      temp_val.val[1] =
+          vmaxq_s32(vminq_s32(temp_val.val[1], max_val_dup), min_val_dup);
+
+      const int16x8_t result =
+          vcombine_s16(vmovn_s32(temp_val.val[0]), vmovn_s32(temp_val.val[1]));
       vst1_s8(output + index, vmovn_s16(result));
     }
     for (; i < n_input; ++i) {
       const int index = batch * n_input + i;
       const int16_t a = input_1[index];
       const int16_t b = input_2[index];
-      int64_t x = a * b;
-      if (x > std::numeric_limits<std::int32_t>::max()) {
-        x = std::numeric_limits<std::int32_t>::max();
-      }
-      const int32_t value = static_cast<int32_t>(x);
-      output[index] =
-          static_cast<int8_t>(gemmlowp::RoundingDivideByPOT(value, shift));
+      int32_t value = static_cast<int32_t>(a) * static_cast<int32_t>(b);
+      value = MultiplyByQuantizedMultiplier(value, multiplier, shift);
+      value -= output_zp;
+      value = std::min(std::max(-128, value), 127);
+
+      output[index] = static_cast<int8>(value);
     }
   }
 }
@@ -1382,7 +1357,8 @@ void NeonVectorVectorCwiseProduct(const float* vector1, const float* vector2,
   // If v_size is not divisible by the vector size, then we need to process the
   // final few elements sequentially. postamble_start shows the start index
   // where this should happen.
-  const int postamble_start = RoundDownToFloatVectors(v_size);
+  const int postamble_start =
+      RoundDownVectors<kFloatValuesPerNeonVector>(v_size);
   int v = 0;
   for (; v < postamble_start; v += kFloatValuesPerNeonVector) {
     // Load 4 float values from vector1 and vector2.
@@ -1404,7 +1380,8 @@ void NeonVectorVectorCwiseProductAccumulate(const float* vector1,
   // If v_size is not divisible by the vector size, then we need to process the
   // final few elements sequentially. postamble_start shows the start index
   // where this should happen.
-  const int postamble_start = RoundDownToFloatVectors(v_size);
+  const int postamble_start =
+      RoundDownVectors<kFloatValuesPerNeonVector>(v_size);
   int v = 0;
   for (; v < postamble_start; v += kFloatValuesPerNeonVector) {
     // Load 4 float values from vector1 and vector2 and accumulator.
@@ -1427,7 +1404,8 @@ void NeonVectorBatchVectorCwiseProduct(const float* vector, int v_size,
   // If v_size is not divisible by the vector size, then we need to process the
   // final few elements sequentially. postamble_start shows the start index
   // where this should happen.
-  const int postamble_start = RoundDownToFloatVectors(v_size);
+  const int postamble_start =
+      RoundDownVectors<kFloatValuesPerNeonVector>(v_size);
 
   for (int b = 0; b < n_batch; b++) {
     int v = 0;
@@ -1457,7 +1435,8 @@ void NeonVectorBatchVectorCwiseProductAccumulate(const float* vector,
   // If v_size is not divisible by the vector size, then we need to process the
   // final few elements sequentially. postamble_start shows the start index
   // where this should happen.
-  const int postamble_start = RoundDownToFloatVectors(v_size);
+  const int postamble_start =
+      RoundDownVectors<kFloatValuesPerNeonVector>(v_size);
 
   float* result_ptr = result;
   const float* batch_vector_ptr = batch_vector;
@@ -1487,7 +1466,8 @@ void NeonSub1Vector(const float* vector, int v_size, float* result) {
   // If v_size is not divisible by the vector size, then we need to process the
   // final few elements sequentially. postamble_start shows the start index
   // where this should happen.
-  const int postamble_start = RoundDownToFloatVectors(v_size);
+  const int postamble_start =
+      RoundDownVectors<kFloatValuesPerNeonVector>(v_size);
 
   float32x4_t one_f32x4 = vmovq_n_f32(1.0);
   int v = 0;
@@ -1504,11 +1484,29 @@ void NeonSub1Vector(const float* vector, int v_size, float* result) {
   }
 }
 
+void NeonSub1Vector(const int16_t* vector, int v_size, int16_t* result) {
+  int postamble_start = RoundDownVectors<kInt16ValuesPerNeonVector>(v_size);
+  static const int16_t kOne = 32767;
+  // Use xor to replace substract from 1 << 15 - 1.
+  // Local benchmark shows it's slightly faster than pure substract.
+  const int16x8_t one_dup = vdupq_n_s16(kOne);
+  int i = 0;
+  for (; i < postamble_start; i += kInt16ValuesPerNeonVector) {
+    const int16x8_t input = vld1q_s16(vector + i);
+    const int16x8_t sub1_result = veorq_s16(one_dup, input);
+    vst1q_s16(result + i, sub1_result);
+  }
+  for (; i < v_size; i++) {
+    result[i] = kOne ^ vector[i];
+  }
+}
+
 bool NeonIsZeroVector(const float* vector, int v_size) {
   // If v_size is not divisible by the vector size, then we need to process the
   // final few elements sequentially. postamble_start shows the start index
   // where this should happen.
-  const int postamble_start = RoundDownToFloatVectors(v_size);
+  const int postamble_start =
+      RoundDownVectors<kFloatValuesPerNeonVector>(v_size);
 
   const float32x4_t zero_x4_float = vmovq_n_f32(0.0f);
   int v = 0;
@@ -1532,7 +1530,8 @@ void NeonClipVector(const float* vector, int v_size, float abs_limit,
   // If v_size is not divisible by the vector size, then we need to process the
   // final few elements sequentially. postamble_start shows the start index
   // where this should happen.
-  const int postamble_start = RoundDownToFloatVectors(v_size);
+  const int postamble_start =
+      RoundDownVectors<kFloatValuesPerNeonVector>(v_size);
 
   // Replicate abs_limit and -abs_limit in two vectors.
   const float32x4_t abs_limit_f32x4 = vmovq_n_f32(abs_limit);
@@ -1709,7 +1708,8 @@ float NeonVectorVectorDotProduct(const float* vector1, const float* vector2,
   // If v_size is not divisible by the vector size, then we need to process the
   // final few elements sequentially. postamble_start shows the start index
   // where this should happen.
-  const int postamble_start = RoundDownToFloatVectors(v_size);
+  const int postamble_start =
+      RoundDownVectors<kFloatValuesPerNeonVector>(v_size);
   float32x4_t acc_32x4 = vmovq_n_f32(0.0);
   int v = 0;
   for (; v < postamble_start; v += kFloatValuesPerNeonVector) {
@@ -1734,7 +1734,8 @@ void NeonReductionSumVector(const float* input_vector, float* output_vector,
     // If v_size is not divisible by the vector size, then we need to process
     // the final few elements sequentially. postamble_start shows the start
     // index where this should happen.
-    const int postamble_start = RoundDownToFloatVectors(reduction_size);
+    const int postamble_start =
+        RoundDownVectors<kFloatValuesPerNeonVector>(reduction_size);
     float32x4_t sum_f32x4 = vmovq_n_f32(0.0);
     int r = 0;
     for (; r < postamble_start; r += kFloatValuesPerNeonVector) {

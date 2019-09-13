@@ -132,12 +132,13 @@ std::string GenerateConvolutionTransposedCode(
         c += "  {\n";
         c += "    FLT4 result = TO_FLT4(r" + layer + "[" + std::to_string(y) +
              "][" + std::to_string(x) + "]) + bias_val;\n";
+        const LinkingContext context{"result", "X + " + std::to_string(x),
+                                     "Y + " + std::to_string(y), layer};
+        c += PostProcess(linked_operations, context);
         c += "    " +
-             dst_tensor.GetAddress("address", "X + " + std::to_string(x),
-                                   "Y + " + std::to_string(y), layer) +
+             dst_tensor.Write3D("result", context.x_coord, context.y_coord,
+                                context.z_coord) +
              "\n";
-        c += PostProcess(linked_operations, "result", layer, "address");
-        c += "    " + dst_tensor.Write3D("result", "address") + "\n";
         c += "  }\n";
       }
     }

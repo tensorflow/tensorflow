@@ -292,16 +292,3 @@ func @InvalidL2NormalizePattern(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> t
   // CHECK: %3 = "tfl.div"([[INPUT:%.*]], %2) {fused_activation_function = "NONE"} : (tensor<2xf32>, tensor<f32>) -> tensor<2xf32>
   // CHECK: return %3
 }
-
-// CHECK-LABEL: @InvalidL2NormalizePatternMorethan1Dimension
-// Input has higher rank, it should be limited to 1D only.
-func @InvalidL2NormalizePatternMorethan1Dimension(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
-  %cst = constant dense<[0]> : tensor<1xi32>
-  %0 = "tfl.square"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
-  %1 = "tfl.sum"(%0, %cst) {keep_dims = false} : (tensor<2x2xf32>, tensor<1xi32>) -> tensor<f32>
-  %2 = "tfl.sqrt"(%1) : (tensor<f32>) -> tensor<f32>
-  %3 = "tfl.div"(%arg0, %2) {fused_activation_function = "NONE"} : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
-  return %3: tensor<2x2xf32>
-  // CHECK: %3 = "tfl.div"([[INPUT:%.*]], %2) {fused_activation_function = "NONE"} : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
-  // CHECK: return %3
-}

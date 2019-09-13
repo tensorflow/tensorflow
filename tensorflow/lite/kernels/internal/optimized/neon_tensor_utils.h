@@ -87,9 +87,9 @@ void ApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
                     const int32_t* bias, int32_t layer_norm_scale_a,
                     int32_t layer_norm_scale_b, int32_t variance_limit,
                     int n_batch, int n_input, int16_t* output) {
-  PortableApplyLayerNorm(input, layer_norm_weights, bias, layer_norm_scale_a,
-                         layer_norm_scale_b, variance_limit, n_batch, n_input,
-                         output);
+  NEON_OR_PORTABLE(ApplyLayerNorm, input, layer_norm_weights, bias,
+                   layer_norm_scale_a, layer_norm_scale_b, variance_limit,
+                   n_batch, n_input, output);
 }
 
 void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
@@ -117,9 +117,11 @@ void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
   NEON_OR_PORTABLE(CwiseMul, input_1, input_2, n_batch, n_input, shift, output);
 }
 
-void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
-              int n_input, int shift, int8_t* output) {
-  NEON_OR_PORTABLE(CwiseMul, input_1, input_2, n_batch, n_input, shift, output);
+void CwiseMul(const int16_t* input_1, const int16_t* input_2,
+              int32_t multiplier, int shift, int n_batch, int n_input,
+              int32_t output_zp, int8_t* output) {
+  NEON_OR_PORTABLE(CwiseMul, input_1, input_2, multiplier, shift, n_batch,
+                   n_input, output_zp, output);
 }
 
 void CwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
@@ -127,21 +129,14 @@ void CwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
   NEON_OR_PORTABLE(CwiseAdd, input_1, input_2, n_batch, n_input, output);
 }
 
-void CwiseMul(const int16_t* input_1, const int16_t* input_2,
-              int32_t multiplier, int32_t shift, int32_t n_batch,
-              int32_t n_input, int32_t output_zp, int8_t* output) {
-  PortableCwiseMul(input_1, input_2, multiplier, shift, n_batch, n_input,
-                   output_zp, output);
-}
-
 void CwiseClipping(int16_t* input, const int16_t clipping_value,
                    int32_t n_batch, int32_t n_input) {
-  PortableCwiseClipping(input, clipping_value, n_batch, n_input);
+  NEON_OR_PORTABLE(CwiseClipping, input, clipping_value, n_batch, n_input);
 }
 
 void CwiseClipping(int8_t* input, const int8_t clipping_value, int32_t n_batch,
                    int32_t n_input) {
-  PortableCwiseClipping(input, clipping_value, n_batch, n_input);
+  NEON_OR_PORTABLE(CwiseClipping, input, clipping_value, n_batch, n_input);
 }
 
 void VectorVectorCwiseProduct(const float* vector1, const float* vector2,
@@ -194,7 +189,7 @@ void Sub1Vector(const float* vector, int v_size, float* result) {
 }
 
 void Sub1Vector(const int16_t* vector, int v_size, int16_t* result) {
-  PortableSub1Vector(vector, v_size, result);
+  NEON_OR_PORTABLE(Sub1Vector, vector, v_size, result);
 }
 
 float Clip(float f, float abs_limit) { return PortableClip(f, abs_limit); }

@@ -23,9 +23,11 @@ import copy
 import re
 import sys
 import threading
+import types
 
 import numpy as np
 import six
+from six.moves import map  # pylint: disable=redefined-builtin
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
@@ -69,7 +71,9 @@ from tensorflow.python.util import tf_stack
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.lazy_loader import LazyLoader
+from tensorflow.python.util.tf_export import kwarg_only
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tools.docs.doc_controls import do_not_generate_docs
 
 ag_ctx = LazyLoader(
     "ag_ctx", globals(),
@@ -910,10 +914,21 @@ class _EagerTensorBase(Tensor):
     """Returns the length of the first dimension in the Tensor."""
     if not self.shape.ndims:
       raise TypeError("Scalar tensor has no `len()`")
-    return self._shape_tuple()[0]
+    # pylint: disable=protected-access
+    try:
+      return self._shape_tuple()[0]
+    except core._NotOkStatusException as e:
+      six.raise_from(core._status_to_exception(e.code, e.message), None)
+
+  def _numpy_internal(self):
+    raise NotImplementedError()
 
   def _numpy(self):
-    raise NotImplementedError()
+    # pylint: disable=protected-access
+    try:
+      return self._numpy_internal()
+    except core._NotOkStatusException as e:
+      six.raise_from(core._status_to_exception(e.code, e.message), None)
 
   @property
   def dtype(self):
@@ -1036,9 +1051,14 @@ class _EagerTensorBase(Tensor):
   @property
   def shape(self):
     if self._tensor_shape is None:  # pylint: disable=access-member-before-definition
-      # `_tensor_shape` is declared and defined in the definition of
-      # `EagerTensor`, in C.
-      self._tensor_shape = tensor_shape.TensorShape(self._shape_tuple())
+      # pylint: disable=protected-access
+      try:
+        # `_tensor_shape` is declared and defined in the definition of
+        # `EagerTensor`, in C.
+        self._tensor_shape = tensor_shape.TensorShape(self._shape_tuple())
+      except core._NotOkStatusException as e:
+        six.raise_from(core._status_to_exception(e.code, e.message), None)
+
     return self._tensor_shape
 
   def get_shape(self):
@@ -1558,8 +1578,8 @@ def _NodeDef(op_type, name, attrs=None):
 
 # Copied from core/framework/node_def_util.cc
 # TODO(mrry,josh11b): Consolidate this validation in C++ code.
-_VALID_OP_NAME_REGEX = re.compile("^[A-Za-z0-9.][A-Za-z0-9_.\\-/]*$")
-_VALID_SCOPE_NAME_REGEX = re.compile("^[A-Za-z0-9_.\\-/]*$")
+_VALID_OP_NAME_REGEX = re.compile("^[A-Za-z0-9.][A-Za-z0-9_.\\-/>]*$")
+_VALID_SCOPE_NAME_REGEX = re.compile("^[A-Za-z0-9_.\\-/>]*$")
 
 
 def _create_c_op(graph, node_def, inputs, control_inputs):
@@ -1784,15 +1804,22 @@ class Operation(object):
     self._graph._add_op(self, self._id_value, name)  # pylint: disable=protected-access
 
     if not c_op:
-      self._control_flow_post_processing()
+      self._control_flow_post_processing(input_tensors=inputs)
 
-  def _control_flow_post_processing(self):
+  def _control_flow_post_processing(self, input_tensors=None):
     """Add this op to its control flow context.
 
     This may add new ops and change this op's inputs. self.inputs must be
     available before calling this method.
+
+    Args:
+      input_tensors: (Optional.) A list of `Tensors` corresponding to the inputs
+        of this op, which should be equivalent to `self.inputs`. Pass this
+        argument to avoid evaluating `self.inputs` unnecessarily.
     """
-    for input_tensor in self.inputs:
+    if input_tensors is None:
+      input_tensors = self.inputs
+    for input_tensor in input_tensors:
       control_flow_util.CheckInputFromValidContext(self, input_tensor.op)
     if self._control_flow_context is not None:
       self._control_flow_context.AddOp(self)
@@ -2130,39 +2157,14 @@ class Operation(object):
     """The list of `Tensor` objects representing the outputs of this op."""
     return self._outputs
 
-  class _InputList(object):
-    """Immutable input list wrapper."""
-
-    def __init__(self, inputs):
-      self._inputs = inputs
-
-    def __iter__(self):
-      return iter(self._inputs)
-
-    def __len__(self):
-      return len(self._inputs)
-
-    def __bool__(self):
-      return bool(self._inputs)
-
-    # Python 3 wants __bool__, Python 2.7 wants __nonzero__
-    __nonzero__ = __bool__
-
-    def __getitem__(self, i):
-      return self._inputs[i]
-
   @property
   def inputs(self):
-    """The list of `Tensor` objects representing the data inputs of this op."""
+    """The sequence of `Tensor` objects representing the data inputs of this op."""
     if self._inputs_val is None:
-      tf_outputs = c_api.GetOperationInputs(self._c_op)
       # pylint: disable=protected-access
-      retval = [
-          self.graph._get_tensor_by_tf_output(tf_output)
-          for tf_output in tf_outputs
-      ]
+      self._inputs_val = tuple(map(self.graph._get_tensor_by_tf_output,
+                                   c_api.GetOperationInputs(self._c_op)))
       # pylint: enable=protected-access
-      self._inputs_val = Operation._InputList(retval)
     return self._inputs_val
 
   @property
@@ -6627,8 +6629,7 @@ def _op_to_colocate_with(v, graph):
   # colocation constraints altogether. Assuming that will
   # happen soon, perhaps this hack to work around the circular
   # import dependency is acceptable.
-  if hasattr(v, "handle") and hasattr(v.handle, "op") and isinstance(
-      v.handle.op, Operation):
+  if hasattr(v, "handle") and isinstance(v.handle, Tensor):
     if graph.building_function:
       return graph.capture(v.handle).op
     else:
@@ -6659,3 +6660,32 @@ internal_convert_n_to_tensor_or_indexed_slices = \
     indexed_slices.internal_convert_n_to_tensor_or_indexed_slices
 register_tensor_conversion_function = \
     tensor_conversion_registry.register_tensor_conversion_function
+
+
+# Helper functions for op wrapper modules generated by `python_op_gen`.
+
+
+def to_raw_op(f):
+  """Make a given op wrapper function `f` raw.
+
+  Raw op wrappers are not included in the docs, and can only be called
+  with keyword arguments.
+
+  Args:
+    f: An op wrapper function to make raw.
+
+  Returns:
+    Raw `f`.
+  """
+  # Copy `f` to get a new `__dict__`, otherwise `tf_export` will fail
+  # due to double-registration.
+  f = types.FunctionType(f.__code__, f.__globals__, f.__name__, f.__defaults__,
+                         f.__closure__)
+  return kwarg_only(do_not_generate_docs(f))
+
+
+def raise_from_not_ok_status(e, name):
+  message = e.message + (" name: " + name if name is not None else "")
+  # pylint: disable=protected-access
+  six.raise_from(core._status_to_exception(e.code, message), None)
+  # pylint: enable=protected-access

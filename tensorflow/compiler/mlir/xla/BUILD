@@ -12,6 +12,7 @@ package_group(
     packages = [
         "//babelfish/device/...",
         "//learning/brain/experimental/mlir/...",
+        "//learning/brain/google/xla/kernels/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/compiler/xla/...",
         "//third_party/mlir_edge/...",
@@ -33,6 +34,8 @@ gentbl(
     tbl_outs = [
         ("-gen-op-decls", "ir/hlo_ops.h.inc"),
         ("-gen-op-defs", "ir/hlo_ops.cc.inc"),
+        ("-gen-struct-attr-decls", "ir/hlo_structs.h.inc"),
+        ("-gen-struct-attr-defs", "ir/hlo_structs.cc.inc"),
     ],
     tblgen = "@local_config_mlir//:mlir-tblgen",
     td_file = "ir/hlo_ops.td",
@@ -84,6 +87,7 @@ cc_library(
     deps = [
         ":hlo",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
@@ -224,9 +228,15 @@ cc_library(
     srcs = ["type_to_shape.cc"],
     hdrs = ["type_to_shape.h"],
     deps = [
+        "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
+        "//tensorflow/compiler/mlir/tensorflow:convert_type",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:types",
+        "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Support",
     ],
@@ -241,6 +251,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_proto_cc",
         "//tensorflow/core:test_main",
         "@local_config_mlir//:IR",
     ],
@@ -258,6 +269,7 @@ cc_library(
         ":type_to_shape",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/xla:comparison_util",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
@@ -338,6 +350,7 @@ tf_native_cc_binary(
     deps = [
         "@llvm//:support",
         "@llvm//:tablegen",
+        "@local_config_mlir//:Support",
         "@local_config_mlir//:TableGen",
     ],
 )

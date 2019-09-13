@@ -19,19 +19,20 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import pkgutil
+import re
+import sys
+import textwrap
 import numpy as np
 
 from absl import flags
 from absl.testing import absltest
 
 import tensorflow.compat.v2 as tf
-import tensorflow.python as core
 tf.compat.v1.enable_v2_behavior()
 
 # We put doctest after absltest so that it picks up the unittest monkeypatch.
 # Otherwise doctest tests aren't runnable at all.
-import doctest  # pylint: disable=g-import-not-at-top; import: after=absltest
+import doctest  # pylint: disable=g-import-not-at-top, g-bad-import-order
 
 FLAGS = flags.FLAGS
 
@@ -39,17 +40,16 @@ flags.DEFINE_string('module', '', 'A specific module to run doctest on.')
 flags.DEFINE_boolean('list', False,
                      'List all the modules in the core package imported.')
 
+PACKAGE = 'tensorflow.python.'
+
 
 def find_modules():
   """Finds all the modules in the core package imported."""
 
   tf_modules = []
-  for _, name, _ in pkgutil.walk_packages(
-      core.__path__, prefix=core.__name__ + '.'):
-    try:
-      tf_modules.append(__import__(name, fromlist=['']))
-    except (ImportError, AttributeError):
-      pass
+  for name, module in sys.modules.items():
+    if name.startswith(PACKAGE):
+      tf_modules.append(module)
 
   return tf_modules
 
@@ -71,12 +71,47 @@ def filter_on_submodules(all_modules, submodule):
 
   filtered_modules = [
       mod for mod in all_modules
-      if core.__name__ + '.' + submodule in mod.__name__
+      if PACKAGE + submodule in mod.__name__
   ]
   return filtered_modules
 
 
-def load_tests(loader, tests, ignore):
+class TfTestCase(tf.test.TestCase):
+
+  def set_up(self, test):
+    self.setUp()
+
+  def tear_down(self, test):
+    self.tearDown()
+
+
+class CustomOutputChecker(doctest.OutputChecker):
+  """Changes the `want` and `got` strings.
+
+  This allows it to be customized before they are compared.
+  """
+
+  def check_output(self, want, got, optionflags):
+    # Replace tf.Tensor's id with ellipsis(...) because tensor's id can change
+    # on each execution. Users may forget to use ellipsis while writing
+    # examples in docstrings, so replacing the id with `...` makes it safe.
+    want = re.sub(r'\bid=(\d+)\b', r'id=...', want)
+    return doctest.OutputChecker.check_output(self, want, got, optionflags)
+
+  _MESSAGE = textwrap.dedent("""\n
+        #############################################################
+        Check the doctest documentation
+        (https://docs.python.org/3/library/doctest.html) on how to
+        write testable docstrings.
+        #############################################################""")
+
+  def output_difference(self, example, got, optionflags):
+    got = got + self._MESSAGE
+    return doctest.OutputChecker.output_difference(self, example, got,
+                                                   optionflags)
+
+
+def load_tests(unused_loader, tests, unused_ignore):
   """Loads all the tests in the docstrings and runs them."""
 
   tf_modules = find_modules()
@@ -85,11 +120,14 @@ def load_tests(loader, tests, ignore):
     tf_modules = filter_on_submodules(tf_modules, FLAGS.module)
 
   if FLAGS.list:
+    print('**************************************************')
     for mod in tf_modules:
       print(mod.__name__)
+    print('**************************************************')
     return tests
 
   for module in tf_modules:
+    testcase = TfTestCase()
     tests.addTests(
         doctest.DocTestSuite(
             module,
@@ -99,7 +137,14 @@ def load_tests(loader, tests, ignore):
                 'np': np,
                 'os': os
             },
-            optionflags=(doctest.ELLIPSIS | doctest.NORMALIZE_WHITESPACE)))
+            setUp=testcase.set_up,
+            tearDown=testcase.tear_down,
+            checker=CustomOutputChecker(),
+            optionflags=(doctest.ELLIPSIS |
+                         doctest.NORMALIZE_WHITESPACE |
+                         doctest.IGNORE_EXCEPTION_DETAIL |
+                         doctest.DONT_ACCEPT_BLANKLINE),
+        ))
   return tests
 
 

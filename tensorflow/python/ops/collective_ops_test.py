@@ -158,7 +158,7 @@ class CollectiveOpTest(test.TestCase):
               # to `all_reduce` has an explicit device string.  We don't use
               # `identity` because `cast` is more resilient to getting optimized
               # away by various optimization passes.
-              input_tensor = math_ops.cast(device_tensors[j], dtypes.float64)
+              input_tensor = math_ops.cast(device_tensors[j], dtypes.float16)
               collective_op = collective_ops.all_reduce(
                   input_tensor, group_size, group_key, instances[j],
                   'Add', 'Id')

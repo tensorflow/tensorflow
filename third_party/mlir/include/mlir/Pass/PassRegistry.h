@@ -32,11 +32,11 @@
 #include <memory>
 
 namespace mlir {
+class OpPassManager;
 class Pass;
-class PassManager;
 
 /// A registry function that adds passes to the given pass manager.
-using PassRegistryFunction = std::function<void(PassManager &)>;
+using PassRegistryFunction = std::function<void(OpPassManager &)>;
 
 using PassAllocatorFunction = std::function<std::unique_ptr<Pass>()>;
 
@@ -44,14 +44,18 @@ using PassAllocatorFunction = std::function<std::unique_ptr<Pass>()>;
 /// act as a unique identifier during pass registration.
 using PassID = ClassID;
 
+//===----------------------------------------------------------------------===//
+// PassRegistry
+//===----------------------------------------------------------------------===//
+
 /// Structure to group information about a passes and pass pipelines (argument
 /// to invoke via mlir-opt, description, pass pipeline builder).
 class PassRegistryEntry {
 public:
   /// Adds this pass registry entry to the given pass manager.
-  void addToPipeline(PassManager &pm) const {
+  void addToPipeline(OpPassManager &pm) const {
     assert(builder &&
-           "Cannot call addToPipeline on PassRegistryEntry without builder");
+           "cannot call addToPipeline on PassRegistryEntry without builder");
     builder(pm);
   }
 
@@ -95,6 +99,10 @@ public:
            PassAllocatorFunction allocator);
 };
 
+//===----------------------------------------------------------------------===//
+// PassRegistration
+//===----------------------------------------------------------------------===//
+
 /// Register a specific dialect pipeline registry function with the system,
 /// typically used through the PassPipelineRegistration template.
 void registerPassPipeline(StringRef arg, StringRef description,
@@ -134,7 +142,7 @@ template <typename ConcretePass> struct PassRegistration {
 /// Usage:
 ///
 ///   // At namespace scope.
-///   void pipelineBuilder(PassManager &pm) {
+///   void pipelineBuilder(OpPassManager &pm) {
 ///      pm.addPass(new MyPass());
 ///      pm.addPass(new MyOtherPass());
 ///   }
@@ -154,15 +162,40 @@ struct PassPipelineRegistration {
                            PassAllocatorFunction allocator);
 };
 
-/// Adds command line option for each registered pass.
-struct PassNameParser : public llvm::cl::parser<const PassRegistryEntry *> {
-  PassNameParser(llvm::cl::Option &opt);
+//===----------------------------------------------------------------------===//
+// PassPipelineCLParser
+//===----------------------------------------------------------------------===//
 
-  void initialize();
+namespace detail {
+struct PassPipelineCLParserImpl;
+} // end namespace detail
 
-  void printOptionInfo(const llvm::cl::Option &O,
-                       size_t GlobalWidth) const override;
+/// This class implements a command-line parser for MLIR passes. It registers a
+/// cl option with a given argument and description. This parser will register
+/// options for each of the passes and pipelines that have been registered with
+/// the pass registry; Meaning that `-cse` will refer to the CSE pass in MLIR.
+/// It also registers an argument, `pass-pipeline`, that supports parsing a
+/// textual description of a pipeline.
+class PassPipelineCLParser {
+public:
+  /// Construct a pass pipeline parser with the given command line description.
+  PassPipelineCLParser(StringRef arg, StringRef description);
+  ~PassPipelineCLParser();
+
+  /// Returns true if this parser contains any valid options to add.
+  bool hasAnyOccurrences() const;
+
+  /// Returns true if the given pass registry entry was registered at the
+  /// top-level of the parser, i.e. not within an explicit textual pipeline.
+  bool contains(const PassRegistryEntry *entry) const;
+
+  /// Adds the passes defined by this parser entry to the given pass manager.
+  void addToPipeline(OpPassManager &pm) const;
+
+private:
+  std::unique_ptr<detail::PassPipelineCLParserImpl> impl;
 };
+
 } // end namespace mlir
 
 #endif // MLIR_PASS_PASSREGISTRY_H_

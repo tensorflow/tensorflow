@@ -122,6 +122,8 @@ class OperandHasRank<int n> : Constraint<
 // Mul->Rsqrt->Sum->Square
 // Currently L2Normalization doesn't support activation function
 // in TFLite.
+// TODO(karimnosseir): Add constraints that the kernel code assumes.
+// constraint on axis and depth.
 def : Pat<(TFL_MulOp $operand1,
                      (TFL_RsqrtOp
                         (TFL_SumOp
@@ -130,13 +132,14 @@ def : Pat<(TFL_MulOp $operand1,
                            $keep_dims)),
                      TFL_AF_None),
            (TFL_L2NormalizationOp $operand1, TFL_AF_None),
-           [(EqualOperands $operand1, $square_operand),
-            (OperandHasRank<1> $operand1)]>;
+           [(EqualOperands $operand1, $square_operand)]>;
 
 // This pattern constructs L2NormalizationOp from
 // Div->sqrt->Sum->Square
 // Currently L2Normalization doesn't support activation function
 // in TFLite.
+// TODO(karimnosseir): Add constraints that the kernel code assumes.
+// constraint on axis and depth.
 def : Pat<(TFL_DivOp $operand1,
                      (TFL_SqrtOp
                         (TFL_SumOp
@@ -145,5 +148,4 @@ def : Pat<(TFL_DivOp $operand1,
                            $keep_dims)),
                      TFL_AF_None),
            (TFL_L2NormalizationOp $operand1, TFL_AF_None),
-           [(EqualOperands $operand1, $square_operand),
-            (OperandHasRank<1> $operand1)]>;
+           [(EqualOperands $operand1, $square_operand)]>;

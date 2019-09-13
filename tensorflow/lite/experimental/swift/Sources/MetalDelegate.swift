@@ -35,7 +35,7 @@ public final class MetalDelegate: Delegate {
     var delegateOptions = TFLGpuDelegateOptions()
     delegateOptions.allow_precision_loss = options.allowsPrecisionLoss
     delegateOptions.wait_type = options.waitType.cWaitType
-    cDelegate = TFLGpuDelegateCreate(UnsafePointer<TFLGpuDelegateOptions>(&delegateOptions))
+    cDelegate = TFLGpuDelegateCreate(&delegateOptions)
   }
 
   deinit {

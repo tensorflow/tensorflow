@@ -152,6 +152,9 @@ cuda_py_tests(
         "//tensorflow/python:framework_test_lib",
     ],
     tags = [
+        "no_rocm",
+        "no_windows",
+        "nomac",
         "notap",  # b/140261407
     ],
     xla_enable_strict_auto_jit = True,

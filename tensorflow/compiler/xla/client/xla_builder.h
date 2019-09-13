@@ -258,7 +258,8 @@ class XlaBuilder {
   // compile-time constant (see `IsConstant`), returns an error.
   //
   // This will copy the needed ops/computations to the subgraph.
-  StatusOr<XlaComputation> BuildConstantSubGraph(const XlaOp& root_op);
+  StatusOr<XlaComputation> BuildConstantSubGraph(
+      XlaOp root_op, bool dynamic_dimension_is_uint_max = false);
 
   // Returns the first error that was encountered while building the
   // computation. When an error is encountered, by default we return a vacuous

@@ -24,6 +24,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cusparse.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/cuda_sparse.h"
 #include "tensorflow/core/kernels/gpu_device_array.h"
 #include "tensorflow/core/kernels/gpu_device_array_gpu.h"
 #include "tensorflow/core/kernels/sparse/kernels.h"
@@ -119,6 +120,19 @@ Status CalculateNNZPerBatchMatrixFromIndices<GPUDevice>::operator()(
   }
 
   return Status::OK();
+}
+
+// TODO(ebrevdo): Write a custom batch-friendly impl of this to update
+// the SparseTensor indices directly.
+template <>
+Status CSRSparseMatrixToCOOSparseMatrix<GPUDevice>::operator()(
+    OpKernelContext* c, TTypes<const int>::UnalignedVec csr_row_ptr,
+    TTypes<int>::UnalignedVec coo_row_ind) {
+  CudaSparse cuda_sparse(c);
+  const int nnz = coo_row_ind.size();
+  TF_RETURN_IF_ERROR(cuda_sparse.Initialize());
+  const int m = csr_row_ptr.size() - 1;  // rows
+  return cuda_sparse.Csr2coo(csr_row_ptr.data(), nnz, m, coo_row_ind.data());
 }
 
 template <int stride>

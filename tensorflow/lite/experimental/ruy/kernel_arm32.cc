@@ -704,6 +704,7 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 2>& params) {
         "vmull.s8 q15, d6, d8\n"
         "vmlal.s8 q14, d5, d9\n"
         "vmlal.s8 q15, d7, d9\n"
+        "vld1.8 {d8, d9}, [%[rhs_ptr]]!\n"
 
         // Then pairwise accumulate in to q8, q9
         "vpadal.s16 q8, q14\n"
@@ -713,7 +714,9 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 2>& params) {
         "vmull.s8 q14, d0, d10\n"
         "vmull.s8 q15, d2, d10\n"
         "vmlal.s8 q14, d1, d11\n"
+        "vld1.8 {d0, d1}, [%[lhs_ptr]]!\n"
         "vmlal.s8 q15, d3, d11\n"
+        "vld1.8 {d2, d3}, [%[lhs_ptr]]!\n"
 
         // Then pairwise accumulate in to q8, q9
         "vpadal.s16 q10, q14\n"
@@ -723,19 +726,16 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 2>& params) {
         "vmull.s8 q14, d4, d10\n"
         "vmull.s8 q15, d6, d10\n"
         "vmlal.s8 q14, d5, d11\n"
+        "vld1.8 {d4, d5}, [%[lhs_ptr]]!\n"
         "vmlal.s8 q15, d7, d11\n"
+        "vld1.8 {d6, d7}, [%[lhs_ptr]]!\n"
         // Then pairwise accumulate in to q12, q13
         "vpadal.s16 q12, q14\n"
+        "vld1.8 {d10, d11}, [%[rhs_ptr]]!\n"
         "vpadal.s16 q13, q15\n"
 
-        // Load the next 64 bytes of LHS and RHS data.
-        "vld1.8 {d0, d1}, [%[lhs_ptr]]!\n"
-        "vld1.8 {d2, d3}, [%[lhs_ptr]]!\n"
-        "vld1.8 {d4, d5}, [%[lhs_ptr]]!\n"
-        "vld1.8 {d6, d7}, [%[lhs_ptr]]!\n"
+        // Prefetch the next 64 bytes of LHS and RHS data.
         RUY_PREFETCH("pld [%[lhs_ptr]]\n")
-        "vld1.8 {d8, d9}, [%[rhs_ptr]]!\n"
-        "vld1.8 {d10, d11}, [%[rhs_ptr]]!\n"
         RUY_PREFETCH("pld [%[rhs_ptr]]\n")
 
         // Each iteration of this loop advances by 16 levels of depth.
@@ -789,17 +789,7 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 2>& params) {
         "vpadal.s16 q13, q15\n"
 
         // All accumulation over depth done. q6 - q13 contain the 4x32b
-        // accumulators for the 4x2 final matrix. Need to collapse down
-        // to one 32b value per entry.
-        RUY_MAKE_ZERO(q0)
-        RUY_MAKE_ZERO(q1)
-        RUY_MAKE_ZERO(q2)
-        RUY_MAKE_ZERO(q3)
-        RUY_MAKE_ZERO(q4)
-        RUY_MAKE_ZERO(q5)
-        RUY_MAKE_ZERO(q14)
-        RUY_MAKE_ZERO(q15)
-
+        // accumulators for the 4x2 final matrix.
         // We now have to compute the final 8-bit values from these int32
         // accumulators, and advance to the next 4x2 block. We intertwine
         // these two aspects whenever possible for optimal pipelining, both

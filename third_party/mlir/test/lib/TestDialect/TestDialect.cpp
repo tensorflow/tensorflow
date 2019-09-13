@@ -19,6 +19,7 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Transforms/FoldUtils.h"
+#include "mlir/Transforms/InliningUtils.h"
 
 using namespace mlir;
 
@@ -33,9 +34,49 @@ struct TestOpFolderDialectInterface : public OpFolderDialectInterface {
   /// Registered hook to check if the given region, which is attached to an
   /// operation that is *not* isolated from above, should be used when
   /// materializing constants.
-  virtual bool shouldMaterializeInto(Region *region) const {
+  bool shouldMaterializeInto(Region *region) const final {
     // If this is a one region operation, then insert into it.
     return isa<OneRegionOp>(region->getParentOp());
+  }
+};
+
+/// This class defines the interface for handling inlining with standard
+/// operations.
+struct TestInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+
+  //===--------------------------------------------------------------------===//
+  // Analysis Hooks
+  //===--------------------------------------------------------------------===//
+
+  bool isLegalToInline(Operation *, Region *,
+                       BlockAndValueMapping &) const final {
+    return true;
+  }
+
+  bool shouldAnalyzeRecursively(Operation *op) const {
+    // Analyze recursively if this is not a functional region operation, it
+    // froms a separate functional scope.
+    return !isa<FunctionalRegionOp>(op);
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Transformation Hooks
+  //===--------------------------------------------------------------------===//
+
+  /// Handle the given inlined terminator by replacing it with a new operation
+  /// as necessary.
+  void handleTerminator(Operation *op,
+                        ArrayRef<Value *> valuesToRepl) const final {
+    // Only handle "test.return" here.
+    auto returnOp = dyn_cast<TestReturnOp>(op);
+    if (!returnOp)
+      return;
+
+    // Replace the values directly with the return operands.
+    assert(returnOp.getNumOperands() == valuesToRepl.size());
+    for (const auto &it : llvm::enumerate(returnOp.getOperands()))
+      valuesToRepl[it.index()]->replaceAllUsesWith(it.value());
   }
 };
 } // end anonymous namespace
@@ -50,7 +91,7 @@ TestDialect::TestDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "TestOps.cpp.inc"
       >();
-  addInterfaces<TestOpFolderDialectInterface>();
+  addInterfaces<TestOpFolderDialectInterface, TestInlinerInterface>();
   allowUnknownOperations();
 }
 
@@ -79,6 +120,42 @@ static void print(OpAsmPrinter *p, IsolatedRegionOp op) {
   p->printOperand(op.getOperand());
   p->shadowRegionArgs(op.region(), op.getOperand());
   p->printRegion(op.region(), /*printEntryBlockArgs=*/false);
+}
+
+//===----------------------------------------------------------------------===//
+// Test WrapRegionOp - wrapping op exercising `parseGenericOperation()`.
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseWrappingRegionOp(OpAsmParser *parser,
+                                         OperationState *result) {
+  if (parser->parseOptionalKeyword("wraps"))
+    return failure();
+
+  // Parse the wrapped op in a region
+  Region &body = *result->addRegion();
+  body.push_back(new Block);
+  Block &block = body.back();
+  Operation *wrapped_op = parser->parseGenericOperation(&block, block.begin());
+  if (!wrapped_op)
+    return failure();
+
+  // Create a return terminator in the inner region, pass as operand to the
+  // terminator the returned values from the wrapped operation.
+  SmallVector<Value *, 8> return_operands(wrapped_op->getResults());
+  OpBuilder builder(parser->getBuilder().getContext());
+  builder.setInsertionPointToEnd(&block);
+  builder.create<TestReturnOp>(result->location, return_operands);
+
+  // Get the results type for the wrapping op from the terminator operands.
+  Operation &return_op = body.back().back();
+  result->types.append(return_op.operand_type_begin(),
+                       return_op.operand_type_end());
+  return success();
+}
+
+static void print(OpAsmPrinter *p, WrappingRegionOp op) {
+  *p << op.getOperationName() << " wraps ";
+  p->printGenericOp(&op.region().front().front());
 }
 
 //===----------------------------------------------------------------------===//

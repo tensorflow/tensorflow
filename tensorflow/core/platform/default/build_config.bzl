@@ -479,15 +479,6 @@ def tf_platform_srcs(files):
     windows_set = base_set + ["windows/" + f for f in files]
     posix_set = base_set + ["posix/" + f for f in files]
 
-    # Handle cases where we must also bring the posix file in. Usually, the list
-    # of files to build on windows builds is just all the stuff in the
-    # windows_set. However, in some cases the implementations in 'posix/' are
-    # just what is necessary and historically we choose to simply use the posix
-    # file instead of making a copy in 'windows'.
-    for f in files:
-        if f == "error.cc":
-            windows_set.append("posix/" + f)
-
     return select({
         "//tensorflow:windows": native.glob(windows_set),
         "//conditions:default": native.glob(posix_set),
@@ -498,7 +489,9 @@ def tf_additional_lib_hdrs(exclude = []):
         "default/*.h",
         "windows/*.h",
         "posix/error.h",
-    ], exclude = exclude)
+    ], exclude = exclude + [
+        "default/subprocess.h",
+    ])
     return select({
         "//tensorflow:windows": windows_hdrs,
         "//conditions:default": native.glob([
@@ -512,7 +505,13 @@ def tf_additional_lib_srcs(exclude = []):
         "default/*.cc",
         "windows/*.cc",
         "posix/error.cc",
-    ], exclude = exclude)
+    ], exclude = exclude + [
+        "default/env_time.cc",
+        "default/load_library.cc",
+        "default/net.cc",
+        "default/port.cc",
+        "default/subprocess.cc",
+    ])
     return select({
         "//tensorflow:windows": windows_srcs,
         "//conditions:default": native.glob([
@@ -582,22 +581,9 @@ def tf_protos_grappler():
     )
 
 def tf_additional_device_tracer_srcs():
-    return ["default/device_tracer.cc"]
+    return ["device_tracer.cc"]
 
 def tf_additional_cupti_utils_cuda_deps():
-    return []
-
-def tf_additional_device_tracer_cuda_deps():
-    return [
-        "//tensorflow/stream_executor/cuda:cupti_stub",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/container:flat_hash_map",
-    ]
-
-def tf_additional_device_tracer_test_flags():
     return []
 
 def tf_additional_cupti_test_flags():
@@ -679,38 +665,6 @@ def tf_additional_core_deps():
         "//tensorflow:no_aws_support": [],
         "//conditions:default": [
             "//tensorflow/core/platform/s3:s3_file_system",
-        ],
-    })
-
-# TODO(jart, jhseu): Delete when GCP is default on.
-def tf_additional_cloud_op_deps():
-    return select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:api_version_2": [],
-        "//tensorflow:windows_and_api_version_2": [],
-        "//tensorflow:no_gcp_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/cloud:bigquery_reader_ops_op_lib",
-            "//tensorflow/contrib/cloud:gcs_config_ops_op_lib",
-        ],
-    })
-
-# TODO(jhseu): Delete when GCP is default on.
-def tf_additional_cloud_kernel_deps():
-    return select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:api_version_2": [],
-        "//tensorflow:windows_and_api_version_2": [],
-        "//tensorflow:no_gcp_support": [],
-        "//conditions:default": [
-            "//tensorflow/contrib/cloud/kernels:bigquery_reader_ops",
-            "//tensorflow/contrib/cloud/kernels:gcs_config_ops",
         ],
     })
 

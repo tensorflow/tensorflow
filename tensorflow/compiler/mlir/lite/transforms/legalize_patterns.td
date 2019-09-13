@@ -20,6 +20,10 @@ include "mlir/Dialect/StandardOps/Ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
+def NonOpaqueElementsAttr : ElementsAttrBase<
+  CPred<"!$_self.isa<OpaqueElementsAttr>()">,
+  "non-opaque constant tensor">;
+
 def F32ElementsAttr : ElementsAttrBase<
   CPred<"$_self.cast<ElementsAttr>().getType().getElementType().isF32()">, "float constant tensor">;
 
@@ -56,7 +60,12 @@ def ExtractSingleElementAsInteger : NativeCodeCall<
 //===----------------------------------------------------------------------===//
 // Nullary ops patterns.
 //===----------------------------------------------------------------------===//
+
 def : Pat<(TF_ConstOp ElementsAttr:$value), (TFL_ConstOp $value)>;
+
+// Convert to std constant for statically shaped, non-opaque constants.
+def : Pat<(TF_ConstOp:$res NonOpaqueElementsAttr:$value), (ConstantOp $value),
+          [(AnyStaticShapeTensor $res)], (addBenefit 10)>;
 
 //===----------------------------------------------------------------------===//
 // Unary ops patterns.
@@ -157,7 +166,8 @@ def : Pat<(TF_ZerosLikeOp $arg), (TFL_ZerosLikeOp $arg)>;
 // The following two rules can both match an tf.Placeholder.input node with
 // min/max/type attributes, so we increase the benefit of the first rule by one
 // so the tfl.quantize and tfl.dequantize ops will be inserted if it matches.
-def : Pat<(TF_PlaceholderInputOp $inputs, $min, $max, $type),
+def : Pat<(TF_PlaceholderInputOp TensorOf<[F16, F32, F64]>:$inputs,
+              $min, $max, $type),
           (TFL_DequantizeOp
               (TFL_QuantizeOp
                   (TFL_InputOp $inputs),
@@ -191,7 +201,8 @@ def : Pat<(TF_GatherV2Op $params, $indices,
 
 def : Pat<(TF_FloorDivOp $l, $r), (TFL_FloorDivOp $l, $r)>;
 
-def : Pat<(TF_NotEqualOp $l, $r), (TFL_NotEqualOp $l, $r)>;
+def : Pat<(TF_NotEqualOp $l, $r, /*incompatible_shape_error=*/ConstBoolAttrTrue),
+          (TFL_NotEqualOp $l, $r)>;
 
 def : Pat<(TF_LogicalAndOp $l, $r), (TFL_LogicalAndOp $l, $r)>;
 
@@ -252,7 +263,7 @@ def : Pat<(TF_ReluOp (TF_SquaredDifferenceOp $l, $r)),
 
 def : Pat<(TF_ReverseV2Op $arg0, $arg1), (TFL_ReverseV2Op $arg0, $arg1)>;
 
-def : Pat<(TF_EqualOp $arg0, $arg1), (TFL_EqualOp $arg0, $arg1)>;
+def : Pat<(TF_EqualOp $arg0, $arg1, /*incompatible_shape_error=*/ConstBoolAttrTrue), (TFL_EqualOp $arg0, $arg1)>;
 
 def : Pat<(TF_PadOp $arg0, $arg1), (TFL_PadOp $arg0, $arg1)>;
 
@@ -308,3 +319,11 @@ def : Pat<(TF_FloorModOp $arg0, $arg1), (TFL_FloorModOp $arg0, $arg1)>;
 def : Pat<(TF_ExpOp $arg0), (TFL_ExpOp $arg0)>;
 
 def : Pat<(TF_LRNOp $arg0, $radius, F32Attr:$bias, F32Attr:$alpha, F32Attr:$beta), (TFL_LocalResponseNormalizationOp $arg0, (convertIntAttrTo32Bit $radius), $bias, $alpha, $beta)>;
+
+def : Pat<
+  (TF_NonMaxSuppressionV4Op $boxes, $scores, $max_output_size, $iou_threshold, $score_threshold, $pad_to_max_output_size),
+  (TFL_NonMaxSuppressionV4Op $boxes, $scores, $max_output_size, $iou_threshold, $score_threshold)>;
+
+def : Pat<
+  (TF_NonMaxSuppressionV5Op $boxes, $scores, $max_output_size, $iou_threshold, $score_threshold, $soft_nms_sigma, $pad_to_max_output_size),
+  (TFL_NonMaxSuppressionV5Op $boxes, $scores, $max_output_size, $iou_threshold, $score_threshold, $soft_nms_sigma)>;

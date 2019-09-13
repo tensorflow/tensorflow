@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import enum  # pylint: disable=g-bad-import-order
 import functools
 import itertools
 import threading
@@ -1315,11 +1314,11 @@ class _HigherOrderTapeGradientFunctions(_TapeGradientFunctions):
             num_output_tangents)
 
 
-class _PossibleTapeGradientTypes(enum.Enum):
-  """Represents the output of TFE_Py_TapeSetPossibleGradientTypes."""
-  NONE = 0
-  FIRST_ORDER = 1
-  HIGHER_ORDER = 2
+# Represents the output of TFE_Py_TapeSetPossibleGradientTypes. Real enums are
+# unfortunately too slow to use here.
+_POSSIBLE_GRADIENT_TYPES_NONE = 0
+_POSSIBLE_GRADIENT_TYPES_FIRST_ORDER = 1
+_POSSIBLE_GRADIENT_TYPES_HIGHER_ORDER = 2
 
 
 class _ForwardBackwardCall(object):
@@ -1409,6 +1408,9 @@ class ConcreteFunction(object):
         func_graph, self._attrs, self._garbage_collector)
     self._first_order_tape_functions = {}
     self._higher_order_tape_functions = {}
+    # Cache the inference function to avoid a (Python) function call when not
+    # building gradients.
+    self._inference_function = self._delayed_rewrite_functions.forward()
 
   def __call__(self, *args, **kwargs):
     """Executes the wrapped function.
@@ -1572,8 +1574,17 @@ class ConcreteFunction(object):
                          "on invocation of %s, the %d-th input (%s) was not a "
                          "Tensor." % (self._func_graph.name, i, str(arg)))
     args = tensor_inputs + captured_inputs
+    possible_gradient_type = (
+        pywrap_tensorflow.TFE_Py_TapeSetPossibleGradientTypes(args))
+    if (possible_gradient_type == _POSSIBLE_GRADIENT_TYPES_NONE
+        and executing_eagerly):
+      # No tape is watching; skip to running the function.
+      return self._build_call_outputs(self._inference_function.call(
+          ctx, args, cancellation_manager=cancellation_manager))
     forward_backward = self._select_forward_and_backward_functions(
-        args, executing_eagerly)
+        args,
+        possible_gradient_type,
+        executing_eagerly)
     forward_function, args_with_tangents = forward_backward.forward()
     if executing_eagerly:
       flat_outputs = forward_function.call(
@@ -1698,7 +1709,8 @@ class ConcreteFunction(object):
     """Registers a delayed-rewrite gradient function and returns the name."""
     return self._delayed_rewrite_functions.register()
 
-  def _select_forward_and_backward_functions(self, args, executing_eagerly):
+  def _select_forward_and_backward_functions(
+      self, args, possible_gradient_type, executing_eagerly):
     """Selects forward and backward functions based on the calling context.
 
     The forward function computes the "real" function outputs, `self._outputs`,
@@ -1707,6 +1719,7 @@ class ConcreteFunction(object):
     Args:
       args: A flat list of Tensors with all of the inputs to the forward
         function (including user-specified and captured inputs).
+      possible_gradient_type: One of _POSSIBLE_GRADIENT_TYPES_*.
       executing_eagerly: Boolean, the value of context.executing_eagerly().
 
     Returns:
@@ -1721,12 +1734,10 @@ class ConcreteFunction(object):
       input_tangents = forwardprop_util.TangentInfo()
     need_gradients_for_jvps = tape.should_record_backprop(
         input_tangents.tangents)
-    possible_gradient_type = _PossibleTapeGradientTypes(
-        pywrap_tensorflow.TFE_Py_TapeSetPossibleGradientTypes(args))
     # Allows re-use of forward and backward function pairs depending on the
     # tapes and forward accumulators watching its inputs.
     cache_key = (need_gradients_for_jvps, input_tangents.indices)
-    if possible_gradient_type == _PossibleTapeGradientTypes.FIRST_ORDER:
+    if possible_gradient_type == _POSSIBLE_GRADIENT_TYPES_FIRST_ORDER:
       if input_tangents.indices or executing_eagerly:
         # There is a single non-persistent tape active, so the user can only
         # request first-order gradients from a tape. We can spend less time
@@ -1757,7 +1768,7 @@ class ConcreteFunction(object):
         return _ForwardBackwardCall(
             self._delayed_rewrite_functions, args, input_tangents.tangents,
             tape_watching=True)
-    elif possible_gradient_type == _PossibleTapeGradientTypes.HIGHER_ORDER:
+    elif possible_gradient_type == _POSSIBLE_GRADIENT_TYPES_HIGHER_ORDER:
       # Either there's a persistent tape watching, or there are multiple nested
       # tapes. Either way, the user may request higher-order gradients. We'll
       # spend a bit more time and make sure higher-order gradients are correct.
@@ -1772,7 +1783,7 @@ class ConcreteFunction(object):
         self._higher_order_tape_functions[cache_key] = functions
       return _ForwardBackwardCall(functions, args, input_tangents.tangents,
                                   tape_watching=True)
-    # else possible_gradient_type == _PossibleTapeGradientTypes.NONE, meaning no
+    # else possible_gradient_type == _POSSIBLE_GRADIENT_TYPES_NONE, meaning no
     # tape is recording.
     return _ForwardBackwardCall(
         self._delayed_rewrite_functions, args, input_tangents.tangents,
@@ -2195,6 +2206,7 @@ class Function(object):
     self._function_cache = FunctionCache()
     self._function_attributes = attributes or {}
     self._capture_by_value = capture_by_value
+    self.tracing_count = 0
 
     self._lock = threading.Lock()
     # _descriptor_cache is a of instance of a class to an instance-specific
@@ -2401,6 +2413,8 @@ class Function(object):
 
   def _create_graph_function(self, args, kwargs, override_flat_arg_shapes=None):
     """Create a `ConcreteFunction` from `args` and `kwargs`."""
+    self.tracing_count += 1
+
     if self.input_signature is None:
       arglen = len(args)
     else:
