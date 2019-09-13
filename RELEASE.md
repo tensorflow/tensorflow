@@ -28,6 +28,8 @@ For information on upgrading your existing TensorFlow 1.x models, please refer t
 * Add toggles `tf.enable_control_flow_v2()` and `tf.disable_control_flow_v2()` for enabling/disabling v2 control flow.
 * Enable v2 control flow as part of `tf.enable_v2_behavior()` and `TF2_BEHAVIOR=1`.
 * Fixes autocomplete for most TensorFlow API references by switching to use relative imports in API __init__.py files.
+* Auto Mixed-Precision graph optimizer simplifies converting models to float16 for acceleration on Volta and Turing Tensor Cores. This feature can be enabled by wrapping an optimizer class with `tf.train.experimental.enable_mixed_precision_graph_rewrite()`.
+* Add environment variable TF_CUDNN_DETERMINISTIC. Setting to "true" or "1" forces the selection of deterministic cuDNN convolution and max-pooling algorithms. When this is enabled, the algorithm selection procedure itself is also deterministic.
 
 ## Breaking Changes
 * Many backwards incompatible API changes have been made to clean up the APIs and make them more consistent.
@@ -172,7 +174,19 @@ If you are experiencing any issues because of this change, please inform us (fil
   * Post-training quantization tool supports fp16 weights and GPU delegate acceleration for fp16.
   * Add delegate support for `QUANTIZED_16BIT_LSTM`.
   * Extracts `NNAPIDelegateKernel` from nnapi_delegate.cc
-  
+
+* TensorRT
+  * Add TensorFlow 2.0-compatible `TrtGraphConverterV2` API for TensorRT conversion.
+    TensorRT initialization arguments are now passed wrapped in a named-tuple,
+    `TrtConversionParams`, rather than as separate arguments as in `TrtGraphConverter`.
+  * Changed API to optimize TensorRT enginges during graph optimization. This is now
+    done by calling `converter.build()` where previously `is_dynamic_op=False` would
+    be set.
+  * `converter.convert()` no longer returns a `tf.function`. Now the funtion must be
+    accessed from the saved model.
+  * The `converter.calibrate()` method has been removed. To trigger calibration, a
+    `calibration_input_fn` should be provided to `converter.convert()`.
+
 * Other:
   * Fix accidental quadratic graph construction cost in graph-mode `tf.gradients()`.
   * ResourceVariable's gather op supports batch dimensions.
@@ -285,7 +299,8 @@ If you are experiencing any issues because of this change, please inform us (fil
   * Updating cosine similarity loss - removed the negate sign from cosine similarity.
   * Changed default for gradient accumulation for TPU embeddings to true.
   * Adds summary trace API for collecting graph and profile information. 
-  
+* The `precision_mode` argument to `TrtGraphConverter` is now case insensitive.
+
 
 ## Thanks to our Contributors
 
