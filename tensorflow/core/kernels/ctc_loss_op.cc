@@ -58,9 +58,6 @@ void DoHistogram(OpKernelContext* ctx, const Tensor* labels_indices,
   for(int i = 0; i < num_indices; i++) {
     T key = h_in[i * 2];
     (*labels_lengths)[key]++;
-    OP_REQUIRES(ctx, (*labels_lengths)[key] < 256,
-                errors::InvalidArgument("Label lengths cannot exceed 256"
-                                        "for GPU implementation"));
   }
 }
 

@@ -1745,7 +1745,7 @@ port::StatusOr<DeviceMemory<uint8>> CreateCtcLossWorkspace(
       /*labels=*/labels_data.data(),
       /*labelLengths=*/labels_lengths_data.data(),
       /*inputLengths=*/input_lengths_data.data(),
-      /*algo=*/CUDNN_CTC_LOSS_ALGO_DETERMINISTIC,
+      /*algo=*/CUDNN_CTC_LOSS_ALGO_NON_DETERMINISTIC,
       /*ctcLossDesc=*/ctc_loss_desc.handle(),
       /*sizeInBytes=*/&workspace_size_in_bytes));
 #else
@@ -2104,7 +2104,7 @@ port::Status CudnnSupport::DoCtcLossImpl(
           /*inputLengths=*/input_lengths_data.data(),
           /*costs=*/costs_data->opaque(), /*gradientsDesc=*/grads_desc.handle(),
           /*gradients=*/grads_data->opaque(),
-          /*algo=*/CUDNN_CTC_LOSS_ALGO_DETERMINISTIC,
+          /*algo=*/CUDNN_CTC_LOSS_ALGO_NON_DETERMINISTIC,
           /*ctcLossDesc=*/ctc_loss_desc.handle(),
           /*workspace=*/workspace.opaque(),
           /*workSpaceSizeInBytes=*/workspace.size()));
