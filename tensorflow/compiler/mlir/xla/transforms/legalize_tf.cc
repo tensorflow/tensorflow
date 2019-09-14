@@ -65,8 +65,8 @@ static IntegerAttr GetHLOAxisFromTFAxis(ElementsAttr attr, int64_t rank,
 }
 
 // Returns minimum value for the given int or float element type.
-static ConstantOp GetMinValueForType(Type ty, Location loc,
-                                     PatternRewriter *rewriter) {
+static xla_hlo::ConstOp GetMinValueForType(Type ty, Location loc,
+                                           PatternRewriter *rewriter) {
   RankedTensorType scalar_ty = rewriter->getTensorType({}, ty);
 
   DenseElementsAttr attr;
@@ -79,7 +79,7 @@ static ConstantOp GetMinValueForType(Type ty, Location loc,
     APInt min_val = APInt::getSignedMinValue(int_ty.getWidth());
     attr = DenseElementsAttr::get(scalar_ty, min_val);
   }
-  return rewriter->create<ConstantOp>(loc, attr);
+  return rewriter->create<xla_hlo::ConstOp>(loc, attr);
 }
 
 // Builds body for reduce op by using the using the template binary op as the
@@ -246,7 +246,7 @@ class ConvertMaxPoolOp : public OpRewritePattern<TF::MaxPoolOp> {
         op.input()->getType().cast<TensorType>().getElementType();
     if (!element_type.isIntOrFloat()) return matchFailure();
     Location loc = op.getLoc();
-    ConstantOp init = GetMinValueForType(element_type, loc, &rewriter);
+    xla_hlo::ConstOp init = GetMinValueForType(element_type, loc, &rewriter);
 
     auto get_elements_attr = [&](ArrayAttr attr) {
       RankedTensorType ty = rewriter.getTensorType(
@@ -345,7 +345,7 @@ class ConvertSoftmaxOp : public OpRewritePattern<TF::SoftmaxOp> {
     auto casted_exp = rewriter.create<xla_hlo::ConvertOp>(loc, sum_type, exp);
 
     // Compute summation of the exponentials.
-    init = rewriter.create<ConstantOp>(
+    init = rewriter.create<xla_hlo::ConstOp>(
         loc, DenseElementsAttr::get(rewriter.getTensorType({}, element_type),
                                     rewriter.getZeroAttr(element_type)));
     Type sum_out_type = rewriter.getTensorType(reduce_shape, sum_element_type);
