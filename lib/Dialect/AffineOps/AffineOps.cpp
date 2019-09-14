@@ -1358,7 +1358,7 @@ struct AffineForEmptyLoopFolder : public OpRewritePattern<AffineForOp> {
 };
 
 /// This is a pattern to fold constant loop bounds.
-struct AffineForLoopBoundFolder : public OpRewritePattern<AffineForOp> {
+struct AffineForOpBoundFolder : public OpRewritePattern<AffineForOp> {
   using OpRewritePattern<AffineForOp>::OpRewritePattern;
 
   PatternMatchResult matchAndRewrite(AffineForOp forOp,
@@ -1413,11 +1413,44 @@ struct AffineForLoopBoundFolder : public OpRewritePattern<AffineForOp> {
     return matchSuccess();
   }
 };
+
+// This is a pattern to canonicalize affine for op loop bounds.
+struct AffineForOpBoundCanonicalizer : public OpRewritePattern<AffineForOp> {
+  using OpRewritePattern<AffineForOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(AffineForOp forOp,
+                                     PatternRewriter &rewriter) const override {
+    SmallVector<Value *, 4> lbOperands(forOp.getLowerBoundOperands());
+    SmallVector<Value *, 4> ubOperands(forOp.getUpperBoundOperands());
+
+    auto lbMap = forOp.getLowerBoundMap();
+    auto ubMap = forOp.getUpperBoundMap();
+    auto prevLbMap = lbMap;
+    auto prevUbMap = ubMap;
+
+    canonicalizeMapAndOperands(&lbMap, &lbOperands);
+    canonicalizeMapAndOperands(&ubMap, &ubOperands);
+
+    // Any canonicalization change always leads to updated map(s).
+    if (lbMap == prevLbMap && ubMap == prevUbMap)
+      return matchFailure();
+
+    if (lbMap != prevLbMap)
+      forOp.setLowerBound(lbOperands, lbMap);
+    if (ubMap != prevUbMap)
+      forOp.setUpperBound(ubOperands, ubMap);
+
+    rewriter.updatedRootInPlace(forOp);
+    return matchSuccess();
+  }
+};
+
 } // end anonymous namespace
 
 void AffineForOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                               MLIRContext *context) {
-  results.insert<AffineForEmptyLoopFolder, AffineForLoopBoundFolder>(context);
+  results.insert<AffineForEmptyLoopFolder, AffineForOpBoundFolder,
+                 AffineForOpBoundCanonicalizer>(context);
 }
 
 AffineBound AffineForOp::getLowerBound() {

@@ -446,3 +446,33 @@ func @canonicalize_affine_if(%M : index, %N : index) {
   }
   return
 }
+
+// -----
+
+// CHECK-DAG: [[LBMAP:#map[0-9]+]] = ()[s0] -> (0, s0)
+// CHECK-DAG: [[UBMAP:#map[0-9]+]] = ()[s0] -> (1024, s0 + s0)
+
+// CHECK-LABEL: func @canonicalize_bounds
+// CHECK-SAME: [[M:%.*]]: index,
+// CHECK-SAME: [[N:%.*]]: index)
+func @canonicalize_bounds(%M : index, %N : index) {
+  %c0 = constant 0 : index
+  %c1024 = constant 1024 : index
+  // Drop unused operand %N, drop duplicate operand %M, propagate %c1024, and
+  // promote %M to a symbolic one.
+  // CHECK: affine.for %{{.*}} = 0 to min [[UBMAP]](){{\[}}[[M]]{{\]}}
+  affine.for %i = 0 to min (d0, d1, d2, d3) -> (d0, d1 + d2) (%c1024, %M, %M, %N) {
+    "foo"() : () -> ()
+  }
+  // Promote %M to symbolic position.
+  // CHECK: affine.for %{{.*}} = 0 to #map{{[0-9]+}}(){{\[}}[[M]]{{\]}}
+  affine.for %i = 0 to (d0) -> (4 * d0) (%M) {
+    "foo"() : () -> ()
+  }
+  // Lower bound canonicalize.
+  // CHECK: affine.for %{{.*}} = max [[LBMAP]](){{\[}}[[N]]{{\]}} to [[M]]
+  affine.for %i = max (d0, d1) -> (d0, d1) (%c0, %N) to %M {
+    "foo"() : () -> ()
+  }
+  return
+}

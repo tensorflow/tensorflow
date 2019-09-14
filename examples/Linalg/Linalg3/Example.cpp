@@ -71,7 +71,7 @@ TEST_FUNC(matmul_as_matvec) {
   // CHECK-LABEL: func @matmul_as_matvec(%{{.*}}: memref<?x?xf32>, %{{.*}}: memref<?x?xf32>, %{{.*}}: memref<?x?xf32>) {
   //       CHECK: %[[N:.*]] = dim %{{.*}}, 1 : memref<?x?xf32>
   //       CHECK: %[[vA:.*]] = linalg.view %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
-  //       CHECK: affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[N]]) {
+  //       CHECK: affine.for %{{.*}} = 0 to %[[N]] {
   //       CHECK:   %[[vB:.*]] = linalg.view %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32>, !linalg.range, index, !linalg.view<?xf32>
   //       CHECK:   %[[vC:.*]] = linalg.view %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32>, !linalg.range, index, !linalg.view<?xf32>
   //       CHECK:   linalg.matvec(%[[vA]], %[[vB]], %[[vC]]) : !linalg.view<?xf32>
@@ -90,9 +90,9 @@ TEST_FUNC(matmul_as_dot) {
   // CHECK-LABEL: func @matmul_as_dot(%{{.*}}: memref<?x?xf32>, %{{.*}}: memref<?x?xf32>, %{{.*}}: memref<?x?xf32>) {
   //       CHECK: %[[M:.*]] = dim %{{.*}}, 0 : memref<?x?xf32>
   //       CHECK: %[[N:.*]] = dim %{{.*}}, 1 : memref<?x?xf32>
-  //       CHECK: affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[N]]) {
+  //       CHECK: affine.for %{{.*}} = 0 to %[[N]] {
   //       CHECK:   %[[vB:.*]] = linalg.view %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32>, !linalg.range, index, !linalg.view<?xf32>
-  //  CHECK-NEXT:   affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[M]]) {
+  //  CHECK-NEXT:   affine.for %{{.*}} = 0 to %[[M]] {
   //       CHECK:     %[[vA:.*]] = linalg.view %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32>, index, !linalg.range, !linalg.view<?xf32>
   //  CHECK-NEXT:     %[[vC:.*]] = linalg.view %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32>, index, index, !linalg.view<f32>
   //  CHECK-NEXT:     linalg.dot(%[[vA]], %[[vB]], %[[vC]]) : !linalg.view<f32>
@@ -117,9 +117,9 @@ TEST_FUNC(matmul_as_loops) {
   //       CHECK: %[[vA:.*]] = linalg.view %{{.*}}[%[[rM]], %[[rK]]] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
   //       CHECK: %[[vB:.*]] = linalg.view %{{.*}}[%[[rK]], %[[rN]]] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
   //       CHECK: %[[vC:.*]] = linalg.view %{{.*}}[%[[rM]], %[[rN]]] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
-  //       CHECK: affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[M]]) {
-  //       CHECK:   affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[N]]) {
-  //       CHECK:     affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[K]]) {
+  //       CHECK: affine.for %{{.*}} = 0 to %[[M]] {
+  //       CHECK:   affine.for %{{.*}} = 0 to %[[N]] {
+  //       CHECK:     affine.for %{{.*}} = 0 to %[[K]] {
   //       CHECK:       %{{.*}} = cmpi "eq", %{{.*}} : index
   //       CHECK:       %{{.*}} = linalg.load %[[vC]][%{{.*}}, %{{.*}}] : !linalg.view<?x?xf32>
   //       CHECK:       %{{.*}} = select {{.*}} : f32
@@ -146,11 +146,11 @@ TEST_FUNC(matmul_as_matvec_as_loops) {
   //       CHECK: %[[N:.*]] = dim %{{.*}}, 1 : memref<?x?xf32>
   //       CHECK: %[[K:.*]] = dim %{{.*}}, 1 : memref<?x?xf32>
   //       CHECK: %[[vA:.*]] = linalg.view %{{.*}}[{{.*}}, {{.*}}] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
-  //       CHECK: affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[N]]) {
+  //       CHECK: affine.for %{{.*}} = 0 to %[[N]] {
   //       CHECK:   %[[vB:.*]] = linalg.view %{{.*}}[{{.*}}, {{.*}}] : memref<?x?xf32>, !linalg.range, index, !linalg.view<?xf32>
   //       CHECK:   %[[vC:.*]] = linalg.view %{{.*}}[{{.*}}, {{.*}}] : memref<?x?xf32>, !linalg.range, index, !linalg.view<?xf32>
-  //       CHECK:   affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[M]]) {
-  //       CHECK:     affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[K]]) {
+  //       CHECK:   affine.for %{{.*}} = 0 to %[[M]] {
+  //       CHECK:     affine.for %{{.*}} = 0 to %[[K]] {
   //       CHECK:        %{{.*}} = cmpi "eq", %{{.*}}, %{{.*}} : index
   //       CHECK:        %[[C:.*]] = linalg.load %[[vC]][%{{.*}}] : !linalg.view<?xf32>
   //       CHECK:        %[[C2:.*]] = select %{{.*}}, %{{.*}}, %[[C]] : f32
@@ -181,10 +181,10 @@ TEST_FUNC(matmul_as_matvec_as_affine) {
   //       CHECK: %[[M:.*]] = dim %{{.*}}, 0 : memref<?x?xf32>
   //       CHECK: %[[N:.*]] = dim %{{.*}}, 1 : memref<?x?xf32>
   //       CHECK: %[[K:.*]] = dim %{{.*}}, 1 : memref<?x?xf32>
-  //       CHECK: affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[N]]) {
+  //       CHECK: affine.for %{{.*}} = 0 to %[[N]] {
   //   CHECK-NOT: {{.*}} = linalg.
-  //       CHECK:   affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[M]]) {
-  //       CHECK:     affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[K]]) {
+  //       CHECK:   affine.for %{{.*}} = 0 to %[[M]] {
+  //       CHECK:     affine.for %{{.*}} = 0 to %[[K]] {
   //       CHECK:       %{{.*}} = cmpi "eq", %{{.*}}, %{{.*}} : index
   //       CHECK:       %{{.*}} = load %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32>
   //       CHECK:       %{{.*}} = select %{{.*}}, %{{.*}}, %{{.*}} : f32

@@ -77,9 +77,9 @@ TEST_FUNC(matmul_tiled_loops) {
   //       CHECK: %[[M:.*]] = dim %{{.*}}, 0 : memref<?x?xf32>
   //       CHECK: %[[N:.*]] = dim %{{.*}}, 1 : memref<?x?xf32>
   //       CHECK: %[[K:.*]] = dim %{{.*}}, 1 : memref<?x?xf32>
-  //       CHECK: affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[M]]) step 8 {
-  //       CHECK:   affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[N]]) step 9 {
-  //       CHECK:     affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[K]]) {
+  //       CHECK: affine.for %{{.*}} = 0 to %[[M]] step 8 {
+  //       CHECK:   affine.for %{{.*}} = 0 to %[[N]] step 9 {
+  //       CHECK:     affine.for %{{.*}} = 0 to %[[K]] {
   //       CHECK:       affine.for %{{.*}} = max (d0) -> (0, d0)(%{{.*}}) to min (d0)[s0] -> (s0, d0 + 8)(%{{.*}})[%[[M]]] {
   //       CHECK:         affine.for %{{.*}} = max (d0) -> (0, d0)(%{{.*}}) to min (d0)[s0] -> (s0, d0 + 9)(%{{.*}})[%[[N]]] {
   //  CHECK-NEXT:           %{{.*}} = cmpi "eq", %{{.*}}, %{{.*}} : index
@@ -107,8 +107,8 @@ TEST_FUNC(matmul_tiled_views) {
   //       CHECK: %[[M:.*]] = dim %{{.*}}, 0 : memref<?x?xf32>
   //       CHECK: %[[N:.*]] = dim %{{.*}}, 1 : memref<?x?xf32>
   //       CHECK: %[[K:.*]] = dim %{{.*}}, 1 : memref<?x?xf32>
-  //       CHECK: affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[M]]) step 8 {
-  //  CHECK-NEXT:   affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[N]]) step 9 {
+  //       CHECK: affine.for %{{.*}} = 0 to %[[M]] step 8 {
+  //  CHECK-NEXT:   affine.for %{{.*}} = 0 to %[[N]] step 9 {
   //  CHECK-NEXT:     %[[i0max:.*]] = affine.apply (d0) -> (d0 + 8)(%{{.*}})
   //  CHECK-NEXT:     %[[ri0:.*]] = linalg.range %{{.*}}:%[[i0max]]:{{.*}} : !linalg.range
   //       CHECK:     %[[rK:.*]] = linalg.range %{{.*}}:%{{.*}}:%{{.*}} : !linalg.range
@@ -141,8 +141,8 @@ TEST_FUNC(matmul_tiled_views_as_loops) {
   //       CHECK: %[[M:.*]] = dim %{{.*}}, 0 : memref<?x?xf32>
   //       CHECK: %[[N:.*]] = dim %{{.*}}, 1 : memref<?x?xf32>
   //       CHECK: %[[K:.*]] = dim %{{.*}}, 1 : memref<?x?xf32>
-  //       CHECK: affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[M]]) step 8 {
-  //  CHECK-NEXT:   affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[N]]) step 9 {
+  //       CHECK: affine.for %{{.*}} = 0 to %[[M]] step 8 {
+  //  CHECK-NEXT:   affine.for %{{.*}} = 0 to %[[N]] step 9 {
   //  CHECK-NEXT:     %[[i0max:.*]] = affine.apply (d0) -> (d0 + 8)(%{{.*}})
   //  CHECK-NEXT:     %[[ri0:.*]] = linalg.range %{{.*}}:%[[i0max]]:{{.*}} : !linalg.range
   //       CHECK:     %[[rK:.*]] = linalg.range %{{.*}}:%{{.*}}:%{{.*}} : !linalg.range
@@ -153,7 +153,7 @@ TEST_FUNC(matmul_tiled_views_as_loops) {
   //  CHECK-NEXT:     %[[vC:.*]]  = linalg.view %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
   //  CHECK-NEXT:     affine.for %{{.*}} = (d0) -> (d0)(%{{.*}}) to (d0) -> (d0)(%[[i0max]]) {
   //  CHECK-NEXT:       affine.for %{{.*}} = (d0) -> (d0)(%{{.*}}) to (d0) -> (d0)(%[[i1max]]) {
-  //  CHECK-NEXT:         affine.for %{{.*}} = 0 to (d0) -> (d0)(%[[K]]) {
+  //  CHECK-NEXT:         affine.for %{{.*}} = 0 to %[[K]] {
   //  CHECK-NEXT:           %{{.*}} = cmpi "eq", %{{.*}}, %{{.*}} : index
   //  CHECK-NEXT:           %{{.*}} = linalg.load %[[vC]][%{{.*}}, %{{.*}}] : !linalg.view<?x?xf32>
   //  CHECK-NEXT:           %{{.*}} = select %{{.*}}, %{{.*}}, %{{.*}} : f32
