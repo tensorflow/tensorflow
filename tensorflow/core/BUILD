@@ -70,6 +70,7 @@ load(
     "if_emscripten",
     "if_ios",
     "if_linux_x86_64",
+    "if_mlir",
     "if_mobile",
     "if_not_windows",
     "if_windows",
@@ -1432,6 +1433,8 @@ cc_library(
     ]) + if_tensorrt([
         "//tensorflow/compiler/tf2tensorrt:trt_engine_resource_ops_op_lib",
         "//tensorflow/compiler/tf2tensorrt:trt_op_libs",
+    ]) + if_mlir([
+        "//tensorflow/compiler/mlir/tensorflow:mlir_passthrough_op",
     ]),
     alwayslink = 1,
 )
