@@ -555,7 +555,8 @@ if (tensorflow_ENABLE_GPU)
   # NOTE(mrry): Update these flags when the version of CUDA or cuDNN used
   # in the default build is upgraded.
   if(WIN32)
-    set(tensorflow_BUILD_INFO_FLAGS --build_config cuda --key_value
+    set(tensorflow_BUILD_INFO_FLAGS
+      --is_config_cuda True --is_config_rocm False --key_value
       msvcp_dll_name=msvcp140.dll
       cudart_dll_name=cudart64_${short_CUDA_VER}.dll
       cuda_version_number=${CUDA_VERSION}
@@ -563,7 +564,8 @@ if (tensorflow_ENABLE_GPU)
       cudnn_dll_name=cudnn64_${tensorflow_CUDNN_VERSION}.dll
       cudnn_version_number=${tensorflow_CUDNN_VERSION})
   else(WIN32)
-    set(tensorflow_BUILD_INFO_FLAGS --build_config cuda --key_value
+    set(tensorflow_BUILD_INFO_FLAGS
+      --is_config_cuda True --is_config_rocm False --key_value
       cuda_version_number=${CUDA_VERSION}
       cudnn_version_number=${tensorflow_CUDNN_VERSION})
   endif(WIN32)
