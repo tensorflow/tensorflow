@@ -2914,10 +2914,8 @@ the output tensor can vary depending on how many true values there are in
     I1Tensor:$input
   );
 
-  // TODO(haoliang): TF Lite only support I32 output right now, need to fix
-  // either here or in the kernel.
   let results = (outs
-    TFL_I32OrI64Tensor:$index
+    I64Tensor:$index
   );
 }
 
