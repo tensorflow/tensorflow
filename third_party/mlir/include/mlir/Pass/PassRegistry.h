@@ -32,6 +32,7 @@
 #include <memory>
 
 namespace mlir {
+struct LogicalResult;
 class OpPassManager;
 class Pass;
 
@@ -161,6 +162,13 @@ struct PassPipelineRegistration {
   PassPipelineRegistration(StringRef arg, StringRef description,
                            PassAllocatorFunction allocator);
 };
+
+/// This function parses the textual representation of a pass pipeline, and adds
+/// the result to 'pm' on success. This function returns failure if the given
+/// pipeline was invalid. 'errorStream' is the output stream used to emit errors
+/// found during parsing.
+LogicalResult parsePassPipeline(StringRef pipeline, OpPassManager &pm,
+                                raw_ostream &errorStream = llvm::errs());
 
 //===----------------------------------------------------------------------===//
 // PassPipelineCLParser

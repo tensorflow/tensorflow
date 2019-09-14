@@ -44,6 +44,10 @@ static void testNestedPipeline(OpPassManager &pm) {
   functionPM.addPass(std::make_unique<TestFunctionPass>());
 }
 
+static void testNestedPipelineTextual(OpPassManager &pm) {
+  (void)parsePassPipeline("test-pm-nested-pipeline", pm);
+}
+
 static PassRegistration<TestModulePass>
     unusedMP("test-module-pass", "Test a module pass in the pass manager");
 static PassRegistration<TestFunctionPass>
@@ -52,3 +56,7 @@ static PassRegistration<TestFunctionPass>
 static PassPipelineRegistration
     unused("test-pm-nested-pipeline",
            "Test a nested pipeline in the pass manager", testNestedPipeline);
+static PassPipelineRegistration
+    unusedTextual("test-textual-pm-nested-pipeline",
+                  "Test a nested pipeline in the pass manager",
+                  testNestedPipelineTextual);

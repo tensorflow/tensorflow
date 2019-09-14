@@ -20,6 +20,8 @@
 #include "mlir/Pass/PassManager.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/ManagedStatic.h"
+#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/SourceMgr.h"
 
 using namespace mlir;
 using namespace detail;
@@ -91,14 +93,19 @@ namespace {
 /// This class represents a textual description of a pass pipeline.
 class TextualPipeline {
 public:
-  /// Try to initialize this pipeline with the given pipeline text. An option is
-  /// given to enable accurate error reporting.
-  LogicalResult initialize(StringRef text, llvm::cl::Option &opt);
+  /// Try to initialize this pipeline with the given pipeline text.
+  /// `errorStream` is the output stream to emit errors to.
+  LogicalResult initialize(StringRef text, raw_ostream &errorStream);
 
   /// Add the internal pipeline elements to the provided pass manager.
   void addToPipeline(OpPassManager &pm) const;
 
 private:
+  /// A functor used to emit errors found during pipeline handling. The first
+  /// parameter corresponds to the raw location within the pipeline string. This
+  /// should always return failure.
+  using ErrorHandlerT = function_ref<LogicalResult(const char *, llvm::Twine)>;
+
   /// A struct to capture parsed pass pipeline names.
   ///
   /// A pipeline is defined as a series of names, each of which may in itself
@@ -115,17 +122,17 @@ private:
   /// Parse the given pipeline text into the internal pipeline vector. This
   /// function only parses the structure of the pipeline, and does not resolve
   /// its elements.
-  LogicalResult parsePipelineText(StringRef text, llvm::cl::Option &opt);
+  LogicalResult parsePipelineText(StringRef text, ErrorHandlerT errorHandler);
 
   /// Resolve the elements of the pipeline, i.e. connect passes and pipelines to
   /// the corresponding registry entry.
   LogicalResult
   resolvePipelineElements(MutableArrayRef<PipelineElement> elements,
-                          llvm::cl::Option &opt);
+                          ErrorHandlerT errorHandler);
 
   /// Resolve a single element of the pipeline.
   LogicalResult resolvePipelineElement(PipelineElement &element,
-                                       llvm::cl::Option &opt);
+                                       ErrorHandlerT errorHandler);
 
   /// Add the given pipeline elements to the provided pass manager.
   void addToPipeline(ArrayRef<PipelineElement> elements,
@@ -139,11 +146,22 @@ private:
 /// Try to initialize this pipeline with the given pipeline text. An option is
 /// given to enable accurate error reporting.
 LogicalResult TextualPipeline::initialize(StringRef text,
-                                          llvm::cl::Option &opt) {
+                                          raw_ostream &errorStream) {
+  // Build a source manager to use for error reporting.
+  llvm::SourceMgr pipelineMgr;
+  pipelineMgr.AddNewSourceBuffer(llvm::MemoryBuffer::getMemBuffer(
+                                     text, "MLIR Textual PassPipeline Parser"),
+                                 llvm::SMLoc());
+  auto errorHandler = [&](const char *rawLoc, llvm::Twine msg) {
+    pipelineMgr.PrintMessage(errorStream, llvm::SMLoc::getFromPointer(rawLoc),
+                             llvm::SourceMgr::DK_Error, msg);
+    return failure();
+  };
+
   // Parse the provided pipeline string.
-  if (failed(parsePipelineText(text, opt)))
-    return failure(opt.error("failed to parse pass pipeline: `" + text + "'"));
-  return resolvePipelineElements(pipeline, opt);
+  if (failed(parsePipelineText(text, errorHandler)))
+    return failure();
+  return resolvePipelineElements(pipeline, errorHandler);
 }
 
 /// Add the internal pipeline elements to the provided pass manager.
@@ -155,7 +173,7 @@ void TextualPipeline::addToPipeline(OpPassManager &pm) const {
 /// function only parses the structure of the pipeline, and does not resolve
 /// its elements.
 LogicalResult TextualPipeline::parsePipelineText(StringRef text,
-                                                 llvm::cl::Option &opt) {
+                                                 ErrorHandlerT errorHandler) {
   SmallVector<std::vector<PipelineElement> *, 4> pipelineStack = {&pipeline};
   for (;;) {
     std::vector<PipelineElement> &pipeline = *pipelineStack.back();
@@ -185,9 +203,9 @@ LogicalResult TextualPipeline::parsePipelineText(StringRef text,
     do {
       // If we try to pop the outer pipeline we have unbalanced parentheses.
       if (pipelineStack.size() == 1)
-        return failure(
-            opt.error("encountered extra closing ')' creating unbalanced "
-                      "parentheses while parsing pipeline"));
+        return errorHandler(/*rawLoc=*/text.data() - 1,
+                            "encountered extra closing ')' creating unbalanced "
+                            "parentheses while parsing pipeline");
 
       pipelineStack.pop_back();
     } while (text.consume_front(")"));
@@ -199,14 +217,14 @@ LogicalResult TextualPipeline::parsePipelineText(StringRef text,
     // Otherwise, the end of an inner pipeline always has to be followed by
     // a comma, and then we can continue.
     if (!text.consume_front(","))
-      return failure(opt.error("expected ',' after parsing pipeline near: " +
-                               pipeline.back().name));
+      return errorHandler(text.data(), "expected ',' after parsing pipeline");
   }
 
   // Check for unbalanced parentheses.
   if (pipelineStack.size() > 1)
-    return failure(
-        opt.error("encountered unbalanced parentheses while parsing pipeline"));
+    return errorHandler(
+        text.data(),
+        "encountered unbalanced parentheses while parsing pipeline");
 
   assert(pipelineStack.back() == &pipeline &&
          "wrong pipeline at the bottom of the stack");
@@ -216,20 +234,21 @@ LogicalResult TextualPipeline::parsePipelineText(StringRef text,
 /// Resolve the elements of the pipeline, i.e. connect passes and pipelines to
 /// the corresponding registry entry.
 LogicalResult TextualPipeline::resolvePipelineElements(
-    MutableArrayRef<PipelineElement> elements, llvm::cl::Option &opt) {
+    MutableArrayRef<PipelineElement> elements, ErrorHandlerT errorHandler) {
   for (auto &elt : elements)
-    if (failed(resolvePipelineElement(elt, opt)))
+    if (failed(resolvePipelineElement(elt, errorHandler)))
       return failure();
   return success();
 }
 
 /// Resolve a single element of the pipeline.
-LogicalResult TextualPipeline::resolvePipelineElement(PipelineElement &element,
-                                                      llvm::cl::Option &opt) {
+LogicalResult
+TextualPipeline::resolvePipelineElement(PipelineElement &element,
+                                        ErrorHandlerT errorHandler) {
   // If the inner pipeline of this element is not empty, this is an operation
   // pipeline.
   if (!element.innerPipeline.empty())
-    return resolvePipelineElements(element.innerPipeline, opt);
+    return resolvePipelineElements(element.innerPipeline, errorHandler);
 
   // Otherwise, this must be a pass or pass pipeline.
   // Check to see if a pipeline was registered with this name.
@@ -248,9 +267,10 @@ LogicalResult TextualPipeline::resolvePipelineElement(PipelineElement &element,
   }
 
   // Emit an error for the unknown pass.
-  opt.error("'" + element.name +
-            "' does not refer to a registered pass or pass pipeline");
-  return failure();
+  auto *rawLoc = element.name.data();
+  return errorHandler(rawLoc, "'" + element.name +
+                                  "' does not refer to a "
+                                  "registered pass or pass pipeline");
 }
 
 /// Add the given pipeline elements to the provided pass manager.
@@ -262,6 +282,19 @@ void TextualPipeline::addToPipeline(ArrayRef<PipelineElement> elements,
     else
       addToPipeline(elt.innerPipeline, pm.nest(elt.name));
   }
+}
+
+/// This function parses the textual representation of a pass pipeline, and adds
+/// the result to 'pm' on success. This function returns failure if the given
+/// pipeline was invalid. 'errorStream' is an optional parameter that, if
+/// non-null, will be used to emit errors found during parsing.
+LogicalResult mlir::parsePassPipeline(StringRef pipeline, OpPassManager &pm,
+                                      raw_ostream &errorStream) {
+  TextualPipeline pipelineParser;
+  if (failed(pipelineParser.initialize(pipeline, errorStream)))
+    return failure();
+  pipelineParser.addToPipeline(pm);
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -358,7 +391,7 @@ bool PassNameParser::parse(llvm::cl::Option &opt, StringRef argName,
                            StringRef arg, PassArgData &value) {
   // Handle the pipeline option explicitly.
   if (argName == passPipelineArg)
-    return failed(value.pipeline.initialize(arg, opt));
+    return failed(value.pipeline.initialize(arg, llvm::errs()));
 
   // Otherwise, default to the base for handling.
   return llvm::cl::parser<PassArgData>::parse(opt, argName, arg, value);
