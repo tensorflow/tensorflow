@@ -41,3 +41,10 @@ func @module_op() {
   // expected-error@+1 {{expects parent op 'module'}}
   "module_terminator"() : () -> ()
 }
+
+// -----
+
+// expected-error@+1 {{can only contain dialect-specific attributes}}
+module attributes {attr} {
+}
+
