@@ -166,6 +166,42 @@ bool IsUnstridedSlice(const HloInstruction* hlo) {
                         [](int64 stride) { return stride == 1; });
 }
 
+// Returns bool to determine whether a pair of converts can be eliminated.
+bool IsConvertPairNoOp(const HloInstruction* convert) {
+  //    [operand_convert]         [convert]
+  // (src)->convert-(intermediate)->convert-(dest)
+  const HloInstruction* operand_convert = convert->operand(0);
+  CHECK_EQ(operand_convert->opcode(), HloOpcode::kConvert);
+  const Shape& src_shape = operand_convert->operand(0)->shape();
+  const Shape& intermediate_shape = operand_convert->shape();
+  const Shape& dest_shape = convert->shape();
+
+  const PrimitiveType src_type = src_shape.element_type();
+  const PrimitiveType intermediate_type = intermediate_shape.element_type();
+  const PrimitiveType dest_type = dest_shape.element_type();
+
+  // src_type must be equal to dest_type.
+  if (src_type != dest_type) {
+    return false;
+  }
+
+  // src_type must be a larger container than intermediate_type.
+  if (ShapeUtil::ByteSizeOfPrimitiveType(intermediate_type) <=
+      ShapeUtil::ByteSizeOfPrimitiveType(src_type)) {
+    return false;
+  }
+
+  // Both src_type and intermediate_type must be either floating or integral.
+  bool is_conversion_floating =
+      ShapeUtil::ElementIsFloating(src_shape) &&
+      ShapeUtil::ElementIsFloating(intermediate_shape);
+  bool is_conversion_integral =
+      ShapeUtil::ElementIsIntegral(src_shape) &&
+      ShapeUtil::ElementIsIntegral(intermediate_shape);
+
+  return is_conversion_floating || is_conversion_integral;
+}
+
 // AlgebraicSimplifierVisitor traverses the HLO computation and reduces certain
 // algebraic expressions to simplified forms. Note: This only supports
 // simplifications that simply look at the operands of an instruction. For the
@@ -2409,14 +2445,31 @@ Status AlgebraicSimplifierVisitor::HandleCompare(HloInstruction* compare) {
   return Status::OK();
 }
 
-// A conversion to the same element type as the operand is a nop and can be
-// removed.  A conversion of a constant can be simplified by making a new
-// constant.
 Status AlgebraicSimplifierVisitor::HandleConvert(HloInstruction* convert) {
   PrimitiveType src_type = convert->operand(0)->shape().element_type();
   PrimitiveType dest_type = convert->shape().element_type();
+  // A conversion to the same element type as the operand is a nop and can be
+  // removed.  A conversion of a constant can be simplified by making a new
+  // constant.
   if (src_type == dest_type) {
     return ReplaceInstruction(convert, convert->mutable_operand(0));
+  }
+
+  // Eliminate a convert pair if it is a no-op. The following are a few
+  // example cases that are being handled:
+  // 1. convert(convert(A, $TYPE1), $TYPE2) is simplified to A if A is of $TYPE2
+  //    and convert(A, $TYPE1) is an upcast
+  // 2. convert(convert(A, $TYPE1),$TYPE2) is simplified to A if A is of $TYPE2
+  //    and convert(A, $TYPE1) is an upcast and is an integral conversion from
+  //    unsigned to signed (only signed to unsigned conversion is NOT allowed)
+  // 3. Tuple(convert(A, $TYPE1) , floor(convert(convert(A, $TYPE1), $TYPE2)),
+  //    convert(convert(A, $TYPE1), $TYPE2)) is simplified to Tuple(convert(A,
+  //    $TYPE1) , floor(A), A) -> a case where the first convert has a
+  //    fan-out
+  if (convert->operand(0)->opcode() == HloOpcode::kConvert &&
+      IsConvertPairNoOp(convert)) {
+    return ReplaceInstruction(convert,
+                              convert->mutable_operand(0)->mutable_operand(0));
   }
   return Status::OK();
 }

@@ -1710,6 +1710,95 @@ TEST_F(AlgebraicSimplifierTest, ConvertBetweenSameType) {
   EXPECT_THAT(computation->root_instruction(), input);
 }
 
+// Test that convert(convert(A, $TYPE1), $TYPE2) is simplified to A if A is of
+// $TYPE2 and convert(A, $TYP1) is an upcast.
+TEST_F(AlgebraicSimplifierTest, EliminateConvertPairUpCast) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  HloInstruction* input =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShapeWithLayout(F16, {1, 14, 14, 64}, {3, 2, 1, 0}),
+          "param"));
+  HloInstruction* convert_1 =
+      builder.AddInstruction(HloInstruction::CreateConvert(
+          ShapeUtil::ChangeElementType(input->shape(), F32), input));
+  builder.AddInstruction(HloInstruction::CreateConvert(
+      ShapeUtil::ChangeElementType(convert_1->shape(), F16), convert_1));
+
+  auto computation = m->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Convert(m::Convert(m::Op().Is(input)))));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(), input);
+}
+
+// Test that convert(convert(A, $TYPE1), $TYPE2) is NOT simplified to A even if
+// A is of $TYPE2 since convert(A, $TYP1) is a downcast.
+TEST_F(AlgebraicSimplifierTest, DoNotEliminateConvertPairDownCast) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  HloInstruction* input =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShapeWithLayout(F32, {1, 14, 14, 64}, {3, 2, 1, 0}),
+          "param"));
+  HloInstruction* convert_1 =
+      builder.AddInstruction(HloInstruction::CreateConvert(
+          ShapeUtil::ChangeElementType(input->shape(), F16), input));
+  builder.AddInstruction(HloInstruction::CreateConvert(
+      ShapeUtil::ChangeElementType(convert_1->shape(), F32), convert_1));
+
+  auto computation = m->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Convert(m::Convert(m::Op().Is(input)))));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_FALSE(simplifier.Run(m.get()).ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Convert(m::Convert(m::Op().Is(input)))));
+}
+
+// Test that Tuple(convert(A, $TYPE1) , floor(convert(convert(A, $TYPE1),
+// $TYPE2)), convert(convert(A, $TYPE1), $TYPE2)) is simplified to
+// Tuple(convert(A, $TYPE1) , floor(A), A) showing a case where the first
+// convert has a fan-out.
+TEST_F(AlgebraicSimplifierTest, EliminateConvertPairMultiOut) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  HloInstruction* input =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShapeWithLayout(F16, {1, 14, 14, 64}, {3, 2, 1, 0}),
+          "param"));
+  HloInstruction* convert_1 =
+      builder.AddInstruction(HloInstruction::CreateConvert(
+          ShapeUtil::ChangeElementType(input->shape(), F32), input));
+  HloInstruction* convert_2 =
+      builder.AddInstruction(HloInstruction::CreateConvert(
+          ShapeUtil::ChangeElementType(convert_1->shape(), F16), convert_1));
+
+  HloInstruction* floor = builder.AddInstruction(HloInstruction::CreateUnary(
+      convert_2->shape(), HloOpcode::kFloor, convert_2));
+
+  // Collect all the reshapes into a tuple so they are not dead.
+  builder.AddInstruction(
+      HloInstruction::CreateTuple({convert_1, convert_2, floor}));
+
+  auto computation = m->AddEntryComputation(builder.Build());
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Tuple(m::Op().Is(convert_1), m::Op().Is(convert_2),
+                                  m::Op().Is(floor))));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Tuple(m::Op().Is(convert_1), m::Op().Is(input),
+                                  m::Floor(m::Op().Is(input)))));
+}
+
 // Test that copies are removed.
 TEST_F(AlgebraicSimplifierTest, RemoveCopy) {
   auto m = CreateNewVerifiedModule();
