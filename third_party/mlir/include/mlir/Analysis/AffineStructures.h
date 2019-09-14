@@ -123,7 +123,6 @@ public:
   // Creates an empty AffineValueMap (users should call 'reset' to reset map
   // and operands).
   AffineValueMap() {}
-  AffineValueMap(AffineMap map);
   AffineValueMap(AffineMap map, ArrayRef<Value *> operands,
                  ArrayRef<Value *> results = llvm::None);
 
@@ -135,6 +134,12 @@ public:
   // Resets this AffineValueMap with 'map', 'operands', and 'results'.
   void reset(AffineMap map, ArrayRef<Value *> operands,
              ArrayRef<Value *> results = llvm::None);
+
+  /// Return the value map that is the difference of value maps 'a' and 'b',
+  /// represented as an affine map and its operands. The output map + operands
+  /// are canonicalized and simplified.
+  static void difference(const AffineValueMap &a, const AffineValueMap &b,
+                         AffineValueMap *res);
 
   /// Return true if the idx^th result can be proved to be a multiple of
   /// 'factor', false otherwise.
@@ -150,6 +155,8 @@ public:
   /// Return true if this is an identity map.
   bool isIdentity() const;
 
+  void setResult(unsigned i, AffineExpr e) { map.setResult(i, e); }
+  AffineExpr getResult(unsigned i) { return map.getResult(i); }
   inline unsigned getNumOperands() const { return operands.size(); }
   inline unsigned getNumDims() const { return map.getNumDims(); }
   inline unsigned getNumSymbols() const { return map.getNumSymbols(); }
