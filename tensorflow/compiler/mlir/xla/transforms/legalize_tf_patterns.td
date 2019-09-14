@@ -88,6 +88,19 @@ foreach fromToBinPair = [[TF_AddOp, HLO_AddOp],
   def : DirectBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
 //===----------------------------------------------------------------------===//
+// Compare op patterns.
+//===----------------------------------------------------------------------===//
+
+class DirectComparePat<Op FromOp, StrEnumAttrCase direction>
+  : Pat<(FromOp AnyTensor:$l, AnyTensor:$r),
+        (HLO_CompareOp $l, $r, (BinBroadcastDimensions $l, $r), direction)>;
+
+def : DirectComparePat<TF_GreaterOp, HLO_COMPARISON_DIRECTION_GT>;
+def : DirectComparePat<TF_GreaterEqualOp, HLO_COMPARISON_DIRECTION_GE>;
+def : DirectComparePat<TF_LessOp, HLO_COMPARISON_DIRECTION_LT>;
+def : DirectComparePat<TF_LessEqualOp, HLO_COMPARISON_DIRECTION_LE>;
+
+//===----------------------------------------------------------------------===//
 // Concat op patterns.
 //===----------------------------------------------------------------------===//
 
