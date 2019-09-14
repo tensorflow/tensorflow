@@ -7,9 +7,11 @@ patterns and the rewrite engine is preferred, showing the walker is for
 demonstration purposes).
 
 See [MLIR specification](LangRef.md) for more information about MLIR, the
-structure of the IR, operations, etc. See [Table-driven Operation Definition
-Manual](OpDefinitions.md) for the detailed explanation of all available
-mechansims for defining operations in a table-driven manner.
+structure of the IR, operations, etc. See
+[Table-driven Operation Definition](OpDefinitions.md) and
+[Declarative Rewrite Rule](DeclarativeRewrites.md) for the detailed explanation
+of all available mechansims for defining operations and rewrites in a
+table-driven manner.
 
 ## Adding operation
 
@@ -36,19 +38,17 @@ operations are generated from. To define an operation one needs to specify:
 *   The result(s) of the operation. These may again named or not.
 *   Documentation of the operation. This includes a one-line summary as well as
     a longer human-readable description of the operation.
-*   Derived attributes. These are accessors used to compute attributes from
-    already known information. For example, the shape attribute for reshape
-    where that information is already captured in the type of the operation.
 *   Dialect specific information. Additional information could be added to the
     operation definition that are only used by dialect specific drivers. These
     are ignored by the main op and doc generators, but could be used in, say,
     the translation from a dialect to another representation.
 
 ```td {.td}
-def TFL_LeakyReluOp: TFL_Op<"leaky_relu", [NoSideEffect, SameValueType]>,
+def TFL_LeakyReluOp: TFL_Op<TFL_Dialect, "leaky_relu",
+                            [NoSideEffect, SameValueType]>,
                      Results<(outs Tensor)> {
-  let arguments = (
-    ins F32Tensor:$x,
+  let arguments = (ins
+    F32Tensor:$x,
     // Slope of the activation function at x < 0.
     F32Attr:$alpha
   );
@@ -104,22 +104,15 @@ def : Pat<(TF_LeakyReluOp $arg, F32Attr:$a), (TFL_LeakyReluOp $arg, $a)>
 ```
 
 The pattern is specified by instantiating a `Pat` with a source and result DAG.
-The arguments in the from pattern is captured and can be used in the to pattern.
-This is a simple pattern as we have a 1:1 mapping and the attribute does not
-need to be transformed (e.g., both have a floating point attribute for alpha).
-The names of the attributes specified in the pattern is for matching/referencing
-and need not match the original attribute name in the op definition but the
-order of arguments of the dags do need to match.
+The arguments in the source pattern is captured and can be used in the result
+pattern. This is a simple pattern as we have a 1:1 mapping and the attribute
+does not need to be transformed (e.g., both have a floating point attribute for
+alpha). The names of the attributes specified in the pattern is for
+matching/referencing and need not match the original attribute name in the op
+definition but the order of arguments of the dags do need to match.
 
-To specify a pattern, both the source and results ops need to be defined using
-TableGen. For the above case the TensorFlow LeakyRelu was not defined yet in
-TableGen and instead a shortened definition was added in the legalize patterns
-file:
-
-```td {.td}
-def TF_LeakyReluOp : Op<"tf.LeakyRelu">,
-                     Arguments<(ins Tensor:$arg, F32Attr:$alpha)>;
-```
+To specify a pattern, both the source and resultant ops need to be defined using
+TableGen.
 
 If this were a more advance pattern that the current framework could not express
 as destination then one could use a general native code fallback method. This
@@ -146,6 +139,25 @@ static Value* createTFLLeakyRelu(PatternRewriter &rewriter, Operation *op,
 This allows for arbitrarily complex builders. Input pattern side one can express
 multi-op patterns with constraints on input operands and attributes. But input
 patterns cannot yet express constraints across multiple operands/attributes.
+
+### Register the pattern
+
+The file containing the patterns need to be processed using `mlir-tblgen`
+`-gen-rewriters` during compilation time. It can be invoked with the following
+configuration in CMake:
+
+```cmake
+set(LLVM_TARGET_DEFINITIONS <name-of-the-td-file>)
+mlir_tablegen(<name-of-the-generated-inc-file> -gen-rewriters)
+add_public_tablegen_target(<name-of-the-cmake-target>)
+```
+
+Then you can `#include` the generated file in any C++ implementation file you
+like. (You will also need to make sure the library depends on the CMake target
+defined in the above.) The generated file will have a `populateWithGenerated(
+MLIRContext *context, OwningRewritePatternList *patterns)` function that you can
+use to collect all the generated patterns inside `patterns` and then use
+`patterns` in any pass you would like.
 
 ### C++ rewrite specification
 
