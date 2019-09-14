@@ -509,6 +509,28 @@ func @loop_nest_symbolic_bound(%N : index) {
   return
 }
 
+// UNROLL-BY-4-LABEL: func @loop_nest_symbolic_bound_with_step
+// UNROLL-BY-4-SAME: %[[N:.*]]: index
+func @loop_nest_symbolic_bound_with_step(%N : index) {
+  // UNROLL-BY-4: affine.for %arg1 = 0 to 100 {
+  affine.for %i = 0 to 100 {
+    affine.for %j = 0 to %N step 3 {
+      %x = "foo"() : () -> i32
+    }
+// UNROLL-BY-4:      affine.for %{{.*}} = 0 to #map{{[0-9]+}}()[%[[N]]] step 12 {
+// UNROLL-BY-4:        "foo"()
+// UNROLL-BY-4-NEXT:   "foo"()
+// UNROLL-BY-4-NEXT:   "foo"()
+// UNROLL-BY-4-NEXT:   "foo"()
+// UNROLL-BY-4-NEXT: }
+// A cleanup loop will be be generated here.
+// UNROLL-BY-4-NEXT: affine.for %{{.*}} = #map{{[0-9]+}}()[%[[N]]] to %[[N]] step 3 {
+// UNROLL-BY-4-NEXT:   "foo"()
+// UNROLL-BY-4_NEXT: }
+  }
+  return
+}
+
 // UNROLL-BY-4-LABEL: func @loop_nest_symbolic_and_min_upper_bound
 func @loop_nest_symbolic_and_min_upper_bound(%M : index, %N : index, %K : index) {
   affine.for %i = %M to min ()[s0, s1] -> (s0, s1, 1024)()[%N, %K] {
@@ -529,8 +551,8 @@ func @loop_nest_symbolic_and_min_upper_bound(%M : index, %N : index, %K : index)
 
 // The trip count here is a multiple of four, but this can be inferred only
 // through composition. Check for no cleanup loop.
-// UNROLL-BY-4-LABEL: func @loop_nest_non_trivial_multiple_unroll_factor
-func @loop_nest_non_trivial_multiple_unroll_factor(%M : index, %N : index) {
+// UNROLL-BY-4-LABEL: func @loop_nest_non_trivial_multiple_upper_bound
+func @loop_nest_non_trivial_multiple_upper_bound(%M : index, %N : index) {
   %T = affine.apply (d0) -> (4*d0 + 1)(%M)
   %K = affine.apply (d0) -> (d0 - 1) (%T)
   affine.for %i = 0 to min (d0, d1) -> (4 * d0, d1, 1024)(%N, %K) {
@@ -542,8 +564,8 @@ func @loop_nest_non_trivial_multiple_unroll_factor(%M : index, %N : index) {
 // UNROLL-BY-4-NOT: for
 // UNROLL-BY-4: return
 
-// UNROLL-BY-4-LABEL: func @loop_nest_non_trivial_multiple_unroll_factor_2
-func @loop_nest_non_trivial_multiple_unroll_factor_2(%M : index, %N : index) {
+// UNROLL-BY-4-LABEL: func @loop_nest_non_trivial_multiple_upper_bound_alt
+func @loop_nest_non_trivial_multiple_upper_bound_alt(%M : index, %N : index) {
   %K = affine.apply (d0) -> (4*d0) (%M)
   affine.for %i = 0 to min ()[s0, s1] -> (4 * s0, s1, 1024)()[%N, %K] {
     "foo"() : () -> ()
