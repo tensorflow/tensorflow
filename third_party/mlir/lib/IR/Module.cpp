@@ -80,6 +80,14 @@ LogicalResult ModuleOp::verify() {
   if (body->getNumArguments() != 0)
     return emitOpError("expected body to have no arguments");
 
+  // Check that none of the attributes are non-dialect attributes.
+  for (auto attr : getOperation()->getAttrList().getAttrs()) {
+    if (!attr.first.strref().contains('.'))
+      return emitOpError(
+                 "can only contain dialect-specific attributes, found: 1")
+             << attr.first << "'";
+  }
+
   return success();
 }
 
