@@ -980,9 +980,9 @@ class PForConfig(object):
     # This may be set to the number of iterations.
     self._maybe_iters = None
     # Map from output placeholder to the unvectorized tensor.
-    self._reduce_concat_map = object_identity.ObjectIdentityDictionary()
+    self._reduce_concat_map = {}
     # Reverse map of `self._reduce_concat_map`.
-    self._reverse_reduce_concat_map = object_identity.ObjectIdentityDictionary()
+    self._reverse_reduce_concat_map = {}
 
   def _has_reductions(self):
     """True if some reductions where performed by loop body."""
@@ -1007,17 +1007,17 @@ class PForConfig(object):
     """
     assert not context.executing_eagerly()
     assert isinstance(x, ops.Tensor)
-    if x not in self._reduce_concat_map:
+    if x.experimental_ref() not in self._reduce_concat_map:
       out_shape = tensor_shape.TensorShape([self._maybe_iters]).concatenate(
           x.shape)
       with ops.control_dependencies([x]):
         # Control dependency to make sure out is converted after x.
         out = array_ops.placeholder(x.dtype, out_shape)
-      self._reduce_concat_map[out] = x
-      self._reverse_reduce_concat_map[x] = out
+      self._reduce_concat_map[out.experimental_ref()] = x
+      self._reverse_reduce_concat_map[x.experimental_ref()] = out
       return out
     else:
-      return self._reverse_reduce_concat_map[x]
+      return self._reverse_reduce_concat_map[x.experimental_ref()]
 
   def reduce_mean(self, x):
     """Performs a mean reduction on `x` across pfor iterations.
@@ -1051,7 +1051,7 @@ class PForConfig(object):
     """Lookups Placeholder `pl` in the reduction map."""
     msg = "Expected Tensor, got {} of type {}."
     assert isinstance(pl, ops.Tensor), msg.format(pl, type(pl))
-    return self._reduce_concat_map.get(pl, None)
+    return self._reduce_concat_map.get(pl.experimental_ref())
 
 
 class PFor(object):

@@ -30,7 +30,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.util import object_identity
 
 
 def _safe_shape_div(x, y):
@@ -1631,19 +1630,20 @@ def _SparseMatMulGrad(op, grad):
 
   t_a = op.get_attr("transpose_a")
   t_b = op.get_attr("transpose_b")
-  is_sparse = object_identity.ObjectIdentityDictionary()
-  is_sparse[op.inputs[0]] = op.get_attr("a_is_sparse")
-  is_sparse[op.inputs[1]] = op.get_attr("b_is_sparse")
+  is_sparse = {}
+  is_sparse[op.inputs[0].experimental_ref()] = op.get_attr("a_is_sparse")
+  is_sparse[op.inputs[1].experimental_ref()] = op.get_attr("b_is_sparse")
   # Use heuristic to figure out if grad might be sparse
-  is_sparse[grad] = not context.executing_eagerly() and (
+  is_sparse[grad.experimental_ref()] = not context.executing_eagerly() and (
       grad.op.type == "ReluGrad")
 
   def _SparseMatMul(t1, t2, out_dtype, transpose_a=False, transpose_b=False):
     """Helper function to create SparseMatMul op."""
 
-    assert t1 in is_sparse and t2 in is_sparse
-    t1_sparse = is_sparse[t1]
-    t2_sparse = is_sparse[t2]
+    assert t1.experimental_ref() in is_sparse and t2.experimental_ref(
+    ) in is_sparse
+    t1_sparse = is_sparse[t1.experimental_ref()]
+    t2_sparse = is_sparse[t2.experimental_ref()]
     if transpose_b:
       t2 = array_ops.transpose(t2)
       transpose_b = False
