@@ -444,7 +444,7 @@ class ExponentialMovingAverage(object):
                     "Variable", "VariableV2", "VarHandleOp"
                 ]))
             if self._zero_debias:
-              zero_debias_true.add(avg)
+              zero_debias_true.add(avg.experimental_ref())
         self._averages[var.experimental_ref()] = avg
 
     with ops.name_scope(self.name) as scope:
