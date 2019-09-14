@@ -39,6 +39,9 @@ class ConcatenateDatasetParams : public DatasetParams {
         std::make_pair(std::move(input_dataset_params_ptr_0), Tensor()));
     input_dataset_params_group_.emplace_back(
         std::make_pair(std::move(input_dataset_params_ptr_1), Tensor()));
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(ToString(input_dataset_params_0.type()),
+                                   input_dataset_params_0.iterator_prefix());
   }
 
   Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override {

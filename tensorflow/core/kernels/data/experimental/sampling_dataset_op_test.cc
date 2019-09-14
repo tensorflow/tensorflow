@@ -19,7 +19,6 @@ namespace experimental {
 namespace {
 
 constexpr char kNodeName[] = "sampling_dataset";
-constexpr char kIteratorPrefix[] = "Iterator";
 constexpr int64 kRandomSeed = 42;
 constexpr int64 kRandomSeed2 = 7;
 
@@ -37,6 +36,9 @@ class SamplingDatasetParams : public DatasetParams {
         std::make_shared<T>(std::move(input_dataset_params));
     input_dataset_params_group_.emplace_back(
         std::make_pair(std::move(input_dataset_params_ptr), Tensor()));
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(ToString(input_dataset_params.type()),
+                                   input_dataset_params.iterator_prefix());
   }
 
   Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override {
@@ -199,7 +201,8 @@ std::vector<IteratorPrefixTestCase<SamplingDatasetParams>>
 IteratorOutputPrefixTestCases() {
   return {{/*dataset_params=*/TenPercentSampleParams(),
            /*expected_iterator_prefix=*/name_utils::IteratorPrefix(
-               SamplingDatasetOp::kDatasetType, kIteratorPrefix)}};
+               SamplingDatasetOp::kDatasetType,
+               TenPercentSampleParams().iterator_prefix())}};
 }
 
 ITERATOR_PREFIX_TEST_P(SamplingDatasetOpTest, SamplingDatasetParams,

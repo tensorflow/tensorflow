@@ -18,7 +18,6 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "cache_dataset";
-constexpr char kIteratorPrefix[] = "Iterator";
 constexpr char kFileDatasetPrefix[] = "File";
 constexpr char kMemoryDatasetPrefix[] = "Memory";
 
@@ -36,6 +35,9 @@ class CacheDatasetParams : public DatasetParams {
         std::make_shared<T>(std::move(input_dataset_params));
     input_dataset_params_group_.emplace_back(
         std::make_pair(std::move(input_dataset_params_ptr), Tensor()));
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(ToString(input_dataset_params.type()),
+                                   input_dataset_params.iterator_prefix());
   }
 
   Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override {
@@ -188,8 +190,9 @@ TEST_P(ParameterizedGetNextTest, GetNext) {
                            /*compare_order*/ true));
 
   // Test the read mode.
-  TF_ASSERT_OK(
-      dataset_->MakeIterator(iterator_ctx_.get(), kIteratorPrefix, &iterator_));
+  TF_ASSERT_OK(dataset_->MakeIterator(
+      iterator_ctx_.get(), test_case.dataset_params.iterator_prefix(),
+      &iterator_));
   end_of_sequence = false;
   out_tensors.clear();
   while (!end_of_sequence) {
@@ -312,7 +315,7 @@ class ParameterizedIteratorSaveAndRestoreTest
       public ::testing::WithParamInterface<
           IteratorSaveAndRestoreTestCase<CacheDatasetParams>> {};
 
-TEST_P(ParameterizedIteratorSaveAndRestoreTest, Roundtrip) {
+TEST_P(ParameterizedIteratorSaveAndRestoreTest, SaveAndRestore) {
   auto test_case = GetParam();
   TF_ASSERT_OK(Initialize(test_case.dataset_params));
 
@@ -327,8 +330,9 @@ TEST_P(ParameterizedIteratorSaveAndRestoreTest, Roundtrip) {
     }
     end_of_sequence = false;
     out_tensors.clear();
-    TF_ASSERT_OK(dataset_->MakeIterator(iterator_ctx_.get(), kIteratorPrefix,
-                                        &iterator_));
+    TF_ASSERT_OK(dataset_->MakeIterator(
+        iterator_ctx_.get(), test_case.dataset_params.iterator_prefix(),
+        &iterator_));
   }
 
   std::unique_ptr<SerializationContext> serialization_ctx;
@@ -341,7 +345,8 @@ TEST_P(ParameterizedIteratorSaveAndRestoreTest, Roundtrip) {
     TF_EXPECT_OK(iterator_->Save(serialization_ctx.get(), &writer));
     TF_EXPECT_OK(writer.Flush());
     VariantTensorDataReader reader(&data);
-    TF_EXPECT_OK(RestoreIterator(iterator_ctx_.get(), &reader, kIteratorPrefix,
+    TF_EXPECT_OK(RestoreIterator(iterator_ctx_.get(), &reader,
+                                 test_case.dataset_params.iterator_prefix(),
                                  *dataset_, &iterator_));
 
     while (cur_iteration <= breakpoint) {

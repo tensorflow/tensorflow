@@ -220,6 +220,10 @@ class BatchDatasetParams : public DatasetParams {
         std::make_shared<T>(std::move(input_dataset_params));
     input_dataset_params_group_.emplace_back(
         std::make_pair(std::move(input_dataset_params_ptr), Tensor()));
+    op_version_ = 2;
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(ToString(input_dataset_params.type()),
+                                   input_dataset_params.iterator_prefix());
   }
 
   Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override;
@@ -239,7 +243,6 @@ class BatchDatasetParams : public DatasetParams {
   Tensor batch_size_;
   Tensor drop_remainder_;
   bool parallel_copy_;
-  int op_version_ = 2;
 };
 
 // `MapDatasetParams` is a common dataset parameter type that are used in
@@ -266,6 +269,9 @@ class MapDatasetParams : public DatasetParams {
         std::make_shared<T>(std::move(input_dataset_params));
     input_dataset_params_group_.emplace_back(
         std::make_pair(std::move(input_dataset_params_ptr), Tensor()));
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(ToString(input_dataset_params.type()),
+                                   input_dataset_params.iterator_prefix());
   }
 
   Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override;
