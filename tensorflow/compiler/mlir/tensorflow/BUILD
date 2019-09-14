@@ -729,6 +729,9 @@ tf_cc_test(
 cc_library(
     name = "mlir_passthrough_op",
     srcs = ["ops/mlir_passthrough_op.cc"],
+    visibility = [
+        "//visibility:public",
+    ],
     deps = [
         "//tensorflow/core:framework",
     ],

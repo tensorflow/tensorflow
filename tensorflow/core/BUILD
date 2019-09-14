@@ -1426,6 +1426,7 @@ cc_library(
         ":user_ops_op_lib",
         ":word2vec_ops",
         "//tensorflow/c/kernels:bitcast_op_lib",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_passthrough_op",
     ] + if_mkl([
         ":mkl_array_ops_op_lib",
         ":mkl_nn_ops_op_lib",
