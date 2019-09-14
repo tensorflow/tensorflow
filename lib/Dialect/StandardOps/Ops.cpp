@@ -1381,6 +1381,12 @@ OpFoldResult DimOp::fold(ArrayRef<Attribute> operands) {
   return {};
 }
 
+void DimOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                        MLIRContext *context) {
+  /// dim(memrefcast) -> dim
+  results.insert<MemRefCastFolder>(getOperationName(), context);
+}
+
 //===----------------------------------------------------------------------===//
 // DivISOp
 //===----------------------------------------------------------------------===//
