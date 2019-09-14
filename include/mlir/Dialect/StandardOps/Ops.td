@@ -156,6 +156,12 @@ def AllocOp : Std_Op<"alloc"> {
 
   let extraClassDeclaration = [{
     MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
+
+    /// Returns the number of symbolic operands (the ones in square brackets),
+    /// which bind to the symbols of the memref's layout map.
+    unsigned getNumSymbolicOperands() {
+      return getNumOperands() - getType().getNumDynamicDims();
+    }
   }];
 
   let hasCanonicalizer = 1;

@@ -66,6 +66,35 @@ func @data_tiling() {
   return
 }
 
+// Strides 2 and 4 along respective dimensions.
+// CHECK-LABEL: func @strided
+func @strided() {
+  %A = alloc() : memref<64x128xf32, (d0, d1) -> (2*d0, 4*d1)>
+  // CHECK: affine.for %[[IV0:.*]] =
+  affine.for %i = 0 to 64 {
+    // CHECK: affine.for %[[IV1:.*]] =
+    affine.for %j = 0 to 128 {
+      // CHECK: affine.load %{{.*}}[%[[IV0]] * 2, %[[IV1]] * 4] : memref<127x509xf32>
+      affine.load %A[%i, %j] : memref<64x128xf32, (d0, d1) -> (2*d0, 4*d1)>
+    }
+  }
+  return
+}
+
+// Strided, but the strides are in the linearized space.
+// CHECK-LABEL: func @strided_cumulative
+func @strided_cumulative() {
+  %A = alloc() : memref<2x5xf32, (d0, d1) -> (3*d0 + 17*d1)>
+  // CHECK: affine.for %[[IV0:.*]] =
+  affine.for %i = 0 to 2 {
+    // CHECK: affine.for %[[IV1:.*]] =
+    affine.for %j = 0 to 5 {
+      // CHECK: affine.load %{{.*}}[%[[IV0]] * 3 + %[[IV1]] * 17] : memref<72xf32>
+      affine.load %A[%i, %j]  : memref<2x5xf32, (d0, d1) -> (3*d0 + 17*d1)>
+    }
+  }
+  return
+}
 
 // Memref escapes; no normalization.
 // CHECK-LABEL: func @escaping() -> memref<64xf32, #map{{[0-9]+}}>
@@ -73,4 +102,17 @@ func @escaping() ->  memref<64xf32, (d0) -> (d0 + 2)> {
   // CHECK: %{{.*}} = alloc() : memref<64xf32, #map{{[0-9]+}}>
   %A = alloc() : memref<64xf32, (d0) -> (d0 + 2)>
   return %A : memref<64xf32, (d0) -> (d0 + 2)>
+}
+
+// Semi-affine maps, normalization not implemented yet.
+// CHECK-LABEL: func @semi_affine_layout_map
+func @semi_affine_layout_map(%s0: index, %s1: index) {
+  %A = alloc()[%s0, %s1] : memref<256x1024xf32, (d0, d1)[s0, s1] -> (d0*s0 + d1*s1)>
+  affine.for %i = 0 to 256 {
+    affine.for %j = 0 to 1024 {
+      // CHECK: memref<256x1024xf32, #map{{[0-9]+}}>
+      affine.load %A[%i, %j] : memref<256x1024xf32, (d0, d1)[s0, s1] -> (d0*s0 + d1*s1)>
+    }
+  }
+  return
 }
