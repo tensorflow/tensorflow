@@ -101,6 +101,31 @@ from tensorflow.python.util.tf_export import tf_export
 nextafter = gen_math_ops.next_after
 
 def linspace(start_in, stop_in, num, name=None, axis=0):
+  r"""Generates values in an interval.
+
+  A sequence of `num` evenly-spaced values are generated beginning at `start`.
+  If `num > 1`, the values in the sequence increase by `stop - start / num - 1`,
+  so that the last one is exactly `stop`.
+
+  For example:
+
+  ```
+  tf.linspace(10.0, 12.0, 3, name="linspace") => [ 10.0  11.0  12.0]
+  ```
+
+  Args:
+    start: A `Tensor`. Must be one of the following types: `bfloat16`, `float32`, `float64`.
+      N-D tensor. First entry in the range.
+    stop: A `Tensor`. Must have the same type and shape as `start`.
+      N-D tensor. Last entry in the range.
+    num: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+      0-D tensor. Number of values to generate.
+    name: A name for the operation (optional).
+    axis: Axis along which the operation is performed (used only when N-D tensors are provided).
+
+  Returns:
+    A `Tensor`. Has the same type as `start`.
+  """
   with ops.name_scope(name, 'linspace', [start_in, stop_in]):
     start = ops.convert_to_tensor(start_in, name='start')
     # stop must be convertible to the same dtype as start
