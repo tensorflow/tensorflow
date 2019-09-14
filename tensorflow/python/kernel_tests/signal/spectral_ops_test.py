@@ -18,22 +18,24 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.signal import spectral_ops
 from tensorflow.python.ops.signal import window_ops
 from tensorflow.python.platform import test
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class SpectralOpsTest(test.TestCase):
+class SpectralOpsTest(test.TestCase, parameterized.TestCase):
 
   @staticmethod
   def _np_hann_periodic_window(length):
@@ -81,7 +83,7 @@ class SpectralOpsTest(test.TestCase):
       output[i * hop_length:i * hop_length + window_length] += stft[i,]
     return output
 
-  def _compare(self, signal, frame_length, frame_step, fft_length):
+  def _compare(self, signal, frame_length, frame_step, fft_length, tol):
     actual_stft = spectral_ops.stft(
         signal, frame_length, frame_step, fft_length, pad_end=False)
     signal_ph = array_ops.placeholder_with_default(signal, shape=signal.shape)
@@ -107,12 +109,12 @@ class SpectralOpsTest(test.TestCase):
 
     expected_stft = SpectralOpsTest._np_stft(
         signal, fft_length, frame_step, frame_length)
-    self.assertAllClose(expected_stft, actual_stft, 1e-4, 1e-4)
+    self.assertAllClose(expected_stft, actual_stft, rtol=tol, atol=tol)
 
     expected_inverse_stft = SpectralOpsTest._np_inverse_stft(
         expected_stft, fft_length, frame_step, frame_length)
     self.assertAllClose(
-        expected_inverse_stft, actual_inverse_stft, 1e-4, 1e-4)
+        expected_inverse_stft, actual_inverse_stft, rtol=tol, atol=tol)
 
   def test_shapes(self):
     signal = np.zeros((512,)).astype(np.float32)
@@ -147,42 +149,50 @@ class SpectralOpsTest(test.TestCase):
     self.assertAllEqual([256], inverse_stft.shape.as_list())
     self.assertAllEqual([expected_length], self.evaluate(inverse_stft).shape)
 
-  def test_stft_and_inverse_stft(self):
+  @parameterized.parameters(
+      (512, 64, 32, 64, np.float32, 1e-4),
+      (512, 64, 32, 64, np.float64, 1e-8),
+      (512, 64, 64, 64, np.float32, 1e-4),
+      (512, 64, 64, 64, np.float64, 1e-8),
+      (512, 72, 64, 64, np.float32, 1e-4),
+      (512, 72, 64, 64, np.float64, 1e-8),
+      (512, 64, 25, 64, np.float32, 1e-4),
+      (512, 64, 25, 64, np.float64, 1e-8),
+      (512, 25, 15, 36, np.float32, 1e-4),
+      (512, 25, 15, 36, np.float64, 1e-8),
+      (123, 23, 5, 42, np.float32, 1e-4),
+      (123, 23, 5, 42, np.float64, 1e-8))
+  def test_stft_and_inverse_stft(self, signal_length, frame_length,
+                                 frame_step, fft_length, np_rtype, tol):
     """Test that spectral_ops.stft/inverse_stft match a NumPy implementation."""
-    # Tuples of (signal_length, frame_length, frame_step, fft_length).
-    test_configs = [
-        (512, 64, 32, 64),
-        (512, 64, 64, 64),
-        (512, 72, 64, 64),
-        (512, 64, 25, 64),
-        (512, 25, 15, 36),
-        (123, 23, 5, 42),
-    ]
+    # Enable float64 support for RFFTs.
+    with compat.forward_compatibility_horizon(2019, 10, 13):
+      signal = np.random.random(signal_length).astype(np_rtype)
+      self._compare(signal, frame_length, frame_step, fft_length, tol)
 
-    for signal_length, frame_length, frame_step, fft_length in test_configs:
-      signal = np.random.random(signal_length).astype(np.float32)
-      self._compare(signal, frame_length, frame_step, fft_length)
-
-  def test_stft_round_trip(self):
-    # Tuples of (signal_length, frame_length, frame_step, fft_length,
-    # threshold, corrected_threshold).
-    test_configs = [
-        # 87.5% overlap.
-        (4096, 256, 32, 256, 1e-5, 1e-6),
-        # 75% overlap.
-        (4096, 256, 64, 256, 1e-5, 1e-6),
-        # Odd frame hop.
-        (4096, 128, 25, 128, 1e-3, 1e-6),
-        # Odd frame length.
-        (4096, 127, 32, 128, 1e-3, 1e-6),
-        # 50% overlap.
-        (4096, 128, 64, 128, 0.40, 1e-6),
-    ]
-
-    for (signal_length, frame_length, frame_step, fft_length, threshold,
-         corrected_threshold) in test_configs:
+  @parameterized.parameters(
+      # 87.5% overlap.
+      (4096, 256, 32, 256, np.float32, 1e-5, 1e-6),
+      (4096, 256, 32, 256, np.float64, 1e-8, 1e-8),
+      # 75% overlap.
+      (4096, 256, 64, 256, np.float32, 1e-5, 1e-6),
+      (4096, 256, 64, 256, np.float64, 1e-8, 1e-8),
+      # Odd frame hop.
+      (4096, 128, 25, 128, np.float32, 1e-3, 1e-6),
+      (4096, 128, 25, 128, np.float64, 5e-4, 1e-8),
+      # Odd frame length.
+      (4096, 127, 32, 128, np.float32, 1e-3, 1e-6),
+      (4096, 127, 32, 128, np.float64, 1e-3, 1e-8),
+      # 50% overlap.
+      (4096, 128, 64, 128, np.float32, 0.4, 1e-6),
+      (4096, 128, 64, 128, np.float64, 0.4, 1e-8))
+  def test_stft_round_trip(self, signal_length, frame_length, frame_step,
+                           fft_length, np_rtype, threshold,
+                           corrected_threshold):
+    # Enable float64 support for RFFTs.
+    with compat.forward_compatibility_horizon(2019, 10, 13):
       # Generate a random white Gaussian signal.
-      signal = random_ops.random_normal([signal_length])
+      signal = np.random.normal(size=signal_length).astype(np_rtype)
 
       stft = spectral_ops.stft(signal, frame_length, frame_step, fft_length,
                                pad_end=False)
@@ -191,8 +201,8 @@ class SpectralOpsTest(test.TestCase):
       inverse_stft_corrected = spectral_ops.inverse_stft(
           stft, frame_length, frame_step, fft_length,
           window_fn=spectral_ops.inverse_stft_window_fn(frame_step))
-      signal, inverse_stft, inverse_stft_corrected = self.evaluate(
-          [signal, inverse_stft, inverse_stft_corrected])
+      inverse_stft, inverse_stft_corrected = self.evaluate(
+          [inverse_stft, inverse_stft_corrected])
 
       # Truncate signal to the size of inverse stft.
       signal = signal[:inverse_stft.shape[0]]
@@ -213,29 +223,26 @@ class SpectralOpsTest(test.TestCase):
       self.assertLess(np.std(inverse_stft_corrected - signal),
                       corrected_threshold)
 
-  def test_inverse_stft_window_fn(self):
+  @parameterized.parameters(
+      (256, 32),
+      (256, 64),
+      (128, 25),
+      (127, 32),
+      (128, 64))
+  def test_inverse_stft_window_fn(self, frame_length, frame_step):
     """Test that inverse_stft_window_fn has unit gain at each window phase."""
-    # Tuples of (frame_length, frame_step).
-    test_configs = [
-        (256, 32),
-        (256, 64),
-        (128, 25),
-        (127, 32),
-        (128, 64),
-    ]
+    hann_window = window_ops.hann_window(frame_length, dtype=dtypes.float32)
+    inverse_window_fn = spectral_ops.inverse_stft_window_fn(frame_step)
+    inverse_window = inverse_window_fn(frame_length, dtype=dtypes.float32)
+    hann_window, inverse_window = self.evaluate([hann_window, inverse_window])
 
-    for (frame_length, frame_step) in test_configs:
-      hann_window = window_ops.hann_window(frame_length, dtype=dtypes.float32)
-      inverse_window_fn = spectral_ops.inverse_stft_window_fn(frame_step)
-      inverse_window = inverse_window_fn(frame_length, dtype=dtypes.float32)
-      hann_window, inverse_window = self.evaluate([hann_window, inverse_window])
+    # Expect unit gain at each phase of the window.
+    product_window = hann_window * inverse_window
+    for i in range(frame_step):
+      self.assertAllClose(1.0, np.sum(product_window[i::frame_step]))
 
-      # Expect unit gain at each phase of the window.
-      product_window = hann_window * inverse_window
-      for i in range(frame_step):
-        self.assertAllClose(1.0, np.sum(product_window[i::frame_step]))
-
-  def test_inverse_stft_window_fn_special_case(self):
+  @parameterized.parameters((256, 64), (128, 32))
+  def test_inverse_stft_window_fn_special_case(self, frame_length, frame_step):
     """Test inverse_stft_window_fn in special overlap = 3/4 case."""
     # Cases in which frame_length is an integer multiple of 4 * frame_step are
     # special because they allow exact reproduction of the waveform with a
@@ -243,27 +250,21 @@ class SpectralOpsTest(test.TestCase):
     # In the case where frame_length = 4 * frame_step, that combination
     # produces a constant gain of 1.5, and so the corrected window will be the
     # Hann window / 1.5.
-
-    # Tuples of (frame_length, frame_step).
-    test_configs = [
-        (256, 64),
-        (128, 32),
-    ]
-
-    for (frame_length, frame_step) in test_configs:
-      hann_window = window_ops.hann_window(frame_length, dtype=dtypes.float32)
-      inverse_window_fn = spectral_ops.inverse_stft_window_fn(frame_step)
-      inverse_window = inverse_window_fn(frame_length, dtype=dtypes.float32)
-      self.assertAllClose(hann_window, inverse_window * 1.5)
+    hann_window = window_ops.hann_window(frame_length, dtype=dtypes.float32)
+    inverse_window_fn = spectral_ops.inverse_stft_window_fn(frame_step)
+    inverse_window = inverse_window_fn(frame_length, dtype=dtypes.float32)
+    self.assertAllClose(hann_window, inverse_window * 1.5)
 
   @staticmethod
   def _compute_stft_gradient(signal, frame_length=32, frame_step=16,
                              fft_length=32):
     """Computes the gradient of the STFT with respect to `signal`."""
-    stft = spectral_ops.stft(signal, frame_length, frame_step, fft_length)
-    magnitude_stft = math_ops.abs(stft)
-    loss = math_ops.reduce_sum(magnitude_stft)
-    return gradients_impl.gradients([loss], [signal])[0]
+    # Enable float64 support for RFFTs.
+    with compat.forward_compatibility_horizon(2019, 10, 13):
+      stft = spectral_ops.stft(signal, frame_length, frame_step, fft_length)
+      magnitude_stft = math_ops.abs(stft)
+      loss = math_ops.reduce_sum(magnitude_stft)
+      return gradients_impl.gradients([loss], [signal])[0]
 
   def test_gradients(self):
     """Test that spectral_ops.stft has a working gradient."""
@@ -287,38 +288,41 @@ class SpectralOpsTest(test.TestCase):
       sinusoid_gradient = self.evaluate(self._compute_stft_gradient(sinusoid))
       self.assertFalse((sinusoid_gradient == 0.0).all())
 
-  def test_gradients_numerical(self):
-    # TODO(rjryan): Update gradient tests for Eager.
-    if context.executing_eagerly():
-      return
-    with self.session(use_gpu=True):
-      # Tuples of (signal_length, frame_length, frame_step, fft_length,
-      # stft_bound, inverse_stft_bound).
+  @parameterized.parameters(
+      (64, 16, 8, 16, np.float32, 2e-3, 5e-4),
+      (64, 16, 8, 16, np.float64, 1e-8, 1e-8),
+      (64, 16, 16, 16, np.float32, 2e-3, 5e-4),
+      (64, 16, 16, 16, np.float64, 1e-8, 1e-8),
+      (64, 16, 7, 16, np.float32, 2e-3, 5e-4),
+      (64, 16, 7, 16, np.float64, 1e-8, 1e-8),
+      (64, 7, 4, 9, np.float32, 2e-3, 5e-4),
+      (64, 7, 4, 9, np.float64, 1e-8, 1e-8),
+      (29, 5, 1, 10, np.float32, 2e-3, 5e-4),
+      (29, 5, 1, 10, np.float64, 1e-8, 1e-8))
+  def test_gradients_numerical(self, signal_length, frame_length, frame_step,
+                               fft_length, np_rtype, forward_tol, backward_tol):
+    # Enable float64 support for RFFTs.
+    with compat.forward_compatibility_horizon(2019, 10, 13):
       # TODO(rjryan): Investigate why STFT gradient error is so high.
-      test_configs = [
-          (64, 16, 8, 16),
-          (64, 16, 16, 16),
-          (64, 16, 7, 16),
-          (64, 7, 4, 9),
-          (29, 5, 1, 10),
-      ]
+      signal = np.random.rand(signal_length).astype(np_rtype) * 2 - 1
 
-      for (signal_length, frame_length, frame_step, fft_length) in test_configs:
-        signal_shape = [signal_length]
-        signal = random_ops.random_uniform(signal_shape)
-        stft_shape = [max(0, 1 + (signal_length - frame_length) // frame_step),
-                      fft_length // 2 + 1]
-        stft = spectral_ops.stft(signal, frame_length, frame_step, fft_length,
-                                 pad_end=False)
-        inverse_stft_shape = [(stft_shape[0] - 1) * frame_step + frame_length]
-        inverse_stft = spectral_ops.inverse_stft(stft, frame_length, frame_step,
-                                                 fft_length)
-        stft_error = test.compute_gradient_error(signal, [signal_length],
-                                                 stft, stft_shape)
-        inverse_stft_error = test.compute_gradient_error(
-            stft, stft_shape, inverse_stft, inverse_stft_shape)
-        self.assertLess(stft_error, 2e-3)
-        self.assertLess(inverse_stft_error, 5e-4)
+      def forward(signal):
+        return spectral_ops.stft(
+            signal, frame_length, frame_step, fft_length, pad_end=False)
+      ((f_jacob_t,), (f_jacob_n,)) = gradient_checker_v2.compute_gradient(
+          forward, [signal])
+      self.assertAllClose(f_jacob_t, f_jacob_n,
+                          rtol=forward_tol, atol=forward_tol)
+
+      def backward(stft):
+        return spectral_ops.inverse_stft(
+            stft, frame_length, frame_step, fft_length)
+
+      stft = forward(signal)
+      ((b_jacob_t,), (b_jacob_n,)) = gradient_checker_v2.compute_gradient(
+          backward, [stft])
+      self.assertAllClose(b_jacob_t, b_jacob_n,
+                          rtol=backward_tol, atol=backward_tol)
 
 
 if __name__ == "__main__":

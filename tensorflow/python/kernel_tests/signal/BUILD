@@ -123,6 +123,7 @@ cuda_py_tests(
     size = "large",
     srcs = ["spectral_ops_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:gradients",
