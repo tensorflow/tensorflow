@@ -84,7 +84,7 @@ LogicalResult ModuleOp::verify() {
   for (auto attr : getOperation()->getAttrList().getAttrs()) {
     if (!attr.first.strref().contains('.'))
       return emitOpError(
-                 "can only contain dialect-specific attributes, found: 1")
+                 "can only contain dialect-specific attributes, found: '")
              << attr.first << "'";
   }
 
