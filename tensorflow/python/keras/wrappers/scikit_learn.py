@@ -24,7 +24,7 @@ import types
 import numpy as np
 
 from tensorflow.python.keras import losses
-from tensorflow.python.keras.models import Sequential
+from tensorflow.python.keras.models import Model, Sequential
 from tensorflow.python.keras.utils.generic_utils import has_arg
 from tensorflow.python.keras.utils.np_utils import to_categorical
 from tensorflow.python.util.tf_export import keras_export
@@ -41,8 +41,9 @@ class BaseWrapper(object):
       **sk_params: model parameters & fitting parameters
 
   The `build_fn` should construct, compile and return a Keras model, which
-  will then be used to fit/predict. One of the following
-  three values could be passed to `build_fn`:
+  will then be used to fit/predict. It must accept `input_shape` and
+  `output_shape` as arguments, both of which are tuples of integers. One of
+  the following three values could be passed to `build_fn`:
   1. A function
   2. An instance of a class that implements the `__call__` method
   3. None. This means you implement a class that inherits from either
@@ -86,8 +87,8 @@ class BaseWrapper(object):
         ValueError: if any member of `params` is not a valid argument.
     """
     legal_params_fns = [
-        Sequential.fit, Sequential.predict, Sequential.predict_classes,
-        Sequential.evaluate
+        Sequential.evaluate, Sequential.fit, Sequential.predict,
+        Sequential.predict_classes, Model.evaluate, Model.fit, Model.predict
     ]
     if self.build_fn is None:
       legal_params_fns.append(self.__call__)
@@ -135,11 +136,20 @@ class BaseWrapper(object):
     """Constructs a new model with `build_fn` & fit the model to `(x, y)`.
 
     Arguments:
-        x : array-like, shape `(n_samples, n_features)`
-            Training samples where `n_samples` is the number of samples
-            and `n_features` is the number of features.
-        y : array-like, shape `(n_samples,)` or `(n_samples, n_outputs)`
-            True labels for `x`.
+        x: Input data. It could be:
+            - A Numpy array (or array-like), or a list of arrays
+              (in case the model has multiple inputs).
+            - A dict mapping input names to the corresponding
+              array/tensors, if the model has named inputs.
+            - None (default) if feeding from framework-native
+              tensors (e.g. TensorFlow data tensors).
+        y: Target data. Like the input data `x`,
+            it could be either Numpy array(s), framework-native tensor(s),
+            list of Numpy arrays (if the model has multiple outputs) or
+            None (default) if feeding from framework-native tensors
+            (e.g. TensorFlow data tensors).
+            If output layers in the model are named, you can also pass a
+            dictionary mapping output names to Numpy arrays.
         **kwargs: dictionary arguments
             Legal arguments are the arguments of `Sequential.fit`
 
@@ -147,18 +157,29 @@ class BaseWrapper(object):
         history : object
             details about the training history at each epoch.
     """
+    if isinstance(x, dict):
+      input_shape = {k: v.shape[1:] for k, v in x.items()}
+    elif isinstance(x, list) or isinstance(x, tuple):
+      input_shape = [i.shape[1:] for i in x]
+    else:
+      input_shape = x.shape[1:]
+    if isinstance(y, dict):
+      output_shape = {k: v.shape[1:] for k, v in y.items()}
+    elif isinstance(y, list) or isinstance(y, tuple):
+      output_shape = [i.shape[1:] for i in y]
+    else:
+      output_shape = y.shape[1:]
     if self.build_fn is None:
-      self.model = self.__call__(**self.filter_sk_params(self.__call__))
+      self.model = self.__call__(input_shape, output_shape,
+                                 **self.filter_sk_params(self.__call__))
     elif (not isinstance(self.build_fn, types.FunctionType) and
           not isinstance(self.build_fn, types.MethodType)):
-      self.model = self.build_fn(
-          **self.filter_sk_params(self.build_fn.__call__))
+      self.model = self.build_fn(input_shape, output_shape,
+                                 **self.filter_sk_params(
+                                   self.build_fn.__call__))
     else:
-      self.model = self.build_fn(**self.filter_sk_params(self.build_fn))
-
-    if (losses.is_categorical_crossentropy(self.model.loss) and
-        len(y.shape) != 2):
-      y = to_categorical(y)
+      self.model = self.build_fn(input_shape, output_shape,
+                                 **self.filter_sk_params(self.build_fn))
 
     fit_args = copy.deepcopy(self.filter_sk_params(Sequential.fit))
     fit_args.update(kwargs)
@@ -187,10 +208,64 @@ class BaseWrapper(object):
     return res
 
 
+  def predict(self, x, **kwargs):
+    """Returns predictions for the given test data.
+
+    Arguments:
+        x : Input data. It could be:
+            - A Numpy array (or array-like), or a list of arrays
+              (in case the model has multiple inputs).
+            - A dict mapping input names to the corresponding
+              array/tensors, if the model has named inputs.
+            - None (default) if feeding from framework-native
+              tensors (e.g. TensorFlow data tensors).
+        **kwargs : dictionary arguments
+            Legal arguments are the arguments of `Model.predict`.
+
+    Returns:
+        Numpy array(s) of predictions.
+    """
+    kwargs = self.filter_sk_params(Model.predict, kwargs)
+    return self.model.predict(x, **kwargs)
+
+
+  def score(self, x, y, **kwargs):
+    """Returns the mean loss on the given test data and labels.
+
+    Arguments:
+        x : Input data. It could be:
+            - A Numpy array (or array-like), or a list of arrays
+              (in case the model has multiple inputs).
+            - A dict mapping input names to the corresponding
+              array/tensors, if the model has named inputs.
+            - None (default) if feeding from framework-native
+              tensors (e.g. TensorFlow data tensors).
+        y : Target data. Like the input data `x`,
+            it could be either Numpy array(s), framework-native tensor(s),
+            list of Numpy arrays (if the model has multiple outputs) or
+            None (default) if feeding from framework-native tensors
+            (e.g. TensorFlow data tensors).
+            If output layers in the model are named, you can also pass a
+            dictionary mapping output names to Numpy arrays.
+        **kwargs : dictionary arguments
+            Legal arguments are the arguments of `Model.evaluate`.
+
+    Returns:
+        Scalar test loss (if the model has a single output and no metrics)
+        or list of scalars (if the model has multiple outputs
+        and/or metrics). The attribute `model.metrics_names` will give you
+        the display labels for the scalar outputs.
+    """
+    kwargs = self.filter_sk_params(Model.evaluate, kwargs)
+    return self.model.evaluate(x, y, **kwargs)
+
+
 @keras_export('keras.wrappers.scikit_learn.KerasClassifier')
 class KerasClassifier(BaseWrapper):
   """Implementation of the scikit-learn classifier API for Keras.
   """
+
+  _estimator_type = "classifier"
 
   def fit(self, x, y, **kwargs):
     """Constructs a new model with `build_fn` & fit the model to `(x, y)`.
@@ -220,6 +295,8 @@ class KerasClassifier(BaseWrapper):
     else:
       raise ValueError('Invalid shape for y: ' + str(y.shape))
     self.n_classes_ = len(self.classes_)
+    if len(y.shape) != 2:
+      y = to_categorical(y)
     return super(KerasClassifier, self).fit(x, y, **kwargs)
 
   def predict(self, x, **kwargs):
@@ -314,6 +391,8 @@ class KerasClassifier(BaseWrapper):
 class KerasRegressor(BaseWrapper):
   """Implementation of the scikit-learn regressor API for Keras.
   """
+
+  _estimator_type = "regressor"
 
   def predict(self, x, **kwargs):
     """Returns predictions for the given test data.

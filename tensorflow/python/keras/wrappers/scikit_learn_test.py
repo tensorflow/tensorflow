@@ -19,10 +19,27 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import pickle
+from scipy.stats import randint
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.datasets import load_boston, load_digits, load_iris
+from sklearn.ensemble import (AdaBoostClassifier, AdaBoostRegressor,
+                              BaggingClassifier, BaggingRegressor)
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 
 from tensorflow.python import keras
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
+
+from keras import backend as K
+from keras.layers import Activation, Concatenate, Conv2D, Dense, Flatten, Input
+from keras.models import Model, Sequential
+from keras.utils.np_utils import to_categorical
+
+from keras.wrappers.scikit_learn import (BaseWrapper, KerasClassifier,
+                                         KerasRegressor)
 
 INPUT_DIM = 5
 HIDDEN_DIM = 5
@@ -33,9 +50,8 @@ BATCH_SIZE = 5
 EPOCHS = 1
 
 
-def build_fn_clf(hidden_dim):
+def build_fn_clf(input_shape, output_shape, hidden_dim):
   model = keras.models.Sequential()
-  model.add(keras.layers.Dense(INPUT_DIM, input_shape=(INPUT_DIM,)))
   model.add(keras.layers.Activation('relu'))
   model.add(keras.layers.Dense(hidden_dim))
   model.add(keras.layers.Activation('relu'))
@@ -69,9 +85,8 @@ def assert_classification_works(clf):
   assert np.allclose(np.sum(proba, axis=1), np.ones(TEST_SAMPLES))
 
 
-def build_fn_reg(hidden_dim):
+def build_fn_reg(input_shape, output_shape, hidden_dim):
   model = keras.models.Sequential()
-  model.add(keras.layers.Dense(INPUT_DIM, input_shape=(INPUT_DIM,)))
   model.add(keras.layers.Activation('relu'))
   model.add(keras.layers.Dense(hidden_dim))
   model.add(keras.layers.Activation('relu'))
@@ -103,7 +118,7 @@ class ScikitLearnAPIWrapperTest(test.TestCase):
 
   def test_classify_build_fn(self):
     with self.cached_session():
-      clf = keras.wrappers.scikit_learn.KerasClassifier(
+      clf = KerasClassifier(
           build_fn=build_fn_clf,
           hidden_dim=HIDDEN_DIM,
           batch_size=BATCH_SIZE,
@@ -115,11 +130,11 @@ class ScikitLearnAPIWrapperTest(test.TestCase):
 
     class ClassBuildFnClf(object):
 
-      def __call__(self, hidden_dim):
-        return build_fn_clf(hidden_dim)
+      def __call__(self, input_shape, output_shape, hidden_dim):
+        return build_fn_clf(input_shape, output_shape, hidden_dim)
 
     with self.cached_session():
-      clf = keras.wrappers.scikit_learn.KerasClassifier(
+      clf = KerasClassifier(
           build_fn=ClassBuildFnClf(),
           hidden_dim=HIDDEN_DIM,
           batch_size=BATCH_SIZE,
@@ -129,10 +144,10 @@ class ScikitLearnAPIWrapperTest(test.TestCase):
 
   def test_classify_inherit_class_build_fn(self):
 
-    class InheritClassBuildFnClf(keras.wrappers.scikit_learn.KerasClassifier):
+    class InheritClassBuildFnClf(KerasClassifier):
 
-      def __call__(self, hidden_dim):
-        return build_fn_clf(hidden_dim)
+      def __call__(self, input_shape, output_shape, hidden_dim):
+        return build_fn_clf(input_shape, output_shape, hidden_dim)
 
     with self.cached_session():
       clf = InheritClassBuildFnClf(
@@ -145,7 +160,7 @@ class ScikitLearnAPIWrapperTest(test.TestCase):
 
   def test_regression_build_fn(self):
     with self.cached_session():
-      reg = keras.wrappers.scikit_learn.KerasRegressor(
+      reg = KerasRegressor(
           build_fn=build_fn_reg,
           hidden_dim=HIDDEN_DIM,
           batch_size=BATCH_SIZE,
@@ -157,11 +172,11 @@ class ScikitLearnAPIWrapperTest(test.TestCase):
 
     class ClassBuildFnReg(object):
 
-      def __call__(self, hidden_dim):
-        return build_fn_reg(hidden_dim)
+      def __call__(self, input_shape, output_shape, hidden_dim):
+        return build_fn_reg(input_shape, output_shape, hidden_dim)
 
     with self.cached_session():
-      reg = keras.wrappers.scikit_learn.KerasRegressor(
+      reg = KerasRegressor(
           build_fn=ClassBuildFnReg(),
           hidden_dim=HIDDEN_DIM,
           batch_size=BATCH_SIZE,
@@ -171,10 +186,10 @@ class ScikitLearnAPIWrapperTest(test.TestCase):
 
   def test_regression_inherit_class_build_fn(self):
 
-    class InheritClassBuildFnReg(keras.wrappers.scikit_learn.KerasRegressor):
+    class InheritClassBuildFnReg(KerasRegressor):
 
-      def __call__(self, hidden_dim):
-        return build_fn_reg(hidden_dim)
+      def __call__(self, input_shape, output_shape, hidden_dim):
+        return build_fn_reg(input_shape, output_shape, hidden_dim)
 
     with self.cached_session():
       reg = InheritClassBuildFnReg(
@@ -184,6 +199,166 @@ class ScikitLearnAPIWrapperTest(test.TestCase):
           epochs=EPOCHS)
 
       assert_regression_works(reg)
+
+
+# Usage of sklearn's Pipelines, SearchCVs, Ensembles and CalibratedClassifierCVs
+
+
+def load_digits8x8():
+    data = load_digits()
+    data.data = data.data.reshape([data.data.shape[0], 1, 8, 8]) / 16.0
+    K.set_image_data_format('channels_first')
+    return data
+
+
+def check(estimator, loader):
+    data = loader()
+    estimator.fit(data.data, data.target)
+    preds = estimator.predict(data.data)
+    score = estimator.score(data.data, data.target)
+    serialized_estimator = pickle.dumps(estimator)
+    deserialized_estimator = pickle.loads(serialized_estimator)
+    preds = deserialized_estimator.predict(data.data)
+    score = deserialized_estimator.score(data.data, data.target)
+    assert True
+
+
+def build_fn_regs(input_shape, output_shape, hidden_layer_sizes=[]):
+    model = Sequential()
+    for size in hidden_layer_sizes:
+        model.add(Dense(size, activation='relu'))
+    model.add(Dense(np.prod(output_shape, dtype=np.uint8)))
+    model.compile('adam', loss='mean_squared_error')
+    return model
+
+
+def build_fn_clss(input_shape, output_shape, hidden_layer_sizes=[]):
+    model = Sequential()
+    for size in hidden_layer_sizes:
+        model.add(Dense(size, activation='relu'))
+    model.add(Dense(np.prod(output_shape), activation='softmax'))
+    model.compile('adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    return model
+
+
+def build_fn_clscs(input_shape, output_shape, hidden_layer_sizes=[]):
+    model = Sequential()
+    model.add(Conv2D(3, (3, 3)))
+    model.add(Flatten())
+    for size in hidden_layer_sizes:
+        model.add(Dense(size, activation='relu'))
+    model.add(Dense(np.prod(output_shape), activation='softmax'))
+    model.compile('adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    return model
+
+
+def build_fn_clscf(input_shape, output_shape, hidden_layer_sizes=[]):
+    x = Input(shape=input_shape)
+    z = Conv2D(3, (3, 3))(x)
+    z = Flatten()(z)
+    for size in hidden_layer_sizes:
+        z = Dense(size, activation='relu')(z)
+    y = Dense(np.prod(output_shape), activation='softmax')(z)
+    model = Model(inputs=x, outputs=y)
+    model.compile('adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    return model
+
+
+def build_fn_multi(input_shape, output_shape, hidden_layer_sizes=[]):
+    features = Input(shape=input_shape['features'], name='features')
+    class_in = Input(shape=input_shape['class_in'], name='class_in')
+    z = Concatenate()([features, class_in])
+    for size in hidden_layer_sizes:
+        z = Dense(size, activation='relu')(z)
+    onehot = Dense(np.prod(output_shape['onehot']), activation='softmax',
+                   name='onehot')(z)
+    class_out = Dense(np.prod(output_shape['class_out']), name='class_out')(z)
+    model = Model(inputs=[features, class_in], outputs=[onehot, class_out])
+    model.compile('adam',
+                  loss={'onehot': 'categorical_crossentropy',
+                        'class_out': 'mse'},
+                  metrics={'onehot': 'accuracy'})
+    return model
+
+
+CONFIG = {'MLPRegressor': (load_boston, KerasRegressor, build_fn_regs,
+                           (BaggingRegressor, AdaBoostRegressor)),
+          'MLPClassifier': (load_iris, KerasClassifier, build_fn_clss,
+                            (BaggingClassifier, AdaBoostClassifier)),
+          'CNNClassifier': (load_digits8x8, KerasClassifier, build_fn_clscs,
+                            (BaggingClassifier, AdaBoostClassifier)),
+          'CNNClassifierF': (load_digits8x8, KerasClassifier, build_fn_clscf,
+                             (BaggingClassifier, AdaBoostClassifier))}
+
+
+def test_standalone():
+    """Tests standalone estimator."""
+    for config in ['MLPRegressor', 'MLPClassifier', 'CNNClassifier',
+                   'CNNClassifierF']:
+        loader, model, build_fn, _ = CONFIG[config]
+        estimator = model(build_fn, epochs=1)
+        check(estimator, loader)
+
+
+def test_pipeline():
+    """Tests compatibility with Scikit-learn's pipeline."""
+    for config in ['MLPRegressor', 'MLPClassifier']:
+        loader, model, build_fn, _ = CONFIG[config]
+        estimator = model(build_fn, epochs=1)
+        estimator = Pipeline([('s', StandardScaler()), ('e', estimator)])
+        check(estimator, loader)
+
+
+def test_searchcv():
+    """Tests compatibility with Scikit-learn's hyperparameter search CV."""
+    for config in ['MLPRegressor', 'MLPClassifier', 'CNNClassifier',
+                   'CNNClassifierF']:
+        loader, model, build_fn, _ = CONFIG[config]
+        estimator = model(build_fn, epochs=1, validation_split=0.1)
+        check(GridSearchCV(estimator, {'hidden_layer_sizes': [[], [5]]}),
+              loader)
+        check(RandomizedSearchCV(estimator, {'epochs': randint(1, 5)},
+                                 n_iter=2), loader)
+
+
+def test_ensemble():
+    """Tests compatibility with Scikit-learn's ensembles."""
+    for config in ['MLPRegressor', 'MLPClassifier']:
+        loader, model, build_fn, ensembles = CONFIG[config]
+        base_estimator = model(build_fn, epochs=1)
+        for ensemble in ensembles:
+            estimator = ensemble(base_estimator=base_estimator, n_estimators=2)
+            check(estimator, loader)
+
+
+def test_calibratedclassifiercv():
+    """Tests compatibility with Scikit-learn's calibrated classifier CV."""
+    for config in ['MLPClassifier']:
+        loader, _, build_fn, _ = CONFIG[config]
+        base_estimator = KerasClassifier(build_fn, epochs=1)
+        estimator = CalibratedClassifierCV(base_estimator=base_estimator)
+        check(estimator, loader)
+
+
+def test_standalone_multi():
+    """Tests standalone estimator with multiple inputs and outputs."""
+    estimator = BaseWrapper(build_fn_multi, epochs=1)
+    data = load_iris()
+    features = data.data
+    klass = data.target.reshape((-1, 1)).astype(np.float32)
+    onehot = to_categorical(data.target)
+    estimator.fit({'features': features, 'class_in': klass},
+                  {'onehot': onehot, 'class_out': klass})
+    preds = estimator.predict({'features': features, 'class_in': klass})
+    score = estimator.score({'features': features, 'class_in': klass},
+                            {'onehot': onehot, 'class_out': klass})
+    serialized_estimator = pickle.dumps(estimator)
+    deserialized_estimator = pickle.loads(serialized_estimator)
+    preds = deserialized_estimator.predict({'features': features,
+                                            'class_in': klass})
+    score = deserialized_estimator.score({'features': features,
+                                          'class_in': klass},
+                                         {'onehot': onehot, 'class_out': klass})
 
 
 if __name__ == '__main__':
