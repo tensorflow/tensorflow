@@ -98,12 +98,9 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 # Aliases for some automatically-generated names.
-#linspace = gen_math_ops.lin_space
 nextafter = gen_math_ops.next_after
 
 def linspace(start_in, stop_in, num, name=None, axis=0):
-  if not isinstance(axis, int):
-    raise TypeError('Axis should be an integer. Received an object {0} of type {1}'.format(axis, type(axis)))
   with ops.name_scope(name, 'linspace', [start_in, stop_in]):
     start = ops.convert_to_tensor(start_in, name='start')
     # stop must be convertible to the same dtype as start
@@ -112,7 +109,7 @@ def linspace(start_in, stop_in, num, name=None, axis=0):
     num_int = array_ops.convert_to_int_tensor(num, name='num')
     num = cast(num_int, dtype=start.dtype)
     shape = array_ops.shape(expanded_start)
-    ndims = shape.get_shape()[0].value
+    ndims = array_ops.shape(shape)[0]
     axis = array_ops.get_positive_axis(axis, ndims)
     expanded_stop = array_ops.expand_dims(stop, axis=axis)
     # to avoid having negative values in the range or zero division

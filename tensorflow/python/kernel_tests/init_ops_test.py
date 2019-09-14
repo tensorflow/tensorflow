@@ -670,18 +670,19 @@ class LinSpaceTest(test.TestCase):
       self.assertArrayNear(expected, actual, 1e-5)
 
   def testUnknownShapeAtGraphCreationTime(self):
-    for self.force_gpu in self._gpu_modes():
-      axis = 1
-      a, b, expected, num = self.create_nd_inputs_and_expected_output(axis)
-      actual = self._LinspaceNoneShape(a, b, num, axis=axis, graph_shape=(a.shape[0], a.shape[1], None))
-      self.assert_close(actual, expected)
-
+    self.base_test_unknown_shape((2, None, 4))
 
   def testNoneValuesInShapeAtGraphCreationTime(self):
+    self.base_test_unknown_shape((None, None, None))
+
+  def testUnknownShapeAtGraphCreationTime(self):
+    self.base_test_unknown_shape(None)
+
+  def base_test_unknown_shape(self, graph_shape):
     for self.force_gpu in self._gpu_modes():
       axis = 1
       a, b, expected, num = self.create_nd_inputs_and_expected_output(axis)
-      actual = self._LinspaceNoneShape(a, b, num, axis=axis, graph_shape=(None, None, None))
+      actual = self._LinspaceNoneShape(a, b, num, axis=axis, graph_shape=graph_shape)
       self.assert_close(actual, expected)
 
 
