@@ -556,6 +556,7 @@ def DimOp : Std_Op<"dim", [NoSideEffect]> {
   }];
 
   let hasFolder = 1;
+  let hasCanonicalizer = 1;
 }
 
 def DivFOp : FloatArithmeticOp<"divf"> {
@@ -580,9 +581,9 @@ def ExtractElementOp : Std_Op<"extract_element", [NoSideEffect]> {
     with the same type as the elements of the tensor or vector. The arity of
     indices matches the rank of the accessed value (i.e., if a tensor is of rank
     3, then 3 indices are required for the extract).  The indices should all be
-    of affine_int type. For example:
+    of index type. For example:
 
-      %0 = extract_element %0[%1, %2] : vector<4x4xi32>
+      %3 = extract_element %0[%1, %2] : vector<4x4xi32>
   }];
 
   let arguments = (ins AnyTypeOf<[AnyVector, AnyTensor]>:$aggregate,
