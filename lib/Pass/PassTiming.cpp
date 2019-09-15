@@ -476,6 +476,6 @@ void PassManager::enableTiming(PassTimingDisplayMode displayMode) {
   // Check if pass timing is already enabled.
   if (passTiming)
     return;
-  addInstrumentation(new PassTiming(displayMode));
+  addInstrumentation(std::make_unique<PassTiming>(displayMode));
   passTiming = true;
 }

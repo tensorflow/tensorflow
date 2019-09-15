@@ -125,9 +125,8 @@ public:
   // Instrumentations
   //===--------------------------------------------------------------------===//
 
-  /// Add the provided instrumentation to the pass manager. This takes ownership
-  /// over the given pointer.
-  void addInstrumentation(PassInstrumentation *pi);
+  /// Add the provided instrumentation to the pass manager.
+  void addInstrumentation(std::unique_ptr<PassInstrumentation> pi);
 
   /// Add an instrumentation to print the IR before and after pass execution.
   /// * 'shouldPrintBeforePass' and 'shouldPrintAfterPass' correspond to filter

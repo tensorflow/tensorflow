@@ -393,7 +393,8 @@ PassManager pm;
 
 // Add the instrumentation to the pass manager.
 unsigned domInfoCount;
-pm.addInstrumentation(new DominanceCounterInstrumentation(domInfoCount));
+pm.addInstrumentation(
+    std::make_unique<DominanceCounterInstrumentation>(domInfoCount));
 
 // Run the pass manager on a module.
 Module m = ...;
