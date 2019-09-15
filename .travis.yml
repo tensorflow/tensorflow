@@ -1,0 +1,19 @@
+language: c++
+os:
+  - osx
+
+before_install:
+  - brew install git-lfs
+  - wget https://github.com/bazelbuild/bazel/releases/download/0.19.2/bazel-0.19.2-installer-linux-x86_64.sh; fi
+  - chmod +x bazel-0.19.2-installer-linux-x86_64.sh; fi
+  - ./bazel-0.19.2-installer-linux-x86_64.sh --user; fi
+
+before_script:
+ - git lfs pull
+
+branches:
+  only:
+  - v1.13.1
+
+script:
+  - ./tensorflow/tools/ci_build/osx/libtensorflow_cpu.sh
