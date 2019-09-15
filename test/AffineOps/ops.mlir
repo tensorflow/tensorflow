@@ -44,7 +44,7 @@ func @empty() {
 
 // Check that an explicit affine terminator is not printed in custom format.
 // Check that no extra terminator is introduced.
-// CHEKC-LABEL: @affine_terminator
+// CHECK-LABEL: @affine_terminator
 func @affine_terminator() {
   // CHECK: affine.for
   // CHECK-NEXT: }
