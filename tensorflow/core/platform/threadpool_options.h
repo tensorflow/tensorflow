@@ -13,9 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_LIB_CORE_THREADPOOL_OPTIONS_H_
-#define TENSORFLOW_CORE_LIB_CORE_THREADPOOL_OPTIONS_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_THREADPOOL_OPTIONS_H_
+#define TENSORFLOW_CORE_PLATFORM_THREADPOOL_OPTIONS_H_
 
-#include "tensorflow/core/platform/threadpool_options.h"
+#include "tensorflow/core/platform/threadpool_interface.h"
 
-#endif  // TENSORFLOW_CORE_LIB_CORE_THREADPOOL_OPTIONS_H_
+namespace tensorflow {
+namespace thread {
+
+struct ThreadPoolOptions {
+  // If not null, use this threadpool to schedule inter-op operation
+  thread::ThreadPoolInterface* inter_op_threadpool;
+
+  // If not null, use this threadpool to schedule intra-op operation
+  thread::ThreadPoolInterface* intra_op_threadpool;
+};
+
+}  // namespace thread
+}  // namespace tensorflow
+
+#endif  // TENSORFLOW_CORE_PLATFORM_THREADPOOL_OPTIONS_H_

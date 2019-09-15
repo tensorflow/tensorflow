@@ -13,9 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_LIB_CORE_THREADPOOL_OPTIONS_H_
-#define TENSORFLOW_CORE_LIB_CORE_THREADPOOL_OPTIONS_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_THREADPOOL_INTERFACE_H_
+#define TENSORFLOW_CORE_PLATFORM_THREADPOOL_INTERFACE_H_
 
-#include "tensorflow/core/platform/threadpool_options.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/ThreadPool"
 
-#endif  // TENSORFLOW_CORE_LIB_CORE_THREADPOOL_OPTIONS_H_
+namespace tensorflow {
+namespace thread {
+
+class ThreadPoolInterface : public Eigen::ThreadPoolInterface {};
+
+}  // namespace thread
+}  // namespace tensorflow
+
+#endif  // TENSORFLOW_CORE_PLATFORM_THREADPOOL_INTERFACE_H_

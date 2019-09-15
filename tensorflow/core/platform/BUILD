@@ -488,6 +488,24 @@ cc_library(
 )
 
 cc_library(
+    name = "threadpool_interface",
+    hdrs = ["threadpool_interface.h"],
+    deps = [
+        ":mutex",
+        ":types",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "threadpool_options",
+    hdrs = ["threadpool_options.h"],
+    deps = [
+        ":threadpool_interface",
+    ],
+)
+
+cc_library(
     name = "tstring",
     hdrs = ["tstring.h"],
 )

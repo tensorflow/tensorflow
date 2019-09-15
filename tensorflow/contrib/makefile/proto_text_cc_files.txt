@@ -3,7 +3,6 @@ tensorflow/core/framework/tensor_shape.cc
 tensorflow/core/lib/core/arena.cc
 tensorflow/core/lib/core/coding.cc
 tensorflow/core/lib/core/status.cc
-tensorflow/core/lib/core/threadpool.cc
 tensorflow/core/lib/hash/crc32c.cc
 tensorflow/core/lib/hash/crc32c_accelerate.cc
 tensorflow/core/lib/hash/hash.cc
@@ -56,6 +55,7 @@ tensorflow/core/platform/strcat.cc
 tensorflow/core/platform/stringprintf.cc
 tensorflow/core/platform/str_util.cc
 tensorflow/core/platform/tensor_coding.cc
+tensorflow/core/platform/threadpool.cc
 tensorflow/core/platform/tracing.cc
 tensorflow/tools/proto_text/gen_proto_text_functions.cc
 tensorflow/tools/proto_text/gen_proto_text_functions_lib.cc
