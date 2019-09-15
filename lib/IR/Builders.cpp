@@ -123,6 +123,14 @@ IntegerAttr Builder::getI32IntegerAttr(int32_t value) {
   return IntegerAttr::get(getIntegerType(32), APInt(32, value));
 }
 
+IntegerAttr Builder::getI16IntegerAttr(int16_t value) {
+  return IntegerAttr::get(getIntegerType(16), APInt(16, value));
+}
+
+IntegerAttr Builder::getI8IntegerAttr(int8_t value) {
+  return IntegerAttr::get(getIntegerType(8), APInt(8, value));
+}
+
 IntegerAttr Builder::getIntegerAttr(Type type, int64_t value) {
   if (type.isIndex())
     return IntegerAttr::get(type, APInt(64, value));
