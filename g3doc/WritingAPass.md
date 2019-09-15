@@ -296,14 +296,14 @@ static PassRegistration<MyPass> pass("command-line-arg", "description");
     pass from `mlir-opt`.
 *   "description" is a description of the pass.
 
-For passes that cannot be default-constructed, use the third optional argument
-of `PassRegistration` that takes a callback creating the pass:
+For passes that cannot be default-constructed, `PassRegistration` accepts an
+optional third argument that takes a callback to create the pass:
 
 ```c++
 static PassRegistration<MyParametricPass> pass(
     "command-line-arg", "description",
-    []() -> Pass * {
-      Pass *p = new MyParametricPass(/*options*/);
+    []() -> std::unique_ptr<Pass> {
+      std::unique_ptr<Pass> p = std::make_unique<MyParametricPass>(/*options*/);
       /*... non-trivial-logic to configure the pass ...*/;
       return p;
     });
@@ -311,9 +311,9 @@ static PassRegistration<MyParametricPass> pass(
 
 This variant of registration can be used, for example, to accept the
 configuration of a pass from command-line arguments and pass it over to the pass
-constructor. Pass registration mechanism takes ownership of the pass. Make sure
-that the pass is copy-constructible in a way that does not share data since
-[pass manager](#pass-manager) may create copies of the pass to run in parallel.
+constructor. Make sure that the pass is copy-constructible in a way that does
+not share data as the [pass manager](#pass-manager) may create copies of the
+pass to run in parallel.
 
 ### Pass Pipeline Registration
 
@@ -324,12 +324,12 @@ mlir-opt in the same way that passes are, which is useful for encapsulating
 common pipelines like the "-O1" series of passes. Pipelines are registered via a
 similar mechanism to passes in the form of `PassPipelineRegistration`. Compared
 to `PassRegistration`, this class takes an additional parameter in the form of a
-pipeline builder that modifies a provided PassManager.
+pipeline builder that modifies a provided `OpPassManager`.
 
 ```c++
-void pipelineBuilder(PassManager &pm) {
-  pm.addPass(new MyPass());
-  pm.addPass(new MyOtherPass());
+void pipelineBuilder(OpPassManager &pm) {
+  pm.addPass(std::make_unique<MyPass>());
+  pm.addPass(std::make_unique<MyOtherPass>());
 }
 
 // Register an existing pipeline builder function.
@@ -338,9 +338,9 @@ static PassPipelineRegistration pipeline(
 
 // Register an inline pipeline builder.
 static PassPipelineRegistration pipeline(
-  "command-line-arg", "description", [](PassManager &pm) {
-    pm.addPass(new MyPass());
-    pm.addPass(new MyOtherPass());
+  "command-line-arg", "description", [](OpPassManager &pm) {
+    pm.addPass(std::make_unique<MyPass>());
+    pm.addPass(std::make_unique<MyOtherPass>());
   });
 ```
 
@@ -349,7 +349,49 @@ specifializations for existing passes:
 
 ```c++
 static PassPipelineRegistration foo10(
-    "foo-10", "Foo Pass 10", [] { return new FooPass(10); } );
+    "foo-10", "Foo Pass 10", [] { return std::make_unique<FooPass>(10); } );
+```
+
+### Textual Pass Pipeline Specification
+
+In the previous sections, we showed how to register passes and pass pipelines
+with a specific argument and description. Once registered, these can be used on
+the command line to configure a pass manager. The limitation of using these
+arguments directly is that they cannot build a nested pipeline. For example, if
+our module has another module nested underneath, with just `-my-module-pass`
+there is no way to specify that this pass should run on the nested module and
+not the top-level module. This is due to the flattened nature of the command
+line.
+
+To circumvent this limitation, MLIR also supports a textual description of a
+pass pipeline. This allows for explicitly specifying the structure of the
+pipeline to add to the pass manager. This includes the nesting structure, as
+well as the passes and pass pipelines to run. A textual pipeline is defined as a
+series of names, each of which may in itself recursively contain a nested
+pipeline description. The syntax for this specification is as follows:
+
+```ebnf
+pipeline          ::= op-name `(` pipeline-element (`,` pipeline-element)* `)`
+pipeline-element  ::= pipeline | pass-name | pass-pipeline-name
+```
+
+*   `op-name`
+    *   This corresponds to the mneumonic name of an operation to run passes on,
+        e.g. `func` or `module`.
+*   `pass-name` | `pass-pipeline-name`
+    *   This corresponds to the command-line argument of a registered pass or
+        pass pipeline, e.g. `cse` or `canonicalize`.
+
+For example, the following pipeline:
+
+```shell
+$ mlir-opt foo.mlir -cse -canonicalize -lower-to-llvm
+```
+
+Can also be specified as (via the `-pass-pipeline` flag):
+
+```shell
+$ mlir-opt foo.mlir -pass-pipeline='func(cse, canonicalize), lower-to-llvm'
 ```
 
 ## Pass Instrumentation
