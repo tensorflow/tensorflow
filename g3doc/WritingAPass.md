@@ -358,6 +358,12 @@ MLIR provides a customizable framework to instrument pass execution and analysis
 computation. This is provided via the `PassInstrumentation` class. This class
 provides hooks into the PassManager that observe various pass events:
 
+*   `runBeforePipeline`
+    *   This callback is run just before a pass pipeline, i.e. pass manager, is
+        executed.
+*   `runAfterPipeline`
+    *   This callback is run right after a pass pipeline has been executed,
+        successfully or not.
 *   `runBeforePass`
     *   This callback is run just before a pass is executed.
 *   `runAfterPass`
@@ -389,15 +395,16 @@ struct DominanceCounterInstrumentation : public PassInstrumentation {
   }
 };
 
-PassManager pm;
+MLIRContext *ctx = ...;
+PassManager pm(ctx);
 
 // Add the instrumentation to the pass manager.
 unsigned domInfoCount;
 pm.addInstrumentation(
     std::make_unique<DominanceCounterInstrumentation>(domInfoCount));
 
-// Run the pass manager on a module.
-Module m = ...;
+// Run the pass manager on a module operation.
+ModuleOp m = ...;
 if (failed(pm.run(m)))
     ...
 
