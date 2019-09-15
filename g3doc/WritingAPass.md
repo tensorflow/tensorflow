@@ -438,13 +438,12 @@ $ mlir-opt foo.mlir -disable-pass-threading -cse -canonicalize -lower-to-llvm -p
   Total Execution Time: 0.0203 seconds
 
    ---Wall Time---  --- Name ---
-   0.0062 ( 30.5%)  Canonicalizer
-   0.0053 ( 25.9%)  LLVMLowering
-   0.0036 ( 17.8%)  ModuleVerifier
-   0.0036 ( 17.7%)  FunctionVerifier
-   0.0017 (  8.1%)  CSE
-   0.0007 (  3.3%)  (A) DominanceInfo
-   0.0203 (100.0%)  Total
+   0.0047 ( 55.9%)  Canonicalizer
+   0.0019 ( 22.2%)  VerifierPass
+   0.0016 ( 18.5%)  LLVMLoweringPass
+   0.0003 (  3.4%)  CSE
+   0.0002 (  1.9%)  (A) DominanceInfo
+   0.0084 (100.0%)  Total
 ```
 
 ##### Pipeline Display Mode
@@ -464,16 +463,16 @@ $ mlir-opt foo.mlir -disable-pass-threading -cse -canonicalize -lower-to-llvm -p
   Total Execution Time: 0.0249 seconds
 
    ---Wall Time---  --- Name ---
-   0.0140 ( 56.1%)  Function Pipeline
-   0.0020 (  8.0%)    CSE
-   0.0008 (  3.2%)      (A) DominanceInfo
-   0.0022 (  8.7%)    FunctionVerifier
-   0.0076 ( 30.5%)    Canonicalizer
-   0.0022 (  8.8%)    FunctionVerifier
-   0.0022 (  9.0%)  ModuleVerifier
-   0.0065 ( 25.9%)  LLVMLowering
-   0.0022 (  9.0%)  ModuleVerifier
-   0.0249 (100.0%)  Total
+   0.0058 ( 70.8%)  'func' Pipeline
+   0.0004 (  4.3%)    CSE
+   0.0002 (  2.6%)      (A) DominanceInfo
+   0.0004 (  4.8%)    VerifierPass
+   0.0046 ( 55.4%)    Canonicalizer
+   0.0005 (  6.2%)    VerifierPass
+   0.0005 (  5.8%)  VerifierPass
+   0.0014 ( 17.2%)  LLVMLoweringPass
+   0.0005 (  6.2%)  VerifierPass
+   0.0082 (100.0%)  Total
 ```
 
 ##### Multi-threaded Pass Timing
@@ -495,16 +494,16 @@ $ mlir-opt foo.mlir -cse -canonicalize -lower-to-llvm -pass-timing
   Total Execution Time: 0.0078 seconds
 
    ---User Time---   ---Wall Time---  --- Name ---
-   0.0175 ( 88.3%)     0.0055 ( 70.4%)  Function Pipeline
-   0.0018 (  9.3%)     0.0006 (  8.1%)    CSE
-   0.0013 (  6.3%)     0.0004 (  5.8%)      (A) DominanceInfo
-   0.0017 (  8.7%)     0.0006 (  7.1%)    FunctionVerifier
-   0.0128 ( 64.6%)     0.0039 ( 50.5%)    Canonicalizer
-   0.0011 (  5.7%)     0.0004 (  4.7%)    FunctionVerifier
-   0.0004 (  2.1%)     0.0004 (  5.2%)  ModuleVerifier
-   0.0010 (  5.3%)     0.0010 ( 13.4%)  LLVMLowering
-   0.0009 (  4.3%)     0.0009 ( 11.0%)  ModuleVerifier
-   0.0198 (100.0%)     0.0078 (100.0%)  Total
+   0.0177 ( 88.5%)     0.0057 ( 71.3%)  'func' Pipeline
+   0.0044 ( 22.0%)     0.0015 ( 18.9%)    CSE
+   0.0029 ( 14.5%)     0.0012 ( 15.2%)      (A) DominanceInfo
+   0.0038 ( 18.9%)     0.0015 ( 18.7%)    VerifierPass
+   0.0089 ( 44.6%)     0.0025 ( 31.1%)    Canonicalizer
+   0.0006 (  3.0%)     0.0002 (  2.6%)    VerifierPass
+   0.0004 (  2.2%)     0.0004 (  5.4%)  VerifierPass
+   0.0013 (  6.5%)     0.0013 ( 16.3%)  LLVMLoweringPass
+   0.0006 (  2.8%)     0.0006 (  7.0%)  VerifierPass
+   0.0200 (100.0%)     0.0081 (100.0%)  Total
 ```
 
 #### IR Printing
