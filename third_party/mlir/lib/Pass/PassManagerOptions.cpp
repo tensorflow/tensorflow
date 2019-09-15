@@ -80,8 +80,7 @@ PassManagerOptions::PassManagerOptions()
       printModuleScope(
           "print-ir-module-scope",
           llvm::cl::desc("When printing IR for print-ir-[before|after]{-all} "
-                         "always print "
-                         "a module IR"),
+                         "always print the top-level module operation"),
           llvm::cl::init(false)),
 
       //===----------------------------------------------------------------===//
