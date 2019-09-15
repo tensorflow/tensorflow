@@ -225,9 +225,8 @@ OpPassManager &OpPassManager::nest(StringRef nestedName) {
   return nest(OperationName(nestedName, getContext()));
 }
 
-/// Add the given pass to this pass manager. The pass must either be an opaque
-/// `OperationPass`, or an `OpPass` that operates on operations of the same
-/// type as this pass manager.
+/// Add the given pass to this pass manager. If this pass has a concrete
+/// operation type, it must be the same type as this pass manager.
 void OpPassManager::addPass(std::unique_ptr<Pass> pass) {
   // If this pass runs on a different operation than this pass manager, then
   // implicitly nest a pass manager for this operation.

@@ -64,9 +64,8 @@ public:
     return nest(OpT::getOperationName());
   }
 
-  /// Add the given pass to this pass manager. The pass must either be an opaque
-  /// `OperationPass`, or an `OpPass` that operates on operations of the same
-  /// type as this pass manager.
+  /// Add the given pass to this pass manager. If this pass has a concrete
+  /// operation type, it must be the same type as this pass manager.
   void addPass(std::unique_ptr<Pass> pass);
 
   /// Returns the number of passes held by this manager.
