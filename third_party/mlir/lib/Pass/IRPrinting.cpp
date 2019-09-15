@@ -127,7 +127,7 @@ void PassManager::enableIRPrinting(
     std::function<bool(Pass *)> shouldPrintBeforePass,
     std::function<bool(Pass *)> shouldPrintAfterPass, bool printModuleScope,
     raw_ostream &out) {
-  addInstrumentation(new IRPrinterInstrumentation(
+  addInstrumentation(std::make_unique<IRPrinterInstrumentation>(
       std::move(shouldPrintBeforePass), std::move(shouldPrintAfterPass),
       printModuleScope, out));
 }

@@ -465,13 +465,12 @@ void PassManager::disableMultithreading(bool disable) {
   getImpl().disableThreads = disable;
 }
 
-/// Add the provided instrumentation to the pass manager. This takes ownership
-/// over the given pointer.
-void PassManager::addInstrumentation(PassInstrumentation *pi) {
+/// Add the provided instrumentation to the pass manager.
+void PassManager::addInstrumentation(std::unique_ptr<PassInstrumentation> pi) {
   if (!instrumentor)
     instrumentor.reset(new PassInstrumentor());
 
-  instrumentor->addInstrumentation(pi);
+  instrumentor->addInstrumentation(std::move(pi));
 }
 
 //===----------------------------------------------------------------------===//
@@ -605,11 +604,11 @@ void PassInstrumentor::runAfterAnalysis(llvm::StringRef name, AnalysisID *id,
     instr->runAfterAnalysis(name, id, op);
 }
 
-/// Add the given instrumentation to the collection. This takes ownership over
-/// the given pointer.
-void PassInstrumentor::addInstrumentation(PassInstrumentation *pi) {
+/// Add the given instrumentation to the collection.
+void PassInstrumentor::addInstrumentation(
+    std::unique_ptr<PassInstrumentation> pi) {
   llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
-  impl->instrumentations.emplace_back(pi);
+  impl->instrumentations.emplace_back(std::move(pi));
 }
 
 constexpr AnalysisID mlir::detail::PreservedAnalyses::allAnalysesID;
