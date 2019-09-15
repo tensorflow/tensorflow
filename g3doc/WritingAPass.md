@@ -552,12 +552,13 @@ func @simple_constant() -> (i32, i32) {
 ```
 
 *   `print-ir-module-scope`
-    *   Always print the Module IR, even for non module passes.
+    *   Always print the top-level module operation, regardless of pass type or
+        operation nesting level.
 
 ```shell
 $ mlir-opt foo.mlir -disable-pass-threading -cse -print-ir-after=cse -print-ir-module-scope
 
-*** IR Dump After CSE ***  (function: bar)
+*** IR Dump After CSE ***  ('func' operation: @bar)
 func @bar(%arg0: f32, %arg1: f32) -> f32 {
   ...
 }
@@ -568,7 +569,7 @@ func @simple_constant() -> (i32, i32) {
   return %c1_i32, %c1_i32_0 : i32, i32
 }
 
-*** IR Dump After CSE ***  (function: simple_constant)
+*** IR Dump After CSE ***  ('func' operation: @simple_constant)
 func @bar(%arg0: f32, %arg1: f32) -> f32 {
   ...
 }

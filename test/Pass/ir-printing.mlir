@@ -46,9 +46,9 @@ func @bar() {
 // AFTER_ALL: *** IR Dump After{{.*}}Canonicalizer ***
 // AFTER_ALL-NEXT: func @bar()
 
-// BEFORE_MODULE: *** IR Dump Before{{.*}}CSE *** (function: foo)
+// BEFORE_MODULE: *** IR Dump Before{{.*}}CSE *** ('func' operation: @foo)
 // BEFORE_MODULE: func @foo()
 // BEFORE_MODULE: func @bar()
-// BEFORE_MODULE: *** IR Dump Before{{.*}}CSE *** (function: bar)
+// BEFORE_MODULE: *** IR Dump Before{{.*}}CSE *** ('func' operation: @bar)
 // BEFORE_MODULE: func @foo()
 // BEFORE_MODULE: func @bar()
