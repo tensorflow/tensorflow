@@ -94,6 +94,7 @@ cc_library(
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",
+        "@local_config_mlir//:Transforms",
     ],
     alwayslink = 1,
 )

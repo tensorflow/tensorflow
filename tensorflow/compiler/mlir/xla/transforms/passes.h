@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 
 namespace mlir {
 
@@ -36,7 +37,7 @@ std::unique_ptr<OpPassBase<FuncOp>> createLegalizeTFPass();
 
 /// Converts the provided Operation as well as all nested operations into XLA
 /// dialect using the conversion patterns registered by the XLA dialect.
-void legalizeTF(Operation* op);
+LogicalResult legalizeTF(Operation* op);
 
 /// Lowers XLA control flow ops to the Standard dialect.
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeControlFlowPass();

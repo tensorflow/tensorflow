@@ -119,11 +119,15 @@ def GetHLOAxisFromTFAxis : NativeCodeCall<
 def HasRankedFirstOperand
   : Constraint<CPred<"(*$0.begin())->getType().isa<RankedTensorType>()">>;
 
-// Here, we convert from TensorFlow axis format to HLO axis format which
+// This pattern converts TensorFlow axis format to HLO axis format which
 // doesn't wrap around like TensorFlow and is always positive. For this
 // conversion, use the first input to get inputs rank. Other inputs need not be
 // ranked.
-def : Pat<(TF_ConcatV2Op $inputs, (HLO_ConstOp OneElementAttr:$axis), $unused),
+// Defining op for `axis` is TensorFlow constant op in the pattern as during
+// the conversion, original Concat op operands still refers to the old ops even
+// if HLO constant op is introduced as an replacement for the TensorFlow
+// Constant op.
+def : Pat<(TF_ConcatV2Op $inputs, (TF_ConstOp OneElementAttr:$axis), $unused),
           (HLO_ConcatenateOp $inputs, (GetHLOAxisFromTFAxis $axis, $inputs)),
           [(HasRankedFirstOperand $inputs)]>;
 

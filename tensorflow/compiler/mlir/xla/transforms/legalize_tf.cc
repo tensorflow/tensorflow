@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/Transforms/DialectConversion.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
@@ -369,31 +370,30 @@ class ConvertSoftmaxOp : public OpRewritePattern<TF::SoftmaxOp> {
 }  // end namespace xla
 }  // end namespace mlir
 
-void mlir::xla_hlo::legalizeTF(Operation *op) {
+LogicalResult mlir::xla_hlo::legalizeTF(Operation *op) {
+  MLIRContext *context = op->getContext();
+
   // Add lowering patterns to the list.
   OwningRewritePatternList patterns;
-  xla::populateWithGenerated(op->getContext(), &patterns);
+  xla::populateWithGenerated(context, &patterns);
 
   // Add patterns that lower some of the high level TensorFlow ops to lower
   // level TensorFlow ops. So, we don't have to target all the TensorFlow ops
   // here for lowering to HLO.
-  //
-  // TODO(b/140964075): Switch to DialectConversion to avoid premature lowering
-  // to lower level TensorFlow ops if we actually want to target the higher
-  // level TensorFlow op directly.
-  mlir::TF::PopulateLoweringTFPatterns(op->getContext(), &patterns);
+  mlir::TF::PopulateLoweringTFPatterns(context, &patterns);
 
   patterns.insert<mlir::xla::ConvertMaxPoolOp>(op->getContext());
   patterns.insert<mlir::xla::ConvertSoftmaxOp>(op->getContext());
 
-  // Recursively applies rewrite patterns to nested operations.
-  applyPatternsGreedily(op, patterns);
+  ConversionTarget target(*context);
+  target.addLegalDialect<XlaHloDialect>();
+
+  return applyPartialConversion(op, target, patterns);
 }
 
 /// Performs the lowering to XLA dialect.
 void LegalizeTF::runOnFunction() {
-  auto func = getFunction();
-  mlir::xla_hlo::legalizeTF(func);
+  if (failed(mlir::xla_hlo::legalizeTF(getFunction()))) signalPassFailure();
 }
 
 static PassRegistration<LegalizeTF> pass(
