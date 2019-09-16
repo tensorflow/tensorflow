@@ -415,9 +415,7 @@ XLA_TEST_P(ParametricDotTest, TestF16) { TestImpl<Eigen::half>(); }
 #endif
 XLA_TEST_P(ParametricDotTest, TestF32) { TestImpl<float>(); }
 XLA_TEST_P(ParametricDotTest, TestF64) { TestImpl<double>(); }
-#ifndef XLA_TEST_BACKEND_CPU
 XLA_TEST_P(ParametricDotTest, TestS32) { TestImpl<int32>(); }
-#endif
 
 INSTANTIATE_TEST_CASE_P(DotTests, ParametricDotTest,
                         ::testing::ValuesIn(CreateDotTestParameters()),
@@ -1384,7 +1382,7 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
-XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(GpuIntegerDotCodegen)) {
+XLA_TEST_F(DotOperationTextTest, IntegerDotCodegen) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
