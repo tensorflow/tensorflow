@@ -51,6 +51,12 @@ xla_proto_library(
     srcs = ["hlo_profile_printer_data.proto"],
 )
 
+xla_proto_library(
+    name = "hlo_execution_profile_data",
+    srcs = ["hlo_execution_profile_data.proto"],
+    deps = [":hlo_profile_printer_data"],
+)
+
 # Filegroup used to collect source files for dependency checking.
 filegroup(
     name = "c_srcs",
@@ -2463,6 +2469,7 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_cost_analysis",
+        ":hlo_execution_profile_data",
         ":hlo_profile_printer",
         ":human_readable_profile_builder",
         "//tensorflow/compiler/xla:types",
