@@ -604,7 +604,7 @@ def _SqrtGradGrad(op, grad):
   a = op.inputs[0]
   y = op.outputs[0]  # y = 0.5 * b / conj(a)
   with ops.control_dependencies([grad]):
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       ga = gen_math_ops.xdivy(grad, a)
       return -gen_math_ops.mul_no_nan(y, math_ops.conj(ga)), 0.5 * ga
     else:
@@ -638,7 +638,7 @@ def _ExpGrad(op, grad):
   y = op.outputs[0]  # y = e^x
   with ops.control_dependencies([grad]):
     y = math_ops.conj(y)
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return math_ops.mul_no_nan(y, grad)
     else:
       return grad * y
@@ -651,7 +651,7 @@ def _Expm1Grad(op, grad):
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
     y = math_ops.exp(x)
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return math_ops.mul_no_nan(y, grad)
     else:
       return grad * y
@@ -663,7 +663,7 @@ def _LogGrad(op, grad):
   x = op.inputs[0]
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return gen_math_ops.xdivy(grad, x)
     else:
       return grad * math_ops.reciprocal(x)
@@ -675,7 +675,7 @@ def _Log1pGrad(op, grad):
   x = op.inputs[0]
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return gen_math_ops.xdivy(grad, 1 + x)
     else:
       return grad * math_ops.reciprocal(1 + x)
@@ -757,7 +757,7 @@ def _AcoshGrad(op, grad):
   y = op.outputs[0]
   with ops.control_dependencies([grad]):
     y = math_ops.conj(y)
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return math_ops.xdivy(grad, math_ops.sinh(y))
     else:
       return grad / math_ops.sinh(y)
@@ -810,7 +810,7 @@ def _LgammaGrad(op, grad):
   x = op.inputs[0]
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return math_ops.mul_no_nan(math_ops.digamma(x), grad)
     else:
       return grad * math_ops.digamma(x)
@@ -823,7 +823,7 @@ def _DigammaGrad(op, grad):
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
     partial_x = math_ops.polygamma(array_ops.constant(1, dtype=x.dtype), x)
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return math_ops.mul_no_nan(partial_x, grad)
     else:
       return grad * partial_x
@@ -836,7 +836,7 @@ def _BesselI0eGrad(op, grad):
   y = op.outputs[0]
   with ops.control_dependencies([grad]):
     partial_x = (math_ops.bessel_i1e(x) - math_ops.sign(x) * y)
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return math_ops.mul_no_nan(partial_x, grad)
     else:
       return grad * partial_x
@@ -860,7 +860,7 @@ def _BesselI1eGrad(op, grad):
     dy_dx = math_ops.bessel_i0e(safe_x) - y * (
         math_ops.sign(safe_x) + math_ops.reciprocal(safe_x))
     dy_dx = array_ops.where_v2(x_is_not_tiny, dy_dx, 0.5 + zeros)
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return math_ops.mul_no_nan(dy_dx, grad)
     else:
       return grad * dy_dx
@@ -881,7 +881,7 @@ def _IgammaGrad(op, grad):
     # and Gamma'(a) can grow large.
     partial_x = math_ops.exp(-x + (a - 1) * math_ops.log(x) -
                              math_ops.lgamma(a))
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return (array_ops.reshape(
           math_ops.reduce_sum(math_ops.mul_no_nan(partial_a, grad), ra), sa),
               array_ops.reshape(
@@ -920,7 +920,7 @@ def _BetaincGrad(op, grad):
                            (a - 1) * math_ops.log(x) - log_beta)
 
   # TODO(b/36815900): Mark None return values as NotImplemented
-  if compat.forward_compatible(2019, 9, 14):
+  if compat.forward_compatible(2019, 12, 14):
     return (
         None,  # da
         None,  # db
@@ -949,7 +949,7 @@ def _ZetaGrad(op, grad):
     q = math_ops.conj(q)
     partial_q = -x * math_ops.zeta(x + 1, q)
     # TODO(b/36815900): Mark None return values as NotImplemented
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return (None,
               array_ops.reshape(
                   math_ops.reduce_sum(math_ops.mul_no_nan(partial_q, grad), rq),
@@ -975,7 +975,7 @@ def _PolygammaGrad(op, grad):
     x = math_ops.conj(x)
     partial_x = math_ops.polygamma(n + 1, x)
     # TODO(b/36815900): Mark None return values as NotImplemented
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return (None,
               array_ops.reshape(
                   math_ops.reduce_sum(math_ops.mul_no_nan(partial_x, grad), rx),
@@ -1036,7 +1036,7 @@ def _TanGrad(op, grad):
     x = math_ops.conj(x)
     secx = math_ops.reciprocal(math_ops.cos(x))
     secx2 = math_ops.square(secx)
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return math_ops.mul_no_nan(secx2, grad)
     else:
       return secx2 * grad
@@ -1051,7 +1051,7 @@ def _AsinGrad(op, grad):
     x2 = math_ops.square(x)
     one = constant_op.constant(1, dtype=grad.dtype)
     den = math_ops.sqrt(math_ops.subtract(one, x2))
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return math_ops.xdivy(grad, den)
     else:
       inv = math_ops.reciprocal(den)
@@ -1067,7 +1067,7 @@ def _AcosGrad(op, grad):
     x2 = math_ops.square(x)
     one = constant_op.constant(1, dtype=grad.dtype)
     den = math_ops.sqrt(math_ops.subtract(one, x2))
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return -math_ops.xdivy(grad, den)
     else:
       inv = math_ops.reciprocal(den)
@@ -1092,7 +1092,7 @@ def _Atan2Grad(op, grad):
   y = op.inputs[0]
   x = op.inputs[1]
   with ops.control_dependencies([grad]):
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       grad_inv = math_ops.xdivy(grad, (math_ops.square(x) + math_ops.square(y)))
     else:
       grad_inv = grad / (math_ops.square(x) + math_ops.square(y))
@@ -1254,7 +1254,7 @@ def _DivGrad(op, grad):
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   x = math_ops.conj(x)
   y = math_ops.conj(y)
-  if compat.forward_compatible(2019, 9, 14):
+  if compat.forward_compatible(2019, 12, 14):
     return (array_ops.reshape(
         math_ops.reduce_sum(math_ops.xdivy(grad, y), rx), sx),
             array_ops.reshape(
@@ -1307,7 +1307,7 @@ def _RealDivGrad(op, grad):
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   x = math_ops.conj(x)
   y = math_ops.conj(y)
-  if compat.forward_compatible(2019, 9, 14):
+  if compat.forward_compatible(2019, 12, 14):
     return (array_ops.reshape(
         math_ops.reduce_sum(math_ops.xdivy(grad, y), rx), sx),
             array_ops.reshape(
@@ -1334,7 +1334,7 @@ def _DivNoNanGrad(op, grad):
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   x = math_ops.conj(x)
   y = math_ops.conj(y)
-  if compat.forward_compatible(2019, 9, 14):
+  if compat.forward_compatible(2019, 12, 14):
     return (array_ops.reshape(
         math_ops.reduce_sum(math_ops.div_no_nan(grad, y), rx), sx),
             array_ops.reshape(
@@ -1356,7 +1356,7 @@ def _PowGrad(op, grad):
   """Returns grad * (y*x^(y-1), z*log(x))."""
   x = op.inputs[0]
   y = op.inputs[1]
-  use_mul_no_nan = compat.forward_compatible(2019, 9, 14)
+  use_mul_no_nan = compat.forward_compatible(2019, 12, 14)
   skip_input_indices = None
   try:
     skip_input_indices = op.skip_input_indices
