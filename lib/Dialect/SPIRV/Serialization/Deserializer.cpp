@@ -128,6 +128,11 @@ private:
   /// Gets the constant's attribute and type associated with the given <id>.
   Optional<std::pair<Attribute, Type>> getConstant(uint32_t id);
 
+  /// Returns a symbol to be used for the function name with the given
+  /// result <id>. This tries to use the function's OpName if
+  /// exists; otherwise creates one based on the <id>.
+  std::string getFunctionSymbol(uint32_t id);
+
   /// Returns a symbol to be used for the specialization constant with the given
   /// result <id>. This tries to use the specialization constant's OpName if
   /// exists; otherwise creates one based on the <id>.
@@ -637,10 +642,7 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
            << functionType << " and return type " << resultType << " specified";
   }
 
-  std::string fnName = nameMap.lookup(operands[1]).str();
-  if (fnName.empty()) {
-    fnName = "spirv_fn_" + std::to_string(operands[2]);
-  }
+  std::string fnName = getFunctionSymbol(operands[1]);
   auto funcOp = opBuilder.create<FuncOp>(unknownLoc, fnName, functionType,
                                          ArrayRef<NamedAttribute>());
   curFunction = funcMap[operands[1]] = funcOp;
@@ -760,6 +762,14 @@ Optional<std::pair<Attribute, Type>> Deserializer::getConstant(uint32_t id) {
   if (constIt == constantMap.end())
     return llvm::None;
   return constIt->getSecond();
+}
+
+std::string Deserializer::getFunctionSymbol(uint32_t id) {
+  auto funcName = nameMap.lookup(id).str();
+  if (funcName.empty()) {
+    funcName = "spirv_fn_" + std::to_string(id);
+  }
+  return funcName;
 }
 
 std::string Deserializer::getSpecConstantSymbol(uint32_t id) {
@@ -1776,6 +1786,50 @@ Deserializer::processOp<spirv::ExecutionModeOp>(ArrayRef<uint32_t> words) {
   auto values = opBuilder.getArrayAttr(attrListElems);
   opBuilder.create<spirv::ExecutionModeOp>(
       unknownLoc, opBuilder.getSymbolRefAttr(fn.getName()), execMode, values);
+  return success();
+}
+
+template <>
+LogicalResult
+Deserializer::processOp<spirv::FunctionCallOp>(ArrayRef<uint32_t> operands) {
+  if (operands.size() < 3) {
+    return emitError(unknownLoc,
+                     "OpFunctionCall must have at least 3 operands");
+  }
+
+  Type resultType = getType(operands[0]);
+  if (!resultType) {
+    return emitError(unknownLoc, "undefined result type from <id> ")
+           << operands[0];
+  }
+
+  auto resultID = operands[1];
+  auto functionID = operands[2];
+
+  auto functionName = getFunctionSymbol(functionID);
+
+  llvm::SmallVector<Value *, 4> arguments;
+  for (auto operand : llvm::drop_begin(operands, 3)) {
+    auto *value = getValue(operand);
+    if (!value) {
+      return emitError(unknownLoc, "unknown <id> ")
+             << operand << " used by OpFunctionCall";
+    }
+    arguments.push_back(value);
+  }
+
+  SmallVector<Type, 1> resultTypes;
+  if (!isVoidType(resultType)) {
+    resultTypes.push_back(resultType);
+  }
+
+  auto opFunctionCall = opBuilder.create<spirv::FunctionCallOp>(
+      unknownLoc, resultTypes, opBuilder.getSymbolRefAttr(functionName),
+      arguments);
+
+  if (!resultTypes.empty()) {
+    valueMap[resultID] = opFunctionCall.getResult(0);
+  }
   return success();
 }
 

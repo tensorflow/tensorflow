@@ -100,6 +100,7 @@ def SPV_OC_OpSpecConstantComposite  : I32EnumAttrCase<"OpSpecConstantComposite",
 def SPV_OC_OpFunction               : I32EnumAttrCase<"OpFunction", 54>;
 def SPV_OC_OpFunctionParameter      : I32EnumAttrCase<"OpFunctionParameter", 55>;
 def SPV_OC_OpFunctionEnd            : I32EnumAttrCase<"OpFunctionEnd", 56>;
+def SPV_OC_OpFunctionCall           : I32EnumAttrCase<"OpFunctionCall", 57>;
 def SPV_OC_OpVariable               : I32EnumAttrCase<"OpVariable", 59>;
 def SPV_OC_OpLoad                   : I32EnumAttrCase<"OpLoad", 61>;
 def SPV_OC_OpStore                  : I32EnumAttrCase<"OpStore", 62>;
@@ -161,13 +162,13 @@ def SPV_OpcodeAttr :
       SPV_OC_OpConstantFalse, SPV_OC_OpConstant, SPV_OC_OpConstantComposite,
       SPV_OC_OpConstantNull, SPV_OC_OpSpecConstantTrue, SPV_OC_OpSpecConstantFalse,
       SPV_OC_OpSpecConstant, SPV_OC_OpSpecConstantComposite, SPV_OC_OpFunction,
-      SPV_OC_OpFunctionParameter, SPV_OC_OpFunctionEnd, SPV_OC_OpVariable,
-      SPV_OC_OpLoad, SPV_OC_OpStore, SPV_OC_OpAccessChain, SPV_OC_OpDecorate,
-      SPV_OC_OpMemberDecorate, SPV_OC_OpCompositeExtract, SPV_OC_OpIAdd,
-      SPV_OC_OpFAdd, SPV_OC_OpISub, SPV_OC_OpFSub, SPV_OC_OpIMul, SPV_OC_OpFMul,
-      SPV_OC_OpUDiv, SPV_OC_OpSDiv, SPV_OC_OpFDiv, SPV_OC_OpUMod, SPV_OC_OpSRem,
-      SPV_OC_OpSMod, SPV_OC_OpFRem, SPV_OC_OpFMod, SPV_OC_OpSelect, SPV_OC_OpIEqual,
-      SPV_OC_OpINotEqual, SPV_OC_OpUGreaterThan, SPV_OC_OpSGreaterThan,
+      SPV_OC_OpFunctionParameter, SPV_OC_OpFunctionEnd, SPV_OC_OpFunctionCall,
+      SPV_OC_OpVariable, SPV_OC_OpLoad, SPV_OC_OpStore, SPV_OC_OpAccessChain,
+      SPV_OC_OpDecorate, SPV_OC_OpMemberDecorate, SPV_OC_OpCompositeExtract,
+      SPV_OC_OpIAdd, SPV_OC_OpFAdd, SPV_OC_OpISub, SPV_OC_OpFSub, SPV_OC_OpIMul,
+      SPV_OC_OpFMul, SPV_OC_OpUDiv, SPV_OC_OpSDiv, SPV_OC_OpFDiv, SPV_OC_OpUMod,
+      SPV_OC_OpSRem, SPV_OC_OpSMod, SPV_OC_OpFRem, SPV_OC_OpFMod, SPV_OC_OpSelect,
+      SPV_OC_OpIEqual, SPV_OC_OpINotEqual, SPV_OC_OpUGreaterThan, SPV_OC_OpSGreaterThan,
       SPV_OC_OpUGreaterThanEqual, SPV_OC_OpSGreaterThanEqual, SPV_OC_OpULessThan,
       SPV_OC_OpSLessThan, SPV_OC_OpULessThanEqual, SPV_OC_OpSLessThanEqual,
       SPV_OC_OpFOrdEqual, SPV_OC_OpFUnordEqual, SPV_OC_OpFOrdNotEqual,
@@ -1113,7 +1114,7 @@ def SPV_SamplerUseAttr:
 // Check that an op can only be used within the scope of a FuncOp.
 def InFunctionScope : PredOpTrait<
   "op must appear in a 'func' block",
-  CPred<"llvm::isa_and_nonnull<FuncOp>($_op.getParentOp())">>;
+  CPred<"($_op.getParentOfType<FuncOp>())">>;
 
 // Check that an op can only be used within the scope of a SPIR-V ModuleOp.
 def InModuleScope : PredOpTrait<
