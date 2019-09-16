@@ -122,16 +122,6 @@ Type linalg::convertLinalgType(Type t) {
   return t;
 }
 
-// Create an array attribute containing integer attributes with values provided
-// in `position`.
-static ArrayAttr makePositionAttr(OpBuilder &builder, ArrayRef<int> position) {
-  SmallVector<Attribute, 4> attrs;
-  attrs.reserve(position.size());
-  for (auto p : position)
-    attrs.push_back(builder.getI64IntegerAttr(p));
-  return builder.getArrayAttr(attrs);
-}
-
 // RangeOp creates a new range descriptor.
 class RangeOpConversion : public ConversionPattern {
 public:
@@ -151,11 +141,11 @@ public:
     // Fill in an aggregate value of the descriptor.
     Value *rangeDescriptor = undef(rangeDescriptorType);
     rangeDescriptor = insertvalue(rangeDescriptorType, rangeDescriptor,
-                                  operands[0], makePositionAttr(rewriter, 0));
+                                  operands[0], rewriter.getI64ArrayAttr(0));
     rangeDescriptor = insertvalue(rangeDescriptorType, rangeDescriptor,
-                                  operands[1], makePositionAttr(rewriter, 1));
+                                  operands[1], rewriter.getI64ArrayAttr(1));
     rangeDescriptor = insertvalue(rangeDescriptorType, rangeDescriptor,
-                                  operands[2], makePositionAttr(rewriter, 2));
+                                  operands[2], rewriter.getI64ArrayAttr(2));
     rewriter.replaceOp(op, rangeDescriptor);
     return matchSuccess();
   }
@@ -177,8 +167,8 @@ public:
 
     // Helper function to create an integer array attribute out of a list of
     // values.
-    auto pos = [&rewriter](ArrayRef<int> values) {
-      return makePositionAttr(rewriter, values);
+    auto pos = [&rewriter](ArrayRef<int64_t> values) {
+      return rewriter.getI64ArrayAttr(values);
     };
 
     // Helper function to emit an LLVMIR Dialect 64-bit integer constant given
@@ -303,8 +293,8 @@ public:
                            .getPointerTo();
     auto int64Ty = linalg::convertLinalgType(rewriter.getIntegerType(64));
 
-    auto pos = [&rewriter](ArrayRef<int> values) {
-      return makePositionAttr(rewriter, values);
+    auto pos = [&rewriter](ArrayRef<int64_t> values) {
+      return rewriter.getI64ArrayAttr(values);
     };
 
     // First operand to `slice` is the old view descriptor.

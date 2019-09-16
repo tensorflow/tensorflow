@@ -40,16 +40,6 @@
 
 using namespace mlir;
 
-// Create an array attribute containing integer attributes with values provided
-// in `position`.
-static ArrayAttr makePositionAttr(Builder &builder, ArrayRef<int> position) {
-  SmallVector<Attribute, 4> attrs;
-  attrs.reserve(position.size());
-  for (auto p : position)
-    attrs.push_back(builder.getI64IntegerAttr(p));
-  return builder.getArrayAttr(attrs);
-}
-
 namespace {
 // Common functionality for Linalg LoadOp and StoreOp conversion to the
 // LLVM IR Dialect.
@@ -73,8 +63,8 @@ public:
                       .getPointerTo();
     auto int64Ty = linalg::convertLinalgType(rewriter.getIntegerType(64));
 
-    auto pos = [&rewriter](ArrayRef<int> values) {
-      return makePositionAttr(rewriter, values);
+    auto pos = [&rewriter](ArrayRef<int64_t> values) {
+      return rewriter.getI64ArrayAttr(values);
     };
 
     using namespace intrinsics;
