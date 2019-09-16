@@ -53,7 +53,7 @@ cc_library(
     name = "tensorflow_native_libs",
     srcs = [
         ":libtensorflow_demo.so",
-        "//tensorflow/contrib/android:libtensorflow_inference.so",
+        "//tensorflow/tools/android/inference_interface:libtensorflow_inference.so",
     ],
     tags = [
         "manual",
@@ -84,7 +84,7 @@ android_binary(
     ],
     deps = [
         ":tensorflow_native_libs",
-        "//tensorflow/contrib/android:android_tensorflow_inference_java",
+        "//tensorflow/tools/android/inference_interface:android_tensorflow_inference_java",
     ],
 )
 
