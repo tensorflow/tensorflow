@@ -98,7 +98,7 @@ def batch_gather(params, indices, name=None):
                              'not match params shape')
           params = ragged_tensor.RaggedTensor.from_tensor(
               params, ragged_rank=1,
-              row_splits_dtype=indices.row_splits.dtype)
+              row_splits_dtype=indices.row_splits_dtype)
 
         # Adjust indices from within-batch to global (in params.values), and
         # then use ragged.gather to gather them.

@@ -134,7 +134,7 @@ def _ragged_getitem(rt_input, key_list):
   if row_key is array_ops.newaxis:
     inner_rt = _ragged_getitem(rt_input, inner_keys)
     nsplits = array_ops.shape(inner_rt.row_splits,
-                              out_type=inner_rt.row_splits.dtype)[0]
+                              out_type=inner_rt.row_splits_dtype)[0]
     return ragged_tensor.RaggedTensor.from_row_splits(
         inner_rt, array_ops.stack([0, nsplits - 1]), validate=False)
 
@@ -190,7 +190,7 @@ def _slice_ragged_row_dimension(rt_input, row_key):
   # Use row_key to slice the starts & limits.
   new_starts = rt_input.row_splits[:-1][row_key]
   new_limits = rt_input.row_splits[1:][row_key]
-  zero_pad = array_ops.zeros([1], rt_input.row_splits.dtype)
+  zero_pad = array_ops.zeros([1], rt_input.row_splits_dtype)
 
   # If there's no slice step, then we can just select a single continuous
   # span of `ragged.values(rt_input)`.
@@ -245,7 +245,7 @@ def _ragged_getitem_inner_dimensions(rt_input, key_list):
   if column_key is array_ops.newaxis:
     inner_rt = _ragged_getitem_inner_dimensions(rt_input, key_list[1:])
     nsplits = array_ops.shape(inner_rt.row_splits,
-                              out_type=inner_rt.row_splits.dtype)[0]
+                              out_type=inner_rt.row_splits_dtype)[0]
     return ragged_tensor.RaggedTensor.from_row_splits(inner_rt,
                                                       math_ops.range(nsplits),
                                                       validate=False)

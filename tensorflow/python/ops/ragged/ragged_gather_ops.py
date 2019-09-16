@@ -200,7 +200,7 @@ def gather_nd(params, indices, batch_dims=0, name=None):
       if indices_is_dense:
         indices = ragged_tensor.RaggedTensor.from_tensor(
             indices, ragged_rank=indices_ndims - 2,
-            row_splits_dtype=params.row_splits.dtype)
+            row_splits_dtype=params.row_splits_dtype)
       result = indices.with_flat_values(gather_nd(params, indices.flat_values))
       if (indices_is_dense and ragged_tensor.is_ragged(result) and
           result.ragged_rank == indices_ndims - 2):
@@ -235,7 +235,7 @@ def gather_nd(params, indices, batch_dims=0, name=None):
     # index tuples point to the correct values in the flattened params; and
     # then use ragged.gather on the flattened index tuples & params.
     else:
-      indices = math_ops.cast(indices, params.row_splits.dtype)
+      indices = math_ops.cast(indices, params.row_splits_dtype)
 
       # Flatten the outermost 2 dimensions of the index tuples & params.
       flattened_index_tuples = array_ops.gather(params.row_splits,
