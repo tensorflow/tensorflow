@@ -45,7 +45,7 @@ class GreedyPatternRewriteDriver : public PatternRewriter {
 public:
   explicit GreedyPatternRewriteDriver(MLIRContext *ctx,
                                       const OwningRewritePatternList &patterns)
-      : PatternRewriter(ctx), matcher(patterns) {
+      : PatternRewriter(ctx), matcher(patterns), folder(ctx) {
     worklist.reserve(64);
   }
 

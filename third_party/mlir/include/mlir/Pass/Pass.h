@@ -26,9 +26,6 @@
 
 namespace mlir {
 namespace detail {
-class FunctionPassExecutor;
-class ModulePassExecutor;
-
 /// The state for a single execution of a pass. This provides a unified
 /// interface for accessing and initializing necessary state for pass execution.
 struct PassExecutionState {
@@ -68,11 +65,13 @@ public:
   /// Returns the derived pass name.
   virtual StringRef getName() = 0;
 
-  /// Returns the name of the operation that this pass operates on.
-  StringRef getOpName() const { return opName; }
+  /// Returns the name of the operation that this pass operates on, or None if
+  /// this is a generic OperationPass.
+  llvm::Optional<StringRef> getOpName() const { return opName; }
 
 protected:
-  Pass(const PassID *passID, StringRef opName)
+  explicit Pass(const PassID *passID,
+                llvm::Optional<StringRef> opName = llvm::None)
       : passID(passID), opName(opName) {}
 
   /// Returns the current pass state.
@@ -112,15 +111,15 @@ private:
   /// Represents a unique identifier for the pass.
   const PassID *passID;
 
-  /// The name of the operation that this pass operates on.
-  StringRef opName;
+  /// The name of the operation that this pass operates on, or None if this is a
+  /// generic OperationPass.
+  llvm::Optional<StringRef> opName;
 
   /// The current execution state for the pass.
   llvm::Optional<detail::PassExecutionState> passState;
 
   /// Allow access to 'clone' and 'run'.
-  friend detail::FunctionPassExecutor;
-  friend detail::ModulePassExecutor;
+  friend class OpPassManager;
 };
 
 //===----------------------------------------------------------------------===//
@@ -138,7 +137,8 @@ public:
   }
 
 protected:
-  PassModel(StringRef opName) : BasePassT(PassID::getID<PassT>(), opName) {}
+  explicit PassModel(llvm::Optional<StringRef> opName = llvm::None)
+      : BasePassT(PassID::getID<PassT>(), opName) {}
 
   /// Signal that some invariant was broken when running. The IR is allowed to
   /// be in an invalid state.
@@ -227,11 +227,24 @@ public:
   }
 };
 
+/// Pass to transform an operation.
+///
+/// Operation passes must not:
+///   - modify any other operations within the parent region, as other threads
+///     may be manipulating them concurrently.
+///   - modify any state within the parent operation, this includes adding
+///     additional operations.
+///
+/// Derived function passes are expected to provide the following:
+///   - A 'void runOnOperation()' method.
+template <typename T>
+struct OperationPass : public detail::PassModel<T, Pass> {};
+
 /// Pass to transform an operation of a specific type.
 ///
 /// Operation passes must not:
-///   - read or modify any other operations within the parent region, as
-///     other threads may be manipulating them concurrently.
+///   - modify any other operations within the parent region, as other threads
+///     may be manipulating them concurrently.
 ///   - modify any state within the parent operation, this includes adding
 ///     additional operations.
 ///

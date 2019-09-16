@@ -212,11 +212,10 @@ Status MaybeRewriteInput(ScopedAllocatorOptimizer* sa_opti,
                          NodeMap* node_map, const DataType& dtype,
                          NodeDef* input, const string& edge_name,
                          int output_index, NodeDef* op, NodeDef** new_input,
-                         int* new_output_index) {
-  bool rewrite =
-      IsExit(*input) || (sa_opti->repeated_outputs().find(edge_name) !=
-                         sa_opti->repeated_outputs().end());
-  if (!rewrite) {
+                         int* new_output_index, bool* rewrite) {
+  *rewrite = IsExit(*input) || (sa_opti->repeated_outputs().find(edge_name) !=
+                                sa_opti->repeated_outputs().end());
+  if (!(*rewrite)) {
     *new_input = input;
     *new_output_index = output_index;
     return Status::OK();
@@ -263,6 +262,7 @@ Status GetInputs(ScopedAllocatorOptimizer* sa_opti, int64 invocation_count,
   for (NodeDef* n : ops) {
     NodeDef* inode = nullptr;
     int output_index = 0;
+    DataType inode_dtype = DT_INVALID;
     VLOG(2) << "for node " << n->name();
     for (const auto& input_name : n->input()) {
       if (!IsControlInput(input_name)) {
@@ -277,22 +277,29 @@ Status GetInputs(ScopedAllocatorOptimizer* sa_opti, int64 invocation_count,
         }
         VLOG(2) << "inode " << inode->DebugString() << " output_index "
                 << output_index;
+        bool rewrite;
         LOG_WARNING_AND_RETURN_IF_ERROR(MaybeRewriteInput(
             sa_opti, invocation_count, graph, node_map, dtype, inode,
-            input_name, output_index, n, &inode, &output_index));
+            input_name, output_index, n, &inode, &output_index, &rewrite));
+        // If `inode` was rewritten, don't try to get output properties from the
+        // input node below.
+        if (rewrite) {
+          inode_dtype = dtype;
+        }
         VLOG(2) << "inode after rewrite " << inode->DebugString()
                 << " output_index " << output_index;
       }
     }
-    DataType inode_dtype;
-    if (!graph_properties.HasOutputProperties(inode->name())) {
-      return errors::Internal("Input node ", inode->name(),
-                              " does not have output properties");
+    if (inode_dtype == DT_INVALID) {
+      if (!graph_properties.HasOutputProperties(inode->name())) {
+        return errors::Internal("Input node ", inode->name(),
+                                " does not have output properties");
+      }
+      const auto& inode_output_props =
+          graph_properties.GetOutputProperties(inode->name());
+      LOG_WARNING_AND_RETURN_IF_ERROR(
+          GetOutputDataType(inode_output_props, output_index, &inode_dtype));
     }
-    const auto& inode_output_props =
-        graph_properties.GetOutputProperties(inode->name());
-    LOG_WARNING_AND_RETURN_IF_ERROR(
-        GetOutputDataType(inode_output_props, output_index, &inode_dtype));
     if (inode_dtype != dtype) {
       return errors::Internal("ScopedAllocatorOptimizer expected input type ",
                               dtype, " but found ", inode_dtype);

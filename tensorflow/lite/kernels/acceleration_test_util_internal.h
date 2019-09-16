@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_ACCELERATION_TEST_UTIL_INTERNAL_H_
 
 #include <algorithm>
+#include <atomic>
 #include <functional>
 #include <sstream>
 #include <string>

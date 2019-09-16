@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/depth_wise_conv.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/depth_wise_conv_3x3_texture.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/depth_wise_conv_3x3.h"
 
 namespace tflite {
 namespace gpu {
@@ -28,11 +28,11 @@ Status SelectDWConvolutionTextureArray(
     const DepthwiseConvolution2DAttributes& attr,
     const CreationContext& creation_context, const OperationDef& op_def,
     std::unique_ptr<GPUOperation>* ptr) {
-  if (IsDepthWiseConv3x3TextureSupported(attr)) {
-    DepthWiseConv3x3Texture dw_conv;
-    RETURN_IF_ERROR(CreateDepthWiseConv3x3Texture(creation_context, op_def,
+  if (IsDepthWiseConv3x3Supported(attr)) {
+    DepthWiseConv3x3 dw_conv;
+    RETURN_IF_ERROR(CreateDepthWiseConv3x3(creation_context, op_def,
                                                   attr, &dw_conv));
-    *ptr = absl::make_unique<DepthWiseConv3x3Texture>(std::move(dw_conv));
+    *ptr = absl::make_unique<DepthWiseConv3x3>(std::move(dw_conv));
   } else {
     DepthWiseConvolution dw_conv;
     RETURN_IF_ERROR(
@@ -46,11 +46,11 @@ Status SelectDWConvolutionTexture2D(
     const DepthwiseConvolution2DAttributes& attr,
     const CreationContext& creation_context, const OperationDef& op_def,
     std::unique_ptr<GPUOperation>* ptr) {
-  if (IsDepthWiseConv3x3TextureSupported(attr)) {
-    DepthWiseConv3x3Texture dw_conv;
-    RETURN_IF_ERROR(CreateDepthWiseConv3x3Texture(creation_context, op_def,
+  if (IsDepthWiseConv3x3Supported(attr)) {
+    DepthWiseConv3x3 dw_conv;
+    RETURN_IF_ERROR(CreateDepthWiseConv3x3(creation_context, op_def,
                                                   attr, &dw_conv));
-    *ptr = absl::make_unique<DepthWiseConv3x3Texture>(std::move(dw_conv));
+    *ptr = absl::make_unique<DepthWiseConv3x3>(std::move(dw_conv));
   } else {
     DepthWiseConvolution dw_conv;
     RETURN_IF_ERROR(
@@ -64,10 +64,17 @@ Status SelectDWConvolutionBuffer(const DepthwiseConvolution2DAttributes& attr,
                                  const CreationContext& creation_context,
                                  const OperationDef& op_def,
                                  std::unique_ptr<GPUOperation>* ptr) {
-  DepthWiseConvolution dw_conv;
-  RETURN_IF_ERROR(
-      CreateDepthWiseConvolution(creation_context, op_def, attr, &dw_conv));
-  *ptr = absl::make_unique<DepthWiseConvolution>(std::move(dw_conv));
+  if (!creation_context.device->IsMali() && IsDepthWiseConv3x3Supported(attr)) {
+    DepthWiseConv3x3 dw_conv;
+    RETURN_IF_ERROR(
+        CreateDepthWiseConv3x3(creation_context, op_def, attr, &dw_conv));
+    *ptr = absl::make_unique<DepthWiseConv3x3>(std::move(dw_conv));
+  } else {
+    DepthWiseConvolution dw_conv;
+    RETURN_IF_ERROR(
+        CreateDepthWiseConvolution(creation_context, op_def, attr, &dw_conv));
+    *ptr = absl::make_unique<DepthWiseConvolution>(std::move(dw_conv));
+  }
   return OkStatus();
 }
 }  // namespace

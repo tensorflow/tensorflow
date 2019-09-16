@@ -971,7 +971,7 @@ class OperationTest(test_util.TensorFlowTestCase):
       x = test_ops.int_output()
       op = test_ops.int_input_int_output(x, name="myop").op
     with self.assertRaisesRegexp(
-        AttributeError, "'_InputList' object has no attribute 'append'"):
+        AttributeError, "'tuple' object has no attribute 'append'"):
       op.inputs.append(None)
 
 

@@ -124,6 +124,7 @@ def : Pat<(TF_MinimumOp $arg1, $arg2), (TFL_MinimumOp $arg1, $arg2)>;
 def : Pat<(TF_OneHotOp $indices, $depth, $on_value, $off_value, $axis),
           (TFL_OneHotOp $indices, $depth, $on_value, $off_value,
            (convertIntAttrTo32Bit $axis))>;
+def : Pat<(TF_PowOp $x, $y), (TFL_PowOp $x, $y)>;
 def : Pat<(TF_RangeOp $start, $limit, $delta), (TFL_RangeOp $start, $limit, $delta)>;
 def : Pat<(TF_Relu6Op $arg), (TFL_Relu6Op $arg)>;
 def : Pat<(TF_ReluOp $arg), (TFL_ReluOp $arg)>;
@@ -156,7 +157,8 @@ def : Pat<(TF_ZerosLikeOp $arg), (TFL_ZerosLikeOp $arg)>;
 // The following two rules can both match an tf.Placeholder.input node with
 // min/max/type attributes, so we increase the benefit of the first rule by one
 // so the tfl.quantize and tfl.dequantize ops will be inserted if it matches.
-def : Pat<(TF_PlaceholderInputOp $inputs, $min, $max, $type),
+def : Pat<(TF_PlaceholderInputOp TensorOf<[F16, F32, F64]>:$inputs,
+              $min, $max, $type),
           (TFL_DequantizeOp
               (TFL_QuantizeOp
                   (TFL_InputOp $inputs),

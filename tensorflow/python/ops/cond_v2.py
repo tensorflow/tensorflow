@@ -25,6 +25,7 @@ from __future__ import print_function
 
 import collections
 
+from tensorflow.python.eager import backprop_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
@@ -344,7 +345,7 @@ def _grad_fn(func_graph, grads):
   ys = []
   grad_ys = []
   for y, grad_y in zip(func_graph.outputs, grads):
-    if not gradients_util.IsTrainable(y):
+    if not backprop_util.IsTrainable(y):
       continue
     ys.append(y)
     grad_ys.append(grad_y)

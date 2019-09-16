@@ -4,7 +4,6 @@ package(
 )
 
 DEFAULT_COPTS = [
-    "-std=c++11",
     "-Wno-shorten-64-to-32",
 ]
 

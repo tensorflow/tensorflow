@@ -277,6 +277,9 @@ Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(
 
   // Add a ThreadSafemodule to the engine and return.
   ThreadSafeModule tsm(std::move(deserModule), std::move(ctx));
+  if (transformer)
+    cantFail(tsm.withModuleDo(
+        [&](llvm::Module &module) { return transformer(&module); }));
   cantFail(jit->addIRModule(std::move(tsm)));
   engine->jit = std::move(jit);
 

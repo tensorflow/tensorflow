@@ -26,6 +26,7 @@ import threading
 
 import numpy as np
 import six
+from six.moves import map  # pylint: disable=redefined-builtin
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
@@ -910,10 +911,21 @@ class _EagerTensorBase(Tensor):
     """Returns the length of the first dimension in the Tensor."""
     if not self.shape.ndims:
       raise TypeError("Scalar tensor has no `len()`")
-    return self._shape_tuple()[0]
+    # pylint: disable=protected-access
+    try:
+      return self._shape_tuple()[0]
+    except core._NotOkStatusException as e:
+      six.raise_from(core._status_to_exception(e.code, e.message), None)
+
+  def _numpy_internal(self):
+    raise NotImplementedError()
 
   def _numpy(self):
-    raise NotImplementedError()
+    # pylint: disable=protected-access
+    try:
+      return self._numpy_internal()
+    except core._NotOkStatusException as e:
+      six.raise_from(core._status_to_exception(e.code, e.message), None)
 
   @property
   def dtype(self):
@@ -1036,9 +1048,14 @@ class _EagerTensorBase(Tensor):
   @property
   def shape(self):
     if self._tensor_shape is None:  # pylint: disable=access-member-before-definition
-      # `_tensor_shape` is declared and defined in the definition of
-      # `EagerTensor`, in C.
-      self._tensor_shape = tensor_shape.TensorShape(self._shape_tuple())
+      # pylint: disable=protected-access
+      try:
+        # `_tensor_shape` is declared and defined in the definition of
+        # `EagerTensor`, in C.
+        self._tensor_shape = tensor_shape.TensorShape(self._shape_tuple())
+      except core._NotOkStatusException as e:
+        six.raise_from(core._status_to_exception(e.code, e.message), None)
+
     return self._tensor_shape
 
   def get_shape(self):
@@ -2130,39 +2147,14 @@ class Operation(object):
     """The list of `Tensor` objects representing the outputs of this op."""
     return self._outputs
 
-  class _InputList(object):
-    """Immutable input list wrapper."""
-
-    def __init__(self, inputs):
-      self._inputs = inputs
-
-    def __iter__(self):
-      return iter(self._inputs)
-
-    def __len__(self):
-      return len(self._inputs)
-
-    def __bool__(self):
-      return bool(self._inputs)
-
-    # Python 3 wants __bool__, Python 2.7 wants __nonzero__
-    __nonzero__ = __bool__
-
-    def __getitem__(self, i):
-      return self._inputs[i]
-
   @property
   def inputs(self):
-    """The list of `Tensor` objects representing the data inputs of this op."""
+    """The sequence of `Tensor` objects representing the data inputs of this op."""
     if self._inputs_val is None:
-      tf_outputs = c_api.GetOperationInputs(self._c_op)
       # pylint: disable=protected-access
-      retval = [
-          self.graph._get_tensor_by_tf_output(tf_output)
-          for tf_output in tf_outputs
-      ]
+      self._inputs_val = tuple(map(self.graph._get_tensor_by_tf_output,
+                                   c_api.GetOperationInputs(self._c_op)))
       # pylint: enable=protected-access
-      self._inputs_val = Operation._InputList(retval)
     return self._inputs_val
 
   @property
@@ -6230,11 +6222,121 @@ def get_all_collection_keys():
   return get_default_graph().get_all_collection_keys()
 
 
+def name_scope(name, default_name=None, values=None):
+  """Internal-only entry point for `name_scope*`.
+
+  Internal ops do not use the public API and instead rely on
+  `ops.name_scope` regardless of the execution mode. This function
+  dispatches to the correct `name_scope*` implementation based on
+  the arguments provided and the current mode. Specifically,
+
+  * if `values` contains a graph tensor `Graph.name_scope` is used;
+  * `name_scope_v1` is used in graph mode;
+  * `name_scope_v2` -- in eager mode.
+
+  Args:
+    name: The name argument that is passed to the op function.
+    default_name: The default name to use if the `name` argument is `None`.
+    values: The list of `Tensor` arguments that are passed to the op function.
+
+  Returns:
+    `name_scope*` context manager.
+  """
+  ctx = context.context()
+  in_eager_mode = ctx.executing_eagerly()
+  if not in_eager_mode:
+    return internal_name_scope_v1(name, default_name, values)
+
+  name = default_name if name is None else name
+  if values:
+    # The presence of a graph tensor in `values` overrides the context.
+    # TODO(slebedev): this is Keras-specific and should be removed.
+    # pylint: disable=unidiomatic-typecheck
+    graph_value = next((value for value in values if type(value) == Tensor),
+                       None)
+    # pylint: enable=unidiomatic-typecheck
+    if graph_value is not None:
+      return graph_value.graph.name_scope(name)
+  return name_scope_v2(name or "")
+
+
+class internal_name_scope_v1(object):  # pylint: disable=invalid-name
+  """Graph-only version of `name_scope_v1`."""
+
+  @property
+  def name(self):
+    return self._name
+
+  def __init__(self, name, default_name=None, values=None):
+    """Initialize the context manager.
+
+    Args:
+      name: The name argument that is passed to the op function.
+      default_name: The default name to use if the `name` argument is `None`.
+      values: The list of `Tensor` arguments that are passed to the op function.
+
+    Raises:
+      TypeError: if `default_name` is passed in but not a string.
+    """
+    if not (default_name is None or isinstance(default_name, six.string_types)):
+      raise TypeError(
+          "`default_name` type (%s) is not a string type. You likely meant to "
+          "pass this into the `values` kwarg." % type(default_name))
+    self._name = default_name if name is None else name
+    self._default_name = default_name
+    self._values = values
+
+  def __enter__(self):
+    """Start the scope block.
+
+    Returns:
+      The scope name.
+
+    Raises:
+      ValueError: if neither `name` nor `default_name` is provided
+        but `values` are.
+    """
+    if self._name is None and self._values is not None:
+      # We only raise an error if values is not None (provided) because
+      # currently tf.name_scope(None) (values=None then) is sometimes used as
+      # an idiom to reset to top scope.
+      raise ValueError(
+          "At least one of name (%s) and default_name (%s) must be provided."
+          % (self._name, self._default_name))
+
+    g = get_default_graph()
+    if self._values and not g.building_function:
+      # Specialize based on the knowledge that `_get_graph_from_inputs()`
+      # ignores `inputs` when building a function.
+      g_from_inputs = _get_graph_from_inputs(self._values)
+      if g_from_inputs is not g:
+        g = g_from_inputs
+        self._g_manager = g.as_default()
+        self._g_manager.__enter__()
+      else:
+        self._g_manager = None
+    else:
+      self._g_manager = None
+
+    try:
+      self._name_scope = g.name_scope(self._name)
+      return self._name_scope.__enter__()
+    except:
+      if self._g_manager is not None:
+        self._g_manager.__exit__(*sys.exc_info())
+      raise
+
+  def __exit__(self, *exc_info):
+    self._name_scope.__exit__(*exc_info)
+    if self._g_manager is not None:
+      self._g_manager.__exit__(*exc_info)
+
+
 # Named like a function for backwards compatibility with the
 # @tf_contextlib.contextmanager version, which was switched to a class to avoid
 # some object creation overhead.
 @tf_export(v1=["name_scope"])
-class name_scope(object):  # pylint: disable=invalid-name
+class name_scope_v1(object):  # pylint: disable=invalid-name
   """A context manager for use when defining a Python op.
 
   This context manager validates that the given `values` are from the
@@ -6271,80 +6373,14 @@ class name_scope(object):  # pylint: disable=invalid-name
     Raises:
       TypeError: if `default_name` is passed in but not a string.
     """
-    if not (default_name is None or isinstance(default_name, six.string_types)):
-      raise TypeError(
-          "`default_name` type (%s) is not a string type. You likely meant to "
-          "pass this into the `values` kwarg." % type(default_name))
+    self._name_scope = name_scope(name, default_name, values)
     self._name = default_name if name is None else name
-    self._default_name = default_name
-    self._values = values
-    self._ctx = context.context()
-    self._in_eager_mode = self._ctx.executing_eagerly()
-    self._has_symbolic_input_in_eager = False
-    if self._values and self._in_eager_mode:
-      # The presence of a graph tensor in `self._values` overrides the context.
-      for value in self._values:
-        if hasattr(value, "graph"):
-          self._has_symbolic_input_in_eager = True
-          self._name_scope = value.graph.name_scope(self._name)
 
   def __enter__(self):
-    """Start the scope block.
+    return self._name_scope.__enter__()
 
-    Returns:
-      The scope name.
-
-    Raises:
-      ValueError: if neither `name` nor `default_name` is provided
-        but `values` are.
-    """
-    if self._has_symbolic_input_in_eager:
-      return self._name_scope.__enter__()
-
-    if self._in_eager_mode:
-      scope_name, self._old_name = enter_eager_name_scope(self._ctx, self._name)
-      return scope_name
-    else:
-      if self._name is None and self._values is not None:
-        # We only raise an error if values is not None (provided) because
-        # currently tf.name_scope(None) (values=None then) is sometimes used as
-        # an idiom to reset to top scope.
-        raise ValueError(
-            "At least one of name (%s) and default_name (%s) must be provided."
-            % (self._name, self._default_name))
-
-      g = get_default_graph()
-      if self._values and not g.building_function:
-        # Specialize based on the knowledge that `_get_graph_from_inputs()`
-        # ignores `inputs` when building a function.
-        g_from_inputs = _get_graph_from_inputs(self._values)
-        if g_from_inputs is not g:
-          g = g_from_inputs
-          self._g_manager = g.as_default()
-          self._g_manager.__enter__()
-        else:
-          self._g_manager = None
-      else:
-        self._g_manager = None
-
-      try:
-        self._name_scope = g.name_scope(self._name)
-        return self._name_scope.__enter__()
-      except:
-        if self._g_manager is not None:
-          self._g_manager.__exit__(*sys.exc_info())
-        raise
-
-  def __exit__(self, type_arg, value_arg, traceback_arg):
-    if self._has_symbolic_input_in_eager:
-      self._name_scope.__exit__(type_arg, value_arg, traceback_arg)
-    elif self._in_eager_mode:
-      self._ctx.scope_name = self._old_name
-    else:
-      self._name_scope.__exit__(type_arg, value_arg, traceback_arg)
-      if self._g_manager is not None:
-        self._g_manager.__exit__(type_arg, value_arg, traceback_arg)
-    return False  # False values do not suppress exceptions
+  def __exit__(self, *exc_info):
+    return self._name_scope.__exit__(*exc_info)
 
 
 def enter_eager_name_scope(ctx, name):
@@ -6366,7 +6402,7 @@ def enter_eager_name_scope(ctx, name):
 
 
 @tf_export("name_scope", v1=[])
-class name_scope_v2(name_scope):
+class name_scope_v2(object):
   """A context manager for use when defining a Python op.
 
   This context manager pushes a name scope, which will make the name of all
@@ -6583,8 +6619,7 @@ def _op_to_colocate_with(v, graph):
   # colocation constraints altogether. Assuming that will
   # happen soon, perhaps this hack to work around the circular
   # import dependency is acceptable.
-  if hasattr(v, "handle") and hasattr(v.handle, "op") and isinstance(
-      v.handle.op, Operation):
+  if hasattr(v, "handle") and isinstance(v.handle, Tensor):
     if graph.building_function:
       return graph.capture(v.handle).op
     else:

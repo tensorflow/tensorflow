@@ -25,6 +25,7 @@ import six
 from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -194,6 +195,8 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
   Returns:
     A `Tensor`. Has the same type as `input`.
   """
+  if isinstance(input, composite_tensor.CompositeTensor):
+    return nest.map_structure(identity, input, expand_composites=True)
   if context.executing_eagerly() and not hasattr(input, "graph"):
     # Make sure we get an input with handle data attached from resource
     # variables. Variables have correct handle data when graph building.
@@ -1343,38 +1346,34 @@ def concat(values, axis, name="concat"):
 
   For example:
 
-  ```python
-  t1 = [[1, 2, 3], [4, 5, 6]]
-  t2 = [[7, 8, 9], [10, 11, 12]]
-  tf.concat([t1, t2], 0)  # [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]]
-  tf.concat([t1, t2], 1)  # [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]]
+  >>> t1 = [[1, 2, 3], [4, 5, 6]]
+  >>> t2 = [[7, 8, 9], [10, 11, 12]]
+  >>> concat([t1, t2], 0)
+  <tf.Tensor: id=..., shape=(4, 3), dtype=int32, numpy=
+  array([[ 1,  2,  3],
+         [ 4,  5,  6],
+         [ 7,  8,  9],
+         [10, 11, 12]], dtype=int32)>
 
-  # tensor t3 with shape [2, 3]
-  # tensor t4 with shape [2, 3]
-  tf.shape(tf.concat([t3, t4], 0))  # [4, 3]
-  tf.shape(tf.concat([t3, t4], 1))  # [2, 6]
-  ```
+  >>> concat([t1, t2], 1)
+  <tf.Tensor: id=..., shape=(2, 6), dtype=int32, numpy=
+  array([[ 1,  2,  3,  7,  8,  9],
+         [ 4,  5,  6, 10, 11, 12]], dtype=int32)>
+
   As in Python, the `axis` could also be negative numbers. Negative `axis`
   are interpreted as counting from the end of the rank, i.e.,
    `axis + rank(values)`-th dimension.
 
   For example:
 
-  ```python
-  t1 = [[[1, 2], [2, 3]], [[4, 4], [5, 3]]]
-  t2 = [[[7, 4], [8, 4]], [[2, 10], [15, 11]]]
-  tf.concat([t1, t2], -1)
-  ```
-
-  would produce:
-
-  ```python
-  [[[ 1,  2,  7,  4],
-    [ 2,  3,  8,  4]],
-
-   [[ 4,  4,  2, 10],
-    [ 5,  3, 15, 11]]]
-  ```
+  >>> t1 = [[[1, 2], [2, 3]], [[4, 4], [5, 3]]]
+  >>> t2 = [[[7, 4], [8, 4]], [[2, 10], [15, 11]]]
+  >>> tf.concat([t1, t2], -1)
+  <tf.Tensor: id=..., shape=(2, 2, 4), dtype=int32, numpy=
+    array([[[ 1,  2,  7,  4],
+            [ 2,  3,  8,  4]],
+           [[ 4,  4,  2, 10],
+            [ 5,  3, 15, 11]]], dtype=int32)>
 
   Note: If you are concatenating along a new axis consider using stack.
   E.g.
@@ -4810,14 +4809,20 @@ def repeat_with_axis(data, repeats, axis, name=None):
     A tensor with `max(N, 1)` dimensions.  Has the same shape as `data`,
     except that dimension `axis` has size `sum(repeats)`.
   #### Examples:
-    ```python
     >>> repeat(['a', 'b', 'c'], repeats=[3, 0, 2], axis=0)
-    ['a', 'a', 'a', 'c', 'c']
+    <tf.Tensor: ..., shape=(5,), dtype=string,
+    numpy=array([b'a', b'a', b'a', b'c', b'c'], dtype=object)>
     >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=0)
-    [[1, 2], [1, 2], [3, 4], [3, 4], [3, 4]]
+    <tf.Tensor: ..., shape=(5, 2), dtype=int32, numpy=
+    array([[1, 2],
+           [1, 2],
+           [3, 4],
+           [3, 4],
+           [3, 4]], dtype=int32)>
     >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=1)
-    [[1, 1, 2, 2, 2], [3, 3, 4, 4, 4]]
-    ```
+    <tf.Tensor: ..., shape=(2, 5), dtype=int32, numpy=
+    array([[1, 1, 2, 2, 2],
+           [3, 3, 4, 4, 4]], dtype=int32)>
   """
   if not isinstance(axis, int):
     raise TypeError("axis must be an int; got %s" % type(axis).__name__)
@@ -4916,7 +4921,7 @@ def _with_nonzero_rank(data):
 
 @tf_export("repeat")
 def repeat(input, repeats, axis=None, name=None):  # pylint: disable=redefined-builtin
-  """Repeat elements of `input`
+  """Repeat elements of `input`.
 
   Args:
     input: An `N`-dimensional Tensor.
@@ -4932,18 +4937,31 @@ def repeat(input, repeats, axis=None, name=None):  # pylint: disable=redefined-b
       If axis is None then the output array is flattened to match the flattened
       input array.
   #### Examples:
-    ```python
+
     >>> repeat(['a', 'b', 'c'], repeats=[3, 0, 2], axis=0)
-    ['a', 'a', 'a', 'c', 'c']
+    <tf.Tensor: ..., shape=(5,), dtype=string,
+    numpy=array([b'a', b'a', b'a', b'c', b'c'], dtype=object)>
+
     >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=0)
-    [[1, 2], [1, 2], [3, 4], [3, 4], [3, 4]]
+    <tf.Tensor: id=..., shape=(5, 2), dtype=int32, numpy=
+    array([[1, 2],
+           [1, 2],
+           [3, 4],
+           [3, 4],
+           [3, 4]], dtype=int32)>
+
     >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=1)
-    [[1, 1, 2, 2, 2], [3, 3, 4, 4, 4]]
+    <tf.Tensor: id=..., shape=(2, 5), dtype=int32, numpy=
+    array([[1, 1, 2, 2, 2],
+           [3, 3, 4, 4, 4]], dtype=int32)>
+
     >>> repeat(3, repeats=4)
-    [3, 3, 3, 3]
+    <tf.Tensor: id=..., shape=(4,), dtype=int32,
+    numpy=array([3, 3, 3, 3], dtype=int32)>
+
     >>> repeat([[1,2], [3,4]], repeats=2)
-    [1, 1, 2, 2, 3, 3, 4, 4]
-    ```
+    <tf.Tensor: id=..., shape=(8,), dtype=int32,
+    numpy=array([1, 1, 2, 2, 3, 3, 4, 4], dtype=int32)>
   """
   if axis is None:
     input = reshape(input, [-1])

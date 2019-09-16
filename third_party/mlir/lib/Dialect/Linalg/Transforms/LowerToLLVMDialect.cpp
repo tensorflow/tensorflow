@@ -185,20 +185,19 @@ public:
   BaseViewConversionHelper(Operation *op, ViewType viewType,
                            ConversionPatternRewriter &rewriter,
                            LLVMTypeConverter &lowering)
-      : indexType(rewriter.getIndexType()), viewType(viewType),
-        elementTy(getPtrToElementType(viewType, lowering)),
+      : elementTy(getPtrToElementType(viewType, lowering)),
         int64Ty(
             lowering.convertType(rewriter.getIntegerType(64)).cast<LLVMType>()),
-        viewDescriptorPtrTy(
-            convertLinalgType(viewType, lowering).cast<LLVMType>()),
         rewriter(rewriter) {
-
+    IndexType indexType = rewriter.getIndexType();
+    viewDescriptorPtrTy =
+        convertLinalgType(viewType, lowering).cast<LLVMType>();
     OpBuilder::InsertionGuard insertGuard(rewriter);
     rewriter.setInsertionPointToStart(
         &op->getParentOfType<FuncOp>().getBlocks().front());
 
     edsc::ScopedContext context(rewriter, op->getLoc());
-    one = constant(int64Ty, IntegerAttr::get(indexType, 1));
+    Value *one = constant(int64Ty, IntegerAttr::get(indexType, 1));
     // Alloca with proper alignment.
     allocatedDesc = llvm_alloca(viewDescriptorPtrTy, one, /*alignment=*/8);
     // Load the alloca'ed descriptor.
@@ -209,11 +208,9 @@ public:
     return positionAttr(rewriter, values);
   };
 
-  IndexType indexType;
-  ViewType viewType;
   LLVMType elementTy, int64Ty, viewDescriptorPtrTy;
   ConversionPatternRewriter &rewriter;
-  Value *one, *allocatedDesc, *desc;
+  Value *allocatedDesc, *desc;
 };
 } // namespace
 
@@ -594,10 +591,7 @@ public:
     auto tranposeOp = cast<TransposeOp>(op);
     BaseViewConversionHelper helper(op, tranposeOp.getViewType(), rewriter,
                                     lowering);
-    IndexType indexType = helper.indexType;
-    ViewType viewType = helper.viewType;
-    LLVMType elementTy = helper.elementTy, int64Ty = helper.int64Ty,
-             viewDescriptorPtrTy = helper.viewDescriptorPtrTy;
+    LLVMType elementTy = helper.elementTy, int64Ty = helper.int64Ty;
     Value *allocatedDesc = helper.allocatedDesc, *desc = helper.desc;
 
     edsc::ScopedContext context(rewriter, op->getLoc());

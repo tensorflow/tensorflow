@@ -693,11 +693,10 @@ bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
   AddDocStringOutputs();
   strings::StrAppend(&result_, "  \"\"\"\n");
 
-  strings::StrAppend(
-      &result_,
-      "  _ctx = _context._context or _context.context()\n"
-      "  if _ctx is not None and _ctx._thread_local_data.is_eager:",
-      "\n");
+  strings::StrAppend(&result_,
+                     "  _ctx = _context._context or _context.context()\n"
+                     "  if _ctx._thread_local_data.is_eager:",
+                     "\n");
   if (eager_not_allowed_error.empty()) {
     AddEagerFastPathExecute();
   } else {
@@ -1025,8 +1024,6 @@ from tensorflow.python.eager import context as _context
 from tensorflow.python.eager import core as _core
 from tensorflow.python.eager import execute as _execute
 from tensorflow.python.framework import dtypes as _dtypes
-from tensorflow.python.framework import errors as _errors
-from tensorflow.python.framework import tensor_shape as _tensor_shape
 
 from tensorflow.core.framework import op_def_pb2 as _op_def_pb2
 # Needed to trigger the call to _set_call_cpp_shape_fn.
@@ -1109,11 +1106,6 @@ from tensorflow.tools.docs import doc_controls as _doc_controls
   return op_def_lib
 )");
 
-  result.append("# ");
-  auto ops_text = cleaned_ops.DebugString();
-  absl::StripTrailingAsciiWhitespace(&ops_text);
-  result.append(str_util::StringReplace(ops_text, "\n", "\n# ", true));
-  result.append("\n");
   strings::Appendf(&result, "_op_def_lib = _InitOpDefLibrary(b\"%s\")\n",
                    absl::CEscape(cleaned_ops.SerializeAsString()).c_str());
   return result;

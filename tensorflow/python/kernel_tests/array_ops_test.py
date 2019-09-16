@@ -381,19 +381,20 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
   # Note: this test passes placeholder as constant axis is validated
   # in shape function (see testInvalidAxis)
   @test_util.run_deprecated_v1
-  @test_util.disable_xla("b/140155173")
   def testInvalid(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
     axis = array_ops.placeholder(dtypes.int32)
     with self.cached_session():
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "is out of valid range"):
+                                   "is out of.*range"):
         array_ops.reverse_v2(x_np, axis).eval(feed_dict={axis: [-30]})
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "is out of valid range"):
+                                   "is out of.*range"):
         array_ops.reverse_v2(x_np, axis).eval(feed_dict={axis: [2]})
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "axis 0 specified more than once"):
+      with self.assertRaisesRegexp(
+          errors_impl.InvalidArgumentError,
+          "(axis 0 specified more than once|canonicalized axis 0 was repeated.)"
+      ):
         array_ops.reverse_v2(x_np, axis).eval(feed_dict={axis: [0, -2]})
 
   @test_util.run_deprecated_v1

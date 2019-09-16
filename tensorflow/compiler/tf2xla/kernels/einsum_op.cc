@@ -25,7 +25,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-constexpr std::array<DataType, 2> kEinsumTypes = {{DT_BFLOAT16, DT_FLOAT}};
+constexpr std::array<DataType, 3> kEinsumTypes = {
+    {DT_COMPLEX64, DT_BFLOAT16, DT_FLOAT}};
 
 class EinsumOp : public XlaOpKernel {
  public:

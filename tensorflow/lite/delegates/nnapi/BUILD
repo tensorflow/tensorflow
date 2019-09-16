@@ -41,7 +41,10 @@ cc_library(
 cc_library(
     name = "acceleration_test_util",
     testonly = 1,
-    srcs = ["acceleration_test_util.cc"],
+    srcs = [
+        "acceleration_test_list.cc",
+        "acceleration_test_util.cc",
+    ],
     hdrs = ["acceleration_test_util.h"],
     deps = [
         ":nnapi_delegate",

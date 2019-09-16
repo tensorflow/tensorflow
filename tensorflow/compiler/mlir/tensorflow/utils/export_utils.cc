@@ -186,15 +186,30 @@ void UpdateCompositeWhileOp(NodeDef* node_def) {
 
 }  // anonymous namespace
 
+StatusOr<llvm::StringRef> GetTensorFlowOpName(llvm::StringRef op_name) {
+  // When being converted to MLIR, some prefixes and suffixes are added to the
+  // operation types, and we have to remove them when converting the
+  // operations back to a graph:
+  // - "_tf." or "tf.": every operation type has this prefix.
+  // - ".sink": only the NextIteration operation has this suffix. We don't
+  // need to consider ".source" because the nodes with this suffix are skipped
+  // by the caller and will not be added to the graph.
+  if (!op_name.consume_front("_tf.") && !op_name.consume_front("tf.")) {
+    return errors::FailedPrecondition("op node '", op_name.str(),
+                                      "' was not a TF op!");
+  }
+  op_name.consume_back(".sink");
+  return op_name;
+}
+
 StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
     const absl::flat_hash_set<absl::string_view>& attrs_to_ignore,
-    mlir::Operation* inst, llvm::StringRef name,
-    OpNameMappingFunc op_name_func) {
+    mlir::Operation* inst, llvm::StringRef name) {
   auto node_def = absl::make_unique<NodeDef>();
   // Note: we do not use NodeBuilder or NodeDefBuilder as that would require
   // mapping back from the inputs to the input arguments.
   TF_ASSIGN_OR_RETURN(auto op_name,
-                      op_name_func(inst->getName().getStringRef()));
+                      GetTensorFlowOpName(inst->getName().getStringRef()));
   node_def->set_op(op_name);
   node_def->set_name(name);
 

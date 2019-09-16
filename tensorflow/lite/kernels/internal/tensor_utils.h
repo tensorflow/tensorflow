@@ -183,10 +183,17 @@ float VectorVectorDotProduct(const float* vector1, const float* vector2,
 //  x_2_1 * y_2_1 + x_2_2 * y_2_2 + ... + x_2_vsize * y_2_vsize,
 //  ...
 //  x_nbatch_1 * y_nbatch_1 + ... + x_nbatch_vsize * y_nbatch_vsize]
-void BatchVectorBatchVectorDotProduct(const float* vector1,
-                                      const float* vector2, int v_size,
-                                      int n_batch, float* result,
-                                      int result_stride);
+template <typename T>
+inline void BatchVectorBatchVectorDotProduct(const T* vector1, const T* vector2,
+                                             int v_size, int n_batch, T* result,
+                                             int result_stride) {
+  for (int b = 0; b < n_batch; b++) {
+    *result = VectorVectorDotProduct(vector1, vector2, v_size);
+    vector1 += v_size;
+    vector2 += v_size;
+    result += result_stride;
+  }
+}
 
 // Cwise product of a vector and a batch-vector.
 void VectorBatchVectorCwiseProduct(const float* vector, int v_size,

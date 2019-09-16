@@ -23,6 +23,7 @@
 #include "PassDetail.h"
 #include "mlir/Analysis/Verifier.h"
 #include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/Dialect.h"
 #include "mlir/IR/Module.h"
 #include "mlir/Pass/PassManager.h"
 #include "llvm/Support/CommandLine.h"
@@ -70,47 +71,155 @@ LogicalResult Pass::run(Operation *op, AnalysisManager am) {
 }
 
 //===----------------------------------------------------------------------===//
-// PassExecutor
+// Verifier Passes
 //===----------------------------------------------------------------------===//
 
-FunctionPassExecutor::FunctionPassExecutor(const FunctionPassExecutor &rhs)
-    : PassExecutor(Kind::FunctionExecutor) {
-  for (auto &pass : rhs.passes)
-    addPass(cast<FunctionPassBase>(pass->clone()));
+void VerifierPass::runOnOperation() {
+  if (failed(verify(getOperation())))
+    signalPassFailure();
+  markAllAnalysesPreserved();
 }
 
-/// Run all of the passes in this manager over the current function.
-LogicalResult detail::FunctionPassExecutor::run(FuncOp function,
-                                                AnalysisManager am) {
+//===----------------------------------------------------------------------===//
+// OpPassManager
+//===----------------------------------------------------------------------===//
+
+namespace mlir {
+namespace detail {
+struct OpPassManagerImpl {
+  OpPassManagerImpl(OperationName name, bool disableThreads, bool verifyPasses)
+      : name(name), disableThreads(disableThreads), verifyPasses(verifyPasses) {
+  }
+
+  /// Returns the pass manager instance corresponding to the last pass added
+  /// if that pass was a PassAdaptor.
+  OpPassManager *getLastNestedPM() {
+    if (passes.empty())
+      return nullptr;
+    auto lastPassIt = passes.rbegin();
+
+    // If this pass was a verifier, skip it as it is opaque to ordering for
+    // pipeline construction.
+    if (isa<VerifierPass>(*lastPassIt))
+      ++lastPassIt;
+
+    // Get the internal pass manager if this pass is an adaptor.
+    if (auto *adaptor = dyn_cast<OpToOpPassAdaptor>(lastPassIt->get()))
+      return &adaptor->getPassManager();
+    if (auto *adaptor = dyn_cast<OpToOpPassAdaptorParallel>(lastPassIt->get()))
+      return &adaptor->getPassManager();
+    return nullptr;
+  }
+
+  /// The name of the operation that passes of this pass manager operate on.
+  OperationName name;
+
+  /// Flag to disable multi-threading of passes.
+  bool disableThreads : 1;
+
+  /// Flag that specifies if the IR should be verified after each pass has run.
+  bool verifyPasses : 1;
+
+  /// The set of passes to run as part of this pass manager.
+  std::vector<std::unique_ptr<Pass>> passes;
+};
+} // end namespace detail
+} // end namespace mlir
+
+OpPassManager::OpPassManager(OperationName name, bool disableThreads,
+                             bool verifyPasses)
+    : impl(new OpPassManagerImpl(name, disableThreads, verifyPasses)) {
+  assert(name.getAbstractOperation() &&
+         "OpPassManager can only operate on registered operations");
+  assert(name.getAbstractOperation()->hasProperty(
+             OperationProperty::IsolatedFromAbove) &&
+         "OpPassManager only supports operating on operations marked as "
+         "'IsolatedFromAbove'");
+}
+OpPassManager::OpPassManager(const OpPassManager &rhs)
+    : impl(new OpPassManagerImpl(rhs.impl->name, rhs.impl->disableThreads,
+                                 rhs.impl->verifyPasses)) {
+  for (auto &pass : rhs.impl->passes)
+    impl->passes.emplace_back(pass->clone());
+}
+
+OpPassManager::~OpPassManager() {}
+
+/// Run all of the passes in this manager over the current operation.
+LogicalResult OpPassManager::run(Operation *op, AnalysisManager am) {
   // Run each of the held passes.
-  for (auto &pass : passes)
-    if (failed(pass->run(function, am)))
+  for (auto &pass : impl->passes)
+    if (failed(pass->run(op, am)))
       return failure();
   return success();
 }
 
-/// Run all of the passes in this manager over the current module.
-LogicalResult detail::ModulePassExecutor::run(ModuleOp module,
-                                              AnalysisManager am) {
-  // Run each of the held passes.
-  for (auto &pass : passes)
-    if (failed(pass->run(module, am)))
-      return failure();
-  return success();
+/// Nest a new operation pass manager for the given operation kind under this
+/// pass manager.
+OpPassManager &OpPassManager::nest(const OperationName &nestedName) {
+  // Check to see if an existing nested pass manager already exists.
+  if (auto *nestedPM = impl->getLastNestedPM()) {
+    if (nestedPM->getOpName() == nestedName)
+      return *nestedPM;
+  }
+
+  std::unique_ptr<OpPassManager> nested(
+      new OpPassManager(nestedName, impl->disableThreads, impl->verifyPasses));
+  auto &nestedRef = *nested;
+
+  /// Create an executor adaptor for this pass. If multi-threading is disabled,
+  /// then create a synchronous adaptor.
+  if (impl->disableThreads || !llvm::llvm_is_multithreaded())
+    addPass(std::make_unique<OpToOpPassAdaptor>(std::move(nested)));
+  else
+    addPass(std::make_unique<OpToOpPassAdaptorParallel>(std::move(nested)));
+  return nestedRef;
+}
+OpPassManager &OpPassManager::nest(StringRef nestedName) {
+  return nest(OperationName(nestedName, getContext()));
 }
 
+/// Add the given pass to this pass manager. The pass must either be an opaque
+/// `OperationPass`, or an `OpPass` that operates on operations of the same
+/// type as this pass manager.
+void OpPassManager::addPass(std::unique_ptr<Pass> pass) {
+  // If this pass runs on a different operation than this pass manager, then
+  // implicitly nest a pass manager for this operation.
+  auto passOpName = pass->getOpName();
+  if (passOpName && passOpName != impl->name.getStringRef())
+    return nest(*passOpName).addPass(std::move(pass));
+
+  impl->passes.emplace_back(std::move(pass));
+  if (impl->verifyPasses)
+    impl->passes.emplace_back(std::make_unique<VerifierPass>());
+}
+
+/// Returns the number of passes held by this manager.
+size_t OpPassManager::size() const { return impl->passes.size(); }
+
+/// Returns the internal implementation instance.
+OpPassManagerImpl &OpPassManager::getImpl() { return *impl; }
+
+/// Return an instance of the context.
+MLIRContext *OpPassManager::getContext() const {
+  return impl->name.getAbstractOperation()->dialect.getContext();
+}
+
+/// Return the operation name that this pass manager operates on.
+const OperationName &OpPassManager::getOpName() const { return impl->name; }
+
 //===----------------------------------------------------------------------===//
-// ModuleToFunctionPassAdaptor
+// OpToOpPassAdaptor
 //===----------------------------------------------------------------------===//
 
-/// Utility to run the given function and analysis manager on a provided
-/// function pass executor.
-static LogicalResult runFunctionPipeline(FunctionPassExecutor &fpe, FuncOp func,
-                                         AnalysisManager am) {
-  // Run the function pipeline over the provided function.
-  auto result = fpe.run(func, am);
+/// Utility to run the given operation and analysis manager on a provided op
+/// pass manager.
+static LogicalResult runPipeline(OpPassManager &pm, Operation *op,
+                                 AnalysisManager am) {
+  // Run the pipeline over the provided operation.
+  auto result = pm.run(op, am);
 
-  // Clear out any computed function analyses. These analyses won't be used
+  // Clear out any computed operation analyses. These analyses won't be used
   // any more in this pipeline, and this helps reduce the current working set
   // of memory. If preserving these analyses becomes important in the future
   // we can re-evalutate this.
@@ -118,72 +227,82 @@ static LogicalResult runFunctionPipeline(FunctionPassExecutor &fpe, FuncOp func,
   return result;
 }
 
-/// Run the held function pipeline over all non-external functions within the
-/// module.
-void ModuleToFunctionPassAdaptor::runOnModule() {
-  AnalysisManager am = getAnalysisManager();
-  for (auto func : getModule().getOps<FuncOp>()) {
-    // Skip external functions.
-    if (func.isExternal())
-      continue;
+OpToOpPassAdaptor::OpToOpPassAdaptor(std::unique_ptr<OpPassManager> mgr)
+    : mgr(std::move(mgr)) {}
+OpToOpPassAdaptor::OpToOpPassAdaptor(const OpToOpPassAdaptor &rhs)
+    : mgr(new OpPassManager(*rhs.mgr)) {}
 
-    // Run the held function pipeline over the current function.
-    auto childAM = am.slice(func);
-    if (failed(runFunctionPipeline(fpe, func, childAM)))
-      return signalPassFailure();
-
-    // Clear out any computed child analyses. These analyses won't be used
-    // any more in this pipeline, and this helps reduce the current working set
-    // of memory. If preserving these analyses becomes important in the future
-    // we can re-evalutate this.
-    am.clear();
+/// Run the held pipeline over all nested operations.
+void OpToOpPassAdaptor::runOnOperation() {
+  auto am = getAnalysisManager();
+  for (auto &region : getOperation()->getRegions()) {
+    for (auto &block : region) {
+      for (auto &op : block) {
+        // Run the held pipeline over the current operation.
+        if (op.getName() == mgr->getOpName() &&
+            failed(runPipeline(*mgr, &op, am.slice(&op))))
+          return signalPassFailure();
+      }
+    }
   }
 }
 
-// Run the held function pipeline synchronously across the functions within
-// the module.
-void ModuleToFunctionPassAdaptorParallel::runOnModule() {
+OpToOpPassAdaptorParallel::OpToOpPassAdaptorParallel(
+    std::unique_ptr<OpPassManager> mgr)
+    : mgr(std::move(mgr)) {}
+OpToOpPassAdaptorParallel::OpToOpPassAdaptorParallel(
+    const OpToOpPassAdaptorParallel &rhs)
+    : mgr(std::make_unique<OpPassManager>(*rhs.mgr)) {}
+
+// Run the held pipeline asynchronously across the functions within the module.
+void OpToOpPassAdaptorParallel::runOnOperation() {
   AnalysisManager am = getAnalysisManager();
 
   // Create the async executors if they haven't been created, or if the main
-  // function pipeline has changed.
-  if (asyncExecutors.empty() || asyncExecutors.front().size() != fpe.size())
-    asyncExecutors = {llvm::hardware_concurrency(), fpe};
+  // pipeline has changed.
+  if (asyncExecutors.empty() || asyncExecutors.front().size() != mgr->size())
+    asyncExecutors = {llvm::hardware_concurrency(), *mgr};
 
-  // Run a prepass over the module to collect the functions to execute a over.
-  // This ensures that an analysis manager exists for each function, as well as
-  // providing a queue of functions to execute over.
-  std::vector<std::pair<FuncOp, AnalysisManager>> funcAMPairs;
-  for (auto func : getModule().getOps<FuncOp>())
-    if (!func.isExternal())
-      funcAMPairs.emplace_back(func, am.slice(func));
+  // Run a prepass over the module to collect the operations to execute over.
+  // This ensures that an analysis manager exists for each operation, as well as
+  // providing a queue of operations to execute over.
+  std::vector<std::pair<Operation *, AnalysisManager>> opAMPairs;
+  for (auto &region : getOperation()->getRegions()) {
+    for (auto &block : region) {
+      for (auto &op : block) {
+        // Add this operation iff the name matches the current pass manager.
+        if (op.getName() == mgr->getOpName())
+          opAMPairs.emplace_back(&op, am.slice(&op));
+      }
+    }
+  }
 
   // A parallel diagnostic handler that provides deterministic diagnostic
   // ordering.
   ParallelDiagnosticHandler diagHandler(&getContext());
 
-  // An index for the current function/analysis manager pair.
-  std::atomic<unsigned> funcIt(0);
+  // An index for the current operation/analysis manager pair.
+  std::atomic<unsigned> opIt(0);
 
   // An atomic failure variable for the async executors.
   std::atomic<bool> passFailed(false);
   llvm::parallel::for_each(
       llvm::parallel::par, asyncExecutors.begin(),
       std::next(asyncExecutors.begin(),
-                std::min(asyncExecutors.size(), funcAMPairs.size())),
-      [&](FunctionPassExecutor &executor) {
-        for (auto e = funcAMPairs.size(); !passFailed && funcIt < e;) {
-          // Get the next available function index.
-          unsigned nextID = funcIt++;
+                std::min(asyncExecutors.size(), opAMPairs.size())),
+      [&](OpPassManager &pm) {
+        for (auto e = opAMPairs.size(); !passFailed && opIt < e;) {
+          // Get the next available operation index.
+          unsigned nextID = opIt++;
           if (nextID >= e)
             break;
 
-          // Set the function id for this thread in the diagnostic handler.
+          // Set the order id for this thread in the diagnostic handler.
           diagHandler.setOrderIDForThread(nextID);
 
-          // Run the executor over the current function.
-          auto &it = funcAMPairs[nextID];
-          if (failed(runFunctionPipeline(executor, it.first, it.second))) {
+          // Run the executor over the current operation.
+          auto &it = opAMPairs[nextID];
+          if (failed(runPipeline(pm, it.first, it.second))) {
             passFailed = true;
             break;
           }
@@ -195,90 +314,42 @@ void ModuleToFunctionPassAdaptorParallel::runOnModule() {
     signalPassFailure();
 }
 
-//===----------------------------------------------------------------------===//
-// Verifier Passes
-//===----------------------------------------------------------------------===//
-
-void FunctionVerifierPass::runOnFunction() {
-  if (failed(verify(getFunction())))
-    signalPassFailure();
-  markAllAnalysesPreserved();
-}
-
-void ModuleVerifierPass::runOnModule() {
-  if (failed(verify(getModule())))
-    signalPassFailure();
-  markAllAnalysesPreserved();
+/// Utility function to return the operation name that the given adaptor pass
+/// operates on. Return None if the given pass is not an adaptor pass.
+Optional<StringRef> mlir::detail::getAdaptorPassOpName(Pass *pass) {
+  if (auto *adaptor = dyn_cast<OpToOpPassAdaptor>(pass))
+    return adaptor->getPassManager().getOpName().getStringRef();
+  if (auto *adaptor = dyn_cast<OpToOpPassAdaptorParallel>(pass))
+    return adaptor->getPassManager().getOpName().getStringRef();
+  return llvm::None;
 }
 
 //===----------------------------------------------------------------------===//
 // PassManager
 //===----------------------------------------------------------------------===//
 
-PassManager::PassManager(bool verifyPasses)
-    : mpe(new ModulePassExecutor()), verifyPasses(verifyPasses),
-      passTiming(false), disableThreads(false) {}
+PassManager::PassManager(MLIRContext *ctx, bool verifyPasses)
+    : opPassManager(OperationName(ModuleOp::getOperationName(), ctx),
+                    /*disableThreads=*/false, verifyPasses),
+      passTiming(false) {}
 
 PassManager::~PassManager() {}
 
 /// Run the passes within this manager on the provided module.
 LogicalResult PassManager::run(ModuleOp module) {
   ModuleAnalysisManager am(module, instrumentor.get());
-  return mpe->run(module, am);
+  return opPassManager.run(module, am);
 }
 
 /// Disable support for multi-threading within the pass manager.
 void PassManager::disableMultithreading(bool disable) {
-  disableThreads = disable;
+  opPassManager.getImpl().disableThreads = disable;
 }
 
 /// Add an opaque pass pointer to the current manager. This takes ownership
 /// over the provided pass pointer.
 void PassManager::addPass(std::unique_ptr<Pass> pass) {
-  if (isa<FunctionPassBase>(pass.get()))
-    return addPass(cast<FunctionPassBase>(std::move(pass)));
-  addPass(cast<ModulePassBase>(std::move(pass)));
-}
-
-/// Add a module pass to the current manager. This takes ownership over the
-/// provided pass pointer.
-void PassManager::addPass(std::unique_ptr<ModulePassBase> pass) {
-  nestedExecutorStack.clear();
-  mpe->addPass(std::move(pass));
-
-  // Add a verifier run if requested.
-  if (verifyPasses)
-    mpe->addPass(std::make_unique<ModuleVerifierPass>());
-}
-
-/// Add a function pass to the current manager. This takes ownership over the
-/// provided pass pointer. This will automatically create a function pass
-/// executor if necessary.
-void PassManager::addPass(std::unique_ptr<FunctionPassBase> pass) {
-  detail::FunctionPassExecutor *fpe;
-  if (nestedExecutorStack.empty()) {
-    /// Create an executor adaptor for this pass.
-    if (disableThreads || !llvm::llvm_is_multithreaded()) {
-      // If multi-threading is disabled, then create a synchronous adaptor.
-      auto adaptor = std::make_unique<ModuleToFunctionPassAdaptor>();
-      fpe = &adaptor->getFunctionExecutor();
-      addPass(std::unique_ptr<ModulePassBase>{adaptor.release()});
-    } else {
-      auto adaptor = std::make_unique<ModuleToFunctionPassAdaptorParallel>();
-      fpe = &adaptor->getFunctionExecutor();
-      addPass(std::unique_ptr<ModulePassBase>{adaptor.release()});
-    }
-
-    /// Add the executor to the stack.
-    nestedExecutorStack.push_back(fpe);
-  } else {
-    fpe = cast<detail::FunctionPassExecutor>(nestedExecutorStack.back());
-  }
-  fpe->addPass(std::move(pass));
-
-  // Add a verifier run if requested.
-  if (verifyPasses)
-    fpe->addPass(std::make_unique<FunctionVerifierPass>());
+  opPassManager.addPass(std::move(pass));
 }
 
 /// Add the provided instrumentation to the pass manager. This takes ownership

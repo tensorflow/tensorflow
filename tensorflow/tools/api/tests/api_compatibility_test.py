@@ -314,7 +314,7 @@ class ApiCompatibilityTest(test.TestCase):
     visitor = python_object_to_proto_visitor.PythonObjectToProtoVisitor()
 
     public_api_visitor = public_api.PublicAPIVisitor(visitor)
-    public_api_visitor.private_map['tf'] = ['contrib']
+    public_api_visitor.private_map['tf'].append('contrib')
     if api_version == 2:
       public_api_visitor.private_map['tf'].append('enable_v2_behavior')
 

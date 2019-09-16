@@ -106,8 +106,8 @@ class WideDeepModel(training.Model):
 
   # This does not support gradient scaling and LossScaleOptimizer.
   def _backwards(self, tape, loss):
-    linear_vars = self.linear_model._unique_trainable_weights  # pylint: disable=protected-access
-    dnn_vars = self.dnn_model._unique_trainable_weights  # pylint: disable=protected-access
+    linear_vars = self.linear_model.trainable_weights  # pylint: disable=protected-access
+    dnn_vars = self.dnn_model.trainable_weights  # pylint: disable=protected-access
     linear_grads, dnn_grads = tape.gradient(loss, (linear_vars, dnn_vars))
     linear_optimizer, dnn_optimizer = self._get_optimizers()
     linear_optimizer.apply_gradients(zip(linear_grads, linear_vars))
@@ -138,11 +138,11 @@ class WideDeepModel(training.Model):
           # Training updates
           updates = []
           linear_updates = linear_optimizer.get_updates(
-              params=self.linear_model._unique_trainable_weights,  # pylint: disable=protected-access
+              params=self.linear_model.trainable_weights,  # pylint: disable=protected-access
               loss=self.total_loss)
           updates += linear_updates
           dnn_updates = dnn_optimizer.get_updates(
-              params=self.dnn_model._unique_trainable_weights,  # pylint: disable=protected-access
+              params=self.dnn_model.trainable_weights,  # pylint: disable=protected-access
               loss=self.total_loss)
           updates += dnn_updates
           # Unconditional updates

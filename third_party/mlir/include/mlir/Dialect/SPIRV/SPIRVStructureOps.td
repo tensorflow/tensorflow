@@ -112,6 +112,13 @@ def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {
     SPV_Type:$constant
   );
 
+  let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    // Returns true if a constant can be built for the given `type`.
+    static bool isBuildableWith(Type type);
+  }];
+
   let hasOpcode = 0;
 }
 

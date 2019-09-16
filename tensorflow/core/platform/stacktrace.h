@@ -22,8 +22,10 @@ limitations under the License.
 #if defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/platform/google/stacktrace.h"
 #elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) || \
-    defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_WINDOWS)
+    defined(PLATFORM_GOOGLE_ANDROID)
 #include "tensorflow/core/platform/default/stacktrace.h"
+#elif defined(PLATFORM_WINDOWS)
+#include "tensorflow/core/platform/windows/stacktrace.h"
 #else
 #error Define the appropriate PLATFORM_<foo> macro for this platform
 #endif

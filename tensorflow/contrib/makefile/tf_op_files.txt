@@ -116,6 +116,10 @@ tensorflow/core/kernels/depthwise_conv_op.cc
 tensorflow/core/kernels/dequantize_op.cc
 tensorflow/core/kernels/dynamic_partition_op.cc
 tensorflow/core/kernels/dynamic_stitch_op.cc
+tensorflow/core/kernels/einsum_op_impl_half.cc
+tensorflow/core/kernels/einsum_op_impl_bfloat16.cc
+tensorflow/core/kernels/einsum_op_impl_int32.cc
+tensorflow/core/kernels/einsum_op_impl_int64.cc
 tensorflow/core/kernels/einsum_op_impl_float.cc
 tensorflow/core/kernels/einsum_op_impl_double.cc
 tensorflow/core/kernels/einsum_op_impl_complex64.cc

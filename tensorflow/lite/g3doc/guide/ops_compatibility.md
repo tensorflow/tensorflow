@@ -641,6 +641,40 @@ Outputs {
 }
 ```
 
+**NON_MAX_SUPPRESSION_V4**
+
+```
+Inputs {
+  0: boxes in format [y1, x1, y2, x2]
+  1: scores
+  2: max number of detections
+  3: IOU threshold
+  4: score threshold
+}
+Outputs {
+  0: selected indices
+  1: number of selected indices
+}
+```
+
+**NON_MAX_SUPPRESSION_V5**
+
+```
+Inputs {
+  0: boxes in format [y1, x1, y2, x2]
+  1: scores
+  2: max number of detections
+  3: IOU threshold
+  4: score threshold
+  5: soft NMS sigma
+}
+Outputs {
+  0: selected indices
+  1: selected scores
+  2: number of selected indices
+}
+```
+
 **PACK**
 
 ```

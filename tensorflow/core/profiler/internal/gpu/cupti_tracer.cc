@@ -548,6 +548,34 @@ void AddUnifiedMemoryActivityEvent(
 
 }  // namespace
 
+const char *GetTraceEventTypeName(const CuptiTracerEventType &type) {
+  switch (type) {
+    case CuptiTracerEventType::MemcpyH2D:
+      return "MemcpyH2D";
+    case CuptiTracerEventType::MemcpyD2H:
+      return "MemcpyD2H";
+    case CuptiTracerEventType::MemcpyD2D:
+      return "MemcpyD2D";
+    case CuptiTracerEventType::MemcpyP2P:
+      return "MemcpyP2P";
+    case CuptiTracerEventType::MemcpyOther:
+      return "MemcpyOther";
+    case CuptiTracerEventType::Kernel:
+      return "Compute";
+    case CuptiTracerEventType::MemoryAlloc:
+      return "MemoryAlloc";
+    case CuptiTracerEventType::Overhead:
+      return "Overhead";
+    case CuptiTracerEventType::UnifiedMemory:
+      return "UnifiedMemory";
+    case CuptiTracerEventType::Generic:
+      return "Generic";
+    default:
+      DCHECK(false);
+      return "";
+  }
+}
+
 void AnnotationMap::Add(uint32 device_id, uint32 correlation_id,
                         const string &annotation) {
   if (annotation.empty()) return;
@@ -727,6 +755,7 @@ Status CuptiTracer::Finalize() {
 Status CuptiTracer::HandleCallback(CUpti_CallbackDomain domain,
                                    CUpti_CallbackId cbid,
                                    const CUpti_CallbackData *callback_info) {
+  if (!api_tracing_enabled_) return Status::OK();  // already unsubscribed.
   if (domain != CUPTI_CB_DOMAIN_DRIVER_API) return Status::OK();
   if (callback_info->callbackSite == CUPTI_API_ENTER) {
     // Stash away the current Cupti timestamp into callback_info.

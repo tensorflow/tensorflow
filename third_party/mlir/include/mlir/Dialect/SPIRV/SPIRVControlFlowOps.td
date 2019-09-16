@@ -137,6 +137,71 @@ def SPV_BranchConditionalOp : SPV_Op<"BranchConditional", [Terminator]> {
 
 // -----
 
+def SPV_LoopOp : SPV_Op<"loop"> {
+  let summary = "Define a structured loop.";
+
+  let description = [{
+    SPIR-V can explicitly declare structured control-flow constructs using merge
+    instructions. These explicitly declare a header block before the control
+    flow diverges and a merge block where control flow subsequently converges.
+    These blocks delimit constructs that must nest, and can only be entered
+    and exited in structured ways. See "2.11. Structured Control Flow" of the
+    SPIR-V spec for more details.
+
+    Instead of having a `spv.LoopMerge` op to directly model loop merge
+    instruction for indicating the merge and continue target, we use regions
+    to delimit the boundary of the loop: the merge target is the next op
+    following the `spv.loop` op and the continue target is the block that
+    has a back-edge pointing to the entry block inside the `spv.loop`'s region.
+    This way it's easier to discover all blocks belonging to a construct and
+    it plays nicer with the MLIR system.
+
+    The `spv.loop` region should contain at least four blocks: one entry block,
+    one loop header block, one loop continue block, one loop merge block.
+    The entry block should be the first block and it should jump to the loop
+    header block, which is the second block. The loop merge block should be the
+    last block. The merge block should only contain a `spv._merge` op.
+    The continue block should be the second to last block and it should have a
+    branch to the loop header block. The loop continue block should be the only
+    block, except the entry block, branching to the header block.
+  }];
+
+  let arguments = (ins
+    SPV_LoopControlAttr:$loop_control
+  );
+
+  let results = (outs);
+
+  let regions = (region AnyRegion:$body);
+
+  let hasOpcode = 0;
+}
+
+// -----
+
+def SPV_MergeOp : SPV_Op<"_merge", [HasParent<"LoopOp">, Terminator]> {
+  let summary = "A special terminator for merging a structured selection/loop.";
+
+  let description = [{
+    We use `spv.selection`/`spv.loop` for modelling structured selection/loop.
+    This op is a terminator used inside their regions to mean jumping to the
+    merge point, which is the next op following the `spv.selection` or
+    `spv.loop` op. This op does not have a corresponding instruction in the
+    SPIR-V binary format; it's solely for structural purpose.
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs);
+
+  let parser = [{ return parseNoIOOp(parser, result); }];
+  let printer = [{ printNoIOOp(getOperation(), p); }];
+
+  let hasOpcode = 0;
+}
+
+// -----
+
 def SPV_ReturnOp : SPV_Op<"Return", [InFunctionScope, Terminator]> {
   let summary = "Return with no value from a function with void return type.";
 

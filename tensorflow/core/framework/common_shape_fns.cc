@@ -366,7 +366,8 @@ Status EinsumShape(shape_inference::InferenceContext* c) {
     output_bcast_shape = input_bcast_shapes[0];
   } else if (input_bcast_shapes.size() == 2) {
     TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(
-        c, input_bcast_shapes[0], input_bcast_shapes[1], &output_bcast_shape));
+        c, input_bcast_shapes[0], input_bcast_shapes[1], true,
+        &output_bcast_shape));
   }
 
   bool output_has_ellipsis = false;
@@ -441,7 +442,7 @@ Status BatchMatMulV2Shape(shape_inference::InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->Subshape(b_shape, 0, -2, &b_batch_shape));
 
   TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(
-      c, a_batch_shape, b_batch_shape, &output_batch_shape));
+      c, a_batch_shape, b_batch_shape, true, &output_batch_shape));
 
   ShapeHandle output_shape;
   TF_RETURN_IF_ERROR(c->Concatenate(
@@ -1633,6 +1634,7 @@ Status QuantizedConcatV2Shape(InferenceContext* c, int num_inputs_to_concat) {
 Status BroadcastBinaryOpOutputShapeFnHelper(InferenceContext* c,
                                             ShapeHandle shape_x,
                                             ShapeHandle shape_y,
+                                            bool incompatible_shape_error,
                                             ShapeHandle* out) {
   CHECK_NOTNULL(out);
   if (!c->RankKnown(shape_x) || !c->RankKnown(shape_y)) {
@@ -1666,8 +1668,16 @@ Status BroadcastBinaryOpOutputShapeFnHelper(InferenceContext* c,
       // or the same as the known dim.
       // - If either dimension is 1, the other dimension is the output.
       if (c->Value(dim_x) > 1) {
+        if (!incompatible_shape_error) {
+          *out = c->UnknownShape();
+          return Status::OK();
+        }
         dims.push_back(dim_x);
       } else if (c->Value(dim_y) > 1) {
+        if (!incompatible_shape_error) {
+          *out = c->UnknownShape();
+          return Status::OK();
+        }
         dims.push_back(dim_y);
       } else if (c->Value(dim_x) == 1) {
         dims.push_back(dim_y);
@@ -1676,6 +1686,10 @@ Status BroadcastBinaryOpOutputShapeFnHelper(InferenceContext* c,
       } else if (dim_y.SameHandle(dim_x)) {
         dims.push_back(dim_x);
       } else {
+        if (!incompatible_shape_error) {
+          *out = c->UnknownShape();
+          return Status::OK();
+        }
         dims.push_back(c->UnknownDim());
       }
     } else if (c->Value(dim_x) == 1 || c->Value(dim_y) == 1) {
@@ -1689,7 +1703,14 @@ Status BroadcastBinaryOpOutputShapeFnHelper(InferenceContext* c,
       }
     } else {
       DimensionHandle dim;
-      TF_RETURN_IF_ERROR(c->Merge(dim_x, dim_y, &dim));
+      Status s = c->Merge(dim_x, dim_y, &dim);
+      if (!s.ok()) {
+        if (!incompatible_shape_error) {
+          *out = c->MakeShape({});
+          return Status::OK();
+        }
+        return s;
+      }
       dims.push_back(dim);
     }
   }

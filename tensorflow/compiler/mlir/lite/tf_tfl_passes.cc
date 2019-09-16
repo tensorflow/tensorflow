@@ -41,6 +41,7 @@ bool ShouldRunQuantizePasses(mlir::ModuleOp m) {
 
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
                                 mlir::PassManager* pass_manager) {
+  pass_manager->addPass(mlir::tf_executor::CreateSwitchFoldPass());
   pass_manager->addPass(mlir::CreateTFExecutorToControlDialectConversion());
   pass_manager->addPass(mlir::TFControlFlow::CreateRaiseTFControlFlowPass());
   // Ophint extraction will happen after island extraction pass.

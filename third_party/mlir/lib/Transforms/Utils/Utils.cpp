@@ -288,7 +288,7 @@ LogicalResult mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
   for (auto *op : opsToReplace) {
     if (failed(replaceAllMemRefUsesWith(oldMemRef, newMemRef, op, extraIndices,
                                         indexRemap, extraOperands)))
-      assert(false && "memref replacement guaranteed to succeed here");
+      llvm_unreachable("memref replacement guaranteed to succeed here");
   }
 
   return success();
@@ -387,4 +387,83 @@ void mlir::createAffineComputationSlice(
   for (unsigned idx = 0, e = newOperands.size(); idx < e; idx++) {
     opInst->setOperand(idx, newOperands[idx]);
   }
+}
+
+// TODO: Currently works for static memrefs with single non-identity layout map.
+LogicalResult mlir::normalizeMemRef(AllocOp allocOp) {
+  MemRefType memrefType = allocOp.getType();
+  unsigned rank = memrefType.getRank();
+  if (rank == 0)
+    return success();
+
+  auto layoutMaps = memrefType.getAffineMaps();
+  OpBuilder b(allocOp);
+  if (layoutMaps.size() != 1)
+    return failure();
+
+  AffineMap layoutMap = layoutMaps.front();
+
+  if (layoutMap == b.getMultiDimIdentityMap(rank))
+    return success();
+
+  if (layoutMap.getNumResults() < rank)
+    // This is a sufficient condition for not being one-to-one; the map is thus
+    // invalid. Leave it alone. (Undefined behavior?)
+    return failure();
+
+  // We don't do any more non-trivial checks for one-to-one'ness; we
+  // assume that it is one-to-one.
+
+  // TODO: Only for static memref's for now.
+  if (memrefType.getNumDynamicDims() > 0)
+    return failure();
+
+  // We have a single map that is not an identity map. Create a new memref with
+  // the right shape and an identity layout map.
+  auto shape = memrefType.getShape();
+  FlatAffineConstraints fac(rank, 0);
+  for (unsigned d = 0; d < rank; ++d) {
+    fac.addConstantLowerBound(d, 0);
+    fac.addConstantUpperBound(d, shape[d] - 1);
+  }
+
+  // We compose this map with the original index (logical) space to derive the
+  // upper bounds for the new index space.
+  unsigned newRank = layoutMap.getNumResults();
+  fac.composeMatchingMap(layoutMap);
+  // Project out the old data dimensions.
+  fac.projectOut(newRank, fac.getNumIds() - newRank - fac.getNumLocalIds());
+  SmallVector<int64_t, 4> newShape(newRank);
+  for (unsigned d = 0; d < newRank; ++d) {
+    // The lower bound for the shape is always zero.
+    auto ubConst = fac.getConstantUpperBound(d);
+    // For a static memref and an affine map with no symbols, this is always
+    // bounded.
+    assert(ubConst.hasValue() && "should always have an upper bound");
+    if (ubConst.getValue() < 0)
+      // This is due to an invalid map that maps to a negative space.
+      return failure();
+    newShape[d] = ubConst.getValue() + 1;
+  }
+
+  auto *oldMemRef = allocOp.getResult();
+  auto newMemRefType = b.getMemRefType(newShape, memrefType.getElementType(),
+                                       b.getMultiDimIdentityMap(newRank));
+  auto newAlloc = b.create<AllocOp>(allocOp.getLoc(), newMemRefType);
+
+  // Replace all uses of the old memref.
+  if (failed(replaceAllMemRefUsesWith(oldMemRef, /*newMemRef=*/newAlloc,
+                                      /*extraIndices=*/{},
+                                      /*indexRemap=*/layoutMap))) {
+    // If it failed (due to escapes for example), bail out.
+    newAlloc.erase();
+    return failure();
+  }
+  // Replace any uses of the original alloc op and erase it. All remaining uses
+  // have to be dealloc's; RAMUW above would've failed otherwise.
+  assert(std::all_of(oldMemRef->user_begin(), oldMemRef->user_end(),
+                     [](Operation *op) { return isa<DeallocOp>(op); }));
+  oldMemRef->replaceAllUsesWith(newAlloc);
+  allocOp.erase();
+  return success();
 }
