@@ -1,4 +1,5 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps")
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -126,15 +127,14 @@ cc_binary(
     deps = [":gl_delegate"],
 )
 
-# build -c opt --config ios_arm64 --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt -fvisibility=hidden --linkopt -s --strip always :libtensorflowlite_gpu_metal.so
-cc_binary(
-    name = "libtensorflowlite_gpu_metal.so",
-    linkshared = 1,
-    linkstatic = 1,
-    tags = [
-        "nobuilder",
-        "notap",
+# bazel build -c opt --cpu ios_arm64 --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt -fvisibility=hidden --linkopt -s --strip always --cxxopt=-std=c++14 :libtensorflowlite_gpu_metal --apple_platform_type=ios
+ios_static_framework(
+    name = "tensorflow_lite_gpu_framework",
+    hdrs = [
+        "metal_delegate.h",
+        "metal_delegate_internal.h",
     ],
+    minimum_os_version = "10.0",
     deps = [":metal_delegate"],
 )
 
