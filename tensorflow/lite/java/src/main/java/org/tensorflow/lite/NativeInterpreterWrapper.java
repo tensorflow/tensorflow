@@ -85,6 +85,14 @@ final class NativeInterpreterWrapper implements AutoCloseable {
       applyDelegate(interpreterHandle, errorHandle, delegate.getNativeHandle());
       delegates.add(delegate);
     }
+
+    if (hasUnresolvedFlexOp(interpreterHandle)) {
+      optionalFlexDelegate = maybeCreateFlexDelegate();
+      if (optionalFlexDelegate != null) {
+        applyDelegate(interpreterHandle, errorHandle, optionalFlexDelegate.getNativeHandle());
+      }
+    }
+
     allocateTensors(interpreterHandle, errorHandle);
     this.isMemoryAllocated = true;
   }
@@ -118,6 +126,14 @@ final class NativeInterpreterWrapper implements AutoCloseable {
       optionalNnApiDelegate.close();
       optionalNnApiDelegate = null;
     }
+    if (optionalFlexDelegate instanceof AutoCloseable) {
+      try {
+        ((AutoCloseable) optionalFlexDelegate).close();
+      } catch (Exception e) {
+        System.err.println("Failed to close flex delegate: " + e);
+      }
+    }
+    optionalFlexDelegate = null;
   }
 
   /** Sets inputs, runs model inference and returns outputs. */
@@ -319,6 +335,16 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     return outputTensor;
   }
 
+  private static Delegate maybeCreateFlexDelegate() {
+    try {
+      Class<?> clazz = Class.forName("org.tensorflow.lite.flex.FlexDelegate");
+      return (Delegate) clazz.getConstructor().newInstance();
+    } catch (Exception e) {
+      // The error will propagate when tensors are allocated.
+      return null;
+    }
+  }
+
   private static native int getOutputDataType(long interpreterHandle, int outputIdx);
 
   private static native int getOutputQuantizationZeroPoint(long interpreterHandle, int outputIdx);
@@ -355,7 +381,12 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   // NNAPI is enabled via Interpreter.Options.
   private NnApiDelegate optionalNnApiDelegate;
 
+  // Only used if 1) flex ops are used, and 2) the flex delegate is available.
+  private Delegate optionalFlexDelegate;
+
   private static native long allocateTensors(long interpreterHandle, long errorHandle);
+
+  private static native boolean hasUnresolvedFlexOp(long interpreterHandle);
 
   private static native int getInputTensorIndex(long interpreterHandle, int inputIdx);
 

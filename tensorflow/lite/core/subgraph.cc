@@ -633,15 +633,14 @@ TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
                                  TfLiteNode* node) {
   if (op_reg.prepare == nullptr) {
     // Check if it's an unresolved custom op.
-    if (op_reg.builtin_code == BuiltinOperator_CUSTOM &&
-        op_reg.custom_name != nullptr && op_reg.invoke == &UnresolvedOpInvoke) {
+    if (IsUnresolvedCustomOp(op_reg)) {
       if (IsFlexOp(op_reg.custom_name)) {
         ReportError(
             "Regular TensorFlow ops are not supported by this interpreter. "
-            "Make sure you invoke the Flex delegate before inference.");
+            "Make sure you apply/link the Flex delegate before inference.");
       } else {
         ReportError("Encountered unresolved custom op: %s.",
-                    op_reg.custom_name);
+                    op_reg.custom_name ? op_reg.custom_name : "UnknownOp");
       }
       return kTfLiteError;
     }

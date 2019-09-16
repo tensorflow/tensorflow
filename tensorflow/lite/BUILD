@@ -377,6 +377,7 @@ cc_library(
     copts = TFLITE_DEFAULT_COPTS + tflite_copts(),
     deps = [
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/schema:schema_fbs",
     ],
 )
 
