@@ -175,7 +175,6 @@ class DefaultTensorTie : public TensorTie {
   Status Init(TensorObjectConverterBuilder* converter_builder) {
     // First check is an object is user provided.
     const auto& external_def = def().external_def.object_def;
-    const auto& internal_def = def().internal_def.object_def;
 
     const bool is_same_def = IsSameDef();
 

@@ -162,3 +162,34 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
     ],
 )
+
+cc_library(
+    name = "delegate",
+    srcs = ["delegate.cc"],
+    hdrs = ["delegate.h"],
+    linkopts = select({
+        "//tensorflow:android": [
+            "-lEGL",
+            "-lGLESv3",
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/delegates/gpu:api",
+        "//tensorflow/lite/delegates/gpu/cl:api",
+        "//tensorflow/lite/delegates/gpu/cl:opencl_wrapper",
+        "//tensorflow/lite/delegates/gpu/cl:tensor_type_util",
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:model_builder",
+        "//tensorflow/lite/delegates/gpu/common:model_transformer",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/transformations:general_transformations",
+        "//tensorflow/lite/delegates/gpu/gl:api2",
+        "//third_party/GL:EGL_headers",
+        "//third_party/GL:GLES3_headers",
+        "@com_google_absl//absl/types:span",
+    ],
+)
