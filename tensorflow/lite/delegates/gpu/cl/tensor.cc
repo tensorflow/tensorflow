@@ -94,6 +94,21 @@ Status Tensor::IsValid(const BHWC& shape) const {
   return OkStatus();
 }
 
+uint64_t Tensor::GetMemorySizeInBytes() const {
+  const int flt_size = data_type_ == DataType::FLOAT32 ? 4 : 2;
+  const int flt4_size = 4 * flt_size;
+  switch (storage_type_) {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_2D:
+      return flt4_size * width_ * height_ * Depth();
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+      return flt_size * width_ * height_ * channels_;
+    default:
+      return 0;
+  }
+}
+
 Status Tensor::WriteDataBHWC(absl::Span<const float> in,
                              CLCommandQueue* queue) {
   if (in.size() != channels_ * width_ * height_) {

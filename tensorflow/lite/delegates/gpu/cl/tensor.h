@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_TENSOR_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_TENSOR_H_
 
+#include <cstdint>
 #include <memory>
 
 #include "absl/types/span.h"
@@ -54,6 +55,9 @@ class Tensor {
   int Channels() const { return channels_; }
   enum DataType DataType() const { return data_type_; }
   TensorStorageType StorageType() const { return storage_type_; }
+
+  // for profiling and memory statistics
+  uint64_t GetMemorySizeInBytes() const;
 
   int Depth() const { return IntegralDivideRoundUp(channels_, 4); }
   int4 GetSizeWithDepth() const {
