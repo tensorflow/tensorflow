@@ -279,6 +279,23 @@ TF_PLATFORM_LIBRARIES = {
         "tags": ["no_oss", "manual"],
         "visibility": ["//visibility:private"],
     },
+    "unbounded_work_queue": {
+        "name": "unbounded_work_queue_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:default/unbounded_work_queue.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:default/unbounded_work_queue.cc",
+        ],
+        "deps": [
+            "@com_google_absl//absl/memory",
+            "//tensorflow/core/platform:env",
+            "//tensorflow/core/platform:mutex",
+            "//tensorflow/core/lib/core:notification",
+        ],
+        "tags": ["no_oss", "manual"],
+        "visibility": ["//visibility:private"],
+    },
 }
 
 TF_WINDOWS_PLATFORM_LIBRARIES = {

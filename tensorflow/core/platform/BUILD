@@ -68,6 +68,7 @@ tf_instantiate_platform_libraries(names = [
     "strong_hash",
     "subprocess",
     "tracing",
+    "unbounded_work_queue",
     "wide_char",
 ])
 
@@ -539,6 +540,15 @@ cc_library(
         ":platform",
         ":tstring",
         "//tensorflow/core/platform/default/build_config:base",
+    ],
+)
+
+cc_library(
+    name = "unbounded_work_queue",
+    hdrs = ["unbounded_work_queue.h"],
+    deps = [
+        ":platform",
+        ":unbounded_work_queue_impl",
     ],
 )
 
