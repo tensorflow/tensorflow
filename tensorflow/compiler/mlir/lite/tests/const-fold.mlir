@@ -323,14 +323,28 @@ func @rank_input_known_rank(%arg0 : tensor<2x1xi32>) -> tensor<1xi32> {
 }
 
 // CHECK-LABEL: @reshape
-func @reshape() -> tensor<1x2xi32> {
-  %cst = constant dense<[1, 2]> : tensor<2xi32>
+func @reshape() -> tensor<4xi32> {
+  %input = constant dense<[[1, 2], [3, 4]]> : tensor<2x2xi32>
+  %shape = constant dense<[4]> : tensor<1xi32>
 
-  // CHECK: [[cst:%.*]] = constant dense<{{\[\[}}1, 2]]> : tensor<1x2xi32>
+  // CHECK: [[cst:%.*]] = constant dense<[1, 2, 3, 4]> : tensor<4xi32>
   // CHECK: return [[cst]]
-  %0 = "tfl.reshape"(%cst) : (tensor<2xi32>) -> tensor<1x2xi32>
-  return %0 : tensor<1x2xi32>
+  %0 = "tfl.reshape"(%input, %shape) : (tensor<2x2xi32>, tensor<1xi32>) -> tensor<4xi32>
+  return %0 : tensor<4xi32>
 }
+
+// CHECK-LABEL: @reshape_dynamic_output
+func @reshape_dynamic_output() -> tensor<?xi32> {
+  %input = constant dense<[[1, 2], [3, 4]]> : tensor<2x2xi32>
+  %shape = constant dense<[4]> : tensor<1xi32>
+
+  // CHECK: [[cst:%.*]] = "tfl.pseudo_const"() {value = dense<[1, 2, 3, 4]> : tensor<4xi32>} : () -> tensor<?xi32>
+  // CHECK: return [[cst]]
+  %0 = "tfl.reshape"(%input, %shape) : (tensor<2x2xi32>, tensor<1xi32>) -> tensor<?xi32>
+  return %0 : tensor<?xi32>
+}
+
+
 // CHECK-LABEL: @pseudo_const
 func @pseudo_const() -> tensor<i32> {
   // CHECK: [[cst:%.*]] = constant dense<1> : tensor<i32>

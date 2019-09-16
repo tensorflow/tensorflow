@@ -198,12 +198,24 @@ struct OphintCompositeOp {
           for (const auto& dim : input_type.getShape()) {
             reshape_op_shape.push_back(dim);
           }
-          auto reshape_output_type = builder->getTensorType(
-              reshape_op_shape, input_type.getElementType());
+
           Operation* first_use = current_identity_op->getNextNode();
           builder->setInsertionPoint(first_use);
+          Location loc = first_use->getLoc();
+          auto shape_type = builder->getTensorType({input_type.getRank() + 1},
+                                                   builder->getIntegerType(32));
+          SmallVector<Attribute, 4> result_shape_data(reshape_op_shape.size());
+          for (int i = 0; i < reshape_op_shape.size(); ++i) {
+            result_shape_data[i] = builder->getI32IntegerAttr(
+                static_cast<int32_t>(reshape_op_shape[i]));
+          }
+          auto shape_attr =
+              builder->getDenseElementsAttr(shape_type, result_shape_data);
+          auto shape = builder->create<ConstantOp>(loc, shape_type, shape_attr);
+          auto reshape_output_type = builder->getTensorType(
+              reshape_op_shape, input_type.getElementType());
           Operation* reshape = builder->create<TFL::ReshapeOp>(
-              first_use->getLoc(), reshape_output_type, input);
+              first_use->getLoc(), reshape_output_type, input, shape);
           op_input = reshape->getResult(0);
 
         } else {

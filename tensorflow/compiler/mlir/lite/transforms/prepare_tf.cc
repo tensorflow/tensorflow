@@ -33,6 +33,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/memory/memory.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
@@ -377,9 +378,15 @@ class ConvertTFDepthwiseConv2dNative
                                             filterShape[2] * filterShape[3]};
     auto elem_type = filter_type.getElementType();
     auto result_type = rewriter.getTensorType(result_shape, elem_type);
-    auto shape_type = rewriter.getTensorType({4}, rewriter.getIntegerType(64));
+    // TensorFlow Lite `Reshape` op only support int32 shape tensor currently.
+    auto shape_type = rewriter.getTensorType({4}, rewriter.getIntegerType(32));
+    SmallVector<Attribute, 4> result_shape_data(4);
+    for (int i = 0; i < 4; ++i) {
+      result_shape_data[i] =
+          rewriter.getI32IntegerAttr(static_cast<int32_t>(result_shape[i]));
+    }
     auto shape_attr =
-        DenseElementsAttr::get(shape_type, llvm::makeArrayRef(result_shape));
+        rewriter.getDenseElementsAttr(shape_type, result_shape_data);
     auto shape = rewriter.create<TF::ConstOp>(loc, shape_type, shape_attr);
 
     return rewriter.create<TF::ReshapeOp>(loc, result_type, filter, shape);

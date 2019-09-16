@@ -84,7 +84,8 @@ func @extractLastInputOphint() {
 
 // CHECK-LABEL: extractPackOneInputOphint
 func @extractPackOneInputOphint() {
-// CHECK:  %[[RESHAPE:[0-9]*]] = "tfl.reshape"(%0) : (tensor<1x16x1xf32>) -> tensor<1x1x16x1xf32>
+// CHECK:  %[[CST:.*]] = constant dense<[1, 1, 16, 1]> : tensor<4xi32>
+// CHECK:  %[[RESHAPE:[0-9]*]] = "tfl.reshape"(%0, %[[CST]]) : (tensor<1x16x1xf32>, tensor<4xi32>) -> tensor<1x1x16x1xf32>
 // CHECK:  %[[OP_HINT_CALL:[0-9]*]] = call @33fab028b9ef11e99426dc4a3e957995(%[[RESHAPE]]) : (tensor<1x1x16x1xf32>) -> tensor<1x16x1xf32>
 // CHECK:  %[[OUTPUT:[0-9]*]] = "tf.Identity"(%[[OP_HINT_CALL]]) {T = "tfdtype$DT_FLOAT", _tflite_function_name = "cool_activation_pack_input_one", _tflite_function_output_index = 0 : i64, _tflite_function_uuid = "33fab028b9ef11e99426dc4a3e957995", _tflite_ophint_level = 1 : i64, name = "OutputHint-cool_activation_pack_input_one-33fab028b9ef11e99426dc4a3e957995-0-None-None"} : (tensor<1x16x1xf32>) -> tensor<1x16x1xf32>
 

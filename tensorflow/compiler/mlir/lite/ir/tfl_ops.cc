@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 
 #include "llvm/ADT/APFloat.h"
@@ -468,35 +469,51 @@ struct RemoveAdjacentReshape : public RewritePattern {
 
   PatternMatchResult match(Operation *op) const override {
     auto thisOp = cast<ReshapeOp>(op);
-    auto prevOp = thisOp.getOperand()->getDefiningOp();
+    auto prevOp = thisOp.getOperand(0)->getDefiningOp();
     return isa_and_nonnull<ReshapeOp>(prevOp) ? matchSuccess() : matchFailure();
   }
 
   void rewrite(Operation *op, PatternRewriter &rewriter) const override {
     auto thisOp = cast<ReshapeOp>(op);
-    auto prevOp = cast<ReshapeOp>(thisOp.getOperand()->getDefiningOp());
+    auto prevOp = cast<ReshapeOp>(thisOp.getOperand(0)->getDefiningOp());
 
     // Replace
-    //   %1 = "tfl.reshape"(%0)
-    //   %2 = "tfl.reshape"(%1)
+    //   %1 = "tfl.reshape"(%0, %shape0)
+    //   %2 = "tfl.reshape"(%1, %shape1)
     // With
-    //   %2 = "tfl.reshape"(%0)
+    //   %2 = "tfl.reshape"(%0, %shape1)
     rewriter.replaceOpWithNewOp<ReshapeOp>(
-        {prevOp.getResult()}, op, thisOp.getType(), prevOp.getOperand());
+        {prevOp.getResult()}, op, thisOp.getType(), prevOp.getOperand(0),
+        thisOp.getOperand(1));
   }
 };
 
 }  // end anonymous namespace
 
 OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
-  // Remove identity reshape.
-  if (getType() == getOperand()->getType()) return getOperand();
+  // Remove identity reshape with both static result and input shape.
+  auto result_type = getType().cast<ShapedType>();
+  auto input_type = getOperand(0)->getType().cast<ShapedType>();
+  if (result_type.hasStaticShape() && result_type == input_type) {
+    return getOperand(0);
+  }
 
   // Constant folding
-  assert(operands.size() == 1);
   if (auto dense_elements = operands[0].dyn_cast_or_null<DenseElementsAttr>()) {
-    auto result_shape_type = getType().cast<ShapedType>();
-    return dense_elements.reshape(result_shape_type);
+    // If the result type isn't static, tries to derive the result type from
+    // the #2 operand.
+    if (!result_type.hasStaticShape()) {
+      auto shape_elements = operands[1].dyn_cast_or_null<DenseElementsAttr>();
+      if (!shape_elements) return nullptr;
+
+      SmallVector<int64_t, 4> shape_data;
+      for (auto it : shape_elements.getValues<APInt>()) {
+        shape_data.push_back(it.getSExtValue());
+      }
+      result_type =
+          RankedTensorType::get(shape_data, input_type.getElementType());
+    }
+    return dense_elements.reshape(result_type);
   }
 
   return nullptr;

@@ -68,6 +68,7 @@ DECL_CONVERT_OP(Concat);
 DECL_CONVERT_OP(ConcatV2);
 DECL_CONVERT_OP(MatMul);
 DECL_CONVERT_OP(Pack);
+DECL_CONVERT_OP(Reshape);
 DECL_CONVERT_OP(Split);
 DECL_CONVERT_OP(SplitV);
 DECL_CONVERT_OP(Unpack);
@@ -151,6 +152,30 @@ PatternMatchResult ConvertTFPackOp::matchAndRewrite(
   return matchSuccess();
 }
 
+PatternMatchResult ConvertTFReshapeOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tf_reshape_op = cast<TF::ReshapeOp>(op);
+
+  auto* input = tf_reshape_op.tensor();
+  auto* shape = tf_reshape_op.shape();
+
+  ShapedType shape_type = shape->getType().cast<ShapedType>();
+  // The tfl reshape's #2 operand needs to i32 tensor type, so we have to cast.
+  if (!shape_type.getElementType().isInteger(32)) {
+    auto new_shape = shape_type.getShape();
+    IntegerType new_ele_type = rewriter.getIntegerType(32);
+    ShapedType new_type = rewriter.getTensorType(new_shape, new_ele_type);
+    // Uses TF::CastOp to be folded if the shape input is a constant.
+    shape = rewriter
+                .create<TF::CastOp>(op->getLoc(), new_type, shape,
+                                    rewriter.getBoolAttr(false))
+                .y();
+  }
+  rewriter.replaceOpWithNewOp<ReshapeOp>(op, tf_reshape_op.output()->getType(),
+                                         input, shape);
+  return matchSuccess();
+}
+
 PatternMatchResult ConvertTFSplitOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_split_op = cast<TF::SplitOp>(op);
@@ -206,8 +231,8 @@ void LegalizeTF::runOnFunction() {
   // Add the generated patterns to the list.
   populateWithGenerated(ctx, &patterns);
   patterns.insert<ConvertTFConcatOp, ConvertTFConcatV2Op, ConvertTFMatMulOp,
-                  ConvertTFPackOp, ConvertTFSplitOp, ConvertTFSplitVOp,
-                  ConvertTFUnpackOp>(ctx);
+                  ConvertTFPackOp, ConvertTFReshapeOp, ConvertTFSplitOp,
+                  ConvertTFSplitVOp, ConvertTFUnpackOp>(ctx);
   applyPatternsGreedily(func, patterns);
 }
 
