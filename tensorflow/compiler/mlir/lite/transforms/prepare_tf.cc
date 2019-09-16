@@ -399,10 +399,6 @@ void PrepareTFPass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto func = getFunction();
 
-  patterns.insert<ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
-                  ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>>(&getContext());
-  applyPatternsGreedily(func, patterns);
-
   // This pattern was intented to uses TFL QDQs to preserve the quantization
   // parameters from the TF Quant ops, thus this pattern should run with the
   // first `applyPatternsGreedily` method, which would otherwise removes the
@@ -421,8 +417,9 @@ void PrepareTFPass::runOnFunction() {
   // will be applied.
   patterns.clear();
   TFL::populateWithGenerated(&getContext(), &patterns);
-  patterns.insert<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
-      &getContext());
+  patterns.insert<ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
+                  ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>, ConvertTFConv2D,
+                  ConvertTFDepthwiseConv2dNative>(&getContext());
   applyPatternsGreedily(func, patterns);
 }
 
