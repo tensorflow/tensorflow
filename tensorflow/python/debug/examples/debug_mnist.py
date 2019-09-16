@@ -19,9 +19,11 @@ from __future__ import print_function
 
 import sys
 
+import absl
 import tensorflow
 
 import tensorflow.python.debug.examples.v1.debug_mnist_v1 as debug_mnist_v1
+import tensorflow.python.debug.examples.v2.debug_mnist_v2 as debug_mnist_v2
 
 tf = tensorflow.compat.v1
 
@@ -34,7 +36,9 @@ def main():
     with tf.Graph().as_default():
       tf.app.run(main=debug_mnist_v1.main, argv=[sys.argv[0]] + unparsed)
   else:
-    tf.logging.info("tfdbg is not implemented in TensorFlow v2 yet")
+    flags, unparsed = debug_mnist_v2.parse_args()
+    debug_mnist_v2.FLAGS = flags
+    absl.app.run(main=debug_mnist_v2.main, argv=[sys.argv[0]] + unparsed)
 
 
 if __name__ == "__main__":
