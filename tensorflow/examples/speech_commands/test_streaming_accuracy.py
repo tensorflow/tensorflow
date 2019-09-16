@@ -102,7 +102,7 @@ def read_wav_file(filename):
     wav_loader = io_ops.read_file(wav_filename_placeholder)
     wav_decoder = contrib_audio.decode_wav(wav_loader, desired_channels=1)
     res = sess.run(wav_decoder, feed_dict={wav_filename_placeholder: filename})
-    return res.sample_rate, res.audio.flatten()
+  return res.sample_rate, res.audio.flatten()
 
 def main(_):
   label_list = read_label_file(FLAGS.labels)
@@ -228,7 +228,7 @@ if __name__ == '__main__':
     help='Length of average window used for smoothing results.')
   parser.add_argument(
     '--detection-threshold',
-    type=int,
+    type=float,
     default=0.7,
     help='The confidence for filtering unreliable commands')
   parser.add_argument(
