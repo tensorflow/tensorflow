@@ -91,6 +91,10 @@ bool DependencyOptimizer::SafeToRemoveIdentity(const NodeDef& node) const {
 }
 
 bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) const {
+  if (HasRegularOutputs(node, *node_map_)) {
+    // The output values of this node may be needed.
+    return false;
+  }
   if (!fetch_nodes_known_ ||
       nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
     return false;
@@ -115,10 +119,6 @@ bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) const {
     return false;
   }
   if (!SafeToRemoveIdentity(node)) {
-    return false;
-  }
-  if (NumNonControlOutputs(node, *node_map_) > 0) {
-    // The output values of this node may be needed.
     return false;
   }
   return true;

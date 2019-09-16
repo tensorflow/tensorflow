@@ -243,6 +243,12 @@ bool CompressTensorContent(float min_compression_ratio,
     }
     tensor->clear_tensor_content();
   }
+  if (new_num_values == 1) {
+    const T value = TypeHelper::GetValue(0, *tensor);
+    if (value == T()) {
+      TypeHelper::Truncate(0, tensor);
+    }
+  }
   return true;
 }
 
@@ -287,7 +293,8 @@ bool CompressRepeatedField(float min_compression_ratio,
       last_index = i + 1;
     }
   }
-  const int64 num_truncated_proto_values = last_index + 1;
+  const int64 num_truncated_proto_values =
+      (last_value == T() && last_index == 0) ? 0 : last_index + 1;
   const int64 num_bytes_as_field =
       num_truncated_proto_values * sizeof(FieldType);
   const int64 num_bytes_as_tensor_content = num_tensor_values * sizeof(T);

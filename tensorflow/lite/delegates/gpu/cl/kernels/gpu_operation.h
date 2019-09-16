@@ -63,6 +63,7 @@ struct OperationDef {
   // the structure of kernel, all other resources(biases) types and etc.
   DataType GetPrimaryDataType() const;
   TensorStorageType GetPrimaryStorageType() const;
+  bool HasAllTensorsOfType(TensorStorageType storage_type) const;
 };
 
 class ElementwiseOperation;

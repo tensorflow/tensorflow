@@ -13,23 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_FINGERPRINT_H_
-#define TENSORFLOW_CORE_PLATFORM_DEFAULT_FINGERPRINT_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_LOWER_TF_H_
+#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_LOWER_TF_H_
 
-#include <farmhash.h>
+#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 
-namespace tensorflow {
+namespace mlir {
+namespace TF {
 
-inline uint64 Fingerprint64(StringPiece s) {
-  return ::util::Fingerprint64(s.data(), s.size());
-}
+// Populates TensorFlow lowering patterns to lower some of the TensorFlow
+// operations that can be represented using other TensorFlow operations.
+void PopulateLoweringTFPatterns(MLIRContext *context,
+                                OwningRewritePatternList *patterns);
 
-inline Fprint128 Fingerprint128(StringPiece s) {
-  const auto fingerprint = ::util::Fingerprint128(s.data(), s.size());
-  return {::util::Uint128Low64(fingerprint),
-          ::util::Uint128High64(fingerprint)};
-}
+}  // namespace TF
+}  // namespace mlir
 
-}  // namespace tensorflow
-
-#endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_FINGERPRINT_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_LOWER_TF_H_

@@ -348,11 +348,14 @@ class OutputsAggregator(Aggregator):
     self.results = nest.pack_sequence_as(self._structure, self.results)
 
 
-def get_progbar(model, count_mode):
+def get_progbar(model, count_mode, include_metrics=True):
   """Get Progbar."""
-  stateful_metric_names = None
-  if hasattr(model, 'metrics_names'):
-    stateful_metric_names = model.metrics_names[1:]  # Exclude `loss`
+  if include_metrics:
+    stateful_metric_names = getattr(model, 'metrics_names', None)
+    if stateful_metric_names:
+      stateful_metric_names = stateful_metric_names[1:]  # Exclude `loss`
+  else:
+    stateful_metric_names = None
   return cbks.ProgbarLogger(count_mode, stateful_metrics=stateful_metric_names)
 
 

@@ -18,7 +18,6 @@ package_group(
     packages = [
         "//...",
         "//learning/glassbox/evaluation/compiler/...",
-        "//tensorflow/compiler/xla/service/gpu/mlir/...",
     ],
 )
 
@@ -773,17 +772,38 @@ gentbl(
         ),
         (
             "-gen-enum-decls",
-            "include/mlir/Dialect/SPIRV/SPIRVEnums.h.inc",
+            "include/mlir/Dialect/SPIRV/SPIRVIntEnums.h.inc",
         ),
         (
             "-gen-enum-defs",
-            "include/mlir/Dialect/SPIRV/SPIRVEnums.cpp.inc",
+            "include/mlir/Dialect/SPIRV/SPIRVIntEnums.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Dialect/SPIRV/SPIRVOps.td",
     td_srcs = [
         ":SPIRVOpsTdFiles",
+    ],
+)
+
+gentbl(
+    name = "SPIRVGLSLOpsIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-decls",
+            "include/mlir/Dialect/SPIRV/SPIRVGLSLOps.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "include/mlir/Dialect/SPIRV/SPIRVGLSLOps.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/SPIRV/SPIRVGLSLOps.td",
+    td_srcs = [
+        "include/mlir/Dialect/SPIRV/SPIRVBase.td",
+        ":OpBaseTdFiles",
     ],
 )
 
@@ -801,6 +821,26 @@ gentbl(
     td_srcs = [
         ":SPIRVOpsTdFiles",
         ":StdOpsTdFiles",
+    ],
+)
+
+gentbl(
+    name = "SPIRVBitEnumIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-spirv-enum-decls",
+            "include/mlir/Dialect/SPIRV/SPIRVBitEnums.h.inc",
+        ),
+        (
+            "-gen-spirv-enum-defs",
+            "include/mlir/Dialect/SPIRV/SPIRVBitEnums.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/SPIRV/SPIRVOps.td",
+    td_srcs = [
+        ":SPIRVOpsTdFiles",
     ],
 )
 
@@ -840,11 +880,13 @@ cc_library(
     name = "SPIRVDialect",
     srcs = [
         "lib/Dialect/SPIRV/SPIRVDialect.cpp",
+        "lib/Dialect/SPIRV/SPIRVGLSLOps.cpp",
         "lib/Dialect/SPIRV/SPIRVOps.cpp",
         "lib/Dialect/SPIRV/SPIRVTypes.cpp",
     ],
     hdrs = [
         "include/mlir/Dialect/SPIRV/SPIRVDialect.h",
+        "include/mlir/Dialect/SPIRV/SPIRVGLSLOps.h",
         "include/mlir/Dialect/SPIRV/SPIRVOps.h",
         "include/mlir/Dialect/SPIRV/SPIRVTypes.h",
     ],
@@ -852,6 +894,8 @@ cc_library(
     deps = [
         ":IR",
         ":Parser",
+        ":SPIRVBitEnumIncGen",
+        ":SPIRVGLSLOpsIncGen",
         ":SPIRVOpUtilsIncGen",
         ":SPIRVOpsIncGen",
         ":Support",
@@ -1546,10 +1590,26 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "MlirTableGenMain",
+    srcs = [
+        "tools/mlir-tblgen/mlir-tblgen.cpp",
+    ],
+    includes = ["include"],
+    deps = [
+        ":Support",
+        ":TableGen",
+        "@llvm//:config",
+        "@llvm//:support",
+        "@llvm//:tablegen",
+    ],
+)
+
 cc_binary(
     name = "mlir-tblgen",
     srcs = [
         "tools/mlir-tblgen/EnumsGen.cpp",
+        "tools/mlir-tblgen/EnumsGen.h",
         "tools/mlir-tblgen/LLVMIRConversionGen.cpp",
         "tools/mlir-tblgen/OpDefinitionsGen.cpp",
         "tools/mlir-tblgen/OpDocGen.cpp",
@@ -1558,13 +1618,13 @@ cc_binary(
         "tools/mlir-tblgen/RewriterGen.cpp",
         "tools/mlir-tblgen/SPIRVUtilsGen.cpp",
         "tools/mlir-tblgen/StructsGen.cpp",
-        "tools/mlir-tblgen/mlir-tblgen.cpp",
     ],
     linkopts = [
         "-lm",
         "-lpthread",
     ],
     deps = [
+        ":MlirTableGenMain",
         ":Support",
         ":TableGen",
         "@llvm//:config",

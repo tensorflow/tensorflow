@@ -22,7 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/lite/delegates/gpu/common/memory_management.h"
+#include "tensorflow/lite/delegates/gpu/common/memory_management/types.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
 namespace tflite {

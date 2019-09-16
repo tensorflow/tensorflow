@@ -97,7 +97,7 @@ class LaunchFusedConv2DBiasActivationOp<CPUDevice, qint8, BiasType, ScaleType> {
 
  public:
   void launch(OpKernelContext* ctx, bool cudnn_use_autotune,
-              const Tensor& conv_input, ScaleType conv_input_scale,
+              const Tensor& conv_input, const Tensor& conv_input_scale,
               const Tensor& filter, int32 row_stride, int32 col_stride,
               const Eigen::PaddingType& padding, const Tensor& side_input,
               ScaleType side_input_scale, const Tensor& bias,
@@ -181,18 +181,19 @@ class LaunchFusedConv2DBiasActivationOp<CPUDevice, qint8, BiasType, ScaleType> {
     static constexpr ScaleType kMaxRange = static_cast<ScaleType>(127.f);
     static constexpr ScaleType kMinRange = static_cast<ScaleType>(-128.f);
 
-    explicit BiasActivationOutputKernel(ScaleType conv_input_scale,
+    explicit BiasActivationOutputKernel(const Tensor& conv_input_scale,
                                         const Tensor& side_input,
                                         ScaleType side_input_scale,
                                         const Tensor& bias,
                                         ActivationMode activation_mode,
                                         Tensor* output)
         : activation_mode(activation_mode),
-          conv_input_scale(conv_input_scale),
+          conv_input_scale_data(conv_input_scale.flat<ScaleType>().data()),
           bias_data(bias.flat<BiasType>().data()),
           side_input_data(side_input.flat<T>().data()),
           side_input_scale(side_input_scale),
-          output_data(const_cast<T*>(output->flat<T>().data())) {}
+          output_data(const_cast<T*>(output->flat<T>().data())),
+          conv_input_scale_tensor_size(conv_input_scale.NumElements()) {}
 
     EIGEN_ALWAYS_INLINE void operator()(
         const ContractionOutputMapper& conv_output_mapper,
@@ -232,10 +233,14 @@ class LaunchFusedConv2DBiasActivationOp<CPUDevice, qint8, BiasType, ScaleType> {
         // and we are targeting close equality with Nvidia implementation.
         // We could use std::fmaf, but it can be ~50x slower, on machines
         // without fma instruction.
+        double conv_input_scale = static_cast<double>(*conv_input_scale_data);
         for (int idx = 0; idx < num_rows; ++idx) {
-          conv_output_ptr[idx] = static_cast<double>(conv_output_ptr[idx]) *
-                                     static_cast<double>(conv_input_scale) +
-                                 static_cast<double>(bias_ptr[idx]);
+          if (conv_input_scale_tensor_size > 1) {
+            conv_input_scale = static_cast<double>(conv_input_scale_data[idx]);
+          }
+          conv_output_ptr[idx] =
+              static_cast<double>(conv_output_ptr[idx]) * conv_input_scale +
+              static_cast<double>(bias_ptr[idx]);
           if (side_input_scale != 0.0f) {
             conv_output_ptr[idx] = static_cast<double>(side_input_ptr[idx]) *
                                        static_cast<double>(side_input_scale) +
@@ -257,11 +262,12 @@ class LaunchFusedConv2DBiasActivationOp<CPUDevice, qint8, BiasType, ScaleType> {
 
    private:
     ActivationMode activation_mode;
-    ScaleType conv_input_scale;
+    const ScaleType* conv_input_scale_data;
     const BiasType* bias_data;
     const T* side_input_data;
     ScaleType side_input_scale;
     T* output_data;
+    const int conv_input_scale_tensor_size;
   };
 };
 #endif  // defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
@@ -401,8 +407,6 @@ class FusedConv2DBiasActivationOp : public OpKernel {
     const Tensor& conv_input_scale_tensor = context->input(kConvInputScale);
     const Tensor& side_input_scale_tensor = context->input(kSideInputScale);
 
-    auto conv_input_scale = *reinterpret_cast<const ScaleType*>(
-        conv_input_scale_tensor.tensor_data().data());
     auto side_input_scale = *reinterpret_cast<const ScaleType*>(
         side_input_scale_tensor.tensor_data().data());
 
@@ -452,10 +456,11 @@ class FusedConv2DBiasActivationOp : public OpKernel {
       return;
     }
 
-    launcher_.launch(context, cudnn_use_autotune_, conv_input, conv_input_scale,
-                     filter, stride_rows_, stride_cols_, eigen_padding_type_,
-                     side_input, side_input_scale, bias, activation_mode_,
-                     data_format_, filter_format_, output);
+    launcher_.launch(context, cudnn_use_autotune_, conv_input,
+                     conv_input_scale_tensor, filter, stride_rows_,
+                     stride_cols_, eigen_padding_type_, side_input,
+                     side_input_scale, bias, activation_mode_, data_format_,
+                     filter_format_, output);
   }
 
  private:
@@ -669,7 +674,7 @@ void AdjustPaddingForCudnn(int padding, bool is_int8x4, int filter_size,
 template <typename T, typename BiasType, typename ScaleType>
 void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
     launch(OpKernelContext* ctx, bool cudnn_use_autotune,
-           const Tensor& conv_input_param, ScaleType conv_input_scale,
+           const Tensor& conv_input_param, const Tensor& conv_input_scale,
            const Tensor& filter_param, int32 row_stride, int32 col_stride,
            const Eigen::PaddingType& padding, const Tensor& side_input_param,
            ScaleType side_input_scale, const Tensor& bias,
@@ -949,10 +954,11 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
       bool cudnn_launch_status =
           stream
               ->ThenFusedConvolveWithAlgorithm(
-                  conv_input_desc, conv_input_ptr, conv_input_scale,
-                  filter_desc, filter_ptr, conv_desc, side_input_ptr,
-                  side_input_scale, bias_desc, bias_ptr, dnn_activation_mode,
-                  output_desc, &output_ptr, &scratch_allocator,
+                  conv_input_desc, conv_input_ptr,
+                  *conv_input_scale.flat<ScaleType>().data(), filter_desc,
+                  filter_ptr, conv_desc, side_input_ptr, side_input_scale,
+                  bias_desc, bias_ptr, dnn_activation_mode, output_desc,
+                  &output_ptr, &scratch_allocator,
                   dnn::AlgorithmConfig(profile_algorithm), &profile_result)
               .ok();
       if (cudnn_launch_status && profile_result.is_valid()) {
@@ -969,7 +975,8 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
     internal::LogFusedConvForwardAutotuneResults(
         se::dnn::ToDataType<typename RawType<T>::type>::value, conv_input_ptr,
         filter_ptr, output_ptr, bias_ptr, side_input_ptr, conv_input_desc,
-        filter_desc, output_desc, conv_desc, conv_input_scale, side_input_scale,
+        filter_desc, output_desc, conv_desc,
+        *conv_input_scale.flat<ScaleType>().data(), side_input_scale,
         dnn_activation_mode, stream->parent(), results);
     OP_REQUIRES_OK(
         ctx, internal::BestCudnnConvAlgorithm(results, &algorithm_config));
@@ -981,7 +988,8 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
   bool cudnn_launch_status =
       stream
           ->ThenFusedConvolveWithAlgorithm(
-              conv_input_desc, conv_input_ptr, conv_input_scale, filter_desc,
+              conv_input_desc, conv_input_ptr,
+              *conv_input_scale.flat<ScaleType>().data(), filter_desc,
               filter_ptr, conv_desc, side_input_ptr, side_input_scale,
               bias_desc, bias_ptr, dnn_activation_mode, output_desc,
               &output_ptr, &scratch_allocator, algorithm_config,

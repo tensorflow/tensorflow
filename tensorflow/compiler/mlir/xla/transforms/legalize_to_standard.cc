@@ -25,7 +25,7 @@ limitations under the License.
 
 using mlir::Builder;
 using mlir::FunctionPass;
-using mlir::FunctionPassBase;
+using mlir::OpPassBase;
 using mlir::OwningRewritePatternList;
 using mlir::PassRegistration;
 
@@ -123,7 +123,7 @@ struct LegalizeToStandard : public FunctionPass<LegalizeToStandard> {
 };
 }  // end anonymous namespace
 
-std::unique_ptr<mlir::FunctionPassBase>
+std::unique_ptr<mlir::OpPassBase<mlir::FuncOp>>
 mlir::xla_hlo::createLegalizeToStdPass() {
   return std::make_unique<LegalizeToStandard>();
 }

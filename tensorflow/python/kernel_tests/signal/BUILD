@@ -14,6 +14,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/lite/python:interpreter",
+        "//tensorflow/lite/python:lite",
         "//tensorflow/python:tf_optimizer",
         "//tensorflow/python:training",
     ],
@@ -35,6 +37,7 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "fft_ops_test",
+    # TODO(rjryan): Parameterize the test to reduce the time it takes.
     size = "medium",
     srcs = ["fft_ops_test.py"],
     additional_deps = [
@@ -44,7 +47,7 @@ cuda_py_tests(
         "//tensorflow/python:math_ops",
         "//tensorflow/python/ops/signal",
     ],
-    shard_count = 4,
+    shard_count = 8,
     tags = [
         "no_rocm",
         "optonly",
@@ -83,6 +86,7 @@ cuda_py_tests(
     name = "reconstruction_ops_test",
     srcs = ["reconstruction_ops_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:gradients",
@@ -120,6 +124,7 @@ cuda_py_tests(
     size = "large",
     srcs = ["spectral_ops_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:gradients",

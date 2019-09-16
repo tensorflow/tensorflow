@@ -96,7 +96,7 @@ void MaterializePassthroughOpPass::runOnFunction() {
 }  // namespace
 
 namespace TF {
-std::unique_ptr<FunctionPassBase> CreateMaterializePassthroughOpPass() {
+std::unique_ptr<OpPassBase<FuncOp>> CreateMaterializePassthroughOpPass() {
   return std::make_unique<MaterializePassthroughOpPass>();
 }
 }  // namespace TF

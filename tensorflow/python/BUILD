@@ -98,6 +98,8 @@ py_library(
         "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
+        ":_pywrap_stat_summarizer",
+        ":_pywrap_tfprof",
         ":_pywrap_util_port",
         ":_pywrap_utils",
         ":array_ops",
@@ -174,7 +176,6 @@ py_library(
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/eager:execution_callbacks",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/eager:profiler",
         "//tensorflow/python/eager:profiler_client",
@@ -364,6 +365,28 @@ cc_library(
         "//tensorflow/c:c_api",
         "//tensorflow/core:lib",
         "//third_party/python_runtime:headers",
+    ],
+)
+
+cc_library(
+    name = "pybind11_absl",
+    hdrs = ["lib/core/pybind11_absl.h"],
+    features = ["-parse_headers"],
+    deps = [
+        "//tensorflow/core/platform:stringpiece",
+        "@pybind11",
+    ],
+)
+
+cc_library(
+    name = "pybind11_status",
+    hdrs = ["lib/core/pybind11_status.h"],
+    features = ["-parse_headers"],
+    deps = [
+        ":py_exception_registry",
+        "//tensorflow/core:lib",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
     ],
 )
 
@@ -739,6 +762,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":_pywrap_stat_summarizer",
+        ":_pywrap_tfprof",
         ":_pywrap_util_port",
         ":_pywrap_utils",
         ":common_shapes",
@@ -969,7 +993,7 @@ py_library(
         ":tensor_shape",
         ":util",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/eager:execution_callbacks",
+        "//tensorflow/python:op_callbacks",
         "@six_archive//:six",
     ],
 )
@@ -1032,7 +1056,6 @@ cuda_py_test(
         ":sparse_tensor",
         "//third_party/py/numpy",
         "//tensorflow/python/eager:execute",
-        "//tensorflow/python/eager:execution_callbacks",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras",
     ],
@@ -1512,21 +1535,6 @@ tf_py_test(
         ":subscribe",
     ],
     main = "framework/subscribe_test.py",
-)
-
-tf_py_test(
-    name = "contrib_test",
-    size = "small",
-    srcs = ["framework/contrib_test.py"],
-    additional_deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:client_testlib",
-    ],
-    main = "framework/contrib_test.py",
-    tags = [
-        "no_pip",
-        "no_windows",
-    ],
 )
 
 tf_py_test(
@@ -4284,9 +4292,9 @@ cuda_py_test(
         ":client_testlib",
         ":framework_for_generated_wrappers",
         ":math_ops",
+        "//tensorflow/python/debug:check_numerics_callback",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:execution_callbacks",
         "//third_party/py/numpy",
     ],
     tags = ["no_windows_gpu"],
@@ -5124,6 +5132,7 @@ genrule(
     name = "pybind_symbol_target_libs_file",
     srcs = [
         ":cpp_python_util",  # util
+        "//tensorflow/core:util_port",  # util_port
         "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
     ],
@@ -5631,9 +5640,14 @@ tf_py_test(
         ":lib",
         ":util",
     ],
-    # The multiprocessing module behaves differently on windows, so we
-    # disable this test on windows.
-    tags = ["no_windows"],
+    tags = [
+        # multiprocessing can be flaky in the internal google
+        # environment, so we disable it there.
+        "notap",
+        # The multiprocessing module behaves differently on
+        # windows, so we disable this test on windows.
+        "no_windows",
+    ],
 )
 
 cuda_py_test(
@@ -5914,6 +5928,7 @@ tf_py_test(
         ":client",
         ":client_testlib",
         ":control_flow_ops",
+        ":fake_summary_writer",
         ":framework",
         ":framework_for_generated_wrappers",
         ":nn_grad",
@@ -5923,8 +5938,6 @@ tf_py_test(
         ":training",
         ":variable_scope",
         ":variables",
-        "//tensorflow/contrib/framework:framework_py",
-        "//tensorflow/contrib/testing:testing_py",
         "//tensorflow/core:protos_all_py",
     ],
     tags = [
@@ -6016,8 +6029,6 @@ tf_py_test(
         ":summary",
         ":training",
         ":variables",
-        "//tensorflow/contrib/framework:framework_py",
-        "//tensorflow/contrib/testing:testing_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:distribute_coordinator",
@@ -6096,7 +6107,10 @@ py_library(
     name = "summary",
     srcs = glob(
         ["summary/**/*.py"],
-        exclude = ["**/*test*"],
+        exclude = [
+            "**/fake*",
+            "**/*test*",
+        ],
     ),
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
@@ -6117,6 +6131,19 @@ py_library(
         "//tensorflow/python/distribute:summary_op_util",
         "//tensorflow/python/eager:context",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "fake_summary_writer",
+    testonly = 1,
+    srcs = ["summary/writer/fake_summary_writer.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":framework_test_lib",
+        ":protos_all_py",
+        ":summary",
     ],
 )
 

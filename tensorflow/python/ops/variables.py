@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import abc
 import enum  # pylint: disable=g-bad-import-order
 import itertools
 import functools
@@ -3384,14 +3383,3 @@ def report_uninitialized_variables(var_list=None,
 
 ops.register_tensor_conversion_function(
     PartitionedVariable, PartitionedVariable._TensorConversionFunction)  # pylint: disable=protected-access
-
-
-class AbstractVariableMetaclass(VariableMetaclass, abc.ABCMeta):
-  """Metaclass combining `VariableMetaclass` and `abc.ABCMeta`."""
-  pass
-
-
-@six.add_metaclass(AbstractVariableMetaclass)
-class AbstractVariable(Variable):
-  """`Variable`, but abstract."""
-  pass

@@ -98,7 +98,7 @@ std::string GenerateConvolutionTransposedCode(
   c += "  int X = get_global_id(0);\n";
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
-  c += "  if (X >= dst_size.x || Y >= dst_size.y) return;\n";
+  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) return;\n";
   if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
     c += "  int f_base = Z * src_size.w * kernel_size.x * kernel_size.y;\n";
   }

@@ -23,10 +23,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_gemm_pad_for_tensor_cores.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_pad_for_tensor_cores.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_pad_for_convolutions.h"
 #include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
@@ -115,12 +115,11 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<CudnnConvRewriter>();
   pipeline.AddPass<CudnnFusedConvRewriter>();
   pipeline.AddPass<CudnnConvPaddingLegalization>();
-  if (IsVoltaOrLater(*stream_exec)) {
-    pipeline.AddPass<CudnnConvPadForTensorCores>();
-    // CudnnConvPadForTensorCores leaves behind unnecessary
-    // tuple/get-tuple-element pairs that TupleSimplifier fixes.
-    pipeline.AddPass<TupleSimplifier>();
-  }
+  pipeline.AddPass<CudnnPadForConvolutions>(IsVoltaOrLater(*stream_exec));
+  // CudnnConvPadForIntegerConvolutions and CudnnConvPadForTensorCores leaves
+  // behind unnecessary tuple/get-tuple-element pairs that TupleSimplifier
+  // fixes.
+  pipeline.AddPass<TupleSimplifier>();
 
   // tf2xla bridge, DepthwiseConvolutionConverter and CudnnConvRewriter
   // introduces reshapes and transposes that can be eliminated using

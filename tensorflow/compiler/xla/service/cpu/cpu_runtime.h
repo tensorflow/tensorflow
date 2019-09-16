@@ -45,6 +45,7 @@ namespace runtime {
 extern const char* const kEigenMatMulF16SymbolName;
 extern const char* const kEigenMatMulF32SymbolName;
 extern const char* const kEigenMatMulF64SymbolName;
+extern const char* const kEigenMatMulS32SymbolName;
 extern const char* const kMKLConvF32SymbolName;
 extern const char* const kMKLMatMulF32SymbolName;
 extern const char* const kMKLMatMulF64SymbolName;
@@ -57,6 +58,7 @@ extern const char* const kEigenSingleThreadedFftSymbolName;
 extern const char* const kEigenSingleThreadedMatMulF16SymbolName;
 extern const char* const kEigenSingleThreadedMatMulF32SymbolName;
 extern const char* const kEigenSingleThreadedMatMulF64SymbolName;
+extern const char* const kEigenSingleThreadedMatMulS32SymbolName;
 extern const char* const kEigenSingleThreadedConvF16SymbolName;
 extern const char* const kEigenSingleThreadedConvF32SymbolName;
 extern const char* const kAcquireInfeedBufferForDequeueSymbolName;

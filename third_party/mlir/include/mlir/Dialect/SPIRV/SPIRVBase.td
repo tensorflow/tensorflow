@@ -185,7 +185,6 @@ def SPV_OpcodeAttr :
 
 // End opcode section. Generated from SPIR-V spec; DO NOT MODIFY!
 
-
 //===----------------------------------------------------------------------===//
 // SPIR-V type definitions
 //===----------------------------------------------------------------------===//
@@ -202,7 +201,8 @@ def SPV_Void : TypeAlias<NoneType, "void type">;
 def SPV_Bool : IntOfWidths<[1]>;
 def SPV_Integer : IntOfWidths<[8, 16, 32, 64]>;
 def SPV_Float : FloatOfWidths<[16, 32, 64]>;
-def SPV_Vector : VectorOf<[SPV_Bool, SPV_Integer, SPV_Float]>;
+def SPV_Vector : VectorOfLengthAndType<[2, 3, 4],
+                                       [SPV_Bool, SPV_Integer, SPV_Float]>;
 // Component type check is done in the type parser for the following SPIR-V
 // dialect-specific types so we use "Any" here.
 def SPV_AnyPtr : Type<SPV_IsPtrType, "any SPIR-V pointer type">;
@@ -219,13 +219,59 @@ def SPV_Type : AnyTypeOf<[
     SPV_AnyPtr, SPV_AnyArray, SPV_AnyRTArray, SPV_AnyStruct
   ]>;
 
-class SPV_ScalarOrVectorOf<Type type> : AnyTypeOf<[type, VectorOf<[type]>]>;
+class SPV_ScalarOrVectorOf<Type type> :
+    AnyTypeOf<[type, VectorOfLengthAndType<[2, 3, 4], [type]>]>;
+
+def SPV_ScalarOrVector : AnyTypeOf<[SPV_Scalar, SPV_Vector]>;
 
 // TODO(antiagainst): Use a more appropriate way to model optional operands
 class SPV_Optional<Type type> : Variadic<type>;
 
 // TODO(ravishankarm): From 1.4, this should also include Composite type.
 def SPV_SelectType : AnyTypeOf<[SPV_Scalar, SPV_Vector, SPV_AnyPtr]>;
+
+//===----------------------------------------------------------------------===//
+// SPIR-V BitEnum definition
+//===----------------------------------------------------------------------===//
+
+// A bit enum case stored with 32-bit IntegerAttr. `val` here is *not* the
+// ordinal number of the bit that is set. It is the 32-bit integer with only
+// one bit set.
+class BitEnumAttrCase<string sym, int val> :
+    EnumAttrCaseInfo<sym, val>,
+    IntegerAttrBase<I32, "case " # sym> {
+  let predicate = CPred<
+    "$_self.cast<IntegerAttr>().getValue().getSExtValue() & " # val # "u">;
+}
+
+// A bit enum stored with 32-bit IntegerAttr.
+//
+// Op attributes of this kind are stored as IntegerAttr. Extra verification will
+// be generated on the integer to make sure only allowed bit are set.
+class BitEnumAttr<string name, string description,
+                  list<BitEnumAttrCase> cases> :
+    EnumAttrInfo<name, cases>, IntegerAttrBase<I32, description> {
+  let predicate = And<[
+    IntegerAttrBase<I32, "">.predicate,
+    // Make sure we don't have unknown bit set.
+    CPred<"!($_self.cast<IntegerAttr>().getValue().getZExtValue() & (~(" #
+          StrJoin<!foreach(case, cases, case.value # "u"), "|">.result #
+          ")))">
+  ]>;
+
+  let underlyingType = "uint32_t";
+
+  // We need to return a string because we may concatenate symbols for multiple
+  // bits together.
+  let symbolToStringFnRetType = "std::string";
+
+  // The string used to separate bit enum cases in strings.
+  string separator = "|";
+
+  // Turn off the autogen with EnumsGen. SPIR-V needs custom logic here and
+  // we will use our own autogen logic.
+  let skipAutoGen = 1;
+}
 
 //===----------------------------------------------------------------------===//
 // SPIR-V extension definitions
@@ -259,15 +305,15 @@ def SPV_ExtensionAttr :
 
 // Begin enum section. Generated from SPIR-V spec; DO NOT MODIFY!
 
-def SPV_AM_Logical                    : I32EnumAttrCase<"Logical", 0>;
-def SPV_AM_Physical32                 : I32EnumAttrCase<"Physical32", 1>;
-def SPV_AM_Physical64                 : I32EnumAttrCase<"Physical64", 2>;
-def SPV_AM_PhysicalStorageBuffer64EXT : I32EnumAttrCase<"PhysicalStorageBuffer64EXT", 5348>;
+def SPV_AM_Logical                 : I32EnumAttrCase<"Logical", 0>;
+def SPV_AM_Physical32              : I32EnumAttrCase<"Physical32", 1>;
+def SPV_AM_Physical64              : I32EnumAttrCase<"Physical64", 2>;
+def SPV_AM_PhysicalStorageBuffer64 : I32EnumAttrCase<"PhysicalStorageBuffer64", 5348>;
 
 def SPV_AddressingModelAttr :
     I32EnumAttr<"AddressingModel", "valid SPIR-V AddressingModel", [
       SPV_AM_Logical, SPV_AM_Physical32, SPV_AM_Physical64,
-      SPV_AM_PhysicalStorageBuffer64EXT
+      SPV_AM_PhysicalStorageBuffer64
     ]> {
   let returnType = "::mlir::spirv::AddressingModel";
   let convertFromStorage = "static_cast<::mlir::spirv::AddressingModel>($_self.getInt())";
@@ -410,144 +456,146 @@ def SPV_BuiltInAttr :
   let cppNamespace = "::mlir::spirv";
 }
 
-def SPV_C_Matrix                                       : I32EnumAttrCase<"Matrix", 0>;
-def SPV_C_Shader                                       : I32EnumAttrCase<"Shader", 1>;
-def SPV_C_Geometry                                     : I32EnumAttrCase<"Geometry", 2>;
-def SPV_C_Tessellation                                 : I32EnumAttrCase<"Tessellation", 3>;
-def SPV_C_Addresses                                    : I32EnumAttrCase<"Addresses", 4>;
-def SPV_C_Linkage                                      : I32EnumAttrCase<"Linkage", 5>;
-def SPV_C_Kernel                                       : I32EnumAttrCase<"Kernel", 6>;
-def SPV_C_Vector16                                     : I32EnumAttrCase<"Vector16", 7>;
-def SPV_C_Float16Buffer                                : I32EnumAttrCase<"Float16Buffer", 8>;
-def SPV_C_Float16                                      : I32EnumAttrCase<"Float16", 9>;
-def SPV_C_Float64                                      : I32EnumAttrCase<"Float64", 10>;
-def SPV_C_Int64                                        : I32EnumAttrCase<"Int64", 11>;
-def SPV_C_Int64Atomics                                 : I32EnumAttrCase<"Int64Atomics", 12>;
-def SPV_C_ImageBasic                                   : I32EnumAttrCase<"ImageBasic", 13>;
-def SPV_C_ImageReadWrite                               : I32EnumAttrCase<"ImageReadWrite", 14>;
-def SPV_C_ImageMipmap                                  : I32EnumAttrCase<"ImageMipmap", 15>;
-def SPV_C_Pipes                                        : I32EnumAttrCase<"Pipes", 17>;
-def SPV_C_Groups                                       : I32EnumAttrCase<"Groups", 18>;
-def SPV_C_DeviceEnqueue                                : I32EnumAttrCase<"DeviceEnqueue", 19>;
-def SPV_C_LiteralSampler                               : I32EnumAttrCase<"LiteralSampler", 20>;
-def SPV_C_AtomicStorage                                : I32EnumAttrCase<"AtomicStorage", 21>;
-def SPV_C_Int16                                        : I32EnumAttrCase<"Int16", 22>;
-def SPV_C_TessellationPointSize                        : I32EnumAttrCase<"TessellationPointSize", 23>;
-def SPV_C_GeometryPointSize                            : I32EnumAttrCase<"GeometryPointSize", 24>;
-def SPV_C_ImageGatherExtended                          : I32EnumAttrCase<"ImageGatherExtended", 25>;
-def SPV_C_StorageImageMultisample                      : I32EnumAttrCase<"StorageImageMultisample", 27>;
-def SPV_C_UniformBufferArrayDynamicIndexing            : I32EnumAttrCase<"UniformBufferArrayDynamicIndexing", 28>;
-def SPV_C_SampledImageArrayDynamicIndexing             : I32EnumAttrCase<"SampledImageArrayDynamicIndexing", 29>;
-def SPV_C_StorageBufferArrayDynamicIndexing            : I32EnumAttrCase<"StorageBufferArrayDynamicIndexing", 30>;
-def SPV_C_StorageImageArrayDynamicIndexing             : I32EnumAttrCase<"StorageImageArrayDynamicIndexing", 31>;
-def SPV_C_ClipDistance                                 : I32EnumAttrCase<"ClipDistance", 32>;
-def SPV_C_CullDistance                                 : I32EnumAttrCase<"CullDistance", 33>;
-def SPV_C_ImageCubeArray                               : I32EnumAttrCase<"ImageCubeArray", 34>;
-def SPV_C_SampleRateShading                            : I32EnumAttrCase<"SampleRateShading", 35>;
-def SPV_C_ImageRect                                    : I32EnumAttrCase<"ImageRect", 36>;
-def SPV_C_SampledRect                                  : I32EnumAttrCase<"SampledRect", 37>;
-def SPV_C_GenericPointer                               : I32EnumAttrCase<"GenericPointer", 38>;
-def SPV_C_Int8                                         : I32EnumAttrCase<"Int8", 39>;
-def SPV_C_InputAttachment                              : I32EnumAttrCase<"InputAttachment", 40>;
-def SPV_C_SparseResidency                              : I32EnumAttrCase<"SparseResidency", 41>;
-def SPV_C_MinLod                                       : I32EnumAttrCase<"MinLod", 42>;
-def SPV_C_Sampled1D                                    : I32EnumAttrCase<"Sampled1D", 43>;
-def SPV_C_Image1D                                      : I32EnumAttrCase<"Image1D", 44>;
-def SPV_C_SampledCubeArray                             : I32EnumAttrCase<"SampledCubeArray", 45>;
-def SPV_C_SampledBuffer                                : I32EnumAttrCase<"SampledBuffer", 46>;
-def SPV_C_ImageBuffer                                  : I32EnumAttrCase<"ImageBuffer", 47>;
-def SPV_C_ImageMSArray                                 : I32EnumAttrCase<"ImageMSArray", 48>;
-def SPV_C_StorageImageExtendedFormats                  : I32EnumAttrCase<"StorageImageExtendedFormats", 49>;
-def SPV_C_ImageQuery                                   : I32EnumAttrCase<"ImageQuery", 50>;
-def SPV_C_DerivativeControl                            : I32EnumAttrCase<"DerivativeControl", 51>;
-def SPV_C_InterpolationFunction                        : I32EnumAttrCase<"InterpolationFunction", 52>;
-def SPV_C_TransformFeedback                            : I32EnumAttrCase<"TransformFeedback", 53>;
-def SPV_C_GeometryStreams                              : I32EnumAttrCase<"GeometryStreams", 54>;
-def SPV_C_StorageImageReadWithoutFormat                : I32EnumAttrCase<"StorageImageReadWithoutFormat", 55>;
-def SPV_C_StorageImageWriteWithoutFormat               : I32EnumAttrCase<"StorageImageWriteWithoutFormat", 56>;
-def SPV_C_MultiViewport                                : I32EnumAttrCase<"MultiViewport", 57>;
-def SPV_C_SubgroupDispatch                             : I32EnumAttrCase<"SubgroupDispatch", 58>;
-def SPV_C_NamedBarrier                                 : I32EnumAttrCase<"NamedBarrier", 59>;
-def SPV_C_PipeStorage                                  : I32EnumAttrCase<"PipeStorage", 60>;
-def SPV_C_GroupNonUniform                              : I32EnumAttrCase<"GroupNonUniform", 61>;
-def SPV_C_GroupNonUniformVote                          : I32EnumAttrCase<"GroupNonUniformVote", 62>;
-def SPV_C_GroupNonUniformArithmetic                    : I32EnumAttrCase<"GroupNonUniformArithmetic", 63>;
-def SPV_C_GroupNonUniformBallot                        : I32EnumAttrCase<"GroupNonUniformBallot", 64>;
-def SPV_C_GroupNonUniformShuffle                       : I32EnumAttrCase<"GroupNonUniformShuffle", 65>;
-def SPV_C_GroupNonUniformShuffleRelative               : I32EnumAttrCase<"GroupNonUniformShuffleRelative", 66>;
-def SPV_C_GroupNonUniformClustered                     : I32EnumAttrCase<"GroupNonUniformClustered", 67>;
-def SPV_C_GroupNonUniformQuad                          : I32EnumAttrCase<"GroupNonUniformQuad", 68>;
-def SPV_C_SubgroupBallotKHR                            : I32EnumAttrCase<"SubgroupBallotKHR", 4423>;
-def SPV_C_DrawParameters                               : I32EnumAttrCase<"DrawParameters", 4427>;
-def SPV_C_SubgroupVoteKHR                              : I32EnumAttrCase<"SubgroupVoteKHR", 4431>;
-def SPV_C_StorageBuffer16BitAccess                     : I32EnumAttrCase<"StorageBuffer16BitAccess", 4433>;
-def SPV_C_UniformAndStorageBuffer16BitAccess           : I32EnumAttrCase<"UniformAndStorageBuffer16BitAccess", 4434>;
-def SPV_C_StoragePushConstant16                        : I32EnumAttrCase<"StoragePushConstant16", 4435>;
-def SPV_C_StorageInputOutput16                         : I32EnumAttrCase<"StorageInputOutput16", 4436>;
-def SPV_C_DeviceGroup                                  : I32EnumAttrCase<"DeviceGroup", 4437>;
-def SPV_C_MultiView                                    : I32EnumAttrCase<"MultiView", 4439>;
-def SPV_C_VariablePointersStorageBuffer                : I32EnumAttrCase<"VariablePointersStorageBuffer", 4441>;
-def SPV_C_VariablePointers                             : I32EnumAttrCase<"VariablePointers", 4442>;
-def SPV_C_AtomicStorageOps                             : I32EnumAttrCase<"AtomicStorageOps", 4445>;
-def SPV_C_SampleMaskPostDepthCoverage                  : I32EnumAttrCase<"SampleMaskPostDepthCoverage", 4447>;
-def SPV_C_StorageBuffer8BitAccess                      : I32EnumAttrCase<"StorageBuffer8BitAccess", 4448>;
-def SPV_C_UniformAndStorageBuffer8BitAccess            : I32EnumAttrCase<"UniformAndStorageBuffer8BitAccess", 4449>;
-def SPV_C_StoragePushConstant8                         : I32EnumAttrCase<"StoragePushConstant8", 4450>;
-def SPV_C_DenormPreserve                               : I32EnumAttrCase<"DenormPreserve", 4464>;
-def SPV_C_DenormFlushToZero                            : I32EnumAttrCase<"DenormFlushToZero", 4465>;
-def SPV_C_SignedZeroInfNanPreserve                     : I32EnumAttrCase<"SignedZeroInfNanPreserve", 4466>;
-def SPV_C_RoundingModeRTE                              : I32EnumAttrCase<"RoundingModeRTE", 4467>;
-def SPV_C_RoundingModeRTZ                              : I32EnumAttrCase<"RoundingModeRTZ", 4468>;
-def SPV_C_Float16ImageAMD                              : I32EnumAttrCase<"Float16ImageAMD", 5008>;
-def SPV_C_ImageGatherBiasLodAMD                        : I32EnumAttrCase<"ImageGatherBiasLodAMD", 5009>;
-def SPV_C_FragmentMaskAMD                              : I32EnumAttrCase<"FragmentMaskAMD", 5010>;
-def SPV_C_StencilExportEXT                             : I32EnumAttrCase<"StencilExportEXT", 5013>;
-def SPV_C_ImageReadWriteLodAMD                         : I32EnumAttrCase<"ImageReadWriteLodAMD", 5015>;
-def SPV_C_ShaderClockKHR                               : I32EnumAttrCase<"ShaderClockKHR", 5055>;
-def SPV_C_SampleMaskOverrideCoverageNV                 : I32EnumAttrCase<"SampleMaskOverrideCoverageNV", 5249>;
-def SPV_C_GeometryShaderPassthroughNV                  : I32EnumAttrCase<"GeometryShaderPassthroughNV", 5251>;
-def SPV_C_ShaderViewportIndexLayerEXT                  : I32EnumAttrCase<"ShaderViewportIndexLayerEXT", 5254>;
-def SPV_C_ShaderViewportMaskNV                         : I32EnumAttrCase<"ShaderViewportMaskNV", 5255>;
-def SPV_C_ShaderStereoViewNV                           : I32EnumAttrCase<"ShaderStereoViewNV", 5259>;
-def SPV_C_PerViewAttributesNV                          : I32EnumAttrCase<"PerViewAttributesNV", 5260>;
-def SPV_C_FragmentFullyCoveredEXT                      : I32EnumAttrCase<"FragmentFullyCoveredEXT", 5265>;
-def SPV_C_MeshShadingNV                                : I32EnumAttrCase<"MeshShadingNV", 5266>;
-def SPV_C_ImageFootprintNV                             : I32EnumAttrCase<"ImageFootprintNV", 5282>;
-def SPV_C_FragmentBarycentricNV                        : I32EnumAttrCase<"FragmentBarycentricNV", 5284>;
-def SPV_C_ComputeDerivativeGroupQuadsNV                : I32EnumAttrCase<"ComputeDerivativeGroupQuadsNV", 5288>;
-def SPV_C_FragmentDensityEXT                           : I32EnumAttrCase<"FragmentDensityEXT", 5291>;
-def SPV_C_GroupNonUniformPartitionedNV                 : I32EnumAttrCase<"GroupNonUniformPartitionedNV", 5297>;
-def SPV_C_ShaderNonUniformEXT                          : I32EnumAttrCase<"ShaderNonUniformEXT", 5301>;
-def SPV_C_RuntimeDescriptorArrayEXT                    : I32EnumAttrCase<"RuntimeDescriptorArrayEXT", 5302>;
-def SPV_C_InputAttachmentArrayDynamicIndexingEXT       : I32EnumAttrCase<"InputAttachmentArrayDynamicIndexingEXT", 5303>;
-def SPV_C_UniformTexelBufferArrayDynamicIndexingEXT    : I32EnumAttrCase<"UniformTexelBufferArrayDynamicIndexingEXT", 5304>;
-def SPV_C_StorageTexelBufferArrayDynamicIndexingEXT    : I32EnumAttrCase<"StorageTexelBufferArrayDynamicIndexingEXT", 5305>;
-def SPV_C_UniformBufferArrayNonUniformIndexingEXT      : I32EnumAttrCase<"UniformBufferArrayNonUniformIndexingEXT", 5306>;
-def SPV_C_SampledImageArrayNonUniformIndexingEXT       : I32EnumAttrCase<"SampledImageArrayNonUniformIndexingEXT", 5307>;
-def SPV_C_StorageBufferArrayNonUniformIndexingEXT      : I32EnumAttrCase<"StorageBufferArrayNonUniformIndexingEXT", 5308>;
-def SPV_C_StorageImageArrayNonUniformIndexingEXT       : I32EnumAttrCase<"StorageImageArrayNonUniformIndexingEXT", 5309>;
-def SPV_C_InputAttachmentArrayNonUniformIndexingEXT    : I32EnumAttrCase<"InputAttachmentArrayNonUniformIndexingEXT", 5310>;
-def SPV_C_UniformTexelBufferArrayNonUniformIndexingEXT : I32EnumAttrCase<"UniformTexelBufferArrayNonUniformIndexingEXT", 5311>;
-def SPV_C_StorageTexelBufferArrayNonUniformIndexingEXT : I32EnumAttrCase<"StorageTexelBufferArrayNonUniformIndexingEXT", 5312>;
-def SPV_C_RayTracingNV                                 : I32EnumAttrCase<"RayTracingNV", 5340>;
-def SPV_C_VulkanMemoryModelKHR                         : I32EnumAttrCase<"VulkanMemoryModelKHR", 5345>;
-def SPV_C_VulkanMemoryModelDeviceScopeKHR              : I32EnumAttrCase<"VulkanMemoryModelDeviceScopeKHR", 5346>;
-def SPV_C_PhysicalStorageBufferAddressesEXT            : I32EnumAttrCase<"PhysicalStorageBufferAddressesEXT", 5347>;
-def SPV_C_ComputeDerivativeGroupLinearNV               : I32EnumAttrCase<"ComputeDerivativeGroupLinearNV", 5350>;
-def SPV_C_CooperativeMatrixNV                          : I32EnumAttrCase<"CooperativeMatrixNV", 5357>;
-def SPV_C_FragmentShaderSampleInterlockEXT             : I32EnumAttrCase<"FragmentShaderSampleInterlockEXT", 5363>;
-def SPV_C_FragmentShaderShadingRateInterlockEXT        : I32EnumAttrCase<"FragmentShaderShadingRateInterlockEXT", 5372>;
-def SPV_C_ShaderSMBuiltinsNV                           : I32EnumAttrCase<"ShaderSMBuiltinsNV", 5373>;
-def SPV_C_FragmentShaderPixelInterlockEXT              : I32EnumAttrCase<"FragmentShaderPixelInterlockEXT", 5378>;
-def SPV_C_DemoteToHelperInvocationEXT                  : I32EnumAttrCase<"DemoteToHelperInvocationEXT", 5379>;
-def SPV_C_SubgroupShuffleINTEL                         : I32EnumAttrCase<"SubgroupShuffleINTEL", 5568>;
-def SPV_C_SubgroupBufferBlockIOINTEL                   : I32EnumAttrCase<"SubgroupBufferBlockIOINTEL", 5569>;
-def SPV_C_SubgroupImageBlockIOINTEL                    : I32EnumAttrCase<"SubgroupImageBlockIOINTEL", 5570>;
-def SPV_C_SubgroupImageMediaBlockIOINTEL               : I32EnumAttrCase<"SubgroupImageMediaBlockIOINTEL", 5579>;
-def SPV_C_IntegerFunctions2INTEL                       : I32EnumAttrCase<"IntegerFunctions2INTEL", 5584>;
-def SPV_C_SubgroupAvcMotionEstimationINTEL             : I32EnumAttrCase<"SubgroupAvcMotionEstimationINTEL", 5696>;
-def SPV_C_SubgroupAvcMotionEstimationIntraINTEL        : I32EnumAttrCase<"SubgroupAvcMotionEstimationIntraINTEL", 5697>;
-def SPV_C_SubgroupAvcMotionEstimationChromaINTEL       : I32EnumAttrCase<"SubgroupAvcMotionEstimationChromaINTEL", 5698>;
+def SPV_C_Matrix                                    : I32EnumAttrCase<"Matrix", 0>;
+def SPV_C_Shader                                    : I32EnumAttrCase<"Shader", 1>;
+def SPV_C_Geometry                                  : I32EnumAttrCase<"Geometry", 2>;
+def SPV_C_Tessellation                              : I32EnumAttrCase<"Tessellation", 3>;
+def SPV_C_Addresses                                 : I32EnumAttrCase<"Addresses", 4>;
+def SPV_C_Linkage                                   : I32EnumAttrCase<"Linkage", 5>;
+def SPV_C_Kernel                                    : I32EnumAttrCase<"Kernel", 6>;
+def SPV_C_Vector16                                  : I32EnumAttrCase<"Vector16", 7>;
+def SPV_C_Float16Buffer                             : I32EnumAttrCase<"Float16Buffer", 8>;
+def SPV_C_Float16                                   : I32EnumAttrCase<"Float16", 9>;
+def SPV_C_Float64                                   : I32EnumAttrCase<"Float64", 10>;
+def SPV_C_Int64                                     : I32EnumAttrCase<"Int64", 11>;
+def SPV_C_Int64Atomics                              : I32EnumAttrCase<"Int64Atomics", 12>;
+def SPV_C_ImageBasic                                : I32EnumAttrCase<"ImageBasic", 13>;
+def SPV_C_ImageReadWrite                            : I32EnumAttrCase<"ImageReadWrite", 14>;
+def SPV_C_ImageMipmap                               : I32EnumAttrCase<"ImageMipmap", 15>;
+def SPV_C_Pipes                                     : I32EnumAttrCase<"Pipes", 17>;
+def SPV_C_Groups                                    : I32EnumAttrCase<"Groups", 18>;
+def SPV_C_DeviceEnqueue                             : I32EnumAttrCase<"DeviceEnqueue", 19>;
+def SPV_C_LiteralSampler                            : I32EnumAttrCase<"LiteralSampler", 20>;
+def SPV_C_AtomicStorage                             : I32EnumAttrCase<"AtomicStorage", 21>;
+def SPV_C_Int16                                     : I32EnumAttrCase<"Int16", 22>;
+def SPV_C_TessellationPointSize                     : I32EnumAttrCase<"TessellationPointSize", 23>;
+def SPV_C_GeometryPointSize                         : I32EnumAttrCase<"GeometryPointSize", 24>;
+def SPV_C_ImageGatherExtended                       : I32EnumAttrCase<"ImageGatherExtended", 25>;
+def SPV_C_StorageImageMultisample                   : I32EnumAttrCase<"StorageImageMultisample", 27>;
+def SPV_C_UniformBufferArrayDynamicIndexing         : I32EnumAttrCase<"UniformBufferArrayDynamicIndexing", 28>;
+def SPV_C_SampledImageArrayDynamicIndexing          : I32EnumAttrCase<"SampledImageArrayDynamicIndexing", 29>;
+def SPV_C_StorageBufferArrayDynamicIndexing         : I32EnumAttrCase<"StorageBufferArrayDynamicIndexing", 30>;
+def SPV_C_StorageImageArrayDynamicIndexing          : I32EnumAttrCase<"StorageImageArrayDynamicIndexing", 31>;
+def SPV_C_ClipDistance                              : I32EnumAttrCase<"ClipDistance", 32>;
+def SPV_C_CullDistance                              : I32EnumAttrCase<"CullDistance", 33>;
+def SPV_C_ImageCubeArray                            : I32EnumAttrCase<"ImageCubeArray", 34>;
+def SPV_C_SampleRateShading                         : I32EnumAttrCase<"SampleRateShading", 35>;
+def SPV_C_ImageRect                                 : I32EnumAttrCase<"ImageRect", 36>;
+def SPV_C_SampledRect                               : I32EnumAttrCase<"SampledRect", 37>;
+def SPV_C_GenericPointer                            : I32EnumAttrCase<"GenericPointer", 38>;
+def SPV_C_Int8                                      : I32EnumAttrCase<"Int8", 39>;
+def SPV_C_InputAttachment                           : I32EnumAttrCase<"InputAttachment", 40>;
+def SPV_C_SparseResidency                           : I32EnumAttrCase<"SparseResidency", 41>;
+def SPV_C_MinLod                                    : I32EnumAttrCase<"MinLod", 42>;
+def SPV_C_Sampled1D                                 : I32EnumAttrCase<"Sampled1D", 43>;
+def SPV_C_Image1D                                   : I32EnumAttrCase<"Image1D", 44>;
+def SPV_C_SampledCubeArray                          : I32EnumAttrCase<"SampledCubeArray", 45>;
+def SPV_C_SampledBuffer                             : I32EnumAttrCase<"SampledBuffer", 46>;
+def SPV_C_ImageBuffer                               : I32EnumAttrCase<"ImageBuffer", 47>;
+def SPV_C_ImageMSArray                              : I32EnumAttrCase<"ImageMSArray", 48>;
+def SPV_C_StorageImageExtendedFormats               : I32EnumAttrCase<"StorageImageExtendedFormats", 49>;
+def SPV_C_ImageQuery                                : I32EnumAttrCase<"ImageQuery", 50>;
+def SPV_C_DerivativeControl                         : I32EnumAttrCase<"DerivativeControl", 51>;
+def SPV_C_InterpolationFunction                     : I32EnumAttrCase<"InterpolationFunction", 52>;
+def SPV_C_TransformFeedback                         : I32EnumAttrCase<"TransformFeedback", 53>;
+def SPV_C_GeometryStreams                           : I32EnumAttrCase<"GeometryStreams", 54>;
+def SPV_C_StorageImageReadWithoutFormat             : I32EnumAttrCase<"StorageImageReadWithoutFormat", 55>;
+def SPV_C_StorageImageWriteWithoutFormat            : I32EnumAttrCase<"StorageImageWriteWithoutFormat", 56>;
+def SPV_C_MultiViewport                             : I32EnumAttrCase<"MultiViewport", 57>;
+def SPV_C_SubgroupDispatch                          : I32EnumAttrCase<"SubgroupDispatch", 58>;
+def SPV_C_NamedBarrier                              : I32EnumAttrCase<"NamedBarrier", 59>;
+def SPV_C_PipeStorage                               : I32EnumAttrCase<"PipeStorage", 60>;
+def SPV_C_GroupNonUniform                           : I32EnumAttrCase<"GroupNonUniform", 61>;
+def SPV_C_GroupNonUniformVote                       : I32EnumAttrCase<"GroupNonUniformVote", 62>;
+def SPV_C_GroupNonUniformArithmetic                 : I32EnumAttrCase<"GroupNonUniformArithmetic", 63>;
+def SPV_C_GroupNonUniformBallot                     : I32EnumAttrCase<"GroupNonUniformBallot", 64>;
+def SPV_C_GroupNonUniformShuffle                    : I32EnumAttrCase<"GroupNonUniformShuffle", 65>;
+def SPV_C_GroupNonUniformShuffleRelative            : I32EnumAttrCase<"GroupNonUniformShuffleRelative", 66>;
+def SPV_C_GroupNonUniformClustered                  : I32EnumAttrCase<"GroupNonUniformClustered", 67>;
+def SPV_C_GroupNonUniformQuad                       : I32EnumAttrCase<"GroupNonUniformQuad", 68>;
+def SPV_C_ShaderLayer                               : I32EnumAttrCase<"ShaderLayer", 69>;
+def SPV_C_ShaderViewportIndex                       : I32EnumAttrCase<"ShaderViewportIndex", 70>;
+def SPV_C_SubgroupBallotKHR                         : I32EnumAttrCase<"SubgroupBallotKHR", 4423>;
+def SPV_C_DrawParameters                            : I32EnumAttrCase<"DrawParameters", 4427>;
+def SPV_C_SubgroupVoteKHR                           : I32EnumAttrCase<"SubgroupVoteKHR", 4431>;
+def SPV_C_StorageBuffer16BitAccess                  : I32EnumAttrCase<"StorageBuffer16BitAccess", 4433>;
+def SPV_C_UniformAndStorageBuffer16BitAccess        : I32EnumAttrCase<"UniformAndStorageBuffer16BitAccess", 4434>;
+def SPV_C_StoragePushConstant16                     : I32EnumAttrCase<"StoragePushConstant16", 4435>;
+def SPV_C_StorageInputOutput16                      : I32EnumAttrCase<"StorageInputOutput16", 4436>;
+def SPV_C_DeviceGroup                               : I32EnumAttrCase<"DeviceGroup", 4437>;
+def SPV_C_MultiView                                 : I32EnumAttrCase<"MultiView", 4439>;
+def SPV_C_VariablePointersStorageBuffer             : I32EnumAttrCase<"VariablePointersStorageBuffer", 4441>;
+def SPV_C_VariablePointers                          : I32EnumAttrCase<"VariablePointers", 4442>;
+def SPV_C_AtomicStorageOps                          : I32EnumAttrCase<"AtomicStorageOps", 4445>;
+def SPV_C_SampleMaskPostDepthCoverage               : I32EnumAttrCase<"SampleMaskPostDepthCoverage", 4447>;
+def SPV_C_StorageBuffer8BitAccess                   : I32EnumAttrCase<"StorageBuffer8BitAccess", 4448>;
+def SPV_C_UniformAndStorageBuffer8BitAccess         : I32EnumAttrCase<"UniformAndStorageBuffer8BitAccess", 4449>;
+def SPV_C_StoragePushConstant8                      : I32EnumAttrCase<"StoragePushConstant8", 4450>;
+def SPV_C_DenormPreserve                            : I32EnumAttrCase<"DenormPreserve", 4464>;
+def SPV_C_DenormFlushToZero                         : I32EnumAttrCase<"DenormFlushToZero", 4465>;
+def SPV_C_SignedZeroInfNanPreserve                  : I32EnumAttrCase<"SignedZeroInfNanPreserve", 4466>;
+def SPV_C_RoundingModeRTE                           : I32EnumAttrCase<"RoundingModeRTE", 4467>;
+def SPV_C_RoundingModeRTZ                           : I32EnumAttrCase<"RoundingModeRTZ", 4468>;
+def SPV_C_Float16ImageAMD                           : I32EnumAttrCase<"Float16ImageAMD", 5008>;
+def SPV_C_ImageGatherBiasLodAMD                     : I32EnumAttrCase<"ImageGatherBiasLodAMD", 5009>;
+def SPV_C_FragmentMaskAMD                           : I32EnumAttrCase<"FragmentMaskAMD", 5010>;
+def SPV_C_StencilExportEXT                          : I32EnumAttrCase<"StencilExportEXT", 5013>;
+def SPV_C_ImageReadWriteLodAMD                      : I32EnumAttrCase<"ImageReadWriteLodAMD", 5015>;
+def SPV_C_ShaderClockKHR                            : I32EnumAttrCase<"ShaderClockKHR", 5055>;
+def SPV_C_SampleMaskOverrideCoverageNV              : I32EnumAttrCase<"SampleMaskOverrideCoverageNV", 5249>;
+def SPV_C_GeometryShaderPassthroughNV               : I32EnumAttrCase<"GeometryShaderPassthroughNV", 5251>;
+def SPV_C_ShaderViewportIndexLayerEXT               : I32EnumAttrCase<"ShaderViewportIndexLayerEXT", 5254>;
+def SPV_C_ShaderViewportMaskNV                      : I32EnumAttrCase<"ShaderViewportMaskNV", 5255>;
+def SPV_C_ShaderStereoViewNV                        : I32EnumAttrCase<"ShaderStereoViewNV", 5259>;
+def SPV_C_PerViewAttributesNV                       : I32EnumAttrCase<"PerViewAttributesNV", 5260>;
+def SPV_C_FragmentFullyCoveredEXT                   : I32EnumAttrCase<"FragmentFullyCoveredEXT", 5265>;
+def SPV_C_MeshShadingNV                             : I32EnumAttrCase<"MeshShadingNV", 5266>;
+def SPV_C_ImageFootprintNV                          : I32EnumAttrCase<"ImageFootprintNV", 5282>;
+def SPV_C_FragmentBarycentricNV                     : I32EnumAttrCase<"FragmentBarycentricNV", 5284>;
+def SPV_C_ComputeDerivativeGroupQuadsNV             : I32EnumAttrCase<"ComputeDerivativeGroupQuadsNV", 5288>;
+def SPV_C_FragmentDensityEXT                        : I32EnumAttrCase<"FragmentDensityEXT", 5291>;
+def SPV_C_GroupNonUniformPartitionedNV              : I32EnumAttrCase<"GroupNonUniformPartitionedNV", 5297>;
+def SPV_C_ShaderNonUniform                          : I32EnumAttrCase<"ShaderNonUniform", 5301>;
+def SPV_C_RuntimeDescriptorArray                    : I32EnumAttrCase<"RuntimeDescriptorArray", 5302>;
+def SPV_C_InputAttachmentArrayDynamicIndexing       : I32EnumAttrCase<"InputAttachmentArrayDynamicIndexing", 5303>;
+def SPV_C_UniformTexelBufferArrayDynamicIndexing    : I32EnumAttrCase<"UniformTexelBufferArrayDynamicIndexing", 5304>;
+def SPV_C_StorageTexelBufferArrayDynamicIndexing    : I32EnumAttrCase<"StorageTexelBufferArrayDynamicIndexing", 5305>;
+def SPV_C_UniformBufferArrayNonUniformIndexing      : I32EnumAttrCase<"UniformBufferArrayNonUniformIndexing", 5306>;
+def SPV_C_SampledImageArrayNonUniformIndexing       : I32EnumAttrCase<"SampledImageArrayNonUniformIndexing", 5307>;
+def SPV_C_StorageBufferArrayNonUniformIndexing      : I32EnumAttrCase<"StorageBufferArrayNonUniformIndexing", 5308>;
+def SPV_C_StorageImageArrayNonUniformIndexing       : I32EnumAttrCase<"StorageImageArrayNonUniformIndexing", 5309>;
+def SPV_C_InputAttachmentArrayNonUniformIndexing    : I32EnumAttrCase<"InputAttachmentArrayNonUniformIndexing", 5310>;
+def SPV_C_UniformTexelBufferArrayNonUniformIndexing : I32EnumAttrCase<"UniformTexelBufferArrayNonUniformIndexing", 5311>;
+def SPV_C_StorageTexelBufferArrayNonUniformIndexing : I32EnumAttrCase<"StorageTexelBufferArrayNonUniformIndexing", 5312>;
+def SPV_C_RayTracingNV                              : I32EnumAttrCase<"RayTracingNV", 5340>;
+def SPV_C_VulkanMemoryModel                         : I32EnumAttrCase<"VulkanMemoryModel", 5345>;
+def SPV_C_VulkanMemoryModelDeviceScope              : I32EnumAttrCase<"VulkanMemoryModelDeviceScope", 5346>;
+def SPV_C_PhysicalStorageBufferAddresses            : I32EnumAttrCase<"PhysicalStorageBufferAddresses", 5347>;
+def SPV_C_ComputeDerivativeGroupLinearNV            : I32EnumAttrCase<"ComputeDerivativeGroupLinearNV", 5350>;
+def SPV_C_CooperativeMatrixNV                       : I32EnumAttrCase<"CooperativeMatrixNV", 5357>;
+def SPV_C_FragmentShaderSampleInterlockEXT          : I32EnumAttrCase<"FragmentShaderSampleInterlockEXT", 5363>;
+def SPV_C_FragmentShaderShadingRateInterlockEXT     : I32EnumAttrCase<"FragmentShaderShadingRateInterlockEXT", 5372>;
+def SPV_C_ShaderSMBuiltinsNV                        : I32EnumAttrCase<"ShaderSMBuiltinsNV", 5373>;
+def SPV_C_FragmentShaderPixelInterlockEXT           : I32EnumAttrCase<"FragmentShaderPixelInterlockEXT", 5378>;
+def SPV_C_DemoteToHelperInvocationEXT               : I32EnumAttrCase<"DemoteToHelperInvocationEXT", 5379>;
+def SPV_C_SubgroupShuffleINTEL                      : I32EnumAttrCase<"SubgroupShuffleINTEL", 5568>;
+def SPV_C_SubgroupBufferBlockIOINTEL                : I32EnumAttrCase<"SubgroupBufferBlockIOINTEL", 5569>;
+def SPV_C_SubgroupImageBlockIOINTEL                 : I32EnumAttrCase<"SubgroupImageBlockIOINTEL", 5570>;
+def SPV_C_SubgroupImageMediaBlockIOINTEL            : I32EnumAttrCase<"SubgroupImageMediaBlockIOINTEL", 5579>;
+def SPV_C_IntegerFunctions2INTEL                    : I32EnumAttrCase<"IntegerFunctions2INTEL", 5584>;
+def SPV_C_SubgroupAvcMotionEstimationINTEL          : I32EnumAttrCase<"SubgroupAvcMotionEstimationINTEL", 5696>;
+def SPV_C_SubgroupAvcMotionEstimationIntraINTEL     : I32EnumAttrCase<"SubgroupAvcMotionEstimationIntraINTEL", 5697>;
+def SPV_C_SubgroupAvcMotionEstimationChromaINTEL    : I32EnumAttrCase<"SubgroupAvcMotionEstimationChromaINTEL", 5698>;
 
 def SPV_CapabilityAttr :
     I32EnumAttr<"Capability", "valid SPIR-V Capability", [
@@ -574,11 +622,12 @@ def SPV_CapabilityAttr :
       SPV_C_GroupNonUniform, SPV_C_GroupNonUniformVote,
       SPV_C_GroupNonUniformArithmetic, SPV_C_GroupNonUniformBallot,
       SPV_C_GroupNonUniformShuffle, SPV_C_GroupNonUniformShuffleRelative,
-      SPV_C_GroupNonUniformClustered, SPV_C_GroupNonUniformQuad,
-      SPV_C_SubgroupBallotKHR, SPV_C_DrawParameters, SPV_C_SubgroupVoteKHR,
-      SPV_C_StorageBuffer16BitAccess, SPV_C_UniformAndStorageBuffer16BitAccess,
-      SPV_C_StoragePushConstant16, SPV_C_StorageInputOutput16, SPV_C_DeviceGroup,
-      SPV_C_MultiView, SPV_C_VariablePointersStorageBuffer, SPV_C_VariablePointers,
+      SPV_C_GroupNonUniformClustered, SPV_C_GroupNonUniformQuad, SPV_C_ShaderLayer,
+      SPV_C_ShaderViewportIndex, SPV_C_SubgroupBallotKHR, SPV_C_DrawParameters,
+      SPV_C_SubgroupVoteKHR, SPV_C_StorageBuffer16BitAccess,
+      SPV_C_UniformAndStorageBuffer16BitAccess, SPV_C_StoragePushConstant16,
+      SPV_C_StorageInputOutput16, SPV_C_DeviceGroup, SPV_C_MultiView,
+      SPV_C_VariablePointersStorageBuffer, SPV_C_VariablePointers,
       SPV_C_AtomicStorageOps, SPV_C_SampleMaskPostDepthCoverage,
       SPV_C_StorageBuffer8BitAccess, SPV_C_UniformAndStorageBuffer8BitAccess,
       SPV_C_StoragePushConstant8, SPV_C_DenormPreserve, SPV_C_DenormFlushToZero,
@@ -591,19 +640,19 @@ def SPV_CapabilityAttr :
       SPV_C_FragmentFullyCoveredEXT, SPV_C_MeshShadingNV, SPV_C_ImageFootprintNV,
       SPV_C_FragmentBarycentricNV, SPV_C_ComputeDerivativeGroupQuadsNV,
       SPV_C_FragmentDensityEXT, SPV_C_GroupNonUniformPartitionedNV,
-      SPV_C_ShaderNonUniformEXT, SPV_C_RuntimeDescriptorArrayEXT,
-      SPV_C_InputAttachmentArrayDynamicIndexingEXT,
-      SPV_C_UniformTexelBufferArrayDynamicIndexingEXT,
-      SPV_C_StorageTexelBufferArrayDynamicIndexingEXT,
-      SPV_C_UniformBufferArrayNonUniformIndexingEXT,
-      SPV_C_SampledImageArrayNonUniformIndexingEXT,
-      SPV_C_StorageBufferArrayNonUniformIndexingEXT,
-      SPV_C_StorageImageArrayNonUniformIndexingEXT,
-      SPV_C_InputAttachmentArrayNonUniformIndexingEXT,
-      SPV_C_UniformTexelBufferArrayNonUniformIndexingEXT,
-      SPV_C_StorageTexelBufferArrayNonUniformIndexingEXT, SPV_C_RayTracingNV,
-      SPV_C_VulkanMemoryModelKHR, SPV_C_VulkanMemoryModelDeviceScopeKHR,
-      SPV_C_PhysicalStorageBufferAddressesEXT, SPV_C_ComputeDerivativeGroupLinearNV,
+      SPV_C_ShaderNonUniform, SPV_C_RuntimeDescriptorArray,
+      SPV_C_InputAttachmentArrayDynamicIndexing,
+      SPV_C_UniformTexelBufferArrayDynamicIndexing,
+      SPV_C_StorageTexelBufferArrayDynamicIndexing,
+      SPV_C_UniformBufferArrayNonUniformIndexing,
+      SPV_C_SampledImageArrayNonUniformIndexing,
+      SPV_C_StorageBufferArrayNonUniformIndexing,
+      SPV_C_StorageImageArrayNonUniformIndexing,
+      SPV_C_InputAttachmentArrayNonUniformIndexing,
+      SPV_C_UniformTexelBufferArrayNonUniformIndexing,
+      SPV_C_StorageTexelBufferArrayNonUniformIndexing, SPV_C_RayTracingNV,
+      SPV_C_VulkanMemoryModel, SPV_C_VulkanMemoryModelDeviceScope,
+      SPV_C_PhysicalStorageBufferAddresses, SPV_C_ComputeDerivativeGroupLinearNV,
       SPV_C_CooperativeMatrixNV, SPV_C_FragmentShaderSampleInterlockEXT,
       SPV_C_FragmentShaderShadingRateInterlockEXT, SPV_C_ShaderSMBuiltinsNV,
       SPV_C_FragmentShaderPixelInterlockEXT, SPV_C_DemoteToHelperInvocationEXT,
@@ -676,9 +725,9 @@ def SPV_D_PerPrimitiveNV              : I32EnumAttrCase<"PerPrimitiveNV", 5271>;
 def SPV_D_PerViewNV                   : I32EnumAttrCase<"PerViewNV", 5272>;
 def SPV_D_PerTaskNV                   : I32EnumAttrCase<"PerTaskNV", 5273>;
 def SPV_D_PerVertexNV                 : I32EnumAttrCase<"PerVertexNV", 5285>;
-def SPV_D_NonUniformEXT               : I32EnumAttrCase<"NonUniformEXT", 5300>;
-def SPV_D_RestrictPointerEXT          : I32EnumAttrCase<"RestrictPointerEXT", 5355>;
-def SPV_D_AliasedPointerEXT           : I32EnumAttrCase<"AliasedPointerEXT", 5356>;
+def SPV_D_NonUniform                  : I32EnumAttrCase<"NonUniform", 5300>;
+def SPV_D_RestrictPointer             : I32EnumAttrCase<"RestrictPointer", 5355>;
+def SPV_D_AliasedPointer              : I32EnumAttrCase<"AliasedPointer", 5356>;
 def SPV_D_CounterBuffer               : I32EnumAttrCase<"CounterBuffer", 5634>;
 def SPV_D_UserSemantic                : I32EnumAttrCase<"UserSemantic", 5635>;
 def SPV_D_UserTypeGOOGLE              : I32EnumAttrCase<"UserTypeGOOGLE", 5636>;
@@ -700,9 +749,9 @@ def SPV_DecorationAttr :
       SPV_D_NoUnsignedWrap, SPV_D_ExplicitInterpAMD, SPV_D_OverrideCoverageNV,
       SPV_D_PassthroughNV, SPV_D_ViewportRelativeNV,
       SPV_D_SecondaryViewportRelativeNV, SPV_D_PerPrimitiveNV, SPV_D_PerViewNV,
-      SPV_D_PerTaskNV, SPV_D_PerVertexNV, SPV_D_NonUniformEXT,
-      SPV_D_RestrictPointerEXT, SPV_D_AliasedPointerEXT, SPV_D_CounterBuffer,
-      SPV_D_UserSemantic, SPV_D_UserTypeGOOGLE
+      SPV_D_PerTaskNV, SPV_D_PerVertexNV, SPV_D_NonUniform, SPV_D_RestrictPointer,
+      SPV_D_AliasedPointer, SPV_D_CounterBuffer, SPV_D_UserSemantic,
+      SPV_D_UserTypeGOOGLE
     ]> {
   let returnType = "::mlir::spirv::Decoration";
   let convertFromStorage = "static_cast<::mlir::spirv::Decoration>($_self.getInt())";
@@ -840,14 +889,14 @@ def SPV_ExecutionModelAttr :
   let cppNamespace = "::mlir::spirv";
 }
 
-def SPV_FC_None       : I32EnumAttrCase<"None", 0x0000>;
-def SPV_FC_Inline     : I32EnumAttrCase<"Inline", 0x0001>;
-def SPV_FC_DontInline : I32EnumAttrCase<"DontInline", 0x0002>;
-def SPV_FC_Pure       : I32EnumAttrCase<"Pure", 0x0004>;
-def SPV_FC_Const      : I32EnumAttrCase<"Const", 0x0008>;
+def SPV_FC_None       : BitEnumAttrCase<"None", 0x0000>;
+def SPV_FC_Inline     : BitEnumAttrCase<"Inline", 0x0001>;
+def SPV_FC_DontInline : BitEnumAttrCase<"DontInline", 0x0002>;
+def SPV_FC_Pure       : BitEnumAttrCase<"Pure", 0x0004>;
+def SPV_FC_Const      : BitEnumAttrCase<"Const", 0x0008>;
 
 def SPV_FunctionControlAttr :
-    I32EnumAttr<"FunctionControl", "valid SPIR-V FunctionControl", [
+    BitEnumAttr<"FunctionControl", "valid SPIR-V FunctionControl", [
       SPV_FC_None, SPV_FC_Inline, SPV_FC_DontInline, SPV_FC_Pure, SPV_FC_Const
     ]> {
   let returnType = "::mlir::spirv::FunctionControl";
@@ -925,19 +974,19 @@ def SPV_LinkageTypeAttr :
   let cppNamespace = "::mlir::spirv";
 }
 
-def SPV_LC_None               : I32EnumAttrCase<"None", 0x0000>;
-def SPV_LC_Unroll             : I32EnumAttrCase<"Unroll", 0x0001>;
-def SPV_LC_DontUnroll         : I32EnumAttrCase<"DontUnroll", 0x0002>;
-def SPV_LC_DependencyInfinite : I32EnumAttrCase<"DependencyInfinite", 0x0004>;
-def SPV_LC_DependencyLength   : I32EnumAttrCase<"DependencyLength", 0x0008>;
-def SPV_LC_MinIterations      : I32EnumAttrCase<"MinIterations", 0x0010>;
-def SPV_LC_MaxIterations      : I32EnumAttrCase<"MaxIterations", 0x0020>;
-def SPV_LC_IterationMultiple  : I32EnumAttrCase<"IterationMultiple", 0x0040>;
-def SPV_LC_PeelCount          : I32EnumAttrCase<"PeelCount", 0x0080>;
-def SPV_LC_PartialCount       : I32EnumAttrCase<"PartialCount", 0x0100>;
+def SPV_LC_None               : BitEnumAttrCase<"None", 0x0000>;
+def SPV_LC_Unroll             : BitEnumAttrCase<"Unroll", 0x0001>;
+def SPV_LC_DontUnroll         : BitEnumAttrCase<"DontUnroll", 0x0002>;
+def SPV_LC_DependencyInfinite : BitEnumAttrCase<"DependencyInfinite", 0x0004>;
+def SPV_LC_DependencyLength   : BitEnumAttrCase<"DependencyLength", 0x0008>;
+def SPV_LC_MinIterations      : BitEnumAttrCase<"MinIterations", 0x0010>;
+def SPV_LC_MaxIterations      : BitEnumAttrCase<"MaxIterations", 0x0020>;
+def SPV_LC_IterationMultiple  : BitEnumAttrCase<"IterationMultiple", 0x0040>;
+def SPV_LC_PeelCount          : BitEnumAttrCase<"PeelCount", 0x0080>;
+def SPV_LC_PartialCount       : BitEnumAttrCase<"PartialCount", 0x0100>;
 
 def SPV_LoopControlAttr :
-    I32EnumAttr<"LoopControl", "valid SPIR-V LoopControl", [
+    BitEnumAttr<"LoopControl", "valid SPIR-V LoopControl", [
       SPV_LC_None, SPV_LC_Unroll, SPV_LC_DontUnroll, SPV_LC_DependencyInfinite,
       SPV_LC_DependencyLength, SPV_LC_MinIterations, SPV_LC_MaxIterations,
       SPV_LC_IterationMultiple, SPV_LC_PeelCount, SPV_LC_PartialCount
@@ -947,59 +996,59 @@ def SPV_LoopControlAttr :
   let cppNamespace = "::mlir::spirv";
 }
 
-def SPV_MA_None                    : I32EnumAttrCase<"None", 0x0000>;
-def SPV_MA_Volatile                : I32EnumAttrCase<"Volatile", 0x0001>;
-def SPV_MA_Aligned                 : I32EnumAttrCase<"Aligned", 0x0002>;
-def SPV_MA_Nontemporal             : I32EnumAttrCase<"Nontemporal", 0x0004>;
-def SPV_MA_MakePointerAvailableKHR : I32EnumAttrCase<"MakePointerAvailableKHR", 0x0008>;
-def SPV_MA_MakePointerVisibleKHR   : I32EnumAttrCase<"MakePointerVisibleKHR", 0x0010>;
-def SPV_MA_NonPrivatePointerKHR    : I32EnumAttrCase<"NonPrivatePointerKHR", 0x0020>;
+def SPV_MA_None                 : BitEnumAttrCase<"None", 0x0000>;
+def SPV_MA_Volatile             : BitEnumAttrCase<"Volatile", 0x0001>;
+def SPV_MA_Aligned              : BitEnumAttrCase<"Aligned", 0x0002>;
+def SPV_MA_Nontemporal          : BitEnumAttrCase<"Nontemporal", 0x0004>;
+def SPV_MA_MakePointerAvailable : BitEnumAttrCase<"MakePointerAvailable", 0x0008>;
+def SPV_MA_MakePointerVisible   : BitEnumAttrCase<"MakePointerVisible", 0x0010>;
+def SPV_MA_NonPrivatePointer    : BitEnumAttrCase<"NonPrivatePointer", 0x0020>;
 
 def SPV_MemoryAccessAttr :
-    I32EnumAttr<"MemoryAccess", "valid SPIR-V MemoryAccess", [
+    BitEnumAttr<"MemoryAccess", "valid SPIR-V MemoryAccess", [
       SPV_MA_None, SPV_MA_Volatile, SPV_MA_Aligned, SPV_MA_Nontemporal,
-      SPV_MA_MakePointerAvailableKHR, SPV_MA_MakePointerVisibleKHR,
-      SPV_MA_NonPrivatePointerKHR
+      SPV_MA_MakePointerAvailable, SPV_MA_MakePointerVisible,
+      SPV_MA_NonPrivatePointer
     ]> {
   let returnType = "::mlir::spirv::MemoryAccess";
   let convertFromStorage = "static_cast<::mlir::spirv::MemoryAccess>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
-def SPV_MM_Simple    : I32EnumAttrCase<"Simple", 0>;
-def SPV_MM_GLSL450   : I32EnumAttrCase<"GLSL450", 1>;
-def SPV_MM_OpenCL    : I32EnumAttrCase<"OpenCL", 2>;
-def SPV_MM_VulkanKHR : I32EnumAttrCase<"VulkanKHR", 3>;
+def SPV_MM_Simple  : I32EnumAttrCase<"Simple", 0>;
+def SPV_MM_GLSL450 : I32EnumAttrCase<"GLSL450", 1>;
+def SPV_MM_OpenCL  : I32EnumAttrCase<"OpenCL", 2>;
+def SPV_MM_Vulkan  : I32EnumAttrCase<"Vulkan", 3>;
 
 def SPV_MemoryModelAttr :
     I32EnumAttr<"MemoryModel", "valid SPIR-V MemoryModel", [
-      SPV_MM_Simple, SPV_MM_GLSL450, SPV_MM_OpenCL, SPV_MM_VulkanKHR
+      SPV_MM_Simple, SPV_MM_GLSL450, SPV_MM_OpenCL, SPV_MM_Vulkan
     ]> {
   let returnType = "::mlir::spirv::MemoryModel";
   let convertFromStorage = "static_cast<::mlir::spirv::MemoryModel>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
-def SPV_SC_UniformConstant          : I32EnumAttrCase<"UniformConstant", 0>;
-def SPV_SC_Input                    : I32EnumAttrCase<"Input", 1>;
-def SPV_SC_Uniform                  : I32EnumAttrCase<"Uniform", 2>;
-def SPV_SC_Output                   : I32EnumAttrCase<"Output", 3>;
-def SPV_SC_Workgroup                : I32EnumAttrCase<"Workgroup", 4>;
-def SPV_SC_CrossWorkgroup           : I32EnumAttrCase<"CrossWorkgroup", 5>;
-def SPV_SC_Private                  : I32EnumAttrCase<"Private", 6>;
-def SPV_SC_Function                 : I32EnumAttrCase<"Function", 7>;
-def SPV_SC_Generic                  : I32EnumAttrCase<"Generic", 8>;
-def SPV_SC_PushConstant             : I32EnumAttrCase<"PushConstant", 9>;
-def SPV_SC_AtomicCounter            : I32EnumAttrCase<"AtomicCounter", 10>;
-def SPV_SC_Image                    : I32EnumAttrCase<"Image", 11>;
-def SPV_SC_StorageBuffer            : I32EnumAttrCase<"StorageBuffer", 12>;
-def SPV_SC_CallableDataNV           : I32EnumAttrCase<"CallableDataNV", 5328>;
-def SPV_SC_IncomingCallableDataNV   : I32EnumAttrCase<"IncomingCallableDataNV", 5329>;
-def SPV_SC_RayPayloadNV             : I32EnumAttrCase<"RayPayloadNV", 5338>;
-def SPV_SC_HitAttributeNV           : I32EnumAttrCase<"HitAttributeNV", 5339>;
-def SPV_SC_IncomingRayPayloadNV     : I32EnumAttrCase<"IncomingRayPayloadNV", 5342>;
-def SPV_SC_ShaderRecordBufferNV     : I32EnumAttrCase<"ShaderRecordBufferNV", 5343>;
-def SPV_SC_PhysicalStorageBufferEXT : I32EnumAttrCase<"PhysicalStorageBufferEXT", 5349>;
+def SPV_SC_UniformConstant        : I32EnumAttrCase<"UniformConstant", 0>;
+def SPV_SC_Input                  : I32EnumAttrCase<"Input", 1>;
+def SPV_SC_Uniform                : I32EnumAttrCase<"Uniform", 2>;
+def SPV_SC_Output                 : I32EnumAttrCase<"Output", 3>;
+def SPV_SC_Workgroup              : I32EnumAttrCase<"Workgroup", 4>;
+def SPV_SC_CrossWorkgroup         : I32EnumAttrCase<"CrossWorkgroup", 5>;
+def SPV_SC_Private                : I32EnumAttrCase<"Private", 6>;
+def SPV_SC_Function               : I32EnumAttrCase<"Function", 7>;
+def SPV_SC_Generic                : I32EnumAttrCase<"Generic", 8>;
+def SPV_SC_PushConstant           : I32EnumAttrCase<"PushConstant", 9>;
+def SPV_SC_AtomicCounter          : I32EnumAttrCase<"AtomicCounter", 10>;
+def SPV_SC_Image                  : I32EnumAttrCase<"Image", 11>;
+def SPV_SC_StorageBuffer          : I32EnumAttrCase<"StorageBuffer", 12>;
+def SPV_SC_CallableDataNV         : I32EnumAttrCase<"CallableDataNV", 5328>;
+def SPV_SC_IncomingCallableDataNV : I32EnumAttrCase<"IncomingCallableDataNV", 5329>;
+def SPV_SC_RayPayloadNV           : I32EnumAttrCase<"RayPayloadNV", 5338>;
+def SPV_SC_HitAttributeNV         : I32EnumAttrCase<"HitAttributeNV", 5339>;
+def SPV_SC_IncomingRayPayloadNV   : I32EnumAttrCase<"IncomingRayPayloadNV", 5342>;
+def SPV_SC_ShaderRecordBufferNV   : I32EnumAttrCase<"ShaderRecordBufferNV", 5343>;
+def SPV_SC_PhysicalStorageBuffer  : I32EnumAttrCase<"PhysicalStorageBuffer", 5349>;
 
 def SPV_StorageClassAttr :
     I32EnumAttr<"StorageClass", "valid SPIR-V StorageClass", [
@@ -1008,7 +1057,7 @@ def SPV_StorageClassAttr :
       SPV_SC_Generic, SPV_SC_PushConstant, SPV_SC_AtomicCounter, SPV_SC_Image,
       SPV_SC_StorageBuffer, SPV_SC_CallableDataNV, SPV_SC_IncomingCallableDataNV,
       SPV_SC_RayPayloadNV, SPV_SC_HitAttributeNV, SPV_SC_IncomingRayPayloadNV,
-      SPV_SC_ShaderRecordBufferNV, SPV_SC_PhysicalStorageBufferEXT
+      SPV_SC_ShaderRecordBufferNV, SPV_SC_PhysicalStorageBuffer
     ]> {
   let returnType = "::mlir::spirv::StorageClass";
   let convertFromStorage = "static_cast<::mlir::spirv::StorageClass>($_self.getInt())";

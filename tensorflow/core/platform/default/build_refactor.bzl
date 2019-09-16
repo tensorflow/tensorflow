@@ -72,17 +72,6 @@ TF_PLATFORM_LIBRARIES = {
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
     },
-    "fingerprint": {
-        "name": "fingerprint_impl",
-        "textual_hdrs": [
-            "//tensorflow/core/platform:default/fingerprint.h",
-        ],
-        "deps": [
-            "@farmhash_archive//:farmhash",
-        ],
-        "visibility": ["//visibility:private"],
-        "tags": ["no_oss", "manual"],
-    },
     "human_readable_json": {
         "name": "human_readable_json_impl",
         "hdrs": [
@@ -96,6 +85,21 @@ TF_PLATFORM_LIBRARIES = {
             "//tensorflow/core/lib/core:status",
             "//tensorflow/core/lib/strings:string_utils",
             "//tensorflow/core/platform:protobuf",
+        ],
+        "visibility": ["//visibility:private"],
+        "tags": ["no_oss", "manual"],
+    },
+    "load_library": {
+        "name": "load_library_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:load_library.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:default/load_library.cc",
+        ],
+        "deps": [
+            "//tensorflow/core/lib/core:errors",
+            "//tensorflow/core/lib/core:status",
         ],
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
@@ -118,6 +122,21 @@ TF_PLATFORM_LIBRARIES = {
             "//tensorflow/core/platform:macros",
             "//tensorflow/core/platform:thread_annotations",
             "//tensorflow/core/platform:types",
+        ],
+        "visibility": ["//visibility:private"],
+        "tags": ["no_oss", "manual"],
+    },
+    "net": {
+        "name": "net_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:net.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:default/net.cc",
+        ],
+        "deps": [
+            "//tensorflow/core/lib/strings:string_utils",
+            "//tensorflow/core/platform:logging",
         ],
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
@@ -161,6 +180,27 @@ TF_PLATFORM_LIBRARIES = {
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
     },
+    "subprocess": {
+        "name": "subprocess_impl",
+        "textual_hdrs": [
+            "//tensorflow/core/platform:default/subprocess.h",
+        ],
+        "hdrs": [
+            "//tensorflow/core/platform:subprocess.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:default/subprocess.cc",
+        ],
+        "deps": [
+            "//tensorflow/core/platform",
+            "//tensorflow/core/platform:logging",
+            "//tensorflow/core/platform:macros",
+            "//tensorflow/core/platform:mutex",
+            "//tensorflow/core/platform:types",
+        ],
+        "tags": ["no_oss", "manual"],
+        "visibility": ["//visibility:private"],
+    },
 }
 
 TF_WINDOWS_PLATFORM_LIBRARIES = {
@@ -177,6 +217,62 @@ TF_WINDOWS_PLATFORM_LIBRARIES = {
         ],
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
+    },
+    "load_library": {
+        "name": "windows_load_library_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:load_library.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:windows/load_library.cc",
+        ],
+        "deps": [
+            "//tensorflow/core/lib/core:errors",
+            "//tensorflow/core/lib/core:status",
+            "//tensorflow/core/platform:windows_wide_char_impl",
+        ],
+        "visibility": ["//visibility:private"],
+        "tags": ["no_oss", "manual"],
+    },
+    "net": {
+        "name": "windows_net_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:net.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:windows/net.cc",
+        ],
+        "deps": [
+            "//tensorflow/core/platform:error",
+            "//tensorflow/core/platform:logging",
+        ],
+        "visibility": ["//visibility:private"],
+        "tags": ["no_oss", "manual"],
+    },
+    "subprocess": {
+        "name": "windows_subprocess_impl",
+        "textual_hdrs": [
+            "//tensorflow/core/platform:windows/subprocess.h",
+        ],
+        "hdrs": [
+            "//tensorflow/core/platform:subprocess.h",
+        ],
+        "deps": [
+            "//tensorflow/core/platform",
+            "//tensorflow/core/platform:logging",
+            "//tensorflow/core/platform:macros",
+            "//tensorflow/core/platform:types",
+        ],
+        "tags": ["no_oss", "manual"],
+        "visibility": ["//visibility:private"],
+    },
+    "wide_char": {
+        "name": "windows_wide_char_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:windows/wide_char.h",
+        ],
+        "tags": ["no_oss", "manual"],
+        "visibility": ["//visibility:private"],
     },
 }
 
@@ -239,7 +335,8 @@ def tf_instantiate_platform_libraries(names = []):
                 tags = ["no_oss", "manual"],
             )
         else:
-            native.cc_library(**TF_PLATFORM_LIBRARIES[name])
+            if name in TF_PLATFORM_LIBRARIES:
+                native.cc_library(**TF_PLATFORM_LIBRARIES[name])
             if name in TF_WINDOWS_PLATFORM_LIBRARIES:
                 native.cc_library(**TF_WINDOWS_PLATFORM_LIBRARIES[name])
 

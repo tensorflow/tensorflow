@@ -944,6 +944,8 @@ absl::optional<complex128> LiteralBase::GetAsComplex128(
       return {Get<complex64>(multi_index)};
     case C128:
       return {Get<complex128>(multi_index)};
+    case S8:
+      return {Get<int8>(multi_index)};
     default:
       return absl::nullopt;
   }

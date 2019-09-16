@@ -143,7 +143,7 @@ def register_keras_serializable(package='Custom', name=None):
   Note that to be serialized and deserialized, classes must implement the
   `get_config()` method. Functions do not have this requirement.
 
-  The object will be registered under the key 'module>name' where `name`,
+  The object will be registered under the key 'package>name' where `name`,
   defaults to the object name if not passed.
 
   Arguments:

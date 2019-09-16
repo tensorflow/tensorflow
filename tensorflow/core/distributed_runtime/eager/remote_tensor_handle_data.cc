@@ -47,7 +47,7 @@ void DestoryRemoteTensorHandle(EagerContext* ctx,
                                                         eager_client, ready));
   auto& executor = ctx->Executor();
   if (executor.Async()) {
-    Status status = executor.Add(std::move(node));
+    Status status = executor.AddOrExecute(std::move(node));
     if (!status.ok()) {
       LOG(ERROR) << "Unable to destroy remote tensor handles: "
                  << status.error_message();
@@ -56,13 +56,13 @@ void DestoryRemoteTensorHandle(EagerContext* ctx,
     // This thread may still hold tensorflow::StreamingRPCState::mu_. We need
     // to send out the destroy request in a new thread to avoid deadlock.
     auto* released_node = node.release();
-    (*ctx->runner())([released_node] {
-      Status status = released_node->Run();
+    (*ctx->runner())([ctx, released_node] {
+      Status status =
+          ctx->Executor().AddOrExecute(absl::WrapUnique(released_node));
       if (!status.ok()) {
         LOG(ERROR) << "Unable to destroy remote tensor handles: "
                    << status.error_message();
       }
-      delete released_node;
     });
   }
 }

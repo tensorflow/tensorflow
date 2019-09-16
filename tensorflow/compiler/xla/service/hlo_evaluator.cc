@@ -2498,4 +2498,10 @@ std::unique_ptr<Array2D<double>> HloEvaluator::MatmulArray2D(
       lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF64);
 }
 
+std::unique_ptr<Array2D<int32>> HloEvaluator::MatmulArray2D(
+    const Array2D<int32>& lhs, const Array2D<int32>& rhs) {
+  return MatmulArray2DImpl<int32>(
+      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulS32);
+}
+
 }  // namespace xla

@@ -523,7 +523,7 @@ class CsvDatasetTest(test_base.DatasetTestBase):
     if context.executing_eagerly():
       err_spec = errors.InvalidArgumentError, (
           'Each record default should be at '
-          'most rank 1.')
+          'most rank 1')
     else:
       err_spec = ValueError, 'Shape must be at most rank 1 but is rank 2'
 

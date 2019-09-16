@@ -98,6 +98,7 @@ using reference_ops::SpaceToBatchND;
 using reference_ops::Split;
 using reference_ops::StridedSlice;
 using reference_ops::Sub16;
+using reference_ops::Transpose;
 
 // TODO(b/80247582) Remove this constant.
 // This will be phased out as the shifts are revised with more thought. Use of a
@@ -179,12 +180,6 @@ struct TTypes {
   typedef Eigen::TensorMap<
       Eigen::Tensor<const T, 2, Eigen::RowMajor, IndexType>>
       UnalignedConstMatrix;
-  typedef Eigen::TensorMap<
-      Eigen::Tensor<const T, NDIMS, Eigen::RowMajor, IndexType>, Eigen::Aligned>
-      ConstTensor;
-  typedef Eigen::TensorMap<Eigen::Tensor<T, NDIMS, Eigen::RowMajor, IndexType>,
-                           Eigen::Aligned>
-      Tensor;
 };
 
 // TODO(b/62193649): this function is only needed as long
@@ -3626,93 +3621,77 @@ inline void LogSoftmax(const SoftmaxParams& params,
   }
 }
 
-// Currently just a copy of the reference code.
+// Backwards compatibility. Less optimized than below version.
 inline void LogSoftmax(const SoftmaxParams& params,
                        const RuntimeShape& input_shape, const uint8* input_data,
                        const RuntimeShape& output_shape, uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("LogSoftmax/Uint8");
-  const int32 input_multiplier = params.input_multiplier;
-  const int32 input_left_shift = params.input_left_shift;
-  const int32 reverse_scaling_divisor = params.reverse_scaling_divisor;
-  const int32 reverse_scaling_right_shift = params.reverse_scaling_right_shift;
-  const int diff_min = params.diff_min;
-  // The representation chosen for the input to the exp() function is Q5.26.
-  // We need to leave extra space since values that we skip might be as large as
-  // -32 before multiplying by input_beta_multiplier, and therefore as large as
-  // -16 afterwards.  Note that exp(-8) is definitely not insignificant to
-  // accumulation, but exp(-16) definitely is.
-  static constexpr int kScaledDiffIntegerBits = 5;
-  static constexpr int kAccumulationIntegerBits = 12;
-  static constexpr int kOutputIntegerBits = 4;
-  using FixedPointScaledDiff =
-      gemmlowp::FixedPoint<int32, kScaledDiffIntegerBits>;
-  using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumulationIntegerBits>;
+  reference_ops::LogSoftmax(params, input_shape, input_data, output_shape,
+                            output_data);
+}
 
+// Compute LogSoftmax as (x - x_max) - ln(sum(e^(x_i - x_max)...)
+// as done in tf.nn.log_softmax to prevent underflow and overflow.
+// This is in contrast to just log(softmax(x))
+//
+// To handle quantization, first dequantize the inputs (from doing
+// e^(input scale * val) where we ignore the zero point since it cancels
+// out during subtraction due to the ln) and do a rescale at the end to int8.
+//
+// Notably this makes use of float and is intended as the optimized
+// form for quantized execution on CPU. For a fully integer version,
+// see the reference op.
+//
+// TODO(tflite): notes for optimization:
+// 1) See if e^ is also bottleneck in the reference fully-integer
+// version and apply lookup there and compare.
+// 2) Time spent is currently split between computing max_val, the
+// rint call, and the computation of log_prob.
+inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
+                       const RuntimeShape& input_shape, const uint8* input_data,
+                       const RuntimeShape& output_shape, uint8* output_data) {
+  gemmlowp::ScopedProfilingLabel label("LogSoftmax/Uint8");
   const int trailing_dim = input_shape.DimensionsCount() - 1;
-  const int outer_size =
+  const int excluding_last_dim =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
-  const int depth =
+  const int last_dim =
       MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
 
-  for (int i = 0; i < outer_size; ++i) {
-    const uint8* block_input_data = input_data + i * depth;
-    uint8* block_output_data = output_data + i * depth;
-    uint8 max_in_row = 0;
-    for (int c = 0; c < depth; ++c) {
-      max_in_row = std::max(max_in_row, block_input_data[c]);
+  const int32_t clamp_max = std::numeric_limits<uint8>::max();
+  const int32_t clamp_min = std::numeric_limits<uint8>::min();
+  for (int i = 0; i < excluding_last_dim; ++i) {
+    uint8_t max_val = std::numeric_limits<uint8>::min();
+    // Find max quantized value.
+    for (int j = 0; j < last_dim; ++j) {
+      max_val = std::max(max_val, input_data[j]);
     }
 
-    FixedPointAccum sum_of_exps = FixedPointAccum::Zero();
-    for (int c = 0; c < depth; ++c) {
-      int32 input_diff = static_cast<int32>(block_input_data[c]) - max_in_row;
-      if (input_diff >= diff_min) {
-        const int32 input_diff_rescaled =
-            MultiplyByQuantizedMultiplierGreaterThanOne(
-                input_diff, input_multiplier, input_left_shift);
-        const FixedPointScaledDiff scaled_diff_f8 =
-            FixedPointScaledDiff::FromRaw(input_diff_rescaled);
-        sum_of_exps = sum_of_exps + gemmlowp::Rescale<kAccumulationIntegerBits>(
-                                        exp_on_negative_values(scaled_diff_f8));
-      }
+    float sum_exp = 0.0f;
+    const int32_t max_uint8 = std::numeric_limits<uint8_t>::max();
+    // Offset into table to compute exp(scale*(x - xmax)) instead of
+    // exp(scale*(x)) to prevent overflow.
+    const float* table_offset = &params.table[max_uint8 - max_val];
+    // Calculate sum(exp(scale*(x - x_max))).
+    for (int j = 0; j < last_dim; ++j) {
+      sum_exp += table_offset[input_data[j]];
     }
+    const float log_sum_exp = std::log(sum_exp);
 
-    const int32 fixed_log_sum_of_exps =
-        log_x_for_x_greater_than_or_equal_to_1<kScaledDiffIntegerBits>(
-            sum_of_exps)
-            .raw();
+    const float precomputed = input_scale * max_val + log_sum_exp;
+    for (int j = 0; j < last_dim; ++j) {
+      // Equivalent to input_scale * (input_data[j] - max_val) - log_sum_exp;
+      const float log_prob = input_scale * input_data[j] - precomputed;
 
-    // rescaled_diff_min is smallest representable in
-    // Q(kScaledDiffIntegerBits).(31-kScaledDiffIntegerBits) plus the
-    // log-sub-exps that will be subtracted in the loop.
-    //
-    // The thresholds diff_min, etc are negative.
-    const int rescaled_diff_min =
-        fixed_log_sum_of_exps + std::numeric_limits<int32>::lowest();
-    const int adjusted_diff_min =
-        std::max(diff_min - 1,  // Note use of > below instead of >= above.
-                 MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                     rescaled_diff_min, reverse_scaling_divisor,
-                     -reverse_scaling_right_shift));
+      // TODO(tflite): look into better solution.
+      // Use std::rint over std::round (which is used in
+      // FakeQuant) since it's multiple times faster on tested arm32.
+      const int32_t prob_quantized =
+          std::rint(log_prob / params.scale) + params.zero_point;
 
-    for (int c = 0; c < depth; ++c) {
-      int32 input_diff = static_cast<int32>(block_input_data[c]) - max_in_row;
-      if (input_diff > adjusted_diff_min) {
-        const int32 input_diff_rescaled =
-            MultiplyByQuantizedMultiplierGreaterThanOne(
-                input_diff, input_multiplier, input_left_shift);
-        int32 unsat_output =
-            gemmlowp::RoundingDivideByPOT(
-                (input_diff_rescaled - fixed_log_sum_of_exps),
-                31 - kScaledDiffIntegerBits - kOutputIntegerBits) +
-            255;
-
-        block_output_data[c] = static_cast<uint8>(
-            std::max(std::min(unsat_output, static_cast<int32>(255)), 0));
-      } else {
-        // Set output to smallest value.
-        block_output_data[c] = 0;
-      }
+      output_data[j] = static_cast<uint8_t>(
+          std::max(std::min(clamp_max, prob_quantized), clamp_min));
     }
+    input_data += last_dim;
+    output_data += last_dim;
   }
 }
 
@@ -6696,171 +6675,6 @@ inline void Logistic16bitPercision(const LogisticParams& params,
       output_val = static_cast<int8>(output_val_s16);
     }
     output_data[c] = output_val;
-  }
-}
-
-// Transpose2DOn32bitMatrix only deals with typical 2D matrix transpose ops.
-inline void Transpose2DOn32bitMatrix(const TransposeParams& params,
-                                     const RuntimeShape& input_shape,
-                                     const int32_t* input_data,
-                                     const RuntimeShape& output_shape,
-                                     int32_t* output_data) {
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 2);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 2);
-  TFLITE_DCHECK_EQ(params.perm_count, 2);
-  TFLITE_DCHECK_EQ(params.perm[0], 1);
-  TFLITE_DCHECK_EQ(params.perm[1], 0);
-
-  const int d0 = input_shape.DimsData()[0];
-  const int d1 = input_shape.DimsData()[1];
-#ifdef USE_NEON
-  const int kLines = 4;
-  const int kSkipSize = (kLines - 1) * d1;
-#endif
-
-  const int32_t* input = input_data;
-
-  int i = 0;
-#ifdef USE_NEON
-  for (; i <= d0 - kLines; i += kLines) {
-    int32_t* output = output_data + i;
-
-    const int32_t* input_ptr = input;
-    __builtin_prefetch(input_ptr, 0, 3);
-    input_ptr += d1;
-    __builtin_prefetch(input_ptr, 0, 3);
-    input_ptr += d1;
-    __builtin_prefetch(input_ptr, 0, 3);
-    input_ptr += d1;
-    __builtin_prefetch(input_ptr, 0, 3);
-
-    int j = 0;
-    for (; j <= d1 - kLines; j += kLines) {
-      input_ptr = input;
-      int32x4_t a0 = vld1q_s32(input);
-      input_ptr += d1;
-      int32x4_t a1 = vld1q_s32(input_ptr);
-      input_ptr += d1;
-      int32x4_t a2 = vld1q_s32(input_ptr);
-      input_ptr += d1;
-      int32x4_t a3 = vld1q_s32(input_ptr);
-
-      int32x4x2_t tmp1 = vuzpq_s32(a0, a2);
-      int32x4x2_t tmp2 = vuzpq_s32(a1, a3);
-      int32x4x2_t tmp3 = vtrnq_s32(tmp1.val[0], tmp2.val[0]);
-      int32x4x2_t tmp4 = vtrnq_s32(tmp1.val[1], tmp2.val[1]);
-
-      vst1q_s32(output, tmp3.val[0]);
-      output += d0;
-      vst1q_s32(output, tmp4.val[0]);
-      output += d0;
-      vst1q_s32(output, tmp3.val[1]);
-      output += d0;
-      vst1q_s32(output, tmp4.val[1]);
-      output += d0;
-      input += kLines;
-    }
-    if (j == d1) {
-      input += kSkipSize;
-    } else {
-      for (int p = 0; p < kLines; ++p) {
-        for (int q = 0; q < d1 - j; ++q) {
-          *(output + q * d0 + p) = *(input + p * d1 + q);
-        }
-      }
-      input += (d1 - j) + kSkipSize;
-    }
-  }
-#endif
-  for (; i < d0; ++i) {
-    int32_t* output = output_data + i;
-    for (int j = 0; j < d1; ++j) {
-      *output = *input;
-      output += d0;
-      ++input;
-    }
-  }
-}
-
-template <typename T>
-inline void TransposeImpl(const TransposeParams& params,
-                          const RuntimeShape& unextended_input_shape,
-                          const T* input_data,
-                          const RuntimeShape& unextended_output_shape,
-                          T* output_data) {
-  const int unextended_output_size = unextended_input_shape.DimensionsCount();
-  const RuntimeShape input_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-  const int input_ext_size = 4 - unextended_input_shape.DimensionsCount();
-  const int output_ext_size = 4 - unextended_output_size;
-
-  // The perm data is extended to match the output, each index incremented by
-  // the amount of front padding of the input shape.
-  int extended_perm[4];
-  for (int i = 0; i < output_ext_size; ++i) {
-    extended_perm[i] = i;
-  }
-  for (int i = 0; i < unextended_output_size; ++i) {
-    extended_perm[i + output_ext_size] = params.perm[i] + input_ext_size;
-  }
-
-  Eigen::array<int, 4> p;
-  for (int i = 0; i < 4; ++i) p[i] = extended_perm[i];
-  Eigen::DSizes<Eigen::DenseIndex, 4> input_dsizes;
-  for (int d = 0; d < 4; d++) {
-    input_dsizes[d] = static_cast<Eigen::DenseIndex>(input_shape.Dims(d));
-  }
-  Eigen::DSizes<Eigen::DenseIndex, 4> output_dsizes;
-  for (int d = 0; d < 4; d++) {
-    output_dsizes[d] = static_cast<Eigen::DenseIndex>(output_shape.Dims(d));
-  }
-
-  auto x = typename TTypes<T, 4>::ConstTensor(input_data, input_dsizes);
-  auto y = typename TTypes<T, 4>::Tensor(output_data, output_dsizes);
-  y = x.shuffle(p);
-}
-
-template <typename T>
-void Transpose(const TransposeParams& params,
-               const RuntimeShape& unextended_input_shape, const T* input_data,
-               const RuntimeShape& unextended_output_shape, T* output_data) {
-  const int unextended_output_size = unextended_output_shape.DimensionsCount();
-  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_size, 4);
-  TFLITE_DCHECK_EQ(unextended_output_size, params.perm_count);
-
-  // Transpose kernel only does rearranging values not numeric evaluations on
-  // each cell. It's safe to implement per size of scalar type and this trick
-  // keeps the total code size in a reasonable range.
-  switch (sizeof(T)) {
-    case 1:
-      // TODO(jaesung): Find a good 2d transpose implementation for 8-bit
-      // matrices.
-      TransposeImpl(params, unextended_input_shape,
-                    reinterpret_cast<const int8_t*>(input_data),
-                    unextended_output_shape,
-                    reinterpret_cast<int8_t*>(output_data));
-      break;
-    case 4:
-      if (unextended_input_shape.DimensionsCount() == 2 &&
-          params.perm[0] == 1 && params.perm[1] == 0) {
-        Transpose2DOn32bitMatrix(params, unextended_input_shape,
-                                 reinterpret_cast<const int32_t*>(input_data),
-                                 unextended_output_shape,
-                                 reinterpret_cast<int32_t*>(output_data));
-        return;
-      }
-      TransposeImpl(params, unextended_input_shape,
-                    reinterpret_cast<const int32_t*>(input_data),
-                    unextended_output_shape,
-                    reinterpret_cast<int32_t*>(output_data));
-      break;
-    default:
-      // Reroute to the reference version if the given size is not common.
-      reference_ops::Transpose(params, unextended_input_shape, input_data,
-                               unextended_output_shape, output_data);
   }
 }
 

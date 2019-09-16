@@ -85,11 +85,19 @@ Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
 // trigger a NodeDef creation).
 class AttrBuilder {
  public:
-  explicit AttrBuilder(const char* op)
-      : op_name_(op),
-        num_inputs_(0),
-        node_def_(nullptr),
-        node_def_finalized_(false) {}
+  explicit AttrBuilder(const char* op) { Reset(op); }
+
+  void Reset(const char* op) {
+    op_name_ = op;
+    num_inputs_ = 0;
+    encoded_attrs_.clear();
+    node_def_initialized_ = false;
+    node_def_finalized_ = false;
+    cached_cache_key_ = absl::nullopt;
+    device_for_cached_cache_key_.clear();
+  }
+
+  const string& op_name() const { return op_name_; }
 
   // Needed to work around call to ValidateNodeDef in CreateOpKernel.
   AttrBuilder& NumInputs(int n);
@@ -111,11 +119,11 @@ class AttrBuilder {
     // Common attributes are stored in AttrVecs. This Get() template
     // is specialized for them below. If we end up here, the type must be
     // among those that we store in the node_def_.
-    if (node_def_ == nullptr) {
+    if (!node_def_initialized_) {
       return errors::NotFound("No attr named'", attr_name,
                               "' found in AttrBuilder for ", op_name_);
     }
-    return GetNodeAttr(AttrSlice(*node_def_), attr_name, value);
+    return GetNodeAttr(AttrSlice(node_def_), attr_name, value);
   }
 
   tensorflow::Fprint128 CacheKey(const StringPiece device);
@@ -129,7 +137,9 @@ class AttrBuilder {
  private:
   tensorflow::Fprint128 BuildCacheKeyForDevice(const StringPiece device) const;
 
-  void MayBeInitializeNodeDef();
+  // Initialize the node_def_ object.
+  // REQUIRES: node_def_initialized_ = false
+  void InitializeNodeDef();
 
   template <class T>
   void SetInAttrValueMap(AttrValueMap* m, const string& attr_name,
@@ -148,9 +158,10 @@ class AttrBuilder {
   gtl::FlatMap<string, string> encoded_attrs_;
   mutable AttrValue attr_tmp_;  // For encoding
 
-  const string op_name_;
+  string op_name_;  // Conceptually const, but can't be because of Reset(...)
   int num_inputs_;
-  std::unique_ptr<NodeDef> node_def_;
+  NodeDef node_def_;
+  bool node_def_initialized_;
   bool node_def_finalized_;
 
   absl::optional<tensorflow::Fprint128> cached_cache_key_;

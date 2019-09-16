@@ -50,7 +50,8 @@ std::string GetAveragePoolingKernelCode(
   code += "  int X = get_global_id(0);\n";
   code += "  int Y = get_global_id(1);\n";
   code += "  int Z = get_global_id(2);\n";
-  code += "  if (X >= dst_size.x || Y >= dst_size.y) return; \n";
+  code +=
+      "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) return; \n";
   code += "  float4 r = (float4)(0.0f);\n";
   code += "  float window_size = 0.0;\n";
   code += "  for (int ky = 0; ky < kernel_size.y; ++ky) {\n";
@@ -109,7 +110,8 @@ std::string GetMaxPoolingKernelCode(
   code += "  int X = get_global_id(0);\n";
   code += "  int Y = get_global_id(1);\n";
   code += "  int Z = get_global_id(2);\n";
-  code += "  if (X >= dst_size.x || Y >= dst_size.y) return; \n";
+  code +=
+      "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) return; \n";
   code += "  FLT4 maximum = (FLT4)(-10000.0f);\n";
   if (output_indices) {
     code += "  FLT4 indexes = (FLT4)(0.0f);\n";

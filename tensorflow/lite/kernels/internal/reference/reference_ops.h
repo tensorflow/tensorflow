@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/conv.h"
 #include "tensorflow/lite/kernels/internal/reference/floor.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
+#include "tensorflow/lite/kernels/internal/reference/logistic.h"
 #include "tensorflow/lite/kernels/internal/reference/maximum_minimum.h"
 #include "tensorflow/lite/kernels/internal/reference/neg.h"
 #include "tensorflow/lite/kernels/internal/reference/pooling.h"
@@ -1934,45 +1935,6 @@ inline void LogSoftmax(const SoftmaxParams& params,
   }
 }
 
-inline void Logistic(const RuntimeShape& input_shape, const float* input_data,
-                     const RuntimeShape& output_shape, float* output_data) {
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  for (int i = 0; i < flat_size; i++) {
-    float val = input_data[i];
-    float result = 1.f / (1.f + std::exp(-val));
-    output_data[i] = result;
-  }
-}
-
-// Convenience version that allows, for example, generated-code calls to be
-// uniform between data types.
-inline void Logistic(const LogisticParams&, const RuntimeShape& input_shape,
-                     const float* input_data, const RuntimeShape& output_shape,
-                     float* output_data) {
-  // Drop params: not needed.
-  Logistic(input_shape, input_data, output_shape, output_data);
-}
-
-inline void Logistic(const LogisticParams& params,
-                     const RuntimeShape& input_shape, const int16* input_data,
-                     const RuntimeShape& output_shape, int16* output_data) {
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  for (int i = 0; i < flat_size; i++) {
-    // F0 uses 0 integer bits, range [-1, 1].
-    // This is the return type of math functions such as tanh, logistic,
-    // whose range is in [-1, 1].
-    using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
-    // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
-    using F3 = gemmlowp::FixedPoint<std::int16_t, 3>;
-
-    const F3 input = F3::FromRaw(input_data[i]);
-    F0 output = gemmlowp::logistic(input);
-    output_data[i] = output.raw();
-  }
-}
-
 inline void Tanh(const RuntimeShape& input_shape, const float* input_data,
                  const RuntimeShape& output_shape, float* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
@@ -3046,11 +3008,9 @@ inline void ArgMax(const RuntimeShape& input1_shape, const T1* input1_data,
 }
 
 template <typename T>
-inline void TransposeImpl(const TransposeParams& params,
-                          const RuntimeShape& unextended_input_shape,
-                          const T* input_data,
-                          const RuntimeShape& unextended_output_shape,
-                          T* output_data) {
+void Transpose(const TransposeParams& params,
+               const RuntimeShape& unextended_input_shape, const T* input_data,
+               const RuntimeShape& unextended_output_shape, T* output_data) {
   const int unextended_output_size = unextended_output_shape.DimensionsCount();
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_size, 4);
@@ -3095,42 +3055,6 @@ inline void TransposeImpl(const TransposeParams& params,
         }
       }
     }
-  }
-}
-
-template <typename T>
-void Transpose(const TransposeParams& params,
-               const RuntimeShape& unextended_input_shape, const T* input_data,
-               const RuntimeShape& unextended_output_shape, T* output_data) {
-  // Transpose kernel only does rearranging values not numeric evaluations on
-  // each cell. It's safe to implement per size of scalar type and this trick
-  // keeps the total code size in a reasonable range.
-  switch (sizeof(T)) {
-    case 1:
-      TransposeImpl<int8_t>(params, unextended_input_shape,
-                            reinterpret_cast<const int8_t*>(input_data),
-                            unextended_output_shape,
-                            reinterpret_cast<int8_t*>(output_data));
-      break;
-    case 2:
-      TransposeImpl<int16_t>(params, unextended_input_shape,
-                             reinterpret_cast<const int16_t*>(input_data),
-                             unextended_output_shape,
-                             reinterpret_cast<int16_t*>(output_data));
-      break;
-
-    case 4:
-      TransposeImpl<int32_t>(params, unextended_input_shape,
-                             reinterpret_cast<const int32_t*>(input_data),
-                             unextended_output_shape,
-                             reinterpret_cast<int32_t*>(output_data));
-      break;
-    case 8:
-      TransposeImpl<int64_t>(params, unextended_input_shape,
-                             reinterpret_cast<const int64_t*>(input_data),
-                             unextended_output_shape,
-                             reinterpret_cast<int64_t*>(output_data));
-      break;
   }
 }
 

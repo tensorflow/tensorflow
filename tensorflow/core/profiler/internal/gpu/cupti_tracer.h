@@ -102,8 +102,12 @@ struct CuptiTracerEvent {
       std::numeric_limits<uint64_t>::max();
   CuptiTracerEventType type;
   CuptiTracerEventSource source;
-  // name and annotation are only guaranteed to be valid in collector->AddEvent.
-  absl::string_view name;
+  // Although CUpti_CallbackData::functionName is persistent, however
+  // CUpti_ActivityKernel4::name is not persistent, therefore we need a copy of
+  // it.
+  std::string name;
+  // This points to strings in AnnotationMap, which should outlive the point
+  // where serialization happens.
   absl::string_view annotation;
   uint64 start_time_ns;
   uint64 end_time_ns;
@@ -225,8 +229,7 @@ class CuptiTracer {
   // Only one profile session can be live in the same time.
   bool IsAvailable() const;
 
-  void Enable(const CuptiTracerOptions& option, CuptiInterface* cupti_interface,
-              CuptiTraceCollector* collector);
+  void Enable(const CuptiTracerOptions& option, CuptiTraceCollector* collector);
   void Disable();
 
   Status HandleCallback(CUpti_CallbackDomain domain, CUpti_CallbackId cbid,
@@ -239,9 +242,12 @@ class CuptiTracer {
   static uint64 GetTimestamp();
   static int NumGpus();
 
- private:
-  CuptiTracer() : num_gpus_(NumGpus()) {}
+ protected:
+  // protected constructor for injecting mock cupti interface for testing.
+  explicit CuptiTracer(CuptiInterface* cupti_interface)
+      : num_gpus_(NumGpus()), cupti_interface_(cupti_interface) {}
 
+ private:
   Status EnableApiTracing();
   Status EnableActivityTracing();
   Status DisableApiTracing();

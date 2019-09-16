@@ -5011,16 +5011,43 @@ class IdentityCategoricalColumnTest(test.TestCase):
             dense_shape=(2, 2)), self.evaluate(id_weight_pair.id_tensor))
 
   def _test_get_sparse_tensors_with_inputs_too_small(self):
-    column = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)), values=(1, -1, 0), dense_shape=(2, 2))
-    with self.assertRaisesRegexp(
-        errors.InvalidArgumentError,
-        'Negative bucket index for categorical column "aaa"'):
-      column.get_sparse_tensors(
-          fc.FeatureTransformationCache({
-              'aaa': inputs
-          }), None)
+    # Inputs.
+    vocabulary_size = 2
+    sparse_input = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (0, 0), (1, 1), (1, 2)),
+        values=(-9, 0, -6, 1),
+        dense_shape=(2, 4))
+
+    # Embedding variable.
+    embedding_dimension = 2
+    embedding_values = (
+        (1., 2.),  # id 0
+        (3., 5.),  # id 1
+    )
+
+    def _initializer(shape, dtype, partition_info=None):
+      del shape, dtype, partition_info
+      return embedding_values
+
+    # Build columns.
+    categorical_column = fc.categorical_column_with_identity(
+        key='aaa', num_buckets=vocabulary_size)
+    embedding_column = fc.embedding_column(
+        categorical_column,
+        dimension=embedding_dimension,
+        initializer=_initializer)
+    state_manager = _TestStateManager()
+    embedding_column.create_state(state_manager)
+
+    # Provide sparse input and get dense result.
+    embedding_lookup = embedding_column.get_dense_tensor(
+        fc.FeatureTransformationCache({'aaa': sparse_input}), state_manager)
+
+    self.evaluate(variables_lib.global_variables_initializer())
+    self.evaluate(lookup_ops.tables_initializer())
+    expected_lookups = ((1., 2.), (3., 5))
+    with _initialized_session():
+      self.assertAllEqual(expected_lookups, self.evaluate(embedding_lookup))
 
   @test_util.run_deprecated_v1
   def test_get_sparse_tensors_with_inputs_too_small(self):
@@ -5032,16 +5059,42 @@ class IdentityCategoricalColumnTest(test.TestCase):
     self._test_get_sparse_tensors_with_inputs_too_small()
 
   def _test_get_sparse_tensors_with_inputs_too_big(self):
-    column = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)), values=(1, 99, 0), dense_shape=(2, 2))
-    with self.assertRaisesRegexp(
-        errors.InvalidArgumentError,
-        'Bucket index for categorical column "aaa" exceeds number of buckets'):
-      column.get_sparse_tensors(
-          fc.FeatureTransformationCache({
-              'aaa': inputs
-          }), None)
+    # Inputs.
+    vocabulary_size = 2
+    sparse_input = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0)), values=(2, 0), dense_shape=(4, 5))
+
+    # Embedding variable.
+    embedding_dimension = 2
+    embedding_values = (
+        (1., 2.),  # id 0
+        (3., 5.),  # id 1
+    )
+
+    def _initializer(shape, dtype, partition_info=None):
+      del shape, dtype, partition_info
+      return embedding_values
+
+    # Build columns.
+    categorical_column = fc.categorical_column_with_identity(
+        key='aaa', num_buckets=vocabulary_size)
+    embedding_column = fc.embedding_column(
+        categorical_column,
+        dimension=embedding_dimension,
+        initializer=_initializer)
+    state_manager = _TestStateManager()
+    embedding_column.create_state(state_manager)
+
+    # Provide sparse input and get dense result.
+    embedding_lookup = embedding_column.get_dense_tensor(
+        fc.FeatureTransformationCache({'aaa': sparse_input}), state_manager)
+
+    self.evaluate(variables_lib.global_variables_initializer())
+    self.evaluate(lookup_ops.tables_initializer())
+
+    with self.assertRaisesRegexp(errors.OpError,
+                                 r'indices\[0\] = 2 is not in \[0, 2\)'):
+      self.evaluate(embedding_lookup)
 
   @test_util.run_deprecated_v1
   def test_get_sparse_tensors_with_inputs_too_big(self):

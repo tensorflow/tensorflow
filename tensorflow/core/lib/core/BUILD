@@ -114,9 +114,7 @@ cc_library(
     name = "threadpool_interface",
     hdrs = ["threadpool_interface.h"],
     deps = [
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:types",
-        "//third_party/eigen3",
+        "//tensorflow/core/platform:threadpool_interface",
     ],
 )
 
@@ -124,7 +122,7 @@ cc_library(
     name = "threadpool_options",
     hdrs = ["threadpool_options.h"],
     deps = [
-        ":threadpool_interface",
+        "//tensorflow/core/platform:threadpool_options",
     ],
 )
 
@@ -165,7 +163,6 @@ filegroup(
         "bitmap.cc",
         "coding.cc",
         "status.cc",
-        "threadpool.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

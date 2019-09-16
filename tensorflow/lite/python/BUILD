@@ -93,6 +93,22 @@ py_library(
     ],
 )
 
+py_test(
+    name = "tflite_convert_test",
+    srcs = ["tflite_convert_test.py"],
+    data = [":tflite_convert.par"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],
+    deps = [
+        ":tflite_convert",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
 py_library(
     name = "lite",
     srcs = ["lite.py"],

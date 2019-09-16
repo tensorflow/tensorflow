@@ -28,9 +28,8 @@ namespace mlir {
 
 class ModuleOp;
 template <typename T> class OpPassBase;
-using ModulePassBase = OpPassBase<ModuleOp>;
 
-std::unique_ptr<ModulePassBase> createGpuKernelOutliningPass();
+std::unique_ptr<OpPassBase<ModuleOp>> createGpuKernelOutliningPass();
 
 } // namespace mlir
 

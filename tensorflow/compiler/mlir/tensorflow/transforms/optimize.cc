@@ -41,7 +41,7 @@ struct TFOptimizePass : public FunctionPass<TFOptimizePass> {
 
 }  // namespace
 
-std::unique_ptr<FunctionPassBase> CreateTFOptimizePass() {
+std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass() {
   return std::make_unique<TFOptimizePass>();
 }
 

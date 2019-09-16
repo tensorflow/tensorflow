@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/platform.h"  // NOLINT
 #ifdef TENSORFLOW_EAGER_USE_XLA
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -605,33 +604,8 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
 
 TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_function_name,
                   TF_Status* status) {
-  const char* name = op_or_function_name;  // Shorthand
-  const tensorflow::AttrTypeMap* types;
-  bool is_function = false;
-  status->status = tensorflow::AttrTypeMapForOp(name, &types, &is_function);
-  if (!status->status.ok()) {
-    return nullptr;
-  }
-  if (!is_function) {
-    const tensorflow::OpDef* op_def;
-    status->status = tensorflow::OpDefForOp(op_or_function_name, &op_def);
-    if (!status->status.ok()) {
-      return nullptr;
-    }
-    return new TFE_Op(ctx, name, false, types,
-                      new TFE_OpInferenceContext(op_def));
-  }
-  if (!ctx->context->FindFunctionByName(name)) {
-    status->status = tensorflow::errors::NotFound(
-        "'", name,
-        "' is neither a type of a primitive operation nor a name "
-        "of a function registered in binary running on ",
-        tensorflow::port::Hostname(),
-        ". Make sure the operation or function is "
-        "registered in the binary running in this process.");
-    return nullptr;
-  }
-  return new TFE_Op(ctx, name, true, types, nullptr);
+  return NewOrResetOp(ctx, op_or_function_name, status,
+                      /* op_to_reset= */ nullptr);
 }
 
 void TFE_DeleteOp(TFE_Op* op) { delete op; }

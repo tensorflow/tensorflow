@@ -126,11 +126,12 @@ func @QuantizeAveragePool2D(tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:
 // CHECK-LABEL: QuantizeReshape2D
 func @QuantizeReshape2D(tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x36x16xf32> {
 ^bb0(%arg0: tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>):
+  %cst = constant dense<[1, 36, 16]> : tensor<3xi32>
   %0 = "tfl.dequantize"(%arg0) : (tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x6x6x16xf32>
-  %1 = "tfl.reshape"(%0) : (tensor<1x6x6x16xf32>) -> tensor<1x36x16xf32>
+  %1 = "tfl.reshape"(%0, %cst) : (tensor<1x6x6x16xf32>, tensor<3xi32>) -> tensor<1x36x16xf32>
   return %1 : tensor<1x36x16xf32>
 
-// CHECK: %0 = "tfl.reshape"(%arg0)
+// CHECK: %0 = "tfl.reshape"(%arg0, %{{.*}})
 // CHECK: %1 = "tfl.dequantize"(%0) : (tensor<1x36x16x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x36x16xf32>
 // CHECK: return %1 : tensor<1x36x16xf32>
 }

@@ -62,8 +62,7 @@ def main(_):
     sess = tf_debug.TensorBoardDebugWrapperSession(
         sess, FLAGS.tensorboard_debug_address)
 
-  print("Fibonacci number at position %d:\n%s" %
-        (FLAGS.length, sess.run(n1)))
+  print("Fibonacci number at position %d:\n%s" % (FLAGS.length, sess.run(n1)))
 
 
 if __name__ == "__main__":

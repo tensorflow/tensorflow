@@ -2071,9 +2071,10 @@ class DatasetV1(DatasetV2):
     return DatasetV1Adapter(super(DatasetV1, self).with_options(options))
 
 
-# TODO(b/119044825): Until all `tf.data` unit tests are converted to V2, keep
-# this alias in place.
-Dataset = DatasetV1
+if tf2.enabled():
+  Dataset = DatasetV2
+else:
+  Dataset = DatasetV1
 
 
 class DatasetV1Adapter(DatasetV1):
@@ -2786,7 +2787,16 @@ class StructuredFunctionWrapper(object):
 
       resource_tracker = tracking.ResourceTracker()
       with tracking.resource_tracker_scope(resource_tracker):
-        self._function = wrapper_fn._get_concrete_function_internal()
+        self._function = (
+            wrapper_fn._get_concrete_function_internal_garbage_collected())
+
+        # TODO(jsimsa): Garbage collecting functions containing PyFunc nodes
+        # triggers use-after-free. Figure out why and stop excluding functions
+        # with PyFunc nodes from garbage collection.
+        for node in self._function.function_def.node_def:
+          if node.op in ("PyFunc", "PyFuncStateless", "EagerPyFunc"):
+            self._function._garbage_collector.release()
+
         if add_to_graph:
           self._function.add_to_graph(ops.get_default_graph())
       if resource_tracker.resources:

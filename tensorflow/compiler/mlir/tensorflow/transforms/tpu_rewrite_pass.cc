@@ -285,7 +285,7 @@ void TPURewritePass::runOnModule() {
 
 }  // namespace
 
-std::unique_ptr<ModulePassBase> CreateTPURewritePass() {
+std::unique_ptr<OpPassBase<ModuleOp>> CreateTPURewritePass() {
   return std::make_unique<TPURewritePass>();
 }
 

@@ -323,7 +323,7 @@ void TPUClusterFormation::runOnFunction() {
 }
 }  // anonymous namespace
 
-std::unique_ptr<FunctionPassBase> CreateTPUClusterFormationPass() {
+std::unique_ptr<OpPassBase<FuncOp>> CreateTPUClusterFormationPass() {
   return std::make_unique<TPUClusterFormation>();
 }
 

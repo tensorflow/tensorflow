@@ -86,6 +86,7 @@ load(
     "tf_gen_op_libs",
     "tf_generate_proto_text_sources",
     "tf_genrule_cmd_append_to_srcs",
+    "tf_openmp_copts",
     "tf_opts_nortti_if_android",
     "tf_opts_nortti_if_emscripten",
     "transitive_hdrs",
@@ -330,6 +331,9 @@ filegroup(
         "//tensorflow/core/platform:logging.h",
         "//tensorflow/core/platform:macros.h",
         "//tensorflow/core/platform:platform_strings.h",
+        "//tensorflow/core/platform:threadpool.h",
+        "//tensorflow/core/platform:threadpool_interface.h",
+        "//tensorflow/core/platform:threadpool_options.h",
         "//tensorflow/core/platform:tstring.h",
         "//tensorflow/core/platform:types.h",
     ],
@@ -723,8 +727,6 @@ cc_library(
 cc_library(
     name = "lib",
     hdrs = [
-        "lib/hash/crc32c.h",
-        "lib/hash/hash.h",
         "lib/histogram/histogram.h",
         "lib/monitoring/collected_metrics.h",
         "lib/monitoring/collection_registry.h",
@@ -741,6 +743,7 @@ cc_library(
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/core:legacy_lib_core_headers",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_headers",
+        "//tensorflow/core/lib/hash:legacy_lib_hash_all_headers",
         "//tensorflow/core/lib/io:legacy_lib_io_headers",
         "//tensorflow/core/lib/math:math_util.h",
         "//tensorflow/core/lib/random:legacy_lib_random_headers",
@@ -1426,6 +1429,7 @@ cc_library(
         ":user_ops_op_lib",
         ":word2vec_ops",
         "//tensorflow/c/kernels:bitcast_op_lib",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_passthrough_op",
     ] + if_mkl([
         ":mkl_array_ops_op_lib",
         ":mkl_nn_ops_op_lib",
@@ -1788,6 +1792,8 @@ filegroup(
         "//tensorflow/core/lib/core:legacy_lib_core_all_headers",
         "//tensorflow/core/lib/core:legacy_lib_core_all_srcs",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_all_headers",
+        "//tensorflow/core/lib/hash:legacy_lib_hash_all_headers",
+        "//tensorflow/core/lib/hash:legacy_lib_hash_all_srcs",
         "//tensorflow/core/lib/io:legacy_lib_io_all_headers",
         "//tensorflow/core/lib/io:legacy_lib_io_all_srcs",
         "//tensorflow/core/lib/random:legacy_lib_random_all_headers",
@@ -2382,6 +2388,7 @@ LIB_INTERNAL_PRIVATE_HEADERS = [
     "//tensorflow/core/lib/bfloat16:bfloat16.h",
     "//tensorflow/core/lib/core:legacy_lib_core_all_headers",
     "//tensorflow/core/lib/gtl:legacy_lib_gtl_all_headers",
+    "//tensorflow/core/lib/hash:legacy_lib_hash_all_headers",
     "//tensorflow/core/lib/io:legacy_lib_io_all_headers",
     "//tensorflow/core/lib/random:legacy_lib_random_all_headers",
     "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
@@ -2401,7 +2408,7 @@ LIB_INTERNAL_PRIVATE_HEADERS = [
 LIB_INTERNAL_PUBLIC_HEADERS = [
     "//tensorflow/core/lib/core:legacy_lib_internal_core_headers",
     "//tensorflow/core/lib/gtl:legacy_lib_internal_public_gtl_headers",
-    "lib/hash/hash.h",
+    "//tensorflow/core/lib/hash:legacy_lib_internal_public_headers",
     "//tensorflow/core/lib/io:legacy_lib_internal_public_headers",
     "lib/monitoring/mobile_counter.h",
     "lib/monitoring/mobile_gauge.h",
@@ -2467,7 +2474,6 @@ cc_library(
         exclude = [
             "**/*test*",
             "framework/variant.cc",
-            "lib/hash/crc32c_accelerate.cc",
             "lib/gif/**/*",
             "lib/jpeg/**/*",
             "lib/png/**/*",
@@ -2477,6 +2483,7 @@ cc_library(
         "//tensorflow/core/platform:legacy_platform_lib_srcs",
         "//tensorflow/core/platform:legacy_lib_internal_srcs",
         "//tensorflow/core/lib/core:legacy_lib_core_all_srcs",
+        "//tensorflow/core/lib/hash:legacy_lib_internal_impl_srcs",
         "//tensorflow/core/lib/io:legacy_lib_io_all_srcs",
         "//tensorflow/core/lib/random:legacy_lib_random_all_srcs",
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_srcs",
@@ -2514,7 +2521,9 @@ cc_library(
 # File compiled with extra flags to get cpu-specific acceleration.
 cc_library(
     name = "lib_hash_crc32c_accelerate_internal",
-    srcs = ["lib/hash/crc32c_accelerate.cc"],
+    srcs = [
+        "//tensorflow/core/lib/hash:legacy_crc32_accelerate_srcs",
+    ],
     # -msse4.2 enables the use of crc32c compiler builtins.
     copts = tf_copts() + if_linux_x86_64(["-msse4.2"]),
 )
@@ -3236,7 +3245,7 @@ tf_cuda_library(
         "public/version.h",
     ],
     hdrs = CORE_CPU_LIB_HEADERS,
-    copts = tf_copts(),
+    copts = tf_copts() + tf_openmp_copts(),
     deps = [
         ":bfc_allocator",
         ":graph",
@@ -3692,8 +3701,6 @@ tf_cc_tests(
     name = "low_level_library_tests",
     size = "small",
     srcs = [
-        "lib/hash/crc32c_test.cc",
-        "lib/hash/hash_test.cc",
         "lib/histogram/histogram_test.cc",
         "lib/monitoring/collection_registry_test.cc",
         "lib/monitoring/counter_test.cc",
@@ -3703,6 +3710,7 @@ tf_cc_tests(
         "lib/wav/wav_io_test.cc",
         "//tensorflow/core/lib/core:legacy_lib_core_all_tests",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_tests",
+        "//tensorflow/core/lib/hash:legacy_lib_hash_all_tests",
         "//tensorflow/core/lib/io:legacy_lib_io_all_tests",
         "//tensorflow/core/lib/math:math_util_test.cc",
         "//tensorflow/core/lib/random:legacy_lib_random_tests",
@@ -4028,6 +4036,7 @@ tf_cc_tests(
         "framework/bfloat16_test.cc",
         "framework/cancellation_test.cc",
         "framework/common_shape_fns_test.cc",
+        "framework/dataset_test.cc",
         "framework/device_base_test.cc",
         "framework/function_test.cc",
         "framework/graph_def_util_test.cc",

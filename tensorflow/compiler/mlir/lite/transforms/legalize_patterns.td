@@ -137,9 +137,6 @@ def : Pat<(TF_PowOp $x, $y), (TFL_PowOp $x, $y)>;
 def : Pat<(TF_RangeOp $start, $limit, $delta), (TFL_RangeOp $start, $limit, $delta)>;
 def : Pat<(TF_Relu6Op $arg), (TFL_Relu6Op $arg)>;
 def : Pat<(TF_ReluOp $arg), (TFL_ReluOp $arg)>;
-// The second operand is captured in the type for this transform.
-def : Pat<(TF_ReshapeOp:$res AnyStaticShapeTensor:$arg, $ignored),
-          (TFL_ReshapeOp $arg), [(AnyStaticShapeTensor $res)]>;
 def : Pat<(TF_ReverseSequenceOp $input, $seq_lengths, $seq_dim, $batch_dim),
           (TFL_ReverseSequenceOp $input, $seq_lengths,
            (convertIntAttrTo32Bit $seq_dim),
@@ -201,7 +198,8 @@ def : Pat<(TF_GatherV2Op $params, $indices,
 
 def : Pat<(TF_FloorDivOp $l, $r), (TFL_FloorDivOp $l, $r)>;
 
-def : Pat<(TF_NotEqualOp $l, $r), (TFL_NotEqualOp $l, $r)>;
+def : Pat<(TF_NotEqualOp $l, $r, /*incompatible_shape_error=*/ConstBoolAttrTrue),
+          (TFL_NotEqualOp $l, $r)>;
 
 def : Pat<(TF_LogicalAndOp $l, $r), (TFL_LogicalAndOp $l, $r)>;
 
@@ -262,7 +260,7 @@ def : Pat<(TF_ReluOp (TF_SquaredDifferenceOp $l, $r)),
 
 def : Pat<(TF_ReverseV2Op $arg0, $arg1), (TFL_ReverseV2Op $arg0, $arg1)>;
 
-def : Pat<(TF_EqualOp $arg0, $arg1), (TFL_EqualOp $arg0, $arg1)>;
+def : Pat<(TF_EqualOp $arg0, $arg1, /*incompatible_shape_error=*/ConstBoolAttrTrue), (TFL_EqualOp $arg0, $arg1)>;
 
 def : Pat<(TF_PadOp $arg0, $arg1), (TFL_PadOp $arg0, $arg1)>;
 

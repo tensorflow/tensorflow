@@ -1626,15 +1626,15 @@ tf_module {
   }
   member_method {
     name: "IRFFT"
-    argspec: "args=[\'input\', \'fft_length\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'fft_length\', \'Treal\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
     name: "IRFFT2D"
-    argspec: "args=[\'input\', \'fft_length\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'fft_length\', \'Treal\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
     name: "IRFFT3D"
-    argspec: "args=[\'input\', \'fft_length\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'fft_length\', \'Treal\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
     name: "Identity"
@@ -2858,15 +2858,15 @@ tf_module {
   }
   member_method {
     name: "RFFT"
-    argspec: "args=[\'input\', \'fft_length\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'fft_length\', \'Tcomplex\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'complex64\'>\", \'None\'], "
   }
   member_method {
     name: "RFFT2D"
-    argspec: "args=[\'input\', \'fft_length\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'fft_length\', \'Tcomplex\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'complex64\'>\", \'None\'], "
   }
   member_method {
     name: "RFFT3D"
-    argspec: "args=[\'input\', \'fft_length\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'fft_length\', \'Tcomplex\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'complex64\'>\", \'None\'], "
   }
   member_method {
     name: "RGBToHSV"

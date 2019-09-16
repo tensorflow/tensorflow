@@ -135,6 +135,12 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimple) {
   EXPECT_FALSE(return_op->getOperand(1)->getType().isa<NoneType>());
   // input layer norm is None
   EXPECT_TRUE(return_op->getOperand(20)->getType().isa<NoneType>());
+  // proj_bias is F32
+  EXPECT_TRUE(return_op->getOperand(17)
+                  ->getType()
+                  .cast<RankedTensorType>()
+                  .getElementType()
+                  .isF32());
 
   EXPECT_EQ(fused_lstm_func_.getType().getNumResults(), 1);
   auto output_types = fused_lstm_func_.getType().getResults();

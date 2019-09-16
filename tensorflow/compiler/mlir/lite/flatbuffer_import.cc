@@ -430,16 +430,6 @@ StatusOr<Operation*> ConvertOp(
     }
     auto type = type_or_err.ConsumeValueOrDie();
 
-    // Special case for reshape, which stores its return shape in an option
-    // that we need to extract from
-    // Note: UniqueOp is handled by the typing information on its output tensor
-    if (auto* opts = op.builtin_options.AsReshapeOptions()) {
-      llvm::SmallVector<int64_t, 4> shape(opts->new_shape.begin(),
-                                          opts->new_shape.end());
-      type = builder.getTensorType(ArrayRef<int64_t>(shape),
-                                   type.getElementType());
-    }
-
     // Special case for quantize: return type must also be in qtype attribute
     if (op_name == "tfl.quantize") {
       op_state.addAttribute("qtype", builder.getTypeAttr(type));

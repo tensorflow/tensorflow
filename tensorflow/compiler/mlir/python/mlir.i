@@ -68,7 +68,7 @@ static string ImportGraphDef(const string &graphdef, TF_Status* status);
 
 %insert("python") %{
 def import_graphdef(graphdef):
-  return str(ImportGraphDef(str(graphdef).encode('utf-8')));
+  return ImportGraphDef(str(graphdef).encode('utf-8')).decode('utf-8');
 %}
 
 %unignoreall

@@ -34,6 +34,8 @@ gentbl(
     tbl_outs = [
         ("-gen-op-decls", "ir/hlo_ops.h.inc"),
         ("-gen-op-defs", "ir/hlo_ops.cc.inc"),
+        ("-gen-struct-attr-decls", "ir/hlo_structs.h.inc"),
+        ("-gen-struct-attr-defs", "ir/hlo_structs.cc.inc"),
     ],
     tblgen = "@local_config_mlir//:mlir-tblgen",
     td_file = "ir/hlo_ops.td",
@@ -85,12 +87,14 @@ cc_library(
     deps = [
         ":hlo",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",
+        "@local_config_mlir//:Transforms",
     ],
     alwayslink = 1,
 )

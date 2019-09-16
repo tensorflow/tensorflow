@@ -54,7 +54,8 @@ std::string GetMaxUnoolingKernelCode(
   code += "  int X = get_global_id(0);\n";
   code += "  int Y = get_global_id(1);\n";
   code += "  int Z = get_global_id(2);\n";
-  code += "  if (X >= dst_size.x || Y >= dst_size.y) return; \n";
+  code +=
+      "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) return; \n";
   code += "  int src_x = (X + padding.x) / stride.x;\n";
   code += "  int src_y = (Y + padding.y) / stride.y;\n";
   code += "  " + src.GetAddress("src_adr", "src_x", "src_y", "Z") + "\n";

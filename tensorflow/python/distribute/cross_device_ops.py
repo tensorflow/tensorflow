@@ -1087,6 +1087,10 @@ class CollectiveAllReduce(CrossDeviceOps):
     #  ...
     # ]
 
+    # No chunking if number of variables is fewer than number of packs.
+    if len(chunked_by_var) < num_packs:
+      return [chunked_by_var]
+
     # First n-1 chunks get `chunk_size` grads, last chunk gets leftover grads.
     # This strategy can cause the last chunk to have larger size compared to the
     # first n-1 chunks.  Alternatively, we can increment chunk_size by 1 to get
