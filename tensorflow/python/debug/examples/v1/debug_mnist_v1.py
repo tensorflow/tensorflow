@@ -126,7 +126,8 @@ def main(_):
     return imgs, labels
 
   ds_train = tf.data.Dataset.from_tensor_slices(mnist_train)
-  ds_train = ds_train.shuffle(1000).repeat().batch(FLAGS.train_batch_size)
+  ds_train = ds_train.shuffle(
+      1000, seed=RAND_SEED).repeat().batch(FLAGS.train_batch_size)
   ds_train = ds_train.map(format_example)
   it_train = ds_train.make_initializable_iterator()
 
@@ -143,7 +144,8 @@ def main(_):
     handle = tf.placeholder(tf.string, shape=())
 
     iterator = tf.data.Iterator.from_string_handle(
-        handle, (tf.float32, tf.float32), ((None, IMAGE_SIZE * IMAGE_SIZE), ()))
+        handle, (tf.float32, tf.float32),
+        ((None, IMAGE_SIZE * IMAGE_SIZE), (None, 10)))
 
     x, y_ = iterator.get_next()
 
@@ -224,10 +226,10 @@ def main(_):
   # Add this point, sess is a debug wrapper around the actual Session if
   # FLAGS.debug is true. In that case, calling run() will launch the CLI.
   for i in range(FLAGS.max_steps):
-    acc = sess.run(accuracy, feed_dict={handle: train_handle})
+    acc = sess.run(accuracy, feed_dict={handle: test_handle})
     print("Accuracy at step %d: %s" % (i, acc))
 
-    sess.run(train_step, feed_dict={handle: test_handle})
+    sess.run(train_step, feed_dict={handle: train_handle})
 
 
 if __name__ == "__main__":
