@@ -133,11 +133,11 @@ def main(_):
 
       # Get input and output tensor
       data_tensor = tf.get_default_graph().get_tensor_by_name(
-        FLAGS.input_names[0])
+          FLAGS.input_names[0])
       sample_rate_tensor = tf.get_default_graph().get_tensor_by_name(
-        FLAGS.input_names[1])
+          FLAGS.input_names[1])
       output_softmax_tensor = tf.get_default_graph().get_tensor_by_name(
-        FLAGS.output_name)
+          FLAGS.output_name)
 
       # Inference along audio stream.
       for audio_data_offset in range(0, audio_data_end, clip_stride_samples):
@@ -145,18 +145,18 @@ def main(_):
         input_end = audio_data_offset + clip_duration_samples
         outputs = sess.run(output_softmax_tensor,
                            feed_dict={data_tensor: np.expand_dims(
-                             data[input_start:input_end], axis=-1),
-                             sample_rate_tensor: sample_rate})
+                               data[input_start:input_end], axis=-1),
+                               sample_rate_tensor: sample_rate})
         outputs = np.squeeze(outputs)
         current_time_ms = int(audio_data_offset * 1000 / sample_rate)
         try:
           recognize_commands.process_latest_result(outputs, current_time_ms,
-                                                    recognize_element)
+                                                   recognize_element)
         except Exception as e:
           tf.logging.error("Recognition processing failed: {}" % e)
           return
         if (recognize_element.is_new_command and
-            recognize_element.founded_command != '_silence_'):
+                recognize_element.founded_command != '_silence_'):
           all_found_words.append([recognize_element.founded_command,
                                   current_time_ms])
           if FLAGS.verbose:
@@ -166,13 +166,13 @@ def main(_):
               recognition_state = stats.delta()
             except Exception as e:
               tf.logging.error(
-                'Statistics delta computing failed: {}'.format(e))
+                  'Statistics delta computing failed: {}'.format(e))
             else:
               tf.logging.info(
-                '{}ms {}:{}{}'.format(current_time_ms,
-                                           recognize_element.founded_command,
-                                           recognize_element.score,
-                                           recognition_state))
+                  '{}ms {}:{}{}'.format(current_time_ms,
+                                        recognize_element.founded_command,
+                                        recognize_element.score,
+                                        recognition_state))
               stats.print_accuracy_stats()
   stats.calculate_accuracy_stats(all_found_words, -1, FLAGS.time_tolerance_ms)
   stats.print_accuracy_stats()
@@ -181,72 +181,72 @@ def main(_):
 if __name__ == '__main__':
   parser = argparse.ArgumentParser(description='test_streaming_accuracy')
   parser.add_argument(
-    '--wav',
-    type=str,
-    default='',
-    help='The wave file path to evaluate.')
+      '--wav',
+      type=str,
+      default='',
+      help='The wave file path to evaluate.')
   parser.add_argument(
-    '--ground-truth',
-    type=str,
-    default='',
-    help='The ground truth file path corresponding to wav file.')
+      '--ground-truth',
+      type=str,
+      default='',
+      help='The ground truth file path corresponding to wav file.')
   parser.add_argument(
-    '--labels',
-    type=str,
-    default='',
-    help='The label file path containing all possible classes.')
+      '--labels',
+      type=str,
+      default='',
+      help='The label file path containing all possible classes.')
   parser.add_argument(
-    '--model',
-    type=str,
-    default='',
-    help='The model used for inference')
+      '--model',
+      type=str,
+      default='',
+      help='The model used for inference')
   parser.add_argument(
-    '--input-names',
-    type=str,
-    nargs='+',
-    default=['decoded_sample_data:0','decoded_sample_data:1'],
-    help='Input name list involved in model graph.')
+      '--input-names',
+      type=str,
+      nargs='+',
+      default=['decoded_sample_data:0', 'decoded_sample_data:1'],
+      help='Input name list involved in model graph.')
   parser.add_argument(
-    '--output-name',
-    type=str,
-    default='labels_softmax:0',
-    help='Output name involved in model graph.')
+      '--output-name',
+      type=str,
+      default='labels_softmax:0',
+      help='Output name involved in model graph.')
   parser.add_argument(
-    '--clip-duration-ms',
-    type=int,
-    default=1000,
-    help='Length of each audio clip fed into model.')
+      '--clip-duration-ms',
+      type=int,
+      default=1000,
+      help='Length of each audio clip fed into model.')
   parser.add_argument(
-    '--clip-stride-ms',
-    type=int,
-    default=30,
-    help='Length of audio clip stride over main trap.')
+      '--clip-stride-ms',
+      type=int,
+      default=30,
+      help='Length of audio clip stride over main trap.')
   parser.add_argument(
-    '--average_window_duration_ms',
-    type=int,
-    default=500,
-    help='Length of average window used for smoothing results.')
+      '--average_window_duration_ms',
+      type=int,
+      default=500,
+      help='Length of average window used for smoothing results.')
   parser.add_argument(
-    '--detection-threshold',
-    type=float,
-    default=0.7,
-    help='The confidence for filtering unreliable commands')
+      '--detection-threshold',
+      type=float,
+      default=0.7,
+      help='The confidence for filtering unreliable commands')
   parser.add_argument(
-    '--suppression_ms',
-    type=int,
-    default=500,
-    help='The time interval between every two adjacent commands')
+      '--suppression_ms',
+      type=int,
+      default=500,
+      help='The time interval between every two adjacent commands')
   parser.add_argument(
-    '--time-tolerance-ms',
-    type=int,
-    default=1500,
-    help='Time tolerance before and after the timestamp of this audio clip to '
-         'match ground truth')
+      '--time-tolerance-ms',
+      type=int,
+      default=1500,
+      help='Time tolerance before and after the timestamp of this audio clip '
+           'to match ground truth')
   parser.add_argument(
-    '--verbose',
-    action='store_true',
-    default=False,
-    help='Whether to print streaming accuracy on stdout.')
+      '--verbose',
+      action='store_true',
+      default=False,
+      help='Whether to print streaming accuracy on stdout.')
 
   FLAGS, unparsed = parser.parse_known_args()
   tf.logging.set_verbosity(tf.logging.INFO)

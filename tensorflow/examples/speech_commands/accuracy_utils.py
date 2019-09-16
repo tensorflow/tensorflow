@@ -30,7 +30,7 @@ class StreamingAccuracyStats(object):
       _how_many_fp: How many commands have been fired as false positive.
       _how_many_c: How many commands have been fired correctly.
       _how_many_w: How many commands have been fired wrongly.
-      _gt_occurence: A list to record which commands and when it occurs in the
+      _gt_occurrence: A list to record which commands and when it occurs in the
         input audio stream.
       _previous_c: A variable to record the last status of _how_many_c.
       _previous_w: A variable to record the last status of _how_many_w.
@@ -44,7 +44,7 @@ class StreamingAccuracyStats(object):
     self._how_many_fp = 0
     self._how_many_c = 0
     self._how_many_w = 0
-    self._gt_occurence = []
+    self._gt_occurrence = []
     self._previous_c = 0
     self._previous_w = 0
     self._previous_fp = 0
@@ -59,9 +59,8 @@ class StreamingAccuracyStats(object):
           continue
         timestamp = round(float(line_split[1]))
         label = line_split[0]
-        self._gt_occurence.append([label, timestamp])
-    self._gt_occurence = sorted(self._gt_occurence,
-                                          key=lambda item: item[1])
+        self._gt_occurrence.append([label, timestamp])
+    self._gt_occurrence = sorted(self._gt_occurrence, key=lambda item: item[1])
 
   def delta(self):
     """Compute delta of StreamingAccuracyStats against last status and get what
@@ -102,7 +101,7 @@ class StreamingAccuracyStats(object):
     else:
       latest_possible_time = up_to_time_ms + time_tolerance_ms
     self._how_many_gt = 0
-    for ground_truth in self._gt_occurence:
+    for ground_truth in self._gt_occurrence:
       ground_truth_time = ground_truth[1]
       if ground_truth_time > latest_possible_time:
         break
@@ -117,16 +116,16 @@ class StreamingAccuracyStats(object):
       earliest_time = found_time - time_tolerance_ms
       latest_time = found_time + time_tolerance_ms
       has_matched_been_found = False
-      for ground_truth in self._gt_occurence:
+      for ground_truth in self._gt_occurrence:
         ground_truth_time = ground_truth[1]
         if (ground_truth_time > latest_time or ground_truth_time >
-            latest_possible_time):
+                latest_possible_time):
           break
         if ground_truth_time < earliest_time:
           continue
         ground_truth_label = ground_truth[0]
         if (ground_truth_label == found_label and has_gt_matched.count(
-            ground_truth_time) == 0):
+                ground_truth_time) == 0):
           self._how_many_c += 1
         else:
           self._how_many_w += 1
@@ -140,15 +139,16 @@ class StreamingAccuracyStats(object):
   def print_accuracy_stats(self):
     """Write a human-readable description of the statistics to stdout."""
     if self._how_many_gt == 0:
-      tf.logging.info('No ground truth yet, {}false positives'.format(
-        self._how_many_fp))
+      tf.logging.info(
+          'No ground truth yet, {}false positives'.format(self._how_many_fp))
     else:
       any_match_percentage = self._how_many_gt_matched / self._how_many_gt * 100
       correct_match_percentage = self._how_many_c / self._how_many_gt * 100
       wrong_match_percentage = self._how_many_w / self._how_many_gt * 100
       false_positive_percentage = self._how_many_fp / self._how_many_gt * 100
-      tf.logging.info('{:.1f}% matched, {:.1f}% correct, {:.1f}% wrong, '
-                   '{:.1f}% false positive'.format(any_match_percentage,
-                                                   correct_match_percentage,
-                                                   wrong_match_percentage,
-                                                   false_positive_percentage))
+      tf.logging.info(
+          '{:.1f}% matched, {:.1f}% correct, {:.1f}% wrong, '
+          '{:.1f}% false positive'.format(any_match_percentage,
+                                          correct_match_percentage,
+                                          wrong_match_percentage,
+                                          false_positive_percentage))
