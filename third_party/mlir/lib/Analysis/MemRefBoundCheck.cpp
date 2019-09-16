@@ -43,8 +43,8 @@ struct MemRefBoundCheck : public FunctionPass<MemRefBoundCheck> {
 
 } // end anonymous namespace
 
-FunctionPassBase *mlir::createMemRefBoundCheckPass() {
-  return new MemRefBoundCheck();
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createMemRefBoundCheckPass() {
+  return std::make_unique<MemRefBoundCheck>();
 }
 
 void MemRefBoundCheck::runOnFunction() {

@@ -2393,7 +2393,7 @@ bool ConstantFolding::SimplifySwitch(GraphDef* optimized_graph, NodeDef* node) {
     if (fanouts.size() == 2) {
       for (NodeDef* fanout : fanouts) {
         if ((!IsIdentity(*fanout) && !IsIdentityNSingleInput(*fanout)) ||
-            NumNonControlOutputs(*fanout, *node_map_) > 0) {
+            HasRegularOutputs(*fanout, *node_map_)) {
           already_optimized = false;
           break;
         }
@@ -3169,7 +3169,7 @@ bool ConstantFolding::MulConvPushDown(GraphDef* optimized_graph, NodeDef* node,
 bool ConstantFolding::PartialConstPropThroughIdentityN(NodeDef* node) {
   // Partial constant propagation through IdentityN.
   if (!(IsIdentityN(*node) || IsIdentityNSingleInput(*node)) ||
-      NumNonControlInputs(*node) == 0)
+      !HasRegularInputs(*node))
     return false;
 
   std::vector<int> inputs_to_forward;

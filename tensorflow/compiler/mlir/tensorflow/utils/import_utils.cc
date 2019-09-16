@@ -37,6 +37,30 @@ inline llvm::StringRef StringViewToRef(absl::string_view view) {
 
 namespace tensorflow {
 
+Status LoadProtoFromBuffer(absl::string_view input,
+                           tensorflow::protobuf::Message* proto) {
+  tensorflow::protobuf::TextFormat::Parser parser;
+  // Don't produce errors when attempting to parse text format as it would fail
+  // when the input is actually a binary file.
+  NoOpErrorCollector collector;
+  parser.RecordErrorsTo(&collector);
+  // Attempt to parse as text.
+  tensorflow::protobuf::io::ArrayInputStream input_stream(input.data(),
+                                                          input.size());
+  if (parser.Parse(&input_stream, proto)) {
+    return Status::OK();
+  }
+  // Else attempt to parse as binary.
+  proto->Clear();
+  tensorflow::protobuf::io::ArrayInputStream binary_stream(input.data(),
+                                                           input.size());
+  if (proto->ParseFromZeroCopyStream(&binary_stream)) {
+    return Status::OK();
+  }
+  LOG(ERROR) << "Error parsing Protobuf";
+  return errors::InvalidArgument("Could not parse input proto");
+}
+
 Status LoadProtoFromFile(absl::string_view input_filename,
                          tensorflow::protobuf::Message* proto) {
   auto file_or_err =
@@ -45,26 +69,10 @@ Status LoadProtoFromFile(absl::string_view input_filename,
     return errors::InvalidArgument("Could not open input file");
 
   auto& input_file = *file_or_err;
-  std::string content(input_file->getBufferStart(),
-                      input_file->getBufferSize());
+  absl::string_view content(input_file->getBufferStart(),
+                            input_file->getBufferSize());
 
-  tensorflow::protobuf::TextFormat::Parser parser;
-  // Don't produce errors when attempting to parse text format as it would fail
-  // when the input is actually a binary file.
-  NoOpErrorCollector collector;
-  parser.RecordErrorsTo(&collector);
-  // Attempt to parse as text.
-  if (parser.ParseFromString(content, proto)) {
-    return Status::OK();
-  }
-  // Else attempt to parse as binary.
-  proto->Clear();
-  std::istringstream istream(content);
-  if (proto->ParseFromIstream(&istream)) {
-    return Status::OK();
-  }
-  LOG(ERROR) << "Error parsing Protobuf: " << input_filename;
-  return errors::InvalidArgument("Could not parse input file");
+  return LoadProtoFromBuffer(content, proto);
 }
 
 }  // namespace tensorflow

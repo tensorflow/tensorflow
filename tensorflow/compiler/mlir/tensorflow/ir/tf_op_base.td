@@ -178,7 +178,8 @@ def TF_AnyNumber : AnyTypeOf<[TF_Int, AnyFloat, TF_AnyQuantized, TF_AnyComplex],
 
 def TF_NumberTensor : TensorOf<[TF_AnyNumber]>;
 
-def TF_NumberOrStrTensor : TensorOf<[TF_AnyNumber, TF_Str]>;
+def TF_NumberOrStr : AnyTypeOf<[AnyFloat, TF_SInt, TF_AnyComplex, TF_Uint8, TF_Str]>;
+def TF_NumberOrStrTensor : TensorOf<[TF_NumberOrStr]>;
 
 //===----------------------------------------------------------------------===//
 // TensorFlow attribute definitions

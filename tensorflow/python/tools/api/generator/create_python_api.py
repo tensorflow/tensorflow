@@ -105,7 +105,9 @@ def get_canonical_import(import_set):
 class _ModuleInitCodeBuilder(object):
   """Builds a map from module name to imports included in that module."""
 
-  def __init__(self, output_package, api_version, lazy_loading=_LAZY_LOADING):
+  def __init__(
+      self, output_package, api_version, lazy_loading=_LAZY_LOADING,
+      use_relative_imports=False):
     self._output_package = output_package
     # Maps API module to API symbol name to set of tuples of the form
     # (module name, priority).
@@ -120,6 +122,7 @@ class _ModuleInitCodeBuilder(object):
     # Controls whether or not exported symbols are lazily loaded or statically
     # imported.
     self._lazy_loading = lazy_loading
+    self._use_relative_imports = use_relative_imports
 
   def _check_already_imported(self, symbol_id, api_name):
     if (api_name in self._dest_import_to_id and
@@ -199,7 +202,10 @@ class _ModuleInitCodeBuilder(object):
               dest_module_name=parent_module,
               dest_name=module_split[submodule_index])
         else:
-          import_from = '.'
+          if self._use_relative_imports:
+            import_from = '.'
+          elif submodule_index > 0:
+            import_from += '.' + '.'.join(module_split[:submodule_index])
           self.add_import(
               symbol=None,
               source_module_name=import_from,
@@ -378,7 +384,8 @@ def get_api_init_text(packages,
                       api_name,
                       api_version,
                       compat_api_versions=None,
-                      lazy_loading=_LAZY_LOADING):
+                      lazy_loading=_LAZY_LOADING,
+                      use_relative_imports=False):
   """Get a map from destination module to __init__.py code for that module.
 
   Args:
@@ -392,6 +399,8 @@ def get_api_init_text(packages,
       directory.
     lazy_loading: Boolean flag. If True, a lazy loading `__init__.py` file is
       produced and if `False`, static imports are used.
+    use_relative_imports: True if we should use relative imports when
+      importing submodules.
 
   Returns:
     A dictionary where
@@ -402,7 +411,7 @@ def get_api_init_text(packages,
   if compat_api_versions is None:
     compat_api_versions = []
   module_code_builder = _ModuleInitCodeBuilder(
-      output_package, api_version, lazy_loading)
+      output_package, api_version, lazy_loading, use_relative_imports)
   # Traverse over everything imported above. Specifically,
   # we want to traverse over TensorFlow Python modules.
 
@@ -517,7 +526,7 @@ def get_module_docstring(module_name, package, api_name):
 def create_api_files(output_files, packages, root_init_template, output_dir,
                      output_package, api_name, api_version,
                      compat_api_versions, compat_init_templates,
-                     lazy_loading=_LAZY_LOADING):
+                     lazy_loading=_LAZY_LOADING, use_relative_imports=False):
   """Creates __init__.py files for the Python API.
 
   Args:
@@ -537,6 +546,8 @@ def create_api_files(output_files, packages, root_init_template, output_dir,
       in the same order as compat_api_versions.
     lazy_loading: Boolean flag. If True, a lazy loading `__init__.py` file is
       produced and if `False`, static imports are used.
+    use_relative_imports: True if we should use relative imports when
+      import submodules.
 
   Raises:
     ValueError: if output_files list is missing a required file.
@@ -554,7 +565,7 @@ def create_api_files(output_files, packages, root_init_template, output_dir,
 
   module_text_map, deprecation_footer_map = get_api_init_text(
       packages, output_package, api_name,
-      api_version, compat_api_versions, lazy_loading)
+      api_version, compat_api_versions, lazy_loading, use_relative_imports)
 
   # Add imports to output files.
   missing_output_files = []
@@ -657,6 +668,10 @@ def main():
            '\'static\' means all exported symbols are loaded in the '
            '__init__.py file. \'default\' uses the value of the '
            '_LAZY_LOADING constant in create_python_api.py.')
+  parser.add_argument(
+      '--use_relative_imports', default=False, type=bool,
+      help='Whether to import submodules using relative imports or absolute '
+           'imports')
   args = parser.parse_args()
 
   if len(args.outputs) == 1:
@@ -687,7 +702,7 @@ def main():
   create_api_files(outputs, packages, args.root_init_template, args.apidir,
                    args.output_package, args.apiname, args.apiversion,
                    args.compat_apiversions, args.compat_init_templates,
-                   lazy_loading)
+                   lazy_loading, args.use_relative_imports)
 
 
 if __name__ == '__main__':

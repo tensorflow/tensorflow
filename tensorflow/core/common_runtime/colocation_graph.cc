@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/partitioning_utils.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -683,6 +684,16 @@ Status ColocationGraph::ColocateResourceAndRefEdges(
     }
 
     DataType input_type = dst->input_type(edge->dst_input());
+
+    // Colocate two DatasetOp nodes connected by edge of dtype=DT_VARIANT.
+    // This is needed to get around the issue in b/135705778.
+    if (input_type == DT_VARIANT &&
+        data::DatasetOpKernel::IsDatasetOp(&src->op_def()) &&
+        data::DatasetOpKernel::IsDatasetOp(&dst->op_def())) {
+      TF_RETURN_IF_ERROR(ColocateResourceOrRefEdge(src, dst));
+      continue;
+    }
+
     // Even though we can look inside function calling ops, we make an exception
     // here mostly for performance reasons. Looking inside function calling ops
     // is extra overhead. It is only necessary when they return resources. When

@@ -514,8 +514,13 @@ TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64 n) {
       std::copy_n(begin, n, data);
     } else {
       std::copy_n(begin, in_n, data);
-      const T& last = *(data + in_n - 1);
-      std::fill_n(data + in_n, n - in_n, last);
+      if (std::is_trivially_copyable<T>::value) {
+        const T last = *(data + in_n - 1);
+        std::fill_n(data + in_n, n - in_n, last);
+      } else {
+        const T& last = *(data + in_n - 1);
+        std::fill_n(data + in_n, n - in_n, last);
+      }
     }
   }
 
@@ -648,14 +653,14 @@ bool Tensor::IsInitialized() const {
 }
 
 void Tensor::CheckType(DataType expected_dtype) const {
-  CHECK_EQ(dtype(), expected_dtype) << " "
-      << DataTypeString(expected_dtype) << " expected, got "
+  CHECK_EQ(dtype(), expected_dtype)
+      << " " << DataTypeString(expected_dtype) << " expected, got "
       << DataTypeString(dtype());
 }
 
 void Tensor::CheckTypeAndIsAligned(DataType expected_dtype) const {
-  CHECK_EQ(dtype(), expected_dtype) << " "
-      << DataTypeString(expected_dtype) << " expected, got "
+  CHECK_EQ(dtype(), expected_dtype)
+      << " " << DataTypeString(expected_dtype) << " expected, got "
       << DataTypeString(dtype());
   CHECK(IsAligned()) << "ptr = " << base<void>();
 }

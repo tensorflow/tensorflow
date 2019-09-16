@@ -820,8 +820,10 @@ OperationLegalizer::legalizePattern(Operation *op, RewritePattern *pattern,
   for (unsigned i = curState.numCreatedOperations,
                 e = rewriterImpl.createdOps.size();
        i != e; ++i) {
-    if (failed(legalize(rewriterImpl.createdOps[i], rewriter))) {
-      LLVM_DEBUG(llvm::dbgs() << "-- FAIL: Generated operation was illegal.\n");
+    Operation *op = rewriterImpl.createdOps[i];
+    if (failed(legalize(op, rewriter))) {
+      LLVM_DEBUG(llvm::dbgs() << "-- FAIL: Generated operation '"
+                              << op->getName() << "' was illegal.\n");
       return cleanupFailure();
     }
   }

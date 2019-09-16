@@ -1774,4 +1774,13 @@ StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
                                      add_default_attributes, context);
 }
 
+std::string MlirModuleToString(mlir::ModuleOp module) {
+  std::string txt_module;
+  {
+    llvm::raw_string_ostream os{txt_module};
+    module.print(os);
+  }
+  return txt_module;
+}
+
 }  // namespace tensorflow

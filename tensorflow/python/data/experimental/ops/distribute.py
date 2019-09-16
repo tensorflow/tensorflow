@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
@@ -99,17 +98,10 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
 
     self._element_spec = structure.convert_legacy_structure(
         input_types, output_shapes, input_classes)
-    if compat.forward_compatible(2019, 8, 13) or not use_fallback:
-      variant_tensor = ged_ops.rebatch_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          num_replicas=num_replicas,
-          use_fallback=use_fallback,
-          **self._flat_structure)
-    else:
-      variant_tensor = ged_ops.rebatch_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          num_replicas=num_replicas,
-          **self._flat_structure)
+    variant_tensor = ged_ops.rebatch_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        num_replicas=num_replicas,
+        **self._flat_structure)
     super(_RebatchDataset, self).__init__(input_dataset, variant_tensor)
 
   @property

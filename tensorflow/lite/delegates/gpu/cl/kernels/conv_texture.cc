@@ -149,9 +149,9 @@ std::string GenerateConvCode(
     c += "  int yc = " + dst_y + " + " + std::to_string(i / 2) + ";\n";
     c += "  if (xc < dst_size.x && yc < dst_size.y) {\n";
     c += "    FLT4 res = TO_FLT4(r" + std::to_string(i) + ") + bias_val;\n";
-    c += "  " + dst_tensor.GetAddress("address", "xc", "yc", "Z") + "\n";
-    c += PostProcess(linked_operations, "res", "Z", "address");
-    c += "  " + dst_tensor.Write3D("res", "address") + "\n";
+    const LinkingContext context{"res", "xc", "yc", "Z"};
+    c += PostProcess(linked_operations, context);
+    c += "  " + dst_tensor.Write3D("res", "xc", "yc", "Z") + "\n";
     c += "  }\n";
     c += "  }\n";
   }
@@ -165,9 +165,9 @@ std::string GenerateConvCode(
     c += "  int yc = " + dst_y + " + " + std::to_string(i / 2) + ";\n";
     c += "  if (xc < dst_size.x && yc < dst_size.y) {\n";
     c += "    FLT4 res = TO_FLT4(r" + std::to_string(i + 4) + ") + bias_val;\n";
-    c += "  " + dst_tensor.GetAddress("address", "xc", "yc", "Z") + "\n";
-    c += PostProcess(linked_operations, "res", "Z", "address");
-    c += "  " + dst_tensor.Write3D("res", "address") + "\n";
+    const LinkingContext context{"res", "xc", "yc", "Z"};
+    c += PostProcess(linked_operations, context);
+    c += "  " + dst_tensor.Write3D("res", "xc", "yc", "Z") + "\n";
     c += "  }\n";
     c += "  }\n";
   }

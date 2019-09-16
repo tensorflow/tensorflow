@@ -1142,6 +1142,16 @@ TF_Output TF_OperationInput(TF_Input oper_in) {
   return {ToOperation(edge->src()), edge->src_output()};
 }
 
+void TF_OperationAllInputs(TF_Operation* oper, TF_Output* inputs,
+                           int max_inputs) {
+  for (auto* edge : oper->node.in_edges()) {
+    if (edge->dst_input() >= 0 && edge->dst_input() < max_inputs) {
+      inputs[edge->dst_input()] = {ToOperation(edge->src()),
+                                   edge->src_output()};
+    }
+  }
+}
+
 int TF_OperationOutputNumConsumers(TF_Output oper_out) {
   int count = 0;
   for (const auto* edge : oper_out.oper->node.out_edges()) {

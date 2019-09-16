@@ -308,7 +308,7 @@ void ExecutorIslandCoarsening::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<FunctionPassBase> CreateTFExecutorIslandCoarseningPass() {
+std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorIslandCoarseningPass() {
   return std::make_unique<ExecutorIslandCoarsening>();
 }
 

@@ -54,9 +54,15 @@ from tensorflow.python.util.lazy_loader import LazyLoader
 base_layer = LazyLoader(
     "base_layer", globals(),
     "tensorflow.python.keras.engine.base_layer")
+input_layer = LazyLoader(
+    "input_layer", globals(),
+    "tensorflow.python.keras.engine.input_layer")
 training_lib = LazyLoader(
     "training_lib", globals(),
     "tensorflow.python.keras.engine.training")
+sequential_lib = LazyLoader(
+    "sequential_lib", globals(),
+    "tensorflow.python.keras.engine.sequential")
 # pylint:enable=g-inconsistent-quotes
 
 
@@ -147,7 +153,7 @@ def wrap_layer_functions(layer, serialization_cache):
   # Since Sequential models may be modified in place using model.add() or
   # model.pop(), don't use saved functions.
   if (isinstance(layer, keras_load.RevivedLayer) and
-      not isinstance(layer, keras_load.RevivedSequential)):
+      not isinstance(layer, sequential_lib.Sequential)):
     return {fn_name: getattr(layer.keras_api, fn_name, None)
             for fn_name in serialized_attributes.LayerAttributes.all_functions}
 
@@ -212,7 +218,8 @@ def _list_all_layers(obj):
   if isinstance(obj, training_lib.Model):
     return obj.layers
   else:
-    return trackable_layer_utils.filter_empty_layer_containers(obj._layers)  # pylint: disable=protected-access
+    return list(
+        trackable_layer_utils.filter_empty_layer_containers(obj._layers))  # pylint: disable=protected-access
 
 
 def _replace_child_layer_functions(layer, serialization_cache):
@@ -242,6 +249,9 @@ def _replace_child_layer_functions(layer, serialization_cache):
   # pylint: disable=protected-access
   original_fns = {}
   for child_layer in _list_all_layers(layer):
+    if isinstance(child_layer, input_layer.InputLayer):
+      continue
+
     if child_layer not in serialization_cache[constants.KERAS_CACHE_KEY]:
       layer_fns = (
           child_layer._trackable_saved_model_saver._get_serialized_attributes(

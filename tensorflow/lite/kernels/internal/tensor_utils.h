@@ -102,6 +102,32 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
     const float* scaling_factors, int n_batch, float* __restrict__ result,
     int result_stride);
 
+// Multiplies a matrix by a "batched" vector (i.e. a matrix with a batch
+// dimension composed by input vectors independent from each other). The result
+// of the multiplication is accumulated to the passed result buffer.
+// More specifically, for a matrix M of shape [n, i] and a batched-vector
+// of shape [i, batch] it will first compute the product of shape [n, batch].
+// This product will be accumulated to the result buffer,
+// Parameters:
+//     - input: batch vector of size n_batch * n_input
+//     - bias:  vector of size b_input
+//     - input_to_gate_weights: matrix of size n_input * n_output
+//     - multiplier: scalar
+//     - shift: scalar
+//     - n_batch: the batch size
+//     - n_input: the input size
+//     - n_output: the output size
+//     - output_zp: the zero point of the output.
+//     - scratch: batch vector of size n_batch * n_output
+//     - output: the 16 bit output
+// Notes:
+//     - this is used for gate matmul: for non-cifg it is for input, forget,
+//       cell, output gates; for cifg, it is for forget, cell, output gates.
+//     - multiplier and shift combined gives the scale.
+//     - assumes input zero point is 0.
+//     - scratch is created for optimization purpose only.
+//       TODO(jianlijianli): this can be removed if some furture optimization
+//       work makes it unnecesssary.
 void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
                                          const int32_t* bias,
                                          const int8_t* input_to_gate_weights,
@@ -110,6 +136,31 @@ void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
                                          int32_t n_output, int32_t output_zp,
                                          int32_t* scratch, int16_t* output);
 
+// Multiplies a matrix by a "batched" vector (i.e. a matrix with a batch
+// dimension composed by input vectors independent from each other). The result
+// of the multiplication is accumulated to the passed result buffer.
+// More specifically, for a matrix M of shape [n, i] and a batched-vector
+// of shape [i, batch] it will first compute the product of shape [n, batch].
+// This product will be accumulated to the result buffer,
+// Parameters:
+//     - input: batch vector of size n_batch * n_input
+//     - bias:  vector of size b_input
+//     - input_to_gate_weights: matrix of size n_input * n_output
+//     - multiplier: scalar
+//     - shift: scalar
+//     - n_batch: the batch size
+//     - n_input: the input size
+//     - n_output: the output size
+//     - output_zp: the zero point of the output.
+//     - scratch: batch vector of size n_batch * n_output
+//     - output: the 8 bit output
+// Notes:
+//     - this is used for projection matmul.
+//     - multiplier and shift combined gives the scale.
+//     - assumes input zero point is 0.
+//     - scratch is created for optimization purpose only.
+//       TODO(jianlijianli): this can be removed if some furture optimization
+//       work makes it unnecesssary.
 void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
                                          const int32_t* bias,
                                          const int8_t* input_to_gate_weights,

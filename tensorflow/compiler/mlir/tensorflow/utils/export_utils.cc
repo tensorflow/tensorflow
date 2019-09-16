@@ -155,6 +155,15 @@ Status ConvertAttribute(const mlir::ArrayAttr& attr, AttrValue* value) {
       AttrValue attrVal;
       TF_RETURN_IF_ERROR(ConvertAttribute(attr, &attrVal));
       *list->add_func() = attrVal.func();
+    } else if (auto attr = a.dyn_cast<mlir::TypeAttr>()) {
+      // For type attributes, we only propagate the element type.
+      mlir::Type elt_type = attr.getValue();
+      if (auto shaped_type = elt_type.dyn_cast<mlir::ShapedType>()) {
+        elt_type = shaped_type.getElementType();
+      }
+      DataType dtype;
+      TF_RETURN_IF_ERROR(ConvertToDataType(elt_type, &dtype));
+      list->add_type(dtype);
     } else {
       return errors::Unimplemented("Unhandled attribute!");
     }

@@ -842,6 +842,22 @@ Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
   }
 }
 
+/* static */
+void XlaCompiler::PopulateArgumentFromResource(const XlaResource& resource,
+                                               Argument* arg) {
+  arg->initialized = resource.initialized();
+  arg->kind = XlaCompiler::Argument::kResource;
+  arg->resource_kind = resource.kind();
+
+  arg->type = resource.type();
+  arg->shape = resource.shape();
+  arg->max_array_size = resource.max_array_size();
+  for (const auto& gradient : resource.tensor_array_gradients()) {
+    arg->tensor_array_gradients.insert(gradient.first);
+  }
+  arg->name = resource.name();
+}
+
 // Builds XLA computations for each of the arguments to the computation.
 // `args` are the arguments to the computation.
 Status XlaCompiler::BuildArguments(

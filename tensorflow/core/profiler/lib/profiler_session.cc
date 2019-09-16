@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/profiler_utils.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/trace_events.pb.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 namespace {
@@ -154,6 +155,18 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
 /*static*/ std::unique_ptr<ProfilerSession> ProfilerSession::Create(
     const profiler::ProfilerOptions& options) {
   return absl::WrapUnique(new ProfilerSession(options));
+}
+
+/*static*/ std::unique_ptr<ProfilerSession> ProfilerSession::Create() {
+  int64 host_tracer_level = 2;
+  tensorflow::Status s = ReadInt64FromEnvVar("TF_PROFILER_HOST_TRACER_LEVEL", 2,
+                                             &host_tracer_level);
+  if (!s.ok()) {
+    LOG(WARNING) << "ProfilerSession: " << s.error_message();
+  }
+  profiler::ProfilerOptions options;
+  options.host_tracer_level = host_tracer_level;
+  return Create(options);
 }
 
 Status ProfilerSession::Status() {

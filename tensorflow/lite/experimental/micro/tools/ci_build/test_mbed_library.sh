@@ -28,6 +28,6 @@ mbed deploy
 python -c 'import fileinput, glob;
 for filename in glob.glob("mbed-os/tools/profiles/*.json"):
   for line in fileinput.input(filename, inplace=True):
-    print line.replace("\"-std=gnu++98\"","\"-std=c++11\", \"-fpermissive\"")'
+    print(line.replace("\"-std=gnu++98\"","\"-std=c++11\", \"-fpermissive\""))'
 
 mbed compile -m DISCO_F746NG -t GCC_ARM

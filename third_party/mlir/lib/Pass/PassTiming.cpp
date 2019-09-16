@@ -289,8 +289,15 @@ void PassTiming::startPassTimer(Pass *pass) {
   auto kind = isAdaptorPass(pass) ? TimerKind::PipelineCollection
                                   : TimerKind::PassOrAnalysis;
   Timer *timer = getTimer(pass, kind, [pass]() -> std::string {
-    if (auto pipelineName = getAdaptorPassOpName(pass))
-      return ("Pipeline Collection : ['" + *pipelineName + "']").str();
+    if (auto *adaptor = getAdaptorPassBase(pass)) {
+      std::string name = "Pipeline Collection : [";
+      llvm::raw_string_ostream os(name);
+      interleaveComma(adaptor->getPassManagers(), os, [&](OpPassManager &pm) {
+        os << '\'' << pm.getOpName() << '\'';
+      });
+      os << ']';
+      return os.str();
+    }
     return pass->getName();
   });
 
@@ -469,6 +476,6 @@ void PassManager::enableTiming(PassTimingDisplayMode displayMode) {
   // Check if pass timing is already enabled.
   if (passTiming)
     return;
-  addInstrumentation(new PassTiming(displayMode));
+  addInstrumentation(std::make_unique<PassTiming>(displayMode));
   passTiming = true;
 }

@@ -110,7 +110,7 @@ private:
 
 } // anonymous namespace
 
-std::unique_ptr<ModulePassBase> createGenerateCubinAccessorPass() {
+std::unique_ptr<OpPassBase<ModuleOp>> createGenerateCubinAccessorPass() {
   return std::make_unique<GpuGenerateCubinAccessorsPass>();
 }
 

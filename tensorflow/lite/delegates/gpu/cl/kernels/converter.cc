@@ -425,7 +425,7 @@ class OpenClTensorConverterBuilder : public TensorObjectConverterBuilder {
       : environment_(environment) {}
 
   bool IsSupported(const TensorObjectDef& input,
-                   const TensorObjectDef& output) final {
+                   const TensorObjectDef& output) const final {
     const auto& input_def = input.object_def;
     const auto& output_def = output.object_def;
     return input.dimensions == output.dimensions &&

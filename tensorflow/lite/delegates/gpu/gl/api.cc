@@ -381,11 +381,6 @@ bool IsBatchMatchesForAllValues(const GraphFloat32& model) {
   return true;
 }
 
-bool IsOpenGl31OrAbove(const GpuInfo& gpu_info) {
-  return (gpu_info.major_version == 3 && gpu_info.minor_version >= 1) ||
-         gpu_info.major_version > 3;
-}
-
 }  // namespace
 
 Status Compile(const CompilationOptions& options, const GraphFloat32& model,

@@ -400,7 +400,7 @@ filegroup(
 
 py_binary(
     name = "lit",
-    srcs = ["utils/lit/lit.py"] + glob(["utils/lit/lit/*.py"]),
+    srcs = ["utils/lit/lit.py"] + glob(["utils/lit/lit/**/*.py"]),
 )
 
 cc_binary(

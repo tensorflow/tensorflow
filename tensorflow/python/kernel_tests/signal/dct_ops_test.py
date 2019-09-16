@@ -42,11 +42,7 @@ fftpack = try_import("scipy.fftpack")
 
 
 def _modify_input_for_dct(signals, n=None):
-  """ This is a supporting function for the numpy implementation
-
-  of DCT operations. If n < signal size, it returns the first n elements,
-  else it pads the signal with zeros.
-  """
+  """Pad or trim the provided NumPy array's innermost axis to length n."""
   signal = np.array(signals)
   if n is None or n == signal.shape[-1]:
     signal_mod = signal
@@ -127,15 +123,16 @@ NP_DCT = {1: _np_dct1, 2: _np_dct2, 3: _np_dct3}
 NP_IDCT = {1: _np_dct1, 2: _np_dct3, 3: _np_dct2}
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class DCTOpsTest(parameterized.TestCase, test.TestCase):
 
   def _compare(self, signals, n, norm, dct_type, atol=5e-4, rtol=5e-4):
     """Compares (I)DCT to SciPy (if available) and a NumPy implementation."""
     np_dct = NP_DCT[dct_type](signals, n=n, norm=norm)
-    tf_dct = dct_ops.dct(signals, n=n, type=dct_type, norm=norm).eval()
+    tf_dct = dct_ops.dct(signals, n=n, type=dct_type, norm=norm)
     self.assertAllClose(np_dct, tf_dct, atol=atol, rtol=rtol)
     np_idct = NP_IDCT[dct_type](signals, n=None, norm=norm)
-    tf_idct = dct_ops.idct(signals, type=dct_type, norm=norm).eval()
+    tf_idct = dct_ops.idct(signals, type=dct_type, norm=norm)
     self.assertAllClose(np_idct, tf_idct, atol=atol, rtol=rtol)
     if fftpack:
       scipy_dct = fftpack.dct(signals, n=n, type=dct_type, norm=norm)
@@ -143,12 +140,11 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
       scipy_idct = fftpack.idct(signals, type=dct_type, norm=norm)
       self.assertAllClose(scipy_idct, tf_idct, atol=atol, rtol=rtol)
     # Verify inverse(forward(s)) == s, up to a normalization factor.
-    # Since `n` is not implemented for IDCT operation, re-calculating tf_dct without n.
-    tf_dct = dct_ops.dct(signals, type=dct_type, norm=norm).eval()
-    tf_idct_dct = dct_ops.idct(
-        tf_dct, type=dct_type, norm=norm).eval()
-    tf_dct_idct = dct_ops.dct(
-        tf_idct, type=dct_type, norm=norm).eval()
+    # Since `n` is not implemented for IDCT operation, re-calculating tf_dct
+    # without n.
+    tf_dct = dct_ops.dct(signals, type=dct_type, norm=norm)
+    tf_idct_dct = dct_ops.idct(tf_dct, type=dct_type, norm=norm)
+    tf_dct_idct = dct_ops.dct(tf_idct, type=dct_type, norm=norm)
     if norm is None:
       if dct_type == 1:
         tf_idct_dct *= 0.5 / (signals.shape[-1] - 1)
@@ -161,7 +157,6 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
 
   @parameterized.parameters([
       [[2]], [[3]], [[10]], [[2, 20]], [[2, 3, 25]]])
-  @test_util.run_deprecated_v1
   def test_random(self, shape):
     """Test randomly generated batches of data."""
     with self.session(use_gpu=True):

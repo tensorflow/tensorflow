@@ -390,7 +390,8 @@ void LowerLinalgToLoopsPass::runOnFunction() {
   }
 }
 
-std::unique_ptr<FunctionPassBase> mlir::linalg::createLowerLinalgToLoopsPass() {
+std::unique_ptr<OpPassBase<FuncOp>>
+mlir::linalg::createLowerLinalgToLoopsPass() {
   return std::make_unique<LowerLinalgToLoopsPass>();
 }
 

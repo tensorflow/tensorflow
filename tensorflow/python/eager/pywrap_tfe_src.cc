@@ -43,6 +43,31 @@ using tensorflow::strings::Printf;
 
 namespace {
 
+thread_local std::unique_ptr<TFE_Op> thread_local_eager_operation =  // NOLINT
+    nullptr;
+
+TFE_Op* ReleaseThreadLocalOp() {
+  if (thread_local_eager_operation == nullptr) {
+    return nullptr;
+  }
+  return thread_local_eager_operation.release();
+}
+
+TFE_Op* CreateOrResetOp(TFE_Context* ctx, const char* op_or_function_name,
+                        TF_Status* status, TFE_Op* op_to_reset) {
+  if (op_to_reset) {
+    TFE_OpReset(ctx, op_or_function_name, status, op_to_reset);
+    return op_to_reset;
+  } else {
+    return TFE_NewOp(ctx, op_or_function_name, status);
+  }
+}
+
+void ClearAndReturnThreadLocalOp(TFE_Op* object) {
+  object->Clear();
+  thread_local_eager_operation.reset(object);
+}
+
 struct InputInfo {
   InputInfo(int i, bool is_list) : i(i), is_list(is_list) {}
 
@@ -735,7 +760,10 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
                               TFE_CancellationManager* cancellation_manager,
                               TFE_OutputTensorHandles* outputs,
                               TF_Status* out_status) {
-  TFE_Op* op = TFE_NewOp(ctx, op_name, out_status);
+  TFE_Op* op =
+      CreateOrResetOp(ctx, op_name, out_status, ReleaseThreadLocalOp());
+  auto cleaner =
+      tensorflow::gtl::MakeCleanup([op] { ClearAndReturnThreadLocalOp(op); });
   if (!out_status->status.ok()) return;
   TFE_OpSetDevice(op, device_name, out_status);
   if (out_status->status.ok()) {
@@ -761,7 +789,6 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
                                              " [Op:", op_name, "]")
                      .c_str());
   }
-  TFE_DeleteOp(op);
   Py_END_ALLOW_THREADS;
 }
 
@@ -3253,10 +3280,11 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
     return nullptr;
   }
 
-  TFE_Op* op = TFE_NewOp(op_exec_info.ctx, op_name, status);
+  TFE_Op* op = CreateOrResetOp(op_exec_info.ctx, op_name, status,
+                               ReleaseThreadLocalOp());
   auto cleaner = tensorflow::gtl::MakeCleanup([status, op] {
     TF_DeleteStatus(status);
-    TFE_DeleteOp(op);
+    ClearAndReturnThreadLocalOp(op);
   });
   if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
     return nullptr;
@@ -3572,6 +3600,8 @@ const char kShapeDelim[] = "-";
 const char kDType[] = "d";
 const char kNone[] = "n";
 const char kCompositeTensor[] = "C";
+const char kAttrs[] = "A";
+const char kAttrsEnd[] = "a";
 
 struct EncodeResult {
   string str;
@@ -3748,6 +3778,20 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
           "Error while reading CompositeTensor._type_spec.");
     }
     result->objects.push_back(type_spec);
+  } else if (tensorflow::swig::IsAttrs(arg)) {
+    absl::StrAppend(&result->str, kAttrs);
+    tensorflow::Safe_PyObjectPtr attrs(
+        PyObject_GetAttrString(arg, "__attrs_attrs__"));
+    tensorflow::Safe_PyObjectPtr iter(PyObject_GetIter(attrs.get()));
+    for (tensorflow::Safe_PyObjectPtr item(PyIter_Next(iter.get())); item;
+         item.reset(PyIter_Next(iter.get()))) {
+      tensorflow::Safe_PyObjectPtr name(
+          PyObject_GetAttrString(item.get(), "name"));
+      tensorflow::Safe_PyObjectPtr attr_arg(PyObject_GetAttr(arg, name.get()));
+      TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelper(
+          attr_arg.get(), include_tensor_ranks_only, result));
+    }
+    absl::StrAppend(&result->str, kAttrsEnd);
   } else {
     PyObject* object = PyWeakref_NewRef(arg, nullptr);
 

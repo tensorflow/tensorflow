@@ -112,7 +112,7 @@ void PrepareCompositeFunctionsPass::runOnFunction() {
 }
 }  // namespace
 
-std::unique_ptr<FunctionPassBase> CreatePrepareCompositeFunctionsPass() {
+std::unique_ptr<OpPassBase<FuncOp>> CreatePrepareCompositeFunctionsPass() {
   return std::unique_ptr<PrepareCompositeFunctionsPass>();
 }
 

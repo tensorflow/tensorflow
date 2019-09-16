@@ -174,7 +174,7 @@ class FromTensorConverter : public OpenGlConverterImpl {
   BHWC shape_;
 };
 
-// Implements conversion from BHWC to OpenCL-specific tensor layout.
+// Implements conversion from BHWC to OpenGL-specific tensor layout.
 class ToTensorConverter : public OpenGlConverterImpl {
  public:
   explicit ToTensorConverter(CommandQueue* command_queue)
@@ -332,7 +332,7 @@ class CpuCopier : public TensorObjectConverter {
         GlBuffer gl_buffer;
         RETURN_IF_ERROR(WrapSSBO(*ssbo_input, &gl_buffer));
         return gl_buffer.Read(absl::MakeSpan(
-            static_cast<uint8_t*>(cpu_input->data), cpu_input->size_bytes));
+            static_cast<uint8_t*>(cpu_output->data), cpu_output->size_bytes));
       }
     }
     return InternalError("Unexpected object");
@@ -345,7 +345,7 @@ class TensorConverterBuilderImpl : public TensorObjectConverterBuilder {
       : command_queue_(command_queue) {}
 
   bool IsSupported(const TensorObjectDef& input,
-                   const TensorObjectDef& output) final {
+                   const TensorObjectDef& output) const final {
     const auto& input_def = input.object_def;
     const auto& output_def = output.object_def;
     return input.dimensions == output.dimensions &&

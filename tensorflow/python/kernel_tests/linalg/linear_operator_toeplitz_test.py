@@ -22,9 +22,12 @@ import contextlib
 import numpy as np
 import scipy.linalg
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.ops.linalg import linear_operator_toeplitz
@@ -35,6 +38,7 @@ linalg = linalg_lib
 _to_complex = linear_operator_toeplitz._to_complex
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class LinearOperatorToeplitzTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
@@ -134,6 +138,25 @@ class LinearOperatorToeplitzTest(
 
     with self.assertRaisesRegexp(ValueError, "must have at least 1 dimension"):
       linear_operator_toeplitz.LinearOperatorToeplitz(1., [1.])
+
+  def test_tape_safe(self):
+    col = variables_module.Variable([1.])
+    row = variables_module.Variable([1.])
+    operator = linear_operator_toeplitz.LinearOperatorToeplitz(
+        col, row, is_self_adjoint=True, is_positive_definite=True)
+    self.check_tape_safe(
+        operator,
+        skip_options=[
+            # .diag_part, .trace depend only on `col`, so test explicitly below.
+            linear_operator_test_util.CheckTapeSafeSkipOptions.DIAG_PART,
+            linear_operator_test_util.CheckTapeSafeSkipOptions.TRACE,
+        ])
+
+    with backprop.GradientTape() as tape:
+      self.assertIsNotNone(tape.gradient(operator.diag_part(), col))
+
+    with backprop.GradientTape() as tape:
+      self.assertIsNotNone(tape.gradient(operator.trace(), col))
 
 
 if __name__ == "__main__":

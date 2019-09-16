@@ -64,27 +64,33 @@ static bool isHiddenPass(Pass *pass) {
 }
 
 static void printIR(Operation *op, bool printModuleScope, raw_ostream &out) {
-  // Check for printing at module scope.
-  auto function = dyn_cast<FuncOp>(op);
-  if (printModuleScope && function) {
-    // Print the function name and a newline before the Module.
-    out << " (function: " << function.getName() << ")\n";
-    function.getParentOfType<ModuleOp>().print(out);
-    return;
-  }
+  // Check to see if we are printing the top-level module.
+  auto module = dyn_cast<ModuleOp>(op);
+  if (module && !op->getBlock())
+    return module.print(out << "\n");
 
-  // Print a newline before the IR.
-  out << "\n";
+  // Otherwise, check to see if we are not printing at module scope.
+  if (!printModuleScope)
+    return op->print(out << "\n");
 
-  // Print the given function.
-  if (function) {
-    function.print(out);
-    return;
-  }
+  // Otherwise, we are printing at module scope.
+  out << " ('" << op->getName() << "' operation";
+  if (auto symbolName =
+          op->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName()))
+    out << ": @" << symbolName.getValue();
+  out << ")\n";
 
-  // Print the given module.
-  assert(isa<ModuleOp>(op) && "unexpected IR unit");
-  cast<ModuleOp>(op).print(out);
+  // Find the top-level module operation.
+  auto *topLevelOp = op;
+  while (auto *parentOp = topLevelOp->getParentOp())
+    topLevelOp = parentOp;
+
+  // Check to see if the top-level operation is actually a module in the case of
+  // invalid-ir.
+  if (auto module = dyn_cast<ModuleOp>(topLevelOp))
+    module.print(out);
+  else
+    topLevelOp->print(out);
 }
 
 /// Instrumentation hooks.
@@ -127,7 +133,7 @@ void PassManager::enableIRPrinting(
     std::function<bool(Pass *)> shouldPrintBeforePass,
     std::function<bool(Pass *)> shouldPrintAfterPass, bool printModuleScope,
     raw_ostream &out) {
-  addInstrumentation(new IRPrinterInstrumentation(
+  addInstrumentation(std::make_unique<IRPrinterInstrumentation>(
       std::move(shouldPrintBeforePass), std::move(shouldPrintAfterPass),
       printModuleScope, out));
 }

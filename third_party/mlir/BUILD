@@ -3,10 +3,7 @@
 
 licenses(["notice"])
 
-package(
-    default_visibility = [":friends"],
-    features = ["-layering_check"],
-)
+package(default_visibility = [":friends"])
 
 package_group(
     name = "subpackages",
@@ -21,7 +18,6 @@ package_group(
     packages = [
         "//...",
         "//learning/glassbox/evaluation/compiler/...",
-        "//tensorflow/compiler/xla/service/gpu/mlir/...",
     ],
 )
 
@@ -277,6 +273,7 @@ cc_library(
     hdrs = [
         "include/mlir/Dialect/Traits.h",
     ],
+    includes = ["include"],
     deps = [
         ":IR",
         "@llvm//:support",
@@ -292,6 +289,7 @@ cc_library(
     hdrs = [
         "include/mlir/Dialect/AffineOps/AffineOps.h",
     ],
+    includes = ["include"],
     deps = [
         ":AffineOpsIncGen",
         ":IR",
@@ -328,6 +326,7 @@ cc_library(
         "include/mlir/Dialect/SDBM/SDBMDialect.h",
         "include/mlir/Dialect/SDBM/SDBMExpr.h",
     ],
+    includes = ["include"],
     deps = [
         ":IR",
         ":Support",
@@ -344,6 +343,7 @@ cc_library(
     hdrs = [
         "include/mlir/Dialect/LoopOps/LoopOps.h",
     ],
+    includes = ["include"],
     deps = [
         ":IR",
         ":LoopOpsIncGen",
@@ -372,6 +372,7 @@ cc_library(
         "include/mlir/Dialect/StandardOps/Ops.h",
         "include/mlir/Transforms/InliningUtils.h",
     ],
+    includes = ["include"],
     deps = [
         ":IR",
         ":StandardOpsIncGen",
@@ -399,6 +400,7 @@ cc_library(
     hdrs = [
         "include/mlir/Dialect/VectorOps/VectorOps.h",
     ],
+    includes = ["include"],
     deps = [
         ":IR",
         ":Support",
@@ -785,6 +787,27 @@ gentbl(
 )
 
 gentbl(
+    name = "SPIRVGLSLOpsIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-decls",
+            "include/mlir/Dialect/SPIRV/SPIRVGLSLOps.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "include/mlir/Dialect/SPIRV/SPIRVGLSLOps.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/SPIRV/SPIRVGLSLOps.td",
+    td_srcs = [
+        "include/mlir/Dialect/SPIRV/SPIRVBase.td",
+        ":OpBaseTdFiles",
+    ],
+)
+
+gentbl(
     name = "StandardToSPIRVGen",
     strip_include_prefix = "lib/Conversion/StandardToSPIRV",
     tbl_outs = [
@@ -837,11 +860,13 @@ cc_library(
     name = "SPIRVDialect",
     srcs = [
         "lib/Dialect/SPIRV/SPIRVDialect.cpp",
+        "lib/Dialect/SPIRV/SPIRVGLSLOps.cpp",
         "lib/Dialect/SPIRV/SPIRVOps.cpp",
         "lib/Dialect/SPIRV/SPIRVTypes.cpp",
     ],
     hdrs = [
         "include/mlir/Dialect/SPIRV/SPIRVDialect.h",
+        "include/mlir/Dialect/SPIRV/SPIRVGLSLOps.h",
         "include/mlir/Dialect/SPIRV/SPIRVOps.h",
         "include/mlir/Dialect/SPIRV/SPIRVTypes.h",
     ],
@@ -849,6 +874,7 @@ cc_library(
     deps = [
         ":IR",
         ":Parser",
+        ":SPIRVGLSLOpsIncGen",
         ":SPIRVOpUtilsIncGen",
         ":SPIRVOpsIncGen",
         ":Support",
@@ -1182,6 +1208,7 @@ cc_library(
     name = "Translation",
     srcs = ["lib/Translation/Translation.cpp"],
     hdrs = ["include/mlir/Translation.h"],
+    includes = ["include"],
     deps = [
         ":IR",
         ":Parser",
@@ -1199,6 +1226,7 @@ cc_library(
     hdrs = [
         "include/mlir/Target/LLVMIR/ModuleTranslation.h",
     ],
+    includes = ["include"],
     deps = [
         ":IR",
         ":LLVMConversionIncGen",
@@ -1269,8 +1297,8 @@ cc_library(
         ":Support",
         ":TargetLLVMIR",
         ":Translation",
-        "//third_party/llvm/llvm:bit_reader",
-        "//third_party/llvm/llvm:bit_writer",
+        "@llvm//:bit_reader",
+        "@llvm//:bit_writer",
         "@llvm//:core",
         "@llvm//:execution_engine",
         "@llvm//:mc",
@@ -1327,9 +1355,25 @@ cc_library(
         ":Support",
         ":Transforms",
         ":VectorToLLVMTransforms",
+        ":ViewOpGraph",
         ":ViewRegionGraph",
         "@llvm//:support",
     ],
+)
+
+cc_library(
+    name = "ViewOpGraph",
+    srcs = ["lib/Transforms/ViewOpGraph.cpp"],
+    hdrs = ["include/mlir/Transforms/ViewOpGraph.h"],
+    includes = ["include"],
+    deps = [
+        ":Analysis",
+        ":IR",
+        ":Pass",
+        ":Support",
+        "@llvm//:support",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1344,6 +1388,7 @@ cc_library(
         ":Support",
         "@llvm//:support",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1469,7 +1514,6 @@ cc_binary(
 cc_binary(
     name = "tools/libcuda-runtime-wrappers.so",
     srcs = ["tools/mlir-cuda-runner/cuda-runtime-wrappers.cpp"],
-    includes = ["include"],
     linkshared = True,
     deps = [
         "//third_party/gpus/cuda:cuda_headers",
@@ -1485,7 +1529,6 @@ cc_binary(
     data = [
         ":tools/libcuda-runtime-wrappers.so",
     ],
-    includes = ["include"],
     deps = [
         ":GPUDialect",
         ":GPUDialectRegistration",
@@ -1543,6 +1586,21 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "MlirTableGenMain",
+    srcs = [
+        "tools/mlir-tblgen/mlir-tblgen.cpp",
+    ],
+    includes = ["include"],
+    deps = [
+        ":Support",
+        ":TableGen",
+        "@llvm//:config",
+        "@llvm//:support",
+        "@llvm//:tablegen",
+    ],
+)
+
 cc_binary(
     name = "mlir-tblgen",
     srcs = [
@@ -1555,14 +1613,13 @@ cc_binary(
         "tools/mlir-tblgen/RewriterGen.cpp",
         "tools/mlir-tblgen/SPIRVUtilsGen.cpp",
         "tools/mlir-tblgen/StructsGen.cpp",
-        "tools/mlir-tblgen/mlir-tblgen.cpp",
     ],
-    includes = ["include"],
     linkopts = [
         "-lm",
         "-lpthread",
     ],
     deps = [
+        ":MlirTableGenMain",
         ":Support",
         ":TableGen",
         "@llvm//:config",
@@ -1626,6 +1683,7 @@ cc_library(
         "include/mlir/Dialect/QuantOps/QuantizeUtils.h",
         "include/mlir/Dialect/QuantOps/UniformSupport.h",
     ],
+    includes = ["include"],
     deps = [
         ":Analysis",
         ":IR",
@@ -1642,7 +1700,6 @@ cc_library(
 cc_library(
     name = "QuantOpsDialectRegistration",
     srcs = ["lib/Dialect/QuantOps/IR/DialectRegistration.cpp"],
-    includes = ["include"],
     deps = [
         ":IR",
         ":QuantOps",
@@ -1696,6 +1753,7 @@ cc_library(
         "include/mlir/Dialect/FxpMathOps/FxpMathOps.h",
         "include/mlir/Dialect/FxpMathOps/Passes.h",
     ],
+    includes = ["include"],
     deps = [
         ":Analysis",
         ":FxpMathOpsIncGen",
@@ -1713,7 +1771,6 @@ cc_library(
 cc_library(
     name = "FxpMathOpsDialectRegistration",
     srcs = ["lib/Dialect/FxpMathOps/IR/DialectRegistration.cpp"],
-    includes = ["include"],
     deps = [
         ":FxpMathOps",
         ":IR",
@@ -1811,6 +1868,7 @@ cc_library(
         "include/mlir/Dialect/Linalg/Utils/Intrinsics.h",
         "include/mlir/Dialect/Linalg/Utils/Utils.h",
     ],
+    includes = ["include"],
     deps = [
         ":AffineOps",
         ":CFGTransforms",
@@ -1837,7 +1895,6 @@ cc_library(
 cc_library(
     name = "LinalgDialectRegistration",
     srcs = ["lib/Dialect/Linalg/LinalgRegistration.cpp"],
-    includes = ["include"],
     deps = [
         ":IR",
         ":Linalg",
@@ -1890,6 +1947,7 @@ cc_library(
     hdrs = [
         "include/mlir/Quantizer/Transforms/Passes.h",
     ],
+    includes = ["include"],
     deps = [
         ":IR",
         ":Pass",

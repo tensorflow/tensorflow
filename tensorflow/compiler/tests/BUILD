@@ -764,6 +764,7 @@ tf_xla_py_test(
     srcs = ["random_ops_test.py"],
     shard_count = 5,
     tags = [
+        "notap",  # TODO(b/141057424): flaky on TPU
         "notsan",  # b/140243598
     ],
     deps = [

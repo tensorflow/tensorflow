@@ -68,8 +68,9 @@ std::string GetSoftmaxKernelCode(
           ";\n";
   code += "    t = exp(t) / sum;\n";
   code += "    FLT4 result = TO_FLT4(t);\n";
-  code += PostProcess(linked_operations, "result", "d", "address");
-  code += "    " + dst_tensor.Write3D("result", "address");
+  const LinkingContext context{"result", "X", "Y", "d"};
+  code += PostProcess(linked_operations, context);
+  code += "    " + dst_tensor.Write3D("result", "X", "Y", "d");
   code += "  }\n";
   code += "}\n";
   return code;

@@ -1578,8 +1578,8 @@ def _NodeDef(op_type, name, attrs=None):
 
 # Copied from core/framework/node_def_util.cc
 # TODO(mrry,josh11b): Consolidate this validation in C++ code.
-_VALID_OP_NAME_REGEX = re.compile("^[A-Za-z0-9.][A-Za-z0-9_.\\-/]*$")
-_VALID_SCOPE_NAME_REGEX = re.compile("^[A-Za-z0-9_.\\-/]*$")
+_VALID_OP_NAME_REGEX = re.compile("^[A-Za-z0-9.][A-Za-z0-9_.\\-/>]*$")
+_VALID_SCOPE_NAME_REGEX = re.compile("^[A-Za-z0-9_.\\-/>]*$")
 
 
 def _create_c_op(graph, node_def, inputs, control_inputs):
@@ -1804,15 +1804,22 @@ class Operation(object):
     self._graph._add_op(self, self._id_value, name)  # pylint: disable=protected-access
 
     if not c_op:
-      self._control_flow_post_processing()
+      self._control_flow_post_processing(input_tensors=inputs)
 
-  def _control_flow_post_processing(self):
+  def _control_flow_post_processing(self, input_tensors=None):
     """Add this op to its control flow context.
 
     This may add new ops and change this op's inputs. self.inputs must be
     available before calling this method.
+
+    Args:
+      input_tensors: (Optional.) A list of `Tensors` corresponding to the inputs
+        of this op, which should be equivalent to `self.inputs`. Pass this
+        argument to avoid evaluating `self.inputs` unnecessarily.
     """
-    for input_tensor in self.inputs:
+    if input_tensors is None:
+      input_tensors = self.inputs
+    for input_tensor in input_tensors:
       control_flow_util.CheckInputFromValidContext(self, input_tensor.op)
     if self._control_flow_context is not None:
       self._control_flow_context.AddOp(self)
