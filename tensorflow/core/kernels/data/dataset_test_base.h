@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
 #include "tensorflow/core/kernels/data/take_dataset_op.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/platform/env.h"
@@ -109,25 +110,12 @@ Status WriteDataToTFRecordFile(const string& filename,
                                const std::vector<absl::string_view>& records,
                                const CompressionParams& params);
 
-enum class DatasetParamsType {
-  Range,
-  Batch,
-  Map,
-  MapAndBatch,
-  Sampling,
-};
-
-// Returns a string representation for the given dataset parameter type. Note
-// that the return string needs to be same with `kDatasetType` for each dataset
-// parameter type.
-string ToString(DatasetParamsType type);
-
 // Provides the parameters for running the dataset op.
 class DatasetParams {
  public:
   DatasetParams(DataTypeVector output_dtypes,
-                std::vector<PartialTensorShape> output_shapes, string node_name,
-                DatasetParamsType type);
+                std::vector<PartialTensorShape> output_shapes,
+                string node_name);
 
   virtual ~DatasetParams() {}
 
@@ -154,8 +142,6 @@ class DatasetParams {
 
   string iterator_prefix() const { return iterator_prefix_; }
 
-  DatasetParamsType type() const { return type_; }
-
   std::vector<std::pair<std::shared_ptr<DatasetParams>, Tensor>>&
   input_dataset_params() {
     return input_dataset_params_group_;
@@ -163,6 +149,18 @@ class DatasetParams {
 
   // Returns the functions that will be used when running the dataset op.
   virtual std::vector<FunctionDef> func_lib() const { return {}; }
+
+  // Returns a function definition for the transformation performed by
+  // this type of dataset.
+  virtual Status CreateFactory(FunctionDef* fdef) const {
+    return errors::Unimplemented(
+        "CreateFactory is not implemented for params '", op_name(), "'");
+  }
+
+  // Returns the op name for the op represented by these parameters. This name
+  // needs to match the registered name of the dataset op (usually a constant
+  // called `kDatasetType`).
+  virtual string op_name() const = 0;
 
   virtual int op_version() const { return op_version_; }
 
@@ -175,7 +173,6 @@ class DatasetParams {
   std::vector<PartialTensorShape> output_shapes_;
   string node_name_;
   string iterator_prefix_ = "Iterator";
-  DatasetParamsType type_;
   int op_version_ = 1;
 };
 
@@ -197,6 +194,10 @@ class RangeDatasetParams : public DatasetParams {
 
   Status GetAttributes(AttributeVector* attr_vector) const override;
 
+  Status CreateFactory(FunctionDef* fdef) const override;
+
+  string op_name() const override;
+
  private:
   Tensor start_;
   Tensor stop_;
@@ -214,7 +215,7 @@ class BatchDatasetParams : public DatasetParams {
                      std::vector<PartialTensorShape> output_shapes,
                      string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
-                      std::move(node_name), DatasetParamsType::Batch),
+                      std::move(node_name)),
         batch_size_(CreateTensor<int64>(TensorShape({}), {batch_size})),
         drop_remainder_(CreateTensor<bool>(TensorShape({}), {drop_remainder})),
         parallel_copy_(parallel_copy) {
@@ -230,6 +231,10 @@ class BatchDatasetParams : public DatasetParams {
       std::vector<string>* input_placeholder) const override;
 
   Status GetAttributes(AttributeVector* attr_vector) const override;
+
+  Status CreateFactory(FunctionDef* fdef) const override;
+
+  string op_name() const override;
 
   int op_version() const override;
 
@@ -253,7 +258,7 @@ class MapDatasetParams : public DatasetParams {
                    bool use_inter_op_parallelism, bool preserve_cardinality,
                    string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
-                      std::move(node_name), DatasetParamsType::Map),
+                      std::move(node_name)),
         other_arguments_(std::move(other_arguments)),
         func_(std::move(func)),
         func_lib_(std::move(func_lib)),
@@ -272,6 +277,10 @@ class MapDatasetParams : public DatasetParams {
       std::vector<string>* input_placeholder) const override;
 
   Status GetAttributes(AttributeVector* attr_vector) const override;
+
+  Status CreateFactory(FunctionDef* fdef) const override;
+
+  string op_name() const override;
 
   std::vector<FunctionDef> func_lib() const override;
 
@@ -625,8 +634,7 @@ class DatasetOpsTestBaseV2 : public DatasetOpsTestBase {
   // Creates a dataset tensor according to the input dataset params.
   Status MakeDatasetTensor(DatasetParams* dataset_params, Tensor* dataset);
 
-  Status MakeDatasetTensorFunc(const DatasetParams& dataset_params,
-                               FunctionDef* fdef);
+  Status CreateFactory(const DatasetParams& dataset_params, FunctionDef* fdef);
 };
 
 #define ITERATOR_GET_NEXT_TEST_P(dataset_op_test_class, dataset_params_class, \
