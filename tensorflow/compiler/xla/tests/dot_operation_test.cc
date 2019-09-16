@@ -646,8 +646,6 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMul) {
       {x_data.get(), y_data.get()}, this->error_spec_);
 }
 
-#ifndef XLA_TEST_BACKEND_CPU
-// TODO(b/74459949): failed on CPU on 2018-10-29.
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR3LhsR2Rhs) {
   using T = TypeParam;
 
@@ -681,7 +679,6 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR3LhsR2Rhs) {
       this->error_spec_);
 }
 
-// TODO(b/74459949): failed on CPU on 2018-10-29.
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR2LhsR3Rhs) {
   using T = TypeParam;
 
@@ -714,7 +711,6 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR2LhsR3Rhs) {
       /*expected=*/{{1.0f, 2.0f}, {7.0f, 8.0f}}, {x_data.get(), y_data.get()},
       this->error_spec_);
 }
-#endif  // XLA_TEST_BACKEND_CPU
 
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulMultipleBatch) {
   using T = TypeParam;
@@ -1376,7 +1372,7 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
-XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(GpuTransposeOutput)) {
+XLA_TEST_F(DotOperationTextTest, GpuTransposeOutput) {
   absl::string_view hlo_string =
       R"(
 HloModule TransposeOutput
