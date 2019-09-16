@@ -787,6 +787,27 @@ gentbl(
 )
 
 gentbl(
+    name = "SPIRVGLSLOpsIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-decls",
+            "include/mlir/Dialect/SPIRV/SPIRVGLSLOps.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "include/mlir/Dialect/SPIRV/SPIRVGLSLOps.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/SPIRV/SPIRVGLSLOps.td",
+    td_srcs = [
+        "include/mlir/Dialect/SPIRV/SPIRVBase.td",
+        ":OpBaseTdFiles",
+    ],
+)
+
+gentbl(
     name = "StandardToSPIRVGen",
     strip_include_prefix = "lib/Conversion/StandardToSPIRV",
     tbl_outs = [
@@ -839,11 +860,13 @@ cc_library(
     name = "SPIRVDialect",
     srcs = [
         "lib/Dialect/SPIRV/SPIRVDialect.cpp",
+        "lib/Dialect/SPIRV/SPIRVGLSLOps.cpp",
         "lib/Dialect/SPIRV/SPIRVOps.cpp",
         "lib/Dialect/SPIRV/SPIRVTypes.cpp",
     ],
     hdrs = [
         "include/mlir/Dialect/SPIRV/SPIRVDialect.h",
+        "include/mlir/Dialect/SPIRV/SPIRVGLSLOps.h",
         "include/mlir/Dialect/SPIRV/SPIRVOps.h",
         "include/mlir/Dialect/SPIRV/SPIRVTypes.h",
     ],
@@ -851,6 +874,7 @@ cc_library(
     deps = [
         ":IR",
         ":Parser",
+        ":SPIRVGLSLOpsIncGen",
         ":SPIRVOpUtilsIncGen",
         ":SPIRVOpsIncGen",
         ":Support",
