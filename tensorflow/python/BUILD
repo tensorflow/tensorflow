@@ -58,7 +58,7 @@ py_library(
         ":no_contrib",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/tpu:tpu_estimator",
-    ] + if_not_v2(["//tensorflow/contrib:contrib_py"]),
+    ],
 )
 
 py_library(
@@ -2356,9 +2356,7 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "rnn_ops_gen",
-    visibility = [
-        "//tensorflow/contrib/rnn:__pkg__",
-    ],
+    visibility = ["//tensorflow/contrib/rnn:__pkg__"],
 )
 
 tf_gen_op_wrapper_private_py(
