@@ -169,6 +169,7 @@ py_library(
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/compiler",
         "//tensorflow/python/data",
+        "//tensorflow/python/debug:debug_py",
         "//tensorflow/python/distribute",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:distribute_config",

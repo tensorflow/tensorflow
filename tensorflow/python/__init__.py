@@ -157,6 +157,9 @@ _tf2_gauge.get_cell().set(_tf2.enabled())
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
 
+# TensorFlow Debugger (tfdbg).
+from tensorflow.python.debug.lib import check_numerics_callback
+
 # XLA JIT compiler APIs.
 from tensorflow.python.compiler.xla import jit
 from tensorflow.python.compiler.xla import xla
