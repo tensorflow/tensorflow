@@ -131,6 +131,10 @@ private:
     return funcIDMap.lookup(fnName);
   }
 
+  /// Gets the <id> for the function with the given name. Assigns the next
+  /// available <id> if the function haven't been deserialized.
+  uint32_t getOrCreateFunctionID(StringRef fnName);
+
   void processCapability();
 
   void processExtension();
@@ -392,6 +396,15 @@ void Serializer::collect(SmallVectorImpl<uint32_t> &binary) {
 // Module structure
 //===----------------------------------------------------------------------===//
 
+uint32_t Serializer::getOrCreateFunctionID(StringRef fnName) {
+  auto funcID = funcIDMap.lookup(fnName);
+  if (!funcID) {
+    funcID = getNextID();
+    funcIDMap[fnName] = funcID;
+  }
+  return funcID;
+}
+
 void Serializer::processCapability() {
   auto caps = module.getAttrOfType<ArrayAttr>("capabilities");
   if (!caps)
@@ -537,8 +550,7 @@ LogicalResult Serializer::processFuncOp(FuncOp op) {
     return failure();
   }
   operands.push_back(resTypeID);
-  auto funcID = getNextID();
-  funcIDMap[op.getName()] = funcID;
+  auto funcID = getOrCreateFunctionID(op.getName());
   operands.push_back(funcID);
   // TODO : Support other function control options.
   operands.push_back(static_cast<uint32_t>(spirv::FunctionControl::None));
@@ -1458,6 +1470,37 @@ Serializer::processOp<spirv::ExecutionModeOp>(spirv::ExecutionModeOp op) {
     }
   }
   return encodeInstructionInto(executionModes, spirv::Opcode::OpExecutionMode,
+                               operands);
+}
+
+template <>
+LogicalResult
+Serializer::processOp<spirv::FunctionCallOp>(spirv::FunctionCallOp op) {
+  auto funcName = op.callee();
+  uint32_t resTypeID = 0;
+
+  llvm::SmallVector<Type, 1> resultTypes(op.getResultTypes());
+  if (failed(processType(op.getLoc(),
+                         (resultTypes.empty() ? getVoidType() : resultTypes[0]),
+                         resTypeID))) {
+    return failure();
+  }
+
+  auto funcID = getOrCreateFunctionID(funcName);
+  auto funcCallID = getNextID();
+  SmallVector<uint32_t, 8> operands{resTypeID, funcCallID, funcID};
+
+  for (auto *value : op.arguments()) {
+    auto valueID = findValueID(value);
+    assert(valueID && "cannot find a value for spv.FunctionCall");
+    operands.push_back(valueID);
+  }
+
+  if (!resultTypes.empty()) {
+    valueIDMap[op.getResult(0)] = funcCallID;
+  }
+
+  return encodeInstructionInto(functions, spirv::Opcode::OpFunctionCall,
                                operands);
 }
 
