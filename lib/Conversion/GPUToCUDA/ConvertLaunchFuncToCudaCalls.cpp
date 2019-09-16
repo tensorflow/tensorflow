@@ -310,6 +310,10 @@ void GpuLaunchFuncToCudaCallsPass::translateGpuLaunchCalls(
   // represents the cubin at runtime.
   // TODO(herhut): This should rather be a static global once supported.
   auto kernelFunction = getModule().lookupSymbol<FuncOp>(launchOp.kernel());
+  if (!kernelFunction) {
+    launchOp.emitError("missing kernel function ") << launchOp.kernel();
+    return signalPassFailure();
+  }
   auto cubinGetter =
       kernelFunction.getAttrOfType<SymbolRefAttr>(kCubinGetterAnnotation);
   if (!cubinGetter) {
