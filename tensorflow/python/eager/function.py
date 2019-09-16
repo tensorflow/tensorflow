@@ -1154,8 +1154,8 @@ class _TapeGradientFunctions(object):
     def _backward_function_wrapper(*args):
       """Process output gradients and call the backward function."""
       if not backward.outputs:
+        return backward.structured_outputs
 
-        return self._backward.structured_outputs
       processed_args = []
       input_index = 0
       for output_index, arg in enumerate(args):

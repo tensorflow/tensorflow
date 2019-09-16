@@ -699,6 +699,21 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       strategy.experimental_run_v2(
           _replicated, args=(constant_op.constant([.1, -.2, .3]),))
 
+  # TODO(b/141025187): Add a no_new_pyobjects decorator.
+  def testArgumentUnused(self):
+    with forwardprop.ForwardGradientAccumulator() as acc:
+      v = constant_op.constant(1.)
+      acc.watch(v, 11.)
+
+      @def_function.function
+      def _f(x):
+        del x
+        return constant_op.constant(1.)
+
+      result = _f(v)
+      self.assertAllClose(1.0, result)
+      self.assertIsNone(acc.jvp(result))
+
 
 if __name__ == "__main__":
   # TODO(allenl): Also test with 1.x-style graph mode.
