@@ -56,6 +56,7 @@ tf_instantiate_platform_libraries(names = [
     "cord",
     "cuda_libdevice_path",
     "dynamic_annotations",
+    "env",
     "env_time",
     "human_readable_json",
     "load_library",
@@ -175,6 +176,17 @@ cc_library(
         ":dynamic_annotations_impl",
         ":platform",
     ],
+)
+
+cc_library(
+    name = "env",
+    textual_hdrs = [
+        "env.h",
+        "file_system.h",
+        "file_system_helper.h",
+        "threadpool.h",
+    ],
+    deps = tf_platform_helper_deps("env_impl"),
 )
 
 cc_library(

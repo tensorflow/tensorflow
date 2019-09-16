@@ -491,6 +491,7 @@ def tf_additional_lib_hdrs(exclude = []):
         "posix/error.h",
     ], exclude = exclude + [
         "default/subprocess.h",
+        "default/posix_file_system.h",
     ])
     return select({
         "//tensorflow:windows": windows_hdrs,
@@ -506,10 +507,12 @@ def tf_additional_lib_srcs(exclude = []):
         "windows/*.cc",
         "posix/error.cc",
     ], exclude = exclude + [
+        "default/env.cc",
         "default/env_time.cc",
         "default/load_library.cc",
         "default/net.cc",
         "default/port.cc",
+        "default/posix_file_system.cc",
         "default/subprocess.cc",
     ])
     return select({
