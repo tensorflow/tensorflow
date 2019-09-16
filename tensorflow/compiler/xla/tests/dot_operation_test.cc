@@ -280,7 +280,35 @@ class ParametricDotTest : public DotOperationTest,
  protected:
   template <typename NativeT>
   void TestImpl();
+
+  template <typename NativeT>
+  void ComputeAndCompareR2WithError(XlaBuilder* builder,
+                                    const Array2D<NativeT>& expected,
+                                    absl::Span<GlobalData* const> arguments);
 };
+
+template <typename NativeT>
+void ParametricDotTest::ComputeAndCompareR2WithError(
+    XlaBuilder* builder, const Array2D<NativeT>& expected,
+    absl::Span<GlobalData* const> arguments) {
+  ErrorSpec error_spec(0.3, 3e-3);
+  ComputeAndCompareR2(builder, expected, arguments, error_spec);
+}
+
+template <>
+void ParametricDotTest::ComputeAndCompareR2WithError<Eigen::half>(
+    XlaBuilder* builder, const Array2D<Eigen::half>& expected,
+    absl::Span<GlobalData* const> arguments) {
+  ErrorSpec error_spec(0.3, 5e-3);
+  ComputeAndCompareR2(builder, expected, arguments, error_spec);
+}
+
+template <>
+void ParametricDotTest::ComputeAndCompareR2WithError<int32>(
+    XlaBuilder* builder, const Array2D<int32>& expected,
+    absl::Span<GlobalData* const> arguments) {
+  ComputeAndCompareR2(builder, expected, arguments);
+}
 
 template <typename NativeT>
 void ParametricDotTest::TestImpl() {
@@ -353,11 +381,7 @@ void ParametricDotTest::TestImpl() {
   if (param.has_addend) {
     args.push_back(addend_handle.get());
   }
-  ErrorSpec error_spec(0.3, 3e-3);
-  if (std::is_same<Eigen::half, NativeT>::value) {
-    error_spec = ErrorSpec(0.3, 5e-3);
-  }
-  ComputeAndCompareR2<NativeT>(&builder, *expected, args, error_spec);
+  ComputeAndCompareR2WithError<NativeT>(&builder, *expected, args);
 }
 
 std::vector<DotTestParam> CreateDotTestParameters() {
@@ -391,6 +415,9 @@ XLA_TEST_P(ParametricDotTest, TestF16) { TestImpl<Eigen::half>(); }
 #endif
 XLA_TEST_P(ParametricDotTest, TestF32) { TestImpl<float>(); }
 XLA_TEST_P(ParametricDotTest, TestF64) { TestImpl<double>(); }
+#ifndef XLA_TEST_BACKEND_CPU
+XLA_TEST_P(ParametricDotTest, TestS32) { TestImpl<int32>(); }
+#endif
 
 INSTANTIATE_TEST_CASE_P(DotTests, ParametricDotTest,
                         ::testing::ValuesIn(CreateDotTestParameters()),
