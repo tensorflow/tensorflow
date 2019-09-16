@@ -741,6 +741,7 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
+    tags = ["no_rocm_v2"],
     shard_count = 11,
 )
 
