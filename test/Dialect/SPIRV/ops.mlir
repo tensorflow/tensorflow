@@ -301,27 +301,81 @@ spv.module "Logical" "GLSL450" {
 // spv.LoadOp
 //===----------------------------------------------------------------------===//
 
-// CHECK_LABEL: @simple_load
+// CHECK-LABEL: @simple_load
 func @simple_load() -> () {
   %0 = spv.Variable : !spv.ptr<f32, Function>
-  // CHECK: spv.Load "Function" %0 : f32
+  // CHECK: spv.Load "Function" %{{.*}} : f32
   %1 = spv.Load "Function" %0 : f32
   return
 }
 
-// CHECK_LABEL: @volatile_load
+// CHECK-LABEL: @load_none_access
+func @load_none_access() -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // CHECK: spv.Load "Function" %{{.*}} ["None"] : f32
+  %1 = spv.Load "Function" %0 ["None"] : f32
+  return
+}
+
+// CHECK-LABEL: @volatile_load
 func @volatile_load() -> () {
   %0 = spv.Variable : !spv.ptr<f32, Function>
-  // CHECK: spv.Load "Function" %0 ["Volatile"] : f32
+  // CHECK: spv.Load "Function" %{{.*}} ["Volatile"] : f32
   %1 = spv.Load "Function" %0 ["Volatile"] : f32
   return
 }
 
-// CHECK_LABEL: @aligned_load
+// CHECK-LABEL: @aligned_load
 func @aligned_load() -> () {
   %0 = spv.Variable : !spv.ptr<f32, Function>
-  // CHECK: spv.Load "Function" %0 ["Aligned", 4] : f32
+  // CHECK: spv.Load "Function" %{{.*}} ["Aligned", 4] : f32
   %1 = spv.Load "Function" %0 ["Aligned", 4] : f32
+  return
+}
+
+// CHECK-LABEL: @volatile_aligned_load
+func @volatile_aligned_load() -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // CHECK: spv.Load "Function" %{{.*}} ["Volatile|Aligned", 4] : f32
+  %1 = spv.Load "Function" %0 ["Volatile|Aligned", 4] : f32
+  return
+}
+
+// -----
+
+// CHECK-LABEL: load_none_access
+func @load_none_access() -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // CHECK: spv.Load
+  // CHECK-SAME: ["None"]
+  %1 = "spv.Load"(%0) {memory_access = 0 : i32} : (!spv.ptr<f32, Function>) -> (f32)
+  return
+}
+
+// CHECK-LABEL: volatile_load
+func @volatile_load() -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // CHECK: spv.Load
+  // CHECK-SAME: ["Volatile"]
+  %1 = "spv.Load"(%0) {memory_access = 1 : i32} : (!spv.ptr<f32, Function>) -> (f32)
+  return
+}
+
+// CHECK-LABEL: aligned_load
+func @aligned_load() -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // CHECK: spv.Load
+  // CHECK-SAME: ["Aligned", 4]
+  %1 = "spv.Load"(%0) {memory_access = 2 : i32, alignment = 4 : i32} : (!spv.ptr<f32, Function>) -> (f32)
+  return
+}
+
+// CHECK-LABEL: volatile_aligned_load
+func @volatile_aligned_load() -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // CHECK: spv.Load
+  // CHECK-SAME: ["Volatile|Aligned", 4]
+  %1 = "spv.Load"(%0) {memory_access = 3 : i32, alignment = 4 : i32} : (!spv.ptr<f32, Function>) -> (f32)
   return
 }
 
@@ -403,6 +457,24 @@ func @load_unknown_memory_access() -> () {
   %0 = spv.Variable : !spv.ptr<f32, Function>
   // expected-error @+1 {{custom op 'spv.Load' invalid memory_access attribute specification: "Something"}}
   %1 = spv.Load "Function" %0 ["Something"] : f32
+  return
+}
+
+// -----
+
+func @load_unknown_memory_access() -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // expected-error @+1 {{custom op 'spv.Load' invalid memory_access attribute specification: "Volatile|Something"}}
+  %1 = spv.Load "Function" %0 ["Volatile|Something"] : f32
+  return
+}
+
+// -----
+
+func @load_unknown_memory_access() -> () {
+  %0 = spv.Variable : !spv.ptr<f32, Function>
+  // expected-error @+1 {{failed to satisfy constraint: valid SPIR-V MemoryAccess}}
+  %1 = "spv.Load"(%0) {memory_access = 0x80000000 : i32} : (!spv.ptr<f32, Function>) -> (f32)
   return
 }
 

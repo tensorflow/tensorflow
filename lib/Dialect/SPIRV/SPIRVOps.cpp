@@ -141,7 +141,7 @@ static ParseResult parseMemoryAccessAttributes(OpAsmParser *parser,
     return failure();
   }
 
-  if (memoryAccessAttr == spirv::MemoryAccess::Aligned) {
+  if (spirv::bitEnumContains(memoryAccessAttr, spirv::MemoryAccess::Aligned)) {
     // Parse integer attribute for alignment.
     Attribute alignmentAttr;
     Type i32Type = parser->getBuilder().getIntegerType(32);
@@ -212,7 +212,7 @@ static LogicalResult verifyMemoryAccessAttribute(LoadStoreOpTy loadStoreOp) {
            << memAccessVal;
   }
 
-  if (*memAccess == spirv::MemoryAccess::Aligned) {
+  if (spirv::bitEnumContains(*memAccess, spirv::MemoryAccess::Aligned)) {
     if (!op->getAttr(kAlignmentAttrName)) {
       return loadStoreOp.emitOpError("missing alignment value");
     }

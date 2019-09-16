@@ -185,7 +185,6 @@ def SPV_OpcodeAttr :
 
 // End opcode section. Generated from SPIR-V spec; DO NOT MODIFY!
 
-
 //===----------------------------------------------------------------------===//
 // SPIR-V type definitions
 //===----------------------------------------------------------------------===//
@@ -230,6 +229,49 @@ class SPV_Optional<Type type> : Variadic<type>;
 
 // TODO(ravishankarm): From 1.4, this should also include Composite type.
 def SPV_SelectType : AnyTypeOf<[SPV_Scalar, SPV_Vector, SPV_AnyPtr]>;
+
+//===----------------------------------------------------------------------===//
+// SPIR-V BitEnum definition
+//===----------------------------------------------------------------------===//
+
+// A bit enum case stored with 32-bit IntegerAttr. `val` here is *not* the
+// ordinal number of the bit that is set. It is the 32-bit integer with only
+// one bit set.
+class BitEnumAttrCase<string sym, int val> :
+    EnumAttrCaseInfo<sym, val>,
+    IntegerAttrBase<I32, "case " # sym> {
+  let predicate = CPred<
+    "$_self.cast<IntegerAttr>().getValue().getSExtValue() & " # val # "u">;
+}
+
+// A bit enum stored with 32-bit IntegerAttr.
+//
+// Op attributes of this kind are stored as IntegerAttr. Extra verification will
+// be generated on the integer to make sure only allowed bit are set.
+class BitEnumAttr<string name, string description,
+                  list<BitEnumAttrCase> cases> :
+    EnumAttrInfo<name, cases>, IntegerAttrBase<I32, description> {
+  let predicate = And<[
+    IntegerAttrBase<I32, "">.predicate,
+    // Make sure we don't have unknown bit set.
+    CPred<"!($_self.cast<IntegerAttr>().getValue().getZExtValue() & (~(" #
+          StrJoin<!foreach(case, cases, case.value # "u"), "|">.result #
+          ")))">
+  ]>;
+
+  let underlyingType = "uint32_t";
+
+  // We need to return a string because we may concatenate symbols for multiple
+  // bits together.
+  let symbolToStringFnRetType = "std::string";
+
+  // The string used to separate bit enum cases in strings.
+  string separator = "|";
+
+  // Turn off the autogen with EnumsGen. SPIR-V needs custom logic here and
+  // we will use our own autogen logic.
+  let skipAutoGen = 1;
+}
 
 //===----------------------------------------------------------------------===//
 // SPIR-V extension definitions
@@ -847,14 +889,14 @@ def SPV_ExecutionModelAttr :
   let cppNamespace = "::mlir::spirv";
 }
 
-def SPV_FC_None       : I32EnumAttrCase<"None", 0x0000>;
-def SPV_FC_Inline     : I32EnumAttrCase<"Inline", 0x0001>;
-def SPV_FC_DontInline : I32EnumAttrCase<"DontInline", 0x0002>;
-def SPV_FC_Pure       : I32EnumAttrCase<"Pure", 0x0004>;
-def SPV_FC_Const      : I32EnumAttrCase<"Const", 0x0008>;
+def SPV_FC_None       : BitEnumAttrCase<"None", 0x0000>;
+def SPV_FC_Inline     : BitEnumAttrCase<"Inline", 0x0001>;
+def SPV_FC_DontInline : BitEnumAttrCase<"DontInline", 0x0002>;
+def SPV_FC_Pure       : BitEnumAttrCase<"Pure", 0x0004>;
+def SPV_FC_Const      : BitEnumAttrCase<"Const", 0x0008>;
 
 def SPV_FunctionControlAttr :
-    I32EnumAttr<"FunctionControl", "valid SPIR-V FunctionControl", [
+    BitEnumAttr<"FunctionControl", "valid SPIR-V FunctionControl", [
       SPV_FC_None, SPV_FC_Inline, SPV_FC_DontInline, SPV_FC_Pure, SPV_FC_Const
     ]> {
   let returnType = "::mlir::spirv::FunctionControl";
@@ -932,19 +974,19 @@ def SPV_LinkageTypeAttr :
   let cppNamespace = "::mlir::spirv";
 }
 
-def SPV_LC_None               : I32EnumAttrCase<"None", 0x0000>;
-def SPV_LC_Unroll             : I32EnumAttrCase<"Unroll", 0x0001>;
-def SPV_LC_DontUnroll         : I32EnumAttrCase<"DontUnroll", 0x0002>;
-def SPV_LC_DependencyInfinite : I32EnumAttrCase<"DependencyInfinite", 0x0004>;
-def SPV_LC_DependencyLength   : I32EnumAttrCase<"DependencyLength", 0x0008>;
-def SPV_LC_MinIterations      : I32EnumAttrCase<"MinIterations", 0x0010>;
-def SPV_LC_MaxIterations      : I32EnumAttrCase<"MaxIterations", 0x0020>;
-def SPV_LC_IterationMultiple  : I32EnumAttrCase<"IterationMultiple", 0x0040>;
-def SPV_LC_PeelCount          : I32EnumAttrCase<"PeelCount", 0x0080>;
-def SPV_LC_PartialCount       : I32EnumAttrCase<"PartialCount", 0x0100>;
+def SPV_LC_None               : BitEnumAttrCase<"None", 0x0000>;
+def SPV_LC_Unroll             : BitEnumAttrCase<"Unroll", 0x0001>;
+def SPV_LC_DontUnroll         : BitEnumAttrCase<"DontUnroll", 0x0002>;
+def SPV_LC_DependencyInfinite : BitEnumAttrCase<"DependencyInfinite", 0x0004>;
+def SPV_LC_DependencyLength   : BitEnumAttrCase<"DependencyLength", 0x0008>;
+def SPV_LC_MinIterations      : BitEnumAttrCase<"MinIterations", 0x0010>;
+def SPV_LC_MaxIterations      : BitEnumAttrCase<"MaxIterations", 0x0020>;
+def SPV_LC_IterationMultiple  : BitEnumAttrCase<"IterationMultiple", 0x0040>;
+def SPV_LC_PeelCount          : BitEnumAttrCase<"PeelCount", 0x0080>;
+def SPV_LC_PartialCount       : BitEnumAttrCase<"PartialCount", 0x0100>;
 
 def SPV_LoopControlAttr :
-    I32EnumAttr<"LoopControl", "valid SPIR-V LoopControl", [
+    BitEnumAttr<"LoopControl", "valid SPIR-V LoopControl", [
       SPV_LC_None, SPV_LC_Unroll, SPV_LC_DontUnroll, SPV_LC_DependencyInfinite,
       SPV_LC_DependencyLength, SPV_LC_MinIterations, SPV_LC_MaxIterations,
       SPV_LC_IterationMultiple, SPV_LC_PeelCount, SPV_LC_PartialCount
@@ -954,16 +996,16 @@ def SPV_LoopControlAttr :
   let cppNamespace = "::mlir::spirv";
 }
 
-def SPV_MA_None                 : I32EnumAttrCase<"None", 0x0000>;
-def SPV_MA_Volatile             : I32EnumAttrCase<"Volatile", 0x0001>;
-def SPV_MA_Aligned              : I32EnumAttrCase<"Aligned", 0x0002>;
-def SPV_MA_Nontemporal          : I32EnumAttrCase<"Nontemporal", 0x0004>;
-def SPV_MA_MakePointerAvailable : I32EnumAttrCase<"MakePointerAvailable", 0x0008>;
-def SPV_MA_MakePointerVisible   : I32EnumAttrCase<"MakePointerVisible", 0x0010>;
-def SPV_MA_NonPrivatePointer    : I32EnumAttrCase<"NonPrivatePointer", 0x0020>;
+def SPV_MA_None                 : BitEnumAttrCase<"None", 0x0000>;
+def SPV_MA_Volatile             : BitEnumAttrCase<"Volatile", 0x0001>;
+def SPV_MA_Aligned              : BitEnumAttrCase<"Aligned", 0x0002>;
+def SPV_MA_Nontemporal          : BitEnumAttrCase<"Nontemporal", 0x0004>;
+def SPV_MA_MakePointerAvailable : BitEnumAttrCase<"MakePointerAvailable", 0x0008>;
+def SPV_MA_MakePointerVisible   : BitEnumAttrCase<"MakePointerVisible", 0x0010>;
+def SPV_MA_NonPrivatePointer    : BitEnumAttrCase<"NonPrivatePointer", 0x0020>;
 
 def SPV_MemoryAccessAttr :
-    I32EnumAttr<"MemoryAccess", "valid SPIR-V MemoryAccess", [
+    BitEnumAttr<"MemoryAccess", "valid SPIR-V MemoryAccess", [
       SPV_MA_None, SPV_MA_Volatile, SPV_MA_Aligned, SPV_MA_Nontemporal,
       SPV_MA_MakePointerAvailable, SPV_MA_MakePointerVisible,
       SPV_MA_NonPrivatePointer
