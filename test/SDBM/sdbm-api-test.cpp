@@ -161,13 +161,13 @@ TEST_FUNC(SDBM_StripeTightening) {
 
   SmallVector<SDBMExpr, 4> eqs, ineqs;
   sdbm.getSDBMExpressions(dialect(), ineqs, eqs);
-  // CHECK: s0 # 3 - d0 + -2
+  // CHECK: s0 # 3 + -2 - d0
   // CHECK-EMPTY:
   for (auto ineq : ineqs)
     ineq.print(llvm::outs() << '\n');
   llvm::outs() << "\n";
 
-  // CHECK-DAG: d1 - d0 + -42
+  // CHECK-DAG: d1 + -42 - d0
   // CHECK-DAG: d0 - s0 # 3 # 5
   for (auto eq : eqs)
     eq.print(llvm::outs() << '\n');

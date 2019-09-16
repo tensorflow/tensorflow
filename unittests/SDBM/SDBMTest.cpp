@@ -76,6 +76,28 @@ TEST(SDBMOperators, AddFolding) {
 
   auto inverted = SDBMNegExpr::get(SDBMDimExpr::get(dialect(), 1)) + dim(0);
   EXPECT_EQ(inverted, expr);
+
+  // Check that opposite values cancel each other, and that we elide the zero
+  // constant.
+  expr = dim(0) + 42;
+  auto onlyDim = expr - 42;
+  EXPECT_EQ(onlyDim, dim(0));
+
+  // Check that we can sink a constant under a negation.
+  expr = -(dim(0) + 2);
+  auto negatedSum = (expr + 10).dyn_cast<SDBMNegExpr>();
+  ASSERT_TRUE(negatedSum);
+  auto sum = negatedSum.getVar().dyn_cast<SDBMSumExpr>();
+  ASSERT_TRUE(sum);
+  EXPECT_EQ(sum.getRHS().getValue(), -8);
+
+  // Sum with zero is the same as the original expression.
+  EXPECT_EQ(dim(0) + 0, dim(0));
+
+  // Sum of opposite differences is zero.
+  auto diffOfDiffs =
+      ((dim(0) - dim(1)) + (dim(1) - dim(0))).dyn_cast<SDBMConstantExpr>();
+  EXPECT_EQ(diffOfDiffs.getValue(), 0);
 }
 
 TEST(SDBMOperators, Diff) {
@@ -101,6 +123,43 @@ TEST(SDBMOperators, DiffFolding) {
   constantExpr = zero.dyn_cast<SDBMConstantExpr>();
   ASSERT_TRUE(constantExpr);
   EXPECT_EQ(constantExpr.getValue(), 0);
+
+  // Check that the constant terms in difference-of-sums are folded.
+  // (d0 - 3) - (d1 - 5) = (d0 + 2) - d1
+  auto diffOfSums = ((dim(0) - 3) - (dim(1) - 5)).dyn_cast<SDBMDiffExpr>();
+  ASSERT_TRUE(diffOfSums);
+  auto lhs = diffOfSums.getLHS().dyn_cast<SDBMSumExpr>();
+  ASSERT_TRUE(lhs);
+  EXPECT_EQ(lhs.getLHS(), dim(0));
+  EXPECT_EQ(lhs.getRHS().getValue(), 2);
+  EXPECT_EQ(diffOfSums.getRHS(), dim(1));
+
+  // Check that identical dimensions with opposite signs cancel each other.
+  auto cstOnly = ((dim(0) + 42) - dim(0)).dyn_cast<SDBMConstantExpr>();
+  ASSERT_TRUE(cstOnly);
+  EXPECT_EQ(cstOnly.getValue(), 42);
+
+  // Check that identical terms in sum of diffs cancel out.
+  auto dimOnly = (-dim(0) + (dim(0) - dim(1)));
+  EXPECT_EQ(dimOnly, -dim(1));
+  dimOnly = (dim(0) - dim(1)) + (-dim(0));
+  EXPECT_EQ(dimOnly, -dim(1));
+  dimOnly = (dim(0) - dim(1)) + dim(1);
+  EXPECT_EQ(dimOnly, dim(0));
+  dimOnly = dim(0) + (dim(1) - dim(0));
+  EXPECT_EQ(dimOnly, dim(1));
+
+  // Top-level zero constant is fine.
+  cstOnly = (-symb(1) + symb(1)).dyn_cast<SDBMConstantExpr>();
+  ASSERT_TRUE(cstOnly);
+  EXPECT_EQ(cstOnly.getValue(), 0);
+}
+
+TEST(SDBMOperators, Negate) {
+  auto sum = dim(0) + 3;
+  auto negated = (-sum).dyn_cast<SDBMNegExpr>();
+  ASSERT_TRUE(negated);
+  EXPECT_EQ(negated.getVar(), sum);
 }
 
 TEST(SDBMOperators, Stripe) {
@@ -324,11 +383,11 @@ TEST(SDBMExpr, AffineRoundTrip) {
 
   // Check that (s0 # 2 # 5 - s0 # 2) + 2 can be converted as an example of a
   // deeper expression tree.
-  auto diff = SDBMDiffExpr::get(outerStripe, stripe);
-  auto sum = SDBMSumExpr::get(diff, cst2);
-  roundtripped = SDBMExpr::tryConvertAffineExpr(sum.getAsAffineExpr());
+  auto sum = SDBMSumExpr::get(outerStripe, cst2);
+  auto diff = SDBMDiffExpr::get(sum, stripe);
+  roundtripped = SDBMExpr::tryConvertAffineExpr(diff.getAsAffineExpr());
   ASSERT_TRUE(roundtripped.hasValue());
-  EXPECT_EQ(roundtripped, static_cast<SDBMExpr>(sum));
+  EXPECT_EQ(roundtripped, static_cast<SDBMExpr>(diff));
 }
 
 TEST(SDBMExpr, MatchStripeMulPattern) {
