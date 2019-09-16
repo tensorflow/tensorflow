@@ -62,6 +62,8 @@ class BaseFFTOpsTest(test.TestCase):
 
   def _compare_forward(self, x, rank, fft_length=None, use_placeholder=False,
                        rtol=1e-4, atol=1e-4):
+    if test.is_built_with_rocm() and x.dtype in (np.complex64, np.complex128):
+        return
     x_np = self._np_fft(x, rank, fft_length)
     if use_placeholder:
       x_ph = array_ops.placeholder(dtype=dtypes.as_dtype(x.dtype))
@@ -73,6 +75,8 @@ class BaseFFTOpsTest(test.TestCase):
 
   def _compare_backward(self, x, rank, fft_length=None, use_placeholder=False,
                         rtol=1e-4, atol=1e-4):
+    if test.is_built_with_rocm() and x.dtype in (np.complex64, np.complex128):
+        return
     x_np = self._np_ifft(x, rank, fft_length)
     if use_placeholder:
       x_ph = array_ops.placeholder(dtype=dtypes.as_dtype(x.dtype))
@@ -90,6 +94,9 @@ class BaseFFTOpsTest(test.TestCase):
 
   def _check_grad_complex(self, func, x, y, result_is_complex=True,
                           rtol=1e-2, atol=1e-2):
+    if test.is_built_with_rocm():
+      self.skipTest("Complex datatype not yet supported in ROCm.")
+      return
     with self.cached_session(use_gpu=True):
       def f(inx, iny):
         inx.set_shape(x.shape)
@@ -188,6 +195,9 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
       itertools.product(VALID_FFT_RANKS, range(3),
                         (np.complex64, np.complex128)))
   def test_basic(self, rank, extra_dims, np_type):
+    if test.is_built_with_rocm():
+      self.skipTest("Complex datatype not yet supported in ROCm.")
+      return
     dims = rank + extra_dims
     tol = 1e-4 if np_type == np.complex64 else 1e-8
     self._compare(
@@ -270,47 +280,6 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
           self._tf_fft(x, rank)
         with self.assertRaisesWithPredicateMatch(
             ValueError, "Shape must be .*rank {}.*".format(rank)):
-<<<<<<< HEAD
-          self._tfIFFT(x, rank)
-
-  def testGrad_Simple(self):
-    # TODO(rjryan): Fix this test under Eager.
-    if context.executing_eagerly():
-      return
-
-    if test.is_built_with_rocm():
-      self.skipTest("SCAL operation for complex datatype not yet supported in ROCm")
-      return
-
-    for np_type, tol in ((np.float32, 1e-4), (np.float64, 1e-10)):
-      for rank in VALID_FFT_RANKS:
-        for dims in xrange(rank, rank + 2):
-          re = np.ones(shape=(4,) * dims, dtype=np_type) / 10.0
-          im = np.zeros(shape=(4,) * dims, dtype=np_type)
-          self._checkGradComplex(self._tfFFTForRank(rank), re, im,
-                                 rtol=tol, atol=tol)
-          self._checkGradComplex(self._tfIFFTForRank(rank), re, im,
-                                 rtol=tol, atol=tol)
-
-  def testGrad_Random(self):
-    # TODO(rjryan): Fix this test under Eager.
-    if context.executing_eagerly():
-      return
-
-    if test.is_built_with_rocm():
-      self.skipTest("SCAL operation for complex datatype not yet supported in ROCm")
-      return
-
-    for np_type, tol in ((np.float32, 1e-2), (np.float64, 1e-10)):
-      for rank in VALID_FFT_RANKS:
-        for dims in xrange(rank, rank + 2):
-          re = np.random.rand(*((3,) * dims)).astype(np_type) * 2 - 1
-          im = np.random.rand(*((3,) * dims)).astype(np_type) * 2 - 1
-          self._checkGradComplex(self._tfFFTForRank(rank), re, im,
-                                 rtol=tol, atol=tol)
-          self._checkGradComplex(self._tfIFFTForRank(rank), re, im,
-                                 rtol=tol, atol=tol)
-=======
           self._tf_ifft(x, rank)
 
   @parameterized.parameters(itertools.product(
@@ -336,7 +305,6 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
                              rtol=tol, atol=tol)
     self._check_grad_complex(self._tf_ifft_for_rank(rank), re, im,
                              rtol=tol, atol=tol)
->>>>>>> google-upstream/master
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -618,45 +586,6 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     # rfft3d/irfft3d do not have gradients yet.
     if rank == 3:
       return
-<<<<<<< HEAD
-    for rank in VALID_FFT_RANKS:
-      # rfft3d/irfft3d do not have gradients yet.
-      if rank == 3:
-        continue
-      for dims in xrange(rank, rank + 2):
-        for size in (5, 6):
-          re = np.ones(shape=(size,) * dims, dtype=np.float32)
-          im = -np.ones(shape=(size,) * dims, dtype=np.float32)
-          self._checkGradReal(self._tfFFTForRank(rank), re)
-
-          if test.is_built_with_rocm():
-            # SCAL operation for complex datatype not yet supported in ROCm
-            continue;
-
-          self._checkGradComplex(
-              self._tfIFFTForRank(rank), re, im, result_is_complex=False)
-
-  def testGrad_Random(self):
-    # TODO(rjryan): Fix this test under Eager.
-    if context.executing_eagerly():
-      return
-    for rank in VALID_FFT_RANKS:
-      # rfft3d/irfft3d do not have gradients yet.
-      if rank == 3:
-        continue
-      for dims in xrange(rank, rank + 2):
-        for size in (5, 6):
-          re = np.random.rand(*((size,) * dims)).astype(np.float32) * 2 - 1
-          im = np.random.rand(*((size,) * dims)).astype(np.float32) * 2 - 1
-          self._checkGradReal(self._tfFFTForRank(rank), re)
-
-          if test.is_built_with_rocm():
-            # SCAL operation for complex datatype not yet supported in ROCm
-            continue;
-
-          self._checkGradComplex(
-              self._tfIFFTForRank(rank), re, im, result_is_complex=False)
-=======
     dims = rank + extra_dims
     tol = 1e-3 if np_rtype == np.float32 else 1e-10
     re = np.ones(shape=(size,) * dims, dtype=np_rtype)
@@ -682,7 +611,6 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     self._check_grad_complex(
         self._tf_ifft_for_rank(rank), re, im, result_is_complex=False,
         rtol=tol, atol=tol)
->>>>>>> google-upstream/master
 
 
 @test_util.run_all_in_graph_and_eager_modes

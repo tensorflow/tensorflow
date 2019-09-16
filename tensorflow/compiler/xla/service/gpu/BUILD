@@ -741,22 +741,9 @@ tf_cc_test(
 
 cc_library(
     name = "cusolver_context",
-<<<<<<< HEAD
-    srcs = if_cuda_is_configured([
-        "cusolver_context.cc"]
-    ),
-    hdrs = if_cuda_is_configured([
-        "cusolver_context.h"]
-    ),
-    deps =  if_cuda_is_configured([
-=======
     srcs = if_cuda_is_configured(["cusolver_context.cc"]),
     hdrs = ["cusolver_context.h"],
     deps = [
->>>>>>> google-upstream/master
-        # LINT.IfChange
-        "@local_config_cuda//cuda:cublas_headers",
-        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -764,6 +751,9 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor:blas",
     ] + if_cuda_is_configured([
+        # LINT.IfChange
+        "@local_config_cuda//cuda:cublas_headers",
+        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/stream_executor/cuda:cusolver_lib",
     ]),
@@ -1160,7 +1150,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm//:core",
     ] + if_cuda_is_configured([
-        ":cudnn_conv_pad_for_tensor_cores",
         ":cudnn_fused_conv_rewriter",
         ":cusolver_rewriter",
         ":gemm_algorithm_picker",
@@ -1195,11 +1184,6 @@ cc_library(
     ],
     deps = [
         ":cublas_gemm_pad_for_tensor_cores",
-<<<<<<< HEAD
-        ":cudnn_conv_pad_for_tensor_cores",
-=======
-        ":cudnn_conv_algorithm_picker",
->>>>>>> google-upstream/master
         ":cudnn_conv_padding_legalization",
         ":cudnn_conv_rewriter",
         ":cudnn_fused_conv_rewriter",
@@ -1545,16 +1529,12 @@ cc_library(
 tf_cc_test(
     name = "cudnn_fused_conv_rewriter_test",
     srcs = ["cudnn_fused_conv_rewriter_test.cc"],
-<<<<<<< HEAD
-    tags = ["no_rocm"]
-     + tf_cuda_tests_tags(),
-=======
     tags = [
+        "no_rocm",
         "noasan",
         "nomsan",
         "requires-gpu-sm70",
     ],
->>>>>>> google-upstream/master
     deps = [
         ":cudnn_fused_conv_rewriter",
         ":ir_emission_utils",
