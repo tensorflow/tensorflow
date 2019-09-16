@@ -71,6 +71,20 @@ TensorStorageType OperationDef::GetPrimaryStorageType() const {
   return src_tensors[0].storage_type;
 }
 
+bool OperationDef::HasAllTensorsOfType(TensorStorageType storage_type) const {
+  for (const auto& src : src_tensors) {
+    if (src.storage_type != storage_type) {
+      return false;
+    }
+  }
+  for (const auto& dst : dst_tensors) {
+    if (dst.storage_type != storage_type) {
+      return false;
+    }
+  }
+  return true;
+}
+
 GPUOperation::GPUOperation(const OperationDef& definition)
     : definition_(definition) {}
 
