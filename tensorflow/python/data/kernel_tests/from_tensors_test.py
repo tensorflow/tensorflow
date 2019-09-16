@@ -223,14 +223,20 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(([], ([], []), []),
                      dataset_ops.get_legacy_output_shapes(dataset))
 
-  # TODO(b/117581999): more specific shapes in eager mode.
-  @combinations.generate(combinations.combine(tf_api_version=[1],
-                                              mode=["graph", "eager"]))
-  def testSkipEagerNestedStructure(self):
-    components = (np.array([1, 2, 3], dtype=np.int64), (np.array([4., 5.]),
-                                                        np.array([6., 7.])),
-                  np.array([8, 9, 10], dtype=np.int64))
-
+  @combinations.generate(
+      combinations.combine(
+          tf_api_version=[1], mode=["graph"],
+          components=(np.array([1, 2, 3], dtype=np.int64),
+                      (np.array([4., 5.]), np.array([6., 7.])),
+                      np.array([8, 9, 10], dtype=np.int64)),
+          expected_shapes=[[[None, 3], [None, 3], [None, 2], [None, 2]]]) +
+      combinations.combine(
+          tf_api_version=[1], mode=["eager"],
+          components=(np.array([1, 2, 3], dtype=np.int64),
+                      (np.array([4., 5.]), np.array([6., 7.])),
+                      np.array([8, 9, 10], dtype=np.int64)),
+          expected_shapes=[[[1, 3], [1, 3], [1, 2], [1, 2]]]))
+  def testNestedStructure(self, components, expected_shapes):
     dataset = dataset_ops.Dataset.from_tensors(components)
     dataset = dataset.map(lambda x, y, z: ((x, z), (y[0], y[1])))
 
@@ -244,10 +250,8 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(dtypes.int64, x.dtype)
     self.assertEqual(dtypes.float64, y.dtype)
     self.assertEqual(dtypes.float64, z.dtype)
-    self.assertEqual([None, 3], w.shape.as_list())
-    self.assertEqual([None, 3], x.shape.as_list())
-    self.assertEqual([None, 2], y.shape.as_list())
-    self.assertEqual([None, 2], z.shape.as_list())
+    self.assertEqual(expected_shapes, [w.shape.as_list(), x.shape.as_list(),
+                                       y.shape.as_list(), z.shape.as_list()])
 
     get_next = self.getNext(dataset)
     (w, x), (y, z) = get_next()
@@ -255,10 +259,8 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(dtypes.int64, x.dtype)
     self.assertEqual(dtypes.float64, y.dtype)
     self.assertEqual(dtypes.float64, z.dtype)
-    self.assertEqual([None, 3], w.shape.as_list())
-    self.assertEqual([None, 3], x.shape.as_list())
-    self.assertEqual([None, 2], y.shape.as_list())
-    self.assertEqual([None, 2], z.shape.as_list())
+    self.assertEqual(expected_shapes, [w.shape.as_list(), x.shape.as_list(),
+                                       y.shape.as_list(), z.shape.as_list()])
 
   @combinations.generate(test_base.default_test_combinations())
   def testNestedDict(self):
