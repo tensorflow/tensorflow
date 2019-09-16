@@ -22,7 +22,6 @@ limitations under the License.
 #endif
 #if defined(__FreeBSD__)
 #include <sys/sysctl.h>
-#include <sys/types.h>
 #endif
 #if defined(PLATFORM_WINDOWS)
 #include <windows.h>
