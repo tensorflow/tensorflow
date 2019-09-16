@@ -89,6 +89,9 @@ $(PRJDIR)$(3)/$(1)/.vscode/tasks.json : tensorflow/lite/experimental/micro/tools
 
 generate_$(3)_$(1)_project: $(addprefix $(PRJDIR)$(3)/$(1)/, $(4) $(5) $(2))
 
+list_$(3)_$(1)_files:
+	@echo $(4) $(5)
+
 ALL_PROJECT_TARGETS += generate_$(3)_$(1)_project
 endef
 
