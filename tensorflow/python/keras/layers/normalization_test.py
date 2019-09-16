@@ -27,7 +27,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -495,9 +494,9 @@ class NormalizationLayersGraphModeOnlyTest(
             (val_a - np.mean(val_a)) / np.std(val_a), out, atol=1e-3)
 
 
-def _run_layernorm_correctness_test(layer, dtype='float32', fused=False):
+def _run_layernorm_correctness_test(layer, dtype='float32'):
   model = keras.models.Sequential()
-  norm = layer(input_shape=(2, 2, 2), fused=fused)
+  norm = layer(input_shape=(2, 2, 2))
   model.add(norm)
   model.compile(
       loss='mse',
@@ -516,153 +515,86 @@ def _run_layernorm_correctness_test(layer, dtype='float32', fused=False):
   np.testing.assert_allclose(out.mean(), 0.0, atol=1e-1)
   np.testing.assert_allclose(out.std(), 1.0, atol=1e-1)
 
-def _run_fused_layernorm_correctness_test(layer, axis, dtype='float32'):
-  """Test that a fused layernorm can produce the same results with the non-
-  fused one. This is different from _run_layernorm_correctness_test(), which
-  tests the functionality of either fused or non-fused layer norm.
-  """
-  model_ref = keras.models.Sequential()
-  norm = layer(axis=axis, input_shape=(2, 2, 2), fused=False)
-  model_ref.add(norm)
-  model_ref.compile(
-      loss='mse',
-      optimizer=gradient_descent.GradientDescentOptimizer(0.01),
-      run_eagerly=testing_utils.should_run_eagerly(),
-      experimental_run_tf_function=testing_utils.should_run_tf_function())
-
-  # centered on 5.0, variance 10.0
-  x = (np.random.normal(loc=5.0, scale=10.0, size=(1000, 2, 2, 2))
-       .astype(dtype))
-  model_ref.fit(x, x, epochs=4, verbose=0)
-  out_ref = model_ref.predict(x, batch_size=1000)
-  
-  model = keras.models.Sequential()
-  norm = layer(axis=axis, input_shape=(2, 2, 2), fused=True)
-  model.add(norm)
-  model.compile(
-      loss='mse',
-      optimizer=gradient_descent.GradientDescentOptimizer(0.01),
-      run_eagerly=testing_utils.should_run_eagerly(),
-      experimental_run_tf_function=testing_utils.should_run_tf_function())
-  model.fit(x, x, epochs=4, verbose=0)
-  out = model.predict(x, batch_size=1000)
-
-  np.testing.assert_allclose(out_ref, out, atol=1e-1)
-
-def _get_test_configs():
-  devices = ["/cpu:0"]
-  use_fused = [False]
-  if tf_test_util.is_gpu_available():
-    devices += ["/gpu:0", "/gpu:0"]
-    use_fused += [True, False]
-  return zip(devices, use_fused) 
 
 class LayerNormalizationTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_basic_layernorm(self):
-    for device, fused in _get_test_configs():
-      with ops.device(device):
-        testing_utils.layer_test(
-            keras.layers.LayerNormalization,
-            kwargs={
-                'gamma_regularizer': keras.regularizers.l2(0.01),
-                'beta_regularizer': keras.regularizers.l2(0.01),
-                'fused': fused 
-            },
-            input_shape=(3, 4, 2))
-        testing_utils.layer_test(
-            keras.layers.LayerNormalization,
-            kwargs={
-                'gamma_initializer': 'ones',
-                'beta_initializer': 'ones',
-                'fused': fused
-            },
-            input_shape=(3, 4, 2))
-        testing_utils.layer_test(
-            keras.layers.LayerNormalization,
-            kwargs={'scale': False,
-                    'center': False,
-                    'fused': fused
-                   },
-            input_shape=(3, 3))
+    testing_utils.layer_test(
+        keras.layers.LayerNormalization,
+        kwargs={
+            'gamma_regularizer': keras.regularizers.l2(0.01),
+            'beta_regularizer': keras.regularizers.l2(0.01)
+        },
+        input_shape=(3, 4, 2))
+    testing_utils.layer_test(
+        keras.layers.LayerNormalization,
+        kwargs={
+            'gamma_initializer': 'ones',
+            'beta_initializer': 'ones',
+        },
+        input_shape=(3, 4, 2))
+    testing_utils.layer_test(
+        keras.layers.LayerNormalization,
+        kwargs={'scale': False,
+                'center': False},
+        input_shape=(3, 3))
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_layernorm_weights(self):
-    for device, fused in _get_test_configs():
-      with ops.device(device):
-        layer = keras.layers.LayerNormalization(scale=False, center=False,
-                                                fused=fused)
-        layer.build((None, 3, 4))
-        self.assertEqual(len(layer.trainable_weights), 0)
-        self.assertEqual(len(layer.weights), 0)
+    layer = keras.layers.LayerNormalization(scale=False, center=False)
+    layer.build((None, 3, 4))
+    self.assertEqual(len(layer.trainable_weights), 0)
+    self.assertEqual(len(layer.weights), 0)
 
-        layer = keras.layers.LayerNormalization(fused=fused)
-        layer.build((None, 3, 4))
-        self.assertEqual(len(layer.trainable_weights), 2)
-        self.assertEqual(len(layer.weights), 2)
+    layer = keras.layers.LayerNormalization()
+    layer.build((None, 3, 4))
+    self.assertEqual(len(layer.trainable_weights), 2)
+    self.assertEqual(len(layer.weights), 2)
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_layernorm_regularization(self):
-    for device, fused in _get_test_configs():
-      with ops.device(device):
-        layer = keras.layers.LayerNormalization(
-            gamma_regularizer='l1', beta_regularizer='l1', fused=fused)
-        layer.build((None, 3, 4))
-        self.assertEqual(len(layer.losses), 2)
-        max_norm = keras.constraints.max_norm
-        layer = keras.layers.LayerNormalization(
-            gamma_constraint=max_norm, beta_constraint=max_norm, fused=fused)
-        layer.build((None, 3, 4))
-        self.assertEqual(layer.gamma.constraint, max_norm)
-        self.assertEqual(layer.beta.constraint, max_norm)
+    layer = keras.layers.LayerNormalization(
+        gamma_regularizer='l1', beta_regularizer='l1')
+    layer.build((None, 3, 4))
+    self.assertEqual(len(layer.losses), 2)
+    max_norm = keras.constraints.max_norm
+    layer = keras.layers.LayerNormalization(
+        gamma_constraint=max_norm, beta_constraint=max_norm)
+    layer.build((None, 3, 4))
+    self.assertEqual(layer.gamma.constraint, max_norm)
+    self.assertEqual(layer.beta.constraint, max_norm)
 
   @keras_parameterized.run_all_keras_modes
   def test_layernorm_convnet_channel_last(self):
-    for device, fused in _get_test_configs():
-      with ops.device(device):
-        model = keras.models.Sequential()
-        norm = keras.layers.LayerNormalization(input_shape=(4, 4, 3),
-                                               fused=fused)
-        model.add(norm)
-        model.compile(
-            loss='mse',
-            optimizer=gradient_descent.GradientDescentOptimizer(0.01),
-            run_eagerly=testing_utils.should_run_eagerly(),
-            experimental_run_tf_function=testing_utils.should_run_tf_function())
+    model = keras.models.Sequential()
+    norm = keras.layers.LayerNormalization(input_shape=(4, 4, 3))
+    model.add(norm)
+    model.compile(
+        loss='mse',
+        optimizer=gradient_descent.GradientDescentOptimizer(0.01),
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
-        # centered on 5.0, variance 10.0
-        x = np.random.normal(loc=5.0, scale=10.0, size=(1000, 4, 4, 3))
-        model.fit(x, x, epochs=4, verbose=0)
-        out = model.predict(x)
-        out -= np.reshape(keras.backend.eval(norm.beta), (1, 1, 1, 3))
-        out /= np.reshape(keras.backend.eval(norm.gamma), (1, 1, 1, 3))
+    # centered on 5.0, variance 10.0
+    x = np.random.normal(loc=5.0, scale=10.0, size=(1000, 4, 4, 3))
+    model.fit(x, x, epochs=4, verbose=0)
+    out = model.predict(x)
+    out -= np.reshape(keras.backend.eval(norm.beta), (1, 1, 1, 3))
+    out /= np.reshape(keras.backend.eval(norm.gamma), (1, 1, 1, 3))
 
-        np.testing.assert_allclose(np.mean(out, axis=(0, 1, 2)), 0.0, atol=1e-1)
-        np.testing.assert_allclose(np.std(out, axis=(0, 1, 2)), 1.0, atol=1e-1)
+    np.testing.assert_allclose(np.mean(out, axis=(0, 1, 2)), 0.0, atol=1e-1)
+    np.testing.assert_allclose(np.std(out, axis=(0, 1, 2)), 1.0, atol=1e-1)
 
   @keras_parameterized.run_all_keras_modes
   def test_layernorm_correctness(self):
-    for device, fused in _get_test_configs():
-      with ops.device(device):
-        _run_layernorm_correctness_test(
-            normalization.LayerNormalization, dtype='float32', fused=fused)
-
-  @keras_parameterized.run_all_keras_modes
-  def test_fused_layernorm_correctness(self):
-    if not tf_test_util.is_gpu_available():
-      self.skipTest('No GPU available')
-    device = "/gpu:0"
-    with ops.device(device):
-      _run_fused_layernorm_correctness_test(
-          normalization.LayerNormalization, [-2, -1], dtype='float32')
+    _run_layernorm_correctness_test(
+        normalization.LayerNormalization, dtype='float32')
 
   @keras_parameterized.run_all_keras_modes
   def test_layernorm_mixed_precision(self):
-    for device, fused in _get_test_configs():
-      with ops.device(device):
-        _run_layernorm_correctness_test(
-            normalization.LayerNormalization, dtype='float16', fused=fused)
+    _run_layernorm_correctness_test(
+        normalization.LayerNormalization, dtype='float16')
 
   @tf_test_util.run_in_graph_and_eager_modes
   def testIncorrectAxisType(self):

@@ -898,9 +898,6 @@ class LayerNormalization(Layer):
     beta_constraint: Optional constraint for the beta weight.
     gamma_constraint: Optional constraint for the gamma weight.
     trainable: Boolean, if `True` the variables will be marked as trainable.
-    fused: if `True`, use a faster, fused implementation, or raise a ValueError
-      if the fused implementation cannot be used. If False, do not used the
-      fused implementation. Only GPU supports fused implementation.
 
   Input shape:
     Arbitrary. Use the keyword argument `input_shape`
@@ -927,7 +924,6 @@ class LayerNormalization(Layer):
                gamma_constraint=None,
                trainable=True,
                name=None,
-               fused=False,
                **kwargs):
     super(LayerNormalization, self).__init__(
         name=name, trainable=trainable, **kwargs)
@@ -951,28 +947,23 @@ class LayerNormalization(Layer):
 
     self.supports_masking = True
 
-    if fused is None: raise ValueError("Passing fused=None is not supported")
-    self.fused = fused
+    self.fused = False
 
   def _raise_if_fused_cannot_be_used(self, ndims):
-    """Raises a ValueError if fused implementation cannot be used.
+    """Return false if fused implementation cannot be used.
 
     Check if the axis is contiguous and can be collapsed into the last axis.
     The self.axis is assumed to have no duplicates.
     """
     axis = sorted(self.axis)
-    err = False
+    can_use_fused = False
 
     if axis[-1] != ndims-1:
-      err = True
+      can_use_fused = True
 
     if axis[-1] - axis[0] != len(axis) - 1:
-      err = True
-
-    if err:
-      raise ValueError('Passing fused=True is only supported when axis is '
-                       'contiguous and can be collapsed into the last '
-                       'dimension')
+      can_use_fused = True
+    return can_use_fused 
 
   def build(self, input_shape):
     ndims = len(input_shape)
@@ -993,8 +984,7 @@ class LayerNormalization(Layer):
     if len(self.axis) != len(set(self.axis)):
       raise ValueError('Duplicate axis: {}'.format(tuple(self.axis)))
 
-    if self.fused:
-      self._raise_if_fused_cannot_be_used(ndims)
+    self.fused = self._raise_if_fused_cannot_be_used(ndims)
 
     param_shape = [input_shape[dim] for dim in self.axis]
     if self.scale:
@@ -1067,9 +1057,7 @@ class LayerNormalization(Layer):
           in_dim = in_dim * dim_tensor
       
       squeezed_shape = [1, pre_dim, in_dim, 1]
-      # TODO: this fused operation requires reshaped inputs to be NCHW. The
-      # fused_batch_norm supports NCHW only on GPUs. We can lift this limitation
-      # when we have CPU implementation.
+      # This fused operation requires reshaped inputs to be NCHW.
       data_format = 'NCHW'
 
       inputs = array_ops.reshape(inputs, squeezed_shape)
@@ -1121,7 +1109,6 @@ class LayerNormalization(Layer):
         'gamma_regularizer': regularizers.serialize(self.gamma_regularizer),
         'beta_constraint': constraints.serialize(self.beta_constraint),
         'gamma_constraint': constraints.serialize(self.gamma_constraint),
-        'fused': self.fused 
     }
     base_config = super(LayerNormalization, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
