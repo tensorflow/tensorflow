@@ -415,6 +415,28 @@ cc_library(
     ],
 )
 
+objc_library(
+    name = "reshape_test_lib",
+    testonly = 1,
+    srcs = ["reshape_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":reshape",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "reshape_test",
+    testonly = 1,
+    minimum_os_version = "9.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":reshape_test_lib"],
+)
+
 cc_library(
     name = "slice",
     srcs = ["slice.cc"],
