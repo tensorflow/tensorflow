@@ -21,13 +21,15 @@
 
 #include "mlir/Dialect/SPIRV/SPIRVTypes.h"
 #include "mlir/IR/StandardTypes.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 
 using namespace mlir;
 using namespace mlir::spirv;
 
 // Pull in all enum utility function definitions
-#include "mlir/Dialect/SPIRV/SPIRVEnums.cpp.inc"
+#include "mlir/Dialect/SPIRV/SPIRVBitEnums.cpp.inc"
+#include "mlir/Dialect/SPIRV/SPIRVIntEnums.cpp.inc"
 
 //===----------------------------------------------------------------------===//
 // ArrayType

@@ -20,6 +20,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "EnumsGen.h"
 #include "mlir/Support/StringExtras.h"
 #include "mlir/TableGen/Attribute.h"
 #include "mlir/TableGen/GenInfo.h"
@@ -48,6 +49,10 @@ using mlir::tblgen::EnumAttr;
 using mlir::tblgen::NamedAttribute;
 using mlir::tblgen::NamedTypeConstraint;
 using mlir::tblgen::Operator;
+
+//===----------------------------------------------------------------------===//
+// Serialization AutoGen
+//===----------------------------------------------------------------------===//
 
 // Writes the following function to `os`:
 //   inline uint32_t getOpcode(<op-class-name>) { return <opcode>; }
@@ -397,6 +402,10 @@ static bool emitSerializationFns(const RecordKeeper &recordKeeper,
   return false;
 }
 
+//===----------------------------------------------------------------------===//
+// Op Utils AutoGen
+//===----------------------------------------------------------------------===//
+
 static void emitEnumGetAttrNameFnDecl(raw_ostream &os) {
   os << formatv("template <typename EnumClass> inline constexpr StringRef "
                 "attributeName();\n");
@@ -435,7 +444,7 @@ static void emitEnumGetSymbolizeFnDefn(const EnumAttr &enumAttr,
 static bool emitOpUtils(const RecordKeeper &recordKeeper, raw_ostream &os) {
   llvm::emitSourceFileHeader("SPIR-V Op Utilites", os);
 
-  auto defs = recordKeeper.getAllDerivedDefinitions("I32EnumAttr");
+  auto defs = recordKeeper.getAllDerivedDefinitions("EnumAttrInfo");
   os << "#ifndef SPIRV_OP_UTILS_H_\n";
   os << "#define SPIRV_OP_UTILS_H_\n";
   emitEnumGetAttrNameFnDecl(os);
@@ -449,7 +458,168 @@ static bool emitOpUtils(const RecordKeeper &recordKeeper, raw_ostream &os) {
   return false;
 }
 
-// Registers the enum utility generator to mlir-tblgen.
+//===----------------------------------------------------------------------===//
+// BitEnum AutoGen
+//===----------------------------------------------------------------------===//
+
+// Emits the following inline function for bit enums:
+// inline <enum-type> operator|(<enum-type> a, <enum-type> b);
+// inline <enum-type> bitEnumContains(<enum-type> a, <enum-type> b);
+static void emitOperators(const Record &enumDef, raw_ostream &os) {
+  EnumAttr enumAttr(enumDef);
+  StringRef enumName = enumAttr.getEnumClassName();
+  std::string underlyingType = enumAttr.getUnderlyingType();
+  os << formatv("inline {0} operator|({0} lhs, {0} rhs) {{\n", enumName)
+     << formatv("  return static_cast<{0}>("
+                "static_cast<{1}>(lhs) | static_cast<{1}>(rhs));\n",
+                enumName, underlyingType)
+     << "}\n";
+  os << formatv(
+            "inline bool bitEnumContains({0} bits, {0} bit) {{\n"
+            "  return (static_cast<{1}>(bits) & static_cast<{1}>(bit)) != 0;\n",
+            enumName, underlyingType)
+     << "}\n";
+}
+
+static bool emitBitEnumDecls(const RecordKeeper &recordKeeper,
+                             raw_ostream &os) {
+  llvm::emitSourceFileHeader("BitEnum Utility Declarations", os);
+
+  auto operatorsEmitter = [](const Record &enumDef, llvm::raw_ostream &os) {
+    return emitOperators(enumDef, os);
+  };
+
+  auto defs = recordKeeper.getAllDerivedDefinitions("BitEnumAttr");
+  for (const auto *def : defs)
+    mlir::tblgen::emitEnumDecl(*def, operatorsEmitter, os);
+
+  return false;
+}
+
+static void emitSymToStrFnForBitEnum(const Record &enumDef, raw_ostream &os) {
+  EnumAttr enumAttr(enumDef);
+  StringRef enumName = enumAttr.getEnumClassName();
+  StringRef symToStrFnName = enumAttr.getSymbolToStringFnName();
+  StringRef symToStrFnRetType = enumAttr.getSymbolToStringFnRetType();
+  StringRef separator = enumDef.getValueAsString("separator");
+  auto enumerants = enumAttr.getAllCases();
+
+  os << formatv("{2} {1}({0} symbol) {{\n", enumName, symToStrFnName,
+                symToStrFnRetType);
+
+  os << formatv("  auto val = static_cast<{0}>(symbol);\n",
+                enumAttr.getUnderlyingType());
+  os << "  // Special case for all bits unset.\n";
+  os << "  if (val == 0) return \"None\";\n\n";
+  os << "  SmallVector<llvm::StringRef, 2> strs;\n";
+  for (const auto &enumerant : enumerants) {
+    // Skip the special enumerant for None.
+    if (auto val = enumerant.getValue())
+      os << formatv("  if ({0}u & val) {{ strs.push_back(\"{1}\"); "
+                    "val &= ~{0}u; }\n",
+                    val, enumerant.getSymbol());
+  }
+  // If we have unknown bit set, return an empty string to signal errors.
+  os << "\n  if (val) return \"\";\n";
+  os << formatv("  return llvm::join(strs, \"{0}\");\n", separator);
+
+  os << "}\n\n";
+}
+
+static void emitStrToSymFnForBitEnum(const Record &enumDef, raw_ostream &os) {
+  EnumAttr enumAttr(enumDef);
+  StringRef enumName = enumAttr.getEnumClassName();
+  std::string underlyingType = enumAttr.getUnderlyingType();
+  StringRef strToSymFnName = enumAttr.getStringToSymbolFnName();
+  StringRef separator = enumDef.getValueAsString("separator");
+  auto enumerants = enumAttr.getAllCases();
+
+  os << formatv("llvm::Optional<{0}> {1}(llvm::StringRef str) {{\n", enumName,
+                strToSymFnName);
+
+  os << formatv("  if (str == \"None\") return {0}::None;\n\n", enumName);
+
+  // Split the string to get symbols for all the bits.
+  os << "  SmallVector<llvm::StringRef, 2> symbols;\n";
+  os << formatv("  str.split(symbols, \"{0}\");\n\n", separator);
+
+  os << formatv("  {0} val = 0;\n", underlyingType);
+  os << "  for (auto symbol : symbols) {\n";
+
+  // Convert each symbol to the bit ordinal and set the corresponding bit.
+  os << formatv(
+      "    auto bit = llvm::StringSwitch<llvm::Optional<{0}>>(symbol)\n",
+      underlyingType);
+  for (const auto &enumerant : enumerants) {
+    // Skip the special enumerant for None.
+    if (auto val = enumerant.getValue())
+      os.indent(6) << formatv(".Case(\"{0}\", {1})\n", enumerant.getSymbol(),
+                              enumerant.getValue());
+  }
+  os.indent(6) << ".Default(llvm::None);\n";
+
+  os << "    if (bit) { val |= *bit; } else { return llvm::None; }\n";
+  os << "  }\n";
+
+  os << formatv("  return static_cast<{0}>(val);\n", enumName);
+  os << "}\n\n";
+}
+
+static void emitUnderlyingToSymFnForBitEnum(const Record &enumDef,
+                                            raw_ostream &os) {
+  EnumAttr enumAttr(enumDef);
+  StringRef enumName = enumAttr.getEnumClassName();
+  std::string underlyingType = enumAttr.getUnderlyingType();
+  StringRef underlyingToSymFnName = enumAttr.getUnderlyingToSymbolFnName();
+  auto enumerants = enumAttr.getAllCases();
+
+  os << formatv("llvm::Optional<{0}> {1}({2} value) {{\n", enumName,
+                underlyingToSymFnName, underlyingType);
+  os << formatv("  if (value == 0) return {0}::None;\n", enumName);
+  llvm::SmallVector<std::string, 8> values;
+  for (const auto &enumerant : enumerants) {
+    if (auto val = enumerant.getValue())
+      values.push_back(formatv("{0}u", val));
+  }
+  os << formatv("  if (value & ~({0})) return llvm::None;\n",
+                llvm::join(values, " | "));
+  os << formatv("  return static_cast<{0}>(value);\n", enumName);
+  os << "}\n";
+}
+
+static void emitBitEnumDef(const Record &enumDef, raw_ostream &os) {
+  EnumAttr enumAttr(enumDef);
+  StringRef cppNamespace = enumAttr.getCppNamespace();
+
+  llvm::SmallVector<StringRef, 2> namespaces;
+  llvm::SplitString(cppNamespace, namespaces, "::");
+
+  for (auto ns : namespaces)
+    os << "namespace " << ns << " {\n";
+
+  emitSymToStrFnForBitEnum(enumDef, os);
+  emitStrToSymFnForBitEnum(enumDef, os);
+  emitUnderlyingToSymFnForBitEnum(enumDef, os);
+
+  for (auto ns : llvm::reverse(namespaces))
+    os << "} // namespace " << ns << "\n";
+  os << "\n";
+}
+
+static bool emitBitEnumDefs(const RecordKeeper &recordKeeper, raw_ostream &os) {
+  llvm::emitSourceFileHeader("BitEnum Utility Definitions", os);
+
+  auto defs = recordKeeper.getAllDerivedDefinitions("BitEnumAttr");
+  for (const auto *def : defs)
+    emitBitEnumDef(*def, os);
+
+  return false;
+}
+
+//===----------------------------------------------------------------------===//
+// Hook Registration
+//===----------------------------------------------------------------------===//
+
 static mlir::GenRegistration genSerialization(
     "gen-spirv-serialization",
     "Generate SPIR-V (de)serialization utilities and functions",
@@ -463,3 +633,17 @@ static mlir::GenRegistration
                [](const RecordKeeper &records, raw_ostream &os) {
                  return emitOpUtils(records, os);
                });
+
+static mlir::GenRegistration
+    genEnumDecls("gen-spirv-enum-decls",
+                 "Generate SPIR-V bit enum utility declarations",
+                 [](const RecordKeeper &records, raw_ostream &os) {
+                   return emitBitEnumDecls(records, os);
+                 });
+
+static mlir::GenRegistration
+    genEnumDefs("gen-spirv-enum-defs",
+                "Generate SPIR-V bit enum utility definitions",
+                [](const RecordKeeper &records, raw_ostream &os) {
+                  return emitBitEnumDefs(records, os);
+                });
