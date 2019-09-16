@@ -143,7 +143,7 @@ LogicalResult LaunchOp::verify() {
   if (!getBody().empty()) {
     Block &entryBlock = getBody().front();
     if (entryBlock.getNumArguments() != kNumConfigOperands + getNumOperands())
-      return emitError("unexpected number of region arguments");
+      return emitOpError("unexpected number of region arguments");
   }
 
   // Block terminators without successors are expected to exit the kernel region
@@ -437,11 +437,11 @@ LogicalResult LaunchFuncOp::verify() {
   auto module = getParentOfType<ModuleOp>();
   FuncOp kernelFunc = module.lookupSymbol<FuncOp>(kernel());
   if (!kernelFunc)
-    return emitError() << "kernel function '" << kernelAttr << "' is undefined";
+    return emitOpError("kernel function '") << kernelAttr << "' is undefined";
 
   if (!kernelFunc.getAttrOfType<mlir::UnitAttr>(
           GPUDialect::getKernelFuncAttrName())) {
-    return emitError("kernel function is missing the '")
+    return emitOpError("kernel function is missing the '")
            << GPUDialect::getKernelFuncAttrName() << "' attribute";
   }
   unsigned numKernelFuncArgs = kernelFunc.getNumArguments();
