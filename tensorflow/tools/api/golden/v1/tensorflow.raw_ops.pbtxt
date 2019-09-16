@@ -730,7 +730,7 @@ tf_module {
   }
   member_method {
     name: "ConfigureDistributedTPU"
-    argspec: "args=[\'embedding_config\', \'tpu_embedding_config\', \'is_global_init\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'False\', \'None\'], "
+    argspec: "args=[\'embedding_config\', \'tpu_embedding_config\', \'is_global_init\', \'enable_whole_mesh_compilations\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "ConfigureTPUEmbedding"
