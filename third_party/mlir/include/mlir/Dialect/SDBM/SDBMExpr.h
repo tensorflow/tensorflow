@@ -68,6 +68,28 @@ class SDBMSymbolExpr;
 /// not combine in more cases than they do.  This choice may be reconsidered in
 /// the future.
 ///
+/// SDBM expressions are grouped into the following structure
+/// - expression
+///   - varying
+///     - direct
+///       - sum <- (term, constant)
+///       - term
+///         - symbol
+///         - dimension
+///         - stripe <- (term, constant)
+///     - negation <- (direct)
+///     - difference <- (direct, term)
+///   - constant
+/// The notation <- (...) denotes the types of subexpressions a compound
+/// expression can combine.  The tree of subexpressions essentially imposes the
+/// following canonicalization rules:
+///   - constants are always folded;
+///   - constants can only appear on the RHS of an expression;
+///   - double negation must be elided;
+///   - an additive constant term is only allowed in a sum expression, and
+///     should be sunk into the nearest such expression in the tree;
+///   - zero constant expression can only appear at the top level.
+///
 /// `SDBMExpr` and derived classes are thin wrappers around a pointer owned by
 /// an MLIRContext, and should be used by-value.  They are uniqued in the
 /// MLIRContext and immortal.
@@ -208,39 +230,42 @@ public:
   }
 };
 
-/// SDBM sum expression.  LHS is a varying expression and RHS is always a
-/// constant expression.
+/// SDBM sum expression.  LHS is a term expression and RHS is a constant.
 class SDBMSumExpr : public SDBMDirectExpr {
 public:
   using ImplType = detail::SDBMBinaryExprStorage;
   using SDBMDirectExpr::SDBMDirectExpr;
 
   /// Obtain or create a sum expression unique'ed in the given context.
-  static SDBMSumExpr get(SDBMVaryingExpr lhs, SDBMConstantExpr rhs);
+  static SDBMSumExpr get(SDBMTermExpr lhs, SDBMConstantExpr rhs);
 
   static bool isClassFor(const SDBMExpr &expr) {
     SDBMExprKind kind = expr.getKind();
     return kind == SDBMExprKind::Add;
   }
 
-  SDBMVaryingExpr getLHS() const;
+  SDBMTermExpr getLHS() const;
   SDBMConstantExpr getRHS() const;
 };
 
-/// SDBM difference expression.  Both LHS and RHS are SDBM term expressions.
+/// SDBM difference expression.  LHS is a direct expression, i.e. it may be a
+/// sum of a term and a constant.  RHS is a term expression.  Thus the
+/// expression (t1 - t2 + C) with term expressions t1,t2 is represented as
+///   diff(sum(t1, C), t2)
+/// and it is possible to extract the constant factor without negating it.
 class SDBMDiffExpr : public SDBMVaryingExpr {
 public:
   using ImplType = detail::SDBMDiffExprStorage;
   using SDBMVaryingExpr::SDBMVaryingExpr;
 
   /// Obtain or create a difference expression unique'ed in the given context.
-  static SDBMDiffExpr get(SDBMTermExpr lhs, SDBMTermExpr rhs);
+  static SDBMDiffExpr get(SDBMDirectExpr lhs, SDBMTermExpr rhs);
 
   static bool isClassFor(const SDBMExpr &expr) {
     return expr.getKind() == SDBMExprKind::Diff;
   }
 
-  SDBMTermExpr getLHS() const;
+  SDBMDirectExpr getLHS() const;
   SDBMTermExpr getRHS() const;
 };
 
@@ -319,13 +344,13 @@ public:
   using SDBMVaryingExpr::SDBMVaryingExpr;
 
   /// Obtain or create a negation expression unique'ed in the given context.
-  static SDBMNegExpr get(SDBMTermExpr var);
+  static SDBMNegExpr get(SDBMDirectExpr var);
 
   static bool isClassFor(const SDBMExpr &expr) {
     return expr.getKind() == SDBMExprKind::Neg;
   }
 
-  SDBMTermExpr getVar() const;
+  SDBMDirectExpr getVar() const;
 };
 
 /// A visitor class for SDBM expressions.  Calls the kind-specific function
@@ -490,22 +515,22 @@ template <> struct DenseMapInfo<mlir::SDBMExpr> {
   }
 };
 
-// SDBMVaryingExpr hash just like pointers.
-template <> struct DenseMapInfo<mlir::SDBMVaryingExpr> {
-  static mlir::SDBMVaryingExpr getEmptyKey() {
+// SDBMDirectExpr hash just like pointers.
+template <> struct DenseMapInfo<mlir::SDBMDirectExpr> {
+  static mlir::SDBMDirectExpr getEmptyKey() {
     auto *pointer = llvm::DenseMapInfo<void *>::getEmptyKey();
-    return mlir::SDBMVaryingExpr(
+    return mlir::SDBMDirectExpr(
         static_cast<mlir::SDBMExpr::ImplType *>(pointer));
   }
-  static mlir::SDBMVaryingExpr getTombstoneKey() {
+  static mlir::SDBMDirectExpr getTombstoneKey() {
     auto *pointer = llvm::DenseMapInfo<void *>::getTombstoneKey();
-    return mlir::SDBMVaryingExpr(
+    return mlir::SDBMDirectExpr(
         static_cast<mlir::SDBMExpr::ImplType *>(pointer));
   }
-  static unsigned getHashValue(mlir::SDBMVaryingExpr expr) {
+  static unsigned getHashValue(mlir::SDBMDirectExpr expr) {
     return expr.hash_value();
   }
-  static bool isEqual(mlir::SDBMVaryingExpr lhs, mlir::SDBMVaryingExpr rhs) {
+  static bool isEqual(mlir::SDBMDirectExpr lhs, mlir::SDBMDirectExpr rhs) {
     return lhs == rhs;
   }
 };
