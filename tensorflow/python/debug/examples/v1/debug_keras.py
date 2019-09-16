@@ -44,12 +44,11 @@ def main(_):
   sess = tf.Session()
   if FLAGS.debug:
     # Use the command-line interface (CLI) of tfdbg.
-    config_file_path = (tempfile.mktemp(".tfdbg_config")
-                        if FLAGS.use_random_config_path else None)
+    config_file_path = (
+        tempfile.mktemp(".tfdbg_config")
+        if FLAGS.use_random_config_path else None)
     sess = tf_debug.LocalCLIDebugWrapperSession(
-        sess,
-        ui_type=FLAGS.ui_type,
-        config_file_path=config_file_path)
+        sess, ui_type=FLAGS.ui_type, config_file_path=config_file_path)
   elif FLAGS.tensorboard_debug_address:
     # Use the TensorBoard Debugger Plugin (GUI of tfdbg).
     sess = tf_debug.TensorBoardDebugWrapperSession(
@@ -57,8 +56,8 @@ def main(_):
   tf.keras.backend.set_session(sess)
 
   # Create a dummy model.
-  model = tf.keras.Sequential([
-      tf.keras.layers.Dense(1, input_shape=[input_dims])])
+  model = tf.keras.Sequential(
+      [tf.keras.layers.Dense(1, input_shape=[input_dims])])
   model.compile(loss="mse", optimizer="sgd")
 
   # Train the model using the dummy dataset created above.

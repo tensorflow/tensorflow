@@ -36,13 +36,16 @@ def main(_):
   # debugger, not how to use machine learning to solve the Iris classification
   # problem.
   def training_input_fn():
-    return ({"features": tf.random_normal([128, 4])},
-            tf.random_uniform([128], minval=0, maxval=3, dtype=tf.int32))
+    return ({
+        "features": tf.random_normal([128, 4])
+    }, tf.random_uniform([128], minval=0, maxval=3, dtype=tf.int32))
+
   def test_input_fn():
-    return ({"features": tf.random_normal([32, 4])},
-            tf.random_uniform([32], minval=0, maxval=3, dtype=tf.int32))
-  feature_columns = [
-      tf.feature_column.numeric_column("features", shape=(4,))]
+    return ({
+        "features": tf.random_normal([32, 4])
+    }, tf.random_uniform([32], minval=0, maxval=3, dtype=tf.int32))
+
+  feature_columns = [tf.feature_column.numeric_column("features", shape=(4,))]
 
   # Build 3 layer DNN with 10, 20, 10 units respectively.
   model_dir = FLAGS.model_dir or tempfile.mkdtemp(prefix="debug_tflearn_iris_")
@@ -59,23 +62,23 @@ def main(_):
         "exclusive.")
   hooks = []
   if FLAGS.debug:
-    config_file_path = (tempfile.mktemp(".tfdbg_config")
-                        if FLAGS.use_random_config_path else None)
-    hooks.append(tf_debug.LocalCLIDebugHook(ui_type=FLAGS.ui_type,
-                                            dump_root=FLAGS.dump_root,
-                                            config_file_path=config_file_path))
+    config_file_path = (
+        tempfile.mktemp(".tfdbg_config")
+        if FLAGS.use_random_config_path else None)
+    hooks.append(
+        tf_debug.LocalCLIDebugHook(
+            ui_type=FLAGS.ui_type,
+            dump_root=FLAGS.dump_root,
+            config_file_path=config_file_path))
   elif FLAGS.tensorboard_debug_address:
     hooks.append(tf_debug.TensorBoardDebugHook(FLAGS.tensorboard_debug_address))
 
   # Train model, using tfdbg hook.
-  classifier.train(training_input_fn,
-                   steps=FLAGS.train_steps,
-                   hooks=hooks)
+  classifier.train(training_input_fn, steps=FLAGS.train_steps, hooks=hooks)
 
   # Evaluate accuracy, using tfdbg hook.
-  accuracy_score = classifier.evaluate(test_input_fn,
-                                       steps=FLAGS.eval_steps,
-                                       hooks=hooks)["accuracy"]
+  accuracy_score = classifier.evaluate(
+      test_input_fn, steps=FLAGS.eval_steps, hooks=hooks)["accuracy"]
 
   print("After training %d steps, Accuracy = %f" %
         (FLAGS.train_steps, accuracy_score))
