@@ -66,6 +66,7 @@ tf_instantiate_platform_libraries(names = [
     "rocm_rocdl_path",
     "strong_hash",
     "subprocess",
+    "tracing",
     "wide_char",
 ])
 
@@ -502,6 +503,14 @@ cc_library(
     hdrs = ["threadpool_options.h"],
     deps = [
         ":threadpool_interface",
+    ],
+)
+
+cc_library(
+    name = "tracing",
+    textual_hdrs = ["tracing.h"],
+    deps = [
+        ":tracing_impl",
     ],
 )
 

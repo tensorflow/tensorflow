@@ -201,6 +201,34 @@ TF_PLATFORM_LIBRARIES = {
         "tags": ["no_oss", "manual"],
         "visibility": ["//visibility:private"],
     },
+    "tracing": {
+        "name": "tracing_impl",
+        "textual_hdrs": [
+            "//tensorflow/core/platform:default/tracing_impl.h",
+        ],
+        "hdrs": [
+            "//tensorflow/core/platform:tracing.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:default/tracing.cc",
+            "//tensorflow/core/platform:tracing.cc",
+        ],
+        "deps": [
+            "@com_google_absl//absl/memory",
+            "//tensorflow/core/lib/core:errors",
+            "//tensorflow/core/lib/hash",
+            "//tensorflow/core/platform",
+            "//tensorflow/core/platform:annotation",
+            "//tensorflow/core/platform:logging",
+            "//tensorflow/core/platform:macros",
+            "//tensorflow/core/platform:mutex",
+            "//tensorflow/core/lib/strings:string_utils",
+            "//tensorflow/core/lib/core:stringpiece",
+            "//tensorflow/core/platform:types",
+        ],
+        "tags": ["no_oss", "manual"],
+        "visibility": ["//visibility:private"],
+    },
 }
 
 TF_WINDOWS_PLATFORM_LIBRARIES = {
