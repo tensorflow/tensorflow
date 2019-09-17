@@ -421,6 +421,28 @@ cc_library(
     ],
 )
 
+objc_library(
+    name = "relu_test_lib",
+    testonly = 1,
+    srcs = ["relu_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":relu",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "relu_test",
+    testonly = 1,
+    minimum_os_version = "9.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":relu_test_lib"],
+)
+
 cc_library(
     name = "reshape",
     srcs = ["reshape.cc"],
