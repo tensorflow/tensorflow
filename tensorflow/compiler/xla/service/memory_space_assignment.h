@@ -110,6 +110,8 @@ class MemorySpaceAssignment {
           end_time_(end_time) {}
     virtual ~Allocation() = default;
 
+    virtual bool is_copy_allocation() const { return false; }
+
     // Adds a use to this allocation.
     void AddUse(HloUse use);
 
@@ -132,6 +134,7 @@ class MemorySpaceAssignment {
     const std::vector<HloUse>& uses() const { return uses_; }
     MemorySpace memory_space() const { return memory_space_; }
     Chunk chunk() const { return chunk_; }
+    void set_start_time(int64 start_time) { start_time_ = start_time; }
     int64 start_time() const { return start_time_; }
     int64 end_time() const { return end_time_; }
 
@@ -155,15 +158,15 @@ class MemorySpaceAssignment {
   class CopyAllocation : public Allocation {
    public:
     CopyAllocation(const Allocation& prev_allocation, MemorySpace memory_space,
-                   Chunk chunk, int64 start_time, int64 end_time,
-                   HloInstruction* copy_start_schedule_after,
-                   HloInstruction* copy_done_schedule_before)
+                   Chunk chunk, int64 start_time, int64 end_time)
         : Allocation(/*instruction=*/nullptr,
                      /*defining_position=*/{nullptr, {}}, memory_space, chunk,
                      start_time, end_time),
           prev_allocation_(prev_allocation),
-          copy_start_schedule_after_(copy_start_schedule_after),
-          copy_done_schedule_before_(copy_done_schedule_before) {}
+          copy_start_schedule_after_(start_time),
+          copy_done_schedule_before_(end_time) {}
+
+    bool is_copy_allocation() const override { return true; }
 
     Status Process(MemorySpaceAssignment* memory_space_assignment) override;
 
@@ -177,14 +180,30 @@ class MemorySpaceAssignment {
       }
     }
 
+    HloInstruction* copy_start() const { return copy_start_; }
+    HloInstruction* copy_done() const { return copy_done_; }
+
+    int64 copy_start_schedule_after() const {
+      return copy_start_schedule_after_;
+    }
+    int64 copy_done_schedule_before() const {
+      return copy_done_schedule_before_;
+    }
+
+    void set_copy_start_schedule_after(int64 copy_start_schedule_after) {
+      copy_start_schedule_after_ = copy_start_schedule_after;
+    }
+
    private:
     const Allocation& prev_allocation_;
     // These variables define the scheduling boundaries where CopyStart and
     // CopyDone can be scheduled. The earliest CopyStart can be scheduled is
     // after copy_start_schedule_after_ and the latest CopyDone can be scheduled
     // is before copy_done_schedule_before_.
-    HloInstruction* copy_start_schedule_after_;
-    HloInstruction* copy_done_schedule_before_;
+    int64 copy_start_schedule_after_;
+    int64 copy_done_schedule_before_;
+    HloInstruction* copy_start_;
+    HloInstruction* copy_done_;
   };
 
   using AllocationSequence = std::list<std::unique_ptr<Allocation>>;
@@ -236,14 +255,9 @@ class MemorySpaceAssignment {
       HloInstruction* new_instruction, HloInstructionSequence* new_sequence,
       absl::flat_hash_set<HloInstruction*>* inserted_instructions) const;
 
-  // Schedules a pair of asynchronous copy instructions (copy_start and
-  // copy_done) where copy_start will be scheduled after the instruction in
-  // copy_start_schedule_after and copy_done will be scheduled before the
-  // instruction in copy_done_schedule_before.
-  void ScheduleAsynchronousCopy(HloInstruction* copy_start,
-                                HloInstruction* copy_start_schedule_after,
-                                HloInstruction* copy_done,
-                                HloInstruction* copy_done_schedule_before);
+  // Schedules asynchronous copies and ensures that the CopyStarts and their
+  // corresponding CopyDones follow the same order.
+  void ScheduleAsynchronousCopies();
 
   HloModule* module_;
   int64 alternate_memory_space_;
@@ -251,12 +265,10 @@ class MemorySpaceAssignment {
   std::unique_ptr<PresetAssignments> preset_assignments_;
 
   // These maps hold vectors of new instructions that need to be scheduled after
-  // (or before) the instruction in the key. FixSchedule uses these maps to
-  // modify and fix the schedule.
-  absl::flat_hash_map<const HloInstruction*, std::vector<HloInstruction*>>
-      schedule_after_;
-  absl::flat_hash_map<const HloInstruction*, std::vector<HloInstruction*>>
-      schedule_before_;
+  // (or before) the instruction index in the key. FixSchedule uses these maps
+  // to modify and fix the schedule.
+  absl::flat_hash_map<int64, std::vector<HloInstruction*>> schedule_after_;
+  absl::flat_hash_map<int64, std::vector<HloInstruction*>> schedule_before_;
 };
 
 // This class inherits from GlobalDecreasingSizeBestFitHeap with a notion of
@@ -291,7 +303,7 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // limits, and append the new allocation(s) to allocations. The new
   // allocations can be in default or alternate memory spaces, or can be
   // prefetches or evictions. Returns true if successful.
-  bool FindAllocation(int64 start_time, int64 end_time,
+  bool FindAllocation(int64 start_time, int64 end_time, int64 last_use_time,
                       HloPosition defining_position, HloUse use,
                       const HloValue* buffer, int64 size,
                       MemorySpaceAssignment::AllocationSequence* allocations);
@@ -299,8 +311,9 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // Try allocating in alternate memory without any copies. Returns true if
   // successful.
   bool TryAllocatingInAlternateMemoryNoCopy(
-      int64 start_time, int64 end_time, HloPosition defining_position,
-      HloUse use, BufferInterval alternate_mem_interval,
+      int64 start_time, int64 end_time, int64 last_use_time,
+      HloPosition defining_position, HloUse use,
+      BufferInterval alternate_mem_interval,
       HloInstruction* non_bitcast_operand,
       MemorySpaceAssignment::AllocationSequence* allocations);
 

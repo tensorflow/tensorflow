@@ -109,12 +109,14 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
       // Iterate over the uses.
       for (HloUse use : uses) {
         int64 use_time = instruction_schedule_->at(use.instruction);
+        int64 last_use_time =
+            instruction_schedule_->at(uses.back().instruction);
 
         // Bitcasts don't define buffers and don't directly consume buffers.
         // Skip allocating buffers for bitcast uses. The uses that feed from
         // bitcasts will be handled specially.
         if (use.instruction->opcode() != HloOpcode::kBitcast) {
-          if (!FindAllocation(definition_time, use_time,
+          if (!FindAllocation(definition_time, use_time, last_use_time,
                               value->defining_position(), use, value,
                               colocated_interval->size, allocation_sequence)) {
             // If the allocation finding failed (e.g., due to running out of
@@ -185,9 +187,9 @@ void AlternateMemoryBestFitHeap::AddToPendingChunks(
 }
 
 bool AlternateMemoryBestFitHeap::FindAllocation(
-    int64 start_time, int64 end_time, HloPosition defining_position, HloUse use,
-    const HloValue* buffer, int64 size,
-    MemorySpaceAssignment::AllocationSequence* allocations) {
+    int64 start_time, int64 end_time, int64 last_use_time,
+    HloPosition defining_position, HloUse use, const HloValue* buffer,
+    int64 size, MemorySpaceAssignment::AllocationSequence* allocations) {
   HloInstruction* operand =
       use.instruction->mutable_operand(use.operand_number);
   // If the operand is a bitcast, we look at bitcast's operand until we find a
@@ -206,18 +208,19 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
   alternate_mem_interval.end = end_time;
 
   VLOG(2) << "Finding allocation for " << buffer->ToShortString() << " ("
-          << start_time << ", " << end_time << "). Size = " << size
+          << start_time << ", " << end_time << ") last use = " << last_use_time
+          << ". Size = " << size
           << ", def pos = " << defining_position.ToString()
           << ", operand = " << operand->ToString()
           << (non_bitcast_operand != operand
                   ? ", non_bitcast_operand = " + non_bitcast_operand->ToString()
                   : "");
-  CHECK_LT(start_time, end_time);
+  CHECK_LE(start_time, end_time);
 
   // First try keeping the allocation entirely in the alternate memory.
   if (TryAllocatingInAlternateMemoryNoCopy(
-          start_time, end_time, defining_position, use, alternate_mem_interval,
-          non_bitcast_operand, allocations)) {
+          start_time, end_time, last_use_time, defining_position, use,
+          alternate_mem_interval, non_bitcast_operand, allocations)) {
     return true;
   }
 
@@ -344,20 +347,15 @@ void AlternateMemoryBestFitHeap::AddAsyncCopy(
     const MemorySpaceAssignment::Allocation& prev_allocation,
     MemorySpace memory_space, Chunk chunk, int64 start_time, int64 end_time,
     MemorySpaceAssignment::AllocationSequence* allocations) {
-  HloInstruction* earliest_instruction = GetInstructionAt(start_time);
-  HloInstruction* latest_instruction = GetInstructionAt(end_time);
-
   VLOG(3) << "Copy to "
           << (memory_space == MemorySpaceAssignment::MemorySpace::kDefault
                   ? "default"
                   : "alternate")
-          << " memory between instructions " << earliest_instruction->ToString()
-          << " - " << latest_instruction->ToString();
+          << " memory between " << start_time << " and " << end_time;
 
   allocations->push_back(
       absl::make_unique<MemorySpaceAssignment::CopyAllocation>(
-          prev_allocation, memory_space, chunk, start_time, end_time,
-          earliest_instruction, latest_instruction));
+          prev_allocation, memory_space, chunk, start_time, end_time));
 
   // Register the additional async copy with the interval tree to keep track of
   // the limit at any given time.
@@ -387,7 +385,8 @@ bool AlternateMemoryBestFitHeap::ViolatesMaximumOutstandingAsyncCopies(
 }
 
 bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
-    int64 start_time, int64 end_time, HloPosition defining_position, HloUse use,
+    int64 start_time, int64 end_time, int64 last_use_time,
+    HloPosition defining_position, HloUse use,
     BufferInterval alternate_mem_interval, HloInstruction* non_bitcast_operand,
     MemorySpaceAssignment::AllocationSequence* allocations) {
   MemorySpaceAssignment::Allocation* prev_allocation = nullptr;
@@ -424,8 +423,31 @@ bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
 
   VLOG(4) << "We can eliminate copy to alternate memory. Preferred offset = "
           << preferred_offset;
+  // In case there are additional uses after this use, we rely on the last use
+  // time to try to reserve a chunk in the heap simulator. This is to prevent
+  // the following scenario:
+  //
+  //                            +-------+
+  //                           /         \
+  //                   Producer--->Use1   +-->Use2
+  //                       +---------+---------+
+  // New buffer:           |         |         |
+  //                       +---------+---------+
+  //
+  //                                     +-----------+
+  // Current heap:                       | offset: 0 |
+  //           --------------------------+-----------+------
+  //
+  // Because we allocate buffers greedily, Producer to Use1 segment first, and
+  // then Use1 to Use2 segment, it is possible to allocate the the first segment
+  // at an offset that is available for the first segment (e.g. offset 0) but
+  // not for the entire live range. This can result in unnecessary copies. By
+  // using the last use time, we try to find an allocation that is available for
+  // the entire Producer to Use2 range.
+  alternate_mem_interval.end = last_use_time;
   ChunkCandidate chunk_candidate =
       FindChunkCandidate(alternate_mem_interval, preferred_offset);
+  alternate_mem_interval.end = end_time;
   // Check if the new heap size fits within limits. Also ensure if a
   // preferred offset was provided, that offset was used.
   if (chunk_candidate.heap_size < max_size_in_bytes_ &&
@@ -500,6 +522,7 @@ MemorySpaceAssignment::Run(
                          .status());
 
   TF_RETURN_IF_ERROR(memory_space_assignment.Process());
+  memory_space_assignment.ScheduleAsynchronousCopies();
   TF_RETURN_IF_ERROR(memory_space_assignment.FixSchedule());
 
   VLOG(4) << "Module after memory space assignment: ";
@@ -564,23 +587,22 @@ Status MemorySpaceAssignment::CopyAllocation::Process(
     layout->set_memory_space(0);
   }
 
-  HloInstruction* copy_start =
-      computation->AddInstruction(HloInstruction::CreateUnary(
-          ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U32, {})}),
-          HloOpcode::kCopyStart, producing_instruction));
-  HloInstruction* copy_done = computation->AddInstruction(
-      HloInstruction::CreateUnary(shape, HloOpcode::kCopyDone, copy_start));
+  copy_start_ = computation->AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U32, {})}),
+      HloOpcode::kCopyStart, producing_instruction));
+  copy_done_ = computation->AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kCopyDone, copy_start_));
   // Update the allocation with the copy done instruction so that if there
   // are further copies from it, it can find the correct instruction.
-  instruction_ = copy_done;
+  instruction_ = copy_done_;
   // Also update the defining position. Note that the output of CopyDone is
   // actually defined in the item {0} of CopyStart.
-  defining_position_ = HloPosition{copy_start, {0}};
+  defining_position_ = HloPosition{copy_start_, {0}};
 
   // Replace all the uses with the new copy instruction.
   for (HloUse use : uses_) {
     TF_RETURN_IF_ERROR(
-        use.instruction->ReplaceOperandWith(use.operand_number, copy_done));
+        use.instruction->ReplaceOperandWith(use.operand_number, copy_done_));
   }
 
   // Replace all the bitcasts with the new copy instruction. Note that if there
@@ -610,11 +632,6 @@ Status MemorySpaceAssignment::CopyAllocation::Process(
   // Propagate the memory space to all bitcasts.
   TF_RETURN_IF_ERROR(PropagateMemorySpaceToBitcasts(*memory_space_assignment));
 
-  // Insert the new instructions at the appropriate places in the schedule.
-  // FixSchedule will process the maps to actually insert them.
-  memory_space_assignment->ScheduleAsynchronousCopy(
-      copy_start, copy_start_schedule_after_, copy_done,
-      copy_done_schedule_before_);
   return Status::OK();
 }
 
@@ -656,13 +673,6 @@ Status MemorySpaceAssignment::Process() {
   return Status::OK();
 }
 
-void MemorySpaceAssignment::ScheduleAsynchronousCopy(
-    HloInstruction* copy_start, HloInstruction* copy_start_schedule_after,
-    HloInstruction* copy_done, HloInstruction* copy_done_schedule_before) {
-  schedule_after_[copy_start_schedule_after].push_back(copy_start);
-  schedule_before_[copy_done_schedule_before].push_back(copy_done);
-}
-
 void MemorySpaceAssignment::EnsureInstructionAndOperandsInserted(
     HloInstruction* new_instruction, HloInstructionSequence* new_sequence,
     absl::flat_hash_set<HloInstruction*>* inserted_instructions) const {
@@ -678,6 +688,73 @@ void MemorySpaceAssignment::EnsureInstructionAndOperandsInserted(
   inserted_instructions->insert(new_instruction);
 }
 
+void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
+  // For asynchronous copies of both directions (default to alternate and vice
+  // versa), sort them by their completion time. Then, if in the sorted order we
+  // see that the start time is earlier than the start time of an asynchronous
+  // copy that ends earlier, we delay the start of this. As a result, given
+  // asynchronous copies that might look like:
+  //
+  //   CS          CD
+  // a +-----------+
+  // b    +-----------+
+  // c  +---------+
+  //
+  // We'll first sort by completion time:
+  //
+  // c  +---------+
+  // a +-----------+
+  // b    +-----------+
+  //
+  // Then, delay a because c starts later than a despite also ending earlier:
+  //
+  // c  +---------+
+  // a   +---------+
+  // b    +-----------+
+  for (MemorySpace memory_space :
+       {MemorySpace::kDefault, MemorySpace::kAlternate}) {
+    std::vector<CopyAllocation*> copy_allocations;
+    for (auto& buffer_and_sequence : allocation_map_) {
+      for (auto& allocation : buffer_and_sequence.second) {
+        if (allocation->is_copy_allocation()) {
+          auto copy_allocation = static_cast<CopyAllocation*>(allocation.get());
+          if (copy_allocation->memory_space() == memory_space) {
+            copy_allocations.push_back(copy_allocation);
+          }
+        }
+      }
+    }
+
+    absl::c_stable_sort(
+        copy_allocations, [](CopyAllocation* first, CopyAllocation* second) {
+          return std::forward_as_tuple(first->copy_done_schedule_before(),
+                                       first->copy_start_schedule_after()) <
+                 std::forward_as_tuple(second->copy_done_schedule_before(),
+                                       second->copy_start_schedule_after());
+        });
+
+    CopyAllocation* prev_copy_allocation = nullptr;
+    for (CopyAllocation* copy_allocation : copy_allocations) {
+      if (prev_copy_allocation &&
+          prev_copy_allocation->copy_start_schedule_after() >
+              copy_allocation->copy_start_schedule_after()) {
+        VLOG(4) << "Delaying CopyStart ("
+                << copy_allocation->copy_start_schedule_after() << " to "
+                << prev_copy_allocation->copy_start_schedule_after() << ") for "
+                << copy_allocation->copy_start()->ToString() << " because of "
+                << prev_copy_allocation->copy_start()->ToString();
+        copy_allocation->set_copy_start_schedule_after(
+            prev_copy_allocation->copy_start_schedule_after());
+      }
+      schedule_after_[copy_allocation->copy_start_schedule_after()].push_back(
+          copy_allocation->copy_start());
+      schedule_before_[copy_allocation->copy_done_schedule_before()].push_back(
+          copy_allocation->copy_done());
+      prev_copy_allocation = copy_allocation;
+    }
+  }
+}
+
 Status MemorySpaceAssignment::FixSchedule() {
   CHECK(module_->has_schedule());
   HloSchedule& schedule = module_->schedule();
@@ -689,8 +766,11 @@ Status MemorySpaceAssignment::FixSchedule() {
 
     absl::flat_hash_set<HloInstruction*> inserted_instructions;
 
-    for (HloInstruction* instruction : sequence.instructions()) {
-      auto insts_before_iter = schedule_before_.find(instruction);
+    for (int64 instruction_index = 0;
+         instruction_index < sequence.instructions().size();
+         ++instruction_index) {
+      HloInstruction* instruction = sequence.instructions()[instruction_index];
+      auto insts_before_iter = schedule_before_.find(instruction_index);
       if (insts_before_iter != schedule_before_.end()) {
         for (HloInstruction* new_instruction : insts_before_iter->second) {
           EnsureInstructionAndOperandsInserted(new_instruction, &new_sequence,
@@ -702,7 +782,7 @@ Status MemorySpaceAssignment::FixSchedule() {
         EnsureInstructionAndOperandsInserted(instruction, &new_sequence,
                                              &inserted_instructions);
       }
-      auto insts_after_iter = schedule_after_.find(instruction);
+      auto insts_after_iter = schedule_after_.find(instruction_index);
       if (insts_after_iter != schedule_after_.end()) {
         for (HloInstruction* new_instruction : insts_after_iter->second) {
           EnsureInstructionAndOperandsInserted(new_instruction, &new_sequence,
