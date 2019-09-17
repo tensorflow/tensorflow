@@ -2606,64 +2606,6 @@ void MklLayoutRewritePass::CopyAttrsConv2DDepthwiseCheckConstFilter(
   nb->Attr("data_format", data_format);
 }
 
-void MklLayoutRewritePass::CopyAttrsPooling(const Node* orig_node,
-                                            NodeBuilder* nb,
-                                            bool change_format) {
-  DataType T;
-  string data_format;
-  string padding;
-  std::vector<int32> ksize, strides;
-
-  // Get all attributes from old node.
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "ksize", &ksize));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
-
-  // Add attributes to new node.
-  nb->Attr("T", T);
-  nb->Attr("padding", padding);
-
-  if (!change_format) {
-    nb->Attr("strides", strides);
-    nb->Attr("ksize", ksize);
-
-    TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
-    nb->Attr("data_format", data_format);
-  } else {
-    std::vector<int32> new_strides;
-    std::vector<int32> new_ksize;
-    if (strides.size() == 5) {
-      new_strides.push_back(strides[0]);
-      new_strides.push_back(strides[4]);
-      new_strides.push_back(strides[1]);
-      new_strides.push_back(strides[2]);
-      new_strides.push_back(strides[3]);
-      nb->Attr("strides", new_strides);
-
-      new_ksize.push_back(ksize[0]);
-      new_ksize.push_back(ksize[4]);
-      new_ksize.push_back(ksize[1]);
-      new_ksize.push_back(ksize[2]);
-      new_ksize.push_back(ksize[3]);
-      nb->Attr("ksize", new_ksize);
-
-    } else {
-      new_strides.push_back(strides[0]);
-      new_strides.push_back(strides[3]);
-      new_strides.push_back(strides[1]);
-      new_strides.push_back(strides[2]);
-      nb->Attr("strides", new_strides);
-
-      new_ksize.push_back(ksize[0]);
-      new_ksize.push_back(ksize[3]);
-      new_ksize.push_back(ksize[1]);
-      new_ksize.push_back(ksize[2]);
-      nb->Attr("ksize", new_ksize);
-    }
-  }
-}
-
 void MklLayoutRewritePass::CopyAttrsQuantizedConv2D(const Node* orig_node,
                                                     NodeBuilder* nb,
                                                     bool change_format) {
@@ -2802,6 +2744,59 @@ void MklLayoutRewritePass::CopyAttrsFusedConv2D(const Node* orig_node,
   nb->Attr("dilations", dilations);
   nb->Attr("fused_ops", fused_ops);
   nb->Attr("epsilon", epsilon);
+}
+
+void MklLayoutRewritePass::CopyAttrsPooling(const Node* orig_node,
+                                            NodeBuilder* nb,
+                                            bool change_format) {
+  DataType T;
+  string data_format;
+  string padding;
+  std::vector<int32> ksize, strides;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "ksize", &ksize));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
+
+  // Add attributes to new node.
+  nb->Attr("T", T);
+  nb->Attr("padding", padding);
+
+  if (!change_format) {
+    nb->Attr("strides", strides);
+    nb->Attr("ksize", ksize);
+
+    TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
+    nb->Attr("data_format", data_format);
+  } else {
+    std::vector<int32> new_strides;
+    std::vector<int32> new_ksize;
+    if (strides.size() == 5) {
+      // `strides` and `ksize` also need to be changed according to
+      // `data_format`. In this case, from `NDHWC` to `NCDHW`.
+      new_strides = {strides[NDHWC::dim::N], strides[NDHWC::dim::C],
+                     strides[NDHWC::dim::D], strides[NDHWC::dim::H],
+                     strides[NDHWC::dim::W]};
+
+      new_ksize = {ksize[NDHWC::dim::N], ksize[NDHWC::dim::C],
+                       ksize[NDHWC::dim::D], ksize[NDHWC::dim::H],
+                       ksize[NDHWC::dim::W]};
+
+    } else {
+      // `strides` and `ksize` also need to be changed according to
+      // `data_format`. In this case, from `NHWC` to `NCHW`.
+
+      new_strides = {strides[NHWC::dim::N], strides[NHWC::dim::C],
+                     strides[NHWC::dim::H], strides[NHWC::dim::W]};
+
+      new_ksize = {ksize[NHWC::dim::N], ksize[NHWC::dim::C],
+                       ksize[NHWC::dim::H], ksize[NHWC::dim::W]};
+    }
+    nb->Attr("strides", new_strides);
+    nb->Attr("ksize", new_ksize);
+  }
 }
 
 //////////////////////////////////////////////////////////////////////////
