@@ -1017,23 +1017,25 @@ class RNNTest(keras_parameterized.TestCase):
       self.assertEqual(initial_state.shape.as_list(), [batch, 5])
       self.assertEqual(initial_state.dtype, inputs.dtype)
 
-  def test_nested_input_output(self):
+  @parameterized.parameters([True, False])
+  def test_nested_input_output(self, stateful):
     batch = 10
     t = 5
     i1, i2, i3 = 3, 4, 5
     o1, o2, o3 = 2, 3, 4
 
     cell = NestedCell(o1, o2, o3)
-    rnn = keras.layers.RNN(cell)
+    rnn = keras.layers.RNN(cell, stateful=stateful)
 
-    input_1 = keras.Input((t, i1))
-    input_2 = keras.Input((t, i2, i3))
+    batch_size = batch if stateful else None
+    input_1 = keras.Input((t, i1), batch_size=batch_size)
+    input_2 = keras.Input((t, i2, i3), batch_size=batch_size)
 
     outputs = rnn((input_1, input_2))
 
     self.assertEqual(len(outputs), 2)
-    self.assertEqual(outputs[0].shape.as_list(), [None, o1])
-    self.assertEqual(outputs[1].shape.as_list(), [None, o2, o3])
+    self.assertEqual(outputs[0].shape.as_list(), [batch_size, o1])
+    self.assertEqual(outputs[1].shape.as_list(), [batch_size, o2, o3])
 
     model = keras.models.Model((input_1, input_2), outputs)
     model.compile(
@@ -1044,20 +1046,21 @@ class RNNTest(keras_parameterized.TestCase):
     model.train_on_batch(
         [np.zeros((batch, t, i1)), np.zeros((batch, t, i2, i3))],
         [np.zeros((batch, o1)), np.zeros((batch, o2, o3))])
-    self.assertEqual(model.output_shape, [(None, o1), (None, o2, o3)])
+    self.assertEqual(model.output_shape, [(batch_size, o1),
+                                          (batch_size, o2, o3)])
 
     cell = NestedCell(o1, o2, o3, use_tuple=True)
 
-    rnn = keras.layers.RNN(cell)
+    rnn = keras.layers.RNN(cell, stateful=stateful)
 
-    input_1 = keras.Input((t, i1))
-    input_2 = keras.Input((t, i2, i3))
+    input_1 = keras.Input((t, i1), batch_size=batch_size)
+    input_2 = keras.Input((t, i2, i3), batch_size=batch_size)
 
     outputs = rnn(NestedInput(t1=input_1, t2=input_2))
 
     self.assertEqual(len(outputs), 2)
-    self.assertEqual(outputs[0].shape.as_list(), [None, o1])
-    self.assertEqual(outputs[1].shape.as_list(), [None, o2, o3])
+    self.assertEqual(outputs[0].shape.as_list(), [batch_size, o1])
+    self.assertEqual(outputs[1].shape.as_list(), [batch_size, o2, o3])
 
     model = keras.models.Model([input_1, input_2], outputs)
     model.compile(
@@ -1069,7 +1072,8 @@ class RNNTest(keras_parameterized.TestCase):
         [np.zeros((batch, t, i1)),
          np.zeros((batch, t, i2, i3))],
         [np.zeros((batch, o1)), np.zeros((batch, o2, o3))])
-    self.assertEqual(model.output_shape, [(None, o1), (None, o2, o3)])
+    self.assertEqual(model.output_shape, [(batch_size, o1),
+                                          (batch_size, o2, o3)])
 
   def test_nested_input_output_with_state(self):
     batch = 10
