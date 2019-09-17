@@ -698,30 +698,63 @@ void mlir::canonicalizeSetAndOperands(
 }
 
 namespace {
-/// Simplify AffineApply operations.
+/// Simplify AffineApply, AffineLoad, and AffineStore operations by composing
+/// maps that supply results into them.
 ///
-struct SimplifyAffineApply : public OpRewritePattern<AffineApplyOp> {
-  using OpRewritePattern<AffineApplyOp>::OpRewritePattern;
+template <typename AffineOpTy>
+struct SimplifyAffineOp : public OpRewritePattern<AffineOpTy> {
+  using OpRewritePattern<AffineOpTy>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(AffineApplyOp apply,
+  void replaceAffineOp(PatternRewriter &rewriter, AffineOpTy affineOp,
+                       AffineMap map, ArrayRef<Value *> mapOperands) const;
+
+  PatternMatchResult matchAndRewrite(AffineOpTy affineOp,
                                      PatternRewriter &rewriter) const override {
-    auto map = apply.getAffineMap();
-
+    static_assert(std::is_same<AffineOpTy, AffineLoadOp>::value ||
+                      std::is_same<AffineOpTy, AffineStoreOp>::value ||
+                      std::is_same<AffineOpTy, AffineApplyOp>::value,
+                  "affine load/store/apply op expected");
+    auto map = affineOp.getAffineMap();
     AffineMap oldMap = map;
-    SmallVector<Value *, 8> resultOperands(apply.getOperands());
+    auto oldOperands = affineOp.getMapOperands();
+    SmallVector<Value *, 8> resultOperands(oldOperands);
     composeAffineMapAndOperands(&map, &resultOperands);
-    if (map == oldMap)
-      return matchFailure();
+    if (map == oldMap && std::equal(oldOperands.begin(), oldOperands.end(),
+                                    resultOperands.begin()))
+      return this->matchFailure();
 
-    rewriter.replaceOpWithNewOp<AffineApplyOp>(apply, map, resultOperands);
-    return matchSuccess();
+    replaceAffineOp(rewriter, affineOp, map, resultOperands);
+    return this->matchSuccess();
   }
 };
+
+// Specialize the template to account for the different build signatures for
+// affine load, store, and apply ops.
+template <>
+void SimplifyAffineOp<AffineLoadOp>::replaceAffineOp(
+    PatternRewriter &rewriter, AffineLoadOp load, AffineMap map,
+    ArrayRef<Value *> mapOperands) const {
+  rewriter.replaceOpWithNewOp<AffineLoadOp>(load, load.getMemRef(), map,
+                                            mapOperands);
+}
+template <>
+void SimplifyAffineOp<AffineStoreOp>::replaceAffineOp(
+    PatternRewriter &rewriter, AffineStoreOp store, AffineMap map,
+    ArrayRef<Value *> mapOperands) const {
+  rewriter.replaceOpWithNewOp<AffineStoreOp>(
+      store, store.getValueToStore(), store.getMemRef(), map, mapOperands);
+}
+template <>
+void SimplifyAffineOp<AffineApplyOp>::replaceAffineOp(
+    PatternRewriter &rewriter, AffineApplyOp apply, AffineMap map,
+    ArrayRef<Value *> mapOperands) const {
+  rewriter.replaceOpWithNewOp<AffineApplyOp>(apply, map, mapOperands);
+}
 } // end anonymous namespace.
 
 void AffineApplyOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<SimplifyAffineApply>(context);
+  results.insert<SimplifyAffineOp<AffineApplyOp>>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1689,6 +1722,7 @@ void AffineIfOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 void AffineLoadOp::build(Builder *builder, OperationState *result,
                          AffineMap map, ArrayRef<Value *> operands) {
+  assert(operands.size() == 1 + map.getNumInputs() && "inconsistent operands");
   result->addOperands(operands);
   if (map)
     result->addAttribute(getMapAttrName(), builder->getAffineMapAttr(map));
@@ -1697,17 +1731,25 @@ void AffineLoadOp::build(Builder *builder, OperationState *result,
 }
 
 void AffineLoadOp::build(Builder *builder, OperationState *result,
-                         Value *memref, ArrayRef<Value *> indices) {
+                         Value *memref, AffineMap map,
+                         ArrayRef<Value *> mapOperands) {
+  assert(map.getNumInputs() == mapOperands.size() && "inconsistent index info");
   result->addOperands(memref);
-  result->addOperands(indices);
+  result->addOperands(mapOperands);
+  auto memrefType = memref->getType().cast<MemRefType>();
+  result->addAttribute(getMapAttrName(), builder->getAffineMapAttr(map));
+  result->types.push_back(memrefType.getElementType());
+}
+
+void AffineLoadOp::build(Builder *builder, OperationState *result,
+                         Value *memref, ArrayRef<Value *> indices) {
   auto memrefType = memref->getType().cast<MemRefType>();
   auto rank = memrefType.getRank();
   // Create identity map for memrefs with at least one dimension or () -> ()
   // for zero-dimensional memrefs.
   auto map = rank ? builder->getMultiDimIdentityMap(rank)
                   : builder->getEmptyAffineMap();
-  result->addAttribute(getMapAttrName(), builder->getAffineMapAttr(map));
-  result->types.push_back(memrefType.getElementType());
+  build(builder, result, memref, map, indices);
 }
 
 ParseResult AffineLoadOp::parse(OpAsmParser *parser, OperationState *result) {
@@ -1733,7 +1775,7 @@ void AffineLoadOp::print(OpAsmPrinter *p) {
   *p << "affine.load " << *getMemRef() << '[';
   AffineMapAttr mapAttr = getAttrOfType<AffineMapAttr>(getMapAttrName());
   if (mapAttr) {
-    SmallVector<Value *, 2> operands(getIndices());
+    SmallVector<Value *, 2> operands(getMapOperands());
     p->printAffineMapOfSSAIds(mapAttr, operands);
   }
   *p << ']';
@@ -1759,7 +1801,7 @@ LogicalResult AffineLoadOp::verify() {
           "expects the number of subscripts to be equal to memref rank");
   }
 
-  for (auto *idx : getIndices()) {
+  for (auto *idx : getMapOperands()) {
     if (!idx->getType().isIndex())
       return emitOpError("index to load must have 'index' type");
     if (!isValidAffineIndexOperand(idx))
@@ -1772,6 +1814,7 @@ void AffineLoadOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   /// load(memrefcast) -> load
   results.insert<MemRefCastFolder>(getOperationName(), context);
+  results.insert<SimplifyAffineOp<AffineLoadOp>>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1779,27 +1822,26 @@ void AffineLoadOp::getCanonicalizationPatterns(
 //===----------------------------------------------------------------------===//
 
 void AffineStoreOp::build(Builder *builder, OperationState *result,
-                          Value *valueToStore, AffineMap map,
-                          ArrayRef<Value *> operands) {
-  result->addOperands(valueToStore);
-  result->addOperands(operands);
-  if (map)
-    result->addAttribute(getMapAttrName(), builder->getAffineMapAttr(map));
-}
-
-void AffineStoreOp::build(Builder *builder, OperationState *result,
-                          Value *valueToStore, Value *memref,
-                          ArrayRef<Value *> operands) {
+                          Value *valueToStore, Value *memref, AffineMap map,
+                          ArrayRef<Value *> mapOperands) {
+  assert(map.getNumInputs() == mapOperands.size() && "inconsistent index info");
   result->addOperands(valueToStore);
   result->addOperands(memref);
-  result->addOperands(operands);
+  result->addOperands(mapOperands);
+  result->addAttribute(getMapAttrName(), builder->getAffineMapAttr(map));
+}
+
+// Use identity map.
+void AffineStoreOp::build(Builder *builder, OperationState *result,
+                          Value *valueToStore, Value *memref,
+                          ArrayRef<Value *> indices) {
   auto memrefType = memref->getType().cast<MemRefType>();
   auto rank = memrefType.getRank();
   // Create identity map for memrefs with at least one dimension or () -> ()
   // for zero-dimensional memrefs.
   auto map = rank ? builder->getMultiDimIdentityMap(rank)
                   : builder->getEmptyAffineMap();
-  result->addAttribute(getMapAttrName(), builder->getAffineMapAttr(map));
+  build(builder, result, valueToStore, memref, map, indices);
 }
 
 ParseResult AffineStoreOp::parse(OpAsmParser *parser, OperationState *result) {
@@ -1828,7 +1870,7 @@ void AffineStoreOp::print(OpAsmPrinter *p) {
   *p << ", " << *getMemRef() << '[';
   AffineMapAttr mapAttr = getAttrOfType<AffineMapAttr>(getMapAttrName());
   if (mapAttr) {
-    SmallVector<Value *, 2> operands(getIndices());
+    SmallVector<Value *, 2> operands(getMapOperands());
     p->printAffineMapOfSSAIds(mapAttr, operands);
   }
   *p << ']';
@@ -1855,7 +1897,7 @@ LogicalResult AffineStoreOp::verify() {
           "expects the number of subscripts to be equal to memref rank");
   }
 
-  for (auto *idx : getIndices()) {
+  for (auto *idx : getMapOperands()) {
     if (!idx->getType().isIndex())
       return emitOpError("index to store must have 'index' type");
     if (!isValidAffineIndexOperand(idx))
@@ -1868,6 +1910,7 @@ void AffineStoreOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   /// load(memrefcast) -> load
   results.insert<MemRefCastFolder>(getOperationName(), context);
+  results.insert<SimplifyAffineOp<AffineStoreOp>>(context);
 }
 
 #define GET_OP_CLASSES
