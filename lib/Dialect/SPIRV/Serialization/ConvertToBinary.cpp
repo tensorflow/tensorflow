@@ -24,7 +24,6 @@
 #include "mlir/Dialect/SPIRV/Serialization.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
-#include "mlir/Support/FileUtilities.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Translation.h"
 #include "llvm/ADT/StringRef.h"
@@ -32,7 +31,7 @@
 
 using namespace mlir;
 
-LogicalResult serializeModule(ModuleOp module, StringRef outputFilename) {
+LogicalResult serializeModule(ModuleOp module, llvm::raw_ostream &output) {
   if (!module)
     return failure();
 
@@ -51,19 +50,14 @@ LogicalResult serializeModule(ModuleOp module, StringRef outputFilename) {
   if (failed(result))
     return failure();
 
-  auto file = openOutputFile(outputFilename);
-  if (!file)
-    return failure();
-
-  file->os().write(reinterpret_cast<char *>(binary.data()),
-                   binary.size() * sizeof(uint32_t));
-  file->keep();
+  output.write(reinterpret_cast<char *>(binary.data()),
+               binary.size() * sizeof(uint32_t));
 
   return mlir::success();
 }
 
 static TranslateFromMLIRRegistration
     registration("serialize-spirv",
-                 [](ModuleOp module, StringRef outputFilename) {
-                   return serializeModule(module, outputFilename);
+                 [](ModuleOp module, llvm::raw_ostream &output) {
+                   return serializeModule(module, output);
                  });

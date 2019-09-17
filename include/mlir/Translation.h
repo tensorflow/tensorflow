@@ -22,7 +22,13 @@
 #define MLIR_TRANSLATION_H
 
 #include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringRef.h"
+
+#include <memory>
+
+namespace llvm {
+class MemoryBuffer;
+class StringRef;
+} // namespace llvm
 
 namespace mlir {
 struct LogicalResult;
@@ -30,15 +36,24 @@ class MLIRContext;
 class ModuleOp;
 class OwningModuleRef;
 
-/// Interface of the function that translates a file to MLIR.  The
-/// implementation should create a new MLIR ModuleOp in the given context and
-/// return a pointer to it, or a nullptr in case of any error.
-using TranslateToMLIRFunction =
-    std::function<OwningModuleRef(llvm::StringRef, MLIRContext *)>;
+/// Interface of the function that translates a source file held by the given
+/// MemoryBuffer to MLIR. The implementation should create a new MLIR ModuleOp
+/// in the given context and return a pointer to it, or a nullptr in case of any
+/// error.
+using TranslateToMLIRFunction = std::function<OwningModuleRef(
+    std::unique_ptr<llvm::MemoryBuffer> input, MLIRContext *)>;
+
 /// Interface of the function that translates MLIR to a different format and
-/// outputs the result to a file. It is allowed to modify the module.
+/// outputs the result to a stream. It is allowed to modify the module.
 using TranslateFromMLIRFunction =
-    std::function<LogicalResult(ModuleOp, llvm::StringRef)>;
+    std::function<LogicalResult(ModuleOp, llvm::raw_ostream &output)>;
+
+/// Interface of the function that performs file-to-file translation involving
+/// MLIR. The input file is held in the given MemoryBuffer; the output file
+/// should be written to the given raw_ostream.
+using TranslateFunction =
+    std::function<LogicalResult(std::unique_ptr<llvm::MemoryBuffer> input,
+                                llvm::raw_ostream &output, MLIRContext *)>;
 
 /// Use Translate[To|From]MLIRRegistration as a global initialiser that
 /// registers a function and associates it with name. This requires that a
