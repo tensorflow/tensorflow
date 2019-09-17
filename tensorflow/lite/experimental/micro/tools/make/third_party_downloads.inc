@@ -49,8 +49,8 @@ endif
 SIFIVE_FE310_LIB_URL := "https://github.com/sifive/freedom-e-sdk/archive/baeeb8fd497a99b3c141d7494309ec2e64f19bdf.zip"
 SIFIVE_FE310_LIB_MD5 := "06ee24c4956f8e21670ab3395861fe64"
 
-KISSFFT_URL="https://github.com/mborgerding/kissfft/archive/v131.zip"
-KISSFFT_MD5="51242f49bd44ee80d8c2f93dd039ce63"
+KISSFFT_URL="https://github.com/andrewxcav/kissfft/archive/v132.zip"
+KISSFFT_MD5="a5a19ca61ac2c0af3d74fe45f164e5ab"
 
 PERSON_MODEL_URL := "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_grayscale.zip"
 PERSON_MODEL_MD5 := "cd1059dd1c94afadd59608202732ad63"
