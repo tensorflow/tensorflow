@@ -29,19 +29,18 @@ namespace cl {
 namespace {
 
 std::string GenerateDepthWiseConvCode(
-    const TensorDescriptor& src_descriptor,
-    const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
+    const OperationDef& op_def,
     const std::vector<ElementwiseOperation*>& linked_operations,
     const CLDevice& device, bool weights_are_buffer, bool local_mem_uploads) {
-  std::string c = GetCommonDefines(precision);
-  TensorCodeGenerator src_tensor("src_data", "dst_size", src_descriptor);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
+  std::string c = GetCommonDefines(op_def.precision);
+  TensorCodeGenerator src_tensor("src_data", "dst_size", op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data", "dst_size", op_def.dst_tensors[0]);
+  const auto src_tensor_type = op_def.src_tensors[0].storage_type;
 
   const auto mode = GetFastestZeroMode(device);
 
-  const bool manual_clamp =
-      src_descriptor.storage_type == TensorStorageType::BUFFER ||
-      src_descriptor.storage_type == TensorStorageType::IMAGE_BUFFER;
+  const bool manual_clamp = src_tensor_type == TensorStorageType::BUFFER ||
+                            src_tensor_type == TensorStorageType::IMAGE_BUFFER;
 
   if (local_mem_uploads) {
     c += "__attribute__((reqd_work_group_size(8, 4, 1)))\n";
@@ -119,7 +118,7 @@ std::string GenerateDepthWiseConvCode(
     c += "  y1 = clamp(y1, 0, dst_size.y - 1);\n";
     c += "  y2 = clamp(y2, 0, dst_size.y - 1);\n";
     c += "  y3 = clamp(y3, 0, dst_size.y - 1);\n";
-    if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+    if (src_tensor_type == TensorStorageType::BUFFER) {
       c += "  __global FLT4* src_loc = src_data + Z * dst_size.x * "
            "dst_size.y;\n";
     }
@@ -145,7 +144,7 @@ std::string GenerateDepthWiseConvCode(
     bias = "f[9]";
   }
   auto read_4x_line = [&](int y) {
-    if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+    if (src_tensor_type == TensorStorageType::BUFFER) {
       const std::string y_in = "y" + std::to_string(y) + "_in";
       c += "    s0 = src_loc[" + yc[y] + " * dst_size.x + " + xc[0] +
            "] * (FLT)(x0_in && " + y_in + ");\n";
@@ -155,7 +154,7 @@ std::string GenerateDepthWiseConvCode(
            "] * (FLT)(x2_in && " + y_in + ");\n";
       c += "    s3 = src_loc[" + yc[y] + " * dst_size.x + " + xc[3] +
            "] * (FLT)(x3_in && " + y_in + ");\n";
-    } else if (src_descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
+    } else if (src_tensor_type == TensorStorageType::IMAGE_BUFFER) {
       const std::string y_in = "y" + std::to_string(y) + "_in";
       c += "    s0 = " + src_tensor.Read3D(xc[0], yc[y], "Z", mode) +
            " * (FLT)(x0_in && " + y_in + ");\n";
@@ -296,8 +295,7 @@ DepthWiseConv3x3& DepthWiseConv3x3::operator=(DepthWiseConv3x3&& operation) {
 
 Status DepthWiseConv3x3::Compile(const CreationContext& creation_context) {
   std::string code = GenerateDepthWiseConvCode(
-      definition_.src_tensors[0], definition_.dst_tensors[0],
-      definition_.precision, linked_operations_, *creation_context.device,
+      definition_, linked_operations_, *creation_context.device,
       weights_are_buffer_, local_mem_uploads_);
   std::vector<CompilerOptions> options;
   if (definition_.precision == CalculationsPrecision::F16 &&

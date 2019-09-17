@@ -28,25 +28,23 @@ namespace cl {
 namespace {
 
 std::string GenerateConvolutionConstantCode(
-    const TensorDescriptor& src_descriptor,
-    const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
-    const int2& kernel_size, const int2& dilation, int src_channels,
-    int dst_channels, const CLDevice& device,
+    const OperationDef& op_def, const int2& kernel_size, const int2& dilation,
+    int src_channels, int dst_channels, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
+  TensorCodeGenerator src_tensor("src_data", "src_size", op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data", "dst_size", op_def.src_tensors[0]);
 
-  std::string c = GetCommonDefines(precision);
+  std::string c = GetCommonDefines(op_def.precision);
 
   const int out_z = IntegralDivideRoundUp(dst_channels, 4);
   const std::string kOutZ = std::to_string(out_z);
   const int src_depth = IntegralDivideRoundUp(src_channels, 4);
 
-  const bool manual_clamp =
-      src_descriptor.storage_type == TensorStorageType::BUFFER ||
-      src_descriptor.storage_type == TensorStorageType::IMAGE_BUFFER;
+  const auto src_tensor_type = op_def.src_tensors[0].storage_type;
+  const bool manual_clamp = src_tensor_type == TensorStorageType::BUFFER ||
+                            src_tensor_type == TensorStorageType::IMAGE_BUFFER;
 
-  switch (precision) {
+  switch (op_def.precision) {
     case CalculationsPrecision::F32:
     case CalculationsPrecision::F16:
       c += "#define CONV4(R, SRC, F, i) \\\n";
@@ -213,9 +211,8 @@ ConvConstants& ConvConstants::operator=(ConvConstants&& kernel) {
 
 Status ConvConstants::Compile(const CreationContext& creation_context) {
   const auto code = GenerateConvolutionConstantCode(
-      definition_.src_tensors[0], definition_.dst_tensors[0],
-      definition_.precision, kernel_size_, dilation_, src_channels_,
-      dst_channels_, *creation_context.device, linked_operations_);
+      definition_, kernel_size_, dilation_, src_channels_, dst_channels_,
+      *creation_context.device, linked_operations_);
   std::vector<CompilerOptions> options;
   if (definition_.precision == CalculationsPrecision::F16 &&
       creation_context.device->IsAdreno3xx()) {

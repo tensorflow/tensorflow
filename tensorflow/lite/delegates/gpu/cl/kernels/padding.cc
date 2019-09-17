@@ -26,13 +26,12 @@ namespace cl {
 namespace {
 
 std::string GetPaddingCode(
-    const TensorDescriptor& src_descriptor,
-    const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
+    const OperationDef& op_def,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
+  TensorCodeGenerator src_tensor("src_data", "src_size", op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data", "dst_size", op_def.dst_tensors[0]);
 
-  std::string code = GetCommonDefines(precision);
+  std::string code = GetCommonDefines(op_def.precision);
   const std::string channels[] = {".x", ".y", ".z", ".w"};
 
   code += "__kernel void main_function(\n";
@@ -109,9 +108,7 @@ void Padding::SetPrepended(const int3& prepended) {
 }
 
 Status Padding::Compile(const CreationContext& creation_context) {
-  const auto code =
-      GetPaddingCode(definition_.src_tensors[0], definition_.dst_tensors[0],
-                     definition_.precision, linked_operations_);
+  const auto code = GetPaddingCode(definition_, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
