@@ -32,6 +32,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor_value
@@ -677,6 +678,13 @@ class RaggedTensorTest(test_util.TensorFlowTestCase,
           values=values,
           value_rowids=value_rowids,
           nrows=array_ops.expand_dims(nrows, 0))
+
+  def testCondWithTensorsFromValueIds(self):
+    # b/141166460
+    rt = RaggedTensor.from_value_rowids([1, 2, 3], [0, 0, 2])
+    c = array_ops.placeholder_with_default(True, None)
+    result = control_flow_ops.cond(c, lambda: rt, lambda: rt)
+    self.assertAllEqual(rt, result)
 
   def testGraphMismatch(self):
     if not context.executing_eagerly():
