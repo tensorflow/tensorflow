@@ -28,7 +28,7 @@
 # This library provides TensorFlow support on Android via the Java API and
 # TensorFlowInferenceInterface.
 # It should be packaged into the Android APK along with the Java counterparts
-# under tensorflow/java and tensorflow/contrib/android/java.
+# under tensorflow/java and tensorflow/tools/android/inference_interface/java.
 INFERENCE_SRCS := \
 tensorflow/c/tf_status_helper.cc \
 tensorflow/c/checkpoint_reader.cc \
@@ -41,7 +41,7 @@ tensorflow/java/src/main/native/operation_jni.cc \
 tensorflow/java/src/main/native/session_jni.cc \
 tensorflow/java/src/main/native/tensorflow_jni.cc \
 tensorflow/java/src/main/native/tensor_jni.cc \
-tensorflow/contrib/android/jni/run_stats_jni.cc
+tensorflow/tools/android/inference_interface/jni/run_stats_jni.cc
 
 INFERENCE_OBJS := $(addprefix $(OBJDIR), $(INFERENCE_SRCS:.cc=.o))
 
