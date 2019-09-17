@@ -1065,6 +1065,69 @@ TEST_F(QuantizeCustomOpTest, VerifyMixedQuantization) {
   }
 }
 
+class QuantizeMinimumMaximumTest
+    : public QuantizeModelTest,
+      public testing::WithParamInterface<const char*> {
+ protected:
+  QuantizeMinimumMaximumTest() {
+    input_model_ = ReadModel(GetParam());
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_);
+  }
+};
+
+TEST_P(QuantizeMinimumMaximumTest, VerifyMinimumMaximum) {
+  auto status = QuantizeModel(&builder_, &model_, &error_reporter_);
+
+  ASSERT_EQ(kTfLiteOk, status);
+
+  const auto subgraph = model_.subgraphs[0].get();
+
+  // Check that the first op is Quantize and the last is Dequant.
+  const auto& quant_op = subgraph->operators[0];
+  const auto& dequant_op = subgraph->operators[subgraph->operators.size() - 1];
+  const int32_t quant_idx = quant_op->opcode_index;
+  const int32_t dequant_idx = dequant_op->opcode_index;
+  EXPECT_EQ(model_.operator_codes[quant_idx]->builtin_code,
+            BuiltinOperator_QUANTIZE);
+  EXPECT_EQ(model_.operator_codes[dequant_idx]->builtin_code,
+            BuiltinOperator_DEQUANTIZE);
+
+  // The model should only have one input and one output.
+  EXPECT_EQ(subgraph->inputs.size(), 1);
+  EXPECT_EQ(subgraph->outputs.size(), 1);
+
+  EXPECT_EQ(subgraph->tensors.size(), 6);
+
+  EXPECT_EQ(subgraph->tensors[0]->name, "input");
+  EXPECT_EQ(subgraph->tensors[1]->name, "output_int8");
+  EXPECT_EQ(subgraph->tensors[2]->name, "output/y");
+  EXPECT_EQ(subgraph->tensors[3]->name, "input_requantized");
+  EXPECT_EQ(subgraph->tensors[4]->name, "output/y_requantized");
+  EXPECT_EQ(subgraph->tensors[5]->name, "output");
+
+  // Check if the quantization params of the minimum/maximum inputs match
+  // after requantization
+  EXPECT_EQ(subgraph->tensors[3]->quantization->scale,
+            subgraph->tensors[4]->quantization->scale);
+  EXPECT_EQ(subgraph->tensors[3]->quantization->zero_point,
+            subgraph->tensors[4]->quantization->zero_point);
+
+  // the input quantization params match the output ones
+  EXPECT_EQ(subgraph->tensors[3]->quantization->scale,
+            subgraph->tensors[1]->quantization->scale);
+  EXPECT_EQ(subgraph->tensors[3]->quantization->zero_point,
+            subgraph->tensors[1]->quantization->zero_point);
+  EXPECT_EQ(subgraph->tensors[4]->quantization->scale,
+            subgraph->tensors[1]->quantization->scale);
+  EXPECT_EQ(subgraph->tensors[4]->quantization->zero_point,
+            subgraph->tensors[1]->quantization->zero_point);
+}
+
+INSTANTIATE_TEST_SUITE_P(MinimumMaximumTestInst, QuantizeMinimumMaximumTest,
+                         testing::ValuesIn({internal::kModelWithMinimumOp,
+                                            internal::kModelWithMaximumOp}));
+
 }  // namespace
 }  // namespace optimize
 }  // namespace tflite

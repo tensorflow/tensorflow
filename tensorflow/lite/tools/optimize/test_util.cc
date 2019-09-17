@@ -43,6 +43,10 @@ const char* kModelWithCustomOp = "custom_op.bin";
 
 const char* kModelWithArgMaxOp = "argmax.bin";
 
+const char* kModelWithMinimumOp = "minimum.bin";
+
+const char* kModelWithMaximumOp = "maximum.bin";
+
 const char* kModelWithFCOp = "fc.bin";
 
 const char* kModelMixed = "mixed.bin";

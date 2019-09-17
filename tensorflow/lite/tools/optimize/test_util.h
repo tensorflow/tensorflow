@@ -69,6 +69,12 @@ extern const char* kModelWithArgMaxOp;
 // Test model with a argmax op.
 extern const char* kModelWithFCOp;
 
+// Test model with a Minimum op.
+extern const char* kModelWithMinimumOp;
+
+// Test model with a Minimum op.
+extern const char* kModelWithMaximumOp;
+
 // Test model with mixed quantizable and un-quantizable ops.
 // reshape->custom->custom->squeeze.
 extern const char* kModelMixed;
