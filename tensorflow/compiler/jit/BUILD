@@ -943,7 +943,6 @@ tf_proto_library(
     srcs = ["xla_activity.proto"],
     cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
-    provide_cc_alias = True,
 )
 
 cc_library(

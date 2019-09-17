@@ -50,7 +50,6 @@ tf_proto_library(
     cc_api_version = 2,
     cc_grpc_version = 1,
     protodeps = [":op_profile_proto"] + tf_additional_all_protos(),
-    provide_cc_alias = True,
 )
 
 tf_proto_library(
@@ -60,7 +59,6 @@ tf_proto_library(
     cc_api_version = 2,
     cc_grpc_version = 1,
     protodeps = [":profiler_service_proto"],
-    provide_cc_alias = True,
 )
 
 tf_proto_library(
