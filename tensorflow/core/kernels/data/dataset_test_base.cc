@@ -19,7 +19,10 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
-#include "tensorflow/core/kernels/data/range_dataset_op.h"
+#include "tensorflow/core/kernels/data/batch_dataset_op.h"
+#include "tensorflow/core/kernels/data/map_dataset_op.h"
+#include "tensorflow/core/kernels/data/take_dataset_op.h"
+#include "tensorflow/core/kernels/data/tensor_slice_dataset_op.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 
 namespace tensorflow {
@@ -905,8 +908,7 @@ std::vector<FunctionDef> MapDatasetParams::func_lib() const {
 TensorSliceDatasetParams::TensorSliceDatasetParams(
     std::vector<Tensor> components, string node_name)
     : DatasetParams(TensorSliceDtypes(components),
-                    TensorSliceShapes(components), std::move(node_name),
-                    DatasetParamsType::TensorSlice),
+                    TensorSliceShapes(components), std::move(node_name)),
       components_(std::move(components)) {}
 
 Status TensorSliceDatasetParams::GetInputs(
@@ -956,6 +958,15 @@ std::vector<PartialTensorShape> TensorSliceDatasetParams::TensorSliceShapes(
   return shapes;
 }
 
+Status TensorSliceDatasetParams::CreateFactory(FunctionDef* fdef) const {
+  *fdef = test::function::MakeTensorSliceDataset();
+  return Status::OK();
+}
+
+string TensorSliceDatasetParams::op_name() const {
+  return TensorSliceDatasetOp::kDatasetType;
+}
+
 Status TakeDatasetParams::GetInputs(
     gtl::InlinedVector<TensorValue, 4>* inputs) {
   inputs->reserve(input_dataset_params_group_.size() + 1);
@@ -984,6 +995,15 @@ Status TakeDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
   *attr_vector = {{TakeDatasetOp::kOutputShapes, output_shapes_},
                   {TakeDatasetOp::kOutputTypes, output_dtypes_}};
   return Status::OK();
+}
+
+Status TakeDatasetParams::CreateFactory(FunctionDef* fdef) const {
+  *fdef = test::function::MakeTakeDataset();
+  return Status::OK();
+}
+
+string TakeDatasetParams::op_name() const {
+  return TakeDatasetOp::kDatasetType;
 }
 
 }  // namespace data

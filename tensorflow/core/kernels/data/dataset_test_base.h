@@ -221,9 +221,8 @@ class BatchDatasetParams : public DatasetParams {
     input_dataset_params_group_.emplace_back(
         std::make_pair(std::move(input_dataset_params_ptr), Tensor()));
     op_version_ = 2;
-    iterator_prefix_ =
-        name_utils::IteratorPrefix(ToString(input_dataset_params.type()),
-                                   input_dataset_params.iterator_prefix());
+    iterator_prefix_ = name_utils::IteratorPrefix(
+        input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
   }
 
   Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override;
@@ -269,9 +268,8 @@ class MapDatasetParams : public DatasetParams {
         std::make_shared<T>(std::move(input_dataset_params));
     input_dataset_params_group_.emplace_back(
         std::make_pair(std::move(input_dataset_params_ptr), Tensor()));
-    iterator_prefix_ =
-        name_utils::IteratorPrefix(ToString(input_dataset_params.type()),
-                                   input_dataset_params.iterator_prefix());
+    iterator_prefix_ = name_utils::IteratorPrefix(
+        input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
   }
 
   Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override;
@@ -309,6 +307,10 @@ class TensorSliceDatasetParams : public DatasetParams {
 
   Status GetAttributes(AttributeVector* attr_vector) const override;
 
+  Status CreateFactory(FunctionDef* fdef) const override;
+
+  string op_name() const override;
+
  private:
   DataTypeVector TensorSliceDtypes(const std::vector<Tensor>& input_components);
 
@@ -329,15 +331,14 @@ class TakeDatasetParams : public DatasetParams {
                     std::vector<PartialTensorShape> output_shapes,
                     string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
-                      std::move(node_name), DatasetParamsType::Take),
+                      std::move(node_name)),
         count_(CreateTensor<int64>(TensorShape({}), {count})) {
     auto input_dataset_params_ptr =
         std::make_shared<T>(std::move(input_dataset_params));
     input_dataset_params_group_.emplace_back(
         std::make_pair(std::move(input_dataset_params_ptr), Tensor()));
-    iterator_prefix_ =
-        name_utils::IteratorPrefix(ToString(input_dataset_params.type()),
-                                   input_dataset_params.iterator_prefix());
+    iterator_prefix_ = name_utils::IteratorPrefix(
+        input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
   }
 
   Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override;
@@ -346,6 +347,10 @@ class TakeDatasetParams : public DatasetParams {
       std::vector<string>* input_placeholder) const override;
 
   Status GetAttributes(AttributeVector* attr_vector) const override;
+
+  Status CreateFactory(FunctionDef* fdef) const override;
+
+  string op_name() const override;
 
  private:
   Tensor count_;

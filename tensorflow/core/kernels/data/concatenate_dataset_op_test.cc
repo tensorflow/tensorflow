@@ -30,7 +30,7 @@ class ConcatenateDatasetParams : public DatasetParams {
                            std::vector<PartialTensorShape> output_shapes,
                            string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
-                      std::move(node_name), DatasetParamsType::Concatenate) {
+                      std::move(node_name)) {
     auto input_dataset_params_ptr_0 =
         std::make_shared<T>(std::move(input_dataset_params_0));
     auto input_dataset_params_ptr_1 =
@@ -40,7 +40,7 @@ class ConcatenateDatasetParams : public DatasetParams {
     input_dataset_params_group_.emplace_back(
         std::make_pair(std::move(input_dataset_params_ptr_1), Tensor()));
     iterator_prefix_ =
-        name_utils::IteratorPrefix(ToString(input_dataset_params_0.type()),
+        name_utils::IteratorPrefix(input_dataset_params_0.op_name(),
                                    input_dataset_params_0.iterator_prefix());
   }
 
@@ -71,6 +71,8 @@ class ConcatenateDatasetParams : public DatasetParams {
                     {ConcatenateDatasetOp::kOutputShapes, output_shapes_}};
     return Status::OK();
   }
+
+  string op_name() const override { return ConcatenateDatasetOp::kDatasetType; }
 };
 
 // Test case 1: same shape.

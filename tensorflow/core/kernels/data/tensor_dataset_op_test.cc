@@ -26,7 +26,7 @@ class TensorDatasetParams : public DatasetParams {
  public:
   TensorDatasetParams(std::vector<Tensor> components, string node_name)
       : DatasetParams(TensorDtypes(components), TensorShapes(components),
-                      std::move(node_name), DatasetParamsType::FromTensor),
+                      std::move(node_name)),
         components_(std::move(components)) {}
 
   Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override {
@@ -51,6 +51,8 @@ class TensorDatasetParams : public DatasetParams {
                     {TensorDatasetOp::kOutputShapes, output_shapes_}};
     return Status::OK();
   }
+
+  string op_name() const override { return TensorDatasetOp::kDatasetType; }
 
  private:
   DataTypeVector TensorDtypes(const std::vector<Tensor>& input_components) {
