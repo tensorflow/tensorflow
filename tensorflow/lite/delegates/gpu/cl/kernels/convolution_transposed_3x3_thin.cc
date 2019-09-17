@@ -94,6 +94,20 @@ std::string GenerateConvolutionTransposedCode(
       c += "  if (x_in && y_in) {\n";
       c += "    src3 = " + src_tensor.Read3D("X + 1", "Y + 1", z) + ";\n";
       c += "  }\n";
+    } else if (src_descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
+      c += "  " + src_tensor.GetAddress("c0", "X", "Y", z) + ";\n";
+      c += "  " + src_tensor.GetAddress("c1", "X + 1", "Y", z) + ";\n";
+      c += "  " + src_tensor.GetAddress("c2", "X", "Y + 1", z) + ";\n";
+      c += "  " + src_tensor.GetAddress("c3", "X + 1", "Y + 1", z) + ";\n";
+      c += "  bool x_in = X + 1 < src_size.x;\n";
+      c += "  bool y_in = Y + 1 < src_size.y;\n";
+      c += "  c1 = select(-1, c1, x_in);\n";
+      c += "  c2 = select(-1, c2, y_in);\n";
+      c += "  c3 = select(-1, c3, x_in && y_in);\n";
+      c += "  FLT4 src0 = " + src_tensor.Read3D("c0") + ";\n";
+      c += "  FLT4 src1 = " + src_tensor.Read3D("c1") + ";\n";
+      c += "  FLT4 src2 = " + src_tensor.Read3D("c2") + ";\n";
+      c += "  FLT4 src3 = " + src_tensor.Read3D("c3") + ";\n";
     } else {
       const auto mode = GetFastestZeroMode(device);
       c += "  FLT4 src0 = " + src_tensor.Read3D("X", "Y", z, mode) + ";\n";

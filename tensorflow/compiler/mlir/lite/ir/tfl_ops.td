@@ -491,6 +491,8 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
   let hasOptions = 1;
 
   let hasFolder = 1;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [NoSideEffect,

@@ -83,6 +83,10 @@ std::string GenerateDepthWiseConvolutionCode(
 
   std::string c = GetCommonDefines(precision);
 
+  const bool manual_clamp =
+      src_descriptor.storage_type == TensorStorageType::BUFFER ||
+      src_descriptor.storage_type == TensorStorageType::IMAGE_BUFFER;
+
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ) + ",\n";
   if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
@@ -116,7 +120,7 @@ std::string GenerateDepthWiseConvolutionCode(
     c += "  int fx_c = 0;\n";
   }
 
-  if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+  if (manual_clamp) {
     c += "  for (int ky = 0; ky < kernel_size.y; ++ky) {\n";
     c += "    int y_c = y_offseted + ky * dilation.y;\n";
     c += "    bool outside_y = y_c < 0 || y_c >= src_size.y;\n";
@@ -124,7 +128,11 @@ std::string GenerateDepthWiseConvolutionCode(
     c += "      int x_c = x_offseted + kx * dilation.x;\n";
     c += "      bool outside_x = x_c < 0 || x_c >= src_size.x;\n";
     c += "      if (!outside_x && !outside_y) {\n";
-    c += "        FLT4 f = filters[fx_c];\n";
+    if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+      c += "        FLT4 f = filters[fx_c];\n";
+    } else {
+      c += "        FLT4 f = READ_IMAGE(filters, smp_none, (int2)(fx_c, Z));\n";
+    }
     c += GetSrcValue(src_tensor, channel_multiplier,
                      TextureAddressMode::DONT_CARE);
     c += "        r += TO_ACCUM_TYPE(src_final * f);\n";

@@ -126,8 +126,10 @@ std::string GenerateConvPowerVR1x1(
   TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
 
   const bool is1x1 = conv_params.x_kernel_is_1 && conv_params.y_kernel_is_1;
-  const bool manual_clamp =
-      src_descriptor.storage_type == TensorStorageType::BUFFER && !is1x1;
+  const bool buffer_type =
+      src_descriptor.storage_type == TensorStorageType::BUFFER ||
+      src_descriptor.storage_type == TensorStorageType::IMAGE_BUFFER;
+  const bool manual_clamp = buffer_type && !is1x1;
 
   c += "#define SIMD_BARRIER " +
        (!conv_params.explicit_sync
@@ -200,7 +202,7 @@ std::string GenerateConvPowerVR1x1(
     c += "  __global ACCUM_FLT4* filters_loc = filters_buffer + Z * 4 * "
          "src_size.w * kernel_dilation.x * kernel_dilation.y;\n";
   }
-  if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+  if (buffer_type) {
     c += "  const int src_layer_offset = src_size.x * src_size.y;\n";
   }
   if (!is1x1) {
@@ -227,7 +229,7 @@ std::string GenerateConvPowerVR1x1(
       }
     }
   }
-  if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+  if (buffer_type) {
     for (int y = 0; y < block_size.y; ++y) {
       const std::string yck = "yck" + std::to_string(y);
       for (int x = 0; x < block_size.x; ++x) {
@@ -257,18 +259,29 @@ std::string GenerateConvPowerVR1x1(
   auto read_src = [&]() {
     for (int y = 0; y < block_size.y; ++y) {
       for (int x = 0; x < block_size.x; ++x) {
-        if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+        if (buffer_type) {
           std::string id = std::to_string(y) + std::to_string(x);
           std::string multiplier = is1x1
                                        ? ""
                                        : " * (FLT)(mx" + std::to_string(x) +
                                              " && my" + std::to_string(y) + ")";
-          if (precision == CalculationsPrecision::F32_F16) {
-            c += "    src" + id + " = convert_float4(src_data[src_a_" + id +
-                 "]" + multiplier + ");\n";
-          } else {
-            c += "    src" + id + " = src_data[src_a_" + id + "]" + multiplier +
-                 ";\n";
+          if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+            if (precision == CalculationsPrecision::F32_F16) {
+              c += "    src" + id + " = convert_float4(src_data[src_a_" + id +
+                   "]" + multiplier + ");\n";
+            } else {
+              c += "    src" + id + " = src_data[src_a_" + id + "]" +
+                   multiplier + ";\n";
+            }
+          }
+          if (src_descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
+            if (precision == CalculationsPrecision::F32_F16) {
+              c += "    src" + id + " = " +
+                   src_tensor.ReadAsFloat3D("src_a_" + id) + multiplier + ";\n";
+            } else {
+              c += "    src" + id + " = " + src_tensor.Read3D("src_a_" + id) +
+                   multiplier + ";\n";
+            }
           }
           c += "    src_a_" + id + " += src_layer_offset;\n";
         } else {

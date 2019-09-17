@@ -83,6 +83,8 @@ public:
 
   static StringRef getOperationName() { return "affine.apply"; }
 
+  operand_range getMapOperands() { return getOperands(); }
+
   // Hooks to customize behavior of this op.
   static ParseResult parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
@@ -400,9 +402,12 @@ public:
   /// Builds an affine load op with the specified map and operands.
   static void build(Builder *builder, OperationState *result, AffineMap map,
                     ArrayRef<Value *> operands);
-  /// Builds an affine load op an identify map and operands.
+  /// Builds an affine load op with an identity map and operands.
   static void build(Builder *builder, OperationState *result, Value *memref,
                     ArrayRef<Value *> indices = {});
+  /// Builds an affine load op with the specified map and its operands.
+  static void build(Builder *builder, OperationState *result, Value *memref,
+                    AffineMap map, ArrayRef<Value *> mapOperands);
 
   /// Returns the operand index of the memref.
   unsigned getMemRefOperandIndex() { return 0; }
@@ -415,7 +420,7 @@ public:
   }
 
   /// Get affine map operands.
-  operand_range getIndices() { return llvm::drop_begin(getOperands(), 1); }
+  operand_range getMapOperands() { return llvm::drop_begin(getOperands(), 1); }
 
   /// Returns the affine map used to index the memref for this operation.
   AffineMap getAffineMap() { return getAffineMapAttr().getValue(); }
@@ -462,14 +467,14 @@ class AffineStoreOp : public Op<AffineStoreOp, OpTrait::ZeroResult,
 public:
   using Op::Op;
 
-  /// Builds an affine store operation with the specified map and operands.
-  static void build(Builder *builder, OperationState *result,
-                    Value *valueToStore, AffineMap map,
-                    ArrayRef<Value *> operands);
-  /// Builds an affine store operation with an identity map and operands.
+  /// Builds an affine store operation with the provided indices (identity map).
   static void build(Builder *builder, OperationState *result,
                     Value *valueToStore, Value *memref,
-                    ArrayRef<Value *> operands);
+                    ArrayRef<Value *> indices);
+  /// Builds an affine store operation with the specified map and its operands.
+  static void build(Builder *builder, OperationState *result,
+                    Value *valueToStore, Value *memref, AffineMap map,
+                    ArrayRef<Value *> mapOperands);
 
   /// Get value to be stored by store operation.
   Value *getValueToStore() { return getOperand(0); }
@@ -486,7 +491,7 @@ public:
   }
 
   /// Get affine map operands.
-  operand_range getIndices() { return llvm::drop_begin(getOperands(), 2); }
+  operand_range getMapOperands() { return llvm::drop_begin(getOperands(), 2); }
 
   /// Returns the affine map used to index the memref for this operation.
   AffineMap getAffineMap() { return getAffineMapAttr().getValue(); }
@@ -521,6 +526,9 @@ bool isValidSymbol(Value *value);
 /// Modifies both `map` and `operands` in-place so as to:
 /// 1. drop duplicate operands
 /// 2. drop unused dims and symbols from map
+/// 3. promote valid symbols to symbolic operands in case they appeared as
+///    dimensional operands
+/// 4. propagate constant operands and drop them
 void canonicalizeMapAndOperands(AffineMap *map,
                                 llvm::SmallVectorImpl<Value *> *operands);
 /// Canonicalizes an integer set the same way canonicalizeMapAndOperands does

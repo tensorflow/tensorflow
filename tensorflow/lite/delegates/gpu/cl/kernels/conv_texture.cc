@@ -102,11 +102,58 @@ std::string GenerateConvCode(
     c += "  for (int y = 0; y < kernel_size.y; ++y) {\n";
     c += "  c0.y = y * dilation.y + yc0;\n";
     c += "  c1.y = y * dilation.y + yc1;\n";
+    if (src_descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
+      c += "  bool in_y0 = c0.y >= 0 && c0.y < src_size.y;\n";
+      c += "  bool in_y1 = c1.y >= 0 && c1.y < src_size.y;\n";
+    }
     c += "  for (int x = 0; x < kernel_size.x; ++x) {\n";
     c += "  c0.x = x * dilation.x + xc0;\n";
     c += "  c1.x = x * dilation.x + xc1;\n";
+    if (src_descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
+      c += "  bool in_x0 = c0.x >= 0 && c0.x < src_size.x;\n";
+      c += "  bool in_x1 = c1.x >= 0 && c1.x < src_size.x;\n";
+      c += "  int addr_0 = select(-1, c0.y * src_size.x + c0.x, (in_x0 && "
+           "in_y0));\n";
+      c += "  int addr_1 = select(-1, c0.y * src_size.x + c1.x, (in_x1 && "
+           "in_y0));\n";
+      c += "  int addr_2 = select(-1, c1.y * src_size.x + c0.x, (in_x0 && "
+           "in_y1));\n";
+      c += "  int addr_3 = select(-1, c1.y * src_size.x + c1.x, (in_x1 && "
+           "in_y1));\n";
+      c += "  int dz_0 = select(0, src_size.x * src_size.y, (in_x0 && "
+           "in_y0));\n";
+      c += "  int dz_1 = select(0, src_size.x * src_size.y, (in_x1 && "
+           "in_y0));\n";
+      c += "  int dz_2 = select(0, src_size.x * src_size.y, (in_x0 && "
+           "in_y1));\n";
+      c += "  int dz_3 = select(0, src_size.x * src_size.y, (in_x1 && "
+           "in_y1));\n";
+    }
+  } else if (src_descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
+    c += "  bool in_x0 = xc0 >= 0 && xc0 < src_size.x;\n";
+    c += "  bool in_x1 = xc1 >= 0 && xc1 < src_size.x;\n";
+    c += "  bool in_y0 = yc0 >= 0 && yc0 < src_size.y;\n";
+    c += "  bool in_y1 = yc1 >= 0 && yc1 < src_size.y;\n";
+    c += "  int addr_0 = select(-1, yc0 * src_size.x + xc0, (in_x0 && "
+         "in_y0));\n";
+    c += "  int addr_1 = select(-1, yc0 * src_size.x + xc1, (in_x1 && "
+         "in_y0));\n";
+    c += "  int addr_2 = select(-1, yc1 * src_size.x + xc0, (in_x0 && "
+         "in_y1));\n";
+    c += "  int addr_3 = select(-1, yc1 * src_size.x + xc1, (in_x1 && "
+         "in_y1));\n";
+    c += "  int dz_0 = select(0, src_size.x * src_size.y, (in_x0 && in_y0));\n";
+    c += "  int dz_1 = select(0, src_size.x * src_size.y, (in_x1 && in_y0));\n";
+    c += "  int dz_2 = select(0, src_size.x * src_size.y, (in_x0 && in_y1));\n";
+    c += "  int dz_3 = select(0, src_size.x * src_size.y, (in_x1 && in_y1));\n";
   }
   c += "  for (int s = 0; s < src_size.w; ++s) {\n";
+  if (src_descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
+    c += "    FLT4 src0 = " + src_tensor.Read3D("addr_0") + ";\n";
+    c += "    FLT4 src1 = " + src_tensor.Read3D("addr_1") + ";\n";
+    c += "    FLT4 src2 = " + src_tensor.Read3D("addr_2") + ";\n";
+    c += "    FLT4 src3 = " + src_tensor.Read3D("addr_3") + ";\n";
+  }
   std::string fc0 = "(int2)(Z, " + f_y + ")";
   std::string fc1 = "(int2)(Z + 1, " + f_y + ")";
   c += "    FLT4 f0 = READ_IMAGE(filters0, smp_none, " + fc0 + ");\n";
@@ -117,11 +164,13 @@ std::string GenerateConvCode(
   c += "    FLT4 f5 = READ_IMAGE(filters1, smp_none, " + fc1 + ");\n";
   c += "    FLT4 f6 = READ_IMAGE(filters2, smp_none, " + fc1 + ");\n";
   c += "    FLT4 f7 = READ_IMAGE(filters3, smp_none, " + fc1 + ");\n";
-  const auto mode = GetFastestZeroMode(device);
-  c += "    FLT4 src0 =" + src_tensor.Read3D(s_x0, s_y0, "s", mode) + ";\n";
-  c += "    FLT4 src1 =" + src_tensor.Read3D(s_x1, s_y0, "s", mode) + ";\n";
-  c += "    FLT4 src2 =" + src_tensor.Read3D(s_x0, s_y1, "s", mode) + ";\n";
-  c += "    FLT4 src3 =" + src_tensor.Read3D(s_x1, s_y1, "s", mode) + ";\n";
+  if (src_descriptor.storage_type != TensorStorageType::IMAGE_BUFFER) {
+    const auto mode = GetFastestZeroMode(device);
+    c += "    FLT4 src0 = " + src_tensor.Read3D(s_x0, s_y0, "s", mode) + ";\n";
+    c += "    FLT4 src1 = " + src_tensor.Read3D(s_x1, s_y0, "s", mode) + ";\n";
+    c += "    FLT4 src2 = " + src_tensor.Read3D(s_x0, s_y1, "s", mode) + ";\n";
+    c += "    FLT4 src3 = " + src_tensor.Read3D(s_x1, s_y1, "s", mode) + ";\n";
+  }
   for (int i = 0; i < 4; ++i) {
     c += "    CONV1(r" + std::to_string(i) + ", src" + std::to_string(i) +
          ");\n";
@@ -132,6 +181,12 @@ std::string GenerateConvCode(
   }
   if (!is1x1) {
     c += "    filter_offset++;\n";
+  }
+  if (src_descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
+    c += "     addr_0 += dz_0;\n";
+    c += "     addr_1 += dz_1;\n";
+    c += "     addr_2 += dz_2;\n";
+    c += "     addr_3 += dz_3;\n";
   }
   c += "  }\n";  // src_size.w
   if (!is1x1) {

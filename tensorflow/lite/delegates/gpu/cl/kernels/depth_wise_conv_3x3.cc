@@ -39,6 +39,10 @@ std::string GenerateDepthWiseConvCode(
 
   const auto mode = GetFastestZeroMode(device);
 
+  const bool manual_clamp =
+      src_descriptor.storage_type == TensorStorageType::BUFFER ||
+      src_descriptor.storage_type == TensorStorageType::IMAGE_BUFFER;
+
   if (local_mem_uploads) {
     c += "__attribute__((reqd_work_group_size(8, 4, 1)))\n";
   }
@@ -90,7 +94,7 @@ std::string GenerateDepthWiseConvCode(
     c += "   FLT4 f7 = READ_IMAGE(filters, smp_none, (int2)(7, Z));\n";
     c += "   FLT4 f8 = READ_IMAGE(filters, smp_none, (int2)(8, Z));\n";
   }
-  if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+  if (manual_clamp) {
     c += "  int x0 = X - 1;\n";
     c += "  int x1 = X;\n";
     c += "  int x2 = X + 1;\n";
@@ -115,6 +119,10 @@ std::string GenerateDepthWiseConvCode(
     c += "  y1 = clamp(y1, 0, dst_size.y - 1);\n";
     c += "  y2 = clamp(y2, 0, dst_size.y - 1);\n";
     c += "  y3 = clamp(y3, 0, dst_size.y - 1);\n";
+    if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+      c += "  __global FLT4* src_loc = src_data + Z * dst_size.x * "
+           "dst_size.y;\n";
+    }
     xc[0] = "x0";
     xc[1] = "x1";
     xc[2] = "x2";
@@ -123,7 +131,6 @@ std::string GenerateDepthWiseConvCode(
     yc[1] = "y1";
     yc[2] = "y2";
     yc[3] = "y3";
-    c += "  __global FLT4* src_loc = src_data + Z * dst_size.x * dst_size.y;\n";
   }
   if (local_mem_uploads || weights_are_buffer) {
     W[0] = "f[0]";
@@ -148,6 +155,16 @@ std::string GenerateDepthWiseConvCode(
            "] * (FLT)(x2_in && " + y_in + ");\n";
       c += "    s3 = src_loc[" + yc[y] + " * dst_size.x + " + xc[3] +
            "] * (FLT)(x3_in && " + y_in + ");\n";
+    } else if (src_descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
+      const std::string y_in = "y" + std::to_string(y) + "_in";
+      c += "    s0 = " + src_tensor.Read3D(xc[0], yc[y], "Z", mode) +
+           " * (FLT)(x0_in && " + y_in + ");\n";
+      c += "    s1 = " + src_tensor.Read3D(xc[1], yc[y], "Z", mode) +
+           " * (FLT)(x1_in && " + y_in + ");\n";
+      c += "    s2 = " + src_tensor.Read3D(xc[2], yc[y], "Z", mode) +
+           " * (FLT)(x2_in && " + y_in + ");\n";
+      c += "    s3 = " + src_tensor.Read3D(xc[3], yc[y], "Z", mode) +
+           " * (FLT)(x3_in && " + y_in + ");\n";
     } else {
       c += "    s0 = " + src_tensor.Read3D(xc[0], yc[y], "Z", mode) + ";\n";
       c += "    s1 = " + src_tensor.Read3D(xc[1], yc[y], "Z", mode) + ";\n";

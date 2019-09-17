@@ -42,6 +42,10 @@ std::string GenerateConvolutionConstantCode(
   const std::string kOutZ = std::to_string(out_z);
   const int src_depth = IntegralDivideRoundUp(src_channels, 4);
 
+  const bool manual_clamp =
+      src_descriptor.storage_type == TensorStorageType::BUFFER ||
+      src_descriptor.storage_type == TensorStorageType::IMAGE_BUFFER;
+
   switch (precision) {
     case CalculationsPrecision::F32:
     case CalculationsPrecision::F16:
@@ -112,14 +116,14 @@ std::string GenerateConvolutionConstantCode(
     const std::string s_postfix = postfixes[ch_count - 1];
     for (int ky = 0; ky < kernel_size.y; ++ky) {
       std::string s_y = absl::StrCat("(start_y + ", ky * dilation.y, ")");
-      if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+      if (manual_clamp) {
         c += "  {\n";
         c += "  bool y_out = " + s_y + " < 0 || " + s_y + " >= src_size.y;\n";
       }
       for (int kx = 0; kx < kernel_size.x; ++kx) {
         c += "  {\n";
         std::string s_x = absl::StrCat("(start_x + ", kx * dilation.x, ")");
-        if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+        if (manual_clamp) {
           c += "    bool x_out = " + s_x + "< 0 || " + s_x + ">= src_size.x;\n";
           c += "    " + s_type + " src = x_out || y_out ?";
           c += "(" + s_type + ")(0.0) : ";
@@ -137,7 +141,7 @@ std::string GenerateConvolutionConstantCode(
         }
         c += "  }\n";
       }
-      if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+      if (manual_clamp) {
         c += "  }\n";
       }
     }

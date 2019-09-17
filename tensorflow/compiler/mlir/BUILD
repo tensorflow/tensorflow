@@ -102,6 +102,7 @@ tf_cc_binary(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_proto_cc",
         "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/strings",
         "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Support",

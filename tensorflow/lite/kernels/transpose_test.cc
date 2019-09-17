@@ -76,18 +76,77 @@ TEST(TransposeTest, TestRefOps2D) {
 
 TEST(TransposeTest, TestRefOps3D) {
   std::vector<float> out;
-  // Test 3 dimensional
   {
     std::vector<float> ref({0, 4, 8,  12, 16, 20, 1, 5, 9,  13, 17, 21,
                             2, 6, 10, 14, 18, 22, 3, 7, 11, 15, 19, 23});
-    RunTestPermutation({2, 3, 4}, {2, 0, 1}, &out);
+    RunTestPermutation(/*shape=*/{2, 3, 4}, /*perms=*/{2, 0, 1}, &out);
     ASSERT_EQ(out, ref);
   }
+
   // Test 3 dimensional identity transform
   {
-    RunTestPermutation({2, 3, 4}, {0, 1, 2}, &out);
+    RunTestPermutation(/*shape=*/{2, 3, 4}, /*perms=*/{0, 1, 2}, &out);
     std::vector<float> ref(out.size());
     for (int k = 0; k < ref.size(); k++) ref[k] = k;
+    ASSERT_EQ(out, ref);
+  }
+
+  /**
+   * Additional tests that mimic first case, but with different perm.
+   */
+  {
+    std::vector<float> ref({0, 12, 1, 13, 2, 14, 3, 15, 4,  16, 5,  17,
+                            6, 18, 7, 19, 8, 20, 9, 21, 10, 22, 11, 23});
+    RunTestPermutation(/*shape=*/{2, 3, 4}, /*perms=*/{1, 2, 0}, &out);
+    ASSERT_EQ(out, ref);
+  }
+
+  {
+    std::vector<float> ref({0,  4,  8,  1,  5,  9,  2,  6,  10, 3,  7,  11,
+                            12, 16, 20, 13, 17, 21, 14, 18, 22, 15, 19, 23});
+    RunTestPermutation(/*shape=*/{2, 3, 4}, /*perms=*/{0, 2, 1}, &out);
+    ASSERT_EQ(out, ref);
+  }
+
+  {
+    std::vector<float> ref({0,  1,  2,  3,  12, 13, 14, 15, 4,  5,  6,  7,
+                            16, 17, 18, 19, 8,  9,  10, 11, 20, 21, 22, 23});
+    RunTestPermutation(/*shape=*/{2, 3, 4}, /*perms=*/{1, 0, 2}, &out);
+    ASSERT_EQ(out, ref);
+  }
+
+  {
+    std::vector<float> ref({0, 12, 4, 16, 8,  20, 1, 13, 5, 17, 9,  21,
+                            2, 14, 6, 18, 10, 22, 3, 15, 7, 19, 11, 23});
+    RunTestPermutation(/*shape=*/{2, 3, 4}, /*perms=*/{2, 1, 0}, &out);
+    ASSERT_EQ(out, ref);
+  }
+}
+
+TEST(TransposeTest, TestRefOps3D_OneInDimension) {
+  std::vector<float> out;
+  // Shape with 1 as first dim -> transposed.
+  {
+    std::vector<float> ref({0, 3, 1, 4, 2, 5});
+    RunTestPermutation(/*shape=*/{1, 2, 3}, /*perms=*/{2, 0, 1}, &out);
+    ASSERT_EQ(out, ref);
+  }
+  // Shape with 1 as first dim -> identity.
+  {
+    std::vector<float> ref({0, 1, 2, 3, 4, 5});
+    RunTestPermutation(/*shape=*/{1, 2, 3}, /*perms=*/{1, 2, 0}, &out);
+    ASSERT_EQ(out, ref);
+  }
+  // Shape with 1 as third dim -> transposed.
+  {
+    std::vector<float> ref({0, 3, 1, 4, 2, 5});
+    RunTestPermutation(/*shape=*/{2, 3, 1}, /*perms=*/{1, 2, 0}, &out);
+    ASSERT_EQ(out, ref);
+  }
+  // Shape with 1 as third dim -> identity.
+  {
+    std::vector<float> ref({0, 1, 2, 3, 4, 5});
+    RunTestPermutation(/*shape=*/{2, 3, 1}, /*perms=*/{2, 0, 1}, &out);
     ASSERT_EQ(out, ref);
   }
 }

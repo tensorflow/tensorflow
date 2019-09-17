@@ -366,7 +366,7 @@ objc_library(
 ios_unit_test(
     name = "padding_test",
     testonly = 1,
-    minimum_os_version = "9.0",
+    minimum_os_version = "10.0",
     tags = [
         "notap",
         "tflite_not_portable_android",
@@ -388,6 +388,28 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "@com_google_absl//absl/strings",
     ],
+)
+
+objc_library(
+    name = "pooling_test_lib",
+    testonly = 1,
+    srcs = ["pooling_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":pooling",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "pooling_test",
+    testonly = 1,
+    minimum_os_version = "10.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":pooling_test_lib"],
 )
 
 cc_library(
@@ -435,7 +457,7 @@ objc_library(
 ios_unit_test(
     name = "relu_test",
     testonly = 1,
-    minimum_os_version = "9.0",
+    minimum_os_version = "10.0",
     tags = [
         "notap",
         "tflite_not_portable_android",

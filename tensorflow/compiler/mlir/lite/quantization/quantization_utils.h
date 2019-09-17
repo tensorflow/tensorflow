@@ -143,7 +143,6 @@ struct QuantizationPattern : public RewritePattern {
           output_types.push_back(result_type);
           continue;
         }
-        if (!result->hasOneUse()) return matchFailure();
         Type result_ele_type =
             result->getType().cast<TensorType>().getElementType();
         if (auto user = dyn_cast_or_null<Q>(*result->user_begin())) {
@@ -153,15 +152,16 @@ struct QuantizationPattern : public RewritePattern {
           // If the result is an integer tensor, then it doesn't require the
           // D op in the pattern.
           outputs_replaced.insert({result, enumerated_result.index()});
-          output_types.push_back(result_ele_type);
+          output_types.push_back(result->getType());
         } else if (static_cast<const ConcretTy*>(this)->AllowHybridResult()) {
           outputs_replaced.insert({result, enumerated_result.index()});
-          output_types.push_back(result_ele_type);
+          output_types.push_back(result->getType());
         } else {
           return matchFailure();
         }
       }
 
+      rewriter.setInsertionPoint(quantized_op);
       OperationState new_state(quantized_op->getLoc(),
                                quantized_op->getName().getStringRef(), inputs,
                                output_types, quantized_op->getAttrs());

@@ -2308,7 +2308,6 @@ tf_proto_library(
     srcs = ["protobuf/autotuning.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
-    provide_cc_alias = True,
     visibility = [
         "//tensorflow:internal",
     ],
@@ -2322,7 +2321,6 @@ tf_proto_library(
     protodeps = [
         "//tensorflow/stream_executor:dnn_proto",
     ],
-    provide_cc_alias = True,
     visibility = [
         "//tensorflow:internal",
     ],

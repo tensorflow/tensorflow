@@ -163,6 +163,13 @@ class Delegate {
     RETURN_IF_ERROR(
         NewInferenceEnvironment(env_options, &gl_environment_, &properties));
     gl::InferenceOptions options;
+    options.allow_precision_loss = options_.is_precision_loss_allowed != 0;
+    options.fuse_operations =
+        options_.inference_preference !=
+        TFLITE_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER;
+    options.inline_parameters =
+        options_.inference_preference !=
+        TFLITE_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER;
     RETURN_IF_ERROR(gl_environment_->NewInferenceBuilder(std::move(*graph),
                                                          options, builder));
     TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
