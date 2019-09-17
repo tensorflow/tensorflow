@@ -42,20 +42,6 @@ namespace gpu {
 namespace gl {
 namespace {
 
-// Returns true if all tensors have same batch value.
-bool IsBatchMatchesForAllValues(const GraphFloat32& model) {
-  const auto& values = model.values();
-  if (!values.empty()) {
-    const int32_t b = values[0]->tensor.shape.b;
-    for (auto value : values) {
-      if (value->tensor.shape.b != b) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
 std::string GetShaderHeader(uint3 localsize) {
   return absl::StrCat("#version 310 es\nlayout(local_size_x = ", localsize.x,
                       ", local_size_y = ", localsize.y,
