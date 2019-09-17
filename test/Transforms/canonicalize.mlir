@@ -256,13 +256,12 @@ func @xor_self_tensor(%arg0: tensor<4x5xi32>) -> tensor<4x5xi32> {
 
 // CHECK-LABEL: func @memref_cast_folding
 func @memref_cast_folding(%arg0: memref<4 x f32>, %arg1: f32) -> f32 {
-  // CHECK-NOT: memref_cast
   %1 = memref_cast %arg0 : memref<4xf32> to memref<?xf32>
+  // CHECK-NEXT: %c0 = constant 0 : index
   %c0 = constant 0 : index
-  // CHECK-NOT: dim
   %dim = dim %1, 0 : memref<? x f32>
 
-  // CHECK: affine.load %arg0[%c4 - 1]
+  // CHECK-NEXT: affine.load %arg0[3]
   affine.load %1[%dim - 1] : memref<?xf32>
 
   // CHECK-NEXT: store %arg1, %arg0[%c0] : memref<4xf32>

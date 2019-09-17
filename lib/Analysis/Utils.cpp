@@ -847,7 +847,7 @@ MemRefAccess::MemRefAccess(Operation *loadOrStoreOpInst) {
     opInst = loadOrStoreOpInst;
     auto loadMemrefType = loadOp.getMemRefType();
     indices.reserve(loadMemrefType.getRank());
-    for (auto *index : loadOp.getIndices()) {
+    for (auto *index : loadOp.getMapOperands()) {
       indices.push_back(index);
     }
   } else {
@@ -857,7 +857,7 @@ MemRefAccess::MemRefAccess(Operation *loadOrStoreOpInst) {
     memref = storeOp.getMemRef();
     auto storeMemrefType = storeOp.getMemRefType();
     indices.reserve(storeMemrefType.getRank());
-    for (auto *index : storeOp.getIndices()) {
+    for (auto *index : storeOp.getMapOperands()) {
       indices.push_back(index);
     }
   }

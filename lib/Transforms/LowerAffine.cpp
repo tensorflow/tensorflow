@@ -403,7 +403,7 @@ public:
   virtual PatternMatchResult
   matchAndRewrite(AffineLoadOp op, PatternRewriter &rewriter) const override {
     // Expand affine map from 'affineLoadOp'.
-    SmallVector<Value *, 8> indices(op.getIndices());
+    SmallVector<Value *, 8> indices(op.getMapOperands());
     auto maybeExpandedMap =
         expandAffineMap(rewriter, op.getLoc(), op.getAffineMap(), indices);
     if (!maybeExpandedMap)
@@ -425,7 +425,7 @@ public:
   virtual PatternMatchResult
   matchAndRewrite(AffineStoreOp op, PatternRewriter &rewriter) const override {
     // Expand affine map from 'affineStoreOp'.
-    SmallVector<Value *, 8> indices(op.getIndices());
+    SmallVector<Value *, 8> indices(op.getMapOperands());
     auto maybeExpandedMap =
         expandAffineMap(rewriter, op.getLoc(), op.getAffineMap(), indices);
     if (!maybeExpandedMap)

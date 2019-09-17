@@ -424,6 +424,7 @@ func @fold_empty_loop() {
   }
   return
 }
+// CHECK: return
 
 // -----
 
@@ -473,6 +474,32 @@ func @canonicalize_bounds(%M : index, %N : index) {
   // CHECK: affine.for %{{.*}} = max [[LBMAP]](){{\[}}[[N]]{{\]}} to [[M]]
   affine.for %i = max (d0, d1) -> (d0, d1) (%c0, %N) to %M {
     "foo"() : () -> ()
+  }
+  return
+}
+
+// -----
+
+// Compose maps into affine load and store ops.
+
+// CHECK-DAG: #map{{[0-9]+}} = (d0) -> (d0 + 1)
+
+// CHECK-LABEL: @compose_into_affine_load_store
+func @compose_into_affine_load_store(%A : memref<1024xf32>, %u : index) {
+  %cf1 = constant 1.0 : f32
+  // CHECK: affine.for %[[IV:.*]] = 0 to 1024
+  affine.for %i = 0 to 1024 {
+    // Make sure the unused operand (%u below) gets dropped as well.
+    %idx = affine.apply (d0, d1) -> (d0 + 1) (%i, %u)
+    affine.load %A[%idx] : memref<1024xf32>
+    affine.store %cf1, %A[%idx] : memref<1024xf32>
+    // CHECK-NEXT: affine.load %{{.*}}[%[[IV]] + 1]
+    // CHECK-NEXT: affine.store %cst, %{{.*}}[%[[IV]] + 1]
+
+    // Map remains the same, but operand changes on composition.
+    %copy = affine.apply (d0) -> (d0) (%i)
+    affine.load %A[%copy] : memref<1024xf32>
+    // CHECK-NEXT: affine.load %{{.*}}[%[[IV]]]
   }
   return
 }
