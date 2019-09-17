@@ -38,6 +38,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels/data:dataset_test_base",
+        "//tensorflow/core/kernels/data:take_dataset_op",
         "//third_party/eigen3",
     ],
 )
