@@ -118,6 +118,7 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
+        *end_of_sequence = false;
         if (slice_number_ % dataset()->num_replicas_ == 0) {
           input_descriptors_.clear();
           std::vector<Tensor> input_tensors;
