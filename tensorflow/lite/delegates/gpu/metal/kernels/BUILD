@@ -512,6 +512,28 @@ cc_library(
     ],
 )
 
+objc_library(
+    name = "softmax_test_lib",
+    testonly = 1,
+    srcs = ["softmax_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":softmax",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "softmax_test",
+    testonly = 1,
+    minimum_os_version = "10.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":softmax_test_lib"],
+)
+
 cc_library(
     name = "transpose_conv",
     srcs = ["transpose_conv.cc"],
