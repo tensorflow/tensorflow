@@ -165,11 +165,13 @@ std::string ReadGlobalFLT4(TensorStorageType storage_type, DataType data_type,
     case TensorStorageType::TEXTURE_2D:
     case TensorStorageType::SINGLE_TEXTURE_2D:
     case TensorStorageType::TEXTURE_ARRAY:
-    case TensorStorageType::IMAGE_BUFFER:
       return absl::StrCat(
           GetReadImageFromDataType(data_type), "(", tensor_name,
           ", " + TextureAddressModeToString(address_mode) + ", ",
           global_address, ")");
+    case TensorStorageType::IMAGE_BUFFER:
+      return absl::StrCat(GetReadImageFromDataType(data_type), "(", tensor_name,
+                          ", ", global_address, ")");
     case TensorStorageType::UNKNOWN:
       return "";
   }
@@ -186,11 +188,13 @@ std::string ReadGlobalFloat4(TensorStorageType storage_type,
     case TensorStorageType::TEXTURE_2D:
     case TensorStorageType::SINGLE_TEXTURE_2D:
     case TensorStorageType::TEXTURE_ARRAY:
-    case TensorStorageType::IMAGE_BUFFER:
       return absl::StrCat(
           "read_imagef(", tensor_name,
           ", " + TextureAddressModeToString(address_mode) + ", ",
           global_address, ")");
+    case TensorStorageType::IMAGE_BUFFER:
+      return absl::StrCat("read_imagef(", tensor_name, ", ", global_address,
+                          ")");
     case TensorStorageType::UNKNOWN:
       return "";
   }
