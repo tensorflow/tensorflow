@@ -222,3 +222,31 @@ func @QuantizeSplit(%arg: tensor<4x!quant.uniform<u8:f32, 1.0>>, %cst: tensor<i3
 // CHECK: %0:2 = "tfl.split"(%arg1, %arg0) {num_splits = 2 : i32} : (tensor<i32>, tensor<4x!quant.uniform<u8:f32, 1.000000e+00>>)
 // CHECK: return %0#0, %0#1
 }
+
+// CHECK-LABEL: QuantizeShape
+func @QuantizeShape(%arg1: tensor<4x!quant.uniform<u8:f32, 1.0>>,
+                    %arg2: tensor<*x!quant.uniform<u8:f32, 1.0>>,
+                    %arg3: tensor<?x?x4x!quant.uniform<u8:f32, 1.0>>) -> (tensor<1xi32>,tensor<?xi32>,tensor<3xi32>) {
+  %1 = "tfl.dequantize"(%arg1) : (tensor<4x!quant.uniform<u8:f32, 1.0>>) -> tensor<4xf32>
+  %2 = "tfl.dequantize"(%arg2) : (tensor<*x!quant.uniform<u8:f32, 1.0>>) -> tensor<*xf32>
+  %3 = "tfl.dequantize"(%arg3) : (tensor<?x?x4x!quant.uniform<u8:f32, 1.0>>) -> tensor<?x?x4xf32>
+  %4 = "tfl.shape"(%1) : (tensor<4xf32>) -> tensor<1xi32>
+  %5 = "tfl.shape"(%2) : (tensor<*xf32>) -> tensor<?xi32>
+  %6 = "tfl.shape"(%3) : (tensor<?x?x4xf32>) -> tensor<3xi32>
+  return %4, %5, %6 : tensor<1xi32>, tensor<?xi32>, tensor<3xi32>
+
+// CHECK-NEXT: %[[s1:.*]] = "tfl.shape"(%arg0) : (tensor<4x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<1xi32>
+// CHECK-NEXT: %[[s2:.*]] = "tfl.shape"(%arg1) : (tensor<*x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<?xi32>
+// CHECK-NEXT: %[[s3:.*]] = "tfl.shape"(%arg2) : (tensor<?x?x4x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<3xi32>
+// CHECK-NEXT: %[[s1]], %[[s2]], %[[s3]] : tensor<1xi32>, tensor<?xi32>, tensor<3xi32>
+}
+
+// CHECK-LABEL: QuantizeMultipleUsers
+func @QuantizeMultipleUsers(%arg1: tensor<4x!quant.uniform<u8:f32, 1.0>>) -> (tensor<1xi32>,tensor<1xi32>) {
+  %1 = "tfl.dequantize"(%arg1) : (tensor<4x!quant.uniform<u8:f32, 1.0>>) -> tensor<4xf32>
+  %2 = "tfl.shape"(%1) : (tensor<4xf32>) -> tensor<1xi32>
+  return %2, %2 : tensor<1xi32>, tensor<1xi32>
+
+// CHECK-NEXT: %[[s1:.*]] = "tfl.shape"(%arg0) : (tensor<4x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<1xi32>
+// CHECK-NEXT: %[[s1]], %[[s1]] : tensor<1xi32>, tensor<1xi32>
+}
