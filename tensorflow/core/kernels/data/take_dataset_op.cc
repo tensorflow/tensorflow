@@ -67,7 +67,10 @@ int64 TakeDataset::Cardinality() const {
   }
   if (n == kInfiniteCardinality) {
     return count_;
+  } else if (count_ == kInfiniteCardinality) {
+    return n;
   }
+
   return std::min(n, count_);
 }
 

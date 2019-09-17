@@ -45,6 +45,8 @@ class MapAndBatchDatasetParams : public DatasetParams {
         std::make_shared<T>(std::move(input_dataset_params));
     input_dataset_params_group_.emplace_back(
         std::make_pair(std::move(input_dataset_params_ptr), Tensor()));
+    iterator_prefix_ = name_utils::IteratorPrefix(
+        input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
   }
 
   Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override {
@@ -87,11 +89,11 @@ class MapAndBatchDatasetParams : public DatasetParams {
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
     *attr_vector = {
-        {MapDatasetOp::kFunc, func_},
-        {MapDatasetOp::kTarguments, type_arguments_},
-        {MapDatasetOp::kOutputShapes, output_shapes_},
-        {MapDatasetOp::kOutputTypes, output_dtypes_},
-        {MapDatasetOp::kPreserveCardinality, preserve_cardinality_}};
+        {MapAndBatchDatasetOp::kFunc, func_},
+        {MapAndBatchDatasetOp::kTarguments, type_arguments_},
+        {MapAndBatchDatasetOp::kOutputShapes, output_shapes_},
+        {MapAndBatchDatasetOp::kOutputTypes, output_dtypes_},
+        {MapAndBatchDatasetOp::kPreserveCardinality, preserve_cardinality_}};
     return Status::OK();
   }
 
@@ -281,6 +283,12 @@ std::vector<GetNextTestCase<MapAndBatchDatasetParams>> GetNextTestCases() {
 
 ITERATOR_GET_NEXT_TEST_P(MapAndBatchDatasetOpTest, MapAndBatchDatasetParams,
                          GetNextTestCases())
+
+TEST_F(MapAndBatchDatasetOpTest, DatasetNodeName) {
+  auto dataset_params = MapAndBatchDatasetParams1();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(CheckDatasetNodeName(dataset_params.node_name()));
+}
 
 TEST_F(MapAndBatchDatasetOpTest, DatasetTypeString) {
   auto dataset_params = MapAndBatchDatasetParams1();

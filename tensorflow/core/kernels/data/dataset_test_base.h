@@ -30,13 +30,10 @@ limitations under the License.
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/graph/graph_constructor.h"
-#include "tensorflow/core/kernels/data/batch_dataset_op.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/iterator_ops.h"
-#include "tensorflow/core/kernels/data/map_dataset_op.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
-#include "tensorflow/core/kernels/data/take_dataset_op.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
@@ -223,6 +220,9 @@ class BatchDatasetParams : public DatasetParams {
         std::make_shared<T>(std::move(input_dataset_params));
     input_dataset_params_group_.emplace_back(
         std::make_pair(std::move(input_dataset_params_ptr), Tensor()));
+    op_version_ = 2;
+    iterator_prefix_ = name_utils::IteratorPrefix(
+        input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
   }
 
   Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override;
@@ -242,7 +242,6 @@ class BatchDatasetParams : public DatasetParams {
   Tensor batch_size_;
   Tensor drop_remainder_;
   bool parallel_copy_;
-  int op_version_ = 2;
 };
 
 // `MapDatasetParams` is a common dataset parameter type that are used in
@@ -269,6 +268,8 @@ class MapDatasetParams : public DatasetParams {
         std::make_shared<T>(std::move(input_dataset_params));
     input_dataset_params_group_.emplace_back(
         std::make_pair(std::move(input_dataset_params_ptr), Tensor()));
+    iterator_prefix_ = name_utils::IteratorPrefix(
+        input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
   }
 
   Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override;
@@ -291,6 +292,68 @@ class MapDatasetParams : public DatasetParams {
   DataTypeVector type_arguments_;
   bool use_inter_op_parallelism_;
   bool preserve_cardinality_;
+};
+
+// `TensorSliceDatasetParams` is a common dataset parameter type that are used
+// in testing.
+class TensorSliceDatasetParams : public DatasetParams {
+ public:
+  TensorSliceDatasetParams(std::vector<Tensor> components, string node_name);
+
+  Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override;
+
+  Status GetInputPlaceholder(
+      std::vector<string>* input_placeholder) const override;
+
+  Status GetAttributes(AttributeVector* attr_vector) const override;
+
+  Status CreateFactory(FunctionDef* fdef) const override;
+
+  string op_name() const override;
+
+ private:
+  DataTypeVector TensorSliceDtypes(const std::vector<Tensor>& input_components);
+
+  std::vector<PartialTensorShape> TensorSliceShapes(
+      const std::vector<Tensor>& input_components);
+
+ public:
+  std::vector<Tensor> components_;
+};
+
+// `TakeDatasetParams` is a common dataset parameter type that are used in
+// testing.
+class TakeDatasetParams : public DatasetParams {
+ public:
+  template <typename T>
+  TakeDatasetParams(T input_dataset_params, int count,
+                    DataTypeVector output_dtypes,
+                    std::vector<PartialTensorShape> output_shapes,
+                    string node_name)
+      : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
+                      std::move(node_name)),
+        count_(CreateTensor<int64>(TensorShape({}), {count})) {
+    auto input_dataset_params_ptr =
+        std::make_shared<T>(std::move(input_dataset_params));
+    input_dataset_params_group_.emplace_back(
+        std::make_pair(std::move(input_dataset_params_ptr), Tensor()));
+    iterator_prefix_ = name_utils::IteratorPrefix(
+        input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
+  }
+
+  Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override;
+
+  Status GetInputPlaceholder(
+      std::vector<string>* input_placeholder) const override;
+
+  Status GetAttributes(AttributeVector* attr_vector) const override;
+
+  Status CreateFactory(FunctionDef* fdef) const override;
+
+  string op_name() const override;
+
+ private:
+  Tensor count_;
 };
 
 template <typename T>
@@ -624,7 +687,12 @@ class DatasetOpsTestBase : public ::testing::Test {
 class DatasetOpsTestBaseV2 : public DatasetOpsTestBase {
  public:
   // Initializes the required members for running the unit tests.
-  Status Initialize(DatasetParams& dataset_params);
+  virtual Status Initialize(DatasetParams& dataset_params);
+
+ protected:
+  // Make destructor protected so that DatasetOpsTestBaseV2 objects cannot
+  // be instantiated directly. Only subclasses can be instantiated.
+  virtual ~DatasetOpsTestBaseV2(){};
 
  private:
   // Creates the dataset op kernel.
