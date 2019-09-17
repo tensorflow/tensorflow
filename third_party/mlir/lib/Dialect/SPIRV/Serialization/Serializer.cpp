@@ -278,6 +278,11 @@ private:
   // Operations
   //===--------------------------------------------------------------------===//
 
+  LogicalResult encodeExtensionInstruction(Operation *op,
+                                           StringRef extensionSetName,
+                                           uint32_t opcode,
+                                           ArrayRef<uint32_t> operands);
+
   uint32_t findValueID(Value *val) const { return valueIDMap.lookup(val); }
 
   LogicalResult processAddressOfOp(spirv::AddressOfOp addressOfOp);
@@ -345,6 +350,9 @@ private:
 
   /// Map from results of normal operations to their <id>s.
   DenseMap<Value *, uint32_t> valueIDMap;
+
+  /// Map from extended instruction set name to <id>s.
+  llvm::StringMap<uint32_t> extendedInstSetIDMap;
 };
 } // namespace
 
@@ -1346,6 +1354,37 @@ LogicalResult Serializer::processBranchOp(spirv::BranchOp branchOp) {
 //===----------------------------------------------------------------------===//
 // Operation
 //===----------------------------------------------------------------------===//
+
+LogicalResult Serializer::encodeExtensionInstruction(
+    Operation *op, StringRef extensionSetName, uint32_t extensionOpcode,
+    ArrayRef<uint32_t> operands) {
+  // Check if the extension has been imported.
+  auto &setID = extendedInstSetIDMap[extensionSetName];
+  if (!setID) {
+    setID = getNextID();
+    SmallVector<uint32_t, 16> importOperands;
+    importOperands.push_back(setID);
+    if (failed(encodeStringLiteralInto(importOperands, extensionSetName)) ||
+        failed(encodeInstructionInto(
+            extendedSets, spirv::Opcode::OpExtInstImport, importOperands))) {
+      return failure();
+    }
+  }
+
+  // The first two operands are the result type <id> and result <id>. The set
+  // <id> and the opcode need to be insert after this.
+  if (operands.size() < 2) {
+    return op->emitError("extended instructions must have a result encoding");
+  }
+  SmallVector<uint32_t, 8> extInstOperands;
+  extInstOperands.reserve(operands.size() + 2);
+  extInstOperands.append(operands.begin(), std::next(operands.begin(), 2));
+  extInstOperands.push_back(setID);
+  extInstOperands.push_back(extensionOpcode);
+  extInstOperands.append(std::next(operands.begin(), 2), operands.end());
+  return encodeInstructionInto(functions, spirv::Opcode::OpExtInst,
+                               extInstOperands);
+}
 
 LogicalResult Serializer::processAddressOfOp(spirv::AddressOfOp addressOfOp) {
   auto varName = addressOfOp.variable();

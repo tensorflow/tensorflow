@@ -250,6 +250,8 @@ def SPV_LoopOp : SPV_Op<"loop"> {
   }];
 
   let hasOpcode = 0;
+
+  let autogenSerialization = 0;
 }
 
 // -----
@@ -273,6 +275,8 @@ def SPV_MergeOp : SPV_Op<"_merge", [HasParent<"LoopOp">, Terminator]> {
   let printer = [{ printNoIOOp(getOperation(), p); }];
 
   let hasOpcode = 0;
+
+  let autogenSerialization = 0;
 }
 
 // -----

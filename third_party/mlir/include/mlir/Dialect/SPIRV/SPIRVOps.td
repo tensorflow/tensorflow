@@ -56,6 +56,12 @@ include "mlir/Dialect/SPIRV/SPIRVLogicalOps.td"
 include "mlir/Dialect/SPIRV/SPIRVStructureOps.td"
 #endif // SPIRV_STRUCTURE_OPS
 
+#ifdef SPIRV_GLSL_OPS
+#else
+// Pull in ops for extended instruction set for GLSL
+include "mlir/Dialect/SPIRV/SPIRVGLSLOps.td"
+#endif // SPIRV_GLSL_OPS
+
 // -----
 
 def SPV_AccessChainOp : SPV_Op<"AccessChain", [NoSideEffect]> {

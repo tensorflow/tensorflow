@@ -34,17 +34,7 @@ include "mlir/Dialect/SPIRV/SPIRVBase.td"
 
 // Base class for all GLSL ops.
 class SPV_GLSLOp<string mnemonic, int opcode, list<OpTrait> traits = []> :
-  SPV_Op<"glsl." # mnemonic, traits> {
-
-  // Do not use the default auto-generation serializer/deserializer.
-  let hasOpcode = 0;
-
-  // Opcode within the extended instruction set.
-  int glslOpcode = opcode;
-
-  // Name used to refer to the extended instruction set.
-  string extensionSetName = "GLSL.std.450";
-}
+  SPV_ExtInstOp<mnemonic, "GLSL", "GLSL.std.450", opcode, traits>;
 
 // Base class for GLSL unary ops.
 class SPV_GLSLUnaryOp<string mnemonic, Type resultType, Type operandType,
