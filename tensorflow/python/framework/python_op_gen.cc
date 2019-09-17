@@ -632,8 +632,10 @@ void GenEagerPythonOp::AddEagerFunctionTeardown(
       // For list outputs, convert the right subrange of _result into a list.
       Unflatten(indentation, output_sizes, "_result", &result_);
       // Convert to a named tuple.
-      strings::StrAppend(&result_, indentation, "_result = _", op_def_.name(),
-                         "Output._make(_result)\n");
+      strings::StrAppend(
+          &result_, indentation, "_result = _",
+          python_op_gen_internal::AvoidPythonReserved(op_def_.name()),
+          "Output._make(_result)\n");
     }
   } else {
     strings::StrAppend(&result_, indentation, "_result = None\n");
@@ -760,8 +762,9 @@ void GenEagerPythonOp::AddEagerFastPathExecute() {
       "\n");
 
   if (op_def_.output_arg_size() > 1) {
-    const string output_tuple_name =
-        strings::StrCat("_", op_def_.name(), "Output");
+    const string output_tuple_name = strings::StrCat(
+        "_", python_op_gen_internal::AvoidPythonReserved(op_def_.name()),
+        "Output");
     strings::StrAppend(&result_, "      ", "_result = ", output_tuple_name,
                        "._make(_result)\n");
   }
