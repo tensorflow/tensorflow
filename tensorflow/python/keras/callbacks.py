@@ -940,14 +940,16 @@ class ModelCheckpoint(Callback):
   def on_train_end(self, logs=None):
     # pylint: disable=protected-access
     if self.model._in_multi_worker_mode():
-      # In multi-worker training, on successful exit of training, delete the
-      # training state backup file that was saved for the purpose of worker
-      # recovery.
-      self._training_state.delete_backup()
-      # Restore the training state so the model is ready for next (possible)
-      # multi worker training.
-      del self._training_state
-      del self.model._training_state
+      if self.model.stop_training or getattr(
+          self.model, '_successful_loop_finish', False):
+        # In multi-worker training, on successful exit of training, delete the
+        # training state backup file that was saved for the purpose of worker
+        # recovery.
+        self._training_state.delete_backup()
+        # Restore the training state so the model is ready for next (possible)
+        # multi worker training.
+        del self._training_state
+        del self.model._training_state
 
   def on_batch_end(self, batch, logs=None):
     logs = logs or {}

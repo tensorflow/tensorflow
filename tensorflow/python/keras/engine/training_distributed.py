@@ -281,6 +281,7 @@ def experimental_tpu_fit_loop(model,
     callbacks.on_epoch_end(epoch, epoch_logs)
     if callbacks.model.stop_training:
       break
+  model._successful_loop_finish = True
   callbacks._call_end_hook(mode)
 
   if model._compile_distribution:
