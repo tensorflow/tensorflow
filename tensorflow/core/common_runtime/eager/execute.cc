@@ -679,6 +679,12 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   eager::EagerClient* eager_client = nullptr;
   uint64 context_id = ctx->GetContextId();
   TF_RETURN_IF_ERROR(ctx->GetClient(op->GetDeviceName(), &eager_client));
+  string remote_task;
+  if (!DeviceNameUtils::GetTaskName(op->GetDeviceName(), &remote_task)) {
+    return errors::InvalidArgument(
+        "Unable to find remote task corresponding to device ",
+        op->Device()->name());
+  }
 
   std::unique_ptr<eager::EnqueueRequest> request(new eager::EnqueueRequest);
   request->set_context_id(context_id);
@@ -753,7 +759,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
     // to copy this tensor to this process, the remote end will know the
     // correct device of this handle.
     Status status = TensorHandle::CreateUnshapedRemoteHandle(
-        id, i, eager_client, context_id, output_dtypes[i], op_device, ctx,
+        id, i, remote_task, context_id, output_dtypes[i], op_device, ctx,
         &retvals[i]);
     if (!status.ok()) {
       for (int j = 0; j < i; ++j) {
@@ -1098,13 +1104,17 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
           /* op_device= */ device, /*resource_device=*/nullptr, h->dtype, ctx,
           result));
     } else {
-      eager::EagerClient* eager_client;
       uint64 context_id = ctx->GetContextId();
-      TF_RETURN_IF_ERROR(ctx->GetClient(device, &eager_client));
+      string remote_task;
+      if (!DeviceNameUtils::GetTaskName(device->parsed_name(), &remote_task)) {
+        return errors::InvalidArgument(
+            "Unable to find remote task corresponding to device ",
+            device->name());
+      }
       recv_op_id = ctx->RemoteMgr()->NextOpId();
       auto tensor_handle_data =
           absl::make_unique<UnshapedRemoteTensorHandleData>(
-              recv_op_id, 0, eager_client, context_id, ctx);
+              recv_op_id, 0, remote_task, context_id, ctx);
       if (mirror) {
         TF_RETURN_IF_ERROR(
             h->AddUnshapedRemoteMirror(std::move(tensor_handle_data), device));
