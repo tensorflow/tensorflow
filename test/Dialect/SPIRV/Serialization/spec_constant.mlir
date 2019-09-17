@@ -1,4 +1,4 @@
-// RUN: mlir-translate -serialize-spirv %s | mlir-translate -deserialize-spirv | FileCheck %s
+// RUN: mlir-translate -test-spirv-roundtrip %s | FileCheck %s
 
 spv.module "Logical" "GLSL450" {
   // CHECK: spv.specConstant @sc_true = true

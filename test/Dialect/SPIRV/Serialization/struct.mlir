@@ -1,4 +1,4 @@
-// RUN: mlir-translate -serialize-spirv %s | mlir-translate -deserialize-spirv | FileCheck %s
+// RUN: mlir-translate -test-spirv-roundtrip %s | FileCheck %s
 
 spv.module "Logical" "GLSL450" {
   // CHECK: !spv.ptr<!spv.struct<!spv.array<128 x f32 [4]> [0]>, Input>

@@ -1,4 +1,4 @@
-// RUN: mlir-translate -serialize-spirv %s | mlir-translate -deserialize-spirv | FileCheck %s
+// RUN: mlir-translate -test-spirv-roundtrip %s | FileCheck %s
 
 spv.module "Logical" "GLSL450" {
   func @array_stride(%arg0 : !spv.ptr<!spv.array<4x!spv.array<4xf32 [4]> [128]>, StorageBuffer>,

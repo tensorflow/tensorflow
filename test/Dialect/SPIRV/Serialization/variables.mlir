@@ -1,4 +1,4 @@
-// RUN: mlir-translate -serialize-spirv %s | mlir-translate -deserialize-spirv | FileCheck %s
+// RUN: mlir-translate -test-spirv-roundtrip %s | FileCheck %s
 
 // CHECK:      spv.globalVariable @var0 bind(1, 0) : !spv.ptr<f32, Input>
 // CHECK-NEXT: spv.globalVariable @var1 bind(0, 1) : !spv.ptr<f32, Output>
