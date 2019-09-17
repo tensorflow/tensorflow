@@ -188,8 +188,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/transformations:general_transformations",
         "//tensorflow/lite/delegates/gpu/gl:api2",
-        "//third_party/GL:EGL_headers",
-        "//third_party/GL:GLES3_headers",
         "@com_google_absl//absl/types:span",
     ],
 )
