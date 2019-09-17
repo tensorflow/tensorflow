@@ -111,7 +111,6 @@ tf_py_test(
     main = "fully_connected_feed.py",
     tags = [
         "no_pip",
-        "no_rocm_v2",
     ],
 )
 
@@ -134,6 +133,5 @@ tf_py_test(
     tags = [
         "no_pip",
         "notsan",  # http://b/29184009
-        "no_rocm_v2",
     ],
 )
