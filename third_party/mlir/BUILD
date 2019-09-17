@@ -933,33 +933,16 @@ cc_library(
 )
 
 cc_library(
-    name = "SerializeSPIRV",
+    name = "SPIRVTranslateRegistration",
     srcs = [
-        "lib/Dialect/SPIRV/Serialization/ConvertToBinary.cpp",
+        "lib/Dialect/SPIRV/Serialization/TranslateRegistration.cpp",
     ],
     includes = ["include"],
     deps = [
         ":IR",
+        ":Parser",
         ":SPIRVDialect",
         ":SPIRVSerialization",
-        ":Support",
-        ":Translation",
-        "@llvm//:support",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "DeserializeSPIRV",
-    srcs = [
-        "lib/Dialect/SPIRV/Serialization/ConvertFromBinary.cpp",
-    ],
-    includes = ["include"],
-    deps = [
-        ":IR",
-        ":SPIRVDialect",
-        ":SPIRVSerialization",
-        ":StandardOps",
         ":Support",
         ":Translation",
         "@llvm//:support",
@@ -1401,12 +1384,11 @@ cc_library(
     name = "tools/mlir-translate/mlir-translate",
     srcs = ["tools/mlir-translate/mlir-translate.cpp"],
     deps = [
-        ":DeserializeSPIRV",
         ":IR",
         ":LoopDialectRegistration",
         ":Parser",
         ":SPIRVDialectRegistration",
-        ":SerializeSPIRV",
+        ":SPIRVTranslateRegistration",
         ":StandardDialectRegistration",
         ":Support",
         ":TargetLLVMIR",
