@@ -50,12 +50,14 @@ using TranslateFromMLIRFunction =
 
 /// Interface of the function that performs file-to-file translation involving
 /// MLIR. The input file is held in the given MemoryBuffer; the output file
-/// should be written to the given raw_ostream.
+/// should be written to the given raw_ostream. The implementation should create
+/// all MLIR constructs needed during the process inside the given context. This
+/// can be used for round-tripping external formats through the MLIR system.
 using TranslateFunction =
     std::function<LogicalResult(std::unique_ptr<llvm::MemoryBuffer> input,
                                 llvm::raw_ostream &output, MLIRContext *)>;
 
-/// Use Translate[To|From]MLIRRegistration as a global initialiser that
+/// Use Translate[ToMLIR|FromMLIR|]Registration as a global initialiser that
 /// registers a function and associates it with name. This requires that a
 /// translation has not been registered to a given name.
 ///
@@ -74,12 +76,17 @@ struct TranslateFromMLIRRegistration {
   TranslateFromMLIRRegistration(llvm::StringRef name,
                                 const TranslateFromMLIRFunction &function);
 };
+struct TranslateRegistration {
+  TranslateRegistration(llvm::StringRef name,
+                        const TranslateFunction &function);
+};
 /// \}
 
 /// Get a read-only reference to the translator registry.
 const llvm::StringMap<TranslateToMLIRFunction> &getTranslationToMLIRRegistry();
 const llvm::StringMap<TranslateFromMLIRFunction> &
 getTranslationFromMLIRRegistry();
+const llvm::StringMap<TranslateFunction> &getTranslationRegistry();
 
 } // namespace mlir
 

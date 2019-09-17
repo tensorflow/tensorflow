@@ -48,10 +48,12 @@ TranslationParser::TranslationParser(llvm::cl::Option &opt)
     : llvm::cl::parser<const TranslateFunction *>(opt) {
   const auto &toMLIRRegistry = getTranslationToMLIRRegistry();
   const auto &fromMLIRRegistry = getTranslationFromMLIRRegistry();
+  const auto &fileToFileRegistry = getTranslationRegistry();
 
   // Reserve the required capacity upfront so that pointers are not
   // invalidated on reallocation.
-  wrapperStorage.reserve(toMLIRRegistry.size() + fromMLIRRegistry.size());
+  wrapperStorage.reserve(toMLIRRegistry.size() + fromMLIRRegistry.size() +
+                         fileToFileRegistry.size());
   for (const auto &kv : toMLIRRegistry) {
     TranslateToMLIRFunction function = kv.second;
     TranslateFunction wrapper =
@@ -83,6 +85,10 @@ TranslationParser::TranslationParser(llvm::cl::Option &opt)
         };
     wrapperStorage.emplace_back(std::move(wrapper));
 
+    addLiteralOption(kv.first(), &wrapperStorage.back(), kv.first());
+  }
+  for (const auto &kv : fileToFileRegistry) {
+    wrapperStorage.emplace_back(kv.second);
     addLiteralOption(kv.first(), &wrapperStorage.back(), kv.first());
   }
 }
