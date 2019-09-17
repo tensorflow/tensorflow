@@ -5654,6 +5654,24 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "gradient_accumulation_test",
+    size = "small",
+    srcs = [
+        "training/gradient_accumulation_test.py",
+    ],
+    additional_deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":constant_op",
+        ":platform",
+        ":training",
+        "//tensorflow/contrib/distribute/python:mirrored_strategy",
+        "//tensorflow/contrib/distribute/python:one_device_strategy",
+        "//tensorflow/python/estimator:estimator",
+    ],
+)
+
+cuda_py_test(
     name = "moving_averages_test",
     size = "small",
     srcs = [

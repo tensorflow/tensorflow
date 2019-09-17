@@ -39,6 +39,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.training import gradient_accumulation
 from tensorflow.python.training import slot_creator
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
@@ -352,7 +353,7 @@ class Optimizer(
   def get_name(self):
     return self._name
 
-  def minimize(self, loss, global_step=None, var_list=None,
+  def minimize(self, loss, global_step=None, iter_size=None, var_list=None,
                gate_gradients=GATE_OP, aggregation_method=None,
                colocate_gradients_with_ops=False, name=None,
                grad_loss=None):
@@ -367,6 +368,7 @@ class Optimizer(
       loss: A `Tensor` containing the value to minimize.
       global_step: Optional `Variable` to increment by one after the
         variables have been updated.
+      iter_size: Number of local iteration before network weights are updated.
       var_list: Optional list or tuple of `Variable` objects to update to
         minimize `loss`.  Defaults to the list of variables collected in
         the graph under the key `GraphKeys.TRAINABLE_VARIABLES`.
@@ -410,7 +412,7 @@ class Optimizer(
           ([str(v) for _, v in grads_and_vars], loss))
 
     return self.apply_gradients(grads_and_vars, global_step=global_step,
-                                name=name)
+                                iter_size=iter_size, name=name)
 
   def compute_gradients(self, loss, var_list=None,
                         gate_gradients=GATE_OP,
@@ -528,7 +530,8 @@ class Optimizer(
         ops.get_default_graph()._is_loss_scaled_by_optimizer = True  # pylint: disable=protected-access
     return loss_value
 
-  def apply_gradients(self, grads_and_vars, global_step=None, name=None):
+  def apply_gradients(self, grads_and_vars, global_step=None, iter_size=None,
+                      name=None):
     """Apply gradients to variables.
 
     This is the second part of `minimize()`. It returns an `Operation` that
@@ -539,6 +542,7 @@ class Optimizer(
         `compute_gradients()`.
       global_step: Optional `Variable` to increment by one after the
         variables have been updated.
+      iter_size: Number of local iteration before network weights are updated.
       name: Optional name for the returned operation.  Default to the
         name passed to the `Optimizer` constructor.
 
@@ -555,6 +559,8 @@ class Optimizer(
     # by most optimizers.  It relies on the subclass implementing the following
     # methods: _create_slots(), _prepare(), _apply_dense(), and _apply_sparse().
 
+    if iter_size < 1:
+      raise ValueError("iter_size must be positive if specified.")
     # TODO(isaprykin): Get rid of `has_strategy()` check by
     # always calling _distributed_apply(), using the default distribution
     # as needed.
@@ -565,8 +571,45 @@ class Optimizer(
                            "`apply_gradients()` in a cross-replica context.")
 
       grads_and_vars = get_filtered_grad_fn(lambda: grads_and_vars)()
-      return distribute_ctx.get_replica_context().merge_call(
-          self._distributed_apply, args=(grads_and_vars, global_step, name))
+      if iter_size > 1:
+        local_step = resource_variable_ops.ResourceVariable(
+            initial_value=0,
+            trainable=False,
+            collections=[ops.GraphKeys.LOCAL_VARIABLES],
+            dtype=dtypes.int64,
+            name="local_step")
+        accum_grad_ops, reset_grad_ops, accumulated_grads_and_vars = \
+            gradient_accumulation.grad_accumulation(
+                grads_and_vars=grads_and_vars,
+                iter_size=iter_size, ## QQ
+                average=False)
+        should_reset = math_ops.equal(
+            math_ops.mod(local_step, iter_size), 0)
+        def reset_func():
+          reset_op = control_flow_ops.group(*reset_grad_ops, name="reset_op")
+          with ops.control_dependencies([reset_op]):
+            return array_ops.identity(local_step)
+        cond_reset_op = control_flow_ops.cond(
+            should_reset,
+            reset_func,
+            lambda: array_ops.identity(local_step))
+        with ops.control_dependencies([cond_reset_op]):
+          accum_op = control_flow_ops.group(*accum_grad_ops, name="accum_op")
+          with ops.control_dependencies([accum_op]):
+            should_apply = math_ops.equal(math_ops.mod(
+                local_step, iter_size), iter_size-1)
+            def apply_func():
+              iter_update = state_ops.assign_add(local_step, 1)
+              with ops.control_dependencies([iter_update]):
+                return distribute_ctx.get_replica_context().merge_call(
+                    self._distributed_apply, args=(accumulated_grads_and_vars,
+                    global_step, name))
+            return control_flow_ops.cond(should_apply,
+                                         apply_func,
+                                         lambda: state_ops.assign_add(local_step, 1))
+      else:
+        return distribute_ctx.get_replica_context().merge_call(
+            self._distributed_apply, args=(grads_and_vars, global_step, name))
 
     # No DistributionStrategy case.
     grads_and_vars = tuple(grads_and_vars)  # Make sure repeat iteration works.
