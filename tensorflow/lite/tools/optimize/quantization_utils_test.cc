@@ -366,7 +366,19 @@ TEST(QuantizationUtilsTest, SymmetricQuantizeFloatsToInt16Test) {
   EXPECT_EQ(model->subgraphs[0]->tensors[0]->type, TensorType_INT16);
 }
 
-TEST(QuantizationUtilsTest, SymmetricPerLayerBiasQuantize) {
+template<typename InputType>
+struct SymmetricBiasQuantizeTest : public testing::Test
+{
+    using TypeToTest = InputType;
+};
+
+using MyTypes = testing::Types<std::int32_t, std::int64_t>;
+TYPED_TEST_CASE(SymmetricBiasQuantizeTest, MyTypes);
+
+TYPED_TEST(SymmetricBiasQuantizeTest, SymmetricPerLayerBiasQuantizeTest) {
+
+  using TypeToTest  = typename TestFixture::TypeToTest;
+
   // Create data.
   auto model = absl::make_unique<ModelT>();
   auto subgraph = absl::make_unique<tflite::SubGraphT>();
@@ -389,7 +401,7 @@ TEST(QuantizationUtilsTest, SymmetricPerLayerBiasQuantize) {
   model->buffers.push_back(std::move(buffer));
 
   // Call and verify.
-  EXPECT_EQ(SymmetricPerLayerBiasQuantize(model.get(),
+  EXPECT_EQ(SymmetricPerLayerBiasQuantize<TypeToTest>(model.get(),
                                           model->subgraphs[0]->tensors[0].get(),
                                           input_scale, weight_scale),
             kTfLiteOk);
@@ -398,12 +410,20 @@ TEST(QuantizationUtilsTest, SymmetricPerLayerBiasQuantize) {
               weight_scale * input_scale);
   EXPECT_THAT(model->subgraphs[0]->tensors[0]->quantization->zero_point[0], 0);
 
-  EXPECT_THAT(model->buffers[model->subgraphs[0]->tensors[0]->buffer]->data,
-              ElementsAreArray({16, 0, 0, 0, 4, 0, 0, 0}));
-  EXPECT_EQ(model->subgraphs[0]->tensors[0]->type, TensorType_INT32);
+  auto tensor_type = std::is_same<TypeToTest, std::int32_t>::value ? TensorType_INT32 : TensorType_INT64;
+  EXPECT_EQ(model->subgraphs[0]->tensors[0]->type, tensor_type);
+
+  // Raw control buffer.
+  auto control_data = std::is_same<TypeToTest, std::int32_t>::value ?
+    ElementsAreArray({16, 0, 0, 0, 4, 0, 0, 0}) : ElementsAreArray({16, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0});
+
+  EXPECT_THAT(model->buffers[model->subgraphs[0]->tensors[0]->buffer]->data, control_data);
 }
 
-TEST(QuantizationUtilsTest, SymmetricPerChannelBiasQuantize) {
+TYPED_TEST(SymmetricBiasQuantizeTest, SymmetricPerChannelBiasQuantizeTest) {
+
+  using TypeToTest  = typename TestFixture::TypeToTest;
+
   // Create data.
   auto model = absl::make_unique<ModelT>();
   auto subgraph = absl::make_unique<tflite::SubGraphT>();
@@ -426,13 +446,19 @@ TEST(QuantizationUtilsTest, SymmetricPerChannelBiasQuantize) {
   model->buffers.push_back(std::move(buffer));
 
   // Call and verify.
-  EXPECT_EQ(SymmetricPerChannelBiasQuantize(
+  EXPECT_EQ(SymmetricPerChannelBiasQuantize<TypeToTest>(
                 model.get(), model->subgraphs[0]->tensors[0].get(), input_scale,
                 weight_scales.data(), 2),
             kTfLiteOk);
-  EXPECT_THAT(model->buffers[model->subgraphs[0]->tensors[0]->buffer]->data,
-              ElementsAreArray({16, 0, 0, 0, 2, 0, 0, 0}));
-  EXPECT_EQ(model->subgraphs[0]->tensors[0]->type, TensorType_INT32);
+
+  auto tensor_type = std::is_same<TypeToTest, std::int32_t>::value ? TensorType_INT32 : TensorType_INT64;
+  EXPECT_EQ(model->subgraphs[0]->tensors[0]->type, tensor_type);
+
+  // Raw control buffer.
+  auto control_data = std::is_same<TypeToTest, std::int32_t>::value ?
+    ElementsAreArray({16, 0, 0, 0, 2, 0, 0, 0}) : ElementsAreArray({16, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0});
+
+  EXPECT_THAT(model->buffers[model->subgraphs[0]->tensors[0]->buffer]->data, control_data);
 }
 
 }  // namespace

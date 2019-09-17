@@ -319,6 +319,7 @@ TfLiteStatus SymmetricQuantizeTensorPerChannel(ModelT* model, TensorT* tensor,
                                model, tensor);
 }
 
+template<class BiasType>
 TfLiteStatus SymmetricPerLayerBiasQuantize(ModelT* model, TensorT* tensor,
                                            float input_scale,
                                            float weight_scale) {
@@ -332,24 +333,35 @@ TfLiteStatus SymmetricPerLayerBiasQuantize(ModelT* model, TensorT* tensor,
   uint64_t num_elements;
   TF_LITE_ENSURE_STATUS(NumElements(*tensor, &num_elements));
 
-  std::vector<int32_t> final_buffer(num_elements);
-  const int32_t kScale = std::numeric_limits<int32_t>::max();
+  std::vector<BiasType> final_buffer(num_elements);
+  const BiasType kScale = std::numeric_limits<BiasType>::max();
 
   for (size_t i = 0; i < num_elements; i++) {
-    const int32_t quantized_value = tflite::SafeCast<int32_t>(
+    const BiasType quantized_value = tflite::SafeCast<BiasType>(
         TfLiteRound(float_data[i] * scaling_factor_inv));
     final_buffer[i] = std::min(kScale, std::max(-kScale, quantized_value));
   }
 
   // Set the buffers and output type.
   uint8_t* uint8_buffer = reinterpret_cast<uint8_t*>(final_buffer.data());
-  size_t buffer_size = num_elements * sizeof(int32_t);
+  size_t buffer_size = num_elements * sizeof(BiasType);
   std::vector<float> scales(1, scaling_factor);
   std::vector<int64_t> zero_points(1, 0);
+
+  auto output_type = std::is_same<BiasType, std::int32_t>::value ? TensorType_INT32 : TensorType_INT64;
   return AddQuantizationParams(scales, zero_points, 0, uint8_buffer,
-                               buffer_size, TensorType_INT32, model, tensor);
+                               buffer_size, output_type, model, tensor);
 }
 
+template TfLiteStatus SymmetricPerLayerBiasQuantize<std::int32_t>(ModelT* model, TensorT* tensor,
+                                           float input_scale,
+                                           float weight_scale);
+
+template TfLiteStatus SymmetricPerLayerBiasQuantize<std::int64_t>(ModelT* model, TensorT* tensor,
+                                           float input_scale,
+                                           float weight_scale);
+
+template<class BiasType>
 TfLiteStatus SymmetricPerChannelBiasQuantize(ModelT* model, TensorT* tensor,
                                              float input_scale,
                                              const float* weight_scales,
@@ -365,14 +377,14 @@ TfLiteStatus SymmetricPerChannelBiasQuantize(ModelT* model, TensorT* tensor,
   uint64_t num_elements;
   TF_LITE_ENSURE_STATUS(NumElements(*tensor, &num_elements));
 
-  std::vector<int32_t> final_buffer(num_elements);
-  const int32_t kScale = std::numeric_limits<int32_t>::max();
+  std::vector<BiasType> final_buffer(num_elements);
+  const BiasType kScale = std::numeric_limits<BiasType>::max();
 
   for (int32_t channel_idx = 0; channel_idx < number_of_dimension;
        channel_idx++) {
     float scaling_factor = scales[channel_idx];
     float scaling_factor_inv = (scaling_factor == 0) ? 0 : 1.0 / scaling_factor;
-    const int32_t quantized_value = tflite::SafeCast<int32_t>(
+    const BiasType quantized_value = tflite::SafeCast<BiasType>(
         TfLiteRound(float_data[channel_idx] * scaling_factor_inv));
     final_buffer[channel_idx] =
         std::min(kScale, std::max(-kScale, quantized_value));
@@ -380,11 +392,23 @@ TfLiteStatus SymmetricPerChannelBiasQuantize(ModelT* model, TensorT* tensor,
 
   // Set the buffers and output type.
   uint8_t* uint8_buffer = reinterpret_cast<uint8_t*>(final_buffer.data());
-  size_t buffer_size = num_elements * sizeof(int32_t);
+  size_t buffer_size = num_elements * sizeof(BiasType);
   std::vector<int64_t> zero_point(scales.size(), 0);
+
+  auto output_type = std::is_same<BiasType, std::int32_t>::value ? TensorType_INT32 : TensorType_INT64;
   return AddQuantizationParams(scales, zero_point, 0, uint8_buffer, buffer_size,
-                               TensorType_INT32, model, tensor);
+                                output_type, model, tensor);
 }
+
+template TfLiteStatus SymmetricPerChannelBiasQuantize<std::int64_t>(ModelT* model, TensorT* tensor,
+                                             float input_scale,
+                                             const float* weight_scales,
+                                             int number_of_dimension);
+
+template TfLiteStatus SymmetricPerChannelBiasQuantize<std::int32_t>(ModelT* model, TensorT* tensor,
+                                             float input_scale,
+                                             const float* weight_scales,
+                                             int number_of_dimension);
 
 TfLiteStatus QuantizeWeight(ModelT* model, TensorT* tensor, bool per_channel,
                             int per_axis_index) {
@@ -398,12 +422,18 @@ TfLiteStatus QuantizeWeight(ModelT* model, TensorT* tensor, bool per_channel,
   }
 }
 
-void QuantizeActivation(TensorT* tensor) {
+void QuantizeActivation(TensorT* tensor, TensorType activations_type) {
   GetAsymmetricQuantizationParams(
       tensor->quantization->min[0], tensor->quantization->max[0],
-      std::numeric_limits<int8_t>::min(), std::numeric_limits<int8_t>::max(),
+      activations_type == TensorType_INT8 ? std::numeric_limits<int8_t>::min()
+                                          : std::numeric_limits<int16_t>::min(),
+      activations_type == TensorType_INT8 ? std::numeric_limits<int8_t>::max()
+                                          : std::numeric_limits<int16_t>::max(),
       tensor->quantization.get());
-  tensor->type = TensorType_INT8;
+  tensor->type = activations_type;
+  if (activations_type == TensorType_INT16) {
+    tensor->quantization->zero_point = std::vector<int64_t>(1, 0);
+  }
 }
 
 }  // namespace utils

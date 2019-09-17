@@ -77,10 +77,11 @@ class OpsSet(enum.Enum):
   # WARNING: Experimental interface, subject to change.
   SELECT_TF_OPS = "SELECT_TF_OPS"
 
-  # Convert model using only TensorFlow Lite quantized int8 operations.
+  # Convert model using only TensorFlow Lite quantized int8/int16 operations.
   # Specifying this will throw an error for operations that do not yet have
   # quantized implementations.
   TFLITE_BUILTINS_INT8 = "TFLITE_BUILTINS_INT8"
+  TFLITE_BUILTINS_INT16 = "TFLITE_BUILTINS_INT16"
 
   def __str__(self):
     return self.value

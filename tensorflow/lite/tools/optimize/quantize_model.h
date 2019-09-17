@@ -53,6 +53,7 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
 TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            ModelT* input_model, const TensorType& input_type,
                            const TensorType& output_type, bool allow_float,
+                           const TensorType& activations_type,
                            ErrorReporter* error_reporter);
 
 // Same as above, but enables only quantizing a whitelist of operations,
@@ -63,6 +64,7 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            ModelT* input_model, const TensorType& input_type,
                            const TensorType& output_type, bool allow_float,
                            const std::unordered_set<string>& operator_names,
+                           const TensorType& activations_type,
                            ErrorReporter* error_reporter);
 
 }  // namespace optimize

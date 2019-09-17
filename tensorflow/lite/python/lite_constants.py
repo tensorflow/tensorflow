@@ -25,6 +25,7 @@ from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 FLOAT = dtypes.float32
 FLOAT16 = dtypes.float16
+INT16 = dtypes.int16
 INT32 = dtypes.int32
 INT64 = dtypes.int64
 STRING = dtypes.string
@@ -37,6 +38,7 @@ GRAPHVIZ_DOT = _toco_flags_pb2.GRAPHVIZ_DOT
 
 _tf_export(v1=["lite.constants.FLOAT"]).export_constant(__name__, "FLOAT")
 _tf_export(v1=["lite.constants.FLOAT16"]).export_constant(__name__, "FLOAT16")
+_tf_export(v1=["lite.constants.INT16"]).export_constant(__name__, "INT16")
 _tf_export(v1=["lite.constants.INT32"]).export_constant(__name__, "INT32")
 _tf_export(v1=["lite.constants.INT64"]).export_constant(__name__, "INT64")
 _tf_export(v1=["lite.constants.STRING"]).export_constant(__name__, "STRING")
@@ -57,6 +59,7 @@ EXPERIMENTAL_USE_TOCO_API_DIRECTLY = False
 _allowed_symbols = [
     "FLOAT",
     "FLOAT16",
+    "INT16",
     "INT32",
     "INT64",
     "STRING",

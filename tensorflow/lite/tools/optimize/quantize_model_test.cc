@@ -51,7 +51,8 @@ std::vector<T> GetAsVector(const flatbuffers::Vector<T>* vec) {
 
 void VerifyAsymmetricQuantizationScale(
     const QuantizationParameters& float_quant_params,
-    const QuantizationParametersT& quantized_quant_params) {
+    const QuantizationParametersT& quantized_quant_params,
+    int32_t max_diff_quantization = 255) {
   const float eps = 1e-7;
   ASSERT_EQ(float_quant_params.min()->size(), 1);
   ASSERT_EQ(float_quant_params.max()->size(), 1);
@@ -61,7 +62,7 @@ void VerifyAsymmetricQuantizationScale(
   ASSERT_EQ(quantized_quant_params.scale.size(), 1);
   ASSERT_EQ(quantized_quant_params.zero_point.size(), 1);
 
-  float scale = (float_max - float_min) / 255;
+  float scale = (float_max - float_min) / max_diff_quantization;
   EXPECT_NEAR(scale, quantized_quant_params.scale[0], eps);
 }
 
@@ -101,7 +102,8 @@ TEST_F(QuantizeConvModelTest, QuantizationSucceeds) {
 TEST_F(QuantizeConvModelTest, SkipUnspecifiedLayer) {
   auto status =
       QuantizeModel(&builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32,
-                    /*allow_float=*/true, {}, &error_reporter_);
+                    /*allow_float=*/true, {}, TensorType_INT8,
+                    &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
   ASSERT_EQ(model_.subgraphs.size(), readonly_model_->subgraphs()->size());
   // The resulting model should be the same.
@@ -727,7 +729,12 @@ TEST_F(QuantizeSoftmaxTest, VerifySoftmaxQuantization) {
   EXPECT_EQ(model_.operator_codes[0]->version, 2);
 }
 
-class QuantizeAvgPoolTest : public QuantizeModelTest {
+struct QuantizeAvgPoolTestTestParam {
+  TensorType tensor_type_;
+};
+
+class QuantizeAvgPoolTest : public QuantizeModelTest,
+  public ::testing::WithParamInterface<QuantizeAvgPoolTestTestParam> {
  protected:
   QuantizeAvgPoolTest() {
     input_model_ = ReadModel(internal::kSingleAvgPoolModelMinMinus5MaxPlus5);
@@ -736,9 +743,16 @@ class QuantizeAvgPoolTest : public QuantizeModelTest {
   }
 };
 
-TEST_F(QuantizeAvgPoolTest, VerifyAvgPoolQuantization) {
-  auto status = QuantizeModel(&builder_, &model_, TensorType_INT8,
-                              TensorType_INT8, &error_reporter_);
+INSTANTIATE_TEST_SUITE_P(
+    QuantizeAvgPoolTest_Instantiation, QuantizeAvgPoolTest,
+    ::testing::Values(
+        QuantizeAvgPoolTestTestParam{TensorType_INT8},
+        QuantizeAvgPoolTestTestParam{TensorType_INT16}
+        ));
+
+TEST_P(QuantizeAvgPoolTest, VerifyAvgPoolQuantization) {
+  auto status = QuantizeModel(&builder_, &model_, GetParam().tensor_type_,
+                              GetParam().tensor_type_, &error_reporter_);
   ASSERT_EQ(kTfLiteOk, status);
 
   const auto& subgraph = model_.subgraphs[0];
@@ -757,15 +771,18 @@ TEST_F(QuantizeAvgPoolTest, VerifyAvgPoolQuantization) {
   ASSERT_EQ(float_graph->tensors()->Get(op->outputs[0])->type(),
             TensorType_FLOAT32);
 
-  EXPECT_EQ(subgraph->tensors[op->inputs[0]].get()->type, TensorType_INT8);
-  EXPECT_EQ(subgraph->tensors[op->outputs[0]].get()->type, TensorType_INT8);
+  EXPECT_EQ(subgraph->tensors[op->inputs[0]].get()->type, GetParam().tensor_type_);
+  EXPECT_EQ(subgraph->tensors[op->outputs[0]].get()->type, GetParam().tensor_type_);
 
   auto float_input_quant_params =
       float_graph->tensors()->Get(op->inputs[0])->quantization();
   auto input_quant_params =
       subgraph->tensors[op->inputs[0]]->quantization.get();
+
+  int32_t max_diff_quantization = GetParam().tensor_type_ == TensorType_INT16 ? 65535 : 255;
   VerifyAsymmetricQuantizationScale(*float_input_quant_params,
-                                    *input_quant_params);
+                                    *input_quant_params,
+                                    max_diff_quantization);
 
   auto float_output_quant_params =
       float_graph->tensors()->Get(op->outputs[0])->quantization();
@@ -1041,7 +1058,7 @@ class QuantizeCustomOpTest : public QuantizeModelTest {
 TEST_F(QuantizeCustomOpTest, VerifyMixedQuantization) {
   auto status =
       QuantizeModel(&builder_, &model_, TensorType_INT8, TensorType_INT8,
-                    /*allow_float=*/true, &error_reporter_);
+                    /*allow_float=*/true, TensorType_INT8, &error_reporter_);
   ASSERT_EQ(kTfLiteOk, status);
   const auto& subgraph = model_.subgraphs[0];
   auto float_graph = readonly_model_->subgraphs()->Get(0);

@@ -191,6 +191,9 @@ class TFLiteConverterBase(object):
     elif self._is_int8_target_required():
       raise ValueError("representative_dataset is required when specifying "
                        "TFLITE_BUILTINS_INT8 or INT8 supported types.")
+    elif self._is_int16_target_required():
+        raise ValueError("representative_dataset is required when specifying "
+                         "TFLITE_BUILTINS_INT16 or INT16 supported types.")
 
   def _validate_quantization(self):
     if self._is_int8_target_required():
@@ -198,11 +201,21 @@ class TFLiteConverterBase(object):
                                                != constants.INT8):
         raise ValueError("TFLITE_BUILTINS_INT8 requires smallest supported "
                          "type to be INT8.")
+    if self._is_int16_target_required():
+        if self.target_spec.supported_types and (self._smallest_supported_type()
+                                                 != constants.INT16):
+            raise ValueError("TFLITE_BUILTINS_INT16 requires smallest supported "
+                             "type to be INT16.")
 
   def _is_int8_target_required(self):
     return (set([OpsSet.TFLITE_BUILTINS_INT8]) == set(
         self.target_spec.supported_ops) or
             self._smallest_supported_type() == constants.INT8)
+
+  def _is_int16_target_required(self):
+      return (set([OpsSet.TFLITE_BUILTINS_INT16]) == set(
+          self.target_spec.supported_ops) or
+              self._smallest_supported_type() == constants.INT16)
 
   def _smallest_supported_type(self):
     if self.target_spec.supported_types:
@@ -218,7 +231,7 @@ class TFLiteConverterBase(object):
         ]))
 
   def _is_post_training_optimize(self):
-    return self._is_int8_target_required() or self._any_optimization_enabled()
+    return self._is_int8_target_required() or self._is_int16_target_required() or self._any_optimization_enabled()
 
   def _is_int8_weight_only_quantize(self):
     return (self._is_post_training_optimize() and
@@ -235,11 +248,12 @@ class TFLiteConverterBase(object):
 
   def _calibrate_quantize_model(self, result, inference_input_type,
                                 inference_output_type):
-    allow_float = not self._is_int8_target_required()
+    allow_float = not self._is_int8_target_required() and not self._is_int16_target_required()
     calibrate_quantize = _calibrator.Calibrator(result)
+    activation_type = constants.INT8 if not self._is_int16_target_required() else constants.INT16
     return calibrate_quantize.calibrate_and_quantize(
         self.representative_dataset.input_gen, inference_input_type,
-        inference_output_type, allow_float)
+        inference_output_type, allow_float, activation_type)
 
   def _get_base_converter_args(self):
     """Returns the base converter args.

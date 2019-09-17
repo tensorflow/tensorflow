@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 from tensorflow.python.util.lazy_loader import LazyLoader
+from tensorflow.lite.python import lite_constants
 
 # Lazy load since some of the performance benchmark skylark rules
 # break dependencies. Must use double quotes to match code internal rewrite
@@ -55,7 +56,7 @@ class Calibrator(object):
       raise ValueError("Failed to parse the model.")
 
   def calibrate_and_quantize(self, dataset_gen, input_type, output_type,
-                             allow_float):
+                             allow_float, activations_type = lite_constants.INT8):
     """Calibrates the model with specified generator and then quantizes it.
 
     Returns:
@@ -69,13 +70,14 @@ class Calibrator(object):
                    computation, useful when targeting an integer-only backend.
                    If False, an error will be thrown if an operation cannot be
                    quantized, otherwise the model will fallback to float ops.
+      activations_type: A tf.dtype representing the desired type for activations
     """
     self._calibrator.Prepare()
     for calibration_sample in dataset_gen():
       self._calibrator.FeedTensor(calibration_sample)
     return self._calibrator.QuantizeModel(
         np.dtype(input_type.as_numpy_dtype()).num,
-        np.dtype(output_type.as_numpy_dtype()).num, allow_float)
+        np.dtype(output_type.as_numpy_dtype()).num, allow_float, np.dtype(activations_type.as_numpy_dtype()).num)
 
   def calibrate_and_quantize_single(self, dataset_gen, input_type, output_type,
                                     allow_float, op_output_name):
@@ -101,4 +103,4 @@ class Calibrator(object):
       self._calibrator.FeedTensor(calibration_sample)
     return self._calibrator.QuantizeModel(
         np.dtype(input_type.as_numpy_dtype()).num,
-        np.dtype(output_type.as_numpy_dtype()).num, allow_float, op_output_name)
+      np.dtype(output_type.as_numpy_dtype()).num, allow_float, op_output_name)

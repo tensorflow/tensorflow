@@ -194,7 +194,18 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value) {
 
 PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
                                             int output_py_type,
-                                            bool allow_float) {
+                                            bool allow_float,
+                                            int activations_py_type) {
+  TfLiteType activations_type =
+      python_utils::TfLiteTypeFromPyType(activations_py_type);
+  if (activations_type != kTfLiteInt8 &&
+      activations_type != kTfLiteInt16) {
+    PyErr_SetString(
+        PyExc_ValueError,
+        "activations_type can either be kTfLiteInt8 or kTfLiteInt16");
+    return nullptr;
+  }
+
   TfLiteType input_type = python_utils::TfLiteTypeFromPyType(input_py_type);
   TfLiteType output_type = python_utils::TfLiteTypeFromPyType(output_py_type);
   if (input_type == kTfLiteNoType || output_type == kTfLiteNoType) {
@@ -207,7 +218,8 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
   flatbuffers::FlatBufferBuilder builder;
   auto status = tflite::optimize::QuantizeModel(
       &builder, tflite_model.get(), TfLiteTypeToSchemaType(input_type),
-      TfLiteTypeToSchemaType(output_type), allow_float, error_reporter_.get());
+      TfLiteTypeToSchemaType(output_type), allow_float,
+      TfLiteTypeToSchemaType(activations_type), error_reporter_.get());
   if (status != kTfLiteOk) {
     error_reporter_->exception();
     return nullptr;
@@ -237,6 +249,7 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
   auto status = tflite::optimize::QuantizeModel(
       &builder, tflite_model.get(), TfLiteTypeToSchemaType(input_type),
       TfLiteTypeToSchemaType(output_type), allow_float, {op_name},
+      TfLiteTypeToSchemaType(input_type),
       error_reporter_.get());
   if (status != kTfLiteOk) {
     error_reporter_->exception();
