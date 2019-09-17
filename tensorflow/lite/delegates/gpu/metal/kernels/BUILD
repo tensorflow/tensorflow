@@ -59,7 +59,7 @@ objc_library(
 ios_unit_test(
     name = "add_test",
     testonly = 1,
-    minimum_os_version = "9.0",
+    minimum_os_version = "10.0",
     tags = [
         "notap",
         "tflite_not_portable_android",
@@ -95,7 +95,7 @@ objc_library(
 ios_unit_test(
     name = "concat_test",
     testonly = 1,
-    minimum_os_version = "9.0",
+    minimum_os_version = "10.0",
     tags = [
         "notap",
         "tflite_not_portable_android",
@@ -133,7 +133,7 @@ objc_library(
 ios_unit_test(
     name = "conv_test",
     testonly = 1,
-    minimum_os_version = "9.0",
+    minimum_os_version = "10.0",
     tags = [
         "notap",
         "tflite_not_portable_android",
@@ -185,7 +185,7 @@ objc_library(
 ios_unit_test(
     name = "depthwise_conv_test",
     testonly = 1,
-    minimum_os_version = "9.0",
+    minimum_os_version = "10.0",
     tags = [
         "notap",
         "tflite_not_portable_android",
@@ -224,7 +224,7 @@ objc_library(
 ios_unit_test(
     name = "elementwise_test",
     testonly = 1,
-    minimum_os_version = "9.0",
+    minimum_os_version = "10.0",
     tags = [
         "notap",
         "tflite_not_portable_android",
@@ -263,7 +263,7 @@ objc_library(
 ios_unit_test(
     name = "fully_connected_test",
     testonly = 1,
-    minimum_os_version = "9.0",
+    minimum_os_version = "10.0",
     tags = [
         "notap",
         "tflite_not_portable_android",
@@ -312,7 +312,7 @@ objc_library(
 ios_unit_test(
     name = "max_unpooling_test",
     testonly = 1,
-    minimum_os_version = "9.0",
+    minimum_os_version = "10.0",
     tags = [
         "notap",
         "tflite_not_portable_android",
@@ -473,7 +473,7 @@ objc_library(
 ios_unit_test(
     name = "reshape_test",
     testonly = 1,
-    minimum_os_version = "9.0",
+    minimum_os_version = "10.0",
     tags = [
         "notap",
         "tflite_not_portable_android",
@@ -543,7 +543,7 @@ objc_library(
 ios_unit_test(
     name = "transpose_conv_test",
     testonly = 1,
-    minimum_os_version = "9.0",
+    minimum_os_version = "10.0",
     tags = [
         "notap",
         "tflite_not_portable_android",
@@ -580,7 +580,7 @@ objc_library(
 ios_unit_test(
     name = "upsample_test",
     testonly = 1,
-    minimum_os_version = "9.0",
+    minimum_os_version = "10.0",
     tags = [
         "notap",
         "tflite_not_portable_android",
