@@ -914,7 +914,7 @@ static void print(spirv::ExecutionModeOp execModeOp, OpAsmPrinter *printer) {
 }
 
 //===----------------------------------------------------------------------===//
-// spv.FuncionCall
+// spv.FunctionCall
 //===----------------------------------------------------------------------===//
 
 static ParseResult parseFunctionCallOp(OpAsmParser *parser,
@@ -1013,6 +1013,27 @@ static LogicalResult verify(spirv::FunctionCallOp functionCallOp) {
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.GLSL.UnaryOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseGLSLUnaryOp(OpAsmParser *parser,
+                                    OperationState *state) {
+  OpAsmParser::OperandType operandInfo;
+  Type type;
+  if (parser->parseOperand(operandInfo) || parser->parseColonType(type) ||
+      parser->resolveOperands(operandInfo, type, state->operands)) {
+    return failure();
+  }
+  state->addTypes(type);
+  return success();
+}
+
+static void printGLSLUnaryOp(Operation *unaryOp, OpAsmPrinter *printer) {
+  *printer << unaryOp->getName() << ' ' << *unaryOp->getOperand(0) << " : "
+           << unaryOp->getOperand(0)->getType();
 }
 
 //===----------------------------------------------------------------------===//
