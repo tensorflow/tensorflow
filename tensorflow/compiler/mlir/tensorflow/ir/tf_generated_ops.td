@@ -449,6 +449,7 @@ InvalidArgumentError: Cannot bitcast from 1 to 18 [Op:Bitcast]
 >>> equality_cast = tf.cast(a, tf.complex128)
 >>> print(equality_cast)
 tf.Tensor([1.+0.j 2.+0.j 3.+0.j], shape=(3,), dtype=complex128)
+```
 
 Example 2:
 
