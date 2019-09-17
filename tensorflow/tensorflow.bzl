@@ -6,7 +6,6 @@ load(
     "if_static",
     "tf_additional_grpc_deps_py",
     "tf_additional_xla_deps_py",
-    "tf_cuda_tests_tags",
     "tf_exec_compatible_with",
     "tf_gpu_tests_tags",
     "tf_sycl_tests_tags",
@@ -29,7 +28,6 @@ load(
     "if_rocm",
     "if_rocm_is_configured",
     "rocm_copts",
-    "rocm_default_copts",
 )
 load(
     "//third_party/mkl:build_defs.bzl",

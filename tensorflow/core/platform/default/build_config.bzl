@@ -1,9 +1,7 @@
 # Platform-specific build configurations.
 
 load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
-load("//tensorflow:tensorflow.bzl", "if_not_mobile")
-load("//tensorflow:tensorflow.bzl", "if_windows")
-load("//tensorflow:tensorflow.bzl", "if_not_windows")
+load("//tensorflow:tensorflow.bzl", "if_not_windows", "if_windows")
 load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
