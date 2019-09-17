@@ -13,6 +13,7 @@ To get started run the following command from *this* directory:
 
 For a primer on how to do the porting, please check out the README here: https://github.com/xmos/tensorflow/tree/master/tensorflow/lite/experimental/micro
 
+Another, more approachable explainer on porting: https://www.oreilly.com/library/view/tinyml/9781492052036/ch04.html
 
 | [![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://www.tensorflow.org/api_docs/) |
 [TensorFlow](https://www.tensorflow.org/) is an end-to-end open source platform
