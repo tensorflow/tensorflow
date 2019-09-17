@@ -45,6 +45,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework.tensor_shape import TensorShape
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
@@ -672,7 +673,11 @@ class Layer(module.Module):
             'but saw signature signature entry: {}.'.format(s))
       return s.shape
     input_shape = nest.map_structure(check_type_return_shape, input_signature)
+    
     output_shape = self.compute_output_shape(input_shape)
+    if isinstance(output_shape, tuple):
+      output_shape = TensorShape(output_shape)
+    
     dtype = self._compute_dtype
     if dtype is None:
       input_dtypes = [s.dtype for s in nest.flatten(input_signature)]
@@ -2169,8 +2174,11 @@ class Layer(module.Module):
 
   def _symbolic_call(self, inputs):
     input_shapes = nest.map_structure(lambda x: x.shape, inputs)
-    output_shapes = self.compute_output_shape(input_shapes)
 
+    output_shapes = self.compute_output_shape(input_shapes)
+    if isinstance(output_shapes, tuple):
+      output_shapes = TensorShape(output_shapes)
+    
     def _make_placeholder_like(shape):
       ph = backend.placeholder(shape=shape, dtype=self.dtype)
       ph._keras_mask = None
