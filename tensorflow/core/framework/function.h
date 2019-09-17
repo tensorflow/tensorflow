@@ -627,6 +627,10 @@ class FunctionLibraryRuntime {
     // If set, partitioned functions will be added to `graph_collector`.
     // `graph_collector` must be alive during the call to Instantiate.
     GraphCollector* graph_collector = nullptr;
+
+    // Indicates whether the multi-device function backend should default the
+    // placement of ops without request device to `target`.
+    bool default_device_to_target = true;
   };
   typedef uint64 Handle;
   virtual Status Instantiate(const string& function_name, AttrSlice attrs,
