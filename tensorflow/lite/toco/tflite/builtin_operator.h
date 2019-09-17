@@ -36,8 +36,7 @@ class BuiltinOperator : public BaseOperator {
   using TfLiteOptions = T2;
 
   BuiltinOperator(::tflite::BuiltinOperator op, OperatorType type)
-      : BaseOperator(::tflite::EnumNameBuiltinOperator(op), type),
-        builtin_op_(op) {}
+      : BaseOperator(::tflite::EnumNameBuiltinOperator(op), type) {}
 
   // Build the configuration object in the given flatbuffer builder. Return
   // its offset.
@@ -66,16 +65,6 @@ class BuiltinOperator : public BaseOperator {
     }
     return std::unique_ptr<Operator>(op.release());
   }
-
-  int GetVersion(const OperatorSignature& op_signature) const override {
-    return ::tflite::GetBuiltinOperatorVersion(
-        GetVersioningOpSig(builtin_op_, op_signature));
-  }
-
-  ::tflite::BuiltinOperator builtin_op() const { return builtin_op_; }
-
- private:
-  const ::tflite::BuiltinOperator builtin_op_;
 };
 
 }  // namespace tflite

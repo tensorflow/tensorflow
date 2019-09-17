@@ -19,7 +19,6 @@ limitations under the License.
 #include "flatbuffers/flexbuffers.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/model.h"
-#include "tensorflow/lite/tools/versioning/op_version.h"
 
 namespace toco {
 
@@ -94,9 +93,8 @@ class BaseOperator {
   // * The first version for each op should be 1 (to be consistent with the
   //   default value in Flatbuffer. `return 1;` is okay for newly implemented
   //   ops.
-  // * When multiple versions are defined for an op, this function could be
-  //   overridden. (See example in `operator_test.cc` and
-  //   'tools/versioning/op_version.cc`)
+  // * When multiple versions are defined for an op, this function needs to be
+  //   overridden. (See example in `operator_test.cc`)
   virtual int GetVersion(const OperatorSignature& op_signature) const = 0;
 
   // Given a Toco `Operator`, return a list of booleans indicating the op
@@ -114,11 +112,6 @@ class BaseOperator {
   string name_;
   OperatorType type_;
 };
-
-// Helper function to create ::tflite::OpSignature from the given
-// ::tflite::BuiltinOperator and OperatorSignature.
-::tflite::OpSignature GetVersioningOpSig(const ::tflite::BuiltinOperator op,
-                                         const OperatorSignature& op_signature);
 
 // Helper function to determine if a unsupported TensorFlow op should be
 // exported as an Flex op or a regular custom op.
