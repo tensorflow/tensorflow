@@ -15,6 +15,8 @@ py_test(
     srcs = ["tf_doctest.py"],
     python_version = "PY3",
     tags = [
+        "no_rocm",
+        "no_cuda",
         "no_oss_py2",
         "noasan",
         "nomsan",

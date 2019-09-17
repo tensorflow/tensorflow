@@ -221,6 +221,8 @@ cuda_py_test(
     ],
     shard_count = 8,
     tags = [
+        "no_rocm",
+        "no_cuda",
         "no_windows",
     ],
     xla_enable_strict_auto_jit = True,
