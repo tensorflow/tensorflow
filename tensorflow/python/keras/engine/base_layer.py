@@ -677,7 +677,9 @@ class Layer(module.Module):
     output_shape = self.compute_output_shape(input_shape)
     if isinstance(output_shape, tuple):
       output_shape = TensorShape(output_shape)
-    
+    elif isinstance(output_shape, list):
+      output_shape = list(map(lambda x: TensorShape(x) if isinstance(x, tuple) else x, output_shape))
+
     dtype = self._compute_dtype
     if dtype is None:
       input_dtypes = [s.dtype for s in nest.flatten(input_signature)]
@@ -2178,7 +2180,9 @@ class Layer(module.Module):
     output_shapes = self.compute_output_shape(input_shapes)
     if isinstance(output_shapes, tuple):
       output_shapes = TensorShape(output_shapes)
-    
+    elif isinstance(output_shapes, list):
+      output_shapes = list(map(lambda x: TensorShape(x) if isinstance(x, tuple) else x, output_shapes))
+      
     def _make_placeholder_like(shape):
       ph = backend.placeholder(shape=shape, dtype=self.dtype)
       ph._keras_mask = None
