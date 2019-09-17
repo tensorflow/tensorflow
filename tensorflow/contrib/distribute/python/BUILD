@@ -87,6 +87,8 @@ cuda_py_test(
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/133330625)
     ],
+    # TODO(b/141096229): Find problem with AssignAddVariableOps
+    xla_enable_strict_auto_jit = False,
 )
 
 py_library(

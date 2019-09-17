@@ -24,6 +24,7 @@ from tensorflow.contrib.distributions.python.ops import relaxed_bernoulli
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
@@ -136,6 +137,8 @@ class RelaxedBernoulliTest(test.TestCase):
       self.assertAllClose(np.nan, dist.log_prob(0.0).eval())
       self.assertAllClose([np.nan], [dist.log_prob(1.0).eval()])
 
+  @test_util.disable_xla(
+      "TODO(b/141092326): prevent negative values in Sigmoid on XLA:CPU")
   def testSampleN(self):
     """mean of quantized samples still approximates the Bernoulli mean."""
     with self.cached_session():
