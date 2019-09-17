@@ -108,7 +108,7 @@ def boolean_mask(data, mask, name=None):
       if not ragged_tensor.is_ragged(data):
         data = ragged_tensor.RaggedTensor.from_tensor(
             data, ragged_rank=mask.ragged_rank,
-            row_splits_dtype=mask.row_splits_dtype)
+            row_splits_dtype=mask.row_splits.dtype)
       # Check that mask.nested_row_splits is a prefix of
       # data.nested_row_splits.
       splits_list = [
@@ -169,7 +169,7 @@ def boolean_mask(data, mask, name=None):
     if ragged_tensor.is_ragged(data):
       mask = ragged_tensor.RaggedTensor.from_tensor(
           mask, ragged_rank=min(data.ragged_rank, mask.shape.ndims - 1),
-          row_splits_dtype=data.row_splits_dtype)
+          row_splits_dtype=data.row_splits.dtype)
       return boolean_mask(data, mask)
 
     # Otherwise, data and mask are both `Tensor`s.
@@ -233,7 +233,7 @@ def tile(input, multiples, name=None):  # pylint: disable=redefined-builtin
     if not ragged_tensor.is_ragged(input):
       return array_ops.tile(input, multiples, name)
     multiples = ragged_util.convert_to_int_tensor(
-        multiples, name='multiples', dtype=input.row_splits_dtype)
+        multiples, name='multiples', dtype=input.row_splits.dtype)
     multiples.shape.assert_has_rank(1)
 
     # If the constant value of `multiples` is available, then we can use it
@@ -585,7 +585,7 @@ def stack_dynamic_partitions(data, partitions, num_partitions, name=None):
     # Convert inputs to tensors.
     data = ragged_tensor.convert_to_tensor_or_ragged_tensor(data, name='data')
     row_splits_dtype = (
-        data.row_splits_dtype
+        data.row_splits.dtype
         if isinstance(data, ragged_tensor.RaggedTensor) else None)
     partitions = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         partitions, name='partitions', preferred_dtype=row_splits_dtype)
@@ -623,9 +623,8 @@ def stack_dynamic_partitions(data, partitions, num_partitions, name=None):
           num_partitions,
           message='partitions must be less than num_partitions')
       with ops.control_dependencies([check]):
-        values = array_ops.identity(values)
-      return ragged_tensor.RaggedTensor.from_value_rowids(
-          values, value_rowids, nrows=num_partitions, validate=False)
+        return ragged_tensor.RaggedTensor.from_value_rowids(
+            values, value_rowids, nrows=num_partitions, validate=False)
 
     else:
       # Handle higher-dimensional partitions via recursion.

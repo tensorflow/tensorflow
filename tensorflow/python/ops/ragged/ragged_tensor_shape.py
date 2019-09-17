@@ -517,7 +517,7 @@ def _broadcast_to_ragged_shape(rt_input, dst_shape, broadcast_inner_dimensions):
   """Broadcasts rt_input to the ragged shape `dst_shape`."""
   # Check that rt_input and dst_shape have the same row_splits dtype.
   if (isinstance(rt_input, ragged_tensor.RaggedTensor) and
-      rt_input.row_splits_dtype != dst_shape.dim_size_dtype):
+      rt_input.row_splits.dtype != dst_shape.dim_size_dtype):
     if not ragged_config.auto_cast_partition_dtype():
       raise ValueError('rt_input and dst_shape have different row_split '
                        'dtypes; use RaggedTensor.with_row_splits_dtype() or '
