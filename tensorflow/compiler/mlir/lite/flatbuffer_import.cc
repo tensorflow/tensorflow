@@ -48,7 +48,6 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
 #include "mlir/Translation.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -683,17 +682,14 @@ OwningModuleRef tflite::FlatBufferToMlir(absl::string_view buffer,
   return OwningModuleRef(module);
 }
 
-static OwningModuleRef FlatBufferFileToMlirTrans(llvm::StringRef filename,
-                                                 MLIRContext* context) {
+static OwningModuleRef FlatBufferFileToMlirTrans(
+    std::unique_ptr<llvm::MemoryBuffer> input, MLIRContext* context) {
   std::string error;
-  auto loc = mlir::FileLineColLoc::get(filename, 0, 0, context);
-  auto buffer = mlir::openInputFile(filename, &error);
-  if (nullptr == buffer) {
-    return emitError(loc, error), nullptr;
-  }
+  auto loc =
+      mlir::FileLineColLoc::get(input->getBufferIdentifier(), 0, 0, context);
 
   return tflite::FlatBufferToMlir(
-      absl::string_view(buffer->getBufferStart(), buffer->getBufferSize()),
+      absl::string_view(input->getBufferStart(), input->getBufferSize()),
       context, loc);
 }
 

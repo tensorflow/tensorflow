@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace llvm {
+class MemoryBuffer;
 class StringRef;
 }  // namespace llvm
 
@@ -34,13 +35,13 @@ namespace xla {
 // Converts a HloModuleProto stored in the file with the given `input_filename`
 // into a MLIR module. Creates MLIR entities into the given MLIR `context`.
 mlir::OwningModuleRef HloToMlirHloTranslateFunction(
-    llvm::StringRef input_filename, mlir::MLIRContext* context);
+    std::unique_ptr<llvm::MemoryBuffer> input, mlir::MLIRContext* context);
 
 // Converts a HloModule stored in text form for a file with the given
 // `input_filename` into a MLIR module. Creates MLIR entities into the given
 // MLIR `context`.
 mlir::OwningModuleRef HloTextToMlirHloTranslateFunction(
-    llvm::StringRef input_filename, mlir::MLIRContext* context);
+    std::unique_ptr<llvm::MemoryBuffer> input, mlir::MLIRContext* context);
 
 }  // namespace xla
 

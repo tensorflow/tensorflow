@@ -35,20 +35,13 @@ using namespace mlir;
 
 // Deserializes the SPIR-V binary module stored in the file named as
 // `inputFilename` and returns a module containing the SPIR-V module.
-OwningModuleRef deserializeModule(llvm::StringRef inputFilename,
+OwningModuleRef deserializeModule(std::unique_ptr<llvm::MemoryBuffer> input,
                                   MLIRContext *context) {
   Builder builder(context);
 
-  std::string errorMessage;
-  auto file = openInputFile(inputFilename, &errorMessage);
-  if (!file) {
-    emitError(UnknownLoc::get(context), errorMessage);
-    return {};
-  }
-
   // Make sure the input stream can be treated as a stream of SPIR-V words
-  auto start = file->getBufferStart();
-  auto size = file->getBufferSize();
+  auto start = input->getBufferStart();
+  auto size = input->getBufferSize();
   if (size % sizeof(uint32_t) != 0) {
     emitError(UnknownLoc::get(context))
         << "SPIR-V binary module must contain integral number of 32-bit words";
@@ -62,15 +55,15 @@ OwningModuleRef deserializeModule(llvm::StringRef inputFilename,
   if (!spirvModule)
     return {};
 
-  OwningModuleRef module(ModuleOp::create(
-      FileLineColLoc::get(inputFilename, /*line=*/0, /*column=*/0, context)));
+  OwningModuleRef module(ModuleOp::create(FileLineColLoc::get(
+      input->getBufferIdentifier(), /*line=*/0, /*column=*/0, context)));
   module->getBody()->push_front(spirvModule->getOperation());
 
   return module;
 }
 
-static TranslateToMLIRRegistration
-    registration("deserialize-spirv",
-                 [](StringRef inputFilename, MLIRContext *context) {
-                   return deserializeModule(inputFilename, context);
-                 });
+static TranslateToMLIRRegistration registration(
+    "deserialize-spirv",
+    [](std::unique_ptr<llvm::MemoryBuffer> input, MLIRContext *context) {
+      return deserializeModule(std::move(input), context);
+    });

@@ -49,7 +49,6 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
 #include "mlir/Translation.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -82,7 +81,6 @@ using mlir::FuncOp;
 using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::NoneType;
-using mlir::openOutputFile;
 using mlir::Operation;
 using mlir::StringAttr;
 using mlir::TensorType;
@@ -1118,7 +1116,7 @@ bool tflite::MlirToFlatBufferTranslateFunction(
 }
 
 static mlir::LogicalResult MlirToFlatBufferFileTranslateFunction(
-    ModuleOp module, llvm::StringRef filename) {
+    ModuleOp module, llvm::raw_ostream& output) {
   std::string serialized_flatbuffer;
   std::unique_ptr<OpNameMapper> op_name_mapper;
   if (strip_debug_info) {
@@ -1131,16 +1129,7 @@ static mlir::LogicalResult MlirToFlatBufferFileTranslateFunction(
           emit_select_tf_ops, emit_custom_ops, op_name_mapper.get()))
     return mlir::failure();
 
-  auto file = openOutputFile(filename);
-  if (!file) {
-    auto* context = module.getContext();
-    return emitError(UnknownLoc::get(context), "failed to open output file ")
-               << filename,
-           mlir::failure();
-  }
-
-  file->os() << serialized_flatbuffer;
-  file->keep();
+  output << serialized_flatbuffer;
   return mlir::success();
 }
 
