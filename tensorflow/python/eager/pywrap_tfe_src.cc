@@ -1963,7 +1963,7 @@ bool TapeSetRecordForwardprop(
       forwardprop_output_indices != Py_None) {
     tensorflow::Safe_PyObjectPtr indices_fast(
         PySequence_Fast(forwardprop_output_indices,
-                        "Expected a sequence sequences of indices"));
+                        "Expected a sequence of indices"));
     if (indices_fast == nullptr || PyErr_Occurred()) {
       return false;
     }
