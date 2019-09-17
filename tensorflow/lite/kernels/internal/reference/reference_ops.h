@@ -3008,11 +3008,11 @@ inline void ArgMax(const RuntimeShape& input1_shape, const T1* input1_data,
 }
 
 template <typename T>
-inline void TransposeImpl(const TransposeParams& params,
-                          const RuntimeShape& unextended_input_shape,
-                          const T* input_data,
-                          const RuntimeShape& unextended_output_shape,
-                          T* output_data) {
+void TransposeImpl(const TransposeParams& params,
+                   const RuntimeShape& unextended_input_shape,
+                   const T* input_data,
+                   const RuntimeShape& unextended_output_shape,
+                   T* output_data) {
   const int unextended_output_size = unextended_output_shape.DimensionsCount();
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_size, 4);
