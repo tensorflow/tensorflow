@@ -6806,6 +6806,104 @@ void TransposeImpl(const TransposeParams& params,
   y = x.shuffle(p);
 }
 
+// TODO(alanchiao): see if we can reduce the number
+// of lines of code in branching without affecting latency.
+template <typename T>
+inline void Transpose3D(const TransposeParams& params,
+                        const RuntimeShape& input_shape, const T* input_data,
+                        const RuntimeShape& output_shape, T* output_data) {
+  int s1, s2, s3;
+  s1 = input_shape.Dims(0);
+  s2 = input_shape.Dims(1);
+  s3 = input_shape.Dims(2);
+
+  const bool hasOneInDimension = (s1 == 1 || s2 == 1 || s3 == 1);
+  // Can fast path as 2D transpose in this case.
+  if (hasOneInDimension) {
+    int d1, d2;
+    bool is_identity = false;
+    // Check for identity to just return.
+    if (s1 == 1) {
+      // (0, 1, 2), (1, 0, 2), (1, 2, 0)
+      if ((params.perm[0] == 0 && params.perm[1] == 1) || params.perm[0] == 1) {
+        is_identity = true;
+      }
+      d1 = s2;
+      d2 = s3;
+    } else if (s2 == 1) {
+      //  (0, 1, 2), (0, 2, 1), (1, 0, 2)
+      if ((params.perm[0] == 1 && params.perm[1] == 0) || params.perm[0] == 0) {
+        is_identity = true;
+      }
+      d1 = s1;
+      d2 = s3;
+    } else {
+      // (0, 1, 2), (0, 2, 1), (2, 0, 1)
+      if ((params.perm[0] == 2 && params.perm[1] == 0) || params.perm[0] == 0) {
+        is_identity = true;
+      }
+      d1 = s1;
+      d2 = s2;
+    }
+
+    if (is_identity) {
+      memcpy(output_data, input_data, sizeof(T) * input_shape.FlatSize());
+      return;
+    }
+
+    // TODO(tflite): reuse 2d transpose when support is
+    // added for uint8.
+    for (int i1 = 0; i1 < d1; ++i1) {
+      for (int i2 = 0; i2 < d2; ++i2) {
+        int i = i1 * d2 + i2;
+        int o = i2 * d1 + i1;
+        output_data[o] = input_data[i];
+      }
+    }
+    return;
+  }
+
+  int p1, p2, p3;
+  if (params.perm[0] == 2) {
+    p1 = 1;
+  } else if (params.perm[1] == 2) {
+    p2 = 1;
+  } else {
+    p3 = 1;
+  }
+
+  if (params.perm[0] == 1) {
+    p1 = s3;
+  } else if (params.perm[1] == 1) {
+    p2 = s3;
+  } else {
+    p3 = s3;
+  }
+
+  if (params.perm[0] == 0) {
+    p1 = s2 * s3;
+  } else if (params.perm[1] == 0) {
+    p2 = s2 * s3;
+  } else {
+    p3 = s2 * s3;
+  }
+
+  int o_s[3];
+  o_s[0] = input_shape.Dims(params.perm[0]);
+  o_s[1] = input_shape.Dims(params.perm[1]);
+  o_s[2] = input_shape.Dims(params.perm[2]);
+
+  for (int i1 = 0; i1 < o_s[0]; ++i1) {
+    for (int i2 = 0; i2 < o_s[1]; ++i2) {
+      for (int i3 = 0; i3 < o_s[2]; ++i3) {
+        int i = i1 * p1 + i2 * p2 + i3 * p3;
+        int o = i1 * o_s[1] * o_s[2] + i2 * o_s[2] + i3;
+        output_data[o] = input_data[i];
+      }
+    }
+  }
+}
+
 template <typename T>
 void Transpose(const TransposeParams& params,
                const RuntimeShape& unextended_input_shape, const T* input_data,
@@ -6815,9 +6913,26 @@ void Transpose(const TransposeParams& params,
   TFLITE_DCHECK_LE(unextended_output_size, 4);
   TFLITE_DCHECK_EQ(unextended_output_size, params.perm_count);
 
+  // TODO(tflite): notably Eigen is better suited for
+  // larger inputs whereas Transpose3D is generally
+  // better for smaller ones.
+  //
+  // E.g. on Nexus 5, Eigen is better for size 96^3 and up
+  // and Transpose3D is better for 72^3 and down.
+  //
+  // 96^3 is not mobile-friendly for certain usecases
+  // (e.g. model used in beam search for seq2seq) but is in others.
+  // Consider tradeoffs.
+  if (unextended_input_shape.DimensionsCount() == 3) {
+    Transpose3D(params, unextended_input_shape, input_data,
+                unextended_output_shape, output_data);
+    return;
+  }
+
   // Transpose kernel only does rearranging values not numeric evaluations on
   // each cell. It's safe to implement per size of scalar type and this trick
   // keeps the total code size in a reasonable range.
+  //
   switch (sizeof(T)) {
     case 4:
       if (unextended_input_shape.DimensionsCount() == 2 &&
