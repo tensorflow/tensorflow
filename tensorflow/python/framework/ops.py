@@ -3090,7 +3090,12 @@ class Graph(object):
     Returns:
       A context object.
     """
-    return self._control_flow_context
+    if self._stack_state_is_thread_local:
+      if not hasattr(self._thread_local, "_control_flow_context"):
+        self._thread_local._control_flow_context = (self._control_flow_context)
+      return self._thread_local._control_flow_context
+    else:
+      return self._control_flow_context
 
   def _set_control_flow_context(self, ctx):
     """Sets the current control flow context.
@@ -3098,7 +3103,10 @@ class Graph(object):
     Args:
       ctx: a context object.
     """
-    self._control_flow_context = ctx
+    if self._stack_state_is_thread_local:
+      self._thread_local._control_flow_context = ctx
+    else:
+      self._control_flow_context = ctx
 
   def _copy_functions_to_graph_def(self, graph_def, starting_bytesize):
     """If this graph contains functions, copy them to `graph_def`."""
