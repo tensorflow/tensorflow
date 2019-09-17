@@ -1967,14 +1967,9 @@ void EmitPartialElementalTile(
         constant(j * step_x), KernelMappingScheme::DimX, b);
     llvm::Value* x_loc = b->CreateAdd(constant(j * step_x), start_offset_x);
     ksl->If(loop_name + "_x_in_tile", b->CreateICmpULT(x_loc, tile_width), [&] {
-      llvm::Value* ceiling_of_ratio =
-          b->CreateUDiv(b->CreateAdd(tile_height, constant(num_threads_y - 1)),
-                        constant(num_threads_y));
-      llvm::Value* tile_height_bound =
-          b->CreateMul(ceiling_of_ratio, constant(num_threads_y));
       ksl->For(loop_name,
                /*start=*/constant(0),
-               /*end=*/tile_height_bound,
+               /*end=*/tile_height,
                /*step=*/constant(num_threads_y), [&](llvm::Value* y_indvar) {
                  llvm::Value* y_loc = b->CreateAdd(y_indvar, y);
                  ksl->If(loop_name + "_y_in_tile",
