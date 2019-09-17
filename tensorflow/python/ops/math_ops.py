@@ -2871,6 +2871,7 @@ def _calc_mat_mul_flops(graph, node):
 
 
 @ops.RegisterStatistics("BatchMatMul", "flops")
+@ops.RegisterStatistics("BatchMatMulV2", "flops")
 def _calc_batch_mat_mul_flops(graph, node):
   """Calculates the compute resources needed for BatchMatMul."""
   transpose_a = node.attr["transpose_a"].b
