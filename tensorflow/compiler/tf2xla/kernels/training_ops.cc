@@ -232,7 +232,9 @@ REGISTER_XLA_OP(
 
 class ResourceApplyAdagrad : public XlaOpKernel {
  public:
-  explicit ResourceApplyAdagrad(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  explicit ResourceApplyAdagrad(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("update_slots", &update_slots_));
+  }
 
   void Compile(XlaOpKernelContext* ctx) override {
     DataType type = ctx->input_type(2);
@@ -261,11 +263,16 @@ class ResourceApplyAdagrad : public XlaOpKernel {
     xla::XlaOp lr = ctx->Input(2);
     xla::XlaOp grad = ctx->Input(3);
 
-    accum = accum + xla::Square(grad);
+    if (update_slots_) {
+      accum = accum + xla::Square(grad);
+    }
     var = var - grad * lr * xla::Rsqrt(accum);
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, var));
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, type, accum));
   }
+
+ private:
+  bool update_slots_;
 };
 REGISTER_XLA_OP(Name("ResourceApplyAdagrad").TypeConstraint("T", kFloatTypes),
                 ResourceApplyAdagrad);
@@ -273,7 +280,9 @@ REGISTER_XLA_OP(Name("ResourceApplyAdagrad").TypeConstraint("T", kFloatTypes),
 class ResourceApplyAdagradV2 : public XlaOpKernel {
  public:
   explicit ResourceApplyAdagradV2(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx) {}
+      : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("update_slots", &update_slots_));
+  }
 
   void Compile(XlaOpKernelContext* ctx) override {
     DataType type = ctx->input_type(2);
@@ -308,11 +317,16 @@ class ResourceApplyAdagradV2 : public XlaOpKernel {
     xla::XlaOp epsilon = ctx->Input(3);
     xla::XlaOp grad = ctx->Input(4);
 
-    accum = accum + xla::Square(grad);
+    if (update_slots_) {
+      accum = accum + xla::Square(grad);
+    }
     var = var - grad * lr / (xla::Sqrt(accum) + epsilon);
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, var));
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, type, accum));
   }
+
+ private:
+  bool update_slots_;
 };
 REGISTER_XLA_OP(Name("ResourceApplyAdagradV2").TypeConstraint("T", kFloatTypes),
                 ResourceApplyAdagradV2);

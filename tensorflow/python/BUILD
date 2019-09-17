@@ -58,7 +58,7 @@ py_library(
         ":no_contrib",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/tpu:tpu_estimator",
-    ] + if_not_v2(["//tensorflow/contrib:contrib_py"]),
+    ],
 )
 
 py_library(
@@ -169,6 +169,7 @@ py_library(
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/compiler",
         "//tensorflow/python/data",
+        "//tensorflow/python/debug:debug_py",
         "//tensorflow/python/distribute",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:distribute_config",
@@ -383,8 +384,8 @@ cc_library(
     hdrs = ["lib/core/pybind11_status.h"],
     features = ["-parse_headers"],
     deps = [
-        ":py_exception_registry",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -2019,7 +2020,6 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "bitwise_ops_gen",
-    require_shape_functions = True,
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
@@ -2052,7 +2052,6 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "audio_ops_gen",
-    require_shape_functions = True,
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/contrib/framework:__pkg__",
@@ -2318,7 +2317,6 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "user_ops_gen",
-    require_shape_functions = False,
 )
 
 tf_gen_op_wrapper_private_py(
@@ -2355,9 +2353,7 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "rnn_ops_gen",
-    visibility = [
-        "//tensorflow/contrib/rnn:__pkg__",
-    ],
+    visibility = ["//tensorflow/contrib/rnn:__pkg__"],
 )
 
 tf_gen_op_wrapper_private_py(

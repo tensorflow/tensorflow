@@ -26,14 +26,12 @@ tf_gen_op_libs(
 tf_gen_op_wrapper_py(
     name = "gen_bigquery_reader_ops",
     out = "python/ops/gen_bigquery_reader_ops.py",
-    require_shape_functions = True,
     deps = [":bigquery_reader_ops_op_lib"],
 )
 
 tf_gen_op_wrapper_py(
     name = "gen_gcs_config_ops",
     out = "python/ops/gen_gcs_config_ops.py",
-    require_shape_functions = True,
     visibility = ["//tensorflow:internal"],
     deps = [":gcs_config_ops_op_lib"],
 )

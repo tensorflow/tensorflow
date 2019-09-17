@@ -760,6 +760,10 @@ def TestCastOp : TEST_Op<"cast">,
   Arguments<(ins Variadic<AnyType>:$inputs)>, Results<(outs AnyType:$res)>;
 def TestInvalidOp : TEST_Op<"invalid", [Terminator]>,
   Arguments<(ins Variadic<AnyType>:$inputs)>;
+def TestTypeProducerOp : TEST_Op<"type_producer">,
+  Results<(outs AnyType:$output)>;
+def TestTypeConsumerOp : TEST_Op<"type_consumer">,
+  Arguments<(ins AnyType:$input)>;
 def TestValidOp : TEST_Op<"valid", [Terminator]>,
   Arguments<(ins Variadic<AnyType>:$inputs)>;
 

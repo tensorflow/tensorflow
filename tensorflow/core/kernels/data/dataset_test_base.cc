@@ -17,7 +17,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/kernels/data/range_dataset_op.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 
 namespace tensorflow {
@@ -708,10 +710,10 @@ Status DatasetOpsTestBaseV2::MakeDatasetOpKernel(
   TF_RETURN_IF_ERROR(dataset_params.GetInputPlaceholder(&input_placeholder));
   AttributeVector attributes;
   TF_RETURN_IF_ERROR(dataset_params.GetAttributes(&attributes));
-  NodeDef node_def = test::function::NDef(
-      dataset_params.node_name(),
-      name_utils::OpName(ToString(dataset_params.type()), params),
-      input_placeholder, attributes);
+  NodeDef node_def =
+      test::function::NDef(dataset_params.node_name(),
+                           name_utils::OpName(dataset_params.op_name(), params),
+                           input_placeholder, attributes);
   TF_RETURN_IF_ERROR(CreateOpKernel(node_def, dataset_kernel));
   return Status::OK();
 }
@@ -736,60 +738,19 @@ Status DatasetOpsTestBaseV2::MakeDatasetTensor(DatasetParams* dataset_params,
   graph_opts.allow_internal_ops = true;
   graph_opts.expect_device_spec = false;
   FunctionDef make_dataset_tensor_fdef;
-  TF_RETURN_IF_ERROR(
-      MakeDatasetTensorFunc(*dataset_params, &make_dataset_tensor_fdef));
+  TF_RETURN_IF_ERROR(dataset_params->CreateFactory(&make_dataset_tensor_fdef));
   TF_RETURN_IF_ERROR(RunFunction(make_dataset_tensor_fdef, attributes,
                                  input_tensors, graph_opts,
                                  /*rets=*/{dataset}));
   return Status::OK();
 }
 
-Status DatasetOpsTestBaseV2::MakeDatasetTensorFunc(
-    const DatasetParams& dataset_params, FunctionDef* fdef) {
-  switch (dataset_params.type()) {
-    case DatasetParamsType::Range:
-      *fdef = test::function::MakeRangeDataset();
-      break;
-    case DatasetParamsType::Batch:
-      *fdef = test::function::MakeBatchDataset();
-      break;
-    case DatasetParamsType::Map: {
-      std::vector<string> input_placeholder;
-      TF_RETURN_IF_ERROR(
-          dataset_params.GetInputPlaceholder(&input_placeholder));
-      bool has_other_args = input_placeholder.size() > 1;
-      *fdef = test::function::MakeMapDataset(has_other_args);
-      break;
-    }
-    default:
-      return errors::Unimplemented("MakeDatasetTensorFunc() for ",
-                                   ToString(dataset_params.type()));
-  }
-  return Status::OK();
-}
-
-string ToString(DatasetParamsType type) {
-  switch (type) {
-    case DatasetParamsType::Range:
-      return "Range";
-    case DatasetParamsType::Batch:
-      return "Batch";
-    case DatasetParamsType::Map:
-      return "Map";
-    case DatasetParamsType::MapAndBatch:
-      return "MapAndBatch";
-    case DatasetParamsType::Sampling:
-      return "Sampling";
-  }
-}
-
 DatasetParams::DatasetParams(DataTypeVector output_dtypes,
                              std::vector<PartialTensorShape> output_shapes,
-                             string node_name, DatasetParamsType type)
+                             string node_name)
     : output_dtypes_(std::move(output_dtypes)),
       output_shapes_(std::move(output_shapes)),
-      node_name_(std::move(node_name)),
-      type_(type) {}
+      node_name_(std::move(node_name)) {}
 
 bool DatasetParams::IsDatasetTensor(const Tensor& tensor) {
   return tensor.dtype() == DT_VARIANT &&
@@ -800,14 +761,13 @@ RangeDatasetParams::RangeDatasetParams(
     int64 start, int64 stop, int64 step, DataTypeVector output_dtypes,
     std::vector<PartialTensorShape> output_shapes, string node_name)
     : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
-                    std::move(node_name), DatasetParamsType::Range),
+                    std::move(node_name)),
       start_(CreateTensor<int64>(TensorShape({}), {start})),
       stop_(CreateTensor<int64>(TensorShape({}), {stop})),
       step_(CreateTensor<int64>(TensorShape({}), {step})) {}
 
 RangeDatasetParams::RangeDatasetParams(int64 start, int64 stop, int64 step)
-    : DatasetParams({DT_INT64}, {PartialTensorShape({})}, "range_dataset",
-                    DatasetParamsType::Range),
+    : DatasetParams({DT_INT64}, {PartialTensorShape({})}, "range_dataset"),
       start_(CreateTensor<int64>(TensorShape({}), {start})),
       stop_(CreateTensor<int64>(TensorShape({}), {stop})),
       step_(CreateTensor<int64>(TensorShape({}), {step})) {}
@@ -829,6 +789,15 @@ Status RangeDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
   *attr_vector = {{RangeDatasetOp::kOutputTypes, output_dtypes_},
                   {RangeDatasetOp::kOutputShapes, output_shapes_}};
   return Status::OK();
+}
+
+Status RangeDatasetParams::CreateFactory(FunctionDef* fdef) const {
+  *fdef = test::function::MakeRangeDataset();
+  return Status::OK();
+}
+
+string RangeDatasetParams::op_name() const {
+  return RangeDatasetOp::kDatasetType;
 }
 
 Status BatchDatasetParams::GetInputs(
@@ -861,6 +830,15 @@ Status BatchDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
                   {BatchDatasetOp::kOutputTypes, output_dtypes_},
                   {BatchDatasetOp::kOutputShapes, output_shapes_}};
   return Status::OK();
+}
+
+Status BatchDatasetParams::CreateFactory(FunctionDef* fdef) const {
+  *fdef = test::function::MakeBatchDataset();
+  return Status::OK();
+}
+
+string BatchDatasetParams::op_name() const {
+  return BatchDatasetOp::kDatasetType;
 }
 
 int BatchDatasetParams::op_version() const { return op_version_; }
@@ -902,6 +880,16 @@ Status MapDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
       {MapDatasetOp::kPreserveCardinality, preserve_cardinality_}};
   return Status::OK();
 }
+
+Status MapDatasetParams::CreateFactory(FunctionDef* fdef) const {
+  std::vector<string> input_placeholder;
+  TF_RETURN_IF_ERROR(GetInputPlaceholder(&input_placeholder));
+  bool has_other_args = input_placeholder.size() > 1;
+  *fdef = test::function::MakeMapDataset(has_other_args);
+  return Status::OK();
+}
+
+string MapDatasetParams::op_name() const { return MapDatasetOp::kDatasetType; }
 
 std::vector<FunctionDef> MapDatasetParams::func_lib() const {
   return func_lib_;

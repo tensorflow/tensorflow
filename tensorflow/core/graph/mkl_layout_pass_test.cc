@@ -1494,6 +1494,61 @@ TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Negative_MinFirst) {
             "A(Input);B(Const);C(Const);D(QuantizeV2);E(Zeta)|"
             "A->D;B->D:1;C->D:2;D->E");
 }
+
+TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Negative_NarrowRange_True) {
+  InitGraph(
+      "node { name: 'A' op: 'Input' } "
+      "node { name: 'B' op: 'Const' "
+      " attr { key: 'dtype' value { type: DT_FLOAT } }"
+      " attr { key: 'value' value { "
+      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "
+      "    int_val: 0 } } } }"
+      "node { name: 'C' op: 'Const' "
+      " attr { key: 'dtype' value { type: DT_FLOAT } }"
+      " attr { key: 'value' value { "
+      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "
+      "    int_val: 0 } } } }"
+      "node { name: 'D' op: 'QuantizeV2'"
+      " attr { key: 'T'                 value { type: DT_QUINT8 } }"
+      " attr { key: 'mode'              value { s: 'SCALED' } }"
+      " attr { key: 'round_mode'        value { s: 'HALF_TO_EVEN' } }"
+      " attr { key: 'narrow_range'      value { b: true } }"
+      " attr { key: 'axis'              value { i: -1 } }"
+      " input: ['A', 'B', 'C']}"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_QUINT8 } }"
+      " input: ['D'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Const);C(Const);D(QuantizeV2);E(Zeta)|"
+            "A->D;B->D:1;C->D:2;D->E");
+}
+
+TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Negative_PerSlice_Enabled) {
+  InitGraph(
+      "node { name: 'A' op: 'Input' } "
+      "node { name: 'B' op: 'Const' "
+      " attr { key: 'dtype' value { type: DT_FLOAT } }"
+      " attr { key: 'value' value { "
+      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "
+      "    int_val: 0 } } } }"
+      "node { name: 'C' op: 'Const' "
+      " attr { key: 'dtype' value { type: DT_FLOAT } }"
+      " attr { key: 'value' value { "
+      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "
+      "    int_val: 0 } } } }"
+      "node { name: 'D' op: 'QuantizeV2'"
+      " attr { key: 'T'                 value { type: DT_QUINT8 } }"
+      " attr { key: 'mode'              value { s: 'SCALED' } }"
+      " attr { key: 'round_mode'        value { s: 'HALF_TO_EVEN' } }"
+      " attr { key: 'narrow_range'      value { b: false } }"
+      " attr { key: 'axis'              value { i: 2 } }"
+      " input: ['A', 'B', 'C']}"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_QUINT8 } }"
+      " input: ['D'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Const);C(Const);D(QuantizeV2);E(Zeta)|"
+            "A->D;B->D:1;C->D:2;D->E");
+}
+
 TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Negative_HalfFromZero) {
   InitGraph(
       "node { name: 'A' op: 'Input' } "

@@ -176,8 +176,8 @@ Build the native binaries first as above. Then, build the aar and package the na
 mkdir -p /tmp/tf/jni/arm64-v8a
 cp tensorflow/contrib/makefile/gen/lib/android_tegra/libtensorflow_*.so /tmp/tf/jni/arm64-v8a/
 cp $TEGRA_LIBS /tmp/tf/jni/arm64-v8a
-bazel build //tensorflow/contrib/android:android_tensorflow_inference_java.aar
-cp bazel-bin/tensorflow/contrib/android/android_tensorflow_inference_java.aar /tmp/tf/tensorflow.aar
+bazel build //tensorflow/tools/android/inference_interface:android_tensorflow_inference_java.aar
+cp bazel-bin/tensorflow/tools/android/inference_interface/android_tensorflow_inference_java.aar /tmp/tf/tensorflow.aar
 cd /tmp/tf
 chmod +w tensorflow.aar
 zip -ur tensorflow.aar $(find jni -name *.so)
@@ -188,7 +188,7 @@ Build binaries first as above, then edit tensorflow/examples/android/BUILD and r
 ```
     srcs = [
        ":libtensorflow_demo.so",
-       "//tensorflow/contrib/android:libtensorflow_inference.so",
+       "//tensorflow/tools/android/inference_interface:libtensorflow_inference.so",
     ],
 ```
 with:

@@ -442,8 +442,10 @@ void GenEagerPythonOp::HandleGraphMode(
       // For list outputs, convert the right subrange of _result into a list.
       Unflatten("  ", output_sizes, "_result", &result_);
       // Convert to a named tuple.
-      strings::StrAppend(&result_, "  _result = _", op_def_.name(),
-                         "Output._make(_result)\n");
+      strings::StrAppend(
+          &result_, "  _result = _",
+          python_op_gen_internal::AvoidPythonReserved(op_def_.name()),
+          "Output._make(_result)\n");
     }
     strings::StrAppend(&result_, "  return _result\n\n");
   } else {
@@ -675,8 +677,10 @@ void GenEagerPythonOp::AddEagerFunctionTeardown(
       // For list outputs, convert the right subrange of _result into a list.
       Unflatten(indentation, output_sizes, "_result", &result_);
       // Convert to a named tuple.
-      strings::StrAppend(&result_, indentation, "_result = _", op_def_.name(),
-                         "Output._make(_result)\n");
+      strings::StrAppend(
+          &result_, indentation, "_result = _",
+          python_op_gen_internal::AvoidPythonReserved(op_def_.name()),
+          "Output._make(_result)\n");
     }
   } else {
     strings::StrAppend(&result_, indentation, "_result = None\n");
@@ -793,8 +797,9 @@ void GenEagerPythonOp::AddEagerFastPathExecute() {
       "\n");
 
   if (op_def_.output_arg_size() > 1) {
-    const string output_tuple_name =
-        strings::StrCat("_", op_def_.name(), "Output");
+    const string output_tuple_name = strings::StrCat(
+        "_", python_op_gen_internal::AvoidPythonReserved(op_def_.name()),
+        "Output");
     strings::StrAppend(&result_, "      ", "_result = ", output_tuple_name,
                        "._make(_result)\n");
   }
@@ -974,7 +979,7 @@ void GenEagerPythonOp::AddRawOpExport(const string& parameters) {
 }
 
 string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
-                    const std::vector<string>& hidden_ops, bool require_shapes,
+                    const std::vector<string>& hidden_ops,
                     const string& source_file_name = "") {
   string result;
   // Header
@@ -1003,8 +1008,6 @@ from tensorflow.python.eager import execute as _execute
 from tensorflow.python.framework import dtypes as _dtypes
 
 from tensorflow.core.framework import op_def_pb2 as _op_def_pb2
-# Needed to trigger the call to _set_call_cpp_shape_fn.
-from tensorflow.python.framework import common_shapes as _common_shapes
 from tensorflow.python.framework import op_def_registry as _op_def_registry
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework import op_def_library as _op_def_library
@@ -1062,11 +1065,6 @@ from tensorflow.python.util.tf_export import tf_export
     strings::StrAppend(&result,
                        GetEagerPythonOp(op_def, *api_def, function_name));
 
-    if (!require_shapes) {
-      strings::StrAppend(&result, "_ops.RegisterShape(\"", op_def.name(),
-                         "\")(None)\n\n");
-    }
-
     auto added = out->Add();
     *added = op_def;
     RemoveNonDeprecationDescriptionsFromOpDef(added);
@@ -1089,11 +1087,10 @@ from tensorflow.python.util.tf_export import tf_export
 }  // namespace
 
 void PrintPythonOps(const OpList& ops, const ApiDefMap& api_defs,
-                    const std::vector<string>& hidden_ops, bool require_shapes,
+                    const std::vector<string>& hidden_ops,
                     const string& source_file_name) {
-  printf("%s", GetPythonOps(ops, api_defs, hidden_ops, require_shapes,
-                            source_file_name)
-                   .c_str());
+  printf("%s",
+         GetPythonOps(ops, api_defs, hidden_ops, source_file_name).c_str());
 }
 
 string GetPythonWrappers(const char* op_list_buf, size_t op_list_len) {
@@ -1102,7 +1099,7 @@ string GetPythonWrappers(const char* op_list_buf, size_t op_list_len) {
   ops.ParseFromString(op_list_str);
 
   ApiDefMap api_def_map(ops);
-  return GetPythonOps(ops, api_def_map, {}, false);
+  return GetPythonOps(ops, api_def_map, {});
 }
 
 }  // namespace tensorflow

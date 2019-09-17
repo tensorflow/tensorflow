@@ -407,6 +407,7 @@ Status CapturedFunction::Instantiate(
   FunctionLibraryRuntime::InstantiateOptions inst_opts;
   inst_opts.lib_def = metadata_->lib_def();
   inst_opts.create_kernels_eagerly = true;
+  inst_opts.default_device_to_target = metadata_->use_default_device();
   if (!metadata_->use_inter_op_parallelism()) {
     inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
   }

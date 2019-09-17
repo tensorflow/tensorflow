@@ -75,6 +75,8 @@ class SPV_OpCode<string name, int val> {
 def SPV_OC_OpNop                    : I32EnumAttrCase<"OpNop", 0>;
 def SPV_OC_OpName                   : I32EnumAttrCase<"OpName", 5>;
 def SPV_OC_OpExtension              : I32EnumAttrCase<"OpExtension", 10>;
+def SPV_OC_OpExtInstImport          : I32EnumAttrCase<"OpExtInstImport", 11>;
+def SPV_OC_OpExtInst                : I32EnumAttrCase<"OpExtInst", 12>;
 def SPV_OC_OpMemoryModel            : I32EnumAttrCase<"OpMemoryModel", 14>;
 def SPV_OC_OpEntryPoint             : I32EnumAttrCase<"OpEntryPoint", 15>;
 def SPV_OC_OpExecutionMode          : I32EnumAttrCase<"OpExecutionMode", 16>;
@@ -100,6 +102,7 @@ def SPV_OC_OpSpecConstantComposite  : I32EnumAttrCase<"OpSpecConstantComposite",
 def SPV_OC_OpFunction               : I32EnumAttrCase<"OpFunction", 54>;
 def SPV_OC_OpFunctionParameter      : I32EnumAttrCase<"OpFunctionParameter", 55>;
 def SPV_OC_OpFunctionEnd            : I32EnumAttrCase<"OpFunctionEnd", 56>;
+def SPV_OC_OpFunctionCall           : I32EnumAttrCase<"OpFunctionCall", 57>;
 def SPV_OC_OpVariable               : I32EnumAttrCase<"OpVariable", 59>;
 def SPV_OC_OpLoad                   : I32EnumAttrCase<"OpLoad", 61>;
 def SPV_OC_OpStore                  : I32EnumAttrCase<"OpStore", 62>;
@@ -153,16 +156,17 @@ def SPV_OC_OpReturnValue            : I32EnumAttrCase<"OpReturnValue", 254>;
 
 def SPV_OpcodeAttr :
     I32EnumAttr<"Opcode", "valid SPIR-V instructions", [
-      SPV_OC_OpNop, SPV_OC_OpName, SPV_OC_OpExtension, SPV_OC_OpMemoryModel,
-      SPV_OC_OpEntryPoint, SPV_OC_OpExecutionMode, SPV_OC_OpCapability,
-      SPV_OC_OpTypeVoid, SPV_OC_OpTypeBool, SPV_OC_OpTypeInt, SPV_OC_OpTypeFloat,
-      SPV_OC_OpTypeVector, SPV_OC_OpTypeArray, SPV_OC_OpTypeStruct,
-      SPV_OC_OpTypePointer, SPV_OC_OpTypeFunction, SPV_OC_OpConstantTrue,
-      SPV_OC_OpConstantFalse, SPV_OC_OpConstant, SPV_OC_OpConstantComposite,
-      SPV_OC_OpConstantNull, SPV_OC_OpSpecConstantTrue, SPV_OC_OpSpecConstantFalse,
-      SPV_OC_OpSpecConstant, SPV_OC_OpSpecConstantComposite, SPV_OC_OpFunction,
-      SPV_OC_OpFunctionParameter, SPV_OC_OpFunctionEnd, SPV_OC_OpVariable,
-      SPV_OC_OpLoad, SPV_OC_OpStore, SPV_OC_OpAccessChain, SPV_OC_OpDecorate,
+      SPV_OC_OpNop, SPV_OC_OpName, SPV_OC_OpExtension, SPV_OC_OpExtInstImport,
+      SPV_OC_OpExtInst, SPV_OC_OpMemoryModel, SPV_OC_OpEntryPoint,
+      SPV_OC_OpExecutionMode, SPV_OC_OpCapability, SPV_OC_OpTypeVoid,
+      SPV_OC_OpTypeBool, SPV_OC_OpTypeInt, SPV_OC_OpTypeFloat, SPV_OC_OpTypeVector,
+      SPV_OC_OpTypeArray, SPV_OC_OpTypeStruct, SPV_OC_OpTypePointer,
+      SPV_OC_OpTypeFunction, SPV_OC_OpConstantTrue, SPV_OC_OpConstantFalse,
+      SPV_OC_OpConstant, SPV_OC_OpConstantComposite, SPV_OC_OpConstantNull,
+      SPV_OC_OpSpecConstantTrue, SPV_OC_OpSpecConstantFalse, SPV_OC_OpSpecConstant,
+      SPV_OC_OpSpecConstantComposite, SPV_OC_OpFunction, SPV_OC_OpFunctionParameter,
+      SPV_OC_OpFunctionEnd, SPV_OC_OpFunctionCall, SPV_OC_OpVariable, SPV_OC_OpLoad,
+      SPV_OC_OpStore, SPV_OC_OpAccessChain, SPV_OC_OpDecorate,
       SPV_OC_OpMemberDecorate, SPV_OC_OpCompositeExtract, SPV_OC_OpIAdd,
       SPV_OC_OpFAdd, SPV_OC_OpISub, SPV_OC_OpFSub, SPV_OC_OpIMul, SPV_OC_OpFMul,
       SPV_OC_OpUDiv, SPV_OC_OpSDiv, SPV_OC_OpFDiv, SPV_OC_OpUMod, SPV_OC_OpSRem,
@@ -1113,7 +1117,7 @@ def SPV_SamplerUseAttr:
 // Check that an op can only be used within the scope of a FuncOp.
 def InFunctionScope : PredOpTrait<
   "op must appear in a 'func' block",
-  CPred<"llvm::isa_and_nonnull<FuncOp>($_op.getParentOp())">>;
+  CPred<"($_op.getParentOfType<FuncOp>())">>;
 
 // Check that an op can only be used within the scope of a SPIR-V ModuleOp.
 def InModuleScope : PredOpTrait<
@@ -1142,8 +1146,7 @@ class SPV_Op<string mnemonic, list<OpTrait> traits = []> :
   // Specifies whether this op has a direct corresponding SPIR-V binary
   // instruction opcode. The (de)serializer use this field to determine whether
   // to auto-generate an entry in the (de)serialization dispatch table for this
-  // op. If set, this field also futher enables `autogenSerialization` (see
-  // below for details).
+  // op.
   bit hasOpcode = 1;
 
   // Name of the corresponding SPIR-V op. Only valid to use when hasOpcode is 1.
@@ -1161,15 +1164,14 @@ class SPV_Op<string mnemonic, list<OpTrait> traits = []> :
   // these methods is required.
   //
   // Note:
-  //
   // 1) If hasOpcode is set but autogenSerialization is not set, the
   //    (de)serializer dispatch method still calls the above method for
   //    (de)serializing this op.
-  //
-  // 2) If hasOpcode is not set, then this field is not interpreted; this op's
-  //    (de)serialization method will not be auto-generated regardless. Neither
-  //    does the handling in the (de)serialization dispatch table. Both
-  //    (de)serializing this op and its dispatch should be handled manually.
+  // 2) If hasOpcode is not set, but autogenSerialization is set, the
+  //    above methods for (de)serialization are generated, but there is no
+  //    entry added in the dispatch tables to invoke these methods. The
+  //    dispatch needs to be handled manually. SPV_ExtInstOps are an
+  //    example of this.
   bit autogenSerialization = 1;
 }
 
@@ -1187,6 +1189,26 @@ class SPV_BinaryOp<string mnemonic, Type resultType, Type operandsType,
   let printer = [{ return impl::printBinaryOp(getOperation(), p); }];
   // No additional verification needed in addition to the ODS-generated ones.
   let verifier = [{ return success(); }];
+}
+
+class SPV_ExtInstOp<string mnemonic, string setPrefix, string setName,
+                    int opcode, list<OpTrait> traits = []> :
+  SPV_Op<setPrefix # "." # mnemonic, traits> {
+
+  // Extended instruction sets have no direct opcode (they share the
+  // same `OpExtInst` instruction). So the hasOpcode field is set to
+  // false. So no entry corresponding to these ops are added in the
+  // dispatch functions for (de)serialization. The methods for
+  // (de)serialization are still automatically generated (since
+  // autogenSerialization remains 1). A separate method is generated
+  // for dispatching extended instruction set ops.
+  let hasOpcode = 0;
+
+  // Opcode within extended instruction set.
+  int extendedInstOpcode = opcode;
+
+  // Name used to import the extended instruction set.
+  string extendedInstSetName = setName;
 }
 
 #endif // SPIRV_BASE

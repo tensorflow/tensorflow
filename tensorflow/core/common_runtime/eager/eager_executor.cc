@@ -176,10 +176,10 @@ void EagerExecutor::NodeDone(core::RefCountPtr<NodeItem> item,
                              const Status& status) {
   VLOG(3) << "Node Done: [id " << item->id << "] " << item->node->DebugString()
           << " with status: " << status.ToString();
-  DCHECK(item->state != NodeState::kDONE);
   std::vector<core::RefCountPtr<NodeItem>> items_to_destroy;
   {
     mutex_lock l(node_queue_mutex_);
+    DCHECK(item->state != NodeState::kDONE);
     auto previous_state = item->state;
     item->state = NodeState::kDONE;
     if (!status_.ok()) return;

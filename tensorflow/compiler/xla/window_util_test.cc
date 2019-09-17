@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,19 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <jni.h>
+#include "tensorflow/compiler/xla/window_util.h"
 
-#include "tensorflow/lite/testing/init_tensorflow.h"
+#include "tensorflow/compiler/xla/test.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif  // __cplusplus
+namespace xla {
+namespace {
 
-JNIEXPORT void JNICALL Java_org_tensorflow_lite_TensorFlowLite_initTensorFlow(
-    JNIEnv* env, jclass clazz) {
-  ::tflite::InitTensorFlow();
+using ::testing::ElementsAre;
+
+TEST(WindowUtilTest, HasOverlappingWindowTest) {
+  // MakeWindow() set a stride of 1 by default.
+  EXPECT_FALSE(
+      window_util::HasOverlappingWindow(window_util::MakeWindow({1, 1})));
+  EXPECT_TRUE(
+      window_util::HasOverlappingWindow(window_util::MakeWindow({2, 2, 2, 2})));
 }
 
-#ifdef __cplusplus
-}  // extern "C"
-#endif  // __cplusplus
+}  // namespace
+}  // namespace xla

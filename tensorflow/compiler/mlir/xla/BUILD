@@ -15,6 +15,7 @@ package_group(
         "//learning/brain/google/xla/kernels/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/compiler/xla/...",
+        "//third_party/iree/...",
         "//third_party/mlir_edge/...",
     ],
 )

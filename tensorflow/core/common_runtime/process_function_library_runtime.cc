@@ -640,13 +640,11 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
 
-  DumpGraph("Before calling Placer", graph.get());
-  // Make the FunctionLibraryRuntime's device the default device if
-  // nothing else is hard coded. This allows the same function definition
-  // to be specialized to different devices depending on the
-  // PartitionedCallOp's device.
   Device* default_device = nullptr;
-  if (!options.target.empty()) {
+  if (options.default_device_to_target && !options.target.empty()) {
+    // Make the `target` device the default device if nothing else is hard
+    // coded. This allows the same function definition to be specialized to
+    // different devices depending on the `PartitionedCallOp` device.
     FunctionLibraryRuntime* flr = GetFLR(options.target);
     if (flr == nullptr) {
       return errors::InvalidArgument(
@@ -658,6 +656,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
 
   // TODO(b/124993244): Smartly merge options in nested defuns, and raise
   // exceptions/warnings in case where nested function call options are ignored.
+  DumpGraph("Before calling Placer", graph.get());
   Placer placer(graph.get(), function_name, optimization_options.flib_def,
                 &device_set_, default_device,
                 options.config_proto.allow_soft_placement(),

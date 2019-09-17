@@ -31,7 +31,7 @@ class MapAndBatchDatasetParams : public DatasetParams {
       bool preserve_cardinality, DataTypeVector output_dtypes,
       std::vector<PartialTensorShape> output_shapes, string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
-                      std::move(node_name), DatasetParamsType::MapAndBatch),
+                      std::move(node_name)),
         other_arguments_(std::move(other_arguments)),
         batch_size_(CreateTensor<int64>(TensorShape({}), {batch_size})),
         num_parallel_calls_(
@@ -96,6 +96,8 @@ class MapAndBatchDatasetParams : public DatasetParams {
   }
 
   std::vector<FunctionDef> func_lib() const override { return func_lib_; }
+
+  string op_name() const override { return MapAndBatchDatasetOp::kDatasetType; }
 
  private:
   std::vector<Tensor> other_arguments_;

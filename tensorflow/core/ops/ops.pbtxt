@@ -7457,6 +7457,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "enable_whole_mesh_compilations"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
   is_stateful: true
 }
 op {
@@ -38127,6 +38134,13 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  attr {
+    name: "use_default_device"
+    type: "bool"
+    default_value {
+      b: true
     }
   }
 }

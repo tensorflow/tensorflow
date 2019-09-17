@@ -31,7 +31,7 @@ class SamplingDatasetParams : public DatasetParams {
                         std::vector<PartialTensorShape> output_shapes,
                         string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
-                      std::move(node_name), DatasetParamsType::Sampling),
+                      std::move(node_name)),
         rate_(CreateTensor<float>(TensorShape({}), {rate})) {
     auto input_dataset_params_ptr =
         std::make_shared<T>(std::move(input_dataset_params));
@@ -71,6 +71,8 @@ class SamplingDatasetParams : public DatasetParams {
                     {SamplingDatasetOp::kOutputShapes, output_shapes_}};
     return Status::OK();
   }
+
+  string op_name() const override { return SamplingDatasetOp::kDatasetType; }
 
  private:
   // Target sample rate, range (0,1], wrapped in a scalar Tensor

@@ -1643,6 +1643,7 @@ def TFL_PadOp : TFL_Op<"pad", [
                           [0, 0, 1, 1, 0, 0]
                           [0, 0, 2, 2, 0, 0]
                           [0, 0, 0, 0, 0, 0]]
+    ```
   }];
 
   let arguments = (
@@ -1688,6 +1689,7 @@ def TFL_PadV2Op : TFL_Op<"padv2", [
                           [0, 0, 1, 1, 0, 0]
                           [0, 0, 2, 2, 0, 0]
                           [0, 0, 0, 0, 0, 0]]
+    ```
   }];
 
   let arguments = (
@@ -2651,7 +2653,8 @@ def LstmProjectionWeightBiasConstraint : PredOpTrait<
   "either projection weight must be specified or both projection weight and "
   "projection bias must not be specified",
    Or<[
-      And<[TCopVTEtIs<16, NoneType>, TCopVTEtIs<17, NoneType>]>,
+      And<[TypeIsPred<"projection_weights", NoneType>,
+           TypeIsPred<"projection_bias", NoneType>]>,
       Neg<TypeIsPred<"projection_weights", NoneType>>]>>;
 
 // TODO(b/137798843): Need to add two additional constraints for both LSTM and

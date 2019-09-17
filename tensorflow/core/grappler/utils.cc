@@ -80,10 +80,12 @@ NodeMap::NodeMap(GraphDef* graph) {
     auto rslt = nodes_.emplace(node_name, node);
     // Check that the graph doesn't contain multiple nodes with the same name.
     if (!rslt.second) {
+      // The first node found with a given name becomes the canonical.
       LOG(WARNING) << "Duplicated node in the graph: " << node_name;
     }
+    NodeDef* canonical = rslt.second ? node : rslt.first->second;
     for (const auto& input : node->input()) {
-      outputs_[NodeName(input)].insert(nodes_[node_name]);
+      outputs_[NodeName(input)].insert(canonical);
     }
   }
 }

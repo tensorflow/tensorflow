@@ -67,8 +67,7 @@ class ProductDistributionTest(test.TestCase):
       self.assertEqual([4, 5], log_prob_x.shape)
 
       expected_log_prob_x = stats.norm(loc, scale).logpdf(x_).sum(-1)
-      self.assertAllClose(expected_log_prob_x, actual_log_prob_x,
-                          rtol=1e-5, atol=0.)
+      self.assertAllCloseAccordingToType(expected_log_prob_x, actual_log_prob_x)
 
   def testSampleAndLogProbMultivariate(self):
     loc = np.float32([[-1., 1], [1, -1]])
@@ -91,8 +90,7 @@ class ProductDistributionTest(test.TestCase):
 
       expected_log_prob_x = stats.norm(loc, scale[:, None]).logpdf(
           x_).sum(-1).sum(-1)
-      self.assertAllClose(expected_log_prob_x, actual_log_prob_x,
-                          rtol=1e-6, atol=0.)
+      self.assertAllCloseAccordingToType(expected_log_prob_x, actual_log_prob_x)
 
   def testSampleConsistentStats(self):
     loc = np.float32([[-1., 1], [1, -1]])
@@ -121,11 +119,12 @@ class ProductDistributionTest(test.TestCase):
           ind.mean(), ind.variance(), ind.stddev(), ind.entropy(), ind.mode(),
       ])
 
-      self.assertAllClose(sample_mean_, actual_mean_, rtol=0.02, atol=0.)
-      self.assertAllClose(sample_var_, actual_var_, rtol=0.04, atol=0.)
-      self.assertAllClose(sample_std_, actual_std_, rtol=0.02, atol=0.)
-      self.assertAllClose(sample_entropy_, actual_entropy_, rtol=0.01, atol=0.)
-      self.assertAllClose(loc, actual_mode_, rtol=1e-6, atol=0.)
+      self.assertAllCloseAccordingToType(sample_mean_, actual_mean_, rtol=0.02)
+      self.assertAllCloseAccordingToType(sample_var_, actual_var_, rtol=0.04)
+      self.assertAllCloseAccordingToType(sample_std_, actual_std_, rtol=0.02)
+      self.assertAllCloseAccordingToType(
+          sample_entropy_, actual_entropy_, rtol=0.01)
+      self.assertAllCloseAccordingToType(loc, actual_mode_, rtol=1e-6)
 
   def testKLRaises(self):
     ind1 = independent_lib.Independent(
@@ -173,7 +172,7 @@ class ProductDistributionTest(test.TestCase):
 
     normal_kl = kullback_leibler.kl_divergence(normal1, normal2)
     ind_kl = kullback_leibler.kl_divergence(ind1, ind2)
-    self.assertAllClose(
+    self.assertAllCloseAccordingToType(
         self.evaluate(math_ops.reduce_sum(normal_kl, axis=-1)),
         self.evaluate(ind_kl))
 
@@ -196,7 +195,7 @@ class ProductDistributionTest(test.TestCase):
 
     normal_kl = kullback_leibler.kl_divergence(normal1, normal2)
     ind_kl = kullback_leibler.kl_divergence(ind1, ind2)
-    self.assertAllClose(
+    self.assertAllCloseAccordingToType(
         self.evaluate(normal_kl), self.evaluate(ind_kl))
 
   def testKLMultivariateToMultivariate(self):
@@ -217,7 +216,7 @@ class ProductDistributionTest(test.TestCase):
 
     mvn_kl = kullback_leibler.kl_divergence(mvn1, mvn2)
     ind_kl = kullback_leibler.kl_divergence(ind1, ind2)
-    self.assertAllClose(
+    self.assertAllCloseAccordingToType(
         self.evaluate(math_ops.reduce_sum(mvn_kl, axis=[-1, -2])),
         self.evaluate(ind_kl))
 
@@ -264,9 +263,8 @@ class ProductDistributionTest(test.TestCase):
       self.assertAllEqual(image_shape, ind_event_shape)
       self.assertAllEqual(sample_shape + batch_shape + image_shape, x_shape)
       self.assertAllEqual(sample_shape + batch_shape, log_prob_x_shape)
-      self.assertAllClose(expected_log_prob(x_, logits),
-                          actual_log_prob_x,
-                          rtol=1e-6, atol=0.)
+      self.assertAllCloseAccordingToType(
+          expected_log_prob(x_, logits), actual_log_prob_x)
 
   def testMnistLikeStaticShape(self):
     self._testMnistLike(static_shape=True)

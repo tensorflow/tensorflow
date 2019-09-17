@@ -177,7 +177,6 @@ class _ThreadLocalData(threading.local):
     super(_ThreadLocalData, self).__init__()
     self.device_spec = _starting_device_spec
     self.device_name = ""
-    self.mode = default_execution_mode
     self.is_eager = default_execution_mode == EAGER_MODE
     self.scope_name = ""
     self.summary_writer = None
@@ -633,9 +632,7 @@ class Context(object):
   def _mode(self, mode):
     """A context manager to allow setting the mode to EAGER/GRAPH."""
     ctx = self._thread_local_data
-    old_mode = ctx.mode
     old_is_eager = ctx.is_eager
-    ctx.mode = mode
     ctx.is_eager = mode == EAGER_MODE
     if mode == EAGER_MODE:
       # Entering graph mode does not provide us with sufficient information to
@@ -646,7 +643,6 @@ class Context(object):
       yield
     finally:
       ctx.is_eager = old_is_eager
-      ctx.mode = old_mode
       if mode == EAGER_MODE:
         self.context_switches.pop()
 
