@@ -384,8 +384,8 @@ cc_library(
     hdrs = ["lib/core/pybind11_status.h"],
     features = ["-parse_headers"],
     deps = [
-        ":py_exception_registry",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
