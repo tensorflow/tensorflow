@@ -11,7 +11,7 @@ To get started run the following command from *this* directory:
 
 *Note: the -j argument can be > 3, but should be at least 3 so you can get all but one test done quickly (the other test will just take forever, sorry)*
 
-
+For a primer on how to do the porting, please check out the README here: https://github.com/xmos/tensorflow/tree/master/tensorflow/lite/experimental/micro
 
 
 | [![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://www.tensorflow.org/api_docs/) |
