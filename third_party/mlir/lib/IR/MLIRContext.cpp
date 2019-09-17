@@ -333,18 +333,26 @@ Dialect *MLIRContext::getRegisteredDialect(StringRef name) {
 /// takes ownership of the heap allocated dialect.
 void Dialect::registerDialect(MLIRContext *context) {
   auto &impl = context->getImpl();
+  std::unique_ptr<Dialect> dialect(this);
 
   // Lock access to the context registry.
   llvm::sys::SmartScopedWriter<true> registryLock(impl.contextMutex);
+
+  // Get the correct insertion position sorted by namespace.
+  auto insertPt =
+      llvm::lower_bound(impl.dialects, dialect,
+                        [](const std::unique_ptr<Dialect> &lhs,
+                           const std::unique_ptr<Dialect> &rhs) {
+                          return lhs->getNamespace() < rhs->getNamespace();
+                        });
+
   // Abort if dialect with namespace has already been registered.
-  if (llvm::any_of(impl.dialects, [this](std::unique_ptr<Dialect> &dialect) {
-        return dialect->getNamespace() == getNamespace();
-      })) {
-    llvm::report_fatal_error("a dialect with namespace '" +
-                             Twine(getNamespace()) +
+  if (insertPt != impl.dialects.end() &&
+      (*insertPt)->getNamespace() == getNamespace()) {
+    llvm::report_fatal_error("a dialect with namespace '" + getNamespace() +
                              "' has already been registered");
   }
-  impl.dialects.push_back(std::unique_ptr<Dialect>(this));
+  impl.dialects.insert(insertPt, std::move(dialect));
 }
 
 /// Return information about all registered operations.  This isn't very
@@ -582,7 +590,7 @@ AffineMap AffineMap::getImpl(unsigned dimCount, unsigned symbolCount,
     results = copyArrayRefInto(impl.affineAllocator, results);
 
     // Initialize the memory using placement new.
-    new (res) detail::AffineMapStorage{dimCount, symbolCount, results};
+    new (res) detail::AffineMapStorage{dimCount, symbolCount, results, context};
     return AffineMap(res);
   });
 }

@@ -1,4 +1,3 @@
-# -*- Python -*-
 """Repository rule for system library autoconfiguration.
 
 `syslibs_configure` depends on the following environment variables:

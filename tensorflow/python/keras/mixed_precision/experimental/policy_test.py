@@ -169,9 +169,47 @@ class PolicyTest(test.TestCase):
           'policies. You passed loss_scale=2.0 for policy float32. Consider '
           'not passing any loss_scale instead.')
 
-    for policy_name in 'float16', 'float16_with_float32_vars', 'mixed_float16':
+    for policy_name in 'float16', 'mixed_float16':
       with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
         mp_policy.Policy(policy_name, loss_scale=2.)
+        mock_warn.assert_not_called()
+
+  @testing_utils.enable_v2_dtype_behavior
+  def test_float32_vars_warning(self):
+    with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
+      mp_policy.Policy('infer_with_float32_vars')
+      self.assertEqual(
+          mock_warn.call_args[0][0],
+          "WARNING: The 'infer_with_float32_vars' policy is deprecated and "
+          "will be removed in TensorFlow 2.1. Please use the 'mixed_float16' "
+          "or 'mixed_bfloat16' policy instead.")
+
+    with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
+      mp_policy.Policy('float16_with_float32_vars')
+      self.assertEqual(
+          mock_warn.call_args[0][0],
+          "WARNING: The 'float16_with_float32_vars' policy is deprecated and "
+          "will be removed in TensorFlow 2.1. Please use the 'mixed_float16' "
+          "policy instead.")
+
+    with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
+      mp_policy.Policy('bfloat16_with_float32_vars')
+      self.assertEqual(
+          mock_warn.call_args[0][0],
+          "WARNING: The 'bfloat16_with_float32_vars' policy is deprecated and "
+          "will be removed in TensorFlow 2.1. Please use the 'mixed_bfloat16' "
+          "policy instead.")
+
+    with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
+      mp_policy.Policy('float64_with_float32_vars')
+      self.assertEqual(
+          mock_warn.call_args[0][0],
+          "WARNING: The 'float64_with_float32_vars' policy is deprecated and "
+          "will be removed in TensorFlow 2.1.")
+
+    for policy_name in 'float16', 'float32', 'mixed_float16', 'mixed_bfloat16':
+      with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
+        mp_policy.Policy(policy_name)
         mock_warn.assert_not_called()
 
   @testing_utils.enable_v2_dtype_behavior

@@ -140,6 +140,14 @@ public:
     return opProperties & static_cast<OperationProperties>(property);
   }
 
+  /// Returns an instance of the concept object for the given interface if it
+  /// was registered to this operation, null otherwise. This should not be used
+  /// directly.
+  template <typename T> typename T::Concept *getInterface() const {
+    return reinterpret_cast<typename T::Concept *>(
+        getRawInterface(T::getInterfaceID()));
+  }
+
   /// Returns if the operation has a particular trait.
   template <template <typename T> class Trait> bool hasTrait() const {
     return hasRawTrait(ClassID::getID<Trait>());
@@ -156,7 +164,7 @@ public:
     return AbstractOperation(
         T::getOperationName(), dialect, T::getOperationProperties(), T::classof,
         T::parseAssembly, T::printAssembly, T::verifyInvariants, T::foldHook,
-        T::getCanonicalizationPatterns, T::hasTrait);
+        T::getCanonicalizationPatterns, T::getRawInterface, T::hasTrait);
   }
 
 private:
@@ -170,15 +178,22 @@ private:
                                 SmallVectorImpl<OpFoldResult> &results),
       void (&getCanonicalizationPatterns)(OwningRewritePatternList &results,
                                           MLIRContext *context),
+      void *(&getRawInterface)(ClassID *interfaceID),
       bool (&hasTrait)(ClassID *traitID))
       : name(name), dialect(dialect), classof(classof),
         parseAssembly(parseAssembly), printAssembly(printAssembly),
         verifyInvariants(verifyInvariants), foldHook(foldHook),
         getCanonicalizationPatterns(getCanonicalizationPatterns),
-        opProperties(opProperties), hasRawTrait(hasTrait) {}
+        opProperties(opProperties), getRawInterface(getRawInterface),
+        hasRawTrait(hasTrait) {}
 
   /// The properties of the operation.
   const OperationProperties opProperties;
+
+  /// Returns a raw instance of the concept for the given interface id if it is
+  /// registered to this operation, nullptr otherwise. This should not be used
+  /// directly.
+  void *(&getRawInterface)(ClassID *interfaceID);
 
   /// This hook returns if the operation contains the trait corresponding
   /// to the given ClassID.
@@ -240,7 +255,6 @@ inline llvm::hash_code hash_value(OperationName arg) {
 /// be used as a temporary object on the stack.  It is generally unwise to put
 /// this in a collection.
 struct OperationState {
-  MLIRContext *const context;
   Location location;
   OperationName name;
   SmallVector<Value *, 4> operands;

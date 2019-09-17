@@ -66,6 +66,17 @@ namespace tensorflow {
 // code).
 REGISTER_UNARY_VARIANT_DECODE_FUNCTION(Tensor, "tensorflow::Tensor");
 
+bool TensorBuffer::GetAllocatedBytes(size_t* out_bytes) const {
+  AllocationDescription allocation_description;
+  FillAllocationDescription(&allocation_description);
+  if (allocation_description.allocated_bytes() > 0) {
+    *out_bytes = allocation_description.allocated_bytes();
+    return true;
+  } else {
+    return false;
+  }
+}
+
 namespace {
 
 // An un-templated base class for Buffer.
@@ -75,6 +86,16 @@ class BufferBase : public TensorBuffer {
       : TensorBuffer(data_ptr), alloc_(alloc) {}
 
   TensorBuffer* root_buffer() override { return this; }
+
+  bool GetAllocatedBytes(size_t* out_bytes) const override {
+    if (alloc_->TracksAllocationSizes()) {
+      *out_bytes = alloc_->AllocatedSize(data());
+      return *out_bytes > 0;
+    } else {
+      return false;
+    }
+  }
+
   void FillAllocationDescription(AllocationDescription* proto) const override {
     void* data_ptr = data();
     int64 rb = size();
@@ -493,8 +514,13 @@ TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64 n) {
       std::copy_n(begin, n, data);
     } else {
       std::copy_n(begin, in_n, data);
-      const T& last = *(data + in_n - 1);
-      std::fill_n(data + in_n, n - in_n, last);
+      if (std::is_trivially_copyable<T>::value) {
+        const T last = *(data + in_n - 1);
+        std::fill_n(data + in_n, n - in_n, last);
+      } else {
+        const T& last = *(data + in_n - 1);
+        std::fill_n(data + in_n, n - in_n, last);
+      }
     }
   }
 
@@ -627,14 +653,14 @@ bool Tensor::IsInitialized() const {
 }
 
 void Tensor::CheckType(DataType expected_dtype) const {
-  CHECK_EQ(dtype(), expected_dtype) << " "
-      << DataTypeString(expected_dtype) << " expected, got "
+  CHECK_EQ(dtype(), expected_dtype)
+      << " " << DataTypeString(expected_dtype) << " expected, got "
       << DataTypeString(dtype());
 }
 
 void Tensor::CheckTypeAndIsAligned(DataType expected_dtype) const {
-  CHECK_EQ(dtype(), expected_dtype) << " "
-      << DataTypeString(expected_dtype) << " expected, got "
+  CHECK_EQ(dtype(), expected_dtype)
+      << " " << DataTypeString(expected_dtype) << " expected, got "
       << DataTypeString(dtype());
   CHECK(IsAligned()) << "ptr = " << base<void>();
 }
@@ -784,6 +810,13 @@ static Allocator* get_default_cpu_allocator() {
 Tensor::Tensor(DataType type, const TensorShape& shape)
     : Tensor(get_default_cpu_allocator(), type, shape) {}
 
+bool Tensor::HostScalarTensorBufferBase::GetAllocatedBytes(
+    size_t* out_bytes) const {
+  // `this->FillAllocationDescription()` never sets allocated bytes information,
+  // so we can short-circuit the construction of an `AllocationDescription`.
+  return false;
+}
+
 void Tensor::HostScalarTensorBufferBase::FillAllocationDescription(
     AllocationDescription* proto) const {
   proto->set_requested_bytes(size());
@@ -811,6 +844,9 @@ class SubBuffer : public TensorBuffer {
 
   size_t size() const override { return sizeof(T) * elem_; }
   TensorBuffer* root_buffer() override { return root_; }
+  bool GetAllocatedBytes(size_t* out_bytes) const override {
+    return root_->GetAllocatedBytes(out_bytes);
+  }
   void FillAllocationDescription(AllocationDescription* proto) const override {
     root_->FillAllocationDescription(proto);
   }
@@ -937,15 +973,13 @@ size_t Tensor::TotalBytes() const {
 }
 
 size_t Tensor::AllocatedBytes() const {
-  TensorDescription tensor_description;
-  FillDescription(&tensor_description);
-  if (tensor_description.has_allocation_description() &&
-      tensor_description.allocation_description().allocated_bytes() > 0) {
-    return tensor_description.allocation_description().allocated_bytes();
-  } else {
-    // Fall back to TotalBytes() if the allocator doesn't have its size.
-    return TotalBytes();
+  if (buf_) {
+    size_t ret;
+    if (buf_->GetAllocatedBytes(&ret)) {
+      return ret;
+    }
   }
+  return TotalBytes();
 }
 
 bool Tensor::CanUseDMA() const {

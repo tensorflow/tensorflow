@@ -83,8 +83,9 @@ class GcsCredentialsOpKernel : public OpKernel {
     RetryingGcsFileSystem* gcs = nullptr;
     OP_REQUIRES_OK(ctx, RetrieveGcsFs(ctx, &gcs));
 
-    string json_string;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "json", &json_string));
+    tstring json_string;
+    OP_REQUIRES_OK(ctx,
+                   ParseScalarArgument<tstring>(ctx, "json", &json_string));
 
     Json::Value json;
     Json::Reader reader;
@@ -179,13 +180,13 @@ class GcsBlockCacheOpKernel : public OpKernel {
     RetryingGcsFileSystem* gcs = nullptr;
     OP_REQUIRES_OK(ctx, RetrieveGcsFs(ctx, &gcs));
 
-    size_t max_cache_size, block_size, max_staleness;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<size_t>(ctx, "max_cache_size",
+    uint64 max_cache_size, block_size, max_staleness;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<uint64>(ctx, "max_cache_size",
                                                     &max_cache_size));
     OP_REQUIRES_OK(ctx,
-                   ParseScalarArgument<size_t>(ctx, "block_size", &block_size));
+                   ParseScalarArgument<uint64>(ctx, "block_size", &block_size));
     OP_REQUIRES_OK(
-        ctx, ParseScalarArgument<size_t>(ctx, "max_staleness", &max_staleness));
+        ctx, ParseScalarArgument<uint64>(ctx, "max_staleness", &max_staleness));
 
     if (gcs->underlying()->block_size() == block_size &&
         gcs->underlying()->max_bytes() == max_cache_size &&

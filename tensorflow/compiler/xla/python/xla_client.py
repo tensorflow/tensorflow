@@ -137,6 +137,12 @@ class LocalBackend(Backend):
                                         options, self.client,
                                         compile_options.device_assignment)
 
+  def serialize(self, executable):
+    return self.client.SerializeExecutable(executable)
+
+  def deserialize(self, serialized_executable):
+    return self.client.DeserializeExecutable(serialized_executable, self.client)
+
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -1470,12 +1476,31 @@ class ComputationBuilder(object):
         batch_group_count,
         precision_config=precision_config)
 
-  def Sort(self, operand, dimension=-1):
-    """Enqueues a sort operation onto the computation."""
-    return ops.Sort(self._builder, [operand], dimension)
+  def Sort(self, operands, dimension=-1, comparator=None):
+    """Enqueues a sort operation onto the computation.
+
+    Args:
+      operands: either an XlaOp or a sequence of XlaOps to sort. All operands
+        must be arrays with the same dimensions.
+      dimension: the array dimension over which to sort.
+      comparator: a comparator XlaComputation. See the XLA operation semantics
+        for details.
+
+    Returns:
+      Either an XlaOp or a tuple of XlaOps (if `operands` was an XlaOp or
+      a tuple of XlaOps, respectively.)
+    """
+    operands = (
+        list(operands)
+        if isinstance(operands, collections.Sequence) else [operands])
+    return ops.Sort(self._builder, operands, dimension,
+                    comparator.computation if comparator else None)
 
   def SortKeyVal(self, keys, values, dimension=-1):
-    """Enqueues a key-value sort operation onto the computation."""
+    """Enqueues a key-value sort operation onto the computation.
+
+    Deprecated. Use `Sort` instead.
+    """
     return ops.Sort(self._builder, [keys, values], dimension)
 
   def QR(self, a, full_matrices=True):
@@ -1509,11 +1534,28 @@ class ComputationBuilder(object):
     """Enqueues a singular value decomposition."""
     return self.Tuple(*ops.SVD(a))
 
-  def Scatter(self, a, scatter_indices, updates, update_computation,
-              dimension_numbers):
+  def Gather(self,
+             a,
+             start_indices,
+             dimension_numbers,
+             slice_sizes,
+             indices_are_sorted=False):
+    """Enqueues a Gather operation onto the computation."""
+    return ops.Gather(a, start_indices, dimension_numbers, slice_sizes,
+                      indices_are_sorted)
+
+  def Scatter(self,
+              a,
+              scatter_indices,
+              updates,
+              update_computation,
+              dimension_numbers,
+              indices_are_sorted=False,
+              unique_indices=False):
     """Enqueues a Scatter operation onto the computation."""
     return ops.Scatter(a, scatter_indices, updates,
-                       update_computation.computation, dimension_numbers)
+                       update_computation.computation, dimension_numbers,
+                       indices_are_sorted, unique_indices)
 
   def Fft(self, operand, fft_type, fft_lengths):
     """Enqueues a FFT operation onto the computation."""
@@ -1597,7 +1639,6 @@ _OTHER_OPS = [
     'CollectivePermute',
     'ConvertElementType',
     'Dot',
-    'Gather',
     'GetTupleElement',
     'ReducePrecision',
     'Rev',

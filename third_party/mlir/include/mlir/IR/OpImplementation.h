@@ -22,6 +22,7 @@
 #ifndef MLIR_IR_OPIMPLEMENTATION_H
 #define MLIR_IR_OPIMPLEMENTATION_H
 
+#include "mlir/IR/DialectInterface.h"
 #include "mlir/IR/OpDefinition.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/SMLoc.h"
@@ -84,6 +85,13 @@ public:
   virtual void printRegion(Region &blocks, bool printEntryBlockArgs = true,
                            bool printBlockTerminators = true) = 0;
 
+  /// Renumber the arguments for the specified region to the same names as the
+  /// SSA values in namesToUse.  This may only be used for IsolatedFromAbove
+  /// operations.  If any entry in namesToUse is null, the corresponding
+  /// argument name is left alone.
+  virtual void shadowRegionArgs(Region &region,
+                                ArrayRef<Value *> namesToUse) = 0;
+
   /// Prints an affine map of SSA ids, where SSA id names are used in place
   /// of dims/symbols.
   /// Operand values must come from single-result sources, and be valid
@@ -108,8 +116,12 @@ public:
   void printFunctionalType(Operation *op) {
     auto &os = getStream();
     os << "(";
-    interleaveComma(op->getNonSuccessorOperands(), os,
-                    [&](Value *operand) { printType(operand->getType()); });
+    interleaveComma(op->getNonSuccessorOperands(), os, [&](Value *operand) {
+      if (operand)
+        printType(operand->getType());
+      else
+        os << "<<NULL>";
+    });
     os << ") -> ";
     if (op->getNumResults() == 1 &&
         !op->getResult(0)->getType().isa<FunctionType>()) {
@@ -200,6 +212,14 @@ public:
   // These methods emit an error and return failure or success. This allows
   // these to be chained together into a linear sequence of || expressions in
   // many cases.
+
+  /// Parse an operation in its generic form.
+  /// The parsed operation is parsed in the current context and inserted in the
+  /// provided block and insertion point. The results produced by this operation
+  /// aren't mapped to any named value in the parser. Returns nullptr on
+  /// failure.
+  virtual Operation *parseGenericOperation(Block *insertBlock,
+                                           Block::iterator insertPt) = 0;
 
   //===--------------------------------------------------------------------===//
   // Token Parsing
@@ -411,18 +431,24 @@ public:
 
   /// Parses a region. Any parsed blocks are appended to "region" and must be
   /// moved to the op regions after the op is created. The first block of the
-  /// region takes "arguments" of types "argTypes".
+  /// region takes "arguments" of types "argTypes". If "enableNameShadowing" is
+  /// set to true, the argument names are allowed to shadow the names of other
+  /// existing SSA values defined above the region scope. "enableNameShadowing"
+  /// can only be set to true for regions attached to operations that are
+  /// "IsolatedFromAbove".
   virtual ParseResult parseRegion(Region &region,
                                   ArrayRef<OperandType> arguments,
-                                  ArrayRef<Type> argTypes) = 0;
+                                  ArrayRef<Type> argTypes,
+                                  bool enableNameShadowing = false) = 0;
 
   /// Parses a region if present.
   virtual ParseResult parseOptionalRegion(Region &region,
                                           ArrayRef<OperandType> arguments,
-                                          ArrayRef<Type> argTypes) = 0;
+                                          ArrayRef<Type> argTypes,
+                                          bool enableNameShadowing = false) = 0;
 
-  /// Parse a region argument.  Region arguments define new values; so this also
-  /// checks if values with the same name have not been defined yet.
+  /// Parse a region argument, this argument is resolved when calling
+  /// 'parseRegion'.
   virtual ParseResult parseRegionArgument(OperandType &argument) = 0;
 
   /// Parse zero or more region arguments with a specified surrounding
@@ -520,6 +546,36 @@ private:
                                           bool isOperandList,
                                           int requiredOperandCount,
                                           Delimiter delimiter);
+};
+
+//===--------------------------------------------------------------------===//
+// Dialect OpAsm interface.
+//===--------------------------------------------------------------------===//
+
+class OpAsmDialectInterface
+    : public DialectInterface::Base<OpAsmDialectInterface> {
+public:
+  OpAsmDialectInterface(Dialect *dialect) : Base(dialect) {}
+
+  /// Hooks for getting identifier aliases for symbols. The identifier is used
+  /// in place of the symbol when printing textual IR.
+  ///
+  /// Hook for defining Attribute kind aliases. This will generate an alias for
+  /// all attributes of the given kind in the form : <alias>[0-9]+. These
+  /// aliases must not contain `.`.
+  virtual void getAttributeKindAliases(
+      SmallVectorImpl<std::pair<unsigned, StringRef>> &aliases) const {}
+  /// Hook for defining Attribute aliases. These aliases must not contain `.` or
+  /// end with a numeric digit([0-9]+).
+  virtual void getAttributeAliases(
+      SmallVectorImpl<std::pair<Attribute, StringRef>> &aliases) const {}
+  /// Hook for defining Type aliases.
+  virtual void
+  getTypeAliases(SmallVectorImpl<std::pair<Type, StringRef>> &aliases) const {}
+
+  /// Get a special name to use when printing the given operation. The desired
+  /// name should be streamed into 'os'.
+  virtual void getOpResultName(Operation *op, raw_ostream &os) const {}
 };
 
 } // end namespace mlir

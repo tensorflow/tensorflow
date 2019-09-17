@@ -70,30 +70,28 @@ def ragged_tensor_getitem(self, key):
 
   Examples:
 
-    ```python
-    >>> # A 2-D ragged tensor with 1 ragged dimension.
-    >>> rt = ragged.constant([['a', 'b', 'c'], ['d', 'e'], ['f'], ['g']])
-    >>> rt[0].eval().tolist()       # First row (1-D `Tensor`)
-    ['a', 'b', 'c']
-    >>> rt[:3].eval().tolist()      # First three rows (2-D RaggedTensor)
-    [['a', 'b', 'c'], ['d', 'e'], '[f'], [g']]
-    >>> rt[3, 0].eval().tolist()    # 1st element of 4th row (scalar)
-    'g'
+  >>> # A 2-D ragged tensor with 1 ragged dimension.
+  >>> rt = tf.ragged.constant([['a', 'b', 'c'], ['d', 'e'], ['f'], ['g']])
+  >>> rt[0].numpy()                 # First row (1-D `Tensor`)
+  array([b'a', b'b', b'c'], dtype=object)
+  >>> rt[:3].to_list()              # First three rows (2-D RaggedTensor)
+  [[b'a', b'b', b'c'], [b'd', b'e'], [b'f']]
+  >>> rt[3, 0].numpy()              # 1st element of 4th row (scalar)
+  b'g'
 
-    >>> # A 3-D ragged tensor with 2 ragged dimensions.
-    >>> rt = ragged.constant([[[1, 2, 3], [4]],
-    ...                    [[5], [], [6]],
-    ...                    [[7]],
-    ...                    [[8, 9], [10]]])
-    >>> rt[1].eval().tolist()       # Second row (2-D RaggedTensor)
-    [[5], [], [6]]
-    >>> rt[3, 0].eval().tolist()    # First element of fourth row (1-D Tensor)
-    [8, 9]
-    >>> rt[:, 1:3].eval().tolist()  # Items 1-3 of each row (3-D RaggedTensor)
-    [[[4]], [[], [6]], [], [[10]]]
-    >>> rt[:, -1:].eval().tolist()  # Last item of each row (3-D RaggedTensor)
-    [[[4]], [[6]], [[7]], [[10]]]
-    ```
+  >>> # A 3-D ragged tensor with 2 ragged dimensions.
+  >>> rt = tf.ragged.constant([[[1, 2, 3], [4]],
+  ...                          [[5], [], [6]],
+  ...                          [[7]],
+  ...                          [[8, 9], [10]]])
+  >>> rt[1].to_list()               # Second row (2-D RaggedTensor)
+  [[5], [], [6]]
+  >>> rt[3, 0].numpy()              # First element of fourth row (1-D Tensor)
+  array([8, 9], dtype=int32)
+  >>> rt[:, 1:3].to_list()          # Items 1-3 of each row (3-D RaggedTensor)
+  [[[4]], [[], [6]], [], [[10]]]
+  >>> rt[:, -1:].to_list()          # Last item of each row (3-D RaggedTensor)
+  [[[4]], [[6]], [[7]], [[10]]]
   """
   scope_tensors = [self] + list(_tensors_in_key_list(key))
   if isinstance(key, (list, tuple)):
@@ -136,7 +134,7 @@ def _ragged_getitem(rt_input, key_list):
   if row_key is array_ops.newaxis:
     inner_rt = _ragged_getitem(rt_input, inner_keys)
     nsplits = array_ops.shape(inner_rt.row_splits,
-                              out_type=inner_rt.row_splits.dtype)[0]
+                              out_type=inner_rt.row_splits_dtype)[0]
     return ragged_tensor.RaggedTensor.from_row_splits(
         inner_rt, array_ops.stack([0, nsplits - 1]), validate=False)
 
@@ -192,7 +190,7 @@ def _slice_ragged_row_dimension(rt_input, row_key):
   # Use row_key to slice the starts & limits.
   new_starts = rt_input.row_splits[:-1][row_key]
   new_limits = rt_input.row_splits[1:][row_key]
-  zero_pad = array_ops.zeros([1], rt_input.row_splits.dtype)
+  zero_pad = array_ops.zeros([1], rt_input.row_splits_dtype)
 
   # If there's no slice step, then we can just select a single continuous
   # span of `ragged.values(rt_input)`.
@@ -247,7 +245,7 @@ def _ragged_getitem_inner_dimensions(rt_input, key_list):
   if column_key is array_ops.newaxis:
     inner_rt = _ragged_getitem_inner_dimensions(rt_input, key_list[1:])
     nsplits = array_ops.shape(inner_rt.row_splits,
-                              out_type=inner_rt.row_splits.dtype)[0]
+                              out_type=inner_rt.row_splits_dtype)[0]
     return ragged_tensor.RaggedTensor.from_row_splits(inner_rt,
                                                       math_ops.range(nsplits),
                                                       validate=False)

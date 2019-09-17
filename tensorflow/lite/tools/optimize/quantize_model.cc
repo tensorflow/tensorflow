@@ -20,6 +20,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "flatbuffers/flexbuffers.h"
@@ -35,6 +37,24 @@ namespace tflite {
 namespace optimize {
 
 namespace {
+
+// Gets the operator property from the operator_property list and additionally
+// modifies the quantizable parameter based on the user's specified
+// operator_names.
+operator_property::OperatorProperty GetOperatorProperty(
+    const std::unordered_set<string>& operator_names, const BuiltinOperator& op,
+    const string& operator_name) {
+  operator_property::OperatorProperty property =
+      operator_property::GetOperatorProperty(op);
+  // The algorithm adds Dequantize and Quantize, so we don't require them to be
+  // in the operator_names.
+  if (op != BuiltinOperator_DEQUANTIZE && op != BuiltinOperator_QUANTIZE) {
+    property.quantizable =
+        property.quantizable &&
+        (operator_names.find(operator_name) != operator_names.end());
+  }
+  return property;
+}
 
 TfLiteStatus QuantizeBias(ModelT* model, const TensorT* input_tensor,
                           const TensorT* weight_tensor, TensorT* bias_tensor,
@@ -239,8 +259,8 @@ TfLiteStatus SetInputAndOutputTypes(ModelT* model, const TensorType& input_type,
       // TODO(suharshs): Add support for this case if it ever comes up.
       if (tensor->type == TensorType_FLOAT32 && output_type != tensor->type) {
         error_reporter->Report(
-            "Unsupported output type %s for output tensor %d of type %s.",
-            EnumNameTensorType(output_type), subgraph->outputs[i],
+            "Unsupported output type %s for output tensor '%s' of type %s.",
+            EnumNameTensorType(output_type), tensor->name.c_str(),
             EnumNameTensorType(tensor->type));
         return kTfLiteError;
       }
@@ -260,7 +280,9 @@ TfLiteStatus SetInputAndOutputTypes(ModelT* model, const TensorType& input_type,
 // outpus must have the same scale and zero point. The other ones with
 // constraints(averagepool, maxpool, gather, softmax, tanh etc) are handled in
 // QuantizeWeightsAndInput.
-TfLiteStatus ApplyConstraints(ModelT* model, ErrorReporter* error_reporter) {
+TfLiteStatus ApplyConstraints(ModelT* model,
+                              const std::unordered_set<string>& operator_names,
+                              ErrorReporter* error_reporter) {
   for (int subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
@@ -269,15 +291,14 @@ TfLiteStatus ApplyConstraints(ModelT* model, ErrorReporter* error_reporter) {
       OperatorT* op = subgraph->operators[op_idx].get();
       const BuiltinOperator op_code =
           model->operator_codes[op->opcode_index]->builtin_code;
-      operator_property::OperatorProperty property =
-          operator_property::GetOperatorProperty(op_code);
+      operator_property::OperatorProperty property = GetOperatorProperty(
+          operator_names, op_code, subgraph->tensors[op->outputs[0]]->name);
       if (!property.quantizable) {
         continue;
       }
       // Basically only Concat passes this check.
-      if (!property.restrict_same_input_output_scale ||
-          (property.inputs.size() == 1 && property.outputs.size() == 1 &&
-           property.biases.empty())) {
+      if (!property.arbitrary_inputs ||
+          !property.restrict_same_input_output_scale) {
         continue;
       }
       // If ApplyConstraints and requant is needed, use the min of min and max
@@ -345,10 +366,24 @@ std::vector<std::pair<int, operator_property::TensorProperty>> GetInputs(
   return inputs;
 }
 
+std::vector<std::pair<int, operator_property::TensorProperty>> GetOutputs(
+    const OperatorT* op, operator_property::OperatorProperty property) {
+  std::vector<std::pair<int, operator_property::TensorProperty>> outputs;
+  if (property.arbitrary_outputs) {
+    for (int i = 0; i < op->outputs.size(); ++i) {
+      outputs.push_back({i, {}});
+    }
+  } else {
+    outputs = property.outputs;
+  }
+  return outputs;
+}
+
 bool ShouldRestrictSameInputOutputScale(
     operator_property::OperatorProperty property) {
-  return (property.inputs.size() == 1 && property.outputs.size() == 1 &&
-          property.biases.empty() && property.restrict_same_input_output_scale);
+  // Ops with multiple inputs (i.e. concat) gets restricted in ApplyConstraints.
+  return (!property.arbitrary_inputs &&
+          property.restrict_same_input_output_scale);
 }
 
 bool IsSubgraphInput(SubGraphT* subgraph, int32_t index) {
@@ -504,23 +539,13 @@ TfLiteStatus QuantizeOpOutput(
 
     const float min = input_tensor->quantization->min[0];
     const float max = input_tensor->quantization->max[0];
-    if (utils::HasMinMax(output_tensor)) {
-      if (output_tensor->quantization->min[0] != min ||
-          output_tensor->quantization->max[0] != max) {
-        printf(
-            "Note the output min/max is different from the input min/max "
-            "for op %s at index %d in subgraph %d. This is legal but "
-            "should happens rarely.\n",
-            EnumNameBuiltinOperator(op_code), op_idx, subgraph_idx);
-      }
-    }
 
     // Apply to output.
     output_tensor->quantization = absl::make_unique<QuantizationParametersT>();
     output_tensor->quantization->scale.push_back(input_scale);
     output_tensor->quantization->zero_point.push_back(input_zero_point);
-    output_tensor->quantization->min.push_back(min);
-    output_tensor->quantization->max.push_back(max);
+    output_tensor->quantization->min = {min};
+    output_tensor->quantization->max = {max};
     output_tensor->type = TensorType_INT8;
   } else if (tensor_property.restriction) {
     const auto scale_and_zp = tensor_property.restricted_value;
@@ -546,8 +571,10 @@ TfLiteStatus QuantizeOpOutput(
 
 // Quantize inputs and weights.
 // Because of ops such as lstm, still need to do per op, instead of weights.
-TfLiteStatus QuantizeWeightsInputOutput(ModelT* model, bool allow_float,
-                                        ErrorReporter* error_reporter) {
+TfLiteStatus QuantizeWeightsInputOutput(
+    ModelT* model, bool allow_float,
+    const std::unordered_set<string>& operator_names,
+    ErrorReporter* error_reporter) {
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
@@ -555,8 +582,8 @@ TfLiteStatus QuantizeWeightsInputOutput(ModelT* model, bool allow_float,
       OperatorT* op = subgraph->operators[op_idx].get();
       const BuiltinOperator op_code =
           model->operator_codes[op->opcode_index]->builtin_code;
-      operator_property::OperatorProperty property =
-          operator_property::GetOperatorProperty(op_code);
+      operator_property::OperatorProperty property = GetOperatorProperty(
+          operator_names, op_code, subgraph->tensors[op->outputs[0]]->name);
 
       if (!property.quantizable && !allow_float) {
         error_reporter->Report("Quantization not yet supported for op: %s",
@@ -573,7 +600,7 @@ TfLiteStatus QuantizeWeightsInputOutput(ModelT* model, bool allow_float,
 
       // Quantize operator outputs.
       for (const std::pair<int, operator_property::TensorProperty>& output :
-           property.outputs) {
+           GetOutputs(op, property)) {
         TF_LITE_ENSURE_STATUS(QuantizeOpOutput(
             model, subgraph_idx, op_idx, property, output, error_reporter));
       }
@@ -583,7 +610,9 @@ TfLiteStatus QuantizeWeightsInputOutput(ModelT* model, bool allow_float,
 }
 
 // Quantize bias.
-TfLiteStatus QuantizeBiases(ModelT* model, ErrorReporter* error_reporter) {
+TfLiteStatus QuantizeBiases(ModelT* model,
+                            const std::unordered_set<string>& operator_names,
+                            ErrorReporter* error_reporter) {
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
@@ -591,12 +620,15 @@ TfLiteStatus QuantizeBiases(ModelT* model, ErrorReporter* error_reporter) {
       OperatorT* op = subgraph->operators[op_idx].get();
       const BuiltinOperator op_code =
           model->operator_codes[op->opcode_index]->builtin_code;
-      operator_property::OperatorProperty property =
-          operator_property::GetOperatorProperty(op_code);
+      operator_property::OperatorProperty property = GetOperatorProperty(
+          operator_names, op_code, subgraph->tensors[op->outputs[0]]->name);
       if (!property.quantizable) {
         continue;
       }
       for (const int bias_idx : property.biases) {
+        if (op->inputs[bias_idx] == -1 /*kOptionalTensor*/) {
+          continue;
+        }
         if (bias_idx >= op->inputs.size()) {
           error_reporter->Report(
               "Required input index %d is larger than the input length of "
@@ -636,17 +668,32 @@ TfLiteStatus QuantizeBiases(ModelT* model, ErrorReporter* error_reporter) {
   return kTfLiteOk;
 }
 
+std::unordered_set<string> GetAllOperatorOutputs(ModelT* model) {
+  std::unordered_set<string> operator_names;
+  for (int32_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
+       subgraph_idx++) {
+    SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
+    for (int32_t tensor_idx = 0; tensor_idx < subgraph->tensors.size();
+         tensor_idx++) {
+      operator_names.insert(subgraph->tensors[tensor_idx]->name);
+    }
+  }
+  return operator_names;
+}
+
 }  // namespace
 
 // Assumes that the operators in the model have been topologically sorted.
 TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            ModelT* model, const TensorType& input_type,
                            const TensorType& output_type, bool allow_float,
+                           const std::unordered_set<string>& operator_names,
                            ErrorReporter* error_reporter) {
+  TF_LITE_ENSURE_STATUS(QuantizeWeightsInputOutput(
+      model, allow_float, operator_names, error_reporter));
   TF_LITE_ENSURE_STATUS(
-      QuantizeWeightsInputOutput(model, allow_float, error_reporter));
-  TF_LITE_ENSURE_STATUS(ApplyConstraints(model, error_reporter));
-  TF_LITE_ENSURE_STATUS(QuantizeBiases(model, error_reporter));
+      ApplyConstraints(model, operator_names, error_reporter));
+  TF_LITE_ENSURE_STATUS(QuantizeBiases(model, operator_names, error_reporter));
   utils::SetOperatorCodeVersion(model);
   TF_LITE_ENSURE_STATUS(
       SetInputAndOutputTypes(model, input_type, output_type, error_reporter));
@@ -656,6 +703,14 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
   FinishModelBuffer(*builder, output_model_location);
 
   return kTfLiteOk;
+}
+
+TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
+                           ModelT* model, const TensorType& input_type,
+                           const TensorType& output_type, bool allow_float,
+                           ErrorReporter* error_reporter) {
+  return QuantizeModel(builder, model, input_type, output_type, allow_float,
+                       GetAllOperatorOutputs(model), error_reporter);
 }
 
 TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,

@@ -18,11 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import sys
 import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
@@ -906,6 +908,40 @@ class ConstantValueTest(test.TestCase):
     c_val = tensor_util.constant_value(tf_val, partial=True)
     self.assertIsNone(c_val)
 
+  @test_util.run_deprecated_v1
+  def testUnpack_Axis0(self):
+    inputs = np.random.rand(3, 4, 7)
+    tf_vals = array_ops.unstack(inputs)
+    c_vals = [tensor_util.constant_value(x) for x in tf_vals]
+    self.assertAllClose(inputs, c_vals)
+
+  @test_util.run_deprecated_v1
+  def testUnpack_Partial_Axis0(self):
+    input_ = np.random.rand(4, 7)
+    packed = array_ops.stack([input_, array_ops.placeholder(dtypes.float32)])
+    tf_vals = array_ops.unstack(packed)
+    c_vals = [tensor_util.constant_value(x, partial=True) for x in tf_vals]
+    self.assertAllClose(input_, c_vals[0])
+    self.assertIsNone(c_vals[1])
+
+  @test_util.run_deprecated_v1
+  def testSplit_Axis0(self):
+    inputs = np.random.rand(6, 5, 7)
+    tf_vals = array_ops.split(inputs, 3)
+    c_vals = [tensor_util.constant_value(x) for x in tf_vals]
+    self.assertAllClose(np.split(inputs, 3), c_vals)
+
+  @test_util.run_deprecated_v1
+  def testSplit_Partial_Axis0(self):
+    input_ = np.random.rand(4, 7)
+    placeholder = array_ops.placeholder(dtypes.float32, shape=(4, 7))
+    # it'd be better to use concat here, but concat doesn't support partial
+    packed = array_ops.stack([input_, placeholder])
+    tf_vals = array_ops.split(packed, 2)
+    c_vals = [tensor_util.constant_value(x, partial=True) for x in tf_vals]
+    self.assertAllClose(input_, c_vals[0][0])
+    self.assertIsNone(c_vals[1][0])
+
   def testEqual(self):
     # Scalar inputs.
     tf_val = math_ops.equal(constant_op.constant(1), constant_op.constant(1))
@@ -935,6 +971,12 @@ class ConstantValueTest(test.TestCase):
                                 constant_op.constant([[0], [1]]))
     c_val = tensor_util.constant_value(tf_val)
     self.assertAllEqual(c_val, [[False, True], [True, False]])
+
+  def testStopGradient(self):
+    input_ = np.random.rand(4, 7)
+    tf_val = array_ops.stop_gradient(input_)
+    c_val = tensor_util.constant_value(tf_val)
+    self.assertAllEqual(input_, c_val)
 
   def testLiteral(self):
     x = "hi"
@@ -1078,6 +1120,52 @@ class ConstantValueAsShapeTest(test.TestCase):
     with self.assertRaises(ValueError):
       tf_val = constant_op.constant([[10], [20], [30]])[:, 0:]
       c_val = tensor_util.constant_value_as_shape(tf_val)
+
+
+class MaybeSetStaticShapeTest(test.TestCase):
+
+  @contextlib.contextmanager
+  def disableSetStaticShape(self):
+    flag_old = tensor_util._ENABLE_MAYBE_SET_STATIC_SHAPE
+    tensor_util._ENABLE_MAYBE_SET_STATIC_SHAPE = False
+    try:
+      yield
+    finally:
+      tensor_util._ENABLE_MAYBE_SET_STATIC_SHAPE = flag_old
+
+  @test_util.run_deprecated_v1
+  def testMaybeSetStaticShape(self):
+    shape = constant_op.constant([2, 5], dtype=dtypes.int32)
+
+    def reshape():
+      v = array_ops.zeros([10])
+      return array_ops.reshape(v, shape)
+
+    with self.disableSetStaticShape():
+      graph_without_shape_propagation = func_graph.func_graph_from_py_func(
+          "without_shape_propagation", reshape, [], {})
+    graph_with_shape_propagation = func_graph.func_graph_from_py_func(
+        "with_shape_propagation", reshape, [], {})
+    self.assertCountEqual(
+        [op.type for op in graph_without_shape_propagation.get_operations()],
+        [op.type for op in graph_with_shape_propagation.get_operations()])
+
+  @test_util.run_deprecated_v1
+  def testMaybeSetStaticShapeScalarShape(self):
+
+    def reshape():
+      v = array_ops.placeholder(dtypes.float32)
+      t = array_ops.reshape(v, [-1])
+      return t
+
+    with self.disableSetStaticShape():
+      graph_without_shape_propagation = func_graph.func_graph_from_py_func(
+          "without_shape_propagation", reshape, [], {})
+    graph_with_shape_propagation = func_graph.func_graph_from_py_func(
+        "with_shape_propagation", reshape, [], {})
+    self.assertCountEqual(
+        [op.type for op in graph_without_shape_propagation.get_operations()],
+        [op.type for op in graph_with_shape_propagation.get_operations()])
 
 
 class ShapeTensorTest(test_util.TensorFlowTestCase):

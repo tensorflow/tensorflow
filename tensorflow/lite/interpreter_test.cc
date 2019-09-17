@@ -65,8 +65,14 @@ TEST(BasicInterpreter, ZeroInterpreter) {
   testing::internal::CaptureStderr();
 
   Interpreter interpreter;
+
+#ifndef NDEBUG
+  const char* kExpectedLog = "INFO: Initialized TensorFlow Lite runtime";
+#else
+  const char* kExpectedLog = "";
+#endif
   EXPECT_THAT(testing::internal::GetCapturedStderr(),
-              testing::HasSubstr("INFO: Initialized TensorFlow Lite runtime"));
+              testing::HasSubstr(kExpectedLog));
 
   interpreter.SetInputs({});
   interpreter.SetOutputs({});
@@ -358,15 +364,14 @@ TEST(BasicInterpreter, CheckArenaAllocation) {
   ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
 
   ASSERT_LT(interpreter.tensor(0)->data.raw, interpreter.tensor(1)->data.raw);
-  ASSERT_LT(interpreter.tensor(1)->data.raw, interpreter.tensor(2)->data.raw);
-  ASSERT_LT(interpreter.tensor(2)->data.raw, interpreter.tensor(3)->data.raw);
-  ASSERT_LT(interpreter.tensor(3)->data.raw, interpreter.tensor(4)->data.raw);
-  ASSERT_LT(interpreter.tensor(4)->data.raw, interpreter.tensor(5)->data.raw);
-  ASSERT_LT(interpreter.tensor(5)->data.raw, interpreter.tensor(7)->data.raw);
-  ASSERT_EQ(interpreter.tensor(6)->data.raw, interpreter.tensor(2)->data.raw);
-  // #7 is the one with the largest pointer.
+  ASSERT_LT(interpreter.tensor(1)->data.raw, interpreter.tensor(3)->data.raw);
+  ASSERT_EQ(interpreter.tensor(3)->data.raw, interpreter.tensor(9)->data.raw);
+  ASSERT_LT(interpreter.tensor(3)->data.raw, interpreter.tensor(5)->data.raw);
+  ASSERT_LT(interpreter.tensor(5)->data.raw, interpreter.tensor(2)->data.raw);
+  ASSERT_EQ(interpreter.tensor(2)->data.raw, interpreter.tensor(7)->data.raw);
+  ASSERT_LT(interpreter.tensor(2)->data.raw, interpreter.tensor(4)->data.raw);
+  // #4 is the one with the largest pointer.
   ASSERT_EQ(interpreter.tensor(8)->data.raw, nullptr);
-  ASSERT_EQ(interpreter.tensor(9)->data.raw, interpreter.tensor(5)->data.raw);
 }
 
 TEST(BasicInterpreter, BufferAccess) {

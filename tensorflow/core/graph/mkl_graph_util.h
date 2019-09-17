@@ -18,7 +18,7 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/types.pb_text.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 
 namespace tensorflow {
@@ -177,7 +177,7 @@ static inline bool IsMklNameChangeOp(const string& op_name, DataType T) {
   // Now we just construct a search string to match what we are looking for.
   string search_string = kMklNameChangeOpLabelPattern;
   search_string += string(";") + string(" T in [");
-  search_string += EnumName_DataType(T) + string("]");
+  search_string += DataType_Name(T) + string("]");
 
   return kernel.find(search_string) != string::npos;
 }
@@ -206,6 +206,7 @@ static inline bool IsMklElementWiseOp(const string& op_name, DataType T) {
     return false;
   }
   bool result = (0 == op_name.compare(GetMklOpName("Add")) ||
+                 0 == op_name.compare(GetMklOpName("AddV2")) ||
                  0 == op_name.compare(GetMklOpName("Sub")) ||
                  0 == op_name.compare(GetMklOpName("Mul")) ||
                  0 == op_name.compare(GetMklOpName("Maximum")) ||

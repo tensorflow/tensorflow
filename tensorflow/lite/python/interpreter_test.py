@@ -23,10 +23,39 @@ import sys
 import numpy as np
 import six
 
+# Force loaded shared object symbols to be globally visible. This is needed so
+# that the interpreter_wrapper, in one .so file, can see the test_registerer,
+# in a different .so file. Note that this may already be set by default.
+# pylint: disable=g-import-not-at-top
+if hasattr(sys, 'setdlopenflags') and hasattr(sys, 'getdlopenflags'):
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
+
 from tensorflow.lite.python import interpreter as interpreter_wrapper
+from tensorflow.lite.python.testdata import test_registerer_wrapper as test_registerer
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
+# pylint: enable=g-import-not-at-top
+
+
+class InterpreterCustomOpsTest(test_util.TensorFlowTestCase):
+
+  def testRegisterer(self):
+    interpreter = interpreter_wrapper.InterpreterWithCustomOps(
+        model_path=resource_loader.get_path_to_datafile(
+            'testdata/permute_float.tflite'),
+        custom_op_registerers=['TF_TestRegisterer'])
+    self.assertTrue(interpreter._safe_to_run())
+    self.assertEqual(test_registerer.get_num_test_registerer_calls(), 1)
+
+  def testRegistererFailure(self):
+    bogus_name = 'CompletelyBogusRegistererName'
+    with self.assertRaisesRegexp(
+        ValueError, 'Looking up symbol \'' + bogus_name + '\' failed'):
+      interpreter_wrapper.InterpreterWithCustomOps(
+          model_path=resource_loader.get_path_to_datafile(
+              'testdata/permute_float.tflite'),
+          custom_op_registerers=[bogus_name])
 
 
 class InterpreterTest(test_util.TensorFlowTestCase):
@@ -305,13 +334,10 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
     if sys.platform == 'darwin': return
     destructions = []
     def register_destruction(x):
-      destructions.append(x)
+      destructions.append(x if isinstance(x, str) else x.decode('utf-8'))
       return 0
     # Make a wrapper for the callback so we can send this to ctypes
     delegate = interpreter_wrapper.load_delegate(self._delegate_file)
-    prototype = ctypes.CFUNCTYPE(ctypes.c_int, (ctypes.c_char_p))
-    destroy_callback = prototype(register_destruction)
-    delegate._library.set_destroy_callback(destroy_callback)
     # Make an interpreter with the delegate
     interpreter = interpreter_wrapper.Interpreter(
         model_path=resource_loader.get_path_to_datafile(
@@ -324,8 +350,12 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
 
     interpreter._interpreter.stuff = InterpreterDestroyCallback()
     # Destroy both delegate and interpreter
+    library = delegate._library
+    prototype = ctypes.CFUNCTYPE(ctypes.c_int, (ctypes.c_char_p))
+    library.set_destroy_callback(prototype(register_destruction))
     del delegate
     del interpreter
+    library.set_destroy_callback(None)
     # check the interpreter was destroyed before the delegate
     self.assertEqual(destructions, ['interpreter', 'test_delegate'])
 

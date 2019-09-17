@@ -125,9 +125,9 @@ void PostQuantizePass::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PostQuantize pass.
-std::unique_ptr<FunctionPassBase> CreatePostQuantizePass(
+std::unique_ptr<OpPassBase<FuncOp>> CreatePostQuantizePass(
     bool emit_quant_adaptor_ops) {
-  return llvm::make_unique<PostQuantizePass>(emit_quant_adaptor_ops);
+  return std::make_unique<PostQuantizePass>(emit_quant_adaptor_ops);
 }
 
 static PassRegistration<PostQuantizePass> pass(

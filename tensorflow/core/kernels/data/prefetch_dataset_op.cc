@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
@@ -120,19 +121,10 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     }
 
     ~Iterator() override {
-      // Signal the prefetch thread to terminate it. We will then
-      // join that thread when we delete `this->prefetch_thread_`.
-      //
-      // TODO(mrry): Replace this cancellation logic with a
-      // CancellationManager. The syntax would be more heavyweight,
-      // but it would be possible to thread a cancellation manager
-      // through the IteratorContext to upstream,
-      // potentially-blocking iterators, when we add these.
-      {
-        mutex_lock l(*mu_);
-        cancelled_ = true;
-        cond_var_->notify_all();
-      }
+      mutex_lock l(*mu_);
+      cancellation_manager_.StartCancel();
+      cond_var_->notify_all();
+      deregister_fn_();
     }
 
     string BuildTraceMeName() override {
@@ -156,6 +148,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       if (buffer_size_->value == model::kAutotune) {
         buffer_size_->value = 0;
       }
+      TF_RETURN_IF_ERROR(
+          ConnectCancellationManagers(ctx->cancellation_manager(),
+                                      &cancellation_manager_, &deregister_fn_));
       return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
     }
 
@@ -169,7 +164,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         // Wait until the next element in the buffer has been
         // produced, or we are shutting down.
         if (legacy_autotune_) {
-          while (!cancelled_ && buffer_.empty() && !prefetch_thread_finished_ &&
+          while (!cancellation_manager_.IsCancelled() && buffer_.empty() &&
+                 !prefetch_thread_finished_ &&
                  auto_tuner_.buffer_limit() != 0) {
             auto_tuner_.RecordEmpty();
             buffer_size_->value = auto_tuner_.buffer_limit();
@@ -178,15 +174,15 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
             RecordStart(ctx);
           }
         } else {
-          while (!cancelled_ && buffer_.empty() && !prefetch_thread_finished_ &&
-                 buffer_size_->value != 0) {
+          while (!cancellation_manager_.IsCancelled() && buffer_.empty() &&
+                 !prefetch_thread_finished_ && buffer_size_->value != 0) {
             RecordStop(ctx);
             cond_var_->wait(l);
             RecordStart(ctx);
           }
         }
 
-        if (cancelled_) {
+        if (cancellation_manager_.IsCancelled()) {
           return errors::Cancelled(
               "PrefetchDatasetOp::Dataset::Iterator::GetNext");
         }
@@ -381,13 +377,14 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         // 1. Wait for a slot in the buffer.
         {
           mutex_lock l(*mu_);
-          while (!cancelled_ && buffer_.size() >= buffer_limit()) {
+          while (!cancellation_manager_.IsCancelled() &&
+                 buffer_.size() >= buffer_limit()) {
             RecordStop(ctx.get());
             cond_var_->wait(l);
             RecordStart(ctx.get());
           }
 
-          if (cancelled_) {
+          if (cancellation_manager_.IsCancelled()) {
             return;
           }
         }
@@ -448,7 +445,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       error::Code code = static_cast<error::Code>(code_int);
 
       if (code != error::Code::OK) {
-        string error_message;
+        tstring error_message;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(ErrorMessageKey(index), &error_message));
         *status = Status(code, error_message);
@@ -487,6 +484,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
     // If legacy_autotune_ is false, identifies the maximum size of the buffer.
     const std::shared_ptr<model::SharedState> buffer_size_;
+
+    CancellationManager cancellation_manager_;
+    std::function<void()> deregister_fn_;
   };
   const DatasetBase* const input_;
   const int64 buffer_size_;

@@ -116,9 +116,9 @@ def _concrete_function_callable_with(function, inputs, allow_conversion):
         return False
     elif isinstance(expected, type_spec.TypeSpec):
       return expected.is_compatible_with(arg)
-    else:
-      if arg != expected:
-        return False
+    elif (_is_tensor(arg) and
+          id(arg) != id(expected)) or (not _is_tensor(arg) and arg != expected):
+      return False
   return True
 
 
@@ -308,8 +308,7 @@ def load_function_def_library(library, load_shared_name_suffix=None):
     # extra function definitions are a no-op since they already imported as a
     # function before and passed in explicitly (due to the topologic sort
     # import).
-    func_graph = function_def_lib.function_def_to_graph(
-        copy, copy_functions=False)
+    func_graph = function_def_lib.function_def_to_graph(copy)
 
     for dep in _list_function_deps(fdef, library_function_names):
       functions[dep].add_to_graph(func_graph)

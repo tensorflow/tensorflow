@@ -163,7 +163,7 @@ def map_fn(fn,
     elems=ragged.constant([[1, 2, 3], [4, 5], [6, 7]], dtype=tf.int64)
     out = map_fn(fn=lambda x: x+1, elems,
       dtype=ragged.RaggedTensorType(type=tf.int64, ragged_rank=0))
-    # out = ragged.constant([[2, 3, 4], [5, 6], [7, 8]])
+    # out = tf.ragged.constant([[2, 3, 4], [5, 6], [7, 8]])
     ```
   """
   if not callable(fn):
@@ -443,12 +443,12 @@ def _convert_declared_ragged(current, declared):
         "The declared dtype (%s) mismatches the result (%s)" %
         (declared.dtype, current.dtype))
   if (isinstance(current, ragged_tensor.RaggedTensor) and
-      declared.row_splits_dtype != current.row_splits.dtype):
+      declared.row_splits_dtype != current.row_splits_dtype):
     if not ragged_config.auto_cast_partition_dtype():
       raise ValueError(
           "The declared row_splits dtype (%s) mismatches the result (%s)."
           "  Use RaggedTensor.with_row_splits_dtype to convert it."
-          % (declared.row_splits_dtype, current.row_splits.dtype))
+          % (declared.row_splits_dtype, current.row_splits_dtype))
     current = current.with_row_splits_dtype(declared.row_splits_dtype)
 
   if isinstance(current, ragged_tensor.RaggedTensor):

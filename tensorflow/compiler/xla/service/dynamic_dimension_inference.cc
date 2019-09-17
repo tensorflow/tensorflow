@@ -449,10 +449,15 @@ Status DynamicDimensionInferenceVisitor::HandleElementwiseBinary(
 
 Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
-      hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
-               int64 operand_index, HloInstruction* dynamic_size,
-               DimensionConstraint constraint) {
+      hlo,
+      [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
+          int64 operand_index, HloInstruction* dynamic_size,
+          DimensionConstraint constraint) -> Status {
         HloInstruction* reshape = hlo;
+        TF_RET_CHECK(reshape->shape().rank() > 0)
+            << "Reshaping a dynamic dimension into a scalar, which has "
+               "undefined behavior. The offending instruction is: "
+            << reshape->ToString();
         // Reshape is supported as long as it is the most
         // major one and it is combining with other non-dynamic dimensions.
         const int64 output_most_major = reshape->shape().dimensions(0);
@@ -463,7 +468,7 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
                 reshape->shape().dimensions(0) / operand->shape().dimensions(0);
             HloInstruction* multiplier_hlo =
                 hlo->parent()->AddInstruction(HloInstruction::CreateConstant(
-                    LiteralUtil::CreateR0<uint32>(multiplier)));
+                    LiteralUtil::CreateR0<int32>(multiplier)));
 
             HloInstruction* new_dynamic_size =
                 hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
@@ -638,7 +643,7 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
                 reshape->shape().dimensions(dynamic_dimension);
             HloInstruction* divisor_hlo =
                 hlo->parent()->AddInstruction(HloInstruction::CreateConstant(
-                    LiteralUtil::CreateR0<uint32>(divisor)));
+                    LiteralUtil::CreateR0<int32>(divisor)));
 
             HloInstruction* new_dynamic_size =
                 hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
@@ -828,20 +833,13 @@ Status DynamicDimensionInferenceVisitor::HandleScatter(HloInstruction* hlo) {
           int64 operand_index, HloInstruction* operand_dynamic_size,
           DimensionConstraint constraint) {
         if (operand_index == 0) {
-          return Unimplemented(
-              "Detects a dynamic dimension on the data input of scatter, which "
-              "is not supported: %s",
-              hlo->ToString());
-        }
-
-        const ScatterDimensionNumbers& scatter_dims =
-            hlo->scatter_dimension_numbers();
-        if (operand_index == 1) {
           parent_->SetDynamicSize(hlo, {}, dimension, operand_dynamic_size,
                                   constraint);
           return Status::OK();
         }
 
+        const ScatterDimensionNumbers& scatter_dims =
+            hlo->scatter_dimension_numbers();
         if (operand_index == 2 &&
             absl::c_linear_search(scatter_dims.update_window_dims(),
                                   dimension)) {

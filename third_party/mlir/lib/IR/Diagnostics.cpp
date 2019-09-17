@@ -160,7 +160,7 @@ Diagnostic &Diagnostic::attachNote(llvm::Optional<Location> noteLoc) {
 
   /// Append and return a new note.
   notes.push_back(
-      llvm::make_unique<Diagnostic>(*noteLoc, DiagnosticSeverity::Note));
+      std::make_unique<Diagnostic>(*noteLoc, DiagnosticSeverity::Note));
   return *notes.back();
 }
 
@@ -758,11 +758,14 @@ struct ParallelDiagnosticHandlerImpl : public llvm::PrettyStackTraceEntry {
     ctx->getDiagEngine().setHandler([this](Diagnostic diag) {
       uint64_t tid = llvm::get_threadid();
       llvm::sys::SmartScopedLock<true> lock(mutex);
-      assert(threadToOrderID.count(tid) &&
-             "current thread does not have a valid orderID");
 
-      // Append a new diagnostic.
-      diagnostics.emplace_back(threadToOrderID[tid], std::move(diag));
+      // If this diagnostic was not emitted on a thread we track, then forward
+      // it to the previous handler.
+      if (!threadToOrderID.count(tid))
+        prevHandler(std::move(diag));
+      else
+        // Otherwise, append a new diagnostic.
+        diagnostics.emplace_back(threadToOrderID[tid], std::move(diag));
     });
   }
 
@@ -797,6 +800,13 @@ struct ParallelDiagnosticHandlerImpl : public llvm::PrettyStackTraceEntry {
     uint64_t tid = llvm::get_threadid();
     llvm::sys::SmartScopedLock<true> lock(mutex);
     threadToOrderID[tid] = orderID;
+  }
+
+  /// Remove the order id for the current thread.
+  void eraseOrderIDForThread() {
+    uint64_t tid = llvm::get_threadid();
+    llvm::sys::SmartScopedLock<true> lock(mutex);
+    threadToOrderID.erase(tid);
   }
 
   /// Dump the current diagnostics that were inflight.
@@ -857,4 +867,10 @@ ParallelDiagnosticHandler::~ParallelDiagnosticHandler() {}
 /// Set the order id for the current thread.
 void ParallelDiagnosticHandler::setOrderIDForThread(size_t orderID) {
   impl->setOrderIDForThread(orderID);
+}
+
+/// Remove the order id for the current thread. This removes the thread from
+/// diagnostics tracking.
+void ParallelDiagnosticHandler::eraseOrderIDForThread() {
+  impl->eraseOrderIDForThread();
 }

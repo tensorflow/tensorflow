@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-@testable import TensorFlowLite
 import XCTest
+
+@testable import TensorFlowLite
 
 class TensorFlowLiteTests: XCTestCase {
 
-  func testTensorFlowLite_Runtime_version() {
+  func testRuntime_Version() {
     #if swift(>=5.0)
     let pattern = #"^(\d+)\.(\d+)\.(\d+)([+-][-.0-9A-Za-z]+)?$"#
     #else

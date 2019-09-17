@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/padding.h"
+#include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/macros.h"
@@ -54,12 +55,11 @@ class ReferenceUtil {
   }
 
   // Returns the result of a matrix multiply `lhs x rhs`.
-  static std::unique_ptr<Array2D<Eigen::half>> MatmulArray2D(
-      const Array2D<Eigen::half>& lhs, const Array2D<Eigen::half>& rhs);
-  static std::unique_ptr<Array2D<float>> MatmulArray2D(
-      const Array2D<float>& lhs, const Array2D<float>& rhs);
-  static std::unique_ptr<Array2D<double>> MatmulArray2D(
-      const Array2D<double>& lhs, const Array2D<double>& rhs);
+  template <typename T>
+  static std::unique_ptr<Array2D<T>> MatmulArray2D(const Array2D<T>& lhs,
+                                                   const Array2D<T>& rhs) {
+    return HloEvaluator::MatmulArray2D(lhs, rhs);
+  }
 
   // Converts the input operand to use f64 values instead of f32 values.
   static std::unique_ptr<Array2D<double>> Array2DF32ToF64(

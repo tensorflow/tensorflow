@@ -94,14 +94,14 @@ public:
     SmallVector<Type, 4> argTypes;
   };
 
-  /// This hooks allows for converting a type. This function should return
+  /// This hook allows for converting a type. This function should return
   /// failure if no valid conversion exists, success otherwise. If the new set
   /// of types is empty, the type is removed and any usages of the existing
   /// value are expected to be removed during conversion.
   virtual LogicalResult convertType(Type t, SmallVectorImpl<Type> &results);
 
   /// This hook simplifies defining 1-1 type conversions. This function returns
-  /// the type convert to on success, and a null type on failure.
+  /// the type to convert to on success, and a null type on failure.
   virtual Type convertType(Type t) { return t; }
 
   /// Convert the given set of types, filling 'results' as necessary. This

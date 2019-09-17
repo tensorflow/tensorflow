@@ -267,7 +267,7 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
           combinations.NamedObject(
               "AccumulateNCrossDeviceOp",
               cross_device_ops_lib.ReductionToOneDevice(
-                  accumulation_fn=math_ops.accumulate_n)),
+                  accumulation_fn=math_ops.add_n)),
       ],
       devices=[
           ["/cpu:0"],

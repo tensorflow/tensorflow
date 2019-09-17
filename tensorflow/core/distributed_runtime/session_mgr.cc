@@ -85,14 +85,7 @@ Status SessionMgr::CreateSession(
       << "The WorkerEnv must have at least one device in `local_devices`.";
 
   std::shared_ptr<WorkerSession> worker_session;
-
-  std::unique_ptr<DeviceMgr> remote_devices;
-  if (!cluster_device_attributes.empty()) {
-    std::vector<std::unique_ptr<Device>> cluster_devices;
-    tensorflow::AsRemoteDevices(worker_env_->env, cluster_device_attributes,
-                                &cluster_devices);
-    remote_devices.reset(new DeviceMgr(std::move(cluster_devices)));
-  }
+  std::vector<std::unique_ptr<Device>> cluster_devices;
 
   if (isolate_session_state || server_def.cluster().job_size()) {
     if (server_def.cluster().job_size()) {
@@ -108,8 +101,19 @@ Status SessionMgr::CreateSession(
       renamed_devices.push_back(RenamedDevice::NewRenamedDevice(
           worker_name, d, false, isolate_session_state));
     }
+    auto device_mgr = MakeUnique<StaticDeviceMgr>(std::move(renamed_devices));
+    LookupLocalDevice cb = [&device_mgr](StringPiece name, Device** device) {
+      return device_mgr->LookupDevice(name, device);
+    };
+    AsRemoteDevices(worker_env_->env, cluster_device_attributes, cb,
+                    &cluster_devices);
+    std::unique_ptr<DynamicDeviceMgr> remote_devices;
+    if (!cluster_device_attributes.empty()) {
+      remote_devices = MakeUnique<DynamicDeviceMgr>();
+      TF_RETURN_IF_ERROR(
+          remote_devices->AddDevices(std::move(cluster_devices)));
+    }
 
-    auto device_mgr = MakeUnique<DeviceMgr>(std::move(renamed_devices));
     auto graph_mgr = MakeUnique<GraphMgr>(worker_env_, device_mgr.get());
     worker_session.reset(
         new WorkerSession(session, worker_name,
@@ -117,6 +121,14 @@ Status SessionMgr::CreateSession(
                           std::move(device_mgr), std::move(graph_mgr),
                           std::move(remote_devices)));
   } else {
+    AsRemoteDevices(worker_env_->env, cluster_device_attributes, nullptr,
+                    &cluster_devices);
+    std::unique_ptr<DynamicDeviceMgr> remote_devices;
+    if (!cluster_device_attributes.empty()) {
+      remote_devices = MakeUnique<DynamicDeviceMgr>();
+      TF_RETURN_IF_ERROR(
+          remote_devices->AddDevices(std::move(cluster_devices)));
+    }
     // Borrow the WorkerEnv's DeviceMgr for the WorkerSession, so
     // that resources using it can use its devices after the
     // WorkerSession has been deleted.

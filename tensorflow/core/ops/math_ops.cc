@@ -142,10 +142,23 @@ REGISTER_OP("_MklBatchMatMul")
     .Input("x: T")
     .Input("y: T")
     .Output("output: T")
-    .Attr("T: {bfloat16, half, float, double, int32, complex64, complex128}")
+    .Attr(
+        "T: {bfloat16, half, float, double, int32, int64, complex64, "
+        "complex128}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
     .SetShapeFn(shape_inference::BatchMatMulShape);
+
+REGISTER_OP("_MklBatchMatMulV2")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("output: T")
+    .Attr(
+        "T: {bfloat16, half, float, double, int32, int64, complex64, "
+        "complex128}")
+    .Attr("adj_x: bool = false")
+    .Attr("adj_y: bool = false")
+    .SetShapeFn(shape_inference::BatchMatMulV2Shape);
 #endif  // INTEL_MKL
 
 // --------------------------------------------------------------------------
@@ -181,7 +194,7 @@ _HostCast requires its input and produces its output in host memory.
 REGISTER_OP("Abs")
     .Input("x: T")
     .Output("y: T")
-    .Attr("T: {bfloat16, half, float, double, int32, int64}")
+    .Attr("T: {bfloat16, half, float, double, int8, int16, int32, int64}")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("ComplexAbs")
@@ -371,8 +384,6 @@ REGISTER_OP("Add")
         "complex64, complex128, string}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
-// TODO(rmlarsen): Add a Python wrapper that swiches non-string instances to
-// use AddV2 (b/68646025).
 REGISTER_OP("AddV2")
     .Input("x: T")
     .Input("y: T")
@@ -384,6 +395,7 @@ REGISTER_OP("AddV2")
     .SetIsAggregate()
     .SetIsCommutative();
 
+#ifdef INTEL_MKL
 REGISTER_OP("_MklAdd")
     .Input("x: T")
     .Input("y: T")
@@ -401,6 +413,21 @@ Returns `x` + `y` element-wise.
 *NOTE*: `tf.math.add` supports broadcasting. `tf.math.add_n` does not. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
 )doc");
+
+REGISTER_OP("_MklAddV2")
+    .Input("x: T")
+    .Input("y: T")
+    .Input("mkl_x: uint8")
+    .Input("mkl_y: uint8")
+    .Output("z: T")
+    .Output("mkl_z: uint8")
+    .Attr(
+        "T: {bfloat16, half, float, double, uint8, int8, int16, int32, int64, "
+        "complex64, complex128}")
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+    .SetIsAggregate()
+    .SetIsCommutative();
+#endif  // INTEL_MKL
 
 REGISTER_OP("Sub").BINARY_MORE().SetShapeFn(
     shape_inference::BroadcastBinaryOpShapeFn);
@@ -673,7 +700,19 @@ REGISTER_OP("GreaterEqual").COMPARISON();
           "T: {bfloat16, half, float, double, uint8, int8, int16, int32, " \
           "int64, complex64, quint8, qint8, qint32, string, bool, "        \
           "complex128}")                                                   \
-      .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+      .Attr("incompatible_shape_error: bool = true")                       \
+      .SetShapeFn([](InferenceContext* c) {                                \
+        ShapeHandle x = c->input(0);                                       \
+        ShapeHandle y = c->input(1);                                       \
+        ShapeHandle output;                                                \
+        bool incompatible_shape_error;                                     \
+        TF_RETURN_IF_ERROR(c->GetAttr("incompatible_shape_error",          \
+                                      &incompatible_shape_error));         \
+        TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(           \
+            c, x, y, incompatible_shape_error, &output));                  \
+        c->set_output(0, output);                                          \
+        return Status::OK();                                               \
+      })
 
 REGISTER_OP("Equal").EQUALITY_COMPARISON();
 
@@ -850,10 +889,10 @@ REGISTER_OP("SelectV2")
       ShapeHandle else_ = c->input(2);
       ShapeHandle other;
       TF_RETURN_IF_ERROR(
-          BroadcastBinaryOpOutputShapeFnHelper(c, then, else_, &other));
+          BroadcastBinaryOpOutputShapeFnHelper(c, then, else_, true, &other));
       ShapeHandle output;
       TF_RETURN_IF_ERROR(
-          BroadcastBinaryOpOutputShapeFnHelper(c, cond, other, &output));
+          BroadcastBinaryOpOutputShapeFnHelper(c, cond, other, true, &output));
       c->set_output(0, output);
       return Status::OK();
     });
@@ -1354,23 +1393,23 @@ Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
   T start = start_t->scalar<T>()();
   T limit = limit_t->scalar<T>()();
   T delta = delta_t->scalar<T>()();
-  if (start > limit && delta > 0) {
+  if (start > limit && delta > T(0)) {
     return errors::InvalidArgument(
         "Requires start <= limit when delta > 0: ", start, "/", limit);
   }
-  if (start < limit && delta < 0) {
+  if (start < limit && delta < T(0)) {
     return errors::InvalidArgument(
         "Requires start >= limit when delta < 0: ", start, "/", limit);
   }
-  if (delta == 0) {
+  if (delta == T(0)) {
     return errors::InvalidArgument("Requires delta != 0");
   }
 
-  int64 size =
-      (std::is_integral<T>::value
-           ? ((std::abs(limit - start) + std::abs(delta) - 1) / std::abs(delta))
-           : std::ceil(std::abs((limit - start) / delta)));
-  c->set_output(0, c->Vector(size));
+  auto size = (std::is_integral<T>::value
+                   ? ((std::abs(limit - start) + std::abs(delta) - T(1)) /
+                      std::abs(delta))
+                   : (std::ceil(std::abs((limit - start) / delta))));
+  c->set_output(0, c->Vector(static_cast<int64>(size)));
   return Status::OK();
 }
 
@@ -1405,8 +1444,12 @@ REGISTER_OP("Range")
         return RangeSize<int64>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_FLOAT) {
         return RangeSize<float>(start_t, limit_t, delta_t, c);
-      } else {
+      } else if (dtype == DT_DOUBLE) {
         return RangeSize<double>(start_t, limit_t, delta_t, c);
+      } else if (dtype == DT_BFLOAT16) {
+        return RangeSize<bfloat16>(start_t, limit_t, delta_t, c);
+      } else {
+        return errors::InvalidArgument("Unsupported dtype", dtype);
       }
       return Status::OK();
     });

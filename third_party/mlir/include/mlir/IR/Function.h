@@ -104,6 +104,10 @@ public:
   /// returned.
   Block *addEntryBlock();
 
+  /// Add a normal block to the end of the function's block list. The function
+  /// should at least already have an entry block.
+  Block *addBlock();
+
 private:
   // This trait needs access to `getNumFuncArguments` and `verifyType` hooks
   // defined below.

@@ -1,5 +1,3 @@
-# -*- Python -*-
-
 # Return the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
 load(
@@ -238,11 +236,11 @@ def if_override_eigen_strong_inline(a):
         "//conditions:default": [],
     })
 
-def if_nccl(a):
+def if_nccl(if_true, if_false = []):
     return select({
-        "//tensorflow:no_nccl_support": [],
-        "//tensorflow:windows": [],
-        "//conditions:default": a,
+        "//tensorflow:no_nccl_support": if_false,
+        "//tensorflow:windows": if_false,
+        "//conditions:default": if_true,
     })
 
 def get_win_copts(is_external = False):
@@ -267,8 +265,10 @@ def get_win_copts(is_external = False):
     else:
         return WINDOWS_COPTS + ["/DTF_COMPILE_LIBRARY"]
 
-# LINT.IfChange
-def tf_copts(android_optimization_level_override = "-O2", is_external = False):
+def tf_copts(
+        android_optimization_level_override = "-O2",
+        is_external = False,
+        allow_exceptions = False):
     # For compatibility reasons, android_optimization_level_override
     # is currently only being set for Android.
     # To clear this value, and allow the CROSSTOOL default
@@ -285,9 +285,9 @@ def tf_copts(android_optimization_level_override = "-O2", is_external = False):
             "-DEIGEN_AVOID_STL_ARRAY",
             "-Iexternal/gemmlowp",
             "-Wno-sign-compare",
-            "-fno-exceptions",
             "-ftemplate-depth=900",
         ]) +
+        (if_not_windows(["-fno-exceptions"]) if not allow_exceptions else []) +
         if_cuda(["-DGOOGLE_CUDA=1"]) +
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
         if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"]) +
@@ -295,7 +295,6 @@ def tf_copts(android_optimization_level_override = "-O2", is_external = False):
         if_mkl_v1_open_source_only(["-DENABLE_MKLDNN_V1"]) +
         if_enable_mkl(["-DENABLE_MKL"]) +
         if_ngraph(["-DINTEL_NGRAPH=1"]) +
-        if_mkl_lnx_x64(["-fopenmp"]) +
         if_android_arm(["-mfpu=neon"]) +
         if_linux_x86_64(["-msse3"]) +
         if_ios_x86_64(["-msse4.1"]) +
@@ -313,6 +312,9 @@ def tf_copts(android_optimization_level_override = "-O2", is_external = False):
         })
     )
 
+def tf_openmp_copts():
+    return if_mkl_lnx_x64(["-fopenmp"])
+
 def tfe_xla_copts():
     return select({
         "//tensorflow:with_xla_support": ["-DTENSORFLOW_EAGER_USE_XLA"],
@@ -325,8 +327,6 @@ def tf_opts_nortti_if_android():
         "-DGOOGLE_PROTOBUF_NO_RTTI",
         "-DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
     ])
-
-# LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
 
 def tf_opts_nortti_if_emscripten():
     return if_emscripten([
@@ -1202,7 +1202,7 @@ def tf_cc_test_mkl(
         native.cc_test(
             name = src_to_test_name(src),
             srcs = if_mkl([src]) + tf_binary_additional_srcs(),
-            copts = tf_copts(),
+            copts = tf_copts(allow_exceptions = True) + tf_openmp_copts(),
             linkopts = select({
                 clean_dep("//tensorflow:android"): [
                     "-pie",
@@ -1221,7 +1221,6 @@ def tf_cc_test_mkl(
             size = size,
             args = args,
             features = disable_header_modules,
-            nocopts = "-fno-exceptions",
         )
 
 def tf_cc_tests_gpu(
@@ -1499,7 +1498,7 @@ def tf_kernel_library(
 
 register_extension_info(
     extension_name = "tf_kernel_library",
-    label_regex_for_dep = "{extension_name}(_gpu)?",
+    label_regex_for_dep = "({extension_name}(_gpu)?|libtfkernel_{extension_name}\\.so)",
 )
 
 def tf_mkl_kernel_library(
@@ -1509,8 +1508,7 @@ def tf_mkl_kernel_library(
         hdrs = None,
         deps = None,
         alwayslink = 1,
-        copts = tf_copts(),
-        nocopts = "-fno-exceptions"):
+        copts = tf_copts(allow_exceptions = True) + tf_openmp_copts()):
     """A rule to build MKL-based TensorFlow kernel libraries."""
 
     if not bool(srcs):
@@ -1538,7 +1536,6 @@ def tf_mkl_kernel_library(
         deps = deps,
         alwayslink = alwayslink,
         copts = copts,
-        nocopts = nocopts,
         features = disable_header_modules,
     )
 
@@ -2104,6 +2101,7 @@ def tf_py_test(
         additional_deps = additional_deps + tf_additional_grpc_deps_py()
 
     # Python version placeholder
+    kwargs.setdefault("srcs_version", "PY2AND3")
     py_test(
         name = name,
         size = size,
@@ -2114,7 +2112,6 @@ def tf_py_test(
         kernels = kernels,
         main = main,
         shard_count = shard_count,
-        srcs_version = "PY2AND3",
         tags = tags,
         visibility = [clean_dep("//tensorflow:internal")] +
                      additional_visibility,
@@ -2396,7 +2393,7 @@ def pybind_extension(
         features = [],
         srcs_version = "PY2AND3",
         data = [],
-        copts = None,
+        copts = [],
         linkopts = [],
         deps = [],
         visibility = None,
@@ -2442,7 +2439,7 @@ def pybind_extension(
         name = so_file,
         srcs = srcs + hdrs,
         data = data,
-        copts = copts,
+        copts = copts + ["-fexceptions"],
         linkopts = linkopts + _rpath_linkopts(name) + select({
             "@local_config_cuda//cuda:darwin": [
                 "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
@@ -2457,7 +2454,7 @@ def pybind_extension(
             exported_symbols_file,
             version_script_file,
         ],
-        features = features,
+        features = features + ["-use_header_modules"],
         linkshared = 1,
         testonly = testonly,
         licenses = licenses,
@@ -2498,9 +2495,9 @@ def tf_python_pybind_extension(
         name,
         srcs,
         module_name,
-        hdrs = [],
         features = [],
-        copts = None,
+        copts = [],
+        hdrs = [],
         deps = []):
     """A wrapper macro for pybind_extension that is used in tensorflow/python/BUILD.
 
@@ -2511,9 +2508,9 @@ def tf_python_pybind_extension(
         name,
         srcs + tf_binary_additional_srcs(),
         module_name,
-        hdrs = hdrs,
         features = features,
         copts = copts,
+        hdrs = hdrs,
         deps = deps + tf_binary_pybind_deps(),
     )
 

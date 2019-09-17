@@ -18,7 +18,7 @@ limitations under the License.
 namespace tensorflow {
 namespace eager {
 
-Status RemoteExecuteNode::Run() {
+void RemoteExecuteNode::RunAsync(StatusCallback done) {
   EnqueueResponse* response = new EnqueueResponse;
 
   const gtl::InlinedVector<TensorHandle*, 4>& inputs = inputs_;
@@ -44,10 +44,17 @@ Status RemoteExecuteNode::Run() {
   }
   VLOG(3) << "Issuing: " << rpc_description;
 
-  return eager_client_->StreamingEnqueueAsync(
+  for (auto handle : inputs_) {
+    handle->Ref();
+  }
+  for (auto handle : retvals) {
+    handle->Ref();
+  }
+
+  eager_client_->StreamingEnqueueAsync(
       request_.get(), response,
-      [inputs, retvals, response, device,
-       rpc_description](const Status& status) {
+      [inputs, retvals, response, device, rpc_description,
+       done](const Status& status) {
         for (auto handle : inputs) {
           handle->Unref();
         }
@@ -73,6 +80,7 @@ Status RemoteExecuteNode::Run() {
           }
           retvals[i]->Unref();
         }
+        done(status);
         delete response;
       });
 }

@@ -74,28 +74,25 @@ def where(condition, x=None, y=None, name=None):
       `condition`, `x`, and `y` have incompatible shapes.
 
   #### Examples:
-    ```python
-    >>> # Coordinates where condition is true.
-    >>> condition = tf.compat.v1.ragged.constant_value(
-    ...     [[True, False, True], [False, True]])
-    >>> ragged.where(condition)
-    [[0, 0], [0, 2], [1, 1]]
 
-    >>> # Elementwise selection between x and y, based on condition.
-    >>> condition = tf.compat.v1.ragged.constant_value(
-    ...     [[True, False, True], [False, True]])
-    >>> x = tf.compat.v1.ragged.constant_value([['A', 'B', 'C'], ['D', 'E']])
-    >>> y = tf.compat.v1.ragged.constant_value([['a', 'b', 'c'], ['d', 'e']])
-    >>> ragged.where(condition, x, y)
-    [['A', 'b', 'C'], ['d', 'E']]
+  >>> # Coordinates where condition is true.
+  >>> condition = tf.ragged.constant([[True, False, True], [False, True]])
+  >>> print(where(condition))
+  tf.Tensor( [[0 0] [0 2] [1 1]], shape=(3, 2), dtype=int64)
 
-    >>> # Row selection between x and y, based on condition.
-    >>> condition = [True, False]
-    >>> x = tf.compat.v1.ragged.constant_value([['A', 'B', 'C'], ['D', 'E']])
-    >>> y = tf.compat.v1.ragged.constant_value([['a', 'b', 'c'], ['d', 'e']])
-    >>> ragged.where(condition, x, y)
-    [['A', 'B', 'C'], ['d', 'e']]
-    ```
+  >>> # Elementwise selection between x and y, based on condition.
+  >>> condition = tf.ragged.constant([[True, False, True], [False, True]])
+  >>> x = tf.ragged.constant([['A', 'B', 'C'], ['D', 'E']])
+  >>> y = tf.ragged.constant([['a', 'b', 'c'], ['d', 'e']])
+  >>> print(where(condition, x, y))
+  <tf.RaggedTensor [[b'A', b'b', b'C'], [b'd', b'E']]>
+
+  >>> # Row selection between x and y, based on condition.
+  >>> condition = [True, False]
+  >>> x = tf.ragged.constant([['A', 'B', 'C'], ['D', 'E']])
+  >>> y = tf.ragged.constant([['a', 'b', 'c'], ['d', 'e']])
+  >>> print(where(condition, x, y))
+  <tf.RaggedTensor [[b'A', b'B', b'C'], [b'd', b'e']]>
   """
   if (x is None) != (y is None):
     raise ValueError('x and y must be either both None or both non-None')
@@ -127,8 +124,8 @@ def _elementwise_where(condition, x, y):
     # Concatenate x and y, and then use `gather` to assemble the selected rows.
     condition.shape.assert_has_rank(1)
     x_and_y = ragged_concat_ops.concat([x, y], axis=0)
-    x_nrows = _nrows(x, out_type=x_and_y.row_splits.dtype)
-    y_nrows = _nrows(y, out_type=x_and_y.row_splits.dtype)
+    x_nrows = _nrows(x, out_type=x_and_y.row_splits_dtype)
+    y_nrows = _nrows(y, out_type=x_and_y.row_splits_dtype)
     indices = array_ops.where(condition, math_ops.range(x_nrows),
                               x_nrows + math_ops.range(y_nrows))
     return ragged_gather_ops.gather(x_and_y, indices)

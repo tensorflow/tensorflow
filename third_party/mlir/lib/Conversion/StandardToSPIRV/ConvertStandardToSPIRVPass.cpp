@@ -48,9 +48,9 @@ void ConvertStandardToSPIRVPass::runOnModule() {
   }
 }
 
-std::unique_ptr<ModulePassBase>
+std::unique_ptr<OpPassBase<ModuleOp>>
 mlir::spirv::createConvertStandardToSPIRVPass() {
-  return llvm::make_unique<ConvertStandardToSPIRVPass>();
+  return std::make_unique<ConvertStandardToSPIRVPass>();
 }
 
 static PassRegistration<ConvertStandardToSPIRVPass>

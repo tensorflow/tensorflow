@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python import tf2
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import control_flow_v2_toggles
@@ -46,8 +47,11 @@ def enable_v2_behavior():
   ops.enable_eager_execution()
   tensor_shape.enable_v2_tensorshape()  # Also switched by tf2
   variable_scope.enable_resource_variables()
+  ops.enable_tensor_equality()
   # Enables TensorArrayV2 and control flow V2.
   control_flow_v2_toggles.enable_control_flow_v2()
+  # Make sure internal uses of the `dataset_ops.Dataset` map to DatasetV2.
+  dataset_ops.Dataset = dataset_ops.DatasetV2
 
 
 @tf_export(v1=["disable_v2_behavior"])
@@ -65,5 +69,8 @@ def disable_v2_behavior():
   ops.disable_eager_execution()
   tensor_shape.disable_v2_tensorshape()  # Also switched by tf2
   variable_scope.disable_resource_variables()
+  ops.disable_tensor_equality()
   # Disables TensorArrayV2 and control flow V2.
   control_flow_v2_toggles.disable_control_flow_v2()
+  # Make sure internal uses of the `dataset_ops.Dataset` map to DatasetV1.
+  dataset_ops.Dataset = dataset_ops.DatasetV1

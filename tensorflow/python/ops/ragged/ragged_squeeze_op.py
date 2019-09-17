@@ -75,7 +75,7 @@ def squeeze(input, axis=None, name=None):  # pylint: disable=redefined-builtin
 
     # Make sure the specified ragged dimensions are squeezable.
     assertion_list = []
-    scalar_tensor_one = constant_op.constant(1, dtype=input.row_splits.dtype)
+    scalar_tensor_one = constant_op.constant(1, dtype=input.row_splits_dtype)
     for i, r in enumerate(input.nested_row_lengths()):
       if i + 1 in ragged_dims:
         assertion_list.append(

@@ -6,7 +6,7 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "mkl_deps",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_openmp_copts")
 load(":build_defs.bzl", "runtime_copts")
 
 package(
@@ -95,6 +95,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:map_inliner",
+        "//tensorflow/compiler/xla/service:tree_reduction_rewriter",
         "//tensorflow/compiler/xla/service:hlo_get_dimension_size_rewriter",
         "//tensorflow/compiler/xla/service:conditional_to_select",
         "//tensorflow/compiler/xla/service:slow_operation_alarm",
@@ -560,7 +561,7 @@ cc_library(
         "runtime_conv2d_mkl.cc",
     ],
     hdrs = ["runtime_conv2d_mkl.h"],
-    copts = runtime_copts(),
+    copts = runtime_copts() + tf_openmp_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":runtime_conv2d",

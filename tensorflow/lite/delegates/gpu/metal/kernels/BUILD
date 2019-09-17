@@ -1,5 +1,5 @@
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite", "tflite_ios_per_kernel_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -352,6 +352,28 @@ cc_library(
     ],
 )
 
+objc_library(
+    name = "padding_test_lib",
+    testonly = 1,
+    srcs = ["padding_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":padding",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "padding_test",
+    testonly = 1,
+    minimum_os_version = "9.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":padding_test_lib"],
+)
+
 cc_library(
     name = "pooling",
     srcs = ["pooling.cc"],
@@ -399,6 +421,28 @@ cc_library(
     ],
 )
 
+objc_library(
+    name = "relu_test_lib",
+    testonly = 1,
+    srcs = ["relu_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":relu",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "relu_test",
+    testonly = 1,
+    minimum_os_version = "9.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":relu_test_lib"],
+)
+
 cc_library(
     name = "reshape",
     srcs = ["reshape.cc"],
@@ -413,6 +457,28 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "@com_google_absl//absl/strings",
     ],
+)
+
+objc_library(
+    name = "reshape_test_lib",
+    testonly = 1,
+    srcs = ["reshape_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":reshape",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "reshape_test",
+    testonly = 1,
+    minimum_os_version = "9.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":reshape_test_lib"],
 )
 
 cc_library(
@@ -463,6 +529,28 @@ cc_library(
     ],
 )
 
+objc_library(
+    name = "transpose_conv_test_lib",
+    testonly = 1,
+    srcs = ["transpose_conv_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":test_util",
+        ":transpose_conv",
+    ],
+)
+
+ios_unit_test(
+    name = "transpose_conv_test",
+    testonly = 1,
+    minimum_os_version = "9.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":transpose_conv_test_lib"],
+)
+
 cc_library(
     name = "upsample",
     srcs = ["upsample.cc"],
@@ -476,6 +564,28 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "@com_google_absl//absl/strings",
     ],
+)
+
+objc_library(
+    name = "upsample_test_lib",
+    testonly = 1,
+    srcs = ["upsample_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":test_util",
+        ":upsample",
+    ],
+)
+
+ios_unit_test(
+    name = "upsample_test",
+    testonly = 1,
+    minimum_os_version = "9.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":upsample_test_lib"],
 )
 
 cc_library(
@@ -509,3 +619,5 @@ objc_library(
 )
 
 tflite_portable_test_suite()
+
+tflite_ios_per_kernel_test()

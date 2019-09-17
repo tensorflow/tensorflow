@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <limits>
 
-#include "profiling/instrumentation.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -82,7 +81,6 @@ inline void BroadcastAdd4DSlow(const ArithmeticParams& params,
                                const int8_t* input2_data,
                                const RuntimeShape& output_shape,
                                int8_t* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastAdd4DSlow/int8");
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,

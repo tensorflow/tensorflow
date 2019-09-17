@@ -19,7 +19,17 @@ import java.io.Closeable;
 import org.tensorflow.lite.Delegate;
 import org.tensorflow.lite.Tensor;
 
-/** {@link Delegate} for GPU inference. */
+/**
+ * {@link Delegate} for GPU inference.
+ *
+ * <p>Note: When calling {@code Interpreter.modifyGraphWithDelegate()}/
+ * {@code Interpreter.Options.addDelegate()} and {@code Interpreter.run()}, the caller must have an
+ * {@code EGLContext} in the <b>current thread</b> and {@code Interpreter.run()} must be called from
+ * the same {@code EGLContext}. If an {@code EGLContext} does not exist, the delegate will
+ * internally create one, but then the developer must ensure that {@code Interpreter.run()} is
+ * always called from the same thread in which {@code Interpreter.modifyGraphWithDelegate()} was
+ * called.
+ */
 public class GpuDelegate implements Delegate, Closeable {
 
   private static final long INVALID_DELEGATE_HANDLE = 0;

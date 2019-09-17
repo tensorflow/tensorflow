@@ -16,18 +16,18 @@
 /// be mapped to float values using the following conversion:
 /// `realValue = scale * (quantizedValue - zeroPoint)`.
 public struct QuantizationParameters: Equatable, Hashable {
-  /// Difference between real values corresponding to consecutive quantized values differing by 1.
-  /// For example, the range of quantized values for `UInt8` data type is [0, 255].
+  /// The difference between real values corresponding to consecutive quantized values differing by
+  /// 1. For example, the range of quantized values for `UInt8` data type is [0, 255].
   public let scale: Float
 
-  /// Quantized value that corresponds to the real 0 value.
+  /// The quantized value that corresponds to the real 0 value.
   public let zeroPoint: Int
 
-  /// Creates a new quantization parameters instance.
+  /// Creates a new instance with the given values.
   ///
   /// - Parameters:
-  ///   - scale: Scale value for asymmetric quantization.
-  ///   - zeroPoint: Zero point for asymmetric quantization.
+  ///   - scale: The scale value for asymmetric quantization.
+  ///   - zeroPoint: The zero point for asymmetric quantization.
   init(scale: Float, zeroPoint: Int) {
     self.scale = scale
     self.zeroPoint = zeroPoint

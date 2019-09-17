@@ -56,74 +56,60 @@ def _GetShrunkInceptionShapes(shrink=10):
     Tuple (input_size, filter_size, out_size, stride, padding), the convolution
     parameters of Inception layers.
   """
-  input_sizes = [[4, 5, 5, 1248], [4, 8, 8, 384], [4, 8, 8, 384], [
-      4, 8, 8, 2048
-  ], [4, 8, 8, 448], [4, 8, 8, 2048], [4, 8, 8, 2048], [4, 8, 8, 2048], [
-      4, 8, 8, 1760
-  ], [4, 8, 8, 1760], [4, 8, 8, 1760], [4, 8, 8, 1760], [4, 17, 17, 192], [
-      4, 17, 17, 192
-  ], [4, 17, 17, 1248], [4, 17, 17, 128], [4, 17, 17, 1248], [4, 17, 17, 224], [
-      4, 17, 17, 192
-  ], [4, 17, 17, 192], [4, 17, 17, 1216], [4, 17, 17, 1216], [4, 17, 17, 224], [
-      4, 17, 17, 192
-  ], [4, 17, 17, 192], [4, 17, 17, 1152], [4, 17, 17, 1152], [4, 17, 17, 192], [
-      4, 17, 17, 160
-  ], [4, 17, 17, 1152], [4, 17, 17, 1024], [4, 17, 17, 128], [4, 17, 17, 1024],
-                 [4, 17, 17, 128], [4, 17, 17, 1024], [4, 17, 17, 128], [
-                     4, 17, 17, 768
-                 ], [4, 17, 17, 128], [4, 17, 17, 128], [4, 17, 17, 768],
-                 [4, 17, 17, 768], [4, 35, 35, 96], [4, 35, 35, 288], [
-                     4, 35, 35, 64
-                 ], [4, 35, 35, 288], [4, 35, 35, 256], [4, 35, 35, 48], [
-                     4, 35, 35, 256
-                 ], [4, 35, 35, 96], [4, 35, 35, 192], [4, 35, 35, 192], [
-                     4, 35, 35, 192
-                 ], [4, 73, 73, 64], [4, 73, 73, 64], [4, 147, 147, 24]]
-  filter_sizes = [[1, 1, 1248, 128], [1, 3, 384, 384], [3, 1, 384, 384], [
-      1, 1, 2048, 192
-  ], [3, 3, 448, 384], [1, 1, 2048, 320], [1, 1, 2048, 448], [1, 1, 2048, 384],
-                  [1, 1, 1760, 384], [1, 1, 1760, 192], [1, 1, 1760, 448], [
-                      1, 1, 1760, 320
-                  ], [3, 3, 192, 192], [3, 3, 192, 192], [1, 1, 1248, 192], [
-                      3, 3, 128, 320
-                  ], [1, 1, 1248, 128], [1, 3, 224, 224], [3, 1, 192, 256], [
-                      1, 3, 192, 256
-                  ], [1, 1, 1216, 192], [1, 1, 1216, 96], [3, 1, 224, 224], [
-                      3, 3, 192, 224
-                  ], [1, 3, 192, 192], [1, 1, 1152, 192], [1, 1, 1152, 128], [
-                      3, 1, 192, 192
-                  ], [3, 3, 160, 192], [1, 1, 1152, 160], [1, 1, 1024, 128], [
-                      1, 3, 128, 192
-                  ], [1, 1, 1024, 160], [3, 1, 128, 192], [1, 1, 1024, 256], [
-                      3, 1, 128, 128
-                  ], [1, 1, 768, 192], [1, 3, 128, 128], [3, 3, 128, 128], [
-                      1, 1, 768, 128
-                  ], [1, 1, 768, 320], [3, 3, 96, 96], [3, 3, 288, 384], [
-                      3, 3, 64, 96
-                  ], [1, 1, 288, 64], [1, 1, 256, 64], [5, 5, 48, 64],
-                  [1, 1, 256, 48], [3, 3, 96, 96], [1, 1, 192, 32], [
-                      1, 1, 192, 64
-                  ], [1, 1, 192, 48], [3, 3, 64, 192], [1, 1, 64,
-                                                        64], [1, 1, 24, 64]]
-  out_sizes = [[4, 5, 5, 128], [4, 8, 8, 384], [4, 8, 8, 384], [4, 8, 8, 192], [
-      4, 8, 8, 384
-  ], [4, 8, 8, 320], [4, 8, 8, 448], [4, 8, 8, 384], [4, 8, 8, 384], [
-      4, 8, 8, 192
-  ], [4, 8, 8, 448], [4, 8, 8, 320], [4, 8, 8, 192], [4, 17, 17, 192], [
-      4, 17, 17, 192
-  ], [4, 8, 8, 320], [4, 17, 17, 128], [4, 17, 17, 224], [4, 17, 17, 256], [
-      4, 17, 17, 256
-  ], [4, 17, 17, 192], [4, 17, 17, 96], [4, 17, 17, 224], [4, 17, 17, 224], [
-      4, 17, 17, 192
-  ], [4, 17, 17, 192], [4, 17, 17, 128], [4, 17, 17, 192], [4, 17, 17, 192], [
-      4, 17, 17, 160
-  ], [4, 17, 17, 128], [4, 17, 17, 192], [4, 17, 17, 160], [4, 17, 17, 192], [
-      4, 17, 17, 256
-  ], [4, 17, 17, 128], [4, 17, 17, 192], [4, 17, 17, 128], [4, 17, 17, 128], [
-      4, 17, 17, 128
-  ], [4, 17, 17, 320], [4, 17, 17, 96], [4, 17, 17, 384], [4, 35, 35, 96], [
-      4, 35, 35, 64
-  ], [4, 35, 35, 64], [4, 35, 35, 64], [4, 35, 35, 48], [4, 35, 35, 96],
+  input_sizes = [[4, 5, 5, 1248], [4, 8, 8, 384], [4, 8, 8, 384],
+                 [4, 8, 8, 2048], [4, 8, 8, 448], [4, 8, 8, 2048],
+                 [4, 8, 8, 2048], [4, 8, 8, 2048], [4, 8, 8, 1760],
+                 [4, 8, 8, 1760], [4, 8, 8, 1760], [4, 8, 8, 1760],
+                 [4, 17, 17, 192], [4, 17, 17, 192], [4, 17, 17, 1248],
+                 [4, 17, 17, 128], [4, 17, 17, 1248], [4, 17, 17, 224],
+                 [4, 17, 17, 192], [4, 17, 17, 192], [4, 17, 17, 1216],
+                 [4, 17, 17, 1216], [4, 17, 17, 224], [4, 17, 17, 192],
+                 [4, 17, 17, 192], [4, 17, 17, 1152], [4, 17, 17, 1152],
+                 [4, 17, 17, 192], [4, 17, 17, 160], [4, 17, 17, 1152],
+                 [4, 17, 17, 1024], [4, 17, 17, 128], [4, 17, 17, 1024],
+                 [4, 17, 17, 128], [4, 17, 17, 1024], [4, 17, 17, 128],
+                 [4, 17, 17, 768], [4, 17, 17, 128], [4, 17, 17, 128],
+                 [4, 17, 17, 768], [4, 17, 17, 768], [4, 35, 35, 96],
+                 [4, 35, 35, 288], [4, 35, 35, 64], [4, 35, 35, 288],
+                 [4, 35, 35, 256], [4, 35, 35, 48], [4, 35, 35, 256],
+                 [4, 35, 35, 96], [4, 35, 35, 192], [4, 35, 35, 192],
+                 [4, 35, 35, 192], [4, 73, 73, 64], [4, 73, 73, 64],
+                 [4, 147, 147, 24]]
+  filter_sizes = [[1, 1, 1248, 128], [1, 3, 384, 384], [3, 1, 384, 384],
+                  [1, 1, 2048, 192], [3, 3, 448, 384], [1, 1, 2048, 320],
+                  [1, 1, 2048, 448], [1, 1, 2048, 384], [1, 1, 1760, 384],
+                  [1, 1, 1760, 192], [1, 1, 1760, 448], [1, 1, 1760, 320],
+                  [3, 3, 192, 192], [3, 3, 192, 192], [1, 1, 1248, 192],
+                  [3, 3, 128, 320], [1, 1, 1248, 128], [1, 3, 224, 224],
+                  [3, 1, 192, 256], [1, 3, 192, 256], [1, 1, 1216, 192],
+                  [1, 1, 1216, 96], [3, 1, 224, 224], [3, 3, 192, 224],
+                  [1, 3, 192, 192], [1, 1, 1152, 192], [1, 1, 1152, 128],
+                  [3, 1, 192, 192], [3, 3, 160, 192], [1, 1, 1152, 160],
+                  [1, 1, 1024, 128], [1, 3, 128, 192], [1, 1, 1024, 160],
+                  [3, 1, 128, 192], [1, 1, 1024, 256], [3, 1, 128, 128],
+                  [1, 1, 768, 192], [1, 3, 128, 128], [3, 3, 128, 128],
+                  [1, 1, 768, 128], [1, 1, 768, 320], [3, 3, 96, 96],
+                  [3, 3, 288, 384], [3, 3, 64, 96], [1, 1, 288, 64],
+                  [1, 1, 256, 64], [5, 5, 48, 64], [1, 1, 256, 48],
+                  [3, 3, 96, 96], [1, 1, 192, 32], [1, 1, 192, 64],
+                  [1, 1, 192, 48], [3, 3, 64, 192], [1, 1, 64, 64],
+                  [1, 1, 24, 64]]
+  out_sizes = [[4, 5, 5, 128], [4, 8, 8, 384], [4, 8, 8, 384], [4, 8, 8, 192],
+               [4, 8, 8, 384], [4, 8, 8, 320], [4, 8, 8, 448], [4, 8, 8, 384],
+               [4, 8, 8, 384], [4, 8, 8, 192], [4, 8, 8, 448], [4, 8, 8, 320],
+               [4, 8, 8, 192], [4, 17, 17, 192], [4, 17, 17, 192],
+               [4, 8, 8, 320], [4, 17, 17, 128], [4, 17, 17, 224],
+               [4, 17, 17, 256], [4, 17, 17, 256], [4, 17, 17, 192],
+               [4, 17, 17, 96], [4, 17, 17, 224], [4, 17, 17, 224],
+               [4, 17, 17, 192], [4, 17, 17, 192], [4, 17, 17, 128],
+               [4, 17, 17, 192], [4, 17, 17, 192], [4, 17, 17, 160],
+               [4, 17, 17, 128], [4, 17, 17, 192], [4, 17, 17, 160],
+               [4, 17, 17, 192], [4, 17, 17, 256], [4, 17, 17, 128],
+               [4, 17, 17, 192], [4, 17, 17, 128], [4, 17, 17, 128],
+               [4, 17, 17, 128], [4, 17, 17, 320], [4, 17, 17, 96],
+               [4, 17, 17, 384], [4, 35, 35, 96], [4, 35, 35, 64],
+               [4, 35, 35, 64], [4, 35, 35, 64], [4, 35, 35,
+                                                  48], [4, 35, 35, 96],
                [4, 35, 35, 32], [4, 35, 35, 64], [4, 35, 35, 48],
                [4, 71, 71, 192], [4, 73, 73, 64], [4, 147, 147, 64]]
   strides = [
@@ -212,10 +198,10 @@ class FusedConv2DBiasActivationTest(object):
     """Verifies the output values of the convolution function.
 
     Args:
-      tensor_in_sizes: Input tensor dimensions in
-        [batch, input_rows, input_cols, input_depth].
-      filter_in_sizes: Filter tensor dimensions in
-        [kernel_rows, kernel_cols, input_depth, output_depth].
+      tensor_in_sizes: Input tensor dimensions in [batch, input_rows,
+        input_cols, input_depth].
+      filter_in_sizes: Filter tensor dimensions in [kernel_rows, kernel_cols,
+        input_depth, output_depth].
       bias: 1-D bias tensor of length output_depth.
       strides: Stride: [col_stride, row_stride]
       padding: Padding type.
@@ -223,6 +209,7 @@ class FusedConv2DBiasActivationTest(object):
       data_format: Format of the data tensors.
       filter_format: Filter format to use for the fused convolution.
       dtype: Data type for inputs and outputs.
+
     Returns:
       Symbolic tensor value and reference value that can be used to
       execute the computation and verify the results.
@@ -272,10 +259,10 @@ class FusedConv2DBiasActivationTest(object):
     """Verifies that CPU and GPU produce the same values.
 
     Args:
-      tensor_in_sizes: Input tensor dimensions in
-        [batch, input_rows, input_cols, input_depth].
-      filter_in_sizes: Filter tensor dimensions in
-        [kernel_rows, kernel_cols, input_depth, output_depth].
+      tensor_in_sizes: Input tensor dimensions in [batch, input_rows,
+        input_cols, input_depth].
+      filter_in_sizes: Filter tensor dimensions in [kernel_rows, kernel_cols,
+        input_depth, output_depth].
       conv_strides: [row_stride, col_stride] for the convolution;
       padding: Padding type.
     """
@@ -624,8 +611,8 @@ def _CalculateConvolvedOutputDim(input_dim, filter_dim, stride, padding_type):
   Args:
     input_dim: An `int` specifying the size of the input dimension.
     filter_dim: An `int` specifying the size of the filter dimension.
-    stride: An `int` specifying the step size of the convolution along the
-      input dimension.
+    stride: An `int` specifying the step size of the convolution along the input
+      dimension.
     padding_type: either 'VALID' or 'SAME'.
 
   Returns:
@@ -653,6 +640,21 @@ def _GetFusedConvInt8TestParams():
           "conv_input_scale": 0.00002,
           "side_input_scale": 0.2,
           "bias_scale": 1.0,
+          "padding_type": "SAME"
+      },
+      {
+          "batch_size": 3,
+          "input_channels": 8,
+          "output_channels": 4,
+          "input_height": 5,
+          "input_width": 6,
+          "filter_height": 3,
+          "filter_width": 3,
+          "vertical_stride": 1,
+          "horizontal_stride": 1,
+          "conv_input_scale": np.linspace(0.006, 0.009, 4, dtype=np.float32),
+          "side_input_scale": 0.5,
+          "bias_scale": 1,
           "padding_type": "SAME"
       },
       {
@@ -858,7 +860,8 @@ def _SimulateFusedConv2dBiasActivationInt8OnCpu(conv_input_scale, conv_input,
     restrictions as the actual op.
 
   Args:
-    conv_input_scale: A scalar 'float'.
+    conv_input_scale: A scalar 'float' Tensor or [1, 1, 1, C] Tensor for the
+      per-channel quantized mode.
     conv_input: A `Tensor` of type `qint8` in NHWC layout.
     kernel: A `Tensor` of type `qint8` in HWIO layout.
     padding: A `string` from: `"SAME", "VALID"`.
@@ -987,6 +990,10 @@ class FusedConvInt8CPUTests(object):
           data_format="NHWC",
           filter_format="HWIO")
 
+      if isinstance(conv_input_scale, (list, np.ndarray)):
+        conv_input_scale = array_ops.reshape(
+            conv_input_scale, [1, 1, 1, len(conv_input_scale)])
+
       expected = _SimulateFusedConv2dBiasActivationInt8OnCpu(
           conv_input_scale, conv_input, kernel, padding_type, strides,
           side_input_scale, side_input, biases, apply_relu)
@@ -1057,6 +1064,10 @@ class FusedConvInt8CorrespondenceTests(object):
     side_input_scale = test_param["side_input_scale"]
     bias_scale = test_param["bias_scale"]
     padding_type = test_param["padding_type"]
+
+    if isinstance(conv_input_scale, (list, np.ndarray)):
+      # GPU kernel (Cudnn) does not support per-channel scale.
+      return
 
     with self.session() as sess, self.test_scope():
       conv_input, _, _ = gen_array_ops.quantize_v2(

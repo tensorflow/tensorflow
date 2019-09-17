@@ -1,4 +1,3 @@
-# -*- Python -*-
 """Repository rule for CUDA autoconfiguration.
 
 `cuda_configure` depends on the following environment variables:

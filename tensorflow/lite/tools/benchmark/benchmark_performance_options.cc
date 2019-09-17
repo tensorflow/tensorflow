@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/util/stats_calculator.h"
+#include "tensorflow/lite/c/c_api_internal.h"
 #if defined(__ANDROID__)
 #include "tensorflow/lite/delegates/gpu/gl_delegate.h"
 #endif
@@ -46,10 +47,10 @@ void MultiRunStatsRecorder::OnBenchmarkStart(const BenchmarkParams& params) {
 #if defined(__ANDROID__)
     const bool allow_precision_loss =
         params.Get<bool>("gpu_precision_loss_allowed");
-    const string precision_tag = allow_precision_loss ? "fp16" : "fp32";
+    const std::string precision_tag = allow_precision_loss ? "fp16" : "fp32";
 
     const int32_t gl_obj_type = params.Get<int32_t>("gpu_gl_object_type");
-    string gl_type;
+    std::string gl_type;
     switch (gl_obj_type) {
       case TFLITE_GL_OBJECT_TYPE_FASTEST:
         gl_type = "fastest";
@@ -271,7 +272,7 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
 void BenchmarkPerformanceOptions::Run(int argc, char** argv) {
   // We first parse flags for single-option runs to get information like
   // parameters of the input model etc.
-  if (!single_option_run_->ParseFlags(&argc, argv)) return;
+  if (single_option_run_->ParseFlags(&argc, argv) != kTfLiteOk) return;
 
   // Now, we parse flags that are specified for this particular binary.
   if (!ParseFlags(&argc, argv)) return;

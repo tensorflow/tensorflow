@@ -80,6 +80,7 @@ const char* PathName(Path path) {
     RUY_PATHNAME_CASE(kNeon)
     RUY_PATHNAME_CASE(kNeonDotprod)
 #elif RUY_PLATFORM(X86)
+    RUY_PATHNAME_CASE(kAvx2)
     RUY_PATHNAME_CASE(kAvx512)
 #endif
     default:
@@ -145,6 +146,32 @@ std::string Join(const ContainerType& container) {
 struct LogCoveredPathsOnDestruction final {
   ~LogCoveredPathsOnDestruction() {
     std::cerr << "Covered paths: " << Join(*CoveredPaths()) << std::endl;
+
+    // When testing on ARM64 ChromiumOS emulator, make sure that we covered
+    // the dotprod path. We're getting such coverage at the moment thanks to
+    // using a sufficiently recent emulator, and we don't want to regress that.
+#if RUY_PLATFORM(ARM_64) && defined RUY_TESTING_ON_CHROMIUMOS
+    bool found_dotprod = false;
+    for (const std::string& covered_path : *CoveredPaths()) {
+      if (covered_path == "kNeonDotprod") {
+        found_dotprod = true;
+      }
+    }
+    if (!found_dotprod) {
+      std::cerr
+          << "Error: we haven't tested the kNeonDotprod path as we should "
+             "have. At the moment, this is required on ChromiumOS as this is "
+             "what we run emulator tests in, that currently supports "
+             "dot-product "
+             "instructions, and we care very much about not regressing that. "
+             "If this test was run in an emulator, please upgrade to a newer "
+             "emulator version. If this test was run on an actual device, and "
+             "you need to be able to run ruy tests on devices not supporting "
+             "dot-product instructions, get in touch with us.\n"
+          << std::endl;
+      abort();
+    }
+#endif
   }
   static void Singleton() { static LogCoveredPathsOnDestruction singleton; }
 };
@@ -549,6 +576,13 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::DoMul(TestResultType* result) {
                               prepacked_rhs_ptr);
 }
 
+// When building for WAsm, ASSERT_DEATH is not defined.
+#ifdef ASSERT_DEATH
+#define RUY_ASSERT_DEATH(CONDITION, MESSAGE) ASSERT_DEATH(CONDITION, MESSAGE)
+#else
+#define RUY_ASSERT_DEATH(CONDITION, MESSAGE)
+#endif
+
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::EvalRuy(TestResultType* result) {
   GlobalContext().explicit_tuning = result->tuning;
@@ -567,7 +601,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::EvalRuy(TestResultType* result) {
     // TODO(benoitjacob) TSan and ASan seem to be breaking ASSERT_DEATH.
     // Report a bug?
 #if (!defined NDEBUG) && (!defined RUY_ASAN) && (!defined RUY_TSAN)
-    ASSERT_DEATH(DoMul(result), "");
+    RUY_ASSERT_DEATH(DoMul(result), "");
 #endif
   } else {
     RUY_CHECK(false);

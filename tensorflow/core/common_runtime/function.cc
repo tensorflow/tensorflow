@@ -1103,7 +1103,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
                                      std::vector<Tensor>* rets,
                                      DoneCallback done) {
   if (opts.cancellation_manager && opts.cancellation_manager->IsCancelled()) {
-    done(errors::Cancelled(""));
+    done(errors::Cancelled("Function was cancelled before it was started"));
     return;
   }
   Options run_opts = opts;
@@ -1111,14 +1111,10 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     Rendezvous* rendezvous = new IntraProcessRendezvous(device_mgr_);
     run_opts.rendezvous = rendezvous;
     run_opts.create_rendezvous = false;
-    done = std::bind(
-        [rendezvous](DoneCallback done,
-                     // Begin unbound arguments.
-                     const Status& status) {
-          rendezvous->Unref();
-          done(status);
-        },
-        std::move(done), std::placeholders::_1);
+    done = [done = std::move(done), rendezvous](const Status& status) {
+      rendezvous->Unref();
+      done(status);
+    };
   }
 
   LocalHandle local_handle = parent_->GetHandleOnDevice(device_name_, handle);
@@ -1186,14 +1182,10 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     Rendezvous* rendezvous = new IntraProcessRendezvous(device_mgr_);
     run_opts.rendezvous = rendezvous;
     run_opts.create_rendezvous = false;
-    done = std::bind(
-        [rendezvous](DoneCallback done,
-                     // Begin unbound arguments.
-                     const Status& status) {
-          rendezvous->Unref();
-          done(status);
-        },
-        std::move(done), std::placeholders::_1);
+    done = [done = std::move(done), rendezvous](const Status& status) {
+      rendezvous->Unref();
+      done(status);
+    };
   }
 
   LocalHandle local_handle = parent_->GetHandleOnDevice(device_name_, handle);

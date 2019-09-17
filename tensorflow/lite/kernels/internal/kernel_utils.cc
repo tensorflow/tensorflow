@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 
+#include <algorithm>
+
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 
 namespace tflite {
@@ -68,13 +70,13 @@ void RnnBatchStep(const float* input_ptr_batch, const float* input_weights_ptr,
     // Output = activation(Output) and update hidden_state
     tensor_utils::ApplyActivationToVector(
         output_ptr_batch, num_units * batch_size, activation, output_ptr_batch);
-    tensor_utils::CopyVector(output_ptr_batch, num_units * batch_size,
-                             hidden_state_ptr_batch);
+    std::copy_n(output_ptr_batch, num_units * batch_size,
+                hidden_state_ptr_batch);
   } else {
     // Output = bias
     for (int k = 0; k < batch_size; k++) {
-      tensor_utils::CopyVector(bias_ptr, num_units,
-                               output_ptr_batch + k * output_batch_leading_dim);
+      std::copy_n(bias_ptr, num_units,
+                  output_ptr_batch + k * output_batch_leading_dim);
     }
 
     // Output += input * input_weights
@@ -110,9 +112,8 @@ void RnnBatchStep(const float* input_ptr_batch, const float* input_weights_ptr,
       tensor_utils::ApplyActivationToVector(
           output_ptr_batch + k * output_batch_leading_dim, num_units,
           activation, output_ptr_batch + k * output_batch_leading_dim);
-      tensor_utils::CopyVector(output_ptr_batch + k * output_batch_leading_dim,
-                               num_units,
-                               hidden_state_ptr_batch + k * num_units);
+      std::copy_n(output_ptr_batch + k * output_batch_leading_dim, num_units,
+                  hidden_state_ptr_batch + k * num_units);
     }
   }
 }
@@ -221,13 +222,13 @@ void RnnBatchStep(
     // Output = activation(Output) and update hidden_state
     tensor_utils::ApplyActivationToVector(
         output_ptr_batch, num_units * batch_size, activation, output_ptr_batch);
-    tensor_utils::CopyVector(output_ptr_batch, num_units * batch_size,
-                             hidden_state_ptr_batch);
+    std::copy_n(output_ptr_batch, num_units * batch_size,
+                hidden_state_ptr_batch);
   } else {
     // Output = bias
     for (int k = 0; k < batch_size; k++) {
-      tensor_utils::CopyVector(bias_ptr, num_units,
-                               output_ptr_batch + k * output_batch_leading_dim);
+      std::copy_n(bias_ptr, num_units,
+                  output_ptr_batch + k * output_batch_leading_dim);
     }
 
     // Save quantization and matmul computation for all zero input.
@@ -310,9 +311,8 @@ void RnnBatchStep(
       tensor_utils::ApplyActivationToVector(
           output_ptr_batch + k * output_batch_leading_dim, num_units,
           activation, output_ptr_batch + k * output_batch_leading_dim);
-      tensor_utils::CopyVector(output_ptr_batch + k * output_batch_leading_dim,
-                               num_units,
-                               hidden_state_ptr_batch + k * num_units);
+      std::copy_n(output_ptr_batch + k * output_batch_leading_dim, num_units,
+                  hidden_state_ptr_batch + k * num_units);
     }
   }
 }

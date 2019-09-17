@@ -54,8 +54,8 @@ limitations under the License.
 #include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
-#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+#include "tensorflow/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
@@ -1103,11 +1103,11 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
                                 conv_parameters, &algorithm_config)) {
 #if GOOGLE_CUDA
 
-    se::TfAllocatorAdapter tf_allocator_adapter(
-        stream->parent()->platform(), ctx->device()->GetAllocator({}));
+    se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
+                                                stream);
 
-    se::cuda::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
-                                            se::cuda::PtxCompilationOptions());
+    se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
+                                      se::GpuAsmOpts());
 
     se::DeviceMemory<T> in_backprop_ptr_rz(
         WrapRedzoneBestEffort(&rz_allocator, in_backprop_ptr));
@@ -1122,8 +1122,8 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       // accuracy.
       DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
                                             ctx);
-      se::cuda::RedzoneAllocator rz_scratch_allocator(
-          stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions(),
+      se::RedzoneAllocator rz_scratch_allocator(
+          stream, &tf_allocator_adapter, se::GpuAsmOpts(),
           /*memory_limit=*/ConvolveBackwardDataScratchSize);
       se::ScratchAllocator* allocator_used =
           !RedzoneCheckDisabled()
@@ -1242,32 +1242,11 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                              \
   template <>                                                            \
-  void ShuffleAndReverse<GPUDevice, T, 4, int>::operator()(              \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor input, \
-      const Eigen::DSizes<int, 4>& order,                                \
-      const Eigen::array<bool, 4>& reverse_dims,                         \
-      typename TTypes<T, 4, int>::Tensor output);                        \
-  extern template struct ShuffleAndReverse<GPUDevice, T, 4, int>;        \
-  template <>                                                            \
-  void InflatePadAndShuffle<GPUDevice, T, 4, int>::operator()(           \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor input, \
-      const Eigen::DSizes<int, 4>& strides,                              \
-      const Eigen::array<Eigen::IndexPair<int>, 4>& pad_dims,            \
-      const Eigen::DSizes<int, 4>& order,                                \
-      typename TTypes<T, 4, int>::Tensor output);                        \
-  extern template struct InflatePadAndShuffle<GPUDevice, T, 4, int>;     \
-  template <>                                                            \
   void TransformFilter<GPUDevice, T, int, 4>::operator()(                \
       const GPUDevice& d, FilterTensorFormat dst_filter_format,          \
       typename TTypes<T, 4, int>::ConstTensor in,                        \
       typename TTypes<T, 4, int>::Tensor out);                           \
   extern template struct TransformFilter<GPUDevice, T, int, 4>;          \
-  template <>                                                            \
-  void TransformDepth<GPUDevice, T, int>::operator()(                    \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,    \
-      const Eigen::DSizes<int, 4>& shuffle,                              \
-      typename TTypes<T, 4, int>::Tensor out);                           \
-  extern template struct TransformDepth<GPUDevice, T, int>;              \
   template <>                                                            \
   void PadInput<GPUDevice, T, int, 4>::operator()(                       \
       const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,    \

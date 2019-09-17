@@ -14,11 +14,22 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper.h"
 
+// Windows does not have dlfcn.h/dlsym, use GetProcAddress() instead.
+#if defined(_WIN32)
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif  // defined(_WIN32)
+
+#include <stdarg.h>
+
 #include <sstream>
 #include <string>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
@@ -82,18 +93,60 @@ PyObject* PyTupleFromQuantizationParam(const TfLiteQuantizationParams& param) {
   return result;
 }
 
+bool RegisterCustomOpByName(const char* registerer_name,
+                            tflite::MutableOpResolver* resolver,
+                            std::string* error_msg) {
+  // Registerer functions take a pointer to a BuiltinOpResolver as an input
+  // parameter and return void.
+  // TODO(b/137576229): We should implement this functionality in a more
+  // principled way.
+  typedef void (*RegistererFunctionType)(tflite::MutableOpResolver*);
+
+  // Look for the Registerer function by name.
+  RegistererFunctionType registerer = reinterpret_cast<RegistererFunctionType>(
+  // We don't have dlsym on Windows, use GetProcAddress instead.
+#if defined(_WIN32)
+      GetProcAddress(nullptr, registerer_name)
+#else
+      dlsym(RTLD_DEFAULT, registerer_name)
+#endif  // defined(_WIN32)
+      );
+
+  // Fail in an informative way if the function was not found.
+  if (registerer == nullptr) {
+    // We don't have dlerror on Windows, use GetLastError instead.
+    *error_msg =
+#if defined(_WIN32)
+        absl::StrFormat("Looking up symbol '%s' failed with error (0x%x).",
+                        registerer_name, GetLastError());
+#else
+        absl::StrFormat("Looking up symbol '%s' failed with error '%s'.",
+                        registerer_name, dlerror());
+#endif  // defined(_WIN32)
+    return false;
+  }
+
+  // Call the registerer with the resolver.
+  registerer(resolver);
+  return true;
+}
+
 }  // namespace
 
 InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
     std::unique_ptr<tflite::FlatBufferModel> model,
     std::unique_ptr<PythonErrorReporter> error_reporter,
-    std::string* error_msg) {
+    const std::vector<std::string>& registerers, std::string* error_msg) {
   if (!model) {
     *error_msg = error_reporter->message();
     return nullptr;
   }
 
   auto resolver = absl::make_unique<tflite::ops::builtin::BuiltinOpResolver>();
+  for (const auto registerer : registerers) {
+    if (!RegisterCustomOpByName(registerer.c_str(), resolver.get(), error_msg))
+      return nullptr;
+  }
   auto interpreter = CreateInterpreter(model.get(), *resolver);
   if (!interpreter) {
     *error_msg = error_reporter->message();
@@ -417,16 +470,18 @@ PyObject* InterpreterWrapper::tensor(PyObject* base_object, int i) {
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
-    const char* model_path, std::string* error_msg) {
+    const char* model_path, const std::vector<std::string>& registerers,
+    std::string* error_msg) {
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
   std::unique_ptr<tflite::FlatBufferModel> model =
       tflite::FlatBufferModel::BuildFromFile(model_path, error_reporter.get());
   return CreateInterpreterWrapper(std::move(model), std::move(error_reporter),
-                                  error_msg);
+                                  registerers, error_msg);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
-    PyObject* data, std::string* error_msg) {
+    PyObject* data, const std::vector<std::string>& registerers,
+    std::string* error_msg) {
   char * buf = nullptr;
   Py_ssize_t length;
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
@@ -438,7 +493,7 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
       tflite::FlatBufferModel::BuildFromBuffer(buf, length,
                                                error_reporter.get());
   return CreateInterpreterWrapper(std::move(model), std::move(error_reporter),
-                                  error_msg);
+                                  registerers, error_msg);
 }
 
 PyObject* InterpreterWrapper::ResetVariableTensors() {

@@ -31,6 +31,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -44,6 +45,7 @@ from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import function_serialization
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import revived_types
+from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import signature_serialization
@@ -269,7 +271,7 @@ class _SaveableView(object):
         object_map[obj] = new_variable
         resource_map[obj.handle] = new_variable.handle
         self.captured_tensor_node_ids[obj.handle] = node_id
-      elif isinstance(obj, tracking.TrackableAsset):
+      elif isinstance(obj, tracking.Asset):
         _process_asset(obj, asset_info, resource_map)
         self.captured_tensor_node_ids[obj.asset_path] = node_id
 
@@ -497,7 +499,7 @@ _AssetInfo = collections.namedtuple(
         "asset_initializers_by_resource",
         # Map from base asset filenames to full paths
         "asset_filename_map",
-        # Map from TrackableAsset to index of corresponding AssetFileDef
+        # Map from Asset to index of corresponding AssetFileDef
         "asset_index"])
 
 
@@ -533,7 +535,8 @@ def _process_asset(trackable_asset, asset_info, resource_map):
   resource_map[original_path_tensor] = asset_variable
 
 
-def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions):
+def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
+                         namespace_whitelist):
   """Generates a MetaGraph which calls `signature_functions`.
 
   Args:
@@ -541,9 +544,11 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions):
     saveable_view: The _SaveableView being exported.
     signature_functions: A dictionary mapping signature keys to concrete
       functions containing signatures to add to the MetaGraph.
+    namespace_whitelist: List of strings containing whitelisted op namespaces.
 
   Returns:
-    An _AssetInfo, which contains information to help creating the SavedModel.
+    A tuple of (_AssetInfo, Graph) containing the captured assets and
+    exported Graph generated from tracing the saveable_view.
   """
   # List objects from the eager context to make sure Optimizers give us the
   # right Graph-dependent variables.
@@ -593,6 +598,7 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions):
     saver_def = saver.to_proto()
     meta_graph_def.saver_def.CopyFrom(saver_def)
   graph_def = exported_graph.as_graph_def(add_shapes=True)
+  _verify_ops(graph_def, namespace_whitelist)
 
   meta_graph_def.graph_def.CopyFrom(graph_def)
   meta_graph_def.meta_info_def.tags.append(tag_constants.SERVING)
@@ -608,6 +614,32 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions):
     meta_graph_def.signature_def[signature_key].CopyFrom(signature)
   meta_graph.strip_graph_default_valued_attrs(meta_graph_def)
   return asset_info, exported_graph
+
+
+def _verify_ops(graph_def, namespace_whitelist):
+  """Verifies that all namespaced ops in the graph are whitelisted."""
+  invalid_ops = []
+  invalid_namespaces = set()
+
+  all_operations = []
+  all_operations.extend(meta_graph.ops_used_by_graph_def(graph_def))
+
+  for op in all_operations:
+    if ">" in op:
+      namespace = op.split(">")[0]
+      if namespace not in namespace_whitelist:
+        invalid_ops.append(op)
+        invalid_namespaces.add(namespace)
+  if invalid_ops:
+    raise ValueError(
+        "Attempted to save ops from non-whitelisted namespaces to SavedModel: "
+        "{}.\nPlease verify that these ops should be saved, since they must be "
+        "available when loading the SavedModel. If loading from Python, you "
+        "must import the library defining these ops. From C++, link the custom "
+        "ops to the serving binary. Once you've confirmed this, please add the "
+        "following namespaces to the `namespace_whitelist` argument in "
+        "tf.saved_model.SaveOptions: {}.".format(
+            invalid_ops, invalid_namespaces))
 
 
 def _serialize_object_graph(saveable_view, asset_file_def_index):
@@ -632,7 +664,7 @@ def _serialize_object_graph(saveable_view, asset_file_def_index):
 
 def _write_object_proto(obj, proto, asset_file_def_index):
   """Saves an object into SavedObject proto."""
-  if isinstance(obj, tracking.TrackableAsset):
+  if isinstance(obj, tracking.Asset):
     proto.asset.SetInParent()
     proto.asset.asset_file_def_index = asset_file_def_index[obj]
   elif resource_variable_ops.is_resource_variable(obj):
@@ -670,9 +702,31 @@ def _write_object_proto(obj, proto, asset_file_def_index):
     proto.user_object.CopyFrom(registered_type_proto)
 
 
+def _export_debug_info(exported_graph):
+  """Exports debug information from a graph.
+
+  Args:
+    exported_graph: A Graph that has been created by tracing a saveable view.
+
+  Returns:
+    Corresponding GraphDebugInfo with traces for ops in all functions of the
+    exported_graph.
+  """
+  exported_operations = []
+  for fn_name in exported_graph._functions:  # pylint: disable=protected-access
+    fn = exported_graph._get_function(fn_name)  # pylint: disable=protected-access
+    if not isinstance(fn, defun._EagerDefinedFunction):  # pylint: disable=protected-access
+      continue
+
+    fn_graph = fn.graph
+    for fn_op in fn_graph.get_operations():
+      exported_operations.append((fn_name, fn_op))
+  return error_interpolation.create_graph_debug_info_def(exported_operations)
+
+
 @tf_export("saved_model.save",
            v1=["saved_model.save", "saved_model.experimental.save"])
-def save(obj, export_dir, signatures=None):
+def save(obj, export_dir, signatures=None, options=None):
   # pylint: disable=line-too-long
   """Exports the Trackable object `obj` to [SavedModel format](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md).
 
@@ -808,6 +862,8 @@ def save(obj, export_dir, signatures=None):
       signatures or concrete functions. The keys of such a dictionary may be
       arbitrary strings, but will typically be from the
       `tf.saved_model.signature_constants` module.
+    options: Optional, `tf.saved_model.SaveOptions` object that specifies
+      options for saving.
 
   Raises:
     ValueError: If `obj` is not trackable.
@@ -830,6 +886,7 @@ def save(obj, export_dir, signatures=None):
   if not isinstance(obj, base.Trackable):
     raise ValueError(
         "Expected a Trackable object for export, got {}.".format(obj))
+  options = options or save_options.SaveOptions()
 
   checkpoint_graph_view = _AugmentedGraphView(obj)
   if signatures is None:
@@ -857,7 +914,7 @@ def save(obj, export_dir, signatures=None):
   meta_graph_def = saved_model.meta_graphs.add()
   object_saver = util.TrackableSaver(checkpoint_graph_view)
   asset_info, exported_graph = _fill_meta_graph_def(
-      meta_graph_def, saveable_view, signatures)
+      meta_graph_def, saveable_view, signatures, options.namespace_whitelist)
   saved_model.saved_model_schema_version = (
       constants.SAVED_MODEL_SCHEMA_VERSION)
   # So far we've just been generating protocol buffers with no I/O. Now we write
@@ -868,12 +925,22 @@ def save(obj, export_dir, signatures=None):
   builder_impl.copy_assets_to_destination_dir(asset_info.asset_filename_map,
                                               export_dir)
   path = os.path.join(
-      compat.as_bytes(export_dir),
-      compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
+      compat.as_str(export_dir),
+      compat.as_str(constants.SAVED_MODEL_FILENAME_PB))
   object_graph_proto = _serialize_object_graph(
       saveable_view, asset_info.asset_index)
   meta_graph_def.object_graph_def.CopyFrom(object_graph_proto)
-  file_io.write_string_to_file(path, saved_model.SerializeToString())
+  file_io.atomic_write_string_to_file(path, saved_model.SerializeToString())
+
+  # Save debug info, if requested.
+  if options.save_debug_info:
+    graph_debug_info = _export_debug_info(exported_graph)
+    file_io.atomic_write_string_to_file(
+        os.path.join(
+            utils_impl.get_or_create_debug_dir(export_dir),
+            constants.DEBUG_INFO_FILENAME_PB),
+        graph_debug_info.SerializeToString())
+
   # Clean reference cycles so repeated export()s don't make work for the garbage
   # collector. Before this point we need to keep references to captured
   # constants in the saved graph.

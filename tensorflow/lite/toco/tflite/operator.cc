@@ -390,15 +390,21 @@ class Concatenation
   }
 };
 
-class DepthToSpace : public CustomOperator<DepthToSpaceOperator> {
+class DepthToSpace
+    : public BuiltinOperator<DepthToSpaceOperator,
+                             ::tflite::DepthToSpaceOptions,
+                             ::tflite::BuiltinOptions_DepthToSpaceOptions> {
  public:
-  using CustomOperator::CustomOperator;
-  void WriteOptions(const TocoOperator& op,
-                    flexbuffers::Builder* fbb) const override {
-    fbb->Int("block_size", op.block_size);
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateDepthToSpaceOptions(*builder, op.block_size);
   }
-  void ReadOptions(const flexbuffers::Map& m, TocoOperator* op) const override {
-    op->block_size = m["block_size"].AsInt64();
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->block_size = options.block_size();
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
@@ -2414,7 +2420,6 @@ class FloorDiv : public SimpleOperator<FloorDivOperator> {
   }
 };
 
-// LINT.ThenChange(//tensorflow/lite/toco/tflite/op_version.cc)
 
 namespace {
 // Build a vector containing all the known operators.
@@ -2478,6 +2483,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
                                     OperatorType::kSoftmax));
   ops.push_back(MakeUnique<SpaceToDepth>(
       ::tflite::BuiltinOperator_SPACE_TO_DEPTH, OperatorType::kSpaceToDepth));
+  ops.push_back(MakeUnique<DepthToSpace>(
+      ::tflite::BuiltinOperator_DEPTH_TO_SPACE, OperatorType::kDepthToSpace));
   ops.push_back(
       MakeUnique<Svdf>(::tflite::BuiltinOperator_SVDF, OperatorType::kSvdf));
   ops.push_back(MakeUnique<Transpose>(::tflite::BuiltinOperator_TRANSPOSE,
@@ -2567,8 +2574,6 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.push_back(MakeUnique<SimpleOperator<MatrixSetDiagOperator>>(
       "MATRIX_SET_DIAG", OperatorType::kMatrixSetDiag));
   // Custom Operators.
-  ops.push_back(
-      MakeUnique<DepthToSpace>("DEPTH_TO_SPACE", OperatorType::kDepthToSpace));
   ops.push_back(MakeUnique<CTCBeamSearchDecoder>(
       "CTC_BEAM_SEARCH_DECODER", OperatorType::kCTCBeamSearchDecoder));
   ops.push_back(MakeUnique<TensorFlowUnsupported>("TENSORFLOW_UNSUPPORTED",
@@ -2653,6 +2658,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   return ops;
 }
 }  // namespace
+
+// LINT.ThenChange(//tensorflow/lite/toco/tflite/op_version.cc)
 
 std::map<OperatorType, std::unique_ptr<BaseOperator>> BuildOperatorByTypeMap(
     bool enable_select_tf_ops) {

@@ -25,6 +25,7 @@ limitations under the License.
 
 #if defined(__ANDROID__)
 #include "tensorflow/lite/delegates/gpu/gl_delegate.h"
+#include "tensorflow/lite/nnapi/nnapi_util.h"
 #endif
 
 #include "tensorflow/lite/kernels/register.h"
@@ -137,7 +138,7 @@ void FillRandomValue(T* ptr, int num_elements,
 
 void FillRandomString(tflite::DynamicBuffer* buffer,
                       const std::vector<int>& sizes,
-                      const std::function<string()>& random_func) {
+                      const std::function<std::string()>& random_func) {
   int num_elements = 1;
   for (int dim : sizes) {
     num_elements *= dim;
@@ -149,7 +150,7 @@ void FillRandomString(tflite::DynamicBuffer* buffer,
 }
 
 TfLiteStatus PopulateInputLayerInfo(
-    const string& names_string, const string& shapes_string,
+    const std::string& names_string, const std::string& shapes_string,
     std::vector<BenchmarkTfLiteModel::InputLayerInfo>* info) {
   info->clear();
   std::vector<std::string> names = Split(names_string, ',');
@@ -207,6 +208,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   default_params.AddParam("input_layer_shape",
                           BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(false));
+  default_params.AddParam("nnapi_execution_preference",
+                          BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("use_legacy_nnapi",
                           BenchmarkParam::Create<bool>(false));
   default_params.AddParam("nnapi_accelerator_name",
@@ -220,6 +223,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
       BenchmarkParam::Create<int32_t>(TFLITE_GL_OBJECT_TYPE_FASTEST));
 #endif
   default_params.AddParam("allow_fp16", BenchmarkParam::Create<bool>(false));
+  default_params.AddParam("require_full_delegation",
+                          BenchmarkParam::Create<bool>(false));
   default_params.AddParam(
       "enable_op_profiling",
       BenchmarkParam::Create<bool>(kOpProfilingEnabledDefault));
@@ -254,6 +259,10 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
     CreateFlag<std::string>("input_layer", &params_, "input layer names"),
     CreateFlag<std::string>("input_layer_shape", &params_, "input layer shape"),
     CreateFlag<bool>("use_nnapi", &params_, "use nnapi delegate api"),
+    CreateFlag<std::string>(
+        "nnapi_execution_preference", &params_,
+        "execution preference for nnapi delegate. Should be one of the "
+        "following: fast_single_answer, sustained_speed, low_power, undefined"),
     CreateFlag<bool>("use_legacy_nnapi", &params_, "use legacy nnapi api"),
     CreateFlag<std::string>(
         "nnapi_accelerator_name", &params_,
@@ -268,6 +277,8 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
                         "GPU. By default, it's TFLITE_GL_OBJECT_TYPE_FASTEST"),
 #endif
     CreateFlag<bool>("allow_fp16", &params_, "allow fp16"),
+    CreateFlag<bool>("require_full_delegation", &params_,
+                     "require delegate to run the entire graph"),
     CreateFlag<bool>("enable_op_profiling", &params_, "enable op profiling"),
     CreateFlag<int32_t>("max_profiling_buffer_entries", &params_,
                         "max profiling buffer entries")
@@ -284,13 +295,27 @@ void BenchmarkTfLiteModel::LogParams() {
                    << params_.Get<std::string>("input_layer") << "]";
   TFLITE_LOG(INFO) << "Input shapes: ["
                    << params_.Get<std::string>("input_layer_shape") << "]";
+#if defined(__ANDROID__)
   TFLITE_LOG(INFO) << "Use nnapi : [" << params_.Get<bool>("use_nnapi") << "]";
+  if (!params_.Get<std::string>("nnapi_execution_preference").empty()) {
+    TFLITE_LOG(INFO) << "nnapi execution preference: ["
+                     << params_.Get<std::string>("nnapi_execution_preference")
+                     << "]";
+  }
   TFLITE_LOG(INFO) << "Use legacy nnapi : ["
                    << params_.Get<bool>("use_legacy_nnapi") << "]";
-  if (params_.HasParam("nnapi_accelerator_name")) {
-    TFLITE_LOG(INFO) << "nnapi accelerator name: ["
-                     << params_.Get<string>("nnapi_accelerator_name") << "]";
+  if (params_.Get<bool>("use_nnapi")) {
+    std::string log_string =
+        "nnapi accelerator name: [" +
+        params_.Get<std::string>("nnapi_accelerator_name") + "]";
+    std::string string_device_names_list = nnapi::GetStringDeviceNamesList();
+    // Print available devices when possible
+    if (!string_device_names_list.empty()) {
+      log_string += " (Available: " + string_device_names_list + ")";
+    }
+    TFLITE_LOG(INFO) << log_string;
   }
+#endif
   TFLITE_LOG(INFO) << "Use gpu : [" << params_.Get<bool>("use_gpu") << "]";
 #if defined(__ANDROID__)
   TFLITE_LOG(INFO) << "Allow lower precision in gpu : ["
@@ -300,6 +325,8 @@ void BenchmarkTfLiteModel::LogParams() {
 #endif
   TFLITE_LOG(INFO) << "Allow fp16 : [" << params_.Get<bool>("allow_fp16")
                    << "]";
+  TFLITE_LOG(INFO) << "Require full delegation : ["
+                   << params_.Get<bool>("require_full_delegation") << "]";
   TFLITE_LOG(INFO) << "Enable op profiling: ["
                    << params_.Get<bool>("enable_op_profiling") << "]";
   TFLITE_LOG(INFO) << "Max profiling buffer entries: ["
@@ -348,6 +375,23 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
       FillRandomValue<float>(t_data.data.f, num_elements, []() {
         return static_cast<float>(rand()) / RAND_MAX - 0.5f;
       });
+    } else if (t->type == kTfLiteFloat16) {
+      t_data.bytes = sizeof(TfLiteFloat16) * num_elements;
+      t_data.data.raw = new char[t_data.bytes];
+#if __GNUC__ && \
+    (__clang__ || __ARM_FP16_FORMAT_IEEE || __ARM_FP16_FORMAT_ALTERNATIVE)
+      // __fp16 is available on Clang or when __ARM_FP16_FORMAT_* is defined.
+      FillRandomValue<TfLiteFloat16>(
+          t_data.data.f16, num_elements, []() -> TfLiteFloat16 {
+            __fp16 f16_value = static_cast<float>(rand()) / RAND_MAX - 0.5f;
+            TfLiteFloat16 f16_placeholder_value;
+            memcpy(&f16_placeholder_value, &f16_value, sizeof(TfLiteFloat16));
+            return f16_placeholder_value;
+          });
+#else
+      TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t->name
+                        << " of type FLOAT16 on this platform.";
+#endif
     } else if (t->type == kTfLiteInt64) {
       t_data.bytes = sizeof(int64_t) * num_elements;
       t_data.data.raw = new char[t_data.bytes];
@@ -401,6 +445,9 @@ TfLiteStatus BenchmarkTfLiteModel::ResetInputsAndOutputs() {
     if (t->type == kTfLiteFloat32) {
       std::memcpy(interpreter_->typed_tensor<float>(i), inputs_data_[j].data.f,
                   inputs_data_[j].bytes);
+    } else if (t->type == kTfLiteFloat16) {
+      std::memcpy(interpreter_->typed_tensor<TfLiteFloat16>(i),
+                  inputs_data_[j].data.f16, inputs_data_[j].bytes);
     } else if (t->type == kTfLiteInt64) {
       std::memcpy(interpreter_->typed_tensor<int64_t>(i),
                   inputs_data_[j].data.i64, inputs_data_[j].bytes);
@@ -457,6 +504,7 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   }
 
   interpreter_->UseNNAPI(params_.Get<bool>("use_legacy_nnapi"));
+  interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
   delegates_ = GetDelegates();
   for (const auto& delegate : delegates_) {
@@ -465,11 +513,29 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
       TFLITE_LOG(ERROR) << "Failed to apply " << delegate.first << " delegate.";
       return kTfLiteError;
     } else {
+      if (params_.Get<bool>("require_full_delegation")) {
+        bool fully_delegated = true;
+        if (interpreter_->execution_plan().size() != 1) {
+          fully_delegated = false;
+        } else {
+          int first_node_id = interpreter_->execution_plan()[0];
+          const TfLiteNode first_node =
+              interpreter_->node_and_registration(first_node_id)->first;
+          if (delegate.second.get() != first_node.delegate) {
+            fully_delegated = false;
+          }
+        }
+
+        if (!fully_delegated) {
+          TFLITE_LOG(ERROR) << "Disallowed CPU fallback detected.";
+          return kTfLiteError;
+        }
+      }
+
       TFLITE_LOG(INFO) << "Applied " << delegate.first << " delegate.";
     }
   }
 
-  interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
   auto interpreter_inputs = interpreter_->inputs();
 
@@ -570,10 +636,37 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
   }
   if (params_.Get<bool>("use_nnapi")) {
     StatefulNnApiDelegate::Options options;
-    std::string accelerator_name;
-    if (params_.HasParam("nnapi_accelerator_name")) {
-      accelerator_name = params_.Get<std::string>("nnapi_accelerator_name");
+    std::string accelerator_name =
+        params_.Get<std::string>("nnapi_accelerator_name");
+    if (!accelerator_name.empty()) {
       options.accelerator_name = accelerator_name.c_str();
+    }
+    std::string string_execution_preference =
+        params_.Get<std::string>("nnapi_execution_preference");
+    // Only set execution preference if user explicitly passes one. Otherwise,
+    // leave it as whatever NNAPI has as the default.
+    if (!string_execution_preference.empty()) {
+      tflite::StatefulNnApiDelegate::Options::ExecutionPreference
+          execution_preference =
+              tflite::StatefulNnApiDelegate::Options::kUndefined;
+      if (string_execution_preference == "low_power") {
+        execution_preference =
+            tflite::StatefulNnApiDelegate::Options::kLowPower;
+      } else if (string_execution_preference == "sustained_speed") {
+        execution_preference =
+            tflite::StatefulNnApiDelegate::Options::kSustainedSpeed;
+      } else if (string_execution_preference == "fast_single_answer") {
+        execution_preference =
+            tflite::StatefulNnApiDelegate::Options::kFastSingleAnswer;
+      } else if (string_execution_preference == "undefined") {
+        execution_preference =
+            tflite::StatefulNnApiDelegate::Options::kUndefined;
+      } else {
+        TFLITE_LOG(WARN) << "The provided value ("
+                         << string_execution_preference
+                         << ") is not a valid nnapi execution preference.";
+      }
+      options.execution_preference = execution_preference;
     }
     Interpreter::TfLiteDelegatePtr delegate =
         evaluation::CreateNNAPIDelegate(options);
@@ -582,11 +675,16 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
     } else {
       delegates.emplace("NNAPI", std::move(delegate));
     }
-  } else if (params_.HasParam("nnapi_accelerator_name")) {
+  } else if (!params_.Get<std::string>("nnapi_accelerator_name").empty()) {
     TFLITE_LOG(WARN)
         << "`--use_nnapi=true` must be set for the provided NNAPI accelerator ("
         << params_.Get<std::string>("nnapi_accelerator_name")
         << ") to be used.";
+  } else if (!params_.Get<std::string>("nnapi_execution_preference").empty()) {
+    TFLITE_LOG(WARN) << "`--use_nnapi=true` must be set for the provided NNAPI "
+                        "execution preference ("
+                     << params_.Get<std::string>("nnapi_execution_preference")
+                     << ") to be used.";
   }
   return delegates;
 }

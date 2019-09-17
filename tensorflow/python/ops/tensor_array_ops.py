@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
+import numpy as np
 import traceback
 import weakref
 
@@ -136,6 +137,7 @@ class _GraphTensorArray(object):
     # shape equality.
     self._element_shape = [tensor_shape.as_shape(element_shape)]
     self._infer_shape = infer_shape
+    self._size = size
     with ops.name_scope(name, "TensorArray", [handle, size, flow]) as scope:
       if handle is not None:
         self._handle = handle
@@ -280,7 +282,12 @@ class _GraphTensorArray(object):
     """See TensorArray."""
     with ops.colocate_with(self._handle):
       with ops.name_scope(name, "TensorArrayStack", [self._handle]):
-        return self.gather(math_ops.range(0, self.size()), name=name)
+        value = self.gather(math_ops.range(0, self.size()), name=name)
+        if (self.element_shape and not self._dynamic_size and
+            self._size is not None):
+          value.set_shape([tensor_util.constant_value(self._size)] +
+                          self.element_shape.dims)
+        return value
 
   def gather(self, indices, name=None):
     """See TensorArray."""
@@ -364,8 +371,11 @@ class _GraphTensorArray(object):
 
   def size(self, name=None):
     """See TensorArray."""
-    return gen_data_flow_ops.tensor_array_size_v3(
-        handle=self._handle, flow_in=self.flow, name=name)
+    if not self._dynamic_size and self._size is not None:
+      return ops.convert_to_tensor(self._size, dtype=dtypes.int32)
+    else:
+      return gen_data_flow_ops.tensor_array_size_v3(
+          handle=self._handle, flow_in=self.flow, name=name)
 
   @tf_should_use.should_use_result
   def close(self, name=None):
@@ -426,6 +436,7 @@ class _GraphTensorArrayV2(object):
     del colocate_with_first_write_call
 
     self._dynamic_size = dynamic_size
+    self._size = size
 
     if (flow is not None and
         (not isinstance(flow, ops.Tensor) or flow.dtype != dtypes.variant)):
@@ -535,9 +546,15 @@ class _GraphTensorArrayV2(object):
   def stack(self, name=None):
     """See TensorArray."""
     with ops.name_scope(name, "TensorArrayV2Stack", [self._flow]):
+      # TODO(b/139941163): remove constant_value after changing num_elements to regular input
+      if not self._dynamic_size and self._size is not None:
+        ta_size = tensor_util.constant_value(self._size)
+      else:
+        ta_size = -1
       value = list_ops.tensor_list_stack(
           input_handle=self._flow,
           element_dtype=self._dtype,
+          num_elements=ta_size,
           element_shape=self.element_shape)
       return value
 
@@ -618,7 +635,10 @@ class _GraphTensorArrayV2(object):
 
   def size(self, name=None):
     """See TensorArray."""
-    return list_ops.tensor_list_length(input_handle=self._flow, name=name)
+    if not self._dynamic_size and self._size is not None:
+      return ops.convert_to_tensor(self._size, dtype=dtypes.int32)
+    else:
+      return list_ops.tensor_list_length(input_handle=self._flow, name=name)
 
   @tf_should_use.should_use_result
   def close(self, name=None):
@@ -827,8 +847,12 @@ class _EagerTensorArray(object):
     if self._tensor_array:
       for ix in range(len(self._tensor_array)):
         self._maybe_zero(ix)
-    return ops.convert_to_tensor(
-        self._tensor_array, name=name, dtype=self._dtype)
+    if not self._tensor_array and self._element_shape.is_fully_defined():
+      return ops.convert_to_tensor(
+          np.ndarray([0] + self._element_shape), name=name, dtype=self._dtype)
+    else:
+      return ops.convert_to_tensor(
+          self._tensor_array, name=name, dtype=self._dtype)
 
   def gather(self, indices, name=None):
     """See TensorArray."""
@@ -1222,6 +1246,7 @@ def build_ta_with_new_flow(old_ta, flow):
       colocate_with_first_write_call=impl._colocate_with_first_write_call)
   new_impl = new_ta._implementation
   new_impl._dynamic_size = impl._dynamic_size
+  new_impl._size = impl._size
   new_impl._colocate_with = impl._colocate_with
   new_impl._element_shape = impl._element_shape  # Share _element_shape.
   return new_ta

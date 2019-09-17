@@ -19,11 +19,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/NestedMatcher.h"
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Analysis/VectorAnalysis.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/StandardTypes.h"
@@ -290,8 +290,8 @@ void VectorizerTestPass::runOnFunction() {
   }
 }
 
-std::unique_ptr<FunctionPassBase> mlir::createVectorizerTestPass() {
-  return llvm::make_unique<VectorizerTestPass>();
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createVectorizerTestPass() {
+  return std::make_unique<VectorizerTestPass>();
 }
 
 static PassRegistration<VectorizerTestPass>

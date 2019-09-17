@@ -348,7 +348,7 @@ def _uniquify_fetches(fetch_mappers):
   """
   unique_fetches = []
   value_indices = []
-  seen_fetches = {}
+  seen_fetches = object_identity.ObjectIdentityDictionary()
   for m in fetch_mappers:
     m_value_indices = []
     for f in m.unique_fetches():

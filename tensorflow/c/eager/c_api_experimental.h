@@ -22,6 +22,10 @@ limitations under the License.
 extern "C" {
 #endif
 
+TF_CAPI_EXPORT extern void TFE_OpReset(TFE_Context* ctx,
+                                       const char* op_or_function_name,
+                                       TF_Status* status, TFE_Op* op_to_reset);
+
 TF_CAPI_EXPORT extern void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h,
                                               TF_Status* status);
 

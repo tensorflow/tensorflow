@@ -983,23 +983,27 @@ TEST_F(MetaOptimizerTest, CompressConstants) {
   GraphDef output;
   TF_EXPECT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
 
-  {
-    ASSERT_EQ(output.node_size(), 2);
-    const NodeDef& node = output.node(0);
-    EXPECT_EQ(node.name(), "zeros");
-    EXPECT_EQ(node.op(), "Const");
-    const TensorProto& zeroes_t = node.attr().at("value").tensor();
-    EXPECT_EQ(zeroes_t.float_val_size(), 1);
-    EXPECT_EQ(zeroes_t.float_val(0), 0.0f);
+  bool found_zeros = false;
+  bool found_host_ones = false;
+  ASSERT_EQ(output.node_size(), 2);
+  for (const auto& node : output.node()) {
+    if (node.name() == "zeros") {
+      found_zeros = true;
+      EXPECT_EQ(node.op(), "Const");
+      const TensorProto& zeroes_t = node.attr().at("value").tensor();
+      EXPECT_EQ(zeroes_t.float_val_size(), 1);
+      EXPECT_EQ(zeroes_t.float_val(0), 0.0f);
+    } else if (node.name() == "host_ones") {
+      found_host_ones = true;
+      EXPECT_EQ(node.op(), "HostConst");
+      const TensorProto& ones_t = node.attr().at("value").tensor();
+      EXPECT_EQ(ones_t.float_val_size(), 1);
+      EXPECT_EQ(ones_t.float_val(0), 1.0f);
+    }
   }
-  {
-    const NodeDef& node = output.node(1);
-    EXPECT_EQ(node.name(), "host_ones");
-    EXPECT_EQ(node.op(), "HostConst");
-    const TensorProto& ones_t = node.attr().at("value").tensor();
-    EXPECT_EQ(ones_t.float_val_size(), 1);
-    EXPECT_EQ(ones_t.float_val(0), 1.0f);
-  }
+
+  EXPECT_TRUE(found_zeros);
+  EXPECT_TRUE(found_host_ones);
 
   auto tensors = EvaluateNodes(output, item.fetch, {});
   ASSERT_EQ(tensors.size(), 2);

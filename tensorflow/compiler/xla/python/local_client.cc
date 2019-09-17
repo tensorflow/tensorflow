@@ -85,6 +85,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
@@ -113,10 +114,11 @@ std::string GpuDevice::DebugString() const {
 }
 
 static StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateBFCAllocator(
-    se::Platform* platform, LocalClient* client, double memory_fraction,
-    bool preallocate) {
+    se::Platform* platform,
+    absl::Span<const std::unique_ptr<DeviceState>> device_states,
+    LocalClient* client, double memory_fraction, bool preallocate) {
   CHECK_GT(client->backend().device_count(), 0);
-  std::vector<std::unique_ptr<tensorflow::Allocator>> allocators;
+  std::vector<se::MultiDeviceAdapter::AllocatorWithStream> allocators;
   for (se::StreamExecutor* executor : client->backend().stream_executors()) {
     int device_ordinal = executor->device_ordinal();
     auto sub_allocator = absl::make_unique<tensorflow::GPUMemAllocator>(
@@ -145,7 +147,8 @@ static StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateBFCAllocator(
         sub_allocator.release(), allocator_memory,
         /*allow_growth=*/!preallocate,
         absl::StrCat("GPU_", device_ordinal, "_bfc"));
-    allocators.emplace_back(std::move(gpu_bfc_allocator));
+    allocators.emplace_back(std::move(gpu_bfc_allocator),
+                            device_states.at(device_ordinal)->compute_stream());
   }
   return absl::make_unique<se::MultiDeviceAdapter>(platform,
                                                    std::move(allocators));
@@ -176,14 +179,26 @@ StatusOr<std::shared_ptr<PyLocalClient>> PyLocalClient::Get(
                       ClientLibrary::GetOrCreateLocalClient(options));
 
   bool gpu_platform = platform_name == "gpu";
+  std::vector<std::unique_ptr<DeviceState>> device_states;
+  std::vector<std::shared_ptr<Device>> devices;
+  bool synchronous_deallocation = platform_name == "cpu";
+  for (int i = 0; i < client->device_count(); ++i) {
+    se::StreamExecutor* executor =
+        client->backend().stream_executor(i).ValueOrDie();
+    device_states.push_back(absl::make_unique<DeviceState>(
+        executor, synchronous_deallocation, asynchronous,
+        /*allow_event_reuse=*/gpu_platform));
+    devices.push_back(MakeDevice(platform_name, i, i));
+  }
+
   std::unique_ptr<se::DeviceMemoryAllocator> allocator;
   std::unique_ptr<tensorflow::Allocator> host_memory_allocator;
   if (gpu_platform) {
     if (allocator_config.kind != AllocatorConfig::Kind::kPlatform) {
-      TF_ASSIGN_OR_RETURN(
-          allocator,
-          CreateBFCAllocator(platform, client, allocator_config.memory_fraction,
-                             allocator_config.preallocate));
+      TF_ASSIGN_OR_RETURN(allocator,
+                          CreateBFCAllocator(platform, device_states, client,
+                                             allocator_config.memory_fraction,
+                                             allocator_config.preallocate));
     }
 
     tensorflow::SubAllocator* sub_allocator = new tensorflow::GpuHostAllocator(
@@ -200,17 +215,6 @@ StatusOr<std::shared_ptr<PyLocalClient>> PyLocalClient::Get(
     return Unimplemented("BFCAllocator only available for GPU.");
   }
 
-  std::vector<std::unique_ptr<DeviceState>> device_states;
-  std::vector<std::shared_ptr<Device>> devices;
-  bool synchronous_deallocation = platform_name == "cpu";
-  for (int i = 0; i < client->device_count(); ++i) {
-    se::StreamExecutor* executor =
-        client->backend().stream_executor(i).ValueOrDie();
-    device_states.push_back(absl::make_unique<DeviceState>(
-        executor, synchronous_deallocation, asynchronous,
-        /*allow_event_reuse=*/gpu_platform));
-    devices.push_back(MakeDevice(platform_name, i, i));
-  }
   return std::make_shared<PyLocalClient>(
       platform_name, client, std::move(devices), /*host_id=*/0,
       std::move(device_states), std::move(allocator),
@@ -238,10 +242,35 @@ PyLocalClient::PyLocalClient(
     allocator_ = client_->backend().memory_allocator();
   }
 
+  local_devices_.resize(device_states_.size());
   for (const std::shared_ptr<Device>& device : devices_) {
     CHECK(id_to_device_.insert({device->id(), device}).second)
         << "Duplicate device id: " << device->id();
+
+    if (device->local_device_ordinal() != -1) {
+      int idx = device->local_device_ordinal();
+      CHECK(local_devices_[idx] == nullptr) << idx;
+      CHECK_LT(idx, local_devices_.size());
+      local_devices_[idx] = device;
+    }
   }
+  for (int idx = 0; idx < local_devices_.size(); ++idx) {
+    CHECK(local_devices_[idx] != nullptr) << idx;
+  }
+}
+
+StatusOr<std::string> PyLocalClient::SerializeExecutable(
+    const PyLocalExecutable& executable) const {
+  return Unimplemented("Cannot serialize executables on platform '%s'",
+                       platform_name());
+}
+
+StatusOr<std::unique_ptr<PyLocalExecutable>>
+PyLocalClient::DeserializeExecutable(
+    const std::string& serialized,
+    std::shared_ptr<PyLocalClient> this_shared) const {
+  return Unimplemented("Cannot deserialize executables on platform '%s'",
+                       platform_name());
 }
 
 Status PyLocalClient::TransferToInfeed(const LiteralSlice& literal,

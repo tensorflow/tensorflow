@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/protobuf/eager_service.pb.h"
+#include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
 
 namespace tensorflow {
 namespace eager {
@@ -48,7 +48,7 @@ class RemoteMgrTest : public ::testing::Test {
     devices.push_back(
         DeviceFactory::NewDevice("CPU", {}, "/job:worker/replica:0/task:0"));
     remote_device_ = devices.back().get();
-    auto device_mgr = absl::make_unique<DeviceMgr>(std::move(devices));
+    auto device_mgr = absl::make_unique<StaticDeviceMgr>(std::move(devices));
     context_id_ = random::New64();
     tensorflow::Rendezvous* rendezvous =
         new tensorflow::IntraProcessRendezvous(device_mgr.get());

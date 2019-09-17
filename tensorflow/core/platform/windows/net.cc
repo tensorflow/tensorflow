@@ -15,14 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/platform/net.h"
 
-#include <cstdlib>
-#include <unordered_set>
-
 #include <sys/types.h>
 #include <winsock2.h>
 
+#include <cstdlib>
+#include <unordered_set>
+
+#include "tensorflow/core/platform/error.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/windows/error.h"
 
 #undef ERROR
 

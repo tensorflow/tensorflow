@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Analysis/LoopAnalysis.h"  // TF:local_config_mlir
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Block.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
@@ -40,7 +41,6 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/Support/Functional.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
@@ -429,12 +429,14 @@ LogicalResult LowerStaticTensorListPass::RewriteFunction(
       } else if (auto tf_op = llvm::dyn_cast<TF::TensorListReserveOp>(op)) {
         if (!(tf_op.element_dtype().isF16() || tf_op.element_dtype().isF32() ||
               tf_op.element_dtype().isF64() ||
+              tf_op.element_dtype().isInteger(1) ||
               tf_op.element_dtype().isInteger(8) ||
               tf_op.element_dtype().isInteger(16) ||
               tf_op.element_dtype().isInteger(32) ||
               tf_op.element_dtype().isInteger(64))) {
           return tf_op.emitError(
-              "requires element_dtype to be 8-bit/16-bit/32-bit/64-bit integer "
+              "requires element_dtype to be 1-bit/8-bit/16-bit/32-bit/64-bit "
+              "integer "
               "or 16-bit/32-bit/64-bit "
               "float type during TF Lite transformation pass");
         }
@@ -459,6 +461,10 @@ LogicalResult LowerStaticTensorListPass::RewriteFunction(
         c.matchAndRewrite(op, *rewriter);
       } else if (auto tf_op = llvm::dyn_cast<TF::TensorListPushBackOp>(op)) {
         auto c = ConvertTFTensorListPushBack(context);
+        rewriter->setInsertionPoint(op);
+        c.matchAndRewrite(op, *rewriter);
+      } else if (auto tf_op = llvm::dyn_cast<TF::TensorListLengthOp>(op)) {
+        auto c = TFL::ConvertTFTensorListLength(context);
         rewriter->setInsertionPoint(op);
         c.matchAndRewrite(op, *rewriter);
       } else if (auto tf_op = llvm::dyn_cast<TF::WhileOp>(op)) {
@@ -499,8 +505,8 @@ void LowerStaticTensorListPass::runOnModule() {
 
 /// Creates an instance of the TensorFlow Lite dialect LowerStaticTensorList
 /// pass.
-std::unique_ptr<ModulePassBase> TFL::CreateLowerStaticTensorListPass() {
-  return llvm::make_unique<LowerStaticTensorListPass>();
+std::unique_ptr<OpPassBase<ModuleOp>> TFL::CreateLowerStaticTensorListPass() {
+  return std::make_unique<LowerStaticTensorListPass>();
 }
 
 static PassRegistration<LowerStaticTensorListPass> pass(

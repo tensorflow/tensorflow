@@ -102,6 +102,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
+#include "tensorflow/compiler/xla/service/tree_reduction_rewriter.h"
 #include "tensorflow/compiler/xla/service/triangular_solve_expander.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
@@ -301,6 +302,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                           /*allow_mixed_precision=*/false);
 
+    pass.AddPass<TreeReductionRewriter>();
     pass.AddPass<ScatterExpander>();
     pass.AddPass<BatchNormExpander>(
         /*rewrite_training_op=*/true,
@@ -342,6 +344,9 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       TransposeFolding::NeverFoldTranspose);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
 
+  // Layout assignment uses alias analysis, which requires the call graph to be
+  // flattened.
+  pipeline.AddPass<FlattenCallGraph>();
   pipeline.AddPass<CpuLayoutAssignment>(
       module->mutable_entry_computation_layout(),
       LayoutAssignment::InstructionCanChangeLayout, target_machine_features);
@@ -405,7 +410,6 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // before (and sometime after) copy insertion, to avoid dead code from
   // interfering with the rewrites.
   pipeline.AddPass<HloDCE>();
-  pipeline.AddPass<FlattenCallGraph>();
   pipeline.AddPass<CopyInsertion>();
   pipeline.AddPass<HloDCE>();
   return pipeline.Run(module).status();

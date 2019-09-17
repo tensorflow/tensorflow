@@ -18,9 +18,18 @@
 #define MLIR_CONVERSION_VECTORTOLLVM_VECTORTOLLVM_H_
 
 namespace mlir {
-class ModulePassBase;
+class LLVMTypeConverter;
+class ModuleOp;
+class OwningRewritePatternList;
 
-ModulePassBase *createLowerVectorToLLVMPass();
+template <typename T> class OpPassBase;
+
+/// Collect a set of patterns to convert from the Vector dialect to LLVM.
+void populateVectorToLLVMConversionPatterns(LLVMTypeConverter &converter,
+                                            OwningRewritePatternList &patterns);
+
+/// Create a pass to convert vector operations to the LLVMIR dialect.
+OpPassBase<ModuleOp> *createLowerVectorToLLVMPass();
 } // namespace mlir
 
 #endif // MLIR_CONVERSION_VECTORTOLLVM_VECTORTOLLVM_H_

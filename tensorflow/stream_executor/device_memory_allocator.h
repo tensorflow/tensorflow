@@ -199,6 +199,16 @@ class DeviceMemoryAllocator {
   // a stream, or do we have to wait for the computation to complete first?
   virtual bool AllowsAsynchronousDeallocation() const { return false; }
 
+  // Returns nullable stream pointer.
+  //
+  // If the pointer is non-null, then it is always safe to access the memory
+  // allocated by the allocator on the returned stream. This condition is not
+  // required though, as streams could be synchronized by other means.
+  //
+  // TODO(cheshire): clean up the interface, it might be cleaner to explicitly
+  // pass the stream to Compiler.
+  virtual Stream *GetStream() const { return nullptr; }
+
  protected:
   const Platform* platform_;
 };

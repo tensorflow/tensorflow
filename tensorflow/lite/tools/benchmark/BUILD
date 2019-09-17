@@ -112,6 +112,7 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/nnapi:nnapi_util",
         "//tensorflow/lite/profiling:profile_summarizer",
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/tools/evaluation:utils",
@@ -132,6 +133,7 @@ cc_library(
         ":benchmark_utils",
         ":logging",
         "//tensorflow/core:stats_calculator_portable",
+        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools:command_line_flags",
     ] + select({

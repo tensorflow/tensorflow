@@ -1,5 +1,6 @@
 # Description:
 #   contains parts of TensorFlow that are experimental or unstable and which are not supported.
+# Placeholder for Google-internal load statements.
 load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library")
 load("//tensorflow:tensorflow.bzl", "py_test")
 

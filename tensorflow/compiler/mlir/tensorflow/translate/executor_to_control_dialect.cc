@@ -21,12 +21,12 @@ limitations under the License.
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -199,8 +199,9 @@ void ExecutorToControlDialectConversion::runOnFunction() {
   graph.erase();
 }
 
-std::unique_ptr<FunctionPassBase> CreateTFExecutorToControlDialectConversion() {
-  return llvm::make_unique<ExecutorToControlDialectConversion>();
+std::unique_ptr<OpPassBase<FuncOp>>
+CreateTFExecutorToControlDialectConversion() {
+  return std::make_unique<ExecutorToControlDialectConversion>();
 }
 
 }  // namespace mlir

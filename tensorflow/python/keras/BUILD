@@ -296,9 +296,14 @@ py_library(
         "saving/hdf5_format.py",
         "saving/model_config.py",
         "saving/save.py",
+        "saving/saved_model/base_serialization.py",
         "saving/saved_model/constants.py",
+        "saving/saved_model/layer_serialization.py",
         "saving/saved_model/load.py",
+        "saving/saved_model/model_serialization.py",
+        "saving/saved_model/network_serialization.py",
         "saving/saved_model/save.py",
+        "saving/saved_model/save_impl.py",
         "saving/saved_model/serialized_attributes.py",
         "saving/saved_model/utils.py",
         "saving/saved_model_experimental.py",
@@ -1197,8 +1202,6 @@ tf_py_test(
     ],
     shard_count = 6,
     tags = [
-        "no_oss",
-        "no_windows",
         "noasan",  # times out
         "notsan",
         "optonly",  # times out
@@ -1507,8 +1510,8 @@ tf_py_test(
     ],
     shard_count = 6,
     tags = [
-        "no_oss",
         "noasan",  # TODO(b/132183295): Re-enable this.
+        "nomac",  # TODO(b/140193633): Re-enable this.
         "notsan",
     ],
 )

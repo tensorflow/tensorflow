@@ -1,4 +1,4 @@
-//===- GPUToSPIRV.cp - MLIR SPIR-V lowering passes ------------------------===//
+//===- GPUToSPIRV.cpp - MLIR SPIR-V lowering passes -----------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -29,11 +29,23 @@ using namespace mlir;
 
 namespace {
 
+/// Pattern lowering GPU block/thread size/id to loading SPIR-V invocation
+/// builin variables.
+template <typename OpTy, spirv::BuiltIn builtin>
+class LaunchConfigConversion : public SPIRVOpLowering<OpTy> {
+public:
+  using SPIRVOpLowering<OpTy>::SPIRVOpLowering;
+
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override;
+};
+
 /// Pattern to convert a kernel function in GPU dialect (a FuncOp with the
 /// attribute gpu.kernel) within a spv.module.
-class KernelFnConversion final : public SPIRVFnLowering {
+class KernelFnConversion final : public SPIRVOpLowering<FuncOp> {
 public:
-  using SPIRVFnLowering::SPIRVFnLowering;
+  using SPIRVOpLowering<FuncOp>::SPIRVOpLowering;
 
   PatternMatchResult
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
@@ -41,18 +53,47 @@ public:
 };
 } // namespace
 
+template <typename OpTy, spirv::BuiltIn builtin>
+PatternMatchResult LaunchConfigConversion<OpTy, builtin>::matchAndRewrite(
+    Operation *op, ArrayRef<Value *> operands,
+    ConversionPatternRewriter &rewriter) const {
+  auto dimAttr = op->getAttrOfType<StringAttr>("dimension");
+  if (!dimAttr) {
+    return this->matchFailure();
+  }
+  int32_t index = 0;
+  if (dimAttr.getValue() == "x") {
+    index = 0;
+  } else if (dimAttr.getValue() == "y") {
+    index = 1;
+  } else if (dimAttr.getValue() == "z") {
+    index = 2;
+  } else {
+    return this->matchFailure();
+  }
+
+  // SPIR-V invocation builtin variables are a vector of type <3xi32>
+  auto spirvBuiltin = this->loadFromBuiltinVariable(op, builtin, rewriter);
+  rewriter.replaceOpWithNewOp<spirv::CompositeExtractOp>(
+      op, rewriter.getIntegerType(32), spirvBuiltin,
+      rewriter.getI32ArrayAttr({index}));
+  return this->matchSuccess();
+}
+
 PatternMatchResult
 KernelFnConversion::matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                                     ConversionPatternRewriter &rewriter) const {
   auto funcOp = cast<FuncOp>(op);
   FuncOp newFuncOp;
   if (!gpu::GPUDialect::isKernel(funcOp)) {
-    return succeeded(lowerFunction(funcOp, operands, rewriter, newFuncOp))
+    return succeeded(lowerFunction(funcOp, operands, &typeConverter, rewriter,
+                                   newFuncOp))
                ? matchSuccess()
                : matchFailure();
   }
 
-  if (failed(lowerAsEntryFunction(funcOp, operands, rewriter, newFuncOp))) {
+  if (failed(lowerAsEntryFunction(funcOp, operands, &typeConverter, rewriter,
+                                  newFuncOp))) {
     return matchFailure();
   }
   newFuncOp.getOperation()->removeAttr(Identifier::get(
@@ -93,7 +134,7 @@ void GPUToSPIRVPass::runOnModule() {
           builder.getI32IntegerAttr(
               static_cast<int32_t>(spirv::AddressingModel::Logical)),
           builder.getI32IntegerAttr(
-              static_cast<int32_t>(spirv::MemoryModel::VulkanKHR)));
+              static_cast<int32_t>(spirv::MemoryModel::GLSL450)));
       OpBuilder moduleBuilder(spvModule.getOperation()->getRegion(0));
       moduleBuilder.clone(*funcOp.getOperation());
       spirvModules.push_back(spvModule);
@@ -101,16 +142,23 @@ void GPUToSPIRVPass::runOnModule() {
   }
 
   /// Dialect conversion to lower the functions with the spirv::ModuleOps.
-  SPIRVTypeConverter typeConverter(context);
-  SPIRVEntryFnTypeConverter entryFnConverter(context);
+  SPIRVBasicTypeConverter basicTypeConverter;
+  SPIRVTypeConverter typeConverter(&basicTypeConverter);
   OwningRewritePatternList patterns;
-  patterns.insert<KernelFnConversion>(context, typeConverter, entryFnConverter);
+  patterns.insert<
+      KernelFnConversion,
+      LaunchConfigConversion<gpu::BlockDim, spirv::BuiltIn::WorkgroupSize>,
+      LaunchConfigConversion<gpu::BlockId, spirv::BuiltIn::WorkgroupId>,
+      LaunchConfigConversion<gpu::GridDim, spirv::BuiltIn::NumWorkgroups>,
+      LaunchConfigConversion<gpu::ThreadId, spirv::BuiltIn::LocalInvocationId>>(
+      context, typeConverter);
   populateStandardToSPIRVPatterns(context, patterns);
 
   ConversionTarget target(*context);
   target.addLegalDialect<spirv::SPIRVDialect>();
-  target.addDynamicallyLegalOp<FuncOp>(
-      [&](FuncOp Op) { return typeConverter.isSignatureLegal(Op.getType()); });
+  target.addDynamicallyLegalOp<FuncOp>([&](FuncOp Op) {
+    return basicTypeConverter.isSignatureLegal(Op.getType());
+  });
 
   if (failed(applyFullConversion(spirvModules, target, patterns,
                                  &typeConverter))) {
@@ -118,7 +166,7 @@ void GPUToSPIRVPass::runOnModule() {
   }
 }
 
-ModulePassBase *createGPUToSPIRVPass() { return new GPUToSPIRVPass(); }
+OpPassBase<ModuleOp> *createGPUToSPIRVPass() { return new GPUToSPIRVPass(); }
 
 static PassRegistration<GPUToSPIRVPass>
     pass("convert-gpu-to-spirv", "Convert GPU dialect to SPIR-V dialect");

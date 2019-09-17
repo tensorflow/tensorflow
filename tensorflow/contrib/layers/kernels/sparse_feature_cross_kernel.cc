@@ -84,7 +84,7 @@ int64 SparseTensorColumn<int64>::Feature(int64 batch, int64 n) const {
 
 // InternalType is string or StringPiece when using StringCrosser.
 template <>
-string SparseTensorColumn<string>::Feature(int64 batch, int64 n) const {
+tstring SparseTensorColumn<tstring>::Feature(int64 batch, int64 n) const {
   const int64 start = feature_start_indices_[batch];
   if (DT_STRING == values_.dtype())
     return values_.vec<tstring>().data()[start + n];
@@ -124,7 +124,7 @@ int64 DenseTensorColumn<int64>::Feature(int64 batch, int64 n) const {
 
 // Internal type is string or StringPiece when using StringCrosser.
 template <>
-string DenseTensorColumn<string>::Feature(int64 batch, int64 n) const {
+tstring DenseTensorColumn<tstring>::Feature(int64 batch, int64 n) const {
   if (DT_STRING == tensor_.dtype()) return tensor_.matrix<tstring>()(batch, n);
   return std::to_string(tensor_.matrix<int64>()(batch, n));
 }
@@ -310,7 +310,7 @@ struct CrossTraits;
 template <typename InternalType, bool VERSION_2>
 struct CrossTraits<false, InternalType, VERSION_2> {
   typedef StringCrosser<InternalType> Crosser;
-  typedef OutputUpdater<string> Updater;
+  typedef OutputUpdater<tstring> Updater;
 };
 
 template <>
@@ -598,20 +598,20 @@ class SparseFeatureCrossOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("SparseFeatureCross")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<string>("out_type")
-                            .TypeConstraint<string>("internal_type"),
+                            .TypeConstraint<tstring>("out_type")
+                            .TypeConstraint<tstring>("internal_type"),
                         SparseFeatureCrossOp<false, StringPiece, false>);
 
 REGISTER_KERNEL_BUILDER(Name("SparseFeatureCross")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<string>("out_type")
+                            .TypeConstraint<tstring>("out_type")
                             .TypeConstraint<int64>("internal_type"),
-                        SparseFeatureCrossOp<false, string, false>);
+                        SparseFeatureCrossOp<false, tstring, false>);
 
 REGISTER_KERNEL_BUILDER(Name("SparseFeatureCross")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<int64>("out_type")
-                            .TypeConstraint<string>("internal_type"),
+                            .TypeConstraint<tstring>("internal_type"),
                         SparseFeatureCrossOp<true, int64, false>);
 
 REGISTER_KERNEL_BUILDER(Name("SparseFeatureCross")
@@ -624,20 +624,20 @@ REGISTER_KERNEL_BUILDER(Name("SparseFeatureCross")
 // crosses features.
 REGISTER_KERNEL_BUILDER(Name("SparseFeatureCrossV2")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<string>("out_type")
-                            .TypeConstraint<string>("internal_type"),
+                            .TypeConstraint<tstring>("out_type")
+                            .TypeConstraint<tstring>("internal_type"),
                         SparseFeatureCrossOp<false, StringPiece, true>);
 
 REGISTER_KERNEL_BUILDER(Name("SparseFeatureCrossV2")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<string>("out_type")
+                            .TypeConstraint<tstring>("out_type")
                             .TypeConstraint<int64>("internal_type"),
-                        SparseFeatureCrossOp<false, string, true>);
+                        SparseFeatureCrossOp<false, tstring, true>);
 
 REGISTER_KERNEL_BUILDER(Name("SparseFeatureCrossV2")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<int64>("out_type")
-                            .TypeConstraint<string>("internal_type"),
+                            .TypeConstraint<tstring>("internal_type"),
                         SparseFeatureCrossOp<true, int64, true>);
 
 REGISTER_KERNEL_BUILDER(Name("SparseFeatureCrossV2")

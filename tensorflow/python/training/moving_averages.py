@@ -422,30 +422,30 @@ class ExponentialMovingAverage(object):
         raise TypeError("The variables must be half, float, or double: %s" %
                         var.name)
 
-      if var not in self._averages:
+      if var.experimental_ref() not in self._averages:
         # For variables: to lower communication bandwidth across devices we keep
         # the moving averages on the same device as the variables. For other
         # tensors, we rely on the existing device allocation mechanism.
-        with ops.init_scope():
-          if isinstance(var, variables.Variable):
-            avg = slot_creator.create_slot(
-                var,
-                var.initialized_value(),
-                self.name,
-                colocate_with_primary=True)
-            # NOTE(mrry): We only add `tf.Variable` objects to the
-            # `MOVING_AVERAGE_VARIABLES` collection.
-            ops.add_to_collection(ops.GraphKeys.MOVING_AVERAGE_VARIABLES, var)
+        if isinstance(var, variables.Variable):
+          if ops.executing_eagerly_outside_functions():
+            init_value = var.read_value()
           else:
-            avg = slot_creator.create_zeros_slot(
-                var,
-                self.name,
-                colocate_with_primary=(var.op.type in [
-                    "Variable", "VariableV2", "VarHandleOp"
-                ]))
-            if self._zero_debias:
-              zero_debias_true.add(avg)
-        self._averages[var] = avg
+            init_value = var.initialized_value()
+          avg = slot_creator.create_slot(
+              var, init_value, self.name, colocate_with_primary=True)
+          # NOTE(mrry): We only add `tf.Variable` objects to the
+          # `MOVING_AVERAGE_VARIABLES` collection.
+          ops.add_to_collection(ops.GraphKeys.MOVING_AVERAGE_VARIABLES, var)
+        else:
+          avg = slot_creator.create_zeros_slot(
+              var,
+              self.name,
+              colocate_with_primary=(var.op.type in [
+                  "Variable", "VariableV2", "VarHandleOp"
+              ]))
+          if self._zero_debias:
+            zero_debias_true.add(avg.experimental_ref())
+        self._averages[var.experimental_ref()] = avg
 
     with ops.name_scope(self.name) as scope:
       decay = ops.convert_to_tensor(self._decay, name="decay")
@@ -456,10 +456,9 @@ class ExponentialMovingAverage(object):
                                  (1.0 + num_updates) / (10.0 + num_updates))
       updates = []
       for var in var_list:
-        zero_debias = self._averages[var] in zero_debias_true
-        updates.append(
-            assign_moving_average(
-                self._averages[var], var, decay, zero_debias=zero_debias))
+        avg = self._averages[var.experimental_ref()]
+        zero_debias = avg.experimental_ref() in zero_debias_true
+        updates.append(assign_moving_average(avg, var, decay, zero_debias))
       return control_flow_ops.group(*updates, name=scope)
 
   def average(self, var):
@@ -472,7 +471,7 @@ class ExponentialMovingAverage(object):
       A `Variable` object or `None` if the moving average of `var`
       is not maintained.
     """
-    return self._averages.get(var, None)
+    return self._averages.get(var.experimental_ref(), None)
 
   def average_name(self, var):
     """Returns the name of the `Variable` holding the average for `var`.
@@ -496,8 +495,8 @@ class ExponentialMovingAverage(object):
       by the `ExponentialMovingAverage class` to hold the moving average of
       `var`.
     """
-    if var in self._averages:
-      return self._averages[var].op.name
+    if var.experimental_ref() in self._averages:
+      return self._averages[var.experimental_ref()].op.name
     return ops.get_default_graph().unique_name(
         var.op.name + "/" + self.name, mark_as_used=False)
 

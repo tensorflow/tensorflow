@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_def_util.h"
@@ -129,19 +130,35 @@ class RecursiveCompilabilityChecker {
                                 const DeviceType* jit_device_type)
       : op_filter_(*op_filter), jit_device_type_(*jit_device_type) {}
 
-  // Returns a list of uncompilable nodes. When `node` is inside a function
-  // body, users can set `node_stack_trace` to provide an additional
-  // context for `node`'s placement within the outer most graph.
-  std::vector<UncompilableNodeInfo> FindUncompilableNodes(
+  using UncompilableNodesMap =
+      std::map<std::string,
+               std::pair<NameAttrList, std::vector<UncompilableNodeInfo>>>;
+
+  // Returns a map where the key is the function identifier(short debug
+  // string) of the function encapsulating the uncompilable nodes, and the
+  // value is a pair of NameAttrList of the function and a vector of
+  // uncompilable node info. When uncompilable node is not inside any
+  // function call nodes, then key is a ShortDebugString() of an empty
+  // NameAttrList.
+  //
+  // Also, when `node` is inside a function body, users can set
+  // `node_stack_trace` to provide an additional context for `node`'s
+  // placement within the outer most graph.
+  UncompilableNodesMap FindUncompilableNodes(
       const Node& node, FunctionLibraryRuntime* lib_runtime,
       const std::vector<StackFrame>* node_stack_trace = nullptr) const;
 
-  // Returns a list of uncompilable nodes in `call_def` that cannot be
-  // compiled by XLA. It is assumed that `call_def` is a call operation.
-  // When `node` is inside a function body, users can set
+  // Returns a map where the key is the function identifier(short debug
+  // string) of the function encapsulating the uncompilable nodes, and the
+  // value is a pair of NameAttrList of the function and a vector of
+  // uncompilable node info. When uncompilable node is not inside any
+  // function call nodes, then key is a ShortDebugString() of an empty
+  // NameAttrList.
+  //
+  // Also, when `node` is inside a function body, users can set
   // `node_stack_trace` to provide an additional context for `node`'s
   // placement within the outer most graph.
-  std::vector<UncompilableNodeInfo> FindUncompilableNodes(
+  UncompilableNodesMap FindUncompilableNodes(
       const NodeDef& call_def, FunctionLibraryRuntime* lib_runtime,
       const std::vector<StackFrame>* node_stack_trace = nullptr) const;
 
@@ -176,27 +193,31 @@ class RecursiveCompilabilityChecker {
   bool IsCompilableNode(
       const Node& node, FunctionLibraryRuntime* lib_runtime,
       std::vector<StackFrameView>* stack_trace,
-      std::vector<UncompilableNodeInfo>* uncompilable_nodes = nullptr) const;
+      NameAttrList* encapsulating_function = nullptr,
+      UncompilableNodesMap* uncompilable_nodes = nullptr) const;
   bool IsCompilableCall(
       const NodeDef& call_def, FunctionLibraryRuntime* lib_runtime,
       std::vector<StackFrameView>* stack_trace,
-      std::vector<UncompilableNodeInfo>* uncompilable_nodes = nullptr) const;
-  bool IsCompilableIf(
-      const Node& if_node, FunctionLibraryRuntime* lib_runtime,
-      std::vector<StackFrameView>* stack_trace,
-      std::vector<UncompilableNodeInfo>* uncompilable_nodes) const;
-  bool IsCompilableWhile(
-      const Node& while_node, FunctionLibraryRuntime* lib_runtime,
-      std::vector<StackFrameView>* stack_trace,
-      std::vector<UncompilableNodeInfo>* uncompilable_nodes) const;
+      NameAttrList* encapsulating_function = nullptr,
+      UncompilableNodesMap* uncompilable_nodes = nullptr) const;
+  bool IsCompilableIf(const Node& if_node, FunctionLibraryRuntime* lib_runtime,
+                      std::vector<StackFrameView>* stack_trace,
+                      NameAttrList* encapsulating_function,
+                      UncompilableNodesMap* uncompilable_nodes) const;
+  bool IsCompilableWhile(const Node& while_node,
+                         FunctionLibraryRuntime* lib_runtime,
+                         std::vector<StackFrameView>* stack_trace,
+                         NameAttrList* encapsulating_function,
+                         UncompilableNodesMap* uncompilable_nodes) const;
 
   // Returns compilability of node def retrieved from `node`'s attribute with
   // name `attr_name`.
   bool ExtractNodeDefAndCheckCompilability(
       const Node& node, const std::string& attr_name,
-      const std::string& call_name, FunctionLibraryRuntime* lib_runtime,
+      const std::string& call_name, NameAttrList* encapsulating_function,
+      FunctionLibraryRuntime* lib_runtime,
       std::vector<StackFrameView>* stack_trace,
-      std::vector<UncompilableNodeInfo>* uncompilable_nodes) const;
+      UncompilableNodesMap* uncompilable_nodes) const;
 
   bool IsStackOp(const Node& node) const {
     const XlaResourceOpInfo* op_info =
@@ -226,12 +247,14 @@ class RecursiveCompilabilityChecker {
            absl::c_any_of(node.output_types(), is_variant);
   }
 
-  bool HasXLAKernel(const Node& node) const;
+  bool HasXLAKernel(const Node& node,
+                    string* uncompilable_reason = nullptr) const;
 
   static void MaybeMarkUncompilableNode(
       const absl::string_view reason,
       const std::vector<StackFrameView>& stack_trace,
-      std::vector<UncompilableNodeInfo>* uncompilable_node_list);
+      NameAttrList* encapsulating_function,
+      UncompilableNodesMap* uncompilable_nodes_map);
 
   // Make sure we don't recurse infinitely on recursive functions.
   const int kMaxRecursionDepth = 10;

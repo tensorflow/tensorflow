@@ -1,0 +1,40 @@
+[cpp_python_util] # util
+tensorflow::swig::IsSequence
+tensorflow::swig::IsSequenceOrComposite
+tensorflow::swig::IsCompositeTensor
+tensorflow::swig::IsTypeSpec
+tensorflow::swig::IsNamedtuple
+tensorflow::swig::IsMapping
+tensorflow::swig::IsMappingView
+tensorflow::swig::IsAttrs
+tensorflow::swig::IsTensor
+tensorflow::swig::IsResourceVariable
+tensorflow::swig::IsVariable
+tensorflow::swig::SameNamedtuples
+tensorflow::swig::AssertSameStructure
+tensorflow::swig::Flatten
+tensorflow::swig::IsSequenceForData
+tensorflow::swig::FlattenForData
+tensorflow::swig::AssertSameStructureForData
+tensorflow::swig::RegisterType
+
+[util_port] # util_port
+tensorflow::IsGoogleCudaEnabled
+tensorflow::IsBuiltWithROCm
+tensorflow::GpuSupportsHalfMatMulAndConv
+tensorflow::IsMklEnabled
+
+[stream_executor_pimpl] # stat_summarizer
+stream_executor::StreamExecutor::EnablePeerAccessTo
+stream_executor::StreamExecutor::CanEnablePeerAccessTo
+
+[print_model_analysis] # tfprof
+tensorflow::tfprof::NewProfiler
+tensorflow::tfprof::DeleteProfiler
+tensorflow::tfprof::AddStep
+tensorflow::tfprof::WriteProfile
+tensorflow::tfprof::ProfilerFromFile
+tensorflow::tfprof::Profile
+tensorflow::tfprof::PrintModelAnalysis
+tensorflow::tfprof::SerializeToString
+

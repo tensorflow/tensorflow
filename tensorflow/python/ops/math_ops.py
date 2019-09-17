@@ -152,7 +152,7 @@ def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
   tf.math.argmax(B,0) # [2, 2, 0, 2, 2]
   tf.math.argmax(B,1) # [2, 2, 1]
   ```
-   
+
   Args:
     input: A `Tensor`. Must be one of the following types: `float32`, `float64`,
       `int32`, `uint8`, `int16`, `int8`, `complex64`, `int64`, `qint8`,
@@ -488,7 +488,7 @@ def complex(real, imag, name=None):
   Returns:
     A `Tensor` of type `complex64` or `complex128`.
 
-  Raises: 
+  Raises:
     TypeError: Real and imag must be correct types
   """
   real = ops.convert_to_tensor(real, name="real")
@@ -643,7 +643,7 @@ def round(x, name=None):  # pylint: disable=redefined-builtin
     return gen_math_ops.round(x, name=name)
 
 
-@tf_export("dtypes.cast", "cast")
+@tf_export("cast", "dtypes.cast")
 @dispatch.add_dispatch_support
 def cast(x, dtype, name=None):
   """Casts a tensor to a new type.
@@ -1110,11 +1110,6 @@ def div_no_nan(x, y, name=None):
   with ops.name_scope(name, "div_no_nan", [x, y]) as name:
     x = ops.convert_to_tensor(x, name="x")
     y = ops.convert_to_tensor(y, name="y", dtype=x.dtype.base_dtype)
-    x_dtype = x.dtype.base_dtype
-    y_dtype = y.dtype.base_dtype
-    if x_dtype != y_dtype:
-      raise TypeError("x and y must have the same dtype, got %r != %r" %
-                      (x_dtype, y_dtype))
     return gen_math_ops.div_no_nan(x, y, name=name)
 
 
@@ -1275,12 +1270,65 @@ ops.Tensor._override_operator("__gt__", gen_math_ops.greater)
 ops.Tensor._override_operator("__ge__", gen_math_ops.greater_equal)
 
 
+@tf_export("math.equal", "equal")
+@dispatch.add_dispatch_support
+def equal(x, y, name=None):
+  """Returns the truth value of (x == y) element-wise.
+
+  Usage:
+
+  ```python
+  x = tf.constant([2, 4])
+  y = tf.constant(2)
+  tf.math.equal(x, y) ==> array([True, False])
+
+  x = tf.constant([2, 4])
+  y = tf.constant([2, 4])
+  tf.math.equal(x, y) ==> array([True,  True])
+  ```
+
+  **NOTE**: `Equal` supports broadcasting. More about broadcasting [here](
+  https://docs.scipy.org/doc/numpy-1.13.0/user/basics.broadcasting.html)
+
+  Args:
+    x: A `Tensor` or `SparseTensor` or `IndexedSlices`.
+    y: A `Tensor` or `SparseTensor` or `IndexedSlices`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type bool with the same size as that of x or y.
+  """
+  return gen_math_ops.equal(x, y, name=name)
+
+
+@tf_export("math.not_equal", "not_equal")
+@dispatch.add_dispatch_support
+def not_equal(x, y, name=None):
+  """Returns the truth value of (x != y) element-wise.
+
+  **NOTE**: `NotEqual` supports broadcasting. More about broadcasting [here](
+  https://docs.scipy.org/doc/numpy-1.13.0/user/basics.broadcasting.html)
+
+  Args:
+    x: A `Tensor` or `SparseTensor` or `IndexedSlices`.
+    y: A `Tensor` or `SparseTensor` or `IndexedSlices`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type bool with the same size as that of x or y.
+  """
+  return gen_math_ops.not_equal(x, y, name=name)
+
+
 def tensor_equals(self, other):
   """Compares two tensors element-wise for equality."""
   g = getattr(self, "graph", None)
   if (ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions() and
       (g is None or g._building_function)):  # pylint: disable=protected-access
-    return gen_math_ops.equal(self, other)
+    if fwd_compat.forward_compatible(2019, 9, 25):
+      return gen_math_ops.equal(self, other, incompatible_shape_error=False)
+    else:
+      return gen_math_ops.equal(self, other)
   else:
     # In legacy graph mode, tensor equality is object equality
     return self is other
@@ -1289,7 +1337,10 @@ def tensor_equals(self, other):
 def tensor_not_equals(self, other):
   """Compares two tensors element-wise for equality."""
   if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():
-    return gen_math_ops.not_equal(self, other)
+    if fwd_compat.forward_compatible(2019, 9, 25):
+      return gen_math_ops.not_equal(self, other, incompatible_shape_error=False)
+    else:
+      return gen_math_ops.not_equal(self, other)
   else:
     # In legacy graph mode, tensor equality is object equality
     return self is not other
@@ -2738,7 +2789,7 @@ def matvec(a,
 
   # `a` * `b`
   # [ 58,  64]
-  c = tf.matvec(a, b)
+  c = tf.linalg.matvec(a, b)
 
 
   # 3-D tensor `a`
@@ -2758,7 +2809,7 @@ def matvec(a,
   # `a` * `b`
   # [[ 86, 212],
   #  [410, 563]]
-  c = tf.matvec(a, b)
+  c = tf.linalg.matvec(a, b)
   ```
 
   Args:
@@ -2959,13 +3010,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   Optionally, pass `shape` and `tensor_dtype` for shape and type checking,
   otherwise, these are inferred.
 
-  `accumulate_n` performs the same operation as `tf.math.add_n`, but
-  does not wait for all of its inputs to be ready before beginning to sum.
-  This approach can save memory if inputs are ready at different times, since
-  minimum temporary storage is proportional to the output size rather than the
-  inputs' size.
-
-  `accumulate_n` is differentiable (but wasn't previous to TensorFlow 1.7).
+  `accumulate_n` performs the same operation as `tf.math.add_n`.
 
   For example:
 
@@ -3025,14 +3070,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
     return inputs[0]
   elif len(inputs) == 1 and name is not None:
     return array_ops.identity(inputs[0], name=name)
-  elif context.executing_eagerly():
-    # TemporaryVariable not currently supported in eager mode; fall back
-    # onto AddN for now.
-    # TODO(frreiss) remove this once the lifetime of eager variables gets
-    # addressed
-    return add_n(inputs, name=name)
-  else:
-    return gen_math_ops.accumulate_nv2(inputs, name=name, shape=shape)  # pylint: disable=protected-access
+  return add_n(inputs, name=name)
 
 
 @ops.RegisterGradient("AccumulateNV2")
@@ -3443,7 +3481,9 @@ def reduced_shape(input_shape, axes):
 
 
 def _unsorted_segment_N(data, segment_ids, num_segments):
-  """ Helper function for unsorted_segment_mean/_sqrtN. Computes the number
+  """ Helper function for unsorted_segment_mean/_sqrtN.
+
+  Computes the number
       of segment entries with 0-entries set to 1 to allow division by N.
   """
   # bincount doesn't support negative indices so we use unsorted_segment_sum
@@ -3554,7 +3594,10 @@ def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
 
 @tf_export(v1=["sparse.segment_sum", "sparse_segment_sum"])
 @deprecation.deprecated_endpoints("sparse_segment_sum")
-def sparse_segment_sum(data, indices, segment_ids, name=None,
+def sparse_segment_sum(data,
+                       indices,
+                       segment_ids,
+                       name=None,
                        num_segments=None):
   r"""Computes the sum along sparse segments of a tensor.
 
@@ -3853,7 +3896,7 @@ def sparse_segment_sqrt_n_v2(data,
 
 @tf_export("tensordot", "linalg.tensordot")
 def tensordot(a, b, axes, name=None):
-  r"""Tensor contraction of a and b along specified axes.
+  r"""Tensor contraction of a and b along specified axes and outer product.
 
   Tensordot (also known as tensor contraction) sums the product of elements
   from `a` and `b` over the indices specified by `a_axes` and `b_axes`.
@@ -3861,7 +3904,8 @@ def tensordot(a, b, axes, name=None):
   contract the tensors. The axis `a_axes[i]` of `a` must have the same dimension
   as axis `b_axes[i]` of `b` for all `i` in `range(0, len(a_axes))`. The lists
   `a_axes` and `b_axes` must have identical length and consist of unique
-  integers that specify valid axes for each of the tensors.
+  integers that specify valid axes for each of the tensors. Additionally
+  outer product is supported by passing `axes=0`.
 
   This operation corresponds to `numpy.tensordot(a, b, axes)`.
 
@@ -3871,7 +3915,10 @@ def tensordot(a, b, axes, name=None):
   Example 2: When `a` and `b` are matrices (order 2), the case
   `axes = [[1], [0]]` is equivalent to matrix multiplication.
 
-  Example 3: Suppose that \\(a_{ijk}\\) and \\(b_{lmn}\\) represent two
+  Example 3: When `a` and `b` are matrices (order 2), the case `axes=0` gives
+  the outer product, a tensor of order 4.
+
+  Example 4: Suppose that \\(a_{ijk}\\) and \\(b_{lmn}\\) represent two
   tensors of order 3. Then, `contract(a, b, [[0], [2]])` is the order 4 tensor
   \\(c_{jklm}\\) whose entry
   corresponding to the indices \\((j,k,l,m)\\) is given by:
@@ -3888,7 +3935,8 @@ def tensordot(a, b, axes, name=None):
       b in order. If axes is a list or `Tensor` the first and second row contain
       the set of unique integers specifying axes along which the contraction is
       computed, for `a` and `b`, respectively. The number of axes for `a` and
-      `b` must be equal.
+      `b` must be equal. If `axes=0`, computes the outer product between `a` and
+      `b`.
     name: A name for the operation (optional).
 
   Returns:

@@ -122,26 +122,8 @@ tf_py_test(
     size = "small",
     srcs = ["filter_test.py"],
     additional_deps = [
-        ":filter_test_base",
-        "//tensorflow/python:client_testlib",
-    ],
-)
-
-tf_py_test(
-    name = "filter_with_legacy_function_test",
-    size = "small",
-    srcs = ["filter_with_legacy_function_test.py"],
-    additional_deps = [
-        ":filter_test_base",
-        "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_library(
-    name = "filter_test_base",
-    srcs = ["filter_test_base.py"],
-    deps = [
         ":test_base",
+        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -150,7 +132,6 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -309,7 +290,6 @@ tf_py_test(
     size = "small",
     srcs = ["iterator_cluster_test.py"],
     additional_deps = [
-        "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",

@@ -509,6 +509,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "mlir"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "name_scope"
     mtype: "<type \'type\'>"
   }
@@ -1070,7 +1074,7 @@ tf_module {
   }
   member_method {
     name: "custom_gradient"
-    argspec: "args=[\'f\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'f\', \'primals\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "decode_base64"
@@ -1102,7 +1106,7 @@ tf_module {
   }
   member_method {
     name: "dequantize"
-    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'mode\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'None\'], "
+    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'mode\', \'name\', \'axis\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'None\', \'None\'], "
   }
   member_method {
     name: "deserialize_many_sparse"
@@ -1810,11 +1814,11 @@ tf_module {
   }
   member_method {
     name: "quantize"
-    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'T\', \'mode\', \'round_mode\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'HALF_AWAY_FROM_ZERO\', \'None\'], "
+    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'T\', \'mode\', \'round_mode\', \'name\', \'narrow_range\', \'axis\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'HALF_AWAY_FROM_ZERO\', \'None\', \'False\', \'None\'], "
   }
   member_method {
     name: "quantize_v2"
-    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'T\', \'mode\', \'name\', \'round_mode\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'None\', \'HALF_AWAY_FROM_ZERO\'], "
+    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'T\', \'mode\', \'name\', \'round_mode\', \'narrow_range\', \'axis\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'None\', \'HALF_AWAY_FROM_ZERO\', \'False\', \'None\'], "
   }
   member_method {
     name: "quantized_concat"
@@ -1915,6 +1919,10 @@ tf_module {
   member_method {
     name: "register_tensor_conversion_function"
     argspec: "args=[\'base_type\', \'conversion_func\', \'priority\'], varargs=None, keywords=None, defaults=[\'100\'], "
+  }
+  member_method {
+    name: "repeat"
+    argspec: "args=[\'input\', \'repeats\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "report_uninitialized_variables"

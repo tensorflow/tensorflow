@@ -103,7 +103,8 @@ def gen_api_init_files(
             " --apiname=" + api_name + " --apiversion=" + str(api_version) +
             compat_api_version_flags + " " + compat_init_template_flags +
             loading_flag + " --package=" + ",".join(packages) +
-            " --output_package=" + output_package + " $(OUTS)"
+            " --output_package=" + output_package +
+            " --use_relative_imports=True $(OUTS)"
         ),
         srcs = srcs,
         tools = [":" + api_gen_binary_target],

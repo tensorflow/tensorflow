@@ -257,6 +257,14 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "mixed_precision"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "mlir"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "name_scope"
     mtype: "<type \'type\'>"
   }
@@ -570,7 +578,7 @@ tf_module {
   }
   member_method {
     name: "custom_gradient"
-    argspec: "args=[\'f\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'f\', \'primals\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "device"
@@ -899,6 +907,10 @@ tf_module {
   member_method {
     name: "register_tensor_conversion_function"
     argspec: "args=[\'base_type\', \'conversion_func\', \'priority\'], varargs=None, keywords=None, defaults=[\'100\'], "
+  }
+  member_method {
+    name: "repeat"
+    argspec: "args=[\'input\', \'repeats\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "required_space_to_batch_paddings"

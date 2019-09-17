@@ -55,12 +55,11 @@ def batch_gather(params, indices, name=None):
     `result.ragged_rank = max(indices.ragged_rank, params.ragged_rank)`.
 
   #### Example:
-    ```python
-    >>> params = tf.ragged.constant([['a', 'b', 'c'], ['d'], [], ['e']])
-    >>> indices = tf.ragged.constant([[1, 2, 0], [], [], [0, 0]])
-    >>> tf.compat.v1.batch_gather(params, indices)
-    [['b', 'c', 'a'], [], [], ['e', 'e']]
-    ```
+
+  >>> params = tf.ragged.constant([['a', 'b', 'c'], ['d'], [], ['e']])
+  >>> indices = tf.ragged.constant([[1, 2, 0], [], [], [0, 0]])
+  >>> tf.compat.v1.batch_gather(params, indices)
+  <tf.RaggedTensor [[b'b', b'c', b'a'], [], [], [b'e', b'e']]>
   """
   if not (ragged_tensor.is_ragged(params) or ragged_tensor.is_ragged(indices)):
     return array_ops.batch_gather(params, indices, name)
@@ -99,7 +98,7 @@ def batch_gather(params, indices, name=None):
                              'not match params shape')
           params = ragged_tensor.RaggedTensor.from_tensor(
               params, ragged_rank=1,
-              row_splits_dtype=indices.row_splits.dtype)
+              row_splits_dtype=indices.row_splits_dtype)
 
         # Adjust indices from within-batch to global (in params.values), and
         # then use ragged.gather to gather them.

@@ -206,6 +206,15 @@ bool IsTrivialWindowDimension(const WindowDimension& window_dimension) {
          window_dimension.base_dilation() == 1;
 }
 
+bool HasOverlappingWindow(const Window& window) {
+  for (const auto& dim : window.dimensions()) {
+    if (dim.size() > dim.stride()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 int64 DilatedBound(int64 bound, int64 dilation) {
   CHECK_GE(bound, 0);
   CHECK_GE(dilation, 1);

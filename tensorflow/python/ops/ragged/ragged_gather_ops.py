@@ -52,21 +52,19 @@ def gather(params, indices, validate_indices=None, axis=0, batch_dims=0,
 
   Examples:
 
-  ```python
   >>> params = tf.constant(['a', 'b', 'c', 'd', 'e'])
   >>> indices = tf.constant([3, 1, 2, 1, 0])
   >>> ragged_params = tf.ragged.constant([['a', 'b', 'c'], ['d'], [], ['e']])
   >>> ragged_indices = tf.ragged.constant([[3, 1, 2], [1], [], [0]])
 
-  >>> print ragged.gather(params, ragged_indices)
-  [['d', 'b', 'c'], ['b'], [], ['a']]
+  >>> tf.gather(params, ragged_indices)
+  <tf.RaggedTensor [[b'd', b'b', b'c'], [b'b'], [], [b'a']]>
 
-  >>> print ragged.gather(ragged_params, indices)
-  [['e'], ['d'], [], ['d'], ['a', 'b', 'c']]
+  >>> tf.gather(ragged_params, indices)
+  <tf.RaggedTensor [[b'e'], [b'd'], [], [b'd'], [b'a', b'b', b'c']]>
 
-  >>> print ragged.gather(ragged_params, ragged_indices)
-  [[['e'], ['d'], []], [['d']], [], [['a', 'b', 'c']]]
-  ```
+  >>> tf.gather(ragged_params, ragged_indices)
+  <tf.RaggedTensor [[[b'e'], [b'd'], []], [[b'd']], [], [[b'a', b'b', b'c']]]>
 
   Args:
     params: The potentially ragged tensor from which to gather values. Must be
@@ -148,25 +146,23 @@ def gather_nd(params, indices, batch_dims=0, name=None):
     A potentially ragged tensor with shape `[A1...AN, B_{I+1}...BM]`.
 
   #### Examples:
-    ```python
-    >>> params = tf.compat.v1.ragged.constant_value(
-    ...     [ [ ['000', '001'], ['010'              ]          ],
-    ...       [ ['100'       ], ['110', '111', '112'], ['120'] ],
-    ...       [ [            ], ['210'              ]          ] ])
 
-    >>> # Gather 2D slices from a 3D tensor
-    >>> ragged.gather_nd(params, [[2], [0]])
-    [ [ [            ], ['210'] ]
-      [ ['000', '001'], ['010'] ] ]
+  >>> params = tf.ragged.constant(
+  ...     [ [ ['000', '001'], ['010'              ]          ],
+  ...       [ ['100'       ], ['110', '111', '112'], ['120'] ],
+  ...       [ [            ], ['210'              ]          ] ])
 
-    >>> # Gather 1D slices from a 3D tensor
-    >>> ragged.gather_nd(params, [[2, 1], [0, 0]])
-    [['210'], ['000', '001']]
+  >>> # Gather 2D slices from a 3D tensor
+  >>> tf.gather_nd(params, [[2], [0]])
+  <tf.RaggedTensor [[[], [b'210']], [[b'000', b'001'], [b'010']]]>
 
-    >>> # Gather scalars from a 3D tensor
-    >>> ragged.gather_nd(params, [[0, 0, 1], [1, 1, 2]])
-    ['001', '112']
-    ```
+  >>> # Gather 1D slices from a 3D tensor
+  >>> tf.gather_nd(params, [[2, 1], [0, 0]])
+  <tf.RaggedTensor [[b'210'], [b'000', b'001']]>
+
+  >>> # Gather scalars from a 3D tensor
+  >>> tf.gather_nd(params, [[0, 0, 1], [1, 1, 2]]).numpy()
+  array([b'001', b'112'], dtype=object)
   """
   if not isinstance(batch_dims, int) or batch_dims != 0:
     raise ValueError('batch_dims != 0 is not supported for ragged gather yet.')
@@ -204,7 +200,7 @@ def gather_nd(params, indices, batch_dims=0, name=None):
       if indices_is_dense:
         indices = ragged_tensor.RaggedTensor.from_tensor(
             indices, ragged_rank=indices_ndims - 2,
-            row_splits_dtype=params.row_splits.dtype)
+            row_splits_dtype=params.row_splits_dtype)
       result = indices.with_flat_values(gather_nd(params, indices.flat_values))
       if (indices_is_dense and ragged_tensor.is_ragged(result) and
           result.ragged_rank == indices_ndims - 2):
@@ -239,7 +235,7 @@ def gather_nd(params, indices, batch_dims=0, name=None):
     # index tuples point to the correct values in the flattened params; and
     # then use ragged.gather on the flattened index tuples & params.
     else:
-      indices = math_ops.cast(indices, params.row_splits.dtype)
+      indices = math_ops.cast(indices, params.row_splits_dtype)
 
       # Flatten the outermost 2 dimensions of the index tuples & params.
       flattened_index_tuples = array_ops.gather(params.row_splits,
