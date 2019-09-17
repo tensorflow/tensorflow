@@ -38136,6 +38136,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "use_default_device"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
 }
 op {
   name: "ScatterAdd"
