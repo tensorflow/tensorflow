@@ -176,6 +176,8 @@ private:
 
   LogicalResult processFunctionType(ArrayRef<uint32_t> operands);
 
+  LogicalResult processRuntimeArrayType(ArrayRef<uint32_t> operands);
+
   LogicalResult processStructType(ArrayRef<uint32_t> operands);
 
   //===--------------------------------------------------------------------===//
@@ -996,6 +998,8 @@ LogicalResult Deserializer::processType(spirv::Opcode opcode,
     return processArrayType(operands);
   case spirv::Opcode::OpTypeFunction:
     return processFunctionType(operands);
+  case spirv::Opcode::OpTypeRuntimeArray:
+    return processRuntimeArrayType(operands);
   case spirv::Opcode::OpTypeStruct:
     return processStructType(operands);
   default:
@@ -1058,6 +1062,21 @@ LogicalResult Deserializer::processFunctionType(ArrayRef<uint32_t> operands) {
     returnTypes = llvm::makeArrayRef(returnType);
   }
   typeMap[operands[0]] = FunctionType::get(argTypes, returnTypes, context);
+  return success();
+}
+
+LogicalResult
+Deserializer::processRuntimeArrayType(ArrayRef<uint32_t> operands) {
+  if (operands.size() != 2) {
+    return emitError(unknownLoc, "OpTypeRuntimeArray must have two operands");
+  }
+  Type memberType = getType(operands[1]);
+  if (!memberType) {
+    return emitError(unknownLoc,
+                     "OpTypeRuntimeArray references undefined <id> ")
+           << operands[1];
+  }
+  typeMap[operands[0]] = spirv::RuntimeArrayType::get(memberType);
   return success();
 }
 
@@ -1716,6 +1735,7 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
   case spirv::Opcode::OpTypeVector:
   case spirv::Opcode::OpTypeArray:
   case spirv::Opcode::OpTypeFunction:
+  case spirv::Opcode::OpTypeRuntimeArray:
   case spirv::Opcode::OpTypeStruct:
   case spirv::Opcode::OpTypePointer:
     return processType(opcode, operands);
