@@ -18,10 +18,6 @@ limitations under the License.
 #include <limits>
 
 #include "absl/strings/str_cat.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "third_party/cub/device/device_radix_sort.cuh"
-#include "third_party/cub/device/device_segmented_radix_sort.cuh"
-#include "third_party/cub/device/device_select.cuh"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -29,6 +25,10 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 #include "tensorflow/stream_executor/stream_executor.h"
+#include "third_party/cub/device/device_radix_sort.cuh"
+#include "third_party/cub/device/device_segmented_radix_sort.cuh"
+#include "third_party/cub/device/device_select.cuh"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #define TF_RETURN_IF_CUDA_ERROR(result)                   \
   do {                                                    \
@@ -424,7 +424,6 @@ Status DoNMS(OpKernelContext* context, const Tensor& boxes,
              const Tensor& scores, const int64_t max_output_size,
              const float iou_threshold_val, const float score_threshold,
              bool pad_to_max_output, int* num_saved_outputs) {
-  const int output_size = max_output_size;
   int num_boxes = boxes.dim_size(0);
   size_t cub_sort_temp_storage_bytes = 0;
   auto cuda_stream = GetGpuStream(context);
@@ -526,15 +525,15 @@ Status DoNMS(OpKernelContext* context, const Tensor& boxes,
   const bool flip_boxes = true;
   auto status = NmsGpu(d_sorted_boxes.flat<float>().data(), limited_num_boxes,
                        iou_threshold_val, d_selected_indices.flat<int>().data(),
-                       &num_to_keep, context, output_size, flip_boxes);
+                       &num_to_keep, context, max_output_size, flip_boxes);
   TF_RETURN_IF_CUDA_ERROR(cudaGetLastError());
   if (!status.ok()) {
     context->SetStatus(status);
     return status;
   }
   Tensor* output_indices = nullptr;
-  int num_outputs = std::min(num_to_keep, output_size);  // no padding!
-  if (pad_to_max_output && num_outputs!=max_output_size) {
+  int num_outputs = std::min(num_to_keep, (int)max_output_size);  // no padding!
+  if (pad_to_max_output && num_outputs != max_output_size) {
     TF_RETURN_IF_ERROR(context->allocate_output(
         0, TensorShape({max_output_size}), &output_indices));
     config = GetGpuLaunchConfig(max_output_size, device);
@@ -562,6 +561,38 @@ Status DoNMS(OpKernelContext* context, const Tensor& boxes,
   return Status::OK();
 }
 
+Status CheckValidInputs(const Tensor& boxes, const Tensor& scores,
+                        const Tensor& max_output_size,
+                        const Tensor& iou_threshold) {
+  if (!TensorShapeUtils::IsScalar(max_output_size.shape())) {
+    return errors::InvalidArgument("max_output_size must be 0-D, got shape ",
+                                   max_output_size.shape().DebugString());
+  }
+  if (!TensorShapeUtils::IsScalar(iou_threshold.shape())) {
+    return errors::InvalidArgument("iou_threshold must be 0-D, got shape ",
+                                   iou_threshold.shape().DebugString());
+  }
+  const float iou_threshold_val = iou_threshold.scalar<float>()();
+  if (iou_threshold_val < 0 || iou_threshold_val > 1) {
+    return errors::InvalidArgument("iou_threshold must be in [0, 1]");
+  }
+  if (boxes.dims() != 2) {
+    return errors::InvalidArgument("boxes must be a rank 2 tensor!");
+  }
+  int num_boxes = boxes.dim_size(0);
+  if (boxes.dim_size(1) != 4) {
+    return errors::InvalidArgument("boxes must be Nx4");
+  }
+  if (scores.dims() != 1) {
+    return errors::InvalidArgument("scores must be a vector!");
+  }
+  if (scores.dim_size(0) != num_boxes) {
+    return errors::InvalidArgument(
+        "scores has incompatible shape");  // message must be exactly this
+                                           // otherwise tests fail!
+  }
+  return Status::OK();
+}
 class NonMaxSuppressionV2GPUOp : public OpKernel {
  public:
   explicit NonMaxSuppressionV2GPUOp(OpKernelConstruction* context)
@@ -574,37 +605,22 @@ class NonMaxSuppressionV2GPUOp : public OpKernel {
     const Tensor& scores = context->input(1);
     // max_output_size: scalar
     const Tensor& max_output_size = context->input(2);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(max_output_size.shape()),
-        errors::InvalidArgument("max_output_size must be 0-D, got shape ",
-                                max_output_size.shape().DebugString()));
     // iou_threshold: scalar
     const Tensor& iou_threshold = context->input(3);
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
-                errors::InvalidArgument("iou_threshold must be 0-D, got shape ",
-                                        iou_threshold.shape().DebugString()));
-    const float iou_threshold_val = iou_threshold.scalar<float>()();
-
-    OP_REQUIRES(context, iou_threshold_val >= 0 && iou_threshold_val <= 1,
-                errors::InvalidArgument("iou_threshold must be in [0, 1]"));
-    OP_REQUIRES(context, boxes.dims() == 2,
-                errors::InvalidArgument("boxes must be a rank 2 tensor!"));
+    auto valid =
+        CheckValidInputs(boxes, scores, max_output_size, iou_threshold);
+    if (!valid.ok()) {
+      context->SetStatus(valid);
+      return;
+    }
     int num_boxes = boxes.dim_size(0);
-    OP_REQUIRES(context, boxes.dim_size(1) == 4,
-                errors::InvalidArgument("boxes must be Nx4"));
-    OP_REQUIRES(context, scores.dims() == 1,
-                errors::InvalidArgument("scores must be a vector!"));
-    OP_REQUIRES(
-        context, scores.dim_size(0) == num_boxes,
-        errors::InvalidArgument(
-            "scores has incompatible shape"));  // message must be exactly this
-                                                // otherwise tests fail!
     if (num_boxes == 0) {
       Tensor* output_indices = nullptr;
       OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape({0}),
                                                        &output_indices));
       return;
     }
+    const float iou_threshold_val = iou_threshold.scalar<float>()();
     const int64_t output_size = max_output_size.scalar<int>()();
 
     OP_REQUIRES_OK(
@@ -628,16 +644,14 @@ class NonMaxSuppressionV3GPUOp : public OpKernel {
     const Tensor& scores = context->input(1);
     // max_output_size: scalar
     const Tensor& max_output_size = context->input(2);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(max_output_size.shape()),
-        errors::InvalidArgument("max_output_size must be 0-D, got shape ",
-                                max_output_size.shape().DebugString()));
     // iou_threshold: scalar
     const Tensor& iou_threshold = context->input(3);
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
-                errors::InvalidArgument("iou_threshold must be 0-D, got shape ",
-                                        iou_threshold.shape().DebugString()));
-    const float iou_threshold_val = iou_threshold.scalar<float>()();
+    auto valid =
+        CheckValidInputs(boxes, scores, max_output_size, iou_threshold);
+    if (!valid.ok()) {
+      context->SetStatus(valid);
+      return;
+    }
 
     const Tensor& score_threshold = context->input(4);
     OP_REQUIRES(
@@ -645,28 +659,15 @@ class NonMaxSuppressionV3GPUOp : public OpKernel {
         errors::InvalidArgument("score_threshold must be 0-D, got shape ",
                                 score_threshold.shape().DebugString()));
     const float score_threshold_val = score_threshold.scalar<float>()();
-
-    OP_REQUIRES(context, iou_threshold_val >= 0 && iou_threshold_val <= 1,
-                errors::InvalidArgument("iou_threshold must be in [0, 1]"));
-    OP_REQUIRES(context, boxes.dims() == 2,
-                errors::InvalidArgument("boxes must be a rank 2 tensor!"));
     int num_boxes = boxes.dim_size(0);
-    OP_REQUIRES(context, boxes.dim_size(1) == 4,
-                errors::InvalidArgument("boxes must be Nx4"));
-    OP_REQUIRES(context, scores.dims() == 1,
-                errors::InvalidArgument("scores must be a vector!"));
-    OP_REQUIRES(
-        context, scores.dim_size(0) == num_boxes,
-        errors::InvalidArgument(
-            "scores has incompatible shape"));  // message must be exactly this
-                                                // otherwise tests fail!
     if (num_boxes == 0) {
       Tensor* output_indices = nullptr;
       OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape({0}),
                                                        &output_indices));
       return;
     }
-    const int output_size = max_output_size.scalar<int>()();
+    const float iou_threshold_val = iou_threshold.scalar<float>()();
+    const int64_t output_size = max_output_size.scalar<int>()();
     OP_REQUIRES_OK(context, DoNMS(context, boxes, scores, output_size,
                                   iou_threshold_val, score_threshold_val,
                                   /*pad_to_max_output*/ false, &num_boxes));
@@ -688,16 +689,14 @@ class NonMaxSuppressionV4GPUOp : public OpKernel {
     const Tensor& scores = context->input(1);
     // max_output_size: scalar
     const Tensor& max_output_size = context->input(2);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(max_output_size.shape()),
-        errors::InvalidArgument("max_output_size must be 0-D, got shape ",
-                                max_output_size.shape().DebugString()));
     // iou_threshold: scalar
     const Tensor& iou_threshold = context->input(3);
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
-                errors::InvalidArgument("iou_threshold must be 0-D, got shape ",
-                                        iou_threshold.shape().DebugString()));
-    const float iou_threshold_val = iou_threshold.scalar<float>()();
+    auto valid =
+        CheckValidInputs(boxes, scores, max_output_size, iou_threshold);
+    if (!valid.ok()) {
+      context->SetStatus(valid);
+      return;
+    }
 
     const Tensor& score_threshold = context->input(4);
     OP_REQUIRES(
@@ -706,44 +705,35 @@ class NonMaxSuppressionV4GPUOp : public OpKernel {
                                 score_threshold.shape().DebugString()));
     const float score_threshold_val = score_threshold.scalar<float>()();
 
-    OP_REQUIRES(context, iou_threshold_val >= 0 && iou_threshold_val <= 1,
-                errors::InvalidArgument("iou_threshold must be in [0, 1]"));
-    OP_REQUIRES(context, boxes.dims() == 2,
-                errors::InvalidArgument("boxes must be a rank 2 tensor!"));
-    int num_boxes = boxes.dim_size(0);
-    OP_REQUIRES(context, boxes.dim_size(1) == 4,
-                errors::InvalidArgument("boxes must be Nx4"));
-    OP_REQUIRES(context, scores.dims() == 1,
-                errors::InvalidArgument("scores must be a vector!"));
-    OP_REQUIRES(
-        context, scores.dim_size(0) == num_boxes,
-        errors::InvalidArgument(
-            "scores has incompatible shape"));  // message must be exactly this
-                                                // otherwise tests fail!
     Tensor* num_outputs_t = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(
-                                1, tensorflow::TensorShape({}), &num_outputs_t));
-    auto device=context->eigen_gpu_device();
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(1, tensorflow::TensorShape({}),
+                                            &num_outputs_t));
+    auto device = context->eigen_gpu_device();
+    int num_boxes = boxes.dim_size(0);
     if (num_boxes == 0) {
       Tensor* output_indices = nullptr;
       OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape({}),
                                                        &output_indices));
-      device.memcpy((num_outputs_t->flat<int>().data()),&num_boxes,sizeof(int));
+      device.memcpy((num_outputs_t->flat<int>().data()), &num_boxes,
+                    sizeof(int));
       return;
     }
-    const int output_size = max_output_size.scalar<int>()();
+
+    const float iou_threshold_val = iou_threshold.scalar<float>()();
+    const int64_t output_size = max_output_size.scalar<int>()();
     int num_outputs = 0;
     OP_REQUIRES_OK(context, DoNMS(context, boxes, scores, output_size,
                                   iou_threshold_val, score_threshold_val,
                                   pad_to_max_output_size_, &num_outputs));
-    device.memcpyHostToDevice((num_outputs_t->flat<int>().data()),&num_outputs,sizeof(int));
+    device.memcpyHostToDevice((num_outputs_t->flat<int>().data()), &num_outputs,
+                              sizeof(int));
     return;
   }
 
  private:
   bool pad_to_max_output_size_;
 };
-
 
 REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV2")
                             .TypeConstraint<float>("T")
