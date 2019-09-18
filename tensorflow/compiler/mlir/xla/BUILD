@@ -269,6 +269,7 @@ cc_library(
     deps = [
         ":hlo",
         ":type_to_shape",
+        ":xla_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal_util",

@@ -139,7 +139,7 @@ dynamic_parameter_binding {
 }
 
 # CHECK-LABEL: func @main(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<f32> {
-# CHECK-NEXT:   %0 = "xla_hlo.add"(%arg0, %arg1) {name = "add.3"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+# CHECK-NEXT:   %0 = xla_hlo.add %arg0, %arg1 {name = "add.3"} : tensor<4xf32>
 # TODO(b/129709049) consider making this default precision config inferred.
 # CHECK-NEXT:   %1 = "xla_hlo.dot"(%0, %arg1) {name = "dot.4", precision_config = ["DEFAULT", "DEFAULT"]} : (tensor<4xf32>, tensor<4xf32>) -> tensor<f32>
 # CHECK-NEXT:   return %1 : tensor<f32>

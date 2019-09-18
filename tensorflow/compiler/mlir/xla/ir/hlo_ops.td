@@ -213,7 +213,7 @@ def HLO_ReduceOp: HLO_Op<"reduce", [
     I64ElementsAttr:$dimensions
   );
 
-  let results = (outs Variadic<HLO_Tensor>);
+  let results = (outs Variadic<HLO_TensorOrTuple>);
 
   // TODO(hinsu): Verify that the attached body arguments and results are
   // compatible with reduce op's operands.
