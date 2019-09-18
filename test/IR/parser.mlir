@@ -1082,3 +1082,10 @@ func @ptr_to_function() -> !unreg.ptr<() -> ()>
 
 // CHECK-LABEL: func @escaped_string_char(i1 {foo.value = "\0A"})
 func @escaped_string_char(i1 {foo.value = "\n"})
+
+// CHECK-LABEL: func @wrapped_keyword_test
+func @wrapped_keyword_test() {
+  // CHECK: test.wrapped_keyword foo.keyword
+  test.wrapped_keyword foo.keyword
+  return
+}

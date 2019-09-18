@@ -3353,20 +3353,6 @@ public:
     return parser.parseToken(Token::equal, "expected '='");
   }
 
-  /// Parse a keyword if present.
-  ParseResult parseOptionalKeyword(const char *keyword) override {
-    // Check that the current token is a bare identifier or keyword.
-    if (parser.getToken().isNot(Token::bare_identifier) &&
-        !parser.getToken().isKeyword())
-      return failure();
-
-    if (parser.getTokenSpelling() == keyword) {
-      parser.consumeToken();
-      return success();
-    }
-    return failure();
-  }
-
   /// Parse a `(` token.
   ParseResult parseLParen() override {
     return parser.parseToken(Token::l_paren, "expected '('");
@@ -3435,6 +3421,32 @@ public:
   //===--------------------------------------------------------------------===//
   // Identifier Parsing
   //===--------------------------------------------------------------------===//
+
+  /// Returns if the current token corresponds to a keyword.
+  bool isCurrentTokenAKeyword() const {
+    return parser.getToken().is(Token::bare_identifier) ||
+           parser.getToken().isKeyword();
+  }
+
+  /// Parse the given keyword if present.
+  ParseResult parseOptionalKeyword(StringRef keyword) override {
+    // Check that the current token has the same spelling.
+    if (!isCurrentTokenAKeyword() || parser.getTokenSpelling() != keyword)
+      return failure();
+    parser.consumeToken();
+    return success();
+  }
+
+  /// Parse a keyword, if present, into 'keyword'.
+  ParseResult parseOptionalKeyword(StringRef *keyword) override {
+    // Check that the current token is a keyword.
+    if (!isCurrentTokenAKeyword())
+      return failure();
+
+    *keyword = parser.getTokenSpelling();
+    parser.consumeToken();
+    return success();
+  }
 
   /// Parse an @-identifier and store it (without the '@' symbol) in a string
   /// attribute named 'attrName'.
