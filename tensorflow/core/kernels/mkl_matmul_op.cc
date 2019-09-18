@@ -197,7 +197,7 @@ class MklMatMulOp : public OpKernel {
     FloatToBFloat16(c_float.flat<float>().data(), c, c_float.NumElements());
   }
 
-// MKLDNN only supports SGEMM
+// MKL-DNN only supports SGEMM and bfloat16-GEMM.
 #ifndef INTEL_MKL_DNN_ONLY
 
   // Matrix-Matrix Multiplication with FP64 tensors. For detailed info about
