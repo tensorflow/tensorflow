@@ -112,6 +112,8 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits>:
 
 def HLO_AbsOp: HLO_UnaryElementwiseOp<"abs", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_AbsOp;
 
+def HLO_CeilOp: HLO_UnaryElementwiseOp<"ceil", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CeilOp;
+
 def HLO_ConvertOp : HLO_UnaryElementwiseOp<
       "convert", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_ConvertOp {
   let hasFolder = 1;
@@ -120,6 +122,8 @@ def HLO_ConvertOp : HLO_UnaryElementwiseOp<
   // HLO converter until we have a method to call the special constructor.
   let hasCustomHLOConverter = 1;
 }
+
+def HLO_CosOp: HLO_UnaryElementwiseOp<"cos", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CosOp;
 
 def HLO_ExpOp: HLO_UnaryElementwiseOp<"exp", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_ExpOp;
 

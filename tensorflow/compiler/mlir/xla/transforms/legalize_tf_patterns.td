@@ -181,6 +181,21 @@ def : Pat<(TF_SelectOp AnyTensor:$condition, AnyTensor:$lhs, AnyTensor:$rhs),
 // Unary op patterns.
 //===----------------------------------------------------------------------===//
 
+foreach Mapping = [
+                   [TF_AbsOp, HLO_AbsOp],
+                   [TF_CeilOp, HLO_CeilOp],
+                   [TF_CosOp, HLO_CosOp],
+                   [TF_ExpOp, HLO_ExpOp],
+                   [TF_FloorOp, HLO_FloorOp],
+                   [TF_LogOp, HLO_LogOp],
+                   [TF_NegOp, HLO_NegOp],
+                   [TF_TanhOp, HLO_TanhOp],
+                  ] in {
+ def : Pat<(Mapping[0] AnyTensor:$input),
+           (Mapping[1] $input)>;
+}
+
+
 foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp] in {
   def : Pat<(TfOp:$res AnyStaticShapeTensor:$arg, $ignored),
             (HLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)]>;
