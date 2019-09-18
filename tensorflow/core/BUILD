@@ -226,6 +226,7 @@ COMMON_PROTO_SRCS = [
 ]
 
 ERROR_CODES_PROTO_SRCS = [
+    "protobuf/error_codes.proto",
     "//tensorflow/core/lib/core:error_codes.proto",
 ]
 # LINT.ThenChange(//tensorflow/core/android_proto_config.asciipb)
@@ -261,6 +262,7 @@ tf_proto_library(
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
+        ":error_codes_proto_impl",
         ":protos_all_proto",
         "//tensorflow/core/lib/core:error_codes_proto",
     ],
@@ -2724,11 +2726,19 @@ cc_library(
 )
 
 tf_proto_library(
+    name = "error_codes_proto_impl",
+    srcs = ["protobuf/error_codes.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+)
+
+tf_proto_library(
     name = "protos_all_proto",
     srcs = COMMON_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
+        ":error_codes_proto_impl",
         "//tensorflow/core/lib/core:error_codes_proto",
     ],
 )
