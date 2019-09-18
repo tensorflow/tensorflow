@@ -673,12 +673,7 @@ class Layer(module.Module):
             'but saw signature signature entry: {}.'.format(s))
       return s.shape
     input_shape = nest.map_structure(check_type_return_shape, input_signature)
-    
-    output_shape = self.compute_output_shape(input_shape)
-    if isinstance(output_shape, tuple):
-      output_shape = TensorShape(output_shape)
-    elif isinstance(output_shape, list):
-      output_shape = list(map(lambda x: TensorShape(x) if isinstance(x, tuple) else x, output_shape))
+    output_shape = self._parse_output_shape(self.compute_output_shape(input_shape))
 
     dtype = self._compute_dtype
     if dtype is None:
@@ -2176,12 +2171,7 @@ class Layer(module.Module):
 
   def _symbolic_call(self, inputs):
     input_shapes = nest.map_structure(lambda x: x.shape, inputs)
-
-    output_shapes = self.compute_output_shape(input_shapes)
-    if isinstance(output_shapes, tuple):
-      output_shapes = TensorShape(output_shapes)
-    elif isinstance(output_shapes, list):
-      output_shapes = list(map(lambda x: TensorShape(x) if isinstance(x, tuple) else x, output_shapes))
+    output_shapes = self._parse_output_shape(self.compute_output_shape(input_shapes))
       
     def _make_placeholder_like(shape):
       ph = backend.placeholder(shape=shape, dtype=self.dtype)
@@ -2189,6 +2179,22 @@ class Layer(module.Module):
       return ph
 
     return nest.map_structure(_make_placeholder_like, output_shapes)
+
+  def _parse_output_shape(self, output_shape):
+    """Converts a user given shape (tuples, lists) to TensorShapes
+
+    Returns:
+      The output shape with any tuples converted to TensorShapes 
+    """
+    def _convert_tuple_to_tensorshape(input_tuple):
+      return TensorShape(tuple(map(lambda x: x.aslist() if isinstance(x, TensorShape) else x, input_tuple)))
+
+    if isinstance(output_shape, tuple):
+      output_shape = _convert_tuple_to_tensorshape(output_shape)
+    elif isinstance(output_shape, list):
+      output_shape = list(map(lambda x: _convert_tuple_to_tensorshape(x) if isinstance(x, tuple) else x, output_shape))
+
+    return output_shape
 
   def _get_trainable_state(self):
     """Get the `trainable` state of each sublayer.
