@@ -428,6 +428,7 @@ cuda_py_test(
     tags = [
         "no_oss",
         "no_windows_gpu",
+        "nogpu",  #TODO(b/141255188): Enable test after bug is resolved.
     ],
     xla_enable_strict_auto_jit = True,
 )
