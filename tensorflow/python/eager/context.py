@@ -179,10 +179,6 @@ class _ThreadLocalData(threading.local):
     self.device_name = ""
     self.is_eager = default_execution_mode == EAGER_MODE
     self.scope_name = ""
-    self.summary_writer = None
-    self.summary_recording = None
-    self.summary_recording_distribution_strategy = True
-    self.summary_step = None
     self.function_call_options = None
     self.executor = None
     self.op_callbacks = []
@@ -667,46 +663,6 @@ class Context(object):
   def scope_name(self, s):
     """Sets scope name for the current thread."""
     self._thread_local_data.scope_name = s
-
-  @property
-  def summary_writer(self):
-    """Returns default summary writer for the current thread."""
-    return self._thread_local_data.summary_writer
-
-  @summary_writer.setter
-  def summary_writer(self, writer):
-    """Sets default summary writer for the current thread."""
-    self._thread_local_data.summary_writer = writer
-
-  @property
-  def summary_recording(self):
-    """Returns summary recording condition."""
-    return self._thread_local_data.summary_recording
-
-  @summary_recording.setter
-  def summary_recording(self, condition):
-    """Sets summary recording condition."""
-    self._thread_local_data.summary_recording = condition
-
-  @property
-  def summary_recording_distribution_strategy(self):
-    """Returns summary recording condition for distribution strategy."""
-    return self._thread_local_data.summary_recording_distribution_strategy
-
-  @summary_recording_distribution_strategy.setter
-  def summary_recording_distribution_strategy(self, condition):
-    """Sets summary recording condition for distribution strategy."""
-    self._thread_local_data.summary_recording_distribution_strategy = condition
-
-  @property
-  def summary_step(self):
-    """Returns summary step variable."""
-    return self._thread_local_data.summary_step
-
-  @summary_step.setter
-  def summary_step(self, step):
-    """Sets summary step variable."""
-    self._thread_local_data.summary_step = step
 
   @property
   def device_name(self):
