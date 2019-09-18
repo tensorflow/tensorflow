@@ -180,7 +180,7 @@ static inline bool IsMklNameChangeOp(const string& op_name, DataType T) {
   search_string += DataType_Name(T) + string("]");
 
   // Temporarily replacing earlier check by adding a type-specific check so
-  // that we can selectively decide which type is support by MKL operators.
+  // that we can selectively decide which type is supported by MKL operators.
   // That way kernel registration does not decide which operators we support.
   // We are using this change to temporarily disable BFLOAT16 support. Once
   // we want to enable it, we will go back to earlier check.
