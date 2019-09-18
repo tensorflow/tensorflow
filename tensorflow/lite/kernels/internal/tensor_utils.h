@@ -196,6 +196,13 @@ void ApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
 void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
                   int16_t* output);
 
+// Apply Tanh to a Quantized vector.
+// Parameters:
+//     - input: batch vector of size n_batch * n_input; 16 bit.
+//     - n_batch: the number of batch.
+//     - n_input: the size for input and output.
+//     - output: the 16 bit output
+// The input is in Q0.15 format and the output is in Q0.15 format.
 void ApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
                 int16_t* output);
 
