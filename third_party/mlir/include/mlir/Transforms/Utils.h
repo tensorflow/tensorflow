@@ -40,15 +40,15 @@ class OpBuilder;
 /// Replaces all "dereferencing" uses of `oldMemRef` with `newMemRef` while
 /// optionally remapping the old memref's indices using the supplied affine map,
 /// `indexRemap`. The new memref could be of a different shape or rank.
-/// `extraIndices` provides additional access indices to be added to the start.
+/// `extraIndices` provides any additional access indices to be added to the
+/// start.
 ///
 /// `indexRemap` remaps indices of the old memref access to a new set of indices
 /// that are used to index the memref. Additional input operands to indexRemap
-/// can be optionally provided, and they are added at the start of its input
-/// list. `indexRemap` is expected to have only dimensional inputs, and the
-/// number of its inputs equal to extraOperands.size() plus rank of the memref.
-/// 'extraOperands' is an optional argument that corresponds to additional
-/// operands (inputs) for indexRemap at the beginning of its input list.
+/// can be optionally provided in `extraOperands`, and they occupy the start
+/// of its input list. `indexRemap`'s dimensional inputs are expected to
+/// correspond to memref's indices, and its symbolic inputs if any should be
+/// provided in `symbolOperands`.
 ///
 /// `domInstFilter`, if non-null, restricts the replacement to only those
 /// operations that are dominated by the former; similarly, `postDomInstFilter`
@@ -70,6 +70,7 @@ LogicalResult replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
                                        ArrayRef<Value *> extraIndices = {},
                                        AffineMap indexRemap = AffineMap(),
                                        ArrayRef<Value *> extraOperands = {},
+                                       ArrayRef<Value *> symbolOperands = {},
                                        Operation *domInstFilter = nullptr,
                                        Operation *postDomInstFilter = nullptr);
 
@@ -79,7 +80,8 @@ LogicalResult replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
                                        Operation *op,
                                        ArrayRef<Value *> extraIndices = {},
                                        AffineMap indexRemap = AffineMap(),
-                                       ArrayRef<Value *> extraOperands = {});
+                                       ArrayRef<Value *> extraOperands = {},
+                                       ArrayRef<Value *> symbolOperands = {});
 
 /// Rewrites the memref defined by this alloc op to have an identity layout map
 /// and updates all its indexing uses. Returns failure if any of its uses

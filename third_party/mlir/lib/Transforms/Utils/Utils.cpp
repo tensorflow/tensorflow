@@ -62,14 +62,17 @@ LogicalResult mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
                                              Operation *op,
                                              ArrayRef<Value *> extraIndices,
                                              AffineMap indexRemap,
-                                             ArrayRef<Value *> extraOperands) {
+                                             ArrayRef<Value *> extraOperands,
+                                             ArrayRef<Value *> symbolOperands) {
   unsigned newMemRefRank = newMemRef->getType().cast<MemRefType>().getRank();
   (void)newMemRefRank; // unused in opt mode
   unsigned oldMemRefRank = oldMemRef->getType().cast<MemRefType>().getRank();
-  (void)oldMemRefRank;
+  (void)oldMemRefRank; // unused in opt mode
   if (indexRemap) {
-    assert(indexRemap.getNumSymbols() == 0 && "pure dimensional map expected");
-    assert(indexRemap.getNumInputs() == extraOperands.size() + oldMemRefRank);
+    assert(indexRemap.getNumSymbols() == symbolOperands.size() &&
+           "symbolic operand count mistmatch");
+    assert(indexRemap.getNumInputs() ==
+           extraOperands.size() + oldMemRefRank + symbolOperands.size());
     assert(indexRemap.getNumResults() + extraIndices.size() == newMemRefRank);
   } else {
     assert(oldMemRefRank + extraIndices.size() == newMemRefRank);
@@ -131,9 +134,11 @@ LogicalResult mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
   // provided. The indices of a memref come right after it, i.e.,
   // at position memRefOperandPos + 1.
   SmallVector<Value *, 4> remapOperands;
-  remapOperands.reserve(extraOperands.size() + oldMemRefRank);
+  remapOperands.reserve(extraOperands.size() + oldMemRefRank +
+                        symbolOperands.size());
   remapOperands.append(extraOperands.begin(), extraOperands.end());
   remapOperands.append(oldMemRefOperands.begin(), oldMemRefOperands.end());
+  remapOperands.append(symbolOperands.begin(), symbolOperands.end());
 
   SmallVector<Value *, 4> remapOutputs;
   remapOutputs.reserve(oldMemRefRank);
@@ -226,6 +231,7 @@ LogicalResult mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
                                              ArrayRef<Value *> extraIndices,
                                              AffineMap indexRemap,
                                              ArrayRef<Value *> extraOperands,
+                                             ArrayRef<Value *> symbolOperands,
                                              Operation *domInstFilter,
                                              Operation *postDomInstFilter) {
   unsigned newMemRefRank = newMemRef->getType().cast<MemRefType>().getRank();
@@ -233,8 +239,10 @@ LogicalResult mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
   unsigned oldMemRefRank = oldMemRef->getType().cast<MemRefType>().getRank();
   (void)oldMemRefRank;
   if (indexRemap) {
-    assert(indexRemap.getNumSymbols() == 0 && "pure dimensional map expected");
-    assert(indexRemap.getNumInputs() == extraOperands.size() + oldMemRefRank);
+    assert(indexRemap.getNumSymbols() == symbolOperands.size() &&
+           "symbol operand count mismatch");
+    assert(indexRemap.getNumInputs() ==
+           extraOperands.size() + oldMemRefRank + symbolOperands.size());
     assert(indexRemap.getNumResults() + extraIndices.size() == newMemRefRank);
   } else {
     assert(oldMemRefRank + extraIndices.size() == newMemRefRank);
@@ -287,7 +295,8 @@ LogicalResult mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
 
   for (auto *op : opsToReplace) {
     if (failed(replaceAllMemRefUsesWith(oldMemRef, newMemRef, op, extraIndices,
-                                        indexRemap, extraOperands)))
+                                        indexRemap, extraOperands,
+                                        symbolOperands)))
       llvm_unreachable("memref replacement guaranteed to succeed here");
   }
 
@@ -446,6 +455,8 @@ LogicalResult mlir::normalizeMemRef(AllocOp allocOp) {
   }
 
   auto *oldMemRef = allocOp.getResult();
+  SmallVector<Value *, 4> symbolOperands(allocOp.getSymbolicOperands());
+
   auto newMemRefType = b.getMemRefType(newShape, memrefType.getElementType(),
                                        b.getMultiDimIdentityMap(newRank));
   auto newAlloc = b.create<AllocOp>(allocOp.getLoc(), newMemRefType);
@@ -453,7 +464,9 @@ LogicalResult mlir::normalizeMemRef(AllocOp allocOp) {
   // Replace all uses of the old memref.
   if (failed(replaceAllMemRefUsesWith(oldMemRef, /*newMemRef=*/newAlloc,
                                       /*extraIndices=*/{},
-                                      /*indexRemap=*/layoutMap))) {
+                                      /*indexRemap=*/layoutMap,
+                                      /*extraOperands=*/{},
+                                      /*symbolOperands=*/symbolOperands))) {
     // If it failed (due to escapes for example), bail out.
     newAlloc.erase();
     return failure();
