@@ -1374,18 +1374,18 @@ tf_kernel_library(
     ],
 )
 
-# Used by mobile builds.
+# A file group which contains all operators which are known to work on mobile.
 filegroup(
-    name = "dataset_ops_srcs",
+    name = "android_all_op_kernels",
     srcs = glob(
         [
             "*.cc",
             "*.h",
         ],
         exclude = [
-            "rewrite_utils*",  # includes grappler dependency, which isn't supported on mobile.
-            "optimize_dataset*",  # includes grappler dependency, which isn't supported on mobile.
             "dataset_ops*",  # includes grappler dependency, which isn't supported on mobile.
+            "optimize_dataset_op.*",  # includes grappler dependency, which isn't supported on mobile.
+            "rewrite_utils*",  # includes grappler dependency, which isn't supported on mobile.
             "*test.cc",
             "*test.h",
             "*_test_*",
