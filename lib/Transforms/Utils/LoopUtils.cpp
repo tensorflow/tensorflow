@@ -1548,6 +1548,7 @@ static LogicalResult generateCopy(
   replaceAllMemRefUsesWith(memref, fastMemRef,
                            /*extraIndices=*/{}, indexRemap,
                            /*extraOperands=*/regionSymbols,
+                           /*symbolOperands=*/{},
                            /*domInstFilter=*/&*begin,
                            /*postDomInstFilter=*/&*postDomFilter);
 

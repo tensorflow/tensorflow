@@ -96,6 +96,21 @@ func @strided_cumulative() {
   return
 }
 
+// Symbolic operand for alloc, although unused. Tests replaceAllMemRefUsesWith
+// when the index remap has symbols.
+// CHECK-LABEL: func @symbolic_operands
+func @symbolic_operands(%s : index) {
+  // CHECK: alloc() : memref<100xf32>
+  %A = alloc()[%s] : memref<10x10xf32, (d0,d1)[s0] -> (10*d0 + d1)>
+  affine.for %i = 0 to 10 {
+    affine.for %j = 0 to 10 {
+      // CHECK: affine.load %{{.*}}[%{{.*}} * 10 + %{{.*}}] : memref<100xf32>
+      affine.load %A[%i, %j] : memref<10x10xf32, (d0,d1)[s0] -> (10*d0 + d1)>
+    }
+  }
+  return
+}
+
 // Memref escapes; no normalization.
 // CHECK-LABEL: func @escaping() -> memref<64xf32, #map{{[0-9]+}}>
 func @escaping() ->  memref<64xf32, (d0) -> (d0 + 2)> {
