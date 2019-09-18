@@ -1540,10 +1540,6 @@ class ConcreteFunction(object):
     if default_graph.building_function and not self._func_graph.saveable:
       default_graph.mark_as_unsaveable(self._func_graph.saving_errors)
 
-    if any(isinstance(a, composite_tensor.CompositeTensor) for a in args):
-      raise AssertionError("Expected all args to be Tensors or Variables; "
-                           "but got CompositeTensor: %r" % args)
-
     if (tape.could_possibly_record() or
         hasattr(ops.get_default_graph(), "watch_variable")):
       for v in self._func_graph.variables:
