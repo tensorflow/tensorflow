@@ -98,7 +98,6 @@ using reference_ops::SpaceToBatchND;
 using reference_ops::Split;
 using reference_ops::StridedSlice;
 using reference_ops::Sub16;
-using reference_ops::Transpose;
 
 // TODO(b/80247582) Remove this constant.
 // This will be phased out as the shifts are revised with more thought. Use of a
@@ -180,6 +179,12 @@ struct TTypes {
   typedef Eigen::TensorMap<
       Eigen::Tensor<const T, 2, Eigen::RowMajor, IndexType>>
       UnalignedConstMatrix;
+  typedef Eigen::TensorMap<
+      Eigen::Tensor<const T, NDIMS, Eigen::RowMajor, IndexType>, Eigen::Aligned>
+      ConstTensor;
+  typedef Eigen::TensorMap<Eigen::Tensor<T, NDIMS, Eigen::RowMajor, IndexType>,
+                           Eigen::Aligned>
+      Tensor;
 };
 
 // TODO(b/62193649): this function is only needed as long
@@ -1214,7 +1219,7 @@ inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
     scaling_factors_ptr[i] = scaling_factors_ptr[i / rows_per_batch];
   }
 
-  tensor_utils::ZeroVector(output_data, output_rows * output_cols);
+  std::fill_n(output_data, output_rows * output_cols, 0.0f);
 
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       filter_data, filter_rows, filter_cols, gemm_input_data,
@@ -3621,93 +3626,77 @@ inline void LogSoftmax(const SoftmaxParams& params,
   }
 }
 
-// Currently just a copy of the reference code.
+// Backwards compatibility. Less optimized than below version.
 inline void LogSoftmax(const SoftmaxParams& params,
                        const RuntimeShape& input_shape, const uint8* input_data,
                        const RuntimeShape& output_shape, uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("LogSoftmax/Uint8");
-  const int32 input_multiplier = params.input_multiplier;
-  const int32 input_left_shift = params.input_left_shift;
-  const int32 reverse_scaling_divisor = params.reverse_scaling_divisor;
-  const int32 reverse_scaling_right_shift = params.reverse_scaling_right_shift;
-  const int diff_min = params.diff_min;
-  // The representation chosen for the input to the exp() function is Q5.26.
-  // We need to leave extra space since values that we skip might be as large as
-  // -32 before multiplying by input_beta_multiplier, and therefore as large as
-  // -16 afterwards.  Note that exp(-8) is definitely not insignificant to
-  // accumulation, but exp(-16) definitely is.
-  static constexpr int kScaledDiffIntegerBits = 5;
-  static constexpr int kAccumulationIntegerBits = 12;
-  static constexpr int kOutputIntegerBits = 4;
-  using FixedPointScaledDiff =
-      gemmlowp::FixedPoint<int32, kScaledDiffIntegerBits>;
-  using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumulationIntegerBits>;
+  reference_ops::LogSoftmax(params, input_shape, input_data, output_shape,
+                            output_data);
+}
 
+// Compute LogSoftmax as (x - x_max) - ln(sum(e^(x_i - x_max)...)
+// as done in tf.nn.log_softmax to prevent underflow and overflow.
+// This is in contrast to just log(softmax(x))
+//
+// To handle quantization, first dequantize the inputs (from doing
+// e^(input scale * val) where we ignore the zero point since it cancels
+// out during subtraction due to the ln) and do a rescale at the end to int8.
+//
+// Notably this makes use of float and is intended as the optimized
+// form for quantized execution on CPU. For a fully integer version,
+// see the reference op.
+//
+// TODO(tflite): notes for optimization:
+// 1) See if e^ is also bottleneck in the reference fully-integer
+// version and apply lookup there and compare.
+// 2) Time spent is currently split between computing max_val, the
+// rint call, and the computation of log_prob.
+inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
+                       const RuntimeShape& input_shape, const uint8* input_data,
+                       const RuntimeShape& output_shape, uint8* output_data) {
+  gemmlowp::ScopedProfilingLabel label("LogSoftmax/Uint8");
   const int trailing_dim = input_shape.DimensionsCount() - 1;
-  const int outer_size =
+  const int excluding_last_dim =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
-  const int depth =
+  const int last_dim =
       MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
 
-  for (int i = 0; i < outer_size; ++i) {
-    const uint8* block_input_data = input_data + i * depth;
-    uint8* block_output_data = output_data + i * depth;
-    uint8 max_in_row = 0;
-    for (int c = 0; c < depth; ++c) {
-      max_in_row = std::max(max_in_row, block_input_data[c]);
+  const int32_t clamp_max = std::numeric_limits<uint8>::max();
+  const int32_t clamp_min = std::numeric_limits<uint8>::min();
+  for (int i = 0; i < excluding_last_dim; ++i) {
+    uint8_t max_val = std::numeric_limits<uint8>::min();
+    // Find max quantized value.
+    for (int j = 0; j < last_dim; ++j) {
+      max_val = std::max(max_val, input_data[j]);
     }
 
-    FixedPointAccum sum_of_exps = FixedPointAccum::Zero();
-    for (int c = 0; c < depth; ++c) {
-      int32 input_diff = static_cast<int32>(block_input_data[c]) - max_in_row;
-      if (input_diff >= diff_min) {
-        const int32 input_diff_rescaled =
-            MultiplyByQuantizedMultiplierGreaterThanOne(
-                input_diff, input_multiplier, input_left_shift);
-        const FixedPointScaledDiff scaled_diff_f8 =
-            FixedPointScaledDiff::FromRaw(input_diff_rescaled);
-        sum_of_exps = sum_of_exps + gemmlowp::Rescale<kAccumulationIntegerBits>(
-                                        exp_on_negative_values(scaled_diff_f8));
-      }
+    float sum_exp = 0.0f;
+    const int32_t max_uint8 = std::numeric_limits<uint8_t>::max();
+    // Offset into table to compute exp(scale*(x - xmax)) instead of
+    // exp(scale*(x)) to prevent overflow.
+    const float* table_offset = &params.table[max_uint8 - max_val];
+    // Calculate sum(exp(scale*(x - x_max))).
+    for (int j = 0; j < last_dim; ++j) {
+      sum_exp += table_offset[input_data[j]];
     }
+    const float log_sum_exp = std::log(sum_exp);
 
-    const int32 fixed_log_sum_of_exps =
-        log_x_for_x_greater_than_or_equal_to_1<kScaledDiffIntegerBits>(
-            sum_of_exps)
-            .raw();
+    const float precomputed = input_scale * max_val + log_sum_exp;
+    for (int j = 0; j < last_dim; ++j) {
+      // Equivalent to input_scale * (input_data[j] - max_val) - log_sum_exp;
+      const float log_prob = input_scale * input_data[j] - precomputed;
 
-    // rescaled_diff_min is smallest representable in
-    // Q(kScaledDiffIntegerBits).(31-kScaledDiffIntegerBits) plus the
-    // log-sub-exps that will be subtracted in the loop.
-    //
-    // The thresholds diff_min, etc are negative.
-    const int rescaled_diff_min =
-        fixed_log_sum_of_exps + std::numeric_limits<int32>::lowest();
-    const int adjusted_diff_min =
-        std::max(diff_min - 1,  // Note use of > below instead of >= above.
-                 MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                     rescaled_diff_min, reverse_scaling_divisor,
-                     -reverse_scaling_right_shift));
+      // TODO(tflite): look into better solution.
+      // Use std::rint over std::round (which is used in
+      // FakeQuant) since it's multiple times faster on tested arm32.
+      const int32_t prob_quantized =
+          std::rint(log_prob / params.scale) + params.zero_point;
 
-    for (int c = 0; c < depth; ++c) {
-      int32 input_diff = static_cast<int32>(block_input_data[c]) - max_in_row;
-      if (input_diff > adjusted_diff_min) {
-        const int32 input_diff_rescaled =
-            MultiplyByQuantizedMultiplierGreaterThanOne(
-                input_diff, input_multiplier, input_left_shift);
-        int32 unsat_output =
-            gemmlowp::RoundingDivideByPOT(
-                (input_diff_rescaled - fixed_log_sum_of_exps),
-                31 - kScaledDiffIntegerBits - kOutputIntegerBits) +
-            255;
-
-        block_output_data[c] = static_cast<uint8>(
-            std::max(std::min(unsat_output, static_cast<int32>(255)), 0));
-      } else {
-        // Set output to smallest value.
-        block_output_data[c] = 0;
-      }
+      output_data[j] = static_cast<uint8_t>(
+          std::max(std::min(clamp_max, prob_quantized), clamp_min));
     }
+    input_data += last_dim;
+    output_data += last_dim;
   }
 }
 
@@ -5049,7 +5038,7 @@ inline void TransposeConvV2(
   lhs_params.rows = hwoi_ordered_filter_total_size;
   lhs_params.cols = input_depth;
   float* output_data_p = output_data;
-  tensor_utils::ZeroVector(output_data, output_offset * batch_size);
+  std::fill_n(output_data, output_offset * batch_size, 0.0f);
   for (int i = 0; i < batch_size; ++i) {
     cpu_backend_gemm::MatrixParams<float> rhs_params;
     rhs_params.order = cpu_backend_gemm::Order::kColMajor;
@@ -5154,6 +5143,8 @@ inline void Requantize(const input_type* input_data, int32_t size,
 
 #ifdef USE_NEON
 
+// TODO(jaesung): Merge duplicated implementations in optimized_ops.h and
+// neon_tensor_utils.cc.
 inline void MultiplyByQuantizedMultiplier4Rows(
     const int32x4_t input_val_1, const int32x4_t input_val_2,
     const int32x4_t input_val_3, const int32x4_t input_val_4,
@@ -6146,6 +6137,821 @@ inline void AffineQuantize(const tflite::QuantizationParams& op_params,
         static_cast<int32>(TfLiteRound(val / scale)) + zero_point;
     const int32 clamped = std::min(std::max(unclamped, min_val), max_val);
     output_data[i] = clamped;
+  }
+}
+
+// TODO(b/139252020): Replace GEMMLOWP_NEON with USE_NEON when the bug is fixed.
+// The converted versions of gemmlowp::tanh and gemmlowp::logistic, done by
+// arm_sse_2_neon.h, produce incorrect results with int16x8_t data types.
+#ifdef GEMMLOWP_NEON
+
+inline int16x8x4_t SaturatingRounding(
+    int16x8_t input_val_0, int16x8_t input_val_1, int16x8_t input_val_2,
+    int16x8_t input_val_3, int input_left_shift, int input_multiplier) {
+  // This performs what is expressed in the scalar code as
+  // const int16 input_val_rescaled = SaturatingRoundingDoublingHighMul(
+  //      static_cast<int16>(input_val_centered * (1 << input_left_shift)),
+  //      static_cast<int16>(input_multiplier));
+  const int16x8_t left_shift_dup = vdupq_n_s16(input_left_shift);
+  const int16x8_t input_val_shifted_0 = vshlq_s16(input_val_0, left_shift_dup);
+  const int16x8_t input_val_shifted_1 = vshlq_s16(input_val_1, left_shift_dup);
+  const int16x8_t input_val_shifted_2 = vshlq_s16(input_val_2, left_shift_dup);
+  const int16x8_t input_val_shifted_3 = vshlq_s16(input_val_3, left_shift_dup);
+  int16x8x4_t result;
+  result.val[0] = vqrdmulhq_n_s16(input_val_shifted_0, input_multiplier);
+  result.val[1] = vqrdmulhq_n_s16(input_val_shifted_1, input_multiplier);
+  result.val[2] = vqrdmulhq_n_s16(input_val_shifted_2, input_multiplier);
+  result.val[3] = vqrdmulhq_n_s16(input_val_shifted_3, input_multiplier);
+  return result;
+}
+
+// 4-bit fixed point is enough for tanh since tanh(16) is almost same with one,
+// considering 7 digits under zero.
+inline int16x8x4_t FixedPoint4Logistic(int16x8x4_t input_val) {
+  // Invoke gemmlowp::logistic on FixedPoint wrapping int16x8_t
+  using FixedPoint4 = gemmlowp::FixedPoint<int16x8_t, 4>;
+  using FixedPoint0 = gemmlowp::FixedPoint<int16x8_t, 0>;
+  const FixedPoint4 input_val_f4_0 = FixedPoint4::FromRaw(input_val.val[0]);
+  const FixedPoint4 input_val_f4_1 = FixedPoint4::FromRaw(input_val.val[1]);
+  const FixedPoint4 input_val_f4_2 = FixedPoint4::FromRaw(input_val.val[2]);
+  const FixedPoint4 input_val_f4_3 = FixedPoint4::FromRaw(input_val.val[3]);
+
+  // TODO(b/134622898) Implement a low accuracy version of logistic. In this
+  // method, gemmlowp::tanh spends about 80% of the execution times. The
+  // current implementation is rougly 12-bit accurate in the 16-bit fixed
+  // point case. Until reaching to error bounds, there are rooms for
+  // improvements.
+  const FixedPoint0 output_val_f0_0 = gemmlowp::logistic(input_val_f4_0);
+  const FixedPoint0 output_val_f0_1 = gemmlowp::logistic(input_val_f4_1);
+  const FixedPoint0 output_val_f0_2 = gemmlowp::logistic(input_val_f4_2);
+  const FixedPoint0 output_val_f0_3 = gemmlowp::logistic(input_val_f4_3);
+
+  // Divide by 2^7 as in the scalar code
+  int16x8x4_t result;
+  result.val[0] = vrshrq_n_s16(output_val_f0_0.raw(), 7);
+  result.val[1] = vrshrq_n_s16(output_val_f0_1.raw(), 7);
+  result.val[2] = vrshrq_n_s16(output_val_f0_2.raw(), 7);
+  result.val[3] = vrshrq_n_s16(output_val_f0_3.raw(), 7);
+  return result;
+}
+
+// 4-bit fixed point is enough for tanh since tanh(16) is almost same with one,
+// considering 11 digits under zero at least.
+inline int16x8x4_t FixedPoint4Tanh(int16x8x4_t input_val) {
+  // Invoke gemmlowp::logistic on FixedPoint wrapping int16x8_t
+  using FixedPoint4 = gemmlowp::FixedPoint<int16x8_t, 4>;
+  using FixedPoint0 = gemmlowp::FixedPoint<int16x8_t, 0>;
+  const FixedPoint4 input_val_f4_0 = FixedPoint4::FromRaw(input_val.val[0]);
+  const FixedPoint4 input_val_f4_1 = FixedPoint4::FromRaw(input_val.val[1]);
+  const FixedPoint4 input_val_f4_2 = FixedPoint4::FromRaw(input_val.val[2]);
+  const FixedPoint4 input_val_f4_3 = FixedPoint4::FromRaw(input_val.val[3]);
+
+  // TODO(b/134622898) Implement a low accuracy version of logistic. In this
+  // method, gemmlowp::tanh spends about 80% of the execution times. The
+  // current implementation is rougly 12-bit accurate in the 16-bit fixed
+  // point case. Until reaching to error bounds, there are rooms for
+  // improvements.
+  const FixedPoint0 output_val_f0_0 = gemmlowp::tanh(input_val_f4_0);
+  const FixedPoint0 output_val_f0_1 = gemmlowp::tanh(input_val_f4_1);
+  const FixedPoint0 output_val_f0_2 = gemmlowp::tanh(input_val_f4_2);
+  const FixedPoint0 output_val_f0_3 = gemmlowp::tanh(input_val_f4_3);
+
+  // Divide by 2^7 as in the scalar code
+  int16x8x4_t result;
+  result.val[0] = vrshrq_n_s16(output_val_f0_0.raw(), 8);
+  result.val[1] = vrshrq_n_s16(output_val_f0_1.raw(), 8);
+  result.val[2] = vrshrq_n_s16(output_val_f0_2.raw(), 8);
+  result.val[3] = vrshrq_n_s16(output_val_f0_3.raw(), 8);
+  return result;
+}
+
+inline uint8x16x2_t CalculateUnsignedClampingWithRangeBitMasks(
+    int16x8x2_t input_val, int16x8_t range_radius_dup,
+    int16x8_t neg_range_radius_dup) {
+  const uint16x8_t mask_rightclamp_0 =
+      vcgtq_s16(input_val.val[0], range_radius_dup);
+  const uint16x8_t mask_rightclamp_1 =
+      vcgtq_s16(input_val.val[1], range_radius_dup);
+
+  const uint16x8_t mask_leftclamp_0 =
+      vcgeq_s16(input_val.val[0], neg_range_radius_dup);
+  const uint16x8_t mask_leftclamp_1 =
+      vcgeq_s16(input_val.val[1], neg_range_radius_dup);
+
+  uint8x16x2_t result;
+  result.val[0] = vcombine_u8(vshrn_n_u16(mask_leftclamp_0, 8),
+                              vshrn_n_u16(mask_leftclamp_1, 8));
+  result.val[1] = vcombine_u8(vshrn_n_u16(mask_rightclamp_0, 8),
+                              vshrn_n_u16(mask_rightclamp_1, 8));
+  return result;
+}
+
+inline uint8x16x2_t CalculateSignedClampingWithRangeBitMasks(
+    int16x8x2_t input_val, int16x8_t range_radius_dup,
+    int16x8_t neg_range_radius_dup) {
+  const uint16x8_t mask_rightclamp_0 =
+      vcgtq_s16(input_val.val[0], range_radius_dup);
+  const uint16x8_t mask_rightclamp_1 =
+      vcgtq_s16(input_val.val[1], range_radius_dup);
+
+  const uint16x8_t mask_leftclamp_0 =
+      vcltq_s16(input_val.val[0], neg_range_radius_dup);
+  const uint16x8_t mask_leftclamp_1 =
+      vcltq_s16(input_val.val[1], neg_range_radius_dup);
+
+  uint8x16x2_t result;
+  result.val[0] = vcombine_u8(vshrn_n_u16(mask_leftclamp_0, 8),
+                              vshrn_n_u16(mask_leftclamp_1, 8));
+  result.val[1] = vcombine_u8(vshrn_n_u16(mask_rightclamp_0, 8),
+                              vshrn_n_u16(mask_rightclamp_1, 8));
+  return result;
+}
+
+inline void ClampWithRangeAndStore(uint8_t* output_dst, uint8x16_t input_val,
+                                   uint8x16x2_t masks_clamp) {
+  // Store back to memory
+  vst1q_u8(output_dst, vandq_u8(vorrq_u8(input_val, masks_clamp.val[1]),
+                                masks_clamp.val[0]));
+}
+
+inline void ClampWithRangeAndStore(int8_t* output_dst, int8x16_t input_val,
+                                   uint8x16x2_t masks_clamp) {
+  static const int8x16_t max_dup = vdupq_n_s8(127);
+  static const int8x16_t min_dup = vdupq_n_s8(-128);
+  // Store back to memory
+  vst1q_s8(output_dst,
+           vbslq_s8(masks_clamp.val[1], max_dup,
+                    vbslq_s8(masks_clamp.val[0], min_dup, input_val)));
+}
+
+#endif  // GEMMLOWP_NEON
+
+inline void Tanh16bitPercision(const TanhParams& params,
+                               const RuntimeShape& input_shape,
+                               const uint8* input_data,
+                               const RuntimeShape& output_shape,
+                               uint8* output_data) {
+  // Note that this is almost the exact same code as in Logistic().
+  gemmlowp::ScopedProfilingLabel label("Tanh/Uint8");
+  const int32 input_zero_point = params.input_zero_point;
+  const int32 input_range_radius = params.input_range_radius;
+  const int16 input_multiplier = static_cast<int16>(params.input_multiplier);
+  const int16 input_left_shift = static_cast<int16>(params.input_left_shift);
+  const int size = MatchingFlatSize(input_shape, output_shape);
+
+  int c = 0;
+  int16_t output_zero_point = 128;
+
+// TODO(b/139252020): Replace GEMMLOWP_NEON with USE_NEON when the bug is fixed.
+// The converted versions of gemmlowp::tanh and gemmlowp::logistic, done by
+// arm_sse_2_neon.h, produce incorrect results with int16x8_t data types.
+#ifdef GEMMLOWP_NEON
+  const int16x8_t range_radius_dup = vdupq_n_s16(input_range_radius);
+  const int16x8_t neg_range_radius_dup = vdupq_n_s16(-input_range_radius);
+  const int16x8_t output_zero_point_s16 = vdupq_n_s16(output_zero_point);
+
+  // Handle 32 values at a time
+  for (; c <= size - 32; c += 32) {
+    // Read input uint8 values, cast to int16 and subtract input_zero_point
+    using cpu_backend_gemm::detail::Load16AndSubtractZeroPoint;
+    const int16x8x2_t input_val_centered_0_1 =
+        Load16AndSubtractZeroPoint(input_data + c, input_zero_point);
+    const int16x8x2_t input_val_centered_2_3 =
+        Load16AndSubtractZeroPoint(input_data + c + 16, input_zero_point);
+
+    // Prepare the bit masks that we will use at the end to implement the logic
+    // that was expressed in the scalar code with branching:
+    //   if (input_val_centered < -input_range_radius) {
+    //     output_val = 0;
+    //   } else if (input_val_centered > input_range_radius) {
+    //     output_val = 255;
+    //   } else {
+    //     ...
+    uint8x16x2_t masks_clamp_0_1 = CalculateUnsignedClampingWithRangeBitMasks(
+        input_val_centered_0_1, range_radius_dup, neg_range_radius_dup);
+    uint8x16x2_t masks_clamp_2_3 = CalculateUnsignedClampingWithRangeBitMasks(
+        input_val_centered_2_3, range_radius_dup, neg_range_radius_dup);
+
+    int16x8x4_t input_val_rescaled = SaturatingRounding(
+        input_val_centered_0_1.val[0], input_val_centered_0_1.val[1],
+        input_val_centered_2_3.val[0], input_val_centered_2_3.val[1],
+        input_left_shift, input_multiplier);
+
+    int16x8x4_t output_val_s16 = FixedPoint4Tanh(input_val_rescaled);
+
+    // Add the output zero point
+    output_val_s16.val[0] =
+        vaddq_s16(output_val_s16.val[0], output_zero_point_s16);
+    output_val_s16.val[1] =
+        vaddq_s16(output_val_s16.val[1], output_zero_point_s16);
+    output_val_s16.val[2] =
+        vaddq_s16(output_val_s16.val[2], output_zero_point_s16);
+    output_val_s16.val[3] =
+        vaddq_s16(output_val_s16.val[3], output_zero_point_s16);
+
+    // Cast output values to uint8, saturating
+    uint8x16_t output_val_u8_0_1 = vcombine_u8(
+        vqmovun_s16(output_val_s16.val[0]), vqmovun_s16(output_val_s16.val[1]));
+    uint8x16_t output_val_u8_2_3 = vcombine_u8(
+        vqmovun_s16(output_val_s16.val[2]), vqmovun_s16(output_val_s16.val[3]));
+
+    ClampWithRangeAndStore(output_data + c, output_val_u8_0_1, masks_clamp_0_1);
+    ClampWithRangeAndStore(output_data + c + 16, output_val_u8_2_3,
+                           masks_clamp_2_3);
+  }
+#endif  // GEMMLOWP_NEON
+  // Leftover loop: handle one value at a time with scalar code.
+  for (; c < size; ++c) {
+    const uint8 input_val_u8 = input_data[c];
+    const int16 input_val_centered =
+        static_cast<int16>(input_val_u8) - input_zero_point;
+    uint8 output_val;
+    if (input_val_centered < -input_range_radius) {
+      output_val = 0;
+    } else if (input_val_centered > input_range_radius) {
+      output_val = 255;
+    } else {
+      using gemmlowp::SaturatingRoundingDoublingHighMul;
+      const int16 input_val_rescaled = SaturatingRoundingDoublingHighMul(
+          static_cast<int16>(input_val_centered * (1 << input_left_shift)),
+          static_cast<int16>(input_multiplier));
+      using FixedPoint4 = gemmlowp::FixedPoint<int16, 4>;
+      using FixedPoint0 = gemmlowp::FixedPoint<int16, 0>;
+      const FixedPoint4 input_val_f4 = FixedPoint4::FromRaw(input_val_rescaled);
+      const FixedPoint0 output_val_f0 = gemmlowp::tanh(input_val_f4);
+      using gemmlowp::RoundingDivideByPOT;
+      int16 output_val_s16 = RoundingDivideByPOT(output_val_f0.raw(), 8);
+      output_val_s16 += output_zero_point;
+      if (output_val_s16 == 256) {
+        output_val_s16 = 255;
+      }
+      TFLITE_DCHECK_GE(output_val_s16, 0);
+      TFLITE_DCHECK_LE(output_val_s16, 255);
+      output_val = static_cast<uint8>(output_val_s16);
+    }
+    output_data[c] = output_val;
+  }
+}
+
+inline void Tanh16bitPercision(const TanhParams& params,
+                               const RuntimeShape& input_shape,
+                               const int8* input_data,
+                               const RuntimeShape& output_shape,
+                               int8* output_data) {
+  // Note that this is almost the exact same code as in Logistic().
+  gemmlowp::ScopedProfilingLabel label("Tanh/Int8");
+  const int32 input_zero_point = params.input_zero_point;
+  const int32 input_range_radius = params.input_range_radius;
+  const int16 input_multiplier = static_cast<int16>(params.input_multiplier);
+  const int16 input_left_shift = static_cast<int16>(params.input_left_shift);
+  const int size = MatchingFlatSize(input_shape, output_shape);
+
+  int c = 0;
+// TODO(b/139252020): Replace GEMMLOWP_NEON with USE_NEON when the bug is fixed.
+// The converted versions of gemmlowp::tanh and gemmlowp::logistic, done by
+// arm_sse_2_neon.h, produce incorrect results with int16x8_t data types.
+#ifdef GEMMLOWP_NEON
+  const int16x8_t range_radius_dup = vdupq_n_s16(input_range_radius);
+  const int16x8_t neg_range_radius_dup = vdupq_n_s16(-input_range_radius);
+
+  // Handle 32 values at a time
+  for (; c <= size - 32; c += 32) {
+    // Read input int8 values, cast to int16 and subtract input_zero_point
+    using cpu_backend_gemm::detail::Load16AndSubtractZeroPoint;
+    const int16x8x2_t input_val_centered_0_1 =
+        Load16AndSubtractZeroPoint(input_data + c, input_zero_point);
+    const int16x8x2_t input_val_centered_2_3 =
+        Load16AndSubtractZeroPoint(input_data + c + 16, input_zero_point);
+
+    // Prepare the bit masks that we will use at the end to implement the logic
+    // that was expressed in the scalar code with branching:
+    //   if (input_val_centered < -input_range_radius) {
+    //     output_val = -128;
+    //   } else if (input_val_centered > input_range_radius) {
+    //     output_val = 127;
+    //   } else {
+    //     ...
+    uint8x16x2_t masks_clamp_0_1 = CalculateSignedClampingWithRangeBitMasks(
+        input_val_centered_0_1, range_radius_dup, neg_range_radius_dup);
+    uint8x16x2_t masks_clamp_2_3 = CalculateSignedClampingWithRangeBitMasks(
+        input_val_centered_2_3, range_radius_dup, neg_range_radius_dup);
+
+    int16x8x4_t input_val_rescaled = SaturatingRounding(
+        input_val_centered_0_1.val[0], input_val_centered_0_1.val[1],
+        input_val_centered_2_3.val[0], input_val_centered_2_3.val[1],
+        input_left_shift, input_multiplier);
+
+    int16x8x4_t output_val_s16 = FixedPoint4Tanh(input_val_rescaled);
+
+    // Cast output values to uint8, saturating
+    int8x16_t output_val_s8_0_1 = vcombine_s8(
+        vqmovn_s16(output_val_s16.val[0]), vqmovn_s16(output_val_s16.val[1]));
+    int8x16_t output_val_s8_2_3 = vcombine_s8(
+        vqmovn_s16(output_val_s16.val[2]), vqmovn_s16(output_val_s16.val[3]));
+
+    ClampWithRangeAndStore(output_data + c, output_val_s8_0_1, masks_clamp_0_1);
+    ClampWithRangeAndStore(output_data + c + 16, output_val_s8_2_3,
+                           masks_clamp_2_3);
+  }
+#endif  // GEMMLOWP_NEON
+  // Leftover loop: handle one value at a time with scalar code.
+  for (; c < size; ++c) {
+    const int8 input_val_s8 = input_data[c];
+    const int16 input_val_centered =
+        static_cast<int16>(input_val_s8) - input_zero_point;
+    int8 output_val;
+    if (input_val_centered <= -input_range_radius) {
+      output_val = -128;
+    } else if (input_val_centered >= input_range_radius) {
+      output_val = 127;
+    } else {
+      using gemmlowp::SaturatingRoundingDoublingHighMul;
+      const int16 input_val_rescaled = SaturatingRoundingDoublingHighMul(
+          static_cast<int16>(input_val_centered * (1 << input_left_shift)),
+          static_cast<int16>(input_multiplier));
+      using FixedPoint4 = gemmlowp::FixedPoint<int16, 4>;
+      using FixedPoint0 = gemmlowp::FixedPoint<int16, 0>;
+      const FixedPoint4 input_val_f4 = FixedPoint4::FromRaw(input_val_rescaled);
+      const FixedPoint0 output_val_f0 = gemmlowp::tanh(input_val_f4);
+      using gemmlowp::RoundingDivideByPOT;
+      int16 output_val_s16 = RoundingDivideByPOT(output_val_f0.raw(), 8);
+      if (output_val_s16 == 128) {
+        output_val_s16 = 127;
+      }
+      TFLITE_DCHECK_GE(output_val_s16, -128);
+      TFLITE_DCHECK_LE(output_val_s16, 127);
+      output_val = static_cast<int8>(output_val_s16);
+    }
+    output_data[c] = output_val;
+  }
+}
+
+inline void Logistic16bitPercision(const LogisticParams& params,
+                                   const RuntimeShape& input_shape,
+                                   const uint8* input_data,
+                                   const RuntimeShape& output_shape,
+                                   uint8* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Logistic/Uint8");
+  const int32 input_zero_point = params.input_zero_point;
+  const int32 input_range_radius = params.input_range_radius;
+  const int32 input_multiplier = params.input_multiplier;
+  const int16 input_left_shift = static_cast<int16>(params.input_left_shift);
+  const int size = MatchingFlatSize(input_shape, output_shape);
+
+  int c = 0;
+// TODO(b/139252020): Replace GEMMLOWP_NEON with USE_NEON when the bug is fixed.
+// The converted versions of gemmlowp::tanh and gemmlowp::logistic, done by
+// arm_sse_2_neon.h, produce incorrect results with int16x8_t data types.
+#ifdef GEMMLOWP_NEON
+  const int16x8_t range_radius_dup = vdupq_n_s16(input_range_radius);
+  const int16x8_t neg_range_radius_dup = vdupq_n_s16(-input_range_radius);
+
+  // Handle 32 values at a time
+  for (; c <= size - 32; c += 32) {
+    // Read input uint8 values, cast to int16 and subtract input_zero_point
+    using cpu_backend_gemm::detail::Load16AndSubtractZeroPoint;
+    const int16x8x2_t input_val_centered_0_1 =
+        Load16AndSubtractZeroPoint(input_data + c, input_zero_point);
+    const int16x8x2_t input_val_centered_2_3 =
+        Load16AndSubtractZeroPoint(input_data + c + 16, input_zero_point);
+
+    // Prepare the bit masks that we will use at the end to implement the logic
+    // that was expressed in the scalar code with branching:
+    //   if (input_val_centered < -input_range_radius) {
+    //     output_val = 0;
+    //   } else if (input_val_centered > input_range_radius) {
+    //     output_val = 255;
+    //   } else {
+    //     ...
+    uint8x16x2_t masks_clamp_0_1 = CalculateUnsignedClampingWithRangeBitMasks(
+        input_val_centered_0_1, range_radius_dup, neg_range_radius_dup);
+    uint8x16x2_t masks_clamp_2_3 = CalculateUnsignedClampingWithRangeBitMasks(
+        input_val_centered_2_3, range_radius_dup, neg_range_radius_dup);
+
+    int16x8x4_t input_val_rescaled = SaturatingRounding(
+        input_val_centered_0_1.val[0], input_val_centered_0_1.val[1],
+        input_val_centered_2_3.val[0], input_val_centered_2_3.val[1],
+        input_left_shift, input_multiplier);
+
+    int16x8x4_t output_val_s16 = FixedPoint4Logistic(input_val_rescaled);
+
+    // Cast output values to uint8, saturating
+    uint8x16_t output_val_u8_0_1 = vcombine_u8(
+        vqmovun_s16(output_val_s16.val[0]), vqmovun_s16(output_val_s16.val[1]));
+    uint8x16_t output_val_u8_2_3 = vcombine_u8(
+        vqmovun_s16(output_val_s16.val[2]), vqmovun_s16(output_val_s16.val[3]));
+
+    ClampWithRangeAndStore(output_data + c, output_val_u8_0_1, masks_clamp_0_1);
+    ClampWithRangeAndStore(output_data + c + 16, output_val_u8_2_3,
+                           masks_clamp_2_3);
+  }
+#endif  // GEMMLOWP_NEON
+  // Leftover loop: handle one value at a time with scalar code.
+  for (; c < size; ++c) {
+    const uint8 input_val_u8 = input_data[c];
+    const int16 input_val_centered =
+        static_cast<int16>(input_val_u8) - input_zero_point;
+    uint8 output_val;
+    if (input_val_centered < -input_range_radius) {
+      output_val = 0;
+    } else if (input_val_centered > input_range_radius) {
+      output_val = 255;
+    } else {
+      using gemmlowp::SaturatingRoundingDoublingHighMul;
+      const int16 input_val_rescaled = SaturatingRoundingDoublingHighMul(
+          static_cast<int16>(input_val_centered * (1 << input_left_shift)),
+          static_cast<int16>(input_multiplier));
+      using FixedPoint4 = gemmlowp::FixedPoint<int16, 4>;
+      using FixedPoint0 = gemmlowp::FixedPoint<int16, 0>;
+      const FixedPoint4 input_val_f4 = FixedPoint4::FromRaw(input_val_rescaled);
+      const FixedPoint0 output_val_f0 = gemmlowp::logistic(input_val_f4);
+      using gemmlowp::RoundingDivideByPOT;
+      int16 output_val_s16 = RoundingDivideByPOT(output_val_f0.raw(), 7);
+      if (output_val_s16 == 256) {
+        output_val_s16 = 255;
+      }
+      TFLITE_DCHECK_GE(output_val_s16, 0);
+      TFLITE_DCHECK_LE(output_val_s16, 255);
+      output_val = static_cast<uint8>(output_val_s16);
+    }
+    output_data[c] = output_val;
+  }
+}
+
+inline void Logistic16bitPercision(const LogisticParams& params,
+                                   const RuntimeShape& input_shape,
+                                   const int8* input_data,
+                                   const RuntimeShape& output_shape,
+                                   int8* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Logistic/Int8");
+  const int32 input_zero_point = params.input_zero_point;
+  const int32 input_range_radius = params.input_range_radius;
+  const int32 input_multiplier = params.input_multiplier;
+  const int16 input_left_shift = static_cast<int16>(params.input_left_shift);
+  const int size = MatchingFlatSize(input_shape, output_shape);
+
+  int c = 0;
+  const int16 output_zero_point = 128;
+// TODO(b/139252020): Replace GEMMLOWP_NEON with USE_NEON when the bug is fixed.
+// The converted versions of gemmlowp::tanh and gemmlowp::logistic, done by
+// arm_sse_2_neon.h, produce incorrect results with int16x8_t data types.
+#ifdef GEMMLOWP_NEON
+  const int16x8_t range_radius_dup = vdupq_n_s16(input_range_radius);
+  const int16x8_t neg_range_radius_dup = vdupq_n_s16(-input_range_radius);
+  const int16x8_t output_zero_point_dup = vdupq_n_s16(output_zero_point);
+
+  // Handle 32 values at a time
+  for (; c <= size - 32; c += 32) {
+    // Read input int8 values, cast to int16 and subtract input_zero_point
+    using cpu_backend_gemm::detail::Load16AndSubtractZeroPoint;
+    const int16x8x2_t input_val_centered_0_1 =
+        Load16AndSubtractZeroPoint(input_data + c, input_zero_point);
+    const int16x8x2_t input_val_centered_2_3 =
+        Load16AndSubtractZeroPoint(input_data + c + 16, input_zero_point);
+
+    // Prepare the bit masks that we will use at the end to implement the logic
+    // that was expressed in the scalar code with branching:
+    //   if (input_val_centered < -input_range_radius) {
+    //     output_val = -128;
+    //   } else if (input_val_centered > input_range_radius) {
+    //     output_val = 127;
+    //   } else {
+    //     ...
+    uint8x16x2_t masks_clamp_0_1 = CalculateSignedClampingWithRangeBitMasks(
+        input_val_centered_0_1, range_radius_dup, neg_range_radius_dup);
+    uint8x16x2_t masks_clamp_2_3 = CalculateSignedClampingWithRangeBitMasks(
+        input_val_centered_2_3, range_radius_dup, neg_range_radius_dup);
+
+    int16x8x4_t input_val_rescaled = SaturatingRounding(
+        input_val_centered_0_1.val[0], input_val_centered_0_1.val[1],
+        input_val_centered_2_3.val[0], input_val_centered_2_3.val[1],
+        input_left_shift, input_multiplier);
+
+    int16x8x4_t output_val_s16 = FixedPoint4Logistic(input_val_rescaled);
+
+    // Substract output zero point.
+    output_val_s16.val[0] =
+        vsubq_s16(output_val_s16.val[0], output_zero_point_dup);
+    output_val_s16.val[1] =
+        vsubq_s16(output_val_s16.val[1], output_zero_point_dup);
+    output_val_s16.val[2] =
+        vsubq_s16(output_val_s16.val[2], output_zero_point_dup);
+    output_val_s16.val[3] =
+        vsubq_s16(output_val_s16.val[3], output_zero_point_dup);
+
+    // Cast output values to int8, saturating
+    int8x16_t output_val_s8_0_1 = vcombine_s8(
+        vqmovn_s16(output_val_s16.val[0]), vqmovn_s16(output_val_s16.val[1]));
+    int8x16_t output_val_s8_2_3 = vcombine_s8(
+        vqmovn_s16(output_val_s16.val[2]), vqmovn_s16(output_val_s16.val[3]));
+
+    ClampWithRangeAndStore(output_data + c, output_val_s8_0_1, masks_clamp_0_1);
+    ClampWithRangeAndStore(output_data + c + 16, output_val_s8_2_3,
+                           masks_clamp_2_3);
+  }
+#endif  // GEMMLOWP_NEON
+  // Leftover loop: handle one value at a time with scalar code.
+  for (; c < size; ++c) {
+    const int8 input_val_s8 = input_data[c];
+    const int16 input_val_centered =
+        static_cast<int16>(input_val_s8) - input_zero_point;
+    int8 output_val;
+    if (input_val_centered < -input_range_radius) {
+      output_val = -128;
+    } else if (input_val_centered > input_range_radius) {
+      output_val = 127;
+    } else {
+      using gemmlowp::SaturatingRoundingDoublingHighMul;
+      const int16 input_val_rescaled = SaturatingRoundingDoublingHighMul(
+          static_cast<int16>(input_val_centered * (1 << input_left_shift)),
+          static_cast<int16>(input_multiplier));
+      using FixedPoint4 = gemmlowp::FixedPoint<int16, 4>;
+      using FixedPoint0 = gemmlowp::FixedPoint<int16, 0>;
+      const FixedPoint4 input_val_f4 = FixedPoint4::FromRaw(input_val_rescaled);
+      const FixedPoint0 output_val_f0 = gemmlowp::logistic(input_val_f4);
+      using gemmlowp::RoundingDivideByPOT;
+      int16 output_val_s16 = RoundingDivideByPOT(output_val_f0.raw(), 7);
+      output_val_s16 -= output_zero_point;
+      if (output_val_s16 == 128) {
+        output_val_s16 = 127;
+      }
+      TFLITE_DCHECK_GE(output_val_s16, -128);
+      TFLITE_DCHECK_LE(output_val_s16, 127);
+      output_val = static_cast<int8>(output_val_s16);
+    }
+    output_data[c] = output_val;
+  }
+}
+
+// Transpose2DOn32bitMatrix only deals with typical 2D matrix transpose ops.
+inline void Transpose2DOn32bitMatrix(const TransposeParams& params,
+                                     const RuntimeShape& input_shape,
+                                     const int32_t* input_data,
+                                     const RuntimeShape& output_shape,
+                                     int32_t* output_data) {
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 2);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 2);
+  TFLITE_DCHECK_EQ(params.perm_count, 2);
+  TFLITE_DCHECK_EQ(params.perm[0], 1);
+  TFLITE_DCHECK_EQ(params.perm[1], 0);
+
+  const int d0 = input_shape.DimsData()[0];
+  const int d1 = input_shape.DimsData()[1];
+#ifdef USE_NEON
+  const int kLines = 4;
+  const int kSkipSize = (kLines - 1) * d1;
+#endif
+
+  const int32_t* input = input_data;
+
+  int i = 0;
+#ifdef USE_NEON
+  for (; i <= d0 - kLines; i += kLines) {
+    int32_t* output = output_data + i;
+
+    const int32_t* input_ptr = input;
+    __builtin_prefetch(input_ptr, 0, 3);
+    input_ptr += d1;
+    __builtin_prefetch(input_ptr, 0, 3);
+    input_ptr += d1;
+    __builtin_prefetch(input_ptr, 0, 3);
+    input_ptr += d1;
+    __builtin_prefetch(input_ptr, 0, 3);
+
+    int j = 0;
+    for (; j <= d1 - kLines; j += kLines) {
+      input_ptr = input;
+      int32x4_t a0 = vld1q_s32(input);
+      input_ptr += d1;
+      int32x4_t a1 = vld1q_s32(input_ptr);
+      input_ptr += d1;
+      int32x4_t a2 = vld1q_s32(input_ptr);
+      input_ptr += d1;
+      int32x4_t a3 = vld1q_s32(input_ptr);
+
+      int32x4x2_t tmp1 = vuzpq_s32(a0, a2);
+      int32x4x2_t tmp2 = vuzpq_s32(a1, a3);
+      int32x4x2_t tmp3 = vtrnq_s32(tmp1.val[0], tmp2.val[0]);
+      int32x4x2_t tmp4 = vtrnq_s32(tmp1.val[1], tmp2.val[1]);
+
+      vst1q_s32(output, tmp3.val[0]);
+      output += d0;
+      vst1q_s32(output, tmp4.val[0]);
+      output += d0;
+      vst1q_s32(output, tmp3.val[1]);
+      output += d0;
+      vst1q_s32(output, tmp4.val[1]);
+      output += d0;
+      input += kLines;
+    }
+    if (j == d1) {
+      input += kSkipSize;
+    } else {
+      for (int p = 0; p < kLines; ++p) {
+        for (int q = 0; q < d1 - j; ++q) {
+          *(output + q * d0 + p) = *(input + p * d1 + q);
+        }
+      }
+      input += (d1 - j) + kSkipSize;
+    }
+  }
+#endif
+  for (; i < d0; ++i) {
+    int32_t* output = output_data + i;
+    for (int j = 0; j < d1; ++j) {
+      *output = *input;
+      output += d0;
+      ++input;
+    }
+  }
+}
+
+template <typename T>
+void TransposeImpl(const TransposeParams& params,
+                   const RuntimeShape& unextended_input_shape,
+                   const T* input_data,
+                   const RuntimeShape& unextended_output_shape,
+                   T* output_data) {
+  const int unextended_output_size = unextended_input_shape.DimensionsCount();
+  const RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  const RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+  const int input_ext_size = 4 - unextended_input_shape.DimensionsCount();
+  const int output_ext_size = 4 - unextended_output_size;
+
+  // The perm data is extended to match the output, each index incremented by
+  // the amount of front padding of the input shape.
+  int extended_perm[4];
+  for (int i = 0; i < output_ext_size; ++i) {
+    extended_perm[i] = i;
+  }
+  for (int i = 0; i < unextended_output_size; ++i) {
+    extended_perm[i + output_ext_size] = params.perm[i] + input_ext_size;
+  }
+
+  Eigen::array<int, 4> p;
+  for (int i = 0; i < 4; ++i) p[i] = extended_perm[i];
+  Eigen::DSizes<Eigen::DenseIndex, 4> input_dsizes;
+  for (int d = 0; d < 4; d++) {
+    input_dsizes[d] = static_cast<Eigen::DenseIndex>(input_shape.Dims(d));
+  }
+  Eigen::DSizes<Eigen::DenseIndex, 4> output_dsizes;
+  for (int d = 0; d < 4; d++) {
+    output_dsizes[d] = static_cast<Eigen::DenseIndex>(output_shape.Dims(d));
+  }
+
+  auto x = typename TTypes<T, 4>::ConstTensor(input_data, input_dsizes);
+  auto y = typename TTypes<T, 4>::Tensor(output_data, output_dsizes);
+  y = x.shuffle(p);
+}
+
+// TODO(alanchiao): see if we can reduce the number
+// of lines of code in branching without affecting latency.
+template <typename T>
+inline void Transpose3D(const TransposeParams& params,
+                        const RuntimeShape& input_shape, const T* input_data,
+                        const RuntimeShape& output_shape, T* output_data) {
+  int s1, s2, s3;
+  s1 = input_shape.Dims(0);
+  s2 = input_shape.Dims(1);
+  s3 = input_shape.Dims(2);
+
+  const bool hasOneInDimension = (s1 == 1 || s2 == 1 || s3 == 1);
+  // Can fast path as 2D transpose in this case.
+  if (hasOneInDimension) {
+    int d1, d2;
+    bool is_identity = false;
+    // Check for identity to just return.
+    if (s1 == 1) {
+      // (0, 1, 2), (1, 0, 2), (1, 2, 0)
+      if ((params.perm[0] == 0 && params.perm[1] == 1) || params.perm[0] == 1) {
+        is_identity = true;
+      }
+      d1 = s2;
+      d2 = s3;
+    } else if (s2 == 1) {
+      //  (0, 1, 2), (0, 2, 1), (1, 0, 2)
+      if ((params.perm[0] == 1 && params.perm[1] == 0) || params.perm[0] == 0) {
+        is_identity = true;
+      }
+      d1 = s1;
+      d2 = s3;
+    } else {
+      // (0, 1, 2), (0, 2, 1), (2, 0, 1)
+      if ((params.perm[0] == 2 && params.perm[1] == 0) || params.perm[0] == 0) {
+        is_identity = true;
+      }
+      d1 = s1;
+      d2 = s2;
+    }
+
+    if (is_identity) {
+      memcpy(output_data, input_data, sizeof(T) * input_shape.FlatSize());
+      return;
+    }
+
+    // TODO(tflite): reuse 2d transpose when support is
+    // added for uint8.
+    for (int i1 = 0; i1 < d1; ++i1) {
+      for (int i2 = 0; i2 < d2; ++i2) {
+        int i = i1 * d2 + i2;
+        int o = i2 * d1 + i1;
+        output_data[o] = input_data[i];
+      }
+    }
+    return;
+  }
+
+  int p1, p2, p3;
+  if (params.perm[0] == 2) {
+    p1 = 1;
+  } else if (params.perm[1] == 2) {
+    p2 = 1;
+  } else {
+    p3 = 1;
+  }
+
+  if (params.perm[0] == 1) {
+    p1 = s3;
+  } else if (params.perm[1] == 1) {
+    p2 = s3;
+  } else {
+    p3 = s3;
+  }
+
+  if (params.perm[0] == 0) {
+    p1 = s2 * s3;
+  } else if (params.perm[1] == 0) {
+    p2 = s2 * s3;
+  } else {
+    p3 = s2 * s3;
+  }
+
+  int o_s[3];
+  o_s[0] = input_shape.Dims(params.perm[0]);
+  o_s[1] = input_shape.Dims(params.perm[1]);
+  o_s[2] = input_shape.Dims(params.perm[2]);
+
+  for (int i1 = 0; i1 < o_s[0]; ++i1) {
+    for (int i2 = 0; i2 < o_s[1]; ++i2) {
+      for (int i3 = 0; i3 < o_s[2]; ++i3) {
+        int i = i1 * p1 + i2 * p2 + i3 * p3;
+        int o = i1 * o_s[1] * o_s[2] + i2 * o_s[2] + i3;
+        output_data[o] = input_data[i];
+      }
+    }
+  }
+}
+
+template <typename T>
+void Transpose(const TransposeParams& params,
+               const RuntimeShape& unextended_input_shape, const T* input_data,
+               const RuntimeShape& unextended_output_shape, T* output_data) {
+  const int unextended_output_size = unextended_output_shape.DimensionsCount();
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_size, 4);
+  TFLITE_DCHECK_EQ(unextended_output_size, params.perm_count);
+
+  // TODO(tflite): notably Eigen is better suited for
+  // larger inputs whereas Transpose3D is generally
+  // better for smaller ones.
+  //
+  // E.g. on Nexus 5, Eigen is better for size 96^3 and up
+  // and Transpose3D is better for 72^3 and down.
+  //
+  // 96^3 is not mobile-friendly for certain usecases
+  // (e.g. model used in beam search for seq2seq) but is in others.
+  // Consider tradeoffs.
+  if (unextended_input_shape.DimensionsCount() == 3) {
+    Transpose3D(params, unextended_input_shape, input_data,
+                unextended_output_shape, output_data);
+    return;
+  }
+
+  // Transpose kernel only does rearranging values not numeric evaluations on
+  // each cell. It's safe to implement per size of scalar type and this trick
+  // keeps the total code size in a reasonable range.
+  //
+  switch (sizeof(T)) {
+    case 4:
+      if (unextended_input_shape.DimensionsCount() == 2 &&
+          params.perm[0] == 1 && params.perm[1] == 0) {
+        Transpose2DOn32bitMatrix(params, unextended_input_shape,
+                                 reinterpret_cast<const int32_t*>(input_data),
+                                 unextended_output_shape,
+                                 reinterpret_cast<int32_t*>(output_data));
+        return;
+      }
+      TransposeImpl(params, unextended_input_shape,
+                    reinterpret_cast<const int32_t*>(input_data),
+                    unextended_output_shape,
+                    reinterpret_cast<int32_t*>(output_data));
+      break;
+    default:
+      // Reroute to the reference version if the given size is not available.
+      reference_ops::Transpose(params, unextended_input_shape, input_data,
+                               unextended_output_shape, output_data);
   }
 }
 

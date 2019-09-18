@@ -179,7 +179,7 @@ class MirroredTwoDeviceDistributionTest(
     def fn():
       dataset = dataset_ops.Dataset.range(2).interleave(
           (lambda _: dataset_ops.Dataset.range(10)), cycle_length=2)
-      it = dataset.make_one_shot_iterator()
+      it = dataset_ops.make_one_shot_iterator(dataset)
       return it.get_next
     expected_values = [[i, i] for i in range(0, 10)]
 
@@ -1115,7 +1115,7 @@ class MultiWorkerMirroredStrategyTest(
     self._configure_distribution_strategy(distribution)
     def fn():
       dataset = dataset_ops.Dataset.range(100)
-      it = dataset.make_one_shot_iterator()
+      it = dataset_ops.make_one_shot_iterator(dataset)
       return it.get_next
     num_gpus = context.num_gpus()
     num_workers = 2

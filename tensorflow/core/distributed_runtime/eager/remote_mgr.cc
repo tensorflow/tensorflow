@@ -126,10 +126,13 @@ Status RemoteMgr::DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
         in.op_device().empty() ? in.device() : in.op_device();
     TF_RETURN_IF_ERROR(
         parent_->FindDeviceFromName(device_name.c_str(), &device));
-    EagerClient* eager_client;
-    TF_RETURN_IF_ERROR(parent_->GetClient(device, &eager_client));
+    string remote_task;
+    if (!DeviceNameUtils::GetTaskName(device->parsed_name(), &remote_task)) {
+      return errors::InvalidArgument(
+          "Unable to find remote task corresponding to device ", device_name);
+    }
     auto remote_handle_data = absl::make_unique<UnshapedRemoteTensorHandleData>(
-        in.op_id(), in.output_num(), eager_client, parent_->GetContextId(),
+        in.op_id(), in.output_num(), remote_task, parent_->GetContextId(),
         parent_);
     remote_handle_data->ReleaseRemoteTensorHandle();
     TF_RETURN_IF_ERROR(TensorHandle::CreateUnshapedRemoteHandle(
@@ -137,6 +140,32 @@ Status RemoteMgr::DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
   }
 
   return Status::OK();
+}
+
+EagerExecutor& RemoteMgr::GetOrCreateExecutorForStream(uint64 stream_id) {
+  mutex_lock l(executor_map_mu_);
+  auto it = executor_map_.find(stream_id);
+  if (it == executor_map_.end()) {
+    auto it_and_bool = executor_map_.emplace(
+        std::piecewise_construct, std::forward_as_tuple(stream_id),
+        std::forward_as_tuple(/*async=*/true));
+    DCHECK(it_and_bool.second);
+    it = it_and_bool.first;
+  }
+  return it->second;
+}
+
+void RemoteMgr::DeleteExecutorForStream(uint64 stream_id) {
+  mutex_lock l(executor_map_mu_);
+  auto it = executor_map_.find(stream_id);
+  if (it == executor_map_.end()) {
+    return;
+  }
+  Status s = it->second.ShutDown();
+  if (!s.ok()) {
+    LOG(ERROR) << "EagerExecutor shutdown with error " << s.error_message();
+  }
+  executor_map_.erase(it);
 }
 
 }  // namespace eager

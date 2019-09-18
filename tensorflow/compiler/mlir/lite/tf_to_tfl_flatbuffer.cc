@@ -33,7 +33,8 @@ limitations under the License.
 
 namespace mlir {
 /// Create a pass to convert from the TFExecutor to the TF control dialect.
-FunctionPassBase *CreateTFExecutorToControlDialectConversion();
+std::unique_ptr<OpPassBase<FuncOp>>
+CreateTFExecutorToControlDialectConversion();
 }  // namespace mlir
 
 namespace tensorflow {
@@ -44,27 +45,28 @@ using mlir::OwningModuleRef;
 using stream_executor::port::StatusOr;
 
 StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
-    const std::string &input_filename, bool input_mlir,
-    bool use_splatted_constant, const std::vector<std::string> &extra_tf_opdefs,
+    const std::string& input_filename, bool input_mlir,
+    bool use_splatted_constant, const std::vector<std::string>& extra_tf_opdefs,
     absl::string_view debug_info_file, absl::string_view input_arrays,
     absl::string_view input_dtypes, absl::string_view input_shapes,
     absl::string_view output_arrays, absl::string_view inference_type,
     absl::string_view min_values, absl::string_view max_values,
-    bool prune_unused_nodes, llvm::SourceMgr *source_mgr,
-    MLIRContext *context) {
-  if (input_mlir) {
-    // Set up the input file.
-    std::string error_message;
-    auto file = mlir::openInputFile(input_filename, &error_message);
-    if (!file) {
-      llvm::errs() << error_message << "\n";
-      return errors::InvalidArgument("fail to open input file");
-    }
+    bool prune_unused_nodes, llvm::SourceMgr* source_mgr,
+    MLIRContext* context) {
+  // Set up the input file.
+  std::string error_message;
+  auto file = mlir::openInputFile(input_filename, &error_message);
+  if (!file) {
+    llvm::errs() << error_message << "\n";
+    return errors::InvalidArgument("fail to open input file");
+  }
 
+  if (input_mlir) {
     source_mgr->AddNewSourceBuffer(std::move(file), llvm::SMLoc());
     return OwningModuleRef(mlir::parseSourceFile(*source_mgr, context));
   }
-  for (const auto &tf_opdefs_string : extra_tf_opdefs) {
+
+  for (const auto& tf_opdefs_string : extra_tf_opdefs) {
     tensorflow::OpDef opdef;
     if (!tensorflow::protobuf::TextFormat::ParseFromString(tf_opdefs_string,
                                                            &opdef)) {
@@ -74,7 +76,7 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
     // Register extra opdefs.
     // TODO(b/133770952): Support shape functions.
     tensorflow::OpRegistry::Global()->Register(
-        [opdef](tensorflow::OpRegistrationData *op_reg_data) -> Status {
+        [opdef](tensorflow::OpRegistrationData* op_reg_data) -> Status {
           *op_reg_data = tensorflow::OpRegistrationData(opdef);
           return Status::OK();
         });
@@ -82,82 +84,26 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
 
   if (use_splatted_constant) {
     return tensorflow::GraphdefToSplattedMlirTranslateFunction(
-        input_filename, debug_info_file, input_arrays, input_dtypes,
+        std::move(file), debug_info_file, input_arrays, input_dtypes,
         input_shapes, output_arrays, inference_type, min_values, max_values,
-        prune_unused_nodes, /*convert_legacy_fed_inputs=*/true, context);
+        prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
+        /*graph_as_function=*/false, context);
   }
   return tensorflow::GraphdefToMlirTranslateFunction(
-      input_filename, debug_info_file, input_arrays, input_dtypes, input_shapes,
-      output_arrays, inference_type, min_values, max_values, prune_unused_nodes,
-      /*convert_legacy_fed_inputs=*/true, context);
-}
-
-bool ShouldRunQuantizePasses(mlir::ModuleOp m) {
-  if (mlir::FuncOp main_fn = m.lookupSymbol<mlir::FuncOp>("main")) {
-    return main_fn.getAttrOfType<mlir::UnitAttr>("tf.quantize") !=
-           mlir::Attribute();
-  }
-  return false;
-}
-
-void AddTFToTFLConversionPasses(bool emit_builtin_tflite_ops, bool run_quantize,
-                                bool emit_quant_adaptor_ops,
-                                bool lower_tensor_list_ops,
-                                mlir::PassManager *pass_manager) {
-  pass_manager->addPass(mlir::CreateTFExecutorToControlDialectConversion());
-  pass_manager->addPass(mlir::TFControlFlow::CreateRaiseTFControlFlowPass());
-
-  if (lower_tensor_list_ops) {
-    // Execute this pass before `CanonicalizerPass` in case some TensorList
-    // ops are constant folded into variant types.
-    // TODO(b/137125056): Move this pass after `CanonicalizerPass` after we
-    // handle constant ops that produce `TensorList`.
-    // TODO(haoliang): Add this pass by default.
-    pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass());
-  }
-
-  // TODO(jpienaar): Revise post dialect constants.
-  pass_manager->addPass(mlir::TF::CreateDecodeConstantPass());
-  // Canonicalization includes const folding, which is utilized here to optimize
-  // away ops that can't get constant folded after PrepareTF pass. For example,
-  // tf.Conv2D is split into tf.Transpose and tfl.Conv2D.
-  pass_manager->addPass(mlir::createCanonicalizerPass());
-
-  // The below passes only make sense if Builtin TFLite ops are enabled
-  // for emission.
-  if (emit_builtin_tflite_ops) {
-    // Prepare for TFLite dialect, rerun canonicalization, and then legalize to
-    // the TFLite dialect.
-    pass_manager->addPass(mlir::TFL::CreatePrepareTFPass());
-    pass_manager->addPass(mlir::createCanonicalizerPass());
-    pass_manager->addPass(mlir::TFL::CreateLegalizeTFPass());
-    pass_manager->addPass(mlir::TFL::CreateOptimizePass());
-    if (run_quantize) {
-      pass_manager->addPass(mlir::TFL::CreatePrepareQuantizePass(
-          /*quantize_sign=*/false));
-      pass_manager->addPass(mlir::TFL::CreateQuantizePass());
-      pass_manager->addPass(
-          mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
-    }
-    pass_manager->addPass(mlir::createCanonicalizerPass());
-    pass_manager->addPass(mlir::createCSEPass());
-  }
+      std::move(file), debug_info_file, input_arrays, input_dtypes,
+      input_shapes, output_arrays, inference_type, min_values, max_values,
+      prune_unused_nodes,
+      /*convert_legacy_fed_inputs=*/true, /*graph_as_function=*/false, context);
 }
 
 Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
     bool emit_select_tf_ops, bool emit_custom_ops, bool emit_quant_adaptor_ops,
-    bool lower_tensor_list_ops, std::string *result) {
+    bool lower_tensor_list_ops, std::string* result,
+    mlir::PassManager* pass_manager) {
   mlir::StatusScopedDiagnosticHandler statusHandler(module.getContext(),
                                                     /*propagate=*/true);
-  mlir::PassManager pm;
-  bool run_quantize = ShouldRunQuantizePasses(module);
-
-  AddTFToTFLConversionPasses(emit_builtin_tflite_ops, run_quantize,
-                             emit_quant_adaptor_ops, lower_tensor_list_ops,
-                             &pm);
-
-  if (failed(pm.run(module))) {
+  if (failed(pass_manager->run(module))) {
     return statusHandler.ConsumeStatus();
   }
 

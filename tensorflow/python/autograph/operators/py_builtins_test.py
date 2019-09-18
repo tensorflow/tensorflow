@@ -158,10 +158,60 @@ class PyBuiltinsTest(test.TestCase):
     start = constant_op.constant(20, dtype=dtypes.int64)
     dataset = py_builtins.enumerate_(dataset, start)
     iterator = dataset_ops.make_one_shot_iterator(dataset)
-
     with self.cached_session() as sess:
       self.assertAllEqual(self.evaluate(iterator.get_next()), (20, b'a'))
       self.assertAllEqual(self.evaluate(iterator.get_next()), (21, b'c'))
+
+  def test_zip(self):
+    self.assertListEqual(
+        list(py_builtins.zip_([3, 2, 1], [1, 2, 3])), [(3, 1), (2, 2), (1, 3)])
+    self.assertListEqual(
+        list(py_builtins.zip_([4, 5, 6], [-1, -2])), [(4, -1), (5, -2)])
+
+  def test_zip_dataset(self):
+    ds1 = dataset_ops.DatasetV2.from_tensor_slices([-11, -12, 4])
+    ds2 = dataset_ops.DatasetV2.from_tensor_slices([-21, -22, 5])
+    ds3 = py_builtins.zip_(ds1, ds2)
+    iterator = dataset_ops.make_one_shot_iterator(ds3)
+    with self.cached_session() as sess:
+      self.assertAllEqual(self.evaluate(iterator.get_next()), (-11, -21))
+      self.assertAllEqual(self.evaluate(iterator.get_next()), (-12, -22))
+      self.assertAllEqual(self.evaluate(iterator.get_next()), (4, 5))
+
+  def test_map(self):
+
+    def increment(x):
+      return x + 1
+
+    add_list = lambda x, y: x + y
+    self.assertListEqual(
+        list(py_builtins.map_(increment, [4, 5, 6])), [5, 6, 7])
+    self.assertListEqual(
+        list(py_builtins.map_(add_list, [3, 2, 1], [-1, -2, -3])), [2, 0, -2])
+
+  def test_map_dataset(self):
+
+    def increment(x):
+      return x + 1
+
+    ds1 = dataset_ops.DatasetV2.from_tensor_slices([4, 5, 6])
+    ds2 = py_builtins.map_(increment, ds1)
+    iterator = dataset_ops.make_one_shot_iterator(ds2)
+    with self.cached_session() as sess:
+      self.assertAllEqual(self.evaluate(iterator.get_next()), 5)
+      self.assertAllEqual(self.evaluate(iterator.get_next()), 6)
+      self.assertAllEqual(self.evaluate(iterator.get_next()), 7)
+
+  def test_map_multiple_datasets(self):
+    add_list = lambda x, y: x + y
+    ds1 = dataset_ops.DatasetV2.from_tensor_slices([-11, -12, 4])
+    ds2 = dataset_ops.DatasetV2.from_tensor_slices([-21, -22, 5])
+    ds3 = py_builtins.map_(add_list, ds1, ds2)
+    iterator = dataset_ops.make_one_shot_iterator(ds3)
+    with self.cached_session() as sess:
+      self.assertAllEqual(self.evaluate(iterator.get_next()), -32)
+      self.assertAllEqual(self.evaluate(iterator.get_next()), -34)
+      self.assertAllEqual(self.evaluate(iterator.get_next()), 9)
 
   def _basic_function_scope(self):
     return function_wrappers.FunctionScope(

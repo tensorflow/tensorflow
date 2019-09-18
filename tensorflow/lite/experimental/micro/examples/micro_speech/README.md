@@ -58,7 +58,7 @@ the trained TensorFlow model, runs some example inputs through it, and got the
 expected outputs.
 
 To understand how TensorFlow Lite does this, you can look at the source in
-[hello_world_test.cc](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/micro_speech/micro_speech_test.cc).
+[micro_speech_test.cc](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/micro_speech/micro_speech_test.cc).
 It's a fairly small amount of code that creates an interpreter, gets a handle to
 a model that's been compiled into the program, and then invokes the interpreter
 with the model and sample inputs.
@@ -205,7 +205,7 @@ The following command will download the required dependencies and then compile a
 binary for the SparkFun Edge:
 
 ```
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=sparkfun_edge micro_speech_bin
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=sparkfun_edge TAGS="CMSIS" micro_speech_bin
 ```
 
 The binary will be created in the following location:
@@ -356,10 +356,10 @@ structure:
 make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=mbed TAGS="CMSIS disco_f746ng" generate_micro_speech_mbed_project
 ```
 
-This will result in the creation of a new folder:
+Running the make command will result in the creation of a new folder:
 
 ```
-tensorflow/lite/experimental/micro/tools/make/gen/mbed_cortex-m4/prj/hello_world/mbed
+tensorflow/lite/experimental/micro/tools/make/gen/mbed_cortex-m4/prj/micro_speech/mbed
 ```
 
 This folder contains all of the example's dependencies structured in the correct
@@ -452,7 +452,7 @@ using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
     ```
     make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=mbed TAGS="nxp_k66f" generate_micro_speech_mbed_project
     ```
-4.  Go to the location of the generated project. The generated project is usally
+4.  Go to the location of the generated project. The generated project is usually
     in `tensorflow/lite/experimental/micro/tools/make/gen/mbed_cortex-m4/prj/micro_speech/mbed`
 5.  Create a mbed project using the generated files: `mbed new .`
 6.  Change the project setting to use C++ 11 rather than C++ 14 using:
@@ -481,8 +481,8 @@ using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
     ```
 9.  Look at helpful resources from NXP website such as [NXP FRDM-K66F User guide](https://www.nxp.com/docs/en/user-guide/FRDMK66FUG.pdf) and [NXP FRDM-K66F Getting Started](https://www.nxp.com/document/guide/get-started-with-the-frdm-k66f:NGS-FRDM-K66F)
     to understand information about the board.
-10. Connect USB cable to micro USB port. When ethernet port is face towards you,
-    The micro USB port is left of the ethernet port.
+10. Connect the USB cable to the micro USB port. When the Ethernet port is
+    facing towards you, the micro USB port is left of the Ethernet port.
 11.  To compile and flash in a single step, add the `--flash` option:
 
     ```
@@ -539,13 +539,13 @@ them.
 
 ```
 python tensorflow/tensorflow/examples/speech_commands/wav_to_features.py \
---input_wav=/content/speech_dataset/yes/f2e59fea_nohash_1.wav \
---output_c_file=/content/yes_features_data.cc \
+--input_wav=/tmp/speech_dataset/yes/f2e59fea_nohash_1.wav \
+--output_c_file=/tmp/yes_features_data.cc \
 --window_stride=20 --preprocess=average --quantize=1
 
 python tensorflow/tensorflow/examples/speech_commands/wav_to_features.py \
---input_wav=/content/speech_dataset/no/f9643d42_nohash_4.wav \
---output_c_file=/content/no_features_data.cc \
+--input_wav=/tmp/speech_dataset/no/f9643d42_nohash_4.wav \
+--output_c_file=/tmp/no_features_data.cc \
 --window_stride=20 --preprocess=average --quantize=1
 ```
 
@@ -578,11 +578,9 @@ We strongly recommend trying this approach first.
 
 ### Use your local machine
 
-You can use the following commands to train the model on your own machine.
-
-It may be easiest to run these commands in a
-[TensorFlow Docker container](https://www.tensorflow.org/install/docker). A full
-build may take a couple of hours.
+You can use the following commands to train the model on your own machine. It
+may be easiest to run these commands in a
+[TensorFlow Docker container](https://www.tensorflow.org/install/docker).
 
 You must currently use the TensorFlow Nightly `pip` package. This version is
 confirmed to work:
@@ -596,15 +594,13 @@ To begin training, run the following:
 ```
 python tensorflow/tensorflow/examples/speech_commands/train.py \
 --model_architecture=tiny_conv --window_stride=20 --preprocess=micro \
---wanted_words="yes,no" --silence_percentage=25 --unknown_percentage=25 \
---quantize=1 --verbosity=WARN --how_many_training_steps="15000,3000" \
+--wanted_words="on,off" --silence_percentage=25 --unknown_percentage=25 \
+--quantize=1 --verbosity=INFO --how_many_training_steps="15000,3000" \
 --learning_rate="0.001,0.0001" --summaries_dir=/tmp/retrain_logs \
 --data_dir=/tmp/speech_dataset --train_dir=/tmp/speech_commands_train
 ```
 
-If you see a compiling error on older machines, try leaving out the `--copt`
-arguments, they are just there to accelerate training on chips that support the
-extensions. The training process is likely to take a couple of hours. Once it
+The training process is likely to take a couple of hours. Once it
 has completed, the next step is to freeze the variables:
 
 ```
@@ -618,8 +614,8 @@ The next step is to create a TensorFlow Lite file from the frozen graph:
 
 ```
 toco \
---graph_def_file=/content/tiny_conv.pb --output_file=/tmp/tiny_conv.tflite \
---input_shapes=1,1960 --input_arrays=Reshape_1 --output_arrays='labels_softmax' \
+--graph_def_file=/tmp/tiny_conv.pb --output_file=/tmp/tiny_conv.tflite \
+--input_shapes=1,49,40,1 --input_arrays=Reshape_2 --output_arrays='labels_softmax' \
 --inference_type=QUANTIZED_UINT8 --mean_values=0 --std_dev_values=9.8077
 ```
 

@@ -16,21 +16,43 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_PASSES_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_PASSES_H_
 
-namespace mlir {
-class FunctionPassBase;
+#include <memory>
 
-namespace XLA {
+#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+
+namespace mlir {
+
+class FuncOp;
+class Operation;
+template <typename T>
+class OpPassBase;
+class MLIRContext;
+class OwningRewritePatternList;
+
+namespace xla_hlo {
 
 /// Lowers from TF dialect to XLA dialect.
-FunctionPassBase *createLegalizeTFPass();
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeTFPass();
+
+/// Converts the provided Operation as well as all nested operations into XLA
+/// dialect using the conversion patterns registered by the XLA dialect.
+LogicalResult legalizeTF(Operation* op);
 
 /// Lowers XLA control flow ops to the Standard dialect.
-FunctionPassBase *createLegalizeControlFlowPass();
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeControlFlowPass();
 
 /// Lowers from XLA dialect to Standard dialect.
-FunctionPassBase *createLegalizeToStdPass();
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToStdPass();
 
-}  // end namespace XLA
-}  // end namespace mlir
+}  // namespace xla_hlo
+
+namespace xla_lhlo {
+
+// Lowers LHLO dialect to affine dialect.
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToAffinePass();
+
+}  // namespace xla_lhlo
+}  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_PASSES_H_

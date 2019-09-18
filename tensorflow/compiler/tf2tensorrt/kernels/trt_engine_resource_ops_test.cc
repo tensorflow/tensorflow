@@ -144,8 +144,8 @@ TEST_F(TRTEngineResourceOpsTest, Basic) {
                    .Input(FakeInput(DT_STRING))
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  AddInputFromArray<string>(TensorShape({}), {resource_name});
-  AddInputFromArray<string>(TensorShape({}), {filename});
+  AddInputFromArray<tstring>(TensorShape({}), {resource_name});
+  AddInputFromArray<tstring>(TensorShape({}), {filename});
   TF_ASSERT_OK(RunOpKernel());
 
   // Make sure the cache is deleted.
@@ -182,7 +182,7 @@ TEST_F(TRTEngineResourceOpsTest, Basic) {
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   AddInputFromArray<ResourceHandle>(TensorShape({}), {handle});
-  AddInputFromArray<string>(TensorShape({}), {filename});
+  AddInputFromArray<tstring>(TensorShape({}), {filename});
   TF_ASSERT_OK(RunOpKernel());
   EXPECT_TRUE(rm->Lookup(container, resource_name, &resource).ok());
   EXPECT_EQ(1, resource->cache_.size());

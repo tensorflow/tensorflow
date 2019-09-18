@@ -85,9 +85,9 @@ private:
 };
 } // namespace
 
-FunctionPassBase *mlir::createPrintCFGGraphPass(llvm::raw_ostream &os,
-                                                bool shortNames,
-                                                const llvm::Twine &title) {
+OpPassBase<FuncOp> *mlir::createPrintCFGGraphPass(llvm::raw_ostream &os,
+                                                  bool shortNames,
+                                                  const llvm::Twine &title) {
   return new PrintCFGPass(os, shortNames, title);
 }
 

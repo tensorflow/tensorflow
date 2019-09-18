@@ -20,10 +20,13 @@ from __future__ import print_function
 
 import functools
 
+from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.kernel_tests.signal import test_util
 from tensorflow.python.ops.signal import window_ops
@@ -56,27 +59,27 @@ def _scipy_raised_cosine(length, symmetric=True, a=0.5, b=0.5):
   return window
 
 
-class WindowOpsTest(test.TestCase):
+@tf_test_util.run_all_in_graph_and_eager_modes
+class WindowOpsTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
+    super(WindowOpsTest, self).setUp()
     self._window_lengths = [1, 2, 3, 4, 5, 31, 64, 128]
     self._dtypes = [(dtypes.float16, 1e-2),
                     (dtypes.float32, 1e-6),
                     (dtypes.float64, 1e-9)]
 
   def _compare_window_fns(self, np_window_fn, tf_window_fn):
-    with self.session(use_gpu=True):
-      for window_length in self._window_lengths:
-        for periodic in [False, True]:
-          for tf_dtype, tol in self._dtypes:
-            np_dtype = tf_dtype.as_numpy_dtype
-            expected = np_window_fn(window_length,
-                                    symmetric=not periodic).astype(np_dtype)
-            actual = tf_window_fn(window_length, periodic=periodic,
-                                  dtype=tf_dtype).eval()
-            self.assertAllClose(expected, actual, tol, tol)
+    for window_length in self._window_lengths:
+      for periodic in [False, True]:
+        for tf_dtype, tol in self._dtypes:
+          np_dtype = tf_dtype.as_numpy_dtype
+          expected = np_window_fn(window_length,
+                                  symmetric=not periodic).astype(np_dtype)
+          actual = tf_window_fn(window_length, periodic=periodic,
+                                dtype=tf_dtype)
+          self.assertAllClose(expected, actual, tol, tol)
 
-  @tf_test_util.run_deprecated_v1
   def test_hann_window(self):
     """Check that hann_window matches scipy.signal.hann behavior."""
     # The Hann window is a raised cosine window with parameters alpha=0.5 and
@@ -86,7 +89,6 @@ class WindowOpsTest(test.TestCase):
         functools.partial(_scipy_raised_cosine, a=0.5, b=0.5),
         window_ops.hann_window)
 
-  @tf_test_util.run_deprecated_v1
   def test_hamming_window(self):
     """Check that hamming_window matches scipy.signal.hamming's behavior."""
     # The Hamming window is a raised cosine window with parameters alpha=0.54
@@ -98,6 +100,8 @@ class WindowOpsTest(test.TestCase):
 
   def test_constant_folding(self):
     """Window functions should be constant foldable for constant inputs."""
+    if context.executing_eagerly():
+      return
     for window_fn in (window_ops.hann_window, window_ops.hamming_window):
       for dtype, _ in self._dtypes:
         for periodic in [False, True]:
@@ -105,7 +109,28 @@ class WindowOpsTest(test.TestCase):
           with g.as_default():
             window = window_fn(100, periodic=periodic, dtype=dtype)
             rewritten_graph = test_util.grappler_optimize(g, [window])
-            self.assertEqual(1, len(rewritten_graph.node))
+            self.assertLen(rewritten_graph.node, 1)
+
+  @parameterized.parameters(
+      # Due to control flow, only MLIR is supported.
+      # Only float32 is supported.
+      (window_ops.hann_window, 10, False, dtypes.float32, True),
+      (window_ops.hann_window, 10, True, dtypes.float32, True),
+      (window_ops.hamming_window, 10, False, dtypes.float32, True),
+      (window_ops.hamming_window, 10, True, dtypes.float32, True))
+  def test_tflite_convert(self, window_fn, window_length, periodic, dtype,
+                          use_mlir):
+    def fn(window_length):
+      return window_fn(window_length, periodic, dtype=dtype)
+
+    tflite_model = test_util.tflite_convert(
+        fn, [tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32)], use_mlir)
+    window_length = np.array(window_length).astype(np.int32)
+    actual_output, = test_util.evaluate_tflite_model(
+        tflite_model, [window_length])
+
+    expected_output = self.evaluate(fn(window_length))
+    self.assertAllClose(actual_output, expected_output, rtol=1e-7, atol=1e-7)
 
 
 if __name__ == '__main__':

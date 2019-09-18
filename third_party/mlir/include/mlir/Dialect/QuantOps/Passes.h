@@ -25,21 +25,24 @@
 #ifndef MLIR_DIALECT_QUANTOPS_PASSES_H
 #define MLIR_DIALECT_QUANTOPS_PASSES_H
 
+#include <memory>
+
 namespace mlir {
-class FunctionPassBase;
+class FuncOp;
+template <typename T> class OpPassBase;
 
 namespace quant {
 
 /// Creates a pass that converts quantization simulation operations (i.e.
 /// FakeQuant and those like it) to casts into/out of supported QuantizedTypes.
-FunctionPassBase *createConvertSimulatedQuantPass();
+std::unique_ptr<OpPassBase<FuncOp>> createConvertSimulatedQuantPass();
 
 /// Creates a pass that converts constants followed by a qbarrier to a
 /// constant whose value is quantized. This is typically one of the last
 /// passes done when lowering to express actual quantized arithmetic in a
 /// low level representation. Because it modifies the constant, it is
 /// destructive and cannot be undone.
-FunctionPassBase *createConvertConstPass();
+std::unique_ptr<OpPassBase<FuncOp>> createConvertConstPass();
 
 } // namespace quant
 } // namespace mlir

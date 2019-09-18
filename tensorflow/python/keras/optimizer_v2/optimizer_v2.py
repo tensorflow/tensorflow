@@ -40,6 +40,7 @@ from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -415,8 +416,8 @@ class OptimizerV2(trackable.Trackable):
         passed to the `Optimizer` constructor.
 
     Returns:
-      An `Operation` that applies the specified gradients. If `global_step`
-      was not None, that operation also increments `global_step`.
+      An `Operation` that applies the specified gradients. The `iterations`
+        will be automatically increased by 1.
 
     Raises:
       TypeError: If `grads_and_vars` is malformed.
@@ -432,6 +433,10 @@ class OptimizerV2(trackable.Trackable):
         self._create_hypers()
         self._create_slots(var_list)
 
+      if not grads_and_vars:
+        # Distribution strategy does not support reducing an empty list of
+        # gradients
+        return control_flow_ops.no_op()
       apply_state = self._prepare(var_list)
       return distribute_ctx.get_replica_context().merge_call(
           functools.partial(self._distributed_apply, apply_state=apply_state),
@@ -629,7 +634,8 @@ class OptimizerV2(trackable.Trackable):
       return
     # Iterate hyper values deterministically.
     for name, value in sorted(self._hyper.items()):
-      if isinstance(value, ops.Tensor) or callable(value):
+      if isinstance(
+          value, (ops.Tensor, tf_variables.Variable)) or callable(value):
         continue
       else:
         self._hyper[name] = self.add_weight(

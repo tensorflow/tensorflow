@@ -84,8 +84,6 @@ void ExecuteWithProfiling(bool async) {
   string profile_proto_str = profile_proto.DebugString();
   if (!gpu_device_name.empty()) {
     EXPECT_TRUE(HasSubstr(profile_proto_str, "/device:GPU:0"));
-    // device name with "stream:all" is collected by Device Tracer.
-    EXPECT_TRUE(HasSubstr(profile_proto_str, "stream:all"));
   }
   // "/host:CPU" is collected by TraceMe
   EXPECT_TRUE(HasSubstr(profile_proto_str, "/host:CPU"));

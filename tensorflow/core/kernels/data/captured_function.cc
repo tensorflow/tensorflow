@@ -210,9 +210,6 @@ Status CreateFunctionLibraryDefinition(
   return (*result)->CopyFunctionDefFrom(func_name, *lib_def);
 }
 
-Status IsNodeStateful(const FunctionLibraryDefinition& library,
-                      const NodeDef& node);
-
 Status IsFunctionStateful(const FunctionLibraryDefinition& library,
                           const FunctionDef& function_def) {
   if (!function_def.signature().is_stateful()) {
@@ -236,6 +233,7 @@ bool IsOpWhitelisted(const OpDef* op_def) {
            absl::EndsWith(op_def->name(), "DatasetV2"))) ||
          WhitelistedStatefulOpRegistry::Global()->Contains(op_def->name());
 }
+}  // namespace
 
 Status IsNodeStateful(const FunctionLibraryDefinition& library,
                       const NodeDef& node) {
@@ -279,8 +277,6 @@ Status IsNodeStateful(const FunctionLibraryDefinition& library,
 
   return errors::FailedPrecondition(op_def->name(), " is stateful.");
 }
-
-}  // namespace
 
 Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const std::vector<Tensor>& input_element,
@@ -411,6 +407,7 @@ Status CapturedFunction::Instantiate(
   FunctionLibraryRuntime::InstantiateOptions inst_opts;
   inst_opts.lib_def = metadata_->lib_def();
   inst_opts.create_kernels_eagerly = true;
+  inst_opts.default_device_to_target = metadata_->use_default_device();
   if (!metadata_->use_inter_op_parallelism()) {
     inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
   }

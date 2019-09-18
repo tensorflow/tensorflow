@@ -11,12 +11,14 @@ cc_library(
         "error_reporter.cc",
         "flatbuffer_conversions.cc",
         "op_resolver.cc",
+        "tensor_utils.cc",
     ],
     hdrs = [
         "error_reporter.h",
         "flatbuffer_conversions.h",
         "op_resolver.h",
         "profiler.h",
+        "tensor_utils.h",
     ],
     copts = tflite_copts(),
     deps = [

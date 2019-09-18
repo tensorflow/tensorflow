@@ -123,6 +123,14 @@ IntegerAttr Builder::getI32IntegerAttr(int32_t value) {
   return IntegerAttr::get(getIntegerType(32), APInt(32, value));
 }
 
+IntegerAttr Builder::getI16IntegerAttr(int16_t value) {
+  return IntegerAttr::get(getIntegerType(16), APInt(16, value));
+}
+
+IntegerAttr Builder::getI8IntegerAttr(int8_t value) {
+  return IntegerAttr::get(getIntegerType(8), APInt(8, value));
+}
+
 IntegerAttr Builder::getIntegerAttr(Type type, int64_t value) {
   if (type.isIndex())
     return IntegerAttr::get(type, APInt(64, value));
@@ -218,6 +226,15 @@ ArrayAttr Builder::getI64ArrayAttr(ArrayRef<int64_t> values) {
   return getArrayAttr(attrs);
 }
 
+ArrayAttr Builder::getIndexArrayAttr(ArrayRef<int64_t> values) {
+  auto attrs = functional::map(
+      [this](int64_t v) -> Attribute {
+        return getIntegerAttr(IndexType::get(getContext()), v);
+      },
+      values);
+  return getArrayAttr(attrs);
+}
+
 ArrayAttr Builder::getF32ArrayAttr(ArrayRef<float> values) {
   auto attrs = functional::map(
       [this](float v) -> Attribute { return getF32FloatAttr(v); }, values);
@@ -244,12 +261,11 @@ ArrayAttr Builder::getAffineMapArrayAttr(ArrayRef<AffineMap> values) {
 
 Attribute Builder::getZeroAttr(Type type) {
   switch (type.getKind()) {
+  case StandardTypes::BF16:
   case StandardTypes::F16:
-    return getF16FloatAttr(0);
   case StandardTypes::F32:
-    return getF32FloatAttr(0);
   case StandardTypes::F64:
-    return getF64FloatAttr(0);
+    return getFloatAttr(type, 0.0);
   case StandardTypes::Integer: {
     auto width = type.cast<IntegerType>().getWidth();
     if (width == 1)

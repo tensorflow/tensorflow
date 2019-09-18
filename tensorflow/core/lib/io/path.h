@@ -41,7 +41,7 @@ string JoinPathImpl(std::initializer_list<tensorflow::StringPiece> paths);
 // Usage:
 // string path = io::JoinPath("/mydir", filename);
 // string path = io::JoinPath(FLAGS_test_srcdir, filename);
-// string path = io::JoinPath("/full", "path", "to", "filename);
+// string path = io::JoinPath("/full", "path", "to", "filename");
 template <typename... T>
 string JoinPath(const T&... args) {
   return internal::JoinPathImpl({args...});

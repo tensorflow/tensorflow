@@ -22,16 +22,18 @@ import os
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 
 
 class CollectiveOpGPUTest(test.TestCase):
 
-  def _configure(self, group_size):
+  def _configure(self, group_size, set_config_proto_nccl=True):
     """Set environment variables and return `ConfigProto` for NCCL execution."""
     # Configure virtual GPU devices
     virtual_devices = [config_pb2.GPUOptions.Experimental.VirtualDevices(
@@ -41,9 +43,11 @@ class CollectiveOpGPUTest(test.TestCase):
         experimental=config_pb2.GPUOptions.Experimental(
             virtual_devices=virtual_devices))
     # Configure NCCL
-    experimental = config_pb2.ConfigProto.Experimental(collective_nccl=True)
     os.environ['NCCL_DEBUG'] = 'INFO'
     os.environ['NCCL_LAUNCH_MODE'] = 'PARALLEL'
+    experimental = config_pb2.ConfigProto.Experimental()
+    if set_config_proto_nccl:
+      experimental.collective_nccl = True
     return config_pb2.ConfigProto(gpu_options=gpu_options,
                                   experimental=experimental)
 
@@ -66,6 +70,78 @@ class CollectiveOpGPUTest(test.TestCase):
           t = constant_op.constant(inputs[i])
           collectives.append(collective_ops.all_reduce(
               t, group_size, group_key, instance_key, 'Add', 'Div'))
+      results = sess.run(collectives)
+    for result in results:
+      self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
+
+  @test_util.run_deprecated_v1
+  def testInt32Error(self):
+    inputs = [[0, 1], [2, 3]]
+    group_size = len(inputs)
+    group_key = 1
+    instance_key = 50
+    devices = ['/GPU:{}'.format(i) for i in range(group_size)]
+
+    with self.session(config=self._configure(group_size)) as sess:
+      if not test_util.is_gpu_available(cuda_only=True):
+        self.skipTest('No GPU available')
+      collectives = []
+      for i in range(group_size):
+        with ops.device(devices[i]):
+          t = constant_op.constant(inputs[i], dtype=dtypes.int32)
+          collectives.append(collective_ops.all_reduce(
+              t, group_size, group_key, instance_key, 'Add', 'Div'))
+      with self.assertRaisesRegexp(
+          errors.InternalError,
+          'does not support datatype DT_INT32 on DEVICE_GPU'):
+        sess.run(collectives)
+
+  @test_util.run_deprecated_v1
+  def testFp16Reduce(self):
+    inputs = [[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
+              [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]]
+    expected = [0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2]
+    group_size = len(inputs)
+    group_key = 1
+    instance_key = 100
+    devices = ['/GPU:{}'.format(i) for i in range(group_size)]
+
+    with self.session(config=self._configure(group_size)) as sess:
+      if not test_util.is_gpu_available(cuda_only=True):
+        self.skipTest('No GPU available')
+      collectives = []
+      for i in range(group_size):
+        with ops.device(devices[i]):
+          t = constant_op.constant(inputs[i], dtype=dtypes.float16)
+          collectives.append(collective_ops.all_reduce(
+              t, group_size, group_key, instance_key, 'Add', 'Div'))
+      results = sess.run(collectives)
+    for result in results:
+      logging.info('i {} result {} expected {}'.format(i, results[i], expected))
+      self.assertAllClose(result, expected, rtol=1e-3, atol=1e-3)
+
+  @test_util.run_deprecated_v1
+  def testNcclHintAllReduce(self):
+    inputs = [[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
+              [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]]
+    expected = [0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2]
+    group_size = len(inputs)
+    group_key = 1
+    instance_key = 1
+    devices = ['/GPU:{}'.format(i) for i in range(group_size)]
+
+    with self.session(
+        config=self._configure(group_size,
+                               set_config_proto_nccl=False)) as sess:
+      if not test_util.is_gpu_available(cuda_only=True):
+        self.skipTest('No GPU available')
+      collectives = []
+      for i in range(group_size):
+        with ops.device(devices[i]):
+          t = constant_op.constant(inputs[i])
+          collectives.append(collective_ops.all_reduce(
+              t, group_size, group_key, instance_key, 'Add', 'Div',
+              communication_hint='nccl'))
       results = sess.run(collectives)
     for result in results:
       self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)

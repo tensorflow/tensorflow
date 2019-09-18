@@ -79,10 +79,10 @@ tflite_convert \
 ```
 
 When building and running `tflite_convert` directly with `bazel`, please pass
-`--define=with_select_tf_ops=true` as an additional argument.
+`--define=tflite_convert_with_select_tf_ops=true` as an additional argument.
 
 ```
-bazel run --define=with_select_tf_ops=true tflite_convert -- \
+bazel run --define=tflite_convert_with_select_tf_ops=true tflite_convert -- \
   --output_file=/tmp/foo.tflite \
   --graph_def_file=/tmp/foo.pb \
   --input_arrays=input \
@@ -179,11 +179,8 @@ TensorFlow ops library can be included and enabled as follows:
 
 *   Enable monolithic builds if necessary by adding the `--config=monolithic`
     build flag.
-*   Do one of the following:
-    *   Include the `--define=with_select_tf_ops=true` build flag in the `bazel
-        build` invocation when building TensorFlow Lite.
-    *   Add the TensorFlow ops delegate library dependency to the build
-        dependencies: `tensorflow/lite/delegates/flex:delegate`.
+*   Add the TensorFlow ops delegate library dependency to the build
+    dependencies: `tensorflow/lite/delegates/flex:delegate`.
 
 Note that the necessary `TfLiteDelegate` will be installed automatically when
 creating the interpreter at runtime as long as the delegate is linked into the

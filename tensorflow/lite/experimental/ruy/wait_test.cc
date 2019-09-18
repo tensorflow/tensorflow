@@ -21,6 +21,7 @@ limitations under the License.
 #include <thread>              // NOLINT(build/c++11)
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/experimental/ruy/platform.h"
 
 namespace ruy {
 namespace {
@@ -63,6 +64,10 @@ class ThreadCountingUpToValue {
 };
 
 void WaitTest(const Duration& spin_duration, const Duration& delay) {
+#if RUY_PLATFORM(EMSCRIPTEN)
+  // b/139927184, std::thread constructor raises exception
+  return;
+#endif
   std::condition_variable condvar;
   std::mutex mutex;
   std::atomic<int> value(0);

@@ -270,6 +270,7 @@ tf_cuda_library(
         "//tensorflow/core/platform",
         "@com_google_absl//absl/strings",
     ],
+    alwayslink = 1,
 )
 
 exports_files(
@@ -468,7 +469,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core:no_op_op_lib",
-        "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:sendrecv_ops_op_lib",
         "//tensorflow/core:spectral_ops_op_lib",
@@ -590,7 +590,6 @@ tf_cuda_cc_test(
         ":kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

@@ -36,6 +36,8 @@ struct AffineMapStorage {
   /// The affine expressions for this (multi-dimensional) map.
   /// TODO: use trailing objects for this.
   ArrayRef<AffineExpr> results;
+
+  MLIRContext *context;
 };
 
 } // end namespace detail

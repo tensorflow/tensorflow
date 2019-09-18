@@ -246,3 +246,130 @@ func @empty_and_filled_graphs(%arg0 : tensor<i1>) -> (tensor<i1>, tensor<i1>, te
 // CHECK-NEXT: %[[OP_D:[0-9]*]] = "tf.opD"(%[[ARG_0]])
 // CHECK-NEXT: %[[OP_E:[0-9]*]] = "tf.opE"(%[[OP_D]])
 // CHECK-NEXT: return %[[OP_E]], %[[ARG_0]], %[[ARG_0]], %[[OP_A]], %[[ARG_0]], %[[OP_B]] : tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>
+
+
+// Test single empty island in graph with control output in graph fetch results
+// in graph being removed.
+// CHECK-LABEL: func @single_empty_island_single_graph_control
+func @single_empty_island_single_graph_control() {
+  tf_executor.graph {
+    %0 = tf_executor.island {
+      tf_executor.yield
+    }
+    tf_executor.fetch %0 : !tf_executor.control
+  }
+  return
+}
+
+// CHECK-NEXT: return
+
+
+// Test empty island with no operands and no data result user is removed.
+// Control result users should also have their respective operands removed.
+// CHECK-LABEL: func @empty_island_no_operand_no_data_result
+func @empty_island_no_operand_no_data_result() {
+  tf_executor.graph {
+    %0 = tf_executor.island {
+      tf_executor.yield
+    }
+    %1 = tf_executor.island(%0) {
+      %3 = "tf.opA"() : () -> tensor<i1>
+      tf_executor.yield
+    }
+    %2 = tf_executor.island(%0, %1) {
+      %4 = "tf.opB"() : () -> tensor<i1>
+      tf_executor.yield
+    }
+    tf_executor.fetch
+  }
+  return
+}
+
+// CHECK:        %[[ISLAND_0:[0-9]*]] = tf_executor.island
+// CHECK-NEXT:     "tf.opA"
+// CHECK:        tf_executor.island(%[[ISLAND_0]])
+// CHECK-NEXT:     "tf.opB"
+// CHECK-NOT:    tf_executor.island
+
+
+// Test empty island with one operand and no data results is removed and the
+// operand is forwarded to its control result users.
+// CHECK-LABEL: func @empty_island_one_operand_no_data_result
+func @empty_island_one_operand_no_data_result() {
+  tf_executor.graph {
+    %0 = tf_executor.island {
+      %3 = "tf.opA"() : () -> tensor<i1>
+      tf_executor.yield
+    }
+    %1 = tf_executor.island(%0) {
+      tf_executor.yield
+    }
+    %2 = tf_executor.island(%1) {
+      %4 = "tf.opB"() : () -> tensor<i1>
+      tf_executor.yield
+    }
+    tf_executor.fetch
+  }
+  return
+}
+
+// CHECK:        %[[ISLAND_1:[0-9]*]] = tf_executor.island
+// CHECK-NEXT:     "tf.opA"
+// CHECK:        tf_executor.island(%[[ISLAND_1]])
+// CHECK-NEXT:     "tf.opB"
+// CHECK-NOT:    tf_executor.island
+
+
+// Test empty island with no operands, one data result and no control result
+// users is removed and its data result forwarded to its users.
+// CHECK-LABEL: func @empty_island_no_operand_one_data_no_control_result
+// CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<i1>)
+func @empty_island_no_operand_one_data_no_control_result(%arg0 : tensor<i1>) {
+  tf_executor.graph {
+    %0:2 = tf_executor.island() {
+      tf_executor.yield %arg0 : tensor<i1>
+    }
+    %1 = tf_executor.island {
+      %3 = "tf.opA"(%0#0) : (tensor<i1>) -> tensor<i1>
+      tf_executor.yield
+    }
+    %2 = tf_executor.island() {
+      %4 = "tf.opB"(%0#0) : (tensor<i1>) -> tensor<i1>
+      tf_executor.yield
+    }
+    tf_executor.fetch
+  }
+  return
+}
+
+// CHECK:        tf_executor.island
+// CHECK-NEXT:     "tf.opA"(%[[ARG_0]])
+// CHECK:        tf_executor.island {
+// CHECK-NEXT:     "tf.opB"(%[[ARG_0]])
+// CHECK-NOT:    tf_executor.island
+
+
+// Test empty control trigger with no operands is removed.
+// Control result users should also have their respective operands removed.
+// CHECK-LABEL: func @empty_control_trigger
+func @empty_control_trigger() {
+  tf_executor.graph {
+    %0 = tf_executor.ControlTrigger {}
+    %1 = tf_executor.island(%0) {
+      %3 = "tf.opA"() : () -> tensor<i1>
+      tf_executor.yield
+    }
+    %2 = tf_executor.island(%0, %1) {
+      %4 = "tf.opB"() : () -> tensor<i1>
+      tf_executor.yield
+    }
+    tf_executor.fetch
+  }
+  return
+}
+
+// CHECK:        %[[ISLAND_0:[0-9]*]] = tf_executor.island
+// CHECK-NEXT:     "tf.opA"
+// CHECK:        tf_executor.island(%[[ISLAND_0]])
+// CHECK-NEXT:     "tf.opB"
+// CHECK-NOT:    tf_executor.island

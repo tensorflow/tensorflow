@@ -6,10 +6,10 @@ HloModule tfcompile.7
 // implementations with attributes, etc.
 // CHECK-LABEL: func @main(%arg0: tensor<1x16x16x1xf32>) -> tuple<tensor<1x16x16x1xf32>> {
 ENTRY %tfcompile.7 {
-  %arg0.1 = f32[1,16,16,1]{3,2,1,0} parameter(0), metadata={op_name="XLA_Args"}
+  %arg0.1 = f32[1,16,16,1]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}
 
   // CHECK-NEXT:   %0 = "xla_hlo.copy"(%arg0) {name = "copy.1"} : (tensor<1x16x16x1xf32>) -> tensor<1x16x16x1xf32>
-  %copy.1 = f32[1,16,16,1]{2,1,3,0} copy(%arg0.1), metadata={op_name="XLA_Args"}
+  %copy.1 = f32[1,16,16,1]{2,1,3,0} copy(%arg0.1), metadata={op_name="HLO_Args"}
 
   // CHECK-NEXT:   %1 = "xla_hlo.reshape"(%0) {name = "reshape.2"} : (tensor<1x16x16x1xf32>) -> tensor<1x16x16x1xf32>
   %reshape.2 = f32[1,16,16,1]{2,1,3,0} reshape(%copy.1)
@@ -23,9 +23,9 @@ ENTRY %tfcompile.7 {
   %convolution.4 = f32[1,16,16,1]{2,1,3,0} convolution(%reshape.2, %constant.3), window={size=2x2 pad=0_1x0_1}, dim_labels=b01f_01io->b01f, metadata={op_type="Conv2D" op_name="embedded_inference/conv_model/conv_0/Conv2D"}
 
   // CHECK-NEXT:   %3 = "xla_hlo.reshape"(%2) {name = "reshape.5"} : (tensor<1x16x16x1xf32>) -> tensor<1x16x16x1xf32>
-  %reshape.5 = f32[1,16,16,1]{3,2,1,0} reshape(%convolution.4), metadata={op_name="XLA_Retvals"}
+  %reshape.5 = f32[1,16,16,1]{3,2,1,0} reshape(%convolution.4), metadata={op_name="HLO_Retvals"}
 
   // CHECK-NEXT:   %4 = "xla_hlo.tuple"(%3) {name = "tuple.6"} : (tensor<1x16x16x1xf32>) -> tuple<tensor<1x16x16x1xf32>>
   // CHECK-NEXT:   return %4 : tuple<tensor<1x16x16x1xf32>>
-  ROOT %tuple.6 = (f32[1,16,16,1]{3,2,1,0}) tuple(%reshape.5), metadata={op_name="XLA_Retvals"}
+  ROOT %tuple.6 = (f32[1,16,16,1]{3,2,1,0}) tuple(%reshape.5), metadata={op_name="HLO_Retvals"}
 }

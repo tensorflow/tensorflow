@@ -90,9 +90,16 @@ private:
   // Rewrite utilities
   //===--------------------------------------------------------------------===//
 
-  // Entry point for handling a result pattern rooted at `resultTree` and
-  // dispatches to concrete handlers. The given tree is the `resultIndex`-th
-  // argument of the enclosing DAG.
+  // The entry point for handling a result pattern rooted at `resultTree`. This
+  // method dispatches to concrete handlers according to `resultTree`'s kind and
+  // returns a symbol representing the whole value pack. Callers are expected to
+  // further resolve the symbol according to the specific use case.
+  //
+  // `depth` is the nesting level of `resultTree`; 0 means top-level result
+  // pattern. For top-level result pattern, `resultIndex` indicates which result
+  // of the matched root op this pattern is intended to replace, which can be
+  // used to deduce the result type of the op generated from this result
+  // pattern.
   std::string handleResultPattern(DagNode resultTree, int resultIndex,
                                   int depth);
 
@@ -132,9 +139,6 @@ private:
   //===--------------------------------------------------------------------===//
   // Symbol utilities
   //===--------------------------------------------------------------------===//
-
-  // Gets the substitution for `symbol`. Aborts if `symbol` is not bound.
-  std::string resolveSymbol(StringRef symbol);
 
   // Returns how many static values the given DAG `node` correspond to.
   int getNodeValueCount(DagNode node);
@@ -187,11 +191,6 @@ std::string PatternEmitter::handleConstantAttr(Attribute attr,
 // Helper function to match patterns.
 void PatternEmitter::emitOpMatch(DagNode tree, int depth) {
   Operator &op = tree.getDialectOp(opMap);
-  if (op.isVariadic()) {
-    PrintFatalError(loc, formatv("matching op '{0}' with variadic "
-                                 "operands/results is unsupported right now",
-                                 op.getOperationName()));
-  }
 
   int indent = 4 + 2 * depth;
   os.indent(indent) << formatv(
@@ -220,10 +219,20 @@ void PatternEmitter::emitOpMatch(DagNode tree, int depth) {
 
     // Handle nested DAG construct first
     if (DagNode argTree = tree.getArgAsNestedDag(i)) {
+      if (auto *operand = opArg.dyn_cast<NamedTypeConstraint *>()) {
+        if (operand->isVariadic()) {
+          auto error = formatv("use nested DAG construct to match op {0}'s "
+                               "variadic operand #{1} unsupported now",
+                               op.getOperationName(), i);
+          PrintFatalError(loc, error);
+        }
+      }
       os.indent(indent) << "{\n";
-      os.indent(indent + 2)
-          << formatv("auto *op{0} = op{1}->getOperand({2})->getDefiningOp();\n",
-                     depth + 1, depth, i);
+
+      os.indent(indent + 2) << formatv(
+          "auto *op{0} = "
+          "(*castedOp{1}.getODSOperands({2}).begin())->getDefiningOp();\n",
+          depth + 1, depth, i);
       emitOpMatch(argTree, depth + 1);
       os.indent(indent + 2)
           << formatv("tblgen_ops[{0}] = op{1};\n", ++opCounter, depth + 1);
@@ -260,7 +269,15 @@ void PatternEmitter::emitOperandMatch(DagNode tree, int index, int depth,
     // Only need to verify if the matcher's type is different from the one
     // of op definition.
     if (operand->constraint != matcher.getAsConstraint()) {
-      auto self = formatv("op{0}->getOperand({1})->getType()", depth, index);
+      if (operand->isVariadic()) {
+        auto error = formatv(
+            "further constrain op {0}'s variadic operand #{1} unsupported now",
+            op.getOperationName(), index);
+        PrintFatalError(loc, error);
+      }
+      auto self =
+          formatv("(*castedOp{0}.getODSOperands({1}).begin())->getType()",
+                  depth, index);
       os.indent(indent) << "if (!("
                         << tgfmt(matcher.getConditionTemplate(),
                                  &fmtCtx.withSelf(self))
@@ -271,8 +288,8 @@ void PatternEmitter::emitOperandMatch(DagNode tree, int index, int depth,
   // Capture the value
   auto name = tree.getArgName(index);
   if (!name.empty()) {
-    os.indent(indent) << formatv("{0} = op{1}->getOperand({2});\n", name, depth,
-                                 index);
+    os.indent(indent) << formatv("{0} = castedOp{1}.getODSOperands({2});\n",
+                                 name, depth, index);
   }
 }
 
@@ -339,7 +356,8 @@ void PatternEmitter::emitMatchLogic(DagNode tree) {
     auto cmd = "if (!({0})) return matchFailure();\n";
 
     if (isa<TypeConstraint>(constraint)) {
-      auto self = formatv("({0}->getType())", resolveSymbol(entities.front()));
+      auto self = formatv("({0}->getType())",
+                          symbolInfoMap.getValueAndRangeUse(entities.front()));
       os.indent(4) << formatv(cmd,
                               tgfmt(condition, &fmtCtx.withSelf(self.str())));
     } else if (isa<AttrConstraint>(constraint)) {
@@ -354,10 +372,10 @@ void PatternEmitter::emitMatchLogic(DagNode tree) {
       SmallVector<std::string, 4> names;
       int i = 0;
       for (int e = entities.size(); i < e; ++i)
-        names.push_back(resolveSymbol(entities[i]));
+        names.push_back(symbolInfoMap.getValueAndRangeUse(entities[i]));
       std::string self = appliedConstraint.self;
       if (!self.empty())
-        self = resolveSymbol(self);
+        self = symbolInfoMap.getValueAndRangeUse(self);
       for (; i < 4; ++i)
         names.push_back("<unused>");
       os.indent(4) << formatv(cmd,
@@ -476,25 +494,31 @@ void PatternEmitter::emitRewriteLogic() {
     PrintFatalError(loc, error);
   }
 
+  os.indent(4) << "SmallVector<Type, 4> tblgen_types; (void)tblgen_types;\n";
   os.indent(4) << "auto loc = rewriter.getFusedLoc({";
   for (int i = 0, e = pattern.getSourcePattern().getNumOps(); i != e; ++i) {
     os << (i ? ", " : "") << "tblgen_ops[" << i << "]->getLoc()";
   }
   os << "}); (void)loc;\n";
 
-  // Collect the replacement value for each result
+  // Process each result pattern and record the result symbol.
   llvm::SmallVector<std::string, 2> resultValues;
   for (int i = 0; i < numResultPatterns; ++i) {
     DagNode resultTree = pattern.getResultPattern(i);
     resultValues.push_back(handleResultPattern(resultTree, offsets[i], 0));
   }
 
-  // Emit the final replaceOp() statement
-  os.indent(4) << "rewriter.replaceOp(op0, {";
-  interleaveComma(
-      ArrayRef<std::string>(resultValues).drop_front(replStartIndex), os,
-      [&](const std::string &symbol) { os << resolveSymbol(symbol); });
-  os << "});\n";
+  os.indent(4) << "SmallVector<Value *, 4> tblgen_values;";
+  // Only use the last portion for replacing the matched root op's results.
+  auto range = llvm::makeArrayRef(resultValues).drop_front(replStartIndex);
+  for (const auto &val : range) {
+    os.indent(4) << "\n";
+    // Resolve each symbol for all range use so that we can loop over them.
+    os << symbolInfoMap.getAllRangeUse(
+        val, "    for (auto *v : {0}) tblgen_values.push_back(v);", "\n");
+  }
+  os.indent(4) << "\n";
+  os.indent(4) << "rewriter.replaceOp(op0, tblgen_values);\n";
 }
 
 std::string PatternEmitter::getUniqueSymbol(const Operator *op) {
@@ -535,10 +559,11 @@ std::string PatternEmitter::handleReplaceWithValue(DagNode tree) {
     PrintFatalError(loc, "cannot bind symbol to replaceWithValue");
   }
 
-  return resolveSymbol(tree.getArgName(0));
+  return tree.getArgName(0);
 }
 
-std::string PatternEmitter::handleOpArgument(DagLeaf leaf, StringRef argName) {
+std::string PatternEmitter::handleOpArgument(DagLeaf leaf,
+                                             StringRef patArgName) {
   if (leaf.isConstantAttr()) {
     auto constAttr = leaf.getAsConstantAttr();
     return handleConstantAttr(constAttr.getAttribute(),
@@ -553,6 +578,8 @@ std::string PatternEmitter::handleOpArgument(DagLeaf leaf, StringRef argName) {
     std::string val = std::to_string(enumCase.getValue());
     return handleConstantAttr(enumCase, val);
   }
+
+  auto argName = symbolInfoMap.getValueAndRangeUse(patArgName);
   if (leaf.isUnspecified() || leaf.isOperandMatcher()) {
     return argName;
   }
@@ -577,14 +604,6 @@ std::string PatternEmitter::handleReplaceWithNativeCodeCall(DagNode tree) {
                attrs[5], attrs[6], attrs[7]);
 }
 
-std::string PatternEmitter::resolveSymbol(StringRef symbol) {
-  auto subst = symbolInfoMap.getValueAndRangeUse(symbol);
-  if (subst.empty()) {
-    PrintFatalError(loc, formatv("referencing unbound symbol '{0}'", symbol));
-  }
-  return subst;
-}
-
 int PatternEmitter::getNodeValueCount(DagNode node) {
   if (node.isOperation()) {
     // If the op is bound to a symbol in the rewrite rule, query its result
@@ -606,12 +625,6 @@ std::string PatternEmitter::handleOpCreation(DagNode tree, int resultIndex,
   Operator &resultOp = tree.getDialectOp(opMap);
   auto numOpArgs = resultOp.getNumArgs();
 
-  if (resultOp.isVariadic()) {
-    PrintFatalError(loc, formatv("generating op '{0}' with variadic "
-                                 "operands/results is unsupported now",
-                                 resultOp.getOperationName()));
-  }
-
   if (numOpArgs != tree.getNumArgs()) {
     PrintFatalError(loc, formatv("resultant op '{0}' argument number mismatch: "
                                  "{1} in pattern vs. {2} in definition",
@@ -620,44 +633,103 @@ std::string PatternEmitter::handleOpCreation(DagNode tree, int resultIndex,
   }
 
   // A map to collect all nested DAG child nodes' names, with operand index as
-  // the key. This includes both bound and unbound child nodes. Bound child
-  // nodes will additionally be tracked in `symbolResolver` so they can be
-  // referenced by other patterns. Unbound child nodes will only be used once
-  // to build this op.
+  // the key. This includes both bound and unbound child nodes.
   llvm::DenseMap<unsigned, std::string> childNodeNames;
 
   // First go through all the child nodes who are nested DAG constructs to
-  // create ops for them, so that we can use the results in the current node.
-  // This happens in a recursive manner.
+  // create ops for them and remember the symbol names for them, so that we can
+  // use the results in the current node. This happens in a recursive manner.
   for (int i = 0, e = resultOp.getNumOperands(); i != e; ++i) {
     if (auto child = tree.getArgAsNestedDag(i)) {
       childNodeNames[i] = handleResultPattern(child, i, depth + 1);
     }
   }
 
-  // Use the specified name for this op if available. Generate one otherwise.
-  std::string resultValue = tree.getSymbol();
-  if (resultValue.empty())
-    resultValue = getUniqueSymbol(&resultOp);
-  // Strip the index to get the name for the value pack. This will be used to
-  // name the local variable for the op.
-  StringRef valuePackName = SymbolInfoMap::getValuePackName(resultValue);
+  // The name of the local variable holding this op.
+  std::string valuePackName;
+  // The symbol for holding the result of this pattern. Note that the result of
+  // this pattern is not necessarily the same as the variable created by this
+  // pattern because we can use `__N` suffix to refer only a specific result if
+  // the generated op is a multi-result op.
+  std::string resultValue;
+  if (tree.getSymbol().empty()) {
+    // No symbol is explicitly bound to this op in the pattern. Generate a
+    // unique name.
+    valuePackName = resultValue = getUniqueSymbol(&resultOp);
+  } else {
+    resultValue = tree.getSymbol();
+    // Strip the index to get the name for the value pack and use it to name the
+    // local variable for the op.
+    valuePackName = SymbolInfoMap::getValuePackName(resultValue);
+  }
 
-  // Then we build the new op corresponding to this DAG node.
+  // Create the local variable for this op.
+  os.indent(4) << formatv("{0} {1};\n", resultOp.getQualCppClassName(),
+                          valuePackName);
+  os.indent(4) << "{\n";
+
+  // Now prepare operands used for building this op:
+  // * If the operand is non-variadic, we create a `Value*` local variable.
+  // * If the operand is variadic, we create a `SmallVector<Value*>` local
+  //   variable.
+
+  int argIndex = 0;   // The current index to this op's ODS argument
+  int valueIndex = 0; // An index for uniquing local variable names.
+  for (int e = resultOp.getNumOperands(); argIndex < e; ++argIndex) {
+    const auto &operand = resultOp.getOperand(argIndex);
+    std::string varName;
+    if (operand.isVariadic()) {
+      varName = formatv("tblgen_values_{0}", valueIndex++);
+      os.indent(6) << formatv("SmallVector<Value *, 4> {0};\n", varName);
+      std::string range;
+      if (tree.isNestedDagArg(argIndex)) {
+        range = childNodeNames[argIndex];
+      } else {
+        range = tree.getArgName(argIndex);
+      }
+      // Resolve the symbol for all range use so that we have a uniform way of
+      // capturing the values.
+      range = symbolInfoMap.getValueAndRangeUse(range);
+      os.indent(6) << formatv("for (auto *v : {0}) {1}.push_back(v);\n", range,
+                              varName);
+    } else {
+      varName = formatv("tblgen_value_{0}", valueIndex++);
+      os.indent(6) << formatv("Value *{0} = ", varName);
+      if (tree.isNestedDagArg(argIndex)) {
+        os << symbolInfoMap.getValueAndRangeUse(childNodeNames[argIndex]);
+      } else {
+        DagLeaf leaf = tree.getArgAsLeaf(argIndex);
+        auto symbol =
+            symbolInfoMap.getValueAndRangeUse(tree.getArgName(argIndex));
+        if (leaf.isNativeCodeCall()) {
+          os << tgfmt(leaf.getNativeCodeTemplate(), &fmtCtx.withSelf(symbol));
+        } else {
+          os << symbol;
+        }
+      }
+      os << ";\n";
+    }
+
+    // Update to use the newly created local variable for building the op later.
+    childNodeNames[argIndex] = varName;
+  }
+
+  // Then we create the builder call.
 
   // Right now we don't have general type inference in MLIR. Except a few
   // special cases listed below, we need to supply types for all results
   // when building an op.
   bool isSameOperandsAndResultType =
-      resultOp.hasTrait("SameOperandsAndResultType");
-  bool isBroadcastable = resultOp.hasTrait("BroadcastableTwoOperandsOneResult");
-  bool useFirstAttr = resultOp.hasTrait("FirstAttrDerivedResultType");
+      resultOp.hasTrait("OpTrait::SameOperandsAndResultType");
+  bool isBroadcastable =
+      resultOp.hasTrait("OpTrait::BroadcastableTwoOperandsOneResult");
+  bool useFirstAttr = resultOp.hasTrait("OpTrait::FirstAttrDerivedResultType");
   bool usePartialResults = valuePackName != resultValue;
 
   if (isSameOperandsAndResultType || isBroadcastable || useFirstAttr ||
       usePartialResults || depth > 0 || resultIndex < 0) {
-    os.indent(4) << formatv("auto {0} = rewriter.create<{1}>(loc",
-                            valuePackName, resultOp.getQualCppClassName());
+    os.indent(6) << formatv("{0} = rewriter.create<{1}>(loc", valuePackName,
+                            resultOp.getQualCppClassName());
   } else {
     // If depth == 0 and resultIndex >= 0, it means we are replacing the values
     // generated from the source pattern root op. Then we can use the source
@@ -665,50 +737,38 @@ std::string PatternEmitter::handleOpCreation(DagNode tree, int resultIndex,
     // here.
 
     // We need to specify the types for all results.
-    SmallVector<std::string, 4> resultTypes;
     int numResults = resultOp.getNumResults();
-    resultTypes.reserve(numResults);
-    for (int i = 0; i < numResults; ++i) {
-      resultTypes.push_back(
-          formatv("op0->getResult({0})->getType()", resultIndex + i));
-    }
-
-    os.indent(4) << formatv("auto {0} = rewriter.create<{1}>(loc",
-                            valuePackName, resultOp.getQualCppClassName())
-                 << (resultTypes.empty() ? "" : ", ")
-                 << llvm::join(resultTypes, ", ");
-  }
-
-  // Create the builder call for the result.
-  // Add operands.
-  int argIndex = 0;
-  for (int e = resultOp.getNumOperands(); argIndex < e; ++argIndex) {
-    const auto &operand = resultOp.getOperand(argIndex);
-
-    // Start each operand on its own line.
-    (os << ",\n").indent(6);
-
-    if (!operand.name.empty())
-      os << "/*" << operand.name << "=*/";
-
-    if (tree.isNestedDagArg(argIndex)) {
-      os << childNodeNames[argIndex];
-    } else {
-      DagLeaf leaf = tree.getArgAsLeaf(argIndex);
-      auto symbol = resolveSymbol(tree.getArgName(argIndex));
-      if (leaf.isNativeCodeCall()) {
-        os << tgfmt(leaf.getNativeCodeTemplate(), &fmtCtx.withSelf(symbol));
-      } else {
-        os << symbol;
+    if (numResults != 0) {
+      os.indent(6) << "tblgen_types.clear();\n";
+      for (int i = 0; i < numResults; ++i) {
+        os.indent(6) << formatv("for (auto *v : castedOp0.getODSResults({0})) "
+                                "tblgen_types.push_back(v->getType());\n",
+                                resultIndex + i);
       }
     }
+
+    os.indent(6) << formatv("{0} = rewriter.create<{1}>(loc", valuePackName,
+                            resultOp.getQualCppClassName());
+    if (numResults != 0)
+      os.indent(6) << ", tblgen_types";
+  }
+
+  // Add operands for the builder all.
+  for (int i = 0; i < argIndex; ++i) {
+    const auto &operand = resultOp.getOperand(i);
+    // Start each operand on its own line.
+    (os << ",\n").indent(8);
+    if (!operand.name.empty()) {
+      os << "/*" << operand.name << "=*/";
+    }
+    os << childNodeNames[i];
     // TODO(jpienaar): verify types
   }
 
-  // Add attributes.
+  // Add attributes for the builder call.
   for (; argIndex != numOpArgs; ++argIndex) {
     // Start each attribute on its own line.
-    (os << ",\n").indent(6);
+    (os << ",\n").indent(8);
     // The argument in the op definition.
     auto opArgName = resultOp.getArgName(argIndex);
     if (auto subTree = tree.getArgAsNestedDag(argIndex)) {
@@ -734,7 +794,8 @@ std::string PatternEmitter::handleOpCreation(DagNode tree, int resultIndex,
       os << handleOpArgument(leaf, patArgName);
     }
   }
-  os << "\n    );\n";
+  os << "\n      );\n";
+  os.indent(4) << "}\n";
 
   return resultValue;
 }

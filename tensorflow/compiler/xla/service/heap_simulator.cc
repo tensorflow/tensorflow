@@ -265,6 +265,13 @@ Status HeapSimulator::RunComputation(
               continue;
             }
 
+            if (!absl::c_linear_search(buffers_freed[i], operand_value)) {
+              // If the operand buffer is not being freed (either because it has
+              // existing users, or it has been reused by other buffers), don't
+              // consider the operand as a candidate of buffer sharing.
+              continue;
+            }
+
             // The instruction that defines the operand value can be different
             // from the actual operand, if directly passing the defining
             // instruction into "CanShareOperandBufferWithUser" it creates a
@@ -742,6 +749,12 @@ GlobalDecreasingSizeBestFitHeap::FindChunkCandidate(
     offset = std::max(offset, RoundUpToNearest(chunk.chunk_end(), alignment_));
   }
   use_free_chunk_if_smaller(offset, result_.heap_size - offset);
+  // When preferred offset is provided and the preferred offset is larger than
+  // the current heap size, simply use the preferred offset provided.
+  if (result_.heap_size <= preferred_offset) {
+    chunk_candidate.heap_size = preferred_offset + buffer_interval.size;
+    min_fit_chunk = {preferred_offset, buffer_interval.size};
+  }
 
   if (min_fit_chunk.offset == -1) {
     // Increase the heap size to fit in the last free chunk.

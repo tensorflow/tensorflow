@@ -246,6 +246,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.avg_pool3d = "AvgPool3D";
     csinfo_.avg_pool3d_grad = "AvgPool3DGrad";
     csinfo_.batch_matmul = "BatchMatMul";
+    csinfo_.batch_matmul_v2 = "BatchMatMulV2";
     csinfo_.bias_add = "BiasAdd";
     csinfo_.bias_add_grad = "BiasAddGrad";
     csinfo_.concat = "Concat";
@@ -349,6 +350,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // in the MklUtil.h (IsMklElementWiseOp method) to ensure that the
     // MklInputConversion op is added before it.
     csinfo_.add = "Add";
+    csinfo_.add_v2 = "AddV2";
     csinfo_.maximum = "Maximum";
     csinfo_.mul = "Mul";
     csinfo_.squared_difference = "SquaredDifference";
@@ -361,6 +363,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       CopyAttrsAll, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.add, mkl_op_registry::GetMklOpName(csinfo_.add),
+                      CopyAttrsAll, RewriteIfAtleastOneMklInput,
+                      kRewriteForLayoutPropagation});
+    rinfo_.push_back({csinfo_.add_v2,
+                      mkl_op_registry::GetMklOpName(csinfo_.add_v2),
                       CopyAttrsAll, RewriteIfAtleastOneMklInput,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back(
@@ -379,6 +385,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.batch_matmul,
                       mkl_op_registry::GetMklOpName(csinfo_.batch_matmul),
+                      CopyAttrsAll, AlwaysRewrite, kRewriteForOpNameChange});
+    rinfo_.push_back({csinfo_.batch_matmul_v2,
+                      mkl_op_registry::GetMklOpName(csinfo_.batch_matmul_v2),
                       CopyAttrsAll, AlwaysRewrite, kRewriteForOpNameChange});
     rinfo_.push_back(
         {csinfo_.concat, mkl_op_registry::GetMklOpName(csinfo_.concat),
@@ -464,10 +473,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         {csinfo_.fused_batch_norm_grad_v3,
          mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_grad_v3),
          CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
+#endif  // !ENABLE_MKLDNN_V1
 
     rinfo_.push_back({csinfo_.fused_conv2d, csinfo_.mkl_fused_conv2d,
                       CopyAttrsFusedConv2D, FusedConv2DRewrite,
                       kRewriteForLayoutPropagation});
+#ifndef ENABLE_MKLDNN_V1
     rinfo_.push_back({csinfo_.identity,
                       mkl_op_registry::GetMklOpName(csinfo_.identity),
                       CopyAttrsAll, RewriteIfAtleastOneMklInput,
@@ -863,11 +874,13 @@ rinfo_.push_back({csinfo_.tanh_grad,
   typedef struct {
     string addn;
     string add;
+    string add_v2;
     string avg_pool;
     string avg_pool_grad;
     string avg_pool3d;
     string avg_pool3d_grad;
     string batch_matmul;
+    string batch_matmul_v2;
     string bias_add;
     string bias_add_grad;
     string concat;
@@ -1534,10 +1547,27 @@ rinfo_.push_back({csinfo_.tanh_grad,
     DCHECK(n);
     Node* filter_node = nullptr;
     TF_CHECK_OK(n->input_node(0, &filter_node));
+    bool narrow_range = false;
+    int axis = -1;
     string mode_string;
     string round_mode_string;
+    TryGetNodeAttr(n->def(), "narrow_range", &narrow_range);
+    TryGetNodeAttr(n->def(), "axis", &axis);
     TF_CHECK_OK(GetNodeAttr(n->def(), "mode", &mode_string));
     TF_CHECK_OK(GetNodeAttr(n->def(), "round_mode", &round_mode_string));
+    if (narrow_range) {
+      VLOG(1) << "QuantizeOpRewrite: narrow range is enabled for quantization."
+              << "This case is not optimized by Intel MKL, "
+              << "thus using Eigen op for Quantize op ";
+      return false;
+    }
+    if (axis != -1) {
+      VLOG(1) << "QuantizeOpRewrite: dimension is specified for "
+              << "per slice quantization."
+              << "This case is not optimized by Intel MKL, "
+              << "thus using Eigen op for Quantize op ";
+      return false;
+    }
     if (mode_string != "SCALED" || round_mode_string != "HALF_TO_EVEN") {
       VLOG(1) << "QuantizeOpRewrite: Mode is not SCALED and/or"
               << "rounding mode is not HALF_TO_EVEN. "

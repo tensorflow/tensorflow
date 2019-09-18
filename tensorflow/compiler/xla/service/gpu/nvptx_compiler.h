@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "absl/container/node_hash_map.h"
 #include "absl/types/optional.h"
-#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -68,7 +67,7 @@ class NVPTXCompiler : public GpuCompiler {
 
   // Tries to compile the given ptx string to cubin.  Returns a vector with the
   // compiled cubin.  If compilation was unsuccessful, returns an empty vector.
-  std::vector<uint8> CompilePtxOrGetCachedResult(
+  std::vector<uint8> CompileGpuAsmOrGetCachedResult(
       se::StreamExecutor* stream_exec, const string& ptx, int cc_major,
       int cc_minor, const HloModuleConfig& hlo_module_config);
 

@@ -99,9 +99,7 @@ def word2vec_basic(log_dir):
     """Process raw inputs into a dataset."""
     count = [['UNK', -1]]
     count.extend(collections.Counter(words).most_common(n_words - 1))
-    dictionary = {}
-    for word, _ in count:
-      dictionary[word] = len(dictionary)
+    dictionary = {word: index for index, (word, _) in enumerate(count)}
     data = []
     unk_count = 0
     for word in words:
@@ -118,7 +116,7 @@ def word2vec_basic(log_dir):
   #   This is the original text but words are replaced by their codes
   # count - map of words(strings) to count of occurrences
   # dictionary - map of words(strings) to their codes(integers)
-  # reverse_dictionary - maps codes(integers) to words(strings)
+  # reverse_dictionary - map of codes(integers) to words(strings)
   data, count, unused_dictionary, reverse_dictionary = build_dataset(
       vocabulary, vocabulary_size)
   del vocabulary  # Hint to reduce memory.
@@ -204,8 +202,9 @@ def word2vec_basic(log_dir):
     # Compute the average NCE loss for the batch.
     # tf.nce_loss automatically draws a new sample of the negative labels each
     # time we evaluate the loss.
-    # Explanation of the meaning of NCE loss:
+    # Explanation of the meaning of NCE loss and why choosing NCE over tf.nn.sampled_softmax_loss:
     #   http://mccormickml.com/2016/04/19/word2vec-tutorial-the-skip-gram-model/
+    #   http://papers.nips.cc/paper/5165-learning-word-embeddings-efficiently-with-noise-contrastive-estimation.pdf
     with tf.name_scope('loss'):
       loss = tf.reduce_mean(
           tf.nn.nce_loss(
@@ -293,10 +292,10 @@ def word2vec_basic(log_dir):
           top_k = 8  # number of nearest neighbors
           nearest = (-sim[i, :]).argsort()[1:top_k + 1]
           log_str = 'Nearest to %s:' % valid_word
-          for k in xrange(top_k):
-            close_word = reverse_dictionary[nearest[k]]
-            log_str = '%s %s,' % (log_str, close_word)
-          print(log_str)
+
+          print(
+              log_str,
+              ', '.join([reverse_dictionary[nearest[k]] for k in range(top_k)]))
     final_embeddings = normalized_embeddings.eval()
 
     # Write corresponding labels for the embeddings.

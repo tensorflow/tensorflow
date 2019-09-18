@@ -17,12 +17,11 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h"
+#include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
-
-#include "tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h"
-#include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
 
 namespace tflite {
 namespace ops {
@@ -127,7 +126,7 @@ static inline void DepthwiseConvOptimizedForFilterWidthEight(
   TFLITE_DCHECK_EQ(output_depth, input_depth * depth_multiplier);
   TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
 
-  static int8_t reshaped_filter_data[kReshapedFilterDataSize];
+  static int16_t reshaped_filter_data[kReshapedFilterDataSize];
   const int needed_size =
       output_depth * filter_width * filter_height * input_depth;
   if (needed_size > kReshapedFilterDataSize) {
@@ -151,10 +150,11 @@ static inline void DepthwiseConvOptimizedForFilterWidthEight(
         for (int oc = 0; oc < output_depth; ++oc) {
           const uint8* current_filter =
               filter_data + Offset(filter_shape, 0, filter_y, filter_x, oc);
-          int8* reshaped_filter =
+          int16_t* reshaped_filter =
               reshaped_filter_data +
               Offset(reshaped_filter_shape, 0, oc, filter_y, filter_x);
-          *reshaped_filter = (int32_t)(*current_filter) + filter_offset;
+          *reshaped_filter =
+              static_cast<int16_t>(*current_filter) + filter_offset;
         }
       }
     }
@@ -199,7 +199,7 @@ static inline void DepthwiseConvOptimizedForFilterWidthEight(
               const uint8* current_input =
                   input_data + Offset(input_shape, b, in_y, in_x_start, ic);
               if ((filter_width == 8) && !is_out_of_x_bounds) {
-                int8* current_filter =
+                int16* current_filter =
                     reshaped_filter_data + Offset(reshaped_filter_shape, 0, oc,
                                                   filter_y, filter_x_start);
                 const uint32_t input_vals0 =
@@ -207,35 +207,43 @@ static inline void DepthwiseConvOptimizedForFilterWidthEight(
                 current_input += 4;
                 const int32_t filter_vals0 =
                     *reinterpret_cast<const int32_t*>(current_filter);
-                current_filter += 4;
+                current_filter += 2;
                 const uint8 input_val0 = input_vals0 & 0xff;
-                const int8 filter_val0 = filter_vals0 & 0xff;
+                const int16 filter_val0 = filter_vals0 & 0xffff;
                 acc += filter_val0 * input_val0;
                 const uint8 input_val1 = (input_vals0 >> 8) & 0xff;
-                const int8 filter_val1 = (filter_vals0 >> 8) & 0xff;
+                const int16 filter_val1 = (filter_vals0 >> 16) & 0xffff;
                 acc += filter_val1 * input_val1;
+
+                const int32_t filter_vals1 =
+                    *reinterpret_cast<const int32_t*>(current_filter);
+                current_filter += 2;
                 const uint8 input_val2 = (input_vals0 >> 16) & 0xff;
-                const int8 filter_val2 = (filter_vals0 >> 16) & 0xff;
+                const int16 filter_val2 = filter_vals1 & 0xffff;
                 acc += filter_val2 * input_val2;
                 const uint8 input_val3 = (input_vals0 >> 24) & 0xff;
-                const int8 filter_val3 = (filter_vals0 >> 24) & 0xff;
+                const int16 filter_val3 = (filter_vals1 >> 16) & 0xffff;
                 acc += filter_val3 * input_val3;
 
                 const uint32_t input_vals1 =
                     *reinterpret_cast<const uint32_t*>(current_input);
-                const int32_t filter_vals1 =
+                const int32_t filter_vals2 =
                     *reinterpret_cast<const int32_t*>(current_filter);
+                current_filter += 2;
                 const uint8 input_val4 = input_vals1 & 0xff;
-                const int8 filter_val4 = filter_vals1 & 0xff;
+                const int16 filter_val4 = filter_vals2 & 0xffff;
                 acc += filter_val4 * input_val4;
                 const uint8 input_val5 = (input_vals1 >> 8) & 0xff;
-                const int8 filter_val5 = (filter_vals1 >> 8) & 0xff;
+                const int16 filter_val5 = (filter_vals2 >> 16) & 0xffff;
                 acc += filter_val5 * input_val5;
+
+                const int32_t filter_vals3 =
+                    *reinterpret_cast<const int32_t*>(current_filter);
                 const uint8 input_val6 = (input_vals1 >> 16) & 0xff;
-                const int8 filter_val6 = (filter_vals1 >> 16) & 0xff;
+                const int16 filter_val6 = filter_vals3 & 0xffff;
                 acc += filter_val6 * input_val6;
                 const uint8 input_val7 = (input_vals1 >> 24) & 0xff;
-                const int8 filter_val7 = (filter_vals1 >> 24) & 0xff;
+                const int16 filter_val7 = (filter_vals3 >> 16) & 0xffff;
                 acc += filter_val7 * input_val7;
               } else {
                 const uint8* current_filter =
@@ -345,8 +353,8 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   const int needed_size =
       output_depth * filter_width * filter_height * input_depth;
   bool use_optimized_path = false;
-  if ((filter_width == 8) && (input_offset == 0) && (filter_offset == -127) &&
-      (input_depth == 1) && (needed_size <= kReshapedFilterDataSize)) {
+  if ((filter_width == 8) && (input_offset == 0) && (input_depth == 1) &&
+      (needed_size <= kReshapedFilterDataSize)) {
     // FIXME(petewarden) - We need a more robust way of handling this, ideally
     // with an allocation mechanism available through the context API.
     // Use the address of the node as a proxy for its identity, since we need

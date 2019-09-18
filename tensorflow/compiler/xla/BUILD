@@ -15,7 +15,7 @@ package_group(
     includes = ["//tensorflow:internal"],
     packages = [
         "//tensorflow/compiler/...",
-        "//tensorflow/contrib/tpu/...",
+        "//tensorflow/python/tpu/...",
         "//third_party/py/jax/...",
     ],
 )
@@ -58,11 +58,22 @@ xla_proto_library(
     ],
 )
 
+tf_proto_library_py(
+    name = "xla_proto",  # bzl adds a _py suffix
+    srcs = ["xla.proto"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":xla_data_proto_py",
+        "//tensorflow/compiler/xla/service:hlo_proto_py",
+    ],
+)
+
 cc_library(
     name = "bit_cast",
     hdrs = ["bit_cast.h"],
     visibility = [":friends"],
     deps = [
+        ":types",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
         "@com_google_absl//absl/base",
@@ -766,6 +777,16 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "window_util_test",
+    srcs = ["window_util_test.cc"],
+    deps = [
+        ":test",
+        ":window_util",
+        "//tensorflow/core:test_main",
     ],
 )
 

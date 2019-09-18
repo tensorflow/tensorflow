@@ -51,9 +51,11 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/include/hip/hip_runtime.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -1063,6 +1065,22 @@ class SessionMetadataReaderOp : public OpKernel {
 };
 REGISTER_KERNEL_BUILDER(Name("SessionMetadataReader").Device(DEVICE_CPU),
                         SessionMetadataReaderOp);
+REGISTER_KERNEL_BUILDER(Name("SessionMetadataReader").Device(DEVICE_GPU),
+                        SessionMetadataReaderOp);
+
+FunctionDef SessionMetadataReaderOpFn() {
+  return FunctionDefHelper::Define(
+      // Name
+      "SessionMetadataReaderFn",
+      // Args
+      {"x: int64"},
+      // Return values
+      {"y: string"},
+      // Attr def
+      {},
+      // Nodes
+      {{{"y"}, "SessionMetadataReader", {"x"}, {}}});
+}
 
 TEST(DirectSessionTest, SessionMetadataAbsent) {
   Graph g(OpRegistry::Global());
@@ -1082,6 +1100,28 @@ TEST(DirectSessionTest, SessionMetadataAbsent) {
   EXPECT_EQ("", outputs[0].scalar<tstring>()());
 }
 
+TEST(DirectSessionTest, SessionMetadataAbsentViaFunction) {
+  FunctionDefLibrary library_graph_def;
+  *library_graph_def.add_function() = SessionMetadataReaderOpFn();
+  FunctionLibraryDefinition flib(OpRegistry::Global(), library_graph_def);
+  Graph g(&flib);
+  Tensor vx(DT_INT64, TensorShape({}));
+  vx.scalar<int64>()() = 17;
+  Node* x = test::graph::Constant(&g, vx);
+  Node* y = test::graph::Unary(&g, "SessionMetadataReaderFn", x);
+  GraphDef def;
+  g.ToGraphDef(&def);
+  *def.mutable_library() = library_graph_def;
+  auto sess = CreateSession();
+  TF_ASSERT_OK(sess->Create(def));
+  std::vector<Tensor> outputs;
+  RunOptions run_opts;
+  run_opts.set_inter_op_thread_pool(-1);
+  auto s = sess->Run(run_opts, {}, {y->name() + ":0"}, {}, &outputs, nullptr);
+
+  EXPECT_EQ("", outputs[0].scalar<tstring>()());
+}
+
 TEST(DirectSessionTest, SessionMetadataPresent) {
   Graph g(OpRegistry::Global());
   Tensor vx(DT_INT64, TensorShape({}));
@@ -1090,6 +1130,37 @@ TEST(DirectSessionTest, SessionMetadataPresent) {
   Node* y = test::graph::Unary(&g, "SessionMetadataReader", x);
   GraphDef def;
   g.ToGraphDef(&def);
+  auto session_options = DefaultSessionOptions();
+  auto* session_metadata =
+      session_options.config.mutable_experimental()->mutable_session_metadata();
+  session_metadata->set_name("name");
+  session_metadata->set_version(1);
+  auto sess = std::unique_ptr<Session>(NewSession(session_options));
+  TF_ASSERT_OK(sess->Create(def));
+  std::vector<Tensor> outputs;
+  RunOptions run_opts;
+  run_opts.set_inter_op_thread_pool(-1);
+  auto s = sess->Run(run_opts, {}, {y->name() + ":0"}, {}, &outputs, nullptr);
+
+  SessionMetadata read_metadata;
+  ASSERT_TRUE(protobuf::TextFormat::ParseFromString(
+      outputs[0].scalar<tstring>()(), &read_metadata));
+  EXPECT_EQ("name", read_metadata.name());
+  EXPECT_EQ(1, read_metadata.version());
+}
+
+TEST(DirectSessionTest, SessionMetadataPresentViaFunction) {
+  FunctionDefLibrary library_graph_def;
+  *library_graph_def.add_function() = SessionMetadataReaderOpFn();
+  FunctionLibraryDefinition flib(OpRegistry::Global(), library_graph_def);
+  Graph g(&flib);
+  Tensor vx(DT_INT64, TensorShape({}));
+  vx.scalar<int64>()() = 17;
+  Node* x = test::graph::Constant(&g, vx);
+  Node* y = test::graph::Unary(&g, "SessionMetadataReaderFn", x);
+  GraphDef def;
+  g.ToGraphDef(&def);
+  *def.mutable_library() = library_graph_def;
   auto session_options = DefaultSessionOptions();
   auto* session_metadata =
       session_options.config.mutable_experimental()->mutable_session_metadata();
@@ -2089,6 +2160,12 @@ bool IsCUDATensor(const Tensor& t) {
   if (err == cudaErrorInvalidValue) return false;
   CHECK_EQ(cudaSuccess, err) << cudaGetErrorString(err);
   return (attributes.memoryType == cudaMemoryTypeDevice);
+#elif TENSORFLOW_USE_ROCM
+  hipPointerAttribute_t attributes;
+  hipError_t err = hipPointerGetAttributes(&attributes, t.tensor_data().data());
+  if (err == hipErrorInvalidValue) return false;
+  CHECK_EQ(hipSuccess, err) << hipGetErrorString(err);
+  return (attributes.memoryType == hipMemoryTypeDevice);
 #else
   return false;
 #endif

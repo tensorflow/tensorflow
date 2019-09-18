@@ -21,10 +21,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/Support/FileUtilities.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/TranslateClParser.h"
 #include "llvm/Support/InitLLVM.h"
-#include "llvm/Support/PrettyStackTrace.h"
+#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/ToolOutputFile.h"
 
 using namespace mlir;
 
@@ -37,7 +39,6 @@ static llvm::cl::opt<std::string>
                    llvm::cl::value_desc("filename"), llvm::cl::init("-"));
 
 int main(int argc, char **argv) {
-  llvm::PrettyStackTraceProgram x(argc, argv);
   llvm::InitLLVM y(argc, argv);
 
   // Add flags for all the registered translations.
@@ -46,7 +47,23 @@ int main(int argc, char **argv) {
                            llvm::cl::Required);
   llvm::cl::ParseCommandLineOptions(argc, argv, "MLIR translation driver\n");
 
+  std::string errorMessage;
+  auto input = openInputFile(inputFilename, &errorMessage);
+  if (!input) {
+    llvm::errs() << errorMessage << "\n";
+    return 1;
+  }
+
+  auto output = openOutputFile(outputFilename, &errorMessage);
+  if (!output) {
+    llvm::errs() << errorMessage << "\n";
+    return 1;
+  }
+
   MLIRContext context;
-  return failed(
-      (*translationRequested)(inputFilename, outputFilename, &context));
+  if (failed((*translationRequested)(std::move(input), output->os(), &context)))
+    return 1;
+
+  output->keep();
+  return 0;
 }

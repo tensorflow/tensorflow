@@ -36,20 +36,25 @@ namespace tensorflow {
 
 // Object allocated per active RPC.
 // Manage the state of a single asynchronous RPC request.  If `max_retries`
-// is greater than 0, the request will be retried for any transient failures
-// as long as the overall deadline has not elapsed.
+// is greater than 0, the request will be retried for any transient failures.
 template <class Response>
 class RPCState : public GrpcClientCQTag {
  public:
-  // Default behavior is to set fail_fast = False and handle timeouts manually.
   RPCState(::grpc::GenericStub* stub, ::grpc::CompletionQueue* cq,
            const ::grpc::string& method, const protobuf::Message& request,
            Response* response, StatusCallback done, CallOptions* call_opts,
            thread::ThreadPool* threadpool, int32 max_retries = 0,
-           bool fail_fast = false)
+           bool fail_fast = true)
       : RPCState(stub, cq, method, request, response, std::move(done),
-                 call_opts, threadpool, fail_fast,
-                 /*timeout_in_ms=*/0, max_retries) {}
+                 call_opts, threadpool,
+#if defined(PLATFORM_GOOGLE)
+                 // TODO(b/140260119): Always set fail_fast to false.
+                 fail_fast,
+#else
+                 /*fail_fast=*/false,
+#endif  // PLATFORM_GOOGLE
+                 /*timeout_in_ms=*/0, max_retries) {
+  }
 
   template <typename Request>
   RPCState(::grpc::GenericStub* stub, ::grpc::CompletionQueue* cq,
@@ -82,7 +87,6 @@ class RPCState : public GrpcClientCQTag {
   void StartCall() {
     context_.reset(new ::grpc::ClientContext());
     context_->set_wait_for_ready(!fail_fast_);
-
     if (timeout_in_ms_ > 0) {
       context_->set_deadline(
           gpr_time_from_millis(timeout_in_ms_, GPR_TIMESPAN));
@@ -133,6 +137,7 @@ class RPCState : public GrpcClientCQTag {
       response_buf_.Clear();
       VLOG(1) << "Retrying call for " << method_ << "Retry: " << num_retries_
               << " of " << max_retries_;
+      // TODO(b/139945426) Allow user to configure the retry backoff time.
       StartCall();
     } else {
       // Attach additional GRPC error information if any to the final status

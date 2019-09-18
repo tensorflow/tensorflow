@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_BOOSTED_TREES_RESOURCES_H_
 
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/kernels/boosted_trees/tree_helper.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -25,6 +26,7 @@ namespace tensorflow {
 // Forward declaration for proto class TreeEnsemble
 namespace boosted_trees {
 class TreeEnsemble;
+class Node;
 }  // namespace boosted_trees
 
 // A StampedResource is a resource that has a stamp token associated with it.
@@ -66,7 +68,7 @@ class BoostedTreesEnsembleResource : public StampedResource {
   //   bucketized_features: vector of feature Vectors.
   int32 next_node(
       const int32 tree_id, const int32 node_id, const int32 index_in_batch,
-      const std::vector<TTypes<int32>::ConstVec>& bucketized_features) const;
+      const std::vector<TTypes<int32>::ConstMatrix>& bucketized_features) const;
 
   std::vector<float> node_value(const int32 tree_id, const int32 node_id) const;
 
@@ -100,17 +102,24 @@ class BoostedTreesEnsembleResource : public StampedResource {
   int32 right_id(const int32 tree_id, const int32 node_id) const;
 
   // Add a tree to the ensemble and returns a new tree_id.
-  int32 AddNewTree(const float weight);
+  int32 AddNewTree(const float weight, const int32 logits_dimension);
 
   // Adds new tree with one node to the ensemble and sets node's value to logits
-  int32 AddNewTreeWithLogits(const float weight, const float logits);
+  int32 AddNewTreeWithLogits(const float weight,
+                             const std::vector<float>& logits,
+                             const int32 logits_dimension);
 
-  // Grows the tree by adding a split and leaves.
-  void AddBucketizedSplitNode(const int32 tree_id, const int32 node_id,
-                              const int32 feature_id, const int32 threshold,
-                              const float gain, const float left_contrib,
-                              const float right_contrib, int32* left_node_id,
-                              int32* right_node_id);
+  // Grows the tree by adding a bucketized split and leaves.
+  void AddBucketizedSplitNode(
+      const int32 tree_id,
+      const std::pair<int32, boosted_trees::SplitCandidate>& split_entry,
+      const int32 logits_dimension, int32* left_node_id, int32* right_node_id);
+
+  // Grows the tree by adding a categorical split and leaves.
+  void AddCategoricalSplitNode(
+      const int32 tree_id,
+      const std::pair<int32, boosted_trees::SplitCandidate>& split_entry,
+      const int32 logits_dimension, int32* left_node_id, int32* right_node_id);
 
   // Retrieves tree weights and returns as a vector.
   // It involves a copy, so should be called only sparingly (like once per
@@ -166,6 +175,11 @@ class BoostedTreesEnsembleResource : public StampedResource {
   protobuf::Arena arena_;
   mutex mu_;
   boosted_trees::TreeEnsemble* tree_ensemble_;
+
+  boosted_trees::Node* AddLeafNodes(
+      int32 tree_id,
+      const std::pair<int32, boosted_trees::SplitCandidate>& split_entry,
+      const int32 logits_dimension, int32* left_node_id, int32* right_node_id);
 };
 
 }  // namespace tensorflow

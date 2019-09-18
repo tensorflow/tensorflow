@@ -21,8 +21,8 @@
 
 #include "mlir/Transforms/Passes.h"
 
-#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/LoopAnalysis.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
@@ -128,7 +128,7 @@ void LoopUnroll::runOnFunction() {
     // Gathers all loops with trip count <= minTripCount. Do a post order walk
     // so that loops are gathered from innermost to outermost (or else unrolling
     // an outer one may delete gathered inner ones).
-    getFunction().walk<AffineForOp>([&](AffineForOp forOp) {
+    getFunction().walk([&](AffineForOp forOp) {
       Optional<uint64_t> tripCount = getConstantTripCount(forOp);
       if (tripCount.hasValue() && tripCount.getValue() <= clUnrollFullThreshold)
         loops.push_back(forOp);
@@ -180,10 +180,10 @@ LogicalResult LoopUnroll::runOnAffineForOp(AffineForOp forOp) {
   return loopUnrollByFactor(forOp, kDefaultUnrollFactor);
 }
 
-FunctionPassBase *mlir::createLoopUnrollPass(
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createLoopUnrollPass(
     int unrollFactor, int unrollFull,
     const std::function<unsigned(AffineForOp)> &getUnrollFactor) {
-  return new LoopUnroll(
+  return std::make_unique<LoopUnroll>(
       unrollFactor == -1 ? None : Optional<unsigned>(unrollFactor),
       unrollFull == -1 ? None : Optional<bool>(unrollFull), getUnrollFactor);
 }

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/ruy/allocator.h"
 
+#include <cstdint>
 #include <cstdlib>
 
 #ifdef _WIN32
@@ -25,7 +26,7 @@ namespace ruy {
 
 namespace detail {
 
-void *AlignedAllocator::SystemAlignedAlloc(std::size_t num_bytes) {
+void *AlignedAllocator::SystemAlignedAlloc(std::ptrdiff_t num_bytes) {
 #ifdef _WIN32
   return _aligned_malloc(num_bytes, kAlignment);
 #else

@@ -131,12 +131,15 @@ public:
   FloatAttr getF32FloatAttr(float value);
   FloatAttr getF64FloatAttr(double value);
 
+  IntegerAttr getI8IntegerAttr(int8_t value);
+  IntegerAttr getI16IntegerAttr(int16_t value);
   IntegerAttr getI32IntegerAttr(int32_t value);
   IntegerAttr getI64IntegerAttr(int64_t value);
 
   ArrayAttr getAffineMapArrayAttr(ArrayRef<AffineMap> values);
   ArrayAttr getI32ArrayAttr(ArrayRef<int32_t> values);
   ArrayAttr getI64ArrayAttr(ArrayRef<int64_t> values);
+  ArrayAttr getIndexArrayAttr(ArrayRef<int64_t> values);
   ArrayAttr getF32ArrayAttr(ArrayRef<float> values);
   ArrayAttr getF64ArrayAttr(ArrayRef<double> values);
   ArrayAttr getStrArrayAttr(ArrayRef<StringRef> values);
@@ -231,6 +234,18 @@ public:
     Block::iterator point;
   };
 
+  /// RAII guard to reset the insertion point of the builder when destroyed.
+  class InsertionGuard {
+  public:
+    InsertionGuard(OpBuilder &builder)
+        : builder(builder), ip(builder.saveInsertionPoint()) {}
+    ~InsertionGuard() { builder.restoreInsertionPoint(ip); }
+
+  private:
+    OpBuilder &builder;
+    OpBuilder::InsertPoint ip;
+  };
+
   /// Reset the insertion point to no location.  Creating an operation without a
   /// set insertion point is an error, but this can still be useful when the
   /// current insertion point a builder refers to is being removed.
@@ -298,7 +313,7 @@ public:
 
   /// Create an operation of specific op type at the current insertion point.
   template <typename OpTy, typename... Args>
-  OpTy create(Location location, Args&&... args) {
+  OpTy create(Location location, Args &&... args) {
     OperationState state(location, OpTy::getOperationName());
     OpTy::build(this, &state, std::forward<Args>(args)...);
     auto *op = createOperation(state);

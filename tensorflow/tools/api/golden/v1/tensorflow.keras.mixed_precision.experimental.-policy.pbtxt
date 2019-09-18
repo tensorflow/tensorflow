@@ -7,6 +7,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "loss_scale"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "name"
     mtype: "<type \'property\'>"
   }
@@ -20,6 +24,6 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'name\', \'loss_scale\'], varargs=None, keywords=None, defaults=[\'USE_DEFAULT\'], "
   }
 }

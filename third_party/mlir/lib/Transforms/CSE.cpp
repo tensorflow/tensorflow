@@ -213,7 +213,7 @@ void CSE::simplifyRegion(ScopedMapTy &knownValues, DominanceInfo &domInfo,
   std::deque<std::unique_ptr<CFGStackNode>> stack;
 
   // Process the nodes of the dom tree for this region.
-  stack.emplace_back(llvm::make_unique<CFGStackNode>(
+  stack.emplace_back(std::make_unique<CFGStackNode>(
       knownValues, domInfo.getRootNode(&region)));
 
   while (!stack.empty()) {
@@ -229,7 +229,7 @@ void CSE::simplifyRegion(ScopedMapTy &knownValues, DominanceInfo &domInfo,
     if (currentNode->childIterator != currentNode->node->end()) {
       auto *childNode = *(currentNode->childIterator++);
       stack.emplace_back(
-          llvm::make_unique<CFGStackNode>(knownValues, childNode));
+          std::make_unique<CFGStackNode>(knownValues, childNode));
     } else {
       // Finally, if the node and all of its children have been processed
       // then we delete the node.
@@ -258,7 +258,9 @@ void CSE::runOnFunction() {
   markAnalysesPreserved<DominanceInfo, PostDominanceInfo>();
 }
 
-FunctionPassBase *mlir::createCSEPass() { return new CSE(); }
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createCSEPass() {
+  return std::make_unique<CSE>();
+}
 
 static PassRegistration<CSE>
     pass("cse", "Eliminate common sub-expressions in functions");

@@ -22,7 +22,8 @@ else
 	endif
 endif
 
-HOST_ARCH := $(shell if [[ $(shell uname -m) =~ i[345678]86 ]]; then echo x86_32; else echo $(shell uname -m); fi)
+# Determine the host architecture, with any ix86 architecture being labelled x86_32
+HOST_ARCH := $(shell if uname -m | grep -Eq 'i[345678]86'; then echo x86_32; else echo $(shell uname -m); fi)
 
 # Override these on the make command line to target a specific architecture. For example:
 # make -f tensorflow/lite/Makefile TARGET=rpi TARGET_ARCH=armv7l
@@ -76,7 +77,8 @@ MICROLITE_LIB_NAME := libtensorflow-microlite.a
 
 MICROLITE_TEST_SRCS := \
 $(wildcard tensorflow/lite/experimental/micro/*test.cc) \
-$(wildcard tensorflow/lite/experimental/micro/kernels/*test.cc)
+$(wildcard tensorflow/lite/experimental/micro/kernels/*test.cc) \
+$(wildcard tensorflow/lite/experimental/micro/memory_planner/*test.cc)
 
 MICROLITE_TEST_HDRS := \
 $(wildcard tensorflow/lite/experimental/micro/testing/*.h)
@@ -84,10 +86,12 @@ $(wildcard tensorflow/lite/experimental/micro/testing/*.h)
 MICROLITE_CC_BASE_SRCS := \
 $(wildcard tensorflow/lite/experimental/micro/*.cc) \
 $(wildcard tensorflow/lite/experimental/micro/kernels/*.cc) \
+$(wildcard tensorflow/lite/experimental/micro/memory_planner/*.cc) \
 tensorflow/lite/c/c_api_internal.c \
 tensorflow/lite/core/api/error_reporter.cc \
 tensorflow/lite/core/api/flatbuffer_conversions.cc \
 tensorflow/lite/core/api/op_resolver.cc \
+tensorflow/lite/core/api/tensor_utils.cc \
 tensorflow/lite/kernels/kernel_util.cc \
 tensorflow/lite/kernels/internal/quantization_util.cc
 MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SRCS))
@@ -95,36 +99,53 @@ MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SR
 MICROLITE_CC_HDRS := \
 $(wildcard tensorflow/lite/experimental/micro/*.h) \
 $(wildcard tensorflow/lite/experimental/micro/kernels/*.h) \
+$(wildcard tensorflow/lite/experimental/micro/memory_planner/*.h) \
 LICENSE \
-tensorflow/lite/c/c_api_internal.h \
+tensorflow/core/public/version.h \
 tensorflow/lite/c/builtin_op_data.h \
+tensorflow/lite/c/c_api_internal.h \
 tensorflow/lite/core/api/error_reporter.h \
 tensorflow/lite/core/api/flatbuffer_conversions.h \
 tensorflow/lite/core/api/op_resolver.h \
-tensorflow/lite/kernels/kernel_util.h \
-tensorflow/lite/kernels/op_macros.h \
-tensorflow/lite/kernels/padding.h \
+tensorflow/lite/core/api/tensor_utils.h \
 tensorflow/lite/kernels/internal/common.h \
 tensorflow/lite/kernels/internal/compatibility.h \
 tensorflow/lite/kernels/internal/optimized/neon_check.h \
+tensorflow/lite/kernels/internal/quantization_util.h \
+tensorflow/lite/kernels/internal/reference/add.h \
+tensorflow/lite/kernels/internal/reference/arg_min_max.h \
 tensorflow/lite/kernels/internal/reference/binary_function.h \
+tensorflow/lite/kernels/internal/reference/ceil.h \
+tensorflow/lite/kernels/internal/reference/comparisons.h \
 tensorflow/lite/kernels/internal/reference/conv.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h \
 tensorflow/lite/kernels/internal/reference/floor.h \
 tensorflow/lite/kernels/internal/reference/fully_connected.h \
+tensorflow/lite/kernels/internal/reference/integer_ops/add.h \
+tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h \
+tensorflow/lite/kernels/internal/reference/maximum_minimum.h \
+tensorflow/lite/kernels/internal/reference/neg.h \
 tensorflow/lite/kernels/internal/reference/pooling.h \
 tensorflow/lite/kernels/internal/reference/prelu.h \
-tensorflow/lite/kernels/internal/reference/maximum_minimum.h \
+tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h \
+tensorflow/lite/kernels/internal/reference/round.h \
 tensorflow/lite/kernels/internal/reference/softmax.h \
-tensorflow/lite/kernels/internal/reference/arg_min_max.h \
+tensorflow/lite/kernels/internal/reference/logistic.h \
+tensorflow/lite/kernels/internal/reference/strided_slice.h \
+tensorflow/lite/kernels/internal/reference/integer_ops/pooling.h \
 tensorflow/lite/kernels/internal/round.h \
+tensorflow/lite/kernels/internal/strided_slice_logic.h \
+tensorflow/lite/kernels/internal/tensor.h \
 tensorflow/lite/kernels/internal/tensor_ctypes.h \
 tensorflow/lite/kernels/internal/types.h \
-tensorflow/lite/kernels/internal/quantization_util.h \
+tensorflow/lite/kernels/kernel_util.h \
+tensorflow/lite/kernels/op_macros.h \
+tensorflow/lite/kernels/padding.h \
 tensorflow/lite/schema/schema_generated.h \
-tensorflow/lite/version.h \
-tensorflow/core/public/version.h
+tensorflow/lite/string_type.h \
+tensorflow/lite/string_util.h \
+tensorflow/lite/version.h
 
 THIRD_PARTY_CC_HDRS := \
 third_party/gemmlowp/fixedpoint/fixedpoint.h \
@@ -144,8 +165,7 @@ MAKE_PROJECT_FILES := \
 MBED_PROJECT_FILES := \
   README_MBED.md \
   mbed-os.lib \
-  mbed_app.json \
-  .vscode/tasks.json
+  mbed_app.json
 
 KEIL_PROJECT_FILES := \
   README_KEIL.md \
@@ -155,6 +175,9 @@ ARDUINO_PROJECT_FILES := \
   library.properties
 
 ALL_PROJECT_TARGETS :=
+
+ARDUINO_LIBRARY_TARGETS :=
+ARDUINO_LIBRARY_ZIPS :=
 
 include $(MAKEFILE_DIR)/third_party_downloads.inc
 THIRD_PARTY_DOWNLOADS :=
@@ -166,6 +189,9 @@ $(eval $(call add_third_party_download,$(FLATBUFFERS_URL),$(FLATBUFFERS_MD5),fla
 # based on platforms or architectures should happen within these files, to
 # keep this main makefile focused on the sources and dependencies.
 include $(wildcard $(MAKEFILE_DIR)/targets/*_makefile.inc)
+
+# Load dependencies for optimized kernel implementations.
+include $(wildcard $(MAKEFILE_DIR)/ext_libs/*.inc)
 
 # Call specialize here so that platform-specific tags can be taken into account.
 MICROLITE_CC_SRCS := $(call specialize,$(MICROLITE_CC_SRCS))
@@ -188,9 +214,6 @@ MICROLITE_LIB_PATH := $(LIBDIR)$(MICROLITE_LIB_NAME)
 CXX := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}g++
 CC := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}gcc
 AR := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}ar
-
-# Load optimized kernel implementations
-include $(wildcard $(MAKEFILE_DIR)/ext_libs/*.inc)
 
 # Load the examples.
 include $(wildcard tensorflow/lite/experimental/micro/examples/*/Makefile.inc)
@@ -253,12 +276,21 @@ $(BINDIR)%.bin: $(BINDIR)%
 	$(OBJCOPY) $< $@ -O binary
 
 # Generate standalone makefile projects for all of the test targets.
-$(foreach TEST_TARGET,$(MICROLITE_TEST_SRCS),\
+$(foreach TEST_TARGET,$(filter-out tensorflow/lite/experimental/micro/kernels/%,$(MICROLITE_TEST_SRCS)),\
 $(eval $(call microlite_test,$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET))))
+$(foreach TEST_TARGET,$(filter tensorflow/lite/experimental/micro/kernels/%,$(MICROLITE_TEST_SRCS)),\
+$(eval $(call microlite_test,kernel_$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET))))
 
 test: $(MICROLITE_TEST_TARGETS)
 
 generate_projects: $(ALL_PROJECT_TARGETS)
+
+generate_non_kernel_projects: $(filter-out generate_kernel%,$(ALL_PROJECT_TARGETS))
+
+generate_non_test_projects: $(filter-out %_test%,$(ALL_PROJECT_TARGETS))
+
+generate_arduino_zip: generate_non_kernel_projects $(ARDUINO_LIBRARY_ZIPS)
+	python tensorflow/lite/experimental/micro/tools/make/merge_arduino_zips.py $(PRJDIR)/tensorflow_lite.zip $(ARDUINO_LIBRARY_ZIPS)
 
 # Gets rid of all generated files.
 clean:

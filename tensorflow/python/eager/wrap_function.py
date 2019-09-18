@@ -164,7 +164,7 @@ def _lift_unlifted_variables(graph, variable_holder):
         ops.GraphKeys.LOCAL_VARIABLES)
     existing_captures = object_identity.ObjectIdentitySet(
         graph.internal_captures)
-    lifted_variables = object_identity.ObjectIdentityDictionary()
+    lifted_variables = {}
 
     def _should_lift_variable(v):
       return ((v._in_graph_mode  # pylint: disable=protected-access
@@ -176,14 +176,14 @@ def _lift_unlifted_variables(graph, variable_holder):
       if _should_lift_variable(old_variable):
         new_variable = _lift_single_variable(
             old_variable, graph, variable_holder)
-        lifted_variables[old_variable] = new_variable
+        lifted_variables[id(old_variable)] = new_variable
         existing_captures.add(old_variable.handle)
 
     for old_variable in local_collection_variables:
       if _should_lift_variable(old_variable):
         new_variable = _lift_single_variable(
             old_variable, graph, variable_holder)
-        lifted_variables[old_variable] = new_variable
+        lifted_variables[id(old_variable)] = new_variable
         existing_captures.add(old_variable.handle)
         if new_variable._in_graph_mode:  # pylint: disable=protected-access
           outer_graph = new_variable.graph
@@ -203,7 +203,7 @@ def _lift_unlifted_variables(graph, variable_holder):
     ]:
       mutable_collection = ops.get_collection_ref(collection_name)
       for index, current in enumerate(mutable_collection):
-        mutable_collection[index] = lifted_variables.get(current, current)
+        mutable_collection[index] = lifted_variables.get(id(current), current)
         if not resource_variable_ops.is_resource_variable(
             mutable_collection[index]):
           logging.warning(

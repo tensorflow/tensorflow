@@ -151,6 +151,9 @@ public:
   explicit EnumAttr(const llvm::Record &record);
   explicit EnumAttr(const llvm::DefInit *init);
 
+  // Returns whether skipping auto-generation is requested.
+  bool skipAutoGen() const;
+
   // Returns the enum class name.
   StringRef getEnumClassName() const;
 
@@ -172,12 +175,46 @@ public:
   // corresponding string.
   StringRef getSymbolToStringFnName() const;
 
+  // Returns the return type of the utility function that converts a symbol to
+  // the corresponding string.
+  StringRef getSymbolToStringFnRetType() const;
+
   // Returns the name of the utilit function that returns the max enum value
   // used within the enum class.
   StringRef getMaxEnumValFnName() const;
 
   // Returns all allowed cases for this enum attribute.
   std::vector<EnumAttrCase> getAllCases() const;
+};
+
+class StructFieldAttr {
+public:
+  explicit StructFieldAttr(const llvm::Record *record);
+  explicit StructFieldAttr(const llvm::Record &record);
+  explicit StructFieldAttr(const llvm::DefInit *init);
+
+  StringRef getName() const;
+  Attribute getType() const;
+
+private:
+  const llvm::Record *def;
+};
+
+// Wrapper class providing helper methods for accessing struct attributes
+// defined in TableGen.
+class StructAttr : public Attribute {
+public:
+  explicit StructAttr(const llvm::Record *record);
+  explicit StructAttr(const llvm::Record &record) : StructAttr(&record){};
+  explicit StructAttr(const llvm::DefInit *init);
+
+  // Returns the struct class name.
+  StringRef getStructClassName() const;
+
+  // Returns the C++ namespaces this struct class should be placed in.
+  StringRef getCppNamespace() const;
+
+  std::vector<StructFieldAttr> getAllFields() const;
 };
 
 } // end namespace tblgen

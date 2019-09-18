@@ -27,7 +27,8 @@
 #include "mlir/IR/Types.h"
 
 // Pull in all enum type definitions and utility function declarations
-#include "mlir/Dialect/SPIRV/SPIRVEnums.h.inc"
+#include "mlir/Dialect/SPIRV/SPIRVBitEnums.h.inc"
+#include "mlir/Dialect/SPIRV/SPIRVIntEnums.h.inc"
 
 #include <tuple>
 
@@ -49,6 +50,7 @@ enum Kind {
   Pointer,
   RuntimeArray,
   Struct,
+  LAST_SPIRV_TYPE = Struct,
 };
 }
 
@@ -73,14 +75,23 @@ class ArrayType : public Type::TypeBase<ArrayType, CompositeType,
                                         detail::ArrayTypeStorage> {
 public:
   using Base::Base;
+  // Zero layout specifies that is no layout
+  using LayoutInfo = uint64_t;
 
   static bool kindof(unsigned kind) { return kind == TypeKind::Array; }
 
   static ArrayType get(Type elementType, unsigned elementCount);
 
+  static ArrayType get(Type elementType, unsigned elementCount,
+                       LayoutInfo layoutInfo);
+
   unsigned getNumElements() const;
 
   Type getElementType() const;
+
+  bool hasLayout() const;
+
+  uint64_t getArrayStride() const;
 };
 
 // SPIR-V image type

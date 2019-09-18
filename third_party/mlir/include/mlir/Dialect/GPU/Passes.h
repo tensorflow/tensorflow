@@ -22,11 +22,14 @@
 #ifndef MLIR_DIALECT_GPU_PASSES_H_
 #define MLIR_DIALECT_GPU_PASSES_H_
 
+#include <memory>
+
 namespace mlir {
 
-class ModulePassBase;
+class ModuleOp;
+template <typename T> class OpPassBase;
 
-ModulePassBase *createGpuKernelOutliningPass();
+std::unique_ptr<OpPassBase<ModuleOp>> createGpuKernelOutliningPass();
 
 } // namespace mlir
 

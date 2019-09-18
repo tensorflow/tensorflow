@@ -3269,7 +3269,7 @@ def _indexed_case_helper(branch_fns, default, branch_index, name):
   branch_fns = _indexed_case_verify_and_canonicalize_args(
       branch_fns, default, branch_index)
   with ops.name_scope(name, "case", [branch_index]):
-    if context.executing_eagerly():
+    if context.executing_eagerly() and not hasattr(branch_index, "graph"):
       branch_index = array_ops.where(
           math_ops.less(branch_index, 0)
           | math_ops.greater_equal(branch_index, len(branch_fns)),
@@ -3504,7 +3504,7 @@ def switch_case(branch_index,
   statement than `tf.case`, which is more like an if/elif/elif/else chain.
 
   The `branch_fns` parameter is either a dict from `int` to callables, or list
-  of (`int, callable) pairs, or simply a list of callables (in which case the
+  of (`int`, callable) pairs, or simply a list of callables (in which case the
   index is implicitly the key). The `branch_index` `Tensor` is used to select an
   element in `branch_fns` with matching `int` key, falling back to `default`
   if none match, or `max(keys)` if no `default` is provided. The keys must form
@@ -3545,7 +3545,7 @@ def switch_case(branch_index,
     branch_index: An int Tensor specifying which of `branch_fns` should be
       executed.
     branch_fns: A `dict` mapping `int`s to callables, or a `list` of
-      (`int, callable) pairs, or simply a list of callables (in which case the
+      (`int`, callable) pairs, or simply a list of callables (in which case the
       index serves as the key). Each callable must return a matching structure
       of tensors.
     default: Optional callable that returns a structure of tensors.

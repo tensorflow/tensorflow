@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -30,14 +31,19 @@ class RollOp : public XlaOpKernel {
     const TensorShape shift_shape = ctx->InputShape(1);
     const TensorShape axis_shape = ctx->InputShape(2);
 
-    OP_REQUIRES(ctx, input_shape.dims() >= 1,
+    int64 input_dims = input_shape.dims();
+    OP_REQUIRES(ctx, input_dims >= 1,
                 errors::InvalidArgument("input must be 1-D or higher"));
     OP_REQUIRES(ctx, shift_shape.dims() <= 1,
                 errors::InvalidArgument(
                     "shift must be a scalar or a 1-D vector. Found: ",
                     shift_shape.DebugString()));
+    OP_REQUIRES(ctx, axis_shape.dims() <= 1,
+                errors::InvalidArgument(
+                    "axis must be a scalar or a 1-D vector. Found: ",
+                    shift_shape.DebugString()));
     OP_REQUIRES(
-        ctx, shift_shape.dims() == axis_shape.dims(),
+        ctx, shift_shape == axis_shape,
         errors::InvalidArgument("shift and axis must have the same size"));
 
     xla::Literal axis;
@@ -49,6 +55,13 @@ class RollOp : public XlaOpKernel {
     for (int64 i = 0; i != num_axes; ++i) {
       int64 cur_axis = axis_shape.dims() == 0 ? *axis.GetIntegralAsS64({})
                                               : *axis.GetIntegralAsS64({i});
+      OP_REQUIRES(ctx, cur_axis >= -input_dims && cur_axis < input_dims,
+                  errors::InvalidArgument(
+                      absl::StrCat("axis ", cur_axis, " is out of range [-",
+                                   input_dims, ", ", input_dims, ").")));
+      if (cur_axis < 0) {
+        cur_axis += input_dims;
+      }
 
       xla::XlaOp offset =
           shift_shape.dims() == 0

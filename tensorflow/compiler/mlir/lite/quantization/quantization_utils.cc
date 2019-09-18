@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 
+#include <cstdint>
+
 #include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:local_config_mlir
 #include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
 #include "mlir/Dialect/QuantOps/QuantizeUtils.h"  // TF:local_config_mlir
 #include "mlir/Dialect/QuantOps/UniformSupport.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 
 namespace mlir {
@@ -28,15 +31,28 @@ namespace TFL {
 
 // Returns the quantized type for the
 // input_type/min/max/storag_type_width/narrow_range.
-static Type GetQuantizedType(Builder builder, Type input_type, double min,
-                             double max, int storage_type_width,
-                             bool narrow_range, bool is_signed) {
+static Type GetQuantizedType(Builder builder, Type input_type,
+                             ArrayRef<double> min, ArrayRef<double> max,
+                             int storage_type_width, bool narrow_range,
+                             bool is_signed) {
   auto converter =
-      quant::ExpressedToUniformQuantizedConverter::forInputType(input_type);
+      quant::ExpressedToQuantizedConverter::forInputType(input_type);
 
-  quant::UniformQuantizedType quantizedEleType = quant::fakeQuantAttrsToType(
-      builder.getUnknownLoc(), storage_type_width, min, max, narrow_range,
-      converter.expressedType, is_signed);
+  quant::QuantizedType quantizedEleType;
+  if (min.size() == 1 && max.size() == 1) {
+    quantizedEleType = quant::fakeQuantAttrsToType(
+        builder.getUnknownLoc(), storage_type_width, min[0], max[0],
+        narrow_range, converter.expressedType, is_signed);
+  } else if (min.size() == max.size()) {
+    auto shape = input_type.dyn_cast<ShapedType>();
+    if (!shape || min.size() != shape.getDimSize(shape.getRank() - 1)) {
+      return {};
+    }
+    quantizedEleType = quant::fakeQuantAttrsToType(
+        builder.getUnknownLoc(), storage_type_width, shape.getRank() - 1, min,
+        max, narrow_range, converter.expressedType, is_signed);
+  }
+  if (!quantizedEleType) return {};
   return converter.convert(quantizedEleType);
 }
 
@@ -45,20 +61,40 @@ TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, FloatAttr min,
                               bool narrow_range, bool is_signed) {
   int storage_type_width = storage_type.cast<IntegerType>().getWidth();
   Type final_type = GetQuantizedType(
-      builder, input_type, min.getValueAsDouble(), max.getValueAsDouble(),
+      builder, input_type, {min.getValueAsDouble()}, {max.getValueAsDouble()},
       storage_type_width, narrow_range, is_signed);
   return builder.getTypeAttr(final_type);
 }
 
 TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
                               Attribute max, IntegerAttr num_bits,
-                              BoolAttr narrow_range) {
-  FloatAttr min_value = GetSingleElementAsFloatOrSelf(min);
-  FloatAttr max_value = GetSingleElementAsFloatOrSelf(max);
-  if (!min_value || !max_value) return {};
-  return GetQuantizedTypeAttr(builder, input_type, min_value, max_value,
-                              builder.getIntegerType(num_bits.getInt()),
-                              narrow_range.getValue(), /*is_signed=*/false);
+                              BoolAttr narrow_range, bool is_signed) {
+  SmallVector<double, 4> min_value, max_value;
+  auto mins = min.dyn_cast<DenseFPElementsAttr>();
+  auto maxs = max.dyn_cast<DenseFPElementsAttr>();
+  if (mins && maxs) {
+    min_value.reserve(mins.getNumElements());
+    max_value.reserve(maxs.getNumElements());
+    for (auto it = mins.begin(), e = mins.end(); it != e; ++it) {
+      min_value.push_back(FloatAttr::getValueAsDouble(*it));
+    }
+    for (auto it = maxs.begin(), e = maxs.end(); it != e; ++it) {
+      max_value.push_back(FloatAttr::getValueAsDouble(*it));
+    }
+  } else {
+    auto fmin = min.dyn_cast<FloatAttr>();
+    auto fmax = max.dyn_cast<FloatAttr>();
+    if (fmin && fmax) {
+      min_value.push_back(fmin.getValueAsDouble());
+      max_value.push_back(fmax.getValueAsDouble());
+    } else {
+      return {};
+    }
+  }
+  Type final_type =
+      GetQuantizedType(builder, input_type, min_value, max_value,
+                       num_bits.getInt(), narrow_range.getValue(), is_signed);
+  return builder.getTypeAttr(final_type);
 }
 
 TypeAttr CastQuantizedTypeAttrFromExpressedType(Builder builder,
@@ -78,23 +114,32 @@ Type GetUniformQuantizedTypeForElementsAttr(ElementsAttr attr,
   Builder builder(attr.getContext());
   double min = std::numeric_limits<double>::max();
   double max = std::numeric_limits<double>::min();
-  if (auto fp = attr.dyn_cast<DenseFPElementsAttr>()) {
+  auto fp = attr.dyn_cast<DenseFPElementsAttr>();
+  if (!fp) return {};
+
+  // If all the element values are same we don't need to scan the content.
+  if (fp.isSplat()) {
+    double single_value =
+        FloatAttr::getValueAsDouble(fp.getSplatValue<llvm::APFloat>());
+    // the mlir quantization libration can only handle the case min=max=0.0, so
+    // we just avoid quantization if it is any values other than 0.0.
+    // TODO(b/141015060): remove this constraint once the bug is fixed.
+    if (std::fabs(single_value) > std::numeric_limits<double>::epsilon()) {
+      return {};
+    }
+    min = max = single_value;
+  } else {
     for (auto it = fp.begin(), e = fp.end(); it != e; ++it) {
       double ele_value = FloatAttr::getValueAsDouble(*it);
       min = std::min(min, ele_value);
       max = std::max(max, ele_value);
     }
-    // The range must straddle zero.
-    if (min > 0.0 || max < 0.0) return {};
-    auto type = GetQuantizedType(builder, attr.getType(), min, max,
-                                 storage_type_width, narrow_range, is_signed);
-    if (auto ele_type = type.dyn_cast_or_null<TensorType>())
-      return ele_type.getElementType();
   }
+  auto type = GetQuantizedType(builder, attr.getType(), min, max,
+                               storage_type_width, narrow_range, is_signed);
+  if (auto ele_type = type.dyn_cast_or_null<TensorType>())
+    return ele_type.getElementType();
 
-  // The range from SplatElementAttr and other element attribute types  couldn't
-  // straddle zero, so the quantization parameters couldn't be derived from its
-  // range.
   return {};
 }
 

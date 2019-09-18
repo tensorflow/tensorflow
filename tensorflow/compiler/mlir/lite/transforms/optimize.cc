@@ -25,12 +25,12 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/Support/Functional.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -263,11 +263,21 @@ struct PadStridedSliceDims : public RewritePattern {
       mask = mask << 1;
     }
 
+    Location loc = strided_slice.getLoc();
+    auto shape_type =
+        rewriter.getTensorType({dim_size}, rewriter.getIntegerType(32));
+    SmallVector<Attribute, 4> result_shape_data(dim_size);
+    for (int i = 0; i < dim_size; ++i) {
+      result_shape_data[i] =
+          rewriter.getI32IntegerAttr(static_cast<int32_t>(new_shape[i]));
+    }
+    auto shape_attr =
+        rewriter.getDenseElementsAttr(shape_type, result_shape_data);
+    auto shape = rewriter.create<ConstantOp>(loc, shape_type, shape_attr);
     auto new_output_type =
         rewriter.getTensorType(new_shape, original_input_type.getElementType());
-
     TFL::ReshapeOp reshape = rewriter.create<TFL::ReshapeOp>(
-        strided_slice.getLoc(), new_output_type, original_input);
+        loc, new_output_type, original_input, shape);
 
     // Replace the original strided_slice.
     llvm::APInt new_begin_mask = strided_slice.begin_mask();
@@ -306,7 +316,9 @@ void Optimize::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
-FunctionPassBase *CreateOptimizePass() { return new Optimize(); }
+std::unique_ptr<OpPassBase<FuncOp>> CreateOptimizePass() {
+  return std::make_unique<Optimize>();
+}
 
 static PassRegistration<Optimize> pass(
     "tfl-optimize", "Optimize within the TensorFlow Lite dialect");

@@ -267,20 +267,21 @@ struct FusedBatchNorm<CPUDevice, T, U> {
       const int64 in_rows = GetTensorDim(x_input, tensor_format, 'H');
       const int64 in_cols = GetTensorDim(x_input, tensor_format, 'W');
       const int64 in_depths = GetTensorDim(x_input, tensor_format, 'C');
-			OP_REQUIRES_OK(context, context->allocate_temp(
-                              DataTypeToEnum<T>::value,
-                              ShapeFromFormat(FORMAT_NHWC, in_batch, in_rows,
-                                              in_cols, in_depths),
-                              &transformed_x));
-			OP_REQUIRES_OK(context, context->allocate_temp(
-                              DataTypeToEnum<T>::value,
-                              ShapeFromFormat(FORMAT_NHWC, in_batch, in_rows,
-                                              in_cols, in_depths),
-                              &transformed_y));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
+                                                  in_rows, in_cols, in_depths),
+                                  &transformed_x));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
+                                                  in_rows, in_cols, in_depths),
+                                  &transformed_y));
       // Perform NCHW to NHWC
       std::vector<int32> perm = {0, 2, 3, 1};
-      ::tensorflow::DoTranspose(context->eigen_device<CPUDevice>(), x_input,
-                                perm, &transformed_x);
+      OP_REQUIRES_OK(
+          context, ::tensorflow::DoTranspose(context->eigen_device<CPUDevice>(),
+                                             x_input, perm, &transformed_x));
     } else {
       transformed_x = x_input;
       transformed_y = *y_output;
@@ -355,15 +356,15 @@ struct FusedBatchNorm<CPUDevice, T, U> {
     // Explicitly checks the types of T and U and only casts x_shifted when
     // T != U. (Not doing so caused a 35-50% performance slowdown for
     // some compiler flags.)
-    CastIfNecessary<std::is_same<T, U>::value, decltype(y),
-                    decltype(x_shifted), T>::process(y, x_shifted,
-                                                     rest_by_depth, d);
+    CastIfNecessary<std::is_same<T, U>::value, decltype(y), decltype(x_shifted),
+                    T>::process(y, x_shifted, rest_by_depth, d);
 
-	  if (tensor_format == FORMAT_NCHW) {
+    if (tensor_format == FORMAT_NCHW) {
       // Perform NHWC to NCHW
       std::vector<int32> perm = {0, 3, 1, 2};
-      ::tensorflow::DoTranspose(context->eigen_device<CPUDevice>(),
-                                transformed_y, perm, y_output);
+      OP_REQUIRES_OK(
+          context, ::tensorflow::DoTranspose(context->eigen_device<CPUDevice>(),
+                                             transformed_y, perm, y_output));
     }
   }
 };
@@ -386,28 +387,30 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
       const int64 in_rows = GetTensorDim(x_input, tensor_format, 'H');
       const int64 in_cols = GetTensorDim(x_input, tensor_format, 'W');
       const int64 in_depths = GetTensorDim(x_input, tensor_format, 'C');
-			OP_REQUIRES_OK(context, context->allocate_temp(
-                              DataTypeToEnum<T>::value,
-                              ShapeFromFormat(FORMAT_NHWC, in_batch, in_rows,
-                                              in_cols, in_depths),
-                              &transformed_y_backprop_input));
-			OP_REQUIRES_OK(context, context->allocate_temp(
-                              DataTypeToEnum<T>::value,
-                              ShapeFromFormat(FORMAT_NHWC, in_batch, in_rows,
-                                              in_cols, in_depths),
-                              &transformed_x_input));
-			OP_REQUIRES_OK(context, context->allocate_temp(
-                              DataTypeToEnum<T>::value,
-                              ShapeFromFormat(FORMAT_NHWC, in_batch, in_rows,
-                                              in_cols, in_depths),
-                              &transformed_x_backprop_output));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
+                                                  in_rows, in_cols, in_depths),
+                                  &transformed_y_backprop_input));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
+                                                  in_rows, in_cols, in_depths),
+                                  &transformed_x_input));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
+                                                  in_rows, in_cols, in_depths),
+                                  &transformed_x_backprop_output));
       // Perform NCHW to NHWC
       std::vector<int32> perm = {0, 2, 3, 1};
-      ::tensorflow::DoTranspose(context->eigen_device<CPUDevice>(),
-                                y_backprop_input, perm,
-                                &transformed_y_backprop_input);
-      ::tensorflow::DoTranspose(context->eigen_device<CPUDevice>(), x_input,
-                                perm, &transformed_x_input);
+      OP_REQUIRES_OK(
+          context, ::tensorflow::DoTranspose(context->eigen_device<CPUDevice>(),
+                                             y_backprop_input, perm,
+                                             &transformed_y_backprop_input));
+      OP_REQUIRES_OK(context, ::tensorflow::DoTranspose(
+                                  context->eigen_device<CPUDevice>(), x_input,
+                                  perm, &transformed_x_input));
     } else {
       transformed_y_backprop_input = y_backprop_input;
       transformed_x_input = x_input;
@@ -535,9 +538,10 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
     if (tensor_format == FORMAT_NCHW) {
       // Perform NHWC to NCHW
       std::vector<int32> perm = {0, 3, 1, 2};
-      ::tensorflow::DoTranspose(context->eigen_device<CPUDevice>(),
-                                transformed_x_backprop_output, perm,
-                                x_backprop_output);
+      OP_REQUIRES_OK(
+          context, ::tensorflow::DoTranspose(context->eigen_device<CPUDevice>(),
+                                             transformed_x_backprop_output,
+                                             perm, x_backprop_output));
     }
   }
 };

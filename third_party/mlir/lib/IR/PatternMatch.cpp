@@ -148,7 +148,7 @@ void PatternRewriter::updatedRootInPlace(
 //===----------------------------------------------------------------------===//
 
 RewritePatternMatcher::RewritePatternMatcher(
-    OwningRewritePatternList &patterns) {
+    const OwningRewritePatternList &patterns) {
   for (auto &pattern : patterns)
     this->patterns.push_back(pattern.get());
 

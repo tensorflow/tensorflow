@@ -169,6 +169,16 @@ class CholeskyOpGpu : public AsyncOpKernel {
                                                 output_reshaped_ptrs_base, n,
                                                 &dev_info.back(), batch_size),
                            done);
+      // TODO(rmlarsen): We have to clear the upper triangle of the output
+      // due to a bug in potrfBatched. Remove this workaround once the bug
+      // is fixed.
+      auto input_reshaped = const_cast<const Tensor*>(output)
+                                ->template flat_inner_dims<Scalar, 3>();
+      auto output_reshaped = output->template flat_inner_dims<Scalar, 3>();
+      functor::MatrixBandPartFunctor<GPUDevice, Scalar> band_part;
+      band_part(context, context->eigen_device<GPUDevice>(),
+                n /* num_lower_diags */, 0 /* num_upper_diags */,
+                input_reshaped, output_reshaped);
     } else {
 #endif
 

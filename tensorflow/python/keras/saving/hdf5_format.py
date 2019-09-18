@@ -75,6 +75,12 @@ def save_model_to_hdf5(model, filepath, overwrite=True, include_optimizer=True):
   # TODO(psv) Add warning when we save models that contain non-serializable
   # entities like metrics added using `add_metric` and losses added using
   # `add_loss.`
+  if len(model.weights) != len(model._undeduplicated_weights):
+    logging.warning('Found duplicated `Variable`s in Model\'s `weights`. '
+                    'This is usually caused by `Variable`s being shared by '
+                    'Layers in the Model. These `Variable`s will be treated '
+                    'as separate `Variable`s when the Model is restored. To '
+                    'avoid this, please save with `save_format="tf"`.')
 
   if not isinstance(filepath, h5py.File):
     # If file exists and should not be overwritten.
@@ -693,7 +699,8 @@ def load_weights_from_hdf5_group(f, layers):
   K.batch_set_value(weight_value_tuples)
 
 
-def load_weights_from_hdf5_group_by_name(f, layers):
+def load_weights_from_hdf5_group_by_name(
+    f, layers, skip_mismatch=False):
   """Implements name-based weight loading.
 
   (instead of topological weight loading).
@@ -703,10 +710,13 @@ def load_weights_from_hdf5_group_by_name(f, layers):
   Arguments:
       f: A pointer to a HDF5 group.
       layers: a list of target layers.
+      skip_mismatch: Boolean, whether to skip loading of layers
+          where there is a mismatch in the number of weights,
+          or a mismatch in the shape of the weights.
 
   Raises:
       ValueError: in case of mismatch between provided layers
-          and weights file.
+          and weights file and skip_match=False.
   """
   if 'keras_version' in f.attrs:
     original_keras_version = f.attrs['keras_version'].decode('utf8')
@@ -739,6 +749,12 @@ def load_weights_from_hdf5_group_by_name(f, layers):
       weight_values = preprocess_weights_for_loading(
           layer, weight_values, original_keras_version, original_backend)
       if len(weight_values) != len(symbolic_weights):
+        if skip_mismatch:
+          logging.warning('Skipping loading of weights for '
+                          'layer {}'.format(layer.name) + ' due to mismatch '
+                          'in number of weights ({} vs {}).'.format(
+                              len(symbolic_weights), len(weight_values)))
+          continue
         raise ValueError('Layer #' + str(k) + ' (named "' + layer.name +
                          '") expects ' + str(len(symbolic_weights)) +
                          ' weight(s), but the saved weights' + ' have ' +
@@ -746,6 +762,13 @@ def load_weights_from_hdf5_group_by_name(f, layers):
       # Set values.
       for i in range(len(weight_values)):
         if K.int_shape(symbolic_weights[i]) != weight_values[i].shape:
+          if skip_mismatch:
+            logging.warning('Skipping loading of weights for '
+                            'layer {}'.format(layer.name) + ' due to '
+                            'mismatch in shape ({} vs {}).'.format(
+                                symbolic_weights[i].shape,
+                                weight_values[i].shape))
+            continue
           raise ValueError('Layer #' + str(k) +' (named "' + layer.name +
                            '"), weight ' + str(symbolic_weights[i]) +
                            ' has shape {}'.format(K.int_shape(

@@ -90,14 +90,7 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
         break;
       case XlaExpression::Kind::kResource: {
         XlaResource* resource = expressions[i]->resource();
-
-        arg.initialized = resource->initialized();
-        arg.kind = XlaCompiler::Argument::kResource;
-        arg.resource_kind = resource->kind();
-        arg.type = resource->type();
-        arg.shape = resource->shape();
-        arg.max_array_size = resource->max_array_size();
-        arg.name = resource->name();
+        XlaCompiler::PopulateArgumentFromResource(*resource, &arg);
         break;
       }
       case XlaExpression::Kind::kTensorList: {

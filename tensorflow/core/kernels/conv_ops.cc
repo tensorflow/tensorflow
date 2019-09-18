@@ -64,8 +64,8 @@ limitations under the License.
 #include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
-#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+#include "tensorflow/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
@@ -920,25 +920,24 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
 
   int device_id = stream->parent()->device_ordinal();
   DataType dtype = input.dtype();
-  ConvParameters conv_parameters = {
-      in_batch,                 // batch
-      in_depths,                // in_depths
-      {{in_rows,                // in_rows
-        in_cols}},              // in_cols
-      compute_data_format,      // compute_data_format
-      out_depths,               // out_depths
-      {{patch_rows,             // filter_rows
-        patch_cols,             // filter_cols
-        patch_depths}},         // filter_depths
-      {{row_dilation,           // dilation_rows
-        col_dilation}},         // dilation_cols
-      {{row_stride,             // stride_rows
-        col_stride}},           // stride_cols
-      {{common_padding_rows,    // padding_rows
-        common_padding_cols}},  // padding_cols
-      dtype,                    // tensor datatype
-      device_id,                // device_id
-  };
+  ConvParameters conv_parameters = {in_batch,             // batch
+                                    in_depths,            // in_depths
+                                    {{in_rows,            // in_rows
+                                      in_cols}},          // in_cols
+                                    compute_data_format,  // compute_data_format
+                                    out_depths,           // out_depths
+                                    {{patch_rows,         // filter_rows
+                                      patch_cols,         // filter_cols
+                                      patch_depths}},     // filter_depths
+                                    {{row_dilation,       // dilation_rows
+                                      col_dilation}},     // dilation_cols
+                                    {{row_stride,         // stride_rows
+                                      col_stride}},       // stride_cols
+                                    {{common_padding_rows,    // padding_rows
+                                      common_padding_cols}},  // padding_cols
+                                    dtype,                    // tensor datatype
+                                    device_id,                // device_id
+                                    conv_desc.group_count()};
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune &&
       !AutoTuneConv::GetInstance()->Find(conv_parameters, &algorithm_config)) {
@@ -954,10 +953,10 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                         "because cuDNN failed to initialize, so try looking to "
                         "see if a warning log message was printed above."));
 
-    se::TfAllocatorAdapter tf_allocator_adapter(
-        stream->parent()->platform(), ctx->device()->GetAllocator({}));
-    se::cuda::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
-                                            se::cuda::PtxCompilationOptions());
+    se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
+                                                stream);
+    se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
+                                      se::GpuAsmOpts());
     se::DeviceMemory<T> output_tensor(
         WrapRedzoneBestEffort(&rz_allocator, output_ptr));
 
@@ -965,8 +964,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     for (auto profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
-      se::cuda::RedzoneAllocator rz_scratch_allocator(
-          stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions(),
+      se::RedzoneAllocator rz_scratch_allocator(
+          stream, &tf_allocator_adapter, se::GpuAsmOpts(),
           /*memory_limit=*/ConvolveScratchSize);
       DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
       se::ScratchAllocator* allocator_used =

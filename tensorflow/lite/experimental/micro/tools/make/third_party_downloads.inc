@@ -14,8 +14,14 @@ else
   GCC_EMBEDDED_MD5 := "299ebd3f1c2c90930d28ab82e5d8d6c0"
 endif
 
-CMSIS_URL := "https://github.com/ARM-software/CMSIS_5/archive/5.4.0.zip"
-CMSIS_MD5 := "f451f1dccc844e894939055db278a40e"
+LEON_BCC2_URL := "https://www.gaisler.com/anonftp/bcc2/bin/bcc-2.0.7-gcc-linux64.tar.xz"
+LEON_BCC2_MD5 := "cdf78082be4882da2a92c9baa82fe765"
+
+TSIM_URL := "https://www.gaisler.com/anonftp/tsim/tsim-eval-2.0.63.tar.gz"
+TSIM_MD5 := "afa0095d3ed989a949e1467f94e41d2f"
+
+CMSIS_URL := "https://github.com/ARM-software/CMSIS_5/archive/01c7adb7685da540be9297b5a93e6640ea3333ce.zip"
+CMSIS_MD5 := "3dec53cc74f1d5d79036952137be5d5e"
 
 AM_SDK_URL := "http://s3.asia.ambiqmicro.com/downloads/AmbiqSuite-Rel2.0.0.zip"
 AM_SDK_MD5 := "70332bc6968602bd85bee600ca81d06f"

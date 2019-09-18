@@ -64,12 +64,12 @@ TEST_F(IdentityNOpTest, Int32Success_2_3) {
 
 TEST_F(IdentityNOpTest, StringInt32Success) {
   TF_ASSERT_OK(Init(DT_STRING, DT_INT32));
-  AddInputFromArray<string>(TensorShape({6}), {"A", "b", "C", "d", "E", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"A", "b", "C", "d", "E", "f"});
   AddInputFromArray<int32>(TensorShape({8}), {1, 3, 5, 7, 9, 11, 13, 15});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected0(allocator(), DT_STRING, TensorShape({6}));
-  test::FillValues<string>(&expected0, {"A", "b", "C", "d", "E", "f"});
-  test::ExpectTensorEqual<string>(expected0, *GetOutput(0));
+  test::FillValues<tstring>(&expected0, {"A", "b", "C", "d", "E", "f"});
+  test::ExpectTensorEqual<tstring>(expected0, *GetOutput(0));
   Tensor expected1(allocator(), DT_INT32, TensorShape({8}));
   test::FillValues<int32>(&expected1, {1, 3, 5, 7, 9, 11, 13, 15});
   test::ExpectTensorEqual<int32>(expected1, *GetOutput(1));

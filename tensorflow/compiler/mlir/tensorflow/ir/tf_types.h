@@ -36,7 +36,7 @@ enum Kind {
 };
 }  // namespace TensorFlowTypes
 
-// The base class in the tensor flow type hierarchy.
+// The base class in the TensorFlow type hierarchy.
 class TensorFlowType : public Type {
  public:
   using Type::Type;
@@ -77,7 +77,7 @@ class TensorFlowTypeImpl : public Type::TypeBase<Derived, TensorFlowType> {
   using Base::Base;
 
   // Get the unique'ed type in the given context.
-  static Derived get(MLIRContext *context) {
+  static Derived get(MLIRContext* context) {
     return Base::get(context, Derived::getTypeKind());
   }
 
@@ -85,6 +85,44 @@ class TensorFlowTypeImpl : public Type::TypeBase<Derived, TensorFlowType> {
   static bool kindof(unsigned kind) { return kind == Derived::getTypeKind(); }
 };
 }  // namespace detail
+
+// TensorFlowRefType class supports all the ref types in TensorFlow dialect.
+class TensorFlowRefType : public TensorFlowType {
+ public:
+  using TensorFlowType::TensorFlowType;
+
+  // Checks if a type is TensorFlow Ref type.
+  static bool classof(Type type) {
+    return type.getKind() >= TensorFlowTypes::FLOAT_REF &&
+           type.getKind() <= TensorFlowTypes::LAST_USED_TENSORFLOW_TYPE;
+  }
+
+  // Converts a type to the corresponding TensorFlowRef type.
+  static TensorFlowType get(Type type);
+  static TensorFlowType getChecked(Type type, MLIRContext* context,
+                                   Location loc) {
+    if (failed(verifyConstructionInvariants(loc, context, type))) {
+      return TensorFlowRefType();
+    }
+    return get(type);
+  }
+
+  static LogicalResult verifyConstructionInvariants(
+      llvm::Optional<Location> loc, MLIRContext* context, Type type) {
+    // type should be a valid TensorFlow type.
+    if (!IsValidTFTensorType(type)) {
+      if (loc) {
+        emitError(*loc) << "invalid TensorFlow type: " << type;
+      }
+      return failure();
+    }
+    return success();
+  }
+
+  // Converts a TensorFlowRef type to the corresponding TensorFlow or standard
+  // type.
+  Type RemoveRef();
+};
 
 #define HANDLE_TF_TYPE(tftype, enumerant, name)                          \
   class tftype##Type : public detail::TensorFlowTypeImpl<tftype##Type> { \

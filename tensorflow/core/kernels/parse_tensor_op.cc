@@ -82,7 +82,7 @@ class SerializeTensorOp : public OpKernel {
     Tensor* proto_string = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape({}), &proto_string));
-    CHECK(proto.SerializeToString(&proto_string->scalar<string>()()));
+    CHECK(SerializeToTString(proto, &proto_string->scalar<tstring>()()));
   }
 };
 

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
@@ -99,7 +100,9 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
     absl::Span<const ShapedBuffer* const> arguments) {
   StatusOr<ScopedShapedBuffer> result =
       ExecuteAsyncOnStreamWrapper(run_options, arguments);
-  TF_RETURN_IF_ERROR(run_options->stream()->BlockHostUntilDone());
+  Status block_status = run_options->stream()->BlockHostUntilDone();
+  TF_RETURN_IF_ERROR(result.status());
+  TF_RETURN_IF_ERROR(block_status);
   return result;
 }
 
@@ -164,6 +167,17 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteAsyncOnStreamWrapper(
     if (executable_size_in_bytes != 0) {
       profile->set_executable_size_in_bytes(executable_size_in_bytes);
     }
+  }
+
+  const auto& dump_path = module_config().debug_options().xla_dump_to();
+  if (module_config().debug_options().xla_hlo_profile() &&
+      profile_ptr != nullptr && !dump_path.empty()) {
+    const std::string full_path =
+        tensorflow::io::JoinPath(dump_path, "hlo_execution_profile_data");
+    TF_CHECK_OK(tensorflow::WriteStringToFile(
+        tensorflow::Env::Default(), full_path,
+        profile_ptr->ToProto().SerializeAsString()))
+        << "Error saving HloExecutionProfileData to " << full_path;
   }
 
   if (profile_ptr != nullptr) {

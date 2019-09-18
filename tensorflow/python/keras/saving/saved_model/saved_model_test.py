@@ -28,6 +28,8 @@ from tensorflow.core.example import feature_pb2
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.feature_column import feature_column_v2 as fc
+from tensorflow.python.feature_column.dense_features import DenseFeatures
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -37,7 +39,7 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.saving.saved_model import load as keras_load
-from tensorflow.python.keras.saving.saved_model import save as keras_save
+from tensorflow.python.keras.saving.saved_model import save_impl as keras_save
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -434,6 +436,120 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     arg_spec = tf_inspect.getfullargspec(
         load.layer_with_required_training_arg.__call__)
     self.assertFalse(arg_spec.defaults)  # defaults is None or empty
+
+  def testTraceModelWithKwarg(self):
+    class Model(keras.models.Model):
+
+      def call(self, inputs, keyword=None):
+        return array_ops.identity(inputs)
+
+    model = Model()
+    prediction = model.predict(np.ones([1, 3]).astype('float32'))
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf')
+
+    loaded = keras_load.load(saved_model_dir)
+    self.assertAllClose(prediction,
+                        loaded.predict(np.ones([1, 3]).astype('float32')))
+
+  def testFeatureColumns(self):
+    # TODO(b/120099662): Error with table initialization with Keras models in
+    # graph mode.
+    if context.executing_eagerly():
+      numeric = fc.numeric_column('a')
+      bucketized = fc.bucketized_column(numeric, boundaries=[5, 10, 15])
+      cat_vocab = fc.categorical_column_with_vocabulary_list(
+          'b', ['1', '2', '3'])
+      one_hot = fc.indicator_column(cat_vocab)
+      embedding = fc.embedding_column(cat_vocab, dimension=8)
+      feature_layer = DenseFeatures([bucketized, one_hot, embedding])
+      model = keras.models.Sequential(feature_layer)
+
+      features = {'a': np.array([13, 15]), 'b': np.array(['1', '2'])}
+      predictions = model.predict(features)
+
+      saved_model_dir = self._save_model_dir()
+      model.save(saved_model_dir, save_format='tf')
+      loaded = keras_load.load(saved_model_dir)
+      loaded_predictions = loaded.predict(features)
+      self.assertAllClose(predictions, loaded_predictions)
+
+  def testSaveTensorKwarg(self):
+
+    class LayerWithTensorKwarg(keras.layers.Layer):
+
+      def call(self, inputs, tensor=None):
+        if tensor is not None:
+          return inputs * math_ops.cast(tensor, dtypes.float32)
+        else:
+          return inputs
+
+    t = array_ops.sequence_mask(1)
+    inputs = keras.layers.Input(shape=(3))
+    model = keras.models.Model(inputs, LayerWithTensorKwarg()(inputs, t))
+
+    input_arr = np.random.random((1, 3)).astype(np.float32)
+    predictions = model.predict(input_arr)
+
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf')
+    loaded = keras_load.load(saved_model_dir)
+    loaded_predictions = loaded.predict(input_arr)
+    self.assertAllClose(predictions, loaded_predictions)
+
+  def testModelWithTfFunctionCall(self):
+    class Subclass(keras.models.Model):
+
+      @def_function.function
+      def call(self, inputs, training=False):
+        return inputs * math_ops.cast(training, dtypes.float32)
+
+    model = Subclass()
+    model.predict(array_ops.ones((1, 2)), steps=1)
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf')
+    loaded = keras_load.load(saved_model_dir)
+    self.assertAllEqual(
+        [[1, 5]],
+        self.evaluate(loaded(array_ops.constant([[1, 5.]]), training=True)))
+    self.assertAllEqual(
+        [[0, 0]],
+        self.evaluate(loaded(array_ops.constant([[1, 5.]]), training=False)))
+
+  def testReviveFunctionalModel(self):
+
+    class CustomAdd(keras.layers.Add):
+
+      def build(self, input_shape):
+        self.w = self.add_weight('w', shape=[])
+        super(CustomAdd, self).build(input_shape)
+
+      def call(self, inputs):
+        outputs = super(CustomAdd, self).call(inputs)
+        return outputs * self.w
+
+    input1 = keras.layers.Input(shape=(None, 3), name='input_1')
+    input2 = keras.layers.Input(shape=(None, 3), name='input_2')
+
+    d = keras.layers.Dense(4, name='dense_with_two_inbound_nodes')
+    output1 = d(input1)
+    output2 = d(input2)
+
+    # Use a custom layer in this model to ensure that layers aren't being
+    # recreated directly from the config.
+    outputs = CustomAdd(name='custom')([output1, output2])
+    model = keras.models.Model([input1, input2], outputs, name='save_model')
+
+    self.evaluate(variables.variables_initializer(model.variables))
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf')
+
+    loaded = keras_load.load(saved_model_dir)
+    self.assertEqual('save_model', loaded.name)
+    self.assertLen(
+        loaded.get_layer('dense_with_two_inbound_nodes')._inbound_nodes, 2)
+    self.assertEqual('CustomAdd', type(loaded.get_layer('custom')).__name__)
+    self.assertLen(loaded.get_layer('custom').weights, 1)
 
 
 class TestLayerCallTracing(test.TestCase):

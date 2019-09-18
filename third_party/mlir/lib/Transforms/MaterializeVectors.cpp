@@ -20,7 +20,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/Dominance.h"
 #include "mlir/Analysis/LoopAnalysis.h"
@@ -28,6 +27,9 @@
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Analysis/Utils.h"
 #include "mlir/Analysis/VectorAnalysis.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
+#include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
@@ -36,11 +38,9 @@
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/Passes.h"
-#include "mlir/VectorOps/VectorOps.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -264,7 +264,7 @@ static Value *substitute(Value *v, VectorType hwVectorType,
       assert(res.second && "Insertion failed");
       return res.first->second;
     }
-    v->getDefiningOp()->emitError("Missing substitution");
+    v->getDefiningOp()->emitError("missing substitution");
     return nullptr;
   }
   return it->second;
@@ -578,7 +578,7 @@ static bool instantiateMaterialization(Operation *op,
     return op->emitError("NYI: ops with != 1 results"), true;
   }
   if (op->getResult(0)->getType() != state->superVectorType) {
-    return op->emitError("Op does not return a supervector."), true;
+    return op->emitError("op does not return a supervector."), true;
   }
   auto *clone =
       instantiate(b, op, state->hwVectorType, state->substitutionsMap);
@@ -630,7 +630,7 @@ static bool emitSlice(MaterializationState *state,
     for (auto *op : *slice) {
       auto fail = instantiateMaterialization(op, &scopedState);
       if (fail) {
-        op->emitError("Unhandled super-vector materialization failure");
+        op->emitError("unhandled super-vector materialization failure");
         return true;
       }
     }
@@ -766,9 +766,9 @@ void MaterializeVectorsPass::runOnFunction() {
     signalPassFailure();
 }
 
-FunctionPassBase *
+std::unique_ptr<OpPassBase<FuncOp>>
 mlir::createMaterializeVectorsPass(llvm::ArrayRef<int64_t> vectorSize) {
-  return new MaterializeVectorsPass(vectorSize);
+  return std::make_unique<MaterializeVectorsPass>(vectorSize);
 }
 
 static PassRegistration<MaterializeVectorsPass>

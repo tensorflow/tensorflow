@@ -106,7 +106,7 @@ OwnedCubin
 GpuKernelToCubinPass::compilePtxToCubinForTesting(const std::string &ptx,
                                                   FuncOp &function) {
   const char data[] = "CUBIN";
-  return llvm::make_unique<std::vector<char>>(data, data + sizeof(data) - 1);
+  return std::make_unique<std::vector<char>>(data, data + sizeof(data) - 1);
 }
 
 OwnedCubin GpuKernelToCubinPass::convertModuleToCubin(llvm::Module &llvmModule,
@@ -120,7 +120,7 @@ OwnedCubin GpuKernelToCubinPass::convertModuleToCubin(llvm::Module &llvmModule,
     const llvm::Target *target =
         llvm::TargetRegistry::lookupTarget("", triple, error);
     if (target == nullptr) {
-      function.emitError("Cannot initialize target triple");
+      function.emitError("cannot initialize target triple");
       return {};
     }
     targetMachine.reset(
@@ -148,7 +148,7 @@ GpuKernelToCubinPass::translateGpuKernelToCubinAnnotation(FuncOp &function) {
   auto cubin = convertModuleToCubin(*llvmModule, function);
 
   if (!cubin) {
-    return function.emitError("Translation to CUDA binary failed.");
+    return function.emitError("translation to CUDA binary failed.");
   }
 
   function.setAttr(kCubinAnnotation,
@@ -163,9 +163,9 @@ GpuKernelToCubinPass::translateGpuKernelToCubinAnnotation(FuncOp &function) {
   return success();
 }
 
-ModulePassBase *
+std::unique_ptr<OpPassBase<ModuleOp>>
 mlir::createConvertGPUKernelToCubinPass(CubinGenerator cubinGenerator) {
-  return new GpuKernelToCubinPass(cubinGenerator);
+  return std::make_unique<GpuKernelToCubinPass>(cubinGenerator);
 }
 
 static PassRegistration<GpuKernelToCubinPass>

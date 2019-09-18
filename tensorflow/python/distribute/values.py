@@ -378,10 +378,12 @@ class DistributedDelegate(DistributedValues):
 
   def __getattr__(self, name):
     # The '_use_resource_variables' and the attrs starts with '_self' are used
-    # for restoring the saved_model proto. At the point these attrs are queried,
-    # the variable has not been initialized. Thus it should not query those of
-    # the underlying components.
-    if name.startswith("_self_") or name == "_use_resource_variables":
+    # for restoring the saved_model proto, and '_attribute_sentinel' is used for
+    # Layer tracking. At the point these attrs are queried, the variable has not
+    # been initialized. Thus it should not query those of the underlying
+    # components.
+    if name.startswith("_self_") or name in (
+        "_use_resource_variables", "_attribute_sentinel"):
       return super(DistributedDelegate, self).__getattr__(name)
 
     # TODO(priyag): This needs to be made robust against pitfalls from mix use
@@ -594,7 +596,7 @@ DistributedVarOp = collections.namedtuple(
     "DistributedVarOp", ["name", "graph", "traceback", "type"])
 
 
-class DistributedVariable(DistributedDelegate, variables_lib.AbstractVariable):
+class DistributedVariable(DistributedDelegate, variables_lib.Variable):
   """Holds a map from replica to variables."""
   # TODO(josh11b): Support changing the set of variables if e.g. if new
   # devices are joining or a device is to leave.
@@ -859,8 +861,9 @@ class TPUVariableMixin(object):
     if tpu_context is None:
       return self._get_closest().handle
     else:
-      return tpu_context.get_replicated_var_handle(
-          self._handle_id, self._values)
+      return tpu_context.get_replicated_var_handle(self._handle_id,
+                                                   self._values,
+                                                   self._device_map)
 
   @property
   def device(self):
@@ -1089,13 +1092,20 @@ ops.register_tensor_conversion_function(MirroredVariable,
 
 
 def _enclosing_tpu_context():
-  # pylint: disable=protected-access
-  tpu_context = ops.get_default_graph()._get_control_flow_context()
-  # pylint: enable=protected-access
-  while tpu_context is not None and not isinstance(
-      tpu_context, control_flow_ops.XLAControlFlowContext):
-    tpu_context = tpu_context.outer_context
-  return tpu_context
+  """Returns the XLAControlFlowContext, which exists inside a tpu.rewrite()."""
+  graph = ops.get_default_graph()
+  while graph is not None:
+    # pylint: disable=protected-access
+    context_ = graph._get_control_flow_context()
+    # pylint: enable=protected-access
+    while context_ is not None:
+      if isinstance(context_, control_flow_ops.XLAControlFlowContext):
+        return context_
+      context_ = context_.outer_context
+    # This may be a FuncGraph due to defuns or v2 control flow. We need to
+    # find the original graph with the XLAControlFlowContext.
+    graph = getattr(graph, "outer_graph", None)
+  return None
 
 
 def is_distributed_variable(v):
@@ -1210,7 +1220,7 @@ class SyncOnReadVariable(DistributedVariable):
         # when saving.
         tensor = args[0]
         if self._aggregation == vs.VariableAggregation.SUM:
-          tensor *= 1. / len(self.devices)
+          tensor = math_ops.cast(tensor / len(self.devices), self.dtype)
         return control_flow_ops.group(tuple(
             _assign_on_device(v.device, v, tensor) for v in self._values))
       else:
@@ -1383,7 +1393,14 @@ def regroup(device_map, values, wrap_class=PerReplica):
 def select_replica(replica_id, structured):
   """Specialize a nest of regular & per-replica values for one replica."""
   def _get(x):
-    return x.values[replica_id] if isinstance(x, DistributedValues) else x
+    # `DistributedValues` would be sliced according to replica unless it is a
+    # `DistributedVariable` because `DistributedVariable` can be handled
+    # directly in the replica context.
+    if (isinstance(x, DistributedVariable) or
+        not isinstance(x, DistributedValues)):
+      return x
+    else:
+      return x.values[replica_id]
 
   return nest.map_structure(_get, structured)
 

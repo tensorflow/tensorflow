@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -130,6 +132,24 @@ XLA_TEST_F(SlicingTest, TorchGatherDense) {
                            {input_data.get(), index_data.get()});
 }
 
+XLA_TEST_F(SlicingTest, TorchScatterDense) {
+  xla::XlaBuilder builder(TestName());
+
+  xla::XlaOp src, index, input;
+  auto input_data = CreateR2Parameter<int>({{0, 0, 0}, {0, 0, 0}}, 0, "input",
+                                           &builder, &input);
+  auto index_data =
+      CreateR2Parameter<int>({{1, 0}, {1, 2}}, 1, "index", &builder, &index);
+  auto src_data =
+      CreateR2Parameter<int>({{1, 2}, {3, 4}}, 2, "src", &builder, &src);
+  TorchScatterDense(input, index, src, 1,
+                    [](XlaOp l, XlaOp r) { return l + r; });
+
+  ComputeAndCompareR2<int>(
+      &builder, {{2, 1, 0}, {0, 3, 4}},
+      {input_data.get(), index_data.get(), src_data.get()});
+}
+
 XLA_TEST_F(SlicingTest, TorchIndexSelectOn0) {
   xla::XlaBuilder builder(TestName());
 
@@ -177,6 +197,35 @@ XLA_TEST_F(SlicingTest, EmptyIndexSelect) {
   auto index_data = CreateR1Parameter<int>({}, 1, "index", &builder, &index);
   TorchIndexSelect(input, index, 1);
   ComputeAndCompareR2<float>(&builder, {{}, {}, {}},
+                             {input_data.get(), index_data.get()});
+}
+
+XLA_TEST_F(SlicingTest, DoubleEmptyIndexSelect) {
+  xla::XlaBuilder builder(TestName());
+
+  xla::XlaOp input, index;
+  Literal l(ShapeUtil::MakeShape(F32, {0, 1, 2, 0}));
+  Literal i(ShapeUtil::MakeShape(S32, {0}));
+  auto input_data =
+      CreateParameterAndTransferLiteral(0, l, "input", &builder, &input);
+  auto index_data =
+      CreateParameterAndTransferLiteral(1, i, "index", &builder, &index);
+  TorchIndexSelect(input, index, 0);
+  ComputeAndCompareLiteral(&builder, l, {input_data.get(), index_data.get()});
+}
+
+XLA_TEST_F(SlicingTest, EmptyIndexSelectNonZero) {
+  xla::XlaBuilder builder(TestName());
+
+  xla::XlaOp input, index;
+  Literal l(ShapeUtil::MakeShape(F32, {0, 2}));
+  auto input_data =
+      CreateParameterAndTransferLiteral(0, l, "input", &builder, &input);
+  auto index_data =
+      CreateR1Parameter<int>({0, 0, 0}, 1, "index", &builder, &index);
+  TorchIndexSelect(input, index, 0);
+  ComputeAndCompareR2<float>(&builder,
+                             {{0.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f}},
                              {input_data.get(), index_data.get()});
 }
 

@@ -19,10 +19,10 @@
 
 #include "mlir/Dialect/FxpMathOps/FxpMathOps.h"
 #include "mlir/Dialect/FxpMathOps/Passes.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 
 using namespace mlir;
 using namespace mlir::fxpmath;
@@ -372,7 +372,7 @@ void LowerUniformRealMathPass::runOnFunction() {
   applyPatternsGreedily(fn, patterns);
 }
 
-FunctionPassBase *mlir::fxpmath::createLowerUniformRealMathPass() {
+OpPassBase<FuncOp> *mlir::fxpmath::createLowerUniformRealMathPass() {
   return new LowerUniformRealMathPass();
 }
 
@@ -392,7 +392,7 @@ void LowerUniformCastsPass::runOnFunction() {
   applyPatternsGreedily(fn, patterns);
 }
 
-FunctionPassBase *mlir::fxpmath::createLowerUniformCastsPass() {
+OpPassBase<FuncOp> *mlir::fxpmath::createLowerUniformCastsPass() {
   return new LowerUniformCastsPass();
 }
 

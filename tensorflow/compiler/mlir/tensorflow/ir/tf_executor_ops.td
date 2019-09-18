@@ -121,11 +121,12 @@ def TfExecutor_GraphOp : TfExecutor_Op<"graph",
 
   let regions = (region SizedRegion<1>:$body);
 
-  let hasCanonicalizer = 1;
-
   let extraClassDeclaration = [{
     Block &GetBody() { return getOperation()->getRegion(0).front(); }
+    FetchOp GetFetch();
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TfExecutor_FetchOp : TfExecutor_Op<"fetch",
@@ -204,7 +205,12 @@ def TfExecutor_IslandOp : TfExecutor_Op<"island",
 
   let extraClassDeclaration = [{
     Block &GetBody() { return getOperation()->getRegion(0).front(); }
+    YieldOp GetYield();
   }];
+
+  let hasCanonicalizer = 1;
+
+  let hasFolder = 1;
 }
 
 def TfExecutor_YieldOp : TfExecutor_Op<"yield",
@@ -266,8 +272,8 @@ def TfExecutor_SwitchOp : TfExecutor_Op<"Switch",
   );
 
   let results = (outs
-    AnyType: $trueOutput,
     AnyType: $falseOutput,
+    AnyType: $trueOutput,
     TfeControlType: $control
   );
 
@@ -303,7 +309,7 @@ def TfExecutor_SwitchNOp : TfExecutor_Op<"SwitchN",
 
   let arguments = (ins
     AnyType:$data,
-    I32:$index,
+    TensorOf<[I32]>:$index,
     // Optional extra control inputs.
     Variadic<TfeControlType>:$controlInputs,
     I64Attr:$num_outs
@@ -345,7 +351,7 @@ def TfExecutor_MergeOp : TfExecutor_Op<"Merge",
 
   let results = (outs
     AnyTensor:$output,
-    TensorOf<[I32]>:$valueIndex,
+    TensorOf<[I32]>:$value_index,
     TfeControlType:$control
   );
 }
@@ -455,6 +461,13 @@ def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source",
       result->attributes.append(attributes.begin(), attributes.end());
     }]>
    ];
+
+  let extraClassDeclaration = [{
+    NextIterationSinkOp GetSink() {
+      return cast<NextIterationSinkOp>(*token()->user_begin());
+    }
+  }];
+
 }
 
 
@@ -580,6 +593,8 @@ def TfExecutor_ControlTriggerOp : TfExecutor_Op<"ControlTrigger",
   );
 
   let verifier = ?;
+
+  let hasCanonicalizer = 1;
 
   let builders = [OpBuilder<
     "Builder *builder, OperationState *result, "

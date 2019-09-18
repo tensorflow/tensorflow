@@ -85,7 +85,7 @@ def make_decorator(target,
   """
   if decorator_name is None:
     frame = tf_stack.extract_stack(limit=2)[0]
-    decorator_name = frame[2]  # Caller's name
+    decorator_name = frame.name
   decorator = TFDecorator(decorator_name, target, decorator_doc,
                           decorator_argspec)
   setattr(decorator_func, '_tf_decorator', decorator)

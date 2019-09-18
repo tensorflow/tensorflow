@@ -188,7 +188,7 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrInt32(
 TF_CAPI_EXPORT TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context,
                                             int index, TF_DataType dtype,
                                             int64_t* dims, int num_dims,
-                                            size_t len);
+                                            size_t len, TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

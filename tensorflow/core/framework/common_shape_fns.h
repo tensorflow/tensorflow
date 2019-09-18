@@ -306,6 +306,7 @@ Status QuantizedConcatV2Shape(InferenceContext* c, int num_inputs_to_concat);
 Status BroadcastBinaryOpOutputShapeFnHelper(InferenceContext* c,
                                             ShapeHandle shape_x,
                                             ShapeHandle shape_y,
+                                            bool incompatible_shape_error,
                                             ShapeHandle* out);
 
 // Shape function for binary operators that broadcast their inputs
@@ -313,8 +314,8 @@ Status BroadcastBinaryOpOutputShapeFnHelper(InferenceContext* c,
 inline Status BroadcastBinaryOpOutputShapeFn(InferenceContext* c,
                                              int output_index) {
   ShapeHandle out;
-  TF_RETURN_IF_ERROR(
-      BroadcastBinaryOpOutputShapeFnHelper(c, c->input(0), c->input(1), &out));
+  TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(
+      c, c->input(0), c->input(1), true, &out));
   c->set_output(output_index, out);
   return Status::OK();
 }

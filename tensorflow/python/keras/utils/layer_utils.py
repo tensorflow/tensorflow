@@ -62,7 +62,7 @@ def get_source_inputs(tensor, layer=None, node_index=None):
         previous_sources = get_source_inputs(tensor, layer, node_index)
         # Avoid input redundancy.
         for x in previous_sources:
-          if x not in source_tensors:
+          if all(x is not t for t in source_tensors):
             source_tensors.append(x)
       return source_tensors
 
@@ -235,7 +235,7 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
   if hasattr(model, '_collected_trainable_weights'):
     trainable_count = count_params(model._collected_trainable_weights)
   else:
-    trainable_count = count_params(model._unique_trainable_weights)
+    trainable_count = count_params(model.trainable_weights)
 
   non_trainable_count = count_params(model.non_trainable_weights)
 

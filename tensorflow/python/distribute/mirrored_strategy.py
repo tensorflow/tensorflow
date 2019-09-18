@@ -42,6 +42,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
@@ -420,6 +421,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     self._inferred_cross_device_ops = None if self._cross_device_ops else (
         cross_device_ops_lib.choose_the_best(devices))
     self._host_input_device = numpy_dataset.SingleDevice("/cpu:0")
+    self._is_multi_worker_training = False
 
   def _initialize_multi_worker(self, devices):
     """Initializes the object for multi-worker training."""
@@ -446,6 +448,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     self._device_map = values.ReplicaDeviceMap(devices)
     self._input_workers = input_lib.InputWorkers(
         self._device_map, worker_devices)
+    self._is_multi_worker_training = True
 
     if len(workers) > 1:
       if not isinstance(self._cross_device_ops,
@@ -795,6 +798,10 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     """
     return True
 
+  def _in_multi_worker_mode(self):
+    """Whether this strategy indicates working in multi-worker settings."""
+    return False
+
 
 class _MirroredReplicaThread(threading.Thread):
   """A thread that runs() a function on a device."""
@@ -836,7 +843,7 @@ class _MirroredReplicaThread(threading.Thread):
     context.ensure_initialized()
     ctx = context.context()
     self.in_eager = ctx.executing_eagerly()
-    self.record_thread_local_context_fields()
+    self.record_thread_local_summary_state()
     self.context_device_policy = (
         pywrap_tensorflow.TFE_ContextGetDevicePlacementPolicy(
             ctx._context_handle))
@@ -862,7 +869,7 @@ class _MirroredReplicaThread(threading.Thread):
     try:
       if self.coord.should_stop():
         return
-      self.restore_thread_local_context_fields()
+      self.restore_thread_local_summary_state()
       # TODO(josh11b): Use current logical device instead of 0 here.
       with self.coord.stop_on_exception(), \
           _enter_graph(self._init_graph, self._init_in_eager), \
@@ -882,23 +889,25 @@ class _MirroredReplicaThread(threading.Thread):
     finally:
       self.has_paused.set()
 
-  def record_thread_local_context_fields(self):
-    """Record thread local fields of context.context() in self."""
-    ctx = context.context()
-    self._summary_step = ctx.summary_step
-    self._summary_writer = ctx.summary_writer
-    self._summary_recording = ctx.summary_recording
+  def record_thread_local_summary_state(self):
+    """Record the thread local summary state in self."""
+    # TODO(slebedev): is this still relevant? the referenced bug is closed.
+    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
+    self._summary_step = summary_state.step
+    self._summary_writer = summary_state.writer
+    self._summary_recording = summary_state.is_recording
     self._summary_recording_distribution_strategy = (
-        ctx.summary_recording_distribution_strategy)
+        summary_state.is_recording_distribution_strategy)
     # TODO(b/125892694): record other fields in EagerContext.
 
-  def restore_thread_local_context_fields(self):
-    """Restore thread local fields of context.context() from self."""
-    ctx = context.context()
-    ctx.summary_step = self._summary_step
-    ctx.summary_writer = self._summary_writer
-    ctx.summary_recording = self._summary_recording
-    ctx.summary_recording_distribution_strategy = (
+  def restore_thread_local_summary_state(self):
+    """Restore thread local summary state from self."""
+    # TODO(slebedev): is this still relevant? the referenced bug is closed.
+    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
+    summary_state.step = self._summary_step
+    summary_state.writer = self._summary_writer
+    summary_state.is_recording = self._summary_recording
+    summary_state.is_recording_distribution_strategy = (
         self._summary_recording_distribution_strategy)
     # TODO(b/125892694): restore other fields in EagerContext.
 

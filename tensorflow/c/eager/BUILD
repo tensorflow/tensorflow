@@ -9,7 +9,6 @@ load(
 )
 load(
     "//tensorflow/core/platform:default/build_config.bzl",
-    "tf_additional_device_tracer_test_flags",
     "tf_kernel_tests_linkstatic",
 )
 load(
@@ -27,6 +26,7 @@ tf_cuda_library(
         "c_api.cc",
         "c_api_debug.cc",
         "c_api_experimental.h",
+        "c_api_internal.cc",
         "c_api_internal.h",
     ],
     hdrs = ["c_api.h"],
@@ -37,6 +37,7 @@ tf_cuda_library(
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            "@com_google_absl//absl/container:fixed_array",
             "//tensorflow/c:c_api",
             "//tensorflow/c:c_api_internal",
             "//tensorflow/core:core_cpu",
@@ -79,6 +80,7 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core:gpu_runtime",
     ],
+    alwayslink = 1,
 )
 
 tf_cuda_library(
@@ -226,6 +228,7 @@ tf_cuda_library(
         "//tensorflow/core/profiler/rpc/client:capture_profile",
         "//tensorflow/core:gpu_runtime",
     ],
+    alwayslink = 1,
 )
 
 tf_cuda_cc_test(
@@ -234,8 +237,7 @@ tf_cuda_cc_test(
     srcs = [
         "c_api_experimental_test.cc",
     ],
-    args =
-        ["--heap_check=local"] + tf_additional_device_tracer_test_flags(),
+    args = ["--heap_check=local"],
     extra_copts = tfe_xla_copts(),
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],

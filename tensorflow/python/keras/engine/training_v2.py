@@ -49,7 +49,8 @@ _ADAPTER_FOR_VALIDATION_SPLIT = [data_adapter.TensorLikeDataAdapter]
 # dataset/generate/sequence input will be peeked and processed by
 # model._standardize_user_data()
 _ADAPTER_FOR_STANDARDIZE_USER_DATA = [
-    data_adapter.TensorLikeDataAdapter, data_adapter.DatasetAdapter
+    data_adapter.TensorLikeDataAdapter, data_adapter.DatasetAdapter,
+    data_adapter.CompositeTensorDataAdapter
 ]
 
 
@@ -191,13 +192,19 @@ class Loop(training_utils.TrainingLoop):
       self, model, x=None, y=None, batch_size=None, epochs=1, verbose=1,
       callbacks=None, validation_split=0., validation_data=None, shuffle=True,
       class_weight=None, sample_weight=None, initial_epoch=0,
-      steps_per_epoch=None, validation_steps=None, validation_freq=1, **kwargs):
+      steps_per_epoch=None, validation_steps=None, validation_freq=1,
+      max_queue_size=10, workers=1, use_multiprocessing=False, **kwargs):
     batch_size = model._validate_or_infer_batch_size(
         batch_size, steps_per_epoch, x)
 
     strategy = _get_distribution_strategy(model)
     batch_size, steps_per_epoch = dist_utils.process_batch_and_step_size(
-        strategy, x, batch_size, steps_per_epoch, ModeKeys.TRAIN)
+        strategy,
+        x,
+        batch_size,
+        steps_per_epoch,
+        ModeKeys.TRAIN,
+        validation_split=validation_split)
     dist_utils.validate_callbacks(input_callbacks=callbacks,
                                   optimizer=model.optimizer)
     # Enter tf.distribute.Strategy scope.
@@ -207,6 +214,7 @@ class Loop(training_utils.TrainingLoop):
           x,
           y,
           batch_size=batch_size,
+          epochs=epochs,
           sample_weights=sample_weight,
           class_weights=class_weight,
           validation_split=validation_split,
@@ -214,13 +222,20 @@ class Loop(training_utils.TrainingLoop):
           shuffle=shuffle,
           validation_data=validation_data,
           validation_steps=validation_steps,
-          distribution_strategy=strategy)
+          distribution_strategy=strategy,
+          max_queue_size=max_queue_size,
+          workers=workers,
+          use_multiprocessing=use_multiprocessing)
 
       total_samples = _get_total_number_of_samples(training_data_adapter)
       use_sample = total_samples is not None
       do_validation = (validation_adapter is not None)
 
+      recreate_training_iterator = (
+          training_data_adapter.should_recreate_iterator(steps_per_epoch))
       if not steps_per_epoch:
+        # TODO(b/139762795): Add step inference for when steps is None to
+        # prevent end of sequence warning message.
         steps_per_epoch = training_data_adapter.get_size()
 
       # tf.print('{} on {} steps.'.format(ModeKeys.TRAIN, steps_per_epoch))
@@ -247,47 +262,45 @@ class Loop(training_utils.TrainingLoop):
           model, ModeKeys.TRAIN)
 
       training_data_iter = None
-      # Only recreate iterator when the data has a fixed length, which will be
-      # fully consumed every epoch, or has a unknown length (dataset, generator)
-      # and will be fully consumed (steps_per_epoch is None)
-      recreate_training_iterator = (training_data_adapter.get_size() is not None
-                                    or steps_per_epoch is None)
-
       if do_validation:
+        validation_dataset = validation_adapter.get_dataset()
         if not validation_steps:
-          validation_steps = validation_adapter.get_size()
+          # Raise an error if validation_steps isn't specified but the
+          # validation dataset is infinite.
+          validation_steps = (
+              validation_adapter.get_size() or
+              training_utils.infer_steps_for_dataset(
+                  model,
+                  validation_dataset,
+                  validation_steps,
+                  steps_name='validation_steps'))
         eval_function = training_v2_utils._get_or_make_execution_function(
             model, ModeKeys.TEST)
         eval_data_iter = None
-
-        validation_dataset = validation_adapter.get_dataset()
-        # Raise an error if validation_steps isn't specified but the validation
-        # dataset is infinite.
-        # TODO(scottzhu): This check should probably happen in the adapter
-        training_utils.infer_steps_for_dataset(
-            model,
-            validation_dataset,
-            validation_steps,
-            steps_name='validation_steps',
-            epochs=0)
         validation_dataset = strategy.experimental_distribute_dataset(
             validation_dataset)
+        val_total_samples = _get_total_number_of_samples(validation_adapter)
+      else:
+        val_total_samples = None
 
-      callbacks = cbks.configure_callbacks(
+      if verbose and (total_samples or steps_per_epoch):
+        _print_train_info(total_samples, steps_per_epoch, val_total_samples,
+                          validation_steps)
+
+      training_callbacks = cbks.configure_callbacks(
           callbacks,
           model,
           do_validation=do_validation,
           batch_size=batch_size,
           epochs=epochs,
           steps_per_epoch=steps_per_epoch,
-          samples=total_samples,
+          samples=total_samples or steps_per_epoch,
           count_mode='samples' if use_sample else 'steps',
           verbose=0,  # Handle ProgBarLogger separately in this loop.
           mode=ModeKeys.TRAIN)
 
-      with training_context.on_start(
-          model, callbacks, use_sample, verbose, ModeKeys.TRAIN):
-        # TODO(scottzhu): Handle TPUStrategy training loop
+      with training_context.on_start(model, training_callbacks, use_sample,
+                                     verbose, ModeKeys.TRAIN):
         for epoch in range(initial_epoch, epochs):
           if training_context.callbacks.model.stop_training:
             break
@@ -321,7 +334,7 @@ class Loop(training_utils.TrainingLoop):
             # Evaluation
             if (do_validation and
                 training_utils.should_run_validation(validation_freq, epoch) and
-                not callbacks.model.stop_training):
+                not training_callbacks.model.stop_training):
               if (eval_data_iter is not None and
                   distribution_strategy_context.has_strategy()):
                 # TODO(kaftan): remove this when MultiDeviceIterator is a
@@ -330,11 +343,24 @@ class Loop(training_utils.TrainingLoop):
               else:
                 eval_data_iter = iter(validation_dataset)
 
-              val_total_samples = _get_total_number_of_samples(
-                  validation_adapter)
+              validation_callbacks = cbks.configure_callbacks(
+                  training_callbacks,
+                  model,
+                  batch_size=batch_size,
+                  epochs=1,
+                  steps_per_epoch=validation_steps,
+                  samples=val_total_samples or validation_steps,
+                  count_mode='samples' if use_sample else 'steps',
+                  verbose=0,  # Handle ProgBarLogger separately in this loop.
+                  mode=ModeKeys.TEST)
+
               eval_context = TrainingContext()
               with eval_context.on_start(
-                  model, callbacks, use_sample, verbose=0, mode=ModeKeys.TEST):
+                  model,
+                  validation_callbacks,
+                  use_sample,
+                  verbose=0,
+                  mode=ModeKeys.TEST):
                 with eval_context.on_epoch(epoch, ModeKeys.TEST):
                   model.reset_metrics()
                   eval_result = run_one_epoch(
@@ -356,7 +382,8 @@ class Loop(training_utils.TrainingLoop):
 
   def _model_iteration(
       self, model, mode, x=None, y=None, batch_size=None, verbose=1,
-      sample_weight=None, steps=None, callbacks=None, **kwargs):
+      sample_weight=None, steps=None, callbacks=None, max_queue_size=10,
+      workers=1, use_multiprocessing=False, **kwargs):
 
     batch_size = model._validate_or_infer_batch_size(
         batch_size, steps, x)
@@ -369,27 +396,28 @@ class Loop(training_utils.TrainingLoop):
     with strategy.scope():
       adapter = _process_inputs(
           model,
+          mode,
           x,
           y,
           batch_size=batch_size,
           sample_weights=sample_weight,
           steps=steps,
-          distribution_strategy=strategy)
+          distribution_strategy=strategy,
+          max_queue_size=max_queue_size,
+          workers=workers,
+          use_multiprocessing=use_multiprocessing)
       total_samples = _get_total_number_of_samples(adapter)
       use_sample = total_samples is not None
+      dataset = adapter.get_dataset()
 
       if not steps:
-        steps = adapter.get_size()
+        # Raise an error if `steps` isn't specified but the dataset
+        # is infinite.
+        steps = adapter.get_size() or training_utils.infer_steps_for_dataset(
+            model, dataset, steps, steps_name='steps')
 
       # tf.print('{} on {} steps.'.format(ModeKeys.TRAIN, steps_per_epoch))
       training_context = TrainingContext()
-
-      dataset = adapter.get_dataset()
-      # Raise an error if `steps` isn't specified but the dataset
-      # is infinite.
-      # TODO(scottzhu): This check should probably happen in the adapter
-      training_utils.infer_steps_for_dataset(
-          model, dataset, steps, steps_name='steps', epochs=0)
       dataset = strategy.experimental_distribute_dataset(dataset)
 
       execution_function = training_v2_utils._get_or_make_execution_function(
@@ -411,7 +439,6 @@ class Loop(training_utils.TrainingLoop):
 
       with training_context.on_start(
           model, callbacks, use_sample, verbose, mode):
-        # TODO(scottzhu): Handle TPUStrategy training loop
         with training_context.on_epoch(0, mode) as epoch_logs:
           model.reset_metrics()
           result = run_one_epoch(
@@ -434,16 +461,21 @@ class Loop(training_utils.TrainingLoop):
 
   def evaluate(
       self, model, x=None, y=None, batch_size=None, verbose=1,
-      sample_weight=None, steps=None, callbacks=None, **kwargs):
+      sample_weight=None, steps=None, callbacks=None, max_queue_size=10,
+      workers=1, use_multiprocessing=False, **kwargs):
     return self._model_iteration(
         model, ModeKeys.TEST, x=x, y=y, batch_size=batch_size, verbose=verbose,
-        sample_weight=sample_weight, steps=steps, callbacks=callbacks, **kwargs)
+        sample_weight=sample_weight, steps=steps, callbacks=callbacks,
+        max_queue_size=max_queue_size, workers=workers,
+        use_multiprocessing=use_multiprocessing, **kwargs)
 
   def predict(self, model, x, batch_size=None, verbose=0, steps=None,
-              callbacks=None, **kwargs):
+              callbacks=None, max_queue_size=10, workers=1,
+              use_multiprocessing=False, **kwargs):
     return self._model_iteration(
         model, ModeKeys.PREDICT, x=x, batch_size=batch_size, verbose=verbose,
-        steps=steps, callbacks=callbacks, **kwargs)
+        steps=steps, callbacks=callbacks, max_queue_size=max_queue_size,
+        workers=workers, use_multiprocessing=use_multiprocessing, **kwargs)
 
 
 def _get_distribution_strategy(model):
@@ -457,11 +489,22 @@ def _get_distribution_strategy(model):
   return strategy
 
 
-def _process_training_inputs(model, x, y, batch_size=None,
-                             sample_weights=None, class_weights=None,
-                             steps_per_epoch=None, validation_split=0.,
-                             validation_data=None, validation_steps=None,
-                             shuffle=True, distribution_strategy=None):
+def _process_training_inputs(model,
+                             x,
+                             y,
+                             batch_size=None,
+                             epochs=1,
+                             sample_weights=None,
+                             class_weights=None,
+                             steps_per_epoch=None,
+                             validation_split=0.,
+                             validation_data=None,
+                             validation_steps=None,
+                             shuffle=True,
+                             distribution_strategy=None,
+                             max_queue_size=10,
+                             workers=1,
+                             use_multiprocessing=False):
   """Process the data input for fit() with respect to validation_split."""
   if validation_split and 0. < validation_split < 1. and validation_data:
     raise ValueError('validation_data and validation_split cannot be used '
@@ -480,53 +523,95 @@ def _process_training_inputs(model, x, y, batch_size=None,
     # Retrieve the training section from x and y, and then construct dataset
     # from it.
     x, y, sample_weights = model._standardize_user_data(
-        x, y, sample_weight=sample_weights,
+        x,
+        y,
+        sample_weight=sample_weights,
         class_weight=class_weights,
         batch_size=batch_size,
-        check_steps=True,
+        check_steps=False,
         steps=steps_per_epoch)
     (x, y, sample_weights,
      val_x, val_y,
      val_sample_weights) = training_utils.split_training_and_validation_data(
          x, y, sample_weights, validation_split)
-    train_adapter = adapter_cls(x, y, batch_size=batch_size,
-                                sample_weights=sample_weights, shuffle=shuffle,
-                                distribution_strategy=distribution_strategy)
-    val_adapter = adapter_cls(val_x, val_y,
-                              sample_weights=val_sample_weights,
-                              batch_size=batch_size,
-                              distribution_strategy=distribution_strategy)
+
+    sample_weight_modes = [
+        e.sample_weight_mode for e in model._training_endpoints
+    ]
+    train_adapter = adapter_cls(
+        x,
+        y,
+        batch_size=batch_size,
+        epochs=epochs,
+        sample_weights=sample_weights,
+        sample_weight_modes=sample_weight_modes,
+        shuffle=shuffle,
+        distribution_strategy=distribution_strategy)
+
+    val_adapter = adapter_cls(
+        val_x,
+        val_y,
+        sample_weights=val_sample_weights,
+        sample_weight_modes=sample_weight_modes,
+        batch_size=batch_size,
+        distribution_strategy=distribution_strategy)
   else:
-    train_adapter = _process_inputs(model, x, y, sample_weights=sample_weights,
-                                    batch_size=batch_size,
-                                    class_weights=class_weights,
-                                    shuffle=shuffle, steps=steps_per_epoch,
-                                    distribution_strategy=distribution_strategy)
+    train_adapter = _process_inputs(
+        model,
+        ModeKeys.TRAIN,
+        x,
+        y,
+        sample_weights=sample_weights,
+        batch_size=batch_size,
+        epochs=epochs,
+        class_weights=class_weights,
+        shuffle=shuffle,
+        steps=steps_per_epoch,
+        distribution_strategy=distribution_strategy,
+        max_queue_size=max_queue_size,
+        workers=workers,
+        use_multiprocessing=use_multiprocessing)
     val_adapter = None
     if validation_data:
       (val_x, val_y,
        val_sample_weights) = training_utils.unpack_validation_data(
            validation_data)
-      # For eval data, we use the training data batch_size it was unknown.
+      # For eval data, we use a representative batch size of the
+      # training data if batch_size was unknown.
       # This is useful for generator/sequence training data input with numpy
       # validation data input.
       if not batch_size:
-        batch_size = train_adapter.batch_size()
-      val_adapter = _process_inputs(model, val_x, val_y,
-                                    sample_weights=val_sample_weights,
-                                    batch_size=batch_size,
-                                    class_weights=class_weights,
-                                    steps=validation_steps,
-                                    distribution_strategy=distribution_strategy)
+        batch_size = train_adapter.representative_batch_size()
+      val_adapter = _process_inputs(
+          model,
+          ModeKeys.TEST,
+          val_x,
+          val_y,
+          sample_weights=val_sample_weights,
+          batch_size=batch_size,
+          class_weights=class_weights,
+          steps=validation_steps,
+          distribution_strategy=distribution_strategy)
     elif validation_steps:
       raise ValueError('`validation_steps` should not be specified if '
                        '`validation_data` is None.')
   return train_adapter, val_adapter
 
 
-def _process_inputs(model, x, y, batch_size=None, sample_weights=None,
-                    class_weights=None, shuffle=False, steps=None,
-                    distribution_strategy=None):
+def _process_inputs(model,
+                    mode,
+                    x,
+                    y,
+                    batch_size=None,
+                    epochs=1,
+                    sample_weights=None,
+                    class_weights=None,
+                    shuffle=False,
+                    steps=None,
+                    distribution_strategy=None,
+                    max_queue_size=10,
+                    workers=1,
+                    use_multiprocessing=False):
   """Process the inputs for fit/eval/predict()."""
   adapter_cls = data_adapter.select_data_adapter(x, y)
   if adapter_cls in _ADAPTER_FOR_STANDARDIZE_USER_DATA:
@@ -536,11 +621,29 @@ def _process_inputs(model, x, y, batch_size=None, sample_weights=None,
         sample_weight=sample_weights,
         class_weight=class_weights,
         batch_size=batch_size,
-        check_steps=True,
+        check_steps=False,
         steps=steps)
-  adapter = adapter_cls(x, y, batch_size=batch_size, steps=steps,
-                        sample_weights=sample_weights, shuffle=shuffle,
-                        distribution_strategy=distribution_strategy)
+
+  if mode == ModeKeys.PREDICT:
+    sample_weight_modes = None
+  else:
+    sample_weight_modes = [
+        e.sample_weight_mode for e in model._training_endpoints
+    ]
+
+  adapter = adapter_cls(
+      x,
+      y,
+      batch_size=batch_size,
+      epochs=epochs,
+      steps=steps,
+      sample_weights=sample_weights,
+      sample_weight_modes=sample_weight_modes,
+      shuffle=shuffle,
+      distribution_strategy=distribution_strategy,
+      max_queue_size=max_queue_size,
+      workers=workers,
+      use_multiprocessing=use_multiprocessing)
   # As a fallback for the data type that does not work with
   # _standardize_user_data, use the _prepare_model_with_inputs.
   if adapter_cls not in _ADAPTER_FOR_STANDARDIZE_USER_DATA:
@@ -569,6 +672,18 @@ def _aggregate_predict_results(strategy, batch_outs, model):
   return total_batch_outs
 
 
+def _print_train_info(total_samples, steps, val_total_samples, val_steps):
+  increment = 'samples' if total_samples else 'steps'
+  conjunction = 'on' if total_samples else 'for'
+  msg = 'Train {} {} {}'.format(conjunction, total_samples or steps, increment)
+  if val_total_samples or val_steps:
+    increment = 'samples' if val_total_samples else 'steps'
+    conjunction = 'on' if val_total_samples else 'for'
+    msg += ', validate {} {} {}'.format(conjunction, val_total_samples or
+                                        val_steps, increment)
+  print(msg)
+
+
 class TrainingContext(object):
   """Utility object that wrap around callbacks and progress bars."""
 
@@ -591,6 +706,7 @@ class TrainingContext(object):
 
     try:
       yield
+      model._successful_loop_finish = True
     finally:
       # End of all epochs
       self.callbacks._call_end_hook(mode)

@@ -737,6 +737,21 @@ def _ConstantValue(tensor, partial):
         return None
       values.append(value)
     return np.array(values)
+  elif tensor.op.type == "Unpack":
+    # We can't handle axis != 0 Unpacks at the moment.
+    if tensor.op.get_attr("axis") != 0:
+      return None
+    value = constant_value(tensor.op.inputs[0], partial)
+    if value is None:
+      return None
+    return value[tensor.value_index]
+  elif tensor.op.type == "Split":
+    dim = constant_value(tensor.op.inputs[0])
+    value = constant_value(tensor.op.inputs[1], partial)
+    if value is None or dim is None:
+      return None
+    split = np.split(value, tensor.op.get_attr("num_split"), dim)
+    return split[tensor.value_index]
   elif tensor.op.type == "Fill":
     fill_shape = tensor.shape
     fill_value = constant_value(tensor.op.inputs[1])
@@ -760,6 +775,8 @@ def _ConstantValue(tensor, partial):
     if value2 is None:
       return None
     return np.not_equal(value1, value2)
+  elif tensor.op.type == "StopGradient":
+    return constant_value(tensor.op.inputs[0], partial)
   else:
     return None
 
@@ -964,10 +981,40 @@ def shape_tensor(shape):  # pylint: disable=invalid-name
   return ops.convert_to_tensor(shape, dtype=dtype, name="shape")
 
 
+# DO NOT USE: For testing only.
+_ENABLE_MAYBE_SET_STATIC_SHAPE = True
+
+
 def maybe_set_static_shape(tensor, shape):  # pylint: disable=invalid-name
-  if (not context.executing_eagerly() and
+  """Sets the shape of `tensor` to the `shape`'s constant value, if inferrable.
+
+  This is a temporary workaround to fix shape inference across functional op
+  boundaries. E.g.
+
+  ```python
+  shape = tf.constant([3])
+  @tf.function
+  def f():
+    u = tf.random_uniform(shape)
+    return u
+  ```
+
+  If we were to rely solely on C++ shape inference, the shape of `u` inside
+  `f` would be unknown because C++ shape inference is not aware of the outer
+  graph and all it sees is a Placeholder node when backtracing the captured
+  tensor for `shape`. `maybe_set_static_shape` computes the static shape value
+  of `shape` by traversing the `FuncGraph` boundaries and sets the correct
+  shape.
+
+  A longer term solution would be to fix C++ shape inference.
+
+  Args:
+    tensor: A tensor.
+    shape: A shape tensor.
+  """
+  if (_ENABLE_MAYBE_SET_STATIC_SHAPE and not context.executing_eagerly() and
       ops.get_default_graph().building_function and
-      not tensor.shape.is_fully_defined()):
+      not tensor.shape.is_fully_defined() and is_tensor(shape)):
     shape = shape_tensor(shape)
     const_shape = constant_value_as_shape(shape)
     tensor.set_shape(const_shape)

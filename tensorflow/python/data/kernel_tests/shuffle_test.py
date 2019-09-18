@@ -25,12 +25,14 @@ import numpy as np
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -272,6 +274,41 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
       results.append(elem.numpy())
 
     self.assertAllEqual(results, range(10))
+
+  @combinations.generate(
+      combinations.times(
+          combinations.combine(tf_api_version=[1, 2], mode="eager"),
+          combinations.combine(reshuffle=[True, False], seed=[None, 42])))
+  def testReshuffleSeparateTransformations(self, reshuffle, seed):
+    dataset = dataset_ops.Dataset.range(10)
+
+    first_epoch = []
+    for elem in dataset.shuffle(
+        10, seed=seed, reshuffle_each_iteration=reshuffle):
+      first_epoch.append(elem.numpy())
+
+    second_epoch = []
+    for elem in dataset.shuffle(
+        10, seed=seed, reshuffle_each_iteration=reshuffle):
+      second_epoch.append(elem.numpy())
+
+    self.assertEqual(first_epoch != second_epoch, seed is None)
+
+  @combinations.generate(combinations.combine(tf_api_version=2, mode="eager"))
+  def testShuffleV2InFunction(self):
+    self.skipTest("b/141256846")
+    counter_var = variables.Variable(0)
+
+    @function.defun
+    def consume():
+      ds = dataset_ops.Dataset.range(10)
+      ds = ds.shuffle(1)
+      for _ in ds:
+        counter_var.assign(counter_var + 1)
+
+    consume()
+    self.assertAllEqual(self.evaluate(counter_var), 10)
+
 
 if __name__ == "__main__":
   test.main()

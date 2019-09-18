@@ -21,12 +21,12 @@ limitations under the License.
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -142,7 +142,7 @@ void ExecutorToControlDialectConversion::runOnFunction() {
     if (isa<tf_executor::SwitchOp>(op)) {
       new_op_name = "_tf.Switch";
     } else if (isa<tf_executor::SwitchNOp>(op)) {
-      new_op_name = "_tf.SwitchN";
+      new_op_name = "_tf._SwitchN";
     } else if (isa<tf_executor::MergeOp>(op)) {
       new_op_name = "_tf.Merge";
     } else if (isa<tf_executor::NextIterationSourceOp>(op)) {
@@ -199,8 +199,9 @@ void ExecutorToControlDialectConversion::runOnFunction() {
   graph.erase();
 }
 
-FunctionPassBase *CreateTFExecutorToControlDialectConversion() {
-  return new ExecutorToControlDialectConversion();
+std::unique_ptr<OpPassBase<FuncOp>>
+CreateTFExecutorToControlDialectConversion() {
+  return std::make_unique<ExecutorToControlDialectConversion>();
 }
 
 }  // namespace mlir

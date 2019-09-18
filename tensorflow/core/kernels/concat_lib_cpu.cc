@@ -78,10 +78,10 @@ REGISTER(uint64)
 
 #if defined(IS_MOBILE_PLATFORM) && !defined(SUPPORT_SELECTIVE_REGISTRATION) && \
     !defined(__ANDROID_TYPES_FULL__)
-    // Primarily used for SavedModel support on mobile. Registering it here only
-    // if __ANDROID_TYPES_FULL__ is not defined (which already registers string)
-    // to avoid duplicate registration.
-    REGISTER(string);
+// Primarily used for SavedModel support on mobile. Registering it here only
+// if __ANDROID_TYPES_FULL__ is not defined (which already registers string)
+// to avoid duplicate registration.
+REGISTER(tstring);
 #endif  // defined(IS_MOBILE_PLATFORM) &&
         // !defined(SUPPORT_SELECTIVE_REGISTRATION) &&
         // !defined(__ANDROID_TYPES_FULL__)

@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <iterator>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
@@ -25,18 +26,21 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/Dialect/Traits.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
+#include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
 #include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
+#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/Transforms/FoldUtils.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -45,17 +49,30 @@ namespace {
 
 // If the given tensor has elements of type variant, then returns a new type
 // after dropping subtypes info. Otherwise, returns the original type as is.
-Type DropVariantSubTypes(Type ty) {
-  ShapedType shaped_ty = ty.cast<ShapedType>();
-  Type element_ty = shaped_ty.getElementType();
+ShapedType DropVariantSubTypes(ShapedType ty) {
+  Type element_ty = ty.getElementType();
   if (!element_ty.isa<TF::VariantType>()) return ty;
 
   Type variant_ty = TF::VariantType::get(ty.getContext());
-  if (shaped_ty.hasRank()) {
-    return RankedTensorType::get(shaped_ty.getShape(), variant_ty);
+  if (ty.hasRank()) {
+    return RankedTensorType::get(ty.getShape(), variant_ty);
   }
 
   return UnrankedTensorType::get(variant_ty);
+}
+
+// If the given tensor has elements of type ref, then returns a new type
+// of the shape, but corresponding non-ref type as element type. Otherwise,
+// returns the original type as is.
+ShapedType DropRefType(ShapedType type) {
+  Type element_ty = type.getElementType();
+  TF::TensorFlowRefType ref_type = element_ty.dyn_cast<TF::TensorFlowRefType>();
+  if (!ref_type) return type;
+
+  if (type.hasRank()) {
+    return RankedTensorType::get(type.getShape(), ref_type.RemoveRef());
+  }
+  return UnrankedTensorType::get(ref_type.RemoveRef());
 }
 
 }  // namespace
@@ -64,12 +81,33 @@ Type DropVariantSubTypes(Type ty) {
 // TF Executor Dialect
 //===----------------------------------------------------------------------===//
 
+namespace {
+
+struct TensorFlowExecutorOpFolderDialectInterface
+    : public OpFolderDialectInterface {
+  using OpFolderDialectInterface::OpFolderDialectInterface;
+
+  // Registered hook to check if the given region, which is attached to an
+  // operation that is *not* isolated from above (i.e. no internal regions
+  // reference values defined in an enclosing region), should be used when
+  // materializing constants.
+  // In the executor dialect we materialize inside an island.
+  bool shouldMaterializeInto(Region *region) const final {
+    return isa<tf_executor::IslandOp>(region->getParentOp());
+  }
+};
+
+}  // namespace
+
 TensorFlowExecutorDialect::TensorFlowExecutorDialect(MLIRContext *context)
     : Dialect(/*name=*/"tf_executor", context) {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.cc.inc"
       >();
+
+  addInterfaces<TensorFlowExecutorOpFolderDialectInterface>();
+
   addTypes<ControlType, TokenType>();
 }
 
@@ -115,9 +153,15 @@ LogicalResult VerifyControlOperandsAfterAllData(Operation *op) {
   return success();
 }
 
+}  // anonymous namespace
+
 //===----------------------------------------------------------------------===//
 // tf_executor.graph
 //===----------------------------------------------------------------------===//
+
+FetchOp GraphOp::GetFetch() { return llvm::cast<FetchOp>(GetBody().back()); }
+
+namespace {
 
 LogicalResult Verify(GraphOp graph) {
   auto *executorDialect = graph.getDialect();
@@ -205,9 +249,13 @@ ParseResult ParseGraphOp(OpAsmParser *parser, OperationState *result) {
   return success();
 }
 
+}  // anonymous namespace
+
 //===----------------------------------------------------------------------===//
 // tf_executor.fetch
 //===----------------------------------------------------------------------===//
+
+namespace {
 
 void Print(FetchOp fetch, OpAsmPrinter *p) {
   *p << fetch.getOperationName();
@@ -233,9 +281,15 @@ ParseResult ParseFetchOp(OpAsmParser *parser, OperationState *result) {
   );
 }
 
+}  // anonymous namespace
+
 //===----------------------------------------------------------------------===//
 // tf_executor.island
 //===----------------------------------------------------------------------===//
+
+YieldOp IslandOp::GetYield() { return llvm::cast<YieldOp>(GetBody().back()); }
+
+namespace {
 
 LogicalResult Verify(IslandOp island) {
   if (island.GetBody().empty())
@@ -277,6 +331,23 @@ void Print(IslandOp op, OpAsmPrinter *p) {
     p->printOperands(op.getOperands());
     *p << ')';
   }
+
+  // Check if we can print the short "wraps" form: that is if the island
+  // contains a single operation and the result of this operation are perfectly
+  // forwarded to the yield.
+  if (op.getAttrs().empty() &&
+      std::next(op.GetBody().begin(), 2) == op.GetBody().end()) {
+    Operation &wrapped_op = op.GetBody().front();
+    Operation &yield_op = op.GetBody().back();
+    if (wrapped_op.getNumResults() == yield_op.getNumOperands() &&
+        std::equal(wrapped_op.getResults().begin(),
+                   wrapped_op.getResults().end(),
+                   yield_op.getOperands().begin())) {
+      *p << " wraps ";
+      p->printGenericOp(&op.GetBody().front());
+      return;
+    }
+  }
   p->printRegion(op.getOperation()->getRegion(0));
   p->printOptionalAttrDict(op.getAttrs());
 }
@@ -297,17 +368,22 @@ ParseResult ParseIslandOp(OpAsmParser *parser, OperationState *result) {
   // Parse the body region.
   Region &body = *result->addRegion();
 
-  // TODO(b/134773778): the custom parser is missing support to implement to
-  // short syntax right now.
-  // if (!parser->parseOptionalKeyword("wraps")) {
-  //   body.push_back(new Block);
-  //   Block &block = body.back();
-  //   parser->getBuilder().setInsertionPointToEnd(&block);
-  //   if (parser->parseOperation())
-  //     return failure();
-  // }
-
-  if (parser->parseRegion(body, llvm::None, llvm::None)) return failure();
+  if (succeeded(parser->parseOptionalKeyword("wraps"))) {
+    // If we parse the short version of the island, we have an operation in the
+    // generic form that follows the "wraps" keyword. Parse it inside the region
+    // and forward all of its results as-is to the yield operation.
+    body.push_back(new Block);
+    Block &block = body.back();
+    Operation *wrapped_op =
+        parser->parseGenericOperation(&block, block.begin());
+    if (!wrapped_op) return failure();
+    OpBuilder builder(parser->getBuilder().getContext());
+    builder.setInsertionPointToEnd(&block);
+    builder.create<YieldOp>(result->location,
+                            llvm::to_vector<8>(wrapped_op->getResults()));
+  } else if (parser->parseRegion(body, llvm::None, llvm::None)) {
+    return failure();
+  }
 
   IslandOp::ensureTerminator(body, parser->getBuilder(), result->location);
 
@@ -322,9 +398,13 @@ ParseResult ParseIslandOp(OpAsmParser *parser, OperationState *result) {
   return success();
 }
 
+}  // anonymous namespace
+
 //===----------------------------------------------------------------------===//
 // tf_executor.yield
 //===----------------------------------------------------------------------===//
+
+namespace {
 
 void Print(YieldOp yield, OpAsmPrinter *p) {
   *p << yield.getOperationName();
@@ -348,9 +428,13 @@ ParseResult ParseYieldOp(OpAsmParser *parser, OperationState *result) {
       parser->parseOptionalAttributeDict(result->attributes));
 }
 
+}  // anonymous namespace
+
 //===----------------------------------------------------------------------===//
 // tf_executor.Switch
 //===----------------------------------------------------------------------===//
+
+namespace {
 
 ParseResult ParseSwitchOp(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 2> op_infos;
@@ -405,9 +489,13 @@ void Print(SwitchOp switch_op, OpAsmPrinter *p) {
   p->printOptionalAttrDict(switch_op.getAttrs());
 }
 
+}  // anonymous namespace
+
 //===----------------------------------------------------------------------===//
 // tf_executor.SwitchN
 //===----------------------------------------------------------------------===//
+
+namespace {
 
 LogicalResult Verify(SwitchNOp switchn) {
   IntegerAttr num_outs = switchn.getAttrOfType<IntegerAttr>("num_outs");
@@ -474,8 +562,9 @@ ParseResult ParseSwitchNOp(OpAsmParser *parser, OperationState *result) {
 
   // `types` already contains the type for the data, add an i32 for the
   // output_index, and then the optional control inputs.
-  types.push_back(parser->getBuilder().getIntegerType(32));
-  Type control_type = ControlType::get(parser->getBuilder().getContext());
+  auto builder = parser->getBuilder();
+  types.push_back(builder.getTensorType({}, builder.getIntegerType(32)));
+  Type control_type = ControlType::get(builder.getContext());
   types.append(op_infos.size() - 2, control_type);
 
   if (parser->resolveOperands(op_infos, types, loc, result->operands))
@@ -488,9 +577,13 @@ ParseResult ParseSwitchNOp(OpAsmParser *parser, OperationState *result) {
   return parser->parseOptionalAttributeDict(result->attributes);
 }
 
+}  // anonymous namespace
+
 //===----------------------------------------------------------------------===//
 // tf_executor.Merge
 //===----------------------------------------------------------------------===//
+
+namespace {
 
 LogicalResult Verify(MergeOp merge) {
   if (!merge.getNumOperands())
@@ -500,35 +593,43 @@ LogicalResult Verify(MergeOp merge) {
   if (data_type.isa<ControlType>())
     return merge.emitOpError() << "expects a non-control input";
 
-  // Check that all operands can be broadcasted to a common type compatible with
-  // the result type.
-  Type broadcasted_type = merge.output()->getType();
+  // Check that each operand can be individually broadcasted to the output type.
+  Type output_type = merge.output()->getType();
+  TensorType output_tensor_ty = output_type.dyn_cast<TensorType>();
+  if (!output_tensor_ty) {
+    return merge.emitOpError()
+           << "expects output to have tensor type but got " << output_type;
+  }
+  bool is_output_ref =
+      output_tensor_ty.getElementType().isa<TF::TensorFlowRefType>();
   for (Type operand_type : merge.getOperandTypes()) {
     if (operand_type.isa<ControlType>()) break;
 
     // TODO(hinsu): Update ControlOperandsAfterAllData trait to verify this
     // constraint.
-    if (!operand_type.isa<TensorType>())
-      return merge.emitOpError("expects data operands to have tensor type");
-
-    // Variant types may have opaque subtypes information that need not match
-    // between the two types so drop them before computing the broadcasted type.
-    Type new_broadcasted_type =
-        OpTrait::util::getBroadcastedType(DropVariantSubTypes(broadcasted_type),
-                                          DropVariantSubTypes(operand_type));
-    if (!new_broadcasted_type)
+    TensorType operand_tensor_ty = operand_type.dyn_cast<TensorType>();
+    if (!operand_tensor_ty)
       return merge.emitOpError()
-             << "expects all operands to be broadcastable"
-             << " but got " << broadcasted_type << " vs " << operand_type;
-    // Use the broadcasted type unless we're losing the rank information here.
-    // This is because for example starting with a result of tensor<4xf32>, if
-    // the first operand is unranked, the broadcasted type will be unranked.
-    // Then any tensor operand will be broadcastable to this unranked type.
-    if (!broadcasted_type.cast<TensorType>().hasRank() ||
-        new_broadcasted_type.cast<TensorType>().hasRank())
-      broadcasted_type = new_broadcasted_type;
-  }
+             << "expects data operands to have tensor type but got "
+             << operand_type;
 
+    // If output type is a ref type then all operand types should also be of the
+    // same ref type. However, if the output type is a non-ref type T, operands
+    // can be tensor of type T or T_REF.
+    if (is_output_ref &&
+        !operand_tensor_ty.getElementType().isa<TF::TensorFlowRefType>()) {
+      return merge.emitOpError()
+             << "expects same operand and output element type but got "
+             << operand_tensor_ty << " vs " << output_tensor_ty;
+    }
+    Type broadcasted_type = OpTrait::util::getBroadcastedType(
+        DropRefType(DropVariantSubTypes(output_tensor_ty)),
+        DropRefType(DropVariantSubTypes(operand_tensor_ty)));
+    if (!broadcasted_type)
+      return merge.emitOpError()
+             << "expects all operands to be broadcastable with output type"
+             << " but got " << operand_tensor_ty << " vs " << output_tensor_ty;
+  }
   return success();
 }
 
@@ -597,9 +698,13 @@ ParseResult ParseMergeOp(OpAsmParser *parser, OperationState *result) {
   return parser->parseOptionalAttributeDict(result->attributes);
 }
 
+}  // anonymous namespace
+
 //===----------------------------------------------------------------------===//
 // tf_executor.Enter
 //===----------------------------------------------------------------------===//
+
+namespace {
 
 // Default number for the parallel_iterations attributes on Enter nodes.
 constexpr int kDefaultParallelIterations = 10;
@@ -683,9 +788,13 @@ ParseResult ParseEnterOp(OpAsmParser *parser, OperationState *result) {
   return parser->parseOptionalAttributeDict(result->attributes);
 }
 
+}  // anonymous namespace
+
 //===----------------------------------------------------------------------===//
 // tf_executor.NextIteration.Source
 //===----------------------------------------------------------------------===//
+
+namespace {
 
 LogicalResult Verify(NextIterationSourceOp source) {
   Value *token = source.token();
@@ -713,9 +822,13 @@ ParseResult ParseNextIterationSourceOp(OpAsmParser *parser,
   return parser->parseOptionalAttributeDict(result->attributes);
 }
 
+}  // anonymous namespace
+
 //===----------------------------------------------------------------------===//
 // tf_executor.NextIteration.Sink
 //===----------------------------------------------------------------------===//
+
+namespace {
 
 LogicalResult Verify(NextIterationSinkOp sink) {
   Value *token = sink.token();
@@ -765,9 +878,13 @@ ParseResult ParseNextIterationSinkOp(OpAsmParser *parser,
   return parser->parseOptionalAttributeDict(result->attributes);
 }
 
+}  // anonymous namespace
+
 //===----------------------------------------------------------------------===//
 // tf_executor.Exit
 //===----------------------------------------------------------------------===//
+
+namespace {
 
 void Print(ExitOp exit, OpAsmPrinter *p) {
   *p << exit.getOperationName() << ' ';
@@ -793,9 +910,13 @@ ParseResult ParseExitOp(OpAsmParser *parser, OperationState *result) {
   return parser->parseOptionalAttributeDict(result->attributes);
 }
 
+}  // anonymous namespace
+
 //===----------------------------------------------------------------------===//
 // tf_executor.ControlTrigger
 //===----------------------------------------------------------------------===//
+
+namespace {
 
 void Print(ControlTriggerOp trigger, OpAsmPrinter *p) {
   *p << trigger.getOperationName() << ' ';
@@ -819,9 +940,13 @@ ParseResult ParseControlTriggerOp(OpAsmParser *parser, OperationState *result) {
   return parser->parseOptionalAttributeDict(result->attributes);
 }
 
+}  // anonymous namespace
+
 //===----------------------------------------------------------------------===//
 // tf_executor.LoopCond
 //===----------------------------------------------------------------------===//
+
+namespace {
 
 void Print(LoopCondOp loop_cond, OpAsmPrinter *p) {
   *p << loop_cond.getOperationName() << ' ';
@@ -909,11 +1034,10 @@ struct DropEmptyGraph : public OpRewritePattern<GraphOp> {
                                      PatternRewriter &rewriter) const override {
     Block &block = op.GetBody();
     // Check if graph only has one fetch.
-    auto fetch_op = llvm::dyn_cast<FetchOp>(block.front());
-    if (!fetch_op) return matchFailure();
+    if (&block.front() != &block.back()) return matchFailure();
 
     // Map graph results to fetch operands.
-    llvm::SmallVector<Value *, 8> new_rets(fetch_op.fetches());
+    llvm::SmallVector<Value *, 8> new_rets(op.GetFetch().fetches());
     rewriter.replaceOp(op, new_rets);
 
     return matchSuccess();
@@ -932,13 +1056,16 @@ struct HoistInnerOpsSingleIslandGraph : public OpRewritePattern<GraphOp> {
     // Check if graph only has one island.
     if (!HasSingleOpInBlock<IslandOp>(&block)) return matchFailure();
 
-    auto fetch_op = llvm::cast<FetchOp>(block.back());
+    FetchOp fetch_op = op.GetFetch();
     auto island_op = llvm::cast<IslandOp>(block.front());
-    Operation &yield_op = island_op.GetBody().back();
+    YieldOp yield_op = island_op.GetYield();
 
     // Map graph results to inner ops results of single island.
     llvm::SmallVector<Value *, 8> new_rets;
     for (Value *operand : fetch_op.fetches()) {
+      // Control results should not be propagated out.
+      if (operand->getType().isa<ControlType>()) break;
+
       if (operand->getDefiningOp() != island_op) {
         // Operand is not from island, simply propagate it out.
         new_rets.push_back(operand);
@@ -965,6 +1092,116 @@ struct HoistInnerOpsSingleIslandGraph : public OpRewritePattern<GraphOp> {
 void GraphOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
   results.insert<DropEmptyGraph, HoistInnerOpsSingleIslandGraph>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// tf_executor.island
+//===----------------------------------------------------------------------===//
+
+namespace {
+// This pattern matches and removes IslandOps with no inner ops, no control
+// operands and no data results. Control result users will have their relevant
+// operands removed.
+struct DropEmptyIslandNoOperandNoDataResult
+    : public OpRewritePattern<IslandOp> {
+  using OpRewritePattern<IslandOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(IslandOp op,
+                                     PatternRewriter &rewriter) const override {
+    if (op.getNumOperands() != 0 || op.getNumResults() != 1 ||
+        !HasSingleOpInBlock<YieldOp>(&op.GetBody()))
+      return matchFailure();
+
+    for (auto &use : llvm::make_early_inc_range(op.control()->getUses()))
+      use.getOwner()->eraseOperand(use.getOperandNumber());
+
+    rewriter.replaceOp(op, {nullptr});
+
+    return matchSuccess();
+  }
+};
+
+// This pattern matches and removes IslandOps with no inner ops, no control
+// operands, one data result and no control result user. The single data result
+// (from YieldOps first operand) is forwarded to the IslandOp single data result
+// users.
+struct DropEmptyIslandNoOperandOneDataResult
+    : public OpRewritePattern<IslandOp> {
+  using OpRewritePattern<IslandOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(IslandOp op,
+                                     PatternRewriter &rewriter) const override {
+    if (op.getNumOperands() != 0 || op.getNumResults() != 2 ||
+        !op.control()->use_empty() ||
+        !HasSingleOpInBlock<YieldOp>(&op.GetBody()))
+      return matchFailure();
+
+    rewriter.replaceOp(op, {op.GetYield().getOperand(0), nullptr});
+
+    return matchSuccess();
+  }
+};
+
+// TODO(lyandy): Add canonicalization for empty IslandOps with more than one
+// control operand and no data results.
+
+}  // anonymous namespace
+
+void IslandOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                           MLIRContext *context) {
+  results.insert<DropEmptyIslandNoOperandNoDataResult,
+                 DropEmptyIslandNoOperandOneDataResult>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// tf_executor.ControlTrigger
+//===----------------------------------------------------------------------===//
+
+namespace {
+// This pattern matches and removes ControlTriggerOps with no control operands.
+// Control result users will have their relevant operands removed.
+struct DropEmptyControlTrigger : public OpRewritePattern<ControlTriggerOp> {
+  using OpRewritePattern<ControlTriggerOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(ControlTriggerOp op,
+                                     PatternRewriter &rewriter) const override {
+    if (op.getNumOperands() != 0) return matchFailure();
+
+    for (auto &use : llvm::make_early_inc_range(op.control()->getUses()))
+      use.getOwner()->eraseOperand(use.getOperandNumber());
+
+    rewriter.replaceOp(op, {nullptr});
+
+    return matchSuccess();
+  }
+};
+}  // anonymous namespace
+
+void ControlTriggerOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<DropEmptyControlTrigger>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// Folders
+//===----------------------------------------------------------------------===//
+
+//===----------------------------------------------------------------------===//
+// tf_executor.island
+//===----------------------------------------------------------------------===//
+
+LogicalResult IslandOp::fold(llvm::ArrayRef<Attribute> operands,
+                             llvm::SmallVectorImpl<OpFoldResult> &results) {
+  // This folds IslandOps with no inner ops, one control operand and no data
+  // results. The single control operand is forwarded to the IslandOp control
+  // result users.
+  if (getNumOperands() != 1 || getNumResults() != 1 ||
+      !HasSingleOpInBlock<YieldOp>(&GetBody()))
+    return failure();
+
+  results.emplace_back(getOperand(0));
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

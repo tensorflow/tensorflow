@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
@@ -74,12 +75,26 @@ TEST_F(ValidateOpDefTest, OpDefValid) {
   TF_EXPECT_OK(TestBuilder(OpDefBuilder("X").Attr("a: int >= -5 = 3")));
   TF_EXPECT_OK(TestBuilder(OpDefBuilder("X").Attr("a: numbertype")));
   TF_EXPECT_OK(TestBuilder(OpDefBuilder("Uppercase")));
+
+  TF_EXPECT_OK(TestBuilder(OpDefBuilder("Namespace>X").Attr("a: int")));
+  TF_EXPECT_OK(TestBuilder(OpDefBuilder("Namespace>X>Y").Attr("a: int")));
 }
 
 TEST_F(ValidateOpDefTest, InvalidName) {
   ExpectFailure(TestBuilder(OpDefBuilder("lower").Attr("a: int")),
                 "Invalid name");
   ExpectFailure(TestBuilder(OpDefBuilder("BadSuffix 7%")), "Invalid name");
+  ExpectFailure(TestBuilder(OpDefBuilder(">OpName").Attr("a: int")),
+                "Invalid name");
+  // Can't have a dangling empty namespace
+  ExpectFailure(TestBuilder(OpDefBuilder("OpName>").Attr("a: int")),
+                "Invalid name");
+  // Each namespace section must be Camelcased
+  ExpectFailure(TestBuilder(OpDefBuilder("OpName>b").Attr("a: int")),
+                "Invalid name");
+  // Can't have empty namespaces
+  ExpectFailure(TestBuilder(OpDefBuilder("OpName>A>>B").Attr("a: int")),
+                "Invalid name");
 }
 
 TEST_F(ValidateOpDefTest, DuplicateName) {

@@ -19,14 +19,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/Passes.h"
 #include "mlir/Analysis/Utils.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 #include "llvm/Support/Debug.h"
 
 #define DEBUG_TYPE "test-memref-dependence-check"
@@ -45,8 +45,9 @@ struct TestMemRefDependenceCheck
 
 } // end anonymous namespace
 
-FunctionPassBase *mlir::createTestMemRefDependenceCheckPass() {
-  return new TestMemRefDependenceCheck();
+std::unique_ptr<OpPassBase<FuncOp>>
+mlir::createTestMemRefDependenceCheckPass() {
+  return std::make_unique<TestMemRefDependenceCheck>();
 }
 
 // Returns a result string which represents the direction vector (if there was

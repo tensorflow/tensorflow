@@ -458,6 +458,12 @@ install_tensorflow_pip() {
   #   ImportError: No module named builtins
   ${PIP_BIN_PATH} install --upgrade "future>=0.17.1" || \
     die "Error: future install, upgrade FAILED"
+
+  # Install the gast package in the virtualenv. Installing it in user system
+  # packages does not appear to port it over when creating a virtualenv.
+  ${PIP_BIN_PATH} install --upgrade "gast==0.2.2" || \
+    die "Error: gast install, upgrade FAILED"
+
 }
 
 run_test_with_bazel() {

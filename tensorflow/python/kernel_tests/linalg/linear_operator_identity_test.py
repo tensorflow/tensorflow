@@ -173,7 +173,7 @@ class LinearOperatorIdentityTest(
       operator_matmul = operator.matmul(x)
       expected = x
 
-      self.assertAllEqual(operator_matmul.get_shape(), expected.get_shape())
+      self.assertAllEqual(operator_matmul.shape, expected.shape)
       self.assertAllClose(*self.evaluate([operator_matmul, expected]))
 
   def test_default_batch_shape_broadcasts_with_everything_dynamic(self):
@@ -207,7 +207,7 @@ class LinearOperatorIdentityTest(
       expected = x + zeros
 
       operator_matmul = operator.matmul(x)
-      self.assertAllEqual(operator_matmul.get_shape(), expected.get_shape())
+      self.assertAllEqual(operator_matmul.shape, expected.shape)
       self.assertAllClose(*self.evaluate([operator_matmul, expected]))
 
   def test_broadcast_matmul_dynamic_shapes(self):
@@ -423,13 +423,13 @@ class LinearOperatorScaledIdentityTest(
       # Test matmul
       expected = x * 2.2 + zeros
       operator_matmul = operator.matmul(x)
-      self.assertAllEqual(operator_matmul.get_shape(), expected.get_shape())
+      self.assertAllEqual(operator_matmul.shape, expected.shape)
       self.assertAllClose(*self.evaluate([operator_matmul, expected]))
 
       # Test solve
       expected = x / 2.2 + zeros
       operator_solve = operator.solve(x)
-      self.assertAllEqual(operator_solve.get_shape(), expected.get_shape())
+      self.assertAllEqual(operator_solve.shape, expected.shape)
       self.assertAllClose(*self.evaluate([operator_solve, expected]))
 
   def test_broadcast_matmul_and_solve_scalar_scale_multiplier(self):
@@ -449,13 +449,13 @@ class LinearOperatorScaledIdentityTest(
       # Test matmul
       expected = x * 2.2
       operator_matmul = operator.matmul(x)
-      self.assertAllEqual(operator_matmul.get_shape(), expected.get_shape())
+      self.assertAllEqual(operator_matmul.shape, expected.shape)
       self.assertAllClose(*self.evaluate([operator_matmul, expected]))
 
       # Test solve
       expected = x / 2.2
       operator_solve = operator.solve(x)
-      self.assertAllEqual(operator_solve.get_shape(), expected.get_shape())
+      self.assertAllEqual(operator_solve.shape, expected.shape)
       self.assertAllClose(*self.evaluate([operator_solve, expected]))
 
   def test_is_x_flags(self):

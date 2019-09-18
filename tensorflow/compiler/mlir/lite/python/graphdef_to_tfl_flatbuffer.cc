@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
+#include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
@@ -130,16 +132,25 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   bool emit_custom_ops = toco_flags.allow_custom_ops();
   specs.prune_unused_nodes = true;
   specs.convert_legacy_fed_inputs = true;
+  specs.graph_as_function = false;
   WarningUnusedFlags(model_flags, toco_flags);
 
-  bool emit_quant_adaptor_ops = false;
-  bool lower_tensor_list_ops = true;
   TF_ASSIGN_OR_RETURN(
       auto module, ConvertGraphdefToMlir(input, debug_info, specs, &context));
+
+  mlir::PassManager pm(module->getContext());
+  bool run_quantize = tensorflow::ShouldRunQuantizePasses(module.get());
+  mlir::TFL::PassConfig pass_config;
+  pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
+  pass_config.run_quantize = run_quantize;
+  pass_config.lower_tensor_list_ops = true;
+
+  tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
+
   return ConvertTFExecutorToTFLOrFlatbuffer(
       module.get(), /*export_to_mlir=*/false, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, emit_quant_adaptor_ops,
-      lower_tensor_list_ops, result);
+      emit_select_tf_ops, emit_custom_ops, /*emit_quant_adaptor_ops=*/false,
+      /*lower_tensor_list_ops=*/true, result, &pm);
 }
 
 }  // namespace tensorflow

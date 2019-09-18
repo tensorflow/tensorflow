@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import json
 import numpy as np
 
 from tensorflow.python import tf2
@@ -51,7 +50,9 @@ from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.engine import training_v2
 from tensorflow.python.keras.engine import training_v2_utils
-from tensorflow.python.keras.saving import saving_utils
+from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
+from tensorflow.python.keras.optimizer_v2 import optimizer_v2
+from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
@@ -62,7 +63,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import nest
-from tensorflow.python.util import serialization
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import keras_export
@@ -170,14 +170,58 @@ class Model(network.Network):
         return super(Model, self).get_weights()
     return super(Model, self).get_weights()
 
-  def load_weights(self, filepath, by_name=False):
-    """Loads all layer weights, either from a TensorFlow or an HDF5 file."""
+  def load_weights(self, filepath, by_name=False, skip_mismatch=False):
+    """Loads all layer weights, either from a TensorFlow or an HDF5 weight file.
+
+    If `by_name` is False weights are loaded based on the network's
+    topology. This means the architecture should be the same as when the weights
+    were saved.  Note that layers that don't have weights are not taken into
+    account in the topological ordering, so adding or removing layers is fine as
+    long as they don't have weights.
+
+    If `by_name` is True, weights are loaded into layers only if they share the
+    same name. This is useful for fine-tuning or transfer-learning models where
+    some of the layers have changed.
+
+    Only topological loading (`by_name=False`) is supported when loading weights
+    from the TensorFlow format. Note that topological loading differs slightly
+    between TensorFlow and HDF5 formats for user-defined classes inheriting from
+    `tf.keras.Model`: HDF5 loads based on a flattened list of weights, while the
+    TensorFlow format loads based on the object-local names of attributes to
+    which layers are assigned in the `Model`'s constructor.
+
+    Arguments:
+        filepath: String, path to the weights file to load. For weight files in
+            TensorFlow format, this is the file prefix (the same as was passed
+            to `save_weights`).
+        by_name: Boolean, whether to load weights by name or by topological
+            order. Only topological loading is supported for weight files in
+            TensorFlow format.
+        skip_mismatch: Boolean, whether to skip loading of layers where there is
+            a mismatch in the number of weights, or a mismatch in the shape of
+            the weight (only valid when `by_name=True`).
+
+    Returns:
+        When loading a weight file in TensorFlow format, returns the same status
+        object as `tf.train.Checkpoint.restore`. When graph building, restore
+        ops are run automatically as soon as the network is built (on first call
+        for user-defined classes inheriting from `Model`, immediately if it is
+        already built).
+
+        When loading weights in HDF5 format, returns `None`.
+
+    Raises:
+        ImportError: If h5py is not available and the weight file is in HDF5
+            format.
+        ValueError: If `skip_mismatch` is set to `True` when `by_name` is
+          `False`.
+    """
     if distributed_training_utils.is_tpu_strategy(self._distribution_strategy):
       if (self._distribution_strategy.extended.steps_per_run > 1 and
           (not network._is_hdf5_filepath(filepath))):  # pylint: disable=protected-access
         raise ValueError('Load weights is not yet supported with TPUStrategy '
                          'with steps_per_run greater than 1.')
-    return super(Model, self).load_weights(filepath, by_name)
+    return super(Model, self).load_weights(filepath, by_name, skip_mismatch)
 
   @trackable.no_automatic_dependency_tracking
   def compile(self,
@@ -247,17 +291,11 @@ class Model(network.Network):
     self._experimental_run_tf_function = kwargs.pop(
         'experimental_run_tf_function', True)
 
-    if isinstance(optimizer, (list, tuple)):
-      self.optimizer = [optimizers.get(opt) for opt in optimizer]
-      is_any_optimizer_v1 = any(
-          isinstance(opt, optimizers.Optimizer) for opt in self.optimizer)
-    else:
-      self.optimizer = optimizers.get(optimizer)
-      is_any_optimizer_v1 = isinstance(self.optimizer, optimizers.Optimizer)
+    self._set_optimizer(optimizer)
+    is_any_optimizer_v1 = any(isinstance(opt, optimizers.Optimizer)
+                              for opt in nest.flatten(self.optimizer))
 
-    if ((sample_weight_mode is not None)
-        or (target_tensors is not None)
-        or (weighted_metrics is not None)
+    if ((target_tensors is not None)
         or is_any_optimizer_v1
         or not ops.executing_eagerly_outside_functions()):
       # Fallback out of things that aren't supported with v2 loops
@@ -385,7 +423,7 @@ class Model(network.Network):
       self.predict_function = None
 
       # Collected trainable weights, sorted in topological order.
-      self._collected_trainable_weights = self._unique_trainable_weights
+      self._collected_trainable_weights = self.trainable_weights
 
       # Validate all variables were correctly created in distribution scope.
       if self._distribution_strategy and not self._compile_distribution:
@@ -420,6 +458,9 @@ class Model(network.Network):
   @property
   def metrics_names(self):
     """Returns the model's display labels for all outputs."""
+
+    # This property includes all output names including `loss` and per-output
+    # losses for backward compatibility.
     metrics_names = ['loss']
     if self._is_compiled:
       # Add output loss metric names to the metric names list.
@@ -430,13 +471,8 @@ class Model(network.Network):
             if not e.should_skip_target()
         ])
 
-      # Add compile metrics/weighted metrics' names to the metric names list.
-      metrics_names.extend([m.name for m in self._compile_metric_functions])
-
-    # Add metric names from layers.
-    for layer in self.layers:
-      metrics_names += [m.name for m in layer._metrics]  # pylint: disable=protected-access
-    metrics_names += [m.name for m in self._metrics]
+    # Add all metric names.
+    metrics_names += [m.name for m in self.metrics]
     return metrics_names
 
   @property
@@ -497,10 +533,7 @@ class Model(network.Network):
                        '`iter(dataset)`.')
 
     # Experiment training loop with default DS path.
-    if (context.executing_eagerly()
-        and self._experimental_run_tf_function
-        and not distributed_training_utils.is_tpu_strategy(
-            self._distribution_strategy)):
+    if context.executing_eagerly() and self._experimental_run_tf_function:
       try:
         valid_adapter = data_adapter.select_data_adapter(inputs, None)
       except ValueError as data_failure_exception:
@@ -1428,7 +1461,7 @@ class Model(network.Network):
   def _check_call_args(self, method_name):
     """Check that `call` has only one positional arg."""
     # Always allow first arg, regardless of arg name.
-    fullargspec = tf_inspect.getfullargspec(self.call)
+    fullargspec = self._call_full_argspec
     if fullargspec.defaults:
       positional_args = fullargspec.args[:-len(fullargspec.defaults)]
     else:
@@ -1443,6 +1476,47 @@ class Model(network.Network):
           'Models passed to `' + method_name + '` can only have `training` '
           'and the first argument in `call` as positional arguments, '
           'found: ' + str(extra_args) + '.')
+
+  def _set_optimizer(self, optimizer):
+    """Sets self.optimizer.
+
+    Sets self.optimizer to `optimizer`, potentially wrapping it with a
+    LossScaleOptimizer.
+
+    Args:
+      optimizer: The optimizer(s) to assign to self.optimizer.
+    """
+    if isinstance(optimizer, (list, tuple)):
+      self.optimizer = [optimizers.get(opt) for opt in optimizer]
+    else:
+      self.optimizer = optimizers.get(optimizer)
+
+    if (self._dtype_policy.loss_scale is not None and
+        not isinstance(self.optimizer,
+                       loss_scale_optimizer.LossScaleOptimizer)):
+      if isinstance(self.optimizer, list):
+        raise ValueError('When a dtype policy with a loss scale is used, you '
+                         'can only pass a single optimizer. Using policy %s '
+                         'and got optimizers: %s' %
+                         self._dtype_policy, self.optimizer)
+      if not isinstance(self.optimizer, optimizer_v2.OptimizerV2):
+        raise ValueError('"optimizer" must be an instance of '
+                         'tf.keras.optimizers.Optimizer when a dype policy '
+                         'with a loss scale  used, but got: %s. Using policy: '
+                         '%s' %
+                         (self.optimizer, self._dtype_policy))
+      self.optimizer = loss_scale_optimizer.LossScaleOptimizer(
+          self.optimizer, self._dtype_policy.loss_scale)
+    if (isinstance(self.optimizer, loss_scale_optimizer.LossScaleOptimizer) and
+        self._dtype_policy.loss_scale and
+        self.optimizer.loss_scale != self._dtype_policy.loss_scale):
+      logging.warning('LossScale of LossScaleOptimizer passed to compile (%s) '
+                      'is not the same as the dtype policy\'s loss scale (%s). '
+                      'Because the dtype policy has a loss scale, you should '
+                      'pass an optimizer that is not wrapped with a '
+                      'LossScaleOptimizer,'
+                      % (self.optimizer.loss_scale,
+                         self._dtype_policy.loss_scale))
 
   def _prepare_validation_data(self, validation_data, batch_size,
                                validation_steps):
@@ -1490,7 +1564,8 @@ class Model(network.Network):
       # as placeholder for each output.
       return [None for _ in self.output_names]
 
-    if target_tensors not in (None, []):
+    if target_tensors is not None and not (isinstance(target_tensors, list) and
+                                           target_tensors == []):  # pylint: disable=g-explicit-bool-comparison
       if isinstance(target_tensors, list):
         if len(target_tensors) != len(self.outputs):
           raise ValueError(
@@ -1535,7 +1610,7 @@ class Model(network.Network):
     # Set metric attributes on model.
     self._set_metric_attributes()
 
-    self._collected_trainable_weights = self._unique_trainable_weights
+    self._collected_trainable_weights = self.trainable_weights
 
   def _update_sample_weight_modes(self, sample_weights=None):
     """Updates sample weight modes based on training/eval inputs.
@@ -1740,6 +1815,7 @@ class Model(network.Network):
       return self.callback_model
     return self
 
+  @trackable.no_automatic_dependency_tracking
   def _make_callback_model(self, grouped_model):
     first_replicated_model = self._distribution_strategy.unwrap(
         grouped_model)[0]
@@ -1768,31 +1844,41 @@ class Model(network.Network):
       The validated batch_size, auto-inferred from the first layer if not
       provided.
     """
-    if batch_size is not None and isinstance(x, dataset_ops.DatasetV2):
-      raise ValueError('The `batch_size` argument must not be specified when'
-                       ' using dataset as an input.')
+    if (isinstance(x, (dataset_ops.DatasetV1,
+                       dataset_ops.DatasetV2,
+                       data_utils.Sequence)) or
+        tf_inspect.isgenerator(x)):
+      if batch_size is not None:
+        raise ValueError(
+            'The `batch_size` argument must not be specified for the given '
+            'input type. Received input: {}, batch_size: {}'.format(
+                x, batch_size))
+      return
 
-    layers = super(Model, self).layers  # Avoids the override in Sequential.
-    if layers:
-      first_layer = layers[0]
+    # Avoids the override in Sequential.layers which filters Input layers.
+    # (Which are often the very layers that we're after.)
+    layers = trackable_layer_utils.filter_empty_layer_containers(self._layers)
+    first_layer = next(layers, None)
+    if first_layer:
+      # The per-replica static batch size.
       static_batch_size = training_utils.get_static_batch_size(first_layer)
       if static_batch_size is not None:
-        split_batch_size = self._distribution_strategy and \
+
+        # Determine number of times the user-supplied batch size will be split.
+        if (self._distribution_strategy and
             distributed_training_utils.global_batch_size_supported(
-                self._distribution_strategy)
-        if split_batch_size:
-          num_replicas = self._distribution_strategy.num_replicas_in_sync
+                self._distribution_strategy)):
+          num_splits_for_ds = self._distribution_strategy.num_replicas_in_sync
+        else:
+          num_splits_for_ds = 1
 
         # Check `batch_size` argument is consistent with InputLayer.
         if batch_size is not None:
-          if split_batch_size:
-            if batch_size % num_replicas != 0:
-              raise ValueError('The `batch_size` argument value {} cannot be '
-                               'divisible by number of replicas {}'.format(
-                                   batch_size, num_replicas))
-            per_replica_batch_size = batch_size // num_replicas
-          else:
-            per_replica_batch_size = batch_size
+          if batch_size % num_splits_for_ds != 0:
+            raise ValueError('The `batch_size` argument value {} cannot be '
+                             'divisible by number of replicas {}'.format(
+                                 batch_size, num_splits_for_ds))
+          per_replica_batch_size = batch_size // num_splits_for_ds
 
           if per_replica_batch_size != static_batch_size:
             raise ValueError('The `batch_size` argument value {} is '
@@ -1806,31 +1892,25 @@ class Model(network.Network):
           ds_batch_size = tensor_shape.as_dimension(
               nest.flatten(dataset_ops.get_legacy_output_shapes(x))[0][0]).value
           if ds_batch_size is not None:
-            if split_batch_size:
-              if ds_batch_size % num_replicas != 0:
-                raise ValueError(
-                    'The batch output shape of your `Dataset` {} '
-                    'cannot be divisible by number of replicas {}'.format(
-                        ds_batch_size, num_replicas))
-              ds_batch_size = ds_batch_size // num_replicas
+            if ds_batch_size % num_splits_for_ds != 0:
+              raise ValueError(
+                  'The batch output shape of your `Dataset` {} '
+                  'cannot be divisible by number of replicas {}'.format(
+                      ds_batch_size, num_splits_for_ds))
 
-            if ds_batch_size != static_batch_size:
+            ds_per_replica_batch_size = ds_batch_size // num_splits_for_ds
+            if ds_per_replica_batch_size != static_batch_size:
               raise ValueError('The batch output shape of your `Dataset` is '
                                '{}, which is incompatible with the specified '
                                'batch size of your Input Layer: {}'.format(
-                                   ds_batch_size, static_batch_size))
+                                   ds_per_replica_batch_size,
+                                   static_batch_size))
 
         # Set inferred batch size from the InputLayer.
         if steps is None:
-          batch_size = static_batch_size
+          batch_size = static_batch_size * num_splits_for_ds
 
-    if (batch_size is None
-        and steps is None
-        and not isinstance(x, (dataset_ops.DatasetV2,
-                               iterator_ops.Iterator,
-                               iterator_ops.IteratorV2,
-                               data_utils.Sequence))
-        and not tf_inspect.isgenerator(x)):
+    if batch_size is None and steps is None:
       # Backwards compatibility
       batch_size = 32
     return batch_size
@@ -2043,8 +2123,7 @@ class Model(network.Network):
     if not hasattr(self, '_collected_trainable_weights'):
       return
 
-    if (len(self._unique_trainable_weights) !=
-        len(self._collected_trainable_weights)):
+    if len(self.trainable_weights) != len(self._collected_trainable_weights):
       logging.log_first_n(
           logging.WARN, 'Discrepancy between trainable weights and collected'
           ' trainable weights, did you set `model.trainable`'
@@ -2400,14 +2479,17 @@ class Model(network.Network):
     # part of the graph.
     # Note: in this case, `any` and `all` are equivalent since we disallow
     # mixed symbolic/value inputs.
-    if (not self.run_eagerly and is_build_called and is_compile_called and
+
+    # self.run_eagerly is not free to compute, so we want to reuse the value.
+    run_eagerly = self.run_eagerly
+    if (not run_eagerly and is_build_called and is_compile_called and
         not is_dataset  and any(_is_symbolic_tensor(v) for v in all_inputs)):
       return [], [], None
 
     # What follows is input validation and standardization to list format,
     # in the case where all inputs are value arrays.
 
-    if self.run_eagerly:
+    if run_eagerly:
       # In eager mode, do not do shape validation
       # since the network has no input nodes (placeholders) to be fed.
       feed_input_names = self.input_names
@@ -2493,7 +2575,7 @@ class Model(network.Network):
       # Check that all arrays have the same length.
       if not self._distribution_strategy:
         training_utils.check_array_lengths(x, y, sample_weights)
-        if self._is_graph_network and not self.run_eagerly:
+        if self._is_graph_network and not run_eagerly:
           # Additional checks to avoid users mistakenly using improper loss fns.
           training_utils.check_loss_and_target_compatibility(
               y, self._feed_loss_fns, feed_output_shapes)
@@ -2820,22 +2902,9 @@ class Model(network.Network):
     add_metric metrics.
     """
     metrics = []
-    if getattr(self, '_output_loss_metrics', None) is not None:
-      metrics.extend(self._output_loss_metrics)
-    if hasattr(self, 'metrics'):
-      metrics.extend(self.metrics)
+    metrics.extend(getattr(self, '_output_loss_metrics', None) or [])
+    metrics.extend(getattr(self, 'metrics', None) or [])
     return metrics
-
-  @property
-  def _object_identifier(self):
-    return '_tf_keras_model'
-
-  @property
-  def _tracking_metadata(self):
-    metadata = json.loads(super(Model, self)._tracking_metadata)
-    metadata.update(saving_utils.model_metadata(
-        self, include_optimizer=True, require_config=False))
-    return json.dumps(metadata, default=serialization.get_json_type)
 
   def _assert_compile_was_called(self):
     # Checks whether `compile` has been called. If it has been called,
@@ -2863,7 +2932,11 @@ class Model(network.Network):
     # Otherwise, use the strategy whose scope this is in.
     if not strategy and distribution_strategy_context.has_strategy():
       strategy = distribution_strategy_context.get_strategy()
-    return strategy and strategy._in_multi_worker_mode()  # pylint: disable=protected-access
+    return strategy and strategy.extended._in_multi_worker_mode()  # pylint: disable=protected-access
+
+  @property
+  def _trackable_saved_model_saver(self):
+    return model_serialization.ModelSavedModelSaver(self)
 
 
 class DistributedCallbackModel(Model):

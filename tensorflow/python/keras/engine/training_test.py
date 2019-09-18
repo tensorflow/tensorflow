@@ -904,6 +904,23 @@ class TrainingTest(keras_parameterized.TestCase):
     x2 = model.predict(val_a)
     self.assertAllClose(x1, x2, atol=1e-7)
 
+  def test_weight_deduplication_in_methods(self):
+    inp = keras.layers.Input(shape=(1,))
+    bn = keras.layers.BatchNormalization()
+    d = keras.layers.Dense(1)
+
+    m0 = keras.models.Model(inp, d(bn(inp)))
+    m1 = keras.models.Model(inp, d(bn(inp)))
+
+    x0 = m0(inp)
+    x1 = m1(inp)
+    x = keras.layers.Add()([x0, x1])
+
+    model = keras.models.Model(inp, x)
+    self.assertLen(model.trainable_weights, 4)
+    self.assertLen(model.non_trainable_weights, 2)
+    self.assertLen(model.weights, 6)
+
   @keras_parameterized.run_all_keras_modes
   def test_weight_deduplication(self):
     class WatchingLayer(keras.layers.Layer):
@@ -1130,12 +1147,6 @@ class TrainingTest(keras_parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError,
                                  'incompatible with the specified batch size'):
       model.fit(x, y, batch_size=4)
-
-    data = dataset_ops.DatasetV2.from_tensor_slices((x, y))
-    data = data.batch(4, drop_remainder=True)
-    with self.assertRaisesRegexp(ValueError,
-                                 'incompatible with the specified batch size'):
-      model.fit(data, steps_per_epoch=16)
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_compatible_batch_size_functional_model(self):
@@ -1449,8 +1460,8 @@ class TrainingTest(keras_parameterized.TestCase):
     else:
       expected_training_arg = keras.backend.symbolic_learning_phase()
 
-    self.assertEqual(model.training, expected_training_arg)
-    self.assertEqual(model.l1.training, expected_training_arg)
+    self.assertIs(model.training, expected_training_arg)
+    self.assertIs(model.l1.training, expected_training_arg)
 
   @keras_parameterized.run_all_keras_modes
   def test_error_when_model_is_not_compiled(self):
@@ -1563,11 +1574,10 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
         'sgd',
         loss='mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        experimental_run_tf_function=False)
     err_msg = 'When passing input data as arrays, do not specify'
 
-    if testing_utils.should_run_eagerly(
-    ) and not model._experimental_run_tf_function:
+    if testing_utils.should_run_eagerly():
       with self.assertRaisesRegex(ValueError, err_msg):
         model.fit(x=np.zeros((100, 1)), y=np.ones((100, 1)), steps_per_epoch=4)
 
@@ -1581,10 +1591,53 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
         model._standardize_user_data(
             np.zeros((100, 1)),
             np.ones((100, 1)),
-            batch_size=25,
             check_steps=True,
             steps=4)
         self.assertRegexpMatches(str(mock_log.call_args), err_msg)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_invalid_batch_size_argument_with_sequence_input(self):
+
+    class DummySequence(keras.utils.Sequence):
+
+      def __getitem__(self, idx):
+        return np.zeros([10, 2]), np.ones([10, 4])
+
+      def __len__(self):
+        return 10
+
+    model = testing_utils.get_small_mlp(
+        num_hidden=10, num_classes=1, input_dim=10)
+
+    model.compile(
+        'adam',
+        'binary_crossentropy',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+
+    with self.assertRaisesRegexp(
+        ValueError, 'The `batch_size` argument must not be specified'):
+      model.fit(DummySequence(), batch_size=2, epochs=2)
+    with self.assertRaisesRegexp(
+        ValueError, 'The `batch_size` argument must not be specified'):
+      model.evaluate(DummySequence(), batch_size=2)
+
+    with self.assertRaisesRegexp(
+        ValueError, 'The `batch_size` argument must not be specified'):
+      model.predict(DummySequence(), batch_size=2)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_sparse_op_with_op_layer(self):
+    inputs = keras.layers.Input(shape=(2,), sparse=True, name='sparse_tensor')
+    output = sparse_ops.sparse_minimum(inputs, inputs)
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Sparse ops are not supported with functional models with built-in '
+        'layer wrapping'
+    ):
+      keras.Model([inputs], output)
 
 
 class LossWeightingTest(keras_parameterized.TestCase):
@@ -3494,6 +3547,49 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     expected_val = [1., 0.9, 0.8, 0.7, 0.6]
     for key in ['loss', 'mae_1', 'mae_2', 'mae_3']:
       self.assertAllClose(history.history[key], expected_val, 1e-3)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_add_metric_order(self):
+
+    class MyLayer(keras.layers.Layer):
+
+      def call(self, inputs, training=None, mask=None):
+        self.add_metric(
+            array_ops.ones([32]) * 2.0, name='two', aggregation='mean')
+        return inputs
+
+    class MyModel(keras.Model):
+
+      def __init__(self, **kwargs):
+        super(MyModel, self).__init__(**kwargs)
+        self._sampler = MyLayer(name='sampler')
+
+      def call(self, inputs, training=None, mask=None):
+        z = self._sampler(inputs)
+        self.add_metric(
+            array_ops.ones([32]) * 1.0, name='one', aggregation='mean')
+        self.add_metric(
+            array_ops.ones([32]) * 3.0, name='three', aggregation='mean')
+        return z
+
+    xdata = np.random.uniform(size=[32, 16]).astype(np.float32)
+    dataset_train = dataset_ops.Dataset.from_tensor_slices((xdata, xdata))
+    dataset_train = dataset_train.batch(32, drop_remainder=True)
+
+    model = MyModel()
+    model.compile(
+        optimizer='sgd',
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+    history = model.fit(dataset_train, epochs=3)
+    self.assertDictEqual(
+        history.history, {
+            'loss': [0.0, 0.0, 0.0],
+            'three': [3.0, 3.0, 3.0],
+            'two': [2.0, 2.0, 2.0],
+            'one': [1.0, 1.0, 1.0]
+        })
 
   @keras_parameterized.run_all_keras_modes
   def test_model_with_nested_compiled_model(self):

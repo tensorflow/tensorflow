@@ -27,6 +27,7 @@ from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import tf_logging as logging
@@ -340,10 +341,9 @@ class OpDefLibrary(object):
       TypeError: On some errors.
       ValueError: On some errors.
     """
-    output_structure, is_stateful, op = self._apply_op_helper(
+    output_structure, is_stateful, op, outputs = self._apply_op_helper(
         op_type_name, name, **keywords)
     if output_structure:
-      outputs = op.outputs
       res = _Restructure(ops.convert_n_to_tensor(outputs), output_structure)
       if isinstance(res, list) and not res and is_stateful:
         return op
@@ -788,9 +788,24 @@ class OpDefLibrary(object):
                               if arg.is_ref]
       with _MaybeColocateWith(must_colocate_inputs):
         # Add Op to graph
-        op = g.create_op(op_type_name, inputs, dtypes=None, name=scope,
-                         input_types=input_types, attrs=attr_protos,
-                         op_def=op_def)
-      return output_structure, op_def.is_stateful, op
+        # pylint: disable=protected-access
+        op = g._create_op_internal(op_type_name, inputs, dtypes=None,
+                                   name=scope, input_types=input_types,
+                                   attrs=attr_protos, op_def=op_def)
+
+      # `outputs` is returned as a separate return value so that the output
+      # tensors can the `op` per se can be decoupled so that the
+      # `op_callbacks` can function properly. See framework/op_callbacks.py
+      # for more details.
+      outputs = op.outputs
+      # Conditionally invoke tfdbg v2's op callback(s).
+      if op_callbacks.should_invoke_op_callbacks():
+        callback_outputs = op_callbacks.invoke_op_callbacks(
+            op.node_def.op, tuple(op.inputs), attr_protos, tuple(outputs),
+            op_name=op.name, graph=g)
+        if callback_outputs is not None:
+          outputs = callback_outputs
+
+      return output_structure, op_def.is_stateful, op, outputs
 
 # pylint: enable=invalid-name

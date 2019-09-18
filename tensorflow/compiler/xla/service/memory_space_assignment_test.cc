@@ -31,7 +31,9 @@ class MemorySpaceAssignmentTest : public HloTestBase {
   const int64 kDefaultMemorySpace = 0;
   const int64 kAlternateMemorySpace = 1;
 
-  std::unique_ptr<PresetAssignments> AssignMemorySpace(HloModule* module) {
+  std::unique_ptr<PresetAssignments> AssignMemorySpace(
+      HloModule* module, int64 max_outstanding_async_copies = -1,
+      int64 max_prefetch_interval = 10) {
     auto size_fn = [](const BufferValue& buffer) {
       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
     };
@@ -49,14 +51,94 @@ class MemorySpaceAssignmentTest : public HloTestBase {
       return true;
     };
 
-    return std::move(MemorySpaceAssignment::Run(
-                         module, kAlternateMemorySpace,
-                         /*max_size_in_bytes=*/128,
-                         /*min_prefetch_interval=*/2,
-                         /*max_prefetch_interval=*/10,
-                         /*alternate_memory_space_alignment_in_bytes=*/8,
-                         size_fn, is_allowed_in_alternate_mem)
-                         .ValueOrDie());
+    std::unique_ptr<PresetAssignments> preset_assignments =
+        MemorySpaceAssignment::Run(
+            module, kAlternateMemorySpace,
+            /*max_size_in_bytes=*/128,
+            /*min_prefetch_interval=*/2, max_prefetch_interval,
+            /*alternate_memory_space_alignment_in_bytes=*/8, size_fn,
+            is_allowed_in_alternate_mem, max_outstanding_async_copies)
+            .ValueOrDie();
+    CheckPresetAssignments(preset_assignments.get());
+    return preset_assignments;
+  }
+
+  void CheckPresetAssignments(const PresetAssignments* preset_assignments) {
+    // Ensure that the exported preset assignments point to layouts in the
+    // alternate memory.  Also ensure that the positions are unique. Note that
+    // we're using a std::set instead of absl::flat_hash_set because we can make
+    // use of HloPosition's comparator logic instead of providing a hasher.
+    std::set<HloPosition> positions_in_preset_assignments;
+    for (auto& position_and_chunk : preset_assignments->chunks()) {
+      HloPosition position = position_and_chunk.first;
+      EXPECT_EQ(positions_in_preset_assignments.find(position),
+                positions_in_preset_assignments.end());
+      positions_in_preset_assignments.insert(position);
+      const Shape& subshape =
+          ShapeUtil::GetSubshape(position.instruction->shape(), position.index);
+      EXPECT_EQ(subshape.layout().memory_space(), kAlternateMemorySpace)
+          << "Exported position is not in alternate mem: "
+          << position.ToString();
+    }
+  }
+
+  std::unique_ptr<HloModule> CreateEvictAndPrefetchModule() {
+    HloComputation::Builder builder(TestName());
+    Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+    HloInstruction* p0 =
+        builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+    HloInstruction* p1 =
+        builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+    HloInstruction* tanh = builder.AddInstruction(
+        HloInstruction::CreateUnary(shape, HloOpcode::kTanh, p0));
+    // tanh should be placed in the alternate memory since there isn't much
+    // contention in the beginning. However, tanh has another consumer at the
+    // end. So it should be kicked out to default memory and prefetched back in.
+    // The graph below is meant to increase the contention to force
+    // eviction/prefetch behavior.
+    HloInstruction* a = builder.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, tanh));
+    HloInstruction* b = builder.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kSubtract, p0, p1));
+    HloInstruction* c = builder.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, p0, p1));
+    HloInstruction* d = builder.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kSubtract, p0, p1));
+    HloInstruction* e = builder.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, a, b));
+    HloInstruction* f = builder.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, a, c));
+    HloInstruction* g = builder.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, a, d));
+    HloInstruction* h = builder.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, b, c));
+    HloInstruction* i = builder.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, b, d));
+    HloInstruction* j = builder.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, c, d));
+    HloInstruction* k = builder.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kAdd, e, f));
+    HloInstruction* l = builder.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kAdd, g, h));
+    HloInstruction* m = builder.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i, j));
+    HloInstruction* n = builder.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kAdd, k, l));
+    HloInstruction* o = builder.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kAdd, n, m));
+    // tanh is being used at the root instruction, and this should be
+    // prefetched.
+    HloInstruction* add = builder.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kAdd, o, tanh));
+
+    auto module = CreateNewVerifiedModule();
+    HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+    HloSchedule schedule(module.get());
+    schedule.set_sequence(computation, {p0, p1, tanh, a, b, c, d, e, f, g, h, i,
+                                        j, k, l, m, n, o, add});
+    TF_CHECK_OK(module->set_schedule(schedule));
+    return module;
   }
 };
 
@@ -119,8 +201,11 @@ TEST_F(MemorySpaceAssignmentTest, Simple) {
   EXPECT_THAT(sub, op::ShapeWithLayout(shape_in_alternate_mem));
 
   // Make sure the preset assignments is sane.
-  EXPECT_THAT(preset_assignments->chunks().size(), 2);
-  EXPECT_THAT(preset_assignments->sizes().size(), 1);
+  EXPECT_EQ(preset_assignments->chunks().size(), 2);
+  EXPECT_EQ(preset_assignments->sizes().size(), 1);
+  // Ensure the offset assigned to add and sub are different.
+  EXPECT_NE(preset_assignments->chunks()[0].second.offset,
+            preset_assignments->chunks()[1].second.offset);
 }
 
 TEST_F(MemorySpaceAssignmentTest, NegateChain) {
@@ -187,69 +272,37 @@ TEST_F(MemorySpaceAssignmentTest, NegateChain) {
 }
 
 TEST_F(MemorySpaceAssignmentTest, EvictAndPrefetch) {
-  HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
-  HloInstruction* p0 =
-      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
-  HloInstruction* p1 =
-      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
-  HloInstruction* tanh = builder.AddInstruction(
-      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, p0));
-  // tanh should be placed in the alternate memory since there isn't much
-  // contention in the beginning. However, tanh has another consumer at the end.
-  // So it should be kicked out to default memory and prefetched back in.
-  // The graph below is meant to increase the contention to force
-  // eviction/prefetch behavior.
-  HloInstruction* a = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, tanh));
-  HloInstruction* b = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kSubtract, p0, p1));
-  HloInstruction* c = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, p0, p1));
-  HloInstruction* d = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kSubtract, p0, p1));
-  HloInstruction* e = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, a, b));
-  HloInstruction* f = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, a, c));
-  HloInstruction* g = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, a, d));
-  HloInstruction* h = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, b, c));
-  HloInstruction* i = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, b, d));
-  HloInstruction* j = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, c, d));
-  HloInstruction* k = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, e, f));
-  HloInstruction* l = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, g, h));
-  HloInstruction* m = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i, j));
-  HloInstruction* n = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, k, l));
-  HloInstruction* o = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, n, m));
-  // tanh is being used at the root instruction, and this should be prefetched.
-  HloInstruction* add = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, o, tanh));
-
-  auto module = CreateNewVerifiedModule();
-  HloComputation* computation = module->AddEntryComputation(builder.Build());
-
-  HloSchedule schedule(module.get());
-  schedule.set_sequence(computation, {p0, p1, tanh, a, b, c, d, e, f, g, h, i,
-                                      j, k, l, m, n, o, add});
-  TF_CHECK_OK(module->set_schedule(schedule));
+  std::unique_ptr<HloModule> module = CreateEvictAndPrefetchModule();
 
   AssignMemorySpace(module.get());
 
   EXPECT_THAT(
-      add,
+      module->entry_computation()->root_instruction(),
       op::Add(op::Add(),
               op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
                             op::AsyncCopy(kDefaultMemorySpace,
                                           kAlternateMemorySpace, op::Tanh()))));
+
+  EXPECT_EQ(MemorySpaceAssignment::CountMaximumOutstandingAsyncCopies(*module),
+            2);
+}
+
+TEST_F(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies0) {
+  std::unique_ptr<HloModule> module = CreateEvictAndPrefetchModule();
+
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/0);
+
+  EXPECT_EQ(MemorySpaceAssignment::CountMaximumOutstandingAsyncCopies(*module),
+            0);
+}
+
+TEST_F(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies1) {
+  std::unique_ptr<HloModule> module = CreateEvictAndPrefetchModule();
+
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/1);
+
+  EXPECT_EQ(MemorySpaceAssignment::CountMaximumOutstandingAsyncCopies(*module),
+            1);
 }
 
 TEST_F(MemorySpaceAssignmentTest, While) {
@@ -422,17 +475,279 @@ TEST_F(MemorySpaceAssignmentTest, Bitcast) {
   schedule.set_sequence(computation, {p0, p1, negate, bitcast, add});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  auto preset_assignments = AssignMemorySpace(module.get());
+  AssignMemorySpace(module.get());
 
-  // Ensure the positions are unique. Note that we're using a std::set instead
-  // of absl::flat_hash_set because we can make use of HloPosition's comparator
-  // logic instead of providing a hasher.
-  std::set<HloPosition> positions_in_preset_assignments;
-  for (auto& position_and_chunk : preset_assignments->chunks()) {
-    HloPosition position = position_and_chunk.first;
-    EXPECT_EQ(positions_in_preset_assignments.find(position),
-              positions_in_preset_assignments.end());
-    positions_in_preset_assignments.insert(position);
+  EXPECT_EQ(bitcast->shape().layout().memory_space(), kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, Bitcast2) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape param_shape = ShapeUtil::MakeShape(F32, {6});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, param_shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* bitcast =
+      builder.AddInstruction(HloInstruction::CreateBitcast(shape, p1));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, bitcast, negate4));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, bitcast, add});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get());
+
+  EXPECT_EQ(bitcast->shape().layout().memory_space(), kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, Bitcast3) {
+  HloComputation::Builder builder(TestName());
+  Shape shape1 = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape shape2 = ShapeUtil::MakeShape(F32, {3, 2});
+  Shape shape3 = ShapeUtil::MakeShape(F32, {1, 6});
+  Shape param_shape = ShapeUtil::MakeShape(F32, {6});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape1, "p0"));
+  HloInstruction* p1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, param_shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate3));
+  HloInstruction* bitcast1 =
+      builder.AddInstruction(HloInstruction::CreateBitcast(shape1, p1));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, bitcast1, negate4));
+  HloInstruction* bitcast2 =
+      builder.AddInstruction(HloInstruction::CreateBitcast(shape3, p1));
+  HloInstruction* bitcast3 =
+      builder.AddInstruction(HloInstruction::CreateBitcast(shape2, bitcast2));
+  HloInstruction* bitcast4 =
+      builder.AddInstruction(HloInstruction::CreateBitcast(shape2, add));
+  HloInstruction* mul = builder.AddInstruction(HloInstruction::CreateBinary(
+      shape2, HloOpcode::kMultiply, bitcast3, bitcast4));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation,
+                        {p0, p1, negate0, negate1, negate2, negate3, negate4,
+                         bitcast1, add, bitcast2, bitcast3, bitcast4, mul});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get());
+
+  // We expect one bitcast on the LHS of multiply since bitcast(bitcast(foo)) is
+  // converted to bitcast(foo).
+  EXPECT_THAT(
+      mul,
+      op::Multiply(
+          op::Bitcast(op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                                    op::Parameter(1))),
+          op::Bitcast(op::Add(
+              op::Bitcast(op::AsyncCopy(kAlternateMemorySpace,
+                                        kDefaultMemorySpace, op::Parameter(1))),
+              op::Negate()))));
+  EXPECT_EQ(bitcast1->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(add->shape().layout().memory_space(), kAlternateMemorySpace);
+  // bitcast2 will no longer have a consumer and should get DCE'd, so we don't
+  // care about its memory space.
+  EXPECT_EQ(bitcast3->shape().layout().memory_space(), kAlternateMemorySpace);
+  EXPECT_EQ(bitcast4->shape().layout().memory_space(), kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, LastUseOpt) {
+  // Test that checks the last use optimization. It uses two buffers that should
+  // be placed in alternate memory.
+  //
+  //      +-------+
+  //     /         \
+  // add1--->sub1   +-------->mul2
+  //              mul1===>add2
+  //
+  // Without the last use optimization, the mul1 buffer will be assigned first
+  // (becase it is larger) to offset 0. Then, add1 will be scheduled for the
+  // add1 to sub1 segment. Because offset 0 is available, it will get that
+  // offset. But because offset 0 is not available in the sub1 to mul2 offset,
+  // it will end up in unnecessary copies. With the last use optimization, these
+  // copies can be optimized away.
+  HloComputation::Builder builder(TestName());
+  Shape shape1 = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape shape2 = ShapeUtil::MakeShape(F32, {2, 4});
+  PaddingConfig padding_config = MakeEdgePaddingConfig({{0, 0}, {0, 1}});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape1, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape2, "p1"));
+  HloInstruction* add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, p0, p0));
+  HloInstruction* sub1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, p0, add1));
+  HloInstruction* mul1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape2, HloOpcode::kMultiply, p1, p1));
+  HloInstruction* add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape2, HloOpcode::kAdd, mul1, p1));
+  HloInstruction* mul2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape1, HloOpcode::kMultiply, add1, sub1));
+  HloInstruction* padding_value = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::Zero(F32)));
+  HloInstruction* padded_mul2 = builder.AddInstruction(
+      HloInstruction::CreatePad(shape2, mul2, padding_value, padding_config));
+  HloInstruction* add3 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape2, HloOpcode::kAdd, add2, padded_mul2));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, add1, sub1, mul1, add2, mul2,
+                                      padding_value, padded_mul2, add3});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get());
+
+  EXPECT_THAT(
+      mul2,
+      op::Multiply(op::Add(op::Parameter(0), op::Parameter(0)),
+                   op::Subtract(op::Parameter(0),
+                                op::Add(op::Parameter(0), op::Parameter(0)))));
+}
+
+TEST_F(MemorySpaceAssignmentTest, CopyOrdering) {
+  // Test to make sure the CopyStarts follow the same CopyDone order. The shapes
+  // are picked in increasing order to exploit the fact that heap simulator
+  // processes larger tensors first. This checks the ability of the compiler to
+  // reschedule:
+  //
+  //  CS1            CD1
+  //   +--------------+
+  //    +-----------+
+  //   CS2         CD2
+  //
+  // into:
+  //
+  //    CS1          CD1
+  //     +------------+
+  //    +-----------+
+  //   CS2         CD2
+  HloComputation::Builder builder(TestName());
+  Shape shape1 = ShapeUtil::MakeShape(F32, {2, 1});
+  Shape shape2 = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape3 = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape shape4 = ShapeUtil::MakeShape(F32, {2, 4});
+  PaddingConfig padding_config = MakeEdgePaddingConfig({{0, 0}, {0, 1}});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape3, shape4});
+  HloInstruction* p0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "p"));
+  HloInstruction* p4 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape4, p0, 1));
+  HloInstruction* p3 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape3, p0, 0));
+  HloInstruction* p2 =
+      builder.AddInstruction(HloInstruction::CreateParameter(2, shape2, "p2"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape1, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, p1));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate5));
+  HloInstruction* padding_value = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::Zero(F32)));
+  HloInstruction* add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, negate6, p1));
+  HloInstruction* padded_add1 = builder.AddInstruction(
+      HloInstruction::CreatePad(shape2, add1, padding_value, padding_config));
+  HloInstruction* add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape2, HloOpcode::kAdd, padded_add1, p2));
+  HloInstruction* padded_add2 = builder.AddInstruction(
+      HloInstruction::CreatePad(shape3, add2, padding_value, padding_config));
+  HloInstruction* negate7 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape4, HloOpcode::kNegate, p4));
+  HloInstruction* add3 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape3, HloOpcode::kAdd, padded_add2, p3));
+  HloInstruction* padded_add3 = builder.AddInstruction(
+      HloInstruction::CreatePad(shape4, add3, padding_value, padding_config));
+  HloInstruction* add4 = builder.AddInstruction(HloInstruction::CreateBinary(
+      shape4, HloOpcode::kAdd, padded_add3, negate7));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0,
+                                      p4,
+                                      p3,
+                                      p2,
+                                      p1,
+                                      negate0,
+                                      negate1,
+                                      negate2,
+                                      negate3,
+                                      negate4,
+                                      negate5,
+                                      negate6,
+                                      padding_value,
+                                      add1,
+                                      padded_add1,
+                                      add2,
+                                      padded_add2,
+                                      negate7,
+                                      add3,
+                                      padded_add3,
+                                      add4});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  // Use a large max prefetch interval to force CopyStart/CopyDone right after
+  // the parameters.
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    /*max_prefetch_interval=*/50);
+
+  // Iterate over the schedule to make sure CopyStart order and the
+  // corresponding CopyDone order match.
+  std::list<const HloInstruction*> copy_starts;
+  for (HloInstruction* instruction : module->schedule()
+                                         .sequence(module->entry_computation())
+                                         .instructions()) {
+    if (instruction->opcode() == HloOpcode::kCopyStart) {
+      copy_starts.push_back(instruction);
+    }
+    if (instruction->opcode() == HloOpcode::kCopyDone) {
+      EXPECT_EQ(copy_starts.front(), instruction->operand(0));
+      copy_starts.pop_front();
+    }
   }
 }
 

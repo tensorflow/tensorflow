@@ -50,47 +50,52 @@ class CallbackErrorReporter : public tflite::ErrorReporter {
 
 // LINT.IfChange
 
-const char* TFL_Version() { return TFLITE_VERSION_STRING; }
+const char* TfLiteVersion() { return TFLITE_VERSION_STRING; }
 
-TFL_Model* TFL_NewModel(const void* model_data, size_t model_size) {
+TfLiteModel* TfLiteModelCreate(const void* model_data, size_t model_size) {
   auto model = tflite::FlatBufferModel::VerifyAndBuildFromBuffer(
       static_cast<const char*>(model_data), model_size);
   std::shared_ptr<const tflite::FlatBufferModel> shared_model(model.release());
-  return shared_model ? new TFL_Model{std::move(shared_model)} : nullptr;
+  return shared_model ? new TfLiteModel{std::move(shared_model)} : nullptr;
 }
 
-TFL_Model* TFL_NewModelFromFile(const char* model_path) {
+TfLiteModel* TfLiteModelCreateFromFile(const char* model_path) {
   auto model = tflite::FlatBufferModel::VerifyAndBuildFromFile(model_path);
   std::shared_ptr<const tflite::FlatBufferModel> shared_model(model.release());
-  return shared_model ? new TFL_Model{std::move(shared_model)} : nullptr;
+  return shared_model ? new TfLiteModel{std::move(shared_model)} : nullptr;
 }
 
-void TFL_DeleteModel(TFL_Model* model) { delete model; }
+void TfLiteModelDelete(TfLiteModel* model) { delete model; }
 
-TFL_InterpreterOptions* TFL_NewInterpreterOptions() {
-  return new TFL_InterpreterOptions{};
+TfLiteInterpreterOptions* TfLiteInterpreterOptionsCreate() {
+  return new TfLiteInterpreterOptions{};
 }
 
-void TFL_DeleteInterpreterOptions(TFL_InterpreterOptions* options) {
+void TfLiteInterpreterOptionsDelete(TfLiteInterpreterOptions* options) {
   delete options;
 }
 
-void TFL_InterpreterOptionsSetNumThreads(TFL_InterpreterOptions* options,
-                                         int32_t num_threads) {
+void TfLiteInterpreterOptionsSetNumThreads(TfLiteInterpreterOptions* options,
+                                           int32_t num_threads) {
   options->num_threads = num_threads;
 }
 
-void TFL_InterpreterOptionsSetErrorReporter(TFL_InterpreterOptions* options,
-                                            void (*reporter)(void* user_data,
-                                                             const char* format,
-                                                             va_list args),
-                                            void* user_data) {
+void TfLiteInterpreterOptionsAddDelegate(TfLiteInterpreterOptions* options,
+                                         TfLiteDelegate* delegate) {
+  options->delegates.push_back(delegate);
+}
+
+void TfLiteInterpreterOptionsSetErrorReporter(
+    TfLiteInterpreterOptions* options,
+    void (*reporter)(void* user_data, const char* format, va_list args),
+    void* user_data) {
   options->error_reporter = reporter;
   options->error_reporter_user_data = user_data;
 }
 
-TFL_Interpreter* TFL_NewInterpreter(
-    const TFL_Model* model, const TFL_InterpreterOptions* optional_options) {
+TfLiteInterpreter* TfLiteInterpreterCreate(
+    const TfLiteModel* model,
+    const TfLiteInterpreterOptions* optional_options) {
   if (!model || !model->impl) {
     return nullptr;
   }
@@ -120,7 +125,7 @@ TFL_Interpreter* TFL_NewInterpreter(
 
   if (optional_options) {
     if (optional_options->num_threads !=
-        TFL_InterpreterOptions::kDefaultNumThreads) {
+        TfLiteInterpreterOptions::kDefaultNumThreads) {
       interpreter->SetNumThreads(optional_options->num_threads);
     }
 
@@ -131,72 +136,81 @@ TFL_Interpreter* TFL_NewInterpreter(
     }
   }
 
-  return new TFL_Interpreter{model->impl, std::move(optional_error_reporter),
-                             std::move(interpreter)};
+  return new TfLiteInterpreter{model->impl, std::move(optional_error_reporter),
+                               std::move(interpreter)};
 }
 
-void TFL_DeleteInterpreter(TFL_Interpreter* interpreter) { delete interpreter; }
+void TfLiteInterpreterDelete(TfLiteInterpreter* interpreter) {
+  delete interpreter;
+}
 
-int32_t TFL_InterpreterGetInputTensorCount(const TFL_Interpreter* interpreter) {
+int32_t TfLiteInterpreterGetInputTensorCount(
+    const TfLiteInterpreter* interpreter) {
   return static_cast<int>(interpreter->impl->inputs().size());
 }
 
-TFL_Tensor* TFL_InterpreterGetInputTensor(const TFL_Interpreter* interpreter,
-                                          int32_t input_index) {
+TfLiteTensor* TfLiteInterpreterGetInputTensor(
+    const TfLiteInterpreter* interpreter, int32_t input_index) {
   return interpreter->impl->tensor(interpreter->impl->inputs()[input_index]);
 }
 
-TFL_Status TFL_InterpreterResizeInputTensor(TFL_Interpreter* interpreter,
-                                            int32_t input_index,
-                                            const int* input_dims,
-                                            int32_t input_dims_size) {
+TfLiteStatus TfLiteInterpreterResizeInputTensor(TfLiteInterpreter* interpreter,
+                                                int32_t input_index,
+                                                const int* input_dims,
+                                                int32_t input_dims_size) {
   std::vector<int> dims{input_dims, input_dims + input_dims_size};
   return interpreter->impl->ResizeInputTensor(
       interpreter->impl->inputs()[input_index], dims);
 }
 
-TFL_Status TFL_InterpreterAllocateTensors(TFL_Interpreter* interpreter) {
+TfLiteStatus TfLiteInterpreterAllocateTensors(TfLiteInterpreter* interpreter) {
   return interpreter->impl->AllocateTensors();
 }
 
-TFL_Status TFL_InterpreterInvoke(TFL_Interpreter* interpreter) {
+TfLiteStatus TfLiteInterpreterInvoke(TfLiteInterpreter* interpreter) {
   return interpreter->impl->Invoke();
 }
 
-int32_t TFL_InterpreterGetOutputTensorCount(
-    const TFL_Interpreter* interpreter) {
+int32_t TfLiteInterpreterGetOutputTensorCount(
+    const TfLiteInterpreter* interpreter) {
   return static_cast<int>(interpreter->impl->outputs().size());
 }
 
-const TFL_Tensor* TFL_InterpreterGetOutputTensor(
-    const TFL_Interpreter* interpreter, int32_t output_index) {
+const TfLiteTensor* TfLiteInterpreterGetOutputTensor(
+    const TfLiteInterpreter* interpreter, int32_t output_index) {
   return interpreter->impl->tensor(interpreter->impl->outputs()[output_index]);
 }
 
-TFL_Type TFL_TensorType(const TFL_Tensor* tensor) { return tensor->type; }
+TfLiteType TfLiteTensorType(const TfLiteTensor* tensor) { return tensor->type; }
 
-int32_t TFL_TensorNumDims(const TFL_Tensor* tensor) {
+int32_t TfLiteTensorNumDims(const TfLiteTensor* tensor) {
   return tensor->dims->size;
 }
 
-int32_t TFL_TensorDim(const TFL_Tensor* tensor, int32_t dim_index) {
+int32_t TfLiteTensorDim(const TfLiteTensor* tensor, int32_t dim_index) {
   return tensor->dims->data[dim_index];
 }
 
-size_t TFL_TensorByteSize(const TFL_Tensor* tensor) { return tensor->bytes; }
+size_t TfLiteTensorByteSize(const TfLiteTensor* tensor) {
+  return tensor->bytes;
+}
 
-void* TFL_TensorData(const TFL_Tensor* tensor) {
+void* TfLiteTensorData(const TfLiteTensor* tensor) {
   return static_cast<void*>(tensor->data.raw);
 }
 
-const char* TFL_TensorName(const TFL_Tensor* tensor) { return tensor->name; }
+const char* TfLiteTensorName(const TfLiteTensor* tensor) {
+  return tensor->name;
+}
 
-TFL_QuantizationParams TFL_TensorQuantizationParams(const TFL_Tensor* tensor) {
+TfLiteQuantizationParams TfLiteTensorQuantizationParams(
+    const TfLiteTensor* tensor) {
   return tensor->params;
 }
 
-TFL_Status TFL_TensorCopyFromBuffer(TFL_Tensor* tensor, const void* input_data,
-                                    size_t input_data_size) {
+TfLiteStatus TfLiteTensorCopyFromBuffer(TfLiteTensor* tensor,
+                                        const void* input_data,
+                                        size_t input_data_size) {
   if (tensor->bytes != input_data_size) {
     return kTfLiteError;
   }
@@ -204,8 +218,9 @@ TFL_Status TFL_TensorCopyFromBuffer(TFL_Tensor* tensor, const void* input_data,
   return kTfLiteOk;
 }
 
-TFL_Status TFL_TensorCopyToBuffer(const TFL_Tensor* tensor, void* output_data,
-                                  size_t output_data_size) {
+TfLiteStatus TfLiteTensorCopyToBuffer(const TfLiteTensor* tensor,
+                                      void* output_data,
+                                      size_t output_data_size) {
   if (tensor->bytes != output_data_size) {
     return kTfLiteError;
   }

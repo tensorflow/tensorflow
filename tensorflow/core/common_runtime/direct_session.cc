@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/log_memory.h"
@@ -189,8 +188,8 @@ class DirectSessionFactory : public SessionFactory {
     TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
         options, "/job:localhost/replica:0/task:0", &devices));
 
-    DirectSession* session =
-        new DirectSession(options, new DeviceMgr(std::move(devices)), this);
+    DirectSession* session = new DirectSession(
+        options, new StaticDeviceMgr(std::move(devices)), this);
     {
       mutex_lock l(sessions_lock_);
       sessions_.push_back(session);
@@ -501,11 +500,11 @@ Status DirectSession::RunInternal(
         if (options_.config.experimental().has_session_metadata()) {
           const auto& model_metadata =
               options_.config.experimental().session_metadata();
-          return strings::StrCat("SessionRun #id=", step_id,
+          return strings::StrCat("SessionRun#id=", step_id,
                                  ",model_id=", model_metadata.name(), ":",
                                  model_metadata.version(), "#");
         } else {
-          return strings::StrCat("SessionRun #id=", step_id, "#");
+          return strings::StrCat("SessionRun#id=", step_id, "#");
         }
       },
       profiler::TraceMeLevel::kInfo);
@@ -1282,9 +1281,14 @@ Status DirectSession::CreateExecutors(
 
   int graph_def_version = graphs.begin()->second->versions().producer();
 
+  const auto* session_metadata =
+      options_.config.experimental().has_session_metadata()
+          ? &options_.config.experimental().session_metadata()
+          : nullptr;
   func_info->proc_flr.reset(new ProcessFunctionLibraryRuntime(
       device_mgr_.get(), options_.env, graph_def_version,
-      func_info->flib_def.get(), optimizer_opts, thread_pools_[0].first));
+      func_info->flib_def.get(), optimizer_opts, thread_pools_[0].first,
+      nullptr, nullptr, session_metadata));
 
   GraphOptimizer optimizer(optimizer_opts);
   for (auto iter = graphs.begin(); iter != graphs.end(); ++iter) {
@@ -1304,10 +1308,7 @@ Status DirectSession::CreateExecutors(
 
     LocalExecutorParams params;
     params.device = device;
-    params.session_metadata =
-        options_.config.experimental().has_session_metadata()
-            ? &options_.config.experimental().session_metadata()
-            : nullptr;
+    params.session_metadata = session_metadata;
     params.function_library = lib;
     auto opseg = device->op_segment();
     params.create_kernel = [this, lib, opseg](const NodeDef& ndef,

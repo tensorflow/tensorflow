@@ -49,8 +49,19 @@ def _ArgMinGrad(op, grad):
   return [None, None]
 
 
-# TODO(rmlarsen): Implement gradient.
-ops.NotDifferentiable("EuclideanNorm")
+@ops.RegisterGradient("EuclideanNorm")
+def _EuclideanNormGrad(op, grad):
+  """Gradient for EuclideanNorm."""
+
+  output = op.outputs[0]
+
+  if not op.get_attr("keep_dims"):
+    output_shape_kept_dims = math_ops.reduced_shape(
+        array_ops.shape(op.inputs[0]), op.inputs[1])
+    output = array_ops.reshape(output, output_shape_kept_dims)
+    grad = array_ops.reshape(grad, output_shape_kept_dims)
+
+  return math_ops.truediv(op.inputs[0], output / grad), None
 
 
 def SmartBroadcastGradientArgs(x, y, grad):
@@ -192,8 +203,16 @@ def _SumGrad(op, grad):
         return [array_ops.tile(grad, tile_scaling), None]
 
   input_shape = array_ops.shape(op.inputs[0])
-  # TODO(apassos) remove this once device placement for eager ops makes more
-  # sense.
+
+  if compat.forward_compatible(2019, 9, 23):
+    if not op.get_attr("keep_dims"):
+      with ops.colocate_with(input_shape):
+        # TODO(apassos) remove this once device placement for eager ops makes
+        # more sense.
+        output_shape_kept_dims = math_ops.reduced_shape(input_shape,
+                                                        op.inputs[1])
+      grad = array_ops.reshape(grad, output_shape_kept_dims)
+    return [array_ops.broadcast_to(grad, input_shape), None]
   with ops.colocate_with(input_shape):
     output_shape_kept_dims = math_ops.reduced_shape(input_shape, op.inputs[1])
     tile_scaling = _safe_shape_div(input_shape, output_shape_kept_dims)
@@ -204,10 +223,13 @@ def _SumGrad(op, grad):
 def _MinOrMaxGrad(op, grad):
   """Gradient for Min or Max. Amazingly it's precisely the same code."""
   input_shape = array_ops.shape(op.inputs[0])
-  output_shape_kept_dims = math_ops.reduced_shape(input_shape, op.inputs[1])
   y = op.outputs[0]
-  y = array_ops.reshape(y, output_shape_kept_dims)
-  grad = array_ops.reshape(grad, output_shape_kept_dims)
+  if not op.get_attr("keep_dims"):
+    output_shape_kept_dims = math_ops.reduced_shape(input_shape, op.inputs[1])
+    y = array_ops.reshape(y, output_shape_kept_dims)
+    grad = array_ops.reshape(grad, output_shape_kept_dims)
+  else:
+    output_shape_kept_dims = array_ops.shape(y)
 
   # Compute the number of selected (maximum or minimum) elements in each
   # reduction dimension. If there are multiple minimum or maximum elements
@@ -262,11 +284,18 @@ def _ProdGrad(op, grad):
   # Reshape reduction indices for the case where the parameter is a scalar
   reduction_indices = array_ops.reshape(op.inputs[1], [-1])
 
-  # Expand grad to full input shape
-  output_shape_kept_dims = math_ops.reduced_shape(input_shape, op.inputs[1])
-  tile_scaling = _safe_shape_div(input_shape, output_shape_kept_dims)
-  grad = array_ops.reshape(grad, output_shape_kept_dims)
-  grad = array_ops.tile(grad, tile_scaling)
+  if compat.forward_compatible(2019, 9, 23):
+    # Expand grad to full input shape
+    if not op.get_attr("keep_dims"):
+      output_shape_kept_dims = math_ops.reduced_shape(input_shape, op.inputs[1])
+      grad = array_ops.reshape(grad, output_shape_kept_dims)
+
+    grad = array_ops.broadcast_to(grad, input_shape)
+  else:
+    output_shape_kept_dims = math_ops.reduced_shape(input_shape, op.inputs[1])
+    tile_scaling = _safe_shape_div(input_shape, output_shape_kept_dims)
+    grad = array_ops.reshape(grad, output_shape_kept_dims)
+    grad = array_ops.tile(grad, tile_scaling)
 
   # Pack all reduced dimensions into a single one, so we can perform the
   # cumprod ops. If the reduction dims list is empty, it defaults to float32,
@@ -379,7 +408,7 @@ def _SegmentMinOrMaxGrad(op, grad):
   # divided evenly among the selected elements in that segment.
   weighted_grads = math_ops.divide(grad, num_selected)
   gathered_grads = array_ops.gather(weighted_grads, op.inputs[1])
-  return array_ops.where(is_selected, gathered_grads, zeros), None
+  return array_ops.where_v2(is_selected, gathered_grads, zeros), None
 
 
 @ops.RegisterGradient("SegmentMin")
@@ -420,8 +449,8 @@ def _GatherDropNegatives(params,
         is_positive & array_ops.ones_like(gathered, dtype=dtypes.bool))
   # replace gathered params of negative indices with 0
   zero_slice = array_ops.zeros_like(gathered)
-  return (array_ops.where(is_positive, gathered, zero_slice),
-          zero_clipped_indices, is_positive)
+  return (array_ops.where_v2(is_positive, gathered,
+                             zero_slice), zero_clipped_indices, is_positive)
 
 
 def _UnsortedSegmentMinOrMaxGrad(op, grad):
@@ -439,7 +468,7 @@ def _UnsortedSegmentMinOrMaxGrad(op, grad):
   gathered_grads, _, _ = _GatherDropNegatives(weighted_grads, None,
                                               zero_clipped_indices, is_positive)
   zeros = array_ops.zeros_like(gathered_grads)
-  return array_ops.where(is_selected, gathered_grads, zeros), None, None
+  return array_ops.where_v2(is_selected, gathered_grads, zeros), None, None
 
 
 @ops.RegisterGradient("UnsortedSegmentSum")
@@ -484,11 +513,11 @@ def _UnsortedSegmentProdGrad(op, grad):
       math_ops.cast(is_zero, dtype=dtypes.int32), op.inputs[1], op.inputs[2])
   # handle case 3 and set the gradient to 0 for segments with more than one
   # 0 as input
-  grad = array_ops.where(
+  grad = array_ops.where_v2(
       math_ops.greater(num_zeros, 1), array_ops.zeros_like(grad), grad)
   # replace all zeros with ones and compute the unsorted_segment_prod
-  non_zero_data = array_ops.where(is_zero, array_ops.ones_like(op.inputs[0]),
-                                  op.inputs[0])
+  non_zero_data = array_ops.where_v2(is_zero, array_ops.ones_like(op.inputs[0]),
+                                     op.inputs[0])
   non_zero_prod = gen_math_ops.unsorted_segment_prod(non_zero_data,
                                                      op.inputs[1], op.inputs[2])
   # clip the indices for gather to be positive
@@ -501,8 +530,8 @@ def _UnsortedSegmentProdGrad(op, grad):
   # don't. is_zero will also fetch results for entries with negative index
   # but the following gather_drop_negatives sets the corresponding entry in
   # grad to 0 for these
-  partial_derivative = array_ops.where(is_zero, gathered_non_zero_prod,
-                                       prod_divided_by_el)
+  partial_derivative = array_ops.where_v2(is_zero, gathered_non_zero_prod,
+                                          prod_divided_by_el)
   gathered_grad = _GatherDropNegatives(grad, op.inputs[1],
                                        zero_clipped_indices)[0]
   return gathered_grad * partial_derivative, None, None
@@ -575,7 +604,7 @@ def _SqrtGradGrad(op, grad):
   a = op.inputs[0]
   y = op.outputs[0]  # y = 0.5 * b / conj(a)
   with ops.control_dependencies([grad]):
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       ga = gen_math_ops.xdivy(grad, a)
       return -gen_math_ops.mul_no_nan(y, math_ops.conj(ga)), 0.5 * ga
     else:
@@ -609,7 +638,7 @@ def _ExpGrad(op, grad):
   y = op.outputs[0]  # y = e^x
   with ops.control_dependencies([grad]):
     y = math_ops.conj(y)
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return math_ops.mul_no_nan(y, grad)
     else:
       return grad * y
@@ -622,7 +651,7 @@ def _Expm1Grad(op, grad):
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
     y = math_ops.exp(x)
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return math_ops.mul_no_nan(y, grad)
     else:
       return grad * y
@@ -634,7 +663,7 @@ def _LogGrad(op, grad):
   x = op.inputs[0]
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return gen_math_ops.xdivy(grad, x)
     else:
       return grad * math_ops.reciprocal(x)
@@ -646,7 +675,7 @@ def _Log1pGrad(op, grad):
   x = op.inputs[0]
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return gen_math_ops.xdivy(grad, 1 + x)
     else:
       return grad * math_ops.reciprocal(1 + x)
@@ -728,7 +757,7 @@ def _AcoshGrad(op, grad):
   y = op.outputs[0]
   with ops.control_dependencies([grad]):
     y = math_ops.conj(y)
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return math_ops.xdivy(grad, math_ops.sinh(y))
     else:
       return grad / math_ops.sinh(y)
@@ -781,7 +810,7 @@ def _LgammaGrad(op, grad):
   x = op.inputs[0]
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return math_ops.mul_no_nan(math_ops.digamma(x), grad)
     else:
       return grad * math_ops.digamma(x)
@@ -794,7 +823,7 @@ def _DigammaGrad(op, grad):
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
     partial_x = math_ops.polygamma(array_ops.constant(1, dtype=x.dtype), x)
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return math_ops.mul_no_nan(partial_x, grad)
     else:
       return grad * partial_x
@@ -807,7 +836,7 @@ def _BesselI0eGrad(op, grad):
   y = op.outputs[0]
   with ops.control_dependencies([grad]):
     partial_x = (math_ops.bessel_i1e(x) - math_ops.sign(x) * y)
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return math_ops.mul_no_nan(partial_x, grad)
     else:
       return grad * partial_x
@@ -827,11 +856,11 @@ def _BesselI1eGrad(op, grad):
     eps = np.finfo(x.dtype.as_numpy_dtype).eps
     zeros = array_ops.zeros_like(x)
     x_is_not_tiny = math_ops.abs(x) > eps
-    safe_x = array_ops.where(x_is_not_tiny, x, eps + zeros)
+    safe_x = array_ops.where_v2(x_is_not_tiny, x, eps + zeros)
     dy_dx = math_ops.bessel_i0e(safe_x) - y * (
         math_ops.sign(safe_x) + math_ops.reciprocal(safe_x))
-    dy_dx = array_ops.where(x_is_not_tiny, dy_dx, 0.5 + zeros)
-    if compat.forward_compatible(2019, 9, 14):
+    dy_dx = array_ops.where_v2(x_is_not_tiny, dy_dx, 0.5 + zeros)
+    if compat.forward_compatible(2019, 12, 14):
       return math_ops.mul_no_nan(dy_dx, grad)
     else:
       return grad * dy_dx
@@ -852,7 +881,7 @@ def _IgammaGrad(op, grad):
     # and Gamma'(a) can grow large.
     partial_x = math_ops.exp(-x + (a - 1) * math_ops.log(x) -
                              math_ops.lgamma(a))
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return (array_ops.reshape(
           math_ops.reduce_sum(math_ops.mul_no_nan(partial_a, grad), ra), sa),
               array_ops.reshape(
@@ -891,7 +920,7 @@ def _BetaincGrad(op, grad):
                            (a - 1) * math_ops.log(x) - log_beta)
 
   # TODO(b/36815900): Mark None return values as NotImplemented
-  if compat.forward_compatible(2019, 9, 14):
+  if compat.forward_compatible(2019, 12, 14):
     return (
         None,  # da
         None,  # db
@@ -920,7 +949,7 @@ def _ZetaGrad(op, grad):
     q = math_ops.conj(q)
     partial_q = -x * math_ops.zeta(x + 1, q)
     # TODO(b/36815900): Mark None return values as NotImplemented
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return (None,
               array_ops.reshape(
                   math_ops.reduce_sum(math_ops.mul_no_nan(partial_q, grad), rq),
@@ -946,7 +975,7 @@ def _PolygammaGrad(op, grad):
     x = math_ops.conj(x)
     partial_x = math_ops.polygamma(n + 1, x)
     # TODO(b/36815900): Mark None return values as NotImplemented
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return (None,
               array_ops.reshape(
                   math_ops.reduce_sum(math_ops.mul_no_nan(partial_x, grad), rx),
@@ -1007,7 +1036,7 @@ def _TanGrad(op, grad):
     x = math_ops.conj(x)
     secx = math_ops.reciprocal(math_ops.cos(x))
     secx2 = math_ops.square(secx)
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return math_ops.mul_no_nan(secx2, grad)
     else:
       return secx2 * grad
@@ -1022,7 +1051,7 @@ def _AsinGrad(op, grad):
     x2 = math_ops.square(x)
     one = constant_op.constant(1, dtype=grad.dtype)
     den = math_ops.sqrt(math_ops.subtract(one, x2))
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return math_ops.xdivy(grad, den)
     else:
       inv = math_ops.reciprocal(den)
@@ -1038,7 +1067,7 @@ def _AcosGrad(op, grad):
     x2 = math_ops.square(x)
     one = constant_op.constant(1, dtype=grad.dtype)
     den = math_ops.sqrt(math_ops.subtract(one, x2))
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       return -math_ops.xdivy(grad, den)
     else:
       inv = math_ops.reciprocal(den)
@@ -1063,7 +1092,7 @@ def _Atan2Grad(op, grad):
   y = op.inputs[0]
   x = op.inputs[1]
   with ops.control_dependencies([grad]):
-    if compat.forward_compatible(2019, 9, 14):
+    if compat.forward_compatible(2019, 12, 14):
       grad_inv = math_ops.xdivy(grad, (math_ops.square(x) + math_ops.square(y)))
     else:
       grad_inv = grad / (math_ops.square(x) + math_ops.square(y))
@@ -1225,7 +1254,7 @@ def _DivGrad(op, grad):
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   x = math_ops.conj(x)
   y = math_ops.conj(y)
-  if compat.forward_compatible(2019, 9, 14):
+  if compat.forward_compatible(2019, 12, 14):
     return (array_ops.reshape(
         math_ops.reduce_sum(math_ops.xdivy(grad, y), rx), sx),
             array_ops.reshape(
@@ -1278,7 +1307,7 @@ def _RealDivGrad(op, grad):
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   x = math_ops.conj(x)
   y = math_ops.conj(y)
-  if compat.forward_compatible(2019, 9, 14):
+  if compat.forward_compatible(2019, 12, 14):
     return (array_ops.reshape(
         math_ops.reduce_sum(math_ops.xdivy(grad, y), rx), sx),
             array_ops.reshape(
@@ -1305,7 +1334,7 @@ def _DivNoNanGrad(op, grad):
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   x = math_ops.conj(x)
   y = math_ops.conj(y)
-  if compat.forward_compatible(2019, 9, 14):
+  if compat.forward_compatible(2019, 12, 14):
     return (array_ops.reshape(
         math_ops.reduce_sum(math_ops.div_no_nan(grad, y), rx), sx),
             array_ops.reshape(
@@ -1327,7 +1356,7 @@ def _PowGrad(op, grad):
   """Returns grad * (y*x^(y-1), z*log(x))."""
   x = op.inputs[0]
   y = op.inputs[1]
-  use_mul_no_nan = compat.forward_compatible(2019, 9, 14)
+  use_mul_no_nan = compat.forward_compatible(2019, 12, 14)
   skip_input_indices = None
   try:
     skip_input_indices = op.skip_input_indices
@@ -1390,7 +1419,7 @@ def _MaximumMinimumGradInputOnly(op, grad, selector_op):
   y = op.inputs[1]
   zeros = array_ops.zeros_like(grad)
   xmask = selector_op(x, y)
-  xgrad = array_ops.where(xmask, grad, zeros)
+  xgrad = array_ops.where_v2(xmask, grad, zeros)
   ygrad = None  # Return None for ygrad since the config allows that.
   return (xgrad, ygrad)
 
@@ -1420,13 +1449,13 @@ def _MaximumMinimumGrad(op, grad, selector_op):
   if skip_input_indices is not None and 0 in skip_input_indices:
     gx = None
   else:
-    xgrad = array_ops.where(xmask, grad, zeros)
+    xgrad = array_ops.where_v2(xmask, grad, zeros)
     gx = array_ops.reshape(math_ops.reduce_sum(xgrad, rx), sx)
 
   if skip_input_indices is not None and 1 in skip_input_indices:
     gy = None
   else:
-    ygrad = array_ops.where(xmask, zeros, grad)
+    ygrad = array_ops.where_v2(xmask, zeros, grad)
     gy = array_ops.reshape(math_ops.reduce_sum(ygrad, ry), sy)
 
   return (gx, gy)
@@ -1601,19 +1630,20 @@ def _SparseMatMulGrad(op, grad):
 
   t_a = op.get_attr("transpose_a")
   t_b = op.get_attr("transpose_b")
-  is_sparse = {
-      op.inputs[0]: op.get_attr("a_is_sparse"),
-      op.inputs[1]: op.get_attr("b_is_sparse"),
-      # Use heuristic to figure out if grad might be sparse
-      grad: not context.executing_eagerly() and (grad.op.type == "ReluGrad")
-  }
+  is_sparse = {}
+  is_sparse[op.inputs[0].experimental_ref()] = op.get_attr("a_is_sparse")
+  is_sparse[op.inputs[1].experimental_ref()] = op.get_attr("b_is_sparse")
+  # Use heuristic to figure out if grad might be sparse
+  is_sparse[grad.experimental_ref()] = not context.executing_eagerly() and (
+      grad.op.type == "ReluGrad")
 
   def _SparseMatMul(t1, t2, out_dtype, transpose_a=False, transpose_b=False):
     """Helper function to create SparseMatMul op."""
 
-    assert t1 in is_sparse and t2 in is_sparse
-    t1_sparse = is_sparse[t1]
-    t2_sparse = is_sparse[t2]
+    assert t1.experimental_ref() in is_sparse and t2.experimental_ref(
+    ) in is_sparse
+    t1_sparse = is_sparse[t1.experimental_ref()]
+    t2_sparse = is_sparse[t2.experimental_ref()]
     if transpose_b:
       t2 = array_ops.transpose(t2)
       transpose_b = False
