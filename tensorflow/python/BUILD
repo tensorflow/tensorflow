@@ -776,7 +776,6 @@ py_library(
         ":_pywrap_tfprof",
         ":_pywrap_util_port",
         ":_pywrap_utils",
-        ":common_shapes",
         ":composite_tensor",
         ":convert_to_constants",
         ":cpp_shape_inference_proto_py",
@@ -815,13 +814,7 @@ py_library(
     srcs = ["framework/common_shapes.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":cpp_shape_inference_proto_py",
-        ":errors",
-        ":framework_ops",
-        ":pywrap_tensorflow",
         ":tensor_shape",
-        ":tensor_util",
-        "//tensorflow/core:protos_all_py",
     ],
 )
 
