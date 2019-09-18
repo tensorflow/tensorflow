@@ -629,6 +629,8 @@ class XlaBuilder {
 
   XlaOp GetDimensionSize(const XlaOp& operand, int64 dimension);
 
+  XlaOp SetDimensionSize(XlaOp operand, XlaOp val, int64 dimension);
+
   StatusOr<XlaOp> AddInstruction(HloInstructionProto&& instr, HloOpcode opcode,
                                  absl::Span<const XlaOp> operands = {});
 
@@ -1041,6 +1043,7 @@ class XlaBuilder {
   friend XlaOp AfterAll(XlaBuilder* builder, absl::Span<const XlaOp> tokens);
 
   friend XlaOp GetDimensionSize(XlaOp operand, int64 dimension);
+  friend XlaOp SetDimensionSize(XlaOp operand, XlaOp val, int64 dimension);
 
  private:
   XlaOp ConditionalImpl(
@@ -1961,6 +1964,8 @@ XlaOp BatchNormGrad(XlaOp operand, XlaOp scale, XlaOp batch_mean,
 // Returns the size of the given dimension of the operand. The operand must be
 // array shaped.
 XlaOp GetDimensionSize(XlaOp operand, int64 dimension);
+
+XlaOp SetDimensionSize(XlaOp operand, XlaOp val, int64 dimension);
 
 // Implementation details below this point.
 //

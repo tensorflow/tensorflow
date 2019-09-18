@@ -212,11 +212,13 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
       }
       // TODO(b/32495713): We aren't checking the called computations.
       break;
-    case HloOpcode::kGetDimensionSize: {
+    case HloOpcode::kGetDimensionSize:
+    case HloOpcode::kSetDimensionSize: {
       // DimensionSize is always considered constant in XLA -- If a dynamic
-      // dimension is presented, uint_max is returned.
+      // dimension is presented, -1 is returned.
       break;
     }
+
     // Non functional ops.
     case HloOpcode::kRng:
     case HloOpcode::kAllReduce:
@@ -2420,6 +2422,19 @@ XlaOp XlaBuilder::GetDimensionSize(const XlaOp& operand, int64 dimension) {
   });
 }
 
+XlaOp XlaBuilder::SetDimensionSize(XlaOp operand, XlaOp val, int64 dimension) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const auto& operand_shape, GetShape(operand));
+    TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferSetDimensionSizeShape(
+                                         operand_shape, dimension));
+    *instr.mutable_shape() = shape.ToProto();
+    instr.add_dimensions(dimension);
+    return AddInstruction(std::move(instr), HloOpcode::kSetDimensionSize,
+                          {operand, val});
+  });
+}
+
 StatusOr<bool> XlaBuilder::IsConstant(const XlaOp& operand) const {
   TF_RETURN_IF_ERROR(first_error_);
 
@@ -3487,6 +3502,10 @@ XlaOp Iota(XlaBuilder* builder, const Shape& shape, int64 iota_dimension) {
 
 XlaOp GetDimensionSize(const XlaOp operand, int64 dimension) {
   return operand.builder()->GetDimensionSize(operand, dimension);
+}
+
+XlaOp SetDimensionSize(const XlaOp operand, const XlaOp val, int64 dimension) {
+  return operand.builder()->SetDimensionSize(operand, val, dimension);
 }
 
 }  // namespace xla

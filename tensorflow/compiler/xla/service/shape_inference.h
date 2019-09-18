@@ -299,6 +299,9 @@ class ShapeInference {
   static StatusOr<Shape> InferGetDimensionSizeShape(const Shape& shape,
                                                     int64 dimension);
 
+  static StatusOr<Shape> InferSetDimensionSizeShape(const Shape& shape,
+                                                    int64 dimension);
+
   // Helper function for creating a Window proto from user-supplied data.
   // Returns error if the user-supplied data was invalid.
   static StatusOr<Window> InferWindowFromDimensions(
