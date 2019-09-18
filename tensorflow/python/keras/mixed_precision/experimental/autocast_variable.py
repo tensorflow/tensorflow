@@ -22,11 +22,10 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.ops import variables
 
 
-# TODO(reedwm) Make this subclass AutoCastVariable.
-class AutoCastVariable(trackable.Trackable):
+class AutoCastVariable(variables.Variable):
   """Variable that will cast itself to a different dtype in applicable contexts.
 
   This class wraps a floating-point tf.Variable. It emulates the variable
@@ -67,14 +66,6 @@ class AutoCastVariable(trackable.Trackable):
                        'type: %s' % variable.dtype.name)
     self._variable = variable
 
-    # Delegate to the underlying variable for checkpointing.
-    self._gather_saveables_for_checkpoint = (
-        self._variable._gather_saveables_for_checkpoint)  # pylint: disable=protected-access
-
-  @property
-  def name(self):
-    return self._variable.name
-
   def _should_cast(self):
     """Returns True if this variable should be casted when accessed."""
     g = ops.get_default_graph()
@@ -108,31 +99,17 @@ class AutoCastVariable(trackable.Trackable):
 
   def read_value(self):
     val = self._variable.read_value()
-    if not self._should_cast():
-      return val
     return math_ops.cast(val, self.dtype)
 
   def sparse_read(self, indices, name=None):
     """Reads the value of this variable sparsely, using `gather`."""
     val = self._variable.sparse_read(indices, name=name)
-    if not self._should_cast():
-      return val
     return math_ops.cast(val, self.dtype)
 
-  def assign(self, value, use_locking=None, name=None, read_value=True):
-    return self._variable.assign(
-        value, use_locking=use_locking, name=name, read_value=read_value)
-
-  def assign_add(self, delta, use_locking=None, name=None, read_value=True):
-    return self._variable.assign_add(
-        delta, use_locking=use_locking, name=name, read_value=read_value)
-
-  def assign_sub(self, delta, use_locking=None, name=None, read_value=True):
-    return self._variable.assign_sub(
-        delta, use_locking=use_locking, name=name, read_value=read_value)
-
-  # TODO(reedwm): Support assigning variables with tf.compat.v1.assign(),
-  # var.scatter_add, etc.
+  def gather_nd(self, indices, name=None):
+    """Gather slices of the variable into a Tensor."""
+    val = self._variable.gather_nd(indices, name=name)
+    return math_ops.cast(val, self.dtype)
 
   def __getattr__(self, name):
     return getattr(self._variable, name)
@@ -171,11 +148,129 @@ class AutoCastVariable(trackable.Trackable):
                   'dtype={v.dtype.name} true_dtype={v.true_dtype.name}>')
       return repr_str.format(v=self)
 
+  # Method delegations: We delegate the following methods to self._variable.
+  # Each of these methods simply calls the same method on self._variable. The
+  # base Variable raises NotImplementedError for most of these, so we must
+  # override them.
+  #
+  # We do not define the following methods from Variable for the following
+  # reasons:
+  #   * 'count_up_to': This method only applies to int variables, which cannot
+  #     be wrapped with an AutoCastVariable.
+  #   * 'experimental_ref': Instead we inherit the definition from Variable.
+  #     If we defined and delegated to Variable, the ref of an AutoCastVariable
+  #     would be the same as the ref of the underlying variable, which would be
+  #     strange as they are different Python objects.
+
+  # pylint: disable=multiple-statements
+  def set_shape(self, shape): return self._variable.set_shape(self, shape)
+
+  @property
+  def trainable(self): return self._variable.trainable
+
+  @property
+  def synchronization(self): return self._variable.synchronization
+
+  @property
+  def aggregation(self): return self._variable.aggregation
+
+  def eval(self, session=None): return self._variable.eval(session)
+
+  def initialized_value(self): return self._variable.initialized_value()
+
+  @property
+  def initial_value(self): return self._variable.initial_value
+
+  @property
+  def constraint(self): return self._variable.constraint
+
+  def assign(self, value, use_locking=None, name=None, read_value=True):
+    return self._variable.assign(value, use_locking, name, read_value)
+
+  def assign_add(self, delta, use_locking=None, name=None, read_value=True):
+    return self._variable.assign_add(delta, use_locking, name, read_value)
+
+  def assign_sub(self, delta, use_locking=None, name=None, read_value=True):
+    return self._variable.assign_sub(delta, use_locking, name, read_value)
+
+  def scatter_sub(self, sparse_delta, use_locking=False, name=None):
+    return self._variable.scatter_sub(sparse_delta, use_locking, name)
+
+  def scatter_add(self, sparse_delta, use_locking=False, name=None):
+    return self._variable.scatter_add(sparse_delta, use_locking, name)
+
+  def scatter_max(self, sparse_delta, use_locking=False, name=None):
+    return self._variable.scatter_max(sparse_delta, use_locking, name)
+
+  def scatter_min(self, sparse_delta, use_locking=False, name=None):
+    return self._variable.scatter_min(sparse_delta, use_locking, name)
+
+  def scatter_mul(self, sparse_delta, use_locking=False, name=None):
+    return self._variable.scatter_mul(sparse_delta, use_locking, name)
+
+  def scatter_div(self, sparse_delta, use_locking=False, name=None):
+    return self._variable.scatter_div(sparse_delta, use_locking, name)
+
+  def scatter_update(self, sparse_delta, use_locking=False, name=None):
+    return self._variable.scatter_update(sparse_delta, use_locking, name)
+
+  def batch_scatter_update(self, sparse_delta, use_locking=False, name=None):
+    return self._variable.batch_scatter_update(sparse_delta, use_locking, name)
+
+  def scatter_nd_sub(self, indices, updates, name=None):
+    return self._variable.scatter_nd_sub(indices, updates, name)
+
+  def scatter_nd_add(self, indices, updates, name=None):
+    return self._variable.scatter_nd_add(indices, updates, name)
+
+  def scatter_nd_update(self, indices, updates, name=None):
+    return self._variable.scatter_nd_update(indices, updates, name)
+
+  def load(self, value, session=None):
+    return self._variable.load(value, session)
+
+  @property
+  def name(self): return self._variable.name
+
+  @property
+  def _shared_name(self): return self._variable._shared_name  # pylint:disable=protected-access
+
+  @property
+  def initializer(self): return self._variable.initializer
+
+  @property
+  def device(self): return self._variable.device
+
+  @property
+  def op(self): return self._variable.op
+
+  @property
+  def graph(self): return self._variable.graph
+
+  @property
+  def shape(self): return self._variable.shape
+
+  def get_shape(self): return self._variable.get_shape()
+
+  def _gather_saveables_for_checkpoint(self):
+    # By delegating this method to the wrapped variable, checkpoints with
+    # AutoCastVariables are identical to checkpoints with normal variables.
+    # Therefore models checkpointed with AutoCastVariables can be restored on
+    # models with normal variables, and vice versa.
+    return self._variable._gather_saveables_for_checkpoint()  # pylint:disable=protected-access
+
+  # TODO(reedwm): Maybe encode the fact the variable is an AutoCastVariable in
+  # to_proto().
+  def to_proto(self, export_scope=None):
+    return self._variable.to_proto(export_scope)
+
+  def from_proto(self, variable_def, import_scope=None):
+    return self._variable.from_proto(variable_def, import_scope)
+
   # Operator overloads:
   # Note we only overload operators that support floating-point types, as
   # non-float variables cannot be wrapped with an AutoCastVariable.
 
-  # pylint: disable=multiple-statements
   def __add__(self, o): return self.value() + o
   def __radd__(self, o): return o + self.value()
   def __sub__(self, o): return self.value() - o
