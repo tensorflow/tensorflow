@@ -250,3 +250,20 @@ func @QuantizeMultipleUsers(%arg1: tensor<4x!quant.uniform<u8:f32, 1.0>>) -> (te
 // CHECK-NEXT: %[[s1:.*]] = "tfl.shape"(%arg0) : (tensor<4x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<1xi32>
 // CHECK-NEXT: %[[s1]], %[[s1]] : tensor<1xi32>, tensor<1xi32>
 }
+
+// CHECK-LABEL: NotQuantizePow
+func @NotQuantizePow(%arg0: tensor<4x!quant.uniform<u8:f32, 1.0>>,
+                     %arg1: tensor<4x!quant.uniform<u8:f32, 1.0>>) -> (tensor<4x!quant.uniform<u8:f32, 1.0>>) {
+  %1 = "tfl.dequantize"(%arg0) : (tensor<4x!quant.uniform<u8:f32, 1.0>>) -> tensor<4xf32>
+  %2 = "tfl.dequantize"(%arg1) : (tensor<4x!quant.uniform<u8:f32, 1.0>>) -> tensor<4xf32>
+  %3 = "tfl.pow"(%1, %2) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  %4 = "tfl.quantize"(%3) {qtype = tensor<4x!quant.uniform<u8:f32, 1.0>>} : (tensor<4xf32>) -> tensor<4x!quant.uniform<u8:f32, 1.0>>
+
+  return %4 : tensor<4x!quant.uniform<u8:f32, 1.0>>
+
+// CHECK-NEXT: %[[dq1:.*]] = "tfl.dequantize"(%arg0)
+// CHECK-NEXT: %[[dq2:.*]] = "tfl.dequantize"(%arg1)
+// CHECK-NEXT: %[[pow:.*]] = tfl.pow %[[dq1]], %[[dq2]]
+// CHECK-NEXT: %[[q:.*]] = "tfl.quantize"(%[[pow]])
+// CHECK-NEXT: return %[[q]]
+}

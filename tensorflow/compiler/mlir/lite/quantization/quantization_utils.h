@@ -90,8 +90,13 @@ struct QuantizationPattern : public RewritePattern {
     Value* quantized_value = op->getResult(0);
     for (Operation* quantized_op : quantized_value->getUsers()) {
       // If it is requantize op, we shouldn't rewrite this op.
-      if (llvm::isa<Q>(quantized_op) || llvm::isa<DQ>(quantized_op) ||
-          quantized_op->isKnownTerminator()) {
+      if (llvm::isa<Q>(quantized_op) || llvm::isa<DQ>(quantized_op)) {
+        return matchFailure();
+      }
+
+      // If it is terminator or not quantizable, we shouldn't rewrite.
+      if (quantized_op->isKnownTerminator() ||
+          quantized_op->hasTrait<OpTrait::quant::NoQuantizableResult>()) {
         return matchFailure();
       }
 
