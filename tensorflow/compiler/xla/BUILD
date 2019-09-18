@@ -120,7 +120,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":debug_options_flags",
-        ":xla_cc_proto",
+        ":xla_proto",
     ],
 )
 
@@ -152,8 +152,8 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":status",
-        ":xla_cc_proto",
-        ":xla_data_cc_proto",
+        ":xla_data_proto",
+        ":xla_proto",
     ],
 )
 
@@ -225,7 +225,7 @@ cc_library(
         ":status_macros",
         ":statusor",
         ":types",
-        ":xla_data_cc_proto",
+        ":xla_data_proto",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -302,7 +302,7 @@ cc_library(
         ":statusor",
         ":types",
         ":util",
-        ":xla_data_cc_proto",
+        ":xla_data_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:regexp_internal",
@@ -417,7 +417,7 @@ cc_library(
         ":status_macros",
         ":types",
         ":util",
-        ":xla_data_cc_proto",
+        ":xla_data_proto",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
@@ -462,7 +462,7 @@ cc_library(
         ":status_macros",
         ":types",
         ":util",
-        ":xla_data_cc_proto",
+        ":xla_data_proto",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -631,7 +631,7 @@ cc_library(
         ":statusor",
         ":types",
         ":util",
-        ":xla_data_cc_proto",
+        ":xla_data_proto",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
@@ -665,7 +665,7 @@ cc_library(
         ":statusor",
         ":types",
         ":util",
-        ":xla_data_cc_proto",
+        ":xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -699,7 +699,7 @@ cc_library(
         ":shape_util",
         ":status_macros",
         ":types",
-        ":xla_data_cc_proto",
+        ":xla_data_proto",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -728,7 +728,7 @@ cc_library(
     deps = [
         ":shape_util",
         ":status_macros",
-        ":xla_data_cc_proto",
+        ":xla_data_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/memory",
@@ -760,7 +760,7 @@ cc_library(
         ":shape_util",
         ":types",
         ":util",
-        ":xla_data_cc_proto",
+        ":xla_data_proto",
         "//tensorflow/core:lib",
     ],
 )
@@ -772,7 +772,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":types",
-        ":xla_data_cc_proto",
+        ":xla_data_proto",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
@@ -802,7 +802,7 @@ cc_library(
         ":literal_util",
         ":util",
         ":window_util",
-        ":xla_data_cc_proto",
+        ":xla_data_proto",
         "//tensorflow/compiler/xla/client:padding",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/service:hlo",
@@ -841,7 +841,7 @@ cc_library(
     deps = [
         ":array2d",
         ":shape_util",
-        ":xla_data_cc_proto",
+        ":xla_data_proto",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:span",
     ],
@@ -897,7 +897,7 @@ cc_library(
     deps =
         [
             ":parse_flags_from_env",
-            ":xla_cc_proto",
+            ":xla_proto",
             "//tensorflow/compiler/xla/service:hlo",
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
