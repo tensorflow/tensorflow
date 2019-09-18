@@ -111,16 +111,17 @@ def main(_):
         "The --debug and --tensorboard_debug_address flags are mutually "
         "exclusive.")
   if FLAGS.debug:
-    raise NotImplementedError(
-        "tfdbg v2 support for debug_mnist is not implemented yet")
+    tf.debugging.enable_check_numerics()
   elif FLAGS.tensorboard_debug_address:
     raise NotImplementedError(
-        "tfdbg v2 support for debug_mnist is not implemented yet")
+        "Tensorboard Debugger Plugin support for debug_mnist_v2 is not "
+        "implemented yet"
+    )
 
   # Import data
   if FLAGS.fake_data:
-    imgs = tf.random.uniform(maxval=256, shape=(10, 28, 28), dtype=tf.int32)
-    labels = tf.random.uniform(maxval=10, shape=(10,), dtype=tf.int32)
+    imgs = tf.random.uniform(maxval=256, shape=(1000, 28, 28), dtype=tf.int32)
+    labels = tf.random.uniform(maxval=10, shape=(1000,), dtype=tf.int32)
     mnist_train = imgs, labels
     mnist_test = imgs, labels
   else:

@@ -51,18 +51,17 @@ else
   DEBUG_MNIST_BIN="${PYTHON_BIN_PATH} -m tensorflow.python.debug.examples.v2.debug_mnist"
 fi
 
-# Override the default ui_type=curses to allow the test to pass in a tty-less
-# test environment.
-cat << EOF | ${DEBUG_FIBONACCI_BIN} --tensor_size=2
-run
-exit
-EOF
+# Verify fibonacci runs normally without additional flags
+${DEBUG_FIBONACCI_BIN} --tensor_size=2
 
-cat << EOF | ${DEBUG_MNIST_BIN} --max_steps=1 --fake_data
-run -t 1
-run --node_name_filter hidden --op_type_filter MatMul
-run -f has_inf_or_nan
-EOF
+# Verify mnist runs normally without additional flags
+${DEBUG_MNIST_BIN} --max_steps=4 --fake_data
 
-echo
+# Verify mnist does not break with check_numerics enabled on first iteration
+# check_numerics should not cause non-zero exit code on a single train step
+${DEBUG_MNIST_BIN} --max_steps=1 --fake_data --debug
+
+# Verify check_numerics exits with non-zero exit code
+! ${DEBUG_MNIST_BIN} --max_steps=4 --fake_data --debug
+
 echo "SUCCESS: tfdbg examples and binaries test PASSED"
