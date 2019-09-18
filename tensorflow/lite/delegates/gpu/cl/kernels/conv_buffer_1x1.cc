@@ -259,7 +259,7 @@ Status ConvBuffer1x1::BindArguments() {
   RETURN_IF_ERROR(kernel->SetMemoryAuto(weights_.GetMemoryPtr()));
   RETURN_IF_ERROR(kernel->SetMemoryAuto(biases_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(kernel, linked_operations_));
-  RETURN_IF_ERROR(kernel->SetMemoryAuto(dst_[0]->GetMemoryPtr()));
+  RETURN_IF_ERROR(kernel->SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   int4 src_size = int4(src_[0]->Width(), src_[0]->Height(),
                        GetGridWidth(src_[0]->Width()) * src_[0]->Height(),
                        src_[0]->Depth());

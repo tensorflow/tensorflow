@@ -161,6 +161,8 @@ cl_mem Tensor::GetMemoryPtr() const {
                                                           : memory_;
 }
 
+cl_mem Tensor::GetMemoryPtrForWriting() const { return memory_; }
+
 Status Tensor::WriteDataBHWC(absl::Span<const float> in,
                              CLCommandQueue* queue) {
   if (in.size() != channels_ * width_ * height_) {

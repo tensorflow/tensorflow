@@ -80,7 +80,7 @@ Status ConvPowerVR::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtr()));
+  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   if (!conv_params_.x_kernel_is_1 || !conv_params_.y_kernel_is_1) {
     RETURN_IF_ERROR(kernel_.SetBytesAuto(stride_padding_));
     RETURN_IF_ERROR(kernel_.SetBytesAuto(kernel_dilation_));

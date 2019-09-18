@@ -189,7 +189,7 @@ Status ConcatZ::BindArguments() {
   for (int i = 0; i < channels_.size(); ++i) {
     RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[i]->GetMemoryPtr()));
   }
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtr()));
+  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   for (int i = 0; i < channels_.size(); ++i) {
     int4 size(src_[i]->Width(), src_[i]->Height(), channels_[i],
