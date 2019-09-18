@@ -162,6 +162,22 @@ cc_library(
 )
 
 cc_library(
+    name = "xla_lower_general_dot",
+    srcs = ["transforms/lower_general_dot.cc"],
+    deps = [
+        ":hlo",
+        ":xla_dialect_registration",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm//:support",
+        "@local_config_mlir//:Analysis",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Pass",
+        "@local_config_mlir//:StandardOps",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "hlo",
     srcs = [
         "ir/hlo_ops.cc",
@@ -171,6 +187,7 @@ cc_library(
     hdrs = [
         "ir/hlo_ops.h",
         "transforms/passes.h",
+        "transforms/rewriters.h",
     ],
     includes = ["include"],
     deps = [
@@ -197,6 +214,7 @@ cc_library(
     hdrs = [
         "ir/lhlo_ops.h",
         "transforms/passes.h",
+        "transforms/rewriters.h",
     ],
     includes = ["include"],
     deps = [

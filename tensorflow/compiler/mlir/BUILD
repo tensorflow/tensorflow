@@ -55,6 +55,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:xla_legalize_control_flow",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/xla:xla_legalize_to_standard",
+        "//tensorflow/compiler/mlir/xla:xla_lower_general_dot",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "@llvm//:support",
