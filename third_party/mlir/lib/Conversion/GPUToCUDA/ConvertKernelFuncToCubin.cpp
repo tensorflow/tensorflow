@@ -120,7 +120,7 @@ OwnedCubin GpuKernelToCubinPass::convertModuleToCubin(llvm::Module &llvmModule,
     const llvm::Target *target =
         llvm::TargetRegistry::lookupTarget("", triple, error);
     if (target == nullptr) {
-      function.emitError("Cannot initialize target triple");
+      function.emitError("cannot initialize target triple");
       return {};
     }
     targetMachine.reset(
@@ -148,7 +148,7 @@ GpuKernelToCubinPass::translateGpuKernelToCubinAnnotation(FuncOp &function) {
   auto cubin = convertModuleToCubin(*llvmModule, function);
 
   if (!cubin) {
-    return function.emitError("Translation to CUDA binary failed.");
+    return function.emitError("translation to CUDA binary failed.");
   }
 
   function.setAttr(kCubinAnnotation,

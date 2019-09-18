@@ -916,7 +916,7 @@ static Optional<int64_t> getMemoryFootprintBytes(Block &block,
     if (failed(
             region->compute(opInst,
                             /*loopDepth=*/getNestingDepth(*block.begin())))) {
-      return opInst->emitError("Error obtaining memory region\n");
+      return opInst->emitError("error obtaining memory region\n");
     }
 
     auto it = regions.find(region->memref);
