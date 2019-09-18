@@ -84,7 +84,7 @@ public:
     // this won't do much, but it should at least check some structural
     // properties of the generated MLIR module.
     if (failed(mlir::verify(theModule))) {
-      theModule.emitError("Module verification error");
+      theModule.emitError("module verification error");
       return nullptr;
     }
 
@@ -224,7 +224,7 @@ private:
       op_name = "toy.mul";
       break;
     default:
-      emitError(location, "Error: invalid binary operator '")
+      emitError(location, "error: invalid binary operator '")
           << binop.getOp() << "'";
       return nullptr;
     }
@@ -244,7 +244,7 @@ private:
     if (auto *variable = symbolTable.lookup(expr.getName()))
       return variable;
 
-    emitError(loc(expr.loc()), "Error: unknown variable '")
+    emitError(loc(expr.loc()), "error: unknown variable '")
         << expr.getName() << "'";
     return nullptr;
   }
@@ -413,7 +413,7 @@ private:
     auto init = vardecl.getInitVal();
     if (!init) {
       emitError(loc(vardecl.loc()),
-                "Missing initializer in variable declaration");
+                "missing initializer in variable declaration");
       return nullptr;
     }
 

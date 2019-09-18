@@ -124,7 +124,7 @@ public:
     auto main = module.lookupSymbol<mlir::FuncOp>("main");
     if (!main) {
       emitError(mlir::UnknownLoc::get(module.getContext()),
-                "Shape inference failed: can't find a main function\n");
+                "shape inference failed: can't find a main function\n");
       signalPassFailure();
       return;
     }
@@ -269,7 +269,7 @@ public:
         auto rhsRank = rhs.getShape().size();
         if (lhsRank != rhsRank) {
           return mulOp.emitOpError(
-              "Shape mismatch: LHS and RHS must have the same "
+              "shape mismatch: LHS and RHS must have the same "
               "rank for multiplication, got " +
               Twine(lhsRank) + " vs  " + Twine(lhsRank));
         }
@@ -279,7 +279,7 @@ public:
           dims.push_back(1);
         } else if (lhsRank != 2) {
           return op->emitOpError(
-              "Shape mismatch: expect rank 1 or 2 for mul operands, got " +
+              "shape mismatch: expect rank 1 or 2 for mul operands, got " +
               Twine(lhsRank));
         } else {
           dims.push_back(lhs.getShape()[0]);
@@ -298,7 +298,7 @@ public:
         auto calleeName = callOp.getCalleeName();
         auto callee = getModule().lookupSymbol<mlir::FuncOp>(calleeName);
         if (!callee) {
-          f.emitError("Shape inference failed, call to unknown '")
+          f.emitError("shape inference failed, call to unknown '")
               << calleeName << "'";
           signalPassFailure();
           return mlir::failure();
@@ -338,7 +338,7 @@ public:
     if (!opWorklist.empty()) {
       std::string str;
       llvm::raw_string_ostream errorMsg(str);
-      errorMsg << "Shape inference failed, " << opWorklist.size()
+      errorMsg << "shape inference failed, " << opWorklist.size()
                << " operations couldn't be inferred\n";
       for (auto *ope : opWorklist)
         errorMsg << " - " << *ope << "\n";

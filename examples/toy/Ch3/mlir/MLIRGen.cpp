@@ -85,7 +85,7 @@ public:
     // this won't do much, but it should at least check some structural
     // properties.
     if (failed(mlir::verify(*theModule))) {
-      emitError(mlir::UnknownLoc::get(&context), "Module verification error");
+      emitError(mlir::UnknownLoc::get(&context), "module verification error");
       return nullptr;
     }
 
@@ -223,7 +223,7 @@ private:
     case '*':
       return builder->create<MulOp>(location, L, R).getResult();
     default:
-      emitError(loc(binop.loc()), "Error: invalid binary operator '")
+      emitError(loc(binop.loc()), "error: invalid binary operator '")
           << binop.getOp() << "'";
       return nullptr;
     }
@@ -235,7 +235,7 @@ private:
   mlir::Value *mlirGen(VariableExprAST &expr) {
     if (symbolTable.count(expr.getName()))
       return symbolTable.lookup(expr.getName());
-    emitError(loc(expr.loc()), "Error: unknown variable '")
+    emitError(loc(expr.loc()), "error: unknown variable '")
         << expr.getName() << "'";
     return nullptr;
   }
@@ -413,7 +413,7 @@ private:
       }
     } else {
       emitError(loc(vardecl.loc()),
-                "Missing initializer in variable declaration");
+                "missing initializer in variable declaration");
       return nullptr;
     }
     // Register the value in the symbol table

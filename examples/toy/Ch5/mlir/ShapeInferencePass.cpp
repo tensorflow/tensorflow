@@ -125,7 +125,7 @@ public:
     auto main = moduleManager.lookupSymbol<mlir::FuncOp>("main");
     if (!main) {
       emitError(mlir::UnknownLoc::get(module.getContext()),
-                "Shape inference failed: can't find a main function\n");
+                "shape inference failed: can't find a main function\n");
       signalPassFailure();
       return;
     }
@@ -271,7 +271,7 @@ public:
         auto lhsRank = lhs.getShape().size();
         auto rhsRank = rhs.getShape().size();
         if (lhsRank != rhsRank) {
-          return op->emitError("Shape mismatch: LHS and RHS must have the same "
+          return op->emitError("shape mismatch: LHS and RHS must have the same "
                                "rank for multiplication, got ")
                  << lhsRank << " vs  " << lhsRank;
         }
@@ -281,7 +281,7 @@ public:
           dims.push_back(1);
         } else {
           if (lhsRank != 2) {
-            return op->emitError("Shape mismatch: expect rank 1 or 2 for mul "
+            return op->emitError("shape mismatch: expect rank 1 or 2 for mul "
                                  "operands, got ")
                    << lhsRank;
           }
@@ -302,7 +302,7 @@ public:
         auto callee = moduleManager.lookupSymbol<mlir::FuncOp>(calleeName);
         if (!callee) {
           signalPassFailure();
-          return f.emitError("Shape inference failed, call to unknown '")
+          return f.emitError("shape inference failed, call to unknown '")
                  << calleeName << "'";
         }
         auto mangledName = mangle(calleeName, op->getOpOperands());
@@ -340,7 +340,7 @@ public:
     // If the operation worklist isn't empty, this indicates a failure.
     if (!opWorklist.empty()) {
       signalPassFailure();
-      auto diag = f.emitError("Shape inference failed, ")
+      auto diag = f.emitError("shape inference failed, ")
                   << opWorklist.size() << " operations couldn't be inferred\n";
       for (auto *ope : opWorklist)
         diag << " - " << *ope << "\n";

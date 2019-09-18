@@ -365,7 +365,7 @@ struct LateLoweringPass : public ModulePass<LateLoweringPass> {
     if (failed(applyPartialConversion(getModule(), target, toyPatterns,
                                       &typeConverter))) {
       emitError(UnknownLoc::get(getModule().getContext()),
-                "Error lowering Toy\n");
+                "error lowering Toy\n");
       signalPassFailure();
     }
 

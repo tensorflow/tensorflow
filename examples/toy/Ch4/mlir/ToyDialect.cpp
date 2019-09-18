@@ -104,7 +104,7 @@ ToyDialect::ToyDialect(mlir::MLIRContext *ctx) : mlir::Dialect("toy", ctx) {
 mlir::Type ToyDialect::parseType(StringRef tyData, mlir::Location loc) const {
   // Sanity check: we only support array or array<...>
   if (!tyData.startswith("array")) {
-    emitError(loc, "Invalid Toy type '" + tyData + "', array expected");
+    emitError(loc, "invalid Toy type '" + tyData + "', array expected");
     return nullptr;
   }
   // Drop the "array" prefix from the type name, we expect either an empty
@@ -119,7 +119,7 @@ mlir::Type ToyDialect::parseType(StringRef tyData, mlir::Location loc) const {
   SmallVector<StringRef, 4> matches;
   auto shapeRegex = llvm::Regex("^<([0-9]+)(, ([0-9]+))*>$");
   if (!shapeRegex.match(tyData, &matches)) {
-    emitError(loc, "Invalid toy array shape '" + tyData + "'");
+    emitError(loc, "invalid toy array shape '" + tyData + "'");
     return nullptr;
   }
   SmallVector<int64_t, 4> shape;
@@ -133,7 +133,7 @@ mlir::Type ToyDialect::parseType(StringRef tyData, mlir::Location loc) const {
     // Convert the capture to an integer
     unsigned long long dim;
     if (getAsUnsignedInteger(dimStr, /* Radix = */ 10, dim)) {
-      emitError(loc, "Couldn't parse dimension as integer, matched: " + dimStr);
+      emitError(loc, "couldn't parse dimension as integer, matched: " + dimStr);
       return mlir::Type();
     }
     shape.push_back(dim);

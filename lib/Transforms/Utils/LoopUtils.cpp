@@ -1667,7 +1667,7 @@ uint64_t mlir::affineDataCopyGenerate(Block::iterator begin,
       LLVM_DEBUG(llvm::dbgs() << "over-approximating to the entire memref\n");
       if (!getFullMemRefAsRegion(opInst, copyDepth, region.get())) {
         LLVM_DEBUG(
-            opInst->emitError("Non-constant memref sizes not yet supported"));
+            opInst->emitError("non-constant memref sizes not yet supported"));
         error = true;
         return;
       }
@@ -1702,7 +1702,7 @@ uint64_t mlir::affineDataCopyGenerate(Block::iterator begin,
             // If the union fails, we will overapproximate.
             if (!getFullMemRefAsRegion(opInst, copyDepth, region.get())) {
               LLVM_DEBUG(opInst->emitError(
-                  "Non-constant memref sizes not yet supported"));
+                  "non-constant memref sizes not yet supported"));
               error = true;
               return true;
             }
