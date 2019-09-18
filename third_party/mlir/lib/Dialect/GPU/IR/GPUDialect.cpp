@@ -289,7 +289,7 @@ ParseResult LaunchOp::parse(OpAsmParser *parser, OperationState *result) {
   // so is the trailing type list.  Parse it as well and use the parsed types
   // to resolve the operands passed to the kernel arguments.
   SmallVector<Type, 4> dataTypes;
-  if (!parser->parseOptionalKeyword(getArgsKeyword().data())) {
+  if (!parser->parseOptionalKeyword(getArgsKeyword())) {
     llvm::SMLoc argsLoc = parser->getCurrentLocation();
 
     regionArgs.push_back({});

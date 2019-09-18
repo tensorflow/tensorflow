@@ -123,12 +123,28 @@ static void print(OpAsmPrinter *p, IsolatedRegionOp op) {
 }
 
 //===----------------------------------------------------------------------===//
-// Test WrapRegionOp - wrapping op exercising `parseGenericOperation()`.
+// Test parser.
 //===----------------------------------------------------------------------===//
+
+static ParseResult parseWrappedKeywordOp(OpAsmParser *parser,
+                                         OperationState *result) {
+  StringRef keyword;
+  if (parser->parseKeyword(&keyword))
+    return failure();
+  result->addAttribute("keyword", parser->getBuilder().getStringAttr(keyword));
+  return success();
+}
+
+static void print(OpAsmPrinter *p, WrappedKeywordOp op) {
+  *p << WrappedKeywordOp::getOperationName() << " " << op.keyword();
+}
+
+//===----------------------------------------------------------------------===//
+// Test WrapRegionOp - wrapping op exercising `parseGenericOperation()`.
 
 static ParseResult parseWrappingRegionOp(OpAsmParser *parser,
                                          OperationState *result) {
-  if (parser->parseOptionalKeyword("wraps"))
+  if (parser->parseKeyword("wraps"))
     return failure();
 
   // Parse the wrapped op in a region

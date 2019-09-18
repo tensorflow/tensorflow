@@ -269,11 +269,10 @@ static ParseResult parseVariableDecorations(OpAsmParser *parser,
         parser->parseRParen()) {
       return failure();
     }
-  } else if (succeeded(parser->parseOptionalKeyword(builtInName.c_str()))) {
+  } else if (succeeded(parser->parseOptionalKeyword(builtInName))) {
     StringAttr builtIn;
     if (parser->parseLParen() ||
-        parser->parseAttribute(builtIn, Type(), builtInName,
-                               state->attributes) ||
+        parser->parseAttribute(builtIn, builtInName, state->attributes) ||
         parser->parseRParen()) {
       return failure();
     }

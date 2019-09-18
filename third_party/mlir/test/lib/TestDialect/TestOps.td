@@ -768,8 +768,17 @@ def TestValidOp : TEST_Op<"valid", [Terminator]>,
   Arguments<(ins Variadic<AnyType>:$inputs)>;
 
 //===----------------------------------------------------------------------===//
-// Test region argument list parsing.
+// Test parser.
 //===----------------------------------------------------------------------===//
+
+def WrappedKeywordOp : TEST_Op<"wrapped_keyword"> {
+  let arguments = (ins StrAttr:$keyword);
+  let parser = [{ return ::parse$cppClass(parser, result); }];
+  let printer = [{ return ::print(p, *this); }];
+}
+
+//===----------------------------------------------------------------------===//
+// Test region argument list parsing.
 
 def IsolatedRegionOp : TEST_Op<"isolated_region", [IsolatedFromAbove]> {
   let summary =  "isolated region operation";
