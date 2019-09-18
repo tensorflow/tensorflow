@@ -428,6 +428,28 @@ cc_library(
     ],
 )
 
+objc_library(
+    name = "prelu_test_lib",
+    testonly = 1,
+    srcs = ["prelu_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":prelu",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "prelu_test",
+    testonly = 1,
+    minimum_os_version = "10.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":prelu_test_lib"],
+)
+
 cc_library(
     name = "relu",
     srcs = ["relu.cc"],
@@ -516,6 +538,28 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "@com_google_absl//absl/strings",
     ],
+)
+
+objc_library(
+    name = "slice_test_lib",
+    testonly = 1,
+    srcs = ["slice_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":slice",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "slice_test",
+    testonly = 1,
+    minimum_os_version = "10.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":slice_test_lib"],
 )
 
 cc_library(

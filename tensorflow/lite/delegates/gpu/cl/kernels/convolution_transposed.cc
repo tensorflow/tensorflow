@@ -28,18 +28,18 @@ namespace cl {
 namespace {
 
 std::string GenerateConvolutionTransposedCode(
-    const TensorDescriptor& src_descriptor,
-    const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
-    const LinearStorage& biases, const CLDevice& device,
+    const OperationDef& op_def, const LinearStorage& biases,
+    const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
-  std::string c = GetCommonDefines(precision);
+  TensorCodeGenerator src_tensor("src_data", "src_size", op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data", "dst_size", op_def.dst_tensors[0]);
+  const auto src_tensor_type = op_def.src_tensors[0].storage_type;
+  std::string c = GetCommonDefines(op_def.precision);
 
-  switch (precision) {
+  switch (op_def.precision) {
     case CalculationsPrecision::F32:
     case CalculationsPrecision::F16:
-      if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+      if (src_tensor_type == TensorStorageType::BUFFER) {
         c += "#define CONV(R, S)   \\\n";
         c += "R += S.x * f0.s0123; \\\n";
         c += "R += S.y * f0.s4567; \\\n";
@@ -54,7 +54,7 @@ std::string GenerateConvolutionTransposedCode(
       }
       break;
     case CalculationsPrecision::F32_F16:
-      if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+      if (src_tensor_type == TensorStorageType::BUFFER) {
         c += "#define CONV(R, S) \\\n";
         c += "R += convert_float4(S.x * f0.s0123 + S.y * f0.s4567 + S.z * "
              "f0.s89ab + S.w * f0.scdef);\n";
@@ -66,7 +66,7 @@ std::string GenerateConvolutionTransposedCode(
       break;
   }
 
-  switch (precision) {
+  switch (op_def.precision) {
     case CalculationsPrecision::F32:
       c += "#define FLT16 float16\n";
       break;
@@ -78,7 +78,7 @@ std::string GenerateConvolutionTransposedCode(
 
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ) + ",\n";
-  if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+  if (src_tensor_type == TensorStorageType::BUFFER) {
     c += "    __global FLT16* filters,  \n";
     c += "    __global FLT4* biases";
   } else {
@@ -99,7 +99,7 @@ std::string GenerateConvolutionTransposedCode(
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
   c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) return;\n";
-  if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+  if (src_tensor_type == TensorStorageType::BUFFER) {
     c += "  int f_base = Z * src_size.w * kernel_size.x * kernel_size.y;\n";
   }
   c += "  int2 offset = (int2)(X, Y) + padding - k_offset;\n";
@@ -126,7 +126,7 @@ std::string GenerateConvolutionTransposedCode(
   c += "      bool out_x = s_x < 0 || s_x >= src_size.x;\n";
   c += "      int kernel_index = index_y * kernel_size.x + index_x;\n";
   c += "      if (inside_kernel && !(out_x || out_y)) {\n";
-  if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+  if (src_tensor_type == TensorStorageType::BUFFER) {
     c += "        int f_offset = f_base + kernel_index * src_size.w;\n";
   } else {
     c += "        int x_c = kernel_index * src_size.w * 4;\n";
@@ -135,7 +135,7 @@ std::string GenerateConvolutionTransposedCode(
   c += "          FLT4 src =" +
        src_tensor.Read3D("s_x", "s_y", "l", TextureAddressMode::DONT_CARE) +
        ";\n";
-  if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+  if (src_tensor_type == TensorStorageType::BUFFER) {
     c += "          FLT16 f0 = filters[f_offset]; f_offset++;\n";
   } else {
     c += "          FLT4 f[4];\n";
@@ -217,9 +217,7 @@ ConvolutionTransposed& ConvolutionTransposed::operator=(
 
 Status ConvolutionTransposed::Compile(const CreationContext& creation_context) {
   const auto code = GenerateConvolutionTransposedCode(
-      definition_.src_tensors[0], definition_.dst_tensors[0],
-      definition_.precision, biases_, *creation_context.device,
-      linked_operations_);
+      definition_, biases_, *creation_context.device, linked_operations_);
 
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,

@@ -29,12 +29,12 @@ limitations under the License.
 #define IS_MOBILE_PLATFORM
 
 #elif defined(__APPLE__)
-#define PLATFORM_POSIX
 #include "TargetConditionals.h"
-#if TARGET_IPHONE_SIMULATOR
+#if TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE
+#define PLATFORM_POSIX_IOS
 #define IS_MOBILE_PLATFORM
-#elif TARGET_OS_IPHONE
-#define IS_MOBILE_PLATFORM
+#else
+#define PLATFORM_POSIX
 #endif
 
 #elif defined(_WIN32)

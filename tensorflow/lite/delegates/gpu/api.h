@@ -82,11 +82,11 @@ struct OpenGlTexture {
 };
 
 struct OpenClBuffer {
-  cl_mem memobj;
+  cl_mem memobj = nullptr;
 };
 
 struct OpenClTexture {
-  cl_mem memobj;
+  cl_mem memobj = nullptr;
   // TODO(akulik): should it specify texture format?
 };
 

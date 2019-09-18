@@ -259,6 +259,7 @@ class EagerContext : public core::RefCounted {
   Status GetClient(Device* device, eager::EagerClient** client);
   Status GetClient(const DeviceNameUtils::ParsedName& device_name,
                    eager::EagerClient** client);
+  Status GetClient(const string& remote_task, eager::EagerClient** client);
 
   uint64 GetContextId();
 

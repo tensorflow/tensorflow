@@ -169,7 +169,8 @@ class StepStatsCuptiTracerAdaptor : public CuptiTraceCollector {
                   event.kernel_info.grid_x, event.kernel_info.grid_y,
                   event.kernel_info.grid_z, event.kernel_info.block_x,
                   event.kernel_info.block_y, event.kernel_info.block_z);
-              ns->set_timeline_label(absl::StrCat(kernel_name, " ", details));
+              ns->set_timeline_label(absl::StrCat(kernel_name, " ", details,
+                                                  "@@", event.annotation));
               auto nscopy = new NodeExecStats(*ns);
               collector->Save(absl::StrCat(stream_device, "all"), ns);
               collector->Save(absl::StrCat(stream_device, event.stream_id),

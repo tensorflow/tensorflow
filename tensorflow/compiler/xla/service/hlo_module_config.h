@@ -41,6 +41,9 @@ class HloModuleConfig {
   // programs, and the caller is responsible to call the XLA-generated
   // sharding/unsharding programs before and after the sharded main program.
   //
+  // If the variable is not updated and there is not a corresponding output, use
+  // {-1} as the output_shape_index.
+  //
   // The sharding/unsharding programs will include all the input/output pairs in
   // shardable_value_update_pairs() as a flat tuple in their inputs/outputs,
   // sorted by (input_parameter_number, parameter_shape_index).

@@ -1520,9 +1520,10 @@ class TensorBoard(Callback):
     if self.embeddings_freq:
       self._configure_embeddings()
 
-    self._prev_summary_writer = context.context().summary_writer
-    self._prev_summary_recording = context.context().summary_recording
-    self._prev_summary_step = context.context().summary_step
+    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
+    self._prev_summary_recording = summary_state.is_recording
+    self._prev_summary_writer = summary_state.writer
+    self._prev_summary_step = summary_state.step
 
   def _configure_embeddings(self):
     """Configure the Projector for embeddings."""
@@ -1598,14 +1599,15 @@ class TensorBoard(Callback):
       # Writer is only used for custom summaries, which are written
       # batch-by-batch.
       return
-    writer = self._get_writer(writer_name)
+
     step = self._total_batches_seen[writer_name]
-    context.context().summary_writer = writer
 
     def _should_record():
       return math_ops.equal(step % self.update_freq, 0)
 
-    context.context().summary_recording = _should_record
+    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
+    summary_state.is_recording = _should_record
+    summary_state.writer = self._get_writer(writer_name)
     summary_ops_v2.set_step(step)
 
   def _init_batch_steps(self):
@@ -1690,9 +1692,10 @@ class TensorBoard(Callback):
       self._log_trace()
     self._close_writers()
 
-    context.context().summary_writer = self._prev_summary_writer
-    context.context().summary_recording = self._prev_summary_recording
-    context.context().summary_step = self._prev_summary_step
+    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
+    summary_state.is_recording = self._prev_summary_recording
+    summary_state.writer = self._prev_summary_writer
+    summary_state.step = self._prev_summary_step
 
   def _enable_trace(self):
     if context.executing_eagerly():

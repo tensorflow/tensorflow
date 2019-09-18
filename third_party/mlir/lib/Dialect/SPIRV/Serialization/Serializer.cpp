@@ -766,6 +766,17 @@ Serializer::prepareBasicType(Location loc, Type type, uint32_t resultID,
     return success();
   }
 
+  if (auto runtimeArrayType = type.dyn_cast<spirv::RuntimeArrayType>()) {
+    uint32_t elementTypeID = 0;
+    if (failed(processType(loc, runtimeArrayType.getElementType(),
+                           elementTypeID))) {
+      return failure();
+    }
+    operands.push_back(elementTypeID);
+    typeEnum = spirv::Opcode::OpTypeRuntimeArray;
+    return success();
+  }
+
   if (auto structType = type.dyn_cast<spirv::StructType>()) {
     bool hasLayout = structType.hasLayout();
     for (auto elementIndex :

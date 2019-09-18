@@ -187,13 +187,13 @@ Status TensorHandle::CreateRemoteHandle(
 
 Status TensorHandle::CreateRemoteHandle(int64 op_id, int output_num,
                                         const TensorShape& shape,
-                                        eager::EagerClient* eager_client,
+                                        const string& remote_task,
                                         uint64 context_id, DataType dtype,
                                         Device* d, Device* resource_device,
                                         EagerContext* ctx, TensorHandle** h) {
   *h = new TensorHandle(
       absl::make_unique<RemoteTensorHandleData>(op_id, output_num, shape,
-                                                eager_client, context_id, ctx),
+                                                remote_task, context_id, ctx),
       dtype, d, resource_device, ctx);
   return Status::OK();
 }
@@ -224,11 +224,10 @@ Status TensorHandle::CreateUnshapedRemoteHandle(
 }
 
 Status TensorHandle::CreateUnshapedRemoteHandle(
-    int64 op_id, int32 output_num, eager::EagerClient* eager_client,
-    uint64 context_id, DataType dtype, Device* device, EagerContext* ctx,
-    TensorHandle** h) {
+    int64 op_id, int32 output_num, const string& remote_task, uint64 context_id,
+    DataType dtype, Device* device, EagerContext* ctx, TensorHandle** h) {
   *h = new TensorHandle(absl::make_unique<UnshapedRemoteTensorHandleData>(
-                            op_id, output_num, eager_client, context_id, ctx),
+                            op_id, output_num, remote_task, context_id, ctx),
                         dtype, device, ctx);
   return Status::OK();
 }
@@ -241,7 +240,7 @@ TensorHandle::TensorHandle(std::unique_ptr<UnshapedRemoteTensorHandleData> t,
       resource_device_(dtype == DT_RESOURCE ? device : nullptr),
       remote_op_id_(t->op_id()),
       remote_output_num_(t->output_num()),
-      remote_eager_client_(t->eager_client()),
+      remote_task_(t->remote_task()),
       remote_context_id_(t->context_id()),
       ctx_(ctx),
       is_remote_(true),
@@ -413,7 +412,7 @@ Status TensorHandle::SetRemoteShape(const TensorShape& shape,
     auto& data = elem->second;
     data->ReleaseRemoteTensorHandle();
     remote_mirrors_[d] = absl::make_unique<RemoteTensorHandleData>(
-        data->op_id(), data->output_num(), shape, data->eager_client(),
+        data->op_id(), data->output_num(), shape, data->remote_task(),
         data->context_id(), data->ctx());
     unshaped_remote_mirrors_.erase(elem);
 
@@ -429,7 +428,7 @@ Status TensorHandle::SetRemoteShape(const TensorShape& shape,
           tensor_handle_data_.get());
   p->ReleaseRemoteTensorHandle();
   tensor_handle_data_ = absl::make_unique<RemoteTensorHandleData>(
-      remote_op_id_, remote_output_num_, shape, remote_eager_client_,
+      remote_op_id_, remote_output_num_, shape, remote_task_,
       remote_context_id_, ctx_);
   is_poisoned_ = Status::OK();
   is_ready_notification_.Notify();

@@ -346,15 +346,14 @@ LogicalResult VerifyConcatenationOpTypes(Operation *op,
   const int64_t output_rank = output_type.getRank();
 
   constexpr int64_t kDynamicSize = -1;
-  constexpr int64_t kOutputRefLoc = -1;
-  SmallVector<int64_t, 4> result_dim_sizes_loc(output_rank, kOutputRefLoc);
+  SmallVector<int64_t, 4> result_dim_sizes_loc(output_rank, -1);
   SmallVector<int64_t, 4> result_dim_sizes(output_type.getShape().begin(),
                                            output_type.getShape().end());
   result_dim_sizes[axis] = 0;
 
   auto FormatLoc = [&result_dim_sizes_loc](int64_t dim) {
     const int64_t loc = result_dim_sizes_loc[dim];
-    if (loc == kOutputRefLoc) return std::string("output");
+    if (loc == -1) return std::string("output");
     return llvm::formatv("operand #{0}", loc).str();
   };
 

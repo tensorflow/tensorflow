@@ -429,6 +429,14 @@ class KerasLayerTest(keras_parameterized.TestCase):
     self._test_checkpointing_layer_weights(
         strategy_fn, mixed_prec_when_saving=False, mixed_prec_when_loading=True)
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_delete_variable(self):
+    layer = base_layer.Layer(dtype=policy.Policy('mixed_float16'))
+    layer.x = layer.add_weight('x')
+    self.assertEqual(layer.trainable_weights, [layer.x])
+    del layer.x
+    self.assertEqual(layer.trainable_weights, [])
+
 
 class KerasModelTest(keras_parameterized.TestCase):
   """Test mixed precision with Keras models."""

@@ -210,7 +210,7 @@ class PosixEnv : public Env {
 
 }  // namespace
 
-#if defined(PLATFORM_POSIX) || defined(__ANDROID__)
+#if defined(PLATFORM_POSIX) || defined(__APPLE__) || defined(__ANDROID__)
 REGISTER_FILE_SYSTEM("", PosixFileSystem);
 REGISTER_FILE_SYSTEM("file", LocalPosixFileSystem);
 Env* Env::Default() {

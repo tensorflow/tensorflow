@@ -83,6 +83,13 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     }
     pass_manager->addPass(mlir::createCanonicalizerPass());
     pass_manager->addPass(mlir::createCSEPass());
+    // This pass should be always at the end. Some TFL ops like unidirectional
+    // sequence lstm will have stateful operands and some optimization passes
+    // will merge those operands if they have identical values & types. However,
+    // it's not desired by TFL. This pass serves as a "fix" pass to split the
+    // merged inputs until we have 1st class variable support or reuse
+    // tf.ariable to model this.
+    pass_manager->addPass(mlir::TFL::CreateSplitMergedOperandsPass());
   }
 }
 

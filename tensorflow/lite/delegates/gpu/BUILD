@@ -127,6 +127,27 @@ cc_binary(
     deps = [":gl_delegate"],
 )
 
+# build -c opt --config android_arm64 --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt -fvisibility=hidden --linkopt -s --strip always :libtensorflowlite_gpu_delegate.so
+cc_binary(
+    name = "libtensorflowlite_gpu_delegate.so",
+    linkopts = [
+        "-Wl,-soname=libtensorflowlite_gpu_delegate.so",
+    ] + select({
+        "//tensorflow:android": [
+            "-lEGL",
+            "-lGLESv3",
+        ],
+        "//conditions:default": [],
+    }),
+    linkshared = 1,
+    linkstatic = 1,
+    tags = [
+        "nobuilder",
+        "notap",
+    ],
+    deps = [":delegate"],
+)
+
 # bazel build -c opt --cpu ios_arm64 --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt -fvisibility=hidden --linkopt -s --strip always --cxxopt=-std=c++14 :libtensorflowlite_gpu_metal --apple_platform_type=ios
 ios_static_framework(
     name = "tensorflow_lite_gpu_framework",
@@ -188,8 +209,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/transformations:general_transformations",
         "//tensorflow/lite/delegates/gpu/gl:api2",
-        "//third_party/GL:EGL_headers",
-        "//third_party/GL:GLES3_headers",
         "@com_google_absl//absl/types:span",
     ],
 )

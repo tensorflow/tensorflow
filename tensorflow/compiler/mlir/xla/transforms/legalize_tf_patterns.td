@@ -80,8 +80,10 @@ class DirectBinaryPat<Op FromOp, Op ToOp>
         (ToOp $l, $r, (BinBroadcastDimensions $l, $r))>;
 
 foreach fromToBinPair = [[TF_AddOp, HLO_AddOp],
-		         [TF_AddV2Op, HLO_AddOp],
+                         [TF_AddV2Op, HLO_AddOp],
                          [TF_DivOp, HLO_DivOp],
+                         [TF_MaximumOp, HLO_MaxOp],
+                         [TF_MinimumOp, HLO_MinOp],
                          [TF_MulOp, HLO_MulOp],
                          [TF_RealDivOp, HLO_DivOp],
                          [TF_SubOp, HLO_SubOp]] in

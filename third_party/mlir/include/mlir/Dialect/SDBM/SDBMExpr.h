@@ -47,6 +47,7 @@ class SDBMConstantExpr;
 class SDBMDialect;
 class SDBMDimExpr;
 class SDBMSymbolExpr;
+class SDBMTermExpr;
 
 /// Striped Difference-Bounded Matrix (SDBM) expression is a base left-hand side
 /// expression for the SDBM framework.  SDBM expressions are a subset of affine
@@ -76,7 +77,7 @@ class SDBMSymbolExpr;
 ///       - term
 ///         - symbol
 ///         - dimension
-///         - stripe <- (term, constant)
+///         - stripe <- (direct, constant)
 ///     - negation <- (direct)
 ///     - difference <- (direct, term)
 ///   - constant
@@ -206,6 +207,13 @@ class SDBMDirectExpr : public SDBMVaryingExpr {
 public:
   using SDBMVaryingExpr::SDBMVaryingExpr;
 
+  /// If this is a sum expression, return its variable part, otherwise return
+  /// self.
+  SDBMTermExpr getTerm();
+
+  /// If this is a sum expression, return its constant part, otherwise return 0.
+  int64_t getConstant();
+
   static bool isClassFor(const SDBMExpr &expr) {
     return expr.getKind() == SDBMExprKind::DimId ||
            expr.getKind() == SDBMExprKind::SymbolId ||
@@ -281,9 +289,9 @@ public:
     return expr.getKind() == SDBMExprKind::Stripe;
   }
 
-  static SDBMStripeExpr get(SDBMTermExpr var, SDBMConstantExpr stripeFactor);
+  static SDBMStripeExpr get(SDBMDirectExpr var, SDBMConstantExpr stripeFactor);
 
-  SDBMTermExpr getVar() const;
+  SDBMDirectExpr getLHS() const;
   SDBMConstantExpr getStripeFactor() const;
 };
 
@@ -450,7 +458,7 @@ protected:
       walk<isPreorder>(diffExpr.getLHS());
       walk<isPreorder>(diffExpr.getRHS());
     } else if (auto stripeExpr = expr.dyn_cast<SDBMStripeExpr>()) {
-      walk<isPreorder>(stripeExpr.getVar());
+      walk<isPreorder>(stripeExpr.getLHS());
       walk<isPreorder>(stripeExpr.getStripeFactor());
     } else if (auto negExpr = expr.dyn_cast<SDBMNegExpr>()) {
       walk<isPreorder>(negExpr.getVar());

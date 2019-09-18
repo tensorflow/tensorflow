@@ -24,6 +24,7 @@ cc_library(
         "floor.cc",
         "fully_connected.cc",
         "logical.cc",
+        "logistic.cc",
         "maximum_minimum.cc",
         "neg.cc",
         "pack.cc",
@@ -81,6 +82,7 @@ cc_library(
         "floor.cc",
         "fully_connected.cc",
         "logical.cc",
+        "logistic.cc",
         "maximum_minimum.cc",
         "neg.cc",
         "pack.cc",
@@ -199,6 +201,19 @@ tflite_micro_cc_test(
     name = "softmax_test",
     srcs = [
         "softmax_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "logistic_test",
+    srcs = [
+        "logistic_test.cc",
     ],
     deps = [
         ":all_ops_resolver",

@@ -173,7 +173,13 @@ void SDBMExpr::print(raw_ostream &os) const {
     void visitDim(SDBMDimExpr expr) { prn << 'd' << expr.getPosition(); }
     void visitSymbol(SDBMSymbolExpr expr) { prn << 's' << expr.getPosition(); }
     void visitStripe(SDBMStripeExpr expr) {
-      visitTerm(expr.getVar());
+      SDBMDirectExpr lhs = expr.getLHS();
+      bool isTerm = lhs.isa<SDBMTermExpr>();
+      if (!isTerm)
+        prn << '(';
+      visit(lhs);
+      if (!isTerm)
+        prn << ')';
       prn << " # ";
       visitConstant(expr.getStripeFactor());
     }
@@ -268,7 +274,7 @@ AffineExpr SDBMExpr::getAsAffineExpr() const {
     }
 
     AffineExpr visitStripe(SDBMStripeExpr expr) {
-      AffineExpr lhs = visit(expr.getVar()),
+      AffineExpr lhs = visit(expr.getLHS()),
                  rhs = visit(expr.getStripeFactor());
       return lhs - (lhs % rhs);
     }
@@ -354,32 +360,16 @@ static SDBMExpr addConstant(SDBMVaryingExpr lhs, int64_t constant) {
 // Build a difference expression given a direct expression and a negation
 // expression.
 static SDBMExpr buildDiffExpr(SDBMDirectExpr lhs, SDBMNegExpr rhs) {
-  SDBMTermExpr lhsTerm, rhsTerm;
-  int lhsConstant = 0;
-  int64_t rhsConstant = 0;
-
-  if (auto lhsSum = lhs.dyn_cast<SDBMSumExpr>()) {
-    lhsConstant = lhsSum.getRHS().getValue();
-    lhsTerm = lhsSum.getLHS();
-  } else {
-    lhsTerm = lhs.cast<SDBMTermExpr>();
-  }
-
-  if (auto rhsNegatedSum = rhs.getVar().dyn_cast<SDBMSumExpr>()) {
-    rhsTerm = rhsNegatedSum.getLHS();
-    rhsConstant = rhsNegatedSum.getRHS().getValue();
-  } else {
-    rhsTerm = rhs.getVar().cast<SDBMTermExpr>();
-  }
-
   // Fold (x + C) - (x + D) = C - D.
-  if (lhsTerm == rhsTerm)
-    return SDBMConstantExpr::get(lhs.getDialect(), lhsConstant - rhsConstant);
+  if (lhs.getTerm() == rhs.getVar().getTerm())
+    return SDBMConstantExpr::get(
+        lhs.getDialect(), lhs.getConstant() - rhs.getVar().getConstant());
 
   return SDBMDiffExpr::get(
-      addConstantAndSink<SDBMDirectExpr>(lhs, -rhsConstant, /*negated=*/false,
+      addConstantAndSink<SDBMDirectExpr>(lhs, -rhs.getVar().getConstant(),
+                                         /*negated=*/false,
                                          [](SDBMDirectExpr e) { return e; }),
-      rhsTerm);
+      rhs.getVar().getTerm());
 }
 
 // Try folding an expression (lhs + rhs) where at least one of the operands
@@ -400,18 +390,38 @@ static SDBMExpr foldSumDiff(SDBMExpr lhs, SDBMExpr rhs) {
   // If a subexpression appears in a diff expression on the LHS(RHS) of a
   // sum expression where it also appears on the RHS(LHS) with the opposite
   // sign, we can simplify it away and obtain the SDBM form.
-  //   x - (x - C) = -(x - C) + x = C
-  //   (x - C) - x = -x + (x - C) = -C
   auto lhsDiff = lhs.dyn_cast<SDBMDiffExpr>();
   auto rhsDiff = rhs.dyn_cast<SDBMDiffExpr>();
-  if (lhsNeg && rhsDiff && lhsNeg.getVar() == rhsDiff.getLHS())
-    return SDBMNegExpr::get(rhsDiff.getRHS());
-  if (lhsDirect && rhsDiff && lhsDirect == rhsDiff.getRHS())
-    return rhsDiff.getLHS();
-  if (lhsDiff && rhsNeg && lhsDiff.getLHS() == rhsNeg.getVar())
-    return SDBMNegExpr::get(lhsDiff.getRHS());
-  if (rhsDirect && lhsDiff && rhsDirect == lhsDiff.getRHS())
-    return lhsDiff.getLHS();
+
+  // -(x + A) + ((x + B) - y) = -(y + (A - B))
+  if (lhsNeg && rhsDiff &&
+      lhsNeg.getVar().getTerm() == rhsDiff.getLHS().getTerm()) {
+    int64_t constant =
+        lhsNeg.getVar().getConstant() - rhsDiff.getLHS().getConstant();
+    // RHS of the diff is a term expression, its sum with a constant is a direct
+    // expression.
+    return SDBMNegExpr::get(
+        addConstant(rhsDiff.getRHS(), constant).cast<SDBMDirectExpr>());
+  }
+
+  // (x + A) + ((y + B) - x) = (y + B) + A.
+  if (lhsDirect && rhsDiff && lhsDirect.getTerm() == rhsDiff.getRHS())
+    return addConstant(rhsDiff.getLHS(), lhsDirect.getConstant());
+
+  // ((x + A) - y) + (-(x + B)) = -(y + (B - A)).
+  if (lhsDiff && rhsNeg &&
+      lhsDiff.getLHS().getTerm() == rhsNeg.getVar().getTerm()) {
+    int64_t constant =
+        rhsNeg.getVar().getConstant() - lhsDiff.getLHS().getConstant();
+    // RHS of the diff is a term expression, its sum with a constant is a direct
+    // expression.
+    return SDBMNegExpr::get(
+        addConstant(lhsDiff.getRHS(), constant).cast<SDBMDirectExpr>());
+  }
+
+  // ((x + A) - y) + (y + B) = (x + A) + B.
+  if (rhsDirect && lhsDiff && rhsDirect.getTerm() == lhsDiff.getRHS())
+    return addConstant(lhsDiff.getLHS(), rhsDirect.getConstant());
 
   return {};
 }
@@ -430,8 +440,6 @@ Optional<SDBMExpr> SDBMExpr::tryConvertAffineExpr(AffineExpr affine) {
       // If RHS is a constant, we can always extend the SDBM expression to
       // include it by sinking the constant into the nearest sum expresion.
       if (auto rhsConstant = rhs.dyn_cast<SDBMConstantExpr>()) {
-        assert(!lhs.isa<SDBMSumExpr>() && "unexpected non-canonicalized sum");
-
         int64_t constant = rhsConstant.getValue();
         auto varying = lhs.dyn_cast<SDBMVaryingExpr>();
         assert(varying && "unexpected uncanonicalized sum of constants");
@@ -489,10 +497,10 @@ Optional<SDBMExpr> SDBMExpr::tryConvertAffineExpr(AffineExpr affine) {
       if (!lhs || !rhs)
         return {};
 
-      // 'mod' can only be converted to SDBM if its LHS is a variable
+      // 'mod' can only be converted to SDBM if its LHS is a direct expression
       // and its RHS is a constant.  Then it `x mod c = x - x stripe c`.
       auto rhsConstant = rhs.dyn_cast<SDBMConstantExpr>();
-      auto lhsVar = lhs.dyn_cast<SDBMTermExpr>();
+      auto lhsVar = lhs.dyn_cast<SDBMDirectExpr>();
       if (!lhsVar || !rhsConstant)
         return {};
       return SDBMDiffExpr::get(lhsVar,
@@ -545,10 +553,26 @@ SDBMTermExpr SDBMDiffExpr::getRHS() const {
 }
 
 //===----------------------------------------------------------------------===//
+// SDBMDirectExpr
+//===----------------------------------------------------------------------===//
+
+SDBMTermExpr SDBMDirectExpr::getTerm() {
+  if (auto sum = dyn_cast<SDBMSumExpr>())
+    return sum.getLHS();
+  return cast<SDBMTermExpr>();
+}
+
+int64_t SDBMDirectExpr::getConstant() {
+  if (auto sum = dyn_cast<SDBMSumExpr>())
+    return sum.getRHS().getValue();
+  return 0;
+}
+
+//===----------------------------------------------------------------------===//
 // SDBMStripeExpr
 //===----------------------------------------------------------------------===//
 
-SDBMStripeExpr SDBMStripeExpr::get(SDBMTermExpr var,
+SDBMStripeExpr SDBMStripeExpr::get(SDBMDirectExpr var,
                                    SDBMConstantExpr stripeFactor) {
   assert(var && "expected SDBM variable expression");
   assert(stripeFactor && "expected non-null stripe factor");
@@ -561,9 +585,9 @@ SDBMStripeExpr SDBMStripeExpr::get(SDBMTermExpr var,
       stripeFactor);
 }
 
-SDBMTermExpr SDBMStripeExpr::getVar() const {
+SDBMDirectExpr SDBMStripeExpr::getLHS() const {
   if (SDBMVaryingExpr lhs = static_cast<ImplType *>(impl)->lhs)
-    return lhs.cast<SDBMTermExpr>();
+    return lhs.cast<SDBMDirectExpr>();
   return {};
 }
 
@@ -718,7 +742,7 @@ SDBMExpr stripe(SDBMExpr expr, SDBMExpr factor) {
   if (constantFactor.getValue() == 1)
     return expr;
 
-  return SDBMStripeExpr::get(expr.cast<SDBMTermExpr>(), constantFactor);
+  return SDBMStripeExpr::get(expr.cast<SDBMDirectExpr>(), constantFactor);
 }
 
 } // namespace ops_assertions

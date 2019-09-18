@@ -76,9 +76,7 @@ class ConvPowerVR : public GPUOperation {
                                   ConvPowerVR* result);
 
   friend std::string GenerateConvPowerVR1x1(
-      const TensorDescriptor& src_descriptor,
-      const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
-      const ConvParams& conv_params,
+      const OperationDef& op_def, const ConvParams& conv_params,
       const std::vector<ElementwiseOperation*>& linked_operations);
 
   friend ConvParams GuessBestParams(const CLDevice& device,
