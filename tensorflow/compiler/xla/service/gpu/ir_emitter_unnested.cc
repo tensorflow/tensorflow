@@ -2604,10 +2604,9 @@ void IrEmitterUnnested::EmitHlo021Tile(
     // memory bank conflicts. Adding 1 to the minor dimension of the shared
     // memory buffer can reduce such shared memory bank conflicts.
     llvm::Type* buffer_type = llvm::ArrayType::get(
-        llvm::ArrayType::get(elem_ty, mapping_scheme.GetTileSizeForDimension(
-                                          KernelMappingScheme::DimX) +
-                                          1),
-        mapping_scheme.GetTileSizeForDimension(KernelMappingScheme::DimY));
+        llvm::ArrayType::get(elem_ty,
+                             mapping_scheme.GetTileSizeForDimensionX() + 1),
+        mapping_scheme.GetTileSizeForDimensionY());
     return llvm_ir::AllocateSharedMemoryTile(b_.GetInsertBlock()->getModule(),
                                              buffer_type, buffer_name);
   };
