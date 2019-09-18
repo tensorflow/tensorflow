@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <numeric>
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -432,9 +433,64 @@ LogicalResult Verify(ConcatenationOp op) {
                                     operand_types, axis);
 }
 
+// Returns true when all operands are instances of DenseElementsAttr and the
+// output type has a static shape.
+bool IsConcatenationOpConstFoldable(ConcatenationOp op,
+                                    ArrayRef<Attribute> operands,
+                                    RankedTensorType output_type,
+                                    int64_t axis) {
+  if (operands.empty()) return false;
+  if (!output_type.hasStaticShape()) return false;
+  if (axis < 0) return false;
+
+  return llvm::all_of(operands, [](Attribute operand) {
+    return operand && operand.isa<DenseElementsAttr>();
+  });
+}
+
+DenseElementsAttr ConstFoldConcatenateOpDense(ArrayRef<Attribute> operands,
+                                              RankedTensorType output_type,
+                                              int64_t axis) {
+  const auto outer_dims = output_type.getShape().take_front(axis);
+  const int64_t outer_size = std::accumulate(
+      outer_dims.begin(), outer_dims.end(), 1, std::multiplies<int64_t>());
+
+  const auto base_inner_dims = output_type.getShape().drop_front(axis + 1);
+  const int64_t base_inner_size =
+      std::accumulate(base_inner_dims.begin(), base_inner_dims.end(), 1,
+                      std::multiplies<int64_t>());
+
+  // Splits each input operand into outer_size pieces and combines them in
+  // round-robin ordering.
+  std::vector<Attribute> out_attrs(output_type.getNumElements());
+  int64_t out = 0;
+  for (int64_t outer = 0; outer < outer_size; ++outer) {
+    for (auto op : operands) {
+      const int64_t dim_size =
+          op.getType().cast<RankedTensorType>().getDimSize(axis);
+      const int64_t inner_size = dim_size * base_inner_size;
+
+      auto input_attrs = op.cast<DenseElementsAttr>().getValues<Attribute>();
+      auto input_iter = input_attrs.begin() + outer * inner_size;
+      for (int64_t inner = 0; inner < inner_size; ++inner)
+        out_attrs[out++] = *input_iter++;
+    }
+  }
+
+  return DenseElementsAttr::get(output_type, out_attrs);
+}
+
 }  // end anonymous namespace
 
 OpFoldResult ConcatenationOp::fold(ArrayRef<Attribute> operands) {
+  if (fused_activation_function() == "NONE") {
+    if (auto output_type = output()->getType().dyn_cast<RankedTensorType>()) {
+      const int64_t axis = GetConcatenationOpAxis(*this);
+      if (IsConcatenationOpConstFoldable(*this, operands, output_type, axis))
+        return ConstFoldConcatenateOpDense(operands, output_type, axis);
+    }
+  }
+
   // Remove all empty values.
   SmallVector<Value *, 4> non_empty_values;
   for (Value *value : this->values()) {

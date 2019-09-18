@@ -516,3 +516,42 @@ func @concat_3_tensors_1_empty() -> tensor<?xi32> {
   // CHECK: %0 = "tfl.concatenation"(%cst, %cst) {axis = 0 : i32, fused_activation_function = "NONE"}
   // CHECK: return %0 : tensor<?xi32>
 }
+
+// CHECK-LABEL: @concatConstantTensorsFirstDim
+func @concatConstantTensorsFirstDim() -> tensor<2x2x3xi32> {
+  %cst_0 = constant dense<0> : tensor<1x2x3xi32>
+  %cst_1 = constant dense<1> : tensor<1x2x3xi32>
+  %0 = "tfl.concatenation"(%cst_0, %cst_1) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1x2x3xi32>, tensor<1x2x3xi32>) -> tensor<2x2x3xi32>
+  return %0 : tensor<2x2x3xi32>
+
+  // CHECK: [[cst:%.*]] = constant dense<[{{\[}}{{\[}}0, 0, 0], {{\[}}0, 0, 0]], {{\[}}{{\[}}1, 1, 1], {{\[}}1, 1, 1]]]> : tensor<2x2x3xi32>
+  // CHECK-NOT: constant-dense
+  // CHECK-NOT: "tfl.concatenation"
+  // CHECK: return [[cst]]
+}
+
+// CHECK-LABEL: @concatConstantTensorsMiddleDim
+func @concatConstantTensorsMiddleDim() -> tensor<1x4x3xi32> {
+  %cst_0 = constant dense<0> : tensor<1x2x3xi32>
+  %cst_1 = constant dense<1> : tensor<1x2x3xi32>
+  %0 = "tfl.concatenation"(%cst_0, %cst_1) {axis = 1 : i32, fused_activation_function = "NONE"} : (tensor<1x2x3xi32>, tensor<1x2x3xi32>) -> tensor<1x4x3xi32>
+  return %0 : tensor<1x4x3xi32>
+
+  // CHECK: [[cst:%.*]] = constant dense<[{{\[}}{{\[}}0, 0, 0], {{\[}}0, 0, 0], {{\[}}1, 1, 1], {{\[}}1, 1, 1]]]> : tensor<1x4x3xi32>
+  // CHECK-NOT: constant-dense
+  // CHECK-NOT: "tfl.concatenation"
+  // CHECK: return [[cst]]
+}
+
+// CHECK-LABEL: @concatConstantTensorsLastDim
+func @concatConstantTensorsLastDim() -> tensor<1x2x6xi32> {
+  %cst_0 = constant dense<0> : tensor<1x2x3xi32>
+  %cst_1 = constant dense<1> : tensor<1x2x3xi32>
+  %0 = "tfl.concatenation"(%cst_0, %cst_1) {axis = 2 : i32, fused_activation_function = "NONE"} : (tensor<1x2x3xi32>, tensor<1x2x3xi32>) -> tensor<1x2x6xi32>
+  return %0 : tensor<1x2x6xi32>
+
+  // CHECK: [[cst:%.*]] = constant dense<[{{\[}}{{\[}}0, 0, 0, 1, 1, 1], {{\[}}0, 0, 0, 1, 1, 1]]]> : tensor<1x2x6xi32>
+  // CHECK-NOT: constant-dense
+  // CHECK-NOT: "tfl.concatenation"
+  // CHECK: return [[cst]]
+}
