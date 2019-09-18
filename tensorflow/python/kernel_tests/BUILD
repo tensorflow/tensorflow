@@ -861,7 +861,6 @@ cuda_py_test(
     ],
     # TODO(b/128347673): Re-enable.
     tags = ["no_windows"],
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -920,7 +919,6 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
     ],
     tags = ["noasan"],  # http://b/32635055
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -3682,7 +3680,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "bucketize_op_test",
     size = "small",
     srcs = ["bucketize_op_test.py"],

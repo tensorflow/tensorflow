@@ -341,20 +341,20 @@ void RemoteCopyNode::RunAsync(StatusCallback done) {
   }
   StartSend();
 
-  auto done_wrapper = std::bind(
-      [this](const StatusCallback& done, const Status& s) {
-        if (!s.ok() && errors::IsCancelled(s)) {
-          Status send_status = captured_state_->GetSendStatus();
-          if (!send_status.ok()) {
-            // In this case, Recv is cancelled because the Send op failed.
-            // Return the status of the Send op instead.
-            done(send_status);
-          }
-        } else {
-          done(s);
-        }
-      },
-      std::move(done), std::placeholders::_1);
+  const std::shared_ptr<CapturedSharedState>& captured_state = captured_state_;
+  auto done_wrapper = [captured_state,
+                       done = std::move(done)](const Status& s) {
+    if (!s.ok() && errors::IsCancelled(s)) {
+      Status send_status = captured_state->GetSendStatus();
+      if (!send_status.ok()) {
+        // In this case, Recv is cancelled because the Send op failed.
+        // Return the status of the Send op instead.
+        done(send_status);
+      }
+    } else {
+      done(s);
+    }
+  };
 
   // StartRecv() takes care of doing the right thing to dst handle.
   // No need to poison it after this point.

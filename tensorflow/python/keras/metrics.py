@@ -2813,6 +2813,8 @@ def cosine_proximity(y_true, y_pred, axis=-1):
 
 # Aliases
 
+acc = ACC = accuracy
+bce = BCE = binary_crossentropy
 mse = MSE = mean_squared_error
 mae = MAE = mean_absolute_error
 mape = MAPE = mean_absolute_percentage_error

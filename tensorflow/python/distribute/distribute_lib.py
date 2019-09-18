@@ -1354,16 +1354,21 @@ class StrategyExtendedV2(object):
 
     Variables created inside the strategy scope are "owned" by it:
 
-    >>> with strategy.scope():
-    ...   v = tf.Variable(1.)
-    >>> strategy.variable_created_in_scope(v)
+    ```python
+    strategy = tf.distribute.StrategyExtended()
+    with strategy.scope():
+      v = tf.Variable(1.)
+    strategy.variable_created_in_scope(v)
     True
+    ```
 
     Variables created outside the strategy are not owned by it:
 
-    >>> v = tf.Variable(1.)
-    >>> strategy.variable_created_in_scope(v)
+    ```python
+    v = tf.Variable(1.)
+    strategy.variable_created_in_scope(v)
     False
+    ```
 
     Args:
       v: A `tf.Variable` instance.
@@ -2213,9 +2218,9 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
     def __init__(self, dataset):
       self._dataset = dataset
       if eager_context.executing_eagerly():
-        self._iterator = dataset.make_one_shot_iterator()
+        self._iterator = dataset_ops.make_one_shot_iterator(dataset)
       else:
-        self._iterator = dataset.make_initializable_iterator()
+        self._iterator = dataset_ops.make_initializable_iterator(dataset)
 
     def get_next(self):
       return self._iterator.get_next()

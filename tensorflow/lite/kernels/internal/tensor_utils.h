@@ -102,6 +102,32 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
     const float* scaling_factors, int n_batch, float* __restrict__ result,
     int result_stride);
 
+// Multiplies a matrix by a "batched" vector (i.e. a matrix with a batch
+// dimension composed by input vectors independent from each other). The result
+// of the multiplication is accumulated to the passed result buffer.
+// More specifically, for a matrix M of shape [n, i] and a batched-vector
+// of shape [i, batch] it will first compute the product of shape [n, batch].
+// This product will be accumulated to the result buffer,
+// Parameters:
+//     - input: batch vector of size n_batch * n_input
+//     - bias:  vector of size b_input
+//     - input_to_gate_weights: matrix of size n_input * n_output
+//     - multiplier: scalar
+//     - shift: scalar
+//     - n_batch: the batch size
+//     - n_input: the input size
+//     - n_output: the output size
+//     - output_zp: the zero point of the output.
+//     - scratch: batch vector of size n_batch * n_output
+//     - output: the 16 bit output
+// Notes:
+//     - this is used for gate matmul: for non-cifg it is for input, forget,
+//       cell, output gates; for cifg, it is for forget, cell, output gates.
+//     - multiplier and shift combined gives the scale.
+//     - assumes input zero point is 0.
+//     - scratch is created for optimization purpose only.
+//       TODO(jianlijianli): this can be removed if some furture optimization
+//       work makes it unnecesssary.
 void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
                                          const int32_t* bias,
                                          const int8_t* input_to_gate_weights,
@@ -110,6 +136,31 @@ void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
                                          int32_t n_output, int32_t output_zp,
                                          int32_t* scratch, int16_t* output);
 
+// Multiplies a matrix by a "batched" vector (i.e. a matrix with a batch
+// dimension composed by input vectors independent from each other). The result
+// of the multiplication is accumulated to the passed result buffer.
+// More specifically, for a matrix M of shape [n, i] and a batched-vector
+// of shape [i, batch] it will first compute the product of shape [n, batch].
+// This product will be accumulated to the result buffer,
+// Parameters:
+//     - input: batch vector of size n_batch * n_input
+//     - bias:  vector of size b_input
+//     - input_to_gate_weights: matrix of size n_input * n_output
+//     - multiplier: scalar
+//     - shift: scalar
+//     - n_batch: the batch size
+//     - n_input: the input size
+//     - n_output: the output size
+//     - output_zp: the zero point of the output.
+//     - scratch: batch vector of size n_batch * n_output
+//     - output: the 8 bit output
+// Notes:
+//     - this is used for projection matmul.
+//     - multiplier and shift combined gives the scale.
+//     - assumes input zero point is 0.
+//     - scratch is created for optimization purpose only.
+//       TODO(jianlijianli): this can be removed if some furture optimization
+//       work makes it unnecesssary.
 void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
                                          const int32_t* bias,
                                          const int8_t* input_to_gate_weights,
@@ -118,11 +169,30 @@ void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
                                          int32_t n_output, int32_t output_zp,
                                          int32_t* scratch, int8_t* output);
 
+// Apply Layer Normalization (https://arxiv.org/abs/1607.06450) to a Quantized
+// vector.
+// Parameters:
+//     - input: batch vector of size n_batch * n_input; 16 bit.
+//     - layer_norm_weights:  the quantized layer normalization weights.
+//     - bias: the bias for the layer normalization.
+//     - layer_norm_scale_a: multiplier for scale factor.
+//     - layer_norm_scale_b: shift for scale factor.
+//     - variance_limit: the guard to make sure the inverse does not overflow.
+//     - n_batch: the number of batch.
+//     - n_input: the size for input and output.
+//     - output: the 16 bit output
 void ApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
                     const int32_t* bias, int32_t layer_norm_scale_a,
                     int32_t layer_norm_scale_b, int32_t variance_limit,
                     int n_batch, int n_input, int16_t* output);
 
+// Apply Sigmoid to a Quantized vector.
+// Parameters:
+//     - input: batch vector of size n_batch * n_input; 16 bit.
+//     - n_batch: the number of batch.
+//     - n_input: the size for input and output.
+//     - output: the 16 bit output
+// The input is in Q3.12 format and the output is in Q0.15 format.
 void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
                   int16_t* output);
 

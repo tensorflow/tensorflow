@@ -170,7 +170,7 @@ struct LhloLegalizeToAffine : public FunctionPass<LhloLegalizeToAffine> {
 
 }  // namespace
 
-std::unique_ptr<FunctionPassBase> createLegalizeToAffinePass() {
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToAffinePass() {
   return absl::make_unique<LhloLegalizeToAffine>();
 }
 

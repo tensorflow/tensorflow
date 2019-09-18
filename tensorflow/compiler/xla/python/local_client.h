@@ -38,6 +38,8 @@ limitations under the License.
 
 namespace xla {
 
+class PyLocalExecutable;
+
 class Device {
  public:
   explicit Device(int id, int local_device_ordinal, int host_id = 0)
@@ -151,6 +153,19 @@ class PyLocalClient {
   tensorflow::thread::ThreadPool* h2d_transfer_pool() {
     return &h2d_transfer_pool_;
   }
+
+  // Returns a platform-specific serialization of `executable`. This is meant
+  // for transferring executables and not for storage, and the serialization is
+  // not guaranteed to be stable over time.
+  virtual StatusOr<std::string> SerializeExecutable(
+      const PyLocalExecutable& executable) const;
+
+  // Deserializes a serialized executable as produced by
+  // SerializeExecutable(). `serialized` must have been produced by client of
+  // the same platform. `this_shared` should point to this PyLocalClient.
+  virtual StatusOr<std::unique_ptr<PyLocalExecutable>> DeserializeExecutable(
+      const std::string& serialized,
+      std::shared_ptr<PyLocalClient> this_shared) const;
 
  protected:
   std::string platform_name_;
@@ -304,6 +319,8 @@ class PyLocalExecutable {
       absl::Span<const std::vector<PyLocalBuffer*>> argument_handles);
 
   void Delete() { executable_ = nullptr; }
+
+  LocalExecutable* executable() const { return executable_.get(); }
 
  private:
   StatusOr<std::unique_ptr<PyLocalBuffer>> ExecuteHelper(

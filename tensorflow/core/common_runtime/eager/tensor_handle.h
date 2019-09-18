@@ -100,8 +100,8 @@ class TensorHandle : public core::RefCounted {
 #if !defined(IS_MOBILE_PLATFORM)
   static Status CreateRemoteHandle(int64 op_id, int output_num,
                                    const TensorShape& shape,
-                                   eager::EagerClient* eager_client,
-                                   uint64 context_id, DataType dtype, Device* d,
+                                   const string& remote_task, uint64 context_id,
+                                   DataType dtype, Device* d,
                                    Device* resource_device, EagerContext* ctx,
                                    TensorHandle** h);
   static Status CreateRemoteHandle(std::unique_ptr<RemoteTensorHandleData> t,
@@ -109,7 +109,7 @@ class TensorHandle : public core::RefCounted {
                                    Device* resource_device, EagerContext* ctx,
                                    TensorHandle** h);
   static Status CreateUnshapedRemoteHandle(int64 op_id, int32 output_num,
-                                           eager::EagerClient* eager_client,
+                                           const string& remote_task,
                                            uint64 context_id, DataType dtype,
                                            Device* device, EagerContext* ctx,
                                            TensorHandle** h);
@@ -245,7 +245,7 @@ class TensorHandle : public core::RefCounted {
   // IDs required when this class is representing a remote tensor handle.
   int64 remote_op_id_;
   int32 remote_output_num_;
-  eager::EagerClient* remote_eager_client_;
+  string remote_task_;
   uint64 remote_context_id_;
 #endif
 

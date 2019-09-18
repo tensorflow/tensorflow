@@ -37,6 +37,10 @@ std::string GetAveragePoolingKernelCode(
 
   std::string code = GetCommonDefines(precision);
 
+  const bool manual_clamp =
+      src_descriptor.storage_type == TensorStorageType::BUFFER ||
+      src_descriptor.storage_type == TensorStorageType::IMAGE_BUFFER;
+
   code += "__kernel void main_function(\n";
   code += src_tensor.GetDeclaration(AccessType::READ);
   code += GetArgsDeclaration(linked_operations);
@@ -50,7 +54,8 @@ std::string GetAveragePoolingKernelCode(
   code += "  int X = get_global_id(0);\n";
   code += "  int Y = get_global_id(1);\n";
   code += "  int Z = get_global_id(2);\n";
-  code += "  if (X >= dst_size.x || Y >= dst_size.y) return; \n";
+  code +=
+      "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) return; \n";
   code += "  float4 r = (float4)(0.0f);\n";
   code += "  float window_size = 0.0;\n";
   code += "  for (int ky = 0; ky < kernel_size.y; ++ky) {\n";
@@ -59,7 +64,7 @@ std::string GetAveragePoolingKernelCode(
   code += "    for (int kx = 0; kx < kernel_size.x; ++kx) {\n";
   code += "      int x_c = X * stride.x - padding.x + kx;\n";
   code += "      bool outside = outside_y || x_c < 0 || x_c >= src_size.x;\n";
-  if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+  if (manual_clamp) {
     code += "     r += !outside ? " +
             src_tensor.ReadAsFloat3D("x_c", "y_c", "Z",
                                      TextureAddressMode::DONT_CARE) +
@@ -74,9 +79,9 @@ std::string GetAveragePoolingKernelCode(
   // If window_size==0, window covered nothing. This situation is a sign of
   // incorrectly constructed operation. NaNs are expected as output.
   code += "  FLT4 result = TO_FLT4(r / window_size);\n";
-  code += "  " + dst_tensor.GetAddress("address", "X", "Y", "Z") + "\n";
-  code += PostProcess(linked_operations, "result", "Z", "address");
-  code += "  " + dst_tensor.Write3D("result", "address");
+  const LinkingContext context{"result", "X", "Y", "Z"};
+  code += PostProcess(linked_operations, context);
+  code += "  " + dst_tensor.Write3D("result", "X", "Y", "Z");
   code += "}\n";
 
   return code;
@@ -109,7 +114,8 @@ std::string GetMaxPoolingKernelCode(
   code += "  int X = get_global_id(0);\n";
   code += "  int Y = get_global_id(1);\n";
   code += "  int Z = get_global_id(2);\n";
-  code += "  if (X >= dst_size.x || Y >= dst_size.y) return; \n";
+  code +=
+      "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) return; \n";
   code += "  FLT4 maximum = (FLT4)(-10000.0f);\n";
   if (output_indices) {
     code += "  FLT4 indexes = (FLT4)(0.0f);\n";
@@ -149,7 +155,8 @@ std::string GetMaxPoolingKernelCode(
   code += "    }\n";
   code += "  }\n";
   code += "  " + dst_tensor.GetAddress("address", "X", "Y", "Z") + "\n";
-  code += PostProcess(linked_operations, "maximum", "Z", "address");
+  const LinkingContext context{"maximum", "X", "Y", "Z"};
+  code += PostProcess(linked_operations, context);
   code += "  " + dst_tensor.Write3D("maximum", "address");
   if (output_indices) {
     code += "  " + indices_tensor.Write3D("indexes", "address");

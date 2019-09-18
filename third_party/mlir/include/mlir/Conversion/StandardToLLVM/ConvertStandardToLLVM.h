@@ -103,9 +103,6 @@ private:
   // pointer as defined by the data layout of the module.
   LLVM::LLVMType getIndexType();
 
-  // Wrap the given LLVM IR type into an LLVM IR dialect type.
-  Type wrap(llvm::Type *llvmType);
-
   // Extract an LLVM IR dialect type.
   LLVM::LLVMType unwrap(Type type);
 };

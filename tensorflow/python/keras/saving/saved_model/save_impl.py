@@ -25,6 +25,7 @@ import functools
 import weakref
 
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import function
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
@@ -53,9 +54,15 @@ from tensorflow.python.util.lazy_loader import LazyLoader
 base_layer = LazyLoader(
     "base_layer", globals(),
     "tensorflow.python.keras.engine.base_layer")
+input_layer = LazyLoader(
+    "input_layer", globals(),
+    "tensorflow.python.keras.engine.input_layer")
 training_lib = LazyLoader(
     "training_lib", globals(),
     "tensorflow.python.keras.engine.training")
+sequential_lib = LazyLoader(
+    "sequential_lib", globals(),
+    "tensorflow.python.keras.engine.sequential")
 # pylint:enable=g-inconsistent-quotes
 
 
@@ -146,7 +153,7 @@ def wrap_layer_functions(layer, serialization_cache):
   # Since Sequential models may be modified in place using model.add() or
   # model.pop(), don't use saved functions.
   if (isinstance(layer, keras_load.RevivedLayer) and
-      not isinstance(layer, keras_load.RevivedSequential)):
+      not isinstance(layer, sequential_lib.Sequential)):
     return {fn_name: getattr(layer.keras_api, fn_name, None)
             for fn_name in serialized_attributes.LayerAttributes.all_functions}
 
@@ -211,7 +218,8 @@ def _list_all_layers(obj):
   if isinstance(obj, training_lib.Model):
     return obj.layers
   else:
-    return trackable_layer_utils.filter_empty_layer_containers(obj._layers)  # pylint: disable=protected-access
+    return list(
+        trackable_layer_utils.filter_empty_layer_containers(obj._layers))  # pylint: disable=protected-access
 
 
 def _replace_child_layer_functions(layer, serialization_cache):
@@ -241,6 +249,9 @@ def _replace_child_layer_functions(layer, serialization_cache):
   # pylint: disable=protected-access
   original_fns = {}
   for child_layer in _list_all_layers(layer):
+    if isinstance(child_layer, input_layer.InputLayer):
+      continue
+
     if child_layer not in serialization_cache[constants.KERAS_CACHE_KEY]:
       layer_fns = (
           child_layer._trackable_saved_model_saver._get_serialized_attributes(
@@ -335,12 +346,16 @@ class LayerCallCollection(object):
 
   def __init__(self, layer):
     self.layer = layer
+
+    self.layer_call_method = _get_layer_call_method(layer)
     self._expects_training_arg = layer_uses_training_bool(layer)
-    self._training_arg_index = utils.get_training_arg_index(layer.call)
+    self._training_arg_index = utils.get_training_arg_index(
+        self.layer_call_method)
 
     # If the layer call function has kwargs, then the traced function cannot
     # have an input signature.
-    arg_spec = tf_inspect.getfullargspec(layer.call)
+    arg_spec = tf_inspect.getfullargspec(
+        self.layer_call_method)
     self._has_kwargs = bool(self._expects_training_arg or
                             arg_spec.defaults or
                             arg_spec.kwonlyargs or
@@ -518,7 +533,7 @@ class LayerCall(def_function.Function):
 
   def __init__(self, call_collection, python_function, *args, **kwargs):
     self.call_collection = call_collection
-    self.original_call = call_collection.layer.call
+    self.original_call = call_collection.layer_call_method
     python_function = layer_call_wrapper(call_collection, python_function)
     super(LayerCall, self).__init__(python_function, *args, **kwargs)
 
@@ -547,7 +562,7 @@ def _wrap_call_and_conditional_losses(layer):
     activity regularizer
   """
   # Create function that generates both outputs and losses
-  layer_call = layer.call
+  layer_call = _get_layer_call_method(layer)
   def call_and_return_conditional_losses(inputs, *args, **kwargs):
     return layer_call(inputs, *args, **kwargs), layer.get_losses_for(inputs)
   return _create_call_fn_decorator(layer, call_and_return_conditional_losses)
@@ -573,11 +588,12 @@ def _append_activity_regularizer_loss(
 
 
 def _create_call_fn_decorator(layer, wrapped_call):
+  call_fn = _get_layer_call_method(layer)
   fn, arg_spec = utils.maybe_add_training_arg(
-      layer.call, wrapped_call, layer._expects_training_arg,  # pylint: disable=protected-access
+      call_fn, wrapped_call, layer._expects_training_arg,  # pylint: disable=protected-access
       default_training_value=False)
   return tf_decorator.make_decorator(
-      target=layer.call,
+      target=call_fn,
       decorator_func=fn,
       decorator_argspec=arg_spec)
 
@@ -601,3 +617,9 @@ def _wrap_activity_regularizer(layer):
       layer.activity_regularizer,
       '{}_activity_regularizer'.format(layer.name),
       input_signature=[tensor_spec.TensorSpec(None, layer.dtype or K.floatx())])
+
+
+def _get_layer_call_method(layer):
+  if isinstance(layer.call, (def_function.Function, function.ConcreteFunction)):
+    return layer.call.python_function
+  return layer.call

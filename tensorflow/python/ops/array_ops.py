@@ -469,8 +469,8 @@ def shape_internal(input, name=None, optimize=True, out_type=dtypes.int32):
       return gen_math_ops.cast(input.dense_shape, out_type)
     else:
       if not context.executing_eagerly():
-        input_tensor = ops.convert_to_tensor(input)
-        input_shape = input_tensor.get_shape()
+        input = ops.convert_to_tensor(input)
+        input_shape = input.get_shape()
         if optimize and input_shape.is_fully_defined():
           return constant(input_shape.as_list(), out_type, name=name)
       return gen_array_ops.shape(input, name=name, out_type=out_type)
@@ -548,11 +548,10 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
   Returns:
     A `Tensor` of type `out_type`. Defaults to `tf.int32`.
   """
-  if (context.executing_eagerly()
-      and not hasattr(input, "graph")
-      and not isinstance(
-          input, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue))
-     ):
+  if (context.executing_eagerly() and not hasattr(input, "graph") and
+      not isinstance(
+          input,
+          (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue))):
     input = ops.convert_to_tensor(input)
     np_out_type = out_type.as_numpy_dtype
     num_elements = np.prod(input._shape_tuple(), dtype=np_out_type)  # pylint: disable=protected-access
@@ -563,8 +562,8 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
       return gen_math_ops.prod(
           gen_math_ops.cast(input.dense_shape, out_type), 0, name=name)
     else:
-      input_tensor = ops.convert_to_tensor(input)
-      input_shape = input_tensor.get_shape()
+      input = ops.convert_to_tensor(input)
+      input_shape = input.get_shape()
       if optimize:
         if input_shape.is_fully_defined():
           return constant(input_shape.num_elements(), out_type, name=name)
@@ -624,8 +623,8 @@ def rank_internal(input, name=None, optimize=True):
         input, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
       return gen_array_ops.size(input.dense_shape, name=name)
     else:
-      input_tensor = ops.convert_to_tensor(input)
-      input_shape = input_tensor.get_shape()
+      input = ops.convert_to_tensor(input)
+      input_shape = input.get_shape()
       if optimize and input_shape.ndims is not None:
         return constant(input_shape.ndims, dtypes.int32, name=name)
       return gen_array_ops.rank(input, name=name)
@@ -1468,7 +1467,7 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
 
   def _apply_mask_1d(reshaped_tensor, mask, axis=None):
     """Mask tensor along dimension 0 with a 1-D mask."""
-    indices = squeeze(where(mask), axis=[1])
+    indices = squeeze(where_v2(mask), axis=[1])
     return gather(reshaped_tensor, indices, axis=axis)
 
   with ops.name_scope(name, values=[tensor, mask]):
@@ -1654,9 +1653,9 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   Args:
     value: The `Tensor` to split.
     num_or_size_splits: Either an integer indicating the number of splits along
-      split_dim or a 1-D integer `Tensor` or Python list containing the sizes of
-      each output tensor along split_dim. If a scalar then it must evenly divide
-      `value.shape[axis]`; otherwise the sum of sizes along the split dimension
+      `axis` or a 1-D integer `Tensor` or Python list containing the sizes of
+      each output tensor along `axis`. If a scalar, then it must evenly divide
+      `value.shape[axis]`; otherwise the sum of sizes along the split axis
       must match that of the `value`.
     axis: An integer or scalar `int32` `Tensor`. The dimension along which to
       split. Must be in the range `[-rank(value), rank(value))`. Defaults to 0.
@@ -2282,6 +2281,7 @@ def matrix_set_diag(
   # Call v1 to maintain forward compatibility.
   return gen_array_ops.matrix_set_diag(
       input=input, diagonal=diagonal, name=name)
+
 
 # pylint: enable=invalid-name
 
@@ -3201,7 +3201,11 @@ def required_space_to_batch_paddings(input_shape,
 @tf_export(v1=["nn.space_to_batch", "space_to_batch"])
 @deprecation.deprecated_endpoints("space_to_batch")
 def space_to_batch(  # pylint: disable=missing-docstring
-    input, paddings, block_size=None, name=None, block_shape=None):  # pylint: disable=redefined-builtin
+    input,  # pylint: disable=redefined-builtin
+    paddings,
+    block_size=None,
+    name=None,
+    block_shape=None):  # pylint: disable=redefined-builtin
   block_size = deprecation.deprecated_argument_lookup("block_shape",
                                                       block_shape, "block_size",
                                                       block_size)
@@ -3305,10 +3309,10 @@ def batch_to_space_v2(input, block_shape, crops, name=None):  # pylint: disable=
         block_shape[M-1], batch / prod(block_shape), input_shape[1], ...,
         input_shape[N-1]]  2. Permute dimensions of `reshaped` to produce
         `permuted` of shape [batch / prod(block_shape),  input_shape[1],
-        block_shape[0], ..., input_shape[M], block_shape[M-1],
-        input_shape[M+1], ..., input_shape[N-1]]  3. Reshape `permuted` to
-        produce `reshaped_permuted` of shape [batch / prod(block_shape),
-        input_shape[1] * block_shape[0], ..., input_shape[M] * block_shape[M-1],
+        block_shape[0], ..., input_shape[M], block_shape[M-1], input_shape[M+1],
+        ..., input_shape[N-1]]  3. Reshape `permuted` to produce
+        `reshaped_permuted` of shape [batch / prod(block_shape), input_shape[1]
+        * block_shape[0], ..., input_shape[M] * block_shape[M-1],
         input_shape[M+1], ..., input_shape[N-1]]  4. Crop the start and end of
         dimensions `[1, ..., M]` of `reshaped_permuted` according to `crops` to
         produce the
@@ -3330,10 +3334,10 @@ def batch_to_space_v2(input, block_shape, crops, name=None):  # pylint: disable=
           `block_shape = [2, 2]`, and `crops = [[0, 0], [0, 0]]`:  ``` x =
             [[[[1], [3]], [[9], [11]]], [[[2], [4]], [[10], [12]]], [[[5], [7]],
             [[13], [15]]], [[[6], [8]], [[14], [16]]]] ```
-      The output tensor has shape `[1, 4, 4, 1]` and value:  ``` x = [[[1],
-        [2],  [3],  [4]], [[5],   [6],  [7],  [8]], [[9],  [10], [11],  [12]],
-        [[13], [14], [15],  [16]]] ```  (4) For the following input of shape
-        `[8, 1, 3, 1]`,
+      The output tensor has shape `[1, 4, 4, 1]` and value:  ``` x = [[[1], [2],
+        [3],  [4]], [[5],   [6],  [7],  [8]], [[9],  [10], [11],  [12]], [[13],
+        [14], [15],  [16]]] ```  (4) For the following input of shape `[8, 1, 3,
+        1]`,
           `block_shape = [2, 2]`, and `crops = [[0, 0], [2, 0]]`:  ``` x =
             [[[[0], [1], [3]]], [[[0], [9], [11]]], [[[0], [2], [4]]], [[[0],
             [10], [12]]], [[[0], [5], [7]]], [[[0], [13], [15]]], [[[0], [6],
@@ -3627,8 +3631,8 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
     axis: An optional list of `ints`. Defaults to `[]`. If specified, only
       squeezes the dimensions listed. The dimension index starts at 0. It is an
       error to squeeze a dimension that is not 1. Must be in the range
-      `[-rank(input), rank(input))`.
-      Must be specified if `input` is a `RaggedTensor`.
+      `[-rank(input), rank(input))`. Must be specified if `input` is a
+      `RaggedTensor`.
     name: A name for the operation (optional).
     squeeze_dims: Deprecated keyword argument that is now axis.
 
@@ -3948,8 +3952,7 @@ def gather(params,
     # without introducing a circular dependency.
     return params.sparse_read(indices, name=name)
   except AttributeError:
-    return gen_array_ops.gather_v2(
-        params, indices, axis, name=name)
+    return gen_array_ops.gather_v2(params, indices, axis, name=name)
 
 
 @tf_export("gather", v1=[])
@@ -4367,6 +4370,7 @@ def batch_gather_nd(params, indices, batch_dims, name=None):
 
 # Define quantize_v2 here in order to make name the second-to-last attribute,
 # because round_mode was added later.
+# (And also now because of 'axis' processing).
 @tf_export(v1=["quantize_v2"])
 @deprecation.deprecated(
     "2017-10-25",
@@ -4379,7 +4383,27 @@ def quantize_v2(
     T,
     mode="MIN_COMBINED",
     name=None,
-    round_mode="HALF_AWAY_FROM_ZERO"):
+    round_mode="HALF_AWAY_FROM_ZERO",
+    narrow_range=False,
+    axis=None):
+  if axis is None:
+    axis = -1
+  elif axis < 0:
+    if input.shape.ndims is None:
+      raise ValueError("input should have known rank to use negative axis.")
+    axis %= input.shape.ndims
+
+  if compat.forward_compatible(2019, 9, 25) or axis >= 0:
+    return gen_array_ops.quantize_v2(
+        input,
+        min_range,
+        max_range,
+        T=T,
+        mode=mode,
+        name=name,
+        round_mode=round_mode,
+        narrow_range=narrow_range,
+        axis=axis)
   return gen_array_ops.quantize_v2(
       input,
       min_range,
@@ -4398,14 +4422,30 @@ quantize_v2.__doc__ = """Please use `tf.quantization.quantize` instead."""
 # version of TensorFlow.
 @tf_export("quantization.quantize", v1=["quantization.quantize", "quantize"])
 @deprecation.deprecated_endpoints("quantize")
-def quantize(input,  # pylint: disable=redefined-builtin
-             min_range,
-             max_range,
-             T,
-             mode="MIN_COMBINED",
-             round_mode="HALF_AWAY_FROM_ZERO",
-             name=None):
-  return gen_array_ops.quantize_v2(
+def quantize(
+    input,  # pylint: disable=redefined-builtin
+    min_range,
+    max_range,
+    T,
+    mode="MIN_COMBINED",
+    round_mode="HALF_AWAY_FROM_ZERO",
+    name=None,
+    narrow_range=False,
+    axis=None):
+  """Quantize the input tensor."""
+  if (compat.forward_compatible(2019, 9, 25) or narrow_range or
+      axis is not None):
+    return quantize_v2(
+        input,
+        min_range,
+        max_range,
+        T,
+        mode=mode,
+        round_mode=round_mode,
+        name=name,
+        narrow_range=narrow_range,
+        axis=axis)
+  return quantize_v2(
       input,
       min_range,
       max_range,
@@ -4415,17 +4455,43 @@ def quantize(input,  # pylint: disable=redefined-builtin
       name=name)
 
 
+@tf_export("quantization.dequantize", v1=["quantization.dequantize",
+                                          "dequantize"])
+@deprecation.deprecated_endpoints("dequantize")
+def dequantize(
+    input,  # pylint: disable=redefined-builtin
+    min_range,
+    max_range,
+    mode="MIN_COMBINED",
+    name=None,
+    axis=None):
+  """Dequantize tensor to the specified range."""
+  if axis is None:
+    axis = -1
+  elif axis < 0:
+    if input.shape.ndims is None:
+      raise ValueError("input should have known rank to use negative axis.")
+    axis %= input.shape.ndims
+
+  if compat.forward_compatible(2019, 9, 25) or axis >= 0:
+    return gen_array_ops.dequantize(
+        input, min_range, max_range, mode=mode, name=name, axis=axis)
+  return gen_array_ops.dequantize(
+      input, min_range, max_range, mode=mode, name=name)
+
+
 @tf_export("quantization.quantize_and_dequantize")
-def quantize_and_dequantize(input,  # pylint: disable=redefined-builtin
-                            input_min,
-                            input_max,
-                            signed_input=True,
-                            num_bits=8,
-                            range_given=False,
-                            round_mode="HALF_TO_EVEN",
-                            name=None,
-                            narrow_range=False,
-                            axis=None):
+def quantize_and_dequantize(
+    input,  # pylint: disable=redefined-builtin
+    input_min,
+    input_max,
+    signed_input=True,
+    num_bits=8,
+    range_given=False,
+    round_mode="HALF_TO_EVEN",
+    name=None,
+    narrow_range=False,
+    axis=None):
   """Quantizes then dequantizes a tensor.
 
   Args:
@@ -4446,20 +4512,19 @@ def quantize_and_dequantize(input,  # pylint: disable=redefined-builtin
     narrow_range: If true, then the absolute value of the quantized minimum
       value is the same as the quantized maximum value, instead of 1 greater.
       i.e. for 8 bit quantization, the minimum value is -127 instead of -128.
-    axis: Integer. If specified, refers to a dimension of the input tensor,
-      such that quantization will be per slice along that dimension.
+    axis: Integer. If specified, refers to a dimension of the input tensor, such
+      that quantization will be per slice along that dimension.
 
   Returns:
     A `Tensor`. Each element is the result of quantizing and dequantizing the
     corresponding element of `input`.
   """
-  if axis is not None:
-    if axis < 0:
-      if input.shape.ndims is None:
-        raise ValueError("input should have known rank to use negative axis.")
-      axis %= input.shape.ndims
-  else:
+  if axis is None:
     axis = -1
+  elif axis < 0:
+    if input.shape.ndims is None:
+      raise ValueError("input should have known rank to use negative axis.")
+    axis %= input.shape.ndims
 
   if compat.forward_compatible(2019, 9, 25) or axis >= 0:
     return gen_array_ops.quantize_and_dequantize_v2(
@@ -4651,8 +4716,8 @@ def extract_image_patches_v2(images, sizes, strides, rates, padding, name=None):
 
   Args:
     images: A 4-D Tensor with shape `[batch, in_rows, in_cols, depth]
-    sizes: The size of the extracted patches. Must
-      be [1, size_rows, size_cols, 1].
+    sizes: The size of the extracted patches. Must be [1, size_rows, size_cols,
+      1].
     strides: A 1-D Tensor of length 4. How far the centers of two consecutive
       patches are in the images. Must be: `[1, stride_rows, stride_cols, 1]`.
     rates: A 1-D Tensor of length 4. Must be: `[1, rate_rows, rate_cols, 1]`.

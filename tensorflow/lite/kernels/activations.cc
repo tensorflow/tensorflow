@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/log_softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/logistic.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/tanh.h"
+#include "tensorflow/lite/kernels/internal/reference/logistic.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -64,6 +65,8 @@ struct SoftmaxOpData {
 struct LogSoftmaxOpData : public OpData {
   int32_t reverse_scaling_divisor = 0;
   int32_t reverse_scaling_right_shift = 0;
+  struct SoftmaxParams params = {};
+  float f_table[256];
 };
 
 struct LeakyReluOpData : public OpData {
@@ -468,23 +471,28 @@ TfLiteStatus LogSoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, input->type, output->type);
 
   if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
+    TF_LITE_ENSURE_EQ(context, output->params.scale, 16.0 / 256);
+    static const double kBeta = 1.0;
     if (input->type == kTfLiteUInt8) {
       TF_LITE_ENSURE_EQ(context, output->params.zero_point, 255);
+      data->params.table = data->f_table;
+      optimized_ops::PopulateSoftmaxLookupTable(&data->params,
+                                                input->params.scale, kBeta);
+      data->params.zero_point = output->params.zero_point;
+      data->params.scale = output->params.scale;
     }
     if (input->type == kTfLiteInt8) {
       TF_LITE_ENSURE_EQ(context, output->params.zero_point, 127);
+      static const int kScaledDiffIntegerBits = 5;
+      tflite::PreprocessLogSoftmaxScalingExp(
+          kBeta, input->params.scale, kScaledDiffIntegerBits,
+          &data->input_multiplier, &data->input_left_shift,
+          &data->reverse_scaling_divisor, &data->reverse_scaling_right_shift);
+      data->reverse_scaling_right_shift *= -1;
+      data->diff_min =
+          -1.0 * tflite::CalculateInputRadius(kScaledDiffIntegerBits,
+                                              data->input_left_shift);
     }
-    TF_LITE_ENSURE_EQ(context, output->params.scale, 16.0 / 256);
-
-    static const double kBeta = 1.0;
-    static const int kScaledDiffIntegerBits = 5;
-    tflite::PreprocessLogSoftmaxScalingExp(
-        kBeta, input->params.scale, kScaledDiffIntegerBits,
-        &data->input_multiplier, &data->input_left_shift,
-        &data->reverse_scaling_divisor, &data->reverse_scaling_right_shift);
-    data->reverse_scaling_right_shift *= -1;
-    data->diff_min = -1.0 * tflite::CalculateInputRadius(
-                                kScaledDiffIntegerBits, data->input_left_shift);
   }
 
   return context->ResizeTensor(context, output,
@@ -926,16 +934,12 @@ TfLiteStatus LogSoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     }
     case kTfLiteUInt8: {
-      SoftmaxParams op_params;
-      op_params.input_multiplier = data->input_multiplier;
-      op_params.input_left_shift = data->input_left_shift;
-      op_params.reverse_scaling_divisor = data->reverse_scaling_divisor;
-      op_params.reverse_scaling_right_shift = data->reverse_scaling_right_shift;
-      op_params.diff_min = data->diff_min;
+      SoftmaxParams op_params = data->params;
       if (kernel_type == kGenericOptimized) {
         optimized_ops::LogSoftmax(
-            op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-            GetTensorShape(output), GetTensorData<uint8_t>(output));
+            op_params, input->params.scale, GetTensorShape(input),
+            GetTensorData<uint8_t>(input), GetTensorShape(output),
+            GetTensorData<uint8_t>(output));
       } else {
         reference_ops::LogSoftmax(
             op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),

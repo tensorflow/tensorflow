@@ -13,21 +13,48 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+#include <type_traits>
+
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
+#include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
+#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
+#include "tensorflow/core/protobuf/tpu/dynamic_padding.pb.h"
 
 namespace mlir {
 namespace TFTPU {
+
+// NOLINTNEXTLINE
+static llvm::cl::opt<bool> tpu_compile_metadata_debug(
+    "tpu_compile_metadata_debug",
+    llvm::cl::desc("Serialize TPUCompileMetadataProto metadata in "
+                   "'tf._TPUCompileMlir' op as a proto debug string"));
+
+constexpr char kNumReplicasAttr[] = "num_replicas";
+constexpr char kNumCoresPerReplicaAttr[] = "num_cores_per_replica";
+constexpr char kStepMarkerLocationAttr[] = "step_marker_location";
+constexpr char kPaddingMapAttr[] = "padding_map";
 
 // Rewrites `tf_device.launch_func` operations assigned to TPU into actual TPU
 // jit-compile runtime ops.
@@ -132,12 +159,119 @@ std::string EncapsulateFuncAndSerialize(FuncOp entry_func) {
   return txt_module;
 }
 
+// Creates a missing attribute error message.
+std::string CreateMissingAttributeMsg(llvm::StringRef attribute) {
+  return llvm::formatv("requires attribute '{0}'", attribute).str();
+}
+
+// Constructs a TPUCompileMetadataProto from attributes of a
+// `tf_device::LaunchFuncOp` and serializes it as a string. If any necessary
+// attributes are missing from the op, a failure will be returned.
+// TODO(lyandy): Propagate and support device assignment.
+// TODO(lyandy): Support session handle and guaranteed consts.
+LogicalResult CreateMetadataProtoString(tf_device::LaunchFuncOp op,
+                                        std::string* metadata) {
+  tensorflow::tpu::TPUCompileMetadataProto proto;
+
+  auto num_replicas = op.getAttrOfType<IntegerAttr>(kNumReplicasAttr);
+  if (!num_replicas)
+    return op.emitOpError(CreateMissingAttributeMsg(kNumReplicasAttr));
+
+  proto.set_num_replicas(num_replicas.getInt());
+
+  auto num_cores_per_replica =
+      op.getAttrOfType<IntegerAttr>(kNumCoresPerReplicaAttr);
+  if (!num_cores_per_replica)
+    return op.emitOpError(CreateMissingAttributeMsg(kNumCoresPerReplicaAttr));
+
+  proto.set_num_cores_per_replica(num_cores_per_replica.getInt());
+
+  auto step_marker_location =
+      op.getAttrOfType<StringAttr>(kStepMarkerLocationAttr);
+  if (!step_marker_location)
+    return op.emitOpError(CreateMissingAttributeMsg(kStepMarkerLocationAttr));
+
+  // Default to `STEP_MARK_AT_ENTRY` for step marker location if attribute is
+  // empty.
+  xla::DebugOptions::StepMarkerLocation location =
+      xla::DebugOptions::STEP_MARK_AT_ENTRY;
+  if (!step_marker_location.getValue().empty() &&
+      !xla::DebugOptions::StepMarkerLocation_Parse(
+          step_marker_location.getValue(), &location))
+    return op.emitOpError(llvm::formatv("bad '{0}' attribute with value '{1}'",
+                                        kStepMarkerLocationAttr,
+                                        step_marker_location.getValue()));
+
+  proto.set_step_marker_location(location);
+
+  auto padding_map = op.getAttrOfType<ArrayAttr>(kPaddingMapAttr);
+  if (!padding_map)
+    return op.emitOpError(CreateMissingAttributeMsg(kPaddingMapAttr));
+
+  for (const auto padding_and_idx : llvm::enumerate(padding_map)) {
+    auto& padding_attr = padding_and_idx.value();
+    auto padding_attr_str = padding_attr.dyn_cast<StringAttr>();
+    if (!padding_attr_str)
+      return op.emitOpError(
+          llvm::formatv("bad '{0}' attribute at index {1}, not a string",
+                        kPaddingMapAttr, padding_and_idx.index()));
+
+    tensorflow::tpu::PaddingMap* padding = proto.mutable_padding_maps()->Add();
+    if (!padding->ParseFromString(padding_attr_str.getValue()))
+      return op.emitOpError(llvm::formatv(
+          "bad '{0}' attribute at index {1} with value '{2}'", kPaddingMapAttr,
+          padding_and_idx.index(), padding_attr_str.getValue()));
+  }
+
+  // Set args metadata in proto.
+  // TODO(lyandy): Determine proper sharding and shapes of args once topology
+  // and devices are propagated to the pass.
+  for (auto operand_type_and_idx : llvm::enumerate(op.getOperandTypes())) {
+    Type operand_type = operand_type_and_idx.value();
+    tensorflow::tpu::TPUCompileMetadataProto::Arg* arg = proto.add_args();
+    tensorflow::DataType dtype;
+    tensorflow::Status status =
+        tensorflow::ConvertToDataType(operand_type, &dtype);
+    if (!status.ok())
+      return op.emitOpError(
+          llvm::formatv("failed to determine operand type at index {0}: {1}",
+                        operand_type_and_idx.index(), status.error_message()));
+
+    arg->set_dtype(dtype);
+    // TODO(lyandy): Support other arg kinds.
+    arg->set_kind(tensorflow::tpu::TPUCompileMetadataProto::Arg::PARAMETER);
+    xla::OpSharding sharding;
+    sharding.set_type(xla::OpSharding::MAXIMAL);
+    sharding.add_tile_assignment_dimensions(1);
+    sharding.add_tile_assignment_devices(0);
+    *arg->mutable_sharding() = std::move(sharding);
+  }
+
+  // Set retvals metadata in proto.
+  // TODO(lyandy): Determine proper sharding and shapes of retvals once topology
+  // and devices is propagated to the pass.
+  for (int i = 0; i < op.getNumResults(); ++i) {
+    xla::OpSharding sharding;
+    sharding.set_type(xla::OpSharding::MAXIMAL);
+    sharding.add_tile_assignment_dimensions(1);
+    sharding.add_tile_assignment_devices(0);
+    *proto.add_retvals()->mutable_sharding() = std::move(sharding);
+  }
+
+  if (tpu_compile_metadata_debug)
+    *metadata = proto.DebugString();
+  else
+    proto.SerializeToString(metadata);
+
+  return success();
+}
+
 // Create a `tf.MLIRCompileToTPU` that contains a MLIR module that is
 // functionally equivalent to the function referenced by launch_func.
 Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func,
                           OpBuilder* builder) {
   // TODO(b/139377366): Use tf_tpu.compile build method when it is defined.
-  OperationState compile_op_state(launch_func.getLoc(), "tf.MLIRCompileToTPU");
+  OperationState compile_op_state(launch_func.getLoc(), "tf._TPUCompileMlir");
 
   // Build a shape op for each input to launch_func.
   // TODO(b/139377366): When shape inference is ready, we can use compile time
@@ -153,6 +287,9 @@ Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func,
     compile_op_operands.emplace_back(shape_op.getResult());
   }
   compile_op_state.addOperands(compile_op_operands);
+  compile_op_state.addAttribute(
+      "NumDynamicShapes",
+      builder->getI64IntegerAttr(compile_op_operands.size()));
 
   SymbolRefAttr func_attr = launch_func.getAttrOfType<SymbolRefAttr>("func");
   if (!func_attr) {
@@ -163,13 +300,14 @@ Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func,
       func_attr.getValue());
 
   std::string txt_module = EncapsulateFuncAndSerialize(func);
-  compile_op_state.addAttribute("module", builder->getStringAttr(txt_module));
+  compile_op_state.addAttribute("mlir_module",
+                                builder->getStringAttr(txt_module));
 
-  // Copy all launch_func attributes other than `func`.
-  for (auto attr : launch_func.getAttrs()) {
-    if (attr.first == "func") continue;
-    compile_op_state.attributes.emplace_back(attr);
-  }
+  // Set metadata from attributes.
+  std::string metadata;
+  if (failed(CreateMetadataProtoString(launch_func, &metadata))) return nullptr;
+
+  compile_op_state.addAttribute("metadata", builder->getStringAttr(metadata));
 
   // Result #0 is a string indicating whether compilation is successful or not.
   compile_op_state.addTypes(
@@ -237,10 +375,25 @@ void BuildTPUCompileSucceededAssertOp(Operation* compile_op,
 
 // Rewrites a `tf_device.launch_func` operation into a set of TPU Runtime
 // Operations that jit-compiles and executes function in `tf_device.launch_func`
-// on TPU.
-void Rewrite(tf_device::LaunchFuncOp launch_func, OpBuilder* builder) {
+// on TPU. If it is not possible to rewrite the operation, a failure will be
+// returned.
+LogicalResult Rewrite(tf_device::LaunchFuncOp launch_func, OpBuilder* builder) {
+  // Skip non-tpu device launch_func.
+  auto replicate_attr = launch_func.getAttrOfType<StringAttr>("_tpu_replicate");
+  if (!replicate_attr) return success();
+
   builder->setInsertionPoint(launch_func);
   Operation* compile_op = BuildCompileOp(launch_func, builder);
+  if (!compile_op) return failure();
+
+  // After rewrite, find if there is a TPUCompilationResultOp in the block with
+  // the same _tpu_replicate attribute and replace it with the result of the
+  // compile op. This op is used as a placeholder to hook during graph creation
+  // the other ops that are intended to consume the compile result.
+  Block* block = launch_func.getOperation()->getBlock();
+  for (auto compile_result_op : block->getOps<TF::TPUCompilationResultOp>())
+    compile_result_op.output()->replaceAllUsesWith(compile_op->getResult(0));
+
   BuildTPUCompileSucceededAssertOp(compile_op, builder);
   // TODO(ycao): Right now we only support single-core case. The right thing to
   // do is to read from launch_func attributes to determine how many execute
@@ -248,14 +401,32 @@ void Rewrite(tf_device::LaunchFuncOp launch_func, OpBuilder* builder) {
   Operation* execute_op = BuildExecuteOp(compile_op, launch_func, builder);
   launch_func.replaceAllUsesWith(execute_op);
   launch_func.erase();
+
+  return success();
 }
 
 void TPURewritePass::runOnModule() {
   OpBuilder builder(&getContext());
-  getModule().walk([&](tf_device::LaunchFuncOp op) {
-    // Skip non-tpu device launch_func.
-    if (!op.getAttrOfType<StringAttr>("_tpu_replicate")) return;
-    Rewrite(op, &builder);
+  auto result = getModule().walk([&](tf_device::LaunchFuncOp op) {
+    if (failed(Rewrite(op, &builder))) return WalkResult::interrupt();
+
+    return WalkResult::advance();
+  });
+
+  if (result.wasInterrupted()) {
+    signalPassFailure();
+    return;
+  }
+
+  // Eliminate TPUReplicatedInput and TPUReplicatedOutput now that the rewrite
+  // is complete.
+  getModule().walk([&](Operation* op) {
+    auto op_name = op->getName().getStringRef();
+    if (op_name != "tf.TPUReplicatedInput" &&
+        op_name != "tf.TPUReplicatedOutput")
+      return;
+    op->getResult(0)->replaceAllUsesWith(op->getOperand(0));
+    op->erase();
   });
 
   // TODO(b/139377366): Remove functions that are no longer needed.
@@ -263,7 +434,7 @@ void TPURewritePass::runOnModule() {
 
 }  // namespace
 
-std::unique_ptr<ModulePassBase> CreateTPURewritePass() {
+std::unique_ptr<OpPassBase<ModuleOp>> CreateTPURewritePass() {
   return std::make_unique<TPURewritePass>();
 }
 

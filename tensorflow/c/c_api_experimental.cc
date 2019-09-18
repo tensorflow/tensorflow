@@ -510,10 +510,6 @@ TFE_TensorHandle* TFE_DequeueVariantTensor(TF_Session* session, int tensor_id,
   return createTFEDequeue(ctx, TF_VARIANT, queue, status);
 }
 
-static void CheckOk(TF_Status* status) {
-  CHECK_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
-}
-
 void TFE_TensorHandlePrintDebugString(TFE_TensorHandle* handle) {
   auto* status = TF_NewStatus();
   if (!TFE_TensorHandleIsConcrete(handle)) {

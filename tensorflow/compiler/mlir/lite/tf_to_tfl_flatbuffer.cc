@@ -33,7 +33,8 @@ limitations under the License.
 
 namespace mlir {
 /// Create a pass to convert from the TFExecutor to the TF control dialect.
-std::unique_ptr<FunctionPassBase> CreateTFExecutorToControlDialectConversion();
+std::unique_ptr<OpPassBase<FuncOp>>
+CreateTFExecutorToControlDialectConversion();
 }  // namespace mlir
 
 namespace tensorflow {
@@ -44,27 +45,28 @@ using mlir::OwningModuleRef;
 using stream_executor::port::StatusOr;
 
 StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
-    const std::string &input_filename, bool input_mlir,
-    bool use_splatted_constant, const std::vector<std::string> &extra_tf_opdefs,
+    const std::string& input_filename, bool input_mlir,
+    bool use_splatted_constant, const std::vector<std::string>& extra_tf_opdefs,
     absl::string_view debug_info_file, absl::string_view input_arrays,
     absl::string_view input_dtypes, absl::string_view input_shapes,
     absl::string_view output_arrays, absl::string_view inference_type,
     absl::string_view min_values, absl::string_view max_values,
-    bool prune_unused_nodes, llvm::SourceMgr *source_mgr,
-    MLIRContext *context) {
-  if (input_mlir) {
-    // Set up the input file.
-    std::string error_message;
-    auto file = mlir::openInputFile(input_filename, &error_message);
-    if (!file) {
-      llvm::errs() << error_message << "\n";
-      return errors::InvalidArgument("fail to open input file");
-    }
+    bool prune_unused_nodes, llvm::SourceMgr* source_mgr,
+    MLIRContext* context) {
+  // Set up the input file.
+  std::string error_message;
+  auto file = mlir::openInputFile(input_filename, &error_message);
+  if (!file) {
+    llvm::errs() << error_message << "\n";
+    return errors::InvalidArgument("fail to open input file");
+  }
 
+  if (input_mlir) {
     source_mgr->AddNewSourceBuffer(std::move(file), llvm::SMLoc());
     return OwningModuleRef(mlir::parseSourceFile(*source_mgr, context));
   }
-  for (const auto &tf_opdefs_string : extra_tf_opdefs) {
+
+  for (const auto& tf_opdefs_string : extra_tf_opdefs) {
     tensorflow::OpDef opdef;
     if (!tensorflow::protobuf::TextFormat::ParseFromString(tf_opdefs_string,
                                                            &opdef)) {
@@ -74,7 +76,7 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
     // Register extra opdefs.
     // TODO(b/133770952): Support shape functions.
     tensorflow::OpRegistry::Global()->Register(
-        [opdef](tensorflow::OpRegistrationData *op_reg_data) -> Status {
+        [opdef](tensorflow::OpRegistrationData* op_reg_data) -> Status {
           *op_reg_data = tensorflow::OpRegistrationData(opdef);
           return Status::OK();
         });
@@ -82,22 +84,23 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
 
   if (use_splatted_constant) {
     return tensorflow::GraphdefToSplattedMlirTranslateFunction(
-        input_filename, debug_info_file, input_arrays, input_dtypes,
+        std::move(file), debug_info_file, input_arrays, input_dtypes,
         input_shapes, output_arrays, inference_type, min_values, max_values,
         prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
         /*graph_as_function=*/false, context);
   }
   return tensorflow::GraphdefToMlirTranslateFunction(
-      input_filename, debug_info_file, input_arrays, input_dtypes, input_shapes,
-      output_arrays, inference_type, min_values, max_values, prune_unused_nodes,
+      std::move(file), debug_info_file, input_arrays, input_dtypes,
+      input_shapes, output_arrays, inference_type, min_values, max_values,
+      prune_unused_nodes,
       /*convert_legacy_fed_inputs=*/true, /*graph_as_function=*/false, context);
 }
 
 Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
     bool emit_select_tf_ops, bool emit_custom_ops, bool emit_quant_adaptor_ops,
-    bool lower_tensor_list_ops, std::string *result,
-    mlir::PassManager *pass_manager) {
+    bool lower_tensor_list_ops, std::string* result,
+    mlir::PassManager* pass_manager) {
   mlir::StatusScopedDiagnosticHandler statusHandler(module.getContext(),
                                                     /*propagate=*/true);
   if (failed(pass_manager->run(module))) {

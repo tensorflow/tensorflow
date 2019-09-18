@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_native_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
 load(
     "@local_config_mlir//:tblgen.bzl",
     "gentbl",
@@ -186,6 +186,41 @@ cc_library(
 )
 
 cc_library(
+    name = "lstm_utils",
+    srcs = [
+        "utils/lstm_utils.cc",
+    ],
+    hdrs = [
+        "utils/lstm_utils.h",
+    ],
+    copts = ["-std=c++14"],
+    deps = [
+        ":tensorflow_lite",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:StandardOps",
+        "@local_config_mlir//:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "lstm_utils_test",
+    size = "small",
+    srcs = ["utils/lstm_utils_test.cc"],
+    deps = [
+        ":lstm_utils",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:StandardOps",
+        "@local_config_mlir//:Support",
+    ],
+)
+
+cc_library(
     name = "tensorflow_lite_legalize_tf",
     srcs = [
         "transforms/extract_ophint.cc",
@@ -251,6 +286,7 @@ cc_library(
     name = "tensorflow_lite_quantize",
     srcs = [
         "transforms/generated_quantize.inc",
+        "transforms/load_quantization_recipe.cc",
         "transforms/post_quantize.cc",
         "transforms/prepare_quantize.cc",
         "transforms/quantize.cc",
@@ -523,7 +559,7 @@ cc_library(
         ":tensorflow_lite_quantize",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_fold_switch",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_lib",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",

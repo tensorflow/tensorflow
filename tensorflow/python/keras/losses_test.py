@@ -180,6 +180,10 @@ class KerasLossesTest(test.TestCase):
         keras.backend.eval(output_from_logit),
         keras.backend.eval(output_from_sigmoid), atol=1e-5)
 
+  def test_get_bce(self):
+    bce_fn = keras.losses.get('bce')
+    self.assertEqual(bce_fn, keras.losses.binary_crossentropy)
+
   def test_serialization(self):
     fn = keras.losses.get('mse')
     config = keras.losses.serialize(fn)

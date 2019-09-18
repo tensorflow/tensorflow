@@ -127,8 +127,29 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "loader_test",
-    srcs = ["loader_test.cc"],
+    name = "saved_model_bundle_test",
+    srcs = ["saved_model_bundle_test.cc"],
+    data = [
+        ":saved_model_half_plus_two",
+    ],
+    linkstatic = 1,
+    deps = [
+        ":constants",
+        ":loader",
+        ":signature_constants",
+        ":tag_constants",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "saved_model_bundle_lite_test",
+    srcs = ["saved_model_bundle_lite_test.cc"],
     data = [
         ":saved_model_half_plus_two",
     ],

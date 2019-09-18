@@ -50,6 +50,10 @@ def TakesStaticMemRefOp : TEST_Op<"takes_static_memref"> {
   let arguments = (ins AnyStaticShapeMemRef:$x);
 }
 
+def RankLessThan2I8F32MemRefOp : TEST_Op<"rank_less_than_2_I8_F32_memref"> {
+  let results = (outs MemRefRankOf<[I8, F32], [0, 1]>);
+}
+
 def NDTensorOfOp : TEST_Op<"nd_tensor_of"> {
   let arguments = (ins
     0DTensorOf<[F32]>:$arg0,
@@ -238,6 +242,25 @@ def OperandsHaveSameType :
 def OperandOneAndResultHaveSameType :
     TEST_Op<"operand_one_and_result_have_same_type",
             [AllTypesMatch<["x", "res"]>]> {
+  let arguments = (ins AnyTensor:$x, AnyTensor:$y);
+  let results = (outs AnyTensor:$res);
+}
+
+def OperandsHaveSameRank :
+    TEST_Op<"operands_have_same_rank", [AllRanksMatch<["x", "y"]>]> {
+  let arguments = (ins AnyTensor:$x, AnyTensor:$y);
+}
+
+def Operand1AndResultHaveSameRank :
+    TEST_Op<"operand1_and_result_have_same_rank",
+            [AllRanksMatch<["x", "res"]>]> {
+  let arguments = (ins AnyTensor:$x, AnyTensor:$y);
+  let results = (outs AnyTensor:$res);
+}
+
+def Operand1AndResultHaveSameElementCount :
+    TEST_Op<"operand1_and_result_have_same_element_count",
+            [AllElementCountsMatch<["x", "res"]>]> {
   let arguments = (ins AnyTensor:$x, AnyTensor:$y);
   let results = (outs AnyTensor:$res);
 }
@@ -737,6 +760,10 @@ def TestCastOp : TEST_Op<"cast">,
   Arguments<(ins Variadic<AnyType>:$inputs)>, Results<(outs AnyType:$res)>;
 def TestInvalidOp : TEST_Op<"invalid", [Terminator]>,
   Arguments<(ins Variadic<AnyType>:$inputs)>;
+def TestTypeProducerOp : TEST_Op<"type_producer">,
+  Results<(outs AnyType:$output)>;
+def TestTypeConsumerOp : TEST_Op<"type_consumer">,
+  Arguments<(ins AnyType:$input)>;
 def TestValidOp : TEST_Op<"valid", [Terminator]>,
   Arguments<(ins Variadic<AnyType>:$inputs)>;
 
@@ -752,6 +779,20 @@ def IsolatedRegionOp : TEST_Op<"isolated_region", [IsolatedFromAbove]> {
   }];
 
   let arguments = (ins Index:$input);
+  let regions = (region SizedRegion<1>:$region);
+  let parser = [{ return ::parse$cppClass(parser, result); }];
+  let printer = [{ return ::print(p, *this); }];
+}
+
+def WrappingRegionOp : TEST_Op<"wrapping_region",
+    [SingleBlockImplicitTerminator<"TestReturnOp">]> {
+  let summary =  "wrapping region operation";
+  let description = [{
+    Test op wrapping another op in a region, to test calling
+    parseGenericOperation from the custom parser.
+  }];
+
+  let results = (outs Variadic<AnyType>:$outputs);
   let regions = (region SizedRegion<1>:$region);
   let parser = [{ return ::parse$cppClass(parser, result); }];
   let printer = [{ return ::print(p, *this); }];

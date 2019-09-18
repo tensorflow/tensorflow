@@ -92,22 +92,35 @@ class LLVM_ZeroResultOp<string mnemonic, list<OpTrait> traits = []> :
 class LLVM_TerminatorOp<string mnemonic, list<OpTrait> traits = []> :
     LLVM_Op<mnemonic, !listconcat(traits, [Terminator])>,
     Arguments<(ins Variadic<LLVM_Type>:$args)>, Results<(outs)> {
-  let builders = [OpBuilder<
-    "Builder *, OperationState *result, "
-    "ArrayRef<Value *> properOperands, "
-    "ArrayRef<Block *> destinations, "
-    "ArrayRef<ArrayRef<Value *>> operands = {}, "
-    "ArrayRef<NamedAttribute> attributes = {}",
+  let builders = [
+    OpBuilder<
+      "Builder *, OperationState *result, "
+      "ArrayRef<Value *> properOperands, "
+      "ArrayRef<Block *> destinations, "
+      "ArrayRef<ArrayRef<Value *>> operands, "
+      "ArrayRef<NamedAttribute> attributes = {}",
+      [{
+        result->addOperands(properOperands);
+        for (auto kvp : llvm::zip(destinations, operands)) {
+          result->addSuccessor(std::get<0>(kvp), std::get<1>(kvp));
+        }
+        for (auto namedAttr : attributes) {
+          result->addAttribute(namedAttr.first, namedAttr.second);
+        }
+      }]
+    >,
+    OpBuilder<
+      "Builder *builder, OperationState *result, "
+      "ArrayRef<Value *> properOperands, "
+      "ArrayRef<Block *> destinations, "
+      "ArrayRef<NamedAttribute> attributes = {}",
     [{
-      result->addOperands(properOperands);
-      for (auto kvp : llvm::zip(destinations, operands)) {
-        result->addSuccessor(std::get<0>(kvp), std::get<1>(kvp));
-      }
-      for (auto namedAttr : attributes) {
-        result->addAttribute(namedAttr.first, namedAttr.second);
-      }
-    }]
-  >];
+        SmallVector<ArrayRef<Value *>, 2> operands(destinations.size(), {});
+        build(builder, result, properOperands,
+            destinations, operands, attributes);
+      }]
+    >,
+  ];
 }
 
 // Class for arithmetic binary operations.

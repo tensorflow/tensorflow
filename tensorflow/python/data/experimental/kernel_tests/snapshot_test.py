@@ -133,9 +133,10 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(
-              compression=[snapshot.COMPRESSION_NONE,
-                           snapshot.COMPRESSION_GZIP])))
+          combinations.combine(compression=[
+              snapshot.COMPRESSION_NONE, snapshot.COMPRESSION_GZIP,
+              snapshot.COMPRESSION_SNAPPY
+          ])))
   def testWriteSnapshotSimpleSuccessful(self, compression):
     tmpdir = self.makeSnapshotDirectory()
 
@@ -159,9 +160,10 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(
-              compression=[snapshot.COMPRESSION_NONE,
-                           snapshot.COMPRESSION_GZIP])))
+          combinations.combine(compression=[
+              snapshot.COMPRESSION_NONE, snapshot.COMPRESSION_GZIP,
+              snapshot.COMPRESSION_SNAPPY
+          ])))
   def testReadSnapshotBackAfterWrite(self, compression):
     self.setUpTFRecord()
     filenames = self.test_filenames
@@ -260,9 +262,10 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
       combinations.times(
           test_base.default_test_combinations(),
           combinations.times(
-              combinations.combine(
-                  compression=[snapshot.COMPRESSION_NONE,
-                               snapshot.COMPRESSION_GZIP]),
+              combinations.combine(compression=[
+                  snapshot.COMPRESSION_NONE, snapshot.COMPRESSION_GZIP,
+                  snapshot.COMPRESSION_SNAPPY
+              ]),
               combinations.combine(threads=2, size=[1, 2]) +
               combinations.combine(threads=8, size=[1, 4, 8]))))
   def testReadSnapshotBackAfterMultiThreadedWrite(

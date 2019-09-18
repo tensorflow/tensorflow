@@ -5,7 +5,6 @@
 load(":build_defs.bzl", "ruy_copts_avx2", "ruy_copts_base", "ruy_copts_skylake", "ruy_visibility")
 load(":ruy_test_ext.bzl", "ruy_test_ext_defines", "ruy_test_ext_deps")
 load(":ruy_test.bzl", "ruy_benchmark", "ruy_benchmark_opt_sets", "ruy_test")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
     default_visibility = ["//visibility:private"],
@@ -760,5 +759,3 @@ ruy_benchmark_opt_sets(
         "7ff",
     ],
 )
-
-tflite_portable_test_suite()

@@ -55,7 +55,7 @@ public:
 };
 } // end namespace
 
-std::unique_ptr<FunctionPassBase>
+std::unique_ptr<OpPassBase<FuncOp>>
 mlir::createSimpleParametricTilingPass(ArrayRef<int64_t> outerLoopSizes) {
   return std::make_unique<SimpleParametricLoopTilingPass>(outerLoopSizes);
 }

@@ -21,7 +21,7 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
 
 def NullArrayAttr : NativeCodeCall<"ArrayAttr()">;
-def NullElementsAttr : NativeCodeCall<"ElementsAttr()">;
+def NullDenseIntElementsAttr : NativeCodeCall<"DenseIntElementsAttr()">;
 
 //===----------------------------------------------------------------------===//
 // BatchNorm op patterns.
@@ -88,6 +88,50 @@ foreach fromToBinPair = [[TF_AddOp, HLO_AddOp],
   def : DirectBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
 //===----------------------------------------------------------------------===//
+// Compare op patterns.
+//===----------------------------------------------------------------------===//
+
+class DirectComparePat<Op FromOp, StrEnumAttrCase direction>
+  : Pat<(FromOp AnyTensor:$l, AnyTensor:$r),
+        (HLO_CompareOp $l, $r, (BinBroadcastDimensions $l, $r), direction)>;
+
+def : DirectComparePat<TF_GreaterOp, HLO_COMPARISON_DIRECTION_GT>;
+def : DirectComparePat<TF_GreaterEqualOp, HLO_COMPARISON_DIRECTION_GE>;
+def : DirectComparePat<TF_LessOp, HLO_COMPARISON_DIRECTION_LT>;
+def : DirectComparePat<TF_LessEqualOp, HLO_COMPARISON_DIRECTION_LE>;
+
+//===----------------------------------------------------------------------===//
+// Concat op patterns.
+//===----------------------------------------------------------------------===//
+
+def OneElementAttrPred
+  : CPred<"$_self.cast<ElementsAttr>().getType().getNumElements() == 1">;
+
+def OneElementAttr
+  : ElementsAttrBase<And<[ElementsAttr.predicate, OneElementAttrPred]>,
+                     "Scalar ElementsAttr">;
+
+def GetHLOAxisFromTFAxis : NativeCodeCall<
+  "GetHLOAxisFromTFAxis("
+  "$0, (*$1.begin())->getType().cast<RankedTensorType>().getRank(), "
+  "&$_builder)">;
+
+def HasRankedFirstOperand
+  : Constraint<CPred<"(*$0.begin())->getType().isa<RankedTensorType>()">>;
+
+// This pattern converts TensorFlow axis format to HLO axis format which
+// doesn't wrap around like TensorFlow and is always positive. For this
+// conversion, use the first input to get inputs rank. Other inputs need not be
+// ranked.
+// Defining op for `axis` is TensorFlow constant op in the pattern as during
+// the conversion, original Concat op operands still refers to the old ops even
+// if HLO constant op is introduced as an replacement for the TensorFlow
+// Constant op.
+def : Pat<(TF_ConcatV2Op $inputs, (TF_ConstOp OneElementAttr:$axis), $unused),
+          (HLO_ConcatenateOp $inputs, (GetHLOAxisFromTFAxis $axis, $inputs)),
+          [(HasRankedFirstOperand $inputs)]>;
+
+//===----------------------------------------------------------------------===//
 // Identity op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -117,19 +161,25 @@ class ConstantSplat<string value> : NativeCodeCall<
     "getSplat($_builder, $0, " # value # ")">;
 
 def : Pat<(TF_ReluOp AnyTensor:$input),
-          (HLO_MaxOp (ConstantOp (ConstantSplat<"0"> $input)), $input,
-                     (NullElementsAttr))>;
+          (HLO_MaxOp (HLO_ConstOp (ConstantSplat<"0"> $input)), $input,
+                     (NullDenseIntElementsAttr))>;
 
 def : Pat<(TF_Relu6Op AnyTensor:$input),
-          (HLO_ClampOp (ConstantOp (ConstantSplat<"0"> $input)), $input,
-                       (ConstantOp (ConstantSplat<"6"> $input)))>;
+          (HLO_ClampOp (HLO_ConstOp (ConstantSplat<"0"> $input)), $input,
+                       (HLO_ConstOp (ConstantSplat<"6"> $input)))>;
+
+//===----------------------------------------------------------------------===//
+// Relu op patterns.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_SelectOp AnyTensor:$condition, AnyTensor:$lhs, AnyTensor:$rhs),
+          (HLO_SelectOp $condition, $lhs, $rhs)>;
 
 //===----------------------------------------------------------------------===//
 // Unary op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TF_ReshapeOp:$res AnyStaticShapeTensor:$arg, $ignored),
-          (HLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)]>;
-
-def : Pat<(TF_SqueezeOp AnyStaticShapeTensor:$arg, $ignored_dims),
-          (HLO_ReshapeOp $arg)>;
+foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp] in {
+  def : Pat<(TfOp:$res AnyStaticShapeTensor:$arg, $ignored),
+            (HLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)]>;
+}

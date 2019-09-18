@@ -43,6 +43,15 @@ void RecordTFDataElements(const string& name, int64 num_elements);
 // The `name` argument identifies the optimization (e.g. "noop_eliminiation").
 void RecordTFDataOptimization(const string& name, int64 num_changes);
 
+// Records parsing of dense tensor features.
+void RecordParseDenseFeature(int64 num_features);
+
+// Records parsing of sparse tensor features.
+void RecordParseSparseFeature(int64 num_features);
+
+// Records parsing of ragged tensor features.
+void RecordParseRaggedFeature(int64 num_features);
+
 // Records the size of input/output tensors in bytes.
 void RecordGraphInputTensors(const size_t size);
 void RecordGraphOutputTensors(const size_t size);

@@ -59,7 +59,6 @@ from tensorflow.python.framework import graph_util as tf_graph_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import spectral_ops_test_util
 
 
 RANDOM_SEED = 342
@@ -5311,8 +5310,7 @@ def make_rfft2d_tests(options):
         dtype=parameters["input_dtype"],
         name="input",
         shape=parameters["input_shape"])
-    with spectral_ops_test_util.fft_kernel_label_map():
-      outs = tf.signal.rfft2d(input_value, fft_length=parameters["fft_length"])
+    outs = tf.signal.rfft2d(input_value, fft_length=parameters["fft_length"])
     return [input_value], [outs]
 
   def build_inputs(parameters, sess, inputs, outputs):

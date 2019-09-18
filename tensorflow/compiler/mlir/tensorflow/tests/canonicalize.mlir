@@ -236,8 +236,8 @@ func @testLogicalNotOfEqual(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) ->
   %1 = "tf.LogicalNot"(%0) : (tensor<8x16xi1>) -> tensor<8x16xi1>
   return %1: tensor<8x16xi1>
 
-// CHECK: %0 = "tf.NotEqual"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
-// CHECK: return %0
+// CHECK: %[[NE:.*]] = "tf.NotEqual"(%arg0, %arg1) {incompatible_shape_error = true}
+// CHECK: return %[[NE]]
 }
 
 // CHECK-LABEL: testLogicalNotOfNotEqual
@@ -246,8 +246,8 @@ func @testLogicalNotOfNotEqual(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>)
   %1 = "tf.LogicalNot"(%0) : (tensor<8x16xi1>) -> tensor<8x16xi1>
   return %1: tensor<8x16xi1>
 
-// CHECK: %0 = "tf.Equal"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
-// CHECK: return %0
+// CHECK: %[[NE:.*]] = "tf.Equal"(%arg0, %arg1) {incompatible_shape_error = true}
+// CHECK: return %[[NE]]
 }
 
 // CHECK-LABEL: testLogicalNotOfGreater

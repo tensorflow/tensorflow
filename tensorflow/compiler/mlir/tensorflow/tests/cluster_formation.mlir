@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -tf-device-cluster-formation | FileCheck %s
+// RUN: tf-opt %s -split-input-file -tf-device-cluster-formation | FileCheck %s -dump-input-on-failure
 
 // Simple case, single device cluster.
 
@@ -72,11 +72,8 @@ module {
   // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<?xi32>)
   func @argliveinotherislands(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = tf_executor.graph {
-      // CHECK: %[[OTHER_ISLAND_OUTPUT:[0-9]*]]:2 = tf_executor.island {
-      %1:2 = tf_executor.island {
-        %3 = "tf.D"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-        tf_executor.yield %3 : tensor<?xi32>
-      }
+      // CHECK: %[[OTHER_ISLAND_OUTPUT:[0-9]*]]:2 = tf_executor.island wraps "tf.D"
+      %1:2 = tf_executor.island wraps "tf.D"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
 
       %2:2 = tf_executor.island {
         // CHECK: %[[TPU0_OUTPUT:[0-9]*]] = "tf_device.launch"

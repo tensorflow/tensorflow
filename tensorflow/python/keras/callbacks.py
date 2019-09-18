@@ -142,18 +142,19 @@ def set_callback_parameters(callback_list,
       mode: String. One of ModeKeys.TRAIN, ModeKeys.TEST, or ModeKeys.PREDICT.
         Which loop mode to configure callbacks for.
   """
+  metric_names = model.metrics_names
   for cbk in callback_list:
     if isinstance(cbk, (BaseLogger, ProgbarLogger)):
-      cbk.stateful_metrics = model.metrics_names[1:]  # Exclude `loss`
+      cbk.stateful_metrics = metric_names[1:]  # Exclude `loss`
 
   # Set callback parameters
   callback_metrics = []
   # When we have deferred build scenario with iterator input, we will compile
   # when we standardize first batch of data.
-  if mode != ModeKeys.PREDICT and hasattr(model, 'metrics_names'):
-    callback_metrics = copy.copy(model.metrics_names)
+  if mode != ModeKeys.PREDICT:
+    callback_metrics = copy.copy(metric_names)
     if do_validation:
-      callback_metrics += ['val_' + n for n in model.metrics_names]
+      callback_metrics += ['val_' + n for n in metric_names]
   callback_params = {
       'batch_size': batch_size,
       'epochs': epochs,
@@ -174,10 +175,10 @@ def _is_generator_like(data):
 
 def make_logs(model, logs, outputs, mode, prefix=''):
   """Computes logs for sending to `on_batch_end` methods."""
-  if mode in {ModeKeys.TRAIN, ModeKeys.TEST}:
-    if hasattr(model, 'metrics_names'):
-      for label, output in zip(model.metrics_names, outputs):
-        logs[prefix + label] = output
+  metric_names = model.metrics_names
+  if mode in {ModeKeys.TRAIN, ModeKeys.TEST} and metric_names:
+    for label, output in zip(metric_names, outputs):
+      logs[prefix + label] = output
   else:
     logs['outputs'] = outputs
   return logs
@@ -716,6 +717,7 @@ class ProgbarLogger(Callback):
     else:
       raise ValueError('Unknown `count_mode`: ' + str(count_mode))
     self.stateful_metrics = set(stateful_metrics or [])
+    self.log_values = None
 
   def on_train_begin(self, logs=None):
     self.verbose = self.params['verbose']
@@ -938,14 +940,16 @@ class ModelCheckpoint(Callback):
   def on_train_end(self, logs=None):
     # pylint: disable=protected-access
     if self.model._in_multi_worker_mode():
-      # In multi-worker training, on successful exit of training, delete the
-      # training state backup file that was saved for the purpose of worker
-      # recovery.
-      self._training_state.delete_backup()
-      # Restore the training state so the model is ready for next (possible)
-      # multi worker training.
-      del self._training_state
-      del self.model._training_state
+      if self.model.stop_training or getattr(
+          self.model, '_successful_loop_finish', False):
+        # In multi-worker training, on successful exit of training, delete the
+        # training state backup file that was saved for the purpose of worker
+        # recovery.
+        self._training_state.delete_backup()
+        # Restore the training state so the model is ready for next (possible)
+        # multi worker training.
+        del self._training_state
+        del self.model._training_state
 
   def on_batch_end(self, batch, logs=None):
     logs = logs or {}

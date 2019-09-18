@@ -29,7 +29,8 @@ namespace cl {
 
 void SelectAbs(const OperationDef& op_def, std::unique_ptr<GPUOperation>* ptr);
 
-void SelectApplyMask(const OperationDef& op_def,
+void SelectApplyMask(const OperationDef& op_def, const BHWC& src_shape,
+                     const BHWC& mask_shape,
                      std::unique_ptr<GPUOperation>* ptr);
 
 void SelectReLU(const CreationContext& creation_context,

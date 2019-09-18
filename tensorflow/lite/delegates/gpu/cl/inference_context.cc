@@ -28,9 +28,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/operation_selector.h"
+#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
+#include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/add_bias.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
@@ -74,10 +77,8 @@ std::vector<std::pair<ValueId, TensorDescriptor>> GetCLNodeTensors(
 
 void MergeCLNodes(CLNode* src, CLNode* dst) {
   int offset = dst->inputs.size();
-  for (int j = 0; j < src->inputs.size(); ++j) {
-    if (src->inputs[j] != dst->outputs[0]) {
-      dst->inputs.push_back(src->inputs[j]);
-    }
+  for (int j = 1; j < src->inputs.size(); ++j) {
+    dst->inputs.push_back(src->inputs[j]);
   }
   auto first_range = src->ranges[0];
   dst->ranges.push_back(
@@ -104,6 +105,57 @@ void AddUsage(ValueId id, int task_index,
   }
 }
 
+TensorStorageType SelectBestStorageType(const CLContext& context,
+                                        const CLDevice& device,
+                                        const BHWC& shape,
+                                        const TensorStorageType& desired,
+                                        const DataType& data_type) {
+  if (CanCreateTensorWithShape(context, device, shape,
+                               TensorDescriptor{data_type, desired})) {
+    return desired;
+  }
+  if (desired == TensorStorageType::TEXTURE_2D ||
+      desired == TensorStorageType::SINGLE_TEXTURE_2D) {
+    if (device.SupportsTextureArray() &&
+        CanCreateTensorWithShape(
+            context, device, shape,
+            TensorDescriptor{data_type, TensorStorageType::TEXTURE_ARRAY})) {
+      return TensorStorageType::TEXTURE_ARRAY;
+    } else {
+      return TensorStorageType::BUFFER;
+    }
+  } else {
+    return TensorStorageType::BUFFER;
+  }
+}
+
+void GetTensorDescriptors(
+    const InferenceContext::CreateInferenceInfo& create_info,
+    const CreationContext& creation_context, const GraphFloat32& graph,
+    std::unordered_map<ValueId, TensorDescriptor>* tensor_descriptors) {
+  const auto inputs = graph.inputs();
+  const auto outputs = graph.outputs();
+  auto tensors = graph.values();
+  auto data_type = DeduceDataTypeFromPrecision(create_info.precision);
+  for (auto& t : tensors) {
+    TensorStorageType storage_type = create_info.storage_type;
+    const auto shape = graph.GetValue(t->id)->tensor.shape;
+    if (graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id)) {
+      if (shape.c < 4 &&
+          CanCreateTensorWithShape(
+              *creation_context.context, *creation_context.device, shape,
+              TensorDescriptor{data_type,
+                               TensorStorageType::SINGLE_TEXTURE_2D})) {
+        storage_type = TensorStorageType::SINGLE_TEXTURE_2D;
+      }
+    }
+    storage_type = SelectBestStorageType(*creation_context.context,
+                                         *creation_context.device, shape,
+                                         storage_type, data_type);
+    (*tensor_descriptors)[t->id] = TensorDescriptor{data_type, storage_type};
+  }
+}
+
 }  // namespace
 
 CLNode::CLNode(CLNode&& node)
@@ -127,6 +179,15 @@ CLNode& CLNode::operator=(CLNode&& node) {
 Status InferenceContext::InitFromGraph(const CreateInferenceInfo& create_info,
                                        const GraphFloat32& graph,
                                        Environment* env) {
+  CreationContext creation_context;
+  creation_context.device = env->GetDevicePtr();
+  creation_context.context = &env->context();
+  creation_context.queue = env->queue();
+  creation_context.cache = env->program_cache();
+
+  std::unordered_map<ValueId, TensorDescriptor> tensor_descriptors;
+  GetTensorDescriptors(create_info, creation_context, graph,
+                       &tensor_descriptors);
   precision_ = create_info.precision;
   storage_type_ = create_info.storage_type;
   auto vendor = env->device().vendor();
@@ -138,16 +199,11 @@ Status InferenceContext::InitFromGraph(const CreateInferenceInfo& create_info,
     need_flush_ = true;
   }
   CopyInAndOutIds(graph);
-  CreationContext creation_context;
-  creation_context.device = env->GetDevicePtr();
-  creation_context.context = &env->context();
-  creation_context.queue = env->queue();
-  creation_context.cache = env->program_cache();
-  RETURN_IF_ERROR(
-      ConvertOperations(creation_context, graph, create_info.hints));
+  RETURN_IF_ERROR(ConvertOperations(creation_context, graph, create_info.hints,
+                                    tensor_descriptors));
   Merge();
-  RETURN_IF_ERROR(
-      AllocateMemory(graph, env->device(), creation_context.context));
+  RETURN_IF_ERROR(AllocateMemory(graph, env->device(), creation_context.context,
+                                 tensor_descriptors));
   BindMemoryToOperations();
   RETURN_IF_ERROR(Compile(creation_context));
 
@@ -183,24 +239,57 @@ void InferenceContext::CopyInAndOutIds(const GraphFloat32& graph) {
 
 Status InferenceContext::ConvertOperations(
     const CreationContext& creation_context, const GraphFloat32& graph,
-    ModelHints hints) {
+    ModelHints hints,
+    const std::unordered_map<ValueId, TensorDescriptor>& tensor_descriptors) {
   std::vector<Node*> graph_nodes = graph.nodes();
+  std::map<ValueId, int>
+      tensor_usages;  // keeps latest index of operation that updated tensor
+  for (const auto& input_id : input_ids_) {
+    tensor_usages[input_id] = -1;  // so as inputs "updated" before operation 0,
+                                   // we will mark them with -1
+  }
   for (int i = 0; i < graph_nodes.size(); ++i) {
     const Node& node = *graph_nodes[i];
     auto inputs = graph.FindInputs(node.id);
     auto outputs = graph.FindOutputs(node.id);
+
+    // Reordering of input ids and updating of temporary tensors_usage struct.
+    // This stage is necessary because we are building OperationDef that rely on
+    // order of input ids. But we also should have input id on first position
+    // that potentially can be "linking" tensor and as result eliminated(unused)
+    // We apply it only for ADD operation, because of ADD associativity and
+    // ADD can be linked.
+    // In current approach "linking" tensor can be only latest written
+    // tensor(during linear order of execution) among input tensors.
+    const OperationType op_type = OperationTypeFromString(node.operation.type);
+    if (inputs.size() > 1 && op_type == OperationType::ADD) {
+      int latest_written_tensor_index = 0;
+      int last_usage = tensor_usages[inputs[0]->id];
+      for (int j = 1; j < inputs.size(); ++j) {
+        if (tensor_usages[inputs[j]->id] > last_usage) {
+          last_usage = tensor_usages[inputs[j]->id];
+          latest_written_tensor_index = j;
+        }
+      }
+      std::swap(inputs[0], inputs[latest_written_tensor_index]);
+    }
+    for (const auto& out_id : outputs) {
+      tensor_usages[out_id->id] = i;
+    }
+
     OperationDef op_def;
     op_def.precision = precision_;
-    auto data_type = DeduceDataTypeFromPrecision(precision_);
     for (int j = 0; j < inputs.size(); ++j) {
-      op_def.src_tensors.push_back({data_type, storage_type_});
+      op_def.src_tensors.push_back(
+          tensor_descriptors.find(inputs[j]->id)->second);
     }
     for (int j = 0; j < outputs.size(); ++j) {
-      op_def.dst_tensors.push_back({data_type, storage_type_});
+      op_def.dst_tensors.push_back(
+          tensor_descriptors.find(outputs[j]->id)->second);
     }
     std::unique_ptr<GPUOperation> gpu_op;
-    RETURN_IF_ERROR(GPUOperationFromNode(creation_context, op_def, hints, graph,
-                                         node, &gpu_op));
+    RETURN_IF_ERROR(GPUOperationFromNode(creation_context, op_def, hints,
+                                         inputs, outputs, node, &gpu_op));
     CLNode cl_node;
     cl_node.operations.push_back(std::move(gpu_op));
     cl_node.ranges.push_back(int2(0, static_cast<int>(inputs.size())));
@@ -212,8 +301,7 @@ Status InferenceContext::ConvertOperations(
     for (int j = 0; j < outputs.size(); ++j) {
       cl_node.outputs[j] = outputs[j]->id;
     }
-    cl_node.name = node.operation.type + " " + std::to_string(node.id) + " " +
-                   std::to_string(i);
+    cl_node.name = node.operation.type + " " + std::to_string(node.id);
     nodes_.push_back(std::move(cl_node));
   }
 
@@ -234,14 +322,16 @@ void InferenceContext::Merge() {
       continue;
     }
     std::vector<int> next_nodes;
+    int link_index = 0;
     for (int j = i + 1; j < nodes_.size(); ++j) {
       for (int k = 0; k < nodes_[j].inputs.size(); ++k) {
         if (nodes_[j].inputs[k] == node.outputs[0]) {
           next_nodes.push_back(j);
+          link_index = k;
         }
       }
     }
-    if (next_nodes.size() != 1) {
+    if (next_nodes.size() != 1 || link_index != 0) {
       continue;
     }
     auto& linkable_node = nodes_[next_nodes[0]];
@@ -264,9 +354,9 @@ void InferenceContext::Merge() {
   }
 }
 
-Status InferenceContext::AllocateMemory(const GraphFloat32& graph,
-                                        const CLDevice& device,
-                                        CLContext* context) {
+Status InferenceContext::AllocateMemory(
+    const GraphFloat32& graph, const CLDevice& device, CLContext* context,
+    const std::unordered_map<ValueId, TensorDescriptor>& tensor_descriptors) {
   std::map<ValueId, int2> usages;
   for (int op_index = 0; op_index < nodes_.size(); ++op_index) {
     auto tensors = GetCLNodeTensors(nodes_[op_index]);
@@ -275,16 +365,29 @@ Status InferenceContext::AllocateMemory(const GraphFloat32& graph,
     }
   }
 
-  std::vector<TensorUsageRecord<BHWC>> usage_records;
+  struct TensorDesc {
+    BHWC shape;
+    TensorDescriptor descriptor;
+
+    bool operator==(const TensorDesc& b) const {
+      return shape == b.shape &&
+             descriptor.data_type == b.descriptor.data_type &&
+             descriptor.storage_type == b.descriptor.storage_type;
+    }
+  };
+
+  std::vector<TensorUsageRecord<TensorDesc>> usage_records;
   std::map<ValueId, ValueId> remap_from_graph_ids;
   for (auto& usage : usages) {
     const auto& shape = graph.GetValue(usage.first)->tensor.shape;
+    const auto& descriptor = tensor_descriptors.find(usage.first)->second;
     remap_from_graph_ids[usage.first] = usage_records.size();
-    usage_records.push_back({shape, static_cast<TaskId>(usage.second.x),
+    usage_records.push_back({{shape, descriptor},
+                             static_cast<TaskId>(usage.second.x),
                              static_cast<TaskId>(usage.second.y)});
   }
 
-  ObjectsAssignment<BHWC> assignment;
+  ObjectsAssignment<TensorDesc> assignment;
   RETURN_IF_ERROR(AssignObjectsToTensors(
       usage_records, MemoryStrategy::EQUALITY, &assignment));
 
@@ -306,11 +409,10 @@ Status InferenceContext::AllocateMemory(const GraphFloat32& graph,
     for (auto& tensor : tensors) {
       const auto& it = tensors_.find(tensor.first);
       if (it == tensors_.end()) {
-        const auto& shape = assignment.object_sizes[tensor.first];
+        const auto& desc = assignment.object_sizes[tensor.first];
         Tensor* t = &tensors_[tensor.first];
-        RETURN_IF_ERROR(CreateTensor(*context, device, shape.w, shape.h,
-                                     shape.c, tensor.second.data_type,
-                                     tensor.second.storage_type, t));
+        RETURN_IF_ERROR(
+            CreateTensor(*context, device, desc.shape, tensor.second, t));
       }
     }
   }

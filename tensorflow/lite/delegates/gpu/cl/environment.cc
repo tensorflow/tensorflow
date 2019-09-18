@@ -181,6 +181,9 @@ std::vector<TensorStorageType> Environment::GetSupportedTextureStorages()
   if (device_.SupportsTextureArray()) {
     storage_types.push_back(TensorStorageType::TEXTURE_ARRAY);
   }
+  if (device_.IsAdreno() && device_.SupportsImageBuffer()) {
+    storage_types.push_back(TensorStorageType::IMAGE_BUFFER);
+  }
   return storage_types;
 }
 
@@ -189,6 +192,9 @@ std::vector<TensorStorageType> Environment::GetSupportedStorages() const {
                                                   TensorStorageType::BUFFER};
   if (device_.SupportsTextureArray()) {
     storage_types.push_back(TensorStorageType::TEXTURE_ARRAY);
+  }
+  if (device_.IsAdreno() && device_.SupportsImageBuffer()) {
+    storage_types.push_back(TensorStorageType::IMAGE_BUFFER);
   }
   return storage_types;
 }

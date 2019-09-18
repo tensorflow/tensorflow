@@ -41,6 +41,7 @@ SPIRVDialect::SPIRVDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context) {
   addTypes<ArrayType, ImageType, PointerType, RuntimeArrayType, StructType>();
 
+  // Add SPIR-V ops.
   addOperations<
 #define GET_OP_LIST
 #include "mlir/Dialect/SPIRV/SPIRVOps.cpp.inc"

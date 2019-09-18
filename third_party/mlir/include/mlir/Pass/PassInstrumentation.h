@@ -25,6 +25,7 @@
 namespace mlir {
 using AnalysisID = ClassID;
 class Operation;
+class OperationName;
 class Pass;
 
 namespace detail {
@@ -37,6 +38,20 @@ struct PassInstrumentorImpl;
 class PassInstrumentation {
 public:
   virtual ~PassInstrumentation() = 0;
+
+  /// A callback to run before a pass pipeline is executed. This function takes
+  /// the name of the operation type being operated on, and a thread id
+  /// corresponding to the parent thread this pipeline was spawned from.
+  /// Note: The parent thread id is collected via llvm::get_threadid().
+  virtual void runBeforePipeline(const OperationName &name,
+                                 uint64_t parentThreadID) {}
+
+  /// A callback to run after a pass pipeline has executed. This function takes
+  /// the name of the operation type being operated on, and a thread id
+  /// corresponding to the parent thread this pipeline was spawned from.
+  /// Note: The parent thread id is collected via llvm::get_threadid().
+  virtual void runAfterPipeline(const OperationName &name,
+                                uint64_t parentThreadID) {}
 
   /// A callback to run before a pass is executed. This function takes a pointer
   /// to the pass to be executed, as well as the current operation being
@@ -76,6 +91,12 @@ public:
   PassInstrumentor(const PassInstrumentor &) = delete;
   ~PassInstrumentor();
 
+  /// See PassInstrumentation::runBeforePipeline for details.
+  void runBeforePipeline(const OperationName &name, uint64_t parentThreadID);
+
+  /// See PassInstrumentation::runAfterPipeline for details.
+  void runAfterPipeline(const OperationName &name, uint64_t parentThreadID);
+
   /// See PassInstrumentation::runBeforePass for details.
   void runBeforePass(Pass *pass, Operation *op);
 
@@ -91,9 +112,8 @@ public:
   /// See PassInstrumentation::runAfterAnalysis for details.
   void runAfterAnalysis(llvm::StringRef name, AnalysisID *id, Operation *op);
 
-  /// Add the given instrumentation to the collection. This takes ownership over
-  /// the given pointer.
-  void addInstrumentation(PassInstrumentation *pi);
+  /// Add the given instrumentation to the collection.
+  void addInstrumentation(std::unique_ptr<PassInstrumentation> pi);
 
 private:
   std::unique_ptr<detail::PassInstrumentorImpl> impl;

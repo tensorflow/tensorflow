@@ -107,9 +107,12 @@ Status SessionMgr::CreateSession(
     };
     AsRemoteDevices(worker_env_->env, cluster_device_attributes, cb,
                     &cluster_devices);
-    std::unique_ptr<DeviceMgr> remote_devices;
-    if (!cluster_device_attributes.empty())
-      remote_devices = MakeUnique<StaticDeviceMgr>(std::move(cluster_devices));
+    std::unique_ptr<DynamicDeviceMgr> remote_devices;
+    if (!cluster_device_attributes.empty()) {
+      remote_devices = MakeUnique<DynamicDeviceMgr>();
+      TF_RETURN_IF_ERROR(
+          remote_devices->AddDevices(std::move(cluster_devices)));
+    }
 
     auto graph_mgr = MakeUnique<GraphMgr>(worker_env_, device_mgr.get());
     worker_session.reset(
@@ -120,9 +123,12 @@ Status SessionMgr::CreateSession(
   } else {
     AsRemoteDevices(worker_env_->env, cluster_device_attributes, nullptr,
                     &cluster_devices);
-    std::unique_ptr<DeviceMgr> remote_devices;
-    if (!cluster_device_attributes.empty())
-      remote_devices = MakeUnique<StaticDeviceMgr>(std::move(cluster_devices));
+    std::unique_ptr<DynamicDeviceMgr> remote_devices;
+    if (!cluster_device_attributes.empty()) {
+      remote_devices = MakeUnique<DynamicDeviceMgr>();
+      TF_RETURN_IF_ERROR(
+          remote_devices->AddDevices(std::move(cluster_devices)));
+    }
     // Borrow the WorkerEnv's DeviceMgr for the WorkerSession, so
     // that resources using it can use its devices after the
     // WorkerSession has been deleted.

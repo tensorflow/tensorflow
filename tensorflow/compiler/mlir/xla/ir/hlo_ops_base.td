@@ -165,7 +165,7 @@ class BASE_HLO_TanhOp {
 // smaller rank shape is broadcast into a larger rank shape. For example,
 // given a 2x3x4 cuboid and a 3x4 matrix, a broadcasting tuple (1,2) means
 // matching the matrix to dimensions 1 and 2 of the cuboid.
-def BroadcastDimAttr : OptionalAttr<ElementsAttr>;
+def BroadcastDimAttr : OptionalAttr<I64ElementsAttr>;
 
 class BASE_HLO_AddOp {
   string summary = "Addition operator";
@@ -244,10 +244,6 @@ class BASE_HLO_AndOp {
   }];
 }
 
-//===----------------------------------------------------------------------===//
-// XLA control flow op definitions.
-//===----------------------------------------------------------------------===//
-
 class BASE_HLO_ReduceOp {
   string summary = "Reduce operator";
 
@@ -256,6 +252,17 @@ class BASE_HLO_ReduceOp {
     in parallel.
 
     See https://www.tensorflow.org/xla/operation_semantics#reduce.
+  }];
+}
+
+class BASE_HLO_ReduceWindowOp {
+  string summary = "ReduceWindow operator";
+
+  string description = [{
+    Returns the result of executing a reduction function over all elements in
+    each window of one or more arrays in parallel.
+
+    See https://www.tensorflow.org/xla/operation_semantics#reducewindow.
   }];
 }
 
@@ -453,6 +460,17 @@ class BASE_HLO_DotOp {
     See https://www.tensorflow.org/xla/operation_semantics#dot.
   }];
 }
+
+class BASE_HLO_DotGeneralOp {
+  string summary = "General Dot operator";
+  string description = [{
+    Performs general dot products between vectors, vector/matrix and
+    matrix/matrix multiplication.
+
+    See https://www.tensorflow.org/xla/operation_semantics#dotgeneral.
+  }];
+}
+
 
 class BASE_HLO_GatherOp{
   string summary = "Gather operator";

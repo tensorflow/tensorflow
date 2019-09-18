@@ -143,7 +143,7 @@ def register_keras_serializable(package='Custom', name=None):
   Note that to be serialized and deserialized, classes must implement the
   `get_config()` method. Functions do not have this requirement.
 
-  The object will be registered under the key 'module>name' where `name`,
+  The object will be registered under the key 'package>name' where `name`,
   defaults to the object name if not passed.
 
   Arguments:
@@ -194,8 +194,19 @@ def serialize_keras_object(instance):
     return None
 
   if hasattr(instance, 'get_config'):
+    config = instance.get_config()
+    serialization_config = {}
+    for key, item in config.items():
+      try:
+        serialized_item = serialize_keras_object(item)
+        if isinstance(serialized_item, dict):
+          serialized_item['__passive_serialization__'] = True
+        serialization_config[key] = serialized_item
+      except ValueError:
+        serialization_config[key] = item
+
     name = _get_name_or_custom_name(instance.__class__)
-    return serialize_keras_class_and_config(name, instance.get_config())
+    return serialize_keras_class_and_config(name, serialization_config)
   if hasattr(instance, '__name__'):
     return _get_name_or_custom_name(instance)
   raise ValueError('Cannot serialize', instance)
@@ -221,7 +232,21 @@ def class_and_config_for_serialized_keras_object(
     cls = module_objects.get(class_name)
     if cls is None:
       raise ValueError('Unknown ' + printable_module_name + ': ' + class_name)
-  return (cls, config['config'])
+
+  cls_config = config['config']
+  deserialized_objects = {}
+  for key, item in cls_config.items():
+    if (isinstance(item, dict) and '__passive_serialization__' in item):
+      deserialized_objects[key] = deserialize_keras_object(
+          item,
+          module_objects=module_objects,
+          custom_objects=custom_objects,
+          printable_module_name='config_item')
+
+  for key, item in deserialized_objects.items():
+    cls_config[key] = deserialized_objects[key]
+
+  return (cls, cls_config)
 
 
 @keras_export('keras.utils.deserialize_keras_object')

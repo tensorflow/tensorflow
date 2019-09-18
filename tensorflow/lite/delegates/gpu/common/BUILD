@@ -47,6 +47,7 @@ cc_library(
         "memory_management/greedy_by_size_assignment.cc",
         "memory_management/internal.cc",
         "memory_management/min_cost_flow_assignment.cc",
+        "memory_management/types.cc",
     ],
     hdrs = [
         "memory_management.h",
@@ -57,6 +58,7 @@ cc_library(
         "memory_management/internal.h",
         "memory_management/min_cost_flow_assignment.h",
         "memory_management/naive_assignment.h",
+        "memory_management/types.h",
     ],
     deps = [
         ":shape",
@@ -213,6 +215,15 @@ cc_test(
 cc_test(
     name = "memory_management_internal_test",
     srcs = ["memory_management/internal_test.cc"],
+    deps = [
+        ":memory_management",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "memory_management_types_test",
+    srcs = ["memory_management/types_test.cc"],
     deps = [
         ":memory_management",
         "@com_google_googletest//:gtest_main",

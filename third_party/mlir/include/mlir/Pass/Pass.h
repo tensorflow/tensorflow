@@ -227,19 +227,6 @@ public:
   }
 };
 
-/// Pass to transform an operation.
-///
-/// Operation passes must not:
-///   - modify any other operations within the parent region, as other threads
-///     may be manipulating them concurrently.
-///   - modify any state within the parent operation, this includes adding
-///     additional operations.
-///
-/// Derived function passes are expected to provide the following:
-///   - A 'void runOnOperation()' method.
-template <typename T>
-struct OperationPass : public detail::PassModel<T, Pass> {};
-
 /// Pass to transform an operation of a specific type.
 ///
 /// Operation passes must not:
@@ -250,27 +237,34 @@ struct OperationPass : public detail::PassModel<T, Pass> {};
 ///
 /// Derived function passes are expected to provide the following:
 ///   - A 'void runOnOperation()' method.
-template <typename OpT, typename PassT>
-class OpPass : public detail::PassModel<PassT, OpPassBase<OpT>> {
+template <typename PassT, typename OpT = void>
+class OperationPass : public detail::PassModel<PassT, OpPassBase<OpT>> {
 protected:
-  OpPass()
+  OperationPass()
       : detail::PassModel<PassT, OpPassBase<OpT>>(OpT::getOperationName()) {}
 
   /// Return the current operation being transformed.
   OpT getOperation() { return cast<OpT>(Pass::getOperation()); }
 };
 
-/// A model for providing function pass specific utilities.
+/// Pass to transform an operation.
 ///
-/// Function passes must not:
-///   - read or modify any other functions within the parent module, as
-///     other threads may be manipulating them concurrently.
-///   - modify any state within the parent module, this includes adding
-///     additional functions.
+/// Operation passes must not:
+///   - modify any other operations within the parent region, as other threads
+///     may be manipulating them concurrently.
+///   - modify any state within the parent operation, this includes adding
+///     additional operations.
+///
+/// Derived function passes are expected to provide the following:
+///   - A 'void runOnOperation()' method.
+template <typename PassT>
+struct OperationPass<PassT, void> : public detail::PassModel<PassT, Pass> {};
+
+/// A model for providing function pass specific utilities.
 ///
 /// Derived function passes are expected to provide the following:
 ///   - A 'void runOnFunction()' method.
-template <typename T> struct FunctionPass : public OpPass<FuncOp, T> {
+template <typename T> struct FunctionPass : public OperationPass<T, FuncOp> {
   /// The polymorphic API that runs the pass over the currently held function.
   virtual void runOnFunction() = 0;
 
@@ -288,7 +282,7 @@ template <typename T> struct FunctionPass : public OpPass<FuncOp, T> {
 ///
 /// Derived module passes are expected to provide the following:
 ///   - A 'void runOnModule()' method.
-template <typename T> struct ModulePass : public OpPass<ModuleOp, T> {
+template <typename T> struct ModulePass : public OperationPass<T, ModuleOp> {
   /// The polymorphic API that runs the pass over the currently held module.
   virtual void runOnModule() = 0;
 
@@ -298,11 +292,6 @@ template <typename T> struct ModulePass : public OpPass<ModuleOp, T> {
   /// Return the current module being transformed.
   ModuleOp getModule() { return this->getOperation(); }
 };
-
-/// Using directives defining legacy base classes.
-// TODO(riverriddle) These should be removed in favor of OpPassBase<T>.
-using FunctionPassBase = OpPassBase<FuncOp>;
-using ModulePassBase = OpPassBase<ModuleOp>;
 } // end namespace mlir
 
 #endif // MLIR_PASS_PASS_H

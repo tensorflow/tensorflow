@@ -294,7 +294,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
         self.w = self.add_weight('w', ())
 
       def call(self, inputs):
-        return keras.backend.sum(inputs) + self.w * 0
+        return keras.backend.sum(inputs, axis=1, keepdims=True) + self.w * 0
 
     model = keras.Sequential([SumLayer(input_shape=(2,))])
     model.compile(
@@ -317,11 +317,11 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     history = model.fit(train_dataset,
                         epochs=2, steps_per_epoch=2, verbose=1,
                         validation_data=val_dataset, validation_steps=2)
-    self.assertListEqual(history.history['loss'],
-                         [inputs[:20].sum() / 2, inputs[20:].sum() / 2])
+    self.assertAllClose(history.history['loss'],
+                        [inputs[:20].sum() / 20, inputs[20:].sum() / 20])
     # The validation dataset will be reset at the end of each validation run.
-    self.assertListEqual(history.history['val_loss'],
-                         [inputs[:20].sum() / 2, inputs[:20].sum() / 2])
+    self.assertAllClose(history.history['val_loss'],
+                        [inputs[:20].sum() / 20, inputs[:20].sum() / 20])
 
     # Test correctness with dataset reset.
     train_dataset = dataset_ops.Dataset.from_tensor_slices(
@@ -330,10 +330,12 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
         (inputs, targets)).batch(10)
     history = model.fit(train_dataset,
                         epochs=2, verbose=1, validation_data=val_dataset)
-    self.assertListEqual(history.history['loss'],
-                         [inputs.sum() / 4, inputs.sum() / 4])
-    self.assertListEqual(history.history['val_loss'],
-                         [inputs.sum() / 4, inputs.sum() / 4])
+    self.assertAllClose(
+        history.history['loss'],
+        [inputs.sum() / 40, inputs.sum() / 40])
+    self.assertAllClose(
+        history.history['val_loss'],
+        [inputs.sum() / 40, inputs.sum() / 40])
 
   @tf_test_util.run_deprecated_v1
   def test_dataset_input_shape_validation(self):
@@ -456,7 +458,6 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
 
     lines = capture.output.splitlines()
 
-    self.assertIn('1/Unknown', lines[2])
     self.assertIn('10/10', lines[-1])
 
     self.assertLen(history.history['loss'], 2)

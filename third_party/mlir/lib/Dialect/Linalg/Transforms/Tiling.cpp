@@ -527,7 +527,7 @@ LinalgTilingPass::LinalgTilingPass(ArrayRef<int64_t> sizes, bool promoteViews) {
   this->promoteViews = promoteViews;
 }
 
-std::unique_ptr<FunctionPassBase>
+std::unique_ptr<OpPassBase<FuncOp>>
 mlir::linalg::createLinalgTilingPass(ArrayRef<int64_t> tileSizes,
                                      bool promoteViews) {
   return std::make_unique<LinalgTilingPass>(tileSizes, promoteViews);

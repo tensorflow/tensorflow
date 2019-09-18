@@ -280,7 +280,35 @@ class ParametricDotTest : public DotOperationTest,
  protected:
   template <typename NativeT>
   void TestImpl();
+
+  template <typename NativeT>
+  void ComputeAndCompareR2WithError(XlaBuilder* builder,
+                                    const Array2D<NativeT>& expected,
+                                    absl::Span<GlobalData* const> arguments);
 };
+
+template <typename NativeT>
+void ParametricDotTest::ComputeAndCompareR2WithError(
+    XlaBuilder* builder, const Array2D<NativeT>& expected,
+    absl::Span<GlobalData* const> arguments) {
+  ErrorSpec error_spec(0.3, 3e-3);
+  ComputeAndCompareR2(builder, expected, arguments, error_spec);
+}
+
+template <>
+void ParametricDotTest::ComputeAndCompareR2WithError<Eigen::half>(
+    XlaBuilder* builder, const Array2D<Eigen::half>& expected,
+    absl::Span<GlobalData* const> arguments) {
+  ErrorSpec error_spec(0.3, 5e-3);
+  ComputeAndCompareR2(builder, expected, arguments, error_spec);
+}
+
+template <>
+void ParametricDotTest::ComputeAndCompareR2WithError<int32>(
+    XlaBuilder* builder, const Array2D<int32>& expected,
+    absl::Span<GlobalData* const> arguments) {
+  ComputeAndCompareR2(builder, expected, arguments);
+}
 
 template <typename NativeT>
 void ParametricDotTest::TestImpl() {
@@ -353,11 +381,7 @@ void ParametricDotTest::TestImpl() {
   if (param.has_addend) {
     args.push_back(addend_handle.get());
   }
-  ErrorSpec error_spec(0.3, 3e-3);
-  if (std::is_same<Eigen::half, NativeT>::value) {
-    error_spec = ErrorSpec(0.3, 5e-3);
-  }
-  ComputeAndCompareR2<NativeT>(&builder, *expected, args, error_spec);
+  ComputeAndCompareR2WithError<NativeT>(&builder, *expected, args);
 }
 
 std::vector<DotTestParam> CreateDotTestParameters() {
@@ -391,6 +415,7 @@ XLA_TEST_P(ParametricDotTest, TestF16) { TestImpl<Eigen::half>(); }
 #endif
 XLA_TEST_P(ParametricDotTest, TestF32) { TestImpl<float>(); }
 XLA_TEST_P(ParametricDotTest, TestF64) { TestImpl<double>(); }
+XLA_TEST_P(ParametricDotTest, TestS32) { TestImpl<int32>(); }
 
 INSTANTIATE_TEST_CASE_P(DotTests, ParametricDotTest,
                         ::testing::ValuesIn(CreateDotTestParameters()),
@@ -646,8 +671,6 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMul) {
       {x_data.get(), y_data.get()}, this->error_spec_);
 }
 
-#ifndef XLA_TEST_BACKEND_CPU
-// TODO(b/74459949): failed on CPU on 2018-10-29.
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR3LhsR2Rhs) {
   using T = TypeParam;
 
@@ -681,7 +704,6 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR3LhsR2Rhs) {
       this->error_spec_);
 }
 
-// TODO(b/74459949): failed on CPU on 2018-10-29.
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR2LhsR3Rhs) {
   using T = TypeParam;
 
@@ -714,7 +736,6 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR2LhsR3Rhs) {
       /*expected=*/{{1.0f, 2.0f}, {7.0f, 8.0f}}, {x_data.get(), y_data.get()},
       this->error_spec_);
 }
-#endif  // XLA_TEST_BACKEND_CPU
 
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulMultipleBatch) {
   using T = TypeParam;
@@ -1361,7 +1382,7 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
-XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(GpuIntegerDotCodegen)) {
+XLA_TEST_F(DotOperationTextTest, IntegerDotCodegen) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
@@ -1376,7 +1397,7 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
-XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(GpuTransposeOutput)) {
+XLA_TEST_F(DotOperationTextTest, GpuTransposeOutput) {
   absl::string_view hlo_string =
       R"(
 HloModule TransposeOutput

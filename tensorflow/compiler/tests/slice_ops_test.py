@@ -22,6 +22,7 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
 
@@ -138,6 +139,22 @@ class StridedSliceTest(xla_test.XLATestCase):
 
         self.assertAllEqual([2, 4], result)
 
+  def test1DDynamic(self):
+    for dtype in self.numeric_types:
+      with self.session():
+        i = array_ops.placeholder(dtype, shape=[10])
+        begin = array_ops.placeholder(dtypes.int32, shape=[1])
+        with self.test_scope():
+          end = math_ops.add(begin, [1])
+          o = array_ops.strided_slice(i, begin, end, [1])
+        params = {
+            i: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            begin: [0]
+        }
+        result = o.eval(feed_dict=params)
+
+        self.assertAllEqual([0], result)
+
   def test1DNegativeStride(self):
     for dtype in self.numeric_types:
       with self.session():
@@ -178,6 +195,22 @@ class StridedSliceTest(xla_test.XLATestCase):
         result = o.eval(feed_dict=params)
 
         self.assertEqual(tensor_shape.TensorShape((0, 3)), result.shape)
+
+  def test2DFullSlice(self):
+    for dtype in self.numeric_types:
+      with self.session():
+        with self.test_scope():
+          i = array_ops.placeholder(dtype, shape=[2, 4])
+          begin = array_ops.placeholder(dtypes.int32, shape=[2])
+          end = math_ops.add(begin, [1, 1])
+          o = array_ops.strided_slice(i, begin, end, [1, 1])
+        params = {
+            i: [[0, 1, 2, 3], [4, 5, 6, 7]],
+            begin: [1, 1]
+        }
+        result = o.eval(feed_dict=params)
+
+        self.assertAllEqual([[5]], result)
 
   def test3D(self):
     for dtype in self.numeric_types:

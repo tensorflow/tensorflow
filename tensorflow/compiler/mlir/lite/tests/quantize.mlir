@@ -126,11 +126,12 @@ func @QuantizeAveragePool2D(tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:
 // CHECK-LABEL: QuantizeReshape2D
 func @QuantizeReshape2D(tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x36x16xf32> {
 ^bb0(%arg0: tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>):
+  %cst = constant dense<[1, 36, 16]> : tensor<3xi32>
   %0 = "tfl.dequantize"(%arg0) : (tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x6x6x16xf32>
-  %1 = "tfl.reshape"(%0) : (tensor<1x6x6x16xf32>) -> tensor<1x36x16xf32>
+  %1 = "tfl.reshape"(%0, %cst) : (tensor<1x6x6x16xf32>, tensor<3xi32>) -> tensor<1x36x16xf32>
   return %1 : tensor<1x36x16xf32>
 
-// CHECK: %0 = "tfl.reshape"(%arg0)
+// CHECK: %0 = "tfl.reshape"(%arg0, %{{.*}})
 // CHECK: %1 = "tfl.dequantize"(%0) : (tensor<1x36x16x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x36x16xf32>
 // CHECK: return %1 : tensor<1x36x16xf32>
 }
@@ -173,27 +174,27 @@ func @QuantizeAdd(tensor<1x56x56x24x!quant.uniform<u8:f32, 0.27583434161017922:1
 }
 
 // CHECK-LABEL: QuantizeConcat
-func @QuantizeConcat(tensor<2xf32>, tensor<2xf32>) -> tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>> {
-^bb0(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>):
-  %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<2xf32>, tensor<2xf32>) -> tensor<2x2xf32>
+func @QuantizeConcat(tensor<1x2xf32>, tensor<1x2xf32>) -> tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>> {
+^bb0(%arg0: tensor<1x2xf32>, %arg1: tensor<1x2xf32>):
+  %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1x2xf32>, tensor<1x2xf32>) -> tensor<2x2xf32>
   %1 = "tfl.quantize"(%0) {qtype = tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>>} : (tensor<2x2xf32>) -> tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>>
   return %1 : tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>>
 
-// CHECK: %0 = "tfl.quantize"(%arg1) {qtype = tensor<2x!quant.uniform<u8:f32, 1.000000e-01:128>>}
-// CHECK: %1 = "tfl.quantize"(%arg0) {qtype = tensor<2x!quant.uniform<u8:f32, 1.000000e-01:128>>}
+// CHECK: %0 = "tfl.quantize"(%arg1) {qtype = tensor<1x2x!quant.uniform<u8:f32, 1.000000e-01:128>>}
+// CHECK: %1 = "tfl.quantize"(%arg0) {qtype = tensor<1x2x!quant.uniform<u8:f32, 1.000000e-01:128>>}
 // CHECK: %2 = "tfl.concatenation"(%1, %0) {axis = 0 : i32, fused_activation_function = "NONE"}
 // CHECK: return %2 : tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>>
 }
 
 // CHECK-LABEL: QuantizeConcatRequantize
-func @QuantizeConcatRequantize(tensor<2x!quant.uniform<u8:f32, 2.0:128>>, tensor<2xf32>) -> tensor<2x2x!quant.uniform<u8:f32, 0.1:128>> {
-^bb0(%arg0: tensor<2x!quant.uniform<u8:f32, 2.0:128>>, %arg1: tensor<2xf32>):
-  %1 = "tfl.dequantize"(%arg0) : (tensor<2x!quant.uniform<u8:f32, 2.0:128>>) -> tensor<2xf32>
-  %2 = "tfl.concatenation"(%1, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<2xf32>, tensor<2xf32>) -> tensor<2x2xf32>
+func @QuantizeConcatRequantize(tensor<1x2x!quant.uniform<u8:f32, 2.0:128>>, tensor<1x2xf32>) -> tensor<2x2x!quant.uniform<u8:f32, 0.1:128>> {
+^bb0(%arg0: tensor<1x2x!quant.uniform<u8:f32, 2.0:128>>, %arg1: tensor<1x2xf32>):
+  %1 = "tfl.dequantize"(%arg0) : (tensor<1x2x!quant.uniform<u8:f32, 2.0:128>>) -> tensor<1x2xf32>
+  %2 = "tfl.concatenation"(%1, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1x2xf32>, tensor<1x2xf32>) -> tensor<2x2xf32>
   %3 = "tfl.quantize"(%2) {qtype = tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>>} : (tensor<2x2xf32>) -> tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>>
   return %3 : tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>>
 
-// CHECK: %0 = "tfl.quantize"(%arg1) {qtype = tensor<2x!quant.uniform<u8:f32, 1.000000e-01:128>>}
+// CHECK: %0 = "tfl.quantize"(%arg1) {qtype = tensor<1x2x!quant.uniform<u8:f32, 1.000000e-01:128>>}
 // CHECK: %1 = "tfl.concatenation"(%arg0, %0) {axis = 0 : i32, fused_activation_function = "NONE"}
 // CHECK: return %1 : tensor<2x2x!quant.uniform<u8:f32, 1.000000e-01:128>>
 }
@@ -220,4 +221,32 @@ func @QuantizeSplit(%arg: tensor<4x!quant.uniform<u8:f32, 1.0>>, %cst: tensor<i3
 
 // CHECK: %0:2 = "tfl.split"(%arg1, %arg0) {num_splits = 2 : i32} : (tensor<i32>, tensor<4x!quant.uniform<u8:f32, 1.000000e+00>>)
 // CHECK: return %0#0, %0#1
+}
+
+// CHECK-LABEL: QuantizeShape
+func @QuantizeShape(%arg1: tensor<4x!quant.uniform<u8:f32, 1.0>>,
+                    %arg2: tensor<*x!quant.uniform<u8:f32, 1.0>>,
+                    %arg3: tensor<?x?x4x!quant.uniform<u8:f32, 1.0>>) -> (tensor<1xi32>,tensor<?xi32>,tensor<3xi32>) {
+  %1 = "tfl.dequantize"(%arg1) : (tensor<4x!quant.uniform<u8:f32, 1.0>>) -> tensor<4xf32>
+  %2 = "tfl.dequantize"(%arg2) : (tensor<*x!quant.uniform<u8:f32, 1.0>>) -> tensor<*xf32>
+  %3 = "tfl.dequantize"(%arg3) : (tensor<?x?x4x!quant.uniform<u8:f32, 1.0>>) -> tensor<?x?x4xf32>
+  %4 = "tfl.shape"(%1) : (tensor<4xf32>) -> tensor<1xi32>
+  %5 = "tfl.shape"(%2) : (tensor<*xf32>) -> tensor<?xi32>
+  %6 = "tfl.shape"(%3) : (tensor<?x?x4xf32>) -> tensor<3xi32>
+  return %4, %5, %6 : tensor<1xi32>, tensor<?xi32>, tensor<3xi32>
+
+// CHECK-NEXT: %[[s1:.*]] = "tfl.shape"(%arg0) : (tensor<4x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<1xi32>
+// CHECK-NEXT: %[[s2:.*]] = "tfl.shape"(%arg1) : (tensor<*x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<?xi32>
+// CHECK-NEXT: %[[s3:.*]] = "tfl.shape"(%arg2) : (tensor<?x?x4x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<3xi32>
+// CHECK-NEXT: %[[s1]], %[[s2]], %[[s3]] : tensor<1xi32>, tensor<?xi32>, tensor<3xi32>
+}
+
+// CHECK-LABEL: QuantizeMultipleUsers
+func @QuantizeMultipleUsers(%arg1: tensor<4x!quant.uniform<u8:f32, 1.0>>) -> (tensor<1xi32>,tensor<1xi32>) {
+  %1 = "tfl.dequantize"(%arg1) : (tensor<4x!quant.uniform<u8:f32, 1.0>>) -> tensor<4xf32>
+  %2 = "tfl.shape"(%1) : (tensor<4xf32>) -> tensor<1xi32>
+  return %2, %2 : tensor<1xi32>, tensor<1xi32>
+
+// CHECK-NEXT: %[[s1:.*]] = "tfl.shape"(%arg0) : (tensor<4x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<1xi32>
+// CHECK-NEXT: %[[s1]], %[[s1]] : tensor<1xi32>, tensor<1xi32>
 }

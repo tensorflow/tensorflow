@@ -1396,7 +1396,8 @@ Status FastParseSingleExample(const Config& config,
   }
 
   // TODO(mrry): Cache the construction of this map at Op construction time.
-  size_t config_size = config.dense.size() + config.sparse.size();
+  size_t config_size =
+      config.dense.size() + config.sparse.size() + config.ragged.size();
   SeededHasher hasher;
   // Build config index.
   PresizedCuckooMap<std::pair<size_t, Type>> config_index(config_size);
@@ -1409,6 +1410,10 @@ Status FastParseSingleExample(const Config& config,
     for (size_t d = 0; d < config.sparse.size(); ++d) {
       ok &= config_index.InsertUnique(hasher(config.sparse[d].feature_name),
                                       {d, Type::Sparse});
+    }
+    for (size_t d = 0; d < config.ragged.size(); ++d) {
+      ok &= config_index.InsertUnique(hasher(config.ragged[d].feature_name),
+                                      {d, Type::Ragged});
     }
     if (ok) break;
     LOG(WARNING) << "Collision found. This should happen only if you have "
@@ -1446,6 +1451,15 @@ Status FastParseSingleExample(const Config& config,
     result->sparse_values.emplace_back();
   }
 
+  // Allocate ragged output tensors.
+  for (size_t d = 0; d < config.ragged.size(); ++d) {
+    // Variable-length values tensors will be allocated later.
+    result->ragged_values.emplace_back();
+    // Splits tensors are empty (unused) for single (scalar) inputs.
+    const auto splits_dtype = config.ragged[d].splits_dtype;
+    result->ragged_splits.emplace_back(splits_dtype, TensorShape({0}));
+  }
+
   parsed::Example parsed_example;
   if (!ParseExample(serialized, &parsed_example)) {
     return errors::InvalidArgument("Could not parse example input, value: '",
@@ -1453,6 +1467,7 @@ Status FastParseSingleExample(const Config& config,
   }
   std::vector<bool> sparse_feature_already_seen(config.sparse.size(), false);
   std::vector<bool> dense_feature_already_seen(config.dense.size(), false);
+  std::vector<bool> ragged_feature_already_seen(config.ragged.size(), false);
 
   if (stats) {
     // TODO(b/111553342): This may over-count the number of features if there
@@ -1478,13 +1493,15 @@ Status FastParseSingleExample(const Config& config,
 
     size_t d = d_and_type.first;
     bool is_dense = d_and_type.second == Type::Dense;
+    bool is_sparse = d_and_type.second == Type::Sparse;
 
     {
       // Testing for PresizedCuckooMap collision.
       // TODO(lew): Use dense_hash_map and avoid this and hasher creation.
-      const string& config_feature_name = is_dense
-                                              ? config.dense[d].feature_name
-                                              : config.sparse[d].feature_name;
+      const string& config_feature_name =
+          is_dense ? config.dense[d].feature_name
+                   : (is_sparse ? config.sparse[d].feature_name
+                                : config.ragged[d].feature_name);
       if (feature_name != config_feature_name) continue;
     }
 
@@ -1581,20 +1598,24 @@ Status FastParseSingleExample(const Config& config,
               " but expected type: ", DataTypeString(config.dense[d].dtype)));
         }
       } else {
+        // Feature is sparse or ragged.
+        auto& feature_already_seen = is_sparse ? sparse_feature_already_seen
+                                               : ragged_feature_already_seen;
+        auto& feature_dtype =
+            is_sparse ? config.sparse[d].dtype : config.ragged[d].dtype;
         // If feature was already visited, skip.
         // Compare comment at the beginning of the loop.
-        if (sparse_feature_already_seen[d]) {
+        if (feature_already_seen[d]) {
           LogSparseFeatureDataLoss(feature_name);
           continue;
         }
-        sparse_feature_already_seen[d] = true;
+        feature_already_seen[d] = true;
 
         // Handle sparse features.
-        if (example_dtype != DT_INVALID &&
-            example_dtype != config.sparse[d].dtype) {
+        if (example_dtype != DT_INVALID && example_dtype != feature_dtype) {
           return example_error(strings::StrCat(
               "Data types don't match. ",
-              "Expected type: ", DataTypeString(config.sparse[d].dtype),
+              "Expected type: ", DataTypeString(feature_dtype),
               ", Actual type: ", DataTypeString(example_dtype)));
         }
       }
@@ -1645,7 +1666,7 @@ Status FastParseSingleExample(const Config& config,
 
         out = &result->dense_values[d];
         out_dtype = config.dense[d].dtype;
-      } else {
+      } else if (is_sparse) {
         Tensor* out_indices = &result->sparse_indices[d];
         Tensor* out_dense_shape = &result->sparse_shapes[d];
 
@@ -1664,6 +1685,10 @@ Status FastParseSingleExample(const Config& config,
 
         out = &result->sparse_values[d];
         out_dtype = config.sparse[d].dtype;
+        out_shape.AddDim(num_elements);
+      } else {
+        out = &result->ragged_values[d];
+        out_dtype = config.ragged[d].dtype;
         out_shape.AddDim(num_elements);
       }
 
@@ -1723,6 +1748,14 @@ Status FastParseSingleExample(const Config& config,
       result->sparse_values[d] =
           Tensor(config.sparse[d].dtype, TensorShape({0}));
       result->sparse_shapes[d].vec<int64>()(0) = 0;
+    }
+  }
+
+  // Handle missing ragged features.
+  for (size_t d = 0; d < config.ragged.size(); ++d) {
+    if (!ragged_feature_already_seen[d]) {
+      result->ragged_values[d] =
+          Tensor(config.ragged[d].dtype, TensorShape({0}));
     }
   }
 

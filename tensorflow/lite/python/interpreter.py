@@ -107,7 +107,7 @@ class Delegate(object):
         self.message = ''
 
       def report(self, x):
-        self.message += x
+        self.message += x if isinstance(x, str) else x.decode('utf-8')
 
     capture = ErrorMessageCapture()
     error_capturer_cb = ctypes.CFUNCTYPE(None, ctypes.c_char_p)(capture.report)

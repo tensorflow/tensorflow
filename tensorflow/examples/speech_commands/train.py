@@ -86,6 +86,17 @@ FLAGS = None
 
 
 def main(_):
+  if FLAGS.quantize:
+    try:
+      _ = tf.contrib
+    except AttributeError as e:
+      msg = e.args[0]
+      msg += ('\n\n The --quantize option still requires contrib, which is not '
+              'part of TensorFlow 2.0. Please install a previous version:'
+              '\n    `pip install tensorflow<=1.15`')
+      e.args = (msg,)
+      raise e
+
   # Set the verbosity based on flags (default is INFO, so we see all messages)
   tf.compat.v1.logging.set_verbosity(FLAGS.verbosity)
 
@@ -296,8 +307,8 @@ def main(_):
       total_conf_matrix = conf_matrix
     else:
       total_conf_matrix += conf_matrix
-  tf.compat.v1.logging.info('Confusion Matrix:\n %s' % (total_conf_matrix))
-  tf.compat.v1.logging.info('Final test accuracy = %.1f%% (N=%d)' %
+  tf.compat.v1.logging.warn('Confusion Matrix:\n %s' % (total_conf_matrix))
+  tf.compat.v1.logging.warn('Final test accuracy = %.1f%% (N=%d)' %
                             (total_accuracy * 100, set_size))
 
 

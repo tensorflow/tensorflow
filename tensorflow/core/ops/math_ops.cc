@@ -194,7 +194,7 @@ _HostCast requires its input and produces its output in host memory.
 REGISTER_OP("Abs")
     .Input("x: T")
     .Output("y: T")
-    .Attr("T: {bfloat16, half, float, double, int32, int64}")
+    .Attr("T: {bfloat16, half, float, double, int8, int16, int32, int64}")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("ComplexAbs")
@@ -1393,23 +1393,23 @@ Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
   T start = start_t->scalar<T>()();
   T limit = limit_t->scalar<T>()();
   T delta = delta_t->scalar<T>()();
-  if (start > limit && delta > 0) {
+  if (start > limit && delta > T(0)) {
     return errors::InvalidArgument(
         "Requires start <= limit when delta > 0: ", start, "/", limit);
   }
-  if (start < limit && delta < 0) {
+  if (start < limit && delta < T(0)) {
     return errors::InvalidArgument(
         "Requires start >= limit when delta < 0: ", start, "/", limit);
   }
-  if (delta == 0) {
+  if (delta == T(0)) {
     return errors::InvalidArgument("Requires delta != 0");
   }
 
-  int64 size =
-      (std::is_integral<T>::value
-           ? ((std::abs(limit - start) + std::abs(delta) - 1) / std::abs(delta))
-           : std::ceil(std::abs((limit - start) / delta)));
-  c->set_output(0, c->Vector(size));
+  auto size = (std::is_integral<T>::value
+                   ? ((std::abs(limit - start) + std::abs(delta) - T(1)) /
+                      std::abs(delta))
+                   : (std::ceil(std::abs((limit - start) / delta))));
+  c->set_output(0, c->Vector(static_cast<int64>(size)));
   return Status::OK();
 }
 
@@ -1444,8 +1444,12 @@ REGISTER_OP("Range")
         return RangeSize<int64>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_FLOAT) {
         return RangeSize<float>(start_t, limit_t, delta_t, c);
-      } else {
+      } else if (dtype == DT_DOUBLE) {
         return RangeSize<double>(start_t, limit_t, delta_t, c);
+      } else if (dtype == DT_BFLOAT16) {
+        return RangeSize<bfloat16>(start_t, limit_t, delta_t, c);
+      } else {
+        return errors::InvalidArgument("Unsupported dtype", dtype);
       }
       return Status::OK();
     });

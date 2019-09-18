@@ -197,6 +197,8 @@ PyObject* TFE_Py_TapeSetIsStopped();
 //    forwardprop to, given the gradients of the output tensors, produce the
 //    gradients of the input tensors. This function is automatically transposed
 //    during forwardprop.
+//  - forward_function is an optional special-case for fowardprop, taking input
+//    jvps and returning output jvps.
 //
 // Records an operation both for backprop (gradient tape) and forwardprop
 // (forward accumulator). Equivalent to calling both
@@ -205,7 +207,8 @@ PyObject* TFE_Py_TapeSetIsStopped();
 PyObject* TFE_Py_TapeSetRecordOperation(PyObject* op_type,
                                         PyObject* output_tensors,
                                         PyObject* input_tensors,
-                                        PyObject* backward_function);
+                                        PyObject* backward_function,
+                                        PyObject* forward_function);
 
 // Records an operation only for backprop (gradient tapes).
 //

@@ -150,8 +150,8 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
     // error reporting system. Report a generic error if pass manager failed
     // without emitting a diagnostic.
     mlir::StatusScopedDiagnosticHandler error_handler(module_op.getContext());
-    mlir::xla_hlo::legalizeTF(module_op);
-    if (!error_handler.ok()) {
+    mlir::LogicalResult result = mlir::xla_hlo::legalizeTF(module_op);
+    if (failed(result)) {
       return error_handler.Combine(
           errors::Internal("MLIR TF to XLA legalization failed"));
     }

@@ -74,22 +74,22 @@ static gpu::LaunchFuncOp inlineConstants(FuncOp kernelFunc,
     firstBlock.getArgument(i)->replaceAllUsesWith(newConstant->getResult(0));
     firstBlock.eraseArgument(i);
   }
-  if (newLaunchArgs.size() != launch.getNumKernelOperands()) {
-    std::reverse(newLaunchArgs.begin(), newLaunchArgs.end());
-    OpBuilder LaunchBuilder(launch);
-    SmallVector<Type, 8> newArgumentTypes;
-    newArgumentTypes.reserve(firstBlock.getNumArguments());
-    for (auto value : firstBlock.getArguments()) {
-      newArgumentTypes.push_back(value->getType());
-    }
-    kernelFunc.setType(LaunchBuilder.getFunctionType(newArgumentTypes, {}));
-    auto newLaunch = LaunchBuilder.create<gpu::LaunchFuncOp>(
-        launch.getLoc(), kernelFunc, launch.getGridSizeOperandValues(),
-        launch.getBlockSizeOperandValues(), newLaunchArgs);
-    launch.erase();
-    return newLaunch;
+  if (newLaunchArgs.size() == launch.getNumKernelOperands())
+    return launch;
+
+  std::reverse(newLaunchArgs.begin(), newLaunchArgs.end());
+  OpBuilder LaunchBuilder(launch);
+  SmallVector<Type, 8> newArgumentTypes;
+  newArgumentTypes.reserve(firstBlock.getNumArguments());
+  for (auto value : firstBlock.getArguments()) {
+    newArgumentTypes.push_back(value->getType());
   }
-  return launch;
+  kernelFunc.setType(LaunchBuilder.getFunctionType(newArgumentTypes, {}));
+  auto newLaunch = LaunchBuilder.create<gpu::LaunchFuncOp>(
+      launch.getLoc(), kernelFunc, launch.getGridSizeOperandValues(),
+      launch.getBlockSizeOperandValues(), newLaunchArgs);
+  launch.erase();
+  return newLaunch;
 }
 
 // Outline the `gpu.launch` operation body into a kernel function. Replace
@@ -147,7 +147,7 @@ public:
 
 } // namespace
 
-std::unique_ptr<ModulePassBase> mlir::createGpuKernelOutliningPass() {
+std::unique_ptr<OpPassBase<ModuleOp>> mlir::createGpuKernelOutliningPass() {
   return std::make_unique<GpuKernelOutliningPass>();
 }
 

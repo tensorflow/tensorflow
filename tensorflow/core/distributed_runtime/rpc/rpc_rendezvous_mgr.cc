@@ -136,18 +136,13 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
   // Start the main RecvTensor call, checking for an async abort.
   void StartRTCall(std::function<void()> recv_done) {
     resp_.InitAlloc(dst_device_, alloc_attrs_);
-    using namespace std::placeholders;
-    StatusCallback cb = std::bind(
-        [this](std::function<void()> recv_done,
-               // Begin unbound arguments.
-               const Status& s) {
-          if (!s.ok()) {
-            mutex_lock l(mu_);
-            status_.Update(s);
-          }
-          recv_done();
-        },
-        std::move(recv_done), _1);
+    auto cb = [this, recv_done = std::move(recv_done)](const Status& s) {
+      if (!s.ok()) {
+        mutex_lock l(mu_);
+        status_.Update(s);
+      }
+      recv_done();
+    };
     wi_->RecvTensorAsync(&opts_, &req_, &resp_, std::move(cb));
   }
 

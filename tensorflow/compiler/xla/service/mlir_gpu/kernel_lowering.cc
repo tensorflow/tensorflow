@@ -45,7 +45,6 @@ using ::mlir::ConversionTarget;
 using ::mlir::FuncOp;
 using ::mlir::LLVMTypeConverter;
 using ::mlir::ModulePass;
-using ::mlir::ModulePassBase;
 using ::mlir::OwningRewritePatternList;
 using ::mlir::PassManager;
 using ::mlir::gpu::GPUDialect;

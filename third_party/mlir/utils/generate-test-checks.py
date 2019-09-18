@@ -98,6 +98,21 @@ def process_line(line_chunks, variable_namer):
   return output_line + '\n'
 
 
+# Pre-process a line of input to remove any character sequences that will be
+# problematic with FileCheck.
+def preprocess_line(line):
+  # Replace any double brackets, '[[' with escaped replacements. '[['
+  # corresponds to variable names in FileCheck.
+  output_line = line.replace('[[', '{{\\[\\[}}')
+
+  # Replace any single brackets that are followed by an SSA identifier, the
+  # identifier will be replace by a variable; Creating the same situation as
+  # above.
+  output_line = output_line.replace('[%', '{{\\[}}%')
+
+  return output_line
+
+
 def main():
   from argparse import RawTextHelpFormatter
   parser = argparse.ArgumentParser(
@@ -152,6 +167,10 @@ def main():
     # If the line ends with a '{', push a new name scope.
     if input_line[-1] == '{':
       variable_namer.push_name_scope()
+
+    # Preprocess the input to remove any sequences that may be problematic with
+    # FileCheck.
+    input_line = preprocess_line(input_line)
 
     # Split the line at the each SSA value name.
     ssa_split = input_line.split('%')

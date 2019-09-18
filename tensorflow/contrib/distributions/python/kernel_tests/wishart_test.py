@@ -24,6 +24,7 @@ from tensorflow.contrib import distributions as distributions_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -98,14 +99,18 @@ class WishartCholeskyTest(test.TestCase):
       scale = make_pd(1., 2)
       df = 4
       w = distributions.WishartCholesky(df, chol(scale))
-      self.assertAllEqual(chol(wishart_var(df, scale)), w.stddev().eval())
+      self.assertAllCloseAccordingToType(
+          chol(wishart_var(df, scale)),
+          w.stddev().eval())
 
   def testVariance(self):
     with self.cached_session():
       scale = make_pd(1., 2)
       df = 4
       w = distributions.WishartCholesky(df, chol(scale))
-      self.assertAllEqual(wishart_var(df, scale), w.variance().eval())
+      self.assertAllCloseAccordingToType(
+          wishart_var(df, scale),
+          w.variance().eval())
 
   def testSample(self):
     with self.cached_session():
@@ -318,6 +323,7 @@ class WishartCholeskyTest(test.TestCase):
           sess.run(w.event_shape_tensor(),
                    feed_dict={scale_deferred: [chol_scale, chol_scale]}))
 
+  @test_util.disable_xla("XLA cannot assert inside of an op.")
   def testValidateArgs(self):
     with self.cached_session() as sess:
       df_deferred = array_ops.placeholder(dtypes.float32)

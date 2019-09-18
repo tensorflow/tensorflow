@@ -27,6 +27,7 @@
 #include "mlir/IR/Function.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/StandardTypes.h"
+#include "mlir/Support/Functional.h"
 #include "mlir/Support/StringExtras.h"
 
 using namespace mlir;
@@ -34,6 +35,7 @@ using namespace mlir;
 // TODO(antiagainst): generate these strings using ODS.
 static constexpr const char kAlignmentAttrName[] = "alignment";
 static constexpr const char kBranchWeightAttrName[] = "branch_weights";
+static constexpr const char kCallee[] = "callee";
 static constexpr const char kDefaultValueAttrName[] = "default_value";
 static constexpr const char kFnNameAttrName[] = "fn";
 static constexpr const char kIndicesAttrName[] = "indices";
@@ -140,7 +142,7 @@ static ParseResult parseMemoryAccessAttributes(OpAsmParser *parser,
     return failure();
   }
 
-  if (memoryAccessAttr == spirv::MemoryAccess::Aligned) {
+  if (spirv::bitEnumContains(memoryAccessAttr, spirv::MemoryAccess::Aligned)) {
     // Parse integer attribute for alignment.
     Attribute alignmentAttr;
     Type i32Type = parser->getBuilder().getIntegerType(32);
@@ -211,7 +213,7 @@ static LogicalResult verifyMemoryAccessAttribute(LoadStoreOpTy loadStoreOp) {
            << memAccessVal;
   }
 
-  if (*memAccess == spirv::MemoryAccess::Aligned) {
+  if (spirv::bitEnumContains(*memAccess, spirv::MemoryAccess::Aligned)) {
     if (!op->getAttr(kAlignmentAttrName)) {
       return loadStoreOp.emitOpError("missing alignment value");
     }
@@ -309,6 +311,28 @@ static void printVariableDecorations(Operation *op, OpAsmPrinter *printer,
   }
 
   printer->printOptionalAttrDict(op->getAttrs(), elidedAttrs);
+}
+
+// Extracts an element from the given `composite` by following the given
+// `indices`. Returns a null Attribute if error happens.
+static Attribute extractCompositeElement(Attribute composite,
+                                         ArrayRef<unsigned> indices) {
+  // Return composite itself if we reach the end of the index chain.
+  if (indices.empty())
+    return composite;
+
+  if (auto vector = composite.dyn_cast<ElementsAttr>()) {
+    assert(indices.size() == 1 && "must have exactly one index for a vector");
+    return vector.getValue({indices[0]});
+  }
+
+  if (auto array = composite.dyn_cast<ArrayAttr>()) {
+    assert(!indices.empty() && "must have at least one index for an array");
+    return extractCompositeElement(array.getValue()[indices[0]],
+                                   indices.drop_front());
+  }
+
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
@@ -568,9 +592,9 @@ static void print(spirv::BranchConditionalOp branchOp, OpAsmPrinter *printer) {
 
   if (auto weights = branchOp.branch_weights()) {
     *printer << " [";
-    mlir::interleaveComma(
-        weights->getValue(), printer->getStream(),
-        [&](Attribute a) { *printer << a.cast<IntegerAttr>().getInt(); });
+    interleaveComma(weights->getValue(), *printer, [&](Attribute a) {
+      *printer << a.cast<IntegerAttr>().getInt();
+    });
     *printer << "]";
   }
 
@@ -700,6 +724,16 @@ static LogicalResult verify(spirv::CompositeExtractOp compExOp) {
   return success();
 }
 
+OpFoldResult spirv::CompositeExtractOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.size() == 1 && "spv.CompositeExtract expects one operand");
+  auto indexVector = functional::map(
+      [](Attribute attr) {
+        return static_cast<unsigned>(attr.cast<IntegerAttr>().getInt());
+      },
+      indices());
+  return extractCompositeElement(operands[0], indexVector);
+}
+
 //===----------------------------------------------------------------------===//
 // spv.constant
 //===----------------------------------------------------------------------===//
@@ -768,7 +802,7 @@ static LogicalResult verify(spirv::ConstantOp constOp) {
 }
 
 OpFoldResult spirv::ConstantOp::fold(ArrayRef<Attribute> operands) {
-  assert(operands.empty() && "constant has no operands");
+  assert(operands.empty() && "spv.constant has no operands");
   return value();
 }
 
@@ -827,8 +861,7 @@ static void print(spirv::EntryPointOp entryPointOp, OpAsmPrinter *printer) {
            << entryPointOp.fn();
   if (auto interface = entryPointOp.interface()) {
     *printer << ", ";
-    mlir::interleaveComma(interface.getValue().getValue(), printer->getStream(),
-                          [&](Attribute a) { printer->printAttribute(a); });
+    interleaveComma(interface.getValue().getValue(), *printer);
   }
 }
 
@@ -875,9 +908,132 @@ static void print(spirv::ExecutionModeOp execModeOp, OpAsmPrinter *printer) {
     return;
   }
   *printer << ", ";
-  mlir::interleaveComma(
-      values.getValue().cast<ArrayAttr>(), printer->getStream(),
+  interleaveComma(
+      values.getValue().cast<ArrayAttr>(), *printer,
       [&](Attribute a) { *printer << a.cast<IntegerAttr>().getInt(); });
+}
+
+//===----------------------------------------------------------------------===//
+// spv.FunctionCall
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseFunctionCallOp(OpAsmParser *parser,
+                                       OperationState *state) {
+  SymbolRefAttr calleeAttr;
+  FunctionType type;
+  SmallVector<OpAsmParser::OperandType, 4> operands;
+  auto loc = parser->getNameLoc();
+  if (parser->parseAttribute(calleeAttr, kCallee, state->attributes) ||
+      parser->parseOperandList(operands, OpAsmParser::Delimiter::Paren) ||
+      parser->parseColonType(type)) {
+    return failure();
+  }
+
+  auto funcType = type.dyn_cast<FunctionType>();
+  if (!funcType) {
+    return parser->emitError(loc, "expected function type, but provided ")
+           << type;
+  }
+
+  if (funcType.getNumResults() > 1) {
+    return parser->emitError(loc, "expected callee function to have 0 or 1 "
+                                  "result, but provided ")
+           << funcType.getNumResults();
+  }
+
+  return failure(parser->addTypesToList(funcType.getResults(), state->types) ||
+                 parser->resolveOperands(operands, funcType.getInputs(), loc,
+                                         state->operands));
+}
+
+static void print(spirv::FunctionCallOp functionCallOp, OpAsmPrinter *printer) {
+  SmallVector<Type, 4> argTypes(functionCallOp.getOperandTypes());
+  SmallVector<Type, 1> resultTypes(functionCallOp.getResultTypes());
+  Type functionType =
+      FunctionType::get(argTypes, resultTypes, functionCallOp.getContext());
+
+  *printer << spirv::FunctionCallOp::getOperationName() << ' '
+           << functionCallOp.getAttr(kCallee) << '(';
+  printer->printOperands(functionCallOp.arguments());
+  *printer << ") : " << functionType;
+}
+
+static LogicalResult verify(spirv::FunctionCallOp functionCallOp) {
+  auto fnName = functionCallOp.callee();
+
+  auto moduleOp = functionCallOp.getParentOfType<spirv::ModuleOp>();
+  if (!moduleOp) {
+    return functionCallOp.emitOpError(
+        "must appear in a function inside 'spv.module'");
+  }
+
+  auto funcOp = moduleOp.lookupSymbol<FuncOp>(fnName);
+  if (!funcOp) {
+    return functionCallOp.emitOpError("callee function '")
+           << fnName << "' not found in 'spv.module'";
+  }
+
+  auto functionType = funcOp.getType();
+
+  if (functionCallOp.getNumResults() > 1) {
+    return functionCallOp.emitOpError(
+               "expected callee function to have 0 or 1 result, but provided ")
+           << functionCallOp.getNumResults();
+  }
+
+  if (functionType.getNumInputs() != functionCallOp.getNumOperands()) {
+    return functionCallOp.emitOpError(
+               "has incorrect number of operands for callee: expected ")
+           << functionType.getNumInputs() << ", but provided "
+           << functionCallOp.getNumOperands();
+  }
+
+  for (uint32_t i = 0, e = functionType.getNumInputs(); i != e; ++i) {
+    if (functionCallOp.getOperand(i)->getType() != functionType.getInput(i)) {
+      return functionCallOp.emitOpError(
+                 "operand type mismatch: expected operand type ")
+             << functionType.getInput(i) << ", but provided "
+             << functionCallOp.getOperand(i)->getType()
+             << " for operand number " << i;
+    }
+  }
+
+  if (functionType.getNumResults() != functionCallOp.getNumResults()) {
+    return functionCallOp.emitOpError(
+               "has incorrect number of results has for callee: expected ")
+           << functionType.getNumResults() << ", but provided "
+           << functionCallOp.getNumResults();
+  }
+
+  if (functionCallOp.getNumResults() &&
+      (functionCallOp.getResult(0)->getType() != functionType.getResult(0))) {
+    return functionCallOp.emitOpError("result type mismatch: expected ")
+           << functionType.getResult(0) << ", but provided "
+           << functionCallOp.getResult(0)->getType();
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.GLSL.UnaryOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseGLSLUnaryOp(OpAsmParser *parser,
+                                    OperationState *state) {
+  OpAsmParser::OperandType operandInfo;
+  Type type;
+  if (parser->parseOperand(operandInfo) || parser->parseColonType(type) ||
+      parser->resolveOperands(operandInfo, type, state->operands)) {
+    return failure();
+  }
+  state->addTypes(type);
+  return success();
+}
+
+static void printGLSLUnaryOp(Operation *unaryOp, OpAsmPrinter *printer) {
+  *printer << unaryOp->getName() << ' ' << *unaryOp->getOperand(0) << " : "
+           << unaryOp->getOperand(0)->getType();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1050,7 +1206,7 @@ static inline bool isMergeBlock(Block &block) {
 /// given `dstBlock`.
 static inline bool hasOneBranchOpTo(Block &srcBlock, Block &dstBlock) {
   // Check that there is only one op in the `srcBlock`.
-  if (std::next(srcBlock.begin()) != srcBlock.end())
+  if (srcBlock.empty() || std::next(srcBlock.begin()) != srcBlock.end())
     return false;
 
   auto branchOp = dyn_cast<spirv::BranchOp>(srcBlock.back());
@@ -1140,6 +1296,32 @@ static LogicalResult verify(spirv::LoopOp loopOp) {
   }
 
   return success();
+}
+
+Block *spirv::LoopOp::getHeaderBlock() {
+  // The second block is the loop header block.
+  return &*std::next(body().begin());
+}
+
+Block *spirv::LoopOp::getContinueBlock() {
+  // The second to last block is the loop continue block.
+  return &*std::prev(body().end(), 2);
+}
+
+Block *spirv::LoopOp::getMergeBlock() {
+  // The last block is the loop merge block.
+  return &body().back();
+}
+
+void spirv::LoopOp::addEntryAndMergeBlock() {
+  assert(body().empty() && "entry and merge block already exist");
+  body().push_back(new Block());
+  auto *mergeBlock = new Block();
+  body().push_back(mergeBlock);
+  OpBuilder builder(mergeBlock);
+
+  // Add a spv._merge op into the merge block.
+  builder.create<spirv::MergeOp>(builder.getUnknownLoc());
 }
 
 //===----------------------------------------------------------------------===//

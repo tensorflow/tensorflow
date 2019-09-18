@@ -25,32 +25,6 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 
-// TODO(yangke): revisit these operations and in particular, see if we can
-// combine all of them into just one operation without causing nvcc to
-// timeout.
-template <typename Device, typename T, int Dims, typename IndexType>
-struct ShuffleAndReverse {
-  void operator()(const Device& d,
-                  typename TTypes<T, Dims, IndexType>::ConstTensor input,
-                  const Eigen::DSizes<IndexType, Dims>& order,
-                  const Eigen::array<bool, Dims>& reverse_dims,
-                  typename TTypes<T, Dims, IndexType>::Tensor output) {
-    output.device(d) = input.shuffle(order).reverse(reverse_dims);
-  }
-};
-
-template <typename Device, typename T, int Dims, typename IndexType>
-struct InflatePadAndShuffle {
-  void operator()(
-      const Device& d, typename TTypes<T, Dims, IndexType>::ConstTensor input,
-      const Eigen::DSizes<IndexType, Dims>& strides,
-      const Eigen::array<Eigen::IndexPair<IndexType>, Dims>& pad_dims,
-      const Eigen::DSizes<IndexType, Dims>& order,
-      typename TTypes<T, Dims, IndexType>::Tensor output) {
-    output.device(d) = input.inflate(strides).pad(pad_dims).shuffle(order);
-  }
-};
-
 template <typename Device, typename Input, typename Filter, typename Output,
           typename OutputKernel>
 void SpatialConvolutionFunc(const Device& d, Output output, Input input,
@@ -199,6 +173,8 @@ struct TransformFilter {
   }
 };
 
+// TODO This functor is not used anywhere and should be removed,
+// but it defines some eigen templates that are referenced in other kernels.
 template <typename Device, typename T, typename IndexType>
 struct TransformDepth {
   void operator()(const Device& d,

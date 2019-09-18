@@ -979,14 +979,20 @@ void NeonApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
     // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
     using F3 = gemmlowp::FixedPoint<int16x8_t, 3>;
 
-    for (; i <= n_input - 16; i += 16) {
+    for (; i <= n_input - 32; i += 32) {
       const int index = batch * n_input + i;
       F3 input0 = F3::FromRaw(vld1q_s16(input + index));
       F3 input1 = F3::FromRaw(vld1q_s16(input + index + 8));
+      F3 input2 = F3::FromRaw(vld1q_s16(input + index + 16));
+      F3 input3 = F3::FromRaw(vld1q_s16(input + index + 24));
       F0 output0 = gemmlowp::logistic(input0);
       F0 output1 = gemmlowp::logistic(input1);
+      F0 output2 = gemmlowp::logistic(input2);
+      F0 output3 = gemmlowp::logistic(input3);
       vst1q_s16(output + index, output0.raw());
       vst1q_s16(output + index + 8, output1.raw());
+      vst1q_s16(output + index + 16, output2.raw());
+      vst1q_s16(output + index + 24, output3.raw());
     }
 #endif  // GEMMLOWP_NEON
     using F0_Scalar = gemmlowp::FixedPoint<int16_t, 0>;
@@ -1000,100 +1006,58 @@ void NeonApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
   }
 }
 
-void NeonApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
-                    int16_t* output) {
+template <int IntegerBits>
+void NeonApplyTanhImpl(const int16_t* input, int32_t n_batch, int32_t n_input,
+                       int16_t* output) {
   for (int batch = 0; batch < n_batch; ++batch) {
     int i = 0;
 #ifdef GEMMLOWP_NEON
     // F0 uses 0 integer bits, range [-1, 1].
     // This is the return type of math functions such as tanh, logistic,
     // whose range is in [-1, 1].
-    using F0 = gemmlowp::FixedPoint<int16x8_t, 0>;
+    using F_In = gemmlowp::FixedPoint<int16x8_t, IntegerBits>;
+    using F_Out = gemmlowp::FixedPoint<int16x8_t, 0>;
 
-    for (; i <= n_input - 16; i += 16) {
+    for (; i <= n_input - 32; i += 32) {
       const int index = batch * n_input + i;
-      F0 input0 = F0::FromRaw(vld1q_s16(input + index));
-      F0 input1 = F0::FromRaw(vld1q_s16(input + index + 8));
-      F0 output0 = gemmlowp::tanh(input0);
-      F0 output1 = gemmlowp::tanh(input1);
+      F_In input0 = F_In::FromRaw(vld1q_s16(input + index));
+      F_In input1 = F_In::FromRaw(vld1q_s16(input + index + 8));
+      F_In input2 = F_In::FromRaw(vld1q_s16(input + index + 16));
+      F_In input3 = F_In::FromRaw(vld1q_s16(input + index + 24));
+      F_Out output0 = gemmlowp::tanh(input0);
+      F_Out output1 = gemmlowp::tanh(input1);
+      F_Out output2 = gemmlowp::tanh(input2);
+      F_Out output3 = gemmlowp::tanh(input3);
       vst1q_s16(output + index, output0.raw());
       vst1q_s16(output + index + 8, output1.raw());
+      vst1q_s16(output + index + 16, output2.raw());
+      vst1q_s16(output + index + 24, output3.raw());
     }
 #endif  // GEMMLOWP_NEON
-    using F0_Scalar = gemmlowp::FixedPoint<int16_t, 0>;
+    using F_In_Scalar = gemmlowp::FixedPoint<int16_t, IntegerBits>;
+    using F_Out_Scalar = gemmlowp::FixedPoint<int16_t, 0>;
     for (; i < n_input; ++i) {
       const int index = batch * n_input + i;
-      F0_Scalar input_f0 = F0_Scalar::FromRaw(input[index]);
-      F0_Scalar output_f0 = gemmlowp::tanh(input_f0);
-      output[index] = output_f0.raw();
+      F_In_Scalar input_in = F_In_Scalar::FromRaw(input[index]);
+      F_Out_Scalar output_out = gemmlowp::tanh(input_in);
+      output[index] = output_out.raw();
     }
   }
+}
+
+void NeonApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
+                    int16_t* output) {
+  NeonApplyTanhImpl<0>(input, n_batch, n_input, output);
 }
 
 void NeonApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
                     int16_t* output) {
-  for (int batch = 0; batch < n_batch; ++batch) {
-    int i = 0;
-#ifdef GEMMLOWP_NEON
-    // F0 uses 0 integer bits, range [-1, 1].
-    // This is the return type of math functions such as tanh, logistic,
-    // whose range is in [-1, 1].
-    using F0 = gemmlowp::FixedPoint<int16x8_t, 0>;
-    // F3 uses 3 integer bits, range [-8, 8], the input range expected here.
-    using F3 = gemmlowp::FixedPoint<int16x8_t, 3>;
-
-    for (; i <= n_input - 16; i += 16) {
-      const int index = batch * n_input + i;
-      F3 input0 = F3::FromRaw(vld1q_s16(input + index));
-      F3 input1 = F3::FromRaw(vld1q_s16(input + index + 8));
-      F0 output0 = gemmlowp::tanh(input0);
-      F0 output1 = gemmlowp::tanh(input1);
-      vst1q_s16(output + index, output0.raw());
-      vst1q_s16(output + index + 8, output1.raw());
-    }
-#endif  // GEMMLOWP_NEON
-    using F0_Scalar = gemmlowp::FixedPoint<int16_t, 0>;
-    using F3_Scalar = gemmlowp::FixedPoint<int16_t, 3>;
-    for (; i < n_input; ++i) {
-      const int index = batch * n_input + i;
-      F3_Scalar input_f3 = F3_Scalar::FromRaw(input[index]);
-      F0_Scalar output_f0 = gemmlowp::tanh(input_f3);
-      output[index] = output_f0.raw();
-    }
-  }
+  NeonApplyTanhImpl<3>(input, n_batch, n_input, output);
 }
 
 void NeonApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
                     int16_t* output) {
-  for (int batch = 0; batch < n_batch; ++batch) {
-    int i = 0;
-#ifdef GEMMLOWP_NEON
-    // F0 uses 0 integer bits, range [-1, 1].
-    // This is the return type of math functions such as tanh, logistic,
-    // whose range is in [-1, 1].
-    using F0 = gemmlowp::FixedPoint<int16x8_t, 0>;
-    // F4 uses 4 integer bits, range [-16, 16], the input range expected here.
-    using F4 = gemmlowp::FixedPoint<int16x8_t, 4>;
-
-    for (; i <= n_input - 16; i += 16) {
-      const int index = batch * n_input + i;
-      F4 input0 = F4::FromRaw(vld1q_s16(input + index));
-      F4 input1 = F4::FromRaw(vld1q_s16(input + index + 8));
-      F0 output0 = gemmlowp::tanh(input0);
-      F0 output1 = gemmlowp::tanh(input1);
-      vst1q_s16(output + index, output0.raw());
-      vst1q_s16(output + index + 8, output1.raw());
-    }
-#endif  // GEMMLOWP_NEON
-    using F0_Scalar = gemmlowp::FixedPoint<int16_t, 0>;
-    using F4_Scalar = gemmlowp::FixedPoint<int16_t, 4>;
-    for (; i < n_input; ++i) {
-      const int index = batch * n_input + i;
-      F4_Scalar input_f4 = F4_Scalar::FromRaw(input[index]);
-      F0_Scalar output_f0 = gemmlowp::tanh(input_f4);
-      output[index] = output_f0.raw();
-    }
-  }
+  NeonApplyTanhImpl<4>(input, n_batch, n_input, output);
 }
 
 void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,

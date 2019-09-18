@@ -161,9 +161,10 @@ Status BuildComputation(
     const std::vector<std::unique_ptr<XlaResource>>& resources,
     std::unique_ptr<xla::XlaOp> token_output,
     const XlaCompiler::ShapeRepresentationFn& shape_representation_fn,
-    bool return_updated_values_for_all_resources, bool always_return_tuple,
-    xla::XlaBuilder* builder, xla::XlaComputation* computation,
-    int* num_computation_outputs, int* num_nonconst_outputs,
+    bool is_entry_computation, bool return_updated_values_for_all_resources,
+    bool always_return_tuple, xla::XlaBuilder* builder,
+    xla::XlaComputation* computation, int* num_computation_outputs,
+    int* num_nonconst_outputs,
     std::vector<XlaCompiler::OutputDescription>* outputs,
     std::vector<XlaCompiler::ResourceUpdate>* resource_updates,
     xla::Shape* output_shape) {
@@ -190,6 +191,10 @@ Status BuildComputation(
   // a descending layout is used. The first element is the output index, second
   // element is the new layout.
   std::vector<std::pair<int64, xla::Layout>> retval_index_and_layout;
+  // Keeps track of sharding of each retval. If a retval is not in this list,
+  // replicate sharding is used. The first element is the output index, second
+  // element is the sharding.
+  std::unordered_map<int, xla::OpSharding> retval_index_and_sharding;
   for (int i = 0; i < retvals.size(); ++i) {
     XlaCompiler::OutputDescription& output = (*outputs)[i];
     const XlaExpression& retval = retvals[i];
@@ -217,6 +222,9 @@ Status BuildComputation(
             builder, it == retval_shardings.end()
                          ? absl::optional<xla::OpSharding>()
                          : it->second);
+        if (it != retval_shardings.end()) {
+          retval_index_and_sharding[elems.size()] = it->second;
+        }
         if (shape_representation_fn) {
           // If there is a shape representation function, reshape the output
           // tensor to the shape given by the representation shape function.
@@ -291,6 +299,9 @@ Status BuildComputation(
       xla::XlaScopedShardingAssignment assign_sharding(
           builder, it == arg_shardings.end() ? absl::optional<xla::OpSharding>()
                                              : it->second);
+      if (it != arg_shardings.end()) {
+        retval_index_and_sharding[elems.size()] = it->second;
+      }
 
       xla::XlaOp handle;
       TF_RETURN_IF_ERROR(resource->Pack(&handle, builder));
@@ -335,7 +346,44 @@ Status BuildComputation(
   // Builds the XLA computation. We *always* form a tuple here to ensure that
   // the output value is the last thing added into the XLA computation, even
   // if there is only one output value.
-  auto tuple = xla::Tuple(builder, elems);
+  xla::XlaOp tuple;
+  if (retval_index_and_sharding.empty() || !is_entry_computation) {
+    tuple = xla::Tuple(builder, elems);
+  } else {
+    std::vector<xla::Shape> elem_shapes;
+    for (const auto& elem : elems) {
+      TF_ASSIGN_OR_RETURN(xla::Shape elem_shape,
+                          elem.builder()->GetShape(elem));
+      elem_shapes.push_back(elem_shape);
+    }
+    xla::Shape shape = xla::ShapeUtil::MakeTupleShape(elem_shapes);
+    // Copy specified sharding from retval_index_and_sharding.
+    std::vector<xla::HloSharding> sharding_elems;
+    for (int i = 0; i < elems.size(); i++) {
+      const auto& iter = retval_index_and_sharding.find(i);
+      TF_RET_CHECK(iter != retval_index_and_sharding.end());
+      const xla::OpSharding& sub_op_sharding = iter->second;
+      TF_ASSIGN_OR_RETURN(xla::HloSharding sub_sharding,
+                          xla::HloSharding::FromProto(sub_op_sharding));
+      if (elem_shapes[i].IsTuple()) {
+        const std::vector<xla::HloSharding> sub_sharding_elems =
+            sub_sharding.tuple_elements();
+        TF_RET_CHECK(sub_sharding_elems.size() ==
+                     xla::ShapeUtil::GetLeafCount(elem_shapes[i]));
+        for (const auto& sub_sharding_elem : sub_sharding_elems) {
+          sharding_elems.push_back(sub_sharding_elem);
+        }
+      } else {
+        sharding_elems.push_back(sub_sharding);
+      }
+    }
+    xla::HloSharding modified_sharding =
+        xla::HloSharding::Tuple(shape, sharding_elems);
+    xla::OpSharding op_sharding = modified_sharding.ToProto();
+    // Assign proper sharding to the tuple instruction.
+    xla::XlaScopedShardingAssignment assign_sharding(builder, op_sharding);
+    tuple = xla::Tuple(builder, elems);
+  }
   if (!always_return_tuple && elems.size() == 1) {
     xla::GetTupleElement(tuple, 0);
   }
@@ -792,6 +840,22 @@ Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
     case XlaCompiler::Argument::kInvalid:
       return errors::Internal("Invalid argument type in XLAShapeForArgument()");
   }
+}
+
+/* static */
+void XlaCompiler::PopulateArgumentFromResource(const XlaResource& resource,
+                                               Argument* arg) {
+  arg->initialized = resource.initialized();
+  arg->kind = XlaCompiler::Argument::kResource;
+  arg->resource_kind = resource.kind();
+
+  arg->type = resource.type();
+  arg->shape = resource.shape();
+  arg->max_array_size = resource.max_array_size();
+  for (const auto& gradient : resource.tensor_array_gradients()) {
+    arg->tensor_array_gradients.insert(gradient.first);
+  }
+  arg->name = resource.name();
 }
 
 // Builds XLA computations for each of the arguments to the computation.
@@ -1295,6 +1359,7 @@ Status XlaCompiler::CompileGraph(
       std::move(token_output),
       options.is_entry_computation ? options_.shape_representation_fn
                                    : ShapeRepresentationFn{},
+      options.is_entry_computation,
       options.return_updated_values_for_all_resources,
       options.always_return_tuple, &builder, result->computation.get(),
       &num_computation_outputs, &num_nonconst_outputs, &result->outputs,

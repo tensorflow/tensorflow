@@ -105,3 +105,28 @@ class LayerSavedModelSaver(base_serialization.SavedModelSaver):
     # function dict, even if the value is None.
     functions['_default_save_signature'] = None
     return objects, functions
+
+
+class InputLayerSavedModelSaver(base_serialization.SavedModelSaver):
+  """InputLayer serialization."""
+
+  @property
+  def object_identifier(self):
+    return '_tf_keras_input_layer'
+
+  @property
+  def python_properties(self):
+    return dict(
+        class_name=type(self.obj).__name__,
+        name=self.obj.name,
+        dtype=self.obj.dtype,
+        sparse=self.obj.sparse,
+        ragged=self.obj.ragged,
+        batch_input_shape=self.obj._batch_input_shape,  # pylint: disable=protected-access
+        config=self.obj.get_config())
+
+  def objects_to_serialize(self, serialization_cache):
+    return {}
+
+  def functions_to_serialize(self, serialization_cache):
+    return {}

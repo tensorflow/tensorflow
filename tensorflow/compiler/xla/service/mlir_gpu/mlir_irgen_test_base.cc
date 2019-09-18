@@ -64,8 +64,7 @@ void MlirIrGenTestBase::CompileAndVerifyIr(const string& hlo_text,
 
 MlirCompiler* MlirIrGenTestBase::GetMLIRCompiler() {
   // TODO(b/137624192): Remove failover once no longer in place.
-  FailoverCompiler* failover =
-      static_cast<FailoverCompiler*>(backend().compiler());
+  auto* failover = static_cast<FailoverCompiler*>(backend().compiler());
   return static_cast<MlirCompiler*>(failover->GetPrimary());
 }
 

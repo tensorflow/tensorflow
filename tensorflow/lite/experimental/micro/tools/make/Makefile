@@ -22,7 +22,8 @@ else
 	endif
 endif
 
-HOST_ARCH := $(shell if [[ $(shell uname -m) =~ i[345678]86 ]]; then echo x86_32; else echo $(shell uname -m); fi)
+# Determine the host architecture, with any ix86 architecture being labelled x86_32
+HOST_ARCH := $(shell if uname -m | grep -Eq 'i[345678]86'; then echo x86_32; else echo $(shell uname -m); fi)
 
 # Override these on the make command line to target a specific architecture. For example:
 # make -f tensorflow/lite/Makefile TARGET=rpi TARGET_ARCH=armv7l
@@ -76,7 +77,8 @@ MICROLITE_LIB_NAME := libtensorflow-microlite.a
 
 MICROLITE_TEST_SRCS := \
 $(wildcard tensorflow/lite/experimental/micro/*test.cc) \
-$(wildcard tensorflow/lite/experimental/micro/kernels/*test.cc)
+$(wildcard tensorflow/lite/experimental/micro/kernels/*test.cc) \
+$(wildcard tensorflow/lite/experimental/micro/memory_planner/*test.cc)
 
 MICROLITE_TEST_HDRS := \
 $(wildcard tensorflow/lite/experimental/micro/testing/*.h)
@@ -84,6 +86,7 @@ $(wildcard tensorflow/lite/experimental/micro/testing/*.h)
 MICROLITE_CC_BASE_SRCS := \
 $(wildcard tensorflow/lite/experimental/micro/*.cc) \
 $(wildcard tensorflow/lite/experimental/micro/kernels/*.cc) \
+$(wildcard tensorflow/lite/experimental/micro/memory_planner/*.cc) \
 tensorflow/lite/c/c_api_internal.c \
 tensorflow/lite/core/api/error_reporter.cc \
 tensorflow/lite/core/api/flatbuffer_conversions.cc \
@@ -96,6 +99,7 @@ MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SR
 MICROLITE_CC_HDRS := \
 $(wildcard tensorflow/lite/experimental/micro/*.h) \
 $(wildcard tensorflow/lite/experimental/micro/kernels/*.h) \
+$(wildcard tensorflow/lite/experimental/micro/memory_planner/*.h) \
 LICENSE \
 tensorflow/core/public/version.h \
 tensorflow/lite/c/builtin_op_data.h \
@@ -128,6 +132,7 @@ tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h \
 tensorflow/lite/kernels/internal/reference/round.h \
 tensorflow/lite/kernels/internal/reference/softmax.h \
 tensorflow/lite/kernels/internal/reference/strided_slice.h \
+tensorflow/lite/kernels/internal/reference/integer_ops/pooling.h \
 tensorflow/lite/kernels/internal/round.h \
 tensorflow/lite/kernels/internal/strided_slice_logic.h \
 tensorflow/lite/kernels/internal/tensor.h \
@@ -169,6 +174,9 @@ ARDUINO_PROJECT_FILES := \
   library.properties
 
 ALL_PROJECT_TARGETS :=
+
+ARDUINO_LIBRARY_TARGETS :=
+ARDUINO_LIBRARY_ZIPS :=
 
 include $(MAKEFILE_DIR)/third_party_downloads.inc
 THIRD_PARTY_DOWNLOADS :=
@@ -277,6 +285,11 @@ test: $(MICROLITE_TEST_TARGETS)
 generate_projects: $(ALL_PROJECT_TARGETS)
 
 generate_non_kernel_projects: $(filter-out generate_kernel%,$(ALL_PROJECT_TARGETS))
+
+generate_non_test_projects: $(filter-out %_test%,$(ALL_PROJECT_TARGETS))
+
+generate_arduino_zip: generate_non_kernel_projects $(ARDUINO_LIBRARY_ZIPS)
+	python tensorflow/lite/experimental/micro/tools/make/merge_arduino_zips.py $(PRJDIR)/tensorflow_lite.zip $(ARDUINO_LIBRARY_ZIPS)
 
 # Gets rid of all generated files.
 clean:
