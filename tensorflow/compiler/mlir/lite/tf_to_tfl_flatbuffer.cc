@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/lite/tools/optimize/quantize_weights.h"
 
 namespace mlir {
 /// Create a pass to convert from the TFExecutor to the TF control dialect.
@@ -99,7 +100,8 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
 Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
     bool emit_select_tf_ops, bool emit_custom_ops, bool emit_quant_adaptor_ops,
-    bool lower_tensor_list_ops, std::string* result,
+    bool lower_tensor_list_ops,
+    tflite::QuantizedBufferType quantized_buffer_type, std::string* result,
     mlir::PassManager* pass_manager) {
   mlir::StatusScopedDiagnosticHandler statusHandler(module.getContext(),
                                                     /*propagate=*/true);
@@ -114,10 +116,41 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   }
 
   // Write MLIR TFLite dialect into FlatBuffer
-  if (tflite::MlirToFlatBufferTranslateFunction(
-          module, result, emit_builtin_tflite_ops, emit_select_tf_ops,
-          emit_custom_ops)) {
-    return statusHandler.ConsumeStatus();
+  if (quantized_buffer_type == tflite::QuantizedBufferType::NONE) {
+    if (tflite::MlirToFlatBufferTranslateFunction(
+            module, result, emit_builtin_tflite_ops, emit_select_tf_ops,
+            emit_custom_ops)) {
+      return statusHandler.ConsumeStatus();
+    }
+  } else {
+    // Post-training weight quantization path. Once MLIR has support for this,
+    // we can remove this else statement.
+    std::string pre_quantized_result;
+    if (tflite::MlirToFlatBufferTranslateFunction(
+            module, &pre_quantized_result, emit_builtin_tflite_ops,
+            emit_select_tf_ops, emit_custom_ops)) {
+      return statusHandler.ConsumeStatus();
+    }
+    flatbuffers::FlatBufferBuilder q_builder(/*initial_size=*/10240);
+    const uint8_t* buffer =
+        reinterpret_cast<const uint8_t*>(pre_quantized_result.c_str());
+    const ::tflite::Model* input_model = ::tflite::GetModel(buffer);
+
+    ::tflite::optimize::BufferType quantized_type;
+    if (quantized_buffer_type == tflite::QuantizedBufferType::INT8) {
+      quantized_type = ::tflite::optimize::BufferType::QUANTIZED_INT8;
+    } else if (quantized_buffer_type == tflite::QuantizedBufferType::FLOAT16) {
+      quantized_type = ::tflite::optimize::BufferType::QUANTIZED_FLOAT16;
+    } else {
+      return errors::InvalidArgument("Quantized type not recognized");
+    }
+    if (::tflite::optimize::QuantizeWeights(&q_builder, input_model,
+                                            quantized_type) != kTfLiteOk) {
+      return errors::InvalidArgument("Quantize weights transformation failed.");
+    }
+    const uint8_t* q_buffer = q_builder.GetBufferPointer();
+    *result =
+        string(reinterpret_cast<const char*>(q_buffer), q_builder.GetSize());
   }
 
   return Status::OK();
