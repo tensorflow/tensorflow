@@ -1550,16 +1550,16 @@ class ConcreteFunction(object):
         resource_variable_ops.variable_accessed(v)
 
     tensor_inputs = []
-    variables_used = object_identity.ObjectIdentitySet([])
+    variables_used = set([])
     for i, arg in enumerate(args):
       if isinstance(arg, resource_variable_ops.BaseResourceVariable):
         # We can pass a variable more than once, and in this case we need to
         # pass its handle only once.
-        if arg.handle in variables_used:
+        if id(arg.handle) in variables_used:
           continue
         resource_variable_ops.variable_accessed(arg)
         tensor_inputs.append(arg.handle)
-        variables_used.add(arg.handle)
+        variables_used.add(id(arg.handle))
       elif isinstance(arg, ops.Tensor):
         tensor_inputs.append(arg)
         if not executing_eagerly:
