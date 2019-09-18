@@ -173,7 +173,13 @@ void SDBMExpr::print(raw_ostream &os) const {
     void visitDim(SDBMDimExpr expr) { prn << 'd' << expr.getPosition(); }
     void visitSymbol(SDBMSymbolExpr expr) { prn << 's' << expr.getPosition(); }
     void visitStripe(SDBMStripeExpr expr) {
-      visitTerm(expr.getVar());
+      SDBMDirectExpr lhs = expr.getLHS();
+      bool isTerm = lhs.isa<SDBMTermExpr>();
+      if (!isTerm)
+        prn << '(';
+      visit(lhs);
+      if (!isTerm)
+        prn << ')';
       prn << " # ";
       visitConstant(expr.getStripeFactor());
     }
@@ -268,7 +274,7 @@ AffineExpr SDBMExpr::getAsAffineExpr() const {
     }
 
     AffineExpr visitStripe(SDBMStripeExpr expr) {
-      AffineExpr lhs = visit(expr.getVar()),
+      AffineExpr lhs = visit(expr.getLHS()),
                  rhs = visit(expr.getStripeFactor());
       return lhs - (lhs % rhs);
     }
@@ -434,8 +440,6 @@ Optional<SDBMExpr> SDBMExpr::tryConvertAffineExpr(AffineExpr affine) {
       // If RHS is a constant, we can always extend the SDBM expression to
       // include it by sinking the constant into the nearest sum expresion.
       if (auto rhsConstant = rhs.dyn_cast<SDBMConstantExpr>()) {
-        assert(!lhs.isa<SDBMSumExpr>() && "unexpected non-canonicalized sum");
-
         int64_t constant = rhsConstant.getValue();
         auto varying = lhs.dyn_cast<SDBMVaryingExpr>();
         assert(varying && "unexpected uncanonicalized sum of constants");
@@ -493,10 +497,10 @@ Optional<SDBMExpr> SDBMExpr::tryConvertAffineExpr(AffineExpr affine) {
       if (!lhs || !rhs)
         return {};
 
-      // 'mod' can only be converted to SDBM if its LHS is a variable
+      // 'mod' can only be converted to SDBM if its LHS is a direct expression
       // and its RHS is a constant.  Then it `x mod c = x - x stripe c`.
       auto rhsConstant = rhs.dyn_cast<SDBMConstantExpr>();
-      auto lhsVar = lhs.dyn_cast<SDBMTermExpr>();
+      auto lhsVar = lhs.dyn_cast<SDBMDirectExpr>();
       if (!lhsVar || !rhsConstant)
         return {};
       return SDBMDiffExpr::get(lhsVar,
@@ -568,7 +572,7 @@ int64_t SDBMDirectExpr::getConstant() {
 // SDBMStripeExpr
 //===----------------------------------------------------------------------===//
 
-SDBMStripeExpr SDBMStripeExpr::get(SDBMTermExpr var,
+SDBMStripeExpr SDBMStripeExpr::get(SDBMDirectExpr var,
                                    SDBMConstantExpr stripeFactor) {
   assert(var && "expected SDBM variable expression");
   assert(stripeFactor && "expected non-null stripe factor");
@@ -581,9 +585,9 @@ SDBMStripeExpr SDBMStripeExpr::get(SDBMTermExpr var,
       stripeFactor);
 }
 
-SDBMTermExpr SDBMStripeExpr::getVar() const {
+SDBMDirectExpr SDBMStripeExpr::getLHS() const {
   if (SDBMVaryingExpr lhs = static_cast<ImplType *>(impl)->lhs)
-    return lhs.cast<SDBMTermExpr>();
+    return lhs.cast<SDBMDirectExpr>();
   return {};
 }
 
@@ -738,7 +742,7 @@ SDBMExpr stripe(SDBMExpr expr, SDBMExpr factor) {
   if (constantFactor.getValue() == 1)
     return expr;
 
-  return SDBMStripeExpr::get(expr.cast<SDBMTermExpr>(), constantFactor);
+  return SDBMStripeExpr::get(expr.cast<SDBMDirectExpr>(), constantFactor);
 }
 
 } // namespace ops_assertions
