@@ -1611,14 +1611,16 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeMaxPool3DTranspose_Negative) {
       "node { name: 'Relu' op: 'Relu'"
       " attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['Transpose1'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "Const0(Const);Const1(Const);DMT/_0(Const);DMT/_1(Const);Input0(Input);"
-            "Input1(Input);MaxPool3D(_MklMaxPool3D);Relu(_MklRelu);"
-            "Transpose0(_MklTranspose);Transpose1(_MklTranspose)|Const0->Transpose0:1;"
-            "Const1->Transpose1:1;DMT/_0->MaxPool3D:1;"
-            "DMT/_1->Relu:1;Input0->Transpose0;MaxPool3D->Transpose1;"
-            "Transpose0->MaxPool3D;Transpose0:control->DMT/_0:control;"
-            "Transpose1->Relu;Transpose1:control->DMT/_1:control");
+  EXPECT_EQ(
+      DoMklLayoutOptimizationPass(),
+      "Const0(Const);Const1(Const);DMT/_0(Const);DMT/_1(Const);Input0(Input);"
+      "Input1(Input);MaxPool3D(_MklMaxPool3D);Relu(_MklRelu);"
+      "Transpose0(_MklTranspose);Transpose1(_MklTranspose)|Const0->Transpose0:"
+      "1;"
+      "Const1->Transpose1:1;DMT/_0->MaxPool3D:1;"
+      "DMT/_1->Relu:1;Input0->Transpose0;MaxPool3D->Transpose1;"
+      "Transpose0->MaxPool3D;Transpose0:control->DMT/_0:control;"
+      "Transpose1->Relu;Transpose1:control->DMT/_1:control");
 }
 
 /////////////////////////////////////////////////////////////////////
