@@ -76,6 +76,7 @@ from accuracy_utils import StreamingAccuracyStats
 
 FLAGS = None
 
+
 def load_graph(mode_file):
   ''' Read a tensorflow model, and creates a default graph object.'''
   graph = tf.Graph()
@@ -87,6 +88,7 @@ def load_graph(mode_file):
       tf.import_graph_def(od_graph_def, name='')
   return graph
 
+
 def read_label_file(file_name):
   '''Load a list of label.'''
   label_list = []
@@ -94,6 +96,7 @@ def read_label_file(file_name):
     for line in f:
       label_list.append(line.strip())
   return label_list
+
 
 def read_wav_file(filename):
   '''Load a wav file and return sample_rate and numpy data of float64 type'''
@@ -103,6 +106,7 @@ def read_wav_file(filename):
     wav_decoder = contrib_audio.decode_wav(wav_loader, desired_channels=1)
     res = sess.run(wav_decoder, feed_dict={wav_filename_placeholder: filename})
   return res.sample_rate, res.audio.flatten()
+
 
 def main(_):
   label_list = read_label_file(FLAGS.labels)
@@ -146,17 +150,17 @@ def main(_):
         outputs = sess.run(output_softmax_tensor,
                            feed_dict={data_tensor: np.expand_dims(
                                data[input_start:input_end], axis=-1),
-                               sample_rate_tensor: sample_rate})
+                                      sample_rate_tensor: sample_rate})
         outputs = np.squeeze(outputs)
         current_time_ms = int(audio_data_offset * 1000 / sample_rate)
         try:
           recognize_commands.process_latest_result(outputs, current_time_ms,
                                                    recognize_element)
-        except Exception as e:
+        except ValueError as e:
           tf.logging.error("Recognition processing failed: {}" % e)
           return
         if (recognize_element.is_new_command and
-                recognize_element.founded_command != '_silence_'):
+            recognize_element.founded_command != '_silence_'):
           all_found_words.append([recognize_element.founded_command,
                                   current_time_ms])
           if FLAGS.verbose:
@@ -164,7 +168,7 @@ def main(_):
                                            FLAGS.time_tolerance_ms)
             try:
               recognition_state = stats.delta()
-            except Exception as e:
+            except ValueError as e:
               tf.logging.error(
                   'Statistics delta computing failed: {}'.format(e))
             else:

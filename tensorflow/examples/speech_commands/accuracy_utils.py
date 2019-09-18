@@ -119,13 +119,13 @@ class StreamingAccuracyStats(object):
       for ground_truth in self._gt_occurrence:
         ground_truth_time = ground_truth[1]
         if (ground_truth_time > latest_time or ground_truth_time >
-                latest_possible_time):
+            latest_possible_time):
           break
         if ground_truth_time < earliest_time:
           continue
         ground_truth_label = ground_truth[0]
         if (ground_truth_label == found_label and has_gt_matched.count(
-                ground_truth_time) == 0):
+            ground_truth_time) == 0):
           self._how_many_c += 1
         else:
           self._how_many_w += 1

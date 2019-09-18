@@ -127,7 +127,7 @@ class RecognizeCommands(object):
                        "elements, but there are {} produced"
                        .format(self._label_count, latest_results.shape[0]))
     if (self._previous_results.__len__() != 0 and
-            current_time_ms < self._previous_results[0][0]):
+        current_time_ms < self._previous_results[0][0]):
       raise ValueError("Results must be fed in increasing time order, "
                        "but receive a timestamp of {}, which was earlier "
                        "than the previous one of {}"
@@ -146,7 +146,7 @@ class RecognizeCommands(object):
     earliest_time = self._previous_results[0][0]
     sample_duration = current_time_ms - earliest_time
     if (how_many_results < self._minimum_count or
-            sample_duration < self._average_window_duration_ms / 4):
+        sample_duration < self._average_window_duration_ms / 4):
       recognize_element.founded_command = self._previous_top_label
       recognize_element.score = 0.0
       recognize_element.is_new_command = False
@@ -173,13 +173,13 @@ class RecognizeCommands(object):
     current_top_score = sorted_averaged_index_score[0][1]
     time_since_last_top = 0
     if (self._previous_top_label == '_silence_' or
-            self._previous_top_time == -np.inf):
+        self._previous_top_time == -np.inf):
       time_since_last_top = np.inf
     else:
       time_since_last_top = current_time_ms - self._previous_top_time
     if (current_top_score > self._detection_threshold and
-            current_top_label != self._previous_top_label and
-            time_since_last_top > self._suppression_ms):
+        current_top_label != self._previous_top_label and
+        time_since_last_top > self._suppression_ms):
       self._previous_top_label = current_top_label
       self._previous_top_time = current_time_ms
       recognize_element.is_new_command = True
