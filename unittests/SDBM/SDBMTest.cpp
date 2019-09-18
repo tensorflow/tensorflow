@@ -100,6 +100,20 @@ TEST(SDBMOperators, AddFolding) {
   EXPECT_EQ(diffOfDiffs.getValue(), 0);
 }
 
+TEST(SDBMOperators, AddNegativeTerms) {
+  const int64_t A = 7;
+  const int64_t B = -5;
+  auto x = SDBMDimExpr::get(dialect(), 0);
+  auto y = SDBMDimExpr::get(dialect(), 1);
+
+  // Check the simplification patterns in addition where one of the variables is
+  // cancelled out and the result remains an SDBM.
+  EXPECT_EQ(-(x + A) + ((x + B) - y), -(y + (A - B)));
+  EXPECT_EQ((x + A) + ((y + B) - x), (y + B) + A);
+  EXPECT_EQ(((x + A) - y) + (-(x + B)), -(y + (B - A)));
+  EXPECT_EQ(((x + A) - y) + (y + B), (x + A) + B);
+}
+
 TEST(SDBMOperators, Diff) {
   auto expr = dim(0) - dim(1);
   auto diffExpr = expr.dyn_cast<SDBMDiffExpr>();
