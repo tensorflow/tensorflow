@@ -2774,6 +2774,7 @@ void MklLayoutRewritePass::CopyAttrsPooling(const Node* orig_node,
     std::vector<int32> new_strides;
     std::vector<int32> new_ksize;
     if (strides.size() == 5) {
+      DCHECK(data_format == "NCDHW");
       // `strides` and `ksize` also need to be changed according to
       // `data_format`. In this case, from `NDHWC` to `NCDHW`.
       new_strides = {strides[NDHWC::dim::N], strides[NDHWC::dim::C],
@@ -2787,7 +2788,7 @@ void MklLayoutRewritePass::CopyAttrsPooling(const Node* orig_node,
     } else {
       // `strides` and `ksize` also need to be changed according to
       // `data_format`. In this case, from `NHWC` to `NCHW`.
-
+      DCHECK(data_format == "NCHW");
       new_strides = {strides[NHWC::dim::N], strides[NHWC::dim::C],
                      strides[NHWC::dim::H], strides[NHWC::dim::W]};
 
