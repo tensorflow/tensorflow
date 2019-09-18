@@ -2187,7 +2187,7 @@ class Layer(module.Module):
       The output shape with any tuples converted to TensorShapes 
     """
     def _convert_tuple_to_tensorshape(input_tuple):
-      return TensorShape(tuple(map(lambda x: x.aslist() if isinstance(x, TensorShape) else x, input_tuple)))
+      return TensorShape(tuple(map(lambda x: x.as_list() if isinstance(x, TensorShape) else x, input_tuple)))
 
     if isinstance(output_shape, tuple):
       output_shape = _convert_tuple_to_tensorshape(output_shape)
