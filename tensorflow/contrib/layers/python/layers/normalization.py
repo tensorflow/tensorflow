@@ -99,7 +99,7 @@ def instance_norm(inputs,
   # The cast to float64 will calculate mean and variance correctly while 
   # normalization of `inputs` tensor.
   if sys.byteorder == "big" and inputs.dtype.base_dtype == dtypes.float32:
-      inputs = math_ops.cast(inputs, dtypes.float64)
+    inputs = math_ops.cast(inputs, dtypes.float64)
 
   if inputs_rank is None:
     raise ValueError('Inputs %s has undefined rank.' % inputs.name)
