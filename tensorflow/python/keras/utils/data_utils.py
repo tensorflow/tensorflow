@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from abc import abstractmethod
 from contextlib import closing
+import errno
 import functools
 import gc
 import hashlib
@@ -220,8 +221,7 @@ def get_file(fname,
   if not os.access(datadir_base, os.W_OK):
     datadir_base = os.path.join('/tmp', '.keras')
   datadir = os.path.join(datadir_base, cache_subdir)
-  if not os.path.exists(datadir):
-    os.makedirs(datadir)
+  _makedirs_exist_ok(datadir)
 
   if untar:
     untar_fpath = os.path.join(datadir, fname)
@@ -281,6 +281,18 @@ def get_file(fname,
     _extract_archive(fpath, datadir, archive_format)
 
   return fpath
+
+
+def _makedirs_exist_ok(datadir):
+  if six.PY3:
+    os.makedirs(datadir, exist_ok=True)  # pylint: disable=unexpected-keyword-arg
+  else:
+    # Python 2 doesn't have the exist_ok arg, so we try-except here.
+    try:
+      os.makedirs(datadir)
+    except OSError as e:
+      if e.errno != errno.EEXIST:
+        raise
 
 
 def _hash_file(fpath, algorithm='sha256', chunk_size=65535):
