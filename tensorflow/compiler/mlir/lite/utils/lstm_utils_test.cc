@@ -123,20 +123,20 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimple) {
           1),
       3);
 
-  auto return_op = fused_lstm_func_.getBody().back().rbegin();
-  EXPECT_EQ(return_op->getName().getStringRef(),
-            mlir::ReturnOp::getOperationName());
-  return_op++;
-  EXPECT_EQ(return_op->getName().getStringRef(),
+  auto it = fused_lstm_func_.getBody().back().rbegin();
+  EXPECT_EQ(it->getName().getStringRef(), mlir::ReturnOp::getOperationName());
+  it++;  // tensor_cast
+  it++;  // lstm
+  EXPECT_EQ(it->getName().getStringRef(),
             mlir::TFL::LSTMOp::getOperationName());
-  EXPECT_EQ(return_op->getNumOperands(), 24);
-  EXPECT_EQ(return_op->getNumResults(), 1);
+  EXPECT_EQ(it->getNumOperands(), 24);
+  EXPECT_EQ(it->getNumResults(), 1);
   // cifg = false, so input2input is not None.
-  EXPECT_FALSE(return_op->getOperand(1)->getType().isa<NoneType>());
+  EXPECT_FALSE(it->getOperand(1)->getType().isa<NoneType>());
   // input layer norm is None
-  EXPECT_TRUE(return_op->getOperand(20)->getType().isa<NoneType>());
+  EXPECT_TRUE(it->getOperand(20)->getType().isa<NoneType>());
   // proj_bias is F32
-  EXPECT_TRUE(return_op->getOperand(17)
+  EXPECT_TRUE(it->getOperand(17)
                   ->getType()
                   .cast<RankedTensorType>()
                   .getElementType()
@@ -165,6 +165,7 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimpleToFusedLSTMCoupleInputForget) {
   auto it = fused_lstm_func_.getBody().back().rbegin();
   EXPECT_EQ(it->getName().getStringRef(), mlir::ReturnOp::getOperationName());
   it++;
+  it++;
   EXPECT_EQ(it->getName().getStringRef(),
             mlir::TFL::LSTMOp::getOperationName());
   EXPECT_EQ(it->getNumOperands(), 24);
@@ -191,6 +192,7 @@ TEST_F(LstmUtilsTest, ConvertLayerNormLSTMCellSimpleToFusedLSTM) {
 
   auto it = fused_lstm_func_.getBody().back().rbegin();
   EXPECT_EQ(it->getName().getStringRef(), mlir::ReturnOp::getOperationName());
+  it++;
   it++;
   EXPECT_EQ(it->getName().getStringRef(),
             mlir::TFL::LSTMOp::getOperationName());
