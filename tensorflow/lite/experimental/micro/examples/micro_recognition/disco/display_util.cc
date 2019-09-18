@@ -34,29 +34,27 @@ static char lcd_output_string[50];
 
 void init_lcd() { lcd.Clear(LCD_COLOR_WHITE); }
 
-void display_image_rgb888(int x_dim, int y_dim, uint8_t* image_data, int x_loc,
-                          int y_loc) {
-  for (int y = 0; y < y_dim; y++) {
-    for (int x = 0; x < x_dim; x++) {
-      int pix_loc = (y * x_dim + x) * 3;
+void display_image_rgb888(int x_dim, int y_dim, const uint8_t* image_data,
+                          int x_loc, int y_loc) {
+  for (int y = 0; y < y_dim; ++y) {
+    for (int x = 0; x < x_dim; ++x, image_data += 3) {
       uint8_t a = 0xFF;
-      uint8_t r = image_data[pix_loc];
-      uint8_t g = image_data[pix_loc + 1];
-      uint8_t b = image_data[pix_loc + 2];
+      auto r = image_data[0];
+      auto g = image_data[1];
+      auto b = image_data[2];
       int pixel = a << 24 | r << 16 | g << 8 | b;
       lcd.DrawPixel(x_loc + x, y_loc + y, pixel);
     }
   }
 }
 
-void display_image_rgb565(int x_dim, int y_dim, uint8_t* image_data, int x_loc,
-                          int y_loc) {
-  for (int y = 0; y < y_dim; y++) {
-    for (int x = 0; x < x_dim; x++) {
-      int pix_loc = (y * x_dim + x) * 2;
+void display_image_rgb565(int x_dim, int y_dim, const uint8_t* image_data,
+                          int x_loc, int y_loc) {
+  for (int y = 0; y < y_dim; ++y) {
+    for (int x = 0; x < x_dim; ++x, image_data += 2) {
       uint8_t a = 0xFF;
-      uint8_t pix_lo = image_data[pix_loc];
-      uint8_t pix_hi = image_data[pix_loc + 1];
+      uint8_t pix_lo = image_data[0];
+      uint8_t pix_hi = image_data[1];
       uint8_t r = (0xF8 & pix_hi);
       uint8_t g = ((0x07 & pix_hi) << 5) | ((0xE0 & pix_lo) >> 3);
       uint8_t b = (0x1F & pix_lo) << 3;

@@ -25,11 +25,12 @@ limitations under the License.
 #define G_CHANNEL_OFFSET CHANNEL_SIZE
 #define B_CHANNEL_OFFSET (CHANNEL_SIZE * 2)
 
-int get_top_prediction(uint8_t* predictions) {
-  int max_score = 0;
+int get_top_prediction(const uint8_t* predictions, int num_categories) {
+  int max_score = predictions[0];
   int guess = 0;
 
-  for (int category_index = 0; category_index < 10; category_index++) {
+  for (int category_index = 1; category_index < num_categories;
+       category_index++) {
     const uint8_t category_score = predictions[category_index];
     if (category_score > max_score) {
       max_score = category_score;

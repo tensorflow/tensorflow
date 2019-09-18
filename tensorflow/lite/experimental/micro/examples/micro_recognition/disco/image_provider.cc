@@ -28,6 +28,12 @@ TfLiteStatus InitCamera(tflite::ErrorReporter* error_reporter) {
 
 TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int frame_width,
                       int frame_height, int channels, uint8_t* frame) {
+  // For consistency, the signature of this function is the
+  // same as the GetImage-function in micro_vision.
+  (void)error_reporter;
+  (void)frame_width;
+  (void)frame_height;
+  (void)channels;
   BSP_CAMERA_SnapshotStart(frame);
   return kTfLiteOk;
 }

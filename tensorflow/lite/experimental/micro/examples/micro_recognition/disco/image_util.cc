@@ -18,8 +18,8 @@ limitations under the License.
 void ResizeConvertImage(tflite::ErrorReporter* error_reporter,
                         int in_frame_width, int in_frame_height,
                         int num_in_channels, int out_frame_width,
-                        int out_frame_height, int channels, uint8_t* in_image,
-                        uint8_t* out_image) {
+                        int out_frame_height, int channels,
+                        const uint8_t* in_image, uint8_t* out_image) {
   // offset so that only the center part of rectangular image is selected for
   // resizing
   int width_offset = ((in_frame_width - in_frame_height) / 2) * num_in_channels;

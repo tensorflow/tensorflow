@@ -26,7 +26,7 @@ limitations under the License.
 void ResizeConvertImage(tflite::ErrorReporter* error_reporter,
                         int in_frame_width, int in_frame_height,
                         int num_in_channels, int out_frame_width,
-                        int out_frame_height, int channels, uint8_t* in_frame,
-                        uint8_t* out_frame);
+                        int out_frame_height, int channels,
+                        const uint8_t* in_frame, uint8_t* out_frame);
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MICRO_RECOGNITION_DISCO_IMAGE_UTIL_H_

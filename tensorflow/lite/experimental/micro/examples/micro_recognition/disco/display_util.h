@@ -20,11 +20,11 @@ limitations under the License.
 
 void init_lcd();
 
-void display_image_rgb888(int x_dim, int y_dim, uint8_t* image_data, int x_loc,
-                          int y_loc);
+void display_image_rgb888(int x_dim, int y_dim, const uint8_t* image_data,
+                          int x_loc, int y_loc);
 
-void display_image_rgb565(int x_dim, int y_dim, uint8_t* image_data, int x_loc,
-                          int y_loc);
+void display_image_rgb565(int x_dim, int y_dim, const uint8_t* image_data,
+                          int x_loc, int y_loc);
 
 void print_prediction(const char* prediction);
 

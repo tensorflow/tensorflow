@@ -45,7 +45,7 @@ int main(int argc, char** argv) {
   tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
   if (InitCamera(error_reporter) != kTfLiteOk) {
-    error_reporter->Report("Failed to init camera");
+    error_reporter->Report("Failed to init camera.");
     return 1;
   }
 
@@ -53,14 +53,14 @@ int main(int argc, char** argv) {
   if (model->version() != TFLITE_SCHEMA_VERSION) {
     error_reporter->Report(
         "Model provided is schema version %d not equal "
-        "to supported version %d.\n",
+        "to supported version %d.",
         model->version(), TFLITE_SCHEMA_VERSION);
     return 1;
   }
 
   tflite::ops::micro::AllOpsResolver resolver;
 
-  const int tensor_arena_size = 63 * 1024;
+  constexpr int tensor_arena_size = 63 * 1024;
   uint8_t tensor_arena[tensor_arena_size];
   tflite::MicroInterpreter interpreter(model, resolver, tensor_arena,
                                        tensor_arena_size, error_reporter);
@@ -77,12 +77,12 @@ int main(int argc, char** argv) {
                        input->data.uint8);
 
     if (input->type != kTfLiteUInt8) {
-      error_reporter->Report("Wrong input type");
+      error_reporter->Report("Wrong input type.");
     }
 
     TfLiteStatus invoke_status = interpreter.Invoke();
     if (invoke_status != kTfLiteOk) {
-      error_reporter->Report("Invoke failed\n");
+      error_reporter->Report("Invoke failed.");
       break;
     }
 
@@ -92,7 +92,7 @@ int main(int argc, char** argv) {
 
     TfLiteTensor* output = interpreter.output(0);
 
-    int top_ind = get_top_prediction(output->data.uint8);
+    int top_ind = get_top_prediction(output->data.uint8, 10);
     print_prediction(labels[top_ind]);
     print_confidence(output->data.uint8[top_ind]);
   }
