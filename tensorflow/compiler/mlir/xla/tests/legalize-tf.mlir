@@ -97,6 +97,20 @@ func @broadcast_div(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2x
   return %0: tensor<1x2xi32>
 }
 
+// CHECK-LABEL: func @maximum
+func @maximum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK:  xla_hlo.max %arg0, %arg1 : tensor<4xf32>
+  %0 = "tf.Maximum"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @minimum
+func @minimum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK:  xla_hlo.min %arg0, %arg1 : tensor<4xf32>
+  %0 = "tf.Minimum"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
 // CHECK-LABEL: func @mul
 func @mul(%arg0: tensor<2xi32>) -> tensor<2xi32> {
   // CHECK-NEXT:  %0 = xla_hlo.mul %arg0, %arg0 : tensor<2xi32>
