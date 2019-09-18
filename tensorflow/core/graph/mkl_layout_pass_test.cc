@@ -1483,6 +1483,144 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeMaxPool3DTranspose_Positive) {
             "MaxPool3D:2->Relu:1");
 }
 
+TEST_F(MklLayoutPassTest, NodeMerge_TransposeMaxPool3DTranspose_Negative) {
+  InitGraph(
+      "node { name: 'Input0' op: 'Input'}                                     \
+       node { name: 'Input1' op: 'Input'}                                     \
+       node { name: 'Const0' op: 'Const'                                      \
+         attr { key: 'dtype' value { type: DT_INT32 } }                       \
+         attr {                                                               \
+           key: 'value'                                                       \
+           value {                                                            \
+             tensor {                                                         \
+               dtype: DT_INT32                                                \
+               tensor_shape {                                                 \
+                 dim {                                                        \
+                   size: 5                                                    \
+                 }                                                            \
+               }                                                              \
+               tensor_content:                                                \
+       '\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004'    \
+       '\\000\\000\\000\\001\\000\\000\\000'                                  \
+             }                                                                \
+           }                                                                  \
+         }                                                                    \
+       }                                                                      \
+       node { name: 'Const1' op: 'Const'                                      \
+         attr { key: 'dtype' value { type: DT_INT32 } }                       \
+         attr {                                                               \
+           key: 'value'                                                       \
+           value {                                                            \
+             tensor {                                                         \
+               dtype: DT_INT32                                                \
+               tensor_shape {                                                 \
+                 dim {                                                        \
+                   size: 5                                                    \
+                 }                                                            \
+               }                                                              \
+               tensor_content:                                                \
+       '\\000\\000\\000\\000\\004\\000\\000\\000\\001\\000\\000\\000\\004'    \
+       '\\000\\000\\000\\003\\000\\000\\000'                                  \
+             }                                                                \
+           }                                                                  \
+         }                                                                    \
+       }"
+      "node {              \
+        name: 'Transpose0' \
+        op: 'Transpose'    \
+        input: 'Input0'    \
+        input: 'Const0'    \
+        attr {             \
+          key: 'T'         \
+          value {          \
+            type: DT_FLOAT \
+          }                \
+        }                  \
+        attr {             \
+          key: 'Tperm'     \
+          value {          \
+            type: DT_INT32 \
+          }                \
+        }                  \
+      }"
+      "node {                 \
+        name: 'MaxPool3D'        \
+        op: 'MaxPool3D'          \
+        input: 'Transpose0'   \
+        attr {                \
+          key: 'T'            \
+          value {             \
+            type: DT_FLOAT    \
+          }                   \
+        }                     \
+        attr {                \
+          key: 'data_format'  \
+          value {             \
+            s: 'NDHWC'        \
+          }                   \
+        }                     \
+        attr {                \
+          key: 'padding'      \
+          value {             \
+            s: 'SAME'         \
+          }                   \
+        }                     \
+        attr {                \
+          key: 'strides'      \
+          value {             \
+            list {            \
+              i: 1            \
+              i: 2            \
+              i: 2            \
+              i: 2            \
+              i: 1            \
+            }                 \
+          }                   \
+        }                     \
+        attr {                \
+          key: 'ksize'        \
+          value {             \
+            list {            \
+              i: 1            \
+              i: 1            \
+              i: 1            \
+              i: 1            \
+              i: 1            \
+            }                 \
+          }                   \
+        }                     \
+      }"
+      "node {              \
+        name: 'Transpose1' \
+        op: 'Transpose'    \
+        input: 'MaxPool3D'    \
+        input: 'Const1'    \
+        attr {             \
+          key: 'T'         \
+          value {          \
+            type: DT_FLOAT \
+          }                \
+        }                  \
+        attr {             \
+          key: 'Tperm'     \
+          value {          \
+            type: DT_INT32 \
+          }                \
+        }                  \
+      }"
+      "node { name: 'Relu' op: 'Relu'"
+      " attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['Transpose1'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "Const0(Const);Const1(Const);DMT/_0(Const);DMT/_1(Const);Input0(Input);"
+            "Input1(Input);MaxPool3D(_MklMaxPool3D);Relu(_MklRelu);"
+            "Transpose0(_MklTranspose);Transpose1(_MklTranspose)|Const0->Transpose0:1;"
+            "Const1->Transpose1:1;DMT/_0->MaxPool3D:1;"
+            "DMT/_1->Relu:1;Input0->Transpose0;MaxPool3D->Transpose1;"
+            "Transpose0->MaxPool3D;Transpose0:control->DMT/_0:control;"
+            "Transpose1->Relu;Transpose1:control->DMT/_1:control");
+}
+
 /////////////////////////////////////////////////////////////////////
 //  Unit tests related to rewriting node to Mkl node
 /////////////////////////////////////////////////////////////////////
