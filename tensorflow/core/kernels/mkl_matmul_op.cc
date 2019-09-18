@@ -187,7 +187,7 @@ class MklMatMulOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, {m, n}, &c_float));
 
     // MKL-DNN only supports the Fortran API and requires column major while
-    // Tensorflow uses row major so we reverse the order A and B
+    // Tensorflow uses row major so we reverse the order of A and B.
     mkldnn_gemm_bf16bf16f32(ftrans[index_transb], ftrans[index_transa], &n, &m,
                             &k, &alpha,
                             reinterpret_cast<const mkldnn_bfloat16_t*>(b), &ldb,
