@@ -92,6 +92,12 @@ Status EagerExecutor::AddOrExecute(std::unique_ptr<EagerNode> node) {
   item->node = std::move(node);
   item->state = NodeState::kPENDING;
 
+  status = item->node->Prepare();
+  if (!status.ok()) {
+    item->node->Abort(status);
+    return status;
+  }
+
   // If we are unable to add the node to the queue, we must call Abort. However,
   // we want to do that outside of the scope of the lock since the Abort may
   // try to call EagerExecutor::Add()

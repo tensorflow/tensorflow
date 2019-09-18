@@ -72,6 +72,7 @@ cc_library(
     deps = [
         ":eager_client",
         "//tensorflow/core:eager_service_proto_cc",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:eager_executor",

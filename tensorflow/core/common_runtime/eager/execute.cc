@@ -775,9 +775,10 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   VLOG(4) << "Execute remote eager op: " << op->Name()
           << " (is async?: " << executor.Async() << ").";
 
-  std::unique_ptr<EagerNode> node(
-      new eager::RemoteExecuteNode(std::move(request), op_device, eager_client,
-                                   op->Inputs(), {retvals, num_outputs}));
+  std::unique_ptr<EagerNode> node(new eager::RemoteExecuteNode(
+      std::move(request), op_device, eager_client,
+      op->MutableAttrs()->BuildNodeDef(), op->EagerContext()->FuncLibDef(),
+      op->Inputs(), {retvals, num_outputs}));
   Status s = executor.AddOrExecute(std::move(node));
   // Since the operation failed, we need to Unref any outputs that were
   // allocated.

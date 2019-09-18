@@ -25,6 +25,7 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
@@ -134,7 +135,6 @@ class TensorHandle : public core::RefCounted {
   Device* DeviceOrHostCPU(EagerContext* ctx) const;
 
   Status Shape(tensorflow::TensorShape* shape);
-
   Status NumDims(int* num_dims);
   Status Dim(int dim_index, int64* dim);
   Status NumElements(int64* num_elements);
@@ -177,6 +177,14 @@ class TensorHandle : public core::RefCounted {
 
   Status CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
                       tensorflow::Tensor* output);
+
+  Status InferenceShape(
+      shape_inference::InferenceContext* const inference_context,
+      shape_inference::ShapeHandle* shape_handle);
+  void SetInferenceShape(
+      shape_inference::InferenceContext* const inference_context,
+      const shape_inference::ShapeHandle& shape_handle);
+  Status CopyInferenceShape(TensorHandle* other);
 
   // Warning: can return nullptr for CPU tensors.
   // TODO(b/136608821): Move away from nullptr
@@ -279,6 +287,9 @@ class TensorHandle : public core::RefCounted {
   // Does not need synchronization because it can be accessed only after
   // WaitReady() has returned. At that point, tensor_handle_data_ is immutable.
   std::unique_ptr<TensorHandleData> tensor_handle_data_;
+
+  int inference_num_dims_ = shape_inference::InferenceContext::kUnknownRank;
+  gtl::InlinedVector<int64, 4> inference_dims_;
 };
 
 // Returns the device backing the resource. Else, returns nullptr.

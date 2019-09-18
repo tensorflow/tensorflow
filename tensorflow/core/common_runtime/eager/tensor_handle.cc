@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle_data.h"
@@ -289,6 +290,78 @@ Device* TensorHandle::DeviceOrHostCPU(EagerContext* ctx) const {
 Status TensorHandle::Shape(tensorflow::TensorShape* shape) {
   TF_RETURN_IF_ERROR(WaitReady());
   return tensor_handle_data_->Shape(shape);
+}
+
+Status TensorHandle::InferenceShape(
+    shape_inference::InferenceContext* const inference_context,
+    shape_inference::ShapeHandle* shape_handle) {
+  if (is_ready_notification_.HasBeenNotified()) {
+    TF_RETURN_IF_ERROR(is_poisoned_);
+    std::vector<shape_inference::DimensionHandle> dims_handle;
+    int num_dims;
+    TF_RETURN_IF_ERROR(NumDims(&num_dims));
+    for (int i = 0; i < num_dims; i++) {
+      int64 dims;
+      TF_RETURN_IF_ERROR(Dim(i, &dims));
+      dims_handle.push_back(inference_context->MakeDim(dims));
+    }
+    *shape_handle = inference_context->MakeShape(dims_handle);
+    return Status::OK();
+  } else {
+    if (inference_num_dims_ ==
+        shape_inference::InferenceContext::kUnknownRank) {
+      *shape_handle = inference_context->UnknownShape();
+      return Status::OK();
+    }
+    std::vector<shape_inference::DimensionHandle> dims_handle(
+        inference_num_dims_);
+    for (int i = 0; i < inference_num_dims_; i++) {
+      dims_handle[i] = inference_context->MakeDim(inference_dims_[i]);
+    }
+    *shape_handle = inference_context->MakeShape(dims_handle);
+    return Status::OK();
+  }
+}
+
+void TensorHandle::SetInferenceShape(
+    shape_inference::InferenceContext* const inference_context,
+    const shape_inference::ShapeHandle& shape_handle) {
+  inference_num_dims_ = inference_context->Rank(shape_handle);
+  if (inference_num_dims_ == shape_inference::InferenceContext::kUnknownRank) {
+    return;
+  }
+  inference_dims_.resize(inference_num_dims_);
+  for (size_t i = 0; i < inference_num_dims_; ++i) {
+    inference_dims_[i] =
+        inference_context->Value(inference_context->Dim(shape_handle, i));
+  }
+}
+
+Status TensorHandle::CopyInferenceShape(TensorHandle* other) {
+  if (is_ready_notification_.HasBeenNotified()) {
+    TF_RETURN_IF_ERROR(is_poisoned_);
+    return Status::OK();
+  }
+  if (other->is_ready_notification_.HasBeenNotified()) {
+    TF_RETURN_IF_ERROR(
+        other->tensor_handle_data_->NumDims(&inference_num_dims_));
+    if (inference_num_dims_ > 0) {
+      inference_dims_.resize(inference_num_dims_);
+      for (size_t i = 0; i < inference_num_dims_; ++i) {
+        TF_RETURN_IF_ERROR(
+            other->tensor_handle_data_->Dim(i, &inference_dims_[i]));
+      }
+    }
+  } else {
+    inference_num_dims_ = other->inference_num_dims_;
+    if (inference_num_dims_ > 0) {
+      inference_dims_.resize(inference_num_dims_);
+      for (size_t i = 0; i < inference_num_dims_; ++i) {
+        inference_dims_[i] = other->inference_dims_[i];
+      }
+    }
+  }
+  return Status::OK();
 }
 
 Status TensorHandle::NumDims(int* num_dims) {
