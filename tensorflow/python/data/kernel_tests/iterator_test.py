@@ -798,27 +798,62 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertIn(
           iterator_ops.GET_NEXT_CALL_WARNING_MESSAGE, str(warning.message))
 
-  # pylint: disable=g-long-lambda
   @combinations.generate(combinations.times(
       test_base.default_test_combinations(),
       combinations.combine(
-          tf_value_fn=lambda: constant_op.constant(37.0),
           expected_element_structure=tensor_spec.TensorSpec([], dtypes.float32),
           expected_output_classes=ops.Tensor,
-          expected_output_types=dtypes.float32, expected_output_shapes=[[]]) +
+          expected_output_types=dtypes.float32, expected_output_shapes=[[]])))
+  def testTensorIteratorStructure(self, expected_element_structure,
+                                  expected_output_classes,
+                                  expected_output_types,
+                                  expected_output_shapes):
+    tf_value_fn = lambda: constant_op.constant(37.0)
+    tf_value = tf_value_fn()
+    iterator = dataset_ops.make_one_shot_iterator(
+        dataset_ops.Dataset.from_tensors(tf_value))
+
+    self.assertTrue(structure.are_compatible(
+        dataset_ops.get_structure(iterator), expected_element_structure))
+    self.assertEqual(expected_output_classes,
+                     dataset_ops.get_legacy_output_classes(iterator))
+    self.assertEqual(expected_output_types,
+                     dataset_ops.get_legacy_output_types(iterator))
+    self.assertEqual(expected_output_shapes,
+                     dataset_ops.get_legacy_output_shapes(iterator))
+
+  @combinations.generate(combinations.times(
+      test_base.default_test_combinations(),
       combinations.combine(
-          tf_value_fn=lambda: sparse_tensor.SparseTensor(
-              indices=[[0]], values=constant_op.constant(
-                  [0], dtype=dtypes.int32), dense_shape=[1]),
           expected_element_structure=sparse_tensor.SparseTensorSpec(
               [1], dtypes.int32),
           expected_output_classes=sparse_tensor.SparseTensor,
-          expected_output_types=dtypes.int32, expected_output_shapes=[[1]]) +
+          expected_output_types=dtypes.int32, expected_output_shapes=[[1]])))
+  def testSparseTensorIteratorStructure(self, expected_element_structure,
+                                        expected_output_classes,
+                                        expected_output_types,
+                                        expected_output_shapes):
+    def tf_value_fn():
+      return sparse_tensor.SparseTensor(
+          indices=[[0]], values=constant_op.constant([0], dtype=dtypes.int32),
+          dense_shape=[1])
+
+    tf_value = tf_value_fn()
+    iterator = dataset_ops.make_one_shot_iterator(
+        dataset_ops.Dataset.from_tensors(tf_value))
+
+    self.assertTrue(structure.are_compatible(
+        dataset_ops.get_structure(iterator), expected_element_structure))
+    self.assertEqual(expected_output_classes,
+                     dataset_ops.get_legacy_output_classes(iterator))
+    self.assertEqual(expected_output_types,
+                     dataset_ops.get_legacy_output_types(iterator))
+    self.assertEqual(expected_output_shapes,
+                     dataset_ops.get_legacy_output_shapes(iterator))
+
+  @combinations.generate(combinations.times(
+      test_base.default_test_combinations(),
       combinations.combine(
-          tf_value_fn=lambda: {
-              "a": constant_op.constant(37.0),
-              "b": (constant_op.constant(["Foo"]), constant_op.constant("Bar"))
-          },
           expected_element_structure={
               "a": tensor_spec.TensorSpec([], dtypes.float32),
               "b": (tensor_spec.TensorSpec([1], dtypes.string),
@@ -836,16 +871,21 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
               "a": [],
               "b": ([1], [])
           })))
-  def testIteratorStructure(self, tf_value_fn, expected_element_structure,
-                            expected_output_classes, expected_output_types,
-                            expected_output_shapes):
+  def testNestedTensorIteratorStructure(self, expected_element_structure,
+                                        expected_output_classes,
+                                        expected_output_types,
+                                        expected_output_shapes):
+    def tf_value_fn():
+      return {"a": constant_op.constant(37.0),
+              "b": (constant_op.constant(["Foo"]),
+                    constant_op.constant("Bar"))}
+
     tf_value = tf_value_fn()
     iterator = dataset_ops.make_one_shot_iterator(
         dataset_ops.Dataset.from_tensors(tf_value))
 
-    self.assertTrue(
-        structure.are_compatible(
-            dataset_ops.get_structure(iterator), expected_element_structure))
+    self.assertTrue(structure.are_compatible(
+        dataset_ops.get_structure(iterator), expected_element_structure))
     self.assertEqual(expected_output_classes,
                      dataset_ops.get_legacy_output_classes(iterator))
     self.assertEqual(expected_output_types,
