@@ -52,6 +52,7 @@ limitations under the License.
 #include "mlir/Translation.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/utils/stateful_ops_utils.h"
 #include "tensorflow/compiler/mlir/op_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
@@ -67,14 +68,12 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 
-using llvm::cast;
 using llvm::dyn_cast;
 using llvm::formatv;
 using llvm::isa;
 using llvm::Optional;
 using llvm::StringRef;
 using llvm::Twine;
-using mlir::Block;
 using mlir::Dialect;
 using mlir::ElementsAttr;
 using mlir::FuncOp;
@@ -866,17 +865,7 @@ bool Translator::IsStatefulOperand(mlir::Operation* op, int operand_index) {
   // having to cast it to specific ops like below.
   // Until then, when a new RNN/LSTM op is added to TFLite and has stateful
   // tensors as operands, they will need to be added here as well.
-  if (auto tfl = llvm::dyn_cast<mlir::TFL::LSTMOp>(op)) {
-    operand_indices = tfl.GetStatefulOperands();
-  } else if (auto tfl =
-                 llvm::dyn_cast<mlir::TFL::UnidirectionalSequenceLSTMOp>(op)) {
-    operand_indices = tfl.GetStatefulOperands();
-  } else if (auto tfl =
-                 llvm::dyn_cast<mlir::TFL::UnidirectionalSequenceRNNOp>(op)) {
-    operand_indices = tfl.GetStatefulOperands();
-  } else if (auto tfl = llvm::dyn_cast<mlir::TFL::SVDFOp>(op)) {
-    operand_indices = tfl.GetStatefulOperands();
-  }
+  if (!mlir::TFL::IsStatefulOp(op, &operand_indices)) return false;
   return absl::c_find(operand_indices, operand_index) != operand_indices.end();
 }
 
