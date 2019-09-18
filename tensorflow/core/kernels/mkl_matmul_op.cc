@@ -180,8 +180,8 @@ class MklMatMulOp : public OpKernel {
     const float alpha = 1.0f;
     const float beta = 0.0f;
     const char* const ftrans[] = {"N", "T", "C"};
-    int index_transa = transa ? 1 : 0;
-    int index_transb = transb ? 1 : 0;
+    const int index_transa = transa ? 1 : 0;
+    const int index_transb = transb ? 1 : 0;
 
     Tensor c_float;
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, {m, n}, &c_float));
