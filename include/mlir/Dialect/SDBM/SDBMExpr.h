@@ -77,7 +77,7 @@ class SDBMTermExpr;
 ///       - term
 ///         - symbol
 ///         - dimension
-///         - stripe <- (term, constant)
+///         - stripe <- (direct, constant)
 ///     - negation <- (direct)
 ///     - difference <- (direct, term)
 ///   - constant
@@ -289,9 +289,9 @@ public:
     return expr.getKind() == SDBMExprKind::Stripe;
   }
 
-  static SDBMStripeExpr get(SDBMTermExpr var, SDBMConstantExpr stripeFactor);
+  static SDBMStripeExpr get(SDBMDirectExpr var, SDBMConstantExpr stripeFactor);
 
-  SDBMTermExpr getVar() const;
+  SDBMDirectExpr getLHS() const;
   SDBMConstantExpr getStripeFactor() const;
 };
 
@@ -458,7 +458,7 @@ protected:
       walk<isPreorder>(diffExpr.getLHS());
       walk<isPreorder>(diffExpr.getRHS());
     } else if (auto stripeExpr = expr.dyn_cast<SDBMStripeExpr>()) {
-      walk<isPreorder>(stripeExpr.getVar());
+      walk<isPreorder>(stripeExpr.getLHS());
       walk<isPreorder>(stripeExpr.getStripeFactor());
     } else if (auto negExpr = expr.dyn_cast<SDBMNegExpr>()) {
       walk<isPreorder>(negExpr.getVar());

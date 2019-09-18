@@ -180,7 +180,7 @@ TEST(SDBMOperators, Stripe) {
   auto expr = stripe(dim(0), 3);
   auto stripeExpr = expr.dyn_cast<SDBMStripeExpr>();
   ASSERT_TRUE(stripeExpr);
-  EXPECT_EQ(stripeExpr.getVar(), dim(0));
+  EXPECT_EQ(stripeExpr.getLHS(), dim(0));
   EXPECT_EQ(stripeExpr.getStripeFactor().getValue(), 3);
 }
 
@@ -286,7 +286,7 @@ TEST(SDBMExpr, Stripe) {
 
   // We can create stripe expressions and query them.
   auto expr = SDBMStripeExpr::get(var, cst2);
-  EXPECT_EQ(expr.getVar(), var);
+  EXPECT_EQ(expr.getLHS(), var);
   EXPECT_EQ(expr.getStripeFactor(), cst2);
 
   // Two separately created stripe expressions with the same LHS and RHS are
@@ -299,6 +299,9 @@ TEST(SDBMExpr, Stripe) {
 
   // Non-positive stripe factors are not allowed.
   EXPECT_DEATH(SDBMStripeExpr::get(var, cst0), "non-positive");
+
+  // Stripes can have sums on the LHS.
+  SDBMStripeExpr::get(SDBMSumExpr::get(var, cst2), cst2);
 
   // Hierarchy is okay.
   auto generic = static_cast<SDBMExpr>(expr);
@@ -395,10 +398,27 @@ TEST(SDBMExpr, AffineRoundTrip) {
   ASSERT_TRUE(roundtripped.hasValue());
   EXPECT_EQ(roundtripped, static_cast<SDBMExpr>(outerStripe));
 
+  // Check that ((s0 + 2) # 5) can be round-tripped through AffineExpr, i.e.
+  // stripe detection supports sum expressions.
+  auto inner = SDBMSumExpr::get(var, cst2);
+  auto stripeSum = SDBMStripeExpr::get(inner, cst5);
+  roundtripped = SDBMExpr::tryConvertAffineExpr(stripeSum.getAsAffineExpr());
+  ASSERT_TRUE(roundtripped.hasValue());
+  EXPECT_EQ(roundtripped, static_cast<SDBMExpr>(stripeSum));
+
   // Check that (s0 # 2 # 5 - s0 # 2) + 2 can be converted as an example of a
   // deeper expression tree.
   auto sum = SDBMSumExpr::get(outerStripe, cst2);
   auto diff = SDBMDiffExpr::get(sum, stripe);
+  roundtripped = SDBMExpr::tryConvertAffineExpr(diff.getAsAffineExpr());
+  ASSERT_TRUE(roundtripped.hasValue());
+  EXPECT_EQ(roundtripped, static_cast<SDBMExpr>(diff));
+
+  // Check a nested stripe-sum combination.
+  auto cst7 = SDBMConstantExpr::get(dialect(), 7);
+  auto nestedStripe =
+      SDBMStripeExpr::get(SDBMSumExpr::get(stripeSum, cst2), cst7);
+  diff = SDBMDiffExpr::get(nestedStripe, stripe);
   roundtripped = SDBMExpr::tryConvertAffineExpr(diff.getAsAffineExpr());
   ASSERT_TRUE(roundtripped.hasValue());
   EXPECT_EQ(roundtripped, static_cast<SDBMExpr>(diff));
