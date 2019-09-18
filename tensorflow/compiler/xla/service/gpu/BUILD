@@ -415,7 +415,7 @@ tf_cuda_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor/cuda:cuda_activation",
         "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
-    ] + if_cuda([
+    ] + if_nccl([
         "@local_config_nccl//:nccl",
     ]),
 )
