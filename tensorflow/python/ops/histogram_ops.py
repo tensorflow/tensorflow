@@ -26,6 +26,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -89,7 +90,7 @@ def histogram_fixed_width_bins(values,
     # values outside the open interval will be zero or less, or nbins or more.
     indices = math_ops.floor(nbins_float * scaled_values, name='indices')
     
-    if array_ops.where(value_range[0] == value_range[1]):
+    control_flow_ops.cond(array_ops.where(math_ops.equal(value_range[0], value_range[1]))):
       indices=array_ops.where(math_ops.is_nan(indices), array_ops.ones_like(indices), indices)
 
     # Clip edge cases (e.g. value = value_range[1]) or "outliers."
