@@ -137,6 +137,8 @@ class PoolingTest(test.TestCase):
                          [5, channels, width // 2])
 
   def testCreateMaxPooling3D(self):
+    if test.is_built_with_rocm():
+      self.skipTest('Pooling with 3D tensors is not supported in ROCm')
     depth, height, width = 6, 7, 9
     images = random_ops.random_uniform((5, depth, height, width, 4))
     layer = pooling_layers.MaxPooling3D([2, 2, 2], strides=2)
@@ -144,6 +146,8 @@ class PoolingTest(test.TestCase):
     self.assertListEqual(output.get_shape().as_list(), [5, 3, 3, 4, 4])
 
   def testCreateAveragePooling3D(self):
+    if test.is_built_with_rocm():
+      self.skipTest('Pooling with 3D tensors is not supported in ROCm')
     depth, height, width = 6, 7, 9
     images = random_ops.random_uniform((5, depth, height, width, 4))
     layer = pooling_layers.AveragePooling3D([2, 2, 2], strides=2)
@@ -151,6 +155,8 @@ class PoolingTest(test.TestCase):
     self.assertListEqual(output.get_shape().as_list(), [5, 3, 3, 4, 4])
 
   def testMaxPooling3DChannelsFirst(self):
+    if test.is_built_with_rocm():
+      self.skipTest('Pooling with 3D tensors is not supported in ROCm')
     depth, height, width = 6, 7, 9
     images = random_ops.random_uniform((5, 2, depth, height, width))
     layer = pooling_layers.MaxPooling3D(
@@ -159,6 +165,8 @@ class PoolingTest(test.TestCase):
     self.assertListEqual(output.get_shape().as_list(), [5, 2, 3, 3, 4])
 
   def testAveragePooling3DChannelsFirst(self):
+    if test.is_built_with_rocm():
+      self.skipTest('Pooling with 3D tensors is not supported in ROCm')
     depth, height, width = 6, 7, 9
     images = random_ops.random_uniform((5, 2, depth, height, width))
     layer = pooling_layers.AveragePooling3D(

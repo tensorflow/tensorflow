@@ -75,7 +75,6 @@ py_test(
     tags = [
         "no_pip",
         "notap",
-        "no_rocm_v2",
     ],
     deps = [
         ":zero_out_op_1",
@@ -92,7 +91,6 @@ py_test(
     tags = [
         "no_pip",
         "notap",
-        "no_rocm_v2",
     ],
     deps = [
         ":zero_out_grad_2",
@@ -110,7 +108,6 @@ py_test(
     tags = [
         "no_pip",
         "notap",
-        "no_rocm_v2",
     ],
     deps = [
         ":zero_out_op_3",
@@ -156,7 +153,6 @@ py_test(
     python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = ["//tensorflow:tensorflow_py"],
-    tags = ["no_rocm_v2"],
 )
 
 tf_cc_binary(

@@ -33,7 +33,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     tags = [
-        "no_rocm_v2", "no_pip",  # b/131330719
+        "no_pip",  # b/131330719
     ],
 )
 
@@ -61,7 +61,8 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     tags = [
-        "no_rocm_v2", "no_pip",  # b/131330719
+        "no_pip",  # b/131330719
+        "v1only",  # uses contrib
     ],
 )
 
@@ -97,7 +98,8 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     tags = [
-        "no_rocm_v2", "no_pip",  # b/131330719
+        "no_pip",  # b/131330719
+        "v1only",  # uses contrib
     ],
 )
 
@@ -143,7 +145,8 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     tags = [
-        "no_rocm_v2",  "no_pip",  # b/131330719
+        "no_pip",  # b/131330719
+        "v1only",  # uses contrib
     ],
 )
 
@@ -186,7 +189,8 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     tags = [
-        "no_rocm_v2", "no_pip",  # b/131330719
+        "no_pip",  # b/131330719
+        "v1only",  # uses contrib
     ],
 )
 
@@ -229,7 +233,8 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     tags = [
-        "no_rocm_v2", "no_pip",  # b/131330719
+        "no_pip",  # b/131330719
+        "v1only",  # uses contrib
     ],
 )
 
@@ -283,7 +288,8 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     tags = [
-        "no_rocm_v2", "no_pip",  # b/131330719
+        "no_pip",  # b/131330719
+        "v1only",  # uses contrib
     ],
 )
 

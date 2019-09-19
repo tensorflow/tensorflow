@@ -709,7 +709,6 @@ py_test(
     tags = [
         "no_cuda",
         "no_rocm",
-        "no_rocm_v2",
     ],
 )
 
@@ -1163,7 +1162,6 @@ py_test(
     tags = [
         "no_cuda",
         "no_rocm",
-        "no_rocm_v2",
     ],
 )
 
@@ -1197,7 +1195,6 @@ py_test(
     tags = [
         "no_cuda",
         "no_rocm",
-        "no_rocm_v2",
     ],
 )
 
