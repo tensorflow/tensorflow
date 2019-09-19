@@ -4914,24 +4914,6 @@ py_library(
     ],
 )
 
-cc_library(
-    name = "cpp_shape_inference",
-    srcs = ["framework/cpp_shape_inference.cc"],
-    hdrs = ["framework/cpp_shape_inference.h"],
-    copts = if_not_windows(["-Wno-sign-compare"]),
-    visibility = ["//visibility:public"],
-    deps = [
-        ":cpp_shape_inference_proto_cc",
-        ":numpy_lib",
-        ":py_func_lib",
-        "//tensorflow/c:tf_status_helper",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/python:ndarray_tensor",
-    ],
-)
-
 cuda_py_tests(
     name = "device_lib_test",
     size = "small",
@@ -5010,7 +4992,6 @@ tf_py_wrap_cc(
         "client/events_writer.i",
         "client/tf_session.i",
         "client/tf_sessionrun_wrapper.i",
-        "framework/cpp_shape_inference.i",
         "framework/python_op_gen.i",
         "grappler/cluster.i",
         "grappler/cost_analyzer.i",
@@ -5047,7 +5028,6 @@ tf_py_wrap_cc(
         ":cost_analyzer_lib",
         ":model_analyzer_lib",
         ":cpp_python_util",
-        ":cpp_shape_inference",
         ":kernel_registry",
         ":numpy_lib",
         ":safe_ptr",
