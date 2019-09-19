@@ -23,7 +23,6 @@ import functools
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -214,7 +213,7 @@ def _pfor_impl(loop_fn, iters, parallel_iterations=None, pfor_config=None):
   existing_ops = set(ops.get_default_graph().get_operations())
   # Run the loop body
   with ops.name_scope("loop_body"):
-    loop_var = array_ops.placeholder(dtypes.int32, shape=[])
+    loop_var = array_ops.placeholder_with_default(0, shape=[])
     if loop_fn_has_config:
       if pfor_config is None:
         pfor_config = PForConfig()
