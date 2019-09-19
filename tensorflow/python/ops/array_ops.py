@@ -2610,25 +2610,26 @@ def ones_like_impl(tensor, dtype, name, optimize=True):
 
 @tf_export("ones")
 def ones(shape, dtype=dtypes.float32, name=None):
-  """Creates a tensor with all elements set to 1.
+  """Creates a tensor with all elements set to one (1).
 
-  This operation returns a tensor of type `dtype` with shape `shape` and all
-  elements set to 1.
+  This operation returns a tensor of type `dtype` with shape `shape` and
+  all elements set to one.
 
-  For example:
-
-  ```python
-  tf.ones([2, 3], tf.int32)  # [[1, 1, 1], [1, 1, 1]]
-  ```
+  >>> tf.ones([3, 4], tf.int32)
+  <tf.Tensor: ... shape=(3, 4), dtype=int32, numpy=
+  array([[1, 1, 1, 1],
+         [1, 1, 1, 1],
+         [1, 1, 1, 1]], dtype=int32)>
 
   Args:
-    shape: A list of integers, a tuple of integers, or a 1-D `Tensor` of type
-      `int32`.
-    dtype: The type of an element in the resulting `Tensor`.
-    name: A name for the operation (optional).
+    shape: A `list` of integers, a `tuple` of integers, or
+      a 1-D `Tensor` of type `int32`.
+    dtype: Optional DType of an element in the resulting `Tensor`. Default is
+      `tf.float32`.
+    name: Optional string. A name for the operation.
 
   Returns:
-    A `Tensor` with all elements set to 1.
+    A `Tensor` with all elements set to one (1).
   """
   dtype = dtypes.as_dtype(dtype).base_dtype
   with ops.name_scope(name, "ones", [shape]) as name:
