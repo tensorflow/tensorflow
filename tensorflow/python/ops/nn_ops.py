@@ -2937,6 +2937,13 @@ def softmax(logits, axis=None, name=None, dim=None):
 
       softmax = tf.exp(logits) / tf.reduce_sum(tf.exp(logits), axis)
 
+  See: https://en.wikipedia.org/wiki/Softmax_function
+
+  Example usage:
+  >>> tf.nn.softmax([-1, 0., 1.])
+  <tf.Tensor: id=32, shape=(3,), dtype=float32,
+  numpy=array([0.09003057, 0.24472848, 0.66524094], dtype=float32)>
+
   Args:
     logits: A non-empty `Tensor`. Must be one of the following types: `half`,
       `float32`, `float64`.
