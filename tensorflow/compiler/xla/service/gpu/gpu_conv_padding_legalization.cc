@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_padding_legalization.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
 
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
