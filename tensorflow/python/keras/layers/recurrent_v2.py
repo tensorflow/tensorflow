@@ -665,6 +665,9 @@ def gru_with_backend_selection(
 class LSTMCell(recurrent.LSTMCell):
   """Cell class for the LSTM layer.
 
+  This class processes one step within the whole time sequence input, whereas
+  `tf.keras.layer.LSTM` processes the whole sequence.
+
   Arguments:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use. Default: hyperbolic tangent
@@ -673,42 +676,67 @@ class LSTMCell(recurrent.LSTMCell):
     recurrent_activation: Activation function to use for the recurrent step.
       Default: sigmoid (`sigmoid`). If you pass `None`, no activation is applied
       (ie. "linear" activation: `a(x) = x`).
-    use_bias: Boolean, whether the layer uses a bias vector.
+    use_bias: Boolean, (default `True`), whether the layer uses a bias vector.
     kernel_initializer: Initializer for the `kernel` weights matrix, used for
-      the linear transformation of the inputs.
+      the linear transformation of the inputs. Default: `glorot_uniform`.
     recurrent_initializer: Initializer for the `recurrent_kernel` weights
       matrix, used for the linear transformation of the recurrent state.
-    bias_initializer: Initializer for the bias vector.
-    unit_forget_bias: Boolean. If True, add 1 to the bias of the forget gate at
-      initialization. Setting it to true will also force
+      Default: `orthogonal`.
+    bias_initializer: Initializer for the bias vector. Default: `zeros`.
+    unit_forget_bias: Boolean (default `True`). If True, add 1 to the bias of
+      the forget gate at initialization. Setting it to true will also force
       `bias_initializer="zeros"`. This is recommended in [Jozefowicz et
         al.](http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
     kernel_regularizer: Regularizer function applied to the `kernel` weights
-      matrix.
+      matrix. Default: `None`.
     recurrent_regularizer: Regularizer function applied to
-      the `recurrent_kernel` weights matrix.
-    bias_regularizer: Regularizer function applied to the bias vector.
+      the `recurrent_kernel` weights matrix. Default: `None`.
+    bias_regularizer: Regularizer function applied to the bias vector. Default:
+      `None`.
     kernel_constraint: Constraint function applied to the `kernel` weights
-      matrix.
+      matrix. Default: `None`.
     recurrent_constraint: Constraint function applied to the `recurrent_kernel`
-      weights matrix.
-    bias_constraint: Constraint function applied to the bias vector.
+      weights matrix. Default: `None`.
+    bias_constraint: Constraint function applied to the bias vector. Default:
+      `None`.
     dropout: Float between 0 and 1. Fraction of the units to drop for the linear
-      transformation of the inputs.
+      transformation of the inputs. Default: 0.
     recurrent_dropout: Float between 0 and 1. Fraction of the units to drop for
-      the linear transformation of the recurrent state.
+      the linear transformation of the recurrent state. Default: 0.
     implementation: Implementation mode, either 1 or 2.
       Mode 1 will structure its operations as a larger number of smaller dot
       products and additions, whereas mode 2 (default) will batch them into
       fewer, larger operations. These modes will have different performance
-      profiles on different hardware and for different applications.
+      profiles on different hardware and for different applications. Default: 2.
 
   Call arguments:
-    inputs: A 2D tensor.
-    states: List of state tensors corresponding to the previous timestep.
+    inputs: A 2D tensor, with shape of `[batch, feature]`.
+    states: List of 2 tensors that corresponding to the cell's units. Both of
+      them have shape `[batch, units]`, the first tensor is the memory state
+      from previous time step, the second tesnor is the carry state from
+      previous time step. For timestep 0, the initial state provided by user
+      will be feed to cell.
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. Only relevant when `dropout` or
       `recurrent_dropout` is used.
+
+  Examples:
+
+  ```python
+  inputs = np.random.random([32, 10, 8]).astype(np.float32)
+  rnn = tf.keras.layers.RNN(tf.keras.layers.LSTMCell(4))
+
+  output = rnn(inputs)  # The output has shape `[32, 4]`.
+
+  rnn = tf.keras.layers.RNN(
+      tf.keras.layers.LSTMCell(4),
+      return_sequences=True,
+      return_state=True)
+
+  # whole_sequence_output has shape `[32, 10, 4]`.
+  # final_memory_state and final_carry_state both have shape `[32, 4]`.
+  whole_sequence_output, final_memory_state, final_carry_state = rnn(inputs)
+  ```
   """
 
   def __init__(self,
@@ -845,6 +873,21 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
     initial_state: List of initial state tensors to be passed to the first
       call of the cell (optional, defaults to `None` which causes creation
       of zero-filled initial state tensors).
+
+  Examples:
+
+  ```python
+  inputs = np.random.random([32, 10, 8]).astype(np.float32)
+  lstm = tf.keras.layers.LSTM(4)
+
+  output = lstm(inputs)  # The output has shape `[32, 4]`.
+
+  lstm = tf.keras.layers.LSTM(4, return_sequences=True, return_state=True)
+
+  # whole_sequence_output has shape `[32, 10, 4]`.
+  # final_memory_state and final_carry_state both have shape `[32, 4]`.
+  whole_sequence_output, final_memory_state, final_carry_state = lstm(inputs)
+  ```
   """
 
   def __init__(self,
