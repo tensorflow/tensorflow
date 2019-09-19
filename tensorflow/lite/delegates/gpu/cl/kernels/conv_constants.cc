@@ -32,7 +32,7 @@ std::string GenerateConvolutionConstantCode(
     int src_channels, int dst_channels, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   TensorCodeGenerator src_tensor("src_data", "src_size", op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data", "dst_size", op_def.dst_tensors[0]);
 
   std::string c = GetCommonDefines(op_def.precision);
 
