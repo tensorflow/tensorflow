@@ -1961,21 +1961,22 @@ void EmitPartialElementalTile(
   IrArray::Index source_idx = tile_origin_index.AddOffsetToDim(
       start_offset_x, KernelMappingScheme::DimX, b);
 
-  for (int64 j = 0; j < tile_size_x / num_threads_x; j++) {
-    IrArray::Index source_idx_x = source_idx.AddOffsetToDim(
-        constant(j * step_x), KernelMappingScheme::DimX, b);
-    llvm::Value* x_loc = b->CreateAdd(constant(j * step_x), start_offset_x);
-    ksl->If(loop_name + "_x_in_tile", b->CreateICmpULT(x_loc, tile_width), [&] {
-      ksl->For(loop_name,
-               /*start=*/y,
-               /*end=*/tile_height,
-               /*step=*/constant(num_threads_y), [&](llvm::Value* y_loc) {
-                 emit_elem_function(source_idx_x.AddOffsetToDim(
-                                        y_loc, KernelMappingScheme::DimY, b),
-                                    y_loc, x_loc, j);
-               });
-    });
-  }
+  ksl->For(
+      loop_name,
+      /*start=*/y,
+      /*end=*/tile_height,
+      /*step=*/constant(num_threads_y), [&](llvm::Value* y_loc) {
+        IrArray::Index source_idx_y =
+            source_idx.AddOffsetToDim(y_loc, KernelMappingScheme::DimY, b);
+        for (int64 j = 0; j < tile_size_x / num_threads_x; j++) {
+          llvm::Value* x_loc =
+              b->CreateAdd(constant(j * step_x), start_offset_x);
+          IrArray::Index source_idx_x = source_idx_y.AddOffsetToDim(
+              constant(j * step_x), KernelMappingScheme::DimX, b);
+          ksl->If(loop_name + "_x_in_tile", b->CreateICmpULT(x_loc, tile_width),
+                  [&] { emit_elem_function(source_idx_x, y_loc, x_loc, j); });
+        }
+      });
 }
 
 // Emits code to process up to
