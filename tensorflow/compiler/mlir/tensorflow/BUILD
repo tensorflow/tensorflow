@@ -188,6 +188,7 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":convert_tensor",
         ":convert_type",
         ":error_util",
         ":tensorflow",
