@@ -132,20 +132,20 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
       tensorflow::ContextMirroringPolicy::MIRRORING_NONE, request->async(),
       device_mgr, false, r, GetDefaultCustomKernelCreator(),
-      worker_session->cluster_flr());
+      worker_session->cluster_flr.get());
   // Ownership will be transferred to the ServerContext, or else in an error
   // case ctx will be deleted by this unref.
   core::ScopedUnref unref_ctx(ctx);
 
   std::vector<string> remote_workers;
-  worker_session->worker_cache()->ListWorkers(&remote_workers);
+  worker_session->worker_cache->ListWorkers(&remote_workers);
   remote_workers.erase(std::remove(remote_workers.begin(), remote_workers.end(),
-                                   worker_session->worker_name()),
+                                   worker_session->worker_name),
                        remote_workers.end());
 
   std::unique_ptr<tensorflow::eager::EagerClientCache> remote_eager_workers;
-  TF_RETURN_IF_ERROR(worker_session->worker_cache()->GetEagerClientCache(
-      &remote_eager_workers));
+  TF_RETURN_IF_ERROR(
+      worker_session->worker_cache->GetEagerClientCache(&remote_eager_workers));
 
   auto remote_mgr =
       absl::make_unique<tensorflow::eager::RemoteMgr>(/*is_master=*/false, ctx);

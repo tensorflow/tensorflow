@@ -281,7 +281,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
       std::move(server), grpc_server->worker_env(), worker_session,
       std::move(remote_eager_workers), std::move(remote_device_mgr),
       remote_workers, context_id, r, device_mgr, keep_alive_secs,
-      worker_session->cluster_flr(), std::move(remote_mgr)));
+      worker_session->cluster_flr.get(), std::move(remote_mgr)));
 
   // NOTE: We start the server after all other initialization, because the
   // GrpcServer cannot be destroyed after it is started.
