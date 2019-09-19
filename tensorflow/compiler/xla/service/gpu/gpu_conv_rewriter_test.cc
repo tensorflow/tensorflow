@@ -34,9 +34,9 @@ namespace {
 namespace op = xla::testing::opcode_matchers;
 using ::testing::_;
 
-class CudnnConvRewriterTest : public HloTestBase {
+class GpuConvRewriterTest : public HloTestBase {
  public:
-  CudnnConvRewriterTest()
+  GpuConvRewriterTest()
       : HloTestBase(/*layout_sensitive=*/true,
                     /*allow_mixed_precision=*/false) {
     for (int i = 0; i < 2; ++i) {
@@ -95,7 +95,7 @@ class CudnnConvRewriterTest : public HloTestBase {
   ConvolutionDimensionNumbers tf_default_dnums_for_backward_input_;
 };
 
-TEST_F(CudnnConvRewriterTest, BackwardFilterConvolve) {
+TEST_F(GpuConvRewriterTest, BackwardFilterConvolve) {
   HloComputation::Builder builder(TestName());
   HloInstruction* activations =
       builder.AddInstruction(HloInstruction::CreateParameter(
@@ -135,7 +135,7 @@ TEST_F(CudnnConvRewriterTest, BackwardFilterConvolve) {
       << md_after_opt.DebugString() << " vs " << metadata.DebugString();
 }
 
-TEST_F(CudnnConvRewriterTest, BackwardFilterGroupConvolve) {
+TEST_F(GpuConvRewriterTest, BackwardFilterGroupConvolve) {
   // In a nutshell, before pass:
   // Input->batch_dim: 3 input_shape(3) = 4
   // Input->feature_dim: 0 input_shape(0) = 32
@@ -215,7 +215,7 @@ TEST_F(CudnnConvRewriterTest, BackwardFilterGroupConvolve) {
   EXPECT_EQ(3, conv_dim.output_feature_dimension());
 }
 
-TEST_F(CudnnConvRewriterTest,
+TEST_F(GpuConvRewriterTest,
        BackwardFilterConvolveEquivalentToForwardConvolution) {
   HloComputation::Builder builder(TestName());
   HloInstruction* activations =
@@ -246,7 +246,7 @@ TEST_F(CudnnConvRewriterTest,
 }
 
 // Extracted from block35 training.
-TEST_F(CudnnConvRewriterTest, BackwardFilterConvolveWithPaddedActivations) {
+TEST_F(GpuConvRewriterTest, BackwardFilterConvolveWithPaddedActivations) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* activations =
       builder.AddInstruction(HloInstruction::CreateParameter(
@@ -276,7 +276,7 @@ TEST_F(CudnnConvRewriterTest, BackwardFilterConvolveWithPaddedActivations) {
 }
 
 // Extracted from inception v3 training.
-TEST_F(CudnnConvRewriterTest, BackwardFilterConvolveWithPaddedGradients) {
+TEST_F(GpuConvRewriterTest, BackwardFilterConvolveWithPaddedGradients) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* activations =
       builder.AddInstruction(HloInstruction::CreateParameter(
@@ -305,7 +305,7 @@ TEST_F(CudnnConvRewriterTest, BackwardFilterConvolveWithPaddedGradients) {
                   op::CustomCall(kCudnnConvBackwardFilterCallTarget), 0));
 }
 
-TEST_F(CudnnConvRewriterTest, BackwardFilterConvolveWithUnevenPadding) {
+TEST_F(GpuConvRewriterTest, BackwardFilterConvolveWithUnevenPadding) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* activations =
       builder.AddInstruction(HloInstruction::CreateParameter(
@@ -334,7 +334,7 @@ TEST_F(CudnnConvRewriterTest, BackwardFilterConvolveWithUnevenPadding) {
                   op::CustomCall(kCudnnConvBackwardFilterCallTarget), 0));
 }
 
-TEST_F(CudnnConvRewriterTest, BackwardInputConvolveEvenPadding) {
+TEST_F(GpuConvRewriterTest, BackwardInputConvolveEvenPadding) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* output =
       builder.AddInstruction(HloInstruction::CreateParameter(
@@ -402,7 +402,7 @@ TEST_F(CudnnConvRewriterTest, BackwardInputConvolveEvenPadding) {
 // Convolve([abc], [x], base_dilation=2)
 //   = Convolve([abc], Reverse([x]), base_dilation=2)
 //   = BackwardInputConvolve([abc], [x], stride=2)
-TEST_F(CudnnConvRewriterTest, BackwardInputConvolve1x1Filter) {
+TEST_F(GpuConvRewriterTest, BackwardInputConvolve1x1Filter) {
   auto builder = HloComputation::Builder(TestName());
   // NHWC dimension order.
   HloInstruction* output =
@@ -438,7 +438,7 @@ TEST_F(CudnnConvRewriterTest, BackwardInputConvolve1x1Filter) {
 // BackwardInputConvolve([abc], [x], stride=1) is equivalent to
 // ForwardConvolve([abc], [x], stride=1). No need to fold it into backward input
 // convolution.
-TEST_F(CudnnConvRewriterTest,
+TEST_F(GpuConvRewriterTest,
        BackwardInputConvolve1x1FilterEquivalentToForwardConvolve) {
   auto builder = HloComputation::Builder(TestName());
   // NHWC dimension order.
@@ -483,7 +483,7 @@ TEST_F(CudnnConvRewriterTest,
 //                     20x10x10x192
 //
 // Gradients are padded unevenly.
-TEST_F(CudnnConvRewriterTest, BackwardInputConvolveUnevenPaddingOnGradients) {
+TEST_F(GpuConvRewriterTest, BackwardInputConvolveUnevenPaddingOnGradients) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* output =
       builder.AddInstruction(HloInstruction::CreateParameter(
@@ -534,7 +534,7 @@ TEST_F(CudnnConvRewriterTest, BackwardInputConvolveUnevenPaddingOnGradients) {
 
 // Similar to BackwardInputConvolveUnevenPadding, but the low padding of the
 // gradients exceeds kernel_size - 1. Therefore, this pattern cannot be fused.
-TEST_F(CudnnConvRewriterTest, BackwardInputConvolveLowPaddingTooLarge) {
+TEST_F(GpuConvRewriterTest, BackwardInputConvolveLowPaddingTooLarge) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* output =
       builder.AddInstruction(HloInstruction::CreateParameter(
@@ -587,7 +587,7 @@ TEST_F(CudnnConvRewriterTest, BackwardInputConvolveLowPaddingTooLarge) {
 //
 // We should fuse BC even though padding on activations is uneven, because
 // GpuConvPaddingLegalization will canonicalize the fusion HLO.
-TEST_F(CudnnConvRewriterTest, BackwardInputConvolveUnevenPaddingOnActivations) {
+TEST_F(GpuConvRewriterTest, BackwardInputConvolveUnevenPaddingOnActivations) {
   auto builder = HloComputation::Builder(TestName());
   // The gradients are in NCHW layout.
   HloInstruction* output =
@@ -643,7 +643,7 @@ TEST_F(CudnnConvRewriterTest, BackwardInputConvolveUnevenPaddingOnActivations) {
 // We currently don't fuse BC because GpuConvPaddingLegalization
 // doesn't support negative padding on the gradients of backward convolution
 // (b/32744257).
-TEST_F(CudnnConvRewriterTest,
+TEST_F(GpuConvRewriterTest,
        BackwardInputConvolveNegativePaddingHighOnActivations) {
   auto builder = HloComputation::Builder(TestName());
   // The gradients are in NCHW layout.
@@ -684,7 +684,7 @@ TEST_F(CudnnConvRewriterTest,
 
 // Check that we will materialize a reversed version of a constant in order to
 // pattern-match a backwards input convolution.
-TEST_F(CudnnConvRewriterTest, BackwardInputConvolveConstantFilter) {
+TEST_F(GpuConvRewriterTest, BackwardInputConvolveConstantFilter) {
   Array4D<float> constant_arr(4, 4, 2, 2);
   constant_arr.FillIota(0);
   string constant_str =
@@ -712,7 +712,7 @@ TEST_F(CudnnConvRewriterTest, BackwardInputConvolveConstantFilter) {
 }
 
 // Check that a forward convolution instruction with int8 inputs is not allowed
-TEST_F(CudnnConvRewriterTest, TestForwardInt8Convolution) {
+TEST_F(GpuConvRewriterTest, TestForwardInt8Convolution) {
   const string module_str = absl::StrFormat(R"(
     HloModule Test
 
