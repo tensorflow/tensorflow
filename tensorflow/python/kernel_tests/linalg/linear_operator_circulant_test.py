@@ -112,10 +112,7 @@ class LinearOperatorCirculantTestSelfAdjointOperator(
   def dtypes_to_test():
     # This operator will always be complex because, although the spectrum is
     # real, the matrix will not be real.
-    if not test.is_built_with_rocm():
-      return [dtypes.complex64, dtypes.complex128]
-    else:
-      return []
+    return [dtypes.complex64, dtypes.complex128]
 
   def operator_and_matrix(
       self, shape_info, dtype, use_placeholder,
@@ -254,10 +251,7 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
 
   @staticmethod
   def dtypes_to_test():
-    if not test.is_built_with_rocm():
-      return [dtypes.complex64, dtypes.complex128]
-    else:
-      return []
+    return [dtypes.complex64, dtypes.complex128]
 
   # Skip Cholesky since we are explicitly testing non-hermitian
   # spectra.
@@ -538,10 +532,7 @@ class LinearOperatorCirculant2DTestNonHermitianSpectrum(
 
   @staticmethod
   def dtypes_to_test():
-    if not test.is_built_with_rocm():
-      return [dtypes.complex64, dtypes.complex128]
-    else:
-      return []
+    return [dtypes.complex64, dtypes.complex128]
 
   @staticmethod
   def skip_these_tests():
