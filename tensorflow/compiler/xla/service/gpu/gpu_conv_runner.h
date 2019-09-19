@@ -86,17 +86,17 @@ struct GpuConvParams {
 // allocator and take note of how much memory is used.  The next time you call
 // the same conv, you can provide an explicitly preallocated scratch buffer of
 // that size, if you like.
-Status RunCudnnConv(const HloCustomCallInstruction* conv,
-                    absl::Span<se::DeviceMemoryBase> operand_buffers,
-                    se::DeviceMemoryBase result_buffer,
-                    se::DeviceMemoryBase scratch_buf, se::Stream* stream,
-                    RunConvOptions = {});
+Status RunGpuConv(const HloCustomCallInstruction* conv,
+                  absl::Span<se::DeviceMemoryBase> operand_buffers,
+                  se::DeviceMemoryBase result_buffer,
+                  se::DeviceMemoryBase scratch_buf, se::Stream* stream,
+                  RunConvOptions = {});
 
-Status RunCudnnConv(const HloCustomCallInstruction* conv,
-                    absl::Span<se::DeviceMemoryBase> operand_buffers,
-                    se::DeviceMemoryBase result_buffer,
-                    se::ScratchAllocator* scratch_allocator, se::Stream* stream,
-                    RunConvOptions = {});
+Status RunGpuConv(const HloCustomCallInstruction* conv,
+                  absl::Span<se::DeviceMemoryBase> operand_buffers,
+                  se::DeviceMemoryBase result_buffer,
+                  se::ScratchAllocator* scratch_allocator, se::Stream* stream,
+                  RunConvOptions = {});
 
 // Implementation details exposed for debugging and log analysis.
 StatusOr<GpuConvParams> GetGpuConvParams(

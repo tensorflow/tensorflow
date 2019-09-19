@@ -57,9 +57,8 @@ Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   auto op_profiler =
       params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
-  TF_RETURN_IF_ERROR(RunCudnnConv(cudnn_call_,
-                                  absl::MakeSpan(operand_se_buffers),
-                                  result_buffer, scratch, params.stream));
+  TF_RETURN_IF_ERROR(RunGpuConv(cudnn_call_, absl::MakeSpan(operand_se_buffers),
+                                result_buffer, scratch, params.stream));
 
   // Write the output tuple.
   const int kNumOutputs = 2;
