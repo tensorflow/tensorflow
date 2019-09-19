@@ -332,48 +332,69 @@ def expand_dims(input, axis=None, name=None, dim=None):
 @tf_export("expand_dims", v1=[])
 @dispatch.add_dispatch_support
 def expand_dims_v2(input, axis, name=None):
-  """Inserts a dimension of 1 into a tensor's shape.
+  """Returns a tensor with an additional dimension inserted at index `axis`.
 
-  Given a tensor `input`, this operation inserts a dimension of 1 at the
+  Given a tensor `input`, this operation inserts a dimension of size 1 at the
   dimension index `axis` of `input`'s shape. The dimension index `axis` starts
   at zero; if you specify a negative number for `axis` it is counted backward
   from the end.
 
   This operation is useful if you want to add a batch dimension to a single
   element. For example, if you have a single image of shape `[height, width,
-  channels]`, you can make it a batch of 1 image with `expand_dims(image, 0)`,
+  channels]`, you can make it a batch of one image with `expand_dims(image, 0)`,
   which will make the shape `[1, height, width, channels]`.
 
-  Other examples:
+  Examples:
 
-  ```python
-  # 't' is a tensor of shape [2]
-  tf.shape(tf.expand_dims(t, 0))  # [1, 2]
-  tf.shape(tf.expand_dims(t, 1))  # [2, 1]
-  tf.shape(tf.expand_dims(t, -1))  # [2, 1]
+  >>> t = [[1, 2, 3],[4, 5, 6]] # shape [2, 3]
 
-  # 't2' is a tensor of shape [2, 3, 5]
-  tf.shape(tf.expand_dims(t2, 0))  # [1, 2, 3, 5]
-  tf.shape(tf.expand_dims(t2, 2))  # [2, 3, 1, 5]
-  tf.shape(tf.expand_dims(t2, 3))  # [2, 3, 5, 1]
-  ```
+  >>> tf.expand_dims(t, 0)
+  <tf.Tensor: ... shape=(1, 2, 3), dtype=int32, numpy=
+  array([[[1, 2, 3],
+          [4, 5, 6]]], dtype=int32)>
 
-  This operation requires that:
+  >>> tf.expand_dims(t, 1)
+  <tf.Tensor: ... shape=(2, 1, 3), dtype=int32, numpy=
+  array([[[1, 2, 3]],
+         [[4, 5, 6]]], dtype=int32)>
 
-  `-1-input.dims() <= dim <= input.dims()`
+  >>> tf.expand_dims(t, 2)
+  <tf.Tensor: ... shape=(2, 3, 1), dtype=int32, numpy=
+  array([[[1],
+          [2],
+          [3]],
+         [[4],
+          [5],
+          [6]]], dtype=int32)>
 
-  This operation is related to `squeeze()`, which removes dimensions of
-  size 1.
+  >>> tf.expand_dims(t, -1) # Last dimension index. In this case, same as 2.
+  <tf.Tensor: ... shape=(2, 3, 1), dtype=int32, numpy=
+  array([[[1],
+          [2],
+          [3]],
+         [[4],
+          [5],
+          [6]]], dtype=int32)>
+
+  This operation is related to:
+
+  *   `tf.squeeze`, which removes dimensions of size 1.
+  *   `tf.reshape`, which provides more flexible reshaping capability
 
   Args:
     input: A `Tensor`.
-    axis: 0-D (scalar). Specifies the dimension index at which to expand the
-      shape of `input`. Must be in the range `[-rank(input) - 1, rank(input)]`.
-    name: The name of the output `Tensor` (optional).
+    axis: Integer specifying the dimension index at which to expand the
+      shape of `input`. Given an input of D dimensions, `axis` must be in range
+      `[-(D+1), D]` (inclusive).
+    name: Optional string. The name of the output `Tensor`.
 
   Returns:
-    A `Tensor` with the same data as `input`, but its shape has an additional
-    dimension of size 1 added.
+    A tensor with the same data as `input`, with an additional dimension
+    inserted at the index specified by `axis`.
+
+  Raises:
+    ValueError: If `axis` is not specified.
+    InvalidArgumentError: If `axis` is out of range `[-(D+1), D]`.
   """
   return gen_array_ops.expand_dims(input, axis, name)
 
