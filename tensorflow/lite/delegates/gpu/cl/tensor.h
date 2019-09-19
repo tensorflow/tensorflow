@@ -67,6 +67,10 @@ class Tensor {
   }
   cl_mem GetMemoryPtr() const;
 
+  // This function returns buffer memory ptr for IMAGE_BUFFER instead of image
+  // memory ptr.
+  cl_mem GetMemoryPtrForWriting() const;
+
   Status WriteDataBHWC(absl::Span<const float> in, CLCommandQueue* queue);
 
   Status ReadDataBHWC(absl::Span<float> out, CLCommandQueue* queue) const;

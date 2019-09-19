@@ -139,6 +139,17 @@ public:
     return OpTy();
   }
 
+  /// Return true if this operation is a proper ancestor of the `other`
+  /// operation.
+  bool isProperAncestor(Operation *other);
+
+  /// Return true if this operation is an ancestor of the `other` operation. An
+  /// operation is considered as its own ancestor, use `isProperAncestor` to
+  /// avoid this.
+  bool isAncestor(Operation *other) {
+    return this == other || isProperAncestor(other);
+  }
+
   /// Replace any uses of 'from' with 'to' within this operation.
   void replaceUsesOfWith(Value *from, Value *to);
 

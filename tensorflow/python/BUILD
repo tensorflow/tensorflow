@@ -776,7 +776,6 @@ py_library(
         ":_pywrap_tfprof",
         ":_pywrap_util_port",
         ":_pywrap_utils",
-        ":common_shapes",
         ":composite_tensor",
         ":convert_to_constants",
         ":cpp_shape_inference_proto_py",
@@ -815,13 +814,7 @@ py_library(
     srcs = ["framework/common_shapes.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":cpp_shape_inference_proto_py",
-        ":errors",
-        ":framework_ops",
-        ":pywrap_tensorflow",
         ":tensor_shape",
-        ":tensor_util",
-        "//tensorflow/core:protos_all_py",
     ],
 )
 
@@ -2336,29 +2329,17 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "ragged_array_ops_gen",
-    visibility = [
-        "//learning/brain/contrib/text:__pkg__",
-        "//learning/brain/contrib/text/python/ragged:__pkg__",
-        "//tensorflow/python/ops/ragged:__pkg__",
-    ],
+    visibility = ["//tensorflow/python/ops/ragged:__pkg__"],
 )
 
 tf_gen_op_wrapper_private_py(
     name = "ragged_math_ops_gen",
-    visibility = [
-        "//learning/brain/contrib/text:__pkg__",
-        "//learning/brain/contrib/text/python/ragged:__pkg__",
-        "//tensorflow/python/ops/ragged:__pkg__",
-    ],
+    visibility = ["//tensorflow/python/ops/ragged:__pkg__"],
 )
 
 tf_gen_op_wrapper_private_py(
     name = "ragged_conversion_ops_gen",
-    visibility = [
-        "//learning/brain/contrib/text:__pkg__",
-        "//learning/brain/contrib/text/python/ragged:__pkg__",
-        "//tensorflow/python/ops/ragged:__pkg__",
-    ],
+    visibility = ["//tensorflow/python/ops/ragged:__pkg__"],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -3482,6 +3463,15 @@ py_library(
 )
 
 py_library(
+    name = "parsing_config",
+    srcs = ["ops/parsing_config.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework",
+    ],
+)
+
+py_library(
     name = "parsing_ops",
     srcs = ["ops/parsing_ops.py"],
     srcs_version = "PY2AND3",
@@ -3491,6 +3481,7 @@ py_library(
         ":framework",
         ":framework_for_generated_wrappers",
         ":math_ops",
+        ":parsing_config",
         ":parsing_ops_gen",
         ":sparse_ops",
     ],

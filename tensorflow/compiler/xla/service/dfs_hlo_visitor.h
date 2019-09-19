@@ -119,6 +119,7 @@ class DfsHloVisitorBase {
   virtual Status HandleReplicaId(HloInstructionPtr hlo) = 0;
   virtual Status HandlePartitionId(HloInstructionPtr hlo) = 0;
   virtual Status HandleGetDimensionSize(HloInstructionPtr hlo) = 0;
+  virtual Status HandleSetDimensionSize(HloInstructionPtr hlo) = 0;
   virtual Status HandleCompare(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }

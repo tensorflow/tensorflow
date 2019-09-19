@@ -317,7 +317,7 @@ void GpuLaunchFuncToCudaCallsPass::translateGpuLaunchCalls(
   auto cubinGetter =
       kernelFunction.getAttrOfType<SymbolRefAttr>(kCubinGetterAnnotation);
   if (!cubinGetter) {
-    kernelFunction.emitError("Missing ")
+    kernelFunction.emitError("missing ")
         << kCubinGetterAnnotation << " attribute.";
     return signalPassFailure();
   }

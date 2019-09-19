@@ -75,7 +75,6 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.compat import compat as fwd_compat
 from tensorflow.python.eager import context
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
@@ -1434,11 +1433,12 @@ def _ReductionDims(x, axis, reduction_indices=None):  # pylint: disable=invalid-
     return axis
   else:
     # Fast path: avoid creating Rank and Range ops if ndims is known.
-    rank = common_shapes.rank(x)
-    if rank is not None:
-      return constant_op.constant(np.arange(rank), dtype=dtypes.int32)
-    if (isinstance(x, sparse_tensor.SparseTensor) and
-        x.dense_shape.shape.is_fully_defined()):
+    if isinstance(x, ops.Tensor):
+      rank = x.shape.rank
+      if rank is not None:
+        return constant_op.constant(np.arange(rank), dtype=dtypes.int32)
+    elif (isinstance(x, sparse_tensor.SparseTensor) and
+          x.dense_shape.shape.is_fully_defined()):
       rank = x.dense_shape.shape.dims[0].value  # sparse.dense_shape is 1-D.
       return constant_op.constant(np.arange(rank), dtype=dtypes.int32)
 
@@ -1446,9 +1446,14 @@ def _ReductionDims(x, axis, reduction_indices=None):  # pylint: disable=invalid-
     return range(0, array_ops.rank(x))
 
 
+def _has_fully_defined_shape(tensor):
+  """Returns true if tensor has a fully defined shape."""
+  return isinstance(tensor, ops.EagerTensor) or tensor.shape.is_fully_defined()
+
+
 def _may_reduce_to_scalar(keepdims, axis, output):
   """Set a reduction's output shape to be a scalar if we are certain."""
-  if not common_shapes.has_fully_defined_shape(output) and (not keepdims) and (
+  if not _has_fully_defined_shape(output) and (not keepdims) and (
       axis is None):
     output.set_shape(())
   return output
@@ -3436,14 +3441,6 @@ def conj(x, name=None):
     else:
       raise TypeError("Expected numeric or variant tensor, got dtype %r" %
                       x.dtype)
-
-
-def _BroadcastShape(op):
-  """Common shape function for binary operators that broadcast their inputs."""
-  return [
-      common_shapes.broadcast_shape(op.inputs[0].get_shape(),
-                                    op.inputs[1].get_shape())
-  ]
 
 
 def reduced_shape(input_shape, axes):

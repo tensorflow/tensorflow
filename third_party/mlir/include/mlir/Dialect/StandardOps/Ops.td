@@ -162,6 +162,12 @@ def AllocOp : Std_Op<"alloc"> {
     unsigned getNumSymbolicOperands() {
       return getNumOperands() - getType().getNumDynamicDims();
     }
+
+    /// Returns the symbolic operands (the ones in square brackets), which bind
+    /// to the symbols of the memref's layout map.
+    operand_range getSymbolicOperands() {
+      return {operand_begin() + getType().getNumDynamicDims(), operand_end()};
+    }
   }];
 
   let hasCanonicalizer = 1;

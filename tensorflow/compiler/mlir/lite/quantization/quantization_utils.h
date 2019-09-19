@@ -90,8 +90,13 @@ struct QuantizationPattern : public RewritePattern {
     Value* quantized_value = op->getResult(0);
     for (Operation* quantized_op : quantized_value->getUsers()) {
       // If it is requantize op, we shouldn't rewrite this op.
-      if (llvm::isa<Q>(quantized_op) || llvm::isa<DQ>(quantized_op) ||
-          quantized_op->isKnownTerminator()) {
+      if (llvm::isa<Q>(quantized_op) || llvm::isa<DQ>(quantized_op)) {
+        return matchFailure();
+      }
+
+      // If it is terminator or not quantizable, we shouldn't rewrite.
+      if (quantized_op->isKnownTerminator() ||
+          quantized_op->hasTrait<OpTrait::quant::NoQuantizableResult>()) {
         return matchFailure();
       }
 
@@ -138,7 +143,9 @@ struct QuantizationPattern : public RewritePattern {
         }
         Type result_ele_type =
             result->getType().cast<TensorType>().getElementType();
-        if (auto user = dyn_cast_or_null<Q>(*result->user_begin())) {
+        // If the user is the Quantize op, it must be the only user.
+        if (result->hasOneUse() && llvm::isa<Q>(*result->user_begin())) {
+          auto user = llvm::cast<Q>(*result->user_begin());
           outputs_replaced.insert({user.output(), enumerated_result.index()});
           output_types.push_back(user.getType());
         } else if (result_ele_type.template isa<IntegerType>()) {

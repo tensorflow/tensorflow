@@ -228,14 +228,10 @@ std::string WriteGlobalFLT4(TensorStorageType storage_type, DataType data_type,
                             const std::string& y, const std::string& z) {
   switch (storage_type) {
     case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
       return absl::StrCat(tensor_name, "[((", z, ") * ", size_name, ".y + (", y,
                           ")) * ", size_name, ".x + (", x, ")] = ", var_name,
                           ";\n");
-    case TensorStorageType::IMAGE_BUFFER:
-      return absl::StrCat(GetWriteImageFromDataType(data_type), "(",
-                          tensor_name, ", ((", z, ") * ", size_name, ".y + (",
-                          y, ")) * ", size_name, ".x + (", x, "), ", var_name,
-                          ");\n");
     case TensorStorageType::TEXTURE_2D:
       return absl::StrCat(GetWriteImageFromDataType(data_type), "(",
                           tensor_name, ", (int2)((", x, "), (", y, ") * ",
@@ -259,12 +255,12 @@ std::string WriteGlobalFLT4(TensorStorageType storage_type, DataType data_type,
                             const std::string& global_address) {
   switch (storage_type) {
     case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
       return absl::StrCat(tensor_name, "[", global_address, "] = ", var_name,
                           ";\n");
     case TensorStorageType::TEXTURE_2D:
     case TensorStorageType::SINGLE_TEXTURE_2D:
     case TensorStorageType::TEXTURE_ARRAY:
-    case TensorStorageType::IMAGE_BUFFER:
       return absl::StrCat(GetWriteImageFromDataType(data_type), "(",
                           tensor_name, ", ", global_address, ", ", var_name,
                           ");\n");
@@ -308,7 +304,11 @@ std::string GetTensorDeclaration(TensorStorageType storage_type,
     case TensorStorageType::TEXTURE_ARRAY:
       return GetImageModifier(access) + " image2d_array_t";
     case TensorStorageType::IMAGE_BUFFER:
-      return GetImageModifier(access) + " image1d_buffer_t";
+      if (access == AccessType::WRITE) {
+        return absl::StrCat("__global ", GetDataType4(data_type), "*");
+      } else {
+        return GetImageModifier(access) + " image1d_buffer_t";
+      }
     case TensorStorageType::UNKNOWN:
       return "";
   }

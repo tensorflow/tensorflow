@@ -1540,26 +1540,22 @@ class ConcreteFunction(object):
     if default_graph.building_function and not self._func_graph.saveable:
       default_graph.mark_as_unsaveable(self._func_graph.saving_errors)
 
-    if any(isinstance(a, composite_tensor.CompositeTensor) for a in args):
-      raise AssertionError("Expected all args to be Tensors or Variables; "
-                           "but got CompositeTensor: %r" % args)
-
     if (tape.could_possibly_record() or
         hasattr(ops.get_default_graph(), "watch_variable")):
       for v in self._func_graph.variables:
         resource_variable_ops.variable_accessed(v)
 
     tensor_inputs = []
-    variables_used = object_identity.ObjectIdentitySet([])
+    variables_used = set([])
     for i, arg in enumerate(args):
       if isinstance(arg, resource_variable_ops.BaseResourceVariable):
         # We can pass a variable more than once, and in this case we need to
         # pass its handle only once.
-        if arg.handle in variables_used:
+        if id(arg.handle) in variables_used:
           continue
         resource_variable_ops.variable_accessed(arg)
         tensor_inputs.append(arg.handle)
-        variables_used.add(arg.handle)
+        variables_used.add(id(arg.handle))
       elif isinstance(arg, ops.Tensor):
         tensor_inputs.append(arg)
         if not executing_eagerly:

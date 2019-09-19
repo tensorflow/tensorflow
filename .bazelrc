@@ -85,6 +85,7 @@ build:cuda --define=using_cuda_nvcc=true
 build:cuda_clang --config=using_cuda
 build:cuda_clang --define=using_cuda_clang=true
 build:cuda_clang --define=using_clang=true
+build:cuda_clang --action_env TF_CUDA_CLANG=1
 
 build:tensorrt --action_env TF_NEED_TENSORRT=1
 

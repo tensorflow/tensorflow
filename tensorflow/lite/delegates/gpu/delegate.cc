@@ -268,7 +268,7 @@ TfLiteGpuDelegateOptionsV2 TfLiteGpuDelegateOptionsV2Default() {
   return options;
 }
 
-TfLiteDelegate* TfLiteGpuDelegateCreateV2(
+TfLiteDelegate* TfLiteGpuDelegateV2Create(
     const TfLiteGpuDelegateOptionsV2* options) {
   auto* gpu_delegate = new tflite::gpu::Delegate(options);
   TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
@@ -276,6 +276,6 @@ TfLiteDelegate* TfLiteGpuDelegateCreateV2(
   return gpu_delegate ? gpu_delegate->tflite_delegate() : nullptr;
 }
 
-void TfLiteGpuDelegateDeleteV2(TfLiteDelegate* delegate) {
+void TfLiteGpuDelegateV2Delete(TfLiteDelegate* delegate) {
   delete tflite::gpu::GetDelegate(delegate);
 }

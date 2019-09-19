@@ -280,6 +280,15 @@ Operation *Operation::getParentOp() {
   return block ? block->getParentOp() : nullptr;
 }
 
+/// Return true if this operation is a proper ancestor of the `other`
+/// operation.
+bool Operation::isProperAncestor(Operation *other) {
+  while ((other = other->getParentOp()))
+    if (this == other)
+      return true;
+  return false;
+}
+
 /// Replace any uses of 'from' with 'to' within this operation.
 void Operation::replaceUsesOfWith(Value *from, Value *to) {
   if (from == to)

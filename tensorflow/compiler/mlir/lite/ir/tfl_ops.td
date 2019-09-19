@@ -1704,7 +1704,7 @@ def TFL_PadV2Op : TFL_Op<"padv2", [
   let hasOptions = 1;
 }
 
-def TFL_PowOp : TFL_Op<"pow", [Broadcastable, NoSideEffect]> {
+def TFL_PowOp : TFL_Op<"pow", [Broadcastable, NoSideEffect, NoQuantizableResult]> {
   let summary = "Power operator";
 
   let description = [{
@@ -1816,7 +1816,7 @@ slice `i`, with the first `seq_lengths[i]` slices along dimension
   let hasOptions = 1;
 }
 
-def TFL_RsqrtOp: TFL_Op<"rsqrt", [NoSideEffect, SameOperandsAndResultType]> {
+def TFL_RsqrtOp: TFL_Op<"rsqrt", [NoSideEffect, SameOperandsAndResultType, NoQuantizableResult]> {
   let summary = "Reciprocal of square root operator";
 
   let description = [{
@@ -1830,7 +1830,7 @@ def TFL_RsqrtOp: TFL_Op<"rsqrt", [NoSideEffect, SameOperandsAndResultType]> {
   let hasFolder = 1;
 }
 
-def TFL_ShapeOp: TFL_Op<"shape", [NoSideEffect, NoQuantizableResult]> {
+def TFL_ShapeOp: TFL_Op<"shape", [NoSideEffect]> {
   let summary = "Shape operator";
 
   let description = [{
@@ -2034,7 +2034,8 @@ def TFL_SubOp : TFL_Op<"sub", [Broadcastable, NoSideEffect]> {
 
 // TODO(jpienaar): Expand the kernel implementation to support all types besides
 // I32 and F32.
-def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [Broadcastable, NoSideEffect]> {
+def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [
+    Broadcastable, NoSideEffect, NoQuantizableResult]> {
   let summary = "Squared difference operator";
 
   let description = [{

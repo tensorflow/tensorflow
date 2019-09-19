@@ -344,6 +344,7 @@ Status BaseGPUDevice::InitScratchBuffers() {
       if (scratch_.size() > i && scratch_[i]) continue;
       size_t scratch_buffer_size =
           Eigen::kGpuScratchSize + sizeof(unsigned int);
+      MEMDEBUG_CACHE_OP("ScratchBuffer");
       void* scratch_buffer = gpu_allocator_->AllocateRaw(
           Allocator::kAllocatorAlignment, scratch_buffer_size);
       if (scratch_buffer == nullptr) {
@@ -596,6 +597,8 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
     }
   }
   ScopedActivateExecutorContext scoped_activation{stream->parent()};
+  MEMDEBUG_CACHE_OP(op_kernel->name().c_str());
+  MEMDEBUG_CACHE_STEPID(context->step_id());
   op_kernel->Compute(context);
   if (context->status().ok()) {
     if (sync_every_op_) {
@@ -718,6 +721,8 @@ Status BaseGPUDevice::MaybeCopyTensorToGPU(
 Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
                                           const AllocatorAttributes alloc_attrs,
                                           Tensor* tensor) {
+  MEMDEBUG_CACHE_OP(
+      (pending_op_name != nullptr ? pending_op_name : "MakeTensorFromProto"));
   AllocatorAttributes attr;
   attr.set_on_host(true);
   attr.set_gpu_compatible(true);

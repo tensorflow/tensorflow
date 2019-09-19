@@ -326,9 +326,12 @@ void ModuleTranslation::convertGlobals() {
       cst = getLLVMConstant(type, op.value(), op.getLoc());
     }
 
-    auto *var = new llvm::GlobalVariable(*llvmModule, type, op.constant(),
-                                         llvm::GlobalValue::InternalLinkage,
-                                         cst, op.sym_name());
+    auto addrSpace = op.addr_space().getLimitedValue();
+    auto *var = new llvm::GlobalVariable(
+        *llvmModule, type, op.constant(), llvm::GlobalValue::InternalLinkage,
+        cst, op.sym_name(), /*InsertBefore=*/nullptr,
+        llvm::GlobalValue::NotThreadLocal, addrSpace);
+
     globalsMapping.try_emplace(op, var);
   }
 }

@@ -69,17 +69,17 @@ typedef struct {
 TFL_CAPI_EXPORT TfLiteGpuDelegateOptionsV2 TfLiteGpuDelegateOptionsV2Default();
 
 // Creates a new delegate instance that need to be destroyed with
-// TfLiteGpuDelegateDeleteV2 when delegate is no longer used by TFLite.
+// TfLiteGpuDelegateV2Delete when delegate is no longer used by TFLite.
 //
 // This delegate encapsulates multiple GPU-acceleration APIs under the hood to
 // make use of the fastest available on a device.
 //
 // When `options` is set to `nullptr`, then default options are used.
-TFL_CAPI_EXPORT TfLiteDelegate* TfLiteGpuDelegateCreateV2(
+TFL_CAPI_EXPORT TfLiteDelegate* TfLiteGpuDelegateV2Create(
     const TfLiteGpuDelegateOptionsV2* options);
 
-// Destroys a delegate created with `TfLiteGpuDelegateCreateV2` call.
-TFL_CAPI_EXPORT void TfLiteGpuDelegateDeleteV2(TfLiteDelegate* delegate);
+// Destroys a delegate created with `TfLiteGpuDelegateV2Create` call.
+TFL_CAPI_EXPORT void TfLiteGpuDelegateV2Delete(TfLiteDelegate* delegate);
 
 #ifdef __cplusplus
 }

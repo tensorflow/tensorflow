@@ -34,7 +34,7 @@ cp -r "${TFLITE_ROOT}/tools/pip_package/debian" \
       "${BUILD_ROOT}"
 cp "${TFLITE_ROOT}/python/interpreter.py" \
    "${BUILD_ROOT}/tflite_runtime"
-touch "${BUILD_ROOT}/tflite_runtime/__init__.py"
+echo "__version__ = '${TENSORFLOW_VERSION}'" > "${BUILD_ROOT}/tflite_runtime/__init__.py"
 
 # Build python wheel.
 cd "${BUILD_ROOT}"

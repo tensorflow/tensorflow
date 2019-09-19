@@ -439,9 +439,10 @@ def tf_proto_library(
         cc_grpc_version = None,
         j2objc_api_version = 1,
         js_codegen = "jspb",
-        make_default_target_header_only = False):
+        make_default_target_header_only = False,
+        exports = []):
     """Make a proto library, possibly depending on other proto libraries."""
-    _ignore = js_codegen
+    _ignore = (js_codegen, exports)
 
     tf_proto_library_cc(
         name = name,

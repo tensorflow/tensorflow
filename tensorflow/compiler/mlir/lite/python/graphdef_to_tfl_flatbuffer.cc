@@ -73,9 +73,6 @@ void WarningUnusedFlags(const toco::ModelFlags& model_flags,
   if (model_flags.change_concat_input_ranges()) {
     LOG(WARNING) << "Ignored change_concat_input_ranges.";
   }
-  if (toco_flags.post_training_quantize()) {
-    LOG(WARNING) << "Ignored post_training_quantize.";
-  }
   if (toco_flags.dump_graphviz_dir().empty()) {
     LOG(WARNING) << "Ignored dump_graphviz_dir.";
   }
@@ -147,10 +144,20 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
 
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
 
+  tflite::QuantizedBufferType quantized_type =
+      tflite::QuantizedBufferType::NONE;
+  if (toco_flags.post_training_quantize()) {
+    if (toco_flags.quantize_to_float16()) {
+      quantized_type = tflite::QuantizedBufferType::FLOAT16;
+    } else {
+      quantized_type = tflite::QuantizedBufferType::INT8;
+    }
+  }
+
   return ConvertTFExecutorToTFLOrFlatbuffer(
       module.get(), /*export_to_mlir=*/false, emit_builtin_tflite_ops,
       emit_select_tf_ops, emit_custom_ops, /*emit_quant_adaptor_ops=*/false,
-      /*lower_tensor_list_ops=*/true, result, &pm);
+      /*lower_tensor_list_ops=*/true, quantized_type, result, &pm);
 }
 
 }  // namespace tensorflow

@@ -42,7 +42,9 @@ def main(_):
         "tfdbg v2 support for debug_fibonacci is not implemented yet")
   elif FLAGS.tensorboard_debug_address:
     raise NotImplementedError(
-        "tfdbg v2 support for debug_fibonacci is not implemented yet")
+        "Tensorboard Debugger Plugin support for debug_fibonacci_v2 is not "
+        "implemented yet"
+    )
 
   # Construct the TensorFlow network.
   n0 = tf.constant(np.ones([FLAGS.tensor_size] * 2), dtype=tf.int32)

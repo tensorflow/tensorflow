@@ -1263,7 +1263,7 @@ sh_test(
 
 sh_test(
     name = "examples_v2_test",
-    size = "medium",
+    size = "small",
     srcs = ["examples/v2/examples_v2_test.sh"],
     data = [
         ":debug_fibonacci_v2",

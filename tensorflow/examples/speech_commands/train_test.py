@@ -132,26 +132,6 @@ class TrainTest(test.TestCase):
             os.path.join(train.FLAGS.train_dir,
                          train.FLAGS.model_architecture + '.ckpt-1.meta')))
 
-  @requires_contrib
-  @test_util.run_deprecated_v1
-  def testQuantizedTrain(self):
-    train.FLAGS = self._getDefaultFlags()
-    train.FLAGS.quantize = True
-    train.FLAGS.model_architecture = 'tiny_conv'
-    train.main('')
-    self.assertTrue(
-        gfile.Exists(
-            os.path.join(train.FLAGS.train_dir,
-                         train.FLAGS.model_architecture + '.pbtxt')))
-    self.assertTrue(
-        gfile.Exists(
-            os.path.join(train.FLAGS.train_dir,
-                         train.FLAGS.model_architecture + '_labels.txt')))
-    self.assertTrue(
-        gfile.Exists(
-            os.path.join(train.FLAGS.train_dir,
-                         train.FLAGS.model_architecture + '.ckpt-1.meta')))
-
 
 if __name__ == '__main__':
   test.main()
