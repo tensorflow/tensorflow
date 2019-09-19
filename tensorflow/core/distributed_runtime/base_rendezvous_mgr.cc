@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -70,16 +71,13 @@ void BaseRendezvousMgr::RecvLocalAsync(int64 step_id,
                                        const Rendezvous::ParsedKey& parsed,
                                        Rendezvous::DoneCallback done) {
   auto rendez = FindOrCreate(step_id);
-  using namespace std::placeholders;
-  Rendezvous::DoneCallback done_cb = std::bind(
-      [rendez](Rendezvous::DoneCallback done,
-               // Begin unbound arguments.
-               const Status& s, const Rendezvous::Args& send_args,
-               const Rendezvous::Args& recv_args, const Tensor& v, bool dead) {
-        rendez->Unref();
-        done(s, send_args, recv_args, v, dead);
-      },
-      std::move(done), _1, _2, _3, _4, _5);
+  auto done_cb = [rendez, done = std::move(done)](
+                     const Status& s, const Rendezvous::Args& send_args,
+                     const Rendezvous::Args& recv_args, const Tensor& v,
+                     bool dead) {
+    rendez->Unref();
+    done(s, send_args, recv_args, v, dead);
+  };
   rendez->RecvLocalAsync(parsed, std::move(done_cb));
 }
 
@@ -268,6 +266,10 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
     return;
   }
 
+  MEMDEBUG_CACHE_STEPID(0);
+  // Note that it would be nice to cache the step_id here, but it's not
+  // available.
+  MEMDEBUG_CACHE_OP("SameWorkerRecvDone");
   AllocatorAttributes attr = recv_args.alloc_attrs;
   attr.set_gpu_compatible(send_args.alloc_attrs.gpu_compatible() ||
                           recv_args.alloc_attrs.gpu_compatible());
@@ -315,6 +317,8 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
     return;
   }
 
+  MEMDEBUG_CACHE_OP("RecvAsync");
+  MEMDEBUG_CACHE_STEPID(0);
   // Are src and dst in the same worker?
   if (IsSameWorker(parsed.src, parsed.dst)) {
     // Recv the tensor from local_.
@@ -389,26 +393,53 @@ void BaseRemoteRendezvous::StartAbort(const Status& s) {
     mutex_lock l(mu_);
     if (status_.ok()) {
       status_ = derived_status;
-      for (BaseRecvTensorCall* call : active_) {
-        call->StartAbort(derived_status);
+      for (auto& entry : active_) {
+        entry.first->StartAbort(derived_status);
+        entry.second();
       }
       active_.clear();
     }
   }
 }
 
-void BaseRemoteRendezvous::RegisterCall(BaseRecvTensorCall* call) {
-  mutex_lock l(mu_);
-  if (!status_.ok()) {
-    call->StartAbort(status_);
-  } else {
-    CHECK(active_.insert(call).second);
+void BaseRemoteRendezvous::RegisterCall(BaseRecvTensorCall* call,
+                                        const Rendezvous::Args& args) {
+  CancellationManager* cm = args.cancellation_manager;
+  {
+    mutex_lock l(mu_);
+    if (!status_.ok()) {
+      call->StartAbort(status_);
+      return;
+    }
+    bool already_cancelled = false;
+    InactiveCallback callback = [] {};
+    if (cm != nullptr) {
+      auto token = cm->get_cancellation_token();
+      already_cancelled = !cm->RegisterCallback(token, [this, call] {
+        {
+          mutex_lock l(mu_);
+          if (active_.find(call) == active_.end()) return;
+          call->StartAbort(
+              errors::Cancelled("RecvFromRemoteAsync is cancelled."));
+        }
+      });
+      callback = [cm, token] { cm->TryDeregisterCallback(token); };
+    }
+    if (already_cancelled) {
+      call->StartAbort(errors::Cancelled("RecvFromRemoteAsync is cancelled."));
+    } else {
+      CHECK(active_.emplace(call, callback).second);
+    }
   }
 }
 
 void BaseRemoteRendezvous::DeregisterCall(BaseRecvTensorCall* call) {
   mutex_lock l(mu_);
-  active_.erase(call);
+  auto it = active_.find(call);
+  if (it != active_.end()) {
+    it->second();
+    active_.erase(it);
+  }
 }
 
 BaseRemoteRendezvous::DeferredCall::DeferredCall(const ParsedKey& parsed,

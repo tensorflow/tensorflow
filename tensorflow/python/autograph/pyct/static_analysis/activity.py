@@ -360,6 +360,7 @@ class ActivityAnalyzer(transformer.Base):
     assert not self._in_function_def_args
     self.state[_Lambda].enter()
     node = self.generic_visit(node)
+    anno.setanno(node, anno.Static.SCOPE, self.scope)
     self.state[_Lambda].exit()
     return node
 

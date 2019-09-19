@@ -123,11 +123,17 @@ Status GrpcServer::GetPort(int* port) const {
                                        " was not defined in job \"",
                                        server_def_.job_name(), "\"");
       }
-      auto colon_index = iter->second.find_last_of(':');
-      if (!strings::safe_strto32(iter->second.substr(colon_index + 1), port)) {
-        return errors::InvalidArgument(
-            "Could not parse port for local server from \"", iter->second,
-            "\".");
+
+      if (server_def_.port() != 0) {
+        *port = server_def_.port();
+      } else {
+        auto colon_index = iter->second.find_last_of(':');
+        if (!strings::safe_strto32(iter->second.substr(colon_index + 1),
+                                   port)) {
+          return errors::InvalidArgument(
+              "Could not parse port for local server from \"", iter->second,
+              "\".");
+        }
       }
       break;
     }
@@ -163,7 +169,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   std::vector<std::unique_ptr<Device>> devices;
   TF_RETURN_IF_ERROR(
       DeviceFactory::AddDevices(sess_opts, name_prefix, &devices));
-  worker_env_.device_mgr = new DeviceMgr(std::move(devices));
+  worker_env_.device_mgr = new StaticDeviceMgr(std::move(devices));
   master_env_.local_devices = worker_env_.device_mgr->ListDevices();
   worker_env_.local_devices = worker_env_.device_mgr->ListDevices();
   worker_env_.rendezvous_mgr = opts.rendezvous_mgr_func == nullptr
@@ -373,6 +379,13 @@ Status GrpcServer::Start() {
     default:
       LOG(FATAL);
   }
+}
+
+Status GrpcServer::AddMasterEagerContextToEagerService(
+    const tensorflow::uint64 context_id, tensorflow::EagerContext* context) {
+  auto* eager_service =
+      static_cast<eager::GrpcEagerServiceImpl*>(eager_service_);
+  return eager_service->CreateMasterContext(context_id, context);
 }
 
 Status GrpcServer::Stop() {

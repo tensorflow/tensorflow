@@ -74,7 +74,7 @@ def c_tfe_py_fastpath_execute(a,
   try:
     return pywrap_tensorflow.TFE_Py_FastPathExecute(
         ctx._handle, ctx.device_name, "MatMul", name,
-        ctx._post_execution_callbacks, a, b, "transpose_a", transpose_a,
+        ctx.op_callbacks, a, b, "transpose_a", transpose_a,
         "transpose_b", transpose_b)
   except core._NotOkStatusException as e:
     if name is not None:
@@ -144,12 +144,12 @@ def run_benchmark(func, num_iters, execution_mode=None):
     # call func to maybe warm up the GPU
     func()
     if execution_mode == context.ASYNC:
-      ctx.async_wait()
+      ctx.executor.wait()
     start = time.time()
     for _ in xrange(num_iters):
       func()
     if execution_mode == context.ASYNC:
-      ctx.async_wait()
+      ctx.executor.wait()
     end = time.time()
 
     return end - start
@@ -184,10 +184,10 @@ class MicroBenchmarks(test.Benchmark):
     ctx = context.context()
     if device == GPU:
       # Warmup the GPU
-      ops.EagerTensor(value, context=ctx, device=device)
+      ops.EagerTensor(value, device=device)
 
     def func():
-      ops.EagerTensor(value, context=ctx, device=device, dtype=dtype)
+      ops.EagerTensor(value, device=device, dtype=dtype)
 
     self._run(func, 30000)
 
@@ -1115,7 +1115,8 @@ class RemoteWorkerMicroBenchmarks(test.Benchmark):
         wall_time=mean_us,
         extras={"examples_per_sec": num_iters / total_time})
 
-  def benchmark_send_mirroring_off(self):
+  # TODO(b/136184459): Re-enabled once crash is fixed
+  def _DISABLED_benchmark_send_mirroring_off(self):
     remote.connect_to_remote_host(self._cached_server_target1)
 
     x = random_ops.random_uniform((2, 2)).cpu()
@@ -1135,7 +1136,8 @@ class RemoteWorkerMicroBenchmarks(test.Benchmark):
     # executed when their corresponding device and manager are still available.
     gc.collect()
 
-  def benchmark_send_mirroring_on(self):
+  # TODO(b/136184459): Re-enabled once crash is fixed
+  def _DISABLED_benchmark_send_mirroring_on(self):
     remote.connect_to_remote_host(self._cached_server_target1)
 
     x = random_ops.random_uniform((2, 2)).cpu()
@@ -1155,7 +1157,8 @@ class RemoteWorkerMicroBenchmarks(test.Benchmark):
     # executed when their corresponding device and manager are still available.
     gc.collect()
 
-  def benchmark_worker_mirroring_off(self):
+  # TODO(b/136184459): Re-enabled once crash is fixed
+  def _DISABLED_benchmark_worker_mirroring_off(self):
     remote.connect_to_remote_host(
         [self._cached_server_target1, self._cached_server_target2])
 
@@ -1177,7 +1180,8 @@ class RemoteWorkerMicroBenchmarks(test.Benchmark):
     # executed when their corresponding device and manager are still available.
     gc.collect()
 
-  def benchmark_worker_mirroring_on(self):
+  # TODO(b/136184459): Re-enabled once crash is fixed
+  def _DISABLED_benchmark_worker_mirroring_on(self):
     remote.connect_to_remote_host(
         [self._cached_server_target1, self._cached_server_target2])
 

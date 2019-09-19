@@ -31,14 +31,14 @@ class RegexFullMatchOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor* input_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("input", &input_tensor));
-    const auto& input_flat = input_tensor->flat<string>();
+    const auto& input_flat = input_tensor->flat<tstring>();
 
     const Tensor* pattern_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("pattern", &pattern_tensor));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(pattern_tensor->shape()),
                 errors::InvalidArgument("Pattern must be scalar, but received ",
                                         pattern_tensor->shape().DebugString()));
-    const string pattern = pattern_tensor->flat<string>()(0);
+    const string pattern = pattern_tensor->flat<tstring>()(0);
     const RE2 match(pattern);
     OP_REQUIRES(ctx, match.ok(),
                 errors::InvalidArgument("Invalid pattern: ", pattern,
@@ -71,7 +71,7 @@ class StaticRegexFullMatchOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor* input_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("input", &input_tensor));
-    const auto& input_flat = input_tensor->flat<string>();
+    const auto& input_flat = input_tensor->flat<tstring>();
 
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output("output", input_tensor->shape(),

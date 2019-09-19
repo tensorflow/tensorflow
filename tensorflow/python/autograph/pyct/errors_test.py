@@ -36,7 +36,7 @@ class ErrorMetadataBaseTest(test.TestCase):
         cause_metadata=None,
         cause_message='test message',
         source_map={})
-    exc = em.create_exception(CustomError)
+    exc = em.create_exception(CustomError())
     self.assertIsInstance(exc, CustomError)
     self.assertIn('test message', str(exc))
 
@@ -52,7 +52,7 @@ class ErrorMetadataBaseTest(test.TestCase):
         cause_metadata=None,
         cause_message='test message',
         source_map={})
-    exc = em.create_exception(CustomError)
+    exc = em.create_exception(CustomError())
     self.assertIsNone(exc)
 
   def test_get_message_when_frame_info_code_is_none(self):

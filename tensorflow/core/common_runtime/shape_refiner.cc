@@ -83,7 +83,15 @@ Status InferShapesForFunctionSubNode(const Node* node, ShapeRefiner* refiner,
           " not in [0, ", outer_context->num_inputs(), ").");
     }
 
-    node_context->set_output(0, outer_context->input(index));
+    // TODO(b/134547156): TEMPORARY WORKAROUND. If input shape handle is not set
+    // in outer context, set _Arg node output shape to unknown.
+    if (outer_context->input(index).SameHandle(ShapeHandle())) {
+      LOG(WARNING) << "Function instantiation has undefined input shape at "
+                   << "index: " << index << " in the outer inference context.";
+      node_context->set_output(0, node_context->UnknownShape());
+    } else {
+      node_context->set_output(0, outer_context->input(index));
+    }
 
     auto* resource = outer_context->input_handle_shapes_and_types(index);
     if (resource) {
@@ -553,6 +561,13 @@ Status ShapeRefiner::ConstantPartialShape(InferenceContext* target_context,
   } else if (src_op == "StridedSlice") {
     TF_RETURN_IF_ERROR(
         PartialStridedSliceShape(input_edge->src(), src_context, result));
+  } else if (src_op == "VariableShape") {
+    auto* handle_data = src_context->input_handle_shapes_and_types(0);
+    if (handle_data != nullptr && !handle_data->empty()) {
+      *result = handle_data->at(0).shape;
+    } else {
+      *result = target_context->UnknownShape();
+    }
   } else {
     Tensor t;
     bool evaluated = false;

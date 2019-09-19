@@ -4,9 +4,9 @@
 # Imported.
 
 # CHECK-LABEL: func @main()
-# CHECK:         %[[NEXTITERATION:[0-9]+]]:2 = "_tf.NextIteration.source"
-# CHECK:         "_tf.Merge"({{.*}}, %[[NEXTITERATION]]#0)
-# CHECK:         "_tf.Merge"({{.*}}, %[[NEXTITERATION]]#0)
+# CHECK:         %[[NEXTITERATION:[0-9]+]]:3 = tf_executor.NextIteration.Source
+# CHECK:         tf_executor.Merge {{.*}}, %[[NEXTITERATION]]#0
+# CHECK:         tf_executor.Merge {{.*}}, %[[NEXTITERATION]]#0
 
 node {
   name: "Const"

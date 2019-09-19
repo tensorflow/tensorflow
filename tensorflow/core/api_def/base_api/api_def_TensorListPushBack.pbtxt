@@ -1,6 +1,6 @@
 op {
   graph_op_name: "TensorListPushBack"
-  summary: "Returns a list list which has the passed-in `Tensor` as last element and the other elements of the given list in `input_handle`."
+  summary: "Returns a list which has the passed-in `Tensor` as last element and the other elements of the given list in `input_handle`."
   description: <<END
 tensor: The tensor to put on the list.
 input_handle: The old list.

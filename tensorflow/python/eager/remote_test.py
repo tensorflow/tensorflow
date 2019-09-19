@@ -18,6 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import random
+
+import numpy as np
+
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import remote
@@ -26,6 +30,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import server_lib
@@ -69,7 +75,9 @@ class SingleWorkerTest(test.TestCase):
 
     @def_function.function
     def remote_output(i):
-      return variable_b, i + variable_b
+      with ops.device('/job:worker/replica:0/task:0/cpu:0'):
+        c = variable_b + 1
+      return c, i + variable_b
 
     with self.assertRaises(errors.UnimplementedError) as cm:
       remote_output(constant_op.constant([1]))
@@ -87,11 +95,49 @@ class SingleWorkerTest(test.TestCase):
 
     with self.assertRaises(errors.InvalidArgumentError) as cm:
       with ops.device('/job:worker/replica:0/task:0/cpu:0'):
-        self.assertAllEqual(
-            ambiguous_device(constant_op.constant([2])).numpy(), [3])
+        ambiguous_device(constant_op.constant([2])).numpy()
 
     self.assertIn('the output node must match exactly one device',
                   cm.exception.message)
+
+  def testStreaming(self):
+    """A mini stress test for streaming - issuing many RPCs back to back."""
+    with ops.device('job:worker/replica:0/task:0/device:CPU:0'):
+      x = array_ops.ones([2, 2])
+      y = array_ops.zeros([2, 2])
+      num_iters = 200
+      for _ in range(num_iters):
+        y = x + y
+        # Ask for y's shape after every 10 additions on average.
+        # This exercises waiting for remote shape logic in TensorHandle.
+        if random.randint(1, 10) == 1:
+          _ = y.shape
+    np.testing.assert_array_equal(
+        [[num_iters, num_iters], [num_iters, num_iters]], y.numpy())
+
+  def testShapeError_OpByOp(self):
+    with ops.device('job:worker/replica:0/task:0/device:CPU:0'):
+      x = array_ops.ones([2, 3])
+      y = array_ops.zeros([2, 2])
+      with self.assertRaises(errors.InvalidArgumentError) as cm:
+        math_ops.matmul(x, y)
+
+    self.assertIn('Dimensions must be equal', cm.exception.message)
+
+  def testShapeError_Function(self):
+
+    @def_function.function
+    def matmul_func(x, y):
+      return math_ops.matmul(x, y)
+
+    x = array_ops.ones([2, 3])
+    y = array_ops.zeros([2, 2])
+
+    with ops.device('job:worker/replica:0/task:0/device:CPU:0'):
+      with self.assertRaises(ValueError) as cm:
+        matmul_func(x, y)
+
+    self.assertIn('Dimensions must be equal', cm.exception.message)
 
 
 class MultiWorkersTest(test.TestCase):

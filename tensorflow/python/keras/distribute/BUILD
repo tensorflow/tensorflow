@@ -2,7 +2,7 @@
 #   keras/distribute package is intended to serve as the centralized place for things
 #   related to dist-strat used by Keras..
 
-load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
+load("//tensorflow/core/platform:default/distribute.bzl", "distribute_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
@@ -98,11 +98,26 @@ py_library(
 )
 
 distribute_py_test(
+    name = "keras_premade_models_test",
+    srcs = ["keras_premade_models_test.py"],
+    full_precision = True,
+    main = "keras_premade_models_test.py",
+    shard_count = 4,
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        ":distribute_strategy_test_lib",
+        ":keras_correctness_test_lib",
+    ],
+)
+
+distribute_py_test(
     name = "distribute_strategy_test",
     srcs = ["distribute_strategy_test.py"],
     full_precision = True,
     main = "distribute_strategy_test.py",
-    shard_count = 5,
+    shard_count = 8,
     tags = [
         "multi_and_single_gpu",
         "no_rocm",  # times out on ROCm
@@ -168,8 +183,6 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
-        # TODO(b/134764123): Re-enable this test.
-        "notap",
         "notsan",
     ],
     deps = [
@@ -208,6 +221,7 @@ distribute_py_test(
         "no_windows_gpu",
         "notsan",
     ],
+    xla_enable_strict_auto_jit = False,  # Tensorflow also fails.
     deps = [
         ":keras_correctness_test_lib",
     ],
@@ -334,6 +348,7 @@ cuda_py_test(
     shard_count = 32,
     tags = [
         "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
+        "nomsan",  # b/140958724
         # TODO(b/123307453): Add "multi_and_single_gpu",
     ],
     xla_enable_strict_auto_jit = True,
@@ -382,6 +397,7 @@ cuda_py_test(
     # TODO(b/132384649): Enable once fixed.
     tags = [
         "no_oss",
+        "nomsan",  # b/140958724
     ],
     xla_enable_strict_auto_jit = True,
 )
@@ -399,7 +415,11 @@ cuda_py_test(
         "//tensorflow/python/keras",
     ],
     tags = [
+        "manual",  # b/139844866
         "multi_and_single_gpu",
+        "no_oss",
+        "nomsan",  # b/140958724
+        "notap",
     ],
     xla_enable_strict_auto_jit = True,
 )

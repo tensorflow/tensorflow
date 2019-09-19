@@ -126,6 +126,13 @@ config_setting(
 )
 
 config_setting(
+    name = "ios_arm64e",
+    values = {
+        "cpu": "ios_arm64e",
+    },
+)
+
+config_setting(
     name = "k8",
     values = {
         "cpu": "k8",
@@ -167,6 +174,16 @@ config_setting(
     },
 )
 
+config_setting(
+    name = "raspberry_pi_with_neon",
+    define_values = {
+        "raspberry_pi_with_neon": "true",
+    },
+    values = {
+        "cpu": "armeabi",
+    },
+)
+
 cc_library(
     name = "common",
     srcs = [],
@@ -194,6 +211,7 @@ cc_library(
         "optimized/integer_ops/depthwise_conv.h",
         "optimized/integer_ops/depthwise_conv_3x3_filter.h",
         "optimized/integer_ops/fully_connected.h",
+        "optimized/integer_ops/mean.h",
         "optimized/integer_ops/mul.h",
         "optimized/integer_ops/pooling.h",
         "optimized/integer_ops/softmax.h",
@@ -347,9 +365,15 @@ cc_library(
     name = "reference_base",
     srcs = [],
     hdrs = [
+        "reference/add.h",
+        "reference/arg_min_max.h",
+        "reference/binary_function.h",
+        "reference/ceil.h",
+        "reference/comparisons.h",
         "reference/conv.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
+        "reference/floor.h",
         "reference/fully_connected.h",
         "reference/integer_ops/add.h",
         "reference/integer_ops/conv.h",
@@ -364,11 +388,18 @@ cc_library(
         "reference/integer_ops/pooling.h",
         "reference/integer_ops/softmax.h",
         "reference/integer_ops/tanh.h",
+        "reference/logistic.h",
+        "reference/maximum_minimum.h",
+        "reference/neg.h",
+        "reference/non_max_suppression.h",
         "reference/pooling.h",
         "reference/prelu.h",
+        "reference/process_broadcast_shapes.h",
         "reference/reference_ops.h",
+        "reference/round.h",
         "reference/softmax.h",
         "reference/strided_slice.h",
+        "reference/svdf.h",
     ],
     deps = [
         ":common",
@@ -377,6 +408,7 @@ cc_library(
         ":round",
         ":strided_slice_logic",
         ":tensor",
+        ":tensor_utils",
         ":types",
         "@gemmlowp//:fixedpoint",
         "@gemmlowp//:profiler",
@@ -400,14 +432,25 @@ cc_library(
     name = "legacy_reference_base",
     srcs = [],
     hdrs = [
+        "reference/add.h",
+        "reference/arg_min_max.h",
+        "reference/binary_function.h",
+        "reference/ceil.h",
+        "reference/comparisons.h",
         "reference/conv.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
+        "reference/floor.h",
         "reference/fully_connected.h",
         "reference/legacy_reference_ops.h",
+        "reference/logistic.h",
+        "reference/maximum_minimum.h",
+        "reference/neg.h",
         "reference/pooling.h",
         "reference/prelu.h",
+        "reference/process_broadcast_shapes.h",
         "reference/reference_ops.h",
+        "reference/round.h",
         "reference/softmax.h",
         "reference/strided_slice.h",
     ],
@@ -474,6 +517,7 @@ cc_library(
         "reference/portable_tensor_utils_impl.h",
     ],
     deps = [
+        ":common",
         ":compatibility",
         ":round",
         ":types",
@@ -501,7 +545,7 @@ cc_library(
         ":round",
         ":types",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/experimental/ruy:detect_dotprod",
+        "//tensorflow/lite/experimental/ruy:detect_arm",
         "//tensorflow/lite/kernels:activation_functor",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:op_macros",
@@ -575,7 +619,6 @@ cc_library(
         ":cpu_check",
         ":types",
         "//tensorflow/lite/c:c_api_internal",
-        "@arm_neon_2_x86_sse",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:op_macros",
         "@gemmlowp//:fixedpoint",
@@ -602,6 +645,12 @@ cc_library(
             ":neon_tensor_utils",
         ],
         ":ios_arm64": [
+            ":neon_tensor_utils",
+        ],
+        ":ios_arm64e": [
+            ":neon_tensor_utils",
+        ],
+        ":raspberry_pi_with_neon": [
             ":neon_tensor_utils",
         ],
         ":ios_x86_64": [
@@ -757,6 +806,19 @@ cc_test(
 )
 
 cc_test(
+    name = "strided_slice_logic_test",
+    timeout = "moderate",
+    srcs = [
+        "strided_slice_logic_test.cc",
+    ],
+    shard_count = 4,
+    deps = [
+        ":strided_slice_logic",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "logsoftmax_quantized_test",
     timeout = "long",
     srcs = [
@@ -854,6 +916,16 @@ cc_test(
     srcs = ["batch_to_space_nd_test.cc"],
     deps = [
         ":optimized_base",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "non_max_suppression_test",
+    srcs = ["non_max_suppression_test.cc"],
+    deps = [
+        ":reference_base",
+        "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -25,6 +25,7 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
@@ -100,8 +101,8 @@ class TensorHandle : public core::RefCounted {
 #if !defined(IS_MOBILE_PLATFORM)
   static Status CreateRemoteHandle(int64 op_id, int output_num,
                                    const TensorShape& shape,
-                                   eager::EagerClient* eager_client,
-                                   uint64 context_id, DataType dtype, Device* d,
+                                   const string& remote_task, uint64 context_id,
+                                   DataType dtype, Device* d,
                                    Device* resource_device, EagerContext* ctx,
                                    TensorHandle** h);
   static Status CreateRemoteHandle(std::unique_ptr<RemoteTensorHandleData> t,
@@ -109,7 +110,7 @@ class TensorHandle : public core::RefCounted {
                                    Device* resource_device, EagerContext* ctx,
                                    TensorHandle** h);
   static Status CreateUnshapedRemoteHandle(int64 op_id, int32 output_num,
-                                           eager::EagerClient* eager_client,
+                                           const string& remote_task,
                                            uint64 context_id, DataType dtype,
                                            Device* device, EagerContext* ctx,
                                            TensorHandle** h);
@@ -134,7 +135,6 @@ class TensorHandle : public core::RefCounted {
   Device* DeviceOrHostCPU(EagerContext* ctx) const;
 
   Status Shape(tensorflow::TensorShape* shape);
-
   Status NumDims(int* num_dims);
   Status Dim(int dim_index, int64* dim);
   Status NumElements(int64* num_elements);
@@ -148,6 +148,11 @@ class TensorHandle : public core::RefCounted {
 
   // Return the op_id and output num if the handle refers to a remote tensor.
   Status RemoteAddress(Device* d, int64* op_id, int32* output_num) const;
+
+  // Set remote_op_id_ and remote_output_num_ if the handle refers to a local
+  // tensor that needs to be copied to remote workers.
+  void SetRemoteOpIdAndOutputNumToLocalTensorHandle(const int64 op_id,
+                                                    const int32 output_num);
 
   // Called on an async remote tensor once it's shape has been determined. This
   // transitions the tensor handle from a non-ready to a ready state by
@@ -172,6 +177,14 @@ class TensorHandle : public core::RefCounted {
 
   Status CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
                       tensorflow::Tensor* output);
+
+  Status InferenceShape(
+      shape_inference::InferenceContext* const inference_context,
+      shape_inference::ShapeHandle* shape_handle);
+  void SetInferenceShape(
+      shape_inference::InferenceContext* const inference_context,
+      const shape_inference::ShapeHandle& shape_handle);
+  Status CopyInferenceShape(TensorHandle* other);
 
   // Warning: can return nullptr for CPU tensors.
   // TODO(b/136608821): Move away from nullptr
@@ -238,9 +251,9 @@ class TensorHandle : public core::RefCounted {
       remote_mirrors_ GUARDED_BY(remote_mirrors_mutex_);
 
   // IDs required when this class is representing a remote tensor handle.
-  const int64 remote_op_id_;
-  const int32 remote_output_num_;
-  eager::EagerClient* remote_eager_client_;
+  int64 remote_op_id_;
+  int32 remote_output_num_;
+  string remote_task_;
   uint64 remote_context_id_;
 #endif
 
@@ -274,6 +287,9 @@ class TensorHandle : public core::RefCounted {
   // Does not need synchronization because it can be accessed only after
   // WaitReady() has returned. At that point, tensor_handle_data_ is immutable.
   std::unique_ptr<TensorHandleData> tensor_handle_data_;
+
+  int inference_num_dims_ = shape_inference::InferenceContext::kUnknownRank;
+  gtl::InlinedVector<int64, 4> inference_dims_;
 };
 
 // Returns the device backing the resource. Else, returns nullptr.

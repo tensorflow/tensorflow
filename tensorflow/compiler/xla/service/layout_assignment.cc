@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
+#include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
@@ -619,8 +620,9 @@ Status LayoutAssignment::AddMandatoryConstraints(
         TF_RET_CHECK(instruction->branch_computation(j)->num_parameters() == 1);
         ComputationLayout& branch_computation_layout =
             FindOrDie(computation_layouts_, instruction->branch_computation(k));
-        if (branch_computation_layout.result_layout() !=
-            best_branch_computation_layout.result_layout()) {
+        if (!branch_computation_layout.result_layout().MatchesLayoutInShape(
+                best_branch_computation_layout.result_layout().shape(),
+                /*minor_to_major_only=*/true)) {
           computation_layouts_.erase(instruction->branch_computation(k));
           InsertOrDie(&conditional_mismatch_,
                       instruction->branch_computation(k),
@@ -715,8 +717,10 @@ Status CheckConditionalLayout(
     absl::Span<const ComputationLayout> branch_computation_layouts) {
   for (int j = 0; j < instruction->branch_count(); ++j) {
     const HloInstruction* branch_operand = instruction->operand(j + 1);
-    TF_RET_CHECK(branch_computation_layouts[0].result_layout() ==
-                 branch_computation_layouts[j].result_layout());
+    TF_RET_CHECK(
+        branch_computation_layouts[0].result_layout().MatchesLayoutInShape(
+            branch_computation_layouts[j].result_layout().shape(),
+            /*minor_to_major_only=*/true));
     TF_RET_CHECK(
         branch_computation_layouts[j].result_layout().MatchesLayoutInShape(
             instruction->shape(), /*minor_to_major_only=*/true));
@@ -852,6 +856,30 @@ Status LayoutAssignment::CopyOperandIfLayoutsDiffer(
   }
   VLOG(4) << "Operand " << operand->ToString() << " layout does not match "
           << operand_layout.ToString() << " in " << instruction->ToString();
+
+  // If the operand is only used by a conditional, do the copy inside the branch
+  // to avoid overhead for other branches.
+  if (instruction->opcode() == HloOpcode::kConditional && operand_no > 0 &&
+      instruction->operand(operand_no)->user_count() == 1) {
+    auto branch_comp = instruction->branch_computation(operand_no - 1);
+    auto param = branch_comp->parameter_instruction(0);
+    *param->mutable_shape() = operand->shape();
+    auto param_users = param->users();
+    TF_ASSIGN_OR_RETURN(HloInstruction * param_copy,
+                        CreateCopyWithNewLayout(operand_layout.shape(), param));
+    for (auto user : param_users) {
+      TF_RETURN_IF_ERROR(param->ReplaceUseWithDifferentShape(user, param_copy));
+    }
+    VLOG(4) << "New copy of " << operand->ToString() << " is "
+            << param_copy->ToString();
+    if (param == branch_comp->root_instruction()) {
+      branch_comp->set_root_instruction(param_copy,
+                                        /*accept_different_shape=*/true);
+    }
+    *FindOrDie(computation_layouts_, branch_comp).mutable_parameter_layout(0) =
+        ShapeLayout(operand->shape());
+    return Status::OK();
+  }
 
   TF_ASSIGN_OR_RETURN(HloInstruction * operand_copy,
                       CreateCopyWithNewLayout(operand_layout.shape(), operand));
@@ -1937,6 +1965,41 @@ Status LayoutAssignment::ConstrainChannelLayouts(
   return Status::OK();
 }
 
+Status LayoutAssignment::PropagateMemorySpace(HloModule* module) {
+  TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(module));
+  for (auto buffer : alias_analysis->buffers()) {
+    // First go through values to collect the memory spaces.
+    int64 buffer_memory_space = Layout::kDefaultMemorySpace;
+    for (auto value : buffer.values()) {
+      const Shape& defining_shape = value->defining_position().shape();
+      int64 memory_space = defining_shape.layout().memory_space();
+      if (memory_space != Layout::kDefaultMemorySpace) {
+        if (buffer_memory_space != Layout::kDefaultMemorySpace &&
+            memory_space != buffer_memory_space) {
+          return InternalError(
+              "Buffer %d (%s) has conflicting memory spaces: %d and %d.",
+              buffer.id(), value->ToShortString(), buffer_memory_space,
+              memory_space);
+        }
+        buffer_memory_space = memory_space;
+      }
+    }
+
+    // If we encounter a memory space other than the default, then propagate all
+    // the positions with the buffer's memory space.
+    if (buffer_memory_space != Layout::kDefaultMemorySpace) {
+      for (auto value : buffer.values()) {
+        for (auto& position : value->positions()) {
+          Shape* shape = ShapeUtil::GetMutableSubshape(
+              position.instruction->mutable_shape(), position.index);
+          shape->mutable_layout()->set_memory_space(buffer_memory_space);
+        }
+      }
+    }
+  }
+  return Status::OK();
+}
+
 Status LayoutAssignment::PropagateComputationLayouts(
     HloComputation* computation, ComputationLayout* computation_layout) {
   ComputationLayout computed_computation_layout(
@@ -2049,6 +2112,9 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
   }
   TF_RETURN_IF_ERROR(PropagateComputationLayouts(module->entry_computation(),
                                                  entry_computation_layout_));
+
+  TF_RETURN_IF_ERROR(PropagateMemorySpace(module));
+
   TF_RETURN_IF_ERROR(CheckLayouts(module));
 
   // All layouts are reset then reassigned by this pass.
@@ -2123,6 +2189,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kCholesky:
     case HloOpcode::kTupleSelect:
     case HloOpcode::kWhile:
+    case HloOpcode::kSetDimensionSize:
       return false;
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kBatchNormInference:

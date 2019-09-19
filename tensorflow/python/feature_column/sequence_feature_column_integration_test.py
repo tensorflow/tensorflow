@@ -26,6 +26,7 @@ from google.protobuf import text_format
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.feature_column import dense_features
 from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.feature_column import sequence_feature_column as sfc
 from tensorflow.python.keras.layers import recurrent
@@ -87,12 +88,12 @@ class SequenceFeatureColumnIntegrationTest(test.TestCase):
     ds = ds.batch(20)
 
     # Test on a single batch
-    features = ds.make_one_shot_iterator().get_next()
+    features = dataset_ops.make_one_shot_iterator(ds).get_next()
 
     # Tile the context features across the sequence features
     sequence_input_layer = sfc.SequenceFeatures(seq_cols)
     seq_layer, _ = sequence_input_layer(features)
-    input_layer = fc.DenseFeatures(ctx_cols)
+    input_layer = dense_features.DenseFeatures(ctx_cols)
     ctx_layer = input_layer(features)
     input_layer = sfc.concatenate_context_input(ctx_layer, seq_layer)
 

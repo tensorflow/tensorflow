@@ -1,0 +1,44 @@
+op {
+  name: "SparseSplit"
+  input_arg {
+    name: "split_dim"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "shape"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_indices"
+    type: DT_INT64
+    number_attr: "num_split"
+  }
+  output_arg {
+    name: "output_values"
+    type_attr: "T"
+    number_attr: "num_split"
+  }
+  output_arg {
+    name: "output_shape"
+    type: DT_INT64
+    number_attr: "num_split"
+  }
+  attr {
+    name: "num_split"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}

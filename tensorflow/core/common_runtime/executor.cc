@@ -1010,7 +1010,9 @@ class ExecutorState {
     explicit FrameState(const ExecutorImpl* impl, int parallel_iters)
         : executor(impl),
           max_parallel_iterations(parallel_iters),
-          num_outstanding_iterations(1) {}
+          num_outstanding_iterations(1),
+          iterations(parallel_iters + 1),
+          iterations_raw(iterations.data()) {}
 
     // A new frame is created for each loop. Execution starts at iteration 0.
     // When a value at iteration 0 passes through a NextIteration node,
@@ -1072,9 +1074,13 @@ class ExecutorState {
     // The number of outstanding iterations.
     int num_outstanding_iterations GUARDED_BY(mu) = 1;
 
+   private:
     // The active iteration states of this frame.
     gtl::InlinedVector<IterationState*, 12> iterations;
+    IterationState** const iterations_raw GUARDED_BY(mu);
+    IterationState* iterations_first GUARDED_BY(mu);
 
+   public:
     // The NextIteration nodes to enter a new iteration. If the number of
     // outstanding iterations reaches the limit, we will defer the start of
     // the next iteration until the number of outstanding iterations falls
@@ -1086,7 +1092,7 @@ class ExecutorState {
     // we make it available to all active iterations. When the frame starts
     // a new iteration, we make all the current loop invariants available
     // to the new iteration.
-    std::vector<std::pair<const Node*, Entry>> inv_values GUARDED_BY(mu);
+    std::vector<std::pair<const NodeItem*, Entry>> inv_values GUARDED_BY(mu);
 
     // The list of dead exit nodes for the current highest iteration. We
     // will only "execute" the dead exits of the final iteration.
@@ -1113,15 +1119,22 @@ class ExecutorState {
 
     inline IterationState* GetIteration(int64 iter)
         EXCLUSIVE_LOCKS_REQUIRED(mu) {
-      size_t index = iter % iterations.size();
-      return iterations[index];
+      if (TF_PREDICT_TRUE(iter == 0)) {
+        return iterations_first;
+      } else {
+        size_t index = iter % (max_parallel_iterations + 1);
+        return iterations_raw[index];
+      }
     }
 
     inline void SetIteration(int64 iter, IterationState* state)
         EXCLUSIVE_LOCKS_REQUIRED(mu) {
-      size_t index = iter % iterations.size();
+      size_t index = iter % (max_parallel_iterations + 1);
       DCHECK(state == nullptr || iterations[index] == nullptr);
-      iterations[index] = state;
+      iterations_raw[index] = state;
+      if (index == 0) {
+        iterations_first = state;
+      }
     }
 
     // Decrement the outstanding op count and clean up the iterations in the
@@ -1168,7 +1181,7 @@ class ExecutorState {
 
     // Add a new loop invariant and make it available to all active
     // iterations.
-    void AddLoopInv(const NodeItem* item, const Entry& value,
+    void AddLoopInv(const NodeItem* item, const Entry& entry,
                     TaggedNodeSeq* ready) EXCLUSIVE_LOCKS_REQUIRED(mu);
 
     // Activate the successors of a node. Contents of *outputs are left in an
@@ -1181,6 +1194,16 @@ class ExecutorState {
     bool CleanupIterations(const GraphView* gview, int64 iter,
                            TaggedNodeSeq* ready) EXCLUSIVE_LOCKS_REQUIRED(mu);
 
+    void DumpIterationState(ExecutorState* parent) {
+      mutex_lock l(mu);
+      for (IterationState* iteration : iterations) {
+        if (iteration) {
+          LOG(WARNING) << "  Iteration:";
+          parent->DumpIterationState(this, iteration);
+        }
+      }
+    }
+
     ~FrameState() {
       for (size_t i = 0; i < iterations.size(); ++i) {
         delete iterations[i];
@@ -1191,18 +1214,17 @@ class ExecutorState {
 
   // A tagged node: <frame*, iter, node*>.
   struct TaggedNode {
-    const Node* node = nullptr;
+    const NodeItem* node_item;
     FrameState* input_frame = nullptr;
     int64 input_iter = -1;
     bool is_dead = false;
 
-    TaggedNode(const Node* t_node, FrameState* in_frame, int64 in_iter,
-               bool dead) {
-      node = t_node;
-      input_frame = in_frame;
-      input_iter = in_iter;
-      is_dead = dead;
-    }
+    TaggedNode(const NodeItem* node_item, FrameState* in_frame, int64 in_iter,
+               bool dead)
+        : node_item(node_item),
+          input_frame(in_frame),
+          input_iter(in_iter),
+          is_dead(dead) {}
   };
 
   // A drop-in replacement for std::deque<TaggedNode>.  We typically don't
@@ -1419,9 +1441,9 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
   root_frame_->InitializeFrameInfo(root_frame_->frame_name);
 
   // Initialize iteration 0.
-  root_frame_->iterations.resize(root_frame_->max_parallel_iterations);
-  root_frame_->iterations[0] = new IterationState(
-      root_frame_->pending_counts, root_frame_->total_input_tensors);
+  root_frame_->SetIteration(
+      0, new IterationState(root_frame_->pending_counts,
+                            root_frame_->total_input_tensors));
 
   outstanding_frames_.insert({root_frame_->frame_name, root_frame_});
 }
@@ -1535,14 +1557,18 @@ void ExecutorState::RunAsync(Executor::DoneCallback done) {
   // Initialize the ready queue.
   for (const Node* n : impl_->root_nodes_) {
     DCHECK_EQ(n->in_edges().size(), 0);
-    ready.push_back(TaggedNode{n, root_frame_, 0, false});
+    ready.push_back(
+        TaggedNode{impl_->gview_.node(n->id()), root_frame_, 0, false});
   }
   if (ready.empty()) {
     delete this;
     done(Status::OK());
   } else {
     num_outstanding_ops_ = ready.size();
-    root_frame_->iterations[0]->outstanding_ops = ready.size();
+    {
+      mutex_lock l(root_frame_->mu);
+      root_frame_->GetIteration(0)->outstanding_ops = ready.size();
+    }
     done_cb_ = std::move(done);
     // Schedule to run all the ready ops in thread pool.
     ScheduleReady(ready, nullptr);
@@ -1618,7 +1644,6 @@ bool MightTrace(const NodeItem& item,
 
 void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   WithContext wc(context_);
-  const GraphView& gview = impl_->gview_;
   TaggedNodeSeq ready;
   TaggedNodeReadyQueue inline_ready;
 
@@ -1684,11 +1709,11 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   while (!inline_ready.empty()) {
     tagged_node = inline_ready.front();
     inline_ready.pop_front();
-    const Node* node = tagged_node.node;
+    const NodeItem& item = *tagged_node.node_item;
     FrameState* input_frame = tagged_node.input_frame;
     const int64 input_iter = tagged_node.input_iter;
+    const Node* node = item.node;
     const int id = node->id();
-    const NodeItem& item = *gview.node(id);
 
     // TODO(misard) Replace with a finer-grain enabling flag once we
     // add better optional debugging support.
@@ -1788,7 +1813,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
           }
           FrameState* input_frame = state->tagged_node.input_frame;
           const int64 input_iter = state->tagged_node.input_iter;
-          const int id = state->tagged_node.node->id();
+          const int id = state->item->node->id();
           MaybeMarkCompleted(input_frame, input_iter, id);
           TaggedNodeSeq ready;
           if (s.ok()) {
@@ -1813,10 +1838,13 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         {
           profiler::TraceMe activity(
               [&] {
+                int64 id = step_id_;
+                if (step_container_ && step_container_->step_id()) {
+                  id = step_container_->step_id();
+                }
                 return strings::StrCat(
                     op_kernel->name(), ":", op_kernel->type_string(),
-                    "#id=", step_container_ ? step_container_->step_id() : 0,
-                    ",device=", device->name(), ",async=true#");
+                    "#id=", id, ",device=", device->name(), ",async=true#");
               },
               profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
           device->ComputeAsync(async, &state->ctx, done);
@@ -1828,9 +1856,12 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
 
         if (TF_PREDICT_FALSE(MightTrace(item, event_collector_))) {
           const string& op_name = op_kernel->name();
+          int64 id = step_id_;
+          if (step_container_ && step_container_->step_id()) {
+            id = step_container_->step_id();
+          }
           const string kernel_label = strings::StrCat(
-              op_name, ":", op_kernel->type_string(),
-              "#id=", step_container_ ? step_container_->step_id() : 0,
+              op_name, ":", op_kernel->type_string(), "#id=", id,
               ",device=", device->name(), ",async=false#");
           tracing::ScopedRegion region(tracing::EventCategory::kCompute,
                                        op_name);
@@ -2109,7 +2140,7 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
       },
       profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
 
-  const Node* node = tagged_node.node;
+  const Node* node = item->node;
   FrameState* input_frame = tagged_node.input_frame;
   const int64 input_iter = tagged_node.input_iter;
   const bool is_dead = tagged_node.is_dead;
@@ -2133,7 +2164,6 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
     FindOrCreateChildFrame(input_frame, input_iter, node, &output_frame);
     output_iter = 0;
     {
-      const NodeItem* item = impl_->gview_.node(node->id());
       mutex_lock l(output_frame->mu);
       if (item->is_constant_enter) {
         // Propagate to all active iterations if this is a loop invariant.
@@ -2292,10 +2322,9 @@ void ExecutorState::ScheduleReady(const TaggedNodeSeq& ready,
     return;
   }
 
-  const GraphView& gview = impl_->gview_;
   const TaggedNode* curr_expensive_node = nullptr;
   for (auto& tagged_node : ready) {
-    const NodeItem& item = *gview.node(tagged_node.node->id());
+    const NodeItem& item = *tagged_node.node_item;
     if (tagged_node.is_dead || !item.kernel->IsExpensive()) {
       // Inline this inexpensive node.
       inline_ready->push_back(tagged_node);
@@ -2311,7 +2340,6 @@ void ExecutorState::ScheduleReady(const TaggedNodeSeq& ready,
   }
   if (curr_expensive_node) {
     if (inline_ready->empty()) {
-      // Tail recursion optimization
       inline_ready->push_back(*curr_expensive_node);
     } else {
       // There are inline nodes to run already. We dispatch this expensive
@@ -2443,11 +2471,7 @@ void ExecutorState::DumpState() {
     for (auto& frame : outstanding_frames_) {
       LOG(WARNING) << frame.first;
       FrameState* frame_state = frame.second;
-      mutex_lock frame_lock(frame_state->mu);
-      for (IterationState* iteration : frame_state->iterations) {
-        LOG(WARNING) << "  Iteration:";
-        DumpIterationState(frame_state, iteration);
-      }
+      frame_state->DumpIterationState(this);
     }
     dumped_on_error_ = true;
   }
@@ -2548,9 +2572,9 @@ void ExecutorState::FindOrCreateChildFrame(FrameState* frame, int64 iter,
                                            const Node* node,
                                            FrameState** child) {
   // Get the child frame name.
-  string enter_name;
-  Status s = GetNodeAttr(node->attrs(), "frame_name", &enter_name);
-  DCHECK(s.ok()) << s;
+  const string& enter_name = GetNodeAttrString(node->attrs(), "frame_name");
+  DCHECK(!enter_name.empty())
+      << "Could not find \"frame_name\" attr in node " << node->name();
   const string child_name = MakeFrameName(frame, iter, enter_name);
 
   {
@@ -2567,8 +2591,10 @@ void ExecutorState::FindOrCreateChildFrame(FrameState* frame, int64 iter,
   if (vlog_) VLOG(2) << "Create frame: " << child_name;
 
   int parallel_iters;
-  s = GetNodeAttr(node->attrs(), "parallel_iterations", &parallel_iters);
-  DCHECK(s.ok()) << s;
+  bool found_parallel_iters =
+      TryGetNodeAttr(node->attrs(), "parallel_iterations", &parallel_iters);
+  DCHECK(found_parallel_iters)
+      << "Could not find \"parallel_iterations\" attr in node " << node->name();
   FrameState* temp = new FrameState(impl_, parallel_iters);
   temp->frame_name = child_name;
   temp->frame_id = Hash64(child_name);
@@ -2576,11 +2602,12 @@ void ExecutorState::FindOrCreateChildFrame(FrameState* frame, int64 iter,
   temp->parent_iter = iter;
   temp->InitializeFrameInfo(enter_name);
 
-  // 'iterations' is a fixed-length circular buffer.
-  temp->iterations.resize(temp->max_parallel_iterations + 1);
   // Initialize iteration 0.
-  temp->iterations[0] =
-      new IterationState(temp->pending_counts, temp->total_input_tensors);
+  {
+    mutex_lock l(temp->mu);
+    temp->SetIteration(
+        0, new IterationState(temp->pending_counts, temp->total_input_tensors));
+  }
 
   {
     mutex_lock executor_lock(mu_);
@@ -2611,8 +2638,8 @@ void ExecutorState::DeleteFrame(FrameState* frame, TaggedNodeSeq* ready) {
       for (const Edge* e : node->out_edges()) {
         const Node* dst_node = e->dst();
 
-        const auto dst_pending_id =
-            impl_->gview_.node(dst_node->id())->pending_id;
+        const NodeItem& dst_item = *impl_->gview_.node(dst_node->id());
+        const auto dst_pending_id = dst_item.pending_id;
 
         // TODO(yuanbyu): We don't need this if we require the subgraph
         // given to an executor not to contain a sink node.
@@ -2642,7 +2669,7 @@ void ExecutorState::DeleteFrame(FrameState* frame, TaggedNodeSeq* ready) {
         }
         if (dst_ready) {
           if (IsControlTrigger(dst_node)) dst_dead = false;
-          ready->emplace_back(dst_node, parent_frame, parent_iter, dst_dead);
+          ready->emplace_back(&dst_item, parent_frame, parent_iter, dst_dead);
           parent_iter_state->outstanding_ops++;
         }
       }
@@ -2766,7 +2793,7 @@ void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
     // Add dst to the ready queue if it's ready
     if (dst_ready) {
       if (dst_item->is_control_trigger) dst_dead = false;
-      ready->emplace_back(dst_item->node, this, iter, dst_dead);
+      ready->emplace_back(dst_item, this, iter, dst_dead);
       iter_state->outstanding_ops++;
     }
   }
@@ -2792,10 +2819,9 @@ void ExecutorState::FrameState::ActivateLoopInvs(const GraphView* gview,
                                                  TaggedNodeSeq* ready) {
   // Propagate loop invariants to the new iteration.
   for (auto& node_entry : inv_values) {
-    const Node* node = node_entry.first;
+    const NodeItem* item = node_entry.first;
     const Entry& entry = node_entry.second;
     const bool is_dead = !entry.has_value;
-    const NodeItem* item = gview->node(node->id());
     EntryVector outputs{entry};
     ActivateNodes(item, is_dead, iter, &outputs, ready);
   }
@@ -2805,7 +2831,7 @@ void ExecutorState::FrameState::AddLoopInv(const NodeItem* item,
                                            const Entry& entry,
                                            TaggedNodeSeq* ready) {
   // Store this value.
-  inv_values.push_back({item->node, entry});
+  inv_values.push_back({item, entry});
 
   // Make this value available to all iterations.
   const bool is_dead = !entry.has_value;

@@ -34,6 +34,7 @@ from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
@@ -161,6 +162,9 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
               optimizer_fn=strategy_combinations.optimizers_v1_and_v2,
               mode=["graph"]))
   def testOptimizerInsideModelFn(self, distribution, optimizer_fn):
+    if (not context.executing_eagerly() and
+        control_flow_v2_toggles.control_flow_v2_enabled()):
+      self.skipTest("b/138751864")
     created_variables = []
     trainable_variables = []
 
@@ -524,6 +528,19 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       loss_tensor = unwrapped_output[0]
     self.assertEqual(initial_loss.dtype, loss_tensor.dtype)
     self.assertEqual(initial_loss.shape, loss_tensor.shape)
+
+  @combinations.generate(
+      strategy_combinations.distributions_and_v2_optimizers())
+  def test_empty_var_list(self, distribution, optimizer_fn):
+    opt = optimizer_fn()
+    with distribution.scope():
+
+      def run_fn():
+        opt.minimize(lambda: constant_op.constant(1.), [])
+        opt.apply_gradients([])
+
+      distribution.experimental_run_v2(run_fn)
+
 
 if __name__ == "__main__":
   test.main()

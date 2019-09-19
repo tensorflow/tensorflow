@@ -32,7 +32,7 @@ limitations under the License.
 
 // clang-format off
 #define CALL_SUPPORTED_TYPES(m) \
-  TF_CALL_string(m)             \
+  TF_CALL_tstring(m)             \
   TF_CALL_half(m)               \
   TF_CALL_float(m)              \
   TF_CALL_double(m)             \
@@ -676,7 +676,7 @@ class SeriesWriter {
                const Tensor& t) SQLITE_TRANSACTIONS_EXCLUDED(*db) {
     if (t.dtype() == DT_STRING) {
       if (t.dims() == 0) {
-        return Update(db, step, computed_time, t, t.scalar<string>()(), rowid);
+        return Update(db, step, computed_time, t, t.scalar<tstring>()(), rowid);
       } else {
         SqliteTransaction txn(*db);
         TF_RETURN_IF_ERROR(
@@ -735,7 +735,7 @@ class SeriesWriter {
     )sql";
     SqliteStatement inserter;
     TF_RETURN_IF_ERROR(db->Prepare(inserter_sql, &inserter));
-    auto flat = t.flat<string>();
+    auto flat = t.flat<tstring>();
     for (int64 i = 0; i < flat.size(); ++i) {
       inserter.BindInt(1, tensor_rowid);
       inserter.BindInt(2, i);
@@ -751,7 +751,7 @@ class SeriesWriter {
     unflushed_bytes_ = 0;
     if (t.dtype() == DT_STRING) {
       if (t.dims() == 0) {
-        TF_RETURN_IF_ERROR(ReserveData(db, &txn, t.scalar<string>()().size()));
+        TF_RETURN_IF_ERROR(ReserveData(db, &txn, t.scalar<tstring>()().size()));
       } else {
         TF_RETURN_IF_ERROR(ReserveTensors(db, &txn, kReserveMinBytes));
       }
@@ -1106,9 +1106,9 @@ class SummaryDbWriter : public SummaryWriterInterface {
     // See tensorboard/plugins/image/summary.py and data_compat.py
     Tensor t{DT_STRING, {3}};
     auto img = s->mutable_image();
-    t.flat<string>()(0) = strings::StrCat(img->width());
-    t.flat<string>()(1) = strings::StrCat(img->height());
-    t.flat<string>()(2) = std::move(*img->mutable_encoded_image_string());
+    t.flat<tstring>()(0) = strings::StrCat(img->width());
+    t.flat<tstring>()(1) = strings::StrCat(img->height());
+    t.flat<tstring>()(2) = std::move(*img->mutable_encoded_image_string());
     int64 tag_id;
     PatchPluginName(s->mutable_metadata(), kImagePluginName);
     TF_RETURN_IF_ERROR(meta_.GetTagId(db_, now, e->wall_time(), s->tag(),
@@ -1120,8 +1120,8 @@ class SummaryDbWriter : public SummaryWriterInterface {
     // See tensorboard/plugins/audio/summary.py and data_compat.py
     Tensor t{DT_STRING, {1, 2}};
     auto wav = s->mutable_audio();
-    t.flat<string>()(0) = std::move(*wav->mutable_encoded_audio_string());
-    t.flat<string>()(1) = "";
+    t.flat<tstring>()(0) = std::move(*wav->mutable_encoded_audio_string());
+    t.flat<tstring>()(1) = "";
     int64 tag_id;
     PatchPluginName(s->mutable_metadata(), kAudioPluginName);
     TF_RETURN_IF_ERROR(meta_.GetTagId(db_, now, e->wall_time(), s->tag(),

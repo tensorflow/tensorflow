@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 
 #include <vector>
+
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -85,11 +86,14 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
         {"CollectiveReduce", NC_COLLECTIVE},
         {"CollectiveBcastSend", NC_COLLECTIVE},
         {"CollectiveBcastRecv", NC_COLLECTIVE},
+        {"CollectiveGather", NC_COLLECTIVE},
         {"FakeParam", NC_FAKE_PARAM},
         {"PartitionedCall", NC_PARTITIONED_CALL},
         {"StatefulPartitionedCall", NC_PARTITIONED_CALL},
         {"If", NC_IF},
         {"StatelessIf", NC_IF},
+        {"While", NC_WHILE},
+        {"StatelessWhile", NC_WHILE},
         // Not using the constants defined in FunctionLibraryDefinition for the
         // 4 ops below because android inference library does not link
         // tf.function related files.
@@ -592,7 +596,7 @@ Status Graph::UpdateEdge(Node* new_src, int new_src_index, Node* dst,
 }
 
 Status Graph::AddWhileInputHack(Node* new_src, int new_src_index, Node* dst) {
-  if (dst->type_string() != "While") {
+  if (!dst->IsWhileNode()) {
     return errors::Internal(
         "dst argument to AddWhileEdgeHack should be a While op, got: ",
         dst->DebugString());
@@ -674,12 +678,15 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
       if (edge->IsControlEdge()) {
         inputs.push_back(edge);
       } else {
+        DCHECK(edge->dst_input() < inputs.size())
+            << "Edge " << edge->DebugString()
+            << " is overflowing the expected number of inputs ("
+            << node->num_inputs() << ") for node " << node->DebugString();
         CHECK(inputs[edge->dst_input()] == nullptr)
-            << "Edge " << edge->src()->DebugString() << ":"
-            << edge->dst()->DebugString() << " with dst_input "
-            << edge->dst_input() << " and had pre-existing input edge "
-            << inputs[edge->dst_input()]->src()->DebugString() << ":"
-            << inputs[edge->dst_input()]->dst()->DebugString();
+            << "Edge " << edge->src()->name() << "->" << edge->dst()->name()
+            << " conflicts with pre-existing input edge "
+            << inputs[edge->dst_input()]->src()->name() << "->"
+            << inputs[edge->dst_input()]->dst()->name();
 
         inputs[edge->dst_input()] = edge;
       }

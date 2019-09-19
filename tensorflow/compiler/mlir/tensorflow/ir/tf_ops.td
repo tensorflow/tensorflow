@@ -30,6 +30,37 @@ limitations under the License.
 
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_generated_ops.td"
 
+class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+
+  TF_DerivedOperandTypeAttr shape_type = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    if (handle_dtype().getSubtypes().size() != 1) {
+      return emitOpError(
+          "must have exactly one subtype in the result variant type");
+    }
+
+    return Verify(*this);
+  }];
+
+  DerivedTypeAttr element_dtype = DerivedTypeAttr<
+      "return getElementTypeOrSelf(element_type());">;
+
+  let extraClassDeclaration = [{
+    // Returns type of the TensorList element produced by this op.
+    TensorType element_type() { return handle_dtype().getSubtypes()[0]; }
+
+    // Returns data type of the result handle. Returned type contains type of
+    // the TensorList element as a subtype.
+    VariantType handle_dtype() {
+      return getElementTypeOrSelf(handle()->getType()).cast<TF::VariantType>();
+    }
+  }];
+}
+
 // In MLIR, the TensorFlow tensor value is represented as an ElementsAttr, with
 // its type encoding the tensor's shape and data type.
 def TF_ConstOp : TF_Op<"Const", [NoSideEffect]> {
@@ -55,12 +86,30 @@ def TF_ConstOp : TF_Op<"Const", [NoSideEffect]> {
   let hasFolder = 1;
 }
 
+def TF_EmptyTensorListOp : TF_TensorListInitOp<"EmptyTensorList"> {
+  let summary = "Creates and returns an empty tensor list.";
+
+  let description = [{
+All list elements must be tensors of dtype element_dtype and shape compatible
+with element_shape.
+
+handle: an empty tensor list.
+element_dtype: the type of elements in the list.
+element_shape: a shape compatible with that of elements in the list.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$element_shape,
+    I32Tensor:$max_num_elements
+  );
+}
+
 // TODO(fengliuai): The tf.Identity is side-effect free and it doesn't change
 // the status of the system during the execution. However it shouldn't be folded
 // in general if it used to serve for caching and some other invariant checks,
 // so we removed the side-effect free property in the op definition. This is a
 // hack, and we should fix it if we have a better way to model it.
-def TF_IdentityOp : TF_Op<"Identity", [SameOperandsAndResultType]> {
+def TF_IdentityOp : TF_Op<"Identity", [TF_OperandsSameAsResultsTypeOrRef]> {
   let summary = "Identity op";
 
   let description = [{
@@ -75,7 +124,7 @@ Returns a tensor with the same shape and contents as input.
     TF_Tensor:$output
   );
 
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr T = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_IfOp : TF_Op<"If", []> {
@@ -191,51 +240,6 @@ Inserts a placeholder for a tensor that will be always fed.
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_TensorListReserveOp : TF_Op<"TensorListReserve", [NoSideEffect]> {
-  let summary = "List of the given size with empty elements.";
-
-  let description = [{
-element_shape: the shape of the future elements of the list
-num_elements: the number of elements to reserve
-handle: the output list
-element_dtype: the desired type of elements in the list.
-  }];
-
-  let arguments = (ins
-    TF_I32OrI64Tensor:$element_shape,
-    I32Tensor:$num_elements
-  );
-
-  let results = (outs
-    TF_VariantTensor:$handle
-  );
-
-  TF_DerivedOperandTypeAttr shape_type = TF_DerivedOperandTypeAttr<0>;
-
-  let verifier = [{
-    if (handle_dtype().getSubtypes().size() != 1) {
-      return emitOpError(
-          "must have exactly one subtype in the result variant type");
-    }
-
-    return Verify(*this);
-  }];
-
-  DerivedTypeAttr element_dtype = DerivedTypeAttr<
-      "return getElementTypeOrSelf(element_type());">;
-
-  let extraClassDeclaration = [{
-    // Returns type of the TensorList element produced by this op.
-    TensorType element_type() { return handle_dtype().getSubtypes()[0]; }
-
-    // Returns data type of the result handle. Returned type contains type of
-    // the TensorList element as a subtype.
-    VariantType handle_dtype() {
-      return getElementTypeOrSelf(handle()->getType()).cast<TF::VariantType>();
-    }
-  }];
-}
-
 def TF_WhileOp : TF_Op<"While", []> {
   let summary = [{
 output = input; While (Cond(output)) { output = Body(output) }
@@ -264,7 +268,11 @@ body: A function that takes a list of tensors and returns another
     SymbolRefAttr:$cond,
     SymbolRefAttr:$body,
     DefaultValuedAttr<StrArrayAttr, "{}">:$output_shapes,
-    DefaultValuedAttr<I64Attr, "10">:$parallel_iterations
+    DefaultValuedAttr<I64Attr, "10">:$parallel_iterations,
+
+    // Used to map StatelessWhile and While op defined in TensorFlow to a common
+    // op.
+    BoolAttr:$is_stateless
   );
 
   let results = (outs
@@ -278,4 +286,48 @@ body: A function that takes a list of tensors and returns another
   }];
 }
 
+def TF_TensorListReserveOp : TF_TensorListInitOp<"TensorListReserve"> {
+  let summary = "List of the given size with empty elements.";
+
+  let description = [{
+element_shape: the shape of the future elements of the list
+num_elements: the number of elements to reserve
+handle: the output list
+element_dtype: the desired type of elements in the list.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$element_shape,
+    I32Tensor:$num_elements
+  );
+}
+
+// This operation when auto-generated is marked as NoSideEffect because it isn't
+// stateful in TensorFlow. However it is kept alive through control dependency,
+// and does not have any output. When placed in an island it wouldn't be kept
+// alive in any way and the canonicalizer would just always fold it away.
+def TF_TPUReplicateMetadataOp : TF_Op<"TPUReplicateMetadata", []> {
+  let summary = [{
+Metadata indicating how the TPU computation should be replicated.
+  }];
+
+  let description = [{
+This operation holds the metadata common to operations of a `tpu.replicate()` computation subgraph.
+  }];
+
+  let arguments = (ins
+    Confined<I64Attr, [IntMinValue<0>]>:$num_replicas,
+    DefaultValuedAttr<I64Attr, "1">:$num_cores_per_replica,
+    StrAttr:$topology,
+    DefaultValuedAttr<BoolAttr, "true">:$use_tpu,
+    DefaultValuedAttr<I64ArrayAttr, "{}">:$device_assignment,
+    DefaultValuedAttr<I64ArrayAttr, "{}">:$computation_shape,
+    DefaultValuedAttr<StrArrayAttr, "{}">:$host_compute_core,
+    DefaultValuedAttr<StrArrayAttr, "{}">:$padding_map,
+    DefaultValuedAttr<StrAttr, "STEP_MARK_AT_ENTRY">:$step_marker_location,
+    DefaultValuedAttr<BoolAttr, "false">:$allow_soft_placement
+  );
+
+  let results = (outs);
+}
 #endif // TF_OPS

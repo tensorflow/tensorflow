@@ -19,9 +19,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
-
-// See documentation in ../../ops/experimental_dataset_ops.cc for a high-level
-// description of the following op.
+namespace experimental {
 
 class AutoShardDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -42,6 +40,7 @@ class AutoShardDatasetOp : public UnaryDatasetOpKernel {
   static RewriterConfig CreateConfig(int64 num_workers, int64 index);
 };
 
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow
 

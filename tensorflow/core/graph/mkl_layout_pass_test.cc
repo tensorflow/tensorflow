@@ -16,7 +16,6 @@ limitations under the License.
 #if defined(INTEL_MKL) && defined(ENABLE_MKL)
 
 #include "tensorflow/core/graph/mkl_layout_pass.h"
-#include "tensorflow/core/graph/mkl_graph_util.h"
 
 #include <algorithm>
 #include <vector>
@@ -25,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
@@ -1494,6 +1494,61 @@ TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Negative_MinFirst) {
             "A(Input);B(Const);C(Const);D(QuantizeV2);E(Zeta)|"
             "A->D;B->D:1;C->D:2;D->E");
 }
+
+TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Negative_NarrowRange_True) {
+  InitGraph(
+      "node { name: 'A' op: 'Input' } "
+      "node { name: 'B' op: 'Const' "
+      " attr { key: 'dtype' value { type: DT_FLOAT } }"
+      " attr { key: 'value' value { "
+      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "
+      "    int_val: 0 } } } }"
+      "node { name: 'C' op: 'Const' "
+      " attr { key: 'dtype' value { type: DT_FLOAT } }"
+      " attr { key: 'value' value { "
+      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "
+      "    int_val: 0 } } } }"
+      "node { name: 'D' op: 'QuantizeV2'"
+      " attr { key: 'T'                 value { type: DT_QUINT8 } }"
+      " attr { key: 'mode'              value { s: 'SCALED' } }"
+      " attr { key: 'round_mode'        value { s: 'HALF_TO_EVEN' } }"
+      " attr { key: 'narrow_range'      value { b: true } }"
+      " attr { key: 'axis'              value { i: -1 } }"
+      " input: ['A', 'B', 'C']}"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_QUINT8 } }"
+      " input: ['D'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Const);C(Const);D(QuantizeV2);E(Zeta)|"
+            "A->D;B->D:1;C->D:2;D->E");
+}
+
+TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Negative_PerSlice_Enabled) {
+  InitGraph(
+      "node { name: 'A' op: 'Input' } "
+      "node { name: 'B' op: 'Const' "
+      " attr { key: 'dtype' value { type: DT_FLOAT } }"
+      " attr { key: 'value' value { "
+      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "
+      "    int_val: 0 } } } }"
+      "node { name: 'C' op: 'Const' "
+      " attr { key: 'dtype' value { type: DT_FLOAT } }"
+      " attr { key: 'value' value { "
+      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "
+      "    int_val: 0 } } } }"
+      "node { name: 'D' op: 'QuantizeV2'"
+      " attr { key: 'T'                 value { type: DT_QUINT8 } }"
+      " attr { key: 'mode'              value { s: 'SCALED' } }"
+      " attr { key: 'round_mode'        value { s: 'HALF_TO_EVEN' } }"
+      " attr { key: 'narrow_range'      value { b: false } }"
+      " attr { key: 'axis'              value { i: 2 } }"
+      " input: ['A', 'B', 'C']}"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_QUINT8 } }"
+      " input: ['D'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Const);C(Const);D(QuantizeV2);E(Zeta)|"
+            "A->D;B->D:1;C->D:2;D->E");
+}
+
 TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Negative_HalfFromZero) {
   InitGraph(
       "node { name: 'A' op: 'Input' } "
@@ -2206,7 +2261,6 @@ TEST_F(MklLayoutPassTest,
       "node { name: 'D' op: 'DepthwiseConv2dNativeBackpropFilter'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
       " attr { key: 'data_format'      value { s: 'NCHW' } }"
-      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
       " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
@@ -2230,7 +2284,6 @@ TEST_F(MklLayoutPassTest, NodeRewrite_DepthwiseConv2dNativeGradInput_Positive) {
       "node { name: 'D' op: 'DepthwiseConv2dNativeBackpropInput'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
       " attr { key: 'data_format'      value { s: 'NCHW' } }"
-      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
       " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
@@ -3005,6 +3058,60 @@ TEST_F(MklLayoutPassTest, NodeRewrite_QuantizedDepthwiseConv2D_Positive) {
 }
 
 /////////////////////////////////////////////////////////////////////
+//  Unit tests related to context-based node rewrite
+/////////////////////////////////////////////////////////////////////
+
+// If any of the inputs is an MKL op, then rewrite Slice to Mkl op.
+TEST_F(MklLayoutPassTest, NodeRewrite_Ctxbased_Slice_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'M' op: '_MklInput'}"
+      "node { name: 'N' op: '_MklInput'}"
+      "node { name: 'C' op: '_MklConv2D'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'SAME' } }"
+      " input: ['A', 'B', 'M', 'N']}"
+      "node { name: 'D' op: 'Int32Input'}"
+      "node { name: 'E' op: 'Int32Input'}"
+      "node { name: 'F' op: 'Slice'"
+      " attr { key: 'T'            value { type: DT_FLOAT } }"
+      " attr { key: 'Index'        value { type: DT_INT32 } }"
+      " input: ['C', 'D', 'E'] }"
+      "node { name: 'G' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'C'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(_MklConv2D);D(Int32Input);"
+            "DMT/_0(Const);DMT/_1(Const);"
+            "E(Int32Input);F(_MklSlice);G(Zeta);M(_MklInput);N(_MklInput)|"
+            "A->C;A->G;B->C:1;C->F;C->G:1;C:2->F:3;"
+            "C:control->DMT/_0:control;C:control->DMT/"
+            "_1:control;"
+            "D->F:1;DMT/_0->F:4;DMT/_1->F:5;"
+            "E->F:2;M->C:2;N->C:3");
+}
+
+// If none of the inputs is an MKL op, then Slice should not be rewritten.
+TEST_F(MklLayoutPassTest, NodeRewrite_Ctxbased_Slice_Negative) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Int32Input'}"
+      "node { name: 'C' op: 'Int32Input'}"
+      "node { name: 'D' op: 'Slice'"
+      " attr { key: 'T'            value { type: DT_FLOAT } }"
+      " attr { key: 'Index'        value { type: DT_INT32 } }"
+      " input: ['A', 'B', 'C'] }"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'D'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Int32Input);C(Int32Input);"
+            "D(Slice);E(Zeta)|A->D;A->E;B->D:1;C->D:2;D->E:1");
+}
+
+/////////////////////////////////////////////////////////////////////
 //  Unit tests related to rewriting node for workspace edges
 /////////////////////////////////////////////////////////////////////
 
@@ -3017,7 +3124,6 @@ TEST_F(MklLayoutPassTest, MaxPoolLRN_Positive) {
       " attr { key: 'alpha'        value { f: 0.001 } }"
       " attr { key: 'beta'         value { f: 0.75 } }"
       " attr { key: 'bias'         value { f: 1.0 } }"
-      " attr { key: 'data_format'  value { s: 'NCHW' } }"
       " attr { key: 'depth_radius' value { i: 2 } }"
       " input: ['A'] }"
       "node { name: 'C' op: 'MaxPool'"
@@ -3041,7 +3147,6 @@ TEST_F(MklLayoutPassTest, MaxPoolLRN_Positive) {
       " attr { key: 'alpha'        value { f: 0.001 } }"
       " attr { key: 'beta'         value { f: 0.75 } }"
       " attr { key: 'bias'         value { f: 1.0 } }"
-      " attr { key: 'data_format'  value { s: 'NCHW' } }"
       " attr { key: 'depth_radius' value { i: 2 } }"
       " input: ['E', 'F', 'B'] }"
       "node { name: 'H' op: 'Input'}"
@@ -3066,7 +3171,6 @@ TEST_F(MklLayoutPassTest, LRN_Positive) {
       " attr { key: 'alpha'        value { f: 0.001 } }"
       " attr { key: 'beta'         value { f: 0.75 } }"
       " attr { key: 'bias'         value { f: 1.0 } }"
-      " attr { key: 'data_format'  value { s: 'NCHW' } }"
       " attr { key: 'depth_radius' value { i: 2 } }"
       " input: ['A'] }"
       "node { name: 'C' op: 'Input'}"
@@ -3076,7 +3180,6 @@ TEST_F(MklLayoutPassTest, LRN_Positive) {
       " attr { key: 'alpha'        value { f: 0.001 } }"
       " attr { key: 'beta'         value { f: 0.75 } }"
       " attr { key: 'bias'         value { f: 1.0 } }"
-      " attr { key: 'data_format'  value { s: 'NCHW' } }"
       " attr { key: 'depth_radius' value { i: 2 } }"
       " input: ['C', 'D', 'B'] }"
       "node { name: 'F' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
@@ -3098,7 +3201,6 @@ TEST_F(MklLayoutPassTest, LRN_Negative1) {
       " attr { key: 'alpha'        value { f: 0.001 } }"
       " attr { key: 'beta'         value { f: 0.75 } }"
       " attr { key: 'bias'         value { f: 1.0 } }"
-      " attr { key: 'data_format'  value { s: 'NCHW' } }"
       " attr { key: 'depth_radius' value { i: 2 } }"
       " input: ['A'] }"
       "node { name: 'C' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
@@ -3119,7 +3221,6 @@ TEST_F(MklLayoutPassTest, LRN_Negative2) {
       " attr { key: 'alpha'        value { f: 0.001 } }"
       " attr { key: 'beta'         value { f: 0.75 } }"
       " attr { key: 'bias'         value { f: 1.0 } }"
-      " attr { key: 'data_format'  value { s: 'NCHW' } }"
       " attr { key: 'depth_radius' value { i: 2 } }"
       " input: ['A', 'B', 'C'] }"
       "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
@@ -3139,7 +3240,6 @@ TEST_F(MklLayoutPassTest, LRN_Negative3) {
       " attr { key: 'alpha'        value { f: 0.001 } }"
       " attr { key: 'beta'         value { f: 0.75 } }"
       " attr { key: 'bias'         value { f: 1.0 } }"
-      " attr { key: 'data_format'  value { s: 'NCHW' } }"
       " attr { key: 'depth_radius' value { i: 2 } }"
       " input: ['A'] }"
       "node { name: 'C' op: 'Input'}"
@@ -3149,7 +3249,6 @@ TEST_F(MklLayoutPassTest, LRN_Negative3) {
       " attr { key: 'alpha'        value { f: 0.001 } }"
       " attr { key: 'beta'         value { f: 0.75 } }"
       " attr { key: 'bias'         value { f: 1.0 } }"
-      " attr { key: 'data_format'  value { s: 'NCHW' } }"
       " attr { key: 'depth_radius' value { i: 2 } }"
       " input: ['C', 'D', 'B'] }"
       "node { name: 'F' op: 'LRNGrad'"
@@ -3157,7 +3256,6 @@ TEST_F(MklLayoutPassTest, LRN_Negative3) {
       " attr { key: 'alpha'        value { f: 0.001 } }"
       " attr { key: 'beta'         value { f: 0.75 } }"
       " attr { key: 'bias'         value { f: 1.0 } }"
-      " attr { key: 'data_format'  value { s: 'NCHW' } }"
       " attr { key: 'depth_radius' value { i: 2 } }"
       " input: ['C', 'B', 'D'] }"
       "node { name: 'G' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
@@ -3471,7 +3569,6 @@ TEST_F(MklLayoutPassTest,
       "node { name: 'D' op: 'DepthwiseConv2dNativeBackpropFilter'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
       " attr { key: 'data_format'      value { s: 'NCHW' } }"
-      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
       " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
@@ -3727,14 +3824,70 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Slice_DeviceTest) {
       " attr { key: 'Index'        value { type: DT_INT32 } }"
       " input: ['A', 'B', 'C'] }"
       "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
-      " input: ['A', 'D'] }");
+      " input: ['A', 'D'] }",
+      kGPUDevice);
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Int32Input);C(Int32Input);"
-            "D(_MklSlice);DMT/_0(Const);DMT/_1(Const);DMT/"
-            "_2(Const);E(Zeta)|A->D;A->E;"
-            "A:control->DMT/_0:control;A:control->DMT/"
-            "_1:control;A:control->DMT/_2:control;"
-            "B->D:1;C->D:2;D->E:1;DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");
+            "A(Input);B(Int32Input);C(Int32Input);D(Slice);E(Zeta)|A->D;A->E;"
+            "B->D:1;C->D:2;D->E:1");
+}
+
+// The following positive and negative tests test the rewrite of Add and AddV2
+// to MKL versions. The operators will be rewritten only if one of the inputs
+// comes from another MKL operator.
+TEST_F(MklLayoutPassTest, PositiveRewriteAdd) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'M' op: 'Relu'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['A']}"
+      "node { name: 'N' op: 'Add'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['M', 'B']}");
+  EXPECT_EQ(
+      DoMklLayoutOptimizationPass(),
+      "A(Input);B(Input);DMT/_0(Const);DMT/_1(Const);M(_MklRelu);N(_MklAdd)"
+      "|A->M;A:control->DMT/_0:control;B->N:1;DMT/_0->M:1;DMT/_1->N:3;M->N;"
+      "M:1->N:2;M:control->DMT/_1:control");
+}
+
+TEST_F(MklLayoutPassTest, NegativeRewriteAdd) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'N' op: 'Add'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['A', 'B']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);N(Add)|A->N;B->N:1");
+}
+
+TEST_F(MklLayoutPassTest, PositiveRewriteAddV2) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'M' op: 'Relu'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['A']}"
+      "node { name: 'N' op: 'AddV2'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['M', 'B']}");
+  EXPECT_EQ(
+      DoMklLayoutOptimizationPass(),
+      "A(Input);B(Input);DMT/_0(Const);DMT/_1(Const);M(_MklRelu);N(_MklAddV2)"
+      "|A->M;A:control->DMT/_0:control;B->N:1;DMT/_0->M:1;DMT/_1->N:3;M->N;"
+      "M:1->N:2;M:control->DMT/_1:control");
+}
+
+TEST_F(MklLayoutPassTest, NegativeRewriteAddV2) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'N' op: 'AddV2'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['A', 'B']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);N(AddV2)|A->N;B->N:1");
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -4266,6 +4419,39 @@ TEST_F(MklLayoutPassTest,
             "K(QuantizedMatMulWithBiasAndReluAndRequantize);L(Zeta)|A->K;"
             "B->K:1;C->K:2;D->K:3;E->K:4;F->K:5;G->K:6;"
             "H->K:7;I->K:8;J->L:1;K->L");
+}
+
+TEST_F(MklLayoutPassTest, MatMul_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'MatMul'"
+      " attr { key: 'T'      value { type: DT_FLOAT } }"
+      " input: ['A', 'B']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(_MklMatMul)|A->C;B->C:1");
+}
+
+TEST_F(MklLayoutPassTest, BatchMatMul_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'BatchMatMul'"
+      " attr { key: 'T'      value { type: DT_FLOAT } }"
+      " input: ['A', 'B']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(_MklBatchMatMul)|A->C;B->C:1");
+}
+
+TEST_F(MklLayoutPassTest, BatchMatMulV2_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'BatchMatMulV2'"
+      " attr { key: 'T'      value { type: DT_FLOAT } }"
+      " input: ['A', 'B']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(_MklBatchMatMulV2)|A->C;B->C:1");
 }
 
 static void BM_MklLayoutRewritePass(int iters, int op_nodes) {

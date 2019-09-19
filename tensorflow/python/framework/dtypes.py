@@ -566,6 +566,10 @@ for pdt in [
     _NP_TO_TF[pdt] = next(
         _NP_TO_TF[dt] for dt in _NP_TO_TF if dt == pdt().dtype)
 
+
+TF_VALUE_DTYPES = set(_NP_TO_TF.values())
+
+
 _TF_TO_NP = {
     types_pb2.DT_HALF:
         np.float16,

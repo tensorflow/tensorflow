@@ -61,6 +61,8 @@ class GpuExecutable : public Executable {
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
   ~GpuExecutable() override;
 
+  int64 SizeOfGeneratedCodeInBytes() override;
+
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }
 
@@ -78,16 +80,12 @@ class GpuExecutable : public Executable {
   // compilation is left up to the GPU driver.
   const std::vector<uint8>& binary() const { return binary_; }
 
-  // ExecuteOnStream will fail if the compute capability of the stream doesn't
-  // match the compute capability passed to this object's constructor.
-  StatusOr<ScopedShapedBuffer> ExecuteOnStream(
+  // ExecuteAsyncOnStream will fail if the compute capability of the stream
+  // doesn't match the compute capability passed to this object's constructor.
+  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
-
-  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
-      const ServiceExecutableRunOptions* run_options,
-      absl::Span<const ShapedBuffer* const> arguments) override;
 
   std::shared_ptr<const BufferAssignment> GetBufferAssignment() const {
     return assignment_;

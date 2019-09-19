@@ -23,11 +23,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import numbers
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -46,6 +46,7 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import get_canonical_name_for_symbol
 from tensorflow.python.util.tf_export import tf_export
 
@@ -785,29 +786,44 @@ def sparse_reshape(sp_input, shape, name=None):
     reshaped_ind, reshaped_shape = gen_sparse_ops.sparse_reshape(
         sp_input.indices, sp_input.dense_shape, shape, name=name)
 
-    reshaped_shape_const = tensor_util.constant_value(shape)
-    if (reshaped_shape_const is not None and
-        sp_input.get_shape().is_fully_defined()):
-      num_implied = sum((dim == -1) for dim in reshaped_shape_const)
-      if num_implied > 1:
-        raise ValueError("At most one dimension can be inferred (-1). Found: %s"
-                         % reshaped_shape_const)
-      original_reshaped_shape = list(reshaped_shape_const)  # Copy.
-      in_shape_size = np.prod(sp_input.get_shape().as_list())
-      if num_implied:
-        implied_idx = original_reshaped_shape.index(-1)
+    reshaped_shape_const = tensor_util.constant_value_as_shape(shape)
+    reshaped_shape_const = (
+        reshaped_shape_const.as_list() if reshaped_shape_const.ndims is not None
+        else None)
+
+    if (reshaped_shape_const is not None
+        and sp_input.shape.is_fully_defined()):
+      # constant_value_as_shape tends to get more information about the partial
+      # shape values, but here we specifically need to know if the *user* passed
+      # a shape with 2+ unknown dimensions; and for that constant_value
+      # provides either the user's direct value or None if only partial elements
+      # are known via the python shape inference code.
+      shape_const_by_user = tensor_util.constant_value(shape)
+      if shape_const_by_user is not None:
+        num_implied_by_user = sum(d == -1 for d in shape_const_by_user)
+        if num_implied_by_user > 1:
+          raise ValueError(
+              "At most one dimension can be inferred (-1). Found: %s"
+              % shape_const_by_user)
+      original_reshaped_shape = list(reshaped_shape_const)  # A copy
+      in_shape_size = np.prod(sp_input.shape.as_list())
+      num_implied = sum(dim is None for dim in reshaped_shape_const)
+      if num_implied == 1:
+        implied_idx = original_reshaped_shape.index(None)
         non_implied_idx = (
             original_reshaped_shape[:implied_idx] +
             original_reshaped_shape[implied_idx + 1:])
-        reshaped_shape_const[implied_idx] = (
+        reshaped_shape_const[implied_idx] = int(
             in_shape_size // np.prod(non_implied_idx))
-      reshaped_size = np.prod(reshaped_shape_const)
-      if reshaped_size != in_shape_size:
-        raise ValueError("Cannot reshape a tensor with %d elements to shape %s "
-                         "(%d elements)." %
-                         (in_shape_size, original_reshaped_shape,
-                          reshaped_size))
-      reshaped_shape = reshaped_shape_const
+      if num_implied <= 1:
+        reshaped_size = np.prod(reshaped_shape_const)
+        if reshaped_size != in_shape_size:
+          raise ValueError(
+              "Cannot reshape a tensor with %d elements to shape %s "
+              "(%d elements)." %
+              (in_shape_size, original_reshaped_shape, reshaped_size))
+        reshaped_shape = constant_op.constant(
+            reshaped_shape_const, dtype=dtypes.int64)
 
     return sparse_tensor.SparseTensor(reshaped_ind,
                                       array_ops.identity(sp_input.values),
@@ -1430,7 +1446,7 @@ def sparse_reduce_sum_sparse(sp_input,
 @tf_export("sparse.to_dense", v1=["sparse.to_dense", "sparse_tensor_to_dense"])
 @deprecation.deprecated_endpoints("sparse_tensor_to_dense")
 def sparse_tensor_to_dense(sp_input,
-                           default_value=0,
+                           default_value=None,
                            validate_indices=True,
                            name=None):
   """Converts a `SparseTensor` into a dense tensor.
@@ -1470,6 +1486,8 @@ def sparse_tensor_to_dense(sp_input,
     TypeError: If `sp_input` is not a `SparseTensor`.
   """
   sp_input = _convert_to_sparse_tensor(sp_input)
+  if default_value is None:
+    default_value = array_ops.zeros([], dtype=sp_input.dtype)
 
   return gen_sparse_ops.sparse_to_dense(
       sp_input.indices,
@@ -1658,10 +1676,10 @@ def sparse_merge_impl(sp_ids,
                       type(vocab_size))
     vocab_size = [vocab_size]
   else:
-    if not isinstance(sp_ids, collections.Iterable):
+    if not isinstance(sp_ids, collections_abc.Iterable):
       raise TypeError("sp_ids has to be a SparseTensor or list thereof. "
                       "Found %s" % type(sp_ids))
-    if not isinstance(vocab_size, collections.Iterable):
+    if not isinstance(vocab_size, collections_abc.Iterable):
       raise TypeError("vocab_size has to be a list of Tensors or Python ints. "
                       "Found %s" % type(vocab_size))
     for dim in vocab_size:

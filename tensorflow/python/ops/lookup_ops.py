@@ -627,7 +627,7 @@ class TextFileInitializer(TableInitializerBase):
     self._delimiter = delimiter
     self._name = name
     self._filename = self._track_trackable(
-        trackable.TrackableAsset(filename), "_filename")
+        trackable.Asset(filename), "_filename")
 
     super(TextFileInitializer, self).__init__(key_dtype, value_dtype)
 
@@ -1025,7 +1025,7 @@ class IdTableWithHashBuckets(LookupInterface):
           ids = self._table.lookup(values)
           buckets = math_ops.add(buckets, self._table.size())
           is_id_non_default = math_ops.not_equal(ids, self._table.default_value)
-          ids = array_ops.where(is_id_non_default, ids, buckets)
+          ids = array_ops.where_v2(is_id_non_default, ids, buckets)
         else:
           ids = buckets
     if isinstance(keys, sparse_tensor.SparseTensor):
@@ -1199,7 +1199,7 @@ class StaticVocabularyTable(LookupInterface):
         ids = self._table.lookup(values)
         buckets = math_ops.add(buckets, self._table.size())
         is_id_non_default = math_ops.not_equal(ids, self._table.default_value)
-        ids = array_ops.where(is_id_non_default, ids, buckets)
+        ids = array_ops.where_v2(is_id_non_default, ids, buckets)
       else:
         ids = buckets
     if isinstance(keys, sparse_tensor.SparseTensor):

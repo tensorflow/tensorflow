@@ -326,27 +326,6 @@ class ScalarMulTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(self.evaluate(x.indices), [0, 2, 5])
 
 
-class AccumulateNTest(test_util.TensorFlowTestCase):
-
-  @test_util.run_deprecated_v1
-  def testFloat(self):
-    np.random.seed(12345)
-    x = [np.random.random((1, 2, 3, 4, 5)) - 0.5 for _ in range(5)]
-    tf_x = ops.convert_n_to_tensor(x)
-    with self.session(use_gpu=True):
-      self.assertAllClose(sum(x), math_ops.accumulate_n(tf_x).eval())
-      self.assertAllClose(x[0] * 5, math_ops.accumulate_n([tf_x[0]] * 5).eval())
-
-  @test_util.run_deprecated_v1
-  def testInt(self):
-    np.random.seed(54321)
-    x = [np.random.randint(-128, 128, (5, 4, 3, 2, 1)) for _ in range(6)]
-    tf_x = ops.convert_n_to_tensor(x)
-    with self.session(use_gpu=True):
-      self.assertAllEqual(sum(x), math_ops.accumulate_n(tf_x).eval())
-      self.assertAllEqual(x[0] * 6, math_ops.accumulate_n([tf_x[0]] * 6).eval())
-
-
 class AddNTest(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1
@@ -698,6 +677,38 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(error, error_message):
       a = array_ops.ones([1], dtype=dtypes.int32) + 1.0
       self.evaluate(a)
+
+
+class ReciprocalNoNanTest(test_util.TensorFlowTestCase):
+
+  allowed_dtypes = [
+      dtypes.float16, dtypes.float32, dtypes.float64, dtypes.complex64,
+      dtypes.complex128
+  ]
+
+  @test_util.run_in_graph_and_eager_modes
+  def testBasic(self):
+    for dtype in self.allowed_dtypes:
+      x = constant_op.constant([1.0, 2.0, 0.0, 4.0], dtype=dtype)
+
+      y = math_ops.reciprocal_no_nan(x)
+
+      target = constant_op.constant([1.0, 0.5, 0.0, 0.25], dtype=dtype)
+
+      self.assertAllEqual(y, target)
+      self.assertEqual(y.dtype.base_dtype, target.dtype.base_dtype)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testInverse(self):
+    for dtype in self.allowed_dtypes:
+      x = np.random.choice([0, 1, 2, 4, 5], size=(5, 5, 5))
+      x = constant_op.constant(x, dtype=dtype)
+
+      y = math_ops.reciprocal_no_nan(math_ops.reciprocal_no_nan(x))
+
+      self.assertAllClose(y, x)
+      self.assertEqual(y.dtype.base_dtype, x.dtype.base_dtype)
+
 
 if __name__ == "__main__":
   googletest.main()

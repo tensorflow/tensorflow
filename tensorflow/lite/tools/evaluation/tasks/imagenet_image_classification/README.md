@@ -142,10 +142,8 @@ for configuring NDK and SDK.
 
 ```
 bazel build -c opt \
-  --config=android_arm \
+  --config=android_arm64 \
   --cxxopt='--std=c++11' \
-  --copt=-D__ANDROID_TYPES_FULL__ \
-  --copt=-DSUPPORT_SELECTIVE_REGISTRATION \
   //tensorflow/lite/tools/evaluation/tasks/imagenet_image_classification:run_eval
 ```
 
@@ -191,7 +189,7 @@ adb push ${MODEL_LABELS_TXT} /data/local/tmp/model_output_labels.txt
 (8) Run the binary.
 
 ```
-adb shell /data/local/tmp/imagenet_accuracy_eval \
+adb shell /data/local/tmp/run_eval \
   --model_file=/data/local/tmp/mobilenet_quant_v1_224.tflite \
   --ground_truth_images_path=/data/local/tmp/ilsvrc_images \
   --ground_truth_labels=/data/local/tmp/ilsvrc_validation_labels.txt \

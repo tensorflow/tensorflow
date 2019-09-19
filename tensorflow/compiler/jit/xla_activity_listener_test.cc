@@ -43,6 +43,10 @@ class TestListener : public XlaActivityListener {
     return Status::OK();
   }
 
+  Status Listen(const XlaOptimizationRemark& optimization_remark) override {
+    return Status::OK();
+  }
+
   ~TestListener() override {}
 
   const XlaAutoClusteringActivity& auto_clustering_activity() const {

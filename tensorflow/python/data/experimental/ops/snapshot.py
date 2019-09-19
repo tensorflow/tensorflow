@@ -17,14 +17,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 
 
 COMPRESSION_GZIP = "GZIP"
+COMPRESSION_SNAPPY = "SNAPPY"
 COMPRESSION_NONE = None
 
 
@@ -42,7 +43,9 @@ class _SnapshotDataset(dataset_ops.UnaryUnchangedStructureDataset):
                num_reader_threads=None,
                reader_buffer_size=None,
                num_writer_threads=None,
-               writer_buffer_size=None):
+               writer_buffer_size=None,
+               shuffle_on_read=None,
+               seed=None):
 
     self._compression = compression if compression is not None else ""
     self._reader_path_prefix = (
@@ -62,35 +65,30 @@ class _SnapshotDataset(dataset_ops.UnaryUnchangedStructureDataset):
         num_writer_threads if num_writer_threads is not None else -1)
     self._writer_buffer_size = (
         writer_buffer_size if writer_buffer_size is not None else -1)
+    self._shuffle_on_read = (
+        shuffle_on_read if shuffle_on_read is not None else False)
+
+    self._seed, self._seed2 = random_seed.get_seed(seed)
 
     self._input_dataset = input_dataset
     self._path = ops.convert_to_tensor(path, dtype=dtypes.string, name="path")
 
-    if compat.forward_compatible(2019, 8, 15):
-      variant_tensor = ged_ops.snapshot_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          path=self._path,
-          compression=self._compression,
-          reader_path_prefix=self._reader_path_prefix,
-          writer_path_prefix=self._writer_path_prefix,
-          shard_size_bytes=self._shard_size_bytes,
-          pending_snapshot_expiry_seconds=self._pending_snapshot_expiry_seconds,
-          num_reader_threads=self._num_reader_threads,
-          reader_buffer_size=self._reader_buffer_size,
-          num_writer_threads=self._num_writer_threads,
-          writer_buffer_size=self._writer_buffer_size,
-          **self._flat_structure)
-    else:
-      variant_tensor = ged_ops.snapshot_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          path=self._path,
-          compression=self._compression,
-          reader_path_prefix=self._reader_path_prefix,
-          writer_path_prefix=self._writer_path_prefix,
-          shard_size_bytes=self._shard_size_bytes,
-          pending_snapshot_expiry_seconds=self._pending_snapshot_expiry_seconds,
-          **self._flat_structure)
-
+    variant_tensor = ged_ops.snapshot_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        path=self._path,
+        compression=self._compression,
+        reader_path_prefix=self._reader_path_prefix,
+        writer_path_prefix=self._writer_path_prefix,
+        shard_size_bytes=self._shard_size_bytes,
+        pending_snapshot_expiry_seconds=self._pending_snapshot_expiry_seconds,
+        num_reader_threads=self._num_reader_threads,
+        reader_buffer_size=self._reader_buffer_size,
+        num_writer_threads=self._num_writer_threads,
+        writer_buffer_size=self._writer_buffer_size,
+        shuffle_on_read=self._shuffle_on_read,
+        seed=self._seed,
+        seed2=self._seed2,
+        **self._flat_structure)
     super(_SnapshotDataset, self).__init__(input_dataset, variant_tensor)
 
 
@@ -103,7 +101,9 @@ def snapshot(path,
              num_reader_threads=None,
              reader_buffer_size=None,
              num_writer_threads=None,
-             writer_buffer_size=None):
+             writer_buffer_size=None,
+             shuffle_on_read=None,
+             seed=None):
   """Writes to/reads from a snapshot of a dataset.
 
   This function attempts to determine whether a valid snapshot exists at the
@@ -141,7 +141,10 @@ def snapshot(path,
       written.
     writer_buffer_size: Maximum number of pipeline elements to fill up the
       buffer before writing them out using `num_writer_threads`.
-
+    shuffle_on_read: If this is True, then the order in which examples are
+      produced when reading from a snapshot will be random. Defaults to False.
+    seed: If seed is set, the random number generator is seeded by the given
+      seed. Otherwise, it is seeded by a random seed.
   Returns:
     A `Dataset` transformation function, which can be passed to
     `tf.data.Dataset.apply`.
@@ -152,6 +155,6 @@ def snapshot(path,
                             writer_path_prefix, shard_size_bytes,
                             pending_snapshot_expiry_seconds, num_reader_threads,
                             reader_buffer_size, num_writer_threads,
-                            writer_buffer_size)
+                            writer_buffer_size, shuffle_on_read, seed)
 
   return _apply_fn

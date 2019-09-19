@@ -1,5 +1,21 @@
 // RUN: tf-opt %s -canonicalize | FileCheck %s
 
+// CHECK-LABEL: func @tfAssertTrue
+func @tfAssertTrue(%arg0: tensor<1x1x6x2xf32>) {
+  %t = constant dense<true> : tensor<i1>
+  // CHECK-NOT: tf.Assert
+  "tf.Assert"(%t, %arg0) {summarize = 3} : (tensor<i1>, tensor<1x1x6x2xf32>) -> ()
+  return
+}
+
+// CHECK-LABEL: func @tfAssertFalse
+func @tfAssertFalse(%arg0: tensor<1x1x6x2xf32>) {
+  %f = constant dense<false> : tensor<i1>
+  // CHECK: tf.Assert
+  "tf.Assert"(%f, %arg0) {summarize = 3} : (tensor<i1>, tensor<1x1x6x2xf32>) -> ()
+  return
+}
+
 // CHECK-LABEL: func @testLeakyRelu
 func @testLeakyRelu(%arg0 : tensor<16xf32>) -> (tensor<16xf32>) {
   %2 = "tf.LeakyRelu"(%arg0) {alpha = 1.0 : f32} : (tensor<16xf32>) -> tensor<16xf32>
@@ -220,8 +236,8 @@ func @testLogicalNotOfEqual(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) ->
   %1 = "tf.LogicalNot"(%0) : (tensor<8x16xi1>) -> tensor<8x16xi1>
   return %1: tensor<8x16xi1>
 
-// CHECK: %0 = "tf.NotEqual"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
-// CHECK: return %0
+// CHECK: %[[NE:.*]] = "tf.NotEqual"(%arg0, %arg1) {incompatible_shape_error = true}
+// CHECK: return %[[NE]]
 }
 
 // CHECK-LABEL: testLogicalNotOfNotEqual
@@ -230,8 +246,8 @@ func @testLogicalNotOfNotEqual(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>)
   %1 = "tf.LogicalNot"(%0) : (tensor<8x16xi1>) -> tensor<8x16xi1>
   return %1: tensor<8x16xi1>
 
-// CHECK: %0 = "tf.Equal"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
-// CHECK: return %0
+// CHECK: %[[NE:.*]] = "tf.Equal"(%arg0, %arg1) {incompatible_shape_error = true}
+// CHECK: return %[[NE]]
 }
 
 // CHECK-LABEL: testLogicalNotOfGreater

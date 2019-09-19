@@ -32,6 +32,7 @@ from tensorflow.python.eager import core
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -47,8 +48,7 @@ def _create_tensor(value, device=None, dtype=None):
   if dtype is not None:
     dtype = dtype.as_datatype_enum
   try:
-    return ops.EagerTensor(
-        value, context=ctx, device=device, dtype=dtype)
+    return ops.EagerTensor(value, device=device, dtype=dtype)
   except core._NotOkStatusException as e:  # pylint: disable=protected-access
     raise core._status_to_exception(e.code, e.message)
 
@@ -68,35 +68,22 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     context.ensure_initialized()
     ctx = context.context()
     device = ctx.device_name
-    # Missing context.
-    with self.assertRaisesRegexp(
-        TypeError, r".*argument 'context' \(pos 2\).*"):
-      ops.EagerTensor(1, device=device)
     # Missing device.
-    with self.assertRaisesRegexp(
-        TypeError, r".*argument 'device' \(pos 3\).*"):
-      ops.EagerTensor(1, context=ctx)
+    with self.assertRaisesRegexp(TypeError, r".*argument 'device' \(pos 2\).*"):
+      ops.EagerTensor(1)
     # Bad dtype type.
     with self.assertRaisesRegexp(TypeError,
                                  "Expecting a DataType value for dtype. Got"):
-      ops.EagerTensor(1, context=ctx, device=device, dtype="1")
+      ops.EagerTensor(1, device=device, dtype="1")
 
     # Following errors happen when trying to copy to GPU.
     if not test_util.is_gpu_available():
       self.skipTest("No GPUs found")
 
     with ops.device("/device:GPU:0"):
-      device = ctx.device_name
-      # Bad context.
-      with self.assertRaisesRegexp(
-          TypeError,
-          "Expected `context` argument in EagerTensor constructor to have a "
-          "`_handle` field but it did not. Was eager Context initialized?"):
-        ops.EagerTensor(1.0, context=1, device=device)
       # Bad device.
-      with self.assertRaisesRegexp(
-          TypeError, "Error parsing device argument to CopyToDevice"):
-        ops.EagerTensor(1.0, context=ctx, device=1)
+      with self.assertRaisesRegexp(TypeError, "Error parsing device argument"):
+        ops.EagerTensor(1.0, device=1)
 
   def testNumpyValue(self):
     values = np.array([3.0])
@@ -122,8 +109,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     ctx = context.context()
     # Bad dtype value.
     with self.assertRaisesRegexp(TypeError, "Invalid dtype argument value"):
-      ops.EagerTensor(
-          values, context=ctx, device=ctx.device_name, dtype=12345)
+      ops.EagerTensor(values, device=ctx.device_name, dtype=12345)
 
   def testNumpyOrderHandling(self):
     n = np.array([[1, 2], [3, 4]], order="F")
@@ -395,7 +381,8 @@ class TFETensorTest(test_util.TensorFlowTestCase):
 
   def test_numpyFailsForResource(self):
     v = variables.Variable(42)
-    with self.assertRaisesRegex(ValueError, "Cannot convert .+ resource"):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Cannot convert .+ resource"):
       v._handle._numpy()
 
   def testMemoryviewFailsForResource(self):

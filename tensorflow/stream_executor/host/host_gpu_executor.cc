@@ -41,7 +41,9 @@ HostExecutor::HostExecutor(const PluginConfig &plugin_config)
 
 HostExecutor::~HostExecutor() {}
 
-void *HostExecutor::Allocate(uint64 size) { return new char[size]; }
+DeviceMemoryBase HostExecutor::Allocate(uint64 size) {
+  return DeviceMemoryBase(new char[size], size);
+}
 
 void *HostExecutor::GetSubBuffer(DeviceMemoryBase *parent, uint64 offset_bytes,
                                  uint64 size_bytes) {
@@ -253,6 +255,9 @@ HostExecutor::CreateDeviceDescription(int device_ordinal) {
   float cycle_counter_frequency = static_cast<float>(
       tensorflow::profile_utils::CpuUtils::GetCycleCounterFrequency());
   builder.set_clock_rate_ghz(cycle_counter_frequency / 1e9);
+
+  builder.set_name("Host");
+  builder.set_platform_version("Default Version");
 
   return builder.Build();
 }

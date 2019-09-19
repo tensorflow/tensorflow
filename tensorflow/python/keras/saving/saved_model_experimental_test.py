@@ -67,7 +67,7 @@ class TestModelSavingandLoading(parameterized.TestCase, test.TestCase):
           metrics=[keras.metrics.categorical_accuracy],
           sample_weight_mode='temporal',
           run_eagerly=testing_utils.should_run_eagerly(),
-          run_distributed=testing_utils.should_run_distributed())
+          experimental_run_tf_function=testing_utils.should_run_tf_function())
       x = np.random.random((1, 3))
       y = np.random.random((1, 3, 3))
       model.train_on_batch(x, y)
@@ -111,7 +111,7 @@ class TestModelSavingandLoading(parameterized.TestCase, test.TestCase):
           optimizer=rmsprop.RMSprop(lr=0.0001),
           metrics=[keras.metrics.categorical_accuracy],
           run_eagerly=testing_utils.should_run_eagerly(),
-          run_distributed=testing_utils.should_run_distributed())
+          experimental_run_tf_function=testing_utils.should_run_tf_function())
       x = np.random.random((1, 3))
       y = np.random.random((1, 3))
       model.train_on_batch(x, y)
@@ -169,7 +169,7 @@ class TestModelSavingandLoading(parameterized.TestCase, test.TestCase):
         optimizer=training_module.RMSPropOptimizer(0.1),
         metrics=['acc'],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     y = loaded_model.predict(x)
     self.assertAllClose(ref_y, y, atol=1e-05)
 

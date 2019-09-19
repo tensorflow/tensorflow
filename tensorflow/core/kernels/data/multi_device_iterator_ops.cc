@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/unbounded_thread_pool.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/refcount.h"
-#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -35,6 +34,11 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 namespace {
+
+const char kAnonymousMultiDeviceIterator[] = "AnonymousMultiDeviceIterator";
+const char kDevices[] = "devices";
+const char kOutputShapes[] = "output_shapes";
+const char kOutputTypes[] = "output_types";
 
 struct HostBufferElement {
   Status status;
@@ -94,43 +98,32 @@ class MultiDeviceIterator : public ResourceBase {
     return Status::OK();
   }
 
-  void GetNextFromShard(OpKernelContext* ctx, int shard_num,
-                        int64 incarnation_id, std::function<void()> done) {
+  Status GetNextFromShard(OpKernelContext* ctx, int shard_num,
+                          int64 incarnation_id,
+                          MultiDeviceIteratorCallback callback) {
     tf_shared_lock l(mu_);
     IteratorContext::Params params(ctx);
     params.flr = flr_;
     params.function_handle_cache = function_handle_cache_.get();
     params.resource_mgr = &resource_mgr_;
     params.thread_factory = unbounded_thread_pool_.get_thread_factory();
+    params.thread_pool = &unbounded_thread_pool_;
     params.cancellation_manager = &cancellation_manager_;
     std::function<void()> deregister_fn;
-    OP_REQUIRES_OK_ASYNC(ctx,
-                         ConnectCancellationManagers(
-                             ctx->cancellation_manager(),
-                             params.cancellation_manager, &deregister_fn),
-                         done);
+    TF_RETURN_IF_ERROR(ConnectCancellationManagers(ctx->cancellation_manager(),
+                                                   params.cancellation_manager,
+                                                   &deregister_fn));
     IteratorContext iter_ctx(std::move(params));
-    MultiDeviceIteratorCallback callback = std::bind(
-        [ctx](const HostBufferElement& elem, const std::function<void()>& done,
-              const std::function<void()>& deregister_fn) {
-          // iterator->Unref();
-          Status s = elem.status;
-          if (!s.ok()) {
-            ctx->SetStatus(s);
-          } else if (elem.end_of_sequence) {
-            ctx->SetStatus(errors::OutOfRange("End of sequence"));
-          } else {
-            for (int i = 0; i < elem.value.size(); ++i) {
-              ctx->set_output(i, elem.value[i]);
-            }
-          }
+    MultiDeviceIteratorCallback callback_new = std::bind(
+        [](const HostBufferElement& elem, MultiDeviceIteratorCallback callback,
+           std::function<void()> deregister_fn) {
+          callback(elem);
           deregister_fn();
-          done();
         },
-        std::placeholders::_1, std::move(done), std::move(deregister_fn));
-
+        std::placeholders::_1, std::move(callback), std::move(deregister_fn));
     multi_device_buffer_->GetNextFromShard(&iter_ctx, shard_num, incarnation_id,
-                                           std::move(callback));
+                                           std::move(callback_new));
+    return Status::OK();
   }
 
   const DataTypeVector& output_types() const { return output_types_; }
@@ -199,7 +192,9 @@ class MultiDeviceIterator : public ResourceBase {
                           MultiDeviceIteratorCallback callback) {
       HostBufferElement elem;
       if (incarnation_id_ != incarnation_id) {
-        elem.status = errors::InvalidArgument("Invalid incarnation id");
+        elem.status = errors::InvalidArgument(
+            "Invalid incarnation id. Provided: ", incarnation_id,
+            "; Expected: ", incarnation_id_);
         callback(elem);
         return;
       }
@@ -385,7 +380,6 @@ class MultiDeviceIterator : public ResourceBase {
   const std::unique_ptr<FunctionHandleCache> function_handle_cache_;
   ResourceMgr resource_mgr_;
   CancellationManager cancellation_manager_;
-  std::shared_ptr<const FunctionLibraryDefinition> lib_def_ GUARDED_BY(mu_);
 
   int64 incarnation_id_ GUARDED_BY(mu_) = 0;
   std::unique_ptr<MultiDeviceBuffer> multi_device_buffer_ GUARDED_BY(mu_);
@@ -399,11 +393,11 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
  public:
   explicit MultiDeviceIteratorHandleOp(OpKernelConstruction* ctx)
       : OpKernel(ctx), graph_def_version_(ctx->graph_def_version()) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("shared_name", &name_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("container", &container_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("devices", &devices_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kDevices, &devices_));
   }
 
   // The resource is deleted from the resource manager only when it is private
@@ -433,7 +427,7 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
         std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
         OP_REQUIRES_OK(context, context->function_library()->Clone(
                                     &flib_def, &pflr, &flr));
-        std::unique_ptr<FunctionHandleCache> function_handle_cache =
+        auto function_handle_cache =
             absl::make_unique<FunctionHandleCache>(flr);
         ResourceMgr* mgr = context->resource_manager();
         OP_REQUIRES_OK(context, cinfo_.Init(mgr, def()));
@@ -443,7 +437,7 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
         if (name_ == ResourceHandle::ANONYMOUS_NAME) {
           unique_name = strings::StrCat("_AnonymousMultiDeviceIterator",
                                         current_id_.fetch_add(1));
-          container_name = "AnonymousMultiDeviceIterator";
+          container_name = kAnonymousMultiDeviceIterator;
           resource = new MultiDeviceIterator(
               context->env(), output_types_, output_shapes_, devices_,
               std::move(flib_def), std::move(pflr), flr,
@@ -511,26 +505,18 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("MultiDeviceIterator").Device(DEVICE_CPU),
                         MultiDeviceIteratorHandleOp);
 
-// This atomic is used to ensure that each new AnonymousMultiDeviceIterator
-// handle is unique.
-static std::atomic<int64> current_multi_device_iterator_id_;
-
 class AnonymousMultiDeviceIteratorOp
-    : public AnonymousIteratorResourceOp<MultiDeviceIterator> {
+    : public AnonymousResourceOp<MultiDeviceIterator> {
  public:
   explicit AnonymousMultiDeviceIteratorOp(OpKernelConstruction* ctx)
-      : AnonymousIteratorResourceOp<MultiDeviceIterator>(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("devices", &devices_));
+      : AnonymousResourceOp<MultiDeviceIterator>(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kDevices, &devices_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_dtypes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
   }
 
  private:
-  void GenerateContainerNames(string* unique_name,
-                              string* container_name) override {
-    *unique_name =
-        strings::StrCat("_AnonymousMultiDeviceIterator",
-                        current_multi_device_iterator_id_.fetch_add(1));
-    *container_name = "AnonymousMultiDeviceIterator";
-  }
+  string name() override { return kAnonymousMultiDeviceIterator; }
 
   Status CreateResource(OpKernelContext* ctx,
                         std::unique_ptr<FunctionLibraryDefinition> flib_def,
@@ -546,9 +532,11 @@ class AnonymousMultiDeviceIteratorOp
   }
 
   std::vector<string> devices_;
+  DataTypeVector output_dtypes_;
+  std::vector<PartialTensorShape> output_shapes_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("AnonymousMultiDeviceIterator").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name(kAnonymousMultiDeviceIterator).Device(DEVICE_CPU),
                         AnonymousMultiDeviceIteratorOp);
 
 // Calls init on the MultiDeviceIterator.
@@ -597,11 +585,12 @@ REGISTER_KERNEL_BUILDER(Name("MultiDeviceIteratorInit").Device(DEVICE_CPU),
                         MultiDeviceIteratorInitOp);
 
 // Calls GetNextFromShard(shard) and returns a vector of Tensors as output.
-// TODO(rohanj): Implement using BackgroundWorker that Derek built?
 class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
  public:
   explicit MultiDeviceIteratorGetNextFromShardOp(OpKernelConstruction* ctx)
-      : AsyncOpKernel(ctx) {}
+      : AsyncOpKernel(ctx),
+        background_worker_(ctx->env(),
+                           "tf_data_multi_device_iterator_get_next") {}
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     const Tensor* tensor_shard_num;
@@ -613,12 +602,46 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
         ctx, ctx->input("incarnation_id", &tensor_incarnation_id), done);
     int64 incarnation_id = tensor_incarnation_id->scalar<int64>()();
 
-    core::RefCountPtr<MultiDeviceIterator> iterator;
+    MultiDeviceIterator* iterator;
     OP_REQUIRES_OK_ASYNC(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator), done);
 
-    iterator->GetNextFromShard(ctx, shard_num, incarnation_id, std::move(done));
+    background_worker_.Schedule(std::bind(
+        [ctx, iterator, shard_num, incarnation_id](DoneCallback done) {
+          Notification n;
+          MultiDeviceIteratorCallback callback = std::bind(
+              [ctx, &n](const HostBufferElement& elem) {
+                Status s = elem.status;
+                if (!s.ok()) {
+                  ctx->SetStatus(s);
+                } else if (elem.end_of_sequence) {
+                  ctx->SetStatus(errors::OutOfRange("End of sequence"));
+                } else {
+                  for (int i = 0; i < elem.value.size(); ++i) {
+                    ctx->set_output(i, elem.value[i]);
+                  }
+                }
+                n.Notify();
+              },
+              std::placeholders::_1);
+
+          Status s = iterator->GetNextFromShard(ctx, shard_num, incarnation_id,
+                                                std::move(callback));
+          if (!s.ok()) {
+            ctx->SetStatus(s);
+            iterator->Unref();
+            done();
+            return;
+          }
+          iterator->Unref();
+          n.WaitForNotification();
+          done();
+        },
+        std::move(done)));
   }
+
+ private:
+  BackgroundWorker background_worker_;
 };
 
 REGISTER_KERNEL_BUILDER(
@@ -644,7 +667,7 @@ class MultiDeviceIteratorToStringHandleOp : public OpKernel {
     Tensor* string_handle_t;
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output(0, TensorShape({}), &string_handle_t));
-    string_handle_t->scalar<string>()() =
+    string_handle_t->scalar<tstring>()() =
         resource_handle_t.scalar<ResourceHandle>()().SerializeAsString();
   }
 };
@@ -657,8 +680,8 @@ class MultiDeviceIteratorFromStringHandleOp : public OpKernel {
  public:
   explicit MultiDeviceIteratorFromStringHandleOp(OpKernelConstruction* ctx)
       : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
     OP_REQUIRES(
         ctx,
         output_types_.empty() || output_shapes_.empty() ||
@@ -675,7 +698,7 @@ class MultiDeviceIteratorFromStringHandleOp : public OpKernel {
     ResourceHandle resource_handle;
     OP_REQUIRES(
         ctx,
-        resource_handle.ParseFromString(string_handle_t.scalar<string>()()),
+        resource_handle.ParseFromString(string_handle_t.scalar<tstring>()()),
         errors::InvalidArgument(
             "Could not parse string_handle as a valid ResourceHandle"));
 

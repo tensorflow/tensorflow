@@ -116,3 +116,13 @@ __xla_cpu_runtime_EigenSingleThreadedMatMulF64(const void* run_options_ptr,
   SingleThreadedMatMulDispatch<double>(run_options_ptr, out, lhs, rhs, m, n, k,
                                        transpose_lhs, transpose_rhs);
 }
+
+TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
+__xla_cpu_runtime_EigenSingleThreadedMatMulS32(const void* run_options_ptr,
+                                               int32* out, int32* lhs,
+                                               int32* rhs, int64 m, int64 n,
+                                               int64 k, int32 transpose_lhs,
+                                               int32 transpose_rhs) {
+  SingleThreadedMatMulDispatch<int32>(run_options_ptr, out, lhs, rhs, m, n, k,
+                                      transpose_lhs, transpose_rhs);
+}

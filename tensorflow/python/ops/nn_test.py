@@ -33,6 +33,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import partitioned_variables
@@ -40,6 +41,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops.nn_impl import _compute_sampled_logits
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test as test_lib
 
 
@@ -1276,6 +1278,17 @@ class AvgPoolTest(test_lib.TestCase):
 
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
+  def test1DNumpyWithGolden(self):
+    dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
+    x = np.array([[[3], [6], [5]],
+                  [[1], [0], [1]]], dtype=dtype)
+    ksize = 2
+    strides = 1
+    y = nn_ops.avg_pool1d(x, ksize, strides, "SAME")
+    expected_y = np.array([[[4.5], [5.5], [5.0]],
+                           [[0.5], [0.5], [1.0]]], dtype=dtype)
+    self.assertAllEqual(self.evaluate(y), expected_y)
+
   def test2DTensor(self):
     x = array_ops.ones([3, 6, 6, 5])
     ksize = 2
@@ -1349,6 +1362,17 @@ class MaxPoolTest(test_lib.TestCase):
     y2 = nn_ops.max_pool1d(x, ksize, strides, "SAME")
 
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test1DNumpyWithGolden(self):
+    dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
+    x = np.array([[[3], [6], [5]],
+                  [[1], [0], [1]]], dtype=dtype)
+    ksize = 2
+    strides = 1
+    y = nn_ops.max_pool1d(x, ksize, strides, "SAME")
+    expected_y = np.array([[[6], [6], [5]],
+                           [[1], [1], [1]]], dtype=dtype)
+    self.assertAllEqual(self.evaluate(y), expected_y)
 
   def test2DTensor(self):
     x = array_ops.ones([3, 6, 6, 5])
@@ -1506,6 +1530,61 @@ class ConvTransposeTest(test_lib.TestCase):
         ValueError,
         "output_shape must be a tensor or sized collection."):
       nn_ops.conv_transpose(None, None, None, None)
+
+
+class RaggedEmbeddingTest(test_lib.TestCase):
+
+  def testRaggedTensor(self):
+    weights = constant_op.constant([[0, 0, 0], [1, 1, 1], [2, 2, 2], [3, 3, 3]])
+    ragged_ids = ragged_factory_ops.constant([[1, 2, 3], [0], [1, 2]],
+                                             ragged_rank=1)
+
+    embedded_ragged = nn.embedding_lookup_ragged(weights, ragged_ids)
+    expected_output = ragged_factory_ops.constant(
+        [[[1, 1, 1], [2, 2, 2], [3, 3, 3]], [[0, 0, 0]], [[1, 1, 1], [2, 2, 2]]
+        ],
+        ragged_rank=1)
+
+    self.assertAllEqual(expected_output, embedded_ragged)
+
+  def testMultipleRaggedDimTensor(self):
+    weights = constant_op.constant([[0, 0], [1, 1], [2, 2], [3, 3], [4, 4],
+                                    [5, 5], [6, 6]])
+    ragged_ids = ragged_factory_ops.constant(
+        [[[[3, 4], [0, 6]], []], [[[2, 1], [1, 0]], [[2, 5], [2, 3]]], [[[1, 0]]
+                                                                       ]],
+        ragged_rank=2)
+
+    embedded_ragged = nn.embedding_lookup_ragged(weights, ragged_ids)
+    expected_output = ragged_factory_ops.constant(
+        [[[[[3, 3], [4, 4]], [[0, 0], [6, 6]]], []],
+         [[[[2, 2], [1, 1]], [[1, 1], [0, 0]]],
+          [[[2, 2], [5, 5]], [[2, 2], [3, 3]]]], [[[[1, 1], [0, 0]]]]],
+        ragged_rank=2)
+
+    self.assertAllEqual(expected_output, embedded_ragged)
+
+  def testMissingWeights(self):
+    ragged_ids = ragged_factory_ops.constant([[1, 2, 3], [0], [1, 2]])
+
+    with self.assertRaisesRegex(ValueError,
+                                "The embedding weights must be specified.*"):
+      nn.embedding_lookup_ragged(None, ragged_ids)
+
+  def testEmptyWeights(self):
+    ragged_ids = ragged_factory_ops.constant([[1, 2, 3], [0], [1, 2]])
+
+    with self.assertRaisesRegex(ValueError,
+                                "The embedding weights should not be empty.*"):
+      nn.embedding_lookup_ragged([], ragged_ids)
+
+  def testInvalidIndicesType(self):
+    weights = constant_op.constant([[0, 0, 0], [1, 1, 1], [2, 2, 2]])
+    ragged_ids = ragged_factory_ops.constant([[1., 2., 3.], [1., 2.]])
+
+    with self.assertRaisesRegex(
+        ValueError, "The values contained by the inputs have type*"):
+      nn.embedding_lookup_ragged(weights, ragged_ids)
 
 
 if __name__ == "__main__":

@@ -14,11 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/auto_shard_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/kernels/data/rewrite_utils.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 
 /* static */ constexpr const char* const AutoShardDatasetOp::kDatasetType;
 /* static */ constexpr const char* const AutoShardDatasetOp::kInputDataset;
@@ -62,14 +63,14 @@ RewriterConfig AutoShardDatasetOp::CreateConfig(int64 num_workers,
                                                 int64 index) {
   RewriterConfig rewriter_config;
   rewriter_config.set_fail_on_optimizer_errors(true);
-  rewriter_config.add_optimizers(kOptimizerName);
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);
+
+  rewriter_config.add_optimizers(kOptimizerName);
   auto custom_optimizer = rewriter_config.add_custom_optimizers();
   custom_optimizer->set_name(kOptimizerName);
   AttrValue num_workers_attr;
   num_workers_attr.set_i(num_workers);
   (*custom_optimizer->mutable_parameter_map())[kNumWorkers] = num_workers_attr;
-
   AttrValue index_attr;
   index_attr.set_i(index);
   (*custom_optimizer->mutable_parameter_map())[kIndex] = index_attr;
@@ -83,5 +84,6 @@ REGISTER_KERNEL_BUILDER(Name("AutoShardDataset").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("ExperimentalAutoShardDataset").Device(DEVICE_CPU),
                         AutoShardDatasetOp);
 }  // anonymous namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

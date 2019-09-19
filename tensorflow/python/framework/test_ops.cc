@@ -76,6 +76,12 @@ REGISTER_OP("TestStringOutput")
     .Output("output2: string")
     .SetShapeFn(shape_inference::UnknownShape);
 
+REGISTER_OP("Namespace>TestStringOutput")
+    .Input("input: float")
+    .Output("output1: float")
+    .Output("output2: string")
+    .SetShapeFn(shape_inference::UnknownShape);
+
 REGISTER_OP("TestAttr")
     .Output("out: T")
     .Attr("T: {float, double}")
@@ -96,13 +102,13 @@ class KernelLabelOp : public OpKernel {
                    ctx->allocate_output("result", TensorShape({}), &output));
     switch (KL) {
       case DEFAULT_LABEL:
-        output->scalar<string>()() = "My label is: default";
+        output->scalar<tstring>()() = "My label is: default";
         break;
       case OVERLOAD_1_LABEL:
-        output->scalar<string>()() = "My label is: overload_1";
+        output->scalar<tstring>()() = "My label is: overload_1";
         break;
       case OVERLOAD_2_LABEL:
-        output->scalar<string>()() = "My label is: overload_2";
+        output->scalar<tstring>()() = "My label is: overload_2";
         break;
     }
   }
@@ -676,7 +682,7 @@ class DevicePlacementOp : public OpKernel {
     Tensor* output;
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output("device", TensorShape({}), &output));
-    output->scalar<string>()() = ctx->device()->name();
+    output->scalar<tstring>()() = ctx->device()->name();
   }
 };
 

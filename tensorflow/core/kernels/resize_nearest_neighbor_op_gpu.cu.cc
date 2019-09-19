@@ -33,7 +33,7 @@ namespace {
 
 template <typename T>
 __global__ void ResizeNearestNeighborNHWC(
-    const int nthreads, const T* bottom_data, const int in_height,
+    const int nthreads, const T* __restrict__ bottom_data, const int in_height,
     const int in_width, const int channels, const int out_height,
     const int out_width, const float height_scale, const float width_scale,
     T* top_data) {
@@ -64,10 +64,10 @@ __global__ void ResizeNearestNeighborNHWC(
 
 template <typename T, bool align_corners>
 __global__ void LegacyResizeNearestNeighborNHWC(
-    const int nthreads, const T* bottom_data, const int in_height,
+    const int nthreads, const T* __restrict__ bottom_data, const int in_height,
     const int in_width, const int channels, const int out_height,
     const int out_width, const float height_scale, const float width_scale,
-    T* top_data) {
+    T* __restrict__ top_data) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     int n = index;
     int c = n % channels;
@@ -93,10 +93,10 @@ __global__ void LegacyResizeNearestNeighborNHWC(
 
 template <typename T>
 __global__ void ResizeNearestNeighborBackwardNHWC(
-    const int nthreads, const T* top_diff, const int in_height,
+    const int nthreads, const T* __restrict__ top_diff, const int in_height,
     const int in_width, const int channels, const int out_height,
     const int out_width, const float height_scale, const float width_scale,
-    T* bottom_diff) {
+    T* __restrict__ bottom_diff) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     int n = index;
     int c = n % channels;
@@ -124,10 +124,10 @@ __global__ void ResizeNearestNeighborBackwardNHWC(
 
 template <typename T, bool align_corners>
 __global__ void LegacyResizeNearestNeighborBackwardNHWC(
-    const int nthreads, const T* top_diff, const int in_height,
+    const int nthreads, const T* __restrict__ top_diff, const int in_height,
     const int in_width, const int channels, const int out_height,
     const int out_width, const float height_scale, const float width_scale,
-    T* bottom_diff) {
+    T* __restrict__ bottom_diff) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     int n = index;
     int c = n % channels;

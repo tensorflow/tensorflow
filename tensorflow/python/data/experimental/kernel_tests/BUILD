@@ -159,6 +159,7 @@ tf_py_test(
     srcs = ["replicate_test.py"],
     additional_deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_combinations",
         "//tensorflow/python/data/experimental/ops:distribute",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -172,6 +173,7 @@ tf_py_test(
     srcs = ["replicate_cluster_test.py"],
     additional_deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_combinations",
         "//tensorflow/python/data/experimental/ops:distribute",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -540,7 +542,7 @@ py_test(
     size = "medium",
     srcs = ["rejection_resample_test.py"],
     python_version = "PY2",
-    shard_count = 2,
+    shard_count = 5,
     srcs_version = "PY2AND3",
     tags = [
         "noasan",
@@ -563,29 +565,30 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "scan_test",
     size = "small",
     srcs = ["scan_test.py"],
-    python_version = "PY2",
-    srcs_version = "PY2AND3",
-    tags = ["no_pip"],
-    deps = [
+    additional_deps = [
+        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:script_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:test_ops",
         "//tensorflow/python/data/experimental/ops:scan_ops",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
-        "//third_party/py/numpy",
     ],
+    tags = ["no_pip"],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_test(
@@ -658,8 +661,10 @@ py_test(
 
 py_test(
     name = "snapshot_test",
+    size = "medium",
     srcs = ["snapshot_test.py"],
     python_version = "PY2",
+    shard_count = 10,
     srcs_version = "PY2AND3",
     deps = [
         ":reader_dataset_ops_test_base",

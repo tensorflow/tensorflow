@@ -687,6 +687,20 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
     vals = self.evaluate(v[0].values)
     self.assertAllEqual(vals[0], vals[1])
 
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+          mode=["graph", "eager"]))
+  def testSelectReplica(self, distribution):
+    with distribution.scope():
+      v = variables_lib.Variable(1.)
+    self.assertIs(v, values.select_replica(0, v))
+
 
 _TPU_STRATEGIES = (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)
 
@@ -756,6 +770,19 @@ class SyncOnReadVariablePropertiesTest(test.TestCase):
       # Resources variable are converted to tensors as well when as_ref is True.
       self.assertIsInstance(converted, ops.Tensor)
       self.assertEqual(converted.dtype, replica_local.dtype)
+
+  @test_util.run_v2_only
+  def testCanPassToDefFun(self):
+    @def_function.function
+    def add1(x):
+      return x + 1
+
+    v = variable_scope.get_variable(
+        name="v", initializer=[1.], use_resource=True)
+    device_map = values.ReplicaDeviceMap(("/job:foo/device:CPU:0",))
+    replica_local = values.SyncOnReadVariable(
+        None, device_map, (v,), variable_scope.VariableAggregation.MEAN)
+    self.assertEqual(2., self.evaluate(add1(replica_local)))
 
 
 @combinations.generate(

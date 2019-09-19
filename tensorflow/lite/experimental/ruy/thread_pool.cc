@@ -18,10 +18,12 @@ limitations under the License.
 #include <atomic>
 #include <chrono>              // NOLINT(build/c++11)
 #include <condition_variable>  // NOLINT(build/c++11)
+#include <cstdint>
+#include <cstdlib>
+#include <memory>
 #include <mutex>               // NOLINT(build/c++11)
 #include <thread>              // NOLINT(build/c++11)
 
-#include "tensorflow/lite/experimental/ruy/blocking_counter.h"
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/wait.h"
 
@@ -153,6 +155,13 @@ class Thread {
 
 void ThreadPool::ExecuteImpl(int task_count, int stride, Task* tasks) {
   RUY_DCHECK_GE(task_count, 1);
+
+  // Case of 1 thread: just run the single task on the current thread.
+  if (task_count == 1) {
+    (tasks + 0)->Run();
+    return;
+  }
+
   // Task #0 will be run on the current thread.
   CreateThreads(task_count - 1);
   counter_to_decrement_when_ready_.Reset(task_count - 1);
@@ -160,8 +169,10 @@ void ThreadPool::ExecuteImpl(int task_count, int stride, Task* tasks) {
     auto task_address = reinterpret_cast<std::uintptr_t>(tasks) + i * stride;
     threads_[i - 1]->StartWork(reinterpret_cast<Task*>(task_address));
   }
-  // Execute task #0 workload immediately on the current thread.
+
+  // Execute task #0 immediately on the current thread.
   (tasks + 0)->Run();
+
   // Wait for the threads submitted above to finish.
   counter_to_decrement_when_ready_.Wait();
 }

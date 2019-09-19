@@ -307,6 +307,10 @@ def convert(entity, program_ctx):
   """Converts an entity into an equivalent entity."""
 
   if tf_inspect.isfunction(entity) or tf_inspect.ismethod(entity):
+    if not hasattr(entity, '__code__'):
+      raise ValueError('Cannot apply autograph to a function that doesn\'t '
+                       'expose a __code__ object. If this is a @tf.function,'
+                       ' try passing f.python_function instead.')
     free_nonglobal_var_names = entity.__code__.co_freevars
   else:
     free_nonglobal_var_names = ()
@@ -324,7 +328,9 @@ def convert(entity, program_ctx):
   return _instantiate(entity, converted_entity_info, free_nonglobal_var_names)
 
 
-def is_whitelisted_for_graph(o, check_call_override=True):
+# TODO(mdan): allow_namedtuple_subclass should be hardcoded to True.
+def is_whitelisted_for_graph(
+    o, check_call_override=True, allow_namedtuple_subclass=False):
   """Checks whether an entity is whitelisted for use in graph mode.
 
   Examples of whitelisted entities include all members of the tensorflow
@@ -335,6 +341,8 @@ def is_whitelisted_for_graph(o, check_call_override=True):
     check_call_override: Reserved for internal use. When set to `False`, it
       disables the rule according to which classes are whitelisted if their
       __call__ method is whitelisted.
+    allow_namedtuple_subclass: Reserved for internal use. When `True`,
+      namedtuple subclasses are not whitelisted.
 
   Returns:
     Boolean
@@ -398,7 +406,10 @@ def is_whitelisted_for_graph(o, check_call_override=True):
         return True
 
       owner_class = inspect_utils.getdefiningclass(o, owner_class)
-      if is_whitelisted_for_graph(owner_class, check_call_override=False):
+      if is_whitelisted_for_graph(
+          owner_class,
+          check_call_override=False,
+          allow_namedtuple_subclass=True):
         logging.log(2, 'Whitelisted: %s: owner is whitelisted %s', o,
                     owner_class)
         return True
@@ -407,8 +418,13 @@ def is_whitelisted_for_graph(o, check_call_override=True):
     # Due to the way they're constructed, namedtuple types cannot be converted
     # because they don't expose source code. But we assume they are safe for
     # graph mode since they are just containers.
-    logging.log(2, 'Whitelisted: %s: named tuple', o)
-    return True
+    if allow_namedtuple_subclass:
+      if not any(inspect_utils.isnamedtuple(base) for base in o.__bases__):
+        logging.log(2, 'Whitelisted: %s: named tuple', o)
+        return True
+    else:
+      logging.log(2, 'Whitelisted: %s: named tuple or subclass', o)
+      return True
 
   logging.log(2, 'Not whitelisted: %s: default rule', o)
   return False
@@ -601,6 +617,7 @@ def _add_self_references(namespace, autograph_module):
     ag_internal.Feature = converter.Feature
     ag_internal.utils = utils
     ag_internal.FunctionScope = function_wrappers.FunctionScope
+    ag_internal.with_function_scope = function_wrappers.with_function_scope
     # TODO(mdan): Add safeguards against name clashes.
     # We don't want to create a submodule because we want the operators to be
     # accessible as ag__.<operator>
@@ -640,24 +657,27 @@ def convert_func_to_ast(f, program_ctx, do_rename=True):
   _add_self_references(namespace, program_ctx.autograph_module)
   namer = naming.Namer(namespace)
 
+  if isinstance(node, gast.Lambda):
+    new_name = namer.new_symbol('tf__lambda', ())
+  elif do_rename:
+    new_name = namer.function_name(f.__name__)
+  else:
+    new_name = f.__name__
+
   entity_info = transformer.EntityInfo(
       source_code=source,
       source_file='<fragment>',
       future_features=future_features,
       namespace=namespace)
-  context = converter.EntityContext(namer, entity_info, program_ctx)
+  context = converter.EntityContext(namer, entity_info, program_ctx, new_name)
   node = node_to_graph(node, context)
 
   if isinstance(node, gast.Lambda):
-    new_name = namer.new_symbol('tf__lambda', ())
     node = gast.Assign(
         targets=[gast.Name(new_name, gast.Store(), None)], value=node)
-
   elif do_rename:
-    new_name = namer.function_name(f.__name__)
     node.name = new_name
   else:
-    new_name = f.__name__
     assert node.name == new_name
 
   return (node,), new_name, entity_info

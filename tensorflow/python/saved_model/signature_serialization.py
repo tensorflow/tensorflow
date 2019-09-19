@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
 from tensorflow.python.framework import ops
@@ -29,6 +27,7 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.training.tracking import base
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util.compat import collections_abc
 
 
 DEFAULT_SIGNATURE_ATTR = "_default_save_signature"
@@ -87,7 +86,7 @@ def canonicalize_signatures(signatures):
   """Converts `signatures` into a dictionary of concrete functions."""
   if signatures is None:
     return {}
-  if not isinstance(signatures, collections.Mapping):
+  if not isinstance(signatures, collections_abc.Mapping):
     signatures = {
         signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: signatures}
   concrete_signatures = {}
@@ -146,7 +145,7 @@ def _is_flat(sequence):
 
 def _normalize_outputs(outputs, function_name, signature_key):
   """Construct an output dictionary from unnormalized function outputs."""
-  if isinstance(outputs, collections.Mapping):
+  if isinstance(outputs, collections_abc.Mapping):
     for key, value in outputs.items():
       if not isinstance(value, ops.Tensor):
         raise ValueError(
@@ -158,7 +157,7 @@ def _normalize_outputs(outputs, function_name, signature_key):
     return outputs
   else:
     original_outputs = outputs
-    if not isinstance(outputs, collections.Sequence):
+    if not isinstance(outputs, collections_abc.Sequence):
       outputs = [outputs]
     if not _is_flat(outputs):
       raise ValueError(
@@ -180,7 +179,7 @@ def _normalize_outputs(outputs, function_name, signature_key):
 # saved if they contain a _SignatureMap. A ".signatures" attribute containing
 # any other type (e.g. a regular dict) will raise an exception asking the user
 # to first "del obj.signatures" if they want it overwritten.
-class _SignatureMap(collections.Mapping, base.Trackable):
+class _SignatureMap(collections_abc.Mapping, base.Trackable):
   """A collection of SavedModel signatures."""
 
   def __init__(self):
@@ -234,7 +233,7 @@ def create_signature_map(signatures):
     # be more problematic in case future export changes violated these
     # assertions.
     assert isinstance(func, defun.ConcreteFunction)
-    assert isinstance(func.structured_outputs, collections.Mapping)
+    assert isinstance(func.structured_outputs, collections_abc.Mapping)
     # pylint: disable=protected-access
     if len(func._arg_keywords) == 1:
       assert 1 == func._num_positional_args

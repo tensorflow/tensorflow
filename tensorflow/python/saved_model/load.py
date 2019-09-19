@@ -176,22 +176,27 @@ class Loader(object):
       if bound_inputs:
         for bound_input, internal_capture in zip(
             bound_inputs, concrete_function.inputs[-len(bound_inputs):]):
-          concrete_function.graph.captures[bound_input] = internal_capture
-          if internal_capture.dtype == dtypes.resource:
-            if resource_variable_ops.is_resource_variable(bound_input):
-              try:
-                handle = bound_input.handle
-              except ValueError:
-                # For mirrored variables we'll copy handle data for components
-                # as they get captured.
-                pass
+          if ds_values.is_distributed_variable(bound_input):
+            concrete_function.graph.capture_distributed_variable(
+                bound_input, internal_capture)
+          else:
+            concrete_function.graph._captures[ops.tensor_id(bound_input)] = (  # pylint: disable=protected-access
+                bound_input, internal_capture)
+            if internal_capture.dtype == dtypes.resource:
+              if resource_variable_ops.is_resource_variable(bound_input):
+                try:
+                  handle = bound_input.handle
+                except ValueError:
+                  # For mirrored variables we'll copy handle data for components
+                  # as they get captured.
+                  pass
+                else:
+                  custom_gradient.copy_handle_data(handle, internal_capture)
               else:
-                custom_gradient.copy_handle_data(handle, internal_capture)
-            else:
-              custom_gradient.copy_handle_data(bound_input, internal_capture)
-          # Setting "captures" first means "capture" won't create a new
-          # placeholder for this input.
-          concrete_function.graph.capture(bound_input)
+                custom_gradient.copy_handle_data(bound_input, internal_capture)
+            # Setting "captures" first means "capture" won't create a new
+            # placeholder for this input.
+            concrete_function.graph.capture(bound_input)
 
   def _get_tensor_from_node(self, node_id):
     """Resolves a node id into a tensor to be captured for a function."""
@@ -201,7 +206,7 @@ class Loader(object):
         return obj
       elif resource_variable_ops.is_resource_variable(obj):
         return obj.handle
-      elif isinstance(obj, tracking.TrackableAsset):
+      elif isinstance(obj, tracking.Asset):
         return obj.asset_path
       elif tensor_util.is_tensor(obj):
         return obj
@@ -338,7 +343,7 @@ class Loader(object):
     filename = os.path.join(
         saved_model_utils.get_assets_dir(self._export_dir),
         self._asset_file_def[proto.asset_file_def_index].filename)
-    return tracking.TrackableAsset(filename), setattr
+    return tracking.Asset(filename), setattr
 
   def _recreate_function(self, proto):
     return function_deserialization.recreate_function(

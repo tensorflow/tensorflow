@@ -201,27 +201,28 @@ class NestedStructureTest(test.TestCase):
         values {
           type_spec_value {
             type_spec_class: RAGGED_TENSOR_SPEC
-              type_state {
-                tuple_value {
-                  # spec._shape
-                  values {
-                    tensor_shape_value {
-                      dim { size: 1 }
-                      dim { size: 2 }
-                      dim { size: 3 }
-                    }
+            type_spec_class_name: 'RaggedTensorSpec'
+            type_state {
+              tuple_value {
+                # spec._shape
+                values {
+                  tensor_shape_value {
+                    dim { size: 1 }
+                    dim { size: 2 }
+                    dim { size: 3 }
                   }
-                  # spec._dtype
-                  values { tensor_dtype_value: DT_INT64 }
-                  # spec._ragged_rank
-                  values { int64_value: 2 }
-                  # spec._row_splits_dtype
-                  values { tensor_dtype_value: DT_INT32 }
                 }
+                # spec._dtype
+                values { tensor_dtype_value: DT_INT64 }
+                # spec._ragged_rank
+                values { int64_value: 2 }
+                # spec._row_splits_dtype
+                values { tensor_dtype_value: DT_INT32 }
               }
             }
           }
         }
+      }
     """
     expected = struct_pb2.StructuredValue()
     text_format.Parse(expected_pbtxt, expected)
@@ -238,28 +239,37 @@ class NestedStructureTest(test.TestCase):
         values {
           type_spec_value {
             type_spec_class: SPARSE_TENSOR_SPEC
-              type_state {
-                tuple_value {
-                  # spec._shape
-                  values {
-                    tensor_shape_value {
-                      dim { size: 10 }
-                      dim { size: 20 }
-                    }
+            type_spec_class_name: 'SparseTensorSpec'
+            type_state {
+              tuple_value {
+                # spec._shape
+                values {
+                  tensor_shape_value {
+                    dim { size: 10 }
+                    dim { size: 20 }
                   }
-                  # spec._dtype
-                  values { tensor_dtype_value: DT_FLOAT }
                 }
+                # spec._dtype
+                values { tensor_dtype_value: DT_FLOAT }
               }
             }
           }
         }
+      }
     """
     expected = struct_pb2.StructuredValue()
     text_format.Parse(expected_pbtxt, expected)
     self.assertEqual(expected, encoded)
     decoded = self._coder.decode_proto(encoded)
     self.assertEqual(structure, decoded)
+
+  def testDecodeUnknownTensorSpec(self):
+    encoded = struct_pb2.StructuredValue()
+    encoded.type_spec_value.type_spec_class = 0
+    encoded.type_spec_value.type_spec_class_name = "FutureTensorSpec"
+    with self.assertRaisesRegexp(
+        ValueError, "The type 'FutureTensorSpec' is not supported"):
+      self._coder.decode_proto(encoded)
 
   def testEncodeDataSetSpec(self):
     structure = [dataset_ops.DatasetSpec(

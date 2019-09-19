@@ -2015,6 +2015,16 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
+  
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.adjust_jpeg_quality(x, 75)
+    ```
+  Raises:
+    InvalidArgumentError: quality must be in [0,100]
+    InvalidArgumentError: image must have 1 or 3 channels
   """
   with ops.name_scope(name, 'adjust_jpeg_quality', [image]) as name:
     image = ops.convert_to_tensor(image, name='image')
@@ -3424,7 +3434,40 @@ def image_gradients(image):
   Returns:
     Pair of tensors (dy, dx) holding the vertical and horizontal image
     gradients (1-step finite difference).
-
+    
+  Usage Example:
+    ```python
+    BATCH_SIZE = 1
+    IMAGE_HEIGHT = 5
+    IMAGE_WIDTH = 5
+    CHANNELS = 1
+    image = tf.reshape(tf.range(IMAGE_HEIGHT * IMAGE_WIDTH * CHANNELS, 
+      delta=1, dtype=tf.float32), 
+      shape=(BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH, CHANNELS))
+    dx, dy = tf.image.image_gradients(image)
+    print(image[0, :,:,0])
+    tf.Tensor(
+      [[ 0.  1.  2.  3.  4.]
+      [ 5.  6.  7.  8.  9.]
+      [10. 11. 12. 13. 14.]
+      [15. 16. 17. 18. 19.]
+      [20. 21. 22. 23. 24.]], shape=(5, 5), dtype=float32)
+    print(dx[0, :,:,0])
+    tf.Tensor(
+      [[5. 5. 5. 5. 5.]
+      [5. 5. 5. 5. 5.]
+      [5. 5. 5. 5. 5.]
+      [5. 5. 5. 5. 5.]
+      [0. 0. 0. 0. 0.]], shape=(5, 5), dtype=float32)    
+    print(dy[0, :,:,0])
+    tf.Tensor(
+      [[1. 1. 1. 1. 0.]
+      [1. 1. 1. 1. 0.]
+      [1. 1. 1. 1. 0.]
+      [1. 1. 1. 1. 0.]
+      [1. 1. 1. 1. 0.]], shape=(5, 5), dtype=float32)
+    ```
+    
   Raises:
     ValueError: If `image` is not a 4D tensor.
   """
@@ -3618,6 +3661,26 @@ def crop_and_resize_v2(image,
 
   Returns:
     A 4-D tensor of shape `[num_boxes, crop_height, crop_width, depth]`.
+
+  Example:
+
+  ```python
+  import tensorflow as tf
+  BATCH_SIZE = 1
+  NUM_BOXES = 5
+  IMAGE_HEIGHT = 256
+  IMAGE_WIDTH = 256
+  CHANNELS = 3
+  CROP_SIZE = (24, 24)
+
+  image = tf.random.normal(shape=(BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH,
+  CHANNELS) )
+  boxes = tf.random.uniform(shape=(NUM_BOXES, 4))
+  box_indices = tf.random.uniform(shape=(NUM_BOXES,), minval=0,
+  maxval=BATCH_SIZE, dtype=tf.int32)
+  output = tf.image.crop_and_resize(image, boxes, box_indices, CROP_SIZE)
+  output.shape  #=> (5, 24, 24, 3)
+  ```
   """
   return gen_image_ops.crop_and_resize(image, boxes, box_indices, crop_size,
                                        method, extrapolation_value, name)

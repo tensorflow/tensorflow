@@ -22,6 +22,10 @@ limitations under the License.
 extern "C" {
 #endif
 
+TF_CAPI_EXPORT extern void TFE_OpReset(TFE_Context* ctx,
+                                       const char* op_or_function_name,
+                                       TF_Status* status, TFE_Op* op_to_reset);
+
 TF_CAPI_EXPORT extern void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h,
                                               TF_Status* status);
 
@@ -351,6 +355,51 @@ typedef struct TFE_CancellationManager TFE_CancellationManager;
 TF_CAPI_EXPORT extern void TFE_OpSetCancellationManager(
     TFE_Op* op, TFE_CancellationManager* cancellation_manager,
     TF_Status* status);
+
+// -----------------------------------------------------------------------------
+// Eager Executor APIs.
+typedef struct TFE_Executor TFE_Executor;
+
+// Creates a new eager Executor. Nodes in one executor are guaranteed to be
+// executed in sequence. Assigning nodes to different executors allows executing
+// nodes in parallel.
+TF_CAPI_EXPORT extern TFE_Executor* TFE_NewExecutor(bool is_async);
+
+// Deletes the eager Executor without waiting for enqueued nodes. Please call
+// TFE_ExecutorWaitForAllPendingNodes before calling this API if you want to
+// make sure all nodes are finished.
+TF_CAPI_EXPORT extern void TFE_DeleteExecutor(TFE_Executor*);
+
+// Returns true if the executor is in async mode.
+TF_CAPI_EXPORT extern bool TFE_ExecutorIsAsync(TFE_Executor*);
+
+// Causes the calling thread to block till all ops dispatched in this executor
+// have been executed. Note that "execution" here refers to kernel execution /
+// scheduling of copies, etc. Similar to sync execution, it doesn't guarantee
+// that lower level device queues (like GPU streams) have been flushed.
+//
+// This call may not block for execution of ops enqueued concurrently with this
+// call.
+TF_CAPI_EXPORT extern void TFE_ExecutorWaitForAllPendingNodes(
+    TFE_Executor*, TF_Status* status);
+
+// When an error happens, any pending operations are discarded and newly issued
+// ops return an error. This call clears the error state and re-enables
+// execution of newly issued ops.
+//
+// Note that outputs of discarded ops remain in a corrupt state and should not
+// be used for future calls.
+// TODO(agarwal): mark the affected handles and raise errors if they are used.
+TF_CAPI_EXPORT extern void TFE_ExecutorClearError(TFE_Executor*);
+
+// Sets a custom Executor for current thread. All nodes created by this thread
+// will be added to this Executor. It will override current executor.
+TF_CAPI_EXPORT extern void TFE_ContextSetExecutorForThread(TFE_Context*,
+                                                           TFE_Executor*);
+
+// Returns the Executor for current thread.
+TF_CAPI_EXPORT extern TFE_Executor* TFE_ContextGetExecutorForThread(
+    TFE_Context*);
 
 #ifdef __cplusplus
 } /* end extern "C" */

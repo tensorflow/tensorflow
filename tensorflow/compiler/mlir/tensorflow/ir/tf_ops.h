@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -36,6 +37,8 @@ namespace TF {
 class TensorFlowDialect : public Dialect {
  public:
   TensorFlowDialect(MLIRContext *context);
+
+  static StringRef getDialectNamespace() { return "tf"; }
 
   // Gradient attribute ("tf.gradient") in the list of NamedAttibutes in a
   // function references to its gradient function. This attribute in TensorFlow

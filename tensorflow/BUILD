@@ -7,7 +7,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library_additional_deps_impl")
 load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
+    "//tensorflow/core/platform:default/build_config.bzl",
     "tf_additional_binary_deps",
 )
 load(
@@ -268,18 +268,6 @@ config_setting(
 )
 
 config_setting(
-    name = "no_ignite_support",
-    define_values = {"no_ignite_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "no_kafka_support",
-    define_values = {"no_kafka_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "no_nccl_support",
     define_values = {"no_nccl_support": "true"},
     visibility = ["//visibility:public"],
@@ -306,18 +294,6 @@ config_setting(
 config_setting(
     name = "no_xla_deps_in_cuda",
     define_values = {"no_xla_deps_in_cuda": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_gdr_support",
-    define_values = {"with_gdr_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_verbs_support",
-    define_values = {"with_verbs_support": "true"},
     visibility = ["//visibility:public"],
 )
 
@@ -356,6 +332,15 @@ config_setting(
     },
 )
 
+# Flag to indicate open source build, .bazelrc always has it set to be true
+config_setting(
+    name = "oss",
+    define_values = {
+        "open_source_build": "true",
+    },
+    visibility = ["//visibility:public"],
+)
+
 config_setting(
     name = "using_cuda_clang_with_dynamic_build",
     define_values = {
@@ -364,11 +349,20 @@ config_setting(
     },
 )
 
+config_setting(
+    name = "build_oss_using_cuda_clang",
+    define_values = {
+        "using_cuda_clang": "true",
+        "open_source_build": "true",
+    },
+)
+
 # Setting to use when loading kernels dynamically
 config_setting(
     name = "dynamic_loaded_kernels",
     define_values = {
         "dynamic_loaded_kernels": "true",
+        "framework_shared_object": "true",
     },
     visibility = ["//visibility:public"],
 )
@@ -389,16 +383,18 @@ config_setting(
 )
 
 config_setting(
-    name = "using_rocm_hipcc",
+    name = "build_oss_using_cuda_nvcc",
     define_values = {
-        "using_rocm_hipcc": "true",
+        "using_cuda_nvcc": "true",
+        "open_source_build": "true",
     },
 )
 
 config_setting(
-    name = "with_mpi_support",
-    values = {"define": "with_mpi_support=true"},
-    visibility = ["//visibility:public"],
+    name = "using_rocm_hipcc",
+    define_values = {
+        "using_rocm_hipcc": "true",
+    },
 )
 
 config_setting(
@@ -444,6 +440,7 @@ config_setting(
 package_group(
     name = "internal",
     packages = [
+        "//perftools/accelerators/xprof/api/...",
         "//tensorflow/...",
         "//tensorflow_estimator/python/estimator/...",
         "//tensorflow_models/official/...",
@@ -607,6 +604,7 @@ tf_cc_shared_object(
         "//tensorflow/c:version_script.lds",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/core:tensorflow",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_session",
     ],
 )
 
@@ -750,8 +748,8 @@ genrule(
     mkdir $@
     for f in $(SRCS); do
       d="$${f%/*}"
-      d="$${d#bazel-out*genfiles/}"
-      d="$${d#*external/eigen_archive/}"
+      d="$${d#bazel-out/*/genfiles/}"
+      d="$${d#bazel-out/*/bin/}"
 
       if [[ $${d} == *local_config_* ]]; then
         continue
@@ -763,6 +761,9 @@ genrule(
         if [[ $${TF_SYSTEM_LIBS:-} == *$${extname}* ]]; then
           continue
         fi
+
+        d="$${d#*external/farmhash_archive/src}"
+        d="$${d#*external/$${extname}/}"
       fi
 
       mkdir -p "$@/$${d}"
@@ -781,8 +782,8 @@ genrule(
     }),
     outs = ["__init__.py"],
     cmd = select({
-        "api_version_2": "cp $(@D)/_api/v2/v2.py $(OUTS)",
-        "//conditions:default": "cp $(@D)/_api/v1/v1.py $(OUTS)",
+        "api_version_2": "cp $(@D)/_api/v2/v2.py $(OUTS) && sed -i'.original' 's:from . import:from . _api.v2 import:g' $(OUTS)",
+        "//conditions:default": "cp $(@D)/_api/v1/v1.py $(OUTS) && sed -i'.original' 's:from . import:from ._api.v1 import:g' $(OUTS)",
     }),
 )
 
@@ -848,7 +849,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = select({
         "api_version_2": [],
-        "//conditions:default": ["//tensorflow/contrib:contrib_py"],
+        "//conditions:default": [],
     }) + [
         ":tensorflow_py_no_contrib",
         "//tensorflow/python/estimator:estimator_py",

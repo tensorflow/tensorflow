@@ -151,7 +151,7 @@ void XRTCompileOp::Compute(OpKernelContext* ctx) {
   xrt::XLAComputation computation_proto;
   OP_REQUIRES(
       ctx,
-      computation_proto.ParseFromString(computation_input.scalar<string>()()),
+      computation_proto.ParseFromString(computation_input.scalar<tstring>()()),
       errors::InvalidArgument(
           "Unable to parse computation input to XLAComputation"));
 
@@ -191,7 +191,7 @@ void XRTCompileOp::Compute(OpKernelContext* ctx) {
                                              .ComputeProgramShape()
                                              .ToProto();
   Tensor program_shape_output(DT_STRING, TensorShape({1}));
-  program_shape_output.vec<string>()(0) = program_shape.SerializeAsString();
+  program_shape_output.vec<tstring>()(0) = program_shape.SerializeAsString();
   ctx->set_output(1, program_shape_output);
 }
 

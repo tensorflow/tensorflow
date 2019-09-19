@@ -1029,8 +1029,9 @@ class TFLiteConverter(TFLiteConverterBase):
 
     for tensor in self._input_tensors:
       shape = tensor.shape.as_list()
-      shape[0] = batch_size
-      tensor.set_shape(shape)
+      if shape[0] is None:
+        shape[0] = batch_size
+        tensor.set_shape(shape)
 
 
 @_tf_export(v1=["lite.TocoConverter"])

@@ -99,6 +99,7 @@ bool IsLog(const NodeDef& node);
 bool IsLogicalAnd(const NodeDef& node);
 bool IsLogicalNot(const NodeDef& node);
 bool IsLogicalOr(const NodeDef& node);
+bool IsLoopCond(const NodeDef& node);
 bool IsMatMul(const NodeDef& node);
 bool IsMax(const NodeDef& node);
 bool IsMaxPoolGrad(const NodeDef& node);
@@ -189,6 +190,7 @@ bool IsUnpack(const NodeDef& node);
 bool IsVariable(const NodeDef& node);
 bool IsWhile(const NodeDef& node);
 bool IsXdivy(const NodeDef& node);
+bool IsXlaLaunch(const NodeDef& node);
 bool IsZerosLike(const NodeDef& node);
 bool IsZeta(const NodeDef& node);
 

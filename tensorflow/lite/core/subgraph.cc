@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/lite/arena_planner.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/minimal_logging.h"
@@ -161,7 +162,6 @@ Subgraph::Subgraph(ErrorReporter* error_reporter,
     : external_contexts_(external_contexts),
       error_reporter_(error_reporter),
       next_execution_plan_index_to_prepare_(0),
-      next_execution_plan_index_to_plan_allocation_(0),
       subgraphs_(subgraphs),
       resource_variables_(resource_variables) {
   context_.impl_ = static_cast<void*>(this);
@@ -495,7 +495,6 @@ TfLiteStatus Subgraph::AllocateTensors() {
   }
 
   next_execution_plan_index_to_prepare_ = 0;
-  next_execution_plan_index_to_plan_allocation_ = 0;
   if (memory_planner_) {
     TF_LITE_ENSURE_STATUS(memory_planner_->ResetAllocations());
   }
@@ -525,11 +524,8 @@ TfLiteStatus Subgraph::ResetVariableTensors() {
     TF_LITE_ENSURE_EQ(&context_, tensor.allocation_type,
                       kTfLiteArenaRwPersistent);
     TF_LITE_ENSURE(&context_, tensor.data.raw != nullptr);
-    int value = 0;
-    if (tensor.type == kTfLiteInt8) {
-      value = tensor.params.zero_point;
-    }
-    memset(tensor.data.raw, value, tensor.bytes);
+
+    tflite::ResetVariableTensor(&tensor);
   }
   return kTfLiteOk;
 }
@@ -637,15 +633,14 @@ TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
                                  TfLiteNode* node) {
   if (op_reg.prepare == nullptr) {
     // Check if it's an unresolved custom op.
-    if (op_reg.builtin_code == BuiltinOperator_CUSTOM &&
-        op_reg.custom_name != nullptr && op_reg.invoke == &UnresolvedOpInvoke) {
+    if (IsUnresolvedCustomOp(op_reg)) {
       if (IsFlexOp(op_reg.custom_name)) {
         ReportError(
             "Regular TensorFlow ops are not supported by this interpreter. "
-            "Make sure you invoke the Flex delegate before inference.");
+            "Make sure you apply/link the Flex delegate before inference.");
       } else {
         ReportError("Encountered unresolved custom op: %s.",
-                    op_reg.custom_name);
+                    op_reg.custom_name ? op_reg.custom_name : "UnknownOp");
       }
       return kTfLiteError;
     }
@@ -686,6 +681,7 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
 }
 
 TfLiteStatus Subgraph::PrepareOpsAndTensors() {
+  //  for (const auto& tensor : graph_info_
   if (!memory_planner_) {
     memory_planner_.reset(new ArenaPlanner(
         &context_, std::unique_ptr<GraphInfo>(new InterpreterInfo(this)),
@@ -697,13 +693,10 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
 
   TF_LITE_ENSURE_STATUS(PrepareOpsStartingAt(
       next_execution_plan_index_to_prepare_, &last_exec_plan_index_prepared));
-  next_execution_plan_index_to_prepare_ = last_exec_plan_index_prepared + 1;
 
   TF_LITE_ENSURE_STATUS(memory_planner_->ExecuteAllocations(
-      next_execution_plan_index_to_plan_allocation_,
-      last_exec_plan_index_prepared));
-  next_execution_plan_index_to_plan_allocation_ =
-      last_exec_plan_index_prepared + 1;
+      next_execution_plan_index_to_prepare_, last_exec_plan_index_prepared));
+  next_execution_plan_index_to_prepare_ = last_exec_plan_index_prepared + 1;
 
   return kTfLiteOk;
 }
@@ -778,22 +771,6 @@ TfLiteStatus Subgraph::Invoke() {
     if (tensor_resized_since_op_invoke_ &&
         HasDynamicTensor(context_, node.outputs)) {
       next_execution_plan_index_to_prepare_ = execution_plan_index + 1;
-
-      // This happens when an intermediate dynamic tensor is resized.
-      // We don't have to prepare all the ops, but we need to recompute
-      // the allocation plan.
-      //
-      // This is a workaround for b/127354079. It relies on the property that
-      // ArenaPlanner's behavior is deterministic. A better solution is being
-      // able to "Rewind" to a specific index in ArenaPlanner.
-      // TODO(b/127354079): Improve ArenaPlanner and remove this mechanism.
-      if (next_execution_plan_index_to_plan_allocation_ >
-          next_execution_plan_index_to_prepare_) {
-        next_execution_plan_index_to_plan_allocation_ = 0;
-        if (memory_planner_) {
-          TF_LITE_ENSURE_STATUS(memory_planner_->ResetAllocations());
-        }
-      }
     }
   }
 
@@ -1058,6 +1035,9 @@ void Subgraph::SwitchToKernelContext() {
 }
 
 TfLiteStatus Subgraph::UndoAllDelegates() {
+  // Return early if there is nothing to reset to.
+  if (pre_delegation_execution_plan_.empty()) return kTfLiteOk;
+
   // First free all delegate nodes.
   for (int execution_plan_index = 0;
        execution_plan_index < execution_plan_.size(); ++execution_plan_index) {
@@ -1071,6 +1051,7 @@ TfLiteStatus Subgraph::UndoAllDelegates() {
 
   // Reset execution plan.
   execution_plan_ = pre_delegation_execution_plan_;
+  pre_delegation_execution_plan_.clear();
 
   // Delegate nodes are appended to nodes_and_registration_. Therefore,
   // cleanup nodes_and_registration_ to only contain nodes from
@@ -1149,24 +1130,41 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   // Setup additional context interface.
   SwitchToDelegateContext();
 
+  auto reset_delegation_if_not_ok = [this](TfLiteStatus status) {
+    if (status != kTfLiteOk) {
+      // This will undo all delegate nodes currently in the graph.
+      TF_LITE_ENSURE_STATUS(this->UndoAllDelegates());
+      // This will call AllocateTensors, thus-reapplying any (successfully
+      // applied) previous delegates.
+      TF_LITE_ENSURE_STATUS(this->EnsureMemoryAllocations());
+      ReportError(
+          "Restored previous execution plan after delegate application "
+          "failure.");
+      return kTfLiteError;
+    }
+    return kTfLiteOk;
+  };
+
   TfLiteStatus status = delegate->Prepare(&context_, delegate);
 
   // Remove additional context info.
   SwitchToKernelContext();
 
-  TF_LITE_ENSURE_OK(&context_, status);
+  TF_LITE_ENSURE_STATUS(reset_delegation_if_not_ok(status));
 
   if (!(delegate->flags & kTfLiteDelegateFlagsAllowDynamicTensors)) {
     // Reset the state to force tensor/op reallocation.
     state_ = kStateUninvokable;
-    TF_LITE_ENSURE_OK(&context_, EnsureMemoryAllocations());
+    TF_LITE_ENSURE_STATUS(
+        reset_delegation_if_not_ok(EnsureMemoryAllocations()));
     // After using a delegate which doesn't support dynamic tensors, make the
     // entire graph immutable.
     state_ = kStateInvokableAndImmutable;
   } else if (was_invokable_before_delegate) {
     // If the graph was invokable prior to delegate application, flush
     // allocation now to leave it in a consistent state.
-    TF_LITE_ENSURE_OK(&context_, EnsureMemoryAllocations());
+    TF_LITE_ENSURE_STATUS(
+        reset_delegation_if_not_ok(EnsureMemoryAllocations()));
   }
   delegates_applied_.push_back(delegate);
 

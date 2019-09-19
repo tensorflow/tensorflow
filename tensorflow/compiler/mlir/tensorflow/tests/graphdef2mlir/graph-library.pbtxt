@@ -39,10 +39,10 @@ versions {
 # Verify that functions from the library are properly imported.
 
 # CHECK-LABEL:  func @main() {
-# CHECK:    "_tf.foo0"()
-# CHECK:    "_tf.bar0"()
+# CHECK:    "tf.foo0"()
+# CHECK:    "tf.bar0"()
 
 # CHECK-LABEL:  func @foo0() {
-# CHECK: "_tf.bar0"()
+# CHECK: "tf.bar0"()
 
 # CHECK-LABEL:  func @bar0() {

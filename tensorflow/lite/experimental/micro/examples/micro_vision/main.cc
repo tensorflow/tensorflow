@@ -17,69 +17,112 @@ limitations under the License.
 #include "tensorflow/lite/experimental/micro/examples/micro_vision/image_provider.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_vision/model_settings.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_vision/person_detect_model_data.h"
-#include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 #include "tensorflow/lite/experimental/micro/micro_interpreter.h"
+#include "tensorflow/lite/experimental/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 
-// Create an area of memory to use for input, output, and intermediate arrays.
-// TODO(rocky): This is too big for many platforms.  Need to implement a more
-// efficient memory manager for intermediate tensors.
-// TODO(petewarden): Temporarily reduce the size for Arduino builds, so we can
-// make sure the continuous-integration builds work.
-#ifdef ARDUINO
-constexpr int tensor_arena_size = 10 * 1024;
-#else   // ARDUINO
-constexpr int tensor_arena_size = 270 * 1024;
-#endif  // ARDUINO
-uint8_t tensor_arena[tensor_arena_size];
+namespace tflite {
+namespace ops {
+namespace micro {
+TfLiteRegistration* Register_DEPTHWISE_CONV_2D();
+TfLiteRegistration* Register_CONV_2D();
+TfLiteRegistration* Register_AVERAGE_POOL_2D();
+}  // namespace micro
+}  // namespace ops
+}  // namespace tflite
 
-int main(int argc, char* argv[]) {
-  // Set up logging.
-  tflite::MicroErrorReporter micro_error_reporter;
-  tflite::ErrorReporter* error_reporter = &micro_error_reporter;
+// Globals, used for compatibility with Arduino-style sketches.
+namespace {
+tflite::ErrorReporter* error_reporter = nullptr;
+const tflite::Model* model = nullptr;
+tflite::MicroInterpreter* interpreter = nullptr;
+TfLiteTensor* input = nullptr;
+
+// An area of memory to use for input, output, and intermediate arrays.
+constexpr int kTensorArenaSize = 70 * 1024;
+static uint8_t tensor_arena[kTensorArenaSize];
+}  // namespace
+
+// The name of this function is important for Arduino compatibility.
+void setup() {
+  // Set up logging. Google style is to avoid globals or statics because of
+  // lifetime uncertainty, but since this has a trivial destructor it's okay.
+  // NOLINTNEXTLINE(runtime-global-variables)
+  static tflite::MicroErrorReporter micro_error_reporter;
+  error_reporter = &micro_error_reporter;
 
   // Map the model into a usable data structure. This doesn't involve any
   // copying or parsing, it's a very lightweight operation.
-  const tflite::Model* model = ::tflite::GetModel(g_person_detect_model_data);
+  model = tflite::GetModel(g_person_detect_model_data);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
     error_reporter->Report(
         "Model provided is schema version %d not equal "
         "to supported version %d.",
         model->version(), TFLITE_SCHEMA_VERSION);
+    return;
   }
 
-  // This pulls in all the operation implementations we need.
-  tflite::ops::micro::AllOpsResolver resolver;
+  // Pull in only the operation implementations we need.
+  // This relies on a complete list of all the ops needed by this graph.
+  // An easier approach is to just use the AllOpsResolver, but this will
+  // incur some penalty in code space for op implementations that are not
+  // needed by this graph.
+  //
+  // tflite::ops::micro::AllOpsResolver resolver;
+  // NOLINTNEXTLINE(runtime-global-variables)
+  static tflite::MicroMutableOpResolver micro_mutable_op_resolver;
+  micro_mutable_op_resolver.AddBuiltin(
+      tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
+      tflite::ops::micro::Register_DEPTHWISE_CONV_2D());
+  micro_mutable_op_resolver.AddBuiltin(tflite::BuiltinOperator_CONV_2D,
+                                       tflite::ops::micro::Register_CONV_2D());
+  micro_mutable_op_resolver.AddBuiltin(
+      tflite::BuiltinOperator_AVERAGE_POOL_2D,
+      tflite::ops::micro::Register_AVERAGE_POOL_2D());
 
   // Build an interpreter to run the model with.
-  tflite::MicroInterpreter interpreter(model, resolver, tensor_arena,
-                                       tensor_arena_size, error_reporter);
-  interpreter.AllocateTensors();
+  static tflite::MicroInterpreter static_interpreter(
+      model, micro_mutable_op_resolver, tensor_arena, kTensorArenaSize,
+      error_reporter);
+  interpreter = &static_interpreter;
 
-  // Get information about the memory area to use for the model's input.
-  TfLiteTensor* input = interpreter.input(0);
-
-  while (true) {
-    // Get image from provider.
-    if (kTfLiteOk != GetImage(error_reporter, kNumCols, kNumRows, kNumChannels,
-                              input->data.uint8)) {
-      error_reporter->Report("Image capture failed.");
-    }
-
-    // Run the model on this input and make sure it succeeds.
-    if (kTfLiteOk != interpreter.Invoke()) {
-      error_reporter->Report("Invoke failed.");
-    }
-
-    TfLiteTensor* output = interpreter.output(0);
-
-    // Process the inference results.
-    uint8_t person_score = output->data.uint8[kPersonIndex];
-    uint8_t no_person_score = output->data.uint8[kNotAPersonIndex];
-    RespondToDetection(error_reporter, person_score, no_person_score);
+  // Allocate memory from the tensor_arena for the model's tensors.
+  TfLiteStatus allocate_status = interpreter->AllocateTensors();
+  if (allocate_status != kTfLiteOk) {
+    error_reporter->Report("AllocateTensors() failed");
+    return;
   }
 
-  return 0;
+  // Get information about the memory area to use for the model's input.
+  input = interpreter->input(0);
+}
+
+// The name of this function is important for Arduino compatibility.
+void loop() {
+  // Get image from provider.
+  if (kTfLiteOk != GetImage(error_reporter, kNumCols, kNumRows, kNumChannels,
+                            input->data.uint8)) {
+    error_reporter->Report("Image capture failed.");
+  }
+
+  // Run the model on this input and make sure it succeeds.
+  if (kTfLiteOk != interpreter->Invoke()) {
+    error_reporter->Report("Invoke failed.");
+  }
+
+  TfLiteTensor* output = interpreter->output(0);
+
+  // Process the inference results.
+  uint8_t person_score = output->data.uint8[kPersonIndex];
+  uint8_t no_person_score = output->data.uint8[kNotAPersonIndex];
+  RespondToDetection(error_reporter, person_score, no_person_score);
+}
+
+int main(int argc, char* argv[]) {
+  setup();
+  while (true) {
+    loop();
+  }
 }

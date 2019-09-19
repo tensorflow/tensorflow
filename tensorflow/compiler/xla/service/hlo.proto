@@ -35,7 +35,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 67
+// Next ID: 70
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -230,6 +230,17 @@ message HloInstructionProto {
 
   // The delta value for kRngGetAndUpdateState.
   int64 delta = 66;
+
+  // Specifies if the gather/scatter indices are guaranteed to be sorted by the
+  // caller.
+  bool indices_are_sorted = 67;
+
+  // Frontend attributes to pass to the XLA backend.
+  xla.FrontendAttributes frontend_attributes = 68;
+
+  // Specifies if all elements updated are guaranteed to be unique by
+  // the caller.
+  bool unique_indices = 69;
 }
 
 // Serialization of HloComputation.

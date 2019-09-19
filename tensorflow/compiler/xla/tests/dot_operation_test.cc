@@ -280,7 +280,35 @@ class ParametricDotTest : public DotOperationTest,
  protected:
   template <typename NativeT>
   void TestImpl();
+
+  template <typename NativeT>
+  void ComputeAndCompareR2WithError(XlaBuilder* builder,
+                                    const Array2D<NativeT>& expected,
+                                    absl::Span<GlobalData* const> arguments);
 };
+
+template <typename NativeT>
+void ParametricDotTest::ComputeAndCompareR2WithError(
+    XlaBuilder* builder, const Array2D<NativeT>& expected,
+    absl::Span<GlobalData* const> arguments) {
+  ErrorSpec error_spec(0.3, 3e-3);
+  ComputeAndCompareR2(builder, expected, arguments, error_spec);
+}
+
+template <>
+void ParametricDotTest::ComputeAndCompareR2WithError<Eigen::half>(
+    XlaBuilder* builder, const Array2D<Eigen::half>& expected,
+    absl::Span<GlobalData* const> arguments) {
+  ErrorSpec error_spec(0.3, 5e-3);
+  ComputeAndCompareR2(builder, expected, arguments, error_spec);
+}
+
+template <>
+void ParametricDotTest::ComputeAndCompareR2WithError<int32>(
+    XlaBuilder* builder, const Array2D<int32>& expected,
+    absl::Span<GlobalData* const> arguments) {
+  ComputeAndCompareR2(builder, expected, arguments);
+}
 
 template <typename NativeT>
 void ParametricDotTest::TestImpl() {
@@ -353,11 +381,7 @@ void ParametricDotTest::TestImpl() {
   if (param.has_addend) {
     args.push_back(addend_handle.get());
   }
-  ErrorSpec error_spec(0.3, 3e-3);
-  if (std::is_same<Eigen::half, NativeT>::value) {
-    error_spec = ErrorSpec(0.3, 5e-3);
-  }
-  ComputeAndCompareR2<NativeT>(&builder, *expected, args, error_spec);
+  ComputeAndCompareR2WithError<NativeT>(&builder, *expected, args);
 }
 
 std::vector<DotTestParam> CreateDotTestParameters() {
@@ -391,6 +415,7 @@ XLA_TEST_P(ParametricDotTest, TestF16) { TestImpl<Eigen::half>(); }
 #endif
 XLA_TEST_P(ParametricDotTest, TestF32) { TestImpl<float>(); }
 XLA_TEST_P(ParametricDotTest, TestF64) { TestImpl<double>(); }
+XLA_TEST_P(ParametricDotTest, TestS32) { TestImpl<int32>(); }
 
 INSTANTIATE_TEST_CASE_P(DotTests, ParametricDotTest,
                         ::testing::ValuesIn(CreateDotTestParameters()),
@@ -646,8 +671,6 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMul) {
       {x_data.get(), y_data.get()}, this->error_spec_);
 }
 
-#ifndef XLA_TEST_BACKEND_CPU
-// TODO(b/74459949): failed on CPU on 2018-10-29.
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR3LhsR2Rhs) {
   using T = TypeParam;
 
@@ -681,7 +704,6 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR3LhsR2Rhs) {
       this->error_spec_);
 }
 
-// TODO(b/74459949): failed on CPU on 2018-10-29.
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR2LhsR3Rhs) {
   using T = TypeParam;
 
@@ -714,7 +736,6 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR2LhsR3Rhs) {
       /*expected=*/{{1.0f, 2.0f}, {7.0f, 8.0f}}, {x_data.get(), y_data.get()},
       this->error_spec_);
 }
-#endif  // XLA_TEST_BACKEND_CPU
 
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulMultipleBatch) {
   using T = TypeParam;
@@ -1361,7 +1382,7 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
-XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(GpuIntegerDotCodegen)) {
+XLA_TEST_F(DotOperationTextTest, IntegerDotCodegen) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
@@ -1376,7 +1397,7 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
-XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(GpuTransposeOutput)) {
+XLA_TEST_F(DotOperationTextTest, GpuTransposeOutput) {
   absl::string_view hlo_string =
       R"(
 HloModule TransposeOutput
@@ -1407,6 +1428,54 @@ ENTRY MatrixVectorComplex {
 )";
 
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
+}
+
+// Regression test for b/138155357, where we were incorrectly creating a dot-add
+// fusion where the dot had a batch dimension.  This isn't supported on the CPU
+// backend.
+XLA_TEST_F(DotOperationTextTest, FusedBatchDotRegressionTest) {
+  absl::string_view module_string = R"(
+HloModule jaxpr_computation__5.33
+
+jaxpr_computation__6.8 {
+  tuple.9 = () tuple()
+  parameter.14 = () parameter(4)
+  parameter.13 = (f32[2]{0}) parameter(3)
+  get-tuple-element.15 = f32[2]{0} get-tuple-element(parameter.13), index=0
+  reshape.16 = f32[1,2]{1,0} reshape(get-tuple-element.15)
+  parameter.10 = f32[2,2]{1,0} parameter(0)
+  reshape.17 = f32[2,1]{1,0} reshape(get-tuple-element.15)
+  dot.18 = f32[2,1]{1,0} dot(parameter.10, reshape.17), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  reshape.19 = f32[2]{0} reshape(dot.18)
+  reshape.20 = f32[2,1]{1,0} reshape(reshape.19)
+  dot.21 = f32[1,1]{1,0} dot(reshape.16, reshape.20), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  reshape.22 = f32[] reshape(dot.21)
+  parameter.11 = f32[2,1,2]{2,1,0} parameter(1)
+  broadcast.23 = f32[2,2,1]{2,1,0} broadcast(reshape.20), dimensions={1,2}
+  dot.24 = f32[2,1,1]{2,1,0} dot(parameter.11, broadcast.23), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+  broadcast.25 = f32[2,1,2]{2,1,0} broadcast(reshape.16), dimensions={1,2}
+  parameter.12 = f32[2,2,1]{2,1,0} parameter(2)
+  dot.26 = f32[2,1,1]{2,1,0} dot(broadcast.25, parameter.12), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+  add.27 = f32[2,1,1]{2,1,0} add(dot.24, dot.26)
+  reshape.28 = f32[2]{0} reshape(add.27)
+  ROOT tuple.29 = (f32[], f32[2]{0}) tuple(reshape.22, reshape.28)
+}
+
+ENTRY jaxpr_computation__5.33 {
+  constant.2 = f32[] constant(1)
+  broadcast.3 = f32[2,2]{1,0} broadcast(constant.2), dimensions={}
+  constant.5 = f32[2,1,2]{2,1,0} constant({ { { 1, 0 } }, { { 0, 1 } } })
+  constant.4 = f32[2,2,1]{2,1,0} constant({ { {1}, {1} }, { {1}, {1} } })
+  parameter.6 = f32[2]{0} parameter(0)
+  tuple.7 = (f32[2]{0}) tuple(parameter.6)
+  tuple.1 = () tuple()
+  call.30 = (f32[], f32[2]{0}) call(broadcast.3, constant.5, constant.4, tuple.7, tuple.1), to_apply=jaxpr_computation__6.8
+  get-tuple-element.31 = f32[] get-tuple-element(call.30), index=0
+  ROOT get-tuple-element.32 = f32[2]{0} get-tuple-element(call.30), index=1
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  EXPECT_TRUE(RunAndCompare(std::move(module), /*error=*/absl::nullopt));
 }
 
 XLA_TEST_F(DotOperationTest, ReorderContractingDimsConstLHS_RL) {

@@ -23,8 +23,9 @@ limitations under the License.
 
 #if defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/platform/google/unbounded_work_queue.h"
-#elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) || \
-    defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_WINDOWS)
+#elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) ||    \
+    defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_POSIX_IOS) || \
+    defined(PLATFORM_GOOGLE_IOS) || defined(PLATFORM_WINDOWS)
 #include "tensorflow/core/platform/default/unbounded_work_queue.h"
 #else
 #error Define the appropriate PLATFORM_<foo> macro for this platform

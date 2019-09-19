@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
-#include "tensorflow/lite/experimental/micro/simple_tensor_allocator.h"
 #include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 #include "tensorflow/lite/experimental/micro/testing/test_utils.h"
 
@@ -115,7 +114,7 @@ void TestConvQuantized(
     std::initializer_list<int> filter_dims_data,
     std::initializer_list<uint8_t> filter_data, float filter_min,
     float filter_max, std::initializer_list<int> bias_dims_data,
-    std::initializer_list<int32_t> bias_data, float bias_min, float bias_max,
+    std::initializer_list<int32_t> bias_data, float bias_scale,
     std::initializer_list<int> output_dims_data,
     std::initializer_list<uint8_t> expected_output_data, float output_min,
     float output_max, TfLiteFusedActivation activation, uint8_t* output_data) {
@@ -135,8 +134,7 @@ void TestConvQuantized(
                             input_max),
       CreateQuantizedTensor(filter_data, filter_dims, "filter_tensor",
                             filter_min, filter_max),
-      CreateQuantized32Tensor(bias_data, bias_dims, "bias_tensor", bias_min,
-                              bias_max),
+      CreateQuantized32Tensor(bias_data, bias_dims, "bias_tensor", bias_scale),
       CreateQuantizedTensor(output_data, output_dims, "output_tensor",
                             output_min, output_max),
   };
@@ -273,8 +271,7 @@ TF_LITE_MICRO_TEST(SimpleTestQuantized) {
   const float input_max = 64;
   const float filter_min = -63.5;
   const float filter_max = 64;
-  const float bias_min = 0.0f;
-  const float bias_max = 64.0f * (1 << 24);
+  const float bias_scale = 0.25f;
   const float output_min = -127;
   const float output_max = 128;
 
@@ -314,11 +311,11 @@ TF_LITE_MICRO_TEST(SimpleTestQuantized) {
                                      },
                                      filter_min, filter_max, {1, 3},
                                      {
-                                         F2Q32(1, bias_min, bias_max),
-                                         F2Q32(2, bias_min, bias_max),
-                                         F2Q32(3, bias_min, bias_max),
+                                         F2Q32(1, bias_scale),
+                                         F2Q32(2, bias_scale),
+                                         F2Q32(3, bias_scale),
                                      },
-                                     bias_min, bias_max, {4, 2, 1, 2, 3},
+                                     bias_scale, {4, 2, 1, 2, 3},
                                      {
                                          F2Q(18, output_min, output_max),
                                          F2Q(2, output_min, output_max),

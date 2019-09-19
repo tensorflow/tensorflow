@@ -383,6 +383,10 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
   def value_container(self, value):
     return value
 
+  def _in_multi_worker_mode(self):
+    """Whether this strategy indicates working in multi-worker settings."""
+    return False
+
   @property
   def _num_replicas_in_sync(self):
     return 1

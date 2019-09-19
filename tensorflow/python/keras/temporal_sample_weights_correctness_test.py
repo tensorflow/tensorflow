@@ -64,7 +64,7 @@ def get_compiled_multi_io_model_temporal(sample_weight_mode):
       weighted_metrics=[metrics.MeanAbsoluteError(name='mae_2')],
       sample_weight_mode=sample_weight_mode,
       run_eagerly=testing_utils.should_run_eagerly(),
-      run_distributed=testing_utils.should_run_distributed())
+      experimental_run_tf_function=testing_utils.should_run_tf_function())
   return model
 
 

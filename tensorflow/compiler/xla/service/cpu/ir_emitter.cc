@@ -973,7 +973,7 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   auto rhs = dot->operand(1);
   TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
       /*instruction=*/*dot, /*operands=*/{lhs, rhs},
-      /*supported_types=*/{F16, F32, F64, C64, C128}));
+      /*supported_types=*/{S32, F16, F32, F64, C64, C128}));
   const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
 
   if (dnums.lhs_contracting_dimensions_size() != 1) {
@@ -1736,6 +1736,16 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
   ReductionGenerator reduction_generator =
       MatchReductionGenerator(function, failure_reason);
   if (!reduction_generator) {
+    return false;
+  }
+
+  int vector_register_size_in_elements =
+      target_machine_features_.vector_register_byte_size(
+          *compute_function_->function()) /
+      ShapeUtil::ByteSizeOfPrimitiveType(reduce->shape().element_type());
+  if (vector_register_size_in_elements == 0) {
+    // Either we don't know the vector register width for the target or the
+    // vector register is smaller than the size of the primitive type.
     return false;
   }
 

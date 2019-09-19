@@ -29,12 +29,8 @@ using testing::HasSubstr;
 
 TEST(ErrorUtilTest, StatusScopedDiagnosticHandler) {
   MLIRContext context;
-
-  auto emit_error = [&](const std::string& msg) {
-    emitError(FileLineColLoc::get(Identifier::get("test.cc", &context), 10, 32,
-                                  &context),
-              msg);
-  };
+  auto id = Identifier::get("test.cc", &context);
+  auto loc = FileLineColLoc::get(id, 0, 0, &context);
 
   // Test OK without diagnostic gets passed through.
   {
@@ -44,7 +40,7 @@ TEST(ErrorUtilTest, StatusScopedDiagnosticHandler) {
   // Verify diagnostics are captured as Unknown status.
   {
     StatusScopedDiagnosticHandler handler(&context);
-    emit_error("Diagnostic message");
+    emitError(loc) << "Diagnostic message";
     ASSERT_TRUE(tensorflow::errors::IsUnknown(handler.ConsumeStatus()));
   }
 
@@ -58,8 +54,8 @@ TEST(ErrorUtilTest, StatusScopedDiagnosticHandler) {
   // Verify diagnostic reported are append to passed in error.
   {
     auto function = [&]() {
-      emit_error("Diagnostic message reported");
-      emit_error("Second diagnostic message reported");
+      emitError(loc) << "Diagnostic message reported";
+      emitError(loc) << "Second diagnostic message reported";
       return tensorflow::errors::Internal("Passed in error");
     };
     Status s = StatusScopedDiagnosticHandler(&context).Combine(function());

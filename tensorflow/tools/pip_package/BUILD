@@ -13,7 +13,7 @@ load("//third_party/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
-load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
+load("//tensorflow/core/platform:default/build_config_root.bzl", "tf_additional_license_deps")
 load(
     "//third_party/ngraph:build_defs.bzl",
     "if_ngraph",
@@ -74,17 +74,16 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python:loss_scale",
     "//tensorflow/python:loss_scale_optimizer",
     "//tensorflow/python:meta_graph_testdata",
-    "//tensorflow/python:spectral_ops_test_util",
     "//tensorflow/python:util_example_parser_configuration",
     "//tensorflow/python/data/benchmarks:benchmark_base",
     "//tensorflow/python/data/experimental/kernel_tests/serialization:dataset_serialization_test_base",
     "//tensorflow/python/data/experimental/kernel_tests:reader_dataset_ops_test_base",
     "//tensorflow/python/data/experimental/kernel_tests:stats_dataset_test_base",
-    "//tensorflow/python/data/kernel_tests:filter_test_base",
     "//tensorflow/python/data/kernel_tests:test_base",
     "//tensorflow/python/debug:debug_pip",
     "//tensorflow/python/distribute:combinations",
     "//tensorflow/python/eager:eager_pip",
+    "//tensorflow/python/keras:model_subclassing_test_util",
     "//tensorflow/python/keras:preprocessing_test_utils",
     "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
     "//tensorflow/python/keras/distribute:multi_worker_testing_utils",
@@ -95,6 +94,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/saved_model:saved_model",
     "//tensorflow/python/tools:tools_pip",
     "//tensorflow/python/tools/api/generator:create_python_api",
+    "//tensorflow/python/tpu",
     "//tensorflow/python:test_ops",
     "//tensorflow/python:while_v2",
     "//tensorflow/tools/common:public_api",
@@ -105,49 +105,15 @@ COMMON_PIP_DEPS = [
     "//tensorflow/tools/docs:py_guide_parser",
 ]
 
-COMMON_PIP_DEPS_V1 = COMMON_PIP_DEPS + [
-    "//tensorflow/contrib/autograph:autograph",
-    "//tensorflow/contrib/boosted_trees:boosted_trees_pip",
-    "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
-    "//tensorflow/contrib/compiler:xla",
-    "//tensorflow/contrib/constrained_optimization:constrained_optimization_pip",
-    "//tensorflow/contrib/distribute/python:distribute_test_lib_pip",
-    "//tensorflow/contrib/eager/python/examples:examples_pip",
-    "//tensorflow/contrib/eager/python:evaluator",
-    "//tensorflow/contrib/gan:gan",
-    "//tensorflow/contrib/graph_editor:graph_editor_pip",
-    "//tensorflow/contrib/keras:keras",
-    "//tensorflow/contrib/labeled_tensor:labeled_tensor_pip",
-    "//tensorflow/contrib/nn:nn_py",
-    "//tensorflow/contrib/predictor:predictor_pip",
-    "//tensorflow/contrib/proto:proto",
-    "//tensorflow/contrib/receptive_field:receptive_field_pip",
-    "//tensorflow/contrib/rate:rate",
-    "//tensorflow/contrib/rpc:rpc_pip",
-    "//tensorflow/contrib/session_bundle:session_bundle_pip",
-    "//tensorflow/contrib/signal:signal_py",
-    "//tensorflow/contrib/slim:slim",
-    "//tensorflow/contrib/slim/python/slim/data:data_pip",
-    "//tensorflow/contrib/slim/python/slim/nets:nets_pip",
-    "//tensorflow/contrib/specs:specs",
-    "//tensorflow/contrib/summary:summary_test_util",
-    "//tensorflow/contrib/tensor_forest:init_py",
-    "//tensorflow/contrib/tensor_forest/hybrid:hybrid_pip",
-    "//tensorflow/contrib/timeseries:timeseries_pip",
-    "//tensorflow/contrib/tpu",
-    "//tensorflow/examples/tutorials/mnist:package",
-]
-
 # On Windows, python binary is a zip file of runfiles tree.
 # Add everything to its data dependency for generating a runfiles tree
 # for building the pip package on Windows.
 py_binary(
     name = "simple_console_for_windows",
     srcs = ["simple_console_for_windows.py"],
-    data = select({
-        "//conditions:default": COMMON_PIP_DEPS_V1,
-        "//tensorflow:api_version_2": COMMON_PIP_DEPS,
-    }) + ["//tensorflow/python:pywrap_tensorflow_import_lib_file"],
+    data = COMMON_PIP_DEPS + [
+        "//tensorflow/python:pywrap_tensorflow_import_lib_file",
+    ],
     srcs_version = "PY2AND3",
     deps = ["//tensorflow:tensorflow_py"],
 )
@@ -214,17 +180,7 @@ filegroup(
         "//tensorflow:windows": [],
         "//tensorflow:no_gcp_support": [],
         "//conditions:default": [
-            "@com_github_googleapis_googleapis//:LICENSE",
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
-        ],
-    }) + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:no_kafka_support": [],
-        "//conditions:default": [
-            "@kafka//:LICENSE",
         ],
     }) + select({
         "//tensorflow/core/kernels:xsmm": [
@@ -265,10 +221,7 @@ filegroup(
 sh_binary(
     name = "build_pip_package",
     srcs = ["build_pip_package.sh"],
-    data = select({
-               "//tensorflow:api_version_2": COMMON_PIP_DEPS,
-               "//conditions:default": COMMON_PIP_DEPS_V1,
-           }) +
+    data = COMMON_PIP_DEPS +
            select({
                "//tensorflow:windows": [
                    ":simple_console_for_windows",

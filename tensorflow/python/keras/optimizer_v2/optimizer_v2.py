@@ -40,6 +40,7 @@ from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -138,15 +139,13 @@ class OptimizerV2(trackable.Trackable):
     loss = <call_loss_function>
   vars = <list_of_variables>
   grads = tape.gradient(loss, vars)
+
+  # Process the gradients, for example cap them, etc.
+  # capped_grads = [MyCapper(g) for g in grads]
   processed_grads = [process_gradient(g) for g in grads]
-  grads_and_vars = zip(processed_grads, var_list)
 
-  # grads_and_vars is a list of tuples (gradient, variable).  Do whatever you
-  # need to the 'gradient' part, for example cap them, etc.
-  capped_grads_and_vars = [(MyCapper(gv[0]), gv[1]) for gv in grads_and_vars]
-
-  # Ask the optimizer to apply the capped gradients.
-  opt.apply_gradients(capped_grads_and_vars)
+  # Ask the optimizer to apply the processed gradients.
+  opt.apply_gradients(zip(processed_grads, var_list))
   ```
 
   ### Use with `tf.distribute.Strategy`.
@@ -306,8 +305,8 @@ class OptimizerV2(trackable.Trackable):
       name: Optional name for the returned operation.
 
     Returns:
-      An Operation that updates the variables in `var_list`.  If `global_step`
-      was not `None`, that operation also increments `global_step`.
+      An `Operation` that updates the variables in `var_list`. The `iterations`
+      will be automatically increased by 1.
 
     Raises:
       ValueError: If some of the variables are not `Variable` objects.
@@ -417,8 +416,8 @@ class OptimizerV2(trackable.Trackable):
         passed to the `Optimizer` constructor.
 
     Returns:
-      An `Operation` that applies the specified gradients. If `global_step`
-      was not None, that operation also increments `global_step`.
+      An `Operation` that applies the specified gradients. The `iterations`
+      will be automatically increased by 1.
 
     Raises:
       TypeError: If `grads_and_vars` is malformed.
@@ -434,6 +433,10 @@ class OptimizerV2(trackable.Trackable):
         self._create_hypers()
         self._create_slots(var_list)
 
+      if not grads_and_vars:
+        # Distribution strategy does not support reducing an empty list of
+        # gradients
+        return control_flow_ops.no_op()
       apply_state = self._prepare(var_list)
       return distribute_ctx.get_replica_context().merge_call(
           functools.partial(self._distributed_apply, apply_state=apply_state),
@@ -631,7 +634,8 @@ class OptimizerV2(trackable.Trackable):
       return
     # Iterate hyper values deterministically.
     for name, value in sorted(self._hyper.items()):
-      if isinstance(value, ops.Tensor) or callable(value):
+      if isinstance(
+          value, (ops.Tensor, tf_variables.Variable)) or callable(value):
         continue
       else:
         self._hyper[name] = self.add_weight(
@@ -1024,7 +1028,7 @@ def _filter_grads(grads_and_vars):
                      ([v.name for _, v in grads_and_vars],))
   if vars_with_empty_grads:
     logging.warning(
-        ("Gradients does not exist for variables %s when minimizing the loss."),
+        ("Gradients do not exist for variables %s when minimizing the loss."),
         ([v.name for v in vars_with_empty_grads]))
   return filtered
 

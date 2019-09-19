@@ -1379,13 +1379,19 @@ For a more intuitive description, see the "Informal Description" section below.
 :                        :                     : map indices in                :
 :                        :                     : `start_indices` to legal      :
 :                        :                     : indices into operand.         :
+| `indices_are_sorted`   | `bool`              | Whether the indices are       |
+:                        :                     : guaranteed to be sorted by    :
+:                        :                     : the caller.                   :
+| `unique_indices`       | `bool`              | Whether the indices are       |
+:                        :                     : guaranteed to be unique by    :
+:                        :                     : the caller.                   :
 
 For convenience, we label dimensions in the output array not in `offset_dims`
 as `batch_dims`.
 
 The output is an array of rank `batch_dims.size` + `offset_dims.size`.
 
-The `operand.rank` must equal the sume of `offset_dims.size` and
+The `operand.rank` must equal the sum of `offset_dims.size` and
 `collapsed_slice_dims`. Also, `slice_sizes.size` has to be equal to
 `operand.rank`.
 
@@ -1442,6 +1448,15 @@ calculated as follows:
 and range [`0`, `operand.rank`) \ `collapsed_slice_dims`. So if, e.g.,
 `offset.size` is `4`, `operand.rank` is `6` and `collapsed_slice_dims` is {`0`,
 `2`} then `remapped_offset_dims` is {`0`→`1`, `1`→`3`, `2`→`4`, `3`→`5`}.
+
+If `indices_are_sorted` is set to true then XLA can assume that `start_indices`
+are sorted (in ascending `start_index_map` order) by the user. If they are not
+then the semantics is implementation defined.
+
+If `unique_indices` is set to true then XLA can assume that all element
+scattered to are unique. So XLA could use non-atomic operations. If
+`unique_indices` is set to true and the indices being scattered to are not
+unique then the semantics is implementation defined.
 
 ### Informal Description and Examples
 
@@ -1562,6 +1577,48 @@ array shaped.
 | `operand`   | `XlaOp` | n dimensional input array                           |
 | `dimension` | `int64` | A value in the interval `[0, n)` that specifies the |
 :             :         : dimension                                           :
+
+## SetDimensionSize
+
+See also
+[`XlaBuilder::SetDimensionSize`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Sets the dynamic size of XlaOp's given dimension. The operand must be
+array shaped.
+
+<b> `SetDimensionSize(operand, size, dimension)` </b>
+
+| Arguments   | Type    | Semantics                                           |
+| ----------- | ------- | --------------------------------------------------- |
+| `operand`   | `XlaOp` | n dimensional input array.                          |
+| `size`      | `XlaOp` | int32 representing the runtime dynamic size.        |
+| `dimension` | `int64` | A value in the interval `[0, n)` that specifies the |
+:             :         : dimension.                                          :
+
+Pass through the operand as result, with dynamic dimension tracked by the
+compiler.
+
+Padded values will be ignored by downstream reduction ops.
+
+```
+let v: f32[10] = f32[10]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+let five: s32 = 5;
+let six: s32 = 6;
+
+// Setting dynamic dimension size doesn't change the upper bound of the static
+// shape.
+let padded_v_five: f32[10] = set_dimension_size(v, five, /*dimension=*/0);
+let padded_v_six: f32[10] = set_dimension_size(v, six, /*dimension=*/0);
+
+// sum == 1 + 2 + 3 + 4 + 5
+let sum:f32[] = reduce_sum(padded_v_five);
+// product == 1 * 2 * 3 * 4 * 5
+let product:f32[] = reduce_product(padded_v_five);
+
+// Changing padding size will yield different result.
+// sum == 1 + 2 + 3 + 4 + 5 + 6
+let sum':f32[] = reduce_sum(padded_v_six);
+```
 
 ## GetTupleElement
 
@@ -2228,6 +2285,7 @@ Arguments                      | Type                | Semantics
 `update_window_dims`           | `ArraySlice<int64>` | The set of dimensions in `updates` shape that are _window dimensions_.
 `inserted_window_dims`         | `ArraySlice<int64>` | The set of _window dimensions_ that must be inserted into `updates` shape.
 `scatter_dims_to_operand_dims` | `ArraySlice<int64>` | A dimensions map from the scatter indices to the operand index space. This array is interpreted as mapping `i` to `scatter_dims_to_operand_dims[i]` . It has to be one-to-one and total.
+`indices_are_sorted`           | `bool`              | Whether the indices are guaranteed to be sorted by the caller.
 
 If `index_vector_dim` is equal to `scatter_indices.rank` we implicitly consider
 `scatter_indices` to have a trailing `1` dimension.
@@ -2313,6 +2371,10 @@ Note that the first parameter that is passed into the `update_computation` will
 always be the current value from the `output` array and the second parameter
 will always be the value from the `updates` array. This is important
 specifically for cases when the `update_computation` is _not commutative_.
+
+If `indices_are_sorted` is set to true then XLA can assume that `start_indices`
+are sorted (in ascending `start_index_map` order) by the user. If they are not
+then the semantics is implementation defined.
 
 Informally, the scatter op can be viewed as an _inverse_ of the gather op, i.e.
 the scatter op updates the elements in the input that are extracted by the
@@ -2532,6 +2594,11 @@ arguments to the slice operation.
 :                 :                     : respective `start_indices` value for :
 :                 :                     : the dimension and less than or equal :
 :                 :                     : to the size of the dimension.        :
+| `strides`      | `ArraySlice<int64>` | List of N integers that decides the   |
+:                 :                     : input stride of the slice.  The slice :
+:                 :                     : picks every `strides[d]` element in  :
+:                 :                     : dimension `d`.                       :
+
 
 1-dimensional example:
 

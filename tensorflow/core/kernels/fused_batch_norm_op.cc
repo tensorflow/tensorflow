@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/fused_batch_norm_op.h"
 #include "tensorflow/core/kernels/redux_functor.h"
+#include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -101,12 +102,11 @@ class CudnnBatchNormAllocatorInTemp : public ScratchAllocator {
   explicit CudnnBatchNormAllocatorInTemp(OpKernelContext* context)
       : context_(context) {}
 
-  int64 GetMemoryLimitInBytes(Stream* stream) override {
+  int64 GetMemoryLimitInBytes() override {
     return std::numeric_limits<int64>::max();
   }
 
-  StatusOr<DeviceMemory<uint8>> AllocateBytes(Stream* stream,
-                                              int64 byte_size) override {
+  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override {
     Tensor temporary_memory;
     const DataType tf_data_type = DataTypeToEnum<T>::v();
     int64 allocate_count =
@@ -155,12 +155,11 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
   CudnnBatchNormAllocatorInOutput(OpKernelContext* context, int output_index)
       : context_(context), output_index_(output_index) {}
 
-  int64 GetMemoryLimitInBytes(Stream* stream) override {
+  int64 GetMemoryLimitInBytes() override {
     return std::numeric_limits<int64>::max();
   }
 
-  StatusOr<DeviceMemory<uint8>> AllocateBytes(Stream* stream,
-                                              int64 byte_size) override {
+  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override {
     output_allocated = true;
     DCHECK(total_byte_size_ == 0)
         << "Reserve space allocator can only be called once";
@@ -253,9 +252,6 @@ struct FusedBatchNorm<CPUDevice, T, U> {
                   Tensor* saved_var_output, TensorFormat tensor_format,
                   ScratchAllocator* reserve_space_allocator,
                   ScratchAllocator* workspace_allocator, bool is_training) {
-    OP_REQUIRES(context, tensor_format == FORMAT_NHWC,
-                errors::Internal("The CPU implementation of FusedBatchNorm "
-                                 "only supports NHWC tensor format for now."));
     OP_REQUIRES(context, side_input.dim_size(0) == 0,
                 errors::Internal(
                     "The CPU implementation of FusedBatchNorm does not support "
@@ -264,13 +260,39 @@ struct FusedBatchNorm<CPUDevice, T, U> {
                 activation_mode == FusedBatchNormActivationMode::kIdentity,
                 errors::Internal("The CPU implementation of FusedBatchNorm "
                                  "does not support activations."));
-    typename TTypes<T, 4>::ConstTensor x(x_input.tensor<T, 4>());
+    Tensor transformed_x;
+    Tensor transformed_y;
+    if (tensor_format == FORMAT_NCHW) {
+      const int64 in_batch = GetTensorDim(x_input, tensor_format, 'N');
+      const int64 in_rows = GetTensorDim(x_input, tensor_format, 'H');
+      const int64 in_cols = GetTensorDim(x_input, tensor_format, 'W');
+      const int64 in_depths = GetTensorDim(x_input, tensor_format, 'C');
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
+                                                  in_rows, in_cols, in_depths),
+                                  &transformed_x));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
+                                                  in_rows, in_cols, in_depths),
+                                  &transformed_y));
+      // Perform NCHW to NHWC
+      std::vector<int32> perm = {0, 2, 3, 1};
+      OP_REQUIRES_OK(
+          context, ::tensorflow::DoTranspose(context->eigen_device<CPUDevice>(),
+                                             x_input, perm, &transformed_x));
+    } else {
+      transformed_x = x_input;
+      transformed_y = *y_output;
+    }
+    typename TTypes<T, 4>::Tensor x(transformed_x.tensor<T, 4>());
     typename TTypes<U>::ConstVec scale(scale_input.vec<U>());
     typename TTypes<U>::ConstVec offset(offset_input.vec<U>());
     typename TTypes<U>::ConstVec estimated_mean(estimated_mean_input.vec<U>());
     typename TTypes<U>::ConstVec estimated_variance(
         estimated_variance_input.vec<U>());
-    typename TTypes<T, 4>::Tensor y(y_output->tensor<T, 4>());
+    typename TTypes<T, 4>::Tensor y(transformed_y.tensor<T, 4>());
     typename TTypes<U>::Vec batch_mean(batch_mean_output->vec<U>());
     typename TTypes<U>::Vec batch_var(batch_var_output->vec<U>());
     typename TTypes<U>::Vec saved_mean(saved_mean_output->vec<U>());
@@ -336,6 +358,14 @@ struct FusedBatchNorm<CPUDevice, T, U> {
     // some compiler flags.)
     CastIfNecessary<std::is_same<T, U>::value, decltype(y), decltype(x_shifted),
                     T>::process(y, x_shifted, rest_by_depth, d);
+
+    if (tensor_format == FORMAT_NCHW) {
+      // Perform NHWC to NCHW
+      std::vector<int32> perm = {0, 3, 1, 2};
+      OP_REQUIRES_OK(
+          context, ::tensorflow::DoTranspose(context->eigen_device<CPUDevice>(),
+                                             transformed_y, perm, y_output));
+    }
   }
 };
 
@@ -349,16 +379,51 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
                   const Tensor* reserve_space,
                   ScratchAllocator* workspace_allocator,
                   TensorFormat tensor_format) {
-    OP_REQUIRES(context, tensor_format == FORMAT_NHWC,
-                errors::Internal("The CPU implementation of FusedBatchNormGrad "
-                                 "only supports NHWC tensor format for now."));
-    typename TTypes<T, 4>::ConstTensor y_backprop(
-        y_backprop_input.tensor<T, 4>());
-    typename TTypes<T, 4>::ConstTensor x(x_input.tensor<T, 4>());
+    Tensor transformed_y_backprop_input;
+    Tensor transformed_x_input;
+    Tensor transformed_x_backprop_output;
+    if (tensor_format == FORMAT_NCHW) {
+      const int64 in_batch = GetTensorDim(x_input, tensor_format, 'N');
+      const int64 in_rows = GetTensorDim(x_input, tensor_format, 'H');
+      const int64 in_cols = GetTensorDim(x_input, tensor_format, 'W');
+      const int64 in_depths = GetTensorDim(x_input, tensor_format, 'C');
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
+                                                  in_rows, in_cols, in_depths),
+                                  &transformed_y_backprop_input));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
+                                                  in_rows, in_cols, in_depths),
+                                  &transformed_x_input));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<T>::value,
+                                  ShapeFromFormat(FORMAT_NHWC, in_batch,
+                                                  in_rows, in_cols, in_depths),
+                                  &transformed_x_backprop_output));
+      // Perform NCHW to NHWC
+      std::vector<int32> perm = {0, 2, 3, 1};
+      OP_REQUIRES_OK(
+          context, ::tensorflow::DoTranspose(context->eigen_device<CPUDevice>(),
+                                             y_backprop_input, perm,
+                                             &transformed_y_backprop_input));
+      OP_REQUIRES_OK(context, ::tensorflow::DoTranspose(
+                                  context->eigen_device<CPUDevice>(), x_input,
+                                  perm, &transformed_x_input));
+    } else {
+      transformed_y_backprop_input = y_backprop_input;
+      transformed_x_input = x_input;
+      transformed_x_backprop_output = *x_backprop_output;
+    }
+    typename TTypes<T, 4>::Tensor y_backprop(
+        transformed_y_backprop_input.tensor<T, 4>());
+    typename TTypes<T, 4>::Tensor x(transformed_x_input.tensor<T, 4>());
     typename TTypes<U>::ConstVec scale(scale_input.vec<U>());
     typename TTypes<U>::ConstVec mean(mean_input.vec<U>());
     typename TTypes<U>::ConstVec variance(variance_input.vec<U>());
-    typename TTypes<T, 4>::Tensor x_backprop(x_backprop_output->tensor<T, 4>());
+    typename TTypes<T, 4>::Tensor x_backprop(
+        transformed_x_backprop_output.tensor<T, 4>());
     typename TTypes<U>::Vec offset_backprop(offset_backprop_output->vec<U>());
 
     // Note: the following formulas are used to compute the gradients for
@@ -409,7 +474,7 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
     Tensor scratch_rest_by_depth;
     if (std::is_same<T, U>::value) {
       OP_REQUIRES(context,
-                  scratch_rest_by_depth.CopyFrom(*x_backprop_output,
+                  scratch_rest_by_depth.CopyFrom(transformed_x_backprop_output,
                                                  {rest_size, depth}),
                   errors::Internal("Failed to copy a tensor"));
     } else {
@@ -442,7 +507,8 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
     // Compute 'offset_backprop_output':
     //   offset_backprop =
     //     y_backprop_rest_by_depth.sum(reduce_dims)
-    redux_sum_t(d, rest_by_depth, y_backprop_input, offset_backprop_output);
+    redux_sum_t(d, rest_by_depth, transformed_y_backprop_input,
+                offset_backprop_output);
     auto y_backprop_sum = offset_backprop;
 
     auto y_backprop_sum_one_by_depth = y_backprop_sum.reshape(one_by_depth);
@@ -468,6 +534,15 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
 
     x_backprop.reshape(rest_by_depth).device(d) =
         (coef1 * (y_backprop_centered - x_centered * coef2)).template cast<T>();
+
+    if (tensor_format == FORMAT_NCHW) {
+      // Perform NHWC to NCHW
+      std::vector<int32> perm = {0, 3, 1, 2};
+      OP_REQUIRES_OK(
+          context, ::tensorflow::DoTranspose(context->eigen_device<CPUDevice>(),
+                                             transformed_x_backprop_output,
+                                             perm, x_backprop_output));
+    }
   }
 };
 

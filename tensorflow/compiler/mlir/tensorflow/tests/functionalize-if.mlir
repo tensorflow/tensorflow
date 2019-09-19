@@ -1,4 +1,4 @@
-// RUN: tf-opt %s --run-tf-graph-optimization --graph-passes=FunctionalizeControlFlowPass | FileCheck %s
+// RUN: tf-opt %s --run-tf-graph-optimization --graph-passes=FunctionalizeControlFlowPass | FileCheck %s --dump-input-on-failure
 
 func @main() {
   %0 = "_tf._TPUReplicate"() {computation = @foo, Tinputs = [], Tbroadcast_inputs = [], NumVariables = 0, Tguaranteed_constants = [], output_types = []} : () -> !_tf.control loc("_TPUReplicate")
@@ -17,18 +17,18 @@ func @foo() {
 
 // Match the name of the cloned function with functionalized control-flow at call site
 // CHECK: func @main()
-// CHECK-NEXT: computation = @[[FUNCTIONALIZE_FUNC:[A-Za-z0-9_]*]]
+// CHECK: computation = @[[FUNCTIONALIZE_FUNC:[A-Za-z0-9_]*]]
 
 
 // In the newly cloned function, check that we have a _tf.If operation and capture the then and else branch.
 // CHECK: func @[[FUNCTIONALIZE_FUNC]]
-// CHECK: "_tf.If"
+// CHECK: "tf.If"
 // CHECK-SAME:  else_branch = @[[ELSE_FUNC:[A-Za-z0-9_]*]]
 // CHECK-SAME:  then_branch = @[[THEN_FUNC:[A-Za-z0-9_]*]]
 
 // We expect the _tf.Add in the else func and the _tf.Mul in the then func
 
 // CHECK: func @[[ELSE_FUNC]]
-// CHECK: "_tf.Add"
+// CHECK: "tf.Add"
 // CHECK: func @[[THEN_FUNC]]
-// CHECK: "_tf.Mul"
+// CHECK: "tf.Mul"

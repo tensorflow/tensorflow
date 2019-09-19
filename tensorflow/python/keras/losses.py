@@ -25,6 +25,7 @@ import six
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import tf_utils
@@ -34,6 +35,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops.losses import losses_impl
+from tensorflow.python.ops.losses import util as tf_losses_util
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -95,21 +97,22 @@ class Loss(object):
     """Invokes the `Loss` instance.
 
     Args:
-      y_true: Ground truth values.
-      y_pred: The predicted values.
-      sample_weight: Optional `Tensor` whose rank is either 0, or the same rank
-        as `y_true`, or is broadcastable to `y_true`. `sample_weight` acts as a
+      y_true: Ground truth values. shape = `[batch_size, d0, .. dN]`
+      y_pred: The predicted values. shape = `[batch_size, d0, .. dN]`
+      sample_weight: Optional `sample_weight` acts as a
         coefficient for the loss. If a scalar is provided, then the loss is
         simply scaled by the given value. If `sample_weight` is a tensor of size
         `[batch_size]`, then the total loss for each sample of the batch is
         rescaled by the corresponding element in the `sample_weight` vector. If
-        the shape of `sample_weight` matches the shape of `y_pred`, then the
-        loss of each measurable element of `y_pred` is scaled by the
-        corresponding value of `sample_weight`.
+        the shape of `sample_weight` is `[batch_size, d0, .. dN-1]` (or can be
+        broadcasted to this shape), then each loss element of `y_pred` is scaled
+        by the corresponding value of `sample_weight`. (Note on`dN-1`: all loss
+        functions reduce by 1 dimension, usually axis=-1.)
 
     Returns:
-      Weighted loss float `Tensor`. If `reduction` is `NONE`, this has the same
-        shape as `y_true`; otherwise, it is scalar.
+      Weighted loss float `Tensor`. If `reduction` is `NONE`, this has
+        shape `[batch_size, d0, .. dN-1]`; otherwise, it is scalar. (Note `dN-1`
+        because all loss functions reduce by 1 dimension, usually axis=-1.)
 
     Raises:
       ValueError: If the shape of `sample_weight` is invalid.
@@ -163,7 +166,7 @@ class Loss(object):
           '`tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE` using global batch '
           'size like:\n```\nwith strategy.scope():\n'
           '    loss_obj = tf.keras.losses.CategoricalCrossentropy('
-          'reduction=tf.keras.losses.reduction.None)\n....\n'
+          'reduction=tf.keras.losses.Reduction.NONE)\n....\n'
           '    loss = tf.reduce_sum(loss_obj(labels, predictions)) * '
           '(1. / global_batch_size)\n```\nPlease see '
           'https://www.tensorflow.org/alpha/tutorials/distribute/training_loops'
@@ -212,6 +215,9 @@ class LossFunctionWrapper(Loss):
     Returns:
       Loss values per sample.
     """
+    if tensor_util.is_tensor(y_pred) and tensor_util.is_tensor(y_true):
+      y_pred, y_true = tf_losses_util.squeeze_or_expand_dimensions(
+          y_pred, y_true)
     return self.fn(y_true, y_pred, **self._fn_kwargs)
 
   def get_config(self):
@@ -419,8 +425,8 @@ class CategoricalCrossentropy(LossFunctionWrapper):
   cce = tf.keras.losses.CategoricalCrossentropy()
   loss = cce(
     [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]],
-    [[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]])
-  print('Loss: ', loss.numpy())  # Loss: 0.3239
+    [[.9, .05, .05], [.05, .89, .06], [.05, .01, .94]])
+  print('Loss: ', loss.numpy())  # Loss: 0.0945
   ```
 
   Usage with the `compile` API:
@@ -483,8 +489,8 @@ class SparseCategoricalCrossentropy(LossFunctionWrapper):
   ```python
   cce = tf.keras.losses.SparseCategoricalCrossentropy()
   loss = cce(
-    [0, 1, 2],
-    [[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]])
+    tf.convert_to_tensor([0, 1, 2]),
+    tf.convert_to_tensor([[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]]))
   print('Loss: ', loss.numpy())  # Loss: 0.3239
   ```
 
@@ -1055,9 +1061,6 @@ def poisson(y_true, y_pred):
   return K.mean(y_pred - y_true * math_ops.log(y_pred + K.epsilon()), axis=-1)
 
 
-# Retaining the legacy namespaces: 'cosine_proximity' and 'cosine'.
-# TODO(psv): Change name of this function to `cosine_similarity` after fixing
-# estimator test.
 @keras_export(
     'keras.losses.cosine_similarity',
     v1=[
@@ -1067,11 +1070,27 @@ def poisson(y_true, y_pred):
         'keras.losses.cosine',
         'keras.losses.cosine_similarity',
     ])
-def cosine_proximity(y_true, y_pred, axis=-1):
-  """Computes the cosine similarity between labels and predictions."""
+def cosine_similarity(y_true, y_pred, axis=-1):
+  """Computes the cosine similarity between labels and predictions.
+
+  Note that it is a negative quantity between -1 and 0, where 0 indicates
+  orthogonality and values closer to -1 indicate greater similarity. This makes
+  it usable as a loss function in a setting where you try to maximize the
+  proximity between predictions and targets.
+
+  `loss = -sum(y_true * y_pred)`
+
+  Args:
+    y_true: Tensor of true targets.
+    y_pred: Tensor of predicted targets.
+    axis: Axis along which to determine similarity.
+
+  Returns:
+    Cosine similarity tensor.
+  """
   y_true = nn.l2_normalize(y_true, axis=axis)
   y_pred = nn.l2_normalize(y_pred, axis=axis)
-  return math_ops.reduce_sum(y_true * y_pred, axis=axis)
+  return -math_ops.reduce_sum(y_true * y_pred, axis=axis)
 
 
 @keras_export('keras.losses.CosineSimilarity')
@@ -1124,12 +1143,12 @@ class CosineSimilarity(LossFunctionWrapper):
 
 # Aliases.
 
+bce = BCE = binary_crossentropy
 mse = MSE = mean_squared_error
 mae = MAE = mean_absolute_error
 mape = MAPE = mean_absolute_percentage_error
 msle = MSLE = mean_squared_logarithmic_error
 kld = KLD = kullback_leibler_divergence
-cosine_similarity = cosine_proximity
 
 
 def is_categorical_crossentropy(loss):

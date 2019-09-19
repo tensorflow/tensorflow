@@ -77,8 +77,7 @@ std::vector<Tensor> ConvertToTensorVec(std::vector<T> values) {
   std::vector<Tensor> tensors;
   tensors.reserve(values.size());
   for (auto &value : values) {
-    tensors.emplace_back(
-        DatasetOpsTestBase::CreateTensor<T>(TensorShape({1}), {value}));
+    tensors.emplace_back(CreateTensor<T>(TensorShape({1}), {value}));
   }
   return tensors;
 }
@@ -86,8 +85,7 @@ std::vector<Tensor> ConvertToTensorVec(std::vector<T> values) {
 // Test case 1: norm case.
 TestCase TestCase1() {
   return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{9, 1}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
+          {CreateTensor<int64>(TensorShape{9, 1}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
           /*func*/ FunctionDefHelper::FunctionRef("IsZero", {{"T", DT_INT64}}),
           /*func_lib*/ {test::function::IsZero()},
           /*expected_outputs*/
@@ -101,7 +99,7 @@ TestCase TestCase1() {
 // Test case 2: the input dataset has no outputs.
 TestCase TestCase2() {
   return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{0}, {})},
+          {CreateTensor<int64>(TensorShape{0}, {})},
           /*func*/ FunctionDefHelper::FunctionRef("IsZero", {{"T", DT_INT64}}),
           /*func_lib*/ {test::function::IsZero()},
           /*expected_outputs*/
@@ -115,8 +113,7 @@ TestCase TestCase2() {
 // Test case 3: the filter function returns two outputs.
 TestCase InvalidFuncTestCase1() {
   return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{3, 3}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
+          {CreateTensor<int64>(TensorShape{3, 3}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
           /*func*/
           FunctionDefHelper::FunctionRef(
               "GetUnique", {{"T", DT_INT64}, {"out_idx", DT_INT32}}),
@@ -131,24 +128,23 @@ TestCase InvalidFuncTestCase1() {
 
 // Test case 4: the filter function returns a 1-D bool tensor.
 TestCase InvalidFuncTestCase2() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{3, 3, 1}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
-          /*func*/ FunctionDefHelper::FunctionRef("IsZero", {{"T", DT_INT64}}),
-          /*func_lib*/ {test::function::IsZero()},
-          /*expected_outputs*/
-          ConvertToTensorVec<int64>({}),
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({3, 1})},
-          /*expected_cardinality*/ kUnknownCardinality,
-          /*breakpoints*/ {}};
+  return {
+      /*input_tensors*/
+      {CreateTensor<int64>(TensorShape{3, 3, 1}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
+      /*func*/ FunctionDefHelper::FunctionRef("IsZero", {{"T", DT_INT64}}),
+      /*func_lib*/ {test::function::IsZero()},
+      /*expected_outputs*/
+      ConvertToTensorVec<int64>({}),
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({3, 1})},
+      /*expected_cardinality*/ kUnknownCardinality,
+      /*breakpoints*/ {}};
 }
 
 // Test case 5: the filter function returns a scalar int64 tensor.
 TestCase InvalidFuncTestCase3() {
   return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{9}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
+          {CreateTensor<int64>(TensorShape{9}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
           /*func*/ FunctionDefHelper::FunctionRef("NonZero", {{"T", DT_INT64}}),
           /*func_lib*/ {test::function::NonZero()},
           /*expected_outputs*/
@@ -348,39 +344,6 @@ TEST_P(ParameterizedFilterDatasetOpTest, Cardinality) {
   core::ScopedUnref scoped_unref(filter_dataset);
 
   EXPECT_EQ(filter_dataset->Cardinality(), test_case.expected_cardinality);
-}
-
-TEST_P(ParameterizedFilterDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  const TestCase &test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime(test_case.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> filter_dataset_kernel;
-  TF_ASSERT_OK(CreateFilterDatasetKernel(
-      test_case.func, test_case.expected_output_dtypes,
-      test_case.expected_output_shapes, &filter_dataset_kernel));
-
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&tensor_slice_dataset_tensor)});
-  std::unique_ptr<OpKernelContext> filter_dataset_context;
-  TF_ASSERT_OK(CreateFilterDatasetContext(filter_dataset_kernel.get(), &inputs,
-                                          &filter_dataset_context));
-  DatasetBase *filter_dataset;
-  TF_ASSERT_OK(CreateDataset(filter_dataset_kernel.get(),
-                             filter_dataset_context.get(), &filter_dataset));
-  core::ScopedUnref scoped_unref(filter_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_ctx;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(filter_dataset->Save(serialization_ctx.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
 }
 
 TEST_P(ParameterizedFilterDatasetOpTest, IteratorOutputDtypes) {

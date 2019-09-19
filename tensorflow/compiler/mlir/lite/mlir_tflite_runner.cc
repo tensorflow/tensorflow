@@ -28,7 +28,6 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
@@ -79,9 +78,7 @@ static std::string TfLiteTensorString(const TfLiteTensor& tensor) {
 }
 
 int main(int argc, char** argv) {
-  llvm::PrettyStackTraceProgram x(argc, argv);
   llvm::InitLLVM y(argc, argv);
-
   llvm::cl::ParseCommandLineOptions(argc, argv, "MLIR TFLite runner\n");
 
   auto file_or_err = llvm::MemoryBuffer::getFileOrSTDIN(inputFileName.c_str());

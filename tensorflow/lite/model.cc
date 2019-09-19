@@ -159,6 +159,22 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromModel(
   return model;
 }
 
+string FlatBufferModel::GetMinimumRuntime() const {
+  if (!model_ || !model_->metadata()) return "";
+
+  for (int i = 0; i < model_->metadata()->size(); ++i) {
+    auto metadata = model_->metadata()->Get(i);
+    if (metadata->name()->str() == "min_runtime_version") {
+      auto buf = metadata->buffer();
+      auto* buffer = (*model_->buffers())[buf];
+      auto* array = buffer->data();
+      return string(reinterpret_cast<const char*>(array->data()),
+                    array->size());
+    }
+  }
+  return "";
+}
+
 bool FlatBufferModel::CheckModelIdentifier() const {
   if (!tflite::ModelBufferHasIdentifier(allocation_->base())) {
     const char* ident = flatbuffers::GetBufferIdentifier(allocation_->base());
@@ -234,15 +250,7 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
         return status;
       }
       const auto* op_name = opcode->custom_code()->c_str();
-      TfLiteRegistration unresolved_op{nullptr,
-                                       nullptr,
-                                       nullptr,
-                                       /*invoke*/ &UnresolvedOpInvoke,
-                                       nullptr,
-                                       BuiltinOperator_CUSTOM,
-                                       op_name,
-                                       1};
-      unresolved_custom_ops_.push_back(unresolved_op);
+      unresolved_custom_ops_.push_back(CreateUnresolvedCustomOp(op_name));
       registration = &unresolved_custom_ops_.back();
       has_flex_op_ |= IsFlexOp(op_name);
       status = kTfLiteOk;
@@ -311,13 +319,21 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
           EnumNameBuiltinOperator(op_type));
     }
 
-    if (op->custom_options()) {
-      subgraph->AddNodeWithParameters(
-          FlatBufferIntArrayToVector(op->inputs()),
-          FlatBufferIntArrayToVector(op->outputs()),
-          FlatBufferIntArrayToVector(op->intermediates()),
-          reinterpret_cast<const char*>(op->custom_options()->data()),
-          op->custom_options()->size(), nullptr, registration);
+    if (op_type == BuiltinOperator_CUSTOM) {
+      if (op->custom_options()) {
+        subgraph->AddNodeWithParameters(
+            FlatBufferIntArrayToVector(op->inputs()),
+            FlatBufferIntArrayToVector(op->outputs()),
+            FlatBufferIntArrayToVector(op->intermediates()),
+            reinterpret_cast<const char*>(op->custom_options()->data()),
+            op->custom_options()->size(), nullptr, registration);
+      } else {
+        subgraph->AddNodeWithParameters(
+            FlatBufferIntArrayToVector(op->inputs()),
+            FlatBufferIntArrayToVector(op->outputs()),
+            FlatBufferIntArrayToVector(op->intermediates()), nullptr, 0,
+            nullptr, registration);
+      }
     } else {
       void* builtin_data = nullptr;
       MallocDataAllocator malloc_allocator;

@@ -40,26 +40,24 @@ class GetCalibrationDataOp : public OpKernel {
     // serialized string to that tensor, and later sess.run() will copy it back
     // to host. We need to optimize this.
 
-    const string& resource_name = context->input(0).scalar<string>()();
+    const string& resource_name = context->input(0).scalar<tstring>()();
     // Get the resource.
     TRTEngineCacheResource* resource = nullptr;
     OP_REQUIRES_OK(context, context->resource_manager()->Lookup(
-                                std::string(kCacheContainerName), resource_name,
+                                std::string(kTfTrtContainerName), resource_name,
                                 &resource));
     core::ScopedUnref sc(resource);
 
-    auto* calib_ctx = resource->calib_ctx_.get();
-
     // Serialize the resource as output.
-    string serialized_resource;
-    OP_REQUIRES_OK(context, calib_ctx->SerializeToString(&serialized_resource));
-    resource->calib_ctx_.reset();
+    string serialized_resource = resource->calib_ctx_->TerminateCalibration();
+    OP_REQUIRES(context, !serialized_resource.empty(),
+                errors::Unknown("Calibration table is empty."));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape({}), &output));
 
-    output->scalar<string>()() = serialized_resource;
+    output->scalar<tstring>()() = serialized_resource;
   }
 };
 

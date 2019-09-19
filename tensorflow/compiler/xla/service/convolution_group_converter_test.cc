@@ -49,7 +49,8 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,2], filter: f32[1,1,2]) -> f32[1,2
   auto computation = module->entry_computation();
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kConvolution);
-  ConvolutionGroupConverter converter(nullptr, /*convert_batch_groups_only=*/
+  auto cost_model = [](HloInstruction* conv) { return true; };
+  ConvolutionGroupConverter converter(cost_model, /*convert_batch_groups_only=*/
                                       false);
   ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
   root = computation->root_instruction();
@@ -80,7 +81,8 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,4], filter: f32[1,2,2]) -> f32[1,2
   auto computation = module->entry_computation();
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kConvolution);
-  ConvolutionGroupConverter converter(nullptr, /*convert_batch_groups_only=*/
+  auto cost_model = [](HloInstruction* conv) { return true; };
+  ConvolutionGroupConverter converter(cost_model, /*convert_batch_groups_only=*/
                                       false);
   ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
   root = computation->root_instruction();

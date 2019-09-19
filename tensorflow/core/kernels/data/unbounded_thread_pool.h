@@ -20,6 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/thread_factory.h"
+#include "tensorflow/core/lib/core/notification.h"
+#include "tensorflow/core/lib/core/threadpool_interface.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/unbounded_work_queue.h"
 
@@ -30,7 +32,7 @@ namespace data {
 // potentially large number of "logical" threads onto a smaller number of
 // "physical" threads. The multiplexing is achieved by using an
 // `UnboundedWorkQueue`.
-class UnboundedThreadPool {
+class UnboundedThreadPool : public thread::ThreadPoolInterface {
  public:
   UnboundedThreadPool(Env* env, const string& thread_name)
       : unbounded_work_queue_(env, thread_name) {}
@@ -40,11 +42,16 @@ class UnboundedThreadPool {
   // logical threads in this pool.
   std::shared_ptr<ThreadFactory> get_thread_factory();
 
+  void Schedule(std::function<void()> fn) override;
+  int NumThreads() const override;
+  int CurrentThreadId() const override;
+
  private:
   class LogicalThreadFactory;
   class LogicalThreadWrapper;
 
-  std::unique_ptr<Thread> ScheduleOnWorkQueue(std::function<void()> fn);
+  void ScheduleOnWorkQueue(std::function<void()> fn,
+                           std::shared_ptr<Notification> done);
 
   UnboundedWorkQueue unbounded_work_queue_;
 };

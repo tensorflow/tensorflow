@@ -22,14 +22,17 @@ import os
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.mixed_precision.experimental import autocast_variable
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import util as trackable_utils
@@ -102,6 +105,21 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(x.read_value().dtype, dtypes.float32)
         self.assertEqual(array_ops.identity(x).dtype, dtypes.float32)
 
+  def test_sparse_reads(self):
+    x = get_var([1., 2], dtypes.float32)
+    # DistributedVariables do not support sparse_read or gather_nd, so we pass
+    # distribute=False
+    x = get_autocast_var(x, distribute=False)
+    self.evaluate(x.initializer)
+
+    self.assertEqual(x.sparse_read([0]).dtype, dtypes.float32)
+    self.assertEqual(x.gather_nd([0]).dtype, dtypes.float32)
+
+    with ops.get_default_graph()._enable_auto_casting_variables(
+        dtypes.float16):
+      self.assertEqual(x.sparse_read([0]).dtype, dtypes.float16)
+      self.assertEqual(x.gather_nd([0]).dtype, dtypes.float16)
+
   @parameterized.named_parameters(*TESTCASES)
   def test_read_nested_scopes(self, distribute):
     with get_distribute_scope(distribute):
@@ -121,6 +139,91 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
 
         self.assertEqual(x.dtype, dtypes.float16)
         self.assertEqual(x.read_value().dtype, dtypes.float16)
+
+  @parameterized.named_parameters(*TESTCASES)
+  def test_dtype_is_not_string(self, distribute):
+    with get_distribute_scope(distribute):
+      x = get_var(1., dtypes.float32)
+      x = get_autocast_var(x, distribute)
+      self.assertEqual(x.dtype, dtypes.float32)
+      self.assertIsInstance(x.dtype, dtypes.DType)
+      self.assertEqual(x.true_dtype, dtypes.float32)
+      self.assertIsInstance(x.true_dtype, dtypes.DType)
+
+      with ops.get_default_graph()._enable_auto_casting_variables('float16'):
+        self.assertEqual(x.dtype, dtypes.float16)
+        self.assertIsInstance(x.dtype, dtypes.DType)
+        self.assertEqual(x.true_dtype, dtypes.float32)
+        self.assertIsInstance(x.true_dtype, dtypes.DType)
+
+  @parameterized.named_parameters(*TESTCASES)
+  def test_method_delegations(self, distribute):
+    # Test AutoCastVariable correctly delegates Variable methods to the
+    # underlying variable.
+    with get_distribute_scope(distribute):
+      evaluate = self.evaluate
+      for read_dtype in (dtypes.float32, dtypes.float16):
+        x = get_var(7., dtypes.float32)
+        x = get_autocast_var(x, distribute)
+        with ops.get_default_graph()._enable_auto_casting_variables(
+            read_dtype):
+          evaluate(x.initializer)
+          self.assertEqual(evaluate(x.value()), 7)
+          self.assertEqual(evaluate(x.read_value()), 7)
+          self.assertTrue(x.trainable)
+          self.assertEqual(x.synchronization, x._variable.synchronization)
+          self.assertEqual(x.aggregation, x._variable.aggregation)
+          self.assertEqual(evaluate(x.initialized_value()), 7)
+          if not context.executing_eagerly():
+            if not distribute:
+              # These functions are not supported for DistributedVariables
+              x.load(9)
+              self.assertEqual(x.eval(), 9)
+            self.assertEqual(evaluate(x.initial_value), 7)
+            self.assertEqual(x.op, x._variable.op)
+            self.assertEqual(x.graph, x._variable.graph)
+          if not distribute:
+            # These attributes are not supported for DistributedVariables
+            self.assertIsNone(x.constraint)
+            self.assertEqual(x.initializer, x._variable.initializer)
+          self.assertEqual(evaluate(x.assign(8)), 8)
+          self.assertEqual(evaluate(x.assign_add(2)), 10)
+          self.assertEqual(evaluate(x.assign_sub(3)), 7)
+          self.assertEqual(x.name, x._variable.name)
+          self.assertEqual(x.device, x._variable.device)
+          self.assertEqual(x.shape, ())
+          self.assertEqual(x.get_shape(), ())
+
+        if not distribute:
+          # Test scatter_* methods. These are not supported for
+          # DistributedVariables
+          x = get_var([7, 8], dtypes.float32)
+          x = get_autocast_var(x, distribute)
+          with ops.get_default_graph()._enable_auto_casting_variables(
+              read_dtype):
+            evaluate(x.initializer)
+            self.assertAllEqual(evaluate(x.value()), [7, 8])
+
+            def slices(val, index):
+              return indexed_slices.IndexedSlices(
+                  values=constant_op.constant(val, dtype=dtypes.float32),
+                  indices=constant_op.constant(index, dtype=dtypes.int32),
+                  dense_shape=constant_op.constant([2], dtype=dtypes.int32))
+
+            self.assertAllEqual(evaluate(x.scatter_sub(slices(1., 0))), [6, 8])
+            self.assertAllEqual(evaluate(x.scatter_add(slices(1., 0))), [7, 8])
+            self.assertAllEqual(evaluate(x.scatter_max(slices(9., 1))), [7, 9])
+            self.assertAllEqual(evaluate(x.scatter_min(slices(8., 1))), [7, 8])
+            self.assertAllEqual(evaluate(x.scatter_mul(slices(2., 1))), [7, 16])
+            self.assertAllEqual(evaluate(x.scatter_div(slices(2., 1))), [7, 8])
+            self.assertAllEqual(
+                evaluate(x.scatter_update(slices(4., 1))), [7, 4])
+            self.assertAllEqual(
+                evaluate(x.scatter_nd_sub([[0], [1]], [1., 2.])), [6, 2])
+            self.assertAllEqual(
+                evaluate(x.scatter_nd_add([[0], [1]], [1., 2.])), [7, 4])
+            self.assertAllEqual(
+                evaluate(x.scatter_nd_update([[0], [1]], [1., 2.])), [1, 2])
 
   @parameterized.named_parameters(*TESTCASES)
   def test_operator_overloads(self, distribute):
@@ -165,6 +268,9 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
           x = get_autocast_var(x, distribute)
           self.evaluate(x.initializer)
           self.assertEqual(self.evaluate(x[1]), 8)
+          if tf2.enabled() and context.executing_eagerly():
+            self.assertAllEqual(x == [7., 8., 10.], [True, True, False])
+            self.assertAllEqual(x != [7., 8., 10.], [False, False, True])
 
   @parameterized.named_parameters(*TESTCASES)
   def test_assign(self, distribute):
@@ -198,9 +304,17 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
           self.evaluate(x.assign_sub(v2))
 
         # Assign Python floats
+        self.assertAllClose(0., self.evaluate(x.assign(0.)))
         self.assertAllClose(3.14, self.evaluate(x.assign(3.14)))
         self.assertAllClose(3.14 * 2, self.evaluate(x.assign_add(3.14)))
         self.assertAllClose(3.14, self.evaluate(x.assign_sub(3.14)))
+
+        # Use the tf.assign functions instead of the var.assign methods.
+        self.assertAllClose(0., self.evaluate(state_ops.assign(x, 0.)))
+        self.assertAllClose(3.14, self.evaluate(state_ops.assign(x, 3.14)))
+        self.assertAllClose(3.14 * 2,
+                            self.evaluate(state_ops.assign_add(x, 3.14)))
+        self.assertAllClose(3.14, self.evaluate(state_ops.assign_sub(x, 3.14)))
 
       run_and_check()
       # reset x

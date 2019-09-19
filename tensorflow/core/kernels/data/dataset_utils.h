@@ -15,12 +15,66 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_DATASET_UTILS_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_DATASET_UTILS_H_
 
+#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
 namespace data {
+
+template <typename T>
+class AnonymousResourceOp : public OpKernel {
+ public:
+  static std::atomic<int64> resource_id_counter_;
+
+  explicit AnonymousResourceOp(OpKernelConstruction* context)
+      : OpKernel(context) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    FunctionLibraryRuntime* lib;
+    std::unique_ptr<FunctionLibraryDefinition> flib_def(nullptr);
+    std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
+    OP_REQUIRES_OK(
+        ctx, ctx->function_library()->Clone(&flib_def, &pflr, &lib, true));
+    T* resource;
+    OP_REQUIRES_OK(ctx, CreateResource(ctx, std::move(flib_def),
+                                       std::move(pflr), lib, &resource));
+
+    string container_name = name();
+    string unique_name =
+        strings::StrCat(container_name, resource_id_counter_.fetch_add(1));
+    ResourceMgr* mgr = ctx->resource_manager();
+    OP_REQUIRES_OK(ctx, mgr->Create<T>(container_name, unique_name, resource));
+
+    Tensor* handle_t;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &handle_t));
+    ResourceHandle handle = MakeResourceHandle(ctx, container_name, unique_name,
+                                               MakeTypeIndex<T>());
+    handle_t->scalar<ResourceHandle>()() = handle;
+
+    if (create_deleter_) {
+      Tensor* deleter_t;
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(1, TensorShape({}), &deleter_t));
+      deleter_t->scalar<Variant>()() =
+          ResourceDeleter(handle, ctx->resource_manager());
+    }
+  }
+
+ protected:
+  virtual string name() = 0;
+
+  virtual Status CreateResource(
+      OpKernelContext* ctx, std::unique_ptr<FunctionLibraryDefinition> flib_def,
+      std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
+      FunctionLibraryRuntime* lib, T** resource) = 0;
+
+  bool create_deleter_ = true;
+};
+
+template <typename T>
+std::atomic<int64> AnonymousResourceOp<T>::resource_id_counter_;
 
 // Returns a GraphDef representation of the given dataset.
 Status AsGraphDef(OpKernelContext* ctx, const DatasetBase* dataset,
@@ -34,12 +88,6 @@ Status ConnectCancellationManagers(CancellationManager* parent,
                                    CancellationManager* child,
                                    std::function<void()>* deregister_fn);
 
-// Rewrites the input dataset using the given config.
-Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
-                      std::function<RewriterConfig(void)> config_factory,
-                      bool optimize_function_library,
-                      DatasetBase** rewritten_input);
-
 // Returns Status::OK() if `expected` and `received` types match,
 // errors::InvalidArgument otherwise.
 Status VerifyTypesMatch(const DataTypeVector& expected,
@@ -50,29 +98,32 @@ Status VerifyTypesMatch(const DataTypeVector& expected,
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
                               const std::vector<PartialTensorShape>& received);
 
-// Returns a stable hash of the portion of the graph `g` rooted at
-// `node`, by creating a Merkle tree-like structure.
+// Returns a stable hash of the given attribute key-value pair.
 //
-// Specifically, this function recursively walks the graph from `node` by
-// following its inputs.
-//
-// The hash is computed by hashing its op name, device, attributes, and hashes
-// of its inputs (if applicable).
-//
-// There is currently no guarantee that the hash of a subgraph will stay the
-// same between TensorFlow builds.
-uint64 HashSubgraph(const GraphDef& g, const NodeDef* node);
+// NOTE: There is currently no guarantee that the hash of a function will stay
+// the same between TensorFlow builds.
+Status HashAttr(const FunctionDefLibrary& library, const std::string& attr_key,
+                const AttrValue& attr_value, uint64* hash);
 
-// Returns a stable hash of the function `f`.
+// Returns a stable hash of the given function.
 //
-// This function computes the hash by hashing the metadata of the
-// function (disregarding the auto-generated names and descriptions) and also
-// hashing the subgraph rooted at each of the output nodes.
+// NOTE: There is currently no guarantee that the hash of a subgraph will stay
+// the same between TensorFlow builds.
+Status HashFunction(const FunctionDefLibrary& library, const FunctionDef& func,
+                    uint64* hash);
+
+// Returns a stable hash of the subgraph rooted at the given node.
+// `node.
 //
-// There is currently no guarantee that the hash of a function will stay the
-// same between TensorFlow builds.
-uint64 HashSubgraphFunction(const FunctionDefLibrary& library,
-                            const FunctionDef* f);
+// NOTE: There is currently no guarantee that the hash of a subgraph will stay
+// the same between TensorFlow builds.
+Status HashNode(const GraphDef& graph, const NodeDef& node, uint64* hash);
+
+// Returns a stable hash of the given graph.
+//
+// NOTE: There is currently no guarantee that the hash of a subgraph will stay
+// the same between TensorFlow builds.
+Status HashGraph(const GraphDef& graph, uint64* hash);
 
 // Helper class for reading data from a VariantTensorData object.
 class VariantTensorDataReader : public IteratorStateReader {
@@ -81,7 +132,7 @@ class VariantTensorDataReader : public IteratorStateReader {
 
   // Returns OK iff the initialization was successful.
   Status ReadScalar(StringPiece key, int64* val) override;
-  Status ReadScalar(StringPiece key, string* val) override;
+  Status ReadScalar(StringPiece key, tstring* val) override;
   Status ReadTensor(StringPiece key, Tensor* val) override;
   bool Contains(StringPiece key) override;
 
@@ -100,7 +151,7 @@ class VariantTensorDataWriter : public IteratorStateWriter {
   // Does not take ownership of data.
   explicit VariantTensorDataWriter(VariantTensorData* data) : data_(data) {}
   Status WriteScalar(StringPiece key, const int64 val) override;
-  Status WriteScalar(StringPiece key, const string& val) override;
+  Status WriteScalar(StringPiece key, const tstring& val) override;
   Status WriteTensor(StringPiece key, const Tensor& val) override;
 
   // Writes the metadata to `data_`.

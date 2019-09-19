@@ -30,6 +30,13 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/lite/tools/optimize/quantize_weights.h"
+
+namespace mlir {
+/// Create a pass to convert from the TFExecutor to the TF control dialect.
+std::unique_ptr<OpPassBase<FuncOp>>
+CreateTFExecutorToControlDialectConversion();
+}  // namespace mlir
 
 namespace tensorflow {
 
@@ -39,27 +46,28 @@ using mlir::OwningModuleRef;
 using stream_executor::port::StatusOr;
 
 StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
-    const std::string &input_filename, bool input_mlir,
-    bool use_splatted_constant, const std::vector<std::string> &extra_tf_opdefs,
+    const std::string& input_filename, bool input_mlir,
+    bool use_splatted_constant, const std::vector<std::string>& extra_tf_opdefs,
     absl::string_view debug_info_file, absl::string_view input_arrays,
     absl::string_view input_dtypes, absl::string_view input_shapes,
     absl::string_view output_arrays, absl::string_view inference_type,
     absl::string_view min_values, absl::string_view max_values,
-    bool prune_unused_nodes, llvm::SourceMgr *source_mgr,
-    MLIRContext *context) {
-  if (input_mlir) {
-    // Set up the input file.
-    std::string error_message;
-    auto file = mlir::openInputFile(input_filename, &error_message);
-    if (!file) {
-      llvm::errs() << error_message << "\n";
-      return errors::InvalidArgument("fail to open input file");
-    }
+    bool prune_unused_nodes, llvm::SourceMgr* source_mgr,
+    MLIRContext* context) {
+  // Set up the input file.
+  std::string error_message;
+  auto file = mlir::openInputFile(input_filename, &error_message);
+  if (!file) {
+    llvm::errs() << error_message << "\n";
+    return errors::InvalidArgument("fail to open input file");
+  }
 
+  if (input_mlir) {
     source_mgr->AddNewSourceBuffer(std::move(file), llvm::SMLoc());
     return OwningModuleRef(mlir::parseSourceFile(*source_mgr, context));
   }
-  for (const auto &tf_opdefs_string : extra_tf_opdefs) {
+
+  for (const auto& tf_opdefs_string : extra_tf_opdefs) {
     tensorflow::OpDef opdef;
     if (!tensorflow::protobuf::TextFormat::ParseFromString(tf_opdefs_string,
                                                            &opdef)) {
@@ -69,7 +77,7 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
     // Register extra opdefs.
     // TODO(b/133770952): Support shape functions.
     tensorflow::OpRegistry::Global()->Register(
-        [opdef](tensorflow::OpRegistrationData *op_reg_data) -> Status {
+        [opdef](tensorflow::OpRegistrationData* op_reg_data) -> Status {
           *op_reg_data = tensorflow::OpRegistrationData(opdef);
           return Status::OK();
         });
@@ -77,81 +85,27 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
 
   if (use_splatted_constant) {
     return tensorflow::GraphdefToSplattedMlirTranslateFunction(
-        input_filename, debug_info_file, input_arrays, input_dtypes,
+        std::move(file), debug_info_file, input_arrays, input_dtypes,
         input_shapes, output_arrays, inference_type, min_values, max_values,
-        prune_unused_nodes, context);
+        prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
+        /*graph_as_function=*/false, context);
   }
   return tensorflow::GraphdefToMlirTranslateFunction(
-      input_filename, debug_info_file, input_arrays, input_dtypes, input_shapes,
-      output_arrays, inference_type, min_values, max_values, prune_unused_nodes,
-      context);
+      std::move(file), debug_info_file, input_arrays, input_dtypes,
+      input_shapes, output_arrays, inference_type, min_values, max_values,
+      prune_unused_nodes,
+      /*convert_legacy_fed_inputs=*/true, /*graph_as_function=*/false, context);
 }
 
-bool ShouldRunQuantizePasses(mlir::ModuleOp m) {
-  if (mlir::FuncOp main_fn = m.lookupSymbol<mlir::FuncOp>("main")) {
-    return main_fn.getAttrOfType<mlir::UnitAttr>("tf.quantize") !=
-           mlir::Attribute();
-  }
-  return false;
-}
-
-void AddTFToTFLConversionPasses(bool emit_builtin_tflite_ops, bool run_quantize,
-                                bool emit_quant_adaptor_ops,
-                                bool lower_tensor_list_ops,
-                                mlir::PassManager *pass_manager) {
-  pass_manager->addPass(mlir::TFControlFlow::CreateRaiseTFControlFlowPass());
-
-  if (lower_tensor_list_ops) {
-    // Execute this pass before `CanonicalizerPass` in case some TensorList
-    // ops are constant folded into variant types.
-    // TODO(b/137125056): Move this pass after `CanonicalizerPass` after we
-    // handle constant ops that produce `TensorList`.
-    // TODO(haoliang): Add this pass by default.
-    pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass());
-  }
-
-  // TODO(jpienaar): Revise post dialect constants.
-  pass_manager->addPass(mlir::TF::CreateDecodeConstantPass());
-  // Canonicalization includes const folding, which is utilized here to optimize
-  // away ops that can't get constant folded after PrepareTF pass. For example,
-  // tf.Conv2D is split into tf.Transpose and tfl.Conv2D.
-  pass_manager->addPass(mlir::createCanonicalizerPass());
-
-  // The below passes only make sense if Builtin TFLite ops are enabled
-  // for emission.
-  if (emit_builtin_tflite_ops) {
-    // Prepare for TFLite dialect, rerun canonicalization, and then legalize to
-    // the TFLite dialect.
-    pass_manager->addPass(mlir::TFL::CreatePrepareTFPass());
-    pass_manager->addPass(mlir::createCanonicalizerPass());
-    pass_manager->addPass(mlir::TFL::CreateLegalizeTFPass());
-    pass_manager->addPass(mlir::TFL::CreateOptimizePass());
-    if (run_quantize) {
-      pass_manager->addPass(mlir::TFL::CreatePrepareQuantizePass(
-          /*quantize_sign=*/false));
-      pass_manager->addPass(mlir::TFL::CreateQuantizePass());
-      pass_manager->addPass(
-          mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
-    }
-    pass_manager->addPass(mlir::createCanonicalizerPass());
-    pass_manager->addPass(mlir::createCSEPass());
-  }
-}
-
-Status ConvertTFControlFlowToTFLOrFlatbuffer(
+Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
     bool emit_select_tf_ops, bool emit_custom_ops, bool emit_quant_adaptor_ops,
-    bool lower_tensor_list_ops, std::string *result) {
+    bool lower_tensor_list_ops,
+    tflite::QuantizedBufferType quantized_buffer_type, std::string* result,
+    mlir::PassManager* pass_manager) {
   mlir::StatusScopedDiagnosticHandler statusHandler(module.getContext(),
                                                     /*propagate=*/true);
-  mlir::PassManager pm;
-  bool run_quantize = ShouldRunQuantizePasses(module);
-
-  AddTFToTFLConversionPasses(emit_builtin_tflite_ops, run_quantize,
-                             emit_quant_adaptor_ops, lower_tensor_list_ops,
-                             &pm);
-
-  if (failed(pm.run(module))) {
+  if (failed(pass_manager->run(module))) {
     return statusHandler.ConsumeStatus();
   }
 
@@ -162,10 +116,41 @@ Status ConvertTFControlFlowToTFLOrFlatbuffer(
   }
 
   // Write MLIR TFLite dialect into FlatBuffer
-  if (tflite::MlirToFlatBufferTranslateFunction(
-          module, result, emit_builtin_tflite_ops, emit_select_tf_ops,
-          emit_custom_ops)) {
-    return statusHandler.ConsumeStatus();
+  if (quantized_buffer_type == tflite::QuantizedBufferType::NONE) {
+    if (tflite::MlirToFlatBufferTranslateFunction(
+            module, result, emit_builtin_tflite_ops, emit_select_tf_ops,
+            emit_custom_ops)) {
+      return statusHandler.ConsumeStatus();
+    }
+  } else {
+    // Post-training weight quantization path. Once MLIR has support for this,
+    // we can remove this else statement.
+    std::string pre_quantized_result;
+    if (tflite::MlirToFlatBufferTranslateFunction(
+            module, &pre_quantized_result, emit_builtin_tflite_ops,
+            emit_select_tf_ops, emit_custom_ops)) {
+      return statusHandler.ConsumeStatus();
+    }
+    flatbuffers::FlatBufferBuilder q_builder(/*initial_size=*/10240);
+    const uint8_t* buffer =
+        reinterpret_cast<const uint8_t*>(pre_quantized_result.c_str());
+    const ::tflite::Model* input_model = ::tflite::GetModel(buffer);
+
+    ::tflite::optimize::BufferType quantized_type;
+    if (quantized_buffer_type == tflite::QuantizedBufferType::INT8) {
+      quantized_type = ::tflite::optimize::BufferType::QUANTIZED_INT8;
+    } else if (quantized_buffer_type == tflite::QuantizedBufferType::FLOAT16) {
+      quantized_type = ::tflite::optimize::BufferType::QUANTIZED_FLOAT16;
+    } else {
+      return errors::InvalidArgument("Quantized type not recognized");
+    }
+    if (::tflite::optimize::QuantizeWeights(&q_builder, input_model,
+                                            quantized_type) != kTfLiteOk) {
+      return errors::InvalidArgument("Quantize weights transformation failed.");
+    }
+    const uint8_t* q_buffer = q_builder.GetBufferPointer();
+    *result =
+        string(reinterpret_cast<const char*>(q_buffer), q_builder.GetSize());
   }
 
   return Status::OK();

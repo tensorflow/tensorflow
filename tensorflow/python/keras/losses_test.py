@@ -180,6 +180,10 @@ class KerasLossesTest(test.TestCase):
         keras.backend.eval(output_from_logit),
         keras.backend.eval(output_from_sigmoid), atol=1e-5)
 
+  def test_get_bce(self):
+    bce_fn = keras.losses.get('bce')
+    self.assertEqual(bce_fn, keras.losses.binary_crossentropy)
+
   def test_serialization(self):
     fn = keras.losses.get('mse')
     config = keras.losses.serialize(fn)
@@ -605,7 +609,7 @@ class CosineSimilarityTest(test.TestCase):
     self.setup()
     cosine_obj = keras.losses.CosineSimilarity()
     loss = cosine_obj(self.y_true, self.y_pred)
-    expected_loss = np.mean(self.expected_loss)
+    expected_loss = -np.mean(self.expected_loss)
     self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
 
   def test_scalar_weighted(self):
@@ -613,7 +617,7 @@ class CosineSimilarityTest(test.TestCase):
     cosine_obj = keras.losses.CosineSimilarity()
     sample_weight = 2.3
     loss = cosine_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
-    expected_loss = np.mean(self.expected_loss * sample_weight)
+    expected_loss = -np.mean(self.expected_loss * sample_weight)
     self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
 
   def test_sample_weighted(self):
@@ -624,7 +628,7 @@ class CosineSimilarityTest(test.TestCase):
         self.y_true,
         self.y_pred,
         sample_weight=constant_op.constant(sample_weight))
-    expected_loss = np.mean(self.expected_loss * sample_weight)
+    expected_loss = -np.mean(self.expected_loss * sample_weight)
     self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
 
   def test_timestep_weighted(self):
@@ -643,7 +647,7 @@ class CosineSimilarityTest(test.TestCase):
     loss = cosine_obj(
         y_true, y_pred, sample_weight=constant_op.constant(sample_weight))
 
-    expected_loss = np.mean(expected_loss * sample_weight)
+    expected_loss = -np.mean(expected_loss * sample_weight)
     self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
 
   def test_zero_weighted(self):
@@ -656,7 +660,7 @@ class CosineSimilarityTest(test.TestCase):
     self.setup(axis=1)
     cosine_obj = keras.losses.CosineSimilarity(axis=1)
     loss = cosine_obj(self.y_true, self.y_pred)
-    expected_loss = np.mean(self.expected_loss)
+    expected_loss = -np.mean(self.expected_loss)
     self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
 
 

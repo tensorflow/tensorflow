@@ -28,6 +28,16 @@ limitations under the License.
 
 using tensorflow::string;
 
+void TFE_OpReset(TFE_Context* ctx, const char* op_or_function_name,
+                 TF_Status* status, TFE_Op* op_to_reset) {
+  if (op_to_reset) {
+    NewOrResetOp(ctx, op_or_function_name, status, op_to_reset);
+  } else {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "op_to_reset should not be nullptr");
+  }
+}
+
 void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h, TF_Status* status) {
   op->operation.ConsumeInput(h->handle);
 }
@@ -571,4 +581,31 @@ void TFE_OpSetCancellationManager(TFE_Op* op,
                                   TF_Status* status) {
   op->operation.SetCancellationManager(
       &cancellation_manager->cancellation_manager);
+}
+
+TFE_Executor* TFE_NewExecutor(bool is_async) {
+  return new TFE_Executor(is_async);
+}
+
+void TFE_DeleteExecutor(TFE_Executor* executor) { delete executor; }
+
+bool TFE_ExecutorIsAsync(TFE_Executor* executor) {
+  return executor->executor()->Async();
+}
+
+void TFE_ExecutorWaitForAllPendingNodes(TFE_Executor* executor,
+                                        TF_Status* status) {
+  status->status = executor->executor()->WaitForAllPendingNodes();
+}
+
+void TFE_ExecutorClearError(TFE_Executor* executor) {
+  executor->executor()->ClearError();
+}
+
+void TFE_ContextSetExecutorForThread(TFE_Context* ctx, TFE_Executor* executor) {
+  ctx->context->SetExecutorForThread(executor->executor());
+}
+
+TFE_Executor* TFE_ContextGetExecutorForThread(TFE_Context* ctx) {
+  return new TFE_Executor(&ctx->context->Executor());
 }

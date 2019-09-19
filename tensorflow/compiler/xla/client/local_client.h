@@ -37,6 +37,11 @@ namespace xla {
 
 class LocalExecutable {
  public:
+  // Low-level constructor; LocalClient::Compile() is the usual way to create
+  // executables.
+  LocalExecutable(std::unique_ptr<Executable> executable, Backend* backend,
+                  ExecutableBuildOptions build_options);
+
   // Run the compiled computation with the given arguments and options and
   // return the result.
   StatusOr<ScopedShapedBuffer> Run(
@@ -56,13 +61,6 @@ class LocalExecutable {
   Executable* executable() const { return executable_.get(); }
 
  private:
-  // Only a local client can construct these objects.
-  friend class LocalClient;
-
-  // Constructor invoked by LocalClient.
-  LocalExecutable(std::unique_ptr<Executable> executable, Backend* backend,
-                  ExecutableBuildOptions build_options);
-
   // Validates that the given arguments and options satisfy various constraints
   // of the computation.
   //
@@ -71,23 +69,6 @@ class LocalExecutable {
   Status ValidateExecutionOptions(
       const absl::Span<const ShapedBuffer* const> arguments,
       const ExecutableRunOptions& run_options, const Backend& backend);
-
-  // Records the computation in a SessionModule proto with the arguments used to
-  // invoke it, and the result. Enabled by flag: --xla_dump_hlo_snapshots.
-  //
-  // The given ServiceExecutableRunOptions override any values from the
-  // XLA_FLAGS environment variable.
-  StatusOr<ScopedShapedBuffer> ExecuteAndDump(
-      const ServiceExecutableRunOptions* run_options,
-      const absl::Span<const ShapedBuffer* const> arguments);
-
-  // Records the arguments used to invoke the computation in a SessionModule
-  // proto.
-  Status RecordArguments(const absl::Span<const ShapedBuffer* const> arguments,
-                         HloSnapshot* hlo_snapshot);
-
-  // Records the result of the computation in a SessionModule proto.
-  Status RecordResult(const ShapedBuffer* result, HloSnapshot* hlo_snapshot);
 
   // Returns a literal containing the contents of the given ShapedBuffer.
   StatusOr<Literal> LiteralFromShapedBuffer(const ShapedBuffer& shaped_buffer);

@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib import lookup as lookup_ops
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
@@ -32,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
@@ -124,10 +124,9 @@ class IteratorClusterTest(test.TestCase):
     default_val = -1
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1, 2], dtypes.int64)
-    table = lookup_ops.HashTable(
+    table = lookup_ops.StaticHashTableV1(
         lookup_ops.KeyValueTensorInitializer(keys, values),
-        default_val,
-        shared_name="shared_table")
+        default_val)
 
     input_sentences = dataset_ops.Dataset.from_tensor_slices(
         ["brain brain tank salad surgery", "surgery brain"])

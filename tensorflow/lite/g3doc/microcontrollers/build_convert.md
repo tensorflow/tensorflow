@@ -58,7 +58,7 @@ xxd -i converted_model.tflite > model_data.cc
 
 The output will look similar to the following:
 
-```C
+```c
 unsigned char converted_model_tflite[] = {
   0x18, 0x00, 0x00, 0x00, 0x54, 0x46, 0x4c, 0x33, 0x00, 0x00, 0x0e, 0x00,
   // <Lines omitted>

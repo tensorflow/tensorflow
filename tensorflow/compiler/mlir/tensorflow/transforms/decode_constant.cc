@@ -54,17 +54,19 @@ bool DecodeOpaqueValueInConstantOp(Operation *op) {
 // A pass to decode opaque constant values into readable ones.
 struct DecodeConstant : public FunctionPass<DecodeConstant> {
   void runOnFunction() override {
-    bool success = true;
-    getFunction().walk([&success](Operation *op) {
-      success &= DecodeOpaqueValueInConstantOp(op);
+    auto walk_result = getFunction().walk([](Operation *op) {
+      return DecodeOpaqueValueInConstantOp(op) ? WalkResult::advance()
+                                               : WalkResult::interrupt();
     });
-    if (!success) signalPassFailure();
+    if (walk_result.wasInterrupted()) signalPassFailure();
   }
 };
 
 }  // namespace
 
-FunctionPassBase *CreateDecodeConstantPass() { return new DecodeConstant(); }
+std::unique_ptr<OpPassBase<FuncOp>> CreateDecodeConstantPass() {
+  return std::make_unique<DecodeConstant>();
+}
 
 static PassRegistration<DecodeConstant> pass(
     "tf-decode-constant", "Decode opaque constant into human-readable ones");

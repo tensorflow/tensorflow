@@ -19,6 +19,7 @@ cc_library(
 
 gentbl(
     name = "TestOpsIncGen",
+    strip_include_prefix = "lib/TestDialect",
     tbl_outs = [
         (
             "-gen-op-decls",
@@ -44,10 +45,7 @@ cc_library(
     name = "TestDialect",
     srcs = [
         "lib/TestDialect/TestDialect.cpp",
-        "lib/TestDialect/TestOps.cpp.inc",
-        "lib/TestDialect/TestOps.h.inc",
         "lib/TestDialect/TestPatterns.cpp",
-        "lib/TestDialect/TestPatterns.inc",
     ],
     hdrs = [
         "lib/TestDialect/TestDialect.h",
@@ -56,11 +54,26 @@ cc_library(
     deps = [
         ":TestOpsIncGen",
         "@llvm//:support",
+        "@local_config_mlir//:Dialect",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:Support",
+        "@local_config_mlir//:TransformUtils",
         "@local_config_mlir//:Transforms",
-        "@local_config_mlir//:TypeUtilities",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "TestPass",
+    srcs = [
+        "lib/Pass/TestPassManager.cpp",
+    ],
+    deps = [
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Pass",
+        "@local_config_mlir//:Support",
     ],
     alwayslink = 1,
 )
@@ -69,15 +82,21 @@ cc_library(
     name = "TestTransforms",
     srcs = [
         "lib/Transforms/TestConstantFold.cpp",
+        "lib/Transforms/TestInlining.cpp",
         "lib/Transforms/TestLoopFusion.cpp",
+        "lib/Transforms/TestLoopMapping.cpp",
+        "lib/Transforms/TestLoopParametricTiling.cpp",
         "lib/Transforms/TestVectorizationUtils.cpp",
     ],
+    includes = ["lib/TestDialect"],
     deps = [
+        ":TestDialect",
         "@llvm//:support",
         "@local_config_mlir//:AffineOps",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:EDSC",
         "@local_config_mlir//:IR",
+        "@local_config_mlir//:LoopOps",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",

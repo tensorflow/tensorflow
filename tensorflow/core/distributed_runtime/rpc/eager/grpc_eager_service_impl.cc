@@ -27,9 +27,16 @@ namespace eager {
 
 GrpcEagerServiceImpl::GrpcEagerServiceImpl(
     const WorkerEnv* env, ::grpc::ServerBuilder* server_builder)
-    : env_(env), local_impl_(env) {
+    : env_(env),
+      local_impl_(env),
+      enqueue_streaming_thread_(env_->env, "enqueue_streaming_thread", 1) {
   server_builder->RegisterService(&service_);
   cq_ = server_builder->AddCompletionQueue();
+}
+
+Status GrpcEagerServiceImpl::CreateMasterContext(
+    const tensorflow::uint64 context_id, EagerContext* context) {
+  return local_impl_.CreateMasterContext(context_id, context);
 }
 
 void GrpcEagerServiceImpl::HandleRPCsLoop() {

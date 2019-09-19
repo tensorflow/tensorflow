@@ -16,10 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_REMOTE_EXECUTE_NODE_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_REMOTE_EXECUTE_NODE_H_
 
+#include <cstddef>
+
 #include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
 
 namespace tensorflow {
@@ -27,16 +31,19 @@ namespace eager {
 
 // RemoteExecuteNode is an implementation of EagerNode which enqueues
 // an operation via RPC in a remote EagerService.
-class RemoteExecuteNode : public EagerNode {
+class RemoteExecuteNode : public AsyncEagerNode {
  public:
   RemoteExecuteNode(std::unique_ptr<EnqueueRequest> request, Device* device,
-                    EagerClient* eager_client,
+                    EagerClient* eager_client, const NodeDef& ndef,
+                    FunctionLibraryDefinition* lib_def,
                     const gtl::InlinedVector<TensorHandle*, 4>& inputs,
                     absl::Span<TensorHandle*> retvals)
-      : EagerNode(),
+      : AsyncEagerNode(),
         request_(std::move(request)),
         device_(device),
         eager_client_(eager_client),
+        ndef_(ndef),
+        lib_def_(lib_def),
         inputs_(inputs) {
     // Copy the output handles, since the container for them might get
     // destroyed.
@@ -52,53 +59,39 @@ class RemoteExecuteNode : public EagerNode {
     }
   }
 
-  Status Run() override {
-    EnqueueResponse response;
-    Status status;
-    Notification n;
-    eager_client_->EnqueueAsync(request_.get(), &response,
-                                [&n, &status](const Status& s) {
-                                  status.Update(s);
-                                  n.Notify();
-                                });
-    n.WaitForNotification();
-
-    if (!status.ok()) {
-      Abort(status);
-      return status;
-    }
-
-    for (int i = 0; i < retvals_.size(); i++) {
-      Status s = retvals_[i]->SetRemoteShape(
-          response.queue_response(0).shape(i), device_);
-      if (!s.ok()) {
-        retvals_[i]->Poison(s);
-      }
-      retvals_[i]->Unref();
+  ~RemoteExecuteNode() override {
+    for (auto handle : retvals_) {
+      handle->Unref();
     }
 
     for (auto handle : inputs_) {
       handle->Unref();
     }
-
-    return status;
   }
+
+  Status Prepare() override;
+
+  void RunAsync(StatusCallback done) override;
 
   void Abort(Status status) override {
     for (auto handle : retvals_) {
       handle->Poison(status);
-      handle->Unref();
     }
+  }
 
-    for (auto handle : inputs_) {
-      handle->Unref();
-    }
+  string DebugString() const override {
+    string out = "[RemoteExecuteNode]";
+    strings::StrAppend(&out, " request: ", request_->DebugString());
+    strings::StrAppend(&out, ", target_device: ", device_->name());
+    return out;
   }
 
  private:
   std::unique_ptr<EnqueueRequest> request_;
   Device* device_;             // Not owned
   EagerClient* eager_client_;  // Not owned, and must outlive this node.
+  const NodeDef ndef_;
+  const FunctionLibraryDefinition* lib_def_;
   gtl::InlinedVector<TensorHandle*, 4> inputs_;
   gtl::InlinedVector<TensorHandle*, 2> retvals_;
 };

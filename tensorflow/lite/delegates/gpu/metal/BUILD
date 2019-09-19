@@ -1,10 +1,12 @@
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite", "tflite_ios_per_kernel_test")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
 
 DEFAULT_COPTS = [
-    "-std=c++11",
     "-Wno-shorten-64-to-32",
 ]
 
@@ -22,6 +24,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/metal/kernels",
+        "//tensorflow/lite/delegates/gpu/metal/kernels:custom_registry",
     ],
 )
 
@@ -52,6 +55,28 @@ objc_library(
     deps = [
         "//tensorflow/lite/delegates/gpu/common:status",
     ],
+)
+
+objc_library(
+    name = "common_test_lib",
+    testonly = 1,
+    srcs = ["common_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":common",
+        "//tensorflow/lite/delegates/gpu/metal/kernels:test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "common_test",
+    testonly = 1,
+    minimum_os_version = "10.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":common_test_lib"],
 )
 
 cc_library(
@@ -138,3 +163,7 @@ cc_library(
     name = "runtime_options",
     hdrs = ["runtime_options.h"],
 )
+
+tflite_portable_test_suite()
+
+tflite_ios_per_kernel_test()

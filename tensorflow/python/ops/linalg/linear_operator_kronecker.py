@@ -82,10 +82,10 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
   operator = LinearOperatorKronecker([operator_1, operator_2])
 
   operator.to_dense()
-  ==> [[1., 2., 0., 0.],
-       [3., 4., 0., 0.],
-       [2., 4., 1., 2.],
-       [6., 8., 3., 4.]]
+  ==> [[1., 0., 2., 0.],
+       [2., 1., 4., 2.],
+       [3., 0., 4., 0.],
+       [6., 3., 8., 4.]]
 
   operator.shape
   ==> [4, 4]

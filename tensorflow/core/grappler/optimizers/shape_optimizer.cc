@@ -42,12 +42,16 @@ Status ShapeOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   bool has_size = false;
   bool has_shape = false;
   bool has_prod = false;
+  auto is_int = [](const NodeDef& node) -> bool {
+    return node.attr().at("T").type() == DT_INT32 ||
+           node.attr().at("T").type() == DT_INT64;
+  };
   for (const NodeDef& node : item.graph.node()) {
     if (IsShape(node)) {
       has_shape = true;
-    } else if (IsProd(node)) {
+    } else if (IsProd(node) && is_int(node)) {
       has_prod = true;
-    } else if (IsDiv(node)) {
+    } else if (IsDiv(node) && is_int(node)) {
       has_div = true;
     } else if (IsSize(node)) {
       has_size = true;
@@ -95,7 +99,7 @@ Status ShapeOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       }
       const auto& prop =
           properties.GetOutputProperties(reduce_indices.node->name());
-      if (prop.size() < reduce_indices.port_id) {
+      if (prop.size() <= reduce_indices.port_id) {
         continue;
       }
       const TensorShapeProto& reduction_indices_shape =

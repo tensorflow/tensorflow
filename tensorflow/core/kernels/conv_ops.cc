@@ -64,8 +64,8 @@ limitations under the License.
 #include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
-#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+#include "tensorflow/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
@@ -75,7 +75,6 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 namespace {
-
 template <typename Device, typename T>
 struct LaunchGeneric {
   void operator()(OpKernelContext* ctx, const Tensor& input,
@@ -578,10 +577,6 @@ template struct LaunchConv2DOp<CPUDevice, float>;
 template struct LaunchConv2DOp<CPUDevice, double>;
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-static bool RedzoneCheckDisabled() {
-  const char* disable_rz_str = std::getenv("TF_DISABLE_RZ_CHECK");
-  return disable_rz_str != nullptr && std::strcmp(disable_rz_str, "1") == 0;
-}
 
 int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
                            int64 default_value_in_bytes) {
@@ -607,47 +602,6 @@ struct ConvAutoTuneGroup {
 typedef AutoTuneSingleton<ConvAutoTuneGroup, ConvParameters,
                           se::dnn::AlgorithmConfig>
     AutoTuneConv;
-
-#if GOOGLE_CUDA
-// Check the passed allocator for redzone violations.
-// If violations have occurred, mark the corresponding autotune result
-// as a failure.
-static void CheckRedzones(const se::cuda::RedzoneAllocator& rz_allocator,
-                          se::Stream* stream,
-                          tensorflow::AutotuneResult* autotune_result) {
-  se::port::StatusOr<se::cuda::RedzoneAllocator::RedzoneCheckStatus> rz_status =
-      rz_allocator.CheckRedzones(stream);
-  if (!rz_status.ok()) {
-    static std::once_flag failure_logged;
-    std::call_once(failure_logged, [&]() {
-      LOG(WARNING) << "Failed to check cudnn convolutions for out-of-bounds "
-                   << "reads and writes with an error message: '"
-                   << rz_status.status().error_message()
-                   << "'; skipping this check. This only means that we won't "
-                   << "check cudnn for out-of-bounds reads and writes. This "
-                   << "message will only be printed once.";
-    });
-    return;
-  }
-  auto rz_check_status = rz_status.ValueOrDie();
-  if (!rz_check_status.ok()) {
-    auto* fail = autotune_result->mutable_failure();
-    fail->set_msg(rz_check_status.RedzoneFailureMsg());
-    fail->set_kind(AutotuneResult::REDZONE_MODIFIED);
-    fail->set_buffer_address(
-        reinterpret_cast<uint64>(rz_check_status.user_buffer_address));
-    LOG(ERROR)
-        << "Detected cudnn out-of-bounds write in convolution buffer! This is "
-           "likely a cudnn bug. We will skip this algorithm in the future, but "
-           "your GPU state may already be corrupted, leading to incorrect "
-           "results. Within Google, no action is needed on your part. Outside "
-           "of Google, please ensure you're running the latest version of "
-           "cudnn. If that doesn't fix the problem, please file a bug with "
-           "this full error message and we'll contact nvidia.";
-    LOG(ERROR) << rz_check_status.RedzoneFailureMsg();
-  }
-}
-#endif  // GOOGLE_CUDA
 
 template <typename T>
 void LaunchConv2DOp<GPUDevice, T>::operator()(
@@ -966,25 +920,24 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
 
   int device_id = stream->parent()->device_ordinal();
   DataType dtype = input.dtype();
-  ConvParameters conv_parameters = {
-      in_batch,                 // batch
-      in_depths,                // in_depths
-      {{in_rows,                // in_rows
-        in_cols}},              // in_cols
-      compute_data_format,      // compute_data_format
-      out_depths,               // out_depths
-      {{patch_rows,             // filter_rows
-        patch_cols,             // filter_cols
-        patch_depths}},         // filter_depths
-      {{row_dilation,           // dilation_rows
-        col_dilation}},         // dilation_cols
-      {{row_stride,             // stride_rows
-        col_stride}},           // stride_cols
-      {{common_padding_rows,    // padding_rows
-        common_padding_cols}},  // padding_cols
-      dtype,                    // tensor datatype
-      device_id,                // device_id
-  };
+  ConvParameters conv_parameters = {in_batch,             // batch
+                                    in_depths,            // in_depths
+                                    {{in_rows,            // in_rows
+                                      in_cols}},          // in_cols
+                                    compute_data_format,  // compute_data_format
+                                    out_depths,           // out_depths
+                                    {{patch_rows,         // filter_rows
+                                      patch_cols,         // filter_cols
+                                      patch_depths}},     // filter_depths
+                                    {{row_dilation,       // dilation_rows
+                                      col_dilation}},     // dilation_cols
+                                    {{row_stride,         // stride_rows
+                                      col_stride}},       // stride_cols
+                                    {{common_padding_rows,    // padding_rows
+                                      common_padding_cols}},  // padding_cols
+                                    dtype,                    // tensor datatype
+                                    device_id,                // device_id
+                                    conv_desc.group_count()};
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune &&
       !AutoTuneConv::GetInstance()->Find(conv_parameters, &algorithm_config)) {
@@ -1000,41 +953,20 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                         "because cuDNN failed to initialize, so try looking to "
                         "see if a warning log message was printed above."));
 
-    se::TfAllocatorAdapter tf_allocator_adapter(
-        stream->parent()->platform(), ctx->device()->GetAllocator({}));
-
-    se::cuda::RedzoneAllocator rz_allocator(stream->parent()->device_ordinal(),
-                                            &tf_allocator_adapter,
-                                            se::cuda::PtxCompilationOptions());
-
-    se::DeviceMemory<T> output_tensor;
-
-    if (!RedzoneCheckDisabled()) {
-      auto output_rz_or = rz_allocator.AllocateBytes(stream, output_ptr.size());
-      if (!output_rz_or.ok()) {
-        static std::once_flag rz_allocation_failure_logged;
-        std::call_once(rz_allocation_failure_logged, []() {
-          LOG(WARNING)
-              << "Failed to allocate memory for convolution redzone "
-              << "checking; skipping this check. This is benign and only "
-              << "means that we won't check cudnn for out-of-bounds reads "
-              << "and writes. This message will only be printed once.";
-        });
-        output_tensor = output_ptr;
-      } else {
-        output_tensor = se::DeviceMemory<T>(output_rz_or.ValueOrDie());
-      }
-    } else {
-      output_tensor = output_ptr;
-    }
+    se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
+                                                stream);
+    se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
+                                      se::GpuAsmOpts());
+    se::DeviceMemory<T> output_tensor(
+        WrapRedzoneBestEffort(&rz_allocator, output_ptr));
 
     std::vector<tensorflow::AutotuneResult> results;
     for (auto profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
-      se::cuda::RedzoneAllocator rz_scratch_allocator(
-          stream->parent()->device_ordinal(), &tf_allocator_adapter,
-          se::cuda::PtxCompilationOptions());
+      se::RedzoneAllocator rz_scratch_allocator(
+          stream, &tf_allocator_adapter, se::GpuAsmOpts(),
+          /*memory_limit=*/ConvolveScratchSize);
       DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
       se::ScratchAllocator* allocator_used =
           !RedzoneCheckDisabled()
@@ -1057,12 +989,14 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
             profile_algorithm.tensor_ops_enabled());
 
         result.set_scratch_bytes(
-            rz_scratch_allocator.TotalAllocatedBytesExcludingRedzones());
+            !RedzoneCheckDisabled()
+                ? rz_scratch_allocator.TotalAllocatedBytesExcludingRedzones()
+                : scratch_allocator.TotalByteSize());
         *result.mutable_run_time() = proto_utils::ToDurationProto(
             absl::Milliseconds(profile_result.elapsed_time_in_ms()));
 
-        CheckRedzones(rz_scratch_allocator, stream, &result);
-        CheckRedzones(rz_allocator, stream, &result);
+        CheckRedzones(rz_scratch_allocator, &result);
+        CheckRedzones(rz_allocator, &result);
       }
     }
     LogConvAutotuneResults(se::dnn::ConvolutionKind::FORWARD,

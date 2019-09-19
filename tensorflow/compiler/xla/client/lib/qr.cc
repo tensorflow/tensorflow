@@ -207,14 +207,39 @@ StatusOr<QRBlockResult> QRBlock(XlaOp a, PrecisionConfig::Precision precision) {
     auto new_x = Mul(x, predecessor_mask,
                      /*broadcast_dimensions=*/{num_dims - 2, num_dims - 1}) +
                  Mul(beta, mask, /*broadcast_dimensions=*/batch_dim_indices);
-    a = DynamicUpdateSliceInMinorDims(a, new_x, {j});
+    // Update a[:,j]
+    std::vector<int64> dim_ids(num_dims);
+    std::iota(dim_ids.begin(), dim_ids.end(), 0);
+    new_x = BroadcastInDim(new_x, ConcatVectors(batch_dims, {m, n}),
+                           /*broadcast_dimensions=*/dim_ids);
+    const int64 minor_dim = batch_dims.size();
+    auto iota_mn = Iota(
+        builder, ShapeUtil::MakeShape(S32, ConcatVectors(batch_dims, {m, n})),
+        minor_dim + 1);
+    a = Select(Eq(iota_mn, j), new_x, a);
 
     // vs[:, j] = v
-    vs = DynamicUpdateSliceInMinorDims(
-        vs, Reshape(v, ConcatVectors(batch_dims, {m, 1})), {j});
+    std::vector<int64> vs_broadcast_dims(batch_dims.size() + 1);
+    std::iota(vs_broadcast_dims.begin(), vs_broadcast_dims.end(), 0);
+    auto vs_zeros = ZerosLike(vs);
+    auto vs_update = Select(
+        Eq(iota_mn, j),
+        Add(vs_zeros, v, /*broadcast_dimensions=*/vs_broadcast_dims), vs_zeros);
+    vs = vs + vs_update;
+
     // taus[j] = tau
-    taus = DynamicUpdateSliceInMinorDims(
-        taus, Reshape(tau, ConcatVectors(batch_dims, {1})), {j});
+    std::vector<int64> tau_broadcast_dims(batch_dims.size());
+    std::iota(tau_broadcast_dims.begin(), tau_broadcast_dims.end(), 0);
+
+    auto iota_n =
+        Iota(builder, ShapeUtil::MakeShape(S32, ConcatVectors(batch_dims, {n})),
+             minor_dim);
+    auto taus_zeros = ZerosLike(taus);
+    auto taus_update = Select(
+        Eq(iota_n, j),
+        Add(taus_zeros, tau, /*broadcast_dimensions=*/tau_broadcast_dims),
+        taus_zeros);
+    taus = taus + taus_update;
     return std::vector<XlaOp>{a, vs, taus};
   };
 

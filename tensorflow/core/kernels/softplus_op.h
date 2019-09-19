@@ -18,7 +18,10 @@ limitations under the License.
 // Functor definition for SoftplusOp and SoftplusGradOp, must be compilable by
 // nvcc.
 
+// clang-format off
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+// clang-format on
 #include "tensorflow/core/framework/tensor_types.h"
 
 namespace tensorflow {

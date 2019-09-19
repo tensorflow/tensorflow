@@ -105,8 +105,8 @@ class BatchNormExpanderVisitor : public DfsHloRewriteVisitor {
       HloInstruction* operand, int64 feature_index,
       const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
           add_instruction) {
-    auto elements_per_feature_u32 = add_instruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32>(1)));
+    auto elements_per_feature_s32 = add_instruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
 
     for (int64 i = 0; i < operand->shape().rank(); ++i) {
       if (i == feature_index) {
@@ -114,15 +114,15 @@ class BatchNormExpanderVisitor : public DfsHloRewriteVisitor {
       }
       auto dynamic_dimension_size =
           add_instruction(HloInstruction::CreateGetDimensionSize(
-              ShapeUtil::MakeShape(U32, {}), operand, i));
-      elements_per_feature_u32 = add_instruction(HloInstruction::CreateBinary(
-          ShapeUtil::MakeShape(U32, {}), HloOpcode::kMultiply,
-          dynamic_dimension_size, elements_per_feature_u32));
+              ShapeUtil::MakeShape(S32, {}), operand, i));
+      elements_per_feature_s32 = add_instruction(HloInstruction::CreateBinary(
+          ShapeUtil::MakeShape(S32, {}), HloOpcode::kMultiply,
+          dynamic_dimension_size, elements_per_feature_s32));
     }
 
     return HloInstruction::CreateConvert(
         ShapeUtil::MakeShape(operand->shape().element_type(), {}),
-        elements_per_feature_u32);
+        elements_per_feature_s32);
   }
 
   // Current HloComputation instance the BatchNormExpander is

@@ -82,11 +82,12 @@ blink instead of fading.
 ### Obtain and import the library
 
 To use this sample application with Arduino, we've created an Arduino library
-that includes it as an example that you can open in the Arduino IDE.
+that includes it as an example that you can open in the Arduino Desktop IDE.
 
 Download the current nightly build of the library: [hello_world.zip](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/tensorflow/lite/experimental/micro/tools/make/gen/arduino_x86_64/prj/hello_world/hello_world.zip)
 
-Next, import this zip file into the Arduino IDE by going to `Sketch -> Include Library -> Add .ZIP Library...`.
+Next, import this zip file into the Arduino Desktop IDE by going to `Sketch ->
+Include Library -> Add .ZIP Library...`.
 
 #### Building the library
 
@@ -104,7 +105,8 @@ A zip file will be created at the following location:
 tensorflow/lite/experimental/micro/tools/make/gen/arduino_x86_64/prj/hello_world/hello_world.zip
 ```
 
-You can then import this zip file into the Arduino IDE by going to `Sketch -> Include Library -> Add .ZIP Library...`.
+You can then import this zip file into the Arduino Desktop IDE by going to
+`Sketch -> Include Library -> Add .ZIP Library...`.
 
 ### Load and run the example
 
@@ -112,11 +114,11 @@ Once the library has been added, go to `File -> Examples`. You should see an
 example near the bottom of the list named `TensorFlowLite:hello_world`. Select
 it and click `hello_world` to load the example.
 
-Use the Arduino IDE to build and upload the example. Once it is running, you
-should see the built-in LED on your device flashing.
+Use the Arduino Desktop IDE to build and upload the example. Once it is running,
+you should see the built-in LED on your device flashing.
 
-The Arduino IDE includes a plotter that we can use to display the sine wave
-graphically. To view it, go to `Tools -> Serial Plotter`. You will see one
+The Arduino Desktop IDE includes a plotter that we can use to display the sine
+wave graphically. To view it, go to `Tools -> Serial Plotter`. You will see one
 datapoint being logged for each inference cycle, expressed as a number between 0
 and 255.
 

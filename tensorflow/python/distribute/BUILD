@@ -1,7 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
-load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
+load("//tensorflow/core/platform:default/distribute.bzl", "distribute_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -75,6 +75,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
@@ -155,6 +156,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/data",
@@ -217,9 +219,11 @@ py_library(
 
 py_test(
     name = "distribute_coordinator_test",
+    size = "medium",
     srcs = ["distribute_coordinator_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = ["no_oss_py2"],  # b/138443278
     deps = [
         ":distribute_coordinator",
         "//tensorflow/core:protos_all_py",
@@ -265,6 +269,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
@@ -695,6 +700,7 @@ tf_xla_py_test(
         ":tpu_strategy",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
         "//tensorflow/python/training/tracking:util",
     ],
 )
@@ -875,13 +881,15 @@ distribute_py_test(
     main = "minimize_loss_test.py",
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/139815303): enable after this is fixed.
         "no_rocm",
+        "notap",  # TODO(b/139815303): enable after this is fixed.
     ],
     deps = [
         ":mirrored_strategy",
         ":single_loss_example",
-        "//tensorflow/contrib/tpu:tpu_lib",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variable_scope",
@@ -932,7 +940,6 @@ distribute_py_test(
     ],
     deps = [
         ":single_loss_example",
-        "//tensorflow/contrib/tpu:tpu_lib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:combinations",
@@ -1108,7 +1115,9 @@ distribute_py_test(
     name = "saved_model_save_load_test",
     size = "medium",
     srcs = ["saved_model_save_load_test.py"],
+    full_precision = True,
     main = "saved_model_save_load_test.py",
+    shard_count = 5,
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/saved_model",
@@ -1116,27 +1125,12 @@ distribute_py_test(
 )
 
 distribute_py_test(
-    name = "keras_experimental_saved_model_test",
-    size = "medium",
-    srcs = ["keras_experimental_saved_model_test.py"],
-    main = "keras_experimental_saved_model_test.py",
-    shard_count = 5,
-    tags = [
-        "no_oss",  # TODO(b/135287893) reenable
-        "no_rocm",
-    ],
-    deps = [
-        ":saved_model_test_base",
-        "//tensorflow/python/keras:saving",
-    ],
-)
-
-distribute_py_test(
     name = "keras_save_load_test",
     size = "medium",
     srcs = ["keras_save_load_test.py"],
+    full_precision = True,
     main = "keras_save_load_test.py",
-    shard_count = 3,
+    shard_count = 5,
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras:saving",
@@ -1147,7 +1141,9 @@ distribute_py_test(
     name = "saved_model_mixed_api_test",
     size = "medium",
     srcs = ["saved_model_mixed_api_test.py"],
+    full_precision = True,
     main = "saved_model_mixed_api_test.py",
+    shard_count = 5,
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras:saving",
@@ -1159,8 +1155,10 @@ distribute_py_test(
     name = "ctl_correctness_test",
     srcs = ["ctl_correctness_test.py"],
     main = "ctl_correctness_test.py",
+    shard_count = 10,
     tags = [
         "multi_and_single_gpu",
+        "noguitar",  # b/140755528
     ],
     deps = [
         "//tensorflow/python:keras_lib",
@@ -1202,6 +1200,7 @@ cuda_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
+        "noguitar",  # b/139307796
     ],
 )
 

@@ -23,8 +23,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
-
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.eager import context
@@ -95,22 +93,7 @@ def convert_to_eager_tensor(value, ctx, dtype=None):
     except AttributeError:
       dtype = dtypes.as_dtype(dtype).as_datatype_enum
   ctx.ensure_initialized()
-  device = ctx.device_name
-  if isinstance(value, (float,) + six.integer_types):
-    # Use a scalar cache. This will put each scalar of each type only once on
-    # each device. Scalars don't use much device memory but copying scalars can
-    # trigger memcpys which are slow.
-    cache_key = device, value, dtype, type(value)
-    scalar_cache = ctx.scalar_cache()
-    tensor = scalar_cache.get(cache_key, None)
-    if tensor is not None:
-      return ops.EagerTensor(
-          value, ctx, device, dtype, tensor)
-    t = ops.EagerTensor(value, ctx, device, dtype)
-    scalar_cache[cache_key] = t
-    return t
-  else:
-    return ops.EagerTensor(value, ctx, device, dtype)
+  return ops.EagerTensor(value, ctx.device_name, dtype)
 
 
 @tf_export(v1=["constant"])
@@ -267,7 +250,7 @@ def _constant_impl(
         # We don't have a Fill kernel for bool dtype on GPU. So we first run
         # Fill on CPU and then copy to GPU if needed.
         with ops.device("/device:CPU:0"):
-          x = _eager_fill(shape.as_list(), t.cpu(), ctx)
+          x = _eager_fill(shape.as_list(), _eager_identity(t, ctx), ctx)
         return _eager_identity(x, ctx)
       else:
         return _eager_fill(shape.as_list(), t, ctx)
@@ -281,7 +264,7 @@ def _constant_impl(
           value, dtype=dtype, shape=shape, verify_shape=verify_shape,
           allow_broadcast=allow_broadcast))
   dtype_value = attr_value_pb2.AttrValue(type=tensor_value.tensor.dtype)
-  const_tensor = g.create_op(
+  const_tensor = g._create_op_internal(  # pylint: disable=protected-access
       "Const", [], [dtype_value.type],
       attrs={"value": tensor_value,
              "dtype": dtype_value},

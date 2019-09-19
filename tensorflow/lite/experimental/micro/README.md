@@ -75,7 +75,7 @@ project files that you can download for the following platforms:
 
 Device                                                                                         | Mbed                                                                           | Keil                                                                           | Make/GCC
 ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ | --------
-[STM32F746G Discovery Board](https://www.st.com/en/evaluation-tools/32f746gdiscovery.html)     | [Download](https://drive.google.com/open?id=1OtgVkytQBrEYIpJPsE8F6GUKHPBS3Xeb) | -                                                                              | [Download](https://drive.google.com/open?id=1u46mTtAMZ7Y1aD-He1u3R8AE4ZyEpnOl)
+[STM32F746G Discovery Board](https://www.st.com/en/evaluation-tools/32f746gdiscovery.html)     | [Download](https://drive.google.com/open?id=1OtgVkytQBrEYIpJPsE8F6GUKHPBS3Xeb) | -                                                                              | [Instructions](#generating-project-files)
 ["Blue Pill" STM32F103-compatible development board](https://github.com/google/stm32_bare_lib) | -                                                                              | -                                                                              | [Instructions](#building-for-the-blue-pill-stm32f103-using-make)
 [Ambiq Micro Apollo3Blue EVB using Make](https://ambiqmicro.com/apollo-ultra-low-power-mcus/)  | -                                                                              | -                                                                              | [Instructions](#building-for-ambiq-micro-apollo3blue-evb-using-make)
 [Generic Keil uVision Projects](http://www2.keil.com/mdk5/uvision/)                            | -                                                                              | [Download](https://drive.google.com/open?id=1Lw9rsdquNKObozClLPoE5CTJLuhfh5mV) | -
@@ -341,7 +341,7 @@ To flash a part with JFlash Lite, do the following:
     to down load the Tensorflow source code and the support libraries \(but do
     not run the make command shown there.\)
 2.  Download the Eta Compute SDK, version 0.0.17. Contact info@etacompute.com
-3.  You will need the the Arm compiler arm-none-eabi-gcc, version 7.3.1
+3.  You will need the Arm compiler arm-none-eabi-gcc, version 7.3.1
     20180622, release ARM/embedded-7-branch revision 261907, 7-2018-q2-update.
     This compiler is downloaded through make.
 4.  Edit the file
@@ -392,17 +392,42 @@ optimizations and link it with the microlite lib.
 To utilize the CMSIS-NN optimized kernels, choose your target, e.g. Bluepill,
 and build with:
 
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile TAGS=cmsis-nn
-TARGET=bluepill test
+```
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile TAGS=cmsis-nn TARGET=bluepill test
+```
 
 That will build the microlite lib including CMSIS-NN optimized kernels based on
 the version downloaded by 'download_dependencies.sh', so make sure you have run
 this script. If you want to utilize another version of CMSIS, clone it to a
 custom location run the following command:
 
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile
-CMSIS_PATH=<CUSTOM_LOCATION> TAGS=cmsis-nn TARGET=bluepill test (--- Under
-development, it will build, but test will fail ---)
+```
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile CMSIS_PATH=<CUSTOM_LOCATION> TAGS=cmsis-nn TARGET=bluepill test
+```
+
+To test the optimized kernel(s) on your target platform using mbed (depthwise
+conv in this example), follow these steps:
+
+1.  Clone CMSIS to a custom location (<CUSTOM_LOCATION>) url:
+    https://github.com/ARM-software/CMSIS_5.git Make sure you're on the
+    development branch.
+2.  Generate the project for depthwise conv mbed test: `make -f
+    tensorflow/lite/experimental/micro/tools/make/Makefile TAGS=cmsis-nn
+    CMSIS_PATH=<CUSTOM_LOCATION> generate_depthwise_conv_test_mbed_project`
+3.  Go to the generated mbed folder: `cd
+    tensorflow/lite/experimental/micro/tools/make/gen/linux_x86_64/prj/depthwise_conv_test/mbed`
+4.  Follow the steps in README_MBED.md to setup the environment. Or simply do:
+    `mbed config root . mbed deploy python -c 'import fileinput, glob; for
+    filename in glob.glob("mbed-os/tools/profiles/*.json"): for line in
+    fileinput.input(filename, inplace=True):
+    print(line.replace("\"-std=gnu++98\"","\"-std=gnu++11\",
+    \"-fpermissive\""))'`
+5.  Compile and flash. The 'auto' flag requires your target to be plugged in.
+    `mbed compile -m auto -t GCC_ARM -f --source . --source
+    <CUSTOM_LOCATION>/CMSIS/NN/Include --source
+    <CUSTOM_LOCATION>/CMSIS/NN/Source/ConvolutionFunctions --source
+    <CUSTOM_LOCATION>/CMSIS/DSP/Include --source
+    <CUSTOM_LOCATION>/CMSIS/Core/Include -j8`
 
 ## Goals
 
@@ -543,23 +568,18 @@ It's possible to use the Arduino Desktop IDE to build TFL Micro targets for
 Arduino devices. The source code is packaged as a .zip archive that you can add
 in the IDE by going to Sketch->Include Library->Add .ZIP Library... Once you've
 added the library, you can then go to File->Examples->TensorFlowLite to find a
-simple sketch that you can use to build the example.
+simple sketches that you can use to build the examples.
 
 You can generate the zip file from the source code here in git by running the
 following command:
 
 ```
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=arduino TAGS="" generate_micro_speech_mock_arduino_library_zip
+https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/tools/ci_build/test_arduino.sh
 ```
 
-The resulting library can be found in `tensorflow/lite/experimental/micro/tools/make/gen/arduino_x86_64/prj/micro_speech_mock/micro_speech_mock.zip`.
-This generates a library that builds the `micro_speech_mock` binary, but you can
-do the same for any other target by replacing the name in the make command line.
-If you want to build all the possible libraries, you can run this command:
-
-```
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=arduino TAGS="" generate_projects
-```
+The resulting library can be found in `tensorflow/lite/experimental/micro/tools/make/gen/arduino_x86_64/prj/tensorflow_lite.zip`.
+This generates a library that includes all of the examples as sketches, along
+with the framework code you need to run your own examples.
 
 ## How to Port TensorFlow Lite Micro to a New Platform
 
