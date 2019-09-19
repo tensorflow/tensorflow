@@ -167,7 +167,7 @@ private:
   /// Process member decoration
   LogicalResult processMemberDecoration(uint32_t structID, uint32_t memberNum,
                                         spirv::Decoration decorationType,
-                                        uint32_t value);
+                                        ArrayRef<uint32_t> values = {});
 
   //===--------------------------------------------------------------------===//
   // Types
@@ -532,9 +532,12 @@ LogicalResult Serializer::processTypeDecoration<spirv::ArrayType>(
 LogicalResult
 Serializer::processMemberDecoration(uint32_t structID, uint32_t memberIndex,
                                     spirv::Decoration decorationType,
-                                    uint32_t value) {
+                                    ArrayRef<uint32_t> values) {
   SmallVector<uint32_t, 4> args(
-      {structID, memberIndex, static_cast<uint32_t>(decorationType), value});
+      {structID, memberIndex, static_cast<uint32_t>(decorationType)});
+  if (!values.empty()) {
+    args.append(values.begin(), values.end());
+  }
   return encodeInstructionInto(decorations, spirv::Opcode::OpMemberDecorate,
                                args);
 }
@@ -793,9 +796,19 @@ Serializer::prepareBasicType(Location loc, Type type, uint32_t resultID,
                 resultID, elementIndex, spirv::Decoration::Offset,
                 static_cast<uint32_t>(structType.getOffset(elementIndex))))) {
           return emitError(loc, "cannot decorate ")
-                 << elementIndex << "-th member of : " << structType
-                 << "with its offset";
+                 << elementIndex << "-th member of " << structType
+                 << " with its offset";
         }
+      }
+    }
+    SmallVector<spirv::StructType::MemberDecorationInfo, 4> memberDecorations;
+    structType.getMemberDecorations(memberDecorations);
+    for (auto &memberDecoration : memberDecorations) {
+      if (failed(processMemberDecoration(resultID, memberDecoration.first,
+                                         memberDecoration.second))) {
+        return emitError(loc, "cannot decorate ")
+               << memberDecoration.first << "-th member of " << structType
+               << " with " << stringifyDecoration(memberDecoration.second);
       }
     }
     typeEnum = spirv::Opcode::OpTypeStruct;

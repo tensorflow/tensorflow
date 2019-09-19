@@ -174,12 +174,13 @@ public:
   // types
   using LayoutInfo = uint64_t;
 
+  using MemberDecorationInfo = std::pair<uint32_t, spirv::Decoration>;
+
   static bool kindof(unsigned kind) { return kind == TypeKind::Struct; }
 
-  static StructType get(ArrayRef<Type> memberTypes);
-
   static StructType get(ArrayRef<Type> memberTypes,
-                        ArrayRef<LayoutInfo> layoutInfo);
+                        ArrayRef<LayoutInfo> layoutInfo = {},
+                        ArrayRef<MemberDecorationInfo> memberDecorations = {});
 
   unsigned getNumElements() const;
 
@@ -188,6 +189,16 @@ public:
   bool hasLayout() const;
 
   uint64_t getOffset(unsigned) const;
+
+  // Returns in `allMemberDecorations` the spirv::Decorations (apart from
+  // Offset) associated with all members of the StructType.
+  void getMemberDecorations(SmallVectorImpl<StructType::MemberDecorationInfo>
+                                &allMemberDecorations) const;
+
+  // Returns in `memberDecorations` all the spirv::Decorations (apart from
+  // Offset) associated with the `i`-th member of the StructType.
+  void getMemberDecorations(
+      unsigned i, SmallVectorImpl<spirv::Decoration> &memberDecorations) const;
 };
 
 } // end namespace spirv

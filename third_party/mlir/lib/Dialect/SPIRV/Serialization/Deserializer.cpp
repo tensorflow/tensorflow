@@ -399,7 +399,11 @@ private:
   DenseMap<uint32_t, uint32_t> typeDecorations;
 
   // Result <id> to member decorations.
-  DenseMap<uint32_t, DenseMap<uint32_t, uint32_t>> memberDecorationMap;
+  // decorated-struct-type-<id> ->
+  //    (struct-member-index -> (decoration -> decoration-operands))
+  DenseMap<uint32_t,
+           DenseMap<uint32_t, DenseMap<spirv::Decoration, ArrayRef<uint32_t>>>>
+      memberDecorationMap;
 
   // Result <id> to extended instruction set name.
   DenseMap<uint32_t, StringRef> extendedInstSets;
@@ -622,18 +626,22 @@ LogicalResult Deserializer::processDecoration(ArrayRef<uint32_t> words) {
 
 LogicalResult Deserializer::processMemberDecoration(ArrayRef<uint32_t> words) {
   // The binary layout of OpMemberDecorate is different comparing to OpDecorate
-  if (words.size() != 4) {
-    return emitError(unknownLoc, "OpMemberDecorate must have 4 operands");
+  if (words.size() < 3) {
+    return emitError(unknownLoc,
+                     "OpMemberDecorate must have at least 3 operands");
   }
 
-  switch (static_cast<spirv::Decoration>(words[2])) {
-  case spirv::Decoration::Offset:
-    memberDecorationMap[words[0]][words[1]] = words[3];
-    break;
-  default:
-    return emitError(unknownLoc, "unhandled OpMemberDecoration case: ")
-           << words[2];
+  auto decoration = static_cast<spirv::Decoration>(words[2]);
+  if (decoration == spirv::Decoration::Offset && words.size() != 4) {
+    return emitError(unknownLoc,
+                     " missing offset specification in OpMemberDecorate with "
+                     "Offset decoration");
   }
+  ArrayRef<uint32_t> decorationOperands;
+  if (words.size() > 3) {
+    decorationOperands = words.slice(3);
+  }
+  memberDecorationMap[words[0]][words[1]][decoration] = decorationOperands;
   return success();
 }
 
@@ -1098,25 +1106,35 @@ LogicalResult Deserializer::processStructType(ArrayRef<uint32_t> operands) {
   }
 
   SmallVector<spirv::StructType::LayoutInfo, 0> layoutInfo;
-  // Check for layoutinfo
-  auto memberDecorationIt = memberDecorationMap.find(operands[0]);
-  if (memberDecorationIt != memberDecorationMap.end()) {
-    // Each member must have an offset
-    const auto &offsetDecorationMap = memberDecorationIt->second;
-    auto offsetDecorationMapEnd = offsetDecorationMap.end();
+  SmallVector<spirv::StructType::MemberDecorationInfo, 0> memberDecorationsInfo;
+  if (memberDecorationMap.count(operands[0])) {
+    auto &allMemberDecorations = memberDecorationMap[operands[0]];
     for (auto memberIndex : llvm::seq<uint32_t>(0, memberTypes.size())) {
-      // Check that specific member has an offset
-      auto offsetIt = offsetDecorationMap.find(memberIndex);
-      if (offsetIt == offsetDecorationMapEnd) {
-        return emitError(unknownLoc, "OpTypeStruct with <id> ")
-               << operands[0] << " must have an offset for " << memberIndex
-               << "-th member";
+      if (allMemberDecorations.count(memberIndex)) {
+        for (auto &memberDecoration : allMemberDecorations[memberIndex]) {
+          // Check for offset.
+          if (memberDecoration.first == spirv::Decoration::Offset) {
+            // If layoutInfo is empty, resize to the number of members;
+            if (layoutInfo.empty()) {
+              layoutInfo.resize(memberTypes.size());
+            }
+            layoutInfo[memberIndex] = memberDecoration.second[0];
+          } else {
+            if (!memberDecoration.second.empty()) {
+              return emitError(unknownLoc,
+                               "unhandled OpMemberDecoration with decoration ")
+                     << stringifyDecoration(memberDecoration.first)
+                     << " which has additional operands";
+            }
+            memberDecorationsInfo.emplace_back(memberIndex,
+                                               memberDecoration.first);
+          }
+        }
       }
-      layoutInfo.push_back(
-          static_cast<spirv::StructType::LayoutInfo>(offsetIt->second));
     }
   }
-  typeMap[operands[0]] = spirv::StructType::get(memberTypes, layoutInfo);
+  typeMap[operands[0]] =
+      spirv::StructType::get(memberTypes, layoutInfo, memberDecorationsInfo);
   return success();
 }
 
