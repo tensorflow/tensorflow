@@ -256,14 +256,40 @@ RUN_FUNCTIONS_EAGERLY = False
 def run_functions_eagerly(run_eagerly):
   """Enables / disables eager execution of `tf.function`s.
 
-  After calling `tf.config.experimental_run_functions_eagerly(True)` all
-  invocations of tf.function will run eagerly instead of running through a graph
+  Calling `tf.config.experimental_run_functions_eagerly(True)` will make all
+  invocations of `tf.function` run eagerly instead of running as a traced graph
   function.
 
-  This can be useful for debugging or profiling.
+  This can be useful for debugging or profiling. For example, let's say you
+  implemented a simple iterative sqrt function, and you want to collect the
+  intermediate values and plot the convergence.  Appending the values to a list
+  in `@tf.function` normally wouldn't work since it will just record the Tensors
+  being traced, not the values.  Instead, you can do the following.
 
-  Similarly, calling `tf.config.experimental_run_functions_eagerly(False)` will
-  revert the behavior of all functions to graph functions.
+  >>> ys = []
+  >>>
+  >>> @tf.function
+  ... def sqrt(x):
+  ...   y = x / 2
+  ...   d = y
+  ...   for _ in range(10):
+  ...     d /= 2
+  ...     if y * y < x:
+  ...       y += d
+  ...     else:
+  ...       y -= d
+  ...     ys.append(y.numpy())
+  ...   return y
+  >>>
+  >>> tf.config.experimental_run_functions_eagerly(True)
+  >>> sqrt(tf.constant(2.))
+  <tf.Tensor: id=..., shape=(), dtype=float32, numpy=1.4150391>
+  >>> ys
+  [1.5, 1.25, 1.375, 1.4375, 1.40625, 1.421875, 1.4140625, 1.4179688, 1.4160156,
+  1.4150391]
+
+  Calling `tf.config.experimental_run_functions_eagerly(False)` will undo this
+  behavior.
 
   Args:
     run_eagerly: Boolean. Whether to run functions eagerly.
