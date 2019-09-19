@@ -544,6 +544,21 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
         kwargs={'axis': (-3, -2, -1)},
         input_shape=(2, 8, 8, 3))
 
+  @keras_parameterized.run_all_keras_modes
+  def test_non_fused_layernorm(self):
+    testing_utils.layer_test(
+        keras.layers.LayerNormalization,
+        kwargs={'axis': -2},
+        input_shape=(3, 4, 2))
+    testing_utils.layer_test(
+        keras.layers.LayerNormalization,
+        kwargs={'axis': (-3, -2)},
+        input_shape=(2, 8, 8, 3))
+    testing_utils.layer_test(
+        keras.layers.LayerNormalization,
+        kwargs={'axis': (-3, -1)},
+        input_shape=(2, 8, 8, 3))
+
   @tf_test_util.run_in_graph_and_eager_modes
   def test_layernorm_weights(self):
     layer = keras.layers.LayerNormalization(scale=False, center=False)
@@ -618,6 +633,11 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
       layer_norm = normalization.LayerNormalization(axis=[-1, -1])
       layer_norm.build(input_shape=(2, 2, 2))
 
+  @tf_test_util.run_in_graph_and_eager_modes
+  def testFusedAttr(self):
+    layer_norm = normalization.LayerNormalization(axis=[-2, -1])
+    layer_norm.build(input_shape=(2, 2, 2))
+    self.assertEqual(layer_norm._fused, True)
 
 if __name__ == '__main__':
   test.main()

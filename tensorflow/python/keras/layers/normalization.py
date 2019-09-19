@@ -947,9 +947,11 @@ class LayerNormalization(Layer):
 
     self.supports_masking = True
 
-    self.fused = False
+    # Indicates whether a faster fused implementation can be used. This will be
+    # set to True or False in build()"
+    self._fused = None
 
-  def _raise_if_fused_cannot_be_used(self, ndims):
+  def _fused_can_be_used(self, ndims):
     """Return false if fused implementation cannot be used.
 
     Check if the axis is contiguous and can be collapsed into the last axis.
@@ -958,10 +960,7 @@ class LayerNormalization(Layer):
     axis = sorted(self.axis)
     can_use_fused = False
 
-    if axis[-1] != ndims-1:
-      can_use_fused = True
-
-    if axis[-1] - axis[0] != len(axis) - 1:
+    if axis[-1] == ndims-1 and axis[-1] - axis[0] == len(axis) - 1:
       can_use_fused = True
     return can_use_fused 
 
@@ -986,7 +985,7 @@ class LayerNormalization(Layer):
     if len(self.axis) != len(set(self.axis)):
       raise ValueError('Duplicate axis: {}'.format(tuple(self.axis)))
 
-    self.fused = self._raise_if_fused_cannot_be_used(ndims)
+    self._fused = self._fused_can_be_used(ndims)
 
     param_shape = [input_shape[dim] for dim in self.axis]
     if self.scale:
@@ -1031,7 +1030,7 @@ class LayerNormalization(Layer):
         return array_ops.reshape(v, broadcast_shape)
       return v
 
-    if not self.fused:
+    if not self._fused:
       # Calculate the moments on the last axis (layer activations).
       mean, variance = nn.moments(inputs, self.axis, keep_dims=True)
 
