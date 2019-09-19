@@ -1850,8 +1850,7 @@ rinfo_.push_back({csinfo_.tanh_grad,
   static void CopyAttrsQuantizedMatMulWithBias(const Node* orig_node,
                                                NodeBuilder* nb,
                                                bool change_format = false);
-  static void CopyAttrsPooling(const Node* orig_node,
-                               NodeBuilder* nb,
+  static void CopyAttrsPooling(const Node* orig_node, NodeBuilder* nb,
                                bool change_format = false);
 
   // Generate a graph node in graph 'g' representing a dummy Mkl tensor node,
