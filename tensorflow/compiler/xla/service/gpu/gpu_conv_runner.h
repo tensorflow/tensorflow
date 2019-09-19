@@ -38,7 +38,7 @@ struct RunConvOptions {
 };
 
 // Implementation struct exposed for debugging and log analysis.
-struct CudnnConvParams {
+struct GpuConvParams {
   // Here are the fields related to cuDNN's fused convolution. The result thus
   // is defined as:
   //   activation(conv_result_scale * conv(x, w) +
@@ -99,7 +99,7 @@ Status RunCudnnConv(const HloCustomCallInstruction* conv,
                     RunConvOptions = {});
 
 // Implementation details exposed for debugging and log analysis.
-StatusOr<CudnnConvParams> GetCudnnConvParams(
+StatusOr<GpuConvParams> GetGpuConvParams(
     const HloCustomCallInstruction* conv,
     absl::Span<se::DeviceMemoryBase> operand_buffers,
     se::DeviceMemoryBase result_buffer);

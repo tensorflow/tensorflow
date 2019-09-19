@@ -72,7 +72,7 @@ class ScratchBufAllocator : public se::ScratchAllocator {
 };
 
 template <typename ElementType, typename OutputType>
-Status RunCudnnConvForward(CudnnConvParams params,
+Status RunCudnnConvForward(GpuConvParams params,
                            se::ScratchAllocator* scratch_allocator,
                            se::Stream* stream, RunConvOptions options,
                            DeviceMemory<ElementType> input_buf,
@@ -92,7 +92,7 @@ Status RunCudnnConvForward(CudnnConvParams params,
 }
 
 template <typename ElementType, typename BiasType, typename OutputType>
-Status RunCudnnConvForwardActivation(CudnnConvParams params,
+Status RunCudnnConvForwardActivation(GpuConvParams params,
                                      se::ScratchAllocator* scratch_allocator,
                                      se::Stream* stream, RunConvOptions options,
                                      DeviceMemory<ElementType> input_buf,
@@ -145,7 +145,7 @@ Status RunCudnnConvForwardActivation(CudnnConvParams params,
 template <typename ElementType, typename BiasType, typename OutputType,
           typename std::enable_if<
               !std::is_integral<ElementType>::value>::type* = nullptr>
-Status RunCudnnConvInternalImpl(CudnnConvParams params,
+Status RunCudnnConvInternalImpl(GpuConvParams params,
                                 se::ScratchAllocator* scratch_allocator,
                                 se::Stream* stream, RunConvOptions options,
                                 DeviceMemory<ElementType> input_buf,
@@ -191,7 +191,7 @@ Status RunCudnnConvInternalImpl(CudnnConvParams params,
 template <typename ElementType, typename BiasType, typename OutputType,
           typename std::enable_if<std::is_integral<ElementType>::value>::type* =
               nullptr>
-Status RunCudnnConvInternalImpl(CudnnConvParams params,
+Status RunCudnnConvInternalImpl(GpuConvParams params,
                                 se::ScratchAllocator* scratch_allocator,
                                 se::Stream* stream, RunConvOptions options,
                                 DeviceMemory<ElementType> input_buf,
@@ -215,7 +215,7 @@ Status RunCudnnConvInternalImpl(CudnnConvParams params,
 }
 
 template <typename ElementType, typename BiasType, typename OutputType>
-Status RunCudnnConvImpl(const CudnnConvParams& params,
+Status RunCudnnConvImpl(const GpuConvParams& params,
                         se::ScratchAllocator* scratch_allocator,
                         se::Stream* stream, RunConvOptions options) {
   auto input_buf = se::DeviceMemory<ElementType>(params.input_buf);
@@ -249,11 +249,11 @@ Status RunCudnnConvImpl(const CudnnConvParams& params,
 
 }  // anonymous namespace
 
-StatusOr<CudnnConvParams> GetCudnnConvParams(
+StatusOr<GpuConvParams> GetGpuConvParams(
     const HloCustomCallInstruction* conv,
     absl::Span<se::DeviceMemoryBase> operand_buffers,
     se::DeviceMemoryBase result_buffer) {
-  CudnnConvParams params;
+  GpuConvParams params;
 
   TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig backend_config,
                       conv->backend_config<CudnnConvBackendConfig>());
@@ -296,7 +296,7 @@ StatusOr<CudnnConvParams> GetCudnnConvParams(
       filter_shape = &conv->operand(1)->shape();
       output_shape = &conv->shape().tuple_shapes(0);
       params.fusion.emplace();
-      CudnnConvParams::FusionParams& fusion = *params.fusion;
+      GpuConvParams::FusionParams& fusion = *params.fusion;
       if (!se::dnn::ActivationMode_IsValid(backend_config.activation_mode())) {
         return InternalError("Bad activation mode: %s",
                              backend_config.ShortDebugString());
@@ -451,8 +451,8 @@ Status RunCudnnConv(const HloCustomCallInstruction* conv,
                     se::DeviceMemoryBase result_buffer,
                     se::ScratchAllocator* scratch_allocator, se::Stream* stream,
                     RunConvOptions options) {
-  TF_ASSIGN_OR_RETURN(CudnnConvParams params,
-                      GetCudnnConvParams(conv, operand_buffers, result_buffer));
+  TF_ASSIGN_OR_RETURN(GpuConvParams params,
+                      GetGpuConvParams(conv, operand_buffers, result_buffer));
 
   PrimitiveType input_primitive_type = conv->operand(0)->shape().element_type();
   switch (input_primitive_type) {
