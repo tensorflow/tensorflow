@@ -3463,6 +3463,15 @@ py_library(
 )
 
 py_library(
+    name = "parsing_config",
+    srcs = ["ops/parsing_config.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework",
+    ],
+)
+
+py_library(
     name = "parsing_ops",
     srcs = ["ops/parsing_ops.py"],
     srcs_version = "PY2AND3",
@@ -3472,6 +3481,7 @@ py_library(
         ":framework",
         ":framework_for_generated_wrappers",
         ":math_ops",
+        ":parsing_config",
         ":parsing_ops_gen",
         ":sparse_ops",
     ],

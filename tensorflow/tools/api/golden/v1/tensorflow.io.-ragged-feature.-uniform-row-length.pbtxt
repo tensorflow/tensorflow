@@ -1,10 +1,9 @@
-path: "tensorflow.io.VarLenFeature"
+path: "tensorflow.io.RaggedFeature.UniformRowLength"
 tf_class {
-  is_instance: "<class \'tensorflow.python.ops.parsing_config.VarLenFeature\'>"
-  is_instance: "<class \'tensorflow.python.ops.parsing_config.VarLenFeature\'>"
+  is_instance: "<class \'tensorflow.python.ops.parsing_config.UniformRowLength\'>"
   is_instance: "<type \'tuple\'>"
   member {
-    name: "dtype"
+    name: "length"
     mtype: "<type \'property\'>"
   }
   member_method {

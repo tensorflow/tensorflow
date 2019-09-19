@@ -1,10 +1,9 @@
-path: "tensorflow.io.VarLenFeature"
+path: "tensorflow.io.RaggedFeature.RowStarts"
 tf_class {
-  is_instance: "<class \'tensorflow.python.ops.parsing_config.VarLenFeature\'>"
-  is_instance: "<class \'tensorflow.python.ops.parsing_config.VarLenFeature\'>"
+  is_instance: "<class \'tensorflow.python.ops.parsing_config.RowStarts\'>"
   is_instance: "<type \'tuple\'>"
   member {
-    name: "dtype"
+    name: "key"
     mtype: "<type \'property\'>"
   }
   member_method {
