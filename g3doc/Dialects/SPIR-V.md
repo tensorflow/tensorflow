@@ -179,8 +179,9 @@ For example,
 This corresponds to SPIR-V [struct type][StructType]. Its syntax is
 
 ``` {.ebnf}
-struct-type ::= `!spv.struct<` spirv-type (` [` integer-literal `]` )?
-                (`, ` spirv-type ( ` [` integer-literal `] ` )? )* `>`
+struct-member-decoration ::= integer-literal? spirv-decoration*
+struct-type ::= `!spv.struct<` spirv-type (`[` struct-member-decoration `]`)?
+                     (`, ` spirv-type (`[` struct-member-decoration `]`)?
 ```
 
 For Example,
