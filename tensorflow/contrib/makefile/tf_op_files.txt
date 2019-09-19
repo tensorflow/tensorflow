@@ -16,6 +16,7 @@ tensorflow/core/kernels/batch_norm_op.cc
 tensorflow/core/kernels/batchtospace_op.cc
 tensorflow/core/kernels/bcast_ops.cc
 tensorflow/core/kernels/bias_op.cc
+tensorflow/core/kernels/bincount_op.cc
 tensorflow/core/kernels/boosted_trees/prediction_ops.cc
 tensorflow/core/kernels/boosted_trees/resource_ops.cc
 tensorflow/core/kernels/boosted_trees/resources.cc
