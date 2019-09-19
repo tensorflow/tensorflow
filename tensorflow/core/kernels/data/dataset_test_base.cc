@@ -948,8 +948,6 @@ string BatchDatasetParams::op_name() const {
   return BatchDatasetOp::kDatasetType;
 }
 
-int BatchDatasetParams::op_version() const { return op_version_; }
-
 std::vector<Tensor> MapDatasetParams::GetInputTensors() const {
   return other_arguments_;
 }
