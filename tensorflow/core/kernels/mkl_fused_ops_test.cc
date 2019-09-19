@@ -607,14 +607,14 @@ class BiasCacheTest : public OpsTestBase {
             .Input(FakeInput(DT_FLOAT))  // Min-output
             .Input(FakeInput(DT_FLOAT))  // max-output
             .Input(FakeInput(DT_UINT8))  // MKL second tensor
-            .Input(FakeInput(DT_UINT8))  // MKl second tensor
-            .Input(FakeInput(DT_UINT8))  // MKl second tensor
-            .Input(FakeInput(DT_UINT8))  // MKl second tensor
-            .Input(FakeInput(DT_UINT8))  // MKl second tensor
-            .Input(FakeInput(DT_UINT8))  // MKl second tensor
-            .Input(FakeInput(DT_UINT8))  // MKl second tensor
-            .Input(FakeInput(DT_UINT8))  // MKl second tensor
-            .Input(FakeInput(DT_UINT8))  // MKl second tensor
+            .Input(FakeInput(DT_UINT8))  // MKL second tensor
+            .Input(FakeInput(DT_UINT8))  // MKL second tensor
+            .Input(FakeInput(DT_UINT8))  // MKL second tensor
+            .Input(FakeInput(DT_UINT8))  // MKL second tensor
+            .Input(FakeInput(DT_UINT8))  // MKL second tensor
+            .Input(FakeInput(DT_UINT8))  // MKL second tensor
+            .Input(FakeInput(DT_UINT8))  // MKL second tensor
+            .Input(FakeInput(DT_UINT8))  // MKL second tensor
             .Attr("Tinput", DT_QUINT8)
             .Attr("Tfilter", DT_QINT8)
             .Attr("Tbias", DT_FLOAT)
