@@ -88,6 +88,7 @@ Status SelectDWConvolution(const DepthwiseConvolution2DAttributes& attr,
       return SelectDWConvolutionTextureArray(attr, creation_context, op_def,
                                              ptr);
     case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::IMAGE_BUFFER:
     case TensorStorageType::SINGLE_TEXTURE_2D:
       return SelectDWConvolutionTexture2D(attr, creation_context, op_def, ptr);
     case TensorStorageType::BUFFER:
