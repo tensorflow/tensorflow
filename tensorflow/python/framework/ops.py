@@ -481,20 +481,6 @@ class Tensor(_TensorLike):
       self._shape_val = self._c_api_shape()
     return self._shape_val
 
-  def _get_input_ops_without_shapes(self, target_op):
-    """Returns ops needing shape inference to compute target_op's shape."""
-    result = []
-    stack = [self._op]
-    visited = set()
-    while stack:
-      op = stack.pop()
-      if op in visited:
-        continue
-      result.append(op)
-      stack.extend(t.op for t in op.inputs if t._shape_val is None)
-      visited.add(op)
-    return result
-
   def _c_api_shape(self):
     """Returns the TensorShape of this tensor according to the C API."""
     c_graph = self._op._graph._c_graph  # pylint: disable=protected-access
