@@ -200,22 +200,20 @@ def relu(x, alpha=0., max_value=None, threshold=0):
 
 @keras_export('keras.activations.tanh')
 def tanh(x):
-  """Hyperbolic Tangent (tanh) activation function.
-
+  """Hyperbolic tangent activation function.
+  
   For example:
-
   ```python
   # Constant 1-D tensor populated with value list.
-  a = tf.constant([-3.0,-1.0, 0.0,1.0,3.0], dtype = tf.float32)
-  b = tf.keras.activations.tanh(a) #[-0.9950547,-0.7615942,
-  0.,0.7615942,0.9950547]
+  a = tf.constant([-3.0,-1.0, 0.0,1.0,3.0], dtype = tf.float32) #Input tensor
+  b = tf.keras.activations.tanh(a) 
+  # b = array([-0.9950547, -0.7615942, 0., 0.7615942, 0.9950547], dtype=float32)  #Output tensor
   ```
+  
   Arguments:
       x: Input tensor.
-
   Returns:
-      A tensor of same shape and dtype of input `x`.
-      The tanh activation: `tanh(x) = sinh(x)/cosh(x) = ((exp(x) -
+      Tensor of same shape and dtype of input `x`, with tanh activation: `tanh(x) = sinh(x)/cosh(x) = ((exp(x) -
       exp(-x))/(exp(x) + exp(-x)))`.
   """
   return nn.tanh(x)
@@ -223,25 +221,23 @@ def tanh(x):
 
 @keras_export('keras.activations.sigmoid')
 def sigmoid(x):
-  """Sigmoid.
-
+  """Sigmoid activation function.
   Applies the sigmoid activation function. The sigmoid function is defined as
   1 divided by (1 + exp(-x)). It's curve is like an "S" and is like a smoothed
   version of the Heaviside (Unit Step Function) function. For small values
-  (<-5) the sigmoid returns a value close to zero and for larger values (>5)
-  the result of the function gets close to 1.
-  Arguments:
-      x: A tensor or variable.
-
-  Returns:
-      A tensor.
-  Sigmoid activation function.
-
+  (<-5) the sigmoid returns a value close to zero and for larger values (>5) the result of the function gets close to 1.
+ For example:
+  ```python
+  # Constant 1-D tensor populated with value list.
+  a = tf.constant([-3.0,-1.0, 0.0,1.0,3.0], dtype = tf.float32) #Input tensor
+  b = tf.keras.activations.sigmoid(a) 
+  # b = array([0.04742587, 0.26894143, 0.5, 0.7310586 , 0.95257413], dtype=float32)  #Output tensor
+  ```
+  
   Arguments:
       x: Input tensor.
-
   Returns:
-      The sigmoid activation: `(1.0 / (1.0 + exp(-x)))`.
+      Tensor with the sigmoid activation: `(1.0 / (1.0 + exp(-x)))`. Tensor will be of same shape and dtype of input `x`.
   """
   return nn.sigmoid(x)
 
@@ -249,12 +245,18 @@ def sigmoid(x):
 @keras_export('keras.activations.exponential')
 def exponential(x):
   """Exponential activation function.
-
+ For example:
+  ```python
+  # Constant 1-D tensor populated with value list.
+  a = tf.constant([-3.0,-1.0, 0.0,1.0,3.0], dtype = tf.float32) #Input tensor
+  b = tf.keras.activations.exponential(a) 
+  # b = array([ 0.04978707, 0.36787945,  1., 2.7182817 , 20.085537], dtype=float32)  #Output tensor
+  ```
+  
   Arguments:
       x: Input tensor.
-
   Returns:
-      The exponential activation: `exp(x)`.
+      Tensor with exponential activation: `exp(x)`. Tensor will be of same shape and dtype of input `x`.
   """
   return math_ops.exp(x)
 
@@ -262,44 +264,92 @@ def exponential(x):
 @keras_export('keras.activations.hard_sigmoid')
 def hard_sigmoid(x):
   """Hard sigmoid activation function.
-
   Faster to compute than sigmoid activation.
-
+   
+   For example:
+  ```python
+  # Constant 1-D tensor populated with value list.
+  a = tf.constant([-3.0,-1.0, 0.0,1.0,3.0], dtype = tf.float32) #Input tensor
+  b = tf.keras.activations.sigmoid(a) 
+  # b = <tf.Tensor: id=11, shape=(5,), dtype=float32, numpy=array([0. , 0.3, 0.5, 0.7, 1. ], dtype=float32)  #Output tensor
+  ```
   Arguments:
       x: Input tensor.
-
-  Returns:
-      Hard sigmoid activation:
-      - `0` if `x < -2.5`
-      - `1` if `x > 2.5`
-      - `0.2 * x + 0.5` if `-2.5 <= x <= 2.5`.
+  Returns: Tensor with hard sigmoid activation.
   """
+
   return K.hard_sigmoid(x)
 
 
 @keras_export('keras.activations.linear')
 def linear(x):
   """Linear activation function.
-
+  For example:
+  ```python
+  # Constant 1-D tensor populated with value list.
+  a = tf.constant([-3.0,-1.0, 0.0,1.0,3.0], dtype = tf.float32) #Input tensor
+  b = tf.keras.activations.linear(a) 
+  # b = <tf.Tensor: shape=(5,), dtype=float32, numpy=array([-3., -1.,  0.,  1.,  3.], dtype=float32)>  #Output tensor
+  ```
+  
   Arguments:
       x: Input tensor.
-
   Returns:
-      The linear activation: `x`.
+      The same output tensor as input tensor `x`.
   """
   return x
 
 
+
 @keras_export('keras.activations.serialize')
 def serialize(activation):
+    """ Returns name attribute (`__name__`) of function.
+  Arguments:
+      x : Function
+  Returns:
+      String denoting the name attribute of the input function
+      
+  For example:
+  ```python
+  tf.keras.activations.serialize(tf.keras)  
+  #Output:'tensorflow.python.keras.api._v2.keras'
+  
+  tf.keras.activations.serialize(tf.keras.activations.sigmoid) 
+  #Output: 'sigmoid'
+  
+  tf.keras.activations.serialize('abcd')  
+  #Output: ValueError: ('Cannot serialize', 'abcd')
+  ```
+  Raises:
+      ValueError: The input function is not a valid one.
+  """
   if (hasattr(activation, '__name__') and
       activation.__name__ in _TF_ACTIVATIONS_V2):
     return _TF_ACTIVATIONS_V2[activation.__name__]
   return serialize_keras_object(activation)
 
-
 @keras_export('keras.activations.deserialize')
 def deserialize(name, custom_objects=None):
+    """ Returns activation function denoted by input string.
+  Arguments:
+      x : String
+  Returns:
+      Tensorlow Activation function denoted by input string.
+      
+  For example:
+  ```python
+  tf.keras.activations.deserialize('linear')  
+  #Output: <function linear at 0x1239596a8>
+  
+  tf.keras.activations.deserialize('sigmoid') 
+  #Output: <function sigmoid at 0x123959510>
+  
+  tf.keras.activations.deserialize('abcd')  
+  #Output: ValueError: Unknown activation function:abcd
+  ```
+  Raises:
+      ValueError: `Unknown activation function` if the input string does not denote any defined activation function.
+  """
   return deserialize_keras_object(
       name,
       module_objects=globals(),
@@ -309,6 +359,33 @@ def deserialize(name, custom_objects=None):
 
 @keras_export('keras.activations.get')
 def get(identifier):
+    """Returns function.
+  Arguments:
+      `x` : Function or string
+  Returns:
+      Activation function denoted by input:
+      - `Linear activation function` if input is `None`.
+      - Function corresponding to the input string or input function.
+      
+  For example:
+  ```python
+  tf.keras.activations.get('softmax') . 
+  #Output: <function softmax at 0x1222a3d90>
+  tf.keras.activations.get(tf.keras.activations.softmax)
+  #Output: <function softmax at 0x1222a3d90>
+  tf.keras.activations.get(None)
+  #Output: <function linear at 0x1239596a8>
+  
+  tf.keras.activations.get(abs)
+  #Output: <built-in function abs>
+  
+  tf.keras.activations.get('abcd')
+  #Output: ValueError: Unknown activation function:abcd
+  ```
+ 
+  Raises:
+      ValueError: Input is an unknown function or string, i.e., the input does not denote any defined function.
+  """
   if identifier is None:
     return linear
   if isinstance(identifier, six.string_types):
