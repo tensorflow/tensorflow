@@ -310,7 +310,7 @@ class BufferAllocation {
   LogicalBuffer::Color color_;
 
   // Whether this allocation holds an entry computation parameter. Entry
-  // computation parameters are special be cause they have lifetimes which may
+  // computation parameters are special because they have lifetimes which may
   // outlast the computation.
   bool is_entry_computation_parameter_ = false;
 
