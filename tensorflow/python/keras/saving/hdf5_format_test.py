@@ -337,7 +337,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
       hdf5_format.load_weights_from_hdf5_group_by_name(f_model, model.layers)
 
   @test_util.run_in_graph_and_eager_modes
-  def test_sequential_weight_loading_group_name_with_incorrect_length_with_skip_mismatch(self):
+  def test_sequential_weight_loading_group_name_with_incorrect_length_with_skip_mismatch(self):  # pylint: disable=line-too-long
     if h5py is None:
       return
 
