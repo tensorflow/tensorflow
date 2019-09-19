@@ -6683,12 +6683,116 @@ inline void Logistic16bitPercision(const LogisticParams& params,
   }
 }
 
-// Transpose2DOn32bitMatrix only deals with typical 2D matrix transpose ops.
-inline void Transpose2DOn32bitMatrix(const TransposeParams& params,
-                                     const RuntimeShape& input_shape,
-                                     const int32_t* input_data,
-                                     const RuntimeShape& output_shape,
-                                     int32_t* output_data) {
+// Transpose2D only deals with typical 2D matrix transpose ops.
+// Perform transpose by transposing 4x4 blocks of the input, proceeding from
+// left to right (down the rows) of the input, and then from top to bottom.
+template <typename T>
+inline void Transpose2DImpl(const TransposeParams& params,
+                            const RuntimeShape& input_shape,
+                            const T* input_data,
+                            const RuntimeShape& output_shape, T* output_data) {
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 2);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 2);
+  TFLITE_DCHECK_EQ(params.perm_count, 2);
+  TFLITE_DCHECK_EQ(params.perm[0], 1);
+  TFLITE_DCHECK_EQ(params.perm[1], 0);
+
+  const int d0 = input_shape.DimsData()[0];
+  const int d1 = input_shape.DimsData()[1];
+  const int kLines = 4;
+  const int kSkipSize = (kLines - 1) * d1;
+
+  const T* input = input_data;
+
+  int i = 0;
+  for (; i <= d0 - kLines; i += kLines) {
+    T* output = output_data + i;
+
+    const T* input_ptr = input;
+    __builtin_prefetch(input_ptr, 0, 3);
+    input_ptr += d1;
+    __builtin_prefetch(input_ptr, 0, 3);
+    input_ptr += d1;
+    __builtin_prefetch(input_ptr, 0, 3);
+    input_ptr += d1;
+    __builtin_prefetch(input_ptr, 0, 3);
+
+    int j = 0;
+    for (; j <= d1 - kLines; j += kLines) {
+      input_ptr = input;
+      const T a00 = input_ptr[0];
+      const T a01 = input_ptr[1];
+      const T a02 = input_ptr[2];
+      const T a03 = input_ptr[3];
+      input_ptr += d1;
+      const T a10 = input_ptr[0];
+      const T a11 = input_ptr[1];
+      const T a12 = input_ptr[2];
+      const T a13 = input_ptr[3];
+      input_ptr += d1;
+      const T a20 = input_ptr[0];
+      const T a21 = input_ptr[1];
+      const T a22 = input_ptr[2];
+      const T a23 = input_ptr[3];
+      input_ptr += d1;
+      const T a30 = input_ptr[0];
+      const T a31 = input_ptr[1];
+      const T a32 = input_ptr[2];
+      const T a33 = input_ptr[3];
+
+      output[0] = a00;
+      output[1] = a10;
+      output[2] = a20;
+      output[3] = a30;
+      output += d0;
+
+      output[0] = a01;
+      output[1] = a11;
+      output[2] = a21;
+      output[3] = a31;
+      output += d0;
+
+      output[0] = a02;
+      output[1] = a12;
+      output[2] = a22;
+      output[3] = a32;
+      output += d0;
+
+      output[0] = a03;
+      output[1] = a13;
+      output[2] = a23;
+      output[3] = a33;
+      output += d0;
+
+      input += kLines;
+    }
+    if (j == d1) {
+      input += kSkipSize;
+    } else {
+      for (int p = 0; p < kLines; ++p) {
+        for (int q = 0; q < d1 - j; ++q) {
+          *(output + q * d0 + p) = *(input + p * d1 + q);
+        }
+      }
+      input += (d1 - j) + kSkipSize;
+    }
+  }
+  for (; i < d0; ++i) {
+    T* output = output_data + i;
+    for (int j = 0; j < d1; ++j) {
+      *output = *input;
+      output += d0;
+      ++input;
+    }
+  }
+}
+
+template <>
+inline void Transpose2DImpl(const TransposeParams& params,
+                            const RuntimeShape& input_shape,
+                            const int32_t* input_data,
+                            const RuntimeShape& output_shape,
+                            int32_t* output_data) {
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 2);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 2);
   TFLITE_DCHECK_EQ(params.perm_count, 2);
@@ -6767,6 +6871,32 @@ inline void Transpose2DOn32bitMatrix(const TransposeParams& params,
 }
 
 template <typename T>
+void Transpose2D(const TransposeParams& params, const RuntimeShape& input_shape,
+                 const T* input_data, const RuntimeShape& output_shape,
+                 T* output_data) {
+  // Transpose kernel only does rearranging values not numeric evaluations on
+  // each cell. It's safe to implement per size of scalar type and this trick
+  // keeps the total code size in a reasonable range.
+  switch (sizeof(T)) {
+    case 1:
+      Transpose2DImpl(params, input_shape,
+                      reinterpret_cast<const int8_t*>(input_data), output_shape,
+                      reinterpret_cast<int8_t*>(output_data));
+      break;
+    case 4:
+      Transpose2DImpl(params, input_shape,
+                      reinterpret_cast<const int32_t*>(input_data),
+                      output_shape, reinterpret_cast<int32_t*>(output_data));
+      break;
+    default:
+      // Reroute to the reference version if an optimized method for the given
+      // data is not available.
+      reference_ops::Transpose(params, input_shape, input_data, output_shape,
+                               output_data);
+  }
+}
+
+template <typename T>
 void TransposeImpl(const TransposeParams& params,
                    const RuntimeShape& unextended_input_shape,
                    const T* input_data,
@@ -6809,14 +6939,17 @@ void TransposeImpl(const TransposeParams& params,
 // TODO(alanchiao): see if we can reduce the number
 // of lines of code in branching without affecting latency.
 template <typename T>
-inline void Transpose3D(const TransposeParams& params,
-                        const RuntimeShape& input_shape, const T* input_data,
-                        const RuntimeShape& output_shape, T* output_data) {
+inline void Transpose3DImpl(const TransposeParams& params,
+                            const RuntimeShape& input_shape,
+                            const T* input_data,
+                            const RuntimeShape& output_shape, T* output_data) {
   int s1, s2, s3;
   s1 = input_shape.Dims(0);
   s2 = input_shape.Dims(1);
   s3 = input_shape.Dims(2);
 
+  // TODO(b/141169757): generalize the following logics and move to the
+  // Transpose method.
   const bool hasOneInDimension = (s1 == 1 || s2 == 1 || s3 == 1);
   // Can fast path as 2D transpose in this case.
   if (hasOneInDimension) {
@@ -6851,15 +6984,16 @@ inline void Transpose3D(const TransposeParams& params,
       return;
     }
 
-    // TODO(tflite): reuse 2d transpose when support is
-    // added for uint8.
-    for (int i1 = 0; i1 < d1; ++i1) {
-      for (int i2 = 0; i2 < d2; ++i2) {
-        int i = i1 * d2 + i2;
-        int o = i2 * d1 + i1;
-        output_data[o] = input_data[i];
-      }
-    }
+    TransposeParams new_params;
+    new_params.perm_count = 2;
+    new_params.perm[0] = 1;
+    new_params.perm[1] = 0;
+
+    const RuntimeShape new_input_shape({d1, d2});
+    const RuntimeShape new_output_shape({d2, d1});
+
+    Transpose2D(new_params, new_input_shape, input_data, new_output_shape,
+                output_data);
     return;
   }
 
@@ -6896,8 +7030,8 @@ inline void Transpose3D(const TransposeParams& params,
   for (int i1 = 0; i1 < o_s[0]; ++i1) {
     for (int i2 = 0; i2 < o_s[1]; ++i2) {
       for (int i3 = 0; i3 < o_s[2]; ++i3) {
-        int i = i1 * p1 + i2 * p2 + i3 * p3;
-        int o = i1 * o_s[1] * o_s[2] + i2 * o_s[2] + i3;
+        const int i = i1 * p1 + i2 * p2 + i3 * p3;
+        const int o = i1 * o_s[1] * o_s[2] + i2 * o_s[2] + i3;
         output_data[o] = input_data[i];
       }
     }
@@ -6905,15 +7039,48 @@ inline void Transpose3D(const TransposeParams& params,
 }
 
 template <typename T>
-void Transpose(const TransposeParams& params,
-               const RuntimeShape& unextended_input_shape, const T* input_data,
-               const RuntimeShape& unextended_output_shape, T* output_data) {
-  const int unextended_output_size = unextended_output_shape.DimensionsCount();
-  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_size, 4);
-  TFLITE_DCHECK_EQ(unextended_output_size, params.perm_count);
+void Transpose3D(const TransposeParams& params, const RuntimeShape& input_shape,
+                 const T* input_data, const RuntimeShape& output_shape,
+                 T* output_data) {
+  // Transpose kernel only does rearranging values not numeric evaluations on
+  // each cell. It's safe to implement per size of scalar type and this trick
+  // keeps the total code size in a reasonable range.
+  switch (sizeof(T)) {
+    case 1:
+      Transpose3DImpl(params, input_shape,
+                      reinterpret_cast<const int8_t*>(input_data), output_shape,
+                      reinterpret_cast<int8_t*>(output_data));
+      break;
+    case 4:
+      Transpose3DImpl(params, input_shape,
+                      reinterpret_cast<const int32_t*>(input_data),
+                      output_shape, reinterpret_cast<int32_t*>(output_data));
+      break;
+    default:
+      // Reroute to the reference version if an optimized method for the given
+      // data is not available.
+      reference_ops::Transpose(params, input_shape, input_data, output_shape,
+                               output_data);
+  }
+}
 
-  // TODO(tflite): notably Eigen is better suited for
+template <typename T>
+void Transpose(const TransposeParams& params, const RuntimeShape& input_shape,
+               const T* input_data, const RuntimeShape& output_shape,
+               T* output_data) {
+  const int output_size = output_shape.DimensionsCount();
+  TFLITE_DCHECK_LE(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(output_size, 4);
+  TFLITE_DCHECK_EQ(output_size, params.perm_count);
+
+  // Apply 2-D transpose.
+  if (input_shape.DimensionsCount() == 2 && params.perm[0] == 1 &&
+      params.perm[1] == 0) {
+    Transpose2D(params, input_shape, input_data, output_shape, output_data);
+    return;
+  }
+
+  // TODO(b/141217325): notably Eigen is better suited for
   // larger inputs whereas Transpose3D is generally
   // better for smaller ones.
   //
@@ -6923,36 +7090,22 @@ void Transpose(const TransposeParams& params,
   // 96^3 is not mobile-friendly for certain usecases
   // (e.g. model used in beam search for seq2seq) but is in others.
   // Consider tradeoffs.
-  if (unextended_input_shape.DimensionsCount() == 3) {
-    Transpose3D(params, unextended_input_shape, input_data,
-                unextended_output_shape, output_data);
+  if (input_shape.DimensionsCount() == 3) {
+    Transpose3D(params, input_shape, input_data, output_shape, output_data);
     return;
   }
 
-  // Transpose kernel only does rearranging values not numeric evaluations on
-  // each cell. It's safe to implement per size of scalar type and this trick
-  // keeps the total code size in a reasonable range.
-  //
-  switch (sizeof(T)) {
-    case 4:
-      if (unextended_input_shape.DimensionsCount() == 2 &&
-          params.perm[0] == 1 && params.perm[1] == 0) {
-        Transpose2DOn32bitMatrix(params, unextended_input_shape,
-                                 reinterpret_cast<const int32_t*>(input_data),
-                                 unextended_output_shape,
-                                 reinterpret_cast<int32_t*>(output_data));
-        return;
-      }
-      TransposeImpl(params, unextended_input_shape,
-                    reinterpret_cast<const int32_t*>(input_data),
-                    unextended_output_shape,
-                    reinterpret_cast<int32_t*>(output_data));
-      break;
-    default:
-      // Reroute to the reference version if the given size is not available.
-      reference_ops::Transpose(params, unextended_input_shape, input_data,
-                               unextended_output_shape, output_data);
+  if (sizeof(T) == 4) {
+    TransposeImpl(params, input_shape,
+                  reinterpret_cast<const int32_t*>(input_data), output_shape,
+                  reinterpret_cast<int32_t*>(output_data));
+    return;
   }
+
+  // Reroute to the reference version if an optimized method for the given data
+  // is not available.
+  reference_ops::Transpose(params, input_shape, input_data, output_shape,
+                           output_data);
 }
 
 }  // namespace optimized_ops
