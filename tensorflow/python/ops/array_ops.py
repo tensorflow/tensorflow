@@ -3611,17 +3611,17 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
 
   For example:
 
-  ```python
-  # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
-  tf.shape(tf.squeeze(t))  # [2, 3]
-  ```
+  >>> # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
+  >>> t = tf.ones([1, 2, 1, 3, 1, 1])
+  >>> print(tf.shape(tf.squeeze(t)).numpy())
+  [2 3]
 
   Or, to remove specific size 1 dimensions:
 
-  ```python
-  # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
-  tf.shape(tf.squeeze(t, [2, 4]))  # [1, 2, 3, 1]
-  ```
+  >>> # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
+  >>> t = tf.ones([1, 2, 1, 3, 1, 1])
+  >>> print(tf.shape(tf.squeeze(t, [2, 4])).numpy())
+  [1 2 3 1]
 
   Note: if `input` is a `tf.RaggedTensor`, then this operation takes `O(N)`
   time, where `N` is the number of elements in the squeezed dimensions.
