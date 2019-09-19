@@ -126,6 +126,13 @@ config_setting(
 )
 
 config_setting(
+    name = "ios_arm64e",
+    values = {
+        "cpu": "ios_arm64e",
+    },
+)
+
+config_setting(
     name = "k8",
     values = {
         "cpu": "k8",
@@ -381,6 +388,7 @@ cc_library(
         "reference/integer_ops/pooling.h",
         "reference/integer_ops/softmax.h",
         "reference/integer_ops/tanh.h",
+        "reference/logistic.h",
         "reference/maximum_minimum.h",
         "reference/neg.h",
         "reference/non_max_suppression.h",
@@ -435,6 +443,7 @@ cc_library(
         "reference/floor.h",
         "reference/fully_connected.h",
         "reference/legacy_reference_ops.h",
+        "reference/logistic.h",
         "reference/maximum_minimum.h",
         "reference/neg.h",
         "reference/pooling.h",
@@ -636,6 +645,9 @@ cc_library(
             ":neon_tensor_utils",
         ],
         ":ios_arm64": [
+            ":neon_tensor_utils",
+        ],
+        ":ios_arm64e": [
             ":neon_tensor_utils",
         ],
         ":raspberry_pi_with_neon": [

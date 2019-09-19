@@ -44,7 +44,7 @@ std::string GetReshapeCode(
   c += "  int X = get_global_id(0);\n";
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
-  c += "  if (X >= dst_size.x || Y >= dst_size.y) { \n";
+  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) { \n";
   c += "    return; \n";
   c += "  } \n";
   c += "  int p = Z + dst_size.w * X + plane_xz.y * Y;\n";
@@ -55,9 +55,9 @@ std::string GetReshapeCode(
        src_tensor.Read3D("src_x", "src_y", "src_z",
                          TextureAddressMode::DONT_CARE) +
        ";\n";
-  c += "  " + dst_tensor.GetAddress("dst_adr", "X", "Y", "Z");
-  c += PostProcess(linked_operations, "result", "Z", "dst_adr");
-  c += "  " + dst_tensor.Write3D("result", "dst_adr");
+  const LinkingContext context{"result", "X", "Y", "Z"};
+  c += PostProcess(linked_operations, context);
+  c += "  " + dst_tensor.Write3D("result", "X", "Y", "Z");
   c += "}\n";
   return c;
 }

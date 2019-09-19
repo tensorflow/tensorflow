@@ -132,7 +132,7 @@ def TFL_FpOrI32OrI64Tensor : TensorOf<[AnyFloat, TFL_Int32Or64]>;
 // Rank/Shape helpers.
 //===----------------------------------------------------------------------===//
 
-class TFL_OperandIsUnranked<int n> :
+class TFL_OperandIsUnrankedPred<int n> :
   CPred<"$_op.getOperand(" # n # ")->getType().isa<UnrankedTensorType>()">;
 
 // TODO: Some of these could be generalized and/or moved to more general
@@ -140,18 +140,18 @@ class TFL_OperandIsUnranked<int n> :
 // Returns true if the n-th operand has unknown rank or has rank m.
 class TFL_OperandHasRank<int n, int m> :
   PredOpTrait<"operand " # n # " is " # m # "-D",
-    Or<[CPred<"$_op.getOperand(" # n # ")->getType().isa<UnrankedTensorType>()">,
+    Or<[TFL_OperandIsUnrankedPred<n>,
       CPred<"$_op.getOperand(" # n #
       ")->getType().cast<ShapedType>().getRank() == " # m>]>>;
 
 // True if operand n is ranked and has a rank > dim.
-class TFL_OperandIsRankedAndHasDim<int n, int dim> : And<[
+class TFL_OperandIsRankedAndHasDimPred<int n, int dim> : And<[
   CPred<"$_op.getOperand(" # n # ")->getType().isa<RankedTensorType>()">,
   CPred<"$_op.getOperand(" # n # ")->getType().cast<ShapedType>().getRank() > "
   # dim>]>;
 
 class TFL_OperandDimEquals<int n, int dim, int size> : And<[
-  TFL_OperandIsRankedAndHasDim<n, dim>,
+  TFL_OperandIsRankedAndHasDimPred<n, dim>,
   CPred<"$_op.getOperand(" # n # ")->getType().cast<ShapedType>()"
       ".getShape()[" # dim # " ] == " # size>]>;
 
@@ -168,32 +168,6 @@ class TFL_OperandRankEquals1DimOfOperand<int x, int y> :
       ")->getType().cast<ShapedType>().getRank() == "
       "$_op.getOperand(" # y #
       ")->getType().cast<ShapedType>().getShape()[0]">>;
-
-// True if x_shape[dim] == y_shape[dim].
-class TFL_DimOfOperandEqualsDimOfOperand<int x, int y, int dim> : And<[
-  TFL_OperandIsRankedAndHasDim<x, dim>,
-  TFL_OperandIsRankedAndHasDim<y, dim>,
-  CPred<"$_op.getOperand(" # x #
-    ")->getType().cast<ShapedType>().getShape()[" # dim # "] == "
-    "$_op.getOperand(" # y #
-    ")->getType().cast<ShapedType>().getShape()[" # dim # "]">]>;
-
-// Select operands must satisfy one of the following constraints:
-// All inputs are unranked
-// OR
-// All inputs are ranked AND have equal dim[0] AND X & Y have same rank.
-def SelectShapeConstraints :
-  PredOpTrait<"Select operands meet shape criteria",
-    Or<[
-      And<[
-        TFL_OperandIsUnranked<0>,
-        TFL_OperandIsUnranked<1>,
-        TFL_OperandIsUnranked<2>]>,
-      And<[
-        TFL_DimOfOperandEqualsDimOfOperand<0, 1, 0>,
-        TFL_DimOfOperandEqualsDimOfOperand<0, 2, 0>,
-        CPred<"$_op.getOperand(1)->getType().cast<ShapedType>().getRank() == "
-        "$_op.getOperand(2)->getType().cast<ShapedType>().getRank()">]>]>>;
 
 // This is a quantization-aware version of TCresVTEtIsSameAsOp
 class TFL_TCresVTEtIsSameAsOp<int i, int j> : And<[
@@ -355,7 +329,7 @@ def TFL_AddOp : TFL_Op<"add", [Broadcastable, NoSideEffect, Commutative]> {
 
 // TODO(haoliang): Implement legalization pass after pattern rewrite generator
 // supports variadic inputs.
-def TFL_AddNOp : TFL_Op<"add_n", [Commutative, NoSideEffect]> {
+def TFL_AddNOp : TFL_Op<"add_n", [Commutative, NoSideEffect, SameOperandsAndResultsScale]> {
   let summary = "add_n operator";
 
   let description = [{
@@ -363,11 +337,11 @@ def TFL_AddNOp : TFL_Op<"add_n", [Commutative, NoSideEffect]> {
   }];
 
   let arguments = (ins
-    Variadic<TensorOf<[F32, I32]>>:$inputs
+    Variadic<TensorOf<[F32, I32, QI16, QUI16]>>:$inputs
   );
 
   let results = (outs
-    TensorOf<[F32, I32]>:$sum
+    TensorOf<[F32, I32, QI16, QUI16]>:$sum
   );
 }
 
@@ -515,6 +489,8 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
   );
 
   let hasOptions = 1;
+
+  let hasFolder = 1;
 }
 
 def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [NoSideEffect,
@@ -1138,11 +1114,11 @@ def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [NoSideEffect]> {
   }];
 
   let arguments = (ins
-    TensorOf<[F32, QUI8, QI8, I8]>:$input,
+    TensorOf<[F32, QUI8, QI8, QUI16, QI16, I8]>:$input,
     TFL_AFAttr:$fused_activation_function
   );
 
-  let results = (outs TensorOf<[F32, QUI8, QI8, I8]>:$output);
+  let results = (outs TensorOf<[F32, QUI8, QI8, QUI16, QI16, I8]>:$output);
 
   let hasOptions = 1;
 
@@ -1251,9 +1227,9 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
     Computes element-wise Sigmoid of input
   }];
 
-  let arguments = (ins TensorOf<[AnyFloat, QI8, QUI8]>:$x);
+  let arguments = (ins TensorOf<[AnyFloat, QI8, QUI8, QI16, QUI16]>:$x);
 
-  let results = (outs TensorOf<[AnyFloat, QI8, QUI8]>:$y);
+  let results = (outs TensorOf<[AnyFloat, QI8, QUI8, QI16, QUI16]>:$y);
 }
 
 def TFL_LogOp: TFL_Op<"log", [NoSideEffect, SameOperandsAndResultType]> {
@@ -1927,14 +1903,14 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2",
   );
 }
 
+// Select has many instances in TF models where one or more of its operands
+// are unranked. Therefore, we skip adding shape constraints here.
 def TFL_SelectOp : TFL_Op<"select", [NoSideEffect,
-  SelectShapeConstraints,
   PredOpTrait<"operands have same element type", TCopVTEtIsSameAs<1, 2>>,
   PredOpTrait<"operands and result have same element type",
     TCresVTEtIsSameAsOp<0, 1>>]> {
   let summary = "Select operator";
 
-  // TODO: missing the shape constraints.
   let description = [{
     Select values of 'x' if the corresponding value of 'condition' is true or
     the value of 'y' if false. There are valid condition input sizes:
@@ -1986,7 +1962,7 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
   let summary = "Softmax operator";
 
   let description = [{
-    Computes element-wise softmax activiations with the following formula
+    Computes element-wise softmax activations with the following formula
 
       exp(input) / tf.reduce_sum(exp(input * beta), dim)
   }];
@@ -2092,9 +2068,9 @@ def TFL_TanhOp: TFL_Op<"tanh", [
     Computes element-wise Hyperbolic tangent of input
   }];
 
-  let arguments = (ins TensorOf<[F32, I16, I8, QI8, QUI8, TFL_Uint8]>:$x);
+  let arguments = (ins TensorOf<[F32, I16, I8, QI8, QUI8, QI16, QUI16, TFL_Uint8]>:$x);
 
-  let results = (outs TensorOf<[F32, I16, I8, QI8, QUI8, TFL_Uint8]>:$y);
+  let results = (outs TensorOf<[F32, I16, I8, QI8, QUI8, QI16, QUI16, TFL_Uint8]>:$y);
 }
 
 def TFL_TileOp: TFL_Op<"tile", [NoSideEffect,
@@ -2149,8 +2125,6 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [NoSideEffect, TFL_OperandHasRank<1,0>,
   let hasOptions = 1;
 }
 
-// TODO: Verify result shape a permutation of the first input shape's
-// dimensions.
 def TFL_TransposeOp : TFL_Op<"transpose",
   [NoSideEffect,
    TFL_OperandHasRank<1,1>,
@@ -2174,6 +2148,8 @@ def TFL_TransposeOp : TFL_Op<"transpose",
   let results = (outs
     AnyTensor:$y
   );
+
+  let verifier = [{ return Verify(*this); }];
 
   let hasFolder = 1;
 }
@@ -2780,6 +2756,10 @@ Ba et al. “Layer Normalization”
 
   let results = (outs AnyTensor:$output);
 
+  // TODO(fengliuai): customize printer and parser to not display
+  // empty region.
+  let regions = (region AnyRegion:$internal);
+
   let hasOptions = 1;
 
   let verifier = [{ return Verify(*this); }];
@@ -2934,10 +2914,8 @@ the output tensor can vary depending on how many true values there are in
     I1Tensor:$input
   );
 
-  // TODO(haoliang): TF Lite only support I32 output right now, need to fix
-  // either here or in the kernel.
   let results = (outs
-    TFL_I32OrI64Tensor:$index
+    I64Tensor:$index
   );
 }
 

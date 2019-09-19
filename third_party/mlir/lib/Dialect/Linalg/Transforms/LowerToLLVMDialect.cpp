@@ -164,16 +164,6 @@ static constexpr int kOffsetPosInView = 1;
 static constexpr int kSizePosInView = 2;
 static constexpr int kStridePosInView = 3;
 
-// Create an array attribute containing integer attributes with values provided
-// in `position`.
-static ArrayAttr positionAttr(Builder &builder, ArrayRef<int> position) {
-  SmallVector<Attribute, 4> attrs;
-  attrs.reserve(position.size());
-  for (auto p : position)
-    attrs.push_back(builder.getI64IntegerAttr(p));
-  return builder.getArrayAttr(attrs);
-}
-
 namespace {
 /// Factor out the common information for all view conversions:
 ///   1. common types in (standard and LLVM dialects)
@@ -192,8 +182,8 @@ public:
     desc = rewriter.create<LLVM::UndefOp>(op->getLoc(), viewDescriptorTy);
   }
 
-  ArrayAttr pos(ArrayRef<int> values) const {
-    return positionAttr(rewriter, values);
+  ArrayAttr pos(ArrayRef<int64_t> values) const {
+    return rewriter.getI64ArrayAttr(values);
   };
 
   LLVMType elementTy, int64Ty, viewDescriptorTy;
@@ -273,11 +263,11 @@ public:
     data = bitcast(elementPtrType, data);
     Value *desc = llvm_undef(bufferDescriptorTy);
     desc = insertvalue(bufferDescriptorTy, desc, allocated,
-                       positionAttr(rewriter, kBasePtrPosInBuffer));
+                       rewriter.getI64ArrayAttr(kBasePtrPosInBuffer));
     desc = insertvalue(bufferDescriptorTy, desc, data,
-                       positionAttr(rewriter, kPtrPosInBuffer));
+                       rewriter.getI64ArrayAttr(kPtrPosInBuffer));
     desc = insertvalue(bufferDescriptorTy, desc, size,
-                       positionAttr(rewriter, kSizePosInBuffer));
+                       rewriter.getI64ArrayAttr(kSizePosInBuffer));
     rewriter.replaceOp(op, desc);
     return matchSuccess();
   }
@@ -309,7 +299,7 @@ public:
     BufferDeallocOpOperandAdaptor adaptor(operands);
     edsc::ScopedContext context(rewriter, op->getLoc());
     Value *base = extractvalue(voidPtrTy, adaptor.buffer(),
-                               positionAttr(rewriter, kBasePtrPosInBuffer));
+                               rewriter.getI64ArrayAttr(kBasePtrPosInBuffer));
     llvm_call(ArrayRef<Type>(), rewriter.getSymbolRefAttr(freeFunc), base);
     rewriter.replaceOp(op, llvm::None);
     return matchSuccess();
@@ -330,7 +320,7 @@ public:
     BufferSizeOpOperandAdaptor adaptor(operands);
     rewriter.replaceOp(
         op, {extractvalue(int64Ty, adaptor.buffer(),
-                          positionAttr(rewriter, kSizePosInBuffer))});
+                          rewriter.getI64ArrayAttr(kSizePosInBuffer))});
     return matchSuccess();
   }
 };
@@ -347,8 +337,8 @@ public:
     auto dimOp = cast<linalg::DimOp>(op);
     auto indexTy = lowering.convertType(rewriter.getIndexType());
     edsc::ScopedContext context(rewriter, op->getLoc());
-    auto pos = positionAttr(
-        rewriter, {kSizePosInView, static_cast<int>(dimOp.getIndex())});
+    auto pos = rewriter.getI64ArrayAttr(
+        {kSizePosInView, static_cast<int>(dimOp.getIndex())});
     linalg::DimOpOperandAdaptor adaptor(operands);
     Value *viewDescriptor = adaptor.view();
     rewriter.replaceOp(op, {extractvalue(indexTy, viewDescriptor, pos)});
@@ -376,8 +366,8 @@ public:
     auto loadOp = cast<Op>(op);
     auto elementTy = getPtrToElementType(loadOp.getViewType(), lowering);
     auto int64Ty = lowering.convertType(rewriter.getIntegerType(64));
-    auto pos = [&rewriter](ArrayRef<int> values) {
-      return positionAttr(rewriter, values);
+    auto pos = [&rewriter](ArrayRef<int64_t> values) {
+      return rewriter.getI64ArrayAttr(values);
     };
 
     // Linearize subscripts as:
@@ -430,9 +420,9 @@ public:
     // Fill in an aggregate value of the descriptor.
     RangeOpOperandAdaptor adaptor(operands);
     Value *desc = llvm_undef(rangeDescriptorTy);
-    desc = insertvalue(desc, adaptor.min(), positionAttr(rewriter, 0));
-    desc = insertvalue(desc, adaptor.max(), positionAttr(rewriter, 1));
-    desc = insertvalue(desc, adaptor.step(), positionAttr(rewriter, 2));
+    desc = insertvalue(desc, adaptor.min(), rewriter.getI64ArrayAttr(0));
+    desc = insertvalue(desc, adaptor.max(), rewriter.getI64ArrayAttr(1));
+    desc = insertvalue(desc, adaptor.step(), rewriter.getI64ArrayAttr(2));
     rewriter.replaceOp(op, desc);
     return matchSuccess();
   }
@@ -619,8 +609,7 @@ public:
     auto viewOp = cast<ViewOp>(op);
     BaseViewConversionHelper helper(op, viewOp.getViewType(), rewriter,
                                     lowering);
-    LLVMType elementTy = helper.elementTy, int64Ty = helper.int64Ty,
-             viewDescriptorTy = helper.viewDescriptorTy;
+    LLVMType elementTy = helper.elementTy, int64Ty = helper.int64Ty;
     Value *desc = helper.desc;
 
     Value *bufferDescriptor = adaptor.buffer();
@@ -908,7 +897,8 @@ void LowerLinalgToLLVMPass::runOnModule() {
   }
 }
 
-std::unique_ptr<ModulePassBase> mlir::linalg::createLowerLinalgToLLVMPass() {
+std::unique_ptr<OpPassBase<ModuleOp>>
+mlir::linalg::createLowerLinalgToLLVMPass() {
   return std::make_unique<LowerLinalgToLLVMPass>();
 }
 

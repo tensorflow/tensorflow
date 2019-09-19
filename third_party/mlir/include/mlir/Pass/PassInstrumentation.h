@@ -112,9 +112,8 @@ public:
   /// See PassInstrumentation::runAfterAnalysis for details.
   void runAfterAnalysis(llvm::StringRef name, AnalysisID *id, Operation *op);
 
-  /// Add the given instrumentation to the collection. This takes ownership over
-  /// the given pointer.
-  void addInstrumentation(PassInstrumentation *pi);
+  /// Add the given instrumentation to the collection.
+  void addInstrumentation(std::unique_ptr<PassInstrumentation> pi);
 
 private:
   std::unique_ptr<detail::PassInstrumentorImpl> impl;

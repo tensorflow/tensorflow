@@ -578,6 +578,7 @@ cuda_py_test(
     srcs = ["lib/check_numerics_callback_test.py"],
     additional_deps = [
         ":check_numerics_callback",
+        "//third_party/py/numpy",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",

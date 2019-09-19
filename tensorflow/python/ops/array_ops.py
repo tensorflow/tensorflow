@@ -469,8 +469,8 @@ def shape_internal(input, name=None, optimize=True, out_type=dtypes.int32):
       return gen_math_ops.cast(input.dense_shape, out_type)
     else:
       if not context.executing_eagerly():
-        input_tensor = ops.convert_to_tensor(input)
-        input_shape = input_tensor.get_shape()
+        input = ops.convert_to_tensor(input)
+        input_shape = input.get_shape()
         if optimize and input_shape.is_fully_defined():
           return constant(input_shape.as_list(), out_type, name=name)
       return gen_array_ops.shape(input, name=name, out_type=out_type)
@@ -562,8 +562,8 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
       return gen_math_ops.prod(
           gen_math_ops.cast(input.dense_shape, out_type), 0, name=name)
     else:
-      input_tensor = ops.convert_to_tensor(input)
-      input_shape = input_tensor.get_shape()
+      input = ops.convert_to_tensor(input)
+      input_shape = input.get_shape()
       if optimize:
         if input_shape.is_fully_defined():
           return constant(input_shape.num_elements(), out_type, name=name)
@@ -623,8 +623,8 @@ def rank_internal(input, name=None, optimize=True):
         input, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
       return gen_array_ops.size(input.dense_shape, name=name)
     else:
-      input_tensor = ops.convert_to_tensor(input)
-      input_shape = input_tensor.get_shape()
+      input = ops.convert_to_tensor(input)
+      input_shape = input.get_shape()
       if optimize and input_shape.ndims is not None:
         return constant(input_shape.ndims, dtypes.int32, name=name)
       return gen_array_ops.rank(input, name=name)
@@ -1467,7 +1467,7 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
 
   def _apply_mask_1d(reshaped_tensor, mask, axis=None):
     """Mask tensor along dimension 0 with a 1-D mask."""
-    indices = squeeze(where(mask), axis=[1])
+    indices = squeeze(where_v2(mask), axis=[1])
     return gather(reshaped_tensor, indices, axis=axis)
 
   with ops.name_scope(name, values=[tensor, mask]):
@@ -1653,9 +1653,9 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   Args:
     value: The `Tensor` to split.
     num_or_size_splits: Either an integer indicating the number of splits along
-      split_dim or a 1-D integer `Tensor` or Python list containing the sizes of
-      each output tensor along split_dim. If a scalar then it must evenly divide
-      `value.shape[axis]`; otherwise the sum of sizes along the split dimension
+      `axis` or a 1-D integer `Tensor` or Python list containing the sizes of
+      each output tensor along `axis`. If a scalar, then it must evenly divide
+      `value.shape[axis]`; otherwise the sum of sizes along the split axis
       must match that of the `value`.
     axis: An integer or scalar `int32` `Tensor`. The dimension along which to
       split. Must be in the range `[-rank(value), rank(value))`. Defaults to 0.

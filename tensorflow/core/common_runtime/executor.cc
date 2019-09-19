@@ -1838,10 +1838,13 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         {
           profiler::TraceMe activity(
               [&] {
+                int64 id = step_id_;
+                if (step_container_ && step_container_->step_id()) {
+                  id = step_container_->step_id();
+                }
                 return strings::StrCat(
                     op_kernel->name(), ":", op_kernel->type_string(),
-                    "#id=", step_container_ ? step_container_->step_id() : 0,
-                    ",device=", device->name(), ",async=true#");
+                    "#id=", id, ",device=", device->name(), ",async=true#");
               },
               profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
           device->ComputeAsync(async, &state->ctx, done);
@@ -1853,9 +1856,12 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
 
         if (TF_PREDICT_FALSE(MightTrace(item, event_collector_))) {
           const string& op_name = op_kernel->name();
+          int64 id = step_id_;
+          if (step_container_ && step_container_->step_id()) {
+            id = step_container_->step_id();
+          }
           const string kernel_label = strings::StrCat(
-              op_name, ":", op_kernel->type_string(),
-              "#id=", step_container_ ? step_container_->step_id() : 0,
+              op_name, ":", op_kernel->type_string(), "#id=", id,
               ",device=", device->name(), ",async=false#");
           tracing::ScopedRegion region(tracing::EventCategory::kCompute,
                                        op_name);

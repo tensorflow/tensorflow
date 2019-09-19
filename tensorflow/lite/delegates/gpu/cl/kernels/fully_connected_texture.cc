@@ -104,9 +104,9 @@ std::string GetFullyConnectedKernelCode(
   c += "    s += temp[tid.x][3];\n";
   c += "    FLT4 r0 = TO_FLT4(s) + READ_IMAGE(biases, smp_none, (int2)(gid, "
        "0));\n";
-  c += "  " + dst_tensor.GetAddress("dst_adr", "0", "0", "gid") + "\n";
-  c += PostProcess(linked_operations, "r0", "gid", "dst_adr");
-  c += "  " + dst_tensor.Write3D("r0", "dst_adr") + "\n";
+  const LinkingContext context{"r0", "0", "0", "gid"};
+  c += PostProcess(linked_operations, context);
+  c += "  " + dst_tensor.Write3D("r0", "0", "0", "gid") + "\n";
   c += "  }\n";
   c += "}\n";
 

@@ -328,11 +328,7 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
     const string& op_name = kernel_->name();
     // 'ScopedActivity' will trace the OpKernel scheduling time on host.
     profiler::TraceMe activity(
-        [&] {
-          return absl::StrCat(op_name, ":", kernel_->type_string(), "#id=",
-                              step_container ? step_container->step_id() : 0,
-                              ",device=", device_->name(), ",async=false#");
-        },
+        [&] { return absl::StrCat(op_name, ":", kernel_->type_string()); },
         profiler::TraceMeLevel::kInfo);
     // 'ScopedAnnotation' will trace the OpKernel execution time on device.
     tracing::ScopedAnnotation annotation(
@@ -402,7 +398,10 @@ Status KernelAndDeviceFunc::Run(
   }
   {
     profiler::TraceMe activity(
-        [&] { return absl::StrCat("FunctionRun:", name()); },
+        [&] {
+          return absl::StrCat("FunctionRun#name=", name(), ",id=", opts.step_id,
+                              "#");
+        },
         profiler::TraceMeLevel::kInfo);
     pflr_->Run(opts, handle_, input_vector, outputs,
                [&status, &done](const Status& s) {

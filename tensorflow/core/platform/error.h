@@ -16,15 +16,31 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_ERROR_H_
 #define TENSORFLOW_CORE_PLATFORM_ERROR_H_
 
+#include <string>
+
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/platform.h"
 
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_POSIX) || \
-    defined(PLATFORM_POSIX_ANDROID) || defined(PLATFORM_GOOGLE_ANDROID)
-#include "tensorflow/core/platform/posix/error.h"
-#elif defined(PLATFORM_WINDOWS)
-#include "tensorflow/core/platform/windows/error.h"
-#else
-#error Define the appropriate PLATFORM_<foo> macro for this platform
+namespace tensorflow {
+
+Status IOError(const string& context, int err_number);
+
+}  // namespace tensorflow
+
+#if defined(PLATFORM_WINDOWS)
+
+#include <Windows.h>
+// Windows.h #defines ERROR, but it is also used in
+// tensorflow/core/util/event.proto
+#undef ERROR
+
+namespace tensorflow {
+namespace internal {
+
+std::string GetWindowsErrorMessage(DWORD err);
+}
+}  // namespace tensorflow
+
 #endif
 
 #endif  // TENSORFLOW_CORE_PLATFORM_ERROR_H_

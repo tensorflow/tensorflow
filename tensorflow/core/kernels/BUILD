@@ -3514,6 +3514,7 @@ tf_kernel_library(
     prefix = "einsum_op",
     deps = [
         ":batch_matmul_op",
+        ":fill_functor",
         ":reduction_ops",
         ":transpose_functor",
         "//tensorflow/core:framework",
@@ -4758,6 +4759,7 @@ cc_library(
 )
 
 PARSING_DEPS = [
+    "//tensorflow/core:core_cpu_internal",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:protos_all_cc",

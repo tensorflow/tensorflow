@@ -13,22 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This transformation pass prepares for legalization to the TFLite dialect by
-// converting operations in TensorFlow dialect into operations that can be
-// legalized to TensorFlow Lite dialect with simple replacements.  The newly
-// created operations are in the TensorFlow dialect if the operation can be
-// represented using a TensorFlow op.  Otherwise, TensorFlow Lite dialect op is
-// used.  For example, Conv2D in TFLite which uses OHWI data format for filters
-// is not supported in TensorFlow because TensorFlow requires filters in the
-// HWIO data format.
-//
-// Motivation to prepare for the TFLite legalization before the actual
-// legalization is to exploit constant folding opportunities in any newly
-// created ops by leveraging constant folding support for the TensorFlow ops.
-// This way TFLite can be used as a serialization format only and does not
-// require access to the TFLite runtime for optimizations as required by the
-// TFLite team.
-
 #include "tensorflow/compiler/mlir/lite/transforms/unroll_batch_matmul.h"
 
 #include <climits>
@@ -92,8 +76,8 @@ TF::ReshapeOp ConvertTFBatchMatMulOp<BatchMatMulOpType>::createReshapeOp(
   auto constant_attr = DenseElementsAttr::get(shapeSpecType, shape);
   auto shapeTensor =
       rewriter.create<ConstantOp>(loc, shapeSpecType, constant_attr);
-  return rewriter.create<TF::ReshapeOp>(loc, resultType, /* tensor = */ value,
-                                        /* shape = */ shapeTensor);
+  return rewriter.create<TF::ReshapeOp>(loc, resultType, /*tensor=*/value,
+                                        /*shape=*/shapeTensor);
 }
 
 template <typename BatchMatMulOpType>
@@ -124,13 +108,11 @@ std::vector<Value*> ConvertTFBatchMatMulOp<BatchMatMulOpType>::sliceInput(
     auto begin_attr =
         DenseElementsAttr::get<int64_t>(vector3Type, {batch_idx, 0, 0});
     auto size_attr = DenseElementsAttr::get<int64_t>(vector3Type, sliceSize);
-    auto sliceOp = rewriter.create<TF::SliceOp>(
-        loc, sliceResultType,
-        /* input = */ reshapeOp.output(),
-        /* begin = */
-        rewriter.create<ConstantOp>(loc, vector3Type, begin_attr),
-        /* size = */
-        rewriter.create<ConstantOp>(loc, vector3Type, size_attr));
+    auto begin = rewriter.create<ConstantOp>(loc, vector3Type, begin_attr);
+    auto size = rewriter.create<ConstantOp>(loc, vector3Type, size_attr);
+    auto sliceOp =
+        rewriter.create<TF::SliceOp>(loc, sliceResultType,
+                                     /*input=*/reshapeOp.output(), begin, size);
 
     // Squeeze matrix, i.e. reshape [1, num_rows, num_cols] -> [num_rows,
     // num_cols]
@@ -192,12 +174,12 @@ TF::PackOp ConvertTFBatchMatMulOp<BatchMatMulOpType>::createMatMulOps(
       lhs_batch_idx = batch_idx;
       rhs_batch_idx = batch_idx;
     }
-    auto matmul = rewriter.create<TF::MatMulOp>(
-        loc, matmulType,
-        /* a = */ sliced_lhs[lhs_batch_idx],
-        /* b = */ sliced_rhs[rhs_batch_idx],
-        /* transpose_a = */ rewriter.getBoolAttr(false),
-        /* transpose_b = */ rewriter.getBoolAttr(false));
+    auto false_attr = rewriter.getBoolAttr(false);
+    auto matmul = rewriter.create<TF::MatMulOp>(loc, matmulType,
+                                                /*a=*/sliced_lhs[lhs_batch_idx],
+                                                /*b=*/sliced_rhs[rhs_batch_idx],
+                                                /*transpose_a=*/false_attr,
+                                                /*transpose_b=*/false_attr);
     matmuls.emplace_back(matmul.product());
   }
 
@@ -205,11 +187,10 @@ TF::PackOp ConvertTFBatchMatMulOp<BatchMatMulOpType>::createMatMulOps(
   Type packedType = rewriter.getTensorType(
       {bcast.output_batch_size(), rows, cols}, elementType);
 
-  return rewriter.create<TF::PackOp>(
-      loc, packedType,
-      /* values = */ matmuls,
-      /* N = */ rewriter.getI64IntegerAttr(matmuls.size()),
-      /* axis = */ rewriter.getI64IntegerAttr(0));
+  auto N = rewriter.getI64IntegerAttr(matmuls.size());
+  auto axis = rewriter.getI64IntegerAttr(0);
+  return rewriter.create<TF::PackOp>(loc, packedType,
+                                     /*values=*/matmuls, N, axis);
 }
 
 template <typename BatchMatMulOpType>
@@ -276,12 +257,12 @@ PatternMatchResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
     // When both inputs are matrices, just replace the op to a matmul op.
     Type resultType =
         rewriter.getTensorType({lhs_shape[0], rhs_shape[1]}, elementType);
-    rewriter.replaceOpWithNewOp<TF::MatMulOp>(
-        op, resultType,
-        /* a = */ input_lhs,
-        /* b = */ input_rhs,
-        /* transpose_a = */ rewriter.getBoolAttr(false),
-        /* transpose_b = */ rewriter.getBoolAttr(false));
+    auto false_attr = rewriter.getBoolAttr(false);
+    rewriter.replaceOpWithNewOp<TF::MatMulOp>(op, resultType,
+                                              /*a=*/input_lhs,
+                                              /*b=*/input_rhs,
+                                              /*transpose_a=*/false_attr,
+                                              /*transpose_b=*/false_attr);
     return this->matchSuccess();
   }
 

@@ -46,7 +46,8 @@ std::string GetPaddingCode(
   code += "  int X = get_global_id(0);\n";
   code += "  int Y = get_global_id(1);\n";
   code += "  int Z = get_global_id(2);\n";
-  code += "  if (X >= dst_size.x || Y >= dst_size.y) return; \n";
+  code +=
+      "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) return; \n";
   code += "  FLT4 result = (FLT4)(0.0);\n";
   code += "  int s_x = X - prepended.x;\n";
   code += "  int s_y = Y - prepended.y;\n";
@@ -70,9 +71,9 @@ std::string GetPaddingCode(
     code += "    }\n";
   }
   code += "  }\n";
-  code += "  " + dst_tensor.GetAddress("address", "X", "Y", "Z") + "\n";
-  code += PostProcess(linked_operations, "result", "Z", "address");
-  code += "  " + dst_tensor.Write3D("result", "address");
+  const LinkingContext context{"result", "X", "Y", "Z"};
+  code += PostProcess(linked_operations, context);
+  code += "  " + dst_tensor.Write3D("result", "X", "Y", "Z");
   code += "}\n";
 
   return code;

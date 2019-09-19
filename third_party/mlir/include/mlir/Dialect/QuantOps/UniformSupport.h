@@ -29,7 +29,7 @@ namespace mlir {
 namespace quant {
 
 /// Performs type conversion from an arbitrary input type to a type
-/// that is expressed by a UniformQuantizedType.
+/// that is expressed by a QuantizedType.
 ///
 /// This handles cases where the inputType is a supported primitive type
 /// (i.e. f32, bf16, etc) or a vector/tensor type based on a supported
@@ -38,14 +38,13 @@ namespace quant {
 /// Since conversion often involves introspecting some attributes of the
 /// input type in order to determine how to represent it, this is a two step
 /// process.
-struct ExpressedToUniformQuantizedConverter {
+struct ExpressedToQuantizedConverter {
   /// Creates a converter for the given input type.
-  static const ExpressedToUniformQuantizedConverter
-  forInputType(Type inputType);
+  static const ExpressedToQuantizedConverter forInputType(Type inputType);
 
   /// Converts the inputType to be based on the given elemental type,
   /// returning the new type (or nullptr and emit an error on failure).
-  Type convert(UniformQuantizedType elementalType) const;
+  Type convert(QuantizedType elementalType) const;
 
   /// Whether the conversion is legal.
   explicit operator bool() const { return (bool)expressedType; }

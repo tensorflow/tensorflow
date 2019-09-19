@@ -146,9 +146,9 @@ std::string GenerateConvolutionConstantCode(
     std::string s_i = std::to_string(i);
     c += "  {\n";
     c += "    FLT4 res = TO_FLT4(r[" + s_i + "]) + biases[" + s_i + "];\n";
-    c += "  " + dst_tensor.GetAddress("dst_adr", "X", "Y", s_i) + "\n";
-    c += PostProcess(linked_operations, "res", s_i, "dst_adr");
-    c += "  " + dst_tensor.Write3D("res", "dst_adr");
+    const LinkingContext context{"res", "X", "Y", s_i};
+    c += PostProcess(linked_operations, context);
+    c += "  " + dst_tensor.Write3D("res", "X", "Y", s_i);
     c += "  }\n";
   }
   c += "}\n";

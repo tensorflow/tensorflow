@@ -20,6 +20,7 @@ add_llvm_library(MLIRTransforms
   SimplifyAffineStructures.cpp
   StripDebugInfo.cpp
   Vectorize.cpp
+  ViewOpGraph.cpp
   ViewRegionGraph.cpp
 
   ADDITIONAL_HEADER_DIRS

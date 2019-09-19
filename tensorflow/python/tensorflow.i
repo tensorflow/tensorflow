@@ -55,3 +55,5 @@ limitations under the License.
 
 %include "tensorflow/python/util/traceme.i"
 %include "tensorflow/python/util/scoped_annotation.i"
+
+%include "tensorflow/compiler/mlir/python/mlir.i"

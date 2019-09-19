@@ -698,17 +698,13 @@ Status BaseGPUDevice::MaybeCopyTensorToGPU(
       return err;
     }
 
-    StatusCallback wrapped_done = std::bind(
-        [to, copy](StatusCallback done_,
-                   // Begin unbound arguments.
-                   const Status& s) {
-          if (s.ok()) {
-            *to = std::move(*copy);
-          }
-          delete copy;
-          done_(s);
-        },
-        std::move(done), std::placeholders::_1);
+    auto wrapped_done = [to, copy, done = std::move(done)](const Status& s) {
+      if (s.ok()) {
+        *to = std::move(*copy);
+      }
+      delete copy;
+      done(s);
+    };
 
     tracing::ScopedAnnotation annotation("MakeTensorFromProto");
     device_contexts_[0]->CopyCPUTensorToDevice(

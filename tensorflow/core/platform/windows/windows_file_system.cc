@@ -28,10 +28,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/error.h"
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/posix/error.h"
-#include "tensorflow/core/platform/windows/error.h"
 #include "tensorflow/core/platform/windows/wide_char.h"
 #include "tensorflow/core/platform/windows/windows_file_system.h"
 

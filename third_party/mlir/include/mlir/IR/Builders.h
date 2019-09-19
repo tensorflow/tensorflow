@@ -131,6 +131,8 @@ public:
   FloatAttr getF32FloatAttr(float value);
   FloatAttr getF64FloatAttr(double value);
 
+  IntegerAttr getI8IntegerAttr(int8_t value);
+  IntegerAttr getI16IntegerAttr(int16_t value);
   IntegerAttr getI32IntegerAttr(int32_t value);
   IntegerAttr getI64IntegerAttr(int64_t value);
 

@@ -229,7 +229,8 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
         # Init scope is eager but current scope is graph. We will lift out this
         # variable by addint it into "add_initializers_to".
         if add_initializers_to is not None:
-          add_initializers_to[self] = initial_value
+          add_initializers_to.append((self, initial_value))
+
         def assign_fn():
           with ops.name_scope("Assign") as n, ops.colocate_with(self._handle):
             resource_variable_ops.assign_variable_op(
@@ -521,8 +522,8 @@ class Function(object):
 
     try:
       # This is the first call of __call__, so we have to initialize.
-      initializer_map = object_identity.ObjectIdentityDictionary()
-      self._initialize(args, kwds, add_initializers_to=initializer_map)
+      initializers = []
+      self._initialize(args, kwds, add_initializers_to=initializers)
     finally:
       # At this point we know that the initialization is complete (or less
       # interestingly an exception was raised) so we no longer need a lock.
@@ -533,7 +534,7 @@ class Function(object):
         # Attempt to initialize variables eagerly and without conds by lifting
         # out initialization graphs. This is the only initialization strategy
         # compatible with XLA at the moment.
-        self._initialize_uninitialized_variables(initializer_map)
+        self._initialize_uninitialized_variables(initializers)
       except lift_to_graph.UnliftableError:
         pass  # Fall through to cond-based initialization.
       else:
@@ -618,14 +619,14 @@ class Function(object):
   def function_spec(self):
     return self._function_spec
 
-  def _initialize_uninitialized_variables(self, initializer_map):
+  def _initialize_uninitialized_variables(self, initializers):
     """Make and call a `ConcreteFunction` which initializes variables."""
 
     # Note: using defun here avoids an infinite recursion.
     @function_lib.defun
     def initialize_variables():
       op_map = object_identity.ObjectIdentityDictionary()
-      for v, init in initializer_map.items():
+      for v, init in initializers:
         with ops.init_scope():
           if resource_variable_ops.var_is_initialized_op(v.handle):
             # Ignore variables which are already initialized at trace time.
@@ -666,13 +667,13 @@ class Function(object):
             "has been used")
       # Here we trace the function, collect the initializers, and attempt to
       # extract them and run them eagerly. Fail only if we cannot do so.
-      initializer_map = object_identity.ObjectIdentityDictionary()
-      self._initialize(args, kwargs, add_initializers_to=initializer_map)
+      initializers = []
+      self._initialize(args, kwargs, add_initializers_to=initializers)
 
     # Note: using defun here avoids an infinite recursion.
     @function_lib.defun
     def initialize_variables():
-      for v, init in initializer_map.items():
+      for v, init in initializers:
         v.assign(lift_to_graph.lift_to_graph(
             [init], ops.get_default_graph())[init])
 
@@ -794,9 +795,9 @@ class Function(object):
     """
     with self._lock:
       if self._stateful_fn is None:
-        initializer_map = object_identity.ObjectIdentityDictionary()
-        self._initialize(args, kwargs, add_initializers_to=initializer_map)
-        self._initialize_uninitialized_variables(initializer_map)
+        initializers = []
+        self._initialize(args, kwargs, add_initializers_to=initializers)
+        self._initialize_uninitialized_variables(initializers)
 
     if self._created_variables:
       # In this case we have created variables on the first call, so we run the

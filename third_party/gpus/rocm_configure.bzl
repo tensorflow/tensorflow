@@ -1,4 +1,3 @@
-# -*- Python -*-
 """Repository rule for ROCm autoconfiguration.
 
 `rocm_configure` depends on the following environment variables:

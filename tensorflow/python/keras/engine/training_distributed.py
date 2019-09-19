@@ -760,7 +760,7 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
         callbacks=callbacks)
 
 
-def train_with_multi_worker(method):
+def _train_with_multi_worker(method):
   """Decorator that handles multi worker training with distribution strategy."""
 
   def wrapper(model, **kwargs):
@@ -786,11 +786,11 @@ class DistributionMultiWorkerTrainingLoop(training_utils.TrainingLoop):
     self._single_worker_loop = single_worker_loop
 
   def fit(self, *args, **kwargs):
-    return train_with_multi_worker(self._single_worker_loop.fit)(
+    return _train_with_multi_worker(self._single_worker_loop.fit)(
         *args, **kwargs)
 
   def evaluate(self, *args, **kwargs):
-    return train_with_multi_worker(self._single_worker_loop.evaluate)(
+    return _train_with_multi_worker(self._single_worker_loop.evaluate)(
         *args, **kwargs)
 
   def predict(self, *args, **kwargs):

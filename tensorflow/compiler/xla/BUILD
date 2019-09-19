@@ -58,6 +58,16 @@ xla_proto_library(
     ],
 )
 
+tf_proto_library_py(
+    name = "xla_proto",  # bzl adds a _py suffix
+    srcs = ["xla.proto"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":xla_data_proto_py",
+        "//tensorflow/compiler/xla/service:hlo_proto_py",
+    ],
+)
+
 cc_library(
     name = "bit_cast",
     hdrs = ["bit_cast.h"],

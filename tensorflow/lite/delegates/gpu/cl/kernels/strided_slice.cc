@@ -46,7 +46,7 @@ std::string GetStridedSliceCode(
   c += "  int X = get_global_id(0);\n";
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
-  c += "  if (X >= dst_size.x || Y >= dst_size.y) { \n";
+  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) { \n";
   c += "    return; \n";
   c += "  } \n";
   c += "  int s_x = X * stride.x + offset.x;\n";
@@ -74,9 +74,9 @@ std::string GetStridedSliceCode(
       c += "  }\n";
     }
   }
-  c += "  " + dst_tensor.GetAddress("dst_adr", "X", "Y", "Z");
-  c += PostProcess(linked_operations, "result", "Z", "dst_adr");
-  c += "  " + dst_tensor.Write3D("result", "dst_adr");
+  const LinkingContext context{"result", "X", "Y", "Z"};
+  c += PostProcess(linked_operations, context);
+  c += "  " + dst_tensor.Write3D("result", "X", "Y", "Z");
   c += "}\n";
   return c;
 }

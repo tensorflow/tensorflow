@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 #if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
-#include "tensorflow/core/platform/google/build_config/re2.h"
+#include "third_party/re2/re2.h"
 #else
 #include "re2/re2.h"
 #endif

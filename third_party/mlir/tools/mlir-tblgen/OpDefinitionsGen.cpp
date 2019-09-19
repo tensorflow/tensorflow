@@ -1218,7 +1218,7 @@ void OpEmitter::genOperandResultVerifier(OpMethodBody &body,
                   &fctx.withSelf("v->getType()"))
          << ")) {\n"
          << formatv("        return emitOpError(\"{0} #\") << index "
-                    "<< \" must be {1}\";\n",
+                    "<< \" must be {1}, but got \" << v->getType();\n",
                     valueKind, constraint.getDescription())
          << "      }\n" // if
          << "      ++index;\n"

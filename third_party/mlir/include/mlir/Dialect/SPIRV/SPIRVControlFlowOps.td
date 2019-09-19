@@ -64,6 +64,10 @@ def SPV_BranchOp : SPV_Op<"Branch", [Terminator]> {
 
   let skipDefaultBuilders = 1;
 
+  let extraClassDeclaration = [{
+    Block *getTarget() { return getOperation()->getSuccessor(0); }
+  }];
+
   let autogenSerialization = 0;
 }
 
@@ -114,13 +118,19 @@ def SPV_BranchConditionalOp : SPV_Op<"BranchConditional", [Terminator]> {
 
   let builders = [
     OpBuilder<
-      "Builder *, OperationState *state, Value *condition, "
-      "Block *trueBranch, Block *falseBranch, /*optional*/ArrayAttr weights",
+      "Builder *builder, OperationState *state, Value *condition, "
+      "Block *trueBranch, Block *falseBranch, "
+      "Optional<std::pair<uint32_t, uint32_t>> weights",
       [{
         state->addOperands(condition);
         state->addSuccessor(trueBranch, {});
         state->addSuccessor(falseBranch, {});
-        state->addAttribute("branch_weights", weights);
+        if (weights) {
+          auto attr =
+              builder->getI32ArrayAttr({static_cast<int32_t>(weights->first),
+                                        static_cast<int32_t>(weights->second)});
+          state->addAttribute("branch_weights", attr);
+        }
       }]
     >
   ];
@@ -132,6 +142,10 @@ def SPV_BranchConditionalOp : SPV_Op<"BranchConditional", [Terminator]> {
   let extraClassDeclaration = [{
     // Branch indices into the successor list.
     enum { kTrueIndex = 0, kFalseIndex = 1 };
+
+    Block *getTrueBlock() { return getOperation()->getSuccessor(kTrueIndex); }
+
+    Block *getFalseBlock() { return getOperation()->getSuccessor(kFalseIndex); }
   }];
 }
 
@@ -173,6 +187,21 @@ def SPV_LoopOp : SPV_Op<"loop"> {
   let results = (outs);
 
   let regions = (region AnyRegion:$body);
+
+  let extraClassDeclaration = [{
+    // Returns the loop header block.
+    Block *getHeaderBlock();
+
+    // Returns the loop continue block.
+    Block *getContinueBlock();
+
+    // Returns the loop merge block.
+    Block *getMergeBlock();
+
+    // Adds an empty entry block and loop merge block containing one
+    // spv._merge op.
+    void addEntryAndMergeBlock();
+  }];
 
   let hasOpcode = 0;
 }

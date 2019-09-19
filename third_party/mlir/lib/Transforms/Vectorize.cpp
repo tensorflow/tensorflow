@@ -1276,7 +1276,7 @@ void Vectorize::runOnFunction() {
   LLVM_DEBUG(dbgs() << "\n");
 }
 
-std::unique_ptr<FunctionPassBase>
+std::unique_ptr<OpPassBase<FuncOp>>
 mlir::createVectorizePass(llvm::ArrayRef<int64_t> virtualVectorSize) {
   return std::make_unique<Vectorize>(virtualVectorSize);
 }

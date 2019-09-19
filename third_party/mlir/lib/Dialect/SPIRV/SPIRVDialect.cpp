@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/SPIRV/SPIRVDialect.h"
+#include "mlir/Dialect/SPIRV/SPIRVGLSLOps.h"
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
 #include "mlir/Dialect/SPIRV/SPIRVTypes.h"
 #include "mlir/IR/Builders.h"
@@ -41,9 +42,16 @@ SPIRVDialect::SPIRVDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context) {
   addTypes<ArrayType, ImageType, PointerType, RuntimeArrayType, StructType>();
 
+  // Add SPIR-V ops.
   addOperations<
 #define GET_OP_LIST
 #include "mlir/Dialect/SPIRV/SPIRVOps.cpp.inc"
+      >();
+
+  // Add SPIR-V extension ops of GLSL.
+  addOperations<
+#define GET_OP_LIST
+#include "mlir/Dialect/SPIRV/SPIRVGLSLOps.cpp.inc"
       >();
 
   // Allow unknown operations because SPIR-V is extensible.

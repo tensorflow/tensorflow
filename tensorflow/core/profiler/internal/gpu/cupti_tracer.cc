@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/platform/abi.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/annotation.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -109,8 +109,8 @@ const char *getActivityUnifiedMemoryKindString(
 // GetCachedTID() caches the thread ID in thread-local storage (which is a
 // userspace construct) to avoid unnecessary system calls. Without this caching,
 // it can take roughly 98ns, while it takes roughly 1ns with this caching.
-pid_t GetCachedTID() {
-  static thread_local pid_t current_thread_id =
+int32 GetCachedTID() {
+  static thread_local int32 current_thread_id =
       Env::Default()->GetCurrentThreadId();
   return current_thread_id;
 }
@@ -850,7 +850,7 @@ class CudaEventRecorder {
     CuptiTracerEvent event;
     event.type = CuptiTracerEventType::Kernel;
     event.source = CuptiTracerEventSource::Activity;  // on gpu device.
-    event.name = port::MaybeAbiDemangle(record.kernel_name);
+    event.name = record.kernel_name;
     event.start_time_ns = (end_walltime_us_ - start_us) * 1000;
     event.end_time_ns = event.start_time_ns + elapsed_us * 1000;
     event.device_id = ordinal_;
@@ -904,7 +904,7 @@ class CudaEventRecorder {
   CuptiInterface *cupti_interface_;
   CuptiTraceCollector *collector_;
   const int ordinal_;
-  string device_name_;
+  std::string device_name_;
   uint64 end_walltime_us_;
   // Include context in key to distinguish null streams.
   using StreamKey = std::pair<CUcontext, CUstream>;
@@ -1172,7 +1172,7 @@ const char *GetTraceEventTypeName(const CuptiTracerEventType &type) {
 }
 
 void AnnotationMap::Add(uint32 device_id, uint32 correlation_id,
-                        const string &annotation) {
+                        const std::string &annotation) {
   if (annotation.empty()) return;
   VLOG(3) << "Add annotation: device_id: " << device_id
           << " correlation_id: " << correlation_id
@@ -1198,7 +1198,7 @@ absl::string_view AnnotationMap::LookUp(uint32 device_id,
 }
 
 /* static */ CuptiTracer *CuptiTracer::GetCuptiTracerSingleton() {
-  static auto *singleton = new CuptiTracer();
+  static auto *singleton = new CuptiTracer(GetCuptiInterface());
   return singleton;
 }
 
@@ -1222,20 +1222,18 @@ int CuptiTracer::NumGpus() {
 }
 
 void CuptiTracer::Enable(const CuptiTracerOptions &option,
-                         CuptiInterface *cupti_interface,
                          CuptiTraceCollector *collector) {
   option_ = option;
-  cupti_interface_ = cupti_interface;
   collector_ = collector;
   annotation_map_.emplace(option.max_annotation_strings, NumGpus());
 
   if (option_->enable_event_based_activity) {
     option_->enable_activity_api = false;
     cupti_driver_api_hook_.reset(new CuptiDriverApiHookWithCudaEvent(
-        option, cupti_interface, collector, &*annotation_map_));
+        option, cupti_interface_, collector, &*annotation_map_));
   } else {
     cupti_driver_api_hook_.reset(new CuptiDriverApiHookWithActivityApi(
-        option, cupti_interface, collector, &*annotation_map_));
+        option, cupti_interface_, collector, &*annotation_map_));
   }
 
   EnableApiTracing().IgnoreError();
@@ -1254,7 +1252,6 @@ void CuptiTracer::Disable() {
   cupti_driver_api_hook_->Flush().IgnoreError();
   collector_->Flush();
   collector_ = nullptr;
-  cupti_interface_ = nullptr;
   option_.reset();
   cupti_driver_api_hook_.reset();
   annotation_map_.reset();
@@ -1337,6 +1334,7 @@ Status CuptiTracer::DisableActivityTracing() {
     VLOG(1) << "Flushing CUPTI activity buffer";
     RETURN_IF_CUPTI_ERROR(
         cupti_interface_->ActivityFlushAll(CUPTI_ACTIVITY_FLAG_FLUSH_FORCED));
+    LOG(INFO) << "CUPTI activity buffer flushed";
   }
   activity_tracing_enabled_ = false;
   return Status::OK();
@@ -1386,7 +1384,7 @@ Status CuptiTracer::HandleCallback(CUpti_CallbackDomain domain,
         device_id, domain, cbid, cbdata));
   } else if (cbdata->callbackSite == CUPTI_API_EXIT) {
     // Set up the map from correlation id to annotation string.
-    const string &annotation = tensorflow::Annotation::CurrentAnnotation();
+    const std::string &annotation = tensorflow::Annotation::CurrentAnnotation();
     if (!annotation.empty()) {
       annotation_map_->Add(device_id, cbdata->correlationId, annotation);
     }
@@ -1432,6 +1430,10 @@ void CuptiTracer::ConfigureActivityUnifiedMemoryCounter(bool enable) {
 
 Status CuptiTracer::ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
                                           uint8_t *buffer, size_t size) {
+  if (!activity_tracing_enabled_) {
+    LOG(WARNING) << "CUPTI activity buffer is freed after flush.";
+    return Status::OK();
+  }
   if (cupti_interface_->Disabled()) return errors::Internal("Disabled.");
 
   CUpti_Activity *record = nullptr;

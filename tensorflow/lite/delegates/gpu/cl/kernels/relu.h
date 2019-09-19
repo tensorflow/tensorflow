@@ -35,8 +35,7 @@ class ReLU : public ElementwiseOperation {
   ReLU& operator=(const ReLU&) = delete;
 
   void SetLinkIndex(int index) override;
-  std::string GetCoreCode(const std::string& src, const std::string& z_coord,
-                          const std::string& address) const override;
+  std::string GetCoreCode(const LinkingContext& context) const override;
   std::string GetArgsDeclaration() const override;
   Status BindArguments(CLKernel* kernel) override;
 

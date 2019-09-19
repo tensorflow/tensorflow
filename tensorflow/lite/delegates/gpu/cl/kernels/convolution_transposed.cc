@@ -98,7 +98,7 @@ std::string GenerateConvolutionTransposedCode(
   c += "  int X = get_global_id(0);\n";
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
-  c += "  if (X >= dst_size.x || Y >= dst_size.y) return;\n";
+  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) return;\n";
   if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
     c += "  int f_base = Z * src_size.w * kernel_size.x * kernel_size.y;\n";
   }
@@ -155,9 +155,9 @@ std::string GenerateConvolutionTransposedCode(
   c += "  }\n";
   c += "  FLT4 bias_val = " + biases.ReadLinearFLT4("Z") + ";\n";
   c += "  FLT4 res0 = TO_FLT4(r0) + bias_val;\n";
-  c += "  " + dst_tensor.GetAddress("address", "X", "Y", "Z") + "\n";
-  c += PostProcess(linked_operations, "res0", "Z", "address");
-  c += "  " + dst_tensor.Write3D("res0", "address") + "\n";
+  const LinkingContext context{"res0", "X", "Y", "Z"};
+  c += PostProcess(linked_operations, context);
+  c += "  " + dst_tensor.Write3D("res0", "X", "Y", "Z") + "\n";
   c += "}\n";
 
   return c;

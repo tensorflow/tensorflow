@@ -122,6 +122,10 @@ message RegisterFunctionRequest {
   fixed64 context_id = 1;
 
   FunctionDef function_def = 2;
+
+  // If true, it means that function_def is produced by graph partition during
+  // multi-device function instantiation.
+  bool is_component_function = 3;
 }
 
 message RegisterFunctionResponse {}

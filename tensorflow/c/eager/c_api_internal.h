@@ -133,9 +133,24 @@ struct TFE_Op {
       : operation(ctx->context, op, is_function, t),
         inference_ctx(inference_ctx) {}
 
+  void Clear() {
+    operation.Clear();
+    inference_ctx.reset();
+  }
+
+  void Reset(TFE_Context* ctx, const char* op, bool is_function,
+             const tensorflow::AttrTypeMap* t,
+             TFE_OpInferenceContext* infer_ctx) {
+    operation.Reset(ctx->context, op, is_function, t, nullptr);
+    inference_ctx.reset(infer_ctx);
+  }
+
   tensorflow::EagerOperation operation;
   std::unique_ptr<TFE_OpInferenceContext> inference_ctx;
 };
+
+TFE_Op* NewOrResetOp(TFE_Context* ctx, const char* op_or_function_name,
+                     TF_Status* status, TFE_Op* op_to_reset = nullptr);
 
 struct TFE_Profiler {
   explicit TFE_Profiler() { profiler = tensorflow::ProfilerSession::Create(); }

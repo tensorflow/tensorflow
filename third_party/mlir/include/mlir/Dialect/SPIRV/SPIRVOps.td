@@ -160,6 +160,8 @@ def SPV_CompositeExtractOp : SPV_Op<"CompositeExtract", [NoSideEffect]> {
   let results = (outs
     SPV_Type:$component
   );
+
+  let hasFolder = 1;
 }
 
 // -----

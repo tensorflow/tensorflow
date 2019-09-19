@@ -51,6 +51,12 @@ xla_proto_library(
     srcs = ["hlo_profile_printer_data.proto"],
 )
 
+xla_proto_library(
+    name = "hlo_execution_profile_data",
+    srcs = ["hlo_execution_profile_data.proto"],
+    deps = [":hlo_profile_printer_data"],
+)
+
 # Filegroup used to collect source files for dependency checking.
 filegroup(
     name = "c_srcs",
@@ -2290,7 +2296,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_test(
     name = "dynamic_padder_test",
     srcs = ["dynamic_padder_test.cc"],
     deps = [
@@ -2307,7 +2313,9 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:test",
     ],
 )
@@ -2461,6 +2469,7 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_cost_analysis",
+        ":hlo_execution_profile_data",
         ":hlo_profile_printer",
         ":human_readable_profile_builder",
         "//tensorflow/compiler/xla:types",
@@ -2878,6 +2887,7 @@ cc_library(
         ":call_graph",
         ":computation_layout",
         ":hlo",
+        ":hlo_alias_analysis",
         ":hlo_casting_utils",
         ":hlo_dce",
         ":hlo_graph_dumper",
