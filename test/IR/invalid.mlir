@@ -1064,6 +1064,18 @@ func @invalid_region_dominance() {
 
 // -----
 
+func @invalid_region_dominance() {
+  // expected-note @+1 {{operand defined here}}
+  %def = "foo.region_with_def"() ({
+    // expected-error @+1 {{operand #0 does not dominate this use}}
+    "foo.use" (%def) : (i32) -> ()
+    "foo.yield" () : () -> ()
+  }) : () -> (i32)
+  return
+}
+
+// -----
+
 func @hexadecimal_bf16() {
   // expected-error @+1 {{integer literal not valid for specified type}}
   "foo"() {value = 0xffff : bf16} : () -> ()
