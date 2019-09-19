@@ -38,11 +38,6 @@ unsigned BlockArgument::getArgNumber() {
 Block::~Block() {
   assert(!verifyInstOrder() && "Expected valid operation ordering.");
   clear();
-
-  for (auto *arg : arguments)
-    if (!arg->use_empty())
-      arg->user_begin()->dump();
-
   llvm::DeleteContainerPointers(arguments);
 }
 
