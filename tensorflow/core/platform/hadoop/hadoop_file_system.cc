@@ -119,8 +119,9 @@ class LibHDFS {
       status_ = TryLoadAndBind(path.c_str(), &handle_);
       if (status_.ok()) {
         return;
-      }else{
-        LOG(ERROR) <<"HadoopFileSystem load error: "<< status_.error_message();
+      } else {
+        LOG(ERROR) << "HadoopFileSystem load error: "
+                   << status_.error_message();
       }
     }
 
@@ -128,7 +129,7 @@ class LibHDFS {
     // to a in non-standard location.
     status_ = TryLoadAndBind(kLibHdfsDso, &handle_);
     if (!status_.ok()) {
-      LOG(ERROR) <<"HadoopFileSystem load error: "<< status_.error_message();
+      LOG(ERROR) << "HadoopFileSystem load error: " << status_.error_message();
     }
   }
 
