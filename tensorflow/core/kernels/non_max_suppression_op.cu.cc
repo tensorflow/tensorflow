@@ -18,10 +18,6 @@ limitations under the License.
 #include <limits>
 
 #include "absl/strings/str_cat.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "third_party/cub/device/device_radix_sort.cuh"
-#include "third_party/cub/device/device_segmented_radix_sort.cuh"
-#include "third_party/cub/device/device_select.cuh"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -29,6 +25,10 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 #include "tensorflow/stream_executor/stream_executor.h"
+#include "third_party/cub/device/device_radix_sort.cuh"
+#include "third_party/cub/device/device_segmented_radix_sort.cuh"
+#include "third_party/cub/device/device_select.cuh"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #define TF_RETURN_IF_CUDA_ERROR(result)                   \
   do {                                                    \
@@ -105,7 +105,7 @@ __device__ EIGEN_STRONG_INLINE bool OverThreshold(const Box* a, const Box* b,
   const float aa = intersection;
   const float bb = a_area + b_area - intersection;
   const float bt = bb * iou_threshold;
-  return aa > bt;
+  return aa >= bt;
 }
 
 template <bool flip_box>
