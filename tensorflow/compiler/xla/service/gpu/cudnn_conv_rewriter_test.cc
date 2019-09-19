@@ -586,7 +586,7 @@ TEST_F(CudnnConvRewriterTest, BackwardInputConvolveLowPaddingTooLarge) {
 //               padding_low=2, padding_high=1, base_dilation=2)
 //
 // We should fuse BC even though padding on activations is uneven, because
-// CudnnConvPaddingLegalization will canonicalize the fusion HLO.
+// GpuConvPaddingLegalization will canonicalize the fusion HLO.
 TEST_F(CudnnConvRewriterTest, BackwardInputConvolveUnevenPaddingOnActivations) {
   auto builder = HloComputation::Builder(TestName());
   // The gradients are in NCHW layout.
@@ -640,7 +640,7 @@ TEST_F(CudnnConvRewriterTest, BackwardInputConvolveUnevenPaddingOnActivations) {
 // BC = BackwardInput(FC) does:
 //   [4] = conv([3], reverse([2]), padding_high=2)
 //
-// We currently don't fuse BC because CudnnConvPaddingLegalization
+// We currently don't fuse BC because GpuConvPaddingLegalization
 // doesn't support negative padding on the gradients of backward convolution
 // (b/32744257).
 TEST_F(CudnnConvRewriterTest,

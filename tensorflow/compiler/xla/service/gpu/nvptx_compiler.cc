@@ -107,14 +107,14 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
   // Convert convolutions into CustomCalls to cudnn, then canonicalize them
-  // (CudnnConvPaddingLegalization). Also expand cuSolver calls.
+  // (GpuConvPaddingLegalization). Also expand cuSolver calls.
   HloPassPipeline pipeline("conv_canonicalization");
   pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                             /*allow_mixed_precision=*/false);
   pipeline.AddPass<CusolverRewriter>();
   pipeline.AddPass<CudnnConvRewriter>();
   pipeline.AddPass<CudnnFusedConvRewriter>();
-  pipeline.AddPass<CudnnConvPaddingLegalization>();
+  pipeline.AddPass<GpuConvPaddingLegalization>();
   pipeline.AddPass<CudnnPadForConvolutions>(IsVoltaOrLater(*stream_exec));
   // CudnnConvPadForIntegerConvolutions and CudnnConvPadForTensorCores leaves
   // behind unnecessary tuple/get-tuple-element pairs that TupleSimplifier
@@ -134,7 +134,7 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     pass.AddPass<AlgebraicSimplifier>(options);
   }
 
-  // CudnnConvRewriter, CudnnConvPaddingLegalization and
+  // CudnnConvRewriter, GpuConvPaddingLegalization and
   // CudnnConvPadForTensorCores may add instructions which can be simplified
   // by constant folding.
   pipeline.AddPass<HloConstantFolding>();

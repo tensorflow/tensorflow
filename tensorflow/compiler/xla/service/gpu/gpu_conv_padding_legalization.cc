@@ -146,7 +146,7 @@ HloInstruction* MaybePaddedKernel(const Window& conv_window,
 }
 }  // namespace
 
-bool CudnnConvPaddingLegalization::CanonicalizeForwardConvolution(
+bool GpuConvPaddingLegalization::CanonicalizeForwardConvolution(
     HloInstruction* conv) {
   if (IsForwardConvolutionCanonical(*conv)) {
     return false;
@@ -199,7 +199,7 @@ void IncreasePaddingHighBy(int64 delta, WindowDimension* window_dim) {
 }
 }  // namespace
 
-bool CudnnConvPaddingLegalization::CanonicalizeBackwardFilterConvolution(
+bool GpuConvPaddingLegalization::CanonicalizeBackwardFilterConvolution(
     HloInstruction* backward_conv) {
   CHECK_EQ(backward_conv->custom_call_target(),
            kCudnnConvBackwardFilterCallTarget);
@@ -272,7 +272,7 @@ bool CudnnConvPaddingLegalization::CanonicalizeBackwardFilterConvolution(
   return true;
 }
 
-bool CudnnConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
+bool GpuConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
     HloInstruction* backward_conv) {
   if (window_util::HasSymmetricPadding(backward_conv->window())) {
     return false;
@@ -389,7 +389,7 @@ bool CudnnConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
   return true;
 }
 
-StatusOr<bool> CudnnConvPaddingLegalization::RunOnComputation(
+StatusOr<bool> GpuConvPaddingLegalization::RunOnComputation(
     HloComputation* computation) {
   bool changed = false;
   std::vector<HloCustomCallInstruction*> convs;
@@ -415,7 +415,7 @@ StatusOr<bool> CudnnConvPaddingLegalization::RunOnComputation(
   return changed;
 }
 
-StatusOr<bool> CudnnConvPaddingLegalization::Run(HloModule* module) {
+StatusOr<bool> GpuConvPaddingLegalization::Run(HloModule* module) {
   bool changed = false;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
