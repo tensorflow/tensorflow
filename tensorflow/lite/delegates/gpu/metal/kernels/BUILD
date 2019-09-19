@@ -337,6 +337,28 @@ cc_library(
     ],
 )
 
+objc_library(
+    name = "mul_test_lib",
+    testonly = 1,
+    srcs = ["mul_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":mul",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "mul_test",
+    testonly = 1,
+    minimum_os_version = "9.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":mul_test_lib"],
+)
+
 cc_library(
     name = "padding",
     srcs = ["padding.cc"],
