@@ -45,6 +45,7 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
+from tensorflow.tools.docs import doc_controls
 
 
 @keras_export('keras.layers.StackedRNNCells')
@@ -596,6 +597,7 @@ class RNN(Layer):
               tensor_shape.TensorShape(flat_cell_state_size[i])):
         raise validation_error
 
+  @doc_controls.do_not_doc_inheritable
   def get_initial_state(self, inputs):
     get_initial_state_fn = getattr(self.cell, 'get_initial_state', None)
 
@@ -996,6 +998,7 @@ class AbstractRNNCell(Layer):
     return _generate_zero_filled_state_for_cell(self, inputs, batch_size, dtype)
 
 
+@doc_controls.do_not_generate_docs
 class DropoutRNNCellMixin(object):
   """Object that hold dropout related fields for RNN Cell.
 
@@ -1056,11 +1059,11 @@ class DropoutRNNCellMixin(object):
     mask. If a new mask is generated, it will update the cache in the cell.
 
     Args:
-      inputs: the input tensor whose shape will be used to generate dropout
+      inputs: The input tensor whose shape will be used to generate dropout
         mask.
-      training: boolean tensor, whether its in training mode, dropout will be
+      training: Boolean tensor, whether its in training mode, dropout will be
         ignored in non-training mode.
-      count: int, how many dropout mask will be generated. It is useful for cell
+      count: Int, how many dropout mask will be generated. It is useful for cell
         that has internal weights fused together.
     Returns:
       List of mask tensor, generated or cached mask based on context.
@@ -1092,11 +1095,11 @@ class DropoutRNNCellMixin(object):
     mask. If a new mask is generated, it will update the cache in the cell.
 
     Args:
-      inputs: the input tensor whose shape will be used to generate dropout
+      inputs: The input tensor whose shape will be used to generate dropout
         mask.
-      training: boolean tensor, whether its in training mode, dropout will be
+      training: Boolean tensor, whether its in training mode, dropout will be
         ignored in non-training mode.
-      count: int, how many dropout mask will be generated. It is useful for cell
+      count: Int, how many dropout mask will be generated. It is useful for cell
         that has internal weights fused together.
     Returns:
       List of mask tensor, generated or cached mask based on context.
