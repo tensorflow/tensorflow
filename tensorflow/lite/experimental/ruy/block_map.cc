@@ -83,6 +83,7 @@ int floor_log2_quotient(int num, int denom) {
 
 void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
                   int kernel_cols, int lhs_scalar_size, int rhs_scalar_size,
+                  int tentative_thread_count,
                   int cache_friendly_traversal_threshold, BlockMap* block_map) {
   gemmlowp::ScopedProfilingLabel label("MakeBlockMap");
   RUY_DCHECK_GE(rows, kernel_rows);
@@ -176,6 +177,9 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
   block_map->small_block_dims[Side::kRhs] = smallc;
   block_map->large_blocks[Side::kLhs] = missr;
   block_map->large_blocks[Side::kRhs] = missc;
+  // Done last: NumBlocks needs some of the block_map fields to be already set.
+  block_map->thread_count =
+      std::min(tentative_thread_count, NumBlocks(*block_map));
 }
 
 void GetBlockMatrixCoords(Side side, const BlockMap& block_map, int block,

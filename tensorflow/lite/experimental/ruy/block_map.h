@@ -79,6 +79,8 @@ enum class BlockMapTraversalOrder {
 // will only allow that to happen in the last position along each axis, so
 // as to minimize the overhead incurred onto the matrix multiplication kernels.
 struct BlockMap {
+  // The number of threads to use (to distribute the blocks to).
+  int thread_count;
   // The order in which to traverse the matrix of which this BlockMap represents
   // a tiling (hereafter "the matrix").
   BlockMapTraversalOrder traversal_order;
@@ -104,6 +106,7 @@ struct BlockMap {
 // matrix multiplication with the given parameters.
 void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
                   int kernel_cols, int lhs_scalar_size, int rhs_scalar_size,
+                  int tentative_thread_count,
                   int cache_friendly_traversal_threshold, BlockMap* block_map);
 
 // Maps an integer index to a block position in the grid.
