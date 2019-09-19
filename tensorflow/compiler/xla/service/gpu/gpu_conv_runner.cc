@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_runner.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/layout_util.h"
