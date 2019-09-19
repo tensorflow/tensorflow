@@ -4728,13 +4728,13 @@ def extract_image_patches_v2(images, sizes, strides, rates, padding, name=None):
 @deprecation.deprecated_args(None, "ksizes is deprecated, use sizes instead",
                              "ksizes")
 def extract_image_patches(  # pylint: disable=missing-docstring
-  images,
-  ksizes=None,
-  strides=None,
-  rates=None,
-  padding=None,
-  name=None,
-  sizes=None):
+    images,
+    ksizes=None,
+    strides=None,
+    rates=None,
+    padding=None,
+    name=None,
+    sizes=None):
   """Extract patches from images and put them in the "depth" output dimension.
 
   Args:
