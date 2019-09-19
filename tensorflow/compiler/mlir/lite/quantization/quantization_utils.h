@@ -143,7 +143,9 @@ struct QuantizationPattern : public RewritePattern {
         }
         Type result_ele_type =
             result->getType().cast<TensorType>().getElementType();
-        if (auto user = dyn_cast_or_null<Q>(*result->user_begin())) {
+        // If the user is the Quantize op, it must be the only user.
+        if (result->hasOneUse() && llvm::isa<Q>(*result->user_begin())) {
+          auto user = llvm::cast<Q>(*result->user_begin());
           outputs_replaced.insert({user.output(), enumerated_result.index()});
           output_types.push_back(user.getType());
         } else if (result_ele_type.template isa<IntegerType>()) {
