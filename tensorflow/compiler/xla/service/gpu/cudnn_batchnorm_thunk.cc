@@ -30,6 +30,47 @@ namespace gpu {
 
 namespace dnn = se::dnn;
 
+namespace {
+void IsInputOutputDtypeValid(const HloInstruction* hlo) {
+  // Check Inputs.
+  int64 num_operands = hlo->operand_count();
+  PrimitiveType operand_dtype = hlo->operand(0)->shape().element_type();
+  CHECK((operand_dtype == F16) || (operand_dtype == F32))
+      << "Not yet implemented";
+
+  for (auto i = 1; i < num_operands - 2; i++) {
+    if (hlo->custom_call_target() == kCudnnBatchNormBackwardCallTarget &&
+        (i == 4)) {
+      // The first operand to batchnorm grad is the input and the 4th operand is
+      // the grad_output, both of which can be Eigen::half.
+      CHECK_EQ(hlo->operand(i)->shape().element_type(), operand_dtype)
+          << "Invalid datatype";
+      continue;
+    }
+    CHECK_EQ(hlo->operand(i)->shape().element_type(), F32)
+        << "Not yet implemented";
+  }
+
+  // The last operand is the feature index which must be int64.
+  CHECK_EQ(hlo->operand(num_operands - 1)->shape().element_type(), S64)
+      << "Not yet impelemented";
+
+  // Check Outputs.
+  if (hlo->shape().IsTuple()) {
+    CHECK_EQ(hlo->shape().tuple_shapes(0).element_type(), operand_dtype)
+        << "Invalid datatype";
+
+    for (auto j = 1; j < hlo->shape().tuple_shapes_size(); j++) {
+      CHECK_EQ(hlo->shape().tuple_shapes(j).element_type(), F32)
+          << "Not yet implemented";
+    }
+  } else {
+    CHECK_EQ(hlo->shape().element_type(), operand_dtype)
+        << "Invalid datatype";
+  }
+}
+}  // namespace
+
 static std::pair<dnn::BatchDescriptor /*input_desc*/,
                  dnn::BatchDescriptor /*scale_offset_desc*/>
 MakeDescriptors(const Shape& shape, int64 feature_index) {
@@ -95,7 +136,7 @@ CudnnBatchNormForwardInferenceThunk::CudnnBatchNormForwardInferenceThunk(
            kCudnnBatchNormForwardInferenceCallTarget);
   CHECK(
       LayoutUtil::LayoutsInShapesEqual(hlo->shape(), hlo->operand(0)->shape()));
-  CHECK_EQ(hlo->shape().element_type(), F32) << "Not yet implemented";
+  IsInputOutputDtypeValid(hlo);
 }
 
 Status CudnnBatchNormForwardInferenceThunk::ExecuteOnStream(
@@ -109,30 +150,71 @@ Status CudnnBatchNormForwardInferenceThunk::ExecuteOnStream(
       MakeDescriptors(hlo_instruction()->shape(), feature_index_);
 
   se::DeviceMemory<float> null_device_ptr(nullptr);
-  se::DeviceMemory<float> output(buffer_allocations.GetDeviceAddress(output_));
   auto op_profiler =
       params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
-  stream.ThenBatchNormalizationForward(
-      se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(operand_)),
-      se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(scale_)),
-      se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(offset_)),
-      se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(mean_)),
-      se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(variance_)),
-      /*side_input=*/null_device_ptr,
-      operand_desc,                         //
-      scale_offset_desc,                    //
-      epsilon_,                             //
-      se::dnn::ActivationMode::kNone,       //
-      &output,                              //
-      /*batch_mean=*/nullptr,               //
-      /*batch_var=*/nullptr,                //
-      /*saved_mean=*/nullptr,               //
-      /*saved_inv_var=*/nullptr,            //
-      /*is_training=*/false,                //
-      /*var_to_inv_var=*/nullptr,           //
-      /*inv_var_to_var=*/nullptr,           //
-      /*reserve_space_allocator=*/nullptr,  //
-      /*workspace_allocator=*/nullptr);
+  se::DeviceMemoryBase output_base =
+      buffer_allocations.GetDeviceAddress(output_);
+  PrimitiveType output_primitive_type =
+      hlo_instruction()->shape().element_type();
+
+  switch (output_primitive_type) {
+    case F16: {
+      auto output = se::DeviceMemory<Eigen::half>(output_base);
+      stream.ThenBatchNormalizationForward(
+          se::DeviceMemory<Eigen::half>(
+              buffer_allocations.GetDeviceAddress(operand_)),
+          se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(scale_)),
+          se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(offset_)),
+          se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(mean_)),
+          se::DeviceMemory<float>(
+              buffer_allocations.GetDeviceAddress(variance_)),
+          /*side_input=*/null_device_ptr,
+          operand_desc,                         //
+          scale_offset_desc,                    //
+          epsilon_,                             //
+          se::dnn::ActivationMode::kNone,       //
+          &output,                              //
+          /*batch_mean=*/nullptr,               //
+          /*batch_var=*/nullptr,                //
+          /*saved_mean=*/nullptr,               //
+          /*saved_inv_var=*/nullptr,            //
+          /*is_training=*/false,                //
+          /*var_to_inv_var=*/nullptr,           //
+          /*inv_var_to_var=*/nullptr,           //
+          /*reserve_space_allocator=*/nullptr,  //
+          /*workspace_allocator=*/nullptr);
+      break;
+    }
+    case F32: {
+      auto output = se::DeviceMemory<float>(output_base);
+      stream.ThenBatchNormalizationForward(
+          se::DeviceMemory<float>(
+              buffer_allocations.GetDeviceAddress(operand_)),
+          se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(scale_)),
+          se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(offset_)),
+          se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(mean_)),
+          se::DeviceMemory<float>(
+              buffer_allocations.GetDeviceAddress(variance_)),
+          /*side_input=*/null_device_ptr,
+          operand_desc,                         //
+          scale_offset_desc,                    //
+          epsilon_,                             //
+          se::dnn::ActivationMode::kNone,       //
+          &output,                              //
+          /*batch_mean=*/nullptr,               //
+          /*batch_var=*/nullptr,                //
+          /*saved_mean=*/nullptr,               //
+          /*saved_inv_var=*/nullptr,            //
+          /*is_training=*/false,                //
+          /*var_to_inv_var=*/nullptr,           //
+          /*inv_var_to_var=*/nullptr,           //
+          /*reserve_space_allocator=*/nullptr,  //
+          /*workspace_allocator=*/nullptr);
+      break;
+    }
+    default:
+      LOG(FATAL) << hlo_instruction()->ToString();
+  }
 
   if (!stream.ok()) {
     return InternalError("BatchNormalizationForward call failed.");
@@ -163,9 +245,7 @@ CudnnBatchNormForwardTrainingThunk::CudnnBatchNormForwardTrainingThunk(
   CHECK_EQ(hlo->shape().tuple_shapes_size(), 3);
   CHECK(LayoutUtil::LayoutsInShapesEqual(hlo->shape().tuple_shapes(0),
                                          hlo->operand(0)->shape()));
-  for (const auto& tuple_shape : hlo->shape().tuple_shapes()) {
-    CHECK_EQ(tuple_shape.element_type(), F32) << "Not yet implemented";
-  }
+  IsInputOutputDtypeValid(hlo);
 }
 
 Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
@@ -181,8 +261,10 @@ Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
   std::tie(operand_desc, scale_offset_desc) = MakeDescriptors(
       hlo_instruction()->shape().tuple_shapes(0), feature_index_);
 
-  se::DeviceMemory<float> output_data(
-      buffer_allocations.GetDeviceAddress(output_data_));
+  se::DeviceMemoryBase output_data_base =
+      buffer_allocations.GetDeviceAddress(output_data_);
+  PrimitiveType output_primitive_type =
+      hlo_instruction()->shape().tuple_shapes(0).element_type();
   se::DeviceMemory<float> output_mean(
       buffer_allocations.GetDeviceAddress(output_mean_));
   se::DeviceMemory<float> output_inv_stddev(
@@ -191,32 +273,68 @@ Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
   se::DeviceMemory<float> null_device_ptr(nullptr);
   auto op_profiler =
       params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
-  stream.ThenBatchNormalizationForward(
-      se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(operand_)),
-      se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(scale_)),
-      se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(offset_)),
-      /*estimated_mean=*/null_device_ptr,
-      /*estimated_variance=*/null_device_ptr,
-      /*side_input=*/null_device_ptr,
-      operand_desc,                          //
-      scale_offset_desc,                     //
-      epsilon_,                              //
-      se::dnn::ActivationMode::kNone,        //
-      &output_data,                          //
-      /*batch_mean=*/&null_device_ptr,       //
-      /*batch_var=*/&null_device_ptr,        //
-      /*saved_mean=*/&output_mean,           //
-      /*saved_inv_var=*/&output_inv_stddev,  //
-      /*is_training=*/true,                  //
-      /*var_to_inv_var=*/nullptr,            //
-      /*inv_var_to_var=*/nullptr,            //
-      /*reserve_space_allocator=*/nullptr,   //
-      /*workspace_allocator=*/nullptr);
+
+  switch (output_primitive_type) {
+    case F16: {
+      auto output_data = se::DeviceMemory<Eigen::half>(output_data_base);
+      stream.ThenBatchNormalizationForward(
+          se::DeviceMemory<Eigen::half>(
+              buffer_allocations.GetDeviceAddress(operand_)),
+          se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(scale_)),
+          se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(offset_)),
+          /*estimated_mean=*/null_device_ptr,
+          /*estimated_variance=*/null_device_ptr,
+          /*side_input=*/null_device_ptr,
+          operand_desc,                          //
+          scale_offset_desc,                     //
+          epsilon_,                              //
+          se::dnn::ActivationMode::kNone,        //
+          &output_data,                          //
+          /*batch_mean=*/&null_device_ptr,       //
+          /*batch_var=*/&null_device_ptr,        //
+          /*saved_mean=*/&output_mean,           //
+          /*saved_inv_var=*/&output_inv_stddev,  //
+          /*is_training=*/true,                  //
+          /*var_to_inv_var=*/nullptr,            //
+          /*inv_var_to_var=*/nullptr,            //
+          /*reserve_space_allocator=*/nullptr,   //
+          /*workspace_allocator=*/nullptr);
+      break;
+    }
+    case F32: {
+      auto output_data = se::DeviceMemory<float>(output_data_base);
+      stream.ThenBatchNormalizationForward(
+          se::DeviceMemory<float>(
+              buffer_allocations.GetDeviceAddress(operand_)),
+          se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(scale_)),
+          se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(offset_)),
+          /*estimated_mean=*/null_device_ptr,
+          /*estimated_variance=*/null_device_ptr,
+          /*side_input=*/null_device_ptr,
+          operand_desc,                          //
+          scale_offset_desc,                     //
+          epsilon_,                              //
+          se::dnn::ActivationMode::kNone,        //
+          &output_data,                          //
+          /*batch_mean=*/&null_device_ptr,       //
+          /*batch_var=*/&null_device_ptr,        //
+          /*saved_mean=*/&output_mean,           //
+          /*saved_inv_var=*/&output_inv_stddev,  //
+          /*is_training=*/true,                  //
+          /*var_to_inv_var=*/nullptr,            //
+          /*inv_var_to_var=*/nullptr,            //
+          /*reserve_space_allocator=*/nullptr,   //
+          /*workspace_allocator=*/nullptr);
+      break;
+    }
+    default:
+      LOG(FATAL) << hlo_instruction()->ToString();
+  }
 
   // Write the output tuple.
   const int kNumOutputs = 3;
   auto ptrs = absl::make_unique<void*[]>(kNumOutputs);
-  ptrs[0] = output_data.opaque();
+  ptrs[0] = output_data_base.opaque();
   ptrs[1] = output_mean.opaque();
   ptrs[2] = output_inv_stddev.opaque();
   se::DeviceMemory<void*> tuple_addr(
@@ -256,9 +374,7 @@ CudnnBatchNormBackwardThunk::CudnnBatchNormBackwardThunk(
                                          hlo->operand(0)->shape()));
   CHECK(LayoutUtil::LayoutsInShapesEqual(hlo->shape().tuple_shapes(0),
                                          hlo->operand(4)->shape()));
-  for (const auto& tuple_shape : hlo->shape().tuple_shapes()) {
-    CHECK_EQ(tuple_shape.element_type(), F32) << "Not yet implemented";
-  }
+  IsInputOutputDtypeValid(hlo);
 }
 
 Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
@@ -274,9 +390,10 @@ Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
   // data.
   std::tie(operand_desc, scale_offset_desc) = MakeDescriptors(
       hlo_instruction()->shape().tuple_shapes(0), feature_index_);
-
-  se::DeviceMemory<float> output_grad_data(
-      buffer_allocations.GetDeviceAddress(output_grad_data_));
+  se::DeviceMemoryBase output_grad_data_base =
+      buffer_allocations.GetDeviceAddress(output_grad_data_);
+  PrimitiveType output_primitive_type =
+      hlo_instruction()->shape().tuple_shapes(0).element_type();
   se::DeviceMemory<float> output_grad_scale(
       buffer_allocations.GetDeviceAddress(output_grad_scale_));
   se::DeviceMemory<float> output_grad_offset(
@@ -284,20 +401,47 @@ Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
 
   auto op_profiler =
       params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
-  stream.ThenBatchNormalizationBackward(
-      se::DeviceMemory<float>(
-          buffer_allocations.GetDeviceAddress(grad_output_)),
-      se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(operand_)),
-      se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(scale_)),
-      se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(mean_)),
-      se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(inv_stddev_)),
-      operand_desc, scale_offset_desc, epsilon_, &output_grad_data,
-      &output_grad_scale, &output_grad_offset, nullptr, nullptr);
+
+  switch (output_primitive_type) {
+    case F16: {
+      auto output_grad_data =
+          se::DeviceMemory<Eigen::half>(output_grad_data_base);
+      stream.ThenBatchNormalizationBackward(
+          se::DeviceMemory<Eigen::half>(
+              buffer_allocations.GetDeviceAddress(grad_output_)),
+          se::DeviceMemory<Eigen::half>(
+              buffer_allocations.GetDeviceAddress(operand_)),
+          se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(scale_)),
+          se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(mean_)),
+          se::DeviceMemory<float>(
+              buffer_allocations.GetDeviceAddress(inv_stddev_)),
+          operand_desc, scale_offset_desc, epsilon_, &output_grad_data,
+          &output_grad_scale, &output_grad_offset, nullptr, nullptr);
+      break;
+    }
+    case F32: {
+      auto output_grad_data = se::DeviceMemory<float>(output_grad_data_base);
+      stream.ThenBatchNormalizationBackward(
+          se::DeviceMemory<float>(
+              buffer_allocations.GetDeviceAddress(grad_output_)),
+          se::DeviceMemory<float>(
+              buffer_allocations.GetDeviceAddress(operand_)),
+          se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(scale_)),
+          se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(mean_)),
+          se::DeviceMemory<float>(
+              buffer_allocations.GetDeviceAddress(inv_stddev_)),
+          operand_desc, scale_offset_desc, epsilon_, &output_grad_data,
+          &output_grad_scale, &output_grad_offset, nullptr, nullptr);
+      break;
+    }
+    default:
+      LOG(FATAL) << hlo_instruction()->ToString();
+  }
 
   // Write the output tuple.
   const int kNumOutputs = 3;
   auto ptrs = absl::make_unique<void*[]>(kNumOutputs);
-  ptrs[0] = output_grad_data.opaque();
+  ptrs[0] = output_grad_data_base.opaque();
   ptrs[1] = output_grad_scale.opaque();
   ptrs[2] = output_grad_offset.opaque();
   se::DeviceMemory<void*> tuple_addr(
