@@ -605,6 +605,7 @@ cc_library(
         ":shape_optimizer",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -617,6 +618,7 @@ cc_library(
         "//tensorflow/core/grappler/utils:tpu",
         "//tensorflow/core/grappler/verifiers:graph_verifier",
         "//tensorflow/core/grappler/verifiers:structure_verifier",
+        "//tensorflow/core/lib/gtl:map_util",
         "@com_google_absl//absl/strings",
     ],
 )

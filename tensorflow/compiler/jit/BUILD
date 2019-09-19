@@ -629,6 +629,7 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_bounds_check",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:graph",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/stream_executor/lib",
@@ -637,7 +638,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
