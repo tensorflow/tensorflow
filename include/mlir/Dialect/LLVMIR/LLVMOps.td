@@ -487,7 +487,8 @@ def LLVM_AddressOfOp
 def LLVM_GlobalOp
     : LLVM_ZeroResultOp<"mlir.global">,
       Arguments<(ins TypeAttr:$type, UnitAttr:$constant, StrAttr:$sym_name,
-                 AnyAttr:$value)> {
+                 AnyAttr:$value,
+                 DefaultValuedAttr<NonNegativeI32Attr, "0">:$addr_space)> {
 
   let builders = [
     OpBuilder<"Builder *builder, OperationState *result, LLVMType type, "
