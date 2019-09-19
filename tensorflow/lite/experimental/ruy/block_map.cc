@@ -140,7 +140,7 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
   const int size = std::min(rows, cols);
   const int size_floor_log2 = floor_log2(size);
   const int depth_ceil_log2 = ceil_log2(depth);
-  const int kernel_width_log2 = ceil_log2(std::max(kernel_cols, kernel_rows));
+  const int kernel_width_log2 = pot_log2(std::max(kernel_cols, kernel_rows));
 
   // l1_size_log2 was originally, coarsely speaking the number of rows of LHS,
   // or the number of columns of RHS in a matrix multiplication that we expect,
@@ -162,7 +162,7 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
   // by such clear principles linking this logic to cache sizes.
   l1_size_log2 = std::min(
       l1_size_log2, 15 - depth_ceil_log2 -
-                        ceil_log2(std::max(lhs_scalar_size, rhs_scalar_size)));
+                        pot_log2(std::max(lhs_scalar_size, rhs_scalar_size)));
   l1_size_log2 = std::max(l1_size_log2, kernel_width_log2);
   l1_size_log2 = std::min(l1_size_log2, size_floor_log2);
 
@@ -180,10 +180,10 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
       round_down_pot(cols >> num_blocks_of_cols_log2, kernel_cols);
   const int missr =
       round_up_pot(rows - (smallr << num_blocks_of_rows_log2), kernel_rows) >>
-      floor_log2(kernel_rows);
+      pot_log2(kernel_rows);
   const int missc =
       round_up_pot(cols - (smallc << num_blocks_of_cols_log2), kernel_cols) >>
-      floor_log2(kernel_cols);
+      pot_log2(kernel_cols);
 
   block_map->dims[Side::kLhs] = rows;
   block_map->dims[Side::kRhs] = cols;
