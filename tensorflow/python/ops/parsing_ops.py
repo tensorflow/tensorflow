@@ -470,6 +470,7 @@ def parse_single_example_v2_unoptimized(
                         [serialized, example_names]):
       serialized = ops.convert_to_tensor(serialized, name="serialized")
       serialized = _assert_scalar(serialized, "serialized")
+      serialized.set_shape([])
       return parse_example_v2(serialized, features, example_names, name)
   if example_names is None:
     return parse_single_example_v2(serialized, features, name)
