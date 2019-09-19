@@ -479,3 +479,26 @@ func @add_dense_dense_int_same_shape_dynamic() -> tensor<?xi32> {
   // CHECK: [[cst:%.*]] = "tfl.pseudo_const"() {value = dense<[5, 22, -2, 98]> : tensor<4xi32>} : () -> tensor<?xi32>
   // CHECK: return [[cst]]
 }
+
+// CHECK-LABEL: @concat_2_tensors_1_empty
+func @concat_2_tensors_1_empty() -> tensor<2xi32> {
+  %1 = constant dense<1> : tensor<2xi32>
+  %2 = constant dense<[]> : tensor<0xi32>
+  %3 = "tfl.concatenation"(%1, %2) {axis = 1 : i32, fused_activation_function = "NONE"} : (tensor<2xi32>, tensor<0xi32>) -> tensor<2xi32>
+  return %3 : tensor<2xi32>
+
+  // CHECK: [[cst:%.*]] = constant dense<1> : tensor<2xi32>
+  // CHECK: return [[cst]] : tensor<2xi32>
+}
+
+// CHECK-LABEL: @concat_3_tensors_1_empty
+func @concat_3_tensors_1_empty() -> tensor<?xi32> {
+  %0 = constant dense<1> : tensor<2xi32>
+  %1 = constant dense<1> : tensor<2xi32>
+  %2 = constant dense<[]> : tensor<0xi32>
+  %3 = "tfl.concatenation"(%0, %1, %2) {axis = 1 : i32, fused_activation_function = "NONE"} : (tensor<2xi32>, tensor<2xi32>, tensor<0xi32>) -> tensor<?xi32>
+  return %3 : tensor<?xi32>
+
+  // CHECK: %0 = "tfl.concatenation"(%cst, %cst) {axis = 1 : i32, fused_activation_function = "NONE"}
+  // CHECK: return %0 : tensor<?xi32>
+}

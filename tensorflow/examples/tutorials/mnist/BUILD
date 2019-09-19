@@ -29,7 +29,6 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/contrib/learn/python/learn/datasets",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -111,7 +110,6 @@ tf_py_test(
     main = "fully_connected_feed.py",
     tags = [
         "no_pip",
-        "no_rocm_v2",
     ],
 )
 
@@ -134,6 +132,5 @@ tf_py_test(
     tags = [
         "no_pip",
         "notsan",  # http://b/29184009
-        "no_rocm_v2",
     ],
 )

@@ -766,7 +766,7 @@ void MaterializeVectorsPass::runOnFunction() {
     signalPassFailure();
 }
 
-std::unique_ptr<FunctionPassBase>
+std::unique_ptr<OpPassBase<FuncOp>>
 mlir::createMaterializeVectorsPass(llvm::ArrayRef<int64_t> vectorSize) {
   return std::make_unique<MaterializeVectorsPass>(vectorSize);
 }

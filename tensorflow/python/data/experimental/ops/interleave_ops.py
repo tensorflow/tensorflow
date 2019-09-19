@@ -37,7 +37,7 @@ from tensorflow.python.util.tf_export import tf_export
     None,
     "Use `tf.data.Dataset.interleave(map_func, cycle_length, block_length, "
     "num_parallel_calls=tf.data.experimental.AUTOTUNE)` instead. If sloppy "
-    "execution is desired, use `tf.data.Options.experimental_determinstic`.")
+    "execution is desired, use `tf.data.Options.experimental_deterministic`.")
 @tf_export("data.experimental.parallel_interleave")
 def parallel_interleave(map_func,
                         cycle_length,
@@ -96,7 +96,7 @@ def parallel_interleave(map_func,
   return _apply_fn
 
 
-class _DirectedInterleaveDataset(dataset_ops.Dataset):
+class _DirectedInterleaveDataset(dataset_ops.DatasetV2):
   """A substitute for `Dataset.interleave()` on a fixed list of datasets."""
 
   def __init__(self, selector_input, data_inputs):
@@ -122,15 +122,12 @@ class _DirectedInterleaveDataset(dataset_ops.Dataset):
 
     self._element_spec = structure.convert_legacy_structure(
         first_output_types, output_shapes, first_output_classes)
-    super(_DirectedInterleaveDataset, self).__init__()
-
-  def _as_variant_tensor(self):
     # pylint: disable=protected-access
-    return (
-        gen_experimental_dataset_ops.directed_interleave_dataset(
-            self._selector_input._variant_tensor,
-            [data_input._variant_tensor for data_input in self._data_inputs],
-            **self._flat_structure))
+    variant_tensor = gen_experimental_dataset_ops.directed_interleave_dataset(
+        self._selector_input._variant_tensor,
+        [data_input._variant_tensor for data_input in self._data_inputs],
+        **self._flat_structure)
+    super(_DirectedInterleaveDataset, self).__init__(variant_tensor)
 
   def _inputs(self):
     return [self._selector_input] + self._data_inputs

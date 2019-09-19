@@ -195,6 +195,9 @@ def _convert_tf1_model(flags):
   if flags.dump_graphviz_video:
     converter.dump_graphviz_vode = flags.dump_graphviz_video
 
+  if flags.experimental_enable_mlir_converter:
+    converter.experimental_enable_mlir_converter = True
+
   # Convert model.
   output_data = converter.convert()
   with open(flags.output_file, "wb") as f:
@@ -216,6 +219,9 @@ def _convert_tf2_model(flags):
   elif flags.keras_model_file:
     model = keras.models.load_model(flags.keras_model_file)
     converter = lite.TFLiteConverterV2.from_keras_model(model)
+
+  if flags.experimental_enable_mlir_converter:
+    converter.experimental_enable_mlir_converter = True
 
   # Convert the model.
   tflite_model = converter.convert()
@@ -286,18 +292,12 @@ def _check_tf1_flags(flags, unparsed):
                      "--dump_graphviz_dir")
 
 
-def _get_tf1_parser():
-  """Returns ArgumentParser for tflite_convert for TensorFlow 1.X."""
-  parser = argparse.ArgumentParser(
-      description=("Command line tool to run TensorFlow Lite Converter."))
+def _get_tf1_flags(parser):
+  """Returns ArgumentParser for tflite_convert for TensorFlow 1.X.
 
-  # Output file flag.
-  parser.add_argument(
-      "--output_file",
-      type=str,
-      help="Full filepath of the output file.",
-      required=True)
-
+  Args:
+    parser: ArgumentParser
+  """
   # Input file flags.
   input_file_group = parser.add_mutually_exclusive_group(required=True)
   input_file_group.add_argument(
@@ -461,21 +461,14 @@ def _get_tf1_parser():
       action="store_true",
       help=("Boolean indicating whether to dump the graph after every graph "
             "transformation"))
-  return parser
 
 
-def _get_tf2_parser():
-  """Returns ArgumentParser for tflite_convert for TensorFlow 2.0."""
-  parser = argparse.ArgumentParser(
-      description=("Command line tool to run TensorFlow Lite Converter."))
+def _get_tf2_flags(parser):
+  """Returns ArgumentParser for tflite_convert for TensorFlow 2.0.
 
-  # Output file flag.
-  parser.add_argument(
-      "--output_file",
-      type=str,
-      help="Full filepath of the output file.",
-      required=True)
-
+  Args:
+    parser: ArgumentParser
+  """
   # Input file flags.
   input_file_group = parser.add_mutually_exclusive_group(required=True)
   input_file_group.add_argument(
@@ -486,16 +479,37 @@ def _get_tf2_parser():
       "--keras_model_file",
       type=str,
       help="Full filepath of HDF5 file containing tf.Keras model.")
+
+
+def _get_parser():
+  """Returns an ArgumentParser for tflite_convert."""
+  parser = argparse.ArgumentParser(
+      description=("Command line tool to run TensorFlow Lite Converter."))
+
+  # Output file flag.
+  parser.add_argument(
+      "--output_file",
+      type=str,
+      help="Full filepath of the output file.",
+      required=True)
+
+  if tf2.enabled():
+    _get_tf2_flags(parser)
+  else:
+    _get_tf1_flags(parser)
+
+  # Enable MLIR-TFLite converter.
+  parser.add_argument(
+      "--experimental_enable_mlir_converter",
+      action="store_true",
+      help=("Experimental flag, subject to change. Enables the MLIR converter "
+            "instead of the TOCO converter."))
   return parser
 
 
 def run_main(_):
   """Main in toco_convert.py."""
-  if tf2.enabled():
-    parser = _get_tf2_parser()
-  else:
-    parser = _get_tf1_parser()
-
+  parser = _get_parser()
   tflite_flags, unparsed = parser.parse_known_args(args=sys.argv[1:])
 
   if tf2.enabled():

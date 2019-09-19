@@ -136,10 +136,10 @@ void EagerContext::InitDeviceMapAndAsync() {
   prioritized_device_type_list_ = ds.PrioritizedDeviceTypeList();
 }
 
-EagerExecutor* EagerContext::Executor() {
+EagerExecutor& EagerContext::Executor() {
   tf_shared_lock l(executor_map_mu_);
-  return gtl::FindWithDefault(thread_local_executor_,
-                              std::this_thread::get_id(), &default_executor_);
+  return *gtl::FindWithDefault(thread_local_executor_,
+                               std::this_thread::get_id(), &default_executor_);
 }
 
 void EagerContext::SetExecutorForThread(EagerExecutor* executor) {
@@ -413,7 +413,8 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
   return Status::OK();
 }
 
-Status EagerContext::AddFunctionDef(const FunctionDef& fdef) {
+Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
+                                    const bool add_to_local_only) {
   bool is_first_ref = false;
   {
     mutex_lock l(cache_mu_);
@@ -432,7 +433,9 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef) {
   }
   if (is_first_ref) {
     TF_RETURN_IF_ERROR(func_lib_def_.AddFunctionDef(fdef));
-    return MaybeRegisterFunctionRemotely(fdef);
+    if (!add_to_local_only) {
+      return MaybeRegisterFunctionRemotely(fdef);
+    }
   }
   return Status::OK();
 }

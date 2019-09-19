@@ -25,32 +25,31 @@ static bool isQuantizablePrimitiveType(Type inputType) {
   return inputType.isa<FloatType>();
 }
 
-const ExpressedToUniformQuantizedConverter
-ExpressedToUniformQuantizedConverter::forInputType(Type inputType) {
+const ExpressedToQuantizedConverter
+ExpressedToQuantizedConverter::forInputType(Type inputType) {
   switch (inputType.getKind()) {
   default:
     if (isQuantizablePrimitiveType(inputType)) {
       // Supported primitive type (which just is the expressed type).
-      return ExpressedToUniformQuantizedConverter{inputType, inputType};
+      return ExpressedToQuantizedConverter{inputType, inputType};
     }
     // Unsupported.
-    return ExpressedToUniformQuantizedConverter{inputType, nullptr};
+    return ExpressedToQuantizedConverter{inputType, nullptr};
   case StandardTypes::RankedTensor:
   case StandardTypes::UnrankedTensor:
   case StandardTypes::Vector: {
     Type elementType = inputType.cast<ShapedType>().getElementType();
     if (!isQuantizablePrimitiveType(elementType)) {
       // Unsupported.
-      return ExpressedToUniformQuantizedConverter{inputType, nullptr};
+      return ExpressedToQuantizedConverter{inputType, nullptr};
     }
-    return ExpressedToUniformQuantizedConverter{
+    return ExpressedToQuantizedConverter{
         inputType, inputType.cast<ShapedType>().getElementType()};
   }
   }
 }
 
-Type ExpressedToUniformQuantizedConverter::convert(
-    UniformQuantizedType elementalType) const {
+Type ExpressedToQuantizedConverter::convert(QuantizedType elementalType) const {
   assert(expressedType && "convert() on unsupported conversion");
 
   switch (inputType.getKind()) {

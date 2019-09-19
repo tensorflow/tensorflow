@@ -60,7 +60,7 @@ void PrepareQuantizePass::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PrepareQuantize pass.
-std::unique_ptr<FunctionPassBase> CreatePrepareQuantizePass(
+std::unique_ptr<OpPassBase<FuncOp>> CreatePrepareQuantizePass(
     bool quantize_sign) {
   return std::make_unique<PrepareQuantizePass>(quantize_sign);
 }

@@ -152,10 +152,11 @@ def cast_to_floatx(x):
   """Cast a Numpy array to the default Keras float type.
 
   Arguments:
-      x: Numpy array.
+      x: Numpy array or TensorFlow tensor.
 
   Returns:
-      The same Numpy array, cast to its new type.
+      The same array (Numpy array if `x` was a Numpy array, or TensorFlow tensor
+      if `x` was a tensor), cast to its new type.
 
   Example:
 
@@ -171,6 +172,10 @@ def cast_to_floatx(x):
   dtype('float32')
 
   """
+  if isinstance(x, (ops.Tensor,
+                    variables_module.Variable,
+                    sparse_tensor.SparseTensor)):
+    return math_ops.cast(x, dtype=floatx())
   return np.asarray(x, dtype=floatx())
 
 
@@ -1684,84 +1689,192 @@ def batch_dot(x, y, axes=None):
   we use `expand_dims` to make sure that ndim is at least 2.
 
   Arguments:
-      x: Keras tensor or variable with `ndim >= 2`.
-      y: Keras tensor or variable with `ndim >= 2`.
-      axes: list of (or single) int with target dimensions.
-          The lengths of `axes[0]` and `axes[1]` should be the same.
+    x: Keras tensor or variable with `ndim >= 2`.
+    y: Keras tensor or variable with `ndim >= 2`.
+    axes: Tuple or list of integers with target dimensions, or single integer.
+      The sizes of `x.shape[axes[0]]` and `y.shape[axes[1]]` should be equal.
 
   Returns:
-      A tensor with shape equal to the concatenation of `x`'s shape
-      (less the dimension that was summed over) and `y`'s shape
-      (less the batch dimension and the dimension that was summed over).
-      If the final rank is 1, we reshape it to `(batch_size, 1)`.
+    A tensor with shape equal to the concatenation of `x`'s shape
+    (less the dimension that was summed over) and `y`'s shape
+    (less the batch dimension and the dimension that was summed over).
+    If the final rank is 1, we reshape it to `(batch_size, 1)`.
 
   Examples:
-      Assume `x = [[1, 2], [3, 4]]` and `y = [[5, 6], [7, 8]]`
-      `batch_dot(x, y, axes=1) = [[17, 53]]` which is the main diagonal
-      of `x.dot(y.T)`, although we never have to calculate the off-diagonal
-      elements.
+    Assume `x = [[1, 2], [3, 4]]` and `y = [[5, 6], [7, 8]]`
+    `batch_dot(x, y, axes=1) = [[17], [53]]` which is the main diagonal
+    of `x.dot(y.T)`, although we never have to calculate the off-diagonal
+    elements.
 
-      Shape inference:
-      Let `x`'s shape be `(100, 20)` and `y`'s shape be `(100, 30, 20)`.
-      If `axes` is (1, 2), to find the output shape of resultant tensor,
-          loop through each dimension in `x`'s shape and `y`'s shape:
+    Pseudocode:
+    ```
+    inner_products = []
+    for xi, yi in zip(x, y):
+        inner_products.append(xi.dot(yi))
+    result = stack(inner_products)
+    ```
 
-      * `x.shape[0]` : 100 : append to output shape
-      * `x.shape[1]` : 20 : do not append to output shape,
-          dimension 1 of `x` has been summed over. (`dot_axes[0]` = 1)
-      * `y.shape[0]` : 100 : do not append to output shape,
-          always ignore first dimension of `y`
-      * `y.shape[1]` : 30 : append to output shape
-      * `y.shape[2]` : 20 : do not append to output shape,
-          dimension 2 of `y` has been summed over. (`dot_axes[1]` = 2)
-      `output_shape` = `(100, 30)`
-
+    Shape inference:
+    Let `x`'s shape be `(100, 20)` and `y`'s shape be `(100, 30, 20)`.
+    If `axes` is (1, 2), to find the output shape of resultant tensor,
+        loop through each dimension in `x`'s shape and `y`'s shape:
+    * `x.shape[0]` : 100 : append to output shape
+    * `x.shape[1]` : 20 : do not append to output shape,
+        dimension 1 of `x` has been summed over. (`dot_axes[0]` = 1)
+    * `y.shape[0]` : 100 : do not append to output shape,
+        always ignore first dimension of `y`
+    * `y.shape[1]` : 30 : append to output shape
+    * `y.shape[2]` : 20 : do not append to output shape,
+        dimension 2 of `y` has been summed over. (`dot_axes[1]` = 2)
+    `output_shape` = `(100, 30)`
 
   >>> x_batch = tf.keras.backend.ones(shape=(32, 20, 1))
   >>> y_batch = tf.keras.backend.ones(shape=(32, 30, 20))
-  >>> xy_batch_dot = batch_dot(x_batch, y_batch, axes=[1, 2])
+  >>> xy_batch_dot = tf.keras.backend.batch_dot(x_batch, y_batch, axes=(1, 2))
   >>> tf.keras.backend.int_shape(xy_batch_dot)
   (32, 1, 30)
-
   """
+  x_shape = int_shape(x)
+  y_shape = int_shape(y)
+
+  x_ndim = len(x_shape)
+  y_ndim = len(y_shape)
+
+  if x_ndim < 2 or y_ndim < 2:
+    raise ValueError('Cannot do batch_dot on inputs '
+                     'with rank < 2. '
+                     'Received inputs with shapes ' +
+                     str(x_shape) + ' and ' +
+                     str(y_shape) + '.')
+
+  x_batch_size = x_shape[0]
+  y_batch_size = y_shape[0]
+
+  if x_batch_size is not None and y_batch_size is not None:
+    if x_batch_size != y_batch_size:
+      raise ValueError('Cannot do batch_dot on inputs '
+                       'with different batch sizes. '
+                       'Received inputs with shapes ' +
+                       str(x_shape) + ' and ' +
+                       str(y_shape) + '.')
   if isinstance(axes, int):
-    axes = (axes, axes)
-  x_ndim = ndim(x)
-  y_ndim = ndim(y)
+    axes = [axes, axes]
+
   if axes is None:
-    # behaves like tf.batch_matmul as default
-    axes = [x_ndim - 1, y_ndim - 2]
-  if x_ndim > y_ndim:
-    diff = x_ndim - y_ndim
-    y = array_ops.reshape(y,
-                          array_ops.concat(
-                              [array_ops.shape(y), [1] * (diff)], axis=0))
-  elif y_ndim > x_ndim:
-    diff = y_ndim - x_ndim
-    x = array_ops.reshape(x,
-                          array_ops.concat(
-                              [array_ops.shape(x), [1] * (diff)], axis=0))
-  else:
-    diff = 0
-  if ndim(x) == 2 and ndim(y) == 2:
-    if axes[0] == axes[1]:
-      out = math_ops.reduce_sum(math_ops.multiply(x, y), axes[0])
+    if y_ndim == 2:
+      axes = [x_ndim - 1, y_ndim - 1]
     else:
-      out = math_ops.reduce_sum(
-          math_ops.multiply(array_ops.transpose(x, [1, 0]), y), axes[1])
+      axes = [x_ndim - 1, y_ndim - 2]
+
+  if py_any([isinstance(a, (list, tuple)) for a in axes]):
+    raise ValueError('Multiple target dimensions are not supported. ' +
+                     'Expected: None, int, (int, int), ' +
+                     'Provided: ' + str(axes))
+
+  # if tuple, convert to list.
+  axes = list(axes)
+
+  # convert negative indices.
+  if axes[0] < 0:
+    axes[0] += x_ndim
+  if axes[1] < 0:
+    axes[1] += y_ndim
+
+  # sanity checks
+  if 0 in axes:
+    raise ValueError('Cannot perform batch_dot over axis 0. '
+                     'If your inputs are not batched, '
+                     'add a dummy batch dimension to your '
+                     'inputs using K.expand_dims(x, 0)')
+  a0, a1 = axes
+  d1 = x_shape[a0]
+  d2 = y_shape[a1]
+
+  if d1 is not None and d2 is not None and d1 != d2:
+    raise ValueError('Cannot do batch_dot on inputs with shapes ' +
+                     str(x_shape) + ' and ' + str(y_shape) +
+                     ' with axes=' + str(axes) + '. x.shape[%d] != '
+                     'y.shape[%d] (%d != %d).' % (axes[0], axes[1], d1, d2))
+
+  # backup ndims. Need them later.
+  orig_x_ndim = x_ndim
+  orig_y_ndim = y_ndim
+
+  # if rank is 2, expand to 3.
+  if x_ndim == 2:
+    x = array_ops.expand_dims(x, 1)
+    a0 += 1
+    x_ndim += 1
+  if y_ndim == 2:
+    y = array_ops.expand_dims(y, 2)
+    y_ndim += 1
+
+  # bring x's dimension to be reduced to last axis.
+  if a0 != x_ndim - 1:
+    pattern = list(range(x_ndim))
+    for i in range(a0, x_ndim - 1):
+      pattern[i] = pattern[i + 1]
+    pattern[-1] = a0
+    x = array_ops.transpose(x, pattern)
+
+  # bring y's dimension to be reduced to axis 1.
+  if a1 != 1:
+    pattern = list(range(y_ndim))
+    for i in range(a1, 1, -1):
+      pattern[i] = pattern[i - 1]
+    pattern[1] = a1
+    y = array_ops.transpose(y, pattern)
+
+  # normalize both inputs to rank 3.
+  if x_ndim > 3:
+    # squash middle dimensions of x.
+    x_shape = shape(x)
+    x_mid_dims = x_shape[1:-1]
+    x_squashed_shape = array_ops.stack(
+        [x_shape[0], -1, x_shape[-1]])
+    x = array_ops.reshape(x, x_squashed_shape)
+    x_squashed = True
   else:
-    adj_x = None if axes[0] == ndim(x) - 1 else True
-    adj_y = True if axes[1] == ndim(y) - 1 else None
-    out = math_ops.matmul(x, y, adjoint_a=adj_x, adjoint_b=adj_y)
-  if diff:
-    if x_ndim > y_ndim:
-      idx = x_ndim + y_ndim - 3
-    else:
-      idx = x_ndim - 1
-    out = array_ops.squeeze(out, list(range(idx, idx + diff)))
-  if ndim(out) == 1:
-    out = expand_dims(out, 1)
-  return out
+    x_squashed = False
+
+  if y_ndim > 3:
+    # squash trailing dimensions of y.
+    y_shape = shape(y)
+    y_trail_dims = y_shape[2:]
+    y_squashed_shape = array_ops.stack(
+        [y_shape[0], y_shape[1], -1])
+    y = array_ops.reshape(y, y_squashed_shape)
+    y_squashed = True
+  else:
+    y_squashed = False
+
+  result = math_ops.matmul(x, y)
+
+  # if inputs were squashed, we have to reshape the matmul output.
+  output_shape = array_ops.shape(result)
+  do_reshape = False
+
+  if x_squashed:
+    output_shape = array_ops.concat(
+        [output_shape[:1],
+         x_mid_dims,
+         output_shape[-1:]], 0)
+    do_reshape = True
+
+  if y_squashed:
+    output_shape = array_ops.concat([output_shape[:-1], y_trail_dims], 0)
+    do_reshape = True
+
+  if do_reshape:
+    result = array_ops.reshape(result, output_shape)
+
+  # if the inputs were originally rank 2, we remove the added 1 dim.
+  if orig_x_ndim == 2:
+    result = array_ops.squeeze(result, 1)
+  elif orig_y_ndim == 2:
+    result = array_ops.squeeze(result, -1)
+
+  return result
 
 
 @keras_export('keras.backend.transpose')
@@ -3841,13 +3954,14 @@ def rnn(step_function,
         else:
           prev_output = successive_outputs[-1]
 
-        output = array_ops.where(tiled_mask_t, output, prev_output)
+        output = array_ops.where_v2(tiled_mask_t, output, prev_output)
 
         return_states = []
         for state, new_state in zip(states, new_states):
           # (see earlier comment for tile explanation)
           tiled_mask_t = _expand_mask(mask_t, new_state)
-          return_states.append(array_ops.where(tiled_mask_t, new_state, state))
+          return_states.append(
+              array_ops.where_v2(tiled_mask_t, new_state, state))
         states = return_states
         successive_outputs.append(output)
         successive_states.append(states)
@@ -3856,13 +3970,11 @@ def rnn(step_function,
       outputs = array_ops.stack(successive_outputs)
 
       if zero_output_for_mask:
-        last_output = array_ops.where(
-            _expand_mask(mask_list[-1], last_output),
-            last_output,
+        last_output = array_ops.where_v2(
+            _expand_mask(mask_list[-1], last_output), last_output,
             zeros_like(last_output))
-        outputs = array_ops.where(
-            _expand_mask(mask, outputs, fixed_dim=2),
-            outputs,
+        outputs = array_ops.where_v2(
+            _expand_mask(mask, outputs, fixed_dim=2), outputs,
             zeros_like(outputs))
 
     else:
@@ -3963,8 +4075,8 @@ def rnn(step_function,
                             else nest.flatten(prev_output))
         tiled_mask_t = tuple(_expand_mask(mask_t, o) for o in flat_output)
         flat_new_output = tuple(
-            array_ops.where(m, o, zo) for m, o, zo in zip(
-                tiled_mask_t, flat_output, flat_mask_output))
+            array_ops.where_v2(m, o, zo)
+            for m, o, zo in zip(tiled_mask_t, flat_output, flat_mask_output))
 
         # mask states
         flat_state = nest.flatten(states)
@@ -3974,7 +4086,7 @@ def rnn(step_function,
             new_state.set_shape(state.shape)
         tiled_mask_t = tuple(_expand_mask(mask_t, s) for s in flat_state)
         flat_final_state = tuple(
-            array_ops.where(m, s, ps)
+            array_ops.where_v2(m, s, ps)
             for m, s, ps in zip(tiled_mask_t, flat_new_state, flat_state))
         new_states = nest.pack_sequence_as(new_states, flat_final_state)
 
@@ -4106,10 +4218,10 @@ def switch(condition, then_expression, else_expression):
       condition = array_ops.reshape(condition, cond_shape)
       expr_shape = array_ops.shape(then_expression)
       shape_diff = expr_shape - cond_shape
-      tile_shape = array_ops.where(shape_diff > 0, expr_shape,
-                                   array_ops.ones_like(expr_shape))
+      tile_shape = array_ops.where_v2(shape_diff > 0, expr_shape,
+                                      array_ops.ones_like(expr_shape))
       condition = array_ops.tile(condition, tile_shape)
-    x = array_ops.where(condition, then_expression, else_expression)
+    x = array_ops.where_v2(condition, then_expression, else_expression)
   return x
 
 
@@ -4246,7 +4358,7 @@ def elu(x, alpha=1.):
   if alpha == 1:
     return res
   else:
-    return array_ops.where(x > 0, res, alpha * res)
+    return array_ops.where_v2(x > 0, res, alpha * res)
 
 
 @keras_export('keras.backend.softmax')
@@ -4330,7 +4442,7 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
   tf.Tensor([0.10536055 0.8046684  0.06187541], shape=(3,), dtype=float32)
   >>> loss = tf.keras.backend.categorical_crossentropy(a, a)
   >>> print(loss)
-  tf.Tensor([1.1920929e-07 1.1920929e-07 1.1920930e-07], shape=(3,),
+  tf.Tensor([1.1920929e-07 1.1920929e-07 1.19...e-07], shape=(3,),
   dtype=float32)
 
   """
@@ -4406,7 +4518,7 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
 
   target = cast(target, 'int64')
 
-  # Try to adjust the shape so that rank of labels = 1 - rank of logits.
+  # Try to adjust the shape so that rank of labels = rank of logits - 1.
   output_shape = array_ops.shape_v2(output)
   target_rank = target.shape.ndims
 
@@ -5496,7 +5608,7 @@ def random_binomial(shape, p=0.0, dtype=None, seed=None):
     dtype = floatx()
   if seed is None:
     seed = np.random.randint(10e6)
-  return array_ops.where(
+  return array_ops.where_v2(
       random_ops.random_uniform(shape, dtype=dtype, seed=seed) <= p,
       array_ops.ones(shape, dtype=dtype), array_ops.zeros(shape, dtype=dtype))
 

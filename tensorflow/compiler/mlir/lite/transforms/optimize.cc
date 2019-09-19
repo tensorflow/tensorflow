@@ -306,7 +306,7 @@ void Optimize::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
-std::unique_ptr<FunctionPassBase> CreateOptimizePass() {
+std::unique_ptr<OpPassBase<FuncOp>> CreateOptimizePass() {
   return std::make_unique<Optimize>();
 }
 

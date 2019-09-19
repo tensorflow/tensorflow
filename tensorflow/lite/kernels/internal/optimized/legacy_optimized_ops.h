@@ -4232,7 +4232,8 @@ inline void LogSoftmax(const uint8* input_data, const RuntimeShape& input_shape,
   params.reverse_scaling_divisor = reverse_scaling_divisor;
   params.reverse_scaling_right_shift = reverse_scaling_right_shift;
   params.diff_min = diff_min;
-  LogSoftmax(params, input_shape, input_data, output_shape, output_data);
+  reference_ops::LogSoftmax(params, input_shape, input_data, output_shape,
+                            output_data);
 }
 
 inline void LogSoftmax(const uint8* input_data, const Dims<4>& input_dims,
@@ -4240,10 +4241,10 @@ inline void LogSoftmax(const uint8* input_data, const Dims<4>& input_dims,
                        int32 reverse_scaling_divisor,
                        int32 reverse_scaling_right_shift, int diff_min,
                        uint8* output_data, const Dims<4>& output_dims) {
-  LogSoftmax(input_data, DimsToShape(input_dims), input_multiplier,
-             input_left_shift, reverse_scaling_divisor,
-             reverse_scaling_right_shift, diff_min, output_data,
-             DimsToShape(output_dims));
+  reference_ops::LogSoftmax(
+      input_data, DimsToShape(input_dims), input_multiplier, input_left_shift,
+      reverse_scaling_divisor, reverse_scaling_right_shift, diff_min,
+      output_data, DimsToShape(output_dims));
 }
 
 inline void Logistic(const LogisticParams& params,

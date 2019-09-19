@@ -166,20 +166,20 @@ void SDBMExpr::print(raw_ostream &os) const {
       visitConstant(expr.getRHS());
     }
     void visitDiff(SDBMDiffExpr expr) {
-      visitPositive(expr.getLHS());
+      visitTerm(expr.getLHS());
       prn << " - ";
-      visitPositive(expr.getRHS());
+      visitTerm(expr.getRHS());
     }
     void visitDim(SDBMDimExpr expr) { prn << 'd' << expr.getPosition(); }
     void visitSymbol(SDBMSymbolExpr expr) { prn << 's' << expr.getPosition(); }
     void visitStripe(SDBMStripeExpr expr) {
-      visitPositive(expr.getVar());
+      visitTerm(expr.getVar());
       prn << " # ";
       visitConstant(expr.getStripeFactor());
     }
     void visitNeg(SDBMNegExpr expr) {
       prn << '-';
-      visitPositive(expr.getVar());
+      visitTerm(expr.getVar());
     }
     void visitConstant(SDBMConstantExpr expr) { prn << expr.getValue(); }
 
@@ -197,11 +197,9 @@ void SDBMExpr::dump() const {
 namespace {
 // Helper class to perform negation of an SDBM expression.
 struct SDBMNegator : public SDBMVisitor<SDBMNegator, SDBMExpr> {
-  // Any positive expression is wrapped into a negation expression.
+  // Any term expression is wrapped into a negation expression.
   //  -(x) = -x
-  SDBMExpr visitPositive(SDBMPositiveExpr expr) {
-    return SDBMNegExpr::get(expr);
-  }
+  SDBMExpr visitTerm(SDBMTermExpr expr) { return SDBMNegExpr::get(expr); }
   // A negation expression is unwrapped.
   //  -(-x) = x
   SDBMExpr visitNeg(SDBMNegExpr expr) { return expr.getVar(); }
@@ -305,7 +303,7 @@ Optional<SDBMExpr> SDBMExpr::tryConvertAffineExpr(AffineExpr affine) {
         if (auto convertedLHS = visit(x.matched())) {
           // TODO(ntv): return convertedLHS.stripe(C);
           return SDBMStripeExpr::get(
-              convertedLHS.cast<SDBMPositiveExpr>(),
+              convertedLHS.cast<SDBMTermExpr>(),
               visit(C.matched()).cast<SDBMConstantExpr>());
         }
       }
@@ -328,8 +326,8 @@ Optional<SDBMExpr> SDBMExpr::tryConvertAffineExpr(AffineExpr affine) {
       // difference, supported as a special kind in SDBM.  Because AffineExprs
       // don't have first-class difference kind, check both LHS and RHS for
       // negation.
-      auto lhsPos = lhs.dyn_cast<SDBMPositiveExpr>();
-      auto rhsPos = rhs.dyn_cast<SDBMPositiveExpr>();
+      auto lhsPos = lhs.dyn_cast<SDBMTermExpr>();
+      auto rhsPos = rhs.dyn_cast<SDBMTermExpr>();
       auto lhsNeg = lhs.dyn_cast<SDBMNegExpr>();
       auto rhsNeg = rhs.dyn_cast<SDBMNegExpr>();
       if (lhsNeg && rhsVar)
@@ -347,7 +345,7 @@ Optional<SDBMExpr> SDBMExpr::tryConvertAffineExpr(AffineExpr affine) {
       AffineExprMatcher pattern = (x.floorDiv(C)) * C;
       if (pattern.match(expr)) {
         if (SDBMExpr converted = visit(x.matched())) {
-          if (auto varConverted = converted.dyn_cast<SDBMPositiveExpr>())
+          if (auto varConverted = converted.dyn_cast<SDBMTermExpr>())
             // TODO(ntv): return varConverted.stripe(C.getConstantValue());
             return SDBMStripeExpr::get(
                 varConverted,
@@ -369,7 +367,7 @@ Optional<SDBMExpr> SDBMExpr::tryConvertAffineExpr(AffineExpr affine) {
 
       // The only supported "multiplication" expression is an SDBM is dimension
       // negation, that is a product of dimension and constant -1.
-      auto lhsVar = lhs.dyn_cast<SDBMPositiveExpr>();
+      auto lhsVar = lhs.dyn_cast<SDBMTermExpr>();
       if (lhsVar && rhsConstant.getValue() == -1)
         return SDBMNegExpr::get(lhsVar);
 
@@ -385,7 +383,7 @@ Optional<SDBMExpr> SDBMExpr::tryConvertAffineExpr(AffineExpr affine) {
       // 'mod' can only be converted to SDBM if its LHS is a variable
       // and its RHS is a constant.  Then it `x mod c = x - x stripe c`.
       auto rhsConstant = rhs.dyn_cast<SDBMConstantExpr>();
-      auto lhsVar = rhs.dyn_cast<SDBMPositiveExpr>();
+      auto lhsVar = rhs.dyn_cast<SDBMTermExpr>();
       if (!lhsVar || !rhsConstant)
         return {};
       return SDBMDiffExpr::get(lhsVar,
@@ -420,7 +418,7 @@ Optional<SDBMExpr> SDBMExpr::tryConvertAffineExpr(AffineExpr affine) {
 // SDBMDiffExpr
 //===----------------------------------------------------------------------===//
 
-SDBMDiffExpr SDBMDiffExpr::get(SDBMPositiveExpr lhs, SDBMPositiveExpr rhs) {
+SDBMDiffExpr SDBMDiffExpr::get(SDBMTermExpr lhs, SDBMTermExpr rhs) {
   assert(lhs && "expected SDBM dimension");
   assert(rhs && "expected SDBM dimension");
 
@@ -429,11 +427,11 @@ SDBMDiffExpr SDBMDiffExpr::get(SDBMPositiveExpr lhs, SDBMPositiveExpr rhs) {
       /*initFn=*/{}, static_cast<unsigned>(SDBMExprKind::Diff), lhs, rhs);
 }
 
-SDBMPositiveExpr SDBMDiffExpr::getLHS() const {
+SDBMTermExpr SDBMDiffExpr::getLHS() const {
   return static_cast<ImplType *>(impl)->lhs;
 }
 
-SDBMPositiveExpr SDBMDiffExpr::getRHS() const {
+SDBMTermExpr SDBMDiffExpr::getRHS() const {
   return static_cast<ImplType *>(impl)->rhs;
 }
 
@@ -441,7 +439,7 @@ SDBMPositiveExpr SDBMDiffExpr::getRHS() const {
 // SDBMStripeExpr
 //===----------------------------------------------------------------------===//
 
-SDBMStripeExpr SDBMStripeExpr::get(SDBMPositiveExpr var,
+SDBMStripeExpr SDBMStripeExpr::get(SDBMTermExpr var,
                                    SDBMConstantExpr stripeFactor) {
   assert(var && "expected SDBM variable expression");
   assert(stripeFactor && "expected non-null stripe factor");
@@ -454,9 +452,9 @@ SDBMStripeExpr SDBMStripeExpr::get(SDBMPositiveExpr var,
       stripeFactor);
 }
 
-SDBMPositiveExpr SDBMStripeExpr::getVar() const {
+SDBMTermExpr SDBMStripeExpr::getVar() const {
   if (SDBMVaryingExpr lhs = static_cast<ImplType *>(impl)->lhs)
-    return lhs.cast<SDBMPositiveExpr>();
+    return lhs.cast<SDBMTermExpr>();
   return {};
 }
 
@@ -479,12 +477,12 @@ unsigned SDBMInputExpr::getPosition() const {
 SDBMDimExpr SDBMDimExpr::get(SDBMDialect *dialect, unsigned position) {
   assert(dialect && "expected non-null dialect");
 
-  auto assignDialect = [dialect](detail::SDBMPositiveExprStorage *storage) {
+  auto assignDialect = [dialect](detail::SDBMTermExprStorage *storage) {
     storage->dialect = dialect;
   };
 
   StorageUniquer &uniquer = dialect->getUniquer();
-  return uniquer.get<detail::SDBMPositiveExprStorage>(
+  return uniquer.get<detail::SDBMTermExprStorage>(
       assignDialect, static_cast<unsigned>(SDBMExprKind::DimId), position);
 }
 
@@ -495,12 +493,12 @@ SDBMDimExpr SDBMDimExpr::get(SDBMDialect *dialect, unsigned position) {
 SDBMSymbolExpr SDBMSymbolExpr::get(SDBMDialect *dialect, unsigned position) {
   assert(dialect && "expected non-null dialect");
 
-  auto assignDialect = [dialect](detail::SDBMPositiveExprStorage *storage) {
+  auto assignDialect = [dialect](detail::SDBMTermExprStorage *storage) {
     storage->dialect = dialect;
   };
 
   StorageUniquer &uniquer = dialect->getUniquer();
-  return uniquer.get<detail::SDBMPositiveExprStorage>(
+  return uniquer.get<detail::SDBMTermExprStorage>(
       assignDialect, static_cast<unsigned>(SDBMExprKind::SymbolId), position);
 }
 
@@ -528,7 +526,7 @@ int64_t SDBMConstantExpr::getValue() const {
 // SDBMNegExpr
 //===----------------------------------------------------------------------===//
 
-SDBMNegExpr SDBMNegExpr::get(SDBMPositiveExpr var) {
+SDBMNegExpr SDBMNegExpr::get(SDBMTermExpr var) {
   assert(var && "expected non-null SDBM variable expression");
 
   StorageUniquer &uniquer = var.getDialect()->getUniquer();
@@ -536,7 +534,7 @@ SDBMNegExpr SDBMNegExpr::get(SDBMPositiveExpr var) {
       /*initFn=*/{}, static_cast<unsigned>(SDBMExprKind::Neg), var);
 }
 
-SDBMPositiveExpr SDBMNegExpr::getVar() const {
+SDBMTermExpr SDBMNegExpr::getVar() const {
   return static_cast<ImplType *>(impl)->dim;
 }
 
@@ -627,8 +625,7 @@ SDBMExpr operator-(SDBMExpr lhs, SDBMExpr rhs) {
   }
 
   // This calls into operator+ for futher simplification in case value == 0.
-  return SDBMDiffExpr::get(lhs.cast<SDBMPositiveExpr>(),
-                           rhs.cast<SDBMPositiveExpr>()) +
+  return SDBMDiffExpr::get(lhs.cast<SDBMTermExpr>(), rhs.cast<SDBMTermExpr>()) +
          value;
 }
 
@@ -640,7 +637,7 @@ SDBMExpr stripe(SDBMExpr expr, SDBMExpr factor) {
   if (constantFactor.getValue() == 1)
     return expr;
 
-  return SDBMStripeExpr::get(expr.cast<SDBMPositiveExpr>(), constantFactor);
+  return SDBMStripeExpr::get(expr.cast<SDBMTermExpr>(), constantFactor);
 }
 
 } // namespace ops_assertions

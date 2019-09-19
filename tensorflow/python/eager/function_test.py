@@ -80,6 +80,11 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 
+try:
+  import attr  # pylint:disable=g-import-not-at-top
+except ImportError:
+  attr = None
+
 
 def total_function_cache(defined):
   # pylint: disable=protected-access
@@ -2397,6 +2402,37 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertLen(total_function_cache(defined), 1)
 
     defined([[a, b], c])
+    self.assertLen(total_function_cache(defined), 2)
+
+  def testCacheKeyAttrsClass(self):
+    if attr is None:
+      self.skipTest('attr module is unavailable.')
+
+    @attr.s
+    class TestClass(object):
+      a = attr.ib()
+      b = attr.ib()
+
+    @function.defun
+    def defined(l):
+      return l
+
+    defined(
+        TestClass(
+            constant_op.constant(1.),
+            [constant_op.constant(2.),
+             constant_op.constant(3.)]))
+    self.assertLen(total_function_cache(defined), 1)
+    defined(
+        TestClass(
+            constant_op.constant(1.),
+            [constant_op.constant(2.),
+             constant_op.constant(3.)]))
+    self.assertLen(total_function_cache(defined), 1)
+
+    defined(
+        TestClass([constant_op.constant(1.),
+                   constant_op.constant(2.)], constant_op.constant(3.)))
     self.assertLen(total_function_cache(defined), 2)
 
   def testDecoratedMethod(self):

@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/batch_matmul_op_impl.h"
 #include "tensorflow/core/kernels/einsum_op.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/reduction_ops_common.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -343,6 +344,11 @@ struct EinsumHelper {
     for (int i = 0; i < input.dims(); ++i) {
       transposed_shape.AddDim(input.dim_size(permutation[i]));
     }
+    // For empty Tensors, just change the shape. E.g. we may need to transpose
+    // from shape [1, 0, 5] to [5, 1, 0].
+    if (input.NumElements() == 0) {
+      return CopyFrom(input, transposed_shape, output);
+    }
     TF_RETURN_IF_ERROR(
         ctx->allocate_temp(DataTypeToEnum<T>::value, transposed_shape, output));
     const Device& device = ctx->eigen_device<Device>();
@@ -586,6 +592,11 @@ struct EinsumHelper {
     }
     TF_RETURN_IF_ERROR(
         ctx->allocate_temp(DataTypeToEnum<T>::value, output_shape, output));
+    if (lhs.NumElements() == 0 || rhs.NumElements() == 0) {
+      functor::SetZeroFunctor<Device, T> set_zero;
+      set_zero(ctx->eigen_device<Device>(), output->flat<T>());
+      return Status::OK();
+    }
     Tensor output_reshaped;
     TF_RETURN_IF_ERROR(
         ReshapeToRank3(*output, bcast.output_batch_size(), &output_reshaped));

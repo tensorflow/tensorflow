@@ -258,7 +258,7 @@ void CSE::runOnFunction() {
   markAnalysesPreserved<DominanceInfo, PostDominanceInfo>();
 }
 
-std::unique_ptr<FunctionPassBase> mlir::createCSEPass() {
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createCSEPass() {
   return std::make_unique<CSE>();
 }
 

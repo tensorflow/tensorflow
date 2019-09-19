@@ -111,6 +111,8 @@ tf_py_test(
         ":feature_column_test_main_lib",
     ],
     tags = [
+        "no_rocm",
+        "no_cuda",
         "no_cuda_on_cpu_tap",
         "no_pip",
         "no_windows",
@@ -161,6 +163,8 @@ tf_py_test(
     additional_deps = [":feature_column_v2_test_main_lib"],
     shard_count = 5,
     tags = [
+        "no_rocm",
+        "no_cuda",
         "no_cuda_on_cpu_tap",
         "no_pip",
         "no_windows",

@@ -91,9 +91,10 @@ REGISTER_OP("FusedConv2DBiasActivation")
         TF_RETURN_IF_ERROR(c->Merge(side_input_shape, c->output(0), &unused));
       }
 
-      // Check that conv_input_scale and side_input_scale are scalar tensors.
       ShapeHandle unused;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      // Check that conv_input_scale is a scalar or vector.
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(4), 1, &unused));
+      // Check that side_input_scale is a scalar tensor.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
 
       return Status::OK();
@@ -118,6 +119,8 @@ REGISTER_OP("FusedConv2DBiasActivation")
         Otherwise, the size of each dimension must match the `output` tensor.
     conv_input_scale: scalar float value to be multiplied by `conv_input`.
         (conceptually.. in reality it is applied after convolution).
+        For the CPU version, this can also be a 1-D Tensor of per output-channel
+        scales.
     side_input_scale: scalar float value to be multiplied by `side_input`.
     output: A tensor with format as specified by `data_format` (see below).
         The dimension sizes are determined automatically based on other inputs

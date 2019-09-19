@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 
+#include <algorithm>
 #include <cstdint>
 
 #include "llvm/ADT/APFloat.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
+#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -314,6 +316,34 @@ OpFoldResult AddOp::fold(ArrayRef<Attribute> operands) {
 // ConcatenationOp
 //===----------------------------------------------------------------------===//
 // TODO(ashwinm): Implement shape inference for Concatenation
+
+OpFoldResult ConcatenationOp::fold(ArrayRef<Attribute> operands) {
+  // Remove all empty values.
+  SmallVector<Value *, 4> non_empty_values;
+  for (Value *value : this->values()) {
+    const auto shaped_type = value->getType().cast<ShapedType>();
+    if (shaped_type.hasStaticShape() && shaped_type.getNumElements() == 0) {
+      continue;
+    }
+    non_empty_values.push_back(value);
+  }
+
+  // All are not empty, do nothing.
+  if (non_empty_values.size() == getNumOperands()) return nullptr;
+
+  // If only one input is non-empty, just return it as the result of folding.
+  if (non_empty_values.size() == 1) {
+    return non_empty_values[0];
+  }
+
+  // Otherwise, build a new concatenation op with non-empty values.
+  mlir::OpBuilder builder(getOperation());
+  auto new_concat = builder.create<TFL::ConcatenationOp>(
+      getLoc(), getType(), non_empty_values,
+      builder.getIntegerAttr(builder.getIntegerType(32), axis()),
+      builder.getStringAttr(fused_activation_function()));
+  return new_concat.getResult();
+}
 
 //===----------------------------------------------------------------------===//
 // GatherOp
@@ -1165,6 +1195,54 @@ OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
   auto result_type =
       RankedTensorType::get(output_shape, output_type.getElementType());
   return DenseElementsAttr::get(result_type, new_values);
+}
+
+static LogicalResult Verify(TransposeOp op) {
+  auto input_type = op.x()->getType().cast<ShapedType>();
+  auto perm_type = op.perm()->getType().cast<ShapedType>();
+  auto output_type = op.y()->getType().cast<ShapedType>();
+  if (input_type.hasStaticShape() && perm_type.hasStaticShape()) {
+    if (perm_type.getNumElements() != input_type.getRank()) {
+      return op.emitOpError(
+          "perm tensor elements size is not equal to input tensor rank");
+    }
+  }
+
+  DenseIntElementsAttr perm;
+  if (!matchPattern(op.perm(), m_Constant(&perm))) {
+    return success();
+  }
+
+  int index = 0;
+  llvm::SmallVector<int64_t, 4> axes;
+  for (auto axis_int : perm.getValues<APInt>()) {
+    const int64_t axis = axis_int.getSExtValue();
+    if (axis < 0 || (input_type.hasRank() && axis >= input_type.getRank())) {
+      return op.emitOpError(
+          llvm::formatv("perm[{0}] must be in [0, rank)", index));
+    }
+    if (std::count(axes.begin(), axes.end(), axis) > 0) {
+      return op.emitOpError(
+          llvm::formatv("perm[{0}] cannot have duplicated axis", index));
+    }
+    axes.push_back(axis);
+    index++;
+  }
+
+  if (input_type.hasStaticShape() && output_type.hasStaticShape()) {
+    llvm::SmallVector<int64_t, 4> transposed_shape;
+    for (int64_t axis : axes) {
+      transposed_shape.push_back(input_type.getDimSize(axis));
+    }
+    auto expected_output_type =
+        RankedTensorType::get(transposed_shape, input_type.getElementType());
+    if (output_type != expected_output_type) {
+      return op.emitOpError(llvm::formatv("expect output type {0}, got {1}",
+                                          expected_output_type, output_type));
+    }
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

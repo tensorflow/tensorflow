@@ -285,9 +285,9 @@ func @empty_island_no_operand_no_data_result() {
   return
 }
 
-// CHECK:        %[[ISLAND_0:[0-9]*]] = tf_executor.island {
+// CHECK:        %[[ISLAND_0:[0-9]*]] = tf_executor.island
 // CHECK-NEXT:     "tf.opA"
-// CHECK:        tf_executor.island(%[[ISLAND_0]]) {
+// CHECK:        tf_executor.island(%[[ISLAND_0]])
 // CHECK-NEXT:     "tf.opB"
 // CHECK-NOT:    tf_executor.island
 
@@ -313,9 +313,9 @@ func @empty_island_one_operand_no_data_result() {
   return
 }
 
-// CHECK:        %[[ISLAND_1:[0-9]*]] = tf_executor.island {
+// CHECK:        %[[ISLAND_1:[0-9]*]] = tf_executor.island
 // CHECK-NEXT:     "tf.opA"
-// CHECK:        tf_executor.island(%[[ISLAND_1]]) {
+// CHECK:        tf_executor.island(%[[ISLAND_1]])
 // CHECK-NEXT:     "tf.opB"
 // CHECK-NOT:    tf_executor.island
 
@@ -342,7 +342,7 @@ func @empty_island_no_operand_one_data_no_control_result(%arg0 : tensor<i1>) {
   return
 }
 
-// CHECK:        tf_executor.island {
+// CHECK:        tf_executor.island
 // CHECK-NEXT:     "tf.opA"(%[[ARG_0]])
 // CHECK:        tf_executor.island {
 // CHECK-NEXT:     "tf.opB"(%[[ARG_0]])
@@ -368,8 +368,8 @@ func @empty_control_trigger() {
   return
 }
 
-// CHECK:        %[[ISLAND_0:[0-9]*]] = tf_executor.island {
+// CHECK:        %[[ISLAND_0:[0-9]*]] = tf_executor.island
 // CHECK-NEXT:     "tf.opA"
-// CHECK:        tf_executor.island(%[[ISLAND_0]]) {
+// CHECK:        tf_executor.island(%[[ISLAND_0]])
 // CHECK-NEXT:     "tf.opB"
 // CHECK-NOT:    tf_executor.island

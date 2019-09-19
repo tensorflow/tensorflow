@@ -117,6 +117,19 @@ func @fusedBatchNormV3(tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor
 // CHECK:  %[[BATCHNORM2:.*]]:6 = "tf.FusedBatchNormV3"(%[[BATCHNORM1]]#0, %[[ARG1]], %[[ARG2]], %[[ARG3]], %[[ARG4]])
 }
 
+// CHECK-LABEL: fakeQuantPerChannelForActivation
+func @fakeQuantPerChannelForActivation(%arg0: tensor<8x3xf32>) -> (tensor<8x3xf32>) {
+  %arg1 = constant dense<[0.0, -1.0, 1.0]> : tensor<3xf32>
+  %arg2 = constant dense<[255.0, 254.0, 256.0]> : tensor<3xf32>
+  %0 = "tf.FakeQuantWithMinMaxVarsPerChannel"(%arg0, %arg1, %arg2) {num_bits = 3, narrow_range = false} : (tensor<8x3xf32>, tensor<3xf32>, tensor<3xf32>) -> tensor<8x3xf32>
+  return %0 : tensor<8x3xf32>
+
+// CHECK:  %[[fq:.*]] = "tf.FakeQuantWithMinMaxVarsPerChannel"(%arg0, %cst, %cst_0)
+// CHECK:  %[[q:.*]] = "tfl.quantize"(%[[fq]]) {qtype = tensor<8x3x!quant.uniform<u8:f32:1, {1.000000e+00,1.000000e+00:1,1.000000e+00}>>}
+// CHECK:  %[[dq:.*]] = "tfl.dequantize"(%[[q]])
+// CHECK:  return %[[dq]]
+}
+
 // CHECK-LABEL: fakeQuantForActivation
 func @fakeQuantForActivation(tensor<8xf32>) -> (tensor<8xf32>) {
 ^bb0(%arg0: tensor<8xf32>):
@@ -347,4 +360,12 @@ func @stop_gradient(%arg0: tensor<3xi32>) -> tensor<3xi32> {
   // Should be converted to Identity and then from Identity to value
   // CHECK-LABEL: stop_gradient
   // CHECK:  return %arg0 : tensor<3xi32>
+}
+
+func @CheckNumerics(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+  %0 = "tf.CheckNumerics"(%arg0) {message = ""}: (tensor<3xf32>) -> tensor<3xf32>
+  return %0 : tensor<3xf32>
+  // Should be converted to Identity and then from Identity to value
+  // CHECK-LABEL: CheckNumerics
+  // CHECK:  return %arg0 : tensor<3xf32>
 }

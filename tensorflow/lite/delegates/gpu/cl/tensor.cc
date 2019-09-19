@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_image_format.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
@@ -191,6 +192,37 @@ Status Tensor::ReadData(CLCommandQueue* queue, TensorFloat32* dst) const {
   return ReadDataBHWC(absl::MakeSpan(dst->data), queue);
 }
 
+bool CanCreateTensorWithShape(const CLContext& context, const CLDevice& device,
+                              const BHWC& shape,
+                              const TensorDescriptor& descriptor) {
+  if (shape.b != 1) {
+    return false;
+  }
+  const int depth = IntegralDivideRoundUp(shape.c, 4);
+  switch (descriptor.storage_type) {
+    case TensorStorageType::BUFFER: {
+      const int flt4_size =
+          4 * (descriptor.data_type == DataType::FLOAT32 ? 4 : 2);
+      const int buffer_size = shape.w * shape.h * depth * flt4_size;
+      return buffer_size <= device.GetInfo().buffer_max_size;
+    }
+    case TensorStorageType::TEXTURE_ARRAY:
+      return shape.w <= device.GetInfo().image2d_max_width &&
+             shape.h <= device.GetInfo().image2d_max_height &&
+             depth <= device.GetInfo().image_array_max_layers;
+    case TensorStorageType::TEXTURE_2D:
+      return shape.w <= device.GetInfo().image2d_max_width &&
+             shape.h * depth <= device.GetInfo().image2d_max_height;
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+      return shape.c <= 4 &&
+             context.IsFloatTexture2DSupported(shape.c, descriptor.data_type) &&
+             shape.w <= device.GetInfo().image2d_max_width &&
+             shape.h <= device.GetInfo().image2d_max_height;
+    default:
+      return false;
+  }
+}
+
 Status CreateTensor(const CLContext& context, const CLDevice& device, int width,
                     int height, int channels, DataType data_type,
                     TensorStorageType storage_type, Tensor* result) {
@@ -199,6 +231,21 @@ Status CreateTensor(const CLContext& context, const CLDevice& device, int width,
                                        data_type, storage_type, &memory));
   *result = Tensor(memory.Release(), width, height, channels, data_type,
                    storage_type);
+  return OkStatus();
+}
+
+Status CreateTensor(const CLContext& context, const CLDevice& device,
+                    const BHWC& shape, const TensorDescriptor& descriptor,
+                    Tensor* result) {
+  if (shape.b != 1) {
+    return UnimplementedError("Batch is not supported.");
+  }
+  CLMemory memory;
+  RETURN_IF_ERROR(AllocateTensorMemory(context, device, shape.w, shape.h,
+                                       shape.c, descriptor.data_type,
+                                       descriptor.storage_type, &memory));
+  *result = Tensor(memory.Release(), shape.w, shape.h, shape.c,
+                   descriptor.data_type, descriptor.storage_type);
   return OkStatus();
 }
 

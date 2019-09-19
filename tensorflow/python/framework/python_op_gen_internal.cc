@@ -108,8 +108,22 @@ bool IsOpWithUnderscorePrefix(const string& s) {
 }
 
 string AvoidPythonReserved(const string& s) {
-  if (IsPythonReserved(s)) return strings::StrCat(s, "_");
-  return s;
+  const char namespace_separator = '>';
+  const char joiner = '_';
+  const int last_index = s.size();
+  string result;
+  for (int i = 0; i < last_index; ++i) {
+    const char c = s[i];
+    // Convert namespace separators ('>' characters) to joiners
+    if (c == namespace_separator) {
+      result.push_back(joiner);
+    } else {
+      result.push_back(c);
+    }
+  }
+
+  if (IsPythonReserved(result)) return strings::StrCat(result, "_");
+  return result;
 }
 
 // Indent the first line by "initial" spaces and all following lines
@@ -467,20 +481,24 @@ string AttrValueToPython(const string& type, const AttrValue& value,
 
 void GenerateLowerCaseOpName(const string& str, string* result) {
   const char joiner = '_';
+  const char namespace_separator = '>';
   const int last_index = str.size() - 1;
   for (int i = 0; i <= last_index; ++i) {
     const char c = str[i];
     // Convert namespace separators ('>' characters) to joiners
-    if (c == '>') {
+    if (c == namespace_separator) {
       result->push_back(joiner);
       continue;
     }
 
     // Emit a joiner only if a previous-lower-to-now-upper or a
     // now-upper-to-next-lower transition happens.
+    // (But don't emit an extra joiner if we just saw a namespace separator
     if (isupper(c) && (i > 0)) {
       if (islower(str[i - 1]) || ((i < last_index) && islower(str[i + 1]))) {
-        result->push_back(joiner);
+        if (!(str[i - 1] == namespace_separator)) {
+          result->push_back(joiner);
+        }
       }
     }
     result->push_back(tolower(c));

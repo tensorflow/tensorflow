@@ -375,12 +375,13 @@ void GenEagerPythonOp::HandleGraphMode(
   if (api_def_.visibility() == ApiDef::VISIBLE) {
     strings::StrAppend(&result_, "  try:\n  ");
   }
-  strings::StrAppend(&result_, "  _, _, _op = _op_def_lib._apply_op_helper(\n");
+  strings::StrAppend(&result_,
+                     "  _, _, _op, _outputs = _op_def_lib._apply_op_helper(\n");
   AddBodyNoReturn(strings::StrCat("        \"", op_def_.name(), "\", "));
   AddDispatch("  ");
 
   if (num_outs_ > 0) {
-    strings::StrAppend(&result_, "  _result = _op.outputs[:]\n");
+    strings::StrAppend(&result_, "  _result = _outputs[:]\n");
     // Special case handling for stateful op with single list output
     // that might be empty.
     if (num_outs_ == 1 && op_def_.is_stateful() &&
@@ -759,7 +760,7 @@ bool GenEagerPythonOp::AddEagerFallbackCode(
 void GenEagerPythonOp::AddEagerFastPathExecute() {
   string fastpath_execute_params = strings::StrCat(
       "_ctx._context_handle, _ctx._thread_local_data.device_name, \"",
-      op_def_.name(), "\", ", "name, _ctx.post_execution_callbacks");
+      op_def_.name(), "\", ", "name, _ctx.op_callbacks");
   string fallback_params;
 
   for (int i = 0; i < api_def_.in_arg_size(); i++) {

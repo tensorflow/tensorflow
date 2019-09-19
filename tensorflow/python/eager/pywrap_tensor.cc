@@ -18,6 +18,8 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
+#include <cmath>
+
 #include "structmember.h"  // NOLINT // For PyMemberDef
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
@@ -403,7 +405,9 @@ TFE_TensorHandle* ConvertToEagerTensor(TFE_Context* ctx, PyObject* value,
     if (handle != nullptr) return handle;
     handle = ConvertToEagerTensorUncached(ctx, value, dtype, device_name);
     if (handle == nullptr) return nullptr;
-    cache->Insert(value, dtype, device_name, handle);
+    if (!PyFloat_Check(value) || std::isfinite(PyFloat_AS_DOUBLE(value))) {
+      cache->Insert(value, dtype, device_name, handle);
+    }
     return handle;
   } else {
     return ConvertToEagerTensorUncached(ctx, value, dtype, device_name);

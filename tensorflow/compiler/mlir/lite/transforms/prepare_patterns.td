@@ -102,6 +102,8 @@ def : Pat<(TF_MatMulOp $a, $b, ConstBoolAttrTrue, $bt),
              /*delta=*/(TF_ConstOp TFi32<-1>)), (TF_ConstOp TFi32<1>))), $b,
            ConstBoolAttrFalse, $bt)>;
 
+// Partially supported in TFLite, treated as passthrough IdentityOp
+def : Pat<(TF_CheckNumericsOp $arg, $msg), (TF_IdentityOp $arg)>;
 def : Pat<(TF_SnapshotOp $arg), (TF_IdentityOp $arg)>;
 def : Pat<(TF_StopGradientOp $arg), (TF_IdentityOp $arg)>;
 

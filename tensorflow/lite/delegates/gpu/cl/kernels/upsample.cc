@@ -43,7 +43,7 @@ std::string GetUpsampleCode(
   c += "  int X = get_global_id(0);\n";
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
-  c += "  if (X >= dst_size.x || Y >= dst_size.y) { \n";
+  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) { \n";
   c += "    return; \n";
   c += "  } \n";
   c += "  float2 f_coords = (float2)(X, Y) * scale_factor;\n";
@@ -70,9 +70,9 @@ std::string GetUpsampleCode(
        ";\n";
   c += "  FLT4 r0 = TO_FLT4(mix(mix(src0, src1, t.x), mix(src2, src3, t.x), "
        "t.y));\n";
-  c += "  " + dst_tensor.GetAddress("dst_addr", "X", "Y", "Z") + "\n";
-  c += PostProcess(linked_operations, "r0", "Z", "dst_addr");
-  c += "  " + dst_tensor.Write3D("r0", "dst_addr");
+  const LinkingContext context{"r0", "X", "Y", "Z"};
+  c += PostProcess(linked_operations, context);
+  c += "  " + dst_tensor.Write3D("r0", "X", "Y", "Z");
   c += "}\n";
   return c;
 }

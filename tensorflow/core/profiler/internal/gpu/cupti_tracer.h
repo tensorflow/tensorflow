@@ -102,8 +102,12 @@ struct CuptiTracerEvent {
       std::numeric_limits<uint64_t>::max();
   CuptiTracerEventType type;
   CuptiTracerEventSource source;
-  // name and annotation are only guaranteed to be valid in collector->AddEvent.
-  absl::string_view name;
+  // Although CUpti_CallbackData::functionName is persistent, however
+  // CUpti_ActivityKernel4::name is not persistent, therefore we need a copy of
+  // it.
+  std::string name;
+  // This points to strings in AnnotationMap, which should outlive the point
+  // where serialization happens.
   absl::string_view annotation;
   uint64 start_time_ns;
   uint64 end_time_ns;
@@ -159,7 +163,8 @@ class CuptiTraceCollector {
   virtual ~CuptiTraceCollector() {}
 
   virtual void AddEvent(CuptiTracerEvent&& event) = 0;
-  virtual void OnEventsDropped(const string& reason, uint32 num_events) = 0;
+  virtual void OnEventsDropped(const std::string& reason,
+                               uint32 num_events) = 0;
   virtual void Flush() = 0;
 
  protected:
@@ -173,7 +178,8 @@ class AnnotationMap {
  public:
   explicit AnnotationMap(uint64 max_size, uint32 num_gpus)
       : max_size_(max_size), per_device_map_(num_gpus) {}
-  void Add(uint32 device_id, uint32 correlation_id, const string& annotation);
+  void Add(uint32 device_id, uint32 correlation_id,
+           const std::string& annotation);
   absl::string_view LookUp(uint32 device_id, uint32 correlation_id);
 
  private:
@@ -183,7 +189,7 @@ class AnnotationMap {
     absl::Mutex mutex;
     // Annotation tends to be repetitive, use a hash_set to store the strings,
     // an use the reference to the string in the map.
-    absl::node_hash_set<string> annotations;
+    absl::node_hash_set<std::string> annotations;
     absl::flat_hash_map<uint32, absl::string_view> correlation_map;
   };
   const uint64 max_size_;
@@ -223,8 +229,7 @@ class CuptiTracer {
   // Only one profile session can be live in the same time.
   bool IsAvailable() const;
 
-  void Enable(const CuptiTracerOptions& option, CuptiInterface* cupti_interface,
-              CuptiTraceCollector* collector);
+  void Enable(const CuptiTracerOptions& option, CuptiTraceCollector* collector);
   void Disable();
 
   Status HandleCallback(CUpti_CallbackDomain domain, CUpti_CallbackId cbid,
@@ -237,9 +242,12 @@ class CuptiTracer {
   static uint64 GetTimestamp();
   static int NumGpus();
 
- private:
-  CuptiTracer() : num_gpus_(NumGpus()) {}
+ protected:
+  // protected constructor for injecting mock cupti interface for testing.
+  explicit CuptiTracer(CuptiInterface* cupti_interface)
+      : num_gpus_(NumGpus()), cupti_interface_(cupti_interface) {}
 
+ private:
   Status EnableApiTracing();
   Status EnableActivityTracing();
   Status DisableApiTracing();

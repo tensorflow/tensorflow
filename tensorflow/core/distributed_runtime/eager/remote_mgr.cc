@@ -139,7 +139,7 @@ Status RemoteMgr::DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
   return Status::OK();
 }
 
-EagerExecutor* RemoteMgr::GetOrCreateExecutorForStream(uint64 stream_id) {
+EagerExecutor& RemoteMgr::GetOrCreateExecutorForStream(uint64 stream_id) {
   mutex_lock l(executor_map_mu_);
   auto it = executor_map_.find(stream_id);
   if (it == executor_map_.end()) {
@@ -149,7 +149,7 @@ EagerExecutor* RemoteMgr::GetOrCreateExecutorForStream(uint64 stream_id) {
     DCHECK(it_and_bool.second);
     it = it_and_bool.first;
   }
-  return &it->second;
+  return it->second;
 }
 
 void RemoteMgr::DeleteExecutorForStream(uint64 stream_id) {

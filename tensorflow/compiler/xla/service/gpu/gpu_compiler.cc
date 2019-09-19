@@ -231,6 +231,9 @@ Status GpuCompiler::OptimizeHloModule(
     // run, meaning, the pipeline that contains layout assignment cannot contain
     // a layout-sensitive verifier!
     HloPassPipeline pipeline("layout assignment");
+    // Layout assignment uses alias analysis, which requires the call graph to
+    // be flattened.
+    pipeline.AddPass<FlattenCallGraph>();
     pipeline.AddPass<GpuLayoutAssignment>(
         hlo_module->mutable_entry_computation_layout(),
         LayoutAssignment::InstructionCanChangeLayout, stream_exec);
@@ -306,7 +309,6 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   // (and sometime after) copy insertion, to avoid dead code from interfering
   // with the rewrites.
   pipeline.AddPass<HloDCE>();
-  pipeline.AddPass<FlattenCallGraph>();
   if (hlo_module->config().alias_passthrough_params()) {
     pipeline.AddPass<AliasPassthroughParams>();
   }

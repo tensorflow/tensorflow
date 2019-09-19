@@ -351,6 +351,10 @@ class XlaCompiler {
 
   ~XlaCompiler();
 
+  // Helper function to populate an XlaCompiler::Argument from XlaResource.
+  static void PopulateArgumentFromResource(const XlaResource& resource,
+                                           Argument* arg);
+
   Status CompileFunction(const CompileOptions& options,
                          const NameAttrList& fn_name_attrs,
                          absl::Span<const Argument> args,

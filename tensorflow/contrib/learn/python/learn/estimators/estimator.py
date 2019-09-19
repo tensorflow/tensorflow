@@ -1095,6 +1095,15 @@ class BaseEstimator(sklearn.BaseEstimator, evaluable.Evaluable,
           _, loss = mon_sess.run([model_fn_ops.train_op, model_fn_ops.loss])
       return loss
 
+  def latest_checkpoint(self):
+    """Finds the filename of the latest saved checkpoint file in `model_dir`.
+
+    Returns:
+      The full path to the latest checkpoint or `None` if no checkpoint was
+      found.
+    """
+    return checkpoint_management.latest_checkpoint(self.model_dir)
+
 
 def _identity_feature_engineering_fn(features, labels):
   return features, labels

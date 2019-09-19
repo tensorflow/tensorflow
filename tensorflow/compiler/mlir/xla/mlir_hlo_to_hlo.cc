@@ -53,25 +53,24 @@ static std::vector<int64> ConvertDenseIntAttr(mlir::DenseIntElementsAttr attr) {
   return {values.begin(), values.end()};
 }
 
-// Converts the broadcast_dimensions attribute into a span of dimension numbers
-// (empty if the attribute is absent).
+// Converts the broadcast_dimensions attribute into a vector of dimension
+// numbers (empty if the attribute is absent).
 static std::vector<int64> Convert_broadcast_dimensions(
-    llvm::Optional<mlir::ElementsAttr> broadcast_dimensions) {
+    llvm::Optional<mlir::DenseIntElementsAttr> broadcast_dimensions) {
   if (!broadcast_dimensions.hasValue()) return {};
 
-  return ConvertDenseIntAttr(
-      broadcast_dimensions->cast<mlir::DenseIntElementsAttr>());
+  return ConvertDenseIntAttr(*broadcast_dimensions);
 }
 
-// Converts the broadcast_sizes attribute into a span of dimension sizes.
+// Converts the broadcast_sizes attribute into a vector of dimension sizes.
 static std::vector<int64> Convert_broadcast_sizes(
-    mlir::ElementsAttr broadcast_sizes) {
-  return ConvertDenseIntAttr(
-      broadcast_sizes.cast<mlir::DenseIntElementsAttr>());
+    mlir::DenseIntElementsAttr broadcast_sizes) {
+  return ConvertDenseIntAttr(broadcast_sizes);
 }
 
-static std::vector<int64> Convert_permutation(mlir::ElementsAttr permutation) {
-  return ConvertDenseIntAttr(permutation.cast<mlir::DenseIntElementsAttr>());
+static std::vector<int64> Convert_permutation(
+    mlir::DenseIntElementsAttr permutation) {
+  return ConvertDenseIntAttr(permutation);
 }
 
 // Converts the precision config array of strings attribute into the
@@ -97,6 +96,45 @@ static std::unique_ptr<xla::PrecisionConfig> Convert_precision_config(
   }
 
   return precision_config;
+}
+
+static xla::DotDimensionNumbers Convert_dot_dimension_numbers(
+    mlir::xla_hlo::DotDimensionNumbers dot_dimension_numbers_attr) {
+  xla::DotDimensionNumbers dot_dimension_numbers;
+
+  auto rhs_contracting_dimensions =
+      dot_dimension_numbers_attr.rhs_contracting_dimensions()
+          .cast<mlir::DenseIntElementsAttr>();
+  auto lhs_contracting_dimensions =
+      dot_dimension_numbers_attr.lhs_contracting_dimensions()
+          .cast<mlir::DenseIntElementsAttr>();
+  auto rhs_batch_dimensions =
+      dot_dimension_numbers_attr.rhs_batching_dimensions()
+          .cast<mlir::DenseIntElementsAttr>();
+  auto lhs_batch_dimensions =
+      dot_dimension_numbers_attr.lhs_batching_dimensions()
+          .cast<mlir::DenseIntElementsAttr>();
+
+  for (auto val : rhs_contracting_dimensions) {
+    dot_dimension_numbers.add_rhs_contracting_dimensions(
+        val.getLimitedValue(UINT64_MAX));
+  }
+  for (auto val : lhs_contracting_dimensions) {
+    dot_dimension_numbers.add_lhs_contracting_dimensions(
+        val.getLimitedValue(UINT64_MAX));
+  }
+
+  for (auto val : rhs_batch_dimensions) {
+    dot_dimension_numbers.add_rhs_batch_dimensions(
+        val.getLimitedValue(UINT64_MAX));
+  }
+
+  for (auto val : lhs_batch_dimensions) {
+    dot_dimension_numbers.add_lhs_batch_dimensions(
+        val.getLimitedValue(UINT64_MAX));
+  }
+
+  return dot_dimension_numbers;
 }
 
 // Converts the comparison_direction string attribute into the XLA enum. The

@@ -96,5 +96,5 @@ tf_py_test(
         ":audio_microfrontend_py",
         "//tensorflow:tensorflow_py",
     ],
-    tags = ["no_pip", "no_rocm_v2"],
+    tags = ["no_pip"],
 )

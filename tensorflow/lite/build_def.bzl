@@ -641,7 +641,7 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags):
       model_name: Name of the model to test (must be also listed in the 'data'
         dependencies)
       data: List of BUILD targets linking the data.
-      failure_type: List of failure types (none, toco, crash, inference)
+      failure_type: List of failure types (none, toco, crash, inference, evaluation)
         expected for the corresponding combinations of op sets
         ("TFLITE_BUILTINS", "TFLITE_BUILTINS,SELECT_TF_OPS", "SELECT_TF_OPS").
       tags: List of strings of additional tags.

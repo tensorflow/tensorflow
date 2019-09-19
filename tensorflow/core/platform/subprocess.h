@@ -19,6 +19,8 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/core/platform/types.h"
+
 namespace tensorflow {
 
 // Channel identifiers.
@@ -60,7 +62,7 @@ std::unique_ptr<SubProcess> CreateSubProcess(const std::vector<string>& argv);
 #include "tensorflow/core/platform/google/subprocess.h"
 #elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) || \
     defined(PLATFORM_GOOGLE_ANDROID)
-#include "tensorflow/core/platform/posix/subprocess.h"
+#include "tensorflow/core/platform/default/subprocess.h"
 #elif defined(PLATFORM_WINDOWS)
 #include "tensorflow/core/platform/windows/subprocess.h"
 #else

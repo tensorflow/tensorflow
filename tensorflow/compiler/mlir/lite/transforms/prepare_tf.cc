@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:local_config_mlir
 #include "mlir/Dialect/QuantOps/UniformSupport.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
+#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
@@ -72,6 +73,9 @@ struct PrepareTFPass : public FunctionPass<PrepareTFPass> {
 };
 
 // TODO(fengliuai): move this rule to PreparePatterns.td
+// TODO(b/140968741): propagate the sign from the command line. Currently all
+// the FakeQuant is assumed to targeting UIN8, but per-channel kernel is
+// actually INT8.
 // Inserts a "tfl.quantize" and "tfl.dequantize" op pair (QDQs) after the
 // "tf.FakeQuantWithMinMaxVarsOp" to be constant folded. Since the constant
 // folding logic will use a "std.constant" op to replace the
@@ -97,56 +101,64 @@ struct PrepareTFPass : public FunctionPass<PrepareTFPass> {
 //                   |
 //              tf.dequantize
 //                   |
-struct InsertTFLQuantOpsAfterTFFakeQuantOp : public RewritePattern {
-  InsertTFLQuantOpsAfterTFFakeQuantOp(MLIRContext *context)
-      : RewritePattern(TF::FakeQuantWithMinMaxVarsOp::getOperationName(), 3,
-                       context) {}
-  PatternMatchResult matchAndRewrite(Operation *op,
+template <typename TFFakeQuantOp>
+struct InsertTFLQuantOpsAfterTFFakeQuantOp
+    : public OpRewritePattern<TFFakeQuantOp> {
+  using BaseType = InsertTFLQuantOpsAfterTFFakeQuantOp<TFFakeQuantOp>;
+
+  explicit InsertTFLQuantOpsAfterTFFakeQuantOp<TFFakeQuantOp>(MLIRContext *ctx)
+      : OpRewritePattern<TFFakeQuantOp>(ctx) {}
+
+  PatternMatchResult matchAndRewrite(TFFakeQuantOp tf_op,
                                      PatternRewriter &rewriter) const override {
-    auto tf_op = cast<TF::FakeQuantWithMinMaxVarsOp>(op);
     // We don't want to insert quantize/dequantize if the quantize op exists.
     auto res = tf_op.outputs();
     if (!res->hasOneUse() || isa<QuantizeOp>(*res->user_begin()))
-      return matchFailure();
+      return this->matchFailure();
 
     // Extract the min/max constant values from the operands. We also consider
     // a special case that there are tf.Identity ops between the min/max
     // constants and the tf.FakeQuantWithMinMaxVarsOp.
     Value *min = tf_op.min(), *max = tf_op.max();
-    ElementsAttr min_value, max_value;
+    DenseFPElementsAttr min_value, max_value;
     if (auto id1 = dyn_cast_or_null<TF::IdentityOp>(min->getDefiningOp()))
       min = id1.input();
     if (auto id2 = dyn_cast_or_null<TF::IdentityOp>(max->getDefiningOp()))
       max = id2.input();
-    if (!matchPattern(min, m_Constant(&min_value))) return matchFailure();
-    if (!matchPattern(max, m_Constant(&max_value))) return matchFailure();
-    FloatAttr min_attr = ExtractSingleElementAsFloat(min_value);
-    FloatAttr max_attr = ExtractSingleElementAsFloat(max_value);
-    if (!min_attr || !max_attr) return matchFailure();
+    if (!matchPattern(min, m_Constant(&min_value))) return this->matchFailure();
+    if (!matchPattern(max, m_Constant(&max_value))) return this->matchFailure();
 
     // Use the min/max from the operands and the num_bits and narrow_range
     // attribute to create the quantization parameter for the new quantize op.
-    rewriter.setInsertionPoint(op->getBlock(), ++Block::iterator(op));
-    Type num_bits = rewriter.getIntegerType(tf_op.num_bits().getSExtValue());
-    bool narrow_range = tf_op.narrow_range();
+    rewriter.setInsertionPoint(rewriter.getBlock(), ++Block::iterator(tf_op));
+    IntegerAttr num_bits =
+        rewriter.getI64IntegerAttr(tf_op.num_bits().getSExtValue());
+    BoolAttr narrow_range = rewriter.getBoolAttr(tf_op.narrow_range());
     Type res_type = tf_op.getType();
-    TypeAttr qtype = GetQuantizedTypeAttr(rewriter, res_type, min_attr,
-                                          max_attr, num_bits, narrow_range);
+    TypeAttr qtype = GetQuantizedTypeAttr(rewriter, res_type, min_value,
+                                          max_value, num_bits, narrow_range);
+    if (!qtype) this->matchFailure();
 
     // Finally, use the quantization parameter to create the quantize and
     // dequantize ops, and insert them between the tf.FakeQuantWithMinMaxVarsOp
     // and its users.
     Value *value = tf_op.outputs();
     auto quantize = rewriter.create<TFL::QuantizeOp>(
-        op->getLoc(), qtype.getValue(), value, qtype);
-    auto dequantize = rewriter.create<TFL::DequantizeOp>(op->getLoc(), res_type,
-                                                         quantize.output());
+        tf_op.getLoc(), qtype.getValue(), value, qtype);
+    auto dequantize = rewriter.create<TFL::DequantizeOp>(
+        tf_op.getLoc(), res_type, quantize.output());
     value->replaceAllUsesWith(dequantize);
     quantize.getOperation()->replaceUsesOfWith(dequantize, value);
 
-    return matchSuccess();
+    return this->matchSuccess();
   }
 };
+
+using PreparePerTensorFakeQuant =
+    InsertTFLQuantOpsAfterTFFakeQuantOp<TF::FakeQuantWithMinMaxVarsOp>;
+
+using PreparePerChannelFakeQuant = InsertTFLQuantOpsAfterTFFakeQuantOp<
+    TF::FakeQuantWithMinMaxVarsPerChannelOp>;
 
 // Templated class for declaring a converter from some TensorFlow convolution
 // op into its counterpart in TensorFlow Lite.
@@ -388,7 +400,8 @@ void PrepareTFPass::runOnFunction() {
   // parameters from the TF Quant ops, thus this pattern should run with the
   // first `applyPatternsGreedily` method, which would otherwise removes the
   // TF FakeQuant ops by the constant folding.
-  patterns.insert<InsertTFLQuantOpsAfterTFFakeQuantOp>(&getContext());
+  patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(
+      &getContext());
   TFL::populateWithGenerated(&getContext(), &patterns);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.
@@ -409,7 +422,7 @@ void PrepareTFPass::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
-std::unique_ptr<FunctionPassBase> CreatePrepareTFPass() {
+std::unique_ptr<OpPassBase<FuncOp>> CreatePrepareTFPass() {
   return std::make_unique<PrepareTFPass>();
 }
 

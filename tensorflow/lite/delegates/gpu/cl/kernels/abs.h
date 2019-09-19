@@ -35,8 +35,7 @@ class Abs : public ElementwiseOperation {
   Abs(const Abs&) = delete;
   Abs& operator=(const Abs&) = delete;
 
-  std::string GetCoreCode(const std::string& src, const std::string& z_coord,
-                          const std::string& address) const override;
+  std::string GetCoreCode(const LinkingContext& context) const override;
 };
 
 Abs CreateAbs(const OperationDef& definition);

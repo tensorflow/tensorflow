@@ -379,7 +379,7 @@ def get_op_definition(instruction, doc, existing_info, inst_category):
              'form\n{assembly}}}];\n')
   if inst_category == 'Op':
     fmt_str +='\n  let arguments = (ins{args});\n\n'\
-              '  let results = (outs{results});\n\n'
+              '  let results = (outs{results});\n'
 
   fmt_str +='{extras}'\
             '}}\n'

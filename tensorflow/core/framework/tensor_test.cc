@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
@@ -1517,6 +1518,60 @@ void BM_CreateAndDestroyHostScalarOptimized(int iters) {
   }
 }
 BENCHMARK(BM_CreateAndDestroyHostScalarOptimized);
+
+static void BM_FromProto(int iters, int size) {
+  testing::StopTiming();
+  TensorShape shape({size});
+  Allocator* allocator = cpu_allocator();
+  Tensor a(allocator, DT_FLOAT, shape);
+  std::fill_n(a.flat<float>().data(), size, 42.0);
+  TensorProto p;
+  a.AsProtoField(&p);
+  testing::StartTiming();
+  while (--iters) {
+    Tensor b;
+    ASSERT_TRUE(b.FromProto(p));
+  }
+  testing::StopTiming();
+}
+BENCHMARK(BM_FromProto)->Range(1, 1 << 20);
+
+static void BM_FromProtoCompressed(int iters, int size) {
+  testing::StopTiming();
+  TensorShape shape({size});
+  Allocator* allocator = cpu_allocator();
+  Tensor a(allocator, DT_FLOAT, shape);
+  std::fill_n(a.flat<float>().data(), size, 42.0f);
+  TensorProto p;
+  a.AsProtoField(&p);
+  tensor::CompressTensorProtoInPlace(&p);
+  testing::StartTiming();
+  while (--iters) {
+    Tensor b;
+    ASSERT_TRUE(b.FromProto(p));
+  }
+  testing::StopTiming();
+}
+BENCHMARK(BM_FromProtoCompressed)->Range(1, 1 << 20);
+
+static void BM_FromProtoCompressedZero(int iters, int size) {
+  testing::StopTiming();
+  TensorShape shape({size});
+  Allocator* allocator = cpu_allocator();
+  Tensor a(allocator, DT_FLOAT, shape);
+  std::fill_n(a.flat<float>().data(), size, 0);
+  a.flat<float>()(0) = 1;
+  TensorProto p;
+  a.AsProtoField(&p);
+  tensor::CompressTensorProtoInPlace(&p);
+  testing::StartTiming();
+  while (--iters) {
+    Tensor b;
+    ASSERT_TRUE(b.FromProto(p));
+  }
+  testing::StopTiming();
+}
+BENCHMARK(BM_FromProtoCompressedZero)->Range(1, 1 << 20);
 
 }  // namespace
 }  // namespace tensorflow
