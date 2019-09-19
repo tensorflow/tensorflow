@@ -2,14 +2,9 @@
 
 // CHECK: llvm.mlir.global constant @[[global:.*]]("CUBIN")
 
-module attributes {gpu.kernel_module} {
-  func @kernel(!llvm.float, !llvm<"float*">)
-  attributes  {nvvm.cubin = "CUBIN"}
-}
-
 func @kernel(!llvm.float, !llvm<"float*">)
-// CHECK: attributes  {gpu.kernel, nvvm.cubingetter = @[[getter:.*]]}
-  attributes  {gpu.kernel}
+// CHECK: attributes  {gpu.kernel, nvvm.cubin = "CUBIN", nvvm.cubingetter = @[[getter:.*]]}
+  attributes  {gpu.kernel, nvvm.cubin = "CUBIN"}
 
 // CHECK: func @[[getter]]() -> !llvm<"i8*">
 // CHECK: %[[addressof:.*]] = llvm.mlir.addressof @[[global]]

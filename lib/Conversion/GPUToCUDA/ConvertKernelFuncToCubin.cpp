@@ -49,37 +49,26 @@ namespace {
 // TODO(herhut): Move to shared location.
 static constexpr const char *kCubinAnnotation = "nvvm.cubin";
 
-/// A pass converting tagged kernel modules to cubin blobs.
-///
-/// If tagged as a kernel module, each contained function is translated to NVVM
-/// IR and further to PTX. A user provided CubinGenerator compiles the PTX to
-/// GPU binary code, which is then attached as an attribute to the function. The
-/// function body is erased.
+/// A pass converting tagged kernel functions to cubin blobs.
 class GpuKernelToCubinPass : public ModulePass<GpuKernelToCubinPass> {
 public:
   GpuKernelToCubinPass(
       CubinGenerator cubinGenerator = compilePtxToCubinForTesting)
       : cubinGenerator(cubinGenerator) {}
 
+  // Run the dialect converter on the module.
   void runOnModule() override {
-    if (!getModule().getAttrOfType<UnitAttr>(
-            gpu::GPUDialect::getKernelModuleAttrName()))
-      return;
-
     // Make sure the NVPTX target is initialized.
     LLVMInitializeNVPTXTarget();
     LLVMInitializeNVPTXTargetInfo();
     LLVMInitializeNVPTXTargetMC();
     LLVMInitializeNVPTXAsmPrinter();
 
-    auto llvmModule = translateModuleToNVVMIR(getModule());
-    if (!llvmModule)
-      return signalPassFailure();
-
     for (auto function : getModule().getOps<FuncOp>()) {
-      if (!gpu::GPUDialect::isKernel(function))
+      if (!gpu::GPUDialect::isKernel(function) || function.isExternal()) {
         continue;
-      if (failed(translateGpuKernelToCubinAnnotation(*llvmModule, function)))
+      }
+      if (failed(translateGpuKernelToCubinAnnotation(function)))
         signalPassFailure();
     }
   }
@@ -90,13 +79,8 @@ private:
 
   std::string translateModuleToPtx(llvm::Module &module,
                                    llvm::TargetMachine &target_machine);
-
-  /// Converts llvmModule to cubin using the user-provded generator.
   OwnedCubin convertModuleToCubin(llvm::Module &llvmModule, FuncOp &function);
-
-  /// Translates llvmModule to cubin and assigns it to attribute of function.
-  LogicalResult translateGpuKernelToCubinAnnotation(llvm::Module &llvmModule,
-                                                    FuncOp &function);
+  LogicalResult translateGpuKernelToCubinAnnotation(FuncOp &function);
 
   CubinGenerator cubinGenerator;
 };
@@ -151,13 +135,22 @@ OwnedCubin GpuKernelToCubinPass::convertModuleToCubin(llvm::Module &llvmModule,
   return cubinGenerator(ptx, function);
 }
 
-LogicalResult GpuKernelToCubinPass::translateGpuKernelToCubinAnnotation(
-    llvm::Module &llvmModule, FuncOp &function) {
-  auto cubin = convertModuleToCubin(llvmModule, function);
-  if (!cubin)
-    return function.emitError("translation to CUDA binary failed.");
-
+LogicalResult
+GpuKernelToCubinPass::translateGpuKernelToCubinAnnotation(FuncOp &function) {
   Builder builder(function.getContext());
+
+  OwningModuleRef module = ModuleOp::create(function.getLoc());
+
+  // TODO(herhut): Also handle called functions.
+  module->push_back(function.clone());
+
+  auto llvmModule = translateModuleToNVVMIR(*module);
+  auto cubin = convertModuleToCubin(*llvmModule, function);
+
+  if (!cubin) {
+    return function.emitError("translation to CUDA binary failed.");
+  }
+
   function.setAttr(kCubinAnnotation,
                    builder.getStringAttr({cubin->data(), cubin->size()}));
 

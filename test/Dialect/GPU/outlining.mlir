@@ -1,4 +1,4 @@
-// RUN: mlir-opt -gpu-kernel-outlining -split-input-file -verify-diagnostics %s | FileCheck %s
+// RUN: mlir-opt -gpu-kernel-outlining -split-input-file %s | FileCheck %s
 
 // CHECK-LABEL: func @launch()
 func @launch() {
@@ -35,11 +35,7 @@ func @launch() {
 }
 
 // CHECK-LABEL: func @launch_kernel
-// CHECK-SAME: (f32, memref<?xf32, 1>)
-// CHECK-NEXT: attributes {gpu.kernel}
-
-// CHECK-LABEL: func @launch_kernel
-// CHECK-SAME: (%[[KERNEL_ARG0:.*]]: f32, %[[KERNEL_ARG1:.*]]: memref<?xf32, 1>)
+// CHECK-SAME: (%[[ARG0:.*]]: f32, %[[ARG1:.*]]: memref<?xf32, 1>)
 // CHECK-NEXT: attributes {gpu.kernel}
 // CHECK-NEXT: %[[BID:.*]] = "gpu.block_id"() {dimension = "x"} : () -> index
 // CHECK-NEXT: = "gpu.block_id"() {dimension = "y"} : () -> index
@@ -53,9 +49,9 @@ func @launch() {
 // CHECK-NEXT: %[[BDIM:.*]] = "gpu.block_dim"() {dimension = "x"} : () -> index
 // CHECK-NEXT: = "gpu.block_dim"() {dimension = "y"} : () -> index
 // CHECK-NEXT: = "gpu.block_dim"() {dimension = "z"} : () -> index
-// CHECK-NEXT: "use"(%[[KERNEL_ARG0]]) : (f32) -> ()
+// CHECK-NEXT: "use"(%[[ARG0]]) : (f32) -> ()
 // CHECK-NEXT: "some_op"(%[[BID]], %[[BDIM]]) : (index, index) -> ()
-// CHECK-NEXT: = load %[[KERNEL_ARG1]][%[[TID]]] : memref<?xf32, 1>
+// CHECK-NEXT: = load %[[ARG1]][%[[TID]]] : memref<?xf32, 1>
 
 // -----
 
@@ -79,8 +75,8 @@ func @multiple_launches() {
   return
 }
 
-// CHECK: func @multiple_launches_kernel()
-// CHECK: func @multiple_launches_kernel_0()
+// CHECK-LABEL: func @multiple_launches_kernel()
+// CHECK-LABEL: func @multiple_launches_kernel_0()
 
 // -----
 
@@ -104,23 +100,3 @@ func @extra_constants(%arg0 : memref<?xf32>) {
 // CHECK-LABEL: func @extra_constants_kernel(%{{.*}}: memref<?xf32>)
 // CHECK: constant
 // CHECK: constant
-
-// -----
-
-func @function_call(%arg0 : memref<?xf32>) {
-  %cst = constant 8 : index
-  gpu.launch blocks(%bx, %by, %bz) in (%grid_x = %cst, %grid_y = %cst,
-                                       %grid_z = %cst)
-             threads(%tx, %ty, %tz) in (%block_x = %cst, %block_y = %cst,
-                                        %block_z = %cst) {
-    // TODO(b/141098412): Support function calls.
-    // expected-error @+1 {{'device_function' does not reference a valid function}}
-    call @device_function() : () -> ()
-    gpu.return
-  }
-  return
-}
-
-func @device_function() {
-  gpu.return
-}
