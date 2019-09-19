@@ -26,6 +26,7 @@ from tensorflow.python import _pywrap_utils
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -483,8 +484,9 @@ def type_spec_from_value(value):
     spec = _type_spec_from_value(tensor)
     if spec is not None:
       return spec
-  except (ValueError, TypeError):
-    pass
+  except (ValueError, TypeError) as e:
+    logging.vlog(
+        3, "Failed to convert %r to tensor: %s" % (type(value).__name__, e))
 
   raise TypeError("Could not build a TypeSpec for %r with type %s" %
                   (value, type(value).__name__))
