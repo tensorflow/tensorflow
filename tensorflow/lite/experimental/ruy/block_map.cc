@@ -29,23 +29,15 @@ void GetBlockByIndex(const BlockMap& block_map, int index,
                      SidePair<int>* block) {
   gemmlowp::ScopedProfilingLabel label("GetBlockByIndex");
   const std::uint32_t index_u32 = index;
-  const std::uint32_t rectr =
-      index_u32 & ((1u << block_map.rectangularness_log2[Side::kLhs]) - 1);
-  const std::uint32_t rectc =
-      index_u32 & ((1u << block_map.rectangularness_log2[Side::kRhs]) - 1);
 
-  const std::uint32_t n1 =
-      index_u32 >> (block_map.rectangularness_log2[Side::kLhs] +
-                    block_map.rectangularness_log2[Side::kRhs]);
-  RUY_DCHECK_EQ(index_u32,
-                (n1 << (block_map.rectangularness_log2[Side::kLhs] +
-                        block_map.rectangularness_log2[Side::kRhs])) +
-                    rectr + rectc);
+  const std::uint32_t num_blocks_per_local_curve =
+      1u << (2 * block_map.num_blocks_base_log2);
+  const std::uint32_t n1 = index_u32 & (num_blocks_per_local_curve - 1);
 
-  std::uint32_t br, bc;
+  SidePair<int> local_pos;
   if (block_map.traversal_order == BlockMapTraversalOrder::kLinear) {
-    br = n1 & ((1u << block_map.num_blocks_base_log2) - 1);
-    bc = n1 >> block_map.num_blocks_base_log2;
+    local_pos[Side::kLhs] = n1 & ((1u << block_map.num_blocks_base_log2) - 1);
+    local_pos[Side::kRhs] = n1 >> block_map.num_blocks_base_log2;
   } else {
     // Decode fractal z-order
     const std::uint32_t n2 = (n1 & 0x99999999u) | ((n1 & 0x44444444u) >> 1) |
@@ -56,21 +48,22 @@ void GetBlockByIndex(const BlockMap& block_map, int index,
                              ((n4 & 0x00f000f0u) << 4);
     const std::uint32_t n16 = (n8 & 0xff0000ffu) | ((n8 & 0x00ff0000u) >> 8) |
                               ((n8 & 0x0000ff00u) << 8);
-
-    br = n16 & 0xffff;
-    bc = n16 >> 16;
+    local_pos[Side::kLhs] = n16 & 0xffff;
+    local_pos[Side::kRhs] = n16 >> 16;
     if (block_map.traversal_order == BlockMapTraversalOrder::kFractalU) {
       // Change fractal z-order to u-order
-      br ^= bc;
+      local_pos[Side::kLhs] ^= local_pos[Side::kRhs];
     }
   }
 
-  br = (br << block_map.rectangularness_log2[Side::kLhs]) + rectr;
-  bc = (bc << block_map.rectangularness_log2[Side::kRhs]) + rectc;
-
-  // Store
-  (*block)[Side::kLhs] = br;
-  (*block)[Side::kRhs] = bc;
+  const std::uint32_t rectangular_index =
+      index_u32 >> 2 * block_map.num_blocks_base_log2;
+  for (Side side : {Side::kLhs, Side::kRhs}) {
+    const std::uint32_t mask = (1u << block_map.rectangularness_log2[side]) - 1;
+    const int rectangular_offset = (rectangular_index & mask)
+                                   << block_map.num_blocks_base_log2;
+    (*block)[side] = local_pos[side] + rectangular_offset;
+  }
 }
 
 namespace {

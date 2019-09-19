@@ -51,11 +51,11 @@ enum class BlockMapTraversalOrder {
 // GetBlockByIndex to get the corresponding block, then GetBlockMatrixCoords
 // to find the actual row and column numbers of this block.
 //
-// There are two nested levels of subdivision. On a high level, the matrix is
-// tiled into a square NxN grid where N is a power of to, specifically:
+// There are two nested levels of subdivision. On a local level, the matrix is
+// tiled into a square NxN grid where N is a power of two, specifically:
 //   N = 2^num_blocks_base_log2.
 //
-// At a smaller scale, within each of these blocks, there may be one further
+// At a larger scale, around these blocks, there may be one further
 // level of subdivision, in only one dimension: either along rows or along
 // columns. That is used to handle arbitrarily rectangular matrices. The
 // aforementioned high-level block grid is square, so it does not readily fit
