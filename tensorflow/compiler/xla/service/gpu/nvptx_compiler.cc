@@ -112,7 +112,7 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                             /*allow_mixed_precision=*/false);
   pipeline.AddPass<CusolverRewriter>();
-  pipeline.AddPass<CudnnConvRewriter>();
+  pipeline.AddPass<GpuConvRewriter>();
   pipeline.AddPass<CudnnFusedConvRewriter>();
   pipeline.AddPass<GpuConvPaddingLegalization>();
   pipeline.AddPass<CudnnPadForConvolutions>(IsVoltaOrLater(*stream_exec));
@@ -121,7 +121,7 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   // fixes.
   pipeline.AddPass<TupleSimplifier>();
 
-  // tf2xla bridge, DepthwiseConvolutionConverter and CudnnConvRewriter
+  // tf2xla bridge, DepthwiseConvolutionConverter and GpuConvRewriter
   // introduces reshapes and transposes that can be eliminated using
   // AlgebraicSimplifier
   {
@@ -134,7 +134,7 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     pass.AddPass<AlgebraicSimplifier>(options);
   }
 
-  // CudnnConvRewriter, GpuConvPaddingLegalization and
+  // GpuConvRewriter, GpuConvPaddingLegalization and
   // CudnnConvPadForTensorCores may add instructions which can be simplified
   // by constant folding.
   pipeline.AddPass<HloConstantFolding>();
@@ -170,7 +170,7 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   // Choose the fastest algorithm for each conv.
   //
   // We pick the algorithm before fusion so we can generate better HLO. After
-  // CudnnConvRewriter, our convolutions are CustomCalls which return a
+  // GpuConvRewriter, our convolutions are CustomCalls which return a
   // tuple (conv_result, scratch_memory), and the each conv uses 0 bytes of
   // scratch:
   //

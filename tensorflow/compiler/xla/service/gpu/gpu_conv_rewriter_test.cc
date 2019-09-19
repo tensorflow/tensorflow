@@ -85,7 +85,7 @@ class GpuConvRewriterTest : public HloTestBase {
 
  protected:
   bool RunPass(HloModule* module) {
-    return CudnnConvRewriter().Run(module).ValueOrDie();
+    return GpuConvRewriter().Run(module).ValueOrDie();
   }
 
   // A convolution window with stride 1 and zero padding. The size fields are
@@ -724,7 +724,7 @@ TEST_F(GpuConvRewriterTest, TestForwardInt8Convolution) {
     })");
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
-  ASSERT_FALSE(CudnnConvRewriter().Run(m.get()).ok());
+  ASSERT_FALSE(GpuConvRewriter().Run(m.get()).ok());
 }
 }  // anonymous namespace
 }  // namespace gpu

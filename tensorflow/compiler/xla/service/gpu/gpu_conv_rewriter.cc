@@ -735,7 +735,7 @@ StatusOr<bool> RunOnComputation(HloComputation* computation) {
 }
 }  // namespace
 
-StatusOr<bool> CudnnConvRewriter::Run(HloModule* module) {
+StatusOr<bool> GpuConvRewriter::Run(HloModule* module) {
   bool changed = false;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));

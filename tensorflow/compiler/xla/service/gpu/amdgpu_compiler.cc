@@ -73,7 +73,7 @@ Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   HloPassPipeline pipeline("conv_canonicalization");
   pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                             /*allow_mixed_precision=*/false);
-  pipeline.AddPass<CudnnConvRewriter>();
+  pipeline.AddPass<GpuConvRewriter>();
   pipeline.AddPass<GpuConvPaddingLegalization>();
 
   pipeline.AddPass<HloConstantFolding>();

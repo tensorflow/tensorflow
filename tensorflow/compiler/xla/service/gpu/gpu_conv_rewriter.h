@@ -32,7 +32,7 @@ namespace gpu {
 // Note that this pattern is necessary but not sufficient to map convolutions
 // to CuDNN.  More patterns will be matched in cudnn_fused_conv_rewriter.
 
-class CudnnConvRewriter : public HloModulePass {
+class GpuConvRewriter : public HloModulePass {
  public:
   absl::string_view name() const override { return "cudnn-conv-rewriter"; }
 
