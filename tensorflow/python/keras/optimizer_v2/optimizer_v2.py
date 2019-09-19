@@ -305,8 +305,8 @@ class OptimizerV2(trackable.Trackable):
       name: Optional name for the returned operation.
 
     Returns:
-      An Operation that updates the variables in `var_list`.  If `global_step`
-      was not `None`, that operation also increments `global_step`.
+      An `Operation` that updates the variables in `var_list`. The `iterations`
+      will be automatically increased by 1.
 
     Raises:
       ValueError: If some of the variables are not `Variable` objects.
@@ -417,7 +417,7 @@ class OptimizerV2(trackable.Trackable):
 
     Returns:
       An `Operation` that applies the specified gradients. The `iterations`
-        will be automatically increased by 1.
+      will be automatically increased by 1.
 
     Raises:
       TypeError: If `grads_and_vars` is malformed.
