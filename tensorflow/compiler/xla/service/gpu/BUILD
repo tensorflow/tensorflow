@@ -931,9 +931,9 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "cudnn_conv_padding_legalization",
-    srcs = ["cudnn_conv_padding_legalization.cc"],
-    hdrs = ["cudnn_conv_padding_legalization.h"],
+    name = "gpu_conv_padding_legalization",
+    srcs = ["gpu_conv_padding_legalization.cc"],
+    hdrs = ["gpu_conv_padding_legalization.h"],
     deps = [
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:literal",
@@ -1054,11 +1054,11 @@ cc_library(
     deps = [
         ":alias_passthrough_params",
         ":cudnn_batchnorm_rewriter",
-        ":cudnn_conv_padding_legalization",
         ":cudnn_conv_rewriter",
         ":cudnn_pad_for_convolutions",
         ":fusion_merger",
         ":gpu_constants",
+        ":gpu_conv_padding_legalization",
         ":gpu_copy_insertion",
         ":gpu_executable",
         ":gpu_hlo_schedule",
@@ -1157,7 +1157,6 @@ cc_library(
     deps = [
         ":cublas_gemm_pad_for_tensor_cores",
         ":cudnn_conv_algorithm_picker",
-        ":cudnn_conv_padding_legalization",
         ":cudnn_conv_rewriter",
         ":cudnn_fused_conv_rewriter",
         ":cudnn_pad_for_convolutions",
@@ -1165,6 +1164,7 @@ cc_library(
         ":gemm_algorithm_picker",
         ":gemm_rewriter",
         ":gpu_compiler",
+        ":gpu_conv_padding_legalization",
         ":gpu_layout_assignment",
         ":stream_executor_util",
         ":target_constants",
@@ -1217,9 +1217,9 @@ cc_library(
         "amdgpu_compiler.h",
     ],
     deps = [
-        ":cudnn_conv_padding_legalization",
         ":cudnn_conv_rewriter",
         ":gpu_compiler",
+        ":gpu_conv_padding_legalization",
         ":gpu_layout_assignment",
         ":target_constants",
         "//tensorflow/compiler/xla:statusor",
