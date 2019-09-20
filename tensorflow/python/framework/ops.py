@@ -2519,26 +2519,6 @@ def get_gradient_function(op):
   return _gradient_registry.lookup(op_type)
 
 
-class RegisterShape(object):
-  """No longer used.
-
-  Was: A decorator for registering a shape function.
-
-  Shape functions must now be registered via the SetShapeFn on the
-  original Op specification in C++.
-
-  """
-
-  def __init__(self, op_type):
-    """Saves the `op_type` as the `Operation` type."""
-    if not isinstance(op_type, six.string_types):
-      raise TypeError("op_type must be a string")
-
-  def __call__(self, f):
-    """No-op."""
-    return f
-
-
 def set_shape_and_handle_data_for_outputs(_):
   """No op. TODO(b/74620627): Remove this."""
   pass
