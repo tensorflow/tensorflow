@@ -698,6 +698,33 @@ def TFL_GreaterEqualOp : TFL_Op<"greater_equal", [
   let hasOptions = 0;
 }
 
+def TFL_MatrixDiagOp : TFL_Op<"matrix_diag", [
+  NoSideEffect,
+  TFL_OperandHasAtleastRank<0, 1>,
+  PredOpTrait<"operand and result must have the same element type",
+    TCresVTEtIsSameAsOp<0, 0>>]> {
+  let summary = [{
+    Returns a tensor with the provided diagonal and everything else padded with zeros.
+  }];
+
+  let description = [{
+    Given a diagonal, returns a tensor with the diagonal and everything else padded with zeros.
+    Assume diagonal has k dimensions `[I, J, K, ..., N]`, then the output is a tensor of rank `k+1`
+    with dimensions `[I, J, K, ..., N, N]` where:
+       `output[i, j, k, ..., m, n] = 1{m=n} * diagonal[i, j, k, ..., n].`
+  }];
+
+  let arguments = (ins
+    TensorOf<[F32, I8, I64, I32, TFL_Uint8]>:$diagonal
+  );
+
+  let results = (outs
+    TensorOf<[F32, I8, I64, I32, TFL_Uint8]>:$output
+  );
+
+  let hasOptions = 0;
+}
+
 // These ops are named NonMaxSuppressionV4 & NonMaxSuppressionV5 to be
 // consistent with TensorFlow's naming. They are NOT 'versions' of NMS in the
 // sense that one is an incremental change over the other.

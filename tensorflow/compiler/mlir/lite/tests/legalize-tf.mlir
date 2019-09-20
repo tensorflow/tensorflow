@@ -666,6 +666,14 @@ func @reverse_v2(%arg0: tensor<1x2x3x4xf32>, %arg1: tensor<1xi32>) -> tensor<1x2
 // CHECK:  return %0 : tensor<1x2x3x4xf32>
 }
 
+func @matrix_diag(%arg0: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
+  %0 = "tf.MatrixDiag"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16x16xf32>
+  return %0 : tensor<8x16x16xf32>
+
+// CHECK-LABEL:matrix_diag
+// CHECK:  %0 = "tfl.matrix_diag"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16x16xf32>
+}
+
 func @maximum(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.Maximum"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
   return %0 : tensor<8x16xf32>
