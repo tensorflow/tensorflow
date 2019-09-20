@@ -1,0 +1,59 @@
+// Sample .proto file that we can translate to the corresponding .fbs.
+
+option some_option = is_ignored;
+import "imported.proto";
+
+package proto.test;
+
+/// Enum doc comment.
+enum ProtoEnum {
+  option allow_alias = true;
+  NUL = 0;
+  FOO = 1;
+  /// Enum 2nd value doc comment misaligned.
+  BAR = 5;
+  // Aliases
+  FOO_A1 = 1;
+  BAR_A1 = 5;
+  FOO_A2 = 1;
+}
+
+/// 2nd table doc comment with
+/// many lines.
+message ProtoMessage {
+  // Ignored non-doc comment.
+  // A nested message declaration, will be moved to top level in .fbs
+  message OtherMessage {
+    optional double a = 26;
+    /// doc comment for b.
+    optional float b = 32 [default = 3.14149];
+  }
+  optional int32 c = 12 [default = 16];
+  optional int64 d = 1 [default = 0];
+  optional uint32 p = 1;
+  optional uint64 e = 2;
+  /// doc comment for f.
+  optional sint32 f = 3 [default = -1];
+  optional sint64 g = 4;
+  optional fixed32 h = 5;
+  optional fixed64 q = 6;
+  optional sfixed32 i = 7;
+  optional sfixed64 j = 8;
+  /// doc comment for k.
+  optional bool k = 9;
+  /// doc comment for l on 2
+  /// lines
+  required string l = 10;
+  optional bytes m = 11;
+  optional OtherMessage n = 12;
+  repeated string o = 14;
+  optional ImportedMessage z = 16;
+  /// doc comment for r.
+  oneof r {
+    /// doc comment for s.
+    ImportedMessage s = 17;
+    /// doc comment for t on 2
+    /// lines.
+    OtherMessage t = 18;
+  }
+}

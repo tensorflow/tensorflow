@@ -1,0 +1,15 @@
+{
+  // Initialize with non-default values.
+  d0 : -nan, // match with default
+  d1 : +inf,
+  d2 : -inf,
+  d3:   nan,
+  f0 : +nan, // match with default
+  f1 : -nan, // match with default
+  f2 : +inf, // match with default
+  f3 : -inf, // match with default
+  // Values should have exact binary representation 
+  // to avoid rounding effects in tests.
+  dvec : [2.0, +inf, -inf, nan,],
+  fvec : [1.0, -inf, +inf, nan],
+}

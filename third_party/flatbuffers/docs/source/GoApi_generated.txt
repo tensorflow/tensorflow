@@ -1,0 +1,125 @@
+// This file was generated using `godoc` and customized for use with the
+// API Reference documentation. To recreate this file, use the `godoc` tool
+// (http://godoc.org) with the files in the `flatbuffers/go` folder.
+//
+// Note: You may need to ensure that copies of the files exist in the
+// `src/` subfolder at the path set by the `$GOROOT` environment variable.
+// You can either move the files to `$GOROOT/src/flatbuffers` manually, if
+// `$GOROOT` is already set, otherwise you will need to manually set the
+// `$GOROOT` variable to a path and create `src/flatbuffers` subfolders at that
+// path. Then copy these files into `$GOROOT/src/flatbuffers`. (Some versions of
+// `godoc` include a `-path` flag. This could be used instead, if available).
+//
+// Once the files exist at the `$GOROOT/src/flatbuffers` location, you can
+// regenerate this doc using the following command:
+// `godoc flatbuffers > GoApi_generated.txt`.
+//
+// After the documentation is generated, you will have to manually remove any
+// non-user facing documentation from this file.
+
+/// [Go API]
+PACKAGE DOCUMENTATION
+
+package flatbuffers
+    Package flatbuffers provides facilities to read and write flatbuffers
+    objects.
+
+TYPES
+
+type Builder struct {
+    // `Bytes` gives raw access to the buffer. Most users will want to use
+    // FinishedBytes() instead.
+    Bytes []byte
+}
+    Builder is a state machine for creating FlatBuffer objects. Use a
+    Builder to construct object(s) starting from leaf nodes.
+
+    A Builder constructs byte buffers in a last-first manner for simplicity
+    and performance.
+
+FUNCTIONS
+
+func NewBuilder(initialSize int) *Builder
+    NewBuilder initializes a Builder of size `initial_size`. The internal
+    buffer is grown as needed.
+
+func (b *Builder) CreateByteString(s []byte) UOffsetT
+    CreateByteString writes a byte slice as a string (null-terminated).
+
+func (b *Builder) CreateByteVector(v []byte) UOffsetT
+    CreateByteVector writes a ubyte vector
+
+func (b *Builder) CreateString(s string) UOffsetT
+    CreateString writes a null-terminated string as a vector.
+
+func (b *Builder) EndVector(vectorNumElems int) UOffsetT
+    EndVector writes data necessary to finish vector construction.
+
+func (b *Builder) Finish(rootTable UOffsetT)
+    Finish finalizes a buffer, pointing to the given `rootTable`.
+
+func (b *Builder) FinishedBytes() []byte
+    FinishedBytes returns a pointer to the written data in the byte buffer.
+    Panics if the builder is not in a finished state (which is caused by
+    calling `Finish()`).
+
+func (b *Builder) Head() UOffsetT
+    Head gives the start of useful data in the underlying byte buffer. Note:
+    unlike other functions, this value is interpreted as from the left.
+
+func (b *Builder) PrependBool(x bool)
+    PrependBool prepends a bool to the Builder buffer. Aligns and checks for
+    space.
+
+func (b *Builder) PrependByte(x byte)
+    PrependByte prepends a byte to the Builder buffer. Aligns and checks for
+    space.
+
+func (b *Builder) PrependFloat32(x float32)
+    PrependFloat32 prepends a float32 to the Builder buffer. Aligns and
+    checks for space.
+
+func (b *Builder) PrependFloat64(x float64)
+    PrependFloat64 prepends a float64 to the Builder buffer. Aligns and
+    checks for space.
+
+func (b *Builder) PrependInt16(x int16)
+    PrependInt16 prepends a int16 to the Builder buffer. Aligns and checks
+    for space.
+
+func (b *Builder) PrependInt32(x int32)
+    PrependInt32 prepends a int32 to the Builder buffer. Aligns and checks
+    for space.
+
+func (b *Builder) PrependInt64(x int64)
+    PrependInt64 prepends a int64 to the Builder buffer. Aligns and checks
+    for space.
+
+func (b *Builder) PrependInt8(x int8)
+    PrependInt8 prepends a int8 to the Builder buffer. Aligns and checks for
+    space.
+
+func (b *Builder) PrependUOffsetT(off UOffsetT)
+    PrependUOffsetT prepends an UOffsetT, relative to where it will be
+    written.
+
+func (b *Builder) PrependUint16(x uint16)
+    PrependUint16 prepends a uint16 to the Builder buffer. Aligns and checks
+    for space.
+
+func (b *Builder) PrependUint32(x uint32)
+    PrependUint32 prepends a uint32 to the Builder buffer. Aligns and checks
+    for space.
+
+func (b *Builder) PrependUint64(x uint64)
+    PrependUint64 prepends a uint64 to the Builder buffer. Aligns and checks
+    for space.
+
+func (b *Builder) PrependUint8(x uint8)
+    PrependUint8 prepends a uint8 to the Builder buffer. Aligns and checks
+    for space.
+
+func (b *Builder) Reset()
+    Reset truncates the underlying Builder buffer, facilitating alloc-free
+    reuse of a Builder. It also resets bookkeeping data.
+/// [Go API]

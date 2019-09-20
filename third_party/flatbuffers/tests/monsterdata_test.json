@@ -1,0 +1,78 @@
+{
+  pos: {
+    x: 1,
+    y: "2",
+    z: 3,
+    test1: 3,
+    test2: Green,
+    test3: {
+      a: 5,
+      b: 6
+    }
+  },
+  hp: 80,
+  name: "MyMonster",
+  inventory: [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  vector_of_longs: [
+      1,
+      100,
+      10000,
+      1000000,
+      100000000
+  ],
+  vector_of_doubles: [
+      -1.7976931348623157e+308,
+      0,
+      1.7976931348623157e+308
+  ],
+  test_type: Monster,
+  test: {
+    name: "Fred",
+    pos: null
+  },
+  test4: [
+    {
+      a: 10,
+      b: 20
+    },
+    {
+      b: "40",
+      a: 30
+    }
+  ],
+  test5: [
+    {
+      a: 10,
+      b: 20
+    },
+    {
+      b: "40",
+      a: 30
+    }
+  ],
+  testarrayofstring: [
+    "test1",
+    "test2"
+  ],
+  enemy: {
+    name: "Fred"
+  },
+  testarrayofbools:[
+    true, false, true
+  ],
+  testbool: true,
+  testhashs32_fnv1: "This string is being hashed!",
+  testhashu32_fnv1: "This string is being hashed!",
+  testhashs64_fnv1: "This string is being hashed!",
+  testhashu64_fnv1: "This string is being hashed!",
+  testhashs32_fnv1a: "This string is being hashed!",
+  testhashu32_fnv1a: "This string is being hashed!",
+  testhashs64_fnv1a: "This string is being hashed!",
+  testhashu64_fnv1a: "This string is being hashed!",
+}

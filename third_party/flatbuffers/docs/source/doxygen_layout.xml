@@ -1,0 +1,248 @@
+<!-- Copyright 2015 Google Inc. All rights reserved.
+
+     Licensed under the Apache License, Version 2.0 (the "License");
+     you may not use this file except in compliance with the License.
+     You may obtain a copy of the License at
+
+          http://www.apache.org/licenses/LICENSE-2.0
+
+     Unless required by applicable law or agreed to in writing, software
+     distributed under the License is distributed on an "AS IS" BASIS,
+     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+     See the License for the specific language governing permissions and
+     limitations under the License.
+ -->
+<doxygenlayout version="1.0">
+  <navindex>
+    <tab type="mainpage" visible="no" title=""/>
+    <tab type="usergroup" url="" title="Programmer's Guide">
+      <tab type="user" url="@ref flatbuffers_guide_building"
+          title="Building"/>
+      <tab type="user" url="@ref flatbuffers_guide_tutorial" title="Tutorial"/>
+      <tab type="user" url="@ref flatbuffers_guide_using_schema_compiler"
+          title="Using the schema compiler"/>
+      <tab type="user" url="@ref flatbuffers_guide_writing_schema"
+          title="Writing a schema"/>
+      <tab type="user" url="@ref flatbuffers_guide_use_cpp"
+          title="Use in C++"/>
+      <tab type="user" url="@ref flatbuffers_guide_use_c"
+          title="Use in C"/>
+      <tab type="user" url="@ref flatbuffers_guide_use_go"
+          title="Use in Go"/>
+      <tab type="user" url="@ref flatbuffers_guide_use_java_c-sharp"
+          title="Use in Java/C#"/>
+      <tab type="user" url="@ref flatbuffers_guide_use_javascript"
+          title="Use in JavaScript"/>
+      <tab type="user" url="@ref flatbuffers_guide_use_typescript"
+          title="Use in TypeScript"/>
+      <tab type="user" url="@ref flatbuffers_guide_use_php"
+          title="Use in PHP"/>
+      <tab type="user" url="@ref flatbuffers_guide_use_python"
+          title="Use in Python"/>
+      <tab type="user" url="@ref flatbuffers_guide_use_dart"
+          title="Use in Dart"/>
+      <tab type="user" url="@ref flatbuffers_guide_use_lua"
+          title="Use in Lua"/>
+      <tab type="user" url="@ref flatbuffers_guide_use_lobster"
+          title="Use in Lobster"/>
+      <tab type="user" url="@ref flatbuffers_guide_use_rust"
+          title="Use in Rust"/>
+      <tab type="user" url="@ref flexbuffers"
+          title="FlexBuffers (Schema-less version)"/>
+      <tab type="usergroup" url="" title="gRPC">
+        <tab type="user" url="@ref flatbuffers_grpc_guide_use_cpp"
+            title="Use in C++"/>
+      </tab>
+    </tab>
+    <tab type="user" url="@ref flatbuffers_support"
+        title="Platform / Language / Feature support"/>
+    <tab type="user" url="@ref flatbuffers_benchmarks"
+        title="Benchmarks"/>
+    <tab type="user" url="@ref flatbuffers_white_paper"
+        title="FlatBuffers white paper"/>
+    <tab type="user" url="@ref flatbuffers_internals"
+        title="FlatBuffers internals"/>
+    <tab type="user" url="@ref flatbuffers_grammar"
+        title="Grammar of the schema language"/>
+    <tab type="usergroup" url="" title="API Reference">
+      <tab type="modules" visible="yes" title="APIs" intro=""/>
+      <tab type="classes" visible="yes" title="">
+        <tab type="classlist" visible="yes" title="" intro=""/>
+        <tab type="classindex" visible="$ALPHABETICAL_INDEX" title=""/>
+        <tab type="hierarchy" visible="yes" title="" intro=""/>
+        <tab type="classmembers" visible="yes" title="" intro=""/>
+      </tab>
+    </tab>
+    <tab type="user" url="@ref contributing" title="Contributing"/>
+  </navindex>
+
+  <!-- Layout definition for a class page -->
+  <class>
+    <briefdescription visible="yes"/>
+    <includes visible="$SHOW_INCLUDE_FILES"/>
+    <inheritancegraph visible="$CLASS_GRAPH"/>
+    <collaborationgraph visible="$COLLABORATION_GRAPH"/>
+    <detaileddescription title=""/>
+    <memberdecl>
+      <nestedclasses visible="yes" title=""/>
+      <publictypes title=""/>
+      <services title=""/>
+      <interfaces title=""/>
+      <publicslots title=""/>
+      <signals title=""/>
+      <publicmethods title=""/>
+      <publicstaticmethods title=""/>
+      <publicattributes title=""/>
+      <publicstaticattributes title=""/>
+      <protectedtypes title=""/>
+      <protectedslots title=""/>
+      <protectedmethods title=""/>
+      <protectedstaticmethods title=""/>
+      <protectedattributes title=""/>
+      <protectedstaticattributes title=""/>
+      <packagetypes title=""/>
+      <packagemethods title=""/>
+      <packagestaticmethods title=""/>
+      <packageattributes title=""/>
+      <packagestaticattributes title=""/>
+      <properties title=""/>
+      <events title=""/>
+      <privatetypes title=""/>
+      <privateslots title=""/>
+      <privatemethods title=""/>
+      <privatestaticmethods title=""/>
+      <privateattributes title=""/>
+      <privatestaticattributes title=""/>
+      <friends title=""/>
+      <related title="" subtitle=""/>
+      <membergroups visible="yes"/>
+    </memberdecl>
+    <memberdef>
+      <inlineclasses title=""/>
+      <typedefs title=""/>
+      <enums title=""/>
+      <services title=""/>
+      <interfaces title=""/>
+      <constructors title=""/>
+      <functions title=""/>
+      <related title=""/>
+      <variables title=""/>
+      <properties title=""/>
+      <events title=""/>
+    </memberdef>
+    <allmemberslink visible="yes"/>
+    <usedfiles visible="$SHOW_USED_FILES"/>
+    <authorsection visible="yes"/>
+  </class>
+
+  <!-- Layout definition for a namespace page -->
+  <namespace>
+    <briefdescription visible="yes"/>
+    <memberdecl>
+      <nestednamespaces visible="yes" title=""/>
+      <constantgroups visible="yes" title=""/>
+      <classes visible="yes" title=""/>
+      <typedefs title=""/>
+      <enums title=""/>
+      <functions title=""/>
+      <variables title=""/>
+      <membergroups visible="yes"/>
+    </memberdecl>
+    <detaileddescription title=""/>
+    <memberdef>
+      <inlineclasses title=""/>
+      <typedefs title=""/>
+      <enums title=""/>
+      <functions title=""/>
+      <variables title=""/>
+    </memberdef>
+    <authorsection visible="yes"/>
+  </namespace>
+
+  <!-- Layout definition for a file page -->
+  <file>
+    <briefdescription visible="yes"/>
+    <includes visible="$SHOW_INCLUDE_FILES"/>
+    <includegraph visible="$INCLUDE_GRAPH"/>
+    <includedbygraph visible="$INCLUDED_BY_GRAPH"/>
+    <sourcelink visible="yes"/>
+    <detaileddescription title=""/>
+    <memberdecl>
+      <classes visible="yes" title=""/>
+      <namespaces visible="yes" title=""/>
+      <constantgroups visible="yes" title=""/>
+      <defines title=""/>
+      <typedefs title=""/>
+      <enums title=""/>
+      <functions title=""/>
+      <variables title=""/>
+      <membergroups visible="yes"/>
+    </memberdecl>
+    <memberdef>
+      <inlineclasses title=""/>
+      <defines title=""/>
+      <typedefs title=""/>
+      <enums title=""/>
+      <functions title=""/>
+      <variables title=""/>
+    </memberdef>
+    <authorsection/>
+  </file>
+
+  <!-- Layout definition for a group page -->
+  <group>
+    <briefdescription visible="yes"/>
+    <groupgraph visible="$GROUP_GRAPHS"/>
+    <detaileddescription title=""/>
+    <memberdecl>
+      <nestedgroups visible="yes" title=""/>
+      <dirs visible="yes" title=""/>
+      <files visible="yes" title=""/>
+      <namespaces visible="yes" title=""/>
+      <classes visible="yes" title=""/>
+      <defines title=""/>
+      <typedefs title=""/>
+      <enums title=""/>
+      <enumvalues title=""/>
+      <functions title=""/>
+      <variables title=""/>
+      <signals title=""/>
+      <publicslots title=""/>
+      <protectedslots title=""/>
+      <privateslots title=""/>
+      <events title=""/>
+      <properties title=""/>
+      <friends title=""/>
+      <membergroups visible="yes"/>
+    </memberdecl>
+    <memberdef>
+      <pagedocs/>
+      <inlineclasses title=""/>
+      <defines title=""/>
+      <typedefs title=""/>
+      <enums title=""/>
+      <enumvalues title=""/>
+      <functions title=""/>
+      <variables title=""/>
+      <signals title=""/>
+      <publicslots title=""/>
+      <protectedslots title=""/>
+      <privateslots title=""/>
+      <events title=""/>
+      <properties title=""/>
+      <friends title=""/>
+    </memberdef>
+    <authorsection visible="yes"/>
+  </group>
+
+  <!-- Layout definition for a directory page -->
+  <directory>
+    <briefdescription visible="yes"/>
+    <directorygraph visible="yes"/>
+    <memberdecl>
+      <dirs visible="yes"/>
+      <files visible="yes"/>
+    </memberdecl>
+    <detaileddescription title=""/>
+  </directory>
+</doxygenlayout>

@@ -1,0 +1,396 @@
+body,
+#projectname,
+table,
+div,
+p,
+dl,
+.title,
+.tabs,
+.tabs2,
+.tabs3,
+#nav-tree .label {
+  font-family: roboto, sans-serif;
+}
+
+#commonprojectlogo {
+  padding: 5px 0px 5px 15px;
+}
+
+#projectname {
+  color: #00bcd4;
+  font-size: 280%;
+  padding: 15px 0px;
+  font-weight: 300;
+}
+
+#titlearea {
+  border-bottom: 2px solid #e5e5e5;
+}
+
+.title {
+  color: #212121;
+  font: 300 34px/40px Roboto,sans-serif;
+}
+
+#nav-tree {
+  background-color: #fff;
+}
+
+#navrow1, #navrow2 {
+  border-bottom: 2px solid #e7e7e7;
+}
+
+.tabs, .tabs2, .tabs3 {
+  font-size: 14px;
+}
+
+.tabs,
+.tabs2,
+.tabs3,
+.tablist li,
+.tablist li.current a {
+  background-image: none;
+}
+
+.tablist {
+  list-style: none;
+}
+
+.tablist li, .tablist li p {
+  margin: 0;
+}
+
+.tablist li a,
+.tablist li.current a {
+  color: #757575;
+  text-shadow: none;
+}
+
+.tablist li.current a {
+  background: #00bcd4;
+  color: #fff;
+}
+
+.tablist a {
+  background-image: none;
+  border-right: 2px solid #e5e5e5;
+  font-weight: normal;
+}
+
+.tablist a:hover,
+.tablist li.current a:hover {
+  background-image: none;
+  text-decoration: underline;
+  text-shadow: none;
+}
+
+.tablist a:hover {
+  color: #00bcd4;
+}
+
+.tablist li.current a:hover {
+  color: #fff;
+}
+
+div.header {
+  background-color: #f7f7f7;
+  background-image: none;
+  border-bottom: none;
+}
+
+#MSearchBox {
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  display: inline-block;
+  height: 20px;
+  right: 10px;
+}
+
+#MSearchBox .left,
+#MSearchBox .right,
+#MSearchField {
+  background: none;
+}
+
+a.SelectItem:hover {
+  background-color: #00bcd4;
+}
+
+#nav-tree {
+  background-image: none;
+}
+
+#nav-tree .selected {
+  background-image: none;
+  text-shadow: none;
+  background-color: #f7f7f7;
+}
+
+#nav-tree a {
+  color: #212121;
+}
+
+#nav-tree .selected a {
+  color: #0288d1;
+}
+
+#nav-tree .item:hover {
+  background-color: #f7f7f7;
+}
+
+#nav-tree .item:hover a {
+  color: #0288d1;
+}
+
+#nav-tree .label {
+  font-size: 13px;
+}
+
+#nav-sync {
+  display: none;
+}
+
+.ui-resizable-e {
+  background: #ebebeb;
+  border-left: 1px solid #ddd;
+  border-right: 1px solid #ddd;
+}
+
+.contents tr td .image {
+  margin-top: 24px;
+}
+
+.image {
+  text-align: left;
+  margin-bottom: 8px;
+}
+
+a:link,
+a:visited,
+.contents a:link,
+.contents a:visited,
+a.el {
+  color: #0288d1;
+  font-weight: normal;
+  text-decoration: none;
+}
+
+div.contents {
+  margin-right: 12px;
+}
+
+.directory tr, .directory tr.even {
+  background: #7cb342;
+  border-top: 1px solid #7cb342;
+}
+
+.directory td,
+.directory td.entry,
+.directory td.desc {
+  background: rgba(255,255,255,.95);
+  border-left: none;
+  color: #212121;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.directory tr#row_0_ {
+  border-top-color: #7cb342;
+}
+
+.directory tr#row_0_ td {
+  background: #7cb342;
+  color: #fff;
+  font-size: 18px;
+}
+
+.memSeparator {
+  border-bottom: none;
+}
+
+.memitem {
+  background: #7cb342;
+}
+
+.memproto, dl.reflist dt {
+  background: #7cb342;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  -webkit-box-shadow: none;
+  color: #fff;
+  text-shadow: none;
+}
+
+.memproto .memtemplate,
+.memproto a.el,
+.memproto .paramname {
+  color: #fff;
+}
+
+.memdoc, dl.reflist dd {
+  border: none;
+  background-color: rgba(255,255,255,.95);
+  background-image: none;
+  box-shadow: none;
+  -webkit-box-shadow: none;
+  -webkit-border-bottom-left-radius: 0;
+  -webkit-border-bottom-right-radius: 0;
+}
+
+.memitem, table.doxtable, table.memberdecls {
+  margin-bottom: 24px;
+}
+
+table.doxtable th {
+  background: #7cb342;
+}
+
+table.doxtable tr {
+  background: #7cb342;
+  border-top: 1px solid #7cb342;
+}
+
+table.doxtable td, table.doxtable th {
+  border: none;
+  padding: 10px 8px;
+}
+
+table.doxtable td {
+  background-color: rgba(255,255,255,.95);
+}
+
+.memberdecls {
+  background: #7cb342;
+  border-top: 1px solid #7cb342;
+}
+
+.memberdecls .heading h2 {
+  border-bottom: none;
+  color: #fff;
+  font-size: 110%;
+  font-weight: bold;
+  margin: 0 0 0 6px;
+}
+
+.memberdecls tr:not(.heading) td {
+  background-color: rgba(255,255,255,.95);
+}
+
+h1, h2, h2.groupheader, h3, h4, h5, h6 {
+  color: #212121;
+}
+
+h1 {
+  border-bottom: 1px solid #ebebeb;
+  font: 400 28px/32px Roboto,sans-serif;
+  letter-spacing: -.01em;
+  margin: 40px 0 20px;
+  padding-bottom: 3px;
+}
+
+h2, h2.groupheader {
+  border-bottom: 1px solid #ebebeb;
+  font: 400 23px/32px Roboto,sans-serif;
+  letter-spacing: -.01em;
+  margin: 40px 0 20px;
+  padding-bottom: 3px;
+}
+
+h3 {
+  font: 500 20px/32px Roboto,sans-serif;
+  margin: 32px 0 16px;
+}
+
+h4 {
+  font: 500 18px/32px Roboto,sans-serif;
+  margin: 32px 0 16px;
+}
+
+ol,
+ul {
+  margin: 0;
+  padding-left: 40px;
+}
+
+ol {
+  list-style: decimal outside;
+}
+
+ol ol {
+  list-style-type: lower-alpha;
+}
+
+ol ol ol {
+  list-style-type: lower-roman;
+}
+
+ul {
+  list-style: disc outside;
+}
+
+li,
+li p {
+  margin: 8px 0;
+  padding: 0;
+}
+
+div.summary
+{
+  float: none;
+  font-size: 8pt;
+  padding-left: 5px;
+  width: calc(100% - 10px);
+  text-align: left;
+  display: block;
+}
+
+div.ingroups {
+  margin-top: 8px;
+}
+
+div.fragment {
+  border: 1px solid #ddd;
+  color: #455a64;
+  font: 14px/20px Roboto Mono, monospace;
+  padding: 8px;
+}
+
+div.line {
+  line-height: 1.5;
+  font-size: inherit;
+}
+
+code, pre {
+  color: #455a64;
+  background: #f7f7f7;
+  font: 400 100% Roboto Mono,monospace;
+  padding: 1px 4px;
+}
+
+span.preprocessor, span.comment {
+  color: #0b8043;
+}
+
+span.keywordtype {
+  color: #0097a7;
+}
+
+.paramname {
+  color: #ef6c00;
+}
+
+.memTemplParams {
+  color: #ef6c00;
+}
+
+span.mlabel {
+  background: rgba(255,255,255,.25);
+  border: none;
+}
+
+blockquote {
+  border: 1px solid #ddd;
+}

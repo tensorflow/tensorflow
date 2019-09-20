@@ -1,0 +1,347 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "definitions": {
+    "MyGame_OtherNameSpace_FromInclude" : {
+      "type" : "string",
+      "enum": ["IncludeVal"]
+    },
+    "MyGame_Example_Color" : {
+      "type" : "string",
+      "enum": ["Red", "Green", "Blue"]
+    },
+    "MyGame_Example_Race" : {
+      "type" : "string",
+      "enum": ["None", "Human", "Dwarf", "Elf"]
+    },
+    "MyGame_Example_Any" : {
+      "type" : "string",
+      "enum": ["NONE", "Monster", "TestSimpleTableWithEnum", "MyGame_Example2_Monster"]
+    },
+    "MyGame_Example_AnyUniqueAliases" : {
+      "type" : "string",
+      "enum": ["NONE", "M", "TS", "M2"]
+    },
+    "MyGame_Example_AnyAmbiguousAliases" : {
+      "type" : "string",
+      "enum": ["NONE", "M1", "M2", "M3"]
+    },
+    "MyGame_OtherNameSpace_Unused" : {
+      "type" : "object",
+      "properties" : {
+        "a" : {
+                "type" : "number"
+              }
+      },
+      "additionalProperties" : false
+    },
+    "MyGame_OtherNameSpace_TableB" : {
+      "type" : "object",
+      "properties" : {
+        "a" : {
+                "$ref" : "#/definitions/TableA"
+              }
+      },
+      "additionalProperties" : false
+    },
+    "TableA" : {
+      "type" : "object",
+      "properties" : {
+        "b" : {
+                "$ref" : "#/definitions/MyGame_OtherNameSpace_TableB"
+              }
+      },
+      "additionalProperties" : false
+    },
+    "MyGame_InParentNamespace" : {
+      "type" : "object",
+      "properties" : {
+      },
+      "additionalProperties" : false
+    },
+    "MyGame_Example2_Monster" : {
+      "type" : "object",
+      "properties" : {
+      },
+      "additionalProperties" : false
+    },
+    "MyGame_Example_Test" : {
+      "type" : "object",
+      "properties" : {
+        "a" : {
+                "type" : "number"
+              },
+        "b" : {
+                "type" : "number"
+              }
+      },
+      "additionalProperties" : false
+    },
+    "MyGame_Example_TestSimpleTableWithEnum" : {
+      "type" : "object",
+      "properties" : {
+        "color" : {
+                "$ref" : "#/definitions/MyGame_Example_Color"
+              }
+      },
+      "additionalProperties" : false
+    },
+    "MyGame_Example_Vec3" : {
+      "type" : "object",
+      "properties" : {
+        "x" : {
+                "type" : "number"
+              },
+        "y" : {
+                "type" : "number"
+              },
+        "z" : {
+                "type" : "number"
+              },
+        "test1" : {
+                "type" : "number"
+              },
+        "test2" : {
+                "$ref" : "#/definitions/MyGame_Example_Color"
+              },
+        "test3" : {
+                "$ref" : "#/definitions/MyGame_Example_Test"
+              }
+      },
+      "additionalProperties" : false
+    },
+    "MyGame_Example_Ability" : {
+      "type" : "object",
+      "properties" : {
+        "id" : {
+                "type" : "number"
+              },
+        "distance" : {
+                "type" : "number"
+              }
+      },
+      "additionalProperties" : false
+    },
+    "MyGame_Example_Stat" : {
+      "type" : "object",
+      "properties" : {
+        "id" : {
+                "type" : "string"
+              },
+        "val" : {
+                "type" : "number"
+              },
+        "count" : {
+                "type" : "number"
+              }
+      },
+      "additionalProperties" : false
+    },
+    "MyGame_Example_Referrable" : {
+      "type" : "object",
+      "properties" : {
+        "id" : {
+                "type" : "number"
+              }
+      },
+      "additionalProperties" : false
+    },
+    "MyGame_Example_Monster" : {
+      "type" : "object",
+      "description" : " an example documentation comment: monster object",
+      "properties" : {
+        "pos" : {
+                "$ref" : "#/definitions/MyGame_Example_Vec3"
+              },
+        "mana" : {
+                "type" : "number"
+              },
+        "hp" : {
+                "type" : "number"
+              },
+        "name" : {
+                "type" : "string"
+              },
+        "friendly" : {
+                "type" : "boolean"
+              },
+        "inventory" : {
+                "type" : "array", "items" : { "type" : "number" }
+              },
+        "color" : {
+                "$ref" : "#/definitions/MyGame_Example_Color"
+              },
+        "test_type" : {
+                "$ref" : "#/definitions/MyGame_Example_Any"
+              },
+        "test" : {
+                "anyOf": [{ "$ref" : "#/definitions/MyGame_Example_Monster" },{ "$ref" : "#/definitions/MyGame_Example_TestSimpleTableWithEnum" },{ "$ref" : "#/definitions/MyGame_Example2_Monster" }]
+              },
+        "test4" : {
+                "type" : "array", "items" : { "$ref" : "#/definitions/MyGame_Example_Test" }
+              },
+        "testarrayofstring" : {
+                "type" : "array", "items" : { "type" : "string" }
+              },
+        "testarrayoftables" : {
+                "type" : "array", "items" : { "$ref" : "#/definitions/MyGame_Example_Monster" }
+              },
+        "enemy" : {
+                "$ref" : "#/definitions/MyGame_Example_Monster"
+              },
+        "testnestedflatbuffer" : {
+                "type" : "array", "items" : { "type" : "number" }
+              },
+        "testempty" : {
+                "$ref" : "#/definitions/MyGame_Example_Stat"
+              },
+        "testbool" : {
+                "type" : "boolean"
+              },
+        "testhashs32_fnv1" : {
+                "type" : "number"
+              },
+        "testhashu32_fnv1" : {
+                "type" : "number"
+              },
+        "testhashs64_fnv1" : {
+                "type" : "number"
+              },
+        "testhashu64_fnv1" : {
+                "type" : "number"
+              },
+        "testhashs32_fnv1a" : {
+                "type" : "number"
+              },
+        "testhashu32_fnv1a" : {
+                "type" : "number"
+              },
+        "testhashs64_fnv1a" : {
+                "type" : "number"
+              },
+        "testhashu64_fnv1a" : {
+                "type" : "number"
+              },
+        "testarrayofbools" : {
+                "type" : "array", "items" : { "type" : "boolean" }
+              },
+        "testf" : {
+                "type" : "number"
+              },
+        "testf2" : {
+                "type" : "number"
+              },
+        "testf3" : {
+                "type" : "number"
+              },
+        "testarrayofstring2" : {
+                "type" : "array", "items" : { "type" : "string" }
+              },
+        "testarrayofsortedstruct" : {
+                "type" : "array", "items" : { "$ref" : "#/definitions/MyGame_Example_Ability" }
+              },
+        "flex" : {
+                "type" : "array", "items" : { "type" : "number" }
+              },
+        "test5" : {
+                "type" : "array", "items" : { "$ref" : "#/definitions/MyGame_Example_Test" }
+              },
+        "vector_of_longs" : {
+                "type" : "array", "items" : { "type" : "number" }
+              },
+        "vector_of_doubles" : {
+                "type" : "array", "items" : { "type" : "number" }
+              },
+        "parent_namespace_test" : {
+                "$ref" : "#/definitions/MyGame_InParentNamespace"
+              },
+        "vector_of_referrables" : {
+                "type" : "array", "items" : { "$ref" : "#/definitions/MyGame_Example_Referrable" }
+              },
+        "single_weak_reference" : {
+                "type" : "number"
+              },
+        "vector_of_weak_references" : {
+                "type" : "array", "items" : { "type" : "number" }
+              },
+        "vector_of_strong_referrables" : {
+                "type" : "array", "items" : { "$ref" : "#/definitions/MyGame_Example_Referrable" }
+              },
+        "co_owning_reference" : {
+                "type" : "number"
+              },
+        "vector_of_co_owning_references" : {
+                "type" : "array", "items" : { "type" : "number" }
+              },
+        "non_owning_reference" : {
+                "type" : "number"
+              },
+        "vector_of_non_owning_references" : {
+                "type" : "array", "items" : { "type" : "number" }
+              },
+        "any_unique_type" : {
+                "$ref" : "#/definitions/MyGame_Example_AnyUniqueAliases"
+              },
+        "any_unique" : {
+                "anyOf": [{ "$ref" : "#/definitions/MyGame_Example_Monster" },{ "$ref" : "#/definitions/MyGame_Example_TestSimpleTableWithEnum" },{ "$ref" : "#/definitions/MyGame_Example2_Monster" }]
+              },
+        "any_ambiguous_type" : {
+                "$ref" : "#/definitions/MyGame_Example_AnyAmbiguousAliases"
+              },
+        "any_ambiguous" : {
+                "anyOf": [{ "$ref" : "#/definitions/MyGame_Example_Monster" },{ "$ref" : "#/definitions/MyGame_Example_Monster" },{ "$ref" : "#/definitions/MyGame_Example_Monster" }]
+              },
+        "vector_of_enums" : {
+                "$ref" : "#/definitions/MyGame_Example_Color"
+              },
+        "signed_enum" : {
+                "$ref" : "#/definitions/MyGame_Example_Race"
+              }
+      },
+      "required" : ["name"],
+      "additionalProperties" : false
+    },
+    "MyGame_Example_TypeAliases" : {
+      "type" : "object",
+      "properties" : {
+        "i8" : {
+                "type" : "number"
+              },
+        "u8" : {
+                "type" : "number"
+              },
+        "i16" : {
+                "type" : "number"
+              },
+        "u16" : {
+                "type" : "number"
+              },
+        "i32" : {
+                "type" : "number"
+              },
+        "u32" : {
+                "type" : "number"
+              },
+        "i64" : {
+                "type" : "number"
+              },
+        "u64" : {
+                "type" : "number"
+              },
+        "f32" : {
+                "type" : "number"
+              },
+        "f64" : {
+                "type" : "number"
+              },
+        "v8" : {
+                "type" : "array", "items" : { "type" : "number" }
+              },
+        "vf64" : {
+                "type" : "array", "items" : { "type" : "number" }
+              }
+      },
+      "additionalProperties" : false
+    }
+  },
+  "$ref" : "#/definitions/MyGame_Example_Monster"
+}

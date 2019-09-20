@@ -1,0 +1,31 @@
+// Demonstrates the ability to have vectors of unions, and also to
+// store structs and strings in unions.
+
+table Attacker {
+  sword_attack_damage: int;
+}
+
+struct Rapunzel {
+  hair_length: int;
+}
+
+struct BookReader {
+  books_read: int;
+}
+
+union Character {
+  MuLan: Attacker,  // Can have name be different from type.
+  Rapunzel,         // Or just both the same, as before.
+  Belle: BookReader,
+  BookFan: BookReader,
+  Other: string,
+  Unused: string
+}
+
+table Movie {
+  main_character: Character;
+  characters: [Character];
+}
+
+root_type Movie;
+file_identifier "MOVI";

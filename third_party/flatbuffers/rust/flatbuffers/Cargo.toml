@@ -1,0 +1,13 @@
+[package]
+name = "flatbuffers"
+version = "0.6.0"
+authors = ["Robert Winslow <hello@rwinslow.com>", "FlatBuffers Maintainers"]
+license = "Apache-2.0"
+description = "Official FlatBuffers Rust runtime library."
+homepage = "https://google.github.io/flatbuffers/"
+repository = "https://github.com/google/flatbuffers"
+keywords = ["flatbuffers", "serialization", "zero-copy"]
+categories = ["encoding", "data-structures", "memory-management"]
+
+[dependencies]
+smallvec = "0.6"

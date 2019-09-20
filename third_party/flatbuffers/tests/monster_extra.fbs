@@ -1,0 +1,21 @@
+namespace MyGame;
+
+// Not all programming languages support this extra table.
+table MonsterExtra {
+  // Float-point values with NaN and Inf defaults.
+  d0:double = nan;
+  d1:double = -nan; // parser must ignore sign of NaN
+  d2:double = +inf;
+  d3:double = -inf;
+  f0:float = -nan; // parser must ignore sign of NaN
+  f1:float = +nan;
+  f2:float = +inf;
+  f3:float = -inf;
+  dvec : [double];
+  fvec : [float];
+}
+
+root_type MonsterExtra;
+
+file_identifier "MONE";
+file_extension "mon";

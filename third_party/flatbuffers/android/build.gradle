@@ -1,0 +1,108 @@
+// Copyright (c) 2017 Google, Inc.
+//
+// This software is provided 'as-is', without any express or implied
+// warranty.  In no event will the authors be held liable for any damages
+// arising from the use of this software.
+// Permission is granted to anyone to use this software for any purpose,
+// including commercial applications, and to alter it and redistribute it
+// freely, subject to the following restrictions:
+// 1. The origin of this software must not be misrepresented; you must not
+// claim that you wrote the original software. If you use this software
+// in a product, an acknowledgment in the product documentation would be
+// appreciated but is not required.
+// 2. Altered source versions must be plainly marked as such, and must not be
+// misrepresented as being the original software.
+// 3. This notice may not be removed or altered from any source distribution.
+
+buildscript {
+  repositories {
+    jcenter()
+  }
+  dependencies {
+    classpath 'com.android.tools.build:gradle:2.3.0'
+  }
+}
+
+allprojects {
+  repositories {
+    jcenter()
+  }
+}
+
+apply plugin: 'com.android.application'
+
+android {
+  compileSdkVersion 25
+  buildToolsVersion '25.0.2'
+
+  sourceSets {
+    main {
+      manifest.srcFile 'AndroidManifest.xml'
+      res.srcDirs = ['res']
+    }
+  }
+
+  externalNativeBuild {
+    ndkBuild {
+      path "jni/Android.mk"
+    }
+  }
+
+  defaultConfig {
+    applicationId 'com.example.FlatBufferTest'
+    // This is the platform API where NativeActivity was introduced.
+    minSdkVersion 9
+    targetSdkVersion 25
+    versionCode 1
+    versionName "1.0"
+
+    buildTypes {
+      release {
+        minifyEnabled false
+      }
+    }
+
+    externalNativeBuild {
+      ndkBuild {
+        targets "FlatBufferTest"
+        arguments "-j" + Runtime.getRuntime().availableProcessors()
+        abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+      }
+    }
+  }
+
+  lintOptions {
+    abortOnError false
+  }
+
+  // Build with each STL variant.
+  productFlavors {
+    stlport {
+      applicationIdSuffix ".stlport"
+      versionNameSuffix "-stlport"
+      externalNativeBuild {
+        ndkBuild {
+          arguments "APP_STL=stlport_static"
+        }
+      }
+    }
+    gnustl {
+      applicationIdSuffix ".gnustl"
+      versionNameSuffix "-gnustl"
+      externalNativeBuild {
+        ndkBuild {
+          arguments "APP_STL=gnustl_static"
+        }
+      }
+    }
+    libcpp {
+      applicationIdSuffix ".libcpp"
+      versionNameSuffix "-libcpp"
+      externalNativeBuild {
+        ndkBuild {
+          arguments "APP_STL=c++_static"
+        }
+      }
+    }
+  }
+}

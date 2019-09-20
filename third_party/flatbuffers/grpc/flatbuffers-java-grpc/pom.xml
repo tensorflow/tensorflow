@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.google.flatbuffers</groupId>
+        <artifactId>flatbuffers-parent</artifactId>
+        <version>1.11.1</version>
+    </parent>
+    <artifactId>flatbuffers-java-grpc</artifactId>
+    <name>${project.artifactId}</name>
+    <packaging>bundle</packaging>
+    <description>
+        Utilities supporting generated code for GRPC
+    </description>
+    <developers>
+        <developer>
+            <name>Wouter van Oortmerssen</name>
+        </developer>
+        <developer>
+            <name>Yuri Finkelstein</name>
+            <url>https://github.com/yfinkelstein</url>
+        </developer>
+    </developers>
+    <properties>
+        <gRPC.version>1.11.1</gRPC.version>
+    </properties>
+    <dependencies>
+        <dependency>
+            <groupId>com.google.flatbuffers</groupId>
+            <artifactId>flatbuffers-java</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-core</artifactId>
+            <version>${gRPC.version}</version>
+        </dependency>
+  </dependencies>
+</project>
+

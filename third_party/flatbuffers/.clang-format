@@ -1,0 +1,13 @@
+---
+Language: Cpp
+BasedOnStyle: Google
+DerivePointerAlignment: false
+PointerAlignment: Right
+IndentPPDirectives: AfterHash
+Cpp11BracedListStyle: false
+AlwaysBreakTemplateDeclarations: false
+AllowShortCaseLabelsOnASingleLine: true
+SpaceAfterTemplateKeyword: false
+AllowShortBlocksOnASingleLine: true
+...
+

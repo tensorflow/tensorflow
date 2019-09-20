@@ -1,0 +1,18 @@
+# This does not pass tests due to the following error:
+#
+# Fatal error: Uncaught exception 'InvalidArgumentException' with message 'Google\FlatBuffers\ByteBuffer::getX() expects parameter 1 by reference, but the call was not annotated with '&'. in /code/php/FlatbufferBuilder.php:971
+# Stack trace:
+# #0 /code/tests/phpTest.php(277): Google\FlatBuffers\FlatbufferBuilder->sizedByteArray()
+# #1 /code/tests/phpTest.php(79): fuzzTest1()
+# #2 /code/tests/phpTest.php(86): main()
+# #3 {main}
+#   thrown in in /code/php/FlatbufferBuilder.php:971
+FROM hhvm/hhvm:2019.01.16 as base
+WORKDIR /code
+ADD . .
+RUN cp flatc_debian_stretch flatc
+WORKDIR /code/tests
+RUN hhvm --version
+RUN hhvm phpTest.php
+RUN ../flatc --php -o php union_vector/union_vector.fbs
+RUN hhvm phpUnionVectorTest.php

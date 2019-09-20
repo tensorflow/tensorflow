@@ -1,0 +1,26 @@
+{
+  "main_character_type": "Rapunzel",
+  "main_character": {
+    "hair_length": 6
+  },
+  "characters_type": [
+    "Belle",
+    "MuLan",
+    "BookFan",
+    "Other",
+    "Unused"
+  ],
+  "characters": [
+    {
+      "books_read": 7
+    },
+    {
+      "sword_attack_damage": 5
+    },
+    {
+      "books_read": 2
+    },
+    "Other",
+    "Unused"
+  ]
+}

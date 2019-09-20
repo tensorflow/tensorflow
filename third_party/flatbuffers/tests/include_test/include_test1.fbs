@@ -1,0 +1,7 @@
+include "sub/include_test2.fbs";
+include "sub/include_test2.fbs";  // should be skipped
+include "include_test1.fbs";  // should be skipped
+
+table TableA {
+  b:MyGame.OtherNameSpace.TableB;
+}

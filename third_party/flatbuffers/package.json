@@ -1,0 +1,34 @@
+{
+  "name": "flatbuffers",
+  "version": "1.11.0",
+  "description": "Memory Efficient Serialization Library",
+  "files": [
+    "js/flatbuffers.js",
+    "js/flatbuffers.mjs"
+  ],
+  "main": "js/flatbuffers",
+  "module": "js/flatbuffers.mjs",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "tests/JavaScriptTest.sh",
+    "append-esm-export": "sed \"s/this.flatbuffers = flatbuffers;/export { flatbuffers };/\" js/flatbuffers.js > js/flatbuffers.mjs",
+    "prepublishOnly": "npm run append-esm-export"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/google/flatbuffers.git"
+  },
+  "keywords": [
+    "flatbuffers"
+  ],
+  "author": "The FlatBuffers project",
+  "license": "SEE LICENSE IN LICENSE.txt",
+  "bugs": {
+    "url": "https://github.com/google/flatbuffers/issues"
+  },
+  "homepage": "https://google.github.io/flatbuffers/",
+  "dependencies": {}
+}

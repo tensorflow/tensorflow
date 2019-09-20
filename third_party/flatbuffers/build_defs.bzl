@@ -1,10 +1,25 @@
-"""BUILD rules for generating flatbuffer files."""
+# Description:
+#   BUILD rules for generating flatbuffer files in various languages.
 
-flatc_path = "@flatbuffers//:flatc"
+"""
+Rules for building C++ flatbuffers with Bazel.
+"""
+
+flatc_path = "@com_github_google_flatbuffers//:flatc"
+
+DEFAULT_INCLUDE_PATHS = [
+    "./",
+    "$(GENDIR)",
+    "$(BINDIR)",
+]
 
 DEFAULT_FLATC_ARGS = [
-    "--no-union-value-namespacing",
     "--gen-object-api",
+    "--gen-compare",
+    "--no-includes",
+    "--gen-mutable",
+    "--reflect-names",
+    "--cpp-ptr-type flatbuffers::unique_ptr",
 ]
 
 def flatbuffer_library_public(
@@ -14,16 +29,12 @@ def flatbuffer_library_public(
         language_flag,
         out_prefix = "",
         includes = [],
-        include_paths = [],
+        include_paths = DEFAULT_INCLUDE_PATHS,
         flatc_args = DEFAULT_FLATC_ARGS,
         reflection_name = "",
-        reflection_visiblity = None,
+        reflection_visibility = None,
         output_to_bindir = False):
     """Generates code files for reading/writing the given flatbuffers in the requested language using the public compiler.
-
-    Outs:
-      filegroup(name): all generated source files.
-      Fileset([reflection_name]): (Optional) all generated reflection binaries.
 
     Args:
       name: Rule name.
@@ -39,6 +50,11 @@ def flatbuffer_library_public(
         reflection binaries for the schemas.
       reflection_visibility: The visibility of the generated reflection Fileset.
       output_to_bindir: Passed to genrule for output to bin directory.
+
+
+    This rule creates a filegroup(name) with all generated source files, and
+    optionally a Fileset([reflection_name]) with all generated reflection
+    binaries.
     """
     include_paths_cmd = ["-I %s" % (s) for s in include_paths]
 
@@ -49,10 +65,11 @@ def flatbuffer_library_public(
         ("-o $(@D)/%s" % (out_prefix)) if len(srcs) > 1 else ("-o $(@D)")
     )
     genrule_cmd = " ".join([
-        "for f in $(SRCS); do",
+        "SRCS=($(SRCS));",
+        "for f in $${SRCS[@]:0:%s}; do" % len(srcs),
         "$(location %s)" % (flatc_path),
-        " ".join(flatc_args),
         " ".join(include_paths_cmd),
+        " ".join(flatc_args),
         language_flag,
         output_directory,
         "$$f;",
@@ -60,16 +77,17 @@ def flatbuffer_library_public(
     ])
     native.genrule(
         name = name,
-        srcs = srcs,
+        srcs = srcs + includes,
         outs = outs,
         output_to_bindir = output_to_bindir,
-        tools = includes + [flatc_path],
+        tools = [flatc_path],
         cmd = genrule_cmd,
         message = "Generating flatbuffer files for %s:" % (name),
     )
     if reflection_name:
         reflection_genrule_cmd = " ".join([
-            "for f in $(SRCS); do",
+            "SRCS=($(SRCS));",
+            "for f in $${SRCS[@]:0:%s}; do" % len(srcs),
             "$(location %s)" % (flatc_path),
             "-b --schema",
             " ".join(flatc_args),
@@ -85,24 +103,21 @@ def flatbuffer_library_public(
         ]
         native.genrule(
             name = "%s_srcs" % reflection_name,
-            srcs = srcs,
+            srcs = srcs + includes,
             outs = reflection_outs,
             output_to_bindir = output_to_bindir,
-            tools = includes + [flatc_path],
+            tools = [flatc_path],
             cmd = reflection_genrule_cmd,
             message = "Generating flatbuffer reflection binary for %s:" % (name),
         )
-        # TODO(b/114456773): Make bazel rules proper and supported by flatbuffer
-        # Have to comment this since FilesetEntry is not supported in bazel
-        # skylark.
-        # native.Fileset(
-        #     name = reflection_name,
-        #     out = "%s_out" % reflection_name,
-        #     entries = [
-        #         native.FilesetEntry(files = reflection_outs),
-        #     ],
-        #     visibility = reflection_visiblity,
-        # )
+        native.Fileset(
+            name = reflection_name,
+            out = "%s_out" % reflection_name,
+            entries = [
+                native.FilesetEntry(files = reflection_outs),
+            ],
+            visibility = reflection_visibility,
+        )
 
 def flatbuffer_cc_library(
         name,
@@ -110,14 +125,34 @@ def flatbuffer_cc_library(
         srcs_filegroup_name = "",
         out_prefix = "",
         includes = [],
-        include_paths = [],
+        include_paths = DEFAULT_INCLUDE_PATHS,
         flatc_args = DEFAULT_FLATC_ARGS,
         visibility = None,
         srcs_filegroup_visibility = None,
         gen_reflections = False):
     '''A cc_library with the generated reader/writers for the given flatbuffer definitions.
 
-    Outs:
+    Args:
+      name: Rule name.
+      srcs: Source .fbs files. Sent in order to the compiler.
+      srcs_filegroup_name: Name of the output filegroup that holds srcs. Pass this
+          filegroup into the `includes` parameter of any other
+          flatbuffer_cc_library that depends on this one's schemas.
+      out_prefix: Prepend this path to the front of all generated files. Usually
+          is a directory name.
+      includes: Optional, list of filegroups of schemas that the srcs depend on.
+          ** SEE REMARKS BELOW **
+      include_paths: Optional, list of paths the includes files can be found in.
+      flatc_args: Optional list of additional arguments to pass to flatc
+          (e.g. --gen-mutable).
+      visibility: The visibility of the generated cc_library. By default, use the
+          default visibility of the project.
+      srcs_filegroup_visibility: The visibility of the generated srcs filegroup.
+          By default, use the value of the visibility parameter above.
+      gen_reflections: Optional, if true this will generate the flatbuffer
+        reflection binaries for the schemas.
+
+    This produces:
       filegroup([name]_srcs): all generated .h files.
       filegroup(srcs_filegroup_name if specified, or [name]_includes if not):
           Other flatbuffer_cc_library's can pass this in for their `includes`
@@ -154,26 +189,6 @@ def flatbuffer_cc_library(
         )
 
         Happy dependent Flatbuffering!
-
-    Args:
-      name: Rule name.
-      srcs: Source .fbs files. Sent in order to the compiler.
-      srcs_filegroup_name: Name of the output filegroup that holds srcs. Pass this
-          filegroup into the `includes` parameter of any other
-          flatbuffer_cc_library that depends on this one's schemas.
-      out_prefix: Prepend this path to the front of all generated files. Usually
-          is a directory name.
-      includes: Optional, list of filegroups of schemas that the srcs depend on.
-          ** SEE REMARKS BELOW **
-      include_paths: Optional, list of paths the includes files can be found in.
-      flatc_args: Optional list of additional arguments to pass to flatc
-          (e.g. --gen-mutable).
-      visibility: The visibility of the generated cc_library. By default, use the
-          default visibility of the project.
-      srcs_filegroup_visibility: The visibility of the generated srcs filegroup.
-          By default, use the value of the visibility parameter above.
-      gen_reflections: Optional, if true this will generate the flatbuffer
-        reflection binaries for the schemas.
     '''
     output_headers = [
         (out_prefix + "%s_generated.h") % (s.replace(".fbs", "").split("/")[-1])
@@ -181,8 +196,9 @@ def flatbuffer_cc_library(
     ]
     reflection_name = "%s_reflection" % name if gen_reflections else ""
 
+    srcs_lib = "%s_srcs" % (name)
     flatbuffer_library_public(
-        name = "%s_srcs" % (name),
+        name = srcs_lib,
         srcs = srcs,
         outs = output_headers,
         language_flag = "-c",
@@ -191,19 +207,23 @@ def flatbuffer_cc_library(
         include_paths = include_paths,
         flatc_args = flatc_args,
         reflection_name = reflection_name,
-        reflection_visiblity = visibility,
+        reflection_visibility = visibility,
     )
     native.cc_library(
         name = name,
-        hdrs = output_headers,
-        srcs = output_headers,
+        hdrs = [
+            ":" + srcs_lib,
+        ],
+        srcs = [
+            ":" + srcs_lib,
+        ],
         features = [
             "-parse_headers",
         ],
         deps = [
-            "@flatbuffers//:runtime_cc",
+            "@com_github_google_flatbuffers//:runtime_cc",
         ],
-        includes = ["."],
+        includes = [],
         linkstatic = 1,
         visibility = visibility,
     )

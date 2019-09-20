@@ -1,0 +1,23 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+alias(
+    name = "go_default_library",
+    actual = ":go",
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "go",
+    srcs = [
+        "builder.go",
+        "doc.go",
+        "encode.go",
+        "grpc.go",
+        "lib.go",
+        "sizes.go",
+        "struct.go",
+        "table.go",
+    ],
+    importpath = "github.com/google/flatbuffers/go",
+    visibility = ["//visibility:public"],
+)

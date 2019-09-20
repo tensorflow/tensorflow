@@ -1,0 +1,37 @@
+name: flatbuffers
+base: core18
+version: latest
+version-script: git describe --always | sed -e 's/-/+git/;y/-/./' | tail -c +2
+summary: FlatBuffers compiler
+description: |
+  FlatBuffers compiler
+
+  NOTE: This snap also ships the necessary header files required to compile
+  projects using flatbuffers, however, for the compilation to work, you have
+  to manually add the following path in your project's configuration:
+
+  /snap/flatbuffers/current/include
+
+  If you need to use flatbuffers headers from a location other than the above
+  path, it is recommended to not use this snap as that could cause a mismatch.
+
+grade: stable
+confinement: strict
+
+parts:
+  flatc:
+    plugin: cmake
+    source: .
+    configflags:
+      - -GUnix Makefiles
+      - -DCMAKE_BUILD_TYPE=Release
+    build-packages:
+      - g++
+      # used to set version number
+      - git
+
+apps:
+  flatc:
+    command: flatc
+    plugs:
+      - home

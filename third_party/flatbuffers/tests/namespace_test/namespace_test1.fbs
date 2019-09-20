@@ -1,0 +1,17 @@
+namespace NamespaceA.NamespaceB;
+
+table TableInNestedNS
+{
+    foo:int;
+}
+
+enum EnumInNestedNS:byte
+{
+	A, B, C
+}
+
+struct StructInNestedNS
+{
+    a:int;
+	b:int;
+}

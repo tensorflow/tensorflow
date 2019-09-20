@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{9DB0B5E7-757E-4BD1-A5F6-279390331254}</ProjectGuid>
+    <OutputType>Exe</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>FlatBuffers.Test</RootNamespace>
+    <AssemblyName>FlatBuffers.Test</AssemblyName>
+    <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup>
+    <StartupObject />
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(UnsafeByteBuffer)' == 'true'">
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DefineConstants>$(DefineConstants);UNSAFE_BYTEBUFFER</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core">
+      <RequiredTargetFramework>3.5</RequiredTargetFramework>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\net\FlatBuffers\ByteBuffer.cs">
+      <Link>FlatBuffers\ByteBuffer.cs</Link>
+    </Compile>
+    <Compile Include="..\..\net\FlatBuffers\ByteBufferUtil.cs">
+      <Link>FlatBuffers\ByteBufferUtil.cs</Link>
+    </Compile>
+    <Compile Include="..\..\net\FlatBuffers\IFlatbufferObject.cs">
+      <Link>FlatBuffers\IFlatbufferObject.cs</Link>
+    </Compile>
+    <Compile Include="..\..\net\FlatBuffers\Offset.cs">
+      <Link>FlatBuffers\Offset.cs</Link>
+    </Compile>
+    <Compile Include="..\..\net\FlatBuffers\FlatBufferBuilder.cs">
+      <Link>FlatBuffers\FlatBufferBuilder.cs</Link>
+    </Compile>
+    <Compile Include="..\..\net\FlatBuffers\FlatBufferConstants.cs">
+      <Link>FlatBuffers\FlatBufferConstants.cs</Link>
+    </Compile>
+    <Compile Include="..\..\net\FlatBuffers\Struct.cs">
+      <Link>FlatBuffers\Struct.cs</Link>
+    </Compile>
+    <Compile Include="..\..\net\FlatBuffers\Table.cs">
+      <Link>FlatBuffers\Table.cs</Link>
+    </Compile>
+    <Compile Include="..\MyGame\Example\Any.cs">
+      <Link>MyGame\Example\Any.cs</Link>
+    </Compile>
+    <Compile Include="..\MyGame\Example\AnyAmbiguousAliases.cs">
+      <Link>MyGame\Example\AnyAmbiguousAliases.cs</Link>
+    </Compile>
+    <Compile Include="..\MyGame\Example\AnyUniqueAliases.cs">
+      <Link>MyGame\Example\AnyUniqueAliases.cs</Link>
+    </Compile>
+    <Compile Include="..\MyGame\Example\Color.cs">
+      <Link>MyGame\Example\Color.cs</Link>
+    </Compile>
+    <Compile Include="..\MyGame\Example\Race.cs">
+      <Link>MyGame\Example\Race.cs</Link>
+    </Compile>
+    <Compile Include="..\MyGame\Example\Monster.cs">
+      <Link>MyGame\Example\Monster.cs</Link>
+    </Compile>
+    <Compile Include="..\MyGame\Example\Referrable.cs">
+      <Link>MyGame\Example\Referrable.cs</Link>
+    </Compile>
+    <Compile Include="..\MyGame\Example\Stat.cs">
+      <Link>MyGame\Example\Stat.cs</Link>
+    </Compile>
+    <Compile Include="..\MyGame\Example\Test.cs">
+      <Link>MyGame\Example\Test.cs</Link>
+    </Compile>
+    <Compile Include="..\MyGame\Example\TestSimpleTableWithEnum.cs">
+      <Link>MyGame\Example\TestSimpleTableWithEnum.cs</Link>
+    </Compile>
+    <Compile Include="..\MyGame\Example\Vec3.cs">
+      <Link>MyGame\Example\Vec3.cs</Link>
+    </Compile>
+    <Compile Include="..\MyGame\Example\Ability.cs">
+      <Link>MyGame\Example\Ability.cs</Link>
+    </Compile>
+    <Compile Include="..\MyGame\Example\ArrayTable.cs">
+      <Link>MyGame\Example\ArrayTable.cs</Link>
+    </Compile>
+    <Compile Include="..\MyGame\Example\ArrayStruct.cs">
+      <Link>MyGame\Example\ArrayStruct.cs</Link>
+    </Compile>
+    <Compile Include="..\MyGame\Example\NestedStruct.cs">
+      <Link>MyGame\Example\NestedStruct.cs</Link>
+    </Compile>
+    <Compile Include="..\MyGame\Example\TestEnum.cs">
+      <Link>MyGame\Example\TestEnum.cs</Link>
+    </Compile>
+    <Compile Include="..\MyGame\InParentNamespace.cs">
+      <Link>MyGame\InParentNamespace.cs</Link>
+    </Compile>
+    <Compile Include="..\namespace_test\NamespaceA\NamespaceB\EnumInNestedNS.cs">
+      <Link>NamespaceA\NamespaceB\EnumInNestedNS.cs</Link>
+    </Compile>
+    <Compile Include="..\namespace_test\NamespaceA\NamespaceB\StructInNestedNS.cs">
+      <Link>NamespaceA\NamespaceB\StructInNestedNS.cs</Link>
+    </Compile>
+    <Compile Include="..\namespace_test\NamespaceA\NamespaceB\TableInNestedNS.cs">
+      <Link>NamespaceA\NamespaceB\TableInNestedNS.cs</Link>
+    </Compile>
+    <Compile Include="..\namespace_test\NamespaceA\TableInFirstNS.cs">
+      <Link>NamespaceA\TableInFirstNS.cs</Link>
+    </Compile>
+    <Compile Include="Assert.cs" />
+    <Compile Include="ByteBufferTests.cs" />
+    <Compile Include="FlatBufferBuilderTests.cs" />
+    <Compile Include="FlatBuffersFuzzTests.cs" />
+    <Compile Include="FlatBuffersTestClassAttribute.cs" />
+    <Compile Include="FlatBuffersTestMethodAttribute.cs" />
+    <Compile Include="FuzzTestData.cs" />
+    <Compile Include="Lcg.cs" />
+    <Compile Include="Program.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="FlatBuffersExampleTests.cs" />
+    <Compile Include="TestTable.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\monsterdata_test.mon">
+      <Link>Resources\monsterdata_test.mon</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it.
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>

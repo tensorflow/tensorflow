@@ -1,0 +1,7 @@
+FROM pypy:3-6.0.0-slim as base
+WORKDIR /code
+ADD . .
+RUN cp flatc_debian_stretch flatc
+WORKDIR /code/tests
+RUN pypy --version
+RUN ./PythonTest.sh

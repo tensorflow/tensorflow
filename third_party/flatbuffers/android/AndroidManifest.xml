@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright (c) 2013 Google, Inc.
+
+     This software is provided 'as-is', without any express or implied
+     warranty.  In no event will the authors be held liable for any damages
+     arising from the use of this software.
+     Permission is granted to anyone to use this software for any purpose,
+     including commercial applications, and to alter it and redistribute it
+     freely, subject to the following restrictions:
+     1. The origin of this software must not be misrepresented; you must not
+     claim that you wrote the original software. If you use this software
+     in a product, an acknowledgment in the product documentation would be
+     appreciated but is not required.
+     2. Altered source versions must be plainly marked as such, and must not be
+     misrepresented as being the original software.
+     3. This notice may not be removed or altered from any source distribution.
+ -->
+<!-- BEGIN_INCLUDE(manifest) -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          package="com.example.FlatBufferTest">
+
+    <uses-feature android:glEsVersion="0x00020000"></uses-feature>
+
+    <!-- This .apk has no Java code itself, so set hasCode to false. -->
+    <application android:label="@string/app_name"
+                 android:hasCode="false"
+                 android:allowBackup="false">
+        <!-- Our activity is the built-in NativeActivity framework class.
+             This will take care of integrating with our NDK code. -->
+        <activity android:name="android.app.NativeActivity"
+                android:label="@string/app_name"
+                android:configChanges="orientation|keyboardHidden"
+                android:screenOrientation="landscape">
+            <!-- Tell NativeActivity the name of or .so -->
+            <meta-data android:name="android.app.lib_name"
+                    android:value="FlatBufferTest" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>
+<!-- END_INCLUDE(manifest) -->

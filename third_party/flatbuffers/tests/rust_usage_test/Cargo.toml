@@ -1,0 +1,26 @@
+[package]
+name = "rust_usage_test"
+version = "0.1.0"
+authors = ["Robert Winslow <hello@rwinslow.com>", "FlatBuffers Maintainers"]
+
+[dependencies]
+flatbuffers = { path = "../../rust/flatbuffers" }
+
+[[bin]]
+name = "monster_example"
+path = "bin/monster_example.rs"
+
+[[bin]]
+name = "alloc_check"
+path = "bin/alloc_check.rs"
+
+
+[dev-dependencies]
+quickcheck = "0.6"
+# TODO(rw): look into moving to criterion.rs
+bencher = "0.1.5"
+
+[[bench]]
+# setup for bencher
+name = "flatbuffers_benchmarks"
+harness = false

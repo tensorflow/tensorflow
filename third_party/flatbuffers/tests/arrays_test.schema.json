@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "definitions": {
+    "MyGame_Example_TestEnum" : {
+      "type" : "string",
+      "enum": ["A", "B", "C"]
+    },
+    "MyGame_Example_NestedStruct" : {
+      "type" : "object",
+      "properties" : {
+        "a" : {
+                "type" : "array", "items" : { "type" : "number" },
+                "minItems": 2,
+                "maxItems": 2
+              },
+        "b" : {
+                "$ref" : "#/definitions/MyGame_Example_TestEnum"
+              },
+        "c" : {
+                "$ref" : "#/definitions/MyGame_Example_TestEnum",
+                "minItems": 2,
+                "maxItems": 2
+              },
+        "d" : {
+                "type" : "array", "items" : { "type" : "number" },
+                "minItems": 2,
+                "maxItems": 2
+              }
+      },
+      "additionalProperties" : false
+    },
+    "MyGame_Example_ArrayStruct" : {
+      "type" : "object",
+      "properties" : {
+        "a" : {
+                "type" : "number"
+              },
+        "b" : {
+                "type" : "array", "items" : { "type" : "number" },
+                "minItems": 15,
+                "maxItems": 15
+              },
+        "c" : {
+                "type" : "number"
+              },
+        "d" : {
+                "type" : "array", "items" : { "$ref" : "#/definitions/MyGame_Example_NestedStruct" },
+                "minItems": 2,
+                "maxItems": 2
+              },
+        "e" : {
+                "type" : "number"
+              },
+        "f" : {
+                "type" : "array", "items" : { "type" : "number" },
+                "minItems": 2,
+                "maxItems": 2
+              }
+      },
+      "additionalProperties" : false
+    },
+    "MyGame_Example_ArrayTable" : {
+      "type" : "object",
+      "properties" : {
+        "a" : {
+                "$ref" : "#/definitions/MyGame_Example_ArrayStruct"
+              }
+      },
+      "additionalProperties" : false
+    }
+  },
+  "$ref" : "#/definitions/MyGame_Example_ArrayTable"
+}

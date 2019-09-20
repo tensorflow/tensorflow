@@ -1,0 +1,82 @@
+{
+  pos: {
+    x: 1.0,
+    y: 2.0,
+    z: 3.0,
+    test1: 3.14159265359,
+    test2: "Green",
+    test3: {
+      a: 10,
+      b: 20
+    }
+  },
+  hp: 80,
+  name: "MyMonster",
+  inventory: [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  test_type: "Monster",
+  test: {
+    name: "Fred"
+  },
+  test4: [
+    {
+      a: 10,
+      b: 20
+    },
+    {
+      a: 30,
+      b: 40
+    }
+  ],
+  testarrayofstring: [
+    "bob",
+    "fred",
+    "bob",
+    "fred"
+  ],
+  testarrayoftables: [
+    {
+      hp: 1000,
+      name: "Barney"
+    },
+    {
+      name: "Fred"
+    },
+    {
+      name: "Wilma"
+    }
+  ],
+  testnestedflatbuffer: {
+    name: "NestedMonster"
+  },
+  testbool: true,
+  testhashs32_fnv1: -579221183,
+  testhashu32_fnv1: 3715746113,
+  testhashs64_fnv1: 7930699090847568257,
+  testhashu64_fnv1: 7930699090847568257,
+  testhashs32_fnv1a: -1904106383,
+  testhashu32_fnv1a: 2390860913,
+  testhashs64_fnv1a: 4898026182817603057,
+  testhashu64_fnv1a: 4898026182817603057,
+  flex: 1234,
+  test5: [
+    {
+      a: 10,
+      b: 20
+    },
+    {
+      a: 30,
+      b: 40
+    }
+  ]
+}

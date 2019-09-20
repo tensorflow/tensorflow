@@ -1,0 +1,23 @@
+/// @defgroup flatbuffers_cpp_api C++ API
+/// @brief FlatBuffers API for C++
+
+/// @defgroup flatbuffers_csharp_api C# API
+/// @brief FlatBuffers API for C#
+
+/// @defgroup flatbuffers_go_api Go API
+/// @brief FlatBuffers API for Go
+
+/// @defgroup flatbuffers_java_api Java API
+/// @brief FlatBuffers API for Java
+
+/// @defgroup flatbuffers_javascript_api JavaScript API
+/// @brief FlatBuffers API for JavaScript
+
+/// @defgroup flatbuffers_typescript_api TypeScript API
+/// @brief FlatBuffers API for TypeScript
+
+/// @defgroup flatbuffers_php_api PHP API
+/// @brief FlatBuffers API for PHP
+
+/// @defgroup flatbuffers_python_api Python API
+/// @brief FlatBuffers API for Python

@@ -1,0 +1,12 @@
+include "include_test1.fbs";
+include "sub/include_test2.fbs";    // should be skipped
+
+namespace MyGame.OtherNameSpace;
+
+enum FromInclude:long { IncludeVal }
+
+struct Unused { a:int; }
+
+table TableB {
+  a:TableA;
+}

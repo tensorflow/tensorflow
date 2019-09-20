@@ -1,0 +1,24 @@
+include "namespace_test1.fbs";
+
+namespace NamespaceA;
+
+table TableInFirstNS
+{
+    foo_table:NamespaceB.TableInNestedNS;
+	foo_enum:NamespaceB.EnumInNestedNS;
+	foo_struct:NamespaceB.StructInNestedNS;
+}
+
+// Test switching namespaces inside a file.
+namespace NamespaceC;
+
+table TableInC {
+    refer_to_a1:NamespaceA.TableInFirstNS;
+    refer_to_a2:NamespaceA.SecondTableInA;
+}
+
+namespace NamespaceA;
+
+table SecondTableInA {
+    refer_to_c:NamespaceC.TableInC;
+}

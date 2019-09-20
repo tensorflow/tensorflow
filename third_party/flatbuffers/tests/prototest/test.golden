@@ -1,0 +1,59 @@
+// Generated from test.proto
+
+namespace proto.test;
+
+/// Enum doc comment.
+enum ProtoEnum : int {
+  NUL = 0,
+  FOO = 1,
+  /// Enum 2nd value doc comment misaligned.
+  BAR = 5,
+}
+
+table ImportedMessage {
+  a:int;
+}
+
+/// 2nd table doc comment with
+/// many lines.
+table ProtoMessage {
+  c:int = 16;
+  d:long;
+  p:uint;
+  e:ulong;
+  /// doc comment for f.
+  f:int = -1;
+  g:long;
+  h:uint;
+  q:ulong;
+  i:int;
+  j:long;
+  /// doc comment for k.
+  k:bool;
+  /// doc comment for l on 2
+  /// lines
+  l:string (required);
+  m:[ubyte];
+  n:proto.test.ProtoMessage_.OtherMessage;
+  o:[string];
+  z:proto.test.ImportedMessage;
+  /// doc comment for r.
+  r:proto.test.ProtoMessage_.Anonymous0;
+}
+
+namespace proto.test.ProtoMessage_;
+
+table OtherMessage {
+  a:double;
+  /// doc comment for b.
+  b:float = 3.14149;
+}
+
+table Anonymous0 {
+  /// doc comment for s.
+  s:proto.test.ImportedMessage;
+  /// doc comment for t on 2
+  /// lines.
+  t:proto.test.ProtoMessage_.OtherMessage;
+}
+
