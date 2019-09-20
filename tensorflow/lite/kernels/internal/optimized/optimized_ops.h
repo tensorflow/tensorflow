@@ -6709,13 +6709,13 @@ inline void Transpose2DImpl(const TransposeParams& params,
     T* output = output_data + i;
 
     const T* input_ptr = input;
-    __builtin_prefetch(input_ptr, 0, 3);
+    optimized_ops_preload_l1_keep(input_ptr);
     input_ptr += d1;
-    __builtin_prefetch(input_ptr, 0, 3);
+    optimized_ops_preload_l1_keep(input_ptr);
     input_ptr += d1;
-    __builtin_prefetch(input_ptr, 0, 3);
+    optimized_ops_preload_l1_keep(input_ptr);
     input_ptr += d1;
-    __builtin_prefetch(input_ptr, 0, 3);
+    optimized_ops_preload_l1_keep(input_ptr);
 
     int j = 0;
     for (; j <= d1 - kLines; j += kLines) {
@@ -6814,13 +6814,13 @@ inline void Transpose2DImpl(const TransposeParams& params,
     int32_t* output = output_data + i;
 
     const int32_t* input_ptr = input;
-    __builtin_prefetch(input_ptr, 0, 3);
+    optimized_ops_preload_l1_keep(input_ptr);
     input_ptr += d1;
-    __builtin_prefetch(input_ptr, 0, 3);
+    optimized_ops_preload_l1_keep(input_ptr);
     input_ptr += d1;
-    __builtin_prefetch(input_ptr, 0, 3);
+    optimized_ops_preload_l1_keep(input_ptr);
     input_ptr += d1;
-    __builtin_prefetch(input_ptr, 0, 3);
+    optimized_ops_preload_l1_keep(input_ptr);
 
     int j = 0;
     for (; j <= d1 - kLines; j += kLines) {
