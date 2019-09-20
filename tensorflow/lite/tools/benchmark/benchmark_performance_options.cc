@@ -195,8 +195,6 @@ void BenchmarkPerformanceOptions::ResetPerformanceOptions() {
   single_option_run_params_->Set<bool>("use_gpu", false);
 #if defined(__ANDROID__)
   single_option_run_params_->Set<bool>("gpu_precision_loss_allowed", true);
-  single_option_run_params_->Set<int32_t>("gpu_gl_object_type",
-                                          TFLITE_GL_OBJECT_TYPE_FASTEST);
 #endif
   single_option_run_params_->Set<bool>("use_nnapi", false);
 }
@@ -227,8 +225,6 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
         params.AddParam("use_gpu", BenchmarkParam::Create<bool>(true));
         params.AddParam("gpu_precision_loss_allowed",
                         BenchmarkParam::Create<bool>(precision_loss));
-        params.AddParam("gpu_gl_object_type",
-                        BenchmarkParam::Create<int32_t>(obj_type));
         all_run_params_.emplace_back(std::move(params));
       }
     }

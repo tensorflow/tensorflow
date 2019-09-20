@@ -269,9 +269,6 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
     CreateFlag<bool>("gpu_precision_loss_allowed", &params_,
                      "Allow to process computation in lower precision than "
                      "FP32 in GPU. By default, it's enabled."),
-    CreateFlag<int32_t>("gpu_gl_object_type", &params_,
-                        "The preferred GL object type to represent tensors in "
-                        "GPU. By default, it's TFLITE_GL_OBJECT_TYPE_FASTEST"),
 #endif
     CreateFlag<bool>("allow_fp16", &params_, "allow fp16"),
     CreateFlag<bool>("require_full_delegation", &params_,
@@ -317,8 +314,6 @@ void BenchmarkTfLiteModel::LogParams() {
 #if defined(__ANDROID__)
   TFLITE_LOG(INFO) << "Allow lower precision in gpu : ["
                    << params_.Get<bool>("gpu_precision_loss_allowed") << "]";
-  TFLITE_LOG(INFO) << "Preferred GL object type in gpu : ["
-                   << params_.Get<int32_t>("gpu_gl_object_type") << "]";
 #endif
   TFLITE_LOG(INFO) << "Allow fp16 : [" << params_.Get<bool>("allow_fp16")
                    << "]";
