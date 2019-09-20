@@ -51,12 +51,14 @@ def canonicalize(d, default=None):
   result = tf_device.DeviceSpec(
       replica=0, task=0, device_type="CPU", device_index=0)
   if ops.executing_eagerly_outside_functions():
+    # The default job is localhost if eager execution is enabled
     result = result.replace(job="localhost")
   if default:
+    # Overrides any defaults with values from the default device if given.
     result = result.make_merged_spec(
         tf_device.DeviceSpec.from_string(default))
 
-  # Apply `d` last, so that it takes precidence over the defaults.
+  # Apply `d` last, so that it's values take precidence over the defaults.
   result = result.make_merged_spec(d)
   return result.to_string()
 
