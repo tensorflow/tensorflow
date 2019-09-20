@@ -370,7 +370,7 @@ Status SetAttribute(absl::string_view name, mlir::Type type,
                     AttrValueMap* values) {
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertScalarTypeToDataType(type, &dtype));
-
+  if (tensorflow::IsRefType(dtype)) dtype = tensorflow::RemoveRefType(dtype);
   AttrValue value;
   value.set_type(dtype);
 
