@@ -160,8 +160,8 @@ Status ClusterFunctionLibraryRuntime::ConstructFunctionGraph(
 
 ClusterFunctionLibraryRuntime::~ClusterFunctionLibraryRuntime() {
   for (auto& function_data : function_data_) {
-    worker_session_->worker_cache->ReleaseWorker(function_data.target,
-                                                 function_data.wi);
+    worker_session_->worker_cache()->ReleaseWorker(function_data.target,
+                                                   function_data.wi);
   }
 }
 
@@ -172,11 +172,11 @@ Status ClusterFunctionLibraryRuntime::Instantiate(
   VLOG(1) << "CFLR::Instantiate: " << function_name << " on " << options.target
           << " (this: " << this << ")";
   WorkerInterface* wi =
-      worker_session_->worker_cache->GetOrCreateWorker(options.target);
+      worker_session_->worker_cache()->GetOrCreateWorker(options.target);
 
   if (wi == nullptr) {
     std::vector<string> workers;
-    worker_session_->worker_cache->ListWorkers(&workers);
+    worker_session_->worker_cache()->ListWorkers(&workers);
     return errors::InvalidArgument(
         "Could not find worker with target: ", options.target,
         " Available workers: ", absl::StrJoin(workers, ", "));
@@ -199,7 +199,7 @@ Status ClusterFunctionLibraryRuntime::Instantiate(
   }
 
   RegisterGraphRequest req;
-  req.set_session_handle(worker_session_->session_name);
+  req.set_session_handle(worker_session_->session_name());
   req.set_create_worker_session_called(create_worker_session_called_);
   *req.mutable_graph_def() = std::move(gdef);
   req.mutable_graph_options()
@@ -237,7 +237,7 @@ void ClusterFunctionLibraryRuntime::Run(
   }
 
   RunGraphRequest* req = new RunGraphRequest;
-  req->set_session_handle(worker_session_->session_name);
+  req->set_session_handle(worker_session_->session_name());
   req->set_create_worker_session_called(create_worker_session_called_);
   req->set_graph_handle(function_data->graph_handle);
   req->set_step_id(opts.step_id);
