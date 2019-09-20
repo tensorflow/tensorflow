@@ -63,6 +63,8 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleGetDimensionSize(HloInstruction* hlo) override;
 
+  Status HandleSetDimensionSize(HloInstruction* hlo) override;
+
   Status HandleSelect(HloInstruction* hlo) override;
 
   Status HandleConvolution(HloInstruction* hlo) override;
@@ -413,11 +415,31 @@ Status DynamicDimensionInferenceVisitor::HandleGetDimensionSize(
   //
   //   Input: F32[x, y, z]
   //     |
-  //   GetDimensionSize(1): U32[]
+  //   GetDimensionSize(1): S32[]
   //
   // The returned value is a scalar, which doesn't have any dynamic dimension in
   // the shape (although the value contains the real size of the dynamic
   // dimension of the input).
+  return Status::OK();
+}
+
+Status DynamicDimensionInferenceVisitor::HandleSetDimensionSize(
+    HloInstruction* hlo) {
+  // Propagate dynamic dimension indicated by this set dimension size
+  // instruction.
+  parent_->SetDynamicSize(hlo, {}, hlo->dimension(), hlo->mutable_operand(1),
+                          {.stride = 1, .multiple_of = 1});
+
+  // Also Propagate dynamic dimension already set by operands.
+  TF_RETURN_IF_ERROR(ForEachOperandDynamicDimension(
+      hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
+               int64 operand_index, HloInstruction* dynamic_size,
+               DimensionConstraint constraint) {
+        parent_->SetDynamicSize(hlo, index, dimension, dynamic_size,
+                                constraint);
+        return Status::OK();
+      }));
+
   return Status::OK();
 }
 
