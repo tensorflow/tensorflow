@@ -95,6 +95,27 @@ cc_library(
 )
 
 objc_library(
+    name = "compiled_model_test_lib",
+    testonly = 1,
+    srcs = ["compiled_model_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":compiled_model",
+    ],
+)
+
+ios_unit_test(
+    name = "compiled_model_test",
+    testonly = 1,
+    minimum_os_version = "10.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":compiled_model_test_lib"],
+)
+
+objc_library(
     name = "compute_task",
     srcs = ["compute_task.mm"],
     hdrs = ["compute_task.h"],
