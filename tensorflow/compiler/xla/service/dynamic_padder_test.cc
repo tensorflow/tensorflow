@@ -346,6 +346,59 @@ ENTRY main {
             not_padded);
 }
 
+XLA_TEST_F(ExecutionTest, WholeDimensionGather) {
+  // Second dimension (size 2) is dynamic, assuming real size is 1 and padded to
+  // 2:
+  //
+  // [[1, 2]
+  //  [3, 4]
+  //  [5, 6]]
+  //
+  // Gathering the second dimension out creates:
+  //
+  // [3, 4]
+  //
+  // Reducing this gives us 3 (4 is padded value so ignored)
+  const string hlo_text = R"(
+HloModule TensorFlowScatterV1
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  param = s32[3, 2, 1] parameter(0)
+  size = s32[] constant(1)
+  param_padded = s32[3, 2, 1] set-dimension-size(param, size), dimensions={1}
+  index = s32[] constant(1)
+  gather = s32[2,1]{1,0} gather(param_padded, index),
+              offset_dims={0,1},
+              collapsed_slice_dims={0},
+              start_index_map={0},
+              index_vector_dim=0,
+              slice_sizes={1,2,1}
+  init = s32[] constant(0)
+  ROOT reduce = s32[] reduce(gather, init),
+      dimensions={0, 1},
+      to_apply=update_s32
+}
+)";
+  // Slicing out entire dimension propagates the dimension
+  Literal operand =
+      LiteralUtil::CreateR3<int32>({{{1}, {2}}, {{3}, {4}}, {{5}, {6}}});
+  auto module = GetHloModule(hlo_text);
+  DynamicPadder padder;
+  TF_CHECK_OK(padder.Run(module.get()).status());
+  Literal result = ExecuteAndTransfer(std::move(module), {&operand});
+
+  // Only first element will be reduced.
+  Literal expected = LiteralUtil::CreateR0<int32>(3);
+
+  EXPECT_EQ(result, expected);
+}
+
 XLA_TEST_F(ExecutionTest, TwoDimensionReduce) {
   // Test that reducing on operand=[2,2] is same as reducing on operand=[4,4]
   // and dynamic dimension = 2
