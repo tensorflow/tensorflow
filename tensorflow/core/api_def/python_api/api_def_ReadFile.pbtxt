@@ -7,4 +7,12 @@ op {
     name: "read_file"
     deprecation_version: 2
   }
+  description: <<END
+For example:
+>>> with open('test_file.txt', 'w') as test_file:
+...     test_file.write('Hello Tensorflow')
+16
+>>> tf.io.read_file('test_file.txt')
+<tf.Tensor: id=..., shape=(), dtype=string, numpy=b'Hello Tensorflow'>
+END
 }
