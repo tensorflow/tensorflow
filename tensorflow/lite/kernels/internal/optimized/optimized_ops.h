@@ -179,12 +179,6 @@ struct TTypes {
   typedef Eigen::TensorMap<
       Eigen::Tensor<const T, 2, Eigen::RowMajor, IndexType>>
       UnalignedConstMatrix;
-  typedef Eigen::TensorMap<
-      Eigen::Tensor<const T, NDIMS, Eigen::RowMajor, IndexType>, Eigen::Aligned>
-      ConstTensor;
-  typedef Eigen::TensorMap<Eigen::Tensor<T, NDIMS, Eigen::RowMajor, IndexType>,
-                           Eigen::Aligned>
-      Tensor;
 };
 
 // TODO(b/62193649): this function is only needed as long
@@ -6896,46 +6890,6 @@ void Transpose2D(const TransposeParams& params, const RuntimeShape& input_shape,
   }
 }
 
-template <typename T>
-void TransposeImpl(const TransposeParams& params,
-                   const RuntimeShape& unextended_input_shape,
-                   const T* input_data,
-                   const RuntimeShape& unextended_output_shape,
-                   T* output_data) {
-  const int unextended_output_size = unextended_input_shape.DimensionsCount();
-  const RuntimeShape input_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-  const int input_ext_size = 4 - unextended_input_shape.DimensionsCount();
-  const int output_ext_size = 4 - unextended_output_size;
-
-  // The perm data is extended to match the output, each index incremented by
-  // the amount of front padding of the input shape.
-  int extended_perm[4];
-  for (int i = 0; i < output_ext_size; ++i) {
-    extended_perm[i] = i;
-  }
-  for (int i = 0; i < unextended_output_size; ++i) {
-    extended_perm[i + output_ext_size] = params.perm[i] + input_ext_size;
-  }
-
-  Eigen::array<int, 4> p;
-  for (int i = 0; i < 4; ++i) p[i] = extended_perm[i];
-  Eigen::DSizes<Eigen::DenseIndex, 4> input_dsizes;
-  for (int d = 0; d < 4; d++) {
-    input_dsizes[d] = static_cast<Eigen::DenseIndex>(input_shape.Dims(d));
-  }
-  Eigen::DSizes<Eigen::DenseIndex, 4> output_dsizes;
-  for (int d = 0; d < 4; d++) {
-    output_dsizes[d] = static_cast<Eigen::DenseIndex>(output_shape.Dims(d));
-  }
-
-  auto x = typename TTypes<T, 4>::ConstTensor(input_data, input_dsizes);
-  auto y = typename TTypes<T, 4>::Tensor(output_data, output_dsizes);
-  y = x.shuffle(p);
-}
-
 // TODO(alanchiao): see if we can reduce the number
 // of lines of code in branching without affecting latency.
 template <typename T>
@@ -7092,13 +7046,6 @@ void Transpose(const TransposeParams& params, const RuntimeShape& input_shape,
   // Consider tradeoffs.
   if (input_shape.DimensionsCount() == 3) {
     Transpose3D(params, input_shape, input_data, output_shape, output_data);
-    return;
-  }
-
-  if (sizeof(T) == 4) {
-    TransposeImpl(params, input_shape,
-                  reinterpret_cast<const int32_t*>(input_data), output_shape,
-                  reinterpret_cast<int32_t*>(output_data));
     return;
   }
 
