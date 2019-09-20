@@ -24,7 +24,7 @@ limitations under the License.
 #include <vector>
 
 #if defined(__ANDROID__)
-#include "tensorflow/lite/delegates/gpu/gl_delegate.h"
+#include "tensorflow/lite/delegates/gpu/delegate.h"
 #include "tensorflow/lite/nnapi/nnapi_util.h"
 #endif
 
@@ -218,9 +218,6 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
 #if defined(__ANDROID__)
   default_params.AddParam("gpu_precision_loss_allowed",
                           BenchmarkParam::Create<bool>(true));
-  default_params.AddParam(
-      "gpu_gl_object_type",
-      BenchmarkParam::Create<int32_t>(TFLITE_GL_OBJECT_TYPE_FASTEST));
 #endif
   default_params.AddParam("allow_fp16", BenchmarkParam::Create<bool>(false));
   default_params.AddParam("require_full_delegation",
@@ -588,37 +585,16 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   return kTfLiteOk;
 }
 
-#if defined(__ANDROID__)
-bool IsValidGLObjectTypeInGPU(int32_t type) {
-  if (type < TFLITE_GL_OBJECT_TYPE_FASTEST ||
-      type > TFLITE_GL_OBJECT_TYPE_BUFFER) {
-    TFLITE_LOG(WARN) << "The specified GL object type in GPU is invalid: "
-                     << type;
-    return false;
-  }
-  return true;
-}
-#endif
-
 BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
     const {
   TfLiteDelegatePtrMap delegates;
   if (params_.Get<bool>("use_gpu")) {
 #if defined(__ANDROID__)
-    TfLiteGpuDelegateOptions gpu_opts = TfLiteGpuDelegateOptionsDefault();
-    gpu_opts.metadata =
-        model_ ? TfLiteGpuDelegateGetModelMetadata(model_->GetModel())
-               : nullptr;
-    gpu_opts.compile_options.precision_loss_allowed =
+    TfLiteGpuDelegateOptionsV2 gpu_opts = TfLiteGpuDelegateOptionsV2Default();
+    gpu_opts.inference_preference =
+        TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
+    gpu_opts.is_precision_loss_allowed =
         params_.Get<bool>("gpu_precision_loss_allowed") ? 1 : 0;
-    int32_t gl_obj_type = params_.Get<int32_t>("gpu_gl_object_type");
-    // We overwrite the gl object type to the recommended value if the specified
-    // isn't valid.
-    if (!IsValidGLObjectTypeInGPU(gl_obj_type)) {
-      gl_obj_type = TFLITE_GL_OBJECT_TYPE_FASTEST;
-    }
-    gpu_opts.compile_options.preferred_gl_object_type = gl_obj_type;
-    gpu_opts.compile_options.dynamic_batch_enabled = 0;
     Interpreter::TfLiteDelegatePtr delegate =
         evaluation::CreateGPUDelegate(model_.get(), &gpu_opts);
 #else
