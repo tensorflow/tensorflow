@@ -336,7 +336,7 @@ def all_devices():
   return devices if devices else all_local_devices()
 
 
-@tf_export("distribute.MirroredStrategy", v1=[])
+@tf_export("distribute.MirroredStrategy", v1=[])  # pylint: disable=g-classes-have-attributes
 class MirroredStrategy(distribute_lib.Strategy):
   """Mirrors vars to distribute across multiple devices and machines.
 
@@ -357,10 +357,12 @@ class MirroredStrategy(distribute_lib.Strategy):
     extended = MirroredExtended(
         self, devices=devices, cross_device_ops=cross_device_ops)
     super(MirroredStrategy, self).__init__(extended)
+    distribute_lib.distribution_strategy_gauge.get_cell("V2").set(
+        "MirroredStrategy")
 
 
 @tf_export(v1=["distribute.MirroredStrategy"])
-class MirroredStrategyV1(distribute_lib.StrategyV1):
+class MirroredStrategyV1(distribute_lib.StrategyV1):  # pylint: disable=g-missing-docstring
 
   __doc__ = MirroredStrategy.__doc__
 
@@ -368,6 +370,8 @@ class MirroredStrategyV1(distribute_lib.StrategyV1):
     extended = MirroredExtended(
         self, devices=devices, cross_device_ops=cross_device_ops)
     super(MirroredStrategyV1, self).__init__(extended)
+    distribute_lib.distribution_strategy_gauge.get_cell("V1").set(
+        "MirroredStrategy")
 
 
 # TODO(josh11b): Switch to V2 when we no longer need to support tf.compat.v1.
@@ -846,13 +850,12 @@ class _MirroredReplicaThread(threading.Thread):
     self.record_thread_local_summary_state()
     self.context_device_policy = (
         pywrap_tensorflow.TFE_ContextGetDevicePlacementPolicy(
-            ctx._context_handle))
+            ctx._context_handle))  # pylint: disable=protected-access
     self.graph = ops.get_default_graph()
     with ops.init_scope():
       self._init_in_eager = context.executing_eagerly()
       self._init_graph = ops.get_default_graph()
-
-    self._variable_creator_stack = self.graph._variable_creator_stack[:]
+    self._variable_creator_stack = self.graph._variable_creator_stack[:]   # pylint: disable=protected-access
     self._var_scope = variable_scope.get_variable_scope()
     # Adding a "/" at end lets us re-enter this scope later.
     self._name_scope = self.graph.get_name_scope()
