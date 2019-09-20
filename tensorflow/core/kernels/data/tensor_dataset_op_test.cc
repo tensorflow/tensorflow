@@ -29,10 +29,11 @@ class TensorDatasetParams : public DatasetParams {
                       std::move(node_name)),
         components_(std::move(components)) {}
 
-  Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override {
-    for (auto& component : components_) {
-      inputs->emplace_back(TensorValue(&component));
-    }
+  Status GetInputs(const std::vector<Tensor*>& input_datasets,
+                   std::vector<std::unique_ptr<Tensor>>* created_tensors,
+                   gtl::InlinedVector<TensorValue, 4>* inputs) const override {
+    inputs->clear();
+    AddTensorInputs(components_, created_tensors, inputs);
     return Status::OK();
   }
 

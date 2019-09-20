@@ -30,27 +30,20 @@ class CacheDatasetParams : public DatasetParams {
                      string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
-        filename_(CreateTensor<tstring>(TensorShape({}), {filename})) {
-    auto input_dataset_params_ptr =
-        std::make_shared<T>(std::move(input_dataset_params));
-    input_dataset_params_group_.emplace_back(
-        std::make_pair(std::move(input_dataset_params_ptr), Tensor()));
+        filename_(filename) {
+    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
     iterator_prefix_ = name_utils::IteratorPrefix(
         input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
   }
 
-  Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override {
-    inputs->reserve(input_dataset_params_group_.size());
-    for (auto& pair : input_dataset_params_group_) {
-      if (!IsDatasetTensor(pair.second)) {
-        inputs->clear();
-        return errors::Internal(
-            "The input dataset is not populated as the dataset tensor yet.");
-      } else {
-        inputs->emplace_back(TensorValue(&pair.second));
-      }
-    }
-    inputs->emplace_back(TensorValue(&filename_));
+  Status GetInputs(const std::vector<Tensor*>& input_datasets,
+                   std::vector<std::unique_ptr<Tensor>>* created_tensors,
+                   gtl::InlinedVector<TensorValue, 4>* inputs) const override {
+    inputs->clear();
+    TF_RETURN_IF_ERROR(AddDatasetInputs(input_datasets, 1, inputs));
+    Tensor filename_tensor =
+        CreateTensor<tstring>(TensorShape({}), {filename_});
+    AddTensorInputs({filename_tensor}, created_tensors, inputs);
     return Status::OK();
   }
 
@@ -69,17 +62,18 @@ class CacheDatasetParams : public DatasetParams {
 
   string op_name() const override { return CacheDatasetOp::kDatasetType; }
 
+  string filename() const { return filename_; }
+
  private:
-  Tensor filename_;
+  string filename_;
 };
 
 class CacheDatasetOpTest : public DatasetOpsTestBaseV2 {
  public:
-  Status Initialize(DatasetParams& dataset_params) override {
+  Status Initialize(const DatasetParams& dataset_params) {
     TF_RETURN_IF_ERROR(DatasetOpsTestBaseV2::Initialize(dataset_params));
-    gtl::InlinedVector<TensorValue, 4> inputs;
-    TF_RETURN_IF_ERROR(dataset_params.GetInputs(&inputs));
-    cache_filename_ = inputs[1].tensor->scalar<tstring>()();
+    auto params = static_cast<const CacheDatasetParams&>(dataset_params);
+    cache_filename_ = params.filename();
     return Status::OK();
   }
 
