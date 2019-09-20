@@ -36,7 +36,7 @@ class ConcatenateDatasetParams : public DatasetParams {
     input_dataset_params_.push_back(
         absl::make_unique<T>(input_dataset_params_1));
     iterator_prefix_ =
-        name_utils::IteratorPrefix(input_dataset_params_0.op_name(),
+        name_utils::IteratorPrefix(input_dataset_params_0.dataset_type(),
                                    input_dataset_params_0.iterator_prefix());
   }
 
@@ -55,7 +55,9 @@ class ConcatenateDatasetParams : public DatasetParams {
     return Status::OK();
   }
 
-  string op_name() const override { return ConcatenateDatasetOp::kDatasetType; }
+  string dataset_type() const override {
+    return ConcatenateDatasetOp::kDatasetType;
+  }
 };
 
 // Test case 1: same shape.

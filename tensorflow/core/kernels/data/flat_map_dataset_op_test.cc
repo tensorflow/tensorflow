@@ -37,8 +37,9 @@ class FlatMapDatasetParams : public DatasetParams {
         func_lib_(std::move(func_lib)),
         type_arguments_(std::move(type_arguments)) {
     input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
-    iterator_prefix_ = name_utils::IteratorPrefix(
-        input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
+                                   input_dataset_params.iterator_prefix());
   }
 
   std::vector<Tensor> GetInputTensors() const override {
@@ -62,7 +63,9 @@ class FlatMapDatasetParams : public DatasetParams {
     return Status::OK();
   }
 
-  string op_name() const override { return FlatMapDatasetOp::kDatasetType; }
+  string dataset_type() const override {
+    return FlatMapDatasetOp::kDatasetType;
+  }
 
   std::vector<FunctionDef> func_lib() const override { return func_lib_; }
 

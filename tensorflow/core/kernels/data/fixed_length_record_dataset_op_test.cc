@@ -64,7 +64,7 @@ class FixedLengthRecordDatasetParams : public DatasetParams {
     return Status::OK();
   }
 
-  string op_name() const override {
+  string dataset_type() const override {
     return FixedLengthRecordDatasetOp::kDatasetType;
   }
 
