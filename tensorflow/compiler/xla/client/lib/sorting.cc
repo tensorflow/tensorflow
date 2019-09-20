@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/client/lib/sorting.h"
+
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -30,6 +31,12 @@ XlaOp TopK(XlaOp input, int64 k) {
     Shape iota_shape =
         ShapeUtil::MakeShape(S32, AsInt64Slice(input_shape.dimensions()));
     XlaOp iota_s32 = Iota(builder, iota_shape, last_dim);
+    for (int64 i = 0; i < input_shape.rank(); ++i) {
+      if (input_shape.is_dynamic_dimension(i)) {
+        // Propagate dynamic dimension from inputs to iota.
+        iota_s32 = SetDimensionSize(iota_s32, GetDimensionSize(input, i), i);
+      }
+    }
     auto input_dims = input_shape.dimensions();
     XlaOp sort_result =
         Sort({input, iota_s32},

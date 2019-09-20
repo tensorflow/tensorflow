@@ -253,7 +253,13 @@ class LogicalDevice(
 @tf_export("config.experimental.VirtualDeviceConfiguration")
 class VirtualDeviceConfiguration(
     collections.namedtuple("VirtualDeviceConfiguration", ["memory_limit"])):
-  """Configuration class for virtual devices for a PhysicalDevice.
+  """Configuration class for a `LogicalDevice`.
+
+  The class specifies the parameters for a `LogicalDevice` used during runtime
+  initialization. Not all fields are valid for all device types.
+
+  See `tf.config.experimental.get_virtual_device_configuration` and
+  `tf.config.experimental.set_virtual_device_configuration` for usage examples.
 
   Fields:
     memory_limit: (optional) Maximum memory (in MB) to allocate on the virtual

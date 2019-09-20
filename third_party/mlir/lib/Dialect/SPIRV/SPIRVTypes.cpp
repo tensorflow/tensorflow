@@ -363,34 +363,47 @@ Type RuntimeArrayType::getElementType() const { return getImpl()->elementType; }
 //===----------------------------------------------------------------------===//
 
 struct spirv::detail::StructTypeStorage : public TypeStorage {
-  StructTypeStorage(unsigned numMembers, Type const *memberTypes,
-                    StructType::LayoutInfo const *layoutInfo)
+  StructTypeStorage(
+      unsigned numMembers, Type const *memberTypes,
+      StructType::LayoutInfo const *layoutInfo, unsigned numMemberDecorations,
+      StructType::MemberDecorationInfo const *memberDecorationsInfo)
       : TypeStorage(numMembers), memberTypes(memberTypes),
-        layoutInfo(layoutInfo) {}
+        layoutInfo(layoutInfo), numMemberDecorations(numMemberDecorations),
+        memberDecorationsInfo(memberDecorationsInfo) {}
 
-  using KeyTy = std::pair<ArrayRef<Type>, ArrayRef<StructType::LayoutInfo>>;
+  using KeyTy = std::tuple<ArrayRef<Type>, ArrayRef<StructType::LayoutInfo>,
+                           ArrayRef<StructType::MemberDecorationInfo>>;
   bool operator==(const KeyTy &key) const {
-    return key == KeyTy(getMemberTypes(), getLayoutInfo());
+    return key ==
+           KeyTy(getMemberTypes(), getLayoutInfo(), getMemberDecorationsInfo());
   }
 
   static StructTypeStorage *construct(TypeStorageAllocator &allocator,
                                       const KeyTy &key) {
-    ArrayRef<Type> keyTypes = key.first;
+    ArrayRef<Type> keyTypes = std::get<0>(key);
 
     // Copy the member type and layout information into the bump pointer
     auto typesList = allocator.copyInto(keyTypes).data();
 
     const StructType::LayoutInfo *layoutInfoList = nullptr;
-    if (!key.second.empty()) {
-      ArrayRef<StructType::LayoutInfo> keyLayoutInfo = key.second;
+    if (!std::get<1>(key).empty()) {
+      ArrayRef<StructType::LayoutInfo> keyLayoutInfo = std::get<1>(key);
       assert(keyLayoutInfo.size() == keyTypes.size() &&
              "size of layout information must be same as the size of number of "
              "elements");
       layoutInfoList = allocator.copyInto(keyLayoutInfo).data();
     }
 
+    const StructType::MemberDecorationInfo *memberDecorationList = nullptr;
+    unsigned numMemberDecorations = 0;
+    if (!std::get<2>(key).empty()) {
+      auto keyMemberDecorations = std::get<2>(key);
+      numMemberDecorations = keyMemberDecorations.size();
+      memberDecorationList = allocator.copyInto(keyMemberDecorations).data();
+    }
     return new (allocator.allocate<StructTypeStorage>())
-        StructTypeStorage(keyTypes.size(), typesList, layoutInfoList);
+        StructTypeStorage(keyTypes.size(), typesList, layoutInfoList,
+                          numMemberDecorations, memberDecorationList);
   }
 
   ArrayRef<Type> getMemberTypes() const {
@@ -401,25 +414,34 @@ struct spirv::detail::StructTypeStorage : public TypeStorage {
     if (layoutInfo) {
       return ArrayRef<StructType::LayoutInfo>(layoutInfo, getSubclassData());
     }
-    return ArrayRef<StructType::LayoutInfo>(nullptr, size_t(0));
+    return {};
+  }
+
+  ArrayRef<StructType::MemberDecorationInfo> getMemberDecorationsInfo() const {
+    if (memberDecorationsInfo) {
+      return ArrayRef<StructType::MemberDecorationInfo>(memberDecorationsInfo,
+                                                        numMemberDecorations);
+    }
+    return {};
   }
 
   Type const *memberTypes;
   StructType::LayoutInfo const *layoutInfo;
+  unsigned numMemberDecorations;
+  StructType::MemberDecorationInfo const *memberDecorationsInfo;
 };
 
-StructType StructType::get(ArrayRef<Type> memberTypes) {
+StructType
+StructType::get(ArrayRef<Type> memberTypes,
+                ArrayRef<StructType::LayoutInfo> layoutInfo,
+                ArrayRef<StructType::MemberDecorationInfo> memberDecorations) {
   assert(!memberTypes.empty() && "Struct needs at least one member type");
-  ArrayRef<StructType::LayoutInfo> noLayout(nullptr, size_t(0));
-  return Base::get(memberTypes[0].getContext(), TypeKind::Struct, memberTypes,
-                   noLayout);
-}
-
-StructType StructType::get(ArrayRef<Type> memberTypes,
-                           ArrayRef<StructType::LayoutInfo> layoutInfo) {
-  assert(!memberTypes.empty() && "Struct needs at least one member type");
+  // Sort the decorations.
+  SmallVector<StructType::MemberDecorationInfo, 4> sortedDecorations(
+      memberDecorations.begin(), memberDecorations.end());
+  llvm::array_pod_sort(sortedDecorations.begin(), sortedDecorations.end());
   return Base::get(memberTypes.vec().front().getContext(), TypeKind::Struct,
-                   memberTypes, layoutInfo);
+                   memberTypes, layoutInfo, sortedDecorations);
 }
 
 unsigned StructType::getNumElements() const {
@@ -440,4 +462,29 @@ uint64_t StructType::getOffset(unsigned index) const {
       getNumElements() > index &&
       "element index is more than number of members of the SPIR-V StructType");
   return getImpl()->layoutInfo[index];
+}
+
+void StructType::getMemberDecorations(
+    SmallVectorImpl<StructType::MemberDecorationInfo> &memberDecorations)
+    const {
+  memberDecorations.clear();
+  auto implMemberDecorations = getImpl()->getMemberDecorationsInfo();
+  memberDecorations.append(implMemberDecorations.begin(),
+                           implMemberDecorations.end());
+}
+
+void StructType::getMemberDecorations(
+    unsigned index, SmallVectorImpl<spirv::Decoration> &decorations) const {
+  assert(getNumElements() > index && "member index out of range");
+  auto memberDecorations = getImpl()->getMemberDecorationsInfo();
+  decorations.clear();
+  for (auto &memberDecoration : memberDecorations) {
+    if (memberDecoration.first == index) {
+      decorations.push_back(memberDecoration.second);
+    }
+    if (memberDecoration.first > index) {
+      // Early exit since the decorations are stored sorted.
+      return;
+    }
+  }
 }

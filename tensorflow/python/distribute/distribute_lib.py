@@ -110,6 +110,7 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context as eager_context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -515,11 +516,12 @@ class Strategy(object):
       try:
         extended._retrace_functions_for_each_device = (
             len(extended.worker_devices) > 1)
+        distribution_strategy_replica_gauge.get_cell("num_replicas").set(
+            self.num_replicas_in_sync)
       except:  # pylint: disable=bare-except
         # Default for the case where extended.worker_devices can't return
         # a sensible value.
         extended._retrace_functions_for_each_device = True
-      # pylint: enable=protected-access
 
   @property
   def extended(self):
@@ -1662,6 +1664,8 @@ class StrategyExtendedV2(object):
 
     Subclasses should override this to provide whether the strategy is
     currently in multi-worker setup.
+
+    Experimental. Signature and implementation are subject to change.
     """
     raise NotImplementedError("must be implemented in descendants")
 
@@ -2351,3 +2355,13 @@ def create_mirrored_variable(  # pylint: disable=missing-docstring
     ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, result)
 
   return result
+
+# ------------------------------------------------------------------------------
+# Metrics to track which distribution strategy is being called
+distribution_strategy_gauge = monitoring.StringGauge(
+    "tensorflow/api/distribution_strategy",
+    "Gauge to track the type of distribution strategy used.", "TF Version")
+distribution_strategy_replica_gauge = monitoring.IntGauge(
+    "tensorflow/api/distribution_strategy/replica",
+    "Gauge to track the number of replica each distribution strategy used.",
+    "CountType")

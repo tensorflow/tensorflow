@@ -71,6 +71,7 @@ cuda_py_tests(
     name = "mfcc_ops_test",
     srcs = ["mfcc_ops_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",

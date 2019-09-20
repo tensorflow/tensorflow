@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
+#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
@@ -34,9 +35,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
@@ -164,27 +167,26 @@ std::string CreateMissingAttributeMsg(llvm::StringRef attribute) {
   return llvm::formatv("requires attribute '{0}'", attribute).str();
 }
 
-// Constructs a TPUCompileMetadataProto from attributes of a
-// `tf_device::LaunchFuncOp` and serializes it as a string. If any necessary
-// attributes are missing from the op, a failure will be returned.
+// Populates a TPUCompileMetadataProto from attributes of a
+// `tf_device::LaunchFuncOp`. If any necessary attributes are missing from the
+// op, a failure will be returned.
 // TODO(lyandy): Propagate and support device assignment.
 // TODO(lyandy): Support session handle and guaranteed consts.
-LogicalResult CreateMetadataProtoString(tf_device::LaunchFuncOp op,
-                                        std::string* metadata) {
-  tensorflow::tpu::TPUCompileMetadataProto proto;
-
+LogicalResult SetMetadataProtoFromLaunchFuncOp(
+    tf_device::LaunchFuncOp op,
+    tensorflow::tpu::TPUCompileMetadataProto* metadata) {
   auto num_replicas = op.getAttrOfType<IntegerAttr>(kNumReplicasAttr);
   if (!num_replicas)
     return op.emitOpError(CreateMissingAttributeMsg(kNumReplicasAttr));
 
-  proto.set_num_replicas(num_replicas.getInt());
+  metadata->set_num_replicas(num_replicas.getInt());
 
   auto num_cores_per_replica =
       op.getAttrOfType<IntegerAttr>(kNumCoresPerReplicaAttr);
   if (!num_cores_per_replica)
     return op.emitOpError(CreateMissingAttributeMsg(kNumCoresPerReplicaAttr));
 
-  proto.set_num_cores_per_replica(num_cores_per_replica.getInt());
+  metadata->set_num_cores_per_replica(num_cores_per_replica.getInt());
 
   auto step_marker_location =
       op.getAttrOfType<StringAttr>(kStepMarkerLocationAttr);
@@ -202,7 +204,7 @@ LogicalResult CreateMetadataProtoString(tf_device::LaunchFuncOp op,
                                         kStepMarkerLocationAttr,
                                         step_marker_location.getValue()));
 
-  proto.set_step_marker_location(location);
+  metadata->set_step_marker_location(location);
 
   auto padding_map = op.getAttrOfType<ArrayAttr>(kPaddingMapAttr);
   if (!padding_map)
@@ -216,7 +218,8 @@ LogicalResult CreateMetadataProtoString(tf_device::LaunchFuncOp op,
           llvm::formatv("bad '{0}' attribute at index {1}, not a string",
                         kPaddingMapAttr, padding_and_idx.index()));
 
-    tensorflow::tpu::PaddingMap* padding = proto.mutable_padding_maps()->Add();
+    tensorflow::tpu::PaddingMap* padding =
+        metadata->mutable_padding_maps()->Add();
     if (!padding->ParseFromString(padding_attr_str.getValue()))
       return op.emitOpError(llvm::formatv(
           "bad '{0}' attribute at index {1} with value '{2}'", kPaddingMapAttr,
@@ -224,11 +227,9 @@ LogicalResult CreateMetadataProtoString(tf_device::LaunchFuncOp op,
   }
 
   // Set args metadata in proto.
-  // TODO(lyandy): Determine proper sharding and shapes of args once topology
-  // and devices are propagated to the pass.
   for (auto operand_type_and_idx : llvm::enumerate(op.getOperandTypes())) {
     Type operand_type = operand_type_and_idx.value();
-    tensorflow::tpu::TPUCompileMetadataProto::Arg* arg = proto.add_args();
+    tensorflow::tpu::TPUCompileMetadataProto::Arg* arg = metadata->add_args();
     tensorflow::DataType dtype;
     tensorflow::Status status =
         tensorflow::ConvertToDataType(operand_type, &dtype);
@@ -239,7 +240,22 @@ LogicalResult CreateMetadataProtoString(tf_device::LaunchFuncOp op,
 
     arg->set_dtype(dtype);
     // TODO(lyandy): Support other arg kinds.
-    arg->set_kind(tensorflow::tpu::TPUCompileMetadataProto::Arg::PARAMETER);
+    if (dtype == tensorflow::DT_RESOURCE)
+      arg->set_kind(tensorflow::tpu::TPUCompileMetadataProto::Arg::VARIABLE);
+    else
+      arg->set_kind(tensorflow::tpu::TPUCompileMetadataProto::Arg::PARAMETER);
+
+    // Unranked and partial shapes are not populated.
+    if (auto ranked_tensor_type = operand_type.dyn_cast<RankedTensorType>()) {
+      if (ranked_tensor_type.hasStaticShape()) {
+        tensorflow::TensorShapeProto shape_proto;
+        ConvertToTensorShapeProto(ranked_tensor_type.getShape(), &shape_proto);
+        *arg->mutable_shape() = std::move(shape_proto);
+      }
+    }
+
+    // TODO(lyandy): Determine proper sharding of args once topology and devices
+    // are propagated to the pass.
     xla::OpSharding sharding;
     sharding.set_type(xla::OpSharding::MAXIMAL);
     sharding.add_tile_assignment_dimensions(1);
@@ -248,30 +264,39 @@ LogicalResult CreateMetadataProtoString(tf_device::LaunchFuncOp op,
   }
 
   // Set retvals metadata in proto.
-  // TODO(lyandy): Determine proper sharding and shapes of retvals once topology
-  // and devices is propagated to the pass.
+  // TODO(lyandy): Determine proper sharding of retvals once topology and
+  // devices is propagated to the pass.
   for (int i = 0; i < op.getNumResults(); ++i) {
     xla::OpSharding sharding;
     sharding.set_type(xla::OpSharding::MAXIMAL);
     sharding.add_tile_assignment_dimensions(1);
     sharding.add_tile_assignment_devices(0);
-    *proto.add_retvals()->mutable_sharding() = std::move(sharding);
+    *metadata->add_retvals()->mutable_sharding() = std::move(sharding);
   }
-
-  if (tpu_compile_metadata_debug)
-    *metadata = proto.DebugString();
-  else
-    proto.SerializeToString(metadata);
 
   return success();
 }
 
-// Create a `tf.MLIRCompileToTPU` that contains a MLIR module that is
+// Create a `tf._TPUCompileMlir` that contains a MLIR module that is
 // functionally equivalent to the function referenced by launch_func.
 Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func,
                           OpBuilder* builder) {
   // TODO(b/139377366): Use tf_tpu.compile build method when it is defined.
   OperationState compile_op_state(launch_func.getLoc(), "tf._TPUCompileMlir");
+
+  // Set metadata from attributes.
+  tensorflow::tpu::TPUCompileMetadataProto metadata;
+  if (failed(SetMetadataProtoFromLaunchFuncOp(launch_func, &metadata)))
+    return nullptr;
+
+  std::string txt_metadata;
+  if (tpu_compile_metadata_debug)
+    txt_metadata = metadata.DebugString();
+  else
+    metadata.SerializeToString(&txt_metadata);
+
+  compile_op_state.addAttribute("metadata",
+                                builder->getStringAttr(txt_metadata));
 
   // Build a shape op for each input to launch_func.
   // TODO(b/139377366): When shape inference is ready, we can use compile time
@@ -280,10 +305,14 @@ Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func,
   llvm::SmallVector<Value*, 4> compile_op_operands;
   compile_op_operands.reserve(launch_func.getNumOperands());
 
-  for (Value* v : launch_func.getOperands()) {
+  for (auto operand_and_idx : llvm::enumerate(launch_func.getOperands())) {
+    // Skip adding shape op for operands that have static shapes.
+    if (metadata.args(operand_and_idx.index()).has_shape()) continue;
+
     auto shape_op = builder->create<TF::ShapeOp>(
         launch_func.getLoc(),
-        builder->getTensorType({-1}, builder->getIntegerType(64)), v);
+        builder->getTensorType({-1}, builder->getIntegerType(64)),
+        operand_and_idx.value());
     compile_op_operands.emplace_back(shape_op.getResult());
   }
   compile_op_state.addOperands(compile_op_operands);
@@ -302,12 +331,6 @@ Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func,
   std::string txt_module = EncapsulateFuncAndSerialize(func);
   compile_op_state.addAttribute("mlir_module",
                                 builder->getStringAttr(txt_module));
-
-  // Set metadata from attributes.
-  std::string metadata;
-  if (failed(CreateMetadataProtoString(launch_func, &metadata))) return nullptr;
-
-  compile_op_state.addAttribute("metadata", builder->getStringAttr(metadata));
 
   // Result #0 is a string indicating whether compilation is successful or not.
   compile_op_state.addTypes(

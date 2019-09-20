@@ -228,7 +228,7 @@ Status FunctionalizeControlFlowForFunction(
   return ret_status;
 }
 
-Status FunctionalizeControlFlowPass::Run(
+Status FunctionalizeControlFlowForXlaPass::Run(
     const GraphOptimizationPassOptions& options) {
   Graph* graph = options.graph->get();
   if (VLOG_IS_ON(4)) {
@@ -293,6 +293,11 @@ Status FunctionalizeControlFlowPass::Run(
                     options.flib_def);
   }
   return Status::OK();
+}
+
+Status FunctionalizeControlFlowPass::Run(
+    const GraphOptimizationPassOptions& options) {
+  return FunctionalizeControlFlow(options.graph->get(), options.flib_def);
 }
 
 }  // namespace tensorflow

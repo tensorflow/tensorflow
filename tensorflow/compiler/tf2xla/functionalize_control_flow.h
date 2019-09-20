@@ -39,10 +39,15 @@ Status FunctionalizeControlFlowForGraphDef(
     const FunctionLibraryDefinition* lookup_library, GraphDef* graph_def,
     FunctionLibraryDefinition* library);
 
-// This pass looks at the graph and all associated FunctionDefs, and turns
-// traditional control flow structure (Switch/Merge/etc.) into functional
-// control flow structure (If/While).
+// This pass looks at the graph, and turns V1 control flow structure
+// (Switch/Merge/etc.) into V2 control flow structure (If/While).
 class FunctionalizeControlFlowPass : public GraphOptimizationPass {
+ public:
+  Status Run(const GraphOptimizationPassOptions& options) override;
+};
+
+// Same as the above but only modifies functions that will be executed by XLA.
+class FunctionalizeControlFlowForXlaPass : public GraphOptimizationPass {
  public:
   Status Run(const GraphOptimizationPassOptions& options) override;
 };

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_RUNNER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_RUNNER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONV_RUNNER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONV_RUNNER_H_
 
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -38,7 +38,7 @@ struct RunConvOptions {
 };
 
 // Implementation struct exposed for debugging and log analysis.
-struct CudnnConvParams {
+struct GpuConvParams {
   // Here are the fields related to cuDNN's fused convolution. The result thus
   // is defined as:
   //   activation(conv_result_scale * conv(x, w) +
@@ -86,20 +86,20 @@ struct CudnnConvParams {
 // allocator and take note of how much memory is used.  The next time you call
 // the same conv, you can provide an explicitly preallocated scratch buffer of
 // that size, if you like.
-Status RunCudnnConv(const HloCustomCallInstruction* conv,
-                    absl::Span<se::DeviceMemoryBase> operand_buffers,
-                    se::DeviceMemoryBase result_buffer,
-                    se::DeviceMemoryBase scratch_buf, se::Stream* stream,
-                    RunConvOptions = {});
+Status RunGpuConv(const HloCustomCallInstruction* conv,
+                  absl::Span<se::DeviceMemoryBase> operand_buffers,
+                  se::DeviceMemoryBase result_buffer,
+                  se::DeviceMemoryBase scratch_buf, se::Stream* stream,
+                  RunConvOptions = {});
 
-Status RunCudnnConv(const HloCustomCallInstruction* conv,
-                    absl::Span<se::DeviceMemoryBase> operand_buffers,
-                    se::DeviceMemoryBase result_buffer,
-                    se::ScratchAllocator* scratch_allocator, se::Stream* stream,
-                    RunConvOptions = {});
+Status RunGpuConv(const HloCustomCallInstruction* conv,
+                  absl::Span<se::DeviceMemoryBase> operand_buffers,
+                  se::DeviceMemoryBase result_buffer,
+                  se::ScratchAllocator* scratch_allocator, se::Stream* stream,
+                  RunConvOptions = {});
 
 // Implementation details exposed for debugging and log analysis.
-StatusOr<CudnnConvParams> GetCudnnConvParams(
+StatusOr<GpuConvParams> GetGpuConvParams(
     const HloCustomCallInstruction* conv,
     absl::Span<se::DeviceMemoryBase> operand_buffers,
     se::DeviceMemoryBase result_buffer);
@@ -107,4 +107,4 @@ StatusOr<CudnnConvParams> GetCudnnConvParams(
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_RUNNER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONV_RUNNER_H_

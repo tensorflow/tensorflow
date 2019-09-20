@@ -1237,4 +1237,6 @@ cuda_py_test(
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/133330625)
     ],
+    # b/141096229: Non-atomic AssignAdd
+    xla_enable_strict_auto_jit = False,
 )

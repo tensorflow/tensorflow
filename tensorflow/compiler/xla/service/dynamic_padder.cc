@@ -95,6 +95,7 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kConcatenate:
     case HloOpcode::kReshape:
+    case HloOpcode::kReverse:
     case HloOpcode::kTuple:
     case HloOpcode::kAllReduce:
     case HloOpcode::kBroadcast:

@@ -332,9 +332,12 @@ class WhileOp(object):
   def _convert_enter(self, parent_pfor, enter):
     """Converts an Enter node."""
     inp, stacked, _ = parent_pfor._convert_helper(enter.op.inputs[0])
-    control_inputs = [
-        parent_pfor._convert_helper(x).t for x in enter.op.control_inputs
-    ]
+    control_inputs = []
+    for x in enter.op.control_inputs:
+      converted = parent_pfor._convert_helper(x)
+      if not isinstance(converted, ops.Operation):
+        converted = converted.t
+      control_inputs.append(converted)
     if control_inputs:
       with ops.control_dependencies(control_inputs):
         inp = array_ops.identity(inp)
@@ -1113,7 +1116,7 @@ class PFor(object):
       pfor_config: PForConfig object used while constructing the loop body.
     """
     assert isinstance(loop_var, ops.Tensor)
-    assert loop_var.op.type == "Placeholder"
+    assert loop_var.op.type == "PlaceholderWithDefault"
     self._loop_var = loop_var
     loop_len_value = tensor_util.constant_value(loop_len)
     if loop_len_value is not None:

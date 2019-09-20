@@ -4,6 +4,7 @@ add_llvm_library(MLIRTestTransforms
   TestInlining.cpp
   TestLoopMapping.cpp
   TestLoopParametricTiling.cpp
+  TestMemRefStrideCalculation.cpp
   TestVectorizationUtils.cpp
 
   ADDITIONAL_HEADER_DIRS

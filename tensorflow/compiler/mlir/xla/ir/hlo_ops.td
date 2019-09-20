@@ -474,6 +474,8 @@ def HLO_ReverseOp: HLO_Op<"reverse",
 
   let results = (outs HLO_Tensor);
 
+  let hasFolder = 1;
+
   // TODO(b/129422361): ReverseOp has a custom constructor for HLO.
   let hasCustomHLOConverter = 1;
 }

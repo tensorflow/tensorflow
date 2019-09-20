@@ -1961,6 +1961,51 @@ cublas.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_MatrixDiagOp : TF_Op<"MatrixDiag", [NoSideEffect]> {
+  let summary = [{
+Returns a batched diagonal tensor with a given batched diagonal values.
+  }];
+
+  let description = [{
+Given a `diagonal`, this operation returns a tensor with the `diagonal` and
+everything else padded with zeros. The diagonal is computed as follows:
+
+Assume `diagonal` has `k` dimensions `[I, J, K, ..., N]`, then the output is a
+tensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:
+
+`output[i, j, k, ..., m, n] = 1{m=n} * diagonal[i, j, k, ..., n]`.
+
+For example:
+
+```
+# 'diagonal' is [[1, 2, 3, 4], [5, 6, 7, 8]]
+
+and diagonal.shape = (2, 4)
+
+tf.matrix_diag(diagonal) ==> [[[1, 0, 0, 0]
+                                     [0, 2, 0, 0]
+                                     [0, 0, 3, 0]
+                                     [0, 0, 0, 4]],
+                                    [[5, 0, 0, 0]
+                                     [0, 6, 0, 0]
+                                     [0, 0, 7, 0]
+                                     [0, 0, 0, 8]]]
+
+which has shape (2, 4, 4)
+```
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$diagonal
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_MaxOp : TF_Op<"Max", [NoSideEffect]> {
   let summary = [{
 Computes the maximum of elements across dimensions of a tensor.

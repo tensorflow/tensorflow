@@ -2919,6 +2919,14 @@ class Model(network.Network):
   def _in_multi_worker_mode(self):
     """Method to infer if this `Model` is working in multi-worker settings.
 
+    Multi-worker training refers to the setup where the training is
+    distributed across multiple workers, as opposed to the case where
+    only a local process performs the training. This function is
+    used to infer for example whether or not a distribute coordinator
+    should be run, and thus TensorFlow servers should be started for
+    communication with other servers in the cluster, or whether or not
+    saving/restoring checkpoints is relevant for preemption fault tolerance.
+
     Experimental. Signature and implementation are subject to change.
 
     Returns:

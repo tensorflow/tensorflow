@@ -21,6 +21,7 @@ VALID_LIBS = [
     "double_conversion",
     "enum34_archive",
     "flatbuffers",
+    "functools32_archive",
     "gast_archive",
     "gif_archive",
     "grpc",

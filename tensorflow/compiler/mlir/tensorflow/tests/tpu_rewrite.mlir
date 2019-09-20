@@ -177,6 +177,112 @@ func @empty_func() {
 
 // -----
 
+// Tests argument with unranked shape. No shape should be populated in the
+// metadata for associated argument.
+
+// CHECK-LABEL: func @unranked_shape_arg
+func @unranked_shape_arg(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+  %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<*xi32>) -> tensor<*xi32>
+  // CHECK:      metadata
+  // CHECK-SAME: args
+  // CHECK-NOT:  shape
+
+  return %0: tensor<*xi32>
+}
+func @_func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+  return %arg0 : tensor<*xi32>
+}
+
+// -----
+
+// Tests argument with partial shape. No shape should be populated in the
+// metadata for associated argument.
+
+// CHECK-LABEL: func @partial_shape_arg
+func @partial_shape_arg(%arg0: tensor<?x?x3xi32>) -> tensor<?x?x3xi32> {
+  %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<?x?x3xi32>) -> tensor<?x?x3xi32>
+  // CHECK:      metadata
+  // CHECK-SAME: args
+  // CHECK-NOT:  shape
+
+  return %0: tensor<?x?x3xi32>
+}
+func @_func(%arg0: tensor<?x?x3xi32>) -> tensor<?x?x3xi32> {
+  return %arg0 : tensor<?x?x3xi32>
+}
+
+// -----
+
+// Tests argument with static shape.
+
+// The expected TensorShapeProto is:
+//   shape {
+//     dim {
+//       size: 1
+//     }
+//     dim {
+//       size: 2
+//     }
+//     dim {
+//       size: 3
+//     }
+//   }
+
+// CHECK-LABEL: func @static_shape_arg
+func @static_shape_arg(%arg0: tensor<1x2x3xi32>) -> tensor<1x2x3xi32> {
+  %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<1x2x3xi32>) -> tensor<1x2x3xi32>
+  // CHECK:      metadata
+  // CHECK-SAME: args
+  // CHECK-SAME: shape
+  // CHECK-SAME: dim
+  // CHECK-SAME: size: 1
+  // CHECK-SAME: dim
+  // CHECK-SAME: size: 2
+  // CHECK-SAME: dim
+  // CHECK-SAME: size: 3
+
+  return %0: tensor<1x2x3xi32>
+}
+func @_func(%arg0: tensor<1x2x3xi32>) -> tensor<1x2x3xi32> {
+  return %arg0 : tensor<1x2x3xi32>
+}
+
+// -----
+
+// Tests argument that is a resource variable.
+
+// CHECK-LABEL: func @resource_arg
+func @resource_arg(%arg0: tensor<*x!tf.resource>) -> tensor<*x!tf.resource> {
+  %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<*x!tf.resource>) -> tensor<*x!tf.resource>
+  // CHECK:      metadata
+  // CHECK:      dtype: DT_RESOURCE
+  // CHECK-SAME: kind: VARIABLE
+
+  return %0: tensor<*x!tf.resource>
+}
+func @_func(%arg0: tensor<*x!tf.resource>) -> tensor<*x!tf.resource> {
+  return %arg0 : tensor<*x!tf.resource>
+}
+
+// -----
+
+// Tests argument that is a parameter.
+
+// CHECK-LABEL: func @parameter_arg
+func @parameter_arg(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<*xf32>) -> tensor<*xf32>
+  // CHECK:      metadata
+  // CHECK:      dtype: DT_FLOAT
+  // CHECK-SAME: kind: PARAMETER
+
+  return %0: tensor<*xf32>
+}
+func @_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  return %arg0 : tensor<*xf32>
+}
+
+// -----
+
 // The following padding map is used in subsequent test cases:
 // Proto debug string:
 //   arg_index: 1
@@ -192,6 +298,11 @@ func @empty_func() {
 // The expected TPUCompileMetadataProto is:
 //   args {
 //     dtype: DT_INT32
+//     shape {
+//       dim {
+//         size: 8
+//       }
+// .   }
 //     kind: PARAMETER
 //     sharding {
 //       type: MAXIMAL
@@ -216,11 +327,14 @@ func @empty_func() {
 //   step_marker_location: STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP
 
 // CHECK-LABEL: func @metadata
-func @metadata(%arg0: tensor<?xi32>) -> tensor<?xi32> {
-  %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @tpu0_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
+func @metadata(%arg0: tensor<8xi32>) -> tensor<8xi32> {
+  %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "tpu0", func = @tpu0_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<8xi32>) -> tensor<8xi32>
   // CHECK:      metadata
   // CHECK-SAME: args
   // CHECK-SAME: dtype: DT_INT32
+  // CHECK-SAME: shape
+  // CHECK-SAME: dim
+  // CHECK-SAME: size: 8
   // CHECK-SAME: kind: PARAMETER
   // CHECK-SAME: sharding
   // CHECK-SAME: type: MAXIMAL
@@ -239,10 +353,31 @@ func @metadata(%arg0: tensor<?xi32>) -> tensor<?xi32> {
   // CHECK-SAME: padding_arg_index: 3
   // CHECK-SAME: step_marker_location: STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP
 
-  return %0: tensor<?xi32>
+  return %0: tensor<8xi32>
 }
-func @tpu0_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
-  return %arg0 : tensor<?xi32>
+func @tpu0_func(%arg0: tensor<8xi32>) -> tensor<8xi32> {
+  return %arg0 : tensor<8xi32>
+}
+
+// -----
+
+// Tests shape ops are only generated for operands with non static shapes.
+
+// CHECK-LABEL: func @static_and_dynamic_shapes
+// CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<*xi32>, %[[ARG_1:[a-z0-9]*]]: tensor<8xi32>, %[[ARG_2:[a-z0-9]*]]: tensor<*xi32>, %[[ARG_3:[a-z0-9]*]]: tensor<8xi32>)
+func @static_and_dynamic_shapes(%arg0: tensor<*xi32>, %arg1: tensor<8xi32>, %arg2: tensor<*xi32>, %arg3: tensor<8xi32>) -> tensor<8xi32> {
+  // CHECK-NOT:  "tf.Shape"(%[[ARG_1]])
+  // CHECK-NOT:  "tf.Shape"(%[[ARG_3]])
+  // CHECK:      %[[ARG_0_SHAPE:[0-9]*]] = "tf.Shape"(%[[ARG_0]])
+  // CHECK:      %[[ARG_2_SHAPE:[0-9]*]] = "tf.Shape"(%[[ARG_2]])
+  %0 = "tf_device.launch_func"(%arg0, %arg1, %arg2, %arg3) {_tpu_replicate = "cluster0", device = "tpu0", func = @_func, num_replicas = 1, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<*xi32>, tensor<8xi32>, tensor<*xi32>, tensor<8xi32>) -> tensor<8xi32>
+  // CHECK:      "tf._TPUCompileMlir"(%[[ARG_0_SHAPE]], %[[ARG_2_SHAPE]])
+  // CHECK-SAME: NumDynamicShapes = 2
+
+  return %0: tensor<8xi32>
+}
+func @_func(%arg0: tensor<*xi32>, %arg1: tensor<8xi32>, %arg2: tensor<*xi32>, %arg3: tensor<8xi32>) -> tensor<8xi32> {
+  return %arg1 : tensor<8xi32>
 }
 
 // -----

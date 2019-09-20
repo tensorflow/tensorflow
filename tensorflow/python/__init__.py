@@ -50,6 +50,7 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import _pywrap_utils
 from tensorflow.python import _pywrap_tfprof
 from tensorflow.python import _pywrap_util_port
+from tensorflow.python import _pywrap_stat_summarizer
 
 # Protocol buffers
 from tensorflow.core.framework.graph_pb2 import *

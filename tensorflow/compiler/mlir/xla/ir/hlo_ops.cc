@@ -441,6 +441,16 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// ReverseOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult ReverseOp::fold(ArrayRef<Attribute> operands) {
+  // No dimensions to reverse.
+  if (dimensions().getNumElements() == 0) return operand();
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
 // SelectOp
 //===----------------------------------------------------------------------===//
 

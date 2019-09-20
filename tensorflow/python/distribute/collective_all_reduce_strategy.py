@@ -101,6 +101,14 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
             communication=communication,
             cluster_resolver=cluster_resolver))
 
+    distribute_lib.distribution_strategy_gauge.get_cell("V2").set(
+        "MultiWorkerMirroredStrategy")
+    # pylint: disable=protected-access
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_workers").set(self.extended._num_workers)
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_replicas_per_worker").set(self.extended._num_gpus_per_worker)
+
   @classmethod
   def _from_local_devices(cls, devices):
     """A convenience method to create an obejct with a list of devices."""
@@ -141,6 +149,13 @@ class CollectiveAllReduceStrategyV1(distribute_lib.StrategyV1):
             self,
             communication=communication,
             cluster_resolver=cluster_resolver))
+    distribute_lib.distribution_strategy_gauge.get_cell("V1").set(
+        "MultiWorkerMirroredStrategy")
+    # pylint: disable=protected-access
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_workers").set(self.extended._num_workers)
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_gpu_per_worker").set(self.extended._num_gpus_per_worker)
 
 
 class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):

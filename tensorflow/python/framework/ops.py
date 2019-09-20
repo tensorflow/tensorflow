@@ -49,7 +49,6 @@ from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
-from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import registry
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_like
@@ -480,20 +479,6 @@ class Tensor(_TensorLike):
     if self._shape_val is None:
       self._shape_val = self._c_api_shape()
     return self._shape_val
-
-  def _get_input_ops_without_shapes(self, target_op):
-    """Returns ops needing shape inference to compute target_op's shape."""
-    result = []
-    stack = [self._op]
-    visited = set()
-    while stack:
-      op = stack.pop()
-      if op in visited:
-        continue
-      result.append(op)
-      stack.extend(t.op for t in op.inputs if t._shape_val is None)
-      visited.add(op)
-    return result
 
   def _c_api_shape(self):
     """Returns the TensorShape of this tensor according to the C API."""
@@ -2849,7 +2834,6 @@ class Graph(object):
     # Estimator and optimizer V1 use cases.
     self._is_loss_scaled_by_optimizer = False
     self._container = ""
-    self._registered_ops = op_def_registry.get_registered_ops()
     # Set to True if this graph is being built in an
     # AutomaticControlDependencies context.
     self._add_control_dependencies = False

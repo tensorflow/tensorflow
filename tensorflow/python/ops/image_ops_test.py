@@ -4551,7 +4551,8 @@ class NonMaxSuppressionWithScoresTest(test_util.TensorFlowTestCase):
 class NonMaxSuppressionPaddedTest(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1
-  @test_util.xla_allow_fallback(
+  @test_util.disable_xla(
+      "b/141236442: "
       "non_max_suppression with dynamic output shape unsupported.")
   def testSelectFromThreeClusters(self):
     boxes_np = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],

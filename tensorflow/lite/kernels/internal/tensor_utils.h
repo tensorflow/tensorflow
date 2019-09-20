@@ -216,6 +216,13 @@ void ApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
 void ApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
                 int16_t* output);
 
+// Apply Tanh to a quantized vector.
+// Parameters:
+//     - input: batch vector of size n_batch * n_input; 16 bit.
+//     - n_batch: the number of batch.
+//     - n_input: the size for input and output.
+//     - output: the 16 bit output
+// The input is in Q4.11 format and the output is in Q0.15 format.
 void ApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
                 int16_t* output);
 

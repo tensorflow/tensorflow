@@ -188,6 +188,7 @@ class MklSoftmaxOp : public OpKernel {
           .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
       MklSoftmaxOp<CPUDevice, type>);
 TF_CALL_float(REGISTER_SOFTMAX_MKL_SUPPORTED_KERNELS_TYPES);
+TF_CALL_bfloat16(REGISTER_SOFTMAX_MKL_SUPPORTED_KERNELS_TYPES);
 
 }  // namespace tensorflow
 
