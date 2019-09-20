@@ -79,8 +79,7 @@ namespace tflite {
     }
     output_types.push_back(output_type);
   }
-  return ::tflite::OpSignature{
-      .op = op, .input_types = input_types, .output_types = output_types};
+  return ::tflite::OpSignature{op, input_types, output_types};
 }
 
 class AveragePool
