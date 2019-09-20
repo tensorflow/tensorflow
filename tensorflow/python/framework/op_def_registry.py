@@ -19,10 +19,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import threading
+
 from tensorflow.core.framework import op_def_pb2
+from tensorflow.python import pywrap_tensorflow as c_api
 
 
 _registered_ops = {}
+_sync_lock = threading.Lock()
 
 
 def register_op_list(op_list):
@@ -38,6 +42,21 @@ def register_op_list(op_list):
             % (op_def.name, _registered_ops[op_def.name], op_def))
     else:
       _registered_ops[op_def.name] = op_def
+
+
+def get(name):
+  """Returns an OpDef for a given `name` or None if the lookup fails."""
+  with _sync_lock:
+    return _registered_ops.get(name)
+
+
+def sync():
+  """Synchronize the contents of the Python registry with C++."""
+  with _sync_lock:
+    p_buffer = c_api.TF_GetAllOpList()
+    cpp_op_list = op_def_pb2.OpList()
+    cpp_op_list.ParseFromString(c_api.TF_GetBuffer(p_buffer))
+    register_op_list(cpp_op_list)
 
 
 def get_registered_ops():
