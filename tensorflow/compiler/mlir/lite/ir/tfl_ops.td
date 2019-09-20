@@ -327,8 +327,6 @@ def TFL_AddOp : TFL_Op<"add", [Broadcastable, NoSideEffect, Commutative]> {
   let hasOptions = 1;
 }
 
-// TODO(haoliang): Implement legalization pass after pattern rewrite generator
-// supports variadic inputs.
 def TFL_AddNOp : TFL_Op<"add_n", [Commutative, NoSideEffect, SameOperandsAndResultsScale]> {
   let summary = "add_n operator";
 

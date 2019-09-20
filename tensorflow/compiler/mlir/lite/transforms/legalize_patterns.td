@@ -74,6 +74,7 @@ def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "NHWC">;
 def IsIntList1XY1 : AttrConstraint<CPred<"TFIntListIs1XY1($_self)">>;
 
 def : Pat<(TF_AbsOp $arg), (TFL_AbsOp $arg)>;
+def : Pat<(TF_AddNOp $inputs, $N), (TFL_AddNOp $inputs)>;
 
 def : Pat<(TF_AvgPoolOp $value,
               IsIntList1XY1:$ksize,
