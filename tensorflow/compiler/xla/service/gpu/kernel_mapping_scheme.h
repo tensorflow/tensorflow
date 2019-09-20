@@ -166,8 +166,8 @@ class KernelMappingScheme {
   // and tile_sizes_.
   const std::array<int64, 3> dims_in_tiles_;
 
-  // The number of blocks in each dimension of a tile block. It is computed from
-  // dims_in_tile_ and block_sizes_.
+  // The number of blocks in each dimension. It is computed from dims_in_tile_
+  // and block_size_z_.
   const std::array<int64, 3> dims_in_blocks_;
 
   const int64 block_size_z_;
