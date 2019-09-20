@@ -533,3 +533,77 @@ func @expand_dims(%arg0: tensor<2xf32>, %axis: tensor<i32>) -> tensor<1x2xf32> {
   %0 = "tf.ExpandDims"(%arg0, %axis) : (tensor<2xf32>, tensor<i32>) -> tensor<1x2xf32>
   return %0 : tensor<1x2xf32>
 }
+
+// CHECK-LABEL: simple_strided_slice
+func @simple_strided_slice(%input: tensor<4x8xf32>) -> tensor<3x2xf32> {
+  %begin = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %end = "tf.Const"() {value = dense<[3, 7]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %strides = "tf.Const"() {value = dense<[1, 3]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+
+  // CHECK: xla_hlo.slice
+  // CHECK-DAG-SAME: start_indices = dense<[0, 1]>
+  // CHECK-DAG-SAME: limit_indices = dense<[3, 7]>
+  // CHECK-DAG-SAME: strides = dense<[1, 3]>
+  // CHECK-SAME: -> tensor<3x2xf32>
+
+  %output = "tf.StridedSlice"(%input, %begin, %end, %strides)
+      : (tensor<4x8xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x2xf32>
+  return %output : tensor<3x2xf32>
+}
+
+// CHECK-LABEL: strided_slice_negative_indices
+func @strided_slice_negative_indices(%input: tensor<4x8xf32>) -> tensor<3x2xf32> {
+  %begin = "tf.Const"() {value = dense<[-1, -2]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %end = "tf.Const"() {value = dense<[-4, -8]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %strides = "tf.Const"() {value = dense<[-1, -3]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+
+  // CHECK: "xla_hlo.reverse"(%arg0) {dimensions = dense<[0, 1]> : tensor<2xi64>}
+
+  // CHECK: xla_hlo.slice
+  // CHECK-DAG-SAME: start_indices = dense<[0, 1]>
+  // CHECK-DAG-SAME: limit_indices = dense<[3, 7]>
+  // CHECK-DAG-SAME: strides = dense<[1, 3]>
+  // CHECK-SAME: -> tensor<3x2xf32>
+
+  %output = "tf.StridedSlice"(%input, %begin, %end, %strides)
+      : (tensor<4x8xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x2xf32>
+  return %output : tensor<3x2xf32>
+}
+
+// CHECK-LABEL: strided_slice_range_clamping
+func @strided_slice_range_clamping(%input: tensor<4x8xf32>) -> tensor<0x3xf32> {
+  %begin = "tf.Const"() {value = dense<[-4, -10]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %end = "tf.Const"() {value = dense<[-1, 10]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %strides = "tf.Const"() {value = dense<[-1, 3]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+
+  // CHECK: "xla_hlo.reverse"(%arg0) {dimensions = dense<0> : tensor<1xi64>}
+
+  // CHECK: xla_hlo.slice
+  // CHECK-DAG-SAME: start_indices = dense<[3, 0]>
+  // CHECK-DAG-SAME: limit_indices = dense<[3, 8]>
+  // CHECK-DAG-SAME: strides = dense<[1, 3]>
+  // CHECK-SAME: -> tensor<0x3xf32>
+
+  %output = "tf.StridedSlice"(%input, %begin, %end, %strides)
+      : (tensor<4x8xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<0x3xf32>
+  return %output : tensor<0x3xf32>
+}
+
+// CHECK-LABEL: strided_slice_shrink_axis
+func @strided_slice_shrink_axis(%input: tensor<4x8xf32>) -> tensor<f32> {
+  %begin = "tf.Const"() {value = dense<[1, 3]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %end = "tf.Const"() {value = dense<[2, 4]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %strides = "tf.Const"() {value = dense<[1, 3]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+
+  // CHECK: %[[SLICED:.*]] = "xla_hlo.slice"
+  // CHECK-DAG-SAME: start_indices = dense<[1, 3]>
+  // CHECK-DAG-SAME: limit_indices = dense<[2, 4]>
+  // CHECK-DAG-SAME: strides = dense<[1, 3]>
+  // CHECK-SAME: -> tensor<1x1xf32>
+
+  // CHECK: "xla_hlo.reshape"(%[[SLICED]]) : (tensor<1x1xf32>) -> tensor<f32>
+
+  %output = "tf.StridedSlice"(%input, %begin, %end, %strides) {shrink_axis_mask = 3
+      : i64} : (tensor<4x8xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<f32>
+  return %output : tensor<f32>
+}

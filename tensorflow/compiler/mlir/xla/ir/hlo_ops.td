@@ -276,6 +276,21 @@ def HLO_SliceOp: HLO_Op<
 
   let results = (outs HLO_Tensor);
 
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState *result, Value *operand, "
+    "DenseIntElementsAttr start_indices, DenseIntElementsAttr limit_indices, "
+    "DenseIntElementsAttr strides"
+  >];
+
+  let extraClassDeclaration = [{
+    // Infers output type for given operand and attributes. Result type is
+    // unranked if any of the attributes is illegal.
+    static Type InferOutputTypes(Builder *builder, Value *operand,
+                                 DenseIntElementsAttr start_indices,
+                                 DenseIntElementsAttr limit_indices,
+                                 DenseIntElementsAttr strides);
+  }];
+
   // TODO(b/129422361) Two of the required arguments comes from the start and
   // limit indices which aren't handled by the codegen.
   let hasCustomHLOConverter = 1;
