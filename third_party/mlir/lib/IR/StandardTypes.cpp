@@ -504,7 +504,7 @@ static void extractStrides(AffineExpr e, MutableArrayRef<int64_t> strides,
   llvm_unreachable("unexpected binary operation");
 }
 
-LogicalResult MemRefType::getStrides(SmallVector<int64_t, 4> &strides) const {
+LogicalResult MemRefType::getStrides(SmallVectorImpl<int64_t> &strides) const {
   auto affineMaps = getAffineMaps();
   // For now strides are only computed on a single affine map with a single
   // result (i.e. the closed subset of linearization maps that are compatible
