@@ -636,9 +636,16 @@ LogicalResult ConvertOphintToStub(StringRef stub_name,
   // Step 7, remove all the removable ops where
   // (reachable_by_outputs - reachable_by_inputs) as removable and the rest
   // ops are not removable.
+  // We also need to make sure all the output identity nodes are there.
+  llvm::DenseSet<Operation*> ophinted_identity_nodes;
+  for (auto* output : ophint_composite_op.GetAllOutputOps()) {
+    ophinted_identity_nodes.insert(output);
+  }
+
   auto removeRemovableOps = [&](Operation* op) {
-    if (!llvm::is_contained(reachable_by_inputs, op) &&
-        llvm::is_contained(reachable_by_outputs, op)) {
+    if (reachable_by_inputs.count(op) == 0 &&
+        reachable_by_outputs.count(op) != 0 &&
+        ophinted_identity_nodes.count(op) == 0) {
       op->dropAllDefinedValueUses();
       op->dropAllReferences();
       op->erase();
