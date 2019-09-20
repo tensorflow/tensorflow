@@ -14,6 +14,7 @@ package_group(
     packages = [
         "//dart/tensorflow/...",  # whitelisted
         "//tensorflow/lite/experimental/...",
+        "//third_party/dart/tflite_native/...",  # whitelisted
     ],
 )
 
