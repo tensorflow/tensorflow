@@ -21,11 +21,13 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/Dialect/Traits.h"  // TF:local_config_mlir
@@ -1027,6 +1029,66 @@ void SquareOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 void SubOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
   results.insert<SubOfNeg>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// StridedSliceOp
+//===----------------------------------------------------------------------===//
+
+// Verifies that,
+//
+// - begin, end and strides operands are 1D and they have the same number of
+//   elements. Here, the number of elements should be less than 32 to support
+//   32-bit mask attributes.
+// - None of the strides values are zero.
+//
+static LogicalResult Verify(StridedSliceOp op) {
+  // Expected size for operands begin, end and strides vector operands.
+  int64_t expected_size = -1;
+
+  for (Value *val : llvm::drop_begin(op.getOperands(), 1)) {
+    auto operand_ty = val->getType().dyn_cast<ShapedType>();
+    if (!operand_ty || !operand_ty.hasStaticShape()) {
+      // TensorFlow constant ops may have non-static shape because the shape is
+      // not propagated during constant folding. If the defining op for this
+      // operand is a constant op, use the constant op's attribute to get the
+      // actual shape.
+      DenseIntElementsAttr attr;
+      if (!matchPattern(val, m_Constant(&attr))) continue;
+      operand_ty = attr.getType();
+    }
+
+    if (operand_ty.getRank() != 1)
+      return op.emitOpError()
+             << "requires begin, end and strides to be 1D tensors";
+
+    int64_t length = operand_ty.getDimSize(0);
+    if (length == -1) continue;
+
+    if (expected_size == -1) {
+      // This op uses 32-bit masks.
+      if (length >= 32)
+        return op.emitOpError(
+            "requires begin, end and strides operands with less than 32 "
+            "elements");
+
+      expected_size = length;
+    } else if (length != expected_size) {
+      return op.emitOpError() << "requires begin, end and strides to have the "
+                                 "same number of elements";
+    }
+  }
+
+  // If strides are constants, verify that none of the element is zero.
+  DenseIntElementsAttr strides;
+  if (matchPattern(op.strides(), m_Constant(&strides))) {
+    if (llvm::is_contained(strides.getValues<APInt>(), 0))
+      return op.emitOpError("requires non-zero strides");
+  }
+
+  // TODO(hinsu): Validate attributes.
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
