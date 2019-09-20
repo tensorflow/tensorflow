@@ -790,6 +790,26 @@ cuda_py_test(
     ],
 )
 
+tf_py_test(
+    name = "remote_cloud_tpu_test",
+    size = "medium",
+    srcs = ["remote_cloud_tpu_test.py"],
+    additional_deps = [
+        ":remote",
+        ":context",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/tpu:tpu_strategy_util",
+    ],
+    tags = [
+        "manual",
+        "nogpu",
+        "nomac",
+        "notap",
+        "oss_serial",
+        "tpu",
+    ],
+)
+
 cuda_py_test(
     name = "device_placement_test",
     size = "small",
