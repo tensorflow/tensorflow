@@ -68,6 +68,7 @@ TF_CAPI_EXPORT extern void TF_EnableXLACompilation(TF_SessionOptions* options,
 // Use in tests to allow XLA to fallback to TF classic. This has global effect.
 TF_CAPI_EXPORT unsigned char TF_SetXlaEnableLazyCompilation(
     unsigned char enable);
+TF_CAPI_EXPORT unsigned char TF_SetTfXlaCpuGlobalJit(unsigned char enable);
 
 // Sets XLA's auto jit mode according to the specified string, which is parsed
 // as if passed in XLA_FLAGS. This has global effect.

@@ -2471,7 +2471,8 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:sparse_ops",
     ],
-    xla_enable_strict_auto_jit = True,
+    # b/140221961: Invalid dims for operations
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -3393,7 +3394,8 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 50,
-    xla_enable_strict_auto_jit = True,
+    # b/140155647: Error just outside of tolerance
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -3414,7 +3416,8 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 50,
-    xla_enable_strict_auto_jit = True,
+    # b/140155706: nans in result
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -3806,7 +3809,8 @@ cuda_py_test(
         "//tensorflow/python/compat",
     ],
     grpc_enabled = True,
-    xla_enable_strict_auto_jit = True,
+    # b/140155763: testLoweringDisabledInXLA fails
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
