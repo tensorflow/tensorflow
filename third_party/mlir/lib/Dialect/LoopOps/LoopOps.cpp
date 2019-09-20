@@ -82,32 +82,32 @@ static void print(OpAsmPrinter *p, ForOp op) {
   p->printOptionalAttrDict(op.getAttrs());
 }
 
-static ParseResult parseForOp(OpAsmParser *parser, OperationState *result) {
-  auto &builder = parser->getBuilder();
+static ParseResult parseForOp(OpAsmParser &parser, OperationState *result) {
+  auto &builder = parser.getBuilder();
   OpAsmParser::OperandType inductionVariable, lb, ub, step;
   // Parse the induction variable followed by '='.
-  if (parser->parseRegionArgument(inductionVariable) || parser->parseEqual())
+  if (parser.parseRegionArgument(inductionVariable) || parser.parseEqual())
     return failure();
 
   // Parse loop bounds.
   Type indexType = builder.getIndexType();
-  if (parser->parseOperand(lb) ||
-      parser->resolveOperand(lb, indexType, result->operands) ||
-      parser->parseKeyword("to") || parser->parseOperand(ub) ||
-      parser->resolveOperand(ub, indexType, result->operands) ||
-      parser->parseKeyword("step") || parser->parseOperand(step) ||
-      parser->resolveOperand(step, indexType, result->operands))
+  if (parser.parseOperand(lb) ||
+      parser.resolveOperand(lb, indexType, result->operands) ||
+      parser.parseKeyword("to") || parser.parseOperand(ub) ||
+      parser.resolveOperand(ub, indexType, result->operands) ||
+      parser.parseKeyword("step") || parser.parseOperand(step) ||
+      parser.resolveOperand(step, indexType, result->operands))
     return failure();
 
   // Parse the body region.
   Region *body = result->addRegion();
-  if (parser->parseRegion(*body, inductionVariable, indexType))
+  if (parser.parseRegion(*body, inductionVariable, indexType))
     return failure();
 
   ForOp::ensureTerminator(*body, builder, result->location);
 
   // Parse the optional attribute list.
-  if (parser->parseOptionalAttributeDict(result->attributes))
+  if (parser.parseOptionalAttributeDict(result->attributes))
     return failure();
 
   return success();
@@ -150,33 +150,33 @@ static LogicalResult verify(IfOp op) {
   return success();
 }
 
-static ParseResult parseIfOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseIfOp(OpAsmParser &parser, OperationState *result) {
   // Create the regions for 'then'.
   result->regions.reserve(2);
   Region *thenRegion = result->addRegion();
   Region *elseRegion = result->addRegion();
 
-  auto &builder = parser->getBuilder();
+  auto &builder = parser.getBuilder();
   OpAsmParser::OperandType cond;
   Type i1Type = builder.getIntegerType(1);
-  if (parser->parseOperand(cond) ||
-      parser->resolveOperand(cond, i1Type, result->operands))
+  if (parser.parseOperand(cond) ||
+      parser.resolveOperand(cond, i1Type, result->operands))
     return failure();
 
   // Parse the 'then' region.
-  if (parser->parseRegion(*thenRegion, {}, {}))
+  if (parser.parseRegion(*thenRegion, {}, {}))
     return failure();
-  IfOp::ensureTerminator(*thenRegion, parser->getBuilder(), result->location);
+  IfOp::ensureTerminator(*thenRegion, parser.getBuilder(), result->location);
 
   // If we find an 'else' keyword then parse the 'else' region.
-  if (!parser->parseOptionalKeyword("else")) {
-    if (parser->parseRegion(*elseRegion, {}, {}))
+  if (!parser.parseOptionalKeyword("else")) {
+    if (parser.parseRegion(*elseRegion, {}, {}))
       return failure();
-    IfOp::ensureTerminator(*elseRegion, parser->getBuilder(), result->location);
+    IfOp::ensureTerminator(*elseRegion, parser.getBuilder(), result->location);
   }
 
   // Parse the optional attribute list.
-  if (parser->parseOptionalAttributeDict(result->attributes))
+  if (parser.parseOptionalAttributeDict(result->attributes))
     return failure();
 
   return success();

@@ -612,8 +612,8 @@ Operation *Operation::clone() {
 //===----------------------------------------------------------------------===//
 
 // The fallback for the parser is to reject the custom assembly form.
-ParseResult OpState::parse(OpAsmParser *parser, OperationState *result) {
-  return parser->emitError(parser->getNameLoc(), "has no custom assembly form");
+ParseResult OpState::parse(OpAsmParser &parser, OperationState *result) {
+  return parser.emitError(parser.getNameLoc(), "has no custom assembly form");
 }
 
 // The fallback for the printer is to print in the generic assembly form.
@@ -950,14 +950,14 @@ void impl::buildBinaryOp(Builder *builder, OperationState *result, Value *lhs,
   result->types.push_back(lhs->getType());
 }
 
-ParseResult impl::parseBinaryOp(OpAsmParser *parser, OperationState *result) {
+ParseResult impl::parseBinaryOp(OpAsmParser &parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 2> ops;
   Type type;
-  return failure(parser->parseOperandList(ops, 2) ||
-                 parser->parseOptionalAttributeDict(result->attributes) ||
-                 parser->parseColonType(type) ||
-                 parser->resolveOperands(ops, type, result->operands) ||
-                 parser->addTypeToList(type, result->types));
+  return failure(parser.parseOperandList(ops, 2) ||
+                 parser.parseOptionalAttributeDict(result->attributes) ||
+                 parser.parseColonType(type) ||
+                 parser.resolveOperands(ops, type, result->operands) ||
+                 parser.addTypeToList(type, result->types));
 }
 
 void impl::printBinaryOp(Operation *op, OpAsmPrinter *p) {
@@ -990,15 +990,15 @@ void impl::buildCastOp(Builder *builder, OperationState *result, Value *source,
   result->addTypes(destType);
 }
 
-ParseResult impl::parseCastOp(OpAsmParser *parser, OperationState *result) {
+ParseResult impl::parseCastOp(OpAsmParser &parser, OperationState *result) {
   OpAsmParser::OperandType srcInfo;
   Type srcType, dstType;
-  return failure(parser->parseOperand(srcInfo) ||
-                 parser->parseOptionalAttributeDict(result->attributes) ||
-                 parser->parseColonType(srcType) ||
-                 parser->resolveOperand(srcInfo, srcType, result->operands) ||
-                 parser->parseKeywordType("to", dstType) ||
-                 parser->addTypeToList(dstType, result->types));
+  return failure(parser.parseOperand(srcInfo) ||
+                 parser.parseOptionalAttributeDict(result->attributes) ||
+                 parser.parseColonType(srcType) ||
+                 parser.resolveOperand(srcInfo, srcType, result->operands) ||
+                 parser.parseKeywordType("to", dstType) ||
+                 parser.addTypeToList(dstType, result->types));
 }
 
 void impl::printCastOp(Operation *op, OpAsmPrinter *p) {

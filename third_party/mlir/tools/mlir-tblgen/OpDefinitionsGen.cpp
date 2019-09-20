@@ -1076,7 +1076,7 @@ void OpEmitter::genParser() {
     return;
 
   auto &method = opClass.newMethod(
-      "ParseResult", "parse", "OpAsmParser *parser, OperationState *result",
+      "ParseResult", "parse", "OpAsmParser &parser, OperationState *result",
       OpMethod::MP_Static);
   FmtContext fctx;
   fctx.addSubst("cppClass", opClass.getClassName());

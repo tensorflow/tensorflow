@@ -39,7 +39,7 @@ class Std_Op<string mnemonic, list<OpTrait> traits = []> :
   // For every standard op, there needs to be a:
   //   * void print(OpAsmPrinter *p, ${C++ class of Op} op)
   //   * LogicalResult verify(${C++ class of Op} op)
-  //   * ParseResult parse${C++ class of Op}(OpAsmParser *parser,
+  //   * ParseResult parse${C++ class of Op}(OpAsmParser &parser,
   //                                         OperationState *result)
   // functions.
   let printer = [{ return ::print(p, *this); }];

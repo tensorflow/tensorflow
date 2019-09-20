@@ -98,7 +98,7 @@ public:
   bool (&classof)(Operation *op);
 
   /// Use the specified object to parse this ops custom assembly format.
-  ParseResult (&parseAssembly)(OpAsmParser *parser, OperationState *result);
+  ParseResult (&parseAssembly)(OpAsmParser &parser, OperationState *result);
 
   /// This hook implements the AsmPrinter for this operation.
   void (&printAssembly)(Operation *op, OpAsmPrinter *p);
@@ -171,7 +171,7 @@ private:
   AbstractOperation(
       StringRef name, Dialect &dialect, OperationProperties opProperties,
       bool (&classof)(Operation *op),
-      ParseResult (&parseAssembly)(OpAsmParser *parser, OperationState *result),
+      ParseResult (&parseAssembly)(OpAsmParser &parser, OperationState *result),
       void (&printAssembly)(Operation *op, OpAsmPrinter *p),
       LogicalResult (&verifyInvariants)(Operation *op),
       LogicalResult (&foldHook)(Operation *op, ArrayRef<Attribute> operands,

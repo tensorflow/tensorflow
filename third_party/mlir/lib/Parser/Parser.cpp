@@ -3277,7 +3277,7 @@ public:
   /// Parse an instance of the operation described by 'opDefinition' into the
   /// provided operation state.
   ParseResult parseOperation(OperationState *opState) {
-    if (opDefinition->parseAssembly(this, opState))
+    if (opDefinition->parseAssembly(*this, opState))
       return failure();
     return success();
   }

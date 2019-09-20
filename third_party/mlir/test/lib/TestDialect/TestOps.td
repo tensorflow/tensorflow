@@ -125,7 +125,7 @@ def TypeStringAttrWithTypeOp : TEST_Op<"string_attr_with_type"> {
     Type stringType = OpaqueType::get(Identifier::get("foo",
                                       result->getContext()), "string",
                                       result->getContext());
-    return parser->parseAttribute(attr, stringType, "attr", result->attributes);
+    return parser.parseAttribute(attr, stringType, "attr", result->attributes);
   }];
 }
 

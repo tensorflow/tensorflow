@@ -99,20 +99,20 @@ TestDialect::TestDialect(MLIRContext *context)
 // Test IsolatedRegionOp - parse passthrough region arguments.
 //===----------------------------------------------------------------------===//
 
-static ParseResult parseIsolatedRegionOp(OpAsmParser *parser,
+static ParseResult parseIsolatedRegionOp(OpAsmParser &parser,
                                          OperationState *result) {
   OpAsmParser::OperandType argInfo;
-  Type argType = parser->getBuilder().getIndexType();
+  Type argType = parser.getBuilder().getIndexType();
 
   // Parse the input operand.
-  if (parser->parseOperand(argInfo) ||
-      parser->resolveOperand(argInfo, argType, result->operands))
+  if (parser.parseOperand(argInfo) ||
+      parser.resolveOperand(argInfo, argType, result->operands))
     return failure();
 
   // Parse the body region, and reuse the operand info as the argument info.
   Region *body = result->addRegion();
-  return parser->parseRegion(*body, argInfo, argType,
-                             /*enableNameShadowing=*/true);
+  return parser.parseRegion(*body, argInfo, argType,
+                            /*enableNameShadowing=*/true);
 }
 
 static void print(OpAsmPrinter *p, IsolatedRegionOp op) {
@@ -126,12 +126,12 @@ static void print(OpAsmPrinter *p, IsolatedRegionOp op) {
 // Test parser.
 //===----------------------------------------------------------------------===//
 
-static ParseResult parseWrappedKeywordOp(OpAsmParser *parser,
+static ParseResult parseWrappedKeywordOp(OpAsmParser &parser,
                                          OperationState *result) {
   StringRef keyword;
-  if (parser->parseKeyword(&keyword))
+  if (parser.parseKeyword(&keyword))
     return failure();
-  result->addAttribute("keyword", parser->getBuilder().getStringAttr(keyword));
+  result->addAttribute("keyword", parser.getBuilder().getStringAttr(keyword));
   return success();
 }
 
@@ -142,23 +142,23 @@ static void print(OpAsmPrinter *p, WrappedKeywordOp op) {
 //===----------------------------------------------------------------------===//
 // Test WrapRegionOp - wrapping op exercising `parseGenericOperation()`.
 
-static ParseResult parseWrappingRegionOp(OpAsmParser *parser,
+static ParseResult parseWrappingRegionOp(OpAsmParser &parser,
                                          OperationState *result) {
-  if (parser->parseKeyword("wraps"))
+  if (parser.parseKeyword("wraps"))
     return failure();
 
   // Parse the wrapped op in a region
   Region &body = *result->addRegion();
   body.push_back(new Block);
   Block &block = body.back();
-  Operation *wrapped_op = parser->parseGenericOperation(&block, block.begin());
+  Operation *wrapped_op = parser.parseGenericOperation(&block, block.begin());
   if (!wrapped_op)
     return failure();
 
   // Create a return terminator in the inner region, pass as operand to the
   // terminator the returned values from the wrapped operation.
   SmallVector<Value *, 8> return_operands(wrapped_op->getResults());
-  OpBuilder builder(parser->getBuilder().getContext());
+  OpBuilder builder(parser.getBuilder().getContext());
   builder.setInsertionPointToEnd(&block);
   builder.create<TestReturnOp>(result->location, return_operands);
 
@@ -177,17 +177,17 @@ static void print(OpAsmPrinter *p, WrappingRegionOp op) {
 //===----------------------------------------------------------------------===//
 // Test PolyForOp - parse list of region arguments.
 //===----------------------------------------------------------------------===//
-static ParseResult parsePolyForOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parsePolyForOp(OpAsmParser &parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 4> ivsInfo;
   // Parse list of region arguments without a delimiter.
-  if (parser->parseRegionArgumentList(ivsInfo))
+  if (parser.parseRegionArgumentList(ivsInfo))
     return failure();
 
   // Parse the body region.
   Region *body = result->addRegion();
-  auto &builder = parser->getBuilder();
+  auto &builder = parser.getBuilder();
   SmallVector<Type, 4> argTypes(ivsInfo.size(), builder.getIndexType());
-  return parser->parseRegion(*body, ivsInfo, argTypes);
+  return parser.parseRegion(*body, ivsInfo, argTypes);
 }
 
 //===----------------------------------------------------------------------===//

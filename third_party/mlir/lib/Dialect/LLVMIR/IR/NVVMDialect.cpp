@@ -51,19 +51,19 @@ static void printNVVMIntrinsicOp(OpAsmPrinter *p, Operation *op) {
 }
 
 // <operation> ::= `llvm.nvvm.XYZ` : type
-static ParseResult parseNVVMSpecialRegisterOp(OpAsmParser *parser,
+static ParseResult parseNVVMSpecialRegisterOp(OpAsmParser &parser,
                                               OperationState *result) {
   Type type;
-  if (parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(type))
+  if (parser.parseOptionalAttributeDict(result->attributes) ||
+      parser.parseColonType(type))
     return failure();
 
   result->addTypes(type);
   return success();
 }
 
-static LLVM::LLVMDialect *getLlvmDialect(OpAsmParser *parser) {
-  return parser->getBuilder()
+static LLVM::LLVMDialect *getLlvmDialect(OpAsmParser &parser) {
+  return parser.getBuilder()
       .getContext()
       ->getRegisteredDialect<LLVM::LLVMDialect>();
 }
@@ -71,24 +71,23 @@ static LLVM::LLVMDialect *getLlvmDialect(OpAsmParser *parser) {
 // <operation> ::=
 //     `llvm.nvvm.shfl.sync.bfly %dst, %val, %offset, %clamp_and_mask`
 //     : result_type
-static ParseResult parseNVVMShflSyncBflyOp(OpAsmParser *parser,
+static ParseResult parseNVVMShflSyncBflyOp(OpAsmParser &parser,
                                            OperationState *result) {
   auto llvmDialect = getLlvmDialect(parser);
   auto int32Ty = LLVM::LLVMType::getInt32Ty(llvmDialect);
 
   SmallVector<OpAsmParser::OperandType, 8> ops;
   Type type;
-  return failure(parser->parseOperandList(ops) ||
-                 parser->parseOptionalAttributeDict(result->attributes) ||
-                 parser->parseColonType(type) ||
-                 parser->addTypeToList(type, result->types) ||
-                 parser->resolveOperands(ops, {int32Ty, type, int32Ty, int32Ty},
-                                         parser->getNameLoc(),
-                                         result->operands));
+  return failure(parser.parseOperandList(ops) ||
+                 parser.parseOptionalAttributeDict(result->attributes) ||
+                 parser.parseColonType(type) ||
+                 parser.addTypeToList(type, result->types) ||
+                 parser.resolveOperands(ops, {int32Ty, type, int32Ty, int32Ty},
+                                        parser.getNameLoc(), result->operands));
 }
 
 // <operation> ::= `llvm.nvvm.vote.ballot.sync %mask, %pred` : result_type
-static ParseResult parseNVVMVoteBallotOp(OpAsmParser *parser,
+static ParseResult parseNVVMVoteBallotOp(OpAsmParser &parser,
                                          OperationState *result) {
   auto llvmDialect = getLlvmDialect(parser);
   auto int32Ty = LLVM::LLVMType::getInt32Ty(llvmDialect);
@@ -96,13 +95,12 @@ static ParseResult parseNVVMVoteBallotOp(OpAsmParser *parser,
 
   SmallVector<OpAsmParser::OperandType, 8> ops;
   Type type;
-  return failure(parser->parseOperandList(ops) ||
-                 parser->parseOptionalAttributeDict(result->attributes) ||
-                 parser->parseColonType(type) ||
-                 parser->addTypeToList(type, result->types) ||
-                 parser->resolveOperands(ops, {int32Ty, int1Ty},
-                                         parser->getNameLoc(),
-                                         result->operands));
+  return failure(parser.parseOperandList(ops) ||
+                 parser.parseOptionalAttributeDict(result->attributes) ||
+                 parser.parseColonType(type) ||
+                 parser.addTypeToList(type, result->types) ||
+                 parser.resolveOperands(ops, {int32Ty, int1Ty},
+                                        parser.getNameLoc(), result->operands));
 }
 
 //===----------------------------------------------------------------------===//
