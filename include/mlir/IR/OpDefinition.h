@@ -210,7 +210,7 @@ protected:
   /// Unless overridden, the custom assembly form of an op is always rejected.
   /// Op implementations should implement this to return failure.
   /// On success, they should fill in result with the fields to use.
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
+  static ParseResult parse(OpAsmParser &parser, OperationState *result);
 
   // The fallback for the printer is to print it the generic assembly form.
   void print(OpAsmPrinter *p);
@@ -934,7 +934,7 @@ public:
   /// op from an .mlir file.  Op implementations should provide a parse method,
   /// which returns failure.  On success, they should return fill in result with
   /// the fields to use.
-  static ParseResult parseAssembly(OpAsmParser *parser,
+  static ParseResult parseAssembly(OpAsmParser &parser,
                                    OperationState *result) {
     return ConcreteType::parse(parser, result);
   }
@@ -1145,7 +1145,7 @@ private:
 namespace impl {
 void buildBinaryOp(Builder *builder, OperationState *result, Value *lhs,
                    Value *rhs);
-ParseResult parseBinaryOp(OpAsmParser *parser, OperationState *result);
+ParseResult parseBinaryOp(OpAsmParser &parser, OperationState *result);
 // Prints the given binary `op` in custom assembly form if both the two operands
 // and the result have the same time. Otherwise, prints the generic assembly
 // form.
@@ -1157,7 +1157,7 @@ void printBinaryOp(Operation *op, OpAsmPrinter *p);
 namespace impl {
 void buildCastOp(Builder *builder, OperationState *result, Value *source,
                  Type destType);
-ParseResult parseCastOp(OpAsmParser *parser, OperationState *result);
+ParseResult parseCastOp(OpAsmParser &parser, OperationState *result);
 void printCastOp(Operation *op, OpAsmPrinter *p);
 Value *foldCastOp(Operation *op);
 } // namespace impl

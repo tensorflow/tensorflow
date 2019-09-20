@@ -191,20 +191,20 @@ void mlir::printDimAndSymbolList(Operation::operand_iterator begin,
 // Parses dimension and symbol list, and sets 'numDims' to the number of
 // dimension operands parsed.
 // Returns 'false' on success and 'true' on error.
-ParseResult mlir::parseDimAndSymbolList(OpAsmParser *parser,
+ParseResult mlir::parseDimAndSymbolList(OpAsmParser &parser,
                                         SmallVector<Value *, 4> &operands,
                                         unsigned &numDims) {
   SmallVector<OpAsmParser::OperandType, 8> opInfos;
-  if (parser->parseOperandList(opInfos, OpAsmParser::Delimiter::Paren))
+  if (parser.parseOperandList(opInfos, OpAsmParser::Delimiter::Paren))
     return failure();
   // Store number of dimensions for validation by caller.
   numDims = opInfos.size();
 
   // Parse the optional symbol operands.
-  auto affineIntTy = parser->getBuilder().getIndexType();
-  if (parser->parseOperandList(opInfos,
-                               OpAsmParser::Delimiter::OptionalSquare) ||
-      parser->resolveOperands(opInfos, affineIntTy, operands))
+  auto affineIntTy = parser.getBuilder().getIndexType();
+  if (parser.parseOperandList(opInfos,
+                              OpAsmParser::Delimiter::OptionalSquare) ||
+      parser.resolveOperands(opInfos, affineIntTy, operands))
     return failure();
   return success();
 }
@@ -316,15 +316,15 @@ static void print(OpAsmPrinter *p, AllocOp op) {
   *p << " : " << type;
 }
 
-static ParseResult parseAllocOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseAllocOp(OpAsmParser &parser, OperationState *result) {
   MemRefType type;
 
   // Parse the dimension operands and optional symbol operands, followed by a
   // memref type.
   unsigned numDimOperands;
   if (parseDimAndSymbolList(parser, result->operands, numDimOperands) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(type))
+      parser.parseOptionalAttributeDict(result->attributes) ||
+      parser.parseColonType(type))
     return failure();
 
   // Check numDynamicDims against number of question marks in memref type.
@@ -334,7 +334,7 @@ static ParseResult parseAllocOp(OpAsmParser *parser, OperationState *result) {
   // the number of symbols in the affine map, plus the number of dynamic
   // dimensions in the memref.
   if (numDimOperands != type.getNumDynamicDims())
-    return parser->emitError(parser->getNameLoc())
+    return parser.emitError(parser.getNameLoc())
            << "dimension operand count does not equal memref dynamic dimension "
               "count";
   result->types.push_back(type);
@@ -459,10 +459,10 @@ void AllocOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // BranchOp
 //===----------------------------------------------------------------------===//
 
-static ParseResult parseBranchOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseBranchOp(OpAsmParser &parser, OperationState *result) {
   Block *dest;
   SmallVector<Value *, 4> destOperands;
-  if (parser->parseSuccessorAndUseList(dest, destOperands))
+  if (parser.parseSuccessorAndUseList(dest, destOperands))
     return failure();
   result->addSuccessor(dest, destOperands);
   return success();
@@ -487,18 +487,18 @@ void BranchOp::eraseOperand(unsigned index) {
 // CallOp
 //===----------------------------------------------------------------------===//
 
-static ParseResult parseCallOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseCallOp(OpAsmParser &parser, OperationState *result) {
   SymbolRefAttr calleeAttr;
   FunctionType calleeType;
   SmallVector<OpAsmParser::OperandType, 4> operands;
-  auto calleeLoc = parser->getNameLoc();
-  if (parser->parseAttribute(calleeAttr, "callee", result->attributes) ||
-      parser->parseOperandList(operands, OpAsmParser::Delimiter::Paren) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(calleeType) ||
-      parser->addTypesToList(calleeType.getResults(), result->types) ||
-      parser->resolveOperands(operands, calleeType.getInputs(), calleeLoc,
-                              result->operands))
+  auto calleeLoc = parser.getNameLoc();
+  if (parser.parseAttribute(calleeAttr, "callee", result->attributes) ||
+      parser.parseOperandList(operands, OpAsmParser::Delimiter::Paren) ||
+      parser.parseOptionalAttributeDict(result->attributes) ||
+      parser.parseColonType(calleeType) ||
+      parser.addTypesToList(calleeType.getResults(), result->types) ||
+      parser.resolveOperands(operands, calleeType.getInputs(), calleeLoc,
+                             result->operands))
     return failure();
 
   return success();
@@ -575,22 +575,21 @@ struct SimplifyIndirectCallWithKnownCallee
 };
 } // end anonymous namespace.
 
-static ParseResult parseCallIndirectOp(OpAsmParser *parser,
+static ParseResult parseCallIndirectOp(OpAsmParser &parser,
                                        OperationState *result) {
   FunctionType calleeType;
   OpAsmParser::OperandType callee;
   llvm::SMLoc operandsLoc;
   SmallVector<OpAsmParser::OperandType, 4> operands;
   return failure(
-      parser->parseOperand(callee) ||
-      parser->getCurrentLocation(&operandsLoc) ||
-      parser->parseOperandList(operands, OpAsmParser::Delimiter::Paren) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(calleeType) ||
-      parser->resolveOperand(callee, calleeType, result->operands) ||
-      parser->resolveOperands(operands, calleeType.getInputs(), operandsLoc,
-                              result->operands) ||
-      parser->addTypesToList(calleeType.getResults(), result->types));
+      parser.parseOperand(callee) || parser.getCurrentLocation(&operandsLoc) ||
+      parser.parseOperandList(operands, OpAsmParser::Delimiter::Paren) ||
+      parser.parseOptionalAttributeDict(result->attributes) ||
+      parser.parseColonType(calleeType) ||
+      parser.resolveOperand(callee, calleeType, result->operands) ||
+      parser.resolveOperands(operands, calleeType.getInputs(), operandsLoc,
+                             result->operands) ||
+      parser.addTypesToList(calleeType.getResults(), result->types));
 }
 
 static void print(OpAsmPrinter *p, CallIndirectOp op) {
@@ -706,35 +705,34 @@ static void buildCmpIOp(Builder *build, OperationState *result,
       build->getI64IntegerAttr(static_cast<int64_t>(predicate)));
 }
 
-static ParseResult parseCmpIOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseCmpIOp(OpAsmParser &parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 2> ops;
   SmallVector<NamedAttribute, 4> attrs;
   Attribute predicateNameAttr;
   Type type;
-  if (parser->parseAttribute(predicateNameAttr, CmpIOp::getPredicateAttrName(),
-                             attrs) ||
-      parser->parseComma() || parser->parseOperandList(ops, 2) ||
-      parser->parseOptionalAttributeDict(attrs) ||
-      parser->parseColonType(type) ||
-      parser->resolveOperands(ops, type, result->operands))
+  if (parser.parseAttribute(predicateNameAttr, CmpIOp::getPredicateAttrName(),
+                            attrs) ||
+      parser.parseComma() || parser.parseOperandList(ops, 2) ||
+      parser.parseOptionalAttributeDict(attrs) || parser.parseColonType(type) ||
+      parser.resolveOperands(ops, type, result->operands))
     return failure();
 
   if (!predicateNameAttr.isa<StringAttr>())
-    return parser->emitError(parser->getNameLoc(),
-                             "expected string comparison predicate attribute");
+    return parser.emitError(parser.getNameLoc(),
+                            "expected string comparison predicate attribute");
 
   // Rewrite string attribute to an enum value.
   StringRef predicateName = predicateNameAttr.cast<StringAttr>().getValue();
   auto predicate = CmpIOp::getPredicateByName(predicateName);
   if (predicate == CmpIPredicate::NumPredicates)
-    return parser->emitError(parser->getNameLoc())
+    return parser.emitError(parser.getNameLoc())
            << "unknown comparison predicate \"" << predicateName << "\"";
 
-  auto builder = parser->getBuilder();
+  auto builder = parser.getBuilder();
   Type i1Type = getCheckedI1SameShape(&builder, type);
   if (!i1Type)
-    return parser->emitError(parser->getNameLoc(),
-                             "expected type with valid i1 shape");
+    return parser.emitError(parser.getNameLoc(),
+                            "expected type with valid i1 shape");
 
   attrs[0].second = builder.getI64IntegerAttr(static_cast<int64_t>(predicate));
   result->attributes = attrs;
@@ -883,36 +881,35 @@ static void buildCmpFOp(Builder *build, OperationState *result,
       build->getI64IntegerAttr(static_cast<int64_t>(predicate)));
 }
 
-static ParseResult parseCmpFOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseCmpFOp(OpAsmParser &parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 2> ops;
   SmallVector<NamedAttribute, 4> attrs;
   Attribute predicateNameAttr;
   Type type;
-  if (parser->parseAttribute(predicateNameAttr, CmpFOp::getPredicateAttrName(),
-                             attrs) ||
-      parser->parseComma() || parser->parseOperandList(ops, 2) ||
-      parser->parseOptionalAttributeDict(attrs) ||
-      parser->parseColonType(type) ||
-      parser->resolveOperands(ops, type, result->operands))
+  if (parser.parseAttribute(predicateNameAttr, CmpFOp::getPredicateAttrName(),
+                            attrs) ||
+      parser.parseComma() || parser.parseOperandList(ops, 2) ||
+      parser.parseOptionalAttributeDict(attrs) || parser.parseColonType(type) ||
+      parser.resolveOperands(ops, type, result->operands))
     return failure();
 
   if (!predicateNameAttr.isa<StringAttr>())
-    return parser->emitError(parser->getNameLoc(),
-                             "expected string comparison predicate attribute");
+    return parser.emitError(parser.getNameLoc(),
+                            "expected string comparison predicate attribute");
 
   // Rewrite string attribute to an enum value.
   StringRef predicateName = predicateNameAttr.cast<StringAttr>().getValue();
   auto predicate = CmpFOp::getPredicateByName(predicateName);
   if (predicate == CmpFPredicate::NumPredicates)
-    return parser->emitError(parser->getNameLoc(),
-                             "unknown comparison predicate \"" + predicateName +
-                                 "\"");
+    return parser.emitError(parser.getNameLoc(),
+                            "unknown comparison predicate \"" + predicateName +
+                                "\"");
 
-  auto builder = parser->getBuilder();
+  auto builder = parser.getBuilder();
   Type i1Type = getCheckedI1SameShape(&builder, type);
   if (!i1Type)
-    return parser->emitError(parser->getNameLoc(),
-                             "expected type with valid i1 shape");
+    return parser.emitError(parser.getNameLoc(),
+                            "expected type with valid i1 shape");
 
   attrs[0].second = builder.getI64IntegerAttr(static_cast<int64_t>(predicate));
   result->attributes = attrs;
@@ -1059,29 +1056,29 @@ struct SimplifyConstCondBranchPred : public OpRewritePattern<CondBranchOp> {
 };
 } // end anonymous namespace.
 
-static ParseResult parseCondBranchOp(OpAsmParser *parser,
+static ParseResult parseCondBranchOp(OpAsmParser &parser,
                                      OperationState *result) {
   SmallVector<Value *, 4> destOperands;
   Block *dest;
   OpAsmParser::OperandType condInfo;
 
   // Parse the condition.
-  Type int1Ty = parser->getBuilder().getI1Type();
-  if (parser->parseOperand(condInfo) || parser->parseComma() ||
-      parser->resolveOperand(condInfo, int1Ty, result->operands)) {
-    return parser->emitError(parser->getNameLoc(),
-                             "expected condition type was boolean (i1)");
+  Type int1Ty = parser.getBuilder().getI1Type();
+  if (parser.parseOperand(condInfo) || parser.parseComma() ||
+      parser.resolveOperand(condInfo, int1Ty, result->operands)) {
+    return parser.emitError(parser.getNameLoc(),
+                            "expected condition type was boolean (i1)");
   }
 
   // Parse the true successor.
-  if (parser->parseSuccessorAndUseList(dest, destOperands))
+  if (parser.parseSuccessorAndUseList(dest, destOperands))
     return failure();
   result->addSuccessor(dest, destOperands);
 
   // Parse the false successor.
   destOperands.clear();
-  if (parser->parseComma() ||
-      parser->parseSuccessorAndUseList(dest, destOperands))
+  if (parser.parseComma() ||
+      parser.parseSuccessorAndUseList(dest, destOperands))
     return failure();
   result->addSuccessor(dest, destOperands);
 
@@ -1119,22 +1116,22 @@ static void print(OpAsmPrinter *p, ConstantOp &op) {
     *p << " : " << op.getType();
 }
 
-static ParseResult parseConstantOp(OpAsmParser *parser,
+static ParseResult parseConstantOp(OpAsmParser &parser,
                                    OperationState *result) {
   Attribute valueAttr;
-  if (parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseAttribute(valueAttr, "value", result->attributes))
+  if (parser.parseOptionalAttributeDict(result->attributes) ||
+      parser.parseAttribute(valueAttr, "value", result->attributes))
     return failure();
 
   // If the attribute is a symbol reference, then we expect a trailing type.
   Type type;
   if (!valueAttr.isa<SymbolRefAttr>())
     type = valueAttr.getType();
-  else if (parser->parseColonType(type))
+  else if (parser.parseColonType(type))
     return failure();
 
   // Add the attribute type to the list.
-  return parser->addTypeToList(type, result->types);
+  return parser.addTypeToList(type, result->types);
 }
 
 /// The constant op requires an attribute, and furthermore requires that it
@@ -1295,13 +1292,13 @@ static void print(OpAsmPrinter *p, DeallocOp op) {
   *p << "dealloc " << *op.memref() << " : " << op.memref()->getType();
 }
 
-static ParseResult parseDeallocOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseDeallocOp(OpAsmParser &parser, OperationState *result) {
   OpAsmParser::OperandType memrefInfo;
   MemRefType type;
 
-  return failure(parser->parseOperand(memrefInfo) ||
-                 parser->parseColonType(type) ||
-                 parser->resolveOperand(memrefInfo, type, result->operands));
+  return failure(parser.parseOperand(memrefInfo) ||
+                 parser.parseColonType(type) ||
+                 parser.resolveOperand(memrefInfo, type, result->operands));
 }
 
 static LogicalResult verify(DeallocOp op) {
@@ -1327,19 +1324,19 @@ static void print(OpAsmPrinter *p, DimOp op) {
   *p << " : " << op.getOperand()->getType();
 }
 
-static ParseResult parseDimOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseDimOp(OpAsmParser &parser, OperationState *result) {
   OpAsmParser::OperandType operandInfo;
   IntegerAttr indexAttr;
   Type type;
-  Type indexType = parser->getBuilder().getIndexType();
+  Type indexType = parser.getBuilder().getIndexType();
 
-  return failure(parser->parseOperand(operandInfo) || parser->parseComma() ||
-                 parser->parseAttribute(indexAttr, indexType, "index",
-                                        result->attributes) ||
-                 parser->parseOptionalAttributeDict(result->attributes) ||
-                 parser->parseColonType(type) ||
-                 parser->resolveOperand(operandInfo, type, result->operands) ||
-                 parser->addTypeToList(indexType, result->types));
+  return failure(parser.parseOperand(operandInfo) || parser.parseComma() ||
+                 parser.parseAttribute(indexAttr, indexType, "index",
+                                       result->attributes) ||
+                 parser.parseOptionalAttributeDict(result->attributes) ||
+                 parser.parseColonType(type) ||
+                 parser.resolveOperand(operandInfo, type, result->operands) ||
+                 parser.addTypeToList(indexType, result->types));
 }
 
 static LogicalResult verify(DimOp op) {
@@ -1476,7 +1473,7 @@ void DmaStartOp::print(OpAsmPrinter *p) {
 //                       memref<1024 x f32, 2>,
 //                       memref<1 x i32>
 //
-ParseResult DmaStartOp::parse(OpAsmParser *parser, OperationState *result) {
+ParseResult DmaStartOp::parse(OpAsmParser &parser, OperationState *result) {
   OpAsmParser::OperandType srcMemRefInfo;
   SmallVector<OpAsmParser::OperandType, 4> srcIndexInfos;
   OpAsmParser::OperandType dstMemRefInfo;
@@ -1487,75 +1484,75 @@ ParseResult DmaStartOp::parse(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 2> strideInfo;
 
   SmallVector<Type, 3> types;
-  auto indexType = parser->getBuilder().getIndexType();
+  auto indexType = parser.getBuilder().getIndexType();
 
   // Parse and resolve the following list of operands:
   // *) source memref followed by its indices (in square brackets).
   // *) destination memref followed by its indices (in square brackets).
   // *) dma size in KiB.
-  if (parser->parseOperand(srcMemRefInfo) ||
-      parser->parseOperandList(srcIndexInfos, OpAsmParser::Delimiter::Square) ||
-      parser->parseComma() || parser->parseOperand(dstMemRefInfo) ||
-      parser->parseOperandList(dstIndexInfos, OpAsmParser::Delimiter::Square) ||
-      parser->parseComma() || parser->parseOperand(numElementsInfo) ||
-      parser->parseComma() || parser->parseOperand(tagMemrefInfo) ||
-      parser->parseOperandList(tagIndexInfos, OpAsmParser::Delimiter::Square))
+  if (parser.parseOperand(srcMemRefInfo) ||
+      parser.parseOperandList(srcIndexInfos, OpAsmParser::Delimiter::Square) ||
+      parser.parseComma() || parser.parseOperand(dstMemRefInfo) ||
+      parser.parseOperandList(dstIndexInfos, OpAsmParser::Delimiter::Square) ||
+      parser.parseComma() || parser.parseOperand(numElementsInfo) ||
+      parser.parseComma() || parser.parseOperand(tagMemrefInfo) ||
+      parser.parseOperandList(tagIndexInfos, OpAsmParser::Delimiter::Square))
     return failure();
 
   // Parse optional stride and elements per stride.
-  if (parser->parseTrailingOperandList(strideInfo))
+  if (parser.parseTrailingOperandList(strideInfo))
     return failure();
 
   bool isStrided = strideInfo.size() == 2;
   if (!strideInfo.empty() && !isStrided) {
-    return parser->emitError(parser->getNameLoc(),
-                             "expected two stride related operands");
+    return parser.emitError(parser.getNameLoc(),
+                            "expected two stride related operands");
   }
 
-  if (parser->parseColonTypeList(types))
+  if (parser.parseColonTypeList(types))
     return failure();
   if (types.size() != 3)
-    return parser->emitError(parser->getNameLoc(), "fewer/more types expected");
+    return parser.emitError(parser.getNameLoc(), "fewer/more types expected");
 
-  if (parser->resolveOperand(srcMemRefInfo, types[0], result->operands) ||
-      parser->resolveOperands(srcIndexInfos, indexType, result->operands) ||
-      parser->resolveOperand(dstMemRefInfo, types[1], result->operands) ||
-      parser->resolveOperands(dstIndexInfos, indexType, result->operands) ||
+  if (parser.resolveOperand(srcMemRefInfo, types[0], result->operands) ||
+      parser.resolveOperands(srcIndexInfos, indexType, result->operands) ||
+      parser.resolveOperand(dstMemRefInfo, types[1], result->operands) ||
+      parser.resolveOperands(dstIndexInfos, indexType, result->operands) ||
       // size should be an index.
-      parser->resolveOperand(numElementsInfo, indexType, result->operands) ||
-      parser->resolveOperand(tagMemrefInfo, types[2], result->operands) ||
+      parser.resolveOperand(numElementsInfo, indexType, result->operands) ||
+      parser.resolveOperand(tagMemrefInfo, types[2], result->operands) ||
       // tag indices should be index.
-      parser->resolveOperands(tagIndexInfos, indexType, result->operands))
+      parser.resolveOperands(tagIndexInfos, indexType, result->operands))
     return failure();
 
   auto memrefType0 = types[0].dyn_cast<MemRefType>();
   if (!memrefType0)
-    return parser->emitError(parser->getNameLoc(),
-                             "expected source to be of memref type");
+    return parser.emitError(parser.getNameLoc(),
+                            "expected source to be of memref type");
 
   auto memrefType1 = types[1].dyn_cast<MemRefType>();
   if (!memrefType1)
-    return parser->emitError(parser->getNameLoc(),
-                             "expected destination to be of memref type");
+    return parser.emitError(parser.getNameLoc(),
+                            "expected destination to be of memref type");
 
   auto memrefType2 = types[2].dyn_cast<MemRefType>();
   if (!memrefType2)
-    return parser->emitError(parser->getNameLoc(),
-                             "expected tag to be of memref type");
+    return parser.emitError(parser.getNameLoc(),
+                            "expected tag to be of memref type");
 
   if (isStrided) {
-    if (parser->resolveOperands(strideInfo, indexType, result->operands))
+    if (parser.resolveOperands(strideInfo, indexType, result->operands))
       return failure();
   }
 
   // Check that source/destination index list size matches associated rank.
   if (static_cast<int64_t>(srcIndexInfos.size()) != memrefType0.getRank() ||
       static_cast<int64_t>(dstIndexInfos.size()) != memrefType1.getRank())
-    return parser->emitError(parser->getNameLoc(),
-                             "memref rank not equal to indices count");
+    return parser.emitError(parser.getNameLoc(),
+                            "memref rank not equal to indices count");
   if (static_cast<int64_t>(tagIndexInfos.size()) != memrefType2.getRank())
-    return parser->emitError(parser->getNameLoc(),
-                             "tag memref rank not equal to indices count");
+    return parser.emitError(parser.getNameLoc(),
+                            "tag memref rank not equal to indices count");
 
   return success();
 }
@@ -1607,31 +1604,31 @@ void DmaWaitOp::print(OpAsmPrinter *p) {
 // Eg:
 //   dma_wait %tag[%index], %num_elements : memref<1 x i32, (d0) -> (d0), 4>
 //
-ParseResult DmaWaitOp::parse(OpAsmParser *parser, OperationState *result) {
+ParseResult DmaWaitOp::parse(OpAsmParser &parser, OperationState *result) {
   OpAsmParser::OperandType tagMemrefInfo;
   SmallVector<OpAsmParser::OperandType, 2> tagIndexInfos;
   Type type;
-  auto indexType = parser->getBuilder().getIndexType();
+  auto indexType = parser.getBuilder().getIndexType();
   OpAsmParser::OperandType numElementsInfo;
 
   // Parse tag memref, its indices, and dma size.
-  if (parser->parseOperand(tagMemrefInfo) ||
-      parser->parseOperandList(tagIndexInfos, OpAsmParser::Delimiter::Square) ||
-      parser->parseComma() || parser->parseOperand(numElementsInfo) ||
-      parser->parseColonType(type) ||
-      parser->resolveOperand(tagMemrefInfo, type, result->operands) ||
-      parser->resolveOperands(tagIndexInfos, indexType, result->operands) ||
-      parser->resolveOperand(numElementsInfo, indexType, result->operands))
+  if (parser.parseOperand(tagMemrefInfo) ||
+      parser.parseOperandList(tagIndexInfos, OpAsmParser::Delimiter::Square) ||
+      parser.parseComma() || parser.parseOperand(numElementsInfo) ||
+      parser.parseColonType(type) ||
+      parser.resolveOperand(tagMemrefInfo, type, result->operands) ||
+      parser.resolveOperands(tagIndexInfos, indexType, result->operands) ||
+      parser.resolveOperand(numElementsInfo, indexType, result->operands))
     return failure();
 
   auto memrefType = type.dyn_cast<MemRefType>();
   if (!memrefType)
-    return parser->emitError(parser->getNameLoc(),
-                             "expected tag to be of memref type");
+    return parser.emitError(parser.getNameLoc(),
+                            "expected tag to be of memref type");
 
   if (static_cast<int64_t>(tagIndexInfos.size()) != memrefType.getRank())
-    return parser->emitError(parser->getNameLoc(),
-                             "tag memref rank not equal to indices count");
+    return parser.emitError(parser.getNameLoc(),
+                            "tag memref rank not equal to indices count");
 
   return success();
 }
@@ -1654,21 +1651,21 @@ static void print(OpAsmPrinter *p, ExtractElementOp op) {
   *p << " : " << op.getAggregate()->getType();
 }
 
-static ParseResult parseExtractElementOp(OpAsmParser *parser,
+static ParseResult parseExtractElementOp(OpAsmParser &parser,
                                          OperationState *result) {
   OpAsmParser::OperandType aggregateInfo;
   SmallVector<OpAsmParser::OperandType, 4> indexInfo;
   ShapedType type;
 
-  auto affineIntTy = parser->getBuilder().getIndexType();
+  auto affineIntTy = parser.getBuilder().getIndexType();
   return failure(
-      parser->parseOperand(aggregateInfo) ||
-      parser->parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(type) ||
-      parser->resolveOperand(aggregateInfo, type, result->operands) ||
-      parser->resolveOperands(indexInfo, affineIntTy, result->operands) ||
-      parser->addTypeToList(type.getElementType(), result->types));
+      parser.parseOperand(aggregateInfo) ||
+      parser.parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
+      parser.parseOptionalAttributeDict(result->attributes) ||
+      parser.parseColonType(type) ||
+      parser.resolveOperand(aggregateInfo, type, result->operands) ||
+      parser.resolveOperands(indexInfo, affineIntTy, result->operands) ||
+      parser.addTypeToList(type.getElementType(), result->types));
 }
 
 static LogicalResult verify(ExtractElementOp op) {
@@ -1736,20 +1733,20 @@ static void print(OpAsmPrinter *p, LoadOp op) {
   *p << " : " << op.getMemRefType();
 }
 
-static ParseResult parseLoadOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseLoadOp(OpAsmParser &parser, OperationState *result) {
   OpAsmParser::OperandType memrefInfo;
   SmallVector<OpAsmParser::OperandType, 4> indexInfo;
   MemRefType type;
 
-  auto affineIntTy = parser->getBuilder().getIndexType();
+  auto affineIntTy = parser.getBuilder().getIndexType();
   return failure(
-      parser->parseOperand(memrefInfo) ||
-      parser->parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(type) ||
-      parser->resolveOperand(memrefInfo, type, result->operands) ||
-      parser->resolveOperands(indexInfo, affineIntTy, result->operands) ||
-      parser->addTypeToList(type.getElementType(), result->types));
+      parser.parseOperand(memrefInfo) ||
+      parser.parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
+      parser.parseOptionalAttributeDict(result->attributes) ||
+      parser.parseColonType(type) ||
+      parser.resolveOperand(memrefInfo, type, result->operands) ||
+      parser.resolveOperands(indexInfo, affineIntTy, result->operands) ||
+      parser.addTypeToList(type.getElementType(), result->types));
 }
 
 static LogicalResult verify(LoadOp op) {
@@ -1844,14 +1841,14 @@ static void print(OpAsmPrinter *p, RankOp op) {
   *p << "rank " << *op.getOperand() << " : " << op.getOperand()->getType();
 }
 
-static ParseResult parseRankOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseRankOp(OpAsmParser &parser, OperationState *result) {
   OpAsmParser::OperandType operandInfo;
   Type type;
-  Type indexType = parser->getBuilder().getIndexType();
-  return failure(parser->parseOperand(operandInfo) ||
-                 parser->parseColonType(type) ||
-                 parser->resolveOperand(operandInfo, type, result->operands) ||
-                 parser->addTypeToList(indexType, result->types));
+  Type indexType = parser.getBuilder().getIndexType();
+  return failure(parser.parseOperand(operandInfo) ||
+                 parser.parseColonType(type) ||
+                 parser.resolveOperand(operandInfo, type, result->operands) ||
+                 parser.addTypeToList(indexType, result->types));
 }
 
 OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
@@ -1918,13 +1915,13 @@ OpFoldResult RemIUOp::fold(ArrayRef<Attribute> operands) {
 // ReturnOp
 //===----------------------------------------------------------------------===//
 
-static ParseResult parseReturnOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseReturnOp(OpAsmParser &parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 2> opInfo;
   SmallVector<Type, 2> types;
-  llvm::SMLoc loc = parser->getCurrentLocation();
-  return failure(parser->parseOperandList(opInfo) ||
-                 (!opInfo.empty() && parser->parseColonTypeList(types)) ||
-                 parser->resolveOperands(opInfo, types, loc, result->operands));
+  llvm::SMLoc loc = parser.getCurrentLocation();
+  return failure(parser.parseOperandList(opInfo) ||
+                 (!opInfo.empty() && parser.parseColonTypeList(types)) ||
+                 parser.resolveOperands(opInfo, types, loc, result->operands));
 }
 
 static void print(OpAsmPrinter *p, ReturnOp op) {
@@ -1970,24 +1967,24 @@ bool SIToFPOp::areCastCompatible(Type a, Type b) {
 // SelectOp
 //===----------------------------------------------------------------------===//
 
-static ParseResult parseSelectOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseSelectOp(OpAsmParser &parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 3> ops;
   SmallVector<NamedAttribute, 4> attrs;
   Type type;
-  if (parser->parseOperandList(ops, 3) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(type))
+  if (parser.parseOperandList(ops, 3) ||
+      parser.parseOptionalAttributeDict(result->attributes) ||
+      parser.parseColonType(type))
     return failure();
 
-  auto i1Type = getCheckedI1SameShape(&parser->getBuilder(), type);
+  auto i1Type = getCheckedI1SameShape(&parser.getBuilder(), type);
   if (!i1Type)
-    return parser->emitError(parser->getNameLoc(),
-                             "expected type with valid i1 shape");
+    return parser.emitError(parser.getNameLoc(),
+                            "expected type with valid i1 shape");
 
   SmallVector<Type, 3> types = {i1Type, type, type};
-  return failure(parser->resolveOperands(ops, types, parser->getNameLoc(),
-                                         result->operands) ||
-                 parser->addTypeToList(type, result->types));
+  return failure(parser.resolveOperands(ops, types, parser.getNameLoc(),
+                                        result->operands) ||
+                 parser.addTypeToList(type, result->types));
 }
 
 static void print(OpAsmPrinter *p, SelectOp op) {
@@ -2034,23 +2031,23 @@ static void print(OpAsmPrinter *p, StoreOp op) {
   *p << " : " << op.getMemRefType();
 }
 
-static ParseResult parseStoreOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseStoreOp(OpAsmParser &parser, OperationState *result) {
   OpAsmParser::OperandType storeValueInfo;
   OpAsmParser::OperandType memrefInfo;
   SmallVector<OpAsmParser::OperandType, 4> indexInfo;
   MemRefType memrefType;
 
-  auto affineIntTy = parser->getBuilder().getIndexType();
+  auto affineIntTy = parser.getBuilder().getIndexType();
   return failure(
-      parser->parseOperand(storeValueInfo) || parser->parseComma() ||
-      parser->parseOperand(memrefInfo) ||
-      parser->parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(memrefType) ||
-      parser->resolveOperand(storeValueInfo, memrefType.getElementType(),
-                             result->operands) ||
-      parser->resolveOperand(memrefInfo, memrefType, result->operands) ||
-      parser->resolveOperands(indexInfo, affineIntTy, result->operands));
+      parser.parseOperand(storeValueInfo) || parser.parseComma() ||
+      parser.parseOperand(memrefInfo) ||
+      parser.parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
+      parser.parseOptionalAttributeDict(result->attributes) ||
+      parser.parseColonType(memrefType) ||
+      parser.resolveOperand(storeValueInfo, memrefType.getElementType(),
+                            result->operands) ||
+      parser.resolveOperand(memrefInfo, memrefType, result->operands) ||
+      parser.resolveOperands(indexInfo, affineIntTy, result->operands));
 }
 
 static LogicalResult verify(StoreOp op) {
@@ -2206,16 +2203,16 @@ static void print(OpAsmPrinter *p, TensorLoadOp op) {
   *p << " : " << op.getOperand()->getType();
 }
 
-static ParseResult parseTensorLoadOp(OpAsmParser *parser,
+static ParseResult parseTensorLoadOp(OpAsmParser &parser,
                                      OperationState *result) {
   OpAsmParser::OperandType op;
   Type type;
-  return failure(parser->parseOperand(op) ||
-                 parser->parseOptionalAttributeDict(result->attributes) ||
-                 parser->parseColonType(type) ||
-                 parser->resolveOperand(op, type, result->operands) ||
-                 parser->addTypeToList(
-                     getTensorTypeFromMemRefType(parser->getBuilder(), type),
+  return failure(parser.parseOperand(op) ||
+                 parser.parseOptionalAttributeDict(result->attributes) ||
+                 parser.parseColonType(type) ||
+                 parser.resolveOperand(op, type, result->operands) ||
+                 parser.addTypeToList(
+                     getTensorTypeFromMemRefType(parser.getBuilder(), type),
                      result->types));
 }
 
@@ -2229,17 +2226,17 @@ static void print(OpAsmPrinter *p, TensorStoreOp op) {
   *p << " : " << op.memref()->getType();
 }
 
-static ParseResult parseTensorStoreOp(OpAsmParser *parser,
+static ParseResult parseTensorStoreOp(OpAsmParser &parser,
                                       OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 2> ops;
   Type type;
-  llvm::SMLoc loc = parser->getCurrentLocation();
+  llvm::SMLoc loc = parser.getCurrentLocation();
   return failure(
-      parser->parseOperandList(ops, /*requiredOperandCount=*/2) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(type) ||
-      parser->resolveOperands(
-          ops, {getTensorTypeFromMemRefType(parser->getBuilder(), type), type},
+      parser.parseOperandList(ops, /*requiredOperandCount=*/2) ||
+      parser.parseOptionalAttributeDict(result->attributes) ||
+      parser.parseColonType(type) ||
+      parser.resolveOperands(
+          ops, {getTensorTypeFromMemRefType(parser.getBuilder(), type), type},
           loc, result->operands));
 }
 

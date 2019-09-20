@@ -224,27 +224,27 @@ void LaunchOp::print(OpAsmPrinter *p) {
 // introduced futher (SSA defs), and %operand are percent-identifiers for the
 // SSA value uses.
 static ParseResult
-parseSizeAssignment(OpAsmParser *parser,
+parseSizeAssignment(OpAsmParser &parser,
                     MutableArrayRef<OpAsmParser::OperandType> sizes,
                     MutableArrayRef<OpAsmParser::OperandType> regionSizes,
                     MutableArrayRef<OpAsmParser::OperandType> indices) {
   assert(indices.size() == 3 && "space for three indices expected");
   SmallVector<OpAsmParser::OperandType, 3> args;
-  if (parser->parseRegionArgumentList(args, /*requiredOperandCount=*/3,
-                                      OpAsmParser::Delimiter::Paren) ||
-      parser->parseKeyword("in") || parser->parseLParen())
+  if (parser.parseRegionArgumentList(args, /*requiredOperandCount=*/3,
+                                     OpAsmParser::Delimiter::Paren) ||
+      parser.parseKeyword("in") || parser.parseLParen())
     return failure();
   std::move(args.begin(), args.end(), indices.begin());
 
   for (int i = 0; i < 3; ++i) {
-    if (i != 0 && parser->parseComma())
+    if (i != 0 && parser.parseComma())
       return failure();
-    if (parser->parseRegionArgument(regionSizes[i]) || parser->parseEqual() ||
-        parser->parseOperand(sizes[i]))
+    if (parser.parseRegionArgument(regionSizes[i]) || parser.parseEqual() ||
+        parser.parseOperand(sizes[i]))
       return failure();
   }
 
-  return parser->parseRParen();
+  return parser.parseRParen();
 }
 
 // Parses a Launch operation.
@@ -253,7 +253,7 @@ parseSizeAssignment(OpAsmParser *parser,
 //                             (`args` ssa-reassignment `:` type-list)?
 //                             region attr-dict?
 // ssa-reassignment ::= `(` ssa-id `=` ssa-use (`,` ssa-id `=` ssa-use)* `)`
-ParseResult LaunchOp::parse(OpAsmParser *parser, OperationState *result) {
+ParseResult LaunchOp::parse(OpAsmParser &parser, OperationState *result) {
   // Sizes of the grid and block.
   SmallVector<OpAsmParser::OperandType, kNumConfigOperands> sizes(
       kNumConfigOperands);
@@ -272,16 +272,16 @@ ParseResult LaunchOp::parse(OpAsmParser *parser, OperationState *result) {
   // sies and defines values for thread identifiers.  In the region argument
   // list, identifiers preceed sizes, and block-related values preceed
   // thread-related values.
-  if (parser->parseKeyword(getBlocksKeyword().data()) ||
+  if (parser.parseKeyword(getBlocksKeyword().data()) ||
       parseSizeAssignment(parser, sizesRef.take_front(3),
                           regionArgsRef.slice(6, 3),
                           regionArgsRef.slice(0, 3)) ||
-      parser->parseKeyword(getThreadsKeyword().data()) ||
+      parser.parseKeyword(getThreadsKeyword().data()) ||
       parseSizeAssignment(parser, sizesRef.drop_front(3),
                           regionArgsRef.slice(9, 3),
                           regionArgsRef.slice(3, 3)) ||
-      parser->resolveOperands(sizes, parser->getBuilder().getIndexType(),
-                              result->operands))
+      parser.resolveOperands(sizes, parser.getBuilder().getIndexType(),
+                             result->operands))
     return failure();
 
   // If kernel argument renaming segment is present, parse it.  When present,
@@ -289,27 +289,26 @@ ParseResult LaunchOp::parse(OpAsmParser *parser, OperationState *result) {
   // so is the trailing type list.  Parse it as well and use the parsed types
   // to resolve the operands passed to the kernel arguments.
   SmallVector<Type, 4> dataTypes;
-  if (!parser->parseOptionalKeyword(getArgsKeyword())) {
-    llvm::SMLoc argsLoc = parser->getCurrentLocation();
+  if (!parser.parseOptionalKeyword(getArgsKeyword())) {
+    llvm::SMLoc argsLoc = parser.getCurrentLocation();
 
     regionArgs.push_back({});
     dataOperands.push_back({});
-    if (parser->parseLParen() ||
-        parser->parseRegionArgument(regionArgs.back()) ||
-        parser->parseEqual() || parser->parseOperand(dataOperands.back()))
+    if (parser.parseLParen() || parser.parseRegionArgument(regionArgs.back()) ||
+        parser.parseEqual() || parser.parseOperand(dataOperands.back()))
       return failure();
 
-    while (!parser->parseOptionalComma()) {
+    while (!parser.parseOptionalComma()) {
       regionArgs.push_back({});
       dataOperands.push_back({});
-      if (parser->parseRegionArgument(regionArgs.back()) ||
-          parser->parseEqual() || parser->parseOperand(dataOperands.back()))
+      if (parser.parseRegionArgument(regionArgs.back()) ||
+          parser.parseEqual() || parser.parseOperand(dataOperands.back()))
         return failure();
     }
 
-    if (parser->parseRParen() || parser->parseColonTypeList(dataTypes) ||
-        parser->resolveOperands(dataOperands, dataTypes, argsLoc,
-                                result->operands))
+    if (parser.parseRParen() || parser.parseColonTypeList(dataTypes) ||
+        parser.resolveOperands(dataOperands, dataTypes, argsLoc,
+                               result->operands))
       return failure();
   }
 
@@ -317,11 +316,11 @@ ParseResult LaunchOp::parse(OpAsmParser *parser, OperationState *result) {
   // kNumConfigRegionAttributes leading arguments that correspond to
   // block/thread identifiers and grid/block sizes, all of the `index` type.
   // Follow the actual kernel arguments.
-  Type index = parser->getBuilder().getIndexType();
+  Type index = parser.getBuilder().getIndexType();
   dataTypes.insert(dataTypes.begin(), kNumConfigRegionAttributes, index);
   Region *body = result->addRegion();
-  return failure(parser->parseRegion(*body, regionArgs, dataTypes) ||
-                 parser->parseOptionalAttributeDict(result->attributes));
+  return failure(parser.parseRegion(*body, regionArgs, dataTypes) ||
+                 parser.parseOptionalAttributeDict(result->attributes));
 }
 
 void LaunchOp::eraseKernelArgument(unsigned index) {

@@ -58,7 +58,7 @@ LogicalResult linalg::DotOp::verify() {
 }
 
 // Parsing of the linalg dialect is not supported in this tutorial.
-ParseResult linalg::DotOp::parse(mlir::OpAsmParser *parser,
+ParseResult linalg::DotOp::parse(mlir::OpAsmParser &parser,
                                  mlir::OperationState *result) {
   return TensorContractionBaseType::parse(parser, result);
 }
@@ -92,7 +92,7 @@ LogicalResult linalg::MatvecOp::verify() {
 }
 
 // Parsing of the linalg dialect is not supported in this tutorial.
-ParseResult linalg::MatvecOp::parse(mlir::OpAsmParser *parser,
+ParseResult linalg::MatvecOp::parse(mlir::OpAsmParser &parser,
                                     mlir::OperationState *result) {
   return TensorContractionBaseType::parse(parser, result);
 }
@@ -123,7 +123,7 @@ LogicalResult linalg::MatmulOp::verify() {
 }
 
 // Parsing of the linalg dialect is not supported in this tutorial.
-ParseResult linalg::MatmulOp::parse(mlir::OpAsmParser *parser,
+ParseResult linalg::MatmulOp::parse(mlir::OpAsmParser &parser,
                                     mlir::OperationState *result) {
   return TensorContractionBaseType::parse(parser, result);
 }

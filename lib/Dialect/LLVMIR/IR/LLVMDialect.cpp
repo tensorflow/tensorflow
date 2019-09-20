@@ -59,36 +59,36 @@ static void printFCmpOp(OpAsmPrinter *p, FCmpOp &op) {
 // <operation> ::= `llvm.fcmp` string-literal ssa-use `,` ssa-use
 //                 attribute-dict? `:` type
 template <typename CmpPredicateType>
-static ParseResult parseCmpOp(OpAsmParser *parser, OperationState *result) {
-  Builder &builder = parser->getBuilder();
+static ParseResult parseCmpOp(OpAsmParser &parser, OperationState *result) {
+  Builder &builder = parser.getBuilder();
 
   Attribute predicate;
   SmallVector<NamedAttribute, 4> attrs;
   OpAsmParser::OperandType lhs, rhs;
   Type type;
   llvm::SMLoc predicateLoc, trailingTypeLoc;
-  if (parser->getCurrentLocation(&predicateLoc) ||
-      parser->parseAttribute(predicate, "predicate", attrs) ||
-      parser->parseOperand(lhs) || parser->parseComma() ||
-      parser->parseOperand(rhs) || parser->parseOptionalAttributeDict(attrs) ||
-      parser->parseColon() || parser->getCurrentLocation(&trailingTypeLoc) ||
-      parser->parseType(type) ||
-      parser->resolveOperand(lhs, type, result->operands) ||
-      parser->resolveOperand(rhs, type, result->operands))
+  if (parser.getCurrentLocation(&predicateLoc) ||
+      parser.parseAttribute(predicate, "predicate", attrs) ||
+      parser.parseOperand(lhs) || parser.parseComma() ||
+      parser.parseOperand(rhs) || parser.parseOptionalAttributeDict(attrs) ||
+      parser.parseColon() || parser.getCurrentLocation(&trailingTypeLoc) ||
+      parser.parseType(type) ||
+      parser.resolveOperand(lhs, type, result->operands) ||
+      parser.resolveOperand(rhs, type, result->operands))
     return failure();
 
   // Replace the string attribute `predicate` with an integer attribute.
   auto predicateStr = predicate.dyn_cast<StringAttr>();
   if (!predicateStr)
-    return parser->emitError(predicateLoc,
-                             "expected 'predicate' attribute of string type");
+    return parser.emitError(predicateLoc,
+                            "expected 'predicate' attribute of string type");
 
   int64_t predicateValue = 0;
   if (std::is_same<CmpPredicateType, ICmpPredicate>()) {
     Optional<ICmpPredicate> predicate =
         symbolizeICmpPredicate(predicateStr.getValue());
     if (!predicate)
-      return parser->emitError(predicateLoc)
+      return parser.emitError(predicateLoc)
              << "'" << predicateStr.getValue()
              << "' is an incorrect value of the 'predicate' attribute";
     predicateValue = static_cast<int64_t>(predicate.getValue());
@@ -96,13 +96,13 @@ static ParseResult parseCmpOp(OpAsmParser *parser, OperationState *result) {
     Optional<FCmpPredicate> predicate =
         symbolizeFCmpPredicate(predicateStr.getValue());
     if (!predicate)
-      return parser->emitError(predicateLoc)
+      return parser.emitError(predicateLoc)
              << "'" << predicateStr.getValue()
              << "' is an incorrect value of the 'predicate' attribute";
     predicateValue = static_cast<int64_t>(predicate.getValue());
   }
 
-  attrs[0].second = parser->getBuilder().getI64IntegerAttr(predicateValue);
+  attrs[0].second = parser.getBuilder().getI64IntegerAttr(predicateValue);
 
   // The result type is either i1 or a vector type <? x i1> if the inputs are
   // vectors.
@@ -110,7 +110,7 @@ static ParseResult parseCmpOp(OpAsmParser *parser, OperationState *result) {
   auto resultType = LLVMType::getInt1Ty(dialect);
   auto argType = type.dyn_cast<LLVM::LLVMType>();
   if (!argType)
-    return parser->emitError(trailingTypeLoc, "expected LLVM IR dialect type");
+    return parser.emitError(trailingTypeLoc, "expected LLVM IR dialect type");
   if (argType.getUnderlyingType()->isVectorTy())
     resultType = LLVMType::getVectorTy(
         resultType, argType.getUnderlyingType()->getVectorNumElements());
@@ -140,26 +140,26 @@ static void printAllocaOp(OpAsmPrinter *p, AllocaOp &op) {
 
 // <operation> ::= `llvm.alloca` ssa-use `x` type attribute-dict?
 //                 `:` type `,` type
-static ParseResult parseAllocaOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseAllocaOp(OpAsmParser &parser, OperationState *result) {
   SmallVector<NamedAttribute, 4> attrs;
   OpAsmParser::OperandType arraySize;
   Type type, elemType;
   llvm::SMLoc trailingTypeLoc;
-  if (parser->parseOperand(arraySize) || parser->parseKeyword("x") ||
-      parser->parseType(elemType) ||
-      parser->parseOptionalAttributeDict(attrs) || parser->parseColon() ||
-      parser->getCurrentLocation(&trailingTypeLoc) || parser->parseType(type))
+  if (parser.parseOperand(arraySize) || parser.parseKeyword("x") ||
+      parser.parseType(elemType) || parser.parseOptionalAttributeDict(attrs) ||
+      parser.parseColon() || parser.getCurrentLocation(&trailingTypeLoc) ||
+      parser.parseType(type))
     return failure();
 
   // Extract the result type from the trailing function type.
   auto funcType = type.dyn_cast<FunctionType>();
   if (!funcType || funcType.getNumInputs() != 1 ||
       funcType.getNumResults() != 1)
-    return parser->emitError(
+    return parser.emitError(
         trailingTypeLoc,
         "expected trailing function type with one argument and one result");
 
-  if (parser->resolveOperand(arraySize, funcType.getInput(0), result->operands))
+  if (parser.resolveOperand(arraySize, funcType.getInput(0), result->operands))
     return failure();
 
   result->attributes = attrs;
@@ -184,16 +184,16 @@ static void printGEPOp(OpAsmPrinter *p, GEPOp &op) {
 
 // <operation> ::= `llvm.getelementptr` ssa-use `[` ssa-use-list `]`
 //                 attribute-dict? `:` type
-static ParseResult parseGEPOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseGEPOp(OpAsmParser &parser, OperationState *result) {
   SmallVector<NamedAttribute, 4> attrs;
   OpAsmParser::OperandType base;
   SmallVector<OpAsmParser::OperandType, 8> indices;
   Type type;
   llvm::SMLoc trailingTypeLoc;
-  if (parser->parseOperand(base) ||
-      parser->parseOperandList(indices, OpAsmParser::Delimiter::Square) ||
-      parser->parseOptionalAttributeDict(attrs) || parser->parseColon() ||
-      parser->getCurrentLocation(&trailingTypeLoc) || parser->parseType(type))
+  if (parser.parseOperand(base) ||
+      parser.parseOperandList(indices, OpAsmParser::Delimiter::Square) ||
+      parser.parseOptionalAttributeDict(attrs) || parser.parseColon() ||
+      parser.getCurrentLocation(&trailingTypeLoc) || parser.parseType(type))
     return failure();
 
   // Deconstruct the trailing function type to extract the types of the base
@@ -201,13 +201,13 @@ static ParseResult parseGEPOp(OpAsmParser *parser, OperationState *result) {
   auto funcType = type.dyn_cast<FunctionType>();
   if (!funcType || funcType.getNumResults() != 1 ||
       funcType.getNumInputs() == 0)
-    return parser->emitError(trailingTypeLoc,
-                             "expected trailing function type with at least "
-                             "one argument and one result");
+    return parser.emitError(trailingTypeLoc,
+                            "expected trailing function type with at least "
+                            "one argument and one result");
 
-  if (parser->resolveOperand(base, funcType.getInput(0), result->operands) ||
-      parser->resolveOperands(indices, funcType.getInputs().drop_front(),
-                              parser->getNameLoc(), result->operands))
+  if (parser.resolveOperand(base, funcType.getInput(0), result->operands) ||
+      parser.resolveOperands(indices, funcType.getInputs().drop_front(),
+                             parser.getNameLoc(), result->operands))
     return failure();
 
   result->attributes = attrs;
@@ -227,29 +227,29 @@ static void printLoadOp(OpAsmPrinter *p, LoadOp &op) {
 
 // Extract the pointee type from the LLVM pointer type wrapped in MLIR.  Return
 // the resulting type wrapped in MLIR, or nullptr on error.
-static Type getLoadStoreElementType(OpAsmParser *parser, Type type,
+static Type getLoadStoreElementType(OpAsmParser &parser, Type type,
                                     llvm::SMLoc trailingTypeLoc) {
   auto llvmTy = type.dyn_cast<LLVM::LLVMType>();
   if (!llvmTy)
-    return parser->emitError(trailingTypeLoc, "expected LLVM IR dialect type"),
+    return parser.emitError(trailingTypeLoc, "expected LLVM IR dialect type"),
            nullptr;
   if (!llvmTy.getUnderlyingType()->isPointerTy())
-    return parser->emitError(trailingTypeLoc, "expected LLVM pointer type"),
+    return parser.emitError(trailingTypeLoc, "expected LLVM pointer type"),
            nullptr;
   return llvmTy.getPointerElementTy();
 }
 
 // <operation> ::= `llvm.load` ssa-use attribute-dict? `:` type
-static ParseResult parseLoadOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseLoadOp(OpAsmParser &parser, OperationState *result) {
   SmallVector<NamedAttribute, 4> attrs;
   OpAsmParser::OperandType addr;
   Type type;
   llvm::SMLoc trailingTypeLoc;
 
-  if (parser->parseOperand(addr) || parser->parseOptionalAttributeDict(attrs) ||
-      parser->parseColon() || parser->getCurrentLocation(&trailingTypeLoc) ||
-      parser->parseType(type) ||
-      parser->resolveOperand(addr, type, result->operands))
+  if (parser.parseOperand(addr) || parser.parseOptionalAttributeDict(attrs) ||
+      parser.parseColon() || parser.getCurrentLocation(&trailingTypeLoc) ||
+      parser.parseType(type) ||
+      parser.resolveOperand(addr, type, result->operands))
     return failure();
 
   Type elemTy = getLoadStoreElementType(parser, type, trailingTypeLoc);
@@ -270,24 +270,24 @@ static void printStoreOp(OpAsmPrinter *p, StoreOp &op) {
 }
 
 // <operation> ::= `llvm.store` ssa-use `,` ssa-use attribute-dict? `:` type
-static ParseResult parseStoreOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseStoreOp(OpAsmParser &parser, OperationState *result) {
   SmallVector<NamedAttribute, 4> attrs;
   OpAsmParser::OperandType addr, value;
   Type type;
   llvm::SMLoc trailingTypeLoc;
 
-  if (parser->parseOperand(value) || parser->parseComma() ||
-      parser->parseOperand(addr) || parser->parseOptionalAttributeDict(attrs) ||
-      parser->parseColon() || parser->getCurrentLocation(&trailingTypeLoc) ||
-      parser->parseType(type))
+  if (parser.parseOperand(value) || parser.parseComma() ||
+      parser.parseOperand(addr) || parser.parseOptionalAttributeDict(attrs) ||
+      parser.parseColon() || parser.getCurrentLocation(&trailingTypeLoc) ||
+      parser.parseType(type))
     return failure();
 
   Type elemTy = getLoadStoreElementType(parser, type, trailingTypeLoc);
   if (!elemTy)
     return failure();
 
-  if (parser->resolveOperand(value, elemTy, result->operands) ||
-      parser->resolveOperand(addr, type, result->operands))
+  if (parser.resolveOperand(value, elemTy, result->operands) ||
+      parser.resolveOperand(addr, type, result->operands))
     return failure();
 
   result->attributes = attrs;
@@ -326,7 +326,7 @@ static void printCallOp(OpAsmPrinter *p, CallOp &op) {
 
 // <operation> ::= `llvm.call` (function-id | ssa-use) `(` ssa-use-list `)`
 //                 attribute-dict? `:` function-type
-static ParseResult parseCallOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseCallOp(OpAsmParser &parser, OperationState *result) {
   SmallVector<NamedAttribute, 4> attrs;
   SmallVector<OpAsmParser::OperandType, 8> operands;
   Type type;
@@ -337,37 +337,37 @@ static ParseResult parseCallOp(OpAsmParser *parser, OperationState *result) {
   // case of an indirect call, there will be 1 operand before `(`.  In case of a
   // direct call, there will be no operands and the parser will stop at the
   // function identifier without complaining.
-  if (parser->parseOperandList(operands))
+  if (parser.parseOperandList(operands))
     return failure();
   bool isDirect = operands.empty();
 
   // Optionally parse a function identifier.
   if (isDirect)
-    if (parser->parseAttribute(funcAttr, "callee", attrs))
+    if (parser.parseAttribute(funcAttr, "callee", attrs))
       return failure();
 
-  if (parser->parseOperandList(operands, OpAsmParser::Delimiter::Paren) ||
-      parser->parseOptionalAttributeDict(attrs) || parser->parseColon() ||
-      parser->getCurrentLocation(&trailingTypeLoc) || parser->parseType(type))
+  if (parser.parseOperandList(operands, OpAsmParser::Delimiter::Paren) ||
+      parser.parseOptionalAttributeDict(attrs) || parser.parseColon() ||
+      parser.getCurrentLocation(&trailingTypeLoc) || parser.parseType(type))
     return failure();
 
   auto funcType = type.dyn_cast<FunctionType>();
   if (!funcType)
-    return parser->emitError(trailingTypeLoc, "expected function type");
+    return parser.emitError(trailingTypeLoc, "expected function type");
   if (isDirect) {
     // Make sure types match.
-    if (parser->resolveOperands(operands, funcType.getInputs(),
-                                parser->getNameLoc(), result->operands))
+    if (parser.resolveOperands(operands, funcType.getInputs(),
+                               parser.getNameLoc(), result->operands))
       return failure();
     result->addTypes(funcType.getResults());
   } else {
     // Construct the LLVM IR Dialect function type that the first operand
     // should match.
     if (funcType.getNumResults() > 1)
-      return parser->emitError(trailingTypeLoc,
-                               "expected function with 0 or 1 result");
+      return parser.emitError(trailingTypeLoc,
+                              "expected function with 0 or 1 result");
 
-    Builder &builder = parser->getBuilder();
+    Builder &builder = parser.getBuilder();
     auto *llvmDialect =
         builder.getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
     LLVM::LLVMType llvmResultType;
@@ -376,8 +376,8 @@ static ParseResult parseCallOp(OpAsmParser *parser, OperationState *result) {
     } else {
       llvmResultType = funcType.getResult(0).dyn_cast<LLVM::LLVMType>();
       if (!llvmResultType)
-        return parser->emitError(trailingTypeLoc,
-                                 "expected result to have LLVM type");
+        return parser.emitError(trailingTypeLoc,
+                                "expected result to have LLVM type");
     }
 
     SmallVector<LLVM::LLVMType, 8> argTypes;
@@ -385,8 +385,8 @@ static ParseResult parseCallOp(OpAsmParser *parser, OperationState *result) {
     for (int i = 0, e = funcType.getNumInputs(); i < e; ++i) {
       auto argType = funcType.getInput(i).dyn_cast<LLVM::LLVMType>();
       if (!argType)
-        return parser->emitError(trailingTypeLoc,
-                                 "expected LLVM types as inputs");
+        return parser.emitError(trailingTypeLoc,
+                                "expected LLVM types as inputs");
       argTypes.push_back(argType);
     }
     auto llvmFuncType = LLVM::LLVMType::getFunctionTy(llvmResultType, argTypes,
@@ -399,10 +399,9 @@ static ParseResult parseCallOp(OpAsmParser *parser, OperationState *result) {
     // Make sure that the first operand (indirect callee) matches the wrapped
     // LLVM IR function type, and that the types of the other call operands
     // match the types of the function arguments.
-    if (parser->resolveOperand(operands[0], wrappedFuncType,
-                               result->operands) ||
-        parser->resolveOperands(funcArguments, funcType.getInputs(),
-                                parser->getNameLoc(), result->operands))
+    if (parser.resolveOperand(operands[0], wrappedFuncType, result->operands) ||
+        parser.resolveOperands(funcArguments, funcType.getInputs(),
+                               parser.getNameLoc(), result->operands))
       return failure();
 
     result->addTypes(llvmResultType);
@@ -434,25 +433,25 @@ static void printExtractElementOp(OpAsmPrinter *p, ExtractElementOp &op) {
 
 // <operation> ::= `llvm.extractelement` ssa-use `, ` ssa-use
 //                 attribute-dict? `:` type
-static ParseResult parseExtractElementOp(OpAsmParser *parser,
+static ParseResult parseExtractElementOp(OpAsmParser &parser,
                                          OperationState *result) {
   llvm::SMLoc loc;
   OpAsmParser::OperandType vector, position;
-  auto *llvmDialect = parser->getBuilder()
+  auto *llvmDialect = parser.getBuilder()
                           .getContext()
                           ->getRegisteredDialect<LLVM::LLVMDialect>();
   Type type, i32Type = LLVMType::getInt32Ty(llvmDialect);
-  if (parser->getCurrentLocation(&loc) || parser->parseOperand(vector) ||
-      parser->parseComma() || parser->parseOperand(position) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(type) ||
-      parser->resolveOperand(vector, type, result->operands) ||
-      parser->resolveOperand(position, i32Type, result->operands))
+  if (parser.getCurrentLocation(&loc) || parser.parseOperand(vector) ||
+      parser.parseComma() || parser.parseOperand(position) ||
+      parser.parseOptionalAttributeDict(result->attributes) ||
+      parser.parseColonType(type) ||
+      parser.resolveOperand(vector, type, result->operands) ||
+      parser.resolveOperand(position, i32Type, result->operands))
     return failure();
   auto wrappedVectorType = type.dyn_cast<LLVM::LLVMType>();
   if (!wrappedVectorType ||
       !wrappedVectorType.getUnderlyingType()->isVectorTy())
-    return parser->emitError(
+    return parser.emitError(
         loc, "expected LLVM IR dialect vector type for operand #1");
   result->addTypes(wrappedVectorType.getVectorElementType());
   return success();
@@ -472,18 +471,18 @@ static void printExtractValueOp(OpAsmPrinter *p, ExtractValueOp &op) {
 // `containerType`.  Position is an integer array attribute where each value
 // is a zero-based position of the element in the aggregate type.  Return the
 // resulting type wrapped in MLIR, or nullptr on error.
-static LLVM::LLVMType getInsertExtractValueElementType(OpAsmParser *parser,
+static LLVM::LLVMType getInsertExtractValueElementType(OpAsmParser &parser,
                                                        Type containerType,
                                                        Attribute positionAttr,
                                                        llvm::SMLoc attributeLoc,
                                                        llvm::SMLoc typeLoc) {
   auto wrappedContainerType = containerType.dyn_cast<LLVM::LLVMType>();
   if (!wrappedContainerType)
-    return parser->emitError(typeLoc, "expected LLVM IR Dialect type"), nullptr;
+    return parser.emitError(typeLoc, "expected LLVM IR Dialect type"), nullptr;
 
   auto positionArrayAttr = positionAttr.dyn_cast<ArrayAttr>();
   if (!positionArrayAttr)
-    return parser->emitError(attributeLoc, "expected an array attribute"),
+    return parser.emitError(attributeLoc, "expected an array attribute"),
            nullptr;
 
   // Infer the element type from the structure type: iteratively step inside the
@@ -493,27 +492,27 @@ static LLVM::LLVMType getInsertExtractValueElementType(OpAsmParser *parser,
   for (Attribute subAttr : positionArrayAttr) {
     auto positionElementAttr = subAttr.dyn_cast<IntegerAttr>();
     if (!positionElementAttr)
-      return parser->emitError(attributeLoc,
-                               "expected an array of integer literals"),
+      return parser.emitError(attributeLoc,
+                              "expected an array of integer literals"),
              nullptr;
     int position = positionElementAttr.getInt();
     auto *llvmContainerType = wrappedContainerType.getUnderlyingType();
     if (llvmContainerType->isArrayTy()) {
       if (position < 0 || static_cast<unsigned>(position) >=
                               llvmContainerType->getArrayNumElements())
-        return parser->emitError(attributeLoc, "position out of bounds"),
+        return parser.emitError(attributeLoc, "position out of bounds"),
                nullptr;
       wrappedContainerType = wrappedContainerType.getArrayElementType();
     } else if (llvmContainerType->isStructTy()) {
       if (position < 0 || static_cast<unsigned>(position) >=
                               llvmContainerType->getStructNumElements())
-        return parser->emitError(attributeLoc, "position out of bounds"),
+        return parser.emitError(attributeLoc, "position out of bounds"),
                nullptr;
       wrappedContainerType =
           wrappedContainerType.getStructElementType(position);
     } else {
-      return parser->emitError(typeLoc,
-                               "expected wrapped LLVM IR structure/array type"),
+      return parser.emitError(typeLoc,
+                              "expected wrapped LLVM IR structure/array type"),
              nullptr;
     }
   }
@@ -523,7 +522,7 @@ static LLVM::LLVMType getInsertExtractValueElementType(OpAsmParser *parser,
 // <operation> ::= `llvm.extractvalue` ssa-use
 //                 `[` integer-literal (`,` integer-literal)* `]`
 //                 attribute-dict? `:` type
-static ParseResult parseExtractValueOp(OpAsmParser *parser,
+static ParseResult parseExtractValueOp(OpAsmParser &parser,
                                        OperationState *result) {
   SmallVector<NamedAttribute, 4> attrs;
   OpAsmParser::OperandType container;
@@ -531,13 +530,13 @@ static ParseResult parseExtractValueOp(OpAsmParser *parser,
   Attribute positionAttr;
   llvm::SMLoc attributeLoc, trailingTypeLoc;
 
-  if (parser->parseOperand(container) ||
-      parser->getCurrentLocation(&attributeLoc) ||
-      parser->parseAttribute(positionAttr, "position", attrs) ||
-      parser->parseOptionalAttributeDict(attrs) || parser->parseColon() ||
-      parser->getCurrentLocation(&trailingTypeLoc) ||
-      parser->parseType(containerType) ||
-      parser->resolveOperand(container, containerType, result->operands))
+  if (parser.parseOperand(container) ||
+      parser.getCurrentLocation(&attributeLoc) ||
+      parser.parseAttribute(positionAttr, "position", attrs) ||
+      parser.parseOptionalAttributeDict(attrs) || parser.parseColon() ||
+      parser.getCurrentLocation(&trailingTypeLoc) ||
+      parser.parseType(containerType) ||
+      parser.resolveOperand(container, containerType, result->operands))
     return failure();
 
   auto elementType = getInsertExtractValueElementType(
@@ -563,33 +562,33 @@ static void printInsertElementOp(OpAsmPrinter *p, InsertElementOp &op) {
 
 // <operation> ::= `llvm.insertelement` ssa-use `,` ssa-use `,` ssa-use
 //                 attribute-dict? `:` type
-static ParseResult parseInsertElementOp(OpAsmParser *parser,
+static ParseResult parseInsertElementOp(OpAsmParser &parser,
                                         OperationState *result) {
   llvm::SMLoc loc;
   OpAsmParser::OperandType vector, value, position;
-  auto *llvmDialect = parser->getBuilder()
+  auto *llvmDialect = parser.getBuilder()
                           .getContext()
                           ->getRegisteredDialect<LLVM::LLVMDialect>();
   Type vectorType, i32Type = LLVMType::getInt32Ty(llvmDialect);
-  if (parser->getCurrentLocation(&loc) || parser->parseOperand(vector) ||
-      parser->parseComma() || parser->parseOperand(value) ||
-      parser->parseComma() || parser->parseOperand(position) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(vectorType))
+  if (parser.getCurrentLocation(&loc) || parser.parseOperand(vector) ||
+      parser.parseComma() || parser.parseOperand(value) ||
+      parser.parseComma() || parser.parseOperand(position) ||
+      parser.parseOptionalAttributeDict(result->attributes) ||
+      parser.parseColonType(vectorType))
     return failure();
 
   auto wrappedVectorType = vectorType.dyn_cast<LLVM::LLVMType>();
   if (!wrappedVectorType ||
       !wrappedVectorType.getUnderlyingType()->isVectorTy())
-    return parser->emitError(
+    return parser.emitError(
         loc, "expected LLVM IR dialect vector type for operand #1");
   auto valueType = wrappedVectorType.getVectorElementType();
   if (!valueType)
     return failure();
 
-  if (parser->resolveOperand(vector, vectorType, result->operands) ||
-      parser->resolveOperand(value, valueType, result->operands) ||
-      parser->resolveOperand(position, i32Type, result->operands))
+  if (parser.resolveOperand(vector, vectorType, result->operands) ||
+      parser.resolveOperand(value, valueType, result->operands) ||
+      parser.resolveOperand(position, i32Type, result->operands))
     return failure();
 
   result->addTypes(vectorType);
@@ -610,20 +609,20 @@ static void printInsertValueOp(OpAsmPrinter *p, InsertValueOp &op) {
 // <operation> ::= `llvm.insertvaluevalue` ssa-use `,` ssa-use
 //                 `[` integer-literal (`,` integer-literal)* `]`
 //                 attribute-dict? `:` type
-static ParseResult parseInsertValueOp(OpAsmParser *parser,
+static ParseResult parseInsertValueOp(OpAsmParser &parser,
                                       OperationState *result) {
   OpAsmParser::OperandType container, value;
   Type containerType;
   Attribute positionAttr;
   llvm::SMLoc attributeLoc, trailingTypeLoc;
 
-  if (parser->parseOperand(value) || parser->parseComma() ||
-      parser->parseOperand(container) ||
-      parser->getCurrentLocation(&attributeLoc) ||
-      parser->parseAttribute(positionAttr, "position", result->attributes) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColon() || parser->getCurrentLocation(&trailingTypeLoc) ||
-      parser->parseType(containerType))
+  if (parser.parseOperand(value) || parser.parseComma() ||
+      parser.parseOperand(container) ||
+      parser.getCurrentLocation(&attributeLoc) ||
+      parser.parseAttribute(positionAttr, "position", result->attributes) ||
+      parser.parseOptionalAttributeDict(result->attributes) ||
+      parser.parseColon() || parser.getCurrentLocation(&trailingTypeLoc) ||
+      parser.parseType(containerType))
     return failure();
 
   auto valueType = getInsertExtractValueElementType(
@@ -631,8 +630,8 @@ static ParseResult parseInsertValueOp(OpAsmParser *parser,
   if (!valueType)
     return failure();
 
-  if (parser->resolveOperand(container, containerType, result->operands) ||
-      parser->resolveOperand(value, valueType, result->operands))
+  if (parser.resolveOperand(container, containerType, result->operands) ||
+      parser.resolveOperand(value, valueType, result->operands))
     return failure();
 
   result->addTypes(containerType);
@@ -652,21 +651,21 @@ static void printSelectOp(OpAsmPrinter *p, SelectOp &op) {
 
 // <operation> ::= `llvm.select` ssa-use `,` ssa-use `,` ssa-use
 //                 attribute-dict? `:` type, type
-static ParseResult parseSelectOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseSelectOp(OpAsmParser &parser, OperationState *result) {
   OpAsmParser::OperandType condition, trueValue, falseValue;
   Type conditionType, argType;
 
-  if (parser->parseOperand(condition) || parser->parseComma() ||
-      parser->parseOperand(trueValue) || parser->parseComma() ||
-      parser->parseOperand(falseValue) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(conditionType) || parser->parseComma() ||
-      parser->parseType(argType))
+  if (parser.parseOperand(condition) || parser.parseComma() ||
+      parser.parseOperand(trueValue) || parser.parseComma() ||
+      parser.parseOperand(falseValue) ||
+      parser.parseOptionalAttributeDict(result->attributes) ||
+      parser.parseColonType(conditionType) || parser.parseComma() ||
+      parser.parseType(argType))
     return failure();
 
-  if (parser->resolveOperand(condition, conditionType, result->operands) ||
-      parser->resolveOperand(trueValue, argType, result->operands) ||
-      parser->resolveOperand(falseValue, argType, result->operands))
+  if (parser.resolveOperand(condition, conditionType, result->operands) ||
+      parser.resolveOperand(trueValue, argType, result->operands) ||
+      parser.resolveOperand(falseValue, argType, result->operands))
     return failure();
 
   result->addTypes(argType);
@@ -685,11 +684,11 @@ static void printBrOp(OpAsmPrinter *p, BrOp &op) {
 
 // <operation> ::= `llvm.br` bb-id (`[` ssa-use-and-type-list `]`)?
 // attribute-dict?
-static ParseResult parseBrOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseBrOp(OpAsmParser &parser, OperationState *result) {
   Block *dest;
   SmallVector<Value *, 4> operands;
-  if (parser->parseSuccessorAndUseList(dest, operands) ||
-      parser->parseOptionalAttributeDict(result->attributes))
+  if (parser.parseSuccessorAndUseList(dest, operands) ||
+      parser.parseOptionalAttributeDict(result->attributes))
     return failure();
 
   result->addSuccessor(dest, operands);
@@ -711,24 +710,24 @@ static void printCondBrOp(OpAsmPrinter *p, CondBrOp &op) {
 // <operation> ::= `llvm.cond_br` ssa-use `,`
 //                  bb-id (`[` ssa-use-and-type-list `]`)? `,`
 //                  bb-id (`[` ssa-use-and-type-list `]`)? attribute-dict?
-static ParseResult parseCondBrOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseCondBrOp(OpAsmParser &parser, OperationState *result) {
   Block *trueDest;
   Block *falseDest;
   SmallVector<Value *, 4> trueOperands;
   SmallVector<Value *, 4> falseOperands;
   OpAsmParser::OperandType condition;
 
-  Builder &builder = parser->getBuilder();
+  Builder &builder = parser.getBuilder();
   auto *llvmDialect =
       builder.getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
   auto i1Type = LLVM::LLVMType::getInt1Ty(llvmDialect);
 
-  if (parser->parseOperand(condition) || parser->parseComma() ||
-      parser->parseSuccessorAndUseList(trueDest, trueOperands) ||
-      parser->parseComma() ||
-      parser->parseSuccessorAndUseList(falseDest, falseOperands) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->resolveOperand(condition, i1Type, result->operands))
+  if (parser.parseOperand(condition) || parser.parseComma() ||
+      parser.parseSuccessorAndUseList(trueDest, trueOperands) ||
+      parser.parseComma() ||
+      parser.parseSuccessorAndUseList(falseDest, falseOperands) ||
+      parser.parseOptionalAttributeDict(result->attributes) ||
+      parser.resolveOperand(condition, i1Type, result->operands))
     return failure();
 
   result->addSuccessor(trueDest, trueOperands);
@@ -753,18 +752,18 @@ static void printReturnOp(OpAsmPrinter *p, ReturnOp &op) {
 
 // <operation> ::= `llvm.return` ssa-use-list attribute-dict? `:`
 //                 type-list-no-parens
-static ParseResult parseReturnOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseReturnOp(OpAsmParser &parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 1> operands;
   Type type;
 
-  if (parser->parseOperandList(operands) ||
-      parser->parseOptionalAttributeDict(result->attributes))
+  if (parser.parseOperandList(operands) ||
+      parser.parseOptionalAttributeDict(result->attributes))
     return failure();
   if (operands.empty())
     return success();
 
-  if (parser->parseColonType(type) ||
-      parser->resolveOperand(operands[0], type, result->operands))
+  if (parser.parseColonType(type) ||
+      parser.resolveOperand(operands[0], type, result->operands))
     return failure();
   return success();
 }
@@ -780,11 +779,11 @@ static void printUndefOp(OpAsmPrinter *p, UndefOp &op) {
 }
 
 // <operation> ::= `llvm.mlir.undef` attribute-dict? : type
-static ParseResult parseUndefOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseUndefOp(OpAsmParser &parser, OperationState *result) {
   Type type;
 
-  if (parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(type))
+  if (parser.parseOptionalAttributeDict(result->attributes) ||
+      parser.parseColonType(type))
     return failure();
 
   result->addTypes(type);
@@ -807,18 +806,17 @@ static void printAddressOfOp(OpAsmPrinter *p, AddressOfOp op) {
   *p << " : " << op.getResult()->getType();
 }
 
-static ParseResult parseAddressOfOp(OpAsmParser *parser,
+static ParseResult parseAddressOfOp(OpAsmParser &parser,
                                     OperationState *result) {
   Attribute symRef;
   Type type;
-  if (parser->parseAttribute(symRef, "global_name", result->attributes) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(type) ||
-      parser->addTypeToList(type, result->types))
+  if (parser.parseAttribute(symRef, "global_name", result->attributes) ||
+      parser.parseOptionalAttributeDict(result->attributes) ||
+      parser.parseColonType(type) || parser.addTypeToList(type, result->types))
     return failure();
 
   if (!symRef.isa<SymbolRefAttr>())
-    return parser->emitError(parser->getNameLoc(), "expected symbol reference");
+    return parser.emitError(parser.getNameLoc(), "expected symbol reference");
   return success();
 }
 
@@ -846,16 +844,16 @@ static void printConstantOp(OpAsmPrinter *p, ConstantOp &op) {
 }
 
 // <operation> ::= `llvm.mlir.constant` `(` attribute `)` attribute-list? : type
-static ParseResult parseConstantOp(OpAsmParser *parser,
+static ParseResult parseConstantOp(OpAsmParser &parser,
                                    OperationState *result) {
   Attribute valueAttr;
   Type type;
 
-  if (parser->parseLParen() ||
-      parser->parseAttribute(valueAttr, "value", result->attributes) ||
-      parser->parseRParen() ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(type))
+  if (parser.parseLParen() ||
+      parser.parseAttribute(valueAttr, "value", result->attributes) ||
+      parser.parseRParen() ||
+      parser.parseOptionalAttributeDict(result->attributes) ||
+      parser.parseColonType(type))
     return failure();
 
   result->addTypes(type);
@@ -900,39 +898,39 @@ static void printGlobalOp(OpAsmPrinter *p, GlobalOp op) {
 //
 // The type can be omitted for string attributes, in which case it will be
 // inferred from the value of the string as [strlen(value) x i8].
-static ParseResult parseGlobalOp(OpAsmParser *parser, OperationState *result) {
-  if (succeeded(parser->parseOptionalKeyword("constant")))
-    result->addAttribute("constant", parser->getBuilder().getUnitAttr());
+static ParseResult parseGlobalOp(OpAsmParser &parser, OperationState *result) {
+  if (succeeded(parser.parseOptionalKeyword("constant")))
+    result->addAttribute("constant", parser.getBuilder().getUnitAttr());
 
   Attribute value;
   StringAttr name;
   SmallVector<Type, 1> types;
-  if (parser->parseSymbolName(name, SymbolTable::getSymbolAttrName(),
-                              result->attributes) ||
-      parser->parseLParen() ||
-      parser->parseAttribute(value, "value", result->attributes) ||
-      parser->parseRParen() ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseOptionalColonTypeList(types))
+  if (parser.parseSymbolName(name, SymbolTable::getSymbolAttrName(),
+                             result->attributes) ||
+      parser.parseLParen() ||
+      parser.parseAttribute(value, "value", result->attributes) ||
+      parser.parseRParen() ||
+      parser.parseOptionalAttributeDict(result->attributes) ||
+      parser.parseOptionalColonTypeList(types))
     return failure();
 
   if (types.size() > 1)
-    return parser->emitError(parser->getNameLoc(), "expected zero or one type");
+    return parser.emitError(parser.getNameLoc(), "expected zero or one type");
 
   if (types.empty()) {
     if (auto strAttr = value.dyn_cast<StringAttr>()) {
-      MLIRContext *context = parser->getBuilder().getContext();
+      MLIRContext *context = parser.getBuilder().getContext();
       auto *dialect = context->getRegisteredDialect<LLVMDialect>();
       auto arrayType = LLVM::LLVMType::getArrayTy(
           LLVM::LLVMType::getInt8Ty(dialect), strAttr.getValue().size());
       types.push_back(arrayType);
     } else {
-      return parser->emitError(parser->getNameLoc(),
-                               "type can only be omitted for string globals");
+      return parser.emitError(parser.getNameLoc(),
+                              "type can only be omitted for string globals");
     }
   }
 
-  result->addAttribute("type", parser->getBuilder().getTypeAttr(types[0]));
+  result->addAttribute("type", parser.getBuilder().getTypeAttr(types[0]));
   return success();
 }
 
@@ -979,26 +977,26 @@ static void printShuffleVectorOp(OpAsmPrinter *p, ShuffleVectorOp &op) {
 // <operation> ::= `llvm.shufflevector` ssa-use `, ` ssa-use
 //                 `[` integer-literal (`,` integer-literal)* `]`
 //                 attribute-dict? `:` type
-static ParseResult parseShuffleVectorOp(OpAsmParser *parser,
+static ParseResult parseShuffleVectorOp(OpAsmParser &parser,
                                         OperationState *result) {
   llvm::SMLoc loc;
   SmallVector<NamedAttribute, 4> attrs;
   OpAsmParser::OperandType v1, v2;
   Attribute maskAttr;
   Type typeV1, typeV2;
-  if (parser->getCurrentLocation(&loc) || parser->parseOperand(v1) ||
-      parser->parseComma() || parser->parseOperand(v2) ||
-      parser->parseAttribute(maskAttr, "mask", attrs) ||
-      parser->parseOptionalAttributeDict(attrs) ||
-      parser->parseColonType(typeV1) || parser->parseComma() ||
-      parser->parseType(typeV2) ||
-      parser->resolveOperand(v1, typeV1, result->operands) ||
-      parser->resolveOperand(v2, typeV2, result->operands))
+  if (parser.getCurrentLocation(&loc) || parser.parseOperand(v1) ||
+      parser.parseComma() || parser.parseOperand(v2) ||
+      parser.parseAttribute(maskAttr, "mask", attrs) ||
+      parser.parseOptionalAttributeDict(attrs) ||
+      parser.parseColonType(typeV1) || parser.parseComma() ||
+      parser.parseType(typeV2) ||
+      parser.resolveOperand(v1, typeV1, result->operands) ||
+      parser.resolveOperand(v2, typeV2, result->operands))
     return failure();
   auto wrappedContainerType1 = typeV1.dyn_cast<LLVM::LLVMType>();
   if (!wrappedContainerType1 ||
       !wrappedContainerType1.getUnderlyingType()->isVectorTy())
-    return parser->emitError(
+    return parser.emitError(
         loc, "expected LLVM IR dialect vector type for operand #1");
   auto vType =
       LLVMType::getVectorTy(wrappedContainerType1.getVectorElementType(),

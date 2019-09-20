@@ -40,7 +40,7 @@ public:
   static void build(mlir::Builder *b, mlir::OperationState *result,
                     mlir::Value *min, mlir::Value *max, mlir::Value *step);
   mlir::LogicalResult verify();
-  static mlir::ParseResult parse(mlir::OpAsmParser *parser,
+  static mlir::ParseResult parse(mlir::OpAsmParser &parser,
                                  mlir::OperationState *result);
   void print(mlir::OpAsmPrinter *p);
 

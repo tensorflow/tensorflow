@@ -74,32 +74,32 @@ mlir::LogicalResult linalg::SliceOp::verify() {
   return mlir::success();
 }
 
-ParseResult linalg::SliceOp::parse(OpAsmParser *parser,
+ParseResult linalg::SliceOp::parse(OpAsmParser &parser,
                                    OperationState *result) {
   OpAsmParser::OperandType viewInfo;
   SmallVector<OpAsmParser::OperandType, 1> indexingInfo;
   SmallVector<Type, 8> types;
-  if (parser->parseOperand(viewInfo) ||
-      parser->parseOperandList(indexingInfo, 1,
-                               OpAsmParser::Delimiter::Square) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonTypeList(types))
+  if (parser.parseOperand(viewInfo) ||
+      parser.parseOperandList(indexingInfo, 1,
+                              OpAsmParser::Delimiter::Square) ||
+      parser.parseOptionalAttributeDict(result->attributes) ||
+      parser.parseColonTypeList(types))
     return failure();
 
   if (indexingInfo.size() != 1)
-    return parser->emitError(parser->getNameLoc(), "expected 1 indexing type");
+    return parser.emitError(parser.getNameLoc(), "expected 1 indexing type");
 
   ViewType viewType = types.front().dyn_cast<ViewType>();
   if (!viewType)
-    return parser->emitError(parser->getNameLoc(),
-                             "view type expected as first type");
+    return parser.emitError(parser.getNameLoc(),
+                            "view type expected as first type");
 
   IndexType indexType = types.back().dyn_cast<IndexType>();
   RangeType rangeType = types.back().dyn_cast<RangeType>();
   if (!indexType && !rangeType) {
     llvm::errs() << types.back();
-    return parser->emitError(parser->getNameLoc(),
-                             "indexing must be of range or index type");
+    return parser.emitError(parser.getNameLoc(),
+                            "indexing must be of range or index type");
   }
 
   unsigned rank = viewType.getRank();
@@ -108,10 +108,10 @@ ParseResult linalg::SliceOp::parse(OpAsmParser *parser,
   ViewType resultViewType =
       ViewType::get(viewType.getContext(), viewType.getElementType(), rank);
 
-  return failure(parser->resolveOperand(viewInfo, viewType, result->operands) ||
-                 parser->resolveOperands(indexingInfo[0], types.back(),
-                                         result->operands) ||
-                 parser->addTypeToList(resultViewType, result->types));
+  return failure(
+      parser.resolveOperand(viewInfo, viewType, result->operands) ||
+      parser.resolveOperands(indexingInfo[0], types.back(), result->operands) ||
+      parser.addTypeToList(resultViewType, result->types));
 }
 
 // A SliceOp prints as:

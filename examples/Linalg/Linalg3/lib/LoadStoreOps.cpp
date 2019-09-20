@@ -49,7 +49,7 @@ void linalg::LoadOp::print(OpAsmPrinter *p) {
   *p << " : " << getViewType();
 }
 
-ParseResult linalg::LoadOp::parse(OpAsmParser *parser, OperationState *result) {
+ParseResult linalg::LoadOp::parse(OpAsmParser &parser, OperationState *result) {
   llvm_unreachable("Parsing linalg dialect is not supported in this tutorial");
   return success();
 }
@@ -101,7 +101,7 @@ void linalg::StoreOp::print(OpAsmPrinter *p) {
   *p << " : " << getViewType();
 }
 
-ParseResult linalg::StoreOp::parse(OpAsmParser *parser,
+ParseResult linalg::StoreOp::parse(OpAsmParser &parser,
                                    OperationState *result) {
   assert(false && "NYI");
   return success();

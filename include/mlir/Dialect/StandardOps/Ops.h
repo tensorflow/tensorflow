@@ -277,7 +277,7 @@ public:
   }
 
   static StringRef getOperationName() { return "std.dma_start"; }
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
+  static ParseResult parse(OpAsmParser &parser, OperationState *result);
   void print(OpAsmPrinter *p);
   LogicalResult verify();
 
@@ -342,7 +342,7 @@ public:
   // Returns the number of elements transferred in the associated DMA operation.
   Value *getNumElements() { return getOperand(1 + getTagMemRefRank()); }
 
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
+  static ParseResult parse(OpAsmParser &parser, OperationState *result);
   void print(OpAsmPrinter *p);
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
@@ -354,7 +354,7 @@ void printDimAndSymbolList(Operation::operand_iterator begin,
                            OpAsmPrinter *p);
 
 /// Parses dimension and symbol list and returns true if parsing failed.
-ParseResult parseDimAndSymbolList(OpAsmParser *parser,
+ParseResult parseDimAndSymbolList(OpAsmParser &parser,
                                   SmallVector<Value *, 4> &operands,
                                   unsigned &numDims);
 

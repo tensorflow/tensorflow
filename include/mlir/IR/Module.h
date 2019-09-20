@@ -52,7 +52,7 @@ public:
   static ModuleOp create(Location loc);
 
   /// Operation hooks.
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
+  static ParseResult parse(OpAsmParser &parser, OperationState *result);
   void print(OpAsmPrinter *p);
   LogicalResult verify();
 

@@ -86,7 +86,7 @@ public:
   operand_range getMapOperands() { return getOperands(); }
 
   // Hooks to customize behavior of this op.
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
+  static ParseResult parse(OpAsmParser &parser, OperationState *result);
   void print(OpAsmPrinter *p);
   LogicalResult verify();
   OpFoldResult fold(ArrayRef<Attribute> operands);
@@ -286,7 +286,7 @@ public:
   static StringRef getTagMapAttrName() { return "tag_map"; }
 
   static StringRef getOperationName() { return "affine.dma_start"; }
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
+  static ParseResult parse(OpAsmParser &parser, OperationState *result);
   void print(OpAsmPrinter *p);
   LogicalResult verify();
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
@@ -371,7 +371,7 @@ public:
   Value *getNumElements() { return getOperand(1 + getTagMap().getNumInputs()); }
 
   static StringRef getTagMapAttrName() { return "tag_map"; }
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
+  static ParseResult parse(OpAsmParser &parser, OperationState *result);
   void print(OpAsmPrinter *p);
   LogicalResult verify();
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
@@ -439,7 +439,7 @@ public:
   static StringRef getOperationName() { return "affine.load"; }
 
   // Hooks to customize behavior of this op.
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
+  static ParseResult parse(OpAsmParser &parser, OperationState *result);
   void print(OpAsmPrinter *p);
   LogicalResult verify();
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
@@ -510,7 +510,7 @@ public:
   static StringRef getOperationName() { return "affine.store"; }
 
   // Hooks to customize behavior of this op.
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
+  static ParseResult parse(OpAsmParser &parser, OperationState *result);
   void print(OpAsmPrinter *p);
   LogicalResult verify();
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,

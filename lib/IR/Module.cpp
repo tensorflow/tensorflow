@@ -37,19 +37,19 @@ ModuleOp ModuleOp::create(Location loc) {
   return llvm::cast<ModuleOp>(Operation::create(state));
 }
 
-ParseResult ModuleOp::parse(OpAsmParser *parser, OperationState *result) {
+ParseResult ModuleOp::parse(OpAsmParser &parser, OperationState *result) {
   // If module attributes are present, parse them.
-  if (succeeded(parser->parseOptionalKeyword("attributes")))
-    if (parser->parseOptionalAttributeDict(result->attributes))
+  if (succeeded(parser.parseOptionalKeyword("attributes")))
+    if (parser.parseOptionalAttributeDict(result->attributes))
       return failure();
 
   // Parse the module body.
   auto *body = result->addRegion();
-  if (parser->parseRegion(*body, llvm::None, llvm::None))
+  if (parser.parseRegion(*body, llvm::None, llvm::None))
     return failure();
 
   // Ensure that this module has a valid terminator.
-  ensureTerminator(*body, parser->getBuilder(), result->location);
+  ensureTerminator(*body, parser.getBuilder(), result->location);
   return success();
 }
 

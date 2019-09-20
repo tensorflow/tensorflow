@@ -89,43 +89,42 @@ LogicalResult linalg::ViewOp::verify() {
   return success();
 }
 
-ParseResult linalg::ViewOp::parse(OpAsmParser *parser, OperationState *result) {
+ParseResult linalg::ViewOp::parse(OpAsmParser &parser, OperationState *result) {
   OpAsmParser::OperandType memRefInfo;
   SmallVector<OpAsmParser::OperandType, 8> indexingsInfo;
   SmallVector<Type, 8> types;
-  if (parser->parseOperand(memRefInfo) ||
-      parser->parseOperandList(indexingsInfo, OpAsmParser::Delimiter::Square) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonTypeList(types))
+  if (parser.parseOperand(memRefInfo) ||
+      parser.parseOperandList(indexingsInfo, OpAsmParser::Delimiter::Square) ||
+      parser.parseOptionalAttributeDict(result->attributes) ||
+      parser.parseColonTypeList(types))
     return failure();
 
   if (types.size() != 2 + indexingsInfo.size())
-    return parser->emitError(parser->getNameLoc(),
-                             "unexpected number of types ");
+    return parser.emitError(parser.getNameLoc(), "unexpected number of types ");
   MemRefType memRefType = types[0].dyn_cast<MemRefType>();
   if (!memRefType)
-    return parser->emitError(parser->getNameLoc(),
-                             "memRef type expected for first type");
+    return parser.emitError(parser.getNameLoc(),
+                            "memRef type expected for first type");
   if (static_cast<int64_t>(indexingsInfo.size()) != memRefType.getRank())
-    return parser->emitError(parser->getNameLoc(),
-                             "expected " + Twine(memRefType.getRank()) +
-                                 " indexings");
+    return parser.emitError(parser.getNameLoc(),
+                            "expected " + Twine(memRefType.getRank()) +
+                                " indexings");
   ViewType viewType = types.back().dyn_cast<ViewType>();
   if (!viewType)
-    return parser->emitError(parser->getNameLoc(), "view type expected");
+    return parser.emitError(parser.getNameLoc(), "view type expected");
 
   ArrayRef<Type> indexingTypes = ArrayRef<Type>(types).drop_front().drop_back();
   if (static_cast<int64_t>(indexingTypes.size()) != memRefType.getRank())
-    return parser->emitError(parser->getNameLoc(),
-                             "expected " + Twine(memRefType.getRank()) +
-                                 " indexing types");
+    return parser.emitError(parser.getNameLoc(),
+                            "expected " + Twine(memRefType.getRank()) +
+                                " indexing types");
   return failure(
-      parser->resolveOperand(memRefInfo, memRefType, result->operands) ||
+      parser.resolveOperand(memRefInfo, memRefType, result->operands) ||
       (!indexingsInfo.empty() &&
-       parser->resolveOperands(indexingsInfo, indexingTypes,
-                               indexingsInfo.front().location,
-                               result->operands)) ||
-      parser->addTypeToList(viewType, result->types));
+       parser.resolveOperands(indexingsInfo, indexingTypes,
+                              indexingsInfo.front().location,
+                              result->operands)) ||
+      parser.addTypeToList(viewType, result->types));
 }
 
 // A ViewOp prints as:

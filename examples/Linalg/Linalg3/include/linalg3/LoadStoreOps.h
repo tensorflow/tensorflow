@@ -40,7 +40,7 @@ public:
                     mlir::Value *view,
                     mlir::ArrayRef<mlir::Value *> indices = {});
   mlir::LogicalResult verify();
-  static mlir::ParseResult parse(mlir::OpAsmParser *parser,
+  static mlir::ParseResult parse(mlir::OpAsmParser &parser,
                                  mlir::OperationState *result);
   void print(mlir::OpAsmPrinter *p);
 
@@ -70,7 +70,7 @@ public:
                     mlir::Value *valueToStore, mlir::Value *view,
                     mlir::ArrayRef<mlir::Value *> indices = {});
   mlir::LogicalResult verify();
-  static mlir::ParseResult parse(mlir::OpAsmParser *parser,
+  static mlir::ParseResult parse(mlir::OpAsmParser &parser,
                                  mlir::OperationState *result);
   void print(mlir::OpAsmPrinter *p);
 
