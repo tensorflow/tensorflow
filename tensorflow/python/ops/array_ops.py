@@ -1194,19 +1194,24 @@ def stack(values, axis=0, name="stack"):
 
   For example:
 
-  ```python
-  x = tf.constant([1, 4])
-  y = tf.constant([2, 5])
-  z = tf.constant([3, 6])
-  tf.stack([x, y, z])  # [[1, 4], [2, 5], [3, 6]] (Pack along first dim.)
-  tf.stack([x, y, z], axis=1)  # [[1, 2, 3], [4, 5, 6]]
-  ```
+  >>> x = tf.constant([1, 4])
+  >>> y = tf.constant([2, 5])
+  >>> z = tf.constant([3, 6])
+  >>> tf.stack([x, y, z])
+  <tf.Tensor: id=19, shape=(3, 2), dtype=int32, numpy=
+  array([[1, 4],
+         [2, 5],
+         [3, 6]], dtype=int32)>
 
-  This is the opposite of unstack.  The numpy equivalent is
+  >> tf.stack([x, y, z], axis=1)
+  <tf.Tensor: id=24, shape=(2, 3), dtype=int32, numpy=
+  array([[1, 2, 3],
+         [4, 5, 6]], dtype=int32)>
 
-  ```python
-  tf.stack([x, y, z]) = np.stack([x, y, z])
-  ```
+  This is the opposite of unstack.  The numpy equivalent is `np.stack`
+
+  >>> np.array_equal(np.stack([x, y, z]), tf.stack([x, y, z]))
+  True
 
   Args:
     values: A list of `Tensor` objects with the same shape and type.
