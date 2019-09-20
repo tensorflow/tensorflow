@@ -29,6 +29,19 @@ _registered_ops = {}
 _sync_lock = threading.Lock()
 
 
+def _remove_non_deprecated_descriptions(op_def):
+  """Remove docs from `op_def` but leave explanations of deprecations."""
+  for input_arg in op_def.input_arg:
+    input_arg.description = ""
+  for output_arg in op_def.output_arg:
+    output_arg.description = ""
+  for attr in op_def.attr:
+    attr.description = ""
+
+  op_def.summary = ""
+  op_def.description = ""
+
+
 def register_op_list(op_list):
   """Register all the ops in an op_def_pb2.OpList."""
   if not isinstance(op_list, op_def_pb2.OpList):
@@ -56,7 +69,12 @@ def sync():
     p_buffer = c_api.TF_GetAllOpList()
     cpp_op_list = op_def_pb2.OpList()
     cpp_op_list.ParseFromString(c_api.TF_GetBuffer(p_buffer))
-    register_op_list(cpp_op_list)
+    for op_def in cpp_op_list.op:
+      # If an OpList is registered from a gen_*_ops.py, it does not any
+      # descriptions. Strip them here as well to satisfy validation in
+      # register_op_list.
+      _remove_non_deprecated_descriptions(op_def)
+      _registered_ops[op_def.name] = op_def
 
 
 def get_registered_ops():
