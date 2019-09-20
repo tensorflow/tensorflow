@@ -727,6 +727,7 @@ class CheckpointSaverHookTest(test.TestCase):
 
   def test_summary_writer_defs(self):
     fake_summary_writer.FakeSummaryWriter.install()
+    writer_cache.FileWriterCache.clear()
     summary_writer = writer_cache.FileWriterCache.get(self.model_dir)
 
     with self.graph.as_default():
@@ -1554,6 +1555,7 @@ class ProfilerHookTest(test.TestCase):
         self.assertEqual(2, self._count_timeline_files())
 
   def test_run_metadata_saves(self):
+    writer_cache.FileWriterCache.clear()
     fake_summary_writer.FakeSummaryWriter.install()
     fake_writer = writer_cache.FileWriterCache.get(self.output_dir)
     with self.graph.as_default():

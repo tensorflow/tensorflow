@@ -38,9 +38,3 @@ tensorflow::tfprof::Profile
 tensorflow::tfprof::PrintModelAnalysis
 tensorflow::tfprof::SerializeToString
 
-[events_writer] # events_writer
-tensorflow::EventsWriter::Init
-tensorflow::EventsWriter::InitWithSuffix
-tensorflow::EventsWriter::WriteSerializedEvent
-tensorflow::EventsWriter::Flush
-tensorflow::EventsWriter::Close
