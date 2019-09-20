@@ -252,8 +252,10 @@ int GetThreadCount(Context* context, int rows, int cols, int depth) {
   // Empirically determined rule for reasonable number of
   // threads to use. This is proportional to the number of arithmetic ops
   // in this Mul (product of the 3 sizes).
-  int guess = (std::uint64_t(rows) * cols * depth) >> 13;
-  return clamp(guess, 1, context->max_num_threads);
+  static constexpr int kDivisorLog2 = 15;
+  const int guess_log2 = std::max(
+      0, ceil_log2(rows) + ceil_log2(cols) + ceil_log2(depth) - kDivisorLog2);
+  return std::min(1 << guess_log2, context->max_num_threads);
 }
 
 LoopStructure GetLoopStructure(int tentative_thread_count, int rows, int cols,
@@ -325,7 +327,7 @@ void TrMul(TrMulParams* params, Context* context) {
   MakeBlockMap(packed_lhs.layout.cols, packed_rhs.layout.cols, depth,
                packed_lhs.layout.kernel.cols, packed_rhs.layout.kernel.cols,
                packed_lhs.data_type.size, packed_rhs.data_type.size,
-               tentative_thread_count,
+               tentative_thread_count, params->path,
                params->cache_friendly_traversal_threshold, &block_map);
 
   // Initialize per-thread state.
