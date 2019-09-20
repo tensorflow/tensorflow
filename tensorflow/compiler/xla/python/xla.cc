@@ -732,6 +732,8 @@ PYBIND11_MODULE(xla_extension, m) {
   UNARY_OP(ErfInv);
   UNARY_OP(Lgamma);
   UNARY_OP(Digamma);
+  UNARY_OP(BesselI0e);
+  UNARY_OP(BesselI1e);
   UNARY_OP(Acos);
   UNARY_OP(Asin);
   UNARY_OP(Atan);
