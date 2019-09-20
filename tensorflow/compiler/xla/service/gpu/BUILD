@@ -673,8 +673,8 @@ cc_library(
 
 cc_library(
     name = "cudnn_conv_runner",
-    srcs = ["cudnn_conv_runner.cc"],
-    hdrs = ["cudnn_conv_runner.h"],
+    srcs = ["gpu_conv_runner.cc"],
+    hdrs = ["gpu_conv_runner.h"],
     deps = [
         ":backend_configs",
         ":ir_emission_utils",
