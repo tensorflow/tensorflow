@@ -1441,6 +1441,12 @@ class MklQuantizedConv2DOp
     bool is_filter_const;
     OP_REQUIRES_OK(context,
                    context->GetAttr("is_filter_const", &is_filter_const));
+
+    if (bias_enabled) {
+      OP_REQUIRES_OK(context,
+                     context->GetAttr("is_bias_const", &is_bias_const_));
+    }
+
     OP_REQUIRES(context, is_filter_const,
                 errors::InvalidArgument("Filter must be a constant"));
   }
@@ -1571,50 +1577,122 @@ class MklQuantizedConv2DOp
     const float* min_filter = min_filter_vector.flat<float>().data();
     const float* max_filter = max_filter_vector.flat<float>().data();
 
+    std::vector<mkldnn::primitive> net;
     if (bias_enabled) {
       if (std::is_same<Tbias, qint32>::value) {
         return static_cast<Tbias*>(
             const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
       }
-      // If bias is enabled and requantization is not fused, scale the
-      // bias to be consistent with quantized-input and quantized-filter.
-      size_t depth = min_filter_vector.NumElements();
-      std::vector<float> scales(depth);
-      for (size_t i = 0; i < depth; ++i) {
-        scales[i] =
-            255.0 * 127.0 /
-            (std::max(std::abs(max_input), std::abs(min_input)) *
-             std::max(std::abs(max_filter[i]), std::abs(min_filter[i])));
-      }
-      mkldnn::primitive_attr bias_attr;
-      if (depth == 1) {
-        bias_attr.set_output_scales(0, scales);
-      } else {
-        bias_attr.set_output_scales(1, scales);
-      }
 
-      auto bias_md =
-          MEMORY_PD_CONSTRUCTOR(static_cast<int>(bias_tensor.NumElements()),
-                                Tbias, x, this->cpu_engine_);
-      void* bias_buf = static_cast<void*>(
-          const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
-      input_bias_ =
-          new MEMORY_CONSTRUCTOR(bias_md, this->cpu_engine_, bias_buf);
-      scaled_bias_ = new MEMORY_CONSTRUCTOR_WITHOUT_DATA(
-          conv_fwd_pd->PRIMITIVE_DESC_BIAS, this->cpu_engine_);
-      auto reorder_desc = REORDER_PD_CONSTRUCTOR_WITH_ATTR(
-          input_bias_->GET_DESC, scaled_bias_->GET_DESC, this->cpu_engine_,
-          bias_attr);
-      CreateAndExecuteReorder(reorder_desc, *input_bias_, *scaled_bias_,
-                              this->cpu_engine_);
-      return reinterpret_cast<Tbias*>(scaled_bias_->get_data_handle());
+      // Re-scale bias if either of following 2 conditions are met:
+      // 1. Bias is not const;
+      // 2. Bias is const, but bias cache is empty (first iteration).
+      if (!is_bias_const_ || IsBiasCacheEmpty(context)) {
+        size_t depth = min_filter_vector.NumElements();
+        std::vector<float> scales(depth);
+        for (size_t i = 0; i < depth; ++i) {
+          scales[i] =
+              255.0 * 127.0 /
+              (std::max(std::abs(max_input), std::abs(min_input)) *
+               std::max(std::abs(max_filter[i]), std::abs(min_filter[i])));
+        }
+        mkldnn::primitive_attr bias_attr;
+        if (depth == 1) {
+          bias_attr.set_output_scales(0, scales);
+        } else {
+          bias_attr.set_output_scales(1, scales);
+        }
+
+        auto bias_md =
+            MEMORY_PD_CONSTRUCTOR(static_cast<int>(bias_tensor.NumElements()),
+                                  Tbias, x, this->cpu_engine_);
+        void* bias_buf = static_cast<void*>(
+            const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
+        input_bias_ =
+            new MEMORY_CONSTRUCTOR(bias_md, this->cpu_engine_, bias_buf);
+        scaled_bias_ = new MEMORY_CONSTRUCTOR_WITHOUT_DATA(
+            conv_fwd_pd->PRIMITIVE_DESC_BIAS, this->cpu_engine_);
+        auto reorder_desc = REORDER_PD_CONSTRUCTOR_WITH_ATTR(
+            input_bias_->GET_DESC, scaled_bias_->GET_DESC, this->cpu_engine_,
+            bias_attr);
+        CreateAndExecuteReorder(reorder_desc, *input_bias_, *scaled_bias_,
+                                this->cpu_engine_);
+
+        Tbias* bias_data =
+            reinterpret_cast<Tbias*>(scaled_bias_->get_data_handle());
+        if (is_bias_const_)
+          CacheBias(context, conv_fwd_pd, bias_data, scaled_bias_);
+
+        return bias_data;
+      }
+      return GetCachedBias(context);
     } else {
       return nullptr;
     }
   }
 
+  bool is_bias_const_;
+  PersistentTensor cached_bias_data_ptensor_ GUARDED_BY(bias_cache_mu_);
+
   memory* input_bias_ = nullptr;
   memory* scaled_bias_ = nullptr;
+
+ private:
+  mutex bias_cache_mu_;
+  // Allocate persistent tensors for cached bias data and
+  // cached bias memory descriptor (data format)
+  void AllocatePersistentTensor(OpKernelContext* context,
+                                const ConvFwdPd& conv_prim_desc,
+                                Tensor** bias_tensor) {
+    DCHECK(bias_tensor);
+    TensorShape bias_tf_shape;
+    bias_tf_shape.AddDim(
+        (conv_prim_desc.bias_primitive_desc().get_size() / sizeof(Tbias)));
+    OP_REQUIRES_OK(context, context->allocate_persistent(
+                                DataTypeToEnum<Tbias>::value, bias_tf_shape,
+                                &cached_bias_data_ptensor_, bias_tensor));
+  }
+
+  // LOCKS_EXCLUDED annotation ensures that the lock (mu_) cannot
+  // be acquired before entering the function, since it is acquired
+  // inside the function.
+  inline bool IsBiasCacheEmpty(OpKernelContext* context)
+      LOCKS_EXCLUDED(bias_cache_mu_) {
+    tf_shared_lock lock(bias_cache_mu_);
+    return (cached_bias_data_ptensor_.NumElements() == 0);
+  }
+
+  // Cache the converted bias in a persistent tensor.
+  // Only one thread can execute this method at any given time.
+  void CacheBias(OpKernelContext* context,
+                 const std::shared_ptr<ConvFwdPd>& conv_fwd_pd,
+                 Tbias* bias_data, const memory* scaled_bias)
+      LOCKS_EXCLUDED(bias_cache_mu_) {
+    mutex_lock lock(bias_cache_mu_);
+
+    // If bias is already cached, there's nothing to do.
+    if (cached_bias_data_ptensor_.NumElements() > 0) {
+      return;
+    }
+
+    // Otherwise, cache bias
+    Tensor* bias_tensor_ptr = nullptr;
+    AllocatePersistentTensor(context, *conv_fwd_pd, &bias_tensor_ptr);
+    void* cached_bias_data = const_cast<void*>(
+        static_cast<const void*>(bias_tensor_ptr->flat<Tbias>().data()));
+    size_t cached_bias_data_size = scaled_bias->get_primitive_desc().get_size();
+    memcpy(cached_bias_data, bias_data, cached_bias_data_size);
+  }
+
+  Tbias* GetCachedBias(OpKernelContext* context)
+      LOCKS_EXCLUDED(bias_cache_mu_) {
+    tf_shared_lock lock(bias_cache_mu_);
+    const Tensor& cached_bias_data =
+        *cached_bias_data_ptensor_.AccessTensor(context);
+
+    return static_cast<Tbias*>(
+        const_cast<Tbias*>(cached_bias_data.flat<Tbias>().data()));
+  }
 };
 
 template <typename Device, typename Tbias, typename Toutput,
