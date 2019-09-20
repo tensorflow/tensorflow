@@ -227,7 +227,7 @@ class Conv3DTest(test.TestCase):
     ctx = context.context()
     is_eager = ctx is not None and ctx.executing_eagerly()
     if test.is_gpu_available(cuda_only=True) or \
-      test_util.IsMklEnabled() and is_eager is False:
+      (test_util.IsMklEnabled() and is_eager is False):
       self._VerifyDilatedConvValues(
           tensor_in_sizes=[1, 3, 6, 1, 1],
           filter_in_sizes=[1, 1, 1, 1, 1],
