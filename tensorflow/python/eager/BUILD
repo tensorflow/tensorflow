@@ -550,6 +550,24 @@ cuda_py_test(
     xla_enable_strict_auto_jit = True,
 )
 
+cuda_py_test(
+    name = "remote_benchmarks_test",
+    srcs = ["remote_benchmarks_test.py"],
+    additional_deps = [
+        ":backprop",
+        ":context",
+        ":forwardprop",
+        ":function",
+        ":test",
+        ":profiler",
+        ":remote",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:random_ops",
+    ],
+    xla_enable_strict_auto_jit = True,
+)
+
 tf_py_logged_benchmark(
     name = "benchmarks",
     target = "//tensorflow/python/eager:benchmarks_test",
