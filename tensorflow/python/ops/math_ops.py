@@ -1274,28 +1274,32 @@ ops.Tensor._override_operator("__ge__", gen_math_ops.greater_equal)
 def equal(x, y, name=None):
   """Returns the truth value of (x == y) element-wise.
 
-  Usage:
+  Performs a [broadcast](
+  https://docs.scipy.org/doc/numpy/user/basics.broadcasting.html) with the
+  arguments and then an element-wise equality comparison, returning a Tensor of
+  boolean values.
 
-  ```python
-  x = tf.constant([2, 4])
-  y = tf.constant(2)
-  tf.math.equal(x, y) ==> array([True, False])
+  For example:
+  >>> x = tf.constant([2, 4])
+  >>> y = tf.constant(2)
+  >>> tf.math.equal(x, y)
+  <tf.Tensor: id=..., shape=(2,), dtype=bool, numpy=array([ True,  False])>
 
-  x = tf.constant([2, 4])
-  y = tf.constant([2, 4])
-  tf.math.equal(x, y) ==> array([True,  True])
-  ```
-
-  **NOTE**: `Equal` supports broadcasting. More about broadcasting [here](
-  https://docs.scipy.org/doc/numpy-1.13.0/user/basics.broadcasting.html)
+  >>> x = tf.constant([2, 4])
+  >>> y = tf.constant([2, 4])
+  >>> tf.math.equal(x, y)
+  <tf.Tensor: id=..., shape=(2,), dtype=bool, numpy=array([ True,  True])>
 
   Args:
-    x: A `Tensor` or `SparseTensor` or `IndexedSlices`.
-    y: A `Tensor` or `SparseTensor` or `IndexedSlices`.
+    x: A `tf.Tensor` or `tf.SparseTensor` or `tf.IndexedSlices`.
+    y: A `tf.Tensor` or `tf.SparseTensor` or `tf.IndexedSlices`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` of type bool with the same size as that of x or y.
+    A `tf.Tensor` of type bool with the same size as that of x or y.
+
+  Raises:
+    `tf.errors.InvalidArgumentError`: If shapes of arguments are incompatible
   """
   return gen_math_ops.equal(x, y, name=name)
 
@@ -1305,16 +1309,32 @@ def equal(x, y, name=None):
 def not_equal(x, y, name=None):
   """Returns the truth value of (x != y) element-wise.
 
-  **NOTE**: `NotEqual` supports broadcasting. More about broadcasting [here](
-  https://docs.scipy.org/doc/numpy-1.13.0/user/basics.broadcasting.html)
+  Performs a [broadcast](
+  https://docs.scipy.org/doc/numpy/user/basics.broadcasting.html) with the
+  arguments and then an element-wise inequality comparison, returning a Tensor
+  of boolean values.
+
+  For example:
+  >>> x = tf.constant([2, 4])
+  >>> y = tf.constant(2)
+  >>> tf.math.not_equal(x, y)
+  <tf.Tensor: id=..., shape=(2,), dtype=bool, numpy=array([False,  True])>
+
+  >>> x = tf.constant([2, 4])
+  >>> y = tf.constant([2, 4])
+  >>> tf.math.not_equal(x, y)
+  <tf.Tensor: id=..., shape=(2,), dtype=bool, numpy=array([False,  False])>
 
   Args:
-    x: A `Tensor` or `SparseTensor` or `IndexedSlices`.
-    y: A `Tensor` or `SparseTensor` or `IndexedSlices`.
+    x: A `tf.Tensor` or `tf.SparseTensor` or `tf.IndexedSlices`.
+    y: A `tf.Tensor` or `tf.SparseTensor` or `tf.IndexedSlices`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` of type bool with the same size as that of x or y.
+    A `tf.Tensor` of type bool with the same size as that of x or y.
+
+  Raises:
+    `tf.errors.InvalidArgumentError`: If shapes of arguments are incompatible
   """
   return gen_math_ops.not_equal(x, y, name=name)
 
