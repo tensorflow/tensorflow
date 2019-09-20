@@ -268,11 +268,11 @@ def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight,
   For brevity, let `x = logits`, `z = labels`, `q = pos_weight`.
   The loss is:
 
-        qz * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
-      = qz * -log(1 / (1 + exp(-x))) + (1 - z) * -log(exp(-x) / (1 + exp(-x)))
-      = qz * log(1 + exp(-x)) + (1 - z) * (-log(exp(-x)) + log(1 + exp(-x)))
-      = qz * log(1 + exp(-x)) + (1 - z) * (x + log(1 + exp(-x))
-      = (1 - z) * x + (qz +  1 - z) * log(1 + exp(-x))
+        q * z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
+      = q * z * -log(1 / (1 + exp(-x))) + (1 - z) * -log(exp(-x) / (1 + exp(-x)))
+      = q * z * log(1 + exp(-x)) + (1 - z) * (-log(exp(-x)) + log(1 + exp(-x)))
+      = q * z * log(1 + exp(-x)) + (1 - z) * (x + log(1 + exp(-x))
+      = (1 - z) * x + (q * z +  1 - z) * log(1 + exp(-x))
       = (1 - z) * x + (1 + (q - 1) * z) * log(1 + exp(-x))
 
   Setting `l = (1 + (q - 1) * z)`, to ensure stability and avoid overflow,
