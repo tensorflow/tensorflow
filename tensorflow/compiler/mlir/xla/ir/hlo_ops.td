@@ -135,7 +135,7 @@ def HLO_NegOp: HLO_UnaryElementwiseOp<"neg", [NoSideEffect, SameOperandsAndResul
 
 def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_RsqrtOp;
 
-def HLO_SignOp: HLO_UnaryElementwiseOp<"sign", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_SignOp;
+def HLO_SignOp: HLO_UnaryElementwiseOp<"sign", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_SignOp;
 
 def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
     [ResultsAreFloatLike, NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_TanhOp;
@@ -481,7 +481,7 @@ def HLO_SelectOp: HLO_Op<"select", [NoSideEffect]>, BASE_HLO_SelectOp {
 }
 
 def HLO_ReverseOp: HLO_Op<"reverse",
-      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ReverseOp {
+      [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_ReverseOp {
   let arguments = (ins
     HLO_Tensor:$operand,
     I64ElementsAttr:$dimensions
