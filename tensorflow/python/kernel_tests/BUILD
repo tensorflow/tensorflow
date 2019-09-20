@@ -3809,8 +3809,6 @@ cuda_py_test(
         "//tensorflow/python/compat",
     ],
     grpc_enabled = True,
-    # b/140155763: testLoweringDisabledInXLA fails
-    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
