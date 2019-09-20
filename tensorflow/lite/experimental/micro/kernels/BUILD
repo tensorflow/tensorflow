@@ -45,6 +45,7 @@ cc_library(
         ":activation_utils",
         ":micro_utils",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_utils",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels:padding",
@@ -104,6 +105,7 @@ cc_library(
         ":activation_utils",
         ":micro_utils",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_utils",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels:padding",
@@ -245,6 +247,7 @@ tflite_micro_cc_test(
         ":all_ops_resolver",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro:micro_utils",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
 )
