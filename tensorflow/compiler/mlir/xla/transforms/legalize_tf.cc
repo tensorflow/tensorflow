@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Transforms/DialectConversion.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -269,6 +270,67 @@ class ConvertMaxPoolOp : public OpRewritePattern<TF::MaxPoolOp> {
   }
 };
 
+// Converts Sigmoid op to HLO ops computing sigmoid with the following formula:
+//
+//     sigmoid = add(mul(tanh(mul(logits, 0.5)), 0.5), 0.5)
+//
+// Sample result with 2-d f16 inputs with B batches of with N elements each.
+//
+//    // Create an array of 0.5 the shape of the input array.
+//    %half = "xla_hlo.constant"() {value = dense<5.000000e-01>
+//                           : tensor<f32>} : () -> tensor<f32>
+//    %half_array = "xla_hlo.broadcast"(half)
+//                           {broadcast_sizes = dense<2> : tensor<1xi64>}
+//                           : (tensor<f32>) -> tensor<2xf32>
+//
+//    // Compute Tanh of half the logits of the values.
+//    %halved_logits = xla_hlo.mul %logits, %half_array : tensor<2xf32>
+//    %tanh = "xla_hlo.tanh"(%halved_logits) : (tensor<2xf32>) -> tensor<2xf32>
+//
+//    // Have the result of Tanh and add 0.5.
+//    %halved_tanh = xla_hlo.mul %tanh, %half : tensor<2xf32>
+//    %sigmoid = xla_hlo.add %halved_tanh, %half : tensor<2xf32>
+//
+class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
+ public:
+  explicit ConvertSigmoidOp(MLIRContext *context)
+      : OpRewritePattern<TF::SigmoidOp>(context, 1) {}
+
+  PatternMatchResult matchAndRewrite(TF::SigmoidOp op,
+                                     PatternRewriter &rewriter) const override {
+    auto operand = op.getOperand();
+
+    auto scalar_one = rewriter.create<xla_hlo::ConstOp>(
+        op.getLoc(),
+        rewriter.getFloatAttr(getElementTypeOrSelf(operand->getType()), 0.5));
+
+    auto shaped_type = operand->getType().cast<ShapedType>();
+    auto constant_ones = rewriter.create<xla_hlo::BroadcastOp>(
+        op.getLoc(), shaped_type, scalar_one,
+        rewriter
+            .getDenseIntElementsAttr(
+                rewriter.getTensorType({shaped_type.getRank()},
+                                       rewriter.getIntegerType(64)),
+                shaped_type.getShape())
+            .cast<DenseIntElementsAttr>());
+
+    auto scaled_input = rewriter.create<xla_hlo::MulOp>(
+        op.getLoc(), operand->getType(), operand, constant_ones,
+        DenseIntElementsAttr());
+    auto tanh_op = rewriter.create<xla_hlo::TanhOp>(
+        op.getLoc(), operand->getType(), scaled_input);
+    auto mul_op = rewriter.create<xla_hlo::MulOp>(
+        op.getLoc(), operand->getType(), tanh_op, constant_ones,
+        /*DenseIntElementsAttr=*/DenseIntElementsAttr());
+    auto add_op = rewriter.create<xla_hlo::AddOp>(
+        op.getLoc(), operand->getType(), mul_op, constant_ones,
+        /*DenseIntElementsAttr=*/DenseIntElementsAttr());
+
+    rewriter.replaceOp(op, add_op.getResult());
+    return matchSuccess();
+  }
+};
+
 // Converts Softmax op to HLO ops computing softmax with the following formula:
 //
 //     softmax = div(exp(logits), sum(exp(logits)))
@@ -382,8 +444,8 @@ LogicalResult mlir::xla_hlo::legalizeTF(Operation *op) {
   // here for lowering to HLO.
   mlir::TF::PopulateLoweringTFPatterns(context, &patterns);
 
-  patterns.insert<mlir::xla::ConvertMaxPoolOp>(op->getContext());
-  patterns.insert<mlir::xla::ConvertSoftmaxOp>(op->getContext());
+  patterns.insert<mlir::xla::ConvertMaxPoolOp, mlir::xla::ConvertSigmoidOp,
+                  mlir::xla::ConvertSoftmaxOp>(op->getContext());
 
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();
