@@ -85,6 +85,157 @@ int floor_log2_quotient(int num, int denom) {
   return log2_quotient;
 }
 
+BlockMapTraversalOrder GetTraversalOrder(
+    int rows, int cols, int depth, int lhs_scalar_size, int rhs_scalar_size,
+    int cache_friendly_traversal_threshold) {
+  if (RUY_OPT_ENABLED(RUY_OPT_FRACTAL) &&
+      (rows * lhs_scalar_size + cols * rhs_scalar_size) * depth >=
+          cache_friendly_traversal_threshold) {
+    return RUY_OPT_ENABLED(RUY_OPT_FRACTAL_U)
+               ? BlockMapTraversalOrder::kFractalU
+               : BlockMapTraversalOrder::kFractalZ;  // NOLINT
+    // (clang-tidy complains that the 'else' here is never taken).
+  } else {
+    return BlockMapTraversalOrder::kLinear;
+  }
+}
+
+// Computes the rectangularness of the matrix shape (rows, cols). This is
+// essentially just the log2 of the quotient (rows / cols). The kernel_rows and
+// kernel_cols only get into the picture for clamping bounds but don't affect
+// the generic computation.
+void GetRectangularness(int rows, int cols, int kernel_rows, int kernel_cols,
+                        int* rows_rectangularness_log2,
+                        int* cols_rectangularness_log2) {
+  *rows_rectangularness_log2 = 0;
+  *cols_rectangularness_log2 = 0;
+  if (rows > cols) {
+    *rows_rectangularness_log2 =
+        std::min(floor_log2_quotient(rows, cols),
+                 floor_log2(rows) - pot_log2(kernel_rows));
+    // Sanity check that we did not over-estimate rows_rectangularness_log2.
+    RUY_DCHECK_GE(rows >> *rows_rectangularness_log2, cols);
+  } else if (cols > rows) {
+    *cols_rectangularness_log2 =
+        std::min(floor_log2_quotient(cols, rows),
+                 floor_log2(cols) - pot_log2(kernel_cols));
+    // Sanity check that we did not over-estimate cols_rectangularness_log2.
+    RUY_DCHECK_GE(cols >> *cols_rectangularness_log2, rows);
+  }
+  RUY_DCHECK(!*rows_rectangularness_log2 || !*cols_rectangularness_log2);
+}
+
+// Computes a 'multithreading score'. When multithreading, we need there to
+// be at least as many tiles as there are threads, and hopefully
+// substantially more than that, so we benefit from ruy's ability to
+// dispatch fine-grained workloads to threads.
+int GetMultithreadingScore(int block_size_log2, int rows, int cols,
+                           int tentative_thread_count) {
+  const int num_full_blocks_of_rows = rows >> block_size_log2;
+  const int num_full_blocks_of_cols = cols >> block_size_log2;
+  const int candidate_num_full_blocks_log2 = floor_log2(
+      std::max(1, num_full_blocks_of_rows * num_full_blocks_of_cols));
+
+  // The values here have been tuned on ARM Cortex-A55.
+  // We expect this to have to be tuned differently for other CPUs.
+  if (tentative_thread_count == 1) {
+    return 0;
+  } else {
+    const int blocks_per_thread_log2 =
+        candidate_num_full_blocks_log2 - ceil_log2(tentative_thread_count);
+    if (blocks_per_thread_log2 < 0) {
+      return -64;
+    } else if (blocks_per_thread_log2 == 0) {
+      return -16;
+    } else if (blocks_per_thread_log2 == 1) {
+      return -8;
+    } else if (blocks_per_thread_log2 == 2) {
+      return 0;
+    } else if (blocks_per_thread_log2 == 3) {
+      return 8;
+    } else {
+      return 16;
+    }
+  }
+}
+
+// Computes a 'cache locality score'. This is the familiar notion that
+// local working sets should be small enough to fit in some local data
+// cache, by which we mean that typically L1 and possibly L2 caches, being
+// local to each CPU core, tend to perform better than typical last-level
+// (e.g. L3) caches shared among all cores. Here we aim to fit in a fast,
+// local cache.
+int GetCacheLocalityScore(int block_size_log2, int rows, int cols, int depth,
+                          int lhs_scalar_size, int rhs_scalar_size, Path path) {
+  const int block_rows = std::min(1 << block_size_log2, rows);
+  const int block_cols = std::min(1 << block_size_log2, cols);
+#if RUY_PLATFORM(ARM_64)
+  const int kLocalDataCacheSizeLog2 = path == Path::kNeonDotprod ? 17 : 15;
+#elif RUY_PLATFORM(ARM_32)
+  const int kLocalDataCacheSizeLog2 = 14;
+#elif RUY_PLATFORM(X86)
+  const int kLocalDataCacheSizeLog2 = 17;
+#else
+  const int kLocalDataCacheSizeLog2 = 14;
+#endif
+  const int lhs_bytes_log2 =
+      pot_log2(lhs_scalar_size) + ceil_log2(block_rows * depth);
+  const int rhs_bytes_log2 =
+      pot_log2(rhs_scalar_size) + ceil_log2(block_cols * depth);
+  const int total_read_bytes_log2 =
+      1 + std::max(lhs_bytes_log2, rhs_bytes_log2);
+  const int nonlocality_log2 = total_read_bytes_log2 - kLocalDataCacheSizeLog2;
+  // The values here have been tuned on ARM Cortex-A55.
+  // We expect this to have to be tuned differently for other CPUs.
+  if (nonlocality_log2 < -1) {
+    return 64;
+  } else if (nonlocality_log2 == -1) {
+    return 56;
+  } else if (nonlocality_log2 == 0) {
+    return 48;
+  } else if (nonlocality_log2 == 1) {
+    return 32;
+  } else if (nonlocality_log2 == 2) {
+    return 0;
+  } else {
+    return -64;
+  }
+}
+
+// Compute a 'kernel amortization score'. This is the notion that very small
+// tiles result in more overhead outside of kernels, more complex memory
+// access patterns and less benefits from ruy's fat kernels, so we reward
+// larger blocks more than smaller ones.
+int GetKernelAmortizationScore(int block_size_log2, int rows, int cols,
+                               int kernel_rows_log2, int kernel_cols_log2) {
+  const int block_rows = std::min(1 << block_size_log2, rows);
+  const int block_cols = std::min(1 << block_size_log2, cols);
+  const int kernels_per_block_log2 =
+      floor_log2(block_rows * block_cols) - kernel_rows_log2 - kernel_cols_log2;
+  RUY_DCHECK_GE(kernels_per_block_log2, 0);
+  // The values here have been tuned on ARM Cortex-A55.
+  // We expect this to have to be tuned differently for other CPUs.
+  if (kernels_per_block_log2 == 0) {
+    return 0;
+  } else if (kernels_per_block_log2 == 1) {
+    return 8;
+  } else if (kernels_per_block_log2 == 2) {
+    return 16;
+  } else if (kernels_per_block_log2 == 3) {
+    return 24;
+  } else if (kernels_per_block_log2 == 4) {
+    return 32;
+  } else if (kernels_per_block_log2 == 5) {
+    return 40;
+  } else if (kernels_per_block_log2 == 6) {
+    return 48;
+  } else if (kernels_per_block_log2 == 7) {
+    return 56;
+  } else {
+    return 64;
+  }
+}
+
 }  // namespace
 
 void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
@@ -115,35 +266,14 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
   RUY_DCHECK_EQ(rows % kernel_rows, 0);
   RUY_DCHECK_EQ(cols % kernel_cols, 0);
 
-  block_map->traversal_order = BlockMapTraversalOrder::kLinear;
-  if (RUY_OPT_ENABLED(RUY_OPT_FRACTAL) &&
-      (rows * lhs_scalar_size + cols * rhs_scalar_size) * depth >=
-          cache_friendly_traversal_threshold) {
-    block_map->traversal_order = RUY_OPT_ENABLED(RUY_OPT_FRACTAL_U)
-                                     ? BlockMapTraversalOrder::kFractalU
-                                     : BlockMapTraversalOrder::kFractalZ;
-  }
+  block_map->traversal_order =
+      GetTraversalOrder(rows, cols, depth, lhs_scalar_size, rhs_scalar_size,
+                        cache_friendly_traversal_threshold);
 
-  // First, compute the rectangularness. This is essentially just the rows/cols
-  // aspect ratio. The kernel_rows and kernel_cols only get into the picture
-  // for clamping bounds but don't affect the generic computation.
   int rows_rectangularness_log2 = 0;
   int cols_rectangularness_log2 = 0;
-  if (rows > cols) {
-    rows_rectangularness_log2 =
-        std::min(floor_log2_quotient(rows, cols),
-                 floor_log2(rows) - pot_log2(kernel_rows));
-    // Sanity check that we did not over-estimate rows_rectangularness_log2.
-    RUY_DCHECK_GE(rows >> rows_rectangularness_log2, cols);
-  } else if (cols > rows) {
-    cols_rectangularness_log2 =
-        std::min(floor_log2_quotient(cols, rows),
-                 floor_log2(cols) - pot_log2(kernel_cols));
-    // Sanity check that we did not over-estimate cols_rectangularness_log2.
-    RUY_DCHECK_GE(cols >> cols_rectangularness_log2, rows);
-  }
-
-  RUY_DCHECK(!rows_rectangularness_log2 || !cols_rectangularness_log2);
+  GetRectangularness(rows, cols, kernel_rows, kernel_cols,
+                     &rows_rectangularness_log2, &cols_rectangularness_log2);
 
   const int kernel_rows_log2 = pot_log2(kernel_rows);
   const int kernel_cols_log2 = pot_log2(kernel_cols);
@@ -153,8 +283,6 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
   const int size_log2 = std::max(kernel_size_log2, floor_log2(size));
 
   RUY_DCHECK_GE(size_log2, kernel_size_log2);
-
-  const int tentative_thread_count_log2 = ceil_log2(tentative_thread_count);
 
   // We are going to try candidate values for block_size_log2 ranging from
   // kernel_size_log2 to (kernel_size_log2 + kMaxKernelsPerBlockLog2).
@@ -174,110 +302,13 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
   int best_score_block_size_log2 = -1;
   for (int block_size_log2 = kernel_size_log2;
        block_size_log2 <= max_block_size_log2; block_size_log2++) {
-    const int block_rows = std::min(1 << block_size_log2, rows);
-    const int block_cols = std::min(1 << block_size_log2, cols);
-    const int num_full_blocks_of_rows = rows >> block_size_log2;
-    const int num_full_blocks_of_cols = cols >> block_size_log2;
-    const int candidate_num_full_blocks_log2 = floor_log2(
-        std::max(1, num_full_blocks_of_rows * num_full_blocks_of_cols));
-
-    // Compute a 'multithreading score'. When multithreading, we need there to
-    // be at least as many tiles as there are threads, and hopefully
-    // substantially more than that, so we benefit from ruy's ability to
-    // dispatch fine-grained workloads to threads.
-    //
-    // The values here have been tuned on ARM Cortex-A55.
-    // We expect this to have to be tuned differently for other CPUs.
-    int multithreading_score = 0;
-    int blocks_per_thread_log2 = 0;
-    if (tentative_thread_count > 1) {
-      blocks_per_thread_log2 =
-          candidate_num_full_blocks_log2 - tentative_thread_count_log2;
-      if (blocks_per_thread_log2 < 0) {
-        multithreading_score = -64;
-      } else if (blocks_per_thread_log2 == 0) {
-        multithreading_score = -16;
-      } else if (blocks_per_thread_log2 == 1) {
-        multithreading_score = -8;
-      } else if (blocks_per_thread_log2 == 2) {
-        multithreading_score = 0;
-      } else if (blocks_per_thread_log2 == 3) {
-        multithreading_score = 8;
-      } else {
-        multithreading_score = 16;
-      }
-    }
-
-    // Compute a 'cache locality score'. This is the familiar notion that
-    // local working sets should be small enough to fit in some local data
-    // cache, by which we mean that typically L1 and possibly L2 caches, being
-    // local to each CPU core, tend to perform better than typical last-level
-    // (e.g. L3) caches shared among all cores. Here we aim to fit in a fast,
-    // local cache.
-#if RUY_PLATFORM(ARM_64)
-    const int kLocalDataCacheSizeLog2 = path == Path::kNeonDotprod ? 17 : 15;
-#elif RUY_PLATFORM(ARM_32)
-    const int kLocalDataCacheSizeLog2 = 14;
-#elif RUY_PLATFORM(X86)
-    const int kLocalDataCacheSizeLog2 = 17;
-#else
-    const int kLocalDataCacheSizeLog2 = 14;
-#endif
-    const int lhs_bytes_log2 =
-        pot_log2(lhs_scalar_size) + ceil_log2(block_rows * depth);
-    const int rhs_bytes_log2 =
-        pot_log2(rhs_scalar_size) + ceil_log2(block_cols * depth);
-    const int total_read_bytes_log2 =
-        1 + std::max(lhs_bytes_log2, rhs_bytes_log2);
-    const int nonlocality_log2 =
-        total_read_bytes_log2 - kLocalDataCacheSizeLog2;
-    int cache_locality_score = 0;
-    // The values here have been tuned on ARM Cortex-A55.
-    // We expect this to have to be tuned differently for other CPUs.
-    if (nonlocality_log2 < -1) {
-      cache_locality_score = 64;
-    } else if (nonlocality_log2 == -1) {
-      cache_locality_score = 56;
-    } else if (nonlocality_log2 == 0) {
-      cache_locality_score = 48;
-    } else if (nonlocality_log2 == 1) {
-      cache_locality_score = 32;
-    } else if (nonlocality_log2 == 2) {
-      cache_locality_score = 0;
-    } else {
-      cache_locality_score = -64;
-    }
-
-    // Compute a 'kernel amortization score'. This is the notion that very small
-    // tiles result in more overhead outside of kernels, more complex memory
-    // access patterns and less benefits from ruy's fat kernels, so we reward
-    // larger blocks more than smaller ones.
-    int kernel_amortization_score = 0;
-    const int kernels_per_block_log2 = floor_log2(block_rows * block_cols) -
-                                       kernel_rows_log2 - kernel_cols_log2;
-    RUY_DCHECK_GE(kernels_per_block_log2, 0);
-    // The values here have been tuned on ARM Cortex-A55.
-    // We expect this to have to be tuned differently for other CPUs.
-    if (kernels_per_block_log2 == 0) {
-      kernel_amortization_score = 0;
-    } else if (kernels_per_block_log2 == 1) {
-      kernel_amortization_score = 8;
-    } else if (kernels_per_block_log2 == 2) {
-      kernel_amortization_score = 16;
-    } else if (kernels_per_block_log2 == 3) {
-      kernel_amortization_score = 24;
-    } else if (kernels_per_block_log2 == 4) {
-      kernel_amortization_score = 32;
-    } else if (kernels_per_block_log2 == 5) {
-      kernel_amortization_score = 40;
-    } else if (kernels_per_block_log2 == 6) {
-      kernel_amortization_score = 48;
-    } else if (kernels_per_block_log2 == 7) {
-      kernel_amortization_score = 56;
-    } else {
-      kernel_amortization_score = 64;
-    }
-
+    const int multithreading_score = GetMultithreadingScore(
+        block_size_log2, rows, cols, tentative_thread_count);
+    const int cache_locality_score =
+        GetCacheLocalityScore(block_size_log2, rows, cols, depth,
+                              lhs_scalar_size, rhs_scalar_size, path);
+    const int kernel_amortization_score = GetKernelAmortizationScore(
+        block_size_log2, rows, cols, kernel_rows_log2, kernel_cols_log2);
     const int score =
         multithreading_score + cache_locality_score + kernel_amortization_score;
 #ifdef RUY_MAKEBLOCKMAP_DEBUG
@@ -287,11 +318,6 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
               "cache_locality_score=%d kernel_amortization_score=%d\n",
               block_size_log2, score, multithreading_score,
               cache_locality_score, kernel_amortization_score);
-      fprintf(stderr,
-              "    (candidate_num_blocks_log2=%d blocks_per_thread_log2=%d "
-              "total_read_bytes_log2=%d)\n\n",
-              candidate_num_full_blocks_log2, blocks_per_thread_log2,
-              total_read_bytes_log2);
     }
 #endif
     if (score >= best_score) {
