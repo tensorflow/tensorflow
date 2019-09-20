@@ -211,58 +211,7 @@ Status BuildLoopBody(const Graph& graph, WhileLoopFrame* frame,
   return Status::OK();
 }
 
-// Copy the FunctionDef of given function from lookup_library to library, if
-// it can be found in lookup_library but is missing from library.
-Status AddMissingFunctionByName(const string& function_name,
-                                const FunctionLibraryDefinition* lookup_library,
-                                FunctionLibraryDefinition* library) {
-  if (!library->Find(function_name) && lookup_library->Find(function_name)) {
-    return library->AddFunctionDef(*lookup_library->Find(function_name));
-  }
-  return Status::OK();
-}
-
-// Iterate over all functions that the given fdef refers to. Copy the missing
-// FunctionDefs from lookup_library to library.
-Status AddMissingFunctionDef(const FunctionDef& fdef,
-                             const FunctionLibraryDefinition* lookup_library,
-                             FunctionLibraryDefinition* library) {
-  TF_RET_CHECK(lookup_library);
-  for (const NodeDef& node : fdef.node_def()) {
-    if (library->Find(node.op())) {
-      continue;
-    }
-    // The function referred by 'SymbolicGradient' node is specified in its
-    // attribute 'f'.
-    if (node.op() == FunctionLibraryDefinition::kGradientOp) {
-      const AttrValue* attr =
-          AttrSlice(&node.attr()).Find(FunctionLibraryDefinition::kFuncAttr);
-      if (!attr) {
-        return errors::InvalidArgument("SymbolicGradient is missing attr: f");
-      }
-      const string& func_name = attr->func().name();
-      TF_RETURN_IF_ERROR(
-          AddMissingFunctionByName(func_name, lookup_library, library));
-      // Copy the user-defined gradient function if it exists.
-      const string grad_name = lookup_library->FindGradient(func_name);
-      if (!grad_name.empty() && library->FindGradient(func_name).empty()) {
-        TF_RETURN_IF_ERROR(
-            AddMissingFunctionByName(grad_name, lookup_library, library));
-        GradientDef grad_def;
-        grad_def.set_function_name(func_name);
-        grad_def.set_gradient_func(grad_name);
-        TF_RETURN_IF_ERROR(library->AddGradientDef(grad_def));
-      }
-    } else if (lookup_library->Find(node.op())) {
-      TF_RETURN_IF_ERROR(
-          library->AddFunctionDef(*lookup_library->Find(node.op())));
-    }
-  }
-  return Status::OK();
-}
-
-Status FunctionalizeLoop(const FunctionLibraryDefinition* lookup_library,
-                         Graph* graph, WhileLoopFrame* frame,
+Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
                          FunctionLibraryDefinition* library) {
   VLOG(2) << "Frame " << frame->name << " before: "
           << DumpGraphToFile("functionalize_before", *graph, library);
@@ -479,14 +428,6 @@ Status FunctionalizeLoop(const FunctionLibraryDefinition* lookup_library,
 
   TF_RETURN_IF_ERROR(library->AddFunctionDef(cond_fdef));
   TF_RETURN_IF_ERROR(library->AddFunctionDef(body_fdef));
-  if (lookup_library) {
-    // Copy missing FunctionDefs from lookup_library to library to make library
-    // self-contained.
-    TF_RETURN_IF_ERROR(
-        AddMissingFunctionDef(cond_fdef, lookup_library, library));
-    TF_RETURN_IF_ERROR(
-        AddMissingFunctionDef(body_fdef, lookup_library, library));
-  }
 
   // Builds a While operator.
   NodeDef while_def;
@@ -568,8 +509,7 @@ Status FunctionalizeLoop(const FunctionLibraryDefinition* lookup_library,
 }
 }  // namespace
 
-Status FunctionalizeWhileLoop(const FunctionLibraryDefinition* lookup_library,
-                              Graph* graph,
+Status FunctionalizeWhileLoop(Graph* graph,
                               FunctionLibraryDefinition* library) {
   // Note: BuildControlFlowInfo() requires that the graph's source node is
   // connected to all source nodes in the graph. Many graphs violate this
@@ -604,8 +544,7 @@ Status FunctionalizeWhileLoop(const FunctionLibraryDefinition* lookup_library,
       continue;
     }
 
-    TF_RETURN_IF_ERROR(
-        FunctionalizeLoop(lookup_library, graph, frame, library));
+    TF_RETURN_IF_ERROR(FunctionalizeLoop(graph, frame, library));
 
     // If the parent has no remaining children, add it to the worklist.
     --frame->parent->num_children;
