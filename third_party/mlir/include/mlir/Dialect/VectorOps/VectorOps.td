@@ -40,7 +40,7 @@ class Vector_Op<string mnemonic, list<OpTrait> traits = []> :
   //   * void print(OpAsmPrinter *p, ${C++ class of Op} op)
   //   * LogicalResult verify(${C++ class of Op} op)
   //   * ParseResult parse${C++ class of Op}(OpAsmParser &parser,
-  //                                         OperationState *result)
+  //                                         OperationState &result)
   // functions.
   let printer = [{ return ::print(p, *this); }];
   let verifier = [{ return ::verify(*this); }];

@@ -3276,7 +3276,7 @@ public:
 
   /// Parse an instance of the operation described by 'opDefinition' into the
   /// provided operation state.
-  ParseResult parseOperation(OperationState *opState) {
+  ParseResult parseOperation(OperationState &opState) {
     if (opDefinition->parseAssembly(*this, opState))
       return failure();
     return success();
@@ -3782,7 +3782,7 @@ Operation *OperationParser::parseCustomOperation() {
   OperationState opState(srcLocation, opDefinition->name);
   CleanupOpStateRegions guard{opState};
   CustomOpAsmParser opAsmParser(opLoc, opDefinition, *this);
-  if (opAsmParser.parseOperation(&opState))
+  if (opAsmParser.parseOperation(opState))
     return nullptr;
 
   // If it emitted an error, we failed.

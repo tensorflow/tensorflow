@@ -1137,7 +1137,7 @@ class SPV_Op<string mnemonic, list<OpTrait> traits = []> :
   // in SPVOps.cpp:
   //
   // * static ParseResult parse<op-c++-class-name>(OpAsmParser &parser,
-  //                                               OperationState *result)
+  //                                               OperationState &result)
   // * static void print(OpAsmPrinter *p, <op-c++-class-name> op)
   // * static LogicalResult verify(<op-c++-class-name> op)
   let parser = [{ return ::parse$cppClass(parser, result); }];

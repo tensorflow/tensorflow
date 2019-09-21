@@ -79,7 +79,7 @@ def HLO_ConstOp : BASE_HLO_ConstOp, HLO_Op<"constant", [NoSideEffect]> {
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Attribute value"
+    "Builder *builder, OperationState &result, Attribute value"
   >];
 
   let hasFolder = 1;
@@ -277,7 +277,7 @@ def HLO_SliceOp: HLO_Op<
   let results = (outs HLO_Tensor);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Value *operand, "
+    "Builder *builder, OperationState &result, Value *operand, "
     "DenseIntElementsAttr start_indices, DenseIntElementsAttr limit_indices, "
     "DenseIntElementsAttr strides"
   >];

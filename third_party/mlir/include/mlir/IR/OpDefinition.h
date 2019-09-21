@@ -69,7 +69,7 @@ template <typename OpTy>
 void ensureRegionTerminator(Region &region, Builder &builder, Location loc) {
   ensureRegionTerminator(region, loc, [&] {
     OperationState state(loc, OpTy::getOperationName());
-    OpTy::build(&builder, &state);
+    OpTy::build(&builder, state);
     return Operation::create(state);
   });
 }
@@ -210,7 +210,7 @@ protected:
   /// Unless overridden, the custom assembly form of an op is always rejected.
   /// Op implementations should implement this to return failure.
   /// On success, they should fill in result with the fields to use.
-  static ParseResult parse(OpAsmParser &parser, OperationState *result);
+  static ParseResult parse(OpAsmParser &parser, OperationState &result);
 
   // The fallback for the printer is to print it the generic assembly form.
   void print(OpAsmPrinter *p);
@@ -935,7 +935,7 @@ public:
   /// which returns failure.  On success, they should return fill in result with
   /// the fields to use.
   static ParseResult parseAssembly(OpAsmParser &parser,
-                                   OperationState *result) {
+                                   OperationState &result) {
     return ConcreteType::parse(parser, result);
   }
 
@@ -1143,9 +1143,9 @@ private:
 // These functions are out-of-line implementations of the methods in BinaryOp,
 // which avoids them being template instantiated/duplicated.
 namespace impl {
-void buildBinaryOp(Builder *builder, OperationState *result, Value *lhs,
+void buildBinaryOp(Builder *builder, OperationState &result, Value *lhs,
                    Value *rhs);
-ParseResult parseBinaryOp(OpAsmParser &parser, OperationState *result);
+ParseResult parseBinaryOp(OpAsmParser &parser, OperationState &result);
 // Prints the given binary `op` in custom assembly form if both the two operands
 // and the result have the same time. Otherwise, prints the generic assembly
 // form.
@@ -1155,9 +1155,9 @@ void printBinaryOp(Operation *op, OpAsmPrinter *p);
 // These functions are out-of-line implementations of the methods in CastOp,
 // which avoids them being template instantiated/duplicated.
 namespace impl {
-void buildCastOp(Builder *builder, OperationState *result, Value *source,
+void buildCastOp(Builder *builder, OperationState &result, Value *source,
                  Type destType);
-ParseResult parseCastOp(OpAsmParser &parser, OperationState *result);
+ParseResult parseCastOp(OpAsmParser &parser, OperationState &result);
 void printCastOp(Operation *op, OpAsmPrinter *p);
 Value *foldCastOp(Operation *op);
 } // namespace impl

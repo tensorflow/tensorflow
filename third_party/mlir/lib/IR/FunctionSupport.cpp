@@ -106,7 +106,7 @@ static ParseResult parseFunctionSignature(
 /// Parser implementation for function-like operations.  Uses `funcTypeBuilder`
 /// to construct the custom function type given lists of input and output types.
 ParseResult
-mlir::impl::parseFunctionLikeOp(OpAsmParser &parser, OperationState *result,
+mlir::impl::parseFunctionLikeOp(OpAsmParser &parser, OperationState &result,
                                 bool allowVariadic,
                                 mlir::impl::FuncTypeBuilder funcTypeBuilder) {
   SmallVector<OpAsmParser::OperandType, 4> entryArgs;
@@ -118,10 +118,10 @@ mlir::impl::parseFunctionLikeOp(OpAsmParser &parser, OperationState *result,
   // Parse the name as a symbol reference attribute.
   SymbolRefAttr nameAttr;
   if (parser.parseAttribute(nameAttr, ::mlir::SymbolTable::getSymbolAttrName(),
-                            result->attributes))
+                            result.attributes))
     return failure();
   // Convert the parsed function attr into a string attr.
-  result->attributes.back().second = builder.getStringAttr(nameAttr.getValue());
+  result.attributes.back().second = builder.getStringAttr(nameAttr.getValue());
 
   // Parse the function signature.
   auto signatureLocation = parser.getCurrentLocation();
@@ -133,7 +133,7 @@ mlir::impl::parseFunctionLikeOp(OpAsmParser &parser, OperationState *result,
   std::string errorMessage;
   if (auto type = funcTypeBuilder(builder, argTypes, results,
                                   impl::VariadicFlag(isVariadic), errorMessage))
-    result->addAttribute(getTypeAttrName(), builder.getTypeAttr(type));
+    result.addAttribute(getTypeAttrName(), builder.getTypeAttr(type));
   else
     return parser.emitError(signatureLocation)
            << "failed to construct function type"
@@ -141,18 +141,18 @@ mlir::impl::parseFunctionLikeOp(OpAsmParser &parser, OperationState *result,
 
   // If function attributes are present, parse them.
   if (succeeded(parser.parseOptionalKeyword("attributes")))
-    if (parser.parseOptionalAttributeDict(result->attributes))
+    if (parser.parseOptionalAttributeDict(result.attributes))
       return failure();
 
   // Add the attributes to the function arguments.
   SmallString<8> argAttrName;
   for (unsigned i = 0, e = argTypes.size(); i != e; ++i)
     if (!argAttrs[i].empty())
-      result->addAttribute(getArgAttrName(i, argAttrName),
-                           builder.getDictionaryAttr(argAttrs[i]));
+      result.addAttribute(getArgAttrName(i, argAttrName),
+                          builder.getDictionaryAttr(argAttrs[i]));
 
   // Parse the optional function body.
-  auto *body = result->addRegion();
+  auto *body = result.addRegion();
   if (parser.parseOptionalRegion(*body, entryArgs,
                                  entryArgs.empty() ? llvm::ArrayRef<Type>()
                                                    : argTypes))

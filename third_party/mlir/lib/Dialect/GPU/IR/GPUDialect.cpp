@@ -69,19 +69,19 @@ static SmallVector<Type, 4> getValueTypes(ArrayRef<Value *> values) {
   return types;
 }
 
-void LaunchOp::build(Builder *builder, OperationState *result, Value *gridSizeX,
+void LaunchOp::build(Builder *builder, OperationState &result, Value *gridSizeX,
                      Value *gridSizeY, Value *gridSizeZ, Value *blockSizeX,
                      Value *blockSizeY, Value *blockSizeZ,
                      ArrayRef<Value *> operands) {
   // Add grid and block sizes as op operands, followed by the data operands.
-  result->addOperands(
+  result.addOperands(
       {gridSizeX, gridSizeY, gridSizeZ, blockSizeX, blockSizeY, blockSizeZ});
-  result->addOperands(operands);
+  result.addOperands(operands);
 
   // Create a kernel body region with kNumConfigRegionAttributes + N arguments,
   // where the first kNumConfigRegionAttributes arguments have `index` type and
   // the rest have the same types as the data operands.
-  Region *kernelRegion = result->addRegion();
+  Region *kernelRegion = result.addRegion();
   Block *body = new Block();
   body->addArguments(
       std::vector<Type>(kNumConfigRegionAttributes, builder->getIndexType()));
@@ -253,7 +253,7 @@ parseSizeAssignment(OpAsmParser &parser,
 //                             (`args` ssa-reassignment `:` type-list)?
 //                             region attr-dict?
 // ssa-reassignment ::= `(` ssa-id `=` ssa-use (`,` ssa-id `=` ssa-use)* `)`
-ParseResult LaunchOp::parse(OpAsmParser &parser, OperationState *result) {
+ParseResult LaunchOp::parse(OpAsmParser &parser, OperationState &result) {
   // Sizes of the grid and block.
   SmallVector<OpAsmParser::OperandType, kNumConfigOperands> sizes(
       kNumConfigOperands);
@@ -281,7 +281,7 @@ ParseResult LaunchOp::parse(OpAsmParser &parser, OperationState *result) {
                           regionArgsRef.slice(9, 3),
                           regionArgsRef.slice(3, 3)) ||
       parser.resolveOperands(sizes, parser.getBuilder().getIndexType(),
-                             result->operands))
+                             result.operands))
     return failure();
 
   // If kernel argument renaming segment is present, parse it.  When present,
@@ -308,7 +308,7 @@ ParseResult LaunchOp::parse(OpAsmParser &parser, OperationState *result) {
 
     if (parser.parseRParen() || parser.parseColonTypeList(dataTypes) ||
         parser.resolveOperands(dataOperands, dataTypes, argsLoc,
-                               result->operands))
+                               result.operands))
       return failure();
   }
 
@@ -318,9 +318,9 @@ ParseResult LaunchOp::parse(OpAsmParser &parser, OperationState *result) {
   // Follow the actual kernel arguments.
   Type index = parser.getBuilder().getIndexType();
   dataTypes.insert(dataTypes.begin(), kNumConfigRegionAttributes, index);
-  Region *body = result->addRegion();
+  Region *body = result.addRegion();
   return failure(parser.parseRegion(*body, regionArgs, dataTypes) ||
-                 parser.parseOptionalAttributeDict(result->attributes));
+                 parser.parseOptionalAttributeDict(result.attributes));
 }
 
 void LaunchOp::eraseKernelArgument(unsigned index) {
@@ -385,19 +385,19 @@ void LaunchOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // LaunchFuncOp
 //===----------------------------------------------------------------------===//
 
-void LaunchFuncOp::build(Builder *builder, OperationState *result,
+void LaunchFuncOp::build(Builder *builder, OperationState &result,
                          FuncOp kernelFunc, Value *gridSizeX, Value *gridSizeY,
                          Value *gridSizeZ, Value *blockSizeX, Value *blockSizeY,
                          Value *blockSizeZ, ArrayRef<Value *> kernelOperands) {
   // Add grid and block sizes as op operands, followed by the data operands.
-  result->addOperands(
+  result.addOperands(
       {gridSizeX, gridSizeY, gridSizeZ, blockSizeX, blockSizeY, blockSizeZ});
-  result->addOperands(kernelOperands);
-  result->addAttribute(getKernelAttrName(),
-                       builder->getSymbolRefAttr(kernelFunc));
+  result.addOperands(kernelOperands);
+  result.addAttribute(getKernelAttrName(),
+                      builder->getSymbolRefAttr(kernelFunc));
 }
 
-void LaunchFuncOp::build(Builder *builder, OperationState *result,
+void LaunchFuncOp::build(Builder *builder, OperationState &result,
                          FuncOp kernelFunc, KernelDim3 gridSize,
                          KernelDim3 blockSize,
                          ArrayRef<Value *> kernelOperands) {

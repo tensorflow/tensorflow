@@ -91,7 +91,7 @@ OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
 }
 
 // Builds a constant op with the specified attribute `value`.
-void ConstOp::build(Builder* builder, OperationState* result, Attribute value) {
+void ConstOp::build(Builder* builder, OperationState& result, Attribute value) {
   Type type;
   if (auto elemAttr = value.dyn_cast<ElementsAttr>()) {
     type = elemAttr.getType();
@@ -106,8 +106,8 @@ void ConstOp::build(Builder* builder, OperationState* result, Attribute value) {
 
   // TODO: support other XLA specific types.
   assert(type && "unsupported attribute type for building xla_hlo.constant");
-  result->types.push_back(type);
-  result->addAttribute("value", value);
+  result.types.push_back(type);
+  result.addAttribute("value", value);
 }
 
 //===----------------------------------------------------------------------===//
@@ -538,7 +538,7 @@ static LogicalResult Verify(PadOp op) {
 // SliceOp
 //===----------------------------------------------------------------------===//
 
-void SliceOp::build(Builder* builder, OperationState* result, Value* operand,
+void SliceOp::build(Builder* builder, OperationState& result, Value* operand,
                     DenseIntElementsAttr start_indices,
                     DenseIntElementsAttr limit_indices,
                     DenseIntElementsAttr strides) {

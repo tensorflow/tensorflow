@@ -56,7 +56,7 @@ static void print(OpAsmPrinter *p, ExtractElementOp op) {
 }
 
 static ParseResult parseExtractElementOp(OpAsmParser &parser,
-                                         OperationState *result) {
+                                         OperationState &result) {
   llvm::SMLoc attributeLoc, typeLoc;
   SmallVector<NamedAttribute, 4> attrs;
   OpAsmParser::OperandType vector;
@@ -86,9 +86,9 @@ static ParseResult parseExtractElementOp(OpAsmParser &parser,
                 vectorType.getShape().drop_front(positionAttr.size()),
                 vectorType.getElementType());
 
-  result->attributes = attrs;
-  return failure(parser.resolveOperand(vector, type, result->operands) ||
-                 parser.addTypeToList(resType, result->types));
+  result.attributes = attrs;
+  return failure(parser.resolveOperand(vector, type, result.operands) ||
+                 parser.addTypeToList(resType, result.types));
 }
 
 static LogicalResult verify(ExtractElementOp op) {
@@ -121,7 +121,7 @@ static void print(OpAsmPrinter *p, OuterProductOp op) {
 }
 
 static ParseResult parseOuterProductOp(OpAsmParser &parser,
-                                       OperationState *result) {
+                                       OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 3> operandsInfo;
   Type tLHS, tRHS;
   if (parser.parseOperandList(operandsInfo) || parser.parseColonType(tLHS) ||
@@ -137,11 +137,11 @@ static ParseResult parseOuterProductOp(OpAsmParser &parser,
   VectorType resType = VectorType::get({vLHS.getDimSize(0), vRHS.getDimSize(0)},
                                        vLHS.getElementType());
   return failure(
-      parser.resolveOperand(operandsInfo[0], tLHS, result->operands) ||
-      parser.resolveOperand(operandsInfo[1], tRHS, result->operands) ||
+      parser.resolveOperand(operandsInfo[0], tLHS, result.operands) ||
+      parser.resolveOperand(operandsInfo[1], tRHS, result.operands) ||
       (operandsInfo.size() > 2 &&
-       parser.resolveOperand(operandsInfo[2], resType, result->operands)) ||
-      parser.addTypeToList(resType, result->types));
+       parser.resolveOperand(operandsInfo[2], resType, result.operands)) ||
+      parser.addTypeToList(resType, result.types));
 }
 
 static LogicalResult verify(OuterProductOp op) {
@@ -195,19 +195,19 @@ static LogicalResult verifyPermutationMap(AffineMap permutationMap,
   return success();
 }
 
-void VectorTransferReadOp::build(Builder *builder, OperationState *result,
+void VectorTransferReadOp::build(Builder *builder, OperationState &result,
                                  VectorType vectorType, Value *srcMemRef,
                                  ArrayRef<Value *> srcIndices,
                                  AffineMap permutationMap,
                                  Optional<Value *> paddingValue) {
-  result->addOperands(srcMemRef);
-  result->addOperands(srcIndices);
+  result.addOperands(srcMemRef);
+  result.addOperands(srcIndices);
   if (paddingValue) {
-    result->addOperands({*paddingValue});
+    result.addOperands({*paddingValue});
   }
-  result->addAttribute(getPermutationMapAttrName(),
-                       builder->getAffineMapAttr(permutationMap));
-  result->addTypes(vectorType);
+  result.addAttribute(getPermutationMapAttrName(),
+                      builder->getAffineMapAttr(permutationMap));
+  result.addTypes(vectorType);
 }
 
 auto VectorTransferReadOp::getIndices() -> operand_range {
@@ -246,7 +246,7 @@ void VectorTransferReadOp::print(OpAsmPrinter *p) {
 }
 
 ParseResult VectorTransferReadOp::parse(OpAsmParser &parser,
-                                        OperationState *result) {
+                                        OperationState &result) {
   OpAsmParser::OperandType memrefInfo;
   SmallVector<OpAsmParser::OperandType, 8> indexInfo;
   SmallVector<OpAsmParser::OperandType, 8> paddingInfo;
@@ -257,7 +257,7 @@ ParseResult VectorTransferReadOp::parse(OpAsmParser &parser,
       parser.parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
       parser.parseTrailingOperandList(paddingInfo,
                                       OpAsmParser::Delimiter::Paren) ||
-      parser.parseOptionalAttributeDict(result->attributes) ||
+      parser.parseOptionalAttributeDict(result.attributes) ||
       parser.parseColonTypeList(types))
     return failure();
 
@@ -288,11 +288,11 @@ ParseResult VectorTransferReadOp::parse(OpAsmParser &parser,
   }
   auto indexType = parser.getBuilder().getIndexType();
   return failure(
-      parser.resolveOperand(memrefInfo, memrefType, result->operands) ||
-      parser.resolveOperands(indexInfo, indexType, result->operands) ||
+      parser.resolveOperand(memrefInfo, memrefType, result.operands) ||
+      parser.resolveOperands(indexInfo, indexType, result.operands) ||
       (hasOptionalPaddingValue &&
-       parser.resolveOperand(paddingInfo[0], paddingType, result->operands)) ||
-      parser.addTypeToList(vectorType, result->types));
+       parser.resolveOperand(paddingInfo[0], paddingType, result.operands)) ||
+      parser.addTypeToList(vectorType, result.types));
 }
 
 LogicalResult VectorTransferReadOp::verify() {
@@ -376,14 +376,14 @@ LogicalResult VectorTransferReadOp::verify() {
 //===----------------------------------------------------------------------===//
 // VectorTransferWriteOp
 //===----------------------------------------------------------------------===//
-void VectorTransferWriteOp::build(Builder *builder, OperationState *result,
+void VectorTransferWriteOp::build(Builder *builder, OperationState &result,
                                   Value *srcVector, Value *dstMemRef,
                                   ArrayRef<Value *> dstIndices,
                                   AffineMap permutationMap) {
-  result->addOperands({srcVector, dstMemRef});
-  result->addOperands(dstIndices);
-  result->addAttribute(getPermutationMapAttrName(),
-                       builder->getAffineMapAttr(permutationMap));
+  result.addOperands({srcVector, dstMemRef});
+  result.addOperands(dstIndices);
+  result.addAttribute(getPermutationMapAttrName(),
+                      builder->getAffineMapAttr(permutationMap));
 }
 
 auto VectorTransferWriteOp::getIndices() -> operand_range {
@@ -411,7 +411,7 @@ void VectorTransferWriteOp::print(OpAsmPrinter *p) {
 }
 
 ParseResult VectorTransferWriteOp::parse(OpAsmParser &parser,
-                                         OperationState *result) {
+                                         OperationState &result) {
   OpAsmParser::OperandType storeValueInfo;
   OpAsmParser::OperandType memrefInfo;
   SmallVector<OpAsmParser::OperandType, 4> indexInfo;
@@ -420,7 +420,7 @@ ParseResult VectorTransferWriteOp::parse(OpAsmParser &parser,
   if (parser.parseOperand(storeValueInfo) || parser.parseComma() ||
       parser.parseOperand(memrefInfo) ||
       parser.parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
-      parser.parseOptionalAttributeDict(result->attributes) ||
+      parser.parseOptionalAttributeDict(result.attributes) ||
       parser.parseColonTypeList(types))
     return failure();
 
@@ -434,9 +434,9 @@ ParseResult VectorTransferWriteOp::parse(OpAsmParser &parser,
     return parser.emitError(parser.getNameLoc(), "memRef type expected");
 
   return failure(
-      parser.resolveOperands(storeValueInfo, vectorType, result->operands) ||
-      parser.resolveOperands(memrefInfo, memrefType, result->operands) ||
-      parser.resolveOperands(indexInfo, indexType, result->operands));
+      parser.resolveOperands(storeValueInfo, vectorType, result.operands) ||
+      parser.resolveOperands(memrefInfo, memrefType, result.operands) ||
+      parser.resolveOperands(indexInfo, indexType, result.operands));
 }
 
 LogicalResult VectorTransferWriteOp::verify() {
@@ -506,22 +506,22 @@ LogicalResult VectorTransferWriteOp::verify() {
 //===----------------------------------------------------------------------===//
 // VectorTypeCastOp
 //===----------------------------------------------------------------------===//
-void VectorTypeCastOp::build(Builder *builder, OperationState *result,
+void VectorTypeCastOp::build(Builder *builder, OperationState &result,
                              Value *srcVector, Type dstType) {
-  result->addOperands(srcVector);
-  result->addTypes(dstType);
+  result.addOperands(srcVector);
+  result.addTypes(dstType);
 }
 
 ParseResult VectorTypeCastOp::parse(OpAsmParser &parser,
-                                    OperationState *result) {
+                                    OperationState &result) {
   OpAsmParser::OperandType operand;
   Type srcType, dstType;
   return failure(parser.parseOperand(operand) ||
-                 parser.parseOptionalAttributeDict(result->attributes) ||
+                 parser.parseOptionalAttributeDict(result.attributes) ||
                  parser.parseColonType(srcType) || parser.parseComma() ||
                  parser.parseType(dstType) ||
-                 parser.addTypeToList(dstType, result->types) ||
-                 parser.resolveOperand(operand, srcType, result->operands));
+                 parser.addTypeToList(dstType, result.types) ||
+                 parser.resolveOperand(operand, srcType, result.operands));
 }
 
 void VectorTypeCastOp::print(OpAsmPrinter *p) {
