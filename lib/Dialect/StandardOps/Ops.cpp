@@ -26,6 +26,7 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
@@ -2019,6 +2020,30 @@ OpFoldResult SelectOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// SignExtendIOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult verify(SignExtendIOp op) {
+  // Get the scalar type (which is either directly the type of the operand
+  // or the vector's/tensor's element type.
+  auto srcType = getElementTypeOrSelf(op.getOperand()->getType());
+  auto dstType = getElementTypeOrSelf(op.getType());
+
+  // For now, index is forbidden for the source and the destination type.
+  if (srcType.isa<IndexType>())
+    return op.emitError() << srcType << " is not a valid operand type";
+  if (dstType.isa<IndexType>())
+    return op.emitError() << dstType << " is not a valid result type";
+
+  if (srcType.cast<IntegerType>().getWidth() >=
+      dstType.cast<IntegerType>().getWidth())
+    return op.emitError("result type ")
+           << dstType << " must be wider than operand type " << srcType;
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // StoreOp
 //===----------------------------------------------------------------------===//
 
@@ -2238,6 +2263,48 @@ static ParseResult parseTensorStoreOp(OpAsmParser &parser,
       parser.resolveOperands(
           ops, {getTensorTypeFromMemRefType(parser.getBuilder(), type), type},
           loc, result.operands));
+}
+
+//===----------------------------------------------------------------------===//
+// TruncateIOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult verify(TruncateIOp op) {
+  auto srcType = getElementTypeOrSelf(op.getOperand()->getType());
+  auto dstType = getElementTypeOrSelf(op.getType());
+
+  if (srcType.isa<IndexType>())
+    return op.emitError() << srcType << " is not a valid operand type";
+  if (dstType.isa<IndexType>())
+    return op.emitError() << dstType << " is not a valid result type";
+
+  if (srcType.cast<IntegerType>().getWidth() <=
+      dstType.cast<IntegerType>().getWidth())
+    return op.emitError("operand type ")
+           << srcType << " must be wider than result type " << dstType;
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ZeroExtendIOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult verify(ZeroExtendIOp op) {
+  auto srcType = getElementTypeOrSelf(op.getOperand()->getType());
+  auto dstType = getElementTypeOrSelf(op.getType());
+
+  if (srcType.isa<IndexType>())
+    return op.emitError() << srcType << " is not a valid operand type";
+  if (dstType.isa<IndexType>())
+    return op.emitError() << dstType << " is not a valid result type";
+
+  if (srcType.cast<IntegerType>().getWidth() >=
+      dstType.cast<IntegerType>().getWidth())
+    return op.emitError("result type ")
+           << dstType << " must be wider than operand type " << srcType;
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

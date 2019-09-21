@@ -309,6 +309,42 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index, i64) {
   // CHECK: = sitofp {{.*}} : i64 to f64
   %81 = sitofp %j : i64 to f64
 
+  // CHECK: = sexti %arg2 : i32 to i64
+  %82 = "std.sexti"(%i) : (i32) -> i64
+
+  // CHECK: = sexti %arg2 : i32 to i64
+  %83 = sexti %i : i32 to i64
+
+  // CHECK: %{{[0-9]+}} = sexti %cst_5 : vector<42xi32>
+  %84 = sexti %vci32 : vector<42 x i32> to vector<42 x i64>
+
+  // CHECK: %{{[0-9]+}} = sexti %cst_4 : tensor<42xi32>
+  %85 = sexti %tci32 : tensor<42 x i32> to tensor<42 x i64>
+
+  // CHECK: = zexti %arg2 : i32 to i64
+  %86 = "std.zexti"(%i) : (i32) -> i64
+
+  // CHECK: = zexti %arg2 : i32 to i64
+  %87 = zexti %i : i32 to i64
+
+  // CHECK: %{{[0-9]+}} = zexti %cst_5 : vector<42xi32>
+  %88 = zexti %vci32 : vector<42 x i32> to vector<42 x i64>
+
+  // CHECK: %{{[0-9]+}} = zexti %cst_4 : tensor<42xi32>
+  %89 = zexti %tci32 : tensor<42 x i32> to tensor<42 x i64>
+
+  // CHECK: = trunci %arg2 : i32 to i16
+  %90 = "std.trunci"(%i) : (i32) -> i16
+
+  // CHECK: = trunci %arg2 : i32 to i16
+  %91 = trunci %i : i32 to i16
+
+  // CHECK: %{{[0-9]+}} = trunci %cst_5 : vector<42xi32>
+  %92 = trunci %vci32 : vector<42 x i32> to vector<42 x i16>
+
+  // CHECK: %{{[0-9]+}} = trunci %cst_4 : tensor<42xi32>
+  %93 = trunci %tci32 : tensor<42 x i32> to tensor<42 x i16>
+
   return
 }
 

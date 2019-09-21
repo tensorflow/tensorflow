@@ -443,6 +443,20 @@ func @sitofp(%arg0 : i32, %arg1 : i64) {
   return
 }
 
+// Check sign and zero extension and truncation of integers.
+// CHECK-LABEL: @integer_extension_and_truncation
+func @integer_extension_and_truncation() {
+// CHECK-NEXT:  %0 = llvm.mlir.constant(-3 : i3) : !llvm.i3
+  %0 = constant 5 : i3
+// CHECK-NEXT: = llvm.sext %0 : !llvm.i3 to !llvm.i6
+  %1 = sexti %0 : i3 to i6
+// CHECK-NEXT: = llvm.zext %0 : !llvm.i3 to !llvm.i6
+  %2 = zexti %0 : i3 to i6
+// CHECK-NEXT: = llvm.trunc %0 : !llvm.i3 to !llvm.i2
+   %3 = trunci %0 : i3 to i2
+  return
+}
+
 // CHECK-LABEL: @dfs_block_order
 func @dfs_block_order() -> (i32) {
 // CHECK-NEXT:  %0 = llvm.mlir.constant(42 : i32) : !llvm.i32

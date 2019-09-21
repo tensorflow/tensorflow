@@ -941,3 +941,13 @@ func @fp_casts(%fp1 : !llvm<"float">, %fp2 : !llvm<"double">) -> !llvm.i16 {
   %c = llvm.fptosi %b : !llvm<"double"> to !llvm.i16
   llvm.return %c : !llvm.i16
 }
+
+func @integer_extension_and_truncation(%a : !llvm.i32) {
+// CHECK:    sext i32 {{.*}} to i64
+// CHECK:    zext i32 {{.*}} to i64
+// CHECK:    trunc i32 {{.*}} to i16
+  %0 = llvm.sext %a : !llvm.i32 to !llvm.i64
+  %1 = llvm.zext %a : !llvm.i32 to !llvm.i64
+  %2 = llvm.trunc %a : !llvm.i32 to !llvm.i16
+  llvm.return
+}

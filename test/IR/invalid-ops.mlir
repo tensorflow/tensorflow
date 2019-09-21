@@ -718,6 +718,102 @@ func @sitofp_f32_to_i32(%arg0 : f32) {
 
 // -----
 
+func @sexti_index_as_operand(%arg0 : index) {
+  // expected-error@+1 {{'index' is not a valid operand type}}
+  %0 = sexti %arg0 : index to i128
+  return
+}
+
+// -----
+
+func @zexti_index_as_operand(%arg0 : index) {
+  // expected-error@+1 {{'index' is not a valid operand type}}
+  %0 = zexti %arg0 : index to i128
+  return
+}
+
+// -----
+
+func @trunci_index_as_operand(%arg0 : index) {
+  // expected-error@+1 {{'index' is not a valid operand type}}
+  %2 = trunci %arg0 : index to i128
+  return
+}
+
+// -----
+
+func @sexti_index_as_result(%arg0 : i1) {
+  // expected-error@+1 {{'index' is not a valid result type}}
+  %0 = sexti %arg0 : i1 to index
+  return
+}
+
+// -----
+
+func @zexti_index_as_operand(%arg0 : i1) {
+  // expected-error@+1 {{'index' is not a valid result type}}
+  %0 = zexti %arg0 : i1 to index
+  return
+}
+
+// -----
+
+func @trunci_index_as_result(%arg0 : i128) {
+  // expected-error@+1 {{'index' is not a valid result type}}
+  %2 = trunci %arg0 : i128 to index
+  return
+}
+
+// -----
+
+func @sexti_cast_to_narrower(%arg0 : i16) {
+  // expected-error@+1 {{must be wider}}
+  %0 = sexti %arg0 : i16 to i15
+  return
+}
+
+// -----
+
+func @zexti_cast_to_narrower(%arg0 : i16) {
+  // expected-error@+1 {{must be wider}}
+  %0 = zexti %arg0 : i16 to i15
+  return
+}
+
+// -----
+
+func @trunci_cast_to_wider(%arg0 : i16) {
+  // expected-error@+1 {{must be wider}}
+  %0 = trunci %arg0 : i16 to i17
+  return
+}
+
+// -----
+
+func @sexti_cast_to_same_width(%arg0 : i16) {
+  // expected-error@+1 {{must be wider}}
+  %0 = sexti %arg0 : i16 to i16
+  return
+}
+
+// -----
+
+func @zexti_cast_to_same_width(%arg0 : i16) {
+  // expected-error@+1 {{must be wider}}
+  %0 = zexti %arg0 : i16 to i16
+  return
+}
+
+// -----
+
+func @trunci_cast_to_same_width(%arg0 : i16) {
+  // expected-error@+1 {{must be wider}}
+  %0 = trunci %arg0 : i16 to i16
+  return
+}
+
+// -----
+
 func @return_not_in_function() {
   "foo.region"() ({
     // expected-error@+1 {{'std.return' op expects parent op 'func'}}
