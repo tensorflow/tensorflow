@@ -1831,11 +1831,10 @@ def _CumprodGrad(op, grad):
   exclusive = op.get_attr("exclusive")
   reverse = op.get_attr("reverse")
 
-  # TODO This fails when x contains 0 and should be fixed
   prod = math_ops.cumprod(x, axis, exclusive=exclusive, reverse=reverse)
   out = math_ops.cumsum(
       prod * grad, axis, exclusive=exclusive, reverse=not reverse)
-  return [out / x, None]
+  return [math_ops.div_no_nan(out, x), None]
 
 
 @ops.RegisterGradient("CumulativeLogsumexp")
