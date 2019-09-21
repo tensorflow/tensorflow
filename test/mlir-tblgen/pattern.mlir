@@ -163,6 +163,24 @@ func @rewrite_i32elementsattr() -> () {
   return
 }
 
+// CHECK-LABEL: rewrite_f64elementsattr
+func @rewrite_f64elementsattr() -> () {
+  "test.float_elements_attr"() {
+    // Should match
+    // CHECK: scalar_f32_attr = dense<[5.000000e+00, 6.000000e+00]> : tensor<2xf32>
+    scalar_f32_attr = dense<[3.0, 4.0]> : tensor<2xf32>,
+    tensor_f64_attr = dense<6.0> : tensor<4x8xf64>
+  } : () -> ()
+
+  "test.float_elements_attr"() {
+    // Should not match
+    // CHECK: scalar_f32_attr = dense<7.000000e+00> : tensor<2xf32>
+    scalar_f32_attr = dense<7.0> : tensor<2xf32>,
+    tensor_f64_attr = dense<3.0> : tensor<4x8xf64>
+  } : () -> ()
+  return
+}
+
 //===----------------------------------------------------------------------===//
 // Test Multi-result Ops
 //===----------------------------------------------------------------------===//

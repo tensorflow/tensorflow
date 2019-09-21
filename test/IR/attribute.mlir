@@ -189,3 +189,41 @@ func @disallowed_case7_fail() {
   %0 = "test.i64_enum_attr"() {attr = 5: i32} : () -> i32
   return
 }
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// Test FloatElementsAttr
+//===----------------------------------------------------------------------===//
+
+func @correct_type_pass() {
+  "test.float_elements_attr"() {
+    // CHECK: scalar_f32_attr = dense<5.000000e+00> : tensor<2xf32>
+    // CHECK: tensor_f64_attr = dense<6.000000e+00> : tensor<4x8xf64>
+    scalar_f32_attr = dense<5.0> : tensor<2xf32>,
+    tensor_f64_attr = dense<6.0> : tensor<4x8xf64>
+  } : () -> ()
+  return
+}
+
+// -----
+
+func @wrong_element_type_pass() {
+  // expected-error @+1 {{failed to satisfy constraint: 32-bit float elements attribute of shape [2]}}
+  "test.float_elements_attr"() {
+    scalar_f32_attr = dense<5.0> : tensor<2xf64>,
+    tensor_f64_attr = dense<6.0> : tensor<4x8xf64>
+  } : () -> ()
+  return
+}
+
+// -----
+
+func @correct_type_pass() {
+  // expected-error @+1 {{failed to satisfy constraint: 64-bit float elements attribute of shape [4, 8]}}
+  "test.float_elements_attr"() {
+    scalar_f32_attr = dense<5.0> : tensor<2xf32>,
+    tensor_f64_attr = dense<6.0> : tensor<4xf64>
+  } : () -> ()
+  return
+}
