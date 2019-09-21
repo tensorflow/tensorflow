@@ -75,9 +75,7 @@ class SingleWorkerTest(test.TestCase):
 
     @def_function.function
     def remote_output(i):
-      with ops.device('/job:worker/replica:0/task:0/cpu:0'):
-        c = variable_b + 1
-      return c, i + variable_b
+      return variable_b, i + variable_b
 
     with self.assertRaises(errors.UnimplementedError) as cm:
       remote_output(constant_op.constant([1]))
