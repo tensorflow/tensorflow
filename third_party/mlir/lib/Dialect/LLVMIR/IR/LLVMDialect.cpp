@@ -881,20 +881,21 @@ static void printGlobalOp(OpAsmPrinter &p, GlobalOp op) {
   if (op.constant())
     p << "constant ";
   p << '@' << op.sym_name() << '(';
-  p.printAttribute(op.value());
+  if (auto value = op.getValueOrNull())
+    p.printAttribute(value);
   p << ')';
   p.printOptionalAttrDict(op.getAttrs(), {SymbolTable::getSymbolAttrName(),
                                           "type", "constant", "value"});
 
   // Print the trailing type unless it's a string global.
-  if (op.value().isa<StringAttr>())
+  if (op.getValueOrNull().dyn_cast_or_null<StringAttr>())
     return;
   p << " : ";
   p.printType(op.type());
 }
 
 // <operation> ::= `llvm.mlir.global` `constant`? `@` identifier
-//                 `(` attribute `)` attribute-list? (`:` type)?
+//                 `(` attribute? `)` attribute-list? (`:` type)?
 //
 // The type can be omitted for string attributes, in which case it will be
 // inferred from the value of the string as [strlen(value) x i8].
@@ -902,15 +903,21 @@ static ParseResult parseGlobalOp(OpAsmParser &parser, OperationState &result) {
   if (succeeded(parser.parseOptionalKeyword("constant")))
     result.addAttribute("constant", parser.getBuilder().getUnitAttr());
 
-  Attribute value;
   StringAttr name;
-  SmallVector<Type, 1> types;
   if (parser.parseSymbolName(name, SymbolTable::getSymbolAttrName(),
                              result.attributes) ||
-      parser.parseLParen() ||
-      parser.parseAttribute(value, "value", result.attributes) ||
-      parser.parseRParen() ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseLParen())
+    return failure();
+
+  Attribute value;
+  if (parser.parseOptionalRParen()) {
+    if (parser.parseAttribute(value, "value", result.attributes) ||
+        parser.parseRParen())
+      return failure();
+  }
+
+  SmallVector<Type, 1> types;
+  if (parser.parseOptionalAttributeDict(result.attributes) ||
       parser.parseOptionalColonTypeList(types))
     return failure();
 
@@ -918,7 +925,7 @@ static ParseResult parseGlobalOp(OpAsmParser &parser, OperationState &result) {
     return parser.emitError(parser.getNameLoc(), "expected zero or one type");
 
   if (types.empty()) {
-    if (auto strAttr = value.dyn_cast<StringAttr>()) {
+    if (auto strAttr = value.dyn_cast_or_null<StringAttr>()) {
       MLIRContext *context = parser.getBuilder().getContext();
       auto *dialect = context->getRegisteredDialect<LLVMDialect>();
       auto arrayType = LLVM::LLVMType::getArrayTy(
@@ -940,7 +947,8 @@ static LogicalResult verify(GlobalOp op) {
         "expects type to be a valid element type for an LLVM pointer");
   if (op.getParentOp() && !isa<ModuleOp>(op.getParentOp()))
     return op.emitOpError("must appear at the module level");
-  if (auto strAttr = op.value().dyn_cast<StringAttr>()) {
+
+  if (auto strAttr = op.getValueOrNull().dyn_cast_or_null<StringAttr>()) {
     auto type = op.getType();
     if (!type.getUnderlyingType()->isArrayTy() ||
         !type.getArrayElementType().getUnderlyingType()->isIntegerTy(8) ||
