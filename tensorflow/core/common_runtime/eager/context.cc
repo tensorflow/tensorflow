@@ -680,7 +680,7 @@ Status EagerContext::InitializeRemoteMaster(
   remote_contexts_ = remote_contexts;
 
   use_send_tensor_rpc_ =
-      ReadBoolFromEnvVar("TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC", false);
+      ReadBoolFromEnvVar("TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC", true);
 
   local_unowned_device_manager_ = local_device_mgr;
   local_device_manager_ = nullptr;
