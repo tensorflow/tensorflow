@@ -14,6 +14,12 @@ LLVM style guide:
 *   Except for IR units (Region, Block, and Operation), non-nullable output
     argument are passed by non-const reference in general.
 *   IR constructs are not designed for [const correctness](UsageOfConst.md).
+*   Do *not* use recursive algorithms if the recursion can't be bounded
+    statically: that is avoid recursion if there is a possible IR input that can
+    trigger a stack overflow (for example traversing use-def chains in a
+    recursive way). At the moment, we tolerate it for the two following cases:
+    *   The nesting of the IR: we use recursion when traversing nested regions.
+    *   Type nesting: recursion may be used for the nesting of composite types.
 
 Please run clang-format on the files you modified with the `.clang-format`
 configuration file available in the root directory. Check the clang-format
