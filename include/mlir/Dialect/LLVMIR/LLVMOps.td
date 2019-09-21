@@ -487,7 +487,7 @@ def LLVM_AddressOfOp
 def LLVM_GlobalOp
     : LLVM_ZeroResultOp<"mlir.global">,
       Arguments<(ins TypeAttr:$type, UnitAttr:$constant, StrAttr:$sym_name,
-                 AnyAttr:$value,
+                 OptionalAttr<AnyAttr>:$value,
                  DefaultValuedAttr<NonNegativeI32Attr, "0">:$addr_space)> {
 
   let builders = [
@@ -500,6 +500,10 @@ def LLVM_GlobalOp
     /// Return the LLVM type of the global.
     LLVMType getType() {
       return type().cast<LLVMType>();
+    }
+    /// Return the value attribute if it exists, or a null attribute.
+    Attribute getValueOrNull() {
+      return value().getValueOr(Attribute());
     }
   }];
 

@@ -12,6 +12,9 @@ llvm.mlir.global constant @string("foobar") : !llvm<"[6 x i8]">
 // CHECK: llvm.mlir.global @string_notype("1234567")
 llvm.mlir.global @string_notype("1234567")
 
+// CHECK: llvm.mlir.global @global_undef()
+llvm.mlir.global @global_undef() : !llvm.i64
+
 // CHECK-LABEL: references
 func @references() {
   // CHECK: llvm.mlir.addressof @global : !llvm<"i64*">
@@ -32,11 +35,6 @@ func @references() {
 
 // expected-error @+1 {{op requires attribute 'type'}}
 "llvm.mlir.global"() {sym_name = "foo", constant, value = 42 : i64} : () -> ()
-
-// -----
-
-// expected-error @+1 {{op requires attribute 'value'}}
-"llvm.mlir.global"() {sym_name = "foo", type = !llvm.i64, constant} : () -> ()
 
 // -----
 

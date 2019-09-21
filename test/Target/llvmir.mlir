@@ -21,6 +21,9 @@ llvm.mlir.global @float_global_array(dense<[-5.0]> : vector<1xf32>) : !llvm<"[1 
 // CHECK: @string_const = internal constant [6 x i8] c"foobar"
 llvm.mlir.global constant @string_const("foobar") : !llvm<"[6 x i8]">
 
+// CHECK: @int_global_undef = internal global i64 undef
+llvm.mlir.global @int_global_undef() : !llvm.i64
+
 //
 // Declarations of the allocation functions to be linked against.
 //
