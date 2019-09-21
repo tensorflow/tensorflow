@@ -924,6 +924,32 @@ class IntElementsAttr<int width> : ElementsAttrBase<
 def I32ElementsAttr : IntElementsAttr<32>;
 def I64ElementsAttr : IntElementsAttr<64>;
 
+// A `width`-bit floating point elements attribute. The attribute should be
+// ranked and has a shape as specified in `dims`.
+class RankedFloatElementsAttr<int width, list<int> dims> : ElementsAttrBase<
+  CPred<"$_self.isa<DenseFPElementsAttr>() &&"
+      "$_self.cast<DenseFPElementsAttr>().getType()."
+      "getElementType().isF" # width # "() && "
+      // Check that this is ranked and has the specified shape.
+      "$_self.cast<DenseFPElementsAttr>().getType().hasRank() && "
+      "$_self.cast<DenseFPElementsAttr>().getType().getShape() == "
+      "llvm::ArrayRef<int64_t>({" # StrJoinInt<dims>.result # "})">,
+  width # "-bit float elements attribute of shape [" #
+  StrJoinInt<dims>.result # "]"> {
+
+  let storageType = [{ DenseFPElementsAttr }];
+  let returnType = [{ DenseFPElementsAttr }];
+
+  let constBuilderCall = "DenseElementsAttr::get("
+    "$_builder.getTensorType({" # StrJoinInt<dims>.result #
+    "}, $_builder.getF" # width # "Type()), "
+    "llvm::makeArrayRef($0)).cast<DenseFPElementsAttr>()";
+  let convertFromStorage = "$_self";
+}
+
+class RankedF32ElementsAttr<list<int> dims> : RankedFloatElementsAttr<32, dims>;
+class RankedF64ElementsAttr<list<int> dims> : RankedFloatElementsAttr<64, dims>;
+
 // Base class for array attributes.
 class ArrayAttrBase<Pred condition, string description> :
     Attr<condition, description> {

@@ -162,6 +162,23 @@ def I64EnumAttrOp : TEST_Op<"i64_enum_attr"> {
   let results = (outs I32:$val);
 }
 
+def FloatElementsAttrOp : TEST_Op<"float_elements_attr"> {
+  let arguments = (ins
+      RankedF32ElementsAttr<[2]>:$scalar_f32_attr,
+      RankedF64ElementsAttr<[4, 8]>:$tensor_f64_attr
+  );
+}
+
+// A pattern that updates dense<[3.0, 4.0]> to dense<[5.0, 6.0]>.
+// This tests both matching and generating float elements attributes.
+def UpdateFloatElementsAttr : Pat<
+  (FloatElementsAttrOp
+    ConstantAttr<RankedF32ElementsAttr<[2]>, "{3.0f, 4.0f}">:$f32attr,
+    $f64attr),
+  (FloatElementsAttrOp
+    ConstantAttr<RankedF32ElementsAttr<[2]>, "{5.0f, 6.0f}">:$f32attr,
+    $f64attr)>;
+
 //===----------------------------------------------------------------------===//
 // Test Regions
 //===----------------------------------------------------------------------===//
