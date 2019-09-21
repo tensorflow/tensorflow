@@ -283,10 +283,10 @@ StatusOr<XlaOp> ComputeWYRepresentation(PrimitiveType type,
 
   auto body_fn = [&](XlaOp j, absl::Span<const XlaOp> values,
                      XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
+    // w has shape [..., m, n]
     auto w = values[0];
-    auto y = values[1];
-    const auto vs = values[2];
-    const auto taus = values[3];
+    const auto vs = values[1];
+    const auto taus = values[2];
 
     // Want j values in range [1, ... n).
     j = j + ConstantR0<int32>(builder, 1);
@@ -294,6 +294,13 @@ StatusOr<XlaOp> ComputeWYRepresentation(PrimitiveType type,
     auto v = DynamicSliceInMinorDims(vs, {j}, {1});
     // beta has shape [..., 1]
     auto beta = DynamicSliceInMinorDims(taus, {j}, {1});
+
+    auto iota_mn = Iota(
+        builder, ShapeUtil::MakeShape(S32, ConcatVectors(batch_dims, {m, n})),
+        n_index);
+
+    // y has shape [..., m, n]
+    auto y = Select(Ge(iota_mn, j), ZerosLike(vs), vs);
 
     // yv has shape [..., n, 1]
     auto yv = BatchDot(y, true, v, false, precision);
@@ -305,26 +312,22 @@ StatusOr<XlaOp> ComputeWYRepresentation(PrimitiveType type,
         /*broadcast_dimensions=*/ConcatVectors(batch_dim_indices, {n_index}));
 
     w = DynamicUpdateSliceInMinorDims(w, z, {j});
-    y = DynamicUpdateSliceInMinorDims(y, v, {j});
 
-    return std::vector<XlaOp>{w, y, vs, taus};
+    return std::vector<XlaOp>{w, vs, taus};
   };
 
   XlaBuilder* builder = vs.builder();
   auto w = Zeros(builder,
                  ShapeUtil::MakeShape(type, ConcatVectors(batch_dims, {m, n})));
-  auto y = w;
   auto v = SliceInMinorDims(vs, {0}, {1});
   auto beta = SliceInMinorDims(taus, {0}, {1});
-  y = UpdateSliceInMinorDims(y, v, {0});
   auto bv =
       Mul(-beta, v,
           /*broadcast_dimensions=*/ConcatVectors(batch_dim_indices, {n_index}));
   w = UpdateSliceInMinorDims(w, bv, {0});
 
-  TF_ASSIGN_OR_RETURN(
-      auto values,
-      ForEachIndex(n - 1, S32, body_fn, {w, y, vs, taus}, "wy", builder));
+  TF_ASSIGN_OR_RETURN(auto values, ForEachIndex(n - 1, S32, body_fn,
+                                                {w, vs, taus}, "wy", builder));
   return values[0];
 }
 
