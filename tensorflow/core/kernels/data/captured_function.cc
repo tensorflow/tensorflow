@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/stats_utils.h"
@@ -856,6 +857,7 @@ Status CapturedFunction::IsMultiDevice(IteratorContext* ctx,
       LookupFunction(*metadata_->lib_def(), metadata_->func().name(), &fdef));
 
   Device* current_device = ctx->flr()->device();
+  DeviceType current_device_type(current_device->device_type());
   DeviceNameUtils::ParsedName current_device_name;
   if (!DeviceNameUtils::ParseFullName(current_device->name(),
                                       &current_device_name)) {
@@ -864,8 +866,8 @@ Status CapturedFunction::IsMultiDevice(IteratorContext* ctx,
   }
 
   // Check if any of the captured inputs are placed on a device not compatible
-  // with the current device. For non-captured inputs, we assume the are placed
-  // on the same device as the iterator.
+  // with the current device. For non-captured inputs, we assume they are placed
+  // on the current device.
   for (const auto& input : captured_inputs_) {
     DataType dtype = input.dtype();
     if (dtype == DT_RESOURCE) {
@@ -884,12 +886,18 @@ Status CapturedFunction::IsMultiDevice(IteratorContext* ctx,
     }
   }
 
-  // Check if any of the ops are placed on a device not compatible with the
-  // current device.
+  // Check if all ops could be placed on the current device.
   for (const auto& name : metadata_->lib_def()->ListFunctionNames()) {
     const FunctionDef* fdef;
     TF_RETURN_IF_ERROR(LookupFunction(*metadata_->lib_def(), name, &fdef));
     for (const auto& node : fdef->node_def()) {
+      // Check if the op has a kernel availabe for the current device.
+      if (!KernelDefAvailable(current_device_type, node)) {
+        *is_multi_device = true;
+        return Status::OK();
+      }
+      // If the op has a requested device, check if the requested device is
+      // compatible with the current device.
       if (!node.device().empty()) {
         DeviceNameUtils::ParsedName node_device_name;
         if (!DeviceNameUtils::ParseFullName(node.device(), &node_device_name)) {
