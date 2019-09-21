@@ -1131,9 +1131,9 @@ cc_library(
     ] + if_windows(["//tensorflow/core/platform:windows/integral_types.h"]),
     visibility = ["//visibility:public"],
     deps =
-        [
+        if_mobile([
             "@nsync//:nsync_cpp",
-        ] + [
+        ]) + [
             "//third_party/eigen3",
             "//tensorflow/core/lib/bfloat16",
             "//tensorflow/core/platform/default/build_config:minimal",
