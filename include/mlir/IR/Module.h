@@ -53,7 +53,7 @@ public:
 
   /// Operation hooks.
   static ParseResult parse(OpAsmParser &parser, OperationState &result);
-  void print(OpAsmPrinter *p);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
 
   /// Return body of this module.

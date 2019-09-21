@@ -163,46 +163,46 @@ mlir::impl::parseFunctionLikeOp(OpAsmParser &parser, OperationState &result,
 
 /// Print the signature of the function-like operation `op`.  Assumes `op` has
 /// the FunctionLike trait and passed the verification.
-static void printSignature(OpAsmPrinter *p, Operation *op,
+static void printSignature(OpAsmPrinter &p, Operation *op,
                            ArrayRef<Type> argTypes, bool isVariadic,
                            ArrayRef<Type> results) {
   Region &body = op->getRegion(0);
   bool isExternal = body.empty();
 
-  *p << '(';
+  p << '(';
   for (unsigned i = 0, e = argTypes.size(); i < e; ++i) {
     if (i > 0)
-      *p << ", ";
+      p << ", ";
 
     if (!isExternal) {
-      p->printOperand(body.front().getArgument(i));
-      *p << ": ";
+      p.printOperand(body.front().getArgument(i));
+      p << ": ";
     }
 
-    p->printType(argTypes[i]);
-    p->printOptionalAttrDict(::mlir::impl::getArgAttrs(op, i));
+    p.printType(argTypes[i]);
+    p.printOptionalAttrDict(::mlir::impl::getArgAttrs(op, i));
   }
 
   if (isVariadic) {
     if (!argTypes.empty())
-      *p << ", ";
-    *p << "...";
+      p << ", ";
+    p << "...";
   }
 
-  *p << ')';
-  p->printOptionalArrowTypeList(results);
+  p << ')';
+  p.printOptionalArrowTypeList(results);
 }
 
 /// Printer implementation for function-like operations.  Accepts lists of
 /// argument and result types to use while printing.
-void mlir::impl::printFunctionLikeOp(OpAsmPrinter *p, Operation *op,
+void mlir::impl::printFunctionLikeOp(OpAsmPrinter &p, Operation *op,
                                      ArrayRef<Type> argTypes, bool isVariadic,
                                      ArrayRef<Type> results) {
   // Print the operation and the function name.
   auto funcName =
       op->getAttrOfType<StringAttr>(::mlir::SymbolTable::getSymbolAttrName())
           .getValue();
-  *p << op->getName() << " @" << funcName;
+  p << op->getName() << " @" << funcName;
 
   // Print the signature.
   printSignature(p, op, argTypes, isVariadic, results);
@@ -221,13 +221,13 @@ void mlir::impl::printFunctionLikeOp(OpAsmPrinter *p, Operation *op,
 
   auto attrs = op->getAttrs();
   if (attrs.size() > ignoredAttrs.size()) {
-    *p << "\n  attributes ";
-    p->printOptionalAttrDict(attrs, ignoredAttrs);
+    p << "\n  attributes ";
+    p.printOptionalAttrDict(attrs, ignoredAttrs);
   }
 
   // Print the body if this is not an external function.
   Region &body = op->getRegion(0);
   if (!body.empty())
-    p->printRegion(body, /*printEntryBlockArgs=*/false,
-                   /*printBlockTerminators=*/true);
+    p.printRegion(body, /*printEntryBlockArgs=*/false,
+                  /*printBlockTerminators=*/true);
 }

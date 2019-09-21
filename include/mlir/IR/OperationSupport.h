@@ -101,7 +101,7 @@ public:
   ParseResult (&parseAssembly)(OpAsmParser &parser, OperationState &result);
 
   /// This hook implements the AsmPrinter for this operation.
-  void (&printAssembly)(Operation *op, OpAsmPrinter *p);
+  void (&printAssembly)(Operation *op, OpAsmPrinter &p);
 
   /// This hook implements the verifier for this operation.  It should emits an
   /// error message and returns failure if a problem is detected, or returns
@@ -172,7 +172,7 @@ private:
       StringRef name, Dialect &dialect, OperationProperties opProperties,
       bool (&classof)(Operation *op),
       ParseResult (&parseAssembly)(OpAsmParser &parser, OperationState &result),
-      void (&printAssembly)(Operation *op, OpAsmPrinter *p),
+      void (&printAssembly)(Operation *op, OpAsmPrinter &p),
       LogicalResult (&verifyInvariants)(Operation *op),
       LogicalResult (&foldHook)(Operation *op, ArrayRef<Attribute> operands,
                                 SmallVectorImpl<OpFoldResult> &results),

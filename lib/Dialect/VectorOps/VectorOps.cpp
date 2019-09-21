@@ -49,10 +49,10 @@ mlir::vector::VectorOpsDialect::VectorOpsDialect(MLIRContext *context)
 // ExtractElementOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, ExtractElementOp op) {
-  *p << op.getOperationName() << " " << *op.vector() << op.position();
-  p->printOptionalAttrDict(op.getAttrs(), {"position"});
-  *p << " : " << op.vector()->getType();
+static void print(OpAsmPrinter &p, ExtractElementOp op) {
+  p << op.getOperationName() << " " << *op.vector() << op.position();
+  p.printOptionalAttrDict(op.getAttrs(), {"position"});
+  p << " : " << op.vector()->getType();
 }
 
 static ParseResult parseExtractElementOp(OpAsmParser &parser,
@@ -113,11 +113,11 @@ static LogicalResult verify(ExtractElementOp op) {
 // OuterProductOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, OuterProductOp op) {
-  *p << op.getOperationName() << " " << *op.lhs() << ", " << *op.rhs();
+static void print(OpAsmPrinter &p, OuterProductOp op) {
+  p << op.getOperationName() << " " << *op.lhs() << ", " << *op.rhs();
   if (llvm::size(op.acc()) > 0)
-    *p << ", " << **op.acc().begin();
-  *p << " : " << op.lhs()->getType() << ", " << op.rhs()->getType();
+    p << ", " << **op.acc().begin();
+  p << " : " << op.lhs()->getType() << ", " << op.rhs()->getType();
 }
 
 static ParseResult parseOuterProductOp(OpAsmParser &parser,
@@ -228,21 +228,21 @@ AffineMap VectorTransferReadOp::getPermutationMap() {
   return getAttrOfType<AffineMapAttr>(getPermutationMapAttrName()).getValue();
 }
 
-void VectorTransferReadOp::print(OpAsmPrinter *p) {
-  *p << getOperationName() << " ";
-  p->printOperand(getMemRef());
-  *p << "[";
-  p->printOperands(getIndices());
-  *p << "]";
+void VectorTransferReadOp::print(OpAsmPrinter &p) {
+  p << getOperationName() << " ";
+  p.printOperand(getMemRef());
+  p << "[";
+  p.printOperands(getIndices());
+  p << "]";
   auto optionalPaddingValue = getPaddingValue();
   if (optionalPaddingValue) {
-    *p << ", (";
-    p->printOperand(*optionalPaddingValue);
-    *p << ")";
+    p << ", (";
+    p.printOperand(*optionalPaddingValue);
+    p << ")";
   }
-  p->printOptionalAttrDict(getAttrs());
-  *p << " : " << getMemRefType();
-  *p << ", " << getResultType();
+  p.printOptionalAttrDict(getAttrs());
+  p << " : " << getMemRefType();
+  p << ", " << getResultType();
 }
 
 ParseResult VectorTransferReadOp::parse(OpAsmParser &parser,
@@ -396,18 +396,18 @@ AffineMap VectorTransferWriteOp::getPermutationMap() {
   return getAttrOfType<AffineMapAttr>(getPermutationMapAttrName()).getValue();
 }
 
-void VectorTransferWriteOp::print(OpAsmPrinter *p) {
-  *p << getOperationName();
-  *p << " " << *getVector();
-  *p << ", " << *getMemRef();
-  *p << "[";
-  p->printOperands(getIndices());
-  *p << "]";
-  p->printOptionalAttrDict(getAttrs());
-  *p << " : ";
-  p->printType(getVectorType());
-  *p << ", ";
-  p->printType(getMemRefType());
+void VectorTransferWriteOp::print(OpAsmPrinter &p) {
+  p << getOperationName();
+  p << " " << *getVector();
+  p << ", " << *getMemRef();
+  p << "[";
+  p.printOperands(getIndices());
+  p << "]";
+  p.printOptionalAttrDict(getAttrs());
+  p << " : ";
+  p.printType(getVectorType());
+  p << ", ";
+  p.printType(getMemRefType());
 }
 
 ParseResult VectorTransferWriteOp::parse(OpAsmParser &parser,
@@ -524,9 +524,9 @@ ParseResult VectorTypeCastOp::parse(OpAsmParser &parser,
                  parser.resolveOperand(operand, srcType, result.operands));
 }
 
-void VectorTypeCastOp::print(OpAsmPrinter *p) {
-  *p << getOperationName() << ' ' << *getOperand() << " : "
-     << getOperand()->getType() << ", " << getType();
+void VectorTypeCastOp::print(OpAsmPrinter &p) {
+  p << getOperationName() << ' ' << *getOperand() << " : "
+    << getOperand()->getType() << ", " << getType();
 }
 
 LogicalResult VectorTypeCastOp::verify() {

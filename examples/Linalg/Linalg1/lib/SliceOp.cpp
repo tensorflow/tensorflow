@@ -122,12 +122,12 @@ ParseResult linalg::SliceOp::parse(OpAsmParser &parser,
 //
 // Where %0 is an ssa-value holding a `view<?x?xf32>`, %i0 is an ssa-value
 // holding an index.
-void linalg::SliceOp::print(OpAsmPrinter *p) {
-  *p << getOperationName() << " " << *getParentView() << "[" << *getIndexing()
-     << "]";
-  *p << " {dim = " << getAttrOfType<IntegerAttr>("dim").getInt() << "}";
-  p->printOptionalAttrDict(getAttrs(), {"dim"});
-  *p << " : " << getParentViewType() << ", " << getIndexing()->getType();
+void linalg::SliceOp::print(OpAsmPrinter &p) {
+  p << getOperationName() << " " << *getParentView() << "[" << *getIndexing()
+    << "]";
+  p << " {dim = " << getAttrOfType<IntegerAttr>("dim").getInt() << "}";
+  p.printOptionalAttrDict(getAttrs(), {"dim"});
+  p << " : " << getParentViewType() << ", " << getIndexing()->getType();
 }
 
 ViewType linalg::SliceOp::getViewType() { return getType().cast<ViewType>(); }

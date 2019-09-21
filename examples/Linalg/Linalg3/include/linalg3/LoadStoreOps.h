@@ -42,7 +42,7 @@ public:
   mlir::LogicalResult verify();
   static mlir::ParseResult parse(mlir::OpAsmParser &parser,
                                  mlir::OperationState &result);
-  void print(mlir::OpAsmPrinter *p);
+  void print(mlir::OpAsmPrinter &p);
 
   //////////////////////////////////////////////////////////////////////////////
   // Op-specific functionality.
@@ -72,7 +72,7 @@ public:
   mlir::LogicalResult verify();
   static mlir::ParseResult parse(mlir::OpAsmParser &parser,
                                  mlir::OperationState &result);
-  void print(mlir::OpAsmPrinter *p);
+  void print(mlir::OpAsmPrinter &p);
 
   //////////////////////////////////////////////////////////////////////////////
   // Op-specific functionality.

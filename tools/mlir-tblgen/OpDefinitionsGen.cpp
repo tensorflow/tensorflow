@@ -1090,7 +1090,7 @@ void OpEmitter::genPrinter() {
   if (!codeInit)
     return;
 
-  auto &method = opClass.newMethod("void", "print", "OpAsmPrinter *p");
+  auto &method = opClass.newMethod("void", "print", "OpAsmPrinter &p");
   FmtContext fctx;
   fctx.addSubst("cppClass", opClass.getClassName());
   auto printer = codeInit->getValue().ltrim().rtrim(" \t\v\f\r");

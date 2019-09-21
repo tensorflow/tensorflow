@@ -169,22 +169,22 @@ LogicalResult LaunchOp::verify() {
 //   (%iter-x, %iter-y, %iter-z) in
 //   (%size-x = %ssa-use, %size-y = %ssa-use, %size-z = %ssa-use)
 // where %size-* and %iter-* will correspond to the body region arguments.
-static void printSizeAssignment(OpAsmPrinter *p, KernelDim3 size,
+static void printSizeAssignment(OpAsmPrinter &p, KernelDim3 size,
                                 ArrayRef<Value *> operands, KernelDim3 ids) {
-  *p << '(' << *ids.x << ", " << *ids.y << ", " << *ids.z << ") in (";
-  *p << *size.x << " = " << *operands[0] << ", ";
-  *p << *size.y << " = " << *operands[1] << ", ";
-  *p << *size.z << " = " << *operands[2] << ')';
+  p << '(' << *ids.x << ", " << *ids.y << ", " << *ids.z << ") in (";
+  p << *size.x << " = " << *operands[0] << ", ";
+  p << *size.y << " = " << *operands[1] << ", ";
+  p << *size.z << " = " << *operands[2] << ')';
 }
 
-void LaunchOp::print(OpAsmPrinter *p) {
+void LaunchOp::print(OpAsmPrinter &p) {
   SmallVector<Value *, 12> operandContainer(operand_begin(), operand_end());
   ArrayRef<Value *> operands(operandContainer);
 
   // Print the launch configuration.
-  *p << getOperationName() << ' ' << getBlocksKeyword();
+  p << getOperationName() << ' ' << getBlocksKeyword();
   printSizeAssignment(p, getGridSize(), operands.take_front(3), getBlockIds());
-  *p << ' ' << getThreadsKeyword();
+  p << ' ' << getThreadsKeyword();
   printSizeAssignment(p, getBlockSize(), operands.slice(3, 3), getThreadIds());
 
   // From now on, the first kNumConfigOperands operands corresponding to grid
@@ -193,28 +193,28 @@ void LaunchOp::print(OpAsmPrinter *p) {
 
   // Print the data argument remapping.
   if (!getBody().empty() && !operands.empty()) {
-    *p << ' ' << getArgsKeyword() << '(';
+    p << ' ' << getArgsKeyword() << '(';
     for (unsigned i = 0, e = operands.size(); i < e; ++i) {
       if (i != 0)
-        *p << ", ";
-      *p << *getBody().front().getArgument(kNumConfigRegionAttributes + i)
-         << " = " << *operands[i];
+        p << ", ";
+      p << *getBody().front().getArgument(kNumConfigRegionAttributes + i)
+        << " = " << *operands[i];
     }
-    *p << ") ";
+    p << ") ";
   }
 
   // Print the types of data arguments.
   if (!operands.empty()) {
-    *p << ": ";
+    p << ": ";
     for (unsigned i = 0, e = operands.size(); i < e; ++i) {
       if (i != 0)
-        *p << ", ";
-      *p << operands[i]->getType();
+        p << ", ";
+      p << operands[i]->getType();
     }
   }
 
-  p->printRegion(getBody(), /*printEntryBlockArgs=*/false);
-  p->printOptionalAttrDict(getAttrs());
+  p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
+  p.printOptionalAttrDict(getAttrs());
 }
 
 // Parse the size assignment blocks for blocks and threads.  These have the form

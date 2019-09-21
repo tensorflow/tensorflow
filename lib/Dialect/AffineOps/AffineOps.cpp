@@ -208,11 +208,11 @@ ParseResult AffineApplyOp::parse(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
-void AffineApplyOp::print(OpAsmPrinter *p) {
-  *p << "affine.apply " << getAttr("map");
+void AffineApplyOp::print(OpAsmPrinter &p) {
+  p << "affine.apply " << getAttr("map");
   printDimAndSymbolList(operand_begin(), operand_end(),
                         getAffineMap().getNumDims(), p);
-  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{"map"});
+  p.printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{"map"});
 }
 
 LogicalResult AffineApplyOp::verify() {
@@ -816,23 +816,23 @@ void AffineDmaStartOp::build(Builder *builder, OperationState &result,
   }
 }
 
-void AffineDmaStartOp::print(OpAsmPrinter *p) {
-  *p << "affine.dma_start " << *getSrcMemRef() << '[';
+void AffineDmaStartOp::print(OpAsmPrinter &p) {
+  p << "affine.dma_start " << *getSrcMemRef() << '[';
   SmallVector<Value *, 8> operands(getSrcIndices());
-  p->printAffineMapOfSSAIds(getSrcMapAttr(), operands);
-  *p << "], " << *getDstMemRef() << '[';
+  p.printAffineMapOfSSAIds(getSrcMapAttr(), operands);
+  p << "], " << *getDstMemRef() << '[';
   operands.assign(getDstIndices().begin(), getDstIndices().end());
-  p->printAffineMapOfSSAIds(getDstMapAttr(), operands);
-  *p << "], " << *getTagMemRef() << '[';
+  p.printAffineMapOfSSAIds(getDstMapAttr(), operands);
+  p << "], " << *getTagMemRef() << '[';
   operands.assign(getTagIndices().begin(), getTagIndices().end());
-  p->printAffineMapOfSSAIds(getTagMapAttr(), operands);
-  *p << "], " << *getNumElements();
+  p.printAffineMapOfSSAIds(getTagMapAttr(), operands);
+  p << "], " << *getNumElements();
   if (isStrided()) {
-    *p << ", " << *getStride();
-    *p << ", " << *getNumElementsPerStride();
+    p << ", " << *getStride();
+    p << ", " << *getNumElementsPerStride();
   }
-  *p << " : " << getSrcMemRefType() << ", " << getDstMemRefType() << ", "
-     << getTagMemRefType();
+  p << " : " << getSrcMemRefType() << ", " << getDstMemRefType() << ", "
+    << getTagMemRefType();
 }
 
 // Parse AffineDmaStartOp.
@@ -975,13 +975,13 @@ void AffineDmaWaitOp::build(Builder *builder, OperationState &result,
   result.addOperands(numElements);
 }
 
-void AffineDmaWaitOp::print(OpAsmPrinter *p) {
-  *p << "affine.dma_wait " << *getTagMemRef() << '[';
+void AffineDmaWaitOp::print(OpAsmPrinter &p) {
+  p << "affine.dma_wait " << *getTagMemRef() << '[';
   SmallVector<Value *, 2> operands(getTagIndices());
-  p->printAffineMapOfSSAIds(getTagMapAttr(), operands);
-  *p << "], ";
-  p->printOperand(getNumElements());
-  *p << " : " << getTagMemRef()->getType();
+  p.printAffineMapOfSSAIds(getTagMapAttr(), operands);
+  p << "], ";
+  p.printOperand(getNumElements());
+  p << " : " << getTagMemRef()->getType();
 }
 
 // Parse AffineDmaWaitOp.
@@ -1258,7 +1258,7 @@ ParseResult parseAffineForOp(OpAsmParser &parser, OperationState &result) {
 
 static void printBound(AffineMapAttr boundMap,
                        Operation::operand_range boundOperands,
-                       const char *prefix, OpAsmPrinter *p) {
+                       const char *prefix, OpAsmPrinter &p) {
   AffineMap map = boundMap.getValue();
 
   // Check if this bound should be printed using custom assembly form.
@@ -1273,7 +1273,7 @@ static void printBound(AffineMapAttr boundMap,
     // Print constant bound.
     if (map.getNumDims() == 0 && map.getNumSymbols() == 0) {
       if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
-        *p << constExpr.getValue();
+        p << constExpr.getValue();
         return;
       }
     }
@@ -1282,38 +1282,38 @@ static void printBound(AffineMapAttr boundMap,
     // single symbol.
     if (map.getNumDims() == 0 && map.getNumSymbols() == 1) {
       if (auto symExpr = expr.dyn_cast<AffineSymbolExpr>()) {
-        p->printOperand(*boundOperands.begin());
+        p.printOperand(*boundOperands.begin());
         return;
       }
     }
   } else {
     // Map has multiple results. Print 'min' or 'max' prefix.
-    *p << prefix << ' ';
+    p << prefix << ' ';
   }
 
   // Print the map and its operands.
-  *p << boundMap;
+  p << boundMap;
   printDimAndSymbolList(boundOperands.begin(), boundOperands.end(),
                         map.getNumDims(), p);
 }
 
-void print(OpAsmPrinter *p, AffineForOp op) {
-  *p << "affine.for ";
-  p->printOperand(op.getBody()->getArgument(0));
-  *p << " = ";
+void print(OpAsmPrinter &p, AffineForOp op) {
+  p << "affine.for ";
+  p.printOperand(op.getBody()->getArgument(0));
+  p << " = ";
   printBound(op.getLowerBoundMapAttr(), op.getLowerBoundOperands(), "max", p);
-  *p << " to ";
+  p << " to ";
   printBound(op.getUpperBoundMapAttr(), op.getUpperBoundOperands(), "min", p);
 
   if (op.getStep() != 1)
-    *p << " step " << op.getStep();
-  p->printRegion(op.region(),
-                 /*printEntryBlockArgs=*/false,
-                 /*printBlockTerminators=*/false);
-  p->printOptionalAttrDict(op.getAttrs(),
-                           /*elidedAttrs=*/{op.getLowerBoundAttrName(),
-                                            op.getUpperBoundAttrName(),
-                                            op.getStepAttrName()});
+    p << " step " << op.getStep();
+  p.printRegion(op.region(),
+                /*printEntryBlockArgs=*/false,
+                /*printBlockTerminators=*/false);
+  p.printOptionalAttrDict(op.getAttrs(),
+                          /*elidedAttrs=*/{op.getLowerBoundAttrName(),
+                                           op.getUpperBoundAttrName(),
+                                           op.getStepAttrName()});
 }
 
 namespace {
@@ -1636,28 +1636,28 @@ ParseResult parseAffineIfOp(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
-void print(OpAsmPrinter *p, AffineIfOp op) {
+void print(OpAsmPrinter &p, AffineIfOp op) {
   auto conditionAttr =
       op.getAttrOfType<IntegerSetAttr>(op.getConditionAttrName());
-  *p << "affine.if " << conditionAttr;
+  p << "affine.if " << conditionAttr;
   printDimAndSymbolList(op.operand_begin(), op.operand_end(),
                         conditionAttr.getValue().getNumDims(), p);
-  p->printRegion(op.thenRegion(),
-                 /*printEntryBlockArgs=*/false,
-                 /*printBlockTerminators=*/false);
+  p.printRegion(op.thenRegion(),
+                /*printEntryBlockArgs=*/false,
+                /*printBlockTerminators=*/false);
 
   // Print the 'else' regions if it has any blocks.
   auto &elseRegion = op.elseRegion();
   if (!elseRegion.empty()) {
-    *p << " else";
-    p->printRegion(elseRegion,
-                   /*printEntryBlockArgs=*/false,
-                   /*printBlockTerminators=*/false);
+    p << " else";
+    p.printRegion(elseRegion,
+                  /*printEntryBlockArgs=*/false,
+                  /*printBlockTerminators=*/false);
   }
 
   // Print the attribute list.
-  p->printOptionalAttrDict(op.getAttrs(),
-                           /*elidedAttrs=*/op.getConditionAttrName());
+  p.printOptionalAttrDict(op.getAttrs(),
+                          /*elidedAttrs=*/op.getConditionAttrName());
 }
 
 IntegerSet AffineIfOp::getIntegerSet() {
@@ -1771,16 +1771,16 @@ ParseResult AffineLoadOp::parse(OpAsmParser &parser, OperationState &result) {
       parser.addTypeToList(type.getElementType(), result.types));
 }
 
-void AffineLoadOp::print(OpAsmPrinter *p) {
-  *p << "affine.load " << *getMemRef() << '[';
+void AffineLoadOp::print(OpAsmPrinter &p) {
+  p << "affine.load " << *getMemRef() << '[';
   AffineMapAttr mapAttr = getAttrOfType<AffineMapAttr>(getMapAttrName());
   if (mapAttr) {
     SmallVector<Value *, 2> operands(getMapOperands());
-    p->printAffineMapOfSSAIds(mapAttr, operands);
+    p.printAffineMapOfSSAIds(mapAttr, operands);
   }
-  *p << ']';
-  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{getMapAttrName()});
-  *p << " : " << getMemRefType();
+  p << ']';
+  p.printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{getMapAttrName()});
+  p << " : " << getMemRefType();
 }
 
 LogicalResult AffineLoadOp::verify() {
@@ -1865,17 +1865,17 @@ ParseResult AffineStoreOp::parse(OpAsmParser &parser, OperationState &result) {
       parser.resolveOperands(mapOperands, affineIntTy, result.operands));
 }
 
-void AffineStoreOp::print(OpAsmPrinter *p) {
-  *p << "affine.store " << *getValueToStore();
-  *p << ", " << *getMemRef() << '[';
+void AffineStoreOp::print(OpAsmPrinter &p) {
+  p << "affine.store " << *getValueToStore();
+  p << ", " << *getMemRef() << '[';
   AffineMapAttr mapAttr = getAttrOfType<AffineMapAttr>(getMapAttrName());
   if (mapAttr) {
     SmallVector<Value *, 2> operands(getMapOperands());
-    p->printAffineMapOfSSAIds(mapAttr, operands);
+    p.printAffineMapOfSSAIds(mapAttr, operands);
   }
-  *p << ']';
-  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{getMapAttrName()});
-  *p << " : " << getMemRefType();
+  p << ']';
+  p.printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{getMapAttrName()});
+  p << " : " << getMemRefType();
 }
 
 LogicalResult AffineStoreOp::verify() {

@@ -66,9 +66,9 @@ ParseResult linalg::RangeOp::parse(OpAsmParser &parser,
 // ```{.mlir}
 //   linalg.range %arg0:%arg1:%c42 : !linalg.range
 // ```
-void linalg::RangeOp::print(OpAsmPrinter *p) {
-  *p << getOperationName() << " " << *getMin() << ":" << *getMax() << ":"
-     << *getStep();
-  p->printOptionalAttrDict(getAttrs());
-  *p << " : " << getType();
+void linalg::RangeOp::print(OpAsmPrinter &p) {
+  p << getOperationName() << " " << *getMin() << ":" << *getMax() << ":"
+    << *getStep();
+  p.printOptionalAttrDict(getAttrs());
+  p << " : " << getType();
 }

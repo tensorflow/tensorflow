@@ -41,12 +41,12 @@ void linalg::LoadOp::build(Builder *b, OperationState &result, Value *view,
   result.addTypes(viewType.getElementType());
 }
 
-void linalg::LoadOp::print(OpAsmPrinter *p) {
-  *p << getOperationName() << " " << *getView() << '[';
-  p->printOperands(getIndices());
-  *p << ']';
-  p->printOptionalAttrDict(getAttrs());
-  *p << " : " << getViewType();
+void linalg::LoadOp::print(OpAsmPrinter &p) {
+  p << getOperationName() << " " << *getView() << '[';
+  p.printOperands(getIndices());
+  p << ']';
+  p.printOptionalAttrDict(getAttrs());
+  p << " : " << getViewType();
 }
 
 ParseResult linalg::LoadOp::parse(OpAsmParser &parser, OperationState &result) {
@@ -92,13 +92,13 @@ void linalg::StoreOp::build(Builder *b, OperationState &result,
   result.addOperands(indices);
 }
 
-void linalg::StoreOp::print(OpAsmPrinter *p) {
-  *p << getOperationName() << " " << *getValueToStore();
-  *p << ", " << *getView() << '[';
-  p->printOperands(getIndices());
-  *p << ']';
-  p->printOptionalAttrDict(getAttrs());
-  *p << " : " << getViewType();
+void linalg::StoreOp::print(OpAsmPrinter &p) {
+  p << getOperationName() << " " << *getValueToStore();
+  p << ", " << *getView() << '[';
+  p.printOperands(getIndices());
+  p << ']';
+  p.printOptionalAttrDict(getAttrs());
+  p << " : " << getViewType();
 }
 
 ParseResult linalg::StoreOp::parse(OpAsmParser &parser,

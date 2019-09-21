@@ -136,19 +136,19 @@ ParseResult linalg::ViewOp::parse(OpAsmParser &parser, OperationState &result) {
 //
 // Where %0 is an ssa-value holding a MemRef, %1 and %2 are ssa-value each
 // holding a range.
-void linalg::ViewOp::print(OpAsmPrinter *p) {
-  *p << getOperationName() << " " << *getSupportingMemRef() << "[";
+void linalg::ViewOp::print(OpAsmPrinter &p) {
+  p << getOperationName() << " " << *getSupportingMemRef() << "[";
   unsigned numRanges = llvm::size(getIndexings());
   unsigned index = 0;
   for (auto indexing : getIndexings()) {
-    *p << *indexing << ((index++ == numRanges - 1) ? "" : ", ");
+    p << *indexing << ((index++ == numRanges - 1) ? "" : ", ");
   }
-  p->printOptionalAttrDict(getAttrs());
-  *p << "] : " << getSupportingMemRef()->getType().cast<MemRefType>();
+  p.printOptionalAttrDict(getAttrs());
+  p << "] : " << getSupportingMemRef()->getType().cast<MemRefType>();
   for (auto indexing : getIndexings()) {
-    *p << ", " << indexing->getType();
+    p << ", " << indexing->getType();
   }
-  *p << ", " << getType();
+  p << ", " << getType();
 }
 
 Type linalg::ViewOp::getElementType() { return getViewType().getElementType(); }

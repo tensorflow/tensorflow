@@ -213,7 +213,7 @@ protected:
   static ParseResult parse(OpAsmParser &parser, OperationState &result);
 
   // The fallback for the printer is to print it the generic assembly form.
-  void print(OpAsmPrinter *p);
+  void print(OpAsmPrinter &p);
 
   /// Mutability management is handled by the OpWrapper/OpConstWrapper classes,
   /// so we can cast it away here.
@@ -941,7 +941,7 @@ public:
 
   /// This is the hook used by the AsmPrinter to emit this to the .mlir file.
   /// Op implementations should provide a print method.
-  static void printAssembly(Operation *op, OpAsmPrinter *p) {
+  static void printAssembly(Operation *op, OpAsmPrinter &p) {
     auto opPointer = dyn_cast<ConcreteType>(op);
     assert(opPointer &&
            "op's name does not match name of concrete type instantiated with");
@@ -1149,7 +1149,7 @@ ParseResult parseBinaryOp(OpAsmParser &parser, OperationState &result);
 // Prints the given binary `op` in custom assembly form if both the two operands
 // and the result have the same time. Otherwise, prints the generic assembly
 // form.
-void printBinaryOp(Operation *op, OpAsmPrinter *p);
+void printBinaryOp(Operation *op, OpAsmPrinter &p);
 } // namespace impl
 
 // These functions are out-of-line implementations of the methods in CastOp,
@@ -1158,7 +1158,7 @@ namespace impl {
 void buildCastOp(Builder *builder, OperationState &result, Value *source,
                  Type destType);
 ParseResult parseCastOp(OpAsmParser &parser, OperationState &result);
-void printCastOp(Operation *op, OpAsmPrinter *p);
+void printCastOp(Operation *op, OpAsmPrinter &p);
 Value *foldCastOp(Operation *op);
 } // namespace impl
 } // end namespace mlir

@@ -87,7 +87,7 @@ public:
 
   // Hooks to customize behavior of this op.
   static ParseResult parse(OpAsmParser &parser, OperationState &result);
-  void print(OpAsmPrinter *p);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
   OpFoldResult fold(ArrayRef<Attribute> operands);
 
@@ -287,7 +287,7 @@ public:
 
   static StringRef getOperationName() { return "affine.dma_start"; }
   static ParseResult parse(OpAsmParser &parser, OperationState &result);
-  void print(OpAsmPrinter *p);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
@@ -372,7 +372,7 @@ public:
 
   static StringRef getTagMapAttrName() { return "tag_map"; }
   static ParseResult parse(OpAsmParser &parser, OperationState &result);
-  void print(OpAsmPrinter *p);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
@@ -440,7 +440,7 @@ public:
 
   // Hooks to customize behavior of this op.
   static ParseResult parse(OpAsmParser &parser, OperationState &result);
-  void print(OpAsmPrinter *p);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
@@ -511,7 +511,7 @@ public:
 
   // Hooks to customize behavior of this op.
   static ParseResult parse(OpAsmParser &parser, OperationState &result);
-  void print(OpAsmPrinter *p);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);

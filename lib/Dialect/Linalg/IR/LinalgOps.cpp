@@ -128,16 +128,16 @@ SimplifyDimOp::matchAndRewrite(linalg::DimOp dimOp,
 // BufferAllocOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, BufferAllocOp op) {
-  *p << op.getOperationName() << " ";
+static void print(OpAsmPrinter &p, BufferAllocOp op) {
+  p << op.getOperationName() << " ";
   if (!llvm::empty(op.size()))
-    *p << *op.getOperand(0);
+    p << *op.getOperand(0);
   if (op.alignment().hasValue() && op.alignment()->getSExtValue() != 0)
-    p->printOptionalAttrDict(op.getAttrs());
+    p.printOptionalAttrDict(op.getAttrs());
   else
-    p->printOptionalAttrDict(op.getAttrs(),
-                             BufferAllocOp::getAlignmentAttrName());
-  *p << " : " << op.getBufferType();
+    p.printOptionalAttrDict(op.getAttrs(),
+                            BufferAllocOp::getAlignmentAttrName());
+  p << " : " << op.getBufferType();
 }
 
 static ParseResult parseBufferAllocOp(OpAsmParser &parser,
@@ -181,10 +181,10 @@ static LogicalResult verify(BufferAllocOp op) {
 // BufferDeallocOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, BufferDeallocOp op) {
-  *p << op.getOperationName() << " " << *op.buffer();
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.getBufferType();
+static void print(OpAsmPrinter &p, BufferDeallocOp op) {
+  p << op.getOperationName() << " " << *op.buffer();
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.getBufferType();
 }
 
 static ParseResult parseBufferDeallocOp(OpAsmParser &parser,
@@ -202,10 +202,10 @@ static ParseResult parseBufferDeallocOp(OpAsmParser &parser,
 // BufferSizeOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, BufferSizeOp op) {
-  *p << op.getOperationName() << " " << *op.buffer();
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.buffer()->getType();
+static void print(OpAsmPrinter &p, BufferSizeOp op) {
+  p << op.getOperationName() << " " << *op.buffer();
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.buffer()->getType();
 }
 
 static ParseResult parseBufferSizeOp(OpAsmParser &parser,
@@ -228,11 +228,11 @@ void mlir::linalg::DimOp::getCanonicalizationPatterns(
   results.insert<SimplifyDimOp>(context);
 }
 
-static void print(OpAsmPrinter *p, linalg::DimOp op) {
-  *p << op.getOperationName() << " " << *op.getOperand() << ", "
-     << op.getIndex();
-  p->printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"index"});
-  *p << " : " << op.getOperand()->getType();
+static void print(OpAsmPrinter &p, linalg::DimOp op) {
+  p << op.getOperationName() << " " << *op.getOperand() << ", "
+    << op.getIndex();
+  p.printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"index"});
+  p << " : " << op.getOperand()->getType();
 }
 
 static ParseResult parseDimOp(OpAsmParser &parser, OperationState &result) {
@@ -253,7 +253,7 @@ static ParseResult parseDimOp(OpAsmParser &parser, OperationState &result) {
 // GenericOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, GenericOp op) {
+static void print(OpAsmPrinter &p, GenericOp op) {
   auto attrNames = op.linalgTraitAttrNames();
   llvm::StringSet<> linalgTraitAttrsSet;
   linalgTraitAttrsSet.insert(attrNames.begin(), attrNames.end());
@@ -263,13 +263,13 @@ static void print(OpAsmPrinter *p, GenericOp op) {
       attrs.push_back(attr);
   }
   auto dictAttr = DictionaryAttr::get(attrs, op.getContext());
-  *p << op.getOperationName() << " " << dictAttr << " ";
-  p->printOperands(op.getOperands());
+  p << op.getOperationName() << " " << dictAttr << " ";
+  p.printOperands(op.getOperands());
   if (!op.region().empty())
-    p->printRegion(op.region());
-  p->printOptionalAttrDict(op.getAttrs(), attrNames);
-  *p << ": ";
-  interleaveComma(op.getOperandTypes(), *p);
+    p.printRegion(op.region());
+  p.printOptionalAttrDict(op.getAttrs(), attrNames);
+  p << ": ";
+  interleaveComma(op.getOperandTypes(), p);
 }
 
 static ParseResult parseGenericOp(OpAsmParser &parser, OperationState &result) {
@@ -393,12 +393,12 @@ static LogicalResult verify(GenericOp op) {
 // LoadOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, linalg::LoadOp op) {
-  *p << op.getOperationName() << " " << *op.view() << '[';
-  p->printOperands(op.indices());
-  *p << ']';
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.getViewType();
+static void print(OpAsmPrinter &p, linalg::LoadOp op) {
+  p << op.getOperationName() << " " << *op.view() << '[';
+  p.printOperands(op.indices());
+  p << ']';
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.getViewType();
 }
 
 static ParseResult parseLoadOp(OpAsmParser &parser, OperationState &result) {
@@ -428,11 +428,11 @@ static LogicalResult verify(linalg::LoadOp op) {
 // RangeOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, RangeOp op) {
-  *p << op.getOperationName() << " " << *op.min() << ":" << *op.max() << ":"
-     << *op.step();
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.getResult()->getType();
+static void print(OpAsmPrinter &p, RangeOp op) {
+  p << op.getOperationName() << " " << *op.min() << ":" << *op.max() << ":"
+    << *op.step();
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.getResult()->getType();
 }
 
 static ParseResult parseRangeOp(OpAsmParser &parser, OperationState &result) {
@@ -467,16 +467,16 @@ void mlir::linalg::SliceOp::build(Builder *b, OperationState &result,
   result.addTypes({ViewType::get(b->getContext(), elementType, rank)});
 }
 
-static void print(OpAsmPrinter *p, SliceOp op) {
-  *p << SliceOp::getOperationName() << " " << *op.view() << "[";
-  p->printOperands(op.indexings());
-  *p << "] ";
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.getBaseViewType();
+static void print(OpAsmPrinter &p, SliceOp op) {
+  p << SliceOp::getOperationName() << " " << *op.view() << "[";
+  p.printOperands(op.indexings());
+  p << "] ";
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.getBaseViewType();
   for (auto indexing : op.indexings()) {
-    *p << ", " << indexing->getType();
+    p << ", " << indexing->getType();
   }
-  *p << ", " << op.getType();
+  p << ", " << op.getType();
 }
 
 static ParseResult parseSliceOp(OpAsmParser &parser, OperationState &result) {
@@ -523,13 +523,13 @@ static LogicalResult verify(SliceOp op) {
 // StoreOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, linalg::StoreOp op) {
-  *p << op.getOperationName() << " " << *op.value();
-  *p << ", " << *op.view() << '[';
-  p->printOperands(op.indices());
-  *p << ']';
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.getViewType();
+static void print(OpAsmPrinter &p, linalg::StoreOp op) {
+  p << op.getOperationName() << " " << *op.value();
+  p << ", " << *op.view() << '[';
+  p.printOperands(op.indices());
+  p << ']';
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.getViewType();
 }
 
 static ParseResult parseStoreOp(OpAsmParser &parser, OperationState &result) {
@@ -564,15 +564,15 @@ static LogicalResult verify(linalg::StoreOp op) {
 // SubViewOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, SubViewOp op) {
-  *p << op.getOperationName() << " " << *op.getOperand(0) << "[";
+static void print(OpAsmPrinter &p, SubViewOp op) {
+  p << op.getOperationName() << " " << *op.getOperand(0) << "[";
   auto ranges = op.getRanges();
-  interleaveComma(ranges, *p, [&p](const SubViewOp::Range &i) {
-    *p << *i.min << ", " << *i.max << ", " << *i.step;
+  interleaveComma(ranges, p, [&p](const SubViewOp::Range &i) {
+    p << *i.min << ", " << *i.max << ", " << *i.step;
   });
-  *p << "]";
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.getViewType();
+  p << "]";
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.getViewType();
 }
 
 static ParseResult parseSubViewOp(OpAsmParser &parser, OperationState &result) {
@@ -608,11 +608,11 @@ void mlir::linalg::TransposeOp::build(Builder *b, OperationState &result,
   result.addAttribute(TransposeOp::getPermutationAttrName(), permutation);
 }
 
-static void print(OpAsmPrinter *p, TransposeOp op) {
-  *p << op.getOperationName() << " " << *op.view() << " " << op.permutation();
-  p->printOptionalAttrDict(op.getAttrs(),
-                           {TransposeOp::getPermutationAttrName()});
-  *p << " : " << op.view()->getType();
+static void print(OpAsmPrinter &p, TransposeOp op) {
+  p << op.getOperationName() << " " << *op.view() << " " << op.permutation();
+  p.printOptionalAttrDict(op.getAttrs(),
+                          {TransposeOp::getPermutationAttrName()});
+  p << " : " << op.view()->getType();
 }
 
 static ParseResult parseTransposeOp(OpAsmParser &parser,
@@ -645,12 +645,12 @@ void mlir::linalg::ViewOp::build(Builder *b, OperationState &result,
   result.addAttributes(attrs);
 }
 
-static void print(OpAsmPrinter *p, ViewOp op) {
-  *p << op.getOperationName() << " " << *op.buffer() << "[";
-  interleaveComma(op.ranges(), *p, [&](Value *v) { *p << *v; });
-  *p << "] ";
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.buffer()->getType() << " -> " << op.getType();
+static void print(OpAsmPrinter &p, ViewOp op) {
+  p << op.getOperationName() << " " << *op.buffer() << "[";
+  interleaveComma(op.ranges(), p, [&](Value *v) { p << *v; });
+  p << "] ";
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.buffer()->getType() << " -> " << op.getType();
 }
 
 static ParseResult parseViewOp(OpAsmParser &parser, OperationState &result) {
@@ -683,17 +683,17 @@ static ParseResult parseViewOp(OpAsmParser &parser, OperationState &result) {
 // YieldOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, YieldOp op) {
-  *p << op.getOperationName();
+static void print(OpAsmPrinter &p, YieldOp op) {
+  p << op.getOperationName();
   if (op.getNumOperands() > 0) {
-    *p << ' ';
-    p->printOperands(op.operand_begin(), op.operand_end());
+    p << ' ';
+    p.printOperands(op.operand_begin(), op.operand_end());
   }
-  p->printOptionalAttrDict(op.getAttrs());
+  p.printOptionalAttrDict(op.getAttrs());
   if (op.getNumOperands() > 0) {
-    *p << " : ";
-    interleaveComma(op.getOperands(), *p,
-                    [&](Value *e) { p->printType(e->getType()); });
+    p << " : ";
+    interleaveComma(op.getOperands(), p,
+                    [&](Value *e) { p.printType(e->getType()); });
   }
 }
 
@@ -752,18 +752,18 @@ static LogicalResult verify(YieldOp op) {
 // ```
 //
 // Where %0, %1 and %2 are ssa-values of type ViewType.
-static void printLinalgLibraryOp(OpAsmPrinter *p, Operation *op) {
+static void printLinalgLibraryOp(OpAsmPrinter &p, Operation *op) {
   assert(op->getAbstractOperation() && "unregistered operation");
-  *p << op->getName().getStringRef() << "(";
+  p << op->getName().getStringRef() << "(";
   interleave(
       op->getOperands().begin(), op->getOperands().end(),
-      [&](Value *v) { *p << *v; }, [&]() { *p << ", "; });
-  *p << ")";
-  p->printOptionalAttrDict(op->getAttrs());
-  *p << " : ";
+      [&](Value *v) { p << *v; }, [&]() { p << ", "; });
+  p << ")";
+  p.printOptionalAttrDict(op->getAttrs());
+  p << " : ";
   interleave(
       op->getOperands().begin(), op->getOperands().end(),
-      [&](Value *v) { *p << v->getType(); }, [&]() { *p << ", "; });
+      [&](Value *v) { p << v->getType(); }, [&]() { p << ", "; });
 }
 
 static ParseResult parseLinalgLibraryOp(OpAsmParser &parser,

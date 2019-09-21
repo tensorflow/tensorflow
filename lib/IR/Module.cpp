@@ -53,19 +53,19 @@ ParseResult ModuleOp::parse(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
-void ModuleOp::print(OpAsmPrinter *p) {
-  *p << "module";
+void ModuleOp::print(OpAsmPrinter &p) {
+  p << "module";
 
   // Print the module attributes.
   auto attrs = getAttrs();
   if (!attrs.empty()) {
-    *p << " attributes";
-    p->printOptionalAttrDict(attrs, {});
+    p << " attributes";
+    p.printOptionalAttrDict(attrs, {});
   }
 
   // Print the region.
-  p->printRegion(getOperation()->getRegion(0), /*printEntryBlockArgs=*/false,
-                 /*printBlockTerminators=*/false);
+  p.printRegion(getOperation()->getRegion(0), /*printEntryBlockArgs=*/false,
+                /*printBlockTerminators=*/false);
 }
 
 LogicalResult ModuleOp::verify() {

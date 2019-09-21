@@ -63,7 +63,7 @@ ParseResult linalg::DotOp::parse(mlir::OpAsmParser &parser,
   return TensorContractionBaseType::parse(parser, result);
 }
 
-void linalg::DotOp::print(mlir::OpAsmPrinter *p) {
+void linalg::DotOp::print(mlir::OpAsmPrinter &p) {
   TensorContractionBaseType::print(p);
 }
 
@@ -97,7 +97,7 @@ ParseResult linalg::MatvecOp::parse(mlir::OpAsmParser &parser,
   return TensorContractionBaseType::parse(parser, result);
 }
 
-void linalg::MatvecOp::print(mlir::OpAsmPrinter *p) {
+void linalg::MatvecOp::print(mlir::OpAsmPrinter &p) {
   TensorContractionBaseType::print(p);
 }
 
@@ -128,6 +128,6 @@ ParseResult linalg::MatmulOp::parse(mlir::OpAsmParser &parser,
   return TensorContractionBaseType::parse(parser, result);
 }
 
-void linalg::MatmulOp::print(mlir::OpAsmPrinter *p) {
+void linalg::MatmulOp::print(mlir::OpAsmPrinter &p) {
   TensorContractionBaseType::print(p);
 }

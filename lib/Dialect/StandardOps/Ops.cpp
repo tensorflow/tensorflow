@@ -125,7 +125,7 @@ struct StdInlinerInterface : public DialectInlinerInterface {
 
 /// A custom binary operation printer that omits the "std." prefix from the
 /// operation names.
-static void printStandardBinaryOp(Operation *op, OpAsmPrinter *p) {
+static void printStandardBinaryOp(Operation *op, OpAsmPrinter &p) {
   assert(op->getNumOperands() == 2 && "binary op should have two operands");
   assert(op->getNumResults() == 1 && "binary op should have one result");
 
@@ -134,24 +134,24 @@ static void printStandardBinaryOp(Operation *op, OpAsmPrinter *p) {
   auto resultType = op->getResult(0)->getType();
   if (op->getOperand(0)->getType() != resultType ||
       op->getOperand(1)->getType() != resultType) {
-    p->printGenericOp(op);
+    p.printGenericOp(op);
     return;
   }
 
-  *p << op->getName().getStringRef().drop_front(strlen("std.")) << ' '
-     << *op->getOperand(0) << ", " << *op->getOperand(1);
-  p->printOptionalAttrDict(op->getAttrs());
+  p << op->getName().getStringRef().drop_front(strlen("std.")) << ' '
+    << *op->getOperand(0) << ", " << *op->getOperand(1);
+  p.printOptionalAttrDict(op->getAttrs());
 
   // Now we can output only one type for all operands and the result.
-  *p << " : " << op->getResult(0)->getType();
+  p << " : " << op->getResult(0)->getType();
 }
 
 /// A custom cast operation printer that omits the "std." prefix from the
 /// operation names.
-static void printStandardCastOp(Operation *op, OpAsmPrinter *p) {
-  *p << op->getName().getStringRef().drop_front(strlen("std.")) << ' '
-     << *op->getOperand(0) << " : " << op->getOperand(0)->getType() << " to "
-     << op->getResult(0)->getType();
+static void printStandardCastOp(Operation *op, OpAsmPrinter &p) {
+  p << op->getName().getStringRef().drop_front(strlen("std.")) << ' '
+    << *op->getOperand(0) << " : " << op->getOperand(0)->getType() << " to "
+    << op->getResult(0)->getType();
 }
 
 /// A custom cast operation verifier.
@@ -176,15 +176,15 @@ StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
 
 void mlir::printDimAndSymbolList(Operation::operand_iterator begin,
                                  Operation::operand_iterator end,
-                                 unsigned numDims, OpAsmPrinter *p) {
-  *p << '(';
-  p->printOperands(begin, begin + numDims);
-  *p << ')';
+                                 unsigned numDims, OpAsmPrinter &p) {
+  p << '(';
+  p.printOperands(begin, begin + numDims);
+  p << ')';
 
   if (begin + numDims != end) {
-    *p << '[';
-    p->printOperands(begin + numDims, end);
-    *p << ']';
+    p << '[';
+    p.printOperands(begin + numDims, end);
+    p << ']';
   }
 }
 
@@ -305,15 +305,15 @@ OpFoldResult AddIOp::fold(ArrayRef<Attribute> operands) {
 // AllocOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, AllocOp op) {
-  *p << "alloc";
+static void print(OpAsmPrinter &p, AllocOp op) {
+  p << "alloc";
 
   // Print dynamic dimension operands.
   MemRefType type = op.getType();
   printDimAndSymbolList(op.operand_begin(), op.operand_end(),
                         type.getNumDynamicDims(), p);
-  p->printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"map"});
-  *p << " : " << type;
+  p.printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"map"});
+  p << " : " << type;
 }
 
 static ParseResult parseAllocOp(OpAsmParser &parser, OperationState &result) {
@@ -468,9 +468,9 @@ static ParseResult parseBranchOp(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
-static void print(OpAsmPrinter *p, BranchOp op) {
-  *p << "br ";
-  p->printSuccessorAndUseList(op.getOperation(), 0);
+static void print(OpAsmPrinter &p, BranchOp op) {
+  p << "br ";
+  p.printSuccessorAndUseList(op.getOperation(), 0);
 }
 
 Block *BranchOp::getDest() { return getOperation()->getSuccessor(0); }
@@ -504,13 +504,13 @@ static ParseResult parseCallOp(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
-static void print(OpAsmPrinter *p, CallOp op) {
-  *p << "call " << op.getAttr("callee") << '(';
-  p->printOperands(op.getOperands());
-  *p << ')';
-  p->printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"callee"});
-  *p << " : ";
-  p->printType(op.getCalleeType());
+static void print(OpAsmPrinter &p, CallOp op) {
+  p << "call " << op.getAttr("callee") << '(';
+  p.printOperands(op.getOperands());
+  p << ')';
+  p.printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"callee"});
+  p << " : ";
+  p.printType(op.getCalleeType());
 }
 
 static LogicalResult verify(CallOp op) {
@@ -592,14 +592,14 @@ static ParseResult parseCallIndirectOp(OpAsmParser &parser,
       parser.addTypesToList(calleeType.getResults(), result.types));
 }
 
-static void print(OpAsmPrinter *p, CallIndirectOp op) {
-  *p << "call_indirect ";
-  p->printOperand(op.getCallee());
-  *p << '(';
-  p->printOperands(op.getArgOperands());
-  *p << ')';
-  p->printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"callee"});
-  *p << " : " << op.getCallee()->getType();
+static void print(OpAsmPrinter &p, CallIndirectOp op) {
+  p << "call_indirect ";
+  p.printOperand(op.getCallee());
+  p << '(';
+  p.printOperands(op.getArgOperands());
+  p << ')';
+  p.printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"callee"});
+  p << " : " << op.getCallee()->getType();
 }
 
 static LogicalResult verify(CallIndirectOp op) {
@@ -741,8 +741,8 @@ static ParseResult parseCmpIOp(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
-static void print(OpAsmPrinter *p, CmpIOp op) {
-  *p << "cmpi ";
+static void print(OpAsmPrinter &p, CmpIOp op) {
+  p << "cmpi ";
 
   auto predicateValue =
       op.getAttrOfType<IntegerAttr>(CmpIOp::getPredicateAttrName()).getInt();
@@ -752,15 +752,15 @@ static void print(OpAsmPrinter *p, CmpIOp op) {
   Builder b(op.getContext());
   auto predicateStringAttr =
       b.getStringAttr(getCmpIPredicateNames()[predicateValue]);
-  p->printAttribute(predicateStringAttr);
+  p.printAttribute(predicateStringAttr);
 
-  *p << ", ";
-  p->printOperand(op.lhs());
-  *p << ", ";
-  p->printOperand(op.rhs());
-  p->printOptionalAttrDict(op.getAttrs(),
-                           /*elidedAttrs=*/{CmpIOp::getPredicateAttrName()});
-  *p << " : " << op.lhs()->getType();
+  p << ", ";
+  p.printOperand(op.lhs());
+  p << ", ";
+  p.printOperand(op.rhs());
+  p.printOptionalAttrDict(op.getAttrs(),
+                          /*elidedAttrs=*/{CmpIOp::getPredicateAttrName()});
+  p << " : " << op.lhs()->getType();
 }
 
 static LogicalResult verify(CmpIOp op) {
@@ -918,8 +918,8 @@ static ParseResult parseCmpFOp(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
-static void print(OpAsmPrinter *p, CmpFOp op) {
-  *p << "cmpf ";
+static void print(OpAsmPrinter &p, CmpFOp op) {
+  p << "cmpf ";
 
   auto predicateValue =
       op.getAttrOfType<IntegerAttr>(CmpFOp::getPredicateAttrName()).getInt();
@@ -929,15 +929,15 @@ static void print(OpAsmPrinter *p, CmpFOp op) {
   Builder b(op.getContext());
   auto predicateStringAttr =
       b.getStringAttr(getCmpFPredicateNames()[predicateValue]);
-  p->printAttribute(predicateStringAttr);
+  p.printAttribute(predicateStringAttr);
 
-  *p << ", ";
-  p->printOperand(op.lhs());
-  *p << ", ";
-  p->printOperand(op.rhs());
-  p->printOptionalAttrDict(op.getAttrs(),
-                           /*elidedAttrs=*/{CmpFOp::getPredicateAttrName()});
-  *p << " : " << op.lhs()->getType();
+  p << ", ";
+  p.printOperand(op.lhs());
+  p << ", ";
+  p.printOperand(op.rhs());
+  p.printOptionalAttrDict(op.getAttrs(),
+                          /*elidedAttrs=*/{CmpFOp::getPredicateAttrName()});
+  p << " : " << op.lhs()->getType();
 }
 
 static LogicalResult verify(CmpFOp op) {
@@ -1085,13 +1085,13 @@ static ParseResult parseCondBranchOp(OpAsmParser &parser,
   return success();
 }
 
-static void print(OpAsmPrinter *p, CondBranchOp op) {
-  *p << "cond_br ";
-  p->printOperand(op.getCondition());
-  *p << ", ";
-  p->printSuccessorAndUseList(op.getOperation(), CondBranchOp::trueIndex);
-  *p << ", ";
-  p->printSuccessorAndUseList(op.getOperation(), CondBranchOp::falseIndex);
+static void print(OpAsmPrinter &p, CondBranchOp op) {
+  p << "cond_br ";
+  p.printOperand(op.getCondition());
+  p << ", ";
+  p.printSuccessorAndUseList(op.getOperation(), CondBranchOp::trueIndex);
+  p << ", ";
+  p.printSuccessorAndUseList(op.getOperation(), CondBranchOp::falseIndex);
 }
 
 void CondBranchOp::getCanonicalizationPatterns(
@@ -1103,17 +1103,17 @@ void CondBranchOp::getCanonicalizationPatterns(
 // Constant*Op
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, ConstantOp &op) {
-  *p << "constant ";
-  p->printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"value"});
+static void print(OpAsmPrinter &p, ConstantOp &op) {
+  p << "constant ";
+  p.printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"value"});
 
   if (op.getAttrs().size() > 1)
-    *p << ' ';
-  p->printAttribute(op.getValue());
+    p << ' ';
+  p.printAttribute(op.getValue());
 
   // If the value is a symbol reference, print a trailing type.
   if (op.getValue().isa<SymbolRefAttr>())
-    *p << " : " << op.getType();
+    p << " : " << op.getType();
 }
 
 static ParseResult parseConstantOp(OpAsmParser &parser,
@@ -1288,8 +1288,8 @@ struct SimplifyDeadDealloc : public OpRewritePattern<DeallocOp> {
 };
 } // end anonymous namespace.
 
-static void print(OpAsmPrinter *p, DeallocOp op) {
-  *p << "dealloc " << *op.memref() << " : " << op.memref()->getType();
+static void print(OpAsmPrinter &p, DeallocOp op) {
+  p << "dealloc " << *op.memref() << " : " << op.memref()->getType();
 }
 
 static ParseResult parseDeallocOp(OpAsmParser &parser, OperationState &result) {
@@ -1318,10 +1318,10 @@ void DeallocOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // DimOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, DimOp op) {
-  *p << "dim " << *op.getOperand() << ", " << op.getIndex();
-  p->printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"index"});
-  *p << " : " << op.getOperand()->getType();
+static void print(OpAsmPrinter &p, DimOp op) {
+  p << "dim " << *op.getOperand() << ", " << op.getIndex();
+  p.printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"index"});
+  p << " : " << op.getOperand()->getType();
 }
 
 static ParseResult parseDimOp(OpAsmParser &parser, OperationState &result) {
@@ -1446,23 +1446,23 @@ void DmaStartOp::build(Builder *builder, OperationState &result,
     result.addOperands({stride, elementsPerStride});
 }
 
-void DmaStartOp::print(OpAsmPrinter *p) {
-  *p << "dma_start " << *getSrcMemRef() << '[';
-  p->printOperands(getSrcIndices());
-  *p << "], " << *getDstMemRef() << '[';
-  p->printOperands(getDstIndices());
-  *p << "], " << *getNumElements();
-  *p << ", " << *getTagMemRef() << '[';
-  p->printOperands(getTagIndices());
-  *p << ']';
+void DmaStartOp::print(OpAsmPrinter &p) {
+  p << "dma_start " << *getSrcMemRef() << '[';
+  p.printOperands(getSrcIndices());
+  p << "], " << *getDstMemRef() << '[';
+  p.printOperands(getDstIndices());
+  p << "], " << *getNumElements();
+  p << ", " << *getTagMemRef() << '[';
+  p.printOperands(getTagIndices());
+  p << ']';
   if (isStrided()) {
-    *p << ", " << *getStride();
-    *p << ", " << *getNumElementsPerStride();
+    p << ", " << *getStride();
+    p << ", " << *getNumElementsPerStride();
   }
-  p->printOptionalAttrDict(getAttrs());
-  *p << " : " << getSrcMemRef()->getType();
-  *p << ", " << getDstMemRef()->getType();
-  *p << ", " << getTagMemRef()->getType();
+  p.printOptionalAttrDict(getAttrs());
+  p << " : " << getSrcMemRef()->getType();
+  p << ", " << getDstMemRef()->getType();
+  p << ", " << getTagMemRef()->getType();
 }
 
 // Parse DmaStartOp.
@@ -1589,15 +1589,15 @@ void DmaWaitOp::build(Builder *builder, OperationState &result,
   result.addOperands(numElements);
 }
 
-void DmaWaitOp::print(OpAsmPrinter *p) {
-  *p << "dma_wait ";
-  p->printOperand(getTagMemRef());
-  *p << '[';
-  p->printOperands(getTagIndices());
-  *p << "], ";
-  p->printOperand(getNumElements());
-  p->printOptionalAttrDict(getAttrs());
-  *p << " : " << getTagMemRef()->getType();
+void DmaWaitOp::print(OpAsmPrinter &p) {
+  p << "dma_wait ";
+  p.printOperand(getTagMemRef());
+  p << '[';
+  p.printOperands(getTagIndices());
+  p << "], ";
+  p.printOperand(getNumElements());
+  p.printOptionalAttrDict(getAttrs());
+  p << " : " << getTagMemRef()->getType();
 }
 
 // Parse DmaWaitOp.
@@ -1643,12 +1643,12 @@ void DmaWaitOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // ExtractElementOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, ExtractElementOp op) {
-  *p << "extract_element " << *op.getAggregate() << '[';
-  p->printOperands(op.getIndices());
-  *p << ']';
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.getAggregate()->getType();
+static void print(OpAsmPrinter &p, ExtractElementOp op) {
+  p << "extract_element " << *op.getAggregate() << '[';
+  p.printOperands(op.getIndices());
+  p << ']';
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.getAggregate()->getType();
 }
 
 static ParseResult parseExtractElementOp(OpAsmParser &parser,
@@ -1725,12 +1725,12 @@ bool IndexCastOp::areCastCompatible(Type a, Type b) {
 // LoadOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, LoadOp op) {
-  *p << "load " << *op.getMemRef() << '[';
-  p->printOperands(op.getIndices());
-  *p << ']';
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.getMemRefType();
+static void print(OpAsmPrinter &p, LoadOp op) {
+  p << "load " << *op.getMemRef() << '[';
+  p.printOperands(op.getIndices());
+  p << ']';
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.getMemRefType();
 }
 
 static ParseResult parseLoadOp(OpAsmParser &parser, OperationState &result) {
@@ -1837,8 +1837,8 @@ OpFoldResult MulIOp::fold(ArrayRef<Attribute> operands) {
 // RankOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, RankOp op) {
-  *p << "rank " << *op.getOperand() << " : " << op.getOperand()->getType();
+static void print(OpAsmPrinter &p, RankOp op) {
+  p << "rank " << *op.getOperand() << " : " << op.getOperand()->getType();
 }
 
 static ParseResult parseRankOp(OpAsmParser &parser, OperationState &result) {
@@ -1924,13 +1924,13 @@ static ParseResult parseReturnOp(OpAsmParser &parser, OperationState &result) {
                  parser.resolveOperands(opInfo, types, loc, result.operands));
 }
 
-static void print(OpAsmPrinter *p, ReturnOp op) {
-  *p << "return";
+static void print(OpAsmPrinter &p, ReturnOp op) {
+  p << "return";
   if (op.getNumOperands() != 0) {
-    *p << ' ';
-    p->printOperands(op.getOperands());
-    *p << " : ";
-    interleaveComma(op.getOperandTypes(), *p);
+    p << ' ';
+    p.printOperands(op.getOperands());
+    p << " : ";
+    interleaveComma(op.getOperandTypes(), p);
   }
 }
 
@@ -1987,11 +1987,11 @@ static ParseResult parseSelectOp(OpAsmParser &parser, OperationState &result) {
                  parser.addTypeToList(type, result.types));
 }
 
-static void print(OpAsmPrinter *p, SelectOp op) {
-  *p << "select ";
-  p->printOperands(op.getOperands());
-  *p << " : " << op.getTrueValue()->getType();
-  p->printOptionalAttrDict(op.getAttrs());
+static void print(OpAsmPrinter &p, SelectOp op) {
+  p << "select ";
+  p.printOperands(op.getOperands());
+  p << " : " << op.getTrueValue()->getType();
+  p.printOptionalAttrDict(op.getAttrs());
 }
 
 static LogicalResult verify(SelectOp op) {
@@ -2022,13 +2022,13 @@ OpFoldResult SelectOp::fold(ArrayRef<Attribute> operands) {
 // StoreOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, StoreOp op) {
-  *p << "store " << *op.getValueToStore();
-  *p << ", " << *op.getMemRef() << '[';
-  p->printOperands(op.getIndices());
-  *p << ']';
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.getMemRefType();
+static void print(OpAsmPrinter &p, StoreOp op) {
+  p << "store " << *op.getValueToStore();
+  p << ", " << *op.getMemRef() << '[';
+  p.printOperands(op.getIndices());
+  p << ']';
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.getMemRefType();
 }
 
 static ParseResult parseStoreOp(OpAsmParser &parser, OperationState &result) {
@@ -2197,10 +2197,10 @@ static Type getTensorTypeFromMemRefType(Builder &b, Type type) {
 // TensorLoadOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, TensorLoadOp op) {
-  *p << "tensor_load " << *op.getOperand();
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.getOperand()->getType();
+static void print(OpAsmPrinter &p, TensorLoadOp op) {
+  p << "tensor_load " << *op.getOperand();
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.getOperand()->getType();
 }
 
 static ParseResult parseTensorLoadOp(OpAsmParser &parser,
@@ -2220,10 +2220,10 @@ static ParseResult parseTensorLoadOp(OpAsmParser &parser,
 // TensorStoreOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, TensorStoreOp op) {
-  *p << "tensor_store " << *op.tensor() << ", " << *op.memref();
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.memref()->getType();
+static void print(OpAsmPrinter &p, TensorStoreOp op) {
+  p << "tensor_store " << *op.tensor() << ", " << *op.memref();
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.memref()->getType();
 }
 
 static ParseResult parseTensorStoreOp(OpAsmParser &parser,

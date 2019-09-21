@@ -617,7 +617,7 @@ ParseResult OpState::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 // The fallback for the printer is to print in the generic assembly form.
-void OpState::print(OpAsmPrinter *p) { p->printGenericOp(getOperation()); }
+void OpState::print(OpAsmPrinter &p) { p.printGenericOp(getOperation()); }
 
 /// Emit an error about fatal conditions with this operation, reporting up to
 /// any diagnostic handlers that may be listening.
@@ -960,7 +960,7 @@ ParseResult impl::parseBinaryOp(OpAsmParser &parser, OperationState &result) {
                  parser.addTypeToList(type, result.types));
 }
 
-void impl::printBinaryOp(Operation *op, OpAsmPrinter *p) {
+void impl::printBinaryOp(Operation *op, OpAsmPrinter &p) {
   assert(op->getNumOperands() == 2 && "binary op should have two operands");
   assert(op->getNumResults() == 1 && "binary op should have one result");
 
@@ -969,15 +969,14 @@ void impl::printBinaryOp(Operation *op, OpAsmPrinter *p) {
   auto resultType = op->getResult(0)->getType();
   if (op->getOperand(0)->getType() != resultType ||
       op->getOperand(1)->getType() != resultType) {
-    p->printGenericOp(op);
+    p.printGenericOp(op);
     return;
   }
 
-  *p << op->getName() << ' ' << *op->getOperand(0) << ", "
-     << *op->getOperand(1);
-  p->printOptionalAttrDict(op->getAttrs());
+  p << op->getName() << ' ' << *op->getOperand(0) << ", " << *op->getOperand(1);
+  p.printOptionalAttrDict(op->getAttrs());
   // Now we can output only one type for all operands and the result.
-  *p << " : " << op->getResult(0)->getType();
+  p << " : " << op->getResult(0)->getType();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1001,11 +1000,11 @@ ParseResult impl::parseCastOp(OpAsmParser &parser, OperationState &result) {
                  parser.addTypeToList(dstType, result.types));
 }
 
-void impl::printCastOp(Operation *op, OpAsmPrinter *p) {
-  *p << op->getName() << ' ' << *op->getOperand(0);
-  p->printOptionalAttrDict(op->getAttrs());
-  *p << " : " << op->getOperand(0)->getType() << " to "
-     << op->getResult(0)->getType();
+void impl::printCastOp(Operation *op, OpAsmPrinter &p) {
+  p << op->getName() << ' ' << *op->getOperand(0);
+  p.printOptionalAttrDict(op->getAttrs());
+  p << " : " << op->getOperand(0)->getType() << " to "
+    << op->getResult(0)->getType();
 }
 
 Value *impl::foldCastOp(Operation *op) {

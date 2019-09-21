@@ -278,7 +278,7 @@ public:
 
   static StringRef getOperationName() { return "std.dma_start"; }
   static ParseResult parse(OpAsmParser &parser, OperationState &result);
-  void print(OpAsmPrinter *p);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
 
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
@@ -343,7 +343,7 @@ public:
   Value *getNumElements() { return getOperand(1 + getTagMemRefRank()); }
 
   static ParseResult parse(OpAsmParser &parser, OperationState &result);
-  void print(OpAsmPrinter *p);
+  void print(OpAsmPrinter &p);
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
 };
@@ -351,7 +351,7 @@ public:
 /// Prints dimension and symbol list.
 void printDimAndSymbolList(Operation::operand_iterator begin,
                            Operation::operand_iterator end, unsigned numDims,
-                           OpAsmPrinter *p);
+                           OpAsmPrinter &p);
 
 /// Parses dimension and symbol list and returns true if parsing failed.
 ParseResult parseDimAndSymbolList(OpAsmParser &parser,

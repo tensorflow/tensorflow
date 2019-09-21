@@ -60,7 +60,7 @@ public:
 
   /// Operation hooks.
   static ParseResult parse(OpAsmParser &parser, OperationState &result);
-  void print(OpAsmPrinter *p);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
 
   /// Returns the type of this function.
