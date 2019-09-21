@@ -98,7 +98,7 @@ public:
   LogicalResult verify();
 
   /// Custom syntax support.
-  void print(OpAsmPrinter *p);
+  void print(OpAsmPrinter &p);
   static ParseResult parse(OpAsmParser &parser, OperationState &result);
 
   static StringRef getOperationName() { return "gpu.launch"; }

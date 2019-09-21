@@ -119,7 +119,7 @@ def TypeArrayAttrOp : TEST_Op<"type_array_attr"> {
 }
 def TypeStringAttrWithTypeOp : TEST_Op<"string_attr_with_type"> {
   let arguments = (ins StrAttr:$attr);
-  let printer = [{ *p << getAttr("attr"); }];
+  let printer = [{ p << getAttr("attr"); }];
   let parser = [{
     Attribute attr;
     Type stringType = OpaqueType::get(Identifier::get("foo",

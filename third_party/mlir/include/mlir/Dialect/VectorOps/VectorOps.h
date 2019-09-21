@@ -116,7 +116,7 @@ public:
   AffineMap getPermutationMap();
 
   static ParseResult parse(OpAsmParser &parser, OperationState &result);
-  void print(OpAsmPrinter *p);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
 };
 
@@ -177,7 +177,7 @@ public:
   AffineMap getPermutationMap();
 
   static ParseResult parse(OpAsmParser &parser, OperationState &result);
-  void print(OpAsmPrinter *p);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
 };
 
@@ -199,7 +199,7 @@ public:
   static void build(Builder *builder, OperationState &result, Value *srcVector,
                     Type dstType);
   static ParseResult parse(OpAsmParser &parser, OperationState &result);
-  void print(OpAsmPrinter *p);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
 };
 

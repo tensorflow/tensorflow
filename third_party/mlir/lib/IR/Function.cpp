@@ -86,7 +86,7 @@ ParseResult FuncOp::parse(OpAsmParser &parser, OperationState &result) {
                                    buildFuncType);
 }
 
-void FuncOp::print(OpAsmPrinter *p) {
+void FuncOp::print(OpAsmPrinter &p) {
   FunctionType fnType = getType();
   impl::printFunctionLikeOp(p, *this, fnType.getInputs(), /*isVariadic=*/false,
                             fnType.getResults());

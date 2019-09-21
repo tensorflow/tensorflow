@@ -1599,7 +1599,7 @@ void OperationPrinter::printOperation(Operation *op) {
   // Check to see if this is a known operation.  If so, use the registered
   // custom printer hook.
   if (auto *opInfo = op->getAbstractOperation()) {
-    opInfo->printAssembly(op, this);
+    opInfo->printAssembly(op, *this);
     return;
   }
 

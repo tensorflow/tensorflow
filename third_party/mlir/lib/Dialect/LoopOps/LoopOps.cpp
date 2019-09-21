@@ -72,14 +72,13 @@ LogicalResult verify(ForOp op) {
   return success();
 }
 
-static void print(OpAsmPrinter *p, ForOp op) {
-  *p << op.getOperationName() << " " << *op.getInductionVar() << " = "
-     << *op.lowerBound() << " to " << *op.upperBound() << " step "
-     << *op.step();
-  p->printRegion(op.region(),
-                 /*printEntryBlockArgs=*/false,
-                 /*printBlockTerminators=*/false);
-  p->printOptionalAttrDict(op.getAttrs());
+static void print(OpAsmPrinter &p, ForOp op) {
+  p << op.getOperationName() << " " << *op.getInductionVar() << " = "
+    << *op.lowerBound() << " to " << *op.upperBound() << " step " << *op.step();
+  p.printRegion(op.region(),
+                /*printEntryBlockArgs=*/false,
+                /*printBlockTerminators=*/false);
+  p.printOptionalAttrDict(op.getAttrs());
 }
 
 static ParseResult parseForOp(OpAsmParser &parser, OperationState &result) {
@@ -182,22 +181,22 @@ static ParseResult parseIfOp(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
-static void print(OpAsmPrinter *p, IfOp op) {
-  *p << IfOp::getOperationName() << " " << *op.condition();
-  p->printRegion(op.thenRegion(),
-                 /*printEntryBlockArgs=*/false,
-                 /*printBlockTerminators=*/false);
+static void print(OpAsmPrinter &p, IfOp op) {
+  p << IfOp::getOperationName() << " " << *op.condition();
+  p.printRegion(op.thenRegion(),
+                /*printEntryBlockArgs=*/false,
+                /*printBlockTerminators=*/false);
 
   // Print the 'else' regions if it exists and has a block.
   auto &elseRegion = op.elseRegion();
   if (!elseRegion.empty()) {
-    *p << " else";
-    p->printRegion(elseRegion,
-                   /*printEntryBlockArgs=*/false,
-                   /*printBlockTerminators=*/false);
+    p << " else";
+    p.printRegion(elseRegion,
+                  /*printEntryBlockArgs=*/false,
+                  /*printBlockTerminators=*/false);
   }
 
-  p->printOptionalAttrDict(op.getAttrs());
+  p.printOptionalAttrDict(op.getAttrs());
 }
 
 //===----------------------------------------------------------------------===//

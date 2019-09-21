@@ -85,7 +85,7 @@ ParseResult parseFunctionLikeOp(OpAsmParser &parser, OperationState &result,
 
 /// Printer implementation for function-like operations.  Accepts lists of
 /// argument and result types to use while printing.
-void printFunctionLikeOp(OpAsmPrinter *p, Operation *op,
+void printFunctionLikeOp(OpAsmPrinter &p, Operation *op,
                          ArrayRef<Type> argTypes, bool isVariadic,
                          ArrayRef<Type> results);
 

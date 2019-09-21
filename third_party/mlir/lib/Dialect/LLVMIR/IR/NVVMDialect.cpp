@@ -43,11 +43,11 @@ namespace NVVM {
 // Printing/parsing for NVVM ops
 //===----------------------------------------------------------------------===//
 
-static void printNVVMIntrinsicOp(OpAsmPrinter *p, Operation *op) {
-  *p << op->getName() << " ";
-  p->printOperands(op->getOperands());
+static void printNVVMIntrinsicOp(OpAsmPrinter &p, Operation *op) {
+  p << op->getName() << " ";
+  p.printOperands(op->getOperands());
   if (op->getNumResults() > 0)
-    interleaveComma(op->getResultTypes(), *p << " : ");
+    interleaveComma(op->getResultTypes(), p << " : ");
 }
 
 // <operation> ::= `llvm.nvvm.XYZ` : type

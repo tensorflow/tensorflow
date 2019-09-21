@@ -37,7 +37,7 @@ def Std_Dialect : Dialect {
 class Std_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<Std_Dialect, mnemonic, traits> {
   // For every standard op, there needs to be a:
-  //   * void print(OpAsmPrinter *p, ${C++ class of Op} op)
+  //   * void print(OpAsmPrinter &p, ${C++ class of Op} op)
   //   * LogicalResult verify(${C++ class of Op} op)
   //   * ParseResult parse${C++ class of Op}(OpAsmParser &parser,
   //                                         OperationState &result)

@@ -210,10 +210,10 @@ LogicalResult Verify(GraphOp graph) {
   return success();
 }
 
-void Print(GraphOp graph, OpAsmPrinter *p) {
-  *p << graph.getOperationName();
-  p->printRegion(graph.getOperation()->getRegion(0));
-  p->printOptionalAttrDict(graph.getAttrs());
+void Print(GraphOp graph, OpAsmPrinter &p) {
+  p << graph.getOperationName();
+  p.printRegion(graph.getOperation()->getRegion(0));
+  p.printOptionalAttrDict(graph.getAttrs());
 }
 
 ParseResult ParseGraphOp(OpAsmParser &parser, OperationState &result) {
@@ -257,15 +257,15 @@ ParseResult ParseGraphOp(OpAsmParser &parser, OperationState &result) {
 
 namespace {
 
-void Print(FetchOp fetch, OpAsmPrinter *p) {
-  *p << fetch.getOperationName();
+void Print(FetchOp fetch, OpAsmPrinter &p) {
+  p << fetch.getOperationName();
   if (fetch.getNumOperands() > 0) {
-    *p << ' ';
-    p->printOperands(fetch.operand_begin(), fetch.operand_end());
-    *p << " : ";
-    interleaveComma(fetch.getOperandTypes(), *p);
+    p << ' ';
+    p.printOperands(fetch.operand_begin(), fetch.operand_end());
+    p << " : ";
+    interleaveComma(fetch.getOperandTypes(), p);
   }
-  p->printOptionalAttrDict(fetch.getAttrs());
+  p.printOptionalAttrDict(fetch.getAttrs());
 }
 
 ParseResult ParseFetchOp(OpAsmParser &parser, OperationState &result) {
@@ -322,13 +322,13 @@ LogicalResult Verify(IslandOp island) {
   return success();
 }
 
-void Print(IslandOp op, OpAsmPrinter *p) {
-  *p << op.getOperationName();
+void Print(IslandOp op, OpAsmPrinter &p) {
+  p << op.getOperationName();
   if (op.getNumOperands()) {
     // These are always control operand, no explicit type needed.
-    *p << '(';
-    p->printOperands(op.getOperands());
-    *p << ')';
+    p << '(';
+    p.printOperands(op.getOperands());
+    p << ')';
   }
 
   // Check if we can print the short "wraps" form: that is if the island
@@ -342,13 +342,13 @@ void Print(IslandOp op, OpAsmPrinter *p) {
         std::equal(wrapped_op.getResults().begin(),
                    wrapped_op.getResults().end(),
                    yield_op.getOperands().begin())) {
-      *p << " wraps ";
-      p->printGenericOp(&op.GetBody().front());
+      p << " wraps ";
+      p.printGenericOp(&op.GetBody().front());
       return;
     }
   }
-  p->printRegion(op.getOperation()->getRegion(0));
-  p->printOptionalAttrDict(op.getAttrs());
+  p.printRegion(op.getOperation()->getRegion(0));
+  p.printOptionalAttrDict(op.getAttrs());
 }
 
 ParseResult ParseIslandOp(OpAsmParser &parser, OperationState &result) {
@@ -404,15 +404,15 @@ ParseResult ParseIslandOp(OpAsmParser &parser, OperationState &result) {
 
 namespace {
 
-void Print(YieldOp yield, OpAsmPrinter *p) {
-  *p << yield.getOperationName();
+void Print(YieldOp yield, OpAsmPrinter &p) {
+  p << yield.getOperationName();
   if (yield.getNumOperands() > 0) {
-    *p << ' ';
-    p->printOperands(yield.operand_begin(), yield.operand_end());
-    *p << " : ";
-    interleaveComma(yield.getOperandTypes(), *p);
+    p << ' ';
+    p.printOperands(yield.operand_begin(), yield.operand_end());
+    p << " : ";
+    interleaveComma(yield.getOperandTypes(), p);
   }
-  p->printOptionalAttrDict(yield.getAttrs());
+  p.printOptionalAttrDict(yield.getAttrs());
 }
 
 ParseResult ParseYieldOp(OpAsmParser &parser, OperationState &result) {
@@ -469,20 +469,20 @@ ParseResult ParseSwitchOp(OpAsmParser &parser, OperationState &result) {
   return parser.parseOptionalAttributeDict(result.attributes);
 }
 
-void Print(SwitchOp switch_op, OpAsmPrinter *p) {
-  *p << switch_op.getOperationName() << ' ';
-  p->printOperands(switch_op.getOperands());
+void Print(SwitchOp switch_op, OpAsmPrinter &p) {
+  p << switch_op.getOperationName() << ' ';
+  p.printOperands(switch_op.getOperands());
   Type data_operand_ty = switch_op.data()->getType();
   // If the types aren't perfectly matching, print the functional type syntax
   // else print the shorter single type.
-  *p << " : ";
+  p << " : ";
   if (switch_op.trueOutput()->getType() != data_operand_ty ||
       switch_op.falseOutput()->getType() != data_operand_ty) {
-    p->printFunctionalType(switch_op.getOperation());
+    p.printFunctionalType(switch_op.getOperation());
   } else {
-    *p << switch_op.getType(0);
+    p << switch_op.getType(0);
   }
-  p->printOptionalAttrDict(switch_op.getAttrs());
+  p.printOptionalAttrDict(switch_op.getAttrs());
 }
 
 }  // anonymous namespace
@@ -514,20 +514,20 @@ LogicalResult Verify(SwitchNOp switchn) {
   return success();
 }
 
-void Print(SwitchNOp switchn, OpAsmPrinter *p) {
-  *p << switchn.getOperationName() << ' ';
+void Print(SwitchNOp switchn, OpAsmPrinter &p) {
+  p << switchn.getOperationName() << ' ';
   auto operands = switchn.getOperands();
   // Print the 2 data operands.
-  p->printOperands(operands.begin(), std::next(operands.begin(), 2));
-  *p << " of " << (switchn.getNumResults() - 1);
+  p.printOperands(operands.begin(), std::next(operands.begin(), 2));
+  p << " of " << (switchn.getNumResults() - 1);
   // print control dependencies if any
   if (!llvm::empty(switchn.controlInputs())) {
-    *p << " (";
-    p->printOperands(switchn.controlInputs());
-    *p << ")";
+    p << " (";
+    p.printOperands(switchn.controlInputs());
+    p << ")";
   }
-  *p << " : " << switchn.getType(0);
-  p->printOptionalAttrDict(switchn.getAttrs(), {"num_outs"});
+  p << " : " << switchn.getType(0);
+  p.printOptionalAttrDict(switchn.getAttrs(), {"num_outs"});
 }
 
 ParseResult ParseSwitchNOp(OpAsmParser &parser, OperationState &result) {
@@ -629,7 +629,7 @@ LogicalResult Verify(MergeOp merge) {
   return success();
 }
 
-void Print(MergeOp merge, OpAsmPrinter *p) {
+void Print(MergeOp merge, OpAsmPrinter &p) {
   // Use short form only when there are exactly two data operands and their
   // type matches the output type. Otherwise, use the generic printer.
   bool use_short_form = true;
@@ -646,18 +646,18 @@ void Print(MergeOp merge, OpAsmPrinter *p) {
     }
   }
 
-  *p << merge.getOperationName() << ' ';
-  p->printOperands(merge.getOperands());
+  p << merge.getOperationName() << ' ';
+  p.printOperands(merge.getOperands());
 
   // Print the type signature of the operation.
-  *p << " : ";
+  p << " : ";
   if (!use_short_form || num_data_operands != 2) {
-    p->printFunctionalType(merge.getOperation());
+    p.printFunctionalType(merge.getOperation());
   } else {
-    *p << output_type;
+    p << output_type;
   }
 
-  p->printOptionalAttrDict(merge.getAttrs());
+  p.printOptionalAttrDict(merge.getAttrs());
 }
 
 ParseResult ParseMergeOp(OpAsmParser &parser, OperationState &result) {
@@ -705,28 +705,28 @@ namespace {
 // Default number for the parallel_iterations attributes on Enter nodes.
 constexpr int kDefaultParallelIterations = 10;
 
-void Print(EnterOp enter, OpAsmPrinter *p) {
-  *p << enter.getOperationName() << ' ';
-  p->printOperands(enter.getOperands());
+void Print(EnterOp enter, OpAsmPrinter &p) {
+  p << enter.getOperationName() << ' ';
+  p.printOperands(enter.getOperands());
 
-  *p << " frame \"";
-  printEscapedString(enter.frame_name(), p->getStream());
-  *p << "\"";
+  p << " frame \"";
+  printEscapedString(enter.frame_name(), p.getStream());
+  p << "\"";
   if (enter.parallel_iterations() != kDefaultParallelIterations)
-    *p << " parallel_iterations " << enter.parallel_iterations();
-  if (enter.is_constant()) *p << " constant ";
+    p << " parallel_iterations " << enter.parallel_iterations();
+  if (enter.is_constant()) p << " constant ";
 
   // If the types aren't perfectly matching, print the functional type syntax
   // else print the shorter single type.
-  *p << " : ";
+  p << " : ";
   if (enter.data()->getType() != enter.output()->getType()) {
-    p->printFunctionalType(enter.getOperation());
+    p.printFunctionalType(enter.getOperation());
   } else {
-    *p << enter.getType(0);
+    p << enter.getType(0);
   }
 
-  p->printOptionalAttrDict(
-      enter.getAttrs(), {"frame_name", "parallel_iterations", "is_constant"});
+  p.printOptionalAttrDict(enter.getAttrs(),
+                          {"frame_name", "parallel_iterations", "is_constant"});
 }
 
 ParseResult ParseEnterOp(OpAsmParser &parser, OperationState &result) {
@@ -801,9 +801,9 @@ LogicalResult Verify(NextIterationSourceOp source) {
   return success();
 }
 
-void Print(NextIterationSourceOp next_iteration, OpAsmPrinter *p) {
-  *p << next_iteration.getOperationName() << " : " << next_iteration.getType(0);
-  p->printOptionalAttrDict(next_iteration.getAttrs());
+void Print(NextIterationSourceOp next_iteration, OpAsmPrinter &p) {
+  p << next_iteration.getOperationName() << " : " << next_iteration.getType(0);
+  p.printOptionalAttrDict(next_iteration.getAttrs());
 }
 
 ParseResult ParseNextIterationSourceOp(OpAsmParser &parser,
@@ -844,13 +844,13 @@ LogicalResult Verify(NextIterationSinkOp sink) {
   return success();
 }
 
-void Print(NextIterationSinkOp next_iteration, OpAsmPrinter *p) {
-  *p << next_iteration.getOperationName() << " [";
-  p->printOperand(next_iteration.getOperand(0));
-  *p << "] ";
-  p->printOperands(llvm::drop_begin(next_iteration.getOperands(), 1));
-  *p << " : " << next_iteration.getOperand(1)->getType();
-  p->printOptionalAttrDict(next_iteration.getAttrs());
+void Print(NextIterationSinkOp next_iteration, OpAsmPrinter &p) {
+  p << next_iteration.getOperationName() << " [";
+  p.printOperand(next_iteration.getOperand(0));
+  p << "] ";
+  p.printOperands(llvm::drop_begin(next_iteration.getOperands(), 1));
+  p << " : " << next_iteration.getOperand(1)->getType();
+  p.printOptionalAttrDict(next_iteration.getAttrs());
 }
 
 ParseResult ParseNextIterationSinkOp(OpAsmParser &parser,
@@ -882,11 +882,11 @@ ParseResult ParseNextIterationSinkOp(OpAsmParser &parser,
 
 namespace {
 
-void Print(ExitOp exit, OpAsmPrinter *p) {
-  *p << exit.getOperationName() << ' ';
-  p->printOperands(exit.getOperands());
-  *p << " : " << exit.getType(0);
-  p->printOptionalAttrDict(exit.getAttrs());
+void Print(ExitOp exit, OpAsmPrinter &p) {
+  p << exit.getOperationName() << ' ';
+  p.printOperands(exit.getOperands());
+  p << " : " << exit.getType(0);
+  p.printOptionalAttrDict(exit.getAttrs());
 }
 
 ParseResult ParseExitOp(OpAsmParser &parser, OperationState &result) {
@@ -914,10 +914,10 @@ ParseResult ParseExitOp(OpAsmParser &parser, OperationState &result) {
 
 namespace {
 
-void Print(ControlTriggerOp trigger, OpAsmPrinter *p) {
-  *p << trigger.getOperationName() << ' ';
-  p->printOperands(trigger.getOperands());
-  p->printOptionalAttrDict(trigger.getAttrs());
+void Print(ControlTriggerOp trigger, OpAsmPrinter &p) {
+  p << trigger.getOperationName() << ' ';
+  p.printOperands(trigger.getOperands());
+  p.printOptionalAttrDict(trigger.getAttrs());
 }
 
 ParseResult ParseControlTriggerOp(OpAsmParser &parser, OperationState &result) {
@@ -944,19 +944,19 @@ ParseResult ParseControlTriggerOp(OpAsmParser &parser, OperationState &result) {
 
 namespace {
 
-void Print(LoopCondOp loop_cond, OpAsmPrinter *p) {
-  *p << loop_cond.getOperationName() << ' ';
-  p->printOperands(loop_cond.getOperands());
+void Print(LoopCondOp loop_cond, OpAsmPrinter &p) {
+  p << loop_cond.getOperationName() << ' ';
+  p.printOperands(loop_cond.getOperands());
 
   // If the types aren't matching (broadcast), print the functional type syntax.
   if (loop_cond.input()->getType() != loop_cond.output()->getType()) {
-    *p << " : ";
-    p->printFunctionalType(loop_cond.getOperation());
+    p << " : ";
+    p.printFunctionalType(loop_cond.getOperation());
   } else {
-    *p << " : " << loop_cond.input()->getType();
+    p << " : " << loop_cond.input()->getType();
   }
 
-  p->printOptionalAttrDict(loop_cond.getAttrs());
+  p.printOptionalAttrDict(loop_cond.getAttrs());
 }
 
 ParseResult ParseLoopCondOp(OpAsmParser &parser, OperationState &result) {

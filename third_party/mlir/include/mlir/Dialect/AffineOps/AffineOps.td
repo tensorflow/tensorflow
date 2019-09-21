@@ -39,7 +39,7 @@ def Affine_Dialect : Dialect {
 class Affine_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<Affine_Dialect, mnemonic, traits> {
   // For every affine op, there needs to be a:
-  //   * void print(OpAsmPrinter *p, ${C++ class of Op} op)
+  //   * void print(OpAsmPrinter &p, ${C++ class of Op} op)
   //   * LogicalResult verify(${C++ class of Op} op)
   //   * ParseResult parse${C++ class of Op}(OpAsmParser &parser,
   //                                         OperationState &result)

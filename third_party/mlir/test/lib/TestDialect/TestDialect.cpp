@@ -115,11 +115,11 @@ static ParseResult parseIsolatedRegionOp(OpAsmParser &parser,
                             /*enableNameShadowing=*/true);
 }
 
-static void print(OpAsmPrinter *p, IsolatedRegionOp op) {
-  *p << "test.isolated_region ";
-  p->printOperand(op.getOperand());
-  p->shadowRegionArgs(op.region(), op.getOperand());
-  p->printRegion(op.region(), /*printEntryBlockArgs=*/false);
+static void print(OpAsmPrinter &p, IsolatedRegionOp op) {
+  p << "test.isolated_region ";
+  p.printOperand(op.getOperand());
+  p.shadowRegionArgs(op.region(), op.getOperand());
+  p.printRegion(op.region(), /*printEntryBlockArgs=*/false);
 }
 
 //===----------------------------------------------------------------------===//
@@ -135,8 +135,8 @@ static ParseResult parseWrappedKeywordOp(OpAsmParser &parser,
   return success();
 }
 
-static void print(OpAsmPrinter *p, WrappedKeywordOp op) {
-  *p << WrappedKeywordOp::getOperationName() << " " << op.keyword();
+static void print(OpAsmPrinter &p, WrappedKeywordOp op) {
+  p << WrappedKeywordOp::getOperationName() << " " << op.keyword();
 }
 
 //===----------------------------------------------------------------------===//
@@ -169,9 +169,9 @@ static ParseResult parseWrappingRegionOp(OpAsmParser &parser,
   return success();
 }
 
-static void print(OpAsmPrinter *p, WrappingRegionOp op) {
-  *p << op.getOperationName() << " wraps ";
-  p->printGenericOp(&op.region().front().front());
+static void print(OpAsmPrinter &p, WrappingRegionOp op) {
+  p << op.getOperationName() << " wraps ";
+  p.printGenericOp(&op.region().front().front());
 }
 
 //===----------------------------------------------------------------------===//

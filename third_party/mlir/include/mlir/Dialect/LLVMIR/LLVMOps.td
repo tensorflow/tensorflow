@@ -452,7 +452,7 @@ def LLVM_ReturnOp : LLVM_TerminatorOp<"return", []> {
 def LLVM_UnreachableOp : LLVM_TerminatorOp<"unreachable", []> {
   string llvmBuilder = [{ builder.CreateUnreachable(); }];
   let parser = [{ return success(); }];
-  let printer = [{ *p << getOperationName(); }];
+  let printer = [{ p << getOperationName(); }];
 }
 
 // Auxiliary operations (do not appear in LLVM IR but necessary for the dialect
