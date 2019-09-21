@@ -263,6 +263,26 @@ func @composite_extract_result_type_mismatch(%arg0: !spv.array<4xf32>) -> i32 {
 // -----
 
 //===----------------------------------------------------------------------===//
+// spv.ControlBarrier
+//===----------------------------------------------------------------------===//
+
+func @control_barrier_0() -> () {
+  // CHECK:  spv.ControlBarrier "Workgroup", "Device", "Acquire|UniformMemory"
+  spv.ControlBarrier "Workgroup", "Device", "Acquire|UniformMemory"
+  return
+}
+
+// -----
+
+func @control_barrier_1() -> () {
+  // expected-error @+1 {{invalid scope attribute specification: "Something"}}
+  spv.ControlBarrier "Something", "Device", "Acquire|UniformMemory"
+  return
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // spv.ExecutionMode
 //===----------------------------------------------------------------------===//
 
@@ -498,6 +518,34 @@ spv.module "Logical" "GLSL450" {
     %1 = spv.Load "Input" %0 : f32
     spv.Return
   }
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// spv.MemoryBarrier
+//===----------------------------------------------------------------------===//
+
+func @memory_barrier_0() -> () {
+  // CHECK: spv.MemoryBarrier "Device", "Acquire|UniformMemory"
+  spv.MemoryBarrier "Device", "Acquire|UniformMemory"
+  return
+}
+
+// -----
+
+func @memory_barrier_1() -> () {
+  // CHECK: spv.MemoryBarrier "Workgroup", "Acquire"
+  spv.MemoryBarrier "Workgroup", "Acquire"
+  return
+}
+
+// -----
+
+func @memory_barrier_2() -> () {
+ // expected-error @+1 {{expected at most one of these four memory constraints to be set: `Acquire`, `Release`,`AcquireRelease` or `SequentiallyConsistent`}}
+  spv.MemoryBarrier "Device", "Acquire|Release"
+  return
 }
 
 // -----
