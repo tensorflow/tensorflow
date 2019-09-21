@@ -148,6 +148,8 @@ def SPV_OC_OpFOrdLessThanEqual      : I32EnumAttrCase<"OpFOrdLessThanEqual", 188
 def SPV_OC_OpFUnordLessThanEqual    : I32EnumAttrCase<"OpFUnordLessThanEqual", 189>;
 def SPV_OC_OpFOrdGreaterThanEqual   : I32EnumAttrCase<"OpFOrdGreaterThanEqual", 190>;
 def SPV_OC_OpFUnordGreaterThanEqual : I32EnumAttrCase<"OpFUnordGreaterThanEqual", 191>;
+def SPV_OC_OpControlBarrier         : I32EnumAttrCase<"OpControlBarrier", 224>;
+def SPV_OC_OpMemoryBarrier          : I32EnumAttrCase<"OpMemoryBarrier", 225>;
 def SPV_OC_OpLoopMerge              : I32EnumAttrCase<"OpLoopMerge", 246>;
 def SPV_OC_OpLabel                  : I32EnumAttrCase<"OpLabel", 248>;
 def SPV_OC_OpBranch                 : I32EnumAttrCase<"OpBranch", 249>;
@@ -180,8 +182,9 @@ def SPV_OpcodeAttr :
       SPV_OC_OpFUnordLessThan, SPV_OC_OpFOrdGreaterThan, SPV_OC_OpFUnordGreaterThan,
       SPV_OC_OpFOrdLessThanEqual, SPV_OC_OpFUnordLessThanEqual,
       SPV_OC_OpFOrdGreaterThanEqual, SPV_OC_OpFUnordGreaterThanEqual,
-      SPV_OC_OpLoopMerge, SPV_OC_OpLabel, SPV_OC_OpBranch,
-      SPV_OC_OpBranchConditional, SPV_OC_OpReturn, SPV_OC_OpReturnValue
+      SPV_OC_OpControlBarrier, SPV_OC_OpMemoryBarrier, SPV_OC_OpLoopMerge,
+      SPV_OC_OpLabel, SPV_OC_OpBranch, SPV_OC_OpBranchConditional, SPV_OC_OpReturn,
+      SPV_OC_OpReturnValue
       ]> {
     let returnType = "::mlir::spirv::Opcode";
     let convertFromStorage = "static_cast<::mlir::spirv::Opcode>($_self.getInt())";
@@ -1031,6 +1034,52 @@ def SPV_MemoryModelAttr :
     ]> {
   let returnType = "::mlir::spirv::MemoryModel";
   let convertFromStorage = "static_cast<::mlir::spirv::MemoryModel>($_self.getInt())";
+  let cppNamespace = "::mlir::spirv";
+}
+
+def SPV_MS_None                   : BitEnumAttrCase<"None", 0x0000>;
+def SPV_MS_Acquire                : BitEnumAttrCase<"Acquire", 0x0002>;
+def SPV_MS_Release                : BitEnumAttrCase<"Release", 0x0004>;
+def SPV_MS_AcquireRelease         : BitEnumAttrCase<"AcquireRelease", 0x0008>;
+def SPV_MS_SequentiallyConsistent : BitEnumAttrCase<"SequentiallyConsistent", 0x0010>;
+def SPV_MS_UniformMemory          : BitEnumAttrCase<"UniformMemory", 0x0040>;
+def SPV_MS_SubgroupMemory         : BitEnumAttrCase<"SubgroupMemory", 0x0080>;
+def SPV_MS_WorkgroupMemory        : BitEnumAttrCase<"WorkgroupMemory", 0x0100>;
+def SPV_MS_CrossWorkgroupMemory   : BitEnumAttrCase<"CrossWorkgroupMemory", 0x0200>;
+def SPV_MS_AtomicCounterMemory    : BitEnumAttrCase<"AtomicCounterMemory", 0x0400>;
+def SPV_MS_ImageMemory            : BitEnumAttrCase<"ImageMemory", 0x0800>;
+def SPV_MS_OutputMemory           : BitEnumAttrCase<"OutputMemory", 0x1000>;
+def SPV_MS_MakeAvailable          : BitEnumAttrCase<"MakeAvailable", 0x2000>;
+def SPV_MS_MakeVisible            : BitEnumAttrCase<"MakeVisible", 0x4000>;
+def SPV_MS_Volatile               : BitEnumAttrCase<"Volatile", 0x8000>;
+
+def SPV_MemorySemanticsAttr :
+    BitEnumAttr<"MemorySemantics", "valid SPIR-V MemorySemantics", [
+      SPV_MS_None, SPV_MS_Acquire, SPV_MS_Release, SPV_MS_AcquireRelease,
+      SPV_MS_SequentiallyConsistent, SPV_MS_UniformMemory, SPV_MS_SubgroupMemory,
+      SPV_MS_WorkgroupMemory, SPV_MS_CrossWorkgroupMemory,
+      SPV_MS_AtomicCounterMemory, SPV_MS_ImageMemory, SPV_MS_OutputMemory,
+      SPV_MS_MakeAvailable, SPV_MS_MakeVisible, SPV_MS_Volatile
+    ]> {
+  let returnType = "::mlir::spirv::MemorySemantics";
+  let convertFromStorage = "static_cast<::mlir::spirv::MemorySemantics>($_self.getInt())";
+  let cppNamespace = "::mlir::spirv";
+}
+
+def SPV_S_CrossDevice : I32EnumAttrCase<"CrossDevice", 0>;
+def SPV_S_Device      : I32EnumAttrCase<"Device", 1>;
+def SPV_S_Workgroup   : I32EnumAttrCase<"Workgroup", 2>;
+def SPV_S_Subgroup    : I32EnumAttrCase<"Subgroup", 3>;
+def SPV_S_Invocation  : I32EnumAttrCase<"Invocation", 4>;
+def SPV_S_QueueFamily : I32EnumAttrCase<"QueueFamily", 5>;
+
+def SPV_ScopeAttr :
+    I32EnumAttr<"Scope", "valid SPIR-V Scope", [
+      SPV_S_CrossDevice, SPV_S_Device, SPV_S_Workgroup, SPV_S_Subgroup,
+      SPV_S_Invocation, SPV_S_QueueFamily
+    ]> {
+  let returnType = "::mlir::spirv::Scope";
+  let convertFromStorage = "static_cast<::mlir::spirv::Scope>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 

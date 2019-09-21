@@ -37,10 +37,12 @@ static constexpr const char kAlignmentAttrName[] = "alignment";
 static constexpr const char kBranchWeightAttrName[] = "branch_weights";
 static constexpr const char kCallee[] = "callee";
 static constexpr const char kDefaultValueAttrName[] = "default_value";
+static constexpr const char kExecutionScopeAttrName[] = "execution_scope";
 static constexpr const char kFnNameAttrName[] = "fn";
 static constexpr const char kIndicesAttrName[] = "indices";
 static constexpr const char kInitializerAttrName[] = "initializer";
 static constexpr const char kInterfaceAttrName[] = "interface";
+static constexpr const char kMemoryScopeAttrName[] = "memory_scope";
 static constexpr const char kSpecConstAttrName[] = "spec_const";
 static constexpr const char kTypeAttrName[] = "type";
 static constexpr const char kValueAttrName[] = "value";
@@ -93,39 +95,39 @@ static ParseResult parseBinaryLogicalOp(OpAsmParser &parser,
 }
 
 template <typename EnumClass>
-static ParseResult parseEnumAttribute(EnumClass &value, OpAsmParser &parser) {
+static ParseResult
+parseEnumAttribute(EnumClass &value, OpAsmParser &parser,
+                   StringRef attrName = spirv::attributeName<EnumClass>()) {
   Attribute attrVal;
   SmallVector<NamedAttribute, 1> attr;
   auto loc = parser.getCurrentLocation();
   if (parser.parseAttribute(attrVal, parser.getBuilder().getNoneType(),
-                            spirv::attributeName<EnumClass>(), attr)) {
+                            attrName, attr)) {
     return failure();
   }
   if (!attrVal.isa<StringAttr>()) {
     return parser.emitError(loc, "expected ")
-           << spirv::attributeName<EnumClass>()
-           << " attribute specified as string";
+           << attrName << " attribute specified as string";
   }
   auto attrOptional =
       spirv::symbolizeEnum<EnumClass>()(attrVal.cast<StringAttr>().getValue());
   if (!attrOptional) {
     return parser.emitError(loc, "invalid ")
-           << spirv::attributeName<EnumClass>()
-           << " attribute specification: " << attrVal;
+           << attrName << " attribute specification: " << attrVal;
   }
   value = attrOptional.getValue();
   return success();
 }
 
 template <typename EnumClass>
-static ParseResult parseEnumAttribute(EnumClass &value, OpAsmParser &parser,
-                                      OperationState &state) {
+static ParseResult
+parseEnumAttribute(EnumClass &value, OpAsmParser &parser, OperationState &state,
+                   StringRef attrName = spirv::attributeName<EnumClass>()) {
   if (parseEnumAttribute(value, parser)) {
     return failure();
   }
-  state.addAttribute(
-      spirv::attributeName<EnumClass>(),
-      parser.getBuilder().getI32IntegerAttr(bitwiseCast<int32_t>(value)));
+  state.addAttribute(attrName, parser.getBuilder().getI32IntegerAttr(
+                                   bitwiseCast<int32_t>(value)));
   return success();
 }
 
@@ -223,6 +225,30 @@ static LogicalResult verifyMemoryAccessAttribute(LoadStoreOpTy loadStoreOp) {
           "invalid alignment specification with non-aligned memory access "
           "specification");
     }
+  }
+  return success();
+}
+
+template <typename BarrierOp>
+static LogicalResult verifyMemorySemantics(BarrierOp op) {
+  // According to the SPIR-V specification:
+  // "Despite being a mask and allowing multiple bits to be combined, it is
+  // invalid for more than one of these four bits to be set: Acquire, Release,
+  // AcquireRelease, or SequentiallyConsistent. Requesting both Acquire and
+  // Release semantics is done by setting the AcquireRelease bit, not by setting
+  // two bits."
+  auto memorySemantics = op.memory_semantics();
+  auto atMostOneInSet = spirv::MemorySemantics::Acquire |
+                        spirv::MemorySemantics::Release |
+                        spirv::MemorySemantics::AcquireRelease |
+                        spirv::MemorySemantics::SequentiallyConsistent;
+
+  auto bitCount = llvm::countPopulation(
+      static_cast<uint32_t>(memorySemantics & atMostOneInSet));
+  if (bitCount > 1) {
+    return op.emitError("expected at most one of these four memory constraints "
+                        "to be set: `Acquire`, `Release`,"
+                        "`AcquireRelease` or `SequentiallyConsistent`");
   }
   return success();
 }
@@ -819,6 +845,32 @@ bool spirv::ConstantOp::isBuildableWith(Type type) {
 }
 
 //===----------------------------------------------------------------------===//
+// spv.ControlBarrier
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseControlBarrierOp(OpAsmParser &parser,
+                                         OperationState &state) {
+  spirv::Scope executionScope;
+  spirv::Scope memoryScope;
+  spirv::MemorySemantics memorySemantics;
+
+  return failure(
+      parseEnumAttribute(executionScope, parser, state,
+                         kExecutionScopeAttrName) ||
+      parser.parseComma() ||
+      parseEnumAttribute(memoryScope, parser, state, kMemoryScopeAttrName) ||
+      parser.parseComma() ||
+      parseEnumAttribute(memorySemantics, parser, state));
+}
+
+static void print(spirv::ControlBarrierOp op, OpAsmPrinter &printer) {
+  printer << spirv::ControlBarrierOp::getOperationName() << " \""
+          << stringifyScope(op.execution_scope()) << "\", \""
+          << stringifyScope(op.memory_scope()) << "\", \""
+          << stringifyMemorySemantics(op.memory_semantics()) << "\"";
+}
+
+//===----------------------------------------------------------------------===//
 // spv.EntryPoint
 //===----------------------------------------------------------------------===//
 
@@ -1332,6 +1384,27 @@ static LogicalResult verify(spirv::MergeOp mergeOp) {
     return mergeOp.emitOpError(
         "can only be used in the last block of 'spv.loop'");
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.MemoryBarrier
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseMemoryBarrierOp(OpAsmParser &parser,
+                                        OperationState &state) {
+  spirv::Scope memoryScope;
+  spirv::MemorySemantics memorySemantics;
+
+  return failure(
+      parseEnumAttribute(memoryScope, parser, state, kMemoryScopeAttrName) ||
+      parser.parseComma() ||
+      parseEnumAttribute(memorySemantics, parser, state));
+}
+
+static void print(spirv::MemoryBarrierOp op, OpAsmPrinter &printer) {
+  printer << spirv::MemoryBarrierOp::getOperationName() << " \""
+          << stringifyScope(op.memory_scope()) << "\", \""
+          << stringifyMemorySemantics(op.memory_semantics()) << "\"";
 }
 
 //===----------------------------------------------------------------------===//
