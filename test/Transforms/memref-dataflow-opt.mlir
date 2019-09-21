@@ -247,3 +247,36 @@ func @store_load_store_nested_fwd(%N : index) -> f32 {
 // CHECK-NEXT:  %{{.*}} = affine.load %{{.*}}[%{{.*}}] : memref<10xf32>
 // CHECK-NEXT:  return %{{.*}} : f32
 }
+
+// CHECK-LABEL: func @should_not_fwd
+func @should_not_fwd(%A: memref<100xf32>, %M : index, %N : index) -> f32 {
+  %cf = constant 0.0 : f32
+  affine.store %cf, %A[%M] : memref<100xf32>
+  // CHECK: affine.load %{{.*}}[%{{.*}}]
+  %v = affine.load %A[%N] : memref<100xf32>
+  return %v : f32
+}
+
+// Can store forward to A[%j, %i], but no forwarding to load on %A[%i, %j]
+// CHECK-LABEL: func @refs_not_known_to_be_equal
+func @refs_not_known_to_be_equal(%A : memref<100 x 100 x f32>, %M : index) {
+  %N = affine.apply (d0) -> (d0 + 1) (%M)
+  %cf1 = constant 1.0 : f32
+  affine.for %i = 0 to 100 {
+  // CHECK: affine.for %[[I:.*]] =
+    affine.for %j = 0 to 100 {
+    // CHECK: affine.for %[[J:.*]] =
+      // CHECK: affine.load %{{.*}}[%[[I]], %[[J]]]
+      %u = affine.load %A[%i, %j] : memref<100x100xf32>
+      // CHECK-NEXT: affine.store %{{.*}}, %{{.*}}[%[[J]], %[[I]]]
+      affine.store %cf1, %A[%j, %i] : memref<100x100xf32>
+      // CHECK-NEXT: affine.load %{{.*}}[%[[I]], %[[J]]]
+      %v = affine.load %A[%i, %j] : memref<100x100xf32>
+      // This load should disappear.
+      %w = affine.load %A[%j, %i] : memref<100x100xf32>
+      // CHECK-NEXT: "foo"
+      "foo" (%u, %v, %w) : (f32, f32, f32) -> ()
+    }
+  }
+  return
+}
