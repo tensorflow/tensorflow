@@ -1,7 +1,7 @@
 # Testing Guide
 
 Testing is an integral part of any software infrastructure. In general, all
-commits to the MLIR repository should include an accompying test of some form.
+commits to the MLIR repository should include an accompanying test of some form.
 Commits that include no functional changes, such as API changes like symbol
 renaming, should be tagged with NFC(no functional changes). This signals to the
 reviewer why the change doesn't/shouldn't include a test.
@@ -83,7 +83,7 @@ outside of the realm of concern for the CSE pass. This line should be removed.
 
 This means that anything in the output that is not core to the functionality
 that you are testing should *not* be present in a CHECK line. This is a separate
-bullet just to highlight the imporance of it, especially when checking against
+bullet just to highlight the importance of it, especially when checking against
 IR output.
 
 If we naively remove the unrelated `CHECK` lines in our source file, we may end

@@ -7,7 +7,7 @@ maintain records of domain-specific information. Facts regarding an operation
 are specified concisely into a TableGen record, which will be expanded into an
 equivalent `mlir::Op` C++ template specialization at compiler build time.
 
-This manual explains in detail all the available mechansims for defining
+This manual explains in detail all the available mechanisms for defining
 operations in such a table-driven manner. It aims to be a specification instead
 of a tutorial. Please refer to [Quickstart tutorial to adding MLIR graph
 rewrite](QuickstartRewrites.md) for the latter.
@@ -454,7 +454,7 @@ for this operation. If it is `1`, then `::fold()` should be defined.
 ### Extra declarations
 
 One of the goals of table-driven op definition is to auto-generate as much logic
-and methods needed for each op as possible. With that said,there will always be
+and methods needed for each op as possible. With that said, there will always be
 long-tail cases that won't be covered. For such cases, you can use
 `extraClassDeclaration`. Code in `extraClassDeclaration` will be copied
 literally to the generated C++ op class.
@@ -502,7 +502,7 @@ For each operation, we automatically generate an _operand adaptor_. This class
 solves the problem of accessing operands provided as a list of `Value`s without
 using "magic" constants. The operand adaptor takes a reference to an array of
 `Value *` and provides methods with the same names as those in the operation
-class to access them. For example, for a binary arithmethic operation, it may
+class to access them. For example, for a binary arithmetic operation, it may
 provide `.lhs()` to access the first operand and `.rhs()` to access the second
 operand.
 
