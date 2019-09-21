@@ -202,17 +202,17 @@ template <typename T> static mlir::LogicalResult verifyToyBinOperands(T *op) {
 /// Build a constant operation.
 /// The builder is passed as an argument, so is the state that this method is
 /// expected to fill in order to build the operation.
-void ConstantOp::build(mlir::Builder *builder, mlir::OperationState *state,
+void ConstantOp::build(mlir::Builder *builder, mlir::OperationState &state,
                        ArrayRef<int64_t> shape, mlir::DenseElementsAttr value) {
-  state->types.push_back(ToyArrayType::get(builder->getContext(), shape));
+  state.types.push_back(ToyArrayType::get(builder->getContext(), shape));
   auto dataAttribute = builder->getNamedAttr("value", value);
-  state->attributes.push_back(dataAttribute);
+  state.attributes.push_back(dataAttribute);
 }
 
 /// Build a constant operation.
 /// The builder is passed as an argument, so is the state that this method is
 /// expected to fill in order to build the operation.
-void ConstantOp::build(mlir::Builder *builder, mlir::OperationState *state,
+void ConstantOp::build(mlir::Builder *builder, mlir::OperationState &state,
                        mlir::FloatAttr value) {
   // Broadcast and forward to the other build factory
   mlir::Type elementType = mlir::FloatType::getF64(builder->getContext());
@@ -266,13 +266,13 @@ mlir::LogicalResult ConstantOp::verify() {
   return mlir::success();
 }
 
-void GenericCallOp::build(mlir::Builder *builder, mlir::OperationState *state,
+void GenericCallOp::build(mlir::Builder *builder, mlir::OperationState &state,
                           StringRef callee, ArrayRef<mlir::Value *> arguments) {
   // Generic call always returns a generic ToyArray initially
-  state->types.push_back(ToyArrayType::get(builder->getContext()));
-  state->operands.assign(arguments.begin(), arguments.end());
+  state.types.push_back(ToyArrayType::get(builder->getContext()));
+  state.operands.assign(arguments.begin(), arguments.end());
   auto calleeAttr = builder->getStringAttr(callee);
-  state->attributes.push_back(builder->getNamedAttr("callee", calleeAttr));
+  state.attributes.push_back(builder->getNamedAttr("callee", calleeAttr));
 }
 
 mlir::LogicalResult GenericCallOp::verify() {
@@ -305,11 +305,11 @@ template <typename T> static mlir::LogicalResult verifyToySingleOperand(T *op) {
   return mlir::success();
 }
 
-void ReturnOp::build(mlir::Builder *builder, mlir::OperationState *state,
+void ReturnOp::build(mlir::Builder *builder, mlir::OperationState &state,
                      mlir::Value *value) {
   // Return does not return any value and has an optional single argument
   if (value)
-    state->operands.push_back(value);
+    state.operands.push_back(value);
 }
 
 mlir::LogicalResult ReturnOp::verify() {
@@ -321,10 +321,10 @@ mlir::LogicalResult ReturnOp::verify() {
   return mlir::success();
 }
 
-void PrintOp::build(mlir::Builder *builder, mlir::OperationState *state,
+void PrintOp::build(mlir::Builder *builder, mlir::OperationState &state,
                     mlir::Value *value) {
   // Print does not return any value and has a single argument
-  state->operands.push_back(value);
+  state.operands.push_back(value);
 }
 
 mlir::LogicalResult PrintOp::verify() {
@@ -333,10 +333,10 @@ mlir::LogicalResult PrintOp::verify() {
   return mlir::success();
 }
 
-void TransposeOp::build(mlir::Builder *builder, mlir::OperationState *state,
+void TransposeOp::build(mlir::Builder *builder, mlir::OperationState &state,
                         mlir::Value *value) {
-  state->types.push_back(ToyArrayType::get(builder->getContext()));
-  state->operands.push_back(value);
+  state.types.push_back(ToyArrayType::get(builder->getContext()));
+  state.operands.push_back(value);
 }
 
 mlir::LogicalResult TransposeOp::verify() {
@@ -345,10 +345,10 @@ mlir::LogicalResult TransposeOp::verify() {
   return mlir::success();
 }
 
-void ReshapeOp::build(mlir::Builder *builder, mlir::OperationState *state,
+void ReshapeOp::build(mlir::Builder *builder, mlir::OperationState &state,
                       mlir::Value *value, ToyArrayType reshapedType) {
-  state->types.push_back(reshapedType);
-  state->operands.push_back(value);
+  state.types.push_back(reshapedType);
+  state.operands.push_back(value);
 }
 
 mlir::LogicalResult ReshapeOp::verify() {
@@ -363,11 +363,11 @@ mlir::LogicalResult ReshapeOp::verify() {
   return mlir::success();
 }
 
-void AddOp::build(mlir::Builder *builder, mlir::OperationState *state,
+void AddOp::build(mlir::Builder *builder, mlir::OperationState &state,
                   mlir::Value *lhs, mlir::Value *rhs) {
-  state->types.push_back(ToyArrayType::get(builder->getContext()));
-  state->operands.push_back(lhs);
-  state->operands.push_back(rhs);
+  state.types.push_back(ToyArrayType::get(builder->getContext()));
+  state.operands.push_back(lhs);
+  state.operands.push_back(rhs);
 }
 
 mlir::LogicalResult AddOp::verify() {
@@ -376,11 +376,11 @@ mlir::LogicalResult AddOp::verify() {
   return mlir::success();
 }
 
-void MulOp::build(mlir::Builder *builder, mlir::OperationState *state,
+void MulOp::build(mlir::Builder *builder, mlir::OperationState &state,
                   mlir::Value *lhs, mlir::Value *rhs) {
-  state->types.push_back(ToyArrayType::get(builder->getContext()));
-  state->operands.push_back(lhs);
-  state->operands.push_back(rhs);
+  state.types.push_back(ToyArrayType::get(builder->getContext()));
+  state.operands.push_back(lhs);
+  state.operands.push_back(rhs);
 }
 
 mlir::LogicalResult MulOp::verify() {
@@ -389,15 +389,15 @@ mlir::LogicalResult MulOp::verify() {
   return mlir::success();
 }
 
-void AllocOp::build(mlir::Builder *builder, mlir::OperationState *state,
+void AllocOp::build(mlir::Builder *builder, mlir::OperationState &state,
                     mlir::Type retType) {
-  state->types.push_back(retType);
+  state.types.push_back(retType);
 }
 
-void TypeCastOp::build(mlir::Builder *builder, mlir::OperationState *state,
+void TypeCastOp::build(mlir::Builder *builder, mlir::OperationState &state,
                        mlir::Value *value, mlir::Type destTy) {
-  state->operands.push_back(value);
-  state->types.push_back(destTy);
+  state.operands.push_back(value);
+  state.types.push_back(destTy);
 }
 
 } // namespace toy

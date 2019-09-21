@@ -33,12 +33,12 @@ using namespace linalg;
 ////////////////////////////////////////////////////////////////////////////////
 // LoadOp.
 ////////////////////////////////////////////////////////////////////////////////
-void linalg::LoadOp::build(Builder *b, OperationState *result, Value *view,
+void linalg::LoadOp::build(Builder *b, OperationState &result, Value *view,
                            ArrayRef<Value *> indices) {
   auto viewType = view->getType().cast<ViewType>();
-  result->addOperands(view);
-  result->addOperands(indices);
-  result->addTypes(viewType.getElementType());
+  result.addOperands(view);
+  result.addOperands(indices);
+  result.addTypes(viewType.getElementType());
 }
 
 void linalg::LoadOp::print(OpAsmPrinter *p) {
@@ -49,7 +49,7 @@ void linalg::LoadOp::print(OpAsmPrinter *p) {
   *p << " : " << getViewType();
 }
 
-ParseResult linalg::LoadOp::parse(OpAsmParser &parser, OperationState *result) {
+ParseResult linalg::LoadOp::parse(OpAsmParser &parser, OperationState &result) {
   llvm_unreachable("Parsing linalg dialect is not supported in this tutorial");
   return success();
 }
@@ -84,12 +84,12 @@ unsigned linalg::LoadOp::getRank() { return getViewType().getRank(); }
 ////////////////////////////////////////////////////////////////////////////////
 // StoreOp.
 ////////////////////////////////////////////////////////////////////////////////
-void linalg::StoreOp::build(Builder *b, OperationState *result,
+void linalg::StoreOp::build(Builder *b, OperationState &result,
                             Value *valueToStore, Value *view,
                             ArrayRef<Value *> indices) {
-  result->addOperands(valueToStore);
-  result->addOperands(view);
-  result->addOperands(indices);
+  result.addOperands(valueToStore);
+  result.addOperands(view);
+  result.addOperands(indices);
 }
 
 void linalg::StoreOp::print(OpAsmPrinter *p) {
@@ -102,7 +102,7 @@ void linalg::StoreOp::print(OpAsmPrinter *p) {
 }
 
 ParseResult linalg::StoreOp::parse(OpAsmParser &parser,
-                                   OperationState *result) {
+                                   OperationState &result) {
   assert(false && "NYI");
   return success();
 }

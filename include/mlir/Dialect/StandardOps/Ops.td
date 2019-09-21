@@ -40,7 +40,7 @@ class Std_Op<string mnemonic, list<OpTrait> traits = []> :
   //   * void print(OpAsmPrinter *p, ${C++ class of Op} op)
   //   * LogicalResult verify(${C++ class of Op} op)
   //   * ParseResult parse${C++ class of Op}(OpAsmParser &parser,
-  //                                         OperationState *result)
+  //                                         OperationState &result)
   // functions.
   let printer = [{ return ::print(p, *this); }];
   let verifier = [{ return ::verify(*this); }];
@@ -55,7 +55,7 @@ class CastOp<string mnemonic, list<OpTrait> traits = []> :
   let results = (outs AnyType);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Value *source, Type destType", [{
+    "Builder *builder, OperationState &result, Value *source, Type destType", [{
        impl::buildCastOp(builder, result, source, destType);
   }]>];
 
@@ -149,8 +149,8 @@ def AllocOp : Std_Op<"alloc"> {
   let results = (outs AnyMemRef);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, MemRefType memrefType", [{
-       result->types.push_back(memrefType);
+    "Builder *builder, OperationState &result, MemRefType memrefType", [{
+       result.types.push_back(memrefType);
      }]
   >];
 
@@ -195,9 +195,9 @@ def BranchOp : Std_Op<"br", [Terminator]> {
   let arguments = (ins Variadic<AnyType>:$operands);
 
   let builders = [OpBuilder<
-    "Builder *, OperationState *result, Block *dest,"
+    "Builder *, OperationState &result, Block *dest,"
     "ArrayRef<Value *> operands = {}", [{
-      result->addSuccessor(dest, operands);
+      result.addSuccessor(dest, operands);
   }]>];
 
   // BranchOp is fully verified by traits.
@@ -226,17 +226,17 @@ def CallOp : Std_Op<"call"> {
   let results = (outs Variadic<AnyType>);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, FuncOp callee,"
+    "Builder *builder, OperationState &result, FuncOp callee,"
     "ArrayRef<Value *> operands = {}", [{
-      result->addOperands(operands);
-      result->addAttribute("callee", builder->getSymbolRefAttr(callee));
-      result->addTypes(callee.getType().getResults());
+      result.addOperands(operands);
+      result.addAttribute("callee", builder->getSymbolRefAttr(callee));
+      result.addTypes(callee.getType().getResults());
   }]>, OpBuilder<
-    "Builder *builder, OperationState *result, StringRef callee,"
+    "Builder *builder, OperationState &result, StringRef callee,"
     "ArrayRef<Type> results, ArrayRef<Value *> operands = {}", [{
-      result->addOperands(operands);
-      result->addAttribute("callee", builder->getSymbolRefAttr(callee));
-      result->addTypes(results);
+      result.addOperands(operands);
+      result.addAttribute("callee", builder->getSymbolRefAttr(callee));
+      result.addTypes(results);
   }]>];
 
   let extraClassDeclaration = [{
@@ -268,11 +268,11 @@ def CallIndirectOp : Std_Op<"call_indirect"> {
   let results = (outs Variadic<AnyType>);
 
   let builders = [OpBuilder<
-    "Builder *, OperationState *result, Value *callee,"
+    "Builder *, OperationState &result, Value *callee,"
     "ArrayRef<Value *> operands = {}", [{
-      result->operands.push_back(callee);
-      result->addOperands(operands);
-      result->addTypes(callee->getType().cast<FunctionType>().getResults());
+      result.operands.push_back(callee);
+      result.addOperands(operands);
+      result.addTypes(callee->getType().cast<FunctionType>().getResults());
   }]>];
 
   let extraClassDeclaration = [{
@@ -317,7 +317,7 @@ def CmpIOp : Std_Op<"cmpi", [NoSideEffect, SameTypeOperands, SameOperandsAndResu
   let results = (outs BoolLike);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, CmpIPredicate predicate,"
+    "Builder *builder, OperationState &result, CmpIPredicate predicate,"
     "Value *lhs, Value *rhs", [{
       ::buildCmpIOp(builder, result, predicate, lhs, rhs);
   }]>];
@@ -363,7 +363,7 @@ def CmpFOp : Std_Op<"cmpf", [NoSideEffect, SameTypeOperands, SameOperandsAndResu
   let results = (outs BoolLike);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, CmpFPredicate predicate,"
+    "Builder *builder, OperationState &result, CmpFPredicate predicate,"
     "Value *lhs, Value *rhs", [{
       ::buildCmpFOp(builder, result, predicate, lhs, rhs);
   }]>];
@@ -401,12 +401,12 @@ def CondBranchOp : Std_Op<"cond_br", [Terminator]> {
   let arguments = (ins I1:$condition, Variadic<AnyType>:$branchOperands);
 
   let builders = [OpBuilder<
-    "Builder *, OperationState *result, Value *condition,"
+    "Builder *, OperationState &result, Value *condition,"
     "Block *trueDest, ArrayRef<Value *> trueOperands,"
     "Block *falseDest, ArrayRef<Value *> falseOperands", [{
-      result->addOperands(condition);
-      result->addSuccessor(trueDest, trueOperands);
-      result->addSuccessor(falseDest, falseOperands);
+      result.addOperands(condition);
+      result.addSuccessor(trueDest, trueOperands);
+      result.addSuccessor(falseDest, falseOperands);
   }]>];
 
   // CondBranchOp is fully verified by traits.
@@ -506,7 +506,7 @@ def ConstantOp : Std_Op<"constant", [NoSideEffect]> {
   let results = (outs AnyType);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Attribute value",
+    "Builder *builder, OperationState &result, Attribute value",
     [{ build(builder, result, value.getType(), value); }]>];
 
   let extraClassDeclaration = [{
@@ -554,7 +554,7 @@ def DimOp : Std_Op<"dim", [NoSideEffect]> {
   let results = (outs Index);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Value *memrefOrTensor,"
+    "Builder *builder, OperationState &result, Value *memrefOrTensor,"
     "unsigned index", [{
       auto indexType = builder->getIndexType();
       auto indexAttr = builder->getIntegerAttr(indexType, index);
@@ -603,7 +603,7 @@ def ExtractElementOp : Std_Op<"extract_element", [NoSideEffect]> {
   let results = (outs AnyType);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Value *aggregate,"
+    "Builder *builder, OperationState &result, Value *aggregate,"
     "ArrayRef<Value *> indices = {}", [{
       auto resType = aggregate->getType().cast<ShapedType>()
                                          .getElementType();
@@ -673,12 +673,12 @@ def LoadOp : Std_Op<"load"> {
   let results = (outs AnyType);
 
   let builders = [OpBuilder<
-    "Builder *, OperationState *result, Value *memref,"
+    "Builder *, OperationState &result, Value *memref,"
     "ArrayRef<Value *> indices = {}", [{
       auto memrefType = memref->getType().cast<MemRefType>();
-      result->addOperands(memref);
-      result->addOperands(indices);
-      result->types.push_back(memrefType.getElementType());
+      result.addOperands(memref);
+      result.addOperands(indices);
+      result.types.push_back(memrefType.getElementType());
   }]>];
 
   let extraClassDeclaration = [{
@@ -756,7 +756,7 @@ def RankOp : Std_Op<"rank", [NoSideEffect]> {
   let verifier = ?;
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Value *tensor", [{
+    "Builder *builder, OperationState &result, Value *tensor", [{
       auto indexType = builder->getIndexType();
       build(builder, result, indexType, tensor);
     }]>];
@@ -794,7 +794,7 @@ def ReturnOp : Std_Op<"return", [Terminator, HasParent<"FuncOp">]> {
   let arguments = (ins Variadic<AnyType>:$operands);
 
   let builders = [OpBuilder<
-    "Builder *b, OperationState *result", [{ build(b, result, llvm::None); }]
+    "Builder *b, OperationState &result", [{ build(b, result, llvm::None); }]
   >];
 }
 
@@ -818,10 +818,10 @@ def SelectOp : Std_Op<"select", [NoSideEffect, SameOperandsAndResultShape]> {
   let results = (outs AnyType);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Value *condition,"
+    "Builder *builder, OperationState &result, Value *condition,"
     "Value *trueValue, Value *falseValue", [{
-      result->addOperands({condition, trueValue, falseValue});
-      result->addTypes(trueValue->getType());
+      result.addOperands({condition, trueValue, falseValue});
+      result.addTypes(trueValue->getType());
   }]>];
 
   let extraClassDeclaration = [{
@@ -862,9 +862,9 @@ def StoreOp : Std_Op<"store"> {
   let arguments = (ins AnyType:$value, AnyMemRef:$memref, Variadic<Index>:$indices);
 
   let builders = [OpBuilder<
-    "Builder *, OperationState *result, Value *valueToStore, Value *memref", [{
-      result->addOperands(valueToStore);
-      result->addOperands(memref);
+    "Builder *, OperationState &result, Value *valueToStore, Value *memref", [{
+      result.addOperands(valueToStore);
+      result.addOperands(memref);
   }]>];
 
   let extraClassDeclaration = [{
@@ -928,12 +928,12 @@ def TensorLoadOp : Std_Op<"tensor_load",
   let verifier = ?;
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Value *memref", [{
+    "Builder *builder, OperationState &result, Value *memref", [{
       auto memrefType = memref->getType().cast<MemRefType>();
       auto resultType = builder->getTensorType(memrefType.getShape(),
           memrefType.getElementType());
-      result->addOperands(memref);
-      result->addTypes(resultType);
+      result.addOperands(memref);
+      result.addTypes(resultType);
   }]>];
 
 

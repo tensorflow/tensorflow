@@ -40,7 +40,7 @@ class Loop_Op<string mnemonic, list<OpTrait> traits = []> :
   //   * void print(OpAsmPrinter *p, ${C++ class of Op} op)
   //   * LogicalResult verify(${C++ class of Op} op)
   //   * ParseResult parse${C++ class of Op}(OpAsmParser &parser,
-  //                                         OperationState *result)
+  //                                         OperationState &result)
   // functions.
   let printer = [{ return ::print(p, *this); }];
   let verifier = [{ return ::verify(*this); }];
@@ -75,7 +75,7 @@ def ForOp : Loop_Op<"for",
 
   let skipDefaultBuilders = 1;
   let builders = [
-    OpBuilder<"Builder *builder, OperationState *result, "
+    OpBuilder<"Builder *builder, OperationState &result, "
               "Value *lowerBound, Value *upperBound, Value *step">
   ];
 
@@ -117,7 +117,7 @@ def IfOp : Loop_Op<"if",
 
   let skipDefaultBuilders = 1;
   let builders = [
-    OpBuilder<"Builder *builder, OperationState *result, "
+    OpBuilder<"Builder *builder, OperationState &result, "
               "Value *cond, bool withElseRegion">
   ];
 

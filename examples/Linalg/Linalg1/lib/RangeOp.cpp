@@ -31,10 +31,10 @@ using namespace mlir;
 using namespace linalg;
 
 // Minimal example for a new RangeOp operating on RangeType.
-void linalg::RangeOp::build(Builder *b, OperationState *result, Value *min,
+void linalg::RangeOp::build(Builder *b, OperationState &result, Value *min,
                             Value *max, Value *step) {
-  result->addOperands({min, max, step});
-  result->addTypes({RangeType::get(b->getContext())});
+  result.addOperands({min, max, step});
+  result.addTypes({RangeType::get(b->getContext())});
 }
 
 // Verification is simply that a RangeOp takes 3 index ssa-value.
@@ -49,7 +49,7 @@ mlir::LogicalResult linalg::RangeOp::verify() {
 }
 
 ParseResult linalg::RangeOp::parse(OpAsmParser &parser,
-                                   OperationState *result) {
+                                   OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 3> rangeInfo(3);
   RangeType type;
   auto indexTy = parser.getBuilder().getIndexType();
@@ -57,8 +57,8 @@ ParseResult linalg::RangeOp::parse(OpAsmParser &parser,
                  parser.parseOperand(rangeInfo[1]) || parser.parseColon() ||
                  parser.parseOperand(rangeInfo[2]) ||
                  parser.parseColonType(type) ||
-                 parser.resolveOperands(rangeInfo, indexTy, result->operands) ||
-                 parser.addTypeToList(type, result->types));
+                 parser.resolveOperands(rangeInfo, indexTy, result.operands) ||
+                 parser.addTypeToList(type, result.types));
 }
 
 // A RangeOp prints as:

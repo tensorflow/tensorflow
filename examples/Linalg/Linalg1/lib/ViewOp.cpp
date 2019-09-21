@@ -36,14 +36,14 @@ using llvm::Twine;
 using namespace mlir;
 using namespace linalg;
 
-void linalg::ViewOp::build(Builder *b, OperationState *result, Value *memRef,
+void linalg::ViewOp::build(Builder *b, OperationState &result, Value *memRef,
                            ArrayRef<Value *> indexings) {
   MemRefType memRefType = memRef->getType().cast<MemRefType>();
-  result->addOperands({memRef});
+  result.addOperands({memRef});
   assert(static_cast<int64_t>(indexings.size()) == memRefType.getRank() &&
          "unexpected number of indexings (must match the memref rank)");
 
-  result->addOperands(indexings);
+  result.addOperands(indexings);
   unsigned rank = memRefType.getRank();
   for (auto *v : indexings) {
     if (!v->getType().isa<RangeType>()) {
@@ -51,7 +51,7 @@ void linalg::ViewOp::build(Builder *b, OperationState *result, Value *memRef,
     }
   }
   Type elementType = memRefType.getElementType();
-  result->addTypes({linalg::ViewType::get(b->getContext(), elementType, rank)});
+  result.addTypes({linalg::ViewType::get(b->getContext(), elementType, rank)});
 }
 
 LogicalResult linalg::ViewOp::verify() {
@@ -89,13 +89,13 @@ LogicalResult linalg::ViewOp::verify() {
   return success();
 }
 
-ParseResult linalg::ViewOp::parse(OpAsmParser &parser, OperationState *result) {
+ParseResult linalg::ViewOp::parse(OpAsmParser &parser, OperationState &result) {
   OpAsmParser::OperandType memRefInfo;
   SmallVector<OpAsmParser::OperandType, 8> indexingsInfo;
   SmallVector<Type, 8> types;
   if (parser.parseOperand(memRefInfo) ||
       parser.parseOperandList(indexingsInfo, OpAsmParser::Delimiter::Square) ||
-      parser.parseOptionalAttributeDict(result->attributes) ||
+      parser.parseOptionalAttributeDict(result.attributes) ||
       parser.parseColonTypeList(types))
     return failure();
 
@@ -119,12 +119,12 @@ ParseResult linalg::ViewOp::parse(OpAsmParser &parser, OperationState *result) {
                             "expected " + Twine(memRefType.getRank()) +
                                 " indexing types");
   return failure(
-      parser.resolveOperand(memRefInfo, memRefType, result->operands) ||
+      parser.resolveOperand(memRefInfo, memRefType, result.operands) ||
       (!indexingsInfo.empty() &&
        parser.resolveOperands(indexingsInfo, indexingTypes,
                               indexingsInfo.front().location,
-                              result->operands)) ||
-      parser.addTypeToList(viewType, result->types));
+                              result.operands)) ||
+      parser.addTypeToList(viewType, result.types));
 }
 
 // A ViewOp prints as:

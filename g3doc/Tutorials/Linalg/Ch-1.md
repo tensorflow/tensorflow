@@ -148,7 +148,7 @@ order to fold chains of slice operations (introduced in the following paragraph)
 and capture enough information in the ViewOp so it can be lowered to LLVM.
 
 The entry point to the builder is the method: `static void
-ViewOp::build(mlir::Builder *b, mlir::OperationState *result, mlir::Value
+ViewOp::build(mlir::Builder *b, mlir::OperationState &result, mlir::Value
 *memRef, llvm::ArrayRef<mlir::Value *> indexings = {});`
 
 A `ViewOp` pretty-prints as: `%1 = linalg.view %0[%m, %n, %k] :

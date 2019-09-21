@@ -49,15 +49,15 @@ def AOp : NS_Op<"a_op", []> {
 // ---
 
 // CHECK:      void AOp::build(
-// CHECK:        tblgen_state->addAttribute("aAttr", aAttr);
-// CHECK:        tblgen_state->addAttribute("bAttr", bAttr);
+// CHECK:        tblgen_state.addAttribute("aAttr", aAttr);
+// CHECK:        tblgen_state.addAttribute("bAttr", bAttr);
 // CHECK:        if (cAttr) {
-// CHECK-NEXT:     tblgen_state->addAttribute("cAttr", cAttr);
+// CHECK-NEXT:     tblgen_state.addAttribute("cAttr", cAttr);
 
 // CHECK:      void AOp::build(
 // CHECK-SAME:   ArrayRef<NamedAttribute> attributes
 // CHECK:        for (const auto& pair : attributes)
-// CHECK-NEXT:     tblgen_state->addAttribute(pair.first, pair.second);
+// CHECK-NEXT:     tblgen_state.addAttribute(pair.first, pair.second);
 
 // Test verify method
 // ---
@@ -158,7 +158,7 @@ def MixOperandsAndAttrs : NS_Op<"mix_operands_and_attrs", []> {
 // CHECK-LABEL: MixOperandsAndAttrs definitions
 // CHECK-DAG: Value *MixOperandsAndAttrs::operand()
 // CHECK-DAG: Value *MixOperandsAndAttrs::otherArg()
-// CHECK-DAG: void MixOperandsAndAttrs::build(Builder *, OperationState *tblgen_state, FloatAttr attr, Value *operand, FloatAttr otherAttr, Value *otherArg)
+// CHECK-DAG: void MixOperandsAndAttrs::build(Builder *, OperationState &tblgen_state, FloatAttr attr, Value *operand, FloatAttr otherAttr, Value *otherArg)
 // CHECK-DAG: APFloat MixOperandsAndAttrs::attr()
 // CHECK-DAG: APFloat MixOperandsAndAttrs::otherAttr()
 
@@ -173,4 +173,4 @@ def UnitAttrOp : NS_Op<"unit_attr_op", []> {
 // CHECK: bool UnitAttrOp::attr() {
 // CHECK:   return {{.*}} != nullptr
 
-// CHECK: build(Builder *, OperationState *tblgen_state, /*optional*/UnitAttr attr)
+// CHECK: build(Builder *, OperationState &tblgen_state, /*optional*/UnitAttr attr)

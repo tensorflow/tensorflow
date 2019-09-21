@@ -33,7 +33,7 @@ class Linalg_Op<string mnemonic, list<OpTrait> traits = []> :
   //   * void print(OpAsmPrinter *p, ${C++ class of Op} op)
   //   * LogicalResult verify(${C++ class of Op} op)
   //   * ParseResult parse${C++ class of Op}(OpAsmParser &parser,
-  //                                         OperationState *result)
+  //                                         OperationState &result)
   // functions.
   let printer = [{ return ::print(p, *this); }];
   let verifier = [{ return ::verify(*this); }];
@@ -71,29 +71,29 @@ def BufferAllocOp :
   }];
   let builders = [
     OpBuilder<
-      "Builder *b, OperationState *result, BufferType bufferType", [{
-          result->addTypes(bufferType);
+      "Builder *b, OperationState &result, BufferType bufferType", [{
+          result.addTypes(bufferType);
        }]>,
     OpBuilder<
-      "Builder *b, OperationState *result, BufferType bufferType, "
+      "Builder *b, OperationState &result, BufferType bufferType, "
       "unsigned alignment", [{
         build(b, result, bufferType);
         if (alignment != 0)
-          result->addAttribute(BufferAllocOp::getAlignmentAttrName(),
+          result.addAttribute(BufferAllocOp::getAlignmentAttrName(),
                                b->getI64IntegerAttr(alignment));
       }]>,
     OpBuilder<
-      "Builder *b, OperationState *result, BufferType bufferType, "
+      "Builder *b, OperationState &result, BufferType bufferType, "
       "Value *size, unsigned alignment", [{
         if (alignment == 0)
           return build(b, result, bufferType, size);
         build(b, result, bufferType, size, b->getI64IntegerAttr(alignment));
       }]>,
     OpBuilder<
-      "Builder *b, OperationState *result, BufferType bufferType, Value *size",
+      "Builder *b, OperationState &result, BufferType bufferType, Value *size",
       [{
-        result->addOperands(size);
-        result->addTypes(bufferType);
+        result.addOperands(size);
+        result.addTypes(bufferType);
       }]>
   ];
   let extraClassDeclaration = [{
@@ -163,12 +163,12 @@ def DimOp : Linalg_Op<"dim", [NoSideEffect]>,
   }];
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Value *view, unsigned index",
+    "Builder *builder, OperationState &result, Value *view, unsigned index",
     [{
-      result->addOperands(view);
-      result->addAttribute(
+      result.addOperands(view);
+      result.addAttribute(
         "index", builder->getIntegerAttr(builder->getIndexType(), index));
-      result->types.push_back(builder->getIndexType());
+      result.types.push_back(builder->getIndexType());
     }]>];
 
   let extraClassDeclaration = [{
@@ -200,7 +200,7 @@ def LoadOp :
        %0 = linalg.load %V[%c0] : !linalg.view<?xf32>
   }];
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Value *view, "
+    "Builder *builder, OperationState &result, Value *view, "
     "ArrayRef<Value*> indices",
     [{
       auto viewType = view->getType().cast<ViewType>();
@@ -226,7 +226,7 @@ def RangeOp :
       %3 = linalg.range %0:%1:%2 : !linalg.range
   }];
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Value *min, Value *max, "
+    "Builder *builder, OperationState &result, Value *min, Value *max, "
     "Value *step",
     [{
       auto rangeType = RangeType::get(builder->getContext());
@@ -274,7 +274,7 @@ def SliceOp : Linalg_Op<"slice", [NoSideEffect]>,
   }];
 
   let builders = [OpBuilder<
-    "Builder *b, OperationState *result, Value *base, "
+    "Builder *b, OperationState &result, Value *base, "
     "ArrayRef<Value *> indexings">];
 
   let extraClassDeclaration = [{
@@ -351,12 +351,12 @@ def SubViewOp : Linalg_Op<"subview", [NoSideEffect]>,
   //   linalg.subview %0[%1:%2:%3][%4:%5:%6] : view<?x?xf32>
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Value *view, "
+    "Builder *builder, OperationState &result, Value *view, "
     "ArrayRef<Value *> ranges",
     [{
-      result->addOperands(view);
-      result->addOperands(ranges);
-      result->types.push_back(view->getType());
+      result.addOperands(view);
+      result.addOperands(ranges);
+      result.types.push_back(view->getType());
     }]>];
 
   let verifier = [{
@@ -389,12 +389,12 @@ def SubViewOp : Linalg_Op<"subview", [NoSideEffect]>,
 
     // This requires `SubViewOp` to be declared, in the future it should be
     // folded into the builders.
-    static void build(Builder *builder, OperationState *result, Value *view,
+    static void build(Builder *builder, OperationState &result, Value *view,
         ArrayRef<SubViewOp::Range> ranges) {
-      result->addOperands(view);
+      result.addOperands(view);
       for (auto r : ranges)
-        result->addOperands({r.min, r.max, r.step});
-      result->types.push_back(view->getType());
+        result.addOperands({r.min, r.max, r.step});
+      result.types.push_back(view->getType());
     }
   }];
 }
@@ -413,7 +413,7 @@ def TransposeOp : Linalg_Op<"transpose", [NoSideEffect]>,
   }];
 
   let builders = [OpBuilder<
-    "Builder *b, OperationState *result, Value *view, "
+    "Builder *b, OperationState &result, Value *view, "
     "AffineMapAttr permutation, ArrayRef<NamedAttribute> attrs = {}">];
 
   let verifier = [{
@@ -451,7 +451,7 @@ def ViewOp : Linalg_Op<"view", [NoSideEffect]>,
   }];
 
   let builders = [OpBuilder<
-    "Builder *b, OperationState *result, Value *buffer, "
+    "Builder *b, OperationState &result, Value *buffer, "
     "ArrayRef<Value *> ranges, Type resultType = Type(), "
     "ArrayRef<NamedAttribute> attrs = {}">];
 

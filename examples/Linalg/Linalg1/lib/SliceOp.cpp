@@ -36,23 +36,23 @@ using namespace linalg;
 // A view may itself be coming either from a ViewOp or from a SliceOp.
 // TODO assert statically or dynamically that indexing is within the bounds of
 // view.
-void linalg::SliceOp::build(Builder *b, OperationState *result, Value *view,
+void linalg::SliceOp::build(Builder *b, OperationState &result, Value *view,
                             Value *indexing, unsigned dim) {
   // Early sanity checks + extract rank.
   unsigned rank = getViewRank(view);
   ViewType viewType = view->getType().cast<ViewType>();
   Type elementType = viewType.getElementType();
 
-  result->addOperands({view, indexing});
-  result->addAttribute(getSlicingDimAttrName(),
-                       b->getIntegerAttr(b->getIndexType(), dim));
+  result.addOperands({view, indexing});
+  result.addAttribute(getSlicingDimAttrName(),
+                      b->getIntegerAttr(b->getIndexType(), dim));
   if (indexing->getType().isa<RangeType>()) {
     // Taking a range slice does not decrease the rank, the view has the same
     // type.
-    result->addTypes({viewType});
+    result.addTypes({viewType});
   } else {
     assert(indexing->getType().cast<IndexType>());
-    result->addTypes(
+    result.addTypes(
         {linalg::ViewType::get(b->getContext(), elementType, rank - 1)});
   }
 }
@@ -75,14 +75,14 @@ mlir::LogicalResult linalg::SliceOp::verify() {
 }
 
 ParseResult linalg::SliceOp::parse(OpAsmParser &parser,
-                                   OperationState *result) {
+                                   OperationState &result) {
   OpAsmParser::OperandType viewInfo;
   SmallVector<OpAsmParser::OperandType, 1> indexingInfo;
   SmallVector<Type, 8> types;
   if (parser.parseOperand(viewInfo) ||
       parser.parseOperandList(indexingInfo, 1,
                               OpAsmParser::Delimiter::Square) ||
-      parser.parseOptionalAttributeDict(result->attributes) ||
+      parser.parseOptionalAttributeDict(result.attributes) ||
       parser.parseColonTypeList(types))
     return failure();
 
@@ -109,9 +109,9 @@ ParseResult linalg::SliceOp::parse(OpAsmParser &parser,
       ViewType::get(viewType.getContext(), viewType.getElementType(), rank);
 
   return failure(
-      parser.resolveOperand(viewInfo, viewType, result->operands) ||
-      parser.resolveOperands(indexingInfo[0], types.back(), result->operands) ||
-      parser.addTypeToList(resultViewType, result->types));
+      parser.resolveOperand(viewInfo, viewType, result.operands) ||
+      parser.resolveOperands(indexingInfo[0], types.back(), result.operands) ||
+      parser.addTypeToList(resultViewType, result.types));
 }
 
 // A SliceOp prints as:

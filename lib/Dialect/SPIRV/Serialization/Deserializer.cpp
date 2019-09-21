@@ -471,7 +471,7 @@ spirv::ModuleOp Deserializer::createModuleOp() {
   // TODO(antiagainst): use target environment to select the version
   state.addAttribute("major_version", builder.getI32IntegerAttr(1));
   state.addAttribute("minor_version", builder.getI32IntegerAttr(0));
-  spirv::ModuleOp::build(&builder, &state);
+  spirv::ModuleOp::build(&builder, state);
   return cast<spirv::ModuleOp>(Operation::create(state));
 }
 

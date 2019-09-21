@@ -612,7 +612,7 @@ Operation *Operation::clone() {
 //===----------------------------------------------------------------------===//
 
 // The fallback for the parser is to reject the custom assembly form.
-ParseResult OpState::parse(OpAsmParser &parser, OperationState *result) {
+ParseResult OpState::parse(OpAsmParser &parser, OperationState &result) {
   return parser.emitError(parser.getNameLoc(), "has no custom assembly form");
 }
 
@@ -943,21 +943,21 @@ LogicalResult OpTrait::impl::verifyResultsAreIntegerLike(Operation *op) {
 // These functions are out-of-line implementations of the methods in BinaryOp,
 // which avoids them being template instantiated/duplicated.
 
-void impl::buildBinaryOp(Builder *builder, OperationState *result, Value *lhs,
+void impl::buildBinaryOp(Builder *builder, OperationState &result, Value *lhs,
                          Value *rhs) {
   assert(lhs->getType() == rhs->getType());
-  result->addOperands({lhs, rhs});
-  result->types.push_back(lhs->getType());
+  result.addOperands({lhs, rhs});
+  result.types.push_back(lhs->getType());
 }
 
-ParseResult impl::parseBinaryOp(OpAsmParser &parser, OperationState *result) {
+ParseResult impl::parseBinaryOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 2> ops;
   Type type;
   return failure(parser.parseOperandList(ops, 2) ||
-                 parser.parseOptionalAttributeDict(result->attributes) ||
+                 parser.parseOptionalAttributeDict(result.attributes) ||
                  parser.parseColonType(type) ||
-                 parser.resolveOperands(ops, type, result->operands) ||
-                 parser.addTypeToList(type, result->types));
+                 parser.resolveOperands(ops, type, result.operands) ||
+                 parser.addTypeToList(type, result.types));
 }
 
 void impl::printBinaryOp(Operation *op, OpAsmPrinter *p) {
@@ -984,21 +984,21 @@ void impl::printBinaryOp(Operation *op, OpAsmPrinter *p) {
 // CastOp implementation
 //===----------------------------------------------------------------------===//
 
-void impl::buildCastOp(Builder *builder, OperationState *result, Value *source,
+void impl::buildCastOp(Builder *builder, OperationState &result, Value *source,
                        Type destType) {
-  result->addOperands(source);
-  result->addTypes(destType);
+  result.addOperands(source);
+  result.addTypes(destType);
 }
 
-ParseResult impl::parseCastOp(OpAsmParser &parser, OperationState *result) {
+ParseResult impl::parseCastOp(OpAsmParser &parser, OperationState &result) {
   OpAsmParser::OperandType srcInfo;
   Type srcType, dstType;
   return failure(parser.parseOperand(srcInfo) ||
-                 parser.parseOptionalAttributeDict(result->attributes) ||
+                 parser.parseOptionalAttributeDict(result.attributes) ||
                  parser.parseColonType(srcType) ||
-                 parser.resolveOperand(srcInfo, srcType, result->operands) ||
+                 parser.resolveOperand(srcInfo, srcType, result.operands) ||
                  parser.parseKeywordType("to", dstType) ||
-                 parser.addTypeToList(dstType, result->types));
+                 parser.addTypeToList(dstType, result.types));
 }
 
 void impl::printCastOp(Operation *op, OpAsmPrinter *p) {

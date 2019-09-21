@@ -139,13 +139,13 @@ public:
   /// This method populates the `state` that MLIR uses to create operations.
   /// The `toy.constant` operation does not have arguments but attaches a
   /// constant array as an attribute and returns it as an SSA value.
-  static void build(mlir::Builder *builder, mlir::OperationState *state,
+  static void build(mlir::Builder *builder, mlir::OperationState &state,
                     llvm::ArrayRef<int64_t> shape,
                     mlir::DenseElementsAttr value);
 
   /// Similar to the one above, but takes a single float and returns a
   /// !toy<"array<1>">.
-  static void build(mlir::Builder *builder, mlir::OperationState *state,
+  static void build(mlir::Builder *builder, mlir::OperationState &state,
                     mlir::FloatAttr value);
 
   mlir::DenseElementsAttr getValue() {
@@ -181,7 +181,7 @@ public:
   /// This method populate the `state` that MLIR use to create operations.
   /// The `toy.generic_call` operation accepts a callee name and a list of
   /// arguments for the call.
-  static void build(mlir::Builder *builder, mlir::OperationState *state,
+  static void build(mlir::Builder *builder, mlir::OperationState &state,
                     llvm::StringRef callee,
                     llvm::ArrayRef<mlir::Value *> arguments);
 
@@ -207,7 +207,7 @@ public:
   /// This method populate the `state` that MLIR use to create operations.
   /// The `toy.return` operation accepts an optional single array as an argument
   /// and does not have any returned value.
-  static void build(mlir::Builder *builder, mlir::OperationState *state,
+  static void build(mlir::Builder *builder, mlir::OperationState &state,
                     mlir::Value *value = nullptr);
 
   /// Return true if there is a returned value.
@@ -234,7 +234,7 @@ public:
   /// This method populate the `state` that MLIR use to create operations.
   /// The `toy.print` operation accepts a single array as argument and does
   /// not have any returned value.
-  static void build(mlir::Builder *builder, mlir::OperationState *state,
+  static void build(mlir::Builder *builder, mlir::OperationState &state,
                     mlir::Value *value);
 
   /// Inherit constructor.
@@ -254,7 +254,7 @@ public:
   /// This method populate the `state` that MLIR use to create operations.
   /// The `toy.transpose` operation accepts a single array as argument and
   /// returns the transposed array as its only result.
-  static void build(mlir::Builder *builder, mlir::OperationState *state,
+  static void build(mlir::Builder *builder, mlir::OperationState &state,
                     mlir::Value *value);
 
   // Register our patterns for rewrite by the Canonicalization framework.
@@ -284,7 +284,7 @@ public:
   /// This method populate the `state` that MLIR use to create operations.
   /// The `toy.reshape` operation accepts a single array as argument and
   /// returns the array with the specified reshapedType as its only result.
-  static void build(mlir::Builder *builder, mlir::OperationState *state,
+  static void build(mlir::Builder *builder, mlir::OperationState &state,
                     mlir::Value *value, ToyArrayType reshapedType);
 
   // Register our patterns for rewrite by the Canonicalization framework.
@@ -312,7 +312,7 @@ public:
   /// This method populate the `state` that MLIR use to create operations.
   /// The `toy.mul` operation accepts two operands as argument and returns
   /// a single value.
-  static void build(mlir::Builder *builder, mlir::OperationState *state,
+  static void build(mlir::Builder *builder, mlir::OperationState &state,
                     mlir::Value *lhs, mlir::Value *rhs);
 
   /// Convenience accessor for LHS of the expression.
@@ -339,7 +339,7 @@ public:
   /// This method populate the `state` that MLIR use to create operations.
   /// The `toy.mul` operation accepts two operands as argument and returns
   /// a single value.
-  static void build(mlir::Builder *builder, mlir::OperationState *state,
+  static void build(mlir::Builder *builder, mlir::OperationState &state,
                     mlir::Value *lhs, mlir::Value *rhs);
 
   /// Convenience accessor for LHS of the expression.
@@ -362,7 +362,7 @@ public:
   /// Interface to mlir::Builder::create<AllocOp>(...)
   /// This method populate the `state` that MLIR use to create operations.
   /// `toy.alloc` does not have any argument and returns a toy array.
-  static void build(mlir::Builder *builder, mlir::OperationState *state,
+  static void build(mlir::Builder *builder, mlir::OperationState &state,
                     mlir::Type retType);
 
   /// Inherit constructor.
@@ -376,7 +376,7 @@ class TypeCastOp : public mlir::Op<TypeCastOp, mlir::OpTrait::OneOperand,
 public:
   static llvm::StringRef getOperationName() { return "toy.cast"; }
 
-  static void build(mlir::Builder *builder, mlir::OperationState *state,
+  static void build(mlir::Builder *builder, mlir::OperationState &state,
                     mlir::Value *value, mlir::Type destTy);
 
   // Register our patterns for rewrite by the Canonicalization framework.

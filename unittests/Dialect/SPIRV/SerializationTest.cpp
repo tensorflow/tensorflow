@@ -55,7 +55,7 @@ protected:
     state.addAttribute("memory_model",
                        builder.getI32IntegerAttr(
                            static_cast<uint32_t>(spirv::MemoryModel::GLSL450)));
-    spirv::ModuleOp::build(&builder, &state);
+    spirv::ModuleOp::build(&builder, state);
     module = cast<spirv::ModuleOp>(Operation::create(state));
   }
 

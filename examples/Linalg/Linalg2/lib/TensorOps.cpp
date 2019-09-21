@@ -37,9 +37,9 @@ using namespace linalg;
 //////////////////////////////////////////////////////////////////////////////
 // Op-specific Dot.
 //////////////////////////////////////////////////////////////////////////////
-void linalg::DotOp::build(Builder *b, OperationState *result,
+void linalg::DotOp::build(Builder *b, OperationState &result,
                           ArrayRef<Value *> operands) {
-  result->addOperands(operands);
+  result.addOperands(operands);
 }
 
 LogicalResult linalg::DotOp::verify() {
@@ -59,7 +59,7 @@ LogicalResult linalg::DotOp::verify() {
 
 // Parsing of the linalg dialect is not supported in this tutorial.
 ParseResult linalg::DotOp::parse(mlir::OpAsmParser &parser,
-                                 mlir::OperationState *result) {
+                                 mlir::OperationState &result) {
   return TensorContractionBaseType::parse(parser, result);
 }
 
@@ -70,9 +70,9 @@ void linalg::DotOp::print(mlir::OpAsmPrinter *p) {
 //////////////////////////////////////////////////////////////////////////////
 // Op-specific Matvec.
 //////////////////////////////////////////////////////////////////////////////
-void linalg::MatvecOp::build(Builder *b, OperationState *result,
+void linalg::MatvecOp::build(Builder *b, OperationState &result,
                              ArrayRef<Value *> operands) {
-  result->addOperands(operands);
+  result.addOperands(operands);
 }
 
 LogicalResult linalg::MatvecOp::verify() {
@@ -93,7 +93,7 @@ LogicalResult linalg::MatvecOp::verify() {
 
 // Parsing of the linalg dialect is not supported in this tutorial.
 ParseResult linalg::MatvecOp::parse(mlir::OpAsmParser &parser,
-                                    mlir::OperationState *result) {
+                                    mlir::OperationState &result) {
   return TensorContractionBaseType::parse(parser, result);
 }
 
@@ -104,9 +104,9 @@ void linalg::MatvecOp::print(mlir::OpAsmPrinter *p) {
 //////////////////////////////////////////////////////////////////////////////
 // Op-specific Matmul.
 //////////////////////////////////////////////////////////////////////////////
-void linalg::MatmulOp::build(Builder *b, OperationState *result,
+void linalg::MatmulOp::build(Builder *b, OperationState &result,
                              ArrayRef<Value *> operands) {
-  result->addOperands(operands);
+  result.addOperands(operands);
 }
 
 LogicalResult linalg::MatmulOp::verify() {
@@ -124,7 +124,7 @@ LogicalResult linalg::MatmulOp::verify() {
 
 // Parsing of the linalg dialect is not supported in this tutorial.
 ParseResult linalg::MatmulOp::parse(mlir::OpAsmParser &parser,
-                                    mlir::OperationState *result) {
+                                    mlir::OperationState &result) {
   return TensorContractionBaseType::parse(parser, result);
 }
 

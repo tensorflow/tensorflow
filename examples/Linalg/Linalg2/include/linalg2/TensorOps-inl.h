@@ -85,7 +85,7 @@ mlir::LogicalResult linalg::TensorContractionBase<ConcreteOp>::verify() {
 template <class ConcreteOp>
 mlir::ParseResult
 linalg::TensorContractionBase<ConcreteOp>::parse(mlir::OpAsmParser &parser,
-                                                 mlir::OperationState *result) {
+                                                 mlir::OperationState &result) {
   llvm_unreachable("Parsing linalg dialect is not supported in this tutorial");
 }
 

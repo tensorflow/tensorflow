@@ -363,12 +363,12 @@ For each operation, there are two builder automatically generated based on the
 arguments and returns types:
 
 ```c++
-static void build(Builder *, OperationState *tblgen_state,
+static void build(Builder *, OperationState &tblgen_state,
                   Type <result0-name>, Type <result1-name>, ...,
                   Value <arg0-name>, Value <arg1-name>, ...,
                   Attribute <attr0-name>, Attribute <attr1-name>, ...);
 
-static void build(Builder *, OperationState *tblgen_state,
+static void build(Builder *, OperationState &tblgen_state,
                   ArrayRef<Type> resultTypes,
                   ArrayRef<Value> operands,
                   ArrayRef<NamedAttribute> attributes);
@@ -383,10 +383,10 @@ convenience build methods with `OpBuilder`.
 
 `OpBuilder` is a class that takes the parameter list and the optional `build()`
 method body. They are separated because we need to generate op declaration and
-definition into separate files. The parameter list should _include_
-`Builder *builder, OperationState *state`. If the `body` is not provided, _only_
-the builder declaration will be generated; this provides a way to define
-complicated builders entirely in C++ files.
+definition into separate files. The parameter list should _include_ `Builder
+*builder, OperationState &state`. If the `body` is not provided, _only_ the
+builder declaration will be generated; this provides a way to define complicated
+builders entirely in C++ files.
 
 For example, for the following op:
 
@@ -406,8 +406,8 @@ def MyOp : ... {
   ...
 
   let builders = [
-    OpBuilder<"Builder *builder, OperationState *state, float val = 0.5f", [{
-      state->addAttribute("attr", builder->getF32FloatAttr(val));
+    OpBuilder<"Builder *builder, OperationState &state, float val = 0.5f", [{
+      state.addAttribute("attr", builder->getF32FloatAttr(val));
     ]}>
   ]
 }
@@ -416,8 +416,8 @@ def MyOp : ... {
 The generated builder will look like:
 
 ```c++
-static void build(Builder *builder, OperationState *state, float val = 0.5f) {
-  state->addAttribute("attr", builder->getF32FloatAttr(val));
+static void build(Builder *builder, OperationState &state, float val = 0.5f) {
+  state.addAttribute("attr", builder->getF32FloatAttr(val));
 }
 ```
 
