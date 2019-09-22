@@ -1017,9 +1017,9 @@ def TruncateIOp : Std_Op<"trunci", [NoSideEffect, SameOperandsAndResultShape]> {
   let results = (outs IntegerLike);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Value *value, Type destType", [{
-      result->addOperands(value);
-      result->addTypes(destType);
+    "Builder *builder, OperationState &result, Value *value, Type destType", [{
+      result.addOperands(value);
+      result.addTypes(destType);
   }]>];
 
   let parser = [{
