@@ -4996,7 +4996,6 @@ tf_py_wrap_cc(
         "framework/python_op_gen.i",
         "grappler/cluster.i",
         "grappler/cost_analyzer.i",
-        "grappler/graph_analyzer.i",
         "grappler/item.i",
         "grappler/model_analyzer.i",
         "grappler/tf_optimizer.i",
@@ -5112,6 +5111,7 @@ genrule(
         ":cpp_python_util",  # util
         "//tensorflow/core:util_port",  # util_port
         "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
+        "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
     ],
     outs = ["pybind_symbol_target_libs_file.txt"],
@@ -7015,6 +7015,17 @@ py_library(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "_pywrap_graph_analyzer",
+    srcs = ["grappler/graph_analyzer_tool_wrapper.cc"],
+    module_name = "_pywrap_graph_analyzer",
+    deps = [
+        "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",
+        "@com_google_absl//absl/strings",
+        "@pybind11",
+    ],
+)
+
 py_binary(
     name = "graph_analyzer",
     srcs = [
@@ -7023,8 +7034,8 @@ py_binary(
     python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
+        ":_pywrap_graph_analyzer",
         ":framework_for_generated_wrappers",
-        ":pywrap_tensorflow_internal",
     ],
 )
 
