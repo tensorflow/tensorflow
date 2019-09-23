@@ -23,6 +23,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import execute
+from tensorflow.python.eager import forwardprop_util
 
 from tensorflow.python.framework import ops
 
@@ -86,43 +87,47 @@ def _forward_gradient(op_name, attr_tuple, inputs, outputs, tangents):
   if not outputs:
     # tape.gradients([], inputs) doesn't make much sense
     return []
-  trainable_inputs = []
-  trainable_indices = []
-  nontrivial_tangents = []
-  for input_index, tensor in enumerate(inputs):
-    if backprop_util.IsTrainable(tensor):
-      trainable_inputs.append(tensor)
-      trainable_indices.append(input_index)
-      nontrivial_tangents.append(tangents[input_index])
+  # Generally inner GradientTapes won't function while outer accumulators are
+  # recording. We temporarily reset forwardprop state to allow GradientTapes to
+  # function here.
+  with forwardprop_util.push_forwardprop_state():
+    trainable_inputs = []
+    trainable_indices = []
+    nontrivial_tangents = []
+    for input_index, tensor in enumerate(inputs):
+      if backprop_util.IsTrainable(tensor):
+        trainable_inputs.append(tensor)
+        trainable_indices.append(input_index)
+        nontrivial_tangents.append(tangents[input_index])
 
-  with backprop.GradientTape() as transpose_tape:
-    with backprop.GradientTape() as backfunc_tape:
-      backfunc_tape.watch(trainable_inputs)
-      execute.record_gradient(op_name, inputs, attr_tuple, outputs)
+    with backprop.GradientTape() as transpose_tape:
+      with backprop.GradientTape() as backfunc_tape:
+        backfunc_tape.watch(trainable_inputs)
+        execute.record_gradient(op_name, inputs, attr_tuple, outputs)
 
-    forwardprop_aids = []
-    trainable_outputs = []
-    nontrivial_output_indices = []
-    for output_index, output in enumerate(outputs):
-      if backprop_util.IsTrainable(output):
-        forwardprop_aids.append(
-            array_ops.ones_like(output, name="unused_forwardprop_aid"))
-        trainable_outputs.append(output)
-        nontrivial_output_indices.append(output_index)
+      forwardprop_aids = []
+      trainable_outputs = []
+      nontrivial_output_indices = []
+      for output_index, output in enumerate(outputs):
+        if backprop_util.IsTrainable(output):
+          forwardprop_aids.append(
+              array_ops.ones_like(output, name="unused_forwardprop_aid"))
+          trainable_outputs.append(output)
+          nontrivial_output_indices.append(output_index)
 
-    transpose_tape.watch(forwardprop_aids)
-    grads = backfunc_tape.gradient(
-        trainable_outputs,
-        trainable_inputs,
-        forwardprop_aids,
-        unconnected_gradients=UnconnectedGradients.ZERO)
-  nontrivial_output_tangents = transpose_tape.gradient(
-      grads, forwardprop_aids, output_gradients=nontrivial_tangents)
-  output_tangents = [None] * len(outputs)
-  for index, tangent in zip(nontrivial_output_indices,
-                            nontrivial_output_tangents):
-    output_tangents[index] = tangent
-  return output_tangents
+      transpose_tape.watch(forwardprop_aids)
+      grads = backfunc_tape.gradient(
+          trainable_outputs,
+          trainable_inputs,
+          forwardprop_aids,
+          unconnected_gradients=UnconnectedGradients.ZERO)
+    nontrivial_output_tangents = transpose_tape.gradient(
+        grads, forwardprop_aids, output_gradients=nontrivial_tangents)
+    output_tangents = [None] * len(outputs)
+    for index, tangent in zip(nontrivial_output_indices,
+                              nontrivial_output_tangents):
+      output_tangents[index] = tangent
+    return output_tangents
 
 
 pywrap_tensorflow.TFE_Py_RegisterForwardGradientFunction(_forward_gradient)
@@ -142,7 +147,7 @@ class ForwardGradientAccumulator(object):
   ```
 
   Note that `ForwardGradientAccumulator`s are always applied in creation order,
-  so inner accumulators may not see JVP computation from outer
+  so inner accumulators will not see JVP computation from outer
   accumulators. Take higher-order gradients from outer accumulators:
 
   ```
@@ -158,6 +163,12 @@ class ForwardGradientAccumulator(object):
 
   Reversing the collection in the last two lines to instead retrieve
   `acc.jvp(outer_acc.jvp(primal_out))` will not work.
+
+  Strict nesting also applies to combinations of `ForwardGradientAccumulator`
+  and `tf.GradientTape`. More deeply nested `GradientTape` objects will ignore
+  the products of outer `ForwardGradientAccumulator` objects. This allows (for
+  example) memory-efficient forward-over-backward computation of second-order
+  gradients, where the inner `GradientTape` would otherwise hold on to all jvps.
   """
 
   def __init__(self):
@@ -243,3 +254,4 @@ class ForwardGradientAccumulator(object):
       return pywrap_tensorflow.TFE_Py_ForwardAccumulatorJVP(
           self._accumulator, tensor)
     return nest.map_structure(_fetch_jvp, target)
+
