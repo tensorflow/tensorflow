@@ -114,6 +114,8 @@ private:
   /// is the name of a pass, the InnerPipeline is empty, since passes cannot
   /// contain inner pipelines.
   struct PipelineElement {
+    PipelineElement(StringRef name) : name(name), registryEntry(nullptr) {}
+
     StringRef name;
     const PassRegistryEntry *registryEntry;
     std::vector<PipelineElement> innerPipeline;
@@ -178,7 +180,7 @@ LogicalResult TextualPipeline::parsePipelineText(StringRef text,
   for (;;) {
     std::vector<PipelineElement> &pipeline = *pipelineStack.back();
     size_t pos = text.find_first_of(",()");
-    pipeline.push_back({text.substr(0, pos).trim(), {}});
+    pipeline.emplace_back(/*name=*/text.substr(0, pos).trim());
 
     // If we have a single terminating name, we're done.
     if (pos == text.npos)
