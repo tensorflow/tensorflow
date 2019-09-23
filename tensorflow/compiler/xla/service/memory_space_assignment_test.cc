@@ -32,7 +32,8 @@ class MemorySpaceAssignmentTest : public HloTestBase {
   const int64 kAlternateMemorySpace = 1;
 
   std::unique_ptr<PresetAssignments> AssignMemorySpace(
-      HloModule* module, int64 max_outstanding_async_copies = -1) {
+      HloModule* module, int64 max_outstanding_async_copies = -1,
+      int64 max_prefetch_interval = 10) {
     auto size_fn = [](const BufferValue& buffer) {
       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
     };
@@ -54,8 +55,7 @@ class MemorySpaceAssignmentTest : public HloTestBase {
         MemorySpaceAssignment::Run(
             module, kAlternateMemorySpace,
             /*max_size_in_bytes=*/128,
-            /*min_prefetch_interval=*/2,
-            /*max_prefetch_interval=*/10,
+            /*min_prefetch_interval=*/2, max_prefetch_interval,
             /*alternate_memory_space_alignment_in_bytes=*/8, size_fn,
             is_allowed_in_alternate_mem, max_outstanding_async_copies)
             .ValueOrDie();
@@ -577,6 +577,595 @@ TEST_F(MemorySpaceAssignmentTest, Bitcast3) {
   // care about its memory space.
   EXPECT_EQ(bitcast3->shape().layout().memory_space(), kAlternateMemorySpace);
   EXPECT_EQ(bitcast4->shape().layout().memory_space(), kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, LastUseOpt) {
+  // Test that checks the last use optimization. It uses two buffers that should
+  // be placed in alternate memory.
+  //
+  //      +-------+
+  //     /         \
+  // add1--->sub1   +-------->mul2
+  //              mul1===>add2
+  //
+  // Without the last use optimization, the mul1 buffer will be assigned first
+  // (because it is larger) to offset 0. Then, add1 will be scheduled for the
+  // add1 to sub1 segment. Because offset 0 is available, it will get that
+  // offset. But because offset 0 is not available in the sub1 to mul2 offset,
+  // it will end up in unnecessary copies. With the last use optimization, these
+  // copies can be optimized away.
+  HloComputation::Builder builder(TestName());
+  Shape shape1 = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape shape2 = ShapeUtil::MakeShape(F32, {2, 4});
+  PaddingConfig padding_config = MakeEdgePaddingConfig({{0, 0}, {0, 1}});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape1, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape2, "p1"));
+  HloInstruction* add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, p0, p0));
+  HloInstruction* sub1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, p0, add1));
+  HloInstruction* mul1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape2, HloOpcode::kMultiply, p1, p1));
+  HloInstruction* add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape2, HloOpcode::kAdd, mul1, p1));
+  HloInstruction* mul2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape1, HloOpcode::kMultiply, add1, sub1));
+  HloInstruction* padding_value = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::Zero(F32)));
+  HloInstruction* padded_mul2 = builder.AddInstruction(
+      HloInstruction::CreatePad(shape2, mul2, padding_value, padding_config));
+  HloInstruction* add3 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape2, HloOpcode::kAdd, add2, padded_mul2));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, add1, sub1, mul1, add2, mul2,
+                                      padding_value, padded_mul2, add3});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get());
+
+  EXPECT_THAT(
+      mul2,
+      op::Multiply(op::Add(op::Parameter(0), op::Parameter(0)),
+                   op::Subtract(op::Parameter(0),
+                                op::Add(op::Parameter(0), op::Parameter(0)))));
+}
+
+TEST_F(MemorySpaceAssignmentTest, CopyOrdering) {
+  // Test to make sure the CopyStarts follow the same CopyDone order. The shapes
+  // are picked in increasing order to exploit the fact that heap simulator
+  // processes larger tensors first. This checks the ability of the compiler to
+  // reschedule:
+  //
+  //  CS1            CD1
+  //   +--------------+
+  //    +-----------+
+  //   CS2         CD2
+  //
+  // into:
+  //
+  //    CS1          CD1
+  //     +------------+
+  //    +-----------+
+  //   CS2         CD2
+  HloComputation::Builder builder(TestName());
+  Shape shape1 = ShapeUtil::MakeShape(F32, {2, 1});
+  Shape shape2 = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape3 = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape shape4 = ShapeUtil::MakeShape(F32, {2, 4});
+  PaddingConfig padding_config = MakeEdgePaddingConfig({{0, 0}, {0, 1}});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape3, shape4});
+  HloInstruction* p0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "p"));
+  HloInstruction* p4 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape4, p0, 1));
+  HloInstruction* p3 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape3, p0, 0));
+  HloInstruction* p2 =
+      builder.AddInstruction(HloInstruction::CreateParameter(2, shape2, "p2"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape1, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, p1));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape1, HloOpcode::kNegate, negate5));
+  HloInstruction* padding_value = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::Zero(F32)));
+  HloInstruction* add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, negate6, p1));
+  HloInstruction* padded_add1 = builder.AddInstruction(
+      HloInstruction::CreatePad(shape2, add1, padding_value, padding_config));
+  HloInstruction* add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape2, HloOpcode::kAdd, padded_add1, p2));
+  HloInstruction* padded_add2 = builder.AddInstruction(
+      HloInstruction::CreatePad(shape3, add2, padding_value, padding_config));
+  HloInstruction* negate7 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape4, HloOpcode::kNegate, p4));
+  HloInstruction* add3 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape3, HloOpcode::kAdd, padded_add2, p3));
+  HloInstruction* padded_add3 = builder.AddInstruction(
+      HloInstruction::CreatePad(shape4, add3, padding_value, padding_config));
+  HloInstruction* add4 = builder.AddInstruction(HloInstruction::CreateBinary(
+      shape4, HloOpcode::kAdd, padded_add3, negate7));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0,
+                                      p4,
+                                      p3,
+                                      p2,
+                                      p1,
+                                      negate0,
+                                      negate1,
+                                      negate2,
+                                      negate3,
+                                      negate4,
+                                      negate5,
+                                      negate6,
+                                      padding_value,
+                                      add1,
+                                      padded_add1,
+                                      add2,
+                                      padded_add2,
+                                      negate7,
+                                      add3,
+                                      padded_add3,
+                                      add4});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  // Use a large max prefetch interval to force CopyStart/CopyDone right after
+  // the parameters.
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    /*max_prefetch_interval=*/50);
+
+  // Iterate over the schedule to make sure CopyStart order and the
+  // corresponding CopyDone order match.
+  std::list<const HloInstruction*> copy_starts;
+  for (HloInstruction* instruction : module->schedule()
+                                         .sequence(module->entry_computation())
+                                         .instructions()) {
+    if (instruction->opcode() == HloOpcode::kCopyStart) {
+      copy_starts.push_back(instruction);
+    }
+    if (instruction->opcode() == HloOpcode::kCopyDone) {
+      EXPECT_EQ(copy_starts.front(), instruction->operand(0));
+      copy_starts.pop_front();
+    }
+  }
+}
+
+TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule1) {
+  // Test to ensure CopyStart/CopyDone is placed only in the entry computation.
+  auto module = CreateNewVerifiedModule();
+  Shape shape = ShapeUtil::MakeShape(xla::F32, {2, 3});
+  Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, scalar_shape});
+
+  auto cond_builder = HloComputation::Builder("WhileCond");
+  // Tuple param: 24 bytes (each elem has 8 byte pointer, 4 byte element)
+  HloInstruction* cond_param = cond_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "cond_param"));
+  HloInstruction* cond_iter = cond_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_shape, cond_param, 1));
+  HloInstruction* cond_limit = cond_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(50.f)));
+  // Free cond_param[] (16 bytes), Alloc PRED[] (1 byte)
+  HloInstruction* cond_lt = cond_builder.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), cond_iter,
+                                    cond_limit, ComparisonDirection::kLt));
+  HloComputation* cond_computation =
+      module->AddEmbeddedComputation(cond_builder.Build());
+
+  auto body_builder = HloComputation::Builder("WhileBody");
+  // Tuple param: 24 bytes (each elem has 8 byte pointer, 4 byte element)
+  HloInstruction* body_param = body_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "body_param"));
+  HloInstruction* body_iter = body_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_shape, body_param, 1));
+  HloInstruction* body_data = body_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, body_param, 0));
+  HloInstruction* body_iter_increment = body_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.f)));
+  HloInstruction* body_iter_next =
+      body_builder.AddInstruction(HloInstruction::CreateBinary(
+          scalar_shape, HloOpcode::kAdd, body_iter, body_iter_increment));
+  HloInstruction* body_data_increment =
+      body_builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR2<float>({{1.f, 2.f, 3.f}, {4.f, 5.f, 6.f}})));
+  HloInstruction* body_data_mul =
+      body_builder.AddInstruction(HloInstruction::CreateBinary(
+          shape, HloOpcode::kMultiply, body_data, body_data));
+  HloInstruction* body_data_add =
+      body_builder.AddInstruction(HloInstruction::CreateBinary(
+          shape, HloOpcode::kAdd, body_data, body_data_increment));
+  HloInstruction* body_data_next =
+      body_builder.AddInstruction(HloInstruction::CreateBinary(
+          shape, HloOpcode::kAdd, body_data_add, body_data_mul));
+  HloInstruction* body_out = body_builder.AddInstruction(
+      HloInstruction::CreateTuple({body_data_next, body_iter_next}));
+  HloComputation* body_computation =
+      module->AddEmbeddedComputation(body_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  HloInstruction* data = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param_iter"));
+  HloInstruction* iter = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "param_data"));
+  HloInstruction* p2 =
+      builder.AddInstruction(HloInstruction::CreateParameter(2, shape, "p2"));
+  HloInstruction* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({data, iter}));
+  HloInstruction* while_op = builder.AddInstruction(HloInstruction::CreateWhile(
+      tuple_shape, cond_computation, body_computation, tuple));
+  HloInstruction* while_data = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, while_op, 0));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, while_data, p2));
+  HloComputation* entry_computation =
+      module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(cond_computation,
+                        {cond_param, cond_iter, cond_limit, cond_lt});
+  schedule.set_sequence(body_computation,
+                        {body_param, body_iter, body_data, body_iter_increment,
+                         body_iter_next, body_data_increment, body_data_mul,
+                         body_data_add, body_data_next, body_out});
+  schedule.set_sequence(entry_computation,
+                        {iter, data, p2, tuple, while_op, while_data, add});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get(), -1, 50);
+}
+
+TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule2) {
+  auto module = CreateNewVerifiedModule();
+  Shape shape = ShapeUtil::MakeShape(xla::F32, {2, 3});
+  Shape shape2 = ShapeUtil::MakeShape(xla::F32, {3, 3});
+
+  auto call_builder = HloComputation::Builder("Call");
+  HloInstruction* call_param = call_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "call_param"));
+  HloInstruction* call_param2 = call_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape2, "call_param2"));
+  HloInstruction* slice = call_builder.AddInstruction(
+      HloInstruction::CreateSlice(shape, call_param2, {0, 0}, {2, 3}, {1, 1}));
+  HloInstruction* mul =
+      call_builder.AddInstruction(HloInstruction::CreateBinary(
+          shape, HloOpcode::kMultiply, call_param, slice));
+  HloInstruction* negate0 = call_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, mul));
+  HloInstruction* negate1 = call_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = call_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = call_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = call_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = call_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = call_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* negate7 = call_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate6));
+  HloInstruction* add0 =
+      call_builder.AddInstruction(HloInstruction::CreateBinary(
+          shape, HloOpcode::kAdd, call_param, negate7));
+  HloComputation* call_computation =
+      module->AddEmbeddedComputation(call_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape2, "p1"));
+  HloInstruction* add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, p0));
+  HloInstruction* add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, add1, p0));
+  HloInstruction* negate8 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape2, HloOpcode::kNegate, p1));
+  HloInstruction* call = builder.AddInstruction(
+      HloInstruction::CreateCall(shape, {add1, negate8}, call_computation));
+  HloInstruction* add3 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, add1));
+  HloInstruction* add4 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, call, add3));
+  HloInstruction* add5 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, add2, add4));
+  HloComputation* entry_computation =
+      module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(
+      call_computation,
+      {call_param, call_param2, slice, mul, negate0, negate1, negate2, negate3,
+       negate4, negate5, negate6, negate7, add0});
+  schedule.set_sequence(entry_computation,
+                        {p0, p1, add1, add2, negate8, call, add3, add4, add5});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get(), -1, 5);
+}
+
+TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule3) {
+  auto module = CreateNewVerifiedModule();
+  Shape shape = ShapeUtil::MakeShape(xla::F32, {2, 3});
+  Shape shape2 = ShapeUtil::MakeShape(xla::F32, {3, 3});
+
+  auto call_builder = HloComputation::Builder("Call");
+  HloInstruction* call_param = call_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "call_param"));
+  // Use shape2 here which is larger (scheduled earlier) to occupy alternate
+  // memory at the beginning. This should cause a situation where the prefetch
+  // of add1 later in the function body gets the wrong offset which cannot be
+  // communicated to the outside the function.
+  HloInstruction* iota =
+      call_builder.AddInstruction(HloInstruction::CreateIota(shape2, 0));
+  HloInstruction* slice = call_builder.AddInstruction(
+      HloInstruction::CreateSlice(shape, iota, {0, 0}, {2, 3}, {1, 1}));
+  HloInstruction* mul =
+      call_builder.AddInstruction(HloInstruction::CreateBinary(
+          shape, HloOpcode::kMultiply, call_param, slice));
+  HloInstruction* negate0 = call_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, mul));
+  HloInstruction* negate1 = call_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = call_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = call_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = call_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = call_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = call_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* negate7 = call_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate6));
+  HloInstruction* add0 =
+      call_builder.AddInstruction(HloInstruction::CreateBinary(
+          shape, HloOpcode::kAdd, call_param, negate7));
+  HloComputation* call_computation =
+      module->AddEmbeddedComputation(call_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, p0));
+  HloInstruction* add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, add1, p0));
+  HloInstruction* call = builder.AddInstruction(
+      HloInstruction::CreateCall(shape, {add1}, call_computation));
+  HloInstruction* add3 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, call, add1));
+  HloComputation* entry_computation =
+      module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(
+      call_computation,
+      {call_param, iota, slice, mul, negate0, negate1, negate2, negate3,
+       negate4, negate5, negate6, negate7, add0});
+  schedule.set_sequence(entry_computation, {p0, add1, add2, call, add3});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get(), -1, 5);
+}
+
+TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule4) {
+  auto module = CreateNewVerifiedModule();
+  Shape shape = ShapeUtil::MakeShape(xla::F32, {2, 3});
+  Shape shape2 = ShapeUtil::MakeShape(xla::F32, {3, 3});
+
+  auto true_builder = HloComputation::Builder("True");
+  HloInstruction* true_param = true_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "true_param"));
+  HloInstruction* iota =
+      true_builder.AddInstruction(HloInstruction::CreateIota(shape2, 0));
+  HloInstruction* slice = true_builder.AddInstruction(
+      HloInstruction::CreateSlice(shape, iota, {0, 0}, {2, 3}, {1, 1}));
+  HloInstruction* mul =
+      true_builder.AddInstruction(HloInstruction::CreateBinary(
+          shape, HloOpcode::kMultiply, true_param, slice));
+  HloInstruction* negate0 = true_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, mul));
+  HloInstruction* negate1 = true_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = true_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = true_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = true_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = true_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = true_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* negate7 = true_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate6));
+  HloInstruction* add0 =
+      true_builder.AddInstruction(HloInstruction::CreateBinary(
+          shape, HloOpcode::kAdd, true_param, negate7));
+  HloComputation* true_computation =
+      module->AddEmbeddedComputation(true_builder.Build());
+
+  auto false_builder = HloComputation::Builder("False");
+  HloInstruction* false_param = false_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "false_param"));
+  HloComputation* false_computation =
+      module->AddEmbeddedComputation(false_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, p0));
+  HloInstruction* add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, add1, p0));
+  HloInstruction* pred = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+  HloInstruction* conditional =
+      builder.AddInstruction(HloInstruction::CreateConditional(
+          shape, pred, add1, true_computation, add2, false_computation));
+  HloInstruction* add3 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, conditional, add1));
+  HloComputation* entry_computation =
+      module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(
+      true_computation,
+      {true_param, iota, slice, mul, negate0, negate1, negate2, negate3,
+       negate4, negate5, negate6, negate7, add0});
+  schedule.set_sequence(false_computation, {false_param});
+  schedule.set_sequence(entry_computation,
+                        {p0, add1, add2, pred, conditional, add3});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get(), -1, 5);
+}
+
+TEST_F(MemorySpaceAssignmentTest, DanglingCopy) {
+  // This situation was encountered in vss, where there is a mismatch in the
+  // memory space in preset assignments and the output graph.
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
+
+  HloInstruction* p = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "p"));
+  HloInstruction* p0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, p, 0));
+  HloInstruction* p1a = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, p, 1));
+  HloInstruction* copy = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kCopy, p1a));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* p1b = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, p, 1));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1b));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(
+      computation, {p, p0, negate0, negate1, negate2, negate3, negate4, negate5,
+                    negate6, p1a, copy, p1b, add});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get());
+}
+
+TEST_F(MemorySpaceAssignmentTest, MultiOutputFusion) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
+  auto module = CreateNewVerifiedModule();
+
+  HloComputation::Builder fusion_builder("fusion");
+  HloInstruction* fusion_param0 = fusion_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* fusion_param1 = fusion_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape, "p1"));
+  fusion_builder.AddInstruction(
+      HloInstruction::CreateTuple({fusion_param0, fusion_param1}));
+  HloComputation* fusion_computation =
+      module->AddEmbeddedComputation(fusion_builder.Build());
+
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* fusion = builder.AddInstruction(HloInstruction::CreateFusion(
+      tuple_shape, HloInstruction::FusionKind::kCustom, {p0, p0},
+      fusion_computation));
+  HloInstruction* element0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, fusion, 0));
+  HloInstruction* element1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, fusion, 1));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, element0, element1));
+
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, fusion, element0, element1, add});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get());
+}
+
+TEST_F(MemorySpaceAssignmentTest, TupleInput) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
+  auto module = CreateNewVerifiedModule();
+
+  HloComputation::Builder fusion_builder("fusion");
+  HloInstruction* fusion_param = fusion_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "p"));
+  HloInstruction* fusion_element0 = fusion_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, fusion_param, 0));
+  HloInstruction* fusion_element1 = fusion_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, fusion_param, 1));
+  fusion_builder.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kAdd, fusion_element0, fusion_element1));
+  HloComputation* fusion_computation =
+      module->AddEmbeddedComputation(fusion_builder.Build());
+
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p1));
+  HloInstruction* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({negate0, negate1}));
+  HloInstruction* fusion = builder.AddInstruction(HloInstruction::CreateFusion(
+      shape, HloInstruction::FusionKind::kCustom, {tuple}, fusion_computation));
+
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, tuple, fusion});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get());
 }
 
 }  // namespace

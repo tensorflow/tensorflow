@@ -21,11 +21,13 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/Dialect/Traits.h"  // TF:local_config_mlir
@@ -321,7 +323,7 @@ OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
 // Builds a constant op with the specified attribute `value`. The result
 // op's type is deduced from `value`; if `value` is of scalar type,
 // wraps it up with a tensor type of empty shape.
-void ConstOp::build(Builder *builder, OperationState *result, Attribute value) {
+void ConstOp::build(Builder *builder, OperationState &result, Attribute value) {
   ShapedType type;
   if (auto elemAttr = value.dyn_cast<ElementsAttr>()) {
     type = elemAttr.getType();
@@ -336,22 +338,22 @@ void ConstOp::build(Builder *builder, OperationState *result, Attribute value) {
   }
   // TODO: support other TensorFlow specific types.
   assert(type && "unsupported attribute type for building tf.Const");
-  result->types.push_back(type);
-  result->addAttribute("value", value);
+  result.types.push_back(type);
+  result.addAttribute("value", value);
 }
 
-void ConstOp::build(Builder *builder, OperationState *result, Type type,
+void ConstOp::build(Builder *builder, OperationState &result, Type type,
                     Attribute value) {
   // Handle the case where the type and value are already tensors.
   if (type.isa<TensorType>() && value.isa<ElementsAttr>()) {
-    result->addTypes(type);
-    result->addAttribute("value", value);
+    result.addTypes(type);
+    result.addAttribute("value", value);
     return;
   }
 
   // Otherwise, default to the attribute builder.
   ConstOp::build(builder, result, value);
-  assert(type == result->types[0] && "type mismatch in construction");
+  assert(type == result.types[0] && "type mismatch in construction");
 }
 
 //===----------------------------------------------------------------------===//
@@ -392,9 +394,9 @@ static LogicalResult Verify(EqualOp op) {
       op.getOperation());
 }
 
-void EqualOp::build(Builder *builder, OperationState *result, Value *x,
+void EqualOp::build(Builder *builder, OperationState &result, Value *x,
                     Value *y, BoolAttr incompatible_shape_error) {
-  auto result_type = DeduceEqualCmpOpType(builder, result->location, x, y,
+  auto result_type = DeduceEqualCmpOpType(builder, result.location, x, y,
                                           incompatible_shape_error);
   return build(builder, result, result_type, x, y, incompatible_shape_error);
 }
@@ -651,9 +653,9 @@ static LogicalResult Verify(NotEqualOp op) {
       op.getOperation());
 }
 
-void NotEqualOp::build(Builder *builder, OperationState *result, Value *x,
+void NotEqualOp::build(Builder *builder, OperationState &result, Value *x,
                        Value *y, BoolAttr incompatible_shape_error) {
-  auto result_type = DeduceEqualCmpOpType(builder, result->location, x, y,
+  auto result_type = DeduceEqualCmpOpType(builder, result.location, x, y,
                                           incompatible_shape_error);
   return build(builder, result, result_type, x, y, incompatible_shape_error);
 }
@@ -729,7 +731,7 @@ static LogicalResult Verify(RandomUniformOp op) {
 // RangeOp
 //===----------------------------------------------------------------------===//
 
-void RangeOp::build(Builder *builder, OperationState *result, Value *start,
+void RangeOp::build(Builder *builder, OperationState &result, Value *start,
                     Value *limit, Value *delta) {
   assert(start->getType() == limit->getType());
   assert(start->getType() == delta->getType());
@@ -759,7 +761,7 @@ void RangeOp::build(Builder *builder, OperationState *result, Value *start,
 // RankOp
 //===----------------------------------------------------------------------===//
 
-void RankOp::build(Builder *builder, OperationState *result, Value *input) {
+void RankOp::build(Builder *builder, OperationState &result, Value *input) {
   return RankOp::build(builder, result,
                        builder->getTensorType({}, builder->getIntegerType(32)),
                        input);
@@ -843,12 +845,12 @@ static LogicalResult Verify(ReshapeOp op) {
   return success();
 }
 
-void ReshapeOp::build(Builder *builder, OperationState *result, Value *tensor,
+void ReshapeOp::build(Builder *builder, OperationState &result, Value *tensor,
                       Value *shape) {
   auto ttype = tensor->getType().cast<ShapedType>();
   auto etype = ttype.getElementType();
 
-  auto unranked = [builder, etype, result, shape, tensor]() {
+  auto unranked = [builder, etype, &result, shape, tensor]() {
     return ReshapeOp::build(builder, result, builder->getTensorType(etype),
                             tensor, shape);
   };
@@ -870,7 +872,7 @@ void ReshapeOp::build(Builder *builder, OperationState *result, Value *tensor,
       int64_t val = e.value().getSExtValue();
       if (IsUnknownDimOrRank(val)) {
         if (flatten) {
-          mlir::emitError(result->location)
+          mlir::emitError(result.location)
               << "only one unknown dimension allowed";
           return;
         }
@@ -966,7 +968,7 @@ OpFoldResult ShapeOp::fold(ArrayRef<Attribute> operands) {
   return b.getDenseElementsAttr(resultType, dimensions);
 }
 
-void ShapeOp::build(Builder *builder, OperationState *result, Value *input,
+void ShapeOp::build(Builder *builder, OperationState &result, Value *input,
                     BoolAttr use32Bit) {
   auto rankedTensorType = input->getType().dyn_cast<RankedTensorType>();
   int64_t rank = rankedTensorType ? rankedTensorType.getRank() : -1;
@@ -1030,6 +1032,66 @@ void SubOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// StridedSliceOp
+//===----------------------------------------------------------------------===//
+
+// Verifies that,
+//
+// - begin, end and strides operands are 1D and they have the same number of
+//   elements. Here, the number of elements should be less than 32 to support
+//   32-bit mask attributes.
+// - None of the strides values are zero.
+//
+static LogicalResult Verify(StridedSliceOp op) {
+  // Expected size for operands begin, end and strides vector operands.
+  int64_t expected_size = -1;
+
+  for (Value *val : llvm::drop_begin(op.getOperands(), 1)) {
+    auto operand_ty = val->getType().dyn_cast<ShapedType>();
+    if (!operand_ty || !operand_ty.hasStaticShape()) {
+      // TensorFlow constant ops may have non-static shape because the shape is
+      // not propagated during constant folding. If the defining op for this
+      // operand is a constant op, use the constant op's attribute to get the
+      // actual shape.
+      DenseIntElementsAttr attr;
+      if (!matchPattern(val, m_Constant(&attr))) continue;
+      operand_ty = attr.getType();
+    }
+
+    if (operand_ty.getRank() != 1)
+      return op.emitOpError()
+             << "requires begin, end and strides to be 1D tensors";
+
+    int64_t length = operand_ty.getDimSize(0);
+    if (length == -1) continue;
+
+    if (expected_size == -1) {
+      // This op uses 32-bit masks.
+      if (length >= 32)
+        return op.emitOpError(
+            "requires begin, end and strides operands with less than 32 "
+            "elements");
+
+      expected_size = length;
+    } else if (length != expected_size) {
+      return op.emitOpError() << "requires begin, end and strides to have the "
+                                 "same number of elements";
+    }
+  }
+
+  // If strides are constants, verify that none of the element is zero.
+  DenseIntElementsAttr strides;
+  if (matchPattern(op.strides(), m_Constant(&strides))) {
+    if (llvm::is_contained(strides.getValues<APInt>(), 0))
+      return op.emitOpError("requires non-zero strides");
+  }
+
+  // TODO(hinsu): Validate attributes.
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // TensorListReserveOp
 //===----------------------------------------------------------------------===//
 
@@ -1059,7 +1121,7 @@ static LogicalResult Verify(TransposeOp op) {
 }
 
 // TODO(jpienaar): perm could be optional too.
-void TransposeOp::build(Builder *builder, OperationState *result, Value *x,
+void TransposeOp::build(Builder *builder, OperationState &result, Value *x,
                         Value *perm) {
   auto x_type = x->getType().cast<TensorType>();
   // If value is unranked, then so is results.

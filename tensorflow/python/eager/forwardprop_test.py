@@ -627,6 +627,19 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       v = variables.Variable(1.)
       acc.watch(v, 11.)
       v.assign_sub(0.5)
+      self.assertAllClose(0.5, self.evaluate(v))
+
+  # TODO(b/141025187): Add a no_new_pyobjects decorator.
+  def testVariableReadInFunction(self):
+    with forwardprop.ForwardGradientAccumulator() as acc:
+      v = variables.Variable(1.)
+      acc.watch(v, 11.)
+      @def_function.function
+      def f():
+        return v.read_value(), 2. * v.read_value()
+      result = f()
+      self.assertAllClose((1.0, 2.), result)
+      self.assertAllClose((11., 22.), acc.jvp(result))
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testRecordingWithJVPIndices(self):
@@ -643,6 +656,28 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
           [c] + packed_input_tangents,
           None, (((0, 1),),))
       self.assertAllClose(3., acc.jvp(d))
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testSpecialForwardFunctionUsed(self):
+    c = constant_op.constant(1.)
+    d = constant_op.constant(2.)
+    e = constant_op.constant(3.)
+    with forwardprop.ForwardGradientAccumulator() as acc:
+      acc.watch(c, 10.)
+      tape_lib.record_operation(
+          "ForwardIsSpecial",
+          [d], [c],
+          None, lambda jvp: [-2. * jvp])
+      self.assertAllClose(-20., acc.jvp(d))
+      tape_lib.record_operation(
+          "ForwardIsSpecial2",
+          [], [],
+          None, lambda: [])
+      tape_lib.record_operation(
+          "ForwardIsSpecial3",
+          [e], [d],
+          None, lambda x: [x])
+      self.assertAllClose(-20., acc.jvp(e))
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testVariableWatched(self):
@@ -698,6 +733,21 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       v = variables.Variable([1., 2., 3.])
       strategy.experimental_run_v2(
           _replicated, args=(constant_op.constant([.1, -.2, .3]),))
+
+  # TODO(b/141025187): Add a no_new_pyobjects decorator.
+  def testArgumentUnused(self):
+    with forwardprop.ForwardGradientAccumulator() as acc:
+      v = constant_op.constant(1.)
+      acc.watch(v, 11.)
+
+      @def_function.function
+      def _f(x):
+        del x
+        return constant_op.constant(1.)
+
+      result = _f(v)
+      self.assertAllClose(1.0, result)
+      self.assertIsNone(acc.jvp(result))
 
 
 if __name__ == "__main__":

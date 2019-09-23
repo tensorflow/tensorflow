@@ -203,9 +203,9 @@ MatchBackwardFilter(HloInstruction* conv) {
     // the amount of high padding the same as the amount of low padding as long
     // as it is between min_padding_high and max_padding_high. If it is not in
     // that range, we pick the one that's closest to dim->padding_low() and let
-    // CudnnConvPaddingLegalization canonicalize the resultant backward
+    // GpuConvPaddingLegalization canonicalize the resultant backward
     // convolution later. Picking the closest one minimizes the cost of the kPad
-    // instruction to be inserted by CudnnConvPaddingLegalization.
+    // instruction to be inserted by GpuConvPaddingLegalization.
     if (dim->padding_low() >= min_padding_high &&
         dim->padding_low() <= max_padding_high) {
       dim->set_padding_high(dim->padding_low());
@@ -222,7 +222,7 @@ MatchBackwardFilter(HloInstruction* conv) {
              "negative padding ("
           << dim->padding_high()
           << ") on right/bottom of the weight gradients, which is not "
-             "supported by CudnnConvPaddingLegalization (b/32744257). "
+             "supported by GpuConvPaddingLegalization (b/32744257). "
              "Falling back to "
              "unfused convolution for instruction: "
           << conv->ToString();
@@ -431,7 +431,7 @@ MatchBackwardInput(HloInstruction* conv) {
       LOG(ERROR)
           << "The low padding of the backward convolution would be negative ("
           << backward_padding_low
-          << "), which isn't supported by CudnnConvPaddingLegalization "
+          << "), which isn't supported by GpuConvPaddingLegalization "
              "for now (b/32744257).";
       return no_match_result;
     }
@@ -461,7 +461,7 @@ MatchBackwardInput(HloInstruction* conv) {
       dim->set_padding_high(backward_padding_low);
     } else {
       // Otherwise, we choose the amount that's closest to backward_padding_low,
-      // and CudnnConvPaddingLegalization will later insert kSlice
+      // and GpuConvPaddingLegalization will later insert kSlice
       // instructions to enforce even padding.
       //
       // For example, consider the backward convolution pattern
@@ -488,7 +488,7 @@ MatchBackwardInput(HloInstruction* conv) {
         dim->set_padding_high(max_padding_high);
       }
     }
-    // CudnnConvPaddingLegalization doesn't handle backward input
+    // GpuConvPaddingLegalization doesn't handle backward input
     // convolution with negative padding for now. So fall back to unfused
     // convolution in case of negative padding. For example,
     //   ABCD = Conv(abc, reverse(xy), padding_high=2)
@@ -500,7 +500,7 @@ MatchBackwardInput(HloInstruction* conv) {
                     "negative padding ("
                  << dim->padding_high()
                  << ") on right/bottom of the activations, which is not "
-                    "supported by CudnnConvPaddingLegalization (b/32744257). "
+                    "supported by GpuConvPaddingLegalization (b/32744257). "
                     "Falling back to unfused convolution for instruction: "
                  << conv->ToString();
       return no_match_result;

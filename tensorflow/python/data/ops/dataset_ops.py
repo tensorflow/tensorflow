@@ -243,6 +243,9 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     def is_tensor_or_parent_ref(tensor):
       if tensor.dtype._is_ref_dtype:  # pylint: disable=protected-access
         return True
+      # If the captured tensor is an eager tensor, we cannot trace its inputs.
+      if isinstance(tensor, ops._EagerTensorBase):  # pylint: disable=protected-access
+        return False
       return any([is_tensor_or_parent_ref(x) for x in tensor.op.inputs])
 
     for fn in self._functions():
@@ -1606,11 +1609,16 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     reduce_func = wrapped_func.function
     reduce_func.add_to_graph(ops.get_default_graph())
 
+    # TODO(b/141256846): Apply options once optimizing stateful input pipelines
+    # in tf.functions is supported.
+    # dataset = self._apply_options()
+    dataset = self
+
     # pylint: disable=protected-access
     return structure.from_compatible_tensor_list(
         state_structure,
         gen_dataset_ops.reduce_dataset(
-            self._variant_tensor,
+            dataset._variant_tensor,
             structure.to_tensor_list(state_structure, initial_state),
             reduce_func.captured_inputs,
             f=reduce_func,

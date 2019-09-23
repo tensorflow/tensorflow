@@ -744,6 +744,22 @@ TEST_F(AlgebraicSimplifierTest, SubBroadcastConstCanonicalization) {
                         m::Broadcast(m::Negate(m::ConstantScalar(0.125))))));
 }
 
+// Test that Broadcast(x) where x has degenerate dimensions first removes the
+// degenerate dimensions.
+TEST_F(AlgebraicSimplifierTest, DegenerateDimsInOperandRemovedFromBroadcast) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      c = f32[1,4] parameter(0)
+      ROOT b = f32[5,1,4,3] broadcast(c), dimensions={1,2}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::Reshape(m::Parameter(0)))));
+}
+
 // Test that (A/B)/C is simplified to A/(B*C).
 TEST_F(AlgebraicSimplifierTest, LhsDivOfDiv) {
   auto m = CreateNewVerifiedModule();
@@ -2582,10 +2598,10 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_1_3x1_3) {
               GmockMatch(m::Reshape(m::Broadcast(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  EXPECT_FALSE(simplifier.Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(),
-              GmockMatch(m::Reshape(m::Broadcast(m::Parameter(0)))));
+              GmockMatch(m::Broadcast(m::Reshape(m::Parameter(0)))));
 }
 
 TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_4_3x2x4_6x1x1x4) {
@@ -2631,11 +2647,8 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_1_3x2x1_6x1x1x1) {
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(),
-              GmockMatch(m::Broadcast(m::Parameter(0))));
-  const std::vector<int64> broadcast_dims =
-      computation->root_instruction()->dimensions();
-  EXPECT_EQ(1, broadcast_dims.size());
-  EXPECT_THAT(broadcast_dims[0], ::testing::AnyOf(1, 2, 3));
+              GmockMatch(m::Broadcast(m::Reshape(m::Parameter(0)))));
+  EXPECT_EQ(0, computation->root_instruction()->dimensions().size());
 }
 
 TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_4_3x2x4x2_6x8) {

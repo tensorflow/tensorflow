@@ -146,9 +146,20 @@ cc_library(
     deps = [
         ":check_macros",
         ":opt_set",
+        ":path",
         ":side_pair",
         ":size_util",
         "@gemmlowp//:profiler",
+    ],
+)
+
+cc_test(
+    name = "block_map_test",
+    srcs = ["block_map_test.cc"],
+    deps = [
+        ":block_map",
+        ":path",
+        "@com_google_googletest//:gtest",
     ],
 )
 

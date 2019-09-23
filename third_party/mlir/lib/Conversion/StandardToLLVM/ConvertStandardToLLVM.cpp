@@ -1008,6 +1008,21 @@ struct SIToFPLowering
   using Super::Super;
 };
 
+struct SignExtendIOpLowering
+    : public OneToOneLLVMOpLowering<SignExtendIOp, LLVM::SExtOp> {
+  using Super::Super;
+};
+
+struct TruncateIOpLowering
+    : public OneToOneLLVMOpLowering<TruncateIOp, LLVM::TruncOp> {
+  using Super::Super;
+};
+
+struct ZeroExtendIOpLowering
+    : public OneToOneLLVMOpLowering<ZeroExtendIOp, LLVM::ZExtOp> {
+  using Super::Super;
+};
+
 // Base class for LLVM IR lowering terminator operations with successors.
 template <typename SourceOp, typename TargetOp>
 struct OneToOneLLVMTerminatorLowering
@@ -1143,8 +1158,9 @@ void mlir::populateStdToLLVMConversionPatterns(
       DivFOpLowering, FuncOpConversion, IndexCastOpLowering, LoadOpLowering,
       MemRefCastOpLowering, MulFOpLowering, MulIOpLowering, OrOpLowering,
       RemISOpLowering, RemIUOpLowering, RemFOpLowering, ReturnOpLowering,
-      SelectOpLowering, SIToFPLowering, StoreOpLowering, SubFOpLowering,
-      SubIOpLowering, XOrOpLowering>(*converter.getDialect(), converter);
+      SelectOpLowering, SignExtendIOpLowering, SIToFPLowering, StoreOpLowering,
+      SubFOpLowering, SubIOpLowering, TruncateIOpLowering, XOrOpLowering,
+      ZeroExtendIOpLowering>(*converter.getDialect(), converter);
 }
 
 // Convert types using the stored LLVM IR module.

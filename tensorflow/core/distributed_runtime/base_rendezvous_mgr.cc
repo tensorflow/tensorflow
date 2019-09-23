@@ -154,13 +154,13 @@ Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
   {
     mutex_lock l(mu_);
     if (session_ != nullptr) {
-      if (session_->worker_name == session->worker_name) {
+      if (session_->worker_name() == session->worker_name()) {
         LOG(INFO) << "Skipping rendezvous re-initialization.";
         return Status::OK();
       }
       Status s = errors::Internal(
           "Double init! Worker names would have changed from: ",
-          session_->worker_name, " -> ", session->worker_name);
+          session_->worker_name(), " -> ", session->worker_name());
       LOG(WARNING) << s;
       return s;
     }
@@ -191,10 +191,10 @@ Status BaseRemoteRendezvous::Send(const Rendezvous::ParsedKey& parsed,
     tf_shared_lock l(mu_);
     if (!status_.ok()) return status_;
     DCHECK(is_initialized_locked());
-    if (!IsLocalDevice(session_->worker_name, parsed.src_device)) {
+    if (!IsLocalDevice(session_->worker_name(), parsed.src_device)) {
       return errors::InvalidArgument(
           "Invalid rendezvous key (src): ", parsed.FullKey(), " @ ",
-          session_->worker_name);
+          session_->worker_name());
     }
   }
   // Buffers "val" and "device_context" in local_.
@@ -214,13 +214,15 @@ Status BaseRemoteRendezvous::ValidateDevices(const ParsedKey& parsed,
     }
     sess = session_;
   }
-  if (is_src && !IsLocalDevice(sess->worker_name, parsed.src_device)) {
-    return errors::InvalidArgument("Invalid rendezvous key (src): ",
-                                   parsed.FullKey(), " @ ", sess->worker_name);
+  if (is_src && !IsLocalDevice(sess->worker_name(), parsed.src_device)) {
+    return errors::InvalidArgument(
+        "Invalid rendezvous key (src): ", parsed.FullKey(), " @ ",
+        sess->worker_name());
   }
-  if (!is_src && !IsLocalDevice(sess->worker_name, parsed.dst_device)) {
-    return errors::InvalidArgument("Invalid rendezvous key (dst): ",
-                                   parsed.FullKey(), " @ ", sess->worker_name);
+  if (!is_src && !IsLocalDevice(sess->worker_name(), parsed.dst_device)) {
+    return errors::InvalidArgument(
+        "Invalid rendezvous key (dst): ", parsed.FullKey(), " @ ",
+        sess->worker_name());
   }
   return Status::OK();
 }
@@ -266,6 +268,10 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
     return;
   }
 
+  MEMDEBUG_CACHE_STEPID(0);
+  // Note that it would be nice to cache the step_id here, but it's not
+  // available.
+  MEMDEBUG_CACHE_OP("SameWorkerRecvDone");
   AllocatorAttributes attr = recv_args.alloc_attrs;
   attr.set_gpu_compatible(send_args.alloc_attrs.gpu_compatible() ||
                           recv_args.alloc_attrs.gpu_compatible());
@@ -313,6 +319,8 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
     return;
   }
 
+  MEMDEBUG_CACHE_OP("RecvAsync");
+  MEMDEBUG_CACHE_STEPID(0);
   // Are src and dst in the same worker?
   if (IsSameWorker(parsed.src, parsed.dst)) {
     // Recv the tensor from local_.

@@ -99,22 +99,19 @@ Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate(
 
 #if defined(__ANDROID__)
 Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
-    tflite::FlatBufferModel* model, TfLiteGpuDelegateOptions* options) {
-  return Interpreter::TfLiteDelegatePtr(TfLiteGpuDelegateCreate(options),
-                                        &TfLiteGpuDelegateDelete);
+    tflite::FlatBufferModel* model, TfLiteGpuDelegateOptionsV2* options) {
+  return Interpreter::TfLiteDelegatePtr(TfLiteGpuDelegateV2Create(options),
+                                        &TfLiteGpuDelegateV2Delete);
 }
 #endif  // defined(__ANDROID__)
 
 Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
     tflite::FlatBufferModel* model) {
 #if defined(__ANDROID__)
-  TfLiteGpuDelegateOptions options = TfLiteGpuDelegateOptionsDefault();
-  options.metadata =
-      model ? TfLiteGpuDelegateGetModelMetadata(model->GetModel()) : nullptr;
-  options.compile_options.precision_loss_allowed = 1;
-  options.compile_options.preferred_gl_object_type =
-      TFLITE_GL_OBJECT_TYPE_FASTEST;
-  options.compile_options.dynamic_batch_enabled = 0;
+  TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
+  options.is_precision_loss_allowed = 1;
+  options.inference_preference =
+      TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
 
   return CreateGPUDelegate(model, &options);
 #else

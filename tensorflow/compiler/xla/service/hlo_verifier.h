@@ -17,9 +17,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_VERIFIER_H_
 
 #include <memory>
-#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 #include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 
 namespace xla {
@@ -102,6 +102,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleScatter(HloInstruction* scatter) override;
   Status HandleAfterAll(HloInstruction* token) override;
   Status HandleGetDimensionSize(HloInstruction* get_size) override;
+  Status HandleSetDimensionSize(HloInstruction* set_size) override;
   Status HandleAddDependency(HloInstruction* add_dependency) override;
 
   Status FinishVisit(HloInstruction*) override { return Status::OK(); }

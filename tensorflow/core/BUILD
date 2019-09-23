@@ -210,6 +210,7 @@ COMMON_PROTO_SRCS = [
     "framework/types.proto",
     "framework/variable.proto",
     "framework/versions.proto",
+    "protobuf/bfc_memory_map.proto",
     "protobuf/config.proto",
     "protobuf/cluster.proto",
     "protobuf/debug.proto",
@@ -227,6 +228,7 @@ COMMON_PROTO_SRCS = [
 ]
 
 ERROR_CODES_PROTO_SRCS = [
+    "protobuf/error_codes.proto",
     "//tensorflow/core/lib/core:error_codes.proto",
 ]
 # LINT.ThenChange(//tensorflow/core/android_proto_config.asciipb)
@@ -262,6 +264,7 @@ tf_proto_library(
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
+        ":error_codes_proto_impl",
         ":protos_all_proto",
         "//tensorflow/core/lib/core:error_codes_proto",
     ],
@@ -870,6 +873,7 @@ tf_cuda_library(
         "framework/variant_encode_decode.h",
         "framework/variant_op_registry.h",
         "framework/variant_tensor_data.h",
+        "framework/shared_ptr_variant.h",
         "framework/allocator_registry.h",
         "framework/attr_value_util.h",
         "framework/bfloat16.h",
@@ -1128,9 +1132,9 @@ cc_library(
     ] + if_windows(["//tensorflow/core/platform:windows/integral_types.h"]),
     visibility = ["//visibility:public"],
     deps =
-        [
+        if_mobile([
             "@nsync//:nsync_cpp",
-        ] + [
+        ]) + [
             "//third_party/eigen3",
             "//tensorflow/core/lib/bfloat16",
             "//tensorflow/core/platform/default/build_config:minimal",
@@ -2310,7 +2314,6 @@ tf_proto_library(
     srcs = ["protobuf/autotuning.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
-    provide_cc_alias = True,
     visibility = [
         "//tensorflow:internal",
     ],
@@ -2324,7 +2327,6 @@ tf_proto_library(
     protodeps = [
         "//tensorflow/stream_executor:dnn_proto",
     ],
-    provide_cc_alias = True,
     visibility = [
         "//tensorflow:internal",
     ],
@@ -2728,11 +2730,19 @@ cc_library(
 )
 
 tf_proto_library(
+    name = "error_codes_proto_impl",
+    srcs = ["protobuf/error_codes.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+)
+
+tf_proto_library(
     name = "protos_all_proto",
     srcs = COMMON_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
+        ":error_codes_proto_impl",
         "//tensorflow/core/lib/core:error_codes_proto",
     ],
 )
@@ -2793,6 +2803,7 @@ FRAMEWORK_INTERNAL_PUBLIC_HEADERS = [
     "framework/resource_var.h",
     "framework/run_handler.h",
     "framework/run_handler_util.h",
+    "framework/shared_ptr_variant.h",
     "framework/tensor_reference.h",
     "framework/tracking_allocator.h",  # only needed for tests
     "framework/unique_tensor_references.h",
@@ -2802,6 +2813,7 @@ FRAMEWORK_INTERNAL_PUBLIC_HEADERS = [
     "util/presized_cuckoo_map.h",
     "util/tensor_slice_set.h",
     "util/tensor_slice_util.h",
+    "util/xla_config_registry.h",
 ]
 
 tf_cuda_library(
@@ -3336,6 +3348,7 @@ cc_library(
         ":allocator",
         ":lib",
         ":lib_internal",
+        ":protos_all_cc",
         ":shared_counter",
         "@com_google_absl//absl/container:flat_hash_set",
     ],

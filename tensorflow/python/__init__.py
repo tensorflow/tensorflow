@@ -50,6 +50,7 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import _pywrap_utils
 from tensorflow.python import _pywrap_tfprof
 from tensorflow.python import _pywrap_util_port
+from tensorflow.python import _pywrap_stat_summarizer
 
 # Protocol buffers
 from tensorflow.core.framework.graph_pb2 import *
@@ -156,6 +157,9 @@ _tf2_gauge.get_cell().set(_tf2.enabled())
 # the namespace management system (API decorators).
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
+
+# TensorFlow Debugger (tfdbg).
+from tensorflow.python.debug.lib import check_numerics_callback
 
 # XLA JIT compiler APIs.
 from tensorflow.python.compiler.xla import jit

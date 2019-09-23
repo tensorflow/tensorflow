@@ -56,6 +56,7 @@ tf_instantiate_platform_libraries(names = [
     "cord",
     "cuda_libdevice_path",
     "dynamic_annotations",
+    "env",
     "env_time",
     "human_readable_json",
     "load_library",
@@ -66,6 +67,8 @@ tf_instantiate_platform_libraries(names = [
     "rocm_rocdl_path",
     "strong_hash",
     "subprocess",
+    "tracing",
+    "unbounded_work_queue",
     "wide_char",
 ])
 
@@ -174,6 +177,17 @@ cc_library(
         ":dynamic_annotations_impl",
         ":platform",
     ],
+)
+
+cc_library(
+    name = "env",
+    textual_hdrs = [
+        "env.h",
+        "file_system.h",
+        "file_system_helper.h",
+        "threadpool.h",
+    ],
+    deps = tf_platform_helper_deps("env_impl"),
 )
 
 cc_library(
@@ -506,6 +520,14 @@ cc_library(
 )
 
 cc_library(
+    name = "tracing",
+    textual_hdrs = ["tracing.h"],
+    deps = [
+        ":tracing_impl",
+    ],
+)
+
+cc_library(
     name = "tstring",
     hdrs = ["tstring.h"],
 )
@@ -518,6 +540,15 @@ cc_library(
         ":platform",
         ":tstring",
         "//tensorflow/core/platform/default/build_config:base",
+    ],
+)
+
+cc_library(
+    name = "unbounded_work_queue",
+    hdrs = ["unbounded_work_queue.h"],
+    deps = [
+        ":platform",
+        ":unbounded_work_queue_impl",
     ],
 )
 

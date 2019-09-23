@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
@@ -86,12 +87,15 @@ class InferenceContext {
 
  private:
   void CopyInAndOutIds(const GraphFloat32& graph);
-  Status ConvertOperations(const CreationContext& creation_context,
-                           const GraphFloat32& graph, ModelHints hints);
+  Status ConvertOperations(
+      const CreationContext& creation_context, const GraphFloat32& graph,
+      ModelHints hints,
+      const std::unordered_map<ValueId, TensorDescriptor>& tensor_descriptors);
   void CreateLinks();
   void Merge();
-  Status AllocateMemory(const GraphFloat32& graph, const CLDevice& device,
-                        CLContext* context);
+  Status AllocateMemory(
+      const GraphFloat32& graph, const CLDevice& device, CLContext* context,
+      const std::unordered_map<ValueId, TensorDescriptor>& tensor_descriptors);
   void BindMemoryToOperations();
   Status Compile(const CreationContext& creation_context);
   Status Tune(const TuningParameters& tuning_parameters);

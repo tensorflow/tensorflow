@@ -21,16 +21,16 @@ limitations under the License.
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(TestInitializeRuntimeTensor) {
-  const tflite::Model* model = tflite::GetMockModel();
+  const tflite::Model* model = tflite::testing::GetMockModel();
   TfLiteContext context;
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
   tflite::MicroAllocator allocator(&context, model, arena, arena_size,
                                    micro_test::reporter);
 
-  const tflite::Tensor* tensor = tflite::Create1dFlatbufferTensor(100);
+  const tflite::Tensor* tensor = tflite::testing::Create1dFlatbufferTensor(100);
   const flatbuffers::Vector<flatbuffers::Offset<tflite::Buffer>>* buffers =
-      tflite::CreateFlatbufferBuffers();
+      tflite::testing::CreateFlatbufferBuffers();
 
   TfLiteTensor allocated_tensor;
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, allocator.InitializeRuntimeTensor(
@@ -44,7 +44,7 @@ TF_LITE_MICRO_TEST(TestInitializeRuntimeTensor) {
 }
 
 TF_LITE_MICRO_TEST(TestMissingQuantization) {
-  const tflite::Model* model = tflite::GetMockModel();
+  const tflite::Model* model = tflite::testing::GetMockModel();
   TfLiteContext context;
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
@@ -52,9 +52,9 @@ TF_LITE_MICRO_TEST(TestMissingQuantization) {
                                    micro_test::reporter);
 
   const tflite::Tensor* tensor =
-      tflite::CreateMissingQuantizationFlatbufferTensor(100);
+      tflite::testing::CreateMissingQuantizationFlatbufferTensor(100);
   const flatbuffers::Vector<flatbuffers::Offset<tflite::Buffer>>* buffers =
-      tflite::CreateFlatbufferBuffers();
+      tflite::testing::CreateFlatbufferBuffers();
 
   TfLiteTensor allocated_tensor;
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, allocator.InitializeRuntimeTensor(
@@ -68,7 +68,7 @@ TF_LITE_MICRO_TEST(TestMissingQuantization) {
 }
 
 TF_LITE_MICRO_TEST(TestAllocateTensors) {
-  const tflite::Model* model = tflite::GetMockModel();
+  const tflite::Model* model = tflite::testing::GetMockModel();
   TfLiteContext context;
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
@@ -106,7 +106,7 @@ TF_LITE_MICRO_TEST(TestAllocateTensors) {
 }
 
 TF_LITE_MICRO_TEST(TestPreallocatedInput) {
-  const tflite::Model* model = tflite::GetMockModel();
+  const tflite::Model* model = tflite::testing::GetMockModel();
   TfLiteContext context;
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];

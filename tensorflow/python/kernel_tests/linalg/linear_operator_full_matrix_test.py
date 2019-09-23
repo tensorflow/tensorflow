@@ -104,6 +104,7 @@ class SquareLinearOperatorFullMatrixTest(
       with self.assertRaisesOpError("not equal to its adjoint"):
         operator.assert_self_adjoint().run()
 
+  @test_util.disable_xla("Assert statements in kernels not supported in XLA")
   def test_assert_positive_definite(self):
     matrix = [[1., 1.], [1., 1.]]
     operator = linalg.LinearOperatorFullMatrix(matrix, is_self_adjoint=True)
@@ -179,6 +180,7 @@ class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
     self.assertTrue(operator._can_use_cholesky)
     self.assertTrue(operator.is_square)
 
+  @test_util.disable_xla("Assert statements in kernels not supported in XLA")
   def test_assert_non_singular(self):
     matrix = [[1., 1.], [1., 1.]]
     operator = linalg.LinearOperatorFullMatrix(
@@ -197,6 +199,7 @@ class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
       with self.assertRaisesOpError("not equal to its adjoint"):
         operator.assert_self_adjoint().run()
 
+  @test_util.disable_xla("Assert statements in kernels not supported in XLA")
   def test_assert_positive_definite(self):
     matrix = [[1., 1.], [1., 1.]]
     operator = linalg.LinearOperatorFullMatrix(

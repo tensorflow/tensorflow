@@ -179,7 +179,16 @@ static inline bool IsMklNameChangeOp(const string& op_name, DataType T) {
   search_string += string(";") + string(" T in [");
   search_string += DataType_Name(T) + string("]");
 
-  return kernel.find(search_string) != string::npos;
+  // Temporarily replacing earlier check by adding a type-specific check so
+  // that we can selectively decide which type is supported by MKL operators.
+  // That way kernel registration does not decide which operators we support.
+  // We are using this change to temporarily disable BFLOAT16 support. Once
+  // we want to enable it, we will go back to earlier check.
+  if (kernel.find(search_string) != string::npos) {
+    return T == DT_COMPLEX128 || T == DT_COMPLEX64 || T == DT_DOUBLE ||
+           T == DT_FLOAT;
+  }
+  return false;
 }
 
 // Check if the operator with 'op_name' and type 'T' is an MKL operator that

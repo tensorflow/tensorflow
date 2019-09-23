@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow/tools/test:performance.bzl", "tf_py_logged_benchmark")
 
 package(
     default_visibility = [
@@ -667,6 +668,11 @@ py_test(
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
+)
+
+tf_py_logged_benchmark(
+    name = "ragged_to_tensor_op_benchmark",
+    target = "//tensorflow/python/ops/ragged:ragged_to_tensor_op_test",
 )
 
 py_test(

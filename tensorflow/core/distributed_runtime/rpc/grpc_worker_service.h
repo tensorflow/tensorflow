@@ -33,7 +33,7 @@ namespace tensorflow {
 class AsyncServiceInterface;
 class ConfigProto;
 struct WorkerEnv;
-struct WorkerSession;
+class WorkerSession;
 class GrpcResponseCache;
 
 class GrpcWorker : public Worker {

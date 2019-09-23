@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-struct WorkerSession;
+class WorkerSession;
 
 namespace eager {
 

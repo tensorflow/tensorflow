@@ -252,7 +252,11 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
         output_graph_def.ParseFromString(f.read())
         _ = importer.import_graph_def(output_graph_def, name="")
 
-      self.assertEqual(8, len(output_graph_def.node))
+      if any(u"ParseExampleV2" in node.name for node in output_graph_def.node):
+        expected_node_count = 10
+      else:
+        expected_node_count = 8
+      self.assertEqual(expected_node_count, len(output_graph_def.node))
       for node in output_graph_def.node:
         self.assertNotEqual("VariableV2", node.op)
         self.assertNotEqual("Variable", node.op)

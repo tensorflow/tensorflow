@@ -702,6 +702,7 @@ REGISTER_OP("ScanDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("preserve_cardinality: bool = false")
+    .Attr("use_default_device: bool = true")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalScanDataset")

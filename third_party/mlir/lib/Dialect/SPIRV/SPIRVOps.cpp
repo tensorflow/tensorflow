@@ -35,11 +35,14 @@ using namespace mlir;
 // TODO(antiagainst): generate these strings using ODS.
 static constexpr const char kAlignmentAttrName[] = "alignment";
 static constexpr const char kBranchWeightAttrName[] = "branch_weights";
+static constexpr const char kCallee[] = "callee";
 static constexpr const char kDefaultValueAttrName[] = "default_value";
+static constexpr const char kExecutionScopeAttrName[] = "execution_scope";
 static constexpr const char kFnNameAttrName[] = "fn";
 static constexpr const char kIndicesAttrName[] = "indices";
 static constexpr const char kInitializerAttrName[] = "initializer";
 static constexpr const char kInterfaceAttrName[] = "interface";
+static constexpr const char kMemoryScopeAttrName[] = "memory_scope";
 static constexpr const char kSpecConstAttrName[] = "spec_const";
 static constexpr const char kTypeAttrName[] = "type";
 static constexpr const char kValueAttrName[] = "value";
@@ -74,64 +77,64 @@ static LogicalResult extractValueFromConstOp(Operation *op,
   return success();
 }
 
-static ParseResult parseBinaryLogicalOp(OpAsmParser *parser,
-                                        OperationState *result) {
+static ParseResult parseBinaryLogicalOp(OpAsmParser &parser,
+                                        OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 2> ops;
   Type type;
-  if (parser->parseOperandList(ops, 2) || parser->parseColonType(type) ||
-      parser->resolveOperands(ops, type, result->operands)) {
+  if (parser.parseOperandList(ops, 2) || parser.parseColonType(type) ||
+      parser.resolveOperands(ops, type, result.operands)) {
     return failure();
   }
   // Result must be a scalar or vector of boolean type.
-  Type resultType = parser->getBuilder().getIntegerType(1);
+  Type resultType = parser.getBuilder().getIntegerType(1);
   if (auto opsType = type.dyn_cast<VectorType>()) {
     resultType = VectorType::get(opsType.getNumElements(), resultType);
   }
-  result->addTypes(resultType);
+  result.addTypes(resultType);
   return success();
 }
 
 template <typename EnumClass>
-static ParseResult parseEnumAttribute(EnumClass &value, OpAsmParser *parser) {
+static ParseResult
+parseEnumAttribute(EnumClass &value, OpAsmParser &parser,
+                   StringRef attrName = spirv::attributeName<EnumClass>()) {
   Attribute attrVal;
   SmallVector<NamedAttribute, 1> attr;
-  auto loc = parser->getCurrentLocation();
-  if (parser->parseAttribute(attrVal, parser->getBuilder().getNoneType(),
-                             spirv::attributeName<EnumClass>(), attr)) {
+  auto loc = parser.getCurrentLocation();
+  if (parser.parseAttribute(attrVal, parser.getBuilder().getNoneType(),
+                            attrName, attr)) {
     return failure();
   }
   if (!attrVal.isa<StringAttr>()) {
-    return parser->emitError(loc, "expected ")
-           << spirv::attributeName<EnumClass>()
-           << " attribute specified as string";
+    return parser.emitError(loc, "expected ")
+           << attrName << " attribute specified as string";
   }
   auto attrOptional =
       spirv::symbolizeEnum<EnumClass>()(attrVal.cast<StringAttr>().getValue());
   if (!attrOptional) {
-    return parser->emitError(loc, "invalid ")
-           << spirv::attributeName<EnumClass>()
-           << " attribute specification: " << attrVal;
+    return parser.emitError(loc, "invalid ")
+           << attrName << " attribute specification: " << attrVal;
   }
   value = attrOptional.getValue();
   return success();
 }
 
 template <typename EnumClass>
-static ParseResult parseEnumAttribute(EnumClass &value, OpAsmParser *parser,
-                                      OperationState *state) {
+static ParseResult
+parseEnumAttribute(EnumClass &value, OpAsmParser &parser, OperationState &state,
+                   StringRef attrName = spirv::attributeName<EnumClass>()) {
   if (parseEnumAttribute(value, parser)) {
     return failure();
   }
-  state->addAttribute(
-      spirv::attributeName<EnumClass>(),
-      parser->getBuilder().getI32IntegerAttr(bitwiseCast<int32_t>(value)));
+  state.addAttribute(attrName, parser.getBuilder().getI32IntegerAttr(
+                                   bitwiseCast<int32_t>(value)));
   return success();
 }
 
-static ParseResult parseMemoryAccessAttributes(OpAsmParser *parser,
-                                               OperationState *state) {
+static ParseResult parseMemoryAccessAttributes(OpAsmParser &parser,
+                                               OperationState &state) {
   // Parse an optional list of attributes staring with '['
-  if (parser->parseOptionalLSquare()) {
+  if (parser.parseOptionalLSquare()) {
     // Nothing to do
     return success();
   }
@@ -141,47 +144,47 @@ static ParseResult parseMemoryAccessAttributes(OpAsmParser *parser,
     return failure();
   }
 
-  if (memoryAccessAttr == spirv::MemoryAccess::Aligned) {
+  if (spirv::bitEnumContains(memoryAccessAttr, spirv::MemoryAccess::Aligned)) {
     // Parse integer attribute for alignment.
     Attribute alignmentAttr;
-    Type i32Type = parser->getBuilder().getIntegerType(32);
-    if (parser->parseComma() ||
-        parser->parseAttribute(alignmentAttr, i32Type, kAlignmentAttrName,
-                               state->attributes)) {
+    Type i32Type = parser.getBuilder().getIntegerType(32);
+    if (parser.parseComma() ||
+        parser.parseAttribute(alignmentAttr, i32Type, kAlignmentAttrName,
+                              state.attributes)) {
       return failure();
     }
   }
-  return parser->parseRSquare();
+  return parser.parseRSquare();
 }
 
 // Parses an op that has no inputs and no outputs.
-static ParseResult parseNoIOOp(OpAsmParser *parser, OperationState *state) {
-  if (parser->parseOptionalAttributeDict(state->attributes))
+static ParseResult parseNoIOOp(OpAsmParser &parser, OperationState &state) {
+  if (parser.parseOptionalAttributeDict(state.attributes))
     return failure();
   return success();
 }
 
-static void printBinaryLogicalOp(Operation *logicalOp, OpAsmPrinter *printer) {
-  *printer << logicalOp->getName() << ' ' << *logicalOp->getOperand(0) << ", "
-           << *logicalOp->getOperand(1);
-  *printer << " : " << logicalOp->getOperand(0)->getType();
+static void printBinaryLogicalOp(Operation *logicalOp, OpAsmPrinter &printer) {
+  printer << logicalOp->getName() << ' ' << *logicalOp->getOperand(0) << ", "
+          << *logicalOp->getOperand(1);
+  printer << " : " << logicalOp->getOperand(0)->getType();
 }
 
 template <typename LoadStoreOpTy>
 static void
-printMemoryAccessAttribute(LoadStoreOpTy loadStoreOp, OpAsmPrinter *printer,
+printMemoryAccessAttribute(LoadStoreOpTy loadStoreOp, OpAsmPrinter &printer,
                            SmallVectorImpl<StringRef> &elidedAttrs) {
   // Print optional memory access attribute.
   if (auto memAccess = loadStoreOp.memory_access()) {
     elidedAttrs.push_back(spirv::attributeName<spirv::MemoryAccess>());
-    *printer << " [\"" << stringifyMemoryAccess(*memAccess) << "\"";
+    printer << " [\"" << stringifyMemoryAccess(*memAccess) << "\"";
 
     // Print integer alignment attribute.
     if (auto alignment = loadStoreOp.alignment()) {
       elidedAttrs.push_back(kAlignmentAttrName);
-      *printer << ", " << alignment;
+      printer << ", " << alignment;
     }
-    *printer << "]";
+    printer << "]";
   }
   elidedAttrs.push_back(spirv::attributeName<spirv::StorageClass>());
 }
@@ -212,7 +215,7 @@ static LogicalResult verifyMemoryAccessAttribute(LoadStoreOpTy loadStoreOp) {
            << memAccessVal;
   }
 
-  if (*memAccess == spirv::MemoryAccess::Aligned) {
+  if (spirv::bitEnumContains(*memAccess, spirv::MemoryAccess::Aligned)) {
     if (!op->getAttr(kAlignmentAttrName)) {
       return loadStoreOp.emitOpError("missing alignment value");
     }
@@ -222,6 +225,30 @@ static LogicalResult verifyMemoryAccessAttribute(LoadStoreOpTy loadStoreOp) {
           "invalid alignment specification with non-aligned memory access "
           "specification");
     }
+  }
+  return success();
+}
+
+template <typename BarrierOp>
+static LogicalResult verifyMemorySemantics(BarrierOp op) {
+  // According to the SPIR-V specification:
+  // "Despite being a mask and allowing multiple bits to be combined, it is
+  // invalid for more than one of these four bits to be set: Acquire, Release,
+  // AcquireRelease, or SequentiallyConsistent. Requesting both Acquire and
+  // Release semantics is done by setting the AcquireRelease bit, not by setting
+  // two bits."
+  auto memorySemantics = op.memory_semantics();
+  auto atMostOneInSet = spirv::MemorySemantics::Acquire |
+                        spirv::MemorySemantics::Release |
+                        spirv::MemorySemantics::AcquireRelease |
+                        spirv::MemorySemantics::SequentiallyConsistent;
+
+  auto bitCount = llvm::countPopulation(
+      static_cast<uint32_t>(memorySemantics & atMostOneInSet));
+  if (bitCount > 1) {
+    return op.emitError("expected at most one of these four memory constraints "
+                        "to be set: `Acquire`, `Release`,"
+                        "`AcquireRelease` or `SequentiallyConsistent`");
   }
   return success();
 }
@@ -242,50 +269,49 @@ static LogicalResult verifyLoadStorePtrAndValTypes(LoadStoreOpTy op, Value *ptr,
 }
 
 // Prints an op that has no inputs and no outputs.
-static void printNoIOOp(Operation *op, OpAsmPrinter *printer) {
-  *printer << op->getName();
-  printer->printOptionalAttrDict(op->getAttrs());
+static void printNoIOOp(Operation *op, OpAsmPrinter &printer) {
+  printer << op->getName();
+  printer.printOptionalAttrDict(op->getAttrs());
 }
 
-static ParseResult parseVariableDecorations(OpAsmParser *parser,
-                                            OperationState *state) {
+static ParseResult parseVariableDecorations(OpAsmParser &parser,
+                                            OperationState &state) {
   auto builtInName =
       convertToSnakeCase(stringifyDecoration(spirv::Decoration::BuiltIn));
-  if (succeeded(parser->parseOptionalKeyword("bind"))) {
+  if (succeeded(parser.parseOptionalKeyword("bind"))) {
     Attribute set, binding;
     // Parse optional descriptor binding
     auto descriptorSetName = convertToSnakeCase(
         stringifyDecoration(spirv::Decoration::DescriptorSet));
     auto bindingName =
         convertToSnakeCase(stringifyDecoration(spirv::Decoration::Binding));
-    Type i32Type = parser->getBuilder().getIntegerType(32);
-    if (parser->parseLParen() ||
-        parser->parseAttribute(set, i32Type, descriptorSetName,
-                               state->attributes) ||
-        parser->parseComma() ||
-        parser->parseAttribute(binding, i32Type, bindingName,
-                               state->attributes) ||
-        parser->parseRParen()) {
+    Type i32Type = parser.getBuilder().getIntegerType(32);
+    if (parser.parseLParen() ||
+        parser.parseAttribute(set, i32Type, descriptorSetName,
+                              state.attributes) ||
+        parser.parseComma() ||
+        parser.parseAttribute(binding, i32Type, bindingName,
+                              state.attributes) ||
+        parser.parseRParen()) {
       return failure();
     }
-  } else if (succeeded(parser->parseOptionalKeyword(builtInName.c_str()))) {
+  } else if (succeeded(parser.parseOptionalKeyword(builtInName))) {
     StringAttr builtIn;
-    if (parser->parseLParen() ||
-        parser->parseAttribute(builtIn, Type(), builtInName,
-                               state->attributes) ||
-        parser->parseRParen()) {
+    if (parser.parseLParen() ||
+        parser.parseAttribute(builtIn, builtInName, state.attributes) ||
+        parser.parseRParen()) {
       return failure();
     }
   }
 
   // Parse other attributes
-  if (parser->parseOptionalAttributeDict(state->attributes))
+  if (parser.parseOptionalAttributeDict(state.attributes))
     return failure();
 
   return success();
 }
 
-static void printVariableDecorations(Operation *op, OpAsmPrinter *printer,
+static void printVariableDecorations(Operation *op, OpAsmPrinter &printer,
                                      SmallVectorImpl<StringRef> &elidedAttrs) {
   // Print optional descriptor binding
   auto descriptorSetName =
@@ -297,19 +323,19 @@ static void printVariableDecorations(Operation *op, OpAsmPrinter *printer,
   if (descriptorSet && binding) {
     elidedAttrs.push_back(descriptorSetName);
     elidedAttrs.push_back(bindingName);
-    *printer << " bind(" << descriptorSet.getInt() << ", " << binding.getInt()
-             << ")";
+    printer << " bind(" << descriptorSet.getInt() << ", " << binding.getInt()
+            << ")";
   }
 
   // Print BuiltIn attribute if present
   auto builtInName =
       convertToSnakeCase(stringifyDecoration(spirv::Decoration::BuiltIn));
   if (auto builtin = op->getAttrOfType<StringAttr>(builtInName)) {
-    *printer << " " << builtInName << "(\"" << builtin.getValue() << "\")";
+    printer << " " << builtInName << "(\"" << builtin.getValue() << "\")";
     elidedAttrs.push_back(builtInName);
   }
 
-  printer->printOptionalAttrDict(op->getAttrs(), elidedAttrs);
+  printer.printOptionalAttrDict(op->getAttrs(), elidedAttrs);
 }
 
 // Extracts an element from the given `composite` by following the given
@@ -396,46 +422,46 @@ static Type getElementPtrType(Type type, ArrayRef<Value *> indices,
   return spirv::PointerType::get(resultType, resultStorageClass);
 }
 
-void spirv::AccessChainOp::build(Builder *builder, OperationState *state,
+void spirv::AccessChainOp::build(Builder *builder, OperationState &state,
                                  Value *basePtr, ArrayRef<Value *> indices) {
-  auto type = getElementPtrType(basePtr->getType(), indices, state->location);
+  auto type = getElementPtrType(basePtr->getType(), indices, state.location);
   assert(type && "Unable to deduce return type based on basePtr and indices");
   build(builder, state, type, basePtr, indices);
 }
 
-static ParseResult parseAccessChainOp(OpAsmParser *parser,
-                                      OperationState *state) {
+static ParseResult parseAccessChainOp(OpAsmParser &parser,
+                                      OperationState &state) {
   OpAsmParser::OperandType ptrInfo;
   SmallVector<OpAsmParser::OperandType, 4> indicesInfo;
   Type type;
   // TODO(denis0x0D): regarding to the spec an index must be any integer type,
   // figure out how to use resolveOperand with a range of types and do not
   // fail on first attempt.
-  Type indicesType = parser->getBuilder().getIntegerType(32);
+  Type indicesType = parser.getBuilder().getIntegerType(32);
 
-  if (parser->parseOperand(ptrInfo) ||
-      parser->parseOperandList(indicesInfo, OpAsmParser::Delimiter::Square) ||
-      parser->parseColonType(type) ||
-      parser->resolveOperand(ptrInfo, type, state->operands) ||
-      parser->resolveOperands(indicesInfo, indicesType, state->operands)) {
+  if (parser.parseOperand(ptrInfo) ||
+      parser.parseOperandList(indicesInfo, OpAsmParser::Delimiter::Square) ||
+      parser.parseColonType(type) ||
+      parser.resolveOperand(ptrInfo, type, state.operands) ||
+      parser.resolveOperands(indicesInfo, indicesType, state.operands)) {
     return failure();
   }
 
   auto resultType = getElementPtrType(
-      type, llvm::makeArrayRef(state->operands).drop_front(), state->location);
+      type, llvm::makeArrayRef(state.operands).drop_front(), state.location);
   if (!resultType) {
     return failure();
   }
 
-  state->addTypes(resultType);
+  state.addTypes(resultType);
   return success();
 }
 
-static void print(spirv::AccessChainOp op, OpAsmPrinter *printer) {
-  *printer << spirv::AccessChainOp::getOperationName() << ' ' << *op.base_ptr()
-           << '[';
-  printer->printOperands(op.indices());
-  *printer << "] : " << op.base_ptr()->getType();
+static void print(spirv::AccessChainOp op, OpAsmPrinter &printer) {
+  printer << spirv::AccessChainOp::getOperationName() << ' ' << *op.base_ptr()
+          << '[';
+  printer.printOperands(op.indices());
+  printer << "] : " << op.base_ptr()->getType();
 }
 
 static LogicalResult verify(spirv::AccessChainOp accessChainOp) {
@@ -467,33 +493,33 @@ static LogicalResult verify(spirv::AccessChainOp accessChainOp) {
 // spv._address_of
 //===----------------------------------------------------------------------===//
 
-static ParseResult parseAddressOfOp(OpAsmParser *parser,
-                                    OperationState *state) {
+static ParseResult parseAddressOfOp(OpAsmParser &parser,
+                                    OperationState &state) {
   SymbolRefAttr varRefAttr;
   Type type;
-  if (parser->parseAttribute(varRefAttr, Type(), kVariableAttrName,
-                             state->attributes) ||
-      parser->parseColonType(type)) {
+  if (parser.parseAttribute(varRefAttr, Type(), kVariableAttrName,
+                            state.attributes) ||
+      parser.parseColonType(type)) {
     return failure();
   }
   auto ptrType = type.dyn_cast<spirv::PointerType>();
   if (!ptrType) {
-    return parser->emitError(parser->getCurrentLocation(),
-                             "expected spv.ptr type");
+    return parser.emitError(parser.getCurrentLocation(),
+                            "expected spv.ptr type");
   }
-  state->addTypes(ptrType);
+  state.addTypes(ptrType);
   return success();
 }
 
-static void print(spirv::AddressOfOp addressOfOp, OpAsmPrinter *printer) {
+static void print(spirv::AddressOfOp addressOfOp, OpAsmPrinter &printer) {
   SmallVector<StringRef, 4> elidedAttrs;
-  *printer << spirv::AddressOfOp::getOperationName();
+  printer << spirv::AddressOfOp::getOperationName();
 
   // Print symbol name.
-  *printer << " @" << addressOfOp.variable();
+  printer << " @" << addressOfOp.variable();
 
   // Print the type.
-  *printer << " : " << addressOfOp.pointer()->getType();
+  printer << " : " << addressOfOp.pointer()->getType();
 }
 
 static LogicalResult verify(spirv::AddressOfOp addressOfOp) {
@@ -514,18 +540,18 @@ static LogicalResult verify(spirv::AddressOfOp addressOfOp) {
 // spv.BranchOp
 //===----------------------------------------------------------------------===//
 
-static ParseResult parseBranchOp(OpAsmParser *parser, OperationState *state) {
+static ParseResult parseBranchOp(OpAsmParser &parser, OperationState &state) {
   Block *dest;
   SmallVector<Value *, 4> destOperands;
-  if (parser->parseSuccessorAndUseList(dest, destOperands))
+  if (parser.parseSuccessorAndUseList(dest, destOperands))
     return failure();
-  state->addSuccessor(dest, destOperands);
+  state.addSuccessor(dest, destOperands);
   return success();
 }
 
-static void print(spirv::BranchOp branchOp, OpAsmPrinter *printer) {
-  *printer << spirv::BranchOp::getOperationName() << ' ';
-  printer->printSuccessorAndUseList(branchOp.getOperation(), /*index=*/0);
+static void print(spirv::BranchOp branchOp, OpAsmPrinter &printer) {
+  printer << spirv::BranchOp::getOperationName() << ' ';
+  printer.printSuccessorAndUseList(branchOp.getOperation(), /*index=*/0);
 }
 
 static LogicalResult verify(spirv::BranchOp branchOp) {
@@ -540,69 +566,69 @@ static LogicalResult verify(spirv::BranchOp branchOp) {
 // spv.BranchConditionalOp
 //===----------------------------------------------------------------------===//
 
-static ParseResult parseBranchConditionalOp(OpAsmParser *parser,
-                                            OperationState *state) {
-  auto &builder = parser->getBuilder();
+static ParseResult parseBranchConditionalOp(OpAsmParser &parser,
+                                            OperationState &state) {
+  auto &builder = parser.getBuilder();
   OpAsmParser::OperandType condInfo;
   Block *dest;
   SmallVector<Value *, 4> destOperands;
 
   // Parse the condition.
   Type boolTy = builder.getI1Type();
-  if (parser->parseOperand(condInfo) ||
-      parser->resolveOperand(condInfo, boolTy, state->operands))
+  if (parser.parseOperand(condInfo) ||
+      parser.resolveOperand(condInfo, boolTy, state.operands))
     return failure();
 
   // Parse the optional branch weights.
-  if (succeeded(parser->parseOptionalLSquare())) {
+  if (succeeded(parser.parseOptionalLSquare())) {
     IntegerAttr trueWeight, falseWeight;
     SmallVector<NamedAttribute, 2> weights;
 
     auto i32Type = builder.getIntegerType(32);
-    if (parser->parseAttribute(trueWeight, i32Type, "weight", weights) ||
-        parser->parseComma() ||
-        parser->parseAttribute(falseWeight, i32Type, "weight", weights) ||
-        parser->parseRSquare())
+    if (parser.parseAttribute(trueWeight, i32Type, "weight", weights) ||
+        parser.parseComma() ||
+        parser.parseAttribute(falseWeight, i32Type, "weight", weights) ||
+        parser.parseRSquare())
       return failure();
 
-    state->addAttribute(kBranchWeightAttrName,
-                        builder.getArrayAttr({trueWeight, falseWeight}));
+    state.addAttribute(kBranchWeightAttrName,
+                       builder.getArrayAttr({trueWeight, falseWeight}));
   }
 
   // Parse the true branch.
-  if (parser->parseComma() ||
-      parser->parseSuccessorAndUseList(dest, destOperands))
+  if (parser.parseComma() ||
+      parser.parseSuccessorAndUseList(dest, destOperands))
     return failure();
-  state->addSuccessor(dest, destOperands);
+  state.addSuccessor(dest, destOperands);
 
   // Parse the false branch.
   destOperands.clear();
-  if (parser->parseComma() ||
-      parser->parseSuccessorAndUseList(dest, destOperands))
+  if (parser.parseComma() ||
+      parser.parseSuccessorAndUseList(dest, destOperands))
     return failure();
-  state->addSuccessor(dest, destOperands);
+  state.addSuccessor(dest, destOperands);
 
   return success();
 }
 
-static void print(spirv::BranchConditionalOp branchOp, OpAsmPrinter *printer) {
-  *printer << spirv::BranchConditionalOp::getOperationName() << ' ';
-  printer->printOperand(branchOp.condition());
+static void print(spirv::BranchConditionalOp branchOp, OpAsmPrinter &printer) {
+  printer << spirv::BranchConditionalOp::getOperationName() << ' ';
+  printer.printOperand(branchOp.condition());
 
   if (auto weights = branchOp.branch_weights()) {
-    *printer << " [";
-    interleaveComma(weights->getValue(), *printer, [&](Attribute a) {
-      *printer << a.cast<IntegerAttr>().getInt();
+    printer << " [";
+    interleaveComma(weights->getValue(), printer, [&](Attribute a) {
+      printer << a.cast<IntegerAttr>().getInt();
     });
-    *printer << "]";
+    printer << "]";
   }
 
-  *printer << ", ";
-  printer->printSuccessorAndUseList(branchOp.getOperation(),
-                                    spirv::BranchConditionalOp::kTrueIndex);
-  *printer << ", ";
-  printer->printSuccessorAndUseList(branchOp.getOperation(),
-                                    spirv::BranchConditionalOp::kFalseIndex);
+  printer << ", ";
+  printer.printSuccessorAndUseList(branchOp.getOperation(),
+                                   spirv::BranchConditionalOp::kTrueIndex);
+  printer << ", ";
+  printer.printSuccessorAndUseList(branchOp.getOperation(),
+                                   spirv::BranchConditionalOp::kFalseIndex);
 }
 
 static LogicalResult verify(spirv::BranchConditionalOp branchOp) {
@@ -627,32 +653,31 @@ static LogicalResult verify(spirv::BranchConditionalOp branchOp) {
 // spv.CompositeExtractOp
 //===----------------------------------------------------------------------===//
 
-static ParseResult parseCompositeExtractOp(OpAsmParser *parser,
-                                           OperationState *state) {
+static ParseResult parseCompositeExtractOp(OpAsmParser &parser,
+                                           OperationState &state) {
   OpAsmParser::OperandType compositeInfo;
   Attribute indicesAttr;
   Type compositeType;
   llvm::SMLoc attrLocation;
   int32_t index;
 
-  if (parser->parseOperand(compositeInfo) ||
-      parser->getCurrentLocation(&attrLocation) ||
-      parser->parseAttribute(indicesAttr, kIndicesAttrName,
-                             state->attributes) ||
-      parser->parseColonType(compositeType) ||
-      parser->resolveOperand(compositeInfo, compositeType, state->operands)) {
+  if (parser.parseOperand(compositeInfo) ||
+      parser.getCurrentLocation(&attrLocation) ||
+      parser.parseAttribute(indicesAttr, kIndicesAttrName, state.attributes) ||
+      parser.parseColonType(compositeType) ||
+      parser.resolveOperand(compositeInfo, compositeType, state.operands)) {
     return failure();
   }
 
   auto indicesArrayAttr = indicesAttr.dyn_cast<ArrayAttr>();
   if (!indicesArrayAttr) {
-    return parser->emitError(
+    return parser.emitError(
         attrLocation,
         "expected an 32-bit integer array attribute for 'indices'");
   }
 
   if (!indicesArrayAttr.size()) {
-    return parser->emitError(
+    return parser.emitError(
         attrLocation, "expected at least one index for spv.CompositeExtract");
   }
 
@@ -661,7 +686,7 @@ static ParseResult parseCompositeExtractOp(OpAsmParser *parser,
     if (auto indexIntAttr = indexAttr.dyn_cast<IntegerAttr>()) {
       index = indexIntAttr.getInt();
     } else {
-      return parser->emitError(
+      return parser.emitError(
                  attrLocation,
                  "expexted an 32-bit integer for index, but found '")
              << indexAttr << "'";
@@ -669,26 +694,26 @@ static ParseResult parseCompositeExtractOp(OpAsmParser *parser,
 
     if (auto cType = resultType.dyn_cast<spirv::CompositeType>()) {
       if (index < 0 || static_cast<uint64_t>(index) >= cType.getNumElements()) {
-        return parser->emitError(attrLocation, "index ")
+        return parser.emitError(attrLocation, "index ")
                << index << " out of bounds for " << resultType;
       }
       resultType = cType.getElementType(index);
     } else {
-      return parser->emitError(attrLocation,
-                               "cannot extract from non-composite type ")
+      return parser.emitError(attrLocation,
+                              "cannot extract from non-composite type ")
              << resultType << " with index " << index;
     }
   }
 
-  state->addTypes(resultType);
+  state.addTypes(resultType);
   return success();
 }
 
 static void print(spirv::CompositeExtractOp compositeExtractOp,
-                  OpAsmPrinter *printer) {
-  *printer << spirv::CompositeExtractOp::getOperationName() << ' '
-           << *compositeExtractOp.composite() << compositeExtractOp.indices()
-           << " : " << compositeExtractOp.composite()->getType();
+                  OpAsmPrinter &printer) {
+  printer << spirv::CompositeExtractOp::getOperationName() << ' '
+          << *compositeExtractOp.composite() << compositeExtractOp.indices()
+          << " : " << compositeExtractOp.composite()->getType();
 }
 
 static LogicalResult verify(spirv::CompositeExtractOp compExOp) {
@@ -737,26 +762,26 @@ OpFoldResult spirv::CompositeExtractOp::fold(ArrayRef<Attribute> operands) {
 // spv.constant
 //===----------------------------------------------------------------------===//
 
-static ParseResult parseConstantOp(OpAsmParser *parser, OperationState *state) {
+static ParseResult parseConstantOp(OpAsmParser &parser, OperationState &state) {
   Attribute value;
-  if (parser->parseAttribute(value, kValueAttrName, state->attributes))
+  if (parser.parseAttribute(value, kValueAttrName, state.attributes))
     return failure();
 
   Type type;
   if (value.getType().isa<NoneType>()) {
-    if (parser->parseColonType(type))
+    if (parser.parseColonType(type))
       return failure();
   } else {
     type = value.getType();
   }
 
-  return parser->addTypeToList(type, state->types);
+  return parser.addTypeToList(type, state.types);
 }
 
-static void print(spirv::ConstantOp constOp, OpAsmPrinter *printer) {
-  *printer << spirv::ConstantOp::getOperationName() << ' ' << constOp.value();
+static void print(spirv::ConstantOp constOp, OpAsmPrinter &printer) {
+  printer << spirv::ConstantOp::getOperationName() << ' ' << constOp.value();
   if (constOp.getType().isa<spirv::ArrayType>()) {
-    *printer << " : " << constOp.getType();
+    printer << " : " << constOp.getType();
   }
 }
 
@@ -820,22 +845,48 @@ bool spirv::ConstantOp::isBuildableWith(Type type) {
 }
 
 //===----------------------------------------------------------------------===//
+// spv.ControlBarrier
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseControlBarrierOp(OpAsmParser &parser,
+                                         OperationState &state) {
+  spirv::Scope executionScope;
+  spirv::Scope memoryScope;
+  spirv::MemorySemantics memorySemantics;
+
+  return failure(
+      parseEnumAttribute(executionScope, parser, state,
+                         kExecutionScopeAttrName) ||
+      parser.parseComma() ||
+      parseEnumAttribute(memoryScope, parser, state, kMemoryScopeAttrName) ||
+      parser.parseComma() ||
+      parseEnumAttribute(memorySemantics, parser, state));
+}
+
+static void print(spirv::ControlBarrierOp op, OpAsmPrinter &printer) {
+  printer << spirv::ControlBarrierOp::getOperationName() << " \""
+          << stringifyScope(op.execution_scope()) << "\", \""
+          << stringifyScope(op.memory_scope()) << "\", \""
+          << stringifyMemorySemantics(op.memory_semantics()) << "\"";
+}
+
+//===----------------------------------------------------------------------===//
 // spv.EntryPoint
 //===----------------------------------------------------------------------===//
 
-static ParseResult parseEntryPointOp(OpAsmParser *parser,
-                                     OperationState *state) {
+static ParseResult parseEntryPointOp(OpAsmParser &parser,
+                                     OperationState &state) {
   spirv::ExecutionModel execModel;
   SmallVector<OpAsmParser::OperandType, 0> identifiers;
   SmallVector<Type, 0> idTypes;
 
   SymbolRefAttr fn;
   if (parseEnumAttribute(execModel, parser, state) ||
-      parser->parseAttribute(fn, Type(), kFnNameAttrName, state->attributes)) {
+      parser.parseAttribute(fn, Type(), kFnNameAttrName, state.attributes)) {
     return failure();
   }
 
-  if (!parser->parseOptionalComma()) {
+  if (!parser.parseOptionalComma()) {
     // Parse the interface variables
     SmallVector<Attribute, 4> interfaceVars;
     do {
@@ -843,24 +894,24 @@ static ParseResult parseEntryPointOp(OpAsmParser *parser,
       auto attrName = "var_symbol";
       SymbolRefAttr var;
       SmallVector<NamedAttribute, 1> attrs;
-      if (parser->parseAttribute(var, Type(), attrName, attrs)) {
+      if (parser.parseAttribute(var, Type(), attrName, attrs)) {
         return failure();
       }
       interfaceVars.push_back(var);
-    } while (!parser->parseOptionalComma());
-    state->addAttribute(kInterfaceAttrName,
-                        parser->getBuilder().getArrayAttr(interfaceVars));
+    } while (!parser.parseOptionalComma());
+    state.addAttribute(kInterfaceAttrName,
+                       parser.getBuilder().getArrayAttr(interfaceVars));
   }
   return success();
 }
 
-static void print(spirv::EntryPointOp entryPointOp, OpAsmPrinter *printer) {
-  *printer << spirv::EntryPointOp::getOperationName() << " \""
-           << stringifyExecutionModel(entryPointOp.execution_model()) << "\" @"
-           << entryPointOp.fn();
+static void print(spirv::EntryPointOp entryPointOp, OpAsmPrinter &printer) {
+  printer << spirv::EntryPointOp::getOperationName() << " \""
+          << stringifyExecutionModel(entryPointOp.execution_model()) << "\" @"
+          << entryPointOp.fn();
   if (auto interface = entryPointOp.interface()) {
-    *printer << ", ";
-    interleaveComma(interface.getValue().getValue(), *printer);
+    printer << ", ";
+    interleaveComma(interface.getValue().getValue(), printer);
   }
 }
 
@@ -874,64 +925,187 @@ static LogicalResult verify(spirv::EntryPointOp entryPointOp) {
 // spv.ExecutionMode
 //===----------------------------------------------------------------------===//
 
-static ParseResult parseExecutionModeOp(OpAsmParser *parser,
-                                        OperationState *state) {
+static ParseResult parseExecutionModeOp(OpAsmParser &parser,
+                                        OperationState &state) {
   spirv::ExecutionMode execMode;
   Attribute fn;
-  if (parser->parseAttribute(fn, kFnNameAttrName, state->attributes) ||
+  if (parser.parseAttribute(fn, kFnNameAttrName, state.attributes) ||
       parseEnumAttribute(execMode, parser, state)) {
     return failure();
   }
 
   SmallVector<int32_t, 4> values;
-  Type i32Type = parser->getBuilder().getIntegerType(32);
-  while (!parser->parseOptionalComma()) {
+  Type i32Type = parser.getBuilder().getIntegerType(32);
+  while (!parser.parseOptionalComma()) {
     SmallVector<NamedAttribute, 1> attr;
     Attribute value;
-    if (parser->parseAttribute(value, i32Type, "value", attr)) {
+    if (parser.parseAttribute(value, i32Type, "value", attr)) {
       return failure();
     }
     values.push_back(value.cast<IntegerAttr>().getInt());
   }
-  state->addAttribute(kValuesAttrName,
-                      parser->getBuilder().getI32ArrayAttr(values));
+  state.addAttribute(kValuesAttrName,
+                     parser.getBuilder().getI32ArrayAttr(values));
   return success();
 }
 
-static void print(spirv::ExecutionModeOp execModeOp, OpAsmPrinter *printer) {
-  *printer << spirv::ExecutionModeOp::getOperationName() << " @"
-           << execModeOp.fn() << " \""
-           << stringifyExecutionMode(execModeOp.execution_mode()) << "\"";
+static void print(spirv::ExecutionModeOp execModeOp, OpAsmPrinter &printer) {
+  printer << spirv::ExecutionModeOp::getOperationName() << " @"
+          << execModeOp.fn() << " \""
+          << stringifyExecutionMode(execModeOp.execution_mode()) << "\"";
   auto values = execModeOp.values();
   if (!values) {
     return;
   }
-  *printer << ", ";
+  printer << ", ";
   interleaveComma(
-      values.getValue().cast<ArrayAttr>(), *printer,
-      [&](Attribute a) { *printer << a.cast<IntegerAttr>().getInt(); });
+      values.getValue().cast<ArrayAttr>(), printer,
+      [&](Attribute a) { printer << a.cast<IntegerAttr>().getInt(); });
+}
+
+//===----------------------------------------------------------------------===//
+// spv.FunctionCall
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseFunctionCallOp(OpAsmParser &parser,
+                                       OperationState &state) {
+  SymbolRefAttr calleeAttr;
+  FunctionType type;
+  SmallVector<OpAsmParser::OperandType, 4> operands;
+  auto loc = parser.getNameLoc();
+  if (parser.parseAttribute(calleeAttr, kCallee, state.attributes) ||
+      parser.parseOperandList(operands, OpAsmParser::Delimiter::Paren) ||
+      parser.parseColonType(type)) {
+    return failure();
+  }
+
+  auto funcType = type.dyn_cast<FunctionType>();
+  if (!funcType) {
+    return parser.emitError(loc, "expected function type, but provided ")
+           << type;
+  }
+
+  if (funcType.getNumResults() > 1) {
+    return parser.emitError(loc, "expected callee function to have 0 or 1 "
+                                 "result, but provided ")
+           << funcType.getNumResults();
+  }
+
+  return failure(parser.addTypesToList(funcType.getResults(), state.types) ||
+                 parser.resolveOperands(operands, funcType.getInputs(), loc,
+                                        state.operands));
+}
+
+static void print(spirv::FunctionCallOp functionCallOp, OpAsmPrinter &printer) {
+  SmallVector<Type, 4> argTypes(functionCallOp.getOperandTypes());
+  SmallVector<Type, 1> resultTypes(functionCallOp.getResultTypes());
+  Type functionType =
+      FunctionType::get(argTypes, resultTypes, functionCallOp.getContext());
+
+  printer << spirv::FunctionCallOp::getOperationName() << ' '
+          << functionCallOp.getAttr(kCallee) << '(';
+  printer.printOperands(functionCallOp.arguments());
+  printer << ") : " << functionType;
+}
+
+static LogicalResult verify(spirv::FunctionCallOp functionCallOp) {
+  auto fnName = functionCallOp.callee();
+
+  auto moduleOp = functionCallOp.getParentOfType<spirv::ModuleOp>();
+  if (!moduleOp) {
+    return functionCallOp.emitOpError(
+        "must appear in a function inside 'spv.module'");
+  }
+
+  auto funcOp = moduleOp.lookupSymbol<FuncOp>(fnName);
+  if (!funcOp) {
+    return functionCallOp.emitOpError("callee function '")
+           << fnName << "' not found in 'spv.module'";
+  }
+
+  auto functionType = funcOp.getType();
+
+  if (functionCallOp.getNumResults() > 1) {
+    return functionCallOp.emitOpError(
+               "expected callee function to have 0 or 1 result, but provided ")
+           << functionCallOp.getNumResults();
+  }
+
+  if (functionType.getNumInputs() != functionCallOp.getNumOperands()) {
+    return functionCallOp.emitOpError(
+               "has incorrect number of operands for callee: expected ")
+           << functionType.getNumInputs() << ", but provided "
+           << functionCallOp.getNumOperands();
+  }
+
+  for (uint32_t i = 0, e = functionType.getNumInputs(); i != e; ++i) {
+    if (functionCallOp.getOperand(i)->getType() != functionType.getInput(i)) {
+      return functionCallOp.emitOpError(
+                 "operand type mismatch: expected operand type ")
+             << functionType.getInput(i) << ", but provided "
+             << functionCallOp.getOperand(i)->getType()
+             << " for operand number " << i;
+    }
+  }
+
+  if (functionType.getNumResults() != functionCallOp.getNumResults()) {
+    return functionCallOp.emitOpError(
+               "has incorrect number of results has for callee: expected ")
+           << functionType.getNumResults() << ", but provided "
+           << functionCallOp.getNumResults();
+  }
+
+  if (functionCallOp.getNumResults() &&
+      (functionCallOp.getResult(0)->getType() != functionType.getResult(0))) {
+    return functionCallOp.emitOpError("result type mismatch: expected ")
+           << functionType.getResult(0) << ", but provided "
+           << functionCallOp.getResult(0)->getType();
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.GLSL.UnaryOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseGLSLUnaryOp(OpAsmParser &parser,
+                                    OperationState &state) {
+  OpAsmParser::OperandType operandInfo;
+  Type type;
+  if (parser.parseOperand(operandInfo) || parser.parseColonType(type) ||
+      parser.resolveOperands(operandInfo, type, state.operands)) {
+    return failure();
+  }
+  state.addTypes(type);
+  return success();
+}
+
+static void printGLSLUnaryOp(Operation *unaryOp, OpAsmPrinter &printer) {
+  printer << unaryOp->getName() << ' ' << *unaryOp->getOperand(0) << " : "
+          << unaryOp->getOperand(0)->getType();
 }
 
 //===----------------------------------------------------------------------===//
 // spv.globalVariable
 //===----------------------------------------------------------------------===//
 
-static ParseResult parseGlobalVariableOp(OpAsmParser *parser,
-                                         OperationState *state) {
+static ParseResult parseGlobalVariableOp(OpAsmParser &parser,
+                                         OperationState &state) {
   // Parse variable name.
   StringAttr nameAttr;
-  if (parser->parseSymbolName(nameAttr, SymbolTable::getSymbolAttrName(),
-                              state->attributes)) {
+  if (parser.parseSymbolName(nameAttr, SymbolTable::getSymbolAttrName(),
+                             state.attributes)) {
     return failure();
   }
 
   // Parse optional initializer
-  if (succeeded(parser->parseOptionalKeyword(kInitializerAttrName))) {
+  if (succeeded(parser.parseOptionalKeyword(kInitializerAttrName))) {
     SymbolRefAttr initSymbol;
-    if (parser->parseLParen() ||
-        parser->parseAttribute(initSymbol, Type(), kInitializerAttrName,
-                               state->attributes) ||
-        parser->parseRParen())
+    if (parser.parseLParen() ||
+        parser.parseAttribute(initSymbol, Type(), kInitializerAttrName,
+                              state.attributes) ||
+        parser.parseRParen())
       return failure();
   }
 
@@ -940,38 +1114,38 @@ static ParseResult parseGlobalVariableOp(OpAsmParser *parser,
   }
 
   Type type;
-  auto loc = parser->getCurrentLocation();
-  if (parser->parseColonType(type)) {
+  auto loc = parser.getCurrentLocation();
+  if (parser.parseColonType(type)) {
     return failure();
   }
   if (!type.isa<spirv::PointerType>()) {
-    return parser->emitError(loc, "expected spv.ptr type");
+    return parser.emitError(loc, "expected spv.ptr type");
   }
-  state->addAttribute(kTypeAttrName, parser->getBuilder().getTypeAttr(type));
+  state.addAttribute(kTypeAttrName, parser.getBuilder().getTypeAttr(type));
 
   return success();
 }
 
-static void print(spirv::GlobalVariableOp varOp, OpAsmPrinter *printer) {
+static void print(spirv::GlobalVariableOp varOp, OpAsmPrinter &printer) {
   auto *op = varOp.getOperation();
   SmallVector<StringRef, 4> elidedAttrs{
       spirv::attributeName<spirv::StorageClass>()};
-  *printer << spirv::GlobalVariableOp::getOperationName();
+  printer << spirv::GlobalVariableOp::getOperationName();
 
   // Print variable name.
-  *printer << " @" << varOp.sym_name();
+  printer << " @" << varOp.sym_name();
   elidedAttrs.push_back(SymbolTable::getSymbolAttrName());
 
   // Print optional initializer
   if (auto initializer = varOp.initializer()) {
-    *printer << " " << kInitializerAttrName << "(@" << initializer.getValue()
-             << ")";
+    printer << " " << kInitializerAttrName << "(@" << initializer.getValue()
+            << ")";
     elidedAttrs.push_back(kInitializerAttrName);
   }
 
   elidedAttrs.push_back(kTypeAttrName);
   printVariableDecorations(op, printer, elidedAttrs);
-  *printer << " : " << varOp.type();
+  printer << " : " << varOp.type();
 }
 
 static LogicalResult verify(spirv::GlobalVariableOp varOp) {
@@ -1001,41 +1175,41 @@ static LogicalResult verify(spirv::GlobalVariableOp varOp) {
 // spv.LoadOp
 //===----------------------------------------------------------------------===//
 
-static ParseResult parseLoadOp(OpAsmParser *parser, OperationState *state) {
+static ParseResult parseLoadOp(OpAsmParser &parser, OperationState &state) {
   // Parse the storage class specification
   spirv::StorageClass storageClass;
   OpAsmParser::OperandType ptrInfo;
   Type elementType;
   if (parseEnumAttribute(storageClass, parser) ||
-      parser->parseOperand(ptrInfo) ||
+      parser.parseOperand(ptrInfo) ||
       parseMemoryAccessAttributes(parser, state) ||
-      parser->parseOptionalAttributeDict(state->attributes) ||
-      parser->parseColon() || parser->parseType(elementType)) {
+      parser.parseOptionalAttributeDict(state.attributes) ||
+      parser.parseColon() || parser.parseType(elementType)) {
     return failure();
   }
 
   auto ptrType = spirv::PointerType::get(elementType, storageClass);
-  if (parser->resolveOperand(ptrInfo, ptrType, state->operands)) {
+  if (parser.resolveOperand(ptrInfo, ptrType, state.operands)) {
     return failure();
   }
 
-  state->addTypes(elementType);
+  state.addTypes(elementType);
   return success();
 }
 
-static void print(spirv::LoadOp loadOp, OpAsmPrinter *printer) {
+static void print(spirv::LoadOp loadOp, OpAsmPrinter &printer) {
   auto *op = loadOp.getOperation();
   SmallVector<StringRef, 4> elidedAttrs;
   StringRef sc = stringifyStorageClass(
       loadOp.ptr()->getType().cast<spirv::PointerType>().getStorageClass());
-  *printer << spirv::LoadOp::getOperationName() << " \"" << sc << "\" ";
+  printer << spirv::LoadOp::getOperationName() << " \"" << sc << "\" ";
   // Print the pointer operand.
-  printer->printOperand(loadOp.ptr());
+  printer.printOperand(loadOp.ptr());
 
   printMemoryAccessAttribute(loadOp, printer, elidedAttrs);
 
-  printer->printOptionalAttrDict(op->getAttrs(), elidedAttrs);
-  *printer << " : " << loadOp.getType();
+  printer.printOptionalAttrDict(op->getAttrs(), elidedAttrs);
+  printer << " : " << loadOp.getType();
 }
 
 static LogicalResult verify(spirv::LoadOp loadOp) {
@@ -1053,23 +1227,23 @@ static LogicalResult verify(spirv::LoadOp loadOp) {
 // spv.loop
 //===----------------------------------------------------------------------===//
 
-static ParseResult parseLoopOp(OpAsmParser *parser, OperationState *state) {
+static ParseResult parseLoopOp(OpAsmParser &parser, OperationState &state) {
   // TODO(antiagainst): support loop control properly
-  Builder builder = parser->getBuilder();
-  state->addAttribute("loop_control",
-                      builder.getI32IntegerAttr(
-                          static_cast<uint32_t>(spirv::LoopControl::None)));
+  Builder builder = parser.getBuilder();
+  state.addAttribute("loop_control",
+                     builder.getI32IntegerAttr(
+                         static_cast<uint32_t>(spirv::LoopControl::None)));
 
-  return parser->parseRegion(*state->addRegion(), /*arguments=*/{},
-                             /*argTypes=*/{});
+  return parser.parseRegion(*state.addRegion(), /*arguments=*/{},
+                            /*argTypes=*/{});
 }
 
-static void print(spirv::LoopOp loopOp, OpAsmPrinter *printer) {
+static void print(spirv::LoopOp loopOp, OpAsmPrinter &printer) {
   auto *op = loopOp.getOperation();
 
-  *printer << spirv::LoopOp::getOperationName();
-  printer->printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false,
-                       /*printBlockTerminators=*/true);
+  printer << spirv::LoopOp::getOperationName();
+  printer.printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false,
+                      /*printBlockTerminators=*/true);
 }
 
 /// Returns true if the given `block` only contains one `spv._merge` op.
@@ -1213,31 +1387,52 @@ static LogicalResult verify(spirv::MergeOp mergeOp) {
 }
 
 //===----------------------------------------------------------------------===//
+// spv.MemoryBarrier
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseMemoryBarrierOp(OpAsmParser &parser,
+                                        OperationState &state) {
+  spirv::Scope memoryScope;
+  spirv::MemorySemantics memorySemantics;
+
+  return failure(
+      parseEnumAttribute(memoryScope, parser, state, kMemoryScopeAttrName) ||
+      parser.parseComma() ||
+      parseEnumAttribute(memorySemantics, parser, state));
+}
+
+static void print(spirv::MemoryBarrierOp op, OpAsmPrinter &printer) {
+  printer << spirv::MemoryBarrierOp::getOperationName() << " \""
+          << stringifyScope(op.memory_scope()) << "\", \""
+          << stringifyMemorySemantics(op.memory_semantics()) << "\"";
+}
+
+//===----------------------------------------------------------------------===//
 // spv.module
 //===----------------------------------------------------------------------===//
 
-void spirv::ModuleOp::build(Builder *builder, OperationState *state) {
-  ensureTerminator(*state->addRegion(), *builder, state->location);
+void spirv::ModuleOp::build(Builder *builder, OperationState &state) {
+  ensureTerminator(*state.addRegion(), *builder, state.location);
 }
 
-void spirv::ModuleOp::build(Builder *builder, OperationState *state,
+void spirv::ModuleOp::build(Builder *builder, OperationState &state,
                             IntegerAttr addressing_model,
                             IntegerAttr memory_model, ArrayAttr capabilities,
                             ArrayAttr extensions,
                             ArrayAttr extended_instruction_sets) {
-  state->addAttribute("addressing_model", addressing_model);
-  state->addAttribute("memory_model", memory_model);
+  state.addAttribute("addressing_model", addressing_model);
+  state.addAttribute("memory_model", memory_model);
   if (capabilities)
-    state->addAttribute("capabilities", capabilities);
+    state.addAttribute("capabilities", capabilities);
   if (extensions)
-    state->addAttribute("extensions", extensions);
+    state.addAttribute("extensions", extensions);
   if (extended_instruction_sets)
-    state->addAttribute("extended_instruction_sets", extended_instruction_sets);
-  ensureTerminator(*state->addRegion(), *builder, state->location);
+    state.addAttribute("extended_instruction_sets", extended_instruction_sets);
+  ensureTerminator(*state.addRegion(), *builder, state.location);
 }
 
-static ParseResult parseModuleOp(OpAsmParser *parser, OperationState *state) {
-  Region *body = state->addRegion();
+static ParseResult parseModuleOp(OpAsmParser &parser, OperationState &state) {
+  Region *body = state.addRegion();
 
   // Parse attributes
   spirv::AddressingModel addrModel;
@@ -1247,20 +1442,19 @@ static ParseResult parseModuleOp(OpAsmParser *parser, OperationState *state) {
     return failure();
   }
 
-  if (parser->parseRegion(*body, /*arguments=*/{}, /*argTypes=*/{}))
+  if (parser.parseRegion(*body, /*arguments=*/{}, /*argTypes=*/{}))
     return failure();
 
-  if (succeeded(parser->parseOptionalKeyword("attributes"))) {
-    if (parser->parseOptionalAttributeDict(state->attributes))
+  if (succeeded(parser.parseOptionalKeyword("attributes"))) {
+    if (parser.parseOptionalAttributeDict(state.attributes))
       return failure();
   }
 
-  spirv::ModuleOp::ensureTerminator(*body, parser->getBuilder(),
-                                    state->location);
+  spirv::ModuleOp::ensureTerminator(*body, parser.getBuilder(), state.location);
   return success();
 }
 
-static void print(spirv::ModuleOp moduleOp, OpAsmPrinter *printer) {
+static void print(spirv::ModuleOp moduleOp, OpAsmPrinter &printer) {
   auto *op = moduleOp.getOperation();
 
   // Only print out addressing model and memory model in a nicer way if both
@@ -1271,15 +1465,15 @@ static void print(spirv::ModuleOp moduleOp, OpAsmPrinter *printer) {
   auto memoryModelAttrName = spirv::attributeName<spirv::MemoryModel>();
   if (op->getAttr(addressingModelAttrName) &&
       op->getAttr(memoryModelAttrName)) {
-    *printer << spirv::ModuleOp::getOperationName() << " \""
-             << spirv::stringifyAddressingModel(moduleOp.addressing_model())
-             << "\" \"" << spirv::stringifyMemoryModel(moduleOp.memory_model())
-             << '"';
+    printer << spirv::ModuleOp::getOperationName() << " \""
+            << spirv::stringifyAddressingModel(moduleOp.addressing_model())
+            << "\" \"" << spirv::stringifyMemoryModel(moduleOp.memory_model())
+            << '"';
     elidedAttrs.assign({addressingModelAttrName, memoryModelAttrName});
   }
 
-  printer->printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false,
-                       /*printBlockTerminators=*/false);
+  printer.printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false,
+                      /*printBlockTerminators=*/false);
 
   bool printAttrDict =
       elidedAttrs.size() != 2 ||
@@ -1290,8 +1484,8 @@ static void print(spirv::ModuleOp moduleOp, OpAsmPrinter *printer) {
       });
 
   if (printAttrDict) {
-    *printer << " attributes";
-    printer->printOptionalAttrDict(op->getAttrs(), elidedAttrs);
+    printer << " attributes";
+    printer.printOptionalAttrDict(op->getAttrs(), elidedAttrs);
   }
 }
 
@@ -1391,22 +1585,22 @@ static LogicalResult verify(spirv::ModuleOp moduleOp) {
 // spv._reference_of
 //===----------------------------------------------------------------------===//
 
-static ParseResult parseReferenceOfOp(OpAsmParser *parser,
-                                      OperationState *state) {
+static ParseResult parseReferenceOfOp(OpAsmParser &parser,
+                                      OperationState &state) {
   SymbolRefAttr constRefAttr;
   Type type;
-  if (parser->parseAttribute(constRefAttr, Type(), kSpecConstAttrName,
-                             state->attributes) ||
-      parser->parseColonType(type)) {
+  if (parser.parseAttribute(constRefAttr, Type(), kSpecConstAttrName,
+                            state.attributes) ||
+      parser.parseColonType(type)) {
     return failure();
   }
-  return parser->addTypeToList(type, state->types);
+  return parser.addTypeToList(type, state.types);
 }
 
-static void print(spirv::ReferenceOfOp referenceOfOp, OpAsmPrinter *printer) {
-  *printer << spirv::ReferenceOfOp::getOperationName() << " @"
-           << referenceOfOp.spec_const() << " : "
-           << referenceOfOp.reference()->getType();
+static void print(spirv::ReferenceOfOp referenceOfOp, OpAsmPrinter &printer) {
+  printer << spirv::ReferenceOfOp::getOperationName() << " @"
+          << referenceOfOp.spec_const() << " : "
+          << referenceOfOp.reference()->getType();
 }
 
 static LogicalResult verify(spirv::ReferenceOfOp referenceOfOp) {
@@ -1442,19 +1636,19 @@ static LogicalResult verify(spirv::ReturnOp returnOp) {
 // spv.ReturnValue
 //===----------------------------------------------------------------------===//
 
-static ParseResult parseReturnValueOp(OpAsmParser *parser,
-                                      OperationState *state) {
+static ParseResult parseReturnValueOp(OpAsmParser &parser,
+                                      OperationState &state) {
   OpAsmParser::OperandType retValInfo;
   Type retValType;
-  return failure(
-      parser->parseOperand(retValInfo) || parser->parseColonType(retValType) ||
-      parser->resolveOperand(retValInfo, retValType, state->operands));
+  return failure(parser.parseOperand(retValInfo) ||
+                 parser.parseColonType(retValType) ||
+                 parser.resolveOperand(retValInfo, retValType, state.operands));
 }
 
-static void print(spirv::ReturnValueOp retValOp, OpAsmPrinter *printer) {
-  *printer << spirv::ReturnValueOp::getOperationName() << ' ';
-  printer->printOperand(retValOp.value());
-  *printer << " : " << retValOp.value()->getType();
+static void print(spirv::ReturnValueOp retValOp, OpAsmPrinter &printer) {
+  printer << spirv::ReturnValueOp::getOperationName() << ' ';
+  printer.printOperand(retValOp.value());
+  printer << " : " << retValOp.value()->getType();
 }
 
 static LogicalResult verify(spirv::ReturnValueOp retValOp) {
@@ -1479,36 +1673,36 @@ static LogicalResult verify(spirv::ReturnValueOp retValOp) {
 // spv.Select
 //===----------------------------------------------------------------------===//
 
-static ParseResult parseSelectOp(OpAsmParser *parser, OperationState *state) {
+static ParseResult parseSelectOp(OpAsmParser &parser, OperationState &state) {
   OpAsmParser::OperandType condition;
   SmallVector<OpAsmParser::OperandType, 2> operands;
   SmallVector<Type, 2> types;
-  auto loc = parser->getCurrentLocation();
-  if (parser->parseOperand(condition) || parser->parseComma() ||
-      parser->parseOperandList(operands, 2) ||
-      parser->parseColonTypeList(types)) {
+  auto loc = parser.getCurrentLocation();
+  if (parser.parseOperand(condition) || parser.parseComma() ||
+      parser.parseOperandList(operands, 2) ||
+      parser.parseColonTypeList(types)) {
     return failure();
   }
   if (types.size() != 2) {
-    return parser->emitError(
+    return parser.emitError(
         loc, "need exactly two trailing types for select condition and object");
   }
-  if (parser->resolveOperand(condition, types[0], state->operands) ||
-      parser->resolveOperands(operands, types[1], state->operands)) {
+  if (parser.resolveOperand(condition, types[0], state.operands) ||
+      parser.resolveOperands(operands, types[1], state.operands)) {
     return failure();
   }
-  return parser->addTypesToList(types[1], state->types);
+  return parser.addTypesToList(types[1], state.types);
 }
 
-static void print(spirv::SelectOp op, OpAsmPrinter *printer) {
-  *printer << spirv::SelectOp::getOperationName() << " ";
+static void print(spirv::SelectOp op, OpAsmPrinter &printer) {
+  printer << spirv::SelectOp::getOperationName() << " ";
 
   // Print the operands.
-  printer->printOperands(op.getOperands());
+  printer.printOperands(op.getOperands());
 
   // Print colon and types.
-  *printer << " : " << op.condition()->getType() << ", "
-           << op.result()->getType();
+  printer << " : " << op.condition()->getType() << ", "
+          << op.result()->getType();
 }
 
 static LogicalResult verify(spirv::SelectOp op) {
@@ -1537,25 +1731,24 @@ static LogicalResult verify(spirv::SelectOp op) {
 // spv.specConstant
 //===----------------------------------------------------------------------===//
 
-static ParseResult parseSpecConstantOp(OpAsmParser *parser,
-                                       OperationState *state) {
+static ParseResult parseSpecConstantOp(OpAsmParser &parser,
+                                       OperationState &state) {
   StringAttr nameAttr;
   Attribute valueAttr;
 
-  if (parser->parseSymbolName(nameAttr, SymbolTable::getSymbolAttrName(),
-                              state->attributes) ||
-      parser->parseEqual() ||
-      parser->parseAttribute(valueAttr, kDefaultValueAttrName,
-                             state->attributes))
+  if (parser.parseSymbolName(nameAttr, SymbolTable::getSymbolAttrName(),
+                             state.attributes) ||
+      parser.parseEqual() ||
+      parser.parseAttribute(valueAttr, kDefaultValueAttrName, state.attributes))
     return failure();
 
   return success();
 }
 
-static void print(spirv::SpecConstantOp constOp, OpAsmPrinter *printer) {
-  *printer << spirv::SpecConstantOp::getOperationName() << " @"
-           << constOp.sym_name() << " = ";
-  printer->printAttribute(constOp.default_value());
+static void print(spirv::SpecConstantOp constOp, OpAsmPrinter &printer) {
+  printer << spirv::SpecConstantOp::getOperationName() << " @"
+          << constOp.sym_name() << " = ";
+  printer.printAttribute(constOp.default_value());
 }
 
 static LogicalResult verify(spirv::SpecConstantOp constOp) {
@@ -1580,44 +1773,44 @@ static LogicalResult verify(spirv::SpecConstantOp constOp) {
 // spv.StoreOp
 //===----------------------------------------------------------------------===//
 
-static ParseResult parseStoreOp(OpAsmParser *parser, OperationState *state) {
+static ParseResult parseStoreOp(OpAsmParser &parser, OperationState &state) {
   // Parse the storage class specification
   spirv::StorageClass storageClass;
   SmallVector<OpAsmParser::OperandType, 2> operandInfo;
-  auto loc = parser->getCurrentLocation();
+  auto loc = parser.getCurrentLocation();
   Type elementType;
   if (parseEnumAttribute(storageClass, parser) ||
-      parser->parseOperandList(operandInfo, 2) ||
-      parseMemoryAccessAttributes(parser, state) || parser->parseColon() ||
-      parser->parseType(elementType)) {
+      parser.parseOperandList(operandInfo, 2) ||
+      parseMemoryAccessAttributes(parser, state) || parser.parseColon() ||
+      parser.parseType(elementType)) {
     return failure();
   }
 
   auto ptrType = spirv::PointerType::get(elementType, storageClass);
-  if (parser->resolveOperands(operandInfo, {ptrType, elementType}, loc,
-                              state->operands)) {
+  if (parser.resolveOperands(operandInfo, {ptrType, elementType}, loc,
+                             state.operands)) {
     return failure();
   }
   return success();
 }
 
-static void print(spirv::StoreOp storeOp, OpAsmPrinter *printer) {
+static void print(spirv::StoreOp storeOp, OpAsmPrinter &printer) {
   auto *op = storeOp.getOperation();
   SmallVector<StringRef, 4> elidedAttrs;
   StringRef sc = stringifyStorageClass(
       storeOp.ptr()->getType().cast<spirv::PointerType>().getStorageClass());
-  *printer << spirv::StoreOp::getOperationName() << " \"" << sc << "\" ";
+  printer << spirv::StoreOp::getOperationName() << " \"" << sc << "\" ";
   // Print the pointer operand
-  printer->printOperand(storeOp.ptr());
-  *printer << ", ";
+  printer.printOperand(storeOp.ptr());
+  printer << ", ";
   // Print the value operand
-  printer->printOperand(storeOp.value());
+  printer.printOperand(storeOp.value());
 
   printMemoryAccessAttribute(storeOp, printer, elidedAttrs);
 
-  *printer << " : " << storeOp.value()->getType();
+  printer << " : " << storeOp.value()->getType();
 
-  printer->printOptionalAttrDict(op->getAttrs(), elidedAttrs);
+  printer.printOptionalAttrDict(op->getAttrs(), elidedAttrs);
 }
 
 static LogicalResult verify(spirv::StoreOp storeOp) {
@@ -1634,13 +1827,13 @@ static LogicalResult verify(spirv::StoreOp storeOp) {
 // spv.Variable
 //===----------------------------------------------------------------------===//
 
-static ParseResult parseVariableOp(OpAsmParser *parser, OperationState *state) {
+static ParseResult parseVariableOp(OpAsmParser &parser, OperationState &state) {
   // Parse optional initializer
   Optional<OpAsmParser::OperandType> initInfo;
-  if (succeeded(parser->parseOptionalKeyword("init"))) {
+  if (succeeded(parser.parseOptionalKeyword("init"))) {
     initInfo = OpAsmParser::OperandType();
-    if (parser->parseLParen() || parser->parseOperand(*initInfo) ||
-        parser->parseRParen())
+    if (parser.parseLParen() || parser.parseOperand(*initInfo) ||
+        parser.parseRParen())
       return failure();
   }
 
@@ -1650,48 +1843,48 @@ static ParseResult parseVariableOp(OpAsmParser *parser, OperationState *state) {
 
   // Parse result pointer type
   Type type;
-  if (parser->parseColon())
+  if (parser.parseColon())
     return failure();
-  auto loc = parser->getCurrentLocation();
-  if (parser->parseType(type))
+  auto loc = parser.getCurrentLocation();
+  if (parser.parseType(type))
     return failure();
 
   auto ptrType = type.dyn_cast<spirv::PointerType>();
   if (!ptrType)
-    return parser->emitError(loc, "expected spv.ptr type");
-  state->addTypes(ptrType);
+    return parser.emitError(loc, "expected spv.ptr type");
+  state.addTypes(ptrType);
 
   // Resolve the initializer operand
   SmallVector<Value *, 1> init;
   if (initInfo) {
-    if (parser->resolveOperand(*initInfo, ptrType.getPointeeType(), init))
+    if (parser.resolveOperand(*initInfo, ptrType.getPointeeType(), init))
       return failure();
-    state->addOperands(init);
+    state.addOperands(init);
   }
 
-  auto attr = parser->getBuilder().getI32IntegerAttr(
+  auto attr = parser.getBuilder().getI32IntegerAttr(
       bitwiseCast<int32_t>(ptrType.getStorageClass()));
-  state->addAttribute(spirv::attributeName<spirv::StorageClass>(), attr);
+  state.addAttribute(spirv::attributeName<spirv::StorageClass>(), attr);
 
   return success();
 }
 
-static void print(spirv::VariableOp varOp, OpAsmPrinter *printer) {
+static void print(spirv::VariableOp varOp, OpAsmPrinter &printer) {
   auto *op = varOp.getOperation();
   SmallVector<StringRef, 4> elidedAttrs{
       spirv::attributeName<spirv::StorageClass>()};
-  *printer << spirv::VariableOp::getOperationName();
+  printer << spirv::VariableOp::getOperationName();
 
   // Print optional initializer
   if (op->getNumOperands() > 0) {
-    *printer << " init(";
-    printer->printOperands(varOp.initializer());
-    *printer << ")";
+    printer << " init(";
+    printer.printOperands(varOp.initializer());
+    printer << ")";
   }
 
   printVariableDecorations(op, printer, elidedAttrs);
 
-  *printer << " : " << varOp.getType();
+  printer << " : " << varOp.getType();
 }
 
 static LogicalResult verify(spirv::VariableOp varOp) {

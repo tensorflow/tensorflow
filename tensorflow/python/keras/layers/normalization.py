@@ -954,6 +954,8 @@ class LayerNormalization(Layer):
     # Convert axis to list and resolve negatives
     if isinstance(self.axis, int):
       self.axis = [self.axis]
+    elif isinstance(self.axis, tuple):
+      self.axis = list(self.axis)
     for idx, x in enumerate(self.axis):
       if x < 0:
         self.axis[idx] = ndims + x

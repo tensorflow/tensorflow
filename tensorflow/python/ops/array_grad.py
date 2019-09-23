@@ -26,6 +26,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -1066,6 +1067,13 @@ def _BroadcastToGrad(op, grad):
   input_value = op.inputs[0]
   broadcast_shape = op.inputs[1]
   input_value_shape = array_ops.shape(input_value)
+  if not context.executing_eagerly():
+    broadcast_shape_static = tensor_shape.TensorShape(
+        pywrap_tensorflow.TF_TryEvaluateConstant_wrapper(
+            broadcast_shape.graph._c_graph, broadcast_shape._as_tf_output()))  # pylint: disable=protected-access
+    if broadcast_shape_static.is_fully_defined():
+      broadcast_shape = constant_op.constant(
+          broadcast_shape_static.as_list(), dtype=dtypes.int32)
   _, reduction_axes = gen_array_ops.broadcast_gradient_args(broadcast_shape,
                                                             input_value_shape)
   updates_grad_reshaped = math_ops.reduce_sum(grad,

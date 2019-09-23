@@ -177,13 +177,8 @@ class _ThreadLocalData(threading.local):
     super(_ThreadLocalData, self).__init__()
     self.device_spec = _starting_device_spec
     self.device_name = ""
-    self.mode = default_execution_mode
     self.is_eager = default_execution_mode == EAGER_MODE
     self.scope_name = ""
-    self.summary_writer = None
-    self.summary_recording = None
-    self.summary_recording_distribution_strategy = True
-    self.summary_step = None
     self.function_call_options = None
     self.executor = None
     self.op_callbacks = []
@@ -258,7 +253,13 @@ class LogicalDevice(
 @tf_export("config.experimental.VirtualDeviceConfiguration")
 class VirtualDeviceConfiguration(
     collections.namedtuple("VirtualDeviceConfiguration", ["memory_limit"])):
-  """Configuration class for virtual devices for a PhysicalDevice.
+  """Configuration class for a `LogicalDevice`.
+
+  The class specifies the parameters for a `LogicalDevice` used during runtime
+  initialization. Not all fields are valid for all device types.
+
+  See `tf.config.experimental.get_virtual_device_configuration` and
+  `tf.config.experimental.set_virtual_device_configuration` for usage examples.
 
   Fields:
     memory_limit: (optional) Maximum memory (in MB) to allocate on the virtual
@@ -633,9 +634,7 @@ class Context(object):
   def _mode(self, mode):
     """A context manager to allow setting the mode to EAGER/GRAPH."""
     ctx = self._thread_local_data
-    old_mode = ctx.mode
     old_is_eager = ctx.is_eager
-    ctx.mode = mode
     ctx.is_eager = mode == EAGER_MODE
     if mode == EAGER_MODE:
       # Entering graph mode does not provide us with sufficient information to
@@ -646,7 +645,6 @@ class Context(object):
       yield
     finally:
       ctx.is_eager = old_is_eager
-      ctx.mode = old_mode
       if mode == EAGER_MODE:
         self.context_switches.pop()
 
@@ -671,46 +669,6 @@ class Context(object):
   def scope_name(self, s):
     """Sets scope name for the current thread."""
     self._thread_local_data.scope_name = s
-
-  @property
-  def summary_writer(self):
-    """Returns default summary writer for the current thread."""
-    return self._thread_local_data.summary_writer
-
-  @summary_writer.setter
-  def summary_writer(self, writer):
-    """Sets default summary writer for the current thread."""
-    self._thread_local_data.summary_writer = writer
-
-  @property
-  def summary_recording(self):
-    """Returns summary recording condition."""
-    return self._thread_local_data.summary_recording
-
-  @summary_recording.setter
-  def summary_recording(self, condition):
-    """Sets summary recording condition."""
-    self._thread_local_data.summary_recording = condition
-
-  @property
-  def summary_recording_distribution_strategy(self):
-    """Returns summary recording condition for distribution strategy."""
-    return self._thread_local_data.summary_recording_distribution_strategy
-
-  @summary_recording_distribution_strategy.setter
-  def summary_recording_distribution_strategy(self, condition):
-    """Sets summary recording condition for distribution strategy."""
-    self._thread_local_data.summary_recording_distribution_strategy = condition
-
-  @property
-  def summary_step(self):
-    """Returns summary step variable."""
-    return self._thread_local_data.summary_step
-
-  @summary_step.setter
-  def summary_step(self, step):
-    """Sets summary step variable."""
-    self._thread_local_data.summary_step = step
 
   @property
   def device_name(self):

@@ -188,12 +188,19 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":convert_tensor",
+        ":convert_type",
         ":error_util",
         ":tensorflow",
         ":tensorflow_optimize_inc_gen",
         "//tensorflow/compiler/mlir/lite:validators",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_proto",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_proto_cc",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/core/protobuf/tpu:compile_metadata_proto",
+        "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_cc",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
@@ -227,7 +234,6 @@ cc_library(
     srcs = ["ir/dialect_registration.cc"],
     deps = [
         ":tensorflow",
-        ":tensorflow_passes",
         "@local_config_mlir//:IR",
     ],
     alwayslink = 1,
@@ -517,6 +523,7 @@ cc_library(
 cc_library(
     name = "tf_graph_optimization_pass",
     srcs = ["transforms/tf_graph_optimization_pass.cc"],
+    hdrs = ["transforms/tf_graph_optimization_pass.h"],
     deps = [
         ":convert_graphdef",
         ":mlir_roundtrip_flags",

@@ -85,15 +85,14 @@ std::string GetShiftFromElementSize(int element_size) {
 }
 
 std::string GenerateConvBuffer1x1(
-    const TensorDescriptor& src_descriptor,
-    const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
-    int x_elements, int y_elements, int element_size,
+    const OperationDef& op_def, int x_elements, int y_elements,
+    int element_size,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  std::string c = GetCommonDefines(precision);
-  TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
+  std::string c = GetCommonDefines(op_def.precision);
+  TensorCodeGenerator src_tensor("src_data", "src_size", op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data", "dst_size", op_def.dst_tensors[0]);
 
-  switch (precision) {
+  switch (op_def.precision) {
     case CalculationsPrecision::F32:
       c += "#define FLT8 float8\n";
       c += "#define FLT16 float16\n";
@@ -154,7 +153,8 @@ std::string GenerateConvBuffer1x1(
     }
   }
   c += "    FLT16 f0 = temp[0];\n";
-  c += GetComputationPart(x_elements, y_elements, element_size, precision);
+  c += GetComputationPart(x_elements, y_elements, element_size,
+                          op_def.precision);
   for (int i = 0; i < x_elements * y_elements; ++i) {
     std::string i_s = std::to_string(i);
     c += "    src_addr_" + i_s + " += src_size.z;\n";
@@ -232,16 +232,12 @@ ConvBuffer1x1& ConvBuffer1x1::operator=(ConvBuffer1x1&& operation) {
 
 Status ConvBuffer1x1::Compile(const CreationContext& creation_context) {
   std::string code_flt4 = GenerateConvBuffer1x1(
-      definition_.src_tensors[0], definition_.dst_tensors[0],
-      definition_.precision, flt4_x_count_, flt4_y_count_, 1,
-      linked_operations_);
+      definition_, flt4_x_count_, flt4_y_count_, 1, linked_operations_);
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       code_flt4, "main_function", *creation_context.context,
       *creation_context.device, &kernel_flt4_));
   std::string code_flt8 = GenerateConvBuffer1x1(
-      definition_.src_tensors[0], definition_.dst_tensors[0],
-      definition_.precision, flt8_x_count_, flt8_y_count_, 2,
-      linked_operations_);
+      definition_, flt8_x_count_, flt8_y_count_, 2, linked_operations_);
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       code_flt8, "main_function", *creation_context.context,
       *creation_context.device, &kernel_flt8_));
@@ -263,7 +259,7 @@ Status ConvBuffer1x1::BindArguments() {
   RETURN_IF_ERROR(kernel->SetMemoryAuto(weights_.GetMemoryPtr()));
   RETURN_IF_ERROR(kernel->SetMemoryAuto(biases_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(kernel, linked_operations_));
-  RETURN_IF_ERROR(kernel->SetMemoryAuto(dst_[0]->GetMemoryPtr()));
+  RETURN_IF_ERROR(kernel->SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   int4 src_size = int4(src_[0]->Width(), src_[0]->Height(),
                        GetGridWidth(src_[0]->Width()) * src_[0]->Height(),
                        src_[0]->Depth());

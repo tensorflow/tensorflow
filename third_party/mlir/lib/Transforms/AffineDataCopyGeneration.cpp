@@ -43,7 +43,6 @@
 #define DEBUG_TYPE "affine-data-copy-generate"
 
 using namespace mlir;
-using llvm::SmallMapVector;
 
 static llvm::cl::OptionCategory clOptionsCategory(DEBUG_TYPE " options");
 

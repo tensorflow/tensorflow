@@ -332,9 +332,12 @@ class WhileOp(object):
   def _convert_enter(self, parent_pfor, enter):
     """Converts an Enter node."""
     inp, stacked, _ = parent_pfor._convert_helper(enter.op.inputs[0])
-    control_inputs = [
-        parent_pfor._convert_helper(x).t for x in enter.op.control_inputs
-    ]
+    control_inputs = []
+    for x in enter.op.control_inputs:
+      converted = parent_pfor._convert_helper(x)
+      if not isinstance(converted, ops.Operation):
+        converted = converted.t
+      control_inputs.append(converted)
     if control_inputs:
       with ops.control_dependencies(control_inputs):
         inp = array_ops.identity(inp)
@@ -1113,7 +1116,7 @@ class PFor(object):
       pfor_config: PForConfig object used while constructing the loop body.
     """
     assert isinstance(loop_var, ops.Tensor)
-    assert loop_var.op.type == "Placeholder"
+    assert loop_var.op.type == "PlaceholderWithDefault"
     self._loop_var = loop_var
     loop_len_value = tensor_util.constant_value(loop_len)
     if loop_len_value is not None:
@@ -3254,6 +3257,38 @@ def _convert_parse_single_example(pfor_input):
       sparse_keys=sparse_keys,
       dense_keys=dense_keys,
       sparse_types=sparse_types,
+      dense_shapes=dense_shapes)
+  return [wrap(t, True, True) for t in nest.flatten(output)]
+
+
+@RegisterPFor("ParseExampleV2")
+def _convert_parse_example_v2(pfor_input):
+  serialized = pfor_input.stacked_input(0)
+  sparse_keys = pfor_input.unstacked_input(2)
+  dense_keys = pfor_input.unstacked_input(3)
+  ragged_keys = pfor_input.unstacked_input(4)
+  dense_defaults = [
+      pfor_input.unstacked_input(i) for i in range(5, pfor_input.num_inputs)
+  ]
+  num_sparse = pfor_input.get_attr("num_sparse")
+  sparse_types = pfor_input.get_attr("sparse_types")
+  ragged_value_types = pfor_input.get_attr("ragged_value_types")
+  ragged_split_types = pfor_input.get_attr("ragged_split_types")
+  dense_shapes = pfor_input.get_attr("dense_shapes")
+  if serialized.shape.ndims not in (None, 1):
+    raise ValueError("ParseExampleV2 can only be converted if `serialized` "
+                     "is scalar.")
+  output = gen_parsing_ops.parse_example_v2(
+      serialized=serialized,
+      names=[],
+      sparse_keys=sparse_keys,
+      dense_keys=dense_keys,
+      ragged_keys=ragged_keys,
+      dense_defaults=dense_defaults,
+      num_sparse=num_sparse,
+      sparse_types=sparse_types,
+      ragged_value_types=ragged_value_types,
+      ragged_split_types=ragged_split_types,
       dense_shapes=dense_shapes)
   return [wrap(t, True, True) for t in nest.flatten(output)]
 

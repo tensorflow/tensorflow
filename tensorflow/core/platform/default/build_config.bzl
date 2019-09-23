@@ -1,9 +1,7 @@
 # Platform-specific build configurations.
 
 load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
-load("//tensorflow:tensorflow.bzl", "if_not_mobile")
-load("//tensorflow:tensorflow.bzl", "if_windows")
-load("//tensorflow:tensorflow.bzl", "if_not_windows")
+load("//tensorflow:tensorflow.bzl", "if_not_windows", "if_windows")
 load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
@@ -441,10 +439,10 @@ def tf_proto_library(
         cc_grpc_version = None,
         j2objc_api_version = 1,
         js_codegen = "jspb",
-        provide_cc_alias = False,
-        make_default_target_header_only = False):
+        make_default_target_header_only = False,
+        exports = []):
     """Make a proto library, possibly depending on other proto libraries."""
-    _ignore = (js_codegen, provide_cc_alias)
+    _ignore = (js_codegen, exports)
 
     tf_proto_library_cc(
         name = name,
@@ -491,6 +489,7 @@ def tf_additional_lib_hdrs(exclude = []):
         "posix/error.h",
     ], exclude = exclude + [
         "default/subprocess.h",
+        "default/posix_file_system.h",
     ])
     return select({
         "//tensorflow:windows": windows_hdrs,
@@ -506,10 +505,12 @@ def tf_additional_lib_srcs(exclude = []):
         "windows/*.cc",
         "posix/error.cc",
     ], exclude = exclude + [
+        "default/env.cc",
         "default/env_time.cc",
         "default/load_library.cc",
         "default/net.cc",
         "default/port.cc",
+        "default/posix_file_system.cc",
         "default/subprocess.cc",
     ])
     return select({

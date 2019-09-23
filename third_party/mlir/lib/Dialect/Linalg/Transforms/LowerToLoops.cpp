@@ -373,7 +373,7 @@ populateLinalgToLoopRewritePatterns(OwningRewritePatternList &patterns,
 
 namespace {
 struct LowerLinalgToLoopsPass : public FunctionPass<LowerLinalgToLoopsPass> {
-  void runOnFunction();
+  void runOnFunction() override;
 };
 } // namespace
 

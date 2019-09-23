@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -332,6 +333,11 @@ void RemoteCopyNode::StartRemoteSendTensor(StatusCallback done) {
         done(s);
         delete response;
       });
+}
+
+Status RemoteCopyNode::Prepare() {
+  TF_RETURN_IF_ERROR(captured_state_->dst()->CopyInferenceShape(src_));
+  return Status::OK();
 }
 
 void RemoteCopyNode::RunAsync(StatusCallback done) {

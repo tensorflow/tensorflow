@@ -16,9 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/amdgpu_compiler.h"
 
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_rewriter.h"
+<<<<<<< HEAD
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
+=======
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
+// TODO(whchung@gmail.com): Add gpu_conv_algorithm_picker after its PR merged.
+>>>>>>> master
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
@@ -74,7 +78,7 @@ Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                             /*allow_mixed_precision=*/false);
   pipeline.AddPass<CudnnConvRewriter>();
-  pipeline.AddPass<CudnnConvPaddingLegalization>();
+  pipeline.AddPass<GpuConvPaddingLegalization>();
 
   pipeline.AddPass<HloConstantFolding>();
   TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());

@@ -66,6 +66,9 @@ class EagerOperation {
     is_function_ = is_function;
     cancellation_manager_ = nullptr;
     executor_ = executor ? executor : (ctx ? &ctx->Executor() : nullptr);
+#ifdef TENSORFLOW_MEM_DEBUG
+    op_name_ = op;
+#endif
   }
 
   bool is_function() const { return is_function_; }
@@ -113,6 +116,11 @@ class EagerOperation {
   EagerExecutor& Executor() { return *executor_; }
 
   string DebugString() const;
+
+#ifdef TENSORFLOW_MEM_DEBUG
+  const char* op_name() const { return op_name_; }
+  const char* op_name_ = nullptr;
+#endif
 
  private:
   tensorflow::EagerContext* ctx_;  // Must outlive the EagerOperation.

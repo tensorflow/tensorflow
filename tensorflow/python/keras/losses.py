@@ -1143,6 +1143,7 @@ class CosineSimilarity(LossFunctionWrapper):
 
 # Aliases.
 
+bce = BCE = binary_crossentropy
 mse = MSE = mean_squared_error
 mae = MAE = mean_absolute_error
 mape = MAPE = mean_absolute_percentage_error

@@ -549,6 +549,24 @@ cuda_py_test(
     xla_enable_strict_auto_jit = True,
 )
 
+cuda_py_test(
+    name = "remote_benchmarks_test",
+    srcs = ["remote_benchmarks_test.py"],
+    additional_deps = [
+        ":backprop",
+        ":context",
+        ":forwardprop",
+        ":function",
+        ":test",
+        ":profiler",
+        ":remote",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:random_ops",
+    ],
+    xla_enable_strict_auto_jit = True,
+)
+
 tf_py_logged_benchmark(
     name = "benchmarks",
     target = "//tensorflow/python/eager:benchmarks_test",
@@ -769,6 +787,26 @@ cuda_py_test(
     tags = [
         "no_oss",  # This test launches local server.
         "optonly",  # times out
+    ],
+)
+
+tf_py_test(
+    name = "remote_cloud_tpu_test",
+    size = "medium",
+    srcs = ["remote_cloud_tpu_test.py"],
+    additional_deps = [
+        ":remote",
+        ":context",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/tpu:tpu_strategy_util",
+    ],
+    tags = [
+        "no_pip",
+        "nogpu",
+        "noguitar",
+        "nomac",
+        "notap",
+        "tpu",
     ],
 )
 

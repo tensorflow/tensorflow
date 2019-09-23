@@ -405,8 +405,13 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     options.profile_result = &profile_result;
     options.algo_override = alg;
     Status launch_status =
+<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.cc
         RunCudnnConv(&instr, absl::MakeSpan(operand_buffers), result_buffer,
                      &scratch_allocator, stream, options);
+=======
+        RunGpuConv(instr, absl::MakeSpan(operand_buffers), result_buffer,
+                   &scratch_allocator, stream, options);
+>>>>>>> master:tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.cc
 
     if (!launch_status.ok()) {
       continue;

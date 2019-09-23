@@ -71,6 +71,20 @@ TensorStorageType OperationDef::GetPrimaryStorageType() const {
   return src_tensors[0].storage_type;
 }
 
+bool OperationDef::HasAllTensorsOfType(TensorStorageType storage_type) const {
+  for (const auto& src : src_tensors) {
+    if (src.storage_type != storage_type) {
+      return false;
+    }
+  }
+  for (const auto& dst : dst_tensors) {
+    if (dst.storage_type != storage_type) {
+      return false;
+    }
+  }
+  return true;
+}
+
 GPUOperation::GPUOperation(const OperationDef& definition)
     : definition_(definition) {}
 
@@ -129,7 +143,7 @@ Status ElementwiseOperation::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArguments(&kernel_));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtr()));
+  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetSizeWithDepth()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetSizeWithDepth()));
   return OkStatus();

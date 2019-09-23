@@ -337,7 +337,7 @@ struct LinalgFusionPass : public FunctionPass<LinalgFusionPass> {
   LinalgFusionPass() = default;
   LinalgFusionPass(ArrayRef<int64_t> sizes);
 
-  void runOnFunction() { fuseLinalgOps(getFunction(), tileSizes); }
+  void runOnFunction() override { fuseLinalgOps(getFunction(), tileSizes); }
 
   SmallVector<int64_t, 8> tileSizes;
 };

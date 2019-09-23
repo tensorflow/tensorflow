@@ -93,7 +93,7 @@ static gpu::LaunchFuncOp inlineConstants(FuncOp kernelFunc,
 }
 
 // Outline the `gpu.launch` operation body into a kernel function. Replace
-// `gpu.return` operations by `std.return` in the generated functions.
+// `gpu.return` operations by `std.return` in the generated function.
 static FuncOp outlineKernelFunc(gpu::LaunchOp launchOp) {
   Location loc = launchOp.getLoc();
   SmallVector<Type, 4> kernelOperandTypes(launchOp.getKernelOperandTypes());
@@ -107,7 +107,7 @@ static FuncOp outlineKernelFunc(gpu::LaunchOp launchOp) {
   outlinedFunc.setAttr(gpu::GPUDialect::getKernelFuncAttrName(),
                        builder.getUnitAttr());
   injectGpuIndexOperations(loc, outlinedFunc);
-  outlinedFunc.walk([](mlir::gpu::Return op) {
+  outlinedFunc.walk([](gpu::Return op) {
     OpBuilder replacer(op);
     replacer.create<ReturnOp>(op.getLoc());
     op.erase();
@@ -131,15 +131,44 @@ static void convertToLaunchFuncOp(gpu::LaunchOp &launchOp, FuncOp kernelFunc) {
 
 namespace {
 
+/// Pass that moves the kernel of each LaunchOp into its separate nested module.
+///
+/// This pass moves the kernel code of each LaunchOp into a function created
+/// inside a nested module. It also creates an external function of the same
+/// name in the parent module.
+///
+/// The kernel modules are intended to be compiled to a cubin blob independently
+/// in a separate pass. The external functions can then be annotated with the
+/// symbol of the cubin accessor function.
 class GpuKernelOutliningPass : public ModulePass<GpuKernelOutliningPass> {
 public:
   void runOnModule() override {
     ModuleManager moduleManager(getModule());
+    auto context = getModule().getContext();
+    Builder builder(context);
     for (auto func : getModule().getOps<FuncOp>()) {
-      func.walk([&](mlir::gpu::LaunchOp op) {
+      // Insert just after the function.
+      Block::iterator insertPt(func.getOperation()->getNextNode());
+      func.walk([&](gpu::LaunchOp op) {
+        // TODO(b/141098412): Handle called functions and globals.
         FuncOp outlinedFunc = outlineKernelFunc(op);
-        moduleManager.insert(outlinedFunc);
+
+        // Potentially renames outlinedFunc to make symbol unique.
+        moduleManager.insert(insertPt, outlinedFunc);
+
+        // Potentially changes signature, pulling in constants.
         convertToLaunchFuncOp(op, outlinedFunc);
+
+        // Create clone and move body from outlinedFunc.
+        auto kernelFunc = outlinedFunc.cloneWithoutRegions();
+        kernelFunc.getBody().takeBody(outlinedFunc.getBody());
+
+        // Create nested module and insert kernelFunc.
+        auto kernelModule = ModuleOp::create(UnknownLoc::get(context));
+        kernelModule.setAttr(gpu::GPUDialect::getKernelModuleAttrName(),
+                             builder.getUnitAttr());
+        kernelModule.push_back(kernelFunc);
+        getModule().insert(insertPt, kernelModule);
       });
     }
   }

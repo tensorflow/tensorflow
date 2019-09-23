@@ -196,18 +196,18 @@ def BinaryOpSameElementTypeConstraint :
 //===----------------------------------------------------------------------===//
 
 def TFL_BroadcastableBinaryBuilder : OpBuilder<
-  "Builder *builder, OperationState *result, Value *lhs, Value *rhs",
+  "Builder *builder, OperationState &result, Value *lhs, Value *rhs",
   [{
     auto resultType =
       OpTrait::util::getBroadcastedType(lhs->getType(), rhs->getType());
     if (!resultType)
-      mlir::emitError(result->location, "non-broadcastable operands");
-    result->addOperands({lhs, rhs});
-    result->types.push_back(resultType);
+      mlir::emitError(result.location, "non-broadcastable operands");
+    result.addOperands({lhs, rhs});
+    result.types.push_back(resultType);
   }]>;
 
 def TFL_FusedBroadcastableBinaryBuilder : OpBuilder<
-  "Builder *builder, OperationState *result, Value *lhs, Value *rhs, "
+  "Builder *builder, OperationState &result, Value *lhs, Value *rhs, "
   "StringAttr fusedActivationFunction",
   [{
     buildFusedBroadcastableBinOp(
@@ -215,7 +215,7 @@ def TFL_FusedBroadcastableBinaryBuilder : OpBuilder<
   }]>;
 
 def TFL_ComparisonBinaryBuilder : OpBuilder<
-  "Builder *builder, OperationState *result, Value *lhs, Value *rhs",
+  "Builder *builder, OperationState &result, Value *lhs, Value *rhs",
   [{
     buildComparisonBinOp(builder, result, lhs, rhs);
   }]>;
@@ -327,8 +327,6 @@ def TFL_AddOp : TFL_Op<"add", [Broadcastable, NoSideEffect, Commutative]> {
   let hasOptions = 1;
 }
 
-// TODO(haoliang): Implement legalization pass after pattern rewrite generator
-// supports variadic inputs.
 def TFL_AddNOp : TFL_Op<"add_n", [Commutative, NoSideEffect, SameOperandsAndResultsScale]> {
   let summary = "add_n operator";
 
@@ -491,6 +489,8 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
   let hasOptions = 1;
 
   let hasFolder = 1;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [NoSideEffect,
@@ -587,7 +587,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
 
   let builders =
   [
-    OpBuilder<"Builder *builder, OperationState *result, "
+    OpBuilder<"Builder *builder, OperationState &result, "
       "Value *params, Value *indices, IntegerAttr axis",
         [{ BuildGatherOp(builder, result, params, indices, axis); }]>
   ];
@@ -692,6 +692,33 @@ def TFL_GreaterEqualOp : TFL_Op<"greater_equal", [
   let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
 
   let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+
+  let hasOptions = 0;
+}
+
+def TFL_MatrixDiagOp : TFL_Op<"matrix_diag", [
+  NoSideEffect,
+  TFL_OperandHasAtleastRank<0, 1>,
+  PredOpTrait<"operand and result must have the same element type",
+    TCresVTEtIsSameAsOp<0, 0>>]> {
+  let summary = [{
+    Returns a tensor with the provided diagonal and everything else padded with zeros.
+  }];
+
+  let description = [{
+    Given a diagonal, returns a tensor with the diagonal and everything else padded with zeros.
+    Assume diagonal has k dimensions `[I, J, K, ..., N]`, then the output is a tensor of rank `k+1`
+    with dimensions `[I, J, K, ..., N, N]` where:
+       `output[i, j, k, ..., m, n] = 1{m=n} * diagonal[i, j, k, ..., n].`
+  }];
+
+  let arguments = (ins
+    TensorOf<[F32, I8, I64, I32, TFL_Uint8]>:$diagonal
+  );
+
+  let results = (outs
+    TensorOf<[F32, I8, I64, I32, TFL_Uint8]>:$output
+  );
 
   let hasOptions = 0;
 }
@@ -824,7 +851,7 @@ def TFL_NotEqualOp : TFL_Op<"not_equal", [
   let builders =
   [
     OpBuilder<
-      "Builder *builder, OperationState *result, Value *lhs, Value *rhs",
+      "Builder *builder, OperationState &result, Value *lhs, Value *rhs",
       [{
         buildComparisonBinOp(builder, result, lhs, rhs);
       }]>
@@ -1643,6 +1670,7 @@ def TFL_PadOp : TFL_Op<"pad", [
                           [0, 0, 1, 1, 0, 0]
                           [0, 0, 2, 2, 0, 0]
                           [0, 0, 0, 0, 0, 0]]
+    ```
   }];
 
   let arguments = (
@@ -1688,6 +1716,7 @@ def TFL_PadV2Op : TFL_Op<"padv2", [
                           [0, 0, 1, 1, 0, 0]
                           [0, 0, 2, 2, 0, 0]
                           [0, 0, 0, 0, 0, 0]]
+    ```
   }];
 
   let arguments = (
@@ -1700,7 +1729,7 @@ def TFL_PadV2Op : TFL_Op<"padv2", [
   let hasOptions = 1;
 }
 
-def TFL_PowOp : TFL_Op<"pow", [Broadcastable, NoSideEffect]> {
+def TFL_PowOp : TFL_Op<"pow", [Broadcastable, NoSideEffect, NoQuantizableResult]> {
   let summary = "Power operator";
 
   let description = [{
@@ -1772,15 +1801,11 @@ def TFL_ReshapeOp: TFL_Op<"reshape", [
     by the output type.
   }];
 
-  let arguments = (ins AnyTensor:$input);
+  let arguments = (
+    ins AnyTensor:$input,
+    I32Tensor:$shape);
 
   let results = (outs AnyTensor:$output);
-
-  DerivedShapeAttr new_shape = DerivedShapeAttr<[{
-    return getResult()->getType().cast<ShapedType>().getShape();
-  }]>;
-
-  let hasOptions = 1;
   let hasCanonicalizer = 0b1;
   let hasFolder = 1;
 }
@@ -1816,7 +1841,7 @@ slice `i`, with the first `seq_lengths[i]` slices along dimension
   let hasOptions = 1;
 }
 
-def TFL_RsqrtOp: TFL_Op<"rsqrt", [NoSideEffect, SameOperandsAndResultType]> {
+def TFL_RsqrtOp: TFL_Op<"rsqrt", [NoSideEffect, SameOperandsAndResultType, NoQuantizableResult]> {
   let summary = "Reciprocal of square root operator";
 
   let description = [{
@@ -1830,7 +1855,7 @@ def TFL_RsqrtOp: TFL_Op<"rsqrt", [NoSideEffect, SameOperandsAndResultType]> {
   let hasFolder = 1;
 }
 
-def TFL_ShapeOp: TFL_Op<"shape", [NoSideEffect, NoQuantizableResult]> {
+def TFL_ShapeOp: TFL_Op<"shape", [NoSideEffect]> {
   let summary = "Shape operator";
 
   let description = [{
@@ -1926,12 +1951,12 @@ def TFL_SelectOp : TFL_Op<"select", [NoSideEffect,
   let results = (outs AnyTensor:$output);
 
   // TODO(jpienaar): autogenerate this.
-  let builders = [OpBuilder<"Builder *builder, OperationState *result, "
+  let builders = [OpBuilder<"Builder *builder, OperationState &result, "
                             "Value *condition, Value *x, Value *y",
   [{
     auto resultType = x->getType();
-    result->addOperands({condition, x, y});
-    result->types.push_back(resultType);
+    result.addOperands({condition, x, y});
+    result.types.push_back(resultType);
   }]>];
 
   let hasOptions = 1;
@@ -2034,7 +2059,8 @@ def TFL_SubOp : TFL_Op<"sub", [Broadcastable, NoSideEffect]> {
 
 // TODO(jpienaar): Expand the kernel implementation to support all types besides
 // I32 and F32.
-def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [Broadcastable, NoSideEffect]> {
+def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [
+    Broadcastable, NoSideEffect, NoQuantizableResult]> {
   let summary = "Squared difference operator";
 
   let description = [{
@@ -2118,7 +2144,7 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [NoSideEffect, TFL_OperandHasRank<1,0>,
     AnyTensor:$values,
     I32Tensor:$indices);
 
-  let builders = [OpBuilder<"Builder *builder, OperationState *result, "
+  let builders = [OpBuilder<"Builder *builder, OperationState &result, "
                             "Value *input, Value *k",
                   [{ BuildTopKOp(builder, result, input, k); }]>];
 
@@ -2655,7 +2681,8 @@ def LstmProjectionWeightBiasConstraint : PredOpTrait<
   "either projection weight must be specified or both projection weight and "
   "projection bias must not be specified",
    Or<[
-      And<[TCopVTEtIs<16, NoneType>, TCopVTEtIs<17, NoneType>]>,
+      And<[TypeIsPred<"projection_weights", NoneType>,
+           TypeIsPred<"projection_bias", NoneType>]>,
       Neg<TypeIsPred<"projection_weights", NoneType>>]>>;
 
 // TODO(b/137798843): Need to add two additional constraints for both LSTM and

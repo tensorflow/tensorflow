@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <numeric>
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -263,39 +265,39 @@ Attribute ConstFoldUnaryOp(Type result_type, Attribute operand,
   return {};
 }
 
-void buildComparisonBinOp(Builder *builder, OperationState *result, Value *lhs,
+void buildComparisonBinOp(Builder *builder, OperationState &result, Value *lhs,
                           Value *rhs) {
   auto result_type =
       OpTrait::util::getBroadcastedType(lhs->getType(), rhs->getType());
   if (!result_type)
-    emitError(result->location)
+    emitError(result.location)
         << "non-broadcastable operands: " << lhs->getType() << " and "
         << rhs->getType();
-  result->addOperands({lhs, rhs});
+  result.addOperands({lhs, rhs});
   // Comparison binary ops always return i1 tensor.
   if (auto shaped_type = result_type.dyn_cast<ShapedType>()) {
     auto resultShape = shaped_type.getShape();
-    result->types.push_back(
+    result.types.push_back(
         builder->getTensorType(resultShape, builder->getI1Type()));
   } else {
-    result->types.push_back(builder->getTensorType(builder->getI1Type()));
+    result.types.push_back(builder->getTensorType(builder->getI1Type()));
   }
 }
 
-void buildFusedBroadcastableBinOp(Builder *builder, OperationState *result,
+void buildFusedBroadcastableBinOp(Builder *builder, OperationState &result,
                                   Value *lhs, Value *rhs,
                                   StringAttr fused_activation_function) {
   auto result_type =
       OpTrait::util::getBroadcastedType(lhs->getType(), rhs->getType());
 
   if (!result_type)
-    emitError(result->location)
+    emitError(result.location)
         << "non-broadcastable operands: " << lhs->getType() << " and "
         << rhs->getType();
 
-  result->addOperands({lhs, rhs});
-  result->addAttribute("fused_activation_function", fused_activation_function);
-  result->types.push_back(result_type);
+  result.addOperands({lhs, rhs});
+  result.addAttribute("fused_activation_function", fused_activation_function);
+  result.types.push_back(result_type);
 }
 
 }  // end anonymous namespace
@@ -317,7 +319,178 @@ OpFoldResult AddOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 // TODO(ashwinm): Implement shape inference for Concatenation
 
+namespace {
+
+int64_t GetConcatenationOpAxis(ConcatenationOp op) {
+  auto output_type = op.output()->getType().cast<RankedTensorType>();
+  int64_t axis = op.axis().getSExtValue();
+  if (axis < 0) axis += output_type.getRank();
+  return axis;
+}
+
+// Verify operand types and the result type:
+//
+// 1. Operand type ranks must be equal to the output type rank.
+//
+// 2. Operand dimension sizes (except dimension `axis`) must be equal to
+//    previously seen dimension sizes of the same dimension.
+//
+// 3. Sum of operand dimension sizes of the `axis` dimension must be equal to
+//    the dimension size of the `axis` dimension of output.
+//
+// Note: If an operand has unranked tensor type or has dynamic dimension size,
+// those dimensions will be skipped.
+LogicalResult VerifyConcatenationOpTypes(Operation *op,
+                                         RankedTensorType output_type,
+                                         ArrayRef<TensorType> operand_types,
+                                         int64_t axis) {
+  const int64_t output_rank = output_type.getRank();
+
+  constexpr int64_t kDynamicSize = -1;
+  SmallVector<int64_t, 4> result_dim_sizes_loc(output_rank, -1);
+  SmallVector<int64_t, 4> result_dim_sizes(output_type.getShape().begin(),
+                                           output_type.getShape().end());
+  result_dim_sizes[axis] = 0;
+
+  auto FormatLoc = [&result_dim_sizes_loc](int64_t dim) {
+    const int64_t loc = result_dim_sizes_loc[dim];
+    if (loc == -1) return std::string("output");
+    return llvm::formatv("operand #{0}", loc).str();
+  };
+
+  for (auto operand : llvm::enumerate(operand_types)) {
+    auto operand_type = operand.value().dyn_cast<RankedTensorType>();
+    if (!operand_type) {
+      result_dim_sizes[axis] = kDynamicSize;
+      continue;
+    }
+
+    const int64_t operand_rank = operand_type.getRank();
+    if (operand_rank != output_rank)
+      return op->emitOpError() << "rank of operand #" << operand.index()
+                               << " must be equal to rank of output, expected "
+                               << output_rank << ", got " << operand_rank;
+
+    for (int64_t dim = 0; dim < output_rank; ++dim) {
+      const int64_t operand_dim_size = operand_type.getDimSize(dim);
+      const int64_t result_dim_size = result_dim_sizes[dim];
+
+      if (dim == axis) {
+        if (RankedTensorType::isDynamic(operand_dim_size) ||
+            RankedTensorType::isDynamic(result_dim_size))
+          result_dim_sizes[axis] = kDynamicSize;
+        else
+          result_dim_sizes[axis] += operand_dim_size;
+        continue;
+      }
+
+      if (RankedTensorType::isDynamic(operand_dim_size)) continue;
+
+      if (RankedTensorType::isDynamic(result_dim_size)) {
+        result_dim_sizes[dim] = operand_dim_size;
+        result_dim_sizes_loc[dim] = operand.index();
+        continue;
+      }
+
+      if (result_dim_size != operand_dim_size)
+        return op->emitOpError()
+               << "dimension size of dimension #" << dim << " of operand #"
+               << operand.index() << " must be equal to "
+               << "dimension size of dimension #" << dim << " of "
+               << FormatLoc(dim) << ", expected " << result_dim_size << ", got "
+               << operand_dim_size;
+    }
+  }
+
+  const int64_t output_concated_dim_size = output_type.getDimSize(axis);
+  if (!RankedTensorType::isDynamic(output_concated_dim_size) &&
+      !RankedTensorType::isDynamic(result_dim_sizes[axis]) &&
+      result_dim_sizes[axis] != output_concated_dim_size)
+    return op->emitOpError()
+           << "dimension size of dimension #" << axis << " of output "
+           << "must be equal to the sum of dimension sizes of dimension #"
+           << axis << ", expected " << result_dim_sizes[axis] << ", got "
+           << output_concated_dim_size;
+
+  return success();
+}
+
+LogicalResult Verify(ConcatenationOp op) {
+  auto output_type = op.output()->getType().dyn_cast<RankedTensorType>();
+
+  // If the output type is unranked, there is nothing else to be verified.
+  if (!output_type) return success();
+
+  const int64_t axis = GetConcatenationOpAxis(op);
+  if (axis < 0 || axis >= output_type.getRank())
+    return op.emitOpError("concatenation dimension must be in [-rank, rank)");
+
+  SmallVector<TensorType, 4> operand_types;
+  for (Value *operand : op.values())
+    operand_types.push_back(operand->getType().cast<TensorType>());
+
+  return VerifyConcatenationOpTypes(op.getOperation(), output_type,
+                                    operand_types, axis);
+}
+
+// Returns true when all operands are instances of DenseElementsAttr and the
+// output type has a static shape.
+bool IsConcatenationOpConstFoldable(ConcatenationOp op,
+                                    ArrayRef<Attribute> operands,
+                                    RankedTensorType output_type,
+                                    int64_t axis) {
+  if (operands.empty()) return false;
+  if (!output_type.hasStaticShape()) return false;
+  if (axis < 0) return false;
+
+  return llvm::all_of(operands, [](Attribute operand) {
+    return operand && operand.isa<DenseElementsAttr>();
+  });
+}
+
+DenseElementsAttr ConstFoldConcatenateOpDense(ArrayRef<Attribute> operands,
+                                              RankedTensorType output_type,
+                                              int64_t axis) {
+  const auto outer_dims = output_type.getShape().take_front(axis);
+  const int64_t outer_size = std::accumulate(
+      outer_dims.begin(), outer_dims.end(), 1, std::multiplies<int64_t>());
+
+  const auto base_inner_dims = output_type.getShape().drop_front(axis + 1);
+  const int64_t base_inner_size =
+      std::accumulate(base_inner_dims.begin(), base_inner_dims.end(), 1,
+                      std::multiplies<int64_t>());
+
+  // Splits each input operand into outer_size pieces and combines them in
+  // round-robin ordering.
+  std::vector<Attribute> out_attrs(output_type.getNumElements());
+  int64_t out = 0;
+  for (int64_t outer = 0; outer < outer_size; ++outer) {
+    for (auto op : operands) {
+      const int64_t dim_size =
+          op.getType().cast<RankedTensorType>().getDimSize(axis);
+      const int64_t inner_size = dim_size * base_inner_size;
+
+      auto input_attrs = op.cast<DenseElementsAttr>().getValues<Attribute>();
+      auto input_iter = input_attrs.begin() + outer * inner_size;
+      for (int64_t inner = 0; inner < inner_size; ++inner)
+        out_attrs[out++] = *input_iter++;
+    }
+  }
+
+  return DenseElementsAttr::get(output_type, out_attrs);
+}
+
+}  // end anonymous namespace
+
 OpFoldResult ConcatenationOp::fold(ArrayRef<Attribute> operands) {
+  if (fused_activation_function() == "NONE") {
+    if (auto output_type = output()->getType().dyn_cast<RankedTensorType>()) {
+      const int64_t axis = GetConcatenationOpAxis(*this);
+      if (IsConcatenationOpConstFoldable(*this, operands, output_type, axis))
+        return ConstFoldConcatenateOpDense(operands, output_type, axis);
+    }
+  }
+
   // Remove all empty values.
   SmallVector<Value *, 4> non_empty_values;
   for (Value *value : this->values()) {
@@ -349,7 +522,7 @@ OpFoldResult ConcatenationOp::fold(ArrayRef<Attribute> operands) {
 // GatherOp
 //===----------------------------------------------------------------------===//
 
-static void BuildGatherOp(Builder *builder, OperationState *result,
+static void BuildGatherOp(Builder *builder, OperationState &result,
                           Value *params, Value *indices, IntegerAttr axis) {
   auto params_type = params->getType().cast<TensorType>();
   auto indices_type = indices->getType().cast<TensorType>();
@@ -376,7 +549,7 @@ static void BuildGatherOp(Builder *builder, OperationState *result,
 
   // params must be atleast rank axis + 1
   if (params_rank < axis_i + 1) {
-    emitError(result->location, "params must be atleast rank axis + 1");
+    emitError(result.location, "params must be atleast rank axis + 1");
   }
 
   if (indices_rank == 0) {
@@ -468,35 +641,51 @@ struct RemoveAdjacentReshape : public RewritePattern {
 
   PatternMatchResult match(Operation *op) const override {
     auto thisOp = cast<ReshapeOp>(op);
-    auto prevOp = thisOp.getOperand()->getDefiningOp();
+    auto prevOp = thisOp.getOperand(0)->getDefiningOp();
     return isa_and_nonnull<ReshapeOp>(prevOp) ? matchSuccess() : matchFailure();
   }
 
   void rewrite(Operation *op, PatternRewriter &rewriter) const override {
     auto thisOp = cast<ReshapeOp>(op);
-    auto prevOp = cast<ReshapeOp>(thisOp.getOperand()->getDefiningOp());
+    auto prevOp = cast<ReshapeOp>(thisOp.getOperand(0)->getDefiningOp());
 
     // Replace
-    //   %1 = "tfl.reshape"(%0)
-    //   %2 = "tfl.reshape"(%1)
+    //   %1 = "tfl.reshape"(%0, %shape0)
+    //   %2 = "tfl.reshape"(%1, %shape1)
     // With
-    //   %2 = "tfl.reshape"(%0)
+    //   %2 = "tfl.reshape"(%0, %shape1)
     rewriter.replaceOpWithNewOp<ReshapeOp>(
-        {prevOp.getResult()}, op, thisOp.getType(), prevOp.getOperand());
+        {prevOp.getResult()}, op, thisOp.getType(), prevOp.getOperand(0),
+        thisOp.getOperand(1));
   }
 };
 
 }  // end anonymous namespace
 
 OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
-  // Remove identity reshape.
-  if (getType() == getOperand()->getType()) return getOperand();
+  // Remove identity reshape with both static result and input shape.
+  auto result_type = getType().cast<ShapedType>();
+  auto input_type = getOperand(0)->getType().cast<ShapedType>();
+  if (result_type.hasStaticShape() && result_type == input_type) {
+    return getOperand(0);
+  }
 
   // Constant folding
-  assert(operands.size() == 1);
   if (auto dense_elements = operands[0].dyn_cast_or_null<DenseElementsAttr>()) {
-    auto result_shape_type = getType().cast<ShapedType>();
-    return dense_elements.reshape(result_shape_type);
+    // If the result type isn't static, tries to derive the result type from
+    // the #2 operand.
+    if (!result_type.hasStaticShape()) {
+      auto shape_elements = operands[1].dyn_cast_or_null<DenseElementsAttr>();
+      if (!shape_elements) return nullptr;
+
+      SmallVector<int64_t, 4> shape_data;
+      for (auto it : shape_elements.getValues<APInt>()) {
+        shape_data.push_back(it.getSExtValue());
+      }
+      result_type =
+          RankedTensorType::get(shape_data, input_type.getElementType());
+    }
+    return dense_elements.reshape(result_type);
   }
 
   return nullptr;
@@ -591,7 +780,7 @@ OpFoldResult SubOp::fold(ArrayRef<Attribute> operands) {
 // TopKOp
 //===----------------------------------------------------------------------===//
 
-static void BuildTopKOp(Builder *builder, OperationState *result, Value *input,
+static void BuildTopKOp(Builder *builder, OperationState &result, Value *input,
                         Value *k) {
   // Output size is only known if k is constant value. A negative dimension is
   // considered dynamic so use -1 here if k is not a constant value.

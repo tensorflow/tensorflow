@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 
 #include <unistd.h>
+
 #include <limits>
 #include <memory>
 
@@ -23,6 +24,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/graph/benchmark_testlib.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -452,6 +454,16 @@ BM_NodePositionIfSameNode("^foo/bar/baz", "foo/bar/baz", Match_Ctrl);
 BM_NodePositionIfSameNode("blah", "foo/bar/baz", NoMatch_0);
 BM_NodePositionIfSameNode("foo/bar/baz/gnu", "foo/bar/baz", NoMatch_end);
 
+static void BM_NodeNameAsStringPiece(int iters, int size) {
+  string input(size + 3, 'x');
+  input[size] = ':';
+  for (int i = 0; i < iters; ++i) {
+    StringPiece node_name = NodeNameAsStringPiece(input);
+    CHECK_GT(node_name.size(), 0);
+  }
+}
+BENCHMARK(BM_NodeNameAsStringPiece)->Range(1, 1024);
+
 #define BM_ParseNodeNameAsStringPiece(I, NAME)                               \
   static void BM_ParseNodeNameAsStringPiece_##NAME(int iters) {              \
     string input = I;                                                        \
@@ -598,6 +610,17 @@ TEST(SetTensorValueTest, Quantized) {
   TestSetTensorValue<qint32>(DT_QINT32, kMaxInt, /*success=*/true,
                              /*error_msg=*/"");
 }
+
+static void BM_NodeMapConstruct(int iters, int size) {
+  testing::StopTiming();
+  GraphDef graph = test::CreateRandomGraph(size);
+  testing::StartTiming();
+  for (int i = 0; i < iters; i++) {
+    NodeMap node_map(&graph);
+  }
+  testing::StopTiming();
+}
+BENCHMARK(BM_NodeMapConstruct)->Range(1, 1 << 20);
 
 }  // namespace
 }  // namespace grappler

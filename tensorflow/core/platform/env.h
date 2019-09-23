@@ -17,10 +17,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_ENV_H_
 
 #include <stdint.h>
+
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -29,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/numa.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 

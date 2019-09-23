@@ -92,6 +92,10 @@ class BinaryOp : public BinaryOpShared {
   void Compute(OpKernelContext* ctx) override {
     // 'state': Shared helper not dependent on T to reduce code size
     BinaryOpState state(ctx);
+    if (ctx->status().code() == error::RESOURCE_EXHAUSTED) {
+      // Stop when BinaryOpState's constructor failed due to OOM.
+      return;
+    }
     auto& bcast = state.bcast;
     const Device& eigen_device = ctx->eigen_device<Device>();
     Tensor* out = state.out;

@@ -32,6 +32,32 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 
+# Dictionary mapping from op names to special-cased forward gradient
+# functions. Otherwise backward functions are transposed on the tape.
+_SPECIAL_CASES = {}
+
+
+def _identity_forward_grad(attr_tuple, inputs, outputs, tangents):
+  # Special-cased mostly for resource handles, where creating ones Tensors from
+  # handle data for transposing the backward function on the tape is error-prone
+  # (even if we get good handle data, partially defined shapes are an issue).
+  del attr_tuple, inputs, outputs
+  return [array_ops.identity(t) for t in tangents]
+
+
+_SPECIAL_CASES["Identity"] = _identity_forward_grad
+
+
+def _read_variable_forward_grad(attr_tuple, inputs, outputs, tangents):
+  # Like for Identity, this special case means we don't need to create
+  # variable-shaped Tensors from resource handles.
+  del attr_tuple, inputs, outputs
+  return [array_ops.identity(t) for t in tangents]
+
+
+_SPECIAL_CASES["ReadVariableOp"] = _read_variable_forward_grad
+
+
 # TODO(allenl): experimental_relax_shapes for gradients which rely on static
 # shape information may be underspecialized. We may want hand-written forward
 # implementations.
@@ -54,6 +80,9 @@ def _forward_gradient(op_name, attr_tuple, inputs, outputs, tangents):
   Returns:
     A flat list of tangents corresponding to `outputs`.
   """
+  special_case = _SPECIAL_CASES.get(op_name, None)
+  if special_case is not None:
+    return special_case(attr_tuple, inputs, outputs, tangents)
   if not outputs:
     # tape.gradients([], inputs) doesn't make much sense
     return []

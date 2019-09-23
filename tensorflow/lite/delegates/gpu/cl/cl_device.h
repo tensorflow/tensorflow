@@ -65,6 +65,7 @@ struct DeviceInfo {
   explicit DeviceInfo(cl_device_id id);
 
   bool SupportsTextureArray() const;
+  bool SupportsImageBuffer() const;
 
   std::vector<std::string> extensions;
   bool supports_fp16;
@@ -105,6 +106,7 @@ class CLDevice {
   OpenCLVersion cl_version() const { return info_.cl_version; }
   bool SupportsFP16() const;
   bool SupportsTextureArray() const;
+  bool SupportsImageBuffer() const;
   bool SupportsExtension(const std::string& extension) const;
   bool IsAdreno() const;
   bool IsAdreno3xx() const;

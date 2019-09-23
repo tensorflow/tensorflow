@@ -66,6 +66,7 @@ GPU_TEST = "test_gpu" in sys.argv[0]
         distribution=[
             strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
             strategy_combinations.mirrored_strategy_with_two_gpus,
+            strategy_combinations.mirrored_strategy_with_two_gpus_remote,
         ],
         mode=["graph", "eager"]))
 class MirroredTwoDeviceDistributionTest(
@@ -1147,6 +1148,85 @@ class MultiWorkerMirroredStrategyTest(
     self.assertTrue(new_config.isolate_session_state)
 
 
+@combinations.generate(
+    combinations.combine(
+        distribution=[
+            combinations.NamedDistribution(
+                "Mirrored",
+                # pylint: disable=g-long-lambda
+                lambda: mirrored_strategy.MirroredStrategy(
+                    devices=["/job:worker/task:0/gpu:0"],
+                    cross_device_ops=cross_device_ops_lib.MultiWorkerAllReduce([
+                        "/job:worker/task:0"
+                    ], context.num_gpus())),
+                required_gpus=1)
+        ],
+        mode=["graph"]))
+class RemoteSingleWorkerMirroredStrategy(
+    multi_worker_test_base.SingleWorkerTestBase,
+    strategy_test_lib.DistributionTestBase):
+
+  def test_num_replicas_in_sync(self, distribution):
+    self.assertEqual(context.num_gpus(), distribution.num_replicas_in_sync)
+
+  def testMinimizeLossGraph(self, distribution):
+    self._test_minimize_loss_graph(distribution, learning_rate=0.05)
+
+  def testDeviceScope(self, distribution):
+    """Test the device scope of single-worker MirroredStrategy."""
+    with distribution.scope():
+      a = constant_op.constant(1.)
+      with ops.device("/cpu:0"):
+        b = constant_op.constant(1.)
+      self.assertEqual(a.device, "/job:worker/replica:0/task:0")
+      self.assertEqual(b.device, "/job:worker/replica:0/task:0/device:CPU:0")
+
+  def testMakeInputFnIteratorWithDataset(self, distribution):
+    dataset_fn = lambda: dataset_ops.Dataset.range(100)
+    num_gpus = context.num_gpus()
+    num_workers = 1
+
+    expected_values = [[i+j for j in range(num_gpus)] * num_workers
+                       for i in range(0, 100, num_gpus)]
+
+    with context.graph_mode(), self.cached_session() as sess:
+      # `expected_input_pipeline_id` is None because the input_fn will be called
+      # multiple times, each with a different input_pipeline_id.
+      input_fn = self._input_fn_to_test_input_context(
+          dataset_fn,
+          expected_num_replicas_in_sync=num_workers*num_gpus,
+          expected_num_input_pipelines=num_workers,
+          expected_input_pipeline_id=None)
+      iterator = distribution.make_input_fn_iterator(input_fn)
+      self._test_input_fn_iterator(
+          iterator, distribution.extended.worker_devices, expected_values, sess)
+
+  def testMakeInputFnIteratorWithCallable(self, distribution):
+    def fn():
+      dataset = dataset_ops.Dataset.range(100)
+      it = dataset_ops.make_one_shot_iterator(dataset)
+      return it.get_next
+    num_gpus = context.num_gpus()
+    num_workers = 1
+
+    expected_values = []
+    for i in range(0, 100, num_gpus):
+      expected_values.append([i+j for j in range(num_gpus)] * num_workers)
+
+    with context.graph_mode(), self.cached_session() as sess:
+      # `expected_input_pipeline_id` is None because the input_fn will be called
+      # multiple times, each with a different input_pipeline_id.
+      input_fn = self._input_fn_to_test_input_context(
+          fn,
+          expected_num_replicas_in_sync=num_workers*num_gpus,
+          expected_num_input_pipelines=num_workers,
+          expected_input_pipeline_id=None)
+      iterator = distribution.make_input_fn_iterator(input_fn)
+      self._test_input_fn_iterator(
+          iterator, distribution.extended.worker_devices, expected_values, sess,
+          test_reinitialize=False, ignore_order=True)
+
+
 class MultiWorkerMirroredStrategyTestWithChief(
     multi_worker_test_base.MultiWorkerTestBase,
     strategy_test_lib.DistributionTestBase):
@@ -1186,8 +1266,12 @@ class MultiWorkerMirroredStrategyTestWithChief(
       with test.mock.patch.dict("os.environ",
                                 {"TF_CONFIG": json.dumps(tf_config)}):
         strategy = mirrored_strategy.MirroredStrategy()
-        self.assertIsInstance(strategy.extended._inferred_cross_device_ops,
-                              cross_device_ops_lib.NcclAllReduce)
+        if context.num_gpus() > 0:
+          self.assertIsInstance(strategy.extended._inferred_cross_device_ops,
+                                cross_device_ops_lib.NcclAllReduce)
+        else:
+          self.assertIsInstance(strategy.extended._inferred_cross_device_ops,
+                                cross_device_ops_lib.ReductionToOneDevice)
       self.skipTest("b/130551176, run the following once fixed.")
       self._test_minimize_loss_graph(strategy, learning_rate=0.05)
 
