@@ -23,6 +23,8 @@ include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
 def NullArrayAttr : NativeCodeCall<"ArrayAttr()">;
 def NullDenseIntElementsAttr : NativeCodeCall<"DenseIntElementsAttr()">;
 
+def CastIntElementsAttr : NativeCodeCall<"$0.cast<DenseIntElementsAttr>()">;
+
 //===----------------------------------------------------------------------===//
 // BatchNorm op patterns.
 //===----------------------------------------------------------------------===//
@@ -195,8 +197,11 @@ foreach Mapping = [
            (Mapping[1] $input)>;
 }
 
+def : Pat<(TF_TransposeOp:$res AnyStaticShapeTensor:$arg,
+           (TF_ConstOp I64ElementsAttr:$permutation)),
+          (HLO_TransposeOp $arg, (CastIntElementsAttr $permutation))>;
 
-foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp] in {
+foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp, ] in {
   def : Pat<(TfOp:$res AnyStaticShapeTensor:$arg, $ignored),
             (HLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)]>;
 }
