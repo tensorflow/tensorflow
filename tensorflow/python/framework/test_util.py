@@ -1811,6 +1811,7 @@ class TensorFlowTestCase(googletest.TestCase):
       pywrap_tensorflow.TF_SetXlaAutoJitMode("2")
       pywrap_tensorflow.TF_SetXlaMinClusterSize(1)
       pywrap_tensorflow.TF_SetXlaEnableLazyCompilation(False)
+      pywrap_tensorflow.TF_SetTfXlaCpuGlobalJit(True)
       # Constant folding secretly runs code on TF:Classic CPU, so we also
       # disable it here.
       pywrap_tensorflow.TF_SetXlaConstantFoldingDisabled(True)

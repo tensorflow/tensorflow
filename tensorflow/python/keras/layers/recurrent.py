@@ -190,6 +190,9 @@ class StackedRNNCells(Layer):
 class RNN(Layer):
   """Base class for recurrent layers.
 
+  See [the Keras RNN API guide](https://www.tensorflow.org/beta/guide/keras/rnn)
+  for details about the usage of RNN API.
+
   Arguments:
     cell: A RNN cell instance or a list of RNN cell instances.
       A RNN cell is a class that has:
@@ -199,8 +202,7 @@ class RNN(Layer):
         section "Note on passing external constants" below.
       - A `state_size` attribute. This can be a single integer
         (single state) in which case it is the size of the recurrent
-        state. This can also be a list/tuple of integers (one size per
-        state).
+        state. This can also be a list/tuple of integers (one size per state).
         The `state_size` can also be TensorShape or tuple/list of
         TensorShape, to represent high dimension state.
       - A `output_size` attribute. This can be a single integer or a
@@ -228,21 +230,20 @@ class RNN(Layer):
       In the case that `cell` is a list of RNN cell instances, the cells
       will be stacked on top of each other in the RNN, resulting in an
       efficient stacked RNN.
-    return_sequences: Boolean. Whether to return the last output
-      in the output sequence, or the full sequence.
-    return_state: Boolean. Whether to return the last state
+    return_sequences: Boolean (default `False`). Whether to return the last
+      output in the output sequence, or the full sequence.
+    return_state: Boolean (default `False`). Whether to return the last state
       in addition to the output.
-    go_backwards: Boolean (default False).
+    go_backwards: Boolean (default `False`).
       If True, process the input sequence backwards and return the
       reversed sequence.
-    stateful: Boolean (default False). If True, the last state
+    stateful: Boolean (default `False`). If True, the last state
       for each sample at index i in a batch will be used as initial
       state for the sample of index i in the following batch.
-    unroll: Boolean (default False).
+    unroll: Boolean (default `False`).
       If True, the network will be unrolled, else a symbolic loop will be used.
-      Unrolling can speed-up a RNN,
-      although it tends to be more memory-intensive.
-      Unrolling is only suitable for short sequences.
+      Unrolling can speed-up a RNN, although it tends to be more
+      memory-intensive. Unrolling is only suitable for short sequences.
     time_major: The shape format of the `inputs` and `outputs` tensors.
       If True, the inputs and outputs will be in shape
       `(timesteps, batch, ...)`, whereas in the False case, it will be
@@ -254,7 +255,7 @@ class RNN(Layer):
 
   Call arguments:
     inputs: Input tensor.
-    mask: Binary tensor of shape `(samples, timesteps)` indicating whether
+    mask: Binary tensor of shape `[batch_size, timesteps]` indicating whether
       a given timestep should be masked.
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. This argument is passed to the cell
@@ -265,25 +266,25 @@ class RNN(Layer):
       timestep.
 
   Input shape:
-    N-D tensor with shape `(batch_size, timesteps, ...)` or
-    `(timesteps, batch_size, ...)` when time_major is True.
+    N-D tensor with shape `[batch_size, timesteps, ...]` or
+    `[timesteps, batch_size, ...]` when time_major is True.
 
   Output shape:
     - If `return_state`: a list of tensors. The first tensor is
       the output. The remaining tensors are the last states,
-      each with shape `(batch_size, state_size)`, where `state_size` could
+      each with shape `[batch_size, state_size]`, where `state_size` could
       be a high dimension tensor shape.
     - If `return_sequences`: N-D tensor with shape
-      `(batch_size, timesteps, output_size)`, where `output_size` could
+      `[batch_size, timesteps, output_size]`, where `output_size` could
       be a high dimension tensor shape, or
-      `(timesteps, batch_size, output_size)` when `time_major` is True.
-    - Else, N-D tensor with shape `(batch_size, output_size)`, where
+      `[timesteps, batch_size, output_size]` when `time_major` is True.
+    - Else, N-D tensor with shape `[batch_size, output_size]`, where
       `output_size` could be a high dimension tensor shape.
 
   Masking:
     This layer supports masking for input data with a variable number
     of timesteps. To introduce masks to your data,
-    use an [Embedding](embeddings.md) layer with the `mask_zero` parameter
+    use an [tf.keras.layers.Embedding] layer with the `mask_zero` parameter
     set to `True`.
 
   Note on using statefulness in RNNs:
@@ -823,6 +824,20 @@ class RNN(Layer):
     return inputs, initial_state, constants
 
   def reset_states(self, states=None):
+    """Reset the recorded states for the stateful RNN layer.
+
+    Can only be used when RNN layer is constructed with `stateful` = `True`.
+    Args:
+      states: Numpy arrays that contains the value for the initial state, which
+        will be feed to cell at the first time step. When the value is None,
+        zero filled numpy array will be created based on the cell state size.
+
+    Raises:
+      AttributeError: When the RNN layer is not stateful.
+      ValueError: When the batch size of the RNN layer is unknown.
+      ValueError: When the input numpy array is not compatible with the RNN
+        layer state, either size wise or dtype wise.
+    """
     if not self.stateful:
       raise AttributeError('Layer must be stateful.')
     spec_shape = None
@@ -913,6 +928,9 @@ class RNN(Layer):
 @keras_export('keras.layers.AbstractRNNCell')
 class AbstractRNNCell(Layer):
   """Abstract object representing an RNN cell.
+
+  See [the Keras RNN API guide](https://www.tensorflow.org/beta/guide/keras/rnn)
+  for details about the usage of RNN API.
 
   This is the base class for implementing RNN cells with custom behavior.
 
@@ -1131,6 +1149,9 @@ class DropoutRNNCellMixin(object):
 class SimpleRNNCell(DropoutRNNCellMixin, Layer):
   """Cell class for SimpleRNN.
 
+  See [the Keras RNN API guide](https://www.tensorflow.org/beta/guide/keras/rnn)
+  for details about the usage of RNN API.
+
   This class processes one step within the whole time sequence input, whereas
   `tf.keras.layer.SimpleRNN` processes the whole sequence.
 
@@ -1318,6 +1339,9 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
 @keras_export('keras.layers.SimpleRNN')
 class SimpleRNN(RNN):
   """Fully-connected RNN where the output is to be fed back to input.
+
+  See [the Keras RNN API guide](https://www.tensorflow.org/beta/guide/keras/rnn)
+  for details about the usage of RNN API.
 
   Arguments:
     units: Positive integer, dimensionality of the output space.

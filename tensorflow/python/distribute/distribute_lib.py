@@ -1664,6 +1664,8 @@ class StrategyExtendedV2(object):
 
     Subclasses should override this to provide whether the strategy is
     currently in multi-worker setup.
+
+    Experimental. Signature and implementation are subject to change.
     """
     raise NotImplementedError("must be implemented in descendants")
 

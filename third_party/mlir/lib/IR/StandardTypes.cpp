@@ -17,6 +17,7 @@
 
 #include "mlir/IR/StandardTypes.h"
 #include "TypeDetail.h"
+#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/Support/STLExtras.h"
@@ -391,6 +392,152 @@ ArrayRef<AffineMap> MemRefType::getAffineMaps() const {
 }
 
 unsigned MemRefType::getMemorySpace() const { return getImpl()->memorySpace; }
+
+/// Given MemRef `sizes` that are either static or dynamic, returns the
+/// canonical "contiguous" strides AffineExpr. Strides are multiplicative and
+/// once a dynamic dimension is encountered, all canonical strides become
+/// dynamic and need to be encoded with a different symbol.
+/// For canonical strides expressions, the offset is always 0 and and fastest
+/// varying stride is always `1`.
+///
+/// Examples:
+///   - memref<3x4x5xf32> has canonical stride expression `20*d0 + 5*d1 + d2`.
+///   - memref<3x?x5xf32> has canonical stride expression `s0*d0 + 5*d1 + d2`.
+///   - memref<3x4x?xf32> has canonical stride expression `s1*d0 + s0*d1 + d2`.
+static AffineExpr makeCanonicalStridedLayoutExpr(ArrayRef<int64_t> sizes,
+                                                 MLIRContext *context) {
+  AffineExpr expr;
+  bool dynamicPoisonBit = false;
+  unsigned nSymbols = 0;
+  int64_t runningSize = 1;
+  unsigned rank = sizes.size();
+  for (auto en : llvm::enumerate(llvm::reverse(sizes))) {
+    auto size = en.value();
+    auto position = rank - 1 - en.index();
+    // Degenerate case, no size =-> no stride
+    if (size == 0)
+      continue;
+    auto d = getAffineDimExpr(position, context);
+    // Static case: stride = runningSize and runningSize *= size.
+    if (!dynamicPoisonBit) {
+      auto cst = getAffineConstantExpr(runningSize, context);
+      expr = expr ? expr + cst * d : cst * d;
+      if (size > 0)
+        runningSize *= size;
+      else
+        // From now on bail into dynamic mode.
+        dynamicPoisonBit = true;
+      continue;
+    }
+    // Dynamic case, new symbol for each new stride.
+    auto sym = getAffineSymbolExpr(nSymbols++, context);
+    expr = expr ? expr + d * sym : d * sym;
+  }
+  return expr;
+}
+
+// Factored out common logic to update `strides` and `seen` for `dim` with value
+// `val`. This handles both saturated and unsaturated cases.
+static void accumulateStrides(MutableArrayRef<int64_t> strides,
+                              MutableArrayRef<bool> seen, unsigned pos,
+                              int64_t val) {
+  if (!seen[pos]) {
+    // Newly seen case, sets value
+    strides[pos] = val;
+    seen[pos] = true;
+    return;
+  }
+  if (strides[pos] != MemRefType::kDynamicStride)
+    // Already seen case accumulates unless they are already saturated.
+    strides[pos] += val;
+}
+
+/// Takes a single AffineExpr `e` and populates the `strides` and `seen` arrays
+/// with the strides values for each dim position and whether a value exists at
+/// that position, respectively.
+/// The convention is that the strides for dimensions d0, .. dn appear in
+/// order followed by the constant offset, to make indexing intuitive into the
+/// result.
+static void extractStrides(AffineExpr e, MutableArrayRef<int64_t> strides,
+                           MutableArrayRef<bool> seen, bool &failed) {
+  auto bin = e.dyn_cast<AffineBinaryOpExpr>();
+  if (!bin)
+    return;
+
+  if (bin.getKind() == AffineExprKind::CeilDiv ||
+      bin.getKind() == AffineExprKind::FloorDiv ||
+      bin.getKind() == AffineExprKind::Mod) {
+    failed = true;
+    return;
+  }
+
+  if (bin.getKind() == AffineExprKind::Mul) {
+    auto dim = bin.getLHS().cast<AffineDimExpr>();
+    auto cst = bin.getRHS().dyn_cast<AffineConstantExpr>();
+    if (!cst) {
+      strides[dim.getPosition()] = MemRefType::kDynamicStride;
+      seen[dim.getPosition()] = true;
+    } else {
+      accumulateStrides(strides, seen, dim.getPosition(), cst.getValue());
+    }
+    return;
+  }
+
+  if (bin.getKind() == AffineExprKind::Add) {
+    for (auto e : {bin.getLHS(), bin.getRHS()}) {
+      if (auto cst = e.dyn_cast<AffineConstantExpr>()) {
+        // Independent constants cumulate.
+        accumulateStrides(strides, seen, seen.size() - 1, cst.getValue());
+      } else if (auto sym = e.dyn_cast<AffineSymbolExpr>()) {
+        // Independent symbols saturate.
+        strides.back() = MemRefType::kDynamicStride;
+        seen.back() = true;
+      } else if (auto dim = e.dyn_cast<AffineDimExpr>()) {
+        // Independent symbols cumulate 1.
+        accumulateStrides(strides, seen, dim.getPosition(), 1);
+      }
+      // Sum of binary ops dispatch to the respective exprs.
+    }
+    return;
+  }
+
+  llvm_unreachable("unexpected binary operation");
+}
+
+LogicalResult MemRefType::getStrides(SmallVectorImpl<int64_t> &strides) const {
+  auto affineMaps = getAffineMaps();
+  // For now strides are only computed on a single affine map with a single
+  // result (i.e. the closed subset of linearization maps that are compatible
+  // with striding semantics).
+  // TODO(ntv): support more forms on a per-need basis.
+  if (affineMaps.size() > 1)
+    return failure();
+  AffineExpr stridedExpr;
+  if (affineMaps.empty() || affineMaps[0].isIdentity())
+    stridedExpr = makeCanonicalStridedLayoutExpr(getShape(), getContext());
+  else if (affineMaps[0].getNumResults() == 1)
+    stridedExpr = affineMaps[0].getResult(0);
+  if (!stridedExpr)
+    return failure();
+  bool failed = false;
+  strides = SmallVector<int64_t, 4>(getRank() + 1, 0);
+  SmallVector<bool, 4> seen(getRank() + 1, false);
+  stridedExpr.walk([&](AffineExpr e) {
+    if (!failed)
+      extractStrides(e, strides, seen, failed);
+  });
+  // Constant offset may not be present in `stridedExpr` which means it is
+  // implicitly 0.
+  if (!seen.back()) {
+    seen.back() = true;
+    strides.back() = 0;
+  }
+  if (failed || !llvm::all_of(seen, [](bool b) { return b; })) {
+    strides.clear();
+    return failure();
+  }
+  return success();
+}
 
 //===----------------------------------------------------------------------===//
 /// ComplexType

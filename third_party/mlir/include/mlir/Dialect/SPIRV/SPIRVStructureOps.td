@@ -306,8 +306,8 @@ def SPV_ModuleOp : SPV_Op<"module",
 
   let regions = (region SizedRegion<1>:$body);
 
-  let builders = [OpBuilder<"Builder *, OperationState *state">,
-                  OpBuilder<[{Builder *, OperationState *state,
+  let builders = [OpBuilder<"Builder *, OperationState &state">,
+                  OpBuilder<[{Builder *, OperationState &state,
                               IntegerAttr addressing_model,
                               IntegerAttr memory_model,
                               /*optional*/ArrayAttr capabilities = nullptr,

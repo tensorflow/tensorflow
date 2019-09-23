@@ -71,8 +71,17 @@ struct MemRefAccess {
   bool isStore() const;
 
   /// Populates 'accessMap' with composition of AffineApplyOps reachable from
-  // 'indices'.
+  /// 'indices'.
   void getAccessMap(AffineValueMap *accessMap) const;
+
+  /// Equal if both affine accesses can be proved to be equivalent at compile
+  /// time (considering the memrefs, their respective affine access maps  and
+  /// operands). The equality of access functions + operands is checked by
+  /// subtracting fully composed value maps, and then simplifying the difference
+  /// using the expression flattener.
+  /// TODO: this does not account for aliasing of memrefs.
+  bool operator==(const MemRefAccess &rhs) const;
+  bool operator!=(const MemRefAccess &rhs) const { return !(*this == rhs); }
 };
 
 // DependenceComponent contains state about the direction of a dependence as an

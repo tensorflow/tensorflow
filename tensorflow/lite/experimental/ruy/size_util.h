@@ -88,17 +88,6 @@ Integer round_up_pot(Integer value, Modulo modulo) {
   return round_down_pot(value + modulo - 1, modulo);
 }
 
-template <typename Integer>
-Integer clamp(Integer x, Integer lo, Integer hi) {
-  if (x < lo) {
-    return lo;
-  } else if (x > hi) {
-    return hi;
-  } else {
-    return x;
-  }
-}
-
 }  // namespace ruy
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_RUY_SIZE_UTIL_H_

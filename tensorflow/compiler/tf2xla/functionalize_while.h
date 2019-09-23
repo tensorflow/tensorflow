@@ -24,8 +24,7 @@ namespace tensorflow {
 // Transformation that converts tf.while_loop() loops into functional While
 // operators, suitable for XLA compilation. If lookup_library is provided, use
 // it to make the library for control flow self-contained.
-Status FunctionalizeWhileLoop(const FunctionLibraryDefinition* lookup_library,
-                              Graph* graph, FunctionLibraryDefinition* library);
+Status FunctionalizeWhileLoop(Graph* graph, FunctionLibraryDefinition* library);
 
 }  // namespace tensorflow
 

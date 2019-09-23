@@ -315,7 +315,7 @@ public:
   template <typename OpTy, typename... Args>
   OpTy create(Location location, Args &&... args) {
     OperationState state(location, OpTy::getOperationName());
-    OpTy::build(this, &state, std::forward<Args>(args)...);
+    OpTy::build(this, state, std::forward<Args>(args)...);
     auto *op = createOperation(state);
     auto result = dyn_cast<OpTy>(op);
     assert(result && "Builder didn't return the right type");

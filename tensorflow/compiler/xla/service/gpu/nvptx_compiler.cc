@@ -23,13 +23,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_gemm_pad_for_tensor_cores.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_pad_for_convolutions.h"
 #include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
@@ -107,14 +107,14 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
   // Convert convolutions into CustomCalls to cudnn, then canonicalize them
-  // (CudnnConvPaddingLegalization). Also expand cuSolver calls.
+  // (GpuConvPaddingLegalization). Also expand cuSolver calls.
   HloPassPipeline pipeline("conv_canonicalization");
   pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                             /*allow_mixed_precision=*/false);
   pipeline.AddPass<CusolverRewriter>();
   pipeline.AddPass<CudnnConvRewriter>();
   pipeline.AddPass<CudnnFusedConvRewriter>();
-  pipeline.AddPass<CudnnConvPaddingLegalization>();
+  pipeline.AddPass<GpuConvPaddingLegalization>();
   pipeline.AddPass<CudnnPadForConvolutions>(IsVoltaOrLater(*stream_exec));
   // CudnnConvPadForIntegerConvolutions and CudnnConvPadForTensorCores leaves
   // behind unnecessary tuple/get-tuple-element pairs that TupleSimplifier
@@ -134,7 +134,7 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     pass.AddPass<AlgebraicSimplifier>(options);
   }
 
-  // CudnnConvRewriter, CudnnConvPaddingLegalization and
+  // CudnnConvRewriter, GpuConvPaddingLegalization and
   // CudnnConvPadForTensorCores may add instructions which can be simplified
   // by constant folding.
   pipeline.AddPass<HloConstantFolding>();

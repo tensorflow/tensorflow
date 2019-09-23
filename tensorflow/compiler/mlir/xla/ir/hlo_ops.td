@@ -79,7 +79,7 @@ def HLO_ConstOp : BASE_HLO_ConstOp, HLO_Op<"constant", [NoSideEffect]> {
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Attribute value"
+    "Builder *builder, OperationState &result, Attribute value"
   >];
 
   let hasFolder = 1;
@@ -135,7 +135,7 @@ def HLO_NegOp: HLO_UnaryElementwiseOp<"neg", [NoSideEffect, SameOperandsAndResul
 
 def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_RsqrtOp;
 
-def HLO_SignOp: HLO_UnaryElementwiseOp<"sign", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_SignOp;
+def HLO_SignOp: HLO_UnaryElementwiseOp<"sign", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_SignOp;
 
 def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
     [ResultsAreFloatLike, NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_TanhOp;
@@ -275,6 +275,21 @@ def HLO_SliceOp: HLO_Op<
   );
 
   let results = (outs HLO_Tensor);
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *operand, "
+    "DenseIntElementsAttr start_indices, DenseIntElementsAttr limit_indices, "
+    "DenseIntElementsAttr strides"
+  >];
+
+  let extraClassDeclaration = [{
+    // Infers output type for given operand and attributes. Result type is
+    // unranked if any of the attributes is illegal.
+    static Type InferOutputTypes(Builder *builder, Value *operand,
+                                 DenseIntElementsAttr start_indices,
+                                 DenseIntElementsAttr limit_indices,
+                                 DenseIntElementsAttr strides);
+  }];
 
   // TODO(b/129422361) Two of the required arguments comes from the start and
   // limit indices which aren't handled by the codegen.
@@ -466,7 +481,7 @@ def HLO_SelectOp: HLO_Op<"select", [NoSideEffect]>, BASE_HLO_SelectOp {
 }
 
 def HLO_ReverseOp: HLO_Op<"reverse",
-      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ReverseOp {
+      [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_ReverseOp {
   let arguments = (ins
     HLO_Tensor:$operand,
     I64ElementsAttr:$dimensions

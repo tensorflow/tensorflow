@@ -34,33 +34,23 @@ class AssertNextDatasetParams : public DatasetParams {
     int num_transformations = transformations.size();
     transformations_ = CreateTensor<tstring>(TensorShape({num_transformations}),
                                              transformations);
-    auto input_dataset_params_ptr =
-        std::make_shared<T>(std::move(input_dataset_params));
-    input_dataset_params_group_.emplace_back(
-        std::make_pair(std::move(input_dataset_params_ptr), Tensor()));
+    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
     iterator_prefix_ = name_utils::IteratorPrefix(
         input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
   }
 
-  Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override {
-    inputs->reserve(input_dataset_params_group_.size() + 1);
-    for (auto& pair : input_dataset_params_group_) {
-      if (!IsDatasetTensor(pair.second)) {
-        inputs->clear();
-        return errors::Internal(
-            "The input dataset is not populated as the dataset tensor yet.");
-      } else {
-        inputs->emplace_back(TensorValue(&pair.second));
-      }
-    }
-    inputs->emplace_back(TensorValue(&transformations_));
-
+  Status GetInputs(const std::vector<Tensor*>& input_datasets,
+                   std::vector<std::unique_ptr<Tensor>>* created_tensors,
+                   gtl::InlinedVector<TensorValue, 4>* inputs) const override {
+    inputs->clear();
+    TF_RETURN_IF_ERROR(AddDatasetInputs(input_datasets, 1, inputs));
+    AddTensorInputs({transformations_}, created_tensors, inputs);
     return Status::OK();
   }
 
   Status GetInputPlaceholder(
       std::vector<string>* input_placeholder) const override {
-    input_placeholder->reserve(input_dataset_params_group_.size() + 1);
+    input_placeholder->reserve(input_dataset_params_.size() + 1);
     input_placeholder->emplace_back(AssertNextDatasetOp::kInputDataset);
     input_placeholder->emplace_back(AssertNextDatasetOp::kTransformations);
     return Status::OK();

@@ -29,7 +29,6 @@ import gast
 import six
 
 from tensorflow.python.autograph.pyct import inspect_utils
-from tensorflow.python.util import tf_inspect
 
 
 STANDARD_PREAMBLE = textwrap.dedent("""
@@ -108,6 +107,69 @@ def dedent_block(code_string):
   return new_code
 
 
+def _attempt_to_parse_normal_source(source, future_features):
+  return parse_str(source, preamble_len=len(future_features)), source
+
+
+def _attempt_to_parse_lambda_source(source, original_source,
+                                    future_features, try_fallback=True):
+  """Parsing function specialized on dealing with lambdas.
+
+  Lambda functions, only hold the raw code lines which defined
+  them, which may include surrounding tokens and may be syntactically
+  invalid out of context. For example:
+
+      l = (
+          lambda x: x,)[0]
+
+  will have the dedented source "lambda x: x,)[0]"
+  This function makes an attempt to stip away the garbage by looking at the
+  information in the syntax error.
+
+  Args:
+    source: the processed source code of `entity`.
+    original_source: the source code of `entity`, as it was reported
+        by `inspect.getsource`.
+    future_features: see `parse_str`.
+    try_fallback: whether to attempt to remove extra code from `source` before
+        one more attempt to parse it.
+  Returns:
+    Same as `parse_str`.
+  """
+
+  try:
+    return parse_str(source, preamble_len=len(future_features)), source
+
+  # Note: the ValueError may be raised by parse_str.
+  except (SyntaxError, ValueError) as e:
+    def fail():
+      raise ValueError(
+          'could not parse the source code:'
+          '\n\n{}\n'
+          'This error may be avoided by creating the lambda in a standalone'
+          ' statement.\n'.format(original_source))
+
+    if not try_fallback:
+      fail()
+
+    lines = source.split('\n')
+    lineno, offset = e.lineno, e.offset  # 1-based
+
+    # Give up if there's nothing we can chip away.
+    if len(lines) == lineno and len(lines[-1]) == offset:
+      fail()
+
+    # Drop all lines following the error location
+    # TODO(mdan): What's with the pylint errors?
+    lines = lines[:lineno]  # pylint:disable=invalid-slice-index
+    # Drop all characters following the error location
+    lines[-1] = lines[-1][:offset - 1]  # pylint:disable=invalid-slice-index
+    source = '\n'.join(lines)
+
+    return _attempt_to_parse_lambda_source(
+        source, original_source, future_features, try_fallback=False)
+
+
 def parse_entity(entity, future_features):
   """Returns the AST and source code of given entity.
 
@@ -132,63 +194,17 @@ def parse_entity(entity, future_features):
         ' graph-compatible, wrap the call using'
         ' @tf.autograph.do_not_convert. Original error: {}'.format(entity, e))
 
-  def raise_parse_failure(comment):
-    raise ValueError(
-        'Failed to parse source code of {}, which Python reported as:\n{}\n'
-        '{}'.format(entity, original_source, comment))
-
   source = dedent_block(original_source)
 
   future_statements = tuple(
       'from __future__ import {}'.format(name) for name in future_features)
   source = '\n'.join(future_statements + (source,))
 
-  try:
-    return parse_str(source, preamble_len=len(future_features)), source
-
-  except IndentationError:
-    # The text below lists the causes of this error known to us. There may
-    # be more.
-    raise_parse_failure(
-        'This may be caused by multiline strings or comments not indented at'
-        ' the same level as the code.')
-
-  except SyntaxError as e:
-    if not tf_inspect.isfunction(entity) or entity.__name__ != '<lambda>':
-      raise
-
-    # Certain entities, like lambdas, only hold the raw code lines which defined
-    # them, which may include surrounding tokens and may be syntactically
-    # invalid out of context. For example:
-    #
-    #     l = (
-    #         lambda x: x,)[0]
-    #
-    # will have the dedented source "lambda x: x,)[0]"
-    # Here we make an attempt to stip away the garbage by looking at the
-    # information in the syntax error.
-    lines = source.split('\n')
-    lineno, offset = e.lineno, e.offset  # 1-based
-
-    # Give up if there's nothing we can chip away.
-    if len(lines) == lineno and len(lines[-1]) == offset:
-      raise_parse_failure(
-          'If this is a lambda function, the error may be avoided by creating'
-          ' the lambda in a standalone statement.')
-
-    # Drop all lines following the error location
-    # TODO(mdan): What's with the pylint errors?
-    lines = lines[:lineno]  # pylint:disable=invalid-slice-index
-    # Drop all characters following the error location
-    lines[-1] = lines[-1][:offset - 1]  # pylint:disable=invalid-slice-index
-    source = '\n'.join(lines)
-
-    try:
-      return parse_str(source, preamble_len=len(future_features)), source
-    except SyntaxError as e:
-      raise_parse_failure(
-          'If this is a lambda function, the error may be avoided by creating'
-          ' the lambda in a standalone statement.')
+  if inspect_utils.islambda(entity):
+    return _attempt_to_parse_lambda_source(
+        source, original_source, future_features)
+  else:
+    return _attempt_to_parse_normal_source(source, future_features)
 
 
 # TODO(mdan): This should take futures as input instead.

@@ -98,7 +98,6 @@ py_library(
         "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
-        ":_pywrap_events_writer",
         ":_pywrap_stat_summarizer",
         ":_pywrap_tfprof",
         ":_pywrap_util_port",
@@ -452,7 +451,7 @@ tf_python_pybind_extension(
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_pywrap_util_port",
     srcs = ["util/port_wrapper.cc"],
     hdrs = ["//tensorflow/core:util_port_hdrs"],
@@ -460,23 +459,6 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/core:util_port",
         "//third_party/python_runtime:headers",
-        "@pybind11",
-    ],
-)
-
-tf_python_pybind_extension(
-    name = "_pywrap_events_writer",
-    srcs = ["client/events_writer_wrapper.cc"],
-    module_name = "_pywrap_events_writer",
-    deps = [
-        ":pybind11_absl",
-        ":pybind11_proto",
-        ":pybind11_status",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//third_party/python_runtime:headers",
-        "@com_google_absl//absl/strings",
         "@pybind11",
     ],
 )
@@ -790,7 +772,6 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":_pywrap_events_writer",
         ":_pywrap_stat_summarizer",
         ":_pywrap_tfprof",
         ":_pywrap_util_port",
@@ -1026,6 +1007,7 @@ py_library(
     srcs = ["framework/op_def_registry.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":pywrap_tensorflow",
         "//tensorflow/core:protos_all_py",
     ],
 )
@@ -5008,6 +4990,7 @@ tf_py_wrap_cc(
     srcs = ["tensorflow.i"],
     swig_includes = [
         "client/device_lib.i",
+        "client/events_writer.i",
         "client/tf_session.i",
         "client/tf_sessionrun_wrapper.i",
         "framework/python_op_gen.i",

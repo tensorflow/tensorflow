@@ -48,29 +48,7 @@ void MultiRunStatsRecorder::OnBenchmarkStart(const BenchmarkParams& params) {
     const bool allow_precision_loss =
         params.Get<bool>("gpu_precision_loss_allowed");
     const std::string precision_tag = allow_precision_loss ? "fp16" : "fp32";
-
-    const int32_t gl_obj_type = params.Get<int32_t>("gpu_gl_object_type");
-    std::string gl_type;
-    switch (gl_obj_type) {
-      case TFLITE_GL_OBJECT_TYPE_FASTEST:
-        gl_type = "fastest";
-        break;
-      case TFLITE_GL_OBJECT_TYPE_TEXTURE:
-        gl_type = "texture";
-        break;
-      case TFLITE_GL_OBJECT_TYPE_BUFFER:
-        gl_type = "buffer";
-        break;
-      default:
-        gl_type = "unknown";
-        break;
-    }
-
-    if (allow_precision_loss && gl_obj_type == TFLITE_GL_OBJECT_TYPE_FASTEST) {
-      current_run_name_ = "gpu(fp16, fastest)-default";
-      return;
-    }
-    current_run_name_ = "gpu(" + precision_tag + ", " + gl_type + ")";
+    current_run_name_ = "gpu(" + precision_tag + ")";
 #else
     current_run_name_ = "gpu(fp16, fastest)-default";
 #endif
@@ -217,8 +195,6 @@ void BenchmarkPerformanceOptions::ResetPerformanceOptions() {
   single_option_run_params_->Set<bool>("use_gpu", false);
 #if defined(__ANDROID__)
   single_option_run_params_->Set<bool>("gpu_precision_loss_allowed", true);
-  single_option_run_params_->Set<int32_t>("gpu_gl_object_type",
-                                          TFLITE_GL_OBJECT_TYPE_FASTEST);
 #endif
   single_option_run_params_->Set<bool>("use_nnapi", false);
 }
@@ -249,8 +225,6 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
         params.AddParam("use_gpu", BenchmarkParam::Create<bool>(true));
         params.AddParam("gpu_precision_loss_allowed",
                         BenchmarkParam::Create<bool>(precision_loss));
-        params.AddParam("gpu_gl_object_type",
-                        BenchmarkParam::Create<int32_t>(obj_type));
         all_run_params_.emplace_back(std::move(params));
       }
     }

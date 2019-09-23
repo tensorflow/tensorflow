@@ -194,6 +194,11 @@ void PopulateTrMulParams(TrMulParams* params) {
   using LhsKernelLayout = typename Kernel::LhsLayout;
   using RhsKernelLayout = typename Kernel::RhsLayout;
 
+  params->path = ThePath;
+
+  params->cache_friendly_traversal_threshold =
+      Spec::cache_friendly_traversal_threshold();
+
   CreatePackedMatrix<LhsScalar, PackedLhsScalar>(
       Side::kLhs, ToKernelLayout<LhsKernelLayout>(), params);
   CreatePackedMatrix<RhsScalar, PackedRhsScalar>(
@@ -205,8 +210,6 @@ void PopulateTrMulParams(TrMulParams* params) {
   params->run_kernel =
       &RunKernel<ThePath, PackedLhsScalar, PackedRhsScalar, DstScalar, Spec>;
 
-  params->cache_friendly_traversal_threshold =
-      Spec::cache_friendly_traversal_threshold();
   return;
 }
 

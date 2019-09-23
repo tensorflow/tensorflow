@@ -326,6 +326,26 @@ def random_flip_up_down(image, seed=None):
 
   With a 1 in 2 chance, outputs the contents of `image` flipped along the first
   dimension, which is `height`.  Otherwise output the image as-is.
+  When passing a batch of images, each image will be randomly flipped
+  independent of other images.
+
+  Example usage:
+
+    Randomly flip a single image.
+    >>> import numpy as np
+
+    >>> image = np.array([[[1], [2]], [[3], [4]]])
+    >>> tf.image.random_flip_up_down(image, 3).numpy().tolist()
+    [[[3], [4]], [[1], [2]]]
+
+    Randomly flip multiple images.
+    >>> images = np.array(
+    ... [
+    ...     [[[1], [2]], [[3], [4]]],
+    ...     [[[5], [6]], [[7], [8]]]
+    ... ])
+    >>> tf.image.random_flip_up_down(images, 4).numpy().tolist()
+    [[[[3], [4]], [[1], [2]]], [[[5], [6]], [[7], [8]]]]
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
@@ -347,6 +367,25 @@ def random_flip_left_right(image, seed=None):
 
   With a 1 in 2 chance, outputs the contents of `image` flipped along the
   second dimension, which is `width`.  Otherwise output the image as-is.
+  When passing a batch of images, each image will be randomly flipped
+  independent of other images.
+
+  Example usage:
+    Randomly flip a single image.
+    >>> import numpy as np
+
+    >>> image = np.array([[[1], [2]], [[3], [4]]])
+    >>> tf.image.random_flip_left_right(image, 5).numpy().tolist()
+    [[[2], [1]], [[4], [3]]]
+
+    Randomly flip multiple images.
+    >>> images = np.array(
+    ... [
+    ...     [[[1], [2]], [[3], [4]]],
+    ...     [[[5], [6]], [[7], [8]]]
+    ... ])
+    >>> tf.image.random_flip_left_right(images, 6).numpy().tolist()
+    [[[[2], [1]], [[4], [3]]], [[[5], [6]], [[7], [8]]]]
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor

@@ -532,12 +532,6 @@ public:
   /// 'num' identifiers starting at position 'pos'.
   void constantFoldIdRange(unsigned pos, unsigned num);
 
-  /// Returns true if all the identifiers in the specified range [start, limit)
-  /// can only take a single value each if the remaining identifiers are treated
-  /// as symbols/parameters, i.e., for given values of the latter, there only
-  /// exists a unique value for each of the dimensions in the specified range.
-  bool isRangeOneToOne(unsigned start, unsigned limit) const;
-
   /// Updates the constraints to be the smallest bounding (enclosing) box that
   /// contains the points of 'this' set and that of 'other', with the symbols
   /// being treated specially. For each of the dimensions, the min of the lower

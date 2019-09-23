@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_BLOCK_MAP_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_BLOCK_MAP_H_
 
+#include "tensorflow/lite/experimental/ruy/path.h"
 #include "tensorflow/lite/experimental/ruy/side_pair.h"
 
 namespace ruy {
@@ -106,7 +107,7 @@ struct BlockMap {
 // matrix multiplication with the given parameters.
 void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
                   int kernel_cols, int lhs_scalar_size, int rhs_scalar_size,
-                  int tentative_thread_count,
+                  int tentative_thread_count, Path path,
                   int cache_friendly_traversal_threshold, BlockMap* block_map);
 
 // Maps an integer index to a block position in the grid.

@@ -71,7 +71,7 @@ Status SessionMgr::CreateSession(
   string worker_name;
   if (server_def.cluster().job().empty()) {
     worker_cache = new WorkerCacheWrapper(default_worker_cache_.get());
-    worker_name = legacy_session_->worker_name;
+    worker_name = legacy_session_->worker_name();
   } else {
     TF_RETURN_IF_ERROR(worker_cache_factory_(server_def, &worker_cache));
     worker_name = WorkerNameFromServerDef(server_def);
@@ -162,7 +162,7 @@ Status SessionMgr::WorkerSessionForSessionLocked(
     if (it == sessions_.end()) {
       return errors::Aborted("Session handle is not found: ", session_handle,
                              ". Possibly this worker (\"",
-                             legacy_session_->worker_name,
+                             legacy_session_->worker_name(),
                              "\") just restarted.");
     } else {
       *out_session = it->second;
@@ -186,7 +186,7 @@ void SessionMgr::SetLogging(bool active) {
   this->is_logging_active_ = active;
   // Legacy Session
   if (legacy_session_) {
-    auto* worker_cache = legacy_session_->worker_cache.get();
+    auto* worker_cache = legacy_session_->worker_cache();
     if (worker_cache) {
       worker_cache->SetLogging(active);
     }
@@ -195,7 +195,7 @@ void SessionMgr::SetLogging(bool active) {
   for (const auto& session_kv : sessions_) {
     auto session = session_kv.second.get();
     if (session) {
-      auto* worker_cache = session->worker_cache.get();
+      auto* worker_cache = session->worker_cache();
       if (worker_cache) {
         worker_cache->SetLogging(active);
       }
@@ -208,7 +208,7 @@ void SessionMgr::RetrieveLogs(tensorflow::int64 step_id,
   mutex_lock l(mu_);
   // Legacy Session
   if (legacy_session_) {
-    auto* worker_cache = legacy_session_->worker_cache.get();
+    auto* worker_cache = legacy_session_->worker_cache();
     if (worker_cache) {
       auto step_stats = StepStats();
       if (worker_cache->RetrieveLogs(step_id, &step_stats)) {
@@ -221,7 +221,7 @@ void SessionMgr::RetrieveLogs(tensorflow::int64 step_id,
   for (const auto& session_kv : sessions_) {
     auto session = session_kv.second.get();
     if (session) {
-      auto* worker_cache = session->worker_cache.get();
+      auto* worker_cache = session->worker_cache();
       if (worker_cache) {
         auto step_stats = StepStats();
         if (worker_cache->RetrieveLogs(step_id, &step_stats)) {
@@ -238,7 +238,7 @@ void SessionMgr::ClearLogs() {
   mutex_lock l(mu_);
   // Legacy Session
   if (legacy_session_) {
-    auto* worker_cache = legacy_session_->worker_cache.get();
+    auto* worker_cache = legacy_session_->worker_cache();
     if (worker_cache) {
       worker_cache->ClearLogs();
     }
@@ -247,7 +247,7 @@ void SessionMgr::ClearLogs() {
   for (const auto& session_kv : sessions_) {
     auto session = session_kv.second.get();
     if (session) {
-      auto* worker_cache = session->worker_cache.get();
+      auto* worker_cache = session->worker_cache();
       if (worker_cache) {
         worker_cache->ClearLogs();
       }

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/experimental/micro/kernels/activation_utils.h"
+#include "tensorflow/lite/experimental/micro/micro_utils.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -40,55 +41,6 @@ namespace {
  * and resizes the output tensor. Micro runtime does not support tensor
  * resizing.
  */
-
-// TODO(kreeger): Create a uint8-specific version of this when refactoring.
-// TODO(kreeger): Remove these quantization methods when tensor_utils is ready
-// for micro (b/140272187).
-void SymmetricQuantizeFloats(const float* values, const int size,
-                             int8_t* quantized_values, float* scaling_factor) {
-  // First, find min/max in values
-  float min_value = values[0];
-  float max_value = values[0];
-  for (int i = 1; i < size; ++i) {
-    if (values[i] < min_value) {
-      min_value = values[i];
-    }
-    if (values[i] > max_value) {
-      max_value = values[i];
-    }
-  }
-
-  const float range = fmaxf(fabsf(min_value), fabsf(max_value));
-  if (range == 0.0f) {
-    for (int i = 0; i < size; ++i) {
-      quantized_values[i] = 0;
-    }
-    *scaling_factor = 1;
-    return;
-  }
-
-  const int kScale = 127;
-  *scaling_factor = range / kScale;
-  const float scaling_factor_inv = kScale / range;
-  for (int i = 0; i < size; ++i) {
-    const int32_t quantized_value =
-        static_cast<int32_t>(roundf(values[i] * scaling_factor_inv));
-    // Clamp: just in case some odd numeric offset.
-    quantized_values[i] = fminf(kScale, fmaxf(-kScale, quantized_value));
-  }
-}
-
-// TODO(kreeger): Port this to a micro-utils file.
-// TODO(kreeger): Than main difference between svdf.h in the reference kernel is
-// the use of tensor_utils/portable_tensor_utils. Those utility methods are not
-// currently ready for use in tflite-micro (see b/140272187).
-void SymmetricDequantizeFloats(const int8_t* values, const int size,
-                               const float dequantization_scale,
-                               float* dequantized_values) {
-  for (int i = 0; i < size; ++i) {
-    dequantized_values[i] = values[i] * dequantization_scale;
-  }
-}
 
 // TODO(kreeger): upstream these reference methods into
 // `lite/kernels/reference/svdf.h`
@@ -289,12 +241,12 @@ inline void EvalHybridSVDF(
   }
 
   if (!is_zero_vector) {
+    SignedSymmetricPerChannelQuantize(input_ptr_batch, input->dims, 0,
+                                      quantized_input_ptr_batch,
+                                      scaling_factors_ptr);
+
     // Quantize input from float to int8.
     for (int b = 0; b < batch_size; ++b) {
-      const int offset = b * input_size;
-      SymmetricQuantizeFloats(input_ptr_batch + offset, input_size,
-                              quantized_input_ptr_batch + offset,
-                              &scaling_factors_ptr[b]);
       scaling_factors_ptr[b] *= weights_feature_scale;
     }
 
@@ -475,10 +427,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     } else {
       weights_time_ptr = GetTensorData<int8_t>(weights_time);
     }
-    SymmetricDequantizeFloats(weights_time_ptr,
-                              NumElements(float_weights_time_scratch),
-                              weights_time->params.scale,
-                              GetTensorData<float>(float_weights_time_scratch));
+    SymmetricDequantize(weights_time_ptr,
+                        NumElements(float_weights_time_scratch),
+                        weights_time->params.scale,
+                        GetTensorData<float>(float_weights_time_scratch));
   } else {
     // Validate Input Tensor dtypes:
     TF_LITE_ENSURE_EQ(context, weights_feature->type, kTfLiteFloat32);

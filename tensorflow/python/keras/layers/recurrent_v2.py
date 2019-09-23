@@ -57,6 +57,9 @@ _RUNTIME_GPU = 2
 class GRUCell(recurrent.GRUCell):
   """Cell class for the GRU layer.
 
+  See [the Keras RNN API guide](https://www.tensorflow.org/beta/guide/keras/rnn)
+  for details about the usage of RNN API.
+
   This class processes one step within the whole time sequence input, whereas
   `tf.keras.layer.GRU` processes the whole sequence.
 
@@ -173,6 +176,9 @@ class GRUCell(recurrent.GRUCell):
 @keras_export('keras.layers.GRU', v1=[])
 class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
   """Gated Recurrent Unit - Cho et al. 2014.
+
+  See [the Keras RNN API guide](https://www.tensorflow.org/beta/guide/keras/rnn)
+  for details about the usage of RNN API.
 
   Based on available runtime hardware and constraints, this layer
   will choose different implementations (cuDNN-based or pure-TensorFlow)
@@ -717,6 +723,9 @@ def gru_with_backend_selection(
 class LSTMCell(recurrent.LSTMCell):
   """Cell class for the LSTM layer.
 
+  See [the Keras RNN API guide](https://www.tensorflow.org/beta/guide/keras/rnn)
+  for details about the usage of RNN API.
+
   This class processes one step within the whole time sequence input, whereas
   `tf.keras.layer.LSTM` processes the whole sequence.
 
@@ -834,6 +843,9 @@ class LSTMCell(recurrent.LSTMCell):
 @keras_export('keras.layers.LSTM', v1=[])
 class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
   """Long Short-Term Memory layer - Hochreiter 1997.
+
+  See [the Keras RNN API guide](https://www.tensorflow.org/beta/guide/keras/rnn)
+  for details about the usage of RNN API.
 
   Based on available runtime hardware and constraints, this layer
   will choose different implementations (cuDNN-based or pure-TensorFlow)

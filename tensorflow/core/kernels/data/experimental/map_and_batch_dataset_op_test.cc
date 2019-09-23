@@ -41,39 +41,24 @@ class MapAndBatchDatasetParams : public DatasetParams {
         func_lib_(std::move(func_lib)),
         type_arguments_(std::move(type_arguments)),
         preserve_cardinality_(preserve_cardinality) {
-    auto input_dataset_params_ptr =
-        std::make_shared<T>(std::move(input_dataset_params));
-    input_dataset_params_group_.emplace_back(
-        std::make_pair(std::move(input_dataset_params_ptr), Tensor()));
+    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
     iterator_prefix_ = name_utils::IteratorPrefix(
         input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
   }
 
-  Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override {
-    inputs->reserve(input_dataset_params_group_.size() +
-                    other_arguments_.size() + 3);
-    for (auto& pair : input_dataset_params_group_) {
-      if (!IsDatasetTensor(pair.second)) {
-        inputs->clear();
-        return errors::Internal(
-            "The input dataset is not populated as the dataset tensor yet.");
-      } else {
-        inputs->emplace_back(TensorValue(&pair.second));
-      }
-    }
-    for (auto& argument : other_arguments_) {
-      inputs->emplace_back(TensorValue(&argument));
-    }
-    inputs->emplace_back(TensorValue(&batch_size_));
-    inputs->emplace_back(TensorValue(&num_parallel_calls_));
-    inputs->emplace_back(TensorValue(&drop_remainder_));
-
+  Status GetInputs(const std::vector<Tensor*>& input_datasets,
+                   std::vector<std::unique_ptr<Tensor>>* created_tensors,
+                   gtl::InlinedVector<TensorValue, 4>* inputs) const override {
+    inputs->clear();
+    TF_RETURN_IF_ERROR(AddDatasetInputs(input_datasets, 1, inputs));
+    AddTensorInputs({batch_size_, num_parallel_calls_, drop_remainder_},
+                    created_tensors, inputs);
     return Status::OK();
   }
 
   Status GetInputPlaceholder(
       std::vector<string>* input_placeholder) const override {
-    input_placeholder->reserve(input_dataset_params_group_.size() +
+    input_placeholder->reserve(input_dataset_params_.size() +
                                other_arguments_.size() + 3);
     input_placeholder->emplace_back(MapAndBatchDatasetOp::kInputDataset);
     for (int i = 0; i < other_arguments_.size(); ++i) {

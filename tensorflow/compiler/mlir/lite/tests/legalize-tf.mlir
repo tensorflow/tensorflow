@@ -657,6 +657,15 @@ func @addV2(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<1xi32> {
 // CHECK:  %0 = tfl.add %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<1xi32>
 }
 
+func @addN(%arg0: tensor<2x3xi32>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32> {
+  %0 = "tf.AddN"(%arg0, %arg1, %arg2) {N = 3 : i64} : (tensor<2x3xi32>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
+  return %0 : tensor<2x3xi32>
+
+// CHECK-LABEL: addN
+// CHECK:  %0 = "tfl.add_n"(%arg0, %arg1, %arg2) : (tensor<2x3xi32>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
+// CHECK:  return %0 : tensor<2x3xi32>
+}
+
 func @reverse_v2(%arg0: tensor<1x2x3x4xf32>, %arg1: tensor<1xi32>) -> tensor<1x2x3x4xf32> {
   %0 = "tf.ReverseV2"(%arg0, %arg1) : (tensor<1x2x3x4xf32>, tensor<1xi32>) -> tensor<1x2x3x4xf32>
   return %0 : tensor<1x2x3x4xf32>
@@ -664,6 +673,14 @@ func @reverse_v2(%arg0: tensor<1x2x3x4xf32>, %arg1: tensor<1xi32>) -> tensor<1x2
 // CHECK-LABEL:reverse_v2
 // CHECK:  %0 = "tfl.reverse_v2"(%arg0, %arg1) : (tensor<1x2x3x4xf32>, tensor<1xi32>) -> tensor<1x2x3x4xf32>
 // CHECK:  return %0 : tensor<1x2x3x4xf32>
+}
+
+func @matrix_diag(%arg0: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
+  %0 = "tf.MatrixDiag"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16x16xf32>
+  return %0 : tensor<8x16x16xf32>
+
+// CHECK-LABEL:matrix_diag
+// CHECK:  %0 = "tfl.matrix_diag"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16x16xf32>
 }
 
 func @maximum(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xf32> {

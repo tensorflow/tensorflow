@@ -1590,6 +1590,8 @@ _UNARY_OPS = [
     'ErfInv',
     'Lgamma',
     'Digamma',
+    'BesselI0e',
+    'BesselI1e',
     'Acos',
     'Asin',
     'Atan',

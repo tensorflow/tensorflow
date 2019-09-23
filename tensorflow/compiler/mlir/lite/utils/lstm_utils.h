@@ -68,6 +68,8 @@ class ConvertLSTMCellSimpleToFusedLSTM {
   // Rewrite the func body with constructed fused lstm.
   void RewriteFunc();
 
+  int GetNumInputs() { return n_input_; }
+
  protected:
   void UpdateFuncSignature();
   void GenerateFusedOpOperands();

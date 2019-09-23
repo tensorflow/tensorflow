@@ -28,6 +28,9 @@ namespace xla_hlo {
 void PopulateGeneralDotOpLoweringPatterns(OwningRewritePatternList *patterns,
                                           MLIRContext *ctx);
 
+void PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
+                              MLIRContext *ctx);
+
 }  // namespace xla_hlo
 }  // namespace mlir
 
