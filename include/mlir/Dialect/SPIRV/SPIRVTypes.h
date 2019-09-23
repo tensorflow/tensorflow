@@ -178,9 +178,13 @@ public:
 
   static bool kindof(unsigned kind) { return kind == TypeKind::Struct; }
 
+  /// Construct a StructType with at least one member.
   static StructType get(ArrayRef<Type> memberTypes,
                         ArrayRef<LayoutInfo> layoutInfo = {},
                         ArrayRef<MemberDecorationInfo> memberDecorations = {});
+
+  /// Construct a struct with no members.
+  static StructType getEmpty(MLIRContext *context);
 
   unsigned getNumElements() const;
 

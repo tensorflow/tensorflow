@@ -125,9 +125,15 @@ static Type parseAndVerifyType(SPIRVDialect const &dialect, StringRef spec,
                                Location loc) {
   spec = spec.trim();
   auto *context = dialect.getContext();
-  auto type = mlir::parseType(spec.trim(), context);
+  size_t numCharsRead = 0;
+  auto type = mlir::parseType(spec.trim(), context, numCharsRead);
   if (!type) {
     emitError(loc, "cannot parse type: ") << spec;
+    return Type();
+  }
+  if (numCharsRead < spec.size()) {
+    emitError(loc, "unexpected additional tokens '")
+        << spec.substr(numCharsRead) << "' after parsing type: " << type;
     return Type();
   }
 
@@ -330,6 +336,10 @@ static Optional<IntTy> parseAndVerifyInteger(SPIRVDialect const &dialect,
   if (spec.consumeInteger(10, offsetVal)) {
     return llvm::None;
   }
+  spec = spec.trim();
+  if (!spec.empty()) {
+    return llvm::None;
+  }
   return offsetVal;
 }
 
@@ -419,53 +429,29 @@ static Type parseImageType(SPIRVDialect const &dialect, StringRef spec,
   return ImageType::get(value.getValue());
 }
 
-// Method to parse one member of a struct (including Layout information)
-static ParseResult parseStructElement(
-    SPIRVDialect const &dialect, StringRef spec, Location loc,
-    SmallVectorImpl<Type> &memberTypes,
+// Parse decorations associated with a member.
+static ParseResult parseStructMemberDecorations(
+    SPIRVDialect const &dialect, Location loc, StringRef spec,
+    ArrayRef<Type> memberTypes,
     SmallVectorImpl<StructType::LayoutInfo> &layoutInfo,
     SmallVectorImpl<StructType::MemberDecorationInfo> &memberDecorationInfo) {
-  // Check for '[' integer-literal spirv-decoration* ']'
-  auto lastLSquare = spec.rfind('[');
-  auto typeSpec = spec.substr(0, lastLSquare);
-  auto memberDecorationSpec =
-      (lastLSquare == StringRef::npos ? StringRef("")
-                                      : spec.substr(lastLSquare));
-  auto type = parseAndVerify<Type>(dialect, loc, typeSpec);
-  if (!type) {
-    return failure();
-  }
-  memberTypes.push_back(type.getValue());
-
-  if (memberDecorationSpec.empty()) {
-    return success();
-  }
-  memberDecorationSpec = memberDecorationSpec.trim();
-  if (!memberDecorationSpec.consume_front("[") ||
-      !memberDecorationSpec.consume_back("]")) {
-    emitError(loc,
-              "expected struct member offset/decoration within '[' ']' in '")
-        << spec << "'";
-    return failure();
-  }
-
-  memberDecorationSpec = memberDecorationSpec.trim();
-  auto memberInfo = memberDecorationSpec.split(' ');
+  spec = spec.trim();
+  auto memberInfo = spec.split(',');
   // Check if the first element is offset.
   auto layout =
       parseAndVerify<StructType::LayoutInfo>(dialect, loc, memberInfo.first);
   if (layout) {
     if (layoutInfo.size() != memberTypes.size() - 1) {
-      emitError(loc, "layout specification must be given for all members");
-      return failure();
+      return emitError(loc,
+                       "layout specification must be given for all members");
     }
     layoutInfo.push_back(layout.getValue());
-    memberDecorationSpec = memberInfo.second.trim();
+    spec = memberInfo.second.trim();
   }
 
   // Check for spirv::Decorations.
-  while (!memberDecorationSpec.empty()) {
-    memberInfo = memberDecorationSpec.split(' ');
+  while (!spec.empty()) {
+    memberInfo = spec.split(',');
     auto memberDecoration =
         parseAndVerify<spirv::Decoration>(dialect, loc, memberInfo.first);
     if (!memberDecoration) {
@@ -474,76 +460,9 @@ static ParseResult parseStructElement(
     memberDecorationInfo.emplace_back(
         static_cast<uint32_t>(memberTypes.size() - 1),
         memberDecoration.getValue());
-    memberDecorationSpec = memberInfo.second.trim();
+    spec = memberInfo.second.trim();
   }
   return success();
-}
-
-// Helper method to record the position of the corresponding '>' for every '<'
-// encountered when parsing the string left to right. The relative position of
-// '>' w.r.t to the '<' is recorded.
-static bool
-computeMatchingRAngles(Location loc, StringRef const &spec,
-                       SmallVectorImpl<size_t> &matchingRAngleOffset) {
-  SmallVector<size_t, 4> openBrackets;
-  for (size_t i = 0, e = spec.size(); i != e; ++i) {
-    if (spec[i] == '<') {
-      openBrackets.push_back(i);
-    } else if (spec[i] == '>') {
-      if (openBrackets.empty()) {
-        emitError(loc, "unbalanced '<' in '") << spec << "'";
-        return false;
-      }
-      matchingRAngleOffset.push_back(i - openBrackets.pop_back_val());
-    }
-  }
-  return true;
-}
-
-static ParseResult parseStructHelper(
-    SPIRVDialect const &dialect, StringRef spec, Location loc,
-    ArrayRef<size_t> matchingRAngleOffset, SmallVectorImpl<Type> &memberTypes,
-    SmallVectorImpl<StructType::LayoutInfo> &layoutInfo,
-    SmallVectorImpl<StructType::MemberDecorationInfo> &memberDecorationsInfo) {
-  // Check if the occurrence of ',' or '<' is before. If former, split using
-  // ','. If latter, split using matching '>' to get the entire type
-  // description
-  auto firstComma = spec.find(',');
-  auto firstLAngle = spec.find('<');
-  if (firstLAngle == StringRef::npos && firstComma == StringRef::npos) {
-    return parseStructElement(dialect, spec, loc, memberTypes, layoutInfo,
-                              memberDecorationsInfo);
-  }
-  if (firstLAngle == StringRef::npos || firstComma < firstLAngle) {
-    // Parse the type before the ','
-    if (parseStructElement(dialect, spec.substr(0, firstComma), loc,
-                           memberTypes, layoutInfo, memberDecorationsInfo)) {
-      return failure();
-    }
-    return parseStructHelper(dialect, spec.substr(firstComma + 1).ltrim(), loc,
-                             matchingRAngleOffset, memberTypes, layoutInfo,
-                             memberDecorationsInfo);
-  }
-  auto matchingRAngle = matchingRAngleOffset.front() + firstLAngle;
-  // Find the next ',' or '>'
-  auto endLoc = std::min(spec.find(',', matchingRAngle + 1), spec.size());
-  if (parseStructElement(dialect, spec.substr(0, endLoc), loc, memberTypes,
-                         layoutInfo, memberDecorationsInfo)) {
-    return failure();
-  }
-  auto rest = spec.substr(endLoc + 1).ltrim();
-  if (rest.empty()) {
-    return success();
-  }
-  if (rest.front() == ',') {
-    return parseStructHelper(
-        dialect, rest.drop_front().trim(), loc,
-        ArrayRef<size_t>(std::next(matchingRAngleOffset.begin()),
-                         matchingRAngleOffset.end()),
-        memberTypes, layoutInfo, memberDecorationsInfo);
-  }
-  emitError(loc, "unexpected string : '") << rest << "'";
-  return failure();
 }
 
 // struct-member-decoration ::= integer-literal? spirv-decoration*
@@ -556,25 +475,55 @@ static Type parseStructType(SPIRVDialect const &dialect, StringRef spec,
     return Type();
   }
 
-  if (spec.trim().empty()) {
-    emitError(loc, "expected SPIR-V type");
-    return Type();
-  }
-
   SmallVector<Type, 4> memberTypes;
   SmallVector<StructType::LayoutInfo, 4> layoutInfo;
-  SmallVector<StructType::MemberDecorationInfo, 4> memberDecorationsInfo;
-  SmallVector<size_t, 4> matchingRAngleOffset;
-  if (!computeMatchingRAngles(loc, spec, matchingRAngleOffset) ||
-      parseStructHelper(dialect, spec, loc, matchingRAngleOffset, memberTypes,
-                        layoutInfo, memberDecorationsInfo)) {
+  SmallVector<StructType::MemberDecorationInfo, 4> memberDecorationInfo;
+
+  auto *context = dialect.getContext();
+  while (!spec.empty()) {
+    spec = spec.trim();
+    size_t pos = 0;
+    auto memberType = mlir::parseType(spec, context, pos);
+    if (!memberType) {
+      emitError(loc, "cannot parse type from '") << spec << "'";
+    }
+    memberTypes.push_back(memberType);
+
+    spec = spec.substr(pos).trim();
+    if (spec.consume_front("[")) {
+      auto rSquare = spec.find(']');
+      if (rSquare == StringRef::npos) {
+        emitError(loc, "missing matching ']' in ") << spec;
+        return Type();
+      }
+      if (parseStructMemberDecorations(dialect, loc, spec.substr(0, rSquare),
+                                       memberTypes, layoutInfo,
+                                       memberDecorationInfo)) {
+        return Type();
+      }
+      spec = spec.substr(rSquare + 1).trim();
+    }
+
+    // Handle comma.
+    if (!spec.consume_front(",")) {
+      // End of decorations list.
+      break;
+    }
+  }
+  spec = spec.trim();
+  if (!spec.empty()) {
+    emitError(loc, "unexpected substring '")
+        << spec << "' while parsing StructType";
     return Type();
   }
   if (!layoutInfo.empty() && memberTypes.size() != layoutInfo.size()) {
     emitError(loc, "layout specification must be given for all members");
     return Type();
   }
-  return StructType::get(memberTypes, layoutInfo, memberDecorationsInfo);
+  if (memberTypes.empty()) {
+    return StructType::getEmpty(dialect.getContext());
+  }
+  return StructType::get(memberTypes, layoutInfo, memberDecorationInfo);
 }
 
 // spirv-type ::= array-type
@@ -640,17 +589,17 @@ static void print(StructType type, llvm::raw_ostream &os) {
       if (type.hasLayout()) {
         os << type.getOffset(i);
         if (!decorations.empty())
-          os << " ";
+          os << ", ";
       }
       auto each_fn = [&os](spirv::Decoration decoration) {
         os << stringifyDecoration(decoration);
       };
-      mlir::interleave(decorations, os, each_fn, " ");
+      interleaveComma(decorations, os, each_fn);
       os << "]";
     }
   };
-  mlir::interleaveComma(llvm::seq<unsigned>(0, type.getNumElements()), os,
-                        printMember);
+  interleaveComma(llvm::seq<unsigned>(0, type.getNumElements()), os,
+                  printMember);
   os << ">";
 }
 

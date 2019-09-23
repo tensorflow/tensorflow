@@ -238,8 +238,8 @@ func @nested_struct_with_offset(!spv.struct<f32 [0], !spv.struct<f32 [0], i32 [4
 // CHECK: func @struct_type_with_decoration(!spv.struct<f32 [NonWritable]>)
 func @struct_type_with_decoration(!spv.struct<f32 [NonWritable]>)
 
-// CHECK: func @struct_type_with_decoration_and_offset(!spv.struct<f32 [0 NonWritable]>)
-func @struct_type_with_decoration_and_offset(!spv.struct<f32 [0 NonWritable]>)
+// CHECK: func @struct_type_with_decoration_and_offset(!spv.struct<f32 [0, NonWritable]>)
+func @struct_type_with_decoration_and_offset(!spv.struct<f32 [0, NonWritable]>)
 
 // CHECK: func @struct_type_with_decoration2(!spv.struct<f32 [NonWritable], i32 [NonReadable]>)
 func @struct_type_with_decoration2(!spv.struct<f32 [NonWritable], i32 [NonReadable]>)
@@ -247,11 +247,23 @@ func @struct_type_with_decoration2(!spv.struct<f32 [NonWritable], i32 [NonReadab
 // CHECK: func @struct_type_with_decoration3(!spv.struct<f32, i32 [NonReadable]>)
 func @struct_type_with_decoration3(!spv.struct<f32, i32 [NonReadable]>)
 
-// CHECK: func @struct_type_with_decoration4(!spv.struct<f32 [0], i32 [4 NonReadable]>)
-func @struct_type_with_decoration4(!spv.struct<f32 [0], i32 [4 NonReadable]>)
+// CHECK: func @struct_type_with_decoration4(!spv.struct<f32 [0], i32 [4, NonReadable]>)
+func @struct_type_with_decoration4(!spv.struct<f32 [0], i32 [4, NonReadable]>)
 
-// CHECK: func @struct_type_with_decoration5(!spv.struct<f32 [NonWritable NonReadable]>)
-func @struct_type_with_decoration5(!spv.struct<f32 [NonWritable NonReadable]>)
+// CHECK: func @struct_type_with_decoration5(!spv.struct<f32 [NonWritable, NonReadable]>)
+func @struct_type_with_decoration5(!spv.struct<f32 [NonWritable, NonReadable]>)
+
+// CHECK: func @struct_type_with_decoration6(!spv.struct<f32, !spv.struct<i32 [NonWritable, NonReadable]>>)
+func @struct_type_with_decoration6(!spv.struct<f32, !spv.struct<i32 [NonWritable, NonReadable]>>)
+
+// CHECK: func @struct_type_with_decoration7(!spv.struct<f32 [0], !spv.struct<i32, f32 [NonReadable]> [4]>)
+func @struct_type_with_decoration7(!spv.struct<f32 [0], !spv.struct<i32, f32 [NonReadable]> [4]>)
+
+// CHECK: func @struct_type_with_decoration8(!spv.struct<f32, !spv.struct<i32 [0], f32 [4, NonReadable]>>)
+func @struct_type_with_decoration8(!spv.struct<f32, !spv.struct<i32 [0], f32 [4, NonReadable]>>)
+
+// CHECK: func @struct_empty(!spv.struct<>)
+func @struct_empty(!spv.struct<>)
 
 // -----
 
@@ -265,12 +277,12 @@ func @struct_type_missing_offset2(!spv.struct<f32 [3], i32>) -> ()
 
 // -----
 
-// expected-error @+1 {{cannot parse type: f32 i32}}
+// expected-error @+1 {{unexpected substring 'i32' while parsing StructType}}
 func @struct_type_missing_comma1(!spv.struct<f32 i32>) -> ()
 
 // -----
 
-// expected-error @+1 {{expected struct member offset/decoration within '[' ']' in 'f32 [0] i32'}}
+// expected-error @+1 {{unexpected substring 'i32' while parsing StructType}}
 func @struct_type_missing_comma2(!spv.struct<f32 [0] i32>) -> ()
 
 // -----
@@ -290,5 +302,20 @@ func @struct_type_neg_offset(!spv.struct<f32 0]>) -> ()
 
 // -----
 
-//  expected-error @+1 {{unknown attribute: '0'}}
+//  expected-error @+1 {{unknown attribute: 'NonWritable 0'}}
 func @struct_type_neg_offset(!spv.struct<f32 [NonWritable 0]>) -> ()
+
+// -----
+
+//  expected-error @+1 {{unknown attribute: '0'}}
+func @struct_type_neg_offset(!spv.struct<f32 [NonWritable, 0]>) -> ()
+
+// -----
+
+// expected-error @+1 {{unknown attribute: '0 NonWritable'}}
+func @struct_type_missing_comma(!spv.struct<f32 [0 NonWritable], i32 [4]>)
+
+// -----
+
+// expected-error @+1 {{unknown attribute: 'NonWritable NonReadable'}}
+func @struct_type_missing_comma(!spv.struct<f32 [0, NonWritable NonReadable], i32 [4]>)

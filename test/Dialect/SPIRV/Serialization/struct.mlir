@@ -13,14 +13,17 @@ spv.module "Logical" "GLSL450" {
   // CHECK: !spv.ptr<!spv.struct<!spv.array<128 x !spv.struct<!spv.array<128 x f32 [4]> [0]> [4]> [0]>, StorageBuffer>
   spv.globalVariable @var3 : !spv.ptr<!spv.struct<!spv.array<128 x !spv.struct<!spv.array<128 x f32 [4]> [0]> [4]> [0]>, StorageBuffer>
 
-  // CHECK: !spv.ptr<!spv.struct<f32 [0 NonWritable], i32 [4]>, StorageBuffer>
-  spv.globalVariable @var4 : !spv.ptr<!spv.struct<f32 [0 NonWritable], i32 [4]>, StorageBuffer>
+  // CHECK: !spv.ptr<!spv.struct<f32 [0, NonWritable], i32 [4]>, StorageBuffer>
+  spv.globalVariable @var4 : !spv.ptr<!spv.struct<f32 [0, NonWritable], i32 [4]>, StorageBuffer>
 
-  // CHECK: !spv.ptr<!spv.struct<f32 [NonWritable], i32 [NonWritable NonReadable]>, StorageBuffer>
-  spv.globalVariable @var5 : !spv.ptr<!spv.struct<f32 [NonWritable], i32 [NonWritable NonReadable]>, StorageBuffer>
+  // CHECK: !spv.ptr<!spv.struct<f32 [NonWritable], i32 [NonWritable, NonReadable]>, StorageBuffer>
+  spv.globalVariable @var5 : !spv.ptr<!spv.struct<f32 [NonWritable], i32 [NonWritable, NonReadable]>, StorageBuffer>
 
-  // CHECK: !spv.ptr<!spv.struct<f32 [0 NonWritable], i32 [4 NonWritable NonReadable]>, StorageBuffer>
-  spv.globalVariable @var6 : !spv.ptr<!spv.struct<f32 [0 NonWritable], i32 [4 NonWritable NonReadable]>, StorageBuffer>
+  // CHECK: !spv.ptr<!spv.struct<f32 [0, NonWritable], i32 [4, NonWritable, NonReadable]>, StorageBuffer>
+  spv.globalVariable @var6 : !spv.ptr<!spv.struct<f32 [0, NonWritable], i32 [4, NonWritable, NonReadable]>, StorageBuffer>
+
+  // CHECK: !spv.ptr<!spv.struct<>, StorageBuffer>
+  spv.globalVariable @empty : !spv.ptr<!spv.struct<>, StorageBuffer>
 
   // CHECK: !spv.ptr<!spv.struct<!spv.array<128 x f32 [4]> [0]>, Input>,
   // CHECK-SAME: !spv.ptr<!spv.struct<!spv.array<128 x f32 [4]> [0]>, Output>

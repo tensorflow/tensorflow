@@ -4229,7 +4229,8 @@ OwningModuleRef mlir::parseSourceString(StringRef moduleStr,
   return parseSourceFile(sourceMgr, context);
 }
 
-Type mlir::parseType(llvm::StringRef typeStr, MLIRContext *context) {
+Type mlir::parseType(llvm::StringRef typeStr, MLIRContext *context,
+                     size_t &numRead) {
   SourceMgr sourceMgr;
   auto memBuffer =
       MemoryBuffer::getMemBuffer(typeStr, /*BufferName=*/"<mlir_type_buffer>",
@@ -4238,18 +4239,18 @@ Type mlir::parseType(llvm::StringRef typeStr, MLIRContext *context) {
   SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, context);
   ParserState state(sourceMgr, context);
   Parser parser(state);
+
   auto start = parser.getToken().getLoc();
   auto ty = parser.parseType();
   if (!ty)
     return Type();
 
   auto end = parser.getToken().getLoc();
-  auto read = end.getPointer() - start.getPointer();
-  // Make sure that the parsing of type consumes the entire string
-  if (static_cast<size_t>(read) < typeStr.size()) {
-    parser.emitError("unexpected additional tokens: '")
-        << typeStr.substr(read) << "' after parsing type: " << ty;
-    return Type();
-  }
+  numRead = static_cast<size_t>(end.getPointer() - start.getPointer());
   return ty;
+}
+
+Type mlir::parseType(llvm::StringRef typeStr, MLIRContext *context) {
+  size_t numRead = 0;
+  return parseType(typeStr, context, numRead);
 }

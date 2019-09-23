@@ -1045,7 +1045,7 @@ func @bad_complex(complex<i32)
 
 // -----
 
-// expected-error @+1 {{cannot parse type: i32 f32}}
+// expected-error @+1 {{unexpected additional tokens 'f32' after parsing type: 'i32'}}
 func @bad_tuple(!spv.ptr<i32 f32, Uniform>)
 
 // -----
