@@ -770,8 +770,11 @@ Status DatasetOpsTestBaseV2::MakeDataset(
     created_tensors->push_back(std::move(t));
   }
   gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_RETURN_IF_ERROR(
-      dataset_params.GetInputs(input_datasets, created_tensors, &inputs));
+  for (auto input_dataset : input_datasets) {
+    inputs.emplace_back(TensorValue(input_dataset));
+  }
+  AddTensorInputs(dataset_params.GetInputTensors(), created_tensors, &inputs);
+
   TF_RETURN_IF_ERROR(MakeDatasetOpKernel(dataset_params, dataset_kernel));
   TF_RETURN_IF_ERROR(CreateDatasetContext(dataset_kernel->get(), &inputs,
                                           dataset_ctx_params, dataset_ctx));
@@ -826,13 +829,14 @@ Status DatasetOpsTestBaseV2::MakeDatasetTensor(
 
   AttributeVector attributes;
   TF_RETURN_IF_ERROR(dataset_params.GetAttributes(&attributes));
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_RETURN_IF_ERROR(
-      dataset_params.GetInputs(input_datasets, created_tensors, &inputs));
-  std::vector<Tensor> input_tensors;
-  for (auto& tensor_value : inputs) {
-    input_tensors.emplace_back(*tensor_value.tensor);
+
+  std::vector<Tensor> dataset_inputs;
+  for (auto input_dataset : input_datasets) {
+    dataset_inputs.emplace_back(*input_dataset);
   }
+  auto input_tensors = dataset_params.GetInputTensors();
+  dataset_inputs.insert(dataset_inputs.end(), input_tensors.begin(),
+                        input_tensors.end());
 
   GraphConstructorOptions graph_opts;
   graph_opts.allow_internal_ops = true;
@@ -841,9 +845,20 @@ Status DatasetOpsTestBaseV2::MakeDatasetTensor(
   TF_RETURN_IF_ERROR(dataset_params.CreateFactory(&make_dataset_tensor_fdef));
   *dataset = std::make_unique<Tensor>();
   TF_RETURN_IF_ERROR(RunFunction(make_dataset_tensor_fdef, attributes,
-                                 input_tensors, graph_opts,
+                                 dataset_inputs, graph_opts,
                                  /*rets=*/{dataset->get()}));
   return Status::OK();
+}
+
+void DatasetOpsTestBaseV2::AddTensorInputs(
+    const std::vector<Tensor>& tensors,
+    std::vector<std::unique_ptr<Tensor>>* created_tensors,
+    gtl::InlinedVector<TensorValue, 4>* inputs) const {
+  for (auto& input : tensors) {
+    auto copy = absl::make_unique<Tensor>(input);
+    inputs->push_back(TensorValue(copy.get()));
+    created_tensors->push_back(std::move(copy));
+  }
 }
 
 DatasetParams::DatasetParams(DataTypeVector output_dtypes,
@@ -863,23 +878,21 @@ RangeDatasetParams::RangeDatasetParams(
     std::vector<PartialTensorShape> output_shapes, string node_name)
     : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                     std::move(node_name)),
-      start_(CreateTensor<int64>(TensorShape({}), {start})),
-      stop_(CreateTensor<int64>(TensorShape({}), {stop})),
-      step_(CreateTensor<int64>(TensorShape({}), {step})) {}
+      start_(start),
+      stop_(stop),
+      step_(step) {}
 
 RangeDatasetParams::RangeDatasetParams(int64 start, int64 stop, int64 step)
     : DatasetParams({DT_INT64}, {PartialTensorShape({})}, "range_dataset"),
-      start_(CreateTensor<int64>(TensorShape({}), {start})),
-      stop_(CreateTensor<int64>(TensorShape({}), {stop})),
-      step_(CreateTensor<int64>(TensorShape({}), {step})) {}
+      start_(start),
+      stop_(stop),
+      step_(step) {}
 
-Status RangeDatasetParams::GetInputs(
-    const std::vector<Tensor*>& input_datasets,
-    std::vector<std::unique_ptr<Tensor>>* created_tensors,
-    gtl::InlinedVector<TensorValue, 4>* inputs) const {
-  inputs->clear();
-  AddTensorInputs({start_, stop_, step_}, created_tensors, inputs);
-  return Status::OK();
+std::vector<Tensor> RangeDatasetParams::GetInputTensors() const {
+  Tensor start_tensor = CreateTensor<int64>(TensorShape({}), {start_});
+  Tensor stop_tensor = CreateTensor<int64>(TensorShape({}), {stop_});
+  Tensor step_tensor = CreateTensor<int64>(TensorShape({}), {step_});
+  return {start_tensor, stop_tensor, step_tensor};
 }
 
 Status RangeDatasetParams::GetInputPlaceholder(
@@ -904,14 +917,11 @@ string RangeDatasetParams::op_name() const {
   return RangeDatasetOp::kDatasetType;
 }
 
-Status BatchDatasetParams::GetInputs(
-    const std::vector<Tensor*>& input_datasets,
-    std::vector<std::unique_ptr<Tensor>>* created_tensors,
-    gtl::InlinedVector<TensorValue, 4>* inputs) const {
-  inputs->clear();
-  TF_RETURN_IF_ERROR(AddDatasetInputs(input_datasets, 1, inputs));
-  AddTensorInputs({batch_size_, drop_remainder_}, created_tensors, inputs);
-  return Status::OK();
+std::vector<Tensor> BatchDatasetParams::GetInputTensors() const {
+  Tensor batch_size = CreateTensor<int64>(TensorShape({}), {batch_size_});
+  Tensor drop_remainder =
+      CreateTensor<bool>(TensorShape({}), {drop_remainder_});
+  return {batch_size, drop_remainder};
 }
 
 Status BatchDatasetParams::GetInputPlaceholder(
@@ -940,14 +950,8 @@ string BatchDatasetParams::op_name() const {
 
 int BatchDatasetParams::op_version() const { return op_version_; }
 
-Status MapDatasetParams::GetInputs(
-    const std::vector<Tensor*>& input_datasets,
-    std::vector<std::unique_ptr<Tensor>>* created_tensors,
-    gtl::InlinedVector<TensorValue, 4>* inputs) const {
-  inputs->clear();
-  TF_RETURN_IF_ERROR(AddDatasetInputs(input_datasets, 1, inputs));
-  AddTensorInputs(other_arguments_, created_tensors, inputs);
-  return Status::OK();
+std::vector<Tensor> MapDatasetParams::GetInputTensors() const {
+  return other_arguments_;
 }
 
 Status MapDatasetParams::GetInputPlaceholder(
@@ -991,13 +995,8 @@ TensorSliceDatasetParams::TensorSliceDatasetParams(
                     TensorSliceShapes(components), std::move(node_name)),
       components_(std::move(components)) {}
 
-Status TensorSliceDatasetParams::GetInputs(
-    const std::vector<Tensor*>& input_datasets,
-    std::vector<std::unique_ptr<Tensor>>* created_tensors,
-    gtl::InlinedVector<TensorValue, 4>* inputs) const {
-  inputs->clear();
-  AddTensorInputs(components_, created_tensors, inputs);
-  return Status::OK();
+std::vector<Tensor> TensorSliceDatasetParams::GetInputTensors() const {
+  return components_;
 }
 
 Status TensorSliceDatasetParams::GetInputPlaceholder(
@@ -1048,14 +1047,8 @@ string TensorSliceDatasetParams::op_name() const {
   return TensorSliceDatasetOp::kDatasetType;
 }
 
-Status TakeDatasetParams::GetInputs(
-    const std::vector<Tensor*>& input_datasets,
-    std::vector<std::unique_ptr<Tensor>>* created_tensors,
-    gtl::InlinedVector<TensorValue, 4>* inputs) const {
-  inputs->clear();
-  TF_RETURN_IF_ERROR(AddDatasetInputs(input_datasets, 1, inputs));
-  AddTensorInputs({count_}, created_tensors, inputs);
-  return Status::OK();
+std::vector<Tensor> TakeDatasetParams::GetInputTensors() const {
+  return {CreateTensor<int64>(TensorShape({}), {count_})};
 }
 
 Status TakeDatasetParams::GetInputPlaceholder(

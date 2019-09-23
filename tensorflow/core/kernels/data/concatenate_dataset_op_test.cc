@@ -40,13 +40,7 @@ class ConcatenateDatasetParams : public DatasetParams {
                                    input_dataset_params_0.iterator_prefix());
   }
 
-  Status GetInputs(const std::vector<Tensor*>& input_datasets,
-                   std::vector<std::unique_ptr<Tensor>>* created_tensors,
-                   gtl::InlinedVector<TensorValue, 4>* inputs) const override {
-    inputs->clear();
-    TF_RETURN_IF_ERROR(AddDatasetInputs(input_datasets, 2, inputs));
-    return Status::OK();
-  }
+  std::vector<Tensor> GetInputTensors() const override { return {}; }
 
   Status GetInputPlaceholder(
       std::vector<string>* input_placeholder) const override {
