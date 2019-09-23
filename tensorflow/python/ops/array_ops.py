@@ -3965,6 +3965,7 @@ def reverse_sequence(input,
   In contrast, if:
 
   ```python
+  # Given this:
   batch_dim = 2
   seq_dim = 0
   input.dims = (8, ?, 4, ...)
