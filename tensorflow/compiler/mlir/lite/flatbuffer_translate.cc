@@ -820,7 +820,7 @@ void Translator::InitializeNamesFromAttribute(FuncOp fn) {
   llvm::SmallVector<llvm::StringRef, 2> input_names;
   llvm::SmallVector<llvm::StringRef, 2> output_names;
   if (auto str = dict_attr.get("inputs").dyn_cast<mlir::StringAttr>()) {
-    str.getValue().split(input_names, " ,", /*MaxSplit=*/-1,
+    str.getValue().split(input_names, ',', /*MaxSplit=*/-1,
                          /*KeepEmpty=*/false);
     if (input_names.size() != fn.getNumArguments()) {
       fn.emitWarning() << "invalid entry function specification";
@@ -828,12 +828,12 @@ void Translator::InitializeNamesFromAttribute(FuncOp fn) {
     }
     for (auto it : llvm::enumerate(fn.getArguments())) {
       name_mapper_.InitOpName(*it.value()->user_begin(),
-                              input_names[it.index()]);
+                              input_names[it.index()].trim());
     }
   }
 
   if (auto str = dict_attr.get("outputs").dyn_cast<mlir::StringAttr>()) {
-    str.getValue().split(output_names, " ,", /*MaxSplit=*/-1,
+    str.getValue().split(output_names, ',', /*MaxSplit=*/-1,
                          /*KeepEmpty=*/false);
     auto term = fn.getBlocks().back().getTerminator();
     if (output_names.size() != term->getNumOperands()) {
@@ -848,7 +848,9 @@ void Translator::InitializeNamesFromAttribute(FuncOp fn) {
       // insert an op so that we can have a buffer named such. This cannot
       // currently happen due to pseudo_input nodes.
       if (auto op = it.value()->getDefiningOp()) {
-        name_mapper_.InitOpName(op, output_names[it.index()]);
+        name_mapper_.InitOpName(op, output_names[it.index()].trim());
+        fprintf(stderr, "HERE: %s\n",
+                output_names[it.index()].trim().str().c_str());
       } else {
         fn.emitWarning() << "output is not due to an op and '"
                          << output_names[it.index()]

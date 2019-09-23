@@ -144,7 +144,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
-    self.assertEqual('add', output_details[0]['name'])
+    self.assertEqual('output', output_details[0]['name'])
     self.assertEqual(np.uint8, output_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
     self.assertGreater(output_details[0]['quantization'][0], 0)  # scale
