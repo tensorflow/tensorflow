@@ -1434,7 +1434,7 @@ StringRef OperationPrinter::uniqueValueName(StringRef name) {
     // generates new names by incrementing nextConflictID.
     SmallString<64> probeName(name);
     probeName.push_back('_');
-    while (1) {
+    while (true) {
       probeName.resize(name.size() + 1);
       probeName += llvm::utostr(nextConflictID++);
       if (!usedNames.count(probeName)) {

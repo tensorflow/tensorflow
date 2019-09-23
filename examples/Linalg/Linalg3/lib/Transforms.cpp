@@ -258,7 +258,7 @@ struct Rewriter : public OpRewritePattern<LoadOrStoreOpTy> {
 
 struct LowerLinalgLoadStorePass
     : public FunctionPass<LowerLinalgLoadStorePass> {
-  void runOnFunction() {
+  void runOnFunction() override {
     OwningRewritePatternList patterns;
     auto *context = &getContext();
     patterns.insert<Rewriter<linalg::LoadOp>, Rewriter<linalg::StoreOp>>(

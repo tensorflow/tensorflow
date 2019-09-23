@@ -165,7 +165,7 @@ private:
   }
 
   /// Process member decoration
-  LogicalResult processMemberDecoration(uint32_t structID, uint32_t memberNum,
+  LogicalResult processMemberDecoration(uint32_t structID, uint32_t memberIndex,
                                         spirv::Decoration decorationType,
                                         ArrayRef<uint32_t> values = {});
 

@@ -4102,7 +4102,7 @@ ParseResult ModuleParser::parseModule(ModuleOp module) {
   // Module itself is a name scope.
   opParser.pushSSANameScope(/*isIsolated=*/true);
 
-  while (1) {
+  while (true) {
     switch (getToken().getKind()) {
     default:
       // Parse a top-level operation.

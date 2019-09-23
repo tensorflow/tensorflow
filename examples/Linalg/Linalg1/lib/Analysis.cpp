@@ -56,7 +56,7 @@ std::pair<mlir::Value *, unsigned> linalg::getViewRootIndexing(Value *view,
   unsigned sliceDim = sliceOp.getSlicingDim();
   auto *indexing = sliceOp.getIndexing();
   if (indexing->getDefiningOp()) {
-    if (auto rangeOp = cast<RangeOp>(indexing->getDefiningOp())) {
+    if (auto rangeOp = dyn_cast<RangeOp>(indexing->getDefiningOp())) {
       // If I sliced with a range and I sliced at this dim, then I'm it.
       if (dim == sliceDim) {
         return std::make_pair(rangeOp.getResult(), dim);
