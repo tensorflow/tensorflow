@@ -6,11 +6,8 @@ load(
     "if_static",
     "tf_additional_grpc_deps_py",
     "tf_additional_xla_deps_py",
-<<<<<<< HEAD
     "tf_gpu_tests_tags",
     "tf_cuda_tests_tags",
-=======
->>>>>>> master
     "tf_exec_compatible_with",
     "tf_sycl_tests_tags",
 )

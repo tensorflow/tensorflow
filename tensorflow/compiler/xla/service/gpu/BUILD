@@ -1074,11 +1074,8 @@ cc_library(
         ":cudnn_pad_for_convolutions",
         ":fusion_merger",
         ":gpu_constants",
-<<<<<<< HEAD
         ":gpu_conv_algorithm_picker",
-=======
         ":gpu_conv_padding_legalization",
->>>>>>> master
         ":gpu_copy_insertion",
         ":gpu_executable",
         ":gpu_hlo_schedule",
@@ -1187,11 +1184,6 @@ cc_library(
     ],
     deps = [
         ":cublas_gemm_pad_for_tensor_cores",
-<<<<<<< HEAD
-        ":cudnn_conv_padding_legalization",
-=======
-        ":cudnn_conv_algorithm_picker",
->>>>>>> master
         ":cudnn_conv_rewriter",
         ":cudnn_fused_conv_rewriter",
         ":cudnn_pad_for_convolutions",
@@ -1199,11 +1191,8 @@ cc_library(
         ":gemm_algorithm_picker",
         ":gemm_rewriter",
         ":gpu_compiler",
-<<<<<<< HEAD
         ":gpu_conv_algorithm_picker",
-=======
         ":gpu_conv_padding_legalization",
->>>>>>> master
         ":gpu_layout_assignment",
         ":stream_executor_util",
         ":target_constants",
@@ -1256,12 +1245,9 @@ cc_library(
         "amdgpu_compiler.h"
     ],
     deps = [
-<<<<<<< HEAD
-        ":gpu_compiler",
-        ":gpu_conv_algorithm_picker",
-=======
         ":cudnn_conv_rewriter",
         ":gpu_compiler",
+        ":gpu_conv_algorithm_picker",
         ":gpu_conv_padding_legalization",
         ":gpu_layout_assignment",
         ":target_constants",
@@ -1279,7 +1265,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
->>>>>>> master
         "//tensorflow/core/platform:rocm_rocdl_path",
     ],
 )
