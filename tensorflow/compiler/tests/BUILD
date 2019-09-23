@@ -395,6 +395,7 @@ tf_xla_py_test(
     srcs = ["depthwise_conv_op_test.py"],
     shard_count = 5,
     tags = [
+        "no_rocm",
         "noasan",
         "nomsan",
         "notsan",
