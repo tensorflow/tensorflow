@@ -82,6 +82,36 @@ void SymbolTable::insert(Operation *symbol) {
   symbol->setAttr(getSymbolAttrName(), StringAttr::get(nameBuffer, context));
 }
 
+/// Returns the operation registered with the given symbol name with the
+/// regions of 'symbolTableOp'. 'symbolTableOp' is required to be an operation
+/// with the 'OpTrait::SymbolTable' trait. Returns nullptr if no valid symbol
+/// was found.
+Operation *SymbolTable::lookupSymbolIn(Operation *symbolTableOp,
+                                       StringRef symbol) {
+  assert(symbolTableOp->hasTrait<OpTrait::SymbolTable>());
+
+  // Look for a symbol with the given name.
+  for (auto &block : symbolTableOp->getRegion(0)) {
+    for (auto &op : block) {
+      auto nameAttr = op.template getAttrOfType<StringAttr>(
+          mlir::SymbolTable::getSymbolAttrName());
+      if (nameAttr && nameAttr.getValue() == symbol)
+        return &op;
+    }
+  }
+  return nullptr;
+}
+
+/// Returns the operation registered with the given symbol name within the
+/// closes parent operation with the 'OpTrait::SymbolTable' trait. Returns
+/// nullptr if no valid symbol was found.
+Operation *SymbolTable::lookupNearestSymbolFrom(Operation *from,
+                                                StringRef symbol) {
+  while (from && !from->hasTrait<OpTrait::SymbolTable>())
+    from = from->getParentOp();
+  return from ? lookupSymbolIn(from, symbol) : nullptr;
+}
+
 //===----------------------------------------------------------------------===//
 // SymbolTable Trait Types
 //===----------------------------------------------------------------------===//
