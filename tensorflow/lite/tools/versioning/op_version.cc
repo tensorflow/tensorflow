@@ -253,6 +253,14 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_ABS:
+      if (op_sig.input_types.at(0) == TensorType_INT8 ||
+          op_sig.input_types.at(0) == TensorType_UINT8 ||
+          op_sig.input_types.at(0) == TensorType_INT32) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_AVERAGE_POOL_2D:
     case BuiltinOperator_ADD:
     case BuiltinOperator_SPACE_TO_BATCH_ND:

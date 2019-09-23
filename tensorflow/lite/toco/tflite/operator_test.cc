@@ -110,6 +110,7 @@ class OperatorTest : public ::testing::Test {
 };
 
 TEST_F(OperatorTest, SimpleOperators) {
+  CheckSimpleOperator<AbsOperator>("ABS", OperatorType::kAbs);
   CheckSimpleOperator<FloorOperator>("FLOOR", OperatorType::kFloor);
   CheckSimpleOperator<CeilOperator>("CEIL", OperatorType::kCeil);
   CheckSimpleOperator<EluOperator>("ELU", OperatorType::kElu);
@@ -191,7 +192,7 @@ TEST_F(OperatorTest, BuiltinAbs) {
   Model uint8_model;
   Array& input_uint8_array = uint8_model.GetOrCreateArray(abs_op.inputs[0]);
   input_uint8_array.data_type = ArrayDataType::kUint8;
-  OperatorSignature int8_signature;
+  OperatorSignature uint8_signature;
   uint8_signature.op = &abs_op;
   uint8_signature.model = &uint8_model;
   EXPECT_EQ(op->GetVersion(uint8_signature), 2);
