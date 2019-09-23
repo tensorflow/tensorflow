@@ -1174,6 +1174,7 @@ cc_library(
     hdrs = [
         "include/mlir/Analysis/AffineAnalysis.h",
         "include/mlir/Analysis/AffineStructures.h",
+        "include/mlir/Analysis/CallGraph.h",
         "include/mlir/Analysis/CallInterfaces.h",
         "include/mlir/Analysis/Dominance.h",
         "include/mlir/Analysis/LoopAnalysis.h",

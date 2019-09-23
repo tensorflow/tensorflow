@@ -82,6 +82,7 @@ cc_library(
 cc_library(
     name = "TestTransforms",
     srcs = [
+        "lib/Transforms/TestCallGraph.cpp",
         "lib/Transforms/TestConstantFold.cpp",
         "lib/Transforms/TestInlining.cpp",
         "lib/Transforms/TestLoopFusion.cpp",
