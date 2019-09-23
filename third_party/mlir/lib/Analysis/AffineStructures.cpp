@@ -2632,7 +2632,7 @@ void FlatAffineConstraints::FourierMotzkinEliminate(
   LLVM_DEBUG(llvm::dbgs() << "FM isResultIntegerExact: " << (lcmProducts == 1)
                           << "\n");
   if (lcmProducts == 1 && isResultIntegerExact)
-    *isResultIntegerExact = 1;
+    *isResultIntegerExact = true;
 
   // Copy over the constraints not involving this variable.
   for (auto nbPos : nbIndices) {

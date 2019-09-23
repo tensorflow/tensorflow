@@ -18,6 +18,7 @@
 #include "PassDetail.h"
 #include "mlir/Pass/PassManager.h"
 #include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/Format.h"
@@ -86,7 +87,7 @@ struct Timer {
                        std::function<std::string()> &&nameBuilder) {
     auto &child = children[id];
     if (!child)
-      child.reset(new Timer(nameBuilder(), kind));
+      child = std::make_unique<Timer>(nameBuilder(), kind);
     return child.get();
   }
 
@@ -169,7 +170,7 @@ struct Timer {
 
 struct PassTiming : public PassInstrumentation {
   PassTiming(PassTimingDisplayMode displayMode) : displayMode(displayMode) {}
-  ~PassTiming() { print(); }
+  ~PassTiming() override { print(); }
 
   /// Setup the instrumentation hooks.
   void runBeforePipeline(const OperationName &name,
@@ -222,7 +223,7 @@ struct PassTiming : public PassInstrumentation {
     if (activeTimers.empty()) {
       auto &rootTimer = rootTimers[tid];
       if (!rootTimer)
-        rootTimer.reset(new Timer("root", TimerKind::Pipeline));
+        rootTimer = std::make_unique<Timer>("root", TimerKind::Pipeline);
       parentTimer = rootTimer.get();
     } else {
       // Otherwise, add this to the active timer.

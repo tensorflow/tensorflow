@@ -42,7 +42,6 @@
 #define DEBUG_TYPE "LoopUtils"
 
 using namespace mlir;
-using llvm::MapVector;
 using llvm::SetVector;
 using llvm::SmallMapVector;
 

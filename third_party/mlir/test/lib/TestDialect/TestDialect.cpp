@@ -54,7 +54,7 @@ struct TestInlinerInterface : public DialectInlinerInterface {
     return true;
   }
 
-  bool shouldAnalyzeRecursively(Operation *op) const {
+  bool shouldAnalyzeRecursively(Operation *op) const override {
     // Analyze recursively if this is not a functional region operation, it
     // froms a separate functional scope.
     return !isa<FunctionalRegionOp>(op);

@@ -25,6 +25,7 @@
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Module.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Mutex.h"
 #include "llvm/Support/Parallel.h"
@@ -468,7 +469,7 @@ void PassManager::disableMultithreading(bool disable) {
 /// Add the provided instrumentation to the pass manager.
 void PassManager::addInstrumentation(std::unique_ptr<PassInstrumentation> pi) {
   if (!instrumentor)
-    instrumentor.reset(new PassInstrumentor());
+    instrumentor = std::make_unique<PassInstrumentor>();
 
   instrumentor->addInstrumentation(std::move(pi));
 }

@@ -361,7 +361,7 @@ VectorTransferRewriter<VectorTransferWriteOp>::matchAndRewrite(
 
 struct LowerVectorTransfersPass
     : public FunctionPass<LowerVectorTransfersPass> {
-  void runOnFunction() {
+  void runOnFunction() override {
     OwningRewritePatternList patterns;
     auto *context = &getContext();
     patterns.insert<VectorTransferRewriter<vector::VectorTransferReadOp>,
