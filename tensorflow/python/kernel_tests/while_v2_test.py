@@ -611,7 +611,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
   def _assertNotAccumulated(self, while_op, index):
     """Asserts that `while_op` input at `index` is not accumulated."""
-    body_graph = while_v2._get_graph(while_op, "body")
+    body_graph = while_v2._get_graph(while_op, "body", "_body_graph")
     placeholder = body_graph.inputs[index]
     self.assertNotIn("TensorListPushBack",
                      [op.type for op in placeholder.consumers()])
@@ -720,7 +720,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       if op.type == "While" or op.type == "StatelessWhile":
         while_op = op
 
-    body_graph = while_v2._get_graph(while_op, "body")
+    body_graph = while_v2._get_graph(while_op, "body", "_body_graph")
     x_input_index = [i for i, inp in enumerate(while_op.inputs) if inp == x][0]
     x_input_t = body_graph.inputs[x_input_index]
     accumulator_count = len(
@@ -751,7 +751,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
         self.assertListEqual(actual_tensor_shape.as_list(), shape)
 
     def GetAccumulatorForInputAtIndex(while_op, idx):
-      body_graph = while_v2._get_graph(while_op, "body")
+      body_graph = while_v2._get_graph(while_op, "body", "_body_graph")
       y_input_t = body_graph.inputs[idx]
       push_back_node = [c for c in y_input_t.consumers()
                         if c.type == "TensorListPushBack"][0]
@@ -1030,7 +1030,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     # ret is separated from the `While` op by an `Identity` so we skip over
     # that.
     forward_while_op = ret.op.inputs[0].op
-    body_graph = while_v2._get_graph(forward_while_op, "body")
+    body_graph = while_v2._get_graph(forward_while_op, "body", "_body_graph")
     push_back_nodes = [
         o for o in body_graph.get_operations() if o.type == "TensorListPushBack"
     ]
