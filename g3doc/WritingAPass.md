@@ -13,50 +13,61 @@ See [MLIR Rewrites](QuickstartRewrites.md) for a quick start on graph rewriting
 in MLIR. If your transformation involves pattern matching operation DAGs, this
 is a great place to start.
 
-## Pass Types
+## Operation Pass
 
-MLIR provides different pass classes for several different granularities of
-transformation. Depending on the granularity of the transformation being
-performed, a pass may derive from [FunctionPass](#functionpass) or
-[ModulePass](#modulepass); with each requiring a different set of constraints.
+In MLIR, the main unit of abstraction and transformation is an
+[operation](LangRef.md#operations). As such, the pass manager is designed to
+work on instances of operations at different levels of nesting. The structure of
+the [pass manager](#pass-manager), and the concept of nesting, is detailed
+further below. All passes in MLIR derive from `OperationPass` and adhere to the
+following restrictions; Any noncompliance will lead to problematic behavior in
+multithreaded and other advanced scenarios:
 
-### FunctionPass
-
-A function pass operates on a per-function granularity, executing on
-non-external functions within a module in no particular order. Function passes
-have the following restrictions, and any noncompliance will lead to problematic
-behavior in multithreaded and other advanced scenarios:
-
-*   Modify anything within the parent module, outside of the current function
-    being operated on. This includes adding or removing functions from the
-    module.
-*   Maintain pass state across invocations of runOnFunction. A pass may be run
-    on several different functions with no guarantee of execution order.
+*   Modify anything within the parent block/region/operation/etc, outside of the
+    current operation being operated on. This includes adding or removing
+    operations from the parent block.
+*   Maintain pass state across invocations of runOnOperation. A pass may be run
+    on several different operations with no guarantee of execution order.
     *   When multithreading, a specific pass instance may not even execute on
-        all functions within the module. As such, a function pass should not
-        rely on running on all functions within a module.
-*   Access, or modify, the state of another function within the module.
-    *   Other threads may be operating on different functions within the module.
+        all operations within the module. As such, a pass should not rely on
+        running on all operations.
+*   Modify the state of another operation not nested within the current
+    operation being operated on.
+    *   Other threads may be operating on different operations within the module
+        simultaneously.
 *   Maintain any global mutable state, e.g. static variables within the source
     file. All mutable state should be maintained by an instance of the pass.
-
-To create a function pass, a derived class must adhere to the following:
-
-*   Inherit from the CRTP class `FunctionPass`.
-*   Override the virtual `void runOnFunction()` method.
 *   Must be copy-constructible, multiple instances of the pass may be created by
-    the pass manager to process functions in parallel.
+    the pass manager to process operations in parallel.
+*   Inspect the IR of sibling operations. Other threads may be modifying these
+    operations in parallel.
 
-A simple function pass may look like:
+When creating an operation pass, there are two different types to choose from
+depending on the usage scenario:
+
+### OperationPass : Op-Specific
+
+An `op-specific` operation pass operates explicitly on a given operation type.
+This operation type must adhere to the restrictions set by the pass manager for
+pass execution.
+
+To define an op-specific operation pass, a derived class must adhere to the
+following:
+
+*   Inherit from the CRTP class `OperationPass` and provide the operation type
+    as an additional template parameter.
+*   Override the virtual `void runOnOperation()` method.
+
+A simple pass may look like:
 
 ```c++
 namespace {
-struct MyFunctionPass : public FunctionPass<MyFunctionPass> {
-  void runOnFunction() override {
-    // Get the current function being operated on.
-    FuncOp f = getFunction();
+struct MyFunctionPass : public OperationPass<MyFunctionPass, FuncOp> {
+  void runOnOperation() override {
+    // Get the current FuncOp operation being operated on.
+    FuncOp f = getOperation();
 
-    // Operate on the operations within the function.
+    // Walk the operations within the function.
     f.walk([](Operation *inst) {
       ....
     });
@@ -70,113 +81,86 @@ static PassRegistration<MyFunctionPass> pass(
     "flag-name-to-invoke-pass-via-mlir-opt", "Pass description here");
 ```
 
-### ModulePass
+### OperationPass : Op-Agnostic
 
-A module pass operates on a per-module granularity, executing on the entire
-program as a unit. As such, module passes are able to add/remove/modify any
-functions freely. Module passes have the following restrictions, and any
-noncompliance will lead to problematic behavior in multithreaded and other
-advanced scenarios:
+An `op-agnostic` pass operates on the operation type of the pass manager that it
+is added to. This means that a pass that operates on several different operation
+types in the same way only needs one implementation.
 
-*   Maintain pass state across invocations of runOnModule.
-*   Maintain any global mutable state, e.g. static variables within the source
-    file. All mutable state should be maintained by an instance of the pass.
+To create an operation pass, a derived class must adhere to the following:
 
-To create a module pass, a derived class must adhere to the following:
+*   Inherit from the CRTP class `OperationPass`.
+*   Override the virtual `void runOnOperation()` method.
 
-*   Inherit from the CRTP class `ModulePass`.
-*   Override the virtual `void runOnModule()` method.
-
-A simple module pass may look like:
+A simple pass may look like:
 
 ```c++
-namespace {
-struct MyModulePass : public ModulePass<MyModulePass> {
-  void runOnModule() override {
-    // Get the current module being operated on.
-    Module m = getModule();
-
-    // Operate on the functions within the module.
-    for (auto func : m) {
-      ....
-    }
+struct MyOperationPass : public OperationPass<MyOperationPass> {
+  void runOnOperation() override {
+    // Get the current operation being operated on.
+    Operation *op = getOperation();
+    ...
   }
 };
-} // end anonymous namespace
-
-// Register this pass to make it accessible to utilities like mlir-opt.
-// (Pass registration is discussed more below)
-static PassRegistration<MyModulePass> pass(
-    "flag-name-to-invoke-pass-via-mlir-opt", "Pass description here");
 ```
 
 ## Analysis Management
 
 An important concept, along with transformation passes, are analyses. These are
 conceptually similar to transformation passes, except that they compute
-information on a specific FuncOp, or Module, without modifying it. In MLIR,
-analyses are not passes but free standing classes that are computed lazily
-on-demand and cached to avoid unnecessary recomputation. An analysis in MLIR
-must adhere to the following:
+information on a specific operation without modifying it. In MLIR, analyses are
+not passes but free-standing classes that are computed lazily on-demand and
+cached to avoid unnecessary recomputation. An analysis in MLIR must adhere to
+the following:
 
 *   Provide a valid constructor taking an `Operation*`.
 *   Must not modify the given operation.
 
-Each of the base Pass classes provide utilities for querying and preserving
+The base `OperationPass` class provide utilities for querying and preserving
 analyses for the current operation being processed. Using the example passes
 defined above, let's see some examples:
 
 ### Querying Analyses
 
-*   FunctionPass automatically provides the following utilities for querying
+*   OperationPass automatically provides the following utilities for querying
     analyses:
     *   `getAnalysis<>`
+        -   Get an analysis for the current operation, constructing it if
+            necessary.
     *   `getCachedAnalysis<>`
-    *   `getCachedModuleAnalysis<>`
-*   ModulePass automatically provides the following utilities:
-    *   `getAnalysis<>`
-    *   `getCachedAnalysis<>`
-    *   `getFunctionAnalysis<>`
-    *   `getCachedFunctionAnalysis<>`
+        -   Get an analysis for the current operation, if it already exists.
+    *   `getCachedParentAnalysis<>`
+        -   Get an analysis for a given parent operation, if it exists.
+    *   `getCachedChildAnalysis<>`
+        -   Get an analysis for a given child operation, if it exists.
+    *   `getChildAnalysis<>`
+        -   Get an analysis for a given child operation, constructing it if
+            necessary.
+
+A few example usages are shown below:
 
 ```c++
 /// An interesting analysis.
-struct MyFunctionAnalysis {
+struct MyOperationAnalysis {
   // Compute this analysis with the provided operation.
-  MyFunctionAnalysis(Operation *op);
+  MyOperationAnalysis(Operation *op);
 };
 
-void MyFunctionPass::runOnFunction() {
-  // Query MyFunctionAnalysis for the current function.
-  MyFunctionAnalysis &myAnalysis = getAnalysis<MyFunctionAnalysis>();
+void MyOperationPass::runOnOperation() {
+  // Query MyOperationAnalysis for the current operation.
+  MyOperationAnalysis &myAnalysis = getAnalysis<MyOperationAnalysis>();
 
-  // Query a cached instance of MyFunctionAnalysis for the current function. It
-  // will not be computed if it doesn't exist.
-  auto optionalAnalysis = getCachedAnalysis<MyFunctionAnalysis>();
+  // Query a cached instance of MyOperationAnalysis for the current operation.
+  // It will not be computed if it doesn't exist.
+  auto optionalAnalysis = getCachedAnalysis<MyOperationAnalysis>();
   if (optionalAnalysis)
     ...
 
-  // Query a cached instance of MyModuleAnalysis for the parent module of the
-  // current function. It will not be computed if it doesn't exist.
-  auto optionalAnalysis = getCachedModuleAnalysis<MyModuleAnalysis>();
+  // Query a cached instance of MyOperationAnalysis for the parent operation of
+  // the current operation. It will not be computed if it doesn't exist.
+  auto optionalAnalysis = getCachedParentAnalysis<MyOperationAnalysis>();
   if (optionalAnalysis)
     ...
-}
-
-void MyModulePass::runOnModule() {
-  // Query MyModuleAnalysis for the current module.
-  MyModuleAnalysis &myAnalysis = getAnalysis<MyModuleAnalysis>();
-
-  // Query a cached instance of MyModuleAnalysis for the current module. It
-  // will not be computed if it doesn't exist.
-  auto optionalAnalysis = getCachedAnalysis<MyModuleAnalysis>();
-  if (optionalAnalysis)
-    ...
-
-  // Query MyFunctionAnalysis for a child function of the current module. It
-  // will be computed if it doesn't exist.
-  auto fn = *getModule().begin();
-  MyFunctionAnalysis &myAnalysis = getFunctionAnalysis<MyFunctionAnalysis>(fn);
 }
 ```
 
@@ -194,7 +178,7 @@ preserved.
     *   `markAnalysesPreserved<>`
 
 ```c++
-void MyPass::runOn*() {
+void MyOperationPass::runOnOperation() {
   // Mark all analyses as preserved. This is useful if a pass can guarantee
   // that no transformation was performed.
   markAllAnalysesPreserved();
@@ -216,7 +200,7 @@ pipeline will execute and the `PassManager::run` will return failure. Failure
 signaling is provided in the form of a `signalPassFailure` method.
 
 ```c++
-void MyPass::runOn*() {
+void MyPass::runOnOperation() {
   // Signal failure on a broken invariant.
   if (some_broken_invariant) {
     signalPassFailure();
@@ -229,37 +213,94 @@ void MyPass::runOn*() {
 
 Above we introduced the different types of passes and their constraints. Now
 that we have our pass we need to be able to run it over a specific module. This
-is where the pass manager comes into play. The PassManager is the interface used
-for scheduling passes to run over a module. The pass manager provides simple
-interfaces for adding passes, of any kind, and running them over a given module.
-A simple example is shown below:
+is where the pass manager comes into play. The `PassManager` class is used to
+configure and run a pipeline. The `OpPassManager` class is used to schedule
+passes to run at a specific level of nesting.
+
+### OpPassManager
+
+An `OpPassManager` is essentially a collection of passes to execute on an
+operation of a given type. This operation type must adhere to the following
+requirement:
+
+*   Must be registered and marked `IsolatedFromAbove`.
+
+    *   Passes are expected to not modify operations at or above the current
+        operation being processed. If the operation is not isolated, it may
+        inadvertently modify the use-list of an operation it is not supposed to
+        modify.
+
+Passes can be added to a pass manager via `addPass`. The pass must either be an
+`op-specific` pass operating on the same operation type as `OpPassManager`, or
+an `op-agnostic` pass.
+
+An `OpPassManager` cannot be created directly, but must be explicitly nested
+within another `OpPassManager` via the `nest<>` method. This method takes the
+operation type that the nested pass manager will operate on. At the top-level, a
+`PassManager` acts as an `OpPassManager` that operates on the
+[`module`](LangRef.md#module) operation. Nesting in this sense, corresponds to
+the structural nesting within [Regions](LangRef.md#regions) of the IR.
+
+For example, the following `.mlir`:
+
+```
+module {
+  spv.module "Logical" "GLSL450" {
+    func @foo() {
+      ...
+    }
+  }
+}
+```
+
+Has the nesting structure of:
+
+```
+`module`
+  `spv.module`
+    `function`
+```
+
+Below is an example of constructing a pipeline that operates on the above
+structure:
 
 ```c++
-PassManager pm;
+PassManager pm(ctx);
 
-// Add a module pass.
-pm.addPass(new MyModulePass());
+// Add a pass on the top-level module operation.
+pm.addPass(std::make_unique<MyModulePass>());
 
-// Add a few function passes.
-pm.addPass(new MyFunctionPass());
-pm.addPass(new MyFunctionPass2());
-pm.addPass(new MyFunctionPass3());
+// Nest a pass manager that operates on spirv module operations nested directly
+// under the top-level module.
+OpPassManager &nestedModulePM = pm.nest<spirv::ModuleOp>();
+nestedModulePM.addPass(std::make_unique<MySPIRVModulePass>());
 
-// Add another module pass.
-pm.addPass(new MyModulePass2());
+// Nest a pass manager that operates on functions within the nested SPIRV
+// module.
+OpPassManager &nestedFunctionPM = nestedModulePM.nest<FuncOp>();
+nestedFunctionPM.addPass(std::make_unique<MyFunctionPass>());
 
-// Run the pass manager on a module.
+// Run the pass manager on the top-level module.
 Module m = ...;
 if (failed(pm.run(m)))
     ... // One of the passes signaled a failure.
 ```
 
-The pass manager automatically structures added passes into nested pipelines on
-specific IR units. These pipelines are then run over a single IR unit at a time.
-This means that, for example, given a series of consecutive function passes, it
-will execute all on the first function, then all on the second function, etc.
-until the entire program has been run through the passes. This provides several
-benefits:
+The above pass manager would contain the following pipeline structure:
+
+```
+OpPassManager<ModuleOp>
+  MyModulePass
+  OpPassManager<spirv::ModuleOp>
+    MySPIRVModulePass
+    OpPassManager<FuncOp>
+      MyFunctionPass
+```
+
+These pipelines are then run over a single operation at a time. This means that,
+for example, given a series of consecutive passes on FuncOp, it will execute all
+on the first function, then all on the second function, etc. until the entire
+program has been run through the passes. This provides several benefits:
 
 *   This improves the cache behavior of the compiler, because it is only
     touching a single function at a time, instead of traversing the entire
@@ -267,18 +308,6 @@ benefits:
 *   This improves multi-threading performance by reducing the number of jobs
     that need to be scheduled, as well as increasing the efficiency of each job.
     An entire function pipeline can be run on each function asynchronously.
-
-As an example, the above pass manager would contain the following pipeline
-structure:
-
-```c++
-MyModulePass
-Function Pipeline
-   MyFunctionPass
-   MyFunctionPass2
-   MyFunctionPass3
-MyModulePass2
-```
 
 ## Pass Registration
 
