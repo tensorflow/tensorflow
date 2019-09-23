@@ -145,7 +145,7 @@ private:
     // Round to nearest integer with halfway cases rounded away from zero.
     const double scaledRounded = std::round(scaled);
     const double clamped =
-        std::clamp(scaledRounded, clampMinDouble, clampMaxDouble);
+        std::min(std::max(scaledRounded, clampMinDouble), clampMaxDouble);
 
     uint64_t signlessResult;
     if (isSigned) {
