@@ -1191,6 +1191,7 @@ Attribute Parser::parseDecOrHexAttr(Type type, bool isNegative) {
 
   // Remember if the literal is hexadecimal.
   StringRef spelling = getToken().getSpelling();
+  auto loc = state.curToken.getLoc();
   bool isHex = spelling.size() > 1 && spelling[1] == 'x';
 
   consumeToken(Token::integer);
@@ -1202,16 +1203,19 @@ Attribute Parser::parseDecOrHexAttr(Type type, bool isNegative) {
       return nullptr;
   }
 
-  // Hexadecimal representation of float literals is not supported for bfloat16.
-  // When supported, the literal should be unsigned.
-  auto floatType = type.dyn_cast<FloatType>();
-  if (floatType && !type.isBF16()) {
-    if (isNegative) {
-      emitError("hexadecimal float literal should not have a leading minus");
-      return nullptr;
-    }
+  if (auto floatType = type.dyn_cast<FloatType>()) {
+    // TODO(zinenko): Update once hex format for bfloat16 is supported.
+    if (type.isBF16())
+      return emitError(loc,
+                       "hexadecimal float literal not supported for bfloat16"),
+             nullptr;
+    if (isNegative)
+      return emitError(
+                 loc,
+                 "hexadecimal float literal should not have a leading minus"),
+             nullptr;
     if (!isHex) {
-      emitError("unexpected decimal integer literal for a float attribute")
+      emitError(loc, "unexpected decimal integer literal for a float attribute")
               .attachNote()
           << "add a trailing dot to make the literal a float";
       return nullptr;
@@ -1222,17 +1226,20 @@ Attribute Parser::parseDecOrHexAttr(Type type, bool isNegative) {
   }
 
   if (!type.isIntOrIndex())
-    return (emitError("integer literal not valid for specified type"), nullptr);
+    return emitError(loc, "integer literal not valid for specified type"),
+           nullptr;
 
   // Parse the integer literal.
   int width = type.isIndex() ? 64 : type.getIntOrFloatBitWidth();
   APInt apInt(width, *val, isNegative);
   if (apInt != *val)
-    return (emitError("integer constant out of range for attribute"), nullptr);
+    return emitError(loc, "integer constant out of range for attribute"),
+           nullptr;
 
   // Otherwise construct an integer attribute.
   if (isNegative ? (int64_t)-val.getValue() >= 0 : (int64_t)val.getValue() < 0)
-    return (emitError("integer constant out of range for attribute"), nullptr);
+    return emitError(loc, "integer constant out of range for attribute"),
+           nullptr;
 
   return builder.getIntegerAttr(type, isNegative ? -apInt : apInt);
 }
