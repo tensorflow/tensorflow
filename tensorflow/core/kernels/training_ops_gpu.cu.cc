@@ -67,6 +67,45 @@ __global__ void ApplyAdamKernel(int32 data_dim, T* var, T* m, T* v,
   }
 }
 
+template <typename T, typename Tindex>
+__global__ void SparseApplyKerasMomentumKernel(
+    T* var, T* accum, const T* lr, const T* grad, const Tindex* indices,
+    const T* momentum, bool use_nesterov, Tindex param_rows,
+    Tindex updates_size, Tindex indices_size) {
+  Tindex col_size = updates_size / indices_size;
+  GPU_1D_KERNEL_LOOP(grad_index, updates_size) {
+    Tindex indices_row = grad_index / col_size;
+    Tindex param_row = indices[indices_row];
+    if (param_row < 0 || param_row >= param_rows) {
+      // Ignore indices that are out of range.
+      continue;
+    }
+
+    // Compute the index of var and accum.
+    Tindex param_index = param_row * col_size + (grad_index % col_size);
+
+    // Read variables.
+    T var_i = var[param_index];
+    T accum_i = accum[param_index];
+    T grad_i = grad[grad_index];
+    const T momentum_t = *momentum;
+    const T lr_t = *lr;
+
+    // Variable update computation.
+    accum_i = momentum_t * accum_i - lr_t * grad_i;
+    // static branching in cuda does not impact performance.
+    if (use_nesterov) {
+      var_i += (momentum_t * accum_i - lr_t * grad_i);
+    } else {
+      var_i += accum_i;
+    }
+
+    // Write update back to variables.
+    var[param_index] = var_i;
+    accum[param_index] = accum_i;
+  }
+}
+
 template <typename T>
 struct ApplyGradientDescent<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
@@ -255,6 +294,28 @@ struct ApplyKerasMomentum<GPUDevice, T> {
     } else {
       var.device(d) += accum;
     }
+  }
+};
+
+template <typename T, typename Tindex>
+struct SparseApplyKerasMomentum<GPUDevice, T, Tindex> {
+  Tindex operator()(const GPUDevice& d, typename TTypes<T>::Matrix var,
+                    typename TTypes<T>::Matrix accum,
+                    typename TTypes<T>::ConstScalar lr,
+                    typename TTypes<T>::ConstMatrix grad,
+                    typename TTypes<Tindex>::ConstVec indices,
+                    typename TTypes<T>::ConstScalar momentum,
+                    bool use_nesterov) {
+    const Tindex first_dim_size = var.dimension(0);
+    const Tindex grad_size = grad.size();
+    const Tindex indices_size = indices.size();
+    GpuLaunchConfig config = GetGpuLaunchConfig(grad_size, d);
+    TF_CHECK_OK(GpuLaunchKernel(
+        SparseApplyKerasMomentumKernel<T, Tindex>, config.block_count,
+        config.thread_per_block, 0, d.stream(), var.data(), accum.data(),
+        lr.data(), grad.data(), indices.data(), momentum.data(), use_nesterov,
+        first_dim_size, grad_size, indices_size));
+    return static_cast<Tindex>(-1);
   }
 };
 
@@ -491,6 +552,15 @@ template struct functor::ApplyMomentum<GPUDevice, double>;
 template struct functor::ApplyKerasMomentum<GPUDevice, Eigen::half>;
 template struct functor::ApplyKerasMomentum<GPUDevice, float>;
 template struct functor::ApplyKerasMomentum<GPUDevice, double>;
+
+template struct functor::SparseApplyKerasMomentum<GPUDevice, Eigen::half,
+                                                  int32>;
+template struct functor::SparseApplyKerasMomentum<GPUDevice, Eigen::half,
+                                                  int64>;
+template struct functor::SparseApplyKerasMomentum<GPUDevice, float, int32>;
+template struct functor::SparseApplyKerasMomentum<GPUDevice, float, int64>;
+template struct functor::SparseApplyKerasMomentum<GPUDevice, double, int32>;
+template struct functor::SparseApplyKerasMomentum<GPUDevice, double, int64>;
 
 template struct functor::ApplyAdam<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdam<GPUDevice, float>;

@@ -119,13 +119,13 @@ def TypeArrayAttrOp : TEST_Op<"type_array_attr"> {
 }
 def TypeStringAttrWithTypeOp : TEST_Op<"string_attr_with_type"> {
   let arguments = (ins StrAttr:$attr);
-  let printer = [{ *p << getAttr("attr"); }];
+  let printer = [{ p << getAttr("attr"); }];
   let parser = [{
     Attribute attr;
     Type stringType = OpaqueType::get(Identifier::get("foo",
-                                      result->getContext()), "string",
-                                      result->getContext());
-    return parser->parseAttribute(attr, stringType, "attr", result->attributes);
+                                      result.getContext()), "string",
+                                      result.getContext());
+    return parser.parseAttribute(attr, stringType, "attr", result.attributes);
   }];
 }
 
@@ -161,6 +161,23 @@ def I64EnumAttrOp : TEST_Op<"i64_enum_attr"> {
   let arguments = (ins SomeI64Enum:$attr);
   let results = (outs I32:$val);
 }
+
+def FloatElementsAttrOp : TEST_Op<"float_elements_attr"> {
+  let arguments = (ins
+      RankedF32ElementsAttr<[2]>:$scalar_f32_attr,
+      RankedF64ElementsAttr<[4, 8]>:$tensor_f64_attr
+  );
+}
+
+// A pattern that updates dense<[3.0, 4.0]> to dense<[5.0, 6.0]>.
+// This tests both matching and generating float elements attributes.
+def UpdateFloatElementsAttr : Pat<
+  (FloatElementsAttrOp
+    ConstantAttr<RankedF32ElementsAttr<[2]>, "{3.0f, 4.0f}">:$f32attr,
+    $f64attr),
+  (FloatElementsAttrOp
+    ConstantAttr<RankedF32ElementsAttr<[2]>, "{5.0f, 6.0f}">:$f32attr,
+    $f64attr)>;
 
 //===----------------------------------------------------------------------===//
 // Test Regions
@@ -430,10 +447,10 @@ def OpSymbolBindingB : TEST_Op<"symbol_binding_b", []> {
 
   let builders = [
     OpBuilder<
-      "Builder *builder, OperationState *state, Value *operand",
+      "Builder *builder, OperationState &state, Value *operand",
       [{
-        state->types.assign({builder->getIntegerType(32)});
-        state->addOperands({operand});
+        state.types.assign({builder->getIntegerType(32)});
+        state.addOperands({operand});
       }]>
   ];
 }
@@ -534,12 +551,12 @@ def TwoResultOp : TEST_Op<"two_result"> {
 
   let builders = [
     OpBuilder<
-      "Builder *builder, OperationState *state, IntegerAttr kind",
+      "Builder *builder, OperationState &state, IntegerAttr kind",
       [{
         auto i32 = builder->getIntegerType(32);
         auto f32 = builder->getF32Type();
-        state->types.assign({i32, f32});
-        state->addAttribute("kind", kind);
+        state.types.assign({i32, f32});
+        state.addAttribute("kind", kind);
       }]>
   ];
 }
@@ -690,14 +707,14 @@ def MixedVResultOp3 : TEST_Op<"mixed_variadic_out3",
   // result type. So need to provide a builder not requiring result types.
   let builders = [
     OpBuilder<
-      "Builder *builder, OperationState *state, IntegerAttr count",
+      "Builder *builder, OperationState &state, IntegerAttr count",
       [{
         auto i32Type = builder->getIntegerType(32);
-        state->addTypes(i32Type); // $ouput1
+        state.addTypes(i32Type); // $ouput1
         SmallVector<Type, 4> types(count.getInt(), i32Type);
-        state->addTypes(types); // $ouput2
-        state->addTypes(types); // $ouput3
-        state->addAttribute("count", count);
+        state.addTypes(types); // $ouput2
+        state.addTypes(types); // $ouput3
+        state.addAttribute("count", count);
       }]>
   ];
 }

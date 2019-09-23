@@ -146,7 +146,8 @@ TF_LITE_MICRO_TEST(TestTypeSizeOf) {
 }
 
 TF_LITE_MICRO_TEST(TestBytesRequiredForTensor) {
-  const tflite::Tensor* tensor100 = tflite::Create1dFlatbufferTensor(100);
+  const tflite::Tensor* tensor100 =
+      tflite::testing::Create1dFlatbufferTensor(100);
   size_t bytes;
   size_t type_size;
   TF_LITE_MICRO_EXPECT_EQ(
@@ -155,7 +156,8 @@ TF_LITE_MICRO_TEST(TestBytesRequiredForTensor) {
   TF_LITE_MICRO_EXPECT_EQ(400, bytes);
   TF_LITE_MICRO_EXPECT_EQ(4, type_size);
 
-  const tflite::Tensor* tensor200 = tflite::Create1dFlatbufferTensor(200);
+  const tflite::Tensor* tensor200 =
+      tflite::testing::Create1dFlatbufferTensor(200);
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteOk, tflite::BytesRequiredForTensor(*tensor200, &bytes, &type_size,
                                                 micro_test::reporter));

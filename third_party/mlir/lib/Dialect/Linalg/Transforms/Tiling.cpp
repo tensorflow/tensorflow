@@ -513,7 +513,7 @@ struct LinalgTilingPass : public FunctionPass<LinalgTilingPass> {
   LinalgTilingPass() = default;
   LinalgTilingPass(ArrayRef<int64_t> sizes, bool promoteViews);
 
-  void runOnFunction() {
+  void runOnFunction() override {
     tileLinalgOps(getFunction(), tileSizes, promoteViews);
   }
 

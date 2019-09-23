@@ -165,7 +165,7 @@ private:
   }
 
   /// Process member decoration
-  LogicalResult processMemberDecoration(uint32_t structID, uint32_t memberNum,
+  LogicalResult processMemberDecoration(uint32_t structID, uint32_t memberIndex,
                                         spirv::Decoration decorationType,
                                         ArrayRef<uint32_t> values = {});
 
@@ -1510,6 +1510,26 @@ Serializer::processOp<spirv::EntryPointOp>(spirv::EntryPointOp op) {
 
 template <>
 LogicalResult
+Serializer::processOp<spirv::ControlBarrierOp>(spirv::ControlBarrierOp op) {
+  StringRef argNames[] = {"execution_scope", "memory_scope",
+                          "memory_semantics"};
+  SmallVector<uint32_t, 3> operands;
+
+  for (auto argName : argNames) {
+    auto argIntAttr = op.getAttrOfType<IntegerAttr>(argName);
+    auto operand = prepareConstantInt(op.getLoc(), argIntAttr);
+    if (!operand) {
+      return failure();
+    }
+    operands.push_back(operand);
+  }
+
+  return encodeInstructionInto(functions, spirv::Opcode::OpControlBarrier,
+                               operands);
+}
+
+template <>
+LogicalResult
 Serializer::processOp<spirv::ExecutionModeOp>(spirv::ExecutionModeOp op) {
   SmallVector<uint32_t, 4> operands;
   // Add the function <id>.
@@ -1533,6 +1553,25 @@ Serializer::processOp<spirv::ExecutionModeOp>(spirv::ExecutionModeOp op) {
     }
   }
   return encodeInstructionInto(executionModes, spirv::Opcode::OpExecutionMode,
+                               operands);
+}
+
+template <>
+LogicalResult
+Serializer::processOp<spirv::MemoryBarrierOp>(spirv::MemoryBarrierOp op) {
+  StringRef argNames[] = {"memory_scope", "memory_semantics"};
+  SmallVector<uint32_t, 2> operands;
+
+  for (auto argName : argNames) {
+    auto argIntAttr = op.getAttrOfType<IntegerAttr>(argName);
+    auto operand = prepareConstantInt(op.getLoc(), argIntAttr);
+    if (!operand) {
+      return failure();
+    }
+    operands.push_back(operand);
+  }
+
+  return encodeInstructionInto(functions, spirv::Opcode::OpMemoryBarrier,
                                operands);
 }
 

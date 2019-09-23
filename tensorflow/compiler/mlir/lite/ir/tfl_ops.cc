@@ -265,39 +265,39 @@ Attribute ConstFoldUnaryOp(Type result_type, Attribute operand,
   return {};
 }
 
-void buildComparisonBinOp(Builder *builder, OperationState *result, Value *lhs,
+void buildComparisonBinOp(Builder *builder, OperationState &result, Value *lhs,
                           Value *rhs) {
   auto result_type =
       OpTrait::util::getBroadcastedType(lhs->getType(), rhs->getType());
   if (!result_type)
-    emitError(result->location)
+    emitError(result.location)
         << "non-broadcastable operands: " << lhs->getType() << " and "
         << rhs->getType();
-  result->addOperands({lhs, rhs});
+  result.addOperands({lhs, rhs});
   // Comparison binary ops always return i1 tensor.
   if (auto shaped_type = result_type.dyn_cast<ShapedType>()) {
     auto resultShape = shaped_type.getShape();
-    result->types.push_back(
+    result.types.push_back(
         builder->getTensorType(resultShape, builder->getI1Type()));
   } else {
-    result->types.push_back(builder->getTensorType(builder->getI1Type()));
+    result.types.push_back(builder->getTensorType(builder->getI1Type()));
   }
 }
 
-void buildFusedBroadcastableBinOp(Builder *builder, OperationState *result,
+void buildFusedBroadcastableBinOp(Builder *builder, OperationState &result,
                                   Value *lhs, Value *rhs,
                                   StringAttr fused_activation_function) {
   auto result_type =
       OpTrait::util::getBroadcastedType(lhs->getType(), rhs->getType());
 
   if (!result_type)
-    emitError(result->location)
+    emitError(result.location)
         << "non-broadcastable operands: " << lhs->getType() << " and "
         << rhs->getType();
 
-  result->addOperands({lhs, rhs});
-  result->addAttribute("fused_activation_function", fused_activation_function);
-  result->types.push_back(result_type);
+  result.addOperands({lhs, rhs});
+  result.addAttribute("fused_activation_function", fused_activation_function);
+  result.types.push_back(result_type);
 }
 
 }  // end anonymous namespace
@@ -522,7 +522,7 @@ OpFoldResult ConcatenationOp::fold(ArrayRef<Attribute> operands) {
 // GatherOp
 //===----------------------------------------------------------------------===//
 
-static void BuildGatherOp(Builder *builder, OperationState *result,
+static void BuildGatherOp(Builder *builder, OperationState &result,
                           Value *params, Value *indices, IntegerAttr axis) {
   auto params_type = params->getType().cast<TensorType>();
   auto indices_type = indices->getType().cast<TensorType>();
@@ -549,7 +549,7 @@ static void BuildGatherOp(Builder *builder, OperationState *result,
 
   // params must be atleast rank axis + 1
   if (params_rank < axis_i + 1) {
-    emitError(result->location, "params must be atleast rank axis + 1");
+    emitError(result.location, "params must be atleast rank axis + 1");
   }
 
   if (indices_rank == 0) {
@@ -780,7 +780,7 @@ OpFoldResult SubOp::fold(ArrayRef<Attribute> operands) {
 // TopKOp
 //===----------------------------------------------------------------------===//
 
-static void BuildTopKOp(Builder *builder, OperationState *result, Value *input,
+static void BuildTopKOp(Builder *builder, OperationState &result, Value *input,
                         Value *k) {
   // Output size is only known if k is constant value. A negative dimension is
   // considered dynamic so use -1 here if k is not a constant value.

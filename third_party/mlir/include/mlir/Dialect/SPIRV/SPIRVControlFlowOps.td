@@ -56,8 +56,8 @@ def SPV_BranchOp : SPV_Op<"Branch", [Terminator]> {
 
   let builders = [
     OpBuilder<
-      "Builder *, OperationState *state, Block *successor", [{
-        state->addSuccessor(successor, {});
+      "Builder *, OperationState &state, Block *successor", [{
+        state.addSuccessor(successor, {});
       }]
     >
   ];
@@ -118,18 +118,18 @@ def SPV_BranchConditionalOp : SPV_Op<"BranchConditional", [Terminator]> {
 
   let builders = [
     OpBuilder<
-      "Builder *builder, OperationState *state, Value *condition, "
+      "Builder *builder, OperationState &state, Value *condition, "
       "Block *trueBranch, Block *falseBranch, "
       "Optional<std::pair<uint32_t, uint32_t>> weights",
       [{
-        state->addOperands(condition);
-        state->addSuccessor(trueBranch, {});
-        state->addSuccessor(falseBranch, {});
+        state.addOperands(condition);
+        state.addSuccessor(trueBranch, {});
+        state.addSuccessor(falseBranch, {});
         if (weights) {
           auto attr =
               builder->getI32ArrayAttr({static_cast<int32_t>(weights->first),
                                         static_cast<int32_t>(weights->second)});
-          state->addAttribute("branch_weights", attr);
+          state.addAttribute("branch_weights", attr);
         }
       }]
     >

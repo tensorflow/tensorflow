@@ -178,15 +178,25 @@ class NNAPIDelegateKernel {
     }
   }
 
-  typedef ANeuralNetworksOperationType (*MappingFn)(
-      const NNAPIOpMappingArgs& mapping_args);
+  // Translate a node into its operands
+  // It assumes that the call to Validate for has been successful for
+  // the operation.
+  // In case of success it returns kTfLiteOk and stores in n_op_type the
+  // NNAPI Operation code.
+  // Returns kTfLiteError in case of failures during mapping.
+  static TfLiteStatus Map(TfLiteContext* context, int builtin_code, int version,
+                          int android_sdk_version,
+                          const NNAPIOpMappingArgs& mapping_args,
+                          ANeuralNetworksOperationType* nn_op_type);
 
-  // Return a function that knows how to translate a node into its operands
-  // when called. You can use this function to see if a node is supported
-  // (i.e. if the returned MappingFn is null, then the node is not supported).
-  static MappingFn Map(const TfLiteContext* context, int builtin_code,
+  // Returns true if the node can be accelerated with NNAPI.
+  static bool Validate(const TfLiteContext* context, int builtin_code,
                        int version, int android_sdk_version,
-                       const TfLiteNode* node, bool is_accelerator_specified);
+                       const TfLiteNode* node, bool is_accelerator_specified,
+                       // Collects lists of failures collected during
+                       // the validation of the possibility of accelerating
+                       // the given node
+                       std::vector<string>* map_failures = nullptr);
 
   // Initialize the kernel (a NN model).
   TfLiteStatus Init(TfLiteContext* context, const TfLiteDelegateParams* params);

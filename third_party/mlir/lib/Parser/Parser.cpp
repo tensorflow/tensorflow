@@ -3276,8 +3276,8 @@ public:
 
   /// Parse an instance of the operation described by 'opDefinition' into the
   /// provided operation state.
-  ParseResult parseOperation(OperationState *opState) {
-    if (opDefinition->parseAssembly(this, opState))
+  ParseResult parseOperation(OperationState &opState) {
+    if (opDefinition->parseAssembly(*this, opState))
       return failure();
     return success();
   }
@@ -3782,7 +3782,7 @@ Operation *OperationParser::parseCustomOperation() {
   OperationState opState(srcLocation, opDefinition->name);
   CleanupOpStateRegions guard{opState};
   CustomOpAsmParser opAsmParser(opLoc, opDefinition, *this);
-  if (opAsmParser.parseOperation(&opState))
+  if (opAsmParser.parseOperation(opState))
     return nullptr;
 
   // If it emitted an error, we failed.
@@ -4102,7 +4102,7 @@ ParseResult ModuleParser::parseModule(ModuleOp module) {
   // Module itself is a name scope.
   opParser.pushSSANameScope(/*isIsolated=*/true);
 
-  while (1) {
+  while (true) {
     switch (getToken().getKind()) {
     default:
       // Parse a top-level operation.

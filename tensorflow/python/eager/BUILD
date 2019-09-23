@@ -801,11 +801,11 @@ tf_py_test(
         "//tensorflow/python/tpu:tpu_strategy_util",
     ],
     tags = [
-        "manual",
+        "no_pip",
         "nogpu",
+        "noguitar",
         "nomac",
         "notap",
-        "oss_serial",
         "tpu",
     ],
 )

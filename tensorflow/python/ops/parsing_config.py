@@ -145,17 +145,22 @@ class RaggedFeature(
   ...         tf.io.RaggedFeature.RowSplits("s1")])
   ... }
 
-  >>> tf.io.parse_single_example(example_batch[0], features)
-  {'f1': <tf.Tensor: ..., numpy=array([3, 1, 4, 1, 5, 9])>,
-   'f2': <tf.RaggedTensor [[3, 1], [4], [], [1, 5, 9]]>,
-   'f3': <tf.RaggedTensor [[[3, 1], [4]], [[]], [[1, 5, 9]]]>}
+  >>> feature_dict = tf.io.parse_single_example(example_batch[0], features)
+  >>> for (name, val) in sorted(feature_dict.items()):
+  ...   print('%s: %s' % (name, val))
+  f1: tf.Tensor([3 1 4 1 5 9], shape=(6,), dtype=int64)
+  f2: <tf.RaggedTensor [[3, 1], [4], [], [1, 5, 9]]>
+  f3: <tf.RaggedTensor [[[3, 1], [4]], [[]], [[1, 5, 9]]]>
 
-  >>> tf.io.parse_example(example_batch, features)
-  {'f1': <tf.RaggedTensor [[3, 1, 4, 1, 5, 9], [2, 7, 1, 8, 2, 8, 1]]>,
-   'f2': <tf.RaggedTensor [[[3, 1], [4], [], [1, 5, 9]],
-                           [[2, 7, 1], [8], [2], [8, 1]]]>,
-   'f3': <tf.RaggedTensor [[[[3, 1], [4]], [[]], [[1, 5, 9]]],
-                           [[[2, 7, 1]], [], [[8], [2], [8, 1]]]]>}
+  >>> feature_dict = tf.io.parse_example(example_batch, features)
+  >>> for (name, val) in sorted(feature_dict.items()):
+  ...   print('%s: %s' % (name, val))
+  f1: <tf.RaggedTensor [[3, 1, 4, 1, 5, 9],
+                        [2, 7, 1, 8, 2, 8, 1]]>
+  f2: <tf.RaggedTensor [[[3, 1], [4], [], [1, 5, 9]],
+                        [[2, 7, 1], [8], [2], [8, 1]]]>
+  f3: <tf.RaggedTensor [[[[3, 1], [4]], [[]], [[1, 5, 9]]],
+                        [[[2, 7, 1]], [], [[8], [2], [8, 1]]]]>
 
   Fields:
     dtype: Data type of the `RaggedTensor`.  Must be one of:

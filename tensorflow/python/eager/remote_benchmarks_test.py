@@ -27,7 +27,6 @@ from __future__ import division
 from __future__ import print_function
 
 import gc
-import os
 import time
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -64,7 +63,6 @@ class RemoteWorkerMicroBenchmarks(test.Benchmark):
 
   def __init__(self):
     # used for remote benchmarks
-    os.environ["TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC"] = "1"
     self._cached_server1 = server_lib.Server.create_local_server()
     self._cached_server_target1 = self._cached_server1.target[len("grpc://"):]
     self._cached_server2 = server_lib.Server.create_local_server()

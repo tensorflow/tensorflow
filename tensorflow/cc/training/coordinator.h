@@ -22,11 +22,11 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/cost_graph.pb.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 

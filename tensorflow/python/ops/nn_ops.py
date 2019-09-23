@@ -4215,7 +4215,7 @@ def dropout(x, keep_prob=None, noise_shape=None, seed=None, name=None,
     noise_shape: A 1-D `Tensor` of type `int32`, representing the
       shape for randomly generated keep/drop flags.
     seed: A Python integer. Used to create random seeds. See
-      `tf.compat.v1.set_random_seed` for behavior.
+      `tf.random.set_seed` for behavior.
     name: A name for this operation (optional).
     rate: A scalar `Tensor` with the same type as `x`. The probability that each
       element of `x` is discarded.
@@ -4245,23 +4245,51 @@ def dropout(x, keep_prob=None, noise_shape=None, seed=None, name=None,
 
 @tf_export("nn.dropout", v1=[])
 def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
-  """Computes dropout.
+  """Computes dropout: randomly sets elements to zero to prevent overfitting.
 
-  With probability `rate`, drops elements of `x`. Input that are kept are
-  scaled up by `1 / (1 - rate)`, otherwise outputs `0`.  The scaling is so that
-  the expected sum is unchanged.
-
-  **Note:** The behavior of dropout has changed between TensorFlow 1.x and 2.x.
+  Note: The behavior of dropout has changed between TensorFlow 1.x and 2.x.
   When converting 1.x code, please use named arguments to ensure behavior stays
   consistent.
+
+  See also: `tf.keras.layers.Dropout` for a dropout layer.
+
+  [Dropout](https://arxiv.org/abs/1207.0580) is useful for regularizing DNN
+  models. Inputs elements are randomly set to zero (and the other elements are
+  rescaled). This encourages each node to be independently useful, as it cannot
+  rely on the output of other nodes.
+
+  More precisely: With probability `rate` elements of `x` are set to `0`.
+  The remaining elemenst are scaled up by `1.0 / (1 - rate)`, so that the
+  expected value is preserved.
+
+  >>> tf.random.set_seed(0)
+  >>> x = tf.ones([3,5])
+  >>> tf.nn.dropout(x, rate = 0.5).numpy()
+  array([[0., 0., 2., 2., 0.],
+         [2., 0., 2., 2., 0.],
+         [2., 2., 2., 0., 0.]], dtype=float32)
+  >>> tf.nn.dropout(x, rate = 0.8).numpy()
+  array([[0., 0., 5., 0., 0.],
+         [0., 0., 5., 0., 0.],
+         [5., 0., 0., 5., 0.]], dtype=float32)
+
+  If rate is set to `0` the input is returned, unchanged:
+
+  >>> tf.nn.dropout(x, rate = 0.0) is x
+  True
 
   By default, each element is kept or dropped independently.  If `noise_shape`
   is specified, it must be
   [broadcastable](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
   to the shape of `x`, and only dimensions with `noise_shape[i] == shape(x)[i]`
-  will make independent decisions.  For example, if `shape(x) = [k, l, m, n]`
-  and `noise_shape = [k, 1, 1, n]`, each batch and channel component will be
-  kept independently and each row and column will be kept or not kept together.
+  will make independent decisions. This is useful for dropping whole
+  channels from an image or sequence. For example:
+
+  >>> x = tf.ones([3,10])
+  >>> tf.nn.dropout(x, rate = 2/3, noise_shape=[1,10]).numpy()
+  array([[0., 3., 0., 3., 0., 0., 3., 0., 0., 3.],
+         [0., 3., 0., 3., 0., 0., 3., 0., 0., 3.],
+         [0., 3., 0., 3., 0., 0., 3., 0., 0., 3.]], dtype=float32)
 
   Args:
     x: A floating point tensor.
@@ -4271,15 +4299,16 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
     noise_shape: A 1-D `Tensor` of type `int32`, representing the
       shape for randomly generated keep/drop flags.
     seed: A Python integer. Used to create random seeds. See
-      `tf.compat.v1.set_random_seed` for behavior.
+      `tf.random.set_seed` for behavior.
     name: A name for this operation (optional).
 
   Returns:
     A Tensor of the same shape of `x`.
 
   Raises:
-    ValueError: If `rate` is not in `(0, 1]` or if `x` is not a floating point
-      tensor.
+    ValueError: If `rate` is not in `[0, 1)` or if `x` is not a floating point
+      tensor. `rate=1` is disallowed, because theoutput would be all zeros,
+      which is likely not what was intended.
   """
   with ops.name_scope(name, "dropout", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")

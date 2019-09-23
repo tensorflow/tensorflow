@@ -489,10 +489,24 @@ def shape_v2(input, out_type=dtypes.int32, name=None):
 
   For example:
 
-  ```python
-  t = tf.constant([[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]])
-  tf.shape(t)  # [2, 2, 3]
-  ```
+  >>> t = tf.constant([[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]])
+  >>> tf.shape(t)
+  <tf.Tensor: id=391, shape=(3,), dtype=int32, numpy=array([2, 2, 3],
+  dtype=int32)>
+  >>> tf.shape(t).numpy()
+  array([2, 2, 3], dtype=int32)
+
+  Note: When using symbolic tensors, such as when using the Keras functional
+  API, tf.shape() will return the shape of the symbolic tensor.
+
+  >>> a = tf.keras.layers.Input((None, 10))
+  >>> tf.shape(a)
+  <tf.Tensor ... shape=(3,) dtype=int32>
+
+  In these cases, using `tf.Tensor.shape` will return more informative results.
+
+  >>> a.shape
+  TensorShape([None, None, 10])
 
   Args:
     input: A `Tensor` or `SparseTensor`.

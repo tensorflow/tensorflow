@@ -37,11 +37,18 @@ EXPECTED_DEVICES_PRE_CONNECT = [
 ]
 EXPECTED_DEVICES_AFTER_CONNECT = [
     '/job:localhost/replica:0/task:0/device:CPU:0',
+    '/job:localhost/replica:0/task:0/device:XLA_CPU:0',
     '/job:worker/replica:0/task:0/device:CPU:0',
     '/job:worker/replica:0/task:0/device:XLA_CPU:0',
+    '/job:worker/replica:0/task:0/device:TPU_SYSTEM:0',
     '/job:worker/replica:0/task:0/device:TPU:0',
     '/job:worker/replica:0/task:0/device:TPU:1',
-    '/job:worker/replica:0/task:0/device:TPU_SYSTEM:0'
+    '/job:worker/replica:0/task:0/device:TPU:2',
+    '/job:worker/replica:0/task:0/device:TPU:3',
+    '/job:worker/replica:0/task:0/device:TPU:4',
+    '/job:worker/replica:0/task:0/device:TPU:5',
+    '/job:worker/replica:0/task:0/device:TPU:6',
+    '/job:worker/replica:0/task:0/device:TPU:7',
 ]
 
 

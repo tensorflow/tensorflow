@@ -2154,7 +2154,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "einsum_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["einsum_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -2166,6 +2166,7 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python/ops/linalg",
     ],
+    shard_count = 4,
     xla_enable_strict_auto_jit = True,
 )
 

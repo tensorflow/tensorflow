@@ -362,6 +362,12 @@ def _is_known_loaded_type(f, module_name, entity_name):
   return False
 
 
+def _errors_are_normally_possible(entity, error):
+  if inspect_utils.islambda(entity) and isinstance(error, ValueError):
+    return True
+  return False
+
+
 def converted_call(f, options, args, kwargs, caller_fn_scope=None):
   """Compiles a function call inline.
 
@@ -404,9 +410,9 @@ def converted_call(f, options, args, kwargs, caller_fn_scope=None):
   if (_is_known_loaded_type(f, 'wrapt', 'FunctionWrapper') or
       _is_known_loaded_type(f, 'wrapt', 'BoundFunctionWrapper')):
     logging.warn(
-        'Entity {} appears to be decorated by wrapt, which is not yet supported'
-        ' by AutoGraph. The function will be called without transformation.'
-        ' You may however apply AutoGraph before the decorator.'.format(f))
+        '{} appears to be decorated by wrapt, which is not yet supported'
+        ' by AutoGraph. The function will run as-is.'
+        ' You may still apply AutoGraph before the wrapt decorator.'.format(f))
     logging.log(2, 'Permanently whitelisted: %s: wrapt decorated', f)
     return _call_unconverted(f, args, kwargs, options)
 
@@ -526,11 +532,17 @@ def converted_call(f, options, args, kwargs, caller_fn_scope=None):
     logging.log(1, 'Error transforming entity %s', target_entity, exc_info=True)
     if is_autograph_strict_conversion_mode():
       raise
-    logging.warn(
-        'Entity %s could not be transformed and will be executed as-is.'
-        ' Please report this to the AutoGraph team. When filing the bug, set'
-        ' the verbosity to 10 (on Linux, `export AUTOGRAPH_VERBOSITY=10`) and'
-        ' attach the full output. Cause: %s', target_entity, e)
+    if _errors_are_normally_possible(target_entity, e):
+      logging.warn(
+          'AutoGraph could not transform %s and will run it as-is.\n'
+          'Cause: %s', target_entity, e)
+    else:
+      logging.warn(
+          'AutoGraph could not transform %s and will run it as-is.\n'
+          'Please report this to the TensorFlow team. When filing the bug, set'
+          ' the verbosity to 10 (on Linux, `export AUTOGRAPH_VERBOSITY=10`) and'
+          ' attach the full output.\n'
+          'Cause: %s', target_entity, e)
     return _call_unconverted(f, args, kwargs, options)
 
   with StackTraceMapper(converted_f), tf_stack.CurrentModuleFilter():

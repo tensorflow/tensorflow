@@ -522,6 +522,7 @@ cc_library(
 cc_library(
     name = "tf_graph_optimization_pass",
     srcs = ["transforms/tf_graph_optimization_pass.cc"],
+    hdrs = ["transforms/tf_graph_optimization_pass.h"],
     deps = [
         ":convert_graphdef",
         ":mlir_roundtrip_flags",

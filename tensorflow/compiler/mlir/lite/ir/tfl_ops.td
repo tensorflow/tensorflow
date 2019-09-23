@@ -196,18 +196,18 @@ def BinaryOpSameElementTypeConstraint :
 //===----------------------------------------------------------------------===//
 
 def TFL_BroadcastableBinaryBuilder : OpBuilder<
-  "Builder *builder, OperationState *result, Value *lhs, Value *rhs",
+  "Builder *builder, OperationState &result, Value *lhs, Value *rhs",
   [{
     auto resultType =
       OpTrait::util::getBroadcastedType(lhs->getType(), rhs->getType());
     if (!resultType)
-      mlir::emitError(result->location, "non-broadcastable operands");
-    result->addOperands({lhs, rhs});
-    result->types.push_back(resultType);
+      mlir::emitError(result.location, "non-broadcastable operands");
+    result.addOperands({lhs, rhs});
+    result.types.push_back(resultType);
   }]>;
 
 def TFL_FusedBroadcastableBinaryBuilder : OpBuilder<
-  "Builder *builder, OperationState *result, Value *lhs, Value *rhs, "
+  "Builder *builder, OperationState &result, Value *lhs, Value *rhs, "
   "StringAttr fusedActivationFunction",
   [{
     buildFusedBroadcastableBinOp(
@@ -215,7 +215,7 @@ def TFL_FusedBroadcastableBinaryBuilder : OpBuilder<
   }]>;
 
 def TFL_ComparisonBinaryBuilder : OpBuilder<
-  "Builder *builder, OperationState *result, Value *lhs, Value *rhs",
+  "Builder *builder, OperationState &result, Value *lhs, Value *rhs",
   [{
     buildComparisonBinOp(builder, result, lhs, rhs);
   }]>;
@@ -327,8 +327,6 @@ def TFL_AddOp : TFL_Op<"add", [Broadcastable, NoSideEffect, Commutative]> {
   let hasOptions = 1;
 }
 
-// TODO(haoliang): Implement legalization pass after pattern rewrite generator
-// supports variadic inputs.
 def TFL_AddNOp : TFL_Op<"add_n", [Commutative, NoSideEffect, SameOperandsAndResultsScale]> {
   let summary = "add_n operator";
 
@@ -589,7 +587,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
 
   let builders =
   [
-    OpBuilder<"Builder *builder, OperationState *result, "
+    OpBuilder<"Builder *builder, OperationState &result, "
       "Value *params, Value *indices, IntegerAttr axis",
         [{ BuildGatherOp(builder, result, params, indices, axis); }]>
   ];
@@ -853,7 +851,7 @@ def TFL_NotEqualOp : TFL_Op<"not_equal", [
   let builders =
   [
     OpBuilder<
-      "Builder *builder, OperationState *result, Value *lhs, Value *rhs",
+      "Builder *builder, OperationState &result, Value *lhs, Value *rhs",
       [{
         buildComparisonBinOp(builder, result, lhs, rhs);
       }]>
@@ -1953,12 +1951,12 @@ def TFL_SelectOp : TFL_Op<"select", [NoSideEffect,
   let results = (outs AnyTensor:$output);
 
   // TODO(jpienaar): autogenerate this.
-  let builders = [OpBuilder<"Builder *builder, OperationState *result, "
+  let builders = [OpBuilder<"Builder *builder, OperationState &result, "
                             "Value *condition, Value *x, Value *y",
   [{
     auto resultType = x->getType();
-    result->addOperands({condition, x, y});
-    result->types.push_back(resultType);
+    result.addOperands({condition, x, y});
+    result.types.push_back(resultType);
   }]>];
 
   let hasOptions = 1;
@@ -2146,7 +2144,7 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [NoSideEffect, TFL_OperandHasRank<1,0>,
     AnyTensor:$values,
     I32Tensor:$indices);
 
-  let builders = [OpBuilder<"Builder *builder, OperationState *result, "
+  let builders = [OpBuilder<"Builder *builder, OperationState &result, "
                             "Value *input, Value *k",
                   [{ BuildTopKOp(builder, result, input, k); }]>];
 

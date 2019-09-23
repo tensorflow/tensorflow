@@ -164,7 +164,7 @@ void mlir::populateVectorToLLVMConversionPatterns(
 
 namespace {
 struct LowerVectorToLLVMPass : public ModulePass<LowerVectorToLLVMPass> {
-  void runOnModule();
+  void runOnModule() override;
 };
 } // namespace
 

@@ -854,7 +854,7 @@ populateLinalgToLLVMConversionPatterns(LinalgTypeConverter &converter,
 
 namespace {
 struct LowerLinalgToLLVMPass : public ModulePass<LowerLinalgToLLVMPass> {
-  void runOnModule();
+  void runOnModule() override;
 };
 } // namespace
 

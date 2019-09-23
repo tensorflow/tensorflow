@@ -521,7 +521,8 @@ class BaseResourceVariable(variables.VariableV1):
     if self._cached_value is not None:
       return self._cached_value
     with ops.colocate_with(None, ignore_existing=True):
-      return self._read_variable_op()
+      with ops.device(self._handle.device):
+        return self._read_variable_op()
 
   def _as_graph_element(self):
     """Conversion function for Graph.as_graph_element()."""
@@ -627,7 +628,9 @@ class BaseResourceVariable(variables.VariableV1):
      the read operation.
     """
     with ops.name_scope("Read"):
-      value = self._read_variable_op()
+      # Ensure we read the variable in the same device as the handle.
+      with ops.device(self._handle.device):
+        value = self._read_variable_op()
     # Return an identity so it can get placed on whatever device the context
     # specifies instead of the device where the variable is.
     return array_ops.identity(value)

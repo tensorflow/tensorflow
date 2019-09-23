@@ -132,6 +132,11 @@ private:
   /// Gets the constant's attribute and type associated with the given <id>.
   Optional<std::pair<Attribute, Type>> getConstant(uint32_t id);
 
+  /// Gets the constants's integer attribute with the given <id>. Returns a null
+  /// IntegerAttr if the given is not registered or does not correspond to an
+  /// integer constant.
+  IntegerAttr getConstantInt(uint32_t id);
+
   /// Returns a symbol to be used for the function name with the given
   /// result <id>. This tries to use the function's OpName if
   /// exists; otherwise creates one based on the <id>.
@@ -471,7 +476,7 @@ spirv::ModuleOp Deserializer::createModuleOp() {
   // TODO(antiagainst): use target environment to select the version
   state.addAttribute("major_version", builder.getI32IntegerAttr(1));
   state.addAttribute("minor_version", builder.getI32IntegerAttr(0));
-  spirv::ModuleOp::build(&builder, &state);
+  spirv::ModuleOp::build(&builder, state);
   return cast<spirv::ModuleOp>(Operation::create(state));
 }
 
@@ -895,6 +900,14 @@ LogicalResult Deserializer::processGlobalVariable(ArrayRef<uint32_t> operands) {
   }
   globalVariableMap[variableID] = varOp;
   return success();
+}
+
+IntegerAttr Deserializer::getConstantInt(uint32_t id) {
+  auto constInfo = getConstant(id);
+  if (!constInfo) {
+    return nullptr;
+  }
+  return constInfo->first.dyn_cast<IntegerAttr>();
 }
 
 LogicalResult Deserializer::processName(ArrayRef<uint32_t> operands) {
@@ -1886,6 +1899,32 @@ Deserializer::processOp<spirv::ExecutionModeOp>(ArrayRef<uint32_t> words) {
 
 template <>
 LogicalResult
+Deserializer::processOp<spirv::ControlBarrierOp>(ArrayRef<uint32_t> operands) {
+  if (operands.size() != 3) {
+    return emitError(
+        unknownLoc,
+        "OpControlBarrier must have execution scope <id>, memory scope <id> "
+        "and memory semantics <id>");
+  }
+
+  SmallVector<IntegerAttr, 3> argAttrs;
+  for (auto operand : operands) {
+    auto argAttr = getConstantInt(operand);
+    if (!argAttr) {
+      return emitError(unknownLoc,
+                       "expected 32-bit integer constant from <id> ")
+             << operand << " for OpControlBarrier";
+    }
+    argAttrs.push_back(argAttr);
+  }
+
+  opBuilder.create<spirv::ControlBarrierOp>(unknownLoc, argAttrs[0],
+                                            argAttrs[1], argAttrs[2]);
+  return success();
+}
+
+template <>
+LogicalResult
 Deserializer::processOp<spirv::FunctionCallOp>(ArrayRef<uint32_t> operands) {
   if (operands.size() < 3) {
     return emitError(unknownLoc,
@@ -1925,6 +1964,30 @@ Deserializer::processOp<spirv::FunctionCallOp>(ArrayRef<uint32_t> operands) {
   if (!resultTypes.empty()) {
     valueMap[resultID] = opFunctionCall.getResult(0);
   }
+  return success();
+}
+
+template <>
+LogicalResult
+Deserializer::processOp<spirv::MemoryBarrierOp>(ArrayRef<uint32_t> operands) {
+  if (operands.size() != 2) {
+    return emitError(unknownLoc, "OpMemoryBarrier must have memory scope <id> "
+                                 "and memory semantics <id>");
+  }
+
+  SmallVector<IntegerAttr, 2> argAttrs;
+  for (auto operand : operands) {
+    auto argAttr = getConstantInt(operand);
+    if (!argAttr) {
+      return emitError(unknownLoc,
+                       "expected 32-bit integer constant from <id> ")
+             << operand << " for OpMemoryBarrier";
+    }
+    argAttrs.push_back(argAttr);
+  }
+
+  opBuilder.create<spirv::MemoryBarrierOp>(unknownLoc, argAttrs[0],
+                                           argAttrs[1]);
   return success();
 }
 

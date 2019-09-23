@@ -224,17 +224,18 @@ Status WriteMetadataFile(const string& hash_dir,
   string metadata_filename = absl::StrCat(hash_dir, "/", kSnapshotFilename);
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(hash_dir));
 
-  Status exists = Env::Default()->FileExists(metadata_filename);
-  if (exists.ok()) {
-    TF_RETURN_IF_ERROR(Env::Default()->DeleteFile(metadata_filename));
-  }
+  std::string tmp_filename =
+      absl::StrCat(metadata_filename, "-tmp-", random::New64());
 
   std::unique_ptr<WritableFile> file;
-  TF_RETURN_IF_ERROR(Env::Default()->NewWritableFile(metadata_filename, &file));
+  TF_RETURN_IF_ERROR(Env::Default()->NewWritableFile(tmp_filename, &file));
 
   auto writer = absl::make_unique<SnapshotWriter>(file.get());
   TF_RETURN_IF_ERROR(writer->WriteRecord(metadata.SerializeAsString()));
   TF_RETURN_IF_ERROR(writer->Close());
+
+  TF_RETURN_IF_ERROR(
+      Env::Default()->RenameFile(tmp_filename, metadata_filename));
 
   return Status::OK();
 }

@@ -25,19 +25,12 @@ namespace tensorflow {
 
 // Transformation that converts tf.while_loop() loops into functional While
 // operators and tf.cond() conditionals into function If operators, suitable for
-// XLA compilation. If lookup_library is provided, use it to make the library
-// for control flow self-contained.
+// XLA compilation.
 Status FunctionalizeControlFlow(Graph* graph,
-                                FunctionLibraryDefinition* library);
-Status FunctionalizeControlFlow(const FunctionLibraryDefinition* lookup_library,
-                                Graph* graph,
                                 FunctionLibraryDefinition* library);
 
 Status FunctionalizeControlFlowForGraphDef(GraphDef* graph_def,
                                            FunctionLibraryDefinition* library);
-Status FunctionalizeControlFlowForGraphDef(
-    const FunctionLibraryDefinition* lookup_library, GraphDef* graph_def,
-    FunctionLibraryDefinition* library);
 
 // This pass looks at the graph, and turns V1 control flow structure
 // (Switch/Merge/etc.) into V2 control flow structure (If/While).

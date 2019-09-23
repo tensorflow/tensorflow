@@ -52,15 +52,15 @@ public:
                        ArrayRef<NamedAttribute> attrs,
                        ArrayRef<NamedAttributeList> argAttrs);
 
-  static void build(Builder *builder, OperationState *result, StringRef name,
+  static void build(Builder *builder, OperationState &result, StringRef name,
                     FunctionType type, ArrayRef<NamedAttribute> attrs);
-  static void build(Builder *builder, OperationState *result, StringRef name,
+  static void build(Builder *builder, OperationState &result, StringRef name,
                     FunctionType type, ArrayRef<NamedAttribute> attrs,
                     ArrayRef<NamedAttributeList> argAttrs);
 
   /// Operation hooks.
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
+  static ParseResult parse(OpAsmParser &parser, OperationState &result);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
 
   /// Returns the type of this function.
