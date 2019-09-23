@@ -619,7 +619,6 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
   *num_retvals = num_outputs;
   TF_RETURN_IF_ERROR(ValidateInputTypeAndPlacement(ctx, op, kernel));
 
-  StepStats* maybe_step_stats = nullptr;
   GraphCollector* graph_collector = nullptr;
   if (ctx->ShouldStoreGraphs()) {
     graph_collector = ctx->GetGraphCollector();
@@ -633,10 +632,9 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
         output_dtypes[i], ctx, &retvals[i]));
   }
 
-  std::unique_ptr<EagerNode> node(
-      new ExecuteNode(ctx, op->Inputs(), std::move(kernel), nullptr,
-                      maybe_step_stats, graph_collector, output_dtypes,
-                      op->GetCancellationManager(), {retvals, num_outputs}));
+  std::unique_ptr<EagerNode> node(new ExecuteNode(
+      ctx, op->Inputs(), std::move(kernel), graph_collector, output_dtypes,
+      op->GetCancellationManager(), {retvals, num_outputs}));
   // Note that for async mode, execution order will make sure that all
   // input handles are ready before executing them.
   // TODO(b/137118203): Consider executing "cheap" kernels inline for
@@ -953,8 +951,6 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
 Status EagerKernelExecute(EagerContext* ctx,
                           const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
                           const core::RefCountPtr<KernelAndDevice>& kernel,
-                          NodeExecStats* maybe_stats,
-                          StepStats* maybe_step_stats,
                           GraphCollector* graph_collector,
                           CancellationManager* cancellation_manager,
                           absl::Span<TensorHandle*> retvals) {
@@ -998,11 +994,9 @@ Status EagerKernelExecute(EagerContext* ctx,
   ScopedStepContainer* container = ctx->StepContainer();
   Status s;
   if (container == nullptr) {
-    s = kernel->Run(input_vector, &outputs, maybe_stats, maybe_step_stats,
-                    graph_collector, cancellation_manager);
+    s = kernel->Run(input_vector, &outputs, cancellation_manager);
   } else {
-    s = kernel->Run(container, input_vector, &outputs, maybe_stats,
-                    maybe_step_stats, graph_collector, cancellation_manager);
+    s = kernel->Run(container, input_vector, &outputs, cancellation_manager);
   }
   for (const auto& tensor_ref : protected_tensors) {
     tensor_ref.Unref();
