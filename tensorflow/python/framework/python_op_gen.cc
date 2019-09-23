@@ -427,7 +427,7 @@ void GenEagerPythonOp::HandleGraphMode(
     strings::StrAppend(&result_, "    _inputs_flat = _op.inputs\n");
     strings::StrAppend(&result_, "    _execute.record_gradient(\n",
                        "        \"", op_def_.name(),
-                       "\", _inputs_flat, _attrs, _result, name)\n");
+                       "\", _inputs_flat, _attrs, _result)\n");
 
     if (num_outs_ == 1 && !output_sizes[0].empty()) {
       // Single list result.
@@ -662,7 +662,7 @@ void GenEagerPythonOp::AddEagerFunctionTeardown(
                          "if _execute.must_record_gradient():\n");
       strings::StrAppend(&result_, indentation, "  _execute.record_gradient(\n",
                          "        \"", op_def_.name(),
-                         "\", _inputs_flat, _attrs, _result, name)\n");
+                         "\", _inputs_flat, _attrs, _result)\n");
     }
     if (num_outs_ == 1 && !output_sizes[0].empty()) {
       // Single list result.

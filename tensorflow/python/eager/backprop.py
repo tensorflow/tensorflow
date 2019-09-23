@@ -147,9 +147,9 @@ def _must_record_gradient():
   return not pywrap_tensorflow.TFE_Py_TapeSetIsEmpty()
 
 
-def _record_gradient(op_name, inputs, attrs, results, name):
+def _record_gradient(op_name, inputs, attrs, results):
   return pywrap_tensorflow.TFE_Py_RecordGradient(op_name, inputs, attrs,
-                                                 results, name)
+                                                 results)
 
 
 execute.must_record_gradient = _must_record_gradient

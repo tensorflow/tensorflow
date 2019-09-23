@@ -98,8 +98,7 @@ def _forward_gradient(op_name, attr_tuple, inputs, outputs, tangents):
   with backprop.GradientTape() as transpose_tape:
     with backprop.GradientTape() as backfunc_tape:
       backfunc_tape.watch(trainable_inputs)
-      execute.record_gradient(op_name, inputs, attr_tuple, outputs,
-                              "forward_op_replay")
+      execute.record_gradient(op_name, inputs, attr_tuple, outputs)
 
     forwardprop_aids = []
     trainable_outputs = []
