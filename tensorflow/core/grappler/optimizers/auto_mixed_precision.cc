@@ -1203,16 +1203,39 @@ Status AutoMixedPrecisionImpl::Optimize() {
   VLOG(2) << "Building node type map for graph";
   TF_RETURN_IF_ERROR(node_type_map_.Init(*graph_));
 
+  // Note: If an op is added to this list, it should also be added to the
+  // AddDataStructureOpsToMap call below (and to the clearlist if it involves
+  // data flow).
   // TODO(benbarsdell): Add support for TensorListPushBackBatch and
   // TensorListConcatLists. They require special handling because they connect
   // multiple list objects together. Currently if they appear in the graph then
   // we have no choice but to disallow changing any tensor list ops, as
   // otherwise we risk breaking the graph if some are changed and some are not
   // (within a connected cluster of tensor list nodes).
+  const gtl::FlatSet<string> supported_list_ops = {
+      "EmptyTensorList",
+      "TensorListSplit",
+      "TensorListFromTensor",
+      "TensorListReserve",
+      "TensorListScatter",
+      "TensorListScatterV2",
+      "TensorListPushBack",
+      "TensorListSetItem",
+      "TensorListScatterIntoExistingList",
+      "TensorListPopBack",
+      "TensorListStack",
+      "TensorListConcat",
+      "TensorListConcatV2",
+      "TensorListGetItem",
+      "TensorListGather"};
+
   bool can_change_tensor_list_ops = true;
   for (const NodeDef& node : graph_->node()) {
-    if (node.op() == "TensorListPushBackBatch" ||
-        node.op() == "TensorListConcatLists") {
+    if (absl::StartsWith(node.op(), "TensorList") &&
+        !supported_list_ops.count(node.op())) {
+      LOG(WARNING) << "Unsupported " << node.op() << " node found in graph ("
+                   << node.name()
+                   << "), tensor list ops will not be converted.";
       can_change_tensor_list_ops = false;
       break;
     }
@@ -1236,14 +1259,7 @@ Status AutoMixedPrecisionImpl::Optimize() {
          {"TensorListGather", TypeAttrId("element_dtype")}},
         &object_clients_map));
   } else {
-    for (const string& list_op :
-         {"EmptyTensorList", "TensorListSplit", "TensorListFromTensor",
-          "TensorListReserve", "TensorListScatter", "TensorListScatterV2",
-          "TensorListConcatLists", "TensorListPushBack",
-          "TensorListPushBackBatch", "TensorListSetItem",
-          "TensorListScatterIntoExistingList", "TensorListPopBack",
-          "TensorListStack", "TensorListConcat", "TensorListConcatV2",
-          "TensorListGetItem", "TensorListGather"}) {
+    for (const string& list_op : supported_list_ops) {
       fp16_whitelist_.erase(list_op);
       fp16_graylist_.erase(list_op);
       fp16_clearlist_.erase(list_op);
