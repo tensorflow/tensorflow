@@ -1077,7 +1077,7 @@ func @invalid_region_dominance() {
 // -----
 
 func @hexadecimal_bf16() {
-  // expected-error @+1 {{integer literal not valid for specified type}}
+  // expected-error @+1 {{hexadecimal float literal not supported for bfloat16}}
   "foo"() {value = 0xffff : bf16} : () -> ()
 }
 
