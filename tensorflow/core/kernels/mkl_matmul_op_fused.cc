@@ -83,7 +83,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T> {
     const int channel = weight_tf_shape.dim_size(1 - dim_pair[1]);
 
     OP_REQUIRES(ctx, k == weight_tf_shape.dim_size(dim_pair[1]),
-                errors::InvalidArgument("Matrix size are incompatible: In[0]: ",
+                errors::InvalidArgument("Matrix size-incompatible: In[0]: ",
                                         src_tf_shape.DebugString(), ", In[1]: ",
                                         weight_tf_shape.DebugString()));
     OP_REQUIRES(ctx, bias_tensor.shape().dim_size(0) == channel,
