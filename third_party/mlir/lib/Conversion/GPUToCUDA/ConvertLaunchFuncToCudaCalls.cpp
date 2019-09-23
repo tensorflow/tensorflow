@@ -310,10 +310,14 @@ void GpuLaunchFuncToCudaCallsPass::translateGpuLaunchCalls(
   // represents the cubin at runtime.
   // TODO(herhut): This should rather be a static global once supported.
   auto kernelFunction = getModule().lookupSymbol<FuncOp>(launchOp.kernel());
+  if (!kernelFunction) {
+    launchOp.emitError("missing kernel function ") << launchOp.kernel();
+    return signalPassFailure();
+  }
   auto cubinGetter =
       kernelFunction.getAttrOfType<SymbolRefAttr>(kCubinGetterAnnotation);
   if (!cubinGetter) {
-    kernelFunction.emitError("Missing ")
+    kernelFunction.emitError("missing ")
         << kCubinGetterAnnotation << " attribute.";
     return signalPassFailure();
   }
@@ -369,7 +373,7 @@ void GpuLaunchFuncToCudaCallsPass::translateGpuLaunchCalls(
   launchOp.erase();
 }
 
-std::unique_ptr<mlir::ModulePassBase>
+std::unique_ptr<mlir::OpPassBase<mlir::ModuleOp>>
 mlir::createConvertGpuLaunchFuncToCudaCallsPass() {
   return std::make_unique<GpuLaunchFuncToCudaCallsPass>();
 }

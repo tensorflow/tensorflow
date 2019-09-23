@@ -122,6 +122,9 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
                           const std::vector<ValueId>& outputs,
                           const RuntimeOptions& options,
                           std::vector<ComputeTaskDescriptorPtr>* tasks) {
+  if (!IsBatchMatchesForAllValues(graph)) {
+    return InvalidArgumentError("Only identical batch dimension is supported");
+  }
   int node_id = static_cast<int>(node->id);
   auto op_type = OperationTypeFromString(node->operation.type);
   switch (op_type) {

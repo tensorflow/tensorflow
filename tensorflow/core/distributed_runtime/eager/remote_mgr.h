@@ -67,7 +67,7 @@ class RemoteMgr {
   Status DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
                                        TensorHandle** out);
 
-  EagerExecutor* GetOrCreateExecutorForStream(uint64 stream_id);
+  EagerExecutor& GetOrCreateExecutorForStream(uint64 stream_id);
 
   void DeleteExecutorForStream(uint64 stream_id);
 

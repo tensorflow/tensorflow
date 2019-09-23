@@ -15,6 +15,7 @@ package_group(
         "//learning/brain/google/xla/kernels/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/compiler/xla/...",
+        "//third_party/iree/...",
         "//third_party/mlir_edge/...",
     ],
 )
@@ -34,6 +35,8 @@ gentbl(
     tbl_outs = [
         ("-gen-op-decls", "ir/hlo_ops.h.inc"),
         ("-gen-op-defs", "ir/hlo_ops.cc.inc"),
+        ("-gen-struct-attr-decls", "ir/hlo_structs.h.inc"),
+        ("-gen-struct-attr-defs", "ir/hlo_structs.cc.inc"),
     ],
     tblgen = "@local_config_mlir//:mlir-tblgen",
     td_file = "ir/hlo_ops.td",
@@ -85,12 +88,14 @@ cc_library(
     deps = [
         ":hlo",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",
+        "@local_config_mlir//:Transforms",
     ],
     alwayslink = 1,
 )
@@ -157,6 +162,22 @@ cc_library(
 )
 
 cc_library(
+    name = "xla_lower_general_dot",
+    srcs = ["transforms/lower_general_dot.cc"],
+    deps = [
+        ":hlo",
+        ":xla_dialect_registration",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm//:support",
+        "@local_config_mlir//:Analysis",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Pass",
+        "@local_config_mlir//:StandardOps",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "hlo",
     srcs = [
         "ir/hlo_ops.cc",
@@ -166,6 +187,7 @@ cc_library(
     hdrs = [
         "ir/hlo_ops.h",
         "transforms/passes.h",
+        "transforms/rewriters.h",
     ],
     includes = ["include"],
     deps = [
@@ -192,6 +214,7 @@ cc_library(
     hdrs = [
         "ir/lhlo_ops.h",
         "transforms/passes.h",
+        "transforms/rewriters.h",
     ],
     includes = ["include"],
     deps = [
@@ -264,8 +287,10 @@ cc_library(
     deps = [
         ":hlo",
         ":type_to_shape",
+        ":xla_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/xla:comparison_util",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
@@ -346,6 +371,7 @@ tf_native_cc_binary(
     deps = [
         "@llvm//:support",
         "@llvm//:tablegen",
+        "@local_config_mlir//:Support",
         "@local_config_mlir//:TableGen",
     ],
 )

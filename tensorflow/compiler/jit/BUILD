@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "cc_header_only_library")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("//tensorflow/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library", "tf_jit_compilation_passes_extra_deps")
 load("//tensorflow/core/platform:default/build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
 
@@ -38,7 +38,7 @@ cc_library(
         ":xla_cpu_device",
         ":xla_cpu_jit",
         "//tensorflow/compiler/plugin",
-    ] + if_cuda([
+    ] + if_cuda_or_rocm([
         ":xla_gpu_device",
         ":xla_gpu_jit",
     ]),
@@ -61,7 +61,7 @@ cc_library(
 cc_library(
     name = "xla_gpu_jit",
     visibility = ["//visibility:public"],
-    deps = if_cuda([
+    deps = if_cuda_or_rocm([
         ":jit_compilation_passes",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
@@ -596,6 +596,7 @@ cc_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -628,15 +629,17 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_bounds_check",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:graph",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/gtl:cleanup",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -788,12 +791,14 @@ tf_cc_test(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:functional_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -942,7 +947,6 @@ tf_proto_library(
     srcs = ["xla_activity.proto"],
     cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
-    provide_cc_alias = True,
 )
 
 cc_library(

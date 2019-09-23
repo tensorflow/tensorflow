@@ -54,6 +54,7 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
+from tensorflow.python.compat.compat import forward_compatibility_horizon
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import tape
@@ -73,6 +74,7 @@ from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
@@ -1396,6 +1398,41 @@ def run_cuda_only(func=None):
   return decorator
 
 
+def with_forward_compatibility_horizons(*horizons):
+  """Executes the decorated test with the specified forward-compat horizons.
+
+  Args:
+    *horizons: A list of (year, month, day) tuples.  If the list includes
+      `None`, then the test will also be run with no forward-compatibility
+      horizon set.
+
+  Returns:
+    A decorator that will execute the test with the specified horizons.
+  """
+  if not horizons:
+    raise ValueError("Expected at least one horizon.")
+  for horizon in horizons:
+    if not ((horizon is None) or
+            (len(horizon) == 3 and all(isinstance(x, int) for x in horizon))):
+      raise ValueError("Bad horizon value: %r" % horizon)
+
+  def decorator(f):
+    if tf_inspect.isclass(f):
+      raise ValueError("`with_forward_compatibility_horizons` only "
+                       "supports test methods.")
+    def decorated(self, *args, **kwargs):
+      for horizon in horizons:
+        if horizon is None:
+          f(self, *args, **kwargs)
+        else:
+          (year, month, day) = horizon
+          with forward_compatibility_horizon(year, month, day):
+            f(self, *args, **kwargs)
+    return decorated
+
+  return decorator
+
+
 @tf_export("test.is_gpu_available")
 def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
   """Returns whether TensorFlow can access a GPU.
@@ -1774,6 +1811,7 @@ class TensorFlowTestCase(googletest.TestCase):
       pywrap_tensorflow.TF_SetXlaAutoJitMode("2")
       pywrap_tensorflow.TF_SetXlaMinClusterSize(1)
       pywrap_tensorflow.TF_SetXlaEnableLazyCompilation(False)
+      pywrap_tensorflow.TF_SetTfXlaCpuGlobalJit(True)
       # Constant folding secretly runs code on TF:Classic CPU, so we also
       # disable it here.
       pywrap_tensorflow.TF_SetXlaConstantFoldingDisabled(True)
@@ -1797,7 +1835,8 @@ class TensorFlowTestCase(googletest.TestCase):
     random_seed.set_random_seed(random_seed.DEFAULT_GRAPH_SEED)
     # Reset summary writer in case another test used set_as_default() with their
     # summary writer.
-    context.context().summary_writer = None
+    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
+    summary_state.writer = None
 
     # Avoiding calling setUp() for the poorly named test_session method.
     if self.id().endswith(".test_session"):

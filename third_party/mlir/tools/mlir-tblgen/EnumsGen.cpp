@@ -19,6 +19,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "EnumsGen.h"
 #include "mlir/TableGen/Attribute.h"
 #include "mlir/TableGen/GenInfo.h"
 #include "llvm/ADT/SmallVector.h"
@@ -127,9 +128,11 @@ static void emitSymToStrFn(const Record &enumDef, raw_ostream &os) {
   EnumAttr enumAttr(enumDef);
   StringRef enumName = enumAttr.getEnumClassName();
   StringRef symToStrFnName = enumAttr.getSymbolToStringFnName();
+  StringRef symToStrFnRetType = enumAttr.getSymbolToStringFnRetType();
   auto enumerants = enumAttr.getAllCases();
 
-  os << formatv("llvm::StringRef {1}({0} val) {{\n", enumName, symToStrFnName);
+  os << formatv("{2} {1}({0} val) {{\n", enumName, symToStrFnName,
+                symToStrFnRetType);
   os << "  switch (val) {\n";
   for (const auto &enumerant : enumerants) {
     auto symbol = enumerant.getSymbol();
@@ -190,7 +193,8 @@ static void emitUnderlyingToSymFn(const Record &enumDef, raw_ostream &os) {
      << "}\n\n";
 }
 
-static void emitEnumDecl(const Record &enumDef, raw_ostream &os) {
+void mlir::tblgen::emitEnumDecl(const Record &enumDef,
+                                ExtraFnEmitter emitExtraFns, raw_ostream &os) {
   EnumAttr enumAttr(enumDef);
   StringRef enumName = enumAttr.getEnumClassName();
   StringRef cppNamespace = enumAttr.getCppNamespace();
@@ -198,6 +202,7 @@ static void emitEnumDecl(const Record &enumDef, raw_ostream &os) {
   StringRef description = enumAttr.getDescription();
   StringRef strToSymFnName = enumAttr.getStringToSymbolFnName();
   StringRef symToStrFnName = enumAttr.getSymbolToStringFnName();
+  StringRef symToStrFnRetType = enumAttr.getSymbolToStringFnRetType();
   StringRef underlyingToSymFnName = enumAttr.getUnderlyingToSymbolFnName();
   auto enumerants = enumAttr.getAllCases();
 
@@ -218,11 +223,11 @@ static void emitEnumDecl(const Record &enumDef, raw_ostream &os) {
         "llvm::Optional<{0}> {1}({2});\n", enumName, underlyingToSymFnName,
         underlyingType.empty() ? std::string("unsigned") : underlyingType);
   }
-  os << formatv("llvm::StringRef {1}({0});\n", enumName, symToStrFnName);
+  os << formatv("{2} {1}({0});\n", enumName, symToStrFnName, symToStrFnRetType);
   os << formatv("llvm::Optional<{0}> {1}(llvm::StringRef);\n", enumName,
                 strToSymFnName);
 
-  emitMaxValueFn(enumDef, os);
+  emitExtraFns(enumDef, os);
 
   for (auto ns : llvm::reverse(namespaces))
     os << "} // namespace " << ns << "\n";
@@ -234,9 +239,14 @@ static void emitEnumDecl(const Record &enumDef, raw_ostream &os) {
 static bool emitEnumDecls(const RecordKeeper &recordKeeper, raw_ostream &os) {
   llvm::emitSourceFileHeader("Enum Utility Declarations", os);
 
+  auto extraFnEmitter = [](const Record &enumDef, raw_ostream &os) {
+    emitMaxValueFn(enumDef, os);
+  };
+
   auto defs = recordKeeper.getAllDerivedDefinitions("EnumAttrInfo");
   for (const auto *def : defs)
-    emitEnumDecl(*def, os);
+    if (!EnumAttr(def).skipAutoGen())
+      mlir::tblgen::emitEnumDecl(*def, extraFnEmitter, os);
 
   return false;
 }
@@ -265,7 +275,8 @@ static bool emitEnumDefs(const RecordKeeper &recordKeeper, raw_ostream &os) {
 
   auto defs = recordKeeper.getAllDerivedDefinitions("EnumAttrInfo");
   for (const auto *def : defs)
-    emitEnumDef(*def, os);
+    if (!EnumAttr(def).skipAutoGen())
+      emitEnumDef(*def, os);
 
   return false;
 }

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_IMPORT_MODEL_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_IMPORT_MODEL_H_
 
+#include <string>
+
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "tensorflow/cc/saved_model/loader.h"
@@ -47,6 +49,9 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertGraphToMlir(
 stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
     const SavedModelBundle& saved_model, const GraphDebugInfo& debug_info,
     mlir::MLIRContext* context, bool add_default_attributes = true);
+
+// Serialize a MLIR module to a string.
+std::string MlirModuleToString(mlir::ModuleOp m);
 
 }  // namespace tensorflow
 

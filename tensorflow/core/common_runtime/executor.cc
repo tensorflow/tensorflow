@@ -1092,7 +1092,7 @@ class ExecutorState {
     // we make it available to all active iterations. When the frame starts
     // a new iteration, we make all the current loop invariants available
     // to the new iteration.
-    std::vector<std::pair<const Node*, Entry>> inv_values GUARDED_BY(mu);
+    std::vector<std::pair<const NodeItem*, Entry>> inv_values GUARDED_BY(mu);
 
     // The list of dead exit nodes for the current highest iteration. We
     // will only "execute" the dead exits of the final iteration.
@@ -1214,18 +1214,17 @@ class ExecutorState {
 
   // A tagged node: <frame*, iter, node*>.
   struct TaggedNode {
-    const Node* node = nullptr;
+    const NodeItem* node_item;
     FrameState* input_frame = nullptr;
     int64 input_iter = -1;
     bool is_dead = false;
 
-    TaggedNode(const Node* t_node, FrameState* in_frame, int64 in_iter,
-               bool dead) {
-      node = t_node;
-      input_frame = in_frame;
-      input_iter = in_iter;
-      is_dead = dead;
-    }
+    TaggedNode(const NodeItem* node_item, FrameState* in_frame, int64 in_iter,
+               bool dead)
+        : node_item(node_item),
+          input_frame(in_frame),
+          input_iter(in_iter),
+          is_dead(dead) {}
   };
 
   // A drop-in replacement for std::deque<TaggedNode>.  We typically don't
@@ -1558,7 +1557,8 @@ void ExecutorState::RunAsync(Executor::DoneCallback done) {
   // Initialize the ready queue.
   for (const Node* n : impl_->root_nodes_) {
     DCHECK_EQ(n->in_edges().size(), 0);
-    ready.push_back(TaggedNode{n, root_frame_, 0, false});
+    ready.push_back(
+        TaggedNode{impl_->gview_.node(n->id()), root_frame_, 0, false});
   }
   if (ready.empty()) {
     delete this;
@@ -1644,7 +1644,6 @@ bool MightTrace(const NodeItem& item,
 
 void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   WithContext wc(context_);
-  const GraphView& gview = impl_->gview_;
   TaggedNodeSeq ready;
   TaggedNodeReadyQueue inline_ready;
 
@@ -1710,11 +1709,11 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   while (!inline_ready.empty()) {
     tagged_node = inline_ready.front();
     inline_ready.pop_front();
-    const Node* node = tagged_node.node;
+    const NodeItem& item = *tagged_node.node_item;
     FrameState* input_frame = tagged_node.input_frame;
     const int64 input_iter = tagged_node.input_iter;
+    const Node* node = item.node;
     const int id = node->id();
-    const NodeItem& item = *gview.node(id);
 
     // TODO(misard) Replace with a finer-grain enabling flag once we
     // add better optional debugging support.
@@ -1814,7 +1813,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
           }
           FrameState* input_frame = state->tagged_node.input_frame;
           const int64 input_iter = state->tagged_node.input_iter;
-          const int id = state->tagged_node.node->id();
+          const int id = state->item->node->id();
           MaybeMarkCompleted(input_frame, input_iter, id);
           TaggedNodeSeq ready;
           if (s.ok()) {
@@ -1839,10 +1838,13 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         {
           profiler::TraceMe activity(
               [&] {
+                int64 id = step_id_;
+                if (step_container_ && step_container_->step_id()) {
+                  id = step_container_->step_id();
+                }
                 return strings::StrCat(
                     op_kernel->name(), ":", op_kernel->type_string(),
-                    "#id=", step_container_ ? step_container_->step_id() : 0,
-                    ",device=", device->name(), ",async=true#");
+                    "#id=", id, ",device=", device->name(), ",async=true#");
               },
               profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
           device->ComputeAsync(async, &state->ctx, done);
@@ -1854,9 +1856,12 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
 
         if (TF_PREDICT_FALSE(MightTrace(item, event_collector_))) {
           const string& op_name = op_kernel->name();
+          int64 id = step_id_;
+          if (step_container_ && step_container_->step_id()) {
+            id = step_container_->step_id();
+          }
           const string kernel_label = strings::StrCat(
-              op_name, ":", op_kernel->type_string(),
-              "#id=", step_container_ ? step_container_->step_id() : 0,
+              op_name, ":", op_kernel->type_string(), "#id=", id,
               ",device=", device->name(), ",async=false#");
           tracing::ScopedRegion region(tracing::EventCategory::kCompute,
                                        op_name);
@@ -2135,7 +2140,7 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
       },
       profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
 
-  const Node* node = tagged_node.node;
+  const Node* node = item->node;
   FrameState* input_frame = tagged_node.input_frame;
   const int64 input_iter = tagged_node.input_iter;
   const bool is_dead = tagged_node.is_dead;
@@ -2159,7 +2164,6 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
     FindOrCreateChildFrame(input_frame, input_iter, node, &output_frame);
     output_iter = 0;
     {
-      const NodeItem* item = impl_->gview_.node(node->id());
       mutex_lock l(output_frame->mu);
       if (item->is_constant_enter) {
         // Propagate to all active iterations if this is a loop invariant.
@@ -2318,10 +2322,9 @@ void ExecutorState::ScheduleReady(const TaggedNodeSeq& ready,
     return;
   }
 
-  const GraphView& gview = impl_->gview_;
   const TaggedNode* curr_expensive_node = nullptr;
   for (auto& tagged_node : ready) {
-    const NodeItem& item = *gview.node(tagged_node.node->id());
+    const NodeItem& item = *tagged_node.node_item;
     if (tagged_node.is_dead || !item.kernel->IsExpensive()) {
       // Inline this inexpensive node.
       inline_ready->push_back(tagged_node);
@@ -2635,8 +2638,8 @@ void ExecutorState::DeleteFrame(FrameState* frame, TaggedNodeSeq* ready) {
       for (const Edge* e : node->out_edges()) {
         const Node* dst_node = e->dst();
 
-        const auto dst_pending_id =
-            impl_->gview_.node(dst_node->id())->pending_id;
+        const NodeItem& dst_item = *impl_->gview_.node(dst_node->id());
+        const auto dst_pending_id = dst_item.pending_id;
 
         // TODO(yuanbyu): We don't need this if we require the subgraph
         // given to an executor not to contain a sink node.
@@ -2666,7 +2669,7 @@ void ExecutorState::DeleteFrame(FrameState* frame, TaggedNodeSeq* ready) {
         }
         if (dst_ready) {
           if (IsControlTrigger(dst_node)) dst_dead = false;
-          ready->emplace_back(dst_node, parent_frame, parent_iter, dst_dead);
+          ready->emplace_back(&dst_item, parent_frame, parent_iter, dst_dead);
           parent_iter_state->outstanding_ops++;
         }
       }
@@ -2790,7 +2793,7 @@ void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
     // Add dst to the ready queue if it's ready
     if (dst_ready) {
       if (dst_item->is_control_trigger) dst_dead = false;
-      ready->emplace_back(dst_item->node, this, iter, dst_dead);
+      ready->emplace_back(dst_item, this, iter, dst_dead);
       iter_state->outstanding_ops++;
     }
   }
@@ -2816,10 +2819,9 @@ void ExecutorState::FrameState::ActivateLoopInvs(const GraphView* gview,
                                                  TaggedNodeSeq* ready) {
   // Propagate loop invariants to the new iteration.
   for (auto& node_entry : inv_values) {
-    const Node* node = node_entry.first;
+    const NodeItem* item = node_entry.first;
     const Entry& entry = node_entry.second;
     const bool is_dead = !entry.has_value;
-    const NodeItem* item = gview->node(node->id());
     EntryVector outputs{entry};
     ActivateNodes(item, is_dead, iter, &outputs, ready);
   }
@@ -2829,7 +2831,7 @@ void ExecutorState::FrameState::AddLoopInv(const NodeItem* item,
                                            const Entry& entry,
                                            TaggedNodeSeq* ready) {
   // Store this value.
-  inv_values.push_back({item->node, entry});
+  inv_values.push_back({item, entry});
 
   // Make this value available to all iterations.
   const bool is_dead = !entry.has_value;

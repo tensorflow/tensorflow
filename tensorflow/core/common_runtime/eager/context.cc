@@ -136,10 +136,10 @@ void EagerContext::InitDeviceMapAndAsync() {
   prioritized_device_type_list_ = ds.PrioritizedDeviceTypeList();
 }
 
-EagerExecutor* EagerContext::Executor() {
+EagerExecutor& EagerContext::Executor() {
   tf_shared_lock l(executor_map_mu_);
-  return gtl::FindWithDefault(thread_local_executor_,
-                              std::this_thread::get_id(), &default_executor_);
+  return *gtl::FindWithDefault(thread_local_executor_,
+                               std::this_thread::get_id(), &default_executor_);
 }
 
 void EagerContext::SetExecutorForThread(EagerExecutor* executor) {
@@ -263,16 +263,18 @@ void EagerContext::WaitForAndCloseRemoteContexts() {
     CloseRemoteContexts();
   }
 
-  mutex_lock l(remote_state_mu_);
-
-  default_executor_.ShutDown().IgnoreError();
-  std::unordered_map<std::thread::id, EagerExecutor*> executors_copy;
   {
-    mutex_lock l(executor_map_mu_);
-    executors_copy = thread_local_executor_;
-  }
-  for (const auto& it : executors_copy) {
-    it.second->ShutDown().IgnoreError();
+    mutex_lock l(remote_state_mu_);
+
+    default_executor_.ShutDown().IgnoreError();
+    std::unordered_map<std::thread::id, EagerExecutor*> executors_copy;
+    {
+      mutex_lock l(executor_map_mu_);
+      executors_copy = thread_local_executor_;
+    }
+    for (const auto& it : executors_copy) {
+      it.second->ShutDown().IgnoreError();
+    }
   }
 
   // This shuts down the completion queue and joins the thread polling it.
@@ -411,7 +413,8 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
   return Status::OK();
 }
 
-Status EagerContext::AddFunctionDef(const FunctionDef& fdef) {
+Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
+                                    const bool add_to_local_only) {
   bool is_first_ref = false;
   {
     mutex_lock l(cache_mu_);
@@ -430,7 +433,9 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef) {
   }
   if (is_first_ref) {
     TF_RETURN_IF_ERROR(func_lib_def_.AddFunctionDef(fdef));
-    return MaybeRegisterFunctionRemotely(fdef);
+    if (!add_to_local_only) {
+      return MaybeRegisterFunctionRemotely(fdef);
+    }
   }
   return Status::OK();
 }
@@ -592,6 +597,21 @@ Status EagerContext::GetClient(const DeviceNameUtils::ParsedName& device_name,
   return Status::OK();
 }
 
+Status EagerContext::GetClient(const string& remote_task,
+                               eager::EagerClient** client) {
+  if (remote_eager_workers_ == nullptr) {
+    return errors::Internal(
+        "Haven't set up remote eager worker in this eager context yet.");
+  }
+  TF_RETURN_IF_ERROR(remote_eager_workers_->GetClient(remote_task, client));
+
+  if (*client == nullptr) {
+    return errors::InvalidArgument(
+        "Unable to find eager client corresponding to target ", remote_task);
+  }
+  return Status::OK();
+}
+
 uint64 EagerContext::GetContextId() {
   tf_shared_lock l(remote_state_mu_);
   return context_id_;
@@ -638,7 +658,7 @@ Status EagerContext::InitializeRemoteMaster(
     std::unique_ptr<ServerInterface> server, WorkerEnv* worker_env,
     std::shared_ptr<WorkerSession> worker_session,
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
-    std::unique_ptr<DeviceMgr> remote_device_manager,
+    std::unique_ptr<DynamicDeviceMgr> remote_device_manager,
     const std::vector<string>& remote_contexts, uint64 context_id,
     Rendezvous* r, DeviceMgr* local_device_mgr, int keep_alive_secs,
     DistributedFunctionLibraryRuntime* cluster_flr,
@@ -660,7 +680,7 @@ Status EagerContext::InitializeRemoteMaster(
   remote_contexts_ = remote_contexts;
 
   use_send_tensor_rpc_ =
-      ReadBoolFromEnvVar("TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC", false);
+      ReadBoolFromEnvVar("TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC", true);
 
   local_unowned_device_manager_ = local_device_mgr;
   local_device_manager_ = nullptr;
@@ -763,7 +783,7 @@ Status EagerContext::InitializeRemoteMaster(
 
 Status EagerContext::InitializeRemoteWorker(
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
-    const DeviceMgr* remote_device_mgr,
+    const DynamicDeviceMgr* remote_device_mgr,
     const std::vector<string>& remote_contexts, uint64 context_id,
     std::function<Rendezvous*(const int64)> rendezvous_creator,
     std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>

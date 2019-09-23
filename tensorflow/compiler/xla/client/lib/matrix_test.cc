@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -32,6 +33,23 @@ class MatrixTest : public ClientLibraryTestBase {
  protected:
   template <typename T>
   void TestMatrixDiagonal();
+  template <typename T>
+  void TestSetMatrixDiagonal();
+
+  template <typename T>
+  std::map<int, Array2D<T>> k_and_expected() const {
+    return std::map<int, Array2D<T>>{
+        {0, {{0, 5, 10}, {12, 17, 22}}},
+        {1, {{1, 6, 11}, {13, 18, 23}}},
+        {2, {{2, 7}, {14, 19}}},
+        {3, {{3}, {15}}},
+        {4, {{}, {}}},
+        {-1, {{4, 9}, {16, 21}}},
+        {-2, {{8}, {20}}},
+        {-3, {{}, {}}},
+        {-4, {{}, {}}},
+    };
+  }
 };
 
 XLA_TEST_F(MatrixTest, Triangle) {
@@ -50,27 +68,46 @@ XLA_TEST_F(MatrixTest, Triangle) {
 
 template <typename T>
 void MatrixTest::TestMatrixDiagonal() {
-  XlaBuilder builder("GetMatrixDiagonal");
+  XlaBuilder builder("SetMatrixDiagonal");
   Array3D<T> input(2, 3, 4);
   input.FillIota(0);
-  std::map<int, Array2D<T>> k_and_expected = {
-      {0, {{0, 5, 10}, {12, 17, 22}}},
-      {1, {{1, 6, 11}, {13, 18, 23}}},
-      {2, {{2, 7}, {14, 19}}},
-      {3, {{3}, {15}}},
-      {4, {{}, {}}},
-      {-1, {{4, 9}, {16, 21}}},
-      {-2, {{8}, {20}}},
-      {-3, {{}, {}}},
-      {-4, {{}, {}}},
-  };
-  for (const auto& kv : k_and_expected) {
+  for (const auto& kv : k_and_expected<T>()) {
     XlaOp a;
     auto a_data = CreateR3Parameter<T>(input, 0, "a", &builder, &a);
     GetMatrixDiagonal(a, kv.first);
 
     ComputeAndCompareR2<T>(&builder, kv.second, {a_data.get()});
   }
+}
+
+template <typename T>
+void MatrixTest::TestSetMatrixDiagonal() {
+  XlaBuilder builder("GetMatrixDiagonal");
+  Array3D<T> input(2, 3, 4);
+  input.FillIota(0);
+  for (const auto& kv : k_and_expected<T>()) {
+    XlaOp a;
+    XlaOp b;
+    auto a_data = CreateR3Parameter<T>(input, 0, "a", &builder, &a);
+    auto new_diag =
+        CreateR2Parameter<T>(Array2D<T>{kv.second}, 1, "d", &builder, &b);
+
+    GetMatrixDiagonal(SetMatrixDiagonal(a, b + ScalarLike(b, 1), kv.first),
+                      kv.first) -
+        ScalarLike(b, 1);
+
+    ComputeAndCompareR2<T>(&builder, kv.second, {a_data.get(), new_diag.get()});
+  }
+}
+
+XLA_TEST_F(MatrixTest, SetMatrixDiagonal_S32) {
+  TestSetMatrixDiagonal<int32>();
+}
+XLA_TEST_F(MatrixTest, SetMatrixDiagonal_S64) {
+  TestSetMatrixDiagonal<int64>();
+}
+XLA_TEST_F(MatrixTest, SetMatrixDiagonal_F32) {
+  TestSetMatrixDiagonal<float>();
 }
 
 XLA_TEST_F(MatrixTest, GetMatrixDiagonal_S32) { TestMatrixDiagonal<int32>(); }

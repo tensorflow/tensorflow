@@ -48,6 +48,13 @@ static llvm::cl::opt<bool> print_function_result_mapping(
         "Print the mapping of function result to flatbuffer output buffer"),
     llvm::cl::init(false));
 
+// NOLINTNEXTLINE
+static llvm::cl::opt<std::string> weight_quantization(
+    "weight_quantization",
+    llvm::cl::desc("The type of the quantized weight buffer. Must be NONE, "
+                   "INT8, FLOAT16."),
+    llvm::cl::init("NONE"));
+
 enum TranslationStatus { kTrSuccess, kTrFailure };
 
 static int PrintFunctionResultMapping(const std::string &result,
@@ -143,10 +150,24 @@ int main(int argc, char **argv) {
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
 
   std::string result;
+
+  tflite::QuantizedBufferType quantized_type =
+      tflite::QuantizedBufferType::NONE;
+  if (weight_quantization == "NONE") {
+    quantized_type = tflite::QuantizedBufferType::NONE;
+  } else if (weight_quantization == "INT8") {
+    quantized_type = tflite::QuantizedBufferType::INT8;
+  } else if (weight_quantization == "FLOAT16") {
+    quantized_type = tflite::QuantizedBufferType::FLOAT16;
+  } else {
+    llvm::errs() << "Unknown weight quantization " << weight_quantization;
+    return kTrFailure;
+  }
+
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       module.ValueOrDie().get(), output_mlir, emit_builtin_tflite_ops,
       emit_select_tf_ops, emit_custom_ops, emit_quant_adaptor_ops,
-      lower_tensor_list_ops, &result, &pm);
+      lower_tensor_list_ops, quantized_type, &result, &pm);
   if (!status.ok()) return kTrFailure;
 
   std::string error_msg;

@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import gc
 import weakref
 
 from absl.testing import parameterized
@@ -627,6 +628,73 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       v = variables.Variable(1.)
       acc.watch(v, 11.)
       v.assign_sub(0.5)
+      self.assertAllClose(0.5, self.evaluate(v))
+
+  # TODO(b/141025187): Add a no_new_pyobjects decorator.
+  def testVariableReadInFunction(self):
+    with forwardprop.ForwardGradientAccumulator() as acc:
+      v = variables.Variable(1.)
+      acc.watch(v, 11.)
+      @def_function.function
+      def f():
+        return v.read_value(), 2. * v.read_value()
+      result = f()
+      self.assertAllClose((1.0, 2.), result)
+      self.assertAllClose((11., 22.), acc.jvp(result))
+
+  @parameterized.named_parameters(
+      [("ForwardPropFirst", True),
+       ("TapeFirst", False)])
+  def testForwardOverBackwardMemoryEfficiency(self, forward_prop_first):
+    # Watching depends depends on nesting, not creation order
+    if forward_prop_first:
+      forward_accumulator = forwardprop.ForwardGradientAccumulator()
+      gradient_tape = backprop.GradientTape()
+    else:
+      gradient_tape = backprop.GradientTape()
+      forward_accumulator = forwardprop.ForwardGradientAccumulator()
+    try:
+      gc.disable()
+      with gradient_tape as tape:
+        # Adding and removing the tape multiple times in different nesting
+        # patterns does not affect watch ordering.
+        pass
+      with forward_accumulator as acc:
+        with gradient_tape as tape:
+          c = constant_op.constant(1.)
+          tape.watch(c)
+          acc.watch(c, .1)
+          d = math_ops.cos(c)
+          self.assertFalse(tape_lib.should_record_backprop((acc.jvp(d),)))
+          e = math_ops.cos(acc.jvp(d))
+          math_ops.cos(e)
+          weak_e = weakref.ref(e)
+          del e
+          self.assertIsNone(weak_e())
+        self.assertIsNone(tape.gradient(acc.jvp(d), c))
+    finally:
+      gc.enable()
+
+  @parameterized.named_parameters(
+      [("ForwardPropFirst", True),
+       ("TapeFirst", False)])
+  def testBackwardOverForward(self, forward_prop_first):
+    # Watching depends depends on nesting, not creation order
+    if forward_prop_first:
+      forward_accumulator = forwardprop.ForwardGradientAccumulator()
+      gradient_tape = backprop.GradientTape()
+    else:
+      gradient_tape = backprop.GradientTape()
+      forward_accumulator = forwardprop.ForwardGradientAccumulator()
+    with gradient_tape as tape:
+      with forward_accumulator as acc:
+        c = constant_op.constant(1.)
+        tape.watch(c)
+        acc.watch(c, .1)
+        d = math_ops.cos(c)
+        self.assertTrue(tape_lib.should_record_backprop((acc.jvp(d),)))
+      self.assertAllClose(-.1 * math_ops.cos(1.),
+                          tape.gradient(acc.jvp(d), c))
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testRecordingWithJVPIndices(self):
@@ -643,6 +711,28 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
           [c] + packed_input_tangents,
           None, (((0, 1),),))
       self.assertAllClose(3., acc.jvp(d))
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testSpecialForwardFunctionUsed(self):
+    c = constant_op.constant(1.)
+    d = constant_op.constant(2.)
+    e = constant_op.constant(3.)
+    with forwardprop.ForwardGradientAccumulator() as acc:
+      acc.watch(c, 10.)
+      tape_lib.record_operation(
+          "ForwardIsSpecial",
+          [d], [c],
+          None, lambda jvp: [-2. * jvp])
+      self.assertAllClose(-20., acc.jvp(d))
+      tape_lib.record_operation(
+          "ForwardIsSpecial2",
+          [], [],
+          None, lambda: [])
+      tape_lib.record_operation(
+          "ForwardIsSpecial3",
+          [e], [d],
+          None, lambda x: [x])
+      self.assertAllClose(-20., acc.jvp(e))
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testVariableWatched(self):
@@ -698,6 +788,21 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       v = variables.Variable([1., 2., 3.])
       strategy.experimental_run_v2(
           _replicated, args=(constant_op.constant([.1, -.2, .3]),))
+
+  # TODO(b/141025187): Add a no_new_pyobjects decorator.
+  def testArgumentUnused(self):
+    with forwardprop.ForwardGradientAccumulator() as acc:
+      v = constant_op.constant(1.)
+      acc.watch(v, 11.)
+
+      @def_function.function
+      def _f(x):
+        del x
+        return constant_op.constant(1.)
+
+      result = _f(v)
+      self.assertAllClose(1.0, result)
+      self.assertIsNone(acc.jvp(result))
 
 
 if __name__ == "__main__":

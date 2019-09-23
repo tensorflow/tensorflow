@@ -393,7 +393,7 @@ def _Captures(func_graph):
     return func_graph.captures
   else:
     assert isinstance(func_graph, framework_function._FuncGraph)  # pylint: disable=protected-access
-    return func_graph._captured.items()  # pylint: disable=protected-access
+    return func_graph.captures
 
 
 def _MaybeCaptured(t):

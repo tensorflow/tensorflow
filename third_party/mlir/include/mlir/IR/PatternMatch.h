@@ -273,7 +273,7 @@ public:
   template <typename OpTy, typename... Args>
   OpTy create(Location location, Args... args) {
     OperationState state(location, OpTy::getOperationName());
-    OpTy::build(this, &state, args...);
+    OpTy::build(this, state, args...);
     auto *op = createOperation(state);
     auto result = dyn_cast<OpTy>(op);
     assert(result && "Builder didn't return the right type");
@@ -286,7 +286,7 @@ public:
   template <typename OpTy, typename... Args>
   OpTy createChecked(Location location, Args... args) {
     OperationState state(location, OpTy::getOperationName());
-    OpTy::build(this, &state, args...);
+    OpTy::build(this, state, args...);
     auto *op = createOperation(state);
 
     // If the Operation we produce is valid, return it.

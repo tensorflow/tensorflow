@@ -15,14 +15,10 @@ py_test(
     srcs = ["tf_doctest.py"],
     python_version = "PY3",
     tags = [
-        # Disabling it for now. When we are ready to test, we can
-        # remove these tags.
+        "no_oss_py2",
         "noasan",
         "nomsan",
         "notsan",
-        "optonly",
-        "notap",
-        "manual",
     ],
     deps = [
         "//tensorflow:tensorflow_py",

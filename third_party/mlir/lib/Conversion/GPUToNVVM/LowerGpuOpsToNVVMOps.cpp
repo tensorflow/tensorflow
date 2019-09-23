@@ -23,6 +23,7 @@
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"
 
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
+#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
@@ -37,23 +38,6 @@
 using namespace mlir;
 
 namespace {
-
-// Rewriting that replaces the types of a LaunchFunc operation with their
-// LLVM counterparts.
-struct GPULaunchFuncOpLowering : public LLVMOpLowering {
-public:
-  explicit GPULaunchFuncOpLowering(LLVMTypeConverter &lowering_)
-      : LLVMOpLowering(gpu::LaunchFuncOp::getOperationName(),
-                       lowering_.getDialect()->getContext(), lowering_) {}
-
-  // Convert the kernel arguments to an LLVM type, preserve the rest.
-  PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                  ConversionPatternRewriter &rewriter) const override {
-    rewriter.clone(*op)->setOperands(operands);
-    return rewriter.replaceOp(op, llvm::None), matchSuccess();
-  }
-};
 
 // Rewriting that replaces Op with XOp, YOp, or ZOp depending on the dimension
 // that Op operates on.  Op is assumed to return an `std.index` value and
@@ -119,20 +103,31 @@ public:
   }
 };
 
-// A pass that replaces all occurences of GPU operations with their
+// A pass that replaces all occurences of GPU device operations with their
 // corresponding NVVM equivalent.
 //
-// This pass does not handle launching of kernels. Instead, it is meant to be
-// used on the body region of a launch or the body region of a kernel
-// function.
+// This pass only handles device code and is not meant to be run on GPU host
+// code.
 class LowerGpuOpsToNVVMOpsPass : public ModulePass<LowerGpuOpsToNVVMOpsPass> {
 public:
   void runOnModule() override {
     ModuleOp m = getModule();
+    if (!m.getAttrOfType<UnitAttr>(gpu::GPUDialect::getKernelModuleAttrName()))
+      return;
 
     OwningRewritePatternList patterns;
     LLVMTypeConverter converter(m.getContext());
-    populateGpuToNVVMConversionPatterns(converter, patterns);
+    populateStdToLLVMConversionPatterns(converter, patterns);
+    patterns.insert<
+        GPUIndexIntrinsicOpLowering<gpu::ThreadId, NVVM::ThreadIdXOp,
+                                    NVVM::ThreadIdYOp, NVVM::ThreadIdZOp>,
+        GPUIndexIntrinsicOpLowering<gpu::BlockDim, NVVM::BlockDimXOp,
+                                    NVVM::BlockDimYOp, NVVM::BlockDimZOp>,
+        GPUIndexIntrinsicOpLowering<gpu::BlockId, NVVM::BlockIdXOp,
+                                    NVVM::BlockIdYOp, NVVM::BlockIdZOp>,
+        GPUIndexIntrinsicOpLowering<gpu::GridDim, NVVM::GridDimXOp,
+                                    NVVM::GridDimYOp, NVVM::GridDimZOp>>(
+        converter);
 
     ConversionTarget target(getContext());
     target.addLegalDialect<LLVM::LLVMDialect>();
@@ -146,23 +141,7 @@ public:
 
 } // anonymous namespace
 
-/// Collect a set of patterns to convert from the GPU dialect to NVVM.
-void mlir::populateGpuToNVVMConversionPatterns(
-    LLVMTypeConverter &converter, OwningRewritePatternList &patterns) {
-  patterns
-      .insert<GPULaunchFuncOpLowering,
-              GPUIndexIntrinsicOpLowering<gpu::ThreadId, NVVM::ThreadIdXOp,
-                                          NVVM::ThreadIdYOp, NVVM::ThreadIdZOp>,
-              GPUIndexIntrinsicOpLowering<gpu::BlockDim, NVVM::BlockDimXOp,
-                                          NVVM::BlockDimYOp, NVVM::BlockDimZOp>,
-              GPUIndexIntrinsicOpLowering<gpu::BlockId, NVVM::BlockIdXOp,
-                                          NVVM::BlockIdYOp, NVVM::BlockIdZOp>,
-              GPUIndexIntrinsicOpLowering<gpu::GridDim, NVVM::GridDimXOp,
-                                          NVVM::GridDimYOp, NVVM::GridDimZOp>>(
-          converter);
-}
-
-std::unique_ptr<ModulePassBase> mlir::createLowerGpuOpsToNVVMOpsPass() {
+std::unique_ptr<OpPassBase<ModuleOp>> mlir::createLowerGpuOpsToNVVMOpsPass() {
   return std::make_unique<LowerGpuOpsToNVVMOpsPass>();
 }
 

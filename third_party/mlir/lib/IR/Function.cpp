@@ -37,7 +37,7 @@ FuncOp FuncOp::create(Location location, StringRef name, FunctionType type,
                       ArrayRef<NamedAttribute> attrs) {
   OperationState state(location, "func");
   Builder builder(location->getContext());
-  FuncOp::build(&builder, &state, name, type, attrs);
+  FuncOp::build(&builder, state, name, type, attrs);
   return llvm::cast<FuncOp>(Operation::create(state));
 }
 FuncOp FuncOp::create(Location location, StringRef name, FunctionType type,
@@ -53,16 +53,16 @@ FuncOp FuncOp::create(Location location, StringRef name, FunctionType type,
   return func;
 }
 
-void FuncOp::build(Builder *builder, OperationState *result, StringRef name,
+void FuncOp::build(Builder *builder, OperationState &result, StringRef name,
                    FunctionType type, ArrayRef<NamedAttribute> attrs) {
-  result->addAttribute(SymbolTable::getSymbolAttrName(),
-                       builder->getStringAttr(name));
-  result->addAttribute(getTypeAttrName(), builder->getTypeAttr(type));
-  result->attributes.append(attrs.begin(), attrs.end());
-  result->addRegion();
+  result.addAttribute(SymbolTable::getSymbolAttrName(),
+                      builder->getStringAttr(name));
+  result.addAttribute(getTypeAttrName(), builder->getTypeAttr(type));
+  result.attributes.append(attrs.begin(), attrs.end());
+  result.addRegion();
 }
 
-void FuncOp::build(Builder *builder, OperationState *result, StringRef name,
+void FuncOp::build(Builder *builder, OperationState &result, StringRef name,
                    FunctionType type, ArrayRef<NamedAttribute> attrs,
                    ArrayRef<NamedAttributeList> argAttrs) {
   build(builder, result, name, type, attrs);
@@ -70,12 +70,12 @@ void FuncOp::build(Builder *builder, OperationState *result, StringRef name,
   SmallString<8> argAttrName;
   for (unsigned i = 0, e = type.getNumInputs(); i != e; ++i)
     if (auto argDict = argAttrs[i].getDictionary())
-      result->addAttribute(getArgAttrName(i, argAttrName), argDict);
+      result.addAttribute(getArgAttrName(i, argAttrName), argDict);
 }
 
 /// Parsing/Printing methods.
 
-ParseResult FuncOp::parse(OpAsmParser *parser, OperationState *result) {
+ParseResult FuncOp::parse(OpAsmParser &parser, OperationState &result) {
   auto buildFuncType = [](Builder &builder, ArrayRef<Type> argTypes,
                           ArrayRef<Type> results, impl::VariadicFlag,
                           std::string &) {
@@ -86,7 +86,7 @@ ParseResult FuncOp::parse(OpAsmParser *parser, OperationState *result) {
                                    buildFuncType);
 }
 
-void FuncOp::print(OpAsmPrinter *p) {
+void FuncOp::print(OpAsmPrinter &p) {
   FunctionType fnType = getType();
   impl::printFunctionLikeOp(p, *this, fnType.getInputs(), /*isVariadic=*/false,
                             fnType.getResults());
@@ -120,6 +120,14 @@ Block *FuncOp::addEntryBlock() {
   push_back(entry);
   entry->addArguments(getType().getInputs());
   return entry;
+}
+
+/// Add a normal block to the end of the function's block list. The function
+/// should at least already have an entry block.
+Block *FuncOp::addBlock() {
+  assert(!empty() && "function should at least have an entry block");
+  push_back(new Block());
+  return &back();
 }
 
 /// Clone the internal blocks from this function into dest and all attributes

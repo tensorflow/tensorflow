@@ -608,23 +608,30 @@ def gen_zipped_test_file(name, file, toco, flags):
         srcs = [file],
     )
 
-def gen_selected_ops(name, model):
+def gen_selected_ops(name, model, namespace = "", **kwargs):
     """Generate the library that includes only used ops.
 
     Args:
       name: Name of the generated library.
       model: TFLite model to interpret.
+      namespace: Namespace in which to put RegisterSelectedOps.
+      **kwargs: Additional kwargs to pass to genrule.
     """
     out = name + "_registration.cc"
     tool = "//tensorflow/lite/tools:generate_op_registrations"
     tflite_path = "//tensorflow/lite"
+
+    # isinstance is not supported in skylark.
+    if type(model) != type([]):
+        model = [model]
     native.genrule(
         name = name,
-        srcs = [model],
+        srcs = model,
         outs = [out],
-        cmd = ("$(location %s) --input_model=$(location %s) --output_registration=$(location %s) --tflite_path=%s") %
-              (tool, model, out, tflite_path[2:]),
+        cmd = ("$(location %s) --namespace=%s --output_registration=$(location %s) --tflite_path=%s $(SRCS)") %
+              (tool, namespace, out, tflite_path[2:]),
         tools = [tool],
+        **kwargs
     )
 
 def flex_dep(target_op_sets):
@@ -641,7 +648,7 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags):
       model_name: Name of the model to test (must be also listed in the 'data'
         dependencies)
       data: List of BUILD targets linking the data.
-      failure_type: List of failure types (none, toco, crash, inference)
+      failure_type: List of failure types (none, toco, crash, inference, evaluation)
         expected for the corresponding combinations of op sets
         ("TFLITE_BUILTINS", "TFLITE_BUILTINS,SELECT_TF_OPS", "SELECT_TF_OPS").
       tags: List of strings of additional tags.

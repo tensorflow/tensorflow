@@ -1,4 +1,4 @@
-llvm/llvm/projects/google_mlir/WORKSPACE
+llvm/llvm/projects/google_mlir/mlir_configure.bzl
 tensorflow/__init__.py
 tensorflow/api_template.__init__.py
 tensorflow/api_template_v1.__init__.py
@@ -69,6 +69,7 @@ tensorflow/third_party/fft2d/fft2d.h
 tensorflow/third_party/functools32.BUILD
 tensorflow/third_party/gast.BUILD
 tensorflow/third_party/gif.BUILD
+tensorflow/third_party/gif_fix_strtok_r.patch
 tensorflow/third_party/git/BUILD
 tensorflow/third_party/git/BUILD.tpl
 tensorflow/third_party/git/git_configure.bzl

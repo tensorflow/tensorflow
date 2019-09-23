@@ -191,11 +191,9 @@ StatusOr<std::unique_ptr<Executable>> MlirCompiler::RunBackend(
   }
 
   // TODO(b/137624192): Add profiling support.
-
-  return static_cast<std::unique_ptr<Executable>>(
-      absl::make_unique<GpuExecutable>(
-          ptx, cubin, GetGpuVersion(stream_exec), std::move(thunk_schedule),
-          std::move(module), std::move(buffer_assignment), nullptr, nullptr));
+  return {absl::make_unique<GpuExecutable>(
+      ptx, cubin, GetGpuVersion(stream_exec), std::move(thunk_schedule),
+      std::move(module), std::move(buffer_assignment), nullptr, nullptr)};
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> MlirCompiler::Compile(

@@ -56,13 +56,17 @@ def SPV_BranchOp : SPV_Op<"Branch", [Terminator]> {
 
   let builders = [
     OpBuilder<
-      "Builder *, OperationState *state, Block *successor", [{
-        state->addSuccessor(successor, {});
+      "Builder *, OperationState &state, Block *successor", [{
+        state.addSuccessor(successor, {});
       }]
     >
   ];
 
   let skipDefaultBuilders = 1;
+
+  let extraClassDeclaration = [{
+    Block *getTarget() { return getOperation()->getSuccessor(0); }
+  }];
 
   let autogenSerialization = 0;
 }
@@ -114,13 +118,19 @@ def SPV_BranchConditionalOp : SPV_Op<"BranchConditional", [Terminator]> {
 
   let builders = [
     OpBuilder<
-      "Builder *, OperationState *state, Value *condition, "
-      "Block *trueBranch, Block *falseBranch, /*optional*/ArrayAttr weights",
+      "Builder *builder, OperationState &state, Value *condition, "
+      "Block *trueBranch, Block *falseBranch, "
+      "Optional<std::pair<uint32_t, uint32_t>> weights",
       [{
-        state->addOperands(condition);
-        state->addSuccessor(trueBranch, {});
-        state->addSuccessor(falseBranch, {});
-        state->addAttribute("branch_weights", weights);
+        state.addOperands(condition);
+        state.addSuccessor(trueBranch, {});
+        state.addSuccessor(falseBranch, {});
+        if (weights) {
+          auto attr =
+              builder->getI32ArrayAttr({static_cast<int32_t>(weights->first),
+                                        static_cast<int32_t>(weights->second)});
+          state.addAttribute("branch_weights", attr);
+        }
       }]
     >
   ];
@@ -132,7 +142,57 @@ def SPV_BranchConditionalOp : SPV_Op<"BranchConditional", [Terminator]> {
   let extraClassDeclaration = [{
     // Branch indices into the successor list.
     enum { kTrueIndex = 0, kFalseIndex = 1 };
+
+    Block *getTrueBlock() { return getOperation()->getSuccessor(kTrueIndex); }
+
+    Block *getFalseBlock() { return getOperation()->getSuccessor(kFalseIndex); }
   }];
+}
+
+// -----
+
+def SPV_FunctionCallOp : SPV_Op<"FunctionCall", [InFunctionScope]> {
+  let summary = "Call a function.";
+
+  let description = [{
+    Result Type is the type of the return value of the function. It must be
+    the same as the Return Type operand of the Function Type operand of the
+    Function operand.
+
+    Function is an OpFunction instruction.  This could be a forward
+    reference.
+
+    Argument N is the object to copy to parameter N of Function.
+
+    Note: A forward call is possible because there is no missing type
+    information: Result Type must match the Return Type of the function, and
+    the calling argument types must match the formal parameter types.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    function-call-op ::= `spv.FunctionCall` function-id `(` ssa-use-list `)`
+                     `:` function-type
+    ```
+
+    For example:
+
+    ```
+    spv.FunctionCall @f_void(%arg0) : (i32) ->  ()
+    %0 = spv.FunctionCall @f_iadd(%arg0, %arg1) : (i32, i32) -> i32
+    ```
+  }];
+
+  let arguments = (ins
+    SymbolRefAttr:$callee,
+    Variadic<SPV_Type>:$arguments
+  );
+
+  let results = (outs
+    SPV_Optional<SPV_Type>:$result
+  );
+
+  let autogenSerialization = 0;
 }
 
 // -----
@@ -174,7 +234,24 @@ def SPV_LoopOp : SPV_Op<"loop"> {
 
   let regions = (region AnyRegion:$body);
 
+  let extraClassDeclaration = [{
+    // Returns the loop header block.
+    Block *getHeaderBlock();
+
+    // Returns the loop continue block.
+    Block *getContinueBlock();
+
+    // Returns the loop merge block.
+    Block *getMergeBlock();
+
+    // Adds an empty entry block and loop merge block containing one
+    // spv._merge op.
+    void addEntryAndMergeBlock();
+  }];
+
   let hasOpcode = 0;
+
+  let autogenSerialization = 0;
 }
 
 // -----
@@ -198,6 +275,8 @@ def SPV_MergeOp : SPV_Op<"_merge", [HasParent<"LoopOp">, Terminator]> {
   let printer = [{ printNoIOOp(getOperation(), p); }];
 
   let hasOpcode = 0;
+
+  let autogenSerialization = 0;
 }
 
 // -----

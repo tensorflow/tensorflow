@@ -627,7 +627,7 @@ class TextFileInitializer(TableInitializerBase):
     self._delimiter = delimiter
     self._name = name
     self._filename = self._track_trackable(
-        trackable.TrackableAsset(filename), "_filename")
+        trackable.Asset(filename), "_filename")
 
     super(TextFileInitializer, self).__init__(key_dtype, value_dtype)
 

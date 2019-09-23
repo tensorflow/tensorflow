@@ -365,7 +365,15 @@ PYBIND11_MODULE(xla_extension, m) {
                literal_shared = std::make_shared<Literal>(std::move(literal));
              }
              return LiteralToPython(std::move(literal_shared));
-           });
+           })
+      .def("SerializeExecutable",
+           [](PyLocalClient* client,
+              PyLocalExecutable* executable) -> StatusOr<py::bytes> {
+             TF_ASSIGN_OR_RETURN(std::string serialized,
+                                 client->SerializeExecutable(*executable));
+             return py::bytes(serialized);
+           })
+      .def("DeserializeExecutable", &PyLocalClient::DeserializeExecutable);
 
   py::class_<PyLocalBuffer>(m, "PyLocalBuffer")
       .def_static(
@@ -724,6 +732,8 @@ PYBIND11_MODULE(xla_extension, m) {
   UNARY_OP(ErfInv);
   UNARY_OP(Lgamma);
   UNARY_OP(Digamma);
+  UNARY_OP(BesselI0e);
+  UNARY_OP(BesselI1e);
   UNARY_OP(Acos);
   UNARY_OP(Asin);
   UNARY_OP(Atan);

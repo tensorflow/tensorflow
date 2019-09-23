@@ -579,6 +579,17 @@ Status ConnectTwoNodes(Graph<TensorT>* graph, const Node* from_node,
 
 using GraphFloat32 = Model<TensorRef<BHWC>>;
 
+// @return true if all tensors have same batch value.
+inline bool IsBatchMatchesForAllValues(const GraphFloat32& model) {
+  const int32_t b = model.values()[0]->tensor.shape.b;
+  for (auto value : model.values()) {
+    if (value->tensor.shape.b != b) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace gpu
 }  // namespace tflite
 

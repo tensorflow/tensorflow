@@ -27,42 +27,50 @@ limitations under the License.
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
-using tensorflow::int64;
+using ::tensorflow::int16;
+using ::tensorflow::int32;
+using ::tensorflow::int64;
+using ::tensorflow::int8;
+using ::tensorflow::uint16;
+using ::tensorflow::uint32;
+using ::tensorflow::uint64;
+using ::tensorflow::uint8;
 
 static std::vector<int64> ConvertDenseIntAttr(mlir::DenseIntElementsAttr attr) {
   auto values = attr.getValues<int64>();
   return {values.begin(), values.end()};
 }
 
-// Converts the broadcast_dimensions attribute into a span of dimension numbers
-// (empty if the attribute is absent).
+// Converts the broadcast_dimensions attribute into a vector of dimension
+// numbers (empty if the attribute is absent).
 static std::vector<int64> Convert_broadcast_dimensions(
-    llvm::Optional<mlir::ElementsAttr> broadcast_dimensions) {
+    llvm::Optional<mlir::DenseIntElementsAttr> broadcast_dimensions) {
   if (!broadcast_dimensions.hasValue()) return {};
 
-  return ConvertDenseIntAttr(
-      broadcast_dimensions->cast<mlir::DenseIntElementsAttr>());
+  return ConvertDenseIntAttr(*broadcast_dimensions);
 }
 
-// Converts the broadcast_sizes attribute into a span of dimension sizes.
+// Converts the broadcast_sizes attribute into a vector of dimension sizes.
 static std::vector<int64> Convert_broadcast_sizes(
-    mlir::ElementsAttr broadcast_sizes) {
-  return ConvertDenseIntAttr(
-      broadcast_sizes.cast<mlir::DenseIntElementsAttr>());
+    mlir::DenseIntElementsAttr broadcast_sizes) {
+  return ConvertDenseIntAttr(broadcast_sizes);
 }
 
-static std::vector<int64> Convert_permutation(mlir::ElementsAttr permutation) {
-  return ConvertDenseIntAttr(permutation.cast<mlir::DenseIntElementsAttr>());
+static std::vector<int64> Convert_permutation(
+    mlir::DenseIntElementsAttr permutation) {
+  return ConvertDenseIntAttr(permutation);
 }
 
 // Converts the precision config array of strings attribute into the
@@ -88,6 +96,45 @@ static std::unique_ptr<xla::PrecisionConfig> Convert_precision_config(
   }
 
   return precision_config;
+}
+
+static xla::DotDimensionNumbers Convert_dot_dimension_numbers(
+    mlir::xla_hlo::DotDimensionNumbers dot_dimension_numbers_attr) {
+  xla::DotDimensionNumbers dot_dimension_numbers;
+
+  auto rhs_contracting_dimensions =
+      dot_dimension_numbers_attr.rhs_contracting_dimensions()
+          .cast<mlir::DenseIntElementsAttr>();
+  auto lhs_contracting_dimensions =
+      dot_dimension_numbers_attr.lhs_contracting_dimensions()
+          .cast<mlir::DenseIntElementsAttr>();
+  auto rhs_batch_dimensions =
+      dot_dimension_numbers_attr.rhs_batching_dimensions()
+          .cast<mlir::DenseIntElementsAttr>();
+  auto lhs_batch_dimensions =
+      dot_dimension_numbers_attr.lhs_batching_dimensions()
+          .cast<mlir::DenseIntElementsAttr>();
+
+  for (auto val : rhs_contracting_dimensions) {
+    dot_dimension_numbers.add_rhs_contracting_dimensions(
+        val.getLimitedValue(UINT64_MAX));
+  }
+  for (auto val : lhs_contracting_dimensions) {
+    dot_dimension_numbers.add_lhs_contracting_dimensions(
+        val.getLimitedValue(UINT64_MAX));
+  }
+
+  for (auto val : rhs_batch_dimensions) {
+    dot_dimension_numbers.add_rhs_batch_dimensions(
+        val.getLimitedValue(UINT64_MAX));
+  }
+
+  for (auto val : lhs_batch_dimensions) {
+    dot_dimension_numbers.add_lhs_batch_dimensions(
+        val.getLimitedValue(UINT64_MAX));
+  }
+
+  return dot_dimension_numbers;
 }
 
 // Converts the comparison_direction string attribute into the XLA enum. The
@@ -131,6 +178,36 @@ static double ConvertAPFloat(llvm::APFloat value) {
 
 namespace mlir {
 namespace {
+
+StatusOr<xla::Literal> CreateLiteralFromAttr(Type type, ElementsAttr attr) {
+  xla::Shape shape = xla::TypeToShape(type);
+
+#define ELEMENTS_ATTR_TO_LITERAL(xla_type, cpp_type)       \
+  case xla_type: {                                         \
+    xla::Array<cpp_type> source_data(shape.dimensions());  \
+    source_data.SetValues(attr.getValues<cpp_type>());     \
+    return xla::LiteralUtil::CreateFromArray(source_data); \
+  }
+
+  switch (shape.element_type()) {
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::PRED, bool)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F32, float)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::F64, double)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S8, int8)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S16, int16)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S32, int32)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S64, int64)
+    // TODO(b/130356985): Update once MLIR supports unsigned integers.
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U8, uint8)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U16, uint16)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U32, uint32)
+    ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U64, uint64)
+    default:
+      return tensorflow::errors::Internal(absl::StrCat(
+          "Unsupported type: ", xla::PrimitiveType_Name(shape.element_type())));
+  }
+#undef ELEMENTS_ATTR_TO_LITERAL
+}
 
 class ConvertToHloModule {
  public:
@@ -186,15 +263,20 @@ class ConvertToHloModule {
 LogicalResult ConvertToHloModule::Lower(
     mlir::Operation* inst, xla::XlaBuilder* builder,
     ConvertToHloModule::ValueLoweringMap* value_lowering) {
-  if (auto xla_op = CreateXlaOperator(inst, value_lowering)) return success();
-
-  // TODO(riverriddle) We currently don't support lowering constant operations.
-  if (isa<mlir::xla_hlo::ConstOp>(inst)) {
-    inst->emitError("unable to lower 'xla_hlo.constant' operation");
-    return failure();
-  }
+  if (succeeded(ExportXlaOperator(inst, value_lowering))) return success();
 
   auto& value_map = *value_lowering;
+  ElementsAttr const_attr;
+  // TODO(jpienaar): This doesn't support layouts yet.
+  if (matchPattern(inst, m_Constant(&const_attr))) {
+    auto literal_or =
+        CreateLiteralFromAttr(*inst->result_type_begin(), const_attr);
+    if (!literal_or.ok()) return inst->emitError("unsupported elemental type");
+    value_map[inst->getResult(0)] =
+        xla::ConstantLiteral(builder, literal_or.ValueOrDie());
+    return success();
+  }
+
   if (auto ret = dyn_cast<mlir::ReturnOp>(inst)) {
     // Construct the return value for the function. If there are multiple
     // values returned, then create a tuple, else return value directly.

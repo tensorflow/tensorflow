@@ -1191,6 +1191,7 @@ Attribute Parser::parseDecOrHexAttr(Type type, bool isNegative) {
 
   // Remember if the literal is hexadecimal.
   StringRef spelling = getToken().getSpelling();
+  auto loc = state.curToken.getLoc();
   bool isHex = spelling.size() > 1 && spelling[1] == 'x';
 
   consumeToken(Token::integer);
@@ -1202,16 +1203,19 @@ Attribute Parser::parseDecOrHexAttr(Type type, bool isNegative) {
       return nullptr;
   }
 
-  // Hexadecimal representation of float literals is not supported for bfloat16.
-  // When supported, the literal should be unsigned.
-  auto floatType = type.dyn_cast<FloatType>();
-  if (floatType && !type.isBF16()) {
-    if (isNegative) {
-      emitError("hexadecimal float literal should not have a leading minus");
-      return nullptr;
-    }
+  if (auto floatType = type.dyn_cast<FloatType>()) {
+    // TODO(zinenko): Update once hex format for bfloat16 is supported.
+    if (type.isBF16())
+      return emitError(loc,
+                       "hexadecimal float literal not supported for bfloat16"),
+             nullptr;
+    if (isNegative)
+      return emitError(
+                 loc,
+                 "hexadecimal float literal should not have a leading minus"),
+             nullptr;
     if (!isHex) {
-      emitError("unexpected decimal integer literal for a float attribute")
+      emitError(loc, "unexpected decimal integer literal for a float attribute")
               .attachNote()
           << "add a trailing dot to make the literal a float";
       return nullptr;
@@ -1222,17 +1226,20 @@ Attribute Parser::parseDecOrHexAttr(Type type, bool isNegative) {
   }
 
   if (!type.isIntOrIndex())
-    return (emitError("integer literal not valid for specified type"), nullptr);
+    return emitError(loc, "integer literal not valid for specified type"),
+           nullptr;
 
   // Parse the integer literal.
   int width = type.isIndex() ? 64 : type.getIntOrFloatBitWidth();
   APInt apInt(width, *val, isNegative);
   if (apInt != *val)
-    return (emitError("integer constant out of range for attribute"), nullptr);
+    return emitError(loc, "integer constant out of range for attribute"),
+           nullptr;
 
   // Otherwise construct an integer attribute.
   if (isNegative ? (int64_t)-val.getValue() >= 0 : (int64_t)val.getValue() < 0)
-    return (emitError("integer constant out of range for attribute"), nullptr);
+    return emitError(loc, "integer constant out of range for attribute"),
+           nullptr;
 
   return builder.getIntegerAttr(type, isNegative ? -apInt : apInt);
 }
@@ -2606,6 +2613,11 @@ public:
   /// Parse an operation instance that is in the generic form.
   Operation *parseGenericOperation();
 
+  /// Parse an operation instance that is in the generic form and insert it at
+  /// the provided insertion point.
+  Operation *parseGenericOperation(Block *insertBlock,
+                                   Block::iterator insertPt);
+
   /// Parse an operation instance that is in the op-defined custom form.
   Operation *parseCustomOperation();
 
@@ -3255,6 +3267,13 @@ Operation *OperationParser::parseGenericOperation() {
   return opBuilder.createOperation(result);
 }
 
+Operation *OperationParser::parseGenericOperation(Block *insertBlock,
+                                                  Block::iterator insertPt) {
+  OpBuilder::InsertionGuard restoreInsertionPoint(opBuilder);
+  opBuilder.setInsertionPoint(insertBlock, insertPt);
+  return parseGenericOperation();
+}
+
 namespace {
 class CustomOpAsmParser : public OpAsmParser {
 public:
@@ -3264,10 +3283,15 @@ public:
 
   /// Parse an instance of the operation described by 'opDefinition' into the
   /// provided operation state.
-  ParseResult parseOperation(OperationState *opState) {
-    if (opDefinition->parseAssembly(this, opState))
+  ParseResult parseOperation(OperationState &opState) {
+    if (opDefinition->parseAssembly(*this, opState))
       return failure();
     return success();
+  }
+
+  Operation *parseGenericOperation(Block *insertBlock,
+                                   Block::iterator insertPt) final {
+    return parser.parseGenericOperation(insertBlock, insertPt);
   }
 
   //===--------------------------------------------------------------------===//
@@ -3334,20 +3358,6 @@ public:
   /// Parse a `=` token.
   ParseResult parseEqual() override {
     return parser.parseToken(Token::equal, "expected '='");
-  }
-
-  /// Parse a keyword if present.
-  ParseResult parseOptionalKeyword(const char *keyword) override {
-    // Check that the current token is a bare identifier or keyword.
-    if (parser.getToken().isNot(Token::bare_identifier) &&
-        !parser.getToken().isKeyword())
-      return failure();
-
-    if (parser.getTokenSpelling() == keyword) {
-      parser.consumeToken();
-      return success();
-    }
-    return failure();
   }
 
   /// Parse a `(` token.
@@ -3418,6 +3428,32 @@ public:
   //===--------------------------------------------------------------------===//
   // Identifier Parsing
   //===--------------------------------------------------------------------===//
+
+  /// Returns if the current token corresponds to a keyword.
+  bool isCurrentTokenAKeyword() const {
+    return parser.getToken().is(Token::bare_identifier) ||
+           parser.getToken().isKeyword();
+  }
+
+  /// Parse the given keyword if present.
+  ParseResult parseOptionalKeyword(StringRef keyword) override {
+    // Check that the current token has the same spelling.
+    if (!isCurrentTokenAKeyword() || parser.getTokenSpelling() != keyword)
+      return failure();
+    parser.consumeToken();
+    return success();
+  }
+
+  /// Parse a keyword, if present, into 'keyword'.
+  ParseResult parseOptionalKeyword(StringRef *keyword) override {
+    // Check that the current token is a keyword.
+    if (!isCurrentTokenAKeyword())
+      return failure();
+
+    *keyword = parser.getTokenSpelling();
+    parser.consumeToken();
+    return success();
+  }
 
   /// Parse an @-identifier and store it (without the '@' symbol) in a string
   /// attribute named 'attrName'.
@@ -3753,7 +3789,7 @@ Operation *OperationParser::parseCustomOperation() {
   OperationState opState(srcLocation, opDefinition->name);
   CleanupOpStateRegions guard{opState};
   CustomOpAsmParser opAsmParser(opLoc, opDefinition, *this);
-  if (opAsmParser.parseOperation(&opState))
+  if (opAsmParser.parseOperation(opState))
     return nullptr;
 
   // If it emitted an error, we failed.
@@ -4073,7 +4109,7 @@ ParseResult ModuleParser::parseModule(ModuleOp module) {
   // Module itself is a name scope.
   opParser.pushSSANameScope(/*isIsolated=*/true);
 
-  while (1) {
+  while (true) {
     switch (getToken().getKind()) {
     default:
       // Parse a top-level operation.
@@ -4200,7 +4236,8 @@ OwningModuleRef mlir::parseSourceString(StringRef moduleStr,
   return parseSourceFile(sourceMgr, context);
 }
 
-Type mlir::parseType(llvm::StringRef typeStr, MLIRContext *context) {
+Type mlir::parseType(llvm::StringRef typeStr, MLIRContext *context,
+                     size_t &numRead) {
   SourceMgr sourceMgr;
   auto memBuffer =
       MemoryBuffer::getMemBuffer(typeStr, /*BufferName=*/"<mlir_type_buffer>",
@@ -4209,18 +4246,18 @@ Type mlir::parseType(llvm::StringRef typeStr, MLIRContext *context) {
   SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, context);
   ParserState state(sourceMgr, context);
   Parser parser(state);
+
   auto start = parser.getToken().getLoc();
   auto ty = parser.parseType();
   if (!ty)
     return Type();
 
   auto end = parser.getToken().getLoc();
-  auto read = end.getPointer() - start.getPointer();
-  // Make sure that the parsing of type consumes the entire string
-  if (static_cast<size_t>(read) < typeStr.size()) {
-    parser.emitError("unexpected additional tokens: '")
-        << typeStr.substr(read) << "' after parsing type: " << ty;
-    return Type();
-  }
+  numRead = static_cast<size_t>(end.getPointer() - start.getPointer());
   return ty;
+}
+
+Type mlir::parseType(llvm::StringRef typeStr, MLIRContext *context) {
+  size_t numRead = 0;
+  return parseType(typeStr, context, numRead);
 }

@@ -100,6 +100,10 @@ sin = _unary_op(math_ops.sin)
 sign = _unary_op(math_ops.sign)
 tanh = _unary_op(math_ops.tanh)
 
+# Bessel
+bessel_i0e = _unary_op(math_ops.bessel_i0e)
+bessel_i1e = _unary_op(math_ops.bessel_i1e)
+
 # Binary operators
 
 # The main difference between TensorFlow and XLA binary ops is the broadcasting

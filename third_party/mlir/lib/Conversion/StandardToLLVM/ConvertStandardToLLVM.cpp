@@ -1008,6 +1008,21 @@ struct SIToFPLowering
   using Super::Super;
 };
 
+struct SignExtendIOpLowering
+    : public OneToOneLLVMOpLowering<SignExtendIOp, LLVM::SExtOp> {
+  using Super::Super;
+};
+
+struct TruncateIOpLowering
+    : public OneToOneLLVMOpLowering<TruncateIOp, LLVM::TruncOp> {
+  using Super::Super;
+};
+
+struct ZeroExtendIOpLowering
+    : public OneToOneLLVMOpLowering<ZeroExtendIOp, LLVM::ZExtOp> {
+  using Super::Super;
+};
+
 // Base class for LLVM IR lowering terminator operations with successors.
 template <typename SourceOp, typename TargetOp>
 struct OneToOneLLVMTerminatorLowering
@@ -1042,16 +1057,15 @@ struct ReturnOpLowering : public LLVMLegalizationPattern<ReturnOp> {
 
     // If ReturnOp has 0 or 1 operand, create it and return immediately.
     if (numArguments == 0) {
-      rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(
-          op, llvm::ArrayRef<Value *>(), llvm::ArrayRef<Block *>(),
-          llvm::ArrayRef<llvm::ArrayRef<Value *>>(), op->getAttrs());
+      rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(op, llvm::ArrayRef<Value *>(),
+                                                  llvm::ArrayRef<Block *>(),
+                                                  op->getAttrs());
       return matchSuccess();
     }
     if (numArguments == 1) {
       rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(
           op, llvm::ArrayRef<Value *>(operands.front()),
-          llvm::ArrayRef<Block *>(), llvm::ArrayRef<llvm::ArrayRef<Value *>>(),
-          op->getAttrs());
+          llvm::ArrayRef<Block *>(), op->getAttrs());
       return matchSuccess();
     }
 
@@ -1066,9 +1080,9 @@ struct ReturnOpLowering : public LLVMLegalizationPattern<ReturnOp> {
           op->getLoc(), packedType, packed, operands[i],
           rewriter.getIndexArrayAttr(i));
     }
-    rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(
-        op, llvm::makeArrayRef(packed), llvm::ArrayRef<Block *>(),
-        llvm::ArrayRef<llvm::ArrayRef<Value *>>(), op->getAttrs());
+    rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(op, llvm::makeArrayRef(packed),
+                                                llvm::ArrayRef<Block *>(),
+                                                op->getAttrs());
     return matchSuccess();
   }
 };
@@ -1144,8 +1158,9 @@ void mlir::populateStdToLLVMConversionPatterns(
       DivFOpLowering, FuncOpConversion, IndexCastOpLowering, LoadOpLowering,
       MemRefCastOpLowering, MulFOpLowering, MulIOpLowering, OrOpLowering,
       RemISOpLowering, RemIUOpLowering, RemFOpLowering, ReturnOpLowering,
-      SelectOpLowering, SIToFPLowering, StoreOpLowering, SubFOpLowering,
-      SubIOpLowering, XOrOpLowering>(*converter.getDialect(), converter);
+      SelectOpLowering, SignExtendIOpLowering, SIToFPLowering, StoreOpLowering,
+      SubFOpLowering, SubIOpLowering, TruncateIOpLowering, XOrOpLowering,
+      ZeroExtendIOpLowering>(*converter.getDialect(), converter);
 }
 
 // Convert types using the stored LLVM IR module.
@@ -1223,11 +1238,11 @@ struct LLVMLoweringPass : public ModulePass<LLVMLoweringPass> {
 };
 } // end namespace
 
-std::unique_ptr<ModulePassBase> mlir::createLowerToLLVMPass() {
+std::unique_ptr<OpPassBase<ModuleOp>> mlir::createLowerToLLVMPass() {
   return std::make_unique<LLVMLoweringPass>();
 }
 
-std::unique_ptr<ModulePassBase>
+std::unique_ptr<OpPassBase<ModuleOp>>
 mlir::createLowerToLLVMPass(LLVMPatternListFiller patternListFiller,
                             LLVMTypeConverterMaker typeConverterMaker) {
   return std::make_unique<LLVMLoweringPass>(patternListFiller,

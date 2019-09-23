@@ -337,7 +337,7 @@ struct LinalgFusionPass : public FunctionPass<LinalgFusionPass> {
   LinalgFusionPass() = default;
   LinalgFusionPass(ArrayRef<int64_t> sizes);
 
-  void runOnFunction() { fuseLinalgOps(getFunction(), tileSizes); }
+  void runOnFunction() override { fuseLinalgOps(getFunction(), tileSizes); }
 
   SmallVector<int64_t, 8> tileSizes;
 };
@@ -349,7 +349,7 @@ LinalgFusionPass::LinalgFusionPass(ArrayRef<int64_t> sizes)
     this->tileSizes.assign(sizes.begin(), sizes.end());
 }
 
-std::unique_ptr<FunctionPassBase>
+std::unique_ptr<OpPassBase<FuncOp>>
 mlir::linalg::createLinalgFusionPass(ArrayRef<int64_t> tileSizes) {
   return std::make_unique<LinalgFusionPass>(tileSizes);
 }

@@ -470,7 +470,7 @@ class AssetTests(test.TestCase):
 
   def test_asset_path_returned(self):
     root = tracking.AutoTrackable()
-    root.path = tracking.TrackableAsset(self._vocab_path)
+    root.path = tracking.Asset(self._vocab_path)
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     root.get_asset = def_function.function(lambda: root.path.asset_path)
     save.save(root, save_dir, signatures=root.get_asset.get_concrete_function())
@@ -513,7 +513,7 @@ class AssetTests(test.TestCase):
     root.f = def_function.function(
         lambda x: 2. * x,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
-    root.asset = tracking.TrackableAsset(self._vocab_path)
+    root.asset = tracking.Asset(self._vocab_path)
 
     export_dir = os.path.join(self.get_temp_dir(), "save_dir")
     save.save(root, export_dir)

@@ -34,8 +34,18 @@ make -f tensorflow/lite/experimental/micro/tools/make/Makefile \
 
 tensorflow/lite/experimental/micro/tools/ci_build/install_mbed_cli.sh
 
-for f in tensorflow/lite/experimental/micro/tools/make/gen/mbed_*/prj/*/mbed; do
-  tensorflow/lite/experimental/micro/tools/ci_build/test_mbed_library.sh ${f}
+for PROJECT_PATH in tensorflow/lite/experimental/micro/tools/make/gen/mbed_*/prj/*/mbed; do
+  PROJECT_PARENT_DIR=$(dirname ${PROJECT_PATH})
+  PROJECT_NAME=$(basename ${PROJECT_PARENT_DIR})
+  # Don't try to build and package up test projects, because there are too many.
+  if [[ ${PROJECT_NAME} == *"_test" ]]; then
+    continue
+  fi
+  cp -r ${PROJECT_PATH} ${PROJECT_PARENT_DIR}/${PROJECT_NAME}
+  pushd ${PROJECT_PARENT_DIR}
+  zip -q -r ${PROJECT_NAME}.zip ${PROJECT_NAME}
+  popd
+  tensorflow/lite/experimental/micro/tools/ci_build/test_mbed_library.sh ${PROJECT_PATH}
 done
 
 # Needed to solve CI build bug triggered by files added to source tree.

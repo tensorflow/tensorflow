@@ -132,6 +132,8 @@ upper_tabs:
         path: /lite/models/pose_estimation/overview
       - title: "Segmentation"
         path: /lite/models/segmentation/overview
+      - title: "Style transfer"
+        path: /lite/models/style_transfer/overview
       - title: "Smart reply"
         path: /lite/models/smart_reply/overview
 

@@ -241,9 +241,6 @@ class Loop(training_utils.TrainingLoop):
       # tf.print('{} on {} steps.'.format(ModeKeys.TRAIN, steps_per_epoch))
       training_context = TrainingContext()
 
-      initial_epoch = model._maybe_load_initial_epoch_from_ckpt(
-          initial_epoch, ModeKeys.TRAIN)
-
       training_dataset = training_data_adapter.get_dataset()
       # Raise an error if steps_per_epoch isn't specified but the dataset
       # is infinite.
@@ -301,6 +298,10 @@ class Loop(training_utils.TrainingLoop):
 
       with training_context.on_start(model, training_callbacks, use_sample,
                                      verbose, ModeKeys.TRAIN):
+
+        initial_epoch = model._maybe_load_initial_epoch_from_ckpt(
+            initial_epoch, ModeKeys.TRAIN)
+
         for epoch in range(initial_epoch, epochs):
           if training_context.callbacks.model.stop_training:
             break
@@ -576,11 +577,12 @@ def _process_training_inputs(model,
       (val_x, val_y,
        val_sample_weights) = training_utils.unpack_validation_data(
            validation_data)
-      # For eval data, we use the training data batch_size it was unknown.
+      # For eval data, we use a representative batch size of the
+      # training data if batch_size was unknown.
       # This is useful for generator/sequence training data input with numpy
       # validation data input.
       if not batch_size:
-        batch_size = train_adapter.batch_size()
+        batch_size = train_adapter.representative_batch_size()
       val_adapter = _process_inputs(
           model,
           ModeKeys.TEST,
@@ -705,6 +707,7 @@ class TrainingContext(object):
 
     try:
       yield
+      model._successful_loop_finish = True
     finally:
       # End of all epochs
       self.callbacks._call_end_hook(mode)

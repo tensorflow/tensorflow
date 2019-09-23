@@ -79,7 +79,7 @@ static constexpr int kFramesToInitialize = 4;
 
 bool g_is_camera_initialized = false;
 
-void boost_mode_enable(tflite::ErrorReporter* error_reporter, bool bEnable) {
+void burst_mode_enable(tflite::ErrorReporter* error_reporter, bool bEnable) {
   am_hal_burst_avail_e eBurstModeAvailable;
   am_hal_burst_mode_e eBurstMode;
 
@@ -137,7 +137,7 @@ TfLiteStatus InitCamera(tflite::ErrorReporter* error_reporter) {
   // Enable interrupts so we can receive messages from the boot host.
   am_hal_interrupt_master_enable();
 
-  boost_mode_enable(error_reporter, true);
+  burst_mode_enable(error_reporter, true);
 
   // Turn on the 1.8V regulator for DVDD on the camera.
   am_hal_gpio_pinconfig(HM01B0_PIN_DVDD_EN, g_AM_HAL_GPIO_OUTPUT_12);

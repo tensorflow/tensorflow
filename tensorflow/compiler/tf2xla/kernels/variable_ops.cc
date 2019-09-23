@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/lib/slicing.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
@@ -122,27 +123,24 @@ REGISTER_XLA_OP(
 
 class ResourceGatherOp : public XlaOpKernel {
  public:
-  explicit ResourceGatherOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  explicit ResourceGatherOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("batch_dims", &batch_dims_));
+  }
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaBuilder* builder = ctx->builder();
-
     DataType type = ctx->expected_output_dtype(0);
 
-    TensorShape resource_shape;
-    xla::XlaOp resource_handle;
-    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, type, &resource_shape,
-                                               &resource_handle));
+    TensorShape input_shape;
+    xla::XlaOp input;
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, type, &input_shape, &input));
 
-    auto indices = ctx->Input(1);
-    auto indices_shape = ctx->InputShape(1);
-    DataType index_type = ctx->input_type(1);
     xla::XlaOp gather;
-    OP_REQUIRES_OK(
-        ctx, XlaGather(resource_handle, resource_shape, indices, indices_shape,
-                       /*axis=*/0, /*indices_are_nd=*/false, type, index_type,
-                       builder, &gather));
+    OP_REQUIRES_OK(ctx, XlaGatherWithBatchDimsOpImpl(ctx, input, input_shape,
+                                                     batch_dims_, &gather));
     ctx->SetOutput(0, gather);
   }
+
+ private:
+  int32 batch_dims_;
 };
 REGISTER_XLA_OP(Name("ResourceGather"), ResourceGatherOp);
 

@@ -20,7 +20,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // TF:local_config_mlir
 #include "mlir/Conversion/LoopsToGPU/LoopsToGPUPass.h"  // TF:local_config_mlir
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // TF:local_config_mlir
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // TF:local_config_mlir
 #include "mlir/Dialect/GPU/GPUDialect.h"  // TF:local_config_mlir
 #include "mlir/Dialect/GPU/Passes.h"  // TF:local_config_mlir
@@ -39,53 +38,9 @@ limitations under the License.
 
 namespace xla {
 namespace mlir_gpu {
-namespace {
-
-using ::mlir::ConversionTarget;
-using ::mlir::FuncOp;
-using ::mlir::LLVMTypeConverter;
-using ::mlir::ModulePass;
-using ::mlir::ModulePassBase;
-using ::mlir::OwningRewritePatternList;
-using ::mlir::PassManager;
-using ::mlir::gpu::GPUDialect;
-using ::mlir::LLVM::LLVMDialect;
-using ::mlir::NVVM::NVVMDialect;
-
-struct LowerKernelBodiesToNVVMPass
-    : public ModulePass<LowerKernelBodiesToNVVMPass> {
- public:
-  explicit LowerKernelBodiesToNVVMPass() = default;
-
-  void runOnModule() override {
-    auto module = getModule();
-    ConversionTarget target(*module.getContext());
-    LLVMTypeConverter converter(module.getContext());
-
-    target.addLegalDialect<LLVMDialect>();
-    target.addLegalDialect<NVVMDialect>();
-    target.addDynamicallyLegalOp<FuncOp>(
-        [&](FuncOp op) { return converter.isSignatureLegal(op.getType()); });
-
-    OwningRewritePatternList patterns;
-    populateStdToLLVMConversionPatterns(converter, patterns);
-    populateGpuToNVVMConversionPatterns(converter, patterns);
-
-    module.walk([this, &target, &patterns, &converter](FuncOp function) {
-      if (!GPUDialect::isKernel(function)) {
-        return;
-      }
-      if (failed(applyFullConversion(function, target, patterns, &converter))) {
-        signalPassFailure();
-      }
-    });
-  }
-};
-
-}  // namespace
 
 Status LowerLHLOToGPU(mlir::ModuleOp module) {
-  PassManager pm(module.getContext());
+  mlir::PassManager pm(module.getContext());
 
   // Transform element-wise operations to Affine.
   pm.addPass(::mlir::xla_lhlo::createLegalizeToAffinePass());
@@ -106,12 +61,13 @@ Status LowerLHLOToGPU(mlir::ModuleOp module) {
 
 Status LowerKernelBodiesToNVVM(mlir::ModuleOp module) {
   // We cannot verify as the signature of the kernel is rewritten.
-  PassManager pm(module.getContext(), /*verifyPasses=*/false);
+  ::mlir::PassManager pm(module.getContext(), /*verifyPasses=*/false);
 
   // Rewrite kernel functions to LLVM IR.
-  pm.addPass(absl::make_unique<LowerKernelBodiesToNVVMPass>());
+  auto &kernelPm = pm.nest<::mlir::ModuleOp>();
+  kernelPm.addPass(::mlir::createLowerGpuOpsToNVVMOpsPass());
   // Some basic cleanup.
-  pm.addPass(::mlir::createCSEPass());
+  kernelPm.addPass(::mlir::createCSEPass());
 
   if (failed(pm.run(module))) {
     return InternalError("Lowering to NVVM IR failed.");

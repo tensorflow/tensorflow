@@ -683,11 +683,10 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
             << " is overflowing the expected number of inputs ("
             << node->num_inputs() << ") for node " << node->DebugString();
         CHECK(inputs[edge->dst_input()] == nullptr)
-            << "Edge " << edge->src()->DebugString() << ":"
-            << edge->dst()->DebugString() << " with dst_input "
-            << edge->dst_input() << " and had pre-existing input edge "
-            << inputs[edge->dst_input()]->src()->DebugString() << ":"
-            << inputs[edge->dst_input()]->dst()->DebugString();
+            << "Edge " << edge->src()->name() << "->" << edge->dst()->name()
+            << " conflicts with pre-existing input edge "
+            << inputs[edge->dst_input()]->src()->name() << "->"
+            << inputs[edge->dst_input()]->dst()->name();
 
         inputs[edge->dst_input()] = edge;
       }

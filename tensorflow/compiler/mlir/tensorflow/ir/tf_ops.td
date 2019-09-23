@@ -78,9 +78,9 @@ def TF_ConstOp : TF_Op<"Const", [NoSideEffect]> {
 
   let builders = [
     OpBuilder<
-      "Builder *builder, OperationState *result, Attribute value">,
+      "Builder *builder, OperationState &result, Attribute value">,
     OpBuilder<
-      "Builder *builder, OperationState *result, Type type, Attribute value">,
+      "Builder *builder, OperationState &result, Type type, Attribute value">,
   ];
 
   let hasFolder = 1;

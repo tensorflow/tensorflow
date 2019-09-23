@@ -162,7 +162,7 @@ class CreateGraphDebugInfoDefTest(test.TestCase):
         export_ops)
     this_file_index = -1
     for file_index, file_name in enumerate(graph_debug_info.files):
-      if "/error_interpolation_test.py" in file_name:
+      if "{}error_interpolation_test.py".format(os.sep) in file_name:
         this_file_index = file_index
     self.assertGreaterEqual(
         this_file_index, 0,

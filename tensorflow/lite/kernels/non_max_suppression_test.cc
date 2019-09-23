@@ -29,6 +29,10 @@ class BaseNMSOp : public SingleOpModel {
     PopulateTensor(input_scores_, data);
   }
 
+  void SetMaxOutputSize(int max_output_size) {
+    PopulateTensor(input_max_output_size_, {max_output_size});
+  }
+
   void SetScoreThreshold(float score_threshold) {
     PopulateTensor(input_score_threshold_, {score_threshold});
   }
@@ -60,12 +64,18 @@ class BaseNMSOp : public SingleOpModel {
 
 class NonMaxSuppressionV4OpModel : public BaseNMSOp {
  public:
-  explicit NonMaxSuppressionV4OpModel(const int max_output_size,
-                                      const float iou_threshold) {
+  explicit NonMaxSuppressionV4OpModel(const float iou_threshold,
+                                      const bool static_shaped_outputs,
+                                      const int max_output_size = -1) {
     const int num_boxes = 6;
     input_boxes_ = AddInput({TensorType_FLOAT32, {num_boxes, 4}});
     input_scores_ = AddInput({TensorType_FLOAT32, {num_boxes}});
-    input_max_output_size_ = AddConstInput(TensorType_INT32, {max_output_size});
+    if (static_shaped_outputs) {
+      input_max_output_size_ =
+          AddConstInput(TensorType_INT32, {max_output_size});
+    } else {
+      input_max_output_size_ = AddInput(TensorType_INT32, {});
+    }
     input_iou_threshold_ = AddConstInput(TensorType_FLOAT32, {iou_threshold});
     input_score_threshold_ = AddInput({TensorType_FLOAT32, {}});
 
@@ -94,7 +104,9 @@ class NonMaxSuppressionV4OpModel : public BaseNMSOp {
 };
 
 TEST(NonMaxSuppressionV4OpModel, TestOutput) {
-  NonMaxSuppressionV4OpModel nms(6, 0.5);
+  NonMaxSuppressionV4OpModel nms(/**iou_threshold=**/ 0.5,
+                                 /**static_shaped_outputs=**/ true,
+                                 /**max_output_size=**/ 6);
   nms.SetScores({0.9, 0.75, 0.6, 0.95, 0.5, 0.3});
   nms.SetScoreThreshold(0.4);
   nms.Invoke();
@@ -108,8 +120,32 @@ TEST(NonMaxSuppressionV4OpModel, TestOutput) {
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({0, 0, 0, 0, 0, 0}));
 }
 
+TEST(NonMaxSuppressionV4OpModel, TestDynamicOutput) {
+  NonMaxSuppressionV4OpModel nms(/**iou_threshold=**/ 0.5,
+                                 /**static_shaped_outputs=**/ false);
+  nms.SetScores({0.9, 0.75, 0.6, 0.95, 0.5, 0.3});
+  nms.SetScoreThreshold(0.4);
+
+  nms.SetMaxOutputSize(1);
+  nms.Invoke();
+  EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({1}));
+  EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3}));
+
+  nms.SetMaxOutputSize(2);
+  nms.Invoke();
+  EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({2}));
+  EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3, 0}));
+
+  nms.SetScoreThreshold(0.99);
+  nms.Invoke();
+  EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({0}));
+  EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({0, 0}));
+}
+
 TEST(NonMaxSuppressionV4OpModel, TestOutputWithZeroMaxOutput) {
-  NonMaxSuppressionV4OpModel nms(0, 0.5);
+  NonMaxSuppressionV4OpModel nms(/**iou_threshold=**/ 0.5,
+                                 /**static_shaped_outputs=**/ true,
+                                 /**max_output_size=**/ 0);
   nms.SetScores({0.9, 0.75, 0.6, 0.95, 0.5, 0.3});
   nms.SetScoreThreshold(0.4);
   nms.Invoke();
@@ -118,13 +154,19 @@ TEST(NonMaxSuppressionV4OpModel, TestOutputWithZeroMaxOutput) {
 
 class NonMaxSuppressionV5OpModel : public BaseNMSOp {
  public:
-  explicit NonMaxSuppressionV5OpModel(const int max_output_size,
-                                      const float iou_threshold,
-                                      const float sigma) {
+  explicit NonMaxSuppressionV5OpModel(const float iou_threshold,
+                                      const float sigma,
+                                      const bool static_shaped_outputs,
+                                      const int max_output_size = -1) {
     const int num_boxes = 6;
     input_boxes_ = AddInput({TensorType_FLOAT32, {num_boxes, 4}});
     input_scores_ = AddInput({TensorType_FLOAT32, {num_boxes}});
-    input_max_output_size_ = AddConstInput(TensorType_INT32, {max_output_size});
+    if (static_shaped_outputs) {
+      input_max_output_size_ =
+          AddConstInput(TensorType_INT32, {max_output_size});
+    } else {
+      input_max_output_size_ = AddInput(TensorType_INT32, {});
+    }
     input_iou_threshold_ = AddConstInput(TensorType_FLOAT32, {iou_threshold});
     input_score_threshold_ = AddInput({TensorType_FLOAT32, {}});
     input_sigma_ = AddConstInput(TensorType_FLOAT32, {sigma});
@@ -155,7 +197,10 @@ class NonMaxSuppressionV5OpModel : public BaseNMSOp {
 };
 
 TEST(NonMaxSuppressionV5OpModel, TestOutput) {
-  NonMaxSuppressionV5OpModel nms(6, 0.5, 0.5);
+  NonMaxSuppressionV5OpModel nms(/**iou_threshold=**/ 0.5,
+                                 /**sigma=**/ 0.5,
+                                 /**static_shaped_outputs=**/ true,
+                                 /**max_output_size=**/ 6);
   nms.SetScores({0.9, 0.75, 0.6, 0.95, 0.5, 0.3});
   nms.SetScoreThreshold(0.0);
   nms.Invoke();
@@ -171,6 +216,40 @@ TEST(NonMaxSuppressionV5OpModel, TestOutput) {
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({0, 0, 0, 0, 0, 0}));
   EXPECT_THAT(nms.GetSelectedScores(),
               ElementsAreArray({0.0, 0.0, 0.0, 0.0, 0.0, 0.0}));
+}
+
+TEST(NonMaxSuppressionV5OpModel, TestDynamicOutput) {
+  NonMaxSuppressionV5OpModel nms(/**iou_threshold=**/ 0.5,
+                                 /**sigma=**/ 0.5,
+                                 /**static_shaped_outputs=**/ false,
+                                 /**max_output_size=**/ 6);
+  nms.SetScores({0.9, 0.75, 0.6, 0.95, 0.5, 0.3});
+  nms.SetScoreThreshold(0.0);
+
+  nms.SetMaxOutputSize(2);
+  nms.Invoke();
+  EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({2}));
+  EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3, 0}));
+  EXPECT_THAT(nms.GetSelectedScores(), ElementsAreArray({0.95, 0.9}));
+
+  nms.SetMaxOutputSize(1);
+  nms.Invoke();
+  EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({1}));
+  EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3}));
+  EXPECT_THAT(nms.GetSelectedScores(), ElementsAreArray({0.95}));
+
+  nms.SetMaxOutputSize(3);
+  nms.Invoke();
+  EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({3}));
+  EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3, 0, 5}));
+  EXPECT_THAT(nms.GetSelectedScores(), ElementsAreArray({0.95, 0.9, 0.3}));
+
+  // No candidate gets selected. But the outputs should be zeroed out.
+  nms.SetScoreThreshold(0.99);
+  nms.Invoke();
+  EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({0}));
+  EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({0, 0, 0}));
+  EXPECT_THAT(nms.GetSelectedScores(), ElementsAreArray({0.0, 0.0, 0.0}));
 }
 }  // namespace
 }  // namespace tflite

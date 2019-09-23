@@ -38,6 +38,8 @@ class TensorFlowDialect : public Dialect {
  public:
   TensorFlowDialect(MLIRContext *context);
 
+  static StringRef getDialectNamespace() { return "tf"; }
+
   // Gradient attribute ("tf.gradient") in the list of NamedAttibutes in a
   // function references to its gradient function. This attribute in TensorFlow
   // Dialect is used to model TF GradientDef. GetGradientAttrName() returns the

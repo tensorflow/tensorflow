@@ -37,10 +37,10 @@ def Loop_Dialect : Dialect {
 class Loop_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<Loop_Dialect, mnemonic, traits> {
   // For every standard op, there needs to be a:
-  //   * void print(OpAsmPrinter *p, ${C++ class of Op} op)
+  //   * void print(OpAsmPrinter &p, ${C++ class of Op} op)
   //   * LogicalResult verify(${C++ class of Op} op)
-  //   * ParseResult parse${C++ class of Op}(OpAsmParser *parser,
-  //                                         OperationState *result)
+  //   * ParseResult parse${C++ class of Op}(OpAsmParser &parser,
+  //                                         OperationState &result)
   // functions.
   let printer = [{ return ::print(p, *this); }];
   let verifier = [{ return ::verify(*this); }];
@@ -75,7 +75,7 @@ def ForOp : Loop_Op<"for",
 
   let skipDefaultBuilders = 1;
   let builders = [
-    OpBuilder<"Builder *builder, OperationState *result, "
+    OpBuilder<"Builder *builder, OperationState &result, "
               "Value *lowerBound, Value *upperBound, Value *step">
   ];
 
@@ -117,7 +117,7 @@ def IfOp : Loop_Op<"if",
 
   let skipDefaultBuilders = 1;
   let builders = [
-    OpBuilder<"Builder *builder, OperationState *result, "
+    OpBuilder<"Builder *builder, OperationState &result, "
               "Value *cond, bool withElseRegion">
   ];
 

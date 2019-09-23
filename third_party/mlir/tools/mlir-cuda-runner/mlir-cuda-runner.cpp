@@ -108,50 +108,22 @@ OwnedCubin compilePtxToCubin(const std::string ptx, FuncOp &function) {
   return result;
 }
 
-namespace {
-// A pass that lowers all Standard and Gpu operations to LLVM dialect. It does
-// not lower the GPULaunch operation to actual code but dows translate the
-// signature of its kernel argument.
-class LowerStandardAndGpuToLLVMAndNVVM
-    : public ModulePass<LowerStandardAndGpuToLLVMAndNVVM> {
-public:
-  void runOnModule() override {
-    ModuleOp m = getModule();
-
-    OwningRewritePatternList patterns;
-    LLVMTypeConverter converter(m.getContext());
-    populateStdToLLVMConversionPatterns(converter, patterns);
-    populateGpuToNVVMConversionPatterns(converter, patterns);
-
-    ConversionTarget target(getContext());
-    target.addLegalDialect<LLVM::LLVMDialect>();
-    target.addLegalDialect<NVVM::NVVMDialect>();
-    target.addLegalOp<ModuleOp>();
-    target.addLegalOp<ModuleTerminatorOp>();
-    target.addDynamicallyLegalOp<FuncOp>(
-        [&](FuncOp op) { return converter.isSignatureLegal(op.getType()); });
-    if (failed(applyFullConversion(m, target, patterns, &converter)))
-      signalPassFailure();
-  }
-};
-} // end anonymous namespace
-
 static LogicalResult runMLIRPasses(ModuleOp m) {
   PassManager pm(m.getContext());
+  applyPassManagerCLOptions(pm);
 
   pm.addPass(createGpuKernelOutliningPass());
-  pm.addPass(static_cast<std::unique_ptr<ModulePassBase>>(
-      std::make_unique<LowerStandardAndGpuToLLVMAndNVVM>()));
-  pm.addPass(createConvertGPUKernelToCubinPass(&compilePtxToCubin));
+  auto &kernelPm = pm.nest<ModuleOp>();
+  kernelPm.addPass(createLowerGpuOpsToNVVMOpsPass());
+  kernelPm.addPass(createConvertGPUKernelToCubinPass(&compilePtxToCubin));
+  pm.addPass(createLowerToLLVMPass());
   pm.addPass(createGenerateCubinAccessorPass());
   pm.addPass(createConvertGpuLaunchFuncToCudaCallsPass());
 
-  if (failed(pm.run(m)))
-    return failure();
-
-  return success();
+  return pm.run(m);
 }
 
 int main(int argc, char **argv) {
+  registerPassManagerCLOptions();
   return mlir::JitRunnerMain(argc, argv, &runMLIRPasses);
 }

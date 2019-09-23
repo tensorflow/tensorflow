@@ -19,10 +19,8 @@
 #else
 #define TEST_OPS
 
-#ifdef OP_BASE
-#else
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
+include "mlir/Analysis/CallInterfaces.td"
 
 def TEST_Dialect : Dialect {
   let name = "test";
@@ -48,6 +46,10 @@ def NestedTupleOp : TEST_Op<"nested_tuple_32_bit"> {
 
 def TakesStaticMemRefOp : TEST_Op<"takes_static_memref"> {
   let arguments = (ins AnyStaticShapeMemRef:$x);
+}
+
+def RankLessThan2I8F32MemRefOp : TEST_Op<"rank_less_than_2_I8_F32_memref"> {
+  let results = (outs MemRefRankOf<[I8, F32], [0, 1]>);
 }
 
 def NDTensorOfOp : TEST_Op<"nd_tensor_of"> {
@@ -115,13 +117,13 @@ def TypeArrayAttrOp : TEST_Op<"type_array_attr"> {
 }
 def TypeStringAttrWithTypeOp : TEST_Op<"string_attr_with_type"> {
   let arguments = (ins StrAttr:$attr);
-  let printer = [{ *p << getAttr("attr"); }];
+  let printer = [{ p << getAttr("attr"); }];
   let parser = [{
     Attribute attr;
     Type stringType = OpaqueType::get(Identifier::get("foo",
-                                      result->getContext()), "string",
-                                      result->getContext());
-    return parser->parseAttribute(attr, stringType, "attr", result->attributes);
+                                      result.getContext()), "string",
+                                      result.getContext());
+    return parser.parseAttribute(attr, stringType, "attr", result.attributes);
   }];
 }
 
@@ -158,6 +160,23 @@ def I64EnumAttrOp : TEST_Op<"i64_enum_attr"> {
   let results = (outs I32:$val);
 }
 
+def FloatElementsAttrOp : TEST_Op<"float_elements_attr"> {
+  let arguments = (ins
+      RankedF32ElementsAttr<[2]>:$scalar_f32_attr,
+      RankedF64ElementsAttr<[4, 8]>:$tensor_f64_attr
+  );
+}
+
+// A pattern that updates dense<[3.0, 4.0]> to dense<[5.0, 6.0]>.
+// This tests both matching and generating float elements attributes.
+def UpdateFloatElementsAttr : Pat<
+  (FloatElementsAttrOp
+    ConstantAttr<RankedF32ElementsAttr<[2]>, "{3.0f, 4.0f}">:$f32attr,
+    $f64attr),
+  (FloatElementsAttrOp
+    ConstantAttr<RankedF32ElementsAttr<[2]>, "{5.0f, 6.0f}">:$f32attr,
+    $f64attr)>;
+
 //===----------------------------------------------------------------------===//
 // Test Regions
 //===----------------------------------------------------------------------===//
@@ -174,9 +193,17 @@ def SizedRegionOp : TEST_Op<"sized_region_op", []> {
   let regions = (region SizedRegion<2>:$my_region, SizedRegion<1>);
 }
 
-def FunctionalRegionOp : TEST_Op<"functional_region_op", []> {
+def FunctionalRegionOp : TEST_Op<"functional_region_op",
+    [CallableOpInterface]> {
   let regions = (region AnyRegion:$body);
   let results = (outs FunctionType);
+
+  let extraClassDeclaration = [{
+    Region *getCallableRegion(CallInterfaceCallable) { return &body(); }
+    void getCallableRegions(SmallVectorImpl<Region *> &callables) {
+      callables.push_back(&body());
+    }
+  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -238,6 +265,25 @@ def OperandsHaveSameType :
 def OperandOneAndResultHaveSameType :
     TEST_Op<"operand_one_and_result_have_same_type",
             [AllTypesMatch<["x", "res"]>]> {
+  let arguments = (ins AnyTensor:$x, AnyTensor:$y);
+  let results = (outs AnyTensor:$res);
+}
+
+def OperandsHaveSameRank :
+    TEST_Op<"operands_have_same_rank", [AllRanksMatch<["x", "y"]>]> {
+  let arguments = (ins AnyTensor:$x, AnyTensor:$y);
+}
+
+def Operand1AndResultHaveSameRank :
+    TEST_Op<"operand1_and_result_have_same_rank",
+            [AllRanksMatch<["x", "res"]>]> {
+  let arguments = (ins AnyTensor:$x, AnyTensor:$y);
+  let results = (outs AnyTensor:$res);
+}
+
+def Operand1AndResultHaveSameElementCount :
+    TEST_Op<"operand1_and_result_have_same_element_count",
+            [AllElementCountsMatch<["x", "res"]>]> {
   let arguments = (ins AnyTensor:$x, AnyTensor:$y);
   let results = (outs AnyTensor:$res);
 }
@@ -407,10 +453,10 @@ def OpSymbolBindingB : TEST_Op<"symbol_binding_b", []> {
 
   let builders = [
     OpBuilder<
-      "Builder *builder, OperationState *state, Value *operand",
+      "Builder *builder, OperationState &state, Value *operand",
       [{
-        state->types.assign({builder->getIntegerType(32)});
-        state->addOperands({operand});
+        state.types.assign({builder->getIntegerType(32)});
+        state.addOperands({operand});
       }]>
   ];
 }
@@ -511,12 +557,12 @@ def TwoResultOp : TEST_Op<"two_result"> {
 
   let builders = [
     OpBuilder<
-      "Builder *builder, OperationState *state, IntegerAttr kind",
+      "Builder *builder, OperationState &state, IntegerAttr kind",
       [{
         auto i32 = builder->getIntegerType(32);
         auto f32 = builder->getF32Type();
-        state->types.assign({i32, f32});
-        state->addAttribute("kind", kind);
+        state.types.assign({i32, f32});
+        state.addAttribute("kind", kind);
       }]>
   ];
 }
@@ -667,14 +713,14 @@ def MixedVResultOp3 : TEST_Op<"mixed_variadic_out3",
   // result type. So need to provide a builder not requiring result types.
   let builders = [
     OpBuilder<
-      "Builder *builder, OperationState *state, IntegerAttr count",
+      "Builder *builder, OperationState &state, IntegerAttr count",
       [{
         auto i32Type = builder->getIntegerType(32);
-        state->addTypes(i32Type); // $ouput1
+        state.addTypes(i32Type); // $ouput1
         SmallVector<Type, 4> types(count.getInt(), i32Type);
-        state->addTypes(types); // $ouput2
-        state->addTypes(types); // $ouput3
-        state->addAttribute("count", count);
+        state.addTypes(types); // $ouput2
+        state.addTypes(types); // $ouput3
+        state.addAttribute("count", count);
       }]>
   ];
 }
@@ -737,12 +783,25 @@ def TestCastOp : TEST_Op<"cast">,
   Arguments<(ins Variadic<AnyType>:$inputs)>, Results<(outs AnyType:$res)>;
 def TestInvalidOp : TEST_Op<"invalid", [Terminator]>,
   Arguments<(ins Variadic<AnyType>:$inputs)>;
+def TestTypeProducerOp : TEST_Op<"type_producer">,
+  Results<(outs AnyType:$output)>;
+def TestTypeConsumerOp : TEST_Op<"type_consumer">,
+  Arguments<(ins AnyType:$input)>;
 def TestValidOp : TEST_Op<"valid", [Terminator]>,
   Arguments<(ins Variadic<AnyType>:$inputs)>;
 
 //===----------------------------------------------------------------------===//
-// Test region argument list parsing.
+// Test parser.
 //===----------------------------------------------------------------------===//
+
+def WrappedKeywordOp : TEST_Op<"wrapped_keyword"> {
+  let arguments = (ins StrAttr:$keyword);
+  let parser = [{ return ::parse$cppClass(parser, result); }];
+  let printer = [{ return ::print(p, *this); }];
+}
+
+//===----------------------------------------------------------------------===//
+// Test region argument list parsing.
 
 def IsolatedRegionOp : TEST_Op<"isolated_region", [IsolatedFromAbove]> {
   let summary =  "isolated region operation";
@@ -752,6 +811,20 @@ def IsolatedRegionOp : TEST_Op<"isolated_region", [IsolatedFromAbove]> {
   }];
 
   let arguments = (ins Index:$input);
+  let regions = (region SizedRegion<1>:$region);
+  let parser = [{ return ::parse$cppClass(parser, result); }];
+  let printer = [{ return ::print(p, *this); }];
+}
+
+def WrappingRegionOp : TEST_Op<"wrapping_region",
+    [SingleBlockImplicitTerminator<"TestReturnOp">]> {
+  let summary =  "wrapping region operation";
+  let description = [{
+    Test op wrapping another op in a region, to test calling
+    parseGenericOperation from the custom parser.
+  }];
+
+  let results = (outs Variadic<AnyType>:$outputs);
   let regions = (region SizedRegion<1>:$region);
   let parser = [{ return ::parse$cppClass(parser, result); }];
   let printer = [{ return ::print(p, *this); }];

@@ -59,7 +59,7 @@ objc_library(
 ios_unit_test(
     name = "add_test",
     testonly = 1,
-    minimum_os_version = "9.0",
+    minimum_os_version = "10.0",
     tags = [
         "notap",
         "tflite_not_portable_android",
@@ -95,7 +95,7 @@ objc_library(
 ios_unit_test(
     name = "concat_test",
     testonly = 1,
-    minimum_os_version = "9.0",
+    minimum_os_version = "10.0",
     tags = [
         "notap",
         "tflite_not_portable_android",
@@ -133,7 +133,7 @@ objc_library(
 ios_unit_test(
     name = "conv_test",
     testonly = 1,
-    minimum_os_version = "9.0",
+    minimum_os_version = "10.0",
     tags = [
         "notap",
         "tflite_not_portable_android",
@@ -185,7 +185,7 @@ objc_library(
 ios_unit_test(
     name = "depthwise_conv_test",
     testonly = 1,
-    minimum_os_version = "9.0",
+    minimum_os_version = "10.0",
     tags = [
         "notap",
         "tflite_not_portable_android",
@@ -224,7 +224,7 @@ objc_library(
 ios_unit_test(
     name = "elementwise_test",
     testonly = 1,
-    minimum_os_version = "9.0",
+    minimum_os_version = "10.0",
     tags = [
         "notap",
         "tflite_not_portable_android",
@@ -263,7 +263,7 @@ objc_library(
 ios_unit_test(
     name = "fully_connected_test",
     testonly = 1,
-    minimum_os_version = "9.0",
+    minimum_os_version = "10.0",
     tags = [
         "notap",
         "tflite_not_portable_android",
@@ -312,7 +312,7 @@ objc_library(
 ios_unit_test(
     name = "max_unpooling_test",
     testonly = 1,
-    minimum_os_version = "9.0",
+    minimum_os_version = "10.0",
     tags = [
         "notap",
         "tflite_not_portable_android",
@@ -337,6 +337,28 @@ cc_library(
     ],
 )
 
+objc_library(
+    name = "mul_test_lib",
+    testonly = 1,
+    srcs = ["mul_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":mul",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "mul_test",
+    testonly = 1,
+    minimum_os_version = "9.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":mul_test_lib"],
+)
+
 cc_library(
     name = "padding",
     srcs = ["padding.cc"],
@@ -350,6 +372,28 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "@com_google_absl//absl/strings",
     ],
+)
+
+objc_library(
+    name = "padding_test_lib",
+    testonly = 1,
+    srcs = ["padding_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":padding",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "padding_test",
+    testonly = 1,
+    minimum_os_version = "10.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":padding_test_lib"],
 )
 
 cc_library(
@@ -368,6 +412,28 @@ cc_library(
     ],
 )
 
+objc_library(
+    name = "pooling_test_lib",
+    testonly = 1,
+    srcs = ["pooling_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":pooling",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "pooling_test",
+    testonly = 1,
+    minimum_os_version = "10.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":pooling_test_lib"],
+)
+
 cc_library(
     name = "prelu",
     srcs = ["prelu.cc"],
@@ -384,6 +450,28 @@ cc_library(
     ],
 )
 
+objc_library(
+    name = "prelu_test_lib",
+    testonly = 1,
+    srcs = ["prelu_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":prelu",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "prelu_test",
+    testonly = 1,
+    minimum_os_version = "10.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":prelu_test_lib"],
+)
+
 cc_library(
     name = "relu",
     srcs = ["relu.cc"],
@@ -397,6 +485,28 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "@com_google_absl//absl/strings",
     ],
+)
+
+objc_library(
+    name = "relu_test_lib",
+    testonly = 1,
+    srcs = ["relu_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":relu",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "relu_test",
+    testonly = 1,
+    minimum_os_version = "10.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":relu_test_lib"],
 )
 
 cc_library(
@@ -415,6 +525,28 @@ cc_library(
     ],
 )
 
+objc_library(
+    name = "reshape_test_lib",
+    testonly = 1,
+    srcs = ["reshape_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":reshape",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "reshape_test",
+    testonly = 1,
+    minimum_os_version = "10.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":reshape_test_lib"],
+)
+
 cc_library(
     name = "slice",
     srcs = ["slice.cc"],
@@ -428,6 +560,28 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "@com_google_absl//absl/strings",
     ],
+)
+
+objc_library(
+    name = "slice_test_lib",
+    testonly = 1,
+    srcs = ["slice_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":slice",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "slice_test",
+    testonly = 1,
+    minimum_os_version = "10.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":slice_test_lib"],
 )
 
 cc_library(
@@ -444,6 +598,28 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@com_google_absl//absl/strings",
     ],
+)
+
+objc_library(
+    name = "softmax_test_lib",
+    testonly = 1,
+    srcs = ["softmax_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":softmax",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "softmax_test",
+    testonly = 1,
+    minimum_os_version = "10.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":softmax_test_lib"],
 )
 
 cc_library(
@@ -463,6 +639,28 @@ cc_library(
     ],
 )
 
+objc_library(
+    name = "transpose_conv_test_lib",
+    testonly = 1,
+    srcs = ["transpose_conv_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":test_util",
+        ":transpose_conv",
+    ],
+)
+
+ios_unit_test(
+    name = "transpose_conv_test",
+    testonly = 1,
+    minimum_os_version = "10.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":transpose_conv_test_lib"],
+)
+
 cc_library(
     name = "upsample",
     srcs = ["upsample.cc"],
@@ -476,6 +674,28 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "@com_google_absl//absl/strings",
     ],
+)
+
+objc_library(
+    name = "upsample_test_lib",
+    testonly = 1,
+    srcs = ["upsample_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":test_util",
+        ":upsample",
+    ],
+)
+
+ios_unit_test(
+    name = "upsample_test",
+    testonly = 1,
+    minimum_os_version = "10.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":upsample_test_lib"],
 )
 
 cc_library(

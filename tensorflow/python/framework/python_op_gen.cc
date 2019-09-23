@@ -316,12 +316,20 @@ string GenEagerPythonOp::Code() {
     if (!parameters.empty()) strings::StrAppend(&parameters, ", ");
     strings::StrAppend(&parameters, param.GetRenameTo());
   }
+  string parameters_with_defaults = parameters;
   for (const auto& param_and_default : params_with_default_) {
     if (!parameters.empty()) strings::StrAppend(&parameters, ", ");
-    strings::StrAppend(&parameters, param_and_default.first.GetRenameTo(), "=",
+    if (!parameters_with_defaults.empty())
+      strings::StrAppend(&parameters_with_defaults, ", ");
+    strings::StrAppend(&parameters, param_and_default.first.GetRenameTo());
+    strings::StrAppend(&parameters_with_defaults,
+                       param_and_default.first.GetRenameTo(), "=",
                        param_and_default.second);
   }
-  strings::StrAppend(&parameters, parameters.empty() ? "" : ", ", "name=None");
+
+  strings::StrAppend(&parameters, parameters.empty() ? "" : ", ", "name");
+  strings::StrAppend(&parameters_with_defaults,
+                     parameters_with_defaults.empty() ? "" : ", ", "name=None");
 
   // Add attr_expressions_ for attrs that are params.
   for (int i = 0; i < attrs_.size(); ++i) {
@@ -347,7 +355,7 @@ string GenEagerPythonOp::Code() {
 
   string eager_not_allowed_error = GetEagerNotAllowedError();
 
-  if (!AddEagerFastPathAndGraphCode(parameters, output_sizes,
+  if (!AddEagerFastPathAndGraphCode(parameters_with_defaults, output_sizes,
                                     eager_not_allowed_error)) {
     return result_;
   }
@@ -367,12 +375,13 @@ void GenEagerPythonOp::HandleGraphMode(
   if (api_def_.visibility() == ApiDef::VISIBLE) {
     strings::StrAppend(&result_, "  try:\n  ");
   }
-  strings::StrAppend(&result_, "  _, _, _op = _op_def_lib._apply_op_helper(\n");
+  strings::StrAppend(&result_,
+                     "  _, _, _op, _outputs = _op_def_lib._apply_op_helper(\n");
   AddBodyNoReturn(strings::StrCat("        \"", op_def_.name(), "\", "));
   AddDispatch("  ");
 
   if (num_outs_ > 0) {
-    strings::StrAppend(&result_, "  _result = _op.outputs[:]\n");
+    strings::StrAppend(&result_, "  _result = _outputs[:]\n");
     // Special case handling for stateful op with single list output
     // that might be empty.
     if (num_outs_ == 1 && op_def_.is_stateful() &&
@@ -418,7 +427,7 @@ void GenEagerPythonOp::HandleGraphMode(
     strings::StrAppend(&result_, "    _inputs_flat = _op.inputs\n");
     strings::StrAppend(&result_, "    _execute.record_gradient(\n",
                        "        \"", op_def_.name(),
-                       "\", _inputs_flat, _attrs, _result, name)\n");
+                       "\", _inputs_flat, _attrs, _result)\n");
 
     if (num_outs_ == 1 && !output_sizes[0].empty()) {
       // Single list result.
@@ -433,8 +442,10 @@ void GenEagerPythonOp::HandleGraphMode(
       // For list outputs, convert the right subrange of _result into a list.
       Unflatten("  ", output_sizes, "_result", &result_);
       // Convert to a named tuple.
-      strings::StrAppend(&result_, "  _result = _", op_def_.name(),
-                         "Output._make(_result)\n");
+      strings::StrAppend(
+          &result_, "  _result = _",
+          python_op_gen_internal::AvoidPythonReserved(op_def_.name()),
+          "Output._make(_result)\n");
     }
     strings::StrAppend(&result_, "  return _result\n\n");
   } else {
@@ -651,7 +662,7 @@ void GenEagerPythonOp::AddEagerFunctionTeardown(
                          "if _execute.must_record_gradient():\n");
       strings::StrAppend(&result_, indentation, "  _execute.record_gradient(\n",
                          "        \"", op_def_.name(),
-                         "\", _inputs_flat, _attrs, _result, name)\n");
+                         "\", _inputs_flat, _attrs, _result)\n");
     }
     if (num_outs_ == 1 && !output_sizes[0].empty()) {
       // Single list result.
@@ -666,8 +677,10 @@ void GenEagerPythonOp::AddEagerFunctionTeardown(
       // For list outputs, convert the right subrange of _result into a list.
       Unflatten(indentation, output_sizes, "_result", &result_);
       // Convert to a named tuple.
-      strings::StrAppend(&result_, indentation, "_result = _", op_def_.name(),
-                         "Output._make(_result)\n");
+      strings::StrAppend(
+          &result_, indentation, "_result = _",
+          python_op_gen_internal::AvoidPythonReserved(op_def_.name()),
+          "Output._make(_result)\n");
     }
   } else {
     strings::StrAppend(&result_, indentation, "_result = None\n");
@@ -721,19 +734,12 @@ bool GenEagerPythonOp::AddEagerFallbackCode(
     const string& num_outputs_expr, const string& eager_not_allowed_error) {
   AddDefLine(
       strings::StrCat(function_name_, kEagerFallbackSuffix),
-      strings::StrCat(parameters, parameters.empty() ? "" : ", ", "ctx=None"));
+      strings::StrCat(parameters, parameters.empty() ? "" : ", ", "ctx"));
 
   if (!eager_not_allowed_error.empty()) {
     strings::StrAppend(&result_, "  ", eager_not_allowed_error);
     return true;
   }
-
-  strings::StrAppend(
-      &result_, "  r\"\"\"This is the slowpath function for Eager mode.\n");
-  strings::StrAppend(&result_, "  This is for function ", function_name_,
-                     "\n  \"\"\"\n");
-
-  strings::StrAppend(&result_, "  _ctx = ctx if ctx else _context.context()\n");
 
   string function_setup;
   if (!GetEagerFunctionSetup("  ", &function_setup)) {
@@ -758,7 +764,7 @@ bool GenEagerPythonOp::AddEagerFallbackCode(
 void GenEagerPythonOp::AddEagerFastPathExecute() {
   string fastpath_execute_params = strings::StrCat(
       "_ctx._context_handle, _ctx._thread_local_data.device_name, \"",
-      op_def_.name(), "\", ", "name, _ctx.post_execution_callbacks");
+      op_def_.name(), "\", ", "name, _ctx.op_callbacks");
   string fallback_params;
 
   for (int i = 0; i < api_def_.in_arg_size(); i++) {
@@ -791,8 +797,9 @@ void GenEagerPythonOp::AddEagerFastPathExecute() {
       "\n");
 
   if (op_def_.output_arg_size() > 1) {
-    const string output_tuple_name =
-        strings::StrCat("_", op_def_.name(), "Output");
+    const string output_tuple_name = strings::StrCat(
+        "_", python_op_gen_internal::AvoidPythonReserved(op_def_.name()),
+        "Output");
     strings::StrAppend(&result_, "      ", "_result = ", output_tuple_name,
                        "._make(_result)\n");
   }
@@ -818,14 +825,8 @@ void GenEagerPythonOp::AddEagerFastPathExecute() {
   // _NotOkStatusException.
   strings::StrAppend(&result_, "    ",
                      "except _core._NotOkStatusException as e:\n");
-  strings::StrAppend(&result_, "      ", "if name is not None:\n");
-  strings::StrAppend(&result_, "        ",
-                     "message = e.message + \" name: \" + name\n");
-  strings::StrAppend(&result_, "      ", "else:\n");
-  strings::StrAppend(&result_, "        ", "message = e.message\n");
-  strings::StrAppend(
-      &result_, "      ",
-      "_six.raise_from(_core._status_to_exception(e.code, message), None)\n");
+  strings::StrAppend(&result_, "      ",
+                     "_ops.raise_from_not_ok_status(e, name)\n");
 }
 
 void GenEagerPythonOp::AddEagerInferredAttrs(const string& indentation) {
@@ -840,7 +841,7 @@ void GenEagerPythonOp::AddEagerInferredAttrs(const string& indentation) {
         const string flattened =
             FlattenInputs(&arg_list->second, &output_sizes);
         string conversion = strings::StrCat("_execute.args_to_matching_eager(",
-                                            flattened, ", _ctx");
+                                            flattened, ", ctx");
         if (attr.has_default_value()) {
           strings::StrAppend(
               &conversion, ", ",
@@ -900,7 +901,7 @@ void GenEagerPythonOp::AddEagerInferredAttrs(const string& indentation) {
           conversion = "_execute.convert_to_mixed_eager_tensors";
         }
         strings::StrAppend(&result_, indentation, var_name, ", ", inputs_var,
-                           " = ", conversion, "(", inputs_var, ", _ctx)\n");
+                           " = ", conversion, "(", inputs_var, ", ctx)\n");
       }
     }
   }
@@ -947,7 +948,7 @@ void GenEagerPythonOp::AddEagerExecute(const string& indentation,
       strings::StrCat(indentation, "_result = _execute.execute(");
   const string return_args = strings::StrCat(
       "b\"", op_def_.name(), "\", ", num_outputs_expr,
-      ", inputs=_inputs_flat, attrs=_attrs, ctx=_ctx, name=name)");
+      ", inputs=_inputs_flat, attrs=_attrs, ctx=ctx, name=name)");
   strings::StrAppend(&result_,
                      // Wrap the arguments, and indent to the (.
                      WordWrap(return_prefix, return_args, kRightMargin), "\n");
@@ -967,36 +968,18 @@ void GenEagerPythonOp::AddDispatch(const string& prefix) {
 }
 
 void GenEagerPythonOp::AddRawOpExport(const string& parameters) {
-  string arguments;
-  for (const auto& param_names : param_names_) {
-    const string renamed = param_names.GetRenameTo();
-    strings::StrAppend(&arguments, arguments.empty() ? "" : ", ", renamed, "=",
-                       renamed);
-  }
-  strings::StrAppend(&arguments, arguments.empty() ? "" : ", ", "name=name");
-
+  // Example:
+  //
+  // Identity = tf_export("raw_ops.Identity")(_ops._to_raw_op(identity))
   const string raw_function_name =
       python_op_gen_internal::AvoidPythonReserved(op_def_.name());
-
-  strings::StrAppend(&result_, "def ", raw_function_name, "(", parameters,
-                     "):\n");
-  strings::StrAppend(&result_, "  return ", function_name_, "(", arguments,
-                     ")\n");
-
-  // Copy the __doc__ from the original op and apply the decorators.
-  strings::StrAppend(&result_, raw_function_name, ".__doc__", " = ",
-                     function_name_, ".__doc__\n");
-  strings::StrAppend(&result_, raw_function_name, " = ",
-                     "_doc_controls.do_not_generate_docs(_kwarg_only(",
-                     raw_function_name, "))\n");
-
-  // Export.
-  strings::StrAppend(&result_, "tf_export(\"raw_ops.", raw_function_name,
-                     "\")(", raw_function_name, ")\n");
+  strings::StrAppend(&result_, raw_function_name, " = tf_export(\"raw_ops.",
+                     raw_function_name, "\")", "(_ops.to_raw_op(",
+                     function_name_, "))\n");
 }
 
 string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
-                    const std::vector<string>& hidden_ops, bool require_shapes,
+                    const std::vector<string>& hidden_ops,
                     const string& source_file_name = "") {
   string result;
   // Header
@@ -1016,8 +999,7 @@ This file is MACHINE GENERATED! Do not edit.
 
   strings::StrAppend(&result, R"("""
 
-import collections as _collections
-import six as _six
+import collections
 
 from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
 from tensorflow.python.eager import context as _context
@@ -1026,16 +1008,12 @@ from tensorflow.python.eager import execute as _execute
 from tensorflow.python.framework import dtypes as _dtypes
 
 from tensorflow.core.framework import op_def_pb2 as _op_def_pb2
-# Needed to trigger the call to _set_call_cpp_shape_fn.
-from tensorflow.python.framework import common_shapes as _common_shapes
 from tensorflow.python.framework import op_def_registry as _op_def_registry
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework import op_def_library as _op_def_library
 from tensorflow.python.util.deprecation import deprecated_endpoints
 from tensorflow.python.util import dispatch as _dispatch
 from tensorflow.python.util.tf_export import tf_export
-from tensorflow.python.util.tf_export import kwarg_only as _kwarg_only
-from tensorflow.tools.docs import doc_controls as _doc_controls
 
 )");
 
@@ -1087,11 +1065,6 @@ from tensorflow.tools.docs import doc_controls as _doc_controls
     strings::StrAppend(&result,
                        GetEagerPythonOp(op_def, *api_def, function_name));
 
-    if (!require_shapes) {
-      strings::StrAppend(&result, "_ops.RegisterShape(\"", op_def.name(),
-                         "\")(None)\n\n");
-    }
-
     auto added = out->Add();
     *added = op_def;
     RemoveNonDeprecationDescriptionsFromOpDef(added);
@@ -1114,11 +1087,10 @@ from tensorflow.tools.docs import doc_controls as _doc_controls
 }  // namespace
 
 void PrintPythonOps(const OpList& ops, const ApiDefMap& api_defs,
-                    const std::vector<string>& hidden_ops, bool require_shapes,
+                    const std::vector<string>& hidden_ops,
                     const string& source_file_name) {
-  printf("%s", GetPythonOps(ops, api_defs, hidden_ops, require_shapes,
-                            source_file_name)
-                   .c_str());
+  printf("%s",
+         GetPythonOps(ops, api_defs, hidden_ops, source_file_name).c_str());
 }
 
 string GetPythonWrappers(const char* op_list_buf, size_t op_list_len) {
@@ -1127,7 +1099,7 @@ string GetPythonWrappers(const char* op_list_buf, size_t op_list_len) {
   ops.ParseFromString(op_list_str);
 
   ApiDefMap api_def_map(ops);
-  return GetPythonOps(ops, api_def_map, {}, false);
+  return GetPythonOps(ops, api_def_map, {});
 }
 
 }  // namespace tensorflow

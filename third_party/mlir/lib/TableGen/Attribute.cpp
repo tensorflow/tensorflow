@@ -170,6 +170,10 @@ tblgen::EnumAttr::EnumAttr(const llvm::Record &record) : Attribute(&record) {}
 tblgen::EnumAttr::EnumAttr(const llvm::DefInit *init)
     : EnumAttr(init->getDef()) {}
 
+bool tblgen::EnumAttr::skipAutoGen() const {
+  return def->getValueAsBit("skipAutoGen");
+}
+
 StringRef tblgen::EnumAttr::getEnumClassName() const {
   return def->getValueAsString("className");
 }
@@ -192,6 +196,10 @@ StringRef tblgen::EnumAttr::getStringToSymbolFnName() const {
 
 StringRef tblgen::EnumAttr::getSymbolToStringFnName() const {
   return def->getValueAsString("symbolToStringFnName");
+}
+
+StringRef tblgen::EnumAttr::getSymbolToStringFnRetType() const {
+  return def->getValueAsString("symbolToStringFnRetType");
 }
 
 StringRef tblgen::EnumAttr::getMaxEnumValFnName() const {

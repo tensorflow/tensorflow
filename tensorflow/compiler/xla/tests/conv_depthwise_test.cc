@@ -39,7 +39,8 @@ static std::vector<DepthwiseConvolution2DSpec> GetConv2DTestCases() {
   std::vector<std::vector<int64>> config_options = {
       {128, 6, 3, 64},  {256, 5, 3, 256}, {256, 5, 2, 144}, {144, 5, 3, 64},
       {144, 5, 2, 256}, {8, 48, 17, 8},   {128, 20, 6, 64}, {64, 14, 12, 172},
-      {16, 9, 4, 16},   {128, 1, 2, 144}, {256, 1, 2, 64}};
+      {16, 9, 4, 16},   {128, 1, 2, 144}, {256, 1, 2, 64},  {256, 1, 2, 2},
+      {144, 5, 3, 3},   {8, 48, 17, 1},   {16, 9, 5, 4}};
 
   for (auto option : config_options) {
     int64 feature = option[0];

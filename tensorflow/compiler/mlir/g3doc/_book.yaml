@@ -1,0 +1,26 @@
+upper_tabs:
+# Tabs left of dropdown menu
+- include: /_upper_tabs_left.yaml
+- include: /api_docs/_upper_tabs_api.yaml
+# Dropdown menu
+- name: Resources
+  path: /resources
+  is_default: true
+  menu:
+  - include: /resources/_menu_toc.yaml
+  lower_tabs:
+    # Subsite tabs
+    other:
+    - name: Guide
+      contents:
+      - title: Overview
+        path: /mlir/overview
+      - heading: Dialects
+      - title: Overview
+        path: /mlir/dialects
+      - title: TensorFlow
+        path: /mlir/tf_ops
+      - title: TensorFlow Lite
+        path: /mlir/tfl_ops
+
+- include: /_upper_tabs_right.yaml

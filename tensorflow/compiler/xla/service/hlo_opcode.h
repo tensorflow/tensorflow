@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <iosfwd>
 #include <string>
+
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -91,6 +92,7 @@ namespace xla {
   V(kFusion, "fusion", kHloOpcodeIsVariadic)                           \
   V(kGather, "gather", 2)                                              \
   V(kGetDimensionSize, "get-dimension-size", 1)                        \
+  V(kSetDimensionSize, "set-dimension-size", 2)                        \
   V(kGetTupleElement, "get-tuple-element", 1)                          \
   V(kImag, "imag", 1)                                                  \
   V(kInfeed, "infeed", 1)                                              \

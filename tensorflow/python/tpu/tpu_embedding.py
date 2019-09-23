@@ -794,18 +794,18 @@ class TPUEmbedding(object):
             embedding_dimension=self._table_to_config_dict[table].dimension,
             initializer=self._table_to_config_dict[table].initializer,
             collections=[ops.GraphKeys.GLOBAL_VARIABLES])
-      embedding_variables_by_table[table] = table_variables
+        embedding_variables_by_table[table] = table_variables
 
-      # Only loads embedding config to load/retrieve nodes for the first table
-      # on the first host, other nodes would use config from the first node.
-      config = None if i else self.config_proto.SerializeToString()
-      slot_variables_for_table, load_ops_fn, retrieve_ops_fn = (
-          self._optimizer_handler.create_variables_and_ops(
-              table, slot_variable_names, self._num_hosts,
-              self._table_to_config_dict[table], table_variables, config))
-      slot_variables_by_table[table] = slot_variables_for_table
-      load_op_fns.append(load_ops_fn)
-      retrieve_op_fns.append(retrieve_ops_fn)
+        # Only loads embedding config to load/retrieve nodes for the first table
+        # on the first host, other nodes would use config from the first node.
+        config = None if i else self.config_proto.SerializeToString()
+        slot_variables_for_table, load_ops_fn, retrieve_ops_fn = (
+            self._optimizer_handler.create_variables_and_ops(
+                table, slot_variable_names, self._num_hosts,
+                self._table_to_config_dict[table], table_variables, config))
+        slot_variables_by_table[table] = slot_variables_for_table
+        load_op_fns.append(load_ops_fn)
+        retrieve_op_fns.append(retrieve_ops_fn)
 
     def load_ops():
       """Calls and returns the load ops for each embedding table.

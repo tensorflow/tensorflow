@@ -26,13 +26,12 @@ namespace cl {
 namespace {
 
 std::string GetPaddingCode(
-    const TensorDescriptor& src_descriptor,
-    const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
+    const OperationDef& op_def,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
+  TensorCodeGenerator src_tensor("src_data", "src_size", op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data", "dst_size", op_def.dst_tensors[0]);
 
-  std::string code = GetCommonDefines(precision);
+  std::string code = GetCommonDefines(op_def.precision);
   const std::string channels[] = {".x", ".y", ".z", ".w"};
 
   code += "__kernel void main_function(\n";
@@ -46,7 +45,8 @@ std::string GetPaddingCode(
   code += "  int X = get_global_id(0);\n";
   code += "  int Y = get_global_id(1);\n";
   code += "  int Z = get_global_id(2);\n";
-  code += "  if (X >= dst_size.x || Y >= dst_size.y) return; \n";
+  code +=
+      "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) return; \n";
   code += "  FLT4 result = (FLT4)(0.0);\n";
   code += "  int s_x = X - prepended.x;\n";
   code += "  int s_y = Y - prepended.y;\n";
@@ -70,9 +70,9 @@ std::string GetPaddingCode(
     code += "    }\n";
   }
   code += "  }\n";
-  code += "  " + dst_tensor.GetAddress("address", "X", "Y", "Z") + "\n";
-  code += PostProcess(linked_operations, "result", "Z", "address");
-  code += "  " + dst_tensor.Write3D("result", "address");
+  const LinkingContext context{"result", "X", "Y", "Z"};
+  code += PostProcess(linked_operations, context);
+  code += "  " + dst_tensor.Write3D("result", "X", "Y", "Z");
   code += "}\n";
 
   return code;
@@ -108,9 +108,7 @@ void Padding::SetPrepended(const int3& prepended) {
 }
 
 Status Padding::Compile(const CreationContext& creation_context) {
-  const auto code =
-      GetPaddingCode(definition_.src_tensors[0], definition_.dst_tensors[0],
-                     definition_.precision, linked_operations_);
+  const auto code = GetPaddingCode(definition_, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
@@ -120,7 +118,7 @@ Status Padding::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtr()));
+  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetSizeWithDepth()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetSizeWithDepth()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(prepended_));

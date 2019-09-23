@@ -17,20 +17,26 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
 class FilterDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+    dataset_serialization_test_base.DatasetSerializationTestBase,
+    parameterized.TestCase):
 
   def _build_filter_range_graph(self, div):
     return dataset_ops.Dataset.range(100).filter(
         lambda x: math_ops.not_equal(math_ops.mod(x, div), 2))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFilterCore(self):
     div = 3
     num_outputs = sum(x % 3 != 2 for x in range(100))
@@ -43,6 +49,7 @@ class FilterDatasetSerializationTest(
             lambda d: math_ops.equal(d["bar"] % 2, 0)).map(
                 lambda d: d["foo"] + d["bar"])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFilterDictCore(self):
     num_outputs = sum((x**2) % 2 == 0 for x in range(10))
     self.run_core_tests(self._build_filter_dict_graph, num_outputs)
@@ -59,6 +66,7 @@ class FilterDatasetSerializationTest(
     return dataset_ops.Dataset.range(10).map(_map_fn).filter(_filter_fn).map(
         lambda x, i: x)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSparseCore(self):
     num_outputs = 5
     self.run_core_tests(self._build_sparse_filter, num_outputs)

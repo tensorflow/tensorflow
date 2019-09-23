@@ -21,7 +21,7 @@ add_llvm_library(MLIROptMain
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Support
   )
-target_link_libraries(MLIROptMain LLVMSupport)
+target_link_libraries(MLIROptMain LLVMSupport MLIRPass)
 
 add_llvm_library(MLIRTranslateClParser
   TranslateClParser.cpp

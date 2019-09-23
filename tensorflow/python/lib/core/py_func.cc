@@ -186,7 +186,7 @@ Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
     CHECK_NE(ctx, nullptr);
     TF_RETURN_IF_ERROR(MakeArgTuple(call, ctx->context, &args));
     new_executor.reset(new EagerExecutor(call->eager_async));
-    old_executor = ctx->context->Executor();
+    old_executor = &ctx->context->Executor();
     ctx->context->SetExecutorForThread(new_executor.get());
   } else {
     TF_RETURN_IF_ERROR(MakeArgTuple(call, nullptr, &args));

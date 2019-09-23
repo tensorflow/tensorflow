@@ -119,7 +119,8 @@ limitations under the License.
 #endif
 
 // Note does not check for LZCNT or POPCNT.
-#if RUY_PLATFORM(X86_ENHANCEMENTS) && RUY_PLATFORM(X86) && defined(__SSE4_2__)
+#if RUY_PLATFORM(X86_ENHANCEMENTS) && RUY_PLATFORM(X86) && \
+    defined(__SSE4_2__) && defined(__FMA__)
 #define RUY_DONOTUSEDIRECTLY_SSE4_2 1
 #else
 #define RUY_DONOTUSEDIRECTLY_SSE4_2 0

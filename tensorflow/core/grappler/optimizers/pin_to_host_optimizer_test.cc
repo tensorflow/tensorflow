@@ -105,6 +105,43 @@ TEST_F(PinToHostOptimizerTest, OptimizeSmallOpsToHost) {
   EXPECT_EQ(found, 5);
 }
 
+TEST_F(PinToHostOptimizerTest, OptimizeSmallFloatOpsToHost) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a = ops::Const(s.WithOpName("a"), 0.0f, {1024, 1024});
+  Output input_min = ops::Const(s.WithOpName("input_min"), 0.0f);
+  Output input_max = ops::Const(s.WithOpName("input_max"), 6.0f);
+  Output b =
+      ops::QuantizeAndDequantizeV2(s.WithOpName("b"), a, input_min, input_max);
+
+  GrapplerItem item;
+  item.fetch = {"b"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
+  GraphDef output;
+  PinToHostOptimizer optimizer(RewriterConfig::ON);
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  auto tensors = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(tensors_expected.size(), tensors.size());
+  for (int i = 0; i < tensors.size(); ++i) {
+    test::ExpectTensorEqual<float>(tensors[i], tensors_expected[i]);
+  }
+
+  // QuantizeAndDequantizeV2 requires input_min and input_max on CPU, so
+  // pin_to_host_optimizer should pin them to host.
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "input_min" || node.name() == "input_max") {
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+      EXPECT_EQ(node.device(), "/device:CPU:0");
+#else
+      EXPECT_TRUE(node.device().empty());
+#endif
+    }
+  }
+}
+
 TEST_F(PinToHostOptimizerTest, TopologicalSort) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output a = ops::Const(s.WithOpName("a"), 1, {1024, 1024});

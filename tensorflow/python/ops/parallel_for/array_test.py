@@ -38,12 +38,13 @@ class ArrayTest(PForTestCase):
 
   def test_gather(self):
     x = random_ops.random_uniform([3, 3, 3])
+    x2 = array_ops.placeholder_with_default(x, shape=None)  # Has dynamic shape.
 
     def loop_fn(i):
       outputs = []
       x_i = array_ops.gather(x, i)
-      for y in [x, x_i]:
-        axes = [0, 2, -1] if y is x else [0]
+      for y in [x, x2, x_i]:
+        axes = [0] if y is x_i else [0, 2, -1]
         for axis in axes:
           outputs.append(array_ops.gather(y, 2, axis=axis))
           outputs.append(array_ops.gather(y, i, axis=axis))
@@ -52,7 +53,7 @@ class ArrayTest(PForTestCase):
           outputs.append(array_ops.gather(y, [[2, i], [i, 1]], axis=axis))
       return outputs
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 20)
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 35)
 
   def test_gather_nd(self):
     x = random_ops.random_uniform([3, 3, 3])

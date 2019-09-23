@@ -98,29 +98,32 @@ Status VerifyTypesMatch(const DataTypeVector& expected,
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
                               const std::vector<PartialTensorShape>& received);
 
-// Returns a stable hash of the portion of the graph `g` rooted at
-// `node`, by creating a Merkle tree-like structure.
+// Returns a stable hash of the given attribute key-value pair.
 //
-// Specifically, this function recursively walks the graph from `node` by
-// following its inputs.
-//
-// The hash is computed by hashing its op name, device, attributes, and hashes
-// of its inputs (if applicable).
-//
-// There is currently no guarantee that the hash of a subgraph will stay the
-// same between TensorFlow builds.
-uint64 HashSubgraph(const GraphDef& g, const NodeDef* node);
+// NOTE: There is currently no guarantee that the hash of a function will stay
+// the same between TensorFlow builds.
+Status HashAttr(const FunctionDefLibrary& library, const std::string& attr_key,
+                const AttrValue& attr_value, uint64* hash);
 
-// Returns a stable hash of the function `f`.
+// Returns a stable hash of the given function.
 //
-// This function computes the hash by hashing the metadata of the
-// function (disregarding the auto-generated names and descriptions) and also
-// hashing the subgraph rooted at each of the output nodes.
+// NOTE: There is currently no guarantee that the hash of a subgraph will stay
+// the same between TensorFlow builds.
+Status HashFunction(const FunctionDefLibrary& library, const FunctionDef& func,
+                    uint64* hash);
+
+// Returns a stable hash of the subgraph rooted at the given node.
+// `node.
 //
-// There is currently no guarantee that the hash of a function will stay the
-// same between TensorFlow builds.
-uint64 HashSubgraphFunction(const FunctionDefLibrary& library,
-                            const FunctionDef* f);
+// NOTE: There is currently no guarantee that the hash of a subgraph will stay
+// the same between TensorFlow builds.
+Status HashNode(const GraphDef& graph, const NodeDef& node, uint64* hash);
+
+// Returns a stable hash of the given graph.
+//
+// NOTE: There is currently no guarantee that the hash of a subgraph will stay
+// the same between TensorFlow builds.
+Status HashGraph(const GraphDef& graph, uint64* hash);
 
 // Helper class for reading data from a VariantTensorData object.
 class VariantTensorDataReader : public IteratorStateReader {

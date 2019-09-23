@@ -24,6 +24,7 @@ from tensorflow.python.keras import layers as layer_module
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -93,9 +94,10 @@ class WideDeepModel(training.Model):
       linear_inputs, dnn_inputs = inputs
     linear_output = self.linear_model(linear_inputs)
     dnn_output = self.dnn_model(dnn_inputs)
-    output = .5 * (linear_output + dnn_output)
+    output = nest.map_structure(lambda x, y: 0.5 * (x + y), linear_output,
+                                dnn_output)
     if self.activation:
-      return self.activation(output)
+      return nest.map_structure(self.activation, output)
     return output
 
   def _get_optimizers(self):

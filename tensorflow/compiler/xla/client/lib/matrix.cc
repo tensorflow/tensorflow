@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -73,27 +74,67 @@ XlaOp GetMatrixDiagonal(XlaOp x, int k) {
     const int64 m = shape.dimensions(n_dims - 2);
     const int64 n = shape.dimensions(n_dims - 1);
 
+    if (k <= -m || k >= n) {
+      auto zero_size_shape = shape;
+      zero_size_shape.DeleteDimension(n_dims - 1);
+      zero_size_shape.set_dimensions(n_dims - 2, 0);
+      return ConstantLiteral(builder, Literal{zero_size_shape});
+    }
     auto mask = GetDiagonalMask(x, k);
 
-    // TPUs don't support S64 add reduction at the moment. But fortunately
-    // OR-reductions work just as well for integers.
-    XlaComputation reducer =
-        CreateScalarIdentityWithZeroComputation(shape.element_type(), builder);
+    int64 reduce_dim = n_dims - 1;
+    if ((k == 0 && m >= n) || k < 0) {
+      reduce_dim = n_dims - 2;
+    }
+    auto result = Reduce(
+        Select(mask, x, Zeros(builder, shape)), ScalarLike(x, 0),
+        CreateScalarIdentityWithZeroComputation(shape.element_type(), builder),
+        {reduce_dim});
     // k == 0, we can save one slice op.
     if (k == 0) {
-      return Reduce(Select(mask, x, Zeros(builder, shape)), ScalarLike(x, 0),
-                    reducer, {m >= n ? n_dims - 2 : n_dims - 1});
-    } else if (k > 0) {
-      auto result = Reduce(Select(mask, x, Zeros(builder, shape)),
-                           ScalarLike(x, 0), reducer, {n_dims - 2});
-      return SliceInMinorDims(result, {std::min<int64>(k, n)},
-                              {std::min(m + k, n)});
-    } else {
-      auto result = Reduce(Select(mask, x, Zeros(builder, shape)),
-                           ScalarLike(x, 0), reducer, {n_dims - 1});
-      return SliceInMinorDims(result, {std::min<int64>(-k, m)},
-                              {std::min(m, n - k)});
+      return result;
     }
+    return SliceInMinorDims(result, {0},
+                            {k > 0 ? std::min(m, n - k) : std::min(n, m + k)});
+  });
+}
+
+XlaOp SetMatrixDiagonal(XlaOp matrix, XlaOp diag, int k) {
+  XlaBuilder* builder = matrix.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(matrix));
+    TF_ASSIGN_OR_RETURN(Shape diag_shape, builder->GetShape(diag));
+    auto n_dims = static_cast<int32>(shape.rank());
+    TF_RET_CHECK(n_dims >= 2);
+    const int64 m = shape.dimensions(n_dims - 2);
+    const int64 n = shape.dimensions(n_dims - 1);
+    const int64 d = diag_shape.dimensions(n_dims - 2);
+    std::vector<int64> broadcast_dims(n_dims - 1);
+    absl::c_iota(broadcast_dims, 0);
+    int64 pad_high = m - d;
+    if (k < 0) {
+      ++(broadcast_dims.back());
+      pad_high = n - d;
+    }
+
+    if (pad_high != 0) {
+      PaddingConfig padding_config;
+      for (xla::int64 i = 0; i < diag_shape.rank() - 1; ++i) {
+        auto* dims = padding_config.add_dimensions();
+        dims->set_edge_padding_low(0);
+        dims->set_interior_padding(0);
+        dims->set_edge_padding_high(0);
+      }
+      auto* dims = padding_config.add_dimensions();
+      dims->set_edge_padding_low(0);
+      dims->set_interior_padding(0);
+      dims->set_edge_padding_high(pad_high);
+      diag = Pad(diag, ScalarLike(diag, 0), padding_config);
+    }
+
+    return Select(GetDiagonalMask(matrix, k),
+                  BroadcastInDim(diag, shape.dimensions(), broadcast_dims),
+                  matrix);
   });
 }
 
