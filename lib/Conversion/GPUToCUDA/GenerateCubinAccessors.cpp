@@ -80,7 +80,7 @@ private:
 
     // Insert the getter function just after the original function.
     OpBuilder moduleBuilder(module.getBody(), module.getBody()->begin());
-    moduleBuilder.setInsertionPoint(stubFunc.getOperation()->getNextNode());
+    moduleBuilder.setInsertionPointAfter(stubFunc.getOperation());
     auto getterType = moduleBuilder.getFunctionType(
         llvm::None, LLVM::LLVMType::getInt8PtrTy(llvmDialect));
     nameBuffer.append(kCubinGetterSuffix);
