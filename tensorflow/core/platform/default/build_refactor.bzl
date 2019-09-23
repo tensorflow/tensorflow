@@ -17,7 +17,7 @@ load(
     "tf_copts",
 )
 
-TF_PLATFORM_LIBRARIES = {
+TF_DEFAULT_PLATFORM_LIBRARIES = {
     "context": {
         "name": "context_impl",
         "hdrs": ["//tensorflow/core/platform:context.h"],
@@ -482,10 +482,13 @@ def tf_instantiate_platform_libraries(names = []):
                 tags = ["no_oss", "manual"],
             )
         else:
-            if name in TF_PLATFORM_LIBRARIES:
-                native.cc_library(**TF_PLATFORM_LIBRARIES[name])
+            if name in TF_DEFAULT_PLATFORM_LIBRARIES:
+                native.cc_library(**TF_DEFAULT_PLATFORM_LIBRARIES[name])
             if name in TF_WINDOWS_PLATFORM_LIBRARIES:
                 native.cc_library(**TF_WINDOWS_PLATFORM_LIBRARIES[name])
+
+def tf_mobile_aware_deps(name):
+    return [":" + name]
 
 def tf_platform_helper_deps(name):
     return select({
