@@ -45,7 +45,7 @@ protected:
   DeserializationTest() {
     // Register a diagnostic handler to capture the diagnostic so that we can
     // check it later.
-    context.getDiagEngine().setHandler([&](Diagnostic diag) {
+    context.getDiagEngine().registerHandler([&](Diagnostic &diag) {
       diagnostic.reset(new Diagnostic(std::move(diag)));
     });
   }

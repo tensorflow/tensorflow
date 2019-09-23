@@ -72,13 +72,33 @@ represents an unspecified source location.
 
 The `DiagnosticEngine` acts as the main interface for diagnostics in MLIR. It
 manages the registration of diagnostic handlers, as well as the core API for
-diagnostic emission. It can be interfaced with via an `MLIRContext` instance.
+diagnostic emission. Handlers generally take the form of
+`LogicalResult(Diagnostic &)`. If the result is `success`, it signals that the
+diagnostic has been fully processed and consumed. If `failure`, it signals that
+the diagnostic should be propagated to any previously registered handlers. It
+can be interfaced with via an `MLIRContext` instance.
 
 ```c++
 DiagnosticEngine engine = ctx->getDiagEngine();
-engine.setHandler([](Diagnostic diag) {
-  // Handle the reported diagnostic.
+
+/// Handle the reported diagnostic.
+// Return success to signal that the diagnostic has either been fully processed,
+// or failure if the diagnostic should be propagated to the previous handlers.
+DiagnosticEngine::HandlerID id = engine.registerHandler(
+    [](Diagnostic &diag) -> LogicalResult {
+  bool should_propage_diagnostic = ...;
+  return failure(should_propage_diagnostic);
 });
+
+
+// We can also elide the return value completely, in which the engine assumes
+// that all diagnostics are consumed(i.e. a success() result).
+DiagnosticEngine::HandlerID id = engine.registerHandler([](Diagnostic &diag) {
+  return;
+});
+
+// Unregister this handler when we are done.
+engine.eraseHandler(id);
 ```
 
 ### Constructing a Diagnostic
@@ -179,21 +199,22 @@ provides several common diagnostic handlers for immediate use.
 
 ### Scoped Diagnostic Handler
 
-This diagnostic handler is a simple RAII class that saves and restores the
-current diagnostic handler registered to a given context. This class can be
-either be used directly, or in conjunction with a derived diagnostic handler.
+This diagnostic handler is a simple RAII class that registers and unregisters a
+given diagnostic handler. This class can be either be used directly, or in
+conjunction with a derived diagnostic handler.
 
 ```c++
 // Construct the handler directly.
 MLIRContext context;
-ScopedDiagnosticHandler scopedHandler(&context, [](Diagnostic diag) {
+ScopedDiagnosticHandler scopedHandler(&context, [](Diagnostic &diag) {
   ...
 });
 
 // Use this handler in conjunction with another.
 class MyDerivedHandler : public ScopedDiagnosticHandler {
   MyDerivedHandler(MLIRContext *ctx) : ScopedDiagnosticHandler(ctx) {
-    ctx->getDiagEngine().setHandler([&](Diagnostic diag) {
+    // Set the handler that should be RAII managed.
+    setHandler([&](Diagnostic diag) {
       ...
     });
   }
