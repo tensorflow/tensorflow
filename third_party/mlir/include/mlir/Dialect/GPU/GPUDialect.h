@@ -41,8 +41,11 @@ public:
   /// Get the canonical string name of the dialect.
   static StringRef getDialectName();
 
-  /// Get the name of the attribute used to annotate outlined kernel functions.
+  /// Get the name of the attribute used to annotate external kernel functions.
   static StringRef getKernelFuncAttrName() { return "gpu.kernel"; }
+
+  /// Get the name of the attribute used to annotate kernel modules.
+  static StringRef getKernelModuleAttrName() { return "gpu.kernel_module"; }
 
   /// Returns whether the given function is a kernel function, i.e., has the
   /// 'gpu.kernel' attribute.
