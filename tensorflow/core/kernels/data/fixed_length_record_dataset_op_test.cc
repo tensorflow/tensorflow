@@ -40,10 +40,14 @@ class FixedLengthRecordDatasetParams : public DatasetParams {
     op_version_ = 2;
   }
 
-  Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override {
-    *inputs = {TensorValue(&filenames_),    TensorValue(&header_bytes_),
-               TensorValue(&record_bytes_), TensorValue(&footer_bytes_),
-               TensorValue(&buffer_size_),  TensorValue(&compression_type_)};
+  Status GetInputs(const std::vector<Tensor*>& input_datasets,
+                   std::vector<std::unique_ptr<Tensor>>* created_tensors,
+                   gtl::InlinedVector<TensorValue, 4>* inputs) const override {
+    inputs->clear();
+    std::vector<Tensor> input_tensors = {filenames_,    header_bytes_,
+                                         record_bytes_, footer_bytes_,
+                                         buffer_size_,  compression_type_};
+    AddTensorInputs(input_tensors, created_tensors, inputs);
     return Status::OK();
   }
 
