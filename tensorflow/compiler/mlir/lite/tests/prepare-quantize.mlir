@@ -402,22 +402,40 @@ func @QuantizeZeroScalar() -> tensor<f32> {
 // CHECK-NEXT:  "tfl.quantize"(%[[cst]]) {qtype = tensor<!quant.uniform<u8<1:255>:f32, 1.000000e+00:1>>}
 }
 
-// CHECK-LABEL: NotQuantizeNoneZeroSplat
-func @NotQuantizeNoneZeroSplat() -> tensor<2x3xf32> {
-  %cst = constant dense<1.0> : tensor<2x3xf32>
+// CHECK-LABEL: QuantizePositiveSplat
+func @QuantizePositiveSplat() -> tensor<2x3xf32> {
+  %cst = constant dense<25.4> : tensor<2x3xf32>
   return %cst : tensor<2x3xf32>
 
-// CHECK-NEXT:  %[[cst:.*]] = constant dense<1.000000e+00> : tensor<2x3xf32>
-// CHECK-NEXT:  return %[[cst]]
+// CHECK-NEXT:  %[[cst:.*]] = constant dense<2.540000e+01> : tensor<2x3xf32>
+// CHECK-NEXT:  "tfl.quantize"(%[[cst]]) {qtype = tensor<2x3x!quant.uniform<u8<1:255>:f32, 0.09999999849815068:1>>}
 }
 
-// CHECK-LABEL: NotQuantizeNoneZeroScalar
-func @NotQuantizeNoneZeroScalar() -> tensor<f32> {
-  %cst = constant dense<1.0> : tensor<f32>
+// CHECK-LABEL: QuantizePositiveScalar
+func @QuantizePositiveScalar() -> tensor<f32> {
+  %cst = constant dense<2.54> : tensor<f32>
   return %cst : tensor<f32>
 
-// CHECK-NEXT:  %[[cst:.*]] = constant dense<1.000000e+00> : tensor<f32>
-// CHECK-NEXT:  return %[[cst]]
+// CHECK-NEXT:  %[[cst:.*]] = constant dense<2.540000e+00> : tensor<f32>
+// CHECK-NEXT:  "tfl.quantize"(%[[cst]]) {qtype = tensor<!quant.uniform<u8<1:255>:f32, 0.009999999849815068:1>>}
+}
+
+// CHECK-LABEL: QuantizeNegativeSplat
+func @QuantizeNegativeSplat() -> tensor<2x3xf32> {
+  %cst = constant dense<-2.54> : tensor<2x3xf32>
+  return %cst : tensor<2x3xf32>
+
+// CHECK-NEXT:  %[[cst:.*]] = constant dense<-2.540000e+00> : tensor<2x3xf32>
+// CHECK-NEXT:  "tfl.quantize"(%[[cst]]) {qtype = tensor<2x3x!quant.uniform<u8<1:255>:f32, 0.009999999849815068:255>>}
+}
+
+// CHECK-LABEL: QuantizeNegativeScalar
+func @QuantizeNegativeScalar() -> tensor<f32> {
+  %cst = constant dense<-25.4> : tensor<f32>
+  return %cst : tensor<f32>
+
+// CHECK-NEXT:  %[[cst:.*]] = constant dense<-2.540000e+01> : tensor<f32>
+// CHECK-NEXT:  "tfl.quantize"(%[[cst]]) {qtype = tensor<!quant.uniform<u8<1:255>:f32, 0.09999999849815068:255>>}
 }
 
 // CHECK-LABEL: QuantizeSharedBiases

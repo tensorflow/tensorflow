@@ -121,13 +121,18 @@ Type GetUniformQuantizedTypeForElementsAttr(ElementsAttr attr,
   if (fp.isSplat()) {
     double single_value =
         FloatAttr::getValueAsDouble(fp.getSplatValue<llvm::APFloat>());
-    // the mlir quantization libration can only handle the case min=max=0.0, so
-    // we just avoid quantization if it is any values other than 0.0.
-    // TODO(b/141015060): remove this constraint once the bug is fixed.
-    if (std::fabs(single_value) > std::numeric_limits<double>::epsilon()) {
-      return {};
+    // When the single value isn't 0.0, we expand it to a range to include this
+    // single value and 0.0. This will give us a scale and zero point works for
+    // both this value and 0.0.
+    if (single_value < 0.0) {
+      min = single_value;
+      max = 0.0;
+    } else if (single_value > 0.0) {
+      min = 0.0;
+      max = single_value;
+    } else {
+      min = max = single_value;
     }
-    min = max = single_value;
   } else {
     for (auto it = fp.begin(), e = fp.end(); it != e; ++it) {
       double ele_value = FloatAttr::getValueAsDouble(*it);
