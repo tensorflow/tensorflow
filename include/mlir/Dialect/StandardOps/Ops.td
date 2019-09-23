@@ -28,6 +28,8 @@
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
+include "mlir/Analysis/CallInterfaces.td"
+
 def Std_Dialect : Dialect {
   let name = "std";
   let cppNamespace = "";
@@ -212,7 +214,7 @@ def BranchOp : Std_Op<"br", [Terminator]> {
   }];
 }
 
-def CallOp : Std_Op<"call"> {
+def CallOp : Std_Op<"call", [CallOpInterface]> {
   let summary = "call operation";
   let description = [{
     The "call" operation represents a direct call to a function.  The operands
@@ -250,10 +252,15 @@ def CallOp : Std_Op<"call"> {
 
     operand_iterator arg_operand_begin() { return operand_begin(); }
     operand_iterator arg_operand_end() { return operand_end(); }
+
+    /// Return the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() {
+      return getAttrOfType<SymbolRefAttr>("callee");
+    }
   }];
 }
 
-def CallIndirectOp : Std_Op<"call_indirect"> {
+def CallIndirectOp : Std_Op<"call_indirect", [CallOpInterface]> {
   let summary = "indirect call operation";
   let description = [{
     The "call_indirect" operation represents an indirect call to a value of
@@ -285,6 +292,9 @@ def CallIndirectOp : Std_Op<"call_indirect"> {
 
     operand_iterator arg_operand_begin() { return ++operand_begin(); }
     operand_iterator arg_operand_end() { return operand_end(); }
+
+    /// Return the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() { return getCallee(); }
   }];
 
   let hasCanonicalizer = 1;

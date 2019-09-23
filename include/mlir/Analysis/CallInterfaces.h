@@ -1,4 +1,4 @@
-//===- TestDialect.h - MLIR Dialect for testing -----------------*- C++ -*-===//
+//===- CallInterfaces.h - Call Interfaces for MLIR --------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,35 +15,27 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file defines a fake 'test' dialect that can be used for testing things
-// that do not have a respective counterpart in the main source directories.
+// This file contains the definitions of the call interfaces defined in
+// `CallInterfaces.td`.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_TESTDIALECT_H
-#define MLIR_TESTDIALECT_H
+#ifndef MLIR_ANALYSIS_CALLINTERFACES_H
+#define MLIR_ANALYSIS_CALLINTERFACES_H
 
-#include "mlir/Analysis/CallInterfaces.h"
-#include "mlir/Dialect/Traits.h"
-#include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
-#include "mlir/IR/OpImplementation.h"
-#include "mlir/IR/StandardTypes.h"
+#include "llvm/ADT/PointerUnion.h"
 
 namespace mlir {
 
-class TestDialect : public Dialect {
-public:
-  /// Create the dialect in the given `context`.
-  TestDialect(MLIRContext *context);
-
-  /// Get the canonical string name of the dialect.
-  static StringRef getDialectName() { return "test"; }
+/// A callable is either a symbol, or an SSA value, that is referenced by a
+/// call-like operation. This represents the destination of the call.
+struct CallInterfaceCallable
+    : public llvm::PointerUnion<SymbolRefAttr, Value *> {
+  using llvm::PointerUnion<SymbolRefAttr, Value *>::PointerUnion;
 };
 
-#define GET_OP_CLASSES
-#include "TestOps.h.inc"
-
+#include "mlir/Analysis/CallInterfaces.h.inc"
 } // end namespace mlir
 
-#endif // MLIR_TESTDIALECT_H
+#endif // MLIR_ANALYSIS_CALLINTERFACES_H
