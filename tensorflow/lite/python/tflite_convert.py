@@ -170,7 +170,7 @@ def _convert_tf1_model(flags):
     converter.allow_custom_ops = flags.allow_custom_ops
   if flags.target_ops:
     ops_set_options = lite.OpsSet.get_options()
-    converter.target_ops = set()
+    converter.target_spec.supported_ops = set()
     for option in flags.target_ops.split(","):
       if option not in ops_set_options:
         raise ValueError("Invalid value for --target_ops. Options: "
