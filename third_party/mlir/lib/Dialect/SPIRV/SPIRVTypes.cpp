@@ -383,7 +383,10 @@ struct spirv::detail::StructTypeStorage : public TypeStorage {
     ArrayRef<Type> keyTypes = std::get<0>(key);
 
     // Copy the member type and layout information into the bump pointer
-    auto typesList = allocator.copyInto(keyTypes).data();
+    const Type *typesList = nullptr;
+    if (!keyTypes.empty()) {
+      typesList = allocator.copyInto(keyTypes).data();
+    }
 
     const StructType::LayoutInfo *layoutInfoList = nullptr;
     if (!std::get<1>(key).empty()) {
@@ -442,6 +445,12 @@ StructType::get(ArrayRef<Type> memberTypes,
   llvm::array_pod_sort(sortedDecorations.begin(), sortedDecorations.end());
   return Base::get(memberTypes.vec().front().getContext(), TypeKind::Struct,
                    memberTypes, layoutInfo, sortedDecorations);
+}
+
+StructType StructType::getEmpty(MLIRContext *context) {
+  return Base::get(context, TypeKind::Struct, ArrayRef<Type>(),
+                   ArrayRef<StructType::LayoutInfo>(),
+                   ArrayRef<StructType::MemberDecorationInfo>());
 }
 
 unsigned StructType::getNumElements() const {

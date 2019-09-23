@@ -1102,10 +1102,13 @@ Deserializer::processRuntimeArrayType(ArrayRef<uint32_t> operands) {
 }
 
 LogicalResult Deserializer::processStructType(ArrayRef<uint32_t> operands) {
-  // TODO(ravishankarm) : Regarding to the spec spv.struct must support zero
-  // amount of members.
-  if (operands.size() < 2) {
-    return emitError(unknownLoc, "OpTypeStruct must have at least 2 operand");
+  if (operands.empty()) {
+    return emitError(unknownLoc, "OpTypeStruct must have at least result <id>");
+  }
+  if (operands.size() == 1) {
+    // Handle empty struct.
+    typeMap[operands[0]] = spirv::StructType::getEmpty(context);
+    return success();
   }
 
   SmallVector<Type, 0> memberTypes;
