@@ -214,6 +214,7 @@ TF_PLATFORM_LIBRARIES = {
         "deps": [
             "@local_config_rocm//rocm:rocm_headers",
             "//tensorflow/core/lib/io:path",
+            "//tensorflow/core/platform:logging",
             "//tensorflow/core/platform:types",
         ],
         "visibility": ["//visibility:private"],
