@@ -1179,8 +1179,8 @@ mlir::Operation* ImporterBase::createOperation(
   // Dispatch based on the name and create the appropriate operation.
   if (node.IsSwitch()) {
     // Switch and _SwitchN both are in switch class, differentiate based on
-    // number of outputs.
-    if (node.num_outputs() > 2) {
+    // op name.
+    if (node.op_def().name() == "_SwitchN") {
       return builder_.create<mlir::tf_executor::SwitchNOp>(loc, types, operands,
                                                            result.attributes);
     }
