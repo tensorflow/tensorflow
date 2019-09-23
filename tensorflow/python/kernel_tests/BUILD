@@ -3861,7 +3861,6 @@ gpu_py_test(
     srcs = ["gpu_fusion_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
-        "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",

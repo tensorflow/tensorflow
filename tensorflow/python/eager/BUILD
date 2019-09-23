@@ -801,7 +801,9 @@ tf_py_test(
         "//tensorflow/python/tpu:tpu_strategy_util",
     ],
     tags = [
+        "no_cuda",
         "no_pip",
+        "no_rocm",
         "nogpu",
         "noguitar",
         "nomac",
