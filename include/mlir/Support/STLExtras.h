@@ -46,7 +46,10 @@ using ValueOfRange = typename std::remove_reference<decltype(
 ///              [&] { os << ", "; });
 /// \endcode
 template <typename ForwardIterator, typename UnaryFunctor,
-          typename NullaryFunctor>
+          typename NullaryFunctor,
+          typename = typename std::enable_if<
+              !std::is_constructible<StringRef, UnaryFunctor>::value &&
+              !std::is_constructible<StringRef, NullaryFunctor>::value>::type>
 inline void interleave(ForwardIterator begin, ForwardIterator end,
                        UnaryFunctor each_fn, NullaryFunctor between_fn) {
   if (begin == end)
@@ -59,17 +62,35 @@ inline void interleave(ForwardIterator begin, ForwardIterator end,
   }
 }
 
-template <typename Container, typename UnaryFunctor, typename NullaryFunctor>
+template <typename Container, typename UnaryFunctor, typename NullaryFunctor,
+          typename = typename std::enable_if<
+              !std::is_constructible<StringRef, UnaryFunctor>::value &&
+              !std::is_constructible<StringRef, NullaryFunctor>::value>::type>
 inline void interleave(const Container &c, UnaryFunctor each_fn,
                        NullaryFunctor between_fn) {
   interleave(c.begin(), c.end(), each_fn, between_fn);
+}
+
+/// Overload of interleave for the common case of string separator.
+template <typename Container, typename UnaryFunctor, typename raw_ostream,
+          typename T = detail::ValueOfRange<Container>>
+inline void interleave(const Container &c, raw_ostream &os,
+                       UnaryFunctor each_fn, const StringRef &separator) {
+  interleave(c.begin(), c.end(), each_fn, [&] { os << separator; });
+}
+template <typename Container, typename raw_ostream,
+          typename T = detail::ValueOfRange<Container>>
+inline void interleave(const Container &c, raw_ostream &os,
+                       const StringRef &separator) {
+  interleave(
+      c, os, [&](const T &a) { os << a; }, separator);
 }
 
 template <typename Container, typename UnaryFunctor, typename raw_ostream,
           typename T = detail::ValueOfRange<Container>>
 inline void interleaveComma(const Container &c, raw_ostream &os,
                             UnaryFunctor each_fn) {
-  interleave(c.begin(), c.end(), each_fn, [&] { os << ", "; });
+  interleave(c, os, each_fn, ", ");
 }
 template <typename Container, typename raw_ostream,
           typename T = detail::ValueOfRange<Container>>

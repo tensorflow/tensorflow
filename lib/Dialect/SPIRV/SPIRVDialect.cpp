@@ -642,12 +642,10 @@ static void print(StructType type, llvm::raw_ostream &os) {
         if (!decorations.empty())
           os << " ";
       }
-      auto between_fn = [&os]() { os << " "; };
       auto each_fn = [&os](spirv::Decoration decoration) {
         os << stringifyDecoration(decoration);
       };
-      mlir::interleave(decorations.begin(), decorations.end(), each_fn,
-                       between_fn);
+      mlir::interleave(decorations, os, each_fn, " ");
       os << "]";
     }
   };
