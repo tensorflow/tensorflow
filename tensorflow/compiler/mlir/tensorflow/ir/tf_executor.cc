@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/Transforms/FoldUtils.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -48,17 +49,30 @@ namespace {
 
 // If the given tensor has elements of type variant, then returns a new type
 // after dropping subtypes info. Otherwise, returns the original type as is.
-Type DropVariantSubTypes(Type ty) {
-  ShapedType shaped_ty = ty.cast<ShapedType>();
-  Type element_ty = shaped_ty.getElementType();
+ShapedType DropVariantSubTypes(ShapedType ty) {
+  Type element_ty = ty.getElementType();
   if (!element_ty.isa<TF::VariantType>()) return ty;
 
   Type variant_ty = TF::VariantType::get(ty.getContext());
-  if (shaped_ty.hasRank()) {
-    return RankedTensorType::get(shaped_ty.getShape(), variant_ty);
+  if (ty.hasRank()) {
+    return RankedTensorType::get(ty.getShape(), variant_ty);
   }
 
   return UnrankedTensorType::get(variant_ty);
+}
+
+// If the given tensor has elements of type ref, then returns a new type
+// of the shape, but corresponding non-ref type as element type. Otherwise,
+// returns the original type as is.
+ShapedType DropRefType(ShapedType type) {
+  Type element_ty = type.getElementType();
+  TF::TensorFlowRefType ref_type = element_ty.dyn_cast<TF::TensorFlowRefType>();
+  if (!ref_type) return type;
+
+  if (type.hasRank()) {
+    return RankedTensorType::get(type.getShape(), ref_type.RemoveRef());
+  }
+  return UnrankedTensorType::get(ref_type.RemoveRef());
 }
 
 }  // namespace
@@ -67,12 +81,33 @@ Type DropVariantSubTypes(Type ty) {
 // TF Executor Dialect
 //===----------------------------------------------------------------------===//
 
+namespace {
+
+struct TensorFlowExecutorOpFolderDialectInterface
+    : public OpFolderDialectInterface {
+  using OpFolderDialectInterface::OpFolderDialectInterface;
+
+  // Registered hook to check if the given region, which is attached to an
+  // operation that is *not* isolated from above (i.e. no internal regions
+  // reference values defined in an enclosing region), should be used when
+  // materializing constants.
+  // In the executor dialect we materialize inside an island.
+  bool shouldMaterializeInto(Region *region) const final {
+    return isa<tf_executor::IslandOp>(region->getParentOp());
+  }
+};
+
+}  // namespace
+
 TensorFlowExecutorDialect::TensorFlowExecutorDialect(MLIRContext *context)
     : Dialect(/*name=*/"tf_executor", context) {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.cc.inc"
       >();
+
+  addInterfaces<TensorFlowExecutorOpFolderDialectInterface>();
+
   addTypes<ControlType, TokenType>();
 }
 
@@ -296,6 +331,23 @@ void Print(IslandOp op, OpAsmPrinter *p) {
     p->printOperands(op.getOperands());
     *p << ')';
   }
+
+  // Check if we can print the short "wraps" form: that is if the island
+  // contains a single operation and the result of this operation are perfectly
+  // forwarded to the yield.
+  if (op.getAttrs().empty() &&
+      std::next(op.GetBody().begin(), 2) == op.GetBody().end()) {
+    Operation &wrapped_op = op.GetBody().front();
+    Operation &yield_op = op.GetBody().back();
+    if (wrapped_op.getNumResults() == yield_op.getNumOperands() &&
+        std::equal(wrapped_op.getResults().begin(),
+                   wrapped_op.getResults().end(),
+                   yield_op.getOperands().begin())) {
+      *p << " wraps ";
+      p->printGenericOp(&op.GetBody().front());
+      return;
+    }
+  }
   p->printRegion(op.getOperation()->getRegion(0));
   p->printOptionalAttrDict(op.getAttrs());
 }
@@ -316,17 +368,22 @@ ParseResult ParseIslandOp(OpAsmParser *parser, OperationState *result) {
   // Parse the body region.
   Region &body = *result->addRegion();
 
-  // TODO(b/134773778): the custom parser is missing support to implement to
-  // short syntax right now.
-  // if (!parser->parseOptionalKeyword("wraps")) {
-  //   body.push_back(new Block);
-  //   Block &block = body.back();
-  //   parser->getBuilder().setInsertionPointToEnd(&block);
-  //   if (parser->parseOperation())
-  //     return failure();
-  // }
-
-  if (parser->parseRegion(body, llvm::None, llvm::None)) return failure();
+  if (succeeded(parser->parseOptionalKeyword("wraps"))) {
+    // If we parse the short version of the island, we have an operation in the
+    // generic form that follows the "wraps" keyword. Parse it inside the region
+    // and forward all of its results as-is to the yield operation.
+    body.push_back(new Block);
+    Block &block = body.back();
+    Operation *wrapped_op =
+        parser->parseGenericOperation(&block, block.begin());
+    if (!wrapped_op) return failure();
+    OpBuilder builder(parser->getBuilder().getContext());
+    builder.setInsertionPointToEnd(&block);
+    builder.create<YieldOp>(result->location,
+                            llvm::to_vector<8>(wrapped_op->getResults()));
+  } else if (parser->parseRegion(body, llvm::None, llvm::None)) {
+    return failure();
+  }
 
   IslandOp::ensureTerminator(body, parser->getBuilder(), result->location);
 
@@ -536,35 +593,43 @@ LogicalResult Verify(MergeOp merge) {
   if (data_type.isa<ControlType>())
     return merge.emitOpError() << "expects a non-control input";
 
-  // Check that all operands can be broadcasted to a common type compatible with
-  // the result type.
-  Type broadcasted_type = merge.output()->getType();
+  // Check that each operand can be individually broadcasted to the output type.
+  Type output_type = merge.output()->getType();
+  TensorType output_tensor_ty = output_type.dyn_cast<TensorType>();
+  if (!output_tensor_ty) {
+    return merge.emitOpError()
+           << "expects output to have tensor type but got " << output_type;
+  }
+  bool is_output_ref =
+      output_tensor_ty.getElementType().isa<TF::TensorFlowRefType>();
   for (Type operand_type : merge.getOperandTypes()) {
     if (operand_type.isa<ControlType>()) break;
 
     // TODO(hinsu): Update ControlOperandsAfterAllData trait to verify this
     // constraint.
-    if (!operand_type.isa<TensorType>())
-      return merge.emitOpError("expects data operands to have tensor type");
-
-    // Variant types may have opaque subtypes information that need not match
-    // between the two types so drop them before computing the broadcasted type.
-    Type new_broadcasted_type =
-        OpTrait::util::getBroadcastedType(DropVariantSubTypes(broadcasted_type),
-                                          DropVariantSubTypes(operand_type));
-    if (!new_broadcasted_type)
+    TensorType operand_tensor_ty = operand_type.dyn_cast<TensorType>();
+    if (!operand_tensor_ty)
       return merge.emitOpError()
-             << "expects all operands to be broadcastable"
-             << " but got " << broadcasted_type << " vs " << operand_type;
-    // Use the broadcasted type unless we're losing the rank information here.
-    // This is because for example starting with a result of tensor<4xf32>, if
-    // the first operand is unranked, the broadcasted type will be unranked.
-    // Then any tensor operand will be broadcastable to this unranked type.
-    if (!broadcasted_type.cast<TensorType>().hasRank() ||
-        new_broadcasted_type.cast<TensorType>().hasRank())
-      broadcasted_type = new_broadcasted_type;
-  }
+             << "expects data operands to have tensor type but got "
+             << operand_type;
 
+    // If output type is a ref type then all operand types should also be of the
+    // same ref type. However, if the output type is a non-ref type T, operands
+    // can be tensor of type T or T_REF.
+    if (is_output_ref &&
+        !operand_tensor_ty.getElementType().isa<TF::TensorFlowRefType>()) {
+      return merge.emitOpError()
+             << "expects same operand and output element type but got "
+             << operand_tensor_ty << " vs " << output_tensor_ty;
+    }
+    Type broadcasted_type = OpTrait::util::getBroadcastedType(
+        DropRefType(DropVariantSubTypes(output_tensor_ty)),
+        DropRefType(DropVariantSubTypes(operand_tensor_ty)));
+    if (!broadcasted_type)
+      return merge.emitOpError()
+             << "expects all operands to be broadcastable with output type"
+             << " but got " << operand_tensor_ty << " vs " << output_tensor_ty;
+  }
   return success();
 }
 
@@ -1086,6 +1151,35 @@ void IslandOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                            MLIRContext *context) {
   results.insert<DropEmptyIslandNoOperandNoDataResult,
                  DropEmptyIslandNoOperandOneDataResult>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// tf_executor.ControlTrigger
+//===----------------------------------------------------------------------===//
+
+namespace {
+// This pattern matches and removes ControlTriggerOps with no control operands.
+// Control result users will have their relevant operands removed.
+struct DropEmptyControlTrigger : public OpRewritePattern<ControlTriggerOp> {
+  using OpRewritePattern<ControlTriggerOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(ControlTriggerOp op,
+                                     PatternRewriter &rewriter) const override {
+    if (op.getNumOperands() != 0) return matchFailure();
+
+    for (auto &use : llvm::make_early_inc_range(op.control()->getUses()))
+      use.getOwner()->eraseOperand(use.getOperandNumber());
+
+    rewriter.replaceOp(op, {nullptr});
+
+    return matchSuccess();
+  }
+};
+}  // anonymous namespace
+
+void ControlTriggerOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<DropEmptyControlTrigger>(context);
 }
 
 //===----------------------------------------------------------------------===//

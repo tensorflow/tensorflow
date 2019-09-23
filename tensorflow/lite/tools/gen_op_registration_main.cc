@@ -21,11 +21,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/strip.h"
-#include "tensorflow/lite/tools/gen_op_registration.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/lite/tools/gen_op_registration.h"
 
 const char kInputModelFlag[] = "input_model";
+const char kNamespace[] = "namespace";
 const char kOutputRegistrationFlag[] = "output_registration";
 const char kTfLitePathFlag[] = "tflite_path";
 
@@ -33,25 +34,29 @@ using tensorflow::Flag;
 using tensorflow::Flags;
 using tensorflow::string;
 
-void ParseFlagAndInit(int argc, char** argv, string* input_model,
-                      string* output_registration, string* tflite_path) {
+void ParseFlagAndInit(int* argc, char** argv, string* input_model,
+                      string* output_registration, string* tflite_path,
+                      string* namespace_flag) {
   std::vector<tensorflow::Flag> flag_list = {
       Flag(kInputModelFlag, input_model, "path to the tflite model"),
       Flag(kOutputRegistrationFlag, output_registration,
            "filename for generated registration code"),
       Flag(kTfLitePathFlag, tflite_path, "Path to tensorflow lite dir"),
+      Flag(kNamespace, namespace_flag,
+           "Namespace in which to put RegisterSelectedOps."),
   };
 
-  Flags::Parse(&argc, argv, flag_list);
-  tensorflow::port::InitMain(argv[0], &argc, &argv);
+  Flags::Parse(argc, argv, flag_list);
+  tensorflow::port::InitMain(argv[0], argc, &argv);
 }
 
 namespace {
 
 void GenerateFileContent(const std::string& tflite_path,
                          const std::string& filename,
-                         const std::vector<string>& builtin_ops,
-                         const std::vector<string>& custom_ops) {
+                         const std::string& namespace_flag,
+                         const tflite::RegisteredOpMap& builtin_ops,
+                         const tflite::RegisteredOpMap& custom_ops) {
   std::ofstream fout(filename);
 
   fout << "#include \"" << tflite_path << "/model.h\"\n";
@@ -63,7 +68,7 @@ void GenerateFileContent(const std::string& tflite_path,
     fout << "namespace builtin {\n";
     fout << "// Forward-declarations for the builtin ops.\n";
     for (const auto& op : builtin_ops) {
-      fout << "TfLiteRegistration* Register_" << op << "();\n";
+      fout << "TfLiteRegistration* Register_" << op.first << "();\n";
     }
     fout << "}  // namespace builtin\n";
   }
@@ -73,45 +78,72 @@ void GenerateFileContent(const std::string& tflite_path,
     fout << "// Forward-declarations for the custom ops.\n";
     for (const auto& op : custom_ops) {
       fout << "TfLiteRegistration* Register_"
-           << ::tflite::NormalizeCustomOpName(op) << "();\n";
+           << ::tflite::NormalizeCustomOpName(op.first) << "();\n";
     }
     fout << "}  // namespace custom\n";
   }
   fout << "}  // namespace ops\n";
   fout << "}  // namespace tflite\n";
 
+  if (!namespace_flag.empty()) {
+    fout << "namespace " << namespace_flag << " {\n";
+  }
   fout << "void RegisterSelectedOps(::tflite::MutableOpResolver* resolver) {\n";
   for (const auto& op : builtin_ops) {
-    fout << "  resolver->AddBuiltin(::tflite::BuiltinOperator_" << op
-         << ", ::tflite::ops::builtin::Register_" << op << "());\n";
+    fout << "  resolver->AddBuiltin(::tflite::BuiltinOperator_" << op.first
+         << ", ::tflite::ops::builtin::Register_" << op.first << "()";
+    if (op.second.first != 1 || op.second.second != 1) {
+      fout << ", " << op.second.first << ", " << op.second.second;
+    }
+    fout << ");\n";
   }
   for (const auto& op : custom_ops) {
-    fout << "  resolver->AddCustom(\"" << op
+    fout << "  resolver->AddCustom(\"" << op.first
          << "\", ::tflite::ops::custom::Register_"
-         << ::tflite::NormalizeCustomOpName(op) << "());\n";
+         << ::tflite::NormalizeCustomOpName(op.first) << "()";
+    if (op.second.first != 1 || op.second.second != 1) {
+      fout << ", " << op.second.first << ", " << op.second.second;
+    }
+    fout << ");\n";
   }
   fout << "}\n";
+  if (!namespace_flag.empty()) {
+    fout << "}  // namespace " << namespace_flag << "\n";
+  }
   fout.close();
 }
-}  // namespace
 
-int main(int argc, char** argv) {
-  string input_model;
-  string output_registration;
-  string tflite_path;
-  ParseFlagAndInit(argc, argv, &input_model, &output_registration,
-                   &tflite_path);
-
-  std::vector<string> builtin_ops;
-  std::vector<string> custom_ops;
+void AddOpsFromModel(const string& input_model,
+                     tflite::RegisteredOpMap* builtin_ops,
+                     tflite::RegisteredOpMap* custom_ops) {
   std::ifstream fin(input_model);
   std::stringstream content;
   content << fin.rdbuf();
   // Need to store content data first, otherwise, it won't work in bazel.
   string content_str = content.str();
   const ::tflite::Model* model = ::tflite::GetModel(content_str.data());
-  ::tflite::ReadOpsFromModel(model, &builtin_ops, &custom_ops);
-  GenerateFileContent(tflite_path, output_registration, builtin_ops,
-                      custom_ops);
+  ::tflite::ReadOpsFromModel(model, builtin_ops, custom_ops);
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+  string input_model;
+  string output_registration;
+  string tflite_path;
+  string namespace_flag;
+  ParseFlagAndInit(&argc, argv, &input_model, &output_registration,
+                   &tflite_path, &namespace_flag);
+
+  tflite::RegisteredOpMap builtin_ops;
+  tflite::RegisteredOpMap custom_ops;
+  if (!input_model.empty()) {
+    AddOpsFromModel(input_model, &builtin_ops, &custom_ops);
+  }
+  for (int i = 1; i < argc; i++) {
+    AddOpsFromModel(argv[i], &builtin_ops, &custom_ops);
+  }
+  GenerateFileContent(tflite_path, output_registration, namespace_flag,
+                      builtin_ops, custom_ops);
   return 0;
 }

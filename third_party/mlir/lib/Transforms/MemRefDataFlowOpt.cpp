@@ -88,7 +88,7 @@ struct MemRefDataFlowOpt : public FunctionPass<MemRefDataFlowOpt> {
 
 /// Creates a pass to perform optimizations relying on memref dataflow such as
 /// store to load forwarding, elimination of dead stores, and dead allocs.
-std::unique_ptr<FunctionPassBase> mlir::createMemRefDataFlowOptPass() {
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createMemRefDataFlowOptPass() {
   return std::make_unique<MemRefDataFlowOpt>();
 }
 
@@ -226,8 +226,7 @@ void MemRefDataFlowOpt::runOnFunction() {
   memrefsToErase.clear();
 
   // Walk all load's and perform load/store forwarding.
-  f.walk<AffineLoadOp>(
-      [&](AffineLoadOp loadOp) { forwardStoreToLoad(loadOp); });
+  f.walk([&](AffineLoadOp loadOp) { forwardStoreToLoad(loadOp); });
 
   // Erase all load op's whose results were replaced with store fwd'ed ones.
   for (auto *loadOp : loadOpsToErase) {

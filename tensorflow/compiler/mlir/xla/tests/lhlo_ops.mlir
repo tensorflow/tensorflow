@@ -136,8 +136,23 @@ func @reduce_computation(%sum: memref<1xf32>, %element: memref<1xf32>) -> () {
 }
 
 // CHECK-LABEL: func @reduce_memref
-func @reduce_memref(%input: memref<10xf32>, %out: memref<1xf32>) -> () {
-  "xla_lhlo.reduce"(%input, %out) {computation = @reduce_computation,
-                                   dimensions = dense<[0]> : tensor<1xi64>} : (memref<10xf32>, memref<1xf32>) -> ()
+func @reduce_memref(%input: memref<10xf32>, %init: memref<f32>, %out: memref<1xf32>) -> () {
+  "xla_lhlo.reduce"(%input, %init, %out) {computation = @reduce_computation, dimensions = dense<[0]> : tensor<1xi64>} : (memref<10xf32>, memref<f32>, memref<1xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @fusion_memref
+func @fusion_memref(%input1: memref<10xf32>, %input2: memref<10xf32>, %input3: memref<10xf32>, %out: memref<10xf32>) -> () {
+  "xla_lhlo.fusion"() ( {
+    %0 = tensor_load %input1 : memref<10xf32>
+    %1 = tensor_load %input2 : memref<10xf32>
+    %2 = "xla_hlo.add"(%0, %1) {name = "add"} : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
+    %3 = tensor_load %input3 : memref<10xf32>
+    %4 = "xla_hlo.mul"(%2, %3) {name = "multiply"} : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
+    tensor_store %4, %out : memref<10xf32>
+    "xla_lhlo.terminator"() : () -> ()
+  } ) : () -> ()
   return
 }

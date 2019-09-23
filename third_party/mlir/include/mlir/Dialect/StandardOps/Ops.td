@@ -156,6 +156,18 @@ def AllocOp : Std_Op<"alloc"> {
 
   let extraClassDeclaration = [{
     MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
+
+    /// Returns the number of symbolic operands (the ones in square brackets),
+    /// which bind to the symbols of the memref's layout map.
+    unsigned getNumSymbolicOperands() {
+      return getNumOperands() - getType().getNumDynamicDims();
+    }
+
+    /// Returns the symbolic operands (the ones in square brackets), which bind
+    /// to the symbols of the memref's layout map.
+    operand_range getSymbolicOperands() {
+      return {operand_begin() + getType().getNumDynamicDims(), operand_end()};
+    }
   }];
 
   let hasCanonicalizer = 1;
@@ -556,6 +568,7 @@ def DimOp : Std_Op<"dim", [NoSideEffect]> {
   }];
 
   let hasFolder = 1;
+  let hasCanonicalizer = 1;
 }
 
 def DivFOp : FloatArithmeticOp<"divf"> {
@@ -580,9 +593,9 @@ def ExtractElementOp : Std_Op<"extract_element", [NoSideEffect]> {
     with the same type as the elements of the tensor or vector. The arity of
     indices matches the rank of the accessed value (i.e., if a tensor is of rank
     3, then 3 indices are required for the extract).  The indices should all be
-    of affine_int type. For example:
+    of index type. For example:
 
-      %0 = extract_element %0[%1, %2] : vector<4x4xi32>
+      %3 = extract_element %0[%1, %2] : vector<4x4xi32>
   }];
 
   let arguments = (ins AnyTypeOf<[AnyVector, AnyTensor]>:$aggregate,
@@ -881,7 +894,7 @@ def TensorCastOp : CastOp<"tensor_cast"> {
     operation is invalid if converting to a mismatching constant dimension.
 
     Convert from unknown rank to rank 2 with unknown dimension sizes.
-       %2 = tensor_cast %1 : tensor<??f32> to tensor<?x?xf32>
+       %2 = tensor_cast %1 : tensor<*xf32> to tensor<?x?xf32>
   }];
 
   let arguments = (ins AnyTensor);

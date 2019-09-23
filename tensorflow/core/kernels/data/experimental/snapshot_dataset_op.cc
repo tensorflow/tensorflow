@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <random>
+
 #include "absl/time/clock.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -19,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/grappler/graph_view.h"
-#include "tensorflow/core/kernels/data/rewrite_utils.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/raw_coding.h"
@@ -27,7 +29,10 @@ limitations under the License.
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
+#include "tensorflow/core/platform/file_system.h"
 #if !defined(IS_SLIM_BUILD)
+#include "tensorflow/core/lib/io/snappy/snappy_inputbuffer.h"
+#include "tensorflow/core/lib/io/snappy/snappy_outputbuffer.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
@@ -53,6 +58,8 @@ enum SnapshotMode { READER = 0, WRITER = 1, PASSTHROUGH = 2 };
 // Defaults to 10 GiB per shard.
 const int64 kDefaultShardSizeBytes = 10LL * 1024 * 1024 * 1024;
 
+const int64 kSnappyBufferSizeBytes = 256 << 10;  // 256 KB
+
 const size_t kHeaderSize = sizeof(uint64);
 
 constexpr char kSnapshotFilename[] = "snapshot.metadata";
@@ -70,11 +77,13 @@ class SnapshotWriter {
   explicit SnapshotWriter(WritableFile* dest, const string& compression_type =
                                                   io::compression::kNone)
       : dest_(dest), compression_type_(compression_type) {
-    if (compression_type == io::compression::kGzip) {
 #if defined(IS_SLIM_BUILD)
+    if (compression_type != io::compression::kNone) {
       LOG(ERROR) << "Compression is unsupported on mobile platforms. Turning "
                  << "off compression.";
+    }
 #else   // IS_SLIM_BUILD
+    if (compression_type == io::compression::kGzip) {
       io::ZlibCompressionOptions zlib_options;
       zlib_options = io::ZlibCompressionOptions::GZIP();
 
@@ -84,8 +93,14 @@ class SnapshotWriter {
       TF_CHECK_OK(zlib_output_buffer->Init());
       dest_ = zlib_output_buffer;
       dest_is_owned_ = true;
-#endif  // IS_SLIM_BUILD
+    } else if (compression_type == io::compression::kSnappy) {
+      io::SnappyOutputBuffer* snappy_output_buffer = new io::SnappyOutputBuffer(
+          dest, /*input_buffer_bytes=*/kSnappyBufferSizeBytes,
+          /*output_buffer_bytes=*/kSnappyBufferSizeBytes);
+      dest_ = snappy_output_buffer;
+      dest_is_owned_ = true;
     }
+#endif  // IS_SLIM_BUILD
   }
 
   Status WriteRecord(const StringPiece& data) {
@@ -145,21 +160,28 @@ class SnapshotReader {
   explicit SnapshotReader(
       RandomAccessFile* file,
       const string& compression_type = io::compression::kNone)
-      : input_stream_(new io::RandomAccessInputStream(file)),
+      : file_(file),
+        input_stream_(new io::RandomAccessInputStream(file)),
         compression_type_(compression_type) {
-    if (compression_type_ == io::compression::kGzip) {
 #if defined(IS_SLIM_BUILD)
+    if (compression_type_ != io::compression::kNone) {
       LOG(ERROR) << "Compression is unsupported on mobile platforms. Turning "
                  << "off compression.";
+    }
 #else   // IS_SLIM_BUILD
+    if (compression_type_ == io::compression::kGzip) {
       io::ZlibCompressionOptions zlib_options;
       zlib_options = io::ZlibCompressionOptions::GZIP();
 
       input_stream_.reset(new io::ZlibInputStream(
           input_stream_.release(), zlib_options.input_buffer_size,
           zlib_options.output_buffer_size, zlib_options, true));
-#endif  // IS_SLIM_BUILD
+    } else if (compression_type_ == io::compression::kSnappy) {
+      input_stream_ = absl::make_unique<io::SnappyInputBuffer>(
+          file_, /*input_buffer_bytes=*/kSnappyBufferSizeBytes,
+          /*output_buffer_bytes=*/kSnappyBufferSizeBytes);
     }
+#endif  // IS_SLIM_BUILD
   }
 
   Status ReadRecord(tstring* record) {
@@ -192,6 +214,7 @@ class SnapshotReader {
 #endif
 
  private:
+  RandomAccessFile* file_;
   std::unique_ptr<io::InputStreamInterface> input_stream_;
   const string compression_type_;
 };
@@ -256,27 +279,6 @@ SnapshotMode DetermineOpState(
   }
 }
 
-Status GraphHash(const GraphDef& graph_def, std::string* hash) {
-  grappler::GraphView gv(&graph_def);
-
-  std::string sink_node_name;
-  for (auto& node : graph_def.node()) {
-    if (node.op() == "_Retval") {
-      sink_node_name = node.name();
-      break;
-    }
-  }
-
-  if (sink_node_name.empty()) {
-    return errors::Internal("Cannot find sink node for dataset graph.");
-  }
-
-  uint64 hash_int = HashSubgraph(graph_def, gv.GetNode(sink_node_name));
-  *hash = strings::StrCat(strings::Hex(hash_int, strings::kZeroPad16));
-
-  return Status::OK();
-}
-
 class SnapshotDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit SnapshotDatasetOp(OpKernelConstruction* ctx)
@@ -302,6 +304,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                    ctx->GetAttr("num_writer_threads", &num_writer_threads_));
     OP_REQUIRES_OK(ctx,
                    ctx->GetAttr("writer_buffer_size", &writer_buffer_size_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("shuffle_on_read", &shuffle_on_read_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("seed", &seed_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("seed2", &seed2_));
 
     if (shard_size_bytes_ == -1) shard_size_bytes_ = kDefaultShardSizeBytes;
 
@@ -318,12 +323,11 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES(
         ctx,
         compression_ == io::compression::kNone ||
-            compression_ == io::compression::kGzip,
-        errors::InvalidArgument("compression must be either '' or 'GZIP'."));
+            compression_ == io::compression::kGzip ||
+            compression_ == io::compression::kSnappy,
+        errors::InvalidArgument("compression must be either '', 'GZIP' or "
+                                "'SNAPPY'."));
 
-    OP_REQUIRES(
-        ctx, shard_size_bytes_ >= 1024 * 1024,
-        errors::InvalidArgument("shard_size_bytes must be at least 1 MiB."));
     OP_REQUIRES(
         ctx, pending_snapshot_expiry_seconds_ >= 1,
         errors::InvalidArgument(
@@ -346,14 +350,16 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(
         ctx, AsGraphDef(ctx, input, SerializationContext(params), &graph_def));
 
-    string graph_hash;
-    OP_REQUIRES_OK(ctx, GraphHash(graph_def, &graph_hash));
+    uint64 hash;
+    OP_REQUIRES_OK(ctx, HashGraph(graph_def, &hash));
 
-    *output = new Dataset(ctx, input, path, graph_hash, reader_path_prefix_,
-                          writer_path_prefix_, compression_, shard_size_bytes_,
-                          pending_snapshot_expiry_seconds_, num_reader_threads_,
-                          reader_buffer_size_, num_writer_threads_,
-                          writer_buffer_size_);
+    *output = new Dataset(
+        ctx, input, path,
+        strings::StrCat(strings::Hex(hash, strings::kZeroPad16)),
+        reader_path_prefix_, writer_path_prefix_, compression_,
+        shard_size_bytes_, pending_snapshot_expiry_seconds_,
+        num_reader_threads_, reader_buffer_size_, num_writer_threads_,
+        writer_buffer_size_, shuffle_on_read_, seed_, seed2_);
   }
 
  private:
@@ -365,7 +371,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             const uint64 shard_size_bytes,
             const uint64 pending_snapshot_expiry_seconds,
             const uint64 num_reader_threads, const uint64 reader_buffer_size,
-            const uint64 num_writer_threads, const uint64 writer_buffer_size)
+            const uint64 num_writer_threads, const uint64 writer_buffer_size,
+            const bool shuffle_on_read, const uint64 seed, const uint64 seed2)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           dir_(path),
@@ -378,7 +385,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           num_reader_threads_(num_reader_threads),
           reader_buffer_size_(reader_buffer_size),
           num_writer_threads_(num_writer_threads),
-          writer_buffer_size_(writer_buffer_size) {
+          writer_buffer_size_(writer_buffer_size),
+          shuffle_on_read_(shuffle_on_read),
+          seed_(seed),
+          seed2_(seed2) {
       input_->Ref();
     }
 
@@ -444,6 +454,15 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
       AttrValue writer_buffer_size_attr;
       b->BuildAttrValue<int64>(writer_buffer_size_, &writer_buffer_size_attr);
 
+      AttrValue shuffle_on_read_attr;
+      b->BuildAttrValue<bool>(shuffle_on_read_, &shuffle_on_read_attr);
+
+      AttrValue seed_attr;
+      b->BuildAttrValue<int64>(seed_, &seed_attr);
+
+      AttrValue seed2_attr;
+      b->BuildAttrValue<int64>(seed2_, &seed2_attr);
+
       TF_RETURN_IF_ERROR(b->AddDataset(
           this,
           /*inputs=*/
@@ -460,7 +479,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
            {"num_reader_threads", num_reader_threads_attr},
            {"reader_buffer_size", reader_buffer_size_attr},
            {"num_writer_threads", num_writer_threads_attr},
-           {"writer_buffer_size", writer_buffer_size_attr}},
+           {"writer_buffer_size", writer_buffer_size_attr},
+           {"shuffle_on_read", shuffle_on_read_attr},
+           {"seed", seed_attr},
+           {"seed2", seed2_attr}},
           output));
       return Status::OK();
     }
@@ -560,7 +582,18 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             return errors::InvalidArgument("Could not find any files in dir: ",
                                            run_dir_);
           }
-          std::sort(filenames_.begin(), filenames_.end());
+
+          if (dataset()->shuffle_on_read_) {
+            uint64 seed = dataset()->seed_ + dataset()->seed2_;
+            if (dataset()->seed_ == 0 && dataset()->seed2_ == 0) {
+              seed = random::New64();
+            }
+
+            std::mt19937 rng(seed);
+            std::shuffle(filenames_.begin(), filenames_.end(), rng);
+          } else {
+            std::sort(filenames_.begin(), filenames_.end());
+          }
           return Status::OK();
         }
 
@@ -1131,6 +1164,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     const uint64 reader_buffer_size_;
     const uint64 num_writer_threads_;
     const uint64 writer_buffer_size_;
+    const bool shuffle_on_read_;
+
+    const uint64 seed_;
+    const uint64 seed2_;
   };
 
   const int graph_def_version_;
@@ -1147,6 +1184,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
   int64 reader_buffer_size_;
   int64 num_writer_threads_;
   int64 writer_buffer_size_;
+  bool shuffle_on_read_;
+
+  int64 seed_;
+  int64 seed2_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("SnapshotDataset").Device(DEVICE_CPU),

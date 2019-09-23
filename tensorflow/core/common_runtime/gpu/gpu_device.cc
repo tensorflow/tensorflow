@@ -249,6 +249,20 @@ class BaseGPUDevice::StreamGroupFactory {
       VLOG(2) << "Created stream[" << stream_group_within_gpu
               << "] = " << group->compute;
 
+#if TENSORFLOW_USE_ROCM
+      // ROCm streams are lightweight and will not necessarily trigger device
+      // queue init until they are first used. For optimal performance,
+      // compute and nccl streams must be immediate siblings.
+      group->nccl = new se::Stream(executor);
+      group->nccl->Init();
+      VLOG(2) << "Created nccl_stream[" << stream_group_within_gpu
+              << "] = " << group->nccl;
+
+      // Force underlying resource creation now.
+      group->compute->ThenWaitFor(group->nccl);
+      group->nccl->ThenWaitFor(group->compute);
+#endif
+
       group->host_to_device = new se::Stream(executor);
       group->host_to_device->Init();
       VLOG(2) << "Created host_to_device_stream[" << stream_group_within_gpu
@@ -330,6 +344,7 @@ Status BaseGPUDevice::InitScratchBuffers() {
       if (scratch_.size() > i && scratch_[i]) continue;
       size_t scratch_buffer_size =
           Eigen::kGpuScratchSize + sizeof(unsigned int);
+      MEMDEBUG_CACHE_OP("ScratchBuffer");
       void* scratch_buffer = gpu_allocator_->AllocateRaw(
           Allocator::kAllocatorAlignment, scratch_buffer_size);
       if (scratch_buffer == nullptr) {
@@ -371,8 +386,12 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
     streams_.push_back(StreamGroupFactory::Global().GetOrCreate(
         tf_gpu_id_, i, executor_, options.config.gpu_options()));
     device_contexts_.push_back(new GPUDeviceContext(
-        i, streams_.back()->compute, streams_.back()->host_to_device,
-        streams_.back()->device_to_host, streams_.back()->device_to_device));
+        i, streams_.back()->compute,
+#if TENSORFLOW_USE_ROCM
+        streams_.back()->nccl,
+#endif
+        streams_.back()->host_to_device, streams_.back()->device_to_host,
+        streams_.back()->device_to_device));
   }
 
   em_ = EventMgrFactory::Singleton()->GetEventMgr(executor_,
@@ -578,6 +597,8 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
     }
   }
   ScopedActivateExecutorContext scoped_activation{stream->parent()};
+  MEMDEBUG_CACHE_OP(op_kernel->name().c_str());
+  MEMDEBUG_CACHE_STEPID(context->step_id());
   op_kernel->Compute(context);
   if (context->status().ok()) {
     if (sync_every_op_) {
@@ -681,17 +702,13 @@ Status BaseGPUDevice::MaybeCopyTensorToGPU(
       return err;
     }
 
-    StatusCallback wrapped_done = std::bind(
-        [to, copy](StatusCallback done_,
-                   // Begin unbound arguments.
-                   const Status& s) {
-          if (s.ok()) {
-            *to = std::move(*copy);
-          }
-          delete copy;
-          done_(s);
-        },
-        std::move(done), std::placeholders::_1);
+    auto wrapped_done = [to, copy, done = std::move(done)](const Status& s) {
+      if (s.ok()) {
+        *to = std::move(*copy);
+      }
+      delete copy;
+      done(s);
+    };
 
     tracing::ScopedAnnotation annotation("MakeTensorFromProto");
     device_contexts_[0]->CopyCPUTensorToDevice(
@@ -704,6 +721,8 @@ Status BaseGPUDevice::MaybeCopyTensorToGPU(
 Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
                                           const AllocatorAttributes alloc_attrs,
                                           Tensor* tensor) {
+  MEMDEBUG_CACHE_OP(
+      (pending_op_name != nullptr ? pending_op_name : "MakeTensorFromProto"));
   AllocatorAttributes attr;
   attr.set_on_host(true);
   attr.set_gpu_compatible(true);

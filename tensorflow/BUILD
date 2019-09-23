@@ -268,18 +268,6 @@ config_setting(
 )
 
 config_setting(
-    name = "no_ignite_support",
-    define_values = {"no_ignite_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "no_kafka_support",
-    define_values = {"no_kafka_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "no_nccl_support",
     define_values = {"no_nccl_support": "true"},
     visibility = ["//visibility:public"],
@@ -306,12 +294,6 @@ config_setting(
 config_setting(
     name = "no_xla_deps_in_cuda",
     define_values = {"no_xla_deps_in_cuda": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_gdr_support",
-    define_values = {"with_gdr_support": "true"},
     visibility = ["//visibility:public"],
 )
 
@@ -867,7 +849,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = select({
         "api_version_2": [],
-        "//conditions:default": ["//tensorflow/contrib:contrib_py"],
+        "//conditions:default": [],
     }) + [
         ":tensorflow_py_no_contrib",
         "//tensorflow/python/estimator:estimator_py",

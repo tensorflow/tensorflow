@@ -78,12 +78,14 @@ Status SelectConvolutionTransposedBuffer(
     const ConvolutionTransposedAttributes& attr,
     const CreationContext& creation_context, const OperationDef& op_def,
     std::unique_ptr<GPUOperation>* ptr) {
-  if (IsConvolutionTransposedThinSupported(*creation_context.device, attr)) {
+  if (!creation_context.device->IsMali() &&
+      IsConvolutionTransposedThinSupported(*creation_context.device, attr)) {
     ConvolutionTransposedThin conv;
     RETURN_IF_ERROR(
         CreateConvolutionTransposedThin(creation_context, op_def, attr, &conv));
     *ptr = absl::make_unique<ConvolutionTransposedThin>(std::move(conv));
-  } else if (IsConvolutionTransposed3x3ThinSupported(*creation_context.device,
+  } else if (!creation_context.device->IsMali() &&
+             IsConvolutionTransposed3x3ThinSupported(*creation_context.device,
                                                      attr)) {
     ConvolutionTransposed3x3Thin conv;
     RETURN_IF_ERROR(CreateConvolutionTransposed3x3Thin(creation_context, op_def,
@@ -108,6 +110,7 @@ Status SelectConvolutionTransposed(const ConvolutionTransposedAttributes& attr,
       return SelectConvolutionTransposedTextureArray(attr, creation_context,
                                                      op_def, ptr);
     case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::IMAGE_BUFFER:
     case TensorStorageType::SINGLE_TEXTURE_2D:
       return SelectConvolutionTransposedTexture2D(attr, creation_context,
                                                   op_def, ptr);

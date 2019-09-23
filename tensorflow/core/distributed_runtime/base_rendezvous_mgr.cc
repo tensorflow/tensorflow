@@ -71,16 +71,13 @@ void BaseRendezvousMgr::RecvLocalAsync(int64 step_id,
                                        const Rendezvous::ParsedKey& parsed,
                                        Rendezvous::DoneCallback done) {
   auto rendez = FindOrCreate(step_id);
-  using namespace std::placeholders;
-  Rendezvous::DoneCallback done_cb = std::bind(
-      [rendez](Rendezvous::DoneCallback done,
-               // Begin unbound arguments.
-               const Status& s, const Rendezvous::Args& send_args,
-               const Rendezvous::Args& recv_args, const Tensor& v, bool dead) {
-        rendez->Unref();
-        done(s, send_args, recv_args, v, dead);
-      },
-      std::move(done), _1, _2, _3, _4, _5);
+  auto done_cb = [rendez, done = std::move(done)](
+                     const Status& s, const Rendezvous::Args& send_args,
+                     const Rendezvous::Args& recv_args, const Tensor& v,
+                     bool dead) {
+    rendez->Unref();
+    done(s, send_args, recv_args, v, dead);
+  };
   rendez->RecvLocalAsync(parsed, std::move(done_cb));
 }
 
@@ -269,6 +266,10 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
     return;
   }
 
+  MEMDEBUG_CACHE_STEPID(0);
+  // Note that it would be nice to cache the step_id here, but it's not
+  // available.
+  MEMDEBUG_CACHE_OP("SameWorkerRecvDone");
   AllocatorAttributes attr = recv_args.alloc_attrs;
   attr.set_gpu_compatible(send_args.alloc_attrs.gpu_compatible() ||
                           recv_args.alloc_attrs.gpu_compatible());
@@ -316,6 +317,8 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
     return;
   }
 
+  MEMDEBUG_CACHE_OP("RecvAsync");
+  MEMDEBUG_CACHE_STEPID(0);
   // Are src and dst in the same worker?
   if (IsSameWorker(parsed.src, parsed.dst)) {
     // Recv the tensor from local_.

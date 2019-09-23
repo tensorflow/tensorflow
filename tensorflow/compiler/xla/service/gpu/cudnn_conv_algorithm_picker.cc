@@ -37,7 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
-#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 
 namespace xla {
 namespace gpu {
@@ -136,13 +136,13 @@ void PrintPlatformInfo(const se::Stream* stream) {
 //
 // `name` is a user-friendly name for the set of redzones being checked, e.g.
 // "input/output" or "scratch".
-StatusOr<bool> CheckRedzones(const se::cuda::RedzoneAllocator& allocator,
+StatusOr<bool> CheckRedzones(const se::RedzoneAllocator& allocator,
                              se::Stream* stream, absl::string_view name,
                              const HloInstruction* instr,
                              AutotuneResult* result) {
   XLA_SCOPED_LOGGING_TIMER_LEVEL("CudnnConvAlgorithmPicker checking redzones",
                                  2);
-  using RedzoneCheckStatus = se::cuda::RedzoneAllocator::RedzoneCheckStatus;
+  using RedzoneCheckStatus = se::RedzoneAllocator::RedzoneCheckStatus;
   TF_ASSIGN_OR_RETURN(RedzoneCheckStatus redzone_check,
                       allocator.CheckRedzones());
   if (redzone_check.ok()) {
@@ -271,29 +271,29 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
 
   int64 rng_state = 0;
 
-  const auto initialize_buffer = [stream, &result_shape,
-                                  &rng_state](DeviceMemoryBase buffer) {
-    InitializeFloatBuffer(stream, result_shape.element_type(), &rng_state,
-                          buffer);
+  const auto initialize_buffer = [&stream, &rng_state](
+                                     DeviceMemoryBase buffer,
+                                     const Shape& buffer_shape) {
+    InitializeBuffer(stream, buffer_shape.element_type(), &rng_state, buffer);
   };
 
   const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
 
   // Allocate space for the input, filter, and output of the convolution.
-  se::cuda::RedzoneAllocator input_output_allocator(
+  se::RedzoneAllocator input_output_allocator(
       stream, allocator, PtxOptsFromConfig(hlo_module_config));
   std::vector<se::DeviceMemoryBase> operand_buffers;
   for (const auto* operand : instr->operands()) {
     TF_ASSIGN_OR_RETURN(auto buffer,
                         input_output_allocator.AllocateBytes(
                             ShapeUtil::ByteSizeOf(operand->shape())));
-    initialize_buffer(buffer);
+    initialize_buffer(buffer, operand->shape());
     operand_buffers.push_back(buffer);
   }
   TF_ASSIGN_OR_RETURN(auto result_buffer,
                       input_output_allocator.AllocateBytes(
                           ShapeUtil::ByteSizeOf(result_shape)));
-  initialize_buffer(result_buffer);
+  initialize_buffer(result_buffer, result_shape);
 
   TF_ASSIGN_OR_RETURN(auto backend_config,
                       instr->backend_config<CudnnConvBackendConfig>());
@@ -339,7 +339,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
       continue;
     }
 
-    se::cuda::RedzoneAllocator scratch_allocator(
+    se::RedzoneAllocator scratch_allocator(
         stream, allocator, PtxOptsFromConfig(hlo_module_config));
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
@@ -350,8 +350,8 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     options.profile_result = &profile_result;
     options.algo_override = alg;
     Status launch_status =
-        RunCudnnConv(instr, absl::MakeSpan(operand_buffers), result_buffer,
-                     &scratch_allocator, stream, options);
+        RunGpuConv(instr, absl::MakeSpan(operand_buffers), result_buffer,
+                   &scratch_allocator, stream, options);
 
     if (!launch_status.ok()) {
       continue;

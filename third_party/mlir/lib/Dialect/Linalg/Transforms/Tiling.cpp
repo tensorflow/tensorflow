@@ -19,17 +19,17 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"
+#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
+#include "mlir/Dialect/Linalg/Passes.h"
+#include "mlir/Dialect/Linalg/Utils/Intrinsics.h"
+#include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/EDSC/Helpers.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/OpImplementation.h"
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"
-#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
-#include "mlir/Dialect/Linalg/Passes.h"
-#include "mlir/Dialect/Linalg/Utils/Intrinsics.h"
-#include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/STLExtras.h"
@@ -397,7 +397,7 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes,
     if (!promote) {
       auto operands = getAssumedNonViewOperands(op);
       views.append(operands.begin(), operands.end());
-      res = op.create(b, loc, views, op.getAttrs());
+      res = op.clone(b, loc, views);
       return;
     }
 
@@ -429,7 +429,7 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes,
     }
     auto operands = getAssumedNonViewOperands(op);
     opViews.append(operands.begin(), operands.end());
-    res = op.create(b, loc, opViews, op.getAttrs());
+    res = op.clone(b, loc, opViews);
 
     // 6. Emit write-back for the promoted output views: copy the partial view.
     for (unsigned i = 0, e = writebackViews.size(); i < e; ++i) {
@@ -489,8 +489,8 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<int64_t> tileSizes,
 
 static void tileLinalgOps(FuncOp f, ArrayRef<int64_t> tileSizes,
                           bool promoteViews) {
-  OperationFolder folder;
-  f.walk<LinalgOp>([promoteViews, tileSizes, &folder](LinalgOp op) {
+  OperationFolder folder(f.getContext());
+  f.walk([promoteViews, tileSizes, &folder](LinalgOp op) {
     // TODO(ntv) some heuristic here to decide what to promote. Atm it is all or
     // nothing.
     SmallVector<bool, 8> viewsToPromote(op.getNumInputsAndOutputs(),
@@ -500,7 +500,7 @@ static void tileLinalgOps(FuncOp f, ArrayRef<int64_t> tileSizes,
     if (opLoopsPair)
       op.erase();
   });
-  f.walk<LinalgOp>([](LinalgOp op) {
+  f.walk([](LinalgOp op) {
     if (!op.getOperation()->hasNoSideEffect())
       return;
     if (op.getOperation()->use_empty())
@@ -527,7 +527,7 @@ LinalgTilingPass::LinalgTilingPass(ArrayRef<int64_t> sizes, bool promoteViews) {
   this->promoteViews = promoteViews;
 }
 
-std::unique_ptr<FunctionPassBase>
+std::unique_ptr<OpPassBase<FuncOp>>
 mlir::linalg::createLinalgTilingPass(ArrayRef<int64_t> tileSizes,
                                      bool promoteViews) {
   return std::make_unique<LinalgTilingPass>(tileSizes, promoteViews);

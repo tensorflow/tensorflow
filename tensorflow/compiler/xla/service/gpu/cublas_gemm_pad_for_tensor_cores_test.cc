@@ -71,13 +71,13 @@ TEST_F(CublasGemmPadForTensorCoresTest, TwoDotsComputation) {
   HloModule TestModule
 
   ENTRY TestComputation {
-    %param1 = f16[2048,1024] parameter(0)
-    %param2 = f16[1024,33708] parameter(1)
+    %param1 = f16[2048, 1024] parameter(0)
+    %param2 = f16[1024, 33708] parameter(1)
     %param3 = f16[33708, 1] parameter(2)
-    %dot1 = f16[2048,33708]{1,0} dot(f16[2048,1024]{1,0} %param1,
-                f16[1024,33708]{0,1} %param2),
+    %dot1 = f16[2048, 33708]{1,0} dot(f16[2048, 1024]{1,0} %param1,
+                f16[1024, 33708]{0,1} %param2),
                 lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    ROOT %dot2 = f16[2048, 1]{1,0} dot(f16[2048,33708]{1,0} %dot1,
+    ROOT %dot2 = f16[2048, 1]{1,0} dot(f16[2048, 33708]{1,0} %dot1,
                 f16[33708, 1]{0,1} %param3),
                 lhs_contracting_dims={1}, rhs_contracting_dims={0}
   })")
@@ -132,6 +132,39 @@ TEST_F(CublasGemmPadForTensorCoresTest, TwoDotsComputation) {
                 op::Pad(AllOf(op::Shape("f16[1024, 33708]"), op::Parameter()),
                         AllOf(op::Shape("f16[]"), op::Constant()))),
           /*lhs_contracting_dim=*/1, /*rhs_contracting_dim=*/0)));
+}
+
+TEST_F(CublasGemmPadForTensorCoresTest, DotWithBatchDimensions) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule TestModule
+
+  ENTRY TestComputation {
+    %param1 = f16[3, 5, 2048, 1024] parameter(0)
+    %param2 = f16[3, 5, 1024, 33708] parameter(1)
+    ROOT %dot.2309 = f16[3, 5, 2048, 33708]{3, 2, 1,0} dot(f16[3, 5, 2048, 1024]{3, 2, 1,0} %param1,
+                f16[3, 5, 1024, 33708]{2, 3, 0,1} %param2), lhs_batch_dims={0, 1}, rhs_batch_dims={0, 1}, lhs_contracting_dims={3}, rhs_contracting_dims={2}})")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(CublasGemmPadForTensorCores().Run(module.get()).ValueOrDie());
+  SCOPED_TRACE(module->ToString());
+
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root,
+      AllOf(
+          op::Shape("f16[3, 5, 2048, 33708]"),
+          op::Slice(AllOf(
+              op::Shape("f16[3, 5, 2048, 33712]"),
+              op::Dot(AllOf(op::Shape("f16[3, 5, 2048, 1024]"),
+                            op::Pad(AllOf(op::Shape("f16[3, 5, 2048, 1024]"),
+                                          op::Parameter()),
+                                    AllOf(op::Shape("f16[]"), op::Constant()))),
+                      AllOf(op::Shape("f16[3, 5, 1024, 33712]"),
+                            op::Pad(AllOf(op::Shape("f16[3, 5, 1024, 33708]"),
+                                          op::Parameter()),
+                                    AllOf(op::Shape("f16[]"), op::Constant()))),
+                      /*lhs_contracting_dim=*/3,
+                      /*rhs_contracting_dim=*/2)))));
 }
 
 TEST_F(CublasGemmPadForTensorCoresTest, NoDotComputation) {
@@ -216,6 +249,19 @@ TEST_F(CublasGemmPadForTensorCoresTest, CheckSavingMetadata) {
       "transformer_v2/Transformer/decode/embedding_shared_weights_1/"
       "presoftmax_linear/MatMul",
       metadata.op_name());
+}
+
+TEST_F(CublasGemmPadForTensorCoresTest, NotCanonicalizedDot) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule TestModule
+
+  ENTRY TestComputation {
+    %param1 = f16[3, 5, 2048, 1024] parameter(0)
+    %param2 = f16[3, 5, 1024, 33708] parameter(1)
+    ROOT %dot.2309 = f16[3,2048, 33708]{2, 1, 0} dot(f16[3, 5, 2048, 1024]{3, 2, 1, 0} %param1, f16[3, 5, 1024, 33708]{3, 2, 1, 0} %param2), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={3, 1}, rhs_contracting_dims={2, 1}})")
+                    .ValueOrDie();
+
+  EXPECT_FALSE(CublasGemmPadForTensorCores().Run(module.get()).ValueOrDie());
 }
 
 }  // anonymous namespace

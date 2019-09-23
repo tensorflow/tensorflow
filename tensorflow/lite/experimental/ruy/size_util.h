@@ -62,6 +62,12 @@ bool is_pot(Integer value) {
 }
 
 template <typename Integer>
+Integer pot_log2(Integer n) {
+  RUY_DCHECK(is_pot(n));
+  return floor_log2(n);
+}
+
+template <typename Integer>
 Integer round_down_pot(Integer value) {
   return static_cast<Integer>(1) << floor_log2(value);
 }

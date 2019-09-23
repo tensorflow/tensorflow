@@ -23,6 +23,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras import saving
+from tensorflow.python.keras.engine import network
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine.base_layer import AddMetric
@@ -34,7 +35,6 @@ from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
-from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -167,66 +167,80 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
                      'to be a functional `Model` instance, '
                      'but got a subclass model instead.')
 
-  layer_map = {}  # Cache for created layers.
-  tensor_map = object_identity.ObjectIdentityDictionary(
-  )  # Map {reference_tensor: corresponding_tensor}
-  if input_tensors is None:
-    # Create placeholders to build the model on top of.
-    input_tensors = []
-    for layer in model._input_layers:
-      input_tensor = Input(**layer.get_config())
-      input_tensors.append(input_tensor)
-      # Cache newly created input layer.
-      newly_created_input_layer = input_tensor._keras_history.layer
-      layer_map[layer] = newly_created_input_layer
-  else:
+  new_input_layers = {}  # Cache for created layers.
+  if input_tensors is not None:
     # Make sure that all input tensors come from a Keras layer.
-    # If tensor comes from an input layer: cache the input layer.
     input_tensors = nest.flatten(input_tensors)
-    input_tensors_ = []
     for i, input_tensor in enumerate(input_tensors):
+      original_input_layer = model._input_layers[i]
+
+      # Cache input layer. Create a new layer if the tensor is originally not
+      # from a Keras layer.
       if not K.is_keras_tensor(input_tensor):
-        original_input_layer = model._input_layers[i]
         name = original_input_layer.name
         input_tensor = Input(tensor=input_tensor,
                              name='input_wrapper_for_' + name)
-
-        input_tensors_.append(input_tensor)
-        # Cache newly created input layer.
         newly_created_input_layer = input_tensor._keras_history.layer
-        layer_map[original_input_layer] = newly_created_input_layer
+        new_input_layers[original_input_layer] = newly_created_input_layer
       else:
-        input_tensors_.append(input_tensor)
-    input_tensors = input_tensors_
-
-  for x, y in zip(model.inputs, input_tensors):
-    tensor_map[x] = y
+        new_input_layers[original_input_layer] = original_input_layer
 
   if not callable(layer_fn):
     raise ValueError('Expected `layer_fn` argument to be a callable.')
 
-  # Has the side effect of filling out `layer_map` and `tensor_map`.
-  new_nodes = _make_new_nodes(model._nodes_by_depth, layer_fn, layer_map,
-                              tensor_map)
-  # Check that we did compute the model outputs,
-  # then instantiate a new model from inputs and outputs.
-  output_tensors = []
-  for x in model.outputs:
-    assert x in tensor_map, 'Could not compute output ' + str(x)
-    output_tensors.append(tensor_map[x])
-
-  input_tensors = nest.pack_sequence_as(model._nested_inputs, input_tensors)
-  output_tensors = nest.pack_sequence_as(model._nested_outputs, output_tensors)
+  model_config, created_layers = _clone_layers_and_model_config(
+      model, new_input_layers, layer_fn)
+  # Reconstruct model from the config, using the cloned layers.
+  input_tensors, output_tensors, created_layers = (
+      network.reconstruct_from_config(model_config,
+                                      created_layers=created_layers))
   metrics_names = model.metrics_names
   model = Model(input_tensors, output_tensors, name=model.name)
   # Layers not directly tied to outputs of the Model, such as loss layers
   # created in `add_loss` and `add_metric`.
   ancillary_layers = [
-      layer for layer in layer_map.values() if layer not in model.layers
+      layer for layer in created_layers.values() if layer not in model.layers
   ]
   if ancillary_layers:
+    new_nodes = nest.flatten([
+        layer.inbound_nodes[1:]
+        if network._should_skip_first_node(layer) else layer.inbound_nodes
+        for layer in created_layers.values()
+    ])
     _insert_ancillary_layers(model, ancillary_layers, metrics_names, new_nodes)
   return model
+
+
+def _clone_layers_and_model_config(model, input_layers, layer_fn):
+  """Clones all layers, and returns the model config without serializing layers.
+
+  This function ensures that only the node graph is retrieved when getting the
+  model config. The `layer_fn` used to clone layers might not rely on
+  `layer.get_config()`, so some custom layers do not define `get_config`.
+  Trying to retrieve the config results in errors.
+
+  Args:
+    model: A Functional model.
+    input_layers: Dictionary mapping input layers in `model` to new input layers
+    layer_fn: Function used to clone all non-input layers.
+
+  Returns:
+    Model config object, and a dictionary of newly created layers.
+  """
+  created_layers = {}
+  def _copy_layer(layer):
+    # Whenever the network config attempts to get the layer serialization,
+    # return a dummy dictionary.
+    if layer in input_layers:
+      created_layers[layer.name] = input_layers[layer]
+    elif layer in model._input_layers:
+      created_layers[layer.name] = InputLayer(**layer.get_config())
+    else:
+      created_layers[layer.name] = layer_fn(layer)
+    return {}
+
+  config = network.get_network_config(model, serialize_layer_fn=_copy_layer)
+  return config, created_layers
 
 
 def _remove_ancillary_layers(model, layer_map, layers):
@@ -481,6 +495,11 @@ def _in_place_subclassed_model_reset(model):
     name = layers_to_names[layer]
     setattr(model, name, fresh_layer)
     model._layers.append(fresh_layer)
+
+    # The base Layer __setattr__ will invalidate its attribute cache when
+    # `._layers` is assigned, but it has no way to know when the underlying list
+    # is mutated so we must explicitly signal the append.
+    model._attribute_sentinel.invalidate_all()
 
   # Cache original model build attributes (in addition to layers)
   if (not hasattr(model, '_original_attributes_cache') or

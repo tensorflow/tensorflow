@@ -198,7 +198,14 @@ class FuncGraph(ops.Graph):
     self.structured_outputs = None
     self._weak_variables = []
     self._watched_variables = object_identity.ObjectIdentityWeakSet()
-    self.outer_graph = ops.get_default_graph()
+
+    outer_graph = ops.get_default_graph()
+    self._weak_outer_graph = weakref.ref(outer_graph)
+    while outer_graph.building_function:
+      outer_graph = outer_graph.outer_graph
+    # If self._weak_outer_graph is deleted, we revert to the outermost Graph
+    # active when the FuncGraph was traced. This will not be a FuncGraph.
+    self._fallback_outer_graph = outer_graph
     self._captures = py_collections.OrderedDict()
     # If not None, records the names of output args of this function. Used to
     # preserve the output names in the signature of a serialized+deserialized
@@ -411,6 +418,27 @@ class FuncGraph(ops.Graph):
     return inner_cm()
 
   @property
+  def outer_graph(self):
+    """The Graph this FuncGraph is nested in.
+
+    Functions may capture Tensors from graphs they are nested in (transitive).
+
+    Returns:
+      A Graph object. Initially set to the current default graph when the
+      FuncGraph was created. If the previous `outer_graph` was deleted because
+      the function that owns it was deleted, `outer_graph` is reset to the
+      outermost default graph active when the FuncGraph was created. This
+      FuncGraph won't have captured anything from the new `outer_graph` (and
+      likely not from the previous setting, since that would have created a
+      strong reference), but it is returned so that FuncGraphs always have a
+      parent.
+    """
+    current = self._weak_outer_graph()
+    if current is None:
+      return self._fallback_outer_graph
+    return current
+
+  @property
   def output_types(self):
     return [t.dtype for t in self.outputs]
 
@@ -610,7 +638,8 @@ class FuncGraph(ops.Graph):
     else:
       placeholder = capture[1]
     tape.record_operation("captured_value", [placeholder], [tensor],
-                          lambda x: [x])
+                          backward_function=lambda x: [x],
+                          forward_function=lambda x: [x])
     return placeholder
 
   @property
@@ -656,7 +685,8 @@ class FuncGraph(ops.Graph):
     """Add given distributed variable to captures with given placeholder."""
     self._captures[ops.tensor_id(variable)] = (variable, placeholder)
     tape.record_operation("captured_value", [placeholder], [variable],
-                          lambda x: [x])
+                          backward_function=lambda x: [x],
+                          forward_function=lambda x: [x])
 
   def capture_eager_tensor(self, tensor, name):
     capture = self._captures.get(ops.tensor_id(tensor))
@@ -671,7 +701,8 @@ class FuncGraph(ops.Graph):
     else:
       graph_const = capture[1]
     tape.record_operation("captured_value", [graph_const], [tensor],
-                          lambda x: [x])
+                          backward_function=lambda x: [x],
+                          forward_function=lambda x: [x])
     return graph_const
 
   @property

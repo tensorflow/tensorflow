@@ -49,10 +49,10 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
 #include "mlir/Translation.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/utils/stateful_ops_utils.h"
 #include "tensorflow/compiler/mlir/op_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
@@ -68,21 +68,18 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 
-using llvm::cast;
 using llvm::dyn_cast;
 using llvm::formatv;
 using llvm::isa;
 using llvm::Optional;
 using llvm::StringRef;
 using llvm::Twine;
-using mlir::Block;
 using mlir::Dialect;
 using mlir::ElementsAttr;
 using mlir::FuncOp;
 using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::NoneType;
-using mlir::openOutputFile;
 using mlir::Operation;
 using mlir::StringAttr;
 using mlir::TensorType;
@@ -99,7 +96,10 @@ using xla::StatusOr;
 template <typename T>
 using BufferOffset = flatbuffers::Offset<T>;
 
-using CustomOptionsOffset = BufferOffset<flatbuffers::Vector<uint8_t>>;
+template <typename T>
+using VectorBufferOffset = flatbuffers::Offset<flatbuffers::Vector<T>>;
+
+using CustomOptionsOffset = VectorBufferOffset<uint8_t>;
 
 namespace error = tensorflow::error;
 namespace tfl = mlir::TFL;
@@ -414,6 +414,15 @@ class Translator {
       const std::vector<int32_t>& results);
 
   Optional<BufferOffset<tflite::SubGraph>> BuildSubGraph(FuncOp fn);
+
+  // Builds Metadata with the given `name` and buffer `content`.
+  BufferOffset<tflite::Metadata> BuildMetadata(StringRef name,
+                                               StringRef content);
+
+  // Encodes the `tfl.metadata` dictionary attribute of the module to the
+  // metadata section in the final model.
+  Optional<VectorBufferOffset<BufferOffset<tflite::Metadata>>>
+  CreateMetadataVector();
 
   // Uses the tf.entry_function attribute (if set) to initialize the op to name
   // mapping.
@@ -856,17 +865,7 @@ bool Translator::IsStatefulOperand(mlir::Operation* op, int operand_index) {
   // having to cast it to specific ops like below.
   // Until then, when a new RNN/LSTM op is added to TFLite and has stateful
   // tensors as operands, they will need to be added here as well.
-  if (auto tfl = llvm::dyn_cast<mlir::TFL::LSTMOp>(op)) {
-    operand_indices = tfl.GetStatefulOperands();
-  } else if (auto tfl =
-                 llvm::dyn_cast<mlir::TFL::UnidirectionalSequenceLSTMOp>(op)) {
-    operand_indices = tfl.GetStatefulOperands();
-  } else if (auto tfl =
-                 llvm::dyn_cast<mlir::TFL::UnidirectionalSequenceRNNOp>(op)) {
-    operand_indices = tfl.GetStatefulOperands();
-  } else if (auto tfl = llvm::dyn_cast<mlir::TFL::SVDFOp>(op)) {
-    operand_indices = tfl.GetStatefulOperands();
-  }
+  if (!mlir::TFL::IsStatefulOp(op, &operand_indices)) return false;
   return absl::c_find(operand_indices, operand_index) != operand_indices.end();
 }
 
@@ -977,6 +976,36 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
       /*name=*/builder_.CreateString(fn.getName().str()));
 }
 
+BufferOffset<tflite::Metadata> Translator::BuildMetadata(StringRef name,
+                                                         StringRef content) {
+  auto buffer_index = buffers_.size();
+  auto buffer_data = builder_.CreateVector(
+      reinterpret_cast<const uint8_t*>(content.data()), content.size());
+  buffers_.push_back(tflite::CreateBuffer(builder_, buffer_data));
+  return tflite::CreateMetadataDirect(builder_, name.data(), buffer_index);
+}
+
+Optional<VectorBufferOffset<BufferOffset<tflite::Metadata>>>
+Translator::CreateMetadataVector() {
+  auto dict_attr = module_.getAttrOfType<mlir::DictionaryAttr>("tfl.metadata");
+  if (!dict_attr) return VectorBufferOffset<BufferOffset<tflite::Metadata>>();
+
+  std::vector<BufferOffset<tflite::Metadata>> metadata;
+  for (const auto& named_attr : dict_attr) {
+    StringRef name = named_attr.first;
+    mlir::Attribute attr = named_attr.second;
+    if (auto content = attr.dyn_cast<StringAttr>()) {
+      metadata.push_back(BuildMetadata(name, content.getValue()));
+    } else {
+      module_.emitError(
+          "all values in tfl.metadata's dictionary key-value pairs should be "
+          "string attributes");
+      return llvm::None;
+    }
+  }
+  return builder_.CreateVector(metadata);
+}
+
 Optional<std::string> Translator::Translate(ModuleOp module,
                                             bool emit_builtin_tflite_ops,
                                             bool emit_select_tf_ops,
@@ -1024,12 +1053,17 @@ Optional<std::string> Translator::TranslateInternal() {
   } else {
     model_description = "MLIR Converted.";
   }
+
   // Build the model and finish the model building process.
   auto description = builder_.CreateString(model_description.data());
+  VectorBufferOffset<int32_t> metadata_buffer = 0;  // Deprecated
+  auto metadata = CreateMetadataVector();
+  if (!metadata) return llvm::None;
+
   auto model = tflite::CreateModel(
       builder_, TFLITE_SCHEMA_VERSION, builder_.CreateVector(opcodes_),
       builder_.CreateVector(subgraphs), description,
-      builder_.CreateVector(buffers_));
+      builder_.CreateVector(buffers_), metadata_buffer, *metadata);
   tflite::FinishModelBuffer(builder_, model);
 
   // Return serialized string for the built FlatBuffer.
@@ -1071,7 +1105,7 @@ bool tflite::MlirToFlatBufferTranslateFunction(
 }
 
 static mlir::LogicalResult MlirToFlatBufferFileTranslateFunction(
-    ModuleOp module, llvm::StringRef filename) {
+    ModuleOp module, llvm::raw_ostream& output) {
   std::string serialized_flatbuffer;
   std::unique_ptr<OpNameMapper> op_name_mapper;
   if (strip_debug_info) {
@@ -1084,16 +1118,7 @@ static mlir::LogicalResult MlirToFlatBufferFileTranslateFunction(
           emit_select_tf_ops, emit_custom_ops, op_name_mapper.get()))
     return mlir::failure();
 
-  auto file = openOutputFile(filename);
-  if (!file) {
-    auto* context = module.getContext();
-    return emitError(UnknownLoc::get(context), "failed to open output file ")
-               << filename,
-           mlir::failure();
-  }
-
-  file->os() << serialized_flatbuffer;
-  file->keep();
+  output << serialized_flatbuffer;
   return mlir::success();
 }
 

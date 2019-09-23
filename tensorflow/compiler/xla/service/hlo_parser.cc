@@ -1726,6 +1726,9 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<bool> indices_are_sorted = false;
       attrs["indices_are_sorted"] = {/*required=*/false, AttrTy::kBool,
                                      &indices_are_sorted};
+      optional<bool> unique_indices = false;
+      attrs["unique_indices"] = {/*required=*/false, AttrTy::kBool,
+                                 &unique_indices};
 
       if (!ParseOperands(&operands, /*expected_size=*/3) ||
           !ParseAttributes(attrs)) {
@@ -1742,7 +1745,7 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       instruction = builder->AddInstruction(HloInstruction::CreateScatter(
           shape, /*operand=*/operands[0], /*scatter_indices=*/operands[1],
           /*updates=*/operands[2], *update_computation, dim_numbers,
-          indices_are_sorted.value()));
+          indices_are_sorted.value(), unique_indices.value()));
       break;
     }
     case HloOpcode::kDomain: {
@@ -1760,7 +1763,7 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kTrace:
       return TokenError(StrCat("parsing not yet implemented for op: ",
                                HloOpcodeString(opcode)));
-    case HloOpcode::kGetDimensionSize:
+    case HloOpcode::kGetDimensionSize: {
       optional<std::vector<int64>> dimensions;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                              &dimensions};
@@ -1772,6 +1775,20 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
           builder->AddInstruction(HloInstruction::CreateGetDimensionSize(
               shape, operands[0], (*dimensions)[0]));
       break;
+    }
+    case HloOpcode::kSetDimensionSize: {
+      optional<std::vector<int64>> dimensions;
+      attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                             &dimensions};
+      if (!ParseOperands(&operands, /*expected_size=*/2) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction =
+          builder->AddInstruction(HloInstruction::CreateSetDimensionSize(
+              shape, operands[0], operands[1], (*dimensions)[0]));
+      break;
+    }
   }
 
   instruction->SetAndSanitizeName(name);

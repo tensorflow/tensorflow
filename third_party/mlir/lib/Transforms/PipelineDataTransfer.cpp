@@ -49,7 +49,7 @@ struct PipelineDataTransfer : public FunctionPass<PipelineDataTransfer> {
 
 /// Creates a pass to pipeline explicit movement of data across levels of the
 /// memory hierarchy.
-std::unique_ptr<FunctionPassBase> mlir::createPipelineDataTransferPass() {
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createPipelineDataTransferPass() {
   return std::make_unique<PipelineDataTransfer>();
 }
 
@@ -122,6 +122,7 @@ static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
           /*extraIndices=*/{ivModTwoOp},
           /*indexRemap=*/AffineMap(),
           /*extraOperands=*/{},
+          /*symbolOperands=*/{},
           /*domInstFilter=*/&*forOp.getBody()->begin()))) {
     LLVM_DEBUG(
         forOp.emitError("memref replacement for double buffering failed"));
@@ -144,8 +145,7 @@ void PipelineDataTransfer::runOnFunction() {
   // gets deleted and replaced by a prologue, a new steady-state loop and an
   // epilogue).
   forOps.clear();
-  getFunction().walk<AffineForOp>(
-      [&](AffineForOp forOp) { forOps.push_back(forOp); });
+  getFunction().walk([&](AffineForOp forOp) { forOps.push_back(forOp); });
   for (auto forOp : forOps)
     runOnAffineForOp(forOp);
 }
@@ -294,7 +294,7 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
       } else if (oldMemRef->hasOneUse()) {
         if (auto dealloc = dyn_cast<DeallocOp>(*oldMemRef->user_begin())) {
           dealloc.erase();
-          oldMemRef->getDefiningOp()->erase();
+          allocInst->erase();
         }
       }
     }
@@ -309,11 +309,18 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
       LLVM_DEBUG(llvm::dbgs() << "tag double buffering failed\n";);
       return;
     }
-    // If the old tag has no more uses, remove its 'dead' alloc if it was
-    // alloc'ed.
-    if (oldTagMemRef->use_empty())
-      if (auto *allocInst = oldTagMemRef->getDefiningOp())
-        allocInst->erase();
+    // If the old tag has no uses or a single dealloc use, remove it.
+    // (canonicalization handles more complex cases).
+    if (auto *tagAllocInst = oldTagMemRef->getDefiningOp()) {
+      if (oldTagMemRef->use_empty()) {
+        tagAllocInst->erase();
+      } else if (oldTagMemRef->hasOneUse()) {
+        if (auto dealloc = dyn_cast<DeallocOp>(*oldTagMemRef->user_begin())) {
+          dealloc.erase();
+          tagAllocInst->erase();
+        }
+      }
+    }
   }
 
   // Double buffering would have invalidated all the old DMA start/wait insts.

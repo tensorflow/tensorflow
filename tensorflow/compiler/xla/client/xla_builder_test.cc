@@ -917,10 +917,7 @@ TEST_F(XlaBuilderTest, DynamicSelectNotCompatible) {
   auto gte1 = GetTupleElement(p0, 1);  // f32[4,5,<=6]
   Select(pred, gte0, gte1);
   Status status = BuildHloModule(&b).status();
-  ASSERT_IS_NOT_OK(status);
-  EXPECT_THAT(status.error_message(),
-              ::testing::HasSubstr("Operands to select must be the same shape; "
-                                   "got f32[4,<=5,6] and f32[4,5,<=6]"));
+  ASSERT_IS_OK(status);
 }
 
 TEST_F(XlaBuilderTest, DynamicTranspose) {

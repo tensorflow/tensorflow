@@ -27,12 +27,15 @@
 #include "mlir/IR/Function.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/StandardTypes.h"
+#include "mlir/Support/Functional.h"
 #include "mlir/Support/StringExtras.h"
 
 using namespace mlir;
 
 // TODO(antiagainst): generate these strings using ODS.
 static constexpr const char kAlignmentAttrName[] = "alignment";
+static constexpr const char kBranchWeightAttrName[] = "branch_weights";
+static constexpr const char kCallee[] = "callee";
 static constexpr const char kDefaultValueAttrName[] = "default_value";
 static constexpr const char kFnNameAttrName[] = "fn";
 static constexpr const char kIndicesAttrName[] = "indices";
@@ -139,7 +142,7 @@ static ParseResult parseMemoryAccessAttributes(OpAsmParser *parser,
     return failure();
   }
 
-  if (memoryAccessAttr == spirv::MemoryAccess::Aligned) {
+  if (spirv::bitEnumContains(memoryAccessAttr, spirv::MemoryAccess::Aligned)) {
     // Parse integer attribute for alignment.
     Attribute alignmentAttr;
     Type i32Type = parser->getBuilder().getIntegerType(32);
@@ -210,7 +213,7 @@ static LogicalResult verifyMemoryAccessAttribute(LoadStoreOpTy loadStoreOp) {
            << memAccessVal;
   }
 
-  if (*memAccess == spirv::MemoryAccess::Aligned) {
+  if (spirv::bitEnumContains(*memAccess, spirv::MemoryAccess::Aligned)) {
     if (!op->getAttr(kAlignmentAttrName)) {
       return loadStoreOp.emitOpError("missing alignment value");
     }
@@ -266,11 +269,10 @@ static ParseResult parseVariableDecorations(OpAsmParser *parser,
         parser->parseRParen()) {
       return failure();
     }
-  } else if (succeeded(parser->parseOptionalKeyword(builtInName.c_str()))) {
+  } else if (succeeded(parser->parseOptionalKeyword(builtInName))) {
     StringAttr builtIn;
     if (parser->parseLParen() ||
-        parser->parseAttribute(builtIn, Type(), builtInName,
-                               state->attributes) ||
+        parser->parseAttribute(builtIn, builtInName, state->attributes) ||
         parser->parseRParen()) {
       return failure();
     }
@@ -308,6 +310,28 @@ static void printVariableDecorations(Operation *op, OpAsmPrinter *printer,
   }
 
   printer->printOptionalAttrDict(op->getAttrs(), elidedAttrs);
+}
+
+// Extracts an element from the given `composite` by following the given
+// `indices`. Returns a null Attribute if error happens.
+static Attribute extractCompositeElement(Attribute composite,
+                                         ArrayRef<unsigned> indices) {
+  // Return composite itself if we reach the end of the index chain.
+  if (indices.empty())
+    return composite;
+
+  if (auto vector = composite.dyn_cast<ElementsAttr>()) {
+    assert(indices.size() == 1 && "must have exactly one index for a vector");
+    return vector.getValue({indices[0]});
+  }
+
+  if (auto array = composite.dyn_cast<ArrayAttr>()) {
+    assert(!indices.empty() && "must have at least one index for an array");
+    return extractCompositeElement(array.getValue()[indices[0]],
+                                   indices.drop_front());
+  }
+
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
@@ -487,6 +511,119 @@ static LogicalResult verify(spirv::AddressOfOp addressOfOp) {
 }
 
 //===----------------------------------------------------------------------===//
+// spv.BranchOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseBranchOp(OpAsmParser *parser, OperationState *state) {
+  Block *dest;
+  SmallVector<Value *, 4> destOperands;
+  if (parser->parseSuccessorAndUseList(dest, destOperands))
+    return failure();
+  state->addSuccessor(dest, destOperands);
+  return success();
+}
+
+static void print(spirv::BranchOp branchOp, OpAsmPrinter *printer) {
+  *printer << spirv::BranchOp::getOperationName() << ' ';
+  printer->printSuccessorAndUseList(branchOp.getOperation(), /*index=*/0);
+}
+
+static LogicalResult verify(spirv::BranchOp branchOp) {
+  auto *op = branchOp.getOperation();
+  if (op->getNumSuccessors() != 1)
+    branchOp.emitOpError("must have exactly one successor");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.BranchConditionalOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseBranchConditionalOp(OpAsmParser *parser,
+                                            OperationState *state) {
+  auto &builder = parser->getBuilder();
+  OpAsmParser::OperandType condInfo;
+  Block *dest;
+  SmallVector<Value *, 4> destOperands;
+
+  // Parse the condition.
+  Type boolTy = builder.getI1Type();
+  if (parser->parseOperand(condInfo) ||
+      parser->resolveOperand(condInfo, boolTy, state->operands))
+    return failure();
+
+  // Parse the optional branch weights.
+  if (succeeded(parser->parseOptionalLSquare())) {
+    IntegerAttr trueWeight, falseWeight;
+    SmallVector<NamedAttribute, 2> weights;
+
+    auto i32Type = builder.getIntegerType(32);
+    if (parser->parseAttribute(trueWeight, i32Type, "weight", weights) ||
+        parser->parseComma() ||
+        parser->parseAttribute(falseWeight, i32Type, "weight", weights) ||
+        parser->parseRSquare())
+      return failure();
+
+    state->addAttribute(kBranchWeightAttrName,
+                        builder.getArrayAttr({trueWeight, falseWeight}));
+  }
+
+  // Parse the true branch.
+  if (parser->parseComma() ||
+      parser->parseSuccessorAndUseList(dest, destOperands))
+    return failure();
+  state->addSuccessor(dest, destOperands);
+
+  // Parse the false branch.
+  destOperands.clear();
+  if (parser->parseComma() ||
+      parser->parseSuccessorAndUseList(dest, destOperands))
+    return failure();
+  state->addSuccessor(dest, destOperands);
+
+  return success();
+}
+
+static void print(spirv::BranchConditionalOp branchOp, OpAsmPrinter *printer) {
+  *printer << spirv::BranchConditionalOp::getOperationName() << ' ';
+  printer->printOperand(branchOp.condition());
+
+  if (auto weights = branchOp.branch_weights()) {
+    *printer << " [";
+    interleaveComma(weights->getValue(), *printer, [&](Attribute a) {
+      *printer << a.cast<IntegerAttr>().getInt();
+    });
+    *printer << "]";
+  }
+
+  *printer << ", ";
+  printer->printSuccessorAndUseList(branchOp.getOperation(),
+                                    spirv::BranchConditionalOp::kTrueIndex);
+  *printer << ", ";
+  printer->printSuccessorAndUseList(branchOp.getOperation(),
+                                    spirv::BranchConditionalOp::kFalseIndex);
+}
+
+static LogicalResult verify(spirv::BranchConditionalOp branchOp) {
+  auto *op = branchOp.getOperation();
+  if (op->getNumSuccessors() != 2)
+    return branchOp.emitOpError("must have exactly two successors");
+
+  if (auto weights = branchOp.branch_weights()) {
+    if (weights->getValue().size() != 2) {
+      return branchOp.emitOpError("must have exactly two branch weights");
+    }
+    if (llvm::all_of(*weights, [](Attribute attr) {
+          return attr.cast<IntegerAttr>().getValue().isNullValue();
+        }))
+      return branchOp.emitOpError("branch weights cannot both be zero");
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // spv.CompositeExtractOp
 //===----------------------------------------------------------------------===//
 
@@ -586,6 +723,16 @@ static LogicalResult verify(spirv::CompositeExtractOp compExOp) {
   return success();
 }
 
+OpFoldResult spirv::CompositeExtractOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.size() == 1 && "spv.CompositeExtract expects one operand");
+  auto indexVector = functional::map(
+      [](Attribute attr) {
+        return static_cast<unsigned>(attr.cast<IntegerAttr>().getInt());
+      },
+      indices());
+  return extractCompositeElement(operands[0], indexVector);
+}
+
 //===----------------------------------------------------------------------===//
 // spv.constant
 //===----------------------------------------------------------------------===//
@@ -640,8 +787,10 @@ static LogicalResult verify(spirv::ConstantOp constOp) {
     auto elemType = arrayType.getElementType();
     for (auto element : value.cast<ArrayAttr>().getValue()) {
       if (element.getType() != elemType)
-        return constOp.emitOpError(
-            "has array element that are not of result array element type");
+        return constOp.emitOpError("has array element whose type (")
+               << element.getType()
+               << ") does not match the result element type (" << elemType
+               << ')';
     }
   } break;
   default:
@@ -649,6 +798,25 @@ static LogicalResult verify(spirv::ConstantOp constOp) {
   }
 
   return success();
+}
+
+OpFoldResult spirv::ConstantOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.empty() && "spv.constant has no operands");
+  return value();
+}
+
+bool spirv::ConstantOp::isBuildableWith(Type type) {
+  // Must be valid SPIR-V type first.
+  if (!SPIRVDialect::isValidType(type))
+    return false;
+
+  if (type.getKind() >= Type::FIRST_SPIRV_TYPE &&
+      type.getKind() <= spirv::TypeKind::LAST_SPIRV_TYPE) {
+    // TODO(antiagainst): support contant struct
+    return type.isa<spirv::ArrayType>();
+  }
+
+  return true;
 }
 
 //===----------------------------------------------------------------------===//
@@ -692,8 +860,7 @@ static void print(spirv::EntryPointOp entryPointOp, OpAsmPrinter *printer) {
            << entryPointOp.fn();
   if (auto interface = entryPointOp.interface()) {
     *printer << ", ";
-    mlir::interleaveComma(interface.getValue().getValue(), printer->getStream(),
-                          [&](Attribute a) { printer->printAttribute(a); });
+    interleaveComma(interface.getValue().getValue(), *printer);
   }
 }
 
@@ -740,9 +907,132 @@ static void print(spirv::ExecutionModeOp execModeOp, OpAsmPrinter *printer) {
     return;
   }
   *printer << ", ";
-  mlir::interleaveComma(
-      values.getValue().cast<ArrayAttr>(), printer->getStream(),
+  interleaveComma(
+      values.getValue().cast<ArrayAttr>(), *printer,
       [&](Attribute a) { *printer << a.cast<IntegerAttr>().getInt(); });
+}
+
+//===----------------------------------------------------------------------===//
+// spv.FunctionCall
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseFunctionCallOp(OpAsmParser *parser,
+                                       OperationState *state) {
+  SymbolRefAttr calleeAttr;
+  FunctionType type;
+  SmallVector<OpAsmParser::OperandType, 4> operands;
+  auto loc = parser->getNameLoc();
+  if (parser->parseAttribute(calleeAttr, kCallee, state->attributes) ||
+      parser->parseOperandList(operands, OpAsmParser::Delimiter::Paren) ||
+      parser->parseColonType(type)) {
+    return failure();
+  }
+
+  auto funcType = type.dyn_cast<FunctionType>();
+  if (!funcType) {
+    return parser->emitError(loc, "expected function type, but provided ")
+           << type;
+  }
+
+  if (funcType.getNumResults() > 1) {
+    return parser->emitError(loc, "expected callee function to have 0 or 1 "
+                                  "result, but provided ")
+           << funcType.getNumResults();
+  }
+
+  return failure(parser->addTypesToList(funcType.getResults(), state->types) ||
+                 parser->resolveOperands(operands, funcType.getInputs(), loc,
+                                         state->operands));
+}
+
+static void print(spirv::FunctionCallOp functionCallOp, OpAsmPrinter *printer) {
+  SmallVector<Type, 4> argTypes(functionCallOp.getOperandTypes());
+  SmallVector<Type, 1> resultTypes(functionCallOp.getResultTypes());
+  Type functionType =
+      FunctionType::get(argTypes, resultTypes, functionCallOp.getContext());
+
+  *printer << spirv::FunctionCallOp::getOperationName() << ' '
+           << functionCallOp.getAttr(kCallee) << '(';
+  printer->printOperands(functionCallOp.arguments());
+  *printer << ") : " << functionType;
+}
+
+static LogicalResult verify(spirv::FunctionCallOp functionCallOp) {
+  auto fnName = functionCallOp.callee();
+
+  auto moduleOp = functionCallOp.getParentOfType<spirv::ModuleOp>();
+  if (!moduleOp) {
+    return functionCallOp.emitOpError(
+        "must appear in a function inside 'spv.module'");
+  }
+
+  auto funcOp = moduleOp.lookupSymbol<FuncOp>(fnName);
+  if (!funcOp) {
+    return functionCallOp.emitOpError("callee function '")
+           << fnName << "' not found in 'spv.module'";
+  }
+
+  auto functionType = funcOp.getType();
+
+  if (functionCallOp.getNumResults() > 1) {
+    return functionCallOp.emitOpError(
+               "expected callee function to have 0 or 1 result, but provided ")
+           << functionCallOp.getNumResults();
+  }
+
+  if (functionType.getNumInputs() != functionCallOp.getNumOperands()) {
+    return functionCallOp.emitOpError(
+               "has incorrect number of operands for callee: expected ")
+           << functionType.getNumInputs() << ", but provided "
+           << functionCallOp.getNumOperands();
+  }
+
+  for (uint32_t i = 0, e = functionType.getNumInputs(); i != e; ++i) {
+    if (functionCallOp.getOperand(i)->getType() != functionType.getInput(i)) {
+      return functionCallOp.emitOpError(
+                 "operand type mismatch: expected operand type ")
+             << functionType.getInput(i) << ", but provided "
+             << functionCallOp.getOperand(i)->getType()
+             << " for operand number " << i;
+    }
+  }
+
+  if (functionType.getNumResults() != functionCallOp.getNumResults()) {
+    return functionCallOp.emitOpError(
+               "has incorrect number of results has for callee: expected ")
+           << functionType.getNumResults() << ", but provided "
+           << functionCallOp.getNumResults();
+  }
+
+  if (functionCallOp.getNumResults() &&
+      (functionCallOp.getResult(0)->getType() != functionType.getResult(0))) {
+    return functionCallOp.emitOpError("result type mismatch: expected ")
+           << functionType.getResult(0) << ", but provided "
+           << functionCallOp.getResult(0)->getType();
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.GLSL.UnaryOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseGLSLUnaryOp(OpAsmParser *parser,
+                                    OperationState *state) {
+  OpAsmParser::OperandType operandInfo;
+  Type type;
+  if (parser->parseOperand(operandInfo) || parser->parseColonType(type) ||
+      parser->resolveOperands(operandInfo, type, state->operands)) {
+    return failure();
+  }
+  state->addTypes(type);
+  return success();
+}
+
+static void printGLSLUnaryOp(Operation *unaryOp, OpAsmPrinter *printer) {
+  *printer << unaryOp->getName() << ' ' << *unaryOp->getOperand(0) << " : "
+           << unaryOp->getOperand(0)->getType();
 }
 
 //===----------------------------------------------------------------------===//
@@ -880,6 +1170,169 @@ static LogicalResult verify(spirv::LoadOp loadOp) {
     return failure();
   }
   return verifyMemoryAccessAttribute(loadOp);
+}
+
+//===----------------------------------------------------------------------===//
+// spv.loop
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseLoopOp(OpAsmParser *parser, OperationState *state) {
+  // TODO(antiagainst): support loop control properly
+  Builder builder = parser->getBuilder();
+  state->addAttribute("loop_control",
+                      builder.getI32IntegerAttr(
+                          static_cast<uint32_t>(spirv::LoopControl::None)));
+
+  return parser->parseRegion(*state->addRegion(), /*arguments=*/{},
+                             /*argTypes=*/{});
+}
+
+static void print(spirv::LoopOp loopOp, OpAsmPrinter *printer) {
+  auto *op = loopOp.getOperation();
+
+  *printer << spirv::LoopOp::getOperationName();
+  printer->printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false,
+                       /*printBlockTerminators=*/true);
+}
+
+/// Returns true if the given `block` only contains one `spv._merge` op.
+static inline bool isMergeBlock(Block &block) {
+  return std::next(block.begin()) == block.end() &&
+         isa<spirv::MergeOp>(block.front());
+}
+
+/// Returns true if the given `srcBlock` contains only one `spv.Branch` to the
+/// given `dstBlock`.
+static inline bool hasOneBranchOpTo(Block &srcBlock, Block &dstBlock) {
+  // Check that there is only one op in the `srcBlock`.
+  if (srcBlock.empty() || std::next(srcBlock.begin()) != srcBlock.end())
+    return false;
+
+  auto branchOp = dyn_cast<spirv::BranchOp>(srcBlock.back());
+  return branchOp && branchOp.getSuccessor(0) == &dstBlock;
+}
+
+static LogicalResult verify(spirv::LoopOp loopOp) {
+  auto *op = loopOp.getOperation();
+
+  // We need to verify that the blocks follow the following layout:
+  //
+  //                     +-------------+
+  //                     | entry block |
+  //                     +-------------+
+  //                            |
+  //                            v
+  //                     +-------------+
+  //                     | loop header | <-----+
+  //                     +-------------+       |
+  //                                           |
+  //                           ...             |
+  //                          \ | /            |
+  //                            v              |
+  //                    +---------------+      |
+  //                    | loop continue | -----+
+  //                    +---------------+
+  //
+  //                           ...
+  //                          \ | /
+  //                            v
+  //                     +-------------+
+  //                     | merge block |
+  //                     +-------------+
+
+  auto &region = op->getRegion(0);
+  // Allow empty region as a degenerated case, which can come from
+  // optimizations.
+  if (region.empty())
+    return success();
+
+  // The last block is the merge block.
+  Block &merge = region.back();
+  if (!isMergeBlock(merge))
+    return loopOp.emitOpError(
+        "last block must be the merge block with only one 'spv._merge' op");
+
+  if (std::next(region.begin()) == region.end())
+    return loopOp.emitOpError(
+        "must have an entry block branching to the loop header block");
+  // The first block is the entry block.
+  Block &entry = region.front();
+
+  if (std::next(region.begin(), 2) == region.end())
+    return loopOp.emitOpError(
+        "must have a loop header block branched from the entry block");
+  // The second block is the loop header block.
+  Block &header = *std::next(region.begin(), 1);
+
+  if (!hasOneBranchOpTo(entry, header))
+    return loopOp.emitOpError(
+        "entry block must only have one 'spv.Branch' op to the second block");
+
+  if (std::next(region.begin(), 3) == region.end())
+    return loopOp.emitOpError(
+        "requires a loop continue block branching to the loop header block");
+  // The second to last block is the loop continue block.
+  Block &cont = *std::prev(region.end(), 2);
+
+  // Make sure that we have a branch from the loop continue block to the loop
+  // header block.
+  if (llvm::none_of(
+          llvm::seq<unsigned>(0, cont.getNumSuccessors()),
+          [&](unsigned index) { return cont.getSuccessor(index) == &header; }))
+    return loopOp.emitOpError("second to last block must be the loop continue "
+                              "block that branches to the loop header block");
+
+  // Make sure that no other blocks (except the entry and loop continue block)
+  // branches to the loop header block.
+  for (auto &block : llvm::make_range(std::next(region.begin(), 2),
+                                      std::prev(region.end(), 2))) {
+    for (auto i : llvm::seq<unsigned>(0, block.getNumSuccessors())) {
+      if (block.getSuccessor(i) == &header) {
+        return loopOp.emitOpError("can only have the entry and loop continue "
+                                  "block branching to the loop header block");
+      }
+    }
+  }
+
+  return success();
+}
+
+Block *spirv::LoopOp::getHeaderBlock() {
+  // The second block is the loop header block.
+  return &*std::next(body().begin());
+}
+
+Block *spirv::LoopOp::getContinueBlock() {
+  // The second to last block is the loop continue block.
+  return &*std::prev(body().end(), 2);
+}
+
+Block *spirv::LoopOp::getMergeBlock() {
+  // The last block is the loop merge block.
+  return &body().back();
+}
+
+void spirv::LoopOp::addEntryAndMergeBlock() {
+  assert(body().empty() && "entry and merge block already exist");
+  body().push_back(new Block());
+  auto *mergeBlock = new Block();
+  body().push_back(mergeBlock);
+  OpBuilder builder(mergeBlock);
+
+  // Add a spv._merge op into the merge block.
+  builder.create<spirv::MergeOp>(builder.getUnknownLoc());
+}
+
+//===----------------------------------------------------------------------===//
+// spv._merge
+//===----------------------------------------------------------------------===//
+
+static LogicalResult verify(spirv::MergeOp mergeOp) {
+  Block &parentLastBlock = mergeOp.getParentRegion()->back();
+  if (mergeOp.getOperation() != parentLastBlock.getTerminator())
+    return mergeOp.emitOpError(
+        "can only be used in the last block of 'spv.loop'");
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1093,6 +1546,7 @@ static LogicalResult verify(spirv::ReferenceOfOp referenceOfOp) {
   }
   return success();
 }
+
 //===----------------------------------------------------------------------===//
 // spv.Return
 //===----------------------------------------------------------------------===//
@@ -1145,6 +1599,64 @@ static LogicalResult verify(spirv::ReturnValueOp retValOp) {
 }
 
 //===----------------------------------------------------------------------===//
+// spv.Select
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseSelectOp(OpAsmParser *parser, OperationState *state) {
+  OpAsmParser::OperandType condition;
+  SmallVector<OpAsmParser::OperandType, 2> operands;
+  SmallVector<Type, 2> types;
+  auto loc = parser->getCurrentLocation();
+  if (parser->parseOperand(condition) || parser->parseComma() ||
+      parser->parseOperandList(operands, 2) ||
+      parser->parseColonTypeList(types)) {
+    return failure();
+  }
+  if (types.size() != 2) {
+    return parser->emitError(
+        loc, "need exactly two trailing types for select condition and object");
+  }
+  if (parser->resolveOperand(condition, types[0], state->operands) ||
+      parser->resolveOperands(operands, types[1], state->operands)) {
+    return failure();
+  }
+  return parser->addTypesToList(types[1], state->types);
+}
+
+static void print(spirv::SelectOp op, OpAsmPrinter *printer) {
+  *printer << spirv::SelectOp::getOperationName() << " ";
+
+  // Print the operands.
+  printer->printOperands(op.getOperands());
+
+  // Print colon and types.
+  *printer << " : " << op.condition()->getType() << ", "
+           << op.result()->getType();
+}
+
+static LogicalResult verify(spirv::SelectOp op) {
+  auto resultTy = op.result()->getType();
+  if (op.true_value()->getType() != resultTy) {
+    return op.emitOpError("result type and true value type must be the same");
+  }
+  if (op.false_value()->getType() != resultTy) {
+    return op.emitOpError("result type and false value type must be the same");
+  }
+  if (auto conditionTy = op.condition()->getType().dyn_cast<VectorType>()) {
+    auto resultVectorTy = resultTy.dyn_cast<VectorType>();
+    if (!resultVectorTy) {
+      return op.emitOpError("result expected to be of vector type when "
+                            "condition is of vector type");
+    }
+    if (resultVectorTy.getNumElements() != conditionTy.getNumElements()) {
+      return op.emitOpError("result should have the same number of elements as "
+                            "the condition when condition is of vector type");
+    }
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // spv.specConstant
 //===----------------------------------------------------------------------===//
 
@@ -1177,8 +1689,7 @@ static LogicalResult verify(spirv::SpecConstantOp constOp) {
   case StandardAttributes::Integer:
   case StandardAttributes::Float: {
     // Make sure bitwidth is allowed.
-    auto *dialect = static_cast<spirv::SPIRVDialect *>(constOp.getDialect());
-    if (!dialect->isValidSPIRVType(value.getType()))
+    if (!spirv::SPIRVDialect::isValidType(value.getType()))
       return constOp.emitOpError("default value bitwidth disallowed");
     return success();
   }

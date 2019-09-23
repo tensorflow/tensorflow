@@ -206,7 +206,7 @@ class Loader(object):
         return obj
       elif resource_variable_ops.is_resource_variable(obj):
         return obj.handle
-      elif isinstance(obj, tracking.TrackableAsset):
+      elif isinstance(obj, tracking.Asset):
         return obj.asset_path
       elif tensor_util.is_tensor(obj):
         return obj
@@ -343,7 +343,7 @@ class Loader(object):
     filename = os.path.join(
         saved_model_utils.get_assets_dir(self._export_dir),
         self._asset_file_def[proto.asset_file_def_index].filename)
-    return tracking.TrackableAsset(filename), setattr
+    return tracking.Asset(filename), setattr
 
   def _recreate_function(self, proto):
     return function_deserialization.recreate_function(

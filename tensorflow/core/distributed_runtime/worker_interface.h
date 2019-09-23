@@ -62,13 +62,12 @@ class WorkerInterface {
 
   virtual void RunGraphAsync(CallOptions* opts, const RunGraphRequest* request,
                              RunGraphResponse* response, StatusCallback done) {
-    // TODO(mrry): Convert this to std::bind/std::move if the overhead
-    // of std::function copying becomes too much.
     RunGraphRequestWrapper* wrapped_request = new ProtoRunGraphRequest(request);
     MutableRunGraphResponseWrapper* wrapped_response =
         new NonOwnedProtoRunGraphResponse(response);
     RunGraphAsync(opts, wrapped_request, wrapped_response,
-                  [wrapped_request, wrapped_response, done](const Status& s) {
+                  [wrapped_request, wrapped_response,
+                   done = std::move(done)](const Status& s) {
                     done(s);
                     delete wrapped_request;
                     delete wrapped_response;

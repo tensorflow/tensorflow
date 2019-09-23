@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -279,7 +278,7 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
   params.op_kernel = kernel_.get();
   params.resource_manager = device_->resource_manager();
   params.input_alloc_attrs = &in_attrs;
-  params.output_attr_array = gtl::vector_as_array(&out_attrs);
+  params.output_attr_array = out_attrs.data();
   params.function_library = flr_;
   params.slice_reader_cache = &slice_reader_cache_;
   params.rendezvous = rendez_;
@@ -329,11 +328,7 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
     const string& op_name = kernel_->name();
     // 'ScopedActivity' will trace the OpKernel scheduling time on host.
     profiler::TraceMe activity(
-        [&] {
-          return absl::StrCat(op_name, ":", kernel_->type_string(), "#id=",
-                              step_container ? step_container->step_id() : 0,
-                              ",device=", device_->name(), ",async=false#");
-        },
+        [&] { return absl::StrCat(op_name, ":", kernel_->type_string()); },
         profiler::TraceMeLevel::kInfo);
     // 'ScopedAnnotation' will trace the OpKernel execution time on device.
     tracing::ScopedAnnotation annotation(
@@ -403,7 +398,10 @@ Status KernelAndDeviceFunc::Run(
   }
   {
     profiler::TraceMe activity(
-        [&] { return absl::StrCat("FunctionRun:", name()); },
+        [&] {
+          return absl::StrCat("FunctionRun#name=", name(), ",id=", opts.step_id,
+                              "#");
+        },
         profiler::TraceMeLevel::kInfo);
     pflr_->Run(opts, handle_, input_vector, outputs,
                [&status, &done](const Status& s) {

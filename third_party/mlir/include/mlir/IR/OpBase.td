@@ -363,10 +363,45 @@ class ShapedContainerType<list<Type> allowedTypes, Pred containerPred, string de
     ContainerType<AnyTypeOf<allowedTypes>, containerPred,
                   "$_self.cast<ShapedType>().getElementType()", descr>;
 
+// Whether a shaped type is ranked.
+def HasRankPred : CPred<"$_self.cast<ShapedType>().hasRank()">;
+
+// Whether a shaped type has one of the specified ranks.
+class HasAnyRankOfPred<list<int> ranks> : And<[
+    HasRankPred,
+    Or<!foreach(rank, ranks,
+                CPred<"$_self.cast<ShapedType>().getRank() == " # rank>)>]>;
+
 // Vector types.
 
 class VectorOf<list<Type> allowedTypes> :
   ShapedContainerType<allowedTypes, IsVectorTypePred, "vector">;
+
+// Whether the number of elements of a vector is from the given
+// `allowedLengths` list
+class IsVectorOfLengthPred<list<int> allowedLengths> :
+  And<[IsVectorTypePred,
+       Or<!foreach(allowedlength, allowedLengths,
+                   CPred<[{$_self.cast<VectorType>().getNumElements()
+                           == }]
+                         # allowedlength>)>]>;
+
+// Any vector where the number of elements is from the given
+// `allowedLengths` list
+class VectorOfLength<list<int> allowedLengths> : Type<
+  IsVectorOfLengthPred<allowedLengths>,
+  " of length " # StrJoinInt<allowedLengths, "/">.result>;
+
+
+// Any vector where the number of elements is from the given
+// `allowedLengths` list and the type is from the given `allowedTypes`
+// list
+class VectorOfLengthAndType<list<int> allowedLengths,
+                            list<Type> allowedTypes> : Type<
+  And<[VectorOf<allowedTypes>.predicate,
+       VectorOfLength<allowedLengths>.predicate]>,
+  VectorOf<allowedTypes>.description #
+  VectorOfLength<allowedLengths>.description>;
 
 def AnyVector : VectorOf<[AnyType]>;
 
@@ -385,15 +420,6 @@ class StaticShapeTensorOf<list<Type> allowedTypes>
 
 def AnyStaticShapeTensor : StaticShapeTensorOf<[AnyType]>;
 
-// Whether a type is a ranked tensor type.
-def HasRankPred : CPred<"$_self.cast<ShapedType>().hasRank()">;
-
-// Whether a type is a ranked tensor type with one of the specified ranks.
-class HasAnyRankOfPred<list<int> ranks> : And<[
-    HasRankPred,
-    Or<!foreach(rank, ranks,
-                CPred<"$_self.cast<ShapedType>().getRank() == " # rank>)>]>;
-
 def I1Tensor   : TensorOf<[I1]>;
 def I8Tensor   : TensorOf<[I8]>;
 def I16Tensor  : TensorOf<[I16]>;
@@ -404,6 +430,18 @@ def BF16Tensor : TensorOf<[BF16]>;
 def F16Tensor  : TensorOf<[F16]>;
 def F32Tensor  : TensorOf<[F32]>;
 def F64Tensor  : TensorOf<[F64]>;
+
+// Ranked tensor type with one of the specified types and ranks.
+class TensorRankOf<list<Type> allowedTypes, list<int> ranks> :
+    Type<And<[TensorOf<allowedTypes>.predicate, HasAnyRankOfPred<ranks>]>,
+         StrJoin<!foreach(rank, ranks, rank # "D"), "/">.result # " " #
+         TensorOf<allowedTypes>.description>;
+
+class 0DTensorOf<list<Type> allowedTypes> : TensorRankOf<allowedTypes, [0]>;
+class 1DTensorOf<list<Type> allowedTypes> : TensorRankOf<allowedTypes, [1]>;
+class 2DTensorOf<list<Type> allowedTypes> : TensorRankOf<allowedTypes, [2]>;
+class 3DTensorOf<list<Type> allowedTypes> : TensorRankOf<allowedTypes, [3]>;
+class 4DTensorOf<list<Type> allowedTypes> : TensorRankOf<allowedTypes, [4]>;
 
 // Memref type.
 
@@ -427,6 +465,11 @@ def F32MemRef  : MemRefOf<[F32]>;
 def F64MemRef  : MemRefOf<[F64]>;
 
 // TODO(b/130064155) Have an easy way to add another constraint to a type.
+class MemRefRankOf<list<Type> allowedTypes, list<int> ranks> :
+    Type<And<[MemRefOf<allowedTypes>.predicate, HasAnyRankOfPred<ranks>]>,
+         StrJoin<!foreach(rank, ranks, rank # "D"), "/">.result # " " #
+         MemRefOf<allowedTypes>.description>;
+
 class StaticShapeMemRefOf<list<Type> allowedTypes>
     : Type<And<[MemRefOf<allowedTypes>.predicate, HasStaticShapePred]>,
            "statically shaped " # MemRefOf<allowedTypes>.description>;
@@ -744,6 +787,10 @@ class EnumAttrInfo<string name, list<EnumAttrCaseInfo> cases> {
   // List of all accepted cases
   list<EnumAttrCaseInfo> enumerants = cases;
 
+  // Whether to skip automatically generating C++ enum class and utility
+  // functions for this enum attribute with EnumsGen.
+  bit skipAutoGen = 0;
+
   // The following fields are only used by the EnumsGen backend to generate
   // an enum class definition and conversion utility functions.
 
@@ -781,9 +828,10 @@ class EnumAttrInfo<string name, list<EnumAttrCaseInfo> cases> {
   // corresponding string. It will have the following signature:
   //
   // ```c++
-  // llvm::StringRef <fn-name>(<qualified-enum-class-name>);
+  // <return-type> <fn-name>(<qualified-enum-class-name>);
   // ```
   string symbolToStringFnName = "stringify" # name;
+  string symbolToStringFnRetType = "llvm::StringRef";
 
   // The name of the utility function that returns the max enum value used
   // within the enum class. It will have the following signature:
@@ -838,12 +886,14 @@ class I64EnumAttr<string name, string description,
 //===----------------------------------------------------------------------===//
 // Composite attribute kinds
 
-def DictionaryAttr : Attr<CPred<"$_self.isa<DictionaryAttr>()">,
+class DictionaryAttrBase : Attr<CPred<"$_self.isa<DictionaryAttr>()">,
                           "dictionary of named attribute values"> {
   let storageType = [{ DictionaryAttr }];
   let returnType = [{ DictionaryAttr }];
   let convertFromStorage = "$_self";
 }
+
+def DictionaryAttr : DictionaryAttrBase;
 
 class ElementsAttrBase<Pred condition, string description> :
     Attr<condition, description> {
@@ -852,8 +902,27 @@ class ElementsAttrBase<Pred condition, string description> :
   let convertFromStorage = "$_self";
 }
 
-def ElementsAttr: ElementsAttrBase<CPred<"$_self.isa<ElementsAttr>()">,
+def ElementsAttr : ElementsAttrBase<CPred<"$_self.isa<ElementsAttr>()">,
                                    "constant vector/tensor attribute">;
+
+class IntElementsAttr<int width> : ElementsAttrBase<
+  CPred<"$_self.isa<DenseIntElementsAttr>() &&"
+      "$_self.cast<DenseIntElementsAttr>().getType()."
+      "getElementType().isInteger(" # width # ")">,
+  width # "-bit integer elements attribute"> {
+
+  let storageType = [{ DenseIntElementsAttr }];
+  let returnType = [{ DenseIntElementsAttr }];
+
+  // Note that this is only constructing scalar elements attribute.
+  let constBuilderCall = "DenseElementsAttr::get("
+    "$_builder.getTensorType({}, $_builder.getIntegerType(" # width # ")), "
+    "llvm::makeArrayRef($0)).cast<DenseIntElementsAttr>()";
+  let convertFromStorage = "$_self";
+}
+
+def I32ElementsAttr : IntElementsAttr<32>;
+def I64ElementsAttr : IntElementsAttr<64>;
 
 // Base class for array attributes.
 class ArrayAttrBase<Pred condition, string description> :
@@ -902,17 +971,34 @@ def TypeArrayAttr : TypedArrayAttrBase<TypeAttr, "type array attribute"> {
   let constBuilderCall = ?;
 }
 
-def I32ElementsAttr : Attr<
-  CPred<"$_self.isa<DenseIntElementsAttr>() &&"
-      "$_self.cast<DenseIntElementsAttr>().getType()."
-      "getElementType().isInteger(32)">,
-  "32-bit integer elements attribute"> {
-  let storageType = [{ DenseIntElementsAttr }];
-  let returnType = [{ DenseIntElementsAttr }];
-  let constBuilderCall = "$_builder.getDenseElementsAttr("
-    "$_builder.getTensorType({}, $_builder.getIntegerType(32)), "
-      "{$_builder.getI32IntegerAttr($0)})";
-  let convertFromStorage = "$_self";
+// Attribute information for an Attribute field within a StructAttr.
+class StructFieldAttr<string thisName, Attr thisType> {
+  // Name of this field in the StructAttr.
+  string name = thisName;
+
+  // Attribute type wrapped by the struct attr.
+  Attr type = thisType;
+}
+
+// Structured attribute that wraps a DictionaryAttr and provides both a
+// validation method and set of accessors for a fixed set of fields. This is
+// useful when representing data that would normally be in a structure.
+class StructAttr<string name, Dialect dialect,
+                 list<StructFieldAttr> attributes> : DictionaryAttrBase {
+  // Name for this StructAttr.
+  string className = name;
+
+  // Return type should match the name of the structure.
+  let returnType = name;
+
+  // Storage type should match the name of the structure.
+  let storageType = name;
+
+  // The dialect this StructAttr belongs to.
+  Dialect structDialect = dialect;
+
+  // List of fields that the StructAttr contains.
+  list<StructFieldAttr> fields = attributes;
 }
 
 // Attributes containing symbol references.
@@ -1355,8 +1441,15 @@ class AllMatchTrait<list<string> names, string operator, string description> :
         "all of {" # StrJoin<names>.result # "} have same " # description,
         AllMatchPred<names, operator>>;
 
+class AllElementCountsMatch<list<string> names> :
+    AllMatchTrait<names, "$_self.getType().cast<ShapedType>().getNumElements()",
+                  "element count">;
+
 class AllElementTypesMatch<list<string> names> :
     AllMatchTrait<names, "getElementTypeOrSelf($_self)", "element type">;
+
+class AllRanksMatch<list<string> names> :
+    AllMatchTrait<names, "$_self.getType().cast<ShapedType>().getRank()", "rank">;
 
 class AllTypesMatch<list<string> names> :
     AllMatchTrait<names, "$_self.getType()", "type">;

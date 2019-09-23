@@ -344,6 +344,9 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       TransposeFolding::NeverFoldTranspose);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
 
+  // Layout assignment uses alias analysis, which requires the call graph to be
+  // flattened.
+  pipeline.AddPass<FlattenCallGraph>();
   pipeline.AddPass<CpuLayoutAssignment>(
       module->mutable_entry_computation_layout(),
       LayoutAssignment::InstructionCanChangeLayout, target_machine_features);
@@ -407,7 +410,6 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // before (and sometime after) copy insertion, to avoid dead code from
   // interfering with the rewrites.
   pipeline.AddPass<HloDCE>();
-  pipeline.AddPass<FlattenCallGraph>();
   pipeline.AddPass<CopyInsertion>();
   pipeline.AddPass<HloDCE>();
   return pipeline.Run(module).status();

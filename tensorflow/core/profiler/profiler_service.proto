@@ -128,6 +128,23 @@ message MonitorRequest {
 message MonitorResponse {
   // Properly formatted string data that can be directly returned back to user.
   string data = 1;
+  // The following are the raw components used to construct field data.
+  // Percentage of time when device is idle.
+  double device_idle_time_percent = 2;
+  // TPU matrix unit utilization percentage.
+  double matrix_unit_utilization_percent = 3;
+  // Average step time in millisecond.
+  double step_time_ms_avg = 4;
+  // Minimum step time in millisecond.
+  double step_time_ms_min = 5;
+  // Maximum step time in millisecond.
+  double step_time_ms_max = 6;
+  // Average infeed percentage.
+  double infeed_percent_avg = 7;
+  // Minimum infeed percentage.
+  double infeed_percent_min = 8;
+  // Maximum infeed percentage.
+  double infeed_percent_max = 9;
 
-  // next-field: 2
+  // next-field: 10
 }

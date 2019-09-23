@@ -31,6 +31,7 @@
 
 namespace mlir {
 class AffineBound;
+class AffineDimExpr;
 class AffineValueMap;
 class AffineTerminatorOp;
 class FlatAffineConstraints;
@@ -81,6 +82,8 @@ public:
   bool isValidSymbol();
 
   static StringRef getOperationName() { return "affine.apply"; }
+
+  operand_range getMapOperands() { return getOperands(); }
 
   // Hooks to customize behavior of this op.
   static ParseResult parse(OpAsmParser *parser, OperationState *result);
@@ -399,9 +402,12 @@ public:
   /// Builds an affine load op with the specified map and operands.
   static void build(Builder *builder, OperationState *result, AffineMap map,
                     ArrayRef<Value *> operands);
-  /// Builds an affine load op an identify map and operands.
+  /// Builds an affine load op with an identity map and operands.
   static void build(Builder *builder, OperationState *result, Value *memref,
                     ArrayRef<Value *> indices = {});
+  /// Builds an affine load op with the specified map and its operands.
+  static void build(Builder *builder, OperationState *result, Value *memref,
+                    AffineMap map, ArrayRef<Value *> mapOperands);
 
   /// Returns the operand index of the memref.
   unsigned getMemRefOperandIndex() { return 0; }
@@ -414,7 +420,7 @@ public:
   }
 
   /// Get affine map operands.
-  operand_range getIndices() { return llvm::drop_begin(getOperands(), 1); }
+  operand_range getMapOperands() { return llvm::drop_begin(getOperands(), 1); }
 
   /// Returns the affine map used to index the memref for this operation.
   AffineMap getAffineMap() { return getAffineMapAttr().getValue(); }
@@ -461,14 +467,14 @@ class AffineStoreOp : public Op<AffineStoreOp, OpTrait::ZeroResult,
 public:
   using Op::Op;
 
-  /// Builds an affine store operation with the specified map and operands.
-  static void build(Builder *builder, OperationState *result,
-                    Value *valueToStore, AffineMap map,
-                    ArrayRef<Value *> operands);
-  /// Builds an affine store operation with an identity map and operands.
+  /// Builds an affine store operation with the provided indices (identity map).
   static void build(Builder *builder, OperationState *result,
                     Value *valueToStore, Value *memref,
-                    ArrayRef<Value *> operands);
+                    ArrayRef<Value *> indices);
+  /// Builds an affine store operation with the specified map and its operands.
+  static void build(Builder *builder, OperationState *result,
+                    Value *valueToStore, Value *memref, AffineMap map,
+                    ArrayRef<Value *> mapOperands);
 
   /// Get value to be stored by store operation.
   Value *getValueToStore() { return getOperand(0); }
@@ -485,7 +491,7 @@ public:
   }
 
   /// Get affine map operands.
-  operand_range getIndices() { return llvm::drop_begin(getOperands(), 2); }
+  operand_range getMapOperands() { return llvm::drop_begin(getOperands(), 2); }
 
   /// Returns the affine map used to index the memref for this operation.
   AffineMap getAffineMap() { return getAffineMapAttr().getValue(); }
@@ -520,7 +526,14 @@ bool isValidSymbol(Value *value);
 /// Modifies both `map` and `operands` in-place so as to:
 /// 1. drop duplicate operands
 /// 2. drop unused dims and symbols from map
+/// 3. promote valid symbols to symbolic operands in case they appeared as
+///    dimensional operands
+/// 4. propagate constant operands and drop them
 void canonicalizeMapAndOperands(AffineMap *map,
+                                llvm::SmallVectorImpl<Value *> *operands);
+/// Canonicalizes an integer set the same way canonicalizeMapAndOperands does
+/// for affine maps.
+void canonicalizeSetAndOperands(IntegerSet *set,
                                 llvm::SmallVectorImpl<Value *> *operands);
 
 /// Returns a composed AffineApplyOp by composing `map` and `operands` with
@@ -591,6 +604,77 @@ private:
       : op(op), opStart(opStart), opEnd(opEnd), map(map) {}
 
   friend class AffineForOp;
+};
+
+/// An `AffineApplyNormalizer` is a helper class that supports renumbering
+/// operands of AffineApplyOp. This acts as a reindexing map of Value* to
+/// positional dims or symbols and allows simplifications such as:
+///
+/// ```mlir
+///    %1 = affine.apply (d0, d1) -> (d0 - d1) (%0, %0)
+/// ```
+///
+/// into:
+///
+/// ```mlir
+///    %1 = affine.apply () -> (0)
+/// ```
+struct AffineApplyNormalizer {
+  AffineApplyNormalizer(AffineMap map, ArrayRef<Value *> operands);
+
+  /// Returns the AffineMap resulting from normalization.
+  AffineMap getAffineMap() { return affineMap; }
+
+  SmallVector<Value *, 8> getOperands() {
+    SmallVector<Value *, 8> res(reorderedDims);
+    res.append(concatenatedSymbols.begin(), concatenatedSymbols.end());
+    return res;
+  }
+
+  unsigned getNumSymbols() { return concatenatedSymbols.size(); }
+  unsigned getNumDims() { return reorderedDims.size(); }
+
+  /// Normalizes 'otherMap' and its operands 'otherOperands' to map to this
+  /// normalizer's coordinate space.
+  void normalize(AffineMap *otherMap, SmallVectorImpl<Value *> *otherOperands);
+
+private:
+  /// Helper function to insert `v` into the coordinate system of the current
+  /// AffineApplyNormalizer. Returns the AffineDimExpr with the corresponding
+  /// renumbered position.
+  AffineDimExpr renumberOneDim(Value *v);
+
+  /// Given an `other` normalizer, this rewrites `other.affineMap` in the
+  /// coordinate system of the current AffineApplyNormalizer.
+  /// Returns the rewritten AffineMap and updates the dims and symbols of
+  /// `this`.
+  AffineMap renumber(const AffineApplyNormalizer &other);
+
+  /// Maps of Value* to position in `affineMap`.
+  DenseMap<Value *, unsigned> dimValueToPosition;
+
+  /// Ordered dims and symbols matching positional dims and symbols in
+  /// `affineMap`.
+  SmallVector<Value *, 8> reorderedDims;
+  SmallVector<Value *, 8> concatenatedSymbols;
+
+  AffineMap affineMap;
+
+  /// Used with RAII to control the depth at which AffineApply are composed
+  /// recursively. Only accepts depth 1 for now to allow a behavior where a
+  /// newly composed AffineApplyOp does not increase the length of the chain of
+  /// AffineApplyOps. Full composition is implemented iteratively on top of
+  /// this behavior.
+  static unsigned &affineApplyDepth() {
+    static thread_local unsigned depth = 0;
+    return depth;
+  }
+  static constexpr unsigned kMaxAffineApplyDepth = 1;
+
+  AffineApplyNormalizer() { affineApplyDepth()++; }
+
+public:
+  ~AffineApplyNormalizer() { affineApplyDepth()--; }
 };
 
 } // end namespace mlir

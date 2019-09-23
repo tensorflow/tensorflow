@@ -156,6 +156,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/data",
@@ -218,6 +219,7 @@ py_library(
 
 py_test(
     name = "distribute_coordinator_test",
+    size = "medium",
     srcs = ["distribute_coordinator_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
@@ -267,6 +269,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
@@ -1152,9 +1155,10 @@ distribute_py_test(
     name = "ctl_correctness_test",
     srcs = ["ctl_correctness_test.py"],
     main = "ctl_correctness_test.py",
-    shard_count = 3,
+    shard_count = 10,
     tags = [
         "multi_and_single_gpu",
+        "noguitar",  # b/140755528
     ],
     deps = [
         "//tensorflow/python:keras_lib",

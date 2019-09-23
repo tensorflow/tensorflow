@@ -31,6 +31,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import server_lib
@@ -74,7 +75,9 @@ class SingleWorkerTest(test.TestCase):
 
     @def_function.function
     def remote_output(i):
-      return variable_b, i + variable_b
+      with ops.device('/job:worker/replica:0/task:0/cpu:0'):
+        c = variable_b + 1
+      return c, i + variable_b
 
     with self.assertRaises(errors.UnimplementedError) as cm:
       remote_output(constant_op.constant([1]))
@@ -111,6 +114,30 @@ class SingleWorkerTest(test.TestCase):
           _ = y.shape
     np.testing.assert_array_equal(
         [[num_iters, num_iters], [num_iters, num_iters]], y.numpy())
+
+  def testShapeError_OpByOp(self):
+    with ops.device('job:worker/replica:0/task:0/device:CPU:0'):
+      x = array_ops.ones([2, 3])
+      y = array_ops.zeros([2, 2])
+      with self.assertRaises(errors.InvalidArgumentError) as cm:
+        math_ops.matmul(x, y)
+
+    self.assertIn('Dimensions must be equal', cm.exception.message)
+
+  def testShapeError_Function(self):
+
+    @def_function.function
+    def matmul_func(x, y):
+      return math_ops.matmul(x, y)
+
+    x = array_ops.ones([2, 3])
+    y = array_ops.zeros([2, 2])
+
+    with ops.device('job:worker/replica:0/task:0/device:CPU:0'):
+      with self.assertRaises(ValueError) as cm:
+        matmul_func(x, y)
+
+    self.assertIn('Dimensions must be equal', cm.exception.message)
 
 
 class MultiWorkersTest(test.TestCase):

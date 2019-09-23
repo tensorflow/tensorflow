@@ -117,6 +117,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleGather(const HloInstruction* gather) override;
   Status HandleScatter(const HloInstruction* scatter) override;
   Status HandleGetDimensionSize(const HloInstruction* get_size) override;
+  Status HandleSetDimensionSize(const HloInstruction* set_size) override;
   Status FinishVisit(const HloInstruction* root) override;
 
   Status Preprocess(const HloInstruction* hlo) override;

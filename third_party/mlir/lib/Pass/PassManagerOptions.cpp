@@ -25,9 +25,6 @@ using namespace mlir;
 
 namespace {
 struct PassManagerOptions {
-  typedef llvm::cl::list<const mlir::PassRegistryEntry *, bool, PassNameParser>
-      PassOptionList;
-
   PassManagerOptions();
 
   //===--------------------------------------------------------------------===//
@@ -38,8 +35,8 @@ struct PassManagerOptions {
   //===--------------------------------------------------------------------===//
   // IR Printing
   //===--------------------------------------------------------------------===//
-  PassOptionList printBefore;
-  PassOptionList printAfter;
+  PassPipelineCLParser printBefore;
+  PassPipelineCLParser printAfter;
   llvm::cl::opt<bool> printBeforeAll;
   llvm::cl::opt<bool> printAfterAll;
   llvm::cl::opt<bool> printModuleScope;
@@ -72,10 +69,8 @@ PassManagerOptions::PassManagerOptions()
       //===----------------------------------------------------------------===//
       // IR Printing
       //===----------------------------------------------------------------===//
-      printBefore("print-ir-before",
-                  llvm::cl::desc("Print IR before specified passes")),
-      printAfter("print-ir-after",
-                 llvm::cl::desc("Print IR after specified passes")),
+      printBefore("print-ir-before", "Print IR before specified passes"),
+      printAfter("print-ir-after", "Print IR after specified passes"),
       printBeforeAll("print-ir-before-all",
                      llvm::cl::desc("Print IR before each pass"),
                      llvm::cl::init(false)),
@@ -85,8 +80,7 @@ PassManagerOptions::PassManagerOptions()
       printModuleScope(
           "print-ir-module-scope",
           llvm::cl::desc("When printing IR for print-ir-[before|after]{-all} "
-                         "always print "
-                         "a module IR"),
+                         "always print the top-level module operation"),
           llvm::cl::init(false)),
 
       //===----------------------------------------------------------------===//
@@ -112,12 +106,12 @@ void PassManagerOptions::addPrinterInstrumentation(PassManager &pm) {
   if (printBeforeAll) {
     // If we are printing before all, then just return true for the filter.
     shouldPrintBeforePass = [](Pass *) { return true; };
-  } else if (printBefore.getNumOccurrences() != 0) {
+  } else if (printBefore.hasAnyOccurrences()) {
     // Otherwise if there are specific passes to print before, then check to see
     // if the pass info for the current pass is included in the list.
     shouldPrintBeforePass = [&](Pass *pass) {
       auto *passInfo = pass->lookupPassInfo();
-      return passInfo && llvm::is_contained(printBefore, passInfo);
+      return passInfo && printBefore.contains(passInfo);
     };
   }
 
@@ -125,12 +119,12 @@ void PassManagerOptions::addPrinterInstrumentation(PassManager &pm) {
   if (printAfterAll) {
     // If we are printing after all, then just return true for the filter.
     shouldPrintAfterPass = [](Pass *) { return true; };
-  } else if (printAfter.getNumOccurrences() != 0) {
+  } else if (printAfter.hasAnyOccurrences()) {
     // Otherwise if there are specific passes to print after, then check to see
     // if the pass info for the current pass is included in the list.
     shouldPrintAfterPass = [&](Pass *pass) {
       auto *passInfo = pass->lookupPassInfo();
-      return passInfo && llvm::is_contained(printAfter, passInfo);
+      return passInfo && printAfter.contains(passInfo);
     };
   }
 

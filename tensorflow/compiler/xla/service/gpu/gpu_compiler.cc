@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
+#include "tensorflow/compiler/xla/service/gpu/alias_passthrough_params.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
@@ -77,7 +78,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/compiler/xla/service/mem_wasted_on_passthrough_params.h"
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
@@ -231,6 +231,9 @@ Status GpuCompiler::OptimizeHloModule(
     // run, meaning, the pipeline that contains layout assignment cannot contain
     // a layout-sensitive verifier!
     HloPassPipeline pipeline("layout assignment");
+    // Layout assignment uses alias analysis, which requires the call graph to
+    // be flattened.
+    pipeline.AddPass<FlattenCallGraph>();
     pipeline.AddPass<GpuLayoutAssignment>(
         hlo_module->mutable_entry_computation_layout(),
         LayoutAssignment::InstructionCanChangeLayout, stream_exec);
@@ -306,10 +309,8 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   // (and sometime after) copy insertion, to avoid dead code from interfering
   // with the rewrites.
   pipeline.AddPass<HloDCE>();
-  pipeline.AddPass<FlattenCallGraph>();
-  // The following pass LOGs memory waste. Add it when VLOGing is enabled only.
-  if (VLOG_IS_ON(2)) {
-    pipeline.AddPass<MemWastedOnPassthroughParams>();
+  if (hlo_module->config().alias_passthrough_params()) {
+    pipeline.AddPass<AliasPassthroughParams>();
   }
   pipeline.AddPass<GpuCopyInsertion>(GetCanShareBuffer());
   pipeline.AddPass<GpuSanitizeConstantNames>();

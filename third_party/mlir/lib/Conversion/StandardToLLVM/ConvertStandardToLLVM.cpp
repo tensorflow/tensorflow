@@ -124,14 +124,14 @@ Type LLVMTypeConverter::convertFunctionType(FunctionType type) {
 
 // Convert a MemRef to an LLVM type. If the memref is statically-shaped, then
 // we return a pointer to the converted element type. Otherwise we return an
-// LLVM stucture type, where the first element of the structure type is a
+// LLVM structure type, where the first element of the structure type is a
 // pointer to the elemental type of the MemRef and the following N elements are
 // values of the Index type, one for each of N dynamic dimensions of the MemRef.
 Type LLVMTypeConverter::convertMemRefType(MemRefType type) {
   LLVM::LLVMType elementType = unwrap(convertType(type.getElementType()));
   if (!elementType)
     return {};
-  auto ptrType = elementType.getPointerTo();
+  auto ptrType = elementType.getPointerTo(type.getMemorySpace());
 
   // Extra value for the memory space.
   unsigned numDynamicSizes = type.getNumDynamicDims();
@@ -189,7 +189,7 @@ static Type getMemRefElementPtrType(MemRefType t, LLVMTypeConverter &lowering) {
   auto converted = lowering.convertType(elementType);
   if (!converted)
     return {};
-  return converted.cast<LLVM::LLVMType>().getPointerTo();
+  return converted.cast<LLVM::LLVMType>().getPointerTo(t.getMemorySpace());
 }
 
 LLVMOpLowering::LLVMOpLowering(StringRef rootOpName, MLIRContext *context,
@@ -514,14 +514,11 @@ struct ConstLLVMOpLowering
   using Super::Super;
 };
 
-// Check if the MemRefType `type` is supported by the lowering. We currently do
-// not support memrefs with affine maps and non-default memory spaces.
+// Check if the MemRefType `type` is supported by the lowering. We currently
+// only support memrefs with identity maps.
 static bool isSupportedMemRefType(MemRefType type) {
-  if (!type.getAffineMaps().empty())
-    return false;
-  if (type.getMemorySpace() != 0)
-    return false;
-  return true;
+  return llvm::all_of(type.getAffineMaps(),
+                      [](AffineMap map) { return map.isIdentity(); });
 }
 
 // An `alloc` is converted into a definition of a memref descriptor value and
@@ -598,8 +595,8 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
                                   cumulativeSize)
             .getResult(0);
     auto structElementType = lowering.convertType(elementType);
-    auto elementPtrType =
-        structElementType.cast<LLVM::LLVMType>().getPointerTo();
+    auto elementPtrType = structElementType.cast<LLVM::LLVMType>().getPointerTo(
+        type.getMemorySpace());
     allocated = rewriter.create<LLVM::BitcastOp>(op->getLoc(), elementPtrType,
                                                  ArrayRef<Value *>(allocated));
 
@@ -1045,16 +1042,15 @@ struct ReturnOpLowering : public LLVMLegalizationPattern<ReturnOp> {
 
     // If ReturnOp has 0 or 1 operand, create it and return immediately.
     if (numArguments == 0) {
-      rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(
-          op, llvm::ArrayRef<Value *>(), llvm::ArrayRef<Block *>(),
-          llvm::ArrayRef<llvm::ArrayRef<Value *>>(), op->getAttrs());
+      rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(op, llvm::ArrayRef<Value *>(),
+                                                  llvm::ArrayRef<Block *>(),
+                                                  op->getAttrs());
       return matchSuccess();
     }
     if (numArguments == 1) {
       rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(
           op, llvm::ArrayRef<Value *>(operands.front()),
-          llvm::ArrayRef<Block *>(), llvm::ArrayRef<llvm::ArrayRef<Value *>>(),
-          op->getAttrs());
+          llvm::ArrayRef<Block *>(), op->getAttrs());
       return matchSuccess();
     }
 
@@ -1069,9 +1065,9 @@ struct ReturnOpLowering : public LLVMLegalizationPattern<ReturnOp> {
           op->getLoc(), packedType, packed, operands[i],
           rewriter.getIndexArrayAttr(i));
     }
-    rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(
-        op, llvm::makeArrayRef(packed), llvm::ArrayRef<Block *>(),
-        llvm::ArrayRef<llvm::ArrayRef<Value *>>(), op->getAttrs());
+    rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(op, llvm::makeArrayRef(packed),
+                                                llvm::ArrayRef<Block *>(),
+                                                op->getAttrs());
     return matchSuccess();
   }
 };
@@ -1226,13 +1222,13 @@ struct LLVMLoweringPass : public ModulePass<LLVMLoweringPass> {
 };
 } // end namespace
 
-std::unique_ptr<ModulePassBase> mlir::createConvertToLLVMIRPass() {
+std::unique_ptr<OpPassBase<ModuleOp>> mlir::createLowerToLLVMPass() {
   return std::make_unique<LLVMLoweringPass>();
 }
 
-std::unique_ptr<ModulePassBase>
-mlir::createConvertToLLVMIRPass(LLVMPatternListFiller patternListFiller,
-                                LLVMTypeConverterMaker typeConverterMaker) {
+std::unique_ptr<OpPassBase<ModuleOp>>
+mlir::createLowerToLLVMPass(LLVMPatternListFiller patternListFiller,
+                            LLVMTypeConverterMaker typeConverterMaker) {
   return std::make_unique<LLVMLoweringPass>(patternListFiller,
                                             typeConverterMaker);
 }

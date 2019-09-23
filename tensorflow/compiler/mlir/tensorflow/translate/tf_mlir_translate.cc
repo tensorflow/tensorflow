@@ -41,15 +41,16 @@ using stream_executor::port::Status;
 using stream_executor::port::StatusOr;
 
 static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
-    absl::string_view input_filename, absl::string_view debug_info_file,
-    absl::string_view input_arrays, absl::string_view input_dtypes,
-    absl::string_view input_shapes, absl::string_view output_arrays,
-    absl::string_view inference_type, absl::string_view min_values,
-    absl::string_view max_values, bool prune_unused_nodes,
-    bool convert_legacy_fed_inputs, bool graph_as_function,
-    mlir::MLIRContext* context) {
+    std::unique_ptr<llvm::MemoryBuffer> input,
+    absl::string_view debug_info_file, absl::string_view input_arrays,
+    absl::string_view input_dtypes, absl::string_view input_shapes,
+    absl::string_view output_arrays, absl::string_view inference_type,
+    absl::string_view min_values, absl::string_view max_values,
+    bool prune_unused_nodes, bool convert_legacy_fed_inputs,
+    bool graph_as_function, mlir::MLIRContext* context) {
   GraphDef graphdef;
-  TF_RETURN_IF_ERROR(tensorflow::LoadProtoFromFile(input_filename, &graphdef));
+  TF_RETURN_IF_ERROR(tensorflow::LoadProtoFromBuffer(
+      {input->getBufferStart(), input->getBufferSize()}, &graphdef));
 
   GraphDebugInfo debug_info;
   if (!debug_info_file.empty()) {
@@ -69,17 +70,18 @@ static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
 }
 
 mlir::OwningModuleRef GraphdefToMlirTranslateFunction(
-    absl::string_view input_filename, absl::string_view debug_info_file,
-    absl::string_view input_arrays, absl::string_view input_dtypes,
-    absl::string_view input_shapes, absl::string_view output_arrays,
-    absl::string_view inference_type, absl::string_view min_values,
-    absl::string_view max_values, bool prune_unused_nodes,
-    bool convert_legacy_fed_inputs, bool graph_as_function,
-    mlir::MLIRContext* context) {
+    std::unique_ptr<llvm::MemoryBuffer> input,
+    absl::string_view debug_info_file, absl::string_view input_arrays,
+    absl::string_view input_dtypes, absl::string_view input_shapes,
+    absl::string_view output_arrays, absl::string_view inference_type,
+    absl::string_view min_values, absl::string_view max_values,
+    bool prune_unused_nodes, bool convert_legacy_fed_inputs,
+    bool graph_as_function, mlir::MLIRContext* context) {
   auto module_or = GraphdefToMlirImport(
-      input_filename, debug_info_file, input_arrays, input_dtypes, input_shapes,
-      output_arrays, inference_type, min_values, max_values, prune_unused_nodes,
-      convert_legacy_fed_inputs, graph_as_function, context);
+      std::move(input), debug_info_file, input_arrays, input_dtypes,
+      input_shapes, output_arrays, inference_type, min_values, max_values,
+      prune_unused_nodes, convert_legacy_fed_inputs, graph_as_function,
+      context);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "Graph import failed: " << module_or.status();
     return nullptr;
@@ -123,17 +125,18 @@ mlir::OwningModuleRef SavedModelToMlirImport(
 }
 
 mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
-    absl::string_view input_filename, absl::string_view debug_info_file,
-    absl::string_view input_arrays, absl::string_view input_dtypes,
-    absl::string_view input_shapes, absl::string_view output_arrays,
-    absl::string_view inference_type, absl::string_view min_values,
-    absl::string_view max_values, bool prune_unused_nodes,
-    bool convert_legacy_fed_inputs, bool graph_as_function,
-    mlir::MLIRContext* context) {
+    std::unique_ptr<llvm::MemoryBuffer> input,
+    absl::string_view debug_info_file, absl::string_view input_arrays,
+    absl::string_view input_dtypes, absl::string_view input_shapes,
+    absl::string_view output_arrays, absl::string_view inference_type,
+    absl::string_view min_values, absl::string_view max_values,
+    bool prune_unused_nodes, bool convert_legacy_fed_inputs,
+    bool graph_as_function, mlir::MLIRContext* context) {
   auto module_or = GraphdefToMlirImport(
-      input_filename, debug_info_file, input_arrays, input_dtypes, input_shapes,
-      output_arrays, inference_type, min_values, max_values, prune_unused_nodes,
-      convert_legacy_fed_inputs, graph_as_function, context);
+      std::move(input), debug_info_file, input_arrays, input_dtypes,
+      input_shapes, output_arrays, inference_type, min_values, max_values,
+      prune_unused_nodes, convert_legacy_fed_inputs, graph_as_function,
+      context);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "Graph import failed: " << module_or.status();
     return nullptr;

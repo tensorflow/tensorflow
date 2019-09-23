@@ -205,18 +205,45 @@ def random_uniform(shape,
   `maxval - minval` significantly smaller than the range of the output (either
   `2**32` or `2**64`).
 
+  Examples:
+
+  >>> tf.random.uniform(shape=[2])
+  <tf.Tensor: id=..., shape=(2,), dtype=float32, numpy=array([..., ...],
+  dtype=float32)>
+  >>> tf.random.uniform(shape=[], minval=-1., maxval=0.)
+  <tf.Tensor: id=..., shape=(), dtype=float32, numpy=-...>
+  >>> tf.random.uniform(shape=[], minval=5, maxval=10, dtype=tf.int64)
+  <tf.Tensor: id=..., shape=(), dtype=int64, numpy=...>
+
+  The `seed` argument produces a deterministic sequence of tensors across
+  multiple calls. To repeat that sequence, use `tf.random.set_seed`:
+
+  >>> tf.random.set_seed(5)
+  >>> tf.random.uniform(shape=[], maxval=3, dtype=tf.int32, seed=10)
+  <tf.Tensor: id=..., shape=(), dtype=int32, numpy=2>
+  >>> tf.random.uniform(shape=[], maxval=3, dtype=tf.int32, seed=10)
+  <tf.Tensor: id=..., shape=(), dtype=int32, numpy=0>
+  >>> tf.random.set_seed(5)
+  >>> tf.random.uniform(shape=[], maxval=3, dtype=tf.int32, seed=10)
+  <tf.Tensor: id=..., shape=(), dtype=int32, numpy=2>
+  >>> tf.random.uniform(shape=[], maxval=3, dtype=tf.int32, seed=10)
+  <tf.Tensor: id=..., shape=(), dtype=int32, numpy=0>
+
+  Without `tf.random.set_seed` but with a `seed` argument is specified, small
+  changes to function graphs or previously executed operations will change the
+  returned value. See `tf.random.set_seed` for details.
+
   Args:
     shape: A 1-D integer Tensor or Python array. The shape of the output tensor.
     minval: A 0-D Tensor or Python value of type `dtype`. The lower bound on the
-      range of random values to generate.  Defaults to 0.
-    maxval: A 0-D Tensor or Python value of type `dtype`. The upper bound on
-      the range of random values to generate.  Defaults to 1 if `dtype` is
-      floating point.
+      range of random values to generate (inclusive).  Defaults to 0.
+    maxval: A 0-D Tensor or Python value of type `dtype`. The upper bound on the
+      range of random values to generate (exclusive). Defaults to 1 if `dtype`
+      is floating point.
     dtype: The type of the output: `float16`, `float32`, `float64`, `int32`,
       or `int64`.
-    seed: A Python integer. Used to create a random seed for the distribution.
-      See `tf.compat.v1.set_random_seed`
-      for behavior.
+    seed: A Python integer. Used in combination with `tf.random.set_seed` to
+      create a reproducible sequence of tensors across multiple calls.
     name: A name for the operation (optional).
 
   Returns:

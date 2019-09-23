@@ -42,6 +42,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
@@ -335,7 +336,7 @@ def all_devices():
   return devices if devices else all_local_devices()
 
 
-@tf_export("distribute.MirroredStrategy", v1=[])
+@tf_export("distribute.MirroredStrategy", v1=[])  # pylint: disable=g-classes-have-attributes
 class MirroredStrategy(distribute_lib.Strategy):
   """Mirrors vars to distribute across multiple devices and machines.
 
@@ -356,10 +357,12 @@ class MirroredStrategy(distribute_lib.Strategy):
     extended = MirroredExtended(
         self, devices=devices, cross_device_ops=cross_device_ops)
     super(MirroredStrategy, self).__init__(extended)
+    distribute_lib.distribution_strategy_gauge.get_cell("V2").set(
+        "MirroredStrategy")
 
 
 @tf_export(v1=["distribute.MirroredStrategy"])
-class MirroredStrategyV1(distribute_lib.StrategyV1):
+class MirroredStrategyV1(distribute_lib.StrategyV1):  # pylint: disable=g-missing-docstring
 
   __doc__ = MirroredStrategy.__doc__
 
@@ -367,6 +370,8 @@ class MirroredStrategyV1(distribute_lib.StrategyV1):
     extended = MirroredExtended(
         self, devices=devices, cross_device_ops=cross_device_ops)
     super(MirroredStrategyV1, self).__init__(extended)
+    distribute_lib.distribution_strategy_gauge.get_cell("V1").set(
+        "MirroredStrategy")
 
 
 # TODO(josh11b): Switch to V2 when we no longer need to support tf.compat.v1.
@@ -842,16 +847,15 @@ class _MirroredReplicaThread(threading.Thread):
     context.ensure_initialized()
     ctx = context.context()
     self.in_eager = ctx.executing_eagerly()
-    self.record_thread_local_context_fields()
+    self.record_thread_local_summary_state()
     self.context_device_policy = (
         pywrap_tensorflow.TFE_ContextGetDevicePlacementPolicy(
-            ctx._context_handle))
+            ctx._context_handle))  # pylint: disable=protected-access
     self.graph = ops.get_default_graph()
     with ops.init_scope():
       self._init_in_eager = context.executing_eagerly()
       self._init_graph = ops.get_default_graph()
-
-    self._variable_creator_stack = self.graph._variable_creator_stack[:]
+    self._variable_creator_stack = self.graph._variable_creator_stack[:]   # pylint: disable=protected-access
     self._var_scope = variable_scope.get_variable_scope()
     # Adding a "/" at end lets us re-enter this scope later.
     self._name_scope = self.graph.get_name_scope()
@@ -868,7 +872,7 @@ class _MirroredReplicaThread(threading.Thread):
     try:
       if self.coord.should_stop():
         return
-      self.restore_thread_local_context_fields()
+      self.restore_thread_local_summary_state()
       # TODO(josh11b): Use current logical device instead of 0 here.
       with self.coord.stop_on_exception(), \
           _enter_graph(self._init_graph, self._init_in_eager), \
@@ -888,23 +892,25 @@ class _MirroredReplicaThread(threading.Thread):
     finally:
       self.has_paused.set()
 
-  def record_thread_local_context_fields(self):
-    """Record thread local fields of context.context() in self."""
-    ctx = context.context()
-    self._summary_step = ctx.summary_step
-    self._summary_writer = ctx.summary_writer
-    self._summary_recording = ctx.summary_recording
+  def record_thread_local_summary_state(self):
+    """Record the thread local summary state in self."""
+    # TODO(slebedev): is this still relevant? the referenced bug is closed.
+    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
+    self._summary_step = summary_state.step
+    self._summary_writer = summary_state.writer
+    self._summary_recording = summary_state.is_recording
     self._summary_recording_distribution_strategy = (
-        ctx.summary_recording_distribution_strategy)
+        summary_state.is_recording_distribution_strategy)
     # TODO(b/125892694): record other fields in EagerContext.
 
-  def restore_thread_local_context_fields(self):
-    """Restore thread local fields of context.context() from self."""
-    ctx = context.context()
-    ctx.summary_step = self._summary_step
-    ctx.summary_writer = self._summary_writer
-    ctx.summary_recording = self._summary_recording
-    ctx.summary_recording_distribution_strategy = (
+  def restore_thread_local_summary_state(self):
+    """Restore thread local summary state from self."""
+    # TODO(slebedev): is this still relevant? the referenced bug is closed.
+    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
+    summary_state.step = self._summary_step
+    summary_state.writer = self._summary_writer
+    summary_state.is_recording = self._summary_recording
+    summary_state.is_recording_distribution_strategy = (
         self._summary_recording_distribution_strategy)
     # TODO(b/125892694): restore other fields in EagerContext.
 

@@ -47,6 +47,13 @@ GPUDialect::GPUDialect(MLIRContext *context)
                 >();
 }
 
+template <typename T> static LogicalResult verifyIndexOp(T op) {
+  auto dimension = op.dimension();
+  if (dimension != "x" && dimension != "y" && dimension != "z")
+    return op.emitError("dimension \"") << dimension << "\" is invalid";
+  return success();
+}
+
 #define GET_OP_CLASSES
 #include "mlir/Dialect/GPU/GPUOps.cpp.inc"
 
@@ -136,7 +143,7 @@ LogicalResult LaunchOp::verify() {
   if (!getBody().empty()) {
     Block &entryBlock = getBody().front();
     if (entryBlock.getNumArguments() != kNumConfigOperands + getNumOperands())
-      return emitError("unexpected number of region arguments");
+      return emitOpError("unexpected number of region arguments");
   }
 
   // Block terminators without successors are expected to exit the kernel region
@@ -282,7 +289,7 @@ ParseResult LaunchOp::parse(OpAsmParser *parser, OperationState *result) {
   // so is the trailing type list.  Parse it as well and use the parsed types
   // to resolve the operands passed to the kernel arguments.
   SmallVector<Type, 4> dataTypes;
-  if (!parser->parseOptionalKeyword(getArgsKeyword().data())) {
+  if (!parser->parseOptionalKeyword(getArgsKeyword())) {
     llvm::SMLoc argsLoc = parser->getCurrentLocation();
 
     regionArgs.push_back({});
@@ -430,11 +437,11 @@ LogicalResult LaunchFuncOp::verify() {
   auto module = getParentOfType<ModuleOp>();
   FuncOp kernelFunc = module.lookupSymbol<FuncOp>(kernel());
   if (!kernelFunc)
-    return emitError() << "kernel function '" << kernelAttr << "' is undefined";
+    return emitOpError("kernel function '") << kernelAttr << "' is undefined";
 
   if (!kernelFunc.getAttrOfType<mlir::UnitAttr>(
           GPUDialect::getKernelFuncAttrName())) {
-    return emitError("kernel function is missing the '")
+    return emitOpError("kernel function is missing the '")
            << GPUDialect::getKernelFuncAttrName() << "' attribute";
   }
   unsigned numKernelFuncArgs = kernelFunc.getNumArguments();

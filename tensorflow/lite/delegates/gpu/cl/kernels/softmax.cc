@@ -27,13 +27,12 @@ namespace cl {
 namespace {
 
 std::string GetSoftmaxKernelCode(
-    const TensorDescriptor& src_descriptor,
-    const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
+    const OperationDef& op_def,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data", "size", src_descriptor);
-  TensorCodeGenerator dst_tensor("dst_data", "size", dst_descriptor);
+  TensorCodeGenerator src_tensor("src_data", "size", op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data", "size", op_def.dst_tensors[0]);
 
-  std::string code = GetCommonDefines(precision);
+  std::string code = GetCommonDefines(op_def.precision);
   code += "__kernel void main_function(\n";
   code += src_tensor.GetDeclaration(AccessType::READ);
   code += GetArgsDeclaration(linked_operations);
@@ -68,8 +67,9 @@ std::string GetSoftmaxKernelCode(
           ";\n";
   code += "    t = exp(t) / sum;\n";
   code += "    FLT4 result = TO_FLT4(t);\n";
-  code += PostProcess(linked_operations, "result", "d", "address");
-  code += "    " + dst_tensor.Write3D("result", "address");
+  const LinkingContext context{"result", "X", "Y", "d"};
+  code += PostProcess(linked_operations, context);
+  code += "    " + dst_tensor.Write3D("result", "X", "Y", "d");
   code += "  }\n";
   code += "}\n";
   return code;
@@ -91,9 +91,7 @@ Softmax& Softmax::operator=(Softmax&& kernel) {
 }
 
 Status Softmax::Compile(const CreationContext& creation_context) {
-  const auto code = GetSoftmaxKernelCode(
-      definition_.src_tensors[0], definition_.dst_tensors[0],
-      definition_.precision, linked_operations_);
+  const auto code = GetSoftmaxKernelCode(definition_, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
@@ -103,7 +101,7 @@ Status Softmax::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtr()));
+  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetSizeWithDepth()));
   RETURN_IF_ERROR(
       kernel_.SetBytesAuto(GetMaskForLastPlane(src_[0]->Channels())));

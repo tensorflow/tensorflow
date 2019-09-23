@@ -53,8 +53,11 @@ class ConvPowerVR : public GPUOperation {
   struct ConvParams {
     int3 block_size;
     int3 work_group_size;
+    int3 work_group_launch_order;
     int src_depth_loop_size;
     bool explicit_sync;
+    bool x_kernel_is_1;
+    bool y_kernel_is_1;
   };
 
   ConvPowerVR(const OperationDef& definition,
@@ -73,9 +76,7 @@ class ConvPowerVR : public GPUOperation {
                                   ConvPowerVR* result);
 
   friend std::string GenerateConvPowerVR1x1(
-      const TensorDescriptor& src_descriptor,
-      const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
-      const ConvParams& conv_params,
+      const OperationDef& op_def, const ConvParams& conv_params,
       const std::vector<ElementwiseOperation*>& linked_operations);
 
   friend ConvParams GuessBestParams(const CLDevice& device,
@@ -88,10 +89,8 @@ class ConvPowerVR : public GPUOperation {
   Buffer weights_;
   LinearStorage biases_;
 
-  int2 kernel_size_;
-  int2 stride_;
-  int2 padding_;
-  int2 dilation_;
+  int4 stride_padding_;
+  int4 kernel_dilation_;
   ConvParams conv_params_;
 
   CLKernel kernel_;
@@ -162,9 +161,6 @@ void ConvPowerVR::RearrangeWeight(const ::tflite::gpu::Tensor<OHWI, S>& weights,
     }
   }
 }
-
-bool IsConvPowerVRSupported(const OperationDef& definition,
-                            const Convolution2DAttributes& attr);
 
 Status CreateConvPowerVR(const CreationContext& creation_context,
                          const OperationDef& definition,

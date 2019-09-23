@@ -794,6 +794,7 @@ def deserialize(config, custom_objects=None):
   Returns:
       A Keras Optimizer instance.
   """
+  from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer  # pylint: disable=g-import-not-at-top
   all_classes = {
       'adadelta': adadelta_v2.Adadelta,
       'adagrad': adagrad_v2.Adagrad,
@@ -802,7 +803,8 @@ def deserialize(config, custom_objects=None):
       'nadam': nadam_v2.Nadam,
       'rmsprop': rmsprop_v2.RMSprop,
       'sgd': gradient_descent_v2.SGD,
-      'ftrl': ftrl.Ftrl
+      'ftrl': ftrl.Ftrl,
+      'lossscaleoptimizer': loss_scale_optimizer.LossScaleOptimizer,
   }
 
   # Make deserialization case-insensitive for built-in optimizers.

@@ -2368,9 +2368,10 @@ TEST_F(ScatterGatherShapeInferenceTest,
           /*index_vector_dim=*/4),
       /*slice_sizes=*/{30, 29, 28, 26, 20});
   ASSERT_FALSE(statusor.ok());
-  EXPECT_THAT(statusor.status().error_message(),
-              HasSubstr("Gather op can only collapse slice dims with bound 1, "
-                        "but bound is 29 for index 1 at position 0."))
+  EXPECT_THAT(
+      statusor.status().error_message(),
+      HasSubstr("Gather op can only collapse slice dims with bound 1 or 0, "
+                "but bound is 29 for index 1 at position 0."))
       << statusor.status();
 }
 

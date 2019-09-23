@@ -198,7 +198,7 @@ void LegalizeOphintFuncOpPass::runOnModule() {
 
 /// Creates an instance of the TensorFlow Lite dialect LegalizeOphintFuncOpPass
 /// pass.
-std::unique_ptr<ModulePassBase> CreateLegalizeOphintFuncOpPass() {
+std::unique_ptr<OpPassBase<ModuleOp>> CreateLegalizeOphintFuncOpPass() {
   return std::make_unique<LegalizeOphintFuncOpPass>();
 }
 

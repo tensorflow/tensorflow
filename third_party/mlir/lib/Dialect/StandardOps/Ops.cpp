@@ -29,6 +29,7 @@
 #include "mlir/IR/Value.h"
 #include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
+#include "mlir/Transforms/InliningUtils.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
@@ -66,6 +67,54 @@ struct StdOpAsmInterface : public OpAsmDialectInterface {
     } else {
       os << "cst";
     }
+  }
+};
+
+/// This class defines the interface for handling inlining with standard
+/// operations.
+struct StdInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+
+  //===--------------------------------------------------------------------===//
+  // Analysis Hooks
+  //===--------------------------------------------------------------------===//
+
+  /// All operations within standard ops can be inlined.
+  bool isLegalToInline(Operation *, Region *,
+                       BlockAndValueMapping &) const final {
+    return true;
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Transformation Hooks
+  //===--------------------------------------------------------------------===//
+
+  /// Handle the given inlined terminator by replacing it with a new operation
+  /// as necessary.
+  void handleTerminator(Operation *op, Block *newDest) const final {
+    // Only "std.return" needs to be handled here.
+    auto returnOp = dyn_cast<ReturnOp>(op);
+    if (!returnOp)
+      return;
+
+    // Replace the return with a branch to the dest.
+    OpBuilder builder(op);
+    builder.create<BranchOp>(op->getLoc(), newDest,
+                             llvm::to_vector<4>(returnOp.getOperands()));
+    op->erase();
+  }
+
+  /// Handle the given inlined terminator by replacing it with a new operation
+  /// as necessary.
+  void handleTerminator(Operation *op,
+                        ArrayRef<Value *> valuesToRepl) const final {
+    // Only "std.return" needs to be handled here.
+    auto returnOp = cast<ReturnOp>(op);
+
+    // Replace the values directly with the return operands.
+    assert(returnOp.getNumOperands() == valuesToRepl.size());
+    for (const auto &it : llvm::enumerate(returnOp.getOperands()))
+      valuesToRepl[it.index()]->replaceAllUsesWith(it.value());
   }
 };
 } // end anonymous namespace
@@ -122,7 +171,7 @@ StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "mlir/Dialect/StandardOps/Ops.cpp.inc"
                 >();
-  addInterfaces<StdOpAsmInterface>();
+  addInterfaces<StdInlinerInterface, StdOpAsmInterface>();
 }
 
 void mlir::printDimAndSymbolList(Operation::operand_iterator begin,
@@ -962,10 +1011,10 @@ OpFoldResult CmpFOp::fold(ArrayRef<Attribute> operands) {
 
   auto lhs = operands.front().dyn_cast_or_null<FloatAttr>();
   auto rhs = operands.back().dyn_cast_or_null<FloatAttr>();
-  if (!lhs || !rhs ||
-      // TODO(b/122019992) Implement and test constant folding for nan/inf when
-      // it is possible to have constant nan/inf
-      !lhs.getValue().isFinite() || !rhs.getValue().isFinite())
+
+  // TODO(gcmn) We could actually do some intelligent things if we know only one
+  // of the operands, but it's inf or nan.
+  if (!lhs || !rhs)
     return {};
 
   auto val = applyCmpPredicate(getPredicate(), lhs.getValue(), rhs.getValue());
@@ -1330,6 +1379,12 @@ OpFoldResult DimOp::fold(ArrayRef<Attribute> operands) {
     return IntegerAttr::get(IndexType::get(getContext()), indexSize);
 
   return {};
+}
+
+void DimOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                        MLIRContext *context) {
+  /// dim(memrefcast) -> dim
+  results.insert<MemRefCastFolder>(getOperationName(), context);
 }
 
 //===----------------------------------------------------------------------===//

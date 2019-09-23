@@ -26,9 +26,11 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
+from tensorflow.python.eager import tape as tape_lib
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -46,7 +48,6 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops.signal import fft_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import training
 from tensorflow.python.util import nest
@@ -948,10 +949,25 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     x = constant_op.constant(1.0)
     with backprop.GradientTape() as g:
       g.watch(x)
-      y = h(x)
+      k = x + 2.
+      y = h(k)
 
     dy_dx = g.gradient(y, x, unconnected_gradients='zero')
     self.assertEqual(0.0, self.evaluate(dy_dx))
+
+  def testInvalidRecordOperationMessage(self):
+    y = constant_op.constant(2.)
+    x = constant_op.constant(1.)
+    with backprop.GradientTape() as g:
+      g.watch(x)
+      tape_lib.record_operation(
+          'InvalidBackprop',
+          [y],
+          [x],
+          lambda dy: [])
+    with self.assertRaisesRegexp(
+        errors_impl.InternalError, 'InvalidBackprop.*too few gradients'):
+      g.gradient(y, x)
 
   @test_util.assert_no_new_tensors
   def testEmptyParamsForValueAndGradFunction(self):
@@ -1469,6 +1485,35 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(3.2, gdgd)
 
   @test_util.run_in_graph_and_eager_modes
+  def testPrimalsWithVariable(self):
+    @custom_gradient.custom_gradient
+    def f(x):
+
+      @custom_gradient.custom_gradient(primals=(x,))
+      def g(dz):
+
+        def h(unused_ddz):
+          return 2.2
+
+        return x * 2.1 * dz, h
+
+      return x + 1., g
+
+    with backprop.GradientTape(persistent=True) as t:
+      with backprop.GradientTape(persistent=True) as tt:
+        v = variables.Variable(1.)
+        w = variables.Variable(0.)
+        self.evaluate([v.initializer, w.initializer])
+        t.watch(v)
+        tt.watch(v)
+        output = f(v + w)
+        self.assertAllClose(2., output)
+      g = tt.gradient(output, v, output_gradients=1. + w)
+      self.assertAllClose(2.1, g)
+    gg = t.gradient(g, v)
+    self.assertAllClose(2.2, gg)
+
+  @test_util.run_in_graph_and_eager_modes
   def testCustomGradientForwardprop(self):
     @custom_gradient.custom_gradient
     def f(x):
@@ -1532,23 +1577,6 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     g = backprop.GradientTape()
     with self.assertRaisesRegexp(ValueError, 'ndarray'):
       g.watch(np.array(1.))
-
-  def testOpWithNoAttrs(self):
-
-    @function.defun(autograph=False)
-    def f():
-      with backprop.GradientTape() as tape:
-        xs = random_ops.random_normal([10, 32])
-        tape.watch(xs)
-        # The `rfft()` op has no defined attrs, which exercises a different
-        # branch in the Python op wrapper code generator for recording
-        # gradients.
-        ys = fft_ops.rfft(xs)
-        self.assertEmpty(ys.op.node_def.attr)
-      gs = tape.gradient(ys, xs)
-      self.assertIsNotNone(gs)
-
-    f.get_concrete_function()
 
 
 class JacobianTest(test.TestCase):
@@ -1834,4 +1862,3 @@ class AggregateIndexedSlicesGradientsTest(test_util.TensorFlowTestCase):
 
 if __name__ == '__main__':
   test.main()
-

@@ -140,7 +140,7 @@ Status ConvolutionVisitor::HandleBackwardFilterBatchGroupConvolution(
     };
     // Reshape batch_dim C -> [G, C/G] - Batch and feature dims have been
     // swapped in tf2xla bridge
-    std::vector<int64> reshape_dims = lhs->shape().dimensions();
+    std::vector<int64> reshape_dims = SpanToVector(lhs->shape().dimensions());
     reshape_dims[input_batch_dimension] =
         reshape_dims[input_batch_dimension] / num_groups;
     reshape_dims.insert(reshape_dims.begin() + input_batch_dimension,

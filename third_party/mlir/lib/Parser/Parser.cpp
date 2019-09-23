@@ -2606,6 +2606,11 @@ public:
   /// Parse an operation instance that is in the generic form.
   Operation *parseGenericOperation();
 
+  /// Parse an operation instance that is in the generic form and insert it at
+  /// the provided insertion point.
+  Operation *parseGenericOperation(Block *insertBlock,
+                                   Block::iterator insertPt);
+
   /// Parse an operation instance that is in the op-defined custom form.
   Operation *parseCustomOperation();
 
@@ -3255,6 +3260,13 @@ Operation *OperationParser::parseGenericOperation() {
   return opBuilder.createOperation(result);
 }
 
+Operation *OperationParser::parseGenericOperation(Block *insertBlock,
+                                                  Block::iterator insertPt) {
+  OpBuilder::InsertionGuard restoreInsertionPoint(opBuilder);
+  opBuilder.setInsertionPoint(insertBlock, insertPt);
+  return parseGenericOperation();
+}
+
 namespace {
 class CustomOpAsmParser : public OpAsmParser {
 public:
@@ -3268,6 +3280,11 @@ public:
     if (opDefinition->parseAssembly(this, opState))
       return failure();
     return success();
+  }
+
+  Operation *parseGenericOperation(Block *insertBlock,
+                                   Block::iterator insertPt) final {
+    return parser.parseGenericOperation(insertBlock, insertPt);
   }
 
   //===--------------------------------------------------------------------===//
@@ -3334,20 +3351,6 @@ public:
   /// Parse a `=` token.
   ParseResult parseEqual() override {
     return parser.parseToken(Token::equal, "expected '='");
-  }
-
-  /// Parse a keyword if present.
-  ParseResult parseOptionalKeyword(const char *keyword) override {
-    // Check that the current token is a bare identifier or keyword.
-    if (parser.getToken().isNot(Token::bare_identifier) &&
-        !parser.getToken().isKeyword())
-      return failure();
-
-    if (parser.getTokenSpelling() == keyword) {
-      parser.consumeToken();
-      return success();
-    }
-    return failure();
   }
 
   /// Parse a `(` token.
@@ -3418,6 +3421,32 @@ public:
   //===--------------------------------------------------------------------===//
   // Identifier Parsing
   //===--------------------------------------------------------------------===//
+
+  /// Returns if the current token corresponds to a keyword.
+  bool isCurrentTokenAKeyword() const {
+    return parser.getToken().is(Token::bare_identifier) ||
+           parser.getToken().isKeyword();
+  }
+
+  /// Parse the given keyword if present.
+  ParseResult parseOptionalKeyword(StringRef keyword) override {
+    // Check that the current token has the same spelling.
+    if (!isCurrentTokenAKeyword() || parser.getTokenSpelling() != keyword)
+      return failure();
+    parser.consumeToken();
+    return success();
+  }
+
+  /// Parse a keyword, if present, into 'keyword'.
+  ParseResult parseOptionalKeyword(StringRef *keyword) override {
+    // Check that the current token is a keyword.
+    if (!isCurrentTokenAKeyword())
+      return failure();
+
+    *keyword = parser.getTokenSpelling();
+    parser.consumeToken();
+    return success();
+  }
 
   /// Parse an @-identifier and store it (without the '@' symbol) in a string
   /// attribute named 'attrName'.
@@ -4133,8 +4162,8 @@ ParseResult ModuleParser::parseModule(ModuleOp module) {
 /// This parses the file specified by the indicated SourceMgr and returns an
 /// MLIR module if it was valid.  If not, it emits diagnostics and returns
 /// null.
-ModuleOp mlir::parseSourceFile(const llvm::SourceMgr &sourceMgr,
-                               MLIRContext *context) {
+OwningModuleRef mlir::parseSourceFile(const llvm::SourceMgr &sourceMgr,
+                                      MLIRContext *context) {
   auto sourceBuf = sourceMgr.getMemoryBuffer(sourceMgr.getMainFileID());
 
   // This is the result module we are parsing into.
@@ -4150,13 +4179,14 @@ ModuleOp mlir::parseSourceFile(const llvm::SourceMgr &sourceMgr,
   if (failed(verify(*module)))
     return nullptr;
 
-  return module.release();
+  return module;
 }
 
 /// This parses the file specified by the indicated filename and returns an
 /// MLIR module if it was valid.  If not, the error message is emitted through
 /// the error handler registered in the context, and a null pointer is returned.
-ModuleOp mlir::parseSourceFile(StringRef filename, MLIRContext *context) {
+OwningModuleRef mlir::parseSourceFile(StringRef filename,
+                                      MLIRContext *context) {
   llvm::SourceMgr sourceMgr;
   return parseSourceFile(filename, sourceMgr, context);
 }
@@ -4165,8 +4195,9 @@ ModuleOp mlir::parseSourceFile(StringRef filename, MLIRContext *context) {
 /// SourceMgr and returns an MLIR module if it was valid.  If not, the error
 /// message is emitted through the error handler registered in the context, and
 /// a null pointer is returned.
-ModuleOp mlir::parseSourceFile(StringRef filename, llvm::SourceMgr &sourceMgr,
-                               MLIRContext *context) {
+OwningModuleRef mlir::parseSourceFile(StringRef filename,
+                                      llvm::SourceMgr &sourceMgr,
+                                      MLIRContext *context) {
   if (sourceMgr.getNumBuffers() != 0) {
     // TODO(b/136086478): Extend to support multiple buffers.
     emitError(mlir::UnknownLoc::get(context),
@@ -4187,7 +4218,8 @@ ModuleOp mlir::parseSourceFile(StringRef filename, llvm::SourceMgr &sourceMgr,
 
 /// This parses the program string to a MLIR module if it was valid. If not,
 /// it emits diagnostics and returns null.
-ModuleOp mlir::parseSourceString(StringRef moduleStr, MLIRContext *context) {
+OwningModuleRef mlir::parseSourceString(StringRef moduleStr,
+                                        MLIRContext *context) {
   auto memBuffer = MemoryBuffer::getMemBuffer(moduleStr);
   if (!memBuffer)
     return nullptr;

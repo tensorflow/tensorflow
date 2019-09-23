@@ -372,7 +372,7 @@ void LowerUniformRealMathPass::runOnFunction() {
   applyPatternsGreedily(fn, patterns);
 }
 
-FunctionPassBase *mlir::fxpmath::createLowerUniformRealMathPass() {
+OpPassBase<FuncOp> *mlir::fxpmath::createLowerUniformRealMathPass() {
   return new LowerUniformRealMathPass();
 }
 
@@ -392,7 +392,7 @@ void LowerUniformCastsPass::runOnFunction() {
   applyPatternsGreedily(fn, patterns);
 }
 
-FunctionPassBase *mlir::fxpmath::createLowerUniformCastsPass() {
+OpPassBase<FuncOp> *mlir::fxpmath::createLowerUniformCastsPass() {
   return new LowerUniformCastsPass();
 }
 

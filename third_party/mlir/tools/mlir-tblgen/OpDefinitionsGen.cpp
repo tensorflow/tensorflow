@@ -665,8 +665,8 @@ static void generateNamedOperandGetters(const Operator &op, Class &opClass,
 
   if (numVariadicOperands == 0) {
     // We still need to match the return type, which is a range.
-    m.body() << "return {std::next(" << rangeBeginCall << ", index), std::next("
-             << rangeBeginCall << ", index + 1)};";
+    m.body() << "  return {std::next(" << rangeBeginCall
+             << ", index), std::next(" << rangeBeginCall << ", index + 1)};";
   } else {
     // Because the op can have arbitrarily interleaved variadic and non-variadic
     // operands, we need to embed a list in the "sink" getter method for
@@ -693,10 +693,10 @@ static void generateNamedOperandGetters(const Operator &op, Class &opClass,
 
     if (operand.isVariadic()) {
       auto &m = opClass.newMethod(rangeType, operand.name);
-      m.body() << "return getODSOperands(" << i << ");";
+      m.body() << "  return getODSOperands(" << i << ");";
     } else {
       auto &m = opClass.newMethod("Value *", operand.name);
-      m.body() << "return *getODSOperands(" << i << ").begin();";
+      m.body() << "  return *getODSOperands(" << i << ").begin();";
     }
   }
 }
@@ -727,7 +727,7 @@ void OpEmitter::genNamedResultGetters() {
                               "unsigned index");
 
   if (numVariadicResults == 0) {
-    m.body() << "return {std::next(getOperation()->result_begin(), index), "
+    m.body() << "  return {std::next(getOperation()->result_begin(), index), "
                 "std::next(getOperation()->result_begin(), index + 1)};";
   } else {
     llvm::SmallVector<StringRef, 4> isVariadic;
@@ -749,10 +749,10 @@ void OpEmitter::genNamedResultGetters() {
 
     if (result.isVariadic()) {
       auto &m = opClass.newMethod("Operation::result_range", result.name);
-      m.body() << "return getODSResults(" << i << ");";
+      m.body() << "  return getODSResults(" << i << ");";
     } else {
       auto &m = opClass.newMethod("Value *", result.name);
-      m.body() << "return *getODSResults(" << i << ").begin();";
+      m.body() << "  return *getODSResults(" << i << ").begin();";
     }
   }
 }
@@ -763,7 +763,7 @@ void OpEmitter::genNamedRegionGetters() {
     const auto &region = op.getRegion(i);
     if (!region.name.empty()) {
       auto &m = opClass.newMethod("Region &", region.name);
-      m.body() << formatv("return this->getOperation()->getRegion({0});", i);
+      m.body() << formatv("  return this->getOperation()->getRegion({0});", i);
     }
   }
 }
@@ -1218,7 +1218,7 @@ void OpEmitter::genOperandResultVerifier(OpMethodBody &body,
                   &fctx.withSelf("v->getType()"))
          << ")) {\n"
          << formatv("        return emitOpError(\"{0} #\") << index "
-                    "<< \" must be {1}\";\n",
+                    "<< \" must be {1}, but got \" << v->getType();\n",
                     valueKind, constraint.getDescription())
          << "      }\n" // if
          << "      ++index;\n"

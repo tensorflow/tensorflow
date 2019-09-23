@@ -222,7 +222,7 @@ class CollRMADistTest : public ::testing::Test {
           device_type,
           strings::StrCat(worker_name, "/device:", device_type, ":", i)));
     }
-    DeviceMgr* dev_mgr = new DeviceMgr(std::move(devices));
+    DeviceMgr* dev_mgr = new StaticDeviceMgr(std::move(devices));
     device_mgrs_.push_back(dev_mgr);
     std::vector<string>* dv = &dev_by_task_[worker_name];
     dv->clear();

@@ -178,6 +178,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kWhile:
     case HloOpcode::kGetDimensionSize:
+    case HloOpcode::kSetDimensionSize:
       return true;
   }
 

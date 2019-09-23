@@ -116,8 +116,12 @@ public:
   void printFunctionalType(Operation *op) {
     auto &os = getStream();
     os << "(";
-    interleaveComma(op->getNonSuccessorOperands(), os,
-                    [&](Value *operand) { printType(operand->getType()); });
+    interleaveComma(op->getNonSuccessorOperands(), os, [&](Value *operand) {
+      if (operand)
+        printType(operand->getType());
+      else
+        os << "<<NULL>";
+    });
     os << ") -> ";
     if (op->getNumResults() == 1 &&
         !op->getResult(0)->getType().isa<FunctionType>()) {
@@ -209,6 +213,14 @@ public:
   // these to be chained together into a linear sequence of || expressions in
   // many cases.
 
+  /// Parse an operation in its generic form.
+  /// The parsed operation is parsed in the current context and inserted in the
+  /// provided block and insertion point. The results produced by this operation
+  /// aren't mapped to any named value in the parser. Returns nullptr on
+  /// failure.
+  virtual Operation *parseGenericOperation(Block *insertBlock,
+                                           Block::iterator insertPt) = 0;
+
   //===--------------------------------------------------------------------===//
   // Token Parsing
   //===--------------------------------------------------------------------===//
@@ -234,15 +246,27 @@ public:
   /// Parse a `=` token.
   virtual ParseResult parseEqual() = 0;
 
-  /// Parse a keyword.
-  ParseResult parseKeyword(const char *keyword, const Twine &msg = "") {
+  /// Parse a given keyword.
+  ParseResult parseKeyword(StringRef keyword, const Twine &msg = "") {
+    auto loc = getCurrentLocation();
     if (parseOptionalKeyword(keyword))
-      return emitError(getNameLoc(), "expected '") << keyword << "'" << msg;
+      return emitError(loc, "expected '") << keyword << "'" << msg;
     return success();
   }
 
-  /// Parse a keyword if present.
-  virtual ParseResult parseOptionalKeyword(const char *keyword) = 0;
+  /// Parse a keyword into 'keyword'.
+  ParseResult parseKeyword(StringRef *keyword) {
+    auto loc = getCurrentLocation();
+    if (parseOptionalKeyword(keyword))
+      return emitError(loc, "expected valid keyword");
+    return success();
+  }
+
+  /// Parse the given keyword if present.
+  virtual ParseResult parseOptionalKeyword(StringRef keyword) = 0;
+
+  /// Parse a keyword, if present, into 'keyword'.
+  virtual ParseResult parseOptionalKeyword(StringRef *keyword) = 0;
 
   /// Parse a `(` token.
   virtual ParseResult parseLParen() = 0;

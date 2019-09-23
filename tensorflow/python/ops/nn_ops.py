@@ -2937,6 +2937,13 @@ def softmax(logits, axis=None, name=None, dim=None):
 
       softmax = tf.exp(logits) / tf.reduce_sum(tf.exp(logits), axis)
 
+  See: https://en.wikipedia.org/wiki/Softmax_function
+
+  Example usage:
+  >>> tf.nn.softmax([-1, 0., 1.])
+  <tf.Tensor: id=32, shape=(3,), dtype=float32,
+  numpy=array([0.09003057, 0.24472848, 0.66524094], dtype=float32)>
+
   Args:
     logits: A non-empty `Tensor`. Must be one of the following types: `half`,
       `float32`, `float64`.
@@ -3067,6 +3074,13 @@ def softmax_cross_entropy_with_logits_v2(labels, logits, axis=-1, name=None):
 
   If using exclusive `labels` (wherein one and only
   one class is true at a time), see `sparse_softmax_cross_entropy_with_logits`.
+
+  Usage:
+  >>> logits = [[0.6, 0.2, 0.2], [0.0, 0.9, 0.1]]
+  >>> labels = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
+  >>> tf.nn.softmax_cross_entropy_with_logits(labels, logits)
+  <tf.Tensor: id=103, shape=(2,), dtype=float32,
+  numpy=array([0.8504244, 0.6183691], dtype=float32)>
 
   **WARNING:** This op expects unscaled logits, since it performs a `softmax`
   on `logits` internally for efficiency.  Do not call this op with the

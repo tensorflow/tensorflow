@@ -162,7 +162,7 @@ void mlir::populateGpuToNVVMConversionPatterns(
           converter);
 }
 
-std::unique_ptr<ModulePassBase> mlir::createLowerGpuOpsToNVVMOpsPass() {
+std::unique_ptr<OpPassBase<ModuleOp>> mlir::createLowerGpuOpsToNVVMOpsPass() {
   return std::make_unique<LowerGpuOpsToNVVMOpsPass>();
 }
 

@@ -99,6 +99,11 @@ class TPUStrategy(distribute_lib.Strategy):
     """
     super(TPUStrategy, self).__init__(TPUExtended(
         self, tpu_cluster_resolver, device_assignment=device_assignment))
+    distribute_lib.distribution_strategy_gauge.get_cell("V2").set("TPUStrategy")
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_workers").set(self.extended.num_hosts)
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_replicas_per_worker").set(self.extended.num_replicas_per_host)
 
   # TODO(cjfj): Modify `_call_for_each_replica` in `TPUExtended` such that this
   # can use the default implementation.
@@ -135,6 +140,11 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
     """
     super(TPUStrategyV1, self).__init__(TPUExtended(
         self, tpu_cluster_resolver, steps_per_run, device_assignment))
+    distribute_lib.distribution_strategy_gauge.get_cell("V1").set("TPUStrategy")
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_workers").set(self.extended.num_hosts)
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_replicas_per_worker").set(self.extended.num_replicas_per_host)
 
   @property
   def steps_per_run(self):

@@ -40,13 +40,6 @@ else:
   _get_thread_key = thread.get_ident
 
 
-# Names for indices into TF traceback tuples.
-TB_FILENAME = 0
-TB_LINENO = 1
-TB_FUNCNAME = 2
-TB_CODEDICT = 3  # Dictionary of Python interpreter state.
-
-
 _source_mapper_stacks = collections.defaultdict(list)
 _source_filter_stacks = collections.defaultdict(list)
 
@@ -148,7 +141,7 @@ def extract_stack(limit=-1):
     limit: A limit on the number of frames to return.
 
   Returns:
-    A sequence of StackFrame objects (filename, lineno, name, line)
+    A sequence of FrameSummary objects (filename, lineno, name, line)
     corresponding to the call stack of the current thread.
   """
   # N.B ExtractStack in tf_stack.cc will drop this frame prior to
@@ -159,4 +152,5 @@ def extract_stack(limit=-1):
       _source_mapper_stacks[thread_key],
       _source_filter_stacks[thread_key])
 
-StackFrame = _tf_stack.StackFrame
+StackSummary = _tf_stack.StackSummary
+FrameSummary = _tf_stack.FrameSummary

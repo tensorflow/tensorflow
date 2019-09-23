@@ -16,12 +16,22 @@ limitations under the License.
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/no_micro_features_data.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/yes_micro_features_data.h"
-#include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 #include "tensorflow/lite/experimental/micro/micro_interpreter.h"
+#include "tensorflow/lite/experimental/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
+
+namespace tflite {
+namespace ops {
+namespace micro {
+TfLiteRegistration* Register_DEPTHWISE_CONV_2D();
+TfLiteRegistration* Register_FULLY_CONNECTED();
+TfLiteRegistration* Register_SOFTMAX();
+}  // namespace micro
+}  // namespace ops
+}  // namespace tflite
 
 TF_LITE_MICRO_TESTS_BEGIN
 
@@ -41,16 +51,31 @@ TF_LITE_MICRO_TEST(TestInvoke) {
         model->version(), TFLITE_SCHEMA_VERSION);
   }
 
-  // This pulls in all the operation implementations we need.
-  tflite::ops::micro::AllOpsResolver resolver;
+  // Pull in only the operation implementations we need.
+  // This relies on a complete list of all the ops needed by this graph.
+  // An easier approach is to just use the AllOpsResolver, but this will
+  // incur some penalty in code space for op implementations that are not
+  // needed by this graph.
+  //
+  // tflite::ops::micro::AllOpsResolver resolver;
+  tflite::MicroMutableOpResolver micro_mutable_op_resolver;
+  micro_mutable_op_resolver.AddBuiltin(
+      tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
+      tflite::ops::micro::Register_DEPTHWISE_CONV_2D());
+  micro_mutable_op_resolver.AddBuiltin(
+      tflite::BuiltinOperator_FULLY_CONNECTED,
+      tflite::ops::micro::Register_FULLY_CONNECTED());
+  micro_mutable_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
+                                       tflite::ops::micro::Register_SOFTMAX());
 
   // Create an area of memory to use for input, output, and intermediate arrays.
   const int tensor_arena_size = 10 * 1024;
   uint8_t tensor_arena[tensor_arena_size];
 
   // Build an interpreter to run the model with.
-  tflite::MicroInterpreter interpreter(model, resolver, tensor_arena,
-                                       tensor_arena_size, error_reporter);
+  tflite::MicroInterpreter interpreter(model, micro_mutable_op_resolver,
+                                       tensor_arena, tensor_arena_size,
+                                       error_reporter);
   interpreter.AllocateTensors();
 
   // Get information about the memory area to use for the model's input.

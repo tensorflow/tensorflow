@@ -107,9 +107,10 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1], name="foo")
       resource_variable_ops.assign_variable_op(handle, 1)
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "Trying to read variable with wrong dtype. "
-                                   "Expected float got int32."):
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          "Trying to read variable with wrong dtype. "
+          "Expected float got int32"):
         _ = resource_variable_ops.read_variable_op(handle, dtype=dtypes.float32)
 
   def testEagerInitializedValue(self):
@@ -195,9 +196,9 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
           dtype=dtypes.int32, shape=[1], name="foo")
       resource_variable_ops.assign_variable_op(
           handle, constant_op.constant([1]))
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "Trying to assign variable with wrong "
-                                   "dtype. Expected int32 got float."):
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError, "Trying to assign variable with wrong "
+          "dtype. Expected int32 got float"):
         resource_variable_ops.assign_variable_op(
             handle, constant_op.constant([1.], dtype=dtypes.float32))
 
@@ -656,12 +657,6 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       self.assertEqual(v.handle.op.colocation_groups(),
                        v.initializer.inputs[1].op.colocation_groups())
 
-  def testHandleNumpy(self):
-    with context.eager_mode():
-      with self.assertRaises(ValueError):
-        resource_variable_ops.ResourceVariable(
-            1.0, name="handle-numpy").handle.numpy()
-
   def testCountUpTo(self):
     with context.eager_mode():
       v = resource_variable_ops.ResourceVariable(0, name="upto")
@@ -986,7 +981,9 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       x = resource_variable_ops.var_handle_op(
           dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var5",
           container=ops.get_default_graph()._container)
-      with self.assertRaisesOpError("Resource .*/var5/.* does not exist"):
+      with self.assertRaisesOpError(
+          "(Resource .*/var5/.* does not exist|Read of uninitialized variable)"
+      ):
         resource_variable_ops.read_variable_op(x, v.dtype.base_dtype).eval()
 
   @test_util.run_deprecated_v1

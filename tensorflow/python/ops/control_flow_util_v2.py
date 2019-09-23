@@ -31,6 +31,7 @@ from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_v2_func_graphs
 from tensorflow.python.util import tf_contextlib
 
+
 _EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = None
 
 CondBranchFuncGraph = control_flow_v2_func_graphs.CondBranchFuncGraph
@@ -258,7 +259,18 @@ def output_all_intermediates():
 
 def get_func_graph(op, input_shapes, func_name):
   """Generates and returns a FuncGraph for the given op and input_shapes."""
-  fdef = op.graph._get_function(func_name).definition  # pylint: disable=protected-access
+  graph = op.graph
+  # Recursively search the func in graphs.
+  while graph is not None:
+    func = graph._get_function(func_name)  # pylint: disable=protected-access
+    if func is not None:
+      fdef = func.definition
+      break
+    if hasattr(graph, "outer_graph"):
+      graph = graph.outer_graph
+    else:
+      break
+
   # `op.graph` may not be the same as `ops.get_default_graph()` e.g.
   # in the case of nested if ops or when the gradient is being computed
   # from inside a Defun. We build the `func_graph` with `op.graph` as its
@@ -266,5 +278,6 @@ def get_func_graph(op, input_shapes, func_name):
   # forward pass. We need this so that we can resolve references to tensors
   # in `func_graph` from its gradient graph in `_resolve_grad_inputs`.
   with op.graph.as_default():
-    func_graph = function_def_to_graph.function_def_to_graph(fdef, input_shapes)
+    func_graph = function_def_to_graph.function_def_to_graph(
+        fdef, input_shapes)
   return func_graph

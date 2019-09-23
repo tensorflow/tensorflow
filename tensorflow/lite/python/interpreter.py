@@ -23,7 +23,8 @@ import sys
 import numpy as np
 
 # pylint: disable=g-import-not-at-top
-try:
+if not __file__.endswith('tflite_runtime/interpreter.py'):
+  # This file is part of tensorflow package.
   from tensorflow.python.util.lazy_loader import LazyLoader
   from tensorflow.python.util.tf_export import tf_export as _tf_export
 
@@ -38,15 +39,13 @@ try:
   # pylint: enable=g-inconsistent-quotes
 
   del LazyLoader
-except ImportError:
-  # When full Tensorflow Python PIP is not available do not use lazy load
-  # and instead of the tflite_runtime path.
+else:
+  # This file is part of tflite_runtime package.
   from tflite_runtime import interpreter_wrapper as _interpreter_wrapper
 
-  def tf_export_dummy(*x, **kwargs):
+  def _tf_export(*x, **kwargs):
     del x, kwargs
     return lambda x: x
-  _tf_export = tf_export_dummy
 
 
 class Delegate(object):
@@ -108,7 +107,7 @@ class Delegate(object):
         self.message = ''
 
       def report(self, x):
-        self.message += x
+        self.message += x if isinstance(x, str) else x.decode('utf-8')
 
     capture = ErrorMessageCapture()
     error_capturer_cb = ctypes.CFUNCTYPE(None, ctypes.c_char_p)(capture.report)

@@ -308,8 +308,7 @@ def load_function_def_library(library, load_shared_name_suffix=None):
     # extra function definitions are a no-op since they already imported as a
     # function before and passed in explicitly (due to the topologic sort
     # import).
-    func_graph = function_def_lib.function_def_to_graph(
-        copy, copy_functions=False)
+    func_graph = function_def_lib.function_def_to_graph(copy)
 
     for dep in _list_function_deps(fdef, library_function_names):
       functions[dep].add_to_graph(func_graph)

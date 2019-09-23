@@ -190,6 +190,8 @@ class CuptiInterface {
   TF_DISALLOW_COPY_AND_ASSIGN(CuptiInterface);
 };
 
+CuptiInterface* GetCuptiInterface();
+
 }  // namespace profiler
 }  // namespace tensorflow
 

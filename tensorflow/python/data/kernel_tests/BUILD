@@ -428,6 +428,7 @@ cuda_py_test(
     tags = [
         "no_oss",
         "no_windows_gpu",
+        "nogpu",  #TODO(b/141255188): Enable test after bug is resolved.
     ],
     xla_enable_strict_auto_jit = True,
 )
@@ -544,6 +545,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/data/experimental/ops:optimization",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:dataset_ops",
     ],

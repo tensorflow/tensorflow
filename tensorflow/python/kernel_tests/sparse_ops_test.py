@@ -778,12 +778,14 @@ class SparseMathOpsTest(test_util.TensorFlowTestCase):
   def _check(self, result_tensor, result_np, input_sp_t):
     self.assertTrue(isinstance(result_tensor, sparse_tensor.SparseTensor))
     self.assertTrue(isinstance(input_sp_t, sparse_tensor.SparseTensor))
-    self.assertAllEqual(input_sp_t.indices, result_tensor.indices)
-    self.assertAllEqual(input_sp_t.dense_shape, result_tensor.dense_shape)
+    self.assertAllCloseAccordingToType(input_sp_t.indices,
+                                       result_tensor.indices)
+    self.assertAllCloseAccordingToType(input_sp_t.dense_shape,
+                                       result_tensor.dense_shape)
 
     res_densified = sparse_ops.sparse_to_dense(
         result_tensor.indices, result_tensor.dense_shape, result_tensor.values)
-    self.assertAllEqual(result_np, res_densified)
+    self.assertAllCloseAccordingToType(result_np, res_densified)
 
   @test_util.run_deprecated_v1
   def testCwiseShapeValidation(self):

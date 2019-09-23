@@ -497,11 +497,8 @@ class EuclideanNormReductionTest(BaseReductionTest):
     if isinstance(reduction_axes, list) or isinstance(reduction_axes,
                                                       np.ndarray):
       reduction_axes = tuple(reduction_axes)
-    if reduction_axes is None or reduction_axes != tuple():
-      np_fro = np.sqrt(
-          np.sum(x * np.conj(x), axis=reduction_axes, keepdims=keepdims))
-    else:
-      np_fro = x
+    np_fro = np.sqrt(
+        np.sum(x * np.conj(x), axis=reduction_axes, keepdims=keepdims))
     if np.issubdtype(x.dtype, np.integer):
       np_fro = np.floor(np_fro)
     return np_fro
@@ -521,6 +518,12 @@ class EuclideanNormReductionTest(BaseReductionTest):
         for special_value_y in [-np.inf, np.inf]:
           np_arr = np.array([special_value_x, special_value_y]).astype(dtype)
           self._compareAll(np_arr, None)
+
+  @test_util.run_deprecated_v1
+  def testSingleton(self):
+    for dtype in [np.float32, np.float64]:
+      np_arr = np.array([-1.]).astype(dtype)
+      self._compareAll(np_arr, None)
 
   @test_util.run_deprecated_v1
   def testInt32(self):

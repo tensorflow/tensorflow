@@ -233,6 +233,8 @@ enum BuiltinOperator : byte {
   HARD_SWISH = 117,
   IF = 118,
   WHILE = 119,
+  NON_MAX_SUPPRESSION_V4 = 120,
+  NON_MAX_SUPPRESSION_V5 = 121,
 }
 
 // Options for the builtin operators.
@@ -330,7 +332,9 @@ union BuiltinOptions {
   HardSwishOptions,
   IfOptions,
   WhileOptions,
-  DepthToSpaceOptions
+  DepthToSpaceOptions,
+  NonMaxSuppressionV4Options,
+  NonMaxSuppressionV5Options
 }
 
 enum Padding : byte { SAME, VALID }
@@ -800,6 +804,12 @@ table IfOptions {
 table WhileOptions {
   cond_subgraph_index:int;
   body_subgraph_index:int;
+}
+
+table NonMaxSuppressionV4Options {
+}
+
+table NonMaxSuppressionV5Options {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

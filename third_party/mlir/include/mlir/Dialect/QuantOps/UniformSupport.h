@@ -29,7 +29,7 @@ namespace mlir {
 namespace quant {
 
 /// Performs type conversion from an arbitrary input type to a type
-/// that is expressed by a UniformQuantizedType.
+/// that is expressed by a QuantizedType.
 ///
 /// This handles cases where the inputType is a supported primitive type
 /// (i.e. f32, bf16, etc) or a vector/tensor type based on a supported
@@ -38,14 +38,13 @@ namespace quant {
 /// Since conversion often involves introspecting some attributes of the
 /// input type in order to determine how to represent it, this is a two step
 /// process.
-struct ExpressedToUniformQuantizedConverter {
+struct ExpressedToQuantizedConverter {
   /// Creates a converter for the given input type.
-  static const ExpressedToUniformQuantizedConverter
-  forInputType(Type inputType);
+  static const ExpressedToQuantizedConverter forInputType(Type inputType);
 
   /// Converts the inputType to be based on the given elemental type,
   /// returning the new type (or nullptr and emit an error on failure).
-  Type convert(UniformQuantizedType elementalType) const;
+  Type convert(QuantizedType elementalType) const;
 
   /// Whether the conversion is legal.
   explicit operator bool() const { return (bool)expressedType; }
@@ -68,7 +67,7 @@ struct ExpressedToUniformQuantizedConverter {
 /// placeholder.
 class UniformQuantizedValueConverter {
 public:
-  UniformQuantizedValueConverter(UniformQuantizedType uniformType)
+  explicit UniformQuantizedValueConverter(UniformQuantizedType uniformType)
       : scale(uniformType.getScale()),
         zeroPoint(static_cast<double>(uniformType.getZeroPoint())),
         clampMin(static_cast<double>(uniformType.getStorageTypeMin())),
@@ -78,6 +77,13 @@ public:
     assert(uniformType.getExpressedType().isa<FloatType>());
     assert(uniformType.getStorageType().isa<IntegerType>());
   }
+
+  UniformQuantizedValueConverter(double scale, double zeroPoint,
+                                 APFloat clampMin, APFloat clampMax,
+                                 uint32_t storageBitWidth, bool isSigned)
+      : scale(scale), zeroPoint(zeroPoint), clampMin(clampMin),
+        clampMax(clampMax), storageBitWidth(storageBitWidth),
+        isSigned(isSigned) {}
 
   virtual APInt quantizeFloatToInt(APFloat expressedValue) const {
     bool lossy;
@@ -111,6 +117,52 @@ private:
   const APFloat clampMax;
   const uint32_t storageBitWidth;
   const bool isSigned;
+};
+
+/// An utility class to quantize an attribute by the per-axis quantization
+/// parameters. The size of the quantization dim in the converted elements
+/// attribute should matche the size of of scales/zeroPoints vectors in the
+/// quantization parameters.
+class UniformQuantizedPerAxisValueConverter {
+public:
+  explicit UniformQuantizedPerAxisValueConverter(
+      UniformQuantizedPerAxisType uniformType)
+      : scales(uniformType.getScales()),
+        zeroPoints(uniformType.getZeroPoints()),
+        clampMin(static_cast<double>(uniformType.getStorageTypeMin())),
+        clampMax(static_cast<double>(uniformType.getStorageTypeMax())),
+        storageBitWidth(uniformType.getStorageTypeIntegralWidth()),
+        isSigned(uniformType.isSigned()),
+        quantizationDim(uniformType.getQuantizedDimension()) {
+    assert(uniformType.getExpressedType().isa<FloatType>());
+    assert(uniformType.getStorageType().isa<IntegerType>());
+    assert(scales.size() == zeroPoints.size());
+  }
+
+  /// Quantize an Attribute by the quantization parameters. Return nullptr if
+  /// the conversion fails or the input array isn't an ElementsAttr.
+  ElementsAttr convert(Attribute realValue);
+
+private:
+  /// Quantize an DenseFPElementsAttr by the quantization parameters.
+  DenseElementsAttr convert(DenseFPElementsAttr attr);
+
+  /// Get a uniform converter for the index-th chunk along the quantizationDim.
+  /// All the elements in this chunk is quantized by the returned converter.
+  UniformQuantizedValueConverter getPerChunkConverter(int index) const {
+    UniformQuantizedValueConverter converter(scales[index], zeroPoints[index],
+                                             clampMin, clampMax,
+                                             storageBitWidth, isSigned);
+    return converter;
+  }
+
+  const ArrayRef<double> scales;
+  const ArrayRef<int64_t> zeroPoints;
+  const APFloat clampMin;
+  const APFloat clampMax;
+  const uint32_t storageBitWidth;
+  const bool isSigned;
+  int32_t quantizationDim;
 };
 
 } // namespace quant

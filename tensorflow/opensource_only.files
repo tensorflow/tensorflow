@@ -1,4 +1,4 @@
-llvm/llvm/projects/google_mlir/WORKSPACE
+llvm/llvm/projects/google_mlir/mlir_configure.bzl
 tensorflow/__init__.py
 tensorflow/api_template.__init__.py
 tensorflow/api_template_v1.__init__.py
@@ -38,8 +38,11 @@ tensorflow/third_party/eigen3/Eigen/Cholesky
 tensorflow/third_party/eigen3/Eigen/Core
 tensorflow/third_party/eigen3/Eigen/Eigenvalues
 tensorflow/third_party/eigen3/Eigen/LU
+tensorflow/third_party/eigen3/Eigen/OrderingMethods
 tensorflow/third_party/eigen3/Eigen/QR
 tensorflow/third_party/eigen3/Eigen/SVD
+tensorflow/third_party/eigen3/Eigen/SparseCholesky
+tensorflow/third_party/eigen3/Eigen/SparseCore
 tensorflow/third_party/eigen3/LICENSE
 tensorflow/third_party/eigen3/gpu_packet_math.patch
 tensorflow/third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint
@@ -66,6 +69,7 @@ tensorflow/third_party/fft2d/fft2d.h
 tensorflow/third_party/functools32.BUILD
 tensorflow/third_party/gast.BUILD
 tensorflow/third_party/gif.BUILD
+tensorflow/third_party/gif_fix_strtok_r.patch
 tensorflow/third_party/git/BUILD
 tensorflow/third_party/git/BUILD.tpl
 tensorflow/third_party/git/git_configure.bzl
@@ -93,8 +97,6 @@ tensorflow/third_party/gpus/rocm_configure.bzl
 tensorflow/third_party/grpc/BUILD
 tensorflow/third_party/icu/udata.patch
 tensorflow/third_party/jsoncpp.BUILD
-tensorflow/third_party/kafka/BUILD
-tensorflow/third_party/kafka/config.patch
 tensorflow/third_party/libxsmm.BUILD
 tensorflow/third_party/linenoise.BUILD
 tensorflow/third_party/llvm/BUILD

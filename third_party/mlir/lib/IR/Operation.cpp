@@ -280,6 +280,15 @@ Operation *Operation::getParentOp() {
   return block ? block->getParentOp() : nullptr;
 }
 
+/// Return true if this operation is a proper ancestor of the `other`
+/// operation.
+bool Operation::isProperAncestor(Operation *other) {
+  while ((other = other->getParentOp()))
+    if (this == other)
+      return true;
+  return false;
+}
+
 /// Replace any uses of 'from' with 'to' within this operation.
 void Operation::replaceUsesOfWith(Value *from, Value *to) {
   if (from == to)
@@ -287,19 +296,6 @@ void Operation::replaceUsesOfWith(Value *from, Value *to) {
   for (auto &operand : getOpOperands())
     if (operand.get() == from)
       operand.set(to);
-}
-
-//===----------------------------------------------------------------------===//
-// Operation Walkers
-//===----------------------------------------------------------------------===//
-
-void Operation::walk(llvm::function_ref<void(Operation *)> callback) {
-  // Visit any internal operations.
-  for (auto &region : getRegions())
-    region.walk(callback);
-
-  // Visit the current operation.
-  callback(this);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1038,4 +1034,47 @@ void impl::ensureRegionTerminator(
     return;
 
   block.push_back(buildTerminatorOp());
+}
+
+UseIterator::UseIterator(Operation *op, bool end)
+    : op(op), res(end ? op->result_end() : op->result_begin()) {
+  // Only initialize current use if there are results/can be uses.
+  if (op->getNumResults())
+    skipOverResultsWithNoUsers();
+}
+
+UseIterator &UseIterator::operator++() {
+  // We increment over uses, if we reach the last use then move to next
+  // result.
+  if (use != (*res)->use_end())
+    ++use;
+  if (use == (*res)->use_end()) {
+    ++res;
+    skipOverResultsWithNoUsers();
+  }
+  return *this;
+}
+
+bool UseIterator::operator==(const UseIterator &other) const {
+  if (op != other.op)
+    return false;
+  if (op->getNumResults() == 0)
+    return true;
+  return res == other.res && use == other.use;
+}
+
+bool UseIterator::operator!=(const UseIterator &other) const {
+  return !(*this == other);
+}
+
+void UseIterator::skipOverResultsWithNoUsers() {
+  while (res != op->result_end() && (*res)->use_empty())
+    ++res;
+
+  // If we are at the last result, then set use to first use of
+  // first result (sentinel value used for end).
+  if (res == op->result_end())
+    use = {};
+  else
+    use = (*res)->use_begin();
 }

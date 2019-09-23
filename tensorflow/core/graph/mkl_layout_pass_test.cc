@@ -1494,6 +1494,61 @@ TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Negative_MinFirst) {
             "A(Input);B(Const);C(Const);D(QuantizeV2);E(Zeta)|"
             "A->D;B->D:1;C->D:2;D->E");
 }
+
+TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Negative_NarrowRange_True) {
+  InitGraph(
+      "node { name: 'A' op: 'Input' } "
+      "node { name: 'B' op: 'Const' "
+      " attr { key: 'dtype' value { type: DT_FLOAT } }"
+      " attr { key: 'value' value { "
+      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "
+      "    int_val: 0 } } } }"
+      "node { name: 'C' op: 'Const' "
+      " attr { key: 'dtype' value { type: DT_FLOAT } }"
+      " attr { key: 'value' value { "
+      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "
+      "    int_val: 0 } } } }"
+      "node { name: 'D' op: 'QuantizeV2'"
+      " attr { key: 'T'                 value { type: DT_QUINT8 } }"
+      " attr { key: 'mode'              value { s: 'SCALED' } }"
+      " attr { key: 'round_mode'        value { s: 'HALF_TO_EVEN' } }"
+      " attr { key: 'narrow_range'      value { b: true } }"
+      " attr { key: 'axis'              value { i: -1 } }"
+      " input: ['A', 'B', 'C']}"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_QUINT8 } }"
+      " input: ['D'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Const);C(Const);D(QuantizeV2);E(Zeta)|"
+            "A->D;B->D:1;C->D:2;D->E");
+}
+
+TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Negative_PerSlice_Enabled) {
+  InitGraph(
+      "node { name: 'A' op: 'Input' } "
+      "node { name: 'B' op: 'Const' "
+      " attr { key: 'dtype' value { type: DT_FLOAT } }"
+      " attr { key: 'value' value { "
+      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "
+      "    int_val: 0 } } } }"
+      "node { name: 'C' op: 'Const' "
+      " attr { key: 'dtype' value { type: DT_FLOAT } }"
+      " attr { key: 'value' value { "
+      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "
+      "    int_val: 0 } } } }"
+      "node { name: 'D' op: 'QuantizeV2'"
+      " attr { key: 'T'                 value { type: DT_QUINT8 } }"
+      " attr { key: 'mode'              value { s: 'SCALED' } }"
+      " attr { key: 'round_mode'        value { s: 'HALF_TO_EVEN' } }"
+      " attr { key: 'narrow_range'      value { b: false } }"
+      " attr { key: 'axis'              value { i: 2 } }"
+      " input: ['A', 'B', 'C']}"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_QUINT8 } }"
+      " input: ['D'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Const);C(Const);D(QuantizeV2);E(Zeta)|"
+            "A->D;B->D:1;C->D:2;D->E");
+}
+
 TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Negative_HalfFromZero) {
   InitGraph(
       "node { name: 'A' op: 'Input' } "
@@ -3821,6 +3876,65 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Slice_DeviceTest) {
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "A(Input);B(Int32Input);C(Int32Input);D(Slice);E(Zeta)|A->D;A->E;"
             "B->D:1;C->D:2;D->E:1");
+}
+
+// The following positive and negative tests test the rewrite of Add and AddV2
+// to MKL versions. The operators will be rewritten only if one of the inputs
+// comes from another MKL operator.
+TEST_F(MklLayoutPassTest, PositiveRewriteAdd) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'M' op: 'Relu'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['A']}"
+      "node { name: 'N' op: 'Add'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['M', 'B']}");
+  EXPECT_EQ(
+      DoMklLayoutOptimizationPass(),
+      "A(Input);B(Input);DMT/_0(Const);DMT/_1(Const);M(_MklRelu);N(_MklAdd)"
+      "|A->M;A:control->DMT/_0:control;B->N:1;DMT/_0->M:1;DMT/_1->N:3;M->N;"
+      "M:1->N:2;M:control->DMT/_1:control");
+}
+
+TEST_F(MklLayoutPassTest, NegativeRewriteAdd) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'N' op: 'Add'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['A', 'B']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);N(Add)|A->N;B->N:1");
+}
+
+TEST_F(MklLayoutPassTest, PositiveRewriteAddV2) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'M' op: 'Relu'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['A']}"
+      "node { name: 'N' op: 'AddV2'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['M', 'B']}");
+  EXPECT_EQ(
+      DoMklLayoutOptimizationPass(),
+      "A(Input);B(Input);DMT/_0(Const);DMT/_1(Const);M(_MklRelu);N(_MklAddV2)"
+      "|A->M;A:control->DMT/_0:control;B->N:1;DMT/_0->M:1;DMT/_1->N:3;M->N;"
+      "M:1->N:2;M:control->DMT/_1:control");
+}
+
+TEST_F(MklLayoutPassTest, NegativeRewriteAddV2) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'N' op: 'AddV2'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['A', 'B']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);N(AddV2)|A->N;B->N:1");
 }
 
 /////////////////////////////////////////////////////////////////////

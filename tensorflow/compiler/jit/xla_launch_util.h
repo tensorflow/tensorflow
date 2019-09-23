@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_tensor.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -159,6 +160,11 @@ class XlaComputationLaunchContext {
   const std::vector<xla::ShapedBuffer*>& arguments() const { return arg_ptrs_; }
 
  private:
+  Tensor MakeOutputTensor(
+      DataType type, const TensorShape& shape, se::DeviceMemoryBase buffer,
+      int output_num, const xla::HloInputOutputAliasConfig& input_output_alias,
+      Allocator* allocator);
+
   xla::LocalClient* client_;
   se::DeviceMemoryAllocator* xla_allocator_;
   bool allocate_xla_tensors_;

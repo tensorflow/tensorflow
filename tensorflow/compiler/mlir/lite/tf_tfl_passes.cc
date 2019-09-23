@@ -26,7 +26,8 @@ limitations under the License.
 
 namespace mlir {
 /// Create a pass to convert from the TFExecutor to the TF control dialect.
-std::unique_ptr<FunctionPassBase> CreateTFExecutorToControlDialectConversion();
+std::unique_ptr<OpPassBase<FuncOp>>
+CreateTFExecutorToControlDialectConversion();
 }  // namespace mlir
 
 namespace tensorflow {
@@ -41,13 +42,9 @@ bool ShouldRunQuantizePasses(mlir::ModuleOp m) {
 
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
                                 mlir::PassManager* pass_manager) {
+  pass_manager->addPass(mlir::tf_executor::CreateSwitchFoldPass());
   pass_manager->addPass(mlir::CreateTFExecutorToControlDialectConversion());
   pass_manager->addPass(mlir::TFControlFlow::CreateRaiseTFControlFlowPass());
-  // Ophint extraction will happen after island extraction pass.
-  pass_manager->addPass(mlir::TFL::CreateExtractOphintPass());
-  // Convert composite op pass will happen after ophint extraction pass.
-  pass_manager->addPass(mlir::TFL::CreateLegalizeOphintFuncOpPass());
-
   if (pass_config.lower_tensor_list_ops) {
     // Execute this pass before `CanonicalizerPass` in case some TensorList
     // ops are constant folded into variant types.
@@ -67,6 +64,10 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   // The below passes only make sense if Builtin TFLite ops are enabled
   // for emission.
   if (pass_config.emit_builtin_tflite_ops) {
+    pass_manager->addPass(mlir::TFL::CreateExtractOphintPass());
+    // Convert composite op pass will happen after ophint extraction pass.
+    pass_manager->addPass(mlir::TFL::CreateLegalizeOphintFuncOpPass());
+
     // Prepare for TFLite dialect, rerun canonicalization, and then legalize to
     // the TFLite dialect.
     pass_manager->addPass(mlir::TFL::CreatePrepareTFPass());
@@ -82,6 +83,13 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     }
     pass_manager->addPass(mlir::createCanonicalizerPass());
     pass_manager->addPass(mlir::createCSEPass());
+    // This pass should be always at the end. Some TFL ops like unidirectional
+    // sequence lstm will have stateful operands and some optimization passes
+    // will merge those operands if they have identical values & types. However,
+    // it's not desired by TFL. This pass serves as a "fix" pass to split the
+    // merged inputs until we have 1st class variable support or reuse
+    // tf.ariable to model this.
+    pass_manager->addPass(mlir::TFL::CreateSplitMergedOperandsPass());
   }
 }
 

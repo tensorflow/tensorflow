@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_traits.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -548,33 +549,43 @@ QuantParams QuantizationDriver::GetQuantParamsForSameScaleConstraint(
 }
 
 void QuantizationDriver::PreprocessConstantOps() {
-  fn_.walk<ConstantOp>([&](ConstantOp cst) {
-    // Non-float tensors are neither weights or require quantization.
-    if (!cst.getType().cast<ShapedType>().getElementType().isa<FloatType>()) {
-      return;
-    }
+  fn_.walk([&](ConstantOp cst) {
+    // Non-float tensors are neither weights nor require quantization.
+    auto type = cst.getType().dyn_cast<ShapedType>();
+    if (!type || !type.getElementType().isa<FloatType>()) return;
 
     Value *value = cst.getResult();
     SmallVector<std::pair<Operation *, int>, 4> bias_users;
+    bool used_as_weight = false;
     for (auto &use : value->getUses()) {
       auto spec = GetQuantSpec(use.getOwner());
       auto biases = spec->biases_params;
       Operation *user = use.getOwner();
       int operand_num = use.getOperandNumber();
 
-      // The user doesn't use this value as a bias operand nor require same
-      // scale.
+      // The user doesn't use this value as a bias operand or require same
+      // scale, then this constant is considered to be a weight.
       if (biases.find(operand_num) == biases.end() &&
-          !spec->requires_same_scale) {
-        weights_.insert(cst);
+          !user->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>()) {
+        used_as_weight = true;
       } else {
         bias_users.push_back({user, operand_num});
       }
     }
-    builder_.setInsertionPoint(cst);
-    for (int i = 1; i < bias_users.size(); ++i) {
+
+    // If the constant is used as a weight, this constant will be duplicated for
+    // each bias user, so it isn't shared with the weight usage. Otherwise, the
+    // first bias user can use the original constant and the rest use the
+    // duplications, so we pop bias user from the set.
+    if (used_as_weight) {
+      weights_.insert(cst);
+    } else {
+      bias_users.pop_back();
+      builder_.setInsertionPoint(cst);
+    }
+    for (auto bias_user : bias_users) {
       auto copied = builder_.create<ConstantOp>(cst.getLoc(), cst.getValue());
-      bias_users[i].first->setOperand(bias_users[i].second, copied.getResult());
+      bias_user.first->setOperand(bias_user.second, copied.getResult());
     }
   });
 }
@@ -583,8 +594,9 @@ void QuantizationDriver::SetupAllStates() {
   llvm::DenseMap<Value *, int> value_to_state;
 
   fn_.walk([&](Operation *op) {
-    if (op->isKnownTerminator()) return;
-    if (!GetQuantSpec(op)->is_quantizable) return;
+    if (op->isKnownTerminator() ||
+        op->hasTrait<OpTrait::quant::NoQuantizableResult>())
+      return;
     work_list_.push_back(op);
 
     for (int i = 0, e = op->getNumOperands(); i != e; ++i) {
@@ -643,12 +655,6 @@ bool QuantizationDriver::PropagateParams() {
     if (llvm::is_contained(quantized_, op)) continue;
     quantized_.insert(op);
 
-    auto spec = GetQuantSpec(op);
-
-    // If the op has no quantizable result, the quantization parameters will not
-    // be propagated to the results.
-    if (!spec->is_quantizable) continue;
-
     if (auto cst = llvm::dyn_cast<ConstantOp>(op)) {
       // If it isn't a weight or has been quantized, skip.
       if (!IsWeight(cst) || IsQuantized(op)) continue;
@@ -659,7 +665,7 @@ bool QuantizationDriver::PropagateParams() {
       continue;
     }
 
-    if (spec->requires_same_scale) {
+    if (op->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>()) {
       auto params = GetQuantParamsForSameScaleConstraint(op);
       // The quantization parameters haven't been propagated to any operands or
       // results. Skip this node for now.
@@ -678,6 +684,7 @@ bool QuantizationDriver::PropagateParams() {
     }
 
     // TODO(fengliuai): make the bit width configurable.
+    auto spec = GetQuantSpec(op);
     auto key = std::make_pair(8, is_signed_);
     auto &restricted_outputs = spec->restricted_output_params[key];
     for (int i = 0, e = restricted_outputs.size(); i != e; ++i) {

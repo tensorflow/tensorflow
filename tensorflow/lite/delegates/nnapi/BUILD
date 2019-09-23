@@ -38,6 +38,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "acceleration_test_util",
+    testonly = 1,
+    srcs = [
+        "acceleration_test_list.cc",
+        "acceleration_test_util.cc",
+    ],
+    hdrs = ["acceleration_test_util.h"],
+    deps = [
+        ":nnapi_delegate",
+        "//tensorflow/lite/kernels:acceleration_test_util_internal",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 cc_test(
     name = "nnapi_delegate_test",
     size = "small",

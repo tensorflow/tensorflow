@@ -90,6 +90,7 @@ std::string GetGlobalAddressNoDeclaration(TensorStorageType storage_type,
                                           const std::string& z) {
   switch (storage_type) {
     case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
       return absl::Substitute("((($2) * $3.y + ($1)) * $3.x + ($0))", x, y, z,
                               size_name);
     case TensorStorageType::TEXTURE_2D:
@@ -112,6 +113,7 @@ std::string GetGlobalAddress(TensorStorageType storage_type,
       GetGlobalAddressNoDeclaration(storage_type, size_name, x, y, z);
   switch (storage_type) {
     case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
       return absl::StrCat("int ", var_name, " = ", address, ";\n");
     case TensorStorageType::TEXTURE_2D:
       return absl::StrCat("int2 ", var_name, " = ", address, ";\n");
@@ -167,6 +169,9 @@ std::string ReadGlobalFLT4(TensorStorageType storage_type, DataType data_type,
           GetReadImageFromDataType(data_type), "(", tensor_name,
           ", " + TextureAddressModeToString(address_mode) + ", ",
           global_address, ")");
+    case TensorStorageType::IMAGE_BUFFER:
+      return absl::StrCat(GetReadImageFromDataType(data_type), "(", tensor_name,
+                          ", ", global_address, ")");
     case TensorStorageType::UNKNOWN:
       return "";
   }
@@ -187,6 +192,9 @@ std::string ReadGlobalFloat4(TensorStorageType storage_type,
           "read_imagef(", tensor_name,
           ", " + TextureAddressModeToString(address_mode) + ", ",
           global_address, ")");
+    case TensorStorageType::IMAGE_BUFFER:
+      return absl::StrCat("read_imagef(", tensor_name, ", ", global_address,
+                          ")");
     case TensorStorageType::UNKNOWN:
       return "";
   }
@@ -220,6 +228,7 @@ std::string WriteGlobalFLT4(TensorStorageType storage_type, DataType data_type,
                             const std::string& y, const std::string& z) {
   switch (storage_type) {
     case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
       return absl::StrCat(tensor_name, "[((", z, ") * ", size_name, ".y + (", y,
                           ")) * ", size_name, ".x + (", x, ")] = ", var_name,
                           ";\n");
@@ -246,13 +255,11 @@ std::string WriteGlobalFLT4(TensorStorageType storage_type, DataType data_type,
                             const std::string& global_address) {
   switch (storage_type) {
     case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
       return absl::StrCat(tensor_name, "[", global_address, "] = ", var_name,
                           ";\n");
     case TensorStorageType::TEXTURE_2D:
     case TensorStorageType::SINGLE_TEXTURE_2D:
-      return absl::StrCat(GetWriteImageFromDataType(data_type), "(",
-                          tensor_name, ", ", global_address, ", ", var_name,
-                          ");\n");
     case TensorStorageType::TEXTURE_ARRAY:
       return absl::StrCat(GetWriteImageFromDataType(data_type), "(",
                           tensor_name, ", ", global_address, ", ", var_name,
@@ -296,6 +303,12 @@ std::string GetTensorDeclaration(TensorStorageType storage_type,
       return GetImageModifier(access) + " image2d_t";
     case TensorStorageType::TEXTURE_ARRAY:
       return GetImageModifier(access) + " image2d_array_t";
+    case TensorStorageType::IMAGE_BUFFER:
+      if (access == AccessType::WRITE) {
+        return absl::StrCat("__global ", GetDataType4(data_type), "*");
+      } else {
+        return GetImageModifier(access) + " image1d_buffer_t";
+      }
     case TensorStorageType::UNKNOWN:
       return "";
   }
@@ -314,6 +327,7 @@ std::string GenerateGlobal3DCoords(TensorStorageType storage_type) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::TEXTURE_ARRAY:
     case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::IMAGE_BUFFER:
     case TensorStorageType::SINGLE_TEXTURE_2D:
       code += "  int X = get_global_id(0);\n";
       code += "  int Y = get_global_id(1);\n";

@@ -50,6 +50,9 @@ void NeonApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
 void NeonApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
                       int16_t* output);
 
+void NeonApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
+                    int16_t* output);
+
 void NeonApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
                     int16_t* output);
 
@@ -59,8 +62,9 @@ void NeonApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
 void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
                   int n_input, int shift, int16_t* output);
 
-void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
-                  int n_input, int shift, int8_t* output);
+void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2,
+                  int32_t multiplier, int shift, int n_batch, int n_input,
+                  int32_t output_zp, int8_t* output);
 
 void NeonCwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
                   int n_input, int16_t* output);
@@ -72,13 +76,13 @@ void NeonCwiseClipping(int8_t* input, const int8_t clipping_value,
                        int32_t n_batch, int32_t n_input);
 
 void NeonMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, const int32_t* input_zeropoint_times_weights,
+    const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
     int32_t* scratch, int8_t* output);
 
 void NeonMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, const int32_t* input_zeropoint_times_weights,
+    const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
     int32_t* scratch, int16_t* output);
@@ -112,12 +116,6 @@ void NeonVectorVectorCwiseProductAccumulate(const float* vector1,
 float NeonVectorVectorDotProduct(const float* vector1, const float* vector2,
                                  int v_size);
 
-// Dot product of two batch vectors.
-void NeonBatchVectorBatchVectorDotProduct(const float* vector1,
-                                          const float* vector2, int v_size,
-                                          int n_batch, float* result,
-                                          int result_stride);
-
 // Cwise product of a vector and a batch-vector.
 void NeonVectorBatchVectorCwiseProduct(const float* vector, int v_size,
                                        const float* batch_vector, int n_batch,
@@ -133,6 +131,8 @@ void NeonVectorBatchVectorCwiseProductAccumulate(const float* vector,
 
 // Compute "1.0f - elements of vector" (used in CIFG).
 void NeonSub1Vector(const float* vector, int v_size, float* result);
+
+void NeonSub1Vector(const int16_t* vector, int v_size, int16_t* result);
 
 // Clip elements of a vector using a abs_limit value.
 void NeonClipVector(const float* vector, int v_size, float abs_limit,

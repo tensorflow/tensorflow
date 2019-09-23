@@ -403,7 +403,7 @@ public:
   virtual PatternMatchResult
   matchAndRewrite(AffineLoadOp op, PatternRewriter &rewriter) const override {
     // Expand affine map from 'affineLoadOp'.
-    SmallVector<Value *, 8> indices(op.getIndices());
+    SmallVector<Value *, 8> indices(op.getMapOperands());
     auto maybeExpandedMap =
         expandAffineMap(rewriter, op.getLoc(), op.getAffineMap(), indices);
     if (!maybeExpandedMap)
@@ -425,7 +425,7 @@ public:
   virtual PatternMatchResult
   matchAndRewrite(AffineStoreOp op, PatternRewriter &rewriter) const override {
     // Expand affine map from 'affineStoreOp'.
-    SmallVector<Value *, 8> indices(op.getIndices());
+    SmallVector<Value *, 8> indices(op.getMapOperands());
     auto maybeExpandedMap =
         expandAffineMap(rewriter, op.getLoc(), op.getAffineMap(), indices);
     if (!maybeExpandedMap)
@@ -529,7 +529,7 @@ class LowerAffinePass : public FunctionPass<LowerAffinePass> {
 
 /// Lowers If and For operations within a function into their lower level CFG
 /// equivalent blocks.
-std::unique_ptr<FunctionPassBase> mlir::createLowerAffinePass() {
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createLowerAffinePass() {
   return std::make_unique<LowerAffinePass>();
 }
 

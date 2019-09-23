@@ -313,6 +313,8 @@ static Status CompileToLocalExecutable(
     options.shape_representation_fn =
         platform_info.xla_device_metadata()->shape_representation_fn();
   }
+  // TODO(b/138728225): Set options.alias_passthrough_params for clusters
+  // without ref variables.
 
   std::map<int, Tensor> constant_args;
   for (int i : constants) {
