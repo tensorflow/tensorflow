@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/util/stats_calculator.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #if defined(__ANDROID__)
-#include "tensorflow/lite/delegates/gpu/gl_delegate.h"
+#include "tensorflow/lite/delegates/gpu/delegate.h"
 #endif
 #include "tensorflow/lite/profiling/time.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_params.h"
