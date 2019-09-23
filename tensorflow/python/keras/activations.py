@@ -124,7 +124,6 @@ def selu(x):
   >>> model.add(Dense(32, kernel_initializer='lecun_normal', activation='selu'))
   >>> model.add(Dense(16, kernel_initializer='lecun_normal', activation='selu'))
   >>> model.add(Dense(n_classes, activation='softmax'))
-  ```
 
   Arguments:
       x: A tensor or variable to compute the activation function for.
@@ -182,7 +181,7 @@ def relu(x, alpha=0., max_value=None, threshold=0):
   Otherwise, it follows:
   `f(x) = max_value` for `x >= max_value`,
   `f(x) = x` for `threshold <= x < max_value`,
-  `f(x) = alpha * (x - threshold)` otherwise`.
+  `f(x) = alpha * (x - threshold)` otherwise.
 
   Arguments:
       x: A tensor or variable.
@@ -204,7 +203,7 @@ def tanh(x):
   >>> a = tf.constant([-3.0,-1.0, 0.0,1.0,3.0], dtype = tf.float32) # Constant 1-D input tensor populated with value list.
   >>> b = tf.keras.activations.tanh(a) #Output tensor 
   >>> b
-   array([-0.9950547, -0.7615942, 0., 0.7615942, 0.9950547], dtype=float32)  #Output tensor
+   array([-0.9950547, -0.7615942, 0., 0.7615942, 0.9950547], dtype=float32)
   
   Arguments:
       x: Input tensor.
