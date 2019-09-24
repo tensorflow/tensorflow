@@ -145,6 +145,7 @@ py_library(
         ":rnn_ops_gen",
         ":saver_test_utils",
         ":script_ops",
+        ":sendrecv_ops_gen",
         ":session_ops",
         ":sets",
         ":sparse_ops",
@@ -2346,6 +2347,13 @@ tf_gen_op_wrapper_private_py(
 tf_gen_op_wrapper_private_py(
     name = "rnn_ops_gen",
     visibility = ["//tensorflow/contrib/rnn:__pkg__"],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "sendrecv_ops_gen",
+    deps = [
+        "//tensorflow/core:sendrecv_ops_op_lib",
+    ],
 )
 
 tf_gen_op_wrapper_private_py(
