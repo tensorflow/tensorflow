@@ -628,10 +628,12 @@ TEST_F(AutoMixedPrecisionTest, TensorListSetGet) {
   Output wht1 = ops::MatMul(s.WithOpName("wht1"), input, input);
   auto tl1w2 =
       ops::TensorListSetItem(s.WithOpName("tl1w2"), tl1.handle, idx2, wht1);
-  Output tl1r1 =
-      ops::TensorListGetItem(s.WithOpName("tl1r1"), tl1w2.output_handle, idx2,
-                             shape, DT_FLOAT)
-          .item;
+  // Ensure that TensorListResize doesn't cause any problems.
+  Output tl1rs =
+      ops::TensorListResize(s.WithOpName("tl1rs"), tl1w2.output_handle, 6);
+  Output tl1r1 = ops::TensorListGetItem(s.WithOpName("tl1r1"), tl1rs, idx2,
+                                        shape, DT_FLOAT)
+                     .item;
   Output gry1 = ops::Tanh(s.WithOpName("gry1"), tl1r1);
   Output wht2 = ops::MatMul(s.WithOpName("wht2"), gry1, gry1);
   auto tl1w3 =

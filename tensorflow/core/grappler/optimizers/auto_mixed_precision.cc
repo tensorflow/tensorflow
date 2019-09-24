@@ -1203,9 +1203,9 @@ Status AutoMixedPrecisionImpl::Optimize() {
   VLOG(2) << "Building node type map for graph";
   TF_RETURN_IF_ERROR(node_type_map_.Init(*graph_));
 
-  // Note: If an op is added to this list, it should also be added to the
-  // AddDataStructureOpsToMap call below (and to the clearlist if it involves
-  // data flow).
+  // Note: If an op is added to this list that has a data type attribute, it
+  // should also be added to the AddDataStructureOpsToMap call below (and to the
+  // clearlist if it involves data flow).
   // TODO(benbarsdell): Add support for TensorListPushBackBatch and
   // TensorListConcatLists. They require special handling because they connect
   // multiple list objects together. Currently if they appear in the graph then
@@ -1227,7 +1227,10 @@ Status AutoMixedPrecisionImpl::Optimize() {
       "TensorListConcat",
       "TensorListConcatV2",
       "TensorListGetItem",
-      "TensorListGather"};
+      "TensorListGather",
+      "TensorListLength",
+      "TensorListElementShape",
+      "TensorListResize"};
 
   bool can_change_tensor_list_ops = true;
   for (const NodeDef& node : graph_->node()) {
