@@ -1255,8 +1255,11 @@ class OpInterfaceTrait<string name> : NativeOpTrait<""> {
 // This class represents a single, optionally static, interface method.
 // Note: non-static interface methods have an implicit 'op' parameter
 // corresponding to an instance of the derived operation.
-class InterfaceMethod<string retTy, string methodName,
+class InterfaceMethod<string desc, string retTy, string methodName,
                       dag args = (ins), code methodBody = [{}]> {
+  // A human-readable description of what this method does.
+  string description = desc;
+
   /// The name of the interface method.
   string name = methodName;
 
@@ -1271,12 +1274,15 @@ class InterfaceMethod<string retTy, string methodName,
 }
 
 // This class represents a single static interface method.
-class StaticInterfaceMethod<string retTy, string methodName,
+class StaticInterfaceMethod<string desc, string retTy, string methodName,
                             dag args = (ins), code methodBody = [{}]>
-    : InterfaceMethod<retTy, methodName, args, methodBody>;
+    : InterfaceMethod<desc, retTy, methodName, args, methodBody>;
 
 // OpInterface represents an interface regarding an op.
 class OpInterface<string name> : OpInterfaceTrait<name> {
+  // A human-readable description of what this interface does.
+  string description = "";
+
   // The name given to the c++ interface class.
   string cppClassName = name;
 

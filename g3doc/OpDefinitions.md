@@ -298,10 +298,11 @@ of the boilerplate necessary.
 
 Providing a definition of the `OpInterface` class will auto-generate the C++
 classes for the interface. An `OpInterface` includes a name, for the C++ class,
-along with a list of interface methods.
+a description, and a list of interface methods.
 
 ```tablegen
 def MyInterface : OpInterface<"MyInterface"> {
+  let description = ...;
   let methods = [...];
 }
 ```
@@ -313,6 +314,8 @@ static method on the derived operation.
 
 An `InterfaceMethod` is comprised of the following components:
 
+*   Description
+    -   A string description of what this method does and its invariants.
 *   ReturnType
     -   A string corresponding to the C++ return type of the method.
 *   MethodName
@@ -331,27 +334,38 @@ Examples:
 
 ```tablegen
 def MyInterface : OpInterface<"MyInterface"> {
+  let description = [{
+    My interface is very interesting. ...
+  }];
+
   let methods = [
     // A simple non-static method with no inputs.
-    InterfaceMethod<"unsigned", "foo">,
+    InterfaceMethod<"'foo' is a non-static method with no inputs.",
+      "unsigned", "foo"
+    >,
 
     // A new non-static method accepting an input argument.
-    InterfaceMethod<"Value *", "bar", (ins "unsigned":$i)>,
+    InterfaceMethod<"/*insert doc here*/",
+      "Value *", "bar", (ins "unsigned":$i)
+    >,
 
     // Query a static property of the derived operation.
-    StaticInterfaceMethod<"unsigned", "fooStatic">,
+    StaticInterfaceMethod<"'fooStatic' is a static method with no inputs.",
+      "unsigned", "fooStatic"
+    >,
 
     // Provide the definition of a static interface method.
     // Note: `ConcreteOp` corresponds to the derived operation typename.
-    StaticInterfaceMethod<"Operation *", "create",
-      (ins "OpBuilder &":$builder, "Location":$loc), [{
+    StaticInterfaceMethod<"/*insert doc here*/",
+      "Operation *", "create", (ins "OpBuilder &":$builder, "Location":$loc), [{
         return builder.create<ConcreteOp>(loc);
     }]>,
 
     // Provide a definition of the non-static method.
     // Note: `op` corresponds to the derived operation variable.
-    InterfaceMethod<"unsigned", "getNumInputsAndOutputs", (ins), [{
-      return op.getNumInputs() + op.getNumOutputs();
+    InterfaceMethod<"/*insert doc here*/",
+      "unsigned", "getNumInputsAndOutputs", (ins), [{
+        return op.getNumInputs() + op.getNumOutputs();
     }]>,
   ];
 }
