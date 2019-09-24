@@ -4258,6 +4258,10 @@ num_elements: optional. If not -1, the number of elements in the list.
   );
 
   TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_TileOp : TF_Op<"Tile", [NoSideEffect]> {

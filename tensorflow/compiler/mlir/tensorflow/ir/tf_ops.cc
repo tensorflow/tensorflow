@@ -1108,6 +1108,18 @@ static LogicalResult Verify(TensorListReserveOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// TensorListStackOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(TensorListStackOp op) {
+  if (!IsOfRankOrUnranked(op.element_shape(), 0) &&
+      !IsOfRankOrUnranked(op.element_shape(), 1)) {
+    return op.emitOpError("requires element_shape operand to be 0D/1D tensor");
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//
 
