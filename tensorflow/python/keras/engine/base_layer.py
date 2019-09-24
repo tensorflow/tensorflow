@@ -2560,7 +2560,7 @@ class TensorFlowOpLayer(Layer):
         attrs.append(attr_name)
         attrs.append(op.get_attr(attr_name))
       attrs = tuple(attrs)
-      execute.record_gradient(op_type, op.inputs, attrs, op.outputs, op.name)
+      execute.record_gradient(op_type, op.inputs, attrs, op.outputs)
 
       if len(op.outputs) == 1:
         return op.outputs[0]

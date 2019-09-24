@@ -64,6 +64,7 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_resource_variable_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
@@ -163,6 +164,95 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     c = constant_op.constant(1.0)
     with self.assertRaisesRegexp(AttributeError, 'no attribute'):
       add(c)
+
+  def testImplementsAttributeBasic(self):
+    v = def_function.function(
+        experimental_implements='func')(lambda x, y: x + y)
+    with context.graph_mode(), self.cached_session():
+      a = array_ops.placeholder(dtypes.float32, ())
+      b = array_ops.placeholder(dtypes.float32, ())
+      v(a, b)
+      gradients_impl.gradients(v(a, b), [a, b])
+      fdefs = ops.get_default_graph().as_graph_def().library.function
+      self.assertLen(fdefs, 3)
+      not_present = 0
+      present = 0
+      for f in fdefs:
+        name = f.signature.name
+        if 'forward' in name or 'backward' in name:
+          not_present += 1
+          self.assertNotIn(function.IMPLEMENTS_ATTRIBUTE_NAME, f.attr, f)
+        else:
+          present += 1
+          self.assertEqual(f.attr[function.IMPLEMENTS_ATTRIBUTE_NAME].s,
+                           'func'.encode('ascii'), f)
+      self.assertEqual(not_present, 2, fdefs)
+      self.assertEqual(present, 1, fdefs)
+
+  def testImplementsAttributeAssertsOnSideInput(self):
+    with context.graph_mode(), self.cached_session():
+      z = array_ops.zeros(0)
+      v = def_function.function(
+          experimental_implements='func')(lambda x, y: x + y + z)
+      a = array_ops.ones((1.0,))
+      b = array_ops.ones((1.0,))
+      with self.assertRaisesRegexp(AssertionError,
+                                   'variables are always captured'):
+        v(a, b)
+      functions = ops.get_default_graph().as_graph_def().library.function
+      self.assertEmpty(functions)
+
+  def testImplementsAttributeWorksOnVariables(self):
+    with context.graph_mode(), self.cached_session():
+      v = def_function.function(
+          experimental_implements='func')(lambda x, y: x + y)
+      a = variables.Variable((1.0,))
+      b = variables.Variable((1.0,))
+      r1 = v(a, b)
+      _ = v(a, a)
+      functions = ops.get_default_graph().as_graph_def().library.function
+      # Verify that we created only one function
+      self.assertLen(functions, 1)
+      # Verify that eval() reads the current values.
+      a.initializer.run()
+      b.initializer.run()
+      self.assertEqual(r1.eval(), 2)
+
+      a.assign_add([1]).eval()
+      self.assertEqual(r1.eval(), 3)
+
+  def testImplementsAttributeWorksOnConstants(self):
+    with context.graph_mode(), self.cached_session():
+      v = def_function.function(
+          experimental_implements='func')(lambda x, y: x + y)
+      a = variables.Variable(1.0)
+      r1 = v(a, 2.)
+      r2 = v(2., a)
+      functions = ops.get_default_graph().as_graph_def().library.function
+      self.assertLen(functions, 1)
+      self.assertLen(functions[0].signature.input_arg, 2)
+      # Verify that eval() reads the current values.
+      a.initializer.run()
+      self.assertEqual(r1.eval(), 3)
+      self.assertEqual(r2.eval(), 3)
+
+  def testImplementsAttributeSpecializes(self):
+    with context.graph_mode(), self.cached_session():
+      v = def_function.function(
+          experimental_implements='func')(lambda x, y: x + y)
+      a = variables.Variable(1.0)
+      r1 = v(a, [2.])
+      r2 = v([2., 2], a)
+      functions = ops.get_default_graph().as_graph_def().library.function
+      self.assertLen(functions, 2)
+      # Ensure that all parameters are still there and haven't been inlined!
+
+      self.assertLen(functions[0].signature.input_arg, 2)
+      self.assertLen(functions[1].signature.input_arg, 2)
+      # Verify that eval() reads the current values.
+      a.initializer.run()
+      numpy.testing.assert_equal(r1.eval(), [3.])
+      numpy.testing.assert_equal(r2.eval(), [3., 3.])
 
   def testExternalControlDependency(self):
     with ops.Graph().as_default(), self.test_session():

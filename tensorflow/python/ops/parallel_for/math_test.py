@@ -655,6 +655,14 @@ class LinalgTest(PForTestCase):
 
             self._test_loop_fn(loop_fn, 2)
 
+  def test_self_adjoint_eig(self):
+    z = random_ops.random_normal([2, 3, 3])
+    x = z + array_ops.matrix_transpose(z)  # Ensure self-adjoint.
+
+    def loop_fn(i):
+      return linalg_ops.self_adjoint_eig(array_ops.gather(x, i))
+
+    self._test_loop_fn(loop_fn, 2, loop_fn_dtypes=[dtypes.float32] * 2)
 
 if __name__ == "__main__":
   test.main()

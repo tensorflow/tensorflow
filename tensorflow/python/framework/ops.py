@@ -3092,7 +3092,10 @@ class Graph(object):
             func_graph_inputs = func_graph.inputs
           except AttributeError:
             continue
-          for input_tensor in func_graph_inputs:
+          # TODO(b/141471245): Fix the inconsistency when inputs of func graph
+          # are appended during gradient computation of while/cond.
+          for input_tensor, _ in zip(func_graph_inputs,
+                                     function_def.signature.input_arg):
             if input_tensor.dtype == dtypes.resource:
               # TODO(allenl): Save and restore handle data, then save the
               # resource placeholder's shape. Right now some shape functions get

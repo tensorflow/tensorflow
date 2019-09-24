@@ -81,10 +81,24 @@ uint64_t ArrayType::getArrayStride() const { return getImpl()->layoutInfo; }
 // CompositeType
 //===----------------------------------------------------------------------===//
 
+bool CompositeType::classof(Type type) {
+  switch (type.getKind()) {
+  case TypeKind::Array:
+  case TypeKind::RuntimeArray:
+  case TypeKind::Struct:
+  case StandardTypes::Vector:
+    return true;
+  default:
+    return false;
+  }
+}
+
 Type CompositeType::getElementType(unsigned index) const {
   switch (getKind()) {
   case spirv::TypeKind::Array:
     return cast<ArrayType>().getElementType();
+  case spirv::TypeKind::RuntimeArray:
+    return cast<RuntimeArrayType>().getElementType();
   case spirv::TypeKind::Struct:
     return cast<StructType>().getElementType(index);
   case StandardTypes::Vector:
@@ -98,6 +112,9 @@ unsigned CompositeType::getNumElements() const {
   switch (getKind()) {
   case spirv::TypeKind::Array:
     return cast<ArrayType>().getNumElements();
+  case spirv::TypeKind::RuntimeArray:
+    llvm_unreachable(
+        "invalid to query number of elements of spirv::RuntimeArray type");
   case spirv::TypeKind::Struct:
     return cast<StructType>().getNumElements();
   case StandardTypes::Vector:
@@ -383,7 +400,10 @@ struct spirv::detail::StructTypeStorage : public TypeStorage {
     ArrayRef<Type> keyTypes = std::get<0>(key);
 
     // Copy the member type and layout information into the bump pointer
-    auto typesList = allocator.copyInto(keyTypes).data();
+    const Type *typesList = nullptr;
+    if (!keyTypes.empty()) {
+      typesList = allocator.copyInto(keyTypes).data();
+    }
 
     const StructType::LayoutInfo *layoutInfoList = nullptr;
     if (!std::get<1>(key).empty()) {
@@ -442,6 +462,12 @@ StructType::get(ArrayRef<Type> memberTypes,
   llvm::array_pod_sort(sortedDecorations.begin(), sortedDecorations.end());
   return Base::get(memberTypes.vec().front().getContext(), TypeKind::Struct,
                    memberTypes, layoutInfo, sortedDecorations);
+}
+
+StructType StructType::getEmpty(MLIRContext *context) {
+  return Base::get(context, TypeKind::Struct, ArrayRef<Type>(),
+                   ArrayRef<StructType::LayoutInfo>(),
+                   ArrayRef<StructType::MemberDecorationInfo>());
 }
 
 unsigned StructType::getNumElements() const {

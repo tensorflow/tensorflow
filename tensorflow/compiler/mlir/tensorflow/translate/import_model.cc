@@ -1179,8 +1179,8 @@ mlir::Operation* ImporterBase::createOperation(
   // Dispatch based on the name and create the appropriate operation.
   if (node.IsSwitch()) {
     // Switch and _SwitchN both are in switch class, differentiate based on
-    // number of outputs.
-    if (node.num_outputs() > 2) {
+    // op name.
+    if (node.op_def().name() == "_SwitchN") {
       return builder_.create<mlir::tf_executor::SwitchNOp>(loc, types, operands,
                                                            result.attributes);
     }
@@ -1554,10 +1554,10 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
       std::string s;
       llvm::raw_string_ostream ss(s);
       auto node_name = [&](const Node* node) { ss << node->name(); };
-      mlir::interleaveComma(graph_fbody->arg_nodes, ss, node_name);
+      mlir::interleave(graph_fbody->arg_nodes, ss, node_name, ",");
       auto inputs = b.getNamedAttr("inputs", b.getStringAttr(ss.str()));
       s.clear();
-      mlir::interleaveComma(graph_fbody->ret_nodes, ss, node_name);
+      mlir::interleave(graph_fbody->ret_nodes, ss, node_name, ",");
       auto outputs = b.getNamedAttr("outputs", b.getStringAttr(ss.str()));
 
       attrs.push_back(b.getNamedAttr("tf.entry_function",
@@ -1578,12 +1578,13 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
       mlir::Builder b(context);
       std::string s;
       llvm::raw_string_ostream ss(s);
-      mlir::interleaveComma(
+      mlir::interleave(
           specs.inputs, ss,
-          [&](const std::pair<std::string, ArrayInfo>& v) { ss << v.first; });
+          [&](const std::pair<std::string, ArrayInfo>& v) { ss << v.first; },
+          ",");
       auto inputs = b.getNamedAttr("inputs", b.getStringAttr(ss.str()));
       s.clear();
-      mlir::interleaveComma(specs.output_arrays, ss);
+      mlir::interleave(specs.output_arrays, ss, ",");
       auto outputs = b.getNamedAttr("outputs", b.getStringAttr(ss.str()));
 
       attrs.push_back(b.getNamedAttr("tf.entry_function",

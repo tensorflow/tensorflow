@@ -241,9 +241,6 @@ class Loop(training_utils.TrainingLoop):
       # tf.print('{} on {} steps.'.format(ModeKeys.TRAIN, steps_per_epoch))
       training_context = TrainingContext()
 
-      initial_epoch = model._maybe_load_initial_epoch_from_ckpt(
-          initial_epoch, ModeKeys.TRAIN)
-
       training_dataset = training_data_adapter.get_dataset()
       # Raise an error if steps_per_epoch isn't specified but the dataset
       # is infinite.
@@ -301,6 +298,10 @@ class Loop(training_utils.TrainingLoop):
 
       with training_context.on_start(model, training_callbacks, use_sample,
                                      verbose, ModeKeys.TRAIN):
+
+        initial_epoch = model._maybe_load_initial_epoch_from_ckpt(
+            initial_epoch, ModeKeys.TRAIN)
+
         for epoch in range(initial_epoch, epochs):
           if training_context.callbacks.model.stop_training:
             break

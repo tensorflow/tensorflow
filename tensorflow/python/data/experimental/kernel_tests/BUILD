@@ -60,7 +60,6 @@ cuda_py_test(
         "//tensorflow/python/data/ops:iterator_ops",
     ],
     tags = ["no_windows_gpu"],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_test(
@@ -477,7 +476,6 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
     ],
     tags = ["no_windows_gpu"],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_test(
@@ -588,7 +586,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     tags = ["no_pip"],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_test(
@@ -797,5 +794,4 @@ cuda_py_test(
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
-    xla_enable_strict_auto_jit = True,
 )

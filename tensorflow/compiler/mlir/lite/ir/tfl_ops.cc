@@ -626,6 +626,46 @@ static LogicalResult Verify(PackOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// PReluOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(PReluOp op) {
+  auto input_type = op.input()->getType().cast<ShapedType>();
+  auto alpha_type = op.alpha()->getType().cast<ShapedType>();
+  auto output_type = op.output()->getType().cast<ShapedType>();
+
+  if (input_type.hasStaticShape() && alpha_type.hasStaticShape()) {
+    if (input_type.getRank() != alpha_type.getRank() + 1) {
+      return op.emitOpError("'alpha' should have one less rank than 'input'.");
+    }
+
+    // Check if alpha is broadcastable
+    for (int i = 0; i < alpha_type.getRank(); i++) {
+      if (alpha_type.getDimSize(i) != input_type.getDimSize(i + 1) &&
+          alpha_type.getDimSize(i) != 1) {
+        return op.emitOpError(
+            llvm::formatv("'alpha' is not broadcastable at dimension {0}.", i));
+      }
+    }
+  }
+
+  if (input_type.hasStaticShape() && output_type.hasStaticShape()) {
+    if (input_type.getRank() != output_type.getRank()) {
+      return op.emitOpError("'input' and 'output' should have the same rank.");
+    }
+
+    // Check if input and output shapes are same
+    for (int i = 0; i < input_type.getRank(); i++) {
+      if (input_type.getDimSize(i) != output_type.getDimSize(i)) {
+        return op.emitOpError(
+            "'input' and 'output' should have the same shape.");
+      }
+    }
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ReshapeOp
 //===----------------------------------------------------------------------===//
 

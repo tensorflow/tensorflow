@@ -18,8 +18,8 @@ limitations under the License.
 #include <map>
 
 #include "tensorflow/c/c_api.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 #ifndef PyObject_HEAD
 struct _object;

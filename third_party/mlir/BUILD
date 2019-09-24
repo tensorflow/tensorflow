@@ -74,6 +74,7 @@ cc_library(
         "lib/IR/Visitors.cpp",
     ],
     hdrs = [
+        "include/mlir/Analysis/CallInterfaces.h",
         "include/mlir/IR/AffineExpr.h",
         "include/mlir/IR/AffineExprVisitor.h",
         "include/mlir/IR/AffineMap.h",
@@ -113,6 +114,7 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":CallOpInterfacesIncGen",
         ":DialectSymbolRegistry",
         ":Support",
         "@llvm//:support",
@@ -243,6 +245,7 @@ gentbl(
 filegroup(
     name = "StdOpsTdFiles",
     srcs = [
+        "include/mlir/Analysis/CallInterfaces.td",
         "include/mlir/Dialect/StandardOps/Ops.td",
         ":OpBaseTdFiles",
     ],
@@ -372,11 +375,13 @@ cc_library(
         "lib/Dialect/StandardOps/Ops.cpp",
     ],
     hdrs = [
+        "include/mlir/Analysis/CallInterfaces.h",
         "include/mlir/Dialect/StandardOps/Ops.h",
         "include/mlir/Transforms/InliningUtils.h",
     ],
     includes = ["include"],
     deps = [
+        ":CallOpInterfacesIncGen",
         ":IR",
         ":StandardOpsIncGen",
         ":Support",
@@ -427,6 +432,7 @@ cc_library(
     srcs = [
         "lib/Support/FileUtilities.cpp",
         "lib/Support/StorageUniquer.cpp",
+        "lib/Support/ToolUtilities.cpp",
     ],
     hdrs = [
         "include/mlir/Support/DebugStringHelper.h",
@@ -438,6 +444,7 @@ cc_library(
         "include/mlir/Support/STLExtras.h",
         "include/mlir/Support/StorageUniquer.h",
         "include/mlir/Support/StringExtras.h",
+        "include/mlir/Support/ToolUtilities.h",
     ],
     includes = ["include"],
     deps = [
@@ -1128,11 +1135,32 @@ cc_library(
     alwayslink = 1,
 )
 
+gentbl(
+    name = "CallOpInterfacesIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-interface-decls",
+            "include/mlir/Analysis/CallInterfaces.h.inc",
+        ),
+        (
+            "-gen-op-interface-defs",
+            "include/mlir/Analysis/CallInterfaces.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Analysis/CallInterfaces.td",
+    td_srcs = [
+        ":OpBaseTdFiles",
+    ],
+)
+
 cc_library(
     name = "Analysis",
     srcs = [
         "lib/Analysis/AffineAnalysis.cpp",
         "lib/Analysis/AffineStructures.cpp",
+        "lib/Analysis/CallGraph.cpp",
         "lib/Analysis/Dominance.cpp",
         "lib/Analysis/LoopAnalysis.cpp",
         "lib/Analysis/MemRefBoundCheck.cpp",
@@ -1148,6 +1176,8 @@ cc_library(
     hdrs = [
         "include/mlir/Analysis/AffineAnalysis.h",
         "include/mlir/Analysis/AffineStructures.h",
+        "include/mlir/Analysis/CallGraph.h",
+        "include/mlir/Analysis/CallInterfaces.h",
         "include/mlir/Analysis/Dominance.h",
         "include/mlir/Analysis/LoopAnalysis.h",
         "include/mlir/Analysis/NestedMatcher.h",
@@ -1160,6 +1190,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":AffineOps",
+        ":CallOpInterfacesIncGen",
         ":IR",
         ":LoopOps",
         ":Pass",

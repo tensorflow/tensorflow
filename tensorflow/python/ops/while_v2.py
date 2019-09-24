@@ -292,6 +292,8 @@ def while_loop(cond,
       outputs[0].op._set_attr("_num_original_outputs",
                               attr_value_pb2.AttrValue(i=num_original_outputs))
 
+    outputs[0].op._cond_graph = cond_graph
+    outputs[0].op._body_graph = body_graph
     _copy_handle_data(body_graph.outputs, outputs)
     util.maybe_set_lowering_attr(outputs[0].op)
     util.maybe_propagate_compile_time_consts_in_xla(outputs[0].op)
@@ -329,8 +331,8 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
   # the loop cannot run in eager mode, however, we can safely introspect into
   # the graph here.
   while_op = op.outputs[0].op
-  cond_graph = _get_graph(while_op, "cond")
-  body_graph = _get_graph(while_op, "body")
+  cond_graph = _get_graph(while_op, "cond", "_cond_graph")
+  body_graph = _get_graph(while_op, "body", "_body_graph")
   orig_num_params = len(body_graph.outputs)
 
   maximum_iterations = op.inputs[1]
@@ -528,22 +530,25 @@ def _is_trainable(tensor):
   return True
 
 
-def _get_graph(while_op, func_attr_name):
+def _get_graph(while_op, func_attr_name, attr_graph_name):
   """Returns `FuncGraph` for the given function attribute.
 
   Args:
     while_op: The While Operation.
     func_attr_name: string
+    attr_graph_name: cached forward graph name
 
   Returns:
     `FuncGraph`
   """
-  # TODO(srbs): Handle TensorShapeProto in function_def_to_graph.input_shapes.
-  input_shapes = [
-      tensor_shape.TensorShape(s) for s in while_op.get_attr("output_shapes")
-  ]
-  func_name = while_op.get_attr(func_attr_name).name
-  func_graph = util.get_func_graph(while_op, input_shapes, func_name)
+  func_graph = getattr(while_op, attr_graph_name, None)
+  if func_graph is None:
+    # TODO(srbs): Handle TensorShapeProto in function_def_to_graph.input_shapes.
+    input_shapes = [
+        tensor_shape.TensorShape(s) for s in while_op.get_attr("output_shapes")
+    ]
+    func_name = while_op.get_attr(func_attr_name).name
+    func_graph = util.get_func_graph(while_op, input_shapes, func_name)
   func_graph._while = while_op
   return func_graph
 

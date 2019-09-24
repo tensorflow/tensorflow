@@ -132,7 +132,6 @@ cuda_py_test(
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -158,5 +157,4 @@ cuda_py_test(
     ],
     shard_count = 4,
     tags = ["no_windows"],  # b/139083295: bfloat16 tests fail on Windows
-    xla_enable_strict_auto_jit = True,
 )

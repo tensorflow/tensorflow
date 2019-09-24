@@ -247,7 +247,8 @@ class ParseExampleOp : public OpKernel {
         ctx->device()->tensorflow_cpu_worker_threads()->workers, result);
   }
 
-  Status WriteOutput(example::Result result, OpKernelContext* ctx) const {
+  Status WriteOutput(const example::Result& result,
+                     OpKernelContext* ctx) const {
     OpOutputList dense_values;
     OpOutputList sparse_indices;
     OpOutputList sparse_values;

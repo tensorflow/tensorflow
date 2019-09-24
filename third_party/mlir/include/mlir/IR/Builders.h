@@ -280,6 +280,12 @@ public:
     setInsertionPoint(op->getBlock(), Block::iterator(op));
   }
 
+  /// Sets the insertion point to the node after the specified operation, which
+  /// will cause subsequent insertions to go right after it.
+  void setInsertionPointAfter(Operation *op) {
+    setInsertionPoint(op->getBlock(), ++Block::iterator(op));
+  }
+
   /// Sets the insertion point to the start of the specified block.
   void setInsertionPointToStart(Block *block) {
     setInsertionPoint(block, block->begin());

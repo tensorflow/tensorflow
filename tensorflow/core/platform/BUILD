@@ -29,6 +29,7 @@ load(
     "//tensorflow/core/platform:default/build_refactor.bzl",
     "tf_instantiate_platform_libraries",
     "tf_platform_helper_deps",
+    "tf_mobile_aware_deps",
 )
 load(
     "//tensorflow:tensorflow.bzl",
@@ -38,6 +39,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     default_visibility = [
@@ -68,6 +70,7 @@ tf_instantiate_platform_libraries(names = [
     "strong_hash",
     "subprocess",
     "tracing",
+    "types",
     "unbounded_work_queue",
     "wide_char",
 ])
@@ -286,6 +289,14 @@ cc_library(
 )
 
 cc_library(
+    name = "null_file_system",
+    hdrs = ["null_file_system.h"],
+    deps = [
+        ":env",
+    ],
+)
+
+cc_library(
     name = "numbers",
     srcs = ["numbers.cc"],
     hdrs = ["numbers.h"],
@@ -359,6 +370,18 @@ cc_library(
     name = "protobuf_compiler",
     hdrs = ["protobuf_compiler.h"],
     deps = tf_protobuf_compiler_deps(),
+)
+
+cc_library(
+    name = "protobuf_internal",
+    hdrs = ["protobuf_internal.h"],
+    deps = [
+        ":platform",
+        ":protobuf",
+        ":types",
+        "//tensorflow/core/lib/core:errors",
+        "@com_google_protobuf//:protobuf",
+    ],
 )
 
 cc_library(
@@ -534,13 +557,11 @@ cc_library(
 
 cc_library(
     name = "types",
-    srcs = tf_platform_hdrs(["integral_types.h"]),
     hdrs = ["types.h"],
     deps = [
         ":platform",
         ":tstring",
-        "//tensorflow/core/platform/default/build_config:base",
-    ],
+    ] + tf_mobile_aware_deps("types_impl"),
 )
 
 cc_library(
@@ -794,4 +815,14 @@ exports_files(
             "stacktrace.h",
         ],
     ),
+)
+
+bzl_library(
+    name = "build_config_root_bzl",
+    srcs = ["default/build_config_root.bzl"],
+)
+
+bzl_library(
+    name = "cuda_build_defs_bzl",
+    srcs = ["default/cuda_build_defs.bzl"],
 )

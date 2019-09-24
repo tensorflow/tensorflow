@@ -1826,7 +1826,7 @@ class DatasetV1(DatasetV2):
     if context.executing_eagerly():
       raise RuntimeError(
           "dataset.make_initializable_iterator is not supported when eager "
-          "execution is enabled.")
+          "execution is enabled. Use `for element in dataset` instead.")
     _ensure_same_dataset_graph(self)
     dataset = self._apply_options()
     if shared_name is None:

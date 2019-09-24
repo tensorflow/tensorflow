@@ -2952,8 +2952,7 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
 
   # Restore shape information where possible.
   if not context.executing_eagerly():
-    paddings_constant = tensor_util.constant_value(
-        result.op.inputs[1], partial=True)
+    paddings_constant = _get_paddings_constant(paddings)
     input_shape = result.op.inputs[0].shape
     if (input_shape.ndims is not None and
         not result.shape.is_fully_defined() and paddings_constant is not None):
@@ -2966,6 +2965,28 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
       result.set_shape(new_shape)
 
   return result
+
+
+def _get_paddings_constant(paddings):
+  """Helper to get the constant values of the paddings arg to pad().
+
+  Used under V1 graph mode to facilitate computation of the shape of the output
+  tensor of `pad()`.
+
+  Args:
+    paddings: The same paddings arg as passed to pad(). Can be a Tensor, or
+      a nested list or tuple of Tensor and/or numbers.
+
+  Returns:
+    A nested list or numbers or `None`, in which `None` indicates unknown
+    padding size.
+  """
+  if isinstance(paddings, ops.Tensor):
+    return tensor_util.constant_value(paddings, partial=True)
+  elif isinstance(paddings, (list, tuple)):
+    return [_get_paddings_constant(x) for x in paddings]
+  else:
+    return paddings
 
 
 @tf_export("meshgrid")
@@ -3981,35 +4002,34 @@ def gather(params,
 
   For 0-D (scalar) `indices`:
 
-  > `output`$$[p_0,          ..., p_{axis-1},        \hspace{5.1em}
-  >            p_{axis + 1}, ..., p_{N-1}]$$ =\
-  > `params`$$[p_0,          ..., p_{axis-1},        \hspace{1em}
-  >            indices,                              \hspace{1em}
-  >            p_{axis + 1}, ..., p_{N-1}]$$.
+  $$\begin{align*}
+  output[p_0, ..., p_{axis-1}, &&          &&& p_{axis + 1}, ..., p_{N-1}] = \\
+  params[p_0, ..., p_{axis-1}, && indices, &&& p_{axis + 1}, ..., p_{N-1}]
+  \end{align*}$$
+
+  Where *N* = `ndims(params)`.
 
   For 1-D (vector) `indices` with `batch_dims=0`:
 
-  > `output`$$[p_0,          ..., p_{axis-1},        \hspace{2.6em}
-  >            i,                                    \hspace{2.6em}
-  >            p_{axis + 1}, ..., p_{N-1}]$$ =\
-  > `params`$$[p_0,          ..., p_{axis-1},        \hspace{1em}
-  >            indices[i],                           \hspace{1em}
-  >            p_{axis + 1}, ..., p_{N-1}]$$.
+  $$\begin{align*}
+  output[p_0, ..., p_{axis-1}, &&         &i,  &&p_{axis + 1}, ..., p_{N-1}] =\\
+  params[p_0, ..., p_{axis-1}, && indices[&i], &&p_{axis + 1}, ..., p_{N-1}]
+  \end{align*}$$
 
   In the general case, produces an output tensor where:
 
   $$\begin{align*}
   output[p_0,             &..., p_{axis-1},                       &
-       &i_{B},           ..., i_{M-1},                          &
-       p_{axis + 1},    &..., p_{N-1}]                          = \\
+         &i_{B},           ..., i_{M-1},                          &
+         p_{axis + 1},    &..., p_{N-1}]                          = \\
   params[p_0,             &..., p_{axis-1},                       &
-       indices[p_0, ..., p_{B-1}, &i_{B}, ..., i_{M-1}],        &
-       p_{axis + 1},    &..., p_{N-1}]
+         indices[p_0, ..., p_{B-1}, &i_{B}, ..., i_{M-1}],        &
+         p_{axis + 1},    &..., p_{N-1}]
   \end{align*}$$
 
-  Where $$N$$=`ndims(params)`, $$M$$=`ndims(indices)`, and $$B$$=`batch_dims`.
-  Note that params.shape[:batch_dims] must be identical to
-  indices.shape[:batch_dims].
+  Where *N* = `ndims(params)`, *M* = `ndims(indices)`, and *B* = `batch_dims`.
+  Note that `params.shape[:batch_dims]` must be identical to
+  `indices.shape[:batch_dims]`.
 
   The shape of the output tensor is:
 

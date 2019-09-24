@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,14 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-%{
-#include "tensorflow/core/grappler/graph_analyzer/graph_analyzer_tool.h"
-%}
+#include "include/pybind11/pybind11.h"
+#include "tensorflow/python/lib/core/bfloat16.h"
 
-%{
-void GraphAnalyzer(const string& file_path, int n) {
-  tensorflow::grappler::graph_analyzer::GraphAnalyzerTool(file_path, n);
+PYBIND11_MODULE(_pywrap_bfloat16, m) {
+  tensorflow::RegisterNumpyBfloat16();
+
+  m.def("TF_bfloat16_type",
+        [] { return pybind11::handle(tensorflow::Bfloat16PyType()); });
 }
-%}
-
-void GraphAnalyzer(const string& file_path, int n);

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <atomic>
 #include <cstring>
 
 #include "absl/strings/str_cat.h"
@@ -1327,10 +1328,18 @@ typedef tensorflow::eager::ForwardAccumulator<PyObject, PyBackwardFunction,
                                               PyTapeTensor>
     ForwardAccumulator;
 
+// Incremented when a GradientTape or accumulator is newly added to a set, and
+// used to enforce an ordering between them.
+std::atomic_uint_fast64_t tape_nesting_id_counter(0);
+
 typedef struct {
   PyObject_HEAD
       /* Type-specific fields go here. */
       GradientTape* tape;
+  // A nesting order between GradientTapes and ForwardAccumulators, used to
+  // ensure that GradientTapes do not watch the products of outer
+  // ForwardAccumulators.
+  tensorflow::int64 nesting_id;
 } TFE_Py_Tape;
 
 static void TFE_Py_Tape_Delete(PyObject* tape) {
@@ -1365,6 +1374,10 @@ typedef struct {
   PyObject_HEAD
       /* Type-specific fields go here. */
       ForwardAccumulator* accumulator;
+  // A nesting order between GradientTapes and ForwardAccumulators, used to
+  // ensure that GradientTapes do not watch the products of outer
+  // ForwardAccumulators.
+  tensorflow::int64 nesting_id;
 } TFE_Py_ForwardAccumulator;
 
 static void TFE_Py_ForwardAccumulatorDelete(PyObject* accumulator) {
@@ -1552,15 +1565,19 @@ PyObject* TFE_Py_TapeSetNew(PyObject* persistent,
   tape->tape = new GradientTape(persistent == Py_True,
                                 watch_accessed_variables == Py_True);
   Py_INCREF(tape);
-  GetTapeSet()->insert(reinterpret_cast<TFE_Py_Tape*>(tape));
+  tape->nesting_id = tape_nesting_id_counter.fetch_add(1);
+  GetTapeSet()->insert(tape);
   return reinterpret_cast<PyObject*>(tape);
 }
 
 void TFE_Py_TapeSetAdd(PyObject* tape) {
   Py_INCREF(tape);
-  if (!GetTapeSet()->insert(reinterpret_cast<TFE_Py_Tape*>(tape)).second) {
+  TFE_Py_Tape* tfe_tape = reinterpret_cast<TFE_Py_Tape*>(tape);
+  if (!GetTapeSet()->insert(tfe_tape).second) {
     // Already exists in the tape set.
     Py_DECREF(tape);
+  } else {
+    tfe_tape->nesting_id = tape_nesting_id_counter.fetch_add(1);
   }
 }
 
@@ -1926,14 +1943,17 @@ void TapeSetRecordBackprop(
     const std::vector<tensorflow::int64>& input_ids,
     const std::vector<tensorflow::DataType>& input_dtypes,
     const std::function<PyBackwardFunction*()>& backward_function_getter,
-    const std::function<void(PyBackwardFunction*)>& backward_function_killer) {
+    const std::function<void(PyBackwardFunction*)>& backward_function_killer,
+    tensorflow::uint64 max_gradient_tape_id) {
   if (!CouldBackprop()) {
     return;
   }
   for (TFE_Py_Tape* tape : SafeTapeSet()) {
-    tape->tape->RecordOperation(op_type, output_info, input_ids, input_dtypes,
-                                backward_function_getter,
-                                backward_function_killer);
+    if (tape->nesting_id < max_gradient_tape_id) {
+      tape->tape->RecordOperation(op_type, output_info, input_ids, input_dtypes,
+                                  backward_function_getter,
+                                  backward_function_killer);
+    }
   }
 }
 
@@ -1945,7 +1965,9 @@ bool TapeSetRecordForwardprop(
     const std::function<PyBackwardFunction*()>& backward_function_getter,
     const std::function<void(PyBackwardFunction*)>& backward_function_killer,
     const tensorflow::eager::ForwardFunction<PyObject>* forward_function,
-    PyObject* forwardprop_output_indices) {
+    PyObject* forwardprop_output_indices,
+    tensorflow::uint64* max_gradient_tape_id) {
+  *max_gradient_tape_id = std::numeric_limits<tensorflow::uint64>::max();
   if (!CouldForwardprop()) {
     return true;
   }
@@ -2015,6 +2037,7 @@ bool TapeSetRecordForwardprop(
         // Ensure inner accumulators don't see outer accumulators' jvps. This
         // mostly happens on its own, with some potentially surprising
         // exceptions, so the blanket policy is for consistency.
+        *max_gradient_tape_id = accumulator->nesting_id;
         break;
       }
     }
@@ -2152,14 +2175,17 @@ bool TapeSetRecordOperation(
   if (!ParseOpTypeString(op_type, &op_type_str)) {
     return false;
   }
-  TapeSetRecordBackprop(op_type_str, output_info, input_ids, input_dtypes,
-                        backward_function_getter, backward_function_killer);
+  tensorflow::uint64 max_gradient_tape_id;
   if (!TapeSetRecordForwardprop(
           op_type_str, output_seq.get(), output_info, input_tensors, input_ids,
           input_dtypes, backward_function_getter, backward_function_killer,
-          forward_function, nullptr /* No special-cased jvps. */)) {
+          forward_function, nullptr /* No special-cased jvps. */,
+          &max_gradient_tape_id)) {
     return false;
   }
+  TapeSetRecordBackprop(op_type_str, output_info, input_ids, input_dtypes,
+                        backward_function_getter, backward_function_killer,
+                        max_gradient_tape_id);
   return true;
 }
 }  // namespace
@@ -2258,11 +2284,12 @@ PyObject* TFE_Py_TapeSetRecordOperationForwardprop(
   if (!ParseOpTypeString(op_type, &op_type_str)) {
     return nullptr;
   }
+  tensorflow::uint64 max_gradient_tape_id;
   if (!TapeSetRecordForwardprop(
           op_type_str, output_seq.get(), output_info, input_tensors, input_ids,
           input_dtypes, backward_function_getter, backward_function_killer,
           nullptr /* no special-cased forward function */,
-          forwardprop_output_indices)) {
+          forwardprop_output_indices, &max_gradient_tape_id)) {
     return nullptr;
   }
   Py_RETURN_NONE;
@@ -2309,7 +2336,10 @@ PyObject* TFE_Py_TapeSetRecordOperationBackprop(PyObject* op_type,
     return nullptr;
   }
   TapeSetRecordBackprop(op_type_str, output_info, input_ids, input_dtypes,
-                        backward_function_getter, backward_function_killer);
+                        backward_function_getter, backward_function_killer,
+                        // No filtering based on relative ordering with forward
+                        // accumulators.
+                        std::numeric_limits<tensorflow::uint64>::max());
   Py_RETURN_NONE;
 }
 
@@ -2456,8 +2486,8 @@ PyObject* TFE_Py_ForwardAccumulatorNew() {
   }
   accumulator->accumulator = new ForwardAccumulator(*py_vspace);
   Py_INCREF(accumulator);
-  GetAccumulatorSet()->insert(
-      reinterpret_cast<TFE_Py_ForwardAccumulator*>(accumulator));
+  accumulator->nesting_id = tape_nesting_id_counter.fetch_add(1);
+  GetAccumulatorSet()->insert(accumulator);
   return reinterpret_cast<PyObject*>(accumulator);
 }
 
@@ -2881,7 +2911,7 @@ PyObject* CopySequenceSettingIndicesToNull(
 }
 
 PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
-                         PyObject* results, PyObject* name) {
+                         PyObject* results) {
   std::vector<tensorflow::int64> input_ids = MakeTensorIDList(inputs);
   if (PyErr_Occurred()) return nullptr;
   std::vector<tensorflow::DataType> input_dtypes = MakeTensorDtypeList(inputs);
@@ -3069,8 +3099,8 @@ bool ReadVariableOp(const FastPathOpExecInfo& parent_op_exec_info,
 
     tensorflow::Safe_PyObjectPtr op_string(
         GetPythonObjectFromString("ReadVariableOp"));
-    if (!RecordGradient(op_string.get(), inputs.get(), Py_None, outputs.get(),
-                        Py_None)) {
+    if (!RecordGradient(op_string.get(), inputs.get(), Py_None,
+                        outputs.get())) {
       return false;
     }
   }
@@ -3238,7 +3268,7 @@ bool RunCallbacks(
 
   if (op_exec_info.run_gradient_callback) {
     if (!RecordGradient(op_exec_info.op_name, inputs.get(), attrs.get(),
-                        flattened_result, op_exec_info.name)) {
+                        flattened_result)) {
       return false;
     }
   }
@@ -3622,13 +3652,12 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
 }
 
 PyObject* TFE_Py_RecordGradient(PyObject* op_name, PyObject* inputs,
-                                PyObject* attrs, PyObject* results,
-                                PyObject* name) {
+                                PyObject* attrs, PyObject* results) {
   if (*ThreadTapeIsStopped() || !HasAccumulatorOrTape()) {
     Py_RETURN_NONE;
   }
 
-  return RecordGradient(op_name, inputs, attrs, results, name);
+  return RecordGradient(op_name, inputs, attrs, results);
 }
 
 namespace {

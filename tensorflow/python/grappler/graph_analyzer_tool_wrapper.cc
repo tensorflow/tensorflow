@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,13 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_WINDOWS_INTEGRAL_TYPES_H_
-#define TENSORFLOW_CORE_PLATFORM_WINDOWS_INTEGRAL_TYPES_H_
+#include "include/pybind11/pybind11.h"
+#include "tensorflow/core/grappler/graph_analyzer/graph_analyzer_tool.h"
 
-#include "tensorflow/core/platform/default/integral_types.h"
-
-#include <cstddef>
-
-typedef std::ptrdiff_t ssize_t;
-
-#endif  // TENSORFLOW_CORE_PLATFORM_WINDOWS_INTEGRAL_TYPES_H_
+PYBIND11_MODULE(_pywrap_graph_analyzer_tool, m) {
+  m.def("GraphAnalyzer",
+        &tensorflow::grappler::graph_analyzer::GraphAnalyzerTool);
+}

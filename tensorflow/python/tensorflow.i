@@ -26,12 +26,9 @@ limitations under the License.
 
 %include "tensorflow/python/lib/io/py_record_reader.i"
 %include "tensorflow/python/lib/io/py_record_writer.i"
-%include "tensorflow/python/client/events_writer.i"
 
 %include "tensorflow/python/client/tf_session.i"
 %include "tensorflow/python/client/device_lib.i"
-
-%include "tensorflow/python/lib/core/bfloat16.i"
 
 %include "tensorflow/lite/toco/python/toco.i"
 
@@ -49,7 +46,6 @@ limitations under the License.
 %include "tensorflow/python/grappler/item.i"
 %include "tensorflow/python/grappler/tf_optimizer.i"
 %include "tensorflow/python/grappler/cost_analyzer.i"
-%include "tensorflow/python/grappler/graph_analyzer.i"
 %include "tensorflow/python/grappler/model_analyzer.i"
 
 %include "tensorflow/python/util/traceme.i"

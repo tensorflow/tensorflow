@@ -1749,6 +1749,28 @@ def TFL_PowOp : TFL_Op<"pow", [Broadcastable, NoSideEffect, NoQuantizableResult]
   let builders = [TFL_BroadcastableBinaryBuilder];
 }
 
+def TFL_PReluOp : TFL_Op<"prelu", [NoSideEffect]> {
+  let summary = "Parameterized Relu operator";
+
+  let description = [{
+    Parameterized Relu operator
+      x -> x >= 0 ? x : (alpha * x)
+    where alpha is a trainable tensor.
+    alpha should have one less rank than the input as it doesn't have the batch
+    dimension, and the other dimensions either should be the same size as input
+    or size 1, where it is broadcasted in the second case.
+  }];
+
+  let arguments = (
+    ins TensorOf<[F32, QUI8]>:$input,
+    TensorOf<[F32, QUI8]>:$alpha
+  );
+
+  let results = (outs TensorOf<[F32, QUI8]>:$output);
+
+  let verifier = [{ return Verify(*this); }];
+}
+
 def TFL_RankOp: TFL_Op<"rank", [NoSideEffect]> {
   let summary = "Rank operator.";
   let description = [{
@@ -2583,8 +2605,7 @@ in the unique output `y`. In other words:
 //===----------------------------------------------------------------------===//
 // Quantization ops.
 //===----------------------------------------------------------------------===//
-def TFL_DequantizeOp: TFL_Op<"dequantize", [
-    NoSideEffect, NoQuantizableResult]> {
+def TFL_DequantizeOp: TFL_Op<"dequantize", [NoQuantizableResult]> {
   let summary = "Dequantize operator";
 
   let description = [{
@@ -2638,7 +2659,7 @@ def TFL_QConstOp : Op<TFL_Dialect, "pseudo_qconst", [
 }
 
 def TFL_QuantizeOp: TFL_Op<"quantize", [
-    NoSideEffect, FirstAttrDerivedResultType, NoQuantizableResult]> {
+    FirstAttrDerivedResultType, NoQuantizableResult]> {
   let summary = "Quantize operator";
 
   let description = [{

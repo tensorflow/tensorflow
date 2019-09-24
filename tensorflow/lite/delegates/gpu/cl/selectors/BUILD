@@ -82,6 +82,7 @@ cc_library(
     srcs = ["dw_convolution_selector.cc"],
     hdrs = ["dw_convolution_selector.h"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/cl:cl_device",
         "//tensorflow/lite/delegates/gpu/cl/kernels:depth_wise_conv",
         "//tensorflow/lite/delegates/gpu/cl/kernels:depth_wise_conv_3x3",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",

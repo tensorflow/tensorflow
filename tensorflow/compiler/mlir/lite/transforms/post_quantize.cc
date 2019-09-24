@@ -116,7 +116,15 @@ void RemoveQuantizationAdaptorOps(FuncOp func) {
   func.setType(new_func_type);
 }
 
+#include "tensorflow/compiler/mlir/lite/transforms/generated_post_quantize.inc"
+
 void PostQuantizePass::runOnFunction() {
+  OwningRewritePatternList patterns;
+  auto func = getFunction();
+  auto* ctx = func.getContext();
+  TFL::populateWithGenerated(ctx, &patterns);
+  applyPatternsGreedily(func, patterns);
+
   if (!emit_quant_adaptor_ops_) {
     RemoveQuantizationAdaptorOps(getFunction());
   }

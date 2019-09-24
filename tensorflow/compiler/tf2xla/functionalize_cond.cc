@@ -734,12 +734,10 @@ Status Conditional::BuildIfNode(Graph* graph,
   const string branch_name[] = {"else_branch", "then_branch"};
   for (auto branch : {BranchType::kElseBranch, BranchType::kThenBranch}) {
     int branch_index = static_cast<int>(branch);
-    static std::atomic<int64> sequence_num(0LL);
-    int64 id = ++sequence_num;
 
     NameAttrList body_name;
-    body_name.set_name(
-        absl::StrCat("_functionalize_if_", branch_name[branch_index], "_", id));
+    body_name.set_name(library->UniqueFunctionName(
+        absl::StrCat("_functionalize_if_", branch_name[branch_index], "_")));
 
     VLOG(3) << "FunctionalizeControlFlow (" << branch_name[branch_index]
             << "): "

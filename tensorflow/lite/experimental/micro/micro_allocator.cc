@@ -131,6 +131,13 @@ TfLiteStatus MicroAllocator::AllocateTensors() {
     current->first_created = 0;
   }
 
+  // Mark all outputs as persistent to the end of the invocation.
+  for (size_t i = 0; i < subgraph_->outputs()->size(); ++i) {
+    const int tensor_index = subgraph_->outputs()->Get(i);
+    TensorInfo* current = &tensor_info[tensor_index];
+    current->last_used = operators_->size() - 1;
+  }
+
   // Figure out when the first and last use of each tensor is.
   for (int i = (operators_->size() - 1); i >= 0; --i) {
     const auto* op = operators_->Get(i);
@@ -157,6 +164,15 @@ TfLiteStatus MicroAllocator::AllocateTensors() {
         (current->first_created == -1) && (current->last_used != -1);
     const bool is_preallocated_input =
         (current->runtime_tensor->data.raw != nullptr);
+    const bool has_partial_lifetime =
+        !is_read_only &&
+        ((current->first_created == -1) || (current->last_used == -1));
+    if (has_partial_lifetime) {
+      error_reporter_->Report(
+          "Logic error in memory planner, tensor %d has an invalid lifetime",
+          i);
+      return kTfLiteError;
+    }
     if (!is_read_only && !is_preallocated_input) {
       current->needs_allocating = true;
     }

@@ -482,7 +482,7 @@ class MklDnnShape {
   /// We use lazy evaluation and create it only when needed. Input format can
   /// also be Blocked format.
   inline void SetTfLayout(size_t dims, const memory::dims& sizes,
-                          MKL_TENSOR_FORMAT format, bool is_2d = false) {
+                          MKL_TENSOR_FORMAT format) {
     DCHECK_EQ(dims, sizes.size())
         << "SetTfLayout: Number of dimensions does not"
            "match with dimension array";
@@ -492,7 +492,7 @@ class MklDnnShape {
     }
     data_.tf_data_format_ = format;
     if (format != MKL_TENSOR_FORMAT_BLOCKED) {
-      if (is_2d) {
+      if (dims == 2) {
         data_.map_[0] = MklDnnDims::Dim_N;
         data_.map_[1] = MklDnnDims::Dim_C;
       } else {

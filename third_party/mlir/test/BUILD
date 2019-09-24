@@ -38,6 +38,7 @@ gentbl(
     td_file = "lib/TestDialect/TestOps.td",
     td_srcs = [
         "@local_config_mlir//:include/mlir/IR/OpBase.td",
+        "@local_config_mlir//:include/mlir/Analysis/CallInterfaces.td",
     ],
 )
 
@@ -81,6 +82,7 @@ cc_library(
 cc_library(
     name = "TestTransforms",
     srcs = [
+        "lib/Transforms/TestCallGraph.cpp",
         "lib/Transforms/TestConstantFold.cpp",
         "lib/Transforms/TestInlining.cpp",
         "lib/Transforms/TestLoopFusion.cpp",

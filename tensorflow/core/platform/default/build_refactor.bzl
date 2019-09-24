@@ -17,7 +17,7 @@ load(
     "tf_copts",
 )
 
-TF_PLATFORM_LIBRARIES = {
+TF_DEFAULT_PLATFORM_LIBRARIES = {
     "context": {
         "name": "context_impl",
         "hdrs": ["//tensorflow/core/platform:context.h"],
@@ -214,6 +214,7 @@ TF_PLATFORM_LIBRARIES = {
         "deps": [
             "@local_config_rocm//rocm:rocm_headers",
             "//tensorflow/core/lib/io:path",
+            "//tensorflow/core/platform:logging",
             "//tensorflow/core/platform:types",
         ],
         "visibility": ["//visibility:private"],
@@ -275,6 +276,14 @@ TF_PLATFORM_LIBRARIES = {
             "//tensorflow/core/lib/strings:string_utils",
             "//tensorflow/core/lib/core:stringpiece",
             "//tensorflow/core/platform:types",
+        ],
+        "tags": ["no_oss", "manual"],
+        "visibility": ["//visibility:private"],
+    },
+    "types": {
+        "name": "types_impl",
+        "textual_hdrs": [
+            "//tensorflow/core/platform:default/integral_types.h",
         ],
         "tags": ["no_oss", "manual"],
         "visibility": ["//visibility:private"],
@@ -481,10 +490,13 @@ def tf_instantiate_platform_libraries(names = []):
                 tags = ["no_oss", "manual"],
             )
         else:
-            if name in TF_PLATFORM_LIBRARIES:
-                native.cc_library(**TF_PLATFORM_LIBRARIES[name])
+            if name in TF_DEFAULT_PLATFORM_LIBRARIES:
+                native.cc_library(**TF_DEFAULT_PLATFORM_LIBRARIES[name])
             if name in TF_WINDOWS_PLATFORM_LIBRARIES:
                 native.cc_library(**TF_WINDOWS_PLATFORM_LIBRARIES[name])
+
+def tf_mobile_aware_deps(name):
+    return [":" + name]
 
 def tf_platform_helper_deps(name):
     return select({

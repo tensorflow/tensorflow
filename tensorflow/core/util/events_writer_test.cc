@@ -142,9 +142,7 @@ TEST(EventWriter, FailFlush) {
   WriteFile(&writer);
   TF_EXPECT_OK(env()->FileExists(filename));
   TF_ASSERT_OK(env()->DeleteFile(filename));
-  EXPECT_EQ(errors::Code::NOT_FOUND, env()->FileExists(filename).code());
-  EXPECT_FALSE(writer.Flush().ok());
-  EXPECT_EQ(errors::Code::NOT_FOUND, env()->FileExists(filename).code());
+  EXPECT_TRUE(writer.Flush().ok());
 }
 
 TEST(EventWriter, FailClose) {
@@ -154,9 +152,7 @@ TEST(EventWriter, FailClose) {
   WriteFile(&writer);
   TF_EXPECT_OK(env()->FileExists(filename));
   TF_ASSERT_OK(env()->DeleteFile(filename));
-  EXPECT_EQ(errors::Code::NOT_FOUND, env()->FileExists(filename).code());
-  EXPECT_FALSE(writer.Close().ok());
-  EXPECT_EQ(errors::Code::NOT_FOUND, env()->FileExists(filename).code());
+  EXPECT_TRUE(writer.Close().ok());
 }
 
 TEST(EventWriter, InitWriteClose) {

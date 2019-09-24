@@ -19,10 +19,8 @@
 #else
 #define TEST_OPS
 
-#ifdef OP_BASE
-#else
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
+include "mlir/Analysis/CallInterfaces.td"
 
 def TEST_Dialect : Dialect {
   let name = "test";
@@ -195,9 +193,17 @@ def SizedRegionOp : TEST_Op<"sized_region_op", []> {
   let regions = (region SizedRegion<2>:$my_region, SizedRegion<1>);
 }
 
-def FunctionalRegionOp : TEST_Op<"functional_region_op", []> {
+def FunctionalRegionOp : TEST_Op<"functional_region_op",
+    [CallableOpInterface]> {
   let regions = (region AnyRegion:$body);
   let results = (outs FunctionType);
+
+  let extraClassDeclaration = [{
+    Region *getCallableRegion(CallInterfaceCallable) { return &body(); }
+    void getCallableRegions(SmallVectorImpl<Region *> &callables) {
+      callables.push_back(&body());
+    }
+  }];
 }
 
 //===----------------------------------------------------------------------===//
