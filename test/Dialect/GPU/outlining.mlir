@@ -113,8 +113,7 @@ func @function_call(%arg0 : memref<?xf32>) {
                                        %grid_z = %cst)
              threads(%tx, %ty, %tz) in (%block_x = %cst, %block_y = %cst,
                                         %block_z = %cst) {
-    // TODO(b/141098412): Support function calls.
-    // expected-error @+1 {{'device_function' does not reference a valid function}}
+    call @device_function() : () -> ()
     call @device_function() : () -> ()
     gpu.return
   }
@@ -122,5 +121,16 @@ func @function_call(%arg0 : memref<?xf32>) {
 }
 
 func @device_function() {
+  call @recursive_device_function() : () -> ()
   gpu.return
 }
+
+func @recursive_device_function() {
+  call @recursive_device_function() : () -> ()
+  gpu.return
+}
+
+// CHECK: @device_function
+// CHECK: @recursive_device_function
+// CHECK: @device_function
+// CHECK: @recursive_device_function
