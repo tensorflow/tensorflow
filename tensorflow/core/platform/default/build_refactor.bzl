@@ -280,6 +280,14 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         "tags": ["no_oss", "manual"],
         "visibility": ["//visibility:private"],
     },
+    "types": {
+        "name": "types_impl",
+        "textual_hdrs": [
+            "//tensorflow/core/platform:default/integral_types.h",
+        ],
+        "tags": ["no_oss", "manual"],
+        "visibility": ["//visibility:private"],
+    },
     "unbounded_work_queue": {
         "name": "unbounded_work_queue_impl",
         "hdrs": [

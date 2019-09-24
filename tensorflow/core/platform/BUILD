@@ -29,6 +29,7 @@ load(
     "//tensorflow/core/platform:default/build_refactor.bzl",
     "tf_instantiate_platform_libraries",
     "tf_platform_helper_deps",
+    "tf_mobile_aware_deps",
 )
 load(
     "//tensorflow:tensorflow.bzl",
@@ -68,6 +69,7 @@ tf_instantiate_platform_libraries(names = [
     "strong_hash",
     "subprocess",
     "tracing",
+    "types",
     "unbounded_work_queue",
     "wide_char",
 ])
@@ -534,13 +536,11 @@ cc_library(
 
 cc_library(
     name = "types",
-    srcs = tf_platform_hdrs(["integral_types.h"]),
     hdrs = ["types.h"],
     deps = [
         ":platform",
         ":tstring",
-        "//tensorflow/core/platform/default/build_config:base",
-    ],
+    ] + tf_mobile_aware_deps("types_impl"),
 )
 
 cc_library(

@@ -72,7 +72,6 @@ load(
     "if_linux_x86_64",
     "if_mobile",
     "if_not_windows",
-    "if_windows",
     "tf_android_core_proto_headers",
     "tf_android_core_proto_sources",
     "tf_cc_test",
@@ -1114,6 +1113,7 @@ cc_library(
         "framework/type_traits.h",
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/platform:byte_order.h",
+        "//tensorflow/core/platform:cpu_info.h",
         "//tensorflow/core/platform:default/dynamic_annotations.h",
         "//tensorflow/core/platform:default/integral_types.h",
         "//tensorflow/core/platform:default/logging.h",
@@ -1127,8 +1127,7 @@ cc_library(
         "//tensorflow/core/platform:thread_annotations.h",
         "//tensorflow/core/platform:tstring.h",
         "//tensorflow/core/platform:types.h",
-        "//tensorflow/core/platform:cpu_info.h",
-    ] + if_windows(["//tensorflow/core/platform:windows/integral_types.h"]),
+    ],
     visibility = ["//visibility:public"],
     deps =
         if_mobile([
