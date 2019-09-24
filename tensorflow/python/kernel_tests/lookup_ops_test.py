@@ -42,6 +42,8 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
+from tensorflow.python.training.tracking import graph_view
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as trackable
 
 
@@ -898,6 +900,18 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
 
       self.assertAllEqual([3, 1, 3], self.evaluate(out2))
       self.assertEqual(vocab_size + oov_buckets, self.evaluate(table2.size()))
+
+  def testStaticVocabularyTableAssetTracking(self):
+    vocab_file = self._createVocabFile("vocab.txt")
+    vocab_size = 3
+    oov_buckets = 1
+    table = self.getVocabularyTable()(lookup_ops.TextFileIdTableInitializer(
+        vocab_file, vocab_size=vocab_size), oov_buckets)
+    object_graph_view = graph_view.ObjectGraphView(table)
+    objects = object_graph_view.list_objects()
+    assets = list(filter(lambda obj: isinstance(obj, tracking.Asset), objects))
+    self.assertLen(assets, 1)
+    self.assertEqual(self.evaluate(assets[0].asset_path), vocab_file)
 
   def testSparseTensor(self):
     vocab_file = self._createVocabFile("feat_to_id_7.txt")
