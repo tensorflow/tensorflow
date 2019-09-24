@@ -353,6 +353,7 @@ cuda_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:gradients",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:indexed_slices",
