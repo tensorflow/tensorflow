@@ -2483,7 +2483,6 @@ void IrEmitterUnnested::EmitHlo021Tile(
     HloInstruction* hlo, Thunk* kernel_thunk,
     absl::Span<const int64> reduced_output_dims,
     absl::Span<const int64> tiled_param_ids) {
-  LOG(ERROR) << "EmitHlo021Tile";
   constexpr int kNumRows = 4;
   KernelMappingScheme mapping_scheme(
       reduced_output_dims, /*tile_size_y=*/kWarpSize,

@@ -1601,6 +1601,7 @@ cc_library(
 cc_binary(
     name = "mlir-tblgen",
     srcs = [
+        "tools/mlir-tblgen/DocGenUtilities.h",
         "tools/mlir-tblgen/EnumsGen.cpp",
         "tools/mlir-tblgen/EnumsGen.h",
         "tools/mlir-tblgen/LLVMIRConversionGen.cpp",
