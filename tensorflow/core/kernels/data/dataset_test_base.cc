@@ -773,7 +773,14 @@ Status DatasetOpsTestBaseV2::MakeDataset(
   for (auto input_dataset : input_datasets) {
     inputs.emplace_back(TensorValue(input_dataset));
   }
-  AddTensorInputs(dataset_params.GetInputTensors(), created_tensors, &inputs);
+
+  // Copy the input tensors, storing them in the `inputs` vectors, and storing
+  // owned references to the copies in `created_tensors`.
+  for (auto& input : dataset_params.GetInputTensors()) {
+    auto copy = absl::make_unique<Tensor>(input);
+    inputs.push_back(TensorValue(copy.get()));
+    created_tensors->push_back(std::move(copy));
+  }
 
   TF_RETURN_IF_ERROR(MakeDatasetOpKernel(dataset_params, dataset_kernel));
   TF_RETURN_IF_ERROR(CreateDatasetContext(dataset_kernel->get(), &inputs,
@@ -830,13 +837,12 @@ Status DatasetOpsTestBaseV2::MakeDatasetTensor(
   AttributeVector attributes;
   TF_RETURN_IF_ERROR(dataset_params.GetAttributes(&attributes));
 
-  std::vector<Tensor> dataset_inputs;
+  std::vector<Tensor> inputs;
   for (auto input_dataset : input_datasets) {
-    dataset_inputs.emplace_back(*input_dataset);
+    inputs.emplace_back(*input_dataset);
   }
   auto input_tensors = dataset_params.GetInputTensors();
-  dataset_inputs.insert(dataset_inputs.end(), input_tensors.begin(),
-                        input_tensors.end());
+  inputs.insert(inputs.end(), input_tensors.begin(), input_tensors.end());
 
   GraphConstructorOptions graph_opts;
   graph_opts.allow_internal_ops = true;
@@ -844,21 +850,9 @@ Status DatasetOpsTestBaseV2::MakeDatasetTensor(
   FunctionDef make_dataset_tensor_fdef;
   TF_RETURN_IF_ERROR(dataset_params.CreateFactory(&make_dataset_tensor_fdef));
   *dataset = std::make_unique<Tensor>();
-  TF_RETURN_IF_ERROR(RunFunction(make_dataset_tensor_fdef, attributes,
-                                 dataset_inputs, graph_opts,
-                                 /*rets=*/{dataset->get()}));
+  TF_RETURN_IF_ERROR(RunFunction(make_dataset_tensor_fdef, attributes, inputs,
+                                 graph_opts, /*rets=*/{dataset->get()}));
   return Status::OK();
-}
-
-void DatasetOpsTestBaseV2::AddTensorInputs(
-    const std::vector<Tensor>& tensors,
-    std::vector<std::unique_ptr<Tensor>>* created_tensors,
-    gtl::InlinedVector<TensorValue, 4>* inputs) const {
-  for (auto& input : tensors) {
-    auto copy = absl::make_unique<Tensor>(input);
-    inputs->push_back(TensorValue(copy.get()));
-    created_tensors->push_back(std::move(copy));
-  }
 }
 
 DatasetParams::DatasetParams(DataTypeVector output_dtypes,

@@ -789,12 +789,6 @@ class DatasetOpsTestBaseV2 : public DatasetOpsTestBase {
 
   Status CreateFactory(const DatasetParams& dataset_params,
                        FunctionDef* fdef) const;
-
-  // Copies the given tensors, storing them in the `inputs` vectors, and storing
-  // owned references to the copies in `created_tensors`.
-  void AddTensorInputs(const std::vector<Tensor>& tensors,
-                       std::vector<std::unique_ptr<Tensor>>* created_tensors,
-                       gtl::InlinedVector<TensorValue, 4>* inputs) const;
 };
 
 #define ITERATOR_GET_NEXT_TEST_P(dataset_op_test_class, dataset_params_class, \
