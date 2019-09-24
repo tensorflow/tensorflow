@@ -31,8 +31,6 @@ limitations under the License.
 %include "tensorflow/python/client/tf_session.i"
 %include "tensorflow/python/client/device_lib.i"
 
-%include "tensorflow/python/lib/core/bfloat16.i"
-
 %include "tensorflow/lite/toco/python/toco.i"
 
 %include "tensorflow/python/lib/io/file_io.i"
