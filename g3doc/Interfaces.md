@@ -184,8 +184,15 @@ interface above as:
 
 ```tablegen
 def ExampleOpInterface : OpInterface<"ExampleOpInterface"> {
+  let description = [{
+    This is an example interface definition.
+  }];
+
   let methods = [
-    InterfaceMethod<"unsigned", "getNumInputs">,
+    InterfaceMethod<
+      "Get the number of inputs for the current operation.",
+      "unsigned", "getNumInputs"
+    >,
   ];
 }
 ```
