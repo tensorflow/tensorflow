@@ -36,18 +36,14 @@ limitations under the License.
 
 extern "C"{
 // Copyright (c) 2014-2016, XMOS Ltd, All rights reserved
-#include <print.h>
 #include <stdarg.h>
 #include <syscall.h>
 #include <limits.h>
-#include <print.h>
 #include <string.h>
 #include <ctype.h>
 
 #undef debug_printf
 
-
-#define MAX_INT_STRING_SIZE 10
 
 #ifndef DEBUG_PRINTF_BUFSIZE
 #define DEBUG_PRINTF_BUFSIZE 130
@@ -62,7 +58,7 @@ static void debug_printf(char * fmt, ...)
   char * strArg;
 
   char buf[DEBUG_PRINTF_BUFSIZE];
-  char *end = &buf[DEBUG_PRINTF_BUFSIZE - 1 - MAX_INT_STRING_SIZE];
+  char *end = &buf[DEBUG_PRINTF_BUFSIZE - 1];
 
   va_list args;
 
@@ -88,10 +84,7 @@ static void debug_printf(char * fmt, ...)
       }
       // Use 'tolower' to ensure both %x/%X do something sensible
       switch (tolower(*(fmt))) {
-      case 'c':
-        intArg = va_arg(args, int);
-        *p++ = intArg;
-        break;
+
       case 's':
         strArg = va_arg(args, char *);
         int len = strlen(strArg);
@@ -120,7 +113,9 @@ static void debug_printf(char * fmt, ...)
 }
 
 
-void DebugLog(const char* s) { debug_printf("%s", s); }
-
+void DebugLog(const char* s) 
+{ 
+    debug_printf("%s", s); 
 }
 
+}
