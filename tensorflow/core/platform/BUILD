@@ -39,6 +39,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     default_visibility = [
@@ -814,4 +815,14 @@ exports_files(
             "stacktrace.h",
         ],
     ),
+)
+
+bzl_library(
+    name = "build_config_root_bzl",
+    srcs = ["default/build_config_root.bzl"],
+)
+
+bzl_library(
+    name = "cuda_build_defs_bzl",
+    srcs = ["default/cuda_build_defs.bzl"],
 )
