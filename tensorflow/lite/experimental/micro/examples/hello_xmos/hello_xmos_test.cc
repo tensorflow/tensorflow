@@ -94,7 +94,7 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
 
 
   printf("\n\t0\t1\t3\t3\t4\t5\t6\t7\t8\t9\n");
-  for(int j = 0; j<10; j++){
+  for(int j = 0; j<1; j++){
     // Provide an input value
     for( int i=0; i<28*28; i++){
       input->data.f[i] = *((float*)&g_digits[j] +i);
