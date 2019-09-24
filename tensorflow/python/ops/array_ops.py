@@ -4002,35 +4002,34 @@ def gather(params,
 
   For 0-D (scalar) `indices`:
 
-  > `output`$$[p_0,          ..., p_{axis-1},        \hspace{5.1em}
-  >            p_{axis + 1}, ..., p_{N-1}]$$ =\
-  > `params`$$[p_0,          ..., p_{axis-1},        \hspace{1em}
-  >            indices,                              \hspace{1em}
-  >            p_{axis + 1}, ..., p_{N-1}]$$.
+  $$\begin{align*}
+  output[p_0, ..., p_{axis-1}, &&          &&& p_{axis + 1}, ..., p_{N-1}] = \\
+  params[p_0, ..., p_{axis-1}, && indices, &&& p_{axis + 1}, ..., p_{N-1}]
+  \end{align*}$$
+
+  Where *N* = `ndims(params)`.
 
   For 1-D (vector) `indices` with `batch_dims=0`:
 
-  > `output`$$[p_0,          ..., p_{axis-1},        \hspace{2.6em}
-  >            i,                                    \hspace{2.6em}
-  >            p_{axis + 1}, ..., p_{N-1}]$$ =\
-  > `params`$$[p_0,          ..., p_{axis-1},        \hspace{1em}
-  >            indices[i],                           \hspace{1em}
-  >            p_{axis + 1}, ..., p_{N-1}]$$.
+  $$\begin{align*}
+  output[p_0, ..., p_{axis-1}, &&         &i,  &&p_{axis + 1}, ..., p_{N-1}] =\\
+  params[p_0, ..., p_{axis-1}, && indices[&i], &&p_{axis + 1}, ..., p_{N-1}]
+  \end{align*}$$
 
   In the general case, produces an output tensor where:
 
   $$\begin{align*}
   output[p_0,             &..., p_{axis-1},                       &
-       &i_{B},           ..., i_{M-1},                          &
-       p_{axis + 1},    &..., p_{N-1}]                          = \\
+         &i_{B},           ..., i_{M-1},                          &
+         p_{axis + 1},    &..., p_{N-1}]                          = \\
   params[p_0,             &..., p_{axis-1},                       &
-       indices[p_0, ..., p_{B-1}, &i_{B}, ..., i_{M-1}],        &
-       p_{axis + 1},    &..., p_{N-1}]
+         indices[p_0, ..., p_{B-1}, &i_{B}, ..., i_{M-1}],        &
+         p_{axis + 1},    &..., p_{N-1}]
   \end{align*}$$
 
-  Where $$N$$=`ndims(params)`, $$M$$=`ndims(indices)`, and $$B$$=`batch_dims`.
-  Note that params.shape[:batch_dims] must be identical to
-  indices.shape[:batch_dims].
+  Where *N* = `ndims(params)`, *M* = `ndims(indices)`, and *B* = `batch_dims`.
+  Note that `params.shape[:batch_dims]` must be identical to
+  `indices.shape[:batch_dims]`.
 
   The shape of the output tensor is:
 
