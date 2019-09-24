@@ -410,7 +410,6 @@ struct ConvertTensorListStack : public ConversionPattern {
     Value *input = operands[0];
     Value *element_shape = operands[1];
 
-    auto shape_type = rewriter.getTensorType({-1}, rewriter.getIntegerType(32));
     // If the `element_shape` is a known constant (which is defined when calling
     // `tensor_list_stack`) and also valid (not scalar), we rewrite this op to a
     // trivial Reshape op (that doesn't actually change the input's shape) and
@@ -424,6 +423,8 @@ struct ConvertTensorListStack : public ConversionPattern {
       rewriter.replaceOp(op, {input}, llvm::None);
       return matchSuccess();
     }
+
+    auto shape_type = rewriter.getTensorType({-1}, rewriter.getIntegerType(32));
     auto new_shape = rewriter.create<TF::ShapeOp>(loc, shape_type, input);
     SmallVector<int64_t, 8> output_shape = {op.num_elements().getSExtValue()};
     for (auto dim : dense_elem_attr.getIntValues())
