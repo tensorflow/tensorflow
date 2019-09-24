@@ -138,6 +138,22 @@ gentbl(
     ],
 )
 
+gentbl(
+    name = "tensorflow_lite_post_quantize_inc_gen",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "transforms/generated_post_quantize.inc",
+        ),
+    ],
+    tblgen = "@local_config_mlir//:mlir-tblgen",
+    td_file = "transforms/post_quantize_patterns.td",
+    td_srcs = [
+        ":tensorflow_lite_ops_td_files",
+        "@local_config_mlir//:StdOpsTdFiles",
+    ],
+)
+
 cc_library(
     name = "validators",
     srcs = [
@@ -304,6 +320,7 @@ cc_library(
 cc_library(
     name = "tensorflow_lite_quantize",
     srcs = [
+        "transforms/generated_post_quantize.inc",
         "transforms/generated_quantize.inc",
         "transforms/load_quantization_recipe.cc",
         "transforms/post_quantize.cc",
