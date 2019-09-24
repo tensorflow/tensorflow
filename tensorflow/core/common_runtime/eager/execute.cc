@@ -484,7 +484,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
                                profiler::TraceMeLevel::kInfo);
     input_dev_ptrs.reserve(op->Inputs().size());
     // All inputs need to be on local devices.
-    // TODO(b/122851476): This is a limitation of the current code base (but
+    // TODO(b/134094971): This is a limitation of the current code base (but
     // should be possible to get around).
     // Code changes will need to be made to pass input objects to the
     // function library runtime instead of just "Tensor"s.
