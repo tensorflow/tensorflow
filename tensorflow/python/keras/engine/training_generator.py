@@ -136,12 +136,13 @@ def model_iteration(model,
           model, data, steps_per_epoch, epochs=epochs, steps_name=steps_name)
 
   # Convert to a format that supports `next(generator)`.
-  generator, steps_per_epoch = convert_to_generator_like(
+  generator, steps_per_epoch, is_shuffled = convert_to_generator_like(
       data,
       steps_per_epoch=steps_per_epoch,
       batch_size=batch_size,
       epochs=epochs - initial_epoch,
       shuffle=shuffle)
+  shuffle = shuffle and not is_shuffled
 
   do_validation = validation_data is not None
   is_sequence = isinstance(generator, data_utils.Sequence)
@@ -455,6 +456,8 @@ def convert_to_generator_like(data,
 
   Returns:
     - Generator, `keras.utils.data_utils.Sequence`, or `Iterator`.
+    - The final value for steps_per_epoch
+    - Whether the returned generator is already shuffled
 
   Raises:
     - ValueError: If `batch_size` is not provided for NumPy or EagerTensor
@@ -470,9 +473,9 @@ def convert_to_generator_like(data,
     if isinstance(data, data_utils.Sequence):
       if steps_per_epoch is None:
         steps_per_epoch = len(data)
-    return data, steps_per_epoch
+    return data, steps_per_epoch, False
   if isinstance(data, dataset_ops.DatasetV2):
-    return dataset_ops.make_one_shot_iterator(data), steps_per_epoch
+    return dataset_ops.make_one_shot_iterator(data), steps_per_epoch, False
 
   # Create generator from NumPy or EagerTensor Input.
   num_samples = int(nest.flatten(data)[0].shape[0])
@@ -495,7 +498,7 @@ def convert_to_generator_like(data,
             nest.flatten(data), batch_ids, contiguous=(not shuffle))
         yield nest.pack_sequence_as(data, flat_batch_data)
 
-  return _gen(data), steps_per_epoch
+  return _gen(data), steps_per_epoch, shuffle
 
 
 def _make_enqueued_generator(generator,
@@ -510,6 +513,9 @@ def _make_enqueued_generator(generator,
     if is_sequence:
       enqueuer = data_utils.OrderedEnqueuer(
           generator, use_multiprocessing=use_multiprocessing, shuffle=shuffle)
+    elif shuffle:
+      raise ValueError('Cannot shuffle a generator, '
+                       'please consider using the `keras.utils.Sequence` class')
     else:
       enqueuer = data_utils.GeneratorEnqueuer(
           generator, use_multiprocessing=use_multiprocessing)
@@ -517,7 +523,10 @@ def _make_enqueued_generator(generator,
     output_generator = enqueuer.get()
   else:
     if is_sequence:
-      output_generator = data_utils.iter_sequence_infinite(generator)
+      output_generator = data_utils.iter_sequence_infinite(generator, shuffle=shuffle)
+    elif shuffle:
+      raise ValueError('Cannot shuffle a generator, '
+                       'please consider using the `keras.utils.Sequence` class')
     else:
       output_generator = generator
   return output_generator, enqueuer

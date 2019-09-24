@@ -473,18 +473,26 @@ class Sequence(object):
       yield item
 
 
-def iter_sequence_infinite(seq):
+def iter_sequence_infinite(seq, shuffle=False):
   """Iterates indefinitely over a Sequence.
 
   Arguments:
     seq: Sequence instance.
+    shuffle: whether the sequence should be shuffled
 
   Yields:
     Batches of data from the Sequence.
   """
-  while True:
-    for item in seq:
-      yield item
+  if shuffle:
+    indices = np.arange(len(seq))
+    while True:
+      np.random.shuffle(indices)
+      for index in indices:
+        yield seq[index]
+  else:
+    while True:
+      for item in seq:
+        yield item
 
 
 # Global variables to be shared across processes
