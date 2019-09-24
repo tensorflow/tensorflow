@@ -149,6 +149,7 @@ public:
 
     // Create our loop nest now
     using namespace edsc;
+    using extractvalue = intrinsics::ValueBuilder<LLVM::ExtractValueOp>;
     using llvmCall = intrinsics::ValueBuilder<LLVM::CallOp>;
     ScopedContext scope(rewriter, loc);
     ValueHandle zero = intrinsics::constant_index(0);
@@ -157,26 +158,36 @@ public:
     IndexedValue iOp(operand);
     IndexHandle i, j, M(vOp.ub(0));
 
+    auto *dialect = op->getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
+    auto i8PtrTy = LLVM::LLVMType::getInt8Ty(dialect).getPointerTo();
+
     ValueHandle fmtEol(getConstantCharBuffer(rewriter, loc, "\n"));
     if (vOp.rank() == 1) {
       // clang-format off
       LoopBuilder(&i, zero, M, 1)([&]{
         llvmCall(retTy,
                  rewriter.getSymbolRefAttr(printfFunc),
-                 {fmtCst, iOp(i)});
+                 {extractvalue(i8PtrTy, fmtCst, rewriter.getIndexArrayAttr(0)),
+                  iOp(i)});
       });
-      llvmCall(retTy, rewriter.getSymbolRefAttr(printfFunc), {fmtEol});
+      llvmCall(retTy, rewriter.getSymbolRefAttr(printfFunc),
+               {extractvalue(i8PtrTy, fmtEol, rewriter.getIndexArrayAttr(0))});
       // clang-format on
     } else {
       IndexHandle N(vOp.ub(1));
       // clang-format off
       LoopBuilder(&i, zero, M, 1)([&]{
         LoopBuilder(&j, zero, N, 1)([&]{
-          llvmCall(retTy,
-                   rewriter.getSymbolRefAttr(printfFunc),
-                   {fmtCst, iOp(i, j)});
+          llvmCall(
+            retTy,
+            rewriter.getSymbolRefAttr(printfFunc),
+            {extractvalue(i8PtrTy, fmtCst, rewriter.getIndexArrayAttr(0)),
+             iOp(i, j)});
         });
-        llvmCall(retTy, rewriter.getSymbolRefAttr(printfFunc), {fmtEol});
+        llvmCall(
+          retTy,
+          rewriter.getSymbolRefAttr(printfFunc),
+          {extractvalue(i8PtrTy, fmtEol, rewriter.getIndexArrayAttr(0))});
       });
       // clang-format on
     }

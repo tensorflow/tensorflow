@@ -52,36 +52,27 @@ For example, `vector<4 x f32>` converts to `!llvm.type<"<4 x float>">` and
 
 Memref types in MLIR have both static and dynamic information associated with
 them. The dynamic information comprises the buffer pointer as well as sizes of
-any dynamically sized dimensions. Memref types are converted into either LLVM IR
-pointer types if they are fully statically shaped; or to LLVM IR structure types
-if they contain dynamic sizes. In the latter case, the first element of the
-structure is a pointer to the converted (using these rules) memref element type,
-followed by as many elements as the memref has dynamic sizes. The type of each
-of these size arguments will be the LLVM type that results from converting the
-MLIR `index` type. Zero-dimensional memrefs are treated as pointers to the
-elemental type.
+any dynamically sized dimensions. Memref types are normalized and converted to a
+descriptor that is only dependent on the rank of the memref. The descriptor
+contains the pointer to the data buffer followed by an array containing as many
+64-bit integers as the rank of the memref. The array represents the size, in
+number of elements, of the memref along the given dimension. For constant memref
+dimensions, the corresponding size entry is a constant whose runtime value
+matches the static value. This normalization serves as an ABI for the memref
+type to interoperate with externally linked functions. In the particular case of
+rank `0` memrefs, the size array is omitted, resulting in a wrapped pointer.
 
 Examples:
 
 ```mlir {.mlir}
-// All of the following are converted to just a pointer type because
-// of fully static sizes.
-memref<f32>
-memref<1 x f32>
-memref<10x42x42x43x123 x f32>
-// resulting type
-!llvm.type<"float*">
-
-// All of the following are converted to a three-element structure
-memref<?x? x f32>
-memref<42x?x10x35x1x? x f32>
-// resulting type assuming 64-bit pointers
-!llvm.type<"{float*, i64, i64}">
+memref<f32> -> !llvm.type<"{ float* }">
+memref<1 x f32> -> !llvm.type<"{ float*, [1 x i64] }">
+memref<? x f32> -> !llvm.type<"{ float*, [1 x i64] }">
+memref<10x42x42x43x123 x f32> -> !llvm.type<"{ float*, [5 x i64] }">
+memref<10x?x42x?x123 x f32> -> !llvm.type<"{ float*, [5 x i64] }">
 
 // Memref types can have vectors as element types
-memref<1x? x vector<4xf32>>
-// which get converted as well
-!llvm.type<"{<4 x float>*, i64}">
+memref<1x? x vector<4xf32>> -> !llvm.type<"{ <4 x float>*, [1 x i64] }">
 ```
 
 ### Function Types
