@@ -17,9 +17,9 @@ ifeq ($(TARGET),$(filter $(TARGET),apollo3evb sparkfun_edge))
   $(eval $(call add_third_party_download,$(CUST_CMSIS_URL),$(CUST_CMSIS_MD5),CMSIS_ext,))
 
   ifeq ($(TARGET), sparkfun_edge)
-    $(eval $(call add_third_party_download,$(SPARKFUN_EDGE_BSP_URL),$(SPARKFUN_EDGE_BSP_MD5),$(AM_SDK_DEST)/boards/SparkFun_TensorFlow_Apollo3_BSP,))
+    $(eval $(call add_third_party_download,$(SPARKFUN_BSPS_URL),$(SPARKFUN_BSPS_MD5),$(AM_SDK_DEST)/boards_sfe,))
     # Make sure that we download the full Ambiq SDK before the SparkFun one.
-$(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/boards/SparkFun_TensorFlow_Apollo3_BSP: $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)
+$(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/boards_sfe: $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)
   endif
 
   # Use the faster depthwise conv implementation.
@@ -78,7 +78,7 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/boards/SparkFun_TensorFlow_Apollo3_BSP:
     BOARD_BSP_PATH := $(APOLLO3_SDK)/boards/apollo3_evb/bsp
   endif
   ifeq ($(TARGET), sparkfun_edge)
-    BOARD_BSP_PATH := $(APOLLO3_SDK)/boards/SparkFun_TensorFlow_Apollo3_BSP/bsp
+    BOARD_BSP_PATH := $(APOLLO3_SDK)/boards_sfe/edge/bsp
   endif
   MICROLITE_LIBS := \
     $(BOARD_BSP_PATH)/gcc/bin/libam_bsp.a \
