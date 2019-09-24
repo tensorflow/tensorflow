@@ -821,3 +821,27 @@ func @return_not_in_function() {
   }): () -> ()
   return
 }
+
+// -----
+
+func @invalid_splat(%v : f32) {
+  splat %v : memref<8xf32>
+  // expected-error@-1 {{must be vector of any type values or statically shaped tensor of any type values}}
+  return
+}
+
+// -----
+
+func @invalid_splat(%v : vector<8xf32>) {
+  %w = splat %v : tensor<8xvector<8xf32>>
+  // expected-error@-1 {{must be integer or float type}}
+  return
+}
+
+// -----
+
+func @invalid_splat(%v : f32) { // expected-note {{prior use here}}
+  splat %v : vector<8xf64>
+  // expected-error@-1 {{expects different type than prior uses}}
+  return
+}

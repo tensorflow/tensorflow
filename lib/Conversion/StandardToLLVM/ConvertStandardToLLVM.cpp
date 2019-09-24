@@ -248,17 +248,6 @@ public:
     return builder.create<LLVM::ConstantOp>(loc, getIndexType(), attr);
   }
 
-  // Get the array attribute named "position" containing the given list of
-  // integers as integer attribute elements.
-  static ArrayAttr getIntegerArrayAttr(ConversionPatternRewriter &builder,
-                                       ArrayRef<int64_t> values) {
-    SmallVector<Attribute, 4> attrs;
-    attrs.reserve(values.size());
-    for (int64_t pos : values)
-      attrs.push_back(builder.getIntegerAttr(builder.getIndexType(), pos));
-    return builder.getArrayAttr(attrs);
-  }
-
   // Extract raw data pointer value from a value representing a memref.
   static Value *extractMemRefElementPtr(ConversionPatternRewriter &builder,
                                         Location loc,
@@ -269,9 +258,9 @@ public:
     if (hasStaticShape)
       return convertedMemRefValue;
     else
-      return builder.create<LLVM::ExtractValueOp>(
-          loc, elementTypePtr, convertedMemRefValue,
-          getIntegerArrayAttr(builder, 0));
+      return builder.create<LLVM::ExtractValueOp>(loc, elementTypePtr,
+                                                  convertedMemRefValue,
+                                                  builder.getIndexArrayAttr(0));
     return buffer;
   }
 
@@ -1028,6 +1017,39 @@ struct CondBranchOpLowering
   using Super::Super;
 };
 
+// The Splat operation is lowered to an insertelement + a shufflevector
+// operation. Splat to only 1-d vector result types are lowered.
+struct SplatOpLowering : public LLVMLegalizationPattern<SplatOp> {
+  using LLVMLegalizationPattern<SplatOp>::LLVMLegalizationPattern;
+
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto splatOp = cast<SplatOp>(op);
+    VectorType resultType = splatOp.getType().dyn_cast<VectorType>();
+    if (!resultType || resultType.getRank() != 1)
+      return matchFailure();
+
+    // First insert it into an undef vector so we can shuffle it.
+    auto vectorType = lowering.convertType(splatOp.getType());
+    Value *undef = rewriter.create<LLVM::UndefOp>(op->getLoc(), vectorType);
+    auto zero = rewriter.create<LLVM::ConstantOp>(
+        op->getLoc(), lowering.convertType(rewriter.getIntegerType(32)),
+        rewriter.getZeroAttr(rewriter.getIntegerType(32)));
+
+    auto v = rewriter.create<LLVM::InsertElementOp>(
+        op->getLoc(), vectorType, undef, splatOp.getOperand(), zero);
+
+    int64_t width = splatOp.getType().cast<VectorType>().getDimSize(0);
+    SmallVector<int32_t, 4> zeroValues(width, 0);
+
+    // Shuffle the value across the desired number of elements.
+    ArrayAttr zeroAttrs = rewriter.getI32ArrayAttr(zeroValues);
+    rewriter.replaceOpWithNewOp<LLVM::ShuffleVectorOp>(op, v, undef, zeroAttrs);
+    return matchSuccess();
+  }
+};
+
 } // namespace
 
 static void ensureDistinctSuccessors(Block &bb) {
@@ -1089,9 +1111,9 @@ void mlir::populateStdToLLVMConversionPatterns(
       DivFOpLowering, FuncOpConversion, IndexCastOpLowering, LoadOpLowering,
       MemRefCastOpLowering, MulFOpLowering, MulIOpLowering, OrOpLowering,
       RemISOpLowering, RemIUOpLowering, RemFOpLowering, ReturnOpLowering,
-      SelectOpLowering, SignExtendIOpLowering, SIToFPLowering, StoreOpLowering,
-      SubFOpLowering, SubIOpLowering, TruncateIOpLowering, XOrOpLowering,
-      ZeroExtendIOpLowering>(*converter.getDialect(), converter);
+      SelectOpLowering, SIToFPLowering, SignExtendIOpLowering, SplatOpLowering,
+      StoreOpLowering, SubFOpLowering, SubIOpLowering, TruncateIOpLowering,
+      XOrOpLowering, ZeroExtendIOpLowering>(*converter.getDialect(), converter);
 }
 
 // Convert types using the stored LLVM IR module.

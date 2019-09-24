@@ -692,7 +692,7 @@ index-type ::= `index`
 
 The `index` type is a signless integer whose size is equal to the natural
 machine word of the target ([rationale](Rationale.md#signless-types)) and is
-used by the affine constructs in MLIR. Unlike fixed-size integers. It cannot be
+used by the affine constructs in MLIR. Unlike fixed-size integers, it cannot be
 used as an element of vector, tensor or memref type
 ([rationale](Rationale.md#index-type-disallowed-in-vectortensormemref-types)).
 

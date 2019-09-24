@@ -352,6 +352,32 @@ because of the
 [restrictions on dimensions and symbols](Affine.md#restrictions-on-dimensions-and-symbols)
 in these contexts.
 
+### 'splat' operation
+
+Syntax:
+
+``` {.ebnf}
+operation ::= `splat` ssa-use `:` ( vector-type | tensor-type )
+```
+
+Broadcast the operand to all elements of the result vector or tensor. The
+operand has to be of either integer or float type. When the result is a tensor,
+it has to be statically shaped.
+
+Example:
+
+```mlir {.mlir}
+  %s = load %A[%i] : memref<128xf32>
+  %v = splat %s : vector<4xf32>
+  %t = splat %s : tensor<8x16xi32>
+```
+
+TODO: This operation is easy to extend to broadcast to dynamically shaped
+tensors in the same way dynamically shaped memrefs are handled. `mlir {.mlir} //
+Broadcasts %s to a 2-d dynamically shaped tensor, with %m, %n binding // to the
+sizes of the two dynamic dimensions. %m = "foo"() : () -> (index) %n = "bar"() :
+() -> (index) %t = splat %s [%m, %n] : tensor<?x?xi32>`
+
 ### 'store' operation
 
 Syntax:
