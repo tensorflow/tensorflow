@@ -66,6 +66,13 @@ REQUIRED_PACKAGES = [
     'tf-estimator-nightly >= 1.14.0.dev2019080601, < 1.14.0.dev2019080602',
     'termcolor >= 1.1.0',
     'wrapt >= 1.11.1',
+    # python3 requires wheel 0.26
+    'wheel >= 0.26;python_version>="3"',
+    'wheel;python_version<"3"',
+    # mock comes with unittest.mock for python3, need to install for python2
+    'mock >= 2.0.0;python_version<"3"',
+    # functools comes with python3, need to install the backport for python2
+    'functools32 >= 3.2.3;python_version<"3"',
 ]
 
 if sys.byteorder == 'little':
@@ -80,16 +87,6 @@ if '--project_name' in sys.argv:
   project_name = sys.argv[project_name_idx + 1]
   sys.argv.remove('--project_name')
   sys.argv.pop(project_name_idx)
-
-# python3 requires wheel 0.26
-if sys.version_info.major == 3:
-  REQUIRED_PACKAGES.append('wheel >= 0.26')
-else:
-  REQUIRED_PACKAGES.append('wheel')
-  # mock comes with unittest.mock for python3, need to install for python2
-  REQUIRED_PACKAGES.append('mock >= 2.0.0')
-  # functools comes with python3, need to install the backport for python2
-  REQUIRED_PACKAGES.append('functools32 >= 3.2.3')
 
 # tf-nightly should depend on tb-nightly
 if 'tf_nightly' in project_name:
