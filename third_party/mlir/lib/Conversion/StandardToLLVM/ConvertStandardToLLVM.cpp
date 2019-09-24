@@ -122,27 +122,38 @@ Type LLVMTypeConverter::convertFunctionType(FunctionType type) {
       .getPointerTo();
 }
 
-// Convert a MemRef to an LLVM type. If the memref is statically-shaped, then
-// we return a pointer to the converted element type. Otherwise we return an
-// LLVM structure type, where the first element of the structure type is a
-// pointer to the elemental type of the MemRef and the following N elements are
-// values of the Index type, one for each of N dynamic dimensions of the MemRef.
+// Convert a MemRef to an LLVM type. The result is a MemRef descriptor which
+// contains:
+//   1. the pointer to the data buffer, followed by
+//   2. an array containing as many 64-bit integers as the rank of the MemRef:
+//   the array represents the size, in number of elements, of the memref along
+//   the given dimension. For constant MemRef dimensions, the corresponding size
+//   entry is a constant whose runtime value must match the static value.
+//   TODO(ntv, zinenko): add assertions for the static cases.
+//
+// template <typename Elem, size_t Rank>
+// struct {
+//   Elem *ptr;
+//   int64_t sizes[Rank]; // omitted when rank == 0
+// };
+static unsigned kPtrPosInMemRefDescriptor = 0;
+static unsigned kSizePosInMemRefDescriptor = 1;
 Type LLVMTypeConverter::convertMemRefType(MemRefType type) {
+  assert((type.getAffineMaps().empty() ||
+          (type.getAffineMaps().size() == 1 &&
+           type.getAffineMaps().back().isIdentity())) &&
+         "Non-identity layout maps must have been normalized away");
   LLVM::LLVMType elementType = unwrap(convertType(type.getElementType()));
   if (!elementType)
     return {};
-  auto ptrType = elementType.getPointerTo(type.getMemorySpace());
-
-  // Extra value for the memory space.
-  unsigned numDynamicSizes = type.getNumDynamicDims();
-  // If memref is statically-shaped we return the underlying pointer type.
-  if (numDynamicSizes == 0)
-    return ptrType;
-
-  SmallVector<LLVM::LLVMType, 8> types(numDynamicSizes + 1, getIndexType());
-  types.front() = ptrType;
-
-  return LLVM::LLVMType::getStructTy(llvmDialect, types);
+  auto ptrTy = elementType.getPointerTo(type.getMemorySpace());
+  auto indexTy = getIndexType();
+  auto rank = type.getRank();
+  if (rank > 0) {
+    auto arrayTy = LLVM::LLVMType::getArrayTy(indexTy, type.getRank());
+    return LLVM::LLVMType::getStructTy(ptrTy, arrayTy);
+  }
+  return LLVM::LLVMType::getStructTy(ptrTy);
 }
 
 // Convert an n-D vector type to an LLVM vector type via (n-1)-D array type when
@@ -600,10 +611,6 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
     allocated = rewriter.create<LLVM::BitcastOp>(op->getLoc(), elementPtrType,
                                                  ArrayRef<Value *>(allocated));
 
-    // Deal with static memrefs
-    if (numOperands == 0)
-      return rewriter.replaceOp(op, allocated);
-
     // Create the MemRef descriptor.
     auto structType = lowering.convertType(type);
     Value *memRefDescriptor = rewriter.create<LLVM::UndefOp>(
@@ -611,14 +618,15 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
 
     memRefDescriptor = rewriter.create<LLVM::InsertValueOp>(
         op->getLoc(), structType, memRefDescriptor, allocated,
-        rewriter.getIndexArrayAttr(0));
+        rewriter.getIndexArrayAttr(kPtrPosInMemRefDescriptor));
 
-    // Store dynamically allocated sizes in the descriptor.  Dynamic sizes are
-    // passed in as operands.
-    for (auto indexedSize : llvm::enumerate(operands)) {
+    // Store dynamically allocated sizes in the descriptor. Static and dynamic
+    // sizes are all passed in as operands.
+    for (auto indexedSize : llvm::enumerate(sizes)) {
+      int64_t index = indexedSize.index();
       memRefDescriptor = rewriter.create<LLVM::InsertValueOp>(
           op->getLoc(), structType, memRefDescriptor, indexedSize.value(),
-          rewriter.getIndexArrayAttr(1 + indexedSize.index()));
+          rewriter.getI64ArrayAttr({kSizePosInMemRefDescriptor, index}));
     }
 
     // Return the final value of the descriptor.
@@ -679,60 +687,12 @@ struct MemRefCastOpLowering : public LLVMLegalizationPattern<MemRefCastOp> {
                ConversionPatternRewriter &rewriter) const override {
     auto memRefCastOp = cast<MemRefCastOp>(op);
     OperandAdaptor<MemRefCastOp> transformed(operands);
-    auto targetType = memRefCastOp.getType();
-    auto sourceType = memRefCastOp.getOperand()->getType().cast<MemRefType>();
-
-    // Copy the data buffer pointer.
-    auto elementTypePtr = getMemRefElementPtrType(targetType, lowering);
-    Value *buffer =
-        extractMemRefElementPtr(rewriter, op->getLoc(), transformed.source(),
-                                elementTypePtr, sourceType.hasStaticShape());
-    // Account for static memrefs as target types
-    if (targetType.hasStaticShape())
-      return rewriter.replaceOp(op, buffer);
-
-    // Create the new MemRef descriptor.
-    auto structType = lowering.convertType(targetType);
-    Value *newDescriptor = rewriter.create<LLVM::UndefOp>(
-        op->getLoc(), structType, ArrayRef<Value *>{});
-    // Otherwise target type is dynamic memref, so create a proper descriptor.
-    newDescriptor = rewriter.create<LLVM::InsertValueOp>(
-        op->getLoc(), structType, newDescriptor, buffer,
-        rewriter.getIndexArrayAttr(0));
-
-    // Fill in the dynamic sizes of the new descriptor.  If the size was
-    // dynamic, copy it from the old descriptor.  If the size was static, insert
-    // the constant.  Note that the positions of dynamic sizes in the
-    // descriptors start from 1 (the buffer pointer is at position zero).
-    int64_t sourceDynamicDimIdx = 1;
-    int64_t targetDynamicDimIdx = 1;
-    for (int i = 0, e = sourceType.getRank(); i < e; ++i) {
-      // Ignore new static sizes (they will be known from the type).  If the
-      // size was dynamic, update the index of dynamic types.
-      if (targetType.getShape()[i] != -1) {
-        if (sourceType.getShape()[i] == -1)
-          ++sourceDynamicDimIdx;
-        continue;
-      }
-
-      auto sourceSize = sourceType.getShape()[i];
-      Value *size =
-          sourceSize == -1
-              ? rewriter.create<LLVM::ExtractValueOp>(
-                    op->getLoc(), getIndexType(),
-                    transformed.source(), // NB: dynamic memref
-                    rewriter.getIndexArrayAttr(sourceDynamicDimIdx++))
-              : createIndexConstant(rewriter, op->getLoc(), sourceSize);
-      newDescriptor = rewriter.create<LLVM::InsertValueOp>(
-          op->getLoc(), structType, newDescriptor, size,
-          rewriter.getIndexArrayAttr(targetDynamicDimIdx++));
-    }
-    assert(sourceDynamicDimIdx - 1 == sourceType.getNumDynamicDims() &&
-           "source dynamic dimensions were not processed");
-    assert(targetDynamicDimIdx - 1 == targetType.getNumDynamicDims() &&
-           "target dynamic dimensions were not set up");
-
-    rewriter.replaceOp(op, newDescriptor);
+    // memref_cast is defined for source and destination memref types with the
+    // same element type, same mappings, same address space and same rank.
+    // Therefore a simple bitcast suffices. If not it is undefined behavior.
+    auto targetStructType = lowering.convertType(memRefCastOp.getType());
+    rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, targetStructType,
+                                                 transformed.source());
   }
 };
 
@@ -754,25 +714,16 @@ struct DimOpLowering : public LLVMLegalizationPattern<DimOp> {
     MemRefType type = dimOp.getOperand()->getType().cast<MemRefType>();
 
     auto shape = type.getShape();
-    uint64_t index = dimOp.getIndex();
+    int64_t index = dimOp.getIndex();
     // Extract dynamic size from the memref descriptor and define static size
     // as a constant.
-    if (shape[index] == -1) {
-      // Find the position of the dynamic dimension in the list of dynamic sizes
-      // by counting the number of preceding dynamic dimensions.  Start from 1
-      // because the buffer pointer is at position zero.
-      int64_t position = 1;
-      for (uint64_t i = 0; i < index; ++i) {
-        if (shape[i] == -1)
-          ++position;
-      }
+    if (ShapedType::isDynamic(shape[index]))
       rewriter.replaceOpWithNewOp<LLVM::ExtractValueOp>(
           op, getIndexType(), transformed.memrefOrTensor(),
-          rewriter.getIndexArrayAttr(position));
-    } else {
+          rewriter.getI64ArrayAttr({kSizePosInMemRefDescriptor, index}));
+    else
       rewriter.replaceOp(
           op, createIndexConstant(rewriter, op->getLoc(), shape[index]));
-    }
   }
 };
 
@@ -829,61 +780,41 @@ struct LoadStoreOpLowering : public LLVMLegalizationPattern<Derived> {
     // Dynamic sizes are extracted from the MemRef descriptor, where they start
     // from the position 1 (the buffer is at position 0).
     SmallVector<Value *, 4> sizes;
-    unsigned dynamicSizeIdx = 1;
-    for (int64_t s : shape) {
+    for (auto en : llvm::enumerate(shape)) {
+      int64_t s = en.value();
+      int64_t index = en.index();
       if (s == -1) {
         Value *size = rewriter.create<LLVM::ExtractValueOp>(
             loc, this->getIndexType(), memRefDescriptor,
-            rewriter.getIndexArrayAttr(dynamicSizeIdx++));
+            rewriter.getI64ArrayAttr({kSizePosInMemRefDescriptor, index}));
         sizes.push_back(size);
       } else {
         sizes.push_back(this->createIndexConstant(rewriter, loc, s));
+        // TODO(ntv, zinenko): assert dynamic descriptor size is constant.
       }
     }
 
     // The second and subsequent operands are access subscripts.  Obtain the
     // linearized address in the buffer.
-    Value *subscript = linearizeSubscripts(rewriter, loc, indices, sizes);
+    Value *subscript = indices.empty()
+                           ? nullptr
+                           : linearizeSubscripts(rewriter, loc, indices, sizes);
 
     Value *dataPtr = rewriter.create<LLVM::ExtractValueOp>(
-        loc, elementTypePtr, memRefDescriptor, rewriter.getIndexArrayAttr(0));
-    return rewriter.create<LLVM::GEPOp>(loc, elementTypePtr,
-                                        ArrayRef<Value *>{dataPtr, subscript},
+        loc, elementTypePtr, memRefDescriptor,
+        rewriter.getIndexArrayAttr(kPtrPosInMemRefDescriptor));
+    SmallVector<Value *, 2> gepSubValues(1, dataPtr);
+    if (subscript)
+      gepSubValues.push_back(subscript);
+    return rewriter.create<LLVM::GEPOp>(loc, elementTypePtr, gepSubValues,
                                         ArrayRef<NamedAttribute>{});
   }
-  // This is a getElementPtr variant, where the value is a direct raw pointer.
-  // If a shape is empty, we are dealing with a zero-dimensional memref. Return
-  // the pointer unmodified in this case.  Otherwise, linearize subscripts to
-  // obtain the offset with respect to the base pointer.  Use this offset to
-  // compute and return the element pointer.
-  Value *getRawElementPtr(Location loc, Type elementTypePtr,
-                          ArrayRef<int64_t> shape, Value *rawDataPtr,
-                          ArrayRef<Value *> indices,
-                          ConversionPatternRewriter &rewriter) const {
-    if (shape.empty())
-      return rawDataPtr;
-
-    SmallVector<Value *, 4> sizes;
-    for (int64_t s : shape) {
-      sizes.push_back(this->createIndexConstant(rewriter, loc, s));
-    }
-
-    Value *subscript = linearizeSubscripts(rewriter, loc, indices, sizes);
-    return rewriter.create<LLVM::GEPOp>(
-        loc, elementTypePtr, ArrayRef<Value *>{rawDataPtr, subscript},
-        ArrayRef<NamedAttribute>{});
-  }
-
   Value *getDataPtr(Location loc, MemRefType type, Value *dataPtr,
                     ArrayRef<Value *> indices,
                     ConversionPatternRewriter &rewriter,
                     llvm::Module &module) const {
     auto ptrType = getMemRefElementPtrType(type, this->lowering);
     auto shape = type.getShape();
-    if (type.hasStaticShape()) {
-      // NB: If memref was statically-shaped, dataPtr is pointer to raw data.
-      return getRawElementPtr(loc, ptrType, shape, dataPtr, indices, rewriter);
-    }
     return getElementPtr(loc, ptrType, shape, dataPtr, indices, rewriter);
   }
 };
