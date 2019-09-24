@@ -288,6 +288,14 @@ cc_library(
 )
 
 cc_library(
+    name = "null_file_system",
+    hdrs = ["null_file_system.h"],
+    deps = [
+        ":env",
+    ],
+)
+
+cc_library(
     name = "numbers",
     srcs = ["numbers.cc"],
     hdrs = ["numbers.h"],
@@ -361,6 +369,18 @@ cc_library(
     name = "protobuf_compiler",
     hdrs = ["protobuf_compiler.h"],
     deps = tf_protobuf_compiler_deps(),
+)
+
+cc_library(
+    name = "protobuf_internal",
+    hdrs = ["protobuf_internal.h"],
+    deps = [
+        ":platform",
+        ":protobuf",
+        ":types",
+        "//tensorflow/core/lib/core:errors",
+        "@com_google_protobuf//:protobuf",
+    ],
 )
 
 cc_library(
