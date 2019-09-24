@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/shared_batch_scheduler.h"
 
 #include "tensorflow/core/kernels/batching_util/fake_clock_env.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace serving {
