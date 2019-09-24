@@ -1382,6 +1382,8 @@ def run_cuda_only(func=None):
   return decorator
 
 
+@deprecation.deprecated(
+    None, "Use `tf.config.experimental.list_physical_devices('GPU')` instead.")
 @tf_export("test.is_gpu_available")
 def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
   """Returns whether TensorFlow can access a GPU.
