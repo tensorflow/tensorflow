@@ -40,4 +40,4 @@ bazel test --config=rocm --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-no_rocm
     --build_tests_only --test_output=errors --local_test_jobs=${TF_GPU_COUNT} --config=opt \
     --test_sharding_strategy=disabled \
     --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute -- \
-    //tensorflow/... -//tensorflow/compiler/... -//tensorflow/contrib/... \
+    //tensorflow/... -//tensorflow/compiler/...
