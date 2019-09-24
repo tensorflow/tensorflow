@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -923,11 +922,27 @@ class CondV2Test(test.TestCase):
           _has_node_with_op(run_metadata, "Switch"),
           "A `Switch` op exists, but the graph should not be lowered.")
 
-      # Lowering disabled in XLA, there should still be an `If` node
-      self.assertTrue(
-          _has_node_with_op(run_metadata, "StatelessIf"),
-          "An `If` op was not found, but the graph should not be lowered.")
-      # pylint: enable=g-complex-comprehension
+      if test_util.is_xla_enabled():
+        # If XLA is actually enabled then we expect the StatelessIf to have been
+        # put inside an XLA cluster.
+        self.assertFalse(
+            _has_node_with_op(run_metadata, "StatelessIf"),
+            ("A `StatelessIf` op was found, but the node should have been " +
+             "clustered."))
+        self.assertTrue(
+            _has_node_with_op(run_metadata, "_XlaCompile"),
+            ("An `_XlaCompile` op was not found, but the `StatelessIf` (at " +
+             "least) op should have been clustered."))
+        self.assertTrue(
+            _has_node_with_op(run_metadata, "_XlaRun"),
+            ("An `_XlaRun` op was not found, but the `StatelessIf` (at " +
+             "least) op should have been clustered."))
+      else:
+        # Lowering disabled in XLA, there should still be an `If` node
+        self.assertTrue(
+            _has_node_with_op(run_metadata, "StatelessIf"),
+            ("A `StatelessIf` op was not found, but the graph should not be " +
+             "lowered."))
 
   @test_util.run_deprecated_v1
   def testNestedLoweringDisabledInXLA(self):
@@ -1425,6 +1440,4 @@ def _has_node_with_op(run_metadata, op_type):
 
 
 if __name__ == "__main__":
-  # Forward compat date for StatelessIf.
-  with forward_compat.forward_compatibility_horizon(2019, 7, 23):
-    test.main()
+  test.main()

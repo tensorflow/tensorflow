@@ -280,10 +280,14 @@ def strategy_and_optimizer_combinations():
               strategy_combinations.adam_optimizer_v1_fn,
               strategy_combinations.gradient_descent_optimizer_v1_fn,
               strategy_combinations.rmsprop_optimizer_v1_fn,
+              strategy_combinations.adadelta_optimizer_keras_v2_fn,
               strategy_combinations.adagrad_optimizer_keras_v2_fn,
               strategy_combinations.adam_optimizer_keras_v2_fn,
+              strategy_combinations.adamax_optimizer_keras_v2_fn,
               strategy_combinations.gradient_descent_optimizer_keras_v2_fn,
-              strategy_combinations.rmsprop_optimizer_keras_v2_fn
+              strategy_combinations.nadam_optimizer_keras_v2_fn,
+              strategy_combinations.rmsprop_optimizer_keras_v2_fn,
+              strategy_combinations.ftrl_optimizer_keras_v2_fn
           ],
           experimental_run_tf_function=[True, False]))
   tpu_strategies_graph = combinations.combine(

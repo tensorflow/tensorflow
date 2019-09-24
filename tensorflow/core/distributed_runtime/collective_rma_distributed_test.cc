@@ -74,7 +74,7 @@ class FakeWorker : public TestWorkerInterface {
   BufRendezvous* buf_rendezvous() { return &buf_rendezvous_; }
 
   void GetStatusAsync(const GetStatusRequest* request,
-                      GetStatusResponse* response,
+                      GetStatusResponse* response, bool fail_fast,
                       StatusCallback done) override {
     std::vector<DeviceAttributes> dev_attr;
     device_mgr_->ListDeviceAttributes(&dev_attr);
@@ -222,7 +222,7 @@ class CollRMADistTest : public ::testing::Test {
           device_type,
           strings::StrCat(worker_name, "/device:", device_type, ":", i)));
     }
-    DeviceMgr* dev_mgr = new DeviceMgr(std::move(devices));
+    DeviceMgr* dev_mgr = new StaticDeviceMgr(std::move(devices));
     device_mgrs_.push_back(dev_mgr);
     std::vector<string>* dv = &dev_by_task_[worker_name];
     dv->clear();

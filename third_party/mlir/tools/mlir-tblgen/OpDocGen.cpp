@@ -20,6 +20,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "DocGenUtilities.h"
 #include "mlir/TableGen/GenInfo.h"
 #include "mlir/TableGen/Operator.h"
 #include "llvm/ADT/StringExtras.h"
@@ -40,7 +41,7 @@ using mlir::tblgen::Operator;
 // This expects that the description in the tablegen file is already formatted
 // in a way the user wanted but has some additional indenting due to being
 // nested in the op definition.
-static void emitDescription(StringRef description, raw_ostream &os) {
+void mlir::tblgen::emitDescription(StringRef description, raw_ostream &os) {
   // Determine the minimum number of spaces in a line.
   size_t min_indent = -1;
   StringRef remaining = description;
@@ -94,7 +95,7 @@ static void emitOpDoc(const RecordKeeper &recordKeeper, raw_ostream &os) {
       os << "\n" << op.getSummary() << "\n";
     os << "\n### Description:\n";
     if (op.hasDescription())
-      emitDescription(op.getDescription(), os);
+      mlir::tblgen::emitDescription(op.getDescription(), os);
 
     // Emit operands & type of operand. All operands are numbered, some may be
     // named too.

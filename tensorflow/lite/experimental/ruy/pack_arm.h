@@ -231,7 +231,7 @@ struct PackImpl<Path::kNeon, FixedKernelLayout<Order::kColMajor, 16, 2>, Scalar,
                   int end_col) {
     RUY_DCHECK(IsColMajor(src_matrix.layout));
     RUY_DCHECK(IsColMajor(packed_matrix->layout));
-    RUY_DCHECK_EQ(start_col % 4, 0);
+    RUY_DCHECK_EQ(start_col % 2, 0);
     std::int32_t* sums = packed_matrix->sums;
     Scalar zerobuf[16];
     memset(zerobuf, src_matrix.zero_point, sizeof(zerobuf));

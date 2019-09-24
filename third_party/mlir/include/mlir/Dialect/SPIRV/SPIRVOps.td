@@ -35,11 +35,32 @@
 include "mlir/Dialect/SPIRV/SPIRVBase.td"
 #endif // SPIRV_BASE
 
+#ifdef SPIRV_ARITHMETIC_OPS
+#else
+include "mlir/Dialect/SPIRV/SPIRVArithmeticOps.td"
+#endif // SPIRV_ARITHMETIC_OPS
+
+#ifdef SPIRV_CONTROLFLOW_OPS
+#else
+include "mlir/Dialect/SPIRV/SPIRVControlFlowOps.td"
+#endif // SPIRV_CONTROLFLOW_OPS
+
+#ifdef SPIRV_LOGICAL_OPS
+#else
+include "mlir/Dialect/SPIRV/SPIRVLogicalOps.td"
+#endif // SPIRV_LOGICAL_OPS
+
 #ifdef SPIRV_STRUCTURE_OPS
 #else
 // Pull in ops for defining the SPIR-V module structure
 include "mlir/Dialect/SPIRV/SPIRVStructureOps.td"
 #endif // SPIRV_STRUCTURE_OPS
+
+#ifdef SPIRV_GLSL_OPS
+#else
+// Pull in ops for extended instruction set for GLSL
+include "mlir/Dialect/SPIRV/SPIRVGLSLOps.td"
+#endif // SPIRV_GLSL_OPS
 
 // -----
 
@@ -98,6 +119,9 @@ def SPV_AccessChainOp : SPV_Op<"AccessChain", [NoSideEffect]> {
   let results = (outs
     SPV_AnyPtr:$component_ptr
   );
+
+  let builders = [OpBuilder<[{Builder *builder, OperationState &state,
+                              Value *basePtr, ArrayRef<Value *> indices}]>];
 }
 
 // -----
@@ -142,6 +166,74 @@ def SPV_CompositeExtractOp : SPV_Op<"CompositeExtract", [NoSideEffect]> {
   let results = (outs
     SPV_Type:$component
   );
+
+  let hasFolder = 1;
+}
+
+// -----
+
+def SPV_ControlBarrierOp : SPV_Op<"ControlBarrier", []> {
+  let summary = [{
+    Wait for other invocations of this module to reach the current point of
+    execution.
+  }];
+
+  let description = [{
+    All invocations of this module within Execution scope must reach this
+    point of execution before any invocation will proceed beyond it.
+
+    When Execution is Workgroup or larger, behavior is undefined if this
+    instruction is used in control flow that is non-uniform within
+    Execution. When Execution is Subgroup or Invocation, the behavior of
+    this instruction in non-uniform control flow is defined by the client
+    API.
+
+    If Semantics is not None, this instruction also serves as an
+    OpMemoryBarrier instruction, and must also perform and adhere to the
+    description and semantics of an OpMemoryBarrier instruction with the
+    same Memory and Semantics operands.  This allows atomically specifying
+    both a control barrier and a memory barrier (that is, without needing
+    two instructions). If Semantics is None, Memory is ignored.
+
+    Before version 1.3, it is only valid to use this instruction with
+    TessellationControl, GLCompute, or Kernel execution models. There is no
+    such restriction starting with version 1.3.
+
+    When used with the TessellationControl execution model, it also
+    implicitly synchronizes the Output Storage Class:  Writes to Output
+    variables performed by any invocation executed prior to a
+    OpControlBarrier will be visible to any other invocation after return
+    from that OpControlBarrier.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    scope ::= `"CrossDevice"` | `"Device"` | `"Workgroup"` | ...
+
+    memory-semantics ::= `"None"` | `"Acquire"` | "Release"` | ...
+
+    control-barrier-op ::= `spv.ControlBarrier` scope, scope, memory-semantics
+    ```
+
+    For example:
+
+    ```
+    spv.ControlBarrier "Workgroup", "Device", "Acquire|UniformMemory"
+
+    ```
+  }];
+
+  let arguments = (ins
+    SPV_ScopeAttr:$execution_scope,
+    SPV_ScopeAttr:$memory_scope,
+    SPV_MemorySemanticsAttr:$memory_semantics
+  );
+
+  let results = (outs);
+
+  let verifier = [{ return verifyMemorySemantics(*this); }];
+
+  let autogenSerialization = 0;
 }
 
 // -----
@@ -188,365 +280,6 @@ def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [InModuleScope]> {
   let verifier = [{ return success(); }];
 
   let autogenSerialization = 0;
-}
-
-// -----
-
-def SPV_FAddOp : SPV_ArithmeticOp<"FAdd", SPV_Float, [Commutative]> {
-  let summary = "Floating-point addition of Operand 1 and Operand 2.";
-
-  let description = [{
-    Result Type must be a scalar or vector of floating-point type.
-
-     The types of Operand 1 and Operand 2 both must be the same as Result
-    Type.
-
-     Results are computed per component.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    float-scalar-vector-type ::= float-type |
-                                 `vector<` integer-literal `x` float-type `>`
-    fadd-op ::= ssa-id `=` `spv.FAdd` ssa-use, ssa-use
-                          `:` float-scalar-vector-type
-    ```
-    For example:
-
-    ```
-    %4 = spv.FAdd %0, %1 : f32
-    %5 = spv.FAdd %2, %3 : vector<4xf32>
-    ```
-  }];
-}
-
-// -----
-
-def SPV_FDivOp : SPV_ArithmeticOp<"FDiv", SPV_Float> {
-  let summary = "Floating-point division of Operand 1 divided by Operand 2.";
-
-  let description = [{
-    Result Type must be a scalar or vector of floating-point type.
-
-     The types of Operand 1 and Operand 2 both must be the same as Result
-    Type.
-
-     Results are computed per component.  The resulting value is undefined
-    if Operand 2 is 0.
-    ### Custom assembly form
-    ``` {.ebnf}
-    float-scalar-vector-type ::= float-type |
-                                 `vector<` integer-literal `x` float-type `>`
-    fdiv-op ::= ssa-id `=` `spv.FDiv` ssa-use, ssa-use
-                          `:` float-scalar-vector-type
-    ```
-
-    For example:
-
-    ```
-    %4 = spv.FDiv %0, %1 : f32
-    %5 = spv.FDiv %2, %3 : vector<4xf32>
-    ```
-  }];
-}
-
-// -----
-
-def SPV_FModOp : SPV_ArithmeticOp<"FMod", SPV_Float> {
-  let summary = [{
-    The floating-point remainder whose sign matches the sign of Operand 2.
-  }];
-
-  let description = [{
-    Result Type must be a scalar or vector of floating-point type.
-
-     The types of Operand 1 and Operand 2 both must be the same as Result
-    Type.
-
-     Results are computed per component.  The resulting value is undefined
-    if Operand 2 is 0.  Otherwise, the result is the remainder r of Operand
-    1 divided by Operand 2 where if r ≠ 0, the sign of r is the same as the
-    sign of Operand 2.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    float-scalar-vector-type ::= float-type |
-                                 `vector<` integer-literal `x` float-type `>`
-    fmod-op ::= ssa-id `=` `spv.FMod` ssa-use, ssa-use
-                          `:` float-scalar-vector-type
-    ```
-    For example:
-
-    ```
-    %4 = spv.FMod %0, %1 : f32
-    %5 = spv.FMod %2, %3 : vector<4xf32>
-    ```
-  }];
-}
-
-// -----
-
-def SPV_FMulOp : SPV_ArithmeticOp<"FMul", SPV_Float, [Commutative]> {
-  let summary = "Floating-point multiplication of Operand 1 and Operand 2.";
-
-  let description = [{
-    Result Type must be a scalar or vector of floating-point type.
-
-     The types of Operand 1 and Operand 2 both must be the same as Result
-    Type.
-
-     Results are computed per component.
-
-    ### Custom assembly form
-
-    ``` {.ebnf}
-    float-scalar-vector-type ::= float-type |
-                                 `vector<` integer-literal `x` float-type `>`
-    fmul-op ::= `spv.FMul` ssa-use, ssa-use
-                          `:` float-scalar-vector-type
-    ```
-
-    For example:
-
-    ```
-    %4 = spv.FMul %0, %1 : f32
-    %5 = spv.FMul %2, %3 : vector<4xf32>
-    ```
-  }];
-}
-
-// -----
-
-def SPV_FRemOp : SPV_ArithmeticOp<"FRem", SPV_Float> {
-  let summary = [{
-    The floating-point remainder whose sign matches the sign of Operand 1.
-  }];
-
-  let description = [{
-    Result Type must be a scalar or vector of floating-point type.
-
-     The types of Operand 1 and Operand 2 both must be the same as Result
-    Type.
-
-     Results are computed per component.  The resulting value is undefined
-    if Operand 2 is 0.  Otherwise, the result is the remainder r of Operand
-    1 divided by Operand 2 where if r ≠ 0, the sign of r is the same as the
-    sign of Operand 1.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    float-scalar-vector-type ::= float-type |
-                                 `vector<` integer-literal `x` float-type `>`
-    frem-op ::= ssa-id `=` `spv.FRemOp` ssa-use, ssa-use
-                          `:` float-scalar-vector-type
-    ```
-
-    For example:
-
-    ```
-    %4 = spv.FRemOp %0, %1 : f32
-    %5 = spv.FRemOp %2, %3 : vector<4xf32>
-    ```
-  }];
-}
-
-// -----
-
-def SPV_FSubOp : SPV_ArithmeticOp<"FSub", SPV_Float> {
-  let summary = "Floating-point subtraction of Operand 2 from Operand 1.";
-
-  let description = [{
-    Result Type must be a scalar or vector of floating-point type.
-
-     The types of Operand 1 and Operand 2 both must be the same as Result
-    Type.
-
-     Results are computed per component.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    float-scalar-vector-type ::= float-type |
-                                 `vector<` integer-literal `x` float-type `>`
-    fsub-op ::= ssa-id `=` `spv.FRemOp` ssa-use, ssa-use
-                          `:` float-scalar-vector-type
-    ```
-
-    For example:
-
-    ```
-    %4 = spv.FRemOp %0, %1 : f32
-    %5 = spv.FRemOp %2, %3 : vector<4xf32>
-    ```
-  }];
-}
-
-// -----
-
-def SPV_IAddOp : SPV_ArithmeticOp<"IAdd", SPV_Integer, [Commutative]> {
-  let summary = "Integer addition of Operand 1 and Operand 2.";
-
-  let description = [{
-    Result Type must be a scalar or vector of integer type.
-
-     The type of Operand 1 and Operand 2  must be a scalar or vector of
-    integer type.  They must have the same number of components as Result
-    Type. They must have the same component width as Result Type.
-
-    The resulting value will equal the low-order N bits of the correct
-    result R, where N is the component width and R is computed with enough
-    precision to avoid overflow and underflow.
-
-     Results are computed per component.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    integer-scalar-vector-type ::= integer-type |
-                                 `vector<` integer-literal `x` integer-type `>`
-    iadd-op ::= ssa-id `=` `spv.IAdd` ssa-use, ssa-use
-                          `:` integer-scalar-vector-type
-    ```
-
-    For example:
-
-    ```
-    %4 = spv.IAdd %0, %1 : i32
-    %5 = spv.IAdd %2, %3 : vector<4xi32>
-
-    ```
-  }];
-}
-
-// -----
-
-def SPV_IEqualOp : SPV_LogicalOp<"IEqual", SPV_Integer, [Commutative]> {
-  let summary = "Integer comparison for equality.";
-
-  let description = [{
-    Result Type must be a scalar or vector of Boolean type.
-
-     The type of Operand 1 and Operand 2  must be a scalar or vector of
-    integer type.  They must have the same component width, and they must
-    have the same number of components as Result Type.
-
-     Results are computed per component.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    integer-scalar-vector-type ::= integer-type |
-                                 `vector<` integer-literal `x` integer-type `>`
-    iequal-op ::= ssa-id `=` `spv.IEqual` ssa-use, ssa-use
-                             `:` integer-scalar-vector-type
-    ```
-    For example:
-
-    ```
-    %4 = spv.IEqual %0, %1 : i32
-    %5 = spv.IEqual %2, %3 : vector<4xi32>
-
-    ```
-  }];
-}
-
-// -----
-
-def SPV_INotEqualOp : SPV_LogicalOp<"INotEqual", SPV_Integer, [Commutative]> {
-  let summary = "Integer comparison for inequality.";
-
-  let description = [{
-    Result Type must be a scalar or vector of Boolean type.
-
-     The type of Operand 1 and Operand 2  must be a scalar or vector of
-    integer type.  They must have the same component width, and they must
-    have the same number of components as Result Type.
-
-     Results are computed per component.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    integer-scalar-vector-type ::= integer-type |
-                                 `vector<` integer-literal `x` integer-type `>`
-    inot-equal-op ::= ssa-id `=` `spv.INotEqual` ssa-use, ssa-use
-                                 `:` integer-scalar-vector-type
-    ```
-    For example:
-
-    ```
-    %4 = spv.INotEqual %0, %1 : i32
-    %5 = spv.INotEqual %2, %3 : vector<4xi32>
-
-    ```
-  }];
-}
-
-// -----
-
-def SPV_IMulOp : SPV_ArithmeticOp<"IMul", SPV_Integer, [Commutative]> {
-  let summary = "Integer multiplication of Operand 1 and Operand 2.";
-
-  let description = [{
-    Result Type must be a scalar or vector of integer type.
-
-     The type of Operand 1 and Operand 2  must be a scalar or vector of
-    integer type.  They must have the same number of components as Result
-    Type. They must have the same component width as Result Type.
-
-    The resulting value will equal the low-order N bits of the correct
-    result R, where N is the component width and R is computed with enough
-    precision to avoid overflow and underflow.
-
-     Results are computed per component.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    integer-scalar-vector-type ::= integer-type |
-                                 `vector<` integer-literal `x` integer-type `>`
-    imul-op ::= ssa-id `=` `spv.IMul` ssa-use, ssa-use
-                          `:` integer-scalar-vector-type
-    ```
-
-    For example:
-
-    ```
-    %4 = spv.IMul %0, %1 : i32
-    %5 = spv.IMul %2, %3 : vector<4xi32>
-
-    ```
-  }];
-}
-
-// -----
-
-def SPV_ISubOp : SPV_ArithmeticOp<"ISub", SPV_Integer> {
-  let summary = "Integer subtraction of Operand 2 from Operand 1.";
-
-  let description = [{
-    Result Type must be a scalar or vector of integer type.
-
-     The type of Operand 1 and Operand 2  must be a scalar or vector of
-    integer type.  They must have the same number of components as Result
-    Type. They must have the same component width as Result Type.
-
-    The resulting value will equal the low-order N bits of the correct
-    result R, where N is the component width and R is computed with enough
-    precision to avoid overflow and underflow.
-
-     Results are computed per component.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    integer-scalar-vector-type ::= integer-type |
-                                 `vector<` integer-literal `x` integer-type `>`
-    isub-op ::= `spv.ISub` ssa-use, ssa-use
-                          `:` integer-scalar-vector-type
-    ```
-
-    For example:
-
-    ```
-    %4 = spv.ISub %0, %1 : i32
-    %5 = spv.ISub %2, %3 : vector<4xi32>
-
-    ```
-  }];
 }
 
 // -----
@@ -599,300 +332,49 @@ def SPV_LoadOp : SPV_Op<"Load", []> {
 
 // -----
 
-def SPV_ReturnOp : SPV_Op<"Return", [InFunctionScope, Terminator]> {
-  let summary = "Return with no value from a function with void return type.";
+def SPV_MemoryBarrierOp : SPV_Op<"MemoryBarrier", []> {
+  let summary = "Control the order that memory accesses are observed.";
 
   let description = [{
-    This instruction must be the last instruction in a block.
+    Ensures that memory accesses issued before this instruction will be
+    observed before memory accesses issued after this instruction. This
+    control is ensured only for memory accesses issued by this invocation
+    and observed by another invocation executing within Memory scope.
+
+    Semantics declares what kind of memory is being controlled and what kind
+    of control to apply.
+
+    To execute both a memory barrier and a control barrier, see
+    OpControlBarrier.
 
     ### Custom assembly form
 
     ``` {.ebnf}
-    return-op ::= `spv.Return`
-    ```
-  }];
+    scope ::= `"CrossDevice"` | `"Device"` | `"Workgroup"` | ...
 
-  let arguments = (ins);
+    memory-semantics ::= `"None"` | `"Acquire"` | `"Release"` | ...
 
-  let results = (outs);
-
-  let parser = [{ return parseNoIOOp(parser, result); }];
-  let printer = [{ printNoIOOp(getOperation(), p); }];
-
-  let verifier = [{ return verifyReturn(*this); }];
-}
-
-// -----
-
-def SPV_ReturnValueOp : SPV_Op<"ReturnValue", [InFunctionScope, Terminator]> {
-  let summary = "Return a value from a function.";
-
-  let description = [{
-    Value is the value returned, by copy, and must match the Return Type
-    operand of the OpTypeFunction type of the OpFunction body this return
-    instruction is in.
-
-    This instruction must be the last instruction in a block.
-
-    ### Custom assembly form
-
-    ``` {.ebnf}
-    return-value-op ::= `spv.ReturnValue` ssa-use `:` spirv-type
+    memory-barrier-op ::= `spv.MemoryBarrier` scope, memory-semantics
     ```
 
     For example:
 
     ```
-    spv.ReturnValue %0 : f32
+    spv.MemoryBarrier "Device", "Acquire|UniformMemory"
+
     ```
   }];
 
   let arguments = (ins
-    SPV_Type:$value
+    SPV_ScopeAttr:$memory_scope,
+    SPV_MemorySemanticsAttr:$memory_semantics
   );
 
   let results = (outs);
-}
 
-// -----
+  let verifier = [{ return verifyMemorySemantics(*this); }];
 
-def SPV_SDivOp : SPV_ArithmeticOp<"SDiv", SPV_Integer> {
-  let summary = "Signed-integer division of Operand 1 divided by Operand 2.";
-
-  let description = [{
-    Result Type must be a scalar or vector of integer type.
-
-     The type of Operand 1 and Operand 2  must be a scalar or vector of
-    integer type.  They must have the same number of components as Result
-    Type. They must have the same component width as Result Type.
-
-     Results are computed per component.  The resulting value is undefined
-    if Operand 2 is 0.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    integer-scalar-vector-type ::= integer-type |
-                                 `vector<` integer-literal `x` integer-type `>`
-    sdiv-op ::= ssa-id `=` `spv.SDiv` ssa-use, ssa-use
-                           `:` integer-scalar-vector-type
-    ```
-
-    For example:
-
-    ```
-    %4 = spv.SDiv %0, %1 : i32
-    %5 = spv.SDiv %2, %3 : vector<4xi32>
-
-    ```
-  }];
-}
-
-// -----
-
-def SPV_SGreaterThanOp : SPV_LogicalOp<"SGreaterThan", SPV_Integer, []> {
-  let summary = [{
-    Signed-integer comparison if Operand 1 is greater than  Operand 2.
-  }];
-
-  let description = [{
-    Result Type must be a scalar or vector of Boolean type.
-
-     The type of Operand 1 and Operand 2  must be a scalar or vector of
-    integer type.  They must have the same component width, and they must
-    have the same number of components as Result Type.
-
-     Results are computed per component.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    integer-scalar-vector-type ::= integer-type |
-                                 `vector<` integer-literal `x` integer-type `>`
-    sgreater-than-op ::= ssa-id `=` `spv.SGreaterThan` ssa-use, ssa-use
-                                    `:` integer-scalar-vector-type
-    ```
-    For example:
-
-    ```
-    %4 = spv.SGreaterThan %0, %1 : i32
-    %5 = spv.SGreaterThan %2, %3 : vector<4xi32>
-
-    ```
-  }];
-}
-
-// -----
-
-def SPV_SGreaterThanEqualOp : SPV_LogicalOp<"SGreaterThanEqual", SPV_Integer, []> {
-  let summary = [{
-    Signed-integer comparison if Operand 1 is greater than or equal to
-    Operand 2.
-  }];
-
-  let description = [{
-    Result Type must be a scalar or vector of Boolean type.
-
-     The type of Operand 1 and Operand 2  must be a scalar or vector of
-    integer type.  They must have the same component width, and they must
-    have the same number of components as Result Type.
-
-     Results are computed per component.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    integer-scalar-vector-type ::= integer-type |
-                                 `vector<` integer-literal `x` integer-type `>`
-    sgreater-than-equal-op ::= ssa-id `=` `spv.SGreaterThanEqual` ssa-use, ssa-use
-                                          `:` integer-scalar-vector-type
-    ```
-    For example:
-
-    ```
-    %4 = spv.SGreaterThanEqual %0, %1 : i32
-    %5 = spv.SGreaterThanEqual %2, %3 : vector<4xi32>
-
-    ```
-  }];
-}
-
-// -----
-
-def SPV_SLessThanOp : SPV_LogicalOp<"SLessThan", SPV_Integer, []> {
-  let summary = [{
-    Signed-integer comparison if Operand 1 is less than Operand 2.
-  }];
-
-  let description = [{
-    Result Type must be a scalar or vector of Boolean type.
-
-     The type of Operand 1 and Operand 2  must be a scalar or vector of
-    integer type.  They must have the same component width, and they must
-    have the same number of components as Result Type.
-
-     Results are computed per component.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    integer-scalar-vector-type ::= integer-type |
-                                 `vector<` integer-literal `x` integer-type `>`
-    sless-than-op ::= ssa-id `=` `spv.SLessThan` ssa-use, ssa-use
-                                 `:` integer-scalar-vector-type
-    ```
-    For example:
-
-    ```
-    %4 = spv.SLessThan %0, %1 : i32
-    %5 = spv.SLessThan %2, %3 : vector<4xi32>
-
-    ```
-  }];
-}
-
-// -----
-
-def SPV_SLessThanEqualOp : SPV_LogicalOp<"SLessThanEqual", SPV_Integer, []> {
-  let summary = [{
-    Signed-integer comparison if Operand 1 is less than or equal to Operand
-    2.
-  }];
-
-  let description = [{
-    Result Type must be a scalar or vector of Boolean type.
-
-     The type of Operand 1 and Operand 2  must be a scalar or vector of
-    integer type.  They must have the same component width, and they must
-    have the same number of components as Result Type.
-
-     Results are computed per component.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    integer-scalar-vector-type ::= integer-type |
-                                 `vector<` integer-literal `x` integer-type `>`
-    sless-than-equal-op ::= ssa-id `=` `spv.SLessThanEqual` ssa-use, ssa-use
-                                       `:` integer-scalar-vector-type
-    ```
-    For example:
-
-    ```
-    %4 = spv.SLessThanEqual %0, %1 : i32
-    %5 = spv.SLessThanEqual %2, %3 : vector<4xi32>
-
-    ```
-  }];
-}
-
-// -----
-
-def SPV_SModOp : SPV_ArithmeticOp<"SMod", SPV_Integer> {
-  let summary = [{
-    Signed remainder operation for the remainder whose sign matches the sign
-    of Operand 2.
-  }];
-
-  let description = [{
-    Result Type must be a scalar or vector of integer type.
-
-     The type of Operand 1 and Operand 2  must be a scalar or vector of
-    integer type.  They must have the same number of components as Result
-    Type. They must have the same component width as Result Type.
-
-     Results are computed per component.  The resulting value is undefined
-    if Operand 2 is 0.  Otherwise, the result is the remainder r of Operand
-    1 divided by Operand 2 where if r ≠ 0, the sign of r is the same as the
-    sign of Operand 2.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    integer-scalar-vector-type ::= integer-type |
-                                 `vector<` integer-literal `x` integer-type `>`
-    smod-op ::= ssa-id `=` `spv.SMod` ssa-use, ssa-use
-                           `:` integer-scalar-vector-type
-    ```
-    For example:
-
-    ```
-    %4 = spv.SMod %0, %1 : i32
-    %5 = spv.SMod %2, %3 : vector<4xi32>
-
-    ```
-  }];
-}
-
-// -----
-
-def SPV_SRemOp : SPV_ArithmeticOp<"SRem", SPV_Integer> {
-  let summary = [{
-    Signed remainder operation for the remainder whose sign matches the sign
-    of Operand 1.
-  }];
-
-  let description = [{
-    Result Type must be a scalar or vector of integer type.
-
-     The type of Operand 1 and Operand 2  must be a scalar or vector of
-    integer type.  They must have the same number of components as Result
-    Type. They must have the same component width as Result Type.
-
-     Results are computed per component.  The resulting value is undefined
-    if Operand 2 is 0.  Otherwise, the result is the remainder r of Operand
-    1 divided by Operand 2 where if r ≠ 0, the sign of r is the same as the
-    sign of Operand 1.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    integer-scalar-vector-type ::= integer-type |
-                                 `vector<` integer-literal `x` integer-type `>`
-    srem-op ::= ssa-id `=` `spv.SRem` ssa-use, ssa-use
-                           `:` integer-scalar-vector-type
-    ```
-    For example:
-
-    ```
-    %4 = spv.SRem %0, %1 : i32
-    %5 = spv.SRem %2, %3 : vector<4xi32>
-
-    ```
-  }];
+  let autogenSerialization = 0;
 }
 
 // -----
@@ -935,205 +417,6 @@ def SPV_StoreOp : SPV_Op<"Store", []> {
   );
 
   let results = (outs);
-}
-
-// -----
-
-def SPV_UDivOp : SPV_ArithmeticOp<"UDiv", SPV_Integer> {
-  let summary = "Unsigned-integer division of Operand 1 divided by Operand 2.";
-
-  let description = [{
-    Result Type must be a scalar or vector of integer type, whose Signedness
-    operand is 0.
-
-     The types of Operand 1 and Operand 2 both must be the same as Result
-    Type.
-
-     Results are computed per component.  The resulting value is undefined
-    if Operand 2 is 0.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    integer-scalar-vector-type ::= integer-type |
-                                 `vector<` integer-literal `x` integer-type `>`
-    udiv-op ::= ssa-id `=` `spv.UDiv` ssa-use, ssa-use
-                           `:` integer-scalar-vector-type
-    ```
-    For example:
-
-    ```
-    %4 = spv.UDiv %0, %1 : i32
-    %5 = spv.UDiv %2, %3 : vector<4xi32>
-
-    ```
-  }];
-}
-
-// -----
-
-def SPV_UGreaterThanOp : SPV_LogicalOp<"UGreaterThan", SPV_Integer, []> {
-  let summary = [{
-    Unsigned-integer comparison if Operand 1 is greater than  Operand 2.
-  }];
-
-  let description = [{
-    Result Type must be a scalar or vector of Boolean type.
-
-     The type of Operand 1 and Operand 2  must be a scalar or vector of
-    integer type.  They must have the same component width, and they must
-    have the same number of components as Result Type.
-
-     Results are computed per component.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    integer-scalar-vector-type ::= integer-type |
-                                 `vector<` integer-literal `x` integer-type `>`
-    ugreater-than-op ::= ssa-id `=` `spv.UGreaterThan` ssa-use, ssa-use
-                                    `:` integer-scalar-vector-type
-    ```
-    For example:
-
-    ```
-    %4 = spv.UGreaterhan %0, %1 : i32
-    %5 = spv.UGreaterThan %2, %3 : vector<4xi32>
-
-    ```
-  }];
-}
-
-// -----
-
-def SPV_UGreaterThanEqualOp
-    : SPV_LogicalOp<"UGreaterThanEqual", SPV_Integer, []> {
-  let summary = [{
-    Unsigned-integer comparison if Operand 1 is greater than or equal to
-    Operand 2.
-  }];
-
-  let description = [{
-    Result Type must be a scalar or vector of Boolean type.
-
-     The type of Operand 1 and Operand 2  must be a scalar or vector of
-    integer type.  They must have the same component width, and they must
-    have the same number of components as Result Type.
-
-     Results are computed per component.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    integer-scalar-vector-type ::= integer-type |
-                                 `vector<` integer-literal `x` integer-type `>`
-    ugreater-than-equal-op ::= ssa-id `=` `spv.UGreaterThanEqual` ssa-use, ssa-use
-                                          `:` integer-scalar-vector-type
-    ```
-    For example:
-
-    ```
-    %4 = spv.UGreaterThanEqual %0, %1 : i32
-    %5 = spv.UGreaterThanEqual %2, %3 : vector<4xi32>
-
-    ```
-  }];
-}
-
-// -----
-
-def SPV_ULessThanOp : SPV_LogicalOp<"ULessThan", SPV_Integer, []> {
-  let summary = [{
-    Unsigned-integer comparison if Operand 1 is less than Operand 2.
-  }];
-
-  let description = [{
-    Result Type must be a scalar or vector of Boolean type.
-
-     The type of Operand 1 and Operand 2  must be a scalar or vector of
-    integer type.  They must have the same component width, and they must
-    have the same number of components as Result Type.
-
-     Results are computed per component.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    integer-scalar-vector-type ::= integer-type |
-                                 `vector<` integer-literal `x` integer-type `>`
-    uless-than-op ::= ssa-id `=` `spv.ULessThan` ssa-use, ssa-use
-                                 `:` integer-scalar-vector-type
-    ```
-    For example:
-
-    ```
-    %4 = spv.ULessThan %0, %1 : i32
-    %5 = spv.ULessThan %2, %3 : vector<4xi32>
-
-    ```
-  }];
-}
-
-// -----
-
-def SPV_ULessThanEqualOp : SPV_LogicalOp<"ULessThanEqual", SPV_Integer, []> {
-  let summary = [{
-    Unsigned-integer comparison if Operand 1 is less than or equal to
-    Operand 2.
-  }];
-
-  let description = [{
-    Result Type must be a scalar or vector of Boolean type.
-
-     The type of Operand 1 and Operand 2  must be a scalar or vector of
-    integer type.  They must have the same component width, and they must
-    have the same number of components as Result Type.
-
-     Results are computed per component.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    integer-scalar-vector-type ::= integer-type |
-                                 `vector<` integer-literal `x` integer-type `>`
-    uless-than-equal-op ::= ssa-id `=` `spv.ULessThanEqual` ssa-use, ssa-use
-                                       `:` integer-scalar-vector-type
-    ```
-    For example:
-
-    ```
-    %4 = spv.ULessThanEqual %0, %1 : i32
-    %5 = spv.ULessThanEqual %2, %3 : vector<4xi32>
-
-    ```
-  }];
-}
-
-// -----
-
-def SPV_UModOp : SPV_ArithmeticOp<"UMod", SPV_Integer> {
-  let summary = "Unsigned modulo operation of Operand 1 modulo Operand 2.";
-
-  let description = [{
-    Result Type must be a scalar or vector of integer type, whose Signedness
-    operand is 0.
-
-     The types of Operand 1 and Operand 2 both must be the same as Result
-    Type.
-
-     Results are computed per component.  The resulting value is undefined
-    if Operand 2 is 0.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    integer-scalar-vector-type ::= integer-type |
-                                 `vector<` integer-literal `x` integer-type `>`
-    umod-op ::= ssa-id `=` `spv.UMod` ssa-use, ssa-use
-                           `:` integer-scalar-vector-type
-    ```
-    For example:
-
-    ```
-    %4 = spv.UMod %0, %1 : i32
-    %5 = spv.UMod %2, %3 : vector<4xi32>
-
-    ```
-  }];
 }
 
 // -----

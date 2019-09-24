@@ -241,9 +241,6 @@ class Loop(training_utils.TrainingLoop):
       # tf.print('{} on {} steps.'.format(ModeKeys.TRAIN, steps_per_epoch))
       training_context = TrainingContext()
 
-      initial_epoch = model._maybe_load_initial_epoch_from_ckpt(
-          initial_epoch, ModeKeys.TRAIN)
-
       training_dataset = training_data_adapter.get_dataset()
       # Raise an error if steps_per_epoch isn't specified but the dataset
       # is infinite.
@@ -301,6 +298,10 @@ class Loop(training_utils.TrainingLoop):
 
       with training_context.on_start(model, training_callbacks, use_sample,
                                      verbose, ModeKeys.TRAIN):
+
+        initial_epoch = model._maybe_load_initial_epoch_from_ckpt(
+            initial_epoch, ModeKeys.TRAIN)
+
         for epoch in range(initial_epoch, epochs):
           if training_context.callbacks.model.stop_training:
             break
@@ -396,6 +397,7 @@ class Loop(training_utils.TrainingLoop):
     with strategy.scope():
       adapter = _process_inputs(
           model,
+          mode,
           x,
           y,
           batch_size=batch_size,
@@ -533,21 +535,31 @@ def _process_training_inputs(model,
      val_x, val_y,
      val_sample_weights) = training_utils.split_training_and_validation_data(
          x, y, sample_weights, validation_split)
+
+    sample_weight_modes = [
+        e.sample_weight_mode for e in model._training_endpoints
+    ]
     train_adapter = adapter_cls(
         x,
         y,
         batch_size=batch_size,
         epochs=epochs,
         sample_weights=sample_weights,
+        sample_weight_modes=sample_weight_modes,
         shuffle=shuffle,
         distribution_strategy=distribution_strategy)
-    val_adapter = adapter_cls(val_x, val_y,
-                              sample_weights=val_sample_weights,
-                              batch_size=batch_size,
-                              distribution_strategy=distribution_strategy)
+
+    val_adapter = adapter_cls(
+        val_x,
+        val_y,
+        sample_weights=val_sample_weights,
+        sample_weight_modes=sample_weight_modes,
+        batch_size=batch_size,
+        distribution_strategy=distribution_strategy)
   else:
     train_adapter = _process_inputs(
         model,
+        ModeKeys.TRAIN,
         x,
         y,
         sample_weights=sample_weights,
@@ -565,17 +577,22 @@ def _process_training_inputs(model,
       (val_x, val_y,
        val_sample_weights) = training_utils.unpack_validation_data(
            validation_data)
-      # For eval data, we use the training data batch_size it was unknown.
+      # For eval data, we use a representative batch size of the
+      # training data if batch_size was unknown.
       # This is useful for generator/sequence training data input with numpy
       # validation data input.
       if not batch_size:
-        batch_size = train_adapter.batch_size()
-      val_adapter = _process_inputs(model, val_x, val_y,
-                                    sample_weights=val_sample_weights,
-                                    batch_size=batch_size,
-                                    class_weights=class_weights,
-                                    steps=validation_steps,
-                                    distribution_strategy=distribution_strategy)
+        batch_size = train_adapter.representative_batch_size()
+      val_adapter = _process_inputs(
+          model,
+          ModeKeys.TEST,
+          val_x,
+          val_y,
+          sample_weights=val_sample_weights,
+          batch_size=batch_size,
+          class_weights=class_weights,
+          steps=validation_steps,
+          distribution_strategy=distribution_strategy)
     elif validation_steps:
       raise ValueError('`validation_steps` should not be specified if '
                        '`validation_data` is None.')
@@ -583,6 +600,7 @@ def _process_training_inputs(model,
 
 
 def _process_inputs(model,
+                    mode,
                     x,
                     y,
                     batch_size=None,
@@ -606,6 +624,14 @@ def _process_inputs(model,
         batch_size=batch_size,
         check_steps=False,
         steps=steps)
+
+  if mode == ModeKeys.PREDICT:
+    sample_weight_modes = None
+  else:
+    sample_weight_modes = [
+        e.sample_weight_mode for e in model._training_endpoints
+    ]
+
   adapter = adapter_cls(
       x,
       y,
@@ -613,6 +639,7 @@ def _process_inputs(model,
       epochs=epochs,
       steps=steps,
       sample_weights=sample_weights,
+      sample_weight_modes=sample_weight_modes,
       shuffle=shuffle,
       distribution_strategy=distribution_strategy,
       max_queue_size=max_queue_size,
@@ -680,6 +707,7 @@ class TrainingContext(object):
 
     try:
       yield
+      model._successful_loop_finish = True
     finally:
       # End of all epochs
       self.callbacks._call_end_hook(mode)

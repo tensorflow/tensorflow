@@ -341,11 +341,19 @@ class XlaCompiler {
     // allocate most or all available memory on the device, leaving none for the
     // compiler to access, unless it can use TensorFlow's allocator.
     se::DeviceMemoryAllocator* device_allocator = nullptr;
+
+    // Alias input and output buffers for parameters that are passed-through XLA
+    // modules without being changed.
+    bool alias_passthrough_params = false;
   };
 
   explicit XlaCompiler(Options options);
 
   ~XlaCompiler();
+
+  // Helper function to populate an XlaCompiler::Argument from XlaResource.
+  static void PopulateArgumentFromResource(const XlaResource& resource,
+                                           Argument* arg);
 
   Status CompileFunction(const CompileOptions& options,
                          const NameAttrList& fn_name_attrs,
@@ -470,7 +478,7 @@ class XlaCompiler {
   int64 next_step_id_;
 
   XlaCompilationDevice* device_;  // Owned by device_mgr_
-  DeviceMgr device_mgr_;
+  StaticDeviceMgr device_mgr_;
 
   // To avoid copying the client's function library, use a local function
   // library and runtime for functions created as part of the functionalize

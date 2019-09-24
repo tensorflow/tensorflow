@@ -25,7 +25,7 @@ This will take a few minutes, and downloads frameworks the code uses like
 finished, run:
 
 ```
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=sparkfun_edge test_micro_vision
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile test_micro_vision_test
 ```
 
 You should see a series of files get compiled, followed by some logging output

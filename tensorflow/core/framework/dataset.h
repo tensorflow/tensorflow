@@ -981,7 +981,12 @@ Status ParseVectorArgument(OpKernelContext* ctx,
 class DatasetOpKernel : public OpKernel {
  public:
   DatasetOpKernel(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
   void Compute(OpKernelContext* ctx) final;
+
+  // Indicates whether the given op corresponds to an op whose kernels subclass
+  // the `DatasetOpKernel` class.
+  static bool IsDatasetOp(const OpDef* op_def);
 
  protected:
   // Subclasses should implement this method. It will be called during Compute
@@ -1044,6 +1049,35 @@ class BackgroundWorker {
   bool cancelled_ GUARDED_BY(mu_) = false;
   std::deque<std::function<void()>> work_queue_ GUARDED_BY(mu_);
 };
+
+// Registry of names of ops whose kernels subclass the `DatasetOpKernel` class.
+class DatasetOpRegistry {
+ public:
+  // Registers the op name.
+  static void Register(const string& op_name);
+
+  // Checks whether the given op name has been registered.
+  static bool IsRegistered(const string& op_name);
+};
+
+// Helper class to register dataset op name.
+class DatasetOpRegistrar {
+ public:
+  explicit DatasetOpRegistrar(const string& op_name) {
+    DatasetOpRegistry::Register(op_name);
+  }
+};
+
+// Macro that can be used to register an op name of a dataset op.
+#define REGISTER_DATASET_OP_NAME(op_name) \
+  REGISTER_DATASET_OP_NAME_UNIQ_HELPER(__COUNTER__, op_name)
+
+#define REGISTER_DATASET_OP_NAME_UNIQ_HELPER(ctr, op_name) \
+  REGISTER_DATASET_OP_NAME_UNIQ(ctr, op_name)
+
+#define REGISTER_DATASET_OP_NAME_UNIQ(ctr, op_name) \
+  static ::tensorflow::data::DatasetOpRegistrar     \
+      registrar__body__##ctr##__object(op_name)
 
 }  // namespace data
 

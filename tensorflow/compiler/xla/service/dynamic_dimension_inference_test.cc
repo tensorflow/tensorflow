@@ -94,7 +94,7 @@ class DynamicDimensionInferenceTest : public HloTestBase {
 
   std::unique_ptr<HloModule> module_;
   std::unique_ptr<DynamicDimensionInference> inference_;
-  const Shape scalar_shape_ = ShapeUtil::MakeShape(U32, {});
+  const Shape scalar_shape_ = ShapeUtil::MakeShape(S32, {});
 };
 
 TEST_F(DynamicDimensionInferenceTest, ParamTest) {
@@ -557,7 +557,7 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeTestMajorDimension) {
   EXPECT_NE(inference_->GetDynamicSize(reshape, {}, 0), nullptr);
   const Literal& multiplier =
       inference_->GetDynamicSize(reshape, {}, 0)->operand(1)->literal();
-  LiteralTestUtil::ExpectR0Equal<uint32>(10, multiplier);
+  LiteralTestUtil::ExpectR0Equal<int32>(10, multiplier);
 }
 
 TEST_F(DynamicDimensionInferenceTest, GatherTest) {
@@ -895,7 +895,7 @@ TEST_F(DynamicDimensionInferenceTest, DynamicSliceTest) {
   std::vector<HloInstruction*> params;
   for (int i = 0; i < 2; ++i) {
     params.push_back(builder.AddInstruction(HloInstruction::CreateParameter(
-        i + 2, ShapeUtil::MakeShape(U32, {}), "slice_indices")));
+        i + 2, ShapeUtil::MakeShape(S32, {}), "slice_indices")));
   }
 
   auto* slice = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
@@ -997,7 +997,7 @@ TEST_F(DynamicDimensionInferenceTest, DynamicSliceSingleElementTest) {
   std::vector<HloInstruction*> params;
   for (int i = 0; i < 2; ++i) {
     params.push_back(builder.AddInstruction(HloInstruction::CreateParameter(
-        i + 2, ShapeUtil::MakeShape(U32, {}), "slice_indices")));
+        i + 2, ShapeUtil::MakeShape(S32, {}), "slice_indices")));
   }
 
   auto* slice = builder.AddInstruction(HloInstruction::CreateDynamicSlice(

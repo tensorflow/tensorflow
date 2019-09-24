@@ -1,4 +1,4 @@
-//===-- SPIRVOps.td - MLIR SPIR-V Op Definitions Spec ------*- tablegen -*-===//
+//===-- SPIRVStructureOps.td - MLIR SPIR-V Structure Ops ---*- tablegen -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -65,6 +65,8 @@ def SPV_AddressOfOp : SPV_Op<"_address_of", [InFunctionScope, NoSideEffect]> {
   );
 
   let hasOpcode = 0;
+
+  let autogenSerialization = 0;
 }
 
 def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {
@@ -112,7 +114,16 @@ def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {
     SPV_Type:$constant
   );
 
+  let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    // Returns true if a constant can be built for the given `type`.
+    static bool isBuildableWith(Type type);
+  }];
+
   let hasOpcode = 0;
+
+  let autogenSerialization = 0;
 }
 
 def SPV_EntryPointOp : SPV_Op<"EntryPoint", [InModuleScope]> {
@@ -167,6 +178,7 @@ def SPV_EntryPointOp : SPV_Op<"EntryPoint", [InModuleScope]> {
   );
 
   let results = (outs);
+
   let autogenSerialization = 0;
 }
 
@@ -225,6 +237,8 @@ def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope]> {
   let results = (outs);
 
   let hasOpcode = 0;
+
+  let autogenSerialization = 0;
 
   let extraClassDeclaration = [{
     ::mlir::spirv::StorageClass storageClass() {
@@ -292,8 +306,8 @@ def SPV_ModuleOp : SPV_Op<"module",
 
   let regions = (region SizedRegion<1>:$body);
 
-  let builders = [OpBuilder<"Builder *, OperationState *state">,
-                  OpBuilder<[{Builder *, OperationState *state,
+  let builders = [OpBuilder<"Builder *, OperationState &state">,
+                  OpBuilder<[{Builder *, OperationState &state,
                               IntegerAttr addressing_model,
                               IntegerAttr memory_model,
                               /*optional*/ArrayAttr capabilities = nullptr,
@@ -305,6 +319,8 @@ def SPV_ModuleOp : SPV_Op<"module",
   let skipDefaultBuilders = 1;
 
   let hasOpcode = 0;
+
+  let autogenSerialization = 0;
 
   let extraClassDeclaration = [{
     Block& getBlock() {
@@ -333,6 +349,8 @@ def SPV_ModuleEndOp : SPV_Op<"_module_end", [InModuleScope, Terminator]> {
   let verifier = [{ return success(); }];
 
   let hasOpcode = 0;
+
+  let autogenSerialization = 0;
 }
 
 def SPV_ReferenceOfOp : SPV_Op<"_reference_of", [NoSideEffect]> {
@@ -369,6 +387,8 @@ def SPV_ReferenceOfOp : SPV_Op<"_reference_of", [NoSideEffect]> {
   );
 
   let hasOpcode = 0;
+
+  let autogenSerialization = 0;
 }
 
 def SPV_SpecConstantOp : SPV_Op<"specConstant", [InModuleScope]> {
@@ -410,6 +430,8 @@ def SPV_SpecConstantOp : SPV_Op<"specConstant", [InModuleScope]> {
   let results = (outs);
 
   let hasOpcode = 0;
+
+  let autogenSerialization = 0;
 }
 
 #endif // SPIRV_STRUCTURE_OPS

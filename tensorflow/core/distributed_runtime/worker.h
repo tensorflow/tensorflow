@@ -29,7 +29,7 @@ namespace tensorflow {
 class CancellationManager;
 class Device;
 struct WorkerEnv;
-struct WorkerSession;
+class WorkerSession;
 
 // A TensorFlow Worker runs registered graphs and supports worker-to-worker
 // Tensor transfer.
@@ -46,7 +46,7 @@ class Worker : public WorkerInterface {
   virtual ~Worker() {}
 
   void GetStatusAsync(const GetStatusRequest* request,
-                      GetStatusResponse* response,
+                      GetStatusResponse* response, bool fail_fast,
                       StatusCallback done) override;
 
   void CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,

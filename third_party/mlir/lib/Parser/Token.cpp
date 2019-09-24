@@ -90,7 +90,7 @@ std::string Token::getStringValue() const {
       continue;
     }
 
-    assert(i + 1 < e && "invalid string should be caught by lexer");
+    assert(i + 1 <= e && "invalid string should be caught by lexer");
     auto c1 = bytes[i++];
     switch (c1) {
     case '"':

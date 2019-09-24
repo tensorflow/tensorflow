@@ -112,6 +112,7 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/nnapi:nnapi_util",
         "//tensorflow/lite/profiling:profile_summarizer",
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/tools/evaluation:utils",
@@ -137,7 +138,7 @@ cc_library(
         "//tensorflow/lite/tools:command_line_flags",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/lite/delegates/gpu:gl_delegate",
+            "//tensorflow/lite/delegates/gpu:delegate",
         ],
         "//conditions:default": [],
     }),

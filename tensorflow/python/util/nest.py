@@ -38,7 +38,7 @@ import collections as _collections
 
 import six as _six
 
-from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
+from tensorflow.python import _pywrap_utils
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.util.compat import collections_abc as _collections_abc
 
@@ -104,15 +104,15 @@ def _is_namedtuple(instance, strict=False):
   Returns:
     True if `instance` is a `namedtuple`.
   """
-  return _pywrap_tensorflow.IsNamedtuple(instance, strict)
+  return _pywrap_utils.IsNamedtuple(instance, strict)
 
 
 # See the swig file (util.i) for documentation.
-_is_mapping = _pywrap_tensorflow.IsMapping
-_is_mapping_view = _pywrap_tensorflow.IsMappingView
-_is_attrs = _pywrap_tensorflow.IsAttrs
-_is_composite_tensor = _pywrap_tensorflow.IsCompositeTensor
-_is_type_spec = _pywrap_tensorflow.IsTypeSpec
+_is_mapping = _pywrap_utils.IsMapping
+_is_mapping_view = _pywrap_utils.IsMappingView
+_is_attrs = _pywrap_utils.IsAttrs
+_is_composite_tensor = _pywrap_utils.IsCompositeTensor
+_is_type_spec = _pywrap_utils.IsTypeSpec
 
 
 def _sequence_like(instance, args):
@@ -142,7 +142,7 @@ def _sequence_like(instance, args):
       return d
     else:
       return instance_type((key, result[key]) for key in instance)
-  if _is_mapping_view(instance):
+  elif _is_mapping_view(instance):
     # We can't directly construct mapping views, so we create a list instead
     return list(args)
   elif _is_namedtuple(instance) or _is_attrs(instance):
@@ -208,11 +208,11 @@ def _yield_sorted_items(iterable):
 
 
 # See the swig file (util.i) for documentation.
-is_sequence = _pywrap_tensorflow.IsSequence
+is_sequence = _pywrap_utils.IsSequence
 
 
 # See the swig file (util.i) for documentation.
-is_sequence_or_composite = _pywrap_tensorflow.IsSequenceOrComposite
+is_sequence_or_composite = _pywrap_utils.IsSequenceOrComposite
 
 
 @tf_export("nest.is_nested")
@@ -260,11 +260,11 @@ def flatten(structure, expand_composites=False):
   Raises:
     TypeError: The nest is or contains a dict with non-sortable keys.
   """
-  return _pywrap_tensorflow.Flatten(structure, expand_composites)
+  return _pywrap_utils.Flatten(structure, expand_composites)
 
 
 # See the swig file (util.i) for documentation.
-_same_namedtuples = _pywrap_tensorflow.SameNamedtuples
+_same_namedtuples = _pywrap_utils.SameNamedtuples
 
 
 class _DotString(object):
@@ -315,8 +315,8 @@ def assert_same_structure(nest1, nest2, check_types=True,
       their substructures. Only possible if `check_types` is `True`.
   """
   try:
-    _pywrap_tensorflow.AssertSameStructure(nest1, nest2, check_types,
-                                           expand_composites)
+    _pywrap_utils.AssertSameStructure(nest1, nest2, check_types,
+                                      expand_composites)
   except (ValueError, TypeError) as e:
     str1 = str(map_structure(lambda _: _DOT, nest1))
     str2 = str(map_structure(lambda _: _DOT, nest2))
@@ -1078,6 +1078,7 @@ def map_structure_with_tuple_paths_up_to(shallow_tree, func, *inputs, **kwargs):
 
   Example:
 
+  ```python
   lowercase = {'a': 'a', 'b': ('b0', 'b1')}
   uppercase = {'a': 'A', 'b': ('B0', 'B1')}
 
@@ -1089,9 +1090,9 @@ def map_structure_with_tuple_paths_up_to(shallow_tree, func, *inputs, **kwargs):
                                        print_path_and_values,
                                        lowercase,
                                        uppercase)
-  >>> path: ('a',), values: ('a', 'A')
-  >>> path: ('b', 0), values: ('b0', 'B0')
-  >>> path: ('b', 1), values: ('b1', 'B1')
+  path: ('a',), values: ('a', 'A')
+  path: ('b', 0), values: ('b0', 'B0')
+  path: ('b', 1), values: ('b1', 'B1')
 
   shallow_tree = {'b': None}
   map_structure_with_tuple_paths_up_to(shallow_tree,
@@ -1099,7 +1100,7 @@ def map_structure_with_tuple_paths_up_to(shallow_tree, func, *inputs, **kwargs):
                                        lowercase,
                                        uppercase,
                                        check_types=False)
-  >>> path: ('b', 1), values: (('bo', 'b1'), ('B0', 'B1'))
+  path: ('b', 1), values: (('bo', 'b1'), ('B0', 'B1'))
 
   shallow_tree = {'a': None, 'b': {1: None}}
   map_structure_with_tuple_paths_up_to(shallow_tree,
@@ -1107,8 +1108,9 @@ def map_structure_with_tuple_paths_up_to(shallow_tree, func, *inputs, **kwargs):
                                        lowercase,
                                        uppercase,
                                        check_types=False)
-  >>> path: ('a',), values: ('a', 'A')
-  >>> path: ('b', 1), values: ('b1', B1')
+  path: ('a',), values: ('a', 'A')
+  path: ('b', 1), values: ('b1', B1')
+  ```
 
   Args:
     shallow_tree: a shallow tree, common to all the inputs.
@@ -1250,16 +1252,16 @@ def yield_flat_paths(nest, expand_composites=False):
   E.g. if we have a tuple `value = Foo(a=3, b=Bar(c=23, d=42))`
 
   ```shell
-  >>> nest.flatten(value)
+  nest.flatten(value)
   [3, 23, 42]
-  >>> list(nest.yield_flat_paths(value))
+  list(nest.yield_flat_paths(value))
   [('a',), ('b', 'c'), ('b', 'd')]
   ```
 
   ```shell
-  >>> list(nest.yield_flat_paths({'a': [3]}))
+  list(nest.yield_flat_paths({'a': [3]}))
   [('a', 0)]
-  >>> list(nest.yield_flat_paths({'a': 3}))
+  list(nest.yield_flat_paths({'a': 3}))
   [('a',)]
   ```
 
@@ -1327,6 +1329,6 @@ def flatten_with_tuple_paths(structure, expand_composites=False):
                   flatten(structure, expand_composites=expand_composites)))
 
 
-_pywrap_tensorflow.RegisterType("Mapping", _collections_abc.Mapping)
-_pywrap_tensorflow.RegisterType("Sequence", _collections_abc.Sequence)
-_pywrap_tensorflow.RegisterType("MappingView", _collections_abc.MappingView)
+_pywrap_utils.RegisterType("Mapping", _collections_abc.Mapping)
+_pywrap_utils.RegisterType("Sequence", _collections_abc.Sequence)
+_pywrap_utils.RegisterType("MappingView", _collections_abc.MappingView)

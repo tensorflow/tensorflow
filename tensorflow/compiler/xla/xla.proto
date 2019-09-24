@@ -211,7 +211,7 @@ message DebugOptions {
   int32 xla_force_host_platform_device_count = 102;
 
   // If set to true XLA:GPU invokes `ptxas` with -O0 (default is -O3).
-  bool xla_gpu_disable_ptxas_optimizations = 103;
+  bool xla_gpu_disable_gpuasm_optimizations = 103;
 
   // Enable fast math with eigen in the HLO evaluator.
   bool xla_hlo_evaluator_use_fast_path = 106;
@@ -335,6 +335,10 @@ message ExecutionOptions {
   // This optional field specifies the device assignment if known at compile
   // time.
   DeviceAssignmentProto device_assignment = 7;
+
+  // Alias input and output buffers for parameters that are passed-through XLA
+  // modules without being changed.
+  bool alias_passthrough_params = 8;
 }
 
 message GetDeviceHandlesRequest {

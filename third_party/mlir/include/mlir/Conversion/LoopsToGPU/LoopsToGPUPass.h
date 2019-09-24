@@ -20,7 +20,8 @@
 #include <memory>
 
 namespace mlir {
-class FunctionPassBase;
+class FuncOp;
+template <typename T> class OpPassBase;
 
 /// Create a pass that converts loop nests into GPU kernels.  It considers
 /// top-level affine.for and linalg.for operations as roots of loop nests and
@@ -30,7 +31,7 @@ class FunctionPassBase;
 /// parallelization is performed, it is under the responsibility of the caller
 /// to strip-mine the loops and to perform the dependence analysis before
 /// calling the conversion.
-std::unique_ptr<FunctionPassBase>
+std::unique_ptr<OpPassBase<FuncOp>>
 createSimpleLoopsToGPUPass(unsigned numBlockDims, unsigned numThreadDims);
 } // namespace mlir
 

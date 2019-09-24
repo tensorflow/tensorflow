@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow/tools/test:performance.bzl", "tf_py_logged_benchmark")
 
 package(
     default_visibility = [
@@ -669,6 +670,11 @@ py_test(
     ],
 )
 
+tf_py_logged_benchmark(
+    name = "ragged_to_tensor_op_benchmark",
+    target = "//tensorflow/python/ops/ragged:ragged_to_tensor_op_test",
+)
+
 py_test(
     name = "ragged_segment_op_test",
     srcs = ["ragged_segment_op_test.py"],
@@ -1057,6 +1063,23 @@ py_test(
 py_test(
     name = "ragged_dynamic_partition_op_test",
     srcs = ["ragged_dynamic_partition_op_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ragged_array_ops",
+        ":ragged_factory_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "ragged_merge_dims_op_test",
+    srcs = ["ragged_merge_dims_op_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [

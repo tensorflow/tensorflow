@@ -4,7 +4,7 @@
 
 ## Common AutoGraph errors
 
-### "WARNING: `<name>` could not be transformed"
+### "WARNING: AutoGraph could not transform `<name>`"
 
 This warning is output when AutoGraph could not convert a function, for an
 unexpected reason. The error message contains the reason why the function could

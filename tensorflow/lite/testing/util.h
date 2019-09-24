@@ -18,7 +18,7 @@ limitations under the License.
 #include <cstdio>
 
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/string.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 

@@ -288,8 +288,8 @@ template <typename ConcreteOp>
 class LinalgRewritePattern : public RewritePattern {
 public:
   explicit LinalgRewritePattern(MLIRContext *context)
-      : RewritePattern(ConcreteOp::getOperationName(), /*benefit=*/1, context) {
-  }
+      : RewritePattern(ConcreteOp::getOperationName(), /*benefit=*/1, context),
+        folder(context) {}
 
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override {
@@ -373,7 +373,7 @@ populateLinalgToLoopRewritePatterns(OwningRewritePatternList &patterns,
 
 namespace {
 struct LowerLinalgToLoopsPass : public FunctionPass<LowerLinalgToLoopsPass> {
-  void runOnFunction();
+  void runOnFunction() override;
 };
 } // namespace
 
@@ -390,7 +390,8 @@ void LowerLinalgToLoopsPass::runOnFunction() {
   }
 }
 
-std::unique_ptr<FunctionPassBase> mlir::linalg::createLowerLinalgToLoopsPass() {
+std::unique_ptr<OpPassBase<FuncOp>>
+mlir::linalg::createLowerLinalgToLoopsPass() {
   return std::make_unique<LowerLinalgToLoopsPass>();
 }
 

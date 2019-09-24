@@ -39,10 +39,10 @@ def Affine_Dialect : Dialect {
 class Affine_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<Affine_Dialect, mnemonic, traits> {
   // For every affine op, there needs to be a:
-  //   * void print(OpAsmPrinter *p, ${C++ class of Op} op)
+  //   * void print(OpAsmPrinter &p, ${C++ class of Op} op)
   //   * LogicalResult verify(${C++ class of Op} op)
-  //   * ParseResult parse${C++ class of Op}(OpAsmParser *parser,
-  //                                         OperationState *result)
+  //   * ParseResult parse${C++ class of Op}(OpAsmParser &parser,
+  //                                         OperationState &result)
   // functions.
   let printer = [{ return ::print(p, *this); }];
   let verifier = [{ return ::verify(*this); }];
@@ -89,9 +89,9 @@ def AffineForOp : Affine_Op<"for", [ImplicitAffineTerminator]> {
 
   let skipDefaultBuilders = 1;
   let builders = [
-    OpBuilder<"Builder *builder, OperationState *result, "
+    OpBuilder<"Builder *builder, OperationState &result, "
               "int64_t lowerBound, int64_t upperBound, int64_t step = 1">,
-    OpBuilder<"Builder *builder, OperationState *result, "
+    OpBuilder<"Builder *builder, OperationState &result, "
               "ArrayRef<Value *> lbOperands, AffineMap lbMap, "
               "ArrayRef<Value *> ubOperands, AffineMap ubMap, "
               "int64_t step = 1">
@@ -212,9 +212,10 @@ def AffineIfOp : Affine_Op<"if", [ImplicitAffineTerminator]> {
   let regions = (region SizedRegion<1>:$thenRegion, AnyRegion:$elseRegion);
 
   let skipDefaultBuilders = 1;
+
   let builders = [
-    OpBuilder<"Builder *builder, OperationState *result, "
-              "Value *cond, bool withElseRegion">
+    OpBuilder<"Builder *builder, OperationState &result, "
+              "IntegerSet set, ArrayRef<Value *> args, bool withElseRegion">
   ];
 
   let extraClassDeclaration = [{
@@ -222,6 +223,11 @@ def AffineIfOp : Affine_Op<"if", [ImplicitAffineTerminator]> {
 
     IntegerSet getIntegerSet();
     void setIntegerSet(IntegerSet newSet);
+
+    /// Sets the integer set with its operands. The size of 'operands' must not
+    /// exceed the current number of operands for this instance, as the operands
+    /// list of AffineIf is not resizable.
+    void setConditional(IntegerSet set, ArrayRef<Value *> operands);
 
     OpBuilder getThenBodyBuilder() {
       assert(!thenRegion().empty() && "Unexpected empty 'then' region.");
@@ -234,6 +240,8 @@ def AffineIfOp : Affine_Op<"if", [ImplicitAffineTerminator]> {
       return OpBuilder(&body, std::prev(body.end()));
     }
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def AffineTerminatorOp :

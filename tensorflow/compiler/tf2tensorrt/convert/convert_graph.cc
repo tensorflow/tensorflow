@@ -124,45 +124,36 @@ Status GetEngineInfo(const Graph* g,
        ++it) {
     const Node* node = *it;
     if (segment_nodes.count(node) == 0) continue;
-    auto node_device = node->requested_device();
-    if (!node_device.empty()) {
-      // If device is set, it means device placement may have been done before,
-      // so we need to assign a device for the TRTEngineOp to maintain the
-      // invariance.
-      // If the device is CPU in this case, it tries to find the first available
-      // GPU and use it as the device.
-      DeviceNameUtils::ParsedName parsed_name;
-      const bool parse_succeeded =
-          DeviceNameUtils::ParseFullName(node_device, &parsed_name);
-      if (!parse_succeeded || (parse_succeeded && parsed_name.type == "CPU")) {
-        string msg;
-        if (!parse_succeeded) {
-          msg = StrCat("Failed to parse assigned device of node ", node->name(),
-                       ". ");
-        } else {
-          msg = StrCat("Node ", node->name(), " was assigned to the CPU. ");
-        }
-        VLOG(1) << msg << "Attempting to place on GPU.";
-        TfGpuId tf_gpu_id;
-        PlatformGpuId platform_gpu_id;
-        std::tie(tf_gpu_id, platform_gpu_id) = GetFirstValidDeviceId();
-        if (tf_gpu_id.value() >= 0) {
-          parsed_name.type = "GPU";
-          parsed_name.id = tf_gpu_id.value();
-          segment_devices.insert(DeviceNameUtils::FullName(
-              parsed_name.job, parsed_name.replica, parsed_name.task,
-              parsed_name.type, parsed_name.id));
-        }
-      } else {
-        segment_devices.insert(node_device);
-      }
+
+    std::string device_name;
+    if (!node->requested_device().empty()) {
+      device_name = node->requested_device();
     } else if (node->has_assigned_device_name()) {
       // It appears that nodes will not have assigned devices at this point in
       // execution.
-      segment_devices.insert(node->assigned_device_name());
+      device_name = node->assigned_device_name();
     } else {
       VLOG(2) << "Node " << node->name()
               << " neither have requested device nor assigned device";
+    }
+
+    if (!device_name.empty()) {
+      // If device is set, it means device placement may have been done before,
+      // so we need to assign a device for the TRTEngineOp if the assigned
+      // device is a GPU device.
+      DeviceNameUtils::ParsedName parsed_name;
+      const bool parse_succeeded =
+          DeviceNameUtils::ParseFullName(device_name, &parsed_name);
+      if (!parse_succeeded) {
+        VLOG(1) << "Failed to parse "
+                << (node->requested_device().empty() ? "assigned" : "requested")
+                << " device " << device_name << " of node " << node->name();
+      } else if (parsed_name.type != "GPU") {
+        VLOG(1) << "Node " << node->name()
+                << " was assigned to a non-GPU device " << device_name;
+      } else {
+        segment_devices.insert(device_name);
+      }
     }
     subgraph_nodes.push_back(node);
 
@@ -268,8 +259,20 @@ Status GetEngineInfo(const Graph* g,
                  << ") devices for the segment. Picking first one to continue.";
     info->device = *segment_devices.begin();
   } else {
-    VLOG(1) << "No device is assigned to the segment. "
-            << "A device will be assigned during graph execution (inference).";
+    TfGpuId tf_gpu_id;
+    PlatformGpuId platform_gpu_id;
+    std::tie(tf_gpu_id, platform_gpu_id) = GetFirstValidDeviceId();
+    if (tf_gpu_id.value() >= 0) {
+      DeviceNameUtils::ParsedName parsed_name;
+      parsed_name.type = "GPU";
+      parsed_name.has_type = true;
+      parsed_name.id = tf_gpu_id.value();
+      parsed_name.has_id = true;
+      info->device = DeviceNameUtils::ParsedNameToString(parsed_name);
+    } else {
+      VLOG(1) << "No device is assigned to the segment. A device will be "
+                 "assigned during graph execution (inference).";
+    }
   }
   return Status::OK();
 }

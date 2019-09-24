@@ -24,7 +24,7 @@ using namespace mlir::detail;
 
 unsigned IntegerSet::getNumDims() const { return set->dimCount; }
 unsigned IntegerSet::getNumSymbols() const { return set->symbolCount; }
-unsigned IntegerSet::getNumOperands() const {
+unsigned IntegerSet::getNumInputs() const {
   return set->dimCount + set->symbolCount;
 }
 
@@ -69,4 +69,24 @@ bool IntegerSet::isEq(unsigned idx) const { return getEqFlags()[idx]; }
 
 MLIRContext *IntegerSet::getContext() const {
   return getConstraint(0).getContext();
+}
+
+/// Walk all of the AffineExpr's in this set. Each node in an expression
+/// tree is visited in postorder.
+void IntegerSet::walkExprs(
+    llvm::function_ref<void(AffineExpr)> callback) const {
+  for (auto expr : getConstraints())
+    expr.walk(callback);
+}
+
+IntegerSet IntegerSet::replaceDimsAndSymbols(
+    ArrayRef<AffineExpr> dimReplacements, ArrayRef<AffineExpr> symReplacements,
+    unsigned numResultDims, unsigned numResultSyms) {
+  SmallVector<AffineExpr, 8> constraints;
+  constraints.reserve(getNumConstraints());
+  for (auto cst : getConstraints())
+    constraints.push_back(
+        cst.replaceDimsAndSymbols(dimReplacements, symReplacements));
+
+  return get(numResultDims, numResultSyms, constraints, getEqFlags());
 }

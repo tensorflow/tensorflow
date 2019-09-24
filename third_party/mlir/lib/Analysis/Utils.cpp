@@ -23,11 +23,8 @@
 #include "mlir/Analysis/Utils.h"
 
 #include "mlir/Analysis/AffineAnalysis.h"
-#include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
-#include "mlir/IR/Builders.h"
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -847,7 +844,7 @@ MemRefAccess::MemRefAccess(Operation *loadOrStoreOpInst) {
     opInst = loadOrStoreOpInst;
     auto loadMemrefType = loadOp.getMemRefType();
     indices.reserve(loadMemrefType.getRank());
-    for (auto *index : loadOp.getIndices()) {
+    for (auto *index : loadOp.getMapOperands()) {
       indices.push_back(index);
     }
   } else {
@@ -857,7 +854,7 @@ MemRefAccess::MemRefAccess(Operation *loadOrStoreOpInst) {
     memref = storeOp.getMemRef();
     auto storeMemrefType = storeOp.getMemRefType();
     indices.reserve(storeMemrefType.getRank());
-    for (auto *index : storeOp.getIndices()) {
+    for (auto *index : storeOp.getMapOperands()) {
       indices.push_back(index);
     }
   }
@@ -879,6 +876,24 @@ unsigned mlir::getNestingDepth(Operation &op) {
       depth++;
   }
   return depth;
+}
+
+/// Equal if both affine accesses are provably equivalent (at compile
+/// time) when considering the memref, the affine maps and their respective
+/// operands. The equality of access functions + operands is checked by
+/// subtracting fully composed value maps, and then simplifying the difference
+/// using the expression flattener.
+/// TODO: this does not account for aliasing of memrefs.
+bool MemRefAccess::operator==(const MemRefAccess &rhs) const {
+  if (memref != rhs.memref)
+    return false;
+
+  AffineValueMap diff, thisMap, rhsMap;
+  getAccessMap(&thisMap);
+  rhs.getAccessMap(&rhsMap);
+  AffineValueMap::difference(thisMap, rhsMap, &diff);
+  return llvm::all_of(diff.getAffineMap().getResults(),
+                      [](AffineExpr e) { return e == 0; });
 }
 
 /// Returns the number of surrounding loops common to 'loopsA' and 'loopsB',
@@ -905,11 +920,10 @@ static Optional<int64_t> getMemoryFootprintBytes(Block &block,
   SmallDenseMap<Value *, std::unique_ptr<MemRefRegion>, 4> regions;
 
   // Walk this 'affine.for' operation to gather all memory regions.
-  bool error = false;
-  block.walk(start, end, [&](Operation *opInst) {
+  auto result = block.walk(start, end, [&](Operation *opInst) -> WalkResult {
     if (!isa<AffineLoadOp>(opInst) && !isa<AffineStoreOp>(opInst)) {
       // Neither load nor a store op.
-      return;
+      return WalkResult::advance();
     }
 
     // Compute the memref region symbolic in any IVs enclosing this block.
@@ -917,23 +931,20 @@ static Optional<int64_t> getMemoryFootprintBytes(Block &block,
     if (failed(
             region->compute(opInst,
                             /*loopDepth=*/getNestingDepth(*block.begin())))) {
-      opInst->emitError("Error obtaining memory region\n");
-      error = true;
-      return;
+      return opInst->emitError("error obtaining memory region\n");
     }
+
     auto it = regions.find(region->memref);
     if (it == regions.end()) {
       regions[region->memref] = std::move(region);
     } else if (failed(it->second->unionBoundingBox(*region))) {
-      opInst->emitWarning(
+      return opInst->emitWarning(
           "getMemoryFootprintBytes: unable to perform a union on a memory "
           "region");
-      error = true;
-      return;
     }
+    return WalkResult::advance();
   });
-
-  if (error)
+  if (result.wasInterrupted())
     return None;
 
   int64_t totalSizeInBytes = 0;
@@ -969,17 +980,18 @@ void mlir::getSequentialLoops(
 bool mlir::isLoopParallel(AffineForOp forOp) {
   // Collect all load and store ops in loop nest rooted at 'forOp'.
   SmallVector<Operation *, 8> loadAndStoreOpInsts;
-  bool hasSideEffectingOps = false;
-  forOp.getOperation()->walk([&](Operation *opInst) {
+  auto walkResult = forOp.walk([&](Operation *opInst) {
     if (isa<AffineLoadOp>(opInst) || isa<AffineStoreOp>(opInst))
-      return loadAndStoreOpInsts.push_back(opInst);
-    if (!isa<AffineForOp>(opInst) && !isa<AffineTerminatorOp>(opInst) &&
-        !isa<AffineIfOp>(opInst) && !opInst->hasNoSideEffect()) {
-      hasSideEffectingOps = true;
-    }
+      loadAndStoreOpInsts.push_back(opInst);
+    else if (!isa<AffineForOp>(opInst) && !isa<AffineTerminatorOp>(opInst) &&
+             !isa<AffineIfOp>(opInst) && !opInst->hasNoSideEffect())
+      return WalkResult::interrupt();
+
+    return WalkResult::advance();
   });
+
   // Stop early if the loop has unknown ops with side effects.
-  if (hasSideEffectingOps)
+  if (walkResult.wasInterrupted())
     return false;
 
   // Dep check depth would be number of enclosing loops + 1.

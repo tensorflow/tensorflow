@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/ptr_util.h"
+#include "tensorflow/core/util/xla_config_registry.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -126,6 +127,38 @@ bool AutoMixedPrecisionEnabled(RewriterConfig::Toggle opt_level) {
   return false;
 }
 
+bool IsXlaGlobalJitOn(
+    const OptimizerOptions::GlobalJitLevel& jit_level_in_session_opts) {
+  xla_config_registry::XlaGlobalJitLevel xla_global_jit_level =
+      xla_config_registry::GetGlobalJitLevel(jit_level_in_session_opts);
+  // Return true only if XLA JIT is ON for both single-gpu and multi-gpu
+  // graphs. This is a conservative approach that turns off the memory optimizer
+  // when we are sure that all graphs will be processed by XLA JIT.
+  bool is_on = (xla_global_jit_level.single_gpu == OptimizerOptions::ON_1 ||
+                xla_global_jit_level.single_gpu == OptimizerOptions::ON_2) &&
+               (xla_global_jit_level.general == OptimizerOptions::ON_1 ||
+                xla_global_jit_level.general == OptimizerOptions::ON_2);
+  return is_on;
+}
+
+// A helper function to decide whether to enable the memory optimizer.
+bool MemoryOptimizerEnabled(
+    RewriterConfig::MemOptType mem_opt_type,
+    OptimizerOptions::GlobalJitLevel jit_level_in_session_opts) {
+  // Disable the default memory optimizer when XLA JIT is ON as it hurts the
+  // XLA JIT performance. The (current) XLA clustering can result in loss of
+  // concurrency between kernel compute and memory copies. As such, it usually
+  // loses the concurrency needed to hide the latencies of the inserted swap-ins
+  // and swap-outs and incurs great performance overhead. Remove this check when
+  // the XLA JIT can better deal with the concurrency.
+  if (mem_opt_type == RewriterConfig::DEFAULT_MEM_OPT &&
+      IsXlaGlobalJitOn(jit_level_in_session_opts)) {
+    return false;
+  }
+
+  return mem_opt_type != RewriterConfig::NO_MEM_OPT;
+}
+
 }  // namespace
 
 #define MK_OPT(NAME, VALUE) \
@@ -191,6 +224,13 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.shape_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<ShapeOptimizer>());
   }
+  if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision())) {
+    optimizers->push_back(
+        MakeUnique<AutoMixedPrecision>(cfg_.auto_mixed_precision()));
+  }
+  if (cfg_.layout_optimizer() != RewriterConfig::OFF) {
+    optimizers->push_back(MakeUnique<GenericLayoutOptimizer>());
+  }
   if (cfg_.remapping() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
   }
@@ -209,14 +249,9 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(
         MakeUnique<DependencyOptimizer>(cfg_.dependency_optimization()));
   }
-  if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision())) {
-    optimizers->push_back(
-        MakeUnique<AutoMixedPrecision>(cfg_.auto_mixed_precision()));
-  }
-  if (cfg_.layout_optimizer() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<GenericLayoutOptimizer>());
-  }
-  if (cfg_.memory_optimization() != RewriterConfig::NO_MEM_OPT) {
+  auto global_jit_level =
+      config_proto_.graph_options().optimizer_options().global_jit_level();
+  if (MemoryOptimizerEnabled(cfg_.memory_optimization(), global_jit_level)) {
     if (cfg_.memory_optimizer_target_node_name_scope().empty()) {
       optimizers->push_back(
           // Use the default target node name prefix "gradients/"

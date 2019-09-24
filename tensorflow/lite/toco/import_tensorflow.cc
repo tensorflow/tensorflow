@@ -1031,15 +1031,7 @@ tensorflow::Status ConvertIdentityOperator(
     const ModelFlags& model_flags, Model* model) {
   CHECK(node.op() == "Identity" || node.op() == "CheckNumerics" ||
         node.op() == "PlaceholderWithDefault" || node.op() == "StopGradient" ||
-        node.op() == "Snapshot" || node.op() == "IdentityN");
-
-  if (node.op() == "IdentityN" && node.input_size() != 1) {
-    // When IdentityN doesn't have exactly 1 input, convert it as an unsupported
-    // op so it's still possible to run with Flex runtime.
-    return ConvertUnsupportedOperator(node, tf_import_flags, model_flags,
-                                      model);
-  }
-
+        node.op() == "Snapshot");
   auto* op = new TensorFlowIdentityOperator;
   // Amazingly, some TensorFlow graphs (at least rajeev_lstm.pb) have
   // identity nodes with multiple inputs, but the other inputs seem
@@ -1054,6 +1046,24 @@ tensorflow::Status ConvertIdentityOperator(
   op->inputs.push_back(input_name);
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertIdentityNOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    const ModelFlags& model_flags, Model* model) {
+  CHECK_EQ(node.op(), "IdentityN");
+  for (int i = 0; i < node.input_size(); ++i) {
+    auto* op = new TensorFlowIdentityOperator;
+    const auto& input_name = node.input(i);
+    string output_name = node.name();
+    if (i > 0) {
+      output_name = output_name + ":" + std::to_string(i);
+    }
+    op->inputs.push_back(input_name);
+    op->outputs.push_back(output_name);
+    model->operators.emplace_back(op);
+  }
   return tensorflow::Status::OK();
 }
 
@@ -2224,7 +2234,7 @@ bool InlineAllFunctions(GraphDef* graphdef) {
 
   tensorflow::FunctionLibraryDefinition fld(tensorflow::OpRegistry::Global(),
                                             graphdef_copy.library());
-  tensorflow::DeviceMgr device_mgr(std::move(devices));
+  tensorflow::StaticDeviceMgr device_mgr(std::move(devices));
   tensorflow::OptimizerOptions o_opts;
   tensorflow::ProcessFunctionLibraryRuntime pflr(
       &device_mgr, tensorflow::Env::Default(), TF_GRAPH_DEF_VERSION, &fld,
@@ -2535,7 +2545,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"GreaterEqual",
        ConvertSimpleOperator<TensorFlowGreaterEqualOperator, 2, 1>},
       {"Identity", ConvertIdentityOperator},
-      {"IdentityN", ConvertIdentityOperator},
+      {"IdentityN", ConvertIdentityNOperator},
       {"LRN", ConvertLRNOperator},
       {"LeakyRelu", ConvertLeakyReluOperator},
       {"LegacyFedInput", ConvertPlaceholderOperator},

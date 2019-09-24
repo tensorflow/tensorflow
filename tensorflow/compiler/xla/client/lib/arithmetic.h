@@ -24,6 +24,13 @@ limitations under the License.
 
 namespace xla {
 
+using XlaOpGenerator = std::function<XlaOp(XlaOp, XlaOp)>;
+
+// Creates a scalar computation based on a lambda and returns it.
+XlaComputation CreateScalarComputation(const string& name, PrimitiveType type,
+                                       XlaBuilder* builder,
+                                       XlaOpGenerator generator);
+
 // Creates a scalar add computation and returns it.
 XlaComputation CreateScalarAddComputation(PrimitiveType type,
                                           XlaBuilder* builder);

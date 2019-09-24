@@ -86,7 +86,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
                        uint64 shared_memory_per_block,
                        const ThreadDim& thread_dims, GpuFunctionHandle func);
 
-  void* Allocate(uint64 size) override;
+  DeviceMemoryBase Allocate(uint64 size, int64 memory_space) override;
 
   void* GetSubBuffer(DeviceMemoryBase* mem, uint64 offset_bytes,
                      uint64 size_bytes) override;

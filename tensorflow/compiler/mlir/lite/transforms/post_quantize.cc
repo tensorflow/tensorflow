@@ -116,7 +116,15 @@ void RemoveQuantizationAdaptorOps(FuncOp func) {
   func.setType(new_func_type);
 }
 
+#include "tensorflow/compiler/mlir/lite/transforms/generated_post_quantize.inc"
+
 void PostQuantizePass::runOnFunction() {
+  OwningRewritePatternList patterns;
+  auto func = getFunction();
+  auto* ctx = func.getContext();
+  TFL::populateWithGenerated(ctx, &patterns);
+  applyPatternsGreedily(func, patterns);
+
   if (!emit_quant_adaptor_ops_) {
     RemoveQuantizationAdaptorOps(getFunction());
   }
@@ -125,7 +133,7 @@ void PostQuantizePass::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PostQuantize pass.
-std::unique_ptr<FunctionPassBase> CreatePostQuantizePass(
+std::unique_ptr<OpPassBase<FuncOp>> CreatePostQuantizePass(
     bool emit_quant_adaptor_ops) {
   return std::make_unique<PostQuantizePass>(emit_quant_adaptor_ops);
 }

@@ -45,8 +45,9 @@ struct TestMemRefDependenceCheck
 
 } // end anonymous namespace
 
-FunctionPassBase *mlir::createTestMemRefDependenceCheckPass() {
-  return new TestMemRefDependenceCheck();
+std::unique_ptr<OpPassBase<FuncOp>>
+mlir::createTestMemRefDependenceCheckPass() {
+  return std::make_unique<TestMemRefDependenceCheck>();
 }
 
 // Returns a result string which represents the direction vector (if there was

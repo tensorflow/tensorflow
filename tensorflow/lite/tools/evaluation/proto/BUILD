@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
+# Placeholder for Google-internal load statements.
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0

@@ -29,6 +29,16 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+static mutex* get_dataset_op_registry_lock() {
+  static mutex dataset_op_registry_lock(LINKER_INITIALIZED);
+  return &dataset_op_registry_lock;
+}
+
+static std::unordered_set<string>* get_dataset_op_registry() {
+  static std::unordered_set<string>* names = new std::unordered_set<string>;
+  return names;
+}
+
 // A wrapper class for storing a `DatasetBase` instance in a DT_VARIANT tensor.
 // Objects of the wrapper class own a reference on an instance of `DatasetBase`,
 // and the wrapper's copy constructor and destructor take care of managing the
@@ -418,6 +428,18 @@ void DatasetOpKernel::Compute(OpKernelContext* ctx) {
   }
 }
 
+// static
+bool DatasetOpKernel::IsDatasetOp(const OpDef* op_def) {
+  if (DatasetOpRegistry::IsRegistered(op_def->name())) {
+    return true;
+  }
+
+  return (op_def->output_arg_size() == 1 &&
+          op_def->output_arg(0).type() == DT_VARIANT &&
+          (absl::EndsWith(op_def->name(), "Dataset") ||
+           absl::EndsWith(op_def->name(), "DatasetV2")));
+}
+
 void UnaryDatasetOpKernel::MakeDataset(OpKernelContext* ctx,
                                        DatasetBase** output) {
   DatasetBase* input;
@@ -484,6 +506,19 @@ void BackgroundWorker::WorkerLoop() {
     DCHECK(work_item != nullptr);
     work_item();
   }
+}
+
+// static
+void DatasetOpRegistry::Register(const string& op_name) {
+  mutex_lock l(*get_dataset_op_registry_lock());
+  get_dataset_op_registry()->insert(op_name);
+}
+
+// static
+bool DatasetOpRegistry::IsRegistered(const string& op_name) {
+  mutex_lock l(*get_dataset_op_registry_lock());
+  std::unordered_set<string>* op_names = get_dataset_op_registry();
+  return op_names->find(op_name) != op_names->end();
 }
 
 namespace {

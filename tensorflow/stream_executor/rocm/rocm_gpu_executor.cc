@@ -425,8 +425,9 @@ void GpuExecutor::VlogOccupancyInfo(const KernelBase& kernel,
   // TODO(ROCm) implement this feature in HIP
 }
 
-void* GpuExecutor::Allocate(uint64 size) {
-  return GpuDriver::DeviceAllocate(context_, size);
+DeviceMemoryBase GpuExecutor::Allocate(uint64 size, int64 memory_space) {
+  CHECK_EQ(memory_space, 0);
+  return DeviceMemoryBase(GpuDriver::DeviceAllocate(context_, size), size);
 }
 
 void* GpuExecutor::GetSubBuffer(DeviceMemoryBase* mem, uint64 offset_bytes,

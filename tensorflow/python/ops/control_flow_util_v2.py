@@ -23,12 +23,14 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
+from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.func_graph import FuncGraph
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_v2_func_graphs
 from tensorflow.python.util import tf_contextlib
+
 
 _EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = None
 
@@ -161,6 +163,10 @@ def resource_input_index(tensor_name, input_names, node_defs, functions):
       assert len(parts) == 1
       op_name = parts[0]
       output_idx = 0
+      tensor_name = "%s:%d" % (tensor_name, output_idx)
+      # Check again for cases where the tensor suffix (":0") is stripped out.
+      if tensor_name in input_names:
+        break
     output_idx = int(output_idx)
     node_def = node_defs[op_name]
 
@@ -253,3 +259,29 @@ def output_all_intermediates():
       "SINGLE_THREADED_EXECUTOR"):
     return False
   return _is_building_keras_layer()
+
+
+def get_func_graph(op, input_shapes, func_name):
+  """Generates and returns a FuncGraph for the given op and input_shapes."""
+  graph = op.graph
+  # Recursively search the func in graphs.
+  while graph is not None:
+    func = graph._get_function(func_name)  # pylint: disable=protected-access
+    if func is not None:
+      fdef = func.definition
+      break
+    if hasattr(graph, "outer_graph"):
+      graph = graph.outer_graph
+    else:
+      break
+
+  # `op.graph` may not be the same as `ops.get_default_graph()` e.g.
+  # in the case of nested if ops or when the gradient is being computed
+  # from inside a Defun. We build the `func_graph` with `op.graph` as its
+  # `outer_graph`. This resembles how the `FuncGraph` was built in the
+  # forward pass. We need this so that we can resolve references to tensors
+  # in `func_graph` from its gradient graph in `_resolve_grad_inputs`.
+  with op.graph.as_default():
+    func_graph = function_def_to_graph.function_def_to_graph(
+        fdef, input_shapes)
+  return func_graph

@@ -155,27 +155,20 @@ TfLiteStatus BenchmarkModel::Run(int argc, char** argv) {
 }
 
 TfLiteStatus BenchmarkModel::Run() {
-  TfLiteStatus validation_status = ValidateParams();
-  if (validation_status != kTfLiteOk) {
-    return validation_status;
-  }
+  TF_LITE_ENSURE_STATUS(ValidateParams());
 
   LogParams();
 
   int64_t initialization_start_us = profiling::time::NowMicros();
-  TfLiteStatus init_status = Init();
-  if (init_status != kTfLiteOk) {
-    return init_status;
-  }
+  TF_LITE_ENSURE_STATUS(Init());
   int64_t initialization_end_us = profiling::time::NowMicros();
   int64_t startup_latency_us = initialization_end_us - initialization_start_us;
   TFLITE_LOG(INFO) << "Initialized session in " << startup_latency_us / 1e3
                    << "ms";
 
-  TfLiteStatus status = PrepareInputData();
-  if (status != kTfLiteOk) {
-    return status;
-  }
+  TF_LITE_ENSURE_STATUS(PrepareInputData());
+
+  TfLiteStatus status = kTfLiteOk;
   uint64_t input_bytes = ComputeInputBytes();
   listeners_.OnBenchmarkStart(params_);
   Stat<int64_t> warmup_time_us =

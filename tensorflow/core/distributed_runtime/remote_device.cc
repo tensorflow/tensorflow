@@ -40,6 +40,11 @@ class RemoteDevice : public Device {
   Status Sync() override { return Status::OK(); }
   Allocator* GetAllocator(AllocatorAttributes attr) override { return nullptr; }
 
+  ResourceMgr* resource_manager() override {
+    LOG(FATAL) << "Accessing the resource manager of a remote device is not "
+               << "supported.";
+  }
+
   bool IsLocal() const override { return false; }
 
  private:
@@ -124,7 +129,7 @@ void NewRemoteDevices(Env* env, WorkerCacheInterface* worker_cache,
       }
     }
   };
-  wi->GetStatusAsync(&call->req, &call->resp, cb);
+  wi->GetStatusAsync(&call->req, &call->resp, /*fail_fast=*/false, cb);
 }
 
 }  // namespace tensorflow

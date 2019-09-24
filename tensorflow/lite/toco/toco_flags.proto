@@ -25,7 +25,7 @@ enum FileFormat {
   TENSORFLOW_GRAPHDEF = 1;
 
   // Tensorflow's mobile inference model.
-  // third_party/tensorflow/contrib/tflite/schema.fbs
+  // third_party/tensorflow/lite/schema/schema.fbs
   TFLITE = 2;
 
   // GraphViz

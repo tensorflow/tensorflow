@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/lib/data_format.h"
+
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
@@ -57,7 +59,8 @@ xla::StatusOr<xla::XlaOp> Expand(xla::XlaOp input, int64 dim) {
 
   // Split the `dim` into two dimensions with a reshape. The size of the new
   // dimension is always 4.
-  std::vector<int64> expanded_shape(input_shape.dimensions());
+  std::vector<int64> expanded_shape =
+      xla::SpanToVector(input_shape.dimensions());
   expanded_shape[dim] /= 4;
   expanded_shape.insert(expanded_shape.begin() + dim, 4);
 

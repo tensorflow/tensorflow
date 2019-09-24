@@ -229,26 +229,26 @@ TestCase TestCase4() {
 // Test case 5: cycle_length = 2, block_length = 2, sloppy = false
 // buffer_output_elements = 2, prefetch_input_elements = 2
 TestCase TestCase5() {
-  return {
-      /*input_tensors=*/
-      {CreateTensor<string>(TensorShape{3, 3, 1},
-                            {"a", "b", "c", "d", "e", "f", "g", "h", "i"})},
-      /*cycle_length=*/2,
-      /*block_length=*/2,
-      /*sloppy=*/false,
-      /*buffer_output_elements=*/2,
-      /*prefetch_input_elements=*/2,
-      /*func=*/
-      MakeTensorSliceDatasetFunc(
-          DataTypeVector({DT_STRING}),
-          std::vector<PartialTensorShape>({PartialTensorShape({1})})),
-      /*func_lib=*/{test::function::MakeTensorSliceDataset()},
-      /*expected_outputs*/
-      ConvertToTensorVec<string>({"a", "b", "d", "e", "c", "f", "g", "h", "i"}),
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({1})},
-      /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
-      /*breakpoints*/ {0, 4, 11}};
+  return {/*input_tensors=*/
+          {CreateTensor<tstring>(TensorShape{3, 3, 1}, {"a", "b", "c", "d", "e",
+                                                        "f", "g", "h", "i"})},
+          /*cycle_length=*/2,
+          /*block_length=*/2,
+          /*sloppy=*/false,
+          /*buffer_output_elements=*/2,
+          /*prefetch_input_elements=*/2,
+          /*func=*/
+          MakeTensorSliceDatasetFunc(
+              DataTypeVector({DT_STRING}),
+              std::vector<PartialTensorShape>({PartialTensorShape({1})})),
+          /*func_lib=*/{test::function::MakeTensorSliceDataset()},
+          /*expected_outputs*/
+          ConvertToTensorVec<tstring>(
+              {"a", "b", "d", "e", "c", "f", "g", "h", "i"}),
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({1})},
+          /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
+          /*breakpoints*/ {0, 4, 11}};
 }
 
 TestCase InvalidCycleLengthTestCase() {

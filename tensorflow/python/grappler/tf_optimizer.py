@@ -29,7 +29,11 @@ def OptimizeGraph(config_proto,
                   verbose=True,
                   graph_id=b'graph_to_optimize',
                   cluster=None):
-  """Optimize the provided metagraph."""
+  """Optimize the provided metagraph.
+
+  For best results, the signature_def field in `metagraph` should be populated
+  with information about input (feed) and output (fetch) tensors.
+  """
   if not isinstance(config_proto, config_pb2.ConfigProto):
     raise TypeError('Expected config_proto to be a ConfigProto, saw type %s' %
                     type(config_proto))

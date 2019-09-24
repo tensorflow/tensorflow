@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import abc
 import enum  # pylint: disable=g-bad-import-order
 import itertools
 import functools
@@ -26,7 +25,9 @@ import six
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
+from tensorflow.python import _pywrap_utils
+from tensorflow.python.compat import compat as fwd_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -34,8 +35,8 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_state_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -1091,7 +1092,10 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
   def __eq__(self, other):
     """Compares two variables element-wise for equality."""
     if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():  # pylint: disable=protected-access
-      return gen_math_ops.equal(self, other)
+      if fwd_compat.forward_compatible(2019, 9, 25):
+        return gen_math_ops.equal(self, other, incompatible_shape_error=False)
+      else:
+        return gen_math_ops.equal(self, other)
     else:
       # In legacy graph mode, tensor equality is object equality
       return self is other
@@ -1100,7 +1104,11 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
   def __ne__(self, other):
     """Compares two variables element-wise for equality."""
     if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():  # pylint: disable=protected-access
-      return gen_math_ops.not_equal(self, other)
+      if fwd_compat.forward_compatible(2019, 9, 25):
+        return gen_math_ops.not_equal(
+            self, other, incompatible_shape_error=False)
+      else:
+        return gen_math_ops.not_equal(self, other)
     else:
       # In legacy graph mode, tensor equality is object equality
       return self is not other
@@ -1351,7 +1359,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
 
 
 Variable._OverloadAllOperators()  # pylint: disable=protected-access
-pywrap_tensorflow.RegisterType("Variable", Variable)
+_pywrap_utils.RegisterType("Variable", Variable)
 
 
 @tf_export(v1=["Variable"])
@@ -1837,6 +1845,10 @@ class RefVariable(VariableV1):
           self._variable = state_ops.variable_op_v2(
               shape, self._initial_value.dtype.base_dtype, name=name)
 
+        # Cache the name in `self`, because some APIs call `Variable.name` in a
+        # tight loop, and this halves the cost.
+        self._name = self._variable.name
+
         # Manually overrides the variable's shape with the initial value's.
         if validate_shape:
           initial_value_shape = self._initial_value.get_shape()
@@ -1882,6 +1894,7 @@ class RefVariable(VariableV1):
     self._variable = g.as_graph_element(
         ops.prepend_name_scope(
             variable_def.variable_name, import_scope=import_scope))
+    self._name = self._variable.name
     self._initializer_op = g.as_graph_element(
         ops.prepend_name_scope(
             variable_def.initializer_name, import_scope=import_scope))
@@ -2539,7 +2552,7 @@ class RefVariable(VariableV1):
   @property
   def name(self):
     """The name of this variable."""
-    return self._variable.name
+    return self._name
 
   @property
   def initializer(self):
@@ -2829,7 +2842,7 @@ class PartitionedVariable(object):
   eager execution.  Use `tf.Variable` instead which is compatible
   with both eager execution and graph construction.  See [the
   TensorFlow Eager Execution
-  guide](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/eager/python/g3doc/guide.md#variables-and-optimizers)
+  guide](https://www.tensorflow.org/guide/eager#variables_and_optimizers)
   for details on how variables work in eager execution.
   @end_compatibility
   """
@@ -3370,14 +3383,3 @@ def report_uninitialized_variables(var_list=None,
 
 ops.register_tensor_conversion_function(
     PartitionedVariable, PartitionedVariable._TensorConversionFunction)  # pylint: disable=protected-access
-
-
-class AbstractVariableMetaclass(VariableMetaclass, abc.ABCMeta):
-  """Metaclass combining `VariableMetaclass` and `abc.ABCMeta`."""
-  pass
-
-
-@six.add_metaclass(AbstractVariableMetaclass)
-class AbstractVariable(Variable):
-  """`Variable`, but abstract."""
-  pass

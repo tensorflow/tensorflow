@@ -111,7 +111,7 @@ struct LoopFusion : public FunctionPass<LoopFusion> {
 
 } // end anonymous namespace
 
-std::unique_ptr<FunctionPassBase>
+std::unique_ptr<OpPassBase<FuncOp>>
 mlir::createLoopFusionPass(unsigned fastMemorySpace,
                            uint64_t localBufSizeThreshold, bool maximalFusion) {
   return std::make_unique<LoopFusion>(fastMemorySpace, localBufSizeThreshold,
@@ -952,12 +952,14 @@ static Value *createPrivateMemRef(AffineForOp forOp, Operation *srcStoreOpInst,
                         ? AffineMap()
                         : b.getAffineMap(outerIVs.size() + rank, 0, remapExprs);
   // Replace all users of 'oldMemRef' with 'newMemRef'.
-  bool ret =
+  LogicalResult res =
       replaceAllMemRefUsesWith(oldMemRef, newMemRef, {}, indexRemap,
                                /*extraOperands=*/outerIVs,
+                               /*symbolOperands=*/{},
                                /*domInstFilter=*/&*forOp.getBody()->begin());
-  assert(ret && "replaceAllMemrefUsesWith should always succeed here");
-  (void)ret;
+  assert(succeeded(res) &&
+         "replaceAllMemrefUsesWith should always succeed here");
+  (void)res;
   return newMemRef;
 }
 

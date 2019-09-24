@@ -71,7 +71,7 @@ Status SessionMgr::CreateSession(
   string worker_name;
   if (server_def.cluster().job().empty()) {
     worker_cache = new WorkerCacheWrapper(default_worker_cache_.get());
-    worker_name = legacy_session_->worker_name;
+    worker_name = legacy_session_->worker_name();
   } else {
     TF_RETURN_IF_ERROR(worker_cache_factory_(server_def, &worker_cache));
     worker_name = WorkerNameFromServerDef(server_def);
@@ -101,15 +101,18 @@ Status SessionMgr::CreateSession(
       renamed_devices.push_back(RenamedDevice::NewRenamedDevice(
           worker_name, d, false, isolate_session_state));
     }
-    auto device_mgr = MakeUnique<DeviceMgr>(std::move(renamed_devices));
+    auto device_mgr = MakeUnique<StaticDeviceMgr>(std::move(renamed_devices));
     LookupLocalDevice cb = [&device_mgr](StringPiece name, Device** device) {
       return device_mgr->LookupDevice(name, device);
     };
     AsRemoteDevices(worker_env_->env, cluster_device_attributes, cb,
                     &cluster_devices);
-    std::unique_ptr<DeviceMgr> remote_devices;
-    if (!cluster_device_attributes.empty())
-      remote_devices = MakeUnique<DeviceMgr>(std::move(cluster_devices));
+    std::unique_ptr<DynamicDeviceMgr> remote_devices;
+    if (!cluster_device_attributes.empty()) {
+      remote_devices = MakeUnique<DynamicDeviceMgr>();
+      TF_RETURN_IF_ERROR(
+          remote_devices->AddDevices(std::move(cluster_devices)));
+    }
 
     auto graph_mgr = MakeUnique<GraphMgr>(worker_env_, device_mgr.get());
     worker_session.reset(
@@ -120,9 +123,12 @@ Status SessionMgr::CreateSession(
   } else {
     AsRemoteDevices(worker_env_->env, cluster_device_attributes, nullptr,
                     &cluster_devices);
-    std::unique_ptr<DeviceMgr> remote_devices;
-    if (!cluster_device_attributes.empty())
-      remote_devices = MakeUnique<DeviceMgr>(std::move(cluster_devices));
+    std::unique_ptr<DynamicDeviceMgr> remote_devices;
+    if (!cluster_device_attributes.empty()) {
+      remote_devices = MakeUnique<DynamicDeviceMgr>();
+      TF_RETURN_IF_ERROR(
+          remote_devices->AddDevices(std::move(cluster_devices)));
+    }
     // Borrow the WorkerEnv's DeviceMgr for the WorkerSession, so
     // that resources using it can use its devices after the
     // WorkerSession has been deleted.
@@ -156,7 +162,7 @@ Status SessionMgr::WorkerSessionForSessionLocked(
     if (it == sessions_.end()) {
       return errors::Aborted("Session handle is not found: ", session_handle,
                              ". Possibly this worker (\"",
-                             legacy_session_->worker_name,
+                             legacy_session_->worker_name(),
                              "\") just restarted.");
     } else {
       *out_session = it->second;
@@ -180,7 +186,7 @@ void SessionMgr::SetLogging(bool active) {
   this->is_logging_active_ = active;
   // Legacy Session
   if (legacy_session_) {
-    auto* worker_cache = legacy_session_->worker_cache.get();
+    auto* worker_cache = legacy_session_->worker_cache();
     if (worker_cache) {
       worker_cache->SetLogging(active);
     }
@@ -189,7 +195,7 @@ void SessionMgr::SetLogging(bool active) {
   for (const auto& session_kv : sessions_) {
     auto session = session_kv.second.get();
     if (session) {
-      auto* worker_cache = session->worker_cache.get();
+      auto* worker_cache = session->worker_cache();
       if (worker_cache) {
         worker_cache->SetLogging(active);
       }
@@ -202,7 +208,7 @@ void SessionMgr::RetrieveLogs(tensorflow::int64 step_id,
   mutex_lock l(mu_);
   // Legacy Session
   if (legacy_session_) {
-    auto* worker_cache = legacy_session_->worker_cache.get();
+    auto* worker_cache = legacy_session_->worker_cache();
     if (worker_cache) {
       auto step_stats = StepStats();
       if (worker_cache->RetrieveLogs(step_id, &step_stats)) {
@@ -215,7 +221,7 @@ void SessionMgr::RetrieveLogs(tensorflow::int64 step_id,
   for (const auto& session_kv : sessions_) {
     auto session = session_kv.second.get();
     if (session) {
-      auto* worker_cache = session->worker_cache.get();
+      auto* worker_cache = session->worker_cache();
       if (worker_cache) {
         auto step_stats = StepStats();
         if (worker_cache->RetrieveLogs(step_id, &step_stats)) {
@@ -232,7 +238,7 @@ void SessionMgr::ClearLogs() {
   mutex_lock l(mu_);
   // Legacy Session
   if (legacy_session_) {
-    auto* worker_cache = legacy_session_->worker_cache.get();
+    auto* worker_cache = legacy_session_->worker_cache();
     if (worker_cache) {
       worker_cache->ClearLogs();
     }
@@ -241,7 +247,7 @@ void SessionMgr::ClearLogs() {
   for (const auto& session_kv : sessions_) {
     auto session = session_kv.second.get();
     if (session) {
-      auto* worker_cache = session->worker_cache.get();
+      auto* worker_cache = session->worker_cache();
       if (worker_cache) {
         worker_cache->ClearLogs();
       }

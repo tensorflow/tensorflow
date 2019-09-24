@@ -144,7 +144,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
-    self.assertEqual('add', output_details[0]['name'])
+    self.assertEqual('output', output_details[0]['name'])
     self.assertEqual(np.uint8, output_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
     self.assertGreater(output_details[0]['quantization'][0], 0)  # scale
@@ -474,8 +474,7 @@ class TestFlexMode(test_util.TensorFlowTestCase):
     with self.assertRaises(RuntimeError) as error:
       interpreter.allocate_tensors()
     self.assertIn(
-        'Regular TensorFlow ops are not supported by this interpreter. Make '
-        'sure you invoke the Flex delegate before inference.',
+        'Regular TensorFlow ops are not supported by this interpreter.',
         str(error.exception))
 
   @test_util.run_v2_only
@@ -499,8 +498,7 @@ class TestFlexMode(test_util.TensorFlowTestCase):
     with self.assertRaises(RuntimeError) as error:
       interpreter.allocate_tensors()
     self.assertIn(
-        'Regular TensorFlow ops are not supported by this interpreter. Make '
-        'sure you invoke the Flex delegate before inference.',
+        'Regular TensorFlow ops are not supported by this interpreter.',
         str(error.exception))
 
 

@@ -17,26 +17,26 @@ limitations under the License.
 
 #include <algorithm>
 #include <limits>
+#include <numeric>
 #include <queue>
 #include <set>
 #include <type_traits>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/common/memory_management/equality_assignment.h"
-#include "tensorflow/lite/delegates/gpu/common/memory_management/greedy_assignment.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management/greedy_by_breadth_assignment.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management/greedy_by_size_assignment.h"
-#include "tensorflow/lite/delegates/gpu/common/memory_management/min_cost_flow_assignment.h"
-#include "tensorflow/lite/delegates/gpu/common/memory_management/naive_assignment.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
 namespace gpu {
+namespace {
 
-bool CompareBySize(const TensorUsageWithIndex<size_t>& first,
-                   const TensorUsageWithIndex<size_t>& second) {
-  return first.usage_record->tensor_size > second.usage_record->tensor_size;
+size_t TotalSize(const ObjectsAssignment<size_t>& assignment) {
+  return std::accumulate(assignment.object_sizes.begin(),
+                         assignment.object_sizes.end(), static_cast<size_t>(0));
 }
+
+}  // namespace
 
 OffsetsAssignment ObjectsToOffsets(
     const ObjectsAssignment<size_t>& obj_assignment) {
@@ -55,20 +55,37 @@ OffsetsAssignment ObjectsToOffsets(
   return result;
 }
 
+Status BestGreedy(const std::vector<TensorUsageRecord<size_t>>& usage_records,
+                  ObjectsAssignment<size_t>* assignment) {
+  RETURN_IF_ERROR(
+      GreedyBySizeDistPriorityAssignment(usage_records, assignment));
+  ObjectsAssignment<size_t> assignment_by_breadth;
+  if (GreedyByBreadthAssignment(usage_records, &assignment_by_breadth).ok() &&
+      TotalSize(assignment_by_breadth) < TotalSize(*assignment)) {
+    std::swap(*assignment, assignment_by_breadth);
+  }
+  return OkStatus();
+}
+
+template <>
 Status AssignObjectsToTensors(
     const std::vector<TensorUsageRecord<size_t>>& usage_records,
-    MemoryStrategy strategy, ObjectsAssignment<size_t>* assignment) {
+    MemoryStrategy strategy, ObjectsAssignment<size_t>* assignment,
+    const UsageGraph* reallocation_graph) {
   switch (strategy) {
     case MemoryStrategy::NAIVE:
       return NaiveAssignment(usage_records, assignment);
     case MemoryStrategy::EQUALITY:
-      return EqualityAssignment(usage_records, assignment);
-    case MemoryStrategy::GREEDY:
-      return GreedyAssignment(usage_records, assignment);
+      return EqualityAssignmentWithHash(usage_records, assignment);
+    case MemoryStrategy::GREEDY_IN_ORDER:
+      return GreedyInOrderAssignment(usage_records, assignment,
+                                     reallocation_graph);
     case MemoryStrategy::GREEDY_BY_BREADTH:
       return GreedyByBreadthAssignment(usage_records, assignment);
     case MemoryStrategy::GREEDY_BY_SIZE:
       return GreedyBySizeDistPriorityAssignment(usage_records, assignment);
+    case MemoryStrategy::GREEDY_BEST:
+      return BestGreedy(usage_records, assignment);
     case MemoryStrategy::MINCOSTFLOW:
       return MinCostFlowAssignment(usage_records, assignment);
     default:
@@ -78,14 +95,35 @@ Status AssignObjectsToTensors(
   return OkStatus();
 }
 
+template <>
 Status AssignObjectsToTensors(
     const std::vector<TensorUsageRecord<BHWC>>& usage_records,
-    MemoryStrategy strategy, ObjectsAssignment<BHWC>* assignment) {
+    MemoryStrategy strategy, ObjectsAssignment<BHWC>* assignment,
+    const UsageGraph* reallocation_graph) {
+  switch (strategy) {
+    case MemoryStrategy::NAIVE:
+      return NaiveAssignment(usage_records, assignment);
+    case MemoryStrategy::EQUALITY:
+      return EqualityAssignmentWithHash(usage_records, assignment);
+    default:
+      return InternalError(
+          "MemoryStrategy is not supported with current tensor size type.");
+  }
+  return OkStatus();
+}
+
+template <>
+Status AssignObjectsToTensors(
+    const std::vector<TensorUsageRecord<uint2>>& usage_records,
+    MemoryStrategy strategy, ObjectsAssignment<uint2>* assignment,
+    const UsageGraph* reallocation_graph) {
   switch (strategy) {
     case MemoryStrategy::NAIVE:
       return NaiveAssignment(usage_records, assignment);
     case MemoryStrategy::EQUALITY:
       return EqualityAssignment(usage_records, assignment);
+    case MemoryStrategy::GREEDY_IN_ORDER:
+      return GreedyInOrderAssignmentMultidimensional(usage_records, assignment);
     default:
       return InternalError(
           "MemoryStrategy is not supported with current tensor size type.");
@@ -93,29 +131,18 @@ Status AssignObjectsToTensors(
   return OkStatus();
 }
 
-Status AssignObjectsToTensors(
-    const std::vector<TensorUsageRecord<uint2>>& usage_records,
-    MemoryStrategy strategy, ObjectsAssignment<uint2>* assignment) {
-  switch (strategy) {
-    case MemoryStrategy::NAIVE:
-      return NaiveAssignment(usage_records, assignment);
-    case MemoryStrategy::GREEDY:
-      return GreedyAssignmentMultidimensional(usage_records, assignment);
-    default:
-      return InternalError(
-          "MemoryStrategy is not supported with current tensor size type.");
-  }
-  return OkStatus();
-}
-
+template <>
 Status AssignObjectsToTensors(
     const std::vector<TensorUsageRecord<uint3>>& usage_records,
-    MemoryStrategy strategy, ObjectsAssignment<uint3>* assignment) {
+    MemoryStrategy strategy, ObjectsAssignment<uint3>* assignment,
+    const UsageGraph* reallocation_graph) {
   switch (strategy) {
     case MemoryStrategy::NAIVE:
       return NaiveAssignment(usage_records, assignment);
-    case MemoryStrategy::GREEDY:
-      return GreedyAssignmentMultidimensional(usage_records, assignment);
+    case MemoryStrategy::EQUALITY:
+      return EqualityAssignment(usage_records, assignment);
+    case MemoryStrategy::GREEDY_IN_ORDER:
+      return GreedyInOrderAssignmentMultidimensional(usage_records, assignment);
     default:
       return InternalError(
           "MemoryStrategy is not supported with current tensor size type.");
@@ -125,13 +152,14 @@ Status AssignObjectsToTensors(
 
 Status AssignOffsetsToTensors(
     const std::vector<TensorUsageRecord<size_t>>& usage_records,
-    const MemoryStrategy& strategy, OffsetsAssignment* assignment) {
+    const MemoryStrategy& strategy, OffsetsAssignment* assignment,
+    const UsageGraph* reallocation_graph) {
   if (strategy == MemoryStrategy::GREEDY_BY_SIZE) {
     return GreedyBySizeAssignment(usage_records, assignment);
   }
   ObjectsAssignment<size_t> objects_assignment;
-  RETURN_IF_ERROR(
-      AssignObjectsToTensors(usage_records, strategy, &objects_assignment));
+  RETURN_IF_ERROR(AssignObjectsToTensors(
+      usage_records, strategy, &objects_assignment, reallocation_graph));
   *assignment = ObjectsToOffsets(objects_assignment);
   return OkStatus();
 }

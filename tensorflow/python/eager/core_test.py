@@ -27,6 +27,7 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import def_function
@@ -302,9 +303,13 @@ class TFETest(test_util.TensorFlowTestCase):
       with self.assertRaises(ValueError):
         bool(tf_a == tf_d)
       self.assertAllEqual(tf_a == tf_d, [[True, False], [True, False]])
-      # TODO(b/120678848): If shapes do not match we should instead return False
-      with self.assertRaises(errors.InvalidArgumentError):
-        bool(tf_a != tf_e)
+      if compat.forward_compatible(2019, 9, 25):
+        self.assertFalse(bool(tf_a == tf_e))
+        self.assertTrue(bool(tf_a != tf_e))
+        self.assertNotAllEqual(tf_a, tf_e)
+      else:
+        with self.assertRaises(errors.InvalidArgumentError):
+          bool(tf_a != tf_e)
 
       with self.assertRaises(ValueError):
         bool(np_a == np_b)
@@ -313,7 +318,9 @@ class TFETest(test_util.TensorFlowTestCase):
         bool(np_a == np_c)
       self.assertAllEqual(np_a == np_c, [[True, True], [True, True]])
       self.assertAllEqual(np_a == np_d, [[True, False], [True, False]])
-      bool(np_a != np_e)
+      self.assertFalse(bool(np_a == np_e))
+      self.assertTrue(bool(np_a != np_e))
+      self.assertNotAllEqual(np_a, np_e)
     finally:
       if default:
         ops.enable_tensor_equality()
@@ -333,16 +340,6 @@ class TFETest(test_util.TensorFlowTestCase):
     self.assertEqual(context.ASYNC, ctx.execution_mode)
     ctx.execution_mode = context.SYNC
     self.assertEqual(context.SYNC, ctx.execution_mode)
-
-    self.assertIsNone(ctx.summary_writer)
-    ctx.summary_writer = 'mock'
-    self.assertEqual('mock', ctx.summary_writer)
-    self.assertIsNone(ctx.summary_recording)
-    ctx.summary_recording = 'mock'
-    self.assertEqual('mock', ctx.summary_recording)
-    self.assertIsNone(ctx.summary_step)
-    ctx.summary_step = 'mock'
-    self.assertEqual('mock', ctx.summary_step)
 
     self.assertEqual('', ctx.device_name)
     self.assertEqual(ctx.device_name, ctx.device_spec.to_string())
@@ -427,9 +424,6 @@ class TFETest(test_util.TensorFlowTestCase):
       return [
           ctx.executing_eagerly(),
           ctx.scope_name,
-          ctx.summary_writer,
-          ctx.summary_recording,
-          ctx.summary_step,
           ctx.device_name,
           ctx.num_gpus()
       ]

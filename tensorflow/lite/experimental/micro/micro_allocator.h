@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/experimental/micro/simple_tensor_allocator.h"
+#include "tensorflow/lite/experimental/micro/simple_memory_allocator.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -44,6 +44,15 @@ class MicroAllocator {
   // prematurely overwritten.
   TfLiteStatus RegisterPreallocatedInput(uint8_t* buffer, size_t input_index);
 
+  // Sets up all of the data structure members for a runtime tensor based on the
+  // contents of a serialized tensor. This method doesn't allocate any memory,
+  // all allocations happen subsequently in AllocateTensors.
+  TfLiteStatus InitializeRuntimeTensor(
+      const tflite::Tensor& flatbuffer_tensor,
+      const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
+      ErrorReporter* error_reporter, TfLiteTensor* result,
+      uint8_t* preallocated_buffer = nullptr);
+
   // Run through the model and allocate all necessary input, output and
   // intermediate tensors except for those already provided via calls to
   // registerPreallocatedInput.
@@ -51,9 +60,11 @@ class MicroAllocator {
 
  private:
   const Model* model_;
-  SimpleTensorAllocator tensor_allocator_;
+  SimpleMemoryAllocator memory_allocator_;
   ErrorReporter* error_reporter_;
   TfLiteContext* context_;
+  uint8_t* arena_;
+  size_t arena_size_;
 
   const SubGraph* subgraph_;
   const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators_;

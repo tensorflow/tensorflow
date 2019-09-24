@@ -19,8 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import math
-import os
-import unittest
 
 from absl.testing import parameterized
 import numpy as np
@@ -55,6 +53,7 @@ class DataAdapterTestBase(test.TestCase, parameterized.TestCase):
       while True:
         yield (np.zeros((self.batch_size, 10)), np.ones(self.batch_size))
     self.generator_input = generator()
+    self.iterator_input = data_utils.threadsafe_generator(generator)()
     self.sequence_input = TestSequence(batch_size=self.batch_size,
                                        feature_shape=10)
     self.model = keras.models.Sequential(
@@ -112,6 +111,17 @@ class TensorLikeDataAdapterTest(DataAdapterTestBase):
     self.assertEqual(adapter.get_size(), 13)   # 50/4
     self.assertTrue(adapter.has_partial_batch())
     self.assertEqual(adapter.partial_batch_size(), 2)
+
+  def test_epochs(self):
+    num_epochs = 3
+    adapter = self.adapter_cls(
+        self.numpy_input, self.numpy_target, batch_size=5, epochs=num_epochs)
+    ds_iter = iter(adapter.get_dataset())
+    num_batches_per_epoch = self.numpy_input.shape[0] // 5
+    for _ in range(num_batches_per_epoch * num_epochs):
+      next(ds_iter)
+    with self.assertRaises(StopIteration):
+      next(ds_iter)
 
   @test_util.run_in_graph_and_eager_modes
   def test_training_numpy(self):
@@ -237,6 +247,15 @@ class DatasetAdapterTest(DataAdapterTestBase):
     self.assertFalse(adapter.has_partial_batch())
     self.assertIsNone(adapter.partial_batch_size())
 
+  def test_invalid_targets_argument(self):
+    with self.assertRaisesRegexp(ValueError, r'`y` argument is not supported'):
+      self.adapter_cls(self.dataset_input, y=self.dataset_input)
+
+  def test_invalid_sample_weights_argument(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 r'`sample_weight` argument is not supported'):
+      self.adapter_cls(self.dataset_input, sample_weights=self.dataset_input)
+
 
 class GeneratorDataAdapterTest(DataAdapterTestBase):
 
@@ -255,17 +274,15 @@ class GeneratorDataAdapterTest(DataAdapterTestBase):
     self.model.compile(loss='sparse_categorical_crossentropy', optimizer='sgd')
     self.model.fit(self.generator_input, steps_per_epoch=10)
 
-  @unittest.skipIf(
-      os.name == 'nt',
-      'use_multiprocessing=True does not work on windows properly.')
   @test_util.run_v2_only
+  @data_utils.dont_use_multiprocessing_pool
   def test_with_multiprocessing_training(self):
     self.model.compile(loss='sparse_categorical_crossentropy', optimizer='sgd')
-    self.model.fit(self.generator_input, workers=1, use_multiprocessing=True,
+    self.model.fit(self.iterator_input, workers=1, use_multiprocessing=True,
                    max_queue_size=10, steps_per_epoch=10)
     # Fit twice to ensure there isn't any duplication that prevent the worker
     # from starting.
-    self.model.fit(self.generator_input, workers=1, use_multiprocessing=True,
+    self.model.fit(self.iterator_input, workers=1, use_multiprocessing=True,
                    max_queue_size=10, steps_per_epoch=10)
 
   def test_size(self):
@@ -274,12 +291,23 @@ class GeneratorDataAdapterTest(DataAdapterTestBase):
 
   def test_batch_size(self):
     adapter = self.adapter_cls(self.generator_input)
-    self.assertEqual(adapter.batch_size(), 5)
+    self.assertEqual(adapter.batch_size(), None)
+    self.assertEqual(adapter.representative_batch_size(), 5)
 
   def test_partial_batch(self):
     adapter = self.adapter_cls(self.generator_input)
     self.assertFalse(adapter.has_partial_batch())
     self.assertIsNone(adapter.partial_batch_size())
+
+  def test_invalid_targets_argument(self):
+    with self.assertRaisesRegexp(ValueError, r'`y` argument is not supported'):
+      self.adapter_cls(self.generator_input, y=self.generator_input)
+
+  def test_invalid_sample_weights_argument(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 r'`sample_weight` argument is not supported'):
+      self.adapter_cls(
+          self.generator_input, sample_weights=self.generator_input)
 
 
 class KerasSequenceAdapterTest(DataAdapterTestBase):
@@ -299,10 +327,8 @@ class KerasSequenceAdapterTest(DataAdapterTestBase):
     self.model.compile(loss='sparse_categorical_crossentropy', optimizer='sgd')
     self.model.fit(self.sequence_input)
 
-  @unittest.skipIf(
-      os.name == 'nt',
-      'use_multiprocessing=True does not work on windows properly.')
   @test_util.run_v2_only
+  @data_utils.dont_use_multiprocessing_pool
   def test_with_multiprocessing_training(self):
     self.model.compile(loss='sparse_categorical_crossentropy', optimizer='sgd')
     self.model.fit(self.sequence_input, workers=1, use_multiprocessing=True,
@@ -318,12 +344,22 @@ class KerasSequenceAdapterTest(DataAdapterTestBase):
 
   def test_batch_size(self):
     adapter = self.adapter_cls(self.sequence_input)
-    self.assertEqual(adapter.batch_size(), 5)
+    self.assertEqual(adapter.batch_size(), None)
+    self.assertEqual(adapter.representative_batch_size(), 5)
 
   def test_partial_batch(self):
     adapter = self.adapter_cls(self.sequence_input)
     self.assertFalse(adapter.has_partial_batch())
     self.assertIsNone(adapter.partial_batch_size())
+
+  def test_invalid_targets_argument(self):
+    with self.assertRaisesRegexp(ValueError, r'`y` argument is not supported'):
+      self.adapter_cls(self.sequence_input, y=self.sequence_input)
+
+  def test_invalid_sample_weights_argument(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 r'`sample_weight` argument is not supported'):
+      self.adapter_cls(self.sequence_input, sample_weights=self.sequence_input)
 
 
 if __name__ == '__main__':

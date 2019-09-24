@@ -25,10 +25,9 @@ from __future__ import print_function
 
 import collections
 
-from tensorflow.python.compat import compat
+from tensorflow.python.eager import backprop_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph as func_graph_module
-from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -256,11 +255,7 @@ def _build_cond(pred,
     false_stateful_ops = [
         op for op in false_graph.get_operations() if op._is_stateful
     ]
-    # TODO(srbs): Remove this after July 22, 2019. This is required to abide by
-    # 3-week forward compat window of new TF python op generating code with
-    # stale runtime binaries.
-    if (true_stateful_ops or false_stateful_ops or
-        not compat.forward_compatible(2019, 7, 22)):
+    if (true_stateful_ops or false_stateful_ops):
       op_fn = gen_functional_ops._if
     else:
       op_fn = gen_functional_ops.stateless_if
@@ -276,6 +271,8 @@ def _build_cond(pred,
 
   # TODO(b/110167197) this approach requires cond_v2 to have at least 1 output
   if_op = tensors[0].op
+  if_op._true_graph = true_graph
+  if_op._false_graph = false_graph
   util.maybe_set_lowering_attr(if_op)
   util.maybe_propagate_compile_time_consts_in_xla(if_op)
 
@@ -306,20 +303,15 @@ def get_func_graphs(op):
     for Case).
   """
 
-  def _get_func_graph_for_branch(name_attr_list):
+  def _get_func_graph_for_branch(name_attr_list, cached_attr_name=None):
     """Generates and returns a FuncGraph for the given branch."""
+    func_graph = None
+    if cached_attr_name is not None:
+      func_graph = getattr(op, cached_attr_name, None)
     inputs = op.inputs[1:]  # First input is pred.
-    input_shapes = [t.shape for t in inputs]
-    fdef = op.graph._get_function(name_attr_list.name).definition
-    # `op.graph` may not be the same as `ops.get_default_graph()` e.g.
-    # in the case of nested if ops or when the gradient is being computed
-    # from inside a Defun. We build the `func_graph` with `op.graph` as its
-    # `outer_graph`. This resembles how the `FuncGraph` was built in the
-    # forward pass. We need this so that we can resolve references to tensors
-    # in `func_graph` from its gradient graph in `_resolve_grad_inputs`.
-    with op.graph.as_default():
-      func_graph = function_def_to_graph.function_def_to_graph(
-          fdef, input_shapes)
+    if func_graph is None:
+      input_shapes = [t.shape for t in inputs]
+      func_graph = util.get_func_graph(op, input_shapes, name_attr_list.name)
     for external_t, internal_t in zip(inputs, func_graph.inputs):
       custom_gradient.copy_handle_data(external_t, internal_t)
     func_graph.reset_captures(zip(inputs, func_graph.inputs))
@@ -328,9 +320,12 @@ def get_func_graphs(op):
     return func_graph
 
   if op.type in ["If", "StatelessIf"]:
-    return (_get_func_graph_for_branch(op.get_attr("then_branch")),
-            _get_func_graph_for_branch(op.get_attr("else_branch")))
+    return (_get_func_graph_for_branch(
+        op.get_attr("then_branch"), "_true_graph"),
+            _get_func_graph_for_branch(
+                op.get_attr("else_branch"), "_false_graph"))
   elif op.type == "Case":
+    # TODO(b/141114088): investigate whether to cache graphs in forward pass
     return [_get_func_graph_for_branch(branch_fn)
             for branch_fn in op.get_attr("branches")]
   else:
@@ -359,7 +354,7 @@ def _grad_fn(func_graph, grads):
   ys = []
   grad_ys = []
   for y, grad_y in zip(func_graph.outputs, grads):
-    if not gradients_util.IsTrainable(y):
+    if not backprop_util.IsTrainable(y):
       continue
     ys.append(y)
     grad_ys.append(grad_y)

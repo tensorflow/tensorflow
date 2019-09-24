@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -659,6 +660,12 @@ HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
       computations_in_module,
       [&](HloComputation* computation) { return computation->name() == name; });
   return it == computations_in_module.end() ? nullptr : *it;
+}
+
+uint64 HloModule::Hash() const {
+  return tensorflow::Hash64Combine(
+      entry_computation_layout().Hash(),
+      entry_computation()->root_instruction()->Hash());
 }
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);

@@ -263,13 +263,7 @@ bool IsGpuCompatibleConv2D(const NodeDef* conv2d) {
 
 bool IsCpuCompatibleMatMul(const NodeDef* matmul) {
   DCHECK(IsMatMul(*matmul)) << "Expected MatMul op";
-#ifndef INTEL_MKL
-  // Temporarily disable Matmul fusions if MKL is enabled.
-  // TODO(Intel) renable Matmul fusions when enabled by MKL DNN.
   return NodeIsOnCpu(matmul) && IsCpuCompatibleDataType(matmul);
-#else
-  return false;
-#endif  // !INTEL_MKL
 }
 
 // Checks if we can rewrite a pattern to the `_Fused{Conv2D,MatMul}` on CPU.

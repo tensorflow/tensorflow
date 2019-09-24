@@ -60,7 +60,6 @@ cuda_py_test(
         "//tensorflow/python/data/ops:iterator_ops",
     ],
     tags = ["no_windows_gpu"],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_test(
@@ -477,7 +476,6 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
     ],
     tags = ["no_windows_gpu"],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_test(
@@ -565,14 +563,12 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "scan_test",
     size = "small",
     srcs = ["scan_test.py"],
-    python_version = "PY2",
-    srcs_version = "PY2AND3",
-    tags = ["no_pip"],
-    deps = [
+    additional_deps = [
+        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -583,12 +579,13 @@ py_test(
         "//tensorflow/python:script_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:test_ops",
         "//tensorflow/python/data/experimental/ops:scan_ops",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
-        "//third_party/py/numpy",
     ],
+    tags = ["no_pip"],
 )
 
 py_test(
@@ -661,6 +658,7 @@ py_test(
 
 py_test(
     name = "snapshot_test",
+    size = "medium",
     srcs = ["snapshot_test.py"],
     python_version = "PY2",
     shard_count = 10,
@@ -796,5 +794,4 @@ cuda_py_test(
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
-    xla_enable_strict_auto_jit = True,
 )

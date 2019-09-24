@@ -318,6 +318,7 @@ Token Lexer::lexNumber(const char *tokStart) {
 ///   block-id      ::= '^' suffix-id
 ///   type-id       ::= '!' suffix-id
 ///   suffix-id     ::= digit+ | (letter|id-punct) (letter|id-punct|digit)*
+///   id-punct      ::= `$` | `.` | `_` | `-`
 ///
 Token Lexer::lexPrefixedIdentifier(const char *tokStart) {
   Token::Kind kind;
@@ -368,7 +369,7 @@ Token Lexer::lexPrefixedIdentifier(const char *tokStart) {
 Token Lexer::lexString(const char *tokStart) {
   assert(curPtr[-1] == '"');
 
-  while (1) {
+  while (true) {
     switch (*curPtr++) {
     case '"':
       return formToken(Token::string, tokStart);

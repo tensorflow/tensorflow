@@ -81,7 +81,7 @@ class InferenceEnvironment {
   virtual ~InferenceEnvironment() {}
 
   virtual Status NewInferenceBuilder(
-      const InferenceOptions& options, const GraphFloat32& model,
+      const InferenceOptions& options, GraphFloat32 model,
       std::unique_ptr<InferenceBuilder>* builder) = 0;
 
   // Returns opaque binary blob that contains a collection of already compiled

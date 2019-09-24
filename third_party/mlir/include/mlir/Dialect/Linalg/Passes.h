@@ -26,20 +26,21 @@
 #include "llvm/ADT/ArrayRef.h"
 
 namespace mlir {
-class FunctionPassBase;
-class ModulePassBase;
+class FuncOp;
+class ModuleOp;
+template <typename T> class OpPassBase;
 
 namespace linalg {
-std::unique_ptr<FunctionPassBase>
+std::unique_ptr<OpPassBase<FuncOp>>
 createLinalgFusionPass(ArrayRef<int64_t> tileSizes = {});
 
-std::unique_ptr<FunctionPassBase>
+std::unique_ptr<OpPassBase<FuncOp>>
 createLinalgTilingPass(ArrayRef<int64_t> tileSizes = {},
                        bool promoteViews = false);
 
-std::unique_ptr<FunctionPassBase> createLowerLinalgToLoopsPass();
+std::unique_ptr<OpPassBase<FuncOp>> createLowerLinalgToLoopsPass();
 
-std::unique_ptr<ModulePassBase> createLowerLinalgToLLVMPass();
+std::unique_ptr<OpPassBase<ModuleOp>> createLowerLinalgToLLVMPass();
 } // namespace linalg
 } // namespace mlir
 

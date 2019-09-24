@@ -253,7 +253,7 @@ tf_class {
   }
   member_method {
     name: "load_weights"
-    argspec: "args=[\'self\', \'filepath\', \'by_name\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'self\', \'filepath\', \'by_name\', \'skip_mismatch\'], varargs=None, keywords=None, defaults=[\'False\', \'False\'], "
   }
   member_method {
     name: "predict"
@@ -277,7 +277,7 @@ tf_class {
   }
   member_method {
     name: "save"
-    argspec: "args=[\'self\', \'filepath\', \'overwrite\', \'include_optimizer\', \'save_format\', \'signatures\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'filepath\', \'overwrite\', \'include_optimizer\', \'save_format\', \'signatures\', \'options\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "save_weights"

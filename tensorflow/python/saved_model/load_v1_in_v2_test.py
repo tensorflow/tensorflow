@@ -529,6 +529,38 @@ class LoadTest(test.TestCase):
     forty_two = constant_op.constant([42], dtype=dtypes.int64)
     self.assertEqual([84], imported_fn(forty_two)["output"].values.numpy())
 
+  def _model_with_sparse_input(self):
+    """Generate a graph with a SparseTensor input and serialize in V1 format."""
+    export_graph = ops.Graph()
+    with export_graph.as_default():
+      in_sparse_placeholder = array_ops.sparse_placeholder(
+          dtype=dtypes.int64, shape=[2, 2])
+      out_sparse_tensor = sparse_tensor.SparseTensor(
+          indices=in_sparse_placeholder.indices,
+          values=in_sparse_placeholder.values,
+          dense_shape=in_sparse_placeholder.dense_shape) * 2
+      with session_lib.Session() as session:
+        path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
+        simple_save.simple_save(
+            session,
+            path,
+            inputs={"start": in_sparse_placeholder},
+            outputs={"output": out_sparse_tensor})
+    return path
+
+  def test_load_sparse_inputs(self):
+    path = self._model_with_sparse_input()
+    imported = load.load(path)
+    imported_fn = imported.signatures["serving_default"]
+    indices = constant_op.constant([[0, 0], [0, 1], [1, 1]], dtype=dtypes.int64)
+    values = constant_op.constant([42, 43, 44], dtype=dtypes.int64)
+    dense_shape = constant_op.constant([2, 2], dtype=dtypes.int64)
+    result = imported_fn(
+        start_indices=indices,
+        start_values=values,
+        start_dense_shape=dense_shape)
+    self.assertAllEqual([84, 86, 88], result["output"].values.numpy())
+
   def _model_with_defun(self):
     """Generate a graph with a Defun and serialize in V1 format."""
     export_graph = ops.Graph()

@@ -60,7 +60,7 @@ def _clone_dataset(dataset):
 
 
 def _get_op_def(op):
-  return op.op_def or op_def_registry.get_registered_ops()[op.type]
+  return op.op_def or op_def_registry.get(op.type)
 
 
 def _clone_helper(op_to_clone, variant_tensor_ops):

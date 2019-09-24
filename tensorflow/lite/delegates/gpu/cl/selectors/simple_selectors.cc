@@ -46,15 +46,17 @@ void SelectAbs(const OperationDef& op_def, std::unique_ptr<GPUOperation>* ptr) {
   *ptr = absl::make_unique<Abs>(std::move(operation));
 }
 
-void SelectApplyMask(const OperationDef& op_def,
+void SelectApplyMask(const OperationDef& op_def, const BHWC& src_shape,
+                     const BHWC& mask_shape,
                      std::unique_ptr<GPUOperation>* ptr) {
-  ApplyMask operation = CreateApplyMask(op_def);
+  ApplyMask operation = CreateApplyMask(op_def, src_shape, mask_shape);
   *ptr = absl::make_unique<ApplyMask>(std::move(operation));
 }
 
-void SelectReLU(const ReLUAttributes& attr, const OperationDef& op_def,
+void SelectReLU(const CreationContext& creation_context,
+                const ReLUAttributes& attr, const OperationDef& op_def,
                 std::unique_ptr<GPUOperation>* ptr) {
-  ReLU relu = CreateReLU(op_def, attr);
+  ReLU relu = CreateReLU(creation_context, op_def, attr);
   *ptr = absl::make_unique<ReLU>(std::move(relu));
 }
 

@@ -43,7 +43,7 @@ public:
 
   void runOnFunction() override {
     FuncOp func = getFunction();
-    func.walk<loop::ForOp>([this](loop::ForOp op) {
+    func.walk([this](loop::ForOp op) {
       // Ignore nested loops.
       if (op.getParentRegion()->getParentOfType<loop::ForOp>())
         return;
@@ -55,7 +55,7 @@ public:
 };
 } // end namespace
 
-std::unique_ptr<FunctionPassBase>
+std::unique_ptr<OpPassBase<FuncOp>>
 mlir::createSimpleParametricTilingPass(ArrayRef<int64_t> outerLoopSizes) {
   return std::make_unique<SimpleParametricLoopTilingPass>(outerLoopSizes);
 }

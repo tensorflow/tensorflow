@@ -19,7 +19,7 @@ limitations under the License.
 #include <iomanip>
 #include <sstream>
 
-#include "tensorflow/lite/string.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 namespace testing {

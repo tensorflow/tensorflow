@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import re
 
-from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
@@ -42,13 +41,6 @@ def default_test_combinations():
 
 class DatasetTestBase(test.TestCase):
   """Base class for dataset tests."""
-
-  @classmethod
-  def setUpClass(cls):
-    if tf2.enabled():
-      dataset_ops.Dataset = dataset_ops.DatasetV2
-    else:
-      dataset_ops.Dataset = dataset_ops.DatasetV1
 
   def assert_op_cancelled(self, op):
     with self.assertRaises(errors.CancelledError):
@@ -150,7 +142,7 @@ class DatasetTestBase(test.TestCase):
         mode, it should use an initializable iterator to iterate through the
         dataset (e.g. when it contains stateful nodes). Defaults to False.
       num_test_iterations: Number of times `dataset` will be iterated. Defaults
-        to 2.
+        to 1.
       assert_items_equal: Tests expected_output has (only) the same elements
         regardless of order.
       expected_error_iter: How many times to iterate before expecting an error,

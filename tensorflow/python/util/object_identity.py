@@ -30,6 +30,8 @@ class _ObjectIdentityWrapper(object):
   _ListWrapper objects to object-identity collections.
   """
 
+  __slots__ = ["_wrapped"]
+
   def __init__(self, wrapped):
     self._wrapped = wrapped
 
@@ -38,9 +40,10 @@ class _ObjectIdentityWrapper(object):
     return self._wrapped
 
   def __eq__(self, other):
-    if isinstance(other, _ObjectIdentityWrapper):
-      return self._wrapped is other._wrapped  # pylint: disable=protected-access
-    return False
+    if not isinstance(other, _ObjectIdentityWrapper):
+      raise TypeError("Cannot compare wrapped object with unwrapped object")
+
+    return self._wrapped is other._wrapped  # pylint: disable=protected-access
 
   def __ne__(self, other):
     return not self.__eq__(other)

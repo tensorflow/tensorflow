@@ -69,7 +69,7 @@ template <typename OpTy>
 void ensureRegionTerminator(Region &region, Builder &builder, Location loc) {
   ensureRegionTerminator(region, loc, [&] {
     OperationState state(loc, OpTy::getOperationName());
-    OpTy::build(&builder, &state);
+    OpTy::build(&builder, state);
     return Operation::create(state);
   });
 }
@@ -189,16 +189,10 @@ public:
 
   /// Walk the operation in postorder, calling the callback for each nested
   /// operation(including this one).
-  void walk(llvm::function_ref<void(Operation *)> callback) {
-    state->walk(callback);
-  }
-
-  /// Specialization of walk to only visit operations of 'OpTy'.
-  template <typename OpTy> void walk(llvm::function_ref<void(OpTy)> callback) {
-    walk([&](Operation *opInst) {
-      if (auto op = dyn_cast<OpTy>(opInst))
-        callback(op);
-    });
+  /// See Operation::walk for more details.
+  template <typename FnT, typename RetT = detail::walkResultType<FnT>>
+  RetT walk(FnT &&callback) {
+    return state->walk(std::forward<FnT>(callback));
   }
 
   // These are default implementations of customization hooks.
@@ -216,10 +210,10 @@ protected:
   /// Unless overridden, the custom assembly form of an op is always rejected.
   /// Op implementations should implement this to return failure.
   /// On success, they should fill in result with the fields to use.
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
+  static ParseResult parse(OpAsmParser &parser, OperationState &result);
 
   // The fallback for the printer is to print it the generic assembly form.
-  void print(OpAsmPrinter *p);
+  void print(OpAsmPrinter &p);
 
   /// Mutability management is handled by the OpWrapper/OpConstWrapper classes,
   /// so we can cast it away here.
@@ -357,7 +351,9 @@ LogicalResult verifyZeroResult(Operation *op);
 LogicalResult verifyOneResult(Operation *op);
 LogicalResult verifyNResults(Operation *op, unsigned numOperands);
 LogicalResult verifyAtLeastNResults(Operation *op, unsigned numOperands);
+LogicalResult verifySameOperandsShape(Operation *op);
 LogicalResult verifySameOperandsAndResultShape(Operation *op);
+LogicalResult verifySameOperandsElementType(Operation *op);
 LogicalResult verifySameOperandsAndResultElementType(Operation *op);
 LogicalResult verifySameOperandsAndResultType(Operation *op);
 LogicalResult verifyResultsAreBoolLike(Operation *op);
@@ -626,6 +622,17 @@ class VariadicResults
     : public detail::MultiResultTraitBase<ConcreteType, VariadicResults> {};
 
 /// This class provides verification for ops that are known to have the same
+/// operand shape: all operands are scalars, vectors/tensors of the same
+/// shape.
+template <typename ConcreteType>
+class SameOperandsShape : public TraitBase<ConcreteType, SameOperandsShape> {
+public:
+  static LogicalResult verifyTrait(Operation *op) {
+    return impl::verifySameOperandsShape(op);
+  }
+};
+
+/// This class provides verification for ops that are known to have the same
 /// operand and result shape: both are scalars, vectors/tensors of the same
 /// shape.
 template <typename ConcreteType>
@@ -634,6 +641,18 @@ class SameOperandsAndResultShape
 public:
   static LogicalResult verifyTrait(Operation *op) {
     return impl::verifySameOperandsAndResultShape(op);
+  }
+};
+
+/// This class provides verification for ops that are known to have the same
+/// operand element type.
+///
+template <typename ConcreteType>
+class SameOperandsElementType
+    : public TraitBase<ConcreteType, SameOperandsElementType> {
+public:
+  static LogicalResult verifyTrait(Operation *op) {
+    return impl::verifySameOperandsElementType(op);
   }
 };
 
@@ -887,6 +906,16 @@ public:
   /// Return the operation that this refers to.
   Operation *getOperation() { return OpState::getOperation(); }
 
+  /// Create a deep copy of this operation.
+  ConcreteType clone() { return cast<ConcreteType>(getOperation()->clone()); }
+
+  /// Create a partial copy of this operation without traversing into attached
+  /// regions. The new operation will have the same number of regions as the
+  /// original one, but they will be left empty.
+  ConcreteType cloneWithoutRegions() {
+    return cast<ConcreteType>(getOperation()->cloneWithoutRegions());
+  }
+
   /// Return the dialect that this refers to.
   Dialect *getDialect() { return getOperation()->getDialect(); }
 
@@ -905,14 +934,14 @@ public:
   /// op from an .mlir file.  Op implementations should provide a parse method,
   /// which returns failure.  On success, they should return fill in result with
   /// the fields to use.
-  static ParseResult parseAssembly(OpAsmParser *parser,
-                                   OperationState *result) {
+  static ParseResult parseAssembly(OpAsmParser &parser,
+                                   OperationState &result) {
     return ConcreteType::parse(parser, result);
   }
 
   /// This is the hook used by the AsmPrinter to emit this to the .mlir file.
   /// Op implementations should provide a print method.
-  static void printAssembly(Operation *op, OpAsmPrinter *p) {
+  static void printAssembly(Operation *op, OpAsmPrinter &p) {
     auto opPointer = dyn_cast<ConcreteType>(op);
     assert(opPointer &&
            "op's name does not match name of concrete type instantiated with");
@@ -1114,22 +1143,22 @@ private:
 // These functions are out-of-line implementations of the methods in BinaryOp,
 // which avoids them being template instantiated/duplicated.
 namespace impl {
-void buildBinaryOp(Builder *builder, OperationState *result, Value *lhs,
+void buildBinaryOp(Builder *builder, OperationState &result, Value *lhs,
                    Value *rhs);
-ParseResult parseBinaryOp(OpAsmParser *parser, OperationState *result);
+ParseResult parseBinaryOp(OpAsmParser &parser, OperationState &result);
 // Prints the given binary `op` in custom assembly form if both the two operands
 // and the result have the same time. Otherwise, prints the generic assembly
 // form.
-void printBinaryOp(Operation *op, OpAsmPrinter *p);
+void printBinaryOp(Operation *op, OpAsmPrinter &p);
 } // namespace impl
 
 // These functions are out-of-line implementations of the methods in CastOp,
 // which avoids them being template instantiated/duplicated.
 namespace impl {
-void buildCastOp(Builder *builder, OperationState *result, Value *source,
+void buildCastOp(Builder *builder, OperationState &result, Value *source,
                  Type destType);
-ParseResult parseCastOp(OpAsmParser *parser, OperationState *result);
-void printCastOp(Operation *op, OpAsmPrinter *p);
+ParseResult parseCastOp(OpAsmParser &parser, OperationState &result);
+void printCastOp(Operation *op, OpAsmPrinter &p);
 Value *foldCastOp(Operation *op);
 } // namespace impl
 } // end namespace mlir

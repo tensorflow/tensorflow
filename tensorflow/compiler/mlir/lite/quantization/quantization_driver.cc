@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_traits.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -118,17 +120,19 @@ class QuantizationDriver {
   // result.
   void Finalize();
 
-  // Whether the constant is used as a bias input of another op. Here we assume
-  // bias is used immediately by the user. This assumption is always correct
-  // after constant folding.
-  bool UsedAsBias(ConstantOp cst) {
-    Value *value = cst.getResult();
-    for (auto &use : value->getUses()) {
-      auto biases = GetQuantSpec(use.getOwner())->biases_params;
-      if (biases.find(use.getOperandNumber()) != biases.end()) return true;
-    }
-    return false;
-  }
+  // The quantization parameters of bias operand are usually determined by
+  // other operands, so if a constant is used by different ops as bias, it needs
+  // to be duplicated, thus each op can assign its own quantization parameter
+  // for this bias. Also this methods add all the non-bias constants to a set
+  // for looking up later.
+  void PreprocessConstantOps();
+
+  // Setup all the data structures for quantization propagation.
+  void SetupAllStates();
+
+  // Whether the constant is a weight, which shouldn't be shared by different
+  // ops.
+  bool IsWeight(Operation *cst) { return llvm::is_contained(weights_, cst); }
 
   // Returns all the related quantization constraints of the op.
   std::unique_ptr<OpQuantSpec> GetQuantSpec(Operation *op);
@@ -265,6 +269,11 @@ class QuantizationDriver {
   FuncOp fn_;
   OpBuilder builder_;
   bool is_signed_;
+
+  // We should distinguish weights and bias constants. Biases are specified by
+  // the quantization spec or are the operands of ops with same scale spec. The
+  // rest are weights.
+  llvm::DenseSet<Operation *> weights_;
 
   // All the ops needs to propagate the quantization parameters to.
   std::vector<Operation *> work_list_;
@@ -539,17 +548,55 @@ QuantParams QuantizationDriver::GetQuantParamsForSameScaleConstraint(
   return {};
 }
 
-// This method scans the operations in the function to setup the initial
-// states for quantization parameter propagation.
-// TODO(fengliuai): This algorithm assumes there are only one pair of
-// tfl.quantize and tfl.dequantize ops between two quantizable ops. A sanity
-// check should be applied.
-void QuantizationDriver::Initialize() {
+void QuantizationDriver::PreprocessConstantOps() {
+  fn_.walk([&](ConstantOp cst) {
+    // Non-float tensors are neither weights nor require quantization.
+    auto type = cst.getType().dyn_cast<ShapedType>();
+    if (!type || !type.getElementType().isa<FloatType>()) return;
+
+    Value *value = cst.getResult();
+    SmallVector<std::pair<Operation *, int>, 4> bias_users;
+    bool used_as_weight = false;
+    for (auto &use : value->getUses()) {
+      auto spec = GetQuantSpec(use.getOwner());
+      auto biases = spec->biases_params;
+      Operation *user = use.getOwner();
+      int operand_num = use.getOperandNumber();
+
+      // The user doesn't use this value as a bias operand or require same
+      // scale, then this constant is considered to be a weight.
+      if (biases.find(operand_num) == biases.end() &&
+          !user->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>()) {
+        used_as_weight = true;
+      } else {
+        bias_users.push_back({user, operand_num});
+      }
+    }
+
+    // If the constant is used as a weight, this constant will be duplicated for
+    // each bias user, so it isn't shared with the weight usage. Otherwise, the
+    // first bias user can use the original constant and the rest use the
+    // duplications, so we pop bias user from the set.
+    if (used_as_weight) {
+      weights_.insert(cst);
+    } else {
+      bias_users.pop_back();
+      builder_.setInsertionPoint(cst);
+    }
+    for (auto bias_user : bias_users) {
+      auto copied = builder_.create<ConstantOp>(cst.getLoc(), cst.getValue());
+      bias_user.first->setOperand(bias_user.second, copied.getResult());
+    }
+  });
+}
+
+void QuantizationDriver::SetupAllStates() {
   llvm::DenseMap<Value *, int> value_to_state;
 
   fn_.walk([&](Operation *op) {
-    if (op->isKnownTerminator()) return;
-    if (!GetQuantSpec(op)->is_quantizable) return;
+    if (op->isKnownTerminator() ||
+        op->hasTrait<OpTrait::quant::NoQuantizableResult>())
+      return;
     work_list_.push_back(op);
 
     for (int i = 0, e = op->getNumOperands(); i != e; ++i) {
@@ -582,6 +629,21 @@ void QuantizationDriver::Initialize() {
   });
 }
 
+// This method scans the operations in the function to setup the initial
+// states for quantization parameter propagation.
+// TODO(fengliuai): This algorithm assumes there are only one pair of
+// tfl.quantize and tfl.dequantize ops between two quantizable ops. A sanity
+// check should be applied.
+void QuantizationDriver::Initialize() {
+  // Duplicate the bias constant, so the states can be setup correctly.
+  // TODO(fengliuai): Function definition should also be duplicated if there are
+  // multiple call sites.
+  PreprocessConstantOps();
+
+  // Setup all the internal states.
+  SetupAllStates();
+}
+
 bool QuantizationDriver::PropagateParams() {
   // TODO(fengliuai): uses a typed indicator instead of a bool value.
   bool changed = false;
@@ -590,19 +652,12 @@ bool QuantizationDriver::PropagateParams() {
     work_list_.pop_back();
 
     // This op has been quantized, so we should not consider it again.
-    if (quantized_.find(op) != quantized_.end()) continue;
+    if (llvm::is_contained(quantized_, op)) continue;
     quantized_.insert(op);
 
-    auto spec = GetQuantSpec(op);
-
-    // If the op has no quantizable result, the quantization parameters will not
-    // be propagated to the results.
-    if (!spec->is_quantizable) continue;
-
     if (auto cst = llvm::dyn_cast<ConstantOp>(op)) {
-      // This constant is used as a bias in another op, then the quantization
-      // parameters are determined by that op.
-      if (UsedAsBias(cst) || IsQuantized(op)) continue;
+      // If it isn't a weight or has been quantized, skip.
+      if (!IsWeight(cst) || IsQuantized(op)) continue;
 
       // The quantization parameters are determined by the content of the
       // constant.
@@ -610,7 +665,7 @@ bool QuantizationDriver::PropagateParams() {
       continue;
     }
 
-    if (spec->requires_same_scale) {
+    if (op->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>()) {
       auto params = GetQuantParamsForSameScaleConstraint(op);
       // The quantization parameters haven't been propagated to any operands or
       // results. Skip this node for now.
@@ -629,6 +684,7 @@ bool QuantizationDriver::PropagateParams() {
     }
 
     // TODO(fengliuai): make the bit width configurable.
+    auto spec = GetQuantSpec(op);
     auto key = std::make_pair(8, is_signed_);
     auto &restricted_outputs = spec->restricted_output_params[key];
     for (int i = 0, e = restricted_outputs.size(); i != e; ++i) {

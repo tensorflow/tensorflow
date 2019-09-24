@@ -36,22 +36,14 @@ upper_tabs:
         path: /lite/convert/
       - title: "Python API"
         path: /lite/convert/python_api
-      - title: "Command line examples"
-        path: /lite/convert/cmdline_examples
-      - title: "Command line reference"
-        path: /lite/convert/cmdline_reference
+      - title: "Command line"
+        path: /lite/convert/cmdline
       - title: "Convert quantized models"
         path: /lite/convert/quantization
       - title: "Convert RNN models"
         path: /lite/convert/rnn
-
-      - heading: "Convert a TensorFlow 2.0 model"
-      - title: "TensorFlow Lite converter and 2.0"
-        path: /lite/r2/convert/
       - title: "Generate a concrete function"
-        path: /lite/r2/convert/concrete_function
-      - title: "Python API"
-        path: /lite/r2/convert/python_api
+        path: /lite/convert/concrete_function
 
       - heading: "Inference"
       - title: "Overview"
@@ -132,6 +124,8 @@ upper_tabs:
         path: /lite/models/pose_estimation/overview
       - title: "Segmentation"
         path: /lite/models/segmentation/overview
+      - title: "Style transfer"
+        path: /lite/models/style_transfer/overview
       - title: "Smart reply"
         path: /lite/models/smart_reply/overview
 

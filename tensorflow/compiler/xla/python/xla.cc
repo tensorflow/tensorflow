@@ -344,6 +344,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("device_count", &PyLocalClient::device_count)
       .def("local_device_count", &PyLocalClient::local_device_count)
       .def("devices", &PyLocalClient::devices)
+      .def("local_devices", &PyLocalClient::local_devices)
       .def("host_id", &PyLocalClient::host_id)
       .def("TransferToInfeed",
            [](PyLocalClient* client, const LiteralSlice& literal,
@@ -364,7 +365,15 @@ PYBIND11_MODULE(xla_extension, m) {
                literal_shared = std::make_shared<Literal>(std::move(literal));
              }
              return LiteralToPython(std::move(literal_shared));
-           });
+           })
+      .def("SerializeExecutable",
+           [](PyLocalClient* client,
+              PyLocalExecutable* executable) -> StatusOr<py::bytes> {
+             TF_ASSIGN_OR_RETURN(std::string serialized,
+                                 client->SerializeExecutable(*executable));
+             return py::bytes(serialized);
+           })
+      .def("DeserializeExecutable", &PyLocalClient::DeserializeExecutable);
 
   py::class_<PyLocalBuffer>(m, "PyLocalBuffer")
       .def_static(
@@ -417,7 +426,12 @@ PYBIND11_MODULE(xla_extension, m) {
              return LiteralToPython(std::move(literal));
            })
       .def("shape", &PyLocalBuffer::on_host_shape)
-      .def("device", &PyLocalBuffer::device_ordinal)
+      .def("device",
+           [](PyLocalBuffer* buffer) -> std::shared_ptr<Device> {
+             return buffer->client()->local_devices()[buffer->device_ordinal()];
+           })
+      // TODO(skye): get rid of `device_ordinal` once everything uses `device`
+      .def("device_ordinal", &PyLocalBuffer::device_ordinal)
       .def("platform", &PyLocalBuffer::platform_name)
       .def("is_deleted",
            [](const PyLocalBuffer& buffer) {
@@ -718,6 +732,8 @@ PYBIND11_MODULE(xla_extension, m) {
   UNARY_OP(ErfInv);
   UNARY_OP(Lgamma);
   UNARY_OP(Digamma);
+  UNARY_OP(BesselI0e);
+  UNARY_OP(BesselI1e);
   UNARY_OP(Acos);
   UNARY_OP(Asin);
   UNARY_OP(Atan);

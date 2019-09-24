@@ -90,6 +90,7 @@ cc_library(
     hdrs = ["data_format.h"],
     deps = [
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

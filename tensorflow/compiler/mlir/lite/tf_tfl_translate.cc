@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/init_mlir.h"
+#include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
@@ -38,14 +39,21 @@ using mlir::FuncOp;
 using mlir::MLIRContext;
 using mlir::ModuleOp;
 using stream_executor::port::StatusOr;
-using tensorflow::Status;
 
+// Debugging flag to print function mapping in the flatbuffer.
 // NOLINTNEXTLINE
 static llvm::cl::opt<bool> print_function_result_mapping(
     "print-function-result-mapping",
     llvm::cl::desc(
         "Print the mapping of function result to flatbuffer output buffer"),
     llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+static llvm::cl::opt<std::string> weight_quantization(
+    "weight_quantization",
+    llvm::cl::desc("The type of the quantized weight buffer. Must be NONE, "
+                   "INT8, FLOAT16."),
+    llvm::cl::init("NONE"));
 
 enum TranslationStatus { kTrSuccess, kTrFailure };
 
@@ -130,21 +138,44 @@ int main(int argc, char **argv) {
   // message. So we can just return here.
   if (!module.ok()) return kTrFailure;
 
-  mlir::PassManager pm;
+  mlir::PassManager pm(&context);
   bool run_quantize =
       tensorflow::ShouldRunQuantizePasses(module.ValueOrDie().get());
-  tensorflow::AddTFToTFLConversionPasses(emit_builtin_tflite_ops, run_quantize,
-                                         emit_quant_adaptor_ops,
-                                         lower_tensor_list_ops, &pm);
+  mlir::TFL::PassConfig pass_config;
+  pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
+  pass_config.emit_quant_adaptor_ops = emit_quant_adaptor_ops;
+  pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
+  pass_config.run_quantize = run_quantize;
+
+  tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
 
   std::string result;
+
+  tflite::QuantizedBufferType quantized_type =
+      tflite::QuantizedBufferType::NONE;
+  if (weight_quantization == "NONE") {
+    quantized_type = tflite::QuantizedBufferType::NONE;
+  } else if (weight_quantization == "INT8") {
+    quantized_type = tflite::QuantizedBufferType::INT8;
+  } else if (weight_quantization == "FLOAT16") {
+    quantized_type = tflite::QuantizedBufferType::FLOAT16;
+  } else {
+    llvm::errs() << "Unknown weight quantization " << weight_quantization;
+    return kTrFailure;
+  }
+
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       module.ValueOrDie().get(), output_mlir, emit_builtin_tflite_ops,
       emit_select_tf_ops, emit_custom_ops, emit_quant_adaptor_ops,
-      lower_tensor_list_ops, &result, &pm);
+      lower_tensor_list_ops, quantized_type, &result, &pm);
   if (!status.ok()) return kTrFailure;
 
-  auto output = mlir::openOutputFile(output_file_name);
+  std::string error_msg;
+  auto output = mlir::openOutputFile(output_file_name, &error_msg);
+  if (output == nullptr) {
+    llvm::errs() << error_msg << '\n';
+    return kTrFailure;
+  }
   output->os() << result;
   output->keep();
 

@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import cluster_pb2
@@ -80,7 +79,7 @@ class LocalReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(tf_api_version=[1], mode=["graph", "eager"]))
-  def testWhitelistStatefulOp(self):
+  def testAllowStatefulOp(self):
     with compat.forward_compatibility_horizon(2019, 9, 12):
       with ops.device(self._device0):
         dataset0 = dataset_ops.Dataset.range(100).map(
@@ -90,7 +89,7 @@ class LocalReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
                 maxval=10,
                 dtype=dtypes.float32))
         opt = dataset_ops.Options()
-        opt.experimental_stateful_whitelist = ["RandomUniform"]
+        opt.experimental_allow_stateful = True
         dataset0 = dataset0.with_options(opt)
       replicated_ds = distribute.replicate(dataset0,
                                            [self._device1, self._device2])
@@ -140,7 +139,6 @@ class RemoteReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
     super(RemoteReplicateTest, self).__init__(methodName)
     self._cached_server1 = server_lib.Server.create_local_server()
     self._cached_server2 = server_lib.Server.create_local_server()
-    os.environ["TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC"] = "1"
     self._cached_server1_target = self._cached_server1.target[len("grpc://"):]
     self._cached_server2_target = self._cached_server2.target[len("grpc://"):]
     self._device0 = "/job:%s/replica:0/task:0/device:CPU:0" % JOB_NAME
@@ -208,7 +206,7 @@ class RemoteReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(tf_api_version=[2], mode=["eager"]))
-  def testWhitelistStatefulOp(self):
+  def testAllowStatefulOp(self):
     with compat.forward_compatibility_horizon(2019, 9, 12):
       with ops.device(self._device0):
         dataset0 = dataset_ops.Dataset.range(100).map(
@@ -218,7 +216,7 @@ class RemoteReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
                 maxval=10,
                 dtype=dtypes.float32))
         opt = dataset_ops.Options()
-        opt.experimental_stateful_whitelist = ["RandomUniform"]
+        opt.experimental_allow_stateful = True
         dataset0 = dataset0.with_options(opt)
       replicated_ds = distribute.replicate(dataset0,
                                            [self._device1, self._device2])
