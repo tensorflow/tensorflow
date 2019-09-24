@@ -658,7 +658,7 @@ void PrepareRemoteOp(eager::Operation* remote_op, EagerOperation* op) {
   remote_op->set_id(ctx->RemoteMgr()->NextOpId());
   remote_op->set_name(op->Name());
 
-  op->Attrs().FillAttrValueMap(remote_op->mutable_attrs());
+  op->Attrs().FillAttrValueMapWithoutDefaults(remote_op->mutable_attrs());
   remote_op->set_device(op->Device()->name());
 }
 
