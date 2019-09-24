@@ -392,8 +392,9 @@ class ScheduledEmbeddingTrainingHelper(TrainingHelper):
       def maybe_sample():
         """Perform scheduled sampling."""
         sampling_mask = math_ops.cast(sample_ids > -1, base_next_inputs.dtype)
+        # Embedding lookup will fail for negative samples for some embedding_fn.
+        outputs_sampled = self._embedding_fn(sample_ids + math_ops.cast(1 - sampling_mask, dtypes.int32))
         sampling_mask = array_ops.expand_dims(sampling_mask, axis=-1)
-        outputs_sampled = self._embedding_fn(sample_ids)
         sampled_masked = sampling_mask * outputs_sampled
         not_sampled_masked = (1 - sampling_mask) * base_next_inputs
         return sampled_masked + not_sampled_masked
