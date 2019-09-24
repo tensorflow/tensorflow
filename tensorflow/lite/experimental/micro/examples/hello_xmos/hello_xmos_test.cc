@@ -43,7 +43,7 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
 
   // Create an area of memory to use for input, output, and intermediate arrays.
   // Finding the minimum value for your model may require some trial and error.
-  const int tensor_arena_size = 2 * 1024;
+  const int tensor_arena_size = 50 * 1024;
   uint8_t tensor_arena[tensor_arena_size];
 
   // Build an interpreter to run the model with
@@ -59,19 +59,23 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   // Make sure the input has the properties we expect
   TF_LITE_MICRO_EXPECT_NE(nullptr, input);
   // The property "dims" tells us the tensor's shape. It has one element for
-  // each dimension. Our input is a 2D tensor containing 1 element, so "dims"
-  // should have size 2.
-  TF_LITE_MICRO_EXPECT_EQ(2, input->dims->size);
+  // each dimension. Our input is a 3D tensor containing 28X28 pixels, so "dims"
+  // should have size 3.
+  TF_LITE_MICRO_EXPECT_EQ(3, input->dims->size);
   // The value of each element gives the length of the corresponding tensor.
   // We should expect two single element tensors (one is contained within the
-  // other).
+  // other). 28x28 pixel image
   TF_LITE_MICRO_EXPECT_EQ(1, input->dims->data[0]);
-  TF_LITE_MICRO_EXPECT_EQ(1, input->dims->data[1]);
+  TF_LITE_MICRO_EXPECT_EQ(28, input->dims->data[1]);
+  TF_LITE_MICRO_EXPECT_EQ(28, input->dims->data[2]);
+  
   // The input is a 32 bit floating point value
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteFloat32, input->type);
 
   // Provide an input value
-  input->data.f[0] = 0.;
+  for( int i=0; i<28*28; i++){
+    input->data.f[i] = *((float*)&g_digits[0] +i);
+  }
 
   // Run the model on this input and check that it succeeds
   TfLiteStatus invoke_status = interpreter.Invoke();
@@ -81,33 +85,40 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 
   // Obtain a pointer to the output tensor and make sure it has the
-  // properties we expect. It should be the same as the input tensor.
+  // properties we expect. 10 digits
   TfLiteTensor* output = interpreter.output(0);
   TF_LITE_MICRO_EXPECT_EQ(2, output->dims->size);
-  TF_LITE_MICRO_EXPECT_EQ(1, input->dims->data[0]);
-  TF_LITE_MICRO_EXPECT_EQ(1, input->dims->data[1]);
+  TF_LITE_MICRO_EXPECT_EQ(1, output->dims->data[0]);
+  TF_LITE_MICRO_EXPECT_EQ(10, output->dims->data[1]);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteFloat32, output->type);
 
-  // Obtain the output value from the tensor
-  float value = output->data.f[0];
-  // Check that the output value is within 0.05 of the expected value
-  TF_LITE_MICRO_EXPECT_NEAR(0., value, 0.05);
 
-  // Run inference on several more values and confirm the expected outputs
-  input->data.f[0] = 1.;
-  interpreter.Invoke();
-  value = output->data.f[0];
-  TF_LITE_MICRO_EXPECT_NEAR(0.841, value, 0.05);
+  printf("\n\t0\t1\t3\t3\t4\t5\t6\t7\t8\t9\n");
+  for(int j = 0; j<10; j++){
+    // Provide an input value
+    for( int i=0; i<28*28; i++){
+      input->data.f[i] = *((float*)&g_digits[j] +i);
+    }
 
-  input->data.f[0] = 3.;
-  interpreter.Invoke();
-  value = output->data.f[0];
-  TF_LITE_MICRO_EXPECT_NEAR(0.141, value, 0.05);
+    // Run the model on this input and check that it succeeds
+    invoke_status = interpreter.Invoke();
+    if (invoke_status != kTfLiteOk) {
+      error_reporter->Report("Invoke failed\n");
+    }
+    float value = output->data.f[j];
+    float sum = 0;
+    
+    for(int i=0; i<10; i++){
+      printf("\t%0.2f",output->data.f[i]);
+      sum+=output->data.f[i];
+    }
+    printf("\n");
+    // check the weights
+    TF_LITE_MICRO_EXPECT_NEAR(1., value, 0.5);
+    TF_LITE_MICRO_EXPECT_NEAR(1., sum, 0.0005);
+  }
+  
 
-  input->data.f[0] = 5.;
-  interpreter.Invoke();
-  value = output->data.f[0];
-  TF_LITE_MICRO_EXPECT_NEAR(-0.959, value, 0.05);
 }
 
 TF_LITE_MICRO_TESTS_END

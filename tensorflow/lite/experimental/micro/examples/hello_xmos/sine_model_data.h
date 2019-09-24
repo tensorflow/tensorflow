@@ -23,5 +23,11 @@ limitations under the License.
 
 extern const unsigned char g_sine_model_data[];
 extern const int g_sine_model_data_len;
+// TODO remove 'sine' naming and comments
+
+// Example input digits
+extern const float g_digits[10][28*28];
+
+
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_HELLO_WORLD_SINE_MODEL_DATA_H_

@@ -33,7 +33,7 @@ int inference_count = 0;
 
 // Create an area of memory to use for input, output, and intermediate arrays.
 // Finding the minimum value for your model may require some trial and error.
-constexpr int kTensorArenaSize = 2 * 1024;
+constexpr int kTensorArenaSize = 200 * 1024;
 uint8_t tensor_arena[kTensorArenaSize];
 }  // namespace
 
@@ -47,7 +47,7 @@ void setup() {
 
   // Map the model into a usable data structure. This doesn't involve any
   // copying or parsing, it's a very lightweight operation.
-  model = tflite::GetModel(g_sine_model_data);
+  model = tflite::GetModel(model_quant_tflite);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
     error_reporter->Report(
         "Model provided is schema version %d not equal "
