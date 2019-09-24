@@ -872,7 +872,8 @@ void GlobalOp::build(Builder *builder, OperationState &result, LLVMType type,
   result.addAttribute("type", builder->getTypeAttr(type));
   if (isConstant)
     result.addAttribute("constant", builder->getUnitAttr());
-  result.addAttribute("value", value);
+  if (value)
+    result.addAttribute("value", value);
   result.attributes.append(attrs.begin(), attrs.end());
 }
 
