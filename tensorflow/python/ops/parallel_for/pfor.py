@@ -2784,6 +2784,12 @@ def _convert_matrix_triangular_solve(pfor_input):
   return wrap(output, True)
 
 
+@RegisterPFor("SelfAdjointEigV2")
+def _convert_self_adjoint_eig(pfor_input):
+  t = pfor_input.stacked_input(0)
+  return [wrap(x, True) for x in linalg_ops.self_adjoint_eig(t)]
+
+
 # logging_ops
 
 
