@@ -73,10 +73,7 @@ protected:
   /// Adds the SPIR-V instruction into `binary`.
   void addInstruction(spirv::Opcode op, ArrayRef<uint32_t> operands) {
     uint32_t wordCount = 1 + operands.size();
-    assert(((wordCount >> 16) == 0) && "word count out of range!");
-
-    uint32_t prefixedOpcode = (wordCount << 16) | static_cast<uint32_t>(op);
-    binary.push_back(prefixedOpcode);
+    binary.push_back(spirv::getPrefixedOpcode(wordCount, op));
     binary.append(operands.begin(), operands.end());
   }
 
@@ -89,6 +86,15 @@ protected:
   uint32_t addIntType(uint32_t bitwidth) {
     auto id = nextID++;
     addInstruction(spirv::Opcode::OpTypeInt, {id, bitwidth, /*signedness=*/1});
+    return id;
+  }
+
+  uint32_t addStructType(ArrayRef<uint32_t> memberTypes) {
+    auto id = nextID++;
+    SmallVector<uint32_t, 2> words;
+    words.push_back(id);
+    words.append(memberTypes.begin(), memberTypes.end());
+    addInstruction(spirv::Opcode::OpTypeStruct, words);
     return id;
   }
 
@@ -171,6 +177,68 @@ TEST_F(DeserializationTest, IntTypeMissingSignednessFailure) {
 
   ASSERT_EQ(llvm::None, deserialize());
   expectDiagnostic("OpTypeInt must have bitwidth and signedness parameters");
+}
+
+//===----------------------------------------------------------------------===//
+// StructType
+//===----------------------------------------------------------------------===//
+
+TEST_F(DeserializationTest, OpMemberNameSuccess) {
+  addHeader();
+  SmallVector<uint32_t, 5> typeDecl;
+  std::swap(typeDecl, binary);
+
+  auto int32Type = addIntType(32);
+  auto structType = addStructType({int32Type, int32Type});
+  std::swap(typeDecl, binary);
+
+  SmallVector<uint32_t, 5> operands1 = {structType, 0};
+  spirv::encodeStringLiteralInto(operands1, "i1");
+  addInstruction(spirv::Opcode::OpMemberName, operands1);
+
+  SmallVector<uint32_t, 5> operands2 = {structType, 1};
+  spirv::encodeStringLiteralInto(operands2, "i2");
+  addInstruction(spirv::Opcode::OpMemberName, operands2);
+
+  binary.append(typeDecl.begin(), typeDecl.end());
+  EXPECT_NE(llvm::None, deserialize());
+}
+
+TEST_F(DeserializationTest, OpMemberNameMissingOperands) {
+  addHeader();
+  SmallVector<uint32_t, 5> typeDecl;
+  std::swap(typeDecl, binary);
+
+  auto int32Type = addIntType(32);
+  auto int64Type = addIntType(64);
+  auto structType = addStructType({int32Type, int64Type});
+  std::swap(typeDecl, binary);
+
+  SmallVector<uint32_t, 5> operands1 = {structType};
+  addInstruction(spirv::Opcode::OpMemberName, operands1);
+
+  binary.append(typeDecl.begin(), typeDecl.end());
+  ASSERT_EQ(llvm::None, deserialize());
+  expectDiagnostic("OpMemberName must have at least 3 operands");
+}
+
+TEST_F(DeserializationTest, OpMemberNameExcessOperands) {
+  addHeader();
+  SmallVector<uint32_t, 5> typeDecl;
+  std::swap(typeDecl, binary);
+
+  auto int32Type = addIntType(32);
+  auto structType = addStructType({int32Type});
+  std::swap(typeDecl, binary);
+
+  SmallVector<uint32_t, 5> operands = {structType, 0};
+  spirv::encodeStringLiteralInto(operands, "int32");
+  operands.push_back(42);
+  addInstruction(spirv::Opcode::OpMemberName, operands);
+
+  binary.append(typeDecl.begin(), typeDecl.end());
+  ASSERT_EQ(llvm::None, deserialize());
+  expectDiagnostic("unexpected trailing words in OpMemberName instruction");
 }
 
 //===----------------------------------------------------------------------===//

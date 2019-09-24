@@ -12,16 +12,12 @@ func @access_chain_struct() -> () {
   return
 }
 
-// -----
-
 func @access_chain_1D_array(%arg0 : i32) -> () {
   %0 = spv.Variable : !spv.ptr<!spv.array<4xf32>, Function>
   // CHECK: spv.AccessChain {{.*}}[{{.*}}] : !spv.ptr<!spv.array<4 x f32>, Function>
   %1 = spv.AccessChain %0[%arg0] : !spv.ptr<!spv.array<4xf32>, Function>
   return
 }
-
-// -----
 
 func @access_chain_2D_array_1(%arg0 : i32) -> () {
   %0 = spv.Variable : !spv.ptr<!spv.array<4x!spv.array<4xf32>>, Function>
@@ -30,8 +26,6 @@ func @access_chain_2D_array_1(%arg0 : i32) -> () {
   %2 = spv.Load "Function" %1 ["Volatile"] : f32
   return
 }
-
-// -----
 
 func @access_chain_2D_array_2(%arg0 : i32) -> () {
   %0 = spv.Variable : !spv.ptr<!spv.array<4x!spv.array<4xf32>>, Function>
