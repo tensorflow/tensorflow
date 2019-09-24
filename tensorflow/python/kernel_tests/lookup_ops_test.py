@@ -45,6 +45,7 @@ from tensorflow.python.training import server_lib
 from tensorflow.python.training.tracking import graph_view
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as trackable
+from tensorflow.python.util import compat
 
 
 class BaseLookupTableTest(test.TestCase):
@@ -911,7 +912,8 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
     objects = object_graph_view.list_objects()
     assets = list(filter(lambda obj: isinstance(obj, tracking.Asset), objects))
     self.assertLen(assets, 1)
-    self.assertEqual(self.evaluate(assets[0].asset_path), vocab_file)
+    self.assertEqual(
+        self.evaluate(assets[0].asset_path), compat.as_bytes(vocab_file))
 
   def testSparseTensor(self):
     vocab_file = self._createVocabFile("feat_to_id_7.txt")
