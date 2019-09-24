@@ -34,35 +34,50 @@ include "mlir/IR/OpBase.td"
 // region. A callable is either a symbol, or an SSA value, that is referenced by
 // a call-like operation. This represents the destination of the call.
 
-// A call-like operation is one who transfers control from one sub-routine to
-// another. These operations may be traditional direct calls `call @foo`, or
-// indirect calls to other operations `call_indirect %foo`.
+/// Interface for call-like operations.
 def CallOpInterface : OpInterface<"CallOpInterface"> {
+  let description = [{
+    A call-like operation is one that transfers control from one sub-routine to
+    another. These operations may be traditional direct calls `call @foo`, or
+    indirect calls to other operations `call_indirect %foo`.
+  }];
+
   let methods = [
-    // Returns the callee of this call-like operation. A `callee` is either a
-    // reference to a symbol, via SymbolRefAttr, or a reference to a defined SSA
-    // value.
-    InterfaceMethod<"CallInterfaceCallable", "getCallableForCallee">,
+    InterfaceMethod<[{
+        Returns the callee of this call-like operation. A `callee` is either a
+        reference to a symbol, via SymbolRefAttr, or a reference to a defined
+        SSA value.
+      }],
+      "CallInterfaceCallable", "getCallableForCallee"
+    >,
   ];
 }
 
-// A callable operation is one who represents a potential sub-routine, and may
-// be a target for a call-like operation (those providing the CallOpInterface
-// above). These operations may be traditional functional operation
-// `func @foo(...)`, as well as function producing operations
-// `%foo = dialect.create_function(...)`. These operations may produce multiple
-// callable regions, or subroutines.
+/// Interface for callable operations.
 def CallableOpInterface : OpInterface<"CallableOpInterface"> {
-  let methods = [
-    // Returns a region on the current operation that the given callable refers
-    // to. This may return null in the case of an external callable object, e.g.
-    // an external function.
-    InterfaceMethod<"Region *", "getCallableRegion",
-      (ins "CallInterfaceCallable":$callable)>,
+  let description = [{
+    A callable operation is one who represents a potential sub-routine, and may
+    be a target for a call-like operation (those providing the CallOpInterface
+    above). These operations may be traditional functional operation
+    `func @foo(...)`, as well as function producing operations
+    `%foo = dialect.create_function(...)`. These operations may produce multiple
+    callable regions, or subroutines.
+  }];
 
-    // Returns all of the callable regions of this operation.
-    InterfaceMethod<"void", "getCallableRegions",
-      (ins "SmallVectorImpl<Region *> &":$callables)>,
+  let methods = [
+    InterfaceMethod<[{
+        Returns a region on the current operation that the given callable refers
+        to. This may return null in the case of an external callable object,
+        e.g. an external function.
+      }],
+      "Region *", "getCallableRegion", (ins "CallInterfaceCallable":$callable)
+    >,
+    InterfaceMethod<[{
+        Returns all of the callable regions of this operation
+      }],
+      "void", "getCallableRegions",
+              (ins "SmallVectorImpl<Region *> &":$callables)
+    >,
   ];
 }
 
