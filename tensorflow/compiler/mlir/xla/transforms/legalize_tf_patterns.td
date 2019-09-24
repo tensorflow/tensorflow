@@ -191,9 +191,10 @@ foreach Mapping = [
                    [TF_FloorOp, HLO_FloorOp],
                    [TF_LogOp, HLO_LogOp],
                    [TF_NegOp, HLO_NegOp],
+                   [TF_RsqrtOp, HLO_RsqrtOp],
                    [TF_TanhOp, HLO_TanhOp],
                   ] in {
- def : Pat<(Mapping[0] AnyTensor:$input),
+ def : Pat<(Mapping[0] HLO_Tensor:$input),
            (Mapping[1] $input)>;
 }
 

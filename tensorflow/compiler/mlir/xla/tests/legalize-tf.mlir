@@ -537,6 +537,27 @@ func @sigmoid(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   return %0 : tensor<2xf32>
 }
 
+// CHECK-LABEL: func @rsqrt
+func @rsqrt(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK:  "xla_hlo.rsqrt"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  %0 = "tf.Rsqrt"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
+// CHECK-LABEL: func @rsqrt_dynamic
+func @rsqrt_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK:  "tf.Rsqrt"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  %0 = "tf.Rsqrt"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @rsqrt_rankless
+func @rsqrt_rankless(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK:  "tf.Rsqrt"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  %0 = "tf.Rsqrt"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
 // CHECK-LABEL: func @tanh
 func @tanh(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK:  "xla_hlo.tanh"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
