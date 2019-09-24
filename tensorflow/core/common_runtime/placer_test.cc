@@ -355,7 +355,7 @@ class PlacerTest : public ::testing::Test {
 class SoftPlacementPlacerTest : public PlacerTest,
                                 public ::testing::WithParamInterface<bool> {};
 
-INSTANTIATE_TEST_SUITE_P(, SoftPlacementPlacerTest,
+INSTANTIATE_TEST_SUITE_P(All, SoftPlacementPlacerTest,
                          ::testing::Values(false, true),
                          ::testing::PrintToStringParamName());
 
