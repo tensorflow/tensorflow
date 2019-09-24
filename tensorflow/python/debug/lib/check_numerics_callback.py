@@ -50,9 +50,14 @@ def limit_string_length(string, max_len=50):
 _CHECK_NUMERICS_CALLBACK_SKIP_OPS = (
     # TODO(b/139668453): The following skipped ops are related to a limitation
     # in the op callback.
+    b"Enter",
+    b"Exit",
     b"Identity",
     b"If",
+    b"Merge",
+    b"NextIteration",
     b"StatelessIf",
+    b"Switch",
     b"While",
 )
 

@@ -2952,8 +2952,7 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
 
   # Restore shape information where possible.
   if not context.executing_eagerly():
-    paddings_constant = tensor_util.constant_value(
-        result.op.inputs[1], partial=True)
+    paddings_constant = _get_paddings_constant(paddings)
     input_shape = result.op.inputs[0].shape
     if (input_shape.ndims is not None and
         not result.shape.is_fully_defined() and paddings_constant is not None):
@@ -2966,6 +2965,28 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
       result.set_shape(new_shape)
 
   return result
+
+
+def _get_paddings_constant(paddings):
+  """Helper to get the constant values of the paddings arg to pad().
+
+  Used under V1 graph mode to facilitate computation of the shape of the output
+  tensor of `pad()`.
+
+  Args:
+    paddings: The same paddings arg as passed to pad(). Can be a Tensor, or
+      a nested list or tuple of Tensor and/or numbers.
+
+  Returns:
+    A nested list or numbers or `None`, in which `None` indicates unknown
+    padding size.
+  """
+  if isinstance(paddings, ops.Tensor):
+    return tensor_util.constant_value(paddings, partial=True)
+  elif isinstance(paddings, (list, tuple)):
+    return [_get_paddings_constant(x) for x in paddings]
+  else:
+    return paddings
 
 
 @tf_export("meshgrid")
