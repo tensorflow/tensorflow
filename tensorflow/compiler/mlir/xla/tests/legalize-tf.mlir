@@ -340,6 +340,13 @@ func @relu(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   return %0: tensor<1xi32>
 }
 
+// CHECK-LABEL: func @relu_non_static_input
+func @relu_non_static_input(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+  // CHECK: tf.Relu
+  %0 = "tf.Relu"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+  return %0: tensor<?xi32>
+}
+
 // CHECK-LABEL: func @relu6
 func @relu6(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   // CHECK-NEXT: %[[ZERO:.*]] = "xla_hlo.constant"() {value = dense<0> : tensor<1xi32>}

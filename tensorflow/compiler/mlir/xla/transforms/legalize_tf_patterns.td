@@ -164,11 +164,14 @@ def : Pat<(TF_ConstOp:$res ElementsAttr:$value), (HLO_ConstOp $value),
 class ConstantSplat<string value> : NativeCodeCall<
     "getSplat($_builder, $0, " # value # ")">;
 
-def : Pat<(TF_ReluOp AnyTensor:$input),
+// TODO(hinsu): Support dynamic but ranked input by using scalar constants
+// along with broadcast_dimensions attribute. Similarly, Relu6 op with
+// non-static shape inputs can be lowered.
+def : Pat<(TF_ReluOp AnyStaticShapeTensor:$input),
           (HLO_MaxOp (HLO_ConstOp (ConstantSplat<"0"> $input)), $input,
                      (NullDenseIntElementsAttr))>;
 
-def : Pat<(TF_Relu6Op AnyTensor:$input),
+def : Pat<(TF_Relu6Op AnyStaticShapeTensor:$input),
           (HLO_ClampOp (HLO_ConstOp (ConstantSplat<"0"> $input)), $input,
                        (HLO_ConstOp (ConstantSplat<"6"> $input)))>;
 
