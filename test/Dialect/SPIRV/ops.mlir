@@ -35,6 +35,14 @@ func @access_chain_2D_array_2(%arg0 : i32) -> () {
   return
 }
 
+func @access_chain_rtarray(%arg0 : i32) -> () {
+  %0 = spv.Variable : !spv.ptr<!spv.rtarray<f32>, Function>
+  // CHECK: spv.AccessChain {{.*}}[{{.*}}] : !spv.ptr<!spv.rtarray<f32>, Function>
+  %1 = spv.AccessChain %0[%arg0] : !spv.ptr<!spv.rtarray<f32>, Function>
+  %2 = spv.Load "Function" %1 ["Volatile"] : f32
+  return
+}
+
 // -----
 
 func @access_chain_non_composite() -> () {

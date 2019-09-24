@@ -81,10 +81,24 @@ uint64_t ArrayType::getArrayStride() const { return getImpl()->layoutInfo; }
 // CompositeType
 //===----------------------------------------------------------------------===//
 
+bool CompositeType::classof(Type type) {
+  switch (type.getKind()) {
+  case TypeKind::Array:
+  case TypeKind::RuntimeArray:
+  case TypeKind::Struct:
+  case StandardTypes::Vector:
+    return true;
+  default:
+    return false;
+  }
+}
+
 Type CompositeType::getElementType(unsigned index) const {
   switch (getKind()) {
   case spirv::TypeKind::Array:
     return cast<ArrayType>().getElementType();
+  case spirv::TypeKind::RuntimeArray:
+    return cast<RuntimeArrayType>().getElementType();
   case spirv::TypeKind::Struct:
     return cast<StructType>().getElementType(index);
   case StandardTypes::Vector:
@@ -98,6 +112,9 @@ unsigned CompositeType::getNumElements() const {
   switch (getKind()) {
   case spirv::TypeKind::Array:
     return cast<ArrayType>().getNumElements();
+  case spirv::TypeKind::RuntimeArray:
+    llvm_unreachable(
+        "invalid to query number of elements of spirv::RuntimeArray type");
   case spirv::TypeKind::Struct:
     return cast<StructType>().getNumElements();
   case StandardTypes::Vector:
