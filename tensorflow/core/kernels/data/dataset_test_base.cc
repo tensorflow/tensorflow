@@ -837,21 +837,28 @@ Status DatasetOpsTestBaseV2::MakeDatasetTensor(
   AttributeVector attributes;
   TF_RETURN_IF_ERROR(dataset_params.GetAttributes(&attributes));
 
-  std::vector<Tensor> inputs;
+  gtl::InlinedVector<TensorValue, 4> inputs;
   for (auto input_dataset : input_datasets) {
-    inputs.emplace_back(*input_dataset);
+    inputs.emplace_back(TensorValue(input_dataset));
   }
   auto input_tensors = dataset_params.GetInputTensors();
-  inputs.insert(inputs.end(), input_tensors.begin(), input_tensors.end());
+  for (auto& input_tensor : input_tensors) {
+    inputs.emplace_back(TensorValue(&input_tensor));
+  }
 
-  GraphConstructorOptions graph_opts;
-  graph_opts.allow_internal_ops = true;
-  graph_opts.expect_device_spec = false;
-  FunctionDef make_dataset_tensor_fdef;
-  TF_RETURN_IF_ERROR(dataset_params.CreateFactory(&make_dataset_tensor_fdef));
-  *dataset = std::make_unique<Tensor>();
-  TF_RETURN_IF_ERROR(RunFunction(make_dataset_tensor_fdef, attributes, inputs,
-                                 graph_opts, /*rets=*/{dataset->get()}));
+  DatasetBase* dataset_base;
+  std::unique_ptr<OpKernel> dataset_kernel;
+  std::unique_ptr<OpKernelContext::Params> dataset_ctx_params;
+  std::unique_ptr<OpKernelContext> dataset_ctx;
+  TF_RETURN_IF_ERROR(MakeDatasetOpKernel(dataset_params, &dataset_kernel));
+  TF_RETURN_IF_ERROR(CreateDatasetContext(dataset_kernel.get(), &inputs,
+                                          &dataset_ctx_params, &dataset_ctx));
+  TF_RETURN_IF_ERROR(
+      CreateDataset(dataset_kernel.get(), dataset_ctx.get(), &dataset_base));
+  Tensor dataset_tensor(DT_VARIANT, TensorShape({}));
+  TF_RETURN_IF_ERROR(
+      StoreDatasetInVariantTensor(dataset_base, &dataset_tensor));
+  *dataset = absl::make_unique<Tensor>(dataset_tensor);
   return Status::OK();
 }
 
