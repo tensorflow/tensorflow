@@ -262,11 +262,11 @@ IteratorSaveAndRestoreTestCases() {
 ITERATOR_SAVE_AND_RESTORE_TEST_P(FilterDatasetOpTest, FilterDatasetParams,
                                  IteratorSaveAndRestoreTestCases())
 
-class ParameterizedInvalidPredictFuncTest
+class ParameterizedInvalidPredicateFuncTest
     : public FilterDatasetOpTest,
       public ::testing::WithParamInterface<FilterDatasetParams> {};
 
-TEST_P(ParameterizedInvalidPredictFuncTest, InvalidPredictFunc) {
+TEST_P(ParameterizedInvalidPredicateFuncTest, InvalidPredicateFunc) {
   auto dataset_params = GetParam();
   TF_ASSERT_OK(Initialize(dataset_params));
   bool end_of_sequence = false;
@@ -279,7 +279,7 @@ TEST_P(ParameterizedInvalidPredictFuncTest, InvalidPredictFunc) {
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    FilterDatasetOpTest, ParameterizedInvalidPredictFuncTest,
+    FilterDatasetOpTest, ParameterizedInvalidPredicateFuncTest,
     ::testing::ValuesIn({InvalidPredFuncFilterDatasetParams1(),
                          InvalidPredFuncFilterDatasetParams2(),
                          InvalidPredFuncFilterDatasetParams3()}));
