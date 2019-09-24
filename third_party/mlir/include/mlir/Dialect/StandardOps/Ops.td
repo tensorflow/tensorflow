@@ -881,6 +881,32 @@ def ShlISOp : IntArithmeticOp<"shlis"> {
   let summary = "signed integer shift left";
 }
 
+def SplatOp : Std_Op<"splat", [NoSideEffect]> {
+  let summary = "splat or broadcast operation";
+  let description = [{
+    The "splat" op reads a value of integer or float type and broadcasts it into
+    a vector or a tensor. The output of splat is thus a new value of either
+    vector or tensor type with elemental type being its operand's type.
+    When the result is a tensor, it has to be statically shaped.
+
+      %1 = splat %0 : vector<8xi32>
+      %2 = splat %0 : tensor<4x8xi32>
+
+    // TODO: handle broadcast to dynamically shaped tensors.
+  }];
+
+  let arguments = (ins AnyTypeOf<[AnyInteger, AnyFloat],
+                                 "integer or float type">:$input);
+  let results = (outs AnyTypeOf<[AnyVector, AnyStaticShapeTensor]>:$aggregate);
+
+  let builders =
+      [OpBuilder<"Builder *builder, OperationState &result, Value *element, "
+                  "Type aggregateType",
+                  [{ build(builder, result, aggregateType, element); }]>];
+
+  let hasFolder = 1;
+}
+
 def SubFOp : FloatArithmeticOp<"subf"> {
   let summary = "floating point subtraction operation";
   let hasFolder = 1;
