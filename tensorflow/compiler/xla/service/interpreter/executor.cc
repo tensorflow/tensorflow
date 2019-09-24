@@ -33,9 +33,7 @@ XlaInterpreterExecutor::XlaInterpreterExecutor(
 
 XlaInterpreterExecutor::~XlaInterpreterExecutor() {}
 
-DeviceMemoryBase XlaInterpreterExecutor::Allocate(uint64 size,
-                                                  int64 memory_space) {
-  CHECK_EQ(memory_space, 0);
+DeviceMemoryBase XlaInterpreterExecutor::Allocate(uint64 size) {
   return DeviceMemoryBase(new char[size], size);
 }
 

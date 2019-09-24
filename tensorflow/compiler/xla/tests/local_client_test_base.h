@@ -47,8 +47,7 @@ class TestAllocator : public se::StreamExecutorMemoryAllocator {
   }
 
   StatusOr<se::OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
-                                            bool retry_on_failure,
-                                            int64 memory_space) override;
+                                            bool retry_on_failure) override;
   Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override;
 
   // Return the number of allocations that have been performed.
