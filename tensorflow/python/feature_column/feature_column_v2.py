@@ -293,9 +293,9 @@ class _StateManagerImpl(StateManager):
       raise ValueError('Variable already exists.')
 
     # We explicitly track these variables since `name` is not guaranteed to be
-    # unique and disable manual tracking that the add_variable call does.
+    # unique and disable manual tracking that the add_weight call does.
     with trackable.no_manual_dependency_tracking_scope(self._layer):
-      var = self._layer.add_variable(
+      var = self._layer.add_weight(
           name=name,
           shape=shape,
           dtype=dtype,
@@ -342,9 +342,9 @@ class _StateManagerImplV2(_StateManagerImpl):
       raise ValueError('Variable already exists.')
 
     # We explicitly track these variables since `name` is not guaranteed to be
-    # unique and disable manual tracking that the add_variable call does.
+    # unique and disable manual tracking that the add_weight call does.
     with trackable.no_manual_dependency_tracking_scope(self._layer):
-      var = self._layer.add_variable(
+      var = self._layer.add_weight(
           name=name,
           shape=shape,
           dtype=dtype,
@@ -3085,8 +3085,11 @@ class EmbeddingColumn(
 
   def create_state(self, state_manager):
     """Creates the embedding lookup variable."""
+    default_num_buckets = (self.categorical_column.num_buckets
+                           if self._is_v2_column
+                           else self.categorical_column._num_buckets)   # pylint: disable=protected-access
     num_buckets = getattr(self.categorical_column, 'num_buckets',
-                          self.categorical_column._num_buckets)  # pylint: disable=protected-access
+                          default_num_buckets)
     embedding_shape = (num_buckets, self.dimension)
     state_manager.create_variable(
         self,
