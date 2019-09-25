@@ -42,10 +42,6 @@ struct GraphConstructorOptions {
   //
   // TODO(zhifengc): if possible, consider removing this option.
   bool expect_device_spec = false;
-
-  // If true, validates that nodes being converted have all expected attrs
-  // set and no unknonw attrs set by calling ValidateNodeDef().
-  bool validate_nodes = false;
 };
 extern Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
                                      const GraphDef& gdef, Graph* g);

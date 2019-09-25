@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
-#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph.h"
@@ -51,7 +50,6 @@ void RunPass(const GraphDef& original, GraphDef* rewritten,
   IsolatePlacerInspectionRequiredOpsPass pass;
   TF_ASSERT_OK(pass.Run(options));
   graph->ToGraphDef(rewritten);
-  StripDefaultAttributes(*OpRegistry::Global(), rewritten->mutable_node());
 }
 
 void RunPassAndCompare(const GraphDef& original, const GraphDef& expected) {
