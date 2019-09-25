@@ -328,8 +328,8 @@ def setdiff1d(x, y, index_dtype=dtypes.int32, name=None):
   >>> y = [1, 3, 5]
   >>> setdiff1d(x,y)
   ListDiff(out=<tf.Tensor: id=76, shape=(3,), dtype=int32, numpy=
-  ... array([2, 4, 6], dtype=int32)>, idx=<tf.Tensor: id=77, shape=
-  ... (3,), dtype=int32, numpy=array([1, 3, 5], dtype=int32)>)
+  array([2, 4, 6], dtype=int32)>, idx=<tf.Tensor: id=77, shape=
+  (3,), dtype=int32, numpy=array([1, 3, 5], dtype=int32)>)
 
   Args:
     x: A Tensor. 1-D. Values to keep.
@@ -1614,10 +1614,10 @@ def sparse_mask(a, mask_indices, name=None):
 def unique(x, out_idx=dtypes.int32, name=None):
   """Finds unique elements in a 1-D tensor.
 
-  This operation returns a tensor `y` containing all of the unique elements of `x`
-  sorted in the same order that they occur in `x`. This operation also returns a
-  tensor `idx` the same size as `x` that contains the index of each value of `x` in
-  the unique output `y`. In other words:
+  This operation returns a tensor `y` containing all of the unique elements
+  of `x` sorted in the same order that they occur in `x`. This operation
+  also returns a tensor `idx` the same size as `x` that contains the index
+  of each value of `x` in the unique output `y`. In other words:
 
 
     y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]
@@ -1628,15 +1628,16 @@ def unique(x, out_idx=dtypes.int32, name=None):
   >>> y, idx = unique(x)
   >>> y
   <tf.Tensor: id=8, shape=(5,), dtype=int32, numpy=
-  ... array([1, 2, 4, 7, 8], dtype=int32)>
+  array([1, 2, 4, 7, 8], dtype=int32)>
   >>> idx
   <tf.Tensor: id=9, shape=(9,), dtype=int32, numpy=
-  ... array([0, 0, 1, 2, 2, 2, 3, 4, 4], dtype=int32)>
+  array([0, 0, 1, 2, 2, 2, 3, 4, 4], dtype=int32)>
 
 
   Args:
     x: A Tensor. 1-D.
-    out_idx: An optional tf.DType from: tf.int32, tf.int64. Defaults to tf.int32.
+    out_idx: An optional tf.DType from: tf.int32, tf.int64.
+    Defaults to tf.int32.
     name: A name for the operation (optional).
 
   Returns:
@@ -1659,11 +1660,12 @@ unique.__doc__ = gen_array_ops.unique.__doc__
 def unique_with_counts(x, out_idx=dtypes.int32, name=None):
   """Finds unique elements in a 1-D tensor.
 
-  This operation returns a tensor `y` containing all of the unique elements of `x`
-  sorted in the same order that they occur in `x`. This operation also returns a
-  tensor `idx` the same size as `x` that contains the index of each value of `x` in
-  the unique output `y`. Finally, it returns a third tensor `count` that contains
-  the count of each element of `y` in `x`. In other words:
+  This operation returns a tensor `y` containing all of the unique elements
+  of `x` sorted in the same order that they occur in `x`. This operation
+  also returns a tensor `idx` the same size as `x` that contains the index
+  of each value of `x` in the unique output `y`. Finally, it returns a
+  third tensor `count` that contains the count of each element of `y`
+  in `x`. In other words:
 
     y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]
 
@@ -1673,17 +1675,18 @@ def unique_with_counts(x, out_idx=dtypes.int32, name=None):
   >>> y, idx, count = unique_with_counts(x)
   >>> y
   <tf.Tensor: id=36, shape=(5,), dtype=int32, numpy
-  ... =array([1, 2, 4, 7, 8], dtype=int32)>
+  =array([1, 2, 4, 7, 8], dtype=int32)>
   >>> idx
   <tf.Tensor: id=37, shape=(9,), dtype=int32, numpy
-  ... =array([0, 0, 1, 2, 2, 2, 3, 4, 4], dtype=int32)>
+  =array([0, 0, 1, 2, 2, 2, 3, 4, 4], dtype=int32)>
   >>> count
   <tf.Tensor: id=38, shape=(5,), dtype=int32, numpy
-  ... =array([2, 1, 3, 1, 2], dtype=int32)>
+  =array([2, 1, 3, 1, 2], dtype=int32)>
 
   Args:
     x: A Tensor. 1-D.
-    out_idx: An optional tf.DType from: tf.int32, tf.int64. Defaults to tf.int32.
+    out_idx: An optional tf.DType from: tf.int32, tf.int64.
+    Defaults to tf.int32.
     name: A name for the operation (optional).
 
   Returns:
@@ -4741,21 +4744,24 @@ def extract_image_patches(  # pylint: disable=missing-docstring
   """Extract patches from images and put them in the "depth" output dimension.
 
   Args:
-    `images`: A `Tensor`. Must be one of the following types: `float32`, `float64`,
-    `int32`, `uint8`, `int16`, `int8`, `int64`, `bfloat16`, `uint16`, `half`,
-    `uint32`, `uint64`. 4-D Tensor with shape `[batch, in_rows, in_cols, depth]`.
-    `ksizes`: A list of `ints` that has length `>= 4`. The size of the sliding
-    window for each dimension of `images`.
-    `strides`: A list of `ints` that has length `>= 4`. 1-D of length 4. How far
-    the centers of two consecutive patches are in the images. Must be:
-    `[1, stride_rows, stride_cols, 1]`.
-    `rates`: A list of `ints` that has length `>= 4`. 1-D of length 4. Must be:
-    `[1, rate_rows, rate_cols, 1]`. This is the input stride, specifying how far
-    two consecutive patch samples are in the input. Equivalent to extracting patches
-    with `patch_sizes_eff = patch_sizes + (patch_sizes - 1) * (rates - 1)`, followed
-    by subsampling them spatially by a factor of `rates`. This is equivalent to
-    `rate` in dilated (a.k.a. Atrous) convolutions.
-    `padding`: A `string` from: "SAME", "VALID". The type of padding algorithm to use.
+    `images`: A `Tensor`. Must be one of the following types: `float32`,
+    `float64`, `int32`, `uint8`, `int16`, `int8`, `int64`, `bfloat16`,
+    `uint16`, `half`, `uint32`, `uint64`. 4-D Tensor with shape
+    `[batch, in_rows, in_cols, depth]`. `ksizes`: A list of `ints`
+    that has length `>= 4`. The size of the sliding window for each
+    dimension of `images`. `strides`: A list of `ints` that has length
+    `>= 4`. 1-D of length 4. How far the centers of two consecutive
+    patches are in the images. Must be:
+    `[1, stride_rows, stride_cols, 1]`. `rates`: A list of `ints`
+    that has length `>= 4`. 1-D of length 4. Must be:
+    `[1, rate_rows, rate_cols, 1]`. This is the input stride, specifying
+    how far two consecutive patch samples are in the input. Equivalent
+    to extracting patches with
+    `patch_sizes_eff = patch_sizes + (patch_sizes - 1) * (rates - 1)`,
+    followed by subsampling them spatially by a factor of `rates`.
+    This is equivalent to `rate` in dilated (a.k.a. Atrous) convolutions.
+    `padding`: A `string` from: "SAME", "VALID". The type of padding
+    algorithm to use.
 
     We specify the size-related attributes as:
 
