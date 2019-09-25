@@ -1870,6 +1870,7 @@ class RaggedTensor(composite_tensor.CompositeTensor):
                     dtype,
                     output_ragged_rank,
                     input_ragged_rank=None,
+                    row_splits_dtype=dtypes.int64,
                     name=None):
     """Converts a `variant` Tensor into a `RaggedTensor`.
 
@@ -1902,6 +1903,8 @@ class RaggedTensor(composite_tensor.CompositeTensor):
       output_ragged_rank: The expected ragged rank of the output `RaggedTensor`.
       input_ragged_rank: The ragged rank of each encoded `RaggedTensor`. This
         is optional and inferred dynamically if not provided.
+      row_splits_dtype: `dtype` for the RaggedTensor's `row_splits` tensor.
+        One of `tf.int32` or `tf.int64`.
       name: A name prefix for the returned tensors (optional).
 
     Returns:
@@ -1926,8 +1929,8 @@ class RaggedTensor(composite_tensor.CompositeTensor):
         name, "RaggedFromVariant",
         [variant, dtype, input_ragged_rank, output_ragged_rank]):
       result = gen_ragged_conversion_ops.ragged_tensor_from_variant(
-          variant, input_ragged_rank, output_ragged_rank, dtype, dtypes.int64,
-          name)
+          variant, input_ragged_rank, output_ragged_rank, dtype,
+          row_splits_dtype, name)
       return cls.from_nested_row_splits(
           result.output_dense_values,
           result.output_nested_splits,
@@ -2211,6 +2214,7 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
           "ragged_rank must be non-negative; got %s." % self._ragged_rank)
     result = RaggedTensor._from_variant(  # pylint: disable=protected-access
         tensor_list[0], dtype=self._dtype,
+        row_splits_dtype=self._row_splits_dtype,
         output_ragged_rank=self._ragged_rank)
     if self._shape.ndims is not None:
       outer_dim = tensor_shape.dimension_value(self._shape[0])
