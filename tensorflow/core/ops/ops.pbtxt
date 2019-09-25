@@ -48078,7 +48078,6 @@ op {
     name: "output_handle"
     type: DT_VARIANT
   }
-  is_stateful: true
 }
 op {
   name: "TensorListScatter"
