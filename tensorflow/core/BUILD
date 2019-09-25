@@ -245,6 +245,7 @@ ADDITIONAL_CORE_PROTO_SRCS = [
     "protobuf/data/experimental/snapshot.proto",
     # TODO(ebrevdo): Re-enable once CriticalSection is in core.
     # "protobuf/critical_section.proto",
+    "protobuf/debug_event.proto",
     "protobuf/meta_graph.proto",
     "protobuf/named_tensor.proto",
     "protobuf/remote_tensor_handle.proto",
@@ -929,6 +930,7 @@ tf_cuda_library(
         "util/batch_util.h",
         "util/bcast.h",
         "util/matmul_bcast.h",
+        "util/debug_events_writer.h",
         "util/device_name_utils.h",
         "util/dump_graph.h",
         "util/events_writer.h",
