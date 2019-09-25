@@ -1665,15 +1665,17 @@ def unique_with_counts(x, out_idx=dtypes.int32, name=None):
 
     y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]
 
-  For example:
+  #### EXAMPLE:
 
-  ```python
-  # tensor 'x' is [1, 1, 2, 4, 4, 4, 7, 8, 8]
-  y, idx, count = unique_with_counts(x)
-  y ==> [1, 2, 4, 7, 8]
-  idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
-  count ==> [2, 1, 3, 1, 2]
-  ```
+  >>> x = tf.constant([1, 1, 2, 4, 4, 4, 7, 8, 8])
+  >>> y, idx, count = tf.unique_with_counts(x)
+  >>> sess=tf.compat.v1.Session()
+  >>> print(sess.run(y))
+  [1, 2, 4, 7, 8]
+  >>> print(sess.run(idx))
+  [0, 0, 1, 2, 2, 2, 3, 4, 4]
+  >>> print(sess.run(count))
+  [2, 1, 3, 1, 2]
 
   Args:
     x: A Tensor. 1-D.
