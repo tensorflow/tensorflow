@@ -31,7 +31,7 @@ namespace gpu {
 namespace dnn = se::dnn;
 
 namespace {
-void IsInputOutputDtypeValid(const HloInstruction* hlo) {
+void CheckInputOutputPrimitivetypeValid(const HloInstruction* hlo) {
   // Check Inputs.
   int64 num_operands = hlo->operand_count();
   PrimitiveType operand_dtype = hlo->operand(0)->shape().element_type();
@@ -136,7 +136,7 @@ CudnnBatchNormForwardInferenceThunk::CudnnBatchNormForwardInferenceThunk(
            kCudnnBatchNormForwardInferenceCallTarget);
   CHECK(
       LayoutUtil::LayoutsInShapesEqual(hlo->shape(), hlo->operand(0)->shape()));
-  IsInputOutputDtypeValid(hlo);
+  CheckInputOutputPrimitivetypeValid(hlo);
 }
 
 Status CudnnBatchNormForwardInferenceThunk::ExecuteOnStream(
@@ -245,7 +245,7 @@ CudnnBatchNormForwardTrainingThunk::CudnnBatchNormForwardTrainingThunk(
   CHECK_EQ(hlo->shape().tuple_shapes_size(), 3);
   CHECK(LayoutUtil::LayoutsInShapesEqual(hlo->shape().tuple_shapes(0),
                                          hlo->operand(0)->shape()));
-  IsInputOutputDtypeValid(hlo);
+  CheckInputOutputPrimitivetypeValid(hlo);
 }
 
 Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
@@ -374,7 +374,7 @@ CudnnBatchNormBackwardThunk::CudnnBatchNormBackwardThunk(
                                          hlo->operand(0)->shape()));
   CHECK(LayoutUtil::LayoutsInShapesEqual(hlo->shape().tuple_shapes(0),
                                          hlo->operand(4)->shape()));
-  IsInputOutputDtypeValid(hlo);
+  CheckInputOutputPrimitivetypeValid(hlo);
 }
 
 Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
