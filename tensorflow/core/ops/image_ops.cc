@@ -337,7 +337,7 @@ REGISTER_OP("ResizeNearestNeighbor")
     .Input("images: T")
     .Input("size: int32")
     .Output("resized_images: T")
-    .Attr("T: {int8, uint8, int16, uint16, int32, int64, half, float, double}")
+    .Attr("T: {int8, uint8, int16, uint16, int32, int64, half, bfloat16, float, double}")
     .Attr("align_corners: bool = false")
     .Attr("half_pixel_centers: bool = false")
     .SetShapeFn(ResizeShapeFn);
