@@ -57,6 +57,7 @@ void TestMemRefStrideCalculation::runOnFunction() {
     });
     llvm::outs() << "\n";
   });
+  llvm::outs().flush();
 }
 
 static PassRegistration<TestMemRefStrideCalculation>

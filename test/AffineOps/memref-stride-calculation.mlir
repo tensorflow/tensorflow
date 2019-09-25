@@ -1,7 +1,6 @@
 // RUN: mlir-opt %s -test-memref-stride-calculation | FileCheck %s
 
 func @f(%0: index) {
-// CHECK-LABEL: func @f(
   %1 = alloc() : memref<3x4x5xf32>
 // CHECK: MemRefType offset: 0 strides: 20, 5, 1
   %2 = alloc(%0) : memref<3x4x?xf32>
