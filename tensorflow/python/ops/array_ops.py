@@ -1674,14 +1674,14 @@ def unique_with_counts(x, out_idx=dtypes.int32, name=None):
   >>> x = tf.constant([1, 1, 2, 4, 4, 4, 7, 8, 8])
   >>> y, idx, count = unique_with_counts(x)
   >>> y
-  <tf.Tensor: id=36, shape=(5,), dtype=int32, numpy
-  =array([1, 2, 4, 7, 8], dtype=int32)>
+  <tf.Tensor: id=36, shape=(5,), dtype=int32, numpy=
+  array([1, 2, 4, 7, 8], dtype=int32)>
   >>> idx
-  <tf.Tensor: id=37, shape=(9,), dtype=int32, numpy
-  =array([0, 0, 1, 2, 2, 2, 3, 4, 4], dtype=int32)>
+  <tf.Tensor: id=37, shape=(9,), dtype=int32, numpy=
+  array([0, 0, 1, 2, 2, 2, 3, 4, 4], dtype=int32)>
   >>> count
-  <tf.Tensor: id=38, shape=(5,), dtype=int32, numpy
-  =array([2, 1, 3, 1, 2], dtype=int32)>
+  <tf.Tensor: id=38, shape=(5,), dtype=int32, numpy=
+  array([2, 1, 3, 1, 2], dtype=int32)>
 
   Args:
     x: A Tensor. 1-D.
