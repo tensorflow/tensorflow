@@ -143,6 +143,15 @@ static bool isIsolatedAbove(Region &region, Region &limit,
     for (Block &block : *pendingRegions.pop_back_val()) {
       for (Operation &op : block) {
         for (Value *operand : op.getOperands()) {
+          // operand should be non-null here if the IR is well-formed. But
+          // we don't assert here as this function is called from the verifier
+          // and so could be called on invalid IR.
+          if (!operand) {
+            if (noteLoc)
+              op.emitOpError("block's operand not defined").attachNote(noteLoc);
+            return false;
+          }
+
           // Check that any value that is used by an operation is defined in the
           // same region as either an operation result or a block argument.
           if (operand->getParentRegion()->isProperAncestor(&limit)) {
@@ -166,13 +175,6 @@ static bool isIsolatedAbove(Region &region, Region &limit,
 
 bool Region::isIsolatedFromAbove(llvm::Optional<Location> noteLoc) {
   return isIsolatedAbove(*this, *this, noteLoc);
-}
-
-/// Walk the operations in this block in postorder, calling the callback for
-/// each operation.
-void Region::walk(llvm::function_ref<void(Operation *)> callback) {
-  for (auto &block : *this)
-    block.walk(callback);
 }
 
 Region *llvm::ilist_traits<::mlir::Block>::getParentRegion() {

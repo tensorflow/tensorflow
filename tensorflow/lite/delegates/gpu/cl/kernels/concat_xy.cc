@@ -60,16 +60,18 @@ std::string GetConcatKernelCode(
   c += "  int X = get_global_id(0);\n";
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
+  c += "  if (Z >= dst_size.w) return;\n";
   for (int i = 0; i < tensors_count; ++i) {
     const std::string offset_name = "dst_offset_" + std::to_string(i);
     const std::string size_name = "src_size_" + std::to_string(i);
     c += "  if (X < " + size_name + ".x && Y < " + size_name + ".y) { \n";
-    c += "    FLT4 result = " + srcs[i]->Read3D("X", "Y", "Z") + ";\n";
+    c += "    FLT4 result = " +
+         srcs[i]->Read3D("X", "Y", "Z", TextureAddressMode::DONT_CARE) + ";\n";
     c += "    int dst_x = X + " + offset_name + ".x;\n";
     c += "    int dst_y = Y + " + offset_name + ".y;\n";
-    c += "    " + dst.GetAddress("dst_adr", "dst_x", "dst_y", "Z");
-    c += PostProcess(linked_operations, "result", "Z", "dst_adr");
-    c += "    " + dst.Write3D("result", "dst_adr");
+    const LinkingContext context{"result", "dst_x", "dst_y", "Z"};
+    c += PostProcess(linked_operations, context);
+    c += "    " + dst.Write3D("result", "dst_x", "dst_y", "Z");
     c += "  } \n";
   }
   c += "}\n";
@@ -109,7 +111,7 @@ Status ConcatXY::BindArguments() {
   for (int i = 0; i < tensors_count_; ++i) {
     RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[i]->GetMemoryPtr()));
   }
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtr()));
+  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   int max_src_width = 0;
   int max_src_height = 0;

@@ -18,9 +18,8 @@
 #ifndef MLIR_IR_DIALECTINTERFACE_H
 #define MLIR_IR_DIALECTINTERFACE_H
 
-#include "mlir/IR/Dialect.h"
 #include "mlir/Support/STLExtras.h"
-#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 
 namespace mlir {
 class Dialect;
@@ -82,6 +81,26 @@ namespace detail {
 /// This class is the base class for a collection of instances for a specific
 /// interface kind.
 class DialectInterfaceCollectionBase {
+  /// DenseMap info for dialect interfaces that allows lookup by the dialect.
+  struct InterfaceKeyInfo : public DenseMapInfo<const DialectInterface *> {
+    using DenseMapInfo<const DialectInterface *>::isEqual;
+
+    static unsigned getHashValue(Dialect *key) { return llvm::hash_value(key); }
+    static unsigned getHashValue(const DialectInterface *key) {
+      return getHashValue(key->getDialect());
+    }
+
+    static bool isEqual(Dialect *lhs, const DialectInterface *rhs) {
+      if (rhs == getEmptyKey() || rhs == getTombstoneKey())
+        return false;
+      return lhs == rhs->getDialect();
+    }
+  };
+
+  /// A set of registered dialect interface instances.
+  using InterfaceSetT = DenseSet<const DialectInterface *, InterfaceKeyInfo>;
+  using InterfaceVectorT = std::vector<const DialectInterface *>;
+
 public:
   DialectInterfaceCollectionBase(MLIRContext *ctx, ClassID *interfaceKind);
   virtual ~DialectInterfaceCollectionBase();
@@ -93,12 +112,44 @@ protected:
 
   /// Get the interface for the given dialect.
   const DialectInterface *getInterfaceFor(Dialect *dialect) const {
-    return interfaces.lookup(dialect);
+    auto it = interfaces.find_as(dialect);
+    return it == interfaces.end() ? nullptr : *it;
+  }
+
+  /// An iterator class that iterates the held interface objects of the given
+  /// derived interface type.
+  template <typename InterfaceT>
+  class iterator : public llvm::mapped_iterator<
+                       InterfaceVectorT::const_iterator,
+                       const InterfaceT &(*)(const DialectInterface *)> {
+    static const InterfaceT &remapIt(const DialectInterface *interface) {
+      return *static_cast<const InterfaceT *>(interface);
+    }
+
+    iterator(InterfaceVectorT::const_iterator it)
+        : llvm::mapped_iterator<
+              InterfaceVectorT::const_iterator,
+              const InterfaceT &(*)(const DialectInterface *)>(it, &remapIt) {}
+
+    /// Allow access to the constructor.
+    friend DialectInterfaceCollectionBase;
+  };
+
+  /// Iterator access to the held interfaces.
+  template <typename InterfaceT> iterator<InterfaceT> interface_begin() const {
+    return iterator<InterfaceT>(orderedInterfaces.begin());
+  }
+  template <typename InterfaceT> iterator<InterfaceT> interface_end() const {
+    return iterator<InterfaceT>(orderedInterfaces.end());
   }
 
 private:
-  /// A map of registered dialect interface instances.
-  DenseMap<Dialect *, const DialectInterface *> interfaces;
+  /// A set of registered dialect interface instances.
+  InterfaceSetT interfaces;
+  /// An ordered list of the registered interface instances, necessary for
+  /// deterministic iteration.
+  // NOTE: SetVector does not provide find access, so it can't be used here.
+  InterfaceVectorT orderedInterfaces;
 };
 } // namespace detail
 
@@ -122,6 +173,16 @@ public:
     return static_cast<const InterfaceType *>(
         detail::DialectInterfaceCollectionBase::getInterfaceFor(obj));
   }
+
+  /// Iterator access to the held interfaces.
+  using iterator =
+      detail::DialectInterfaceCollectionBase::iterator<InterfaceType>;
+  iterator begin() const { return interface_begin<InterfaceType>(); }
+  iterator end() const { return interface_end<InterfaceType>(); }
+
+private:
+  using detail::DialectInterfaceCollectionBase::interface_begin;
+  using detail::DialectInterfaceCollectionBase::interface_end;
 };
 
 } // namespace mlir

@@ -24,11 +24,11 @@ from tensorflow.python.compat import compat
 from tensorflow.python.distribute import distribution_strategy_context as ds
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gen_array_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gen_nn_ops
@@ -499,31 +499,8 @@ def relu_layer(x, weights, biases, name=None):
     return nn_ops.relu(xw_plus_b, name=name)
 
 
-def _swish_shape(op):
-  """Shape helper function for swish and _swish_grad function below."""
-  return [op.inputs[0].shape]
-
-
-@function.Defun(shape_func=_swish_shape, func_name="swish_grad", noinline=True)
-def _swish_grad(features, grad):
-  """Gradient of Swish function defined below."""
-  sigmoid_features = math_ops.sigmoid(features)
-  activation_grad = (
-      sigmoid_features * (1.0 + features * (1.0 - sigmoid_features)))
-  return grad * activation_grad
-
-
-# Naively, x * tf.nn.sigmoid(x) requires keeping both x and sigmoid(x) around
-# for backprop, effectively doubling the tensor's memory consumption. We use a
-# @Defun decorator with noinline=True so that sigmoid(features) is re-computed
-# during backprop, and we can free the sigmoid(features) expression immediately
-# after use during the forward pass.
 @tf_export("nn.swish")
-@function.Defun(
-    grad_func=_swish_grad,
-    shape_func=_swish_shape,
-    func_name="swish",
-    noinline=True)
+@custom_gradient.custom_gradient
 def swish(features):
   # pylint: disable=g-doc-args
   """Computes the Swish activation function: `x * sigmoid(x)`.
@@ -540,7 +517,22 @@ def swish(features):
   """
   # pylint: enable=g-doc-args
   features = ops.convert_to_tensor(features, name="features")
-  return features * math_ops.sigmoid(features)
+
+  def grad(dy):
+    """Gradient for the Swish activation function"""
+    # Naively, x * tf.nn.sigmoid(x) requires keeping both x and sigmoid(x)
+    # around for backprop, effectively doubling the tensor's memory consumption.
+    # We use a control dependency here so that sigmoid(features) is re-computed
+    # during backprop (the control dep prevents it being de-duped with the
+    # forward pass) and we can free the sigmoid(features) expression immediately
+    # after use during the forward pass.
+    with ops.control_dependencies([dy]):
+      sigmoid_features = math_ops.sigmoid(features)
+    activation_grad = (
+        sigmoid_features * (1.0 + features * (1.0 - sigmoid_features)))
+    return dy * activation_grad
+
+  return features * math_ops.sigmoid(features), grad
 
 
 # pylint: disable=redefined-builtin

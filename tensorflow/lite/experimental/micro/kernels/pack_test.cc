@@ -259,12 +259,9 @@ void TestPackTwoInputsQuantized32(
   constexpr int output_size = 1;
   constexpr int tensors_size = input_size + output_size;
   TfLiteTensor tensors[tensors_size] = {
-      // CreateQuantized32Tensor needs min/max values as input, but these values
-      // don't matter as to the functionality of PACK, so just set as 0 and 10.
-      CreateQuantized32Tensor(input1_data, input1_dims, "input1_tensor", 0, 10),
-      CreateQuantized32Tensor(input2_data, input2_dims, "input2_tensor", 0, 10),
-      CreateQuantized32Tensor(output_data, output_dims, "output_tensor", 0,
-                              10)};
+      CreateQuantized32Tensor(input1_data, input1_dims, "input1_tensor", 1.0),
+      CreateQuantized32Tensor(input2_data, input2_dims, "input2_tensor", 1.0),
+      CreateQuantized32Tensor(output_data, output_dims, "output_tensor", 1.0)};
 
   // Place a unique value in the uninitialized output buffer.
   for (int i = 0; i < output_dims_count; ++i) {

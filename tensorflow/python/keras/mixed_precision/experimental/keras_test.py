@@ -37,6 +37,7 @@ from tensorflow.python.keras import layers
 from tensorflow.python.keras import models
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras import regularizers
+from tensorflow.python.keras import saving
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
@@ -59,7 +60,8 @@ class AssertTypeLayer(base_layer.Layer):
   """A layer which asserts it's inputs are a certain type."""
 
   def __init__(self, assert_type=None, **kwargs):
-    self._assert_type = assert_type
+    self._assert_type = (dtypes.as_dtype(assert_type).name if assert_type
+                         else None)
     super(AssertTypeLayer, self).__init__(**kwargs)
 
   def assert_input_types(self, inputs):
@@ -111,6 +113,15 @@ class AddLayer(AssertTypeLayer):
       return x + y
     else:
       return math_ops.add(x, y)
+
+  def get_config(self):
+    config = super(AddLayer, self).get_config()
+    assert self._regularizer is None, (
+        'regularizer must be None to get config for AddLayer')
+    config['use_operator'] = self._use_operator
+    config['var_name'] = self._var_name
+    config['assert_type'] = self._assert_type
+    return config
 
 
 class AddLayerWithoutAutoCast(AddLayer):
@@ -240,6 +251,23 @@ class KerasLayerTest(keras_parameterized.TestCase):
       y = layer(x)
       self.assertEqual(layer.v.dtype, dtypes.float32)
       self.assertEqual(y.dtype, dtypes.int32)
+
+  @parameterized.named_parameters(*TESTCASES)
+  @test_util.run_in_graph_and_eager_modes
+  def test_layer_with_int_variable(self, strategy_fn):
+    class LayerWithIntVar(base_layer.Layer):
+
+      def build(self, _):
+        self.v = self.add_weight('v', dtype='int32', trainable=False)
+
+      def call(self, inputs):
+        # Only float variables should be autocasted. This will fail if self.v is
+        # autocasted to float32
+        return math_ops.cast(inputs, 'int32') + self.v
+
+    x = constant_op.constant([1.])
+    layer = LayerWithIntVar(dtype=policy.Policy('mixed_float16'))
+    self.assertEqual(layer(x).dtype, 'int32')
 
   @parameterized.named_parameters(*TESTCASES)
   @test_util.run_in_graph_and_eager_modes
@@ -400,6 +428,14 @@ class KerasLayerTest(keras_parameterized.TestCase):
         strategy_fn, mixed_prec_when_saving=True, mixed_prec_when_loading=False)
     self._test_checkpointing_layer_weights(
         strategy_fn, mixed_prec_when_saving=False, mixed_prec_when_loading=True)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_delete_variable(self):
+    layer = base_layer.Layer(dtype=policy.Policy('mixed_float16'))
+    layer.x = layer.add_weight('x')
+    self.assertEqual(layer.trainable_weights, [layer.x])
+    del layer.x
+    self.assertEqual(layer.trainable_weights, [])
 
 
 class KerasModelTest(keras_parameterized.TestCase):
@@ -764,6 +800,17 @@ class KerasModelTest(keras_parameterized.TestCase):
                                    'optimizer" must be an instance of '):
         model.compile(optimizers.SGD(1.), 'mse')
 
+  @test_util.run_in_graph_and_eager_modes
+  @testing_utils.enable_v2_dtype_behavior
+  def test_functional_model_loss_dtype(self):
+    with policy.policy_scope('float16'):
+      x = layers.Input(shape=(1,))
+      y = AddLayer()(x)
+      model = models.Model(x, y)
+      model.add_loss(math_ops.cast(y, 'float32'))
+      # The loss should not be casted to the policy's dtype.
+      self.assertEqual(model.losses[0].dtype, 'float32')
+
   @parameterized.named_parameters(
       {
           'testcase_name': 'base',
@@ -899,6 +946,78 @@ class KerasModelTest(keras_parameterized.TestCase):
     model.load_weights(save_prefix)
     self.assertEqual(backend.get_value(loss_scale()), 2)
     self.assertEqual(backend.get_value(loss_scale._num_good_steps), 1)
+
+  @keras_parameterized.run_all_keras_modes
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'base',
+          'strategy_fn': default_strategy_fn,
+      }, {
+          'testcase_name': 'distribute',
+          'strategy_fn': create_mirrored_strategy,
+      }, {
+          'testcase_name': 'base_h5',
+          'strategy_fn': default_strategy_fn,
+          'h5': True,
+      }, {
+          'testcase_name': 'distribute_h5',
+          'strategy_fn': create_mirrored_strategy,
+          'h5': True,
+      })
+  def test_save_model_with_dynamic_loss_scaling(self, strategy_fn, h5=False):
+    if not self._is_strategy_supported(strategy_fn):
+      return
+    strategy = strategy_fn()
+    if (isinstance(strategy, mirrored_strategy.MirroredStrategy) and
+        not context.executing_eagerly()):
+      # TODO(b/121381184): Enable running the test in this case.
+      return
+
+    # Create and run model.
+    with strategy.scope():
+      x = layers.Input(shape=(2,), batch_size=2, dtype=dtypes.float32)
+      y = AddLayer()(x)
+      model = models.Model(inputs=x, outputs=y)
+
+      loss_scale = loss_scale_module.DynamicLossScale(
+          initial_loss_scale=1., increment_period=2., multiplier=2.)
+      opt = gradient_descent.SGD(1.)
+      opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
+      model.compile(
+          optimizer=opt,
+          loss='mse',
+          run_eagerly=testing_utils.should_run_eagerly(),
+          experimental_run_tf_function=testing_utils.should_run_tf_function())
+    # Run for 3 steps (6 examples with a batch size of 2)
+    model.fit(np.zeros((6, 2)), np.zeros((6, 2)), batch_size=2)
+    self.assertEqual(backend.get_value(loss_scale()), 2)
+    self.assertEqual(backend.get_value(loss_scale._num_good_steps), 1)
+    (weight,) = model.trainable_weights
+    orig_weight = backend.get_value(weight)
+
+    # Save model weights.
+    save_path = os.path.join(self.get_temp_dir(), 'model')
+    model.save(save_path, save_format='h5' if h5 else 'tf')
+
+    # Run model again for 1 step (2 examples with a batch size of 2)
+    model.fit(np.zeros((2, 2)), np.zeros((2, 2)), batch_size=2)
+    new_weight = backend.get_value(weight)
+    self.assertNotEqual(new_weight, orig_weight)
+    self.assertEqual(backend.get_value(loss_scale()), 4)
+    self.assertEqual(backend.get_value(loss_scale._num_good_steps), 0)
+
+    # Load model weights and ensure loss scale weights are restored.
+    model = saving.load_model(save_path, custom_objects={'AddLayer': AddLayer})
+    loss_scale = model.optimizer.loss_scale
+    (weight,) = model.trainable_weights
+    loaded_weight = backend.get_value(weight)
+    self.assertEqual(loaded_weight, orig_weight)
+    # Currently the loss scale isn't always saved when the model is saved with
+    # Model.save(). So we assert the loss scale either has the value when it was
+    # saved, or the value it was initialized with.
+    # TODO(reedwm): Always save/restore the loss scale with Model.save().
+    self.assertIn(backend.get_value(loss_scale()), (1, 2))
+    self.assertIn(backend.get_value(loss_scale._num_good_steps), (0, 1))
 
 
 class RnnTest(keras_parameterized.TestCase):

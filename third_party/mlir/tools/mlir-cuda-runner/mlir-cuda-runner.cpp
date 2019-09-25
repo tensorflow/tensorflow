@@ -29,9 +29,10 @@
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/GPU/Passes.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
-#include "mlir/LLVMIR/LLVMDialect.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/JitRunner.h"
@@ -107,48 +108,22 @@ OwnedCubin compilePtxToCubin(const std::string ptx, FuncOp &function) {
   return result;
 }
 
-namespace {
-struct GPULaunchFuncOpLowering : public LLVMOpLowering {
-public:
-  explicit GPULaunchFuncOpLowering(LLVMTypeConverter &lowering_)
-      : LLVMOpLowering(gpu::LaunchFuncOp::getOperationName(),
-                       lowering_.getDialect()->getContext(), lowering_) {}
-
-  // Convert the kernel arguments to an LLVM type, preserve the rest.
-  PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                  ConversionPatternRewriter &rewriter) const override {
-    rewriter.clone(*op)->setOperands(operands);
-    return rewriter.replaceOp(op, llvm::None), matchSuccess();
-  }
-};
-} // end anonymous namespace
-
 static LogicalResult runMLIRPasses(ModuleOp m) {
-  // As we gradually lower, the IR is inconsistent between passes. So do not
-  // verify inbetween.
-  PassManager pm(/*verifyPasses=*/false);
+  PassManager pm(m.getContext());
+  applyPassManagerCLOptions(pm);
 
   pm.addPass(createGpuKernelOutliningPass());
-  pm.addPass(createConvertToLLVMIRPass([](LLVMTypeConverter &converter,
-                                          OwningRewritePatternList &patterns) {
-    populateStdToLLVMConversionPatterns(converter, patterns);
-    patterns.insert<GPULaunchFuncOpLowering>(converter);
-  }));
-  pm.addPass(createLowerGpuOpsToNVVMOpsPass());
-  pm.addPass(createConvertGPUKernelToCubinPass(&compilePtxToCubin));
+  auto &kernelPm = pm.nest<ModuleOp>();
+  kernelPm.addPass(createLowerGpuOpsToNVVMOpsPass());
+  kernelPm.addPass(createConvertGPUKernelToCubinPass(&compilePtxToCubin));
+  pm.addPass(createLowerToLLVMPass());
   pm.addPass(createGenerateCubinAccessorPass());
   pm.addPass(createConvertGpuLaunchFuncToCudaCallsPass());
 
-  if (failed(pm.run(m)))
-    return failure();
-
-  if (failed(m.verify()))
-    return failure();
-
-  return success();
+  return pm.run(m);
 }
 
 int main(int argc, char **argv) {
+  registerPassManagerCLOptions();
   return mlir::JitRunnerMain(argc, argv, &runMLIRPasses);
 }

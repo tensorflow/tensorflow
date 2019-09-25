@@ -34,7 +34,6 @@ from tensorflow.core.lib.core import error_codes_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as framework_device_lib
@@ -67,11 +66,6 @@ try:
   import attr  # pylint:disable=g-import-not-at-top
 except ImportError:
   attr = None
-
-
-# NOTE(mrry): Dummy shape registration for ops used in the tests, since they
-# don't have C++ op registrations on which to attach C++ shape fns.
-ops.RegisterShape('ConstructionFails')(common_shapes.unknown_shape)
 
 
 class SessionTest(test_util.TensorFlowTestCase):

@@ -141,6 +141,354 @@ TEST(uKernels, MatrixBatchVectorMultiplyAccumulateTest) {
                                                -1., 3., 7., 3., 23., 3.})));
 }
 
+// Quantized matmul with 2 * 30 input and 9 * 30 matrix.
+TEST(uKernels, QuantMatrixBatchVectorMultiplyAccumulate8x8_16Test) {
+  const std::vector<int8_t> input = {
+      4,   -41, 5,   -41, 22,  17, -30, 24,  13,  -47, 18, 9,   -11, -30, 16,
+      -47, 12,  36,  -20, 27,  -3, 0,   -51, -31, 3,   -8, -38, 43,  23,  12,
+      11,  -23, -26, 23,  14,  -9, -44, 22,  21,  -30, 3,  -47, -26, -21, -24,
+      -44, 34,  -11, -23, -28, 26, -38, 19,  35,  9,   23, 6,   -42, -25, 28,
+  };
+  const std::vector<int32_t> input_zeropoint_times_weights = {
+      -620, -170, -395, 715, -1220, -1080, 1130, -260, -470,
+  };
+  const std::vector<int8_t> input_to_gate_weights = {
+      -10, -4,  -8,  16,  4,   -16, -1,  11,  1,   2,   -25, 19,  7,   9,   2,
+      -24, -2,  10,  -7,  7,   -5,  -2,  3,   4,   3,   -4,  -7,  -11, -13, -18,
+      11,  10,  12,  -9,  17,  -15, -5,  20,  -6,  -11, 2,   -6,  -18, 15,  4,
+      4,   -9,  -2,  -3,  -9,  -13, 17,  -21, 5,   3,   -12, 0,   -4,  9,   -5,
+      10,  -2,  8,   1,   -10, -6,  1,   -9,  10,  11,  -1,  -5,  4,   -7,  -4,
+      -4,  4,   12,  -7,  -5,  -9,  -19, 6,   -4,  12,  -17, -22, 0,   9,   -4,
+      -5,  5,   -8,  8,   3,   15,  -18, -18, 5,   3,   -12, 5,   -10, 7,   7,
+      -9,  17,  2,   -11, -25, 3,   19,  -6,  7,   1,   7,   5,   -3,  11,  3,
+      0,   -8,  8,   -2,  -2,  -12, 14,  -5,  7,   8,   16,  20,  -16, -5,  -5,
+      1,   -10, -6,  14,  10,  -12, 10,  -6,  5,   0,   3,   8,   -9,  -13, -2,
+      4,   4,   -16, -17, -9,  16,  -5,  14,  -9,  -5,  -12, 0,   17,  6,   -1,
+      16,  -20, 1,   -11, -1,  -10, -21, 13,  4,   -12, -7,  0,   -14, -6,  3,
+      -4,  6,   -18, -3,  -1,  14,  -8,  -6,  -15, 5,   12,  -3,  -10, 4,   6,
+      -5,  -20, 0,   3,   -3,  -7,  1,   2,   -10, 7,   -3,  6,   1,   -12, 6,
+      4,   -12, 2,   6,   -20, 0,   5,   23,  15,  14,  9,   8,   20,  -2,  9,
+      -8,  -8,  -7,  -4,  -8,  -9,  7,   -12, -2,  2,   1,   -14, 31,  4,   -14,
+      3,   10,  -18, -17, -1,  18,  1,   12,  0,   7,   -3,  -5,  8,   -9,  18,
+      17,  7,   -15, 3,   20,  4,   -8,  16,  6,   -3,  -3,  9,   -4,  -6,  4,
+  };
+  const int32_t multiplier = 2080364544;
+  const int32_t shift = -2;
+
+  std::vector<int32_t> scrach(2 * 9, 0);
+  std::vector<int16_t> output = {10, 2, 33, 4, 5,  6,  65, 4,  3,
+                                 52, 1, 2,  8, -1, -2, 11, 17, -18};
+  MatrixBatchVectorMultiplyAccumulate(
+      input.data(), input_zeropoint_times_weights.data(),
+      input_to_gate_weights.data(), multiplier, shift,
+      /*n_batch=*/2, /*n_input=*/30, /*n_output=*/9, /*output_zp=*/0,
+      scrach.data(), output.data());
+  const std::vector<int16_t> expected_output = {
+      -210, 331,  153, 139, -570, -657, 258, 515,  -495,
+      91,   -243, -73, 603, -744, -269, 169, -748, -174,
+  };
+
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+}
+
+// Qautnized matmul with 2 * 30 input and 9 * 30 matrix.
+TEST(uKernels, QuantMatrixBatchVectorMultiplyAccumulate8x8_8Test) {
+  const std::vector<int8_t> input = {
+      4,   -41, 5,   -41, 22,  17, -30, 24,  13,  -47, 18, 9,   -11, -30, 16,
+      -47, 12,  36,  -20, 27,  -3, 0,   -51, -31, 3,   -8, -38, 43,  23,  12,
+      11,  -23, -26, 23,  14,  -9, -44, 22,  21,  -30, 3,  -47, -26, -21, -24,
+      -44, 34,  -11, -23, -28, 26, -38, 19,  35,  9,   23, 6,   -42, -25, 28,
+  };
+  const std::vector<int32_t> input_zeropoint_times_weights = {
+      0, 0, 0, 0, 0, 0, 0, 0, 0,
+  };
+  const std::vector<int8_t> input_to_gate_weights = {
+      13,  -7,  -20, -22, 8,   -46, 9,   -2,  -18, -42, 40,  28,  -7,  24,  34,
+      -7,  -24, -24, 19,  14,  -19, -6,  -2,  -3,  5,   -36, -13, 6,   -27, 36,
+      -23, 0,   20,  -37, -23, 9,   17,  -41, 33,  -15, -18, -42, -41, -34, -16,
+      -6,  12,  -14, -15, -20, -14, 21,  -3,  -1,  -26, 54,  51,  35,  -14, 9,
+      -2,  13,  -6,  39,  34,  -21, 39,  -51, 19,  -44, 52,  0,   -2,  -38, -35,
+      -33, 4,   -22, -37, 27,  -23, 3,   -10, 5,   32,  6,   1,   -35, 24,  -19,
+      46,  43,  -55, 5,   38,  -14, 32,  -43, -44, -17, -13, -28, 56,  28,  -42,
+      4,   10,  -7,  25,  -15, -9,  -25, -14, -15, 6,   -10, -22, 40,  -72, 18,
+      -6,  -18, -2,  37,  -13, -10, 11,  -9,  32,  -28, 19,  -2,  4,   -31, 50,
+      -15, 23,  -34, -9,  41,  -6,  -34, 17,  2,   24,  -15, 21,  -17, -8,  -20,
+      1,   -63, 19,  -40, 12,  -5,  5,   -6,  1,   19,  -9,  -23, 5,   -34, 11,
+      26,  21,  54,  34,  -43, -29, 1,   16,  31,  -56, -28, 57,  -15, -23, 37,
+      -17, -3,  -6,  29,  18,  77,  17,  -20, -14, -19, 8,   -24, -7,  -45, -3,
+      0,   -25, -8,  6,   9,   3,   -15, 51,  4,   -15, -19, -16, -14, -47, -52,
+      25,  9,   58,  26,  -9,  -27, 49,  -6,  -21, 21,  18,  12,  -9,  -9,  14,
+      31,  -26, -19, -50, 17,  35,  11,  -10, 22,  -16, -43, -2,  26,  55,  -20,
+      -7,  21,  33,  -20, 26,  -15, -22, 30,  27,  3,   -34, 26,  12,  -1,  19,
+      26,  -25, 10,  30,  30,  -14, -23, -23, -35, -16, 26,  -41, 11,  1,   21,
+  };
+  const int32_t multiplier = 1347771520;
+  const int32_t shift = -7;
+  const int32_t output_zp = -11;
+
+  std::vector<int8_t> output = {1, 2, 3, 4, 5,  6,  5,  4,  3,
+                                2, 1, 2, 8, -1, -2, 11, 17, 18};
+  std::vector<int32_t> scrach(2 * 9, 0);
+  MatrixBatchVectorMultiplyAccumulate(
+      input.data(), input_zeropoint_times_weights.data(),
+      input_to_gate_weights.data(), multiplier, shift,
+      /*n_batch=*/2, /*n_input=*/30, /*n_output=*/9, output_zp, scrach.data(),
+      output.data());
+  const std::vector<int8_t> expected_output = {
+      5,   -9, -2, -30, -5, -11, -22, -18, 18,
+      -19, 2,  11, -5,  9,  -2,  10,  -38, -22,
+  };
+
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+}
+
+// Quantized layer norm of n_batch = 2 and n_input = 15.
+TEST(uKernels, QuantApplyLayerNormTest) {
+  const std::vector<int16_t> input = {
+      -310,  596,   34,   -68,  475,  92,  672, -54,  -913, -200,
+      -1194, -836,  -620, -237, 991,  533, 721, -736, -8,   -941,
+      -372,  -1084, 591,  2557, -779, 175, 582, 956,  -287, 944,
+  };
+  const std::vector<int16_t> layer_norm_weights = {
+      21849, 22882, 20626, 23854, 24779, 26354, 12980, 26231,
+      23716, 27271, 24937, 22647, 24715, 22854, 19646,
+  };
+  const std::vector<int32_t> bias_weight = {
+      -14175520, -13805465, -16027609, -13786809, -13321033,
+      -14399810, -15055368, -14536623, -14508746, -13784007,
+      -15206609, -15125830, -14996304, -14847597, -12814379,
+  };
+  const int32_t multiplier = 1895840000;
+  const int32_t shift = -13;
+  const int32_t limit = 1;
+
+  std::vector<int16_t> output(2 * 15, 0);
+  ApplyLayerNorm(input.data(), layer_norm_weights.data(), bias_weight.data(),
+                 multiplier, shift, limit, 2, 15, output.data());
+  const std::vector<int16_t> expected_output = {
+      -9407,  5846,   -4802,  -5295,  4822,   -2390,  930,   -5283,
+      -20352, -7846,  -26539, -18704, -15829, -8627,  10313, -2522,
+      -132,   -16058, -8206,  -19158, -13296, -14407, -1235, 20612,
+      -18591, -6738,  -2274,  2602,   -11622, 1565,
+  };
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+}
+
+// Quantized tanh with Q0.15 input and Q0.15 output.
+TEST(uKernels, QuantTanh0Test) {
+  const std::vector<int16_t> input = {
+      -145, 899, -176, -35,  264, 289,  8,    27,   -37,  -1310,
+      -120, 127, -16,  106,  370, -583, -299, 93,   -548, 548,
+      653,  -29, -53,  1058, -52, -164, -149, -635, 201,  -1297,
+      -145, 899, -176, -35,  264, 289,  8,    27,   -37,  -1310,
+      -120, 127, -16,  106,  370, -583, -299, 93,   -548, 548,
+      653,  -29, -53,  1058, -52, -164, -149, -635, 201,  -1297,
+  };
+  std::vector<int16_t> output(4 * 15, 0);
+  ApplyTanh0(input.data(), 4, 15, output.data());
+  const std::vector<int16_t> expected_output = {
+      -136, 904, -176, -40,  260, 292,  8,    28,   -44,  -1304,
+      -120, 120, -24,  112,  376, -576, -308, 88,   -544, 544,
+      652,  -32, -60,  1056, -56, -156, -144, -636, 192,  -1300,
+      -136, 904, -176, -40,  260, 292,  8,    28,   -44,  -1304,
+      -120, 120, -24,  112,  376, -576, -308, 88,   -544, 544,
+      652,  -32, -60,  1056, -56, -156, -144, -636, 192,  -1300,
+  };
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+}
+
+// Quantized tanh with Q3.12 input and Q0.15 output.
+TEST(uKernels, QuantTanh3Test) {
+  const std::vector<int16_t> input = {
+      -145, 899, -176, -35,  264, 289,  8,    27,   -37,  -1310,
+      -120, 127, -16,  106,  370, -583, -299, 93,   -548, 548,
+      653,  -29, -53,  1058, -52, -164, -149, -635, 201,  -1297,
+      -145, 899, -176, -35,  264, 289,  8,    27,   -37,  -1310,
+      -120, 127, -16,  106,  370, -583, -299, 93,   -548, 548,
+      653,  -29, -53,  1058, -52, -164, -149, -635, 201,  -1297,
+  };
+  std::vector<int16_t> output(4 * 15, 0);
+  ApplyTanh3(input.data(), 4, 15, output.data());
+  const std::vector<int16_t> expected_output = {
+      -1156, 7076, -1412, -276, 2104, 2308,  64,    220,   -288,  -10132,
+      -964,  1016, -120,  844,  2944, -4640, -2392, 736,   -4352, 4352,
+      5180,  -232, -428,  8276, -412, -1308, -1196, -5044, 1612,  -10044,
+      -1156, 7076, -1412, -276, 2104, 2308,  64,    220,   -288,  -10132,
+      -964,  1016, -120,  844,  2944, -4640, -2392, 736,   -4352, 4352,
+      5180,  -232, -428,  8276, -412, -1308, -1196, -5044, 1612,  -10044,
+  };
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+}
+
+// Quantized tanh with Q4.11 input and Q0.15 output.
+TEST(uKernels, QuantTanh4Test) {
+  const std::vector<int16_t> input = {
+      -5,  163, -31, -5,  54, 90, 1,  2,  -4, -42, -8,  29,  0,   47, 150,
+      -26, -36, 9,   -73, 25, 14, -2, -1, 29, -10, -12, -18, -29, 51, -92,
+      -5,  163, -31, -5,  54, 90, 1,  2,  -4, -42, -8,  29,  0,   47, 150,
+      -26, -36, 9,   -73, 25, 14, -2, -1, 29, -10, -12, -18, -29, 51, -92,
+  };
+  std::vector<int16_t> output(4 * 15, 0);
+  ApplyTanh4(input.data(), 4, 15, output.data());
+  const std::vector<int16_t> expected_output = {
+      -76,  2596, -496, -76, 856,  1436, 24,   36,   -64,   -672,
+      -120, 456,  0,    752, 2400, -412, -576, 148,  -1168, 400,
+      216,  -36,  -24,  456, -164, -192, -292, -456, 820,   -1476,
+      -76,  2596, -496, -76, 856,  1436, 24,   36,   -64,   -672,
+      -120, 456,  0,    752, 2400, -412, -576, 148,  -1168, 400,
+      216,  -36,  -24,  456, -164, -192, -292, -456, 820,   -1476,
+  };
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+}
+
+// Quantized sigmoid with Q3.12 input and Q0.15 output.
+TEST(uKernels, QuantSigmoidTest) {
+  const std::vector<int16_t> input = {
+      -10500, 1398,   -6963,  -7404,  485,    -5401,  -1757,  -7668,  -19248,
+      -9692,  -24249, -17923, -15840, -10026, 5249,   -89,    1787,   -16178,
+      -6691,  -19524, -13439, -24048, -1123,  32767,  -17267, -3378,  823,
+      11482,  -11139, 7508,   -10500, 1398,   -6963,  -7404,  485,    -5401,
+      -1757,  -7668,  -19248, -9692,  -24249, -17923, -15840, -10026, 5249,
+      -89,    1787,   -16178, -6691,  -19524, -13439, -24048, -1123,  32767,
+      -17267, -3378,  823,    11482,  -11139, 7508,
+  };
+  std::vector<int16_t> output(4 * 15, 0);
+  ApplySigmoid(input.data(), 4, 15, output.data());
+  const std::vector<int16_t> expected_output = {
+      2339, 19152, 5063,  4617,  17350, 6917,  12921, 4371,  299,  2813,
+      89,   409,   673,   2605,  25646, 16207, 19904, 615,   5353, 273,
+      1187, 91,    14153, 32756, 475,   9983,  18026, 30898, 2023, 28246,
+      2339, 19152, 5063,  4617,  17350, 6917,  12921, 4371,  299,  2813,
+      89,   409,   673,   2605,  25646, 16207, 19904, 615,   5353, 273,
+      1187, 91,    14153, 32756, 475,   9983,  18026, 30898, 2023, 28246,
+  };
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+}
+
+// Quantized Multiply with 16bit output and 15 bit shift.
+TEST(uKernels, QuantMul16bitOut15ShiftTest) {
+  const std::vector<int16_t> input1 = {
+      2491, 32767, -32768, 32767, -32768, 32767, 32767, -32768, -32768, 2157,
+      4545, 14835, 1285,   29498, 26788,  2907,  7877,  6331,   8775,   3001,
+      1399, 4683,  1437,   1853,  12163,  4927,  7977,  3001,   16612,  4791,
+  };
+  const std::vector<int16_t> input2 = {
+      -1156, 32767, -32768, -32768, 32767, 2308,  64,    220,   -288,  -10132,
+      -964,  1016,  -120,   844,    2944,  -4640, -2392, 736,   -4352, 4352,
+      5180,  -232,  -428,   8276,   -412,  -1308, -1196, -5044, 1612,  -10044,
+  };
+  std::vector<int16_t> output(2 * 15, 0);
+  CwiseMul(input1.data(), input2.data(), 2, 15, 15, output.data());
+  const std::vector<int16_t> expected_output = {
+      -88,  32766, -32768, -32767, -32767, 2308, 64,   -220, 288,   -667,
+      -134, 460,   -5,     760,    2407,   -412, -575, 142,  -1165, 399,
+      221,  -33,   -19,    468,    -153,   -197, -291, -462, 817,   -1469,
+  };
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+}
+
+// Quantized Multiply with 16bit output and 19 bit shift.
+TEST(uKernels, QuantMul16bitOut19ShiftTest) {
+  const std::vector<int16_t> input1 = {
+      2491, 32767, -32768, 32767, -32768, 32767, 32767, -32768, -32768, 2157,
+      4545, 14835, 1285,   29498, 26788,  2907,  7877,  6331,   8775,   3001,
+      1399, 4683,  1437,   1853,  12163,  4927,  7977,  3001,   16612,  4791,
+  };
+  const std::vector<int16_t> input2 = {
+      -1156, 32767, -32768, -32768, 32767, 2308,  64,    220,   -288,  -10132,
+      -964,  1016,  -120,   844,    2944,  -4640, -2392, 736,   -4352, 4352,
+      5180,  -232,  -428,   8276,   -412,  -1308, -1196, -5044, 1612,  -10044,
+  };
+  std::vector<int16_t> output(2 * 15, 0);
+  CwiseMul(input1.data(), input2.data(), 2, 15, 19, output.data());
+  const std::vector<int16_t> expected_output = {
+      -5, 2048, 2048, -2048, -2048, 144, 4,   -14, 18,  -42,
+      -8, 29,   0,    47,    150,   -26, -36, 9,   -73, 25,
+      14, -2,   -1,   29,    -10,   -12, -18, -29, 51,  -92,
+  };
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+}
+
+// Quantized Multiply with arbitrary scale.
+TEST(uKernels, QuantMul8bitArbitrarySclaeTest) {
+  // scale = 0.000028.
+  int multiplier = 1970324837;
+  int shift = -15;
+
+  const std::vector<int16_t> input1 = {
+      2491, 32767, -32768, 32767, -32768, 32767, 32767, -32768, -32768, 2157,
+      4545, 14835, 1285,   29498, 26788,  2907,  7877,  6331,   8775,   3001,
+      1399, 4683,  1437,   1853,  12163,  4927,  7977,  3001,   16612,  4791,
+  };
+  const std::vector<int16_t> input2 = {
+      -1156, 32767, -32768, -32768, 32767, 2308,  64,    220,   -288,  -10132,
+      -964,  1016,  -120,   844,    2944,  -4640, -2392, 736,   -4352, 4352,
+      5180,  -232,  -428,   8276,   -412,  -1308, -1196, -5044, 1612,  -10044,
+  };
+  std::vector<int8_t> output(2 * 15, 0);
+  CwiseMul(input1.data(), input2.data(), multiplier, shift, 2, 15, 3,
+           output.data());
+  const std::vector<int8_t> expected_output = {
+      -84,  127, 127, -128, -128, 127,  56,   -128, 127,  -128,
+      -126, 127, -7,  127,  127,  -128, -128, 127,  -128, 127,
+      127,  -33, -20, 127,  -128, -128, -128, -128, 127,  -128,
+  };
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+}
+
+// Quantized element wise Add with saturation.
+TEST(uKernels, QuantAddTest) {
+  const std::vector<int16_t> input1 = {
+      2491,   32767, -32768, 32767, -32768, 32767, 32767, -32768, -32768, 20000,
+      -20000, 14835, 1285,   29498, 26788,  2907,  7877,  6331,   8775,   3001,
+      1399,   4683,  1437,   1853,  12163,  4927,  7977,  3001,   16612,  4791,
+  };
+  const std::vector<int16_t> input2 = {
+      -1156,  32767, -32768, -32768, 32767, 2308,  64,    220,   -288,  20000,
+      -20000, 1016,  -120,   844,    2944,  -4640, -2392, 736,   -4352, 4352,
+      5180,   -232,  -428,   8276,   -412,  -1308, -1196, -5044, 1612,  -10044,
+  };
+  std::vector<int16_t> output(2 * 15, 0);
+  CwiseAdd(input1.data(), input2.data(), 2, 15, output.data());
+  const std::vector<int16_t> expected_output = {
+      1335,   32767, -32768, -1,    -1,    32767, 32767, -32548, -32768, 32767,
+      -32768, 15851, 1165,   30342, 29732, -1733, 5485,  7067,   4423,   7353,
+      6579,   4451,  1009,   10129, 11751, 3619,  6781,  -2043,  18224,  -5253,
+  };
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+}
+
+// Quantized clipping for 16 bit.
+TEST(uKernels, QuantClip16Test) {
+  std::vector<int16_t> input = {
+      -10500, 1,     -2,     -7404,  200,    -5401,  -1757, -7668,
+      -19248, -9692, -24249, -17923, -15840, -10026, 5249,  -89,
+      1787,   -200,  -6691,  -19524, -13439, -24048, -1123, 32767,
+      -17267, -3378, 823,    11482,  -11139, 7508,
+  };
+  CwiseClipping(input.data(), 300, 2, 15);
+  const std::vector<int16_t> expected_output = {
+      -300, 1,    -2,   -300, 200,  -300, -300, -300, -300, -300,
+      -300, -300, -300, -300, 300,  -89,  300,  -200, -300, -300,
+      -300, -300, -300, 300,  -300, -300, 300,  300,  -300, 300,
+  };
+  EXPECT_THAT(input, testing::ElementsAreArray(expected_output));
+}
+
+// Quantized clipping for 8 bit.
+TEST(uKernels, QuantClip8Test) {
+  std::vector<int8_t> input = {
+      4,   -11, -5, -34, -10, -17, -27, -22, 15,  127, -128, 1,  3, 56, 3,
+      -21, 1,   9,  -13, 10,  0,   -1,  -55, -40, 127, -128, 11, 4, 6,  32,
+  };
+  CwiseClipping(input.data(), 32, 2, 15);
+  const std::vector<int8_t> expected_output = {
+      4,   -11, -5, -32, -10, -17, -27, -22, 15,  32, -32, 1,  3, 32, 3,
+      -21, 1,   9,  -13, 10,  0,   -1,  -32, -32, 32, -32, 11, 4, 6,  32,
+  };
+  EXPECT_THAT(input, testing::ElementsAreArray(expected_output));
+}
+
 struct MatrixVectorData {
   // Contains dense parameters.
   std::vector<int8_t> matrix;
@@ -718,6 +1066,24 @@ TEST(uKernels, Sub1VectorTest) {
   Sub1Vector(input, kVectorSize, output.data());
   EXPECT_THAT(output,
               ElementsAreArray(ArrayFloatNear({1.0, 1.5, 0.0, 2.5, -1.0})));
+}
+
+TEST(uKernels, Sub1VectorInt16Test) {
+  constexpr int kVectorSize = 30;
+  static int16_t input[kVectorSize] = {
+      32760, 300,   1,     2,    3, 4, 5, 6, 300, 1000,
+      32767, 32000, 300,   1,    2, 3, 4, 5, 56,  300,
+      1000,  32767, 32761, 1300, 1, 2, 3, 4, 5,   6,
+  };
+  std::vector<int16_t> output(kVectorSize);
+  Sub1Vector(input, kVectorSize, output.data());
+  EXPECT_THAT(
+      output,
+      testing::ElementsAreArray({
+          7,     32467, 32766, 32765, 32764, 32763, 32762, 32761, 32467, 31767,
+          0,     767,   32467, 32766, 32765, 32764, 32763, 32762, 32711, 32467,
+          31767, 0,     6,     31467, 32766, 32765, 32764, 32763, 32762, 32761,
+      }));
 }
 
 TEST(uKernels, VectorBatchVectorCwiseProductAccumulate) {

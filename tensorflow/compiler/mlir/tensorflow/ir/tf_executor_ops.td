@@ -121,12 +121,12 @@ def TfExecutor_GraphOp : TfExecutor_Op<"graph",
 
   let regions = (region SizedRegion<1>:$body);
 
-  let hasCanonicalizer = 1;
-
   let extraClassDeclaration = [{
     Block &GetBody() { return getOperation()->getRegion(0).front(); }
     FetchOp GetFetch();
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TfExecutor_FetchOp : TfExecutor_Op<"fetch",
@@ -145,7 +145,7 @@ def TfExecutor_FetchOp : TfExecutor_Op<"fetch",
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result",
+    "Builder *builder, OperationState &result",
     [{
       build(builder, result, {});
     }]>
@@ -207,6 +207,10 @@ def TfExecutor_IslandOp : TfExecutor_Op<"island",
     Block &GetBody() { return getOperation()->getRegion(0).front(); }
     YieldOp GetYield();
   }];
+
+  let hasCanonicalizer = 1;
+
+  let hasFolder = 1;
 }
 
 def TfExecutor_YieldOp : TfExecutor_Op<"yield",
@@ -221,7 +225,7 @@ def TfExecutor_YieldOp : TfExecutor_Op<"yield",
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result",
+    "Builder *builder, OperationState &result",
     [{
       build(builder, result, {});
     }]>
@@ -268,8 +272,8 @@ def TfExecutor_SwitchOp : TfExecutor_Op<"Switch",
   );
 
   let results = (outs
-    AnyType: $trueOutput,
     AnyType: $falseOutput,
+    AnyType: $trueOutput,
     TfeControlType: $control
   );
 
@@ -347,7 +351,7 @@ def TfExecutor_MergeOp : TfExecutor_Op<"Merge",
 
   let results = (outs
     AnyTensor:$output,
-    TensorOf<[I32]>:$valueIndex,
+    TensorOf<[I32]>:$value_index,
     TfeControlType:$control
   );
 }
@@ -448,13 +452,13 @@ def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source",
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Type result_type, "
+    "Builder *builder, OperationState &result, Type result_type, "
     "ArrayRef<NamedAttribute> attributes = {}",
     [{
       Type token_type = TokenType::get(builder->getContext());
       Type control_type = ControlType::get(builder->getContext());
-      result->types = { result_type, token_type, control_type };
-      result->attributes.append(attributes.begin(), attributes.end());
+      result.types = { result_type, token_type, control_type };
+      result.attributes.append(attributes.begin(), attributes.end());
     }]>
    ];
 
@@ -514,15 +518,15 @@ def TfExecutor_NextIterationSinkOp : TfExecutor_Op<"NextIteration.Sink",
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Value *token, "
+    "Builder *builder, OperationState &result, Value *token, "
     "ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes = {}",
     [{
       assert(operands.size() >= 1 && "tf_executor.NextIteration.Sink builder "
              "expects at least one operand");
-      result->operands.push_back(token);
-      result->operands.insert(result->operands.end(), operands.begin(),
+      result.operands.push_back(token);
+      result.operands.insert(result.operands.end(), operands.begin(),
                               operands.end());
-      result->attributes.append(attributes.begin(), attributes.end());
+      result.attributes.append(attributes.begin(), attributes.end());
     }]>
    ];
 }
@@ -590,17 +594,19 @@ def TfExecutor_ControlTriggerOp : TfExecutor_Op<"ControlTrigger",
 
   let verifier = ?;
 
+  let hasCanonicalizer = 1;
+
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, "
+    "Builder *builder, OperationState &result, "
     "ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes = {}",
     [{
       assert(operands.size() >= 1 && "tf_executor.ControlTrigger builder "
              "expects at least one operand");
-      result->operands.insert(result->operands.end(), operands.begin(),
+      result.operands.insert(result.operands.end(), operands.begin(),
                               operands.end());
       Type control_type = ControlType::get(builder->getContext());
-      result->types = {control_type};
-      result->attributes.append(attributes.begin(), attributes.end());
+      result.types = {control_type};
+      result.attributes.append(attributes.begin(), attributes.end());
     }]>
    ];
 }

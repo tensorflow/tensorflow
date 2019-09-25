@@ -26,14 +26,12 @@ namespace cl {
 namespace {
 
 std::string GetStridedSliceCode(
-    const TensorDescriptor& src_descriptor,
-    const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
-    bool alignedx4,
+    const OperationDef& op_def, bool alignedx4,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
+  TensorCodeGenerator src_tensor("src_data", "src_size", op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data", "dst_size", op_def.dst_tensors[0]);
 
-  std::string c = GetCommonDefines(precision);
+  std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ);
   c += GetArgsDeclaration(linked_operations);
@@ -46,14 +44,16 @@ std::string GetStridedSliceCode(
   c += "  int X = get_global_id(0);\n";
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
-  c += "  if (X >= dst_size.x || Y >= dst_size.y) { \n";
+  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) { \n";
   c += "    return; \n";
   c += "  } \n";
   c += "  int s_x = X * stride.x + offset.x;\n";
   c += "  int s_y = Y * stride.y + offset.y;\n";
   if (alignedx4) {
     c += "  int s_z = Z + offset.z;\n";
-    c += "  FLT4 result = " + src_tensor.Read3D("s_x", "s_y", "s_z") + ";\n";
+    c += "  FLT4 result = " +
+         src_tensor.Read3D("s_x", "s_y", "s_z", TextureAddressMode::DONT_CARE) +
+         ";\n";
   } else {
     c += "  FLT4 result;\n";
     const std::string postfixes[] = {"x", "y", "z", "w"};
@@ -63,15 +63,18 @@ std::string GetStridedSliceCode(
       c += "    int s_ch = " + channel + " * stride.z + offset.z;\n";
       c += "    int s_z = s_ch >> 2;\n";
       c += "    int s_z_rem = s_ch & 3;\n";
-      c += "    FLT4 t = " + src_tensor.Read3D("s_x", "s_y", "s_z") + ";\n";
+      c += "    FLT4 t = " +
+           src_tensor.Read3D("s_x", "s_y", "s_z",
+                             TextureAddressMode::DONT_CARE) +
+           ";\n";
       c += "    FLT t_ar[4] = {t.x, t.y, t.z, t.w};\n";
       c += "    result." + postfixes[i] + " = t_ar[s_z_rem];\n";
       c += "  }\n";
     }
   }
-  c += "  " + dst_tensor.GetAddress("dst_adr", "X", "Y", "Z");
-  c += PostProcess(linked_operations, "result", "Z", "dst_adr");
-  c += "  " + dst_tensor.Write3D("result", "dst_adr");
+  const LinkingContext context{"result", "X", "Y", "Z"};
+  c += PostProcess(linked_operations, context);
+  c += "  " + dst_tensor.Write3D("result", "X", "Y", "Z");
   c += "}\n";
   return c;
 }
@@ -139,9 +142,8 @@ StridedSlice& StridedSlice::operator=(StridedSlice&& operation) {
 }
 
 Status StridedSlice::Compile(const CreationContext& creation_context) {
-  const auto code = GetStridedSliceCode(
-      definition_.src_tensors[0], definition_.dst_tensors[0],
-      definition_.precision, Is4Alighed(attributes_), linked_operations_);
+  const auto code = GetStridedSliceCode(definition_, Is4Alighed(attributes_),
+                                        linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
@@ -151,7 +153,7 @@ Status StridedSlice::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtr()));
+  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   int3 offset = GetOffset(attributes_, src_[0]->Width(), src_[0]->Height(),
                           src_[0]->Channels());
   RETURN_IF_ERROR(kernel_.SetBytesAuto(int4(offset.x, offset.y, offset.z, 1)));

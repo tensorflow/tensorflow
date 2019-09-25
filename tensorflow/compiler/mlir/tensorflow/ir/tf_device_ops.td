@@ -68,16 +68,17 @@ def TfDevice_LaunchOp : TfDevice_Op<"launch",
   let regions = (region SizedRegion<1>:$body);
 
   let extraClassDeclaration = [{
+    Block &GetBody() { return getOperation()->getRegion(0).front(); }
     StringRef getDevice() { return device(); }
   }];
 
   let builders = [
-    OpBuilder<[{Builder *builder, OperationState *result,
+    OpBuilder<[{Builder *builder, OperationState &result,
                 StringAttr device, ArrayRef<Type> result_types}],
       [{
-        result->addAttribute("device", device);
-        result->addTypes(result_types);
-        result->addRegion();
+        result.addAttribute("device", device);
+        result.addTypes(result_types);
+        result.addRegion();
       }]
     >
   ];
@@ -95,7 +96,7 @@ def TfDevice_ReturnOp : TfDevice_Op<"return",
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result",
+    "Builder *builder, OperationState &result",
     [{
       build(builder, result, {});
     }]>

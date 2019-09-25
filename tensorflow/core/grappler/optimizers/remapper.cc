@@ -64,15 +64,6 @@ constexpr char kIsTraining[] = "is_training";
 
 constexpr int kMissingIndex = -1;
 
-// TODO(b/119765980): Upgrade upstream Eigen to set `m_can_use_xsmm=false` for
-// contractions with non-default contraction output kernels.
-bool EigenSupportsContractionOutputKernel() {
-#if defined(EIGEN_USE_LIBXSMM)
-  return false;
-#endif
-  return true;
-}
-
 struct RemapperContext {
   explicit RemapperContext(GrapplerItem* item, Status* status)
       : nodes_to_preserve(item->NodesToPreserve()),
@@ -272,13 +263,7 @@ bool IsGpuCompatibleConv2D(const NodeDef* conv2d) {
 
 bool IsCpuCompatibleMatMul(const NodeDef* matmul) {
   DCHECK(IsMatMul(*matmul)) << "Expected MatMul op";
-#ifndef INTEL_MKL
-  // Temporarily disable Matmul fusions if MKL is enabled.
-  // TODO(Intel) renable Matmul fusions when enabled by MKL DNN.
   return NodeIsOnCpu(matmul) && IsCpuCompatibleDataType(matmul);
-#else
-  return false;
-#endif  // !INTEL_MKL
 }
 
 // Checks if we can rewrite a pattern to the `_Fused{Conv2D,MatMul}` on CPU.
@@ -353,8 +338,6 @@ inline bool HasAtMostOneFanoutAtPort0(const utils::MutableNodeView& node_view) {
 bool FindContractionWithBias(const RemapperContext& ctx, int node_index,
                              ContractionWithBiasAdd* matched,
                              bool check_device_compatible = true) {
-  if (!EigenSupportsContractionOutputKernel()) return false;
-
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   // Root of the pattern must be a BiasAdd.
   // TODO(lyandy): Forward controls for patterns with control dependencies.
@@ -394,8 +377,6 @@ bool FindContractionWithBias(const RemapperContext& ctx, int node_index,
 bool FindContractionWithBiasAndActivation(
     const RemapperContext& ctx, int node_index,
     ContractionWithBiasAddAndActivation* matched) {
-  if (!EigenSupportsContractionOutputKernel()) return false;
-
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   // Root of the pattern must be an activation node.
   // TODO(lyandy): Forward controls for patterns with control dependencies.
@@ -431,8 +412,6 @@ bool FindContractionWithBiasAndActivation(
 
 bool FindConv2DWithSqueezeAndBias(const RemapperContext& ctx, int node_index,
                                   ContractionWithSqueezeAndBiasAdd* matched) {
-  if (!EigenSupportsContractionOutputKernel()) return false;
-
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   // TODO(lyandy): Forward controls for patterns with control dependencies.
   if (HasControlFaninOrFanout(*node_view)) return false;
@@ -488,8 +467,6 @@ bool FindConv2DWithSqueezeAndBias(const RemapperContext& ctx, int node_index,
 
 bool FindConv2DWithBatchNorm(const RemapperContext& ctx, int node_index,
                              ContractionWithBatchNorm* matched) {
-  if (!EigenSupportsContractionOutputKernel()) return false;
-
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   const auto* node_def = node_view->node();
   // Root of the pattern must be a FusedBatchNorm.
@@ -539,8 +516,6 @@ bool FindConv2DWithBatchNorm(const RemapperContext& ctx, int node_index,
 bool FindConv2DWithBatchNormAndActivation(
     const RemapperContext& ctx, int node_index,
     ContractionWithBatchNormAndActivation* matched) {
-  if (!EigenSupportsContractionOutputKernel()) return false;
-
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   // TODO(lyandy): Forward controls for patterns with control dependencies.
   if (HasControlFaninOrFanout(*node_view)) return false;

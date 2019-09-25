@@ -55,6 +55,15 @@ class _CustomMapping(collections_abc.Mapping):
     return len(self._wrapped)
 
 
+class _CustomSequenceThatRaisesException(collections.Sequence):
+
+  def __len__(self):
+    return 1
+
+  def __getitem__(self, item):
+    raise ValueError("Cannot get item: %s" % item)
+
+
 class NestTest(parameterized.TestCase, test.TestCase):
 
   PointXY = collections.namedtuple("Point", ["x", "y"])  # pylint: disable=invalid-name
@@ -172,6 +181,23 @@ class NestTest(parameterized.TestCase, test.TestCase):
         custom_reconstruction)
     self.assertEqual({"d": 3, "b": 1, "a": 0, "c": 2}, plain_reconstruction)
 
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testFlattenAndPackMappingViews(self):
+    """`flatten` orders dicts by key, including OrderedDicts."""
+    ordered = collections.OrderedDict([("d", 3), ("b", 1), ("a", 0), ("c", 2)])
+
+    # test flattening
+    ordered_keys_flat = nest.flatten(ordered.keys())
+    ordered_values_flat = nest.flatten(ordered.values())
+    ordered_items_flat = nest.flatten(ordered.items())
+    self.assertEqual([3, 1, 0, 2], ordered_values_flat)
+    self.assertEqual(["d", "b", "a", "c"], ordered_keys_flat)
+    self.assertEqual(["d", 3, "b", 1, "a", 0, "c", 2], ordered_items_flat)
+
+    # test packing
+    self.assertEqual([("d", 3), ("b", 1), ("a", 0), ("c", 2)],
+                     nest.pack_sequence_as(ordered.items(), ordered_items_flat))
+
   Abc = collections.namedtuple("A", ("b", "c"))  # pylint: disable=invalid-name
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
@@ -259,6 +285,9 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertTrue(nest.is_nested(((7, 8), (5, 6))))
     self.assertTrue(nest.is_nested([]))
     self.assertTrue(nest.is_nested({"a": 1, "b": 2}))
+    self.assertTrue(nest.is_nested({"a": 1, "b": 2}.keys()))
+    self.assertTrue(nest.is_nested({"a": 1, "b": 2}.values()))
+    self.assertTrue(nest.is_nested({"a": 1, "b": 2}.items()))
     self.assertFalse(nest.is_nested(set([1, 2])))
     ones = array_ops.ones([2, 3])
     self.assertFalse(nest.is_nested(ones))
@@ -1188,6 +1217,11 @@ class NestTest(parameterized.TestCase, test.TestCase):
   def testMapWithTuplePathsIncompatibleStructures(self, s1, s2, error_type):
     with self.assertRaises(error_type):
       nest.map_structure_with_tuple_paths(lambda path, *s: 0, s1, s2)
+
+  def testFlattenCustomSequenceThatRaisesException(self):  # b/140746865
+    seq = _CustomSequenceThatRaisesException()
+    with self.assertRaisesRegexp(ValueError, "Cannot get item"):
+      nest.flatten(seq)
 
 
 class NestBenchmark(test.Benchmark):

@@ -56,7 +56,7 @@ In Python, this scatter add operation would look like this:
     tensor = tf.ones([8], dtype=tf.int32)
     updated = tf.tensor_scatter_add(tensor, indices, updates)
     with tf.Session() as sess:
-      print(sess.run(scatter))
+      print(sess.run(updated))
 ```
 
 The resulting tensor would look like this:
@@ -78,7 +78,7 @@ In Python, this scatter add operation would look like this:
     tensor = tf.ones([4, 4, 4])
     updated = tf.tensor_scatter_add(tensor, indices, updates)
     with tf.Session() as sess:
-      print(sess.run(scatter))
+      print(sess.run(updated))
 ```
 
 The resulting tensor would look like this:

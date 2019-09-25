@@ -26,11 +26,14 @@ import numpy as np
 import six
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.ops import composite_tensor
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
@@ -150,6 +153,19 @@ class DataAdapter(object):
     """
     raise NotImplementedError
 
+  def representative_batch_size(self):
+    """Return a representative size for batches in the dataset.
+
+    This is not guaranteed to be the batch size for all batches in the
+    dataset. It just needs to be a rough approximation for batch sizes in
+    the dataset.
+
+    Returns:
+      int, a representative size for batches found in the dataset,
+      or None if it is unknown.
+    """
+    return self.batch_size()
+
   @abc.abstractmethod
   def has_partial_batch(self):
     """Whether the dataset has partial batch at the end."""
@@ -193,6 +209,7 @@ class TensorLikeDataAdapter(DataAdapter):
                x,
                y=None,
                sample_weights=None,
+               sample_weight_modes=None,
                batch_size=None,
                epochs=1,
                steps=None,
@@ -203,15 +220,17 @@ class TensorLikeDataAdapter(DataAdapter):
     y = _process_numpy_inputs(y)
     sample_weights = _process_numpy_inputs(sample_weights)
 
-    # If sample_weights are not specified for an output use 1.0 as weights.
-    if sample_weights is not None and any(w is None for w in sample_weights):
-      weight = next(s for s in sample_weights if s is not None)
-      sample_weights = training_utils.list_to_tuple([
-          array_ops.ones((weight.shape[0],)) if sw is None else sw
-          for sw in sample_weights
-      ])
+    any_sample_weight = sample_weights is not None and any(
+        w is not None for w in sample_weights)
+    partial_sample_weight = any_sample_weight and any(
+        w is None for w in sample_weights)
 
-    if y is not None and sample_weights is not None:
+    # If sample_weights are not specified for an output use 1.0 as weights.
+    if partial_sample_weight:
+      sample_weights = handle_partial_sample_weights(y, sample_weights,
+                                                     sample_weight_modes)
+
+    if y is not None and any_sample_weight:
       inputs = (x, y, sample_weights)
     elif y is not None:
       # Sample weight is only needed for training, so if y is None, then
@@ -220,7 +239,15 @@ class TensorLikeDataAdapter(DataAdapter):
     else:
       inputs = (x,)
 
-    num_samples = int(nest.flatten(x)[0].shape[0])
+    num_samples = set(int(i.shape[0]) for i in nest.flatten(inputs))
+    if len(num_samples) > 1:
+      msg = "Data cardinality is ambiguous:\n"
+      for label, data in zip(["x", "y", "sample_weight"], inputs):
+        msg += "  {} sizes: {}\n".format(
+            label, ", ".join([str(i.shape[0]) for i in nest.flatten(data)]))
+      msg += "Please provide data which shares the same first dimension."
+      raise ValueError(msg)
+    num_samples = num_samples.pop()
 
     # If batch_size is not passed but steps is, calculate from the input data.
     if steps and not batch_size:
@@ -233,12 +260,9 @@ class TensorLikeDataAdapter(DataAdapter):
 
     self._size = int(math.ceil(num_samples / batch_size))
     self._batch_size = batch_size
-    self._has_partial_batch = (self._size != (num_samples // batch_size))
 
-    self._partial_batch_size = None
-    if self._has_partial_batch:
-      self._partial_batch_size = (
-          num_samples - (self._size - 1) * self._batch_size)
+    num_full_batches = int(num_samples // batch_size)
+    self._partial_batch_size = num_samples % batch_size
 
     # Vectorized version of shuffle.
     # This is a performance improvement over using `from_tensor_slices`.
@@ -247,54 +271,66 @@ class TensorLikeDataAdapter(DataAdapter):
     # at each step. The performance improvements here come from:
     # 1. vectorized batch using gather
     # 2. parallelized map
-    # 3. vectorized shuffle by using reshape and unbatch
-    # 4. disabled static optimizations
-    indices_list = []
-    for _ in range(epochs):
-      indices = np.arange(num_samples)
+    # 3. pipelined permutation generation
+    # 4. optimized permutation batching
+    # 5. disabled static optimizations
+
+    indices_dataset = dataset_ops.DatasetV2.range(1).repeat(epochs)
+
+    def permutation(_):
+      # It turns out to be more performant to make a new set of indices rather
+      # than reusing the same range Tensor. (presumably because of buffer
+      # forwarding.)
+      indices = math_ops.range(num_samples, dtype=dtypes.int64)
       if shuffle:
-        np.random.shuffle(indices)
+        indices = random_ops.random_shuffle(indices)
+      return indices
 
-      full_batch_indices = np.reshape(
-          indices[:(num_samples // batch_size) * batch_size], [-1, batch_size])
-      partial_batch_indices = indices[(num_samples // batch_size) * batch_size:]
+    # We prefetch a single element. Computing large permutations can take quite
+    # a while so we don't want to wait for prefetching over an epoch boundary to
+    # trigger the next permutation. On the other hand, too many simultaneous
+    # shuffles can contend on a hardware level and degrade all performance.
+    indices_dataset = indices_dataset.map(permutation).prefetch(1)
 
-      epoch_indices_ds = dataset_ops.DatasetV2.from_tensors(
-          full_batch_indices).unbatch()
-      if partial_batch_indices.size:
-        epoch_indices_ds = epoch_indices_ds.concatenate(
-            dataset_ops.DatasetV2.from_tensors(partial_batch_indices))
+    def slice_batch_indices(indices):
+      """Convert a Tensor of indices into a dataset of batched indices.
 
-      indices_list.append(epoch_indices_ds)
+      This step can be accomplished in several ways. The most natural is to
+      slice the Tensor in a Dataset map. (With a condition on the upper index to
+      handle the partial batch.) However it turns out that coercing the Tensor
+      into a shape which is divisible by the batch size (and handling the last
+      partial batch separately) allows for a much more favorable memory access
+      pattern and improved performance.
 
-    indices_ds = dataset_ops.DatasetV2.from_tensor_slices(
-        indices_list).flat_map(lambda x: x)
+      Args:
+        indices: Tensor which determines the data order for an entire epoch.
 
-    data_ds = dataset_ops.DatasetV2.from_tensors(inputs).repeat()
-    dataset = dataset_ops.DatasetV2.zip((data_ds, indices_ds))
+      Returns:
+        A Dataset of batched indices.
+      """
+      num_in_full_batch = num_full_batches * batch_size
+      first_k_indices = array_ops.slice(indices, [0], [num_in_full_batch])
+      first_k_indices = array_ops.reshape(
+          first_k_indices, [num_full_batches, batch_size])
 
-    def _nested_grab_batch(data, indices):
-      """Grabs batches of Tensors in `data` based on `indices`."""
+      flat_dataset = dataset_ops.DatasetV2.from_tensor_slices(first_k_indices)
+      if self._partial_batch_size:
+        index_remainder = dataset_ops.DatasetV2.from_tensors(array_ops.slice(
+            indices, [num_in_full_batch], [self._partial_batch_size]))
+        flat_dataset = flat_dataset.concatenate(index_remainder)
+      return flat_dataset
 
-      def _grab_batch(x):
-        """Grabs a batch of `x`."""
-        x_batch = array_ops.gather(x, indices)
-        x_shape = x.shape.as_list()
+    indices_dataset = indices_dataset.flat_map(slice_batch_indices)
+    dataset = dataset_ops.DatasetV2.zip((
+        indices_dataset,
+        dataset_ops.DatasetV2.from_tensors(inputs).repeat()
+    ))
 
-        if not self._has_partial_batch:
-          # Recover the batch shape info.
-          x_shape[0] = self._batch_size
-          x_batch.set_shape(x_shape)
-        elif self._partial_batch_size >= num_samples:
-          # Only one batch per epoch.
-          x_shape[0] = self._partial_batch_size
-          x_batch.set_shape(x_shape)
-        return x_batch
-
-      return nest.map_structure(_grab_batch, data)
+    def grab_batch(i, data):
+      return nest.map_structure(lambda d: array_ops.gather(d, i, axis=0), data)
 
     dataset = dataset.map(
-        _nested_grab_batch, num_parallel_calls=dataset_ops.AUTOTUNE)
+        grab_batch, num_parallel_calls=dataset_ops.AUTOTUNE)
 
     # Default optimizations are disabled to avoid the overhead of (unnecessary)
     # input pipeline graph serialization and deserialization
@@ -313,10 +349,10 @@ class TensorLikeDataAdapter(DataAdapter):
     return self._batch_size
 
   def has_partial_batch(self):
-    return self._has_partial_batch
+    return self._partial_batch_size > 0
 
   def partial_batch_size(self):
-    return self._partial_batch_size
+    return self._partial_batch_size or None
 
   def should_recreate_iterator(self, _):
     # An infinite dataset is always created here.
@@ -347,23 +383,32 @@ class CompositeTensorDataAdapter(DataAdapter):
     return (any(_is_composite(v) for v in flat_inputs) and
             all(_is_tensor_or_composite(v) for v in flat_inputs))
 
-  def __init__(self, x, y=None, sample_weights=None, batch_size=None,
-               steps=None, shuffle=False, **kwargs):
+  def __init__(self,
+               x,
+               y=None,
+               sample_weights=None,
+               sample_weight_modes=None,
+               batch_size=None,
+               steps=None,
+               shuffle=False,
+               **kwargs):
     super(CompositeTensorDataAdapter, self).__init__(x, y, **kwargs)
     x = _process_numpy_inputs(x)
     y = _process_numpy_inputs(y)
     sample_weights = _process_numpy_inputs(sample_weights)
 
-    # If sample_weights are not specified for an output use 1.0 as weights.
-    if (sample_weights is not None and
-        any([sw is None for sw in sample_weights])):
-      weight = next(s for s in sample_weights if s is not None)
-      sample_weights = training_utils.list_to_tuple([
-          array_ops.ones((weight.shape[0],)) if sw is None else sw
-          for sw in sample_weights
-      ])
+    any_sample_weight = sample_weights is not None and any(
+        w is not None for w in sample_weights)
+    partial_sample_weight = any_sample_weight and any(
+        w is None for w in sample_weights)
 
-    if y is not None and sample_weights is not None:
+    # Handle partial sample weights.
+    # If sample_weights are not specified for an output use 1.0 as weights.
+    if partial_sample_weight:
+      sample_weights = handle_partial_sample_weights(y, sample_weights,
+                                                     sample_weight_modes)
+
+    if y is not None and any_sample_weight:
       inputs = (x, y, sample_weights)
     elif y is not None:
       # Sample weight is only needed for training, so if y is None, then
@@ -433,9 +478,14 @@ class ListsOfScalarsDataAdapter(DataAdapter):
       return ListsOfScalarsDataAdapter._is_list_of_scalars(inp[0])
     return False
 
-  def __init__(
-      self, x, y=None, sample_weights=None, batch_size=None,
-      shuffle=False, **kwargs):
+  def __init__(self,
+               x,
+               y=None,
+               sample_weights=None,
+               sample_weight_modes=None,
+               batch_size=None,
+               shuffle=False,
+               **kwargs):
     super(ListsOfScalarsDataAdapter, self).__init__(x, y, **kwargs)
     x = np.asarray(x)
     if y is not None:
@@ -444,8 +494,13 @@ class ListsOfScalarsDataAdapter(DataAdapter):
       sample_weights = np.asarray(sample_weights)
 
     self._internal_adapter = TensorLikeDataAdapter(
-        x, y=y, sample_weights=sample_weights,
-        batch_size=batch_size, shuffle=shuffle, **kwargs)
+        x,
+        y=y,
+        sample_weights=sample_weights,
+        sample_weight_modes=sample_weight_modes,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        **kwargs)
 
   def get_dataset(self):
     return self._internal_adapter.get_dataset()
@@ -520,9 +575,12 @@ class GeneratorDataAdapter(DataAdapter):
     # dataset, we have to take a peek for the python generator first. Since the
     # peeked data cannot be push back to generator, we create a new generator by
     # adding the peeked data at head.
+    def dynamic_shape_like(t):
+      return tuple(None for _ in t.shape)
+
     peek = next(x)
     nested_dtypes = nest.map_structure(lambda t: t.dtype, peek)
-    nested_shape = nest.map_structure(lambda t: t.shape, peek)
+    nested_shape = nest.map_structure(dynamic_shape_like, peek)
     # Note that dataset API takes a callable that creates a generator object,
     # rather than generator itself, which is why we define a function here.
     if workers > 0:
@@ -540,7 +598,7 @@ class GeneratorDataAdapter(DataAdapter):
       def generator_fn():
         return itertools.chain([peek], x)
 
-    self._batch_size = int(nest.flatten(peek)[0].shape[0])
+    self._first_batch_size = int(nest.flatten(peek)[0].shape[0])
     self._dataset = dataset_ops.DatasetV2.from_generator(
         generator_fn, nested_dtypes, output_shapes=nested_shape)
 
@@ -551,7 +609,10 @@ class GeneratorDataAdapter(DataAdapter):
     return None
 
   def batch_size(self):
-    return self._batch_size
+    return None
+
+  def representative_batch_size(self):
+    return self._first_batch_size
 
   def has_partial_batch(self):
     return False
@@ -576,9 +637,12 @@ class KerasSequenceAdapter(DataAdapter):
     if not is_none_or_empty(sample_weights):
       raise ValueError("`sample_weight` argument is not supported when using "
                        "`keras.utils.Sequence` as input.")
+    def dynamic_shape_like(t):
+      return tuple(None for _ in t.shape)
+
     peek = x[0]
     nested_dtypes = nest.map_structure(lambda t: t.dtype, peek)
-    nested_shape = nest.map_structure(lambda t: t.shape, peek)
+    nested_shape = nest.map_structure(dynamic_shape_like, peek)
 
     if workers > 0:
       def generator_fn():
@@ -596,7 +660,7 @@ class KerasSequenceAdapter(DataAdapter):
       dataset = dataset.shuffle(len(x))
     self._dataset = dataset
     self._size = len(x)
-    self._batch_size = int(nest.flatten(peek)[0].shape[0])
+    self._first_batch_size = int(nest.flatten(peek)[0].shape[0])
 
   def get_dataset(self):
     return self._dataset
@@ -605,7 +669,10 @@ class KerasSequenceAdapter(DataAdapter):
     return self._size
 
   def batch_size(self):
-    return self._batch_size
+    return None
+
+  def representative_batch_size(self):
+    return self._first_batch_size
 
   def has_partial_batch(self):
     return False
@@ -692,3 +759,29 @@ def is_none_or_empty(inputs):
   # "The truth value of an array with more than one element is ambiguous.
   # Use a.any() or a.all()"
   return inputs is None or not nest.flatten(inputs)
+
+
+def handle_partial_sample_weights(outputs, sample_weights, sample_weight_modes):
+  """Adds 1.0 as sample weights for the outputs for which there is no weight.
+
+  Args:
+    outputs: List of model outputs.
+    sample_weights: List of sample weight inputs.
+    sample_weight_modes: List of sample weight modes or None.
+
+  Returns:
+    Tuple of sample weights, one sample weight for every output.
+  """
+  new_sample_weights = []
+  for i, sw in enumerate(sample_weights):
+    if sw is None:
+      output_shape = outputs[i].shape
+      is_temporal = (
+          sample_weight_modes is not None and
+          sample_weight_modes[i] == "temporal")
+      sw_shape = (output_shape[0],
+                  output_shape[1]) if is_temporal else (output_shape[0],)
+      new_sample_weights.append(array_ops.ones(sw_shape))
+    else:
+      new_sample_weights.append(sw)
+  return training_utils.list_to_tuple(new_sample_weights)

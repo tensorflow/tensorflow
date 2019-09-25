@@ -379,7 +379,7 @@ class DistributedCollectiveAllReduceStrategyTest(
     else:
       def fn():
         dataset = dataset_ops.Dataset.range(100)
-        it = dataset.make_one_shot_iterator()
+        it = dataset_ops.make_one_shot_iterator(dataset)
         return it.get_next
     # We use CPU as the device when num_gpus = 0
     devices_per_worker = max(1, num_gpus)

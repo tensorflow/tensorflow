@@ -75,7 +75,6 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.compat import compat as fwd_compat
 from tensorflow.python.eager import context
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
@@ -152,7 +151,7 @@ def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
   tf.math.argmax(B,0) # [2, 2, 0, 2, 2]
   tf.math.argmax(B,1) # [2, 2, 1]
   ```
-   
+
   Args:
     input: A `Tensor`. Must be one of the following types: `float32`, `float64`,
       `int32`, `uint8`, `int16`, `int8`, `complex64`, `int64`, `qint8`,
@@ -488,7 +487,7 @@ def complex(real, imag, name=None):
   Returns:
     A `Tensor` of type `complex64` or `complex128`.
 
-  Raises: 
+  Raises:
     TypeError: Real and imag must be correct types
   """
   real = ops.convert_to_tensor(real, name="real")
@@ -643,7 +642,7 @@ def round(x, name=None):  # pylint: disable=redefined-builtin
     return gen_math_ops.round(x, name=name)
 
 
-@tf_export("dtypes.cast", "cast")
+@tf_export("cast", "dtypes.cast")
 @dispatch.add_dispatch_support
 def cast(x, dtype, name=None):
   """Casts a tensor to a new type.
@@ -1110,11 +1109,6 @@ def div_no_nan(x, y, name=None):
   with ops.name_scope(name, "div_no_nan", [x, y]) as name:
     x = ops.convert_to_tensor(x, name="x")
     y = ops.convert_to_tensor(y, name="y", dtype=x.dtype.base_dtype)
-    x_dtype = x.dtype.base_dtype
-    y_dtype = y.dtype.base_dtype
-    if x_dtype != y_dtype:
-      raise TypeError("x and y must have the same dtype, got %r != %r" %
-                      (x_dtype, y_dtype))
     return gen_math_ops.div_no_nan(x, y, name=name)
 
 
@@ -1275,12 +1269,85 @@ ops.Tensor._override_operator("__gt__", gen_math_ops.greater)
 ops.Tensor._override_operator("__ge__", gen_math_ops.greater_equal)
 
 
+@tf_export("math.equal", "equal")
+@dispatch.add_dispatch_support
+def equal(x, y, name=None):
+  """Returns the truth value of (x == y) element-wise.
+
+  Performs a [broadcast](
+  https://docs.scipy.org/doc/numpy/user/basics.broadcasting.html) with the
+  arguments and then an element-wise equality comparison, returning a Tensor of
+  boolean values.
+
+  For example:
+  >>> x = tf.constant([2, 4])
+  >>> y = tf.constant(2)
+  >>> tf.math.equal(x, y)
+  <tf.Tensor: id=..., shape=(2,), dtype=bool, numpy=array([ True,  False])>
+
+  >>> x = tf.constant([2, 4])
+  >>> y = tf.constant([2, 4])
+  >>> tf.math.equal(x, y)
+  <tf.Tensor: id=..., shape=(2,), dtype=bool, numpy=array([ True,  True])>
+
+  Args:
+    x: A `tf.Tensor` or `tf.SparseTensor` or `tf.IndexedSlices`.
+    y: A `tf.Tensor` or `tf.SparseTensor` or `tf.IndexedSlices`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `tf.Tensor` of type bool with the same size as that of x or y.
+
+  Raises:
+    `tf.errors.InvalidArgumentError`: If shapes of arguments are incompatible
+  """
+  return gen_math_ops.equal(x, y, name=name)
+
+
+@tf_export("math.not_equal", "not_equal")
+@dispatch.add_dispatch_support
+def not_equal(x, y, name=None):
+  """Returns the truth value of (x != y) element-wise.
+
+  Performs a [broadcast](
+  https://docs.scipy.org/doc/numpy/user/basics.broadcasting.html) with the
+  arguments and then an element-wise inequality comparison, returning a Tensor
+  of boolean values.
+
+  For example:
+  >>> x = tf.constant([2, 4])
+  >>> y = tf.constant(2)
+  >>> tf.math.not_equal(x, y)
+  <tf.Tensor: id=..., shape=(2,), dtype=bool, numpy=array([False,  True])>
+
+  >>> x = tf.constant([2, 4])
+  >>> y = tf.constant([2, 4])
+  >>> tf.math.not_equal(x, y)
+  <tf.Tensor: id=..., shape=(2,), dtype=bool, numpy=array([False,  False])>
+
+  Args:
+    x: A `tf.Tensor` or `tf.SparseTensor` or `tf.IndexedSlices`.
+    y: A `tf.Tensor` or `tf.SparseTensor` or `tf.IndexedSlices`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `tf.Tensor` of type bool with the same size as that of x or y.
+
+  Raises:
+    `tf.errors.InvalidArgumentError`: If shapes of arguments are incompatible
+  """
+  return gen_math_ops.not_equal(x, y, name=name)
+
+
 def tensor_equals(self, other):
   """Compares two tensors element-wise for equality."""
   g = getattr(self, "graph", None)
   if (ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions() and
       (g is None or g._building_function)):  # pylint: disable=protected-access
-    return gen_math_ops.equal(self, other)
+    if fwd_compat.forward_compatible(2019, 9, 25):
+      return gen_math_ops.equal(self, other, incompatible_shape_error=False)
+    else:
+      return gen_math_ops.equal(self, other)
   else:
     # In legacy graph mode, tensor equality is object equality
     return self is other
@@ -1289,7 +1356,10 @@ def tensor_equals(self, other):
 def tensor_not_equals(self, other):
   """Compares two tensors element-wise for equality."""
   if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():
-    return gen_math_ops.not_equal(self, other)
+    if fwd_compat.forward_compatible(2019, 9, 25):
+      return gen_math_ops.not_equal(self, other, incompatible_shape_error=False)
+    else:
+      return gen_math_ops.not_equal(self, other)
   else:
     # In legacy graph mode, tensor equality is object equality
     return self is not other
@@ -1383,11 +1453,12 @@ def _ReductionDims(x, axis, reduction_indices=None):  # pylint: disable=invalid-
     return axis
   else:
     # Fast path: avoid creating Rank and Range ops if ndims is known.
-    rank = common_shapes.rank(x)
-    if rank is not None:
-      return constant_op.constant(np.arange(rank), dtype=dtypes.int32)
-    if (isinstance(x, sparse_tensor.SparseTensor) and
-        x.dense_shape.shape.is_fully_defined()):
+    if isinstance(x, ops.Tensor):
+      rank = x.shape.rank
+      if rank is not None:
+        return constant_op.constant(np.arange(rank), dtype=dtypes.int32)
+    elif (isinstance(x, sparse_tensor.SparseTensor) and
+          x.dense_shape.shape.is_fully_defined()):
       rank = x.dense_shape.shape.dims[0].value  # sparse.dense_shape is 1-D.
       return constant_op.constant(np.arange(rank), dtype=dtypes.int32)
 
@@ -1395,9 +1466,14 @@ def _ReductionDims(x, axis, reduction_indices=None):  # pylint: disable=invalid-
     return range(0, array_ops.rank(x))
 
 
+def _has_fully_defined_shape(tensor):
+  """Returns true if tensor has a fully defined shape."""
+  return isinstance(tensor, ops.EagerTensor) or tensor.shape.is_fully_defined()
+
+
 def _may_reduce_to_scalar(keepdims, axis, output):
   """Set a reduction's output shape to be a scalar if we are certain."""
-  if not common_shapes.has_fully_defined_shape(output) and (not keepdims) and (
+  if not _has_fully_defined_shape(output) and (not keepdims) and (
       axis is None):
     output.set_shape(())
   return output
@@ -2738,7 +2814,7 @@ def matvec(a,
 
   # `a` * `b`
   # [ 58,  64]
-  c = tf.matvec(a, b)
+  c = tf.linalg.matvec(a, b)
 
 
   # 3-D tensor `a`
@@ -2758,7 +2834,7 @@ def matvec(a,
   # `a` * `b`
   # [[ 86, 212],
   #  [410, 563]]
-  c = tf.matvec(a, b)
+  c = tf.linalg.matvec(a, b)
   ```
 
   Args:
@@ -2820,6 +2896,7 @@ def _calc_mat_mul_flops(graph, node):
 
 
 @ops.RegisterStatistics("BatchMatMul", "flops")
+@ops.RegisterStatistics("BatchMatMulV2", "flops")
 def _calc_batch_mat_mul_flops(graph, node):
   """Calculates the compute resources needed for BatchMatMul."""
   transpose_a = node.attr["transpose_a"].b
@@ -2959,13 +3036,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   Optionally, pass `shape` and `tensor_dtype` for shape and type checking,
   otherwise, these are inferred.
 
-  `accumulate_n` performs the same operation as `tf.math.add_n`, but
-  does not wait for all of its inputs to be ready before beginning to sum.
-  This approach can save memory if inputs are ready at different times, since
-  minimum temporary storage is proportional to the output size rather than the
-  inputs' size.
-
-  `accumulate_n` is differentiable (but wasn't previous to TensorFlow 1.7).
+  `accumulate_n` performs the same operation as `tf.math.add_n`.
 
   For example:
 
@@ -3025,14 +3096,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
     return inputs[0]
   elif len(inputs) == 1 and name is not None:
     return array_ops.identity(inputs[0], name=name)
-  elif context.executing_eagerly():
-    # TemporaryVariable not currently supported in eager mode; fall back
-    # onto AddN for now.
-    # TODO(frreiss) remove this once the lifetime of eager variables gets
-    # addressed
-    return add_n(inputs, name=name)
-  else:
-    return gen_math_ops.accumulate_nv2(inputs, name=name, shape=shape)  # pylint: disable=protected-access
+  return add_n(inputs, name=name)
 
 
 @ops.RegisterGradient("AccumulateNV2")
@@ -3399,14 +3463,6 @@ def conj(x, name=None):
                       x.dtype)
 
 
-def _BroadcastShape(op):
-  """Common shape function for binary operators that broadcast their inputs."""
-  return [
-      common_shapes.broadcast_shape(op.inputs[0].get_shape(),
-                                    op.inputs[1].get_shape())
-  ]
-
-
 def reduced_shape(input_shape, axes):
   """Helper function for reduction ops.
 
@@ -3443,7 +3499,9 @@ def reduced_shape(input_shape, axes):
 
 
 def _unsorted_segment_N(data, segment_ids, num_segments):
-  """ Helper function for unsorted_segment_mean/_sqrtN. Computes the number
+  """ Helper function for unsorted_segment_mean/_sqrtN.
+
+  Computes the number
       of segment entries with 0-entries set to 1 to allow division by N.
   """
   # bincount doesn't support negative indices so we use unsorted_segment_sum
@@ -3554,7 +3612,10 @@ def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
 
 @tf_export(v1=["sparse.segment_sum", "sparse_segment_sum"])
 @deprecation.deprecated_endpoints("sparse_segment_sum")
-def sparse_segment_sum(data, indices, segment_ids, name=None,
+def sparse_segment_sum(data,
+                       indices,
+                       segment_ids,
+                       name=None,
                        num_segments=None):
   r"""Computes the sum along sparse segments of a tensor.
 

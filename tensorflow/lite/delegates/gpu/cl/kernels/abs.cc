@@ -32,9 +32,8 @@ Abs& Abs::operator=(Abs&& operation) {
   return *this;
 }
 
-std::string Abs::GetCoreCode(const std::string& src, const std::string& z_coord,
-                             const std::string& address) const {
-  return absl::StrCat(src, " = fabs(", src, ");\n");
+std::string Abs::GetCoreCode(const LinkingContext& context) const {
+  return absl::StrCat(context.var_name, " = fabs(", context.var_name, ");\n");
 }
 
 Abs CreateAbs(const OperationDef& definition) {

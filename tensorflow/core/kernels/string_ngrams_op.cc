@@ -128,7 +128,7 @@ class StringNGramsOp : public tensorflow::OpKernel {
     }
   }
 
-  void CreateNgrams(const string* data, string* output, int num_ngrams,
+  void CreateNgrams(const tstring* data, tstring* output, int num_ngrams,
                     int ngram_width) const {
     for (int ngram_index = 0; ngram_index < num_ngrams; ++ngram_index) {
       int pad_width = get_pad_width(ngram_width);
@@ -154,20 +154,20 @@ class StringNGramsOp : public tensorflow::OpKernel {
       ngram_size += num_separators * separator_.length();
 
       // Build the ngram.
-      string* ngram = &output[ngram_index];
+      tstring* ngram = &output[ngram_index];
       ngram->reserve(ngram_size);
       for (int n = 0; n < left_padding; ++n) {
-        *ngram += left_pad_;
-        *ngram += separator_;
+        ngram->append(left_pad_);
+        ngram->append(separator_);
       }
       for (int n = 0; n < num_tokens - 1; ++n) {
-        *ngram += data[data_start_index + n];
-        *ngram += separator_;
+        ngram->append(data[data_start_index + n]);
+        ngram->append(separator_);
       }
-      *ngram += data[data_start_index + num_tokens - 1];
+      ngram->append(data[data_start_index + num_tokens - 1]);
       for (int n = 0; n < right_padding; ++n) {
-        *ngram += separator_;
-        *ngram += right_pad_;
+        ngram->append(separator_);
+        ngram->append(right_pad_);
       }
 
       // In debug mode only: validate that we've reserved enough space for the

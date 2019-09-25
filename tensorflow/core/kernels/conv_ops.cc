@@ -64,8 +64,8 @@ limitations under the License.
 #include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
-#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+#include "tensorflow/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
@@ -953,10 +953,10 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                         "because cuDNN failed to initialize, so try looking to "
                         "see if a warning log message was printed above."));
 
-    se::TfAllocatorAdapter tf_allocator_adapter(
-        stream->parent()->platform(), ctx->device()->GetAllocator({}));
-    se::cuda::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
-                                            se::cuda::PtxCompilationOptions());
+    se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
+                                                stream);
+    se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
+                                      se::GpuAsmOpts());
     se::DeviceMemory<T> output_tensor(
         WrapRedzoneBestEffort(&rz_allocator, output_ptr));
 
@@ -964,8 +964,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     for (auto profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
-      se::cuda::RedzoneAllocator rz_scratch_allocator(
-          stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions(),
+      se::RedzoneAllocator rz_scratch_allocator(
+          stream, &tf_allocator_adapter, se::GpuAsmOpts(),
           /*memory_limit=*/ConvolveScratchSize);
       DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
       se::ScratchAllocator* allocator_used =

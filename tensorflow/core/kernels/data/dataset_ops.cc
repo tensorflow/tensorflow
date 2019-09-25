@@ -23,50 +23,80 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/grappler/graph_topology_view.h"
+#include "tensorflow/core/grappler/utils/traversal.h"
+#include "tensorflow/core/kernels/data/captured_function.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 
 namespace tensorflow {
 namespace data {
 
-/* static */ constexpr const char* const DatasetToGraphOp::kStatefulWhitelist;
+/* static */ constexpr const char* const DatasetToGraphOp::kAllowStateful;
 /* static */ constexpr const char* const DatasetFromGraphOp::kGraphDef;
 /* static */ constexpr const char* const DatasetFromGraphOp::kHandle;
 
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 DatasetToGraphOp::DatasetToGraphOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-  if (ctx->HasAttr(kStatefulWhitelist)) {
-    OP_REQUIRES_OK(
-        ctx, ctx->GetAttr(kStatefulWhitelist, &whitelisted_stateful_ops_));
+  if (ctx->HasAttr(kAllowStateful)) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kAllowStateful, &allow_stateful_ops_));
   }
 }
+
+namespace {
+Status FindStatefulOps(const GraphDef& graph_def,
+                       std::vector<string>* stateful_op_names) {
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), graph_def.library());
+
+  // Iterate over all nodes in the graph.
+  for (const auto& node : graph_def.node()) {
+    // Each Dataset graph has a _Retval op in the end which is marked stateful
+    if (node.op() == FunctionLibraryDefinition::kRetOp) continue;
+    if (!IsNodeStateful(lib_def, node).ok()) {
+      stateful_op_names->push_back(node.op());
+    }
+  }
+
+  // Iterate over all functions.
+  for (const auto& fdef : graph_def.library().function()) {
+    if (!fdef.signature().is_stateful()) continue;
+    for (const auto& node : fdef.node_def()) {
+      if (!IsNodeStateful(lib_def, node).ok()) {
+        stateful_op_names->push_back(
+            absl::StrCat(node.op(), " in function: ", fdef.signature().name()));
+      }
+    }
+  }
+
+  return Status::OK();
+}
+}  // namespace
 
 void DatasetToGraphOp::Compute(OpKernelContext* ctx) {
   DatasetBase* dataset;
   OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
-  std::vector<int> whitelist_indices_to_remove;
-  for (int i = 0; i < whitelisted_stateful_ops_.size(); ++i) {
-    const string stateful_op = whitelisted_stateful_ops_[i];
-    if (!WhitelistedStatefulOpRegistry::Global()->Contains(stateful_op)) {
-      whitelist_indices_to_remove.push_back(i);
-      // Make sure op is registered first. We maybe don't need this check?
-      const OpDef* op_def;
-      OP_REQUIRES_OK(ctx,
-                     OpRegistry::Global()->LookUpOpDef(stateful_op, &op_def));
-      OP_REQUIRES_OK(ctx,
-                     WhitelistedStatefulOpRegistry::Global()->Add(stateful_op));
-    }
-  }
+  SerializationContext::Params params;
+  params.check_external_state = !allow_stateful_ops_;
   GraphDef graph_def;
   OP_REQUIRES_OK(
-      ctx, AsGraphDef(ctx, dataset, SerializationContext({}), &graph_def));
+      ctx, AsGraphDef(ctx, dataset, SerializationContext(params), &graph_def));
+  // In case we allow stateful ops, we walk the graph and find all the stateful
+  // ops in the Graph. We then log a warning indicating what ops' state we are
+  // going to throw away.
+  if (allow_stateful_ops_) {
+    std::vector<string> stateful_op_names;
+    OP_REQUIRES_OK(ctx, FindStatefulOps(graph_def, &stateful_op_names));
+    if (!stateful_op_names.empty()) {
+      LOG(WARNING)
+          << "We found the following stateful ops in the dataset "
+             "construction graph whose state would not be serialized and might "
+             "cause subtle bugs: "
+          << absl::StrJoin(stateful_op_names, ", ");
+    }
+  }
   Tensor* result;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &result));
   result->scalar<tstring>()() = graph_def.SerializeAsString();
-  for (int index : whitelist_indices_to_remove) {
-    OP_REQUIRES_OK(ctx, WhitelistedStatefulOpRegistry::Global()->Remove(
-                            whitelisted_stateful_ops_[index]));
-  }
 }
 
 void DatasetCardinalityOp::Compute(OpKernelContext* ctx) {
@@ -78,7 +108,7 @@ void DatasetCardinalityOp::Compute(OpKernelContext* ctx) {
 }
 
 void DatasetFromGraphOp::Compute(OpKernelContext* ctx) {
-  string graph_def_string;
+  tstring graph_def_string;
   OP_REQUIRES_OK(ctx,
                  ParseScalarArgument(ctx, kGraphDef, &graph_def_string));
   GraphDef graph_def;

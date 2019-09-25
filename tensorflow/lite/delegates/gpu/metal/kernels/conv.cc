@@ -98,7 +98,7 @@ std::string GetSummationPart(int num_output_slices, int index) {
   std::string code = R"(
       {
         const FLT4 src = src_buffer[src_address];
-        src_address += params.dillation_layer_offsets.z;
+        src_address += params.dilation_layer_offsets.z;
     )";
   for (int d = 0; d < num_output_slices; ++d) {
     code += absl::Substitute(R"(
@@ -138,7 +138,7 @@ std::string GetWritingPart(int num_output_slices) {
      {
          int dst_address = int(gid.y) * params.size.z + int(gid.x);
          FLT4 value = FLT4(sum$0) + temp[$0];
-         const int linear_index = gid.z * params.dillation_layer_offsets.w + dst_address;
+         const int linear_index = gid.z * params.dilation_layer_offsets.w + dst_address;
          $$2
          dst_buffer[linear_index + params.z_offset.y] = value;
          gid.z += 1;
@@ -171,7 +171,7 @@ std::string GetKernelForConv(const Convolution2DAttributes& params) {
     constant int kernel_y = $3;
     struct uniforms {
       int4 stride_padding;
-      int4 dillation_layer_offsets;
+      int4 dilation_layer_offsets;
       int4 size;
       int4 z_offset;
     };
@@ -193,7 +193,7 @@ std::string GetKernelForConv(const Convolution2DAttributes& params) {
       for(int ky = 0; ky < kernel_y; ++ky) {
         for(int kx = 0; kx < kernel_x; ++kx) {
           int2 coords = int2(gid.xy) * params.stride_padding.xy + int2(kx, ky) *
-            params.dillation_layer_offsets.xy - params.stride_padding.zw;
+            params.dilation_layer_offsets.xy - params.stride_padding.zw;
           const bool el_outside = coords.x < 0 || coords.y < 0 || coords.x >= params.size.x ||
             coords.y >= params.size.y;
           const FLT multiplier = el_outside ? 0.0f : 1.0f;

@@ -269,13 +269,14 @@ def create_conv_model(fingerprint_input, model_settings, is_training):
       name='first_bias',
       initializer=tf.compat.v1.zeros_initializer,
       shape=[first_filter_count])
+
   first_conv = tf.nn.conv2d(input=fingerprint_4d,
                             filters=first_weights,
                             strides=[1, 1, 1, 1],
                             padding='SAME') + first_bias
   first_relu = tf.nn.relu(first_conv)
   if is_training:
-    first_dropout = tf.compat.v1.nn.dropout(first_relu, dropout_prob)
+    first_dropout = tf.nn.dropout(first_relu, 1 - (dropout_prob))
   else:
     first_dropout = first_relu
   max_pool = tf.nn.max_pool2d(input=first_dropout,
@@ -395,12 +396,13 @@ def create_low_latency_conv_model(fingerprint_input, model_settings,
       initializer=tf.compat.v1.zeros_initializer,
       shape=[first_filter_count])
   first_conv = tf.nn.conv2d(
-      input=fingerprint_4d, filters=first_weights,
+      input=fingerprint_4d,
+      filters=first_weights,
       strides=[1, first_filter_stride_y, first_filter_stride_x, 1],
       padding='VALID') + first_bias
   first_relu = tf.nn.relu(first_conv)
   if is_training:
-    first_dropout = tf.compat.v1.nn.dropout(first_relu, dropout_prob)
+    first_dropout = tf.nn.dropout(first_relu, 1 - (dropout_prob))
   else:
     first_dropout = first_relu
   first_conv_output_width = math.floor(
@@ -424,7 +426,7 @@ def create_low_latency_conv_model(fingerprint_input, model_settings,
       shape=[first_fc_output_channels])
   first_fc = tf.matmul(flattened_first_conv, first_fc_weights) + first_fc_bias
   if is_training:
-    second_fc_input = tf.compat.v1.nn.dropout(first_fc, dropout_prob)
+    second_fc_input = tf.nn.dropout(first_fc, 1 - (dropout_prob))
   else:
     second_fc_input = first_fc
   second_fc_output_channels = 128
@@ -438,7 +440,7 @@ def create_low_latency_conv_model(fingerprint_input, model_settings,
       shape=[second_fc_output_channels])
   second_fc = tf.matmul(second_fc_input, second_fc_weights) + second_fc_bias
   if is_training:
-    final_fc_input = tf.compat.v1.nn.dropout(second_fc, dropout_prob)
+    final_fc_input = tf.nn.dropout(second_fc, 1 - (dropout_prob))
   else:
     final_fc_input = second_fc
   label_count = model_settings['label_count']
@@ -622,7 +624,7 @@ def create_low_latency_svdf_model(fingerprint_input, model_settings,
   first_relu = tf.nn.relu(first_bias)
 
   if is_training:
-    first_dropout = tf.compat.v1.nn.dropout(first_relu, dropout_prob)
+    first_dropout = tf.nn.dropout(first_relu, 1 - (dropout_prob))
   else:
     first_dropout = first_relu
 
@@ -637,7 +639,7 @@ def create_low_latency_svdf_model(fingerprint_input, model_settings,
       shape=[first_fc_output_channels])
   first_fc = tf.matmul(first_dropout, first_fc_weights) + first_fc_bias
   if is_training:
-    second_fc_input = tf.compat.v1.nn.dropout(first_fc, dropout_prob)
+    second_fc_input = tf.nn.dropout(first_fc, 1 - (dropout_prob))
   else:
     second_fc_input = first_fc
   second_fc_output_channels = 256
@@ -651,7 +653,7 @@ def create_low_latency_svdf_model(fingerprint_input, model_settings,
       shape=[second_fc_output_channels])
   second_fc = tf.matmul(second_fc_input, second_fc_weights) + second_fc_bias
   if is_training:
-    final_fc_input = tf.compat.v1.nn.dropout(second_fc, dropout_prob)
+    final_fc_input = tf.nn.dropout(second_fc, 1 - (dropout_prob))
   else:
     final_fc_input = second_fc
   label_count = model_settings['label_count']
@@ -734,7 +736,7 @@ def create_tiny_conv_model(fingerprint_input, model_settings, is_training):
       padding='SAME') + first_bias
   first_relu = tf.nn.relu(first_conv)
   if is_training:
-    first_dropout = tf.compat.v1.nn.dropout(first_relu, dropout_prob)
+    first_dropout = tf.nn.dropout(first_relu, 1 - (dropout_prob))
   else:
     first_dropout = first_relu
   first_dropout_shape = first_dropout.get_shape()
@@ -834,13 +836,15 @@ def create_tiny_embedding_conv_model(fingerprint_input, model_settings,
       shape=[first_filter_count])
   first_conv_stride_x = 2
   first_conv_stride_y = 2
+
   first_conv = tf.nn.conv2d(
       input=fingerprint_4d, filters=first_weights,
       strides=[1, first_conv_stride_y, first_conv_stride_x, 1],
       padding='SAME') + first_bias
   first_relu = tf.nn.relu(first_conv)
   if is_training:
-    first_dropout = tf.compat.v1.nn.dropout(first_relu, dropout_prob)
+    first_dropout = tf.nn.dropout(first_relu, 1 - (dropout_prob))
+
   else:
     first_dropout = first_relu
 
@@ -866,7 +870,7 @@ def create_tiny_embedding_conv_model(fingerprint_input, model_settings,
       padding='SAME') + second_bias
   second_relu = tf.nn.relu(second_conv)
   if is_training:
-    second_dropout = tf.compat.v1.nn.dropout(second_relu, dropout_prob)
+    second_dropout = tf.nn.dropout(second_relu, 1 - (dropout_prob))
   else:
     second_dropout = second_relu
 

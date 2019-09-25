@@ -1283,8 +1283,9 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
           shared_name=shared_name,
           name=name,
           reduction_type=reduction_type)
-      self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
-          handle=accumulator_ref, handle_device=context.context().device_name)
+      if context.executing_eagerly():
+        self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
+            handle=accumulator_ref, handle_device=context.context().device_name)
     else:
       accumulator_ref = gen_data_flow_ops.conditional_accumulator(
           dtype=dtype,

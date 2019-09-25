@@ -17,7 +17,6 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
-#include "tensorflow/lite/experimental/micro/simple_tensor_allocator.h"
 #include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 #include "tensorflow/lite/experimental/micro/testing/test_utils.h"
 
@@ -122,8 +121,8 @@ void TestComparisonInt(tflite::BuiltinOperator op,
   TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
 
   TfLiteTensor tensors[tensors_size] = {
-      CreateInt32Tensor(input1_data, input1_dims, "input1_tensor"),
-      CreateInt32Tensor(input2_data, input2_dims, "input2_tensor"),
+      CreateQuantized32Tensor(input1_data, input1_dims, "input1_tensor", 1.0),
+      CreateQuantized32Tensor(input2_data, input2_dims, "input2_tensor", 1.0),
       CreateBoolTensor(output_data, output_dims, "output_tensor"),
   };
 
@@ -166,10 +165,10 @@ void TestComparisonQuantizedInt8(
   const int output_dims_count = ElementCount(*output_dims);
 
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedInt8Tensor(input1_data, input1_dims, "input1_tensor",
-                                input1_min, input1_max),
-      CreateQuantizedInt8Tensor(input2_data, input2_dims, "input2_tensor",
-                                input2_min, input2_max),
+      CreateQuantizedTensor(input1_data, input1_dims, "input1_tensor",
+                            input1_min, input1_max),
+      CreateQuantizedTensor(input2_data, input2_dims, "input2_tensor",
+                            input2_min, input2_max),
       CreateBoolTensor(output_data, output_dims, "output_tensor"),
   };
 

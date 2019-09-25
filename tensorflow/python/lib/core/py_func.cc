@@ -186,7 +186,7 @@ Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
     CHECK_NE(ctx, nullptr);
     TF_RETURN_IF_ERROR(MakeArgTuple(call, ctx->context, &args));
     new_executor.reset(new EagerExecutor(call->eager_async));
-    old_executor = ctx->context->Executor();
+    old_executor = &ctx->context->Executor();
     ctx->context->SetExecutorForThread(new_executor.get());
   } else {
     TF_RETURN_IF_ERROR(MakeArgTuple(call, nullptr, &args));
@@ -388,16 +388,16 @@ REGISTER_KERNEL_BUILDER(Name("EagerPyFunc").Device(DEVICE_CPU), PyFuncOp);
 
 DataType gpu_types[] = {
     // No strings and int32s, no ref types and no resource/variant types.
-    DT_FLOAT,  DT_DOUBLE,     DT_UINT8,    DT_INT16,  DT_INT8,
-    DT_STRING, DT_COMPLEX64,  DT_INT64,    DT_BOOL,   DT_QINT8,
-    DT_QUINT8, DT_QINT32,     DT_BFLOAT16, DT_QINT16, DT_QUINT16,
-    DT_UINT16, DT_COMPLEX128, DT_HALF,     DT_UINT32, DT_UINT64,
+    DT_FLOAT,      DT_DOUBLE,   DT_UINT8,  DT_INT16,   DT_INT8,
+    DT_COMPLEX64,  DT_INT64,    DT_BOOL,   DT_QINT8,   DT_QUINT8,
+    DT_QINT32,     DT_BFLOAT16, DT_QINT16, DT_QUINT16, DT_UINT16,
+    DT_COMPLEX128, DT_HALF,     DT_UINT32, DT_UINT64,
 };
 
 REGISTER_KERNEL_BUILDER(Name("EagerPyFunc")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint("Tin", *gpu_types)
-                            .TypeConstraint("Tout", *gpu_types),
+                            .TypeConstraint("Tin", gpu_types)
+                            .TypeConstraint("Tout", gpu_types),
                         PyFuncOp);
 
 }  // end namespace tensorflow

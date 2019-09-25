@@ -45,6 +45,9 @@ XlaOp GetDiagonalMask(XlaOp x, int diagonal = 0);
 //            diagonal elements (i.e., with indices [..., i - k, i]).
 XlaOp GetMatrixDiagonal(XlaOp x, int k = 0);
 
+// Places diag along the kth diagonal of target.
+XlaOp SetMatrixDiagonal(XlaOp matrix, XlaOp diag, int k = 0);
+
 // Returns a lower-triangular mask, i.e., true below the `diagonal`-th diagonal
 // and false above that diagonal.
 XlaOp TriangleMask(XlaOp x, int diagonal);

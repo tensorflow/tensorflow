@@ -78,14 +78,24 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
     case HloOpcode::kSelectAndScatter: {
       return inst->mutable_operand(2);
     }
+    case HloOpcode::kScatter: {
+      if (operand_number != 1) {
+        return nullptr;
+      }
+      PrimitiveType indices_ptype =
+          inst->operand(operand_number)->shape().element_type();
+
+      return comp->AddInstruction(
+          HloInstruction::CreateConstant(LiteralUtil::MaxValue(indices_ptype)));
+    }
     case HloOpcode::kParameter:
     case HloOpcode::kGather:
-    case HloOpcode::kScatter:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kConcatenate:
     case HloOpcode::kReshape:
+    case HloOpcode::kReverse:
     case HloOpcode::kTuple:
     case HloOpcode::kAllReduce:
     case HloOpcode::kBroadcast:
@@ -128,17 +138,19 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
     for (HloInstruction* inst : computation->instructions()) {
       for (int64 operand_num = 0; operand_num < inst->operand_count();
            ++operand_num) {
-        HloInstruction* operand = inst->mutable_operand(operand_num);
+        HloInstruction* original_operand = inst->mutable_operand(operand_num);
+        HloInstruction* operand = original_operand;
         if (!operand->shape().IsArray()) {
           continue;
         }
         for (int64 dim = 0; dim < operand->shape().rank(); ++dim) {
           HloInstruction* dynamic_size =
-              dynamic_dimension_inference.GetDynamicSize(operand, {}, dim);
+              dynamic_dimension_inference.GetDynamicSize(original_operand, {},
+                                                         dim);
           if (dynamic_size == nullptr) {
             continue;
           }
-          VLOG(1) << "Has dynamic dimension of operand" << operand_num << " @"
+          VLOG(2) << "Has dynamic dimension of operand" << operand_num << " @"
                   << dim;
 
           if (ShouldSkipPadOnOperand(inst, operand_num, dim)) {
@@ -164,7 +176,7 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
           // mask and pad value.
           //
           const Shape mask_shape =
-              ShapeUtil::ChangeElementType(operand->shape(), xla::U32);
+              ShapeUtil::ChangeElementType(operand->shape(), xla::S32);
           const Shape pred_shape =
               ShapeUtil::ChangeElementType(operand->shape(), xla::PRED);
           HloInstruction* iota = computation->AddInstruction(

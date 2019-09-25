@@ -48,11 +48,11 @@ class HardSwish : public ElementwiseOperation {
     return *this;
   }
 
-  std::string GetCoreCode(const std::string& src, const std::string& z_coord,
-                          const std::string& address) const override {
+  std::string GetCoreCode(const LinkingContext& context) const override {
     return absl::Substitute(
-        "$0 *= clamp($0 / 6.0f + (FLT4)(0.5f), (FLT4)(0.0f), (FLT4)(1.0f));\n",
-        src);
+        "$0 *= clamp($0 * (FLT)(0.16666667f) + (FLT)(0.5f), (FLT4)(0.0f), "
+        "(FLT4)(1.0f));\n",
+        context.var_name);
   }
 };
 

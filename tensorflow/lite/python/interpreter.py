@@ -23,7 +23,8 @@ import sys
 import numpy as np
 
 # pylint: disable=g-import-not-at-top
-try:
+if not __file__.endswith('tflite_runtime/interpreter.py'):
+  # This file is part of tensorflow package.
   from tensorflow.python.util.lazy_loader import LazyLoader
   from tensorflow.python.util.tf_export import tf_export as _tf_export
 
@@ -38,15 +39,13 @@ try:
   # pylint: enable=g-inconsistent-quotes
 
   del LazyLoader
-except ImportError:
-  # When full Tensorflow Python PIP is not available do not use lazy load
-  # and instead of the tflite_runtime path.
+else:
+  # This file is part of tflite_runtime package.
   from tflite_runtime import interpreter_wrapper as _interpreter_wrapper
 
-  def tf_export_dummy(*x, **kwargs):
+  def _tf_export(*x, **kwargs):
     del x, kwargs
     return lambda x: x
-  _tf_export = tf_export_dummy
 
 
 class Delegate(object):
@@ -108,7 +107,7 @@ class Delegate(object):
         self.message = ''
 
       def report(self, x):
-        self.message += x
+        self.message += x if isinstance(x, str) else x.decode('utf-8')
 
     capture = ErrorMessageCapture()
     error_capturer_cb = ctypes.CFUNCTYPE(None, ctypes.c_char_p)(capture.report)
@@ -200,10 +199,12 @@ class Interpreter(object):
     Raises:
       ValueError: If the interpreter was unable to create.
     """
+    if not hasattr(self, '_custom_op_registerers'):
+      self._custom_op_registerers = []
     if model_path and not model_content:
       self._interpreter = (
           _interpreter_wrapper.InterpreterWrapper_CreateWrapperCPPFromFile(
-              model_path))
+              model_path, self._custom_op_registerers))
       if not self._interpreter:
         raise ValueError('Failed to open {}'.format(model_path))
     elif model_content and not model_path:
@@ -213,7 +214,7 @@ class Interpreter(object):
       self._model_content = model_content
       self._interpreter = (
           _interpreter_wrapper.InterpreterWrapper_CreateWrapperCPPFromBuffer(
-              model_content))
+              model_content, self._custom_op_registerers))
     elif not model_path and not model_path:
       raise ValueError('`model_path` or `model_content` must be specified.')
     else:
@@ -454,3 +455,40 @@ class Interpreter(object):
 
   def reset_all_variables(self):
     return self._interpreter.ResetVariableTensors()
+
+
+class InterpreterWithCustomOps(Interpreter):
+  """Interpreter interface for TensorFlow Lite Models that accepts custom ops.
+
+  The interface provided by this class is experimenal and therefore not exposed
+  as part of the public API.
+
+  Wraps the tf.lite.Interpreter class and adds the ability to load custom ops
+  by providing the names of functions that take a pointer to a BuiltinOpResolver
+  and add a custom op.
+  """
+
+  def __init__(self,
+               model_path=None,
+               model_content=None,
+               experimental_delegates=None,
+               custom_op_registerers=None):
+    """Constructor.
+
+    Args:
+      model_path: Path to TF-Lite Flatbuffer file.
+      model_content: Content of model.
+      experimental_delegates: Experimental. Subject to change. List of
+        [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates)
+          objects returned by lite.load_delegate().
+      custom_op_registerers: List of str, symbol names of functions that take a
+        pointer to a MutableOpResolver and register a custom op.
+
+    Raises:
+      ValueError: If the interpreter was unable to create.
+    """
+    self._custom_op_registerers = custom_op_registerers
+    super(InterpreterWithCustomOps, self).__init__(
+        model_path=model_path,
+        model_content=model_content,
+        experimental_delegates=experimental_delegates)

@@ -176,6 +176,7 @@ cc_library(
         ":arithmetic",
         ":constants",
         ":slicing",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
@@ -195,6 +196,7 @@ xla_test(
     name = "matrix_test",
     srcs = ["matrix_test.cc"],
     deps = [
+        ":constants",
         ":matrix",
         ":slicing",
         "//tensorflow/compiler/xla:status",
@@ -310,7 +312,9 @@ xla_test(
     srcs = ["slicing_test.cc"],
     deps = [
         ":slicing",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/client:xla_builder",

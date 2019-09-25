@@ -51,12 +51,12 @@ class NgramKernelTest : public tensorflow::OpsTestBase {
     TF_ASSERT_OK(InitOp());
   }
 
-  void assert_string_equal(const std::vector<string> &expected,
+  void assert_string_equal(const std::vector<tstring> &expected,
                            const Tensor &value) {
     Tensor expected_tensor(allocator(), DT_STRING,
                            TensorShape({static_cast<int64>(expected.size())}));
-    test::FillValues<string>(&expected_tensor, expected);
-    test::ExpectTensorEqual<string>(expected_tensor, value);
+    test::FillValues<tstring>(&expected_tensor, expected);
+    test::ExpectTensorEqual<tstring>(expected_tensor, value);
   }
   void assert_int64_equal(const std::vector<int64> &expected,
                           const Tensor &value) {
@@ -72,11 +72,11 @@ TEST_F(NgramKernelTest, TestPaddedTrigrams) {
   // Batch items are:
   // 0: "a", "b", "c", "d"
   // 1: "e", "f"
-  AddInputFromArray<string>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
   AddInputFromArray<int64>(TensorShape({3}), {0, 4, 6});
   TF_ASSERT_OK(RunOpKernel());
 
-  std::vector<string> expected_values(                              //
+  std::vector<tstring> expected_values(                             //
       {"LP|LP|a", "LP|a|b", "a|b|c", "b|c|d", "c|d|RP", "d|RP|RP",  // 0
        "LP|LP|e", "LP|e|f", "e|f|RP", "f|RP|RP"});                  // 1
   std::vector<int64> expected_splits({0, 6, 10});
@@ -90,11 +90,11 @@ TEST_F(NgramKernelTest, TestPaddedBigramsAndTrigrams) {
   // Batch items are:
   // 0: "a", "b", "c", "d"
   // 1: "e", "f"
-  AddInputFromArray<string>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
   AddInputFromArray<int64>(TensorShape({3}), {0, 4, 6});
   TF_ASSERT_OK(RunOpKernel());
 
-  std::vector<string> expected_values(
+  std::vector<tstring> expected_values(
       {"LP|a", "a|b", "b|c", "c|d", "d|RP", "LP|LP|a", "LP|a|b", "a|b|c",
        "b|c|d", "c|d|RP", "d|RP|RP",                                       // 0
        "LP|e", "e|f", "f|RP", "LP|LP|e", "LP|e|f", "e|f|RP", "f|RP|RP"});  // 1
@@ -109,11 +109,11 @@ TEST_F(NgramKernelTest, TestPaddedBigrams) {
   // Batch items are:
   // 0: "a", "b", "c", "d"
   // 1: "e", "f"
-  AddInputFromArray<string>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
   AddInputFromArray<int64>(TensorShape({3}), {0, 4, 6});
   TF_ASSERT_OK(RunOpKernel());
 
-  std::vector<string> expected_values(       //
+  std::vector<tstring> expected_values(      //
       {"LP|a", "a|b", "b|c", "c|d", "d|RP",  // 0
        "LP|e", "e|f", "f|RP"});              // 1
   std::vector<int64> expected_splits({0, 5, 8});
@@ -127,11 +127,11 @@ TEST_F(NgramKernelTest, TestPaddingIsAtMostNGramSizeMinus1) {
   // Batch items are:
   // 0: "a", "b", "c", "d"
   // 1: "e", "f"
-  AddInputFromArray<string>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
   AddInputFromArray<int64>(TensorShape({3}), {0, 4, 6});
   TF_ASSERT_OK(RunOpKernel());
 
-  std::vector<string> expected_values(       //
+  std::vector<tstring> expected_values(      //
       {"LP|a", "a|b", "b|c", "c|d", "d|RP",  // 0
        "LP|e", "e|f", "f|RP"});              // 1
   std::vector<int64> expected_splits({0, 5, 8});
@@ -145,11 +145,11 @@ TEST_F(NgramKernelTest, TestPaddedUnigramAndBigrams) {
   // Batch items are:
   // 0: "a", "b", "c", "d"
   // 1: "e", "f"
-  AddInputFromArray<string>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
   AddInputFromArray<int64>(TensorShape({3}), {0, 4, 6});
   TF_ASSERT_OK(RunOpKernel());
 
-  std::vector<string> expected_values(                           //
+  std::vector<tstring> expected_values(                          //
       {"a", "b", "c", "d", "LP|a", "a|b", "b|c", "c|d", "d|RP",  // 0
        "e", "f", "LP|e", "e|f", "f|RP"});                        // 1
   std::vector<int64> expected_splits({0, 9, 14});
@@ -166,11 +166,11 @@ TEST_F(NgramKernelTest, TestOverlappingPaddedNGrams) {
   // 0: "a"
   // 1: "b", "c", "d"
   // 2: "e", "f"
-  AddInputFromArray<string>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
   AddInputFromArray<int64>(TensorShape({4}), {0, 1, 4, 6});
   TF_ASSERT_OK(RunOpKernel());
 
-  std::vector<string> expected_values(                     //
+  std::vector<tstring> expected_values(                    //
       {"LP|LP|a", "LP|a|RP", "a|RP|RP",                    // ngrams for elem. 0
        "LP|LP|b", "LP|b|c", "b|c|d", "c|d|RP", "d|RP|RP",  // ngrams for elem. 1
        "LP|LP|e", "LP|e|f", "e|f|RP", "f|RP|RP"});         // ngrams for elem. 2
@@ -186,12 +186,12 @@ TEST_F(NgramKernelTest, TestOverlappingPaddedMultiCharNGrams) {
   // 0: "a"
   // 1: "b", "c", "d"
   // 2: "e", "f"
-  AddInputFromArray<string>(TensorShape({6}),
-                            {"aa", "bb", "cc", "dd", "ee", "ff"});
+  AddInputFromArray<tstring>(TensorShape({6}),
+                             {"aa", "bb", "cc", "dd", "ee", "ff"});
   AddInputFromArray<int64>(TensorShape({4}), {0, 1, 4, 6});
   TF_ASSERT_OK(RunOpKernel());
 
-  std::vector<string> expected_values(                              //
+  std::vector<tstring> expected_values(                             //
       {"LP|LP|aa", "LP|aa|RP", "aa|RP|RP",                          //
        "LP|LP|bb", "LP|bb|cc", "bb|cc|dd", "cc|dd|RP", "dd|RP|RP",  //
        "LP|LP|ee", "LP|ee|ff", "ee|ff|RP", "ff|RP|RP"});            //
@@ -207,13 +207,13 @@ TEST_F(NgramKernelTest, TestMultiOverlappingPaddedNGrams) {
   MakeOp("|", {5}, "LP", "RP", -1, false);
   // Batch items are:
   // 0: "a"
-  AddInputFromArray<string>(TensorShape({1}), {"a"});
+  AddInputFromArray<tstring>(TensorShape({1}), {"a"});
   AddInputFromArray<int64>(TensorShape({2}), {0, 1});
   TF_ASSERT_OK(RunOpKernel());
 
-  std::vector<string> expected_values({"LP|LP|LP|LP|a", "LP|LP|LP|a|RP",
-                                       "LP|LP|a|RP|RP", "LP|a|RP|RP|RP",
-                                       "a|RP|RP|RP|RP"});
+  std::vector<tstring> expected_values({"LP|LP|LP|LP|a", "LP|LP|LP|a|RP",
+                                        "LP|LP|a|RP|RP", "LP|a|RP|RP|RP",
+                                        "a|RP|RP|RP|RP"});
   std::vector<int64> expected_splits({0, 5});
 
   assert_string_equal(expected_values, *GetOutput(0));
@@ -225,11 +225,11 @@ TEST_F(NgramKernelTest, TestUnpaddedTrigrams) {
   // Batch items are:
   // 0: "a", "b", "c", "d"
   // 1: "e", "f"
-  AddInputFromArray<string>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
   AddInputFromArray<int64>(TensorShape({3}), {0, 4, 6});
   TF_ASSERT_OK(RunOpKernel());
 
-  std::vector<string> expected_values({"a|b|c", "b|c|d"});
+  std::vector<tstring> expected_values({"a|b|c", "b|c|d"});
   std::vector<int64> expected_splits({0, 2, 2});
 
   assert_string_equal(expected_values, *GetOutput(0));
@@ -241,11 +241,11 @@ TEST_F(NgramKernelTest, TestUnpaddedTrigramsWithEmptySequence) {
   // Batch items are:
   // 0: "a", "b", "c", "d"
   // 1: "e", "f"
-  AddInputFromArray<string>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
   AddInputFromArray<int64>(TensorShape({4}), {0, 4, 4, 6});
   TF_ASSERT_OK(RunOpKernel());
 
-  std::vector<string> expected_values({"a|b|c", "b|c|d"});
+  std::vector<tstring> expected_values({"a|b|c", "b|c|d"});
   std::vector<int64> expected_splits({0, 2, 2, 2});
 
   assert_string_equal(expected_values, *GetOutput(0));
@@ -257,11 +257,11 @@ TEST_F(NgramKernelTest, TestUnpaddedTrigramsWithPreserveShort) {
   // Batch items are:
   // 0: "a", "b", "c", "d"
   // 1: "e", "f"
-  AddInputFromArray<string>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
   AddInputFromArray<int64>(TensorShape({3}), {0, 4, 6});
   TF_ASSERT_OK(RunOpKernel());
 
-  std::vector<string> expected_values({"a|b|c", "b|c|d", "e|f"});
+  std::vector<tstring> expected_values({"a|b|c", "b|c|d", "e|f"});
   std::vector<int64> expected_splits({0, 2, 3});
 
   assert_string_equal(expected_values, *GetOutput(0));
@@ -273,11 +273,11 @@ TEST_F(NgramKernelTest, TestUnpaddedTrigramsWithPreserveShortAndEmptySequence) {
   // Batch items are:
   // 0: "a", "b", "c", "d"
   // 1: "e", "f"
-  AddInputFromArray<string>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
   AddInputFromArray<int64>(TensorShape({4}), {0, 4, 4, 6});
   TF_ASSERT_OK(RunOpKernel());
 
-  std::vector<string> expected_values({"a|b|c", "b|c|d", "e|f"});
+  std::vector<tstring> expected_values({"a|b|c", "b|c|d", "e|f"});
   std::vector<int64> expected_splits({0, 2, 2, 3});
 
   assert_string_equal(expected_values, *GetOutput(0));
@@ -289,11 +289,11 @@ TEST_F(NgramKernelTest, TestUnpaddedTrigramsAndQuadgramsWithPreserveShort) {
   // Batch items are:
   // 0: "a", "b", "c", "d"
   // 1: "e", "f"
-  AddInputFromArray<string>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
   AddInputFromArray<int64>(TensorShape({3}), {0, 4, 6});
   TF_ASSERT_OK(RunOpKernel());
 
-  std::vector<string> expected_values({"a|b|c|d", "a|b|c", "b|c|d", "e|f"});
+  std::vector<tstring> expected_values({"a|b|c|d", "a|b|c", "b|c|d", "e|f"});
   std::vector<int64> expected_splits({0, 3, 4});
 
   assert_string_equal(expected_values, *GetOutput(0));
@@ -305,11 +305,11 @@ TEST_F(NgramKernelTest, TestUnpaddedBigramsAndTrigrams) {
   // Batch items are:
   // 0: "a", "b", "c", "d"
   // 1: "e", "f"
-  AddInputFromArray<string>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
   AddInputFromArray<int64>(TensorShape({3}), {0, 4, 6});
   TF_ASSERT_OK(RunOpKernel());
 
-  std::vector<string> expected_values(
+  std::vector<tstring> expected_values(
       {"a|b", "b|c", "c|d", "a|b|c", "b|c|d", "e|f"});
   std::vector<int64> expected_splits({0, 5, 6});
 
@@ -322,13 +322,13 @@ TEST_F(NgramKernelTest, TestUnpaddedBigramsAndTrigramsWithPreserveShort) {
   // Batch items are:
   // 0: "a", "b", "c", "d"
   // 1: "e", "f"
-  AddInputFromArray<string>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
   AddInputFromArray<int64>(TensorShape({3}), {0, 4, 6});
   TF_ASSERT_OK(RunOpKernel());
 
   // Note that in this case, because the bigram 'e|f' was already generated,
   // the op will not generate a special preserve_short bigram.
-  std::vector<string> expected_values(
+  std::vector<tstring> expected_values(
       {"a|b", "b|c", "c|d", "a|b|c", "b|c|d", "e|f"});
   std::vector<int64> expected_splits({0, 5, 6});
 
@@ -341,13 +341,13 @@ TEST_F(NgramKernelTest, TestUnpaddedTrigramsAndBigramsWithPreserveShort) {
   // Batch items are:
   // 0: "a", "b", "c", "d"
   // 1: "e", "f"
-  AddInputFromArray<string>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
   AddInputFromArray<int64>(TensorShape({3}), {0, 4, 6});
   TF_ASSERT_OK(RunOpKernel());
 
   // Note that in this case, because the bigram 'e|f' was already generated,
   // the op will not generate a special preserve_short bigram.
-  std::vector<string> expected_values(
+  std::vector<tstring> expected_values(
       {"a|b|c", "b|c|d", "a|b", "b|c", "c|d", "e|f"});
   std::vector<int64> expected_splits({0, 5, 6});
 
@@ -360,11 +360,11 @@ TEST_F(NgramKernelTest, TestUnpaddedBigrams) {
   // Batch items are:
   // 0: "a", "b", "c", "d"
   // 1: "e", "f"
-  AddInputFromArray<string>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
   AddInputFromArray<int64>(TensorShape({3}), {0, 4, 6});
   TF_ASSERT_OK(RunOpKernel());
 
-  std::vector<string> expected_values({"a|b", "b|c", "c|d", "e|f"});
+  std::vector<tstring> expected_values({"a|b", "b|c", "c|d", "e|f"});
   std::vector<int64> expected_splits({0, 3, 4});
 
   assert_string_equal(expected_values, *GetOutput(0));
@@ -377,11 +377,11 @@ TEST_F(NgramKernelTest, TestOverlappingUnpaddedNGrams) {
   // 0: "a"
   // 1: "b", "c", "d"
   // 2: "e", "f"
-  AddInputFromArray<string>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
   AddInputFromArray<int64>(TensorShape({4}), {0, 1, 4, 6});
   TF_ASSERT_OK(RunOpKernel());
 
-  std::vector<string> expected_values({"b|c|d"});
+  std::vector<tstring> expected_values({"b|c|d"});
   std::vector<int64> expected_splits({0, 0, 1, 1});
 
   assert_string_equal(expected_values, *GetOutput(0));
@@ -394,11 +394,11 @@ TEST_F(NgramKernelTest, TestOverlappingUnpaddedNGramsNoOutput) {
   // 0: "a"
   // 1: "b", "c", "d"
   // 2: "e", "f"
-  AddInputFromArray<string>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
   AddInputFromArray<int64>(TensorShape({4}), {0, 1, 4, 6});
   TF_ASSERT_OK(RunOpKernel());
 
-  std::vector<string> expected_values({});
+  std::vector<tstring> expected_values({});
   std::vector<int64> expected_splits({0, 0, 0, 0});
 
   assert_string_equal(expected_values, *GetOutput(0));
@@ -410,12 +410,13 @@ TEST_F(NgramKernelTest, TestSinglyPaddedTrigrams) {
   // Batch items are:
   // 0: "a", "b", "c", "d"
   // 1: "e", "f"
-  AddInputFromArray<string>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
   AddInputFromArray<int64>(TensorShape({3}), {0, 4, 6});
   TF_ASSERT_OK(RunOpKernel());
 
-  std::vector<string> expected_values({"LP|a|b", "a|b|c", "b|c|d", "c|d|RP",  //
-                                       "LP|e|f", "e|f|RP"});
+  std::vector<tstring> expected_values({"LP|a|b", "a|b|c", "b|c|d",
+                                        "c|d|RP",  //
+                                        "LP|e|f", "e|f|RP"});
   std::vector<int64> expected_splits({0, 4, 6});
 
   assert_string_equal(expected_values, *GetOutput(0));
@@ -427,12 +428,12 @@ TEST_F(NgramKernelTest, TestSinglyPaddedBigrams) {
   // Batch items are:
   // 0: "a", "b", "c", "d"
   // 1: "e", "f"
-  AddInputFromArray<string>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
   AddInputFromArray<int64>(TensorShape({3}), {0, 4, 6});
   TF_ASSERT_OK(RunOpKernel());
 
-  std::vector<string> expected_values({"LP|a", "a|b", "b|c", "c|d", "d|RP",  //
-                                       "LP|e", "e|f", "f|RP"});
+  std::vector<tstring> expected_values({"LP|a", "a|b", "b|c", "c|d", "d|RP",  //
+                                        "LP|e", "e|f", "f|RP"});
   std::vector<int64> expected_splits({0, 5, 8});
 
   assert_string_equal(expected_values, *GetOutput(0));
@@ -444,11 +445,11 @@ TEST_F(NgramKernelTest, TestSinglyPaddedBigramsAnd5grams) {
   // Batch items are:
   // 0: "a", "b", "c", "d"
   // 1: "e", "f"
-  AddInputFromArray<string>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
   AddInputFromArray<int64>(TensorShape({3}), {0, 4, 6});
   TF_ASSERT_OK(RunOpKernel());
 
-  std::vector<string> expected_values(                                   //
+  std::vector<tstring> expected_values(                                  //
       {"LP|a", "a|b", "b|c", "c|d", "d|RP", "LP|a|b|c|d", "a|b|c|d|RP",  //
        "LP|e", "e|f", "f|RP"});
   std::vector<int64> expected_splits({0, 7, 10});
@@ -462,12 +463,12 @@ TEST_F(NgramKernelTest, TestSinglyPadded5gramsWithPreserveShort) {
   // Batch items are:
   // 0: "a", "b", "c", "d"
   // 1: "e", "f"
-  AddInputFromArray<string>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
   AddInputFromArray<int64>(TensorShape({3}), {0, 4, 6});
   TF_ASSERT_OK(RunOpKernel());
 
-  std::vector<string> expected_values(  //
-      {"LP|a|b|c|d", "a|b|c|d|RP",      //
+  std::vector<tstring> expected_values(  //
+      {"LP|a|b|c|d", "a|b|c|d|RP",       //
        "LP|e|f|RP"});
   std::vector<int64> expected_splits({0, 2, 3});
 
@@ -481,11 +482,11 @@ TEST_F(NgramKernelTest, TestOverlappingSinglyPaddedNGrams) {
   // 0: "a"
   // 1: "b", "c", "d"
   // 2: "e", "f"
-  AddInputFromArray<string>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
   AddInputFromArray<int64>(TensorShape({4}), {0, 1, 4, 6});
   TF_ASSERT_OK(RunOpKernel());
 
-  std::vector<string> expected_values(
+  std::vector<tstring> expected_values(
       {"LP|a|RP",                    // ngrams for elem. 0
        "LP|b|c", "b|c|d", "c|d|RP",  // ngrams for elem. 1
        "LP|e|f", "e|f|RP"});         // ngrams for elem. 2
@@ -501,11 +502,11 @@ TEST_F(NgramKernelTest, TestOverlappingSinglyPaddedNGramsNoOutput) {
   // 0: "a"
   // 1: "b", "c", "d"
   // 2: "e", "f"
-  AddInputFromArray<string>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
   AddInputFromArray<int64>(TensorShape({4}), {0, 1, 4, 6});
   TF_ASSERT_OK(RunOpKernel());
 
-  std::vector<string> expected_values({"LP|b|c|d|RP"});
+  std::vector<tstring> expected_values({"LP|b|c|d|RP"});
   std::vector<int64> expected_splits({0, 0, 1, 1});
 
   assert_string_equal(expected_values, *GetOutput(0));
@@ -517,11 +518,11 @@ TEST_F(NgramKernelTest, TestSinglyPaddedUnigrams) {
   // Batch items are:
   // 0: "a", "b", "c", "d"
   // 1: "e", "f"
-  AddInputFromArray<string>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
+  AddInputFromArray<tstring>(TensorShape({6}), {"a", "b", "c", "d", "e", "f"});
   AddInputFromArray<int64>(TensorShape({3}), {0, 4, 6});
   TF_ASSERT_OK(RunOpKernel());
 
-  std::vector<string> expected_values({"a", "b", "c", "d", "e", "f"});
+  std::vector<tstring> expected_values({"a", "b", "c", "d", "e", "f"});
   std::vector<int64> expected_splits({0, 4, 6});
 
   assert_string_equal(expected_values, *GetOutput(0));
@@ -530,11 +531,11 @@ TEST_F(NgramKernelTest, TestSinglyPaddedUnigrams) {
 
 TEST_F(NgramKernelTest, TestEmptyInput) {
   MakeOp("|", {1}, "LP", "RP", 3, false);
-  AddInputFromArray<string>(TensorShape({0}), {});
+  AddInputFromArray<tstring>(TensorShape({0}), {});
   AddInputFromArray<int64>(TensorShape({0}), {});
   TF_ASSERT_OK(RunOpKernel());
 
-  std::vector<string> expected_values({});
+  std::vector<tstring> expected_values({});
   std::vector<int64> expected_splits({});
 
   assert_string_equal(expected_values, *GetOutput(0));

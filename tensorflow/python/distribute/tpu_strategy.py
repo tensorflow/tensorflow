@@ -46,7 +46,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.tpu import device_assignment as device_assignment_lib
+from tensorflow.python.tpu import device_assignment as device_assignment_lib  # pylint: disable=unused-import
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
@@ -99,6 +99,11 @@ class TPUStrategy(distribute_lib.Strategy):
     """
     super(TPUStrategy, self).__init__(TPUExtended(
         self, tpu_cluster_resolver, device_assignment=device_assignment))
+    distribute_lib.distribution_strategy_gauge.get_cell("V2").set("TPUStrategy")
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_workers").set(self.extended.num_hosts)
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_replicas_per_worker").set(self.extended.num_replicas_per_host)
 
   # TODO(cjfj): Modify `_call_for_each_replica` in `TPUExtended` such that this
   # can use the default implementation.
@@ -135,6 +140,11 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
     """
     super(TPUStrategyV1, self).__init__(TPUExtended(
         self, tpu_cluster_resolver, steps_per_run, device_assignment))
+    distribute_lib.distribution_strategy_gauge.get_cell("V1").set("TPUStrategy")
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_workers").set(self.extended.num_hosts)
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_replicas_per_worker").set(self.extended.num_replicas_per_host)
 
   @property
   def steps_per_run(self):
@@ -173,20 +183,6 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self._tpu_cluster_resolver = tpu_cluster_resolver
     self._tpu_metadata = get_tpu_system_metadata(self._tpu_cluster_resolver)
     self._device_assignment = device_assignment
-
-    # Device assignment is currently only supported for 1 core case.
-    if self._device_assignment:
-      assert isinstance(self._device_assignment,
-                        device_assignment_lib.DeviceAssignment)
-      if self._device_assignment.num_replicas != 1:
-        raise ValueError("Device assignment is only supported for a single "
-                         "core single replica case currently.")
-      if self._device_assignment.num_cores_per_replica != 1:
-        raise ValueError("Device assignment is only supported for a single "
-                         "core single replica case currently.")
-      if not all(self._device_assignment.core_assignment[0][0] == [0, 0, 0]):
-        raise ValueError("Device assignment is only supported for a single "
-                         "core single replica case currently.")
 
     # TODO(jhseu): Switch to DeviceAssignment to support pods and model
     # parallelism.
@@ -698,6 +694,15 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     self._tpu_function_cache[fn] = tpu_function
     return tpu_function
+
+  def _in_multi_worker_mode(self):
+    """Whether this strategy indicates working in multi-worker settings."""
+    # TPUStrategy has different distributed training structure that the whole
+    # cluster should be treated as single worker from higher-level (e.g. Keras)
+    # library's point of view.
+    # TODO(rchao): Revisit this as we design a fault-tolerance solution for
+    # TPUStrategy.
+    return False
 
 
 class _TPUReplicaContext(distribute_lib.ReplicaContext):

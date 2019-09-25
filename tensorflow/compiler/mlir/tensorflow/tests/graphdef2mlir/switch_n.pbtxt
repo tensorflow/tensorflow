@@ -4,6 +4,10 @@
 # CHECK-SAME: of 3 : tensor<i32>
 # CHECK-SAME: T = "tfdtype$DT_INT32"
 # CHECK-SAME: name = "Case/branch_index/_3"
+# CHECK: tf_executor.SwitchN
+# CHECK-SAME: of 2 : tensor<f32>
+# CHECK-SAME: T = "tfdtype$DT_FLOAT"
+# CHECK-SAME: name = "Case/Case/input_0/_7"
 
 node {
   name: "Case/branch_index"
@@ -87,7 +91,7 @@ node {
   attr {
     key: "num_outs"
     value {
-      i: 3
+      i: 2
     }
   }
 }
@@ -215,27 +219,14 @@ node {
   }
 }
 node {
-  name: "Case/branch2/_2/mul_0"
-  op: "Mul"
-  input: "Case/Case/input_0/_7:2"
-  input: "Case/branch2/_2/mul/y"
-  attr {
-    key: "T"
-    value {
-      type: DT_FLOAT
-    }
-  }
-}
-node {
   name: "Case/merge/_9"
   op: "Merge"
   input: "Case/branch0/_0/mul_0"
   input: "Case/branch1/_1/mul_0"
-  input: "Case/branch2/_2/mul_0"
   attr {
     key: "N"
     value {
-      i: 3
+      i: 2
     }
   }
   attr {

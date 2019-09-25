@@ -41,9 +41,24 @@ namespace wav {
 // if (EncodeAudioAsS16LEWav(audio_buffer, 8000, 2, 4, &wav_string).ok()) {
 //   // Use wav_string.
 // }
+template <typename T>
 Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
                              size_t num_channels, size_t num_frames,
-                             string* wav_string);
+                             T* wav_string);
+
+// Excplicit instantiations defined in wav_io.cc.
+extern template Status EncodeAudioAsS16LEWav<string>(const float* audio,
+                                                     size_t sample_rate,
+                                                     size_t num_channels,
+                                                     size_t num_frames,
+                                                     string* wav_string);
+#ifdef USE_TSTRING
+extern template Status EncodeAudioAsS16LEWav<tstring>(const float* audio,
+                                                      size_t sample_rate,
+                                                      size_t num_channels,
+                                                      size_t num_frames,
+                                                      tstring* wav_string);
+#endif  // USE_TSTRING
 
 // Decodes the little-endian signed 16-bit PCM WAV file data (aka LIN16
 // encoding) into a float Tensor. The channels are encoded as the lowest

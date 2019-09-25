@@ -15,14 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/xla/hlo_module_importer.h"
 
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
-#include "tensorflow/compiler/mlir/xla/ir/xla_ops.h"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -31,6 +31,9 @@ limitations under the License.
 namespace xla {
 
 Status HloModuleImporter::Import(const xla::HloModule& module) {
+  // TODO(hinsu): Only import the entry computation here once all HLO ops with
+  // reference to other computation are updated to have a region instead of a
+  // function attribute.
   for (const auto& computation : module.computations()) {
     auto result = HloFunctionImporter::ImportFunction(
         module_, &builder_, &function_map_, computation);

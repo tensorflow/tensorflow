@@ -90,10 +90,16 @@ template <>
 Status CLKernel::SetBytes<FLT>(int index, const FLT& value) const;
 
 template <>
+Status CLKernel::SetBytes<FLT2>(int index, const FLT2& value) const;
+
+template <>
 Status CLKernel::SetBytes<FLT4>(int index, const FLT4& value) const;
 
 template <>
 Status CLKernel::SetBytesAuto<FLT>(const FLT& value);
+
+template <>
+Status CLKernel::SetBytesAuto<FLT2>(const FLT2& value);
 
 template <>
 Status CLKernel::SetBytesAuto<FLT4>(const FLT4& value);

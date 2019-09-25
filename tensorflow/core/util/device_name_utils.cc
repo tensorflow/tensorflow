@@ -444,6 +444,27 @@ bool DeviceNameUtils::IsSameAddressSpace(StringPiece src, StringPiece dst) {
 }
 
 /* static */
+bool DeviceNameUtils::IsDifferentAddressSpace(const ParsedName& a,
+                                              const ParsedName& b) {
+  return (a.has_job && b.has_job && (a.job != b.job)) ||
+         (a.has_replica && b.has_replica && (a.replica != b.replica)) ||
+         (a.has_task && b.has_task && (a.task != b.task));
+}
+
+/* static */
+const DeviceNameUtils::ParsedName DeviceNameUtils::AddressSpace(
+    const ParsedName& name) {
+  ParsedName address_space;
+  address_space.has_job = name.has_job;
+  address_space.has_replica = name.has_replica;
+  address_space.has_task = name.has_task;
+  address_space.job = name.job;
+  address_space.replica = name.replica;
+  address_space.task = name.task;
+  return address_space;
+}
+
+/* static */
 string DeviceNameUtils::LocalName(StringPiece type, int id) {
   return strings::StrCat("/device:", type, ":", id);
 }

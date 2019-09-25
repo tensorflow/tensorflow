@@ -31,6 +31,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
@@ -248,6 +249,42 @@ class FromConcreteFunctionTest(TestModels):
 
     # Ensure that the quantized weights tflite model is smaller.
     self.assertLess(len(quantized_tflite), len(float_tflite))
+
+  @test_util.run_v2_only
+  def testEmbeddings(self):
+    """Test model with embeddings."""
+    input_data = constant_op.constant(
+        np.array(np.random.random_sample((20)), dtype=np.int32))
+
+    class EmbeddingModel(keras.Model):
+
+      def __init__(self):
+        super(EmbeddingModel, self).__init__()
+        self.shared_weights = self.add_weight(
+            'weights',
+            shape=(2000, 300),
+            dtype=dtypes.float32,
+            initializer=init_ops.random_normal_initializer(
+                mean=0.0, stddev=300**(-0.5)))
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=(20), dtype=dtypes.int32)
+      ])
+      def func(self, x):
+        return array_ops.gather(self.shared_weights, x)
+
+    # Building the model.
+    root = EmbeddingModel()
+    concrete_func = root.func.get_concrete_function()
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    expected_value = root.func(input_data)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+    np.testing.assert_almost_equal(expected_value.numpy(), actual_value, 5)
 
   @test_util.run_v2_only
   def testGraphDebugInfo(self):

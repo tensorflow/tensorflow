@@ -35,8 +35,8 @@ __device__ int thread_counter;
 template <typename Distribution>
 __global__ void FillKernel(
     Distribution dist, int64 state_size, int64 output_size,
-    StateElementType* state_data,
-    typename Distribution::ResultElementType* output_data) {
+    StateElementType* __restrict__ state_data,
+    typename Distribution::ResultElementType* __restrict__ output_data) {
   // Threads in this block share `philox`. Thread 0 is responsible for
   // initializing it.
   __shared__ char philox_raw[sizeof(PhiloxRandom)];
@@ -90,7 +90,8 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
 }
 
 // Precondition: there is only 1 block and 1 thread.
-__global__ void SkipKernel(int64 delta, StateElementType* state_data) {
+__global__ void SkipKernel(int64 delta,
+                           StateElementType* __restrict__ state_data) {
   auto philox = GetPhiloxRandomFromMem(state_data);
   UpdateMemWithPhiloxRandom(philox, delta, state_data);
 }

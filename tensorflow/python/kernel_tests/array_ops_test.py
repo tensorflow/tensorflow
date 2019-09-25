@@ -386,13 +386,15 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
     axis = array_ops.placeholder(dtypes.int32)
     with self.cached_session():
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "is out of valid range"):
+                                   "is out of.*range"):
         array_ops.reverse_v2(x_np, axis).eval(feed_dict={axis: [-30]})
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "is out of valid range"):
+                                   "is out of.*range"):
         array_ops.reverse_v2(x_np, axis).eval(feed_dict={axis: [2]})
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "axis 0 specified more than once"):
+      with self.assertRaisesRegexp(
+          errors_impl.InvalidArgumentError,
+          "(axis 0 specified more than once|canonicalized axis 0 was repeated.)"
+      ):
         array_ops.reverse_v2(x_np, axis).eval(feed_dict={axis: [0, -2]})
 
   @test_util.run_deprecated_v1
@@ -651,6 +653,12 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       _ = checker[1:0]
 
   @test_util.run_deprecated_v1
+  def testSliceWithUndefinedDimension(self):
+    t = constant_op.constant([1, 2, 3])
+    d = tensor_shape.Dimension(None)
+    self.assertAllEqual(t[d:d:d], t)
+
+  @test_util.run_deprecated_v1
   def testEllipsis(self):
     with self.session(use_gpu=True):
       raw = [[[[[1, 2], [3, 4], [5, 6]]], [[[7, 8], [9, 10], [11, 12]]]]]
@@ -687,8 +695,8 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
     with self.session(use_gpu=True):
       ones = array_ops.placeholder(shape=[2, 2], dtype=dtypes.int16)
       self.assertAllEqual(
-          ones[array_ops.newaxis, :, 0].eval(
-              feed_dict={ones: [[1, 1], [1, 1]]}), [[1, 1]])
+          ones[array_ops.newaxis, :,
+               0].eval(feed_dict={ones: [[1, 1], [1, 1]]}), [[1, 1]])
 
   @test_util.run_deprecated_v1
   def testTensorIndexing(self):
@@ -1090,8 +1098,9 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
   def testInvalidSlice(self):
     with self.cached_session() as sess:
       foo = constant_op.constant([1, 2, 3])
-      with self.assertRaisesRegexp(ValueError, "Sliced assignment"
-                                   " is only supported for variables"):
+      with self.assertRaisesRegexp(
+          ValueError, "Sliced assignment"
+          " is only supported for variables"):
         bar = foo[:2].assign(constant_op.constant([1, 2]))
         sess.run(bar)
 
@@ -1304,6 +1313,7 @@ class IdentityTest(test_util.TensorFlowTestCase):
   @test_util.run_gpu_only
   def testEagerIdentity(self):
     with context.eager_mode():
+
       def _test(x, y, device):
         self.assertAllEqual(x.numpy(), y.numpy())
         self.assertTrue(device in y.device.lower())
@@ -1418,6 +1428,51 @@ class SnapshotOpTest(test_util.TensorFlowTestCase):
         x = constant_op.constant([0, 1, 2, 3], dtype=dtype)
         y = gen_array_ops.snapshot(x)
         self.assertAllEqual(y.eval(), [0, 1, 2, 3])
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class QuantizeAndDequantizeTest(test_util.TensorFlowTestCase):
+
+  # Generates a tensor of the specified `shape` using values from `values`
+  # scaled by (slice_idx + 1) along `axis` dimension.
+  def _scale_per_slice(self, shape, axis, values):
+    # Note: repeats the values if the shape is larger than values.
+    out = np.take(values, np.remainder(np.arange(np.prod(shape)),
+                                       len(values))).reshape(shape)
+    if axis is not None:
+      scale_shape = [1] * len(shape)
+      scale_shape[axis] = shape[axis]
+      out *= np.arange(1, shape[axis] + 1).reshape(scale_shape)
+    return out
+
+  def testAxis(self):
+    shape = np.array([2, 3, 4, 5])
+    values = np.array([-1, -0.5, 0, 0.3, 0.8, 0.555, 0.5], dtype=np.float32)
+    quant_values = np.array(
+        [-1, -0.5, 0, 38.0 / 128, 102.0 / 128, 71.0 / 128, 0.5],
+        dtype=np.float32)
+    for axis in [None, 0, 1, 2, 3]:
+      inputs = constant_op.constant(self._scale_per_slice(shape, axis, values))
+      expected = self._scale_per_slice(shape, axis, quant_values)
+      unused_minmax_value = 0 if axis is None else [0] * shape[axis]
+      fake_quantized = self.evaluate(
+          array_ops.quantize_and_dequantize(
+              inputs,
+              unused_minmax_value,
+              unused_minmax_value,
+              range_given=False,
+              round_mode="HALF_UP",
+              axis=axis))
+      self.assertAllEqual(fake_quantized, expected)
+      if axis is not None:
+        fake_quantized = self.evaluate(
+            array_ops.quantize_and_dequantize(
+                inputs,
+                unused_minmax_value,
+                unused_minmax_value,
+                range_given=False,
+                axis=(axis - 4)))
+        self.assertAllClose(fake_quantized, expected)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -1817,6 +1872,50 @@ class BatchGatherNdTest(test_util.TensorFlowTestCase):
     shape = gather_nd_t.get_shape()
     self.assertEqual(None, shape.ndims)
     self.assertEqual(None, tensor_shape.dimension_value(shape[0]))
+
+
+class RepeatTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_deprecated_v1
+  def testRepeatScalar(self):
+    with self.test_session():
+      v_tf = array_ops.repeat(constant_op.constant(3), 4)
+      v_np = np.repeat(3, 4)
+      self.assertAllEqual(v_tf.eval(), v_np)
+
+  @test_util.run_deprecated_v1
+  def testRepeatMatrix(self):
+    with self.test_session():
+      x = np.array([[1, 2], [3, 4]], dtype=np.int32)
+      v_tf = array_ops.repeat(constant_op.constant(x), 2)
+      v_np = np.repeat(x, 2)
+      self.assertAllEqual(v_tf.eval(), v_np)
+
+  @test_util.run_deprecated_v1
+  def testRepeatMatrixAxis0(self):
+    with self.test_session():
+      x = np.array([[1, 2], [3, 4]], dtype=np.int32)
+      v_tf = array_ops.repeat(
+          constant_op.constant(x), constant_op.constant([1, 2]), axis=0)
+      v_np = np.repeat(x, [1, 2], axis=0)
+      self.assertAllEqual(v_tf.eval(), v_np)
+
+  @test_util.run_deprecated_v1
+  def testRepeatMatrixAxis1(self):
+    with self.test_session():
+      x = np.array([[1, 2], [3, 4]], dtype=np.int32)
+      v_tf = array_ops.repeat(
+          constant_op.constant(x), constant_op.constant(3), axis=1)
+      v_np = np.repeat(x, 3, axis=1)
+      self.assertAllEqual(v_tf.eval(), v_np)
+
+  @test_util.run_deprecated_v1
+  def testRepeatMatrixRepeatArray(self):
+    with self.test_session():
+      x = np.array([[1, 2], [3, 4]], dtype=np.int32)
+      v_tf = array_ops.repeat(constant_op.constant(x), [1, 2, 3, 4])
+      v_np = np.repeat(x, [1, 2, 3, 4])
+      self.assertAllEqual(v_tf.eval(), v_np)
 
 
 if __name__ == "__main__":

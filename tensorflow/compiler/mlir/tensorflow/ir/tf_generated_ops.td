@@ -88,13 +88,13 @@ Inputs must be of same size and shape.
   }];
 
   let arguments = (ins
-    Variadic<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Variant]>>:$inputs,
+    Variadic<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8, TF_Variant]>>:$inputs,
 
     Confined<I64Attr, [IntMinValue<1>]>:$N
   );
 
   let results = (outs
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Variant]>:$sum
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8, TF_Variant]>:$sum
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -110,17 +110,43 @@ def TF_AddV2Op : TF_Op<"AddV2", [Broadcastable, Commutative, NoSideEffect]>,
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$x,
-    TF_NumberTensor:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint8]>:$y
   );
 
   let results = (outs
-    TF_NumberTensor:$z
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint8]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasCanonicalizer = 1;
+}
+
+def TF_AllOp : TF_Op<"All", [NoSideEffect]> {
+  let summary = [{
+Computes the "logical and" of elements across dimensions of a tensor.
+  }];
+
+  let description = [{
+Reduces `input` along the dimensions given in `axis`. Unless
+`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+`axis`. If `keep_dims` is true, the reduced dimensions are
+retained with length 1.
+  }];
+
+  let arguments = (ins
+    I1Tensor:$input,
+    TF_I32OrI64Tensor:$reduction_indices,
+
+    DefaultValuedAttr<BoolAttr, "false">:$keep_dims
+  );
+
+  let results = (outs
+    I1Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 }
 
 def TF_AnyOp : TF_Op<"Any", [NoSideEffect]> {
@@ -169,7 +195,7 @@ Usage:
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$input,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
     TF_I32OrI64Tensor:$dimension
   );
 
@@ -202,7 +228,7 @@ Usage:
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$input,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
     TF_I32OrI64Tensor:$dimension
   );
 
@@ -261,6 +287,88 @@ window in `value`.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_BatchMatMulOp : TF_Op<"BatchMatMul", [NoSideEffect]> {
+  let summary = "Multiplies slices of two tensors in batches.";
+
+  let description = [{
+Multiplies all slices of `Tensor` `x` and `y` (each slice can be
+viewed as an element of a batch), and arranges the individual results
+in a single output tensor of the same batch size. Each of the
+individual slices can optionally be adjointed (to adjoint a matrix
+means to transpose and conjugate it) before multiplication by setting
+the `adj_x` or `adj_y` flag to `True`, which are by default `False`.
+
+The input tensors `x` and `y` are 2-D or higher with shape `[..., r_x, c_x]`
+and `[..., r_y, c_y]`.
+
+The output tensor is 2-D or higher with shape `[..., r_o, c_o]`, where:
+
+    r_o = c_x if adj_x else r_x
+    c_o = r_y if adj_y else c_y
+
+It is computed as:
+
+    output[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$y,
+
+    DefaultValuedAttr<BoolAttr, "false">:$adj_x,
+    DefaultValuedAttr<BoolAttr, "false">:$adj_y
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_BatchMatMulV2Op : TF_Op<"BatchMatMulV2", [NoSideEffect]> {
+  let summary = "Multiplies slices of two tensors in batches.";
+
+  let description = [{
+Multiplies all slices of `Tensor` `x` and `y` (each slice can be
+viewed as an element of a batch), and arranges the individual results
+in a single output tensor of the same batch size. Each of the
+individual slices can optionally be adjointed (to adjoint a matrix
+means to transpose and conjugate it) before multiplication by setting
+the `adj_x` or `adj_y` flag to `True`, which are by default `False`.
+
+The input tensors `x` and `y` are 2-D or higher with shape `[..., r_x, c_x]`
+and `[..., r_y, c_y]`.
+
+The output tensor is 2-D or higher with shape `[..., r_o, c_o]`, where:
+
+    r_o = c_x if adj_x else r_x
+    c_o = r_y if adj_y else c_y
+
+It is computed as:
+
+    output[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])
+
+*NOTE*: `BatchMatMulV2` supports broadcasting in the batch dimensions. More
+about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$y,
+
+    DefaultValuedAttr<BoolAttr, "false">:$adj_x,
+    DefaultValuedAttr<BoolAttr, "false">:$adj_y
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_BatchToSpaceNDOp : TF_Op<"BatchToSpaceND", [NoSideEffect]> {
   let summary = "BatchToSpace for N-D tensors of type T.";
 
@@ -297,14 +405,14 @@ Broadcasting is supported, so `value` may have any number of dimensions.
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$value,
-    TF_NumberTensor:$bias,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$value,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$bias,
 
     DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format
   );
 
   let results = (outs
-    TF_NumberTensor:$output
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -332,21 +440,24 @@ gives module error.
 For example,
 
 Example 1:
-```python
+
 >>> a = [1., 2., 3.]
->>> equality_bitcast = tf.bitcast(a,tf.complex128)
-tensorflow.python.framework.errors_impl.InvalidArgumentError: Cannot bitcast from float to complex128: shape [3] [Op:Bitcast]
->>> equality_cast = tf.cast(a,tf.complex128)
+>>> equality_bitcast = tf.bitcast(a, tf.complex128)
+Traceback (most recent call last):
+...
+InvalidArgumentError: Cannot bitcast from 1 to 18 [Op:Bitcast]
+>>> equality_cast = tf.cast(a, tf.complex128)
 >>> print(equality_cast)
 tf.Tensor([1.+0.j 2.+0.j 3.+0.j], shape=(3,), dtype=complex128)
 ```
+
 Example 2:
-```python
+
 >>> tf.bitcast(tf.constant(0xffffffff, dtype=tf.uint32), tf.uint8)
 <tf.Tensor: ... shape=(4,), dtype=uint8, numpy=array([255, 255, 255, 255], dtype=uint8)>
-```
+
 Example 3:
-```python
+
 >>> x = [1., 2., 3.]
 >>> y = [0., 2., 3.]
 >>> equality= tf.equal(x,y)
@@ -358,10 +469,9 @@ tf.Tensor([False True True], shape=(3,), dtype=bool)
 tf.Tensor([0. 1. 1.], shape=(3,), dtype=float32)
 >>> print(equality_bitcast)
 tf.Tensor(
-[[ 0 0 0 0]
- [ 0 0 128 63]
- [ 0 0 128 63]], shape=(3, 4), dtype=uint8)
-```
+    [[  0   0   0   0]
+     [  0   0 128  63]
+     [  0   0 128  63]], shape=(3, 4), dtype=uint8)
 
 *NOTE*: Bitcast is implemented as a low-level cast, so machines with different
 endian orderings will give different results.
@@ -393,14 +503,13 @@ and works its way forward.
 
 For example,
 
-```python
 >>> x = tf.constant([1, 2, 3])
 >>> y = tf.broadcast_to(x, [3, 3])
->>> sess.run(y)
-array([[1, 2, 3],
-       [1, 2, 3],
-       [1, 2, 3]], dtype=int32)
-```
+>>> print(y)
+tf.Tensor(
+    [[1 2 3]
+     [1 2 3]
+     [1 2 3]], shape=(3, 3), dtype=int32)
 
 In the above example, the input Tensor with the shape of `[1, 3]`
 is broadcasted to output Tensor with shape of `[3, 3]`.
@@ -462,6 +571,27 @@ def TF_CeilOp : TF_Op<"Ceil", [NoSideEffect, SameOperandsAndResultType]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_CheckNumericsOp : TF_Op<"CheckNumerics", [SameOperandsAndResultType]> {
+  let summary = "Checks a tensor for NaN and Inf values.";
+
+  let description = [{
+When run, reports an `InvalidArgument` error if `tensor` has any values
+that are not a number (NaN) or infinity (Inf). Otherwise, passes `tensor` as-is.
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$tensor,
+
+    StrAttr:$message
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ConcatOp : TF_Op<"Concat", [NoSideEffect]> {
   let summary = "Concatenates tensors along one dimension.";
 
@@ -480,6 +610,10 @@ def TF_ConcatOp : TF_Op<"Concat", [NoSideEffect]> {
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_ConcatV2Op : TF_Op<"ConcatV2", [NoSideEffect]> {
@@ -501,6 +635,10 @@ def TF_ConcatV2Op : TF_Op<"ConcatV2", [NoSideEffect]> {
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_ConjOp : TF_Op<"Conj", [NoSideEffect]> {
@@ -609,6 +747,115 @@ Given an input tensor, this function computes cosine of every
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_DepthToSpaceOp : TF_Op<"DepthToSpace", [NoSideEffect]> {
+  let summary = "DepthToSpace for tensors of type T.";
+
+  let description = [{
+Rearranges data from depth into blocks of spatial data.
+This is the reverse transformation of SpaceToDepth. More specifically,
+this op outputs a copy of the input tensor where values from the `depth`
+dimension are moved in spatial blocks to the `height` and `width` dimensions.
+The attr `block_size` indicates the input block size and how the data is moved.
+
+  * Chunks of data of size `block_size * block_size` from depth are rearranged
+    into non-overlapping blocks of size `block_size x block_size`
+  * The width the output tensor is `input_depth * block_size`, whereas the
+    height is `input_height * block_size`.
+  * The Y, X coordinates within each block of the output image are determined
+    by the high order component of the input channel index.
+  * The depth of the input tensor must be divisible by
+    `block_size * block_size`.
+
+The `data_format` attr specifies the layout of the input and output tensors
+with the following options:
+  "NHWC": `[ batch, height, width, channels ]`
+  "NCHW": `[ batch, channels, height, width ]`
+  "NCHW_VECT_C":
+      `qint8 [ batch, channels / 4, height, width, 4 ]`
+
+It is useful to consider the operation as transforming a 6-D Tensor.
+e.g. for data_format = NHWC,
+     Each element in the input tensor can be specified via 6 coordinates,
+     ordered by decreasing memory layout significance as:
+     n,iY,iX,bY,bX,oC  (where n=batch index, iX, iY means X or Y coordinates
+                        within the input image, bX, bY means coordinates
+                        within the output block, oC means output channels).
+     The output would be the input transposed to the following layout:
+     n,iY,bY,iX,bX,oC
+
+This operation is useful for resizing the activations between convolutions
+(but keeping all data), e.g. instead of pooling. It is also useful for training
+purely convolutional models.
+
+For example, given an input of shape `[1, 1, 1, 4]`, data_format = "NHWC" and
+block_size = 2:
+
+```
+x = [[[[1, 2, 3, 4]]]]
+
+```
+
+This operation will output a tensor of shape `[1, 2, 2, 1]`:
+
+```
+   [[[[1], [2]],
+     [[3], [4]]]]
+```
+
+Here, the input has a batch of 1 and each batch element has shape `[1, 1, 4]`,
+the corresponding output will have 2x2 elements and will have a depth of
+1 channel (1 = `4 / (block_size * block_size)`).
+The output element shape is `[2, 2, 1]`.
+
+For an input tensor with larger depth, here of shape `[1, 1, 1, 12]`, e.g.
+
+```
+x = [[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]
+```
+
+This operation, for block size of 2, will return the following tensor of shape
+`[1, 2, 2, 3]`
+
+```
+   [[[[1, 2, 3], [4, 5, 6]],
+     [[7, 8, 9], [10, 11, 12]]]]
+
+```
+
+Similarly, for the following input of shape `[1 2 2 4]`, and a block size of 2:
+
+```
+x =  [[[[1, 2, 3, 4],
+       [5, 6, 7, 8]],
+      [[9, 10, 11, 12],
+       [13, 14, 15, 16]]]]
+```
+
+the operator will return the following tensor of shape `[1 4 4 1]`:
+
+```
+x = [[[ [1],   [2],  [5],  [6]],
+      [ [3],   [4],  [7],  [8]],
+      [ [9],  [10], [13],  [14]],
+      [ [11], [12], [15],  [16]]]]
+
+```
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+
+    Confined<I64Attr, [IntMinValue<2>]>:$block_size,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NHWC", "NCHW", "NCHW_VECT_C"]>, "NHWC">:$data_format
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_DepthwiseConv2dNativeOp : TF_Op<"DepthwiseConv2dNative", [NoSideEffect]> {
   let summary = [{
 Computes a 2-D depthwise convolution given 4-D `input` and `filter` tensors.
@@ -662,12 +909,12 @@ def TF_DivOp : TF_Op<"Div", [Broadcastable, NoSideEffect]>,
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$x,
-    TF_NumberTensor:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$y
   );
 
   let results = (outs
-    TF_NumberTensor:$z
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -696,8 +943,7 @@ See [Fast and Accurate Deep Network Learning by Exponential Linear Units (ELUs)
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_EqualOp : TF_Op<"Equal", [Broadcastable, Commutative, NoSideEffect]>,
-                 WithBroadcastableCmpOpBuilder {
+def TF_EqualOp : TF_Op<"Equal", [Commutative, NoSideEffect]> {
   let summary = "Returns the truth value of (x == y) element-wise.";
 
   let description = [{
@@ -716,8 +962,10 @@ tf.math.equal(x, y) ==> array([True,  True])
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Str]>:$x,
-    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Str]>:$y
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Str, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Str, TF_Uint8]>:$y,
+
+    DefaultValuedAttr<BoolAttr, "true">:$incompatible_shape_error
   );
 
   let results = (outs
@@ -725,6 +973,15 @@ tf.math.equal(x, y) ==> array([True,  True])
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let builders = [
+    OpBuilder<"Builder* builder, OperationState& result, Value* x, "
+              "Value* y, BoolAttr incompatible_shape_error">
+  ];
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_ExpOp : TF_Op<"Exp", [NoSideEffect, SameOperandsAndResultType]> {
@@ -908,6 +1165,52 @@ values.
   }];
 }
 
+def TF_FakeQuantWithMinMaxVarsPerChannelOp : TF_Op<"FakeQuantWithMinMaxVarsPerChannel", [NoSideEffect]> {
+  let summary = [{
+Fake-quantize the 'inputs' tensor of type float and one of the shapes: `[d]`,
+  }];
+
+  let description = [{
+`[b, d]` `[b, h, w, d]` via per-channel floats `min` and `max` of shape `[d]`
+to 'outputs' tensor of same shape as `inputs`.
+
+`[min; max]` define the clamping range for the `inputs` data.
+`inputs` values are quantized into the quantization range (`[0; 2^num_bits - 1]`
+when `narrow_range` is false and `[1; 2^num_bits - 1]` when it is true) and
+then de-quantized and output as floats in `[min; max]` interval.
+`num_bits` is the bitwidth of the quantization; between 2 and 16, inclusive.
+
+Before quantization, `min` and `max` values are adjusted with the following
+logic.
+It is suggested to have `min <= 0 <= max`. If `0` is not in the range of values,
+the behavior can be unexpected:
+If `0 < min < max`: `min_adj = 0` and `max_adj = max - min`.
+If `min < max < 0`: `min_adj = min - max` and `max_adj = 0`.
+If `min <= 0 <= max`: `scale = (max - min) / (2^num_bits - 1) `,
+`min_adj = scale * round(min / scale)` and `max_adj = max + min_adj - min`.
+
+This operation has a gradient and thus allows for training `min` and `max`
+values.
+  }];
+
+  let arguments = (ins
+    F32Tensor:$inputs,
+    F32Tensor:$min,
+    F32Tensor:$max,
+
+    DefaultValuedAttr<I64Attr, "8">:$num_bits,
+    DefaultValuedAttr<BoolAttr, "false">:$narrow_range
+  );
+
+  let results = (outs
+    F32Tensor:$outputs
+  );
+
+  let verifier = [{
+    return Verify(*this);
+  }];
+}
+
 def TF_FillOp : TF_Op<"Fill", [NoSideEffect]> {
   let summary = "Creates a tensor filled with a scalar value.";
 
@@ -973,12 +1276,12 @@ def TF_FloorDivOp : TF_Op<"FloorDiv", [Broadcastable, NoSideEffect]>,
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$x,
-    TF_NumberTensor:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$y
   );
 
   let results = (outs
-    TF_NumberTensor:$z
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -1658,6 +1961,51 @@ cublas.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_MatrixDiagOp : TF_Op<"MatrixDiag", [NoSideEffect]> {
+  let summary = [{
+Returns a batched diagonal tensor with a given batched diagonal values.
+  }];
+
+  let description = [{
+Given a `diagonal`, this operation returns a tensor with the `diagonal` and
+everything else padded with zeros. The diagonal is computed as follows:
+
+Assume `diagonal` has `k` dimensions `[I, J, K, ..., N]`, then the output is a
+tensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:
+
+`output[i, j, k, ..., m, n] = 1{m=n} * diagonal[i, j, k, ..., n]`.
+
+For example:
+
+```
+# 'diagonal' is [[1, 2, 3, 4], [5, 6, 7, 8]]
+
+and diagonal.shape = (2, 4)
+
+tf.matrix_diag(diagonal) ==> [[[1, 0, 0, 0]
+                                     [0, 2, 0, 0]
+                                     [0, 0, 3, 0]
+                                     [0, 0, 0, 4]],
+                                    [[5, 0, 0, 0]
+                                     [0, 6, 0, 0]
+                                     [0, 0, 7, 0]
+                                     [0, 0, 0, 8]]]
+
+which has shape (2, 4, 4)
+```
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$diagonal
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_MaxOp : TF_Op<"Max", [NoSideEffect]> {
   let summary = [{
 Computes the maximum of elements across dimensions of a tensor.
@@ -1671,14 +2019,14 @@ retained with length 1.
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$input,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
     TF_I32OrI64Tensor:$reduction_indices,
 
     DefaultValuedAttr<BoolAttr, "false">:$keep_dims
   );
 
   let results = (outs
-    TF_NumberTensor:$output
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -1692,7 +2040,7 @@ def TF_MaxPoolOp : TF_Op<"MaxPool", [NoSideEffect]> {
   }];
 
   let arguments = (ins
-    TF_IntOrFpTensor:$input,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Qint8, TF_Uint16, TF_Uint8]>:$input,
 
     Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$ksize,
     Confined<I64ArrayAttr, [ArrayMinCount<4>]>:$strides,
@@ -1701,7 +2049,7 @@ def TF_MaxPoolOp : TF_Op<"MaxPool", [NoSideEffect]> {
   );
 
   let results = (outs
-    TF_IntOrFpTensor:$output
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Qint8, TF_Uint16, TF_Uint8]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -1741,14 +2089,14 @@ retained with length 1.
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$input,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
     TF_I32OrI64Tensor:$reduction_indices,
 
     DefaultValuedAttr<BoolAttr, "false">:$keep_dims
   );
 
   let results = (outs
-    TF_NumberTensor:$output
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -1822,6 +2170,57 @@ pad(t, paddings) ==> [[2, 1, 1, 2, 3, 3, 2]
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_MlirPassthroughOpOp : TF_Op<"MlirPassthroughOp", [NoSideEffect]> {
+  let summary = [{
+Wraps an arbitrary MLIR computation expressed as a module with a main() function.
+  }];
+
+  let description = [{
+This operation does not have an associated kernel and is not intended to be
+executed in a regular TensorFlow session. Instead it is intended to be used for
+testing or for special case where a user intends to pass custom MLIR computation
+through a TensorFlow graph with the intent of having custom tooling processing
+it downstream (when targeting a different environment, like TensorFlow lite for
+example).
+The MLIR module is expected to have a main() function that will be used as an
+entry point. The inputs to the operations will be passed as argument to the
+main() function and the returned values of the main function mapped to the
+outputs.
+Example usage:
+
+```
+import tensorflow as tf
+from tensorflow.compiler.mlir.tensorflow.gen_mlir_passthrough_op import mlir_passthrough_op
+
+mlir_module = '''
+func @main(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10x10xf32> {
+   %add = "magic.op"(%arg0, %arg1) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10x10xf32>
+   return %ret : tensor<10x10xf32>
+}
+'''
+
+@tf.function
+def foo(x, y):
+  return = mlir_passthrough_op([x, y], mlir_module, Toutputs=[tf.float32])
+
+graph_def = foo.get_concrete_function(tf.TensorSpec([10], tf.float32), tf.TensorSpec([10], tf.float32)).graph.as_graph_def()
+```
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$inputs,
+
+    StrAttr:$mlir_module
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$outputs
+  );
+
+  TF_DerivedOperandTypeListAttr Tinputs = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
+}
+
 def TF_MulOp : TF_Op<"Mul", [Broadcastable, Commutative, NoSideEffect]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Returns x * y element-wise.";
@@ -1832,12 +2231,12 @@ def TF_MulOp : TF_Op<"Mul", [Broadcastable, Commutative, NoSideEffect]>,
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$x,
-    TF_NumberTensor:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$y
   );
 
   let results = (outs
-    TF_NumberTensor:$z
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -1897,8 +2296,101 @@ def TF_NoOp : TF_Op<"NoOp", [NoSideEffect]> {
   let results = (outs);
 }
 
-def TF_NotEqualOp : TF_Op<"NotEqual", [Broadcastable, Commutative, NoSideEffect]>,
-                    WithBroadcastableCmpOpBuilder {
+def TF_NonMaxSuppressionV4Op : TF_Op<"NonMaxSuppressionV4", [NoSideEffect]> {
+  let summary = [{
+Greedily selects a subset of bounding boxes in descending order of score,
+  }];
+
+  let description = [{
+pruning away boxes that have high intersection-over-union (IOU) overlap
+with previously selected boxes.  Bounding boxes with score less than
+`score_threshold` are removed.  Bounding boxes are supplied as
+[y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+diagonal pair of box corners and the coordinates can be provided as normalized
+(i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+is agnostic to where the origin is in the coordinate system and more
+generally is invariant to orthogonal transformations and translations
+of the coordinate system; thus translating or reflections of the coordinate
+system result in the same boxes being selected by the algorithm.
+The output of this operation is a set of integers indexing into the input
+collection of bounding boxes representing the selected boxes.  The bounding
+box coordinates corresponding to the selected indices can then be obtained
+using the `tf.gather operation`.  For example:
+  selected_indices = tf.image.non_max_suppression_v2(
+      boxes, scores, max_output_size, iou_threshold, score_threshold)
+  selected_boxes = tf.gather(boxes, selected_indices)
+  }];
+
+  let arguments = (ins
+    TensorOf<[F16, F32]>:$boxes,
+    TensorOf<[F16, F32]>:$scores,
+    I32Tensor:$max_output_size,
+    TensorOf<[F16, F32]>:$iou_threshold,
+    TensorOf<[F16, F32]>:$score_threshold,
+
+    DefaultValuedAttr<BoolAttr, "false">:$pad_to_max_output_size
+  );
+
+  let results = (outs
+    I32Tensor:$selected_indices,
+    I32Tensor:$valid_outputs
+  );
+
+  TF_DerivedOperandTypeAttr T_threshold = TF_DerivedOperandTypeAttr<3>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_NonMaxSuppressionV5Op : TF_Op<"NonMaxSuppressionV5", [NoSideEffect]> {
+  let summary = [{
+Greedily selects a subset of bounding boxes in descending order of score,
+  }];
+
+  let description = [{
+pruning away boxes that have high intersection-over-union (IOU) overlap
+with previously selected boxes.  Bounding boxes with score less than
+`score_threshold` are removed.  Bounding boxes are supplied as
+[y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+diagonal pair of box corners and the coordinates can be provided as normalized
+(i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+is agnostic to where the origin is in the coordinate system and more
+generally is invariant to orthogonal transformations and translations
+of the coordinate system; thus translating or reflections of the coordinate
+system result in the same boxes being selected by the algorithm.
+The output of this operation is a set of integers indexing into the input
+collection of bounding boxes representing the selected boxes.  The bounding
+box coordinates corresponding to the selected indices can then be obtained
+using the `tf.gather operation`.  For example:
+  selected_indices = tf.image.non_max_suppression_v2(
+      boxes, scores, max_output_size, iou_threshold, score_threshold)
+  selected_boxes = tf.gather(boxes, selected_indices)
+This op also supports a Soft-NMS (with Gaussian weighting) mode (c.f.
+Bodla et al, https://arxiv.org/abs/1704.04503) where boxes reduce the score
+of other overlapping boxes instead of directly causing them to be pruned.
+To enable this Soft-NMS mode, set the `soft_nms_sigma` parameter to be
+larger than 0.
+  }];
+
+  let arguments = (ins
+    TensorOf<[F16, F32]>:$boxes,
+    TensorOf<[F16, F32]>:$scores,
+    I32Tensor:$max_output_size,
+    TensorOf<[F16, F32]>:$iou_threshold,
+    TensorOf<[F16, F32]>:$score_threshold,
+    TensorOf<[F16, F32]>:$soft_nms_sigma,
+
+    DefaultValuedAttr<BoolAttr, "false">:$pad_to_max_output_size
+  );
+
+  let results = (outs
+    I32Tensor:$selected_indices,
+    TensorOf<[F16, F32]>:$selected_scores,
+    I32Tensor:$valid_outputs
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_NotEqualOp : TF_Op<"NotEqual", [Commutative, NoSideEffect]> {
   let summary = "Returns the truth value of (x != y) element-wise.";
 
   let description = [{
@@ -1907,8 +2399,10 @@ def TF_NotEqualOp : TF_Op<"NotEqual", [Broadcastable, Commutative, NoSideEffect]
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Str]>:$x,
-    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Str]>:$y
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Str, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Str, TF_Uint8]>:$y,
+
+    DefaultValuedAttr<BoolAttr, "true">:$incompatible_shape_error
   );
 
   let results = (outs
@@ -1916,6 +2410,15 @@ def TF_NotEqualOp : TF_Op<"NotEqual", [Broadcastable, Commutative, NoSideEffect]
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let builders = [
+    OpBuilder<"Builder* builder, OperationState& result, Value* x, "
+              "Value* y, BoolAttr incompatible_shape_error">
+  ];
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_OneHotOp : TF_Op<"OneHot", [NoSideEffect]> {
@@ -2012,7 +2515,7 @@ output =
   }];
 
   let arguments = (ins
-    TensorOf<[I32, I64, I8]>:$indices,
+    TensorOf<[I32, I64, TF_Uint8]>:$indices,
     I32Tensor:$depth,
     TF_Tensor:$on_value,
     TF_Tensor:$off_value,
@@ -2067,6 +2570,10 @@ This is the opposite of `unpack`.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_PadOp : TF_Op<"Pad", [NoSideEffect]> {
@@ -2154,6 +2661,33 @@ pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_PowOp : TF_Op<"Pow", [Broadcastable, NoSideEffect]>,
+               WithBroadcastableBinOpBuilder {
+  let summary = "Computes the power of one value to another.";
+
+  let description = [{
+Given a tensor `x` and a tensor `y`, this operation computes \\(x^y\\) for
+corresponding elements in `x` and `y`. For example:
+
+```
+# tensor 'x' is [[2, 2]], [3, 3]]
+# tensor 'y' is [[8, 16], [2, 3]]
+tf.pow(x, y) ==> [[256, 65536], [9, 27]]
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$y
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ProdOp : TF_Op<"Prod", [NoSideEffect]> {
   let summary = [{
 Computes the product of elements across dimensions of a tensor.
@@ -2167,14 +2701,14 @@ retained with length 1.
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$input,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
     TF_I32OrI64Tensor:$reduction_indices,
 
     DefaultValuedAttr<BoolAttr, "false">:$keep_dims
   );
 
   let results = (outs
-    TF_NumberTensor:$output
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -2270,7 +2804,8 @@ The above round function rounds the value based on the given round_mode.
     DefaultValuedAttr<I64Attr, "8">:$num_bits,
     DefaultValuedAttr<BoolAttr, "false">:$range_given,
     DefaultValuedAttr<TF_AnyStrAttrOf<["HALF_TO_EVEN", "HALF_UP"]>, "HALF_TO_EVEN">:$round_mode,
-    DefaultValuedAttr<BoolAttr, "false">:$narrow_range
+    DefaultValuedAttr<BoolAttr, "false">:$narrow_range,
+    DefaultValuedAttr<I64Attr, "-1">:$axis
   );
 
   let results = (outs
@@ -2296,7 +2831,8 @@ tensor, so its value can change during training.
 
     DefaultValuedAttr<BoolAttr, "true">:$signed_input,
     DefaultValuedAttr<BoolAttr, "true">:$range_given,
-    DefaultValuedAttr<BoolAttr, "false">:$narrow_range
+    DefaultValuedAttr<BoolAttr, "false">:$narrow_range,
+    DefaultValuedAttr<I64Attr, "-1">:$axis
   );
 
   let results = (outs
@@ -2363,7 +2899,7 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState* result, Value* start, "
+    OpBuilder<"Builder* builder, OperationState& result, Value* start, "
               "Value* limit, Value* delta">
   ];
 }
@@ -2398,7 +2934,7 @@ of the tensor. Rank is also known as "order", "degree", or "ndims."
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState* result, Value* input">
+    OpBuilder<"Builder* builder, OperationState& result, Value* input">
   ];
 }
 
@@ -2414,12 +2950,12 @@ If `x` and `y` are reals, this will return the floating-point division.
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$x,
-    TF_NumberTensor:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$y
   );
 
   let results = (outs
-    TF_NumberTensor:$z
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -2454,11 +2990,11 @@ def TF_ReluOp : TF_Op<"Relu", [NoSideEffect, SameOperandsAndResultType]> {
   }];
 
   let arguments = (ins
-    TF_IntOrFpTensor:$features
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Qint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$features
   );
 
   let results = (outs
-    TF_IntOrFpTensor:$activations
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Qint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$activations
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -2557,7 +3093,7 @@ reshape(t, []) ==> 7
 
   let builders = [
     OpBuilder<
-      "Builder* builder, OperationState* result, Value* tensor, Value* shape">
+      "Builder* builder, OperationState& result, Value* tensor, Value* shape">
   ];
 
   let verifier = [{
@@ -2573,7 +3109,7 @@ Input images can be of different types but output images are always float.
   }];
 
   let arguments = (ins
-    TF_IntOrFpTensor:$images,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Uint16, TF_Uint8]>:$images,
     I32Tensor:$size,
 
     DefaultValuedAttr<BoolAttr, "false">:$align_corners,
@@ -2596,7 +3132,7 @@ Resize `images` to `size` using nearest neighbor interpolation.
   }];
 
   let arguments = (ins
-    TensorOf<[F16, F32, F64, I16, I32, I64, I8]>:$images,
+    TensorOf<[F16, F32, F64, I16, I32, I64, I8, TF_Uint16, TF_Uint8]>:$images,
     I32Tensor:$size,
 
     DefaultValuedAttr<BoolAttr, "false">:$align_corners,
@@ -2604,7 +3140,7 @@ Resize `images` to `size` using nearest neighbor interpolation.
   );
 
   let results = (outs
-    TensorOf<[F16, F32, F64, I16, I32, I64, I8]>:$resized_images
+    TensorOf<[F16, F32, F64, I16, I32, I64, I8, TF_Uint16, TF_Uint8]>:$resized_images
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -2739,12 +3275,12 @@ reverse(t, dims) ==> [[[[8, 9, 10, 11],
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Str]>:$tensor,
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Str, TF_Uint16, TF_Uint8]>:$tensor,
     TF_I32OrI64Tensor:$axis
   );
 
   let results = (outs
-    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Str]>:$output
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Str, TF_Uint16, TF_Uint8]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -2895,7 +3431,36 @@ shape(t) ==> [2, 2, 3]
     return Verify(*this);
   }];
 
+  let builders = [
+    OpBuilder<"Builder* builder, OperationState& result, Value* input, BoolAttr use32Bit">
+  ];
+
   let hasFolder = 1;
+}
+
+def TF_ShapeNOp : TF_Op<"ShapeN", [NoSideEffect]> {
+  let summary = "Returns shape of tensors.";
+
+  let description = [{
+This operation returns N 1-D integer tensors representing shape of `input[i]s`.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$input,
+
+    Confined<I64Attr, [IntMinValue<1>]>:$N
+  );
+
+  let results = (outs
+    Variadic<TF_I32OrI64Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr out_type = TF_DerivedResultTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_SigmoidOp : TF_Op<"Sigmoid", [NoSideEffect, SameOperandsAndResultType]> {
@@ -3470,6 +4035,10 @@ receive 0, 0, and 1, respectively. The appropriate bits in `begin_mask` and
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Index = TF_DerivedOperandTypeAttr<1>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_SubOp : TF_Op<"Sub", [Broadcastable, NoSideEffect]>,
@@ -3482,12 +4051,12 @@ def TF_SubOp : TF_Op<"Sub", [Broadcastable, NoSideEffect]>,
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$x,
-    TF_NumberTensor:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$y
   );
 
   let results = (outs
-    TF_NumberTensor:$z
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -3506,18 +4075,34 @@ retained with length 1.
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$input,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
     TF_I32OrI64Tensor:$reduction_indices,
 
     DefaultValuedAttr<BoolAttr, "false">:$keep_dims
   );
 
   let results = (outs
-    TF_NumberTensor:$output
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_TPUCompilationResultOp : TF_Op<"TPUCompilationResult", [NoSideEffect]> {
+  let summary = "Returns the result of a TPU compilation.";
+
+  let description = [{
+This operation returns the result of a TPU compilation as a serialized
+CompilationResultProto, which holds a status and an error message if an error
+occurred during compilation.
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    TF_StrTensor:$output
+  );
 }
 
 def TF_TanhOp : TF_Op<"Tanh", [NoSideEffect, SameOperandsAndResultType]> {
@@ -3589,6 +4174,23 @@ def TF_TensorListGetItemOp : TF_Op<"TensorListGetItem", [NoSideEffect]> {
   TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_TensorListLengthOp : TF_Op<"TensorListLength", [NoSideEffect]> {
+  let summary = "Returns the number of tensors in the input tensor list.";
+
+  let description = [{
+input_handle: the input list
+length: the number of tensors in the list
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_handle
+  );
+
+  let results = (outs
+    I32Tensor:$length
+  );
+}
+
 def TF_TensorListPushBackOp : TF_Op<"TensorListPushBack", [NoSideEffect]> {
   let summary = [{
 Returns a list which has the passed-in `Tensor` as last element and the other elements of the given list in `input_handle`.
@@ -3656,6 +4258,10 @@ num_elements: optional. If not -1, the number of elements in the list.
   );
 
   TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_TileOp : TF_Op<"Tile", [NoSideEffect]> {
@@ -3737,7 +4343,7 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
 
   let builders = [
     OpBuilder<
-      "Builder* builder, OperationState* result, Value* x, Value* perm">
+      "Builder* builder, OperationState& result, Value* x, Value* perm">
   ];
 
   let verifier = [{
@@ -3760,12 +4366,12 @@ Python Semantics.
   }];
 
   let arguments = (ins
-    TF_NumberTensor:$x,
-    TF_NumberTensor:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$y
   );
 
   let results = (outs
-    TF_NumberTensor:$z
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -3907,7 +4513,7 @@ where(input) ==> [[0, 0, 0],
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64]>:$input
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input
   );
 
   let results = (outs

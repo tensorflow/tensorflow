@@ -1,5 +1,7 @@
 licenses(["notice"])  # 3-Clause BSD
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
 config_setting(
     name = "build_with_mkl",
     define_values = {
@@ -77,4 +79,10 @@ cc_library(
         ],
         "//conditions:default": [],
     }),
+)
+
+bzl_library(
+    name = "build_defs_bzl",
+    srcs = ["build_defs.bzl"],
+    visibility = ["//visibility:public"],
 )

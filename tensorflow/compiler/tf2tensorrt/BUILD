@@ -457,6 +457,8 @@ tf_gpu_kernel_library(
     srcs = ["plugin/plugin_cast.cu.cc"],
     deps = [
         ":trt_plugins",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core:framework_lite",
     ] + if_tensorrt([
         "@local_config_cuda//cuda:cuda_headers",

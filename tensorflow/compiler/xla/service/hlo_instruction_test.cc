@@ -1442,7 +1442,8 @@ TEST_F(HloInstructionTest, StringifyGather_0) {
                                        /*collapsed_slice_dims=*/{},
                                        /*start_index_map=*/{0, 1, 2, 3, 4},
                                        /*index_vector_dim=*/4),
-                                   /*slice_sizes=*/{30, 29, 28, 27, 26}));
+                                   /*slice_sizes=*/{30, 29, 28, 27, 26},
+                                   /*indices_are_sorted=*/false));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
@@ -1477,7 +1478,8 @@ TEST_F(HloInstructionTest, StringifyGather_1) {
                                        /*collapsed_slice_dims=*/{},
                                        /*start_index_map=*/{0, 1, 2, 3, 4},
                                        /*index_vector_dim=*/2),
-                                   /*slice_sizes=*/{30, 29, 28, 27, 26}));
+                                   /*slice_sizes=*/{30, 29, 28, 27, 26},
+                                   /*indices_are_sorted=*/false));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
@@ -1526,7 +1528,9 @@ TEST_F(HloInstructionTest, StringifyScatter) {
               /*update_window_dims=*/{4, 5, 6, 7, 8},
               /*inserted_window_dims=*/{},
               /*scatter_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
-              /*index_vector_dim=*/2)));
+              /*index_vector_dim=*/2),
+          /*indices_are_sorted=*/false,
+          /*unique_indices=*/false));
   module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(

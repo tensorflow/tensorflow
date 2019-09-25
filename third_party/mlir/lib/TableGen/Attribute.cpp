@@ -170,6 +170,10 @@ tblgen::EnumAttr::EnumAttr(const llvm::Record &record) : Attribute(&record) {}
 tblgen::EnumAttr::EnumAttr(const llvm::DefInit *init)
     : EnumAttr(init->getDef()) {}
 
+bool tblgen::EnumAttr::skipAutoGen() const {
+  return def->getValueAsBit("skipAutoGen");
+}
+
 StringRef tblgen::EnumAttr::getEnumClassName() const {
   return def->getValueAsString("className");
 }
@@ -194,6 +198,10 @@ StringRef tblgen::EnumAttr::getSymbolToStringFnName() const {
   return def->getValueAsString("symbolToStringFnName");
 }
 
+StringRef tblgen::EnumAttr::getSymbolToStringFnRetType() const {
+  return def->getValueAsString("symbolToStringFnRetType");
+}
+
 StringRef tblgen::EnumAttr::getMaxEnumValFnName() const {
   return def->getValueAsString("maxEnumValFnName");
 }
@@ -209,4 +217,56 @@ std::vector<tblgen::EnumAttrCase> tblgen::EnumAttr::getAllCases() const {
   }
 
   return cases;
+}
+
+tblgen::StructFieldAttr::StructFieldAttr(const llvm::Record *record)
+    : def(record) {
+  assert(def->isSubClassOf("StructFieldAttr") &&
+         "must be subclass of TableGen 'StructFieldAttr' class");
+}
+
+tblgen::StructFieldAttr::StructFieldAttr(const llvm::Record &record)
+    : StructFieldAttr(&record) {}
+
+tblgen::StructFieldAttr::StructFieldAttr(const llvm::DefInit *init)
+    : StructFieldAttr(init->getDef()) {}
+
+StringRef tblgen::StructFieldAttr::getName() const {
+  return def->getValueAsString("name");
+}
+
+tblgen::Attribute tblgen::StructFieldAttr::getType() const {
+  auto init = def->getValueInit("type");
+  return tblgen::Attribute(cast<llvm::DefInit>(init));
+}
+
+tblgen::StructAttr::StructAttr(const llvm::Record *record) : Attribute(record) {
+  assert(def->isSubClassOf("StructAttr") &&
+         "must be subclass of TableGen 'StructAttr' class");
+}
+
+tblgen::StructAttr::StructAttr(const llvm::DefInit *init)
+    : StructAttr(init->getDef()) {}
+
+StringRef tblgen::StructAttr::getStructClassName() const {
+  return def->getValueAsString("className");
+}
+
+StringRef tblgen::StructAttr::getCppNamespace() const {
+  Dialect dialect(def->getValueAsDef("structDialect"));
+  return dialect.getCppNamespace();
+}
+
+std::vector<mlir::tblgen::StructFieldAttr>
+tblgen::StructAttr::getAllFields() const {
+  std::vector<mlir::tblgen::StructFieldAttr> attributes;
+
+  const auto *inits = def->getValueAsListInit("fields");
+  attributes.reserve(inits->size());
+
+  for (const llvm::Init *init : *inits) {
+    attributes.emplace_back(cast<llvm::DefInit>(init));
+  }
+
+  return attributes;
 }

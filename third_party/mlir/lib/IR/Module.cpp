@@ -25,47 +25,47 @@ using namespace mlir;
 // Module Operation.
 //===----------------------------------------------------------------------===//
 
-void ModuleOp::build(Builder *builder, OperationState *result) {
-  ensureTerminator(*result->addRegion(), *builder, result->location);
+void ModuleOp::build(Builder *builder, OperationState &result) {
+  ensureTerminator(*result.addRegion(), *builder, result.location);
 }
 
 /// Construct a module from the given context.
 ModuleOp ModuleOp::create(Location loc) {
   OperationState state(loc, "module");
   Builder builder(loc->getContext());
-  ModuleOp::build(&builder, &state);
+  ModuleOp::build(&builder, state);
   return llvm::cast<ModuleOp>(Operation::create(state));
 }
 
-ParseResult ModuleOp::parse(OpAsmParser *parser, OperationState *result) {
+ParseResult ModuleOp::parse(OpAsmParser &parser, OperationState &result) {
   // If module attributes are present, parse them.
-  if (succeeded(parser->parseOptionalKeyword("attributes")))
-    if (parser->parseOptionalAttributeDict(result->attributes))
+  if (succeeded(parser.parseOptionalKeyword("attributes")))
+    if (parser.parseOptionalAttributeDict(result.attributes))
       return failure();
 
   // Parse the module body.
-  auto *body = result->addRegion();
-  if (parser->parseRegion(*body, llvm::None, llvm::None))
+  auto *body = result.addRegion();
+  if (parser.parseRegion(*body, llvm::None, llvm::None))
     return failure();
 
   // Ensure that this module has a valid terminator.
-  ensureTerminator(*body, parser->getBuilder(), result->location);
+  ensureTerminator(*body, parser.getBuilder(), result.location);
   return success();
 }
 
-void ModuleOp::print(OpAsmPrinter *p) {
-  *p << "module";
+void ModuleOp::print(OpAsmPrinter &p) {
+  p << "module";
 
   // Print the module attributes.
   auto attrs = getAttrs();
   if (!attrs.empty()) {
-    *p << " attributes";
-    p->printOptionalAttrDict(attrs, {});
+    p << " attributes";
+    p.printOptionalAttrDict(attrs, {});
   }
 
   // Print the region.
-  p->printRegion(getOperation()->getRegion(0), /*printEntryBlockArgs=*/false,
-                 /*printBlockTerminators=*/false);
+  p.printRegion(getOperation()->getRegion(0), /*printEntryBlockArgs=*/false,
+                /*printBlockTerminators=*/false);
 }
 
 LogicalResult ModuleOp::verify() {
@@ -79,6 +79,14 @@ LogicalResult ModuleOp::verify() {
   auto *body = &bodyRegion.front();
   if (body->getNumArguments() != 0)
     return emitOpError("expected body to have no arguments");
+
+  // Check that none of the attributes are non-dialect attributes.
+  for (auto attr : getOperation()->getAttrList().getAttrs()) {
+    if (!attr.first.strref().contains('.'))
+      return emitOpError(
+                 "can only contain dialect-specific attributes, found: '")
+             << attr.first << "'";
+  }
 
   return success();
 }

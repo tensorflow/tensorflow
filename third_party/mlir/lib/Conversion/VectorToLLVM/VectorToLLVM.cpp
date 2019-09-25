@@ -18,6 +18,8 @@
 #include "mlir/Conversion/VectorToLLVM/VectorToLLVM.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
@@ -26,12 +28,10 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/Types.h"
-#include "mlir/LLVMIR/LLVMDialect.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
-#include "mlir/VectorOps/VectorOps.h"
 
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Module.h"
@@ -47,16 +47,6 @@ static LLVM::LLVMType getPtrToElementType(T containerType,
   return lowering.convertType(containerType.getElementType())
       .template cast<LLVM::LLVMType>()
       .getPointerTo();
-}
-
-// Create an array attribute containing integer attributes with values provided
-// in `position`.
-static ArrayAttr positionAttr(Builder &builder, ArrayRef<int> position) {
-  SmallVector<Attribute, 4> attrs;
-  attrs.reserve(position.size());
-  for (auto p : position)
-    attrs.push_back(builder.getI64IntegerAttr(p));
-  return builder.getArrayAttr(attrs);
 }
 
 class ExtractElementOpConversion : public LLVMOpLowering {
@@ -148,16 +138,17 @@ public:
       aD = rewriter.create<LLVM::ShuffleVectorOp>(loc, a, a, bcastArrayAttr);
       // 2. If acc is present, extract 1-d vector acc[d] into accD.
       if (acc)
-        accD = rewriter.create<LLVM::ExtractValueOp>(loc, vRHS, acc,
-                                                     positionAttr(rewriter, d));
+        accD = rewriter.create<LLVM::ExtractValueOp>(
+            loc, vRHS, acc, rewriter.getI64ArrayAttr(d));
       // 3. Compute aD outer b (plus accD, if relevant).
       Value *aOuterbD =
           accD ? rewriter.create<LLVM::fmuladd>(loc, vRHS, aD, b, accD)
                      .getResult()
                : rewriter.create<LLVM::FMulOp>(loc, aD, b).getResult();
       // 4. Insert as value `d` in the descriptor.
-      desc = rewriter.create<LLVM::InsertValueOp>(
-          loc, llvmArrayOfVectType, desc, aOuterbD, positionAttr(rewriter, d));
+      desc = rewriter.create<LLVM::InsertValueOp>(loc, llvmArrayOfVectType,
+                                                  desc, aOuterbD,
+                                                  rewriter.getI64ArrayAttr(d));
     }
     rewriter.replaceOp(op, desc);
     return matchSuccess();
@@ -173,7 +164,7 @@ void mlir::populateVectorToLLVMConversionPatterns(
 
 namespace {
 struct LowerVectorToLLVMPass : public ModulePass<LowerVectorToLLVMPass> {
-  void runOnModule();
+  void runOnModule() override;
 };
 } // namespace
 
@@ -194,7 +185,7 @@ void LowerVectorToLLVMPass::runOnModule() {
   }
 }
 
-ModulePassBase *mlir::createLowerVectorToLLVMPass() {
+OpPassBase<ModuleOp> *mlir::createLowerVectorToLLVMPass() {
   return new LowerVectorToLLVMPass();
 }
 

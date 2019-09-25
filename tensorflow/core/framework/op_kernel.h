@@ -1412,7 +1412,7 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
 Status SupportedDeviceTypesForNode(
     const std::vector<DeviceType>& prioritized_types, const NodeDef& def,
     PrioritizedDeviceTypeVector* device_types,
-    const DeviceNameUtils::ParsedName* local_device_name = nullptr);
+    const DeviceNameUtils::ParsedName* local_address_spec = nullptr);
 
 // Returns a message with a description of the kernels registered for op
 // `op_name`.

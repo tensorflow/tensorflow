@@ -160,7 +160,7 @@ enum class RnnDirectionMode {
 // Relevant to DepthToSpace and SpaceToDepth. This is the write layout when
 // performing depth to space and the read layout when performing space to depth.
 // It's specified with most-major dimension first and most-minor dimension last.
-// In DepthToSpace, the D*M² values are read in and then, for DepthHeightWidth,
+// In DepthToSpace, the D*M^2 values are read in and then, for DepthHeightWidth,
 // written out to the output patch, by varying first width, then height, then
 // depth. In C array format, it looks like [depth][height][width]. See
 // DepthToSpace comment for more information.
@@ -782,6 +782,8 @@ class AlgorithmDesc {
   uint64 hash() const;
 
   AlgorithmProto ToProto() const { return proto_; }
+
+  string ToString() const;
 
  private:
   AlgorithmProto proto_;
@@ -1864,8 +1866,8 @@ class DnnSupport {
     return false;
   }
 
-  // Depth to space takes an X by Y image with depth D*M² and changes it to an
-  // MX x MY image with depth D. Each input location (x,y) with depth D*M² in
+  // Depth to space takes an X by Y image with depth D*M^2 and changes it to an
+  // MX x MY image with depth D. Each input location (x,y) with depth D*M^2 in
   // the input image is changed to an MxM contiguous area in the output image,
   // with the values being laid out in the raster order by DepthToSpaceLayout,
   // and will have a new depth of D.
@@ -1895,9 +1897,9 @@ class DnnSupport {
 
   // Space to depth is the inverse of depth to space. Space to depth takes each
   // non-overlapping M by M patch (in the X and Y dimensions) with depth D of
-  // the input, and transforms it to a 1 by 1 patch with depth D*M². If the
-  // input has size (MX, MY, D), the output has size (X, Y, D*M²). The number of
-  // data elements is not changed.
+  // the input, and transforms it to a 1 by 1 patch with depth D*M^2. If the
+  // input has size (MX, MY, D), the output has size (X, Y, D*M^2). The number
+  // of data elements is not changed.
   //
   // Example.
   // M=2, Din =2, Xin=4, Yin=4,  Dout=8

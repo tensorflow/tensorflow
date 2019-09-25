@@ -25,6 +25,8 @@
 #include "mlir/Analysis/NestedMatcher.h"
 #include "mlir/Analysis/Utils.h"
 #include "mlir/Analysis/VectorAnalysis.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
+#include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/EDSC/Builders.h"
 #include "mlir/EDSC/Helpers.h"
 #include "mlir/IR/AffineExpr.h"
@@ -37,10 +39,8 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Transforms/Passes.h"
-#include "mlir/VectorOps/VectorOps.h"
 
 /// Implements lowering of VectorTransferReadOp and VectorTransferWriteOp to a
 /// proper abstraction for the hardware.
@@ -361,7 +361,7 @@ VectorTransferRewriter<VectorTransferWriteOp>::matchAndRewrite(
 
 struct LowerVectorTransfersPass
     : public FunctionPass<LowerVectorTransfersPass> {
-  void runOnFunction() {
+  void runOnFunction() override {
     OwningRewritePatternList patterns;
     auto *context = &getContext();
     patterns.insert<VectorTransferRewriter<vector::VectorTransferReadOp>,
@@ -373,7 +373,7 @@ struct LowerVectorTransfersPass
 
 } // end anonymous namespace
 
-std::unique_ptr<FunctionPassBase> mlir::createLowerVectorTransfersPass() {
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createLowerVectorTransfersPass() {
   return std::make_unique<LowerVectorTransfersPass>();
 }
 

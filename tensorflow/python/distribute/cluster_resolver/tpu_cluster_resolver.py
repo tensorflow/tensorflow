@@ -124,20 +124,17 @@ class TPUClusterResolver(ClusterResolver):
     resp = urlopen(req)
     return compat.as_bytes(resp.read())
 
-  def _is_google_environment(self):
+  def _is_local_tpu(self):
     return (
         self._tpu == compat.as_bytes('') or
-        self._tpu == compat.as_bytes('local') or
-        self._tpu.startswith(compat.as_bytes('localhost:')) or
-        self._tpu.startswith(compat.as_bytes('/bns')) or
-        self._tpu.startswith(compat.as_bytes('uptc://')))
+        self._tpu == compat.as_bytes('local'))
 
   def _should_resolve(self):
     if isinstance(self._should_resolve_override, bool):
       return self._should_resolve_override
     else:
       return not (self._tpu.startswith(compat.as_bytes('grpc://')) or
-                  self._is_google_environment())
+                  self._is_local_tpu())
 
   @staticmethod
   def _get_device_dict_and_cores(devices):
@@ -207,11 +204,11 @@ class TPUClusterResolver(ClusterResolver):
 
     Args:
       tpu: A string corresponding to the TPU to use. If the string is an empty
-        string, the string 'local', or a string that begins with 'grpc://' or
-          '/bns', then it is assumed to not correspond with a Cloud TPU and will
-          instead be passed as the session master and no ClusterSpec propagation
-          will be done. In the future, this may also support a list of strings
-          when multiple Cloud TPUs are used.
+        string, the string 'local', or a string that begins with 'grpc://',
+        then it is assumed to not correspond with a Cloud TPU and will
+        instead be passed as the session master and no ClusterSpec propagation
+        will be done. In the future, this may also support a list of strings
+        when multiple Cloud TPUs are used.
       zone: Zone where the TPUs are located. If omitted or empty, we will assume
         that the zone of the TPU is the same as the zone of the GCE VM, which we
         will try to discover from the GCE metadata service.
@@ -273,22 +270,8 @@ class TPUClusterResolver(ClusterResolver):
     self.task_type = job_name
     self.task_id = 0
 
-    if self._is_google_environment():
-      self._environment = 'google'
+    if self._is_local_tpu():
       self.rpc_layer = None
-
-      # TODO(rsopher): remove this logic when possible
-      if self._tpu and self._tpu.startswith(compat.as_bytes('/bns')):
-        bns_and_port = self._tpu.rsplit(compat.as_bytes(':'), 1)
-        if len(bns_and_port) == 2:
-          try:
-            int(bns_and_port[1])
-          except ValueError:
-            # Leave named ports.
-            pass
-          else:
-            # Strip numerical ports.
-            self._tpu = bns_and_port[0]
     else:
       self._environment = ''
       self.rpc_layer = 'grpc'

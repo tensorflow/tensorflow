@@ -279,6 +279,10 @@ int64_t AffineConstantExpr::getValue() const {
   return static_cast<ImplType *>(expr)->constant;
 }
 
+bool AffineExpr::operator==(int64_t v) const {
+  return *this == getAffineConstantExpr(v, getContext());
+}
+
 AffineExpr mlir::getAffineConstantExpr(int64_t constant, MLIRContext *context) {
   auto assignCtx = [context](AffineConstantExprStorage *storage) {
     storage->context = context;
@@ -341,7 +345,7 @@ static AffineExpr simplifyAdd(AffineExpr lhs, AffineExpr rhs) {
 
   // Process lrhs, which is 'expr floordiv c'.
   AffineBinaryOpExpr lrBinOpExpr = lrhs.dyn_cast<AffineBinaryOpExpr>();
-  if (!lrBinOpExpr)
+  if (!lrBinOpExpr || lrBinOpExpr.getKind() != AffineExprKind::FloorDiv)
     return nullptr;
 
   auto llrhs = lrBinOpExpr.getLHS();

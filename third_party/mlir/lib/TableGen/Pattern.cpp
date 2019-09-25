@@ -204,45 +204,99 @@ tblgen::SymbolInfoMap::SymbolInfo::getVarDecl(StringRef name) const {
         op->getArg(*argIndex).get<NamedAttribute *>()->attr.getStorageType();
     return formatv("{0} {1};\n", type, name);
   }
-  case Kind::Operand:
+  case Kind::Operand: {
+    // Use operand range for captured operands (to support potential variadic
+    // operands).
+    return formatv("Operation::operand_range {0}(op0->getOperands());\n", name);
+  }
   case Kind::Value: {
-    return formatv("Value *{0};\n", name);
+    return formatv("ArrayRef<Value *> {0};\n", name);
   }
   case Kind::Result: {
-    // Use the op itself for the results.
+    // Use the op itself for captured results.
     return formatv("{0} {1};\n", op->getQualCppClassName(), name);
   }
   }
   llvm_unreachable("unknown kind");
 }
 
-std::string
-tblgen::SymbolInfoMap::SymbolInfo::getValueAndRangeUse(StringRef name,
-                                                       int index) const {
+std::string tblgen::SymbolInfoMap::SymbolInfo::getValueAndRangeUse(
+    StringRef name, int index, const char *fmt, const char *separator) const {
+  switch (kind) {
+  case Kind::Attr: {
+    assert(index < 0);
+    return formatv(fmt, name);
+  }
+  case Kind::Operand: {
+    assert(index < 0);
+    auto *operand = op->getArg(*argIndex).get<NamedTypeConstraint *>();
+    // If this operand is variadic, then return a range. Otherwise, return the
+    // value itself.
+    if (operand->isVariadic()) {
+      return formatv(fmt, name);
+    }
+    return formatv(fmt, formatv("(*{0}.begin())", name));
+  }
+  case Kind::Result: {
+    // If `index` is greater than zero, then we are referencing a specific
+    // result of a multi-result op. The result can still be variadic.
+    if (index >= 0) {
+      std::string v = formatv("{0}.getODSResults({1})", name, index);
+      if (!op->getResult(index).isVariadic())
+        v = formatv("(*{0}.begin())", v);
+      return formatv(fmt, v);
+    }
+
+    // We are referencing all results of the multi-result op. A specific result
+    // can either be a value or a range. Then join them with `separator`.
+    SmallVector<std::string, 4> values;
+    values.reserve(op->getNumResults());
+
+    for (int i = 0, e = op->getNumResults(); i < e; ++i) {
+      std::string v = formatv("{0}.getODSResults({1})", name, i);
+      if (!op->getResult(i).isVariadic()) {
+        v = formatv("(*{0}.begin())", v);
+      }
+      values.push_back(formatv(fmt, v));
+    }
+    return llvm::join(values, separator);
+  }
+  case Kind::Value: {
+    assert(index < 0);
+    assert(op == nullptr);
+    return formatv(fmt, name);
+  }
+  }
+}
+
+std::string tblgen::SymbolInfoMap::SymbolInfo::getAllRangeUse(
+    StringRef name, int index, const char *fmt, const char *separator) const {
   switch (kind) {
   case Kind::Attr:
   case Kind::Operand: {
     assert(index < 0 && "only allowed for symbol bound to result");
-    return name;
+    return formatv(fmt, name);
   }
   case Kind::Result: {
-    // TODO(b/133341698): The following is incorrect for variadic results. We
-    // should use getODSResults().
     if (index >= 0) {
-      return formatv("{0}.getOperation()->getResult({1})", name, index);
+      return formatv(fmt, formatv("{0}.getODSResults({1})", name, index));
     }
 
-    // If referencing multiple results, compose a comma-separated list.
+    // We are referencing all results of the multi-result op. Each result should
+    // have a value range, and then join them with `separator`.
     SmallVector<std::string, 4> values;
+    values.reserve(op->getNumResults());
+
     for (int i = 0, e = op->getNumResults(); i < e; ++i) {
-      values.push_back(formatv("{0}.getOperation()->getResult({1})", name, i));
+      values.push_back(
+          formatv(fmt, formatv("{0}.getODSResults({1})", name, i)));
     }
-    return llvm::join(values, ", ");
+    return llvm::join(values, separator);
   }
   case Kind::Value: {
     assert(index < 0 && "only allowed for symbol bound to result");
     assert(op == nullptr);
-    return name;
+    return formatv(fmt, formatv("{{{0}}", name));
   }
   }
   llvm_unreachable("unknown kind");
@@ -294,7 +348,9 @@ int tblgen::SymbolInfoMap::getStaticValueCount(StringRef symbol) const {
   return find(name)->getValue().getStaticValueCount();
 }
 
-std::string tblgen::SymbolInfoMap::getValueAndRangeUse(StringRef symbol) const {
+std::string
+tblgen::SymbolInfoMap::getValueAndRangeUse(StringRef symbol, const char *fmt,
+                                           const char *separator) const {
   int index = -1;
   StringRef name = getValuePackName(symbol, &index);
 
@@ -304,7 +360,22 @@ std::string tblgen::SymbolInfoMap::getValueAndRangeUse(StringRef symbol) const {
     PrintFatalError(loc, error);
   }
 
-  return it->getValue().getValueAndRangeUse(name, index);
+  return it->getValue().getValueAndRangeUse(name, index, fmt, separator);
+}
+
+std::string tblgen::SymbolInfoMap::getAllRangeUse(StringRef symbol,
+                                                  const char *fmt,
+                                                  const char *separator) const {
+  int index = -1;
+  StringRef name = getValuePackName(symbol, &index);
+
+  auto it = symbolInfoMap.find(name);
+  if (it == symbolInfoMap.end()) {
+    auto error = formatv("referencing unbound symbol '{0}'", symbol);
+    PrintFatalError(loc, error);
+  }
+
+  return it->getValue().getAllRangeUse(name, index, fmt, separator);
 }
 
 //===----------------------------------------------------------------------===//

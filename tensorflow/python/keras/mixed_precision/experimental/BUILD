@@ -98,10 +98,21 @@ py_test(
 )
 
 py_library(
+    name = "loss_scale",
+    srcs = ["loss_scale.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:loss_scale",
+        "//tensorflow/python/keras:generic_utils",
+    ],
+)
+
+py_library(
     name = "loss_scale_optimizer",
     srcs = ["loss_scale_optimizer.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":loss_scale",
         "//tensorflow/python:loss_scale",
         "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
@@ -121,7 +132,6 @@ cuda_py_test(
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -147,5 +157,4 @@ cuda_py_test(
     ],
     shard_count = 4,
     tags = ["no_windows"],  # b/139083295: bfloat16 tests fail on Windows
-    xla_enable_strict_auto_jit = True,
 )

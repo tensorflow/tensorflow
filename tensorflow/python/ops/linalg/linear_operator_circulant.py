@@ -119,11 +119,6 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
       s_shape = array_ops.shape(self.spectrum)
       self._block_shape_tensor = s_shape[-self.block_depth:]
 
-      # Add common variants of spectrum to the graph.
-      self._spectrum_complex = _to_complex(self.spectrum)
-      self._abs_spectrum = math_ops.abs(self.spectrum)
-      self._conj_spectrum = math_ops.conj(self._spectrum_complex)
-
       super(_BaseLinearOperatorCirculant, self).__init__(
           dtype=dtypes.as_dtype(input_output_dtype),
           graph_parents=[self.spectrum],
@@ -135,10 +130,11 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
   def _check_spectrum_and_return_tensor(self, spectrum):
     """Static check of spectrum.  Then return `Tensor` version."""
-    spectrum = ops.convert_to_tensor(spectrum, name="spectrum")
+    spectrum = linear_operator_util.convert_nonref_to_tensor(spectrum,
+                                                             name="spectrum")
 
-    if spectrum.get_shape().ndims is not None:
-      if spectrum.get_shape().ndims < self.block_depth:
+    if spectrum.shape.ndims is not None:
+      if spectrum.shape.ndims < self.block_depth:
         raise ValueError(
             "Argument spectrum must have at least %d dimensions.  Found: %s" %
             (self.block_depth, spectrum))
@@ -183,7 +179,7 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
   @property
   def block_shape(self):
-    return self.spectrum.get_shape()[-self.block_depth:]
+    return self.spectrum.shape[-self.block_depth:]
 
   @property
   def spectrum(self):
@@ -207,11 +203,11 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
     # Blockify: Blockfy trailing dimensions.
     #   [m3, m0, m1, m2] --> [m3, m0, m1, b0, b1]
-    if (vec.get_shape().is_fully_defined() and
+    if (vec.shape.is_fully_defined() and
         self.block_shape.is_fully_defined()):
       # vec_leading_shape = [m3, m0, m1],
       # the parts of vec that will not be blockified.
-      vec_leading_shape = vec.get_shape()[:-1]
+      vec_leading_shape = vec.shape[:-1]
       final_shape = vec_leading_shape.concatenate(self.block_shape)
     else:
       vec_leading_shape = array_ops.shape(vec)[:-1]
@@ -232,9 +228,9 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
     # Un-blockify: Flatten block dimensions.  Reshape
     #   [v0, v1, v2, v3] --> [v0, v1, v2*v3].
-    if vec.get_shape().is_fully_defined():
+    if vec.shape.is_fully_defined():
       # vec_shape = [v0, v1, v2, v3]
-      vec_shape = vec.get_shape().as_list()
+      vec_shape = vec.shape.as_list()
       # vec_leading_shape = [v0, v1]
       vec_leading_shape = vec_shape[:-self.block_depth]
       # vec_block_shape = [v2, v3]
@@ -294,11 +290,11 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
       `Tensor` with `dtype` `self.dtype`.
     """
     with self._name_scope(name):
-      h = self._ifft(self._spectrum_complex)
+      h = self._ifft(_to_complex(self.spectrum))
       return math_ops.cast(h, self.dtype)
 
   def _shape(self):
-    s_shape = self._spectrum.get_shape()
+    s_shape = self._spectrum.shape
     # Suppose spectrum.shape = [a, b, c, d]
     # block_depth = 2
     # Then:
@@ -398,7 +394,9 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
     #           = F^{H} diag(spectrum) F x,
     # so that
     # matmul(x, adjoint=True) = F^{H} diag(conj(spectrum)) F x.
-    spectrum = self._conj_spectrum if adjoint else self._spectrum_complex
+    spectrum = _to_complex(self.spectrum)
+    if adjoint:
+      spectrum = math_ops.conj(spectrum)
 
     x = math_ops.cast(x, spectrum.dtype)
 
@@ -418,12 +416,15 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
   def _log_abs_determinant(self):
     axis = [-(i + 1) for i in range(self.block_depth)]
-    lad = math_ops.reduce_sum(math_ops.log(self._abs_spectrum), axis=axis)
+    lad = math_ops.reduce_sum(
+        math_ops.log(math_ops.abs(self.spectrum)), axis=axis)
     return math_ops.cast(lad, self.dtype)
 
   def _solve(self, rhs, adjoint=False, adjoint_arg=False):
     rhs = linalg.adjoint(rhs) if adjoint_arg else rhs
-    spectrum = self._conj_spectrum if adjoint else self._spectrum_complex
+    spectrum = _to_complex(self.spectrum)
+    if adjoint:
+      spectrum = math_ops.conj(spectrum)
 
     rhs, spectrum = self._broadcast_batch_dims(rhs, spectrum)
 
@@ -471,8 +472,8 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
     # Get shape of diag along with the axis over which to reduce the spectrum.
     # We will reduce the spectrum over all block indices.
-    if self.spectrum.get_shape().is_fully_defined():
-      spec_rank = self.spectrum.get_shape().ndims
+    if self.spectrum.shape.is_fully_defined():
+      spec_rank = self.spectrum.shape.ndims
       axis = np.arange(spec_rank - self.block_depth, spec_rank, dtype=np.int32)
     else:
       spec_rank = array_ops.rank(self.spectrum)

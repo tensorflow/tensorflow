@@ -36,6 +36,7 @@ namespace {
 // a name collision with the other node names, so if necessary we add
 // a suffix to make names unique.  So if we have an input named "A" and a
 // node in the function body named "a", they will be renamed to "a" and "a_0".
+// TODO(b/139886381) Unify this and the one in c_api_function.cc
 class NodeNameMapping {
  public:
   NodeNameMapping() = default;
@@ -54,7 +55,13 @@ class NodeNameMapping {
   string NormalizeHelper(string name) const;
   string UniquifyHelper(string name);
 
-  std::unordered_set<string> used_names_;
+  // The normalized/uniquified names already used as
+  // input names (in signature), output names (in signature), and node names
+  // (in node_def).
+  // This is a superset of values in name_mapping_.
+  std::unordered_map<string, uint64> used_names_;
+  // Mapping from original node name from the graph to the normalized
+  // and uniquified version of it.
   std::unordered_map<string, string> name_mapping_;
 };
 
@@ -76,12 +83,15 @@ string NodeNameMapping::NormalizeHelper(string name) const {
 }
 
 string NodeNameMapping::UniquifyHelper(string name) {
+  auto it = used_names_.emplace(name, 0);
   // If the name hasn't been used yet, use it as-is.
-  if (used_names_.insert(name).second) return name;
+  if (it.second) return name;
+
   // Add a suffix to name to make it unique.
-  for (int i = 0;; ++i) {
-    const string candidate = strings::StrCat(name, "_", i);
-    if (used_names_.insert(candidate).second) return candidate;
+  while (true) {
+    const string candidate = strings::StrCat(name, "_", it.first->second);
+    it.first->second++;
+    if (used_names_.emplace(candidate, 0).second) return candidate;
   }
 }
 

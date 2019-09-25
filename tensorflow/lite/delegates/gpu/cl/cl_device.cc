@@ -267,9 +267,16 @@ DeviceInfo::DeviceInfo(cl_device_id id)
       supports_fp16 = true;
     }
   }
+  if (vendor == Vendor::POWERVR && !supports_fp16) {
+    // PowerVR doesn't have full support of fp16 and so doesn't list this
+    // extension. But it can support fp16 in MADs and as buffers/textures types,
+    // so we will use it.
+    supports_fp16 = true;
+  }
   compute_units_count = GetDeviceInfo<cl_uint>(id, CL_DEVICE_MAX_COMPUTE_UNITS);
   image2d_max_width = GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE2D_MAX_HEIGHT);
   image2d_max_height = GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE2D_MAX_WIDTH);
+  buffer_max_size = GetDeviceInfo<cl_ulong>(id, CL_DEVICE_MAX_MEM_ALLOC_SIZE);
   if (cl_version >= OpenCLVersion::CL_1_2) {
     image_buffer_max_size =
         GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE_MAX_BUFFER_SIZE);
@@ -280,6 +287,10 @@ DeviceInfo::DeviceInfo(cl_device_id id)
 }
 
 bool DeviceInfo::SupportsTextureArray() const {
+  return cl_version >= OpenCLVersion::CL_1_2;
+}
+
+bool DeviceInfo::SupportsImageBuffer() const {
   return cl_version >= OpenCLVersion::CL_1_2;
 }
 
@@ -332,6 +343,10 @@ bool CLDevice::SupportsTextureArray() const {
   return info_.SupportsTextureArray();
 }
 
+bool CLDevice::SupportsImageBuffer() const {
+  return info_.SupportsImageBuffer();
+}
+
 std::string CLDevice::GetPlatformVersion() const {
   return GetPlatformInfo(platform_id_, CL_PLATFORM_VERSION);
 }
@@ -361,6 +376,12 @@ bool CLDevice::IsAdreno6xx() const {
 bool CLDevice::IsAdreno6xxOrHigher() const {
   return IsAdreno() && info_.adreno_info.gpu_version >= 600;
 }
+
+bool CLDevice::IsPowerVR() const { return info_.vendor == Vendor::POWERVR; }
+
+bool CLDevice::IsNvidia() const { return info_.vendor == Vendor::NVIDIA; }
+
+bool CLDevice::IsMali() const { return info_.vendor == Vendor::MALI; }
 
 bool CLDevice::SupportsOneLayerTextureArray() const {
   return !IsAdreno() || info_.adreno_info.support_one_layer_texture_array;

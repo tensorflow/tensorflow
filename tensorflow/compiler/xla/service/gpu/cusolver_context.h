@@ -18,8 +18,10 @@ limitations under the License.
 
 #include <complex>
 
-#include "third_party/gpus/cuda/include/cublas_v2.h"
+#if !TENSORFLOW_USE_ROCM
 #include "third_party/gpus/cuda/include/cusolverDn.h"
+#endif
+
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -29,6 +31,8 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+#if !TENSORFLOW_USE_ROCM
 
 class CusolverContext {
  public:
@@ -43,26 +47,17 @@ class CusolverContext {
   CusolverContext& operator=(const CusolverContext&) = delete;
   CusolverContext& operator=(CusolverContext&&);
 
-  se::Stream* stream() const { return stream_; }
-  cusolverDnHandle_t handle() const { return handle_; }
-
   // Computes the Cholesky factorization A = L * L^T for a single matrix.
   // Returns Status::OK() if the kernel was launched successfully. See:
   // http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-potrf
-  Status Potrf(se::blas::UpperLower uplo, int n, se::DeviceMemory<float> dev_A,
+  template <typename T, typename = std::enable_if_t<
+                            std::is_same<T, float>::value ||
+                            std::is_same<T, double>::value ||
+                            std::is_same<T, std::complex<float>>::value ||
+                            std::is_same<T, std::complex<double>>::value>>
+  Status Potrf(se::blas::UpperLower uplo, int n, se::DeviceMemory<T> dev_A,
                int lda, se::DeviceMemory<int> dev_lapack_info,
-               se::DeviceMemory<float> workspace);
-  Status Potrf(se::blas::UpperLower uplo, int n, se::DeviceMemory<double> dev_A,
-               int lda, se::DeviceMemory<int> dev_lapack_info,
-               se::DeviceMemory<double> workspace);
-  Status Potrf(se::blas::UpperLower uplo, int n,
-               se::DeviceMemory<std::complex<float>> dev_A, int lda,
-               se::DeviceMemory<int> dev_lapack_info,
-               se::DeviceMemory<std::complex<float>> workspace);
-  Status Potrf(se::blas::UpperLower uplo, int n,
-               se::DeviceMemory<std::complex<double>> dev_A, int lda,
-               se::DeviceMemory<int> dev_lapack_info,
-               se::DeviceMemory<std::complex<double>> workspace);
+               se::DeviceMemory<T> workspace) = delete;
 
   // Returns the size of the `workspace` required by Potrf, in number of
   // elements of `type`.
@@ -72,9 +67,52 @@ class CusolverContext {
  private:
   CusolverContext(se::Stream* stream, cusolverDnHandle_t handle);
 
+  cusolverDnHandle_t handle() const { return handle_; }
+
   se::Stream* stream_ = nullptr;
   cusolverDnHandle_t handle_ = nullptr;
 };
+
+#define CALL_LAPACK_TYPES(m) \
+  m(float, S) m(double, D) m(std::complex<float>, C) m(std::complex<double>, Z)
+#define POTRF_INSTANCE(T, type_prefix)                                  \
+  template <>                                                           \
+  Status CusolverContext::Potrf<T>(                                     \
+      se::blas::UpperLower uplo, int n, se::DeviceMemory<T> A, int lda, \
+      se::DeviceMemory<int> lapack_info, se::DeviceMemory<T> workspace);
+CALL_LAPACK_TYPES(POTRF_INSTANCE);
+#undef POTRF_INSTANCE
+#undef CALL_LAPACK_TYPES
+
+#else
+
+typedef void* cusolverDnHandle_t;
+
+// TODO(cheshire): Remove this hack once we have ROCM implementation.
+class CusolverContext {
+ public:
+  static StatusOr<CusolverContext> Create(se::Stream* stream) {
+    LOG(FATAL) << "Unimplemented";
+  }
+
+  template <typename T, typename = std::enable_if_t<
+                            std::is_same<T, float>::value ||
+                            std::is_same<T, double>::value ||
+                            std::is_same<T, std::complex<float>>::value ||
+                            std::is_same<T, std::complex<double>>::value>>
+  Status Potrf(se::blas::UpperLower uplo, int n, se::DeviceMemory<T> dev_A,
+               int lda, se::DeviceMemory<int> dev_lapack_info,
+               se::DeviceMemory<T> workspace) {
+    LOG(FATAL) << "Unimplemented";
+  }
+
+  StatusOr<int64> PotrfBufferSize(PrimitiveType type, se::blas::UpperLower uplo,
+                                  int n, int lda) {
+    LOG(FATAL) << "Unimplemented";
+  }
+};
+
+#endif
 
 }  // namespace gpu
 }  // namespace xla

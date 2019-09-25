@@ -81,23 +81,31 @@ std::string GetConcatKernelCode(
         // We can read more at once inside of loop in case depth % 2 == 0
         // it should be better for reading latency hiding
         code += "  for (int i = 0; i < " + uniform_name + ".w; i += 2) {\n";
-        code += "    FLT4 result0 = " + srcs[i]->Read3D("X", "Y", "i") + ";\n";
+        code += "    FLT4 result0 = " +
+                srcs[i]->Read3D("X", "Y", "i", TextureAddressMode::DONT_CARE) +
+                ";\n";
         code +=
-            "    FLT4 result1 = " + srcs[i]->Read3D("X", "Y", "i + 1") + ";\n";
+            "    FLT4 result1 = " +
+            srcs[i]->Read3D("X", "Y", "i + 1", TextureAddressMode::DONT_CARE) +
+            ";\n";
         code += "    " + dst.GetAddress("dst_adr0", "X", "Y", "Z") + "\n";
         code += "    " + dst.GetAddress("dst_adr1", "X", "Y", "Z + 1") + "\n";
-        code += PostProcess(linked_operations, "result0", "Z", "dst_adr0");
-        code += PostProcess(linked_operations, "result1", "Z + 1", "dst_adr1");
-        code += "    " + dst.Write3D("result0", "dst_adr0");
-        code += "    " + dst.Write3D("result1", "dst_adr1");
+        const LinkingContext context_0{"result0", "X", "Y", "Z"};
+        const LinkingContext context_1{"result1", "X", "Y", "Z + 1"};
+        code += PostProcess(linked_operations, context_0);
+        code += PostProcess(linked_operations, context_1);
+        code += "    " + dst.Write3D("result0", "X", "Y", "Z");
+        code += "    " + dst.Write3D("result1", "X", "Y", "Z + 1");
         code += "    Z += 2;\n";
         code += "  }\n";
       } else {
         code += "  for (int i = 0; i < " + uniform_name + ".w; ++i) {\n";
-        code += "    FLT4 result = " + srcs[i]->Read3D("X", "Y", "i") + ";\n";
-        code += "    " + dst.GetAddress("dst_adr", "X", "Y", "Z") + "\n";
-        code += PostProcess(linked_operations, "result", "Z", "dst_adr");
-        code += "    " + dst.Write3D("result", "dst_adr");
+        code += "    FLT4 result = " +
+                srcs[i]->Read3D("X", "Y", "i", TextureAddressMode::DONT_CARE) +
+                ";\n";
+        const LinkingContext context{"result", "X", "Y", "Z"};
+        code += PostProcess(linked_operations, context);
+        code += "    " + dst.Write3D("result", "X", "Y", "Z");
         code += "    Z++;\n";
         code += "  }\n";
       }
@@ -113,7 +121,9 @@ std::string GetConcatKernelCode(
         const int channels_in_group = std::min(4, channels[i] - d * 4);
         const std::string temp_name = "t" + std::to_string(read_index);
         code += "  FLT4 " + temp_name + " = ";
-        code += srcs[i]->Read3D("X", "Y", std::to_string(d)) + ";\n";
+        code += srcs[i]->Read3D("X", "Y", std::to_string(d),
+                                TextureAddressMode::DONT_CARE) +
+                ";\n";
         for (int c = 0; c < channels_in_group; ++c) {
           code += "  result" + postfix[out_channel] + " = ";
           code += temp_name + postfix[c] + ";\n";
@@ -121,12 +131,9 @@ std::string GetConcatKernelCode(
           if (out_channel == 4) {
             out_channel = 0;
             code += "  {\n";
-            code += "  " +
-                    dst.GetAddress("dst_adr", "X", "Y", std::to_string(z)) +
-                    "\n";
-            code += PostProcess(linked_operations, "result", std::to_string(z),
-                                "dst_adr");
-            code += "  " + dst.Write3D("result", "dst_adr");
+            const LinkingContext context{"result", "X", "Y", std::to_string(z)};
+            code += PostProcess(linked_operations, context);
+            code += "  " + dst.Write3D("result", "X", "Y", std::to_string(z));
             code += "  }\n";
             z++;
           }
@@ -136,11 +143,9 @@ std::string GetConcatKernelCode(
     }
     if (out_channel != 0) {
       code += "  {\n";
-      code +=
-          "  " + dst.GetAddress("dst_adr", "X", "Y", std::to_string(z)) + "\n";
-      code += PostProcess(linked_operations, "result", std::to_string(z),
-                          "dst_adr");
-      code += "  " + dst.Write3D("result", "dst_adr");
+      const LinkingContext context{"result", "X", "Y", std::to_string(z)};
+      code += PostProcess(linked_operations, context);
+      code += "  " + dst.Write3D("result", "X", "Y", std::to_string(z));
       code += "  }\n";
     }
   }
@@ -168,8 +173,14 @@ ConcatZ& ConcatZ::operator=(ConcatZ&& kernel) {
 Status ConcatZ::Compile(const CreationContext& creation_context) {
   const auto code =
       GetConcatKernelCode(definition_, channels_, linked_operations_);
+  std::vector<CompilerOptions> options;
+  if (definition_.precision == CalculationsPrecision::F32 &&
+      creation_context.device->IsPowerVR() && !IsAllChannelsX4(channels_)) {
+    // BUG, some PowerVRs (GE8320) produce incorrect result without it
+    options.push_back(CompilerOptions::CL_OPT_DISABLE);
+  }
   return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
+      code, "main_function", options, *creation_context.context,
       *creation_context.device, &kernel_);
 }
 
@@ -178,7 +189,7 @@ Status ConcatZ::BindArguments() {
   for (int i = 0; i < channels_.size(); ++i) {
     RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[i]->GetMemoryPtr()));
   }
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtr()));
+  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   for (int i = 0; i < channels_.size(); ++i) {
     int4 size(src_[i]->Width(), src_[i]->Height(), channels_[i],

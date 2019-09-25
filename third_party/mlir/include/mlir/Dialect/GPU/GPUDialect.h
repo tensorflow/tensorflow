@@ -41,8 +41,11 @@ public:
   /// Get the canonical string name of the dialect.
   static StringRef getDialectName();
 
-  /// Get the name of the attribute used to annotate outlined kernel functions.
+  /// Get the name of the attribute used to annotate external kernel functions.
   static StringRef getKernelFuncAttrName() { return "gpu.kernel"; }
+
+  /// Get the name of the attribute used to annotate kernel modules.
+  static StringRef getKernelModuleAttrName() { return "gpu.kernel_module"; }
 
   /// Returns whether the given function is a kernel function, i.e., has the
   /// 'gpu.kernel' attribute.
@@ -66,7 +69,7 @@ class LaunchOp : public Op<LaunchOp, OpTrait::AtLeastNOperands<6>::Impl,
 public:
   using Op::Op;
 
-  static void build(Builder *builder, OperationState *result, Value *gridSizeX,
+  static void build(Builder *builder, OperationState &result, Value *gridSizeX,
                     Value *gridSizeY, Value *gridSizeZ, Value *blockSizeX,
                     Value *blockSizeY, Value *blockSizeZ,
                     ArrayRef<Value *> operands);
@@ -98,8 +101,8 @@ public:
   LogicalResult verify();
 
   /// Custom syntax support.
-  void print(OpAsmPrinter *p);
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter &p);
+  static ParseResult parse(OpAsmParser &parser, OperationState &result);
 
   static StringRef getOperationName() { return "gpu.launch"; }
 
@@ -131,12 +134,12 @@ class LaunchFuncOp : public Op<LaunchFuncOp, OpTrait::AtLeastNOperands<6>::Impl,
 public:
   using Op::Op;
 
-  static void build(Builder *builder, OperationState *result, FuncOp kernelFunc,
+  static void build(Builder *builder, OperationState &result, FuncOp kernelFunc,
                     Value *gridSizeX, Value *gridSizeY, Value *gridSizeZ,
                     Value *blockSizeX, Value *blockSizeY, Value *blockSizeZ,
                     ArrayRef<Value *> kernelOperands);
 
-  static void build(Builder *builder, OperationState *result, FuncOp kernelFunc,
+  static void build(Builder *builder, OperationState &result, FuncOp kernelFunc,
                     KernelDim3 gridSize, KernelDim3 blockSize,
                     ArrayRef<Value *> kernelOperands);
 

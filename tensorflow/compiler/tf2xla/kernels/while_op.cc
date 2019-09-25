@@ -81,29 +81,17 @@ Status MakeXlaCompilerArgumentsFromInputs(
     if (type == DT_RESOURCE) {
       XlaResource* resource;
       TF_RETURN_IF_ERROR(ctx->GetResourceInput(i, &resource));
-
-      arg.initialized = resource->initialized();
-      arg.kind = XlaCompiler::Argument::kResource;
-      arg.resource_kind = resource->kind();
+      XlaCompiler::PopulateArgumentFromResource(*resource, &arg);
       if (arg.resource_kind == XlaResource::kTensorArray) {
         *has_tensor_arrays = true;
       }
-
-      arg.type = resource->type();
-      arg.shape = resource->shape();
       if (!arg.initialized) {
         *has_uninitialized_vars = true;
       }
-      arg.max_array_size = resource->max_array_size();
-      for (const auto& gradient : resource->tensor_array_gradients()) {
-        arg.tensor_array_gradients.insert(gradient.first);
-      }
-      arg.name = resource->name();
       VLOG(2) << "    resource " << resource->name()
               << " type: " << DataTypeString(arg.type)
               << " shape: " << arg.ShapeHumanString()
               << " initialized: " << arg.initialized;
-
     } else {
       arg.kind = XlaCompiler::Argument::kParameter;
       arg.type = type;

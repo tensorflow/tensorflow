@@ -28,21 +28,23 @@ namespace cl {
 namespace {
 
 std::string GenerateConvolutionConstantCode(
-    const TensorDescriptor& src_descriptor,
-    const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
-    const int2& kernel_size, const int2& dilation, int src_channels,
-    int dst_channels,
+    const OperationDef& op_def, const int2& kernel_size, const int2& dilation,
+    int src_channels, int dst_channels, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
+  TensorCodeGenerator src_tensor("src_data", "src_size", op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data", "dst_size", op_def.dst_tensors[0]);
 
-  std::string c = GetCommonDefines(precision);
+  std::string c = GetCommonDefines(op_def.precision);
 
   const int out_z = IntegralDivideRoundUp(dst_channels, 4);
   const std::string kOutZ = std::to_string(out_z);
   const int src_depth = IntegralDivideRoundUp(src_channels, 4);
 
-  switch (precision) {
+  const auto src_tensor_type = op_def.src_tensors[0].storage_type;
+  const bool manual_clamp = src_tensor_type == TensorStorageType::BUFFER ||
+                            src_tensor_type == TensorStorageType::IMAGE_BUFFER;
+
+  switch (op_def.precision) {
     case CalculationsPrecision::F32:
     case CalculationsPrecision::F16:
       c += "#define CONV4(R, SRC, F, i) \\\n";
@@ -102,6 +104,7 @@ std::string GenerateConvolutionConstantCode(
   c += "  for (int i = 0; i < " + kOutZ + "; ++i) {\n";
   c += "    r[i] = (ACCUM_FLT4)(0.0f, 0.0f, 0.0f, 0.0f);\n";
   c += "  }\n";
+  const auto address_mode = GetFastestZeroMode(device);
   int filters_counter = 0;
   for (int s = 0; s < src_depth; ++s) {
     const int ch_count = std::min(4, src_channels - s * 4);
@@ -111,22 +114,22 @@ std::string GenerateConvolutionConstantCode(
     const std::string s_postfix = postfixes[ch_count - 1];
     for (int ky = 0; ky < kernel_size.y; ++ky) {
       std::string s_y = absl::StrCat("(start_y + ", ky * dilation.y, ")");
-      if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+      if (manual_clamp) {
         c += "  {\n";
         c += "  bool y_out = " + s_y + " < 0 || " + s_y + " >= src_size.y;\n";
       }
       for (int kx = 0; kx < kernel_size.x; ++kx) {
         c += "  {\n";
         std::string s_x = absl::StrCat("(start_x + ", kx * dilation.x, ")");
-        if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+        if (manual_clamp) {
           c += "    bool x_out = " + s_x + "< 0 || " + s_x + ">= src_size.x;\n";
           c += "    " + s_type + " src = x_out || y_out ?";
           c += "(" + s_type + ")(0.0) : ";
           c += src_tensor.Read3D(s_x, s_y, std::to_string(s)) + s_postfix +
                ";\n";
         } else {
-          c += "    " + s_type +
-               " src = " + src_tensor.Read3D(s_x, s_y, std::to_string(s)) +
+          c += "    " + s_type + " src = " +
+               src_tensor.Read3D(s_x, s_y, std::to_string(s), address_mode) +
                s_postfix + ";\n";
         }
         for (int d = 0; d < out_z; ++d) {
@@ -136,7 +139,7 @@ std::string GenerateConvolutionConstantCode(
         }
         c += "  }\n";
       }
-      if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+      if (manual_clamp) {
         c += "  }\n";
       }
     }
@@ -145,9 +148,9 @@ std::string GenerateConvolutionConstantCode(
     std::string s_i = std::to_string(i);
     c += "  {\n";
     c += "    FLT4 res = TO_FLT4(r[" + s_i + "]) + biases[" + s_i + "];\n";
-    c += "  " + dst_tensor.GetAddress("dst_adr", "X", "Y", s_i) + "\n";
-    c += PostProcess(linked_operations, "res", s_i, "dst_adr");
-    c += "  " + dst_tensor.Write3D("res", "dst_adr");
+    const LinkingContext context{"res", "X", "Y", s_i};
+    c += PostProcess(linked_operations, context);
+    c += "  " + dst_tensor.Write3D("res", "X", "Y", s_i);
     c += "  }\n";
   }
   c += "}\n";
@@ -167,9 +170,9 @@ int GetAdrenoOptimalMaxConstantSize(int gpu_version) {
 
 int GetOptimalMaxConstantSize(const DeviceInfo& info) {
   if (info.vendor != Vendor::QUALCOMM) {
-    // In general we not expect that this kernel will be used with non Adreno
-    // so as it tuned for Adreno special memory.
-    return 256 * 16;  // 4KB
+    // In general we do not expect that this kernel will be used with non Adreno
+    // so as it tuned for __constant memory that have big profit on Adreno
+    return 1024;  // 1KB
   } else {
     return GetAdrenoOptimalMaxConstantSize(info.adreno_info.gpu_version);
   }
@@ -208,13 +211,17 @@ ConvConstants& ConvConstants::operator=(ConvConstants&& kernel) {
 
 Status ConvConstants::Compile(const CreationContext& creation_context) {
   const auto code = GenerateConvolutionConstantCode(
-      definition_.src_tensors[0], definition_.dst_tensors[0],
-      definition_.precision, kernel_size_, dilation_, src_channels_,
-      dst_channels_, linked_operations_);
+      definition_, kernel_size_, dilation_, src_channels_, dst_channels_,
+      *creation_context.device, linked_operations_);
   std::vector<CompilerOptions> options;
   if (definition_.precision == CalculationsPrecision::F16 &&
       creation_context.device->IsAdreno3xx()) {
     options.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
+  }
+  if (definition_.precision != CalculationsPrecision::F32 &&
+      creation_context.device->IsPowerVR()) {
+    // BUG, some PowerVRs (GE8320) produce incorrect result without it
+    options.push_back(CompilerOptions::CL_OPT_DISABLE);
   }
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", options, *creation_context.context,
@@ -227,7 +234,7 @@ Status ConvConstants::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtr()));
+  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(stride_));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(padding_));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetSizeWithDepth()));
@@ -254,9 +261,6 @@ Status ConvConstants::AddToQueue(CLCommandQueue* queue) {
 bool IsConvConstantsSupported(const CLDevice& device,
                               const OperationDef& definition,
                               const Convolution2DAttributes& attr) {
-  if (!device.IsAdreno()) {
-    return false;
-  }
   const auto& w_shape = attr.weights.shape;
   const int dst_channels = AlignByN(w_shape.o, 4);
   const int filters_count = w_shape.i * dst_channels * w_shape.h * w_shape.w;

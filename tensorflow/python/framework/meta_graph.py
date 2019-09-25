@@ -195,18 +195,18 @@ def stripped_op_list_for_graph(graph_def):
 
   used_ops = ops_used_by_graph_def(graph_def)
 
-  # Verify that all used ops are registered.
-  registered_ops = op_def_registry.get_registered_ops()
   # These internal ops used by functions are not registered, so we need to
   # whitelist them.  # TODO(irving): Do something better here.
   op_whitelist = ("_Arg", "_Retval", "_ListToArray", "_ArrayToList")
-  for op in used_ops:
-    if op not in registered_ops and op not in op_whitelist:
+  op_defs = []
+  for op in sorted(used_ops):
+    op_def = op_def_registry.get(op)
+    if op_def is not None:
+      op_defs.append(op_def)
+    elif op not in op_whitelist:
       raise ValueError("Op %s is used by the graph, but is not registered" % op)
 
-  # Build the stripped op list in sorted order
-  return op_def_pb2.OpList(op=[registered_ops[op] for op in sorted(used_ops)
-                               if op in registered_ops])
+  return op_def_pb2.OpList(op=op_defs)
 
 
 def _get_kind_name(item):
@@ -482,14 +482,14 @@ def strip_graph_default_valued_attrs(meta_graph_def):
   for function_def in meta_graph_def.graph_def.library.function:
     op_name_to_function[function_def.signature.name] = function_def
 
-  # Get all registered ops.
-  registered_ops = op_def_registry.get_registered_ops()
-
   def _strip_node_default_valued_attrs(node_def):
     """Removes default valued attributes from a single node def."""
-    if node_def.op in op_name_to_function or node_def.op not in registered_ops:
+    if node_def.op in op_name_to_function:
       return
-    op_def = registered_ops[node_def.op]
+
+    op_def = op_def_registry.get(node_def.op)
+    if op_def is None:
+      return
 
     attrs_to_strip = set()
     for attr_name, attr_value in node_def.attr.items():

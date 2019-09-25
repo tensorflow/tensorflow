@@ -41,7 +41,10 @@ HostExecutor::HostExecutor(const PluginConfig &plugin_config)
 
 HostExecutor::~HostExecutor() {}
 
-void *HostExecutor::Allocate(uint64 size) { return new char[size]; }
+DeviceMemoryBase HostExecutor::Allocate(uint64 size, int64 memory_space) {
+  CHECK_EQ(memory_space, 0);
+  return DeviceMemoryBase(new char[size], size);
+}
 
 void *HostExecutor::GetSubBuffer(DeviceMemoryBase *parent, uint64 offset_bytes,
                                  uint64 size_bytes) {

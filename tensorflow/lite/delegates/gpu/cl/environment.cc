@@ -181,6 +181,9 @@ std::vector<TensorStorageType> Environment::GetSupportedTextureStorages()
   if (device_.SupportsTextureArray()) {
     storage_types.push_back(TensorStorageType::TEXTURE_ARRAY);
   }
+  if (device_.IsAdreno() && device_.SupportsImageBuffer()) {
+    storage_types.push_back(TensorStorageType::IMAGE_BUFFER);
+  }
   return storage_types;
 }
 
@@ -190,22 +193,26 @@ std::vector<TensorStorageType> Environment::GetSupportedStorages() const {
   if (device_.SupportsTextureArray()) {
     storage_types.push_back(TensorStorageType::TEXTURE_ARRAY);
   }
+  if (device_.IsAdreno() && device_.SupportsImageBuffer()) {
+    storage_types.push_back(TensorStorageType::IMAGE_BUFFER);
+  }
   return storage_types;
 }
 
 TensorStorageType GetOptimalStorageType(const CLDevice& gpu) {
-  TensorStorageType storage_type;
-  if (gpu.vendor() != Vendor::QUALCOMM) {
-    storage_type = TensorStorageType::BUFFER;
-  } else {
+  if (gpu.IsAdreno()) {
     if (gpu.IsAdreno6xxOrHigher()) {
-      storage_type = TensorStorageType::TEXTURE_ARRAY;
+      return TensorStorageType::TEXTURE_ARRAY;
     } else {
-      storage_type = TensorStorageType::TEXTURE_2D;
+      return TensorStorageType::TEXTURE_2D;
     }
+  } else if (gpu.IsPowerVR() || gpu.IsNvidia()) {
+    return TensorStorageType::TEXTURE_2D;
+  } else if (gpu.IsMali()) {
+    return TensorStorageType::BUFFER;
   }
 
-  return storage_type;
+  return TensorStorageType::BUFFER;
 }
 
 Status CreateDefaultEnvironment(Environment* result) {

@@ -51,6 +51,9 @@ using mkldnn::convolution_forward;
 using mkldnn::prop_kind;
 using mkldnn::stream;
 
+using ConvFwdPd = mkldnn::convolution_forward::primitive_desc;
+using ReorderPd = mkldnn::reorder::primitive_desc;
+
 namespace tensorflow {
 
 #ifdef ENABLE_MKLDNN_V1
@@ -86,14 +89,15 @@ namespace tensorflow {
 #define MKL_TENSOR_FORMAT MklTensorFormat
 #define MKL_TENSOR_FORMAT_BLOCKED MklTensorFormat::FORMAT_BLOCKED
 #define MKL_TENSOR_FORMAT_IN_C MKL_TENSOR_FORMAT
+#define OUTPUT_TF_MD output_tf_md
 #define PRIMITIVE_DESC_BIAS bias_desc()
 #define PRIMITIVE_DESC_DST dst_desc()
 #define PRIMITIVE_DESC_SRC src_desc()
 #define PRIMITIVE_DESC_WEIGHTS weights_desc()
 #define REORDER_PD_CONSTRUCTOR(src_md, dst_md, engine) \
-  mkldnn::reorder::primitive_desc(engine, src_md, engine, dst_md)
+  ReorderPd(engine, src_md, engine, dst_md)
 #define REORDER_PD_CONSTRUCTOR_WITH_ATTR(src_md, dst_md, engine, prim_attr) \
-  mkldnn::reorder::primitive_desc(engine, src_md, engine, dst_md, prim_attr)
+  ReorderPd(engine, src_md, engine, dst_md, prim_attr)
 #define SUMMAND_MD summand_md
 #else
 #define ADD_MD add_pd
@@ -126,14 +130,14 @@ namespace tensorflow {
 #define MKL_TENSOR_FORMAT memory::format
 #define MKL_TENSOR_FORMAT_BLOCKED memory::format::blocked
 #define MKL_TENSOR_FORMAT_IN_C mkldnn_memory_format_t
+#define OUTPUT_TF_MD output_tf_pd
 #define PRIMITIVE_DESC_BIAS bias_primitive_desc()
 #define PRIMITIVE_DESC_DST dst_primitive_desc()
 #define PRIMITIVE_DESC_SRC src_primitive_desc()
 #define PRIMITIVE_DESC_WEIGHTS weights_primitive_desc()
-#define REORDER_PD_CONSTRUCTOR(src_pd, dst_pd, engine) \
-  mkldnn::reorder::primitive_desc(src_pd, dst_pd)
+#define REORDER_PD_CONSTRUCTOR(src_pd, dst_pd, engine) ReorderPd(src_pd, dst_pd)
 #define REORDER_PD_CONSTRUCTOR_WITH_ATTR(src_pd, dst_pd, engine, prim_attr) \
-  mkldnn::reorder::primitive_desc(src_pd, dst_pd, prim_attr)
+  ReorderPd(src_pd, dst_pd, prim_attr)
 #define SUMMAND_MD summand_pd
 #endif  // ENABLE_MKLDNN_V1
 
@@ -168,8 +172,6 @@ struct MklConvFwdParams {
         padding_left(padding_left),
         padding_right(padding_right) {}
 };
-
-typedef mkldnn::convolution_forward::primitive_desc ConvFwdPd;
 
 // With quantization, input, filter, and output can have different types
 // so we use different template parameter for each type
@@ -513,8 +515,6 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<float> {
   }
 };
 
-typedef Eigen::ThreadPoolDevice CPUDevice;
-
 // Base class for convolution forward operations
 template <typename Device, typename Tinput, typename Tfilter, typename Tbias,
           typename Toutput, typename Ttemp_output, typename Tpadding,
@@ -595,7 +595,7 @@ class MklConvOp : public OpKernel {
       GetMklShape(context, kInputIndex_Src, &src_mkl_shape, eager_mode);
       GetMklShape(context, kInputIndex_Filter, &filter_mkl_shape, eager_mode);
 
-      OP_REQUIRES(context, filter_mkl_shape.IsMklTensor() == false,
+      OP_REQUIRES(context, !filter_mkl_shape.IsMklTensor(),
                   errors::InvalidArgument("Filter should not be in "
                                           "Mkl Layout"));
 
@@ -669,6 +669,9 @@ class MklConvOp : public OpKernel {
         OP_REQUIRES(
             context, !pad_enabled,
             errors::InvalidArgument("Pad + Conv fusion only works for 2D"));
+        OP_REQUIRES(
+            context, !fuse_pad_,
+            errors::InvalidArgument("Pad+Conv fusion only works for 2D"));
       }
 
       // TODO 3-D support for Depthwise is not there
@@ -678,12 +681,6 @@ class MklConvOp : public OpKernel {
                         "Only 2D convolution is supported for depthwise."));
       }
 
-      // TODO(Intel-tf) Add check to make sure pad_enabled is true only for 2D
-      if (!is_conv2d) {
-        OP_REQUIRES(
-            context, !fuse_pad_,
-            errors::InvalidArgument("Pad+Conv fusion only works for 2D"));
-      }
       // Create memory for user data.
       // Describe how the inputs and outputs of Convolution look like. Also
       // specify buffers containing actual input and output data.
@@ -693,7 +690,8 @@ class MklConvOp : public OpKernel {
 #ifdef ENABLE_MKLDNN_V1
       auto mkl_fmt_tag = MklTensorFormatToMklDnnDataFormat(tf_fmt);
       // NOTE: `mkl_fmt_tag` will be `format_tag::undef` for ReLU
-      DCHECK_NE(mkl_fmt_tag, memory::format_tag::undef);
+      OP_REQUIRES(context, mkl_fmt_tag != memory::format_tag::undef,
+                  errors::InvalidArgument("Invalid data format"));
 #endif  // ENABLE_MKLDNN_V1
 
       // If input is in MKL layout, then simply grab the layout; otherwise,
@@ -847,16 +845,18 @@ class MklConvOp : public OpKernel {
 
           // Now we need to convert the output to TF format.
           auto output_tf_md = output_mkl_shape.GetTfLayout();
+#ifndef ENABLE_MKLDNN_V1
           auto output_tf_pd = memory::primitive_desc(output_tf_md, cpu_engine_);
-          auto dst_pd = (*conv_fwd_pd).dst_primitive_desc();
-          mkldnn::reorder::primitive_desc reorder_pd =
-              mkldnn::reorder::primitive_desc(dst_pd, output_tf_pd);
-          std::vector<mkldnn::primitive> net;
-          memory* tmp_data_mem = new memory(dst_pd, tmp_data);
-          memory* dst_data_mem = new memory(output_tf_pd, dst_data);
-          net.push_back(
-              mkldnn::reorder(reorder_pd, *tmp_data_mem, *dst_data_mem));
-          stream(stream::kind::eager).submit(net).wait();
+#endif  // !ENABLE_MKLDNN_V1
+          auto dst_pd = conv_fwd_pd->PRIMITIVE_DESC_DST;
+          ReorderPd reorder_pd =
+              REORDER_PD_CONSTRUCTOR(dst_pd, OUTPUT_TF_MD, cpu_engine_);
+          memory* tmp_data_mem =
+              new MEMORY_CONSTRUCTOR(dst_pd, cpu_engine_, tmp_data);
+          memory* dst_data_mem =
+              new MEMORY_CONSTRUCTOR(OUTPUT_TF_MD, cpu_engine_, dst_data);
+          CreateAndExecuteReorder(reorder_pd, *tmp_data_mem, *dst_data_mem,
+                                  cpu_engine_);
         }
       }
 
@@ -1007,35 +1007,45 @@ class MklConvOp : public OpKernel {
 
     AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
                               output_tf_shape, *output_mkl_shape, eager_mode);
-    // TODO(bhavanis): Need to integrate the following Add fusion code with
-    // MKL-DNN v1.x
+
     if (fuse_add_) {
       const Tensor& add_tensor = MklGetInput(context, kInputIndex_Add);
       MklDnnShape add_mkl_shape;
       GetMklShape(context, kInputIndex_Add, &add_mkl_shape);
 
-      // Check if need reorder
+      // Check if reorder is needed
       if (add_mkl_shape == *output_mkl_shape) {
-        auto result = (*output_tensor)->CopyFrom(add_tensor, output_tf_shape);
-        DCHECK(result);
+        OP_REQUIRES(
+            context, (*output_tensor)->CopyFrom(add_tensor, output_tf_shape),
+            errors::Internal("MklConvOp: AddN fusion: Failed to forward "
+                             "input tensor to output"));
       } else {
+#ifdef ENABLE_MKLDNN_V1
+        auto output_format_tag = MklTensorFormatToMklDnnDataFormat(
+            output_mkl_shape->GetTfDataFormat());
+        OP_REQUIRES(context, output_format_tag != memory::format_tag::undef,
+                    errors::InvalidArgument(
+                        "MklConvOp: AddN fusion: Invalid data format"));
+#endif  // ENABLE_MKLDNN_V1
         auto add_md =
             add_mkl_shape.IsMklTensor()
                 ? add_mkl_shape.GetMklLayout()
                 : memory::desc(output_dims_mkl_order, MklDnnType<Toutput>(),
+#ifdef ENABLE_MKLDNN_V1
+                               output_format_tag);
+#else
                                output_mkl_shape->GetTfDataFormat());
         auto add_pd = memory::primitive_desc(add_md, this->cpu_engine_);
+#endif  // ENABLE_MKLDNN_V1
         void* add_buf = static_cast<void*>(
             const_cast<Toutput*>(add_tensor.flat<Toutput>().data()));
         void* dst_buf =
             static_cast<void*>((*output_tensor)->flat<Ttemp_output>().data());
-        auto add = new memory(add_pd, add_buf);
-        auto dst = new memory(dst_pd, dst_buf);
-        auto reorder_desc = mkldnn::reorder::primitive_desc(add_pd, dst_pd);
-
-        std::vector<mkldnn::primitive> net;
-        net.push_back(mkldnn::reorder(reorder_desc, *add, *dst));
-        stream(stream::kind::eager).submit(net).wait();
+        auto add = new MEMORY_CONSTRUCTOR(ADD_MD, this->cpu_engine_, add_buf);
+        auto dst = new MEMORY_CONSTRUCTOR(DST_MD, this->cpu_engine_, dst_buf);
+        auto reorder_desc =
+            REORDER_PD_CONSTRUCTOR(ADD_MD, DST_MD, this->cpu_engine_);
+        CreateAndExecuteReorder(reorder_desc, *add, *dst, this->cpu_engine_);
       }
     }
   }
@@ -1180,12 +1190,7 @@ class MklConvOp : public OpKernel {
                           { MKLDNN_ARG_DST,
                             output->GetOpMem() }});
     }
-    stream cpu_stream(cpu_engine_);
-    DCHECK_EQ(net.size(), net_args.size());
-    for (size_t i = 0; i < net.size(); ++i) {
-      net.at(i).execute(cpu_stream, net_args.at(i));
-    }
-    cpu_stream.wait();
+    ExecutePrimitive(net, &net_args, cpu_engine_);
 #else
     if (bias) {
       DCHECK(fuse_biasadd_);
@@ -1198,7 +1203,7 @@ class MklConvOp : public OpKernel {
                                         filter->GetOpMem(),
                                         output->GetOpMem()));
     }
-    stream(stream::kind::eager).submit(net).wait();
+    ExecutePrimitive(net, nullptr, cpu_engine_);
 #endif  // ENABLE_MKLDNN_V1
   }
 
@@ -1436,6 +1441,12 @@ class MklQuantizedConv2DOp
     bool is_filter_const;
     OP_REQUIRES_OK(context,
                    context->GetAttr("is_filter_const", &is_filter_const));
+
+    if (bias_enabled) {
+      OP_REQUIRES_OK(context,
+                     context->GetAttr("is_bias_const", &is_bias_const_));
+    }
+
     OP_REQUIRES(context, is_filter_const,
                 errors::InvalidArgument("Filter must be a constant"));
   }
@@ -1566,50 +1577,122 @@ class MklQuantizedConv2DOp
     const float* min_filter = min_filter_vector.flat<float>().data();
     const float* max_filter = max_filter_vector.flat<float>().data();
 
+    std::vector<mkldnn::primitive> net;
     if (bias_enabled) {
       if (std::is_same<Tbias, qint32>::value) {
         return static_cast<Tbias*>(
             const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
       }
-      // If bias is enabled and requantization is not fused, scale the
-      // bias to be consistent with quantized-input and quantized-filter.
-      size_t depth = min_filter_vector.NumElements();
-      std::vector<float> scales(depth);
-      for (size_t i = 0; i < depth; ++i) {
-        scales[i] =
-            255.0 * 127.0 /
-            (std::max(std::abs(max_input), std::abs(min_input)) *
-             std::max(std::abs(max_filter[i]), std::abs(min_filter[i])));
-      }
-      mkldnn::primitive_attr bias_attr;
-      if (depth == 1) {
-        bias_attr.set_output_scales(0, scales);
-      } else {
-        bias_attr.set_output_scales(1, scales);
-      }
 
-      auto bias_md =
-          MEMORY_PD_CONSTRUCTOR(static_cast<int>(bias_tensor.NumElements()),
-                                Tbias, x, this->cpu_engine_);
-      void* bias_buf = static_cast<void*>(
-          const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
-      input_bias_ =
-          new MEMORY_CONSTRUCTOR(bias_md, this->cpu_engine_, bias_buf);
-      scaled_bias_ = new MEMORY_CONSTRUCTOR_WITHOUT_DATA(
-          conv_fwd_pd->PRIMITIVE_DESC_BIAS, this->cpu_engine_);
-      auto reorder_desc = REORDER_PD_CONSTRUCTOR_WITH_ATTR(
-          input_bias_->GET_DESC, scaled_bias_->GET_DESC, this->cpu_engine_,
-          bias_attr);
-      CreateAndExecuteReorder(reorder_desc, *input_bias_, *scaled_bias_,
-                              this->cpu_engine_);
-      return reinterpret_cast<Tbias*>(scaled_bias_->get_data_handle());
+      // Re-scale bias if either of following 2 conditions are met:
+      // 1. Bias is not const;
+      // 2. Bias is const, but bias cache is empty (first iteration).
+      if (!is_bias_const_ || IsBiasCacheEmpty(context)) {
+        size_t depth = min_filter_vector.NumElements();
+        std::vector<float> scales(depth);
+        for (size_t i = 0; i < depth; ++i) {
+          scales[i] =
+              255.0 * 127.0 /
+              (std::max(std::abs(max_input), std::abs(min_input)) *
+               std::max(std::abs(max_filter[i]), std::abs(min_filter[i])));
+        }
+        mkldnn::primitive_attr bias_attr;
+        if (depth == 1) {
+          bias_attr.set_output_scales(0, scales);
+        } else {
+          bias_attr.set_output_scales(1, scales);
+        }
+
+        auto bias_md =
+            MEMORY_PD_CONSTRUCTOR(static_cast<int>(bias_tensor.NumElements()),
+                                  Tbias, x, this->cpu_engine_);
+        void* bias_buf = static_cast<void*>(
+            const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
+        input_bias_ =
+            new MEMORY_CONSTRUCTOR(bias_md, this->cpu_engine_, bias_buf);
+        scaled_bias_ = new MEMORY_CONSTRUCTOR_WITHOUT_DATA(
+            conv_fwd_pd->PRIMITIVE_DESC_BIAS, this->cpu_engine_);
+        auto reorder_desc = REORDER_PD_CONSTRUCTOR_WITH_ATTR(
+            input_bias_->GET_DESC, scaled_bias_->GET_DESC, this->cpu_engine_,
+            bias_attr);
+        CreateAndExecuteReorder(reorder_desc, *input_bias_, *scaled_bias_,
+                                this->cpu_engine_);
+
+        Tbias* bias_data =
+            reinterpret_cast<Tbias*>(scaled_bias_->get_data_handle());
+        if (is_bias_const_)
+          CacheBias(context, conv_fwd_pd, bias_data, scaled_bias_);
+
+        return bias_data;
+      }
+      return GetCachedBias(context);
     } else {
       return nullptr;
     }
   }
 
+  bool is_bias_const_;
+  PersistentTensor cached_bias_data_ptensor_ GUARDED_BY(bias_cache_mu_);
+
   memory* input_bias_ = nullptr;
   memory* scaled_bias_ = nullptr;
+
+ private:
+  mutex bias_cache_mu_;
+  // Allocate persistent tensors for cached bias data and
+  // cached bias memory descriptor (data format)
+  void AllocatePersistentTensor(OpKernelContext* context,
+                                const ConvFwdPd& conv_prim_desc,
+                                Tensor** bias_tensor) {
+    DCHECK(bias_tensor);
+    TensorShape bias_tf_shape;
+    bias_tf_shape.AddDim(
+        (conv_prim_desc.bias_primitive_desc().get_size() / sizeof(Tbias)));
+    OP_REQUIRES_OK(context, context->allocate_persistent(
+                                DataTypeToEnum<Tbias>::value, bias_tf_shape,
+                                &cached_bias_data_ptensor_, bias_tensor));
+  }
+
+  // LOCKS_EXCLUDED annotation ensures that the lock (mu_) cannot
+  // be acquired before entering the function, since it is acquired
+  // inside the function.
+  inline bool IsBiasCacheEmpty(OpKernelContext* context)
+      LOCKS_EXCLUDED(bias_cache_mu_) {
+    tf_shared_lock lock(bias_cache_mu_);
+    return (cached_bias_data_ptensor_.NumElements() == 0);
+  }
+
+  // Cache the converted bias in a persistent tensor.
+  // Only one thread can execute this method at any given time.
+  void CacheBias(OpKernelContext* context,
+                 const std::shared_ptr<ConvFwdPd>& conv_fwd_pd,
+                 Tbias* bias_data, const memory* scaled_bias)
+      LOCKS_EXCLUDED(bias_cache_mu_) {
+    mutex_lock lock(bias_cache_mu_);
+
+    // If bias is already cached, there's nothing to do.
+    if (cached_bias_data_ptensor_.NumElements() > 0) {
+      return;
+    }
+
+    // Otherwise, cache bias
+    Tensor* bias_tensor_ptr = nullptr;
+    AllocatePersistentTensor(context, *conv_fwd_pd, &bias_tensor_ptr);
+    void* cached_bias_data = const_cast<void*>(
+        static_cast<const void*>(bias_tensor_ptr->flat<Tbias>().data()));
+    size_t cached_bias_data_size = scaled_bias->get_primitive_desc().get_size();
+    memcpy(cached_bias_data, bias_data, cached_bias_data_size);
+  }
+
+  Tbias* GetCachedBias(OpKernelContext* context)
+      LOCKS_EXCLUDED(bias_cache_mu_) {
+    tf_shared_lock lock(bias_cache_mu_);
+    const Tensor& cached_bias_data =
+        *cached_bias_data_ptensor_.AccessTensor(context);
+
+    return static_cast<Tbias*>(
+        const_cast<Tbias*>(cached_bias_data.flat<Tbias>().data()));
+  }
 };
 
 template <typename Device, typename Tbias, typename Toutput,

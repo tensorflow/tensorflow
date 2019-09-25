@@ -61,7 +61,7 @@ class StatusScopedDiagnosticHandler : public SourceMgrDiagnosticHandler {
   Status Combine(Status status);
 
  private:
-  void handler(Diagnostic diag);
+  LogicalResult handler(Diagnostic* diag);
 
   // String stream to assemble the final error message.
   std::string diag_str_;

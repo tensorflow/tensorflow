@@ -164,7 +164,7 @@ def _compute_theoretical_jacobian(f, y_shape, y_dtype, xs, param):
   dy_data_flat = dy_data.ravel().view(y_dtype.real_dtype.as_numpy_dtype)
   grad_fn_unprep = backprop.gradients_function(f, [param])
   grad_fn = _prepare(lambda dy, *xs: grad_fn_unprep(*xs, dy=dy),
-                     [y_dtype] + [x.dtype for x in xs])
+                     [y_dtype] + [z.dtype for z in xs])
   for col in range(y_size):
     dy_data_flat[col] = 1
     grad = _to_numpy(grad_fn(dy_data, *xs)[0])
@@ -175,7 +175,7 @@ def _compute_theoretical_jacobian(f, y_shape, y_dtype, xs, param):
         r_begin = i * x_val_size
         r_end = r_begin + x_val_size
         jacobian[r_begin:r_end, col] += v.flat
-    else:
+    elif grad is not None:
       jacobian[:, col] = grad.ravel().view(jacobian.dtype)
 
   # If the output is empty, run the gradients at least once and make sure

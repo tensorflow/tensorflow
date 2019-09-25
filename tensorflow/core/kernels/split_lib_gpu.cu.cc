@@ -74,8 +74,9 @@ TF_CALL_bfloat16(DEFINE_GPU_KERNELS);
 namespace {
 
 template <typename T>
-__global__ void SplitOpKernel(const T* input, int32 prefix_dim_size,
-                              int32 split_dim_size, int32 suffix_dim_size,
+__global__ void SplitOpKernel(const T* __restrict__ input,
+                              int32 prefix_dim_size, int32 split_dim_size,
+                              int32 suffix_dim_size,
                               GpuDeviceArrayStruct<T*> output_ptr_data) {
   const int32 num_split = output_ptr_data.size;
   T** output_ptrs = GetGpuDeviceArrayOnDevice(&output_ptr_data);
@@ -112,7 +113,7 @@ __global__ void SplitOpKernel(const T* input, int32 prefix_dim_size,
 // very similar to the concat kernel except the input/output logic
 // is reversed
 template <typename T, typename IntType, bool useSmem>
-__global__ void split_v_kernel(const T* input_ptr,
+__global__ void split_v_kernel(const T* __restrict__ input_ptr,
                                GpuDeviceArrayStruct<IntType> output_scan,
                                IntType total_rows, IntType total_cols,
                                GpuDeviceArrayStruct<T*> output_ptr_data) {
@@ -169,7 +170,8 @@ __global__ void split_v_kernel(const T* input_ptr,
 // different from the original split implementation due to 2D vs 3D
 // dimensions.  This version is likely faster due to less integer math.
 template <typename T>
-__global__ void SplitVOpKernel_fixed(const T* input, int32 prefix_dim_size,
+__global__ void SplitVOpKernel_fixed(const T* __restrict__ input,
+                                     int32 prefix_dim_size,
                                      int32 suffix_dim_size,
                                      GpuDeviceArrayStruct<T*> output_ptr_data) {
   const int32 num_split = output_ptr_data.size;

@@ -1,7 +1,3 @@
-add_subdirectory(AffineOps)
+add_subdirectory(Analysis)
 add_subdirectory(Dialect)
 add_subdirectory(EDSC)
-add_subdirectory(Linalg)
-add_subdirectory(LLVMIR)
-add_subdirectory(StandardOps)
-add_subdirectory(VectorOps)

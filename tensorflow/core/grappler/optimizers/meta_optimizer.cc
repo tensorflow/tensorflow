@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/ptr_util.h"
+#include "tensorflow/core/util/xla_config_registry.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -126,6 +127,38 @@ bool AutoMixedPrecisionEnabled(RewriterConfig::Toggle opt_level) {
   return false;
 }
 
+bool IsXlaGlobalJitOn(
+    const OptimizerOptions::GlobalJitLevel& jit_level_in_session_opts) {
+  xla_config_registry::XlaGlobalJitLevel xla_global_jit_level =
+      xla_config_registry::GetGlobalJitLevel(jit_level_in_session_opts);
+  // Return true only if XLA JIT is ON for both single-gpu and multi-gpu
+  // graphs. This is a conservative approach that turns off the memory optimizer
+  // when we are sure that all graphs will be processed by XLA JIT.
+  bool is_on = (xla_global_jit_level.single_gpu == OptimizerOptions::ON_1 ||
+                xla_global_jit_level.single_gpu == OptimizerOptions::ON_2) &&
+               (xla_global_jit_level.general == OptimizerOptions::ON_1 ||
+                xla_global_jit_level.general == OptimizerOptions::ON_2);
+  return is_on;
+}
+
+// A helper function to decide whether to enable the memory optimizer.
+bool MemoryOptimizerEnabled(
+    RewriterConfig::MemOptType mem_opt_type,
+    OptimizerOptions::GlobalJitLevel jit_level_in_session_opts) {
+  // Disable the default memory optimizer when XLA JIT is ON as it hurts the
+  // XLA JIT performance. The (current) XLA clustering can result in loss of
+  // concurrency between kernel compute and memory copies. As such, it usually
+  // loses the concurrency needed to hide the latencies of the inserted swap-ins
+  // and swap-outs and incurs great performance overhead. Remove this check when
+  // the XLA JIT can better deal with the concurrency.
+  if (mem_opt_type == RewriterConfig::DEFAULT_MEM_OPT &&
+      IsXlaGlobalJitOn(jit_level_in_session_opts)) {
+    return false;
+  }
+
+  return mem_opt_type != RewriterConfig::NO_MEM_OPT;
+}
+
 }  // namespace
 
 #define MK_OPT(NAME, VALUE) \
@@ -191,6 +224,13 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.shape_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<ShapeOptimizer>());
   }
+  if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision())) {
+    optimizers->push_back(
+        MakeUnique<AutoMixedPrecision>(cfg_.auto_mixed_precision()));
+  }
+  if (cfg_.layout_optimizer() != RewriterConfig::OFF) {
+    optimizers->push_back(MakeUnique<GenericLayoutOptimizer>());
+  }
   if (cfg_.remapping() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
   }
@@ -209,14 +249,9 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(
         MakeUnique<DependencyOptimizer>(cfg_.dependency_optimization()));
   }
-  if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision())) {
-    optimizers->push_back(
-        MakeUnique<AutoMixedPrecision>(cfg_.auto_mixed_precision()));
-  }
-  if (cfg_.layout_optimizer() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<GenericLayoutOptimizer>());
-  }
-  if (cfg_.memory_optimization() != RewriterConfig::NO_MEM_OPT) {
+  auto global_jit_level =
+      config_proto_.graph_options().optimizer_options().global_jit_level();
+  if (MemoryOptimizerEnabled(cfg_.memory_optimization(), global_jit_level)) {
     if (cfg_.memory_optimizer_target_node_name_scope().empty()) {
       optimizers->push_back(
           // Use the default target node name prefix "gradients/"
@@ -591,13 +626,13 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   // 2. Optimize functions reachable from the optimized graph.
   FunctionLibraryDefinition flib = minimized_flib(*optimized_graph);
+  using NodeDefs = protobuf::RepeatedPtrField<NodeDef>;
 
   // Find functions for which we might need to compute a gradient at runtime.
   absl::flat_hash_set<string> differentiable_functions;
 
-  using NodeDefs = protobuf::RepeatedPtrField<NodeDef>;
   const auto find_differentiable_functions =
-      [&differentiable_functions](const NodeDefs& nodes) -> void {
+      [&](const NodeDefs& nodes) -> void {
     for (const NodeDef& node : nodes) {
       if (IsSymbolicGradient(node)) {
         const auto* f_attr = gtl::FindOrNull(node.attr(), "f");
@@ -611,6 +646,28 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   // SymbolicGradient nodes inside the function library.
   for (const FunctionDef& function : optimized_graph->library().function()) {
     find_differentiable_functions(function.node_def());
+  }
+
+  // Find functions that are formed by XLA and will be compiled later. We do it
+  // by looking for a function attribute in XlaLaunch ops. Grappler rewrites
+  // potentially can add nodes that are not supported by XLA, so we choose to
+  // skip such functions when we optimize function library.
+  absl::flat_hash_set<string> xla_compiled_functions;
+
+  const auto find_xla_compiled_functions = [&](const NodeDefs& nodes) -> void {
+    NameAttrList function;
+    for (const NodeDef& node : nodes) {
+      if (!IsXlaLaunch(node)) continue;
+      if (!GetNodeAttr(node, "function", &function).ok()) continue;
+      xla_compiled_functions.insert(function.name());
+    }
+  };
+
+  // XlaLaunch ops inside the main graph ...
+  find_xla_compiled_functions(optimized_graph->node());
+  // ... and inside the function library.
+  for (const FunctionDef& function : optimized_graph->library().function()) {
+    find_xla_compiled_functions(function.node_def());
   }
 
   // Optimize each function only once.
@@ -629,9 +686,10 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
       // Skip functions that are not reachable from the optimized graph.
       if (!flib.Contains(func_name)) continue;
-
       // Skip already optimized functions.
-      if (optimized_funcs.find(func_name) != optimized_funcs.end()) continue;
+      if (optimized_funcs.contains(func_name)) continue;
+      // Skip functions that will be compiled by XLA.
+      if (xla_compiled_functions.contains(func_name)) continue;
 
       // Skip parametrized functions (function type or body is defined only at
       // function call time by caller node attributes).

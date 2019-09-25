@@ -61,6 +61,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "nnapi_util",
+    srcs = ["nnapi_util.cc"],
+    hdrs = ["nnapi_util.h"],
+    deps = [
+        ":nnapi_implementation",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_internal",
+    ],
+)
+
 cc_test(
     name = "nnapi_implementation_test",
     srcs = ["nnapi_implementation_test.cc"],

@@ -19,14 +19,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/Passes.h"
 #include "mlir/Analysis/Utils.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Transforms/LoopFusionUtils.h"
 #include "mlir/Transforms/Passes.h"
 
@@ -58,7 +58,7 @@ struct TestLoopFusion : public FunctionPass<TestLoopFusion> {
 
 } // end anonymous namespace
 
-std::unique_ptr<FunctionPassBase> mlir::createTestLoopFusionPass() {
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createTestLoopFusionPass() {
   return std::make_unique<TestLoopFusion>();
 }
 

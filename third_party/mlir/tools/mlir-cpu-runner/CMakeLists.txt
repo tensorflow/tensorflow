@@ -3,6 +3,7 @@ add_llvm_executable(mlir-cpu-runner
 )
 llvm_update_compile_flags(mlir-cpu-runner)
 whole_archive_link(mlir-cpu-runner
+  MLIRAffineOps
   MLIRLLVMIR
   MLIRStandardOps
   MLIRTargetLLVMIR

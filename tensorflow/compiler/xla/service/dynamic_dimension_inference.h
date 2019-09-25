@@ -164,6 +164,8 @@ class DynamicDimensionInference {
   // by a scalar instruction `size`.
   void SetDynamicSize(HloInstruction* inst, const ShapeIndex& index, int64 dim,
                       HloInstruction* size, DimensionConstraint constraint) {
+    VLOG(1) << "Set dimension inst " << inst->name() << " index "
+            << index.ToString() << "@" << dim << " to " << size->ToString();
     Shape subshape = ShapeUtil::GetSubshape(inst->shape(), index);
     CHECK(!subshape.IsTuple())
         << "Can't set a tuple shape to dynamic dimension";

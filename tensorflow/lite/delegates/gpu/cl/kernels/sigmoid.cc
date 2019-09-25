@@ -33,22 +33,22 @@ Sigmoid& Sigmoid::operator=(Sigmoid&& operation) {
   return *this;
 }
 
-std::string Sigmoid::GetCoreCode(const std::string& src,
-                                 const std::string& z_coord,
-                                 const std::string& address) const {
+std::string Sigmoid::GetCoreCode(const LinkingContext& context) const {
   if (definition_.precision != CalculationsPrecision::F32) {
     return absl::StrCat(
-        src, ".x = convert_half(native_recip(1.0f + native_exp(convert_float(-",
-        src, ".x))));\n", "  ", src,
-        ".y = convert_half(native_recip(1.0f + native_exp(convert_float(-", src,
-        ".y))));\n", "  ", src,
-        ".z = convert_half(native_recip(1.0f + native_exp(convert_float(-", src,
-        ".z))));\n", "  ", src,
-        ".w = convert_half(native_recip(1.0f + native_exp(convert_float(-", src,
-        ".w))));\n");
+        context.var_name,
+        ".x = convert_half(native_recip(1.0f + native_exp(convert_float(-",
+        context.var_name, ".x))));\n", "  ", context.var_name,
+        ".y = convert_half(native_recip(1.0f + native_exp(convert_float(-",
+        context.var_name, ".y))));\n", "  ", context.var_name,
+        ".z = convert_half(native_recip(1.0f + native_exp(convert_float(-",
+        context.var_name, ".z))));\n", "  ", context.var_name,
+        ".w = convert_half(native_recip(1.0f + native_exp(convert_float(-",
+        context.var_name, ".w))));\n");
   } else {
-    return absl::StrCat(src, " = (FLT4)(1.0f) / ((FLT4)(1.0f) + exp(-(", src,
-                        ")));\n");
+    return absl::StrCat(context.var_name,
+                        " = (FLT4)(1.0f) / ((FLT4)(1.0f) + exp(-(",
+                        context.var_name, ")));\n");
   }
 }
 

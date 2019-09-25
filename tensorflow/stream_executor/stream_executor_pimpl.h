@@ -120,7 +120,7 @@ class StreamExecutor {
   // Synchronously allocates an array on the device of type T with element_count
   // elements.
   template <typename T>
-  DeviceMemory<T> AllocateArray(uint64 element_count);
+  DeviceMemory<T> AllocateArray(uint64 element_count, int64 memory_space = 0);
 
   // As AllocateArray(), but returns a ScopedDeviceMemory<T>.
   template <typename T>
@@ -520,9 +520,9 @@ class StreamExecutor {
   friend struct ThenBlasImpl;
 
   // Synchronously allocates size bytes on the underlying platform and returns
-  // an opaque void* representing that allocation. In the case of failure,
+  // a DeviceMemoryBase representing that allocation. In the case of failure,
   // nullptr is returned.
-  void *Allocate(uint64 size);
+  DeviceMemoryBase Allocate(uint64 size, int64 memory_space);
 
   // Gets-or-creates (creates with memoization) an RngSupport datatype that can
   // be used for random-number-generation routines on the current platform.
@@ -786,10 +786,10 @@ StreamExecutor::CreateTypedKernel(absl::string_view kernel_name,
 }
 
 template <typename T>
-inline DeviceMemory<T> StreamExecutor::AllocateArray(uint64 element_count) {
+inline DeviceMemory<T> StreamExecutor::AllocateArray(uint64 element_count,
+                                                     int64 memory_space) {
   uint64 bytes = sizeof(T) * element_count;
-  void *opaque = Allocate(bytes);
-  return DeviceMemory<T>::MakeFromByteSize(opaque, bytes);
+  return DeviceMemory<T>(Allocate(bytes, memory_space));
 }
 
 template <typename T>
@@ -825,12 +825,12 @@ ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(
 
 template <typename T>
 DeviceMemory<T> StreamExecutor::AllocateZeroed() {
-  void *opaque = Allocate(sizeof(T));
-  if (opaque == nullptr) {
+  DeviceMemoryBase buf = Allocate(sizeof(T), /*memory_space=*/0);
+  if (buf.is_null()) {
     return DeviceMemory<T>{};
   }
 
-  DeviceMemory<T> result = DeviceMemory<T>::MakeFromByteSize(opaque, sizeof(T));
+  DeviceMemory<T> result(buf);
   bool ok = SynchronousMemZero(&result, sizeof(T));
   if (!ok) {
     Deallocate(&result);

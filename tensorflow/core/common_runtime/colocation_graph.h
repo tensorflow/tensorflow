@@ -37,9 +37,9 @@ class Member {
  public:
   Member() = default;
 
-  Status SetParentAndSupportedDevices(const Node& node,
-                                      const std::vector<DeviceType>& types,
-                                      const Device* default_local_device);
+  Status SetParentAndSupportedDevices(
+      const Node& node, const std::vector<DeviceType>& types,
+      const DeviceNameUtils::ParsedName* local_address_spec);
 
   const DeviceNameUtils::ParsedName& requested_device_name() const {
     return requested_device_name_;
@@ -82,6 +82,10 @@ class Member {
   bool MergeSupportedDevices(const Member& other);
 
   Status AssignDevice(const Node& node);
+
+  // If user does not explicitly request XLA device and non-XLA device is
+  // supported for this node, use only the non-XLA device. See b/140896502.
+  void MaybeExcludeXlaDevices();
 
   // Limit the possible devices of this (should be a root) to the device
   // specifications in `devices`.
@@ -357,6 +361,7 @@ class ColocationGraph {
   PlacerInspectionRequiredOpChecker inspection_required_checker_;
   const DeviceSet& device_set_;
   const std::vector<DeviceType> device_types_;
+  const DeviceNameUtils::ParsedName local_address_spec_;
   const Device* default_local_device_;
   const bool allow_soft_placement_;
   const bool log_device_placement_;

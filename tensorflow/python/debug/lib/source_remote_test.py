@@ -77,7 +77,7 @@ class SendTracebacksTest(test_util.TensorFlowTestCase):
   def _findFirstTraceInsideTensorFlowPyLibrary(self, op):
     """Find the first trace of an op that belongs to the TF Python library."""
     for trace in op.traceback:
-      if source_utils.guess_is_tensorflow_py_library(trace[0]):
+      if source_utils.guess_is_tensorflow_py_library(trace.filename):
         return trace
 
   def testSendGraphTracebacksToSingleDebugServer(self):
@@ -110,7 +110,8 @@ class SendTracebacksTest(test_util.TensorFlowTestCase):
           "      a = variables.Variable(21.0, name=\"a\")",
           self._server.query_source_file_line(__file__, a_lineno))
       # Files in the TensorFlow code base shouldn not have been sent.
-      tf_trace_file_path = self._findFirstTraceInsideTensorFlowPyLibrary(a.op)
+      tf_trace = self._findFirstTraceInsideTensorFlowPyLibrary(a.op)
+      tf_trace_file_path = tf_trace.filename
       with self.assertRaises(ValueError):
         self._server.query_source_file_line(tf_trace_file_path, 0)
       self.assertEqual([debug_service_pb2.CallTraceback.GRAPH_EXECUTION],
@@ -159,7 +160,8 @@ class SendTracebacksTest(test_util.TensorFlowTestCase):
         self.assertEqual(
             "      x = math_ops.add(a, b, name=\"two/x\")",
             server.query_source_file_line(__file__, x_lineno))
-        tf_trace_file_path = self._findFirstTraceInsideTensorFlowPyLibrary(x.op)
+        tf_trace = self._findFirstTraceInsideTensorFlowPyLibrary(a.op)
+        tf_trace_file_path = tf_trace.filename
         with self.assertRaises(ValueError):
           server.query_source_file_line(tf_trace_file_path, 0)
         self.assertEqual([debug_service_pb2.CallTraceback.GRAPH_EXECUTION],

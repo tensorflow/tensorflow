@@ -198,7 +198,14 @@ class FuncGraph(ops.Graph):
     self.structured_outputs = None
     self._weak_variables = []
     self._watched_variables = object_identity.ObjectIdentityWeakSet()
-    self.outer_graph = ops.get_default_graph()
+
+    outer_graph = ops.get_default_graph()
+    self._weak_outer_graph = weakref.ref(outer_graph)
+    while outer_graph.building_function:
+      outer_graph = outer_graph.outer_graph
+    # If self._weak_outer_graph is deleted, we revert to the outermost Graph
+    # active when the FuncGraph was traced. This will not be a FuncGraph.
+    self._fallback_outer_graph = outer_graph
     self._captures = py_collections.OrderedDict()
     # If not None, records the names of output args of this function. Used to
     # preserve the output names in the signature of a serialized+deserialized
@@ -411,6 +418,27 @@ class FuncGraph(ops.Graph):
     return inner_cm()
 
   @property
+  def outer_graph(self):
+    """The Graph this FuncGraph is nested in.
+
+    Functions may capture Tensors from graphs they are nested in (transitive).
+
+    Returns:
+      A Graph object. Initially set to the current default graph when the
+      FuncGraph was created. If the previous `outer_graph` was deleted because
+      the function that owns it was deleted, `outer_graph` is reset to the
+      outermost default graph active when the FuncGraph was created. This
+      FuncGraph won't have captured anything from the new `outer_graph` (and
+      likely not from the previous setting, since that would have created a
+      strong reference), but it is returned so that FuncGraphs always have a
+      parent.
+    """
+    current = self._weak_outer_graph()
+    if current is None:
+      return self._fallback_outer_graph
+    return current
+
+  @property
   def output_types(self):
     return [t.dtype for t in self.outputs]
 
@@ -476,7 +504,7 @@ class FuncGraph(ops.Graph):
     captured_value = self.capture(value)
     return captured_value.op
 
-  def create_op(
+  def _create_op_internal(
       self,
       op_type,
       inputs,
@@ -485,7 +513,6 @@ class FuncGraph(ops.Graph):
       name=None,
       attrs=None,
       op_def=None,
-      compute_shapes=True,
       compute_device=True):
     """Like Graph.create_op, except handles external input tensors.
 
@@ -511,15 +538,12 @@ class FuncGraph(ops.Graph):
         proto).
       op_def: (Optional.) The `OpDef` proto that describes the `op_type` that
         the operation will have.
-      compute_shapes: (Optional.) Deprecated. Has no effect (shapes are always
-        computed).
       compute_device: (Optional.) If True, device functions will be executed
         to compute the device property of the Operation.
 
     Returns:
       An `Operation` object.
     """
-    del compute_shapes
     if self.capture_by_value and op_type in ["ReadVariableOp",
                                              "ResourceGather"]:
       return self._capture_by_value(op_type, inputs, dtypes, input_types, name,
@@ -547,7 +571,7 @@ class FuncGraph(ops.Graph):
         op_type, inputs, dtypes, input_types, name, attrs, op_def,
         compute_device)
 
-  def capture(self, tensor, name=None):
+  def capture(self, tensor, name=None, shape=None):
     """Captures `tensor` if it's external to this graph.
 
     If `tensor` is from a different graph, returns a placeholder for it.
@@ -559,6 +583,7 @@ class FuncGraph(ops.Graph):
     Args:
       tensor: Tensor. May be from this FuncGraph or a different graph.
       name: Optional name if a placeholder is created.
+      shape: Optional shape if a placeholder is created.
 
     Returns:
       Tensor from this FuncGraph.
@@ -588,7 +613,7 @@ class FuncGraph(ops.Graph):
         return self.capture_eager_tensor(tensor, name)
 
       # Large EagerTensors and resources are captured with Placeholder ops
-      return self._capture_helper(tensor, name)
+      return self._capture_helper(tensor, name, shape)
     if tensor.graph is not self:
       if name is None:
         name = tensor.op.name
@@ -605,16 +630,17 @@ class FuncGraph(ops.Graph):
       return self._capture_helper(tensor, name)
     return tensor
 
-  def _capture_helper(self, tensor, name):
+  def _capture_helper(self, tensor, name, shape=None):
     capture = self._captures.get(ops.tensor_id(tensor))
     if capture is None:
       placeholder = _create_substitute_placeholder(
-          tensor, name=name, dtype=tensor.dtype)
+          tensor, name=name, dtype=tensor.dtype, shape=shape)
       self.add_capture(tensor, placeholder)
     else:
       placeholder = capture[1]
     tape.record_operation("captured_value", [placeholder], [tensor],
-                          lambda x: [x])
+                          backward_function=lambda x: [x],
+                          forward_function=lambda x: [x])
     return placeholder
 
   @property
@@ -660,7 +686,8 @@ class FuncGraph(ops.Graph):
     """Add given distributed variable to captures with given placeholder."""
     self._captures[ops.tensor_id(variable)] = (variable, placeholder)
     tape.record_operation("captured_value", [placeholder], [variable],
-                          lambda x: [x])
+                          backward_function=lambda x: [x],
+                          forward_function=lambda x: [x])
 
   def capture_eager_tensor(self, tensor, name):
     capture = self._captures.get(ops.tensor_id(tensor))
@@ -675,7 +702,8 @@ class FuncGraph(ops.Graph):
     else:
       graph_const = capture[1]
     tape.record_operation("captured_value", [graph_const], [tensor],
-                          lambda x: [x])
+                          backward_function=lambda x: [x],
+                          forward_function=lambda x: [x])
     return graph_const
 
   @property
@@ -1045,13 +1073,15 @@ def pack_sequence_as(structure, flat_sequence):
   return nest.pack_sequence_as(structure, flat_sequence, expand_composites=True)
 
 
-def _create_substitute_placeholder(value, name=None, dtype=None):
+def _create_substitute_placeholder(value, name=None, dtype=None, shape=None):
   """Creates a placeholder for `value` and propagates shape info to it."""
   # Note: setting ops.control_dependencies(None) ensures we always put
   # capturing placeholders outside of any control flow context.
+  if shape is None:
+    shape = value.shape
   with ops.control_dependencies(None):
     placeholder = graph_placeholder(
-        dtype=dtype or value.dtype, shape=value.shape, name=name)
+        dtype=dtype or value.dtype, shape=shape, name=name)
   custom_gradient.copy_handle_data(value, placeholder)
   return placeholder
 

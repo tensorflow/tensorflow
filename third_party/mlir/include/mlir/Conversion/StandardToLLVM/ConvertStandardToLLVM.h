@@ -103,9 +103,6 @@ private:
   // pointer as defined by the data layout of the module.
   LLVM::LLVMType getIndexType();
 
-  // Wrap the given LLVM IR type into an LLVM IR dialect type.
-  Type wrap(llvm::Type *llvmType);
-
   // Extract an LLVM IR dialect type.
   LLVM::LLVMType unwrap(Type type);
 };
@@ -116,7 +113,7 @@ private:
 class LLVMOpLowering : public ConversionPattern {
 public:
   LLVMOpLowering(StringRef rootOpName, MLIRContext *context,
-                 LLVMTypeConverter &lowering);
+                 LLVMTypeConverter &lowering, PatternBenefit benefit = 1);
 
 protected:
   // Back-reference to the lowering class, used to call type and function

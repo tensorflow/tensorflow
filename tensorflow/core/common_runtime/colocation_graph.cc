@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/partitioning_utils.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -118,22 +120,30 @@ bool ArePrioritiesSame(const PrioritizedDeviceTypeVector& a_types,
   return true;
 }
 
+bool IsXlaDevice(absl::string_view device_type) {
+  if (device_type == "XLA_CPU_JIT" || device_type == "XLA_GPU_JIT" ||
+      device_type == "XLA_TPU_JIT") {
+    // Symbolic XLA device.
+    return true;
+  }
+
+  return (device_type == "XLA_CPU" || device_type == "XLA_GPU" ||
+          device_type == "TPU");
+}
+
 }  // namespace
 
 Status Member::SetParentAndSupportedDevices(
     const Node& node, const std::vector<DeviceType>& types,
-    const Device* default_local_device) {
+    const DeviceNameUtils::ParsedName* local_address_spec) {
   int id = node.id();
   if (id < 0) {
     return errors::Internal("Placer should not be creating a Member for node: ",
                             node.DebugString());
   }
   parent_ = id;
-  const DeviceNameUtils::ParsedName* name =
-      default_local_device == nullptr ? nullptr
-                                      : &default_local_device->parsed_name();
-  return SupportedDeviceTypesForNode(types, node.def(),
-                                     &supported_device_types_, name);
+  return SupportedDeviceTypesForNode(
+      types, node.def(), &supported_device_types_, local_address_spec);
 }
 
 Status Member::SetAssignedDeviceName(const string& device_name) {
@@ -483,6 +493,28 @@ Status Member::AssignDevice(const Node& node) {
   return Status::OK();
 }
 
+void Member::MaybeExcludeXlaDevices() {
+  for (const auto& parsed_name :
+       {requested_device_name_, assigned_device_name_, resource_device_name_}) {
+    if (parsed_name.has_type && IsXlaDevice(parsed_name.type)) {
+      return;
+    }
+  }
+
+  PrioritizedDeviceTypeVector non_xla_types;
+  absl::c_copy_if(supported_device_types_, std::back_inserter(non_xla_types),
+                  [&](const std::pair<DeviceType, int32>& entry) {
+                    return !IsXlaDevice(entry.first.type_string());
+                  });
+
+  // TODO(b/141216278) Remove all XLA device types from the supported device
+  // types if the node has no requested/assigned/resource XLA device.
+  if (!non_xla_types.empty() &&
+      non_xla_types.size() < supported_device_types_.size()) {
+    supported_device_types_ = std::move(non_xla_types);
+  }
+}
+
 Status Member::LimitToPossibleDevices(const PossibleDevices& devices,
                                       bool allow_soft_placement) {
   TF_RETURN_IF_ERROR(DeviceNameUtils::MergeDevNames(
@@ -534,6 +566,26 @@ DeviceNameUtils::ParsedName Member::GetPreferredSoftDeviceName() const {
   return soft_device_name;
 }
 
+// Returns ParsedName whose address space (i.e. job, replica, task) identifies
+// the address space directly accessible by the local process. If the address
+// space is fully specified and it is exactly the same as the address space
+// of a device, then all kernels of that device should be registered in the
+// local process.
+static const DeviceNameUtils::ParsedName LocalAddressSpec(
+    const Device* client_device, const Device* default_local_device) {
+  if (client_device != nullptr) {
+    return DeviceNameUtils::AddressSpace(client_device->parsed_name());
+  }
+
+  if (default_local_device != nullptr) {
+    return DeviceNameUtils::AddressSpace(default_local_device->parsed_name());
+  }
+
+  // TODO(b/139617593) Return the name of the first local device in device_set_
+  // once we can trust the output of Device::IsLocal().
+  return DeviceNameUtils::ParsedName();
+}
+
 ColocationGraph::ColocationGraph(const Graph* graph, const FunctionStack& stack,
                                  const FunctionLibraryDefinition* flib_def,
                                  const DeviceSet* device_set,
@@ -548,6 +600,8 @@ ColocationGraph::ColocationGraph(const Graph* graph, const FunctionStack& stack,
       inspection_required_checker_(graph, flib_def),
       device_set_(*device_set),
       device_types_(device_set->PrioritizedDeviceTypeList()),
+      local_address_spec_(
+          LocalAddressSpec(device_set->client_device(), default_local_device)),
       default_local_device_(default_local_device),
       allow_soft_placement_(allow_soft_placement),
       log_device_placement_(log_device_placement) {
@@ -664,6 +718,16 @@ Status ColocationGraph::ColocateResourceAndRefEdges(
     }
 
     DataType input_type = dst->input_type(edge->dst_input());
+
+    // Colocate two DatasetOp nodes connected by edge of dtype=DT_VARIANT.
+    // This is needed to get around the issue in b/135705778.
+    if (input_type == DT_VARIANT &&
+        data::DatasetOpKernel::IsDatasetOp(&src->op_def()) &&
+        data::DatasetOpKernel::IsDatasetOp(&dst->op_def())) {
+      TF_RETURN_IF_ERROR(ColocateResourceOrRefEdge(src, dst));
+      continue;
+    }
+
     // Even though we can look inside function calling ops, we make an exception
     // here mostly for performance reasons. Looking inside function calling ops
     // is extra overhead. It is only necessary when they return resources. When
@@ -698,8 +762,14 @@ Status ColocationGraph::Initialize() {
   std::unordered_set<Node*> inspection_required;
   TF_RETURN_IF_ERROR(ColocateResourceAndRefEdges(&inspection_required));
   TF_RETURN_IF_ERROR(AddInspectionConstraints(inspection_required));
+  TF_RETURN_IF_ERROR(ColocateAllNodes());
 
-  return ColocateAllNodes();
+  for (Node* node : graph_.op_nodes()) {
+    int root_id = FindAndUpdateRoot(node->id());
+    members_[root_id].MaybeExcludeXlaDevices();
+  }
+
+  return Status::OK();
 }
 
 // pair containing a node and whether this node has a resource input
@@ -1167,12 +1237,8 @@ string ColocationGraph::DebugInfo(const int node_root) const {
     colocation_nodes.push_back(node);
 
     PrioritizedDeviceTypeVector supported_types;
-    const DeviceNameUtils::ParsedName* name =
-        default_local_device_ == nullptr
-            ? nullptr
-            : &default_local_device_->parsed_name();
     SupportedDeviceTypesForNode(device_types_, node->def(), &supported_types,
-                                name)
+                                &local_address_spec_)
         .IgnoreError();
     string devices_registered;
     for (const auto& device_type : supported_types) {
@@ -1249,7 +1315,7 @@ Status ColocationGraph::InitializeMemberWithAssignedDevice(
 
 Status ColocationGraph::InitializeMember(const Node& node, Member* member) {
   TF_RETURN_IF_ERROR(member->SetParentAndSupportedDevices(
-      node, device_types_, default_local_device_));
+      node, device_types_, &local_address_spec_));
 
   if (node.has_assigned_device_name()) {
     TF_RETURN_IF_ERROR(InitializeMemberWithAssignedDevice(
