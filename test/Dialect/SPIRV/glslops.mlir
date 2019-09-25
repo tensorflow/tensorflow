@@ -47,3 +47,27 @@ func @exp(%arg0 : i32) -> () {
   %2 = spv.GLSL.Exp %arg0 :
   return
 }
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// spv.GLSL.FMax
+//===----------------------------------------------------------------------===//
+
+func @fmax(%arg0 : f32, %arg1 : f32) -> () {
+  // CHECK: spv.GLSL.FMax {{%.*}}, {{%.*}} : f32
+  %2 = spv.GLSL.FMax %arg0, %arg1 : f32
+  return
+}
+
+func @fmaxvec(%arg0 : vector<3xf16>, %arg1 : vector<3xf16>) -> () {
+  // CHECK: spv.GLSL.FMax {{%.*}}, {{%.*}} : vector<3xf16>
+  %2 = spv.GLSL.FMax %arg0, %arg1 : vector<3xf16>
+  return
+}
+
+func @fmaxf64(%arg0 : f64, %arg1 : f64) -> () {
+  // CHECK: spv.GLSL.FMax {{%.*}}, {{%.*}} : f64
+  %2 = spv.GLSL.FMax %arg0, %arg1 : f64
+  return
+}
