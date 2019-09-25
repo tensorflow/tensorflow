@@ -40,3 +40,15 @@ tensorflow::tfprof::SerializeToString
 
 [graph_analyzer_tool] # graph_analyzer
 tensorflow::grappler::graph_analyzer::GraphAnalyzerTool
+
+[bfloat16_lib] # bfloat16
+tensorflow::RegisterNumpyBfloat16
+tensorflow::Bfloat16PyType
+
+[events_writer] # events_writer
+tensorflow::EventsWriter::Init
+tensorflow::EventsWriter::InitWithSuffix
+tensorflow::EventsWriter::WriteSerializedEvent
+tensorflow::EventsWriter::Flush
+tensorflow::EventsWriter::Close
+

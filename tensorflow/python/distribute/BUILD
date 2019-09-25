@@ -119,7 +119,6 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -473,7 +472,6 @@ cuda_py_test(
         "//tensorflow/python:io_ops",
         "//tensorflow/python:util",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_test(
@@ -681,7 +679,6 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_xla_py_test(
@@ -739,7 +736,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -765,7 +761,6 @@ cuda_py_test(
         # TODO(b/138143527): Re-enable after fixing Guitar failure.
         # "multi_and_single_gpu",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -778,7 +773,6 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
     ],
     grpc_enabled = True,
-    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -967,7 +961,6 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -1000,7 +993,6 @@ cuda_py_test(
         "no_rocm",
         "no_windows_gpu",  # TODO(b/130551176)
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -1026,7 +1018,6 @@ cuda_py_test(
         "guitar",
         "multi_and_single_gpu",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 distribute_py_test(

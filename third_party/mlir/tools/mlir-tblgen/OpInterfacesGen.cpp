@@ -19,6 +19,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "DocGenUtilities.h"
 #include "mlir/Support/STLExtras.h"
 #include "mlir/TableGen/GenInfo.h"
 #include "llvm/ADT/SmallVector.h"
@@ -33,6 +34,10 @@ using namespace llvm;
 using namespace mlir;
 
 namespace {
+//===----------------------------------------------------------------------===//
+// OpInterfaceMethod
+//===----------------------------------------------------------------------===//
+
 // This struct represents a single method argument.
 struct MethodArgument {
   StringRef type, name;
@@ -67,6 +72,12 @@ public:
     return value.empty() ? llvm::Optional<StringRef>() : value;
   }
 
+  // Return the description of this method if it has one.
+  llvm::Optional<StringRef> getDescription() const {
+    auto value = def->getValueAsString("description");
+    return value.empty() ? llvm::Optional<StringRef>() : value;
+  }
+
   // Arguments.
   ArrayRef<MethodArgument> getArguments() const { return arguments; }
   bool arg_empty() const { return arguments.empty(); }
@@ -78,6 +89,10 @@ protected:
   // The arguments of this method.
   SmallVector<MethodArgument, 2> arguments;
 };
+
+//===----------------------------------------------------------------------===//
+// OpInterface
+//===----------------------------------------------------------------------===//
 
 // Wrapper class with helper methods for accessing OpInterfaces defined in
 // TableGen.
@@ -94,6 +109,12 @@ public:
 
   // Return the methods of this interface.
   ArrayRef<OpInterfaceMethod> getMethods() const { return methods; }
+
+  // Return the description of this method if it has one.
+  llvm::Optional<StringRef> getDescription() const {
+    auto value = def->getValueAsString("description");
+    return value.empty() ? llvm::Optional<StringRef>() : value;
+  }
 
 protected:
   // The TableGen definition of this interface.
@@ -118,8 +139,11 @@ static void emitMethodNameAndArgs(const OpInterfaceMethod &method,
   os << ')';
 }
 
-static void emitInterfaceDef(const Record &interfaceDef, raw_ostream &os) {
-  OpInterface interface(&interfaceDef);
+//===----------------------------------------------------------------------===//
+// GEN: Interface definitions
+//===----------------------------------------------------------------------===//
+
+static void emitInterfaceDef(OpInterface &interface, raw_ostream &os) {
   StringRef interfaceName = interface.getName();
 
   // Insert the method definitions.
@@ -142,10 +166,16 @@ static bool emitInterfaceDefs(const RecordKeeper &recordKeeper,
   llvm::emitSourceFileHeader("Operation Interface Definitions", os);
 
   auto defs = recordKeeper.getAllDerivedDefinitions("OpInterface");
-  for (const auto *def : defs)
-    emitInterfaceDef(*def, os);
+  for (const auto *def : defs) {
+    OpInterface interface(def);
+    emitInterfaceDef(interface, os);
+  }
   return false;
 }
+
+//===----------------------------------------------------------------------===//
+// GEN: Interface declarations
+//===----------------------------------------------------------------------===//
 
 static void emitConceptDecl(OpInterface &interface, raw_ostream &os) {
   os << "  class Concept {\n"
@@ -195,8 +225,7 @@ static void emitModelDecl(OpInterface &interface, raw_ostream &os) {
   os << "  };\n";
 }
 
-static void emitInterfaceDecl(const Record &interfaceDef, raw_ostream &os) {
-  OpInterface interface(&interfaceDef);
+static void emitInterfaceDecl(OpInterface &interface, raw_ostream &os) {
   StringRef interfaceName = interface.getName();
   auto interfaceTraitsName = (interfaceName + "InterfaceTraits").str();
 
@@ -227,10 +256,74 @@ static bool emitInterfaceDecls(const RecordKeeper &recordKeeper,
   llvm::emitSourceFileHeader("Operation Interface Declarations", os);
 
   auto defs = recordKeeper.getAllDerivedDefinitions("OpInterface");
-  for (const auto *def : defs)
-    emitInterfaceDecl(*def, os);
+  for (const auto *def : defs) {
+    OpInterface interface(def);
+    emitInterfaceDecl(interface, os);
+  }
   return false;
 }
+
+//===----------------------------------------------------------------------===//
+// GEN: Interface documentation
+//===----------------------------------------------------------------------===//
+
+/// Emit a string corresponding to a C++ type, followed by a space if necessary.
+static raw_ostream &emitCPPType(StringRef type, raw_ostream &os) {
+  type = type.trim();
+  os << type;
+  if (type.back() != '&' && type.back() != '*')
+    os << " ";
+  return os;
+}
+
+static void emitInterfaceDoc(const Record &interfaceDef, raw_ostream &os) {
+  OpInterface interface(&interfaceDef);
+
+  // Emit the interface name followed by the description.
+  os << "## " << interface.getName() << " (" << interfaceDef.getName() << ")";
+  if (auto description = interface.getDescription())
+    mlir::tblgen::emitDescription(*description, os);
+
+  // Emit the methods required by the interface.
+  os << "\n### Methods:\n";
+  for (const auto &method : interface.getMethods()) {
+    // Emit the method name.
+    os << "#### `" << method.getName() << "`\n\n```c++\n";
+
+    // Emit the method signature.
+    if (method.isStatic())
+      os << "static ";
+    emitCPPType(method.getReturnType(), os) << method.getName() << '(';
+    interleaveComma(method.getArguments(), os, [&](const MethodArgument &arg) {
+      emitCPPType(arg.type, os) << arg.name;
+    });
+    os << ");\n```\n";
+
+    // Emit the description.
+    if (auto description = method.getDescription())
+      mlir::tblgen::emitDescription(*description, os);
+
+    // If the body is not provided, this method must be provided by the
+    // operation.
+    if (!method.getBody())
+      os << "\nNOTE: This method *must* be implemented by the operation.\n\n";
+  }
+}
+
+static bool emitInterfaceDocs(const RecordKeeper &recordKeeper,
+                              raw_ostream &os) {
+  os << "<!-- Autogenerated by mlir-tblgen; don't manually edit -->\n";
+  os << "# Operation Interface definition\n";
+
+  auto defs = recordKeeper.getAllDerivedDefinitions("OpInterface");
+  for (const auto *def : defs)
+    emitInterfaceDoc(*def, os);
+  return false;
+}
+
+//===----------------------------------------------------------------------===//
+// GEN: Interface registration hooks
+//===----------------------------------------------------------------------===//
 
 // Registers the operation interface generator to mlir-tblgen.
 static mlir::GenRegistration
@@ -246,4 +339,12 @@ static mlir::GenRegistration
                      "Generate op interface definitions",
                      [](const RecordKeeper &records, raw_ostream &os) {
                        return emitInterfaceDefs(records, os);
+                     });
+
+// Registers the operation interface document generator to mlir-tblgen.
+static mlir::GenRegistration
+    genInterfaceDocs("gen-op-interface-doc",
+                     "Generate op interface documentation",
+                     [](const RecordKeeper &records, raw_ostream &os) {
+                       return emitInterfaceDocs(records, os);
                      });

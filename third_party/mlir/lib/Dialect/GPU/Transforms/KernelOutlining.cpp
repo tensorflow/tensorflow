@@ -144,13 +144,10 @@ class GpuKernelOutliningPass : public ModulePass<GpuKernelOutliningPass> {
 public:
   void runOnModule() override {
     ModuleManager moduleManager(getModule());
-    auto context = getModule().getContext();
-    Builder builder(context);
     for (auto func : getModule().getOps<FuncOp>()) {
       // Insert just after the function.
       Block::iterator insertPt(func.getOperation()->getNextNode());
       func.walk([&](gpu::LaunchOp op) {
-        // TODO(b/141098412): Handle called functions and globals.
         FuncOp outlinedFunc = outlineKernelFunc(op);
 
         // Potentially renames outlinedFunc to make symbol unique.
@@ -164,13 +161,40 @@ public:
         kernelFunc.getBody().takeBody(outlinedFunc.getBody());
 
         // Create nested module and insert kernelFunc.
-        auto kernelModule = ModuleOp::create(UnknownLoc::get(context));
-        kernelModule.setAttr(gpu::GPUDialect::getKernelModuleAttrName(),
-                             builder.getUnitAttr());
-        kernelModule.push_back(kernelFunc);
+        auto kernelModule = createKernelModule(kernelFunc, moduleManager);
         getModule().insert(insertPt, kernelModule);
       });
     }
+  }
+
+private:
+  // Returns a module containing kernelFunc and all callees (recursive).
+  ModuleOp createKernelModule(FuncOp kernelFunc,
+                              const ModuleManager &parentModuleManager) {
+    auto context = getModule().getContext();
+    auto kernelModule = ModuleOp::create(UnknownLoc::get(context));
+    kernelModule.setAttr(gpu::GPUDialect::getKernelModuleAttrName(),
+                         UnitAttr::get(context));
+    ModuleManager moduleManager(kernelModule);
+
+    llvm::SmallVector<FuncOp, 8> funcsToInsert = {kernelFunc};
+    while (!funcsToInsert.empty()) {
+      FuncOp func = funcsToInsert.pop_back_val();
+      moduleManager.insert(func);
+
+      // TODO(b/141098412): Support any op with a callable interface.
+      func.walk([&](CallOp call) {
+        auto callee = call.callee();
+        if (moduleManager.lookupSymbol<FuncOp>(callee))
+          return;
+
+        auto calleeFromParent =
+            parentModuleManager.lookupSymbol<FuncOp>(callee);
+        funcsToInsert.push_back(calleeFromParent.clone());
+      });
+    }
+
+    return kernelModule;
   }
 };
 

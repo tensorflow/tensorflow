@@ -281,7 +281,7 @@ static LogicalResult Verify(OpT op) {
   Operation::operand_range values = op.values();
 
   auto num_values = std::distance(values.begin(), values.end());
-  int64_t attr_N = op.N().getLimitedValue();
+  int64_t attr_N = op.N().getSExtValue();
   if (num_values != attr_N) {
     return op.emitOpError()
            << "requires attribute 'N' to match the number of inputs; expected: "
@@ -669,7 +669,7 @@ static LogicalResult Verify(PackOp op) {
   Operation::operand_range values = op.values();
 
   auto num_values = std::distance(values.begin(), values.end());
-  int64_t attr_N = op.N().getLimitedValue();
+  int64_t attr_N = op.N().getSExtValue();
   if (num_values != attr_N) {
     return op.emitOpError()
            << "requires attribute 'N' to match the number of inputs; expected: "
@@ -698,7 +698,7 @@ static LogicalResult Verify(PackOp op) {
   // the axis value range is [-(R+1), R+1).
   int64_t range_begin = -inputs_rank - 1;  // Inclusive
   int64_t range_end = inputs_rank + 1;     // Exclusive
-  int64_t axis = op.axis().getLimitedValue();
+  int64_t axis = op.axis().getSExtValue();
   if (axis < range_begin || axis >= range_end) {
     return op.emitError() << "attribute 'axis' should be within range ["
                           << range_begin << ", " << range_end
@@ -1103,6 +1103,18 @@ static LogicalResult Verify(TensorListReserveOp op) {
 
   if (!IsOfRankOrUnranked(op.num_elements(), 0)) {
     return op.emitOpError("requires num_elements operand to be 0D tensor");
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// TensorListStackOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(TensorListStackOp op) {
+  if (!IsOfRankOrUnranked(op.element_shape(), 0) &&
+      !IsOfRankOrUnranked(op.element_shape(), 1)) {
+    return op.emitOpError("requires element_shape operand to be 0D/1D tensor");
   }
   return success();
 }

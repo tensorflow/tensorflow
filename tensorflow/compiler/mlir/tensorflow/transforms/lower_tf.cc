@@ -61,11 +61,11 @@ class LowerPackOp : public OpRewritePattern<TF::PackOp> {
         loc, DenseElementsAttr::get(
                  rewriter.getTensorType({}, rewriter.getIntegerType(64)),
                  op.axis()));
-    int64_t axis = op.axis().getLimitedValue();
+    int64_t axis = op.axis().getSExtValue();
 
     Type prev_input_ty, inferred_ty;
     SmallVector<Value *, 4> expanded_inputs;
-    expanded_inputs.reserve(op.N().getLimitedValue());
+    expanded_inputs.reserve(op.N().getSExtValue());
     for (Value *input : op.values()) {
       // If input type is different than the previous input type, infer the
       // output type. Otherwise, use the already inferred output type from the

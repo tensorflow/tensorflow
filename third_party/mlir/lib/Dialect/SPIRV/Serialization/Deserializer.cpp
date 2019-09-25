@@ -112,11 +112,14 @@ private:
   /// Process SPIR-V OpName with `operands`.
   LogicalResult processName(ArrayRef<uint32_t> operands);
 
-  /// Method to process an OpDecorate instruction.
+  /// Processes an OpDecorate instruction.
   LogicalResult processDecoration(ArrayRef<uint32_t> words);
 
-  // Method to process an OpMemberDecorate instruction.
+  // Processes an OpMemberDecorate instruction.
   LogicalResult processMemberDecoration(ArrayRef<uint32_t> words);
+
+  /// Processes an OpMemberName instruction.
+  LogicalResult processMemberName(ArrayRef<uint32_t> words);
 
   /// Gets the FuncOp associated with a result <id> of OpFunction.
   FuncOp getFunction(uint32_t id) { return funcMap.lookup(id); }
@@ -410,6 +413,10 @@ private:
            DenseMap<uint32_t, DenseMap<spirv::Decoration, ArrayRef<uint32_t>>>>
       memberDecorationMap;
 
+  // Result <id> to member name.
+  // struct-type-<id> -> (struct-member-index -> name)
+  DenseMap<uint32_t, DenseMap<uint32_t, StringRef>> memberNameMap;
+
   // Result <id> to extended instruction set name.
   DenseMap<uint32_t, StringRef> extendedInstSets;
 
@@ -647,6 +654,20 @@ LogicalResult Deserializer::processMemberDecoration(ArrayRef<uint32_t> words) {
     decorationOperands = words.slice(3);
   }
   memberDecorationMap[words[0]][words[1]][decoration] = decorationOperands;
+  return success();
+}
+
+LogicalResult Deserializer::processMemberName(ArrayRef<uint32_t> words) {
+  if (words.size() < 3) {
+    return emitError(unknownLoc, "OpMemberName must have at least 3 operands");
+  }
+  unsigned wordIndex = 2;
+  auto name = decodeStringLiteral(words, wordIndex);
+  if (wordIndex != words.size()) {
+    return emitError(unknownLoc,
+                     "unexpected trailing words in OpMemberName instruction");
+  }
+  memberNameMap[words[0]][words[1]] = name;
   return success();
 }
 
@@ -1151,6 +1172,8 @@ LogicalResult Deserializer::processStructType(ArrayRef<uint32_t> operands) {
   }
   typeMap[operands[0]] =
       spirv::StructType::get(memberTypes, layoutInfo, memberDecorationsInfo);
+  // TODO(ravishankarm): Update StructType to have member name as attribute as
+  // well.
   return success();
 }
 
@@ -1746,6 +1769,8 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
     return processExtInst(operands);
   case spirv::Opcode::OpExtInstImport:
     return processExtInstImport(operands);
+  case spirv::Opcode::OpMemberName:
+    return processMemberName(operands);
   case spirv::Opcode::OpMemoryModel:
     return processMemoryModel(operands);
   case spirv::Opcode::OpEntryPoint:

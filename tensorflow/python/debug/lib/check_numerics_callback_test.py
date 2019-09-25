@@ -272,6 +272,24 @@ class CheckNumericsCallbackTest(test_util.TensorFlowTestCase):
     self.assertEqual(len(history.history["loss"]), epochs)
 
   @test_util.run_in_graph_and_eager_modes
+  def testKerasModelWithRNNHealthyPredictAndFitCalls(self):
+    """Test a simple healthy keras recurrent model works under the callback."""
+    check_numerics_callback.enable_check_numerics()
+
+    model = models.Sequential()
+    model.add(layers.LSTM(1, input_shape=(2, 4)))
+    model.compile(loss="mse", optimizer="rmsprop")
+
+    xs = np.zeros([8, 2, 4], dtype=np.float32)
+    ys = np.zeros([8, 1], dtype=np.float32)
+
+    model.predict(xs)
+
+    epochs = 3
+    history = model.fit(xs, ys, epochs=epochs, verbose=0)
+    self.assertEqual(len(history.history["loss"]), epochs)
+
+  @test_util.run_in_graph_and_eager_modes
   def testKerasModelUnhealthyPredictAndFitCallsWithLargeLearningRate(self):
     """Test keras model training crashes with Infinity is caught by callback."""
     check_numerics_callback.enable_check_numerics()

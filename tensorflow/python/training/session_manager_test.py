@@ -69,6 +69,18 @@ class SessionManagerTest(test.TestCase):
           "", init_fn=lambda sess: sess.run(v.initializer))
       self.assertAllClose([125], sess.run(v))
 
+  def testPrepareSessionSucceedsWithLocalInitFeedDict(self):
+    with ops.Graph().as_default():
+      p = array_ops.placeholder(dtypes.float32, shape=(3,))
+      v = variables.VariableV1(p, name="v",
+                               collections=[ops.GraphKeys.LOCAL_VARIABLES])
+      sm = session_manager.SessionManager(
+          local_init_op=v.initializer,
+          local_init_feed_dict={p: [1.0, 2.0, 3.0]},
+          ready_op=variables.report_uninitialized_variables())
+      sess = sm.prepare_session("")
+      self.assertAllClose([1.0, 2.0, 3.0], sess.run(v))
+
   @test_util.run_v1_only("b/120545219")
   def testPrepareSessionFails(self):
     checkpoint_dir = os.path.join(self.get_temp_dir(), "prepare_session")

@@ -292,7 +292,7 @@ Status ValidateInlining(const Node* node, const FunctionBody* fbody,
 // explicitly specified devices inside fbody with the callee's device.
 //
 // Returns 'Status::OK()' if function was successfully inlined into the graph.
-// If function inlining is not possible returns a error with a reason, and
+// If function inlining is not possible returns an error with a reason, and
 // leaves the graph in unmodified state.
 Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
                           Node* caller, const FunctionBody* fbody,

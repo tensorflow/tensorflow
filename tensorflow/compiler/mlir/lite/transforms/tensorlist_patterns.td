@@ -29,7 +29,3 @@ def CreateTFShapeOp : NativeCodeCall<
 def ConvertTensorListFromTensor : Pat<
   (TF_TensorListFromTensorOp $tensor, $element_shape),
   (replaceWithValue $tensor)>;
-
-def ConvertTensorListStack : Pat<
-  (TF_TensorListStackOp $input, $element_shape, $num_elements),
-  (replaceWithValue $input)>;

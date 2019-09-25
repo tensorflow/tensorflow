@@ -223,13 +223,13 @@ func @QDQsFollowedByTranspose(tensor<1x2xf32>) -> (tensor<2x1xf32>) {
   return %2 : tensor<2x1xf32>
 
 // CHECK: %cst = constant
-// CHECK: %0 = "tf.Transpose"
+// CHECK: %[[trans:.*]] = "tf.Transpose"
 // CHECK-SAME: -> tensor<2x1xf32>
-// CHECK: %1 = "tfl.quantize"(%0) {qtype = tensor<2x1x!quant.uniform<u8:f32, 1.000000e+00>>}
+// CHECK: %[[q:.*]] = "tfl.quantize"(%[[trans]]) {qtype = tensor<2x1x!quant.uniform<u8:f32, 1.000000e+00>>}
 // CHECK-SAME: -> tensor<2x1x!quant.uniform<u8:f32, 1.000000e+00>>
-// CHECK: %2 = "tfl.dequantize"(%1)
+// CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[q]])
 // CHECK-SAME: -> tensor<2x1xf32>
-// CHECK: return %2
+// CHECK: return %[[dq]]
 }
 
 // CHECK-LABEL: QDQFollowedByReshape
@@ -242,13 +242,13 @@ func @QDQFollowedByReshape(tensor<1x2xf32>) -> (tensor<2x1xf32>) {
   return %2 : tensor<2x1xf32>
 
 // CHECK: %cst = constant
-// CHECK: %0 = "tf.Reshape"
+// CHECK: %[[rs:.*]] = "tf.Reshape"
 // CHECK-SAME: -> tensor<2x1xf32>
-// CHECK: %1 = "tfl.quantize"(%0) {qtype = tensor<2x1x!quant.uniform<u8:f32, 1.000000e+00>>}
+// CHECK: %[[q:.*]] = "tfl.quantize"(%[[rs]]) {qtype = tensor<2x1x!quant.uniform<u8:f32, 1.000000e+00>>}
 // CHECK-SAME: -> tensor<2x1x!quant.uniform<u8:f32, 1.000000e+00>>
-// CHECK: %2 = "tfl.dequantize"(%1)
+// CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[q]])
 // CHECK-SAME: -> tensor<2x1xf32>
-// CHECK: return %2
+// CHECK: return %[[dq]]
 }
 
 // CHECK-LABEL: QDQFollowedByRank
@@ -258,7 +258,7 @@ func @QDQFollowedByRank(%arg0: tensor<1x2xf32>) -> (tensor<i32>) {
   %2 = "tf.Rank"(%1): (tensor<1x2xf32>) -> tensor<i32>
   return %2 : tensor<i32>
 
-// CHECK-NEXT: %[[R:.*]] = "tf.Rank"(%arg0)
+// CHECK: %[[R:.*]] = "tf.Rank"(%arg0)
 // CHECK-NEXT: return %[[R]] : tensor<i32>
 }
 

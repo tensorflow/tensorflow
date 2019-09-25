@@ -49,13 +49,17 @@ _ADD_OP = b"AddV2"
 _ASSIGN_ADD_VARIABLE_OP = b"AssignAddVariableOp"
 _CONSTANT_OP = b"Const"
 _COS_OP = b"Cos"
+_ENTER_OP = b"Enter"
+_EXIT_OP = b"Exit"
 _GREATER_OP = b"Greater"
 _IDENTITY_OP = b"Identity"
 _IF_OP = b"If"
 _LESS_OP = b"Less"
 _LOG_OP = b"Log"
+_MERGE_OP = b"Merge"
 _MATMUL_OP = b"MatMul"
 _MUL_OP = b"Mul"
+_NEXT_ITERATION_OP = b"NextIteration"
 _PLACEHOLDER_OP = b"Placeholder"
 _POW_OP = b"Pow"
 _READ_VARIALBE_OP = b"ReadVariableOp"
@@ -64,6 +68,7 @@ _SPARSE_TENSOR_DENSE_MATMUL_OP = b"SparseTensorDenseMatMul"
 _SQRT_OP = b"Sqrt"
 _SQUARE_OP = b"Square"
 _STATELESS_IF_OP = b"StatelessIf"
+_SWTICH_OP = b"Switch"
 _UNIQUE_OP = b"Unique"
 _VAR_HANDLE_OP = b"VarHandleOp"
 _WHILE_OP = b"While"
@@ -71,8 +76,9 @@ _WHILE_OP = b"While"
 
 class _NumpyFunctionCallback(object):
 
-  def __init__(self, instrument_graph_ops=True):
+  def __init__(self, instrument_graph_ops=True, float_only=False):
     self.instrument_graph_ops = instrument_graph_ops
+    self._float_only = float_only
     self.reset()
 
   def callback(self, op_type, inputs, attrs, outputs, op_name=None, graph=None):
@@ -102,7 +108,8 @@ class _NumpyFunctionCallback(object):
       instrumented_outputs = []
       for output in outputs:
         if compat.as_bytes(op_type) in (
-            _IF_OP, _STATELESS_IF_OP, _WHILE_OP, _IDENTITY_OP,
+            _ENTER_OP, _EXIT_OP, _IF_OP, _MERGE_OP, _NEXT_ITERATION_OP,
+            _STATELESS_IF_OP, _SWTICH_OP, _WHILE_OP, _IDENTITY_OP,
             _VAR_HANDLE_OP):
           # TODO(cais): Overriding the output of StatelessIf, If and While ops
           # currently fails with error. Investigate (b/139668453).
@@ -110,7 +117,6 @@ class _NumpyFunctionCallback(object):
           # by tf.function/AutoGraph for marshalling outputs.
           instrumented_output = output
         else:
-
           def record(ndarray_value):
             if compat.as_bytes(op_name) not in self.graph_internal_ndarrays:
               self.graph_internal_ndarrays[compat.as_bytes(op_name)] = []
@@ -118,9 +124,12 @@ class _NumpyFunctionCallback(object):
                 ndarray_value)
             return ndarray_value
 
-          instrumented_output = script_ops.numpy_function(
-              record, [output], output.dtype)
-          instrumented_output.set_shape(output.shape)
+          if self._float_only and not output.dtype.is_floating:
+            instrumented_output = output
+          else:
+            instrumented_output = script_ops.numpy_function(
+                record, [output], output.dtype)
+            instrumented_output.set_shape(output.shape)
         instrumented_outputs.append(instrumented_output)
 
       return instrumented_outputs
@@ -396,6 +405,49 @@ class OpCallbacksTest(test_util.TensorFlowTestCase):
     if context.executing_eagerly():
       self.assertEqual(len(log_op_outputs), 1)
     self.assertAllClose(log_op_outputs[0], [0.0, np.log(2.0)])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testPadOp(self):
+    instrument = _NumpyFunctionCallback()
+
+    op_callbacks.add_op_callback(instrument.callback)
+
+    @def_function.function
+    def my_pad(x, padding):
+      return array_ops.pad(x, padding)
+
+    x = constant_op.constant([[1, 2], [3, 4]], dtype=dtypes.float32)
+    paddings = [[1, 1], [2, 2]]
+
+    y = my_pad(x, paddings)
+    expected_output = np.array([
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 1, 2, 0, 0],
+        [0, 0, 3, 4, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+    ], dtype=np.float32)
+    self.assertAllClose(y, expected_output)
+    self.assertAllClose(
+        instrument.graph_internal_ndarrays[b"Pad"][0], expected_output)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testKerasLSTMPredict(self):
+    instrument = _NumpyFunctionCallback(float_only=True)
+
+    op_callbacks.add_op_callback(instrument.callback)
+
+    model = keras.Sequential()
+    model.add(keras.layers.LSTM(1, input_shape=(2, 4)))
+    model.compile(loss="mse", optimizer="sgd")
+
+    xs = np.zeros([8, 2, 4], dtype=np.float32)
+    ys = model.predict(xs)
+
+    self.assertAllClose(ys, np.zeros([8, 1]))
+    # We avoid asserting on the internal details of the LSTM implementation.
+    # Instead, we just assert that some graph-internal execution states are
+    # recorded by the callback.
+    self.assertTrue(instrument.graph_internal_ndarrays)
 
   @test_util.run_in_graph_and_eager_modes
   def testSimpleGraphConstructionWithCallbackReturningNone(self):

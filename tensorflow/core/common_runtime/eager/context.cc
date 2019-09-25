@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -343,9 +344,7 @@ Status EagerContext::FindDeviceByName(const string& name,
   return Status::OK();
 }
 
-void EagerContext::ClearRunMetadata() {
-  run_metadata_.Clear();
-}
+void EagerContext::ClearRunMetadata() { run_metadata_.Clear(); }
 
 void EagerContext::StartStep() {
   mutex_lock ml(metadata_mu_);
@@ -386,6 +385,8 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
   eager::RegisterFunctionRequest request;
   request.set_context_id(GetContextId());
   *request.mutable_function_def() = fdef;
+  StripDefaultAttributes(*OpRegistry::Global(),
+                         request.mutable_function_def()->mutable_node_def());
   std::vector<eager::RegisterFunctionResponse> responses(
       remote_contexts_.size());
   std::vector<Status> statuses(remote_contexts_.size());

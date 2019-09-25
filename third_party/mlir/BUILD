@@ -432,6 +432,7 @@ cc_library(
     srcs = [
         "lib/Support/FileUtilities.cpp",
         "lib/Support/StorageUniquer.cpp",
+        "lib/Support/ToolUtilities.cpp",
     ],
     hdrs = [
         "include/mlir/Support/DebugStringHelper.h",
@@ -443,6 +444,7 @@ cc_library(
         "include/mlir/Support/STLExtras.h",
         "include/mlir/Support/StorageUniquer.h",
         "include/mlir/Support/StringExtras.h",
+        "include/mlir/Support/ToolUtilities.h",
     ],
     includes = ["include"],
     deps = [
@@ -1599,6 +1601,7 @@ cc_library(
 cc_binary(
     name = "mlir-tblgen",
     srcs = [
+        "tools/mlir-tblgen/DocGenUtilities.h",
         "tools/mlir-tblgen/EnumsGen.cpp",
         "tools/mlir-tblgen/EnumsGen.h",
         "tools/mlir-tblgen/LLVMIRConversionGen.cpp",

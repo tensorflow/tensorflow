@@ -2359,9 +2359,9 @@ def create_mirrored_variable(  # pylint: disable=missing-docstring
 # ------------------------------------------------------------------------------
 # Metrics to track which distribution strategy is being called
 distribution_strategy_gauge = monitoring.StringGauge(
-    "tensorflow/api/distribution_strategy",
-    "Gauge to track the type of distribution strategy used.", "TF Version")
+    "/tensorflow/api/distribution_strategy",
+    "Gauge to track the type of distribution strategy used.", "TFVersion")
 distribution_strategy_replica_gauge = monitoring.IntGauge(
-    "tensorflow/api/distribution_strategy/replica",
+    "/tensorflow/api/distribution_strategy/replica",
     "Gauge to track the number of replica each distribution strategy used.",
     "CountType")

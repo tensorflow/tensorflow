@@ -238,6 +238,15 @@ void ApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
 void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
               int n_input, int shift, int16_t* output);
 
+// Element-wise multiplication of two quantized vectors.
+// Parameters:
+//     - input_1: batch vector of size n_batch * n_input; 16 bit.
+//     - input_2: batch vector of size n_batch * n_input; 16 bit.
+//     - n_batch: the number of batch.
+//     - n_input: the size for input and output.
+//     - shift:   the shift needed to produce the output.
+//     - output:  the 8 bit output of size n_batch * n_input.
+// Output does not need to be initialized.
 void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
               int n_input, int shift, int8_t* output);
 

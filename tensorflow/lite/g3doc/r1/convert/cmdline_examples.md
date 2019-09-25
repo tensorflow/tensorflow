@@ -18,7 +18,7 @@ There are two approaches to running the converter in the command line.
     [clone the TensorFlow repository](https://www.tensorflow.org/install/source)
     and use `bazel`.
     *   Example: `bazel run
-        //tensorflow/lite/python:tflite_convert --
+        //third_party/tensorflow/lite/python:tflite_convert --
         --output_file=...`
 
 ### Converting models prior to TensorFlow 1.9 <a name="pre_tensorflow_1.9"></a>

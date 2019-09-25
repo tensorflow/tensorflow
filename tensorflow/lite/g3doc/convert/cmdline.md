@@ -41,7 +41,7 @@ install the nightly build using [pip](https://www.tensorflow.org/install/pip) or
 use `bazel`. An example can be seen below.
 
 ```
-bazel run //third_party/tensorflow/lite/python:tflite_convert -- \
+bazel run //tensorflow/lite/python:tflite_convert -- \
   --saved_model_dir=/tmp/mobilenet_saved_model \
   --output_file=/tmp/mobilenet.tflite
 ```

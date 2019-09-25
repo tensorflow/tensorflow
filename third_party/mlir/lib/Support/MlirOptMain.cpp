@@ -30,6 +30,7 @@
 #include "mlir/Parser.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Support/ToolUtilities.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/Support/FileUtilities.h"
 #include "llvm/Support/Regex.h"
@@ -103,42 +104,6 @@ static LogicalResult processBuffer(raw_ostream &os,
   return sourceMgrHandler.verify();
 }
 
-/// Split the specified file on a marker and process each chunk independently
-/// according to the normal processBuffer logic.  This is primarily used to
-/// allow a large number of small independent parser tests to be put into a
-/// single test, but could be used for other purposes as well.
-static LogicalResult
-splitAndProcessFile(raw_ostream &os,
-                    std::unique_ptr<MemoryBuffer> originalBuffer,
-                    bool verifyDiagnostics, bool verifyPasses,
-                    const PassPipelineCLParser &passPipeline) {
-  const char marker[] = "// -----";
-  auto *origMemBuffer = originalBuffer.get();
-  SmallVector<StringRef, 8> sourceBuffers;
-  origMemBuffer->getBuffer().split(sourceBuffers, marker);
-
-  // Add the original buffer to the source manager.
-  SourceMgr fileSourceMgr;
-  fileSourceMgr.AddNewSourceBuffer(std::move(originalBuffer), SMLoc());
-
-  bool hadUnexpectedResult = false;
-
-  // Process each chunk in turn.  If any fails, then return a failure of the
-  // tool.
-  for (auto &subBuffer : sourceBuffers) {
-    auto splitLoc = SMLoc::getFromPointer(subBuffer.data());
-    unsigned splitLine = fileSourceMgr.getLineAndColumn(splitLoc).first;
-    auto subMemBuffer = MemoryBuffer::getMemBufferCopy(
-        subBuffer, origMemBuffer->getBufferIdentifier() +
-                       Twine(" split at line #") + Twine(splitLine));
-    if (failed(processBuffer(os, std::move(subMemBuffer), verifyDiagnostics,
-                             verifyPasses, passPipeline)))
-      hadUnexpectedResult = true;
-  }
-
-  return failure(hadUnexpectedResult);
-}
-
 LogicalResult mlir::MlirOptMain(raw_ostream &os,
                                 std::unique_ptr<MemoryBuffer> buffer,
                                 const PassPipelineCLParser &passPipeline,
@@ -147,8 +112,13 @@ LogicalResult mlir::MlirOptMain(raw_ostream &os,
   // The split-input-file mode is a very specific mode that slices the file
   // up into small pieces and checks each independently.
   if (splitInputFile)
-    return splitAndProcessFile(os, std::move(buffer), verifyDiagnostics,
+    return splitAndProcessBuffer(
+        std::move(buffer),
+        [&](std::unique_ptr<MemoryBuffer> chunkBuffer, raw_ostream &os) {
+          return processBuffer(os, std::move(chunkBuffer), verifyDiagnostics,
                                verifyPasses, passPipeline);
+        },
+        os);
 
   return processBuffer(os, std::move(buffer), verifyDiagnostics, verifyPasses,
                        passPipeline);

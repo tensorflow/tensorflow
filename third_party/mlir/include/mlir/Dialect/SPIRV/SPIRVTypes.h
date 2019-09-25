@@ -59,11 +59,7 @@ class CompositeType : public Type {
 public:
   using Type::Type;
 
-  static bool classof(Type type) {
-    return (type.getKind() == TypeKind::Array ||
-            type.getKind() == TypeKind::Struct ||
-            type.getKind() == StandardTypes::Vector);
-  }
+  static bool classof(Type type);
 
   unsigned getNumElements() const;
 

@@ -117,7 +117,7 @@ void ConstOp::build(Builder* builder, OperationState& result, Attribute value) {
 OpFoldResult IotaOp::fold(ArrayRef<Attribute> operands) {
   const auto output_type = getResult()->getType().cast<ShapedType>();
   const auto output_size = output_type.getNumElements();
-  const auto dimension = iota_dimension().getLimitedValue();
+  const auto dimension = iota_dimension().getSExtValue();
   const auto max_dim_size = output_type.getDimSize(dimension);
   int bitwidth = output_type.getElementType().getIntOrFloatBitWidth();
 
@@ -183,7 +183,7 @@ ElementsAttr ConvertElements(const ElementsAttr& elements, Type newType) {
     return elements.mapValues(
         newType,
         llvm::function_ref<func_type>([&newFloatType](const APInt& intVal) {
-          APFloat newDouble(static_cast<double>(intVal.getLimitedValue()));
+          APFloat newDouble(static_cast<double>(intVal.getSExtValue()));
           bool losesInfo = false;
           newDouble.convert(newFloatType.getFloatSemantics(),
                             llvm::APFloat::rmNearestTiesToEven, &losesInfo);
@@ -194,7 +194,7 @@ ElementsAttr ConvertElements(const ElementsAttr& elements, Type newType) {
   // Int -> Int
   return elements.mapValues(
       newType, llvm::function_ref<func_type>([&bitWidth](const APInt& intVal) {
-        return APInt(bitWidth, intVal.getLimitedValue());
+        return APInt(bitWidth, intVal.getSExtValue());
       }));
 }
 

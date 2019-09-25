@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,13 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_WINDOWS_INTEGRAL_TYPES_H_
-#define TENSORFLOW_CORE_PLATFORM_WINDOWS_INTEGRAL_TYPES_H_
+#include "include/pybind11/pybind11.h"
+#include "tensorflow/python/lib/core/bfloat16.h"
 
-#include "tensorflow/core/platform/default/integral_types.h"
+PYBIND11_MODULE(_pywrap_bfloat16, m) {
+  tensorflow::RegisterNumpyBfloat16();
 
-#include <cstddef>
-
-typedef std::ptrdiff_t ssize_t;
-
-#endif  // TENSORFLOW_CORE_PLATFORM_WINDOWS_INTEGRAL_TYPES_H_
+  m.def("TF_bfloat16_type",
+        [] { return pybind11::handle(tensorflow::Bfloat16PyType()); });
+}

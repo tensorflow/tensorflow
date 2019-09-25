@@ -849,8 +849,6 @@ void Translator::InitializeNamesFromAttribute(FuncOp fn) {
       // currently happen due to pseudo_input nodes.
       if (auto op = it.value()->getDefiningOp()) {
         name_mapper_.InitOpName(op, output_names[it.index()].trim());
-        fprintf(stderr, "HERE: %s\n",
-                output_names[it.index()].trim().str().c_str());
       } else {
         fn.emitWarning() << "output is not due to an op and '"
                          << output_names[it.index()]
