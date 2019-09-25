@@ -322,18 +322,14 @@ def setdiff1d(x, y, index_dtype=dtypes.int32, name=None):
   out[i] = x[idx[i]] for i in [0, 1, ..., len(out) - 1]
   ```
 
-  For example, given this input:
-  ```python
-  x = [1, 2, 3, 4, 5, 6]
-  y = [1, 3, 5]
-  ```
+  #### EXAMPLE:
 
-  This operation would return:
-
-  ```python
-  out ==> [2, 4, 6]
-  idx ==> [1, 3, 5]
-  ```
+  >>> x = [1, 2, 3, 4, 5, 6]
+  >>> y = [1, 3, 5]
+  >>> result = tf.setdiff1d(x,y)
+  >>> sess = tf.compat.v1.Session()
+  >>> print(sess.run(result))
+  ListDiff(out=array([2, 4, 6], dtype=int32), idx=array([1, 3, 5], dtype=int32))
 
   Args:
     x: A Tensor. 1-D. Values to keep.
