@@ -21,6 +21,11 @@ spv.module "Logical" "GLSL450" {
     %0 = spv.FMod %arg0, %arg1 : vector<4xf32>
     spv.Return
   }
+  func @fnegate(%arg0 : vector<4xf32>) {
+    // CHECK: {{%.*}} = spv.FNegate {{%.*}} : vector<4xf32>
+    %0 = spv.FNegate %arg0 : vector<4xf32>
+    spv.Return
+  }
   func @fsub(%arg0 : vector<4xf32>, %arg1 : vector<4xf32>) {
     // CHECK: {{%.*}} = spv.FSub {{%.*}}, {{%.*}} : vector<4xf32>
     %0 = spv.FSub %arg0, %arg1 : vector<4xf32>
