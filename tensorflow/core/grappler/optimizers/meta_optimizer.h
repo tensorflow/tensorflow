@@ -53,6 +53,8 @@ class MetaOptimizer : public GraphOptimizer {
   std::unique_ptr<GraphOptimizer> MakeNewOptimizer(
       const string& optimizer) const;
 
+  bool IsSingleThreadedExecutor() const;
+
   // Initialize active optimizers from RewriterConfig toggles.
   Status InitializeOptimizers(
       std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const;
