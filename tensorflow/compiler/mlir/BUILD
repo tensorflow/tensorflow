@@ -38,6 +38,23 @@ cc_library(
     srcs = ["tf_mlir_opt_main.cc"],
     deps = [
         ":init_mlir",
+        ":passes",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:logging",
+        "@llvm//:support",
+        "@local_config_mlir//:MlirOptLib",
+        "@local_config_mlir//:Pass",
+        "@local_config_mlir//:Support",
+        "@local_config_mlir//test:TestTransforms",
+    ],
+)
+
+cc_library(
+    name = "passes",
+    visibility = [
+        "//tensorflow/python:__subpackages__",
+    ],
+    deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_dialect_registration",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_legalize_tf",
@@ -57,17 +74,9 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/xla:xla_legalize_to_standard",
         "//tensorflow/compiler/mlir/xla:xla_lower_general_dot",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/platform:logging",
-        "@llvm//:support",
         "@local_config_mlir//:AffineDialectRegistration",
-        "@local_config_mlir//:MlirOptLib",
-        "@local_config_mlir//:Pass",
         "@local_config_mlir//:QuantOps",
         "@local_config_mlir//:QuantOpsDialectRegistration",
-        "@local_config_mlir//:Support",
-        "@local_config_mlir//test:TestDialect",
-        "@local_config_mlir//test:TestTransforms",
     ],
 )
 
