@@ -175,10 +175,12 @@ struct DepthToSpaceOpFunctor<CPUDevice, T, FORMAT_NHWC> {
 };
 }  // namespace functor
 
-#define REGISTER(type)                                                   \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("DepthToSpace").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
-      DepthToSpaceOp<CPUDevice, type>);
+#define REGISTER(type)                                                \
+  REGISTER_KERNEL_BUILDER(Name("DepthToSpace")                        \
+                              .Device(DEVICE_CPU)                     \
+                              .TypeConstraint<type>("T")              \
+                              .AttrConstraint("data_format", "NHWC"), \
+                          DepthToSpaceOp<CPUDevice, type>);
 
 TF_CALL_ALL_TYPES(REGISTER);
 #undef REGISTER
