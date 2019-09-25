@@ -104,8 +104,8 @@ Status Visitor::HandleBatchNormInference(HloInstruction* batch_norm) {
   auto batchnorm_inference_result = HloInstruction::CreateCustomCall(
       batch_norm_shape, operands, kCudnnBatchNormForwardInferenceCallTarget);
   if (IsF32BatchNormWithFP16Inputs(batch_norm)) {
-    HloInstruction* libcall = computation_->AddInstruction(
-        std::move(batchnorm_inference_result /*custom_call*/));
+    HloInstruction* libcall =
+        computation_->AddInstruction(std::move(batchnorm_inference_result));
     Shape shape_f32 = ShapeUtil::ChangeElementType(libcall->shape(), F32);
     batchnorm_inference_result =
         HloInstruction::CreateConvert(shape_f32, libcall);
