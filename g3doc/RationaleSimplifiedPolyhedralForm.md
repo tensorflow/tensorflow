@@ -10,7 +10,7 @@ This document is a very early design proposal (which has since been accepted)
 that explored the tradeoffs of using this simplified form vs the traditional
 polyhedral schedule list form. At some point, this document could be dusted off
 and written as a proper academic paper, but until now, it is better to included
-it in this crufty form than not to. Beware that this document uses archaic
+it in this crafty form than not to. Beware that this document uses archaic
 syntax and should not be considered a canonical reference to modern MLIR.
 
 ## Introduction
@@ -282,7 +282,7 @@ transformations want to be explicit about what they are doing.
 
 ### Simplicity of code generation
 
-A key final stage of an mlfunc is its conversion to a cfg function, which is
+A key final stage of an mlfunc is its conversion to a CFG function, which is
 required as part of lowering to the target machine. The simplified form has a
 clear advantage here: the IR has a direct correspondence to the structure of the
 generated code.

@@ -227,7 +227,7 @@ public:
   PatternMatchResult match(Operation *op) const override;
 
   // A "rewriting" function that takes an original operation `op`, a list of
-  // already rewritten opreands, and a function builder `rewriter`. It can use
+  // already rewritten operands, and a function builder `rewriter`. It can use
   // the builder to construct new operations and ultimately create new values
   // that will replace those currently produced by the original operation.  It
   // needs to define as many value as the original operation, but their types
@@ -259,7 +259,7 @@ PatternMatchResult ViewOpConversion::match(Operation *op) const override {
 }
 ```
 
-The actual conversion function may become quite involved. First, Let us go over
+The actual conversion function may become quite involved. First, let us go over
 the components of a view descriptor and see how they can be constructed to
 represent a _complete_ view of a `memref`, e.g. a view that covers all its
 elements.
@@ -412,7 +412,7 @@ struct ViewDescriptor {
     return builder.getArrayAttr(attrs);
   }
 
-  // Emit instructions obtaining individual values from the decsriptor.
+  // Emit instructions obtaining individual values from the descriptor.
   Value *ptr() { return intrinsics::extractvalue(elementPtrType(), d, pos(0)); }
   Value *offset() { return intrinsics::extractvalue(indexType(), d, pos(1)); }
   Value *size(unsigned dim) {

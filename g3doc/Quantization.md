@@ -79,7 +79,7 @@ In order to exactly represent the Real zero with an integral-valued affine
 value, the zero point must be an integer between the minimum and maximum affine
 value (inclusive). For example, given an affine value represented by an 8 bit
 unsigned integer, we have: $$ 0 \leq zero\_point \leq 255$$. This is important,
-because in deep neural networks's convolution-like operations, we frequently
+because in deep neural networks' convolution-like operations, we frequently
 need to zero-pad inputs and outputs, so zero must be exactly representable, or
 the result will be biased.
 
@@ -123,7 +123,7 @@ $$
 In the above, we assume that $$real\_value$$ is a Single, $$scale$$ is a Single,
 $$roundToNearestInteger$$ returns a signed 32 bit integer, and $$zero\_point$$
 is an unsigned 8 or 16 bit integer. Note that bit depth and number of fixed
-point values is indicative of common types on typical hardware but is not
+point values are indicative of common types on typical hardware but is not
 constrained to particular bit depths or a requirement that the entire range of
 an N-bit integer is used.
 

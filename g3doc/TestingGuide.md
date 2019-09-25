@@ -49,8 +49,8 @@ elimination, only one constant remains in the IR.
 FileCheck is an extremely useful utility, it allows for easily matching various
 parts of the output. This ease of use means that it becomes easy to write
 brittle tests that are essentially `diff` tests. FileCheck tests should be as
-self contained as possible and focus on testing the minimal set of functionality
-needed. Let's see an example:
+self-contained as possible and focus on testing the minimal set of
+functionalities needed. Let's see an example:
 
 ```mlir {.mlir}
 // RUN: mlir-opt %s -cse | FileCheck %s

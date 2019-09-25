@@ -55,7 +55,7 @@ enum Kinds {
 ### Defining the type class
 
 As described above, `Type` objects in MLIR are value-typed and rely on having an
-implicity internal storage object that holds the actual data for the type. When
+implicitly internal storage object that holds the actual data for the type. When
 defining a new `Type` it isn't always necessary to define a new storage class.
 So before defining the derived `Type`, it's important to know which of the two
 classes of `Type` we are defining. Some types are `primitives` meaning they do
@@ -256,7 +256,7 @@ Once the dialect types have been defined, they must then be registered with a
 ```c++
 struct MyDialect : public Dialect {
   MyDialect(MLIRContext *context) : Dialect(/*name=*/"mydialect", context) {
-    /// Add these types to the dialcet.
+    /// Add these types to the dialect.
     addTypes<SimpleType, ComplexType>();
   }
 };

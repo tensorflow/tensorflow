@@ -242,7 +242,7 @@ like `"0.5f"`, and an integer array default value should be specified as like
 `Confined` is provided as a general mechanism to help modelling further
 constraints on attributes beyond the ones brought by value types. You can use
 `Confined` to compose complex constraints out of more primitive ones. For
-example, an 32-bit integer attribute whose minimal value must be 10 can be
+example, a 32-bit integer attribute whose minimal value must be 10 can be
 expressed as `Confined<I32Attr, [IntMinValue<10>]>`.
 
 Right now, the following primitive constraints are supported:
@@ -373,7 +373,7 @@ def MyInterface : OpInterface<"MyInterface"> {
 
 ### Custom builder methods
 
-For each operation, there are two builder automatically generated based on the
+For each operation, there are two builders automatically generated based on the
 arguments and returns types:
 
 ```c++
@@ -388,7 +388,7 @@ static void build(Builder *, OperationState &tblgen_state,
                   ArrayRef<NamedAttribute> attributes);
 ```
 
-The above cases makes sure basic uniformity so that we can create ops using the
+The above cases make sure basic uniformity so that we can create ops using the
 same form regardless of the exact op. This is particularly useful for
 implementing declarative pattern rewrites.
 
@@ -572,7 +572,7 @@ a float tensor, and so on.
 
 Similarly, a set of `AttrConstraint`s are created for helping modelling
 constraints of common attribute kinds. They are the `Attr` subclass hierarchy.
-It includes `F32Attr` for the constraints of being an float attribute,
+It includes `F32Attr` for the constraints of being a float attribute,
 `F32ArrayAttr` for the constraints of being a float array attribute, and so on.
 
 ### Multi-entity constraint
@@ -648,7 +648,7 @@ replaced by the current attribute `attr` at expansion time.
 
 For more complicated predicates, you can wrap it in a single `CPred`, or you
 can use predicate combiners to combine them. For example, to write the
-constraint that an attribute `attr` is an 32-bit or 64-bit integer, you can
+constraint that an attribute `attr` is a 32-bit or 64-bit integer, you can
 write it as
 
 ```tablegen
@@ -695,9 +695,9 @@ def MyOp : Op<...> {
 As to whether we should define the predicate using a single `CPred` wrapping
 the whole expression, multiple `CPred`s with predicate combiners, or a single
 `CPred` "invoking" a function, there are no clear-cut criteria. Defining using
-`CPred` and predicate combiners is preferrable since it exposes more information
+`CPred` and predicate combiners is preferable since it exposes more information
 (instead hiding all the logic behind a C++ function) into the op definition spec
-so that it can pontentially drive more auto-generation cases. But it will
+so that it can potentially drive more auto-generation cases. But it will
 require a nice library of common predicates as the building blocks to avoid the
 duplication, which is being worked on right now.
 
@@ -928,7 +928,7 @@ the output type (shape) for given input type (shape).
 
 But shape functions are determined by attributes and could be arbitrarily
 complicated with a wide-range of specification possibilities. Equality
-relationship are common (e.g., the elemental type of the output matches the
+relationships are common (e.g., the elemental type of the output matches the
 primitive type of the inputs, both inputs have exactly the same type [primitive
 type and shape]) and so these should be easy to specify. Algebraic relationships
 would also be common (e.g., a concat of `[n,m]` and `[n,m]` matrix along axis 0

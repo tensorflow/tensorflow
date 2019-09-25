@@ -109,7 +109,7 @@ Examples:
 
 In these operations, `<size>` must be a value of wrapped LLVM IR integer type,
 `<address>` must be a value of wrapped LLVM IR pointer type, and `<value>` must
-be a value of wrapped LLVM IR type that corresponds to the pointee type of
+be a value of wrapped LLVM IR type that corresponds to the pointer type of
 `<address>`.
 
 The `index` operands are integer values whose semantics is identical to the

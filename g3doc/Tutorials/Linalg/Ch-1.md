@@ -65,7 +65,7 @@ public:
 ```
 
 Unlike more complex types, RangeType does not require a hashing key for
-unique'ing in the `MLIRContext`. Note that all MLIR types derive from
+uniquing in the `MLIRContext`. Note that all MLIR types derive from
 `mlir::Type::TypeBase` and expose `using Base::Base` to enable generic hooks to
 work properly (in this instance for llvm-style casts. RangeType does not even
 require an implementation file as the above represents the whole code for the
@@ -187,7 +187,7 @@ view it slices and pretty-prints as:
 %2 = linalg.slice %1[*, *, %0, *] : !linalg.view<?x?x?xf32>
 ```
 
-In this particular case, %2 slices dimension `2` of the four dimensional view
+In this particular case, %2 slices dimension `2` of the four-dimensional view
 %1. The returned `!linalg.view<?x?x?xf32>` indicates that the indexing is
 rank-reducing and that %0 is an `index`.
 

@@ -38,7 +38,7 @@ Some important things to think about w.r.t. canonicalization patterns:
 
 ## Globally Applied Rules
 
-These transformation are applied to all levels of IR:
+These transformations are applied to all levels of IR:
 
 *   Elimination of operations that have no side effects and have no uses.
 

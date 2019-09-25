@@ -349,7 +349,7 @@ that match predicates eliminate the need for dynamically computed costs in
 almost all cases: you can simply instantiate the same pattern one time for each
 possible cost and use the predicate to guard the match.
 
-The two phase nature of this API (match separate from rewrite) is important for
+The two-phase nature of this API (match separate from rewrite) is important for
 two reasons: 1) some clients may want to explore different ways to tile the
 graph, and only rewrite after committing to one tiling. 2) We want to support
 runtime extensibility of the pattern sets, but want to be able to statically

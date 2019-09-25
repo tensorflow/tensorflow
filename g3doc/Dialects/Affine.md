@@ -105,7 +105,7 @@ parenthesization, (2) negation, (3) modulo, multiplication, floordiv, and
 ceildiv, and (4) addition and subtraction. All of these operators associate from
 left to right.
 
-A _multi-dimensional affine expression_ is a comma separated list of
+A _multidimensional affine expression_ is a comma separated list of
 one-dimensional affine expressions, with the entire list enclosed in
 parentheses.
 
@@ -119,7 +119,7 @@ affine function. MLIR further extends the definition of an affine function to
 allow 'floordiv', 'ceildiv', and 'mod' with respect to positive integer
 constants. Such extensions to affine functions have often been referred to as
 quasi-affine functions by the polyhedral compiler community. MLIR uses the term
-'affine map' to refer to these multi-dimensional quasi-affine functions. As
+'affine map' to refer to these multidimensional quasi-affine functions. As
 examples, $$(i+j+1, j)$$, $$(i \mod 2, j+i)$$, $$(j, i/4, i \mod 4)$$, $$(2i+1,
 j)$$ are two-dimensional affine functions of $$(i, j)$$, but $$(i \cdot j,
 i^2)$$, $$(i \mod j, i/j)$$ are not affine functions of $$(i, j)$$.

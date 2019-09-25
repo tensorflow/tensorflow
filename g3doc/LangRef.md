@@ -312,8 +312,8 @@ it.
 
 An MLIR Function is an operation with a name containing one [region](#regions).
 The region of a function is not allowed to implicitly capture values defined
-outside of the function, and all external references must use Function arguments
-or attributes that establish a symbolic connection(e.g. symbols referenced by
+outside of the function, and all external references must use function arguments
+or attributes that establish a symbolic connection (e.g. symbols referenced by
 name via a string attribute like [SymbolRefAttr](#symbol-reference-attribute)):
 
 ``` {.ebnf}
@@ -455,12 +455,14 @@ func @accelerator_compute(i64, i1) -> i64 {
 ^bb2:
   "accelerator.launch"() {
     ^bb0:
-      // Region of code nested under "accelerator_launch", it can reference %a but
+      // Region of code nested under "accelerator.launch", it can reference %a but
       // not %value.
       %new_value = "accelerator.do_something"(%a) : (i64) -> ()
   }
   // %new_value cannot be referenced outside of the region
-...
+
+^bb3:
+  ...
 }
 ```
 
@@ -796,7 +798,7 @@ memref<16x32xf32, #identity, memspace0>
 // f32 elements.
 %T = alloc(%M, %N) [%B1, %B2] : memref<?x?xf32, #tiled_dynamic>
 
-// A memref that has a two element padding at either end. The allocation size
+// A memref that has a two-element padding at either end. The allocation size
 // will fit 16 * 68 float elements of data.
 %P = alloc() : memref<16x64xf32, #padded>
 
@@ -1296,7 +1298,7 @@ Syntax:
 integer-set-attribute ::= affine-map
 ```
 
-An integer-set attribute is an attribute that represents a integer-set object.
+An integer-set attribute is an attribute that represents an integer-set object.
 
 #### String Attribute
 

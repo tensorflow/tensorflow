@@ -116,7 +116,7 @@ of the benefits that MLIR provides, in no particular order:
 
 The MLIR in-memory data structure has a human readable and writable format, as
 well as [a specification](LangRef.md) for that format - built just like any
-other programming language. Important properties of this format is that it is
+other programming language. Important properties of this format are that it is
 compact, easy to read, and lossless. You can dump an MLIR program out to disk
 and munge around with it, then send it through a few more passes.
 
@@ -139,7 +139,7 @@ the product more reliable, and making it easier to track down bugs when they
 appear - because the verifier can be run at any time, either as a compiler pass
 or with a single function call.
 
-While MLIR provides a well considered infrastructure for IR verification, and
+While MLIR provides a well-considered infrastructure for IR verification, and
 has simple checks for existing TensorFlow operations, there is a lot that should
 be added here and lots of opportunity to get involved!
 
@@ -166,7 +166,7 @@ turned into zero:
 
 The "CHECK" comments are interpreted by the
 [LLVM FileCheck tool](https://llvm.org/docs/CommandGuide/FileCheck.html), which
-is sort of like a really advanced grep. This test is fully self contained: it
+is sort of like a really advanced grep. This test is fully self-contained: it
 feeds the input into the [canonicalize pass](Canonicalization.md), and checks
 that the output matches the CHECK lines. See the `test/Transforms` directory for
 more examples. In contrast, standard unit testing exposes the API of the
@@ -258,7 +258,7 @@ This is still a work in progress, but we have sightlines towards a
 tiles into other DAG tiles, using a declarative pattern format. DAG to DAG
 rewriting is a generalized solution for many common compiler optimizations,
 lowerings, and other rewrites and having an IR enables us to invest in building
-a single high quality implementation.
+a single high-quality implementation.
 
 Declarative pattern rules are preferable to imperative C++ code for a number of
 reasons: they are more compact, easier to reason about, can have checkers
@@ -313,7 +313,7 @@ transformations) today, and are committed to pushing hard to make it better.
 
 MLIR has been designed to be memory and compile-time efficient in its algorithms
 and data structures, using immutable and uniqued structures, low level
-bit-packing, and other well known techniques to avoid unnecessary heap
+bit-packing, and other well-known techniques to avoid unnecessary heap
 allocations, and allow simple and safe multithreaded optimization of MLIR
 programs. There are other reasons to believe that the MLIR implementations of
 common transformations will be more efficient than the Python and C++

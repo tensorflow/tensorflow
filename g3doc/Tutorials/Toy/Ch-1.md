@@ -82,7 +82,7 @@ def main() {
   # reuse the previously specialized and inferred version and return `<2, 2>`
   var d = multiply_transpose(b, a);
 
-  # A new call with `<2, 2>` for both dimension will trigger another
+  # A new call with `<2, 2>` for both dimensions will trigger another
   # specialization of `multiply_transpose`.
   var e = multiply_transpose(c, d);
 

@@ -39,7 +39,7 @@ neural network accelerators.
 
 MLIR uses ideas drawn from IRs of LLVM and Swift for lower level constructs
 while combining them with ideas from the polyhedral abstraction to represent
-loop nests, multi-dimensional data (tensors), and transformations on these
+loop nests, multidimensional data (tensors), and transformations on these
 entities as first class concepts in the IR.
 
 MLIR is a multi-level IR, i.e., it represents code at a domain-specific
@@ -58,7 +58,7 @@ polyhedral abstraction.
 
 Maps, sets, and relations with affine constraints are the core structures
 underlying a polyhedral representation of high-dimensional loop nests and
-multi-dimensional arrays. These structures are represented as textual
+multidimensional arrays. These structures are represented as textual
 expressions in a form close to their mathematical form. These structures are
 used to capture loop nests, tensor data structures, and how they are reordered
 and mapped for a target architecture. All structured or "conforming" loops are
@@ -513,7 +513,7 @@ parsing/printing, will be available.
 Dialect extended types are represented as string literals wrapped inside of the
 dialect namespace. This means that the parser delegates to the dialect for
 parsing specific type instances. This differs from the representation of dialect
-defined operations, of which have a identifier name that the parser uses to
+defined operations, of which have an identifier name that the parser uses to
 identify and parse them.
 
 This representation was chosen for several reasons:
@@ -773,7 +773,7 @@ our current design in practice.
 The current MLIR uses a representation of polyhedral schedules using a tree of
 if/for loops. We extensively debated the tradeoffs involved in the typical
 unordered polyhedral instruction representation (where each instruction has
-multi-dimensional schedule information), discussed the benefits of schedule tree
+multidimensional schedule information), discussed the benefits of schedule tree
 forms, and eventually decided to go with a syntactic tree of affine if/else
 conditionals and affine for loops. Discussion of the tradeoff was captured in
 this document:
@@ -806,7 +806,7 @@ At a high level, we have two alternatives here:
 This representation is based on a simplified form of the domain/schedule
 representation used by the polyhedral compiler community. Domains represent what
 has to be executed while schedules represent the order in which domain elements
-are interleaved. We model domains as non piece-wise convex integer sets, and
+are interleaved. We model domains as non-piece-wise convex integer sets, and
 schedules as affine functions; however, the former can be disjunctive, and the
 latter can be piece-wise affine relations. In the schedule tree representation,
 domain and schedules for instructions are represented in a tree-like structure
@@ -1110,7 +1110,7 @@ The problem is that LLVM has several objects in its IR that are globally uniqued
 and also mutable: notably constants like `i32 0`. In LLVM, these constants are
 `Value*r`'s, which allow them to be used as operands to instructions, and that
 they also have SSA use lists. Because these things are uniqued, every `i32 0` in
-any function share a use list. This means that optimizing multiple functions in
+any function shares a use list. This means that optimizing multiple functions in
 parallel won't work (at least without some sort of synchronization on the use
 lists, which would be unbearably inefficient).
 
@@ -1122,7 +1122,7 @@ expressions, types, etc are all immutable, uniqued, and immortal). 2) constants
 are defined in per-function pools, instead of being globally uniqued. 3)
 functions themselves are not SSA values either, so they don't have the same
 problem as constants. 4) FunctionPasses are copied (through their copy ctor)
-into one instances per thread, avoiding sharing of local state across threads.
+into one instance per thread, avoiding sharing of local state across threads.
 
 This allows MLIR function passes to support efficient multithreaded compilation
 and code generation.

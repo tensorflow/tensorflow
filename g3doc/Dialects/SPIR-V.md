@@ -20,7 +20,7 @@ format and to facilitate transformations. Therefore, it should
 
 *   Stay as the same semantic level and try to be a mechanical 1:1 mapping;
 *   But deviate representationally if possible with MLIR mechanisms.
-*   Be straightforward to serialize into and deserialize drom the SPIR-V binary
+*   Be straightforward to serialize into and deserialize from the SPIR-V binary
     format.
 
 ## Conventions
@@ -55,10 +55,10 @@ instructions are represented in the SPIR-V dialect. Notably,
 *   Requirements for capabilities, extensions, extended instruction sets,
     addressing model, and memory model is conveyed using `spv.module`
     attributes. This is considered better because these information are for the
-    exexcution environment. It's eaiser to probe them if on the module op
+    execution environment. It's easier to probe them if on the module op
     itself.
-*   Annotations/decoration instrutions are "folded" into the instructions they
-    decorate and represented as attributes on those ops. This elimiates
+*   Annotations/decoration instructions are "folded" into the instructions they
+    decorate and represented as attributes on those ops. This eliminates
     potential forward references of SSA values, improves IR readability, and
     makes querying the annotations more direct.
 *   Types are represented using MLIR standard types and SPIR-V dialect specific
@@ -252,7 +252,7 @@ block, one loop continue block, one merge block.
           ...
          \ | /
            v
-    +-------------+           (may have mulitple incoming branches)
+    +-------------+           (may have multiple incoming branches)
     | merge block |
     +-------------+
 ```

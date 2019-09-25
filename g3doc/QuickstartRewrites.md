@@ -10,7 +10,7 @@ See [MLIR specification](LangRef.md) for more information about MLIR, the
 structure of the IR, operations, etc. See
 [Table-driven Operation Definition](OpDefinitions.md) and
 [Declarative Rewrite Rule](DeclarativeRewrites.md) for the detailed explanation
-of all available mechansims for defining operations and rewrites in a
+of all available mechanisms for defining operations and rewrites in a
 table-driven manner.
 
 ## Adding operation
@@ -90,7 +90,7 @@ OpFoldResult SpecificOp::fold(ArrayRef<Attribute> constOperands) {
 There are multiple forms of graph rewrite that can be performed in MLIR. One of
 the most common is DAG tile to DAG tile rewrite. Patterns provide a concise way
 to express this transformation as a pair of source pattern to match and
-resultant pattern. There is both the C++ classes to represent this
+resultant pattern. There are both the C++ classes to represent this
 transformation, as well as the patterns in TableGen from which these can be
 generated.
 

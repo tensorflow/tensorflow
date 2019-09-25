@@ -25,14 +25,14 @@ benefits, including but not limited to:
 *   **Being declarative**: The pattern creator just needs to state the rewrite
     pattern declaratively, without worrying about the concrete C++ methods to
     call.
-*   **Removing boilerplate and showing the very essense the the rewrite**:
+*   **Removing boilerplate and showing the very essence of the rewrite**:
     `mlir::RewritePattern` is already good at hiding boilerplate for defining a
     rewrite rule. But we still need to write the class and function structures
     required by the C++ programming language, inspect ops for matching, and call
     op `build()` methods for constructing. These statements are typically quite
     simple and similar, so they can be further condensed with auto-generation.
     Because we reduce the boilerplate to the bare minimum, the declarative
-    rewrite rule will just contain the very essense of the rewrite. This makes
+    rewrite rule will just contain the very essence of the rewrite. This makes
     it very easy to understand the pattern.
 
 ## Strengths and Limitations
@@ -239,7 +239,7 @@ to replace the matched `AOp`.
 
 #### Binding op results
 
-In the result pattern, we can bind to the result(s) of an newly built op by
+In the result pattern, we can bind to the result(s) of a newly built op by
 attaching symbols to the op. (But we **cannot** bind to op arguments given that
 they are referencing previously bound symbols.) This is useful for reusing
 newly created results where suitable. For example,
@@ -270,7 +270,7 @@ directly fed in as arguments to build the new op. For such cases, we can apply
 transformations on the arguments by calling into C++ helper functions. This is
 achieved by `NativeCodeCall`.
 
-For example, if we want to catpure some op's attributes and group them as an
+For example, if we want to capture some op's attributes and group them as an
 array attribute to construct a new op:
 
 ```tblgen
@@ -361,7 +361,7 @@ $in2)`, then this will be translated into C++ call `someFn($in1, $in2, $in0)`.
 ##### Customizing entire op building
 
 `NativeCodeCall` is not only limited to transforming arguments for building an
-op; it can also used to specify how to build an op entirely. An example:
+op; it can be also used to specify how to build an op entirely. An example:
 
 If we have a C++ function for building an op:
 
@@ -379,10 +379,10 @@ def : Pat<(... $input, $attr), (createMyOp $input, $attr)>;
 
 ### Supporting auxiliary ops
 
-A declarative rewrite rule supports multiple result patterns. One of the purpose
-is to allow generating _auxiliary ops_. Auxiliary ops are operations used for
-building the replacement ops; but they are not directly used for replacement
-themselves.
+A declarative rewrite rule supports multiple result patterns. One of the
+purposes is to allow generating _auxiliary ops_. Auxiliary ops are operations
+used for building the replacement ops; but they are not directly used for
+replacement themselves.
 
 For the case of uni-result ops, if there are multiple result patterns, only the
 value generated from the last result pattern will be used to replace the matched
@@ -556,7 +556,7 @@ correspond to multiple actual values.
 
 Constraints can be placed on op arguments when matching. But sometimes we need
 to also place constraints on the matched op's results or sometimes need to limit
-the matching with some constraints that cover both the arugments and the
+the matching with some constraints that cover both the arguments and the
 results. The third parameter to `Pattern` (and `Pat`) is for this purpose.
 
 For example, we can write
@@ -587,7 +587,7 @@ You can
 
 ### Adjusting benefits
 
-The benefit of a `Pattern` is an integer value indicating the benfit of matching
+The benefit of a `Pattern` is an integer value indicating the benefit of matching
 the pattern. It determines the priorities of patterns inside the pattern rewrite
 driver. A pattern with a higher benefit is applied before one with a lower
 benefit.
@@ -599,7 +599,7 @@ pattern. This is based on the heuristics and assumptions that:
 *   If a smaller one is applied first the larger one may not apply anymore.
 
 
-The forth parameter to `Pattern` (and `Pat`) allows to manually tweak a
+The fourth parameter to `Pattern` (and `Pat`) allows to manually tweak a
 pattern's benefit. Just supply `(addBenefit N)` to add `N` to the benefit value.
 
 ## Special directives
