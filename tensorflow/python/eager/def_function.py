@@ -294,6 +294,7 @@ def run_functions_eagerly(run_eagerly):
   >>> ys
   [1.5, 1.25, 1.375, 1.4375, 1.40625, 1.421875, 1.4140625, 1.4179688, 1.4160156,
   1.4150391]
+  >>> tf.config.experimental_run_functions_eagerly(False)
 
   Calling `tf.config.experimental_run_functions_eagerly(False)` will undo this
   behavior.
