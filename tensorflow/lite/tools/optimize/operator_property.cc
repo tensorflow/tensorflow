@@ -164,9 +164,8 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.version = 2;
       break;
     case BuiltinOperator_MEAN:
-      property.arbitrary_inputs = true;
+      property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
       property.version = 2;
       break;
     case BuiltinOperator_MINIMUM:
