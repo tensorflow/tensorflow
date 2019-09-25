@@ -219,7 +219,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         num_gpus_per_worker=num_gpus,
         collective_keys=self._collective_keys,
         communication=self._communication)
-    super(CollectiveAllReduceExtended, self)._initialize_local(local_devices)
+    super(CollectiveAllReduceExtended, self)._initialize_single_worker(
+        local_devices)
 
     self._cluster_spec = None
     self._task_type = None
@@ -323,7 +324,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         num_gpus_per_worker=num_gpus,
         collective_keys=self._collective_keys,
         communication=self._communication)
-    super(CollectiveAllReduceExtended, self)._initialize_local(local_devices)
+    super(CollectiveAllReduceExtended, self)._initialize_single_worker(
+        local_devices)
     self._input_workers = input_lib.InputWorkers(
         self._device_map, [(self._worker_device, self.worker_devices)])
 
