@@ -3702,10 +3702,6 @@ def squeeze_v2(input, axis=None, name=None):
 
 
 @tf_export(v1=["where"])
-@deprecation.deprecated(
-    date=None,
-    instructions="Use tf.where in 2.0, "
-    "which has the same broadcast rule as np.where")
 @dispatch.add_dispatch_support
 def where(condition, x=None, y=None, name=None):
   """Return the elements, either from `x` or `y`, depending on the `condition`.
