@@ -31,7 +31,6 @@ from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
-from tensorflow.python.distribute import values as distribute_values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import function
@@ -503,10 +502,7 @@ class Layer(module.Module):
       old_getter = getter
       def getter(*args, **kwargs):  # pylint: disable=function-redefined
         variable = old_getter(*args, **kwargs)
-        if isinstance(variable, distribute_values.DistributedVariable):
-          return autocast_variable.AutoCastDistributedVariable(variable)
-        else:
-          return autocast_variable.AutoCastVariable(variable)
+        return autocast_variable.create_autocast_variable(variable)
 
     variable = self._add_variable_with_custom_getter(
         name=name,
@@ -1751,14 +1747,6 @@ class Layer(module.Module):
       self._dtype_policy = policy.Policy(dtypes.as_dtype(dtype).name)
     else:
       self._dtype_policy = policy.global_policy()
-
-    if self._dtype_policy.should_cast_variables and backend.is_tpu_strategy(
-        ds_context.get_strategy()):
-      # TODO(b/137859335): Supoprt this. AutoCastVariables currently do not work
-      # properly when wrapping TPUMirroredVariables.
-      raise ValueError('DType Policies ending in "_with_float32_vars" are '
-                       'not yet supported with TPUStrategy. Got policy: %s' %
-                       self._dtype_policy.name)
 
     # This has no impact on the layer behavior, and is only used for printing
     # warnings.
