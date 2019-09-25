@@ -440,7 +440,7 @@ typedef struct TfLiteContext {
   // NOTE: ResizeTensor takes ownership of newSize.
   TfLiteStatus (*ResizeTensor)(struct TfLiteContext*, TfLiteTensor* tensor,
                                TfLiteIntArray* new_size);
-  // Request that a error be reported with format string msg.
+  // Request that an error be reported with format string msg.
   void (*ReportError)(struct TfLiteContext*, const char* msg, ...);
 
   // Add `tensors_to_add` tensors, preserving pre-existing Tensor entries.  If
