@@ -42,6 +42,7 @@ from tensorflow.lite.python.convert_saved_model import freeze_saved_model as _fr
 from tensorflow.lite.python.interpreter import Interpreter  # pylint: disable=unused-import
 from tensorflow.lite.python.interpreter import load_delegate  # pylint: disable=unused-import
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: disable=unused-import
+from tensorflow.lite.python.op_hint import find_all_hinted_output_nodes as _find_all_hinted_output_nodes
 from tensorflow.lite.python.op_hint import OpHint  # pylint: disable=unused-import
 from tensorflow.lite.python.optimize import calibrator as _calibrator
 from tensorflow.lite.python.util import build_debug_info_func as _build_debug_info_func
@@ -880,6 +881,16 @@ class TFLiteConverter(TFLiteConverterBase):
         Input shape is not specified.
         None value for dimension in input_tensor.
     """
+    # If ophints are present, just convert them if mlir_converter is not
+    # explicitly specified.
+    # For MLIRConverter, The ophint conversion will be handled inside MLIR
+    # passes.
+    if not self.experimental_enable_mlir_converter:
+      hinted_outputs_nodes = _find_all_hinted_output_nodes(
+          graph_def=self._graph_def)
+      if hinted_outputs_nodes:
+        self._graph_def = convert_op_hints_to_stubs(graph_def=self._graph_def)
+
     # Checks dimensions in input tensor.
     if self._has_valid_tensors():
       for tensor in self._input_tensors:

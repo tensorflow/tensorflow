@@ -249,6 +249,10 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     result = self.tfliteInvoke(new_sess, test_inputs, x, output_class, False)
     self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
 
+    # Test mlir-converted model.
+    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class, True)
+    self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
+
   @test_util.enable_control_flow_v2
   def testDynamicRnnMultiRnnCell(self):
     sess = tf.compat.v1.Session(config=CONFIG)
