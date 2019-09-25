@@ -624,11 +624,17 @@ LogicalResult Deserializer::processDecoration(ArrayRef<uint32_t> words) {
     typeDecorations[words[0]] = static_cast<uint32_t>(words[2]);
     break;
   case spirv::Decoration::Block:
+  case spirv::Decoration::BufferBlock:
     if (words.size() != 2) {
       return emitError(unknownLoc, "OpDecoration with ")
              << decorationName << "needs a single target <id>";
     }
-    // Block decoration does not affect spv.struct type.
+    // Block decoration does not affect spv.struct type, but is still stored for
+    // verification.
+    // TODO: Update StructType to contain this information since
+    // it is needed for many validation rules.
+    decorations[words[0]].set(opBuilder.getIdentifier(attrName),
+                              opBuilder.getUnitAttr());
     break;
   default:
     return emitError(unknownLoc, "unhandled Decoration : '") << decorationName;
@@ -985,9 +991,8 @@ LogicalResult Deserializer::processType(spirv::Opcode opcode,
       return emitError(
           unknownLoc, "OpTypeInt must have bitwidth and signedness parameters");
     }
-    if (operands[2] == 0) {
-      return emitError(unknownLoc, "unhandled unsigned OpTypeInt");
-    }
+    // TODO: Ignoring the signedness right now. Need to handle this effectively
+    // in the MLIR representation.
     typeMap[operands[0]] = opBuilder.getIntegerType(operands[1]);
     break;
   case spirv::Opcode::OpTypeFloat: {
@@ -1787,6 +1792,14 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
     break;
   case spirv::Opcode::OpName:
     return processName(operands);
+  case spirv::Opcode::OpModuleProcessed:
+  case spirv::Opcode::OpString:
+  case spirv::Opcode::OpSource:
+  case spirv::Opcode::OpSourceContinued:
+  case spirv::Opcode::OpSourceExtension:
+    // TODO: This is debug information embedded in the binary which should be
+    // translated into the spv.module.
+    return success();
   case spirv::Opcode::OpTypeVoid:
   case spirv::Opcode::OpTypeBool:
   case spirv::Opcode::OpTypeInt:
