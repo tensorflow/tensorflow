@@ -776,7 +776,9 @@ class TRT_TensorOrWeights::SimpleITensor : public nvinfer1::ITensor {
 
   nvinfer1::TensorFormats getAllowedFormats() const override { return 1; }
 
-  bool isShape() const override { return false; }
+  bool isShapeTensor() const override { return false; }
+
+  bool isExecutionTensor() const override { return true; }
 #endif
 
  private:
