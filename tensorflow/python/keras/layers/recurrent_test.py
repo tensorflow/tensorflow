@@ -795,33 +795,56 @@ class RNNTest(keras_parameterized.TestCase):
     # The layer is created with recurrent_initializer = zero, so that the
     # the recurrent state won't affect the output. By doing this, we can verify
     # the output and see if the same mask is applied to for each timestep.
-    rnn = keras.layers.SimpleRNN(3,
-                                 dropout=0.5,
-                                 kernel_initializer='ones',
-                                 recurrent_initializer='zeros',
-                                 return_sequences=True,
-                                 unroll=True)
+    layer_1 = keras.layers.SimpleRNN(3,
+                                     dropout=0.5,
+                                     kernel_initializer='ones',
+                                     recurrent_initializer='zeros',
+                                     return_sequences=True,
+                                     unroll=True)
+    layer_2 = keras.layers.RNN(
+        keras.layers.SimpleRNNCell(3,
+                                   dropout=0.5,
+                                   kernel_initializer='ones',
+                                   recurrent_initializer='zeros'),
+        return_sequences=True,
+        unroll=True)
+    layer_3 = keras.layers.RNN(
+        [keras.layers.SimpleRNNCell(3,
+                                    dropout=0.5,
+                                    kernel_initializer='ones',
+                                    recurrent_initializer='zeros'),
+         keras.layers.SimpleRNNCell(3,
+                                    dropout=0.5,
+                                    kernel_initializer='ones',
+                                    recurrent_initializer='zeros')
+        ],
+        return_sequences=True,
+        unroll=True)
 
-    inputs = constant_op.constant(1.0, shape=(6, 2, 5))
-    out = rnn(inputs, training=True)
-    if not context.executing_eagerly():
-      self.evaluate(variables_lib.global_variables_initializer())
-    batch_1 = self.evaluate(out)
-    batch_1_t0, batch_1_t1 = batch_1[:, 0, :], batch_1[:, 1, :]
-    self.assertAllClose(batch_1_t0, batch_1_t1)
+    def verify(rnn_layer):
+      inputs = constant_op.constant(1.0, shape=(6, 2, 5))
+      out = rnn_layer(inputs, training=True)
+      if not context.executing_eagerly():
+        self.evaluate(variables_lib.global_variables_initializer())
+      batch_1 = self.evaluate(out)
+      batch_1_t0, batch_1_t1 = batch_1[:, 0, :], batch_1[:, 1, :]
+      self.assertAllClose(batch_1_t0, batch_1_t1)
 
-    # This simulate the layer called with multiple batches in eager mode
-    if context.executing_eagerly():
-      out2 = rnn(inputs, training=True)
-    else:
-      out2 = out
-    batch_2 = self.evaluate(out2)
-    batch_2_t0, batch_2_t1 = batch_2[:, 0, :], batch_2[:, 1, :]
-    self.assertAllClose(batch_2_t0, batch_2_t1)
+      # This simulate the layer called with multiple batches in eager mode
+      if context.executing_eagerly():
+        out2 = rnn_layer(inputs, training=True)
+      else:
+        out2 = out
+      batch_2 = self.evaluate(out2)
+      batch_2_t0, batch_2_t1 = batch_2[:, 0, :], batch_2[:, 1, :]
+      self.assertAllClose(batch_2_t0, batch_2_t1)
 
-    # Also validate that different dropout is used by between batches.
-    self.assertNotAllClose(batch_1_t0, batch_2_t0)
-    self.assertNotAllClose(batch_1_t1, batch_2_t1)
+      # Also validate that different dropout is used by between batches.
+      self.assertNotAllClose(batch_1_t0, batch_2_t0)
+      self.assertNotAllClose(batch_1_t1, batch_2_t1)
+
+    for l in [layer_1, layer_2, layer_3]:
+      verify(l)
 
   def test_stacked_rnn_compute_output_shape(self):
     cells = [keras.layers.LSTMCell(3),
