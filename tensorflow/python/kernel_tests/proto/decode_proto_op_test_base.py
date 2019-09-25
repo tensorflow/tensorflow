@@ -134,7 +134,10 @@ class DecodeProtoOpTestBase(test_base.ProtoOpTestBase, parameterized.TestCase):
           dtypes.uint64:
               'uint64_value',
       }
-      tf_field_name = tf_type_to_primitive_value_field.get(field.dtype)
+      if field.name in ['enum_value', 'enum_value_with_default']:
+        tf_field_name = 'enum_value'
+      else:
+        tf_field_name = tf_type_to_primitive_value_field.get(field.dtype)
       if tf_field_name is None:
         self.fail('Unhandled tensorflow type %d' % field.dtype)
 
