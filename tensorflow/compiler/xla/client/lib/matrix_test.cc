@@ -177,8 +177,9 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
   auto to_vec = [](absl::string_view s) {
     std::vector<int64> v;
     v.reserve(s.size());
+    int ellipsis_dim = 0;
     for (auto c : s) {
-      v.push_back(int64{c});
+      v.push_back(c == '.' ? ellipsis_dim++ : int64{c});
     }
     return v;
   };
@@ -188,13 +189,15 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
     return absl::StrCat(x, ",", y, "->", o);
   };
 
-  std::vector<std::vector<string>> good_test_cases = {{"ab", "bc", "ac"},
-                                                      {"Bab", "Bbc", "Bac"},
-                                                      {"ab", "cd", "dcba"},
-                                                      {"abc", "abd", "cbd"}};
+  std::vector<std::vector<string>> good_test_cases = {
+      {"ab", "bc", "ac"},          {"Bab", "Bbc", "Bac"},
+      {"ab", "cd", "dcba"},        {"abc", "abd", "cbd"},
+      {"...ab", "...bc", "...ac"}, {"a...bc", "...abd", "cbd..."},
+  };
   for (auto test_case : good_test_cases) {
     auto parse_result_or_status =
-        ParseEinsumString(to_string(test_case[0], test_case[1], test_case[2]));
+        ParseEinsumString(to_string(test_case[0], test_case[1], test_case[2]),
+                          test_case[0].size(), test_case[1].size());
     EXPECT_TRUE(parse_result_or_status.status().ok());
     auto parse_result = parse_result_or_status.ValueOrDie();
     for (int i = 0; i < 3; ++i) {
@@ -206,16 +209,33 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
   }
 
   std::vector<string> einsum_strings_that_fail_parsing = {
-      "", "a", "ab->ba", "ab,bc,cd->ad", "a...b,bc->a...c"};
+      "",
+      "a",
+      "ab->ba",
+      "ab,bc,cd->ad",
+      "a...b...,bc->a...c",
+      "...ab,...bc->ac",
+      "...b,...bc->...c",
+  };
   for (auto test_case : einsum_strings_that_fail_parsing) {
-    auto parse_result_or_status = ParseEinsumString(test_case);
+    auto parse_result_or_status = ParseEinsumString(test_case, 3, 3);
     EXPECT_FALSE(parse_result_or_status.status().ok());
   }
+  std::vector<std::vector<string>> einsum_strings_that_fail_numeric_validation =
+      {
+          {"a", "b", "c"},
+          {"ab", "bc", "acd"},
+          {"abz", "bc", "ac"},
+          {"ab", "bcz", "ac"},
+          {"...a", "...b", "...c"},
+          {"...abz", "...bc", "...ac"},
+          {"...ab", "...bcz", "...ac"},
+      };
 
-  std::vector<string> einsum_strings_that_fail_numeric_validation = {
-      "a,b->c", "ab,bc->acd", "abz,bc->ac", "ab,bcz->ac"};
   for (auto test_case : einsum_strings_that_fail_numeric_validation) {
-    auto parse_result_or_status = ParseEinsumString(test_case);
+    auto parse_result_or_status =
+        ParseEinsumString(to_string(test_case[0], test_case[1], test_case[2]),
+                          test_case[0].size(), test_case[1].size());
     EXPECT_TRUE(parse_result_or_status.status().ok());
     auto parse_result = parse_result_or_status.ValueOrDie();
     EXPECT_FALSE(ValidateEinsumNumericDimensions(
