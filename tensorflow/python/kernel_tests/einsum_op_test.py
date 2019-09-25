@@ -120,10 +120,20 @@ class EinsumOpTest(test.TestCase):
     self._check('aab,bc->ac', (2, 2, 3), (3, 4))
     self._check('aab,bcc->ac', (2, 2, 3), (3, 4, 4))
 
+  def testEllipsis(self):
+    # Batch matmul with ellipsis but without broadcasting.
+    self._check('...mk,...kn->...mn', (5, 1, 2, 3), (5, 1, 3, 4))
+    # Empty batch dimensions.
+    self._check('...mk,...kn->...mn', (2, 3), (3, 4))
+    # Tensor contraction with transpose.
+    self._check('...ija,aijb...->ba...ij', (1, 2, 2, 3, 1), (1, 2, 3, 4, 1, 2))
+    # Output subscripts may omit ellipsis when batch shape is empty.
+    self._check('...mk,...kn->mn', (2, 3), (3, 4))
+    self._check('...mk,kn->mn', (2, 3), (3, 4))
+    self._check('mk,...kn->mn', (2, 3), (3, 4))
+
   @test_util.disable_xla('b/131919749')
   def testBroadcasting(self):
-    # Batch matmul without broadcasting.
-    self._check('...ij,...jk->...ik', (5, 1, 2, 3), (5, 1, 3, 4))
     # Batch matmul with broadcasting.
     self._check('...ij,...jk->...ik', (1, 2, 3), (3, 5))
     self._check('...ij,...jk->...ik', (2, 3), (1, 3, 5))

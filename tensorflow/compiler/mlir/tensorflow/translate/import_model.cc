@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
+#include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
@@ -1743,6 +1744,10 @@ StatusOr<mlir::OwningModuleRef> SavedModelImporter::Convert(
 }
 }  // namespace
 
+Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def) {
+  return FunctionalizeControlFlow(graph, flib_def);
+}
+
 StatusOr<mlir::OwningModuleRef> ConvertGraphdefToMlir(
     const GraphDef& graphdef, const GraphDebugInfo& debug_info,
     const NodeSpecs& specs, mlir::MLIRContext* context,
@@ -1757,6 +1762,11 @@ StatusOr<mlir::OwningModuleRef> ConvertGraphdefToMlir(
   }
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
       options, std::move(preprocessed_graphdef), &graph));
+  if (specs.upgrade_legacy) {
+    // TODO(jpienaar): Avoid need for const_cast.
+    TF_RETURN_IF_ERROR(UpgradeLegacyGraph(
+        &graph, const_cast<FunctionLibraryDefinition*>(&graph.flib_def())));
+  }
 
   return ConvertGraphToMlir(graph, debug_info, graph.flib_def(), specs,
                             context);
@@ -1766,6 +1776,12 @@ StatusOr<mlir::OwningModuleRef> ConvertGraphToMlir(
     const Graph& graph, const GraphDebugInfo& debug_info,
     const FunctionLibraryDefinition& flib_def, const NodeSpecs& specs,
     mlir::MLIRContext* context) {
+  // TODO(jpienaar): Remove need to const_cast.
+  if (specs.upgrade_legacy) {
+    TF_RETURN_IF_ERROR(
+        UpgradeLegacyGraph(const_cast<Graph*>(&graph),
+                           const_cast<FunctionLibraryDefinition*>(&flib_def)));
+  }
   return GraphDefImporter::Convert(context, graph, debug_info, flib_def, specs);
 }
 

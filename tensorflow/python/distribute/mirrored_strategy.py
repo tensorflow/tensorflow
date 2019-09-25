@@ -409,11 +409,11 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     assert len(set(devices)) == len(devices), (
         "No duplicates allowed in `devices` argument: %s" % (devices,))
     if _is_device_list_single_worker(devices):
-      self._initialize_local(devices)
+      self._initialize_single_worker(devices)
     else:
       self._initialize_multi_worker(devices)
 
-  def _initialize_local(self, devices):
+  def _initialize_single_worker(self, devices):
     """Initializes the object for single-worker training."""
     self._device_map = values.ReplicaDeviceMap(devices)
     self._input_workers = input_lib.InputWorkers(self._device_map)

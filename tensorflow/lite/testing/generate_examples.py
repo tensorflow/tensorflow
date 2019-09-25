@@ -125,7 +125,8 @@ if __name__ == "__main__":
   FLAGS, unparsed = parser.parse_known_args()
 
   if unparsed:
-    print("Usage: %s <path out> <zip file to generate>")
+    parser.print_usage()
+    print("\nGot the following unparsed args, %r please fix.\n" % unparsed)
     exit(1)
   else:
     tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)

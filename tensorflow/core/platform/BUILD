@@ -18,6 +18,7 @@ load(
     "tf_additional_proto_hdrs",
     "tf_additional_rocdl_deps",
     "tf_additional_rocdl_srcs",
+    "tf_additional_tensor_coding_deps",
     "tf_additional_test_srcs",
     "tf_logging_absl_deps",
     "tf_platform_hdrs",
@@ -517,6 +518,21 @@ cc_library(
         "subprocess.h",
     ],
     deps = tf_platform_helper_deps("subprocess_impl"),
+)
+
+cc_library(
+    name = "tensor_coding",
+    srcs = ["tensor_coding.cc"],
+    hdrs = ["tensor_coding.h"],
+    deps = [
+        ":platform",
+        ":protobuf",
+        ":stringpiece",
+        ":types",
+        "//tensorflow/core/lib/core:coding",
+        "//tensorflow/core/lib/core:refcount",
+        "//tensorflow/core/lib/strings:string_utils",
+    ] + tf_additional_tensor_coding_deps(),
 )
 
 cc_library(

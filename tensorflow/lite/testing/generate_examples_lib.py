@@ -795,7 +795,6 @@ def make_hardswish_tests(options):
   def build_graph(parameters):
     inp = tf.placeholder(
         dtype=tf.float32, name="input", shape=parameters["input_shape"])
-
     out = inp * tf.nn.relu6(inp + np.float32(3)) * np.float32(1. / 6.)
 
     return [inp], [out]
@@ -807,7 +806,7 @@ def make_hardswish_tests(options):
         outputs, feed_dict=dict(zip(inputs, [input_values])))
 
   # Add additional validation if we are using toco.
-  # Flex and mlir doesn't yet support this. TODO(b/139193008): Fix
+  # Flex doesn't yet support this.
   if not options.run_with_flex:
     options.tflite_convert_function = functools.partial(
         _tflite_convert_verify_num_ops,
@@ -827,8 +826,9 @@ def _tflite_convert_verify_num_ops(tflite_convert_function, *args, **kwargs):
   interpreter = tf.lite.Interpreter(model_content=tflite_model_binary)
   interpreter.allocate_tensors()
   if len(interpreter.get_tensor_details()) != num_ops:
-    raise RuntimeError("Expected to generate two node graph got %r " %
-                       interpreter.get_tensor_details())
+    raise RuntimeError(
+        "Expected to generate two node graph got %s " %
+        "\n".join(str(x) for x in interpreter.get_tensor_details()))
   return result
 
 

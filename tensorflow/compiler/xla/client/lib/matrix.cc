@@ -388,11 +388,10 @@ XlaOp BatchDot(XlaOp x, bool transpose_x, XlaOp y, bool transpose_y,
 }
 
 StatusOr<std::array<std::vector<int64>, 3>> ParseEinsumString(
-    absl::string_view einsum_config) {
+    absl::string_view einsum_config, int64 x_rank, int64 y_rank) {
   std::array<std::vector<int64>, 3> einsum_config_numeric;
   std::vector<absl::string_view> main_split =
       absl::StrSplit(einsum_config, ',');
-
   if (main_split.size() != 2) {
     return InvalidArgument("Expected one \",\" in einsum_config.");
   }
@@ -402,33 +401,92 @@ StatusOr<std::array<std::vector<int64>, 3>> ParseEinsumString(
       return Status::OK();
     }
     if (d == '.') {
-      return InvalidArgument("Unsupported \"...\" or \".\" in einsum config.");
+      return InvalidArgument("Unsupported \".\" in einsum config.");
     }
     return InvalidArgument("Unexpected character in einsum config.");
   };
 
-  auto& x_config = einsum_config_numeric[0];
-  x_config.reserve(main_split[0].size());
-  for (auto d : main_split[0]) {
-    TF_RETURN_IF_ERROR(maybe_invalid_character(d));
-    x_config.push_back(static_cast<int64>(d));
-  }
+  auto string_config_to_numeric = [&](absl::string_view config,
+                                      bool is_input_config, int64 input_rank,
+                                      bool* has_ellipsis, int64* ellipsis_rank,
+                                      std::vector<int64>* numeric_config) {
+    std::vector<absl::string_view> splits = absl::StrSplit(config, "...");
+    if (splits.empty()) {
+      return InternalError(
+          "Unexpected null string view error while parsing einsum config.");
+    }
+    if (splits.size() > 2) {
+      return InvalidArgument("Too many ellipses (\"...\") in einsum config.");
+    }
+    // There is one split if we don't have an ellipsis, and two splits if we do.
+    *has_ellipsis = splits.size() > 1;
+    // We only compute ellipsis_rank for input configs.
+    if (is_input_config && *has_ellipsis) {
+      // ellipsis_rank is input rank minus the number of named labels.
+      *ellipsis_rank =
+          input_rank - static_cast<int64>(splits[0].size() + splits[1].size());
+      if (*ellipsis_rank < 0) {
+        return InvalidArgument(
+            "Too few dimensions in the input for the given einsum config.");
+      }
+      if (*ellipsis_rank > static_cast<int64>('A')) {
+        return InvalidArgument("Too many dimensions mapping to ellipsis.");
+      }
+    }
+    for (char d : splits[0]) {
+      TF_RETURN_IF_ERROR(maybe_invalid_character(d));
+      numeric_config->push_back(static_cast<int64>(d));
+    }
+    if (*has_ellipsis) {
+      // For input configs, we use the value of ellipsis_rank we just computed.
+      // For output config, we use the existing value of ellipsis_rank.
+      std::vector<int64> ellipsis_config(*ellipsis_rank);
+      absl::c_iota(ellipsis_config, 0);
+      absl::c_copy(ellipsis_config, std::back_inserter(*numeric_config));
+      for (char d : splits[1]) {
+        TF_RETURN_IF_ERROR(maybe_invalid_character(d));
+        numeric_config->push_back(static_cast<int64>(d));
+      }
+    }
+    return Status::OK();
+  };
+
+  bool has_ellipsis = false;
+  // The ranks of the subshape that maps to ellipsis in each of the operands.
+  int64 x_ellipsis_rank = 0;
+  int64 y_ellipsis_rank = 0;
+
+  TF_RETURN_IF_ERROR(string_config_to_numeric(
+      main_split[0], /*is_input_config=*/true, x_rank, &has_ellipsis,
+      &x_ellipsis_rank, &einsum_config_numeric[0]));
+
   std::vector<absl::string_view> y_output_split =
       absl::StrSplit(main_split[1], "->");
   if (y_output_split.size() != 2) {
     return InvalidArgument("Expected one \"->\" in einsum_config.");
   }
-  auto& y_config = einsum_config_numeric[1];
-  y_config.reserve(y_output_split[0].size());
-  for (auto d : y_output_split[0]) {
-    TF_RETURN_IF_ERROR(maybe_invalid_character(d));
-    y_config.push_back(static_cast<int64>(d));
+
+  TF_RETURN_IF_ERROR(string_config_to_numeric(
+      y_output_split[0], /*is_input_config=*/true, y_rank, &has_ellipsis,
+      &y_ellipsis_rank, &einsum_config_numeric[1]));
+  if (x_ellipsis_rank != y_ellipsis_rank) {
+    return InvalidArgument(
+        "Expected einsum_config to have equal input batch sizes mapping to "
+        "ellipsis.");
   }
-  auto& output_config = einsum_config_numeric[2];
-  output_config.reserve(y_output_split[1].size());
-  for (auto d : y_output_split[1]) {
-    TF_RETURN_IF_ERROR(maybe_invalid_character(d));
-    output_config.push_back(static_cast<int64>(d));
+
+  // Replace ellipsis in output_config with numeric labels with the same
+  // ellipsis rank as in the inputs.
+  // Note: This implementation doesn't support different-rank broadcasting.
+  TF_RETURN_IF_ERROR(string_config_to_numeric(
+      y_output_split[1], /*is_input_config=*/false, /*input_rank=*/0,
+      &has_ellipsis, &x_ellipsis_rank, &einsum_config_numeric[2]));
+  // If we had non-zero ellipsis rank in the inputs, we must also have ellipsis
+  // occurring in the output_config.
+  if (x_ellipsis_rank > 0 && !has_ellipsis) {
+    return InvalidArgument(
+        "Expected einsum_config's output config to have ellipsis when input "
+        "config has ellipsis.");
   }
   return einsum_config_numeric;
 }
@@ -437,8 +495,11 @@ XlaOp Einsum(XlaOp x, XlaOp y, absl::string_view einsum_config,
              PrecisionConfig::Precision precision) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(auto einsum_config_numeric,
-                        ParseEinsumString(einsum_config));
+    TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
+    TF_ASSIGN_OR_RETURN(Shape y_shape, builder->GetShape(y));
+    TF_ASSIGN_OR_RETURN(
+        auto einsum_config_numeric,
+        ParseEinsumString(einsum_config, x_shape.rank(), y_shape.rank()));
     return Einsum(x, einsum_config_numeric[0], y, einsum_config_numeric[1],
                   einsum_config_numeric[2], precision);
   });

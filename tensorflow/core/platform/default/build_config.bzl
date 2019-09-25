@@ -744,6 +744,9 @@ def tf_additional_numa_copts():
 def tf_additional_rpc_deps():
     return []
 
+def tf_additional_tensor_coding_deps():
+    return []
+
 def tf_logging_absl_deps():
     return [
         "@com_google_absl//absl/base",

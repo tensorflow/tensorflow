@@ -1116,6 +1116,23 @@ def TFL_GreaterOp : TFL_Op<"greater", [NoSideEffect, NoQuantizableResult]> {
   let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
 }
 
+def TFL_HardSwishOp: TFL_Op<"hard_swish", [NoSideEffect,
+                                          SameOperandsAndResultType]> {
+  let summary = "Hardswish activation function.";
+  let description = [{
+    Computes hard-swish activation function
+      f(x) -> (x * relu6(x+3))/6
+    element-wise.
+  }];
+
+  let arguments = (ins TensorOf<[F32, QUI8, QI8]>:$input);
+
+  let results = (outs TensorOf<[F32, QUI8, QI8]>:$out);
+
+  let hasOptions = 0;
+}
+
+
 // NoSideEffect trait is not added to the op intentionally to prevent it from
 // getting removed if the input is unused. The generated FlatBuffer needs to
 // have a tensor along with the metadata for each of the subgraph inputs.

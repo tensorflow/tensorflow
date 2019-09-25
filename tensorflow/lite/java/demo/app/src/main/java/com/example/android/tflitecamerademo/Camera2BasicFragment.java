@@ -811,7 +811,7 @@ public class Camera2BasicFragment extends Fragment
   private void classifyFrame() {
     if (classifier == null || getActivity() == null || cameraDevice == null) {
       // It's important to not call showToast every frame, or else the app will starve and
-      // hang. updateActiveModel() already puts a error message up with showToast.
+      // hang. updateActiveModel() already puts an error message up with showToast.
       // showToast("Uninitialized Classifier or invalid context.");
       return;
     }

@@ -246,6 +246,11 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
         # Note: this cond is always guaranteed to run because we're inside a
         # defun which will insert automatic control dependencies. It will only
         # execute assign_fn if lifting failed.
+        graph = ops.get_default_graph()
+
+        # Capture the handle ahead of time in order to avoid querying the shape
+        # of the handle which helps async execution performance
+        graph.capture(self._handle, shape=())
         control_flow_ops.cond(
             resource_variable_ops.var_is_initialized_op(self._handle),
             not_assign_fn, assign_fn)
@@ -687,7 +692,7 @@ class Function(object):
             continue
         op_map = lift_to_graph.lift_to_graph(
             [init], ops.get_default_graph(), op_map=op_map)
-        v.assign(op_map[init])
+        v.assign(op_map[init], read_value=False)
 
     with ops.init_scope():
       return initialize_variables.get_concrete_function()()
@@ -728,8 +733,9 @@ class Function(object):
     @function_lib.defun
     def initialize_variables():
       for v, init in initializers:
-        v.assign(lift_to_graph.lift_to_graph(
-            [init], ops.get_default_graph())[init])
+        v.assign(
+            lift_to_graph.lift_to_graph([init], ops.get_default_graph())[init],
+            read_value=False)
 
     return initialize_variables.get_concrete_function()
 

@@ -46,7 +46,7 @@ static OwningModuleRef GraphdefToMlirTranslateFunction(
       std::move(input), debug_info_file, input_arrays, input_dtypes,
       input_shapes, output_arrays, inference_type, min_values, max_values,
       prune_unused_nodes, convert_legacy_fed_inputs, graph_as_function,
-      context);
+      upgrade_legacy, context);
 }
 
 static TranslateToMLIRRegistration GraphdefToMlirTranslate(
@@ -58,7 +58,7 @@ static OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
       std::move(input), debug_info_file, input_arrays, input_dtypes,
       input_shapes, output_arrays, inference_type, min_values, max_values,
       prune_unused_nodes, convert_legacy_fed_inputs, graph_as_function,
-      context);
+      upgrade_legacy, context);
 }
 
 static TranslateToMLIRRegistration GraphdefToSplattedMlirTranslate(

@@ -217,16 +217,12 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
   if (benchmark_all || HasOption("gpu")) {
 #if defined(__ANDROID__)
     const std::vector<bool> allow_precision_loss = {true, false};
-    const std::vector<int32_t> gl_obj_types = {TFLITE_GL_OBJECT_TYPE_TEXTURE,
-                                               TFLITE_GL_OBJECT_TYPE_BUFFER};
     for (const auto precision_loss : allow_precision_loss) {
-      for (const auto obj_type : gl_obj_types) {
-        BenchmarkParams params;
-        params.AddParam("use_gpu", BenchmarkParam::Create<bool>(true));
-        params.AddParam("gpu_precision_loss_allowed",
-                        BenchmarkParam::Create<bool>(precision_loss));
-        all_run_params_.emplace_back(std::move(params));
-      }
+      BenchmarkParams params;
+      params.AddParam("use_gpu", BenchmarkParam::Create<bool>(true));
+      params.AddParam("gpu_precision_loss_allowed",
+                      BenchmarkParam::Create<bool>(precision_loss));
+      all_run_params_.emplace_back(std::move(params));
     }
 #endif
     // Note by default, gpu delegate allows to operate on lower precision and
