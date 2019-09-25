@@ -49,71 +49,40 @@ class RandomDatasetParams : public DatasetParams {
                       string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
-        seed(CreateTensor<int64>(TensorShape({}), {seed})),
-        seed2(CreateTensor<int64>(TensorShape({}), {seed2})) {}
+        seed_(CreateTensor<int64>(TensorShape({}), {seed})),
+        seed2_(CreateTensor<int64>(TensorShape({}), {seed2})) {}
 
-  Status MakeInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override {
-    *inputs = {TensorValue(&seed), TensorValue(&seed2)};
+  virtual Status GetInputPlaceholder(
+      std::vector<string>* input_placeholder) const override {
+    *input_placeholder = {RandomDatasetOp::kSeed, RandomDatasetOp::kSeed2};
     return Status::OK();
+  }
+
+  virtual Status GetInputs(
+      const std::vector<Tensor*>& input_datasets,
+      std::vector<std::unique_ptr<Tensor>>* created_tensors,
+      gtl::InlinedVector<TensorValue, 4>* inputs) const override {
+    inputs->clear();
+    AddTensorInputs({seed_, seed2_}, created_tensors, inputs);
+    return Status::OK();
+  }
+
+  virtual Status GetAttributes(AttributeVector* attributes) const override {
+    *attributes = {{RandomDatasetOp::kOutputTypes, output_dtypes_},
+                   {RandomDatasetOp::kOutputShapes, output_shapes_}};
+    return Status::OK();
+  }
+
+  virtual string op_name() const override {
+    return RandomDatasetOp::kDatasetType;
   }
 
  private:
-  Tensor seed;
-  Tensor seed2;
+  Tensor seed_;
+  Tensor seed2_;
 };
 
-class RandomDatasetOpTest : public DatasetOpsTestBaseV2<RandomDatasetParams> {
- public:
-  Status Initialize(RandomDatasetParams* dataset_params) override {
-    // Step 1: Set up enough of a TF runtime to be able to invoke a kernel.
-    TF_RETURN_IF_ERROR(InitThreadPool(thread_num_));
-    TF_RETURN_IF_ERROR(InitFunctionLibraryRuntime({}, cpu_num_));
-
-    // Step 2: Box up the four inputs to the kernel inside TensorValue objects
-    // inside a vector.
-    gtl::InlinedVector<TensorValue, 4> inputs;
-    TF_RETURN_IF_ERROR(dataset_params->MakeInputs(&inputs));
-
-    // Step 3: Create a dataset kernel to test, passing in attributes of the
-    // kernel.
-    TF_RETURN_IF_ERROR(MakeDatasetOpKernel(*dataset_params, &dataset_kernel_));
-
-    // Step 4: Create a context in which the kernel will operate. This is where
-    // the kernel gets initialized with its inputs
-    TF_RETURN_IF_ERROR(
-        CreateDatasetContext(dataset_kernel_.get(), &inputs, &dataset_ctx_));
-
-    // Step 5: Unbox the DatasetBase object inside the variant tensor backing
-    // the kernel.
-    TF_RETURN_IF_ERROR(
-        CreateDataset(dataset_kernel_.get(), dataset_ctx_.get(), &dataset_));
-
-    // Step 6: Create an iterator in case the test needs to read the output of
-    // the dataset.
-    TF_RETURN_IF_ERROR(
-        CreateIteratorContext(dataset_ctx_.get(), &iterator_ctx_));
-    TF_RETURN_IF_ERROR(dataset_->MakeIterator(iterator_ctx_.get(),
-                                              kIteratorPrefix, &iterator_));
-
-    return Status::OK();
-  }
-
-  // Creates a new `RandomDataset` op kernel.
-  // Doesn't initialize the random seeds because they are inputs, not
-  // attributes.
-  Status MakeDatasetOpKernel(const RandomDatasetParams& dataset_params,
-                             std::unique_ptr<OpKernel>* op_kernel) override {
-    NodeDef node_def = test::function::NDef(
-        kNodeName, name_utils::OpName(RandomDatasetOp::kDatasetType),
-        // Inputs
-        {RandomDatasetOp::kSeed, RandomDatasetOp::kSeed2},
-        // Attributes
-        {{RandomDatasetOp::kOutputTypes, dataset_params.output_dtypes},
-         {RandomDatasetOp::kOutputShapes, dataset_params.output_shapes}});
-    TF_RETURN_IF_ERROR(CreateOpKernel(node_def, op_kernel));
-    return Status::OK();
-  }
-};
+class RandomDatasetOpTest : public DatasetOpsTestBaseV2 {};
 
 RandomDatasetParams FortyTwo() {
   return {/*seed=*/42,
@@ -156,7 +125,7 @@ std::vector<GetNextTestCase<RandomDatasetParams>> GetNextTestCases() {
 
 TEST_P(ParameterizedGetNextTest, GetNext) {
   auto test_case = GetParam();
-  TF_ASSERT_OK(Initialize(&test_case.dataset_params));
+  TF_ASSERT_OK(Initialize(test_case.dataset_params));
 
   // Can't use DatasetOpsTestBase::CheckIteratorGetNext because the kernel
   // under test produces unbounded input.
