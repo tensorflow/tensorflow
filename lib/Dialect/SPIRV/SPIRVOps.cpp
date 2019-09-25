@@ -29,6 +29,7 @@
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/StringExtras.h"
+#include "llvm/ADT/bit.h"
 
 using namespace mlir;
 
@@ -52,15 +53,6 @@ static constexpr const char kVariableAttrName[] = "variable";
 //===----------------------------------------------------------------------===//
 // Common utility functions
 //===----------------------------------------------------------------------===//
-
-template <typename Dst, typename Src>
-inline Dst bitwiseCast(Src source) noexcept {
-  Dst dest;
-  static_assert(sizeof(source) == sizeof(dest),
-                "bitwiseCast requires same source and destination bitwidth");
-  std::memcpy(&dest, &source, sizeof(dest));
-  return dest;
-}
 
 static LogicalResult extractValueFromConstOp(Operation *op,
                                              int32_t &indexValue) {
@@ -127,7 +119,7 @@ parseEnumAttribute(EnumClass &value, OpAsmParser &parser, OperationState &state,
     return failure();
   }
   state.addAttribute(attrName, parser.getBuilder().getI32IntegerAttr(
-                                   bitwiseCast<int32_t>(value)));
+                                   llvm::bit_cast<int32_t>(value)));
   return success();
 }
 
@@ -1863,7 +1855,7 @@ static ParseResult parseVariableOp(OpAsmParser &parser, OperationState &state) {
   }
 
   auto attr = parser.getBuilder().getI32IntegerAttr(
-      bitwiseCast<int32_t>(ptrType.getStorageClass()));
+      llvm::bit_cast<int32_t>(ptrType.getStorageClass()));
   state.addAttribute(spirv::attributeName<spirv::StorageClass>(), attr);
 
   return success();
