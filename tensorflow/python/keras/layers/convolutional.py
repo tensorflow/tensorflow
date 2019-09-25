@@ -188,7 +188,6 @@ class Conv(Layer):
         padding=op_padding,
         data_format=conv_utils.convert_data_format(self.data_format,
                                                    self.rank + 2))
-    self.built = True
 
   def call(self, inputs):
     outputs = self._convolution_op(inputs, self.kernel)
@@ -787,7 +786,6 @@ class Conv2DTranspose(Conv2D):
           dtype=self.dtype)
     else:
       self.bias = None
-    self.built = True
 
   def call(self, inputs):
     inputs_shape = array_ops.shape(inputs)
@@ -1057,7 +1055,6 @@ class Conv3DTranspose(Conv3D):
           dtype=self.dtype)
     else:
       self.bias = None
-    self.built = True
 
   def call(self, inputs):
     inputs_shape = array_ops.shape(inputs)
@@ -1326,7 +1323,6 @@ class SeparableConv(Conv):
           dtype=self.dtype)
     else:
       self.bias = None
-    self.built = True
 
   def call(self, inputs):
     raise NotImplementedError
@@ -1808,7 +1804,6 @@ class DepthwiseConv2D(Conv2D):
       self.bias = None
     # Set input spec.
     self.input_spec = InputSpec(ndim=4, axes={channel_axis: input_dim})
-    self.built = True
 
   def call(self, inputs):
     outputs = backend.depthwise_conv2d(
