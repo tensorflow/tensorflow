@@ -44,6 +44,7 @@ struct ArrayInfo {
   TensorShapeProto shape;
 };
 
+// TODO(jpienaar): Rename this the options in here are graph level too.
 struct NodeSpecs {
   using InputArrays =
       llvm::MapVector<string, ArrayInfo, llvm::StringMap<unsigned>>;
@@ -63,6 +64,9 @@ struct NodeSpecs {
   bool convert_legacy_fed_inputs = false;
   // If true, the main graph will be treated as a function.
   bool graph_as_function = false;
+  // If true, upgrade legacy features of the graph (for instance, functionalize
+  // control-flow).
+  bool upgrade_legacy = false;
 };
 
 struct ExporterConfigs {

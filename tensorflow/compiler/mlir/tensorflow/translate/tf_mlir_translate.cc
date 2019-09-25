@@ -47,7 +47,7 @@ static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
     absl::string_view output_arrays, absl::string_view inference_type,
     absl::string_view min_values, absl::string_view max_values,
     bool prune_unused_nodes, bool convert_legacy_fed_inputs,
-    bool graph_as_function, mlir::MLIRContext* context) {
+    bool graph_as_function, bool upgrade_legacy, mlir::MLIRContext* context) {
   GraphDef graphdef;
   TF_RETURN_IF_ERROR(tensorflow::LoadProtoFromBuffer(
       {input->getBufferStart(), input->getBufferSize()}, &graphdef));
@@ -61,6 +61,7 @@ static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
   specs.prune_unused_nodes = prune_unused_nodes;
   specs.convert_legacy_fed_inputs = convert_legacy_fed_inputs;
   specs.graph_as_function = graph_as_function;
+  specs.upgrade_legacy = upgrade_legacy;
   TF_RETURN_IF_ERROR(ParseInputArrayInfo(
       input_arrays, input_dtypes, input_shapes, inference_type, min_values,
       max_values, &specs.inputs));
@@ -76,12 +77,12 @@ mlir::OwningModuleRef GraphdefToMlirTranslateFunction(
     absl::string_view output_arrays, absl::string_view inference_type,
     absl::string_view min_values, absl::string_view max_values,
     bool prune_unused_nodes, bool convert_legacy_fed_inputs,
-    bool graph_as_function, mlir::MLIRContext* context) {
+    bool graph_as_function, bool upgrade_legacy, mlir::MLIRContext* context) {
   auto module_or = GraphdefToMlirImport(
       std::move(input), debug_info_file, input_arrays, input_dtypes,
       input_shapes, output_arrays, inference_type, min_values, max_values,
       prune_unused_nodes, convert_legacy_fed_inputs, graph_as_function,
-      context);
+      upgrade_legacy, context);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "Graph import failed: " << module_or.status();
     return nullptr;
@@ -131,12 +132,12 @@ mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
     absl::string_view output_arrays, absl::string_view inference_type,
     absl::string_view min_values, absl::string_view max_values,
     bool prune_unused_nodes, bool convert_legacy_fed_inputs,
-    bool graph_as_function, mlir::MLIRContext* context) {
+    bool graph_as_function, bool upgrade_legacy, mlir::MLIRContext* context) {
   auto module_or = GraphdefToMlirImport(
       std::move(input), debug_info_file, input_arrays, input_dtypes,
       input_shapes, output_arrays, inference_type, min_values, max_values,
       prune_unused_nodes, convert_legacy_fed_inputs, graph_as_function,
-      context);
+      upgrade_legacy, context);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "Graph import failed: " << module_or.status();
     return nullptr;

@@ -85,6 +85,7 @@ tf_cc_binary(
     name = "tf-opt",
     deps = [
         ":tf_mlir_opt_main",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
     ],
 )
