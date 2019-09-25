@@ -4,15 +4,20 @@ func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x1001xf32> {
 // CHECK: {
 // CHECK-NEXT:  version: 3,
 // CHECK-NEXT:  operator_codes: [ {
-// CHECK-NEXT:    builtin_code: QUANTIZE
+// CHECK-NEXT:    builtin_code: QUANTIZE,
+// CHECK-NEXT:    version: 1
 // CHECK-NEXT:  }, {
-// CHECK-NEXT:    builtin_code: CONV_2D
+// CHECK-NEXT:    builtin_code: CONV_2D,
+// CHECK-NEXT:    version: 1
 // CHECK-NEXT:  }, {
-// CHECK-NEXT:    builtin_code: RESHAPE
+// CHECK-NEXT:    builtin_code: RESHAPE,
+// CHECK-NEXT:    version: 1
 // CHECK-NEXT:  }, {
-// CHECK-NEXT:    builtin_code: SOFTMAX
+// CHECK-NEXT:    builtin_code: SOFTMAX,
+// CHECK-NEXT:    version: 1
 // CHECK-NEXT:  }, {
-// CHECK-NEXT:    builtin_code: DEQUANTIZE
+// CHECK-NEXT:    builtin_code: DEQUANTIZE,
+// CHECK-NEXT:    version: 1
 // CHECK-NEXT:  } ],
 // CHECK-NEXT:  subgraphs: [ {
 // CHECK-NEXT:    tensors: [ {

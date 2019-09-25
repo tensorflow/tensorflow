@@ -15,7 +15,8 @@ cc_library(
         "op_version.h",
     ],
     deps = [
-        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
@@ -27,7 +28,7 @@ tf_cc_test(
     srcs = ["op_version_test.cc"],
     deps = [
         ":op_version",
-        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "@com_google_googletest//:gtest_main",
     ],
 )

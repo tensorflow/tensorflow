@@ -14,13 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/versioning/op_version.h"
 
-#include <cstring>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tflite {
 
@@ -277,6 +278,127 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     default:
       return 1;
+  }
+}
+
+TensorType GetTensorType(int32_t idx, const SubGraph* subgraph) {
+  // Some tests have a graph with invalid tensor index.
+  if (subgraph->tensors() && idx < subgraph->tensors()->Length()) {
+    return subgraph->tensors()->Get(idx)->type();
+  }
+  LOG(ERROR) << "Can't access tenor " << idx;
+  return static_cast<::tflite::TensorType>(-1);
+}
+
+// Generate OpSignature with the given OperatorCode, Operator and Tensors (from
+// SubGraph). The OpSignature will be used by GetBuiltinOperatorVersion() and
+// mostly input and output tensor types are enough to figure out op version.
+// But some ops (DEPTHWISE_CONV_2D,  FULLY_CONNECTED, ...) require to pass their
+// options to decide op version.
+OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
+                           const SubGraph* subgraph) {
+  OpSignature op_sig = {op_code->builtin_code()};
+
+  switch (op_code->builtin_code()) {
+    case BuiltinOperator_DEPTHWISE_CONV_2D: {
+      auto conv_option = op->builtin_options_as_DepthwiseConv2DOptions();
+      if (conv_option) {
+        op_sig.options.depthwise_conv_2d.dilation_w_factor =
+            conv_option->dilation_w_factor();
+        op_sig.options.depthwise_conv_2d.dilation_h_factor =
+            conv_option->dilation_h_factor();
+      }
+    } break;
+
+    case BuiltinOperator_FAKE_QUANT: {
+      auto fakequant_option = op->builtin_options_as_FakeQuantOptions();
+      if (fakequant_option) {
+        op_sig.options.fakequant.narrow_range =
+            fakequant_option->narrow_range();
+      }
+    } break;
+
+    case BuiltinOperator_FULLY_CONNECTED: {
+      auto fully_connected_option =
+          op->builtin_options_as_FullyConnectedOptions();
+      if (fully_connected_option) {
+        op_sig.options.fully_connected.keep_num_dims =
+            fully_connected_option->keep_num_dims();
+        op_sig.options.fully_connected.weights_format =
+            fully_connected_option->weights_format();
+      }
+    } break;
+
+    case BuiltinOperator_MUL: {
+      if (op->inputs()->Length() < 2 || op->outputs()->Length() < 1) {
+        break;
+      }
+      const Tensor* input1_tensor =
+          subgraph->tensors()->Get(op->inputs()->Get(0));
+      const Tensor* input2_tensor =
+          subgraph->tensors()->Get(op->inputs()->Get(1));
+      const Tensor* output_tensor =
+          subgraph->tensors()->Get(op->outputs()->Get(0));
+      const QuantizationParameters* input1_quant =
+          input1_tensor->quantization();
+      const QuantizationParameters* input2_qunt = input2_tensor->quantization();
+      const QuantizationParameters* output_quant =
+          output_tensor->quantization();
+      if (input1_quant && input1_quant->scale() &&
+          input1_quant->scale()->Length() && input2_qunt &&
+          input2_qunt->scale() && input2_qunt->scale()->Length() &&
+          output_quant && output_quant->scale() &&
+          output_quant->scale()->Length()) {
+        op_sig.options.mul.input1_scale = input1_quant->scale()->Get(0);
+        op_sig.options.mul.input2_scale = input2_qunt->scale()->Get(0);
+        op_sig.options.mul.output_scale = output_quant->scale()->Get(0);
+      }
+    } break;
+
+    case BuiltinOperator_LSTM: {
+      auto lstm_option = op->builtin_options_as_LSTMOptions();
+      if (lstm_option) {
+        op_sig.options.lstm.kernel_type = lstm_option->kernel_type();
+      }
+    } break;
+
+    default:
+      break;
+  }
+
+  for (int32_t i = 0; i < op->inputs()->Length(); ++i) {
+    TensorType tensor_type = GetTensorType(op->inputs()->Get(i), subgraph);
+    op_sig.input_types.push_back(tensor_type);
+  }
+  for (int32_t i = 0; i < op->outputs()->Length(); ++i) {
+    TensorType tensor_type = GetTensorType(op->outputs()->Get(i), subgraph);
+    op_sig.output_types.push_back(tensor_type);
+  }
+  return op_sig;
+}
+
+void UpdateOpVersion(uint8_t* model_buffer_pointer) {
+  auto model = GetMutableModel(model_buffer_pointer);
+  auto subgraphs = model->subgraphs();
+
+  for (int i = 0; i < subgraphs->Length(); ++i) {
+    const SubGraph* subgraph = subgraphs->Get(i);
+    for (int j = 0; j < subgraph->operators()->Length(); ++j) {
+      const Operator* op = subgraph->operators()->Get(j);
+      OperatorCode* op_code =
+          model->mutable_operator_codes()->GetMutableObject(op->opcode_index());
+
+      if (op_code->builtin_code() != BuiltinOperator_CUSTOM) {
+        OpSignature op_sig = GetOpSignature(op_code, op, subgraph);
+        // Update builtin operator version.
+        int32_t op_ver = GetBuiltinOperatorVersion(op_sig);
+        if (!op_code->mutate_version(op_ver)) {
+          LOG(ERROR) << "Can't set operator "
+                     << EnumNameBuiltinOperator(op_code->builtin_code())
+                     << " to version " << op_ver;
+        }
+      }
+    }
   }
 }
 
