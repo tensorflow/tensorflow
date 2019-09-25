@@ -298,6 +298,30 @@ func @operand1_and_result_have_same_element_count_failure(%arg0: tensor<1xi32>, 
 
 // -----
 
+func @four_equals_five() {
+  // expected-error@+1 {{failed to verify that 4 equals 5}}
+  "test.four_equals_five"() : () -> ()
+  return
+}
+
+// -----
+
+func @operand_rank_equals_result_size_success(%arg : tensor<1x2x3x4xi32>) {
+  %0 = "test.operand_rank_equals_result_size"(%arg) : (tensor<1x2x3x4xi32>) -> tensor<4xi32>
+  %1 = "test.operand_rank_equals_result_size"(%arg) : (tensor<1x2x3x4xi32>) -> tensor<2x2xf32>
+  return
+}
+
+// -----
+
+func @operand_rank_equals_result_size_failure(%arg : tensor<1x2x3x4xi32>) {
+  // expected-error@+1 {{failed to verify that operand rank equals result size}}
+  %0 = "test.operand_rank_equals_result_size"(%arg) : (tensor<1x2x3x4xi32>) -> tensor<2xi32>
+  return
+}
+
+// -----
+
 func @same_types_element_mismatch(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
   // expected-error@+1 {{all of {x, res} have same type}}
   %0 = "test.operand_one_and_result_have_same_type"(%arg0, %arg1) : (tensor<* x i32>, tensor<* x f32>) -> tensor<* x f32>
