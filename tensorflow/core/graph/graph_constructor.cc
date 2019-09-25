@@ -92,6 +92,7 @@ class GraphConstructor {
         : allow_internal_ops(in.allow_internal_ops),
           expect_device_spec(in.expect_device_spec),
           importing(false),
+          validate_nodes(in.validate_nodes),
           validate_colocation_constraints(false) {}
     Options(const ImportGraphDefOptions& in)  // NOLINT(runtime/explicit)
         : allow_internal_ops(false),
@@ -107,6 +108,7 @@ class GraphConstructor {
           return_tensors(in.return_tensors.begin(), in.return_tensors.end()),
           return_nodes(in.return_nodes),
           importing(true),
+          validate_nodes(true),
           validate_colocation_constraints(in.validate_colocation_constraints),
           validate_shape(in.validate_shape),
           default_device(in.default_device) {}
@@ -132,6 +134,10 @@ class GraphConstructor {
     // applicable to ConvertGraphDefToGraph as well, so make an attempt to
     // remove this.
     bool importing;
+    // If true, validates that nodes being converted have all expected attrs
+    // set and no unknonw attrs set by calling ValidateNodeDef().
+    // `validate_nodes` is always true when `importing` is set.
+    bool validate_nodes;
     bool validate_colocation_constraints;
     bool validate_shape = true;
 
@@ -1225,8 +1231,22 @@ Status GraphConstructor::Convert() {
       if (opts_.uniquify_names && (prefix_.empty() || !opts_.uniquify_prefix)) {
         UniquifyNames(input_already_exists, &node_def);
       }
-      TF_RETURN_IF_ERROR(ModifyNodeDefForImport(&node_def));
     }
+
+    if (opts_.importing) {
+      TF_RETURN_IF_ERROR(ModifyNodeDefForImport(&node_def));
+    } else {
+      const OpDef* op_def;
+      TF_RETURN_IF_ERROR(
+          g_->op_registry()->LookUpOpDef(node_def.op(), &op_def));
+      if (opts_.validate_nodes) {
+        AddDefaultsToNodeDef(*op_def, &node_def);
+        TF_RETURN_IF_ERROR(ValidateNodeDef(node_def, *op_def));
+      } else {
+        AddDefaultsToNodeDef(*op_def, &node_def);
+      }
+    }
+
     TF_RETURN_IF_ERROR(MakeNode(std::move(node_def), &node));
 
     if (opts_.importing) {

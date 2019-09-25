@@ -385,8 +385,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
 
     if not self.could_use_cudnn:
       kwargs = {'training': training}
-      self.cell.reset_dropout_mask()
-      self.cell.reset_recurrent_dropout_mask()
+      self._maybe_reset_cell_dropout_mask(self.cell)
 
       def step(cell_inputs, cell_states):
         return self.cell.call(cell_inputs, cell_states, **kwargs)
@@ -1079,8 +1078,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
     if not self.could_use_cudnn:
       # Fall back to use the normal LSTM.
       kwargs = {'training': training}
-      self.cell.reset_dropout_mask()
-      self.cell.reset_recurrent_dropout_mask()
+      self._maybe_reset_cell_dropout_mask(self.cell)
 
       def step(inputs, states):
         return self.cell.call(inputs, states, **kwargs)

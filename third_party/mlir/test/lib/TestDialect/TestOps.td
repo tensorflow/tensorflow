@@ -288,6 +288,18 @@ def Operand1AndResultHaveSameElementCount :
   let results = (outs AnyTensor:$res);
 }
 
+def FourEqualsFive :
+    TEST_Op<"four_equals_five", [AllMatch<["5", "4"], "4 equals 5">]>;
+
+def OperandRankEqualsResultSize :
+    TEST_Op<"operand_rank_equals_result_size",
+            [AllMatch<["$operand.getType().cast<ShapedType>().getRank()",
+                       "$result.getType().cast<ShapedType>().getNumElements()"
+                      ], "operand rank equals result size">]> {
+  let arguments = (ins AnyTensor:$operand);
+  let results = (outs AnyTensor:$result);
+}
+
 def IfFirstOperandIsNoneThenSoIsSecond :
     TEST_Op<"if_first_operand_is_none_then_so_is_second", [PredOpTrait<
     "has either both none type operands or first is not none",

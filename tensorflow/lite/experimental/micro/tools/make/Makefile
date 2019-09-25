@@ -30,6 +30,11 @@ HOST_ARCH := $(shell if uname -m | grep -Eq 'i[345678]86'; then echo x86_32; els
 TARGET := $(HOST_OS)
 TARGET_ARCH := $(HOST_ARCH)
 
+# Default compiler and tool names:
+CXX_TOOL := g++
+CC_TOOL := gcc
+AR_TOOL := ar
+
 # Specify TAGS on the command line to add a particular set of specialized
 # implementations, for example TAGS="CMSIS disco_f746ng" to target a Discovery
 # STM32F746NG board, using the CMSIS library's implementations where possible.
@@ -211,9 +216,9 @@ PRJDIR := $(GENDIR)prj/
 
 MICROLITE_LIB_PATH := $(LIBDIR)$(MICROLITE_LIB_NAME)
 
-CXX := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}g++
-CC := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}gcc
-AR := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}ar
+CXX := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}${CXX_TOOL}
+CC := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}${CC_TOOL}
+AR := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}${AR_TOOL}
 
 # Load the examples.
 include $(wildcard tensorflow/lite/experimental/micro/examples/*/Makefile.inc)

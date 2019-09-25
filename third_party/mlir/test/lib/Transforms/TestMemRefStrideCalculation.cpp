@@ -32,6 +32,7 @@ struct TestMemRefStrideCalculation
 
 // Traverse AllocOp and compute strides of each MemRefType independently.
 void TestMemRefStrideCalculation::runOnFunction() {
+  llvm::outs() << "Testing: " << getFunction().getName() << "\n";
   getFunction().walk([&](AllocOp allocOp) {
     auto memrefType = allocOp.getResult()->getType().cast<MemRefType>();
     SmallVector<int64_t, 4> strideVector;
@@ -57,6 +58,7 @@ void TestMemRefStrideCalculation::runOnFunction() {
     });
     llvm::outs() << "\n";
   });
+  llvm::outs().flush();
 }
 
 static PassRegistration<TestMemRefStrideCalculation>

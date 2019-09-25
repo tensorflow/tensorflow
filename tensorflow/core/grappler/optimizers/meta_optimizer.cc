@@ -164,10 +164,17 @@ bool MemoryOptimizerEnabled(
 #define MK_OPT(NAME, VALUE) \
   if (optimizer == NAME) return std::unique_ptr<GraphOptimizer>(VALUE)
 
+bool MetaOptimizer::IsSingleThreadedExecutor() const {
+  return config_proto_.experimental().executor_type() ==
+         "SINGLE_THREADED_EXECUTOR";
+}
+
 std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
     const string& optimizer) const {
   MK_OPT("pruning", new ModelPruner());
-  MK_OPT("function", new FunctionOptimizer(cfg_.function_optimization()));
+  MK_OPT("function", new FunctionOptimizer(
+                         cfg_.function_optimization(),
+                         /*lower_control_flow=*/!IsSingleThreadedExecutor()));
   MK_OPT("constfold", new ConstantFolding(cpu_device_));
   MK_OPT("shape", new ShapeOptimizer());
   MK_OPT("remap", new Remapper(cfg_.remapping()));
@@ -211,8 +218,9 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(MakeUnique<ImplementationSelector>());
   }
   if (cfg_.function_optimization() != RewriterConfig::OFF) {
-    optimizers->push_back(
-        MakeUnique<FunctionOptimizer>(cfg_.function_optimization()));
+    optimizers->push_back(MakeUnique<FunctionOptimizer>(
+        cfg_.function_optimization(),
+        /*lower_contorl_flow=*/!IsSingleThreadedExecutor()));
   }
   if (cfg_.debug_stripper() == RewriterConfig::ON) {
     optimizers->push_back(MakeUnique<DebugStripper>());

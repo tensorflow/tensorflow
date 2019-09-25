@@ -614,7 +614,7 @@ py_test(
 
 cuda_py_test(
     name = "check_numerics_callback_test",
-    size = "small",
+    size = "medium",
     srcs = ["lib/check_numerics_callback_test.py"],
     additional_deps = [
         ":check_numerics_callback",

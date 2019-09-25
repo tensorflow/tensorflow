@@ -66,6 +66,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/delegates/flex/whitelisted_flex_ops.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/version.h"
 
 using llvm::dyn_cast;
@@ -689,14 +690,15 @@ uint32_t Translator::GetOpcodeIndex(const std::string& op_name,
   // If the insert succeeded, the opcode has not been created already. Create a
   // new operator code and update its index value in the map.
   if (it.second) {
-    // TODO(antiagainst): Some TFLite ops supports version > 1, like
-    // DepthwiseConv2DOptions. Handle version properly.
     it.first->second = opcodes_.size();
     auto custom_code = builtin == tflite::BuiltinOperator_CUSTOM
                            ? builder_.CreateString(op_name)
                            : BufferOffset<flatbuffers::String>();
+    // Use version 0 for builtin op. This is a way to serialize version field to
+    // flatbuffer (since 0 is non default) and it will be corrected later.
+    int32_t op_version = builtin != tflite::BuiltinOperator_CUSTOM ? 0 : 1;
     opcodes_.push_back(CreateOperatorCode(builder_, /*builtin_code=*/builtin,
-                                          custom_code, /*version=*/1));
+                                          custom_code, op_version));
   }
   return it.first->second;
 }
@@ -1065,6 +1067,7 @@ Optional<std::string> Translator::TranslateInternal() {
       builder_.CreateVector(subgraphs), description,
       builder_.CreateVector(buffers_), metadata_buffer, *metadata);
   tflite::FinishModelBuffer(builder_, model);
+  tflite::UpdateOpVersion(builder_.GetBufferPointer());
 
   // Return serialized string for the built FlatBuffer.
   return std::string(reinterpret_cast<const char*>(builder_.GetBufferPointer()),
