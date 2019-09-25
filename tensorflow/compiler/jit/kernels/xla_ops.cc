@@ -401,9 +401,10 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
 
   const xla::HloInputOutputAliasConfig& input_output_alias =
       executable->executable()->module().input_output_alias_config();
-  OP_REQUIRES_OK(ctx, launch_context.PopulateOutputs(
-                          ctx, kernel, run_result.ConsumeValueOrDie(),
-                          /*missing_ctx_input_prefix=*/0, input_output_alias));
+  OP_REQUIRES_OK(
+      ctx, launch_context.PopulateOutputs(
+               ctx, kernel, run_result.ConsumeValueOrDie(),
+               /*missing_ctx_input_prefix=*/0, input_output_alias, variables));
   VLOG(1) << "Done";
 }
 
@@ -613,7 +614,7 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
       launch_context.PopulateOutputs(
           ctx, closure.compilation_result(), run_result.ConsumeValueOrDie(),
           /*missing_ctx_input_prefix=*/closure.num_constant_args(),
-          input_output_alias));
+          input_output_alias, closure.resource_var_snapshots()));
 }
 
 REGISTER_KERNEL_BUILDER(Name("XlaLaunch").Device(DEVICE_CPU), XlaLocalLaunchOp);
