@@ -46,7 +46,7 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
     processing_time_ += delta;
   }
 
-  NodeExecStatsInterface* CreateNodeExecStats(const Node* node) override {
+  NodeExecStatsInterface* CreateNodeExecStats(const NodeDef* node) override {
     return new SimpleNodeExecStats(this);
   }
 

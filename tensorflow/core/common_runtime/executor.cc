@@ -1730,7 +1730,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
     params.track_allocations = false;
     stats = nullptr;
     if (stats_collector_ && !tagged_node.is_dead) {
-      stats = stats_collector_->CreateNodeExecStats(node);
+      stats = stats_collector_->CreateNodeExecStats(&node->def());
       // Track allocations if and only if we are collecting statistics, and
       // `stats` object is expecting allocations to be tracked.
       params.track_allocations = stats ? stats->TrackAllocations() : false;
