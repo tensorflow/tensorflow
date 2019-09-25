@@ -322,14 +322,14 @@ def setdiff1d(x, y, index_dtype=dtypes.int32, name=None):
   out[i] = x[idx[i]] for i in [0, 1, ..., len(out) - 1]
   ```
 
-  #### EXAMPLE:
+  Example usage:
 
   >>> x = [1, 2, 3, 4, 5, 6]
   >>> y = [1, 3, 5]
-  >>> result = tf.setdiff1d(x,y)
-  >>> sess = tf.compat.v1.Session()
-  >>> print(sess.run(result))
-  ListDiff(out=array([2, 4, 6], dtype=int32), idx=array([1, 3, 5], dtype=int32))
+  >>> result = setdiff1d(x,y)
+  >>> ListDiff(out=<tf.Tensor: id=76, shape=(3,), dtype=int32, numpy=
+  ... array([2, 4, 6], dtype=int32)>, idx=<tf.Tensor: id=77, shape=
+  ... (3,), dtype=int32, numpy=array([1, 3, 5], dtype=int32)>)
 
   Args:
     x: A Tensor. 1-D. Values to keep.
@@ -1624,7 +1624,7 @@ def unique(x, out_idx=dtypes.int32, name=None):
 
   Example usage:
 
-  >>> x = constant([1, 1, 2, 4, 4, 4, 7, 8, 8])
+  >>> x = tf.constant([1, 1, 2, 4, 4, 4, 7, 8, 8])
   >>> y, idx = unique(x)
   >>> y
   <tf.Tensor: id=8, shape=(5,), dtype=int32, numpy=
@@ -1670,13 +1670,16 @@ def unique_with_counts(x, out_idx=dtypes.int32, name=None):
   Example usage:
 
   >>> x = tf.constant([1, 1, 2, 4, 4, 4, 7, 8, 8])
-  >>> y, idx, count = tf.unique_with_counts(x)
-  >>> print(y)
-  [1 2 4 7 8]
-  >>> tf.print(idx)
-  [0, 0, 1, 2, 2, 2, 3, 4, 4]
-  >>> tf.print(count)
-  [2, 1, 3, 1, 2]
+  >>> y, idx, count = unique_with_counts(x)
+  >>> y
+  <tf.Tensor: id=36, shape=(5,), dtype=int32, numpy
+  ... =array([1, 2, 4, 7, 8], dtype=int32)>
+  >>> idx
+  <tf.Tensor: id=37, shape=(9,), dtype=int32, numpy
+  ... =array([0, 0, 1, 2, 2, 2, 3, 4, 4], dtype=int32)>
+  >>> count
+  <tf.Tensor: id=38, shape=(5,), dtype=int32, numpy
+  ... =array([2, 1, 3, 1, 2], dtype=int32)>
 
   Args:
     x: A Tensor. 1-D.
