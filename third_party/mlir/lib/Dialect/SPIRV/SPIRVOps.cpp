@@ -69,23 +69,6 @@ static LogicalResult extractValueFromConstOp(Operation *op,
   return success();
 }
 
-static ParseResult parseBinaryLogicalOp(OpAsmParser &parser,
-                                        OperationState &result) {
-  SmallVector<OpAsmParser::OperandType, 2> ops;
-  Type type;
-  if (parser.parseOperandList(ops, 2) || parser.parseColonType(type) ||
-      parser.resolveOperands(ops, type, result.operands)) {
-    return failure();
-  }
-  // Result must be a scalar or vector of boolean type.
-  Type resultType = parser.getBuilder().getIntegerType(1);
-  if (auto opsType = type.dyn_cast<VectorType>()) {
-    resultType = VectorType::get(opsType.getNumElements(), resultType);
-  }
-  result.addTypes(resultType);
-  return success();
-}
-
 template <typename EnumClass>
 static ParseResult
 parseEnumAttribute(EnumClass &value, OpAsmParser &parser,
@@ -147,19 +130,6 @@ static ParseResult parseMemoryAccessAttributes(OpAsmParser &parser,
     }
   }
   return parser.parseRSquare();
-}
-
-// Parses an op that has no inputs and no outputs.
-static ParseResult parseNoIOOp(OpAsmParser &parser, OperationState &state) {
-  if (parser.parseOptionalAttributeDict(state.attributes))
-    return failure();
-  return success();
-}
-
-static void printBinaryLogicalOp(Operation *logicalOp, OpAsmPrinter &printer) {
-  printer << logicalOp->getName() << ' ' << *logicalOp->getOperand(0) << ", "
-          << *logicalOp->getOperand(1);
-  printer << " : " << logicalOp->getOperand(0)->getType();
 }
 
 template <typename LoadStoreOpTy>
@@ -260,12 +230,6 @@ static LogicalResult verifyLoadStorePtrAndValTypes(LoadStoreOpTy op, Value *ptr,
   return success();
 }
 
-// Prints an op that has no inputs and no outputs.
-static void printNoIOOp(Operation *op, OpAsmPrinter &printer) {
-  printer << op->getName();
-  printer.printOptionalAttrDict(op->getAttrs());
-}
-
 static ParseResult parseVariableDecorations(OpAsmParser &parser,
                                             OperationState &state) {
   auto builtInName =
@@ -350,6 +314,62 @@ static Attribute extractCompositeElement(Attribute composite,
   }
 
   return {};
+}
+
+//===----------------------------------------------------------------------===//
+// Common parsers and printers
+//===----------------------------------------------------------------------===//
+
+// Parses an op that has no inputs and no outputs.
+static ParseResult parseNoIOOp(OpAsmParser &parser, OperationState &state) {
+  if (parser.parseOptionalAttributeDict(state.attributes))
+    return failure();
+  return success();
+}
+
+// Prints an op that has no inputs and no outputs.
+static void printNoIOOp(Operation *op, OpAsmPrinter &printer) {
+  printer << op->getName();
+  printer.printOptionalAttrDict(op->getAttrs());
+}
+
+static ParseResult parseUnaryOp(OpAsmParser &parser, OperationState &state) {
+  OpAsmParser::OperandType operandInfo;
+  Type type;
+  if (parser.parseOperand(operandInfo) || parser.parseColonType(type) ||
+      parser.resolveOperands(operandInfo, type, state.operands)) {
+    return failure();
+  }
+  state.addTypes(type);
+  return success();
+}
+
+static void printUnaryOp(Operation *unaryOp, OpAsmPrinter &printer) {
+  printer << unaryOp->getName() << ' ' << *unaryOp->getOperand(0) << " : "
+          << unaryOp->getOperand(0)->getType();
+}
+
+static ParseResult parseBinaryLogicalOp(OpAsmParser &parser,
+                                        OperationState &result) {
+  SmallVector<OpAsmParser::OperandType, 2> ops;
+  Type type;
+  if (parser.parseOperandList(ops, 2) || parser.parseColonType(type) ||
+      parser.resolveOperands(ops, type, result.operands)) {
+    return failure();
+  }
+  // Result must be a scalar or vector of boolean type.
+  Type resultType = parser.getBuilder().getIntegerType(1);
+  if (auto opsType = type.dyn_cast<VectorType>()) {
+    resultType = VectorType::get(opsType.getNumElements(), resultType);
+  }
+  result.addTypes(resultType);
+  return success();
+}
+
+static void printBinaryLogicalOp(Operation *logicalOp, OpAsmPrinter &printer) {
+  printer << logicalOp->getName() << ' ' << *logicalOp->getOperand(0) << ", "
+          << *logicalOp->getOperand(1);
+  printer << " : " << logicalOp->getOperand(0)->getType();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1055,27 +1075,6 @@ static LogicalResult verify(spirv::FunctionCallOp functionCallOp) {
   }
 
   return success();
-}
-
-//===----------------------------------------------------------------------===//
-// spv.GLSL.UnaryOp
-//===----------------------------------------------------------------------===//
-
-static ParseResult parseGLSLUnaryOp(OpAsmParser &parser,
-                                    OperationState &state) {
-  OpAsmParser::OperandType operandInfo;
-  Type type;
-  if (parser.parseOperand(operandInfo) || parser.parseColonType(type) ||
-      parser.resolveOperands(operandInfo, type, state.operands)) {
-    return failure();
-  }
-  state.addTypes(type);
-  return success();
-}
-
-static void printGLSLUnaryOp(Operation *unaryOp, OpAsmPrinter &printer) {
-  printer << unaryOp->getName() << ' ' << *unaryOp->getOperand(0) << " : "
-          << unaryOp->getOperand(0)->getType();
 }
 
 //===----------------------------------------------------------------------===//
