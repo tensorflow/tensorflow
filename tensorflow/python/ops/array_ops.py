@@ -326,8 +326,8 @@ def setdiff1d(x, y, index_dtype=dtypes.int32, name=None):
 
   >>> x = [1, 2, 3, 4, 5, 6]
   >>> y = [1, 3, 5]
-  >>> result = setdiff1d(x,y)
-  >>> ListDiff(out=<tf.Tensor: id=76, shape=(3,), dtype=int32, numpy=
+  >>> setdiff1d(x,y)
+  ListDiff(out=<tf.Tensor: id=76, shape=(3,), dtype=int32, numpy=
   ... array([2, 4, 6], dtype=int32)>, idx=<tf.Tensor: id=77, shape=
   ... (3,), dtype=int32, numpy=array([1, 3, 5], dtype=int32)>)
 
