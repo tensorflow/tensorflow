@@ -1,5 +1,5 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
 
 package(
@@ -1880,8 +1880,6 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-tflite_portable_test_suite()
-
 cc_test(
     name = "mirror_pad_test",
     srcs = ["mirror_pad_test.cc"],
@@ -1991,3 +1989,5 @@ cc_test(
         "@com_google_googletest//:gtest",
     ],
 )
+
+tflite_portable_test_suite_combined(combine_conditions = {"deps": [":test_main"]})
