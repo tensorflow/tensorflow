@@ -111,10 +111,6 @@ mirrored_strategy_with_two_gpus = combinations.NamedDistribution(
     "Mirrored2GPUs",
     lambda: mirrored_lib.MirroredStrategy(["/gpu:0", "/gpu:1"]),
     required_gpus=2)
-mirrored_strategy_with_two_gpus_remote = combinations.NamedDistribution(
-    "Mirrored2GPUsRemote",
-    lambda: mirrored_lib.MirroredStrategy(["/job:foo/gpu:0", "/job:foo/gpu:1"]),
-    required_gpus=2)
 # Should call set_virtual_cpus_to_at_least(3) in your test's setUp methods.
 mirrored_strategy_with_cpu_1_and_2 = combinations.NamedDistribution(
     "Mirrored2CPU", lambda: mirrored_lib.MirroredStrategy(["/cpu:1", "/cpu:2"]))

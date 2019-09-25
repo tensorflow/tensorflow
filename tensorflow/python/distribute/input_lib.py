@@ -142,10 +142,9 @@ class InputWorkers(object):
     self._device_map = device_map
     self._logical_device = logical_device
     if worker_device_pairs is None:
-      devices = device_map.logical_to_actual_devices(logical_device)
       worker_device_pairs = ((
-          device_util.canonicalize("/device:CPU:0", devices[0]),
-          devices),)
+          device_util.canonicalize("/device:CPU:0"),
+          device_map.logical_to_actual_devices(logical_device)),)
     self._input_worker_devices = tuple(d for d, _ in worker_device_pairs)
     self._fed_devices = tuple(tuple(device_util.canonicalize(d) for d in f)
                               for _, f in worker_device_pairs)
