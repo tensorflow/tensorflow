@@ -638,6 +638,9 @@ class OperandTypeIterator final
 public:
   using reference = Type;
 
+  /// Provide a const deference method.
+  Type operator*() const { return unwrap(*I); }
+
   /// Initializes the operand type iterator to the specified operand iterator.
   OperandTypeIterator(OperandIterator it)
       : llvm::mapped_iterator<OperandIterator, Type (*)(Value *)>(it, &unwrap) {
