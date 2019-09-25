@@ -107,6 +107,7 @@ cc_test(
         "nnapi_delegate_test.cc",
     ],
     tags = [
+        "no_mac",  #TODO(b/141562975): Re-enable when bug is resolved.
         "no_windows",
         "tflite_not_portable_ios",
     ],
