@@ -18,6 +18,7 @@ limitations under the License.
 namespace tensorflow {
 REGISTER7(UnaryOp, CPU, "Neg", functor::neg, float, Eigen::half, double, int32,
           complex64, int64, complex128);
+REGISTER(UnaryOp, CPU, "Neg", functor::neg, int32);
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER3(UnaryOp, SYCL, "Neg", functor::neg, float, double, int64);
