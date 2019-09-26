@@ -290,7 +290,7 @@ def run_functions_eagerly(run_eagerly):
   >>>
   >>> tf.config.experimental_run_functions_eagerly(True)
   >>> sqrt(tf.constant(2.))
-  <tf.Tensor: id=..., shape=(), dtype=float32, numpy=1.4150391>
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.4150391>
   >>> ys
   [1.5, 1.25, 1.375, 1.4375, 1.40625, 1.421875, 1.4140625, 1.4179688, 1.4160156,
   1.4150391]
@@ -645,9 +645,9 @@ class Function(object):
               "def f():\n"
               "  return v\n"
               "\n"
-              "f()  # <tf.Tensor: ... numpy=1.>\n"
+              "f()  # <tf.Tensor: numpy=1.>\n"
               "v.assign_add(1.)\n"
-              "f()  # <tf.Tensor: ... numpy=2.>")
+              "f()  # <tf.Tensor: numpy=2.>")
         condition = math_ops.logical_and(
             condition, resource_variable_ops.var_is_initialized_op(
                 variable.handle))

@@ -892,8 +892,8 @@ class _EagerTensorBase(Tensor):
                                                   self.dtype.name)
 
   def __repr__(self):
-    return "<tf.Tensor: id=%s, shape=%s, dtype=%s, numpy=%s>" % (
-        self._id, self.shape, self.dtype.name, numpy_text(self, is_repr=True))
+    return "<tf.Tensor: shape=%s, dtype=%s, numpy=%s>" % (
+        self.shape, self.dtype.name, numpy_text(self, is_repr=True))
 
   def __len__(self):
     """Returns the length of the first dimension in the Tensor."""

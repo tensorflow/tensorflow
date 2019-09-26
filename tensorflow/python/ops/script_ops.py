@@ -536,7 +536,7 @@ def numpy_function(func, inp, Tout, name=None):
   ...   y = tf.numpy_function(my_numpy_func, [input], tf.float32)
   ...   return y * y
   >>> tf_function(tf.constant(1.))
-  <tf.Tensor: id=..., shape=(), dtype=float32, numpy=1.3810978>
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.3810978>
 
   Comparison to `tf.py_function`:
   `tf.py_function` and `tf.numpy_function` are very similar, except that
