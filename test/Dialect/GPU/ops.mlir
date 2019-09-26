@@ -76,6 +76,9 @@ func @kernel_1(%arg0 : f32, %arg1 : memref<?xf32, 1>)
   %gDimY = "gpu.grid_dim"() {dimension = "y"} : () -> (index)
   %gDimZ = "gpu.grid_dim"() {dimension = "z"} : () -> (index)
 
+  %one = constant 1.0 : f32
+  %sum = "gpu.all_reduce"(%one) : (f32) -> (f32)
+
   "some_op"(%bIdX, %tIdX) : (index, index) -> ()
   %42 = load %arg1[%bIdX] : memref<?xf32, 1>
   return

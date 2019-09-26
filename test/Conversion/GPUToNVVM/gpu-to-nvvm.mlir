@@ -32,6 +32,13 @@ module attributes {gpu.kernel_module} {
     // CHECK: = nvvm.read.ptx.sreg.nctaid.z : !llvm.i32
     %gDimZ = "gpu.grid_dim"() {dimension = "z"} : () -> (index)
 
+    %one = constant 1.0 : f32
+    // TODO(csigg): Check full IR expansion once lowering has settled.
+    // CHECK: nvvm.shfl.sync.bfly
+    // CHECK: nvvm.barrier0
+    // CHECK: nvvm.shfl.sync.bfly
+    %result = "gpu.all_reduce"(%one) {scope = "workgroup", kernel = "add"} : (f32) -> (f32)
+
     std.return
   }
 }
