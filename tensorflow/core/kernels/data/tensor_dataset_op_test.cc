@@ -29,13 +29,7 @@ class TensorDatasetParams : public DatasetParams {
                       std::move(node_name)),
         components_(std::move(components)) {}
 
-  Status GetInputs(const std::vector<Tensor*>& input_datasets,
-                   std::vector<std::unique_ptr<Tensor>>* created_tensors,
-                   gtl::InlinedVector<TensorValue, 4>* inputs) const override {
-    inputs->clear();
-    AddTensorInputs(components_, created_tensors, inputs);
-    return Status::OK();
-  }
+  std::vector<Tensor> GetInputTensors() const override { return components_; }
 
   Status GetInputPlaceholder(
       std::vector<string>* input_placeholder) const override {

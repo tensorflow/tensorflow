@@ -33,10 +33,9 @@ class MapAndBatchDatasetParams : public DatasetParams {
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         other_arguments_(std::move(other_arguments)),
-        batch_size_(CreateTensor<int64>(TensorShape({}), {batch_size})),
-        num_parallel_calls_(
-            CreateTensor<int64>(TensorShape({}), {num_parallel_calls})),
-        drop_remainder_(CreateTensor<bool>(TensorShape({}), {drop_remainder})),
+        batch_size_(batch_size),
+        num_parallel_calls_(num_parallel_calls),
+        drop_remainder_(drop_remainder),
         func_(std::move(func)),
         func_lib_(std::move(func_lib)),
         type_arguments_(std::move(type_arguments)),
@@ -46,14 +45,13 @@ class MapAndBatchDatasetParams : public DatasetParams {
         input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
   }
 
-  Status GetInputs(const std::vector<Tensor*>& input_datasets,
-                   std::vector<std::unique_ptr<Tensor>>* created_tensors,
-                   gtl::InlinedVector<TensorValue, 4>* inputs) const override {
-    inputs->clear();
-    TF_RETURN_IF_ERROR(AddDatasetInputs(input_datasets, 1, inputs));
-    AddTensorInputs({batch_size_, num_parallel_calls_, drop_remainder_},
-                    created_tensors, inputs);
-    return Status::OK();
+  std::vector<Tensor> GetInputTensors() const override {
+    std::vector<Tensor> inputs = other_arguments_;
+    inputs.emplace_back(CreateTensor<int64>(TensorShape({}), {batch_size_}));
+    inputs.emplace_back(
+        CreateTensor<int64>(TensorShape({}), {num_parallel_calls_}));
+    inputs.emplace_back(CreateTensor<bool>(TensorShape({}), {drop_remainder_}));
+    return inputs;
   }
 
   Status GetInputPlaceholder(
@@ -88,9 +86,9 @@ class MapAndBatchDatasetParams : public DatasetParams {
 
  private:
   std::vector<Tensor> other_arguments_;
-  Tensor batch_size_;
-  Tensor num_parallel_calls_;
-  Tensor drop_remainder_;
+  int64 batch_size_;
+  int64 num_parallel_calls_;
+  bool drop_remainder_;
   FunctionDefHelper::AttrValueWrapper func_;
   std::vector<FunctionDef> func_lib_;
   DataTypeVector type_arguments_;

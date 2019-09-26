@@ -116,15 +116,8 @@ class DatasetParams {
 
   virtual ~DatasetParams() {}
 
-  // Returns the dataset input values as a TensorValue vector.
-  // Tensors created along the way are stored in `created_tensors`. These
-  // tensors must outlive the returned inputs. All dataset inputs must be passed
-  // in through `input_datasets`. `GetInputs` will not take ownership of the
-  // input datasets.
-  virtual Status GetInputs(
-      const std::vector<Tensor*>& input_datasets,
-      std::vector<std::unique_ptr<Tensor>>* created_tensors,
-      gtl::InlinedVector<TensorValue, 4>* inputs) const = 0;
+  // Returns the inputs (except the input datasets) as a tensor vector.
+  virtual std::vector<Tensor> GetInputTensors() const = 0;
 
   // Returns the dataset input names as a string vector.
   virtual Status GetInputPlaceholder(
@@ -169,37 +162,6 @@ class DatasetParams {
   virtual int op_version() const { return op_version_; }
 
  protected:
-  // Convenience methods for implementing `GetInputs` in subclasses.
-
-  // Verifies that input_datasets is the right size (specified by `num_inputs`),
-  // then adds the input datasets to the inputs vector. No copies or transfers
-  // of ownership occur; The caller is responsible for ensuring that the tensors
-  // in `input_datasets` outlive the tensor values placed in `inputs`.
-  Status AddDatasetInputs(const std::vector<Tensor*>& input_datasets,
-                          int num_inputs,
-                          gtl::InlinedVector<TensorValue, 4>* inputs) const {
-    if (input_datasets.size() != num_inputs) {
-      return errors::Internal("Expected ", num_inputs, " input datasets to ",
-                              op_name(), ", but got ", input_datasets.size());
-    }
-    for (auto dataset : input_datasets) {
-      inputs->push_back(TensorValue(dataset));
-    }
-    return Status::OK();
-  }
-
-  // Copies the given tensors, storing them in the `inputs` vectors, and storing
-  // owned references to the copies in `created_tensors`.
-  void AddTensorInputs(const std::vector<Tensor>& tensors,
-                       std::vector<std::unique_ptr<Tensor>>* created_tensors,
-                       gtl::InlinedVector<TensorValue, 4>* inputs) const {
-    for (auto& input : tensors) {
-      auto copy = absl::make_unique<Tensor>(input);
-      inputs->push_back(TensorValue(copy.get()));
-      created_tensors->push_back(std::move(copy));
-    }
-  }
-
   std::vector<std::shared_ptr<DatasetParams>> input_dataset_params_;
   DataTypeVector output_dtypes_;
   std::vector<PartialTensorShape> output_shapes_;
@@ -219,9 +181,7 @@ class RangeDatasetParams : public DatasetParams {
 
   RangeDatasetParams(int64 start, int64 stop, int64 step);
 
-  Status GetInputs(const std::vector<Tensor*>& input_datasets,
-                   std::vector<std::unique_ptr<Tensor>>* created_tensors,
-                   gtl::InlinedVector<TensorValue, 4>* inputs) const override;
+  std::vector<Tensor> GetInputTensors() const override;
 
   Status GetInputPlaceholder(
       std::vector<string>* input_placeholder) const override;
@@ -233,9 +193,9 @@ class RangeDatasetParams : public DatasetParams {
   string op_name() const override;
 
  private:
-  Tensor start_;
-  Tensor stop_;
-  Tensor step_;
+  int64 start_;
+  int64 stop_;
+  int64 step_;
 };
 
 // `BatchDatasetParams` is a common dataset parameter type that are used in
@@ -250,8 +210,8 @@ class BatchDatasetParams : public DatasetParams {
                      string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
-        batch_size_(CreateTensor<int64>(TensorShape({}), {batch_size})),
-        drop_remainder_(CreateTensor<bool>(TensorShape({}), {drop_remainder})),
+        batch_size_(batch_size),
+        drop_remainder_(drop_remainder),
         parallel_copy_(parallel_copy) {
     input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
     op_version_ = 2;
@@ -259,9 +219,7 @@ class BatchDatasetParams : public DatasetParams {
         input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
   }
 
-  Status GetInputs(const std::vector<Tensor*>& input_datasets,
-                   std::vector<std::unique_ptr<Tensor>>* created_tensors,
-                   gtl::InlinedVector<TensorValue, 4>* inputs) const override;
+  std::vector<Tensor> GetInputTensors() const override;
 
   Status GetInputPlaceholder(
       std::vector<string>* input_placeholder) const override;
@@ -275,8 +233,8 @@ class BatchDatasetParams : public DatasetParams {
   int op_version() const override;
 
  private:
-  Tensor batch_size_;
-  Tensor drop_remainder_;
+  int64 batch_size_;
+  bool drop_remainder_;
   bool parallel_copy_;
 };
 
@@ -305,9 +263,7 @@ class MapDatasetParams : public DatasetParams {
         input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
   }
 
-  Status GetInputs(const std::vector<Tensor*>& input_datasets,
-                   std::vector<std::unique_ptr<Tensor>>* created_tensors,
-                   gtl::InlinedVector<TensorValue, 4>* inputs) const override;
+  std::vector<Tensor> GetInputTensors() const override;
 
   Status GetInputPlaceholder(
       std::vector<string>* input_placeholder) const override;
@@ -335,9 +291,7 @@ class TensorSliceDatasetParams : public DatasetParams {
  public:
   TensorSliceDatasetParams(std::vector<Tensor> components, string node_name);
 
-  Status GetInputs(const std::vector<Tensor*>& input_datasets,
-                   std::vector<std::unique_ptr<Tensor>>* created_tensors,
-                   gtl::InlinedVector<TensorValue, 4>* inputs) const override;
+  std::vector<Tensor> GetInputTensors() const override;
 
   Status GetInputPlaceholder(
       std::vector<string>* input_placeholder) const override;
@@ -373,15 +327,13 @@ class TakeDatasetParams : public DatasetParams {
                     string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
-        count_(CreateTensor<int64>(TensorShape({}), {count})) {
+        count_(count) {
     input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
     iterator_prefix_ = name_utils::IteratorPrefix(
         input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
   }
 
-  Status GetInputs(const std::vector<Tensor*>& input_datasets,
-                   std::vector<std::unique_ptr<Tensor>>* created_tensors,
-                   gtl::InlinedVector<TensorValue, 4>* inputs) const override;
+  std::vector<Tensor> GetInputTensors() const override;
 
   Status GetInputPlaceholder(
       std::vector<string>* input_placeholder) const override;
@@ -393,7 +345,7 @@ class TakeDatasetParams : public DatasetParams {
   string op_name() const override;
 
  private:
-  Tensor count_;
+  int64 count_;
 };
 
 template <typename T>
