@@ -63,9 +63,9 @@ Status CheckKernelSupportOfOneLayerTextureArray(Environment* env,
   RETURN_IF_ERROR(CreateKernel(GetKernelOneLayerTextureArray(), "main_function",
                                env, &kernel));
   Tensor tensor;
-  RETURN_IF_ERROR(CreateTensor(env->context(), env->device(), 4, 4, 4,
-                               DataType::FLOAT32,
-                               TensorStorageType::TEXTURE_ARRAY, &tensor));
+  RETURN_IF_ERROR(CreateTensor(
+      env->context(), env->device(), BHWC(1, 4, 4, 4),
+      {DataType::FLOAT32, TensorStorageType::TEXTURE_ARRAY}, &tensor));
   RETURN_IF_ERROR(kernel.SetMemory(0, tensor.GetMemoryPtr()));
   RETURN_IF_ERROR(env->queue()->DispatchImplicit(kernel, {4, 4, 1}, {4, 4, 1}));
   std::vector<float> cpu_data(64, 0.0f);
