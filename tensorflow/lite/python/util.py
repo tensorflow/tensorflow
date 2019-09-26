@@ -22,6 +22,7 @@ import sys
 
 from tensorflow.core.protobuf import config_pb2 as _config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
+from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.lite.python.op_hint import find_all_hinted_output_nodes
 from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.eager import function
@@ -211,14 +212,25 @@ def run_graph_optimizations(graph_def,
   return tf_optimizer.OptimizeGraph(config, meta_graph)
 
 
+def _convert_op_hints_if_present(sess, graph_def, output_tensors,
+                                 hinted_outputs_nodes):
+  if is_frozen_graph(sess):
+    raise ValueError("Try to convert op hints, needs unfrozen graph.")
+  output_arrays = [get_tensor_name(tensor) for tensor in output_tensors]
+  graph_def = tf_graph_util.convert_variables_to_constants(
+      sess, graph_def, output_arrays + hinted_outputs_nodes)
+  graph_def = convert_op_hints_to_stubs(graph_def=graph_def)
+  graph_def = tf_graph_util.remove_training_nodes(graph_def)
+  return graph_def
+
+
 def freeze_graph(sess, input_tensors, output_tensors):
   """Returns a frozen GraphDef.
 
   Runs a Grappler pass and freezes a graph with Variables in it. Otherwise the
   existing GraphDef is returned. The Grappler pass is only run on models that
   are frozen in order to inline the functions in the graph.
-  If OpHints is present, we will freeze the graph for OpHints (make sure the
-  ophint nodes are correctly presented in the frozen graph).
+  If OpHints is present, it will try to convert the OpHint graph.
 
   Args:
     sess: TensorFlow Session.
@@ -238,14 +250,16 @@ def freeze_graph(sess, input_tensors, output_tensors):
   graph_def = run_graph_optimizations(
       graph_def, input_tensors, output_tensors, config, graph=sess.graph)
 
-  # If ophints are present, we need to make sure they're proper presented in
-  # the frozen graph.
+  # If ophints are present, just convert them.
   hinted_outputs_nodes = find_all_hinted_output_nodes(sess)
+  if hinted_outputs_nodes:
+    return _convert_op_hints_if_present(sess, graph_def, output_tensors,
+                                        hinted_outputs_nodes)
 
   if not is_frozen_graph(sess):
     output_arrays = [get_tensor_name(tensor) for tensor in output_tensors]
-    return tf_graph_util.convert_variables_to_constants(
-        sess, graph_def, output_arrays + hinted_outputs_nodes)
+    return tf_graph_util.convert_variables_to_constants(sess, graph_def,
+                                                        output_arrays)
   else:
     return sess.graph_def
 
