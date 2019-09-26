@@ -38,11 +38,13 @@ namespace cl {
 
 class Tensor {
  public:
-  Tensor() : memory_(nullptr), image_buffer_memory_(nullptr) {}
-  Tensor(cl_mem memory, int width, int height, int channels, DataType data_type,
+  Tensor()
+      : memory_(nullptr), image_buffer_memory_(nullptr), memory_owner_(true) {}
+  Tensor(cl_mem memory, bool memory_owner, int width, int height, int channels,
+         DataType data_type, TensorStorageType storage_type);
+  Tensor(cl_mem memory, bool memory_owner, cl_mem image_buffer_memory,
+         int width, int height, int channels, DataType data_type,
          TensorStorageType storage_type);
-  Tensor(cl_mem memory, cl_mem image_buffer_memory, int width, int height,
-         int channels, DataType data_type, TensorStorageType storage_type);
 
   // Move only
   Tensor(Tensor&& tensor);
@@ -107,6 +109,7 @@ class Tensor {
 
   cl_mem memory_;
   cl_mem image_buffer_memory_;  // for TensorStorageType::IMAGE_BUFFER only
+  bool memory_owner_;
   int width_;
   int height_;
   int channels_;
@@ -117,9 +120,11 @@ class Tensor {
 class TensorBHWC : public Tensor {
  public:
   TensorBHWC() = default;
-  TensorBHWC(cl_mem memory, int width, int height, int channels,
-             enum DataType data_type, TensorStorageType storage_type)
-      : Tensor(memory, width, height, channels, data_type, storage_type) {}
+  TensorBHWC(cl_mem memory, bool memory_owner, int width, int height,
+             int channels, enum DataType data_type,
+             TensorStorageType storage_type)
+      : Tensor(memory, memory_owner, width, height, channels, data_type,
+               storage_type) {}
 
   // Move only
   TensorBHWC(TensorBHWC&& tensor);
@@ -143,19 +148,12 @@ class TensorBHWC : public Tensor {
     return OkStatus();
   }
 
-  ~TensorBHWC() override { ReleaseBHWC(); }
-
  private:
   friend Status CreateTensorBHWCFromOpenGlObject(const CLContext& context,
                                                  cl_int ssbo_id,
                                                  const HWC& shape,
                                                  bool is_readonly,
                                                  TensorBHWC* tensor);
-
-  void ReleaseBHWC();
-
-  // When object created from GL object it isn't owner
-  bool owner_ = true;
 };
 
 using TensorPtr = std::shared_ptr<Tensor>;
@@ -176,6 +174,10 @@ Status CreateTensor(const CLContext& context, const CLDevice& device, int width,
 Status CreateTensor(const CLContext& context, const CLDevice& device,
                     const BHWC& shape, const TensorDescriptor& descriptor,
                     Tensor* result);
+
+Status CreateSharedTensor(const CLContext& context, const CLDevice& device,
+                          cl_mem memory, const BHWC& shape,
+                          const TensorDescriptor& descriptor, Tensor* result);
 
 Status CreateTensorBHWC(const CLContext& context, const HWC& shape,
                         DataType data_type, void* data, Tensor* result);

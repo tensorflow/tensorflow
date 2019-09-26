@@ -51,21 +51,24 @@ Status CreateImageBufferFromBuffer(const CLContext& context, cl_mem memory,
 }
 }  // namespace
 
-Tensor::Tensor(cl_mem memory, int width, int height, int channels,
-               enum DataType data_type, TensorStorageType storage_type)
+Tensor::Tensor(cl_mem memory, bool memory_owner, int width, int height,
+               int channels, enum DataType data_type,
+               TensorStorageType storage_type)
     : memory_(memory),
       image_buffer_memory_(nullptr),
+      memory_owner_(memory_owner),
       width_(width),
       height_(height),
       channels_(channels),
       data_type_(data_type),
       storage_type_(storage_type) {}
 
-Tensor::Tensor(cl_mem memory, cl_mem image_buffer_memory, int width, int height,
-               int channels, enum DataType data_type,
+Tensor::Tensor(cl_mem memory, bool memory_owner, cl_mem image_buffer_memory,
+               int width, int height, int channels, enum DataType data_type,
                TensorStorageType storage_type)
     : memory_(memory),
       image_buffer_memory_(image_buffer_memory),
+      memory_owner_(memory_owner),
       width_(width),
       height_(height),
       channels_(channels),
@@ -75,6 +78,7 @@ Tensor::Tensor(cl_mem memory, cl_mem image_buffer_memory, int width, int height,
 Tensor::Tensor(Tensor&& tensor)
     : memory_(tensor.memory_),
       image_buffer_memory_(tensor.image_buffer_memory_),
+      memory_owner_(tensor.memory_owner_),
       width_(tensor.width_),
       height_(tensor.height_),
       channels_(tensor.channels_),
@@ -88,6 +92,7 @@ Tensor& Tensor::operator=(Tensor&& tensor) {
     Release();
     std::swap(memory_, tensor.memory_);
     std::swap(image_buffer_memory_, tensor.image_buffer_memory_);
+    std::swap(memory_owner_, tensor.memory_owner_);
     std::swap(width_, tensor.width_);
     std::swap(height_, tensor.height_);
     std::swap(channels_, tensor.channels_);
@@ -102,7 +107,7 @@ void Tensor::Release() {
     clReleaseMemObject(image_buffer_memory_);
     memory_ = nullptr;
   }
-  if (memory_) {
+  if (memory_owner_ && memory_) {
     clReleaseMemObject(memory_);
     memory_ = nullptr;
   }
@@ -307,10 +312,10 @@ Status CreateTensor(const CLContext& context, const CLDevice& device, int width,
     RETURN_IF_ERROR(CreateImageBufferFromBuffer(
         context, memory.memory(), data_type,
         width * height * IntegralDivideRoundUp(channels, 4), &image_memory));
-    *result = Tensor(memory.Release(), image_memory, width, height, channels,
-                     data_type, storage_type);
+    *result = Tensor(memory.Release(), true, image_memory, width, height,
+                     channels, data_type, storage_type);
   } else {
-    *result = Tensor(memory.Release(), width, height, channels, data_type,
+    *result = Tensor(memory.Release(), true, width, height, channels, data_type,
                      storage_type);
   }
   return OkStatus();
@@ -331,10 +336,30 @@ Status CreateTensor(const CLContext& context, const CLDevice& device,
     RETURN_IF_ERROR(CreateImageBufferFromBuffer(
         context, memory.memory(), descriptor.data_type,
         shape.w * shape.h * IntegralDivideRoundUp(shape.c, 4), &image_memory));
-    *result = Tensor(memory.Release(), image_memory, shape.w, shape.h, shape.c,
+    *result = Tensor(memory.Release(), true, image_memory, shape.w, shape.h,
+                     shape.c, descriptor.data_type, descriptor.storage_type);
+  } else {
+    *result = Tensor(memory.Release(), true, shape.w, shape.h, shape.c,
+                     descriptor.data_type, descriptor.storage_type);
+  }
+  return OkStatus();
+}
+
+Status CreateSharedTensor(const CLContext& context, const CLDevice& device,
+                          cl_mem memory, const BHWC& shape,
+                          const TensorDescriptor& descriptor, Tensor* result) {
+  if (shape.b != 1) {
+    return UnimplementedError("Batch is not supported.");
+  }
+  if (descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
+    cl_mem image_memory;
+    RETURN_IF_ERROR(CreateImageBufferFromBuffer(
+        context, memory, descriptor.data_type,
+        shape.w * shape.h * IntegralDivideRoundUp(shape.c, 4), &image_memory));
+    *result = Tensor(memory, false, image_memory, shape.w, shape.h, shape.c,
                      descriptor.data_type, descriptor.storage_type);
   } else {
-    *result = Tensor(memory.Release(), shape.w, shape.h, shape.c,
+    *result = Tensor(memory, false, shape.w, shape.h, shape.c,
                      descriptor.data_type, descriptor.storage_type);
   }
   return OkStatus();
@@ -530,23 +555,13 @@ template void Tensor::DataToBHWC<float>(absl::Span<const float> src,
 template void Tensor::DataToBHWC<half>(absl::Span<const half> src,
                                        absl::Span<float> dst) const;
 
-TensorBHWC::TensorBHWC(TensorBHWC&& tensor)
-    : Tensor(std::move(tensor)), owner_(tensor.owner_) {}
+TensorBHWC::TensorBHWC(TensorBHWC&& tensor) : Tensor(std::move(tensor)) {}
 
 TensorBHWC& TensorBHWC::operator=(TensorBHWC&& tensor) {
   if (this != &tensor) {
-    ReleaseBHWC();
-    owner_ = tensor.owner_;
     Tensor::operator=(std::move(tensor));
   }
   return *this;
-}
-
-void TensorBHWC::ReleaseBHWC() {
-  // Base class is handling deletion if we are not owners
-  if (!owner_ && memory_) {
-    memory_ = nullptr;
-  }
 }
 
 Status CreateTensorBHWC(const CLContext& context, const HWC& shape,
@@ -563,7 +578,7 @@ Status CreateTensorBHWC(const CLContext& context, const HWC& shape,
                      CLErrorCodeToString(error_code)));
   }
 
-  *result = TensorBHWC(memory, shape.w, shape.h, shape.c, data_type,
+  *result = TensorBHWC(memory, true, shape.w, shape.h, shape.c, data_type,
                        TensorStorageType::BUFFER);
   return OkStatus();
 }
@@ -580,9 +595,8 @@ Status CreateTensorBHWCFromOpenGlObject(const CLContext& context,
         absl::StrCat("Unable to create CL buffer from GL buffer.",
                      CLErrorCodeToString(error_code)));
   }
-  *tensor = TensorBHWC(cl_buffer, shape.w, shape.h, shape.c, DataType::FLOAT32,
-                       TensorStorageType::BUFFER);
-  tensor->owner_ = false;
+  *tensor = TensorBHWC(cl_buffer, false, shape.w, shape.h, shape.c,
+                       DataType::FLOAT32, TensorStorageType::BUFFER);
   return OkStatus();
 }
 

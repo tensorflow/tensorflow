@@ -17,12 +17,14 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/model_hints.h"
@@ -37,6 +39,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/transformations/add_bias.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
+#include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
 namespace gpu {
@@ -173,6 +176,13 @@ void GetTensorDescriptors(
                                          storage_type, data_type);
     (*tensor_descriptors)[t->id] = TensorDescriptor{data_type, storage_type};
   }
+}
+
+// returns true if actual memory for this storage type will be allocated with
+// clCreateBuffer.
+bool IsBufferBased(const TensorStorageType& type) {
+  return type == TensorStorageType::BUFFER ||
+         type == TensorStorageType::IMAGE_BUFFER;
 }
 
 }  // namespace
@@ -373,16 +383,95 @@ void InferenceContext::Merge() {
   }
 }
 
-Status InferenceContext::AllocateMemory(
-    const GraphFloat32& graph, const CLDevice& device, CLContext* context,
-    const std::unordered_map<ValueId, TensorDescriptor>& tensor_descriptors) {
-  std::map<ValueId, int2> usages;
+void InferenceContext::GetUsages(
+    const std::function<bool(const TensorDescriptor&)>& functor,
+    const std::unordered_map<ValueId, TensorDescriptor>& tensor_descriptors,
+    std::map<ValueId, int2>* usages) const {
   for (int op_index = 0; op_index < nodes_.size(); ++op_index) {
     auto tensors = GetCLNodeTensors(nodes_[op_index]);
     for (auto& tensor : tensors) {
-      AddUsage(tensor.first, op_index, &usages);
+      if (functor(tensor.second)) {
+        AddUsage(tensor.first, op_index, usages);
+      }
     }
   }
+  for (auto& out_id : output_ids_) {
+    const auto& desc = tensor_descriptors.find(out_id)->second;
+    if (functor(desc)) {
+      AddUsage(out_id, nodes_.size(), usages);
+    }
+  }
+}
+
+Status InferenceContext::AllocateMemory(
+    const GraphFloat32& graph, const CLDevice& device, CLContext* context,
+    const std::unordered_map<ValueId, TensorDescriptor>& tensor_descriptors) {
+  RETURN_IF_ERROR(
+      AllocateMemoryForBuffers(graph, device, context, tensor_descriptors));
+  RETURN_IF_ERROR(AllocateMemoryForStrongShapes(graph, device, context,
+                                                tensor_descriptors));
+  return OkStatus();
+}
+
+Status InferenceContext::AllocateMemoryForBuffers(
+    const GraphFloat32& graph, const CLDevice& device, CLContext* context,
+    const std::unordered_map<ValueId, TensorDescriptor>& tensor_descriptors) {
+  std::map<ValueId, int2> buffer_usages;
+  GetUsages(
+      [](const TensorDescriptor& t) { return IsBufferBased(t.storage_type); },
+      tensor_descriptors, &buffer_usages);
+
+  std::vector<TensorUsageRecord<size_t>> buffer_usage_records;
+  for (auto& usage : buffer_usages) {
+    const auto& shape = graph.GetValue(usage.first)->tensor.shape;
+    const auto& descriptor = tensor_descriptors.find(usage.first)->second;
+    const size_t element_size =
+        descriptor.data_type == DataType::FLOAT32 ? 4 : 2;
+    const size_t buffer_size =
+        shape.w * shape.h * AlignByN(shape.c, 4) * element_size;
+    graph_ids_to_shared_buffer_tensors_[usage.first] =
+        buffer_usage_records.size();
+    buffer_usage_records.push_back({buffer_size,
+                                    static_cast<TaskId>(usage.second.x),
+                                    static_cast<TaskId>(usage.second.y)});
+  }
+
+  ObjectsAssignment<size_t> buffer_assignment;
+  RETURN_IF_ERROR(AssignObjectsToTensors(
+      buffer_usage_records, MemoryStrategy::GREEDY_BEST, &buffer_assignment));
+
+  shared_buffers_.resize(buffer_assignment.object_sizes.size());
+  for (int i = 0; i < buffer_assignment.object_sizes.size(); ++i) {
+    RETURN_IF_ERROR(CreateReadWriteBuffer(buffer_assignment.object_sizes[i],
+                                          context, &shared_buffers_[i]));
+  }
+
+  std::vector<bool> created_tensors(buffer_usage_records.size(), false);
+  shared_buffer_tensors_.resize(buffer_usage_records.size());
+  for (auto& node : nodes_) {
+    auto tensors = GetCLNodeTensors(node);
+    for (auto& t : tensors) {
+      if (!IsBufferBased(t.second.storage_type)) continue;
+      const int tensor_index = graph_ids_to_shared_buffer_tensors_[t.first];
+      if (created_tensors[tensor_index]) continue;
+      const auto& shape = graph.GetValue(t.first)->tensor.shape;
+      const int buffer_index = buffer_assignment.object_ids[tensor_index];
+      RETURN_IF_ERROR(CreateSharedTensor(
+          *context, device, shared_buffers_[buffer_index].GetMemoryPtr(), shape,
+          t.second, &shared_buffer_tensors_[tensor_index]));
+      created_tensors[tensor_index] = true;
+    }
+  }
+  return OkStatus();
+}
+
+Status InferenceContext::AllocateMemoryForStrongShapes(
+    const GraphFloat32& graph, const CLDevice& device, CLContext* context,
+    const std::unordered_map<ValueId, TensorDescriptor>& tensor_descriptors) {
+  std::map<ValueId, int2> usages;
+  GetUsages(
+      [](const TensorDescriptor& t) { return !IsBufferBased(t.storage_type); },
+      tensor_descriptors, &usages);
 
   struct TensorDesc {
     BHWC shape;
@@ -411,27 +500,16 @@ Status InferenceContext::AllocateMemory(
       usage_records, MemoryStrategy::EQUALITY, &assignment));
 
   for (auto& node : nodes_) {
-    for (auto& id : node.inputs) {
-      ValueId new_id = assignment.object_ids[remap_from_graph_ids[id]];
-      remap_from_graph_ids_to_shared_[id] = new_id;
-      id = new_id;
-    }
-    for (auto& id : node.outputs) {
-      ValueId new_id = assignment.object_ids[remap_from_graph_ids[id]];
-      remap_from_graph_ids_to_shared_[id] = new_id;
-      id = new_id;
-    }
-  }
-
-  for (auto& node : nodes_) {
     auto tensors = GetCLNodeTensors(node);
-    for (auto& tensor : tensors) {
-      const auto& it = tensors_.find(tensor.first);
-      if (it == tensors_.end()) {
-        const auto& desc = assignment.object_sizes[tensor.first];
-        Tensor* t = &tensors_[tensor.first];
-        RETURN_IF_ERROR(
-            CreateTensor(*context, device, desc.shape, tensor.second, t));
+    for (auto& t : tensors) {
+      if (IsBufferBased(t.second.storage_type)) continue;
+      const auto& shape = graph.GetValue(t.first)->tensor.shape;
+      const auto id = assignment.object_ids[remap_from_graph_ids[t.first]];
+      graph_ids_to_strong_shape_tensors_[t.first] = id;
+      const auto& it = strong_shape_tensors_.find(id);
+      if (it == strong_shape_tensors_.end()) {
+        RETURN_IF_ERROR(CreateTensor(*context, device, shape, t.second,
+                                     &strong_shape_tensors_[id]));
       }
     }
   }
@@ -442,23 +520,17 @@ void InferenceContext::BindMemoryToOperations() {
   for (auto& node : nodes_) {
     const auto& first_range = node.ranges[0];
     for (int k = first_range.x; k < first_range.y; ++k) {
-      auto id = node.inputs[k];
-      const auto& it = tensors_.find(id);
-      node.operations[0]->SetSrc(&it->second, k - first_range.x);
+      node.operations[0]->SetSrc(GetTensor(node.inputs[k]), k - first_range.x);
     }
     for (int i = 1; i < node.ranges.size(); ++i) {
       const auto& range = node.ranges[i];
       for (int k = range.x; k < range.y; ++k) {
-        auto id = node.inputs[k];
-        const auto& it = tensors_.find(id);
-        node.operations[i]->SetSrc(&it->second, k - range.x + 1);
+        node.operations[i]->SetSrc(GetTensor(node.inputs[k]), k - range.x + 1);
       }
     }
 
     for (int i = 0; i < node.outputs.size(); ++i) {
-      auto id = node.outputs[i];
-      const auto& it = tensors_.find(id);
-      node.operations[0]->SetDst(&it->second, i);
+      node.operations[0]->SetDst(GetTensor(node.outputs[i]), i);
     }
   }
 }
@@ -505,8 +577,26 @@ Status InferenceContext::Profile(ProfilingCommandQueue* queue,
   return OkStatus();
 }
 
+uint64_t InferenceContext::GetSizeOfMemoryAllocatedForIntermediateTensors()
+    const {
+  uint64_t total_memory = 0;
+  for (const auto& t : strong_shape_tensors_) {
+    total_memory += t.second.GetMemorySizeInBytes();
+  }
+  for (const auto& b : shared_buffers_) {
+    total_memory += b.GetMemorySizeInBytes();
+  }
+
+  return total_memory;
+}
+
 Tensor* InferenceContext::GetTensor(ValueId id) {
-  return &tensors_[remap_from_graph_ids_to_shared_[id]];
+  if (graph_ids_to_shared_buffer_tensors_.find(id) !=
+      graph_ids_to_shared_buffer_tensors_.end()) {
+    return &shared_buffer_tensors_[graph_ids_to_shared_buffer_tensors_[id]];
+  } else {
+    return &strong_shape_tensors_[graph_ids_to_strong_shape_tensors_[id]];
+  }
 }
 
 Status InferenceContext::SetInputTensor(ValueId id, const TensorFloat32& tensor,
