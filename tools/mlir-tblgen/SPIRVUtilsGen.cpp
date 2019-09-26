@@ -807,7 +807,7 @@ static void emitStrToSymFnForBitEnum(const Record &enumDef, raw_ostream &os) {
     // Skip the special enumerant for None.
     if (auto val = enumerant.getValue())
       os.indent(6) << formatv(".Case(\"{0}\", {1})\n", enumerant.getSymbol(),
-                              enumerant.getValue());
+                              val);
   }
   os.indent(6) << ".Default(llvm::None);\n";
 
