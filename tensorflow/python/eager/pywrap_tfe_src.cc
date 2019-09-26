@@ -1431,12 +1431,14 @@ tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>* GetTapeSet() {
 // Not thread safe.
 class AccumulatorSet {
  public:
-  void insert(TFE_Py_ForwardAccumulator* element) {
+  // Returns true if `element` was newly inserted, false if it already exists.
+  bool insert(TFE_Py_ForwardAccumulator* element) {
     if (map_.find(element) != map_.end()) {
-      return;
+      return false;
     }
     ListType::iterator it = ordered_.insert(ordered_.end(), element);
     map_.insert(std::make_pair(element, it));
+    return true;
   }
 
   void erase(TFE_Py_ForwardAccumulator* element) {
@@ -2485,10 +2487,23 @@ PyObject* TFE_Py_ForwardAccumulatorNew() {
         nullptr);
   }
   accumulator->accumulator = new ForwardAccumulator(*py_vspace);
-  Py_INCREF(accumulator);
-  accumulator->nesting_id = tape_nesting_id_counter.fetch_add(1);
-  GetAccumulatorSet()->insert(accumulator);
   return reinterpret_cast<PyObject*>(accumulator);
+}
+
+PyObject* TFE_Py_ForwardAccumulatorSetAdd(PyObject* accumulator) {
+  TFE_Py_ForwardAccumulator* c_accumulator(
+      reinterpret_cast<TFE_Py_ForwardAccumulator*>(accumulator));
+  c_accumulator->nesting_id = tape_nesting_id_counter.fetch_add(1);
+  if (GetAccumulatorSet()->insert(c_accumulator)) {
+    Py_INCREF(accumulator);
+    Py_RETURN_NONE;
+  } else {
+    MaybeRaiseExceptionFromStatus(
+        tensorflow::errors::Internal(
+            "A ForwardAccumulator was added to the active set twice."),
+        nullptr);
+    return nullptr;
+  }
 }
 
 void TFE_Py_ForwardAccumulatorSetRemove(PyObject* accumulator) {

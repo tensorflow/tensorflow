@@ -176,9 +176,10 @@ class ForwardGradientAccumulator(object):
   Example:
 
   ```
-  with ForwardGradientAccumulator() as acc:
+  with ForwardGradientAccumulator(
+      primals=x,
+      tangents=tf.constant([[5., 6.], [7., 8.]])) as acc:
     x = tf.constant([[2.0, 3.0], [1.0, 4.0]])
-    acc.watch(x, tf.constant([[5., 6.], [7., 8.]]))
     y = tf.reduce_sum(tf.sin(x) * tf.tan(x), axis=1)
   jvp = acc.jvp(y)
   ```
@@ -189,10 +190,8 @@ class ForwardGradientAccumulator(object):
 
   ```
   primal = tf.constant(1.1)
-  with ForwardGradientAccumulator() as outer_acc:
-    outer_acc.watch(primal, tf.constant(1.))
-    with ForwardGradientAccumulator() as acc:
-      acc.watch(primal, tf.constant(1.))
+  with ForwardGradientAccumulator(primal, tf.constant(1.)) as outer_acc:
+    with ForwardGradientAccumulator(primal, tf.constant(1.)) as acc:
       primal_out = primal ** tf.constant(3.5)
   inner_jvp = acc.jvp(primal_out)
   outer_jvp = outer_acc.jvp(inner_jvp)
@@ -208,9 +207,24 @@ class ForwardGradientAccumulator(object):
   gradients, where the inner `GradientTape` would otherwise hold on to all jvps.
   """
 
-  def __init__(self):
-    self._accumulator = None
+  def __init__(self, primals, tangents):
+    """Specify tensors to watch and their Jacobian-vector products.
+
+    Mathematically, `tangents` is a vector right-multiplying the Jacobian matrix
+    (a Jacobian-vector product) for the function computed while this accumulator
+    is active. Since JVPs are computed in forward mode as the computation
+    happens, this vector must be supplied before the computation takes place.
+
+    Listing a single Tensor multiple times sums each `tangents`. An un-watched
+    Tensor has zeros for its tangent vector.
+
+    Args:
+      primals: A Tensor or nested structure of Tensors to watch.
+      tangents: A Tensor or list of Tensors matching `primals`.
+    """
+    self._accumulator = pywrap_tensorflow.TFE_Py_ForwardAccumulatorNew()
     self._recording = False
+    self._watch(primals, tangents)
 
   def __enter__(self):
     self._push_accumulator()
@@ -223,43 +237,35 @@ class ForwardGradientAccumulator(object):
   def _push_accumulator(self):
     if self._recording:
       raise ValueError("Accumulator is already recording.")
-    if self._accumulator is None:
-      self._accumulator = pywrap_tensorflow.TFE_Py_ForwardAccumulatorNew()
-    else:
-      # TODO(allenl): Allow reuse
-      raise NotImplementedError("Accumulator reuse isn't implemented yet.")
+    pywrap_tensorflow.TFE_Py_ForwardAccumulatorSetAdd(self._accumulator)
     self._recording = True
 
   def _pop_accumulator(self):
     if not self._recording:
-      raise ValueError("Tape is not recording.")
+      raise ValueError("Accumulator is not recording.")
     pywrap_tensorflow.TFE_Py_ForwardAccumulatorSetRemove(self._accumulator)
     self._recording = False
 
-  # TODO(allenl): Does this need to be public, or should the constructor instead
-  # take all watched Tensors? Write a realistic usage example (e.g. Hessian-free
-  # optimization) and decide.
-  def watch(self, tensor, tangents):
-    """Ensures that `tensor` is being traced by this tape.
+  def _watch(self, primals, tangents):
+    """Ensures that `primals` are being traced by this accumulator.
 
-    Mathematically, `tangents` is part of a vector right-multiplying the
-    Jacobian matrix (a Jacobian-vector product) for the function computed while
-    the tape is active. Since JVPs are computed in forward mode as the
-    computation happens, this vector must be supplied before the computation
-    takes place.
+    Mathematically, `tangents` is a vector right-multiplying the Jacobian matrix
+    (a Jacobian-vector product) for the function computed while this accumulator
+    is active. Since JVPs are computed in forward mode as the computation
+    happens, this vector must be supplied before the computation takes place.
 
-    Watching a single Tensor multiple times sums each `tangents`. An un-watched
-    Tensor has zeros for its tangent vector.
+    Watching a single tensor multiple times sums each of its `tangents`. Any
+    un-watched tensor has zeros for its tangent vector.
 
     Args:
-      tensor: A Tensor or list of Tensors.
-      tangents: A Tensor or list of Tensors matching `tensor`.
+      primals: A Tensor or list of Tensors.
+      tangents: A Tensor or list of Tensors matching `primals`.
     """
-    nest.assert_same_structure(tensor, tangents)
-    for t, g in zip(nest.flatten(tensor), nest.flatten(tangents)):
+    nest.assert_same_structure(primals, tangents)
+    for t, g in zip(nest.flatten(primals), nest.flatten(tangents)):
       if not t.dtype.is_floating:
         logging.log_first_n(
-            logging.WARN, "The dtype of the watched tensor must be "
+            logging.WARN, "The dtype of the watched primal must be "
             "floating (e.g. tf.float32), got %r", 5, t.dtype)
       g = ops.convert_to_tensor(g, dtype=t.dtype)
       if hasattr(t, "handle"):

@@ -89,6 +89,7 @@ limitations under the License.
 %rename("%s") TFE_Py_TapeWatchVariable;
 %rename("%s") TFE_Py_TapeWatchedVariables;
 %rename("%s") TFE_Py_ForwardAccumulatorNew;
+%rename("%s") TFE_Py_ForwardAccumulatorSetAdd;
 %rename("%s") TFE_Py_ForwardAccumulatorSetRemove;
 %rename("%s") TFE_Py_ForwardAccumulatorWatch;
 %rename("%s") TFE_Py_ForwardAccumulatorJVP;
