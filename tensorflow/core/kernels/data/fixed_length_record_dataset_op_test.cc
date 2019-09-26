@@ -29,26 +29,24 @@ class FixedLengthRecordDatasetParams : public DatasetParams {
                                  string node_name)
       : DatasetParams({DT_STRING}, {PartialTensorShape({})},
                       std::move(node_name)),
-        header_bytes_(CreateTensor<int64>(TensorShape({}), {header_bytes})),
-        record_bytes_(CreateTensor<int64>(TensorShape({}), {record_bytes})),
-        footer_bytes_(CreateTensor<int64>(TensorShape({}), {footer_bytes})),
-        buffer_size_(CreateTensor<int64>(TensorShape({}), {buffer_size})),
-        compression_type_(CreateTensor<tstring>(TensorShape({}),
-                                                {ToString(compression_type)})) {
-    int num_files = filenames.size();
-    filenames_ = CreateTensor<tstring>(TensorShape({num_files}), filenames);
+        filenames_(filenames),
+        header_bytes_(header_bytes),
+        record_bytes_(record_bytes),
+        footer_bytes_(footer_bytes),
+        buffer_size_(buffer_size),
+        compression_type_(compression_type) {
     op_version_ = 2;
   }
 
-  Status GetInputs(const std::vector<Tensor*>& input_datasets,
-                   std::vector<std::unique_ptr<Tensor>>* created_tensors,
-                   gtl::InlinedVector<TensorValue, 4>* inputs) const override {
-    inputs->clear();
-    std::vector<Tensor> input_tensors = {filenames_,    header_bytes_,
-                                         record_bytes_, footer_bytes_,
-                                         buffer_size_,  compression_type_};
-    AddTensorInputs(input_tensors, created_tensors, inputs);
-    return Status::OK();
+  std::vector<Tensor> GetInputTensors() const override {
+    int num_files = filenames_.size();
+    return {
+        CreateTensor<tstring>(TensorShape({num_files}), filenames_),
+        CreateTensor<int64>(TensorShape({}), {header_bytes_}),
+        CreateTensor<int64>(TensorShape({}), {record_bytes_}),
+        CreateTensor<int64>(TensorShape({}), {footer_bytes_}),
+        CreateTensor<int64>(TensorShape({}), {buffer_size_}),
+        CreateTensor<tstring>(TensorShape({}), {ToString(compression_type_)})};
   }
 
   Status GetInputPlaceholder(
@@ -72,12 +70,12 @@ class FixedLengthRecordDatasetParams : public DatasetParams {
   }
 
  private:
-  Tensor filenames_;
-  Tensor header_bytes_;
-  Tensor record_bytes_;
-  Tensor footer_bytes_;
-  Tensor buffer_size_;
-  Tensor compression_type_;
+  std::vector<tstring> filenames_;
+  int64 header_bytes_;
+  int64 record_bytes_;
+  int64 footer_bytes_;
+  int64 buffer_size_;
+  CompressionType compression_type_;
 };
 
 class FixedLengthRecordDatasetOpTest : public DatasetOpsTestBaseV2 {};
