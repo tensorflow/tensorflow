@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/random/random.h"
 
 // TODO(benbarsdell): Improve the numerical checks in these tests. The tests
 // were originally written only to check the graph coloring, so the graphs do
@@ -44,6 +45,29 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 namespace {
+
+template <DataType DTYPE>
+Tensor GenerateIdentityMatrix(int64 height, int64 width) {
+  typedef typename EnumToDataType<DTYPE>::Type T;
+  Tensor tensor(DTYPE, TensorShape{height, width});
+  for (int64 i = 0; i < height; ++i) {
+    for (int64 j = 0; j < width; ++j) {
+      tensor.matrix<T>()(i, j) = i == j;
+    }
+  }
+  return tensor;
+}
+
+template <DataType DTYPE>
+Tensor GenerateRandomTensorInRange(const TensorShape& shape, double minval,
+                                   double maxval) {
+  typedef typename EnumToDataType<DTYPE>::Type T;
+  Tensor tensor(DTYPE, shape);
+  for (auto i = 0; i < tensor.NumElements(); i++)
+    tensor.flat<T>()(i) =
+        (random::New64() % 65536 / 65536.0) * (maxval - minval) + minval;
+  return tensor;
+}
 
 const std::pair<int, int> kMinGPUArch = {7, 0};
 
@@ -107,6 +131,48 @@ class AutoMixedPrecisionTest : public GrapplerTest {
       attributes.emplace_back("T", type);
     }
     return AddNode(name, op, inputs, attributes, graph);
+  }
+
+  void TestSimpleUnaryGrayOp(
+      double input_min, double input_max, double atol, double rtol,
+      const std::function<Output(const tensorflow::Scope&, Output)>&
+          test_op_factory) {
+    int size = 128;
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output eye = ops::Const(s.WithOpName("eye"),
+                            GenerateIdentityMatrix<DT_FLOAT>(size, size));
+    Output input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+    Output wht1 = ops::MatMul(s.WithOpName("wht1"), input, eye);
+    Output gry1 = test_op_factory(s.WithOpName("gry1"), wht1);
+    Output wht2 = ops::MatMul(s.WithOpName("wht2"), gry1, eye);
+    Output fetch1 = ops::Identity(s.WithOpName("fetch1"), wht2);
+    GrapplerItem item;
+    item.fetch = {"fetch1"};
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+    auto input_tensor = GenerateRandomTensorInRange<DT_FLOAT>(
+        TensorShape({size, size}), input_min, input_max);
+    std::vector<std::pair<string, Tensor>> feed = {{"input", input_tensor}};
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, feed);
+
+    AutoMixedPrecision optimizer;
+    GraphDef output;
+    TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
+
+    VLOG(1) << output.DebugString();
+
+    GraphView output_view(&output);
+    EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(),
+              DT_FLOAT);
+    EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+    EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_HALF);
+    EXPECT_EQ(output_view.GetNode("wht2")->attr().at("T").type(), DT_HALF);
+
+    auto tensors = EvaluateNodes(output, item.fetch, feed);
+    EXPECT_EQ(tensors.size(), tensors_expected.size());
+    EXPECT_EQ(tensors.size(), item.fetch.size());
+    for (int i = 0; i < item.fetch.size(); ++i) {
+      test::ExpectClose(tensors_expected[i], tensors[i], atol, rtol);
+    }
   }
 
   std::unique_ptr<Cluster> virtual_cluster_;
@@ -902,6 +968,110 @@ TEST_F(AutoMixedPrecisionTest, BatchMatMul) {
   for (int i = 0; i < item.fetch.size(); ++i) {
     test::ExpectClose(tensors_expected[i], tensors[i], -1, 3.0e-3);
   }
+}
+
+TEST_F(AutoMixedPrecisionTest, EluOp) {
+  TestSimpleUnaryGrayOp(
+      -5, 5, 1.0e-3, 1.0e-3,
+      [](const tensorflow::Scope& scope, Output input) -> Output {
+        return ops::Elu(scope, input);
+      });
+}
+
+TEST_F(AutoMixedPrecisionTest, ErfOp) {
+  TestSimpleUnaryGrayOp(
+      -5, 5, 1.0e-3, -1,
+      [](const tensorflow::Scope& scope, Output input) -> Output {
+        return ops::Erf(scope, input);
+      });
+}
+
+TEST_F(AutoMixedPrecisionTest, ErfcOp) {
+  TestSimpleUnaryGrayOp(
+      -5, 5, 1.0e-3, -1,
+      [](const tensorflow::Scope& scope, Output input) -> Output {
+        return ops::Erfc(scope, input);
+      });
+}
+
+TEST_F(AutoMixedPrecisionTest, InvOp) {
+  TestSimpleUnaryGrayOp(
+      0.01, 10, -1, 1.0e-3,
+      [](const tensorflow::Scope& scope, Output input) -> Output {
+        return ops::Inv(scope, input);
+      });
+}
+
+TEST_F(AutoMixedPrecisionTest, LogOp) {
+  TestSimpleUnaryGrayOp(
+      0.01, 10, 1.0e-3, 2.0e-3,
+      [](const tensorflow::Scope& scope, Output input) -> Output {
+        return ops::Log(scope, input);
+      });
+}
+
+TEST_F(AutoMixedPrecisionTest, Log1pOp) {
+  TestSimpleUnaryGrayOp(
+      -0.99, 9, 1.0e-3, 5.0e-3,
+      [](const tensorflow::Scope& scope, Output input) -> Output {
+        return ops::Log1p(scope, input);
+      });
+}
+
+TEST_F(AutoMixedPrecisionTest, LogSoftmaxOp) {
+  TestSimpleUnaryGrayOp(
+      -8, 8, -1, 5.0e-3,
+      [](const tensorflow::Scope& scope, Output input) -> Output {
+        return ops::LogSoftmax(scope, input);
+      });
+}
+
+TEST_F(AutoMixedPrecisionTest, ReciprocalOp) {
+  TestSimpleUnaryGrayOp(
+      0.01, 10, -1, 1.0e-3,
+      [](const tensorflow::Scope& scope, Output input) -> Output {
+        return ops::Reciprocal(scope, input);
+      });
+}
+
+TEST_F(AutoMixedPrecisionTest, SigmoidOp) {
+  TestSimpleUnaryGrayOp(
+      -5, 5, 1.0e-3, -1,
+      [](const tensorflow::Scope& scope, Output input) -> Output {
+        return ops::Sigmoid(scope, input);
+      });
+}
+
+TEST_F(AutoMixedPrecisionTest, SoftmaxOp) {
+  TestSimpleUnaryGrayOp(
+      -8, 8, 1.0e-3, -1,
+      [](const tensorflow::Scope& scope, Output input) -> Output {
+        return ops::Softmax(scope, input);
+      });
+}
+
+TEST_F(AutoMixedPrecisionTest, SoftplusOp) {
+  TestSimpleUnaryGrayOp(
+      -5, 5, 1.0e-3, 1.0e-3,
+      [](const tensorflow::Scope& scope, Output input) -> Output {
+        return ops::Softplus(scope, input);
+      });
+}
+
+TEST_F(AutoMixedPrecisionTest, SqrtOp) {
+  TestSimpleUnaryGrayOp(
+      0, 10, 1.0e-3, 1.0e-3,
+      [](const tensorflow::Scope& scope, Output input) -> Output {
+        return ops::Sqrt(scope, input);
+      });
+}
+
+TEST_F(AutoMixedPrecisionTest, TanhOp) {
+  TestSimpleUnaryGrayOp(
+      -5, 5, 1.0e-3, -1,
+      [](const tensorflow::Scope& scope, Output input) -> Output {
+        return ops::Tanh(scope, input);
+      });
 }
 
 }  // namespace
