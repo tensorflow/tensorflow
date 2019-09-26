@@ -2930,7 +2930,6 @@ Status ConvertPool3D(OpConverterParams* params) {
   }
   if (params->validation_only) return Status::OK();
 
-
   nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   const auto data_format = attrs.get<string>("data_format");
   const bool is_ndhwc = (data_format == "NDHWC");
@@ -2940,14 +2939,17 @@ Status ConvertPool3D(OpConverterParams* params) {
 
   if (data_format == "NDHWC") {
     // NDHWC => NCDHW
-    TF_RETURN_IF_ERROR(params->converter->TransposeTensor(tensor, {0, 4, 1, 2, 3}, &tensor));
+    TF_RETURN_IF_ERROR(
+        params->converter->TransposeTensor(tensor, {0, 4, 1, 2, 3}, &tensor));
   }
 
   const auto tf_stride = attrs.get<std::vector<int64>>("strides");
-  const nvinfer1::Dims3 stride(tf_stride[d_index], tf_stride[h_index], tf_stride[w_index]);
+  const nvinfer1::Dims3 stride(tf_stride[d_index], tf_stride[h_index],
+                               tf_stride[w_index]);
 
   const auto tf_kernel = attrs.get<std::vector<int64>>("ksize");
-  const nvinfer1::Dims3 ksize(tf_kernel[d_index], tf_kernel[h_index], tf_kernel[w_index]);
+  const nvinfer1::Dims3 ksize(tf_kernel[d_index], tf_kernel[h_index],
+                              tf_kernel[w_index]);
 
   nvinfer1::INetworkDefinition* network = params->converter->network();
   nvinfer1::IPoolingLayer* layer = network->addPoolingNd(*tensor, type, ksize);
@@ -2967,7 +2969,8 @@ Status ConvertPool3D(OpConverterParams* params) {
 
   if (data_format == "NDHWC") {
     // NCDHW => NDHWC
-    TF_RETURN_IF_ERROR(params->converter->TransposeTensor(output_tensor, {0, 2, 3, 4, 1}, &output_tensor));
+    TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
+        output_tensor, {0, 2, 3, 4, 1}, &output_tensor));
   }
 
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
