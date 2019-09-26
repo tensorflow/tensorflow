@@ -2710,7 +2710,7 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
             ann_type_equivalent == kTfLiteInt32) {
           for (int i = 0; i < num_elements; ++i) {
             reinterpret_cast<int32_t*>(input_ptr)[i] =
-                static_cast<const int32_t>(tensor->data.raw_const[i]);
+                static_cast<const int32_t>(tensor->data.uint8[i]);
           }
         } else if (tensor->type == kTfLiteInt8 &&
                    ann_type_equivalent == kTfLiteUInt8) {
@@ -2723,7 +2723,7 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
                    ann_type_equivalent == kTfLiteInt32) {
           for (int i = 0; i < num_elements; ++i) {
             reinterpret_cast<int32_t*>(input_ptr)[i] =
-                static_cast<const int32_t>(tensor->data.raw_const[i]) + 128;
+                static_cast<const int32_t>(tensor->data.int8[i]) + 128;
           }
         } else {
           context->ReportError(
