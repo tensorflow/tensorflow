@@ -135,11 +135,8 @@ Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
 
   TF_RETURN_IF_ERROR(ValidateGraphDefForDevices(gdef));
 
-  if (gdef.versions().producer() >= 5) {
-    // Validate the graph: we assume that merging two valid graphs
-    // should maintain graph validity.
-    TF_RETURN_IF_ERROR(graph::ValidateGraphDef(gdef, *item->lib_def));
-  }
+  // We don't explicitly Validate the graph def because ConvertGraphDefToGraph
+  // does that below.
 
   item->proc_flr.reset(new ProcessFunctionLibraryRuntime(
       device_mgr_, worker_env_->env, gdef.versions().producer(),
@@ -151,6 +148,7 @@ Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
   GraphConstructorOptions opts;
   opts.allow_internal_ops = true;
   opts.expect_device_spec = true;
+  opts.validate_nodes = true;
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, gdef, &graph));
 
   // Splits "graph" into multiple subgraphs by device names.
