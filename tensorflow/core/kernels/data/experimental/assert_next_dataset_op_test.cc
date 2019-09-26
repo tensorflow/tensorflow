@@ -43,11 +43,10 @@ class AssertNextDatasetParams : public DatasetParams {
                                   transformations_)};
   }
 
-  Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override {
-    input_placeholder->reserve(input_dataset_params_.size() + 1);
-    input_placeholder->emplace_back(AssertNextDatasetOp::kInputDataset);
-    input_placeholder->emplace_back(AssertNextDatasetOp::kTransformations);
+  Status GetInputNames(std::vector<string>* input_names) const override {
+    input_names->reserve(input_dataset_params_.size() + 1);
+    input_names->emplace_back(AssertNextDatasetOp::kInputDataset);
+    input_names->emplace_back(AssertNextDatasetOp::kTransformations);
     return Status::OK();
   }
 

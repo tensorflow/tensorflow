@@ -44,11 +44,9 @@ class SamplingDatasetParams : public DatasetParams {
     return {rate, seed_tensor, seed2_tensor};
   }
 
-  Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override {
-    *input_placeholder = {SamplingDatasetOp::kInputDataset,
-                          SamplingDatasetOp::kRate, SamplingDatasetOp::kSeed,
-                          SamplingDatasetOp::kSeed2};
+  Status GetInputNames(std::vector<string>* input_names) const override {
+    *input_names = {SamplingDatasetOp::kInputDataset, SamplingDatasetOp::kRate,
+                    SamplingDatasetOp::kSeed, SamplingDatasetOp::kSeed2};
 
     return Status::OK();
   }

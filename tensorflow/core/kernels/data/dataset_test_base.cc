@@ -809,14 +809,14 @@ Status DatasetOpsTestBaseV2::MakeDatasetOpKernel(
     std::unique_ptr<OpKernel>* dataset_kernel) {
   name_utils::OpNameParams params;
   params.op_version = dataset_params.op_version();
-  std::vector<string> input_placeholder;
-  TF_RETURN_IF_ERROR(dataset_params.GetInputPlaceholder(&input_placeholder));
+  std::vector<string> input_names;
+  TF_RETURN_IF_ERROR(dataset_params.GetInputNames(&input_names));
   AttributeVector attributes;
   TF_RETURN_IF_ERROR(dataset_params.GetAttributes(&attributes));
   NodeDef node_def =
       test::function::NDef(dataset_params.node_name(),
                            name_utils::OpName(dataset_params.op_name(), params),
-                           input_placeholder, attributes);
+                           input_names, attributes);
   TF_RETURN_IF_ERROR(CreateOpKernel(node_def, dataset_kernel));
   return Status::OK();
 }
@@ -896,10 +896,10 @@ std::vector<Tensor> RangeDatasetParams::GetInputTensors() const {
   return {start_tensor, stop_tensor, step_tensor};
 }
 
-Status RangeDatasetParams::GetInputPlaceholder(
-    std::vector<string>* input_placeholder) const {
-  *input_placeholder = {RangeDatasetOp::kStart, RangeDatasetOp::kStop,
-                        RangeDatasetOp::kStep};
+Status RangeDatasetParams::GetInputNames(
+    std::vector<string>* input_names) const {
+  *input_names = {RangeDatasetOp::kStart, RangeDatasetOp::kStop,
+                  RangeDatasetOp::kStep};
   return Status::OK();
 }
 
@@ -925,11 +925,10 @@ std::vector<Tensor> BatchDatasetParams::GetInputTensors() const {
   return {batch_size, drop_remainder};
 }
 
-Status BatchDatasetParams::GetInputPlaceholder(
-    std::vector<string>* input_placeholder) const {
-  *input_placeholder = {BatchDatasetOp::kInputDataset,
-                        BatchDatasetOp::kBatchSize,
-                        BatchDatasetOp::kDropRemainder};
+Status BatchDatasetParams::GetInputNames(
+    std::vector<string>* input_names) const {
+  *input_names = {BatchDatasetOp::kInputDataset, BatchDatasetOp::kBatchSize,
+                  BatchDatasetOp::kDropRemainder};
   return Status::OK();
 }
 
@@ -955,11 +954,10 @@ std::vector<Tensor> MapDatasetParams::GetInputTensors() const {
   return other_arguments_;
 }
 
-Status MapDatasetParams::GetInputPlaceholder(
-    std::vector<string>* input_placeholder) const {
-  input_placeholder->emplace_back(MapDatasetOp::kInputDataset);
+Status MapDatasetParams::GetInputNames(std::vector<string>* input_names) const {
+  input_names->emplace_back(MapDatasetOp::kInputDataset);
   for (int i = 0; i < other_arguments_.size(); ++i) {
-    input_placeholder->emplace_back(
+    input_names->emplace_back(
         absl::StrCat(MapDatasetOp::kOtherArguments, "_", i));
   }
   return Status::OK();
@@ -977,9 +975,9 @@ Status MapDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
 }
 
 Status MapDatasetParams::CreateFactory(FunctionDef* fdef) const {
-  std::vector<string> input_placeholder;
-  TF_RETURN_IF_ERROR(GetInputPlaceholder(&input_placeholder));
-  bool has_other_args = input_placeholder.size() > 1;
+  std::vector<string> input_names;
+  TF_RETURN_IF_ERROR(GetInputNames(&input_names));
+  bool has_other_args = input_names.size() > 1;
   *fdef = test::function::MakeMapDataset(has_other_args);
   return Status::OK();
 }
@@ -1000,11 +998,11 @@ std::vector<Tensor> TensorSliceDatasetParams::GetInputTensors() const {
   return components_;
 }
 
-Status TensorSliceDatasetParams::GetInputPlaceholder(
-    std::vector<string>* input_placeholder) const {
-  input_placeholder->reserve(components_.size());
+Status TensorSliceDatasetParams::GetInputNames(
+    std::vector<string>* input_names) const {
+  input_names->reserve(components_.size());
   for (int i = 0; i < components_.size(); ++i) {
-    input_placeholder->emplace_back(
+    input_names->emplace_back(
         absl::StrCat(TensorSliceDatasetOp::kComponents, "_", i));
   }
   return Status::OK();
@@ -1052,11 +1050,11 @@ std::vector<Tensor> TakeDatasetParams::GetInputTensors() const {
   return {CreateTensor<int64>(TensorShape({}), {count_})};
 }
 
-Status TakeDatasetParams::GetInputPlaceholder(
-    std::vector<string>* input_placeholder) const {
-  input_placeholder->reserve(input_dataset_params_.size() + 1);
-  input_placeholder->emplace_back(TakeDatasetOp::kInputDataset);
-  input_placeholder->emplace_back(TakeDatasetOp::kCount);
+Status TakeDatasetParams::GetInputNames(
+    std::vector<string>* input_names) const {
+  input_names->reserve(input_dataset_params_.size() + 1);
+  input_names->emplace_back(TakeDatasetOp::kInputDataset);
+  input_names->emplace_back(TakeDatasetOp::kCount);
   return Status::OK();
 }
 

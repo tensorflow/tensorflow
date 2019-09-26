@@ -31,11 +31,10 @@ class TensorDatasetParams : public DatasetParams {
 
   std::vector<Tensor> GetInputTensors() const override { return components_; }
 
-  Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override {
-    input_placeholder->reserve(components_.size());
+  Status GetInputNames(std::vector<string>* input_names) const override {
+    input_names->reserve(components_.size());
     for (int i = 0; i < components_.size(); ++i) {
-      input_placeholder->emplace_back(
+      input_names->emplace_back(
           absl::StrCat(TensorDatasetOp::kComponents, "_", i));
     }
     return Status::OK();

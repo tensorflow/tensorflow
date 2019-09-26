@@ -42,11 +42,10 @@ class ConcatenateDatasetParams : public DatasetParams {
 
   std::vector<Tensor> GetInputTensors() const override { return {}; }
 
-  Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override {
-    input_placeholder->reserve(2);
-    input_placeholder->emplace_back(ConcatenateDatasetOp::kInputDataset);
-    input_placeholder->emplace_back(ConcatenateDatasetOp::kAnotherDataset);
+  Status GetInputNames(std::vector<string>* input_names) const override {
+    input_names->reserve(2);
+    input_names->emplace_back(ConcatenateDatasetOp::kInputDataset);
+    input_names->emplace_back(ConcatenateDatasetOp::kAnotherDataset);
     return Status::OK();
   }
 

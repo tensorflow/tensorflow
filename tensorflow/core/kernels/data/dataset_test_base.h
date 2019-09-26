@@ -120,8 +120,7 @@ class DatasetParams {
   virtual std::vector<Tensor> GetInputTensors() const = 0;
 
   // Returns the dataset input names as a string vector.
-  virtual Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const = 0;
+  virtual Status GetInputNames(std::vector<string>* input_names) const = 0;
 
   // Returns the dataset attributes as a vector.
   virtual Status GetAttributes(AttributeVector* attributes) const = 0;
@@ -183,8 +182,7 @@ class RangeDatasetParams : public DatasetParams {
 
   std::vector<Tensor> GetInputTensors() const override;
 
-  Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override;
+  Status GetInputNames(std::vector<string>* input_names) const override;
 
   Status GetAttributes(AttributeVector* attr_vector) const override;
 
@@ -221,8 +219,7 @@ class BatchDatasetParams : public DatasetParams {
 
   std::vector<Tensor> GetInputTensors() const override;
 
-  Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override;
+  Status GetInputNames(std::vector<string>* input_names) const override;
 
   Status GetAttributes(AttributeVector* attr_vector) const override;
 
@@ -265,8 +262,7 @@ class MapDatasetParams : public DatasetParams {
 
   std::vector<Tensor> GetInputTensors() const override;
 
-  Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override;
+  Status GetInputNames(std::vector<string>* input_names) const override;
 
   Status GetAttributes(AttributeVector* attr_vector) const override;
 
@@ -293,8 +289,7 @@ class TensorSliceDatasetParams : public DatasetParams {
 
   std::vector<Tensor> GetInputTensors() const override;
 
-  Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override;
+  Status GetInputNames(std::vector<string>* input_names) const override;
 
   Status GetAttributes(AttributeVector* attr_vector) const override;
 
@@ -335,8 +330,7 @@ class TakeDatasetParams : public DatasetParams {
 
   std::vector<Tensor> GetInputTensors() const override;
 
-  Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override;
+  Status GetInputNames(std::vector<string>* input_names) const override;
 
   Status GetAttributes(AttributeVector* attr_vector) const override;
 

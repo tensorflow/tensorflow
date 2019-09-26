@@ -42,10 +42,8 @@ class CacheDatasetParams : public DatasetParams {
     return {filename_tensor};
   }
 
-  Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override {
-    *input_placeholder = {CacheDatasetOp::kInputDataset,
-                          CacheDatasetOp::kFileName};
+  Status GetInputNames(std::vector<string>* input_names) const override {
+    *input_names = {CacheDatasetOp::kInputDataset, CacheDatasetOp::kFileName};
     return Status::OK();
   }
 
