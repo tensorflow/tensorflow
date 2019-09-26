@@ -43,7 +43,7 @@ void MultiRunStatsRecorder::OnBenchmarkStart(const BenchmarkParams& params) {
   if (params.Get<bool>("use_nnapi")) {
     current_run_name_ = "nnapi";
     const std::string accelerator =
-        params_.Get<std::string>("nnapi_accelerator_name");
+        params.Get<std::string>("nnapi_accelerator_name");
     if (!accelerator.empty()) {
       current_run_name_ = "nnapi(" + accelerator + ")";
     }
