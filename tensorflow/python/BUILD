@@ -19,7 +19,7 @@ visibility = [
     "//bazel_pip/tensorflow/lite/toco/python:__pkg__",
 ]
 
-load("//tensorflow:tensorflow.bzl", "if_mlir", "if_not_v2", "if_not_windows", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py", "tf_py_build_info_genrule", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "if_mlir", "if_not_windows", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py", "tf_py_build_info_genrule", "tf_py_test", "cc_header_only_library")
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
@@ -515,6 +515,24 @@ cc_library(
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
+    ],
+)
+
+cc_header_only_library(
+    name = "py_func_headers_lib",
+    deps = [
+        ":py_func_lib",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_py_func",
+    srcs = ["lib/core/py_func_wrapper.cc"],
+    module_name = "_pywrap_py_func",
+    deps = [
+        ":py_func_headers_lib",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
     ],
 )
 
@@ -3639,6 +3657,7 @@ py_library(
     srcs = ["ops/script_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":_pywrap_py_func",
         ":array_ops",
         ":framework_for_generated_wrappers",
         ":script_ops_gen",
@@ -5008,7 +5027,6 @@ tf_py_wrap_cc(
         "grappler/tf_optimizer.i",
         "lib/core/bfloat16.i",
         "lib/core/py_exception_registry.i",
-        "lib/core/py_func.i",
         "lib/core/strings.i",
         "lib/io/file_io.i",
         "lib/io/py_record_reader.i",
@@ -5117,6 +5135,7 @@ genrule(
     name = "pybind_symbol_target_libs_file",
     srcs = [
         ":cpp_python_util",  # util
+        ":py_func_lib",  # py_func
         "//tensorflow/core:util_port",  # util_port
         "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
         "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer

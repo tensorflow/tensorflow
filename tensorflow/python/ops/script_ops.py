@@ -28,7 +28,7 @@ import weakref
 import numpy as np
 import six
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import _pywrap_py_func
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -259,7 +259,7 @@ class FuncRegistry(object):
 # Global registry for py functions.
 _py_funcs = FuncRegistry()
 
-pywrap_tensorflow.InitializePyTrampoline(_py_funcs)
+_pywrap_py_func.initialize_py_trampoline(_py_funcs)
 
 
 def _internal_py_func(func,

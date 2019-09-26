@@ -51,3 +51,6 @@ tensorflow::EventsWriter::InitWithSuffix
 tensorflow::EventsWriter::WriteSerializedEvent
 tensorflow::EventsWriter::Flush
 tensorflow::EventsWriter::Close
+
+[py_func_lib] # py_func
+tensorflow::InitializePyTrampoline
