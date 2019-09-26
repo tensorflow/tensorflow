@@ -2561,7 +2561,14 @@ def to_variant(dataset):
     "data.DatasetSpec",
     v1=["data.DatasetSpec", "data.experimental.DatasetStructure"])
 class DatasetSpec(type_spec.BatchableTypeSpec):
-  """Type specification for `tf.data.Dataset`."""
+  """Type specification for `tf.data.Dataset`.
+
+  See `tf.TypeSpec` for more information about TensorFlow type specifications.
+
+  >>> dataset = tf.data.Dataset.range(3)
+  >>> tf.data.DatasetSpec.from_value(dataset)
+  DatasetSpec(TensorSpec(shape=(), dtype=tf.int64, name=None), TensorShape([]))
+  """
 
   __slots__ = ["_element_spec", "_dataset_shape"]
 
@@ -2598,6 +2605,7 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
 
   @staticmethod
   def from_value(value):
+    """Creates a `DatasetSpec` for the given `tf.data.Dataset` value."""
     return DatasetSpec(value.element_spec)  # pylint: disable=protected-access
 
   def _batch(self, batch_size):
