@@ -317,7 +317,8 @@ static Status CompileToLocalExecutable(
   }
   // If reference variables are not present in the graph, we can safely alias
   // passthrough parameters without performing a copy.
-  options.alias_passthrough_params = !has_ref_vars;
+  options.alias_passthrough_params =
+      !has_ref_vars && !platform_info.is_on_xla_device();
 
   std::map<int, Tensor> constant_args;
   for (int i : constants) {
