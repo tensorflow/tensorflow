@@ -211,12 +211,12 @@ appear in subscripts, sizes of aggregate types and affine expressions. They are
 also tightly coupled with `affine.apply` and load/store operations; having
 `index` type is a necessary precondition of a value to be acceptable by these
 operations. While it may be useful to have `memref<?xindex>` to express indirect
-accesses in MLFunctions, e.g. sparse matrix manipulations or lookup tables, it
-creates problems MLIR is not ready to address yet. MLIR needs to internally
-store constants of aggregate types and emit code operating on values of those
-types, which are subject to target-specific size and alignment constraints.
-Since MLIR does not have a target description mechanism at the moment, it cannot
-reliably emit such code. Moreover, some platforms may not support vectors of
+accesses, e.g. sparse matrix manipulations or lookup tables, it creates problems
+MLIR is not ready to address yet. MLIR needs to internally store constants of
+aggregate types and emit code operating on values of those types, which are
+subject to target-specific size and alignment constraints.  Since MLIR does not
+have a target description mechanism at the moment, it cannot reliably emit such
+code. Moreover, some platforms may not support vectors of
 type equivalent to `index`.
 
 Indirect access use cases can be alternatively supported by providing and
@@ -721,9 +721,9 @@ in a dilated convolution.
 // input:   [batch, input_height, input_width, input_feature]
 // kernel: [kernel_height, kernel_width, input_feature, output_feature]
 // output: [batch, output_height, output_width, output_feature]
-func @conv2d(memref<16x1024x1024x3xf32, #lm0, vmem> %input,
-             memref<5x5x3x32xf32, #lm0, vmem> %kernel,
-             memref<16x512x512x32xf32, #lm0, vmem> %output) {
+func @conv2d(memref<16x1024x1024x3xf32, #lm0, /*scratchpad=*/1> %input,
+             memref<5x5x3x32xf32, #lm0, /*scratchpad=*/1> %kernel,
+             memref<16x512x512x32xf32, #lm0, /*scratchpad=*/1> %output) {
   affine.for %b = 0 to %batch {
     affine.for %oh = 0 to %output_height {
       affine.for %ow = 0 to %output_width {
@@ -794,14 +794,13 @@ At a high level, we have two alternatives here:
     explicitly propagate the schedule into domains and model all the cleanup
     code. An example and more detail on the schedule tree form is in the next
     section.
-1.  Having two different forms of MLFunctions: an affine loop tree form
+1.  Having two different forms of "affine regions": an affine loop tree form
     (AffineLoopTreeFunction) and a polyhedral schedule tree form as two
-    different forms of MLFunctions. Or in effect, having four different forms
-    for functions in MLIR instead of three: CFG Function,
-    AffineLoopTreeFunction, Polyhedral Schedule Tree function, and external
-    functions.
+    different forms. Or in effect, having four different forms for functions in
+    MLIR instead of three: CFG Function, AffineLoopTreeFunction, Polyhedral
+    Schedule Tree function, and external functions.
 
-#### Schedule Tree Representation for MLFunctions
+#### Schedule Tree Representation for Affine Regions
 
 This representation is based on a simplified form of the domain/schedule
 representation used by the polyhedral compiler community. Domains represent what
@@ -826,15 +825,15 @@ func @matmul(%A, %B, %C, %M, %N, %K) : (...)  { // %M, N, K are symbols
   mldim %t1 : {S1,S2,S3,S4,S5}  floordiv (i, 128) {
     mldim %t2 : {S1,S2,S3,S4,S5}  floordiv (j, 128) {
       // (%i, %j) = affine.apply (d0, d1) -> (128*d0, 128*d1) (%t1, %t2)
-      call dma_hbm_to_vmem(%C, %i, %j, %M, %N, %K)
+      call dma_mem_to_scratchpad(%C, %i, %j, %M, %N, %K)
           with @intset_ij(%i, %j) [%M, %N, %K]
       mldim %t3 :   {S2,S3,S4,S5} floordiv (k, 128) {
         // (%i, %j, %k) = affine.apply (d0, d1, d2)
         //                          -> (128*d0, 128*d1, 128*d2)  (%t1, %t2, %t3)
-        call dma_hbm_to_vmem(%A, ...) with #inset_ijk (%i, %j, %k) [%M, %N, %K]
+        call dma_mem_to_scratchpad(%A, ...) with #inset_ijk (%i, %j, %k) [%M, %N, %K]
         // (%i, %j, %k) = affine.apply (d0, d1, d2)
         //                          -> (128*d0, 128*d1, 128*d2)  (%t1, %t2, %t3)
-        call dma_hbm_to_vmem(%B, ...) with #inset_ijk (%i, %j, %k) [%M, %N, %K]
+        call dma_mem_to_scratchpad(%B, ...) with #inset_ijk (%i, %j, %k) [%M, %N, %K]
         mldim %t4 : {S4} i mod 128 {
           mldim %t5 : {S4} j mod 128 {
             mldim %t6 : {S4} k mod 128 {
@@ -846,7 +845,7 @@ func @matmul(%A, %B, %C, %M, %N, %K) : (...)  { // %M, N, K are symbols
         } // end mldim t4
       } // end mldim t3
       // (%i, %j) = affine.apply (d0, d1) -> (128*d0, 128*d1) (%t1, %t2)
-      call $dma_vmem_to_hbm_C ... with #intset(%i, %j) [%M, %N, %K]
+      call $dma_scratchpad_to_mem_C ... with #intset(%i, %j) [%M, %N, %K]
     }  // end mldim t2
   } // end mldim t1
   return
@@ -978,15 +977,15 @@ Example:
 ```mlir {.mlir}
 ##rel9 ( ) [s0] -> (r0, r1) : 0 <= r0 <= 1023, 0 <= r1 <= s0 - 1
 
-func @cblas_reduce_ffi(memref<1024 x ? x f32, #layout_map0, hbm> %M) -> f32 [
+func @cblas_reduce_ffi(memref<1024 x ? x f32, #layout_map0, /*mem=*/0> %M) -> f32 [
   reads: {%M, ##rel9() }
   writes: /* empty */
   may_reads: /* empty */
   may_writes: /* empty */
 ]
 
-func @dma_hbm_to_vmem(memref<1024 x f32, #layout_map0, hbm> %a,
-    offset, memref<1024 x f32, #layout_map0, vmem> %b,
+func @dma_mem_to_scratchpad(memref<1024 x f32, #layout_map0, /*mem=*/0> %a,
+    offset, memref<1024 x f32, #layout_map0, 1> %b,
     memref<1024 x f32, #layout_map0> %c
 ) [
   reads: {%M, ##rel9() }

@@ -462,7 +462,7 @@ func @memref_cast(%arg0: memref<4xf32>, %arg1 : memref<?xf32>) {
 func @test_dimop(%arg0: tensor<4x4x?xf32>) {
   // CHECK: %0 = dim %arg0, 2 : tensor<4x4x?xf32>
   %0 = dim %arg0, 2 : tensor<4x4x?xf32>
-  // use dim as an affine_int to ensure type correctness
+  // use dim as an index to ensure type correctness
   %1 = affine.apply (d0) -> (d0)(%0)
   return
 }
