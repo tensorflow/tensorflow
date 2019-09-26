@@ -114,18 +114,37 @@ TensorStorageType SelectBestStorageType(const CLContext& context,
                                TensorDescriptor{data_type, desired})) {
     return desired;
   }
-  if (desired == TensorStorageType::TEXTURE_2D ||
-      desired == TensorStorageType::SINGLE_TEXTURE_2D) {
+  auto GetBestTypeAfterTextureArray = [&]() {
+    if (device.SupportsImageBuffer() &&
+        CanCreateTensorWithShape(
+            context, device, shape,
+            TensorDescriptor{data_type, TensorStorageType::IMAGE_BUFFER})) {
+      return TensorStorageType::IMAGE_BUFFER;
+    } else {
+      return TensorStorageType::BUFFER;
+    }
+  };
+  auto GetBestTypeAfterTexture2D = [&]() {
     if (device.SupportsTextureArray() &&
         CanCreateTensorWithShape(
             context, device, shape,
             TensorDescriptor{data_type, TensorStorageType::TEXTURE_ARRAY})) {
       return TensorStorageType::TEXTURE_ARRAY;
     } else {
-      return TensorStorageType::BUFFER;
+      return GetBestTypeAfterTextureArray();
     }
-  } else {
-    return TensorStorageType::BUFFER;
+  };
+  switch (desired) {
+    case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+      return GetBestTypeAfterTexture2D();
+    case TensorStorageType::TEXTURE_ARRAY:
+      return GetBestTypeAfterTextureArray();
+    case TensorStorageType::IMAGE_BUFFER:
+    case TensorStorageType::BUFFER:
+      return TensorStorageType::BUFFER;
+    default:
+      return TensorStorageType::BUFFER;
   }
 }
 
