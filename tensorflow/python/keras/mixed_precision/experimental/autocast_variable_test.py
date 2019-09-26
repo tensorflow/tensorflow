@@ -25,16 +25,19 @@ import numpy as np
 from tensorflow.python import tf2
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.mixed_precision.experimental import autocast_variable
+from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import gradient_descent as gradient_descent_v1
 from tensorflow.python.training.tracking import util as trackable_utils
 
 TESTCASES = ({
@@ -413,6 +416,26 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
           '<AutoCastDistributedVariable dtype=float32 true_dtype=float32 '
           'inner_variable=MirroredVariable.*>'
       )
+
+  @parameterized.named_parameters(
+      ('v1', gradient_descent_v1.GradientDescentOptimizer),
+      ('v2', gradient_descent_v2.SGD))
+  def test_optimizer(self, optimizer_class):
+    x = get_var(1., dtypes.float32)
+    x = autocast_variable.create_autocast_variable(x)
+    opt = optimizer_class(1.)
+
+    @def_function.function
+    def f():
+      opt.minimize(lambda: x + 1., var_list=[x])
+
+    if context.executing_eagerly():
+      f()
+    else:
+      op = f()  # pylint: disable=assignment-from-no-return
+      self.evaluate(variables.global_variables_initializer())
+      self.evaluate(op)
+    self.assertEqual(self.evaluate(x), 0)
 
 
 if __name__ == '__main__':
