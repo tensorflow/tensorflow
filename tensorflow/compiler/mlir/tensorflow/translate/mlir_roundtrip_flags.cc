@@ -82,7 +82,7 @@ Status ParseInputArrayInfo(absl::string_view array_names,
                            absl::string_view inference_type,
                            absl::string_view min_values,
                            absl::string_view max_values,
-                           NodeSpecs::InputArrays* inputs) {
+                           GraphImportConfig::InputArrays* inputs) {
   std::vector<string> node_names = absl::StrSplit(array_names, ',');
   std::vector<string> node_dtypes = absl::StrSplit(data_types, ',');
 
@@ -134,7 +134,7 @@ Status ParseInputArrayInfo(const std::vector<string>& node_names,
                            DataType inference_type,
                            const std::vector<float>& node_mins,
                            const std::vector<float>& node_maxs,
-                           NodeSpecs::InputArrays* inputs) {
+                           GraphImportConfig::InputArrays* inputs) {
   if (node_names.size() != node_dtypes.size() ||
       node_names.size() != node_shapes.size()) {
     return errors::FailedPrecondition(

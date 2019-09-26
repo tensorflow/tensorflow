@@ -57,7 +57,7 @@ static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
     TF_RETURN_IF_ERROR(LoadProtoFromFile(debug_info_file, &debug_info));
   }
 
-  NodeSpecs specs;
+  GraphImportConfig specs;
   specs.prune_unused_nodes = prune_unused_nodes;
   specs.convert_legacy_fed_inputs = convert_legacy_fed_inputs;
   specs.graph_as_function = graph_as_function;
