@@ -2821,19 +2821,30 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
     if (IsInPreserveSet(*reduction_node)) {
       return Status::OK();
     }
+
     NodeDef* inner_function;
     TF_RETURN_IF_ERROR(GetInputNode(reduction_node->input(0), &inner_function));
+
+    NodeDef* inner_function_input = nullptr;
+    if (inner_function->input_size() > 0) {
+      TF_RETURN_IF_ERROR(
+          GetInputNode(inner_function->input(0), &inner_function_input));
+    }
+
     // Optimize only if:
     // 0. inner_function is not in the preserve set,
     // 1. inner_function's Op is element-wise monotonic
     // 2. inner_function's output is not being consumed elsewhere.
     // 3. is monotonic increasing if reduction_node is a pooling operation
     //    since we don't have MinPool operations.
+    // 4. inner_functions is not a Relu node with an input from FusedBatchNorm.
+    //    This pattern will be fused later by remapper.
     bool is_non_decreasing = false;
     if (!IsInPreserveSet(*inner_function) &&
         IsElementWiseMonotonic(*inner_function, &is_non_decreasing) &&
         ctx().node_map->GetOutputs(inner_function->name()).size() == 1 &&
-        (is_non_decreasing || !IsAnyMaxPool(*reduction_node))) {
+        (is_non_decreasing || !IsAnyMaxPool(*reduction_node)) &&
+        !(IsRelu(*inner_function) && IsFusedBatchNorm(*inner_function_input))) {
       // Swap the first inputs of the inner function Op & the reduction Op.
       NodeDef* inner_input;
       TF_RETURN_IF_ERROR(GetInputNode(inner_function->input(0), &inner_input));
