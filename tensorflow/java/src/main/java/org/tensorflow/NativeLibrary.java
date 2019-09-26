@@ -71,7 +71,7 @@ final class NativeLibrary {
     log("frameworkResourceName: " + frameworkResourceName);
     final InputStream frameworkResource =
         NativeLibrary.class.getClassLoader().getResourceAsStream(frameworkResourceName);
-	if ("libtensorflow_framework.so".equals(frameworkLibName)) {
+    if ("libtensorflow_framework.so".equals(frameworkLibName)) {
         frameworkLibName = "libtensorflow_framework.so.1";
     }
     if ("libtensorflow_framework.dylib".equals(frameworkLibName)) {
