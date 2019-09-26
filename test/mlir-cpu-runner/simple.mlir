@@ -1,7 +1,6 @@
 // RUN: mlir-cpu-runner %s | FileCheck %s
-// RUN: mlir-cpu-runner -e foo -init-value 1000 %s | FileCheck -check-prefix=NOMAIN %s
+// RUN: mlir-cpu-runner %s -e foo | FileCheck -check-prefix=NOMAIN %s
 // RUN: mlir-cpu-runner %s -O3 | FileCheck %s
-// RUN: mlir-cpu-runner -e affine -init-value 2.0 %s | FileCheck -check-prefix=AFFINE %s
 
 // RUN: cp %s %t
 // RUN: mlir-cpu-runner %t -dump-object-file | FileCheck %t
@@ -12,40 +11,43 @@
 // RUN: ls %T/test.o
 // RUN: rm %T/test.o
 
-func @fabsf(f32) -> f32
+// Declarations of C library functions.
+func @fabsf(!llvm.float) -> !llvm.float
+func @malloc(!llvm.i64) -> !llvm<"i8*">
+func @free(!llvm<"i8*">)
 
-func @main(%a : memref<2xf32>, %b : memref<1xf32>) {
-  %c0 = constant 0 : index
-  %c1 = constant 1 : index
-  %0 = constant -420.0 : f32
-  %1 = load %a[%c0] : memref<2xf32>
-  %2 = load %a[%c1] : memref<2xf32>
-  %3 = addf %0, %1 : f32
-  %4 = addf %3, %2 : f32
-  %5 = call @fabsf(%4) : (f32) -> f32
-  store %5, %b[%c0] : memref<1xf32>
-  return
+// Check that a simple function with a nested call works.
+func @main() -> !llvm.float {
+  %0 = llvm.mlir.constant(-4.200000e+02 : f32) : !llvm.float
+  %1 = llvm.call @fabsf(%0) : (!llvm.float) -> !llvm.float
+  llvm.return %1 : !llvm.float
 }
-// CHECK: 0.000000e+00 0.000000e+00
-// CHECK-NEXT: 4.200000e+02
+// CHECK: 4.200000e+02
 
-func @foo(%a : memref<1x1xf32>) -> memref<1x1xf32> {
-  %c0 = constant 0 : index
-  %0 = constant 1234.0 : f32
-  %1 = load %a[%c0, %c0] : memref<1x1xf32>
-  %2 = addf %1, %0 : f32
-  store %2, %a[%c0, %c0] : memref<1x1xf32>
-  return %a : memref<1x1xf32>
+// Helper typed functions wrapping calls to "malloc" and "free".
+func @allocation() -> !llvm<"float*"> {
+  %0 = llvm.mlir.constant(4 : index) : !llvm.i64
+  %1 = llvm.call @malloc(%0) : (!llvm.i64) -> !llvm<"i8*">
+  %2 = llvm.bitcast %1 : !llvm<"i8*"> to !llvm<"float*">
+  llvm.return %2 : !llvm<"float*">
 }
-// NOMAIN: 2.234000e+03
-// NOMAIN-NEXT: 2.234000e+03
+func @deallocation(%arg0: !llvm<"float*">) {
+  %0 = llvm.bitcast %arg0 : !llvm<"float*"> to !llvm<"i8*">
+  llvm.call @free(%0) : (!llvm<"i8*">) -> ()
+  llvm.return
+}
 
-func @affine(%a : memref<32xf32>) -> memref<32xf32> {
-  %cf1 = constant 42.0 : f32
-  %N = dim %a, 0 : memref<32xf32>
-  affine.for %i = 0 to %N {
-    affine.store %cf1, %a[%i] : memref<32xf32>
-  }
-  return %a : memref<32xf32>
+// Check that allocation and deallocation works, and that a custom entry point
+// works.
+func @foo() -> !llvm.float {
+  %0 = llvm.call @allocation() : () -> !llvm<"float*">
+  %1 = llvm.mlir.constant(0 : index) : !llvm.i64
+  %2 = llvm.mlir.constant(1.234000e+03 : f32) : !llvm.float
+  %3 = llvm.getelementptr %0[%1] : (!llvm<"float*">, !llvm.i64) -> !llvm<"float*">
+  llvm.store %2, %3 : !llvm<"float*">
+  %4 = llvm.getelementptr %0[%1] : (!llvm<"float*">, !llvm.i64) -> !llvm<"float*">
+  %5 = llvm.load %4 : !llvm<"float*">
+  llvm.call @deallocation(%0) : (!llvm<"float*">) -> ()
+  llvm.return %5 : !llvm.float
 }
-// AFFINE: 4.2{{0+}}e+01
+// NOMAIN: 1.234000e+03
