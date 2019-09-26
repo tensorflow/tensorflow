@@ -3946,13 +3946,11 @@ def reverse_sequence(input,
   >>> input = [[1, 2, 3, 4, 5, 0, 0, 0], [1, 2, 0, 0, 0, 0, 0, 0],
   ... [1, 2, 3, 4, 0, 0, 0, 0], [1, 2, 3, 4, 5, 6, 7, 8]]
   >>> output = reverse_sequence(input, seq_lens, seq_dim=1, batch_dim=0)
-  <tf.Tensor 'ReverseSequence_3:0' shape=(4, 8) dtype=int32>
-  >>> sess = tf.Session()
-  >>> print(sess.run(output))
-  [[0 0 5 4 3 2 1 0]
-  [2 1 0 0 0 0 0 0]
-  [3 2 1 4 0 0 0 0]
-  [5 4 3 2 1 6 7 8]]
+  <tf.Tensor: id=5, shape=(4, 8), dtype=int32, numpy=
+  array([[0, 0, 5, 4, 3, 2, 1, 0],
+       [2, 1, 0, 0, 0, 0, 0, 0],
+       [3, 2, 1, 4, 0, 0, 0, 0],
+       [5, 4, 3, 2, 1, 6, 7, 8]], dtype=int32)>
 
   Args:
     `input`: A `Tensor`. The input to reverse.
