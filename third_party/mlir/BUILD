@@ -1867,6 +1867,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":AffineOps",
+        ":Analysis",
         ":CFGTransforms",
         ":EDSC",
         ":IR",

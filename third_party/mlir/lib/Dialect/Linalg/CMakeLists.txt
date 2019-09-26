@@ -18,6 +18,7 @@ add_llvm_library(MLIRLinalg
 add_dependencies(MLIRLinalg
 
   MLIRAffineOps
+  MLIRAnalysis
   MLIRLinalgOpsIncGen
   MLIRLinalgLibraryOpsIncGen
   MLIRStandardToLLVM
