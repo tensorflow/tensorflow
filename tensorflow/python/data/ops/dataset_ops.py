@@ -2286,6 +2286,14 @@ class Options(options_lib.OptionsBase):
   optimizations to apply or whether to use performance modeling to dynamically
   tune the parallelism of operations such as `tf.data.Dataset.map` or
   `tf.data.Dataset.interleave`.
+
+  After constructing an `Options` object, use `dataset.with_options(options)` to
+  apply the options to a dataset.
+
+  >>> dataset = tf.data.Dataset.range(3)
+  >>> options = tf.data.Options()
+  >>> # Set options here.
+  >>> dataset = dataset.with_options(options)
   """
 
   experimental_deterministic = options_lib.create_option(
