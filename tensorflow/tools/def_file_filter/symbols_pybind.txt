@@ -51,4 +51,3 @@ tensorflow::EventsWriter::InitWithSuffix
 tensorflow::EventsWriter::WriteSerializedEvent
 tensorflow::EventsWriter::Flush
 tensorflow::EventsWriter::Close
-

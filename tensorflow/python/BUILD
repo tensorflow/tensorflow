@@ -344,17 +344,6 @@ cc_library(
     ],
 )
 
-tf_python_pybind_extension(
-    name = "_pywrap_bfloat16",
-    srcs = ["lib/core/bfloat16_wrapper.cc"],
-    hdrs = ["lib/core/bfloat16.h"],
-    module_name = "_pywrap_bfloat16",
-    deps = [
-        "//third_party/python_runtime:headers",
-        "@pybind11",
-    ],
-)
-
 cc_library(
     name = "ndarray_tensor_bridge",
     srcs = ["lib/core/ndarray_tensor_bridge.cc"],
@@ -882,7 +871,7 @@ py_library(
     srcs = ["framework/dtypes.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":_pywrap_bfloat16",
+        ":pywrap_tensorflow",
         "//tensorflow/core:protos_all_py",
     ],
 )
@@ -5017,6 +5006,7 @@ tf_py_wrap_cc(
         "grappler/item.i",
         "grappler/model_analyzer.i",
         "grappler/tf_optimizer.i",
+        "lib/core/bfloat16.i",
         "lib/core/py_exception_registry.i",
         "lib/core/py_func.i",
         "lib/core/strings.i",
@@ -5126,7 +5116,6 @@ genrule(
 genrule(
     name = "pybind_symbol_target_libs_file",
     srcs = [
-        ":bfloat16_lib",  # bfloat16
         ":cpp_python_util",  # util
         "//tensorflow/core:util_port",  # util_port
         "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
