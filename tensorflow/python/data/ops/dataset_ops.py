@@ -451,6 +451,28 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     # Dictionary structure is also preserved.
     Dataset.from_tensor_slices({"a": [1, 2], "b": [3, 4], "c": [5, 6]})
     # ==> [ {"a": 1, "b": 3, "c": 5}, {"a": 2, "b": 4, "c:" 6} ]
+
+
+    # Example 1: Two tensors can be combined into one Dataset object.
+    features = tf.constant([[1, 3], [2, 3], [2, 1], [1, 2], [3, 3], [3, 2]]) # ==> 6x2 tensor
+    labels = tf.constant(['A', 'A', 'B', 'B', 'A', 'B']) # ==> 6x1 tensor
+    dataset = Dataset.from_tensor_slices((features, labels))
+
+    # Example 2: Both the features and the labels tensors can be converted
+    # to a Dataset object separately and combined after.
+    features_dataset = Dataset.from_tensor_slices(features)
+    labels_dataset = Dataset.from_tensor_slices(labels)
+    dataset = Dataset.zip((features_dataset, labels_dataset))
+
+    # Example 3: A batched feature and label set can be converted to a Dataset
+    # in similar fashion.
+    batched_features = tf.constant([[[1, 3], [2, 3]],
+                                    [[2, 1], [1, 2]],
+                                    [[3, 3], [3, 2]]], shape=(3, 2, 2))
+    batched_labels = tf.constant([['A', 'A'],
+                                  ['B', 'B'],
+                                  ['A', 'B']], shape=(3, 2, 1))
+    dataset = Dataset.from_tensor_slices((batched_features, batched_labels))
     ```
 
     Note that if `tensors` contains a NumPy array, and eager execution is not
