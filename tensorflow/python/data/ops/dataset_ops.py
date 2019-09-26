@@ -127,7 +127,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   # Dict element with 3 components
   d = {"a": (2, 2), "b": 3}
   # Element containing a dataset
-  e = tf.data.Dataset.from_element(10)
+  e = tf.data.Dataset.from_tensors(10)
   ```
   """
 
