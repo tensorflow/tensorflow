@@ -955,7 +955,7 @@ class ExecutorState {
         : input_tensors(new Entry[total_input_tensors]),
           outstanding_ops(0),
           outstanding_frame_count(0),
-          counts_(*pending_counts) {  // Initialize with copy of *pending_counts
+          counts(*pending_counts) {  // Initialize with copy of *pending_counts
     }
 
     // The state of an iteration.
@@ -975,35 +975,35 @@ class ExecutorState {
 
     // The number of outstanding frames for each iteration.
     int outstanding_frame_count;
-    int pending(PendingCounts::Handle h) { return counts_.pending(h); }
+    int pending(PendingCounts::Handle h) { return counts.pending(h); }
     int decrement_pending(PendingCounts::Handle h, int v) {
-      return counts_.decrement_pending(h, v);
+      return counts.decrement_pending(h, v);
     }
     // Mark a merge node as live
     // REQUIRES: Node corresponding to "h" is a merge node
-    void mark_live(PendingCounts::Handle h) { counts_.mark_live(h); }
+    void mark_live(PendingCounts::Handle h) { counts.mark_live(h); }
     // Mark a node to show that processing has started.
-    void mark_started(PendingCounts::Handle h) { counts_.mark_started(h); }
+    void mark_started(PendingCounts::Handle h) { counts.mark_started(h); }
     // Mark a node to show that processing has completed.
-    void mark_completed(PendingCounts::Handle h) { counts_.mark_completed(h); }
+    void mark_completed(PendingCounts::Handle h) { counts.mark_completed(h); }
     PendingCounts::NodeState node_state(PendingCounts::Handle h) {
-      return counts_.node_state(h);
+      return counts.node_state(h);
     }
 
-    int dead_count(PendingCounts::Handle h) { return counts_.dead_count(h); }
+    int dead_count(PendingCounts::Handle h) { return counts.dead_count(h); }
     void increment_dead_count(PendingCounts::Handle h) {
-      counts_.increment_dead_count(h);
+      counts.increment_dead_count(h);
     }
     void adjust_for_activation(PendingCounts::Handle h, bool increment_dead,
                                int* pending_result, int* dead_result) {
-      counts_.adjust_for_activation(h, increment_dead, pending_result,
-                                    dead_result);
+      counts.adjust_for_activation(h, increment_dead, pending_result,
+                                   dead_result);
     }
 
     ~IterationState() { delete[] input_tensors; }
 
    private:
-    PendingCounts counts_;
+    PendingCounts counts;
   };
 
   struct FrameState {
