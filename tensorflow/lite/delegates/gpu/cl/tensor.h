@@ -53,34 +53,36 @@ class Tensor {
 
   virtual ~Tensor() { Release(); }
 
-  int Width() const { return width_; }
-  int Height() const { return height_; }
-  int Channels() const { return channels_; }
+  int Width() const { return shape_.w; }
+  int Height() const { return shape_.h; }
+  int Channels() const { return shape_.c; }
+  int Depth() const { return IntegralDivideRoundUp(shape_.c, 4); }
+  int4 GetSizeWithDepth() const {
+    return int4(shape_.w, shape_.h, shape_.c, Depth());
+  }
   enum DataType DataType() const { return descriptor_.data_type; }
   TensorStorageType StorageType() const { return descriptor_.storage_type; }
 
   // for profiling and memory statistics
   uint64_t GetMemorySizeInBytes() const;
 
-  int Depth() const { return IntegralDivideRoundUp(channels_, 4); }
-  int4 GetSizeWithDepth() const {
-    return int4(width_, height_, channels_, Depth());
-  }
   cl_mem GetMemoryPtr() const;
 
   // This function returns buffer memory ptr for IMAGE_BUFFER instead of image
   // memory ptr.
   cl_mem GetMemoryPtrForWriting() const;
 
-  Status WriteDataBHWC(absl::Span<const float> in, CLCommandQueue* queue);
-
-  Status ReadDataBHWC(absl::Span<float> out, CLCommandQueue* queue) const;
-
   Status WriteData(CLCommandQueue* queue, const TensorFloat32& src);
   Status ReadData(CLCommandQueue* queue, TensorFloat32* dst) const;
 
- protected:
+ private:
   Status IsValid(const BHWC& shape) const;
+
+  int GetChannelsAlignment() const;
+  int GetAlignedChannels() const;
+
+  Status WriteDataBHWC(absl::Span<const float> in, CLCommandQueue* queue);
+  Status ReadDataBHWC(absl::Span<float> out, CLCommandQueue* queue) const;
 
   template <typename T>
   void DataFromBHWC(absl::Span<const float> src, absl::Span<T> dst) const;
@@ -88,16 +90,18 @@ class Tensor {
   void DataToBHWC(absl::Span<const T> src, absl::Span<float> dst) const;
 
   // TODO(sorokin) might be bad performance
-  int GetLinearIndex(int x, int y, int d, int sub_d) const {
+  int GetLinearIndex(int b, int x, int y, int d, int sub_d) const {
     switch (descriptor_.storage_type) {
       case TensorStorageType::BUFFER:
-      case TensorStorageType::TEXTURE_ARRAY:
       case TensorStorageType::IMAGE_BUFFER:
-        return ((d * height_ + y) * width_ + x) * 4 + sub_d;  // DHWC4
+        return (((b * Depth() + d) * shape_.h + y) * shape_.w + x) * 4 +
+               sub_d;  // BDHWC4
+      case TensorStorageType::TEXTURE_ARRAY:
+        return ((d * shape_.h + y) * shape_.w + x) * 4 + sub_d;  // DHWC4
       case TensorStorageType::TEXTURE_2D:
-        return ((y * Depth() + d) * width_ + x) * 4 + sub_d;  // HDWC4
+        return ((y * Depth() + d) * shape_.w + x) * 4 + sub_d;  // HDWC4
       case TensorStorageType::SINGLE_TEXTURE_2D:
-        return (y * width_ + x) * channels_ + sub_d;
+        return (y * shape_.w + x) * shape_.c + sub_d;
       case TensorStorageType::UNKNOWN:
         return -1;
     }
@@ -109,9 +113,7 @@ class Tensor {
   cl_mem memory_;
   cl_mem image_buffer_memory_;  // for TensorStorageType::IMAGE_BUFFER only
   bool memory_owner_;
-  int width_;
-  int height_;
-  int channels_;
+  BHWC shape_;
   TensorDescriptor descriptor_;
 };
 
