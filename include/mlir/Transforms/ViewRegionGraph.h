@@ -41,7 +41,7 @@ llvm::raw_ostream &writeGraph(llvm::raw_ostream &os, Region &region,
                               bool shortNames = false, const Twine &title = "");
 
 /// Creates a pass to print CFG graphs.
-OpPassBase<FuncOp> *
+std::unique_ptr<mlir::OpPassBase<mlir::FuncOp>>
 createPrintCFGGraphPass(llvm::raw_ostream &os = llvm::errs(),
                         bool shortNames = false, const llvm::Twine &title = "");
 

@@ -85,10 +85,10 @@ private:
 };
 } // namespace
 
-OpPassBase<FuncOp> *mlir::createPrintCFGGraphPass(llvm::raw_ostream &os,
-                                                  bool shortNames,
-                                                  const llvm::Twine &title) {
-  return new PrintCFGPass(os, shortNames, title);
+std::unique_ptr<mlir::OpPassBase<mlir::FuncOp>>
+mlir::createPrintCFGGraphPass(llvm::raw_ostream &os, bool shortNames,
+                              const llvm::Twine &title) {
+  return std::make_unique<PrintCFGPass>(os, shortNames, title);
 }
 
 static PassRegistration<PrintCFGPass> pass("print-cfg-graph",
