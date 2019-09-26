@@ -121,6 +121,88 @@ func @access_chain_invalid_accessing_type(%index0 : i32) -> () {
 // -----
 
 //===----------------------------------------------------------------------===//
+// spv.Bitcast
+//===----------------------------------------------------------------------===//
+
+func @cast1(%arg0 : f32) {
+  // CHECK: {{%.*}} = spv.Bitcast {{%.*}} from f32 to i32
+  %0 = spv.Bitcast %arg0 from f32 to i32
+  return
+}
+
+func @cast2(%arg0 : vector<2xf32>) {
+  // CHECK: {{%.*}} = spv.Bitcast {{%.*}} from vector<2xf32> to vector<2xi32>
+  %0 = spv.Bitcast %arg0 from vector<2xf32> to vector<2xi32>
+  return
+}
+
+func @cast3(%arg0 : vector<2xf32>) {
+  // CHECK: {{%.*}} = spv.Bitcast {{%.*}} from vector<2xf32> to i64
+  %0 = spv.Bitcast %arg0 from vector<2xf32> to i64
+  return
+}
+
+func @cast4(%arg0 : !spv.ptr<f32, Function>) {
+  // CHECK: {{%.*}} = spv.Bitcast {{%.*}} from !spv.ptr<f32, Function> to !spv.ptr<i32, Function>
+  %0 = spv.Bitcast %arg0 from !spv.ptr<f32, Function> to !spv.ptr<i32, Function>
+  return
+}
+
+func @cast5(%arg0 : !spv.ptr<f32, Function>) {
+  // CHECK: {{%.*}} = spv.Bitcast {{%.*}} from !spv.ptr<f32, Function> to !spv.ptr<vector<2xi32>, Function>
+  %0 = spv.Bitcast %arg0 from !spv.ptr<f32, Function> to !spv.ptr<vector<2xi32>, Function>
+  return
+}
+
+func @cast6(%arg0 : vector<4xf32>) {
+  // CHECK: {{%.*}} = spv.Bitcast {{%.*}} from vector<4xf32> to vector<2xi64>
+  %0 = spv.Bitcast %arg0 from vector<4xf32> to vector<2xi64>
+  return
+}
+
+// -----
+
+func @cast1(%arg0 : f32) {
+  // expected-error @+1 {{result type must be different from operand type}}
+  %0 = spv.Bitcast %arg0 from f32 to f32
+  return
+}
+
+// -----
+
+func @cast1(%arg0 : f32) {
+  // expected-error @+1 {{mismatch in result type bitwidth 64 and operand type bitwidth 32}}
+  %0 = spv.Bitcast %arg0 from f32 to i64
+  return
+}
+
+// -----
+
+func @cast1(%arg0 : vector<2xf32>) {
+  // expected-error @+1 {{mismatch in result type bitwidth 96 and operand type bitwidth 64}}
+  %0 = spv.Bitcast %arg0 from vector<2xf32> to vector<3xf32>
+  return
+}
+
+// -----
+
+func @cast3(%arg0 : !spv.ptr<f32, Function>) {
+  // expected-error @+1 {{unhandled bit cast conversion from pointer type to non-pointer type}}
+  %0 = spv.Bitcast %arg0 from !spv.ptr<f32, Function> to i64
+  return
+}
+
+// -----
+
+func @cast3(%arg0 : i64) {
+  // expected-error @+1 {{unhandled bit cast conversion from non-pointer type to pointer type}}
+  %0 = spv.Bitcast %arg0 from i64 to !spv.ptr<f32, Function>
+  return
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // spv.CompositeExtractOp
 //===----------------------------------------------------------------------===//
 

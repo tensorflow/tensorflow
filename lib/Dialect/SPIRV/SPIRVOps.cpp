@@ -316,6 +316,24 @@ static Attribute extractCompositeElement(Attribute composite,
   return {};
 }
 
+// Get bit width of types.
+static unsigned getBitWidth(Type type) {
+  if (type.isa<spirv::PointerType>()) {
+    // Just return 64 bits for pointer types for now.
+    // TODO: Make sure not caller relies on the actual pointer width value.
+    return 64;
+  }
+  if (type.isIntOrFloat()) {
+    return type.getIntOrFloatBitWidth();
+  }
+  if (auto vectorType = type.dyn_cast<VectorType>()) {
+    assert(vectorType.getElementType().isIntOrFloat());
+    return vectorType.getNumElements() *
+           vectorType.getElementType().getIntOrFloatBitWidth();
+  }
+  llvm_unreachable("unhandled bit width computation for type");
+}
+
 //===----------------------------------------------------------------------===//
 // Common parsers and printers
 //===----------------------------------------------------------------------===//
@@ -544,6 +562,61 @@ static LogicalResult verify(spirv::AddressOfOp addressOfOp) {
   if (addressOfOp.pointer()->getType() != varOp.type()) {
     return addressOfOp.emitOpError(
         "result type mismatch with the referenced global variable's type");
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.BitcastOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseBitcastOp(OpAsmParser &parser, OperationState &state) {
+  OpAsmParser::OperandType operandInfo;
+  Type operandType, resultType;
+  if (parser.parseOperand(operandInfo) || parser.parseKeyword("from") ||
+      parser.parseType(operandType) || parser.parseKeyword("to") ||
+      parser.parseType(resultType)) {
+    return failure();
+  }
+  if (parser.resolveOperands(operandInfo, operandType, state.operands)) {
+    return failure();
+  }
+  state.addTypes(resultType);
+  return success();
+}
+
+static void print(spirv::BitcastOp bitcastOp, OpAsmPrinter &printer) {
+  printer << spirv::BitcastOp::getOperationName() << ' ';
+  printer.printOperand(bitcastOp.operand());
+  printer << " from " << bitcastOp.operand()->getType() << " to "
+          << bitcastOp.result()->getType();
+}
+
+static LogicalResult verify(spirv::BitcastOp bitcastOp) {
+  // TODO: The SPIR-V spec validation rules are different for different
+  // versions.
+  auto operandType = bitcastOp.operand()->getType();
+  auto resultType = bitcastOp.result()->getType();
+  if (operandType == resultType) {
+    return bitcastOp.emitError(
+        "result type must be different from operand type");
+  }
+  if (operandType.isa<spirv::PointerType>() &&
+      !resultType.isa<spirv::PointerType>()) {
+    return bitcastOp.emitError(
+        "unhandled bit cast conversion from pointer type to non-pointer type");
+  }
+  if (!operandType.isa<spirv::PointerType>() &&
+      resultType.isa<spirv::PointerType>()) {
+    return bitcastOp.emitError(
+        "unhandled bit cast conversion from non-pointer type to pointer type");
+  }
+  auto operandBitWidth = getBitWidth(operandType);
+  auto resultBitWidth = getBitWidth(resultType);
+  if (operandBitWidth != resultBitWidth) {
+    return bitcastOp.emitOpError("mismatch in result type bitwidth ")
+           << resultBitWidth << " and operand type bitwidth "
+           << operandBitWidth;
   }
   return success();
 }
