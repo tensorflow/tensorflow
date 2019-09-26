@@ -116,6 +116,7 @@ def SPV_OC_OpAccessChain            : I32EnumAttrCase<"OpAccessChain", 65>;
 def SPV_OC_OpDecorate               : I32EnumAttrCase<"OpDecorate", 71>;
 def SPV_OC_OpMemberDecorate         : I32EnumAttrCase<"OpMemberDecorate", 72>;
 def SPV_OC_OpCompositeExtract       : I32EnumAttrCase<"OpCompositeExtract", 81>;
+def SPV_OC_OpBitcast                : I32EnumAttrCase<"OpBitcast", 124>;
 def SPV_OC_OpFNegate                : I32EnumAttrCase<"OpFNegate", 127>;
 def SPV_OC_OpIAdd                   : I32EnumAttrCase<"OpIAdd", 128>;
 def SPV_OC_OpFAdd                   : I32EnumAttrCase<"OpFAdd", 129>;
@@ -179,11 +180,11 @@ def SPV_OpcodeAttr :
       SPV_OC_OpSpecConstantComposite, SPV_OC_OpFunction, SPV_OC_OpFunctionParameter,
       SPV_OC_OpFunctionEnd, SPV_OC_OpFunctionCall, SPV_OC_OpVariable, SPV_OC_OpLoad,
       SPV_OC_OpStore, SPV_OC_OpAccessChain, SPV_OC_OpDecorate,
-      SPV_OC_OpMemberDecorate, SPV_OC_OpCompositeExtract, SPV_OC_OpFNegate,
-      SPV_OC_OpIAdd, SPV_OC_OpFAdd, SPV_OC_OpISub, SPV_OC_OpFSub, SPV_OC_OpIMul,
-      SPV_OC_OpFMul, SPV_OC_OpUDiv, SPV_OC_OpSDiv, SPV_OC_OpFDiv, SPV_OC_OpUMod,
-      SPV_OC_OpSRem, SPV_OC_OpSMod, SPV_OC_OpFRem, SPV_OC_OpFMod, SPV_OC_OpSelect,
-      SPV_OC_OpIEqual, SPV_OC_OpINotEqual, SPV_OC_OpUGreaterThan,
+      SPV_OC_OpMemberDecorate, SPV_OC_OpCompositeExtract, SPV_OC_OpBitcast,
+      SPV_OC_OpFNegate, SPV_OC_OpIAdd, SPV_OC_OpFAdd, SPV_OC_OpISub, SPV_OC_OpFSub,
+      SPV_OC_OpIMul, SPV_OC_OpFMul, SPV_OC_OpUDiv, SPV_OC_OpSDiv, SPV_OC_OpFDiv,
+      SPV_OC_OpUMod, SPV_OC_OpSRem, SPV_OC_OpSMod, SPV_OC_OpFRem, SPV_OC_OpFMod,
+      SPV_OC_OpSelect, SPV_OC_OpIEqual, SPV_OC_OpINotEqual, SPV_OC_OpUGreaterThan,
       SPV_OC_OpSGreaterThan, SPV_OC_OpUGreaterThanEqual, SPV_OC_OpSGreaterThanEqual,
       SPV_OC_OpULessThan, SPV_OC_OpSLessThan, SPV_OC_OpULessThanEqual,
       SPV_OC_OpSLessThanEqual, SPV_OC_OpFOrdEqual, SPV_OC_OpFUnordEqual,
@@ -241,6 +242,7 @@ class SPV_ScalarOrVectorOf<Type type> :
     AnyTypeOf<[type, VectorOfLengthAndType<[2, 3, 4], [type]>]>;
 
 def SPV_ScalarOrVector : AnyTypeOf<[SPV_Scalar, SPV_Vector]>;
+def SPV_ScalarOrVectorOrPtr : AnyTypeOf<[SPV_ScalarOrVector, SPV_AnyPtr]>;
 
 // TODO(antiagainst): Use a more appropriate way to model optional operands
 class SPV_Optional<Type type> : Variadic<type>;
