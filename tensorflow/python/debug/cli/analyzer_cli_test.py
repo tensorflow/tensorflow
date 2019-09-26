@@ -923,7 +923,6 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         [(len(out.lines[0]) - len(node_name), len(out.lines[0]), "bold")],
         out.font_attr_segs[0])
 
-  @test_util.disable_xla("b/141691124")
   def testNodeInfoShowAttributes(self):
     node_name = "simple_mul_add/matmul"
     out = self._registry.dispatch_command("node_info", ["-a", node_name])
