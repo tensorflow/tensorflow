@@ -122,6 +122,7 @@ static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
           /*extraIndices=*/{ivModTwoOp},
           /*indexRemap=*/AffineMap(),
           /*extraOperands=*/{},
+          /*symbolOperands=*/{},
           /*domInstFilter=*/&*forOp.getBody()->begin()))) {
     LLVM_DEBUG(
         forOp.emitError("memref replacement for double buffering failed"));

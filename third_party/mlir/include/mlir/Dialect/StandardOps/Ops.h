@@ -106,7 +106,7 @@ public:
   using ConstantOp::ConstantOp;
 
   /// Builds a constant float op producing a float of the specified type.
-  static void build(Builder *builder, OperationState *result,
+  static void build(Builder *builder, OperationState &result,
                     const APFloat &value, FloatType type);
 
   APFloat getValue() { return getAttrOfType<FloatAttr>("value").getValue(); }
@@ -123,12 +123,12 @@ class ConstantIntOp : public ConstantOp {
 public:
   using ConstantOp::ConstantOp;
   /// Build a constant int op producing an integer of the specified width.
-  static void build(Builder *builder, OperationState *result, int64_t value,
+  static void build(Builder *builder, OperationState &result, int64_t value,
                     unsigned width);
 
   /// Build a constant int op producing an integer with the specified type,
   /// which must be an integer type.
-  static void build(Builder *builder, OperationState *result, int64_t value,
+  static void build(Builder *builder, OperationState &result, int64_t value,
                     Type type);
 
   int64_t getValue() { return getAttrOfType<IntegerAttr>("value").getInt(); }
@@ -146,7 +146,7 @@ public:
   using ConstantOp::ConstantOp;
 
   /// Build a constant int op producing an index.
-  static void build(Builder *builder, OperationState *result, int64_t value);
+  static void build(Builder *builder, OperationState &result, int64_t value);
 
   int64_t getValue() { return getAttrOfType<IntegerAttr>("value").getInt(); }
 
@@ -195,7 +195,7 @@ class DmaStartOp
 public:
   using Op::Op;
 
-  static void build(Builder *builder, OperationState *result, Value *srcMemRef,
+  static void build(Builder *builder, OperationState &result, Value *srcMemRef,
                     ArrayRef<Value *> srcIndices, Value *destMemRef,
                     ArrayRef<Value *> destIndices, Value *numElements,
                     Value *tagMemRef, ArrayRef<Value *> tagIndices,
@@ -277,8 +277,8 @@ public:
   }
 
   static StringRef getOperationName() { return "std.dma_start"; }
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
+  static ParseResult parse(OpAsmParser &parser, OperationState &result);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
 
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
@@ -320,7 +320,7 @@ class DmaWaitOp
 public:
   using Op::Op;
 
-  static void build(Builder *builder, OperationState *result, Value *tagMemRef,
+  static void build(Builder *builder, OperationState &result, Value *tagMemRef,
                     ArrayRef<Value *> tagIndices, Value *numElements);
 
   static StringRef getOperationName() { return "std.dma_wait"; }
@@ -342,8 +342,8 @@ public:
   // Returns the number of elements transferred in the associated DMA operation.
   Value *getNumElements() { return getOperand(1 + getTagMemRefRank()); }
 
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
+  static ParseResult parse(OpAsmParser &parser, OperationState &result);
+  void print(OpAsmPrinter &p);
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
 };
@@ -351,10 +351,10 @@ public:
 /// Prints dimension and symbol list.
 void printDimAndSymbolList(Operation::operand_iterator begin,
                            Operation::operand_iterator end, unsigned numDims,
-                           OpAsmPrinter *p);
+                           OpAsmPrinter &p);
 
 /// Parses dimension and symbol list and returns true if parsing failed.
-ParseResult parseDimAndSymbolList(OpAsmParser *parser,
+ParseResult parseDimAndSymbolList(OpAsmParser &parser,
                                   SmallVector<Value *, 4> &operands,
                                   unsigned &numDims);
 

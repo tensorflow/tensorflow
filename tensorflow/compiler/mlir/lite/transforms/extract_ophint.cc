@@ -172,6 +172,20 @@ struct OphintCompositeOp {
     return all_output_ops;
   }
 
+  std::vector<Operation*> GetAllInUseOutputOps() {
+    std::vector<Operation*> all_output_ops;
+    for (const auto& kv : outputs) {
+      auto& aggregated_operand = kv.second;
+      if (aggregated_operand.aggregation != kStrategyStack) {
+        continue;
+      }
+      for (const auto& operand_kv : aggregated_operand.ops) {
+        all_output_ops.push_back(operand_kv.second);
+      }
+    }
+    return all_output_ops;
+  }
+
   // This function will process the aggregated inputs based on different
   // strategies like "first", "last", "stack".
   std::map<int, Value*> GetAggregatedInputs(OpBuilder* builder) {
@@ -198,12 +212,24 @@ struct OphintCompositeOp {
           for (const auto& dim : input_type.getShape()) {
             reshape_op_shape.push_back(dim);
           }
-          auto reshape_output_type = builder->getTensorType(
-              reshape_op_shape, input_type.getElementType());
+
           Operation* first_use = current_identity_op->getNextNode();
           builder->setInsertionPoint(first_use);
+          Location loc = first_use->getLoc();
+          auto shape_type = builder->getTensorType({input_type.getRank() + 1},
+                                                   builder->getIntegerType(32));
+          SmallVector<Attribute, 4> result_shape_data(reshape_op_shape.size());
+          for (int i = 0; i < reshape_op_shape.size(); ++i) {
+            result_shape_data[i] = builder->getI32IntegerAttr(
+                static_cast<int32_t>(reshape_op_shape[i]));
+          }
+          auto shape_attr =
+              builder->getDenseElementsAttr(shape_type, result_shape_data);
+          auto shape = builder->create<ConstantOp>(loc, shape_type, shape_attr);
+          auto reshape_output_type = builder->getTensorType(
+              reshape_op_shape, input_type.getElementType());
           Operation* reshape = builder->create<TFL::ReshapeOp>(
-              first_use->getLoc(), reshape_output_type, input);
+              first_use->getLoc(), reshape_output_type, input, shape);
           op_input = reshape->getResult(0);
 
         } else {
@@ -319,12 +345,14 @@ struct OphintCompositeOp {
       } else if (operand.aggregation == kStrategyLast) {
         // This handles the strategy "last", it simply takes the last output.
         Operation* op = operand.ops.at(operand.ops.size() - 1);
-        op->replaceUsesOfWith(op->getOperand(0), fused_op->getResult(kv.first));
+        op->replaceUsesOfWith(op->getOperand(0),
+                              fused_op->getResult(output_index));
       } else {
         // This handles the strategy "first" and default, it simply takes the
         // first output.
         Operation* op = operand.ops.at(0);
-        op->replaceUsesOfWith(op->getOperand(0), fused_op->getResult(kv.first));
+        op->replaceUsesOfWith(op->getOperand(0),
+                              fused_op->getResult(output_index));
       }
 
       output_index++;
@@ -624,9 +652,16 @@ LogicalResult ConvertOphintToStub(StringRef stub_name,
   // Step 7, remove all the removable ops where
   // (reachable_by_outputs - reachable_by_inputs) as removable and the rest
   // ops are not removable.
+  // We also need to make sure all the output identity nodes are there.
+  llvm::DenseSet<Operation*> ophinted_identity_nodes;
+  for (auto* output : ophint_composite_op.GetAllInUseOutputOps()) {
+    ophinted_identity_nodes.insert(output);
+  }
+
   auto removeRemovableOps = [&](Operation* op) {
-    if (!llvm::is_contained(reachable_by_inputs, op) &&
-        llvm::is_contained(reachable_by_outputs, op)) {
+    if (reachable_by_inputs.count(op) == 0 &&
+        reachable_by_outputs.count(op) != 0 &&
+        ophinted_identity_nodes.count(op) == 0) {
       op->dropAllDefinedValueUses();
       op->dropAllReferences();
       op->erase();

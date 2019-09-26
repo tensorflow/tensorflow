@@ -86,6 +86,7 @@ cc_library(
         "lib/Transforms/TestLoopFusion.cpp",
         "lib/Transforms/TestLoopMapping.cpp",
         "lib/Transforms/TestLoopParametricTiling.cpp",
+        "lib/Transforms/TestMemRefStrideCalculation.cpp",
         "lib/Transforms/TestVectorizationUtils.cpp",
     ],
     includes = ["lib/TestDialect"],

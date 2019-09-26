@@ -30,6 +30,16 @@ namespace profiler {
 
 namespace {
 
+static thread_local bool internalCuCall;
+
+// Temporary disable cupti api tracing for this thread during the life scope of
+// this class. Used for the API calls that initiated by us.
+class CuptiApiTracingDisabler {
+ public:
+  CuptiApiTracingDisabler() { internalCuCall = true; }
+  ~CuptiApiTracingDisabler() { internalCuCall = false; }
+};
+
 Status ToStatus(CUptiResult result) {
   if (result == CUPTI_SUCCESS) {
     return Status::OK();
@@ -639,6 +649,7 @@ struct MemcpyRecord {
 };
 
 Status CreateAndRecordEvent(CUevent *event, CUstream stream) {
+  CuptiApiTracingDisabler disabler;
   TF_RETURN_IF_ERROR(ToStatus(cuEventCreate(event, CU_EVENT_DEFAULT)));
   return ToStatus(cuEventRecord(*event, stream));
 }
@@ -780,6 +791,7 @@ class CudaEventRecorder {
 
   // Synchronizes all contexts.
   Status Synchronize() const {
+    CuptiApiTracingDisabler disabler;
     for (const auto &pair : context_infos_) {
       TF_RETURN_IF_ERROR(ToStatus(cuCtxSetCurrent(pair.first)));
       TF_RETURN_IF_ERROR(ToStatus(cuCtxSynchronize()));
@@ -828,6 +840,7 @@ class CudaEventRecorder {
 
   // Returns time in microseconds between events recorded on the GPU.
   static uint64_t GetElapsedTimeUs(CUevent start, CUevent stop) {
+    CuptiApiTracingDisabler disabler;
     float elapsed_ms = 0.0f;
     LogIfError(ToStatus(cuEventElapsedTime(&elapsed_ms, start, stop)));
     return static_cast<uint64>(
@@ -984,7 +997,7 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
             CuptiTracerEventType::MemcpyD2D, cbdata, recorder);
         break;
       default:
-        LOG(ERROR) << "Unexpected callback id: " << cbid;
+        VLOG(1) << "Unexpected callback id: " << cbid;
         break;
     }
     return Status::OK();
@@ -1010,7 +1023,7 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
         recorder->StopMemcpy(*cbdata->correlationData);
         break;
       default:
-        LOG(ERROR) << "Unexpected callback id: " << cbid;
+        VLOG(1) << "Unexpected callback id: " << cbid;
         break;
     }
     // If we are not collecting CPU events from Callback API, we can return now.
@@ -1057,6 +1070,7 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
   }
 
   static CUmemorytype GetMemoryType(CUdeviceptr ptr) {
+    CuptiApiTracingDisabler disabler;
     CUmemorytype mem_type = CU_MEMORYTYPE_HOST;
     auto status =
         cuPointerGetAttribute(&mem_type, CU_POINTER_ATTRIBUTE_MEMORY_TYPE, ptr);
@@ -1363,6 +1377,7 @@ Status CuptiTracer::HandleCallback(CUpti_CallbackDomain domain,
                                    const CUpti_CallbackData *cbdata) {
   if (!api_tracing_enabled_) return Status::OK();  // already unsubscribed.
   if (domain != CUPTI_CB_DOMAIN_DRIVER_API) return Status::OK();
+  if (internalCuCall) return Status::OK();
 
   if (cbdata->context == nullptr) {
     // API callback is called before any CUDA context is created.

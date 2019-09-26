@@ -449,6 +449,7 @@ InvalidArgumentError: Cannot bitcast from 1 to 18 [Op:Bitcast]
 >>> equality_cast = tf.cast(a, tf.complex128)
 >>> print(equality_cast)
 tf.Tensor([1.+0.j 2.+0.j 3.+0.j], shape=(3,), dtype=complex128)
+```
 
 Example 2:
 
@@ -974,7 +975,7 @@ tf.math.equal(x, y) ==> array([True,  True])
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState* result, Value* x, "
+    OpBuilder<"Builder* builder, OperationState& result, Value* x, "
               "Value* y, BoolAttr incompatible_shape_error">
   ];
 
@@ -1960,6 +1961,51 @@ cublas.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_MatrixDiagOp : TF_Op<"MatrixDiag", [NoSideEffect]> {
+  let summary = [{
+Returns a batched diagonal tensor with a given batched diagonal values.
+  }];
+
+  let description = [{
+Given a `diagonal`, this operation returns a tensor with the `diagonal` and
+everything else padded with zeros. The diagonal is computed as follows:
+
+Assume `diagonal` has `k` dimensions `[I, J, K, ..., N]`, then the output is a
+tensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:
+
+`output[i, j, k, ..., m, n] = 1{m=n} * diagonal[i, j, k, ..., n]`.
+
+For example:
+
+```
+# 'diagonal' is [[1, 2, 3, 4], [5, 6, 7, 8]]
+
+and diagonal.shape = (2, 4)
+
+tf.matrix_diag(diagonal) ==> [[[1, 0, 0, 0]
+                                     [0, 2, 0, 0]
+                                     [0, 0, 3, 0]
+                                     [0, 0, 0, 4]],
+                                    [[5, 0, 0, 0]
+                                     [0, 6, 0, 0]
+                                     [0, 0, 7, 0]
+                                     [0, 0, 0, 8]]]
+
+which has shape (2, 4, 4)
+```
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$diagonal
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_MaxOp : TF_Op<"Max", [NoSideEffect]> {
   let summary = [{
 Computes the maximum of elements across dimensions of a tensor.
@@ -2366,7 +2412,7 @@ def TF_NotEqualOp : TF_Op<"NotEqual", [Commutative, NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState* result, Value* x, "
+    OpBuilder<"Builder* builder, OperationState& result, Value* x, "
               "Value* y, BoolAttr incompatible_shape_error">
   ];
 
@@ -2853,7 +2899,7 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState* result, Value* start, "
+    OpBuilder<"Builder* builder, OperationState& result, Value* start, "
               "Value* limit, Value* delta">
   ];
 }
@@ -2888,7 +2934,7 @@ of the tensor. Rank is also known as "order", "degree", or "ndims."
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState* result, Value* input">
+    OpBuilder<"Builder* builder, OperationState& result, Value* input">
   ];
 }
 
@@ -3047,7 +3093,7 @@ reshape(t, []) ==> 7
 
   let builders = [
     OpBuilder<
-      "Builder* builder, OperationState* result, Value* tensor, Value* shape">
+      "Builder* builder, OperationState& result, Value* tensor, Value* shape">
   ];
 
   let verifier = [{
@@ -3386,7 +3432,7 @@ shape(t) ==> [2, 2, 3]
   }];
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState* result, Value* input, BoolAttr use32Bit">
+    OpBuilder<"Builder* builder, OperationState& result, Value* input, BoolAttr use32Bit">
   ];
 
   let hasFolder = 1;
@@ -3989,6 +4035,10 @@ receive 0, 0, and 1, respectively. The appropriate bits in `begin_mask` and
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Index = TF_DerivedOperandTypeAttr<1>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_SubOp : TF_Op<"Sub", [Broadcastable, NoSideEffect]>,
@@ -4289,7 +4339,7 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
 
   let builders = [
     OpBuilder<
-      "Builder* builder, OperationState* result, Value* x, Value* perm">
+      "Builder* builder, OperationState& result, Value* x, Value* perm">
   ];
 
   let verifier = [{

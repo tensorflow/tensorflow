@@ -131,6 +131,10 @@ private:
     return funcIDMap.lookup(fnName);
   }
 
+  /// Gets the <id> for the function with the given name. Assigns the next
+  /// available <id> if the function haven't been deserialized.
+  uint32_t getOrCreateFunctionID(StringRef fnName);
+
   void processCapability();
 
   void processExtension();
@@ -161,9 +165,9 @@ private:
   }
 
   /// Process member decoration
-  LogicalResult processMemberDecoration(uint32_t structID, uint32_t memberNum,
+  LogicalResult processMemberDecoration(uint32_t structID, uint32_t memberIndex,
                                         spirv::Decoration decorationType,
-                                        uint32_t value);
+                                        ArrayRef<uint32_t> values = {});
 
   //===--------------------------------------------------------------------===//
   // Types
@@ -274,6 +278,11 @@ private:
   // Operations
   //===--------------------------------------------------------------------===//
 
+  LogicalResult encodeExtensionInstruction(Operation *op,
+                                           StringRef extensionSetName,
+                                           uint32_t opcode,
+                                           ArrayRef<uint32_t> operands);
+
   uint32_t findValueID(Value *val) const { return valueIDMap.lookup(val); }
 
   LogicalResult processAddressOfOp(spirv::AddressOfOp addressOfOp);
@@ -341,6 +350,9 @@ private:
 
   /// Map from results of normal operations to their <id>s.
   DenseMap<Value *, uint32_t> valueIDMap;
+
+  /// Map from extended instruction set name to <id>s.
+  llvm::StringMap<uint32_t> extendedInstSetIDMap;
 };
 } // namespace
 
@@ -391,6 +403,15 @@ void Serializer::collect(SmallVectorImpl<uint32_t> &binary) {
 //===----------------------------------------------------------------------===//
 // Module structure
 //===----------------------------------------------------------------------===//
+
+uint32_t Serializer::getOrCreateFunctionID(StringRef fnName) {
+  auto funcID = funcIDMap.lookup(fnName);
+  if (!funcID) {
+    funcID = getNextID();
+    funcIDMap[fnName] = funcID;
+  }
+  return funcID;
+}
 
 void Serializer::processCapability() {
   auto caps = module.getAttrOfType<ArrayAttr>("capabilities");
@@ -511,9 +532,12 @@ LogicalResult Serializer::processTypeDecoration<spirv::ArrayType>(
 LogicalResult
 Serializer::processMemberDecoration(uint32_t structID, uint32_t memberIndex,
                                     spirv::Decoration decorationType,
-                                    uint32_t value) {
+                                    ArrayRef<uint32_t> values) {
   SmallVector<uint32_t, 4> args(
-      {structID, memberIndex, static_cast<uint32_t>(decorationType), value});
+      {structID, memberIndex, static_cast<uint32_t>(decorationType)});
+  if (!values.empty()) {
+    args.append(values.begin(), values.end());
+  }
   return encodeInstructionInto(decorations, spirv::Opcode::OpMemberDecorate,
                                args);
 }
@@ -537,8 +561,7 @@ LogicalResult Serializer::processFuncOp(FuncOp op) {
     return failure();
   }
   operands.push_back(resTypeID);
-  auto funcID = getNextID();
-  funcIDMap[op.getName()] = funcID;
+  auto funcID = getOrCreateFunctionID(op.getName());
   operands.push_back(funcID);
   // TODO : Support other function control options.
   operands.push_back(static_cast<uint32_t>(spirv::FunctionControl::None));
@@ -746,6 +769,17 @@ Serializer::prepareBasicType(Location loc, Type type, uint32_t resultID,
     return success();
   }
 
+  if (auto runtimeArrayType = type.dyn_cast<spirv::RuntimeArrayType>()) {
+    uint32_t elementTypeID = 0;
+    if (failed(processType(loc, runtimeArrayType.getElementType(),
+                           elementTypeID))) {
+      return failure();
+    }
+    operands.push_back(elementTypeID);
+    typeEnum = spirv::Opcode::OpTypeRuntimeArray;
+    return success();
+  }
+
   if (auto structType = type.dyn_cast<spirv::StructType>()) {
     bool hasLayout = structType.hasLayout();
     for (auto elementIndex :
@@ -762,9 +796,19 @@ Serializer::prepareBasicType(Location loc, Type type, uint32_t resultID,
                 resultID, elementIndex, spirv::Decoration::Offset,
                 static_cast<uint32_t>(structType.getOffset(elementIndex))))) {
           return emitError(loc, "cannot decorate ")
-                 << elementIndex << "-th member of : " << structType
-                 << "with its offset";
+                 << elementIndex << "-th member of " << structType
+                 << " with its offset";
         }
+      }
+    }
+    SmallVector<spirv::StructType::MemberDecorationInfo, 4> memberDecorations;
+    structType.getMemberDecorations(memberDecorations);
+    for (auto &memberDecoration : memberDecorations) {
+      if (failed(processMemberDecoration(resultID, memberDecoration.first,
+                                         memberDecoration.second))) {
+        return emitError(loc, "cannot decorate ")
+               << memberDecoration.first << "-th member of " << structType
+               << " with " << stringifyDecoration(memberDecoration.second);
       }
     }
     typeEnum = spirv::Opcode::OpTypeStruct;
@@ -1335,6 +1379,37 @@ LogicalResult Serializer::processBranchOp(spirv::BranchOp branchOp) {
 // Operation
 //===----------------------------------------------------------------------===//
 
+LogicalResult Serializer::encodeExtensionInstruction(
+    Operation *op, StringRef extensionSetName, uint32_t extensionOpcode,
+    ArrayRef<uint32_t> operands) {
+  // Check if the extension has been imported.
+  auto &setID = extendedInstSetIDMap[extensionSetName];
+  if (!setID) {
+    setID = getNextID();
+    SmallVector<uint32_t, 16> importOperands;
+    importOperands.push_back(setID);
+    if (failed(encodeStringLiteralInto(importOperands, extensionSetName)) ||
+        failed(encodeInstructionInto(
+            extendedSets, spirv::Opcode::OpExtInstImport, importOperands))) {
+      return failure();
+    }
+  }
+
+  // The first two operands are the result type <id> and result <id>. The set
+  // <id> and the opcode need to be insert after this.
+  if (operands.size() < 2) {
+    return op->emitError("extended instructions must have a result encoding");
+  }
+  SmallVector<uint32_t, 8> extInstOperands;
+  extInstOperands.reserve(operands.size() + 2);
+  extInstOperands.append(operands.begin(), std::next(operands.begin(), 2));
+  extInstOperands.push_back(setID);
+  extInstOperands.push_back(extensionOpcode);
+  extInstOperands.append(std::next(operands.begin(), 2), operands.end());
+  return encodeInstructionInto(functions, spirv::Opcode::OpExtInst,
+                               extInstOperands);
+}
+
 LogicalResult Serializer::processAddressOfOp(spirv::AddressOfOp addressOfOp) {
   auto varName = addressOfOp.variable();
   auto variableID = findVariableID(varName);
@@ -1435,6 +1510,26 @@ Serializer::processOp<spirv::EntryPointOp>(spirv::EntryPointOp op) {
 
 template <>
 LogicalResult
+Serializer::processOp<spirv::ControlBarrierOp>(spirv::ControlBarrierOp op) {
+  StringRef argNames[] = {"execution_scope", "memory_scope",
+                          "memory_semantics"};
+  SmallVector<uint32_t, 3> operands;
+
+  for (auto argName : argNames) {
+    auto argIntAttr = op.getAttrOfType<IntegerAttr>(argName);
+    auto operand = prepareConstantInt(op.getLoc(), argIntAttr);
+    if (!operand) {
+      return failure();
+    }
+    operands.push_back(operand);
+  }
+
+  return encodeInstructionInto(functions, spirv::Opcode::OpControlBarrier,
+                               operands);
+}
+
+template <>
+LogicalResult
 Serializer::processOp<spirv::ExecutionModeOp>(spirv::ExecutionModeOp op) {
   SmallVector<uint32_t, 4> operands;
   // Add the function <id>.
@@ -1458,6 +1553,56 @@ Serializer::processOp<spirv::ExecutionModeOp>(spirv::ExecutionModeOp op) {
     }
   }
   return encodeInstructionInto(executionModes, spirv::Opcode::OpExecutionMode,
+                               operands);
+}
+
+template <>
+LogicalResult
+Serializer::processOp<spirv::MemoryBarrierOp>(spirv::MemoryBarrierOp op) {
+  StringRef argNames[] = {"memory_scope", "memory_semantics"};
+  SmallVector<uint32_t, 2> operands;
+
+  for (auto argName : argNames) {
+    auto argIntAttr = op.getAttrOfType<IntegerAttr>(argName);
+    auto operand = prepareConstantInt(op.getLoc(), argIntAttr);
+    if (!operand) {
+      return failure();
+    }
+    operands.push_back(operand);
+  }
+
+  return encodeInstructionInto(functions, spirv::Opcode::OpMemoryBarrier,
+                               operands);
+}
+
+template <>
+LogicalResult
+Serializer::processOp<spirv::FunctionCallOp>(spirv::FunctionCallOp op) {
+  auto funcName = op.callee();
+  uint32_t resTypeID = 0;
+
+  llvm::SmallVector<Type, 1> resultTypes(op.getResultTypes());
+  if (failed(processType(op.getLoc(),
+                         (resultTypes.empty() ? getVoidType() : resultTypes[0]),
+                         resTypeID))) {
+    return failure();
+  }
+
+  auto funcID = getOrCreateFunctionID(funcName);
+  auto funcCallID = getNextID();
+  SmallVector<uint32_t, 8> operands{resTypeID, funcCallID, funcID};
+
+  for (auto *value : op.arguments()) {
+    auto valueID = findValueID(value);
+    assert(valueID && "cannot find a value for spv.FunctionCall");
+    operands.push_back(valueID);
+  }
+
+  if (!resultTypes.empty()) {
+    valueIDMap[op.getResult(0)] = funcCallID;
+  }
+
+  return encodeInstructionInto(functions, spirv::Opcode::OpFunctionCall,
                                operands);
 }
 

@@ -74,6 +74,7 @@ def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "NHWC">;
 def IsIntList1XY1 : AttrConstraint<CPred<"TFIntListIs1XY1($_self)">>;
 
 def : Pat<(TF_AbsOp $arg), (TFL_AbsOp $arg)>;
+def : Pat<(TF_AddNOp $inputs, $N), (TFL_AddNOp $inputs)>;
 
 def : Pat<(TF_AvgPoolOp $value,
               IsIntList1XY1:$ksize,
@@ -137,9 +138,6 @@ def : Pat<(TF_PowOp $x, $y), (TFL_PowOp $x, $y)>;
 def : Pat<(TF_RangeOp $start, $limit, $delta), (TFL_RangeOp $start, $limit, $delta)>;
 def : Pat<(TF_Relu6Op $arg), (TFL_Relu6Op $arg)>;
 def : Pat<(TF_ReluOp $arg), (TFL_ReluOp $arg)>;
-// The second operand is captured in the type for this transform.
-def : Pat<(TF_ReshapeOp:$res AnyStaticShapeTensor:$arg, $ignored),
-          (TFL_ReshapeOp $arg), [(AnyStaticShapeTensor $res)]>;
 def : Pat<(TF_ReverseSequenceOp $input, $seq_lengths, $seq_dim, $batch_dim),
           (TFL_ReverseSequenceOp $input, $seq_lengths,
            (convertIntAttrTo32Bit $seq_dim),
@@ -327,3 +325,6 @@ def : Pat<
 def : Pat<
   (TF_NonMaxSuppressionV5Op $boxes, $scores, $max_output_size, $iou_threshold, $score_threshold, $soft_nms_sigma, $pad_to_max_output_size),
   (TFL_NonMaxSuppressionV5Op $boxes, $scores, $max_output_size, $iou_threshold, $score_threshold, $soft_nms_sigma)>;
+
+def : Pat<(TF_MatrixDiagOp $diagonal), (TFL_MatrixDiagOp $diagonal)>;
+

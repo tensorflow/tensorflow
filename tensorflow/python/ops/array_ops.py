@@ -59,70 +59,133 @@ _BaseSlice = slice
 def reshape(tensor, shape, name=None):  # pylint: disable=redefined-outer-name
   r"""Reshapes a tensor.
 
-  Given `tensor`, this operation returns a tensor that has the same values
-  as `tensor` with shape `shape`.
+  Given `tensor`, this operation returns a new `tf.Tensor` that has the same
+  values as `tensor` in the same order, except with a new shape given by
+  `shape`.
+
+  >>> t1 = [[1, 2, 3],
+  ...       [4, 5, 6]]
+  >>> print(tf.shape(t1).numpy())
+  [2 3]
+  >>> t2 = tf.reshape(t1, [6])
+  >>> t2
+  <tf.Tensor: id=394, shape=(6,), dtype=int32,
+    numpy=array([1, 2, 3, 4, 5, 6], dtype=int32)>
+  >>> tf.reshape(t2, [3, 2])
+  <tf.Tensor: id=396, shape=(3, 2), dtype=int32, numpy=
+    array([[1, 2],
+           [3, 4],
+           [5, 6]], dtype=int32)>
+
+  The `tf.reshape` does not change the order of or the total number of elements
+  in the tensor, and so it can reuse the underlying data buffer. This makes it
+  a fast operation independent of how big of a tensor it is operating on.
+
+  >>> tf.reshape([1, 2, 3], [2, 2])
+  Traceback (most recent call last):
+  ...
+  InvalidArgumentError: Input to reshape is a tensor with 3 values, but the
+  requested shape has 4
+
+  To instead reorder the data to rearrange the dimensions of a tensor, see
+  `tf.transpose`.
+
+  >>> t = [[1, 2, 3],
+  ...      [4, 5, 6]]
+  >>> tf.reshape(t, [3, 2]).numpy()
+  array([[1, 2],
+         [3, 4],
+         [5, 6]], dtype=int32)
+  >>> tf.transpose(t, perm=[1, 0]).numpy()
+  array([[1, 4],
+         [2, 5],
+         [3, 6]], dtype=int32)
 
   If one component of `shape` is the special value -1, the size of that
   dimension is computed so that the total size remains constant.  In particular,
   a `shape` of `[-1]` flattens into 1-D.  At most one component of `shape` can
   be -1.
 
-  If `shape` is 1-D or higher, then the operation returns a tensor with shape
-  `shape` filled with the values of `tensor`. In this case, the number of
-  elements implied by `shape` must be the same as the number of elements in
-  `tensor`.
+  >>> t = [[1, 2, 3],
+  ...      [4, 5, 6]]
+  >>> tf.reshape(t, [-1])
+  <tf.Tensor: id=407, shape=(6,), dtype=int32,
+    numpy=array([1, 2, 3, 4, 5, 6], dtype=int32)>
+  >>> tf.reshape(t, [3, -1])
+  <tf.Tensor: id=410, shape=(3, 2), dtype=int32, numpy=
+    array([[1, 2],
+           [3, 4],
+           [5, 6]], dtype=int32)>
+  >>> tf.reshape(t, [-1, 2])
+  <tf.Tensor: id=413, shape=(3, 2), dtype=int32, numpy=
+    array([[1, 2],
+           [3, 4],
+           [5, 6]], dtype=int32)>
 
-  For example:
+  `tf.reshape(t, [])` reshapes a tensor `t` with one element to a scalar.
 
-  ```
-  # tensor 't' is [1, 2, 3, 4, 5, 6, 7, 8, 9]
-  # tensor 't' has shape [9]
-  reshape(t, [3, 3]) ==> [[1, 2, 3],
-                          [4, 5, 6],
-                          [7, 8, 9]]
+  >>> tf.reshape([7], []).numpy()
+  7
 
-  # tensor 't' is [[[1, 1], [2, 2]],
-  #                [[3, 3], [4, 4]]]
-  # tensor 't' has shape [2, 2, 2]
-  reshape(t, [2, 4]) ==> [[1, 1, 2, 2],
-                          [3, 3, 4, 4]]
+  More examples:
 
-  # tensor 't' is [[[1, 1, 1],
-  #                 [2, 2, 2]],
-  #                [[3, 3, 3],
-  #                 [4, 4, 4]],
-  #                [[5, 5, 5],
-  #                 [6, 6, 6]]]
-  # tensor 't' has shape [3, 2, 3]
-  # pass '[-1]' to flatten 't'
-  reshape(t, [-1]) ==> [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6]
+  >>> t = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+  >>> print(tf.shape(t).numpy())
+  [9]
+  >>> tf.reshape(t, [3, 3])
+  <tf.Tensor: id=421, shape=(3, 3), dtype=int32, numpy=
+    array([[1, 2, 3],
+           [4, 5, 6],
+           [7, 8, 9]], dtype=int32)>
 
-  # -1 can also be used to infer the shape
+  >>> t = [[[1, 1], [2, 2]],
+  ...      [[3, 3], [4, 4]]]
+  >>> print(tf.shape(t).numpy())
+  [2 2 2]
+  >>> tf.reshape(t, [2, 4])
+  <tf.Tensor: id=426, shape=(2, 4), dtype=int32, numpy=
+    array([[1, 1, 2, 2],
+           [3, 3, 4, 4]], dtype=int32)>
 
-  # -1 is inferred to be 9:
-  reshape(t, [2, -1]) ==> [[1, 1, 1, 2, 2, 2, 3, 3, 3],
-                           [4, 4, 4, 5, 5, 5, 6, 6, 6]]
-  # -1 is inferred to be 2:
-  reshape(t, [-1, 9]) ==> [[1, 1, 1, 2, 2, 2, 3, 3, 3],
-                           [4, 4, 4, 5, 5, 5, 6, 6, 6]]
-  # -1 is inferred to be 3:
-  reshape(t, [ 2, -1, 3]) ==> [[[1, 1, 1],
-                                [2, 2, 2],
-                                [3, 3, 3]],
-                               [[4, 4, 4],
-                                [5, 5, 5],
-                                [6, 6, 6]]]
-
-  # tensor 't' is [7]
-  # shape `[]` reshapes to a scalar
-  reshape(t, []) ==> 7
-  ```
+  >>> t = [[[1, 1, 1],
+  ...       [2, 2, 2]],
+  ...      [[3, 3, 3],
+  ...       [4, 4, 4]],
+  ...      [[5, 5, 5],
+  ...       [6, 6, 6]]]
+  >>> print(tf.shape(t).numpy())
+  [3 2 3]
+  >>> # Pass '[-1]' to flatten 't'.
+  >>> tf.reshape(t, [-1])
+  <tf.Tensor: id=431, shape=(18,), dtype=int32,
+    numpy=array([1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6],
+    dtype=int32)>
+  >>> # -- Using -1 to infer the shape --
+  >>> # Here -1 is inferred to be 9:
+  >>> tf.reshape(t, [2, -1])
+  <tf.Tensor: id=434, shape=(2, 9), dtype=int32, numpy=
+    array([[1, 1, 1, 2, 2, 2, 3, 3, 3],
+           [4, 4, 4, 5, 5, 5, 6, 6, 6]], dtype=int32)>
+  >>> # -1 is inferred to be 2:
+  >>> tf.reshape(t, [-1, 9])
+  <tf.Tensor: id=437, shape=(2, 9), dtype=int32, numpy=
+    array([[1, 1, 1, 2, 2, 2, 3, 3, 3],
+           [4, 4, 4, 5, 5, 5, 6, 6, 6]], dtype=int32)>
+  >>> # -1 is inferred to be 3:
+  >>> tf.reshape(t, [ 2, -1, 3])
+  <tf.Tensor: id=440, shape=(2, 3, 3), dtype=int32, numpy=
+    array([[[1, 1, 1],
+            [2, 2, 2],
+            [3, 3, 3]],
+           [[4, 4, 4],
+            [5, 5, 5],
+            [6, 6, 6]]], dtype=int32)>
 
   Args:
     tensor: A `Tensor`.
     shape: A `Tensor`. Must be one of the following types: `int32`, `int64`.
       Defines the shape of the output tensor.
-    name: A name for the operation (optional).
+    name: Optional string. A name for the operation.
 
   Returns:
     A `Tensor`. Has the same type as `tensor`.
@@ -269,48 +332,69 @@ def expand_dims(input, axis=None, name=None, dim=None):
 @tf_export("expand_dims", v1=[])
 @dispatch.add_dispatch_support
 def expand_dims_v2(input, axis, name=None):
-  """Inserts a dimension of 1 into a tensor's shape.
+  """Returns a tensor with an additional dimension inserted at index `axis`.
 
-  Given a tensor `input`, this operation inserts a dimension of 1 at the
+  Given a tensor `input`, this operation inserts a dimension of size 1 at the
   dimension index `axis` of `input`'s shape. The dimension index `axis` starts
   at zero; if you specify a negative number for `axis` it is counted backward
   from the end.
 
   This operation is useful if you want to add a batch dimension to a single
   element. For example, if you have a single image of shape `[height, width,
-  channels]`, you can make it a batch of 1 image with `expand_dims(image, 0)`,
+  channels]`, you can make it a batch of one image with `expand_dims(image, 0)`,
   which will make the shape `[1, height, width, channels]`.
 
-  Other examples:
+  Examples:
 
-  ```python
-  # 't' is a tensor of shape [2]
-  tf.shape(tf.expand_dims(t, 0))  # [1, 2]
-  tf.shape(tf.expand_dims(t, 1))  # [2, 1]
-  tf.shape(tf.expand_dims(t, -1))  # [2, 1]
+  >>> t = [[1, 2, 3],[4, 5, 6]] # shape [2, 3]
 
-  # 't2' is a tensor of shape [2, 3, 5]
-  tf.shape(tf.expand_dims(t2, 0))  # [1, 2, 3, 5]
-  tf.shape(tf.expand_dims(t2, 2))  # [2, 3, 1, 5]
-  tf.shape(tf.expand_dims(t2, 3))  # [2, 3, 5, 1]
-  ```
+  >>> tf.expand_dims(t, 0)
+  <tf.Tensor: ... shape=(1, 2, 3), dtype=int32, numpy=
+  array([[[1, 2, 3],
+          [4, 5, 6]]], dtype=int32)>
 
-  This operation requires that:
+  >>> tf.expand_dims(t, 1)
+  <tf.Tensor: ... shape=(2, 1, 3), dtype=int32, numpy=
+  array([[[1, 2, 3]],
+         [[4, 5, 6]]], dtype=int32)>
 
-  `-1-input.dims() <= dim <= input.dims()`
+  >>> tf.expand_dims(t, 2)
+  <tf.Tensor: ... shape=(2, 3, 1), dtype=int32, numpy=
+  array([[[1],
+          [2],
+          [3]],
+         [[4],
+          [5],
+          [6]]], dtype=int32)>
 
-  This operation is related to `squeeze()`, which removes dimensions of
-  size 1.
+  >>> tf.expand_dims(t, -1) # Last dimension index. In this case, same as 2.
+  <tf.Tensor: ... shape=(2, 3, 1), dtype=int32, numpy=
+  array([[[1],
+          [2],
+          [3]],
+         [[4],
+          [5],
+          [6]]], dtype=int32)>
+
+  This operation is related to:
+
+  *   `tf.squeeze`, which removes dimensions of size 1.
+  *   `tf.reshape`, which provides more flexible reshaping capability
 
   Args:
     input: A `Tensor`.
-    axis: 0-D (scalar). Specifies the dimension index at which to expand the
-      shape of `input`. Must be in the range `[-rank(input) - 1, rank(input)]`.
-    name: The name of the output `Tensor` (optional).
+    axis: Integer specifying the dimension index at which to expand the
+      shape of `input`. Given an input of D dimensions, `axis` must be in range
+      `[-(D+1), D]` (inclusive).
+    name: Optional string. The name of the output `Tensor`.
 
   Returns:
-    A `Tensor` with the same data as `input`, but its shape has an additional
-    dimension of size 1 added.
+    A tensor with the same data as `input`, with an additional dimension
+    inserted at the index specified by `axis`.
+
+  Raises:
+    ValueError: If `axis` is not specified.
+    InvalidArgumentError: If `axis` is out of range `[-(D+1), D]`.
   """
   return gen_array_ops.expand_dims(input, axis, name)
 
@@ -405,10 +489,24 @@ def shape_v2(input, out_type=dtypes.int32, name=None):
 
   For example:
 
-  ```python
-  t = tf.constant([[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]])
-  tf.shape(t)  # [2, 2, 3]
-  ```
+  >>> t = tf.constant([[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]])
+  >>> tf.shape(t)
+  <tf.Tensor: id=391, shape=(3,), dtype=int32, numpy=array([2, 2, 3],
+  dtype=int32)>
+  >>> tf.shape(t).numpy()
+  array([2, 2, 3], dtype=int32)
+
+  Note: When using symbolic tensors, such as when using the Keras functional
+  API, tf.shape() will return the shape of the symbolic tensor.
+
+  >>> a = tf.keras.layers.Input((None, 10))
+  >>> tf.shape(a)
+  <tf.Tensor ... shape=(3,) dtype=int32>
+
+  In these cases, using `tf.Tensor.shape` will return more informative results.
+
+  >>> a.shape
+  TensorShape([None, None, 10])
 
   Args:
     input: A `Tensor` or `SparseTensor`.
@@ -1110,19 +1208,24 @@ def stack(values, axis=0, name="stack"):
 
   For example:
 
-  ```python
-  x = tf.constant([1, 4])
-  y = tf.constant([2, 5])
-  z = tf.constant([3, 6])
-  tf.stack([x, y, z])  # [[1, 4], [2, 5], [3, 6]] (Pack along first dim.)
-  tf.stack([x, y, z], axis=1)  # [[1, 2, 3], [4, 5, 6]]
-  ```
+  >>> x = tf.constant([1, 4])
+  >>> y = tf.constant([2, 5])
+  >>> z = tf.constant([3, 6])
+  >>> tf.stack([x, y, z])
+  <tf.Tensor: id=19, shape=(3, 2), dtype=int32, numpy=
+  array([[1, 4],
+         [2, 5],
+         [3, 6]], dtype=int32)>
 
-  This is the opposite of unstack.  The numpy equivalent is
+  >> tf.stack([x, y, z], axis=1)
+  <tf.Tensor: id=24, shape=(2, 3), dtype=int32, numpy=
+  array([[1, 2, 3],
+         [4, 5, 6]], dtype=int32)>
 
-  ```python
-  tf.stack([x, y, z]) = np.stack([x, y, z])
-  ```
+  This is the opposite of unstack.  The numpy equivalent is `np.stack`
+
+  >>> np.array_equal(np.stack([x, y, z]), tf.stack([x, y, z]))
+  True
 
   Args:
     values: A list of `Tensor` objects with the same shape and type.
@@ -2303,17 +2406,17 @@ def zeros(shape, dtype=dtypes.float32, name=None):
   This operation returns a tensor of type `dtype` with shape `shape` and
   all elements set to zero.
 
-  For example:
-
-  ```python
-  tf.zeros([3, 4], tf.int32)  # [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
-  ```
+  >>> tf.zeros([3, 4], tf.int32)
+  <tf.Tensor: id=..., shape=(3, 4), dtype=int32, numpy=
+  array([[0, 0, 0, 0],
+         [0, 0, 0, 0],
+         [0, 0, 0, 0]], dtype=int32)>
 
   Args:
-    shape: A list of integers, a tuple of integers, or a 1-D `Tensor` of type
-      `int32`.
-    dtype: The type of an element in the resulting `Tensor`.
-    name: A name for the operation (optional).
+    shape: A `list` of integers, a `tuple` of integers, or
+      a 1-D `Tensor` of type `int32`.
+    dtype: The DType of an element in the resulting `Tensor`.
+    name: Optional string. A name for the operation.
 
   Returns:
     A `Tensor` with all elements set to zero.
@@ -2526,25 +2629,26 @@ def ones_like_impl(tensor, dtype, name, optimize=True):
 
 @tf_export("ones")
 def ones(shape, dtype=dtypes.float32, name=None):
-  """Creates a tensor with all elements set to 1.
+  """Creates a tensor with all elements set to one (1).
 
-  This operation returns a tensor of type `dtype` with shape `shape` and all
-  elements set to 1.
+  This operation returns a tensor of type `dtype` with shape `shape` and
+  all elements set to one.
 
-  For example:
-
-  ```python
-  tf.ones([2, 3], tf.int32)  # [[1, 1, 1], [1, 1, 1]]
-  ```
+  >>> tf.ones([3, 4], tf.int32)
+  <tf.Tensor: ... shape=(3, 4), dtype=int32, numpy=
+  array([[1, 1, 1, 1],
+         [1, 1, 1, 1],
+         [1, 1, 1, 1]], dtype=int32)>
 
   Args:
-    shape: A list of integers, a tuple of integers, or a 1-D `Tensor` of type
-      `int32`.
-    dtype: The type of an element in the resulting `Tensor`.
-    name: A name for the operation (optional).
+    shape: A `list` of integers, a `tuple` of integers, or
+      a 1-D `Tensor` of type `int32`.
+    dtype: Optional DType of an element in the resulting `Tensor`. Default is
+      `tf.float32`.
+    name: Optional string. A name for the operation.
 
   Returns:
-    A `Tensor` with all elements set to 1.
+    A `Tensor` with all elements set to one (1).
   """
   dtype = dtypes.as_dtype(dtype).base_dtype
   with ops.name_scope(name, "ones", [shape]) as name:
@@ -3611,17 +3715,17 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
 
   For example:
 
-  ```python
-  # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
-  tf.shape(tf.squeeze(t))  # [2, 3]
-  ```
+  >>> # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
+  >>> t = tf.ones([1, 2, 1, 3, 1, 1])
+  >>> print(tf.shape(tf.squeeze(t)).numpy())
+  [2 3]
 
   Or, to remove specific size 1 dimensions:
 
-  ```python
-  # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
-  tf.shape(tf.squeeze(t, [2, 4]))  # [1, 2, 3, 1]
-  ```
+  >>> # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
+  >>> t = tf.ones([1, 2, 1, 3, 1, 1])
+  >>> print(tf.shape(tf.squeeze(t, [2, 4])).numpy())
+  [1 2 3 1]
 
   Note: if `input` is a `tf.RaggedTensor`, then this operation takes `O(N)`
   time, where `N` is the number of elements in the squeezed dimensions.

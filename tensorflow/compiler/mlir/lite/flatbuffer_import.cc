@@ -48,7 +48,6 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
 #include "mlir/Translation.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -430,16 +429,6 @@ StatusOr<Operation*> ConvertOp(
     }
     auto type = type_or_err.ConsumeValueOrDie();
 
-    // Special case for reshape, which stores its return shape in an option
-    // that we need to extract from
-    // Note: UniqueOp is handled by the typing information on its output tensor
-    if (auto* opts = op.builtin_options.AsReshapeOptions()) {
-      llvm::SmallVector<int64_t, 4> shape(opts->new_shape.begin(),
-                                          opts->new_shape.end());
-      type = builder.getTensorType(ArrayRef<int64_t>(shape),
-                                   type.getElementType());
-    }
-
     // Special case for quantize: return type must also be in qtype attribute
     if (op_name == "tfl.quantize") {
       op_state.addAttribute("qtype", builder.getTypeAttr(type));
@@ -693,17 +682,14 @@ OwningModuleRef tflite::FlatBufferToMlir(absl::string_view buffer,
   return OwningModuleRef(module);
 }
 
-static OwningModuleRef FlatBufferFileToMlirTrans(llvm::StringRef filename,
-                                                 MLIRContext* context) {
+static OwningModuleRef FlatBufferFileToMlirTrans(
+    std::unique_ptr<llvm::MemoryBuffer> input, MLIRContext* context) {
   std::string error;
-  auto loc = mlir::FileLineColLoc::get(filename, 0, 0, context);
-  auto buffer = mlir::openInputFile(filename, &error);
-  if (nullptr == buffer) {
-    return emitError(loc, error), nullptr;
-  }
+  auto loc =
+      mlir::FileLineColLoc::get(input->getBufferIdentifier(), 0, 0, context);
 
   return tflite::FlatBufferToMlir(
-      absl::string_view(buffer->getBufferStart(), buffer->getBufferSize()),
+      absl::string_view(input->getBufferStart(), input->getBufferSize()),
       context, loc);
 }
 

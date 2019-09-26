@@ -171,6 +171,8 @@ class CheckNumericsCallbackTest(test_util.TensorFlowTestCase):
     self.assertIn("u = w1 / w2", message)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla(
+      "TODO(b/141100809): XLA has no way to assert inside of a kernel.")
   def testControlFlowGraphWithNaNBFloat16(self):
     """Test catching bfloat16 NaNs in a control-flow-v2 FuncGraph."""
     check_numerics_callback.enable_check_numerics()

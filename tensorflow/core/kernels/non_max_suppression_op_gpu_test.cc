@@ -420,6 +420,66 @@ TEST_F(NonMaxSuppressionV3GPUOpTest, TestEmptyInput) {
   test::ExpectTensorEqual<int>(expected, *GetOutput(0));
 }
 
+//
+// NonMaxSuppressionV4GPUOp Tests
+//
+
+class NonMaxSuppressionV4GPUOpTest : public OpsTestBase {
+ protected:
+  void MakeOp() {
+    SetDevice(DEVICE_GPU,
+              std::unique_ptr<tensorflow::Device>(DeviceFactory::NewDevice(
+                  "GPU", {}, "/job:a/replica:0/task:0")));
+
+    TF_EXPECT_OK(NodeDefBuilder("non_max_suppression_op", "NonMaxSuppressionV4")
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_INT32))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Attr("pad_to_max_output_size", true)
+                     .Finalize(node_def()));
+    TF_EXPECT_OK(InitOp());
+  }
+};
+
+TEST_F(NonMaxSuppressionV4GPUOpTest, TestSelectFromThreeClustersPadFive) {
+  MakeOp();
+  AddInputFromArray<float>(
+      TensorShape({6, 4}),
+      {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
+       0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101});
+  AddInputFromArray<float>(TensorShape({6}), {.9f, .75f, .6f, .95f, .5f, .3f});
+  AddInputFromArray<int>(TensorShape({}), {5});
+  AddInputFromArray<float>(TensorShape({}), {.5f});
+  AddInputFromArray<float>(TensorShape({}), {0.0f});
+  TF_ASSERT_OK(RunOpKernel());
+
+  const auto expected_indices = test::AsTensor<int>({3, 0, 5, 0, 0});
+  test::ExpectTensorEqual<int>(expected_indices, *GetOutput(0));
+  Tensor expected_num_valid = test::AsScalar<int>(3);
+  test::ExpectTensorEqual<int>(expected_num_valid, *GetOutput(1));
+}
+
+TEST_F(NonMaxSuppressionV4GPUOpTest,
+       TestSelectFromThreeClustersPadFiveScoreThr) {
+  MakeOp();
+  AddInputFromArray<float>(
+      TensorShape({6, 4}),
+      {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
+       0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101});
+  AddInputFromArray<float>(TensorShape({6}), {.9f, .75f, .6f, .95f, .5f, .3f});
+  AddInputFromArray<int>(TensorShape({}), {6});
+  AddInputFromArray<float>(TensorShape({}), {.5f});
+  AddInputFromArray<float>(TensorShape({}), {0.4f});
+  TF_ASSERT_OK(RunOpKernel());
+
+  const auto expected_indices = test::AsTensor<int>({3, 0, 0, 0, 0, 0});
+  test::ExpectTensorEqual<int>(expected_indices, *GetOutput(0));
+  Tensor expected_num_valid = test::AsScalar<int>(2);
+  test::ExpectTensorEqual<int>(expected_num_valid, *GetOutput(1));
+}
+
 #endif
 
 }  // namespace tensorflow

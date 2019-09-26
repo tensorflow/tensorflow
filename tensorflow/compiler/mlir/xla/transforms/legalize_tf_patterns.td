@@ -80,8 +80,10 @@ class DirectBinaryPat<Op FromOp, Op ToOp>
         (ToOp $l, $r, (BinBroadcastDimensions $l, $r))>;
 
 foreach fromToBinPair = [[TF_AddOp, HLO_AddOp],
-		         [TF_AddV2Op, HLO_AddOp],
+                         [TF_AddV2Op, HLO_AddOp],
                          [TF_DivOp, HLO_DivOp],
+                         [TF_MaximumOp, HLO_MaxOp],
+                         [TF_MinimumOp, HLO_MinOp],
                          [TF_MulOp, HLO_MulOp],
                          [TF_RealDivOp, HLO_DivOp],
                          [TF_SubOp, HLO_SubOp]] in
@@ -169,8 +171,30 @@ def : Pat<(TF_Relu6Op AnyTensor:$input),
                        (HLO_ConstOp (ConstantSplat<"6"> $input)))>;
 
 //===----------------------------------------------------------------------===//
+// Relu op patterns.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_SelectOp AnyTensor:$condition, AnyTensor:$lhs, AnyTensor:$rhs),
+          (HLO_SelectOp $condition, $lhs, $rhs)>;
+
+//===----------------------------------------------------------------------===//
 // Unary op patterns.
 //===----------------------------------------------------------------------===//
+
+foreach Mapping = [
+                   [TF_AbsOp, HLO_AbsOp],
+                   [TF_CeilOp, HLO_CeilOp],
+                   [TF_CosOp, HLO_CosOp],
+                   [TF_ExpOp, HLO_ExpOp],
+                   [TF_FloorOp, HLO_FloorOp],
+                   [TF_LogOp, HLO_LogOp],
+                   [TF_NegOp, HLO_NegOp],
+                   [TF_TanhOp, HLO_TanhOp],
+                  ] in {
+ def : Pat<(Mapping[0] AnyTensor:$input),
+           (Mapping[1] $input)>;
+}
+
 
 foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp] in {
   def : Pat<(TfOp:$res AnyStaticShapeTensor:$arg, $ignored),

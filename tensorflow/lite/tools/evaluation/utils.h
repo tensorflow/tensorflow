@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #if defined(__ANDROID__)
-#include "tensorflow/lite/delegates/gpu/gl_delegate.h"
+#include "tensorflow/lite/delegates/gpu/delegate.h"
 #endif
 
 #include "tensorflow/lite/context.h"
@@ -45,7 +45,7 @@ Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate(
 Interpreter::TfLiteDelegatePtr CreateGPUDelegate(FlatBufferModel* model);
 #if defined(__ANDROID__)
 Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
-    FlatBufferModel* model, TfLiteGpuDelegateOptions* options);
+    FlatBufferModel* model, TfLiteGpuDelegateOptionsV2* options);
 #endif
 
 }  // namespace evaluation

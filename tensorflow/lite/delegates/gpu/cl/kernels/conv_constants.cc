@@ -28,21 +28,23 @@ namespace cl {
 namespace {
 
 std::string GenerateConvolutionConstantCode(
-    const TensorDescriptor& src_descriptor,
-    const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
-    const int2& kernel_size, const int2& dilation, int src_channels,
-    int dst_channels, const CLDevice& device,
+    const OperationDef& op_def, const int2& kernel_size, const int2& dilation,
+    int src_channels, int dst_channels, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
+  TensorCodeGenerator src_tensor("src_data", "src_size", op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data", "dst_size", op_def.dst_tensors[0]);
 
-  std::string c = GetCommonDefines(precision);
+  std::string c = GetCommonDefines(op_def.precision);
 
   const int out_z = IntegralDivideRoundUp(dst_channels, 4);
   const std::string kOutZ = std::to_string(out_z);
   const int src_depth = IntegralDivideRoundUp(src_channels, 4);
 
-  switch (precision) {
+  const auto src_tensor_type = op_def.src_tensors[0].storage_type;
+  const bool manual_clamp = src_tensor_type == TensorStorageType::BUFFER ||
+                            src_tensor_type == TensorStorageType::IMAGE_BUFFER;
+
+  switch (op_def.precision) {
     case CalculationsPrecision::F32:
     case CalculationsPrecision::F16:
       c += "#define CONV4(R, SRC, F, i) \\\n";
@@ -112,14 +114,14 @@ std::string GenerateConvolutionConstantCode(
     const std::string s_postfix = postfixes[ch_count - 1];
     for (int ky = 0; ky < kernel_size.y; ++ky) {
       std::string s_y = absl::StrCat("(start_y + ", ky * dilation.y, ")");
-      if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+      if (manual_clamp) {
         c += "  {\n";
         c += "  bool y_out = " + s_y + " < 0 || " + s_y + " >= src_size.y;\n";
       }
       for (int kx = 0; kx < kernel_size.x; ++kx) {
         c += "  {\n";
         std::string s_x = absl::StrCat("(start_x + ", kx * dilation.x, ")");
-        if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+        if (manual_clamp) {
           c += "    bool x_out = " + s_x + "< 0 || " + s_x + ">= src_size.x;\n";
           c += "    " + s_type + " src = x_out || y_out ?";
           c += "(" + s_type + ")(0.0) : ";
@@ -137,7 +139,7 @@ std::string GenerateConvolutionConstantCode(
         }
         c += "  }\n";
       }
-      if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+      if (manual_clamp) {
         c += "  }\n";
       }
     }
@@ -209,9 +211,8 @@ ConvConstants& ConvConstants::operator=(ConvConstants&& kernel) {
 
 Status ConvConstants::Compile(const CreationContext& creation_context) {
   const auto code = GenerateConvolutionConstantCode(
-      definition_.src_tensors[0], definition_.dst_tensors[0],
-      definition_.precision, kernel_size_, dilation_, src_channels_,
-      dst_channels_, *creation_context.device, linked_operations_);
+      definition_, kernel_size_, dilation_, src_channels_, dst_channels_,
+      *creation_context.device, linked_operations_);
   std::vector<CompilerOptions> options;
   if (definition_.precision == CalculationsPrecision::F16 &&
       creation_context.device->IsAdreno3xx()) {
@@ -233,7 +234,7 @@ Status ConvConstants::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtr()));
+  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(stride_));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(padding_));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetSizeWithDepth()));

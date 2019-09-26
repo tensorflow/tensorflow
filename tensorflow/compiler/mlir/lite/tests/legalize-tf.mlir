@@ -55,9 +55,10 @@ func @squeezeAndReshape(%arg0: tensor<1x1x10xf32>, %arg1: tensor<?x10xf32>) -> i
   %4 = "some_op"(%1, %3) : (tensor<*xf32>, tensor<2x5xf32>) -> i32
   return %4 : i32
 // CHECK-LABEL: squeezeAndReshape
+// CHECK:  %cst = constant dense<[2, 5]> : tensor<2xi32>
 // CHECK:  %0 = "tfl.squeeze"(%arg0) {squeeze_dims = [0]} : (tensor<1x1x10xf32>) -> tensor<1x10xf32>
 // CHECK:  %1 = "tfl.squeeze"(%arg1) {squeeze_dims = []} : (tensor<?x10xf32>) -> tensor<*xf32>
-// CHECK:  %2 = "tfl.reshape"(%0) : (tensor<1x10xf32>) -> tensor<2x5xf32>
+// CHECK:  %2 = "tfl.reshape"(%0, %cst) : (tensor<1x10xf32>, tensor<2xi32>) -> tensor<2x5xf32>
 // CHECK:  %3 = "some_op"(%1, %2) : (tensor<*xf32>, tensor<2x5xf32>) -> i32
 // CHECK:  return %3 : i32
 }
@@ -65,9 +66,31 @@ func @squeezeAndReshape(%arg0: tensor<1x1x10xf32>, %arg1: tensor<?x10xf32>) -> i
 func @dynamicReshape(%arg0: tensor<*xf32>, %arg1: tensor<2xi32>) -> tensor<?x?xf32> {
   %0 = "tf.Reshape"(%arg0, %arg1) : (tensor<*xf32>, tensor<2xi32>) -> tensor<?x?xf32>
   return %0 : tensor<?x?xf32>
+
 // CHECK-LABEL: dynamicReshape
-// CHECK:  %0 = "tf.Reshape"(%arg0, %arg1) : (tensor<*xf32>, tensor<2xi32>) -> tensor<?x?xf32>
-// CHECK:  return %0 : tensor<?x?xf32>
+// CHECK-NEXT:  %[[reshape:.*]] = "tfl.reshape"(%arg0, %arg1) : (tensor<*xf32>, tensor<2xi32>) -> tensor<?x?xf32>
+// CHECK-NEXT:  return %[[reshape]] : tensor<?x?xf32>
+}
+
+func @dynamicReshapeI64(%arg0: tensor<*xf32>, %arg1: tensor<2xi64>) -> tensor<?x?xf32> {
+  %0 = "tf.Reshape"(%arg0, %arg1) : (tensor<*xf32>, tensor<2xi64>) -> tensor<?x?xf32>
+  return %0 : tensor<?x?xf32>
+
+// CHECK-LABEL: dynamicReshapeI64
+// CHECK-NEXT:  %[[cast:.*]] = "tfl.cast"(%arg1) : (tensor<2xi64>) -> tensor<2xi32>
+// CHECK-NEXT:  %[[reshape:.*]] = "tfl.reshape"(%arg0, %[[cast]]) : (tensor<*xf32>, tensor<2xi32>) -> tensor<?x?xf32>
+// CHECK-NEXT:  return %[[reshape]] : tensor<?x?xf32>
+}
+
+func @dynamicReshapeI64Fold(%arg0: tensor<*xf32>) -> tensor<1x2xf32> {
+  %cst = constant dense<[1, 2]> : tensor<2xi64>
+  %0 = "tf.Reshape"(%arg0, %cst) : (tensor<*xf32>, tensor<2xi64>) -> tensor<1x2xf32>
+  return %0 : tensor<1x2xf32>
+
+// CHECK-LABEL: dynamicReshapeI64Fold
+// CHECK-NEXT:  %[[cst:.*]] = constant dense<[1, 2]> : tensor<2xi32>
+// CHECK-NEXT:  %[[reshape:.*]] = "tfl.reshape"(%arg0, %[[cst]]) : (tensor<*xf32>, tensor<2xi32>) -> tensor<1x2xf32>
+// CHECK-NEXT:  return %[[reshape]] : tensor<1x2xf32>
 }
 
 func @avgPool2D(%arg0: tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32> {
@@ -634,6 +657,15 @@ func @addV2(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<1xi32> {
 // CHECK:  %0 = tfl.add %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<1xi32>
 }
 
+func @addN(%arg0: tensor<2x3xi32>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32> {
+  %0 = "tf.AddN"(%arg0, %arg1, %arg2) {N = 3 : i64} : (tensor<2x3xi32>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
+  return %0 : tensor<2x3xi32>
+
+// CHECK-LABEL: addN
+// CHECK:  %0 = "tfl.add_n"(%arg0, %arg1, %arg2) : (tensor<2x3xi32>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
+// CHECK:  return %0 : tensor<2x3xi32>
+}
+
 func @reverse_v2(%arg0: tensor<1x2x3x4xf32>, %arg1: tensor<1xi32>) -> tensor<1x2x3x4xf32> {
   %0 = "tf.ReverseV2"(%arg0, %arg1) : (tensor<1x2x3x4xf32>, tensor<1xi32>) -> tensor<1x2x3x4xf32>
   return %0 : tensor<1x2x3x4xf32>
@@ -641,6 +673,14 @@ func @reverse_v2(%arg0: tensor<1x2x3x4xf32>, %arg1: tensor<1xi32>) -> tensor<1x2
 // CHECK-LABEL:reverse_v2
 // CHECK:  %0 = "tfl.reverse_v2"(%arg0, %arg1) : (tensor<1x2x3x4xf32>, tensor<1xi32>) -> tensor<1x2x3x4xf32>
 // CHECK:  return %0 : tensor<1x2x3x4xf32>
+}
+
+func @matrix_diag(%arg0: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
+  %0 = "tf.MatrixDiag"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16x16xf32>
+  return %0 : tensor<8x16x16xf32>
+
+// CHECK-LABEL:matrix_diag
+// CHECK:  %0 = "tfl.matrix_diag"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16x16xf32>
 }
 
 func @maximum(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xf32> {
@@ -883,31 +923,31 @@ func @matmul_transposed(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf32>) -> t
 // CHECK: %0 = "tfl.fully_connected"(%arg0, %arg1, %cst) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<40x37xf32>, tensor<40x37xf32>, none) -> tensor<40x40xf32>
 }
 
-func @concat2Tensors(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2x2xi32> {
+func @concat2Tensors(%arg0: tensor<2x1xi32>, %arg1: tensor<2x1xi32>) -> tensor<2x2xi32> {
   %0 = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
-  %1 = "tf.Concat"(%0, %arg0, %arg1) {N = 2 : i64} : (tensor<i32>, tensor<2xi32>, tensor<2xi32>) -> tensor<2x2xi32>
+  %1 = "tf.Concat"(%0, %arg0, %arg1) {N = 2 : i64} : (tensor<i32>, tensor<2x1xi32>, tensor<2x1xi32>) -> tensor<2x2xi32>
   return %1 : tensor<2x2xi32>
 
 // CHECK-LABEL: concat2Tensors
-// CHECK: %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 1 : i32, fused_activation_function = "NONE"} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2x2xi32>
+// CHECK: %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 1 : i32, fused_activation_function = "NONE"} : (tensor<2x1xi32>, tensor<2x1xi32>) -> tensor<2x2xi32>
 }
 
-func @concat3Tensors(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>, %arg2: tensor<2xi32>) -> tensor<2x3xi32> {
+func @concat3Tensors(%arg0: tensor<2x1xi32>, %arg1: tensor<2x1xi32>, %arg2: tensor<2x1xi32>) -> tensor<2x3xi32> {
   %0 = "tf.Const"() { value = dense<-1> : tensor<i32> } : () -> tensor<i32>
-  %1 = "tf.Concat"(%0, %arg0, %arg1, %arg2) {N = 3 : i64} : (tensor<i32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<2x3xi32>
+  %1 = "tf.Concat"(%0, %arg0, %arg1, %arg2) {N = 3 : i64} : (tensor<i32>, tensor<2x1xi32>, tensor<2x1xi32>, tensor<2x1xi32>) -> tensor<2x3xi32>
   return %1 : tensor<2x3xi32>
 
 // CHECK-LABEL: concat3Tensors
-// CHECK: %0 = "tfl.concatenation"(%arg0, %arg1, %arg2) {axis = -1 : i32, fused_activation_function = "NONE"} : (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<2x3xi32>
+// CHECK: %0 = "tfl.concatenation"(%arg0, %arg1, %arg2) {axis = -1 : i32, fused_activation_function = "NONE"} : (tensor<2x1xi32>, tensor<2x1xi32>, tensor<2x1xi32>) -> tensor<2x3xi32>
 }
 
-func @concatv2With3Tensors(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>, %arg2: tensor<2xi32>) -> tensor<2x3xi32> {
+func @concatv2With3Tensors(%arg0: tensor<2x1xi32>, %arg1: tensor<2x1xi32>, %arg2: tensor<2x1xi32>) -> tensor<2x3xi32> {
   %0 = "tf.Const"() { value = dense<-1> : tensor<i32> } : () -> tensor<i32>
-  %1 = "tf.ConcatV2"(%arg0, %arg1, %arg2, %0) {N = 3 : i64} : (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<i32>) -> tensor<2x3xi32>
+  %1 = "tf.ConcatV2"(%arg0, %arg1, %arg2, %0) {N = 3 : i64} : (tensor<2x1xi32>, tensor<2x1xi32>, tensor<2x1xi32>, tensor<i32>) -> tensor<2x3xi32>
   return %1 : tensor<2x3xi32>
 
 // CHECK-LABEL: concatv2With3Tensors
-// CHECK: %0 = "tfl.concatenation"(%arg0, %arg1, %arg2) {axis = -1 : i32, fused_activation_function = "NONE"} : (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<2x3xi32>
+// CHECK: %0 = "tfl.concatenation"(%arg0, %arg1, %arg2) {axis = -1 : i32, fused_activation_function = "NONE"} : (tensor<2x1xi32>, tensor<2x1xi32>, tensor<2x1xi32>) -> tensor<2x3xi32>
 }
 
 func @resize_with_bilinear(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<4xi32>) -> tensor<?xf32> {

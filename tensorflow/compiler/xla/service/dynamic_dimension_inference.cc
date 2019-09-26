@@ -63,6 +63,8 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleGetDimensionSize(HloInstruction* hlo) override;
 
+  Status HandleSetDimensionSize(HloInstruction* hlo) override;
+
   Status HandleSelect(HloInstruction* hlo) override;
 
   Status HandleConvolution(HloInstruction* hlo) override;
@@ -70,6 +72,8 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
   Status HandleConcatenate(HloInstruction* hlo) override;
 
   Status HandleReduceWindow(HloInstruction* hlo) override;
+
+  Status HandleReverse(HloInstruction* hlo) override;
 
   Status HandleSelectAndScatter(HloInstruction* hlo) override;
 
@@ -413,11 +417,31 @@ Status DynamicDimensionInferenceVisitor::HandleGetDimensionSize(
   //
   //   Input: F32[x, y, z]
   //     |
-  //   GetDimensionSize(1): U32[]
+  //   GetDimensionSize(1): S32[]
   //
   // The returned value is a scalar, which doesn't have any dynamic dimension in
   // the shape (although the value contains the real size of the dynamic
   // dimension of the input).
+  return Status::OK();
+}
+
+Status DynamicDimensionInferenceVisitor::HandleSetDimensionSize(
+    HloInstruction* hlo) {
+  // Propagate dynamic dimension indicated by this set dimension size
+  // instruction.
+  parent_->SetDynamicSize(hlo, {}, hlo->dimension(), hlo->mutable_operand(1),
+                          {.stride = 1, .multiple_of = 1});
+
+  // Also Propagate dynamic dimension already set by operands.
+  TF_RETURN_IF_ERROR(ForEachOperandDynamicDimension(
+      hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
+               int64 operand_index, HloInstruction* dynamic_size,
+               DimensionConstraint constraint) {
+        parent_->SetDynamicSize(hlo, index, dimension, dynamic_size,
+                                constraint);
+        return Status::OK();
+      }));
+
   return Status::OK();
 }
 
@@ -784,23 +808,61 @@ Status DynamicDimensionInferenceVisitor::HandleDynamicUpdateSlice(
       });
 }
 
-Status DynamicDimensionInferenceVisitor::HandleGather(HloInstruction* hlo) {
+Status DynamicDimensionInferenceVisitor::HandleReverse(HloInstruction* hlo) {
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* /*operand*/, ShapeIndex /*index*/,
+               int64 dimension, int64 /*operand_index*/,
+               HloInstruction* dynamic_size, DimensionConstraint constraint) {
+        if (absl::c_linear_search(hlo->dimensions(), dimension)) {
+          return Unimplemented(
+              "Dynamic dimension propagation on reversed dimension is not "
+              "supported %s",
+              hlo->ToString());
+        }
+        parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size, constraint);
+
+        return Status::OK();
+      });
+}
+
+Status DynamicDimensionInferenceVisitor::HandleGather(HloInstruction* hlo) {
+  return ForEachOperandDynamicDimension(
+      hlo, [&](HloInstruction* operand, ShapeIndex /*index*/,
                int64 input_dynamic_dimension, int64 operand_index,
                HloInstruction* dynamic_size, DimensionConstraint constraint) {
+        const GatherDimensionNumbers& gather_dims =
+            hlo->gather_dimension_numbers();
         if (operand_index != 1) {
+          if (hlo->gather_slice_sizes()[input_dynamic_dimension] == 1) {
+            // Gathering a size 1 dimension out of a dynamic dimension removes
+            // the dynamisity.
+            return Status::OK();
+          }
+          if (hlo->gather_slice_sizes()[input_dynamic_dimension] ==
+              operand->shape().dimensions(input_dynamic_dimension)) {
+            // Gathering a full-sized dimension out of a dynamic dimension
+            // propagates the dynamisity to output.
+            int64 output_dimension = input_dynamic_dimension;
+            for (int64 collapsed_dim : gather_dims.collapsed_slice_dims()) {
+              if (collapsed_dim < input_dynamic_dimension) {
+                // This output dimension is collapsed.
+                output_dimension--;
+              }
+            }
+            parent_->SetDynamicSize(hlo, {}, output_dimension, dynamic_size,
+                                    constraint);
+            return Status::OK();
+          }
           return Unimplemented(
               "Detects a dynamic dimension on the data input of gather, which "
-              "is not supported: %s",
-              hlo->ToString());
+              "is not supported: %s, %lld",
+              hlo->ToString(), input_dynamic_dimension);
         }
         // A mapping from output to input batch dim number. -1 means not a batch
         // dimension.
         int64 indices_rank = hlo->operand(1)->shape().rank();
         int64 output_rank = hlo->shape().rank();
-        const GatherDimensionNumbers& gather_dims =
-            hlo->gather_dimension_numbers();
+
         // indices_dim is an iterator over indices dimensions.
         int64 indices_dim = 0;
         // Find the corresponding batch dimension in the output.

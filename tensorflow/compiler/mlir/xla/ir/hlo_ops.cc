@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Dialect.h"  // TF:local_config_mlir
@@ -90,7 +91,7 @@ OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
 }
 
 // Builds a constant op with the specified attribute `value`.
-void ConstOp::build(Builder* builder, OperationState* result, Attribute value) {
+void ConstOp::build(Builder* builder, OperationState& result, Attribute value) {
   Type type;
   if (auto elemAttr = value.dyn_cast<ElementsAttr>()) {
     type = elemAttr.getType();
@@ -105,8 +106,8 @@ void ConstOp::build(Builder* builder, OperationState* result, Attribute value) {
 
   // TODO: support other XLA specific types.
   assert(type && "unsupported attribute type for building xla_hlo.constant");
-  result->types.push_back(type);
-  result->addAttribute("value", value);
+  result.types.push_back(type);
+  result.addAttribute("value", value);
 }
 
 //===----------------------------------------------------------------------===//
@@ -441,6 +442,16 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// ReverseOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult ReverseOp::fold(ArrayRef<Attribute> operands) {
+  // No dimensions to reverse.
+  if (dimensions().getNumElements() == 0) return operand();
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
 // SelectOp
 //===----------------------------------------------------------------------===//
 
@@ -521,6 +532,60 @@ static LogicalResult Verify(PadOp op) {
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// SliceOp
+//===----------------------------------------------------------------------===//
+
+void SliceOp::build(Builder* builder, OperationState& result, Value* operand,
+                    DenseIntElementsAttr start_indices,
+                    DenseIntElementsAttr limit_indices,
+                    DenseIntElementsAttr strides) {
+  return build(
+      builder, result,
+      InferOutputTypes(builder, operand, start_indices, limit_indices, strides),
+      operand, start_indices, limit_indices, strides);
+}
+
+// Returns output dimension size for slice result for the given arguments.
+// Returns -1 if arguments are illegal.
+static int64_t InferSliceDim(int64_t input_dim, int64_t start, int64_t end,
+                             int64_t stride) {
+  if (input_dim == -1 || start < 0 || start > end || end > input_dim ||
+      stride == 0)
+    return -1;
+
+  return llvm::divideCeil(end - start, stride);
+}
+
+Type SliceOp::InferOutputTypes(Builder* builder, Value* operand,
+                               DenseIntElementsAttr start_indices,
+                               DenseIntElementsAttr limit_indices,
+                               DenseIntElementsAttr strides) {
+  Type ty = operand->getType();
+  RankedTensorType ranked_ty = ty.dyn_cast<RankedTensorType>();
+  if (!ranked_ty) return ty;
+  int64_t rank = ranked_ty.getRank();
+
+  // Illegal attributes.
+  ShapedType attr_ty = start_indices.getType();
+  if (attr_ty.getRank() != 1 || attr_ty.getNumElements() != rank ||
+      !attr_ty.getElementType().isInteger(64) ||
+      limit_indices.getType() != attr_ty || strides.getType() != attr_ty)
+    return ty;
+
+  SmallVector<int64_t, 4> start(start_indices.getValues<int64_t>());
+  SmallVector<int64_t, 4> limit(limit_indices.getValues<int64_t>());
+  SmallVector<int64_t, 4> stride_vals(strides.getValues<int64_t>());
+
+  SmallVector<int64_t, 4> shape;
+  shape.reserve(rank);
+  for (int64_t i = 0, e = rank; i != e; i++) {
+    shape.push_back(InferSliceDim(ranked_ty.getDimSize(i), start[i], limit[i],
+                                  stride_vals[i]));
+  }
+  return builder->getTensorType(shape, ranked_ty.getElementType());
 }
 
 //===----------------------------------------------------------------------===//

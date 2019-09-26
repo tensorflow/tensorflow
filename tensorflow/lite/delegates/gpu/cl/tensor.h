@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_TENSOR_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_TENSOR_H_
 
+#include <cstdint>
 #include <memory>
 
 #include "absl/types/span.h"
@@ -37,9 +38,11 @@ namespace cl {
 
 class Tensor {
  public:
-  Tensor() : memory_(nullptr) {}
+  Tensor() : memory_(nullptr), image_buffer_memory_(nullptr) {}
   Tensor(cl_mem memory, int width, int height, int channels, DataType data_type,
          TensorStorageType storage_type);
+  Tensor(cl_mem memory, cl_mem image_buffer_memory, int width, int height,
+         int channels, DataType data_type, TensorStorageType storage_type);
 
   // Move only
   Tensor(Tensor&& tensor);
@@ -55,11 +58,18 @@ class Tensor {
   enum DataType DataType() const { return data_type_; }
   TensorStorageType StorageType() const { return storage_type_; }
 
+  // for profiling and memory statistics
+  uint64_t GetMemorySizeInBytes() const;
+
   int Depth() const { return IntegralDivideRoundUp(channels_, 4); }
   int4 GetSizeWithDepth() const {
     return int4(width_, height_, channels_, Depth());
   }
-  cl_mem GetMemoryPtr() const { return memory_; }
+  cl_mem GetMemoryPtr() const;
+
+  // This function returns buffer memory ptr for IMAGE_BUFFER instead of image
+  // memory ptr.
+  cl_mem GetMemoryPtrForWriting() const;
 
   Status WriteDataBHWC(absl::Span<const float> in, CLCommandQueue* queue);
 
@@ -81,6 +91,7 @@ class Tensor {
     switch (storage_type_) {
       case TensorStorageType::BUFFER:
       case TensorStorageType::TEXTURE_ARRAY:
+      case TensorStorageType::IMAGE_BUFFER:
         return ((d * height_ + y) * width_ + x) * 4 + sub_d;  // DHWC4
       case TensorStorageType::TEXTURE_2D:
         return ((y * Depth() + d) * width_ + x) * 4 + sub_d;  // HDWC4
@@ -95,6 +106,7 @@ class Tensor {
   void Release();
 
   cl_mem memory_;
+  cl_mem image_buffer_memory_;  // for TensorStorageType::IMAGE_BUFFER only
   int width_;
   int height_;
   int channels_;

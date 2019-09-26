@@ -49,10 +49,10 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
 #include "mlir/Translation.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/utils/stateful_ops_utils.h"
 #include "tensorflow/compiler/mlir/op_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
@@ -68,21 +68,18 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 
-using llvm::cast;
 using llvm::dyn_cast;
 using llvm::formatv;
 using llvm::isa;
 using llvm::Optional;
 using llvm::StringRef;
 using llvm::Twine;
-using mlir::Block;
 using mlir::Dialect;
 using mlir::ElementsAttr;
 using mlir::FuncOp;
 using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::NoneType;
-using mlir::openOutputFile;
 using mlir::Operation;
 using mlir::StringAttr;
 using mlir::TensorType;
@@ -868,17 +865,7 @@ bool Translator::IsStatefulOperand(mlir::Operation* op, int operand_index) {
   // having to cast it to specific ops like below.
   // Until then, when a new RNN/LSTM op is added to TFLite and has stateful
   // tensors as operands, they will need to be added here as well.
-  if (auto tfl = llvm::dyn_cast<mlir::TFL::LSTMOp>(op)) {
-    operand_indices = tfl.GetStatefulOperands();
-  } else if (auto tfl =
-                 llvm::dyn_cast<mlir::TFL::UnidirectionalSequenceLSTMOp>(op)) {
-    operand_indices = tfl.GetStatefulOperands();
-  } else if (auto tfl =
-                 llvm::dyn_cast<mlir::TFL::UnidirectionalSequenceRNNOp>(op)) {
-    operand_indices = tfl.GetStatefulOperands();
-  } else if (auto tfl = llvm::dyn_cast<mlir::TFL::SVDFOp>(op)) {
-    operand_indices = tfl.GetStatefulOperands();
-  }
+  if (!mlir::TFL::IsStatefulOp(op, &operand_indices)) return false;
   return absl::c_find(operand_indices, operand_index) != operand_indices.end();
 }
 
@@ -1118,7 +1105,7 @@ bool tflite::MlirToFlatBufferTranslateFunction(
 }
 
 static mlir::LogicalResult MlirToFlatBufferFileTranslateFunction(
-    ModuleOp module, llvm::StringRef filename) {
+    ModuleOp module, llvm::raw_ostream& output) {
   std::string serialized_flatbuffer;
   std::unique_ptr<OpNameMapper> op_name_mapper;
   if (strip_debug_info) {
@@ -1131,16 +1118,7 @@ static mlir::LogicalResult MlirToFlatBufferFileTranslateFunction(
           emit_select_tf_ops, emit_custom_ops, op_name_mapper.get()))
     return mlir::failure();
 
-  auto file = openOutputFile(filename);
-  if (!file) {
-    auto* context = module.getContext();
-    return emitError(UnknownLoc::get(context), "failed to open output file ")
-               << filename,
-           mlir::failure();
-  }
-
-  file->os() << serialized_flatbuffer;
-  file->keep();
+  output << serialized_flatbuffer;
   return mlir::success();
 }
 

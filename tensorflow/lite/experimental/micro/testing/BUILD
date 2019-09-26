@@ -20,15 +20,6 @@ cc_library(
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/experimental/micro:micro_framework",
-    ],
-)
-
-tflite_micro_cc_test(
-    name = "test_utils_test",
-    srcs = [
-        "test_utils_test.cc",
-    ],
-    deps = [
-        ":micro_test",
+        "//tensorflow/lite/experimental/micro:micro_utils",
     ],
 )

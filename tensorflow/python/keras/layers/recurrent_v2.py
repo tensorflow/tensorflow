@@ -57,6 +57,12 @@ _RUNTIME_GPU = 2
 class GRUCell(recurrent.GRUCell):
   """Cell class for the GRU layer.
 
+  See [the Keras RNN API guide](https://www.tensorflow.org/beta/guide/keras/rnn)
+  for details about the usage of RNN API.
+
+  This class processes one step within the whole time sequence input, whereas
+  `tf.keras.layer.GRU` processes the whole sequence.
+
   Arguments:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use. Default: hyperbolic tangent
@@ -65,42 +71,66 @@ class GRUCell(recurrent.GRUCell):
     recurrent_activation: Activation function to use for the recurrent step.
       Default: sigmoid (`sigmoid`). If you pass `None`, no activation is
       applied (ie. "linear" activation: `a(x) = x`).
-    use_bias: Boolean, whether the layer uses a bias vector.
+    use_bias: Boolean, (default `True`), whether the layer uses a bias vector.
     kernel_initializer: Initializer for the `kernel` weights matrix,
-      used for the linear transformation of the inputs.
+      used for the linear transformation of the inputs. Default:
+      `glorot_uniform`.
     recurrent_initializer: Initializer for the `recurrent_kernel`
       weights matrix, used for the linear transformation of the recurrent state.
-    bias_initializer: Initializer for the bias vector.
+      Default: `orthogonal`.
+    bias_initializer: Initializer for the bias vector. Default: `zeros`.
     kernel_regularizer: Regularizer function applied to the `kernel` weights
-      matrix.
+      matrix. Default: `None`.
     recurrent_regularizer: Regularizer function applied to the
-      `recurrent_kernel` weights matrix.
-    bias_regularizer: Regularizer function applied to the bias vector.
+      `recurrent_kernel` weights matrix. Default: `None`.
+    bias_regularizer: Regularizer function applied to the bias vector. Default:
+      `None`.
     kernel_constraint: Constraint function applied to the `kernel` weights
-      matrix.
+      matrix. Default: `None`.
     recurrent_constraint: Constraint function applied to the `recurrent_kernel`
-      weights matrix.
-    bias_constraint: Constraint function applied to the bias vector.
+      weights matrix. Default: `None`.
+    bias_constraint: Constraint function applied to the bias vector. Default:
+      `None`.
     dropout: Float between 0 and 1. Fraction of the units to drop for the
-      linear transformation of the inputs.
+      linear transformation of the inputs. Default: 0.
     recurrent_dropout: Float between 0 and 1. Fraction of the units to drop for
-      the linear transformation of the recurrent state.
+      the linear transformation of the recurrent state. Default: 0.
     implementation: Implementation mode, either 1 or 2.
       Mode 1 will structure its operations as a larger number of
       smaller dot products and additions, whereas mode 2 (default) will
       batch them into fewer, larger operations. These modes will
       have different performance profiles on different hardware and
-      for different applications.
+      for different applications. Default: 2.
     reset_after: GRU convention (whether to apply reset gate after or
       before matrix multiplication). False = "before",
       True = "after" (default and CuDNN compatible).
 
   Call arguments:
-    inputs: A 2D tensor.
-    states: List of state tensors corresponding to the previous timestep.
+    inputs: A 2D tensor, with shape of `[batch, feature]`.
+    states: A 2D tensor with shape of `[batch, units]`, which is the state from
+      the previous time step. For timestep 0, the initial state provided by user
+      will be feed to cell.
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. Only relevant when `dropout` or
       `recurrent_dropout` is used.
+
+  Examples:
+
+  ```python
+  inputs = np.random.random([32, 10, 8]).astype(np.float32)
+  rnn = tf.keras.layers.RNN(tf.keras.layers.GRUCell(4))
+
+  output = rnn(inputs)  # The output has shape `[32, 4]`.
+
+  rnn = tf.keras.layers.RNN(
+      tf.keras.layers.GRUCell(4),
+      return_sequences=True,
+      return_state=True)
+
+  # whole_sequence_output has shape `[32, 10, 4]`.
+  # final_state has shape `[32, 4]`.
+  whole_sequence_output, final_state = rnn(inputs)
+  ```
   """
 
   def __init__(self,
@@ -147,6 +177,9 @@ class GRUCell(recurrent.GRUCell):
 class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
   """Gated Recurrent Unit - Cho et al. 2014.
 
+  See [the Keras RNN API guide](https://www.tensorflow.org/beta/guide/keras/rnn)
+  for details about the usage of RNN API.
+
   Based on available runtime hardware and constraints, this layer
   will choose different implementations (cuDNN-based or pure-TensorFlow)
   to maximize the performance. If a GPU is available and all
@@ -155,12 +188,12 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
 
   The requirements to use the cuDNN implementation are:
 
-  1. `activation` == 'tanh'
-  2. `recurrent_activation` == 'sigmoid'
+  1. `activation` == `tanh`
+  2. `recurrent_activation` == `sigmoid`
   3. `recurrent_dropout` == 0
-  4. `unroll` is False
-  5. `use_bias` is True
-  6. `reset_after` is True
+  4. `unroll` is `False`
+  5. `use_bias` is `True`
+  6. `reset_after` is `True`
   7. Inputs are not masked or strictly right padded.
 
   There are two variants of the GRU implementation. The default one is based on
@@ -184,41 +217,43 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
       Default: sigmoid (`sigmoid`).
       If you pass `None`, no activation is applied
       (ie. "linear" activation: `a(x) = x`).
-    use_bias: Boolean, whether the layer uses a bias vector.
+    use_bias: Boolean, (default `True`), whether the layer uses a bias vector.
     kernel_initializer: Initializer for the `kernel` weights matrix,
-      used for the linear transformation of the inputs.
+      used for the linear transformation of the inputs. Default:
+      `glorot_uniform`.
     recurrent_initializer: Initializer for the `recurrent_kernel`
-       weights matrix,
-       used for the linear transformation of the recurrent state.
-    bias_initializer: Initializer for the bias vector.
-    kernel_regularizer: Regularizer function applied to
-      the `kernel` weights matrix.
-    recurrent_regularizer: Regularizer function applied to
-      the `recurrent_kernel` weights matrix.
-    bias_regularizer: Regularizer function applied to the bias vector.
-    activity_regularizer: Regularizer function applied to
-      the output of the layer (its "activation")..
-    kernel_constraint: Constraint function applied to
-      the `kernel` weights matrix.
-    recurrent_constraint: Constraint function applied to
-      the `recurrent_kernel` weights matrix.
-    bias_constraint: Constraint function applied to the bias vector.
-    dropout: Float between 0 and 1.
-      Fraction of the units to drop for the linear transformation of the inputs.
-    recurrent_dropout: Float between 0 and 1.
-      Fraction of the units to drop for
-      the linear transformation of the recurrent state.
+       weights matrix, used for the linear transformation of the recurrent
+       state. Default: `orthogonal`.
+    bias_initializer: Initializer for the bias vector. Default: `zeros`.
+    kernel_regularizer: Regularizer function applied to the `kernel` weights
+      matrix. Default: `None`.
+    recurrent_regularizer: Regularizer function applied to the
+      `recurrent_kernel` weights matrix. Default: `None`.
+    bias_regularizer: Regularizer function applied to the bias vector. Default:
+      `None`.
+    activity_regularizer: Regularizer function applied to the output of the
+      layer (its "activation"). Default: `None`.
+    kernel_constraint: Constraint function applied to the `kernel` weights
+      matrix. Default: `None`.
+    recurrent_constraint: Constraint function applied to the `recurrent_kernel`
+      weights matrix. Default: `None`.
+    bias_constraint: Constraint function applied to the bias vector. Default:
+      `None`.
+    dropout: Float between 0 and 1. Fraction of the units to drop for the linear
+      transformation of the inputs. Default: 0.
+    recurrent_dropout: Float between 0 and 1. Fraction of the units to drop for
+      the linear transformation of the recurrent state. Default: 0.
     implementation: Implementation mode, either 1 or 2.
       Mode 1 will structure its operations as a larger number of
       smaller dot products and additions, whereas mode 2 will
       batch them into fewer, larger operations. These modes will
       have different performance profiles on different hardware and
-      for different applications.
+      for different applications. Default: 2.
     return_sequences: Boolean. Whether to return the last output
-      in the output sequence, or the full sequence.
-    return_state: Boolean. Whether to return the last state
-      in addition to the output.
-    go_backwards: Boolean (default False).
+      in the output sequence, or the full sequence. Default: `False`.
+    return_state: Boolean. Whether to return the last state in addition to the
+      output. Default: `False`.
+    go_backwards: Boolean (default `False`).
       If True, process the input sequence backwards and return the
       reversed sequence.
     stateful: Boolean (default False). If True, the last state
@@ -230,13 +265,21 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
       Unrolling can speed-up a RNN,
       although it tends to be more memory-intensive.
       Unrolling is only suitable for short sequences.
+    time_major: The shape format of the `inputs` and `outputs` tensors.
+      If True, the inputs and outputs will be in shape
+      `[timesteps, batch, feature]`, whereas in the False case, it will be
+      `[batch, timesteps, feature]`. Using `time_major = True` is a bit more
+      efficient because it avoids transposes at the beginning and end of the
+      RNN calculation. However, most TensorFlow data is batch-major, so by
+      default this function accepts input and emits output in batch-major
+      form.
     reset_after: GRU convention (whether to apply reset gate after or
       before matrix multiplication). False = "before",
       True = "after" (default and CuDNN compatible).
 
   Call arguments:
-    inputs: A 3D tensor.
-    mask: Binary tensor of shape `(samples, timesteps)` indicating whether
+    inputs: A 3D tensor, with shape `[batch, timesteps, feature]`.
+    mask: Binary tensor of shape `[samples, timesteps]` indicating whether
       a given timestep should be masked  (optional, defaults to `None`).
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. This argument is passed to the cell
@@ -245,6 +288,21 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     initial_state: List of initial state tensors to be passed to the first
       call of the cell  (optional, defaults to `None` which causes creation
       of zero-filled initial state tensors).
+
+  Examples:
+
+  ```python
+  inputs = np.random.random([32, 10, 8]).astype(np.float32)
+  gru = tf.keras.layers.GRU(4)
+
+  output = gru(inputs)  # The output has shape `[32, 4]`.
+
+  gru = tf.keras.layers.GRU(4, return_sequences=True, return_state=True)
+
+  # whole_sequence_output has shape `[32, 10, 4]`.
+  # final_state has shape `[32, 4]`.
+  whole_sequence_output, final_state = gru(inputs)
+  ```
   """
 
   def __init__(self,
@@ -665,6 +723,12 @@ def gru_with_backend_selection(
 class LSTMCell(recurrent.LSTMCell):
   """Cell class for the LSTM layer.
 
+  See [the Keras RNN API guide](https://www.tensorflow.org/beta/guide/keras/rnn)
+  for details about the usage of RNN API.
+
+  This class processes one step within the whole time sequence input, whereas
+  `tf.keras.layer.LSTM` processes the whole sequence.
+
   Arguments:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use. Default: hyperbolic tangent
@@ -673,42 +737,67 @@ class LSTMCell(recurrent.LSTMCell):
     recurrent_activation: Activation function to use for the recurrent step.
       Default: sigmoid (`sigmoid`). If you pass `None`, no activation is applied
       (ie. "linear" activation: `a(x) = x`).
-    use_bias: Boolean, whether the layer uses a bias vector.
+    use_bias: Boolean, (default `True`), whether the layer uses a bias vector.
     kernel_initializer: Initializer for the `kernel` weights matrix, used for
-      the linear transformation of the inputs.
+      the linear transformation of the inputs. Default: `glorot_uniform`.
     recurrent_initializer: Initializer for the `recurrent_kernel` weights
       matrix, used for the linear transformation of the recurrent state.
-    bias_initializer: Initializer for the bias vector.
-    unit_forget_bias: Boolean. If True, add 1 to the bias of the forget gate at
-      initialization. Setting it to true will also force
+      Default: `orthogonal`.
+    bias_initializer: Initializer for the bias vector. Default: `zeros`.
+    unit_forget_bias: Boolean (default `True`). If True, add 1 to the bias of
+      the forget gate at initialization. Setting it to true will also force
       `bias_initializer="zeros"`. This is recommended in [Jozefowicz et
         al.](http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
     kernel_regularizer: Regularizer function applied to the `kernel` weights
-      matrix.
+      matrix. Default: `None`.
     recurrent_regularizer: Regularizer function applied to
-      the `recurrent_kernel` weights matrix.
-    bias_regularizer: Regularizer function applied to the bias vector.
+      the `recurrent_kernel` weights matrix. Default: `None`.
+    bias_regularizer: Regularizer function applied to the bias vector. Default:
+      `None`.
     kernel_constraint: Constraint function applied to the `kernel` weights
-      matrix.
+      matrix. Default: `None`.
     recurrent_constraint: Constraint function applied to the `recurrent_kernel`
-      weights matrix.
-    bias_constraint: Constraint function applied to the bias vector.
+      weights matrix. Default: `None`.
+    bias_constraint: Constraint function applied to the bias vector. Default:
+      `None`.
     dropout: Float between 0 and 1. Fraction of the units to drop for the linear
-      transformation of the inputs.
+      transformation of the inputs. Default: 0.
     recurrent_dropout: Float between 0 and 1. Fraction of the units to drop for
-      the linear transformation of the recurrent state.
+      the linear transformation of the recurrent state. Default: 0.
     implementation: Implementation mode, either 1 or 2.
       Mode 1 will structure its operations as a larger number of smaller dot
       products and additions, whereas mode 2 (default) will batch them into
       fewer, larger operations. These modes will have different performance
-      profiles on different hardware and for different applications.
+      profiles on different hardware and for different applications. Default: 2.
 
   Call arguments:
-    inputs: A 2D tensor.
-    states: List of state tensors corresponding to the previous timestep.
+    inputs: A 2D tensor, with shape of `[batch, feature]`.
+    states: List of 2 tensors that corresponding to the cell's units. Both of
+      them have shape `[batch, units]`, the first tensor is the memory state
+      from previous time step, the second tesnor is the carry state from
+      previous time step. For timestep 0, the initial state provided by user
+      will be feed to cell.
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. Only relevant when `dropout` or
       `recurrent_dropout` is used.
+
+  Examples:
+
+  ```python
+  inputs = np.random.random([32, 10, 8]).astype(np.float32)
+  rnn = tf.keras.layers.RNN(tf.keras.layers.LSTMCell(4))
+
+  output = rnn(inputs)  # The output has shape `[32, 4]`.
+
+  rnn = tf.keras.layers.RNN(
+      tf.keras.layers.LSTMCell(4),
+      return_sequences=True,
+      return_state=True)
+
+  # whole_sequence_output has shape `[32, 10, 4]`.
+  # final_memory_state and final_carry_state both have shape `[32, 4]`.
+  whole_sequence_output, final_memory_state, final_carry_state = rnn(inputs)
+  ```
   """
 
   def __init__(self,
@@ -755,6 +844,9 @@ class LSTMCell(recurrent.LSTMCell):
 class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
   """Long Short-Term Memory layer - Hochreiter 1997.
 
+  See [the Keras RNN API guide](https://www.tensorflow.org/beta/guide/keras/rnn)
+  for details about the usage of RNN API.
+
   Based on available runtime hardware and constraints, this layer
   will choose different implementations (cuDNN-based or pure-TensorFlow)
   to maximize the performance. If a GPU is available and all
@@ -763,11 +855,11 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
 
   The requirements to use the cuDNN implementation are:
 
-  1. `activation` == 'tanh'
-  2. `recurrent_activation` == 'sigmoid'
+  1. `activation` == `tanh`
+  2. `recurrent_activation` == `sigmoid`
   3. `recurrent_dropout` == 0
-  4. `unroll` is False
-  5. `use_bias` is True
+  4. `unroll` is `False`
+  5. `use_bias` is `True`
   6. Inputs are not masked or strictly right padded.
 
   Arguments:
@@ -778,54 +870,65 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
     recurrent_activation: Activation function to use for the recurrent step.
       Default: sigmoid (`sigmoid`). If you pass `None`, no activation is
       applied (ie. "linear" activation: `a(x) = x`).
-    use_bias: Boolean, whether the layer uses a bias vector.
+    use_bias: Boolean (default `True`), whether the layer uses a bias vector.
     kernel_initializer: Initializer for the `kernel` weights matrix, used for
-      the linear transformation of the inputs..
+      the linear transformation of the inputs. Default: `glorot_uniform`.
     recurrent_initializer: Initializer for the `recurrent_kernel` weights
-      matrix, used for the linear transformation of the recurrent state..
-    bias_initializer: Initializer for the bias vector.
-    unit_forget_bias: Boolean. If True, add 1 to the bias of the forget gate at
-      initialization. Setting it to true will also force
+      matrix, used for the linear transformation of the recurrent state.
+      Default: `orthogonal`.
+    bias_initializer: Initializer for the bias vector. Default: `zeros`.
+    unit_forget_bias: Boolean (default `True`). If True, add 1 to the bias of
+      the forget gate at initialization. Setting it to true will also force
       `bias_initializer="zeros"`. This is recommended in [Jozefowicz et
           al.](http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf).
     kernel_regularizer: Regularizer function applied to the `kernel` weights
-      matrix.
+      matrix. Default: `None`.
     recurrent_regularizer: Regularizer function applied to the
-      `recurrent_kernel` weights matrix.
-    bias_regularizer: Regularizer function applied to the bias vector.
+      `recurrent_kernel` weights matrix. Default: `None`.
+    bias_regularizer: Regularizer function applied to the bias vector. Default:
+      `None`.
     activity_regularizer: Regularizer function applied to the output of the
-      layer (its "activation")..
+      layer (its "activation"). Default: `None`.
     kernel_constraint: Constraint function applied to the `kernel` weights
-      matrix.
+      matrix. Default: `None`.
     recurrent_constraint: Constraint function applied to the `recurrent_kernel`
-      weights matrix.
-    bias_constraint: Constraint function applied to the bias vector.
+      weights matrix. Default: `None`.
+    bias_constraint: Constraint function applied to the bias vector. Default:
+      `None`.
     dropout: Float between 0 and 1. Fraction of the units to drop for the linear
-      transformation of the inputs.
+      transformation of the inputs. Default: 0.
     recurrent_dropout: Float between 0 and 1. Fraction of the units to drop for
-      the linear transformation of the recurrent state.
+      the linear transformation of the recurrent state. Default: 0.
     implementation: Implementation mode, either 1 or 2. Mode 1 will structure
       its operations as a larger number of smaller dot products and additions,
       whereas mode 2 will batch them into fewer, larger operations. These modes
       will have different performance profiles on different hardware and for
-      different applications.
+      different applications. Default: 2.
     return_sequences: Boolean. Whether to return the last output. in the output
-      sequence, or the full sequence.
+      sequence, or the full sequence. Default: `False`.
     return_state: Boolean. Whether to return the last state in addition to the
-      output.
-    go_backwards: Boolean (default False). If True, process the input sequence
+      output. Default: `False`.
+    go_backwards: Boolean (default `False`). If True, process the input sequence
       backwards and return the reversed sequence.
-    stateful: Boolean (default False). If True, the last state for each sample
+    stateful: Boolean (default `False`). If True, the last state for each sample
       at index i in a batch will be used as initial state for the sample of
       index i in the following batch.
-    unroll: Boolean (default False). If True, the network will be unrolled, else
-      a symbolic loop will be used. Unrolling can speed-up a RNN, although it
-      tends to be more memory-intensive. Unrolling is only suitable for short
+    time_major: The shape format of the `inputs` and `outputs` tensors.
+      If True, the inputs and outputs will be in shape
+      `[timesteps, batch, feature]`, whereas in the False case, it will be
+      `[batch, timesteps, feature]`. Using `time_major = True` is a bit more
+      efficient because it avoids transposes at the beginning and end of the
+      RNN calculation. However, most TensorFlow data is batch-major, so by
+      default this function accepts input and emits output in batch-major
+      form.
+    unroll: Boolean (default `False`). If True, the network will be unrolled,
+      else a symbolic loop will be used. Unrolling can speed-up a RNN, although
+      it tends to be more memory-intensive. Unrolling is only suitable for short
       sequences.
 
   Call arguments:
-    inputs: A 3D tensor.
-    mask: Binary tensor of shape `(samples, timesteps)` indicating whether
+    inputs: A 3D tensor with shape `[batch, timesteps, feature]`.
+    mask: Binary tensor of shape `[batch, timesteps]` indicating whether
       a given timestep should be masked (optional, defaults to `None`).
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. This argument is passed to the cell
@@ -834,6 +937,21 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
     initial_state: List of initial state tensors to be passed to the first
       call of the cell (optional, defaults to `None` which causes creation
       of zero-filled initial state tensors).
+
+  Examples:
+
+  ```python
+  inputs = np.random.random([32, 10, 8]).astype(np.float32)
+  lstm = tf.keras.layers.LSTM(4)
+
+  output = lstm(inputs)  # The output has shape `[32, 4]`.
+
+  lstm = tf.keras.layers.LSTM(4, return_sequences=True, return_state=True)
+
+  # whole_sequence_output has shape `[32, 10, 4]`.
+  # final_memory_state and final_carry_state both have shape `[32, 4]`.
+  whole_sequence_output, final_memory_state, final_carry_state = lstm(inputs)
+  ```
   """
 
   def __init__(self,

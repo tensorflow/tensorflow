@@ -21,10 +21,12 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Transforms/DialectConversion.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -53,6 +55,15 @@ static bool isDefaultDataFormat(StringRef format) { return format == "NHWC"; }
 static size_t getFeatureDimension(StringAttr format,
                                   RankedTensorType inputType) {
   return isDefaultDataFormat(format.getValue()) ? inputType.getRank() - 1 : 1;
+}
+
+// Returns 1D 64-bit dense elements attribute with the given values.
+static DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
+                                               Builder *builder) {
+  RankedTensorType ty = builder->getTensorType(
+      {static_cast<int64_t>(values.size())}, builder->getIntegerType(64));
+  return DenseElementsAttr::get<int64_t>(ty, values)
+      .cast<DenseIntElementsAttr>();
 }
 
 static IntegerAttr GetHLOAxisFromTFAxis(ElementsAttr attr, int64_t rank,
@@ -269,6 +280,67 @@ class ConvertMaxPoolOp : public OpRewritePattern<TF::MaxPoolOp> {
   }
 };
 
+// Converts Sigmoid op to HLO ops computing sigmoid with the following formula:
+//
+//     sigmoid = add(mul(tanh(mul(logits, 0.5)), 0.5), 0.5)
+//
+// Sample result with 2-d f16 inputs with B batches of with N elements each.
+//
+//    // Create an array of 0.5 the shape of the input array.
+//    %half = "xla_hlo.constant"() {value = dense<5.000000e-01>
+//                           : tensor<f32>} : () -> tensor<f32>
+//    %half_array = "xla_hlo.broadcast"(half)
+//                           {broadcast_sizes = dense<2> : tensor<1xi64>}
+//                           : (tensor<f32>) -> tensor<2xf32>
+//
+//    // Compute Tanh of half the logits of the values.
+//    %halved_logits = xla_hlo.mul %logits, %half_array : tensor<2xf32>
+//    %tanh = "xla_hlo.tanh"(%halved_logits) : (tensor<2xf32>) -> tensor<2xf32>
+//
+//    // Have the result of Tanh and add 0.5.
+//    %halved_tanh = xla_hlo.mul %tanh, %half : tensor<2xf32>
+//    %sigmoid = xla_hlo.add %halved_tanh, %half : tensor<2xf32>
+//
+class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
+ public:
+  explicit ConvertSigmoidOp(MLIRContext *context)
+      : OpRewritePattern<TF::SigmoidOp>(context, 1) {}
+
+  PatternMatchResult matchAndRewrite(TF::SigmoidOp op,
+                                     PatternRewriter &rewriter) const override {
+    auto operand = op.getOperand();
+
+    auto scalar_one = rewriter.create<xla_hlo::ConstOp>(
+        op.getLoc(),
+        rewriter.getFloatAttr(getElementTypeOrSelf(operand->getType()), 0.5));
+
+    auto shaped_type = operand->getType().cast<ShapedType>();
+    auto constant_ones = rewriter.create<xla_hlo::BroadcastOp>(
+        op.getLoc(), shaped_type, scalar_one,
+        rewriter
+            .getDenseIntElementsAttr(
+                rewriter.getTensorType({shaped_type.getRank()},
+                                       rewriter.getIntegerType(64)),
+                shaped_type.getShape())
+            .cast<DenseIntElementsAttr>());
+
+    auto scaled_input = rewriter.create<xla_hlo::MulOp>(
+        op.getLoc(), operand->getType(), operand, constant_ones,
+        DenseIntElementsAttr());
+    auto tanh_op = rewriter.create<xla_hlo::TanhOp>(
+        op.getLoc(), operand->getType(), scaled_input);
+    auto mul_op = rewriter.create<xla_hlo::MulOp>(
+        op.getLoc(), operand->getType(), tanh_op, constant_ones,
+        /*DenseIntElementsAttr=*/DenseIntElementsAttr());
+    auto add_op = rewriter.create<xla_hlo::AddOp>(
+        op.getLoc(), operand->getType(), mul_op, constant_ones,
+        /*DenseIntElementsAttr=*/DenseIntElementsAttr());
+
+    rewriter.replaceOp(op, add_op.getResult());
+    return matchSuccess();
+  }
+};
+
 // Converts Softmax op to HLO ops computing softmax with the following formula:
 //
 //     softmax = div(exp(logits), sum(exp(logits)))
@@ -365,6 +437,117 @@ class ConvertSoftmaxOp : public OpRewritePattern<TF::SoftmaxOp> {
   }
 };
 
+// Converts StridedSlice op to HLO Slice op along with Reverse op to handle
+// negative strides and Reshape op to update the output shape. Indices and
+// strides operands are converted to attributes with non-negative indexing.
+//
+// For example with an op like following,
+//   tf.StridedSlice(%input, %begin, %end, %strides) {shrink_axis_mask = 1}
+//     : tensor<AxBxf32> -> tensor<Pxf32>
+//
+// Output would be:
+//   %reversed = "xla_hlo.Reverse" (%input) {dimensions = ...}
+//   %sliced = "xla_hlo.Slice" (%input)
+//             {start_indices = ..., limit_indices = ..., strides = ...}
+//   %output = "xla_hlo.Reshape" (%sliced) : tensor<1xPxf32> -> tensor<Pxf32>
+//
+class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
+ public:
+  explicit ConvertStridedSliceOp(MLIRContext *context)
+      : OpRewritePattern<TF::StridedSliceOp>(context, 1) {}
+
+  PatternMatchResult matchAndRewrite(TF::StridedSliceOp op,
+                                     PatternRewriter &rewriter) const override {
+    // Input shape needs to be static to convert negative indices in TensorFlow
+    // to absolute indices required by HLO.
+    //
+    // TODO(hinsu): Relax this constraint for ops without negative indices and
+    // strides.
+    auto input_ty = op.input()->getType().dyn_cast<RankedTensorType>();
+    if (!input_ty || !input_ty.hasStaticShape()) return matchFailure();
+    ArrayRef<int64_t> input_shape = input_ty.getShape();
+
+    // Output shape needs to be static to apply 'new_axis_mask' or
+    // 'shrink_axis_mask' by reshaping tensor after slice.
+    //
+    // TODO(hinsu): Relax this constraint for ops without the above masks.
+    auto result_ty = op.getType().dyn_cast<RankedTensorType>();
+    if (!result_ty || !result_ty.hasStaticShape()) return matchFailure();
+
+    // TODO(hinsu): Support non-zero mask values. Currently only
+    // 'shrink_axis_mask' is supported.
+    for (StringRef mask :
+         {"begin_mask", "end_mask", "ellipsis_mask", "new_axis_mask"}) {
+      auto attr = op.getAttrOfType<IntegerAttr>(mask);
+      if (attr && attr.getValue() != 0) return matchFailure();
+    }
+
+    // TODO(hinsu): Support lowering for ops with dynamic begin and end values
+    // when it is possible to derive indices based on mask attributes.
+    DenseIntElementsAttr begin_indices, end_indices, strides;
+    if (!matchPattern(op.begin(), m_Constant(&begin_indices)) ||
+        !matchPattern(op.end(), m_Constant(&end_indices)) ||
+        !matchPattern(op.strides(), m_Constant(&strides)))
+      return matchFailure();
+
+    SmallVector<int64_t, 4> hlo_begin_indices, hlo_end_indices, hlo_strides,
+        dims_to_reverse;
+    int64_t input_rank = input_ty.getRank();
+    for (auto *vec : {&hlo_begin_indices, &hlo_end_indices, &hlo_strides}) {
+      vec->reserve(input_rank);
+    }
+
+    int64_t indices_elements = begin_indices.getNumElements();
+    if (input_rank < indices_elements) return matchFailure();
+
+    // Convert from TensorFlow negative or out of range indices and strides
+    // values to legal HLO Slice attributes.
+    for (int i = 0, e = indices_elements; i != e; i++) {
+      int64_t begin = begin_indices.getValue<IntegerAttr>(i).getInt();
+      int64_t end = end_indices.getValue<IntegerAttr>(i).getInt();
+      int64_t stride = strides.getValue<IntegerAttr>(i).getInt();
+
+      if (begin < 0) begin = input_shape[i] + begin;
+      if (end < 0) end = input_shape[i] + end;
+
+      if (stride < 0) {
+        // Negative stride means that the output values are computed starting
+        // from end until begin. Mark the dimension for reversal before slice
+        // and compute indices for the reversed input.
+        dims_to_reverse.push_back(i);
+        begin = (input_shape[i] - 1) - begin;
+        end = (input_shape[i] - 1) - end;
+        stride = -stride;
+      }
+
+      // Unlike TensorFlow, HLO requires begin and end values to be within
+      // range.
+      begin = std::max(int64_t(0), begin);
+      end = std::max(begin, end);
+      end = std::min(end, input_shape[i]);
+
+      hlo_begin_indices.push_back(begin);
+      hlo_end_indices.push_back(end);
+      hlo_strides.push_back(stride);
+    }
+
+    Location loc = op.getLoc();
+    auto reversed = rewriter.create<xla_hlo::ReverseOp>(
+        loc, input_ty, op.input(),
+        GetI64ElementsAttr(dims_to_reverse, &rewriter));
+    auto sliced = rewriter.create<xla_hlo::SliceOp>(
+        loc, reversed.getResult(),
+        GetI64ElementsAttr(hlo_begin_indices, &rewriter),
+        GetI64ElementsAttr(hlo_end_indices, &rewriter),
+        GetI64ElementsAttr(hlo_strides, &rewriter));
+
+    // Reshape slice result so that the shape is updated depending on
+    // 'new_axis_mask' or 'shrink_axis_mask' attributes.
+    rewriter.replaceOpWithNewOp<xla_hlo::ReshapeOp>(op, op.getType(), sliced);
+    return matchSuccess();
+  }
+};
+
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 }  // end anonymous namespace
 }  // end namespace xla
@@ -382,8 +565,10 @@ LogicalResult mlir::xla_hlo::legalizeTF(Operation *op) {
   // here for lowering to HLO.
   mlir::TF::PopulateLoweringTFPatterns(context, &patterns);
 
-  patterns.insert<mlir::xla::ConvertMaxPoolOp>(op->getContext());
-  patterns.insert<mlir::xla::ConvertSoftmaxOp>(op->getContext());
+  patterns
+      .insert<mlir::xla::ConvertMaxPoolOp, mlir::xla::ConvertSigmoidOp,
+              mlir::xla::ConvertSoftmaxOp, mlir::xla::ConvertStridedSliceOp>(
+          op->getContext());
 
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();

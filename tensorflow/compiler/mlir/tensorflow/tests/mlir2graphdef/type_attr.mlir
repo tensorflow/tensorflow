@@ -18,6 +18,11 @@
 // CHECK-NEXT:        type: DT_INT32
 // CHECK-NEXT:        type: DT_FLOAT
 
+// CHECK-LABEL: function
+// CHECK: name: "plain"
+// CHECK: Placeholder
+// CHECK: key: "type"
+// CHECK: type: DT_INT8
 
 func @main(%arg0 : tensor<16xf32>) {
   tf_executor.graph {
@@ -28,5 +33,10 @@ func @main(%arg0 : tensor<16xf32>) {
     }
     tf_executor.fetch
   }
+  return
+}
+
+func @plain() {
+  %1 = "tf.Placeholder"() {type = i8} : () -> tensor<16xi8>
   return
 }

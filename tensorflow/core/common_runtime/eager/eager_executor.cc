@@ -92,6 +92,12 @@ Status EagerExecutor::AddOrExecute(std::unique_ptr<EagerNode> node) {
   item->node = std::move(node);
   item->state = NodeState::kPENDING;
 
+  status = item->node->Prepare();
+  if (!status.ok()) {
+    item->node->Abort(status);
+    return status;
+  }
+
   // If we are unable to add the node to the queue, we must call Abort. However,
   // we want to do that outside of the scope of the lock since the Abort may
   // try to call EagerExecutor::Add()
@@ -176,10 +182,10 @@ void EagerExecutor::NodeDone(core::RefCountPtr<NodeItem> item,
                              const Status& status) {
   VLOG(3) << "Node Done: [id " << item->id << "] " << item->node->DebugString()
           << " with status: " << status.ToString();
-  DCHECK(item->state != NodeState::kDONE);
   std::vector<core::RefCountPtr<NodeItem>> items_to_destroy;
   {
     mutex_lock l(node_queue_mutex_);
+    DCHECK(item->state != NodeState::kDONE);
     auto previous_state = item->state;
     item->state = NodeState::kDONE;
     if (!status_.ok()) return;

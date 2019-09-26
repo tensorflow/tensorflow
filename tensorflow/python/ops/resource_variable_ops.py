@@ -521,7 +521,8 @@ class BaseResourceVariable(variables.VariableV1):
     if self._cached_value is not None:
       return self._cached_value
     with ops.colocate_with(None, ignore_existing=True):
-      return self._read_variable_op()
+      with ops.device(self._handle.device):
+        return self._read_variable_op()
 
   def _as_graph_element(self):
     """Conversion function for Graph.as_graph_element()."""
@@ -612,7 +613,9 @@ class BaseResourceVariable(variables.VariableV1):
       # Note that if a control flow context is active the input of the read op
       # might not actually be the handle. This line bypasses it.
       tape.record_operation(
-          "ReadVariableOp", [result], [self._handle], lambda x: [x])
+          "ReadVariableOp", [result], [self._handle],
+          backward_function=lambda x: [x],
+          forward_function=lambda x: [x])
     return result
 
   def read_value(self):
@@ -625,7 +628,9 @@ class BaseResourceVariable(variables.VariableV1):
      the read operation.
     """
     with ops.name_scope("Read"):
-      value = self._read_variable_op()
+      # Ensure we read the variable in the same device as the handle.
+      with ops.device(self._handle.device):
+        value = self._read_variable_op()
     # Return an identity so it can get placed on whatever device the context
     # specifies instead of the device where the variable is.
     return array_ops.identity(value)

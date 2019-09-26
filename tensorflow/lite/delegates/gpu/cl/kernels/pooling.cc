@@ -37,6 +37,10 @@ std::string GetAveragePoolingKernelCode(
 
   std::string code = GetCommonDefines(precision);
 
+  const bool manual_clamp =
+      src_descriptor.storage_type == TensorStorageType::BUFFER ||
+      src_descriptor.storage_type == TensorStorageType::IMAGE_BUFFER;
+
   code += "__kernel void main_function(\n";
   code += src_tensor.GetDeclaration(AccessType::READ);
   code += GetArgsDeclaration(linked_operations);
@@ -60,7 +64,7 @@ std::string GetAveragePoolingKernelCode(
   code += "    for (int kx = 0; kx < kernel_size.x; ++kx) {\n";
   code += "      int x_c = X * stride.x - padding.x + kx;\n";
   code += "      bool outside = outside_y || x_c < 0 || x_c >= src_size.x;\n";
-  if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+  if (manual_clamp) {
     code += "     r += !outside ? " +
             src_tensor.ReadAsFloat3D("x_c", "y_c", "Z",
                                      TextureAddressMode::DONT_CARE) +
@@ -224,9 +228,9 @@ Status Pooling::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtr()));
+  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   if (output_indices_) {
-    RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[1]->GetMemoryPtr()));
+    RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[1]->GetMemoryPtrForWriting()));
   }
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetSizeWithDepth()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetSizeWithDepth()));

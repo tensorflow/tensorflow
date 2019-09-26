@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 
 namespace mlir {
 namespace TFL {
@@ -40,14 +41,6 @@ using AccumulatorScaleFunc =
 
 // Quantization spec of an op, driving the quantization algorithm.
 struct OpQuantSpec {
-  // Whether the op has quantizable result. This flag is set to false if the op
-  // has "TFL::NoQuantizableResult" trait.
-  bool is_quantizable = true;
-
-  // Whether it requires same inputs and result scale. This flag is set to true
-  // if the op has "TFL::SameOperandsAndResultScale" trait.
-  bool requires_same_scale = false;
-
   // Maps the operand index of a bias input to its quantization specifications,
   // including the non-bias operand indexes and the method retrieving
   // quantization parameters from list of parameters of the non-bias operands.
@@ -97,8 +90,13 @@ struct QuantizationPattern : public RewritePattern {
     Value* quantized_value = op->getResult(0);
     for (Operation* quantized_op : quantized_value->getUsers()) {
       // If it is requantize op, we shouldn't rewrite this op.
-      if (llvm::isa<Q>(quantized_op) || llvm::isa<DQ>(quantized_op) ||
-          quantized_op->isKnownTerminator()) {
+      if (llvm::isa<Q>(quantized_op) || llvm::isa<DQ>(quantized_op)) {
+        return matchFailure();
+      }
+
+      // If it is terminator or not quantizable, we shouldn't rewrite.
+      if (quantized_op->isKnownTerminator() ||
+          quantized_op->hasTrait<OpTrait::quant::NoQuantizableResult>()) {
         return matchFailure();
       }
 
@@ -143,25 +141,27 @@ struct QuantizationPattern : public RewritePattern {
           output_types.push_back(result_type);
           continue;
         }
-        if (!result->hasOneUse()) return matchFailure();
         Type result_ele_type =
             result->getType().cast<TensorType>().getElementType();
-        if (auto user = dyn_cast_or_null<Q>(*result->user_begin())) {
+        // If the user is the Quantize op, it must be the only user.
+        if (result->hasOneUse() && llvm::isa<Q>(*result->user_begin())) {
+          auto user = llvm::cast<Q>(*result->user_begin());
           outputs_replaced.insert({user.output(), enumerated_result.index()});
           output_types.push_back(user.getType());
         } else if (result_ele_type.template isa<IntegerType>()) {
           // If the result is an integer tensor, then it doesn't require the
           // D op in the pattern.
           outputs_replaced.insert({result, enumerated_result.index()});
-          output_types.push_back(result_ele_type);
+          output_types.push_back(result->getType());
         } else if (static_cast<const ConcretTy*>(this)->AllowHybridResult()) {
           outputs_replaced.insert({result, enumerated_result.index()});
-          output_types.push_back(result_ele_type);
+          output_types.push_back(result->getType());
         } else {
           return matchFailure();
         }
       }
 
+      rewriter.setInsertionPoint(quantized_op);
       OperationState new_state(quantized_op->getLoc(),
                                quantized_op->getName().getStringRef(), inputs,
                                output_types, quantized_op->getAttrs());

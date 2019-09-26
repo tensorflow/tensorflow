@@ -405,8 +405,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     options.profile_result = &profile_result;
     options.algo_override = alg;
     Status launch_status =
-        RunCudnnConv(&instr, absl::MakeSpan(operand_buffers), result_buffer,
-                     &scratch_allocator, stream, options);
+        RunGpuConv(&instr, absl::MakeSpan(operand_buffers), result_buffer,
+                   &scratch_allocator, stream, options);
 
     if (!launch_status.ok()) {
       continue;
@@ -628,8 +628,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
   options.algo_override = se::dnn::AlgorithmDesc();
 
   bool launch_ok =
-      RunCudnnConv(&instr, absl::MakeSpan(operand_buffers), result_buffer,
-                   &scratch_allocator, stream, options)
+      RunGpuConv(&instr, absl::MakeSpan(operand_buffers), result_buffer,
+                 &scratch_allocator, stream, options)
           .ok();
 
   AutotuneResult best_result;

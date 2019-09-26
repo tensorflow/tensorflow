@@ -766,17 +766,18 @@ def make_parse_example_spec_v2(feature_columns):
 
   ```python
   # Define features and transformations
-  feature_a = categorical_column_with_vocabulary_file(...)
-  feature_b = numeric_column(...)
-  feature_c_bucketized = bucketized_column(numeric_column("feature_c"), ...)
-  feature_a_x_feature_c = crossed_column(
+  feature_a = tf.feature_column.categorical_column_with_vocabulary_file(...)
+  feature_b = tf.feature_column.numeric_column(...)
+  feature_c_bucketized = tf.feature_column.bucketized_column(
+      tf.feature_column.numeric_column("feature_c"), ...)
+  feature_a_x_feature_c = tf.feature_column.crossed_column(
       columns=["feature_a", feature_c_bucketized], ...)
 
   feature_columns = set(
       [feature_b, feature_c_bucketized, feature_a_x_feature_c])
   features = tf.io.parse_example(
       serialized=serialized_examples,
-      features=make_parse_example_spec(feature_columns))
+      features=tf.feature_column.make_parse_example_spec(feature_columns))
   ```
 
   For the above example, make_parse_example_spec would return the dict:
@@ -1339,7 +1340,7 @@ def numeric_column(key,
 
 @tf_export('feature_column.bucketized_column')
 def bucketized_column(source_column, boundaries):
-  """Represents discretized dense input.
+  """Represents discretized dense input bucketed by `boundaries`.
 
   Buckets include the left boundary, and exclude the right boundary. Namely,
   `boundaries=[0., 1., 2.]` generates buckets `(-inf, 0.)`, `[0., 1.)`,
@@ -1365,30 +1366,30 @@ def bucketized_column(source_column, boundaries):
   Example:
 
   ```python
-  price = numeric_column('price')
-  bucketized_price = bucketized_column(price, boundaries=[...])
+  price = tf.feature_column.numeric_column('price')
+  bucketized_price = tf.feature_column.bucketized_column(
+      price, boundaries=[...])
   columns = [bucketized_price, ...]
-  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
-  linear_prediction = linear_model(features, columns)
-
-  # or
-  columns = [bucketized_price, ...]
-  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
-  dense_tensor = input_layer(features, columns)
-  ```
+  features = tf.io.parse_example(
+      ..., features=tf.feature_column.make_parse_example_spec(columns))
+  dense_tensor = tf.keras.layers.DenseFeatures(columns)(features)
 
   `bucketized_column` can also be crossed with another categorical column using
   `crossed_column`:
 
   ```python
-  price = numeric_column('price')
+  price = tf.feature_column.numeric_column('price')
   # bucketized_column converts numerical feature to a categorical one.
-  bucketized_price = bucketized_column(price, boundaries=[...])
+  bucketized_price = tf.feature_column.bucketized_column(
+      price, boundaries=[...])
   # 'keywords' is a string feature.
-  price_x_keywords = crossed_column([bucketized_price, 'keywords'], 50K)
+  price_x_keywords = tf.feature_column.crossed_column(
+      [bucketized_price, 'keywords'], 50K)
   columns = [price_x_keywords, ...]
-  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
-  linear_prediction = linear_model(features, columns)
+  features = tf.io.parse_example(
+      ..., features=tf.feature_column.make_parse_example_spec(columns))
+  dense_tensor = tf.keras.layers.DenseFeatures(columns)(features)
+  linear_model = tf.keras.experimental.LinearModel(units=...)(dense_tensor)
   ```
 
   Args:

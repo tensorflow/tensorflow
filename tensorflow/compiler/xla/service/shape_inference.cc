@@ -2218,6 +2218,27 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   return ShapeUtil::MakeShape(S32, {});
 }
 
+/* static */ StatusOr<Shape> ShapeInference::InferSetDimensionSizeShape(
+    const Shape& shape, int64 dimension) {
+  if (dimension < 0 || dimension >= shape.rank()) {
+    return InvalidArgument("SetDimensionSize dimension out of bounds: %d.",
+                           dimension);
+  }
+
+  // TODO(b/119580730): Remove this restriction when very large dimension size
+  // is needed.
+  if (shape.dimensions(dimension) > std::numeric_limits<int32>::max()) {
+    return InvalidArgument(
+        "SetDimensionSize's input shape is %s, the %dth dimension exceeds the "
+        "INT_MAX limit.",
+        ShapeUtil::HumanString(shape), dimension);
+  }
+
+  Shape result = shape;
+  result.set_dynamic_dimension(dimension, true);
+  return result;
+}
+
 /* static */ StatusOr<Window> ShapeInference::InferWindowFromDimensions(
     absl::Span<const int64> window_dimensions,
     absl::Span<const int64> window_strides,

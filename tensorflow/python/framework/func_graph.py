@@ -638,7 +638,8 @@ class FuncGraph(ops.Graph):
     else:
       placeholder = capture[1]
     tape.record_operation("captured_value", [placeholder], [tensor],
-                          lambda x: [x])
+                          backward_function=lambda x: [x],
+                          forward_function=lambda x: [x])
     return placeholder
 
   @property
@@ -684,7 +685,8 @@ class FuncGraph(ops.Graph):
     """Add given distributed variable to captures with given placeholder."""
     self._captures[ops.tensor_id(variable)] = (variable, placeholder)
     tape.record_operation("captured_value", [placeholder], [variable],
-                          lambda x: [x])
+                          backward_function=lambda x: [x],
+                          forward_function=lambda x: [x])
 
   def capture_eager_tensor(self, tensor, name):
     capture = self._captures.get(ops.tensor_id(tensor))
@@ -699,7 +701,8 @@ class FuncGraph(ops.Graph):
     else:
       graph_const = capture[1]
     tape.record_operation("captured_value", [graph_const], [tensor],
-                          lambda x: [x])
+                          backward_function=lambda x: [x],
+                          forward_function=lambda x: [x])
     return graph_const
 
   @property

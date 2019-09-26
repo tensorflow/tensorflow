@@ -204,6 +204,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "statetul_ops_utils",
+    srcs = [
+        "utils/stateful_ops_utils.cc",
+    ],
+    hdrs = [
+        "utils/stateful_ops_utils.h",
+    ],
+    deps = [
+        ":tensorflow_lite",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:StandardOps",
+    ],
+)
+
 tf_cc_test(
     name = "lstm_utils_test",
     size = "small",
@@ -232,6 +248,7 @@ cc_library(
         "transforms/lower_static_tensor_list.cc",
         "transforms/prepare_composite_functions_tf.cc",
         "transforms/prepare_tf.cc",
+        "transforms/split_merged_operands.cc",
         "transforms/trim_functions_tf.cc",
         "transforms/unroll_batch_matmul.cc",
     ],
@@ -241,6 +258,7 @@ cc_library(
     ],
     deps = [
         ":common",
+        ":statetul_ops_utils",
         ":tensorflow_lite",
         ":validators",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
@@ -255,6 +273,7 @@ cc_library(
         "@local_config_mlir//:QuantOps",
         "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",
+        "@local_config_mlir//:Transforms",
     ],
     alwayslink = 1,
 )
@@ -431,6 +450,7 @@ cc_library(
     ],
     deps = [
         ":flatbuffer_tflite_operator_lib",
+        ":statetul_ops_utils",
         ":tensorflow_lite",
         ":tensorflow_lite_dialect_registration",
         "//tensorflow/compiler/mlir:op_name_mapper",
@@ -595,6 +615,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_proto_cc",
+        "//tensorflow/lite/tools/optimize:quantize_weights",
         "//tensorflow/stream_executor/lib",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",

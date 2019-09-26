@@ -922,11 +922,27 @@ class CondV2Test(test.TestCase):
           _has_node_with_op(run_metadata, "Switch"),
           "A `Switch` op exists, but the graph should not be lowered.")
 
-      # Lowering disabled in XLA, there should still be an `If` node
-      self.assertTrue(
-          _has_node_with_op(run_metadata, "StatelessIf"),
-          "An `If` op was not found, but the graph should not be lowered.")
-      # pylint: enable=g-complex-comprehension
+      if test_util.is_xla_enabled():
+        # If XLA is actually enabled then we expect the StatelessIf to have been
+        # put inside an XLA cluster.
+        self.assertFalse(
+            _has_node_with_op(run_metadata, "StatelessIf"),
+            ("A `StatelessIf` op was found, but the node should have been " +
+             "clustered."))
+        self.assertTrue(
+            _has_node_with_op(run_metadata, "_XlaCompile"),
+            ("An `_XlaCompile` op was not found, but the `StatelessIf` (at " +
+             "least) op should have been clustered."))
+        self.assertTrue(
+            _has_node_with_op(run_metadata, "_XlaRun"),
+            ("An `_XlaRun` op was not found, but the `StatelessIf` (at " +
+             "least) op should have been clustered."))
+      else:
+        # Lowering disabled in XLA, there should still be an `If` node
+        self.assertTrue(
+            _has_node_with_op(run_metadata, "StatelessIf"),
+            ("A `StatelessIf` op was not found, but the graph should not be " +
+             "lowered."))
 
   @test_util.run_deprecated_v1
   def testNestedLoweringDisabledInXLA(self):

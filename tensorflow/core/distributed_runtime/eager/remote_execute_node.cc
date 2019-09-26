@@ -15,8 +15,45 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
 
+#include <vector>
+
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/public/version.h"
+
 namespace tensorflow {
 namespace eager {
+
+Status RemoteExecuteNode::Prepare() {
+  if (retvals_.empty()) return Status::OK();
+
+  // TODO(b/141209983): Consider adding a shape inference cache.
+  const tensorflow::OpRegistrationData* op_reg_data;
+  if (lib_def_->Find(ndef_.op()) == nullptr) {
+    TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUp(ndef_.op(), &op_reg_data));
+  } else {
+    TF_RETURN_IF_ERROR(lib_def_->LookUp(ndef_.op(), &op_reg_data));
+  }
+
+  shape_inference::InferenceContext inference_context(
+      TF_GRAPH_DEF_VERSION, &ndef_, op_reg_data->op_def,
+      std::vector<shape_inference::ShapeHandle>(inputs_.size()), {}, {},
+      std::vector<
+          std::unique_ptr<std::vector<shape_inference::ShapeAndType>>>());
+  for (size_t i = 0; i < inputs_.size(); i++) {
+    shape_inference::ShapeHandle shape;
+    TF_RETURN_IF_ERROR(inputs_[i]->InferenceShape(&inference_context, &shape));
+    inference_context.SetInput(i, shape);
+  }
+
+  TF_RETURN_IF_ERROR(inference_context.Run(op_reg_data->shape_inference_fn));
+  DCHECK_EQ(inference_context.num_outputs(), retvals_.size());
+  for (int i = 0; i < inference_context.num_outputs(); i++) {
+    shape_inference::ShapeHandle shape_handle = inference_context.output(i);
+    retvals_[i]->SetInferenceShape(&inference_context, shape_handle);
+  }
+  return Status::OK();
+}
 
 void RemoteExecuteNode::RunAsync(StatusCallback done) {
   EnqueueResponse* response = new EnqueueResponse;

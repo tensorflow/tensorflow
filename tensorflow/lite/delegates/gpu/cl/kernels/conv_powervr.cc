@@ -62,9 +62,8 @@ ConvPowerVR& ConvPowerVR::operator=(ConvPowerVR&& operation) {
 }
 
 Status ConvPowerVR::Compile(const CreationContext& creation_context) {
-  const std::string code = GenerateConvPowerVR1x1(
-      definition_.src_tensors[0], definition_.dst_tensors[0],
-      definition_.precision, conv_params_, linked_operations_);
+  const std::string code =
+      GenerateConvPowerVR1x1(definition_, conv_params_, linked_operations_);
   std::vector<CompilerOptions> options;
   if (definition_.precision == CalculationsPrecision::F16 &&
       creation_context.device->IsPowerVR()) {
@@ -81,7 +80,7 @@ Status ConvPowerVR::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtr()));
+  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   if (!conv_params_.x_kernel_is_1 || !conv_params_.y_kernel_is_1) {
     RETURN_IF_ERROR(kernel_.SetBytesAuto(stride_padding_));
     RETURN_IF_ERROR(kernel_.SetBytesAuto(kernel_dilation_));
@@ -117,17 +116,17 @@ Status ConvPowerVR::AddToQueue(CLCommandQueue* queue) {
 }
 
 std::string GenerateConvPowerVR1x1(
-    const TensorDescriptor& src_descriptor,
-    const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
-    const ConvPowerVR::ConvParams& conv_params,
+    const OperationDef& op_def, const ConvPowerVR::ConvParams& conv_params,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  std::string c = GetCommonDefines(precision);
-  TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
+  std::string c = GetCommonDefines(op_def.precision);
+  TensorCodeGenerator src_tensor("src_data", "src_size", op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data", "dst_size", op_def.dst_tensors[0]);
 
   const bool is1x1 = conv_params.x_kernel_is_1 && conv_params.y_kernel_is_1;
-  const bool manual_clamp =
-      src_descriptor.storage_type == TensorStorageType::BUFFER && !is1x1;
+  const auto src_tensor_type = op_def.src_tensors[0].storage_type;
+  const bool buffer_type = src_tensor_type == TensorStorageType::BUFFER ||
+                           src_tensor_type == TensorStorageType::IMAGE_BUFFER;
+  const bool manual_clamp = buffer_type && !is1x1;
 
   c += "#define SIMD_BARRIER " +
        (!conv_params.explicit_sync
@@ -200,7 +199,7 @@ std::string GenerateConvPowerVR1x1(
     c += "  __global ACCUM_FLT4* filters_loc = filters_buffer + Z * 4 * "
          "src_size.w * kernel_dilation.x * kernel_dilation.y;\n";
   }
-  if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+  if (buffer_type) {
     c += "  const int src_layer_offset = src_size.x * src_size.y;\n";
   }
   if (!is1x1) {
@@ -227,7 +226,7 @@ std::string GenerateConvPowerVR1x1(
       }
     }
   }
-  if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+  if (buffer_type) {
     for (int y = 0; y < block_size.y; ++y) {
       const std::string yck = "yck" + std::to_string(y);
       for (int x = 0; x < block_size.x; ++x) {
@@ -246,7 +245,7 @@ std::string GenerateConvPowerVR1x1(
     for (int y = 0; y < block_size.y; ++y) {
       for (int x = 0; x < block_size.x; ++x) {
         const std::string id = std::to_string(y) + std::to_string(x);
-        if (precision == CalculationsPrecision::F32_F16) {
+        if (op_def.precision == CalculationsPrecision::F32_F16) {
           c += "    ACCUM_FLT4 src" + id + ";\n";
         } else {
           c += "    FLT4 src" + id + ";\n";
@@ -257,18 +256,29 @@ std::string GenerateConvPowerVR1x1(
   auto read_src = [&]() {
     for (int y = 0; y < block_size.y; ++y) {
       for (int x = 0; x < block_size.x; ++x) {
-        if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+        if (buffer_type) {
           std::string id = std::to_string(y) + std::to_string(x);
           std::string multiplier = is1x1
                                        ? ""
                                        : " * (FLT)(mx" + std::to_string(x) +
                                              " && my" + std::to_string(y) + ")";
-          if (precision == CalculationsPrecision::F32_F16) {
-            c += "    src" + id + " = convert_float4(src_data[src_a_" + id +
-                 "]" + multiplier + ");\n";
-          } else {
-            c += "    src" + id + " = src_data[src_a_" + id + "]" + multiplier +
-                 ";\n";
+          if (src_tensor_type == TensorStorageType::BUFFER) {
+            if (op_def.precision == CalculationsPrecision::F32_F16) {
+              c += "    src" + id + " = convert_float4(src_data[src_a_" + id +
+                   "]" + multiplier + ");\n";
+            } else {
+              c += "    src" + id + " = src_data[src_a_" + id + "]" +
+                   multiplier + ";\n";
+            }
+          }
+          if (src_tensor_type == TensorStorageType::IMAGE_BUFFER) {
+            if (op_def.precision == CalculationsPrecision::F32_F16) {
+              c += "    src" + id + " = " +
+                   src_tensor.ReadAsFloat3D("src_a_" + id) + multiplier + ";\n";
+            } else {
+              c += "    src" + id + " = " + src_tensor.Read3D("src_a_" + id) +
+                   multiplier + ";\n";
+            }
           }
           c += "    src_a_" + id + " += src_layer_offset;\n";
         } else {
@@ -277,7 +287,7 @@ std::string GenerateConvPowerVR1x1(
               is1x1 ? "X + " + std::to_string(x) : "xck" + std::to_string(x);
           const std::string yc =
               is1x1 ? "Y + " + std::to_string(y) : "yck" + std::to_string(y);
-          if (precision == CalculationsPrecision::F32_F16) {
+          if (op_def.precision == CalculationsPrecision::F32_F16) {
             c += "    src" + id + " = " +
                  src_tensor.ReadAsFloat3D(xc, yc, "s") + ";\n";
           } else {

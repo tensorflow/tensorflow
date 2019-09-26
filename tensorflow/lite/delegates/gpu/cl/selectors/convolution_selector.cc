@@ -117,6 +117,7 @@ Status SelectConvolution(const Convolution2DAttributes& attr,
       return SelectConvolutionTextureArray(attr, dst_shape, creation_context,
                                            op_def, hints, ptr);
     case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::IMAGE_BUFFER:
     case TensorStorageType::SINGLE_TEXTURE_2D:
       return SelectConvolutionTexture2D(attr, creation_context, op_def, ptr);
     case TensorStorageType::BUFFER:

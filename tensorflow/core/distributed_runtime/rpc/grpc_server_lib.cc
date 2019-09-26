@@ -123,11 +123,17 @@ Status GrpcServer::GetPort(int* port) const {
                                        " was not defined in job \"",
                                        server_def_.job_name(), "\"");
       }
-      auto colon_index = iter->second.find_last_of(':');
-      if (!strings::safe_strto32(iter->second.substr(colon_index + 1), port)) {
-        return errors::InvalidArgument(
-            "Could not parse port for local server from \"", iter->second,
-            "\".");
+
+      if (server_def_.port() != 0) {
+        *port = server_def_.port();
+      } else {
+        auto colon_index = iter->second.find_last_of(':');
+        if (!strings::safe_strto32(iter->second.substr(colon_index + 1),
+                                   port)) {
+          return errors::InvalidArgument(
+              "Could not parse port for local server from \"", iter->second,
+              "\".");
+        }
       }
       break;
     }

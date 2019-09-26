@@ -29,7 +29,6 @@ load(
     "if_rocm",
     "if_rocm_is_configured",
     "rocm_copts",
-    "rocm_default_copts",
 )
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -840,7 +839,7 @@ def tf_gen_op_wrappers_cc(
 #   deps: list of dependencies for the intermediate tool used to generate the
 #     python target. NOTE these `deps` are not applied to the final python
 #     library target itself.
-#   require_shape_functions: leave this as False.
+#   require_shape_functions: Unused. Leave this as False.
 #   hidden_file: optional file that contains a list of op names to make private
 #     in the generated Python module. Each op name should be on a line by
 #     itself. Lines that start with characters that are invalid op name
@@ -864,6 +863,8 @@ def tf_gen_op_wrapper_py(
         op_whitelist = [],
         cc_linkopts = [],
         api_def_srcs = []):
+    _ = require_shape_functions  # Unused.
+
     if (hidden or hidden_file) and op_whitelist:
         fail("Cannot pass specify both hidden and op_whitelist.")
 
@@ -921,8 +922,7 @@ def tf_gen_op_wrapper_py(
             srcs = api_def_srcs + [hidden_file],
             tools = [tool_name] + tf_binary_additional_srcs(),
             cmd = ("$(location " + tool_name + ") " + api_def_args_str +
-                   " @$(location " + hidden_file + ") " +
-                   ("1" if require_shape_functions else "0") + " > $@"),
+                   " @$(location " + hidden_file + ") > $@"),
         )
     else:
         native.genrule(
@@ -932,7 +932,6 @@ def tf_gen_op_wrapper_py(
             tools = [tool_name] + tf_binary_additional_srcs(),
             cmd = ("$(location " + tool_name + ") " + api_def_args_str + " " +
                    op_list_arg + " " +
-                   ("1" if require_shape_functions else "0") + " " +
                    ("1" if op_list_is_whitelist else "0") + " > $@"),
         )
 

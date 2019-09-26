@@ -249,7 +249,7 @@ class ReturnToSPIRVConversion : public ConversionPattern {
 public:
   ReturnToSPIRVConversion(MLIRContext *context)
       : ConversionPattern(ReturnOp::getOperationName(), 1, context) {}
-  virtual PatternMatchResult
+  PatternMatchResult
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override {
     if (op->getNumOperands()) {

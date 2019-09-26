@@ -930,13 +930,29 @@ class _TapeGradientFunctions(object):
       # under forward accumulators to get symbolic output JVPs, then set those
       # as outputs of the new wrapped forward function.
       with forwardprop_util.push_forwardprop_state():
-        for forward_input in self._func_graph.inputs:
-          # Add captures for existing forward inputs, in the same order they
-          # were in the original forward function.
-          array_ops.identity(forward_input)
+        forward_captures = {
+            ops.tensor_id(internal): external
+            for external, internal in self._func_graph.captures}
+        for input_index, real_input in enumerate(self._func_graph.inputs):
+          # This loop is more or less equivalent to running tf.identity on each
+          # of self._func_graph.inputs. However, doing that also captures jvps
+          # for resource handles, which confuses the jvp capturing code below
+          # (since primal inputs are interwoven with jvp inputs).
+          input_placeholder = array_ops.placeholder(
+              dtype=real_input.dtype,
+              shape=real_input.shape)
+          capture = forward_captures.get(ops.tensor_id(real_input))
+          if capture is not None:
+            forward_wrapper_graph.add_capture(capture, input_placeholder)
+            if capture.dtype == dtypes.resource:
+              custom_gradient.copy_handle_data(capture, input_placeholder)
+          else:
+            forward_wrapper_graph.inputs.append(input_placeholder)
         for inp, arg in zip(forward_wrapper_graph.inputs, inference_args):
           tape.record_operation(
-              "captured_value", [inp], [arg], lambda x: [x])
+              "captured_value", [inp], [arg],
+              backward_function=lambda x: [x],
+              forward_function=lambda x: [x])
         num_inference_inputs = len(inference_args)
         for tape_indices in self._forwardprop_input_indices:
           for input_index, jvp_index in tape_indices:
@@ -958,7 +974,8 @@ class _TapeGradientFunctions(object):
                 "captured_value",
                 [jvp_placeholder],
                 [external_jvp],
-                lambda x: [x])
+                backward_function=lambda x: [x],
+                forward_function=lambda x: [x])
         forward_inputs = forward_wrapper_graph.inputs[:num_inference_inputs]
         gradient_name = self._delayed_rewrite_functions.register()
         with ops.get_default_graph().gradient_override_map(
@@ -1154,8 +1171,8 @@ class _TapeGradientFunctions(object):
     def _backward_function_wrapper(*args):
       """Process output gradients and call the backward function."""
       if not backward.outputs:
+        return backward.structured_outputs
 
-        return self._backward.structured_outputs
       processed_args = []
       input_index = 0
       for output_index, arg in enumerate(args):
@@ -1523,26 +1540,22 @@ class ConcreteFunction(object):
     if default_graph.building_function and not self._func_graph.saveable:
       default_graph.mark_as_unsaveable(self._func_graph.saving_errors)
 
-    if any(isinstance(a, composite_tensor.CompositeTensor) for a in args):
-      raise AssertionError("Expected all args to be Tensors or Variables; "
-                           "but got CompositeTensor: %r" % args)
-
     if (tape.could_possibly_record() or
         hasattr(ops.get_default_graph(), "watch_variable")):
       for v in self._func_graph.variables:
         resource_variable_ops.variable_accessed(v)
 
     tensor_inputs = []
-    variables_used = object_identity.ObjectIdentitySet([])
+    variables_used = set([])
     for i, arg in enumerate(args):
       if isinstance(arg, resource_variable_ops.BaseResourceVariable):
         # We can pass a variable more than once, and in this case we need to
         # pass its handle only once.
-        if arg.handle in variables_used:
+        if id(arg.handle) in variables_used:
           continue
         resource_variable_ops.variable_accessed(arg)
         tensor_inputs.append(arg.handle)
-        variables_used.add(arg.handle)
+        variables_used.add(id(arg.handle))
       elif isinstance(arg, ops.Tensor):
         tensor_inputs.append(arg)
         if not executing_eagerly:

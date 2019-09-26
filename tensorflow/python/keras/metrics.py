@@ -428,11 +428,14 @@ class Mean(Reduce):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.Mean()
-  m.update_state([1, 3, 5, 7])
-  print('Final result: ', m.result().numpy())  # Final result: 4.0
-  ```
+  >>> m = tf.keras.metrics.Mean()
+  >>> _ = m.update_state([1, 3, 5, 7])
+  >>> m.result().numpy()
+  4.0
+  >>> m.reset_states()
+  >>> _ = m.update_state([1, 3, 5, 7], sample_weight=[1, 1, 0, 0])
+  >>> m.result().numpy()
+  2.0
 
   Usage with tf.keras API:
 
@@ -608,11 +611,14 @@ class Accuracy(MeanMetricWrapper):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.Accuracy()
-  m.update_state([1, 2, 3, 4], [0, 2, 3, 4])
-  print('Final result: ', m.result().numpy())  # Final result: 0.75
-  ```
+  >>> m = tf.keras.metrics.Accuracy()
+  >>> _ = m.update_state([1, 2, 3, 4], [0, 2, 3, 4])
+  >>> m.result().numpy()
+  0.75
+  >>> m.reset_states()
+  >>> _ = m.update_state([1, 2, 3, 4], [0, 2, 3, 4], sample_weight=[1, 1, 0, 0])
+  >>> m.result().numpy()
+  0.5
 
   Usage with tf.keras API:
 
@@ -694,11 +700,11 @@ class CategoricalAccuracy(MeanMetricWrapper):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.CategoricalAccuracy()
-  m.update_state([[0, 0, 1], [0, 1, 0]], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
-  print('Final result: ', m.result().numpy())  # Final result: 0.5
-  ```
+  >>> m = tf.keras.metrics.CategoricalAccuracy()
+  >>> _ = m.update_state([[0, 0, 1], [0, 1, 0]], [[0.1, 0.9, 0.8],
+  ...                     [0.05, 0.95, 0]])
+  >>> m.result().numpy()
+  0.5
 
   Usage with tf.keras API:
 
@@ -742,11 +748,10 @@ class SparseCategoricalAccuracy(MeanMetricWrapper):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.SparseCategoricalAccuracy()
-  m.update_state([[2], [1]], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
-  print('Final result: ', m.result().numpy())  # Final result: 0.5
-  ```
+  >>> m = tf.keras.metrics.SparseCategoricalAccuracy()
+  >>> _ = m.update_state([[2], [1]], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
+  >>> m.result().numpy()
+  0.5
 
   Usage with tf.keras API:
 
@@ -1926,11 +1931,11 @@ class MeanAbsoluteError(MeanMetricWrapper):
   the mean absolute error is 3/4 (0.75).
 
   Usage:
-  ```python
-  m = tf.keras.metrics.MeanAbsoluteError()
-  m.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
-  print('Final result: ', m.result().numpy())  # Final result: 0.75
-  ```
+
+  >>> m = MeanAbsoluteError()
+  >>> _ = m.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
+  >>> m.result().numpy()
+  0.75
 
   Usage with tf.keras API:
 
@@ -1954,11 +1959,10 @@ class MeanAbsolutePercentageError(MeanMetricWrapper):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.MeanAbsolutePercentageError()
-  m.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
-  print('Final result: ', m.result().numpy())  # Final result: 5e+08
-  ```
+  >>> m = tf.keras.metrics.MeanAbsolutePercentageError()
+  >>> _ = m.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
+  >>> m.result().numpy()
+  500000000.0
 
   Usage with tf.keras API:
 
@@ -2813,6 +2817,8 @@ def cosine_proximity(y_true, y_pred, axis=-1):
 
 # Aliases
 
+acc = ACC = accuracy
+bce = BCE = binary_crossentropy
 mse = MSE = mean_squared_error
 mae = MAE = mean_absolute_error
 mape = MAPE = mean_absolute_percentage_error

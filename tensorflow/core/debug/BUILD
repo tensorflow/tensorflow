@@ -18,6 +18,7 @@ load(
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
+    "tf_cc_binary",
 )
 
 # For platform specific build config
@@ -269,6 +270,16 @@ cc_library(
     deps = [
         ":debug_node_key",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_binary(
+    name = "bfc_dump_reader",
+    srcs = ["bfc_dump_reader.cc"],
+    deps = [
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ],

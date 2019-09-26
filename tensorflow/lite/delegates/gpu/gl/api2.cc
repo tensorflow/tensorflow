@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstring>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -41,20 +42,6 @@ namespace tflite {
 namespace gpu {
 namespace gl {
 namespace {
-
-// Returns true if all tensors have same batch value.
-bool IsBatchMatchesForAllValues(const GraphFloat32& model) {
-  const auto& values = model.values();
-  if (!values.empty()) {
-    const int32_t b = values[0]->tensor.shape.b;
-    for (auto value : values) {
-      if (value->tensor.shape.b != b) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
 
 std::string GetShaderHeader(uint3 localsize) {
   return absl::StrCat("#version 310 es\nlayout(local_size_x = ", localsize.x,
@@ -175,7 +162,6 @@ class DefaultTensorTie : public TensorTie {
   Status Init(TensorObjectConverterBuilder* converter_builder) {
     // First check is an object is user provided.
     const auto& external_def = def().external_def.object_def;
-    const auto& internal_def = def().internal_def.object_def;
 
     const bool is_same_def = IsSameDef();
 
@@ -386,7 +372,12 @@ class InferenceRunnerImpl : public InferenceRunner {
                     const std::vector<TensorTieDef>& outputs,
                     TensorTieFactory* tie_factory) {
     RETURN_IF_ERROR(LinkTensors(inputs, tie_factory, &inputs_));
-    return LinkTensors(outputs, tie_factory, &outputs_);
+    RETURN_IF_ERROR(LinkTensors(outputs, tie_factory, &outputs_));
+    for (const auto& def : outputs) {
+      output_to_cpu_ |= def.external_def.object_def.object_type ==
+                        gpu::ObjectType::CPU_MEMORY;
+    }
+    return OkStatus();
   }
 
   std::vector<TensorObjectDef> inputs() const override {
@@ -435,6 +426,10 @@ class InferenceRunnerImpl : public InferenceRunner {
     for (auto& obj : outputs_) {
       RETURN_IF_ERROR(obj->CopyToExternalObject());
     }
+    RETURN_IF_ERROR(runtime_->command_queue()->Flush());
+    if (output_to_cpu_) {
+      RETURN_IF_ERROR(runtime_->command_queue()->WaitForCompletion());
+    }
     return OkStatus();
   }
 
@@ -465,13 +460,16 @@ class InferenceRunnerImpl : public InferenceRunner {
   std::unique_ptr<ObjectManager> objects_;
   std::vector<std::unique_ptr<TensorTie>> inputs_;
   std::vector<std::unique_ptr<TensorTie>> outputs_;
+  bool output_to_cpu_ = false;
 };
 
 class InferenceBuilderImpl : public InferenceBuilder {
  public:
   InferenceBuilderImpl(const InferenceEnvironmentOptions& env_options,
-                       GraphFloat32 graph, const GpuInfo* gpu_info)
+                       const InferenceOptions& options, GraphFloat32 graph,
+                       const GpuInfo* gpu_info)
       : env_options_(env_options),
+        options_(options),
         graph_(std::move(graph)),
         gpu_info_(gpu_info),
         tie_factory_(env_options_) {}
@@ -524,8 +522,11 @@ class InferenceBuilderImpl : public InferenceBuilder {
   }
 
   Status Build(std::unique_ptr<InferenceRunner>* runner) final {
-    CompilationOptions compiler_options;
     auto kernels = NewNodeShaderRegistry();
+    CompilationOptions compiler_options;
+    compiler_options.allow_precision_loss = options_.allow_precision_loss;
+    compiler_options.fuse_operations = options_.fuse_operations;
+    compiler_options.inline_parameters = options_.inline_parameters;
     auto compiler = NewCompiler(kernels.get(), gpu_info_, compiler_options);
     auto workgroup_calculator = NewDefaultWorkgroupsCalculator(*gpu_info_);
     auto external_objects = absl::make_unique<ObjectManager>();
@@ -600,7 +601,7 @@ class InferenceBuilderImpl : public InferenceBuilder {
   }
 
   const InferenceEnvironmentOptions env_options_;
-
+  const InferenceOptions options_;
   GraphFloat32 graph_;
   const GpuInfo* gpu_info_;
   std::vector<TensorTieDef> inputs_;
@@ -637,7 +638,7 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
           "Only identical batch dimension is supported");
     }
     auto builder_impl = absl::make_unique<InferenceBuilderImpl>(
-        env_options_, std::move(model), &gpu_info_);
+        env_options_, options, std::move(model), &gpu_info_);
     RETURN_IF_ERROR(builder_impl->Initialize());
     *builder = std::move(builder_impl);
     return OkStatus();

@@ -56,7 +56,7 @@ def gpu_Return : GPU_Op<"return", [Terminator]>, Arguments<(ins)>,
   }];
 
   let parser = [{ return success(); }];
-  let printer = [{ *p << getOperationName(); }];
+  let printer = [{ p << getOperationName(); }];
 }
 
 #endif // GPU_OPS

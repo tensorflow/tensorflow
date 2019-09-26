@@ -597,6 +597,21 @@ Status EagerContext::GetClient(const DeviceNameUtils::ParsedName& device_name,
   return Status::OK();
 }
 
+Status EagerContext::GetClient(const string& remote_task,
+                               eager::EagerClient** client) {
+  if (remote_eager_workers_ == nullptr) {
+    return errors::Internal(
+        "Haven't set up remote eager worker in this eager context yet.");
+  }
+  TF_RETURN_IF_ERROR(remote_eager_workers_->GetClient(remote_task, client));
+
+  if (*client == nullptr) {
+    return errors::InvalidArgument(
+        "Unable to find eager client corresponding to target ", remote_task);
+  }
+  return Status::OK();
+}
+
 uint64 EagerContext::GetContextId() {
   tf_shared_lock l(remote_state_mu_);
   return context_id_;
@@ -665,7 +680,7 @@ Status EagerContext::InitializeRemoteMaster(
   remote_contexts_ = remote_contexts;
 
   use_send_tensor_rpc_ =
-      ReadBoolFromEnvVar("TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC", false);
+      ReadBoolFromEnvVar("TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC", true);
 
   local_unowned_device_manager_ = local_device_mgr;
   local_device_manager_ = nullptr;

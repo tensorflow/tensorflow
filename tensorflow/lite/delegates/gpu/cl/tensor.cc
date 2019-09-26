@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 
+#include <cstring>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_image_format.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -23,10 +25,47 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
+namespace {
+Status CreateImageBufferFromBuffer(const CLContext& context, cl_mem memory,
+                                   enum DataType data_type, int width,
+                                   cl_mem* result) {
+  cl_image_format format;
+  cl_image_desc desc;
+  std::memset(&desc, 0, sizeof(desc));
+  desc.image_type = CL_MEM_OBJECT_IMAGE1D_BUFFER;
+  desc.image_width = width;
+  desc.mem_object = memory;
+
+  format.image_channel_data_type = ToImageChannelType(data_type);
+  format.image_channel_order = CL_RGBA;
+
+  cl_int error;
+  *result = clCreateImage(context.context(), CL_MEM_READ_WRITE, &format, &desc,
+                          nullptr, &error);
+  if (error != CL_SUCCESS) {
+    return UnknownError(
+        absl::StrCat("Failed to create Texture2D (clCreateImage)",
+                     CLErrorCodeToString(error)));
+  }
+  return OkStatus();
+}
+}  // namespace
 
 Tensor::Tensor(cl_mem memory, int width, int height, int channels,
                enum DataType data_type, TensorStorageType storage_type)
     : memory_(memory),
+      image_buffer_memory_(nullptr),
+      width_(width),
+      height_(height),
+      channels_(channels),
+      data_type_(data_type),
+      storage_type_(storage_type) {}
+
+Tensor::Tensor(cl_mem memory, cl_mem image_buffer_memory, int width, int height,
+               int channels, enum DataType data_type,
+               TensorStorageType storage_type)
+    : memory_(memory),
+      image_buffer_memory_(image_buffer_memory),
       width_(width),
       height_(height),
       channels_(channels),
@@ -35,6 +74,7 @@ Tensor::Tensor(cl_mem memory, int width, int height, int channels,
 
 Tensor::Tensor(Tensor&& tensor)
     : memory_(tensor.memory_),
+      image_buffer_memory_(tensor.image_buffer_memory_),
       width_(tensor.width_),
       height_(tensor.height_),
       channels_(tensor.channels_),
@@ -47,6 +87,7 @@ Tensor& Tensor::operator=(Tensor&& tensor) {
   if (this != &tensor) {
     Release();
     std::swap(memory_, tensor.memory_);
+    std::swap(image_buffer_memory_, tensor.image_buffer_memory_);
     std::swap(width_, tensor.width_);
     std::swap(height_, tensor.height_);
     std::swap(channels_, tensor.channels_);
@@ -57,6 +98,10 @@ Tensor& Tensor::operator=(Tensor&& tensor) {
 }
 
 void Tensor::Release() {
+  if (image_buffer_memory_) {
+    clReleaseMemObject(image_buffer_memory_);
+    memory_ = nullptr;
+  }
   if (memory_) {
     clReleaseMemObject(memory_);
     memory_ = nullptr;
@@ -67,6 +112,7 @@ int3 Tensor::GetFullTensorRegion() const {
   switch (storage_type_) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::IMAGE_BUFFER:
       return {width_, height_, Depth()};
     case TensorStorageType::TEXTURE_2D:
       return {width_, height_ * Depth(), 1};
@@ -94,6 +140,29 @@ Status Tensor::IsValid(const BHWC& shape) const {
   return OkStatus();
 }
 
+uint64_t Tensor::GetMemorySizeInBytes() const {
+  const int flt_size = data_type_ == DataType::FLOAT32 ? 4 : 2;
+  const int flt4_size = 4 * flt_size;
+  switch (storage_type_) {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
+    case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_2D:
+      return flt4_size * width_ * height_ * Depth();
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+      return flt_size * width_ * height_ * channels_;
+    default:
+      return 0;
+  }
+}
+
+cl_mem Tensor::GetMemoryPtr() const {
+  return storage_type_ == TensorStorageType::IMAGE_BUFFER ? image_buffer_memory_
+                                                          : memory_;
+}
+
+cl_mem Tensor::GetMemoryPtrForWriting() const { return memory_; }
+
 Status Tensor::WriteDataBHWC(absl::Span<const float> in,
                              CLCommandQueue* queue) {
   if (in.size() != channels_ * width_ * height_) {
@@ -120,10 +189,10 @@ Status Tensor::WriteDataBHWC(absl::Span<const float> in,
   }
 
   switch (storage_type_) {
-    case TensorStorageType::BUFFER: {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
       RETURN_IF_ERROR(queue->EnqueueWriteBuffer(memory_, data_size, data_ptr));
       break;
-    }
     case TensorStorageType::TEXTURE_ARRAY:
     case TensorStorageType::TEXTURE_2D:
     case TensorStorageType::SINGLE_TEXTURE_2D:
@@ -166,6 +235,7 @@ Status Tensor::ReadDataBHWC(absl::Span<float> out,
 
   switch (storage_type_) {
     case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
       RETURN_IF_ERROR(queue->EnqueueReadBuffer(memory_, data_size, data_ptr));
       break;
     case TensorStorageType::TEXTURE_ARRAY:
@@ -206,6 +276,9 @@ bool CanCreateTensorWithShape(const CLContext& context, const CLDevice& device,
       const int buffer_size = shape.w * shape.h * depth * flt4_size;
       return buffer_size <= device.GetInfo().buffer_max_size;
     }
+    case TensorStorageType::IMAGE_BUFFER:
+      return shape.w * shape.h * depth <=
+             device.GetInfo().image_buffer_max_size;
     case TensorStorageType::TEXTURE_ARRAY:
       return shape.w <= device.GetInfo().image2d_max_width &&
              shape.h <= device.GetInfo().image2d_max_height &&
@@ -229,8 +302,17 @@ Status CreateTensor(const CLContext& context, const CLDevice& device, int width,
   CLMemory memory;
   RETURN_IF_ERROR(AllocateTensorMemory(context, device, width, height, channels,
                                        data_type, storage_type, &memory));
-  *result = Tensor(memory.Release(), width, height, channels, data_type,
-                   storage_type);
+  if (storage_type == TensorStorageType::IMAGE_BUFFER) {
+    cl_mem image_memory;
+    RETURN_IF_ERROR(CreateImageBufferFromBuffer(
+        context, memory.memory(), data_type,
+        width * height * IntegralDivideRoundUp(channels, 4), &image_memory));
+    *result = Tensor(memory.Release(), image_memory, width, height, channels,
+                     data_type, storage_type);
+  } else {
+    *result = Tensor(memory.Release(), width, height, channels, data_type,
+                     storage_type);
+  }
   return OkStatus();
 }
 
@@ -244,8 +326,17 @@ Status CreateTensor(const CLContext& context, const CLDevice& device,
   RETURN_IF_ERROR(AllocateTensorMemory(context, device, shape.w, shape.h,
                                        shape.c, descriptor.data_type,
                                        descriptor.storage_type, &memory));
-  *result = Tensor(memory.Release(), shape.w, shape.h, shape.c,
-                   descriptor.data_type, descriptor.storage_type);
+  if (descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
+    cl_mem image_memory;
+    RETURN_IF_ERROR(CreateImageBufferFromBuffer(
+        context, memory.memory(), descriptor.data_type,
+        shape.w * shape.h * IntegralDivideRoundUp(shape.c, 4), &image_memory));
+    *result = Tensor(memory.Release(), image_memory, shape.w, shape.h, shape.c,
+                     descriptor.data_type, descriptor.storage_type);
+  } else {
+    *result = Tensor(memory.Release(), shape.w, shape.h, shape.c,
+                     descriptor.data_type, descriptor.storage_type);
+  }
   return OkStatus();
 }
 
@@ -254,7 +345,8 @@ Status AllocateTensorMemory(const CLContext& context, const CLDevice& device,
                             DataType data_type, TensorStorageType storage_type,
                             CLMemory* result) {
   switch (storage_type) {
-    case TensorStorageType::BUFFER: {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER: {
       const size_t data_size =
           width * height * AlignByN(channels, 4) * SizeOf(data_type);
       cl_int error_code;

@@ -138,7 +138,7 @@ cc_library(
         "//tensorflow/lite/tools:command_line_flags",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/lite/delegates/gpu:gl_delegate",
+            "//tensorflow/lite/delegates/gpu:delegate",
         ],
         "//conditions:default": [],
     }),

@@ -42,6 +42,7 @@ from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.layers import core as legacy_core
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import summary_ops_v2
@@ -133,6 +134,12 @@ class BaseLayerTest(keras_parameterized.TestCase):
       self.assertEqual(output_signature.shape.as_list(), [None, 10])
       layer(np.ones((5, 10)))
       self.assertEqual(layer.build_counter, 1)
+
+  def test_eager_switch_case_input(self):
+    with context.eager_mode():
+      task = keras.Input(shape=(), dtype=dtypes.int32)
+      control_flow_ops.switch_case(
+          task[0], [lambda: constant_op.constant(1.0) for _ in range(10)])
 
   def test_dynamic_layer_with_deferred_sequential_model(self):
     model = keras.Sequential(

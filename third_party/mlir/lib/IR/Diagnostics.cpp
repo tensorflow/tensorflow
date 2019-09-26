@@ -769,7 +769,7 @@ struct ParallelDiagnosticHandlerImpl : public llvm::PrettyStackTraceEntry {
     });
   }
 
-  ~ParallelDiagnosticHandlerImpl() {
+  ~ParallelDiagnosticHandlerImpl() override {
     // Restore the previous diagnostic handler.
     context->getDiagEngine().setHandler(prevHandler);
 

@@ -74,6 +74,7 @@ from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
@@ -1810,6 +1811,7 @@ class TensorFlowTestCase(googletest.TestCase):
       pywrap_tensorflow.TF_SetXlaAutoJitMode("2")
       pywrap_tensorflow.TF_SetXlaMinClusterSize(1)
       pywrap_tensorflow.TF_SetXlaEnableLazyCompilation(False)
+      pywrap_tensorflow.TF_SetTfXlaCpuGlobalJit(True)
       # Constant folding secretly runs code on TF:Classic CPU, so we also
       # disable it here.
       pywrap_tensorflow.TF_SetXlaConstantFoldingDisabled(True)
@@ -1833,7 +1835,8 @@ class TensorFlowTestCase(googletest.TestCase):
     random_seed.set_random_seed(random_seed.DEFAULT_GRAPH_SEED)
     # Reset summary writer in case another test used set_as_default() with their
     # summary writer.
-    context.context().summary_writer = None
+    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
+    summary_state.writer = None
 
     # Avoiding calling setUp() for the poorly named test_session method.
     if self.id().endswith(".test_session"):

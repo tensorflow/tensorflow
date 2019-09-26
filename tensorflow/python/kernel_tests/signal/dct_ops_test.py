@@ -19,10 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 import importlib
+import itertools
 
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.signal import dct_ops
 from tensorflow.python.platform import test
@@ -126,13 +128,15 @@ NP_IDCT = {1: _np_dct1, 2: _np_dct3, 3: _np_dct2}
 @test_util.run_all_in_graph_and_eager_modes
 class DCTOpsTest(parameterized.TestCase, test.TestCase):
 
-  def _compare(self, signals, n, norm, dct_type, atol=5e-4, rtol=5e-4):
+  def _compare(self, signals, n, norm, dct_type, atol, rtol):
     """Compares (I)DCT to SciPy (if available) and a NumPy implementation."""
     np_dct = NP_DCT[dct_type](signals, n=n, norm=norm)
     tf_dct = dct_ops.dct(signals, n=n, type=dct_type, norm=norm)
+    self.assertEqual(tf_dct.dtype.as_numpy_dtype, signals.dtype)
     self.assertAllClose(np_dct, tf_dct, atol=atol, rtol=rtol)
     np_idct = NP_IDCT[dct_type](signals, n=None, norm=norm)
     tf_idct = dct_ops.idct(signals, type=dct_type, norm=norm)
+    self.assertEqual(tf_idct.dtype.as_numpy_dtype, signals.dtype)
     self.assertAllClose(np_idct, tf_idct, atol=atol, rtol=rtol)
     if fftpack:
       scipy_dct = fftpack.dct(signals, n=n, type=dct_type, norm=norm)
@@ -155,19 +159,24 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
     self.assertAllClose(signals, tf_idct_dct, atol=atol, rtol=rtol)
     self.assertAllClose(signals, tf_dct_idct, atol=atol, rtol=rtol)
 
-  @parameterized.parameters([
-      [[2]], [[3]], [[10]], [[2, 20]], [[2, 3, 25]]])
-  def test_random(self, shape):
+  @parameterized.parameters(itertools.product(
+      [1, 2, 3],
+      [None, "ortho"],
+      [[2], [3], [10], [2, 20], [2, 3, 25]],
+      [np.float32, np.float64]))
+  def test_random(self, dct_type, norm, shape, dtype):
     """Test randomly generated batches of data."""
-    with self.session(use_gpu=True):
-      signals = np.random.rand(*shape).astype(np.float32)
-      n = np.random.randint(1, 2 * signals.shape[-1])
-      n = np.random.choice([None, n])
-      # Normalization not implemented for orthonormal.
-      self._compare(signals, n, norm=None, dct_type=1)
-      for norm in (None, "ortho"):
-        self._compare(signals, n=n, norm=norm, dct_type=2)
-        self._compare(signals, n=n, norm=norm, dct_type=3)
+    # "ortho" normalization is not implemented for type I.
+    if dct_type == 1 and norm == "ortho":
+      return
+    with compat.forward_compatibility_horizon(2019, 10, 13):
+      with self.session(use_gpu=True):
+        tol = 5e-4 if dtype == np.float32 else 1e-7
+        signals = np.random.rand(*shape).astype(dtype)
+        n = np.random.randint(1, 2 * signals.shape[-1])
+        n = np.random.choice([None, n])
+        self._compare(signals, n, norm=norm, dct_type=dct_type,
+                      rtol=tol, atol=tol)
 
   def test_error(self):
     signals = np.random.rand(10)

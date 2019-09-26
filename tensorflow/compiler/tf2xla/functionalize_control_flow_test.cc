@@ -394,18 +394,16 @@ TEST(FunctionalizeControlFlow, NoinlineLoopBody) {
     TF_ASSERT_OK(scope.ToGraph(&graph));
   }
 
-  FunctionLibraryDefinition lookup_lib(graph.flib_def());
-  FunctionLibraryDefinition library(OpRegistry::Global(), {});
-  // Function increment_fn will be copied from lookup_lib to library.
+  FunctionLibraryDefinition library(graph.flib_def());
   GraphDef optimized_graph_def;
   graph.ToGraphDef(&optimized_graph_def);
 
   *(optimized_graph_def.mutable_library()->add_function()) =
       GetNoinlineFunctionDef();
 
-  TF_ASSERT_OK(FunctionalizeControlFlowForGraphDef(
-      &lookup_lib, &optimized_graph_def, &library));
-  TF_ASSERT_OK(FunctionalizeControlFlow(&lookup_lib, &graph, &library));
+  TF_ASSERT_OK(
+      FunctionalizeControlFlowForGraphDef(&optimized_graph_def, &library));
+  TF_ASSERT_OK(FunctionalizeControlFlow(&graph, &library));
   GraphDef converted_graph_def;
   graph.ToGraphDef(&converted_graph_def);
 
@@ -470,14 +468,12 @@ TEST(FunctionalizeControlFlow, MissingFunctionDefInLibrary) {
     TF_ASSERT_OK(scope.ToGraph(&graph));
   }
 
-  FunctionLibraryDefinition lookup_lib(graph.flib_def());
-  FunctionLibraryDefinition library(OpRegistry::Global(), {});
+  FunctionLibraryDefinition library(graph.flib_def());
   GraphDef graph_def;
   graph.ToGraphDef(&graph_def);
   graph_def.clear_library();
 
-  Status status =
-      FunctionalizeControlFlowForGraphDef(&lookup_lib, &graph_def, &library);
+  Status status = FunctionalizeControlFlowForGraphDef(&graph_def, &library);
   EXPECT_EQ(tensorflow::error::NOT_FOUND, status.code());
 }
 

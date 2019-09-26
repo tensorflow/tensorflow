@@ -156,6 +156,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/data",
@@ -265,6 +266,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
@@ -1229,4 +1231,6 @@ cuda_py_test(
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/133330625)
     ],
+    # b/141096229: Non-atomic AssignAdd
+    xla_enable_strict_auto_jit = False,
 )
