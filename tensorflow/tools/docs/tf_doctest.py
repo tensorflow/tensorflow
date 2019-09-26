@@ -132,7 +132,7 @@ class CustomOutputChecker(doctest.OutputChecker):
   _MESSAGE = textwrap.dedent("""\n
         #############################################################
         Check the documentation
-        (https://docs.python.org/3/library/doctest.html) on how to write testable docstrings.
+        (https://www.tensorflow.org/community/contribute/docs_ref) on how to write testable docstrings.
         #############################################################""")
 
   def output_difference(self, example, got, optionflags):
