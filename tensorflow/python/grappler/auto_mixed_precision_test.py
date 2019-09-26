@@ -71,6 +71,9 @@ def _conv2d(x, w):
   """Returns a 2d convolution layer with full stride."""
   return nn.conv2d(x, w, strides=[1, 1, 1, 1], padding='SAME')
 
+def _conv3d(x, w):
+  """Returns a 3d convolution layer with full stride."""
+  return nn.conv3d(x, w, strides=[1, 1, 1, 1, 1], padding='SAME')
 
 def _max_pool_2x2(x):
   """Downsamples a feature map by 2X."""
@@ -91,6 +94,19 @@ def _conv_bn(x):
   x = _conv2d(i, f)
   s = _weight([6])
   o = _weight([6])
+  y, _, _ = _fused_batchnorm(x, s, o)
+  y = array_ops.identity(y)
+  return y
+
+
+def _conv3d_bn(x):
+  """Conv3D followed by batchnorm."""
+  i = array_ops.reshape(x, [-1, 8, 8, 8, 1])
+  f = _weight([3, 3, 3, 1, 6])
+  x = _conv3d(i, f)
+  s = _weight([6])
+  o = _weight([6])
+  x = array_ops.reshape(x, [-1, 8, 8, 6])
   y, _, _ = _fused_batchnorm(x, s, o)
   y = array_ops.identity(y)
   return y
@@ -393,6 +409,55 @@ class AutoMixedPrecisionTest(test.TestCase):
                          3)  # Before Conv2D:0, Conv2D:1, Conv2D_1:1
         self.assertEqual(num_to_fp32, 1)  # After FusedBatchNormV3:0
         self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
+
+  @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
+  def test_conv3d_bn(self):
+    """Test graph with convolution followed by batch norm."""
+    with compat.forward_compatibility_horizon(2019, 6, 7):
+      if test.is_gpu_available(cuda_only=True):
+        random_seed.set_random_seed(0)
+        x = _input([2, 8, 8, 8, 1])
+        x = _conv3d_bn(x)
+        output = _conv3d_bn(x)
+
+        output_val_ref, output_val, cost_graph = self._run(output)
+        node_map = _build_node_map(cost_graph.node)
+        num_to_fp16, num_to_fp32 = _count_casts(cost_graph.node)
+
+        self._assert_output_fp16(node_map, 'Conv3D')
+        self._assert_output_fp16(node_map, 'FusedBatchNormV3')
+        self._assert_output_fp16(node_map, 'Conv3D_1')
+        self.assertEqual(num_to_fp16,
+                         3)  # Before Conv3D:0, Conv3D:1, Conv3D_1:1
+        self.assertEqual(num_to_fp32, 1)  # After FusedBatchNormV3:0
+        self.assertAllClose(output_val_ref, output_val, atol=1e-2, rtol=1e-2)
+
+  @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
+  def test_conv3d(self):
+    """Test grad ops with convolution3d graph."""
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = _input([2, 8, 8, 8, 1])
+      f = _weight([3, 3, 3, 1, 6])
+      y = _conv3d(x, f)
+      y = array_ops.identity(y)
+      optimizer = gradient_descent.GradientDescentOptimizer(
+          learning_rate=0.01)
+      g = optimizer.compute_gradients(y, [x, f])
+      output = (y, g)
+
+      output_val_ref, output_val, cost_graph = self._run(output)
+      node_map = _build_node_map(cost_graph.node)
+      self._assert_output_fp16(node_map, 'Conv3D')
+      self._assert_output_fp16(node_map,
+                               'gradients/Conv3D_grad/Conv3DBackpropInputV2')
+      self._assert_output_fp16(node_map,
+                               'gradients/Conv3D_grad/Conv3DBackpropFilterV2')
+
+      output_val_ref, output_val, cost_graph = self._run(output)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')
