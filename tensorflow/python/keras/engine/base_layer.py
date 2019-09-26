@@ -2451,6 +2451,20 @@ class Layer(module.Module):
     return (self._trackable_saved_model_saver
             .list_functions_for_serialization(serialization_cache))
 
+  def __getstate__(self):
+    # Override to support `copy.deepcopy` and pickling.
+    # Thread-local objects cannot be copied in Python 3, so pop these.
+    # Thread-local objects are used to cache losses in MirroredStrategy, and
+    # so shouldn't be copied.
+    state = self.__dict__.copy()
+    state.pop('_thread_local', None)
+    return state
+
+  def __setstate__(self, state):
+    state['_thread_local'] = threading.local()
+    # Bypass Trackable logic as `__dict__` already contains this info.
+    object.__setattr__(self, '__dict__', state)
+
 
 class TensorFlowOpLayer(Layer):
   """Wraps a TensorFlow Operation in a Layer.
