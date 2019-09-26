@@ -99,6 +99,9 @@ function prepare_src() {
     unzip -o -q ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_windows.zip -d ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip
     echo "Unzip finished."
     # runfiles structure after unzip the python binary
+    cp \
+      bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow/LICENSE \
+      "${TMPDIR}"
     cp -R \
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow/tensorflow \
       "${TMPDIR}"
@@ -110,6 +113,9 @@ function prepare_src() {
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
     if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external ]; then
       # Old-style runfiles structure (--legacy_external_runfiles).
+      cp \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/LICENSE \
+        "${TMPDIR}"
       cp -R \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
         "${TMPDIR}"
@@ -127,6 +133,9 @@ function prepare_src() {
       fi
     else
       # New-style runfiles structure (--nolegacy_external_runfiles).
+      cp \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/LICENSE \
+        "${TMPDIR}"
       cp -R \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
         "${TMPDIR}"
@@ -151,7 +160,7 @@ function prepare_src() {
   reorganize_includes "${TMPDIR}"
 
   cp tensorflow/tools/pip_package/MANIFEST.in ${TMPDIR}
-  cp tensorflow/tools/pip_package/README ${TMPDIR}
+  cp tensorflow/tools/pip_package/README ${TMPDIR}/README.md
   cp tensorflow/tools/pip_package/setup.py ${TMPDIR}
 
   rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.so
