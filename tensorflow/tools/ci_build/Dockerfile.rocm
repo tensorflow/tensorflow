@@ -73,6 +73,14 @@ RUN apt-get update --allow-insecure-repositories && \
 # Build HIP from source
 # RUN cd $HOME && git clone https://github.com/ROCm-Developer-Tools/HIP.git
 # RUN cd $HOME/HIP && mkdir -p build && cd build && cmake .. && make package -j $(nproc) && dpkg -i ./hip*.deb
+#
+# Temporary workaround for HIP runtime: https://github.com/ROCm-Developer-Tools/HIP/pull/1464
+# The debian packages are based on rocm2.6. Need to manually update when we bump ROCm
+RUN wget https://www.dropbox.com/s/5jqnfi7h58ousg5/hip_base-1.5.19384.deb && dpkg -i hip_base*.deb
+RUN wget https://www.dropbox.com/s/32aycdpw7gaiffz/hip_hcc-1.5.19384.deb && dpkg -i hip_hcc*.deb
+RUN wget https://www.dropbox.com/s/px2rbqi2o15077g/hip_doc-1.5.19384.deb && dpkg -i hip_doc*.deb
+RUN wget https://www.dropbox.com/s/1dorsng8qe9i1av/hip_samples-1.5.19384.deb && dpkg -i hip_samples*.deb
+RUN rm hip_*.deb
 
 # Set up paths
 ENV HCC_HOME=$ROCM_PATH/hcc
