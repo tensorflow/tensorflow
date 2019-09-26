@@ -49,8 +49,13 @@ void MultiRunStatsRecorder::OnBenchmarkStart(const BenchmarkParams& params) {
         params.Get<bool>("gpu_precision_loss_allowed");
     const std::string precision_tag = allow_precision_loss ? "fp16" : "fp32";
     current_run_name_ = "gpu(" + precision_tag + ")";
+
+    const auto default_opts = TfLiteGpuDelegateOptionsV2Default();
+    if (default_opts.is_precision_loss_allowed == allow_precision_loss) {
+      current_run_name_ += "-default";
+    }
 #else
-    current_run_name_ = "gpu(fp16, fastest)-default";
+    current_run_name_ = "gpu-default";
 #endif
     return;
   }
@@ -224,12 +229,11 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
                       BenchmarkParam::Create<bool>(precision_loss));
       all_run_params_.emplace_back(std::move(params));
     }
-#endif
-    // Note by default, gpu delegate allows to operate on lower precision and
-    // uses the fastest GL object type.
+#else
     BenchmarkParams params;
     params.AddParam("use_gpu", BenchmarkParam::Create<bool>(true));
     all_run_params_.emplace_back(std::move(params));
+#endif
   }
 
   if (benchmark_all || HasOption("nnapi")) {
