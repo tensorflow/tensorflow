@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import threading
+
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
@@ -59,11 +61,14 @@ def _read_variable_forward_grad(attr_tuple, inputs, outputs, tangents):
 _SPECIAL_CASES["ReadVariableOp"] = _read_variable_forward_grad
 
 
-# TODO(allenl): experimental_relax_shapes for gradients which rely on static
-# shape information may be underspecialized. We may want hand-written forward
-# implementations.
-@def_function.function(experimental_relax_shapes=True)
-def _forward_gradient(op_name, attr_tuple, inputs, outputs, tangents):
+_TRACE_COUNT_CONSISTENCY_LOCK = threading.Lock()
+# Map from op names to number of traces of _forward_gradient_helper. Used to cap
+# the number of traces due to shape differences while still specializing
+# gradients where possible.
+_TRACE_COUNT = {}
+
+
+def _forward_gradient_helper(op_name, attr_tuple, inputs, outputs, tangents):
   """Computes a Jacobian-vector product for an op.
 
   Note that this function would be wasteful if executed eagerly. It runs the
@@ -81,6 +86,11 @@ def _forward_gradient(op_name, attr_tuple, inputs, outputs, tangents):
   Returns:
     A flat list of tangents corresponding to `outputs`.
   """
+  with _TRACE_COUNT_CONSISTENCY_LOCK:
+    # Just make sure writes don't clobber each other's increments; reads in
+    # _forward_gradient_dispatch do not lock.
+    _TRACE_COUNT[op_name] = _TRACE_COUNT.get(op_name, 0) + 1
+
   special_case = _SPECIAL_CASES.get(op_name, None)
   if special_case is not None:
     return special_case(attr_tuple, inputs, outputs, tangents)
@@ -130,7 +140,34 @@ def _forward_gradient(op_name, attr_tuple, inputs, outputs, tangents):
     return output_tangents
 
 
-pywrap_tensorflow.TFE_Py_RegisterForwardGradientFunction(_forward_gradient)
+# TODO(allenl): experimental_relax_shapes for gradients which rely on static
+# shape information are underspecialized. We may want hand-written forward
+# implementations, or a more satisfying story about how we re-specialize
+# gradients which were traced with relaxed shapes (e.g. use conds instead of
+# trace-time Python logic).
+_forward_gradient_relaxed_shapes = def_function.function(
+    _forward_gradient_helper, experimental_relax_shapes=True)
+_forward_gradient_exact_shapes = def_function.function(
+    _forward_gradient_helper, experimental_relax_shapes=False)
+
+# The maximum number of exact-shape traces to perform for a single op before
+# switching to shape relaxation.
+_TRACE_COUNT_LIMIT = 32
+
+
+def _forward_gradient_dispatch(op_name, attr_tuple, inputs, outputs, tangents):
+  """Determine which forwardprop function to call."""
+  # Note that this _TRACE_COUNT read races with writes. That's fine, it just
+  # means we may trace a few more exact shapes before moving on to relaxation.
+  if _TRACE_COUNT.get(op_name, 0) < _TRACE_COUNT_LIMIT:
+    return _forward_gradient_exact_shapes(
+        op_name, attr_tuple, inputs, outputs, tangents)
+  else:
+    return _forward_gradient_relaxed_shapes(
+        op_name, attr_tuple, inputs, outputs, tangents)
+
+pywrap_tensorflow.TFE_Py_RegisterForwardGradientFunction(
+    _forward_gradient_dispatch)
 
 
 class ForwardGradientAccumulator(object):
@@ -254,4 +291,3 @@ class ForwardGradientAccumulator(object):
       return pywrap_tensorflow.TFE_Py_ForwardAccumulatorJVP(
           self._accumulator, tensor)
     return nest.map_structure(_fetch_jvp, target)
-

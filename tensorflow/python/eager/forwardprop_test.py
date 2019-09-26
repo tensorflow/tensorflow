@@ -150,7 +150,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
   def testForwardGradientFunction(self):
     add_outputs = (constant_op.constant(4.),)
-    vp, = forwardprop._forward_gradient(
+    vp, = forwardprop._forward_gradient_dispatch(
         op_name="Add",
         attr_tuple=(),
         inputs=(constant_op.constant(1.), constant_op.constant(3.)),
@@ -162,7 +162,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(1. + 5., self.evaluate(vp))
 
     mul_outputs = (constant_op.constant([20.]),)
-    vp, = forwardprop._forward_gradient(
+    vp, = forwardprop._forward_gradient_dispatch(
         op_name="Mul",
         attr_tuple=(),
         inputs=(constant_op.constant([4.]), constant_op.constant([5.])),
@@ -174,7 +174,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose([2. * 5. + 3. * 4.], self.evaluate(vp))
 
   def testForwardGradientFunctionUsedByAccumulatorForOps(self):
-    previous_fn = forwardprop._forward_gradient
+    previous_fn = forwardprop._forward_gradient_dispatch
     try:
       with forwardprop.ForwardGradientAccumulator() as acc:
         x = constant_op.constant(1.)
@@ -194,13 +194,14 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     # and push it through Add's gradient. Since we check for new pyobjects after
     # the warmup, retracing each time without cleaning up old traces fails the
     # test. It works because of experimental_relax_shapes.
-    execution_count = getattr(self, "_execution_count", 0)
-    self._execution_count = execution_count + 1
-    x = array_ops.zeros([execution_count])
-    with forwardprop.ForwardGradientAccumulator() as acc:
-      acc.watch(x, array_ops.ones_like(x))
-      y = x + x
-    self.assertAllClose(2. * array_ops.ones_like(x), acc.jvp(y))
+    for _ in range(forwardprop._TRACE_COUNT_LIMIT):
+      execution_count = getattr(self, "_execution_count", 0)
+      self._execution_count = execution_count + 1
+      x = array_ops.zeros([execution_count])
+      with forwardprop.ForwardGradientAccumulator() as acc:
+        acc.watch(x, array_ops.ones_like(x))
+        y = x + x
+      self.assertAllClose(2. * array_ops.ones_like(x), acc.jvp(y))
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testMultipleWatchesAdd(self):
