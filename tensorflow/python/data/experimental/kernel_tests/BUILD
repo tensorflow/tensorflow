@@ -531,6 +531,7 @@ py_test(
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
         "@absl_py//absl/testing:parameterized",
     ],
 )
