@@ -2906,6 +2906,73 @@ Status ConvertConv3D(OpConverterParams* params) {
 Status ConvertConv3DBackpropInputV2(OpConverterParams* params) {
   return ConvertConv3DHelper(params, 1, /*is_conv3d_backprop_input=*/true);
 }
+
+Status ConvertPool3D(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+  nvinfer1::PoolingType type;
+  if (node_def.op() == "MaxPool3D") {
+    type = nvinfer1::PoolingType::kMAX;
+  } else if (node_def.op() == "AvgPool3D") {
+    type = nvinfer1::PoolingType::kAVERAGE;
+  } else {
+    return errors::Unimplemented("Unsupported pooling type: ", node_def.op(),
+                                 ", at ", node_def.name());
+  }
+  TFAttrs attrs(node_def);
+  const string padding_type = attrs.get<string>("padding");
+  if ((padding_type != "SAME") && (padding_type != "VALID")) {
+    return errors::Unimplemented("Unsupported padding type: ", padding_type,
+                                 ", at ", node_def.name());
+  }
+  if (params->validation_only) return Status::OK();
+
+
+  nvinfer1::ITensor* tensor = inputs.at(0).tensor();
+  const auto data_format = attrs.get<string>("data_format");
+  const bool is_ndhwc = (data_format == "NDHWC");
+  const int d_index = is_ndhwc ? 1 : 2;
+  const int h_index = is_ndhwc ? 2 : 3;
+  const int w_index = is_ndhwc ? 3 : 4;
+
+  if (data_format == "NDHWC") {
+    // NDHWC => NCDHW
+    TF_RETURN_IF_ERROR(params->converter->TransposeTensor(tensor, {0, 4, 1, 2, 3}, &tensor));
+  }
+
+  const auto tf_stride = attrs.get<std::vector<int64>>("strides");
+  const nvinfer1::Dims3 stride(tf_stride[d_index], tf_stride[h_index], tf_stride[w_index]);
+
+  const auto tf_kernel = attrs.get<std::vector<int64>>("ksize");
+  const nvinfer1::Dims3 ksize(tf_kernel[d_index], tf_kernel[h_index], tf_kernel[w_index]);
+
+  nvinfer1::INetworkDefinition* network = params->converter->network();
+  nvinfer1::IPoolingLayer* layer = network->addPoolingNd(*tensor, type, ksize);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+
+  params->converter->MarkQuantizationRangesAsInferrable(tensor,
+                                                        layer->getOutput(0));
+
+  layer->setStrideNd(stride);
+  // VALID padding is the default TRT behavior.
+  if (padding_type == "SAME") {
+    // SAME_UPPER means that post padding is preferred.
+    layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
+  }
+  layer->setName(node_def.name().c_str());
+  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+
+  if (data_format == "NDHWC") {
+    // NCDHW => NDHWC
+    TF_RETURN_IF_ERROR(params->converter->TransposeTensor(output_tensor, {0, 2, 3, 4, 1}, &output_tensor));
+  }
+
+  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return Status::OK();
+}
 #endif  // #if IS_TRT_VERSION_GE(6, 0, 0, 0)
 
 Status ConvertFusedConv2DBiasActivation(OpConverterParams* params) {
@@ -5413,6 +5480,9 @@ static void RegisterValidatableOpConverters(
   (*registration)["Conv3DBackpropInputV2"] = ConvertConv3DBackpropInputV2;
   for (auto resize_mode : {"ResizeBilinear", "ResizeNearestNeighbor"}) {
     (*registration)[resize_mode] = ConvertResize;
+  }
+  for (auto pool_op_type : {"AvgPool3D", "MaxPool3D"}) {
+    (*registration)[pool_op_type] = ConvertPool3D;
   }
 #endif
   (*registration)["Rsqrt"] = ConvertRsqrt;
