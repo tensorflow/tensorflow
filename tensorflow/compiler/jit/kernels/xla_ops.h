@@ -153,6 +153,9 @@ class XlaCompileOp : public OpKernel {
 
   const bool must_compile_;
 
+  // Whether the graph has TF reference variables.
+  const bool has_ref_vars_;
+
   // cannot_compile_cluster_ is set to true if XLA returns an Unimplemented
   // error when compiling the cluster this _XlaCompile is supposed to compile.
   // If `cannot_compile_cluster_` is true then we avoid compiling this cluster
