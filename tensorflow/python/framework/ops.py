@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import copy
 import re
 import sys
 import threading
@@ -2153,16 +2152,6 @@ class Operation(object):
     return self._inputs_val
 
   @property
-  def _inputs(self):
-    logging.warning("Operation._inputs is private, use Operation.inputs "
-                    "instead. Operation._inputs will eventually be removed.")
-    return self.inputs
-
-  @_inputs.setter
-  def _inputs(self, value):
-    raise ValueError("Cannot assign _inputs")
-
-  @property
   def _input_types(self):
     num_inputs = c_api.TF_OperationNumInputs(self._c_op)
     input_types = [
@@ -2170,10 +2159,6 @@ class Operation(object):
         for i in xrange(num_inputs)
     ]
     return input_types
-
-  @_input_types.setter
-  def _input_types(self, value):
-    raise ValueError("Cannot assign _input_types")
 
   @property
   def control_inputs(self):
@@ -2217,25 +2202,6 @@ class Operation(object):
     # pylint: enable=protected-access
 
   @property
-  def _control_inputs(self):
-    logging.warning("Operation._control_inputs is private, use "
-                    "Operation.control_inputs instead. "
-                    "Operation._control_inputs will eventually be removed.")
-    return self.control_inputs
-
-  @_control_inputs.setter
-  def _control_inputs(self, value):
-    logging.warning("Operation._control_inputs is private, use "
-                    "Operation.control_inputs instead. "
-                    "Operation._control_inputs will eventually be removed.")
-    # Copy value because it may be self._control_inputs_val (in particular if
-    # this is called from self._control_inputs += ...), and we don't want to
-    # clear value below.
-    value = copy.copy(value)
-    self._remove_all_control_inputs()
-    self._add_control_inputs(value)
-
-  @property
   def type(self):
     """The type of the op (e.g. `"MatMul"`)."""
     return c_api.TF_OperationOpType(self._c_op)
@@ -2264,12 +2230,6 @@ class Operation(object):
     return node_def
 
   @property
-  def _node_def(self):
-    logging.warning("Operation._node_def is private, use Operation.node_def "
-                    "instead. Operation._node_def will eventually be removed.")
-    return self.node_def
-
-  @property
   def op_def(self):
     # pylint: disable=line-too-long
     """Returns the `OpDef` proto that represents the type of this op.
@@ -2281,12 +2241,6 @@ class Operation(object):
     """
     # pylint: enable=line-too-long
     return self._graph._get_op_def(self.type)
-
-  @property
-  def _op_def(self):
-    logging.warning("Operation._op_def is private, use Operation.op_def "
-                    "instead. Operation._op_def will eventually be removed.")
-    return self.op_def
 
   @property
   def traceback(self):
