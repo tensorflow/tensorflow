@@ -24,6 +24,8 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
+#include <numeric>
+
 #include "third_party/eigen3/Eigen/SparseCore"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
