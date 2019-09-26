@@ -71,6 +71,12 @@ final class NativeLibrary {
     log("frameworkResourceName: " + frameworkResourceName);
     final InputStream frameworkResource =
         NativeLibrary.class.getClassLoader().getResourceAsStream(frameworkResourceName);
+	if ("libtensorflow_framework.so".equals(frameworkLibName)) {
+        frameworkLibName = "libtensorflow_framework.so.1";
+    }
+    if ("libtensorflow_framework.dylib".equals(frameworkLibName)) {
+        frameworkLibName = "libtensorflow_framework.1.dylib";
+    }
     // Do not complain if the framework resource wasn't found. This may just mean that we're
     // building with --config=monolithic (in which case it's not needed and not included).
     if (jniResource == null) {
