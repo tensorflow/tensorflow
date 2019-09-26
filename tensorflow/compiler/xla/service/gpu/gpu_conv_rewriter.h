@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_REWRITER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_REWRITER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONV_REWRITER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONV_REWRITER_H_
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
@@ -23,18 +23,19 @@ namespace xla {
 namespace gpu {
 
 // Rewrites plain convolutions, backwards-filter convolutions, and
-// backwards-input convolutions into CustomCall HLOs that call into cuDNN.
+// backwards-input convolutions into CustomCall HLOs that call into
+// Cudnn/Miopen.
 // For integer convolution, it requires the following pattern:
 // conv<InputT=int32, ResultT=int32>(
 //   convert<int32>(int8_x), convert<int32>(int8_y))
 // We transform it to:
 // custom_call<int32>(int8_x, int8_y, target=cudnnForwardConvolution)
 // Note that this pattern is necessary but not sufficient to map convolutions
-// to CuDNN.  More patterns will be matched in cudnn_fused_conv_rewriter.
+// to CuDNN. More patterns will be matched in cudnn_fused_conv_rewriter.
 
-class CudnnConvRewriter : public HloModulePass {
+class GpuConvRewriter : public HloModulePass {
  public:
-  absl::string_view name() const override { return "cudnn-conv-rewriter"; }
+  absl::string_view name() const override { return "gpu-conv-rewriter"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 };
@@ -42,4 +43,4 @@ class CudnnConvRewriter : public HloModulePass {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_REWRITER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONV_REWRITER_H_
