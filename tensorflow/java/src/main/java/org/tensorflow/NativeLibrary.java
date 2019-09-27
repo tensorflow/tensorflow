@@ -132,11 +132,6 @@ final class NativeLibrary {
   }
 
   private static String getVersionedLibraryName(String libFilename) {
-    // If the resource exists as an unversioned file, return that.
-    // if (resourceExists(libFilename)) {
-      // return libFilename;
-    // }
-
     final String versionName = getMajorVersionNumber();
 
     // If we're on darwin, the versioned libraries look like blah.1.dylib.
