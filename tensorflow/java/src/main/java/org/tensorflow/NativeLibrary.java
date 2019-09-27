@@ -71,12 +71,6 @@ final class NativeLibrary {
     log("frameworkResourceName: " + frameworkResourceName);
     final InputStream frameworkResource =
         NativeLibrary.class.getClassLoader().getResourceAsStream(frameworkResourceName);
-    if ("libtensorflow_framework.so".equals(frameworkLibName)) {
-        frameworkLibName = "libtensorflow_framework.so.1";
-    }
-    if ("libtensorflow_framework.dylib".equals(frameworkLibName)) {
-        frameworkLibName = "libtensorflow_framework.1.dylib";
-    }
     // Do not complain if the framework resource wasn't found. This may just mean that we're
     // building with --config=monolithic (in which case it's not needed and not included).
     if (jniResource == null) {
@@ -139,9 +133,9 @@ final class NativeLibrary {
 
   private static String getVersionedLibraryName(String libFilename) {
     // If the resource exists as an unversioned file, return that.
-    if (resourceExists(libFilename)) {
-      return libFilename;
-    }
+    // if (resourceExists(libFilename)) {
+      // return libFilename;
+    // }
 
     final String versionName = getMajorVersionNumber();
 
@@ -180,11 +174,13 @@ final class NativeLibrary {
    * determined.
    */
   private static String getMajorVersionNumber() {
+    // getImplementationVersion() retrun null. 
     String version = NativeLibrary.class.getPackage().getImplementationVersion();
     // expecting a string like 1.14.0, we want to get the first '1'.
     int dotIndex;
     if (version == null || (dotIndex = version.indexOf('.')) == -1) {
-      return null;
+      // we want to get the version 1.  
+      return "1";
     }
     String majorVersion = version.substring(0, dotIndex);
     try {
