@@ -276,12 +276,28 @@ struct FuncOpConversion : public LLVMLegalizationPattern<FuncOp> {
                   ConversionPatternRewriter &rewriter) const override {
     auto funcOp = cast<FuncOp>(op);
     FunctionType type = funcOp.getType();
+    SmallVector<Type, 4> argTypes;
+    argTypes.reserve(type.getNumInputs());
+    SmallVector<unsigned, 4> promotedArgIndices;
+    promotedArgIndices.reserve(type.getNumInputs());
 
-    // Convert the original function arguments.
+    // Convert the original function arguments. Struct arguments are promoted to
+    // pointer to struct arguments to allow calling external functions with
+    // various ABIs (e.g. compiled from C/C++ on platform X).
     TypeConverter::SignatureConversion result(type.getNumInputs());
-    for (unsigned i = 0, e = type.getNumInputs(); i != e; ++i)
-      if (failed(lowering.convertSignatureArg(i, type.getInput(i), result)))
+    for (auto en : llvm::enumerate(type.getInputs())) {
+      auto t = en.value();
+      auto converted = lowering.convertType(t);
+      if (!converted)
         return matchFailure();
+      if (t.isa<MemRefType>()) {
+        converted = converted.cast<LLVM::LLVMType>().getPointerTo();
+        promotedArgIndices.push_back(en.index());
+      }
+      argTypes.push_back(converted);
+    }
+    for (unsigned idx = 0, e = argTypes.size(); idx < e; ++idx)
+      result.addInputs(idx, argTypes[idx]);
 
     // Pack the result types into a struct.
     Type packedResult;
@@ -301,6 +317,18 @@ struct FuncOpConversion : public LLVMLegalizationPattern<FuncOp> {
 
     // Tell the rewriter to convert the region signature.
     rewriter.applySignatureConversion(&newFuncOp.getBody(), result);
+
+    // Insert loads from memref descriptor pointers in function bodies.
+    if (!newFuncOp.getBody().empty()) {
+      Block *firstBlock = &newFuncOp.getBody().front();
+      rewriter.setInsertionPoint(firstBlock, firstBlock->begin());
+      for (unsigned idx : promotedArgIndices) {
+        BlockArgument *arg = firstBlock->getArgument(idx);
+        Value *loaded = rewriter.create<LLVM::LoadOp>(funcOp.getLoc(), arg);
+        rewriter.replaceUsesOfBlockArgument(arg, loaded);
+      }
+    }
+
     rewriter.replaceOp(op, llvm::None);
     return matchSuccess();
   }
@@ -502,13 +530,6 @@ struct SelectOpLowering
     : public OneToOneLLVMOpLowering<SelectOp, LLVM::SelectOp> {
   using Super::Super;
 };
-struct CallOpLowering : public OneToOneLLVMOpLowering<CallOp, LLVM::CallOp> {
-  using Super::Super;
-};
-struct CallIndirectOpLowering
-    : public OneToOneLLVMOpLowering<CallIndirectOp, LLVM::CallOp> {
-  using Super::Super;
-};
 struct ConstLLVMOpLowering
     : public OneToOneLLVMOpLowering<ConstantOp, LLVM::ConstantOp> {
   using Super::Super;
@@ -621,6 +642,100 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
     // Return the final value of the descriptor.
     rewriter.replaceOp(op, memRefDescriptor);
   }
+};
+
+// Helper structure which extracts the necessary information from CallOp-like
+// ops for the purpose of generating an LLVM::CallOp.
+struct FunctionInfo {
+  FunctionType type;
+  CallInterfaceCallable callable;
+};
+static FunctionInfo getFuncOp(ModuleOp module, CallOp op) {
+  return FunctionInfo{module.lookupSymbol<FuncOp>(op.getCallee()).getType(),
+                      SymbolRefAttr::get(op.getCallee(), op.getContext())};
+}
+static FunctionInfo getFuncOp(ModuleOp module, CallIndirectOp op) {
+  if (auto fAttr = op.getCallableForCallee().dyn_cast<SymbolRefAttr>())
+    return FunctionInfo{module.lookupSymbol<FuncOp>(fAttr.getValue()).getType(),
+                        fAttr};
+  // Else, this must be an SSA value of FunctionType type.
+  Value *fValue = op.getCallableForCallee().get<Value *>();
+  FunctionType fType = fValue->getType().cast<FunctionType>();
+  return FunctionInfo{fType, fValue};
+}
+template <typename CallOpType>
+static LLVM::CallOp
+createLLVMCall(FunctionInfo fInfo, ConversionPatternRewriter &rewriter,
+               Location loc, Type returnType, ArrayRef<Value *> operands) {
+  if (fInfo.callable.dyn_cast<Value *>())
+    return rewriter.create<LLVM::CallOp>(loc, returnType, operands);
+  auto fAttr = fInfo.callable.get<SymbolRefAttr>();
+  auto namedFAttr = rewriter.getNamedAttr("callee", fAttr);
+  return rewriter.create<LLVM::CallOp>(loc, returnType, operands,
+                                       ArrayRef<NamedAttribute>{namedFAttr});
+}
+
+// A CallOp automatically promotes MemRefType to a sequence of alloca/store and
+// passes the pointer to the MemRef across function boundaries.
+template <typename CallOpType>
+struct CallOpInterfaceLowering : public LLVMLegalizationPattern<CallOpType> {
+  using LLVMLegalizationPattern<CallOpType>::LLVMLegalizationPattern;
+  using Super = CallOpInterfaceLowering<CallOpType>;
+  using Base = LLVMLegalizationPattern<CallOpType>;
+
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    OperandAdaptor<CallOpType> transformed(operands);
+    auto callOp = cast<CallOpType>(op);
+    auto module = op->getParentOfType<ModuleOp>();
+    FunctionInfo fInfo = getFuncOp(module, callOp);
+    auto functionType = fInfo.type;
+
+    // Pack the result types into a struct.
+    Type packedResult;
+    unsigned numResults = callOp.getNumResults();
+    if (numResults != 0) {
+      if (!(packedResult =
+                this->lowering.packFunctionResults(functionType.getResults())))
+        return this->matchFailure();
+    }
+
+    SmallVector<Value *, 4> opOperands(op->getOperands());
+    auto promoted = this->lowering.promoteMemRefDescriptors(
+        op->getLoc(), opOperands, operands, rewriter);
+    auto newOp = createLLVMCall<CallOpType>(fInfo, rewriter, op->getLoc(),
+                                            packedResult, promoted);
+
+    // If < 2 results, packingdid not do anything and we can just return.
+    if (numResults < 2) {
+      SmallVector<Value *, 4> results(newOp.getResults());
+      rewriter.replaceOp(op, results);
+      return this->matchSuccess();
+    }
+
+    // Otherwise, it had been converted to an operation producing a structure.
+    // Extract individual results from the structure and return them as list.
+    SmallVector<Value *, 4> results;
+    results.reserve(numResults);
+    for (unsigned i = 0; i < numResults; ++i) {
+      auto type = this->lowering.convertType(op->getResult(i)->getType());
+      results.push_back(rewriter.create<LLVM::ExtractValueOp>(
+          op->getLoc(), type, newOp.getOperation()->getResult(0),
+          rewriter.getIndexArrayAttr(i)));
+    }
+    rewriter.replaceOp(op, results);
+
+    return this->matchSuccess();
+  }
+};
+
+struct CallOpLowering : public CallOpInterfaceLowering<CallOp> {
+  using Super::Super;
+};
+
+struct CallIndirectOpLowering : public CallOpInterfaceLowering<CallIndirectOp> {
+  using Super::Super;
 };
 
 // A `dealloc` is converted into a call to `free` on the underlying data buffer.
@@ -1136,6 +1251,42 @@ Type LLVMTypeConverter::packFunctionResults(ArrayRef<Type> types) {
   }
 
   return LLVM::LLVMType::getStructTy(llvmDialect, resultTypes);
+}
+
+Value *LLVMTypeConverter::promoteOneMemRefDescriptor(Location loc,
+                                                     Value *operand,
+                                                     OpBuilder &builder) {
+  auto *context = builder.getContext();
+  auto int64Ty = LLVM::LLVMType::getInt64Ty(getDialect());
+  auto indexType = IndexType::get(context);
+  // Alloca with proper alignment. We do not expect optimizations of this
+  // alloca op and so we omit allocating at the entry block.
+  auto ptrType = operand->getType().cast<LLVM::LLVMType>().getPointerTo();
+  Value *one = builder.create<LLVM::ConstantOp>(loc, int64Ty,
+                                                IntegerAttr::get(indexType, 1));
+  Value *allocated =
+      builder.create<LLVM::AllocaOp>(loc, ptrType, one, /*alignment=*/0);
+  // Store into the alloca'ed descriptor.
+  builder.create<LLVM::StoreOp>(loc, operand, allocated);
+  return allocated;
+}
+
+SmallVector<Value *, 4> LLVMTypeConverter::promoteMemRefDescriptors(
+    Location loc, ArrayRef<Value *> opOperands, ArrayRef<Value *> operands,
+    OpBuilder &builder) {
+  SmallVector<Value *, 4> promotedOperands;
+  promotedOperands.reserve(operands.size());
+  for (auto it : llvm::zip(opOperands, operands)) {
+    auto *operand = std::get<0>(it);
+    auto *llvmOperand = std::get<1>(it);
+    if (!operand->getType().isa<MemRefType>()) {
+      promotedOperands.push_back(operand);
+      continue;
+    }
+    promotedOperands.push_back(
+        promoteOneMemRefDescriptor(loc, llvmOperand, builder));
+  }
+  return promotedOperands;
 }
 
 /// Create an instance of LLVMTypeConverter in the given context.

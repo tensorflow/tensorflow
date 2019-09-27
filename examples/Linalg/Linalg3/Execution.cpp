@@ -125,10 +125,8 @@ TEST_FUNC(execution) {
   auto A = allocateInit2DMemref(5, 3);
   auto B = allocateInit2DMemref(3, 2);
   auto C = allocateInit2DMemref(5, 2);
-  llvm::SmallVector<void *, 4> args;
-  args.push_back(&A);
-  args.push_back(&B);
-  args.push_back(&C);
+  auto *pA = &A, *pB = &B, *pC = &C;
+  llvm::SmallVector<void *, 3> args({&pA, &pB, &pC});
 
   // Invoke the JIT-compiled function with the arguments.  Note that, for API
   // uniformity reasons, it takes a list of type-erased pointers to arguments.

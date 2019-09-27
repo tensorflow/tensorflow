@@ -618,6 +618,16 @@ void ConversionPatternRewriter::applySignatureConversion(
   impl->applySignatureConversion(region, conversion);
 }
 
+void ConversionPatternRewriter::replaceUsesOfBlockArgument(BlockArgument *from,
+                                                           Value *to) {
+  for (auto &u : from->getUses()) {
+    if (u.getOwner() == to->getDefiningOp())
+      continue;
+    u.getOwner()->replaceUsesOfWith(from, to);
+  }
+  impl->mapping.map(impl->mapping.lookupOrDefault(from), to);
+}
+
 /// Clone the given operation without cloning its regions.
 Operation *ConversionPatternRewriter::cloneWithoutRegions(Operation *op) {
   Operation *newOp = OpBuilder::cloneWithoutRegions(*op);

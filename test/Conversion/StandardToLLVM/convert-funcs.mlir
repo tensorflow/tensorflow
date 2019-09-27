@@ -1,3 +1,4 @@
+// RUN: mlir-opt -lower-to-llvm %s
 // RUN: mlir-opt -lower-to-llvm %s | FileCheck %s
 
 //CHECK: func @second_order_arg(!llvm<"void ()*">)
