@@ -28,7 +28,7 @@ import weakref
 import numpy as np
 import six
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import _pywrap_py_func
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -259,7 +259,7 @@ class FuncRegistry(object):
 # Global registry for py functions.
 _py_funcs = FuncRegistry()
 
-pywrap_tensorflow.InitializePyTrampoline(_py_funcs)
+_pywrap_py_func.initialize_py_trampoline(_py_funcs)
 
 
 def _internal_py_func(func,
@@ -536,7 +536,7 @@ def numpy_function(func, inp, Tout, name=None):
   ...   y = tf.numpy_function(my_numpy_func, [input], tf.float32)
   ...   return y * y
   >>> tf_function(tf.constant(1.))
-  <tf.Tensor: id=..., shape=(), dtype=float32, numpy=1.3810978>
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.3810978>
 
   Comparison to `tf.py_function`:
   `tf.py_function` and `tf.numpy_function` are very similar, except that

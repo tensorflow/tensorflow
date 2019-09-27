@@ -752,6 +752,73 @@ gentbl(
     ],
 )
 
+cc_library(
+    name = "ROCDLDialect",
+    srcs = [
+        "lib/Dialect/LLVMIR/IR/ROCDLDialect.cpp",
+    ],
+    hdrs = [
+        "include/mlir/Dialect/LLVMIR/ROCDLDialect.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":LLVMDialect",
+        ":ROCDLOpsIncGen",
+        ":StandardOps",
+        ":Support",
+        "@llvm//:asm_parser",
+        "@llvm//:core",
+        "@llvm//:support",
+    ],
+    alwayslink = 1,
+)
+
+filegroup(
+    name = "ROCDLOpsTdFiles",
+    srcs = [
+        "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
+        "include/mlir/Dialect/LLVMIR/ROCDLOps.td",
+        ":OpBaseTdFiles",
+    ],
+)
+
+gentbl(
+    name = "ROCDLOpsIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-decls",
+            "include/mlir/Dialect/LLVMIR/ROCDLOps.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "include/mlir/Dialect/LLVMIR/ROCDLOps.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/LLVMIR/ROCDLOps.td",
+    td_srcs = [
+        ":ROCDLOpsTdFiles",
+    ],
+)
+
+gentbl(
+    name = "ROCDLConversionIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-llvmir-conversions",
+            "include/mlir/Dialect/LLVMIR/ROCDLConversions.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/LLVMIR/ROCDLOps.td",
+    td_srcs = [
+        ":ROCDLOpsTdFiles",
+    ],
+)
+
 filegroup(
     name = "SPIRVOpsTdFiles",
     srcs = [
@@ -1280,6 +1347,29 @@ cc_library(
 )
 
 cc_library(
+    name = "TargetROCDLIR",
+    srcs = [
+        "lib/Target/LLVMIR/ConvertToROCDLIR.cpp",
+    ],
+    hdrs = [
+        "include/mlir/Target/ROCDLIR.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":GPUDialect",
+        ":IR",
+        ":LLVMIRModuleTranslation",
+        ":ROCDLConversionIncGen",
+        ":ROCDLDialect",
+        ":Support",
+        ":Translation",
+        "@llvm//:core",
+        "@llvm//:support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "ExecutionEngine",
     srcs = [
         "lib/ExecutionEngine/ExecutionEngine.cpp",
@@ -1425,6 +1515,7 @@ cc_library(
         ":Support",
         ":TargetLLVMIR",
         ":TargetNVVMIR",
+        ":TargetROCDLIR",
         ":TranslateClParser",
         ":Translation",
         ":VectorDialectRegistration",
@@ -1463,6 +1554,7 @@ cc_binary(
         ":MlirOptMain",
         ":QuantOps",
         ":QuantOpsDialectRegistration",
+        ":ROCDLDialect",
         ":StandardDialectRegistration",
         ":Transforms",
         ":VectorDialectRegistration",
@@ -1485,13 +1577,9 @@ cc_library(
         ":ExecutionEngineUtils",
         ":IR",
         ":LLVMDialect",
-        ":LLVMTransforms",
-        ":LoopDialectRegistration",
         ":Parser",
         ":Pass",
-        ":StandardDialectRegistration",
         ":Support",
-        ":Transforms",
         "@llvm//:core",
         "@llvm//:orc_jit",
         "@llvm//:support",
@@ -1871,6 +1959,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":AffineOps",
+        ":Analysis",
         ":CFGTransforms",
         ":EDSC",
         ":IR",

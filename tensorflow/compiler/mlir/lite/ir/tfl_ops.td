@@ -1655,6 +1655,8 @@ def TFL_PackOp : TFL_Op<"pack", [NoSideEffect, SameOperandsAndResultsScale]> {
 
   let verifier = [{ return Verify(*this); }];
 
+  let hasCanonicalizer = 1;
+
   let hasOptions = 1;
 }
 

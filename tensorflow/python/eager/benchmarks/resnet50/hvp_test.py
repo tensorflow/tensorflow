@@ -30,9 +30,8 @@ from tensorflow.python.eager.benchmarks.resnet50 import resnet50_test_util
 
 
 def _forward_over_back_hvp(model, images, labels, vector):
-  with forwardprop.ForwardGradientAccumulator() as acc:
-    for variable, vector_part in zip(model.trainable_variables, vector):
-      acc.watch(variable, vector_part)
+  with forwardprop.ForwardGradientAccumulator(
+      model.trainable_variables, vector) as acc:
     with tf.GradientTape() as grad_tape:
       logits = model(images, training=True)
       loss = tf.losses.softmax_cross_entropy(
@@ -43,10 +42,9 @@ def _forward_over_back_hvp(model, images, labels, vector):
 
 def _back_over_forward_hvp(model, images, labels, vector):
   with tf.GradientTape() as grad_tape:
-    with forwardprop.ForwardGradientAccumulator() as acc:
-      for variable, vector_part in zip(model.trainable_variables, vector):
-        grad_tape.watch(vector_part)
-        acc.watch(variable, vector_part)
+    grad_tape.watch(model.trainable_variables)
+    with forwardprop.ForwardGradientAccumulator(
+        model.trainable_variables, vector) as acc:
       logits = model(images, training=True)
       loss = tf.losses.softmax_cross_entropy(
           logits=logits, onehot_labels=labels)

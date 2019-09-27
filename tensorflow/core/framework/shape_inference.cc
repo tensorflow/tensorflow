@@ -219,8 +219,6 @@ Status InferenceContext::output(StringPiece output_name,
   return Status::OK();
 }
 
-string InferenceContext::op() const { return node_def_->op(); }
-
 void InferenceContext::PreInputInit(
     const OpDef& op_def, const std::vector<const Tensor*>& input_tensors,
     const std::vector<ShapeHandle>& input_tensors_as_shapes) {

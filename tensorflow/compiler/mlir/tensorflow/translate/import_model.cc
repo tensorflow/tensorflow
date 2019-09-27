@@ -95,7 +95,7 @@ class ImporterBase {
  protected:
   explicit ImporterBase(
       const FunctionLibraryDefinition& flib, const GraphDebugInfo& debug_info,
-      const NodeSpecs& specs, mlir::ModuleOp module,
+      const GraphImportConfig& specs, mlir::ModuleOp module,
       std::unordered_map<std::string, std::string>* tf_name_to_mlir_name)
       : builder_(module.getContext()),
         module_(module),
@@ -289,7 +289,7 @@ class ImporterBase {
   mlir::MLIRContext* context_;
   std::unordered_map<std::string, std::string>* tf_name_to_mlir_name_;
   const FunctionLibraryDefinition& graph_flib_;
-  const NodeSpecs& specs_;
+  const GraphImportConfig& specs_;
   const GraphDebugInfo& debug_info_;
   NodeValueMap node_values_;
   std::unique_ptr<ShapeRefiner> shape_refiner_;
@@ -315,7 +315,7 @@ bool HasNonPrimaryOutputInUse(const GraphDef& graph_def,
 // is in use and therefore can not be replaced by the Placeholder node that only
 // has a single output.
 Status UpdateLegacyFedInputNode(const GraphDef& graph_def,
-                                const NodeSpecs::InputArrays& inputs,
+                                const GraphImportConfig::InputArrays& inputs,
                                 NodeDef* node) {
   const std::string& node_name = node->name();
   auto it = inputs.find(node_name);
@@ -345,7 +345,7 @@ Status UpdateLegacyFedInputNode(const GraphDef& graph_def,
 //   the GraphDef.
 // - Replacing LegacyFedInput nodes with Placeholder nodes if
 //   convert_legacy_fed_inputs option is enabled.
-Status PreprocessGraphDef(const NodeSpecs* specs, GraphDef* graph_def) {
+Status PreprocessGraphDef(const GraphImportConfig* specs, GraphDef* graph_def) {
   const tensorflow::OpRegistrationData* op_reg_data;
   for (auto& node_def : *graph_def->mutable_node()) {
     // TODO(hinsu): Completely deprecate support for LegacyFedInput ops. One
@@ -880,7 +880,7 @@ Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
   // Converts the graph to a MLIR function and adds it to the module.
   // We populate the NodeSpec so that all the _Arg ops get their shape
   // added correctly.
-  NodeSpecs specs;
+  GraphImportConfig specs;
   for (const auto& name_and_value : func_def->attr()) {
     if (name_and_value.first == "_input_shapes") {
       auto& list = name_and_value.second.list();
@@ -1494,12 +1494,13 @@ class GraphDefImporter : public ImporterBase {
   static StatusOr<mlir::OwningModuleRef> Convert(
       mlir::MLIRContext* context, const Graph& graph,
       const GraphDebugInfo& debug_info,
-      const FunctionLibraryDefinition& flib_def, const NodeSpecs& specs);
+      const FunctionLibraryDefinition& flib_def,
+      const GraphImportConfig& specs);
 
  private:
   explicit GraphDefImporter(
       const FunctionLibraryDefinition& flib, const GraphDebugInfo& debug_info,
-      const NodeSpecs& specs, mlir::ModuleOp module,
+      const GraphImportConfig& specs, mlir::ModuleOp module,
       std::unordered_map<std::string, std::string>* tf_name_to_mlir_name)
       : ImporterBase(flib, debug_info, specs, module, tf_name_to_mlir_name) {}
 
@@ -1509,7 +1510,7 @@ class GraphDefImporter : public ImporterBase {
   // information for the function returns are inferred by the shape refiner in
   // ImporterBase.
   StatusOr<mlir::FunctionType> InferMainFunctionType(
-      const NodeSpecs& specs, mlir::MLIRContext* context,
+      const GraphImportConfig& specs, mlir::MLIRContext* context,
       absl::InlinedVector<OutputTensor, 4>* arg_nodes,
       absl::InlinedVector<OutputTensor, 4>* ret_nodes);
 };
@@ -1517,7 +1518,7 @@ class GraphDefImporter : public ImporterBase {
 StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
     mlir::MLIRContext* context, const Graph& graph,
     const GraphDebugInfo& debug_info, const FunctionLibraryDefinition& flib_def,
-    const NodeSpecs& specs) {
+    const GraphImportConfig& specs) {
   mlir::OwningModuleRef module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
@@ -1614,7 +1615,7 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
 }
 
 StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
-    const NodeSpecs& specs, mlir::MLIRContext* context,
+    const GraphImportConfig& specs, mlir::MLIRContext* context,
     absl::InlinedVector<OutputTensor, 4>* arg_nodes,
     absl::InlinedVector<OutputTensor, 4>* ret_nodes) {
   // Finds out all the input nodes and output nodes.
@@ -1707,7 +1708,7 @@ class SavedModelImporter : public ImporterBase {
  private:
   explicit SavedModelImporter(
       const FunctionLibraryDefinition& flib, const GraphDebugInfo& debug_info,
-      const NodeSpecs& specs, mlir::ModuleOp module,
+      const GraphImportConfig& specs, mlir::ModuleOp module,
       std::unordered_map<std::string, std::string>* tf_name_to_mlir_name)
       : ImporterBase(flib, debug_info, specs, module, tf_name_to_mlir_name) {}
 };
@@ -1715,7 +1716,7 @@ class SavedModelImporter : public ImporterBase {
 StatusOr<mlir::OwningModuleRef> SavedModelImporter::Convert(
     const MetaGraphDef& meta_graph, const GraphDebugInfo& debug_info,
     bool add_default_attributes, mlir::MLIRContext* context) {
-  NodeSpecs specs;
+  GraphImportConfig specs;
   mlir::OwningModuleRef module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
@@ -1750,7 +1751,7 @@ Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def) {
 
 StatusOr<mlir::OwningModuleRef> ConvertGraphdefToMlir(
     const GraphDef& graphdef, const GraphDebugInfo& debug_info,
-    const NodeSpecs& specs, mlir::MLIRContext* context,
+    const GraphImportConfig& specs, mlir::MLIRContext* context,
     bool add_default_attributes) {
   GraphConstructorOptions options;
   options.allow_internal_ops = true;
@@ -1774,7 +1775,7 @@ StatusOr<mlir::OwningModuleRef> ConvertGraphdefToMlir(
 
 StatusOr<mlir::OwningModuleRef> ConvertGraphToMlir(
     const Graph& graph, const GraphDebugInfo& debug_info,
-    const FunctionLibraryDefinition& flib_def, const NodeSpecs& specs,
+    const FunctionLibraryDefinition& flib_def, const GraphImportConfig& specs,
     mlir::MLIRContext* context) {
   // TODO(jpienaar): Remove need to const_cast.
   if (specs.upgrade_legacy) {

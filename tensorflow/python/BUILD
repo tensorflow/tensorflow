@@ -19,7 +19,7 @@ visibility = [
     "//bazel_pip/tensorflow/lite/toco/python:__pkg__",
 ]
 
-load("//tensorflow:tensorflow.bzl", "if_mlir", "if_not_v2", "if_not_windows", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py", "tf_py_build_info_genrule", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "if_mlir", "if_not_windows", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py", "tf_py_build_info_genrule", "tf_py_test", "cc_header_only_library")
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
@@ -344,17 +344,6 @@ cc_library(
     ],
 )
 
-tf_python_pybind_extension(
-    name = "_pywrap_bfloat16",
-    srcs = ["lib/core/bfloat16_wrapper.cc"],
-    hdrs = ["lib/core/bfloat16.h"],
-    module_name = "_pywrap_bfloat16",
-    deps = [
-        "//third_party/python_runtime:headers",
-        "@pybind11",
-    ],
-)
-
 cc_library(
     name = "ndarray_tensor_bridge",
     srcs = ["lib/core/ndarray_tensor_bridge.cc"],
@@ -526,6 +515,24 @@ cc_library(
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
+    ],
+)
+
+cc_header_only_library(
+    name = "py_func_headers_lib",
+    deps = [
+        ":py_func_lib",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_py_func",
+    srcs = ["lib/core/py_func_wrapper.cc"],
+    module_name = "_pywrap_py_func",
+    deps = [
+        ":py_func_headers_lib",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
     ],
 )
 
@@ -882,7 +889,7 @@ py_library(
     srcs = ["framework/dtypes.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":_pywrap_bfloat16",
+        ":pywrap_tensorflow",
         "//tensorflow/core:protos_all_py",
     ],
 )
@@ -967,6 +974,7 @@ tf_py_test(
         ":function_def_to_graph",
         ":graph_to_function_def",
         ":math_ops",
+        ":op_def_library",
         ":test_ops",
     ],
     tags = ["no_pip"],
@@ -1024,6 +1032,7 @@ py_library(
     deps = [
         ":dtypes",
         ":framework_ops",
+        ":op_def_registry",
         ":platform",
         ":tensor_shape",
         ":util",
@@ -1033,12 +1042,24 @@ py_library(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "_op_def_registry",
+    srcs = ["framework/op_def_registry.cc"],
+    module_name = "_op_def_registry",
+    deps = [
+        ":pybind11_status",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:protos_all_cc",
+        "@pybind11",
+    ],
+)
+
 py_library(
     name = "op_def_registry",
     srcs = ["framework/op_def_registry.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":pywrap_tensorflow",
+        ":_op_def_registry",
         "//tensorflow/core:protos_all_py",
     ],
 )
@@ -2020,7 +2041,6 @@ tf_py_test(
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
         ":platform_test",
-        ":test_ops",
     ],
 )
 
@@ -3650,6 +3670,7 @@ py_library(
     srcs = ["ops/script_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":_pywrap_py_func",
         ":array_ops",
         ":framework_for_generated_wrappers",
         ":script_ops_gen",
@@ -4661,6 +4682,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":_pywrap_device_lib",
         ":errors",
         ":framework",
         ":framework_for_generated_wrappers",
@@ -4931,7 +4953,23 @@ py_library(
     srcs = ["client/device_lib.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":pywrap_tensorflow",
+        ":_pywrap_device_lib",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_device_lib",
+    srcs = ["client/device_lib_wrapper.cc"],
+    module_name = "_pywrap_device_lib",
+    deps = [
+        ":pybind11_proto",
+        ":pybind11_status",
+        "//tensorflow/core:core_cpu_headers_lib",
+        "//tensorflow/core:framework_internal_headers_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
     ],
 )
 
@@ -5008,7 +5046,6 @@ tf_py_wrap_cc(
     name = "pywrap_tensorflow_internal",
     srcs = ["tensorflow.i"],
     swig_includes = [
-        "client/device_lib.i",
         "client/tf_session.i",
         "client/tf_sessionrun_wrapper.i",
         "framework/python_op_gen.i",
@@ -5017,8 +5054,8 @@ tf_py_wrap_cc(
         "grappler/item.i",
         "grappler/model_analyzer.i",
         "grappler/tf_optimizer.i",
+        "lib/core/bfloat16.i",
         "lib/core/py_exception_registry.i",
-        "lib/core/py_func.i",
         "lib/core/strings.i",
         "lib/io/file_io.i",
         "lib/io/py_record_reader.i",
@@ -5062,6 +5099,7 @@ tf_py_wrap_cc(
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/compiler/mlir:passes",
         "//tensorflow/core/distributed_runtime/rpc:grpc_rpc_factory_registration",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
@@ -5125,12 +5163,15 @@ genrule(
 genrule(
     name = "pybind_symbol_target_libs_file",
     srcs = [
-        ":bfloat16_lib",  # bfloat16
         ":cpp_python_util",  # util
+        ":py_func_lib",  # py_func
         "//tensorflow/core:util_port",  # util_port
         "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
         "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
+        "//tensorflow/core:framework_internal_impl",  # op_def_registry
+        "//tensorflow/core/lib/core:status",  # device_lib
+        "//tensorflow/core:core_cpu_impl",  # device_lib
     ],
     outs = ["pybind_symbol_target_libs_file.txt"],
     cmd = select({

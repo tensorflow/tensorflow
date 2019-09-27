@@ -2581,5 +2581,79 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationShapeInference) {
   TF_EXPECT_FUNCTIONDEFLIBRARY_EQ(library_expected, library);
 }
 
+void CreateSubgraphTouchingRefVar(const Scope& s) {
+  Output variable =
+      ops::Variable(s.WithOpName("variable"), PartialTensorShape{}, DT_FLOAT);
+  Output read = ops::Identity(s.WithOpName("read_ref_var"), variable);
+  Output neg = ops::Negate(s.WithOpName("negate_ref"), read);
+  Output add = ops::Add(s.WithOpName("add_ref"), neg, neg);
+
+  Output constant =
+      ops::Const(s.WithOpName("constant_ref"), Input::Initializer(0.0));
+  s.graph()->AddControlEdge(constant.node(), variable.node());
+}
+
+TEST(EncapsulateSubgraphsTest, RefVariablesMarked) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  CreateSubgraphTouchingRefVar(root);
+
+  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  SessionOptions session_options;
+  session_options.env = Env::Default();
+  GraphOptimizationPassOptions options;
+  options.session_options = &session_options;
+  FunctionLibraryDefinition library(OpRegistry::Global(), {});
+  options.flib_def = &library;
+  options.graph = &graph;
+
+  EncapsulateSubgraphsPass pass;
+  TF_ASSERT_OK(pass.Run(options));
+
+  for (const Node* node : graph->nodes()) {
+    bool has_ref_var;
+    TF_ASSERT_OK(
+        GetNodeAttr(node->attrs(), kXlaHasReferenceVarsAttr, &has_ref_var));
+    EXPECT_TRUE(node->IsSink() || node->IsSource() || has_ref_var)
+        << "All nodes apart from source and sink can access reference variable";
+  }
+}
+
+void CreateSubgraphNotTouchingRefVar(const Scope& s) {
+  Output constant =
+      ops::Const(s.WithOpName("constant_normal"), Input::Initializer(0.0));
+  Output neg = ops::Negate(s.WithOpName("negate_normal"), constant);
+  Output add = ops::Add(s.WithOpName("add_normal"), neg, neg);
+}
+
+TEST(EncapsulateSubgraphsTest, NoRefVarsNoAttr) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  CreateSubgraphNotTouchingRefVar(root);
+
+  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  // TODO(cheshire): reduce boilerplate for creating
+  // GraphOptimizationPassOptions here and elsewhere, probably using a macro.
+  SessionOptions session_options;
+  session_options.env = Env::Default();
+  GraphOptimizationPassOptions options;
+  options.session_options = &session_options;
+  FunctionLibraryDefinition library(OpRegistry::Global(), {});
+  options.flib_def = &library;
+  options.graph = &graph;
+
+  EncapsulateSubgraphsPass pass;
+  TF_ASSERT_OK(pass.Run(options));
+
+  for (const Node* node : graph->nodes()) {
+    bool has_ref_var;
+    TF_ASSERT_OK(
+        GetNodeAttr(node->attrs(), kXlaHasReferenceVarsAttr, &has_ref_var));
+    EXPECT_FALSE(has_ref_var) << "The graph does not have reference variables";
+  }
+}
+
 }  // namespace
 }  // namespace tensorflow

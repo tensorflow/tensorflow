@@ -3984,6 +3984,15 @@ class JpegTest(test_util.TensorFlowTestCase):
       with self.cached_session(use_gpu=True) as sess:
         sess.run(adjust_jpeg_quality_image)
 
+  @test_util.run_deprecated_v1
+  def testAdjustJpegQualityShape(self):
+    with self.cached_session(use_gpu=True):
+      image = constant_op.constant(
+          np.arange(24, dtype=np.uint8).reshape([2, 4, 3]))
+      adjusted_image = image_ops.adjust_jpeg_quality(image, 80)
+      self.assertListEqual(adjusted_image.shape.as_list(),
+                           [None, None, 3])
+
 
 class PngTest(test_util.TensorFlowTestCase):
 

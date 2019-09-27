@@ -282,9 +282,12 @@ PyObject* TFE_Py_RecordGradient(PyObject* op_name, PyObject* inputs,
 // were created.
 PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape);
 
-// Creates a new forward accumulator and adds it to the active set.
+// Creates a new forward accumulator. Does not add it to the active set.
 PyObject* TFE_Py_ForwardAccumulatorNew();
 
+// Adds a ForwardAccumulator to the active set, meaning it will watch executed
+// operations. It must not already be in the active set.
+PyObject* TFE_Py_ForwardAccumulatorSetAdd(PyObject* accumulator);
 // Removes a forward accumulator from the active set, meaning it will no longer
 // be watching operations.
 void TFE_Py_ForwardAccumulatorSetRemove(PyObject* accumulator);

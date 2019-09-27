@@ -201,6 +201,9 @@ class CheckNumericsCallbackTest(test_util.TensorFlowTestCase):
       self.assertTrue(message.endswith("\n"))
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla(
+      "There is a small inconsistency in the step at which overflow happens: "
+      "128 (without XLA) and 127 (with XLA).")
   def testOverflowInTfFunction(self):
     """Test catching Infinity caused by overflow in a tf.function with while."""
     check_numerics_callback.enable_check_numerics()

@@ -173,19 +173,12 @@ class Conv(Layer):
       self.bias = None
     self.input_spec = InputSpec(ndim=self.rank + 2,
                                 axes={channel_axis: input_dim})
-    if self.padding == 'causal':
-      op_padding = 'valid'
-    else:
-      op_padding = self.padding
-    if not isinstance(op_padding, (list, tuple)):
-      op_padding = op_padding.upper()
-
     self._convolution_op = nn_ops.Convolution(
         input_shape,
         filter_shape=self.kernel.shape,
         dilation_rate=self.dilation_rate,
         strides=self.strides,
-        padding=op_padding,
+        padding=self._get_padding_op(),
         data_format=conv_utils.convert_data_format(self.data_format,
                                                    self.rank + 2))
     self.built = True
@@ -273,6 +266,15 @@ class Conv(Layer):
       return 1
     else:
       return -1
+
+  def _get_padding_op(self):
+    if self.padding == 'causal':
+      op_padding = 'valid'
+    else:
+      op_padding = self.padding
+    if not isinstance(op_padding, (list, tuple)):
+      op_padding = op_padding.upper()
+    return op_padding
 
 
 @keras_export('keras.layers.Conv1D', 'keras.layers.Convolution1D')

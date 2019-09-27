@@ -383,7 +383,8 @@ class DistributedDelegate(DistributedValues):
     # been initialized. Thus it should not query those of the underlying
     # components.
     if name.startswith("_self_") or name in (
-        "_use_resource_variables", "_attribute_sentinel"):
+        "_use_resource_variables", "_attribute_sentinel",
+        "_distributed_container"):
       return super(DistributedDelegate, self).__getattr__(name)
 
     # TODO(priyag): This needs to be made robust against pitfalls from mix use

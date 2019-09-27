@@ -90,7 +90,7 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
                                          const GraphDef& input,
                                          string* result) {
   mlir::MLIRContext context;
-  NodeSpecs specs;
+  GraphImportConfig specs;
 
   // Parse input arrays.
   std::vector<string> node_names;

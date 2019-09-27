@@ -737,6 +737,9 @@ tf_cc_test(
         "partially_decluster_pass_test.cc",
         "rearrange_function_argument_pass_test.cc",
     ],
+    # TODO(b/141643254) Re-enable msan after fixing use-of-uninitialized-value
+    # error.
+    tags = ["nomsan"],
     deps = [
         ":common",
         ":compilation_passes",

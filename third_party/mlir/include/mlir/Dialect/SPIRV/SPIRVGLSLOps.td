@@ -49,9 +49,9 @@ class SPV_GLSLUnaryOp<string mnemonic, int opcode, Type resultType,
     SPV_ScalarOrVectorOf<resultType>:$result
   );
 
-  let parser = [{ return parseGLSLUnaryOp(parser, result); }];
+  let parser = [{ return parseUnaryOp(parser, result); }];
 
-  let printer = [{ return printGLSLUnaryOp(getOperation(), p); }];
+  let printer = [{ return printUnaryOp(getOperation(), p); }];
 
   let verifier = [{ return success(); }];
 }

@@ -153,12 +153,13 @@ class DefaultTensorTie : public TensorTie {
       case ObjectType::OPENCL_TEXTURE:
       case ObjectType::OPENCL_BUFFER: {
         auto& dims = d.dimensions;
-        RETURN_IF_ERROR(
-            AllocateTensorMemory(env->context(), env->device(), dims.w, dims.h,
-                                 dims.c, d.object_def.data_type,
-                                 ToTensorStorageType(d.object_def.object_type,
-                                                     d.object_def.data_layout),
-                                 &cl_memory_));
+        const BHWC shape(dims.b, dims.h, dims.w, dims.c);
+        const TensorDescriptor desc{
+            d.object_def.data_type,
+            ToTensorStorageType(d.object_def.object_type,
+                                d.object_def.data_layout)};
+        RETURN_IF_ERROR(AllocateTensorMemory(env->context(), env->device(),
+                                             shape, desc, &cl_memory_));
         if (d.object_def.object_type == ObjectType::OPENCL_TEXTURE) {
           external_obj_ = OpenClTexture{cl_memory_.memory()};
         } else {

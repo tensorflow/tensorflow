@@ -10,6 +10,12 @@ package(
     licenses = ["notice"],  # Apache 2.0 License
 )
 
+keras_packages = [
+    "tensorflow.python",
+    "tensorflow.python.keras",
+    "tensorflow.python.keras.wrappers.scikit_learn",
+]
+
 gen_api_init_files(
     name = "keras_python_api_gen",
     api_name = "keras",
@@ -20,10 +26,7 @@ gen_api_init_files(
         "//tensorflow/python/keras",
         "//tensorflow/python:no_contrib",
     ],
-    packages = [
-        "tensorflow.python",
-        "tensorflow.python.keras",
-    ],
+    packages = keras_packages,
 )
 
 gen_api_init_files(
@@ -37,10 +40,7 @@ gen_api_init_files(
         "//tensorflow/python/keras",
         "//tensorflow/python:no_contrib",
     ],
-    packages = [
-        "tensorflow.python",
-        "tensorflow.python.keras",
-    ],
+    packages = keras_packages,
 )
 
 gen_api_init_files(
@@ -54,8 +54,5 @@ gen_api_init_files(
         "//tensorflow/python/keras",
         "//tensorflow/python:no_contrib",
     ],
-    packages = [
-        "tensorflow.python",
-        "tensorflow.python.keras",
-    ],
+    packages = keras_packages,
 )

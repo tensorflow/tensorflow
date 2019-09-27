@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
 
 #include <cstdlib>
 #include <numeric>
@@ -36,12 +36,12 @@ namespace gpu {
 
 namespace {
 
-HloInstruction* CreateCudnnConv(const char* call_target, const Shape& shape,
-                                HloInstruction* lhs, HloInstruction* rhs,
-                                const Window& window,
-                                const ConvolutionDimensionNumbers& dnums,
-                                int64 feature_group_count,
-                                const OpMetadata& metadata) {
+HloInstruction* CreateGpuConv(const char* call_target, const Shape& shape,
+                              HloInstruction* lhs, HloInstruction* rhs,
+                              const Window& window,
+                              const ConvolutionDimensionNumbers& dnums,
+                              int64 feature_group_count,
+                              const OpMetadata& metadata) {
   HloComputation* computation = lhs->parent();
 
   // This call returns a tuple of (conv_result, scratch_memory), where
@@ -64,7 +64,7 @@ HloInstruction* CreateCudnnConv(const char* call_target, const Shape& shape,
   return custom_call;
 }
 
-bool CanImplementAsCudnnForwardConv(HloInstruction* conv) {
+bool CanImplementAsGpuForwardConv(HloInstruction* conv) {
   const ConvolutionDimensionNumbers& dnums =
       conv->convolution_dimension_numbers();
   if (dnums.input_spatial_dimensions_size() > 3) {
@@ -630,20 +630,20 @@ static StatusOr<HloInstruction*> CreateCustomCallHelper(HloInstruction* conv) {
 
   std::tie(match, window, dnums, rhs) = MatchBackwardInput(conv);
   if (match) {
-    return CreateCudnnConv(kCudnnConvBackwardInputCallTarget, conv->shape(),
-                           conv->mutable_operand(0), rhs, window, dnums,
-                           conv->feature_group_count(), conv->metadata());
+    return CreateGpuConv(kCudnnConvBackwardInputCallTarget, conv->shape(),
+                         conv->mutable_operand(0), rhs, window, dnums,
+                         conv->feature_group_count(), conv->metadata());
   }
 
   std::tie(match, window, dnums, lhs) = MatchBackwardFilter(conv);
   if (match) {
-    return CreateCudnnConv(kCudnnConvBackwardFilterCallTarget, conv->shape(),
-                           lhs, conv->mutable_operand(1), window, dnums,
-                           conv->feature_group_count(), conv->metadata());
+    return CreateGpuConv(kCudnnConvBackwardFilterCallTarget, conv->shape(), lhs,
+                         conv->mutable_operand(1), window, dnums,
+                         conv->feature_group_count(), conv->metadata());
   }
 
   // If all else fails, try a forward convolution.
-  if (CanImplementAsCudnnForwardConv(conv)) {
+  if (CanImplementAsGpuForwardConv(conv)) {
     if (primitive_util::IsIntegralType(
             conv->operand(0)->shape().element_type())) {
       // In addition to replacing a convolution instruction with
@@ -682,17 +682,16 @@ static StatusOr<HloInstruction*> CreateCustomCallHelper(HloInstruction* conv) {
       TF_RETURN_IF_ERROR(
           conv->parent()->RemoveInstructionAndUnusedOperands(kernel_convert));
     }
-    return CreateCudnnConv(kCudnnConvForwardCallTarget, conv->shape(),
-                           conv->mutable_operand(0), conv->mutable_operand(1),
-                           conv->window(),
-                           conv->convolution_dimension_numbers(),
-                           conv->feature_group_count(), conv->metadata());
+    return CreateGpuConv(kCudnnConvForwardCallTarget, conv->shape(),
+                         conv->mutable_operand(0), conv->mutable_operand(1),
+                         conv->window(), conv->convolution_dimension_numbers(),
+                         conv->feature_group_count(), conv->metadata());
   }
 
   return nullptr;
 }
 
-// Tries to rewrite a single convolution into a call to cudnn.
+// Tries to rewrite a single convolution into a call to cudnn/miopen.
 StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
   CHECK_EQ(conv->opcode(), HloOpcode::kConvolution);
 
@@ -716,7 +715,8 @@ StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
   return true;
 }
 
-// Rewrites the convolutions in the given computation into calls to cudnn.
+// Rewrites the convolutions in the given computation into calls to
+// cudnn/miopen.
 // Returns true if it made any changes.
 StatusOr<bool> RunOnComputation(HloComputation* computation) {
   std::vector<HloInstruction*> convs;
@@ -735,7 +735,7 @@ StatusOr<bool> RunOnComputation(HloComputation* computation) {
 }
 }  // namespace
 
-StatusOr<bool> CudnnConvRewriter::Run(HloModule* module) {
+StatusOr<bool> GpuConvRewriter::Run(HloModule* module) {
   bool changed = false;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));

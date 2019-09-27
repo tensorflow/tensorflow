@@ -66,7 +66,6 @@ GPU_TEST = "test_gpu" in sys.argv[0]
         distribution=[
             strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
             strategy_combinations.mirrored_strategy_with_two_gpus,
-            strategy_combinations.mirrored_strategy_with_two_gpus_remote,
         ],
         mode=["graph", "eager"]))
 class MirroredTwoDeviceDistributionTest(
@@ -1155,10 +1154,8 @@ class MultiWorkerMirroredStrategyTest(
                 "Mirrored",
                 # pylint: disable=g-long-lambda
                 lambda: mirrored_strategy.MirroredStrategy(
-                    devices=["/job:worker/task:0/gpu:0"],
-                    cross_device_ops=cross_device_ops_lib.MultiWorkerAllReduce([
-                        "/job:worker/task:0"
-                    ], context.num_gpus())),
+                    devices=["/job:worker/task:0/gpu:{}".format(
+                        i) for i in range(context.num_gpus())]),
                 required_gpus=1)
         ],
         mode=["graph"]))

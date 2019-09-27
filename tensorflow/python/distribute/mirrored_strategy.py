@@ -422,6 +422,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     self._host_input_device = numpy_dataset.SingleDevice(
         self._input_workers.worker_devices[0])
     self._is_multi_worker_training = False
+    logging.info("Using MirroredStrategy with devices %r", devices)
     device_spec = tf_device.DeviceSpec.from_string(
         self._input_workers.worker_devices[0])
     # Ensures when we enter strategy.scope() we use the correct default device
@@ -466,6 +467,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       # TODO(yuefengz): make `choose_the_best` work with device strings
       # containing job names.
       self._inferred_cross_device_ops = cross_device_ops_lib.NcclAllReduce()
+
+    logging.info("Using MirroredStrategy with remote devices %r", devices)
 
   def _get_variable_creator_initial_value(self,
                                           replica_id,

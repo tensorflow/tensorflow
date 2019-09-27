@@ -1952,7 +1952,7 @@ class FromKerasFile(TestModels, parameterized.TestCase):
       self.assertValidDebugInfo(converter._debug_info)
 
 
-class GrapplerTest(TestModels):
+class GrapplerTest(TestModels, parameterized.TestCase):
 
   def testConstantFolding(self):
     ops.disable_eager_execution()
@@ -1986,6 +1986,34 @@ class GrapplerTest(TestModels):
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([3, 3] == output_details[0]['shape']).all())
 
+  @parameterized.named_parameters(
+      ('EnableMlirConverter', True),  # enable mlir
+      ('DisableMlirConverter', False))  # disable mlir
+  def testInputNodeIsNotFolded(self, enable_mlir):
+    ops.disable_eager_execution()
+    # Constant folding handles the tf.broadcast_to operation which was not
+    # supported by the TFLite at the time this test was added.
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(shape=[3], dtype=dtypes.float32)
+      y_const = constant_op.constant([1., 2., 3.])
+      y_add = y_const + y_const
+      out_tensor = in_tensor * y_add
+      sess = session.Session()
+
+    # Convert model.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor, y_const],
+                                                  [out_tensor])
+    converter.experimental_enable_mlir_converter = enable_mlir
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 2)
+    self.assertEqual('Placeholder', input_details[0]['name'])
+    self.assertEqual('Const', input_details[1]['name'])
 
 class ImportOpsUtilTest(test_util.TensorFlowTestCase):
 

@@ -948,9 +948,12 @@ class Network(base_layer.Layer):
     in a single file.
 
     Saved models can be reinstantiated via `keras.models.load_model`.
-    The model returned by `load_model`
-    is a compiled model ready to be used (unless the saved model
-    was never compiled in the first place).
+    The model returned by `load_model` is a compiled model ready to be used
+    (unless the saved model was never compiled in the first place).
+
+    Models built with the Sequential and Functional API can be saved to both the
+    HDF5 and SavedModel formats. Subclassed models can only be saved with the
+    SavedModel format.
 
     Arguments:
         filepath: String, path to SavedModel or H5 file to save the model.
@@ -958,14 +961,14 @@ class Network(base_layer.Layer):
             target location, or provide the user with a manual prompt.
         include_optimizer: If True, save optimizer's state together.
         save_format: Either 'tf' or 'h5', indicating whether to save the model
-          to Tensorflow SavedModel or HDF5. The default is currently 'h5', but
-          will switch to 'tf' in TensorFlow 2.0. The 'tf' option is currently
-          disabled (use `tf.keras.experimental.export_saved_model` instead).
-      signatures: Signatures to save with the SavedModel. Applicable to the 'tf'
-        format only. Please see the `signatures` argument in
-        `tf.saved_model.save` for details.
-      options: Optional `tf.saved_model.SaveOptions` object that specifies
-        options for saving to SavedModel.
+            to Tensorflow SavedModel or HDF5. The default is currently 'h5', but
+            will switch to 'tf' in TensorFlow 2.0. The 'tf' option is currently
+            disabled (use `tf.keras.experimental.export_saved_model` instead).
+        signatures: Signatures to save with the SavedModel. Applicable to the
+            'tf' format only. Please see the `signatures` argument in
+            `tf.saved_model.save` for details.
+        options: Optional `tf.saved_model.SaveOptions` object that specifies
+            options for saving to SavedModel.
 
     Example:
 

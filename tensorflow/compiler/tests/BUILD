@@ -343,6 +343,7 @@ tf_xla_py_test(
     name = "concat_ops_test",
     size = "medium",
     srcs = ["concat_ops_test.py"],
+    tags = ["many_xla_args"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",

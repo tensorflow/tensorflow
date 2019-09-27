@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,17 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-%include "tensorflow/python/platform/base.i"
-
 %{
-#include "tensorflow/python/lib/core/py_func.h"
+#include "tensorflow/python/lib/core/bfloat16.h"
 %}
 
-%ignoreall
+%init %{
+tensorflow::RegisterNumpyBfloat16();
+%}
 
-%unignore tensorflow;
-%unignore tensorflow::InitializePyTrampoline;
+%{
+PyObject* TF_bfloat16_type() {
+  return tensorflow::Bfloat16PyType();
+}
+%}
 
-%include "tensorflow/python/lib/core/py_func.h"
-
-%unignoreall
+PyObject* TF_bfloat16_type();

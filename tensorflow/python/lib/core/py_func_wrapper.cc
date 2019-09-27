@@ -14,11 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "include/pybind11/pybind11.h"
-#include "tensorflow/python/lib/core/bfloat16.h"
+#include "tensorflow/python/lib/core/py_func.h"
 
-PYBIND11_MODULE(_pywrap_bfloat16, m) {
-  tensorflow::RegisterNumpyBfloat16();
+namespace py = pybind11;
 
-  m.def("TF_bfloat16_type",
-        [] { return pybind11::handle(tensorflow::Bfloat16PyType()); });
+PYBIND11_MODULE(_pywrap_py_func, m) {
+  m.def("initialize_py_trampoline", [](py::object trampoline) {
+    return tensorflow::InitializePyTrampoline(trampoline.ptr());
+  });
 }
