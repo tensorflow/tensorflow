@@ -2718,6 +2718,10 @@ class StructuredFunctionWrapper(object):
     func_name = "_".join(
         [readable_transformation_name,
          function_utils.get_func_name(func)])
+    # Sanitize function name to remove symbols that interfere with graph
+    # construction.
+    for symbol in ["<", ">"]:
+      func_name = func_name.replace(symbol, "")
 
     ag_ctx = autograph_ctx.control_status_ctx()
 
