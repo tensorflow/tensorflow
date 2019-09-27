@@ -274,7 +274,7 @@ class ForwardGradientAccumulator(object):
         t = ops.convert_to_tensor(t.handle)
       pywrap_tensorflow.TFE_Py_ForwardAccumulatorWatch(self._accumulator, t, g)
 
-  def jvp(self, target):
+  def jvp(self, target, unconnected_gradients=UnconnectedGradients.NONE):
     """Fetches the Jacobian-vector product computed for `target`.
 
     Note that this function performs no computation, and simply looks up a
@@ -284,16 +284,24 @@ class ForwardGradientAccumulator(object):
 
     Args:
       target: A watched Tensor or structure of Tensors to fetch the JVPs for.
+      unconnected_gradients: A value which can either hold 'none' or 'zero' and
+        alters the value which will be returned if no JVP was computed for
+        `target`. The possible values and effects are detailed in
+        'tf.UnconnectedGradients' and it defaults to 'none'.
 
     Returns:
       Tensors with the same shapes and dtypes as `target`, or None if no JVP
       is available.
     """
+    unconnected_gradients = UnconnectedGradients(unconnected_gradients)
     if self._accumulator is None:
       raise ValueError("Called jvp() without first tracing anything.")
     def _fetch_jvp(tensor):
       if hasattr(tensor, "handle"):
         tensor = ops.convert_to_tensor(tensor.handle)
-      return pywrap_tensorflow.TFE_Py_ForwardAccumulatorJVP(
+      result = pywrap_tensorflow.TFE_Py_ForwardAccumulatorJVP(
           self._accumulator, tensor)
+      if result is None and unconnected_gradients == UnconnectedGradients.ZERO:
+        return array_ops.zeros_like(tensor)
+      return result
     return nest.map_structure(_fetch_jvp, target)

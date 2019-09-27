@@ -64,12 +64,8 @@ def _jvp(f, primals, tangents):
   """Compute the jacobian of `f` at `primals` multiplied by `tangents`."""
   with forwardprop.ForwardGradientAccumulator(primals, tangents) as acc:
     primals_out = f(*primals)
-  tangents_out = acc.jvp(primals_out)
-  if primals_out is not None and tangents_out is None:
-    # TODO(allenl): Support UnconnectedGradients as an accumulator constructor
-    # argument.
-    return primals_out, array_ops.zeros_like(primals_out)
-  return primals_out, tangents_out
+  return primals_out, acc.jvp(
+      primals_out, unconnected_gradients=UnconnectedGradients.ZERO)
 
 
 def _jacfwd(f, primals):
@@ -749,6 +745,15 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       x2 = v + .1
       self.assertAllClose([.1, -.2, .3], acc.jvp(x2))
 
+  def testUnconnectedGradients(self):
+    x = constant_op.constant(-1.)
+    with forwardprop.ForwardGradientAccumulator(x, 0.1) as acc:
+      self.assertAllClose(0.1, acc.jvp(x, unconnected_gradients="zero"))
+      self.assertAllClose(0.1, acc.jvp(x, unconnected_gradients="none"))
+      y = constant_op.constant(-2.)
+      self.assertAllClose(0.0, acc.jvp(y, unconnected_gradients="zero"))
+      self.assertIsNone(acc.jvp(y, unconnected_gradients="none"))
+
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testVariableWatchedFunction(self):
 
@@ -811,4 +816,3 @@ if __name__ == "__main__":
   # TODO(allenl): Also test with 1.x-style graph mode.
   ops.enable_eager_execution()
   test.main()
-
