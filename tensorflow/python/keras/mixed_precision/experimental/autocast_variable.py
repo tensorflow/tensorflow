@@ -91,11 +91,7 @@ class AutoCastVariable(variables.Variable):
     val = self._variable.value()
     if not self._should_cast():
       return val
-    # We colocate_with(None) to ignore the existing device constraints, so that
-    # the cast is always done on the variable's device
-    with ops.colocate_with(None, ignore_existing=True):
-      with ops.device(val.device):
-        return math_ops.cast(val, self.dtype)
+    return math_ops.cast(val, self.dtype)
 
   def read_value(self):
     val = self._variable.read_value()
@@ -128,9 +124,7 @@ class AutoCastVariable(variables.Variable):
     val = ops.internal_convert_to_tensor(self._variable,
                                          self._variable.dtype, name,
                                          as_ref=False)
-    with ops.colocate_with(None, ignore_existing=True):
-      with ops.device(val.device):
-        return math_ops.cast(val, self.dtype)
+    return math_ops.cast(val, self.dtype)
 
   def _should_act_as_resource_variable(self):
     """Pass resource_variable_ops.is_resource_variable check."""
