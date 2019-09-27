@@ -423,7 +423,7 @@ def MyOp : ... {
     OpBuilder<"Builder *builder, OperationState &state, float val = 0.5f", [{
       state.addAttribute("attr", builder->getF32FloatAttr(val));
     ]}>
-  ]
+  ];
 }
 ```
 
