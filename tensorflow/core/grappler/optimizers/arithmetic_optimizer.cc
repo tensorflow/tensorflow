@@ -3286,6 +3286,10 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
           OptimizedNodeName(ParseNodeScopeAndName(node->name()), "Axis"));
       axis->set_op("Const");
       axis->set_device(node->device());
+      // We need to add a control edge from input slice to guarantee that axis
+      // constant will be executed in the same frame as `input_slice`, otherwise
+      // ExpandDims might have mismatched input frames.
+      axis->add_input(absl::StrCat("^", ParseTensorName(input_slice).node()));
       auto axis_attr = axis->mutable_attr();
       SetDataTypeToAttr(DT_INT32, "dtype", axis);
       auto* axis_t = (*axis_attr)["value"].mutable_tensor();
