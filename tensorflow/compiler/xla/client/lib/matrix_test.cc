@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 
+#include <limits>
+
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
@@ -133,7 +135,6 @@ Array3D<float> BatchedAValsFull() {
 
 XLA_TEST_F(MatrixTest, RowBatchDot) {
   XlaBuilder builder(TestName());
-
   int n = 4;
 
   XlaOp a, row, index;
@@ -177,9 +178,9 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
   auto to_vec = [](absl::string_view s) {
     std::vector<int64> v;
     v.reserve(s.size());
-    int ellipsis_dim = 0;
+    int e = -3;
     for (auto c : s) {
-      v.push_back(c == '.' ? ellipsis_dim++ : int64{c});
+      v.push_back(c == '.' ? e++ : int64{c});
     }
     return v;
   };
@@ -190,9 +191,12 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
   };
 
   std::vector<std::vector<string>> good_test_cases = {
-      {"ab", "bc", "ac"},          {"Bab", "Bbc", "Bac"},
-      {"ab", "cd", "dcba"},        {"abc", "abd", "cbd"},
-      {"...ab", "...bc", "...ac"}, {"a...bc", "...abd", "cbd..."},
+      {"ab", "bc", "ac"},           {"Bab", "Bbc", "Bac"},
+      {"ab", "cd", "dcba"},         {"abc", "abd", "cbd"},
+      {"...ab", "...bc", "...ac"},  {"a...bc", "...abd", "cbd..."},
+      {"...ab", "...bc", "ac"},     {"...b", "...bc", "...c"},
+      {"...abz", "...bc", "...ac"}, {"...ab", "...bcz", "...ac"},
+      {"abz", "bc", "ac"},          {"ab", "bcz", "ac"},
   };
   for (auto test_case : good_test_cases) {
     auto parse_result_or_status =
@@ -213,9 +217,8 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
       "a",
       "ab->ba",
       "ab,bc,cd->ad",
+
       "a...b...,bc->a...c",
-      "...ab,...bc->ac",
-      "...b,...bc->...c",
   };
   for (auto test_case : einsum_strings_that_fail_parsing) {
     auto parse_result_or_status = ParseEinsumString(test_case, 3, 3);
@@ -224,12 +227,9 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
   std::vector<std::vector<string>> einsum_strings_that_fail_numeric_validation =
       {
           {"a", "b", "c"},
-          {"ab", "bc", "acd"},
-          {"abz", "bc", "ac"},
-          {"ab", "bcz", "ac"},
           {"...a", "...b", "...c"},
-          {"...abz", "...bc", "...ac"},
-          {"...ab", "...bcz", "...ac"},
+          {"abb", "bcc", "ac"},
+          {"ab", "bc", "ad"},
       };
 
   for (auto test_case : einsum_strings_that_fail_numeric_validation) {
