@@ -3299,6 +3299,7 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
       output->set_op("ExpandDims");
       output->set_device(node->device());
       SetDataTypeToAttr(output_properties->dtype(), "T", output);
+      SetDataTypeToAttr(DT_INT32, "Tdim", output);
       output->add_input(input_slice);
       output->add_input(axis->name());
     }
