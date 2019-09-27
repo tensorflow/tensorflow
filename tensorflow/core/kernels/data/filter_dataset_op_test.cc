@@ -45,8 +45,7 @@ class FilterDatasetParams : public DatasetParams {
     return other_arguments_;
   }
 
-  Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override {
+  Status GetInputNames(std::vector<string>* input_placeholder) const override {
     input_placeholder->reserve(input_dataset_params_.size() +
                                other_arguments_.size());
     input_placeholder->emplace_back(FilterDatasetOp::kInputDataset);

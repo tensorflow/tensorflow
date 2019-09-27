@@ -45,8 +45,7 @@ class FlatMapDatasetParams : public DatasetParams {
     return other_arguments_;
   }
 
-  Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override {
+  Status GetInputNames(std::vector<string>* input_placeholder) const override {
     input_placeholder->emplace_back(FlatMapDatasetOp::kInputDataset);
     for (int i = 0; i < other_arguments_.size(); ++i) {
       input_placeholder->emplace_back(

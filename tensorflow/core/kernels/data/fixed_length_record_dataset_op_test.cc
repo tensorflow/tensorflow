@@ -49,8 +49,7 @@ class FixedLengthRecordDatasetParams : public DatasetParams {
         CreateTensor<tstring>(TensorShape({}), {ToString(compression_type_)})};
   }
 
-  Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override {
+  Status GetInputNames(std::vector<string>* input_placeholder) const override {
     *input_placeholder = {FixedLengthRecordDatasetOp::kFileNames,
                           FixedLengthRecordDatasetOp::kHeaderBytes,
                           FixedLengthRecordDatasetOp::kRecordBytes,
