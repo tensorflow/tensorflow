@@ -1,5 +1,8 @@
 # Settings for apollo3 evb and SparkFun Edge platforms.
-ifeq ($(TARGET),$(filter $(TARGET),apollo3evb sparkfun_edge))
+ifeq ($(TARGET),$(filter $(TARGET),\
+  apollo3evb\
+  sparkfun_edge\
+  ))
   export PATH := $(MAKEFILE_DIR)/downloads/gcc_embedded/bin/:$(PATH)
   TARGET_ARCH := cortex-m4
   TARGET_TOOLCHAIN_PREFIX := arm-none-eabi-
