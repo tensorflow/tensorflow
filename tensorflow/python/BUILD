@@ -1040,12 +1040,24 @@ py_library(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "_op_def_registry",
+    srcs = ["framework/op_def_registry.cc"],
+    module_name = "_op_def_registry",
+    deps = [
+        ":pybind11_status",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:protos_all_cc",
+        "@pybind11",
+    ],
+)
+
 py_library(
     name = "op_def_registry",
     srcs = ["framework/op_def_registry.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":pywrap_tensorflow",
+        ":_op_def_registry",
         "//tensorflow/core:protos_all_py",
     ],
 )
@@ -5140,6 +5152,7 @@ genrule(
         "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
         "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
+        "//tensorflow/core:framework_internal_impl",  # op_def_registry
     ],
     outs = ["pybind_symbol_target_libs_file.txt"],
     cmd = select({
