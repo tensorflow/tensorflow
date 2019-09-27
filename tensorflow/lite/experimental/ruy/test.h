@@ -2118,7 +2118,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::VerifyNonTrivial() const {
   }
   if (!spec.multiplier_exponent_perchannel) {
     RUY_CHECK_LE(count_clamped, std::floor(2 * kClampRatio * size));
-    if (size > 10) {
+    if (size > 1000) {
       RUY_CHECK(found_distinct_values);
     }
   }
