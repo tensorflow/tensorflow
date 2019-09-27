@@ -1636,7 +1636,7 @@ def adjust_brightness(image, delta):
 
   Returns:
     A brightness-adjusted tensor of the same shape and type as `image`.
-
+  
   Usage Example:
     ```python
     import tensorflow as tf
@@ -1685,7 +1685,7 @@ def adjust_contrast(images, contrast_factor):
 
   Returns:
     The contrast-adjusted image or images.
-
+    
   Usage Example:
     ```python
     import tensorflow as tf
@@ -2012,7 +2012,7 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
       interaction with the graph-level random seed.
 
   Returns:
-    Adjusted image, same shape and DType as `image`.
+    Adjusted image(s), same shape and DType as `image`.
 
   Raises:
     ValueError: if `min_jpeg_quality` or `max_jpeg_quality` is invalid.
@@ -2136,14 +2136,14 @@ def adjust_saturation(image, saturation_factor, name=None):
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
-
+    
   Usage Example:
     ```python
     >> import tensorflow as tf
     >> x = tf.random.normal(shape=(256, 256, 3))
     >> tf.image.adjust_saturation(x, 0.5)
     ```
-
+    
   Raises:
     InvalidArgumentError: input must have 3 channels
   """
@@ -3469,15 +3469,15 @@ def image_gradients(image):
   Returns:
     Pair of tensors (dy, dx) holding the vertical and horizontal image
     gradients (1-step finite difference).
-
+    
   Usage Example:
     ```python
     BATCH_SIZE = 1
     IMAGE_HEIGHT = 5
     IMAGE_WIDTH = 5
     CHANNELS = 1
-    image = tf.reshape(tf.range(IMAGE_HEIGHT * IMAGE_WIDTH * CHANNELS,
-      delta=1, dtype=tf.float32),
+    image = tf.reshape(tf.range(IMAGE_HEIGHT * IMAGE_WIDTH * CHANNELS, 
+      delta=1, dtype=tf.float32), 
       shape=(BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH, CHANNELS))
     dx, dy = tf.image.image_gradients(image)
     print(image[0, :,:,0])
@@ -3493,7 +3493,7 @@ def image_gradients(image):
       [5. 5. 5. 5. 5.]
       [5. 5. 5. 5. 5.]
       [5. 5. 5. 5. 5.]
-      [0. 0. 0. 0. 0.]], shape=(5, 5), dtype=float32)
+      [0. 0. 0. 0. 0.]], shape=(5, 5), dtype=float32)    
     print(dy[0, :,:,0])
     tf.Tensor(
       [[1. 1. 1. 1. 0.]
@@ -3502,7 +3502,7 @@ def image_gradients(image):
       [1. 1. 1. 1. 0.]
       [1. 1. 1. 1. 0.]], shape=(5, 5), dtype=float32)
     ```
-
+    
   Raises:
     ValueError: If `image` is not a 4D tensor.
   """
