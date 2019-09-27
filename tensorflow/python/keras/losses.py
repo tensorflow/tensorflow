@@ -1171,7 +1171,7 @@ class Pinball(LossFunctionWrapper):
   Usage:
 
   ```python
-  pinball_loss = tf.keras.losses.Pinball(tau=.1, axis=1)
+  pinball = tf.keras.losses.Pinball(tau=.1, axis=1)
   loss = pinball([0., 0., 1., 1.], [1., 1., 1., 0.])
 
   print('Loss: ', loss.numpy())  # Loss:
