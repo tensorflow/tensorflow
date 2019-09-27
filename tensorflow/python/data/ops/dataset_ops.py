@@ -453,18 +453,18 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     # ==> [ {"a": 1, "b": 3, "c": 5}, {"a": 2, "b": 4, "c:" 6} ]
 
 
-    # Example 1: Two tensors can be combined into one Dataset object.
-    features = tf.constant([[1, 3], [2, 3], [2, 1], [1, 2], [3, 3], [3, 2]]) # ==> 6x2 tensor
-    labels = tf.constant(['A', 'A', 'B', 'B', 'A', 'B']) # ==> 6x1 tensor
+    # Two tensors can be combined into one Dataset object.
+    features = tf.constant([[1, 3], [2, 1], [3, 3]]) # ==> 3x2 tensor
+    labels = tf.constant(['A', 'B', 'A']) # ==> 3x1 tensor
     dataset = Dataset.from_tensor_slices((features, labels))
 
-    # Example 2: Both the features and the labels tensors can be converted
+    # Both the features and the labels tensors can be converted
     # to a Dataset object separately and combined after.
     features_dataset = Dataset.from_tensor_slices(features)
     labels_dataset = Dataset.from_tensor_slices(labels)
     dataset = Dataset.zip((features_dataset, labels_dataset))
 
-    # Example 3: A batched feature and label set can be converted to a Dataset
+    # A batched feature and label set can be converted to a Dataset
     # in similar fashion.
     batched_features = tf.constant([[[1, 3], [2, 3]],
                                     [[2, 1], [1, 2]],
