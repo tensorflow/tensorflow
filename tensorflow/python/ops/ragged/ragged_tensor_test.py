@@ -1840,6 +1840,8 @@ class RaggedTensorSpecTest(test_util.TensorFlowTestCase,
        RaggedTensorSpec([None, None], dtypes.float32, 1)),
       (RaggedTensorSpec([32, 2], dtypes.float32, 0),
        RaggedTensorSpec([2], dtypes.float32, -1)),
+      (RaggedTensorSpec([32, None, 4], dtypes.float32, 1, dtypes.int32),
+       RaggedTensorSpec([None, 4], dtypes.float32, 0, dtypes.int32)),
   ])  # pyformat: disable
   def testUnbatch(self, spec, expected):
     self.assertEqual(spec._unbatch(), expected)
