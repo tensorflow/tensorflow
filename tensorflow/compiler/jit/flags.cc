@@ -78,6 +78,12 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
       Flag("tf_xla_max_cluster_size",
            &mark_for_compilation_flags->tf_xla_max_cluster_size,
            "Maximum number of operators in an XLA compilation."),
+      Flag("tf_xla_supported_nodes",
+           &mark_for_compilation_flags->tf_xla_supported_nodes,
+           "Limit the nodes clustered to XLA to those nodes. If multiple, "
+           "separate them by comma. Shortcut: PW: all point-wise operation. "
+           "RED: All reduction operation. FUSIBLE: all nodes that XLA can fuse "
+           "in some cases."),
       Flag("tf_xla_clustering_debug",
            &mark_for_compilation_flags->tf_xla_clustering_debug,
            "Dump graphs during XLA compilation."),

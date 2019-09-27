@@ -1108,6 +1108,34 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
 
   VLOG(2) << "sorted_nodes.size() = " << sorted_nodes.size();
 
+  MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
+  std::unordered_set<string> whitelist;
+  for (auto s : absl::StrSplit(flags->tf_xla_supported_nodes, ",")) {
+    if (s == "PW") {
+      whitelist.insert({"Add",        "AddN",     "Cast",       "AddV2",
+                        "ComplexAbs", "Const",    "Equal",      "FloorDiv",
+                        "Identity",   "Less",     "LogicalAnd", "LogicalNot",
+                        "LogicalOr",  "Maximum",  "Minimum",    "Mul",
+                        "Neg",        "Pow",      "RealDiv",    "Relu",
+                        "Round",      "Rsqrt",    "Sqrt",       "Sub",
+                        "Tanh",       "Transpose"});
+    } else if (s == "RED") {
+      whitelist.insert({"All", "Any", "Min", "Max", "Mean", "Prod", "Sum"});
+    } else if (s == "SMALL") {
+      whitelist.insert({"Fill", "Max", "Mean", "NoOp", "Prod", "Range",
+                        "Reshape", "Shape", "Sum", "Transpose"});
+    } else if (s.size() > 0) {
+      whitelist.insert(string(s));
+    }
+  }
+
+  if (VLOG_IS_ON(1) && whitelist.size() > 0) {
+    std::vector<string> vwhitelist(whitelist.begin(), whitelist.end());
+    std::sort(vwhitelist.begin(), vwhitelist.end());
+    VLOG(1) << "XLA clustering will only consider the following TF operations: "
+            << absl::StrJoin(vwhitelist, " ");
+  }
+
   for (Node* node : sorted_nodes) {
     if (*debug_options_.fuel <= 0) {
       VLOG(1)
@@ -1142,6 +1170,11 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
 
     if (!RecursiveCompilabilityChecker{&op_filter, &jit_device_type}
              .IsCompilableNode(*node, lib_runtime)) {
+      continue;
+    }
+
+    if (whitelist.size() > 0 && whitelist.count(node->def().op()) != 1) {
+      VLOG(1) << "Rejecting " << node->name() << " as is was not whitelisted.";
       continue;
     }
 
