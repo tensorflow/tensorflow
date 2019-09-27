@@ -73,8 +73,6 @@ class Environment {
 
 TensorStorageType GetOptimalStorageType(const CLDevice& gpu);
 
-Status CreateDefaultEnvironment(Environment* result);
-
 Status CreateEnvironment(Environment* result);
 Status CreateGLCompatibleEnvironment(cl_context_properties egl_context,
                                      cl_context_properties egl_display,

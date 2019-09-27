@@ -218,10 +218,6 @@ TensorStorageType GetOptimalStorageType(const CLDevice& gpu) {
   return TensorStorageType::BUFFER;
 }
 
-Status CreateDefaultEnvironment(Environment* result) {
-  return CreateEnvironment(result, false, 0, 0);
-}
-
 Status CreateEnvironment(Environment* result) {
   return CreateEnvironment(result, false, 0, 0);
 }
