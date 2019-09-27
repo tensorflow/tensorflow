@@ -33,8 +33,8 @@ AP3_MD5 := "fc9cbda4562ea97ce21b6df542b66597"
 CUST_CMSIS_URL := "https://github.com/AmbiqMicro/TFLiteMicro_CustCMSIS/archive/8f63966c5692e6a3a83956efd2e4aed77c4c9949.zip"
 CUST_CMSIS_MD5 := "4fb327201034ee0a820b72de1e807d27"
 
-SPARKFUN_BSPS_URL := "https://github.com/sparkfun/SparkFun_Apollo3_AmbiqSuite_BSPs/archive/v0.0.1.zip"
-SPARKFUN_BSPS_MD5 := "51835a37bb5c06a6769b180e63008a12"
+SPARKFUN_BSPS_URL := "https://github.com/sparkfun/SparkFun_Apollo3_AmbiqSuite_BSPs/archive/v0.0.2.zip"
+SPARKFUN_BSPS_MD5 := "e616044ef8a719b5c7ee8b54311a3ed8"
 
 STM32_BARE_LIB_URL := "https://github.com/google/stm32_bare_lib/archive/c07d611fb0af58450c5a3e0ab4d52b47f99bc82d.zip"
 STM32_BARE_LIB_MD5 := "282bff40d4d0b92278fd123a3b6e3123"
