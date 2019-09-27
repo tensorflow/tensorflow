@@ -1089,7 +1089,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
       &compile_time_const_nodes, lib_runtime));
 
   // Iterate over nodes in sorted order so that compiler fuel is deterministic.
-  // We can't simply pass op_nodes().begin() and op_nodes().end to the
+  // We can't simply pass op_nodes().begin() and op_nodes().end() to the
   // std::vector constructor because they're not proper iterators, with
   // iterator_traits defined and so on.
   std::vector<Node*> sorted_nodes;
