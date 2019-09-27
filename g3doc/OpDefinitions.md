@@ -844,7 +844,7 @@ requirements that were desirable:
 * The op's traits (e.g., commutative) are modelled along with the op in
   the registry.
 * The op's operand/return type constraints are modelled along with the op in
-  the registry (see [Type constraints](#type-constraints) discussion below),
+  the registry (see [Shape inference](#shape-inference) discussion below),
   this allows (e.g.) optimized concise syntax in textual dumps.
 * Behavior of the op is documented along with the op with a summary and a
   description. The description is written in markdown and extracted for

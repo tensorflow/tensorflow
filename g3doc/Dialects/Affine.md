@@ -300,7 +300,7 @@ operation ::= ssa-id `=` `affine.apply` affine-map dim-and-symbol-use-list
 ```
 
 The `affine.apply` operation applies an
-[affine mapping](../LangRef.md#affine-expressions) to a list of SSA values,
+[affine mapping](#affine-expressions) to a list of SSA values,
 yielding a single SSA value. The number of dimension and symbol arguments to
 affine.apply must be equal to the respective number of dimensional and symbolic
 inputs to the affine mapping; the `affine.apply` operation always returns one
@@ -392,7 +392,7 @@ space defined by an integer set (a conjunction of affine constraints). A single
 `affine.if` may end with an optional `else` clause.
 
 The condition of the `affine.if` is represented by an
-[integer set](../LangRef.md#integer-sets) (a conjunction of affine constraints),
+[integer set](#integer-sets) (a conjunction of affine constraints),
 and the SSA values bound to the dimensions and symbols in the integer set. The
 [same restrictions](#restrictions-on-dimensions-and-symbols) hold for these SSA
 values as for all bindings of SSA values to dimensions and symbols.

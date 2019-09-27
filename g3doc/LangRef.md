@@ -31,7 +31,7 @@ which means that values are defined before use and have scope defined by their
 dominance relations. Operations may produce zero or more results, and each is a
 distinct SSA value with its own type defined by the [type system](#type-system).
 
-The unit of code in MLIR is an [Operation](#operation). Operations allow for
+The unit of code in MLIR is an [Operation](#operations). Operations allow for
 representing many different concepts: allocating buffers, producing views to
 transform them, target-independent arithmetic, target-specific operations, and
 even arbitrary user-defined high-level operations including the

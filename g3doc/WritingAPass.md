@@ -312,7 +312,7 @@ program has been run through the passes. This provides several benefits:
 ## Pass Registration
 
 Briefly shown in the example definitions of the various
-[pass types](#pass-types) is the `PassRegistration` class. This is a utility to
+pass types is the `PassRegistration` class. This is a utility to
 register derived pass classes so that they may be created, and inspected, by
 utilities like mlir-opt. Registering a pass class takes the form:
 

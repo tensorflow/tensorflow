@@ -47,7 +47,7 @@ The `vector.transfer_read` performs a blocking read from a slice within a scalar
 [vector](../LangRef.md#vector-type) of the same elemental type. The slice is
 further defined by a full-rank index within the MemRef, supplied as the operands
 `2 .. 1 + rank(memref)`. The permutation_map [attribute](../LangRef.md#attributes)
-is an [affine-map](../LangRef.md#affine-maps) which specifies the transposition on
+is an [affine-map](Affine.md#affine-maps) which specifies the transposition on
 the slice to match the vector shape. The size of the slice is specified by the
 size of the vector, given as the return type. Optionally, an `ssa-value` of the
 same elemental type as the MemRef is provided as the last operand to specify
@@ -146,7 +146,7 @@ within a scalar [MemRef](../LangRef.md#memref-type) of the same elemental type,
 supplied as its second operand. The slice is further defined by a full-rank
 index within the MemRef, supplied as the operands `3 .. 2 + rank(memref)`. The
 permutation_map [attribute](../LangRef.md#attributes) is an
-[affine-map](../LangRef.md#affine-maps) which specifies the transposition on the
+[affine-map](Affine.md#affine-maps) which specifies the transposition on the
 slice to match the vector shape. The size of the slice is specified by the size
 of the vector. This operation is called 'write' by opposition to 'store' because
 the super-vector granularity is generally not representable with a single

@@ -22,8 +22,8 @@ This tutorial is divided in the following chapters:
     high level language specific semantics towards a generic linear-algebra
     oriented dialect for optimizations. Ultimately we will emit LLVM IR for code
     generation.
--   [Chapter #5](Ch-6.md): A REPL?
--   [Chapter #6](Ch-7.md): Custom backends? GPU using LLVM? TPU? XLA
+-   [Chapter #6](Ch-6.md): A REPL?
+-   [Chapter #7](Ch-7.md): Custom backends? GPU using LLVM? TPU? XLA
 
 ## The Language
 
