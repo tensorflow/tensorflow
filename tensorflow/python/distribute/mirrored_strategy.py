@@ -426,6 +426,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         cross_device_ops_lib.choose_the_best(devices))
     self._host_input_device = numpy_dataset.SingleDevice("/cpu:0")
     self._is_multi_worker_training = False
+    logging.info("Using MirroredStrategy with local devices %r", devices)
 
   def _initialize_multi_worker(self, devices):
     """Initializes the object for multi-worker training."""
@@ -465,6 +466,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       # TODO(yuefengz): make `choose_the_best` work with device strings
       # containing job names.
       self._inferred_cross_device_ops = cross_device_ops_lib.NcclAllReduce()
+
+    logging.info("Using MirroredStrategy with remote devices %r", devices)
 
   def _get_variable_creator_initial_value(self,
                                           replica_id,
