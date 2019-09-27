@@ -47,17 +47,16 @@ class MapDefunOpParams : public DatasetParams {
     return input_tensors;
   }
 
-  Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override {
-    input_placeholder->clear();
+  Status GetInputNames(std::vector<string>* input_names) const override {
+    input_names->clear();
 
-    input_placeholder->reserve(arguments_.size() + captured_inputs_.size());
+    input_names->reserve(arguments_.size() + captured_inputs_.size());
     for (int i = 0; i < arguments_.size(); ++i) {
-      input_placeholder->emplace_back(
+      input_names->emplace_back(
           strings::StrCat(MapDefunOp::kArguments, "_", i));
     }
     for (int i = 0; i < captured_inputs_.size(); ++i) {
-      input_placeholder->emplace_back(
+      input_names->emplace_back(
           strings::StrCat(MapDefunOp::kCapturedInputs, "_", i));
     }
     return Status::OK();
@@ -93,13 +92,13 @@ class MapDefunOpTest : public DatasetOpsTestBaseV2 {
   // Creates a new `MapDefun` op kernel
   Status CreateMapDefunOpKernel(const MapDefunOpParams& params,
                                 std::unique_ptr<OpKernel>* map_defun_kernel) {
-    std::vector<string> input_placeholders;
-    TF_RETURN_IF_ERROR(params.GetInputPlaceholder(&input_placeholders));
+    std::vector<string> input_namess;
+    TF_RETURN_IF_ERROR(params.GetInputNames(&input_namess));
     AttributeVector attributes;
     TF_RETURN_IF_ERROR(params.GetAttributes(&attributes));
 
-    NodeDef node_def = test::function::NDef(kNodeName, kOpName,
-                                            input_placeholders, attributes);
+    NodeDef node_def =
+        test::function::NDef(kNodeName, kOpName, input_namess, attributes);
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, map_defun_kernel));
     return Status::OK();
   }

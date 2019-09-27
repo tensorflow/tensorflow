@@ -326,6 +326,35 @@ class TakeDatasetParams : public DatasetParams {
   int64 count_;
 };
 
+// `ConcatenateDatasetParams` is a common dataset parameter type that are used
+// in testing.
+class ConcatenateDatasetParams : public DatasetParams {
+ public:
+  template <typename T, typename P>
+  ConcatenateDatasetParams(T input_dataset_params_0, P input_dataset_params_1,
+                           DataTypeVector output_dtypes,
+                           std::vector<PartialTensorShape> output_shapes,
+                           string node_name)
+      : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
+                      std::move(node_name)) {
+    input_dataset_params_.push_back(
+        absl::make_unique<T>(input_dataset_params_0));
+    input_dataset_params_.push_back(
+        absl::make_unique<T>(input_dataset_params_1));
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(input_dataset_params_0.dataset_type(),
+                                   input_dataset_params_0.iterator_prefix());
+  }
+
+  std::vector<Tensor> GetInputTensors() const override;
+
+  Status GetInputNames(std::vector<string>* input_names) const override;
+
+  Status GetAttributes(AttributeVector* attr_vector) const override;
+
+  string dataset_type() const override;
+};
+
 template <typename T>
 struct GetNextTestCase {
   T dataset_params;

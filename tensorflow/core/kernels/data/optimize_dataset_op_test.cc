@@ -44,10 +44,9 @@ class OptimizeDatasetParams : public DatasetParams {
     return {CreateTensor<tstring>(TensorShape({1}), {optimizations_})};
   }
 
-  Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override {
-    *input_placeholder = {OptimizeDatasetOp::kInputDataset,
-                          OptimizeDatasetOp::kOptimizations};
+  Status GetInputNames(std::vector<string>* input_names) const override {
+    *input_names = {OptimizeDatasetOp::kInputDataset,
+                    OptimizeDatasetOp::kOptimizations};
     return Status::OK();
   }
 

@@ -54,18 +54,17 @@ class InterleaveDatasetParams : public DatasetParams {
     return input_tensors;
   }
 
-  Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override {
-    input_placeholder->clear();
-    input_placeholder->reserve(input_dataset_params_.size() +
-                               other_arguments_.size() + 2);
-    input_placeholder->emplace_back(InterleaveDatasetOp::kInputDataset);
+  Status GetInputNames(std::vector<string>* input_names) const override {
+    input_names->clear();
+    input_names->reserve(input_dataset_params_.size() +
+                         other_arguments_.size() + 2);
+    input_names->emplace_back(InterleaveDatasetOp::kInputDataset);
     for (int i = 0; i < other_arguments_.size(); ++i) {
-      input_placeholder->emplace_back(
+      input_names->emplace_back(
           absl::StrCat(InterleaveDatasetOp::kOtherArguments, "_", i));
     }
-    input_placeholder->emplace_back(InterleaveDatasetOp::kCycleLength);
-    input_placeholder->emplace_back(InterleaveDatasetOp::kBlockLength);
+    input_names->emplace_back(InterleaveDatasetOp::kCycleLength);
+    input_names->emplace_back(InterleaveDatasetOp::kBlockLength);
     return Status::OK();
   }
 
