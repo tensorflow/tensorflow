@@ -974,6 +974,7 @@ tf_py_test(
         ":function_def_to_graph",
         ":graph_to_function_def",
         ":math_ops",
+        ":op_def_library",
         ":test_ops",
     ],
     tags = ["no_pip"],
@@ -1031,6 +1032,7 @@ py_library(
     deps = [
         ":dtypes",
         ":framework_ops",
+        ":op_def_registry",
         ":platform",
         ":tensor_shape",
         ":util",
@@ -2039,7 +2041,6 @@ tf_py_test(
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
         ":platform_test",
-        ":test_ops",
     ],
 )
 
