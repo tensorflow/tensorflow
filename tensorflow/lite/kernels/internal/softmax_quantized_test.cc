@@ -34,15 +34,40 @@ limitations under the License.
 namespace tflite {
 namespace {
 
-void RunSoftmaxFloatReference(const uint8* input_data,
+template <typename T> struct QuantParams {
+  int output_max = std::numeric_limits<T>::max();
+  float num_resolution = float(std::numeric_limits<T>::max() -
+                               std::numeric_limits<T>::min() + 1);
+  int zero_point = std::numeric_limits<T>::min();
+};
+template <> struct QuantParams<int16> {
+  int output_max = std::numeric_limits<int16>::max();
+  float num_resolution = float(std::numeric_limits<int16>::max() + 1);
+  int zero_point = 0;
+};
+
+template <typename T>
+inline void Quantize(const int ref_buffer_size,
+                     T* output_data,
+                     float* output_float_data) {
+  QuantParams<T> quant_params;
+  for (int i = 0; i < ref_buffer_size; i++) {
+    output_data[i] = std::min(
+      quant_params.output_max,
+      static_cast<int>(std::round(quant_params.num_resolution * output_float_data[i]) +
+                       quant_params.zero_point));
+  }
+}
+
+template <typename T>
+void RunSoftmaxFloatReference(const T* input_data,
                               const RuntimeShape& shape_common,
                               int32 input_offset, const double input_scale,
                               int stride, float beta,
-                              uint8* reference_output_data) {
+                              float* reference_output_float_data,
+                              T* reference_output_data) {
   const int ref_buffer_size = shape_common.FlatSize();
   std::vector<float> reference_dequant_data(ref_buffer_size);
-  std::vector<float> reference_output_float_data(ref_buffer_size);
-
   // Reference data generated via Dequant of input into float, and then applying
   // float Softmax.
   DequantizationParams dq_params;
@@ -53,14 +78,8 @@ void RunSoftmaxFloatReference(const uint8* input_data,
   SoftmaxParams sm_params;
   sm_params.beta = beta;
   optimized_ops::Softmax(sm_params, shape_common, reference_dequant_data.data(),
-                         shape_common, reference_output_float_data.data());
-  // Work with quantized scaling for Softmax, under which 256 represents 1, but
-  // we limit this to 255.
-  for (int i = 0; i < ref_buffer_size; i++) {
-    reference_output_data[i] = std::min(
-        255,
-        static_cast<int>(std::round(256.0f * reference_output_float_data[i])));
-  }
+                         shape_common, reference_output_float_data);
+  Quantize(ref_buffer_size, reference_output_data, reference_output_float_data);
 }
 
 template <typename T>
@@ -99,18 +118,58 @@ void CheckOutputData(const T* test_output, const T* reference_output,
   }
 }
 
+const float kQuantizedToleranceInt16 = 2 * (1. / 4096);
+
+template <class T>
+::testing::AssertionResult CheckFloatingPointArrays(
+                                const T* const expected,
+                                const T* const actual,
+                                const int length) {
+    ::testing::AssertionResult result = ::testing::AssertionFailure();
+    int errorsFound = 0;
+    const char* separator = " ";
+    for (int index = 0; index < length; index++)
+    {
+        if (fabs(expected[index] - actual[index]) > kQuantizedToleranceInt16)
+        {
+            if (errorsFound == 0) {
+                result << "Differences found:";
+            }
+            if (errorsFound < 3) {
+                result << separator << expected[index] << " != " << actual[index]
+                        << " @ " << index;
+                separator = ", ";
+            }
+            errorsFound++;
+        }
+    }
+    if (errorsFound > 0) {
+        result << separator << errorsFound << " differences in total";
+        return result;
+    }
+    return ::testing::AssertionSuccess();
+}
+
+template <typename T>
+void RunOneSoftmaxTest(const T* input_data,
+                       const RuntimeShape& shape_common, int32 input_offset,
+                       const double input_scale, int stride, float beta) {}
+
 // Runs the Softmax and compares against the float reference implementation and
 // the quantized reference implementation.
+template <>
 void RunOneSoftmaxTest(const uint8* input_data,
                        const RuntimeShape& shape_common, int32 input_offset,
                        const double input_scale, int stride, float beta) {
   const int buffer_size = shape_common.FlatSize();
   std::vector<uint8> optimized_softmax_output(buffer_size);
-  std::vector<uint8> reference_float_softmax_output(buffer_size);
+  std::vector<float> reference_float_softmax_output(buffer_size);
+  std::vector<uint8> reference_float_quant_softmax_output(buffer_size);
   std::vector<uint8> reference_quant_softmax_output(buffer_size);
 
-  RunSoftmaxFloatReference(input_data, shape_common, input_offset, input_scale,
-                           stride, beta, reference_float_softmax_output.data());
+  RunSoftmaxFloatReference<uint8>(input_data, shape_common, input_offset, input_scale,
+                                  stride, beta, reference_float_softmax_output.data(),
+                                  reference_float_quant_softmax_output.data());
 
   int32 input_beta_multiplier;
   int input_beta_left_shift;
@@ -137,55 +196,32 @@ void RunOneSoftmaxTest(const uint8* input_data,
   reference_ops::Softmax(params, shape_common, input_data, shape_common,
                          reference_quant_softmax_output.data());
 
-  CheckOutputData<uint8_t>(optimized_softmax_output.data(),
-                           reference_float_softmax_output.data(), shape_common,
+  CheckOutputData<uint8>(optimized_softmax_output.data(),
+                           reference_float_quant_softmax_output.data(), shape_common,
                            "Optimized vs float reference", false);
-  CheckOutputData<uint8_t>(optimized_softmax_output.data(),
+  CheckOutputData<uint8>(optimized_softmax_output.data(),
                            reference_quant_softmax_output.data(), shape_common,
                            "Optimized vs quant reference", false);
-  CheckOutputData<uint8_t>(reference_quant_softmax_output.data(),
-                           reference_float_softmax_output.data(), shape_common,
+  CheckOutputData<uint8>(reference_quant_softmax_output.data(),
+                           reference_float_quant_softmax_output.data(), shape_common,
                            "Quant reference vs float reference", false);
 }
 
-// This function picks some random Softmax params, which are checked for
-// desirability.  If not acceptable, it returns false. If they're OK,
-// it runs the Softmax test and returns true. This allows the caller
-// to loop until a test has been run.
-//
-// Currently we do not reject for any reason.
-bool TryOneUniformSoftmax() {
-  // We pick mostly positive values, on the whole emphasizing smaller values and
-  // therefore faster tests.  We test a wider range of depths.  In the case of
-  // Softmax, the width and height really just create test repetitions.
-  const int batch = ExponentialRandomPositiveInt(0.9f, 3, 20);
-  const int input_depth = ExponentialRandomPositiveInt(0.75f, 175, 500);
-  const int input_width = ExponentialRandomPositiveInt(0.8f, 20, 200);
-  const int input_height = ExponentialRandomPositiveInt(0.8f, 20, 200);
-  const int stride = ExponentialRandomPositiveInt(0.9f, 3, 8);
-  const double input_scale = std::pow(10.0, UniformRandomFloat(-2.0, 1.0));
-  const int32 input_offset = UniformRandomInt(-256, 0);
-  const float beta = 1.0f + ExponentialRandomPositiveFloat(0.9f, 2, 10);
-
-  auto shape_common =
-      RuntimeShape({batch, input_height, input_width, input_depth});
-  const int buffer_size = shape_common.FlatSize();
-
-  std::vector<uint8> input_data(buffer_size);
-  FillRandom(&input_data);
-  RunOneSoftmaxTest(input_data.data(), shape_common, input_offset, input_scale,
-                    stride, beta);
-  return true;
-}
-
-// Runs the Int8 quatnized Softmax and compares reference implementation with
-// optimized implementation.
-void RunOneSoftmaxTestInt8(const int8* input_data,
-                           const RuntimeShape& shape_common, int32 input_offset,
-                           const double input_scale, int stride, float beta) {
+// Runs the Softmax and compares the quantized reference and optimized implementations
+//  against each other and the float reference implementation.
+template <>
+void RunOneSoftmaxTest(const int8* input_data,
+                       const RuntimeShape& shape_common, int32 input_offset,
+                       const double input_scale, int stride, float beta) {
   const int buffer_size = shape_common.FlatSize();
   std::vector<int8> optimized_quant_softmax_output(buffer_size);
+  std::vector<float> reference_float_softmax_output(buffer_size);
+  std::vector<int8> reference_float_quant_softmax_output(buffer_size);
   std::vector<int8> reference_quant_softmax_output(buffer_size);
+
+  RunSoftmaxFloatReference<int8>(input_data, shape_common, input_offset, input_scale,
+                                 stride, beta, reference_float_softmax_output.data(),
+                                 reference_float_quant_softmax_output.data());
 
   int32 input_beta_multiplier;
   int input_beta_left_shift;
@@ -207,16 +243,78 @@ void RunOneSoftmaxTestInt8(const int8* input_data,
   reference_integer_ops::Softmax(params, shape_common, input_data, shape_common,
                                  reference_quant_softmax_output.data());
 
-  CheckOutputData<int8_t>(optimized_quant_softmax_output.data(),
+  CheckOutputData<int8>(reference_quant_softmax_output.data(),
+                          reference_float_quant_softmax_output.data(), shape_common,
+                          "Int8 quant refernece vs float reference", false);
+  CheckOutputData<int8>(optimized_quant_softmax_output.data(),
+                          reference_float_quant_softmax_output.data(), shape_common,
+                          "Int8 quant optimized vs float reference", false);
+  CheckOutputData<int8>(optimized_quant_softmax_output.data(),
                           reference_quant_softmax_output.data(), shape_common,
-                          "Int8 quant refernece vs optimized", true);
+                          "Int8 quant optimized vs refernece", true);
 }
+
+// Runs the Int16 quantized Softmax and compares with the reference float version
+template <>
+void RunOneSoftmaxTest(const int16* input_data,
+                       const RuntimeShape& shape_common, int32 input_offset,
+                       const double input_scale, int stride, float beta) {
+  const int buffer_size = shape_common.FlatSize();
+  std::vector<float> reference_float_softmax_output(buffer_size);
+  std::vector<int16> reference_float_quant_softmax_output(buffer_size);
+  std::vector<int16> reference_quant_softmax_output(buffer_size);
+  std::vector<float> reference_dequant_softmax_output(buffer_size);
+
+  RunSoftmaxFloatReference<int16>(input_data, shape_common, input_offset, input_scale,
+                                 stride, beta, reference_float_softmax_output.data(),
+                                 reference_float_quant_softmax_output.data());
+
+  int32 input_beta_multiplier;
+  int input_beta_left_shift;
+  static const int kScaledDiffIntegerBits = 5;
+  tflite::PreprocessSoftmaxScaling(beta, input_scale, kScaledDiffIntegerBits,
+                                   &input_beta_multiplier,
+                                   &input_beta_left_shift);
+  // diff_min has a negative value, and is used to limit the maximum magnitude
+  // of the diffs, which are <= 0.
+  const int diff_min = -tflite::CalculateInputRadius(kScaledDiffIntegerBits,
+                                                     input_beta_left_shift);
+
+  SoftmaxParams params;
+  params.input_multiplier = input_beta_multiplier;
+  params.input_left_shift = input_beta_left_shift;
+  params.diff_min = diff_min;
+  reference_integer_ops::Softmax(params, shape_common, input_data, shape_common,
+                                 reference_quant_softmax_output.data());
+
+  DequantizationParams dq_params;
+  dq_params.scale = 1.0f/float(std::numeric_limits<int16>::max() + 1);
+  dq_params.zero_point = 0;
+  reference_ops::Dequantize(dq_params, shape_common, reference_quant_softmax_output.data(), shape_common,
+                            reference_dequant_softmax_output.data());
+
+  EXPECT_TRUE(CheckFloatingPointArrays(reference_dequant_softmax_output.data(),
+                                       reference_float_softmax_output.data(),
+                                       buffer_size));
+
+}
+
+template <typename T> struct Input_params {};
+template <> struct Input_params<int8>  {
+  const int32 input_offset = UniformRandomInt(-128, 127);
+};
+template <> struct Input_params<uint8>  {
+  const int32 input_offset = UniformRandomInt(-256, 0);
+};
+template <> struct Input_params<int16>  {
+  const int32 input_offset = 0;
+};
 
 // This function picks some random Softmax params, which are checked for
 // desirability.  If not acceptable, it returns false. If they're OK,
-// it runs the Softmax and test the results between reference int8 and optimized
-// int8 kernels.
-bool TryOneUniformSoftmaxInt8() {
+// it runs the Softmax and test the results between reference integer and float version.
+template <typename T>
+bool TryOneUniformSoftmax() {
   // We pick mostly positive values, on the whole emphasizing smaller values and
   // therefore faster tests.  We test a wider range of depths.  In the case of
   // Softmax, the width and height really just create test repetitions.
@@ -226,16 +324,16 @@ bool TryOneUniformSoftmaxInt8() {
   const int input_height = ExponentialRandomPositiveInt(0.8f, 20, 200);
   const int stride = ExponentialRandomPositiveInt(0.9f, 3, 8);
   const double input_scale = std::pow(10.0, UniformRandomFloat(-2.0, 1.0));
-  const int32 input_offset = UniformRandomInt(-128, 127);
+  Input_params<T> input_params;
   const float beta = 1.0f + ExponentialRandomPositiveFloat(0.9f, 2, 10);
 
   auto shape_common =
       RuntimeShape({batch, input_height, input_width, input_depth});
   const int buffer_size = shape_common.FlatSize();
 
-  std::vector<int8> input_data(buffer_size);
+  std::vector<T> input_data(buffer_size);
   FillRandom(&input_data);
-  RunOneSoftmaxTestInt8(input_data.data(), shape_common, input_offset,
+  RunOneSoftmaxTest<T>(input_data.data(), shape_common, input_params.input_offset,
                         input_scale, stride, beta);
   return true;
 }
@@ -282,7 +380,7 @@ bool TryOneSkyscraperSoftmax(bool small_depth) {
 TEST(TestQuantizedSoftmax, UniformSoftmaxTests) {
   const int kTestsToRun = 100;
   for (int i = 0; i < kTestsToRun; i++) {
-    while (!TryOneUniformSoftmax()) {
+    while (!TryOneUniformSoftmax<uint8>()) {
     }
   }
 }
@@ -290,7 +388,15 @@ TEST(TestQuantizedSoftmax, UniformSoftmaxTests) {
 TEST(TestQuantizedSoftmax, UniformSoftmaxTestsInt8) {
   const int kTestsToRun = 100;
   for (int i = 0; i < kTestsToRun; i++) {
-    while (!TryOneUniformSoftmaxInt8()) {
+    while (!TryOneUniformSoftmax<int8>()) {
+    }
+  }
+}
+
+TEST(TestQuantizedSoftmax, UniformSoftmaxTestsInt16) {
+  const int kTestsToRun = 100;
+  for (int i = 0; i < kTestsToRun; i++) {
+    while (!TryOneUniformSoftmax<int16>()) {
     }
   }
 }
