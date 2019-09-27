@@ -80,13 +80,6 @@ Status CreateGLCompatibleEnvironment(cl_context_properties egl_context,
                                      cl_context_properties egl_display,
                                      Environment* result);
 
-Status CreateKernel(const std::string& code, const std::string& function_name,
-                    Environment* env, CLKernel* result);
-
-Status CreateKernel(const std::string& code, const std::string& function_name,
-                    const std::vector<CompilerOptions>& compiler_options,
-                    Environment* env, CLKernel* result);
-
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
