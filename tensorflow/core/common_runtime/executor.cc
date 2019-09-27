@@ -372,7 +372,7 @@ class ExecutorImpl : public Executor {
     PendingCounts* pending_counts;  // Owned
 
     // The nodes in a frame. Used only for debugging.
-    std::vector<const Node*>* nodes;  // Owned
+    std::vector<const NodeItem*>* nodes;  // Owned
 
     ~FrameInfo() {
       delete pending_counts;
@@ -401,7 +401,7 @@ class ExecutorImpl : public Executor {
   bool device_record_tensor_accesses_ = false;
 
   // Root nodes (with no in edges) that should form the initial ready queue
-  std::vector<const Node*> root_nodes_;
+  std::vector<const NodeItem*> root_nodes_;
 
   // Mapping from frame name to static information about the frame.
   // TODO(yuanbyu): We could cache it along with the graph so to avoid
@@ -636,7 +636,7 @@ Status ExecutorImpl::Initialize() {
       params_.device->RequiresRecordingAccessedTensors();
 
   for (auto& it : cf_info.unique_frame_names) {
-    EnsureFrameInfo(it)->nodes = new std::vector<const Node*>;
+    EnsureFrameInfo(it)->nodes = new std::vector<const NodeItem*>;
   }
 
   // Preprocess every node in the graph to create an instance of op
@@ -645,11 +645,6 @@ Status ExecutorImpl::Initialize() {
     const int id = n->id();
     const string& frame_name = cf_info.frame_names[id];
     FrameInfo* frame_info = EnsureFrameInfo(frame_name);
-
-    // See if this node is a root node, and if so, add to root_nodes_.
-    if (n->in_edges().empty()) {
-      root_nodes_.push_back(n);
-    }
 
     NodeItem* item = gview_.node(id);
     item->node_id = id;
@@ -696,8 +691,13 @@ Status ExecutorImpl::Initialize() {
     item->pending_id =
         frame_info->pending_counts_layout.CreateHandle(max_pending, max_dead);
 
+    // See if this node is a root node, and if so, add item to root_nodes_.
+    if (n->in_edges().empty()) {
+      root_nodes_.push_back(item);
+    }
+
     // Initialize static information about the frames in the graph.
-    frame_info->nodes->push_back(n);
+    frame_info->nodes->push_back(item);
     if (IsEnter(n)) {
       string enter_name;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "frame_name", &enter_name));
@@ -1129,7 +1129,7 @@ class ExecutorState {
     // Static information specific to this frame.
     PendingCounts* pending_counts = nullptr;
     int total_input_tensors = 0;
-    std::vector<const Node*>* nodes = nullptr;
+    std::vector<const NodeItem*>* nodes = nullptr;
 
     // Lock ordering: ExecutorState.mu_ < mu;
     // during structured traversal: parent_frame->mu < mu.
@@ -1584,10 +1584,9 @@ void ExecutorState::RunAsync(Executor::DoneCallback done) {
   }
 
   // Initialize the ready queue.
-  for (const Node* n : impl_->root_nodes_) {
-    DCHECK_EQ(n->in_edges().size(), 0);
-    ready.push_back(
-        TaggedNode{impl_->gview_.node(n->id()), root_frame_, 0, false});
+  for (const NodeItem* item : impl_->root_nodes_) {
+    DCHECK_EQ(item->num_inputs, 0);
+    ready.push_back(TaggedNode{item, root_frame_, 0, false});
   }
   if (ready.empty()) {
     delete this;
@@ -2449,22 +2448,20 @@ void ExecutorState::DumpActiveNodeState(const int node_id,
 
 void ExecutorState::DumpIterationState(const FrameState* frame,
                                        IterationState* iteration) {
-  const std::vector<const Node*>* nodes = frame->nodes;
+  const std::vector<const NodeItem*>* nodes = frame->nodes;
   // Dump any waiting nodes that are holding on to tensors.
-  for (const Node* node : *nodes) {
-    const int node_id = node->id();
-    PendingCounts::Handle pending_id = impl_->gview_.node(node_id)->pending_id;
+  for (const NodeItem* node : *nodes) {
+    PendingCounts::Handle pending_id = node->pending_id;
     if (iteration->node_state(pending_id) == PendingCounts::PENDING_NOTREADY ||
         iteration->node_state(pending_id) == PendingCounts::PENDING_READY) {
-      DumpPendingNodeState(node_id, iteration->input_tensors, false);
+      DumpPendingNodeState(node->node_id, iteration->input_tensors, false);
     }
   }
   // Then the active nodes.
-  for (const Node* node : *nodes) {
-    const int node_id = node->id();
-    PendingCounts::Handle pending_id = impl_->gview_.node(node_id)->pending_id;
+  for (const NodeItem* node : *nodes) {
+    PendingCounts::Handle pending_id = node->pending_id;
     if (iteration->node_state(pending_id) == PendingCounts::STARTED) {
-      DumpActiveNodeState(node_id, iteration->input_tensors);
+      DumpActiveNodeState(node->node_id, iteration->input_tensors);
     }
   }
   // Show all input tensors in use.
