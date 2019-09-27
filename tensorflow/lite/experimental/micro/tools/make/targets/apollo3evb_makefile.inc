@@ -19,7 +19,7 @@ ifeq ($(TARGET),$(filter $(TARGET),\
   $(eval $(call add_third_party_download,$(AP3_URL),$(AP3_MD5),apollo3_ext,))
   $(eval $(call add_third_party_download,$(CUST_CMSIS_URL),$(CUST_CMSIS_MD5),CMSIS_ext,))
 
-  ifeq ($(TARGET), sparkfun_edge)
+  ifeq ($(findstring sparkfun,$(TARGET)), sparkfun)
     $(eval $(call add_third_party_download,$(SPARKFUN_BSPS_URL),$(SPARKFUN_BSPS_MD5),$(AM_SDK_DEST)/boards_sfe,))
     # Make sure that we download the full Ambiq SDK before the SparkFun one.
 $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/boards_sfe: $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)
@@ -80,8 +80,8 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/boards_sfe: $(MAKEFILE_DIR)/downloads/$
   ifeq ($(TARGET), apollo3evb)
     BOARD_BSP_PATH := $(APOLLO3_SDK)/boards/apollo3_evb/bsp
   endif
-  ifeq ($(TARGET), sparkfun_edge)
-    BOARD_BSP_PATH := $(APOLLO3_SDK)/boards_sfe/edge/bsp
+  ifeq ($(findstring sparkfun,$(TARGET)), sparkfun)
+    BOARD_BSP_PATH := $(APOLLO3_SDK)/boards_sfe/$(subst sparkfun_,,$(TARGET))/bsp
   endif
   MICROLITE_LIBS := \
     $(BOARD_BSP_PATH)/gcc/bin/libam_bsp.a \
@@ -112,12 +112,8 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/boards_sfe: $(MAKEFILE_DIR)/downloads/$
     $(APOLLO3_SDK)/utils/am_util_delay.c \
     $(APOLLO3_SDK)/utils/am_util_faultisr.c \
     $(APOLLO3_SDK)/utils/am_util_id.c \
-    $(APOLLO3_SDK)/utils/am_util_stdio.c
-
-  ifeq ($(TARGET), apollo3evb)
-    MICROLITE_CC_SRCS += \
-      $(APOLLO3_SDK)/devices/am_devices_led.c
-  endif
+    $(APOLLO3_SDK)/utils/am_util_stdio.c \
+    $(APOLLO3_SDK)/devices/am_devices_led.c
 
   CMSIS_SRC_DIR := $(MAKEFILE_DIR)/downloads/cmsis/CMSIS/DSP/Source
   CMSIS_SRCS := \
