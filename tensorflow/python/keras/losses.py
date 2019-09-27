@@ -1141,6 +1141,75 @@ class CosineSimilarity(LossFunctionWrapper):
         cosine_similarity, reduction=reduction, name=name, axis=axis)
 
 
+@keras_export([
+    'keras.losses.pinball',
+    'keras.metrics.pinball'
+])
+def pinball(y_true, y_pred, tau):
+  """Computes the pinball loss between `y_true` and `y_pred`.
+
+  Usage:
+
+  ```python
+  loss = pinball([0., 0., 1., 1.], [1., 1., 1., 0.], tau=.1)
+
+  print('Loss: ', loss.numpy())  # Loss:
+  ```
+
+  Args:
+    tau: a float between 0 and 1 the slope of the pinball loss. In the context of quantile regression,
+    the value of alpha determine the conditional quantile level.
+  """
+    delta_y = y_true - y_pred
+    return K.maximum(tau * delta_y, (tau - 1) * delta_y)
+
+
+@keras_export('keras.losses.Pinball')
+class Pinball(LossFunctionWrapper):
+  """Computes the pinball loss between `y_true` and `y_pred`.
+
+  Usage:
+
+  ```python
+  pinball_loss = tf.keras.losses.Pinball(tau=.1, axis=1)
+  loss = pinball([0., 0., 1., 1.], [1., 1., 1., 0.])
+
+  print('Loss: ', loss.numpy())  # Loss:
+  ```
+
+  Usage with the `compile` API:
+
+  ```python
+  model = tf.keras.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.keras.losses.Pinball(axis=1))
+  ```
+
+  Args:
+    tau: a float between 0 and 1 the slope of the pinball loss. In the context of quantile regression,
+      the value of alpha determine the conditional quantile level.
+    axis: (Optional) Defaults to -1. The dimension along which the cosine
+      similarity is computed.
+    reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to loss.
+      Default value is `AUTO`. `AUTO` indicates that the reduction option will
+      be determined by the usage context. For almost all cases this defaults to
+      `SUM_OVER_BATCH_SIZE`.
+      When used with `tf.distribute.Strategy`, outside of built-in training
+      loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
+      `SUM_OVER_BATCH_SIZE` will raise an error. Please see
+      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      for more details on this.
+    name: Optional name for the op.
+  """
+
+  def __init__(self,
+               tau=.5,
+               axis=-1,
+               reduction=losses_utils.ReductionV2.AUTO,
+               name='pinball_loss'):
+      super(Pinball, self).__init__(
+          pinball, tau=tau, reduction=reduction, name=name, axis=axis)
+
+
 # Aliases.
 
 bce = BCE = binary_crossentropy
