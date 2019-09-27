@@ -41,12 +41,10 @@ void MultiRunStatsRecorder::OnBenchmarkStart(const BenchmarkParams& params) {
 
 #if defined(__ANDROID__)
   if (params.Get<bool>("use_nnapi")) {
-    current_run_name_ = "nnapi";
     const std::string accelerator =
         params.Get<std::string>("nnapi_accelerator_name");
-    if (!accelerator.empty()) {
-      current_run_name_ = "nnapi(" + accelerator + ")";
-    }
+    current_run_name_ = accelerator.empty() ? "nnapi(w/o accel name)"
+                                            : "nnapi(" + accelerator + ")";
     return;
   }
 #endif
@@ -258,11 +256,13 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
                         BenchmarkParam::Create<std::string>(name));
         all_run_params_.emplace_back(std::move(params));
       }
-    } else {
-      BenchmarkParams params;
-      params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(true));
-      all_run_params_.emplace_back(std::move(params));
     }
+    // Explicitly test the case when there's no "nnapi_accelerator_name"
+    // parameter as the nnpai execution is different from the case when
+    // an accelerator name is explicitly specified.
+    BenchmarkParams params;
+    params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(true));
+    all_run_params_.emplace_back(std::move(params));
   }
 #endif
 }
