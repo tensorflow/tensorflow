@@ -50,7 +50,6 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import util as trackable_util
 from tensorflow.python.util import nest
-from tensorflow.python.util import object_identity
 
 # Used for nested input/output/state RNN test.
 NestedInput = collections.namedtuple('NestedInput', ['t1', 't2'])
@@ -929,10 +928,9 @@ class RNNTest(keras_parameterized.TestCase):
 
     # check whether the model variables are present in the
     # trackable list of objects
-    checkpointed_objects = object_identity.ObjectIdentitySet(
-        trackable_util.list_objects(model))
+    checkpointed_objects = {id(o) for o in trackable_util.list_objects(model)}
     for v in model.variables:
-      self.assertIn(v, checkpointed_objects)
+      self.assertIn(id(v), checkpointed_objects)
 
   def test_high_dimension_RNN(self):
     # Basic test case.
