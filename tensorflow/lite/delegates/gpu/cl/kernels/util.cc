@@ -105,6 +105,23 @@ std::string GetGlobalAddressNoDeclaration(TensorStorageType storage_type,
   }
 }
 
+std::string GetGlobalAddressNoDeclaration(TensorStorageType storage_type,
+                                          const std::string& size_name,
+                                          const std::string& x,
+                                          const std::string& y,
+                                          const std::string& z,
+                                          const std::string& b) {
+  switch (storage_type) {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
+      return absl::Substitute(
+          "(((($3) * $4.w + $2) * $4.y + ($1)) * $4.x + ($0))", x, y, z, b,
+          size_name);
+    default:
+      return "error";
+  }
+}
+
 std::string GetGlobalAddress(TensorStorageType storage_type,
                              const std::string& size_name,
                              const std::string& var_name, const std::string& x,
@@ -221,32 +238,15 @@ std::string ReadGlobalFloat4(TensorStorageType storage_type,
   return ReadGlobalFloat4(storage_type, tensor_name, address, address_mode);
 }
 
-std::string WriteGlobalFLT4(TensorStorageType storage_type, DataType data_type,
-                            const std::string& tensor_name,
-                            const std::string& size_name,
-                            const std::string& var_name, const std::string& x,
-                            const std::string& y, const std::string& z) {
-  switch (storage_type) {
-    case TensorStorageType::BUFFER:
-    case TensorStorageType::IMAGE_BUFFER:
-      return absl::StrCat(tensor_name, "[((", z, ") * ", size_name, ".y + (", y,
-                          ")) * ", size_name, ".x + (", x, ")] = ", var_name,
-                          ";\n");
-    case TensorStorageType::TEXTURE_2D:
-      return absl::StrCat(GetWriteImageFromDataType(data_type), "(",
-                          tensor_name, ", (int2)((", x, "), (", y, ") * ",
-                          size_name, ".w + (", z, ")), ", var_name, ");\n");
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-      return absl::StrCat(GetWriteImageFromDataType(data_type), "(",
-                          tensor_name, ", (int2)(", x, ", ", y, "), ", var_name,
-                          ");\n");
-    case TensorStorageType::TEXTURE_ARRAY:
-      return absl::StrCat(GetWriteImageFromDataType(data_type), "(",
-                          tensor_name, ", (int4)(", x, ", ", y, ", ", z,
-                          ", 0), ", var_name, ");\n");
-    case TensorStorageType::UNKNOWN:
-      return "";
-  }
+std::string ReadGlobalFLT4(TensorStorageType storage_type, DataType data_type,
+                           const std::string& tensor_name,
+                           const std::string& size_name, const std::string& x,
+                           const std::string& y, const std::string& z,
+                           const std::string& b) {
+  const std::string address =
+      GetGlobalAddressNoDeclaration(storage_type, size_name, x, y, z, b);
+  return ReadGlobalFLT4(storage_type, data_type, tensor_name, address,
+                        TextureAddressMode::DONT_CARE);
 }
 
 std::string WriteGlobalFLT4(TensorStorageType storage_type, DataType data_type,
@@ -267,6 +267,29 @@ std::string WriteGlobalFLT4(TensorStorageType storage_type, DataType data_type,
     case TensorStorageType::UNKNOWN:
       return "";
   }
+}
+
+std::string WriteGlobalFLT4(TensorStorageType storage_type, DataType data_type,
+                            const std::string& tensor_name,
+                            const std::string& size_name,
+                            const std::string& var_name, const std::string& x,
+                            const std::string& y, const std::string& z) {
+  const std::string address =
+      GetGlobalAddressNoDeclaration(storage_type, size_name, x, y, z);
+  return WriteGlobalFLT4(storage_type, data_type, tensor_name, var_name,
+                         address);
+}
+
+std::string WriteGlobalFLT4(TensorStorageType storage_type, DataType data_type,
+                            const std::string& tensor_name,
+                            const std::string& size_name,
+                            const std::string& var_name, const std::string& x,
+                            const std::string& y, const std::string& z,
+                            const std::string& b) {
+  const std::string address =
+      GetGlobalAddressNoDeclaration(storage_type, size_name, x, y, z, b);
+  return WriteGlobalFLT4(storage_type, data_type, tensor_name, var_name,
+                         address);
 }
 
 std::string GetImageModifier(AccessType access) {
@@ -373,6 +396,14 @@ std::string TensorCodeGenerator::Read3D(const std::string& x,
                         y, z, address_mode);
 }
 
+std::string TensorCodeGenerator::Read4D(const std::string& x,
+                                        const std::string& y,
+                                        const std::string& z,
+                                        const std::string& b) const {
+  return ReadGlobalFLT4(storage_type_, data_type_, name_, uniform_size_name_, x,
+                        y, z, b);
+}
+
 std::string TensorCodeGenerator::ReadAsFloat3D(
     const std::string& x, const std::string& y, const std::string& z,
     TextureAddressMode address_mode) const {
@@ -410,6 +441,15 @@ std::string TensorCodeGenerator::Write3D(
     const std::string& var_name, const std::string& global_address) const {
   return WriteGlobalFLT4(storage_type_, data_type_, name_, var_name,
                          global_address);
+}
+
+std::string TensorCodeGenerator::Write4D(const std::string& var_name,
+                                         const std::string& x,
+                                         const std::string& y,
+                                         const std::string& z,
+                                         const std::string& b) const {
+  return WriteGlobalFLT4(storage_type_, data_type_, name_, uniform_size_name_,
+                         var_name, x, y, z, b);
 }
 
 TextureAddressMode GetFastestZeroMode(const CLDevice& device) {
