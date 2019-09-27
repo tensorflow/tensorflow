@@ -265,7 +265,9 @@ Service::ResolveAndValidateArguments(
 StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
     absl::Span<const Shape* const> argument_shapes,
-    const ExecutionOptions* execution_options) {
+    const ExecutionOptions* execution_options,
+    FusionConfigCollection fusion_config_collection,
+    const std::vector<std::vector<bool>>& fusion_config) {
   auto config = absl::make_unique<HloModuleConfig>(program_shape);
   ComputationLayout* computation_layout =
       config->mutable_entry_computation_layout();
@@ -331,6 +333,11 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
   }
   config->set_alias_passthrough_params(
       execution_options->alias_passthrough_params());
+
+  if (fusion_config_collection != FusionConfigCollection::kOff) {
+    config->set_fusion_config_collection(fusion_config_collection);
+    *config->mutable_fusion_config() = fusion_config;
+  }
 
   return std::move(config);
 }
