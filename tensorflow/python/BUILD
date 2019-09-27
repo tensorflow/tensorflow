@@ -4682,6 +4682,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":_pywrap_device_lib",
         ":errors",
         ":framework",
         ":framework_for_generated_wrappers",
@@ -4952,7 +4953,23 @@ py_library(
     srcs = ["client/device_lib.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":pywrap_tensorflow",
+        ":_pywrap_device_lib",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_device_lib",
+    srcs = ["client/device_lib_wrapper.cc"],
+    module_name = "_pywrap_device_lib",
+    deps = [
+        ":pybind11_proto",
+        ":pybind11_status",
+        "//tensorflow/core:core_cpu_headers_lib",
+        "//tensorflow/core:framework_internal_headers_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
     ],
 )
 
@@ -5029,7 +5046,6 @@ tf_py_wrap_cc(
     name = "pywrap_tensorflow_internal",
     srcs = ["tensorflow.i"],
     swig_includes = [
-        "client/device_lib.i",
         "client/tf_session.i",
         "client/tf_sessionrun_wrapper.i",
         "framework/python_op_gen.i",
@@ -5154,6 +5170,8 @@ genrule(
         "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
         "//tensorflow/core:framework_internal_impl",  # op_def_registry
+        "//tensorflow/core/lib/core:status",  # device_lib
+        "//tensorflow/core:core_cpu_impl",  # device_lib
     ],
     outs = ["pybind_symbol_target_libs_file.txt"],
     cmd = select({
