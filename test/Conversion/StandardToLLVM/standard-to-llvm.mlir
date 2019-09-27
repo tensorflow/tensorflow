@@ -1,4 +1,3 @@
-// RUN: mlir-opt %s -lower-to-llvm
 // RUN: mlir-opt %s -lower-to-llvm | FileCheck %s
 
 // CHECK-LABEL: func @address_space(
