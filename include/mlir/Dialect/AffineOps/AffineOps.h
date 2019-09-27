@@ -580,9 +580,7 @@ public:
   AffineValueMap getAsAffineValueMap();
 
   unsigned getNumOperands() { return opEnd - opStart; }
-  Value *getOperand(unsigned idx) {
-    return op.getOperation()->getOperand(opStart + idx);
-  }
+  Value *getOperand(unsigned idx) { return op.getOperand(opStart + idx); }
 
   using operand_iterator = AffineForOp::operand_iterator;
   using operand_range = AffineForOp::operand_range;
