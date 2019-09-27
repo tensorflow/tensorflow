@@ -1073,7 +1073,6 @@ from tensorflow.python.util.tf_export import tf_export
   result.append(R"(def _InitOpDefLibrary(op_list_proto_bytes):
   op_list = _op_def_pb2.OpList()
   op_list.ParseFromString(op_list_proto_bytes)
-  _op_def_registry.register_op_list(op_list)
   op_def_lib = _op_def_library.OpDefLibrary()
   op_def_lib.add_op_list(op_list)
   return op_def_lib

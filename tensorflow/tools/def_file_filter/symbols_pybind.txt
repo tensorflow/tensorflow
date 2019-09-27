@@ -54,3 +54,9 @@ tensorflow::EventsWriter::Close
 
 [py_func_lib] # py_func
 tensorflow::InitializePyTrampoline
+
+[framework_internal_impl] # op_def_registry
+tensorflow::OpRegistry::Global
+tensorflow::OpRegistry::LookUpOpDef
+tensorflow::RemoveNonDeprecationDescriptionsFromOpDef
+
