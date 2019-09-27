@@ -775,7 +775,6 @@ cuda_py_test(
     grpc_enabled = True,
     tags = [
         "no_oss",  # This test launches local server.
-        "notsan",  # TODO(b/141712955): flaky with OOM or timeout
         "optonly",  # times out
     ],
 )
