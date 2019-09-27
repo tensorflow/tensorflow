@@ -716,6 +716,9 @@ struct CallOpInterfaceLowering : public LLVMLegalizationPattern<CallOpType> {
 
     // Otherwise, it had been converted to an operation producing a structure.
     // Extract individual results from the structure and return them as list.
+    // TODO(aminim, ntv, riverriddle, zinenko): this seems like patching around
+    // a particular interaction between MemRefType and CallOp lowering. Find a
+    // way to avoid special casing.
     SmallVector<Value *, 4> results;
     results.reserve(numResults);
     for (unsigned i = 0; i < numResults; ++i) {
