@@ -1609,7 +1609,10 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     reduce_func = wrapped_func.function
     reduce_func.add_to_graph(ops.get_default_graph())
 
-    dataset = self._apply_options()
+    # TODO(b/141256846): Apply options once optimizing stateful input pipelines
+    # in tf.functions is supported.
+    # dataset = self._apply_options()
+    dataset = self
 
     # pylint: disable=protected-access
     return structure.from_compatible_tensor_list(

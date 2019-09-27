@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/data/random_seed_ops.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -528,11 +527,11 @@ class ShuffleDatasetOp::ReshufflingDatasetV2 : public ShuffleDatasetBase {
  public:
   ReshufflingDatasetV2(OpKernelContext* ctx, const DatasetBase* input,
                        int64 buffer_size, int64 count,
-                       RandomSeedGenerator* seed_generator,
-                       std::unique_ptr<OwnedResourceHandle> handle)
+                       const Tensor& resource_handle,
+                       RandomSeedGenerator* seed_generator)
       : ShuffleDatasetBase(ctx, input, buffer_size, count),
-        seed_generator_(seed_generator),
-        handle_(std::move(handle)) {}
+        resource_handle_(resource_handle),
+        seed_generator_(seed_generator) {}
 
   ~ReshufflingDatasetV2() override { seed_generator_->Unref(); }
 
@@ -613,9 +612,7 @@ class ShuffleDatasetOp::ReshufflingDatasetV2 : public ShuffleDatasetBase {
     Node* buffer_size_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddScalar(buffer_size_, &buffer_size_node));
     Node* resource_handle_node = nullptr;
-    Tensor handle(DT_RESOURCE, TensorShape({}));
-    handle.scalar<ResourceHandle>()() = handle_->handle();
-    TF_RETURN_IF_ERROR(b->AddTensor(handle, &resource_handle_node));
+    TF_RETURN_IF_ERROR(b->AddTensor(resource_handle_, &resource_handle_node));
     TF_RETURN_IF_ERROR(b->AddDataset(
         this,
         {input_graph_node, buffer_size_node, resource_handle_node},  // Inputs
@@ -625,8 +622,8 @@ class ShuffleDatasetOp::ReshufflingDatasetV2 : public ShuffleDatasetBase {
   }
 
  private:
+  const Tensor resource_handle_;
   RandomSeedGenerator* seed_generator_ = nullptr;
-  std::unique_ptr<OwnedResourceHandle> handle_;
 };
 
 // A dataset that uses the same fixed seed for all iterators created from it.
@@ -705,17 +702,10 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     RandomSeedGenerator* seed_generator = nullptr;
     OP_REQUIRES_OK(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 2), &seed_generator));
-
-    // Create a fresh handle for the resource because the input handle can
-    // become invalid after this op executes.
-    std::unique_ptr<OwnedResourceHandle> handle;
-    OP_REQUIRES_OK(ctx,
-                   OwnedResourceHandle::Create(ctx, seed_generator,
-                                               kRandomSeedGenerator, &handle));
-
-    // Ownership of seed generator is transferred onto `ReshufflingDatasetV2`.
+    // Transferring ownership of seed generator reference onto
+    // `ReshufflingDatasetV2`.
     *output = new ReshufflingDatasetV2(ctx, input, buffer_size, count,
-                                       seed_generator, std::move(handle));
+                                       ctx->input(2), seed_generator);
     return;
   }
 

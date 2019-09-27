@@ -296,6 +296,7 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(tf_api_version=2, mode="eager"))
   def testShuffleV2InFunction(self):
+    self.skipTest("b/141256846")
     counter_var = variables.Variable(0)
 
     @function.defun

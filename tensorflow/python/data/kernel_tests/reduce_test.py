@@ -238,6 +238,7 @@ class ReduceTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptions(self):
+    self.skipTest("b/141256846")
     dataset = dataset_ops.Dataset.range(5)
     dataset = dataset.apply(optimization.assert_next(["MapAndBatch"]))
     dataset = dataset.map(lambda x: x).batch(5)
