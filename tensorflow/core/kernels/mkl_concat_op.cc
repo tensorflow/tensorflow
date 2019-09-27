@@ -248,7 +248,7 @@ struct MklConcatFwdParams {
         num_inputs(num_inputs),
         concat_dims(concat_dims),
         mkl_common_format(mkl_common_format) {
-    for (int k = 0; k < num_inputs; k++) {
+    for (int k = 0; k < num_inputs; ++k) {
       src_dims.push_back(src_dims_pt[k]);
     }
   }
@@ -256,7 +256,7 @@ struct MklConcatFwdParams {
 
 // TODO(intel-tf): The template type "T" is currently used to match the
 // templatized class MklPrimitiveFactory (tensorflow/core/util/mkl_util.h).
-// In future, with the removal of "T" from MklPrimitiveFactory, this class
+// In the future, with the removal of "T" from MklPrimitiveFactory, this class
 // needs to drop "T".
 template <typename T>
 class MklConcatFwdPrimitive : public MklPrimitive {
@@ -265,21 +265,19 @@ class MklConcatFwdPrimitive : public MklPrimitive {
                                  const std::vector<memory::desc>& srcs_md)
       : cpu_engine_(engine::cpu, 0) {
     context_.fwd_stream.reset(new stream(stream::kind::eager));
-    // create concat primitive
-    if (context_.concat_fwd == nullptr) {
-      Setup(concat_fwd_dims, srcs_md);
-    }
+    // Create concat primitive
+    Setup(concat_fwd_dims, srcs_md);
   }
 
   ~MklConcatFwdPrimitive() {}
 
-  // concat forward execute
+  // Concat forward execute
   //   src_data:    input data buffer of src
   //   dst_data:    output data buffer of dst
   void Execute(const std::vector<mkldnn::memory>& in_data,
                const mkldnn::memory& dst_data,
                const MklConcatFwdParams& concat_fwd_dims) {
-    CHECK_EQ(in_data.size(), context_.data_mem.size());
+    DCHECK_EQ(in_data.size(), context_.data_mem.size());
     for (size_t i = 0; i < concat_fwd_dims.num_inputs; i++) {
       context_.data_mem_shdptr[i]->set_data_handle(
           static_cast<void*>(in_data[i].get_data_handle()));
@@ -293,7 +291,7 @@ class MklConcatFwdPrimitive : public MklPrimitive {
 
     context_.fwd_stream->submit(context_.fwd_primitives);
 
-    // after exec, set data handle back
+    // After exec, set data handle back
     context_.dst_mem->set_data_handle(DummyData);
     for (int k = 0; k < concat_fwd_dims.num_inputs; k++) {
       context_.data_mem_shdptr[k]->set_data_handle(DummyData);
@@ -302,7 +300,6 @@ class MklConcatFwdPrimitive : public MklPrimitive {
     for (size_t i = 0; i < concat_fwd_dims.num_inputs; i++) {
       context_.data_mem[i] = *context_.data_mem_shdptr[i];
     }
-    return;
   }
 
  private:
@@ -312,16 +309,16 @@ class MklConcatFwdPrimitive : public MklPrimitive {
     std::vector<std::shared_ptr<mkldnn::memory::primitive_desc>> src_pd_shdptr;
     std::shared_ptr<mkldnn::memory::primitive_desc> dst_pd;
 
-    // MKLDNN memory
+    // MKL-DNN memory
     std::vector<mkldnn::primitive::at> data_mem;
     std::vector<std::shared_ptr<mkldnn::memory>> data_mem_shdptr;
     std::shared_ptr<mkldnn::memory> dst_mem;
 
-    // memory desc
+    // Memory descriptor
     std::vector<std::shared_ptr<mkldnn::memory::desc>> src_md;
     std::shared_ptr<mkldnn::memory::desc> dst_md;
 
-    //  concat primitive
+    // Concat primitive descriptor
     std::shared_ptr<mkldnn::concat::primitive_desc> fwd_pd;
     std::shared_ptr<mkldnn::primitive> concat_fwd;
 
@@ -335,11 +332,11 @@ class MklConcatFwdPrimitive : public MklPrimitive {
           fwd_stream(nullptr) {}
   };
 
-  // creates the src and dst memory descriptor for mkl concat
+  // Creates the src and dst memory descriptor for mkl concat
   // and also creates the concat primitive and primitive descriptor
   void Setup(const MklConcatFwdParams& concat_fwd_dims,
              const std::vector<memory::desc>& srcs_md) {
-    // create memory descriptors for concat with specified srcs format
+    // Create memory descriptors for concat with specified srcs format
     for (size_t i = 0; i < concat_fwd_dims.num_inputs; i++) {
       std::shared_ptr<mkldnn::memory::desc> source_md(
           new memory::desc(srcs_md[i].data));
@@ -352,39 +349,36 @@ class MklConcatFwdPrimitive : public MklPrimitive {
       std::shared_ptr<mkldnn::memory> src_mem(
           new mkldnn::memory(*src_mpd, DummyData));
       context_.data_mem_shdptr.push_back(src_mem);
-    }
 
-    for (size_t i = 0; i < concat_fwd_dims.num_inputs; i++) {
       context_.data_mem.push_back(*context_.data_mem_shdptr[i]);
       context_.src_pd.push_back(*context_.src_pd_shdptr[i]);
     }
-    // create a concat primitive descriptor
+    // Create a concat primitive descriptor
     context_.fwd_pd.reset(new concat::primitive_desc(
         concat_fwd_dims.concat_dims, context_.src_pd));
 
-    // store the expected memory format
+    // Store the expected memory format
     context_.dst_md.reset(new memory::desc({concat_fwd_dims.dst_dims},
                                            MklDnnType<T>(),
                                            concat_fwd_dims.mkl_common_format));
     context_.dst_pd.reset(
         new memory::primitive_desc(*context_.dst_md, cpu_engine_));
 
-    // create memory primitive based on dummy data
+    // Create memory primitive based on dummy data
     context_.dst_mem.reset(new memory(*context_.dst_pd, DummyData));
 
-    // create concat primitive
+    // Create concat primitive
     context_.concat_fwd.reset(
         new concat(*context_.fwd_pd, context_.data_mem, *context_.dst_mem));
 
     context_.fwd_primitives.push_back(*context_.concat_fwd);
-    return;
   }
 
   struct ConcatFwdContext context_;
   engine cpu_engine_;
 };
 
-// class to create/cache the mkl concat primitives based on the
+// Class to create/cache the mkl concat primitives based on the
 // input and output parameters
 template <typename T>
 class MklConcatFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
@@ -398,7 +392,7 @@ class MklConcatFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
       // Always create new primitive
       concat_fwd = new MklConcatFwdPrimitive<T>(concat_fwd_dims, srcs_md);
     } else {
-      // try to find a suitable one in pool
+      // Try to find a suitable one in pool
       concat_fwd = dynamic_cast<MklConcatFwdPrimitive<T>*>(
           MklConcatFwdPrimitiveFactory<T>::GetInstance().GetConcatFwd(
               concat_fwd_dims));
@@ -422,7 +416,7 @@ class MklConcatFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
   }
 
   static string CreateKey(const MklConcatFwdParams& concat_fwd_dims) {
-    string prefix = "Concat_fwd_";
+    string prefix = "concat_fwd_";
     FactoryKeyCreator key_creator;
     key_creator.AddAsKey(prefix);
     for (int k = 0; k < concat_fwd_dims.num_inputs; k++) {
@@ -599,7 +593,6 @@ class MklConcatOp : public OpKernel {
       memory::format mkl_common_format = memory::format::any;
       std::vector<primitive::at> inputs;
       std::vector<memory::dims> src_dims_pt;
-
       std::vector<mkldnn::memory> srcs_mem;
       std::vector<memory::desc> srcs_md;
 
@@ -751,7 +744,7 @@ class MklConcatOp : public OpKernel {
           MklConcatFwdParams concat_fwd_dims(src_dims_pt, dst_dims,
                                              (N - num_of_empty_inputs),
                                              concat_dim, mkl_common_format);
-          // get a concat fwd from primitive pool
+          // Get a concat fwd from primitive pool
           concat_fwd =
               MklConcatFwdPrimitiveFactory<T>::Get(concat_fwd_dims, srcs_md, 0);
 
