@@ -377,6 +377,7 @@ Status ImporterBase::RemoveBackedges(const Graph& graph) {
   graph_ = absl::make_unique<Graph>(graph.flib_def());
   GraphConstructorOptions opts;
   opts.allow_internal_ops = true;
+  opts.add_default_attributes = false;
   TF_RETURN_IF_ERROR(::tensorflow::ConvertGraphDefToGraph(
       opts, std::move(graph_def), graph_.get()));
 
@@ -1724,6 +1725,7 @@ StatusOr<mlir::OwningModuleRef> SavedModelImporter::Convert(
   const auto& graphdef = meta_graph.graph_def();
   GraphConstructorOptions options;
   options.allow_internal_ops = true;
+  options.add_default_attributes = add_default_attributes;
   Graph graph(OpRegistry::Global());
 
   GraphDef preprocessed_graphdef(graphdef);
@@ -1755,6 +1757,7 @@ StatusOr<mlir::OwningModuleRef> ConvertGraphdefToMlir(
     bool add_default_attributes) {
   GraphConstructorOptions options;
   options.allow_internal_ops = true;
+  options.add_default_attributes = add_default_attributes;
   Graph graph(OpRegistry::Global());
 
   GraphDef preprocessed_graphdef(graphdef);
