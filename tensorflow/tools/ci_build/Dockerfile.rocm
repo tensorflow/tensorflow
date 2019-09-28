@@ -75,11 +75,11 @@ RUN apt-get update --allow-insecure-repositories && \
 # RUN cd $HOME/HIP && mkdir -p build && cd build && cmake .. && make package -j $(nproc) && dpkg -i ./hip*.deb
 #
 # Temporary workaround for HIP runtime: https://github.com/ROCm-Developer-Tools/HIP/pull/1464
-# The debian packages are based on rocm2.6. Need to manually update when we bump ROCm
-RUN wget https://www.dropbox.com/s/5jqnfi7h58ousg5/hip_base-1.5.19384.deb && dpkg -i hip_base*.deb
-RUN wget https://www.dropbox.com/s/32aycdpw7gaiffz/hip_hcc-1.5.19384.deb && dpkg -i hip_hcc*.deb
-RUN wget https://www.dropbox.com/s/px2rbqi2o15077g/hip_doc-1.5.19384.deb && dpkg -i hip_doc*.deb
-RUN wget https://www.dropbox.com/s/1dorsng8qe9i1av/hip_samples-1.5.19384.deb && dpkg -i hip_samples*.deb
+# The debian packages are based on rocm2.8. Need to manually update when we bump ROCm
+RUN wget https://www.dropbox.com/s/i9vro42u59h1768/hip_base-2.8.19386.4040-35e68f-amd64.deb && dpkg -i hip_base*.deb
+RUN wget https://www.dropbox.com/s/b2uh80ng6ahsej5/hip_hcc-2.8.19386.4040-35e68f-amd64.deb && dpkg -i hip_hcc*.deb
+RUN wget https://www.dropbox.com/s/ti2clu8lc8vyxcj/hip_doc-2.8.19386.4040-35e68f-amd64.deb && dpkg -i hip_doc*.deb
+RUN wget https://www.dropbox.com/s/z64fscz4kwc5jjh/hip_samples-2.8.19386.4040-35e68f-amd64.deb && dpkg -i hip_samples*.deb
 RUN rm hip_*.deb
 
 # Set up paths
