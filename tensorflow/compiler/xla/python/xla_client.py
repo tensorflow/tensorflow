@@ -279,6 +279,7 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.C64: np.dtype('complex64'),
     PrimitiveType.C128: np.dtype('complex128'),
     PrimitiveType.TUPLE: np.dtype(np.object),
+    PrimitiveType.TOKEN: np.dtype(np.object),
 }
 
 # Note the conversion on the key. Numpy has a known issue wherein dtype hashing
@@ -726,25 +727,62 @@ class ComputationBuilder(object):
     """Clear metadata for operations that are about to be enqueued."""
     self._builder.ClearOpMetadata()
 
-  def Infeed(self, shape):
+  def CreateToken(self):
+    """Enqueues a CreateToken op onto the computation.
+
+    Returns:
+      An XlaOp, representing a fresh token.
+    """
+    return ops.CreateToken(self._builder)
+
+  def AfterAll(self, tokens):
+    """Enqueues a after-all op onto the computation.
+
+    `AfterAll` takes a variadic number of tokens and produces a single token.
+
+    Args:
+      tokens: a list of `XlaOp` values representing predecessor tokens.
+
+    Returns:
+      An `XlaOp`.
+    """
+    return ops.AfterAll(self._builder, tokens)
+
+  def Infeed(self, shape, token=None):
     """Enqueues an infeed op onto the computation.
 
     Infeed operations dequeue data of the given shape from the device's infeed
     queue for subsequent use in the computation.
 
+    Args:
+      shape: a `Shape` describing the shape of the infed value.
+      token: an optional `XlaOp` representing a token after which the infeed
+        effect should be sequenced.
     Returns:
-      An XlaOp.
+      An XlaOp, representing a (value, token) pair.
     """
-    return ops.Infeed(self._builder,
-                      shape.with_major_to_minor_layout_if_absent())
+    if token is None:
+      token = ops.CreateToken(self._builder)
+    return ops.InfeedWithToken(token,
+                               shape.with_major_to_minor_layout_if_absent())
 
-  def Outfeed(self, operand):
+  def Outfeed(self, operand, token=None):
     """Enqueues an outfeed op onto the computation.
 
     Outfeed operations enqueue data, using the given operand, onto the XLA
     outfeed queue for subsequent dequeue via the client API.
+
+    Args:
+      operand: an `XlaOp` representing the data to outfeed.
+      token: an `XlaOp` representing a token after which the outfeed should be
+        sequenced.
+    Returns:
+      An `XlaOp` representing a token.
     """
-    return ops.Outfeed(operand, self._builder.GetShape(operand), '')
+    if token is None:
+      token = ops.CreateToken(self._builder)
+    return ops.OutfeedWithToken(operand, token, self._builder.GetShape(operand),
+                                '')
 
   def Constant(self, value):
     """Enqueues a constant op onto the computation.
