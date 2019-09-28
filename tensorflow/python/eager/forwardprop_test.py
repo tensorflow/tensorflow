@@ -62,7 +62,7 @@ _X11_35_DERIVATIVES = [
 # TODO(allenl): Move this somewhere useful once forward gradients are stable.
 def _jvp(f, primals, tangents):
   """Compute the jacobian of `f` at `primals` multiplied by `tangents`."""
-  with forwardprop.ForwardGradientAccumulator(primals, tangents) as acc:
+  with forwardprop.ForwardAccumulator(primals, tangents) as acc:
     primals_out = f(*primals)
   return primals_out, acc.jvp(
       primals_out, unconnected_gradients=UnconnectedGradients.ZERO)
@@ -143,9 +143,9 @@ def _test_gradients(testcase,
 
 class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
-  def testForwardGradientFunction(self):
+  def testJVPFunction(self):
     add_outputs = (constant_op.constant(4.),)
-    vp, = forwardprop._forward_gradient_dispatch(
+    vp, = forwardprop._jvp_dispatch(
         op_name="Add",
         attr_tuple=(),
         inputs=(constant_op.constant(1.), constant_op.constant(3.)),
@@ -157,7 +157,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(1. + 5., self.evaluate(vp))
 
     mul_outputs = (constant_op.constant([20.]),)
-    vp, = forwardprop._forward_gradient_dispatch(
+    vp, = forwardprop._jvp_dispatch(
         op_name="Mul",
         attr_tuple=(),
         inputs=(constant_op.constant([4.]), constant_op.constant([5.])),
@@ -168,19 +168,19 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         ))
     self.assertAllClose([2. * 5. + 3. * 4.], self.evaluate(vp))
 
-  def testForwardGradientFunctionUsedByAccumulatorForOps(self):
-    previous_fn = forwardprop._forward_gradient_dispatch
+  def testJVPFunctionUsedByAccumulatorForOps(self):
+    previous_fn = forwardprop._jvp_dispatch
     try:
       x = constant_op.constant(1.)
-      with forwardprop.ForwardGradientAccumulator(x, 2.) as acc:
+      with forwardprop.ForwardAccumulator(x, 2.) as acc:
         y = x + x
-        pywrap_tensorflow.TFE_Py_RegisterForwardGradientFunction(
+        pywrap_tensorflow.TFE_Py_RegisterJVPFunction(
             lambda *args, **kwargs: [constant_op.constant(-15.)])
         z = x + x
       self.assertAllClose(4., acc.jvp(y))
       self.assertAllClose(-15., acc.jvp(z))
     finally:
-      pywrap_tensorflow.TFE_Py_RegisterForwardGradientFunction(previous_fn)
+      pywrap_tensorflow.TFE_Py_RegisterJVPFunction(previous_fn)
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testFunctionCacheLimited(self):
@@ -192,7 +192,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       execution_count = getattr(self, "_execution_count", 0)
       self._execution_count = execution_count + 1
       x = array_ops.zeros([execution_count])
-      with forwardprop.ForwardGradientAccumulator(
+      with forwardprop.ForwardAccumulator(
           x, array_ops.ones_like(x)) as acc:
         y = x + x
       self.assertAllClose(2. * array_ops.ones_like(x), acc.jvp(y))
@@ -200,7 +200,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testMultipleWatchesAdd(self):
     x = constant_op.constant(-2.)
-    with forwardprop.ForwardGradientAccumulator(
+    with forwardprop.ForwardAccumulator(
         [x, x], [1., 2.]) as acc:
       self.assertAllClose(3., acc.jvp(x))
       acc._watch(x, constant_op.constant(10.))
@@ -214,7 +214,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testReenter(self):
     x = constant_op.constant(-2.)
-    with forwardprop.ForwardGradientAccumulator(x, 1.5) as acc:
+    with forwardprop.ForwardAccumulator(x, 1.5) as acc:
       self.assertAllClose(1.5, acc.jvp(x))
       y = 4. * x
       self.assertAllClose(6., acc.jvp(y))
@@ -233,7 +233,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     x_weak = weakref.ref(x)
     grad_tensor = constant_op.constant(array_ops.zeros([100]))
     grad_tensor_weak = weakref.ref(grad_tensor)
-    with forwardprop.ForwardGradientAccumulator(x, grad_tensor) as acc:
+    with forwardprop.ForwardAccumulator(x, grad_tensor) as acc:
       derived_tensor = constant_op.constant(2.) * x
       del grad_tensor
       self.assertAllClose(array_ops.zeros([100]), acc.jvp(x))
@@ -298,7 +298,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
     c = constant_op.constant(1.)
     d = constant_op.constant(2.)
-    with forwardprop.ForwardGradientAccumulator(c, d):
+    with forwardprop.ForwardAccumulator(c, d):
       with self.assertRaisesRegexp(ValueError, "test_error_string"):
         f(c)
 
@@ -391,7 +391,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     # alongside their usual outputs.
     c = constant_op.constant(1.)
     d = constant_op.constant(2.)
-    with forwardprop.ForwardGradientAccumulator(c, d) as acc:
+    with forwardprop.ForwardAccumulator(c, d) as acc:
 
       @custom_gradient.custom_gradient
       def f(x):
@@ -418,7 +418,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     def _forwardgrad(f):
       def _compute_forwardgrad(primal):
         tangent = constant_op.constant(1.)
-        with forwardprop.ForwardGradientAccumulator(primal, tangent) as acc:
+        with forwardprop.ForwardAccumulator(primal, tangent) as acc:
           primal_out = f(primal)
         return acc.jvp(primal_out)
       return _compute_forwardgrad
@@ -442,9 +442,9 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       return x ** 3.5
 
     primal = constant_op.constant(1.1)
-    with forwardprop.ForwardGradientAccumulator(
+    with forwardprop.ForwardAccumulator(
         primal, constant_op.constant(1.)) as outer_acc:
-      with forwardprop.ForwardGradientAccumulator(
+      with forwardprop.ForwardAccumulator(
           primal, constant_op.constant(1.)) as acc:
         primal_out = f(primal)
     inner_jvp = acc.jvp(primal_out)
@@ -459,10 +459,10 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     two = constant_op.constant(2.)
     primal_in = constant_op.constant(1.)
     inner_jvp = constant_op.constant(3.)
-    with forwardprop.ForwardGradientAccumulator(
+    with forwardprop.ForwardAccumulator(
         [primal_in, inner_jvp],
         [constant_op.constant(2.), constant_op.constant(4.)]) as outer_acc:
-      with forwardprop.ForwardGradientAccumulator(
+      with forwardprop.ForwardAccumulator(
           primal_in, inner_jvp) as inner_acc:
         packed_input_indices, packed_input_tangents = (
             forwardprop_util.pack_tangents([primal_in]))
@@ -492,9 +492,9 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         return x ** 3.5
 
       primal = constant_op.constant(1.1)
-      with forwardprop.ForwardGradientAccumulator(
+      with forwardprop.ForwardAccumulator(
           primal, constant_op.constant(1.)) as outer_acc:
-        with forwardprop.ForwardGradientAccumulator(
+        with forwardprop.ForwardAccumulator(
             primal, constant_op.constant(1.)) as acc:
           primal_out = f(primal)
       inner_jvp = acc.jvp(primal_out)
@@ -519,14 +519,14 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         [constant_op.constant([1., 2.])],
         order=3)
 
-  def testReusingForwardGradient(self):
+  def testReusingJVP(self):
     m1 = random_ops.random_uniform((256, 2096))
     m2 = array_ops.identity(m1)
     tangent1 = random_ops.random_uniform((256, 2096))
     tangent2 = random_ops.random_uniform((256, 2096))
     matmul = def_function.function(math_ops.matmul)
 
-    with forwardprop.ForwardGradientAccumulator(
+    with forwardprop.ForwardAccumulator(
         primals=[m1, m2], tangents=[tangent1, tangent2]) as acc:
       result1 = matmul(m1, m1, transpose_b=True)
       result2 = matmul(m2, m2, transpose_b=True)
@@ -580,7 +580,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
   def testShouldRecordAndStopRecord(self):
     c = constant_op.constant(1.)
     c_tangent = constant_op.constant(2.)
-    with forwardprop.ForwardGradientAccumulator(c, c_tangent) as acc:
+    with forwardprop.ForwardAccumulator(c, c_tangent) as acc:
       with backprop.GradientTape() as tape:
         self.assertFalse(tape_lib.should_record_backprop([c]))
         self.assertEqual(
@@ -605,7 +605,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
   def testRecordingSelectively(self):
     c = constant_op.constant(1.)
     c_tangent = constant_op.constant(2.)
-    with forwardprop.ForwardGradientAccumulator(c, c_tangent) as acc:
+    with forwardprop.ForwardAccumulator(c, c_tangent) as acc:
       with backprop.GradientTape(persistent=True) as tape:
         tape.watch(c)
         with tape_lib.stop_recording():
@@ -631,14 +631,14 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testOpWithNoTrainableOutputs(self):
     v = variables.Variable(1.)
-    with forwardprop.ForwardGradientAccumulator(v, 11.):
+    with forwardprop.ForwardAccumulator(v, 11.):
       v.assign_sub(0.5)
       self.assertAllClose(0.5, self.evaluate(v))
 
   # TODO(b/141025187): Add a no_new_pyobjects decorator.
   def testVariableReadInFunction(self):
     v = variables.Variable(1.)
-    with forwardprop.ForwardGradientAccumulator(v, 11.) as acc:
+    with forwardprop.ForwardAccumulator(v, 11.) as acc:
       @def_function.function
       def f():
         return v.read_value(), 2. * v.read_value()
@@ -653,11 +653,11 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     # Watching depends depends on nesting, not creation order
     c = constant_op.constant(1.)
     if forward_prop_first:
-      forward_accumulator = forwardprop.ForwardGradientAccumulator(c, .1)
+      forward_accumulator = forwardprop.ForwardAccumulator(c, .1)
       gradient_tape = backprop.GradientTape()
     else:
       gradient_tape = backprop.GradientTape()
-      forward_accumulator = forwardprop.ForwardGradientAccumulator(c, .1)
+      forward_accumulator = forwardprop.ForwardAccumulator(c, .1)
     try:
       gc.disable()
       with gradient_tape as tape:
@@ -685,11 +685,11 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     c = constant_op.constant(1.)
     # Watching depends depends on nesting, not creation order
     if forward_prop_first:
-      forward_accumulator = forwardprop.ForwardGradientAccumulator(c, .1)
+      forward_accumulator = forwardprop.ForwardAccumulator(c, .1)
       gradient_tape = backprop.GradientTape()
     else:
       gradient_tape = backprop.GradientTape()
-      forward_accumulator = forwardprop.ForwardGradientAccumulator(c, .1)
+      forward_accumulator = forwardprop.ForwardAccumulator(c, .1)
     with gradient_tape as tape:
       with forward_accumulator as acc:
         tape.watch(c)
@@ -701,7 +701,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testRecordingWithJVPIndices(self):
     c = constant_op.constant(1.)
-    with forwardprop.ForwardGradientAccumulator(c, 10.) as acc:
+    with forwardprop.ForwardAccumulator(c, 10.) as acc:
       packed_input_tangents = forwardprop_util.pack_tangents([c]).tangents
       self.assertAllClose([10.], packed_input_tangents)
       d = constant_op.constant(2.)
@@ -718,7 +718,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     c = constant_op.constant(1.)
     d = constant_op.constant(2.)
     e = constant_op.constant(3.)
-    with forwardprop.ForwardGradientAccumulator(c, 10.) as acc:
+    with forwardprop.ForwardAccumulator(c, 10.) as acc:
       tape_lib.record_operation(
           "ForwardIsSpecial",
           [d], [c],
@@ -737,7 +737,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testVariableWatched(self):
     v = variables.Variable([1., 2., 3.])
-    with forwardprop.ForwardGradientAccumulator(
+    with forwardprop.ForwardAccumulator(
         v, constant_op.constant([.1, -.2, .3])) as acc:
       self.assertAllClose([.1, -.2, .3], acc.jvp(v))
       x = v * 2.
@@ -747,7 +747,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
   def testUnconnectedGradients(self):
     x = constant_op.constant(-1.)
-    with forwardprop.ForwardGradientAccumulator(x, 0.1) as acc:
+    with forwardprop.ForwardAccumulator(x, 0.1) as acc:
       self.assertAllClose(0.1, acc.jvp(x, unconnected_gradients="zero"))
       self.assertAllClose(0.1, acc.jvp(x, unconnected_gradients="none"))
       y = constant_op.constant(-2.)
@@ -766,7 +766,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       def compute_jvps(self):
         if self._v is None:
           self._v = variables.Variable([1., 2., 3.])
-        with forwardprop.ForwardGradientAccumulator(
+        with forwardprop.ForwardAccumulator(
             self._v, constant_op.constant([.1, -.2, .3])) as acc:
           x = self._v * 2.
           x2 = self._v + .1
@@ -784,7 +784,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
   def testMirroredVariableWatched(self):
 
     def _replicated(input_tangent):
-      with forwardprop.ForwardGradientAccumulator(v, input_tangent) as acc:
+      with forwardprop.ForwardAccumulator(v, input_tangent) as acc:
         self.assertAllClose([.1, -.2, .3], acc.jvp(v))
         x = v * 2.
         self.assertAllClose([.2, -.4, .6], acc.jvp(x))
@@ -800,7 +800,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
   # TODO(b/141025187): Add a no_new_pyobjects decorator.
   def testArgumentUnused(self):
     v = constant_op.constant(1.)
-    with forwardprop.ForwardGradientAccumulator(v, 11.) as acc:
+    with forwardprop.ForwardAccumulator(v, 11.) as acc:
 
       @def_function.function
       def _f(x):

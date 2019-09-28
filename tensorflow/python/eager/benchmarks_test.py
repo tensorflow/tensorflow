@@ -679,7 +679,7 @@ class MicroBenchmarks(test.Benchmark):
       tangent = random_ops.random_uniform(shape).cpu()
 
       def func():
-        with forwardprop.ForwardGradientAccumulator(m, tangent) as acc:
+        with forwardprop.ForwardAccumulator(m, tangent) as acc:
           result = math_ops.matmul(m, m, transpose_b=True)
         return result, acc.jvp(result)
 
@@ -692,7 +692,7 @@ class MicroBenchmarks(test.Benchmark):
     with ops.device(CPU):
       @def_function.function
       def compiled_function(x, tangent):
-        with forwardprop.ForwardGradientAccumulator(x, tangent) as acc:
+        with forwardprop.ForwardAccumulator(x, tangent) as acc:
           result = math_ops.matmul(x, x, transpose_b=True)
         return result, acc.jvp(result)
 
@@ -711,7 +711,7 @@ class MicroBenchmarks(test.Benchmark):
 
       @def_function.function()
       def compiled_function(x, tangent):
-        with forwardprop.ForwardGradientAccumulator(x, tangent) as acc:
+        with forwardprop.ForwardAccumulator(x, tangent) as acc:
           result = matmul(x, x, transpose_b=True)
         return result, acc.jvp(result)
 
@@ -731,7 +731,7 @@ class MicroBenchmarks(test.Benchmark):
       matmul = def_function.function(math_ops.matmul)
 
       def func():
-        with forwardprop.ForwardGradientAccumulator(m, tangent) as acc:
+        with forwardprop.ForwardAccumulator(m, tangent) as acc:
           result = matmul(m, m, transpose_b=True)
         return result, acc.jvp(result)
 

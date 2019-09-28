@@ -35,12 +35,12 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 
-# Dictionary mapping from op names to special-cased forward gradient
-# functions. Otherwise backward functions are transposed on the tape.
+# Dictionary mapping from op names to special-cased jvp functions. Otherwise
+# backward functions are transposed on the tape.
 _SPECIAL_CASES = {}
 
 
-def _identity_forward_grad(attr_tuple, inputs, outputs, tangents):
+def _identity_jvp(attr_tuple, inputs, outputs, tangents):
   # Special-cased mostly for resource handles, where creating ones Tensors from
   # handle data for transposing the backward function on the tape is error-prone
   # (even if we get good handle data, partially defined shapes are an issue).
@@ -48,27 +48,26 @@ def _identity_forward_grad(attr_tuple, inputs, outputs, tangents):
   return [array_ops.identity(t) for t in tangents]
 
 
-_SPECIAL_CASES["Identity"] = _identity_forward_grad
+_SPECIAL_CASES["Identity"] = _identity_jvp
 
 
-def _read_variable_forward_grad(attr_tuple, inputs, outputs, tangents):
+def _read_variable_jvp(attr_tuple, inputs, outputs, tangents):
   # Like for Identity, this special case means we don't need to create
   # variable-shaped Tensors from resource handles.
   del attr_tuple, inputs, outputs
   return [array_ops.identity(t) for t in tangents]
 
 
-_SPECIAL_CASES["ReadVariableOp"] = _read_variable_forward_grad
+_SPECIAL_CASES["ReadVariableOp"] = _read_variable_jvp
 
 
 _TRACE_COUNT_CONSISTENCY_LOCK = threading.Lock()
-# Map from op names to number of traces of _forward_gradient_helper. Used to cap
-# the number of traces due to shape differences while still specializing
-# gradients where possible.
+# Map from op names to number of traces of _jvp_helper. Used to cap the number
+# of traces due to shape differences while still specializing where possible.
 _TRACE_COUNT = {}
 
 
-def _forward_gradient_helper(op_name, attr_tuple, inputs, outputs, tangents):
+def _jvp_helper(op_name, attr_tuple, inputs, outputs, tangents):
   """Computes a Jacobian-vector product for an op.
 
   Note that this function would be wasteful if executed eagerly. It runs the
@@ -88,7 +87,7 @@ def _forward_gradient_helper(op_name, attr_tuple, inputs, outputs, tangents):
   """
   with _TRACE_COUNT_CONSISTENCY_LOCK:
     # Just make sure writes don't clobber each other's increments; reads in
-    # _forward_gradient_dispatch do not lock.
+    # _jvp_dispatch do not lock.
     _TRACE_COUNT[op_name] = _TRACE_COUNT.get(op_name, 0) + 1
 
   special_case = _SPECIAL_CASES.get(op_name, None)
@@ -145,38 +144,37 @@ def _forward_gradient_helper(op_name, attr_tuple, inputs, outputs, tangents):
 # implementations, or a more satisfying story about how we re-specialize
 # gradients which were traced with relaxed shapes (e.g. use conds instead of
 # trace-time Python logic).
-_forward_gradient_relaxed_shapes = def_function.function(
-    _forward_gradient_helper, experimental_relax_shapes=True)
-_forward_gradient_exact_shapes = def_function.function(
-    _forward_gradient_helper, experimental_relax_shapes=False)
+_jvp_relaxed_shapes = def_function.function(
+    _jvp_helper, experimental_relax_shapes=True)
+_jvp_exact_shapes = def_function.function(
+    _jvp_helper, experimental_relax_shapes=False)
 
 # The maximum number of exact-shape traces to perform for a single op before
 # switching to shape relaxation.
 _TRACE_COUNT_LIMIT = 32
 
 
-def _forward_gradient_dispatch(op_name, attr_tuple, inputs, outputs, tangents):
+def _jvp_dispatch(op_name, attr_tuple, inputs, outputs, tangents):
   """Determine which forwardprop function to call."""
   # Note that this _TRACE_COUNT read races with writes. That's fine, it just
   # means we may trace a few more exact shapes before moving on to relaxation.
   if _TRACE_COUNT.get(op_name, 0) < _TRACE_COUNT_LIMIT:
-    return _forward_gradient_exact_shapes(
+    return _jvp_exact_shapes(
         op_name, attr_tuple, inputs, outputs, tangents)
   else:
-    return _forward_gradient_relaxed_shapes(
+    return _jvp_relaxed_shapes(
         op_name, attr_tuple, inputs, outputs, tangents)
 
-pywrap_tensorflow.TFE_Py_RegisterForwardGradientFunction(
-    _forward_gradient_dispatch)
+pywrap_tensorflow.TFE_Py_RegisterJVPFunction(_jvp_dispatch)
 
 
-class ForwardGradientAccumulator(object):
+class ForwardAccumulator(object):
   """Computes Jacobian-vector products using forward-mode autodiff.
 
   Example:
 
   ```
-  with ForwardGradientAccumulator(
+  with ForwardAccumulator(
       primals=x,
       tangents=tf.constant([[5., 6.], [7., 8.]])) as acc:
     x = tf.constant([[2.0, 3.0], [1.0, 4.0]])
@@ -184,14 +182,14 @@ class ForwardGradientAccumulator(object):
   jvp = acc.jvp(y)
   ```
 
-  Note that `ForwardGradientAccumulator`s are always applied in creation order,
-  so inner accumulators will not see JVP computation from outer
-  accumulators. Take higher-order gradients from outer accumulators:
+  Note that `ForwardAccumulator`s are always applied in creation order, so inner
+  accumulators will not see JVP computation from outer accumulators. Take
+  higher-order jvps from outer accumulators:
 
   ```
   primal = tf.constant(1.1)
-  with ForwardGradientAccumulator(primal, tf.constant(1.)) as outer_acc:
-    with ForwardGradientAccumulator(primal, tf.constant(1.)) as acc:
+  with ForwardAccumulator(primal, tf.constant(1.)) as outer_acc:
+    with ForwardAccumulator(primal, tf.constant(1.)) as acc:
       primal_out = primal ** tf.constant(3.5)
   inner_jvp = acc.jvp(primal_out)
   outer_jvp = outer_acc.jvp(inner_jvp)
@@ -200,11 +198,12 @@ class ForwardGradientAccumulator(object):
   Reversing the collection in the last two lines to instead retrieve
   `acc.jvp(outer_acc.jvp(primal_out))` will not work.
 
-  Strict nesting also applies to combinations of `ForwardGradientAccumulator`
-  and `tf.GradientTape`. More deeply nested `GradientTape` objects will ignore
-  the products of outer `ForwardGradientAccumulator` objects. This allows (for
-  example) memory-efficient forward-over-backward computation of second-order
-  gradients, where the inner `GradientTape` would otherwise hold on to all jvps.
+  Strict nesting also applies to combinations of `ForwardAccumulator` and
+  `tf.GradientTape`. More deeply nested `GradientTape` objects will ignore the
+  products of outer `ForwardAccumulator` objects. This allows (for example)
+  memory-efficient forward-over-backward computation of Hessian-vector products,
+  where the inner `GradientTape` would otherwise hold on to all intermediate
+  jvps.
   """
 
   def __init__(self, primals, tangents):

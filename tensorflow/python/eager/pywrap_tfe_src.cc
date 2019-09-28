@@ -845,14 +845,14 @@ PyObject* TFE_Py_RegisterGradientFunction(PyObject* e) {
   }
 }
 
-PyObject* TFE_Py_RegisterForwardGradientFunction(PyObject* e) {
+PyObject* TFE_Py_RegisterJVPFunction(PyObject* e) {
   if (forward_gradient_function != nullptr) {
     Py_DECREF(forward_gradient_function);
   }
   if (!PyCallable_Check(e)) {
     forward_gradient_function = nullptr;
     PyErr_SetString(PyExc_TypeError,
-                    "TFE_Py_RegisterForwardGradientFunction: "
+                    "TFE_Py_RegisterJVPFunction: "
                     "Registered object should be function.");
     return nullptr;
   } else {
@@ -2094,10 +2094,10 @@ tensorflow::Status ParseTangentOutputs(
 //
 // `op_name`, `attrs`, `inputs`, and `results` describe the operation for which
 // the forward function is being called.
-tensorflow::Status CallForwardGradientFunction(
-    PyObject* op_name, PyObject* attrs, PyObject* inputs, PyObject* results,
-    const std::vector<PyObject*>& input_tangents,
-    std::vector<PyObject*>* output_tangents) {
+tensorflow::Status CallJVPFunction(PyObject* op_name, PyObject* attrs,
+                                   PyObject* inputs, PyObject* results,
+                                   const std::vector<PyObject*>& input_tangents,
+                                   std::vector<PyObject*>* output_tangents) {
   if (forward_gradient_function == nullptr) {
     return tensorflow::errors::Internal(
         "No forward gradient function registered.");
@@ -2120,9 +2120,9 @@ tensorflow::Status CallForwardGradientFunction(
   return ParseTangentOutputs(py_result.get(), output_tangents);
 }
 
-// Like CallForwardGradientFunction, but calls a pre-bound forward function.
+// Like CallJVPFunction, but calls a pre-bound forward function.
 // These are passed in from a record_gradient argument.
-tensorflow::Status CallOpSpecificForwardGradientFunction(
+tensorflow::Status CallOpSpecificJVPFunction(
     PyObject* op_specific_forward_function,
     const std::vector<PyObject*>& input_tangents,
     std::vector<PyObject*>* output_tangents) {
@@ -2234,8 +2234,8 @@ PyObject* TFE_Py_TapeSetRecordOperation(PyObject* op_type,
     tensorflow::eager::ForwardFunction<PyObject> wrapped_forward_function(
         [forward_function](const std::vector<PyObject*>& input_tangents,
                            std::vector<PyObject*>* output_tangents) {
-          return CallOpSpecificForwardGradientFunction(
-              forward_function, input_tangents, output_tangents);
+          return CallOpSpecificJVPFunction(forward_function, input_tangents,
+                                           output_tangents);
         });
     if (!TapeSetRecordOperation(
             op_type, input_tensors, output_tensors, input_ids, input_dtypes,
@@ -2532,7 +2532,7 @@ PyObject* TFE_Py_ForwardAccumulatorJVP(PyObject* accumulator,
   return jvp;
 }
 
-PyObject* TFE_Py_PackForwardGradients(PyObject* tensors) {
+PyObject* TFE_Py_PackJVPs(PyObject* tensors) {
   if (!TapeCouldPossiblyRecord(tensors)) {
     tensorflow::Safe_PyObjectPtr empty_tuple(PyTuple_New(0));
     tensorflow::Safe_PyObjectPtr empty_list(PyList_New(0));
@@ -2987,8 +2987,8 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
       [op_name, attrs, inputs, results](
           const std::vector<PyObject*>& input_tangents,
           std::vector<PyObject*>* output_tangents) {
-        return CallForwardGradientFunction(op_name, attrs, inputs, results,
-                                           input_tangents, output_tangents);
+        return CallJVPFunction(op_name, attrs, inputs, results, input_tangents,
+                               output_tangents);
       });
 
   PyObject* num_inputs = PyLong_FromLong(PySequence_Size(inputs));
