@@ -101,12 +101,12 @@ template <> unsigned BlockOperand::getOperandNumber() {
 
 /// Create a new Operation with the specific fields.
 Operation *Operation::create(Location location, OperationName name,
-                             ArrayRef<Value *> operands,
                              ArrayRef<Type> resultTypes,
+                             ArrayRef<Value *> operands,
                              ArrayRef<NamedAttribute> attributes,
                              ArrayRef<Block *> successors, unsigned numRegions,
                              bool resizableOperandList) {
-  return create(location, name, operands, resultTypes,
+  return create(location, name, resultTypes, operands,
                 NamedAttributeList(attributes), successors, numRegions,
                 resizableOperandList);
 }
@@ -114,8 +114,8 @@ Operation *Operation::create(Location location, OperationName name,
 /// Create a new Operation from operation state.
 Operation *Operation::create(const OperationState &state) {
   unsigned numRegions = state.regions.size();
-  Operation *op = create(state.location, state.name, state.operands,
-                         state.types, state.attributes, state.successors,
+  Operation *op = create(state.location, state.name, state.types,
+                         state.operands, state.attributes, state.successors,
                          numRegions, state.resizableOperandList);
   for (unsigned i = 0; i < numRegions; ++i)
     if (state.regions[i])
@@ -126,8 +126,8 @@ Operation *Operation::create(const OperationState &state) {
 /// Overload of create that takes an existing NamedAttributeList to avoid
 /// unnecessarily uniquing a list of attributes.
 Operation *Operation::create(Location location, OperationName name,
-                             ArrayRef<Value *> operands,
                              ArrayRef<Type> resultTypes,
+                             ArrayRef<Value *> operands,
                              const NamedAttributeList &attributes,
                              ArrayRef<Block *> successors, unsigned numRegions,
                              bool resizableOperandList) {
@@ -572,7 +572,7 @@ Operation *Operation::cloneWithoutRegions(BlockAndValueMapping &mapper) {
   SmallVector<Type, 8> resultTypes(getResultTypes());
   unsigned numRegions = getNumRegions();
   auto *newOp =
-      Operation::create(getLoc(), getName(), operands, resultTypes, attrs,
+      Operation::create(getLoc(), getName(), resultTypes, operands, attrs,
                         successors, numRegions, hasResizableOperandsList());
 
   // Remember the mapping of any results.

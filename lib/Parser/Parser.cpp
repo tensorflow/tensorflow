@@ -3000,7 +3000,7 @@ Value *OperationParser::createForwardRefPlaceholder(SMLoc loc, Type type) {
   // them.
   auto name = OperationName("placeholder", getContext());
   auto *op = Operation::create(
-      getEncodedSourceLocation(loc), name, /*operands=*/{}, type,
+      getEncodedSourceLocation(loc), name, type, /*operands=*/{},
       /*attributes=*/llvm::None, /*successors=*/{}, /*numRegions=*/0,
       /*resizableOperandList=*/false);
   forwardRefPlaceholders[op->getResult(0)] = loc;
