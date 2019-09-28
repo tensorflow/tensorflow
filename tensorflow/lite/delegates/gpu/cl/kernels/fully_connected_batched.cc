@@ -81,7 +81,8 @@ FullyConnectedBatched::FullyConnectedBatched(FullyConnectedBatched&& kernel)
 FullyConnectedBatched& FullyConnectedBatched::operator=(
     FullyConnectedBatched&& kernel) {
   if (this != &kernel) {
-    weights_ = std::move(kernel.weights_), biases_ = std::move(kernel.biases_),
+    weights_ = std::move(kernel.weights_);
+    biases_ = std::move(kernel.biases_);
     kernel_ = std::move(kernel.kernel_);
     std::swap(work_group_size_, kernel.work_group_size_);
     GPUOperation::operator=(std::move(kernel));
