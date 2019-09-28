@@ -293,9 +293,8 @@ def FourEqualsFive :
 
 def OperandRankEqualsResultSize :
     TEST_Op<"operand_rank_equals_result_size",
-            [AllMatch<["$operand.getType().cast<ShapedType>().getRank()",
-                       "$result.getType().cast<ShapedType>().getNumElements()"
-                      ], "operand rank equals result size">]> {
+            [AllMatch<[Rank<"operand">.result, ElementCount<"result">.result],
+                      "operand rank equals result size">]> {
   let arguments = (ins AnyTensor:$operand);
   let results = (outs AnyTensor:$result);
 }
