@@ -119,7 +119,8 @@ class AotCompilationOptions {
   DebugOptions debug_options_;
   absl::optional<DeviceAssignment> static_device_assignment_;
   std::vector<std::vector<bool>> fusion_config_;
-  FusionConfigCollection fusion_config_collection_;
+  FusionConfigCollection fusion_config_collection_ =
+      FusionConfigCollection::kOff;
 };
 
 // Abstract superclass describing metadata produced during ahead-of-time
