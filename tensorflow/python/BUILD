@@ -4448,7 +4448,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "special_math_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["ops/special_math_ops_test.py"],
     additional_deps = [
         ":array_ops",
@@ -4459,6 +4459,7 @@ cuda_py_test(
         ":special_math_ops",
         "//third_party/py/numpy",
     ],
+    shard_count = 10,
     tags = ["no_windows_gpu"],
 )
 
