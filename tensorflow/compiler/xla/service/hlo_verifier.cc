@@ -931,6 +931,9 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kSort:
     case HloOpcode::kTuple:
     case HloOpcode::kWhile:
+    case HloOpcode::kBatchNormGrad:
+    case HloOpcode::kBatchNormInference:
+    case HloOpcode::kBatchNormTraining:
       break;
     default: {
       PrimitiveType fp_type = PRIMITIVE_TYPE_INVALID;
