@@ -474,12 +474,6 @@ bool BaseGPUDevice::RequiresRecordingAccessedTensors() const {
   return false;
 }
 
-Status BaseGPUDevice::FillContextMap(const Graph* graph,
-                                     DeviceContextMap* device_context_map) {
-  VLOG(2) << "FillContextMap";
-  return Status::OK();
-}
-
 string BaseGPUDevice::ComputeOpKernelDebugString(const OpKernel& op_kernel,
                                                  const int& stream_id) {
   return strings::StrCat(op_kernel.name(), " op ", op_kernel.type_string(),

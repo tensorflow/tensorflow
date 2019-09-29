@@ -144,8 +144,7 @@ class XlaDevice : public LocalDevice {
   Status Sync() override;
   void Sync(const DoneCallback& done) override;
 
-  Status FillContextMap(const Graph* graph,
-                        DeviceContextMap* device_context_map) override
+  Status TryGetDeviceContext(DeviceContext** out_context) override
       LOCKS_EXCLUDED(mu_);
 
   Status MakeTensorFromProto(const TensorProto& tensor_proto,
