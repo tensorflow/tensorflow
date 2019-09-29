@@ -38,8 +38,7 @@ The MLIR branch operation is not allowed to target the entry block for a region.
 Syntax:
 
 ``` {.ebnf}
-operation ::=
-  `cond_br` ssa-use `,` successor `,` successor
+operation ::= `cond_br` ssa-use `,` successor `,` successor
 ```
 
 The `cond_br` terminator operation represents a conditional branch on a boolean
@@ -85,7 +84,8 @@ single function to return.
 Syntax:
 
 ``` {.ebnf}
-operation ::= `call` symbol-ref-id `(` ssa-use-list? `)` `:` function-type
+operation ::= 
+    (ssa-id `=`)? `call` symbol-ref-id `(` ssa-use-list? `)` `:` function-type
 ```
 
 The `call` operation represents a direct call to a function. The operands and
@@ -357,7 +357,7 @@ in these contexts.
 Syntax:
 
 ``` {.ebnf}
-operation ::= `splat` ssa-use `:` ( vector-type | tensor-type )
+operation ::= ssa-id `=` `splat` ssa-use `:` ( vector-type | tensor-type )
 ```
 
 Broadcast the operand to all elements of the result vector or tensor. The
@@ -383,8 +383,7 @@ sizes of the two dynamic dimensions. %m = "foo"() : () -> (index) %n = "bar"() :
 Syntax:
 
 ``` {.ebnf}
-operation ::= `store` ssa-use `,` ssa-use
-    `[` ssa-use-list `]` `:` memref-type
+operation ::= `store` ssa-use `,` ssa-use `[` ssa-use-list `]` `:` memref-type
 ```
 
 Store value to memref location given by indices. The value stored should have
