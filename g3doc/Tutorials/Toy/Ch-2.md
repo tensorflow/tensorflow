@@ -20,7 +20,7 @@ non-trivial lowering from their AST to generate LLVM IR.
 As a consequence, multiple frontends end up reimplementing significant pieces of
 infrastructure to support the need for these analyses and transformation. MLIR
 addresses this issue by being designed for extensibility. As such, there are
-little to no pre-defined instructions (*operations* in MLIR terminology) or
+little to none pre-defined instructions (*operations* in MLIR terminology) or
 types.
 
 ## MLIR Dialects and Operations
@@ -36,7 +36,7 @@ semantics.
 
 MLIR supports this extensibility with the concept of
 [Dialects](../../LangRef.md#dialects). Among other things, Dialects provide a
-grouping mechanism for operations under a unique `namespace`. Dialects will be a
+grouping mechanism for operations under a unique `namespace`. Dialects will be
 discussed a bit more in the [next chapter](Ch-3.md).
 
 Here is the MLIR assembly for the Toy 'transpose' operations:
