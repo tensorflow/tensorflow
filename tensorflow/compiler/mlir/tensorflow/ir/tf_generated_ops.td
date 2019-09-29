@@ -263,6 +263,42 @@ If `condition` evaluates to false, print the list of tensors in `data`.
   let hasCanonicalizer = 1;
 }
 
+def TF_AssignAddVariableOpOp : TF_Op<"AssignAddVariableOp", []> {
+  let summary = "Adds a value to the current value of a variable.";
+
+  let description = [{
+Any ReadVariableOp with a control dependency on this op is guaranteed to
+see the incremented value or a subsequent newer one.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$resource,
+    TF_Tensor:$value
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_AssignVariableOpOp : TF_Op<"AssignVariableOp", []> {
+  let summary = "Assigns a new value to a variable.";
+
+  let description = [{
+Any ReadVariableOp with a control dependency on this op is guaranteed to return
+this value or a subsequent newer value of the variable.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$resource,
+    TF_Tensor:$value
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
+}
+
 def TF_AvgPoolOp : TF_Op<"AvgPool", [NoSideEffect]> {
   let summary = "Performs average pooling on the input.";
 
@@ -2936,6 +2972,29 @@ of the tensor. Rank is also known as "order", "degree", or "ndims."
   let builders = [
     OpBuilder<"Builder* builder, OperationState& result, Value* input">
   ];
+}
+
+def TF_ReadVariableOpOp : TF_Op<"ReadVariableOp", []> {
+  let summary = "Reads the value of a variable.";
+
+  let description = [{
+The tensor returned by this operation is immutable.
+
+The value returned by this operation is guaranteed to be influenced by all the
+writes on which this operation depends directly or indirectly, and to not be
+influenced by any of the writes which depend directly or indirectly on this
+operation.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$resource
+  );
+
+  let results = (outs
+    TF_Tensor:$value
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_RealDivOp : TF_Op<"RealDiv", [Broadcastable, NoSideEffect]>,
