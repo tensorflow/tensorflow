@@ -892,11 +892,6 @@ Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
         auto& array_info = specs.inputs[input_arg.name()];
         array_info.imported_dtype = input_arg.type();
         array_info.shape = list.shape(i);
-        // TODO(b/140464702): These fields should not be exposed here.
-        // Seems like a layering violation. Initialize them anyway.
-        array_info.final_dtype = input_arg.type();
-        array_info.min_value = 0.0;
-        array_info.max_value = 0.0;
       }
     }
   }
@@ -991,26 +986,6 @@ Status ImporterBase::ConvertFunctionArgAndRets(
     mlir::OperationState state(inst->getLoc(),
                                inst_name.str().append(".input"));
     state.attributes.append(inst->getAttrs().begin(), inst->getAttrs().end());
-
-    // If there are quantization specifications, add them as the attributes
-    auto name = inst->getAttrOfType<mlir::StringAttr>("name").getValue();
-    auto input_spec_it = specs_.inputs.find(name.str());
-    if (input_spec_it != specs_.inputs.end()) {
-      auto input_spec = input_spec_it->second;
-      if (IsQuantizationType(input_spec.final_dtype)) {
-        // Uses the MLIR built-in type so it can be handled easily later.
-        auto final_type = mlir::IntegerType::get(
-            GetQuantizationTypeWidth(input_spec.final_dtype), context_);
-        state.attributes.push_back(builder_.getNamedAttr(
-            "min", builder_.getF32FloatAttr(input_spec.min_value)));
-        state.attributes.push_back(builder_.getNamedAttr(
-            "max", builder_.getF32FloatAttr(input_spec.max_value)));
-        state.attributes.push_back(
-            builder_.getNamedAttr("type", builder_.getTypeAttr(final_type)));
-        inst->getParentOfType<mlir::FuncOp>().setAttr("tf.quantize",
-                                                      builder_.getUnitAttr());
-      }
-    }
 
     for (auto* r : inst->getResults()) state.types.push_back(r->getType());
 
