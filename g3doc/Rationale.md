@@ -47,7 +47,7 @@ representation such as HLO or TensorFlow graphs, all the way down to the machine
 level. MLIR is able to represent arbitrary control flow and arbitrary data
 accesses, and is general enough to represent nearly all sequential computation.
 This is a key distinction from existing polyhedral representation
-implementations (such LLVM [Polly](https://polly.llvm.org/)) that are able to
+implementations (such as LLVM [Polly](https://polly.llvm.org/)) that are able to
 use the polyhedral abstraction in a way isolated from the LLVM IR and only for
 affine loop nests, i.e., portions of the code where array accesses, loop bounds,
 and conditionals are regular (involve linear functions of loop iterators and
@@ -73,10 +73,11 @@ that can be easily implemented include the body of affine transformations: these
 subsume all traditional loop transformations (unimodular and non-unimodular)
 such as loop tiling, interchange, permutation, skewing, scaling, relative
 shifting, reversal, fusion, and distribution/fission. Transformations on data
-layout such as padding and transforming to blocked layouts are also captured.
-The design of the IR allows a progressive lowering to target-specific forms.
+layout such as padding and transforming to blocked layouts are also represented
+well via affine layout maps.
 
-Besides high-level transformations for loop nests and data layout that a typical
+MLIR's design allows a progressive lowering to target-specific forms. Besides
+high-level transformations for loop nests and data layouts that a typical
 mid-level optimizer is expected to deal with, MLIR is also designed to perform
 certain low-level scheduling and mapping decisions that a typical backend IR is
 entrusted with: these include mapping to specialized vector instructions,
@@ -94,12 +95,10 @@ MLIR also facilitates automatic mapping to expert pre-tuned primitives or vendor
 libraries operating on data at higher levels (or at the highest level) of the
 memory hierarchy.
 
-**Strengths**
-
-*   MLIR is closed under the kind of transformations needed to lower to TPUs;
-    MLIR can be used to represent both the input and output of emitters
-*   MLIR allows us to build modular and reusable target independent and target
-    dependent passes - since each pass/emitter can read in another's output.
+In summary, MLIR is convenient for and closed under the kind of transformations
+needed to lower to general-purpose as well as specialized accelerators. It also
+allows one to build modular and reusable target independent and target dependent
+passes.
 
 ## Design Decisions
 
@@ -112,12 +111,12 @@ The 'load' and 'store' instructions are specifically crafted to fully resolve to
 an element of a memref. These instructions take as arguments n+1 indices for an
 n-ranked tensor. This disallows the equivalent of pointer arithmetic or the
 ability to index into the same memref in other ways (something which C arrays
-allow for example). Furthermore, in an affine construct, the compiler can follow
-use-def chains (e.g. through
-[affine.apply instructions](Dialects/Affine.md#affineapply-operation)) to
+allow for example). Furthermore, for the affine constructs, the compiler can
+follow use-def chains (e.g. through
+[affine.apply operations](Dialects/Affine.md#affineapply-operation)) or through
+the map attributes of [affine operations](Dialects/Affine.md#Operations)) to
 precisely analyze references at compile-time using polyhedral techniques. This
-is possible because of the
-[restrictions on dimensions and symbols](Dialects/Affine.md#restrictions-on-dimensions-and-symbols).
+is possible because of the [restrictions on dimensions and symbols](Dialects/Affine.md#restrictions-on-dimensions-and-symbols).
 
 A scalar of element-type (a primitive type or a vector type) that is stored in
 memory is modeled as a 0-d memref. This is also necessary for scalars that are
@@ -151,9 +150,9 @@ func bar(%A : memref<8x?xf32, #lmap>) {
   affine.for %i = 0 to 8 {
     affine.for %j = 0 to %N {
       // A[i,j] += 1
-      %s1 = load %A [%i, %j] : memref<8x?xf32, #lmap>
+      %s1 = affine.load %A[%i, %j] : memref<8x?xf32, #lmap>
       %s2 = add %s1, 1
-      store %s2 to %A [%i, %j] : memref<8x?xf32, #lmap>
+      affine.store %s2, %A[%i, %j] : memref<8x?xf32, #lmap>
     }
   }
   return
@@ -208,16 +207,16 @@ interest
 Index types are not allowed as elements of `vector`, `tensor` or `memref` type.
 Index types are intended to be used for platform-specific "size" values and may
 appear in subscripts, sizes of aggregate types and affine expressions. They are
-also tightly coupled with `affine.apply` and load/store operations; having
-`index` type is a necessary precondition of a value to be acceptable by these
-operations. While it may be useful to have `memref<?xindex>` to express indirect
-accesses, e.g. sparse matrix manipulations or lookup tables, it creates problems
-MLIR is not ready to address yet. MLIR needs to internally store constants of
-aggregate types and emit code operating on values of those types, which are
-subject to target-specific size and alignment constraints.  Since MLIR does not
-have a target description mechanism at the moment, it cannot reliably emit such
-code. Moreover, some platforms may not support vectors of
-type equivalent to `index`.
+also tightly coupled with `affine.apply` and affine.load/store operations;
+having `index` type is a necessary precondition of a value to be acceptable by
+these operations. While it may be useful to have `memref<?xindex>` to express
+indirect accesses, e.g. sparse matrix manipulations or lookup tables, it creates
+problems MLIR is not ready to address yet. MLIR needs to internally store
+constants of aggregate types and emit code operating on values of those types,
+which are subject to target-specific size and alignment constraints.  Since MLIR
+does not have a target description mechanism at the moment, it cannot reliably
+emit such code. Moreover, some platforms may not support vectors of type
+equivalent to `index`.
 
 Indirect access use cases can be alternatively supported by providing and
 `index_cast` instruction that allows for conversion between `index` and
@@ -591,8 +590,8 @@ represents computation.
 
 ```mlir {.mlir}
 // A simple linear search in every row of a matrix
-for (i=0; i<N; i++) {
-  for (j=0; j<N; j++) {
+for (i = 0; i < N; i++) {
+  for (j = 0; j < N; j++) {
     // dynamic control flow
     if (a[i][j] == key) {
       s[i] = j;
@@ -606,7 +605,7 @@ The presence of dynamic control flow leads to an inner non-affine function
 nested in an outer function that using affine loops.
 
 ```mlir {.mlir}
-func @search(memref<?x?xi32 %A, <?xi32> %S, i32 %key) {
+func @search(%A: memref<?x?xi32, %S: <?xi32>, %key : i32) {
   %ni = dim %A, 0 : memref<?x?xi32>
   // This loop can be parallelized
   affine.for %i = 0 to %ni {
@@ -624,12 +623,12 @@ func @search_body(%A: memref<?x?xi32>, %S: memref<?xi32>, %key: i32) {
   cond_br %p1, ^bb2, ^bb5
 
 ^bb2:
-  %v = load %A[%i, %j] : memref<?x?xi32>
+  %v = affine.load %A[%i, %j] : memref<?x?xi32>
   %p2 = cmpi "eq", %v, %key : i32
   cond_br %p2, ^bb3(%j), ^bb4
 
 ^bb3(%j: i32)
-  store %j, %S[%i] : memref<?xi32>
+  affine.store %j, %S[%i] : memref<?xi32>
   br ^bb5
 
 ^bb4:
@@ -653,34 +652,28 @@ context sensitive.
 Loop bounds that are not affine lead to a nesting of functions as shown below.
 
 ```c
-for (i=0; i <N; i++)
-  for (j=0; j<N; j++)
-    // non-affine loop bound for k loop
-    for (k=0; k<pow(2,j); k++)
-       for (l=0; l<N; l++) {
+for (i = 0; i < N; i++)
+  for (j = 0; j < N; j++)
+    // Non-affine loop bound for k loop.
+    for (k = 0; k < pow(2, j); k++)
+       for (l = 0; l < N; l++) {
         // block loop body
         ...
        }
 ```
 
 ```mlir {.mlir}
-func @outer_nest(%n) : (i32) {
+func @outer_nest(%n : index) {
   affine.for %i = 0 to %n {
     affine.for %j = 0 to %n {
-      call @inner_nest(%i, %j, %n)
+      %pow = call @pow(2, %j) : (index, index) ->  index
+      call @inner_nest(%pow, %n) : ...
     }
   }
   return
 }
 
-func @inner_nest(%i: i32, %j: i32, %n: i32) {
-  %pow = call @pow(2, %j) : (f32, f32) ->  f32
-  // TODO(missing cast from f32 to i32)
-  call @inner_nest2(%pow, %n)
-  return
-}
-
-func @inner_nest2(%m, %n) -> i32 {
+func @inner_nest(%m : index, %n : index) {
   affine.for %k = 0 to %m {
     affine.for %l = 0 to %n {
       ...
@@ -721,9 +714,9 @@ in a dilated convolution.
 // input:   [batch, input_height, input_width, input_feature]
 // kernel: [kernel_height, kernel_width, input_feature, output_feature]
 // output: [batch, output_height, output_width, output_feature]
-func @conv2d(memref<16x1024x1024x3xf32, #lm0, /*scratchpad=*/1> %input,
-             memref<5x5x3x32xf32, #lm0, /*scratchpad=*/1> %kernel,
-             memref<16x512x512x32xf32, #lm0, /*scratchpad=*/1> %output) {
+func @conv2d(%input: memref<16x1024x1024x3xf32, #lm0, /*scratchpad=*/1>,
+             %kernel: memref<5x5x3x32xf32, #lm0, /*scratchpad=*/1>,
+             %output: memref<16x512x512x32xf32, #lm0, /*scratchpad=*/1>) {
   affine.for %b = 0 to %batch {
     affine.for %oh = 0 to %output_height {
       affine.for %ow = 0 to %output_width {
@@ -795,10 +788,9 @@ At a high level, we have two alternatives here:
     code. An example and more detail on the schedule tree form is in the next
     section.
 1.  Having two different forms of "affine regions": an affine loop tree form
-    (AffineLoopTreeFunction) and a polyhedral schedule tree form as two
-    different forms. Or in effect, having four different forms for functions in
-    MLIR instead of three: CFG Function, AffineLoopTreeFunction, Polyhedral
-    Schedule Tree function, and external functions.
+    and a polyhedral schedule tree form. In the latter, ops could carry
+    attributes capturing domain, scheduling, and other polyhedral code
+    generation options with IntegerSet, AffineMap, and other attributes.
 
 #### Schedule Tree Representation for Affine Regions
 
@@ -902,16 +894,16 @@ Example:
 // read relation: two elements ( d0 <= r0 <= d0+1 )
 ##aff_rel9 = (d0) -> (r0) : r0 - d0 >= 0, d0 - r0 + 1 >= 0
 
-func @count (memref<128xf32, (d0) -> (d0)> %A, i32 %pos) -> f32
+func @count (%A : memref<128xf32>, %pos : i32) -> f32
   reads: {%A ##aff_rel9 (%pos)}
   writes: /* empty */
   may_reads: /* empty */
   may_writes: /* empty */ {
 bb0 (%0, %1: memref<128xf32>, i64):
-  %val = load %A [(d0) -> (d0) (%pos)]
-  %val = load %A [(d0) -> (d0 + 1) (%pos)]
+  %val = affine.load %A [%pos]
+  %val = affine.load %A [%pos + 1]
   %p = mulf %val, %val : f32
-  return %p
+  return %p : f32
 }
 ```
 
@@ -977,17 +969,17 @@ Example:
 ```mlir {.mlir}
 ##rel9 ( ) [s0] -> (r0, r1) : 0 <= r0 <= 1023, 0 <= r1 <= s0 - 1
 
-func @cblas_reduce_ffi(memref<1024 x ? x f32, #layout_map0, /*mem=*/0> %M) -> f32 [
+func @cblas_reduce_ffi(%M: memref<1024 x ? x f32, #layout_map0, /*mem=*/0>)
+  -> f32 [
   reads: {%M, ##rel9() }
   writes: /* empty */
   may_reads: /* empty */
   may_writes: /* empty */
 ]
 
-func @dma_mem_to_scratchpad(memref<1024 x f32, #layout_map0, /*mem=*/0> %a,
-    offset, memref<1024 x f32, #layout_map0, 1> %b,
-    memref<1024 x f32, #layout_map0> %c
-) [
+func @dma_mem_to_scratchpad(%a : memref<1024 x f32, #layout_map0, /*mem=*/0>,
+    %b : memref<1024 x f32, #layout_map0, 1>, %c : memref<1024 x f32,
+    #layout_map0>) [
   reads: {%M, ##rel9() }
   writes: /* empty */
   may_reads: /* empty */
@@ -1050,14 +1042,14 @@ Example:
 
 ```mlir {.mlir}
 // Return sum of elements in 1-dimensional mref A
-func int32 @sum(%A : memref<?xi32>, %N : i32) -> (i32) {
+func i32 @sum(%A : memref<?xi32>, %N : i32) -> (i32) {
    %init = 0
    %result = affine.for %i = 0 to N with %tmp(%init) {
-      %value = load %A[%i]
+      %value = affine.load %A[%i]
       %sum = %value + %tmp
       yield %sum
    }
-   return %result
+   return %result : i32
 }
 ```
 
@@ -1080,17 +1072,17 @@ Example:
 
 ```mlir {.mlir}
 // Compute sum of half of the array
-func int32 @sum_half(%A, %N) {
+func i32 @sum_half(%A : memref<?xi32>, %N : i32) -> (i32) {
    %s0 = 0
    %s1 = affine.for %i = 1 ... N step 1 with %s2 (%s0) {
        %s3 = if (%i >= %N / 2) {
-          %v0 = load %A[%i]
+          %v0 = affine.load %A[%i]
           %s4 = %s2 + %v0
           yield %s4
        }
        yield %s3
    }
-   return %s1
+   return %s1 : i32
 }
 ```
 
