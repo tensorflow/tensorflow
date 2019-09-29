@@ -1766,12 +1766,6 @@ StatusOr<mlir::OwningModuleRef> ConvertGraphdefToMlir(
   }
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
       options, std::move(preprocessed_graphdef), &graph));
-  if (specs.upgrade_legacy) {
-    // TODO(jpienaar): Avoid need for const_cast.
-    TF_RETURN_IF_ERROR(UpgradeLegacyGraph(
-        &graph, const_cast<FunctionLibraryDefinition*>(&graph.flib_def())));
-  }
-
   return ConvertGraphToMlir(graph, debug_info, graph.flib_def(), specs,
                             context);
 }
