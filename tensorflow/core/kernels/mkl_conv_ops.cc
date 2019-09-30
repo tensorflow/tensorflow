@@ -24,8 +24,8 @@ limitations under the License.
 #include <map>
 #include <vector>
 
-#include "mkldnn.hpp"
 #include "absl/strings/str_join.h"
+#include "mkldnn.hpp"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -570,17 +570,15 @@ class MklConvOp : public OpKernel {
       OP_REQUIRES(context, dilations_.size() == 5,
                   errors::InvalidArgument("Dilation rates field must "
                                           "specify 5 dimensions"));
-      OP_REQUIRES(context,
-                  (GetTensorDim(dilations_, data_format_, 'N') == 1 &&
-                   GetTensorDim(dilations_, data_format_, 'C') == 1),
+      OP_REQUIRES(context, (GetTensorDim(dilations_, data_format_, 'N') == 1 &&
+                            GetTensorDim(dilations_, data_format_, 'C') == 1),
                   errors::InvalidArgument(
                       "Current implementation does not yet support "
                       "dilations rates in the batch and depth dimensions."));
       OP_REQUIRES(
-          context,
-          (GetTensorDim(dilations_, data_format_, '0') > 0 &&
-           GetTensorDim(dilations_, data_format_, '1') > 0 &&
-           GetTensorDim(dilations_, data_format_, '2') > 0),
+          context, (GetTensorDim(dilations_, data_format_, '0') > 0 &&
+                    GetTensorDim(dilations_, data_format_, '1') > 0 &&
+                    GetTensorDim(dilations_, data_format_, '2') > 0),
           errors::InvalidArgument("Dilated rates should be larger than 0."));
     }
   }
@@ -1587,6 +1585,10 @@ class MklQuantizedConv2DOp
       // Re-scale bias if either of following 2 conditions are met:
       // 1. Bias is not const;
       // 2. Bias is const, but bias cache is empty (first iteration).
+      // TODO Disabling bias caching for now. The graph obtained after
+      // quantize_graph.py does not run with correct accuracy when this feature
+      // is enabled.
+      is_bias_const_ = false;
       if (!is_bias_const_ || IsBiasCacheEmpty(context)) {
         size_t depth = min_filter_vector.NumElements();
         std::vector<float> scales(depth);
