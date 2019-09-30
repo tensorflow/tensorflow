@@ -150,6 +150,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"multiply_scalar", OperationType::MULTIPLY_SCALAR},
           {"pad", OperationType::PAD},
           {"pooling_2d", OperationType::POOLING_2D},
+          {"pow", OperationType::POW},
           {"prelu", OperationType::PRELU},
           {"relu", OperationType::RELU},
           {"resize", OperationType::RESIZE},
