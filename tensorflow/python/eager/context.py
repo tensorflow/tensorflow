@@ -726,6 +726,8 @@ class Context(object):
       ValueError: If name is not a string or is an invalid device name.
       RuntimeError: If device scopes are not properly nested.
     """
+    if isinstance(name, LogicalDevice):
+      name = name.name
     return _EagerDeviceContext(self, name)
 
   def devices(self):
