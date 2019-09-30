@@ -232,6 +232,13 @@ func @square(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
 // CHECK:  %0 = "tfl.square"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
 }
 
+func @log(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
+  %0 = "tf.Log"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+// CHECK-LABEL: log
+// CHECK:  %0 = "tfl.log"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+}
+
 func @log_softmax(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.LogSoftmax"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
   return %0 : tensor<8x16xf32>

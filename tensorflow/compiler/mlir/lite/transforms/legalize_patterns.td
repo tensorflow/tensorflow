@@ -105,6 +105,7 @@ def : Pat<(TF_FillOp $arg, $value), (TFL_FillOp $arg, $value)>;
 def : Pat<(TF_FloorOp $arg), (TFL_FloorOp $arg)>;
 
 def : Pat<(TF_LeakyReluOp $arg, F32Attr:$a), (TFL_LeakyReluOp $arg, $a)>;
+def : Pat<(TF_LogOp $arg), (TFL_LogOp $arg)>;
 def : Pat<(TF_LogicalNotOp $arg), (TFL_LogicalNotOp $arg)>;
 def : Pat<(TF_LogSoftmaxOp $arg), (TFL_LogSoftmaxOp $arg)>;
 
