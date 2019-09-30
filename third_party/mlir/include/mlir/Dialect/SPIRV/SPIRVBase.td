@@ -226,6 +226,7 @@ def SPV_Void : TypeAlias<NoneType, "void type">;
 def SPV_Bool : IntOfWidths<[1]>;
 def SPV_Integer : IntOfWidths<[8, 16, 32, 64]>;
 def SPV_Float : FloatOfWidths<[16, 32, 64]>;
+def SPV_Float16or32 : FloatOfWidths<[16, 32]>;
 def SPV_Vector : VectorOfLengthAndType<[2, 3, 4],
                                        [SPV_Bool, SPV_Integer, SPV_Float]>;
 // Component type check is done in the type parser for the following SPIR-V
