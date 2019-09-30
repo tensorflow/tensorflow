@@ -141,6 +141,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"convolution_transposed", OperationType::CONVOLUTION_TRANSPOSED},
           {"cos", OperationType::COS},
           {"depthwise_convolution", OperationType::DEPTHWISE_CONVOLUTION},
+          {"div", OperationType::DIV},
           {"fully_connected", OperationType::FULLY_CONNECTED},
           {"hard_swish", OperationType::HARD_SWISH},
           {"log", OperationType::LOG},
