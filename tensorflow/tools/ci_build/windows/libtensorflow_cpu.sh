@@ -83,4 +83,4 @@ zip libtensorflow-cpu-windows-$(uname -m).zip \
   include/tensorflow/c/tf_tensor.h \
   LICENSE \
   THIRD_PARTY_TF_C_LICENSES
-rm r-f lib include
+rm -rf lib include
