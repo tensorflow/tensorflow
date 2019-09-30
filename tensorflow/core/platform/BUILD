@@ -249,6 +249,20 @@ cc_library(
 )
 
 cc_library(
+    name = "logger",
+    srcs = ["logger.cc"],
+    hdrs = ["logger.h"],
+    deps = [
+        ":env",
+        ":logging",
+        ":protobuf",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
+cc_library(
     name = "logging",
     textual_hdrs = ["logging.h"],
     deps = [":logging_impl"],
