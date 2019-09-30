@@ -16,12 +16,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 
 #include <array>
+#include <limits>
 #include <numeric>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -185,11 +188,7 @@ Status ValidateEinsumNumericDimensions(absl::Span<const int64> x_config,
       if (absl::c_count(x_config, dim) > 1) {
         return InvalidArgument("Einsum has repeated lhs dimension.");
       }
-      continue;
     }
-    return InvalidArgument(
-        "Einsum has lhs dimension without corresponding rhs or output "
-        "dimension.");
   }
   for (auto dim : y_config) {
     if (absl::c_linear_search(x_config, dim) ||
@@ -197,14 +196,35 @@ Status ValidateEinsumNumericDimensions(absl::Span<const int64> x_config,
       if (absl::c_count(y_config, dim) > 1) {
         return InvalidArgument("Einsum has repeated rhs dimension.");
       }
-      continue;
     }
-    return InvalidArgument(
-        "Einsum has rhs dimension without corresponding lhs or output "
-        "dimension.");
   }
   return Status::OK();
 }
+namespace {
+// Helper method to remove dimensions from a shape and dot dimension numbers
+// used to implment implicit broadcasting.
+template <typename C>
+void DeleteDimsFromContainer(absl::Span<const int64> to_delete, Shape* shape,
+                             C* batch_dims, C* contracting_dims) {
+  if (to_delete.empty()) {
+    return;
+  }
+  for (int64 i = to_delete.size() - 1; i >= 0; --i) {
+    int64 dim = to_delete[i];
+    shape->DeleteDimension(dim);
+    for (auto& b : *batch_dims) {
+      if (b > dim) {
+        --b;
+      }
+    }
+    for (auto& c : *contracting_dims) {
+      if (c > dim) {
+        --c;
+      }
+    }
+  }
+}
+}  // namespace
 
 xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
                   absl::Span<const int64> y_config,
@@ -214,6 +234,8 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_RETURN_IF_ERROR(
         ValidateEinsumNumericDimensions(x_config, y_config, output_config));
+    TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
+    TF_ASSIGN_OR_RETURN(Shape y_shape, builder->GetShape(y));
     const int64 x_rank = x_config.size();
     const int64 y_rank = y_config.size();
     const int64 output_rank = output_config.size();
@@ -221,52 +243,69 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
     absl::flat_hash_set<int64> y_map;
     absl::flat_hash_set<int64> output_map;
 
-    auto find = [&](const absl::flat_hash_set<int64>& map, int64 d) {
-      return map.count(d) != 0;
-    };
-
-    auto insert = [&](absl::flat_hash_set<int64>& map, char d) {
-      CHECK(!find(map, d));
-      map.insert(d);
-    };
-
     for (auto d : x_config) {
-      insert(x_map, d);
+      if (!x_map.insert(d).second) {
+        return InvalidArgument("XLA Einsum does not support rhs tracing");
+      }
     }
 
     for (auto d : y_config) {
-      insert(y_map, d);
+      if (!y_map.insert(d).second) {
+        return InvalidArgument("XLA Einsum does not support lhs tracing");
+      }
     }
 
     for (auto d : output_config) {
-      insert(output_map, d);
+      if (!output_map.insert(d).second) {
+        return InvalidArgument("XLA Einsum does not support output tracing");
+      }
     }
 
     DotDimensionNumbers dnums;
     std::vector<int64> lhs_outer_dims;
     auto is_batch_dim = [&](int64 d) {
-      return find(x_map, d) && find(y_map, d) && find(output_map, d);
+      return x_map.contains(d) && y_map.contains(d) && output_map.contains(d);
     };
     auto is_contracting = [&](int64 d) {
-      return find(x_map, d) && find(y_map, d);
+      return x_map.contains(d) && y_map.contains(d);
     };
     auto rhs_dimension_number = [&](int64 d) {
       return absl::c_find(y_config, d) - y_config.begin();
     };
+
+    absl::InlinedVector<int64, 8> rhs_outer_dims;
+    absl::InlinedVector<int64, 8> rhs_delete_dims;
+    absl::InlinedVector<int64, 8> lhs_delete_dims;
     for (int64 i = 0; i < x_rank; ++i) {
       auto dim_name = x_config[i];
+      const int64 rhs_dim = rhs_dimension_number(dim_name);
       if (is_batch_dim(dim_name)) {
-        dnums.add_lhs_batch_dimensions(i);
-        dnums.add_rhs_batch_dimensions(rhs_dimension_number(dim_name));
+        if (x_shape.dimensions(i) == y_shape.dimensions(rhs_dim)) {
+          dnums.add_lhs_batch_dimensions(i);
+          dnums.add_rhs_batch_dimensions(rhs_dim);
+        } else if (x_shape.dimensions(i) == 1) {
+          rhs_outer_dims.push_back(rhs_dim);
+          lhs_delete_dims.push_back(i);
+        } else {
+          lhs_outer_dims.push_back(i);
+          rhs_delete_dims.push_back(rhs_dim);
+        }
       } else if (is_contracting(dim_name)) {
-        dnums.add_lhs_contracting_dimensions(i);
-        dnums.add_rhs_contracting_dimensions(rhs_dimension_number(dim_name));
+        if (x_shape.dimensions(i) == y_shape.dimensions(rhs_dim)) {
+          dnums.add_lhs_contracting_dimensions(i);
+          dnums.add_rhs_contracting_dimensions(rhs_dim);
+        } else if (x_shape.dimensions(i) == 1) {
+          rhs_outer_dims.push_back(rhs_dim);
+          lhs_delete_dims.push_back(i);
+        } else {
+          lhs_outer_dims.push_back(i);
+          rhs_delete_dims.push_back(rhs_dim);
+        }
       } else {
         lhs_outer_dims.push_back(i);
       }
     }
 
-    std::vector<int64> rhs_outer_dims;
     for (int64 i = 0; i < y_rank; ++i) {
       auto dim_name = y_config[i];
       if (!is_batch_dim(dim_name) && !is_contracting(dim_name)) {
@@ -274,31 +313,64 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
       }
     }
 
-    auto output_dimension_number = [&](char d) {
-      return absl::c_find(output_config, d) - output_config.begin();
+    absl::c_sort(rhs_outer_dims);
+
+    absl::InlinedVector<int64, 8> output_transpose_dims;
+    absl::InlinedVector<int64, 8> output_reduce_dims;
+    auto output_dimension_number = [&](int64 d) {
+      auto pos = absl::c_find(output_config, d);
+      if (pos == output_config.end()) {
+        const int64 dim =
+            output_transpose_dims.size() + output_reduce_dims.size();
+        output_reduce_dims.push_back(dim);
+      } else {
+        output_transpose_dims.push_back(pos - output_config.begin());
+      }
     };
 
-    std::vector<int64> output_dims;
-    output_dims.reserve(output_rank);
     for (auto d : dnums.lhs_batch_dimensions()) {
-      output_dims.push_back(output_dimension_number(x_config[d]));
+      output_dimension_number(x_config[d]);
     }
+
     for (auto d : lhs_outer_dims) {
-      output_dims.push_back(output_dimension_number(x_config[d]));
+      output_dimension_number(x_config[d]);
     }
+
     for (auto d : rhs_outer_dims) {
-      output_dims.push_back(output_dimension_number(y_config[d]));
+      output_dimension_number(y_config[d]);
     }
 
     std::vector<int64> transpose_dims(output_rank);
     for (int64 i = 0; i < output_rank; ++i) {
-      transpose_dims[output_dims[i]] = i;
+      transpose_dims[output_transpose_dims[i]] = i;
+    }
+
+    // Remove ones that where broadcated from the x and the y shape and adjust
+    // the dimension numbers that are more minor than those dimensions.
+    DeleteDimsFromContainer(lhs_delete_dims, &x_shape,
+                            dnums.mutable_lhs_batch_dimensions(),
+                            dnums.mutable_lhs_contracting_dimensions());
+    DeleteDimsFromContainer(rhs_delete_dims, &y_shape,
+                            dnums.mutable_rhs_batch_dimensions(),
+                            dnums.mutable_rhs_contracting_dimensions());
+    if (!lhs_delete_dims.empty()) {
+      x = Reshape(x, x_shape.dimensions());
+    }
+
+    if (!rhs_delete_dims.empty()) {
+      y = Reshape(y, y_shape.dimensions());
     }
 
     PrecisionConfig precision_proto;
     precision_proto.add_operand_precision(precision);
     precision_proto.add_operand_precision(precision);
-    return Transpose(DotGeneral(x, y, dnums, &precision_proto), transpose_dims);
+    auto dot = DotGeneral(x, y, dnums, &precision_proto);
+    if (!output_reduce_dims.empty()) {
+      dot = Reduce(dot, ScalarLike(dot, 0),
+                   CreateScalarAddComputation(x_shape.element_type(), builder),
+                   output_reduce_dims);
+    }
+    return Transpose(dot, transpose_dims);
   });
 }
 
@@ -310,80 +382,14 @@ XlaOp BatchDot(XlaOp x, bool transpose_x, XlaOp y, bool transpose_y,
                PrecisionConfig::Precision precision) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
-    TF_ASSIGN_OR_RETURN(Shape y_shape, builder->GetShape(y));
-
-    // The batch dimensions must be broadcast-compatible and the matrix
-    // dimensions must be valid.
-    std::vector<int64> x_config;
-    std::vector<int64> y_config;
-    std::vector<int64> output_config;
-
-    std::vector<int64> x_implicit_broadcast;
-    std::vector<int64> y_implicit_broadcast;
-
-    const int64 ndims = std::max(y_shape.rank(), x_shape.rank());
-    // If X and Y have unequal ranks, the major dimensions of the higher rank
-    // shape are broadcasted.
-    //
-    // A dimension of size 1 can be implicitly broadcasted to any other
-    // dimension.
-    const int64 x_offset = std::max<int64>(0, y_shape.rank() - x_shape.rank());
-    const int64 y_offset = std::max<int64>(0, x_shape.rank() - y_shape.rank());
-    for (int i = 0; i < ndims - 2; ++i) {
-      const int64 x_dim = i - x_offset;
-      const int64 y_dim = i - y_offset;
-      output_config.push_back(i);
-      if (x_dim < 0) {
-        y_config.push_back(i);
-      } else if (y_dim < 0) {
-        x_config.push_back(i);
-      } else if (x_shape.dimensions(x_dim) == y_shape.dimensions(y_dim)) {
-        y_config.push_back(i);
-        x_config.push_back(i);
-      } else if (x_shape.dimensions(x_dim) == 1) {
-        y_config.push_back(i);
-        x_implicit_broadcast.push_back(x_dim);
-      } else if (y_shape.dimensions(y_dim) == 1) {
-        x_config.push_back(i);
-        y_implicit_broadcast.push_back(y_dim);
-      } else {
-        return InvalidArgument("Expected batch dot dimension to be equal or 1");
-      }
-    }
+    std::string string("...mk,...kn->...mn");
     if (transpose_x) {
-      x_config.push_back(ndims);
-      x_config.push_back(ndims - 2);
-    } else {
-      x_config.push_back(ndims - 2);
-      x_config.push_back(ndims);
+      std::swap(string[3], string[4]);
     }
     if (transpose_y) {
-      y_config.push_back(ndims - 1);
-      y_config.push_back(ndims);
-    } else {
-      y_config.push_back(ndims);
-      y_config.push_back(ndims - 1);
+      std::swap(string[6 + 3], string[6 + 4]);
     }
-    output_config.push_back(ndims - 2);
-    output_config.push_back(ndims - 1);
-    if (!x_implicit_broadcast.empty()) {
-      x_shape = ShapeUtil::FilterDimensions(
-          [&](int64 dim) {
-            return !absl::c_linear_search(x_implicit_broadcast, dim);
-          },
-          x_shape);
-      x = Reshape(x, x_shape.dimensions());
-    }
-    if (!y_implicit_broadcast.empty()) {
-      y_shape = ShapeUtil::FilterDimensions(
-          [&](int64 dim) {
-            return !absl::c_linear_search(y_implicit_broadcast, dim);
-          },
-          y_shape);
-      y = Reshape(y, y_shape.dimensions());
-    }
-    return Einsum(x, x_config, y, y_config, output_config, precision);
+    return Einsum(x, y, string, precision);
   });
 }
 
@@ -406,59 +412,52 @@ StatusOr<std::array<std::vector<int64>, 3>> ParseEinsumString(
     return InvalidArgument("Unexpected character in einsum config.");
   };
 
-  auto string_config_to_numeric = [&](absl::string_view config,
-                                      bool is_input_config, int64 input_rank,
-                                      bool* has_ellipsis, int64* ellipsis_rank,
-                                      std::vector<int64>* numeric_config) {
+  auto string_config_to_numeric =
+      [&](absl::string_view config, bool is_input_config, int64 input_rank,
+          int64 ellipsis_rank,
+          std::vector<int64>* numeric_config) -> StatusOr<int64> {
     std::vector<absl::string_view> splits = absl::StrSplit(config, "...");
     if (splits.empty()) {
-      return InternalError(
-          "Unexpected null string view error while parsing einsum config.");
+      return ellipsis_rank;
     }
     if (splits.size() > 2) {
       return InvalidArgument("Too many ellipses (\"...\") in einsum config.");
     }
     // There is one split if we don't have an ellipsis, and two splits if we do.
-    *has_ellipsis = splits.size() > 1;
+    const bool has_ellipsis = splits.size() > 1;
     // We only compute ellipsis_rank for input configs.
-    if (is_input_config && *has_ellipsis) {
+    if (is_input_config && has_ellipsis) {
       // ellipsis_rank is input rank minus the number of named labels.
-      *ellipsis_rank =
+      ellipsis_rank =
           input_rank - static_cast<int64>(splits[0].size() + splits[1].size());
-      if (*ellipsis_rank < 0) {
+      if (ellipsis_rank < 0) {
         return InvalidArgument(
             "Too few dimensions in the input for the given einsum config.");
-      }
-      if (*ellipsis_rank > static_cast<int64>('A')) {
-        return InvalidArgument("Too many dimensions mapping to ellipsis.");
       }
     }
     for (char d : splits[0]) {
       TF_RETURN_IF_ERROR(maybe_invalid_character(d));
       numeric_config->push_back(static_cast<int64>(d));
     }
-    if (*has_ellipsis) {
+    if (has_ellipsis) {
       // For input configs, we use the value of ellipsis_rank we just computed.
       // For output config, we use the existing value of ellipsis_rank.
-      std::vector<int64> ellipsis_config(*ellipsis_rank);
-      absl::c_iota(ellipsis_config, 0);
-      absl::c_copy(ellipsis_config, std::back_inserter(*numeric_config));
+      for (int64 i = ellipsis_rank; i > 0; --i) {
+        numeric_config->push_back(-i);
+      }
       for (char d : splits[1]) {
         TF_RETURN_IF_ERROR(maybe_invalid_character(d));
         numeric_config->push_back(static_cast<int64>(d));
       }
     }
-    return Status::OK();
+    return ellipsis_rank;
   };
 
-  bool has_ellipsis = false;
-  // The ranks of the subshape that maps to ellipsis in each of the operands.
-  int64 x_ellipsis_rank = 0;
-  int64 y_ellipsis_rank = 0;
-
-  TF_RETURN_IF_ERROR(string_config_to_numeric(
-      main_split[0], /*is_input_config=*/true, x_rank, &has_ellipsis,
-      &x_ellipsis_rank, &einsum_config_numeric[0]));
+  TF_ASSIGN_OR_RETURN(
+      const int64 x_ellipsis_rank,
+      string_config_to_numeric(main_split[0],
+                               /*is_input_config=*/true, x_rank,
+                               /*ellipsis_rank=*/0, &einsum_config_numeric[0]));
 
   std::vector<absl::string_view> y_output_split =
       absl::StrSplit(main_split[1], "->");
@@ -466,28 +465,22 @@ StatusOr<std::array<std::vector<int64>, 3>> ParseEinsumString(
     return InvalidArgument("Expected one \"->\" in einsum_config.");
   }
 
-  TF_RETURN_IF_ERROR(string_config_to_numeric(
-      y_output_split[0], /*is_input_config=*/true, y_rank, &has_ellipsis,
-      &y_ellipsis_rank, &einsum_config_numeric[1]));
-  if (x_ellipsis_rank != y_ellipsis_rank) {
-    return InvalidArgument(
-        "Expected einsum_config to have equal input batch sizes mapping to "
-        "ellipsis.");
-  }
+  TF_ASSIGN_OR_RETURN(
+      const int64 y_ellipsis_rank,
+      string_config_to_numeric(y_output_split[0],
+                               /*is_input_config=*/true, y_rank,
+                               /*ellipsis_rank=*/0, &einsum_config_numeric[1]));
 
   // Replace ellipsis in output_config with numeric labels with the same
   // ellipsis rank as in the inputs.
   // Note: This implementation doesn't support different-rank broadcasting.
-  TF_RETURN_IF_ERROR(string_config_to_numeric(
-      y_output_split[1], /*is_input_config=*/false, /*input_rank=*/0,
-      &has_ellipsis, &x_ellipsis_rank, &einsum_config_numeric[2]));
-  // If we had non-zero ellipsis rank in the inputs, we must also have ellipsis
-  // occurring in the output_config.
-  if (x_ellipsis_rank > 0 && !has_ellipsis) {
-    return InvalidArgument(
-        "Expected einsum_config's output config to have ellipsis when input "
-        "config has ellipsis.");
-  }
+  TF_ASSIGN_OR_RETURN(
+      std::ignore,
+      string_config_to_numeric(
+          y_output_split[1], /*is_input_config=*/false,
+          /*input_rank=*/0,
+          /*ellipsis_rank=*/std::max(x_ellipsis_rank, y_ellipsis_rank),
+          &einsum_config_numeric[2]));
   return einsum_config_numeric;
 }
 

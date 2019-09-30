@@ -117,6 +117,7 @@ cc_library(
     deps = [
         ":CallOpInterfacesIncGen",
         ":DialectSymbolRegistry",
+        ":InferTypeOpInterfaceIncGen",
         ":Support",
         "@llvm//:support",
     ],
@@ -1223,6 +1224,26 @@ gentbl(
     ],
 )
 
+gentbl(
+    name = "InferTypeOpInterfaceIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-interface-decls",
+            "include/mlir/Analysis/InferTypeOpInterface.h.inc",
+        ),
+        (
+            "-gen-op-interface-defs",
+            "include/mlir/Analysis/InferTypeOpInterface.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Analysis/InferTypeOpInterface.td",
+    td_srcs = [
+        ":OpBaseTdFiles",
+    ],
+)
+
 cc_library(
     name = "Analysis",
     srcs = [
@@ -1230,6 +1251,7 @@ cc_library(
         "lib/Analysis/AffineStructures.cpp",
         "lib/Analysis/CallGraph.cpp",
         "lib/Analysis/Dominance.cpp",
+        "lib/Analysis/InferTypeOpInterface.cpp",
         "lib/Analysis/LoopAnalysis.cpp",
         "lib/Analysis/MemRefBoundCheck.cpp",
         "lib/Analysis/NestedMatcher.cpp",
@@ -1247,6 +1269,7 @@ cc_library(
         "include/mlir/Analysis/CallGraph.h",
         "include/mlir/Analysis/CallInterfaces.h",
         "include/mlir/Analysis/Dominance.h",
+        "include/mlir/Analysis/InferTypeOpInterface.h",
         "include/mlir/Analysis/LoopAnalysis.h",
         "include/mlir/Analysis/NestedMatcher.h",
         "include/mlir/Analysis/Passes.h",
@@ -1260,6 +1283,7 @@ cc_library(
         ":AffineOps",
         ":CallOpInterfacesIncGen",
         ":IR",
+        ":InferTypeOpInterfaceIncGen",
         ":LoopOps",
         ":Pass",
         ":StandardOps",

@@ -377,6 +377,7 @@ Status ImporterBase::RemoveBackedges(const Graph& graph) {
   graph_ = absl::make_unique<Graph>(graph.flib_def());
   GraphConstructorOptions opts;
   opts.allow_internal_ops = true;
+  opts.add_default_attributes = false;
   TF_RETURN_IF_ERROR(::tensorflow::ConvertGraphDefToGraph(
       opts, std::move(graph_def), graph_.get()));
 
@@ -891,11 +892,6 @@ Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
         auto& array_info = specs.inputs[input_arg.name()];
         array_info.imported_dtype = input_arg.type();
         array_info.shape = list.shape(i);
-        // TODO(b/140464702): These fields should not be exposed here.
-        // Seems like a layering violation. Initialize them anyway.
-        array_info.final_dtype = input_arg.type();
-        array_info.min_value = 0.0;
-        array_info.max_value = 0.0;
       }
     }
   }
@@ -990,26 +986,6 @@ Status ImporterBase::ConvertFunctionArgAndRets(
     mlir::OperationState state(inst->getLoc(),
                                inst_name.str().append(".input"));
     state.attributes.append(inst->getAttrs().begin(), inst->getAttrs().end());
-
-    // If there are quantization specifications, add them as the attributes
-    auto name = inst->getAttrOfType<mlir::StringAttr>("name").getValue();
-    auto input_spec_it = specs_.inputs.find(name.str());
-    if (input_spec_it != specs_.inputs.end()) {
-      auto input_spec = input_spec_it->second;
-      if (IsQuantizationType(input_spec.final_dtype)) {
-        // Uses the MLIR built-in type so it can be handled easily later.
-        auto final_type = mlir::IntegerType::get(
-            GetQuantizationTypeWidth(input_spec.final_dtype), context_);
-        state.attributes.push_back(builder_.getNamedAttr(
-            "min", builder_.getF32FloatAttr(input_spec.min_value)));
-        state.attributes.push_back(builder_.getNamedAttr(
-            "max", builder_.getF32FloatAttr(input_spec.max_value)));
-        state.attributes.push_back(
-            builder_.getNamedAttr("type", builder_.getTypeAttr(final_type)));
-        inst->getParentOfType<mlir::FuncOp>().setAttr("tf.quantize",
-                                                      builder_.getUnitAttr());
-      }
-    }
 
     for (auto* r : inst->getResults()) state.types.push_back(r->getType());
 
@@ -1724,6 +1700,7 @@ StatusOr<mlir::OwningModuleRef> SavedModelImporter::Convert(
   const auto& graphdef = meta_graph.graph_def();
   GraphConstructorOptions options;
   options.allow_internal_ops = true;
+  options.add_default_attributes = add_default_attributes;
   Graph graph(OpRegistry::Global());
 
   GraphDef preprocessed_graphdef(graphdef);
@@ -1755,6 +1732,7 @@ StatusOr<mlir::OwningModuleRef> ConvertGraphdefToMlir(
     bool add_default_attributes) {
   GraphConstructorOptions options;
   options.allow_internal_ops = true;
+  options.add_default_attributes = add_default_attributes;
   Graph graph(OpRegistry::Global());
 
   GraphDef preprocessed_graphdef(graphdef);
@@ -1763,12 +1741,6 @@ StatusOr<mlir::OwningModuleRef> ConvertGraphdefToMlir(
   }
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
       options, std::move(preprocessed_graphdef), &graph));
-  if (specs.upgrade_legacy) {
-    // TODO(jpienaar): Avoid need for const_cast.
-    TF_RETURN_IF_ERROR(UpgradeLegacyGraph(
-        &graph, const_cast<FunctionLibraryDefinition*>(&graph.flib_def())));
-  }
-
   return ConvertGraphToMlir(graph, debug_info, graph.flib_def(), specs,
                             context);
 }

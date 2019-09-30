@@ -200,6 +200,7 @@ PYBIND11_MODULE(xla_extension, m) {
           },
           "Constructs an array shape.", py::arg("type"), py::arg("dims"),
           py::arg("layout") = absl::nullopt)
+      .def_static("token_shape", []() { return ShapeUtil::MakeTokenShape(); })
       .def("dimensions",
            [](const Shape& shape) -> py::tuple {
              return IntSpanToTuple(shape.dimensions());
@@ -534,12 +535,14 @@ PYBIND11_MODULE(xla_extension, m) {
   // XlaBuilder.
   py::module ops = m.def_submodule("ops", "XLA operations");
 
+  ops.def("AfterAll", &AfterAll);
   ops.def("AllReduce",
           static_cast<XlaOp (*)(
               XlaOp, const XlaComputation&, absl::Span<const ReplicaGroup>,
               const absl::optional<ChannelHandle>&)>(&CrossReplicaSum));
   ops.def("AllToAll", &AllToAll);
   ops.def("CollectivePermute", &CollectivePermute);
+  ops.def("CreateToken", &CreateToken);
   ops.def("CrossReplicaSum",
           static_cast<XlaOp (*)(XlaOp, absl::Span<const ReplicaGroup>)>(
               &CrossReplicaSum));
@@ -591,14 +594,15 @@ PYBIND11_MODULE(xla_extension, m) {
           py::arg("dimension_numbers"), py::arg("slice_sizes"),
           py::arg("indices_are_sorted"));
   ops.def("GetTupleElement", &GetTupleElement);
-  ops.def("Infeed", &Infeed, py::arg("builder"), py::arg("shape"),
-          py::arg("config") = "");
+  ops.def("InfeedWithToken", &InfeedWithToken, py::arg("token"),
+          py::arg("shape"), py::arg("config") = "");
   ops.def("Iota",
           static_cast<XlaOp (*)(XlaBuilder*, const Shape&, int64)>(&Iota));
   ops.def("Iota",
           static_cast<XlaOp (*)(XlaBuilder*, PrimitiveType, int64)>(&Iota));
   ops.def("Map", &Map);
-  ops.def("Outfeed", &Outfeed, py::arg("operand"), py::arg("shape_with_layout"),
+  ops.def("OutfeedWithToken", &OutfeedWithToken, py::arg("operand"),
+          py::arg("token"), py::arg("shape_with_layout"),
           py::arg("outfeed_config") = "");
   ops.def("Pad", &Pad);
   ops.def("Parameter", static_cast<XlaOp (*)(XlaBuilder*, int64, const Shape&,

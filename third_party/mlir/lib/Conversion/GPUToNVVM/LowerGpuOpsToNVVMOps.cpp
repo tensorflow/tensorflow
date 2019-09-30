@@ -119,12 +119,11 @@ struct GPUAllReduceOpLowering : public LLVMOpLowering {
   }
 
 private:
-  // Creates an all_reduce across the local workgroup.
+  // Creates an all_reduce across the block.
   //
-  // First reduce the elements within a subgroup (i.e. warp). The first
-  // invocation of each subgroup writes the intermediate result to shared
-  // memory. After synchronizing the local workgroup, each subgroup reduces all
-  // values from shared memory.
+  // First reduce the elements within a warp. The first thread of each warp
+  // writes the intermediate result to shared memory. After synchronizing the
+  // block, each warp reduces all values from shared memory.
   //
   //     %warp_reduce = ... (see createWarpReduce)
   //     %buffer = llvm.mlir.addressof @reduce_buffer : !llvm<"[32 x float]*">
@@ -188,7 +187,7 @@ private:
     return result;
   }
 
-  // Creates an all_reduce across the subgroup. Creates a preamble
+  // Creates an all_reduce across the warp. Creates a preamble
   //
   //     %active_mask = llvm.mlir.constant(-1 : i32) : !llvm.i32
   //     %mask_and_clamp = llvm.mlir.constant(31 : i32) : !llvm.i32
@@ -200,7 +199,7 @@ private:
   //        %active_mask, %operand, %offset, %mask_and_clamp : !llvm.float
   //     %operand = llvm.fadd %operand, %value : !llvm.float
   //
-  // Each invocation returns the same result.
+  // Each thread returns the same result.
   //
   // Note: this currently only supports reducing exactly 32 values.
   Value *createWarpReduce(Location loc, Value *operand,
@@ -245,7 +244,7 @@ private:
     return rewriter.create<LLVM::AddressOfOp>(loc, globalOp);
   }
 
-  // Returns the index of the subgroup within the local workgroup.
+  // Returns the index of the warp within the block.
   //
   //     %warp_size = llvm.mlir.constant(32 : i32) : !llvm.i32
   //     %thread_idx = nvvm.read.ptx.sreg.tid.x  : !llvm.i32

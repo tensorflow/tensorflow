@@ -14,13 +14,25 @@ limitations under the License.
 ==============================================================================*/
 
 // This transformation pass applies quantization propagation on TFLite dialect.
+#include <string>
 
 #include "absl/memory/memory.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/CommandLine.h"
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+
+// NOLINTNEXTLINE
+static llvm::cl::list<std::string> quantize_whitelist(
+    "tfl-test-quantize-whitelist", llvm::cl::value_desc("list"),
+    llvm::cl::desc("comma seprarated list of whitelisted functions to be "
+                   "quantized. Only used in tests"),
+    llvm::cl::CommaSeparated);
 
 //===----------------------------------------------------------------------===//
 // The prepare-quantize Pass.
@@ -38,22 +50,111 @@ namespace {
 class PrepareQuantizePass : public FunctionPass<PrepareQuantizePass> {
  public:
   // Constructor used by the PassRegistration.
-  explicit PrepareQuantizePass() : quantize_sign_(false) {}
+  explicit PrepareQuantizePass() {}
 
   // Constructor used by manually creating the pass.
-  explicit PrepareQuantizePass(bool quantize_sign)
-      : quantize_sign_(quantize_sign) {}
+  explicit PrepareQuantizePass(const QuantizationSpecs& quant_specs)
+      : quant_specs_(quant_specs) {}
 
   void runOnFunction() override;
 
  private:
-  bool quantize_sign_;
+  // Set the quantization parameters of the input nodes. These parameters are
+  // converted from the user specified input value ranges. The input nodes with
+  // non-float tensor types will be skipped because they are not quantizable.
+  // Return true if number of input nodes doesn't equal to that of the input
+  // ranges.
+  bool SetInputNodesQuantizationParams(FuncOp func);
+
+  // Verify the quantization specification is expected for quantizing the
+  // current function.
+  bool IsIllegalQuantSpecs(FuncOp func) {
+    if (func.getName() == quant_specs_.target_func) {
+      return func.getNumArguments() == quant_specs_.input_ranges.size();
+    }
+    return true;
+  }
+
+  // Get the min and max values from the quantization specification for the
+  // current function function and argument index. Uses default values if
+  // the function is specified in the `quantize_whitelist`.
+  std::pair<double, double> GetMinMaxValuesForArgument(
+      llvm::StringRef func_name, int index) {
+    if (func_name == quant_specs_.target_func) {
+      return quant_specs_.input_ranges[index];
+    } else {
+      return {0.0, 255.0};
+    }
+  }
+
+  QuantizationSpecs quant_specs_;
 };
+
+bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
+  StringRef func_name = func.getName();
+  auto& target_func = quant_specs_.target_func;
+
+  // Skip this function because it isn't the target function from the spec or
+  // in the function while list.
+  if (target_func != func_name &&
+      !llvm::is_contained(quantize_whitelist, func_name)) {
+    return false;
+  }
+
+  // If the validation fails, the pass should stop immediately.
+  if (!IsIllegalQuantSpecs(func)) {
+    return true;
+  }
+
+  OpBuilder builder(func);
+  auto num_bits = builder.getI32IntegerAttr(
+      GetQuantizationTypeWidth(quant_specs_.inference_type));
+  auto narrow_range = builder.getBoolAttr(false);
+
+  for (int i = 0, e = func.getNumArguments(); i != e; ++i) {
+    Value* arg = func.getArgument(i);
+    if (!arg->hasOneUse() ||
+        !llvm::isa<TFL::InputOp>(*arg->getUsers().begin())) {
+      return true;
+    }
+
+    Operation* input = *arg->getUsers().begin();
+    auto input_op = llvm::cast<TFL::InputOp>(input);
+    Location loc = input_op.getLoc();
+    Type input_type = input_op.input()->getType();
+
+    if (auto shaped = input_type.dyn_cast<ShapedType>()) {
+      if (shaped.getElementType().isa<FloatType>()) {
+        auto min_max = GetMinMaxValuesForArgument(func_name, i);
+        TypeAttr params = GetQuantizedTypeAttr(
+            builder, input_type, builder.getF64FloatAttr(min_max.first),
+            builder.getF64FloatAttr(min_max.second), num_bits, narrow_range);
+        builder.setInsertionPoint(input->getBlock(),
+                                  ++Block::iterator(input_op));
+        auto q_op = builder.create<TFL::QuantizeOp>(loc, params.getValue(),
+                                                    input_op.output(), params);
+        auto dq_op =
+            builder.create<TFL::DequantizeOp>(loc, input_type, q_op.output());
+        input_op.output()->replaceAllUsesWith(dq_op.output());
+        q_op.setOperand(input_op.output());
+      }
+    }
+  }
+
+  return false;
+}
 
 #include "tensorflow/compiler/mlir/lite/utils/generated_op_quant_spec_getters.inc"
 
 void PrepareQuantizePass::runOnFunction() {
-  ApplyQuantizationParamsPropagation(getFunction(), quantize_sign_,
+  // Set the quantization parameters for the quantizable input nodes. If this
+  // failed, return the function immediately.
+  // TODO(fengliuai): send the signal to the pass manager.
+  if (SetInputNodesQuantizationParams(getFunction())) return;
+
+  // TODO(fengliuai): set the sign by the inference type from the spec
+  bool quantize_sign = false;
+  ApplyQuantizationParamsPropagation(getFunction(), quantize_sign,
                                      GetOpQuantSpec);
 }
 
@@ -61,8 +162,8 @@ void PrepareQuantizePass::runOnFunction() {
 
 // Creates an instance of the TensorFlow Lite dialect PrepareQuantize pass.
 std::unique_ptr<OpPassBase<FuncOp>> CreatePrepareQuantizePass(
-    bool quantize_sign) {
-  return std::make_unique<PrepareQuantizePass>(quantize_sign);
+    const QuantizationSpecs& quant_specs) {
+  return std::make_unique<PrepareQuantizePass>(quant_specs);
 }
 
 static PassRegistration<PrepareQuantizePass> pass(

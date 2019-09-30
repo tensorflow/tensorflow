@@ -1011,7 +1011,7 @@ class _TapeGradientFunctions(object):
           forward_function.signature.name,
           forward_outputs, forward_inputs, py_backward, None)
       output_indices, output_tangents = (
-          pywrap_tensorflow.TFE_Py_PackForwardGradients(forward_outputs))
+          pywrap_tensorflow.TFE_Py_PackJVPs(forward_outputs))
       output_tangents = [forward_wrapper_graph.capture(t)
                          for t in output_tangents]
     return _ForwardWrapper(

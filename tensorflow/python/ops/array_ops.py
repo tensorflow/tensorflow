@@ -2952,7 +2952,9 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
   # Restore shape information where possible.
   if not context.executing_eagerly():
     paddings_constant = _get_paddings_constant(paddings)
-    input_shape = result.op.inputs[0].shape
+    input_shape = (
+        tensor_shape.TensorShape(tensor.shape)
+        if isinstance(tensor, ops.Tensor) else result.op.inputs[0].shape)
     if (input_shape.ndims is not None and
         not result.shape.is_fully_defined() and paddings_constant is not None):
       new_shape = []

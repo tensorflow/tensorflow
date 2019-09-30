@@ -407,6 +407,7 @@ class Function(object):
     self._stateless_fn = None  # GUARDED_BY(self._lock)
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._name = name
+    self._input_signature = input_signature
     self._call_counter = _CallCounter(FREQUENT_TRACING_WARNING_MAX_CALL_HISTORY)
 
   def _defun_with_scope(self, scope):
@@ -498,6 +499,18 @@ class Function(object):
 
     self._stateless_fn = self._defun_with_scope(invalid_creator_scope)
     self._stateless_fn._name = self._name  # pylint: disable=protected-access
+
+  def _clone(self, python_function):
+    return Function(
+        python_function=(self._python_function
+                         if python_function is None else python_function),
+        name=self._name,
+        input_signature=self._input_signature,
+        autograph=self._autograph,
+        experimental_implements=self._implements,
+        experimental_autograph_options=self._experimental_autograph_options,
+        experimental_relax_shapes=self.experimental_relax_shapes,
+        experimental_compile=self._experimental_compile)
 
   def _decorate(self, decorator):
     """Allows the captured Python function to be decorated in place.

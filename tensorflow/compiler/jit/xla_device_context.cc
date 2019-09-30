@@ -78,7 +78,7 @@ XlaDeviceContext::XlaDeviceContext(
     std::vector<std::shared_ptr<se::Stream>> device_to_device_streams,
     xla::LocalClient* client,
     XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-    thread::ThreadPool* thread_pool)
+    thread::ThreadPool* thread_pool, bool use_fast_mem)
     : stream_(std::move(compute_stream)),
       host_to_device_stream_(std::move(host_to_device_stream)),
       device_to_host_stream_(std::move(device_to_host_stream)),
@@ -86,7 +86,8 @@ XlaDeviceContext::XlaDeviceContext(
       client_(client),
       transfer_manager_(client->backend().transfer_manager()),
       shape_representation_fn_(std::move(shape_representation_fn)),
-      thread_pool_(thread_pool) {
+      thread_pool_(thread_pool),
+      use_fast_mem_(use_fast_mem) {
   CHECK(host_to_device_stream_ != nullptr);
   CHECK(stream_ != nullptr);
   if (!shape_representation_fn_) {
@@ -118,14 +119,14 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     return;
   }
 
-  VLOG(2) << "CopyCPUTensorToDevice "
+  VLOG(2) << "CopyCPUTensorToDevice use_fast_mem " << use_fast_mem_ << " "
+          << this << " "
           << reinterpret_cast<const void*>(cpu_tensor->tensor_data().data())
           << " "
           << reinterpret_cast<const void*>(device_tensor->tensor_data().data())
           << " " << cpu_tensor->NumElements() << " "
           << cpu_tensor->shape().DebugString() << " "
           << device_tensor->shape().DebugString();
-
 
   XlaTensor* xla_tensor = XlaTensor::FromTensor(device_tensor);
   CHECK(xla_tensor);
@@ -134,7 +135,7 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     TF_ASSIGN_OR_RETURN(
         xla::Shape shape,
         shape_representation_fn_(device_tensor->shape(), device_tensor->dtype(),
-                                 /*use_fast_memory=*/false));
+                                 use_fast_mem_));
 
     // The device tensor should always be fresh.
     TF_RET_CHECK(!xla_tensor->has_shaped_buffer());

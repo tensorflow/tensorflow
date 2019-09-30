@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
-#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph.h"
@@ -44,6 +43,7 @@ void RunPass(const GraphDef& original, GraphDef* rewritten,
              FunctionLibraryDefinition* flib_def = nullptr) {
   std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
   GraphConstructorOptions opts;
+  opts.add_default_attributes = false;
   TF_ASSERT_OK(ConvertGraphDefToGraph(opts, original, graph.get()));
   GraphOptimizationPassOptions options;
   options.graph = &graph;
@@ -51,7 +51,6 @@ void RunPass(const GraphDef& original, GraphDef* rewritten,
   IsolatePlacerInspectionRequiredOpsPass pass;
   TF_ASSERT_OK(pass.Run(options));
   graph->ToGraphDef(rewritten);
-  StripDefaultAttributes(*OpRegistry::Global(), rewritten->mutable_node());
 }
 
 void RunPassAndCompare(const GraphDef& original, const GraphDef& expected) {

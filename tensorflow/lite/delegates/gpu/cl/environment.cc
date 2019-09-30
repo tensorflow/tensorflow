@@ -24,17 +24,7 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-
 namespace {
-CalculationsPrecision GetPossiblePrecision(
-    const CLDevice& gpu, CalculationsPrecision desired_precision) {
-  if (!gpu.SupportsFP16() && desired_precision != CalculationsPrecision::F32) {
-    return CalculationsPrecision::F32;
-  }
-
-  return desired_precision;
-}
-
 std::string GetKernelOneLayerTextureArray() {
   return R"(
 
@@ -60,8 +50,10 @@ Status CheckKernelSupportOfOneLayerTextureArray(Environment* env,
     return OkStatus();
   }
   CLKernel kernel;
-  RETURN_IF_ERROR(CreateKernel(GetKernelOneLayerTextureArray(), "main_function",
-                               env, &kernel));
+  RETURN_IF_ERROR(env->program_cache()->GetOrCreateCLKernel(
+      GetKernelOneLayerTextureArray(), "main_function", env->context(),
+      env->device(), &kernel));
+
   Tensor tensor;
   const BHWC shape(1, 4, 4, 4);
   RETURN_IF_ERROR(CreateTensor(
@@ -190,6 +182,14 @@ std::vector<TensorStorageType> Environment::GetSupportedTextureStorages()
   return storage_types;
 }
 
+std::vector<TensorStorageType> Environment::GetSupportedBatchStorages() const {
+  std::vector<TensorStorageType> storage_types = {TensorStorageType::BUFFER};
+  if (device_.IsAdreno() && device_.SupportsImageBuffer()) {
+    storage_types.push_back(TensorStorageType::IMAGE_BUFFER);
+  }
+  return storage_types;
+}
+
 std::vector<TensorStorageType> Environment::GetSupportedStorages() const {
   std::vector<TensorStorageType> storage_types = {TensorStorageType::TEXTURE_2D,
                                                   TensorStorageType::BUFFER};
@@ -218,10 +218,6 @@ TensorStorageType GetOptimalStorageType(const CLDevice& gpu) {
   return TensorStorageType::BUFFER;
 }
 
-Status CreateDefaultEnvironment(Environment* result) {
-  return CreateEnvironment(result, false, 0, 0);
-}
-
 Status CreateEnvironment(Environment* result) {
   return CreateEnvironment(result, false, 0, 0);
 }
@@ -230,19 +226,6 @@ Status CreateGLCompatibleEnvironment(cl_context_properties egl_context,
                                      cl_context_properties egl_display,
                                      Environment* result) {
   return CreateEnvironment(result, true, egl_context, egl_display);
-}
-
-Status CreateKernel(const std::string& code, const std::string& function_name,
-                    Environment* env, CLKernel* result) {
-  return CreateKernel(code, function_name, {}, env, result);
-}
-
-Status CreateKernel(const std::string& code, const std::string& function_name,
-                    const std::vector<CompilerOptions>& compiler_options,
-                    Environment* env, CLKernel* result) {
-  return env->program_cache()->GetOrCreateCLKernel(
-      code, function_name, compiler_options, env->context(), env->device(),
-      result);
 }
 
 }  // namespace cl

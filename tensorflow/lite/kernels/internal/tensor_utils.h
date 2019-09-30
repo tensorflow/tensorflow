@@ -278,6 +278,12 @@ void CwiseMul(const int16_t* input_1, const int16_t* input_2,
 void CwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
               int n_input, int16_t* output);
 
+// Element-wise in-place clipping of a quantized vector.
+// Parameters:
+//     - input:          batch vector of size n_batch * n_input; 16 bit.
+//     - clipping_value: the value used for clipping.
+//     - n_batch:        the number of batch.
+//     - n_input:        the size for input and output.
 void CwiseClipping(int16_t* input, const int16_t clipping_value,
                    int32_t n_batch, int32_t n_input);
 

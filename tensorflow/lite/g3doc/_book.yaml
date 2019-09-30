@@ -110,24 +110,25 @@ upper_tabs:
       contents:
       - title: "Overview"
         path: /lite/models/
-      - heading: "Vision"
-      - title: "Image classification"
+      - heading: "Image classification"
+      - title: "Overview"
         path: /lite/models/image_classification/overview
-      - title: "Image segmentation"
-        path: /lite/models/segmentation/overview
+      - title: "Android"
+        path: /lite/models/image_classification/android
+      - title: "iOS"
+        path: /lite/models/image_classification/ios
+      - heading: "Other techniques"
       - title: "Object detection"
         path: /lite/models/object_detection/overview
       - title: "Pose estimation"
         path: /lite/models/pose_estimation/overview
+      - title: "Segmentation"
+        path: /lite/models/segmentation/overview
       - title: "Style transfer"
         path: /lite/models/style_transfer/overview
-      - title: "Face detection"
-        path: /lite/models/face_detection/overview
-      - title: "Hair segmentation"
-        path: /lite/models/hair_segmentation/overview
-      - heading: "Language"
       - title: "Smart reply"
         path: /lite/models/smart_reply/overview
+
     - name: "Python API"
       skip_translation: true
       contents:

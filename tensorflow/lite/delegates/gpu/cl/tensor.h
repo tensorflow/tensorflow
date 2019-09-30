@@ -57,6 +57,7 @@ class Tensor {
   int Height() const { return shape_.h; }
   int Channels() const { return shape_.c; }
   int Depth() const { return IntegralDivideRoundUp(shape_.c, 4); }
+  int Batch() const { return shape_.b; }
   int4 GetSizeWithDepth() const {
     return int4(shape_.w, shape_.h, shape_.c, Depth());
   }

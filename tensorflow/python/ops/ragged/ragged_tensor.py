@@ -2228,15 +2228,15 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
   def _batch(self, batch_size):
     return RaggedTensorSpec(
         tensor_shape.TensorShape([batch_size]).concatenate(self._shape),
-        self._dtype,
-        self._ragged_rank + 1)
+        self._dtype, self._ragged_rank + 1, self._row_splits_dtype)
 
   def _unbatch(self):
-    # Note: Negative ragged_rank is allowed here because the dataset could
-    # be subsequently batched again. Errors are handled in
+    # Note: Negative ragged_rank is allowed here because the dataset could be
+    # subsequently batched again. If ragged_rank > 1, assume row_splits_dtype is
+    # consistent. Errors are handled in
     # RaggedTensorSpec._from_compatible_tensor_list()
-    return RaggedTensorSpec(self._shape[1:], self._dtype,
-                            self._ragged_rank - 1)
+    return RaggedTensorSpec(self._shape[1:], self._dtype, self._ragged_rank - 1,
+                            self._row_splits_dtype)
 
   def _to_legacy_output_types(self):
     return self._dtype

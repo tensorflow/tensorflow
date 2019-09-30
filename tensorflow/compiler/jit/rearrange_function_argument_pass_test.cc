@@ -63,7 +63,7 @@ TEST(RearrangeFunctionArgumentForFunctionTest, Basic) {
     Output arg0 = ops::_Arg(s.WithOpName("arg0"), DT_RESOURCE, 0);
     Output arg1 = ops::_Arg(s.WithOpName("arg1"), DT_BOOL, 1);
     auto ret0 = ops::_Retval(s.WithOpName("ret0"), arg0, 0);
-    auto ret1 = ops::_Retval(s.WithOpName("ret1"), arg1, 0);
+    auto ret1 = ops::_Retval(s.WithOpName("ret1"), arg1, 1);
     std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
     TF_CHECK_OK(s.ToGraph(g.get()));
     FunctionDef *xla_fdef = fdl.add_function();

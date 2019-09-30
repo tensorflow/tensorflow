@@ -204,7 +204,7 @@ class HloModule {
   std::vector<HloComputation*> MakeNonfusionComputationsSorted() const;
 
   const HloModuleConfig& config() const { return config_; }
-  void set_config(HloModuleConfig& config) { config_ = config; }
+  void set_config(const HloModuleConfig& config) { config_ = config; }
 
   // Return a string representation of the module.
   //
@@ -294,10 +294,6 @@ class HloModule {
 
   Status CheckUniqueNamesAndIdsForComputationsAndInstructions() const;
 
-  std::vector<std::vector<bool>>* mutable_fusion_config() {
-    return &fusion_config_;
-  }
-
   // Checks if this config has a list of entry parameters' HLO shardings for
   // SPMD.
   bool has_spmd_parameters_shardings() const {
@@ -369,9 +365,6 @@ class HloModule {
 
   // Bindings for dynamic parameter mapping.
   DynamicParameterBinding dynamic_parameter_binding_;
-
-  // Fusion configuration.
-  std::vector<std::vector<bool>> fusion_config_;
 
   // The HLO shardings of the entry computation's parameters for
   // SPMD-partitioned programs.

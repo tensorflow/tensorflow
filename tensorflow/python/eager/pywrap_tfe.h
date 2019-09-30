@@ -98,7 +98,7 @@ PyObject* TFE_Py_RegisterGradientFunction(PyObject* e);
 // or functional ops.
 //
 // This function is not thread-safe.
-PyObject* TFE_Py_RegisterForwardGradientFunction(PyObject* e);
+PyObject* TFE_Py_RegisterJVPFunction(PyObject* e);
 
 // Returns 0 if 'status' is TF_OK. Otherwise, raises an exception (using
 // `exception` if not nullptr, else using the class registered via
@@ -229,7 +229,7 @@ PyObject* TFE_Py_TapeSetRecordOperationBackprop(PyObject* op_type,
 //    function is automatically transposed to produce output gradients given
 //    input gradients.
 //  - forwardprop_output_indices indicates any output_tensors which contain
-//    JVPs. Typically these will have come from TFE_Py_PackForwardGradients. May
+//    JVPs. Typically these will have come from TFE_Py_PackJVPs. May
 //    be None or an empty sequence if there are no JVP outputs from the
 //    operation.
 PyObject* TFE_Py_TapeSetRecordOperationForwardprop(
@@ -329,7 +329,7 @@ PyObject* TFE_Py_ForwardAccumulatorPopState();
 //       array.
 //   jvps: A flat list of Tensors. Best interpreted as a sequence to be
 //       appended to `tensors`.
-PyObject* TFE_Py_PackForwardGradients(PyObject* tensors);
+PyObject* TFE_Py_PackJVPs(PyObject* tensors);
 
 // Returns an EagerTensor of dimension [len(`tensors`)] containing
 // the `slice_dim`'th dimension of each tensor in `tensors`. In other words,

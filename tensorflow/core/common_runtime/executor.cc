@@ -968,9 +968,9 @@ class ExecutorState {
     DeviceContext* device_context = nullptr;
   };
 
-  // Contains a value for [node->id()] for the device context assigned by the
-  // device at the beginning of a step.
-  DeviceContextMap device_context_map_;
+  // Contains the device context assigned by the device at the beginning of a
+  // step.
+  DeviceContext* device_context_ = nullptr;
 
   struct TaggedNode;
   typedef gtl::InlinedVector<TaggedNode, 8> TaggedNodeSeq;
@@ -1481,8 +1481,8 @@ ExecutorState::~ExecutorState() {
   for (auto name_frame : outstanding_frames_) {
     delete name_frame.second;
   }
-  for (auto it : device_context_map_) {
-    it->Unref();
+  if (device_context_) {
+    device_context_->Unref();
   }
   delete slice_reader_cache_;
 }
@@ -1570,16 +1570,15 @@ void ExecutorImpl::InitializePending(const Graph* graph,
 }
 
 void ExecutorState::RunAsync(Executor::DoneCallback done) {
-  const Graph* graph = impl_->graph_.get();
   TaggedNodeSeq ready;
 
   // Ask the device to fill in the device context map.
   Device* device = impl_->params_.device;
-  const Status fill_status =
-      device->FillContextMap(graph, &device_context_map_);
-  if (!fill_status.ok()) {
+  const Status get_context_status =
+      device->TryGetDeviceContext(&device_context_);
+  if (!get_context_status.ok()) {
     delete this;
-    done(fill_status);
+    done(get_context_status);
     return;
   }
 
@@ -1728,6 +1727,9 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
     if (finish_when_deferred_ops_done) Finish();
   };
 
+  // Set the device_context for this device, if it exists.
+  params.op_device_context = device_context_;
+
   Status s;
   NodeExecStatsInterface* stats = nullptr;
 
@@ -1747,11 +1749,6 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
     if (vlog_ && VLOG_IS_ON(1)) {
       mutex_lock l(input_frame->mu);
       input_frame->GetIteration(input_iter)->mark_started(item.pending_id);
-    }
-
-    // Set the device_context for this node id, if it exists.
-    if (id < device_context_map_.size()) {
-      params.op_device_context = device_context_map_[id];
     }
 
     params.track_allocations = false;
@@ -2082,10 +2079,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
   }
 
   // Get the device_context for this node id, if it exists.
-  DeviceContext* device_context = nullptr;
-  if (item.node_id < device_context_map_.size()) {
-    device_context = device_context_map_[item.node_id];
-  }
+  DeviceContext* device_context = device_context_;
 
   for (int i = 0; i < item.num_outputs; ++i) {
     const TensorValue val = ctx->release_output(i);
