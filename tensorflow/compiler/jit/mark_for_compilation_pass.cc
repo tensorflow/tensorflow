@@ -1112,18 +1112,79 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
   std::unordered_set<string> whitelist;
   for (auto s : absl::StrSplit(flags->tf_xla_supported_nodes, ",")) {
     if (s == "PW") {
-      whitelist.insert({"Add",        "AddN",     "Cast",       "AddV2",
-                        "ComplexAbs", "Const",    "Equal",      "FloorDiv",
-                        "Identity",   "Less",     "LogicalAnd", "LogicalNot",
-                        "LogicalOr",  "Maximum",  "Minimum",    "Mul",
-                        "Neg",        "Pow",      "RealDiv",    "Relu",
-                        "Round",      "Rsqrt",    "Sqrt",       "Sub",
-                        "Tanh",       "Transpose"});
+      // Unary
+      whitelist.insert(
+          {"ComplexAbs", "Angle",    "Conj",     "Abs",      "Acos",
+           "Acosh",      "Asin",     "Atan",     "Atanh",    "Ceil",
+           "Cos",        "Cosh",     "Sin",      "Exp",      "Expm1",
+           "Floor",      "IsFinite", "IsInf",    "IsNan",    "Inv",
+           "Reciprocal", "Log",      "Log1p",    "Invert",   "LogicalNot",
+           "Neg",        "Rint",     "Round",    "Rsqrt",    "Sigmoid",
+           "Sign",       "Sinh",     "Softplus", "Softsign", "Sqrt",
+           "Square",     "Tan",      "Tanh",     "Real",     "Imag",
+           "Erf",        "Erfc",     "Lgamma",   "Digamma"});
+      // Binary
+      whitelist.insert({"Add",
+                        "AddV2",
+                        "Sub",
+                        "Mul",
+                        "Div",
+                        "Atan2",
+                        "Complex",
+                        "DivNoNan",
+                        "MulNoNan",
+                        "FloorDiv",
+                        "Xlogy",
+                        "Xdivy",
+                        "FloorMod",
+                        "BitwiseAnd",
+                        "BitwiseOr",
+                        "BitwiseXor",
+                        "LeftShift",
+                        "RightShift",
+                        "LogicalAnd",
+                        "LogicalOr",
+                        "Mod",
+                        "Maximum",
+                        "Minimum",
+                        "RealDiv",
+                        "ReciprocalGrad",
+                        "RsqrtGrad",
+                        "SqrtGrad",
+                        "TruncateDiv",
+                        "TruncateMod",
+                        "Equal",
+                        "NotEqual",
+                        "Greater",
+                        "GreaterEqual",
+                        "Less",
+                        "LessEqual",
+                        "SigmoidGrad",
+                        "SoftplusGrad",
+                        "SoftsignGrad",
+                        "TanhGrad",
+                        "Pow",
+                        "SquaredDifference",
+                        "ApproximateEqual"});
+      // Others
+      whitelist.insert({"AddN", "Bitcast", "Cast", "ClipByValue", "Const",
+                        "Empty", "Identity", "IdentityN", "Relu", "Relu6",
+                        "ReluGrad", "Relu6Grad", "LeakyReluGrad", "Elu",
+                        "EluGrad", "Selu", "SeluGrad", "Select", "SelectV2",
+                        "Transpose", "ConjugateTranspose",
+                        "_UnaryOpsComposition",
+                        // The following 4 operations are converted to identity
+                        "PlaceholderWithDefault", "PreventGradient",
+                        "StopGradient", "Snapshot"});
     } else if (s == "RED") {
       whitelist.insert({"All", "Any", "Min", "Max", "Mean", "Prod", "Sum"});
     } else if (s == "SMALL") {
-      whitelist.insert({"Fill", "Max", "Mean", "NoOp", "Prod", "Range",
-                        "Reshape", "Shape", "Sum", "Transpose"});
+      // Fill => Broadcast
+      // BroadcastTo => Broadcast + maybe Reshape
+      whitelist.insert({"BroadcastTo", "ExpandDims", "Fill", "Max", "Mean",
+                        "NoOp", "Prod", "Range", "Rank", "Reshape", "Shape",
+                        "ShapeN", "Size", "Squeeze", "Sum", "Transpose",
+                        "ZerosLike", "OnesLike"});
     } else if (s.size() > 0) {
       whitelist.insert(string(s));
     }
