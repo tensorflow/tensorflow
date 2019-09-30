@@ -412,7 +412,11 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
   int i = 0;
   for (const auto& target : remote_contexts_) {
     eager::EagerClient* eager_client;
-    TF_RETURN_IF_ERROR(remote_eager_workers_->GetClient(target, &eager_client));
+    statuses[i] = remote_eager_workers_->GetClient(target, &eager_client);
+    if (!statuses[i].ok()) {
+      blocking_counter.DecrementCount();
+      continue;
+    }
 
     eager_client->RegisterFunctionAsync(
         &request, &responses[i],
