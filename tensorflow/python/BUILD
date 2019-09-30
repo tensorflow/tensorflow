@@ -3303,13 +3303,10 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
-<<<<<<< HEAD
     xla_enable_strict_auto_jit = True,
-=======
     tags = [
         "no_rocm",
     ],
->>>>>>> google-upstream/master
 )
 
 py_library(

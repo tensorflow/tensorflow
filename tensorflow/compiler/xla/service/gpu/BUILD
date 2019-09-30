@@ -1184,11 +1184,6 @@ cc_library(
     ],
     deps = [
         ":cublas_gemm_pad_for_tensor_cores",
-<<<<<<< HEAD
-        ":cudnn_conv_rewriter",
-=======
-        ":cudnn_conv_algorithm_picker",
->>>>>>> google-upstream/master
         ":cudnn_fused_conv_rewriter",
         ":cudnn_pad_for_convolutions",
         ":cusolver_rewriter",
@@ -1495,12 +1490,7 @@ cc_library(
 tf_cc_test(
     name = "buffer_comparator_test",
     srcs = ["buffer_comparator_test.cc"],
-<<<<<<< HEAD
-    tags = ["no_rocm"]
-     + tf_cuda_tests_tags(),
-=======
     tags = ["no_rocm"] + tf_cuda_tests_tags(),
->>>>>>> google-upstream/master
     deps = [
         ":buffer_comparator",
         "//tensorflow/compiler/xla:shape_util",

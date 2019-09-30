@@ -52,10 +52,7 @@ tf_cuda_cc_test(
     srcs = ["nccl_manager_test.cc"],
     tags = tf_cuda_tests_tags() + [
         "no_cuda_on_cpu_tap",  # TODO(b/120284216): re-enable multi_gpu
-<<<<<<< HEAD
         "no_rocm",
-=======
->>>>>>> google-upstream/master
     ],
     deps = [
         "//tensorflow/core:test",

@@ -48,7 +48,6 @@ bazel test \
       -- \
       //tensorflow/... \
       -//tensorflow/compiler/... \
-<<<<<<< HEAD
       -//tensorflow/lite/... \
       -//tensorflow/python/compiler/tensorrt/... \
 # Run tests requiring more than one GPU separately.
@@ -64,8 +63,6 @@ bazel test \
       -- \
       //tensorflow/... \
       -//tensorflow/compiler/... \
-=======
->>>>>>> google-upstream/master
       -//tensorflow/lite/... \
       -//tensorflow/python/compiler/tensorrt/... \
 

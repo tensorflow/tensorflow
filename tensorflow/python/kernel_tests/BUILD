@@ -135,11 +135,8 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     grpc_enabled = True,
-<<<<<<< HEAD
     xla_enable_strict_auto_jit = True,
-=======
     tags = ["no_rocm"],
->>>>>>> google-upstream/master
 )
 
 cuda_py_test(
@@ -1277,11 +1274,8 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
     ],
     shard_count = 10,
-<<<<<<< HEAD
     xla_enable_strict_auto_jit = True,
-=======
     tags = ["no_rocm"],
->>>>>>> google-upstream/master
 )
 
 tf_py_test(
@@ -2723,11 +2717,8 @@ cuda_py_test(
     ],
     flaky = 1,  # create_local_cluster sometimes times out.
     shard_count = 10,
-<<<<<<< HEAD
     xla_enable_strict_auto_jit = True,
-=======
     tags = ["no_rocm"],
->>>>>>> google-upstream/master
 )
 
 cuda_py_test(
@@ -3369,13 +3360,10 @@ cuda_py_test(
         "//tensorflow/python/ops/linalg",
     ],
     shard_count = 20,
-<<<<<<< HEAD
     xla_enable_strict_auto_jit = True,
     tags = [
         "no_cuda",
     ],
-=======
->>>>>>> google-upstream/master
 )
 
 cuda_py_test(
@@ -3426,13 +3414,10 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
     ],
     shard_count = 20,
-<<<<<<< HEAD
     xla_enable_strict_auto_jit = True,
-=======
     tags = [
         "no_rocm",  # TODO(rocm): feature not supported on ROCm platform
     ],
->>>>>>> google-upstream/master
 )
 
 cuda_py_test(
@@ -3809,11 +3794,8 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
     ],
     shard_count = 10,
-<<<<<<< HEAD
     xla_enable_strict_auto_jit = True,
-=======
     tags = ["no_rocm"],
->>>>>>> google-upstream/master
 )
 
 cuda_py_test(

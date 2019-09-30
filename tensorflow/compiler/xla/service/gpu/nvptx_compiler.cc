@@ -22,11 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_gemm_pad_for_tensor_cores.h"
-<<<<<<< HEAD
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_rewriter.h"
-=======
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.h"
->>>>>>> google-upstream/master
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_pad_for_convolutions.h"
 #include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"

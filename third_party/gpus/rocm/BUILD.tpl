@@ -111,7 +111,6 @@ cc_library(
     ],
 )
 
-<<<<<<< HEAD
 filegroup(
     name = "rocprim_headers",
     srcs = glob([
@@ -136,11 +135,11 @@ cc_library(
     deps = [
         "@local_config_rocm//rocm:rocm_headers",
     ],
-=======
+)
+
 bzl_library(
     name = "build_defs_bzl",
     srcs = ["build_defs.bzl"],
->>>>>>> google-upstream/master
 )
 
 %{copy_rules}

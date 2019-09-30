@@ -198,15 +198,10 @@ genrule(
             "@grpc//:LICENSE",
             "@grpc//third_party/address_sorting:LICENSE",
         ],
-<<<<<<< HEAD
-    ) + tf_additional_license_deps(),
-    outs = ["include/tensorflow/c/LICENSE"],
-=======
     ) + if_rocm([
         "@rocprim_archive//:LICENSE.txt",
     ]) + tf_additional_license_deps(),
     outs = ["THIRD_PARTY_TF_C_LICENSES"],
->>>>>>> google-upstream/master
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
     tools = [":concat_licenses.sh"],
 )
