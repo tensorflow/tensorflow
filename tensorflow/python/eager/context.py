@@ -413,6 +413,7 @@ class Context(object):
     self._inter_op_parallelism_threads = None
     self._soft_device_placement = None
     self._log_device_placement = None
+    self._enable_mlir_bridge = None
     self._optimizer_experimental_options = {}
 
     _python_eager_context_create_counter.get_cell().increase_by(1)
@@ -806,6 +807,9 @@ class Context(object):
 
     if self._log_device_placement is not None:
       config.log_device_placement = self._log_device_placement
+
+    if self._enable_mlir_bridge is not None:
+      config.experimental.enable_mlir_bridge = self._enable_mlir_bridge
 
     def rewriter_toggle(option):
       toggle = self._optimizer_experimental_options.get(option, None)
@@ -1257,6 +1261,16 @@ class Context(object):
           "Virtual devices cannot be modified after being initialized")
 
     self._virtual_device_map[dev] = virtual_devices
+
+  @property
+  def enable_mlir_bridge(self):
+    return self._enable_mlir_bridge
+
+  @enable_mlir_bridge.setter
+  def enable_mlir_bridge(self, enabled):
+    self._enable_mlir_bridge = enabled
+
+    self._thread_local_data.function_call_options = None
 
   @property
   def optimizer_jit(self):
