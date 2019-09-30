@@ -1309,6 +1309,7 @@ Type TensorFlowDialect::parseType(StringRef data, Location loc) const {
 #define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name)
 // NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
+                      .StartsWith("resource", TensorFlowTypes::RESOURCE)
                       .StartsWith("variant", TensorFlowTypes::VARIANT)
                       .Default(0);
   switch (typeKind) {
@@ -1321,6 +1322,8 @@ Type TensorFlowDialect::parseType(StringRef data, Location loc) const {
 #define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name)
 // NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
+    case TensorFlowTypes::RESOURCE:
+      return ParseResourceType(data, loc);
     case TensorFlowTypes::VARIANT:
       return ParseVariantType(data, loc);
   }
@@ -1345,22 +1348,27 @@ void TensorFlowDialect::printType(Type ty, raw_ostream &os) const {
   }
 }
 
-Type TensorFlowDialect::ParseVariantType(StringRef spec, Location loc) const {
-  bool success = spec.consume_front("variant");
+namespace {
+template <typename TypeWithSubtype>
+Type ParseTypeWithSubtype(MLIRContext *context, StringRef type_with_subtype,
+                          StringRef spec, Location loc) {
+  bool success = spec.consume_front(type_with_subtype);
   DCHECK(success) << spec.str();
 
-  // Default variant type without inferred subtypes.
-  MLIRContext *context = getContext();
-  if (spec.empty()) return VariantType::get(context);
+  // Default type without inferred subtypes.
+  if (spec.empty()) return TypeWithSubtype::get(context);
 
   if (!spec.consume_front("<") || !spec.consume_back(">"))
-    return emitError(loc) << "tf.variant delimiter <...> mismatch", nullptr;
+    return emitError(loc) << "tf." << type_with_subtype
+                          << " delimiter <...> mismatch",
+           nullptr;
 
-  // Most variant types with subtypes have only one subtype.
+  // Most types with subtypes have only one subtype.
   SmallVector<StringRef, 1> subtype_specs;
   llvm::SplitString(spec, subtype_specs, ",");
   if (subtype_specs.empty())
-    return emitError(loc) << "invalid type: tf.variant<>", nullptr;
+    return emitError(loc) << "invalid type: tf." << type_with_subtype << "<>",
+           nullptr;
 
   SmallVector<TensorType, 1> subtypes;
   subtypes.reserve(subtype_specs.size());
@@ -1377,18 +1385,38 @@ Type TensorFlowDialect::ParseVariantType(StringRef spec, Location loc) const {
       return emitError(loc) << "expected TensorType. Found: " << type, nullptr;
     }
   }
-  return VariantType::getChecked(subtypes, context, loc);
+  return TypeWithSubtype::getChecked(subtypes, context, loc);
 }
 
-void TensorFlowDialect::PrintVariantType(VariantType ty,
-                                         raw_ostream &os) const {
-  os << "variant";
+template <typename TypeWithSubtype>
+void PrintTypeWithSubtype(StringRef type, TypeWithSubtype ty, raw_ostream &os) {
+  os << type;
   ArrayRef<TensorType> subtypes = ty.getSubtypes();
   if (subtypes.empty()) return;
 
   os << "<";
   interleaveComma(subtypes, os);
   os << ">";
+}
+}  // anonymous namespace
+
+Type TensorFlowDialect::ParseResourceType(StringRef spec, Location loc) const {
+  return ParseTypeWithSubtype<ResourceType>(getContext(), "resource", spec,
+                                            loc);
+}
+
+void TensorFlowDialect::PrintResourceType(ResourceType ty,
+                                          raw_ostream &os) const {
+  return PrintTypeWithSubtype("resource", ty, os);
+}
+
+Type TensorFlowDialect::ParseVariantType(StringRef spec, Location loc) const {
+  return ParseTypeWithSubtype<VariantType>(getContext(), "variant", spec, loc);
+}
+
+void TensorFlowDialect::PrintVariantType(VariantType ty,
+                                         raw_ostream &os) const {
+  return PrintTypeWithSubtype("variant", ty, os);
 }
 
 Operation *TensorFlowDialect::materializeConstant(OpBuilder &builder,
