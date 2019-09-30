@@ -23,6 +23,7 @@
 #include "mlir/Support/STLExtras.h"
 #include "mlir/TableGen/Format.h"
 #include "mlir/TableGen/GenInfo.h"
+#include "mlir/TableGen/OpInterfaces.h"
 #include "mlir/TableGen/OpTrait.h"
 #include "mlir/TableGen/Operator.h"
 #include "llvm/ADT/StringExtras.h"
@@ -541,6 +542,9 @@ private:
   // Generates the traits used by the object.
   void genTraits();
 
+  // Generate the OpInterface methods.
+  void genOpInterfaceMethods();
+
 private:
   // The TableGen record for this op.
   // TODO(antiagainst,zinenko): OpEmitter should not have a Record directly,
@@ -577,6 +581,7 @@ OpEmitter::OpEmitter(const Operator &op)
   genVerifier();
   genCanonicalizerDecls();
   genFolderDecls();
+  genOpInterfaceMethods();
 }
 
 void OpEmitter::emitDecl(const Operator &op, raw_ostream &os) {
@@ -1071,6 +1076,30 @@ void OpEmitter::genFolderDecls() {
   }
 }
 
+void OpEmitter::genOpInterfaceMethods() {
+  for (const auto &trait : op.getTraits()) {
+    auto opTrait = dyn_cast<tblgen::InterfaceOpTrait>(&trait);
+    if (!opTrait || !opTrait->shouldDeclareMethods())
+      continue;
+    auto interface = opTrait->getOpInterface();
+    for (auto method : interface.getMethods()) {
+      // Don't declare if the method has a body.
+      if (method.getBody())
+        continue;
+      std::string args;
+      llvm::raw_string_ostream os(args);
+      mlir::interleaveComma(method.getArguments(), os,
+                            [&](const OpInterfaceMethod::Argument &arg) {
+                              os << arg.type << " " << arg.name;
+                            });
+      opClass.newMethod(method.getReturnType(), method.getName(), os.str(),
+                        method.isStatic() ? OpMethod::MP_Static
+                                          : OpMethod::MP_None,
+                        /*declOnly=*/true);
+    }
+  }
+}
+
 void OpEmitter::genParser() {
   if (!hasStringAttribute(def, "parser"))
     return;
@@ -1285,6 +1314,8 @@ void OpEmitter::genTraits() {
 
   for (const auto &trait : op.getTraits()) {
     if (auto opTrait = dyn_cast<tblgen::NativeOpTrait>(&trait))
+      opClass.addTrait(opTrait->getTrait());
+    else if (auto opTrait = dyn_cast<tblgen::InterfaceOpTrait>(&trait))
       opClass.addTrait(opTrait->getTrait());
   }
 
