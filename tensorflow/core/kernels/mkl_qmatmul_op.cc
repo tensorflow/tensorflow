@@ -4,7 +4,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -254,7 +254,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Toutput> {
       Tweight* weight_data = nullptr;
       if (weight_md.data.format != matmul_fwd->GetweightMemoryFormat()) {
         bool is_weight_cached = false;
-        // For Batch size 1, MKLDNN expected weight format is OI whereas
+        // For batch size 1, MKL-DNN expects that weight format is OI whereas
         // TF default format is IO. So in that case convert weight from IO
         // to OI for the first iteration and cache it to reuse in the
         // subsequent iterations, if the weight is constant.
@@ -473,8 +473,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Toutput> {
   // inside the function.
   inline bool IsWeightCacheEmpty(OpKernelContext* context) LOCKS_EXCLUDED(mu_) {
     tf_shared_lock lock(mu_);
-    const Tensor& weight_t = *weight_oi.AccessTensor(context);
-    return (weight_t.NumElements() == 0);
+    return (weight_oi.NumElements() == 0);
   }
 
   // Cache the converted weight in a persistent tensor.
@@ -517,10 +516,8 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Toutput> {
     // Cache the memory descriptor
     Tensor* weight_md_tensor_ptr = nullptr;
     TensorShape weight_mkl_format;
-    weight_mkl_format.AddDim(
-        sizeof(
-            matmul_fwd_pd.get()->weights_primitive_desc().desc().data.format) /
-        sizeof(DT_INT32));
+
+    weight_mkl_format.AddDim(1);
 
     OP_REQUIRES_OK(context, context->allocate_persistent(
                                 DT_INT32, weight_mkl_format, &weight_oi_md,
@@ -538,7 +535,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Toutput> {
 
     // Check if the  memory descriptor of the cached weight is same as
     // weight_mf. If so use the cached memory, else return NULL
-    if (weight_md_t.scalar<int32>().size() &&
+    if ((weight_md_t.scalar<int32>().size() > 0) &&
         weight_md_t.scalar<int32>()() == weight_mf) {
       return static_cast<Tweight*>(
           const_cast<Tweight*>(weight_t.flat<Tweight>().data()));

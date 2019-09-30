@@ -471,7 +471,7 @@ TEST_F(QuantizedMatMulTest, Small_withBiasAndReluAndReq) {
   test::ExpectTensorEqual<quint8>(expected, output_quantized);
 }
 
-// Two small matrices A of type uint8 and B of type int8  are multiplied
+// Two small matrices A of type uint8 and B of type int8 are multiplied
 // and the result is added with int32 bias
 // For the first time B matrix will be reordered and cached which will be
 // used for subsequent runs
@@ -521,7 +521,11 @@ TEST_F(QuantizedMatMulTest, Small_withWeightCached) {
   AddInputFromArray<uint8>(kDummyShape, kDummyTensor);
   AddInputFromArray<uint8>(kDummyShape, kDummyTensor);
 
+  int64 start_time = Env::Default()->NowMicros();
   TF_ASSERT_OK(RunOpKernel());
+  int64 end_time = Env::Default()->NowMicros();
+  int64 total_duration_unopt = end_time - start_time;
+
   // Here are the results we expect, from hand calculations:
   // (1 * 7) + (2 * 11) + (3 * 15) = 74
   // (1 * 8) + (2 * 12) + (3 * 16) = 80
@@ -542,9 +546,15 @@ TEST_F(QuantizedMatMulTest, Small_withWeightCached) {
   test::ExpectTensorEqual<qint32>(expected, output_quantized);
 
   // Test for the second time to use the cached weight
-  // Though we rely on performance as well as mkldnn verbose to
-  // determine if the weights buffer is cached and reused.
+  start_time = Env::Default()->NowMicros();
   TF_ASSERT_OK(RunOpKernel());
+  end_time = Env::Default()->NowMicros();
+  int64 total_duration_opt = end_time - start_time;
+  LOG(INFO) << " Time taken by first call : " << total_duration_unopt
+            << ", Time taken after Caching : " << total_duration_opt;
+
+  // Cached call should be atleast 20% faster
+  EXPECT_LT(total_duration_opt, total_duration_unopt * 0.8);
 
   // Compare the result with expected result
   const Tensor& output_new = *GetOutput(0);
