@@ -923,10 +923,9 @@ public:
   Region *getParentRegion() { return getOperation()->getParentRegion(); }
 
   /// Return true if this "op class" can match against the specified operation.
-  /// This hook can be overridden with a more specific implementation in
-  /// the subclass of Base.
-  ///
   static bool classof(Operation *op) {
+    if (auto *abstractOp = op->getAbstractOperation())
+      return &classof == abstractOp->classof;
     return op->getName().getStringRef() == ConcreteType::getOperationName();
   }
 
