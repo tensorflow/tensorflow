@@ -14,10 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_thunk.h"
+
 #include <string>
-#include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_runner.h"
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/types.h"
