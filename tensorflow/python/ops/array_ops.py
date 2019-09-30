@@ -4514,7 +4514,7 @@ def quantize_v2(
       raise ValueError("input should have known rank to use negative axis.")
     axis %= input.shape.ndims
 
-  if compat.forward_compatible(2019, 9, 25) or axis >= 0:
+  if compat.forward_compatible(2019, 9, 25) or axis >= 0 or narrow_range:
     return gen_array_ops.quantize_v2(
         input,
         min_range,
@@ -4579,14 +4579,14 @@ def quantize(
 @tf_export("quantization.dequantize", v1=["quantization.dequantize",
                                           "dequantize"])
 @deprecation.deprecated_endpoints("dequantize")
-def dequantize(
+def dequantize(  # pylint: disable=missing-docstring
     input,  # pylint: disable=redefined-builtin
     min_range,
     max_range,
     mode="MIN_COMBINED",
     name=None,
-    axis=None):
-  """Dequantize tensor to the specified range."""
+    axis=None,
+    narrow_range=False):
   if axis is None:
     axis = -1
   elif axis < 0:
@@ -4594,11 +4594,14 @@ def dequantize(
       raise ValueError("input should have known rank to use negative axis.")
     axis %= input.shape.ndims
 
-  if compat.forward_compatible(2019, 9, 25) or axis >= 0:
+  if compat.forward_compatible(2019, 10, 22) or axis >= 0 or narrow_range:
     return gen_array_ops.dequantize(
-        input, min_range, max_range, mode=mode, name=name, axis=axis)
+        input, min_range, max_range, mode=mode, name=name,
+        narrow_range=narrow_range, axis=axis)
   return gen_array_ops.dequantize(
       input, min_range, max_range, mode=mode, name=name)
+
+dequantize.__doc__ = gen_array_ops.dequantize.__doc__
 
 
 @tf_export("quantization.quantize_and_dequantize")
