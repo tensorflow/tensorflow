@@ -3949,9 +3949,9 @@ def reverse_sequence(input,
   >>> print(output)
   <tf.Tensor: id=5, shape=(4, 8), dtype=int32, numpy=
   array([[0, 0, 5, 4, 3, 2, 1, 0],
-       [2, 1, 0, 0, 0, 0, 0, 0],
-       [3, 2, 1, 4, 0, 0, 0, 0],
-       [5, 4, 3, 2, 1, 6, 7, 8]], dtype=int32)>
+         [2, 1, 0, 0, 0, 0, 0, 0],
+         [3, 2, 1, 4, 0, 0, 0, 0],
+         [5, 4, 3, 2, 1, 6, 7, 8]], dtype=int32)>
 
   Args:
     `input`: A `Tensor`. The input to reverse.
