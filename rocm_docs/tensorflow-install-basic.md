@@ -64,7 +64,6 @@ sudo apt-get update && \
     hsa-ext-rocr-dev hsakmt-roct-dev hsa-rocr-dev \
     rocm-opencl rocm-opencl-dev \
     rocm-utils \
-    rocm-profiler \
     miopen-hip miopengemm
 ```
 
