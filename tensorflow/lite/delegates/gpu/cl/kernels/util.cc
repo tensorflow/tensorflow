@@ -125,19 +125,6 @@ std::string GetCommonDefines(CalculationsPrecision precision) {
   return result;
 }
 
-std::string GetDataType(DataType type) {
-  switch (type) {
-    case DataType::FLOAT16:
-      return "half";
-    case DataType::FLOAT32:
-      return "float";
-    default:
-      return "error";
-  }
-}
-
-std::string GetDataType4(DataType type) { return GetDataType(type) + "4"; }
-
 TensorCodeGenerator::TensorCodeGenerator(const std::string& name,
                                          const std::string& uniform_size_name,
                                          const TensorDescriptor& descriptor)
@@ -148,7 +135,7 @@ TensorCodeGenerator::TensorCodeGenerator(const std::string& name,
 std::string TensorCodeGenerator::GetDeclaration(AccessType access_type) const {
   switch (descriptor_.storage_type) {
     case TensorStorageType::BUFFER:
-      return absl::StrCat("__global ", GetDataType4(descriptor_.data_type),
+      return absl::StrCat("__global ", ToCLDataType(descriptor_.data_type, 4),
                           "* ", tensor_name_);
     case TensorStorageType::TEXTURE_2D:
     case TensorStorageType::SINGLE_TEXTURE_2D:
@@ -157,7 +144,7 @@ std::string TensorCodeGenerator::GetDeclaration(AccessType access_type) const {
       return GetImageModifier(access_type) + " image2d_array_t " + tensor_name_;
     case TensorStorageType::IMAGE_BUFFER:
       if (access_type == AccessType::WRITE) {
-        return absl::StrCat("__global ", GetDataType4(descriptor_.data_type),
+        return absl::StrCat("__global ", ToCLDataType(descriptor_.data_type, 4),
                             "* ", tensor_name_);
       } else {
         return GetImageModifier(access_type) + " image1d_buffer_t " +

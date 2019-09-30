@@ -87,11 +87,13 @@ class FromTensorConverter : public OpenClConverterImpl {
       const TensorObjectDef& input_def,
       const TensorObjectDef& output_def) const {
     return std::make_pair(
-        "__global " + GetDataType4(output_def.object_def.data_type) + "* dst",
+        "__global " + ToCLDataType(output_def.object_def.data_type, 4) +
+            "* dst",
         "dst[(d * size.y + y) * size.x + x] = " +
             (output_def.object_def.data_type == input_def.object_def.data_type
                  ? "input;"
-                 : "convert_" + GetDataType4(output_def.object_def.data_type) +
+                 : "convert_" +
+                       ToCLDataType(output_def.object_def.data_type, 4) +
                        "(input);"));
   }
 
@@ -99,7 +101,7 @@ class FromTensorConverter : public OpenClConverterImpl {
       const TensorObjectDef& input_def,
       const TensorObjectDef& output_def) const {
     return std::make_pair(
-        "__global " + GetDataType(output_def.object_def.data_type) + "* dst",
+        "__global " + ToCLDataType(output_def.object_def.data_type) + "* dst",
         R"(
   int c = d * 4;
   int index = (y * size.x + x) * size.z + c;
@@ -143,7 +145,7 @@ __kernel void from_tensor()" +
   int y = get_global_id(1);
   int d = get_global_id(2);
   if (x >= size.x || y >= size.y || d >= size.w) return;
-  )" + GetDataType4(input_def.object_def.data_type) +
+  )" + ToCLDataType(input_def.object_def.data_type, 4) +
         " input = " + src_tensor.Read3D("x", "y", "d") + ";\n" +
         params_kernel.second + "\n}";
     queue_ = environment->queue();
@@ -199,11 +201,11 @@ class ToTensorConverter : public OpenClConverterImpl {
       const TensorObjectDef& input_def,
       const TensorObjectDef& output_def) const {
     return std::make_pair(
-        "__global " + GetDataType4(input_def.object_def.data_type) + "* src",
+        "__global " + ToCLDataType(input_def.object_def.data_type, 4) + "* src",
         output_def.object_def.data_type == input_def.object_def.data_type
             ? "result = src[(d * size.y + y) * size.x + x];"
             : "result = convert_" +
-                  GetDataType4(output_def.object_def.data_type) +
+                  ToCLDataType(output_def.object_def.data_type, 4) +
                   "(src[(d * size.y + y) * size.x + x]);");
   }
 
@@ -211,7 +213,7 @@ class ToTensorConverter : public OpenClConverterImpl {
       const TensorObjectDef& input_def,
       const TensorObjectDef& output_def) const {
     return std::make_pair(
-        "__global " + GetDataType(input_def.object_def.data_type) + "* src",
+        "__global " + ToCLDataType(input_def.object_def.data_type) + "* src",
         R"(int c = d * 4;
   int index = (y * size.x + x) * size.z + c;
   result.x = src[index];
@@ -246,7 +248,7 @@ __kernel void to_tensor()" +
   int d = get_global_id(2);
 
   if (x >= size.x || y >= size.y || d >= size.w) return;
-  )" + GetDataType4(output_def.object_def.data_type) +
+  )" + ToCLDataType(output_def.object_def.data_type, 4) +
         " result;\n" + params_kernel.second + "\n  " +
         dst_tensor.Write3D("result", "x", "y", "d") + ";\n}";
     queue_ = environment->queue();
