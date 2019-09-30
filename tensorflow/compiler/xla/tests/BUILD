@@ -1400,9 +1400,7 @@ xla_test(
     name = "reduce_test",
     srcs = ["reduce_test.cc"],
     shard_count = 31,
-    tags = [
-        "optonly",
-    ],
+    tags = ["optonly", "no_rocm"],
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:array2d",
@@ -1479,9 +1477,7 @@ xla_test(
     name = "select_and_scatter_test",
     timeout = "long",
     srcs = ["select_and_scatter_test.cc"],
-    tags = [
-        "optonly",
-    ],
+    tags = ["optonly", "no_rocm"],
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:array2d",
