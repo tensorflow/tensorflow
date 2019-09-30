@@ -747,6 +747,7 @@ tf_cc_test(
         ":encapsulate_util",
         ":flags",
         ":node_matchers",
+        ":test_util",
         ":xla_cluster_util",
         ":xla_cpu_device",
         ":xla_gpu_device",
