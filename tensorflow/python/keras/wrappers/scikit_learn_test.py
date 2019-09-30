@@ -22,6 +22,7 @@ import numpy as np
 import pickle
 from scipy.stats import randint
 from sklearn.calibration import CalibratedClassifierCV
+from sklearn.compose import TransformedTargetRegressor
 from sklearn.datasets import load_boston, load_digits, load_iris
 from sklearn.ensemble import (AdaBoostClassifier, AdaBoostRegressor,
                               BaggingClassifier, BaggingRegressor)
@@ -337,6 +338,16 @@ def test_calibratedclassifiercv():
         loader, _, build_fn, _ = CONFIG[config]
         base_estimator = KerasClassifier(build_fn, epochs=1)
         estimator = CalibratedClassifierCV(base_estimator=base_estimator)
+        check(estimator, loader)
+
+
+def test_transformedtargetregressor():
+    """Tests compatibility with Scikit-learn's transformed target regressor."""
+    for config in ['MLPRegressor']:
+        loader, _, build_fn, _ = CONFIG[config]
+        base_estimator = KerasCRegressor(build_fn, epochs=1)
+        estimator = TransformedTargetRegressor(regressor=base_estimator,
+                                               transformer=StandardScaler())
         check(estimator, loader)
 
 

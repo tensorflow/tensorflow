@@ -106,16 +106,21 @@ class BaseWrapper(object):
         if params_name != 'nb_epoch':
           raise ValueError('{} is not a legal parameter'.format(params_name))
 
-  def get_params(self, **params):  # pylint: disable=unused-argument
+  def get_params(self, deep=True):
     """Gets parameters for this estimator.
 
     Arguments:
-        **params: ignored (exists for API compatibility).
+        deep: boolean, optional
+            If True, will return the parameters for this estimator and contained
+            subobjects that are estimators.
 
     Returns:
         Dictionary of parameter names mapped to their values.
     """
-    res = copy.deepcopy(self.sk_params)
+    if deep:
+      res = copy.deepcopy(self.sk_params)
+    else:
+      res = copy.copy(self.sk_params)
     res.update({'build_fn': self.build_fn})
     return res
 
