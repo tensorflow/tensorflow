@@ -3473,14 +3473,14 @@ def reduced_shape(input_shape, axes):
   Returns:
     A 1-D Tensor, the output shape as if keepdims were set to True.
   """
-  # Example:
-  # cast needed for SparseTensor reductions
   if context.executing_eagerly():
     input_shape = input_shape.numpy()
     axes = axes.numpy()
     input_shape[axes] = 1
     return input_shape
 
+  # Example:
+  # cast needed for SparseTensor reductions
   input_shape = cast(input_shape, dtypes.int32)  # [2, 3, 5, 7]
   axes = cast(axes, dtypes.int32)  # [1, 2]
 
