@@ -121,6 +121,35 @@ def SPV_GLSLFAbsOp : SPV_GLSLUnaryArithmaticOp<"FAbs", 4, SPV_Float> {
 
 // -----
 
+def SPV_GLSLSAbsOp : SPV_GLSLUnaryArithmaticOp<"SAbs", 5, SPV_Integer> {
+  let summary = "Absolute value of operand";
+
+  let description = [{
+    Result is x if x ≥ 0; otherwise result is -x, where x is interpreted as a
+    signed integer.
+
+    Result Type and the type of x must both be integer scalar or integer vector
+    types. Result Type and operand types must have the same number of components
+    with the same component width. Results are computed per component.
+
+    ### Custom assembly format
+    ``` {.ebnf}
+    integer-scalar-vector-type ::= integer-type |
+                                   `vector<` integer-literal `x` integer-type `>`
+    abs-op ::= ssa-id `=` `spv.GLSL.SAbs` ssa-use `:`
+               integer-scalar-vector-type
+    ```
+    For example:
+
+    ```
+    %2 = spv.GLSL.SAbs %0 : i32
+    %3 = spv.GLSL.SAbs %1 : vector<3xi16>
+    ```
+  }];
+}
+
+// -----
+
 def SPV_GLSLCeilOp : SPV_GLSLUnaryArithmaticOp<"Ceil", 9, SPV_Float> {
   let summary = "Rounds up to the next whole number";
 
@@ -247,12 +276,42 @@ def SPV_GLSLFloorOp : SPV_GLSLUnaryArithmaticOp<"Floor", 8, SPV_Float> {
 
 // -----
 
+def SPV_GLSLInverseSqrtOp : SPV_GLSLUnaryArithmaticOp<"InverseSqrt", 32, SPV_Float> {
+  let summary = "Reciprocal of sqrt(operand)";
+
+  let description = [{
+    Result is the reciprocal of sqrt x. Result is undefined if x <= 0.
+
+    The operand x must be a scalar or vector whose component type is
+    floating-point.
+
+    Result Type and the type of x must be the same type. Results are computed
+    per component.
+
+    ### Custom assembly format
+    ``` {.ebnf}
+    float-scalar-vector-type ::= float-type |
+                                 `vector<` integer-literal `x` float-type `>`
+    rsqrt-op ::= ssa-id `=` `spv.GLSL.InverseSqrt` ssa-use `:`
+                 float-scalar-vector-type
+    ```
+    For example:
+
+    ```
+    %2 = spv.GLSL.InverseSqrt %0 : f32
+    %3 = spv.GLSL.InverseSqrt %1 : vector<3xf16>
+    ```
+  }];
+}
+
+// -----
+
 def SPV_GLSLLogOp : SPV_GLSLUnaryArithmaticOp<"Log", 28, SPV_Float16or32> {
   let summary = "Natural logarithm of the operand";
 
   let description = [{
     Result is the natural logarithm of x, i.e., the value y which satisfies the
-    equation x = ey. Result is undefined if x ≤ 0.
+    equation x = ey. Result is undefined if x <= 0.
 
     The operand x must be a scalar or vector whose component type is 16-bit or
     32-bit floating-point.
@@ -311,30 +370,30 @@ def SPV_GLSLFMaxOp : SPV_GLSLBinaryArithmaticOp<"FMax", 40, SPV_Float> {
 
 // -----
 
-def SPV_GLSLInverseSqrtOp : SPV_GLSLUnaryArithmaticOp<"InverseSqrt", 32, SPV_Float> {
-  let summary = "Reciprocal of sqrt(operand)";
+def SPV_GLSLSMaxOp : SPV_GLSLBinaryArithmaticOp<"SMax", 42, SPV_Integer> {
+  let summary = "Return maximum of two signed integer operands";
 
   let description = [{
-    Result is the reciprocal of sqrt x. Result is undefined if x ≤ 0.
+    Result is y if x < y; otherwise result is x, where x and y are interpreted
+    as signed integers.
 
-    The operand x must be a scalar or vector whose component type is
-    floating-point.
-
-    Result Type and the type of x must be the same type. Results are computed
-    per component.
+    Result Type and the type of x and y must both be integer scalar or integer
+    vector types. Result Type and operand types must have the same number of
+    components with the same component width. Results are computed per
+    component.
 
     ### Custom assembly format
     ``` {.ebnf}
-    float-scalar-vector-type ::= float-type |
-                                 `vector<` integer-literal `x` float-type `>`
-    rsqrt-op ::= ssa-id `=` `spv.GLSL.InverseSqrt` ssa-use `:`
-                 float-scalar-vector-type
+    integer-scalar-vector-type ::= integer-type |
+                                   `vector<` integer-literal `x` integer-type `>`
+    smax-op ::= ssa-id `=` `spv.GLSL.SMax` ssa-use `:`
+                integer-scalar-vector-type
     ```
     For example:
 
     ```
-    %2 = spv.GLSL.InverseSqrt %0 : f32
-    %3 = spv.GLSL.InverseSqrt %1 : vector<3xf16>
+    %2 = spv.GLSL.SMax %0, %1 : i32
+    %3 = spv.GLSL.SMax %0, %1 : vector<3xi16>
     ```
   }];
 }
@@ -372,6 +431,36 @@ def SPV_GLSLFMinOp : SPV_GLSLBinaryArithmaticOp<"FMin", 37, SPV_Float> {
 
 // -----
 
+def SPV_GLSLSMinOp : SPV_GLSLBinaryArithmaticOp<"SMin", 39, SPV_Integer> {
+  let summary = "Return minimum of two signed integer operands";
+
+  let description = [{
+    Result is y if y < x; otherwise result is x, where x and y are interpreted
+    as signed integers.
+
+    Result Type and the type of x and y must both be integer scalar or integer
+    vector types. Result Type and operand types must have the same number of
+    components with the same component width. Results are computed per
+    component.
+
+    ### Custom assembly format
+    ``` {.ebnf}
+    integer-scalar-vector-type ::= integer-type |
+                                   `vector<` integer-literal `x` integer-type `>`
+    smin-op ::= ssa-id `=` `spv.GLSL.SMin` ssa-use `:`
+                integer-scalar-vector-type
+    ```
+    For example:
+
+    ```
+    %2 = spv.GLSL.SMin %0, %1 : i32
+    %3 = spv.GLSL.SMin %0, %1 : vector<3xi16>
+    ```
+  }];
+}
+
+// -----
+
 def SPV_GLSLFSignOp : SPV_GLSLUnaryArithmaticOp<"FSign", 6, SPV_Float> {
   let summary = "Returns the sign of the operand";
 
@@ -396,6 +485,35 @@ def SPV_GLSLFSignOp : SPV_GLSLUnaryArithmaticOp<"FSign", 6, SPV_Float> {
     ```
     %2 = spv.GLSL.FSign %0 : f32
     %3 = spv.GLSL.FSign %1 : vector<3xf16>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_GLSLSSignOp : SPV_GLSLUnaryArithmaticOp<"SSign", 7, SPV_Integer> {
+  let summary = "Returns the sign of the operand";
+
+  let description = [{
+    Result is 1 if x > 0, 0 if x = 0, or -1 if x < 0, where x is interpreted as
+    a signed integer.
+
+    Result Type and the type of x must both be integer scalar or integer vector
+    types. Result Type and operand types must have the same number of components
+    with the same component width. Results are computed per component.
+
+    ### Custom assembly format
+    ``` {.ebnf}
+    integer-scalar-vector-type ::= integer-type |
+                                   `vector<` integer-literal `x` integer-type `>`
+    sign-op ::= ssa-id `=` `spv.GLSL.SSign` ssa-use `:`
+                integer-scalar-vector-type
+    ```
+    For example:
+
+    ```
+    %2 = spv.GLSL.SSign %0 : i32
+    %3 = spv.GLSL.SSign %1 : vector<3xi16>
     ```
   }];
 }
