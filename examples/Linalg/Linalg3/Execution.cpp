@@ -68,8 +68,9 @@ FuncOp makeFunctionWithAMatmulOp(ModuleOp module, StringRef name) {
 // This is equivalent to the structure that the conversion produces.
 struct MemRefDescriptor2D {
   float *ptr;
-  int64_t sz1;
-  int64_t sz2;
+  int64_t offset;
+  int64_t sizes[2];
+  int64_t strides[2];
 };
 
 // Alocate a 2D memref of the given size, store the sizes in the descriptor and
@@ -77,8 +78,11 @@ struct MemRefDescriptor2D {
 static MemRefDescriptor2D allocateInit2DMemref(int64_t sz1, int64_t sz2) {
   MemRefDescriptor2D descriptor;
   descriptor.ptr = static_cast<float *>(malloc(sizeof(float) * sz1 * sz2));
-  descriptor.sz1 = sz1;
-  descriptor.sz2 = sz2;
+  descriptor.offset = 0;
+  descriptor.sizes[0] = sz1;
+  descriptor.sizes[1] = sz2;
+  descriptor.strides[0] = sz2;
+  descriptor.strides[1] = 1;
   for (int64_t i = 0, e = sz1 * sz2; i < e; ++i)
     descriptor.ptr[i] = 1.0f;
   return descriptor;
@@ -86,12 +90,13 @@ static MemRefDescriptor2D allocateInit2DMemref(int64_t sz1, int64_t sz2) {
 
 // Print the contents of the memref given its descriptor.
 static void print2DMemref(const MemRefDescriptor2D &descriptor) {
-  for (int64_t i = 0; i < descriptor.sz1; ++i) {
+  for (int64_t i = 0; i < descriptor.sizes[0]; ++i) {
     llvm::outs() << '[';
-    for (int64_t j = 0; j < descriptor.sz2; ++j) {
+    for (int64_t j = 0; j < descriptor.sizes[1]; ++j) {
       if (j != 0)
         llvm::outs() << ", ";
-      llvm::outs() << descriptor.ptr[i * descriptor.sz2 + j];
+      llvm::outs() << descriptor.ptr[i * descriptor.strides[0] +
+                                     j * descriptor.strides[1]];
     }
     llvm::outs() << "]\n";
   }

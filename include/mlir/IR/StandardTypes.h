@@ -375,14 +375,13 @@ public:
   ///      where K and ki's are constants or symbols.
   ///
   /// A stride specification is a list of integer values that are either static
-  /// or dynamic (encoded with kDynamicStride). Strides encode the distance in
-  /// the number of elements between successive entries along a particular
-  /// dimension.
-  /// For example, `memref<42x16xf32, (64 * d0 + d1)>` specifies a view into a
-  /// non-contiguous memory region of `42` by `16` `f32` elements in which the
-  /// distance between two consecutive elements along the outer dimension is `1`
-  /// and the distance between two consecutive elements along the inner
-  /// dimension is `64`.
+  /// or dynamic (encoded with kDynamicStrideOrOffset). Strides encode the
+  /// distance in the number of elements between successive entries along a
+  /// particular dimension. For example, `memref<42x16xf32, (64 * d0 + d1)>`
+  /// specifies a view into a non-contiguous memory region of `42` by `16` `f32`
+  /// elements in which the distance between two consecutive elements along the
+  /// outer dimension is `1` and the distance between two consecutive elements
+  /// along the inner dimension is `64`.
   ///
   /// If a simple strided form cannot be extracted from the composition of the
   /// layout map, returns llvm::None.
@@ -390,7 +389,8 @@ public:
   /// The convention is that the strides for dimensions d0, .. dn appear in
   /// order followed by the constant offset, to make indexing intuitive into the
   /// result.
-  static constexpr int64_t kDynamicStride = std::numeric_limits<int64_t>::min();
+  static constexpr int64_t kDynamicStrideOrOffset =
+      std::numeric_limits<int64_t>::min();
   LogicalResult getStridesAndOffset(SmallVectorImpl<int64_t> &strides) const;
 
   static bool kindof(unsigned kind) { return kind == StandardTypes::MemRef; }

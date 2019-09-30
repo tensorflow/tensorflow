@@ -317,23 +317,23 @@ func @more_imperfectly_nested_loops() {
 func @get_i64() -> (i64)
 // CHECK-LABEL: func @get_f32() -> !llvm.float
 func @get_f32() -> (f32)
-// CHECK-LABEL: func @get_memref() -> !llvm<"{ float*, [4 x i64] }">
+// CHECK-LABEL: func @get_memref() -> !llvm<"{ float*, i64, [4 x i64], [4 x i64] }">
 func @get_memref() -> (memref<42x?x10x?xf32>)
 
-// CHECK-LABEL: func @multireturn() -> !llvm<"{ i64, float, { float*, [4 x i64] } }"> {
+// CHECK-LABEL: func @multireturn() -> !llvm<"{ i64, float, { float*, i64, [4 x i64], [4 x i64] } }"> {
 func @multireturn() -> (i64, f32, memref<42x?x10x?xf32>) {
 ^bb0:
 // CHECK-NEXT:  {{.*}} = llvm.call @get_i64() : () -> !llvm.i64
 // CHECK-NEXT:  {{.*}} = llvm.call @get_f32() : () -> !llvm.float
-// CHECK-NEXT:  {{.*}} = llvm.call @get_memref() : () -> !llvm<"{ float*, [4 x i64] }">
+// CHECK-NEXT:  {{.*}} = llvm.call @get_memref() : () -> !llvm<"{ float*, i64, [4 x i64], [4 x i64] }">
   %0 = call @get_i64() : () -> (i64)
   %1 = call @get_f32() : () -> (f32)
   %2 = call @get_memref() : () -> (memref<42x?x10x?xf32>)
-// CHECK-NEXT:  {{.*}} = llvm.mlir.undef : !llvm<"{ i64, float, { float*, [4 x i64] } }">
-// CHECK-NEXT:  {{.*}} = llvm.insertvalue {{.*}}, {{.*}}[0 : index] : !llvm<"{ i64, float, { float*, [4 x i64] } }">
-// CHECK-NEXT:  {{.*}} = llvm.insertvalue {{.*}}, {{.*}}[1 : index] : !llvm<"{ i64, float, { float*, [4 x i64] } }">
-// CHECK-NEXT:  {{.*}} = llvm.insertvalue {{.*}}, {{.*}}[2 : index] : !llvm<"{ i64, float, { float*, [4 x i64] } }">
-// CHECK-NEXT:  llvm.return {{.*}} : !llvm<"{ i64, float, { float*, [4 x i64] } }">
+// CHECK-NEXT:  {{.*}} = llvm.mlir.undef : !llvm<"{ i64, float, { float*, i64, [4 x i64], [4 x i64] } }">
+// CHECK-NEXT:  {{.*}} = llvm.insertvalue {{.*}}, {{.*}}[0 : index] : !llvm<"{ i64, float, { float*, i64, [4 x i64], [4 x i64] } }">
+// CHECK-NEXT:  {{.*}} = llvm.insertvalue {{.*}}, {{.*}}[1 : index] : !llvm<"{ i64, float, { float*, i64, [4 x i64], [4 x i64] } }">
+// CHECK-NEXT:  {{.*}} = llvm.insertvalue {{.*}}, {{.*}}[2 : index] : !llvm<"{ i64, float, { float*, i64, [4 x i64], [4 x i64] } }">
+// CHECK-NEXT:  llvm.return {{.*}} : !llvm<"{ i64, float, { float*, i64, [4 x i64], [4 x i64] } }">
   return %0, %1, %2 : i64, f32, memref<42x?x10x?xf32>
 }
 
@@ -341,10 +341,10 @@ func @multireturn() -> (i64, f32, memref<42x?x10x?xf32>) {
 // CHECK-LABEL: func @multireturn_caller() {
 func @multireturn_caller() {
 ^bb0:
-// CHECK-NEXT:  {{.*}} = llvm.call @multireturn() : () -> !llvm<"{ i64, float, { float*, [4 x i64] } }">
-// CHECK-NEXT:  {{.*}} = llvm.extractvalue {{.*}}[0 : index] : !llvm<"{ i64, float, { float*, [4 x i64] } }">
-// CHECK-NEXT:  {{.*}} = llvm.extractvalue {{.*}}[1 : index] : !llvm<"{ i64, float, { float*, [4 x i64] } }">
-// CHECK-NEXT:  {{.*}} = llvm.extractvalue {{.*}}[2 : index] : !llvm<"{ i64, float, { float*, [4 x i64] } }">
+// CHECK-NEXT:  {{.*}} = llvm.call @multireturn() : () -> !llvm<"{ i64, float, { float*, i64, [4 x i64], [4 x i64] } }">
+// CHECK-NEXT:  {{.*}} = llvm.extractvalue {{.*}}[0 : index] : !llvm<"{ i64, float, { float*, i64, [4 x i64], [4 x i64] } }">
+// CHECK-NEXT:  {{.*}} = llvm.extractvalue {{.*}}[1 : index] : !llvm<"{ i64, float, { float*, i64, [4 x i64], [4 x i64] } }">
+// CHECK-NEXT:  {{.*}} = llvm.extractvalue {{.*}}[2 : index] : !llvm<"{ i64, float, { float*, i64, [4 x i64], [4 x i64] } }">
   %0:3 = call @multireturn() : () -> (i64, f32, memref<42x?x10x?xf32>)
   %1 = constant 42 : i64
 // CHECK:       {{.*}} = llvm.add {{.*}}, {{.*}} : !llvm.i64
@@ -567,3 +567,4 @@ func @splat(%a: vector<4xf32>, %b: f32) -> vector<4xf32> {
 // CHECK-NEXT: [[SPLAT:%[0-9]+]] = llvm.shufflevector [[V]], [[UNDEF]] [0 : i32, 0 : i32, 0 : i32, 0 : i32]
 // CHECK-NEXT: [[SCALE:%[0-9]+]] = llvm.fmul [[A]], [[SPLAT]] : !llvm<"<4 x float>">
 // CHECK-NEXT: llvm.return [[SCALE]] : !llvm<"<4 x float>">
+

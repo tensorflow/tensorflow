@@ -80,10 +80,12 @@ extern "C" int32_t mcuStreamSynchronize(void *stream) {
 
 /// Helper functions for writing mlir example code
 
-// A struct that corresponds to how MLIR represents unknown-sizes 1d memrefs.
+// A struct that corresponds to how MLIR represents memrefs.
 template <typename T, int N> struct MemRefType {
   T *data;
+  int64_t offset;
   int64_t sizes[N];
+  long strides[N];
 };
 
 // Allows to register a pointer with the CUDA runtime. Helpful until

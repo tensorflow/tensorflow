@@ -63,11 +63,11 @@ func @viewRangeConversion(%arg0: memref<?x?xf32>, %arg1: !linalg.range, %arg2: !
   return
 }
 // LLVM-LABEL: @viewRangeConversion
-// LLVM-NEXT:  llvm.load %{{.*}} : !llvm<"{ float*, [2 x i64] }*">
+// LLVM-NEXT:  llvm.load %{{.*}} : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
 // LLVM-NEXT:  llvm.mlir.undef : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
-// LLVM-NEXT:  llvm.extractvalue %{{.*}}[0] : !llvm<"{ float*, [2 x i64] }">
+// LLVM-NEXT:  llvm.extractvalue %{{.*}}[0] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
 // LLVM-NEXT:  llvm.insertvalue %{{.*}}, %{{.*}}[0] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
-// LLVM-NEXT:  llvm.extractvalue %{{.*}}[1, 1] : !llvm<"{ float*, [2 x i64] }">
+// LLVM-NEXT:  llvm.extractvalue %{{.*}}[2, 1] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
 // LLVM-NEXT:  llvm.mlir.constant(1 : index) : !llvm.i64
 // LLVM-NEXT:  llvm.mul %{{.*}}, %{{.*}} : !llvm.i64
 // LLVM-NEXT:  llvm.mlir.constant(0 : index) : !llvm.i64
@@ -98,11 +98,11 @@ func @viewNonRangeConversion(%arg0: memref<?x?xf32>, %arg1: !linalg.range, %arg2
   return
 }
 // LLVM-LABEL: @viewNonRangeConversion
-// LLVM-NEXT:  llvm.load %{{.*}} : !llvm<"{ float*, [2 x i64] }*">
+// LLVM-NEXT:  llvm.load %{{.*}} : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
 // LLVM-NEXT:  llvm.mlir.undef : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
-// LLVM-NEXT:  llvm.extractvalue %{{.*}}[0] : !llvm<"{ float*, [2 x i64] }">
+// LLVM-NEXT:  llvm.extractvalue %{{.*}}[0] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
 // LLVM-NEXT:  llvm.insertvalue %{{.*}}, %{{.*}}[0] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
-// LLVM-NEXT:  llvm.extractvalue %{{.*}}[1, 1] : !llvm<"{ float*, [2 x i64] }">
+// LLVM-NEXT:  llvm.extractvalue %{{.*}}[2, 1] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
 // LLVM-NEXT:  llvm.mlir.constant(1 : index) : !llvm.i64
 // LLVM-NEXT:  llvm.mul %{{.*}}, %{{.*}} : !llvm.i64
 // LLVM-NEXT:  llvm.mlir.constant(0 : index) : !llvm.i64

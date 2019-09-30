@@ -187,12 +187,8 @@ public:
       if (type.getShape()[dim] != -1) {
         return i64cst(type.getShape()[dim]);
       }
-      int dynamicDimPos = 0;
-      for (int i = 0; i < dim; ++i)
-        if (type.getShape()[i] == -1)
-          ++dynamicDimPos;
-      return intrinsics::extractvalue(
-          int64Ty, memref, rewriter.getI64ArrayAttr({1, dynamicDimPos}));
+      return intrinsics::extractvalue(int64Ty, memref,
+                                      rewriter.getI64ArrayAttr({2, dim}));
     };
 
     // Helper function to obtain the data pointer of the given `memref`.

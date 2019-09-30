@@ -51,28 +51,41 @@ For example, `vector<4 x f32>` converts to `!llvm.type<"<4 x float>">` and
 ### Memref Types
 
 Memref types in MLIR have both static and dynamic information associated with
-them. The dynamic information comprises the buffer pointer as well as sizes of
-any dynamically sized dimensions. Memref types are normalized and converted to a
-descriptor that is only dependent on the rank of the memref. The descriptor
-contains the pointer to the data buffer followed by an array containing as many
-64-bit integers as the rank of the memref. The array represents the size, in
-number of elements, of the memref along the given dimension. For constant memref
-dimensions, the corresponding size entry is a constant whose runtime value
-matches the static value. This normalization serves as an ABI for the memref
-type to interoperate with externally linked functions. In the particular case of
-rank `0` memrefs, the size array is omitted, resulting in a wrapped pointer.
+them. The dynamic information comprises the buffer pointer as well as sizes and
+strides of any dynamically sized dimensions. Memref types are normalized and
+converted to a descriptor that is only dependent on the rank of the memref. The
+descriptor contains:
+
+1.  the pointer to the data buffer, followed by
+2.  a lowered `index`-type integer containing the distance between the beginning
+    of the buffer and the first element to be accessed through the memref,
+    followed by
+3.  an array containing as many `index`-type integers as the rank of the memref:
+    the array represents the size, in number of elements, of the memref along
+    the given dimension. For constant MemRef dimensions, the corresponding size
+    entry is a constant whose runtime value must match the static value,
+    followed by
+4.  a second array containing as many 64-bit integers as the rank of the MemRef:
+    the second array represents the "stride" (in tensor abstraction sense), i.e.
+    the number of consecutive elements of the underlying buffer.
+
+For constant memref dimensions, the corresponding size entry is a constant whose
+runtime value matches the static value. This normalization serves as an ABI for
+the memref type to interoperate with externally linked functions. In the
+particular case of rank `0` memrefs, the size and stride arrays are omitted,
+resulting in a struct containing a pointer + offset.
 
 Examples:
 
 ```mlir {.mlir}
-memref<f32> -> !llvm.type<"{ float* }">
-memref<1 x f32> -> !llvm.type<"{ float*, [1 x i64] }">
-memref<? x f32> -> !llvm.type<"{ float*, [1 x i64] }">
-memref<10x42x42x43x123 x f32> -> !llvm.type<"{ float*, [5 x i64] }">
-memref<10x?x42x?x123 x f32> -> !llvm.type<"{ float*, [5 x i64] }">
+memref<f32> -> !llvm.type<"{ float*, i64 }">
+memref<1 x f32> -> !llvm.type<"{ float*, i64, [1 x i64], [1 x i64] }">
+memref<? x f32> -> !llvm.type<"{ float*, i64, [1 x i64], [1 x i64] }">
+memref<10x42x42x43x123 x f32> -> !llvm.type<"{ float*, i64, [5 x i64], [5 x i64] }">
+memref<10x?x42x?x123 x f32> -> !llvm.type<"{ float*, i64, [5 x i64], [5 x i64]  }">
 
 // Memref types can have vectors as element types
-memref<1x? x vector<4xf32>> -> !llvm.type<"{ <4 x float>*, [1 x i64] }">
+memref<1x? x vector<4xf32>> -> !llvm.type<"{ <4 x float>*, i64, [1 x i64], [1 x i64] }">
 ```
 
 ### Function Types
