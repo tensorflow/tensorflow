@@ -42,11 +42,11 @@ an output element, this operation computes \\(y = |x|\\).
   }];
 
   let arguments = (ins
-    TF_FpOrI32OrI64Tensor:$x
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8]>:$x
   );
 
   let results = (outs
-    TF_FpOrI32OrI64Tensor:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8]>:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -485,12 +485,11 @@ InvalidArgumentError: Cannot bitcast from 1 to 18 [Op:Bitcast]
 >>> equality_cast = tf.cast(a, tf.complex128)
 >>> print(equality_cast)
 tf.Tensor([1.+0.j 2.+0.j 3.+0.j], shape=(3,), dtype=complex128)
-```
 
 Example 2:
 
 >>> tf.bitcast(tf.constant(0xffffffff, dtype=tf.uint32), tf.uint8)
-<tf.Tensor: ... shape=(4,), dtype=uint8, numpy=array([255, 255, 255, 255], dtype=uint8)>
+<tf.Tensor: shape=(4,), dtype=uint8, numpy=array([255, 255, 255, 255], dtype=uint8)>
 
 Example 3:
 
@@ -1647,6 +1646,18 @@ def TF_GreaterOp : TF_Op<"Greater", [Broadcastable, NoSideEffect]>,
   let description = [{
 *NOTE*: `Greater` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+Example:
+
+```python
+x = tf.constant([5, 4, 6])
+y = tf.constant([5, 2, 5])
+tf.math.greater(x, y) ==> [False, True, True]
+
+x = tf.constant([5, 4, 6])
+y = tf.constant([5])
+tf.math.greater(x, y) ==> [False, False, True]
+```
   }];
 
   let arguments = (ins
@@ -1668,6 +1679,18 @@ def TF_GreaterEqualOp : TF_Op<"GreaterEqual", [Broadcastable, NoSideEffect]>,
   let description = [{
 *NOTE*: `GreaterEqual` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+Example:
+
+```python
+x = tf.constant([5, 4, 6, 7])
+y = tf.constant([5, 2, 5, 10])
+tf.math.greater_equal(x, y) ==> [True, True, True, False]
+
+x = tf.constant([5, 4, 6, 7])
+y = tf.constant([5])
+tf.math.greater_equal(x, y) ==> [True, False, True, True]
+```
   }];
 
   let arguments = (ins
@@ -1837,6 +1860,18 @@ def TF_LessOp : TF_Op<"Less", [Broadcastable, NoSideEffect]>,
   let description = [{
 *NOTE*: `Less` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+Example:
+
+```python
+x = tf.constant([5, 4, 6])
+y = tf.constant([5])
+tf.math.less(x, y) ==> [False, True, False]
+
+x = tf.constant([5, 4, 6])
+y = tf.constant([5, 6, 7])
+tf.math.less(x, y) ==> [False, True, True]
+```
   }];
 
   let arguments = (ins
@@ -1858,6 +1893,18 @@ def TF_LessEqualOp : TF_Op<"LessEqual", [Broadcastable, NoSideEffect]>,
   let description = [{
 *NOTE*: `LessEqual` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+Example:
+
+```python
+x = tf.constant([5, 4, 6])
+y = tf.constant([5])
+tf.math.less_equal(x, y) ==> [True, True, False]
+
+x = tf.constant([5, 4, 6])
+y = tf.constant([5, 6, 6])
+tf.math.less_equal(x, y) ==> [True, True, True]
+```
   }];
 
   let arguments = (ins
@@ -1877,6 +1924,13 @@ def TF_LogOp : TF_Op<"Log", [NoSideEffect, SameOperandsAndResultType]> {
 
   let description = [{
 I.e., \\(y = \log_e x\\).
+
+Example:
+
+```python
+x = tf.constant([0, 0.5, 1, 5])
+tf.math.log(x) ==> [-inf, -0.6931472,  0. ,  1.609438]
+```
   }];
 
   let arguments = (ins
@@ -2228,7 +2282,7 @@ Example usage:
 import tensorflow as tf
 from tensorflow.compiler.mlir.tensorflow.gen_mlir_passthrough_op import mlir_passthrough_op
 
-mlir_module = '''
+mlir_module = '''python
 func @main(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10x10xf32> {
    %add = "magic.op"(%arg0, %arg1) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10x10xf32>
    return %ret : tensor<10x10xf32>
@@ -3046,6 +3100,10 @@ def TF_ReluOp : TF_Op<"Relu", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes rectified linear: `max(features, 0)`.";
 
   let description = [{
+See: https://en.wikipedia.org/wiki/Rectifier_(neural_networks)
+Example usage:
+>>> tf.nn.relu([-2., 0., -0., 3.]).numpy()
+array([ 0.,  0., -0.,  3.], dtype=float32)
   }];
 
   let arguments = (ins
@@ -4332,6 +4390,27 @@ The output tensor's i'th dimension has `input.dims(i) * multiples[i]` elements,
 and the values of `input` are replicated `multiples[i]` times along the 'i'th
 dimension. For example, tiling `[a b c d]` by `[2]` produces
 `[a b c d a b c d]`.
+
+>>> a = tf.constant([[1,2,3],[4,5,6]], tf.int32)
+>>> b = tf.constant([1,2], tf.int32)
+>>> tf.tile(a, b)
+<tf.Tensor: shape=(2, 6), dtype=int32, numpy=
+array([[1, 2, 3, 1, 2, 3],
+       [4, 5, 6, 4, 5, 6]], dtype=int32)>
+>>> c = tf.constant([2,1], tf.int32)
+>>> tf.tile(a, c)
+<tf.Tensor: shape=(4, 3), dtype=int32, numpy=
+array([[1, 2, 3],
+       [4, 5, 6],
+       [1, 2, 3],
+       [4, 5, 6]], dtype=int32)>
+>>> d = tf.constant([2,2], tf.int32)
+>>> tf.tile(a, d)
+<tf.Tensor: shape=(4, 6), dtype=int32, numpy=
+array([[1, 2, 3, 1, 2, 3],
+       [4, 5, 6, 4, 5, 6],
+       [1, 2, 3, 1, 2, 3],
+       [4, 5, 6, 4, 5, 6]], dtype=int32)>
   }];
 
   let arguments = (ins
