@@ -125,24 +125,36 @@ Type LLVMTypeConverter::convertFunctionType(FunctionType type) {
 // Convert a MemRef to an LLVM type. The result is a MemRef descriptor which
 // contains:
 //   1. the pointer to the data buffer, followed by
-//   2. an array containing as many 64-bit integers as the rank of the MemRef:
-//   the array represents the size, in number of elements, of the memref along
-//   the given dimension. For constant MemRef dimensions, the corresponding size
-//   entry is a constant whose runtime value must match the static value.
+//   2.  a lowered `index`-type integer containing the distance between the
+//   beginning of the buffer and the first element to be accessed through the
+//   view, followed by
+//   3. an array containing as many `index`-type integers as the rank of the
+//   MemRef: the array represents the size, in number of elements, of the memref
+//   along the given dimension. For constant MemRef dimensions, the
+//   corresponding size entry is a constant whose runtime value must match the
+//   static value, followed by
+//   4. a second array containing as many `index`-type integers as the rank of
+//   the MemRef: the second array represents the "stride" (in tensor abstraction
+//   sense), i.e. the number of consecutive elements of the underlying buffer.
 //   TODO(ntv, zinenko): add assertions for the static cases.
 //
 // template <typename Elem, size_t Rank>
 // struct {
 //   Elem *ptr;
+//   int64_t offset;
 //   int64_t sizes[Rank]; // omitted when rank == 0
+//   int64_t strides[Rank]; // omitted when rank == 0
 // };
 static unsigned kPtrPosInMemRefDescriptor = 0;
-static unsigned kSizePosInMemRefDescriptor = 1;
+static unsigned kOffsetPosInMemRefDescriptor = 1;
+static unsigned kSizePosInMemRefDescriptor = 2;
+static unsigned kStridePosInMemRefDescriptor = 3;
 Type LLVMTypeConverter::convertMemRefType(MemRefType type) {
-  assert((type.getAffineMaps().empty() ||
-          (type.getAffineMaps().size() == 1 &&
-           type.getAffineMaps().back().isIdentity())) &&
-         "Non-identity layout maps must have been normalized away");
+  SmallVector<int64_t, 4> strides;
+  bool strideSuccess = succeeded(type.getStridesAndOffset(strides));
+  assert(strideSuccess &&
+         "Non-strided layout maps must have been normalized away");
+  (void)strideSuccess;
   LLVM::LLVMType elementType = unwrap(convertType(type.getElementType()));
   if (!elementType)
     return {};
@@ -151,9 +163,9 @@ Type LLVMTypeConverter::convertMemRefType(MemRefType type) {
   auto rank = type.getRank();
   if (rank > 0) {
     auto arrayTy = LLVM::LLVMType::getArrayTy(indexTy, type.getRank());
-    return LLVM::LLVMType::getStructTy(ptrTy, arrayTy);
+    return LLVM::LLVMType::getStructTy(ptrTy, indexTy, arrayTy, arrayTy);
   }
-  return LLVM::LLVMType::getStructTy(ptrTy);
+  return LLVM::LLVMType::getStructTy(ptrTy, indexTy);
 }
 
 // Convert an n-D vector type to an LLVM vector type via (n-1)-D array type when
@@ -538,7 +550,8 @@ struct ConstLLVMOpLowering
 // Check if the MemRefType `type` is supported by the lowering. We currently
 // only support memrefs with identity maps.
 static bool isSupportedMemRefType(MemRefType type) {
-  return llvm::all_of(type.getAffineMaps(),
+  return type.getAffineMaps().empty() ||
+         llvm::all_of(type.getAffineMaps(),
                       [](AffineMap map) { return map.isIdentity(); });
 }
 
@@ -552,7 +565,21 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
 
   PatternMatchResult match(Operation *op) const override {
     MemRefType type = cast<AllocOp>(op).getType();
-    return isSupportedMemRefType(type) ? matchSuccess() : matchFailure();
+    if (isSupportedMemRefType(type))
+      return matchSuccess();
+
+    SmallVector<int64_t, 4> stridesAndOffset;
+    auto successStrides = type.getStridesAndOffset(stridesAndOffset);
+    if (failed(successStrides))
+      return matchFailure();
+
+    // Dynamic strides are ok if they can be deduced from dynamic sizes (which
+    // is guaranteed when succeeded(successStrides)).
+    // Dynamic offset however can never be alloc'ed.
+    if (stridesAndOffset.back() != MemRefType::kDynamicStrideOrOffset)
+      return matchFailure();
+
+    return matchSuccess();
   }
 
   void rewrite(Operation *op, ArrayRef<Value *> operands,
@@ -621,6 +648,16 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
     allocated = rewriter.create<LLVM::BitcastOp>(op->getLoc(), elementPtrType,
                                                  ArrayRef<Value *>(allocated));
 
+    SmallVector<int64_t, 4> stridesAndOffset;
+    auto successStrides = type.getStridesAndOffset(stridesAndOffset);
+    assert(succeeded(successStrides) && "unexpected non-strided memref");
+    (void)successStrides;
+
+    ArrayRef<int64_t> strides = ArrayRef<int64_t>(stridesAndOffset).drop_back();
+    // 0-D memref corner case: they have size 1 ...
+    assert((type.getRank() == 0 && strides.empty() && sizes.size() == 1) ||
+           (strides.size() == sizes.size()) && "unexpected number of stride");
+
     // Create the MemRef descriptor.
     auto structType = lowering.convertType(type);
     Value *memRefDescriptor = rewriter.create<LLVM::UndefOp>(
@@ -629,14 +666,43 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
     memRefDescriptor = rewriter.create<LLVM::InsertValueOp>(
         op->getLoc(), structType, memRefDescriptor, allocated,
         rewriter.getIndexArrayAttr(kPtrPosInMemRefDescriptor));
+    memRefDescriptor = rewriter.create<LLVM::InsertValueOp>(
+        op->getLoc(), structType, memRefDescriptor,
+        createIndexConstant(rewriter, op->getLoc(), stridesAndOffset.back()),
+        rewriter.getIndexArrayAttr(kOffsetPosInMemRefDescriptor));
 
-    // Store dynamically allocated sizes in the descriptor. Static and dynamic
-    // sizes are all passed in as operands.
+    if (type.getRank() == 0)
+      // No size/stride arrays in 0-D memref, use the descriptor value.
+      return rewriter.replaceOp(op, memRefDescriptor);
+
+    // Store all sizes in the descriptor.
+    Value *runningStride = nullptr;
+    // Iterate strides in reverse order, compute runningStride and strideValues.
+    auto nStrides = strides.size();
+    SmallVector<Value *, 4> strideValues(nStrides, nullptr);
+    for (auto indexedStride : llvm::enumerate(llvm::reverse(strides))) {
+      int64_t index = nStrides - 1 - indexedStride.index();
+      if (strides[index] == MemRefType::kDynamicStrideOrOffset)
+        // Identity layout map is enforced in the match function, so we compute:
+        //   `runningStride *= sizes[index]`
+        runningStride = runningStride
+                            ? rewriter.create<LLVM::MulOp>(
+                                  op->getLoc(), runningStride, sizes[index])
+                            : createIndexConstant(rewriter, op->getLoc(), 1);
+      else
+        runningStride =
+            createIndexConstant(rewriter, op->getLoc(), strides[index]);
+      strideValues[index] = runningStride;
+    }
+    // Fill size and stride descriptors in memref.
     for (auto indexedSize : llvm::enumerate(sizes)) {
       int64_t index = indexedSize.index();
       memRefDescriptor = rewriter.create<LLVM::InsertValueOp>(
           op->getLoc(), structType, memRefDescriptor, indexedSize.value(),
           rewriter.getI64ArrayAttr({kSizePosInMemRefDescriptor, index}));
+      memRefDescriptor = rewriter.create<LLVM::InsertValueOp>(
+          op->getLoc(), structType, memRefDescriptor, strideValues[index],
+          rewriter.getI64ArrayAttr({kStridePosInMemRefDescriptor, index}));
     }
 
     // Return the final value of the descriptor.
@@ -874,55 +940,55 @@ struct LoadStoreOpLowering : public LLVMLegalizationPattern<Derived> {
     return linearized;
   }
 
-  // Given the MemRef type, a descriptor and a list of indices, extract the data
-  // buffer pointer from the descriptor, convert multi-dimensional subscripts
-  // into a linearized index (using dynamic size data from the descriptor if
-  // necessary) and get the pointer to the buffer element identified by the
-  // indices.
-  Value *getElementPtr(Location loc, Type elementTypePtr,
-                       ArrayRef<int64_t> shape, Value *memRefDescriptor,
-                       ArrayRef<Value *> indices,
-                       ConversionPatternRewriter &rewriter) const {
-    // Get the list of MemRef sizes.  Static sizes are defined as constants.
-    // Dynamic sizes are extracted from the MemRef descriptor, where they start
-    // from the position 1 (the buffer is at position 0).
-    SmallVector<Value *, 4> sizes;
-    for (auto en : llvm::enumerate(shape)) {
-      int64_t s = en.value();
-      int64_t index = en.index();
-      if (s == -1) {
-        Value *size = rewriter.create<LLVM::ExtractValueOp>(
-            loc, this->getIndexType(), memRefDescriptor,
-            rewriter.getI64ArrayAttr({kSizePosInMemRefDescriptor, index}));
-        sizes.push_back(size);
-      } else {
-        sizes.push_back(this->createIndexConstant(rewriter, loc, s));
-        // TODO(ntv, zinenko): assert dynamic descriptor size is constant.
-      }
-    }
-
-    // The second and subsequent operands are access subscripts.  Obtain the
-    // linearized address in the buffer.
-    Value *subscript = indices.empty()
-                           ? nullptr
-                           : linearizeSubscripts(rewriter, loc, indices, sizes);
-
-    Value *dataPtr = rewriter.create<LLVM::ExtractValueOp>(
+  // This is a strided getElementPtr variant that linearizes subscripts as:
+  //   `base_offset + index_0 * stride_0 + ... + index_n * stride_n`.
+  Value *getStridedElementPtr(Location loc, Type elementTypePtr,
+                              Value *memRefDescriptor,
+                              ArrayRef<Value *> indices,
+                              ArrayRef<int64_t> stridesAndOffset,
+                              ConversionPatternRewriter &rewriter) const {
+    auto indexTy = this->getIndexType();
+    Value *base = rewriter.create<LLVM::ExtractValueOp>(
         loc, elementTypePtr, memRefDescriptor,
         rewriter.getIndexArrayAttr(kPtrPosInMemRefDescriptor));
-    SmallVector<Value *, 2> gepSubValues(1, dataPtr);
-    if (subscript)
-      gepSubValues.push_back(subscript);
-    return rewriter.create<LLVM::GEPOp>(loc, elementTypePtr, gepSubValues,
-                                        ArrayRef<NamedAttribute>{});
+    Value *offset =
+        stridesAndOffset.back() == MemRefType::kDynamicStrideOrOffset
+            ? rewriter.create<LLVM::ExtractValueOp>(
+                  loc, indexTy, memRefDescriptor,
+                  rewriter.getIndexArrayAttr(kOffsetPosInMemRefDescriptor))
+            : this->createIndexConstant(rewriter, loc, stridesAndOffset.back());
+    auto strides = stridesAndOffset.drop_back();
+    for (int i = 0, e = indices.size(); i < e; ++i) {
+      Value *stride;
+      if (strides[i] != MemRefType::kDynamicStrideOrOffset) {
+        // Use static stride.
+        auto attr =
+            rewriter.getIntegerAttr(rewriter.getIndexType(), strides[i]);
+        stride = rewriter.create<LLVM::ConstantOp>(loc, indexTy, attr);
+      } else {
+        // Use dynamic stride.
+        stride = rewriter.create<LLVM::ExtractValueOp>(
+            loc, indexTy, memRefDescriptor,
+            rewriter.getIndexArrayAttr({kStridePosInMemRefDescriptor, i}));
+      }
+      Value *additionalOffset =
+          rewriter.create<LLVM::MulOp>(loc, indices[i], stride);
+      offset = rewriter.create<LLVM::AddOp>(loc, offset, additionalOffset);
+    }
+    return rewriter.create<LLVM::GEPOp>(loc, elementTypePtr, base, offset);
   }
-  Value *getDataPtr(Location loc, MemRefType type, Value *dataPtr,
+
+  Value *getDataPtr(Location loc, MemRefType type, Value *memRefDesc,
                     ArrayRef<Value *> indices,
                     ConversionPatternRewriter &rewriter,
                     llvm::Module &module) const {
     auto ptrType = getMemRefElementPtrType(type, this->lowering);
-    auto shape = type.getShape();
-    return getElementPtr(loc, ptrType, shape, dataPtr, indices, rewriter);
+    SmallVector<int64_t, 4> stridesAndOffset;
+    auto res = type.getStridesAndOffset(stridesAndOffset);
+    assert(succeeded(res) && "expected strided MemRef");
+    (void)res;
+    return getStridedElementPtr(loc, ptrType, memRefDesc, indices,
+                                stridesAndOffset, rewriter);
   }
 };
 

@@ -447,7 +447,7 @@ static void accumulateStrides(MutableArrayRef<int64_t> strides,
     seen[pos] = true;
     return;
   }
-  if (strides[pos] != MemRefType::kDynamicStride)
+  if (strides[pos] != MemRefType::kDynamicStrideOrOffset)
     // Already seen case accumulates unless they are already saturated.
     strides[pos] += val;
 }
@@ -474,7 +474,7 @@ static void extractStrides(AffineExpr e, MutableArrayRef<int64_t> strides,
     auto dim = bin.getLHS().cast<AffineDimExpr>();
     auto cst = bin.getRHS().dyn_cast<AffineConstantExpr>();
     if (!cst) {
-      strides[dim.getPosition()] = MemRefType::kDynamicStride;
+      strides[dim.getPosition()] = MemRefType::kDynamicStrideOrOffset;
       seen[dim.getPosition()] = true;
     } else {
       accumulateStrides(strides, seen, dim.getPosition(), cst.getValue());
@@ -488,7 +488,7 @@ static void extractStrides(AffineExpr e, MutableArrayRef<int64_t> strides,
         accumulateStrides(strides, seen, seen.size() - 1, cst.getValue());
       } else if (auto sym = e.dyn_cast<AffineSymbolExpr>()) {
         // Independent symbols saturate.
-        strides.back() = MemRefType::kDynamicStride;
+        strides.back() = MemRefType::kDynamicStrideOrOffset;
         seen.back() = true;
       } else if (auto dim = e.dyn_cast<AffineDimExpr>()) {
         // Independent symbols cumulate 1.
@@ -514,7 +514,7 @@ static void extractStridesFromTerm(AffineExpr e,
   }
   if (auto sym = e.dyn_cast<AffineSymbolExpr>()) {
     assert(!seen.back() && "unexpected `seen` bit with single term");
-    strides.back() = MemRefType::kDynamicStride;
+    strides.back() = MemRefType::kDynamicStrideOrOffset;
     seen.back() = true;
     return;
   }
