@@ -174,7 +174,8 @@ def main(_):
           learning_rate_input).minimize(cross_entropy_mean)
     elif FLAGS.optimizer == 'momentum':
       train_step = tf.compat.v1.train.MomentumOptimizer(
-          learning_rate_input, .9, use_nesterov=True).minimize(cross_entropy_mean)
+          learning_rate_input, .9, use_nesterov=True
+          ).minimize(cross_entropy_mean)
     else:
       raise Exception('Invalid Optimizer')
   predicted_indices = tf.argmax(input=logits, axis=1)
