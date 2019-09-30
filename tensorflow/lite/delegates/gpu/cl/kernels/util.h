@@ -87,16 +87,16 @@ class TensorCodeGenerator {
                       const std::string& y, const std::string& z,
                       const std::string& b) const;
 
-  std::string Read3D(
+  std::string Read(
       const std::string& global_address,
       TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
   // Optimization for textures, so as in opencl we can use read_imagef for any
   // texture type.
-  std::string ReadAsFloat3D(
+  std::string ReadAsFloat(
       const std::string& global_address,
       TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
-  std::string Write3D(const std::string& var_name,
-                      const std::string& global_address) const;
+  std::string Write(const std::string& var_name,
+                    const std::string& global_address) const;
 
  private:
   std::string GetGlobalAddressNoDeclaration(const std::string& x,
@@ -106,15 +106,6 @@ class TensorCodeGenerator {
                                             const std::string& y,
                                             const std::string& z,
                                             const std::string& b) const;
-
-  std::string ReadGlobalFLT4(const std::string& global_address,
-                             TextureAddressMode address_mode) const;
-
-  std::string ReadGlobalFloat4(const std::string& global_address,
-                               TextureAddressMode address_mode) const;
-
-  std::string WriteGlobalFLT4(const std::string& var_name,
-                              const std::string& global_address) const;
 
   std::string tensor_name_;
   std::string uniform_size_name_;

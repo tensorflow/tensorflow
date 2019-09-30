@@ -83,13 +83,13 @@ std::string GetSoftmaxKernelCode(
   code += "  do {\n";
   code += "    int z = offset + tid;\n";
   code += "    if (z < size.x) {\n";
-  code += "    " + dst_tensor.GetAddress("address", "0", "0", "z") + "\n";
-  code += "      FLT4 value = TO_FLT4(exp(" +
-          src_tensor.ReadAsFloat3D("address", TextureAddressMode::DONT_CARE) +
-          ") * sum);\n";
+  code +=
+      "      FLT4 value = TO_FLT4(exp(" +
+      src_tensor.ReadAsFloat3D("0", "0", "z", TextureAddressMode::DONT_CARE) +
+      ") * sum);\n";
   const LinkingContext context{"value", "0", "0", "z"};
   code += PostProcess(linked_operations, context);
-  code += "    " + dst_tensor.Write3D("value", "address");
+  code += "    " + dst_tensor.Write3D("value", "0", "0", "z");
   code += "      offset += 32;\n";
   code += "    }\n";
   code += "    s++;\n";

@@ -182,31 +182,21 @@ std::string TensorCodeGenerator::Read3D(const std::string& x,
                                         const std::string& y,
                                         const std::string& z,
                                         TextureAddressMode address_mode) const {
-  return Read3D(GetGlobalAddressNoDeclaration(x, y, z), address_mode);
+  return Read(GetGlobalAddressNoDeclaration(x, y, z), address_mode);
 }
 
 std::string TensorCodeGenerator::Read4D(const std::string& x,
                                         const std::string& y,
                                         const std::string& z,
                                         const std::string& b) const {
-  return Read3D(GetGlobalAddressNoDeclaration(x, y, z, b),
-                TextureAddressMode::DONT_CARE);
+  return Read(GetGlobalAddressNoDeclaration(x, y, z, b),
+              TextureAddressMode::DONT_CARE);
 }
 
 std::string TensorCodeGenerator::ReadAsFloat3D(
     const std::string& x, const std::string& y, const std::string& z,
     TextureAddressMode address_mode) const {
-  return ReadAsFloat3D(GetGlobalAddressNoDeclaration(x, y, z), address_mode);
-}
-
-std::string TensorCodeGenerator::Read3D(const std::string& global_address,
-                                        TextureAddressMode address_mode) const {
-  return ReadGlobalFLT4(global_address, address_mode);
-}
-
-std::string TensorCodeGenerator::ReadAsFloat3D(
-    const std::string& global_address, TextureAddressMode address_mode) const {
-  return ReadGlobalFloat4(global_address, address_mode);
+  return ReadAsFloat(GetGlobalAddressNoDeclaration(x, y, z), address_mode);
 }
 
 std::string TensorCodeGenerator::GetAddress(const std::string& var_name,
@@ -265,12 +255,7 @@ std::string TensorCodeGenerator::Write3D(const std::string& var_name,
                                          const std::string& x,
                                          const std::string& y,
                                          const std::string& z) const {
-  return Write3D(var_name, GetGlobalAddressNoDeclaration(x, y, z));
-}
-
-std::string TensorCodeGenerator::Write3D(
-    const std::string& var_name, const std::string& global_address) const {
-  return WriteGlobalFLT4(var_name, global_address);
+  return Write(var_name, GetGlobalAddressNoDeclaration(x, y, z));
 }
 
 std::string TensorCodeGenerator::Write4D(const std::string& var_name,
@@ -278,11 +263,11 @@ std::string TensorCodeGenerator::Write4D(const std::string& var_name,
                                          const std::string& y,
                                          const std::string& z,
                                          const std::string& b) const {
-  return WriteGlobalFLT4(var_name, GetGlobalAddressNoDeclaration(x, y, z, b));
+  return Write(var_name, GetGlobalAddressNoDeclaration(x, y, z, b));
 }
 
-std::string TensorCodeGenerator::ReadGlobalFLT4(
-    const std::string& global_address, TextureAddressMode address_mode) const {
+std::string TensorCodeGenerator::Read(const std::string& global_address,
+                                      TextureAddressMode address_mode) const {
   switch (descriptor_.storage_type) {
     case TensorStorageType::BUFFER:
       return absl::StrCat(tensor_name_, "[", global_address, "]");
@@ -301,7 +286,7 @@ std::string TensorCodeGenerator::ReadGlobalFLT4(
   }
 }
 
-std::string TensorCodeGenerator::ReadGlobalFloat4(
+std::string TensorCodeGenerator::ReadAsFloat(
     const std::string& global_address, TextureAddressMode address_mode) const {
   switch (descriptor_.storage_type) {
     case TensorStorageType::BUFFER:
@@ -322,7 +307,7 @@ std::string TensorCodeGenerator::ReadGlobalFloat4(
   }
 }
 
-std::string TensorCodeGenerator::WriteGlobalFLT4(
+std::string TensorCodeGenerator::Write(
     const std::string& var_name, const std::string& global_address) const {
   switch (descriptor_.storage_type) {
     case TensorStorageType::BUFFER:

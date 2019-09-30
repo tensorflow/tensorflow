@@ -61,10 +61,10 @@ std::string GetSoftmaxKernelCode(
   code += "    sum += dot(mask, exp(t));\n";
   code += "  }\n";
   code += "  for (int d = 0; d < size.w; ++d) {\n";
-  code += "    " + src_tensor.GetAddress("address", "X", "Y", "d") + "\n";
-  code += "    float4 t = " +
-          src_tensor.ReadAsFloat3D("address", TextureAddressMode::DONT_CARE) +
-          ";\n";
+  code +=
+      "    float4 t = " +
+      src_tensor.ReadAsFloat3D("X", "Y", "d", TextureAddressMode::DONT_CARE) +
+      ";\n";
   code += "    t = exp(t) / sum;\n";
   code += "    FLT4 result = TO_FLT4(t);\n";
   const LinkingContext context{"result", "X", "Y", "d"};

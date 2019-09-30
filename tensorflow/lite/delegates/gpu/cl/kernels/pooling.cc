@@ -154,12 +154,11 @@ std::string GetMaxPoolingKernelCode(
   code += "      };\n";
   code += "    }\n";
   code += "  }\n";
-  code += "  " + dst_tensor.GetAddress("address", "X", "Y", "Z") + "\n";
   const LinkingContext context{"maximum", "X", "Y", "Z"};
   code += PostProcess(linked_operations, context);
-  code += "  " + dst_tensor.Write3D("maximum", "address");
+  code += "  " + dst_tensor.Write3D("maximum", "X", "Y", "Z");
   if (output_indices) {
-    code += "  " + indices_tensor.Write3D("indexes", "address");
+    code += "  " + indices_tensor.Write3D("indexes", "X", "Y", "Z");
   }
   code += "}\n";
 
