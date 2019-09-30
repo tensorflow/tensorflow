@@ -364,7 +364,22 @@ def map_spec_operand_to_ods_argument(operand):
   return '{}:${}'.format(arg_type, name)
 
 
-def get_op_definition(instruction, doc, existing_info, inst_category):
+def get_description(text, assembly):
+  """Generates the description for the given SPIR-V instruction.
+
+  Arguments:
+    - text: Textual description of the operation as string.
+    - assembly: Custom Assembly format with example as string.
+
+  Returns:
+    - A string that corresponds to the description of the Tablegen op.
+  """
+  fmt_str = ('{text}\n\n    ### Custom assembly ' 'form\n{assembly}}}];\n')
+  return fmt_str.format(
+      text=text, assembly=assembly)
+
+
+def get_op_definition(instruction, doc, existing_info):
   """Generates the TableGen op definition for the given SPIR-V instruction.
 
   Arguments:
@@ -379,8 +394,8 @@ def get_op_definition(instruction, doc, existing_info, inst_category):
   fmt_str = ('def SPV_{opname}Op : '
              'SPV_{inst_category}<"{opname}"{category_args}[{traits}]> '
              '{{\n  let summary = {summary};\n\n  let description = '
-             '[{{\n{description}\n\n    ### Custom assembly '
-             'form\n{assembly}}}];\n')
+             '[{{\n{description}}}];\n')
+  inst_category = existing_info.get('inst_category', 'Op')
   if inst_category == 'Op':
     fmt_str +='\n  let arguments = (ins{args});\n\n'\
               '  let results = (outs{results});\n'
@@ -393,7 +408,7 @@ def get_op_definition(instruction, doc, existing_info, inst_category):
   # Make sure we have ', ' to separate the category arguments from traits
   category_args = category_args.rstrip(', ') + ', '
 
-  summary, description = doc.split('\n', 1)
+  summary, text = doc.split('\n', 1)
   wrapper = textwrap.TextWrapper(
       width=76, initial_indent='    ', subsequent_indent='    ')
 
@@ -405,10 +420,10 @@ def get_op_definition(instruction, doc, existing_info, inst_category):
   else:
     summary = '[{{\n{}\n  }}]'.format(wrapper.fill(summary))
 
-  # Wrap description
-  description = description.split('\n')
-  description = [wrapper.fill(line) for line in description if line]
-  description = '\n\n'.join(description)
+  # Wrap text
+  text = text.split('\n')
+  text = [wrapper.fill(line) for line in text if line]
+  text = '\n\n'.join(text)
 
   operands = instruction.get('operands', [])
 
@@ -433,8 +448,8 @@ def get_op_definition(instruction, doc, existing_info, inst_category):
       # Prepend and append whitespace for formatting
       arguments = '\n    {}\n  '.format(arguments)
 
-  assembly = existing_info.get('assembly', None)
-  if assembly is None:
+  description = existing_info.get('description', None)
+  if description is None:
     assembly = '\n    ``` {.ebnf}\n'\
                '    [TODO]\n'\
                '    ```\n\n'\
@@ -442,6 +457,7 @@ def get_op_definition(instruction, doc, existing_info, inst_category):
                '    ```\n'\
                '    [TODO]\n'\
                '    ```\n  '
+    description = get_description(text, assembly)
 
   return fmt_str.format(
       opname=opname,
@@ -450,7 +466,6 @@ def get_op_definition(instruction, doc, existing_info, inst_category):
       traits=existing_info.get('traits', ''),
       summary=summary,
       description=description,
-      assembly=assembly,
       args=arguments,
       results=results,
       extras=existing_info.get('extras', ''))
@@ -493,6 +508,14 @@ def extract_td_op_info(op_def):
   assert len(opname) == 1, 'more than one ops in the same section!'
   opname = opname[0]
 
+  # Get instruction category
+  inst_category = [
+      o[4:] for o in re.findall('SPV_\w+Op',
+                                op_def.split(':', 1)[1])
+  ]
+  assert len(inst_category) <= 1, 'more than one ops in the same section!'
+  inst_category = inst_category[0] if len(inst_category) == 1 else 'Op'
+
   # Get category_args
   op_tmpl_params = op_def.split('<', 1)[1].split('>', 1)[0]
   opstringname, rest = get_string_between(op_tmpl_params, '"', '"')
@@ -501,9 +524,9 @@ def extract_td_op_info(op_def):
   # Get traits
   traits, _ = get_string_between(rest, '[', ']')
 
-  # Get custom assembly form
-  assembly, rest = get_string_between(op_def, '### Custom assembly form\n',
-                                      '}];\n')
+  # Get description
+  description, rest = get_string_between(op_def, 'let description = [{\n',
+                                         '}];\n')
 
   # Get arguments
   args, rest = get_string_between(rest, '  let arguments = (ins', ');\n')
@@ -518,9 +541,10 @@ def extract_td_op_info(op_def):
   return {
       # Prefix with 'Op' to make it consistent with SPIR-V spec
       'opname': 'Op{}'.format(opname),
+      'inst_category': inst_category,
       'category_args': category_args,
       'traits': traits,
-      'assembly': assembly,
+      'description': description,
       'arguments': args,
       'results': results,
       'extras': extras
@@ -567,7 +591,7 @@ def update_td_op_definitions(path, instructions, docs, filter_list,
         inst for inst in instructions if inst['opname'] == opname)
     op_defs.append(
         get_op_definition(instruction, docs[opname],
-                          op_info_dict.get(opname, {}), inst_category))
+                          op_info_dict.get(opname, {})))
 
   # Substitute the old op definitions
   op_defs = [header] + op_defs + [footer]
@@ -622,8 +646,7 @@ if __name__ == '__main__':
       type=str,
       default='Op',
       help='SPIR-V instruction category used for choosing '\
-           'a suitable .td file and TableGen common base '\
-           'class to define this op')
+           'the TableGen base class to define this op')
 
   args = cli_parser.parse_args()
 

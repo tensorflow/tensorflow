@@ -132,6 +132,11 @@ def SPV_OC_OpSRem                   : I32EnumAttrCase<"OpSRem", 138>;
 def SPV_OC_OpSMod                   : I32EnumAttrCase<"OpSMod", 139>;
 def SPV_OC_OpFRem                   : I32EnumAttrCase<"OpFRem", 140>;
 def SPV_OC_OpFMod                   : I32EnumAttrCase<"OpFMod", 141>;
+def SPV_OC_OpLogicalEqual           : I32EnumAttrCase<"OpLogicalEqual", 164>;
+def SPV_OC_OpLogicalNotEqual        : I32EnumAttrCase<"OpLogicalNotEqual", 165>;
+def SPV_OC_OpLogicalOr              : I32EnumAttrCase<"OpLogicalOr", 166>;
+def SPV_OC_OpLogicalAnd             : I32EnumAttrCase<"OpLogicalAnd", 167>;
+def SPV_OC_OpLogicalNot             : I32EnumAttrCase<"OpLogicalNot", 168>;
 def SPV_OC_OpSelect                 : I32EnumAttrCase<"OpSelect", 169>;
 def SPV_OC_OpIEqual                 : I32EnumAttrCase<"OpIEqual", 170>;
 def SPV_OC_OpINotEqual              : I32EnumAttrCase<"OpINotEqual", 171>;
@@ -184,12 +189,14 @@ def SPV_OpcodeAttr :
       SPV_OC_OpFNegate, SPV_OC_OpIAdd, SPV_OC_OpFAdd, SPV_OC_OpISub, SPV_OC_OpFSub,
       SPV_OC_OpIMul, SPV_OC_OpFMul, SPV_OC_OpUDiv, SPV_OC_OpSDiv, SPV_OC_OpFDiv,
       SPV_OC_OpUMod, SPV_OC_OpSRem, SPV_OC_OpSMod, SPV_OC_OpFRem, SPV_OC_OpFMod,
-      SPV_OC_OpSelect, SPV_OC_OpIEqual, SPV_OC_OpINotEqual, SPV_OC_OpUGreaterThan,
-      SPV_OC_OpSGreaterThan, SPV_OC_OpUGreaterThanEqual, SPV_OC_OpSGreaterThanEqual,
-      SPV_OC_OpULessThan, SPV_OC_OpSLessThan, SPV_OC_OpULessThanEqual,
-      SPV_OC_OpSLessThanEqual, SPV_OC_OpFOrdEqual, SPV_OC_OpFUnordEqual,
-      SPV_OC_OpFOrdNotEqual, SPV_OC_OpFUnordNotEqual, SPV_OC_OpFOrdLessThan,
-      SPV_OC_OpFUnordLessThan, SPV_OC_OpFOrdGreaterThan, SPV_OC_OpFUnordGreaterThan,
+      SPV_OC_OpLogicalEqual, SPV_OC_OpLogicalNotEqual, SPV_OC_OpLogicalOr,
+      SPV_OC_OpLogicalAnd, SPV_OC_OpLogicalNot, SPV_OC_OpSelect, SPV_OC_OpIEqual,
+      SPV_OC_OpINotEqual, SPV_OC_OpUGreaterThan, SPV_OC_OpSGreaterThan,
+      SPV_OC_OpUGreaterThanEqual, SPV_OC_OpSGreaterThanEqual, SPV_OC_OpULessThan,
+      SPV_OC_OpSLessThan, SPV_OC_OpULessThanEqual, SPV_OC_OpSLessThanEqual,
+      SPV_OC_OpFOrdEqual, SPV_OC_OpFUnordEqual, SPV_OC_OpFOrdNotEqual,
+      SPV_OC_OpFUnordNotEqual, SPV_OC_OpFOrdLessThan, SPV_OC_OpFUnordLessThan,
+      SPV_OC_OpFOrdGreaterThan, SPV_OC_OpFUnordGreaterThan,
       SPV_OC_OpFOrdLessThanEqual, SPV_OC_OpFUnordLessThanEqual,
       SPV_OC_OpFOrdGreaterThanEqual, SPV_OC_OpFUnordGreaterThanEqual,
       SPV_OC_OpControlBarrier, SPV_OC_OpMemoryBarrier, SPV_OC_OpLoopMerge,

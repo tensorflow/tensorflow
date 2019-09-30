@@ -367,7 +367,28 @@ static void printUnaryOp(Operation *unaryOp, OpAsmPrinter &printer) {
           << unaryOp->getOperand(0)->getType();
 }
 
-static ParseResult parseBinaryLogicalOp(OpAsmParser &parser,
+/// Result of a logical op must be a scalar or vector of boolean type.
+static Type getUnaryOpResultType(Builder &builder, Type operandType) {
+  Type resultType = builder.getIntegerType(1);
+  if (auto vecType = operandType.dyn_cast<VectorType>()) {
+    return VectorType::get(vecType.getNumElements(), resultType);
+  }
+  return resultType;
+}
+
+static ParseResult parseLogicalUnaryOp(OpAsmParser &parser,
+                                       OperationState &state) {
+  OpAsmParser::OperandType operandInfo;
+  Type type;
+  if (parser.parseOperand(operandInfo) || parser.parseColonType(type) ||
+      parser.resolveOperand(operandInfo, type, state.operands)) {
+    return failure();
+  }
+  state.addTypes(getUnaryOpResultType(parser.getBuilder(), type));
+  return success();
+}
+
+static ParseResult parseLogicalBinaryOp(OpAsmParser &parser,
                                         OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 2> ops;
   Type type;
@@ -375,18 +396,13 @@ static ParseResult parseBinaryLogicalOp(OpAsmParser &parser,
       parser.resolveOperands(ops, type, result.operands)) {
     return failure();
   }
-  // Result must be a scalar or vector of boolean type.
-  Type resultType = parser.getBuilder().getIntegerType(1);
-  if (auto opsType = type.dyn_cast<VectorType>()) {
-    resultType = VectorType::get(opsType.getNumElements(), resultType);
-  }
-  result.addTypes(resultType);
+  result.addTypes(getUnaryOpResultType(parser.getBuilder(), type));
   return success();
 }
 
-static void printBinaryLogicalOp(Operation *logicalOp, OpAsmPrinter &printer) {
-  printer << logicalOp->getName() << ' ' << *logicalOp->getOperand(0) << ", "
-          << *logicalOp->getOperand(1);
+static void printLogicalOp(Operation *logicalOp, OpAsmPrinter &printer) {
+  printer << logicalOp->getName() << ' ';
+  printer.printOperands(logicalOp->getOperands());
   printer << " : " << logicalOp->getOperand(0)->getType();
 }
 
