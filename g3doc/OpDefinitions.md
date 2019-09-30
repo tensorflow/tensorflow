@@ -330,6 +330,10 @@ An `InterfaceMethod` is comprised of the following components:
     -   In non-static methods, a variable 'ConcreteOp op' is defined and may be
         used to refer to an instance of the derived operation.
 
+ODS also allows generating the declarations for the `InterfaceMethod` of the op
+if one specifies the interface with `DeclareOpInterfaceMethods` (see example
+below).
+
 Examples:
 
 ```tablegen
@@ -369,6 +373,13 @@ def MyInterface : OpInterface<"MyInterface"> {
     }]>,
   ];
 }
+
+// Interfaces can optionally be wrapped inside DeclareOpInterfaceMethods. This
+// would result in autogenerating declarations for members `foo`, `bar` and
+// `fooStatic`. Methods without bodies are not declared inside the op
+// declaration but instead handled by the op interface trait directly.
+def OpWithInferTypeInterfaceOp : Op<...
+    [DeclareOpInterfaceMethods<MyInterface>]> { ... }
 ```
 
 ### Custom builder methods

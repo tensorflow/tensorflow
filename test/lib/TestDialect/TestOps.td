@@ -330,15 +330,9 @@ def I32ElementsAttrOp : TEST_Op<"i32ElementsAttr"> {
 }
 
 def OpWithInferTypeInterfaceOp : TEST_Op<"op_with_infer_type_if",
-    [InferTypeOpInterface]> {
+    [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let arguments = (ins AnyTensor:$x, AnyTensor:$y);
   let results = (outs AnyTensor:$res);
-  // TODO(jpienaar): Remove the need to specify these here.
-  let extraClassDeclaration = [{
-    SmallVector<Type, 2> inferReturnTypes(llvm::Optional<Location> location,
-      ArrayRef<Value*> operands, ArrayRef<NamedAttribute> attributes,
-      ArrayRef<Region> regions);
-  }];
 }
 
 def IsNotScalar : Constraint<CPred<"$0.getType().getRank() != 0">>;
