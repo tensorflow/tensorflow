@@ -192,8 +192,14 @@ TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
 //   tensor<4xf32> -> tensor<4x!quant.uniform<i8:f32, 1.0>>
 // The result is wrapped by a type attribute. Returns nullptr if the cast
 // isn't valid.
+//
+// `axis` is to specify the quantization dimension in the `target` and only
+// used if the element type of `source` is a per-channel quantized type. During
+// the casting, the quantization dimension of the result type needs to be set
+// this new `axis` value.
 TypeAttr CastQuantizedTypeAttrFromExpressedType(Builder builder,
-                                                TypeAttr source, Type target);
+                                                TypeAttr source, Type target,
+                                                int axis);
 
 // Quantizes the elements in the attribute `real_value` by the quantization
 // parameters in `tensor_type`. Returns empty Attribute if the

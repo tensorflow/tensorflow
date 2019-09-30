@@ -95,7 +95,7 @@ struct PrepareTFPass : public FunctionPass<PrepareTFPass> {
 //                                                tf.dequantize
 //                                                     |
 // If the input is a constant, the result pattern will eventually converted to
-
+//
 //            quant-emulated input
 //                   |
 //               tf.quantize
