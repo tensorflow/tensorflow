@@ -18,11 +18,14 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import itertools
 import re
 import weakref
 
+from absl.testing import parameterized
 from six.moves import range
 
+from tensorflow.python.autograph.core import converter
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import lift_to_graph
@@ -71,7 +74,7 @@ class _HasDecoratedMethod(object):
   def f(self, x):
     return x * 3.
 
-class DefFunctionTest(test.TestCase):
+class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
   def testNoVariables(self):
 
@@ -606,6 +609,52 @@ class DefFunctionTest(test.TestCase):
 
     func._decorate(decorator)
     self.assertEqual(func().numpy(), 2)
+
+  @parameterized.parameters(*itertools.product(
+      (None, (tensor_spec.TensorSpec([]),)),  # input_signature
+      (True, False),                          # autograph
+      (None, converter.Feature.ALL),          # autograph_options
+      (None, 'foo.bar'),                      # implements
+      (None, True, False),                    # relax_shapes
+      (True, False),                          # compile
+      (True, False),                          # override_function
+  ))
+  def testClone(self, input_signature, autograph, autograph_options, implements,
+                relax_shapes, compile_, override_function):
+    original_py_function = lambda x: x
+
+    compile_ = False
+    func = def_function.function(
+        func=original_py_function,
+        input_signature=input_signature,
+        autograph=autograph,
+        experimental_implements=implements,
+        experimental_autograph_options=autograph_options,
+        experimental_relax_shapes=relax_shapes,
+        experimental_compile=compile_)
+
+    if override_function:
+      cloned_py_function = lambda x: x + 1
+    else:
+      cloned_py_function = original_py_function
+
+    cloned = func._clone(python_function=cloned_py_function)
+
+    self.assertEqual(cloned_py_function, cloned._python_function)
+    self.assertEqual(func._name, cloned._name)
+    self.assertEqual(input_signature, cloned._input_signature)
+    self.assertEqual(autograph, cloned._autograph)
+    self.assertEqual(implements, cloned._implements)
+    self.assertEqual(autograph_options, cloned._experimental_autograph_options)
+    self.assertEqual(relax_shapes, cloned.experimental_relax_shapes)
+    self.assertEqual(compile_, cloned._experimental_compile)
+
+    # This test does not run with XLA JIT support linked in so we can only check
+    # the output of the function if compile is disabled.
+    if not compile_:
+      x = array_ops.zeros([])
+      self.assertEqual(self.evaluate(cloned(x)),
+                       self.evaluate(cloned_py_function(x)))
 
   def testLiftPlaceholderInitializedVariable(self):
     with ops.Graph().as_default():

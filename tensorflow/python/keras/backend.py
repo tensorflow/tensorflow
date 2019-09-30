@@ -1132,7 +1132,7 @@ def shape(x):
   >>> val = np.array([[1, 2], [3, 4]])
   >>> kvar = tf.keras.backend.variable(value=val)
   >>> tf.keras.backend.shape(kvar)
-  <tf.Tensor: id=327, shape=(2,), dtype=int32, numpy=array([2, 2], dtype=int32)>
+  <tf.Tensor: shape=(2,), dtype=int32, numpy=array([2, 2], dtype=int32)>
   >>> input = tf.keras.backend.placeholder(shape=(2, 4, 5))
   >>> tf.keras.backend.shape(input)
   <tf.Tensor 'Shape_...' shape=(3,) dtype=int32>
@@ -2402,7 +2402,7 @@ def maximum(x, y):
   >>> y = tf.Variable([[2, 1], [0, -1]])
   >>> m = tf.keras.backend.maximum(x, y)
   >>> m
-  <tf.Tensor: id=42, shape=(2, 2), dtype=int32, numpy=
+  <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
   array([[2, 2],
          [3, 4]], dtype=int32)>
 
@@ -2660,7 +2660,7 @@ def concatenate(tensors, axis=-1):
       >>> a = tf.constant([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
       >>> b = tf.constant([[10, 20, 30], [40, 50, 60], [70, 80, 90]])
       >>> tf.keras.backend.concatenate((a, b), axis=-1)
-      <tf.Tensor: id=14, shape=(3, 6), dtype=int32, numpy=
+      <tf.Tensor: shape=(3, 6), dtype=int32, numpy=
       array([[ 1,  2,  3, 10, 20, 30],
              [ 4,  5,  6, 40, 50, 60],
              [ 7,  8,  9, 70, 80, 90]], dtype=int32)>
@@ -2694,13 +2694,13 @@ def reshape(x, shape):
 
     >>> a = tf.constant([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]])
     >>> a
-    <tf.Tensor: id=32, shape=(4, 3), dtype=int32, numpy=
+    <tf.Tensor: shape=(4, 3), dtype=int32, numpy=
     array([[ 1,  2,  3],
            [ 4,  5,  6],
            [ 7,  8,  9],
            [10, 11, 12]], dtype=int32)>
     >>> tf.keras.backend.reshape(a, shape=(2, 6))
-    <tf.Tensor: id=35, shape=(2, 6), dtype=int32, numpy=
+    <tf.Tensor: shape=(2, 6), dtype=int32, numpy=
     array([[ 1,  2,  3,  4,  5,  6],
            [ 7,  8,  9, 10, 11, 12]], dtype=int32)>
 
@@ -2724,13 +2724,13 @@ def permute_dimensions(x, pattern):
 
     >>> a = tf.constant([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]])
     >>> a
-    <tf.Tensor: id=49, shape=(4, 3), dtype=int32, numpy=
+    <tf.Tensor: shape=(4, 3), dtype=int32, numpy=
     array([[ 1,  2,  3],
            [ 4,  5,  6],
            [ 7,  8,  9],
            [10, 11, 12]], dtype=int32)>
     >>> tf.keras.backend.permute_dimensions(a, pattern=(1, 0))
-    <tf.Tensor: id=52, shape=(3, 4), dtype=int32, numpy=
+    <tf.Tensor: shape=(3, 4), dtype=int32, numpy=
     array([[ 1,  4,  7, 10],
            [ 2,  5,  8, 11],
            [ 3,  6,  9, 12]], dtype=int32)>
@@ -2853,7 +2853,7 @@ def repeat_elements(x, rep, axis):
 
       >>> b = tf.constant([1, 2, 3])
       >>> tf.keras.backend.repeat_elements(b, rep=2, axis=0)
-      <tf.Tensor: id=70, shape=(6,), dtype=int32,
+      <tf.Tensor: shape=(6,), dtype=int32,
           numpy=array([1, 1, 2, 2, 3, 3], dtype=int32)>
 
   """
@@ -2913,11 +2913,11 @@ def repeat(x, n):
 
       >>> b = tf.constant([[1, 2], [3, 4]])
       >>> b
-      <tf.Tensor: id=78, shape=(2, 2), dtype=int32, numpy=
+      <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
       array([[1, 2],
              [3, 4]], dtype=int32)>
       >>> tf.keras.backend.repeat(b, n=2)
-      <tf.Tensor: id=82, shape=(2, 2, 2), dtype=int32, numpy=
+      <tf.Tensor: shape=(2, 2, 2), dtype=int32, numpy=
       array([[[1, 2],
               [1, 2]],
              [[3, 4],
@@ -2953,7 +2953,7 @@ def arange(start, stop=None, step=1, dtype='int32'):
   Example:
 
       >>> tf.keras.backend.arange(start=0, stop=10, step=1.5)
-      <tf.Tensor: id=96, shape=(7,), dtype=float32,
+      <tf.Tensor: shape=(7,), dtype=float32,
           numpy=array([0. , 1.5, 3. , 4.5, 6. , 7.5, 9. ], dtype=float32)>
 
 
@@ -2999,11 +2999,11 @@ def flatten(x):
 
       >>> b = tf.constant([[1, 2], [3, 4]])
       >>> b
-      <tf.Tensor: id=102, shape=(2, 2), dtype=int32, numpy=
+      <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
       array([[1, 2],
              [3, 4]], dtype=int32)>
       >>> tf.keras.backend.flatten(b)
-      <tf.Tensor: id=105, shape=(4,), dtype=int32,
+      <tf.Tensor: shape=(4,), dtype=int32,
           numpy=array([1, 2, 3, 4], dtype=int32)>
 
   """
@@ -3171,7 +3171,7 @@ def stack(x, axis=0):
       >>> a = tf.constant([[1, 2],[3, 4]])
       >>> b = tf.constant([[10, 20],[30, 40]])
       >>> tf.keras.backend.stack((a, b))
-      <tf.Tensor: id=146, shape=(2, 2, 2), dtype=int32, numpy=
+      <tf.Tensor: shape=(2, 2, 2), dtype=int32, numpy=
       array([[[ 1,  2],
               [ 3,  4]],
              [[10, 20],
@@ -3355,7 +3355,7 @@ def print_tensor(x, message=''):
 
   >>> x = tf.constant([[1.0, 2.0], [3.0, 4.0]])
   >>> tf.keras.backend.print_tensor(x)
-  <tf.Tensor: id=6064, shape=(2, 2), dtype=float32, numpy=
+  <tf.Tensor: shape=(2, 2), dtype=float32, numpy=
     array([[1., 2.],
            [3., 4.]], dtype=float32)>
 
@@ -3906,8 +3906,10 @@ def rnn(step_function,
   # That's what the tile call does, it just repeats the mask along its
   # second dimension n times.
   def _expand_mask(mask_t, input_t, fixed_dim=1):
-    assert not nest.is_sequence(mask_t)
-    assert not nest.is_sequence(input_t)
+    if nest.is_sequence(mask_t):
+      raise ValueError('mask_t is expected to be tensor, but got %s' % mask_t)
+    if nest.is_sequence(input_t):
+      raise ValueError('input_t is expected to be tensor, but got %s' % input_t)
     rank_diff = len(input_t.shape) - len(mask_t.shape)
     for _ in range(rank_diff):
       mask_t = array_ops.expand_dims(mask_t, -1)
@@ -3960,13 +3962,14 @@ def rnn(step_function,
 
         output = array_ops.where_v2(tiled_mask_t, output, prev_output)
 
-        return_states = []
-        for state, new_state in zip(states, new_states):
-          # (see earlier comment for tile explanation)
-          tiled_mask_t = _expand_mask(mask_t, new_state)
-          return_states.append(
-              array_ops.where_v2(tiled_mask_t, new_state, state))
-        states = return_states
+        flat_states = nest.flatten(states)
+        flat_new_states = nest.flatten(new_states)
+        tiled_mask_t = tuple(_expand_mask(mask_t, s) for s in flat_states)
+        flat_final_states = tuple(
+            array_ops.where_v2(m, s, ps)
+            for m, s, ps in zip(tiled_mask_t, flat_new_states, flat_states))
+        states = nest.pack_sequence_as(states, flat_final_states)
+
         successive_outputs.append(output)
         successive_states.append(states)
       last_output = successive_outputs[-1]
@@ -3981,7 +3984,7 @@ def rnn(step_function,
             _expand_mask(mask, outputs, fixed_dim=2), outputs,
             zeros_like(outputs))
 
-    else:
+    else:  # mask is None
       for i in range(time_steps):
         inp = _get_input_tensor(i)
         output, states = step_function(inp, tuple(states) + tuple(constants))
@@ -3991,7 +3994,7 @@ def rnn(step_function,
       new_states = successive_states[-1]
       outputs = array_ops.stack(successive_outputs)
 
-  else:
+  else:  # Unroll == False
     states = tuple(initial_states)
 
     # Create input tensor array, if the inputs is nested tensors, then it will
@@ -4055,7 +4058,9 @@ def rnn(step_function,
         return mask_ta.read(time)
 
       def compute_masked_output(mask_t, flat_out, flat_mask):
-        tiled_mask_t = tuple(_expand_mask(mask_t, o) for o in flat_out)
+        tiled_mask_t = tuple(
+            _expand_mask(mask_t, o, fixed_dim=len(mask_t.shape))
+            for o in flat_out)
         return tuple(
             array_ops.where_v2(m, o, fm)
             for m, o, fm in zip(tiled_mask_t, flat_out, flat_mask))

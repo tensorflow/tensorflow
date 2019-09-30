@@ -20,7 +20,9 @@ from __future__ import print_function
 
 import contextlib
 import copy
+import functools
 import threading
+import weakref
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
@@ -34,6 +36,7 @@ from tensorflow.python.distribute import shared_variable_creator
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tf_device
@@ -396,6 +399,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
                      "any local devices.")
     self._cross_device_ops = cross_device_ops
     self._initialize_strategy(devices)
+    self._cfer_fn_cache = weakref.WeakKeyDictionary()
 
     # TODO(b/128995245): Enable last partial batch support in graph mode.
     if ops.executing_eagerly_outside_functions():
@@ -422,6 +426,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     self._host_input_device = numpy_dataset.SingleDevice(
         self._input_workers.worker_devices[0])
     self._is_multi_worker_training = False
+    logging.info("Using MirroredStrategy with devices %r", devices)
     device_spec = tf_device.DeviceSpec.from_string(
         self._input_workers.worker_devices[0])
     # Ensures when we enter strategy.scope() we use the correct default device
@@ -466,6 +471,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       # TODO(yuefengz): make `choose_the_best` work with device strings
       # containing job names.
       self._inferred_cross_device_ops = cross_device_ops_lib.NcclAllReduce()
+
+    logging.info("Using MirroredStrategy with remote devices %r", devices)
 
   def _get_variable_creator_initial_value(self,
                                           replica_id,
@@ -658,6 +665,17 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     return self._get_cross_device_ops().broadcast(tensor, destinations)
 
   def _call_for_each_replica(self, fn, args, kwargs):
+    if isinstance(fn, def_function.Function):
+      wrapped = self._cfer_fn_cache.get(fn)
+      if wrapped is None:
+        # We need to wrap fn such that it triggers _call_for_each_replica inside
+        # the tf.function.
+        wrapped = fn._clone(  # pylint: disable=protected-access
+            python_function=functools.partial(self._call_for_each_replica,
+                                              fn.python_function))
+        self._cfer_fn_cache[fn] = wrapped
+      return wrapped(args, kwargs)
+
     if context.executing_eagerly():
       logging.log_first_n(logging.WARN, "Using %s eagerly has significant "
                           "overhead currently. We will be working on improving "

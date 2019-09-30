@@ -472,6 +472,11 @@ Status ReplaceNodeWithXlaCompileAndXlaRun(
                                /*resources=*/cluster_info.resource_inputs,
                                /*must_compile=*/requires_compilation,
                                cluster_info.function);
+
+  bool has_ref_attr;
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(n->attrs(), kXlaHasReferenceVarsAttr, &has_ref_attr));
+  xla_compile.operation.node()->AddAttr(kXlaHasReferenceVarsAttr, has_ref_attr);
   TF_RETURN_IF_ERROR(
       CopyIncomingControlEdges(g, /*from=*/n, /*to=*/xla_compile.key.node()));
 

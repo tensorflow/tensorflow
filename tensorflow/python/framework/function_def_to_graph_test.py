@@ -23,10 +23,11 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import graph_to_function_def
+from tensorflow.python.framework import op_def_library
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_util
 from tensorflow.python.framework import test_ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -119,8 +120,7 @@ class FunctionDefToGraphDefTest(test.TestCase):
       y = array_ops.placeholder(dtypes.int32, name="y")
       z = array_ops.placeholder(dtypes.int32, name="z")
 
-      d_1, e_1 = test_ops._op_def_lib.apply_op(
-          "Foo1", name="foo_1", a=x, b=y, c=z)
+      d_1, e_1 = op_def_library.apply_op("Foo1", name="foo_1", a=x, b=y, c=z)
 
       list_output0, list_output1 = test_ops.list_output(
           T=[dtypes.int32, dtypes.int32], name="list_output")

@@ -32,8 +32,9 @@ def graph_zeros_like(tensor):
     tensor = ops.convert_to_tensor(tensor, name="tensor")
     dtype = tensor.dtype.base_dtype
     dtype_value = attr_value_pb2.AttrValue(type=dtype.as_datatype_enum)
-    op = g.create_op("ZerosLike", [tensor], [dtype], input_types=[dtype],
-                     attrs={"T": dtype_value}, name=name)
+    op = g._create_op_internal(  # pylint: disable=protected-access
+        "ZerosLike", [tensor], [dtype], input_types=[dtype],
+        attrs={"T": dtype_value}, name=name)
   result, = op.outputs
   return result
 
@@ -46,8 +47,8 @@ def graph_placeholder(dtype, shape, name=None):
     shape = tensor_shape.TensorShape(shape)
   shape = attr_value_pb2.AttrValue(shape=shape.as_proto())
   g = ops.get_default_graph()
-  with ops.name_scope(name, "placeholder", []) as name:
-    op = g.create_op("Placeholder", [], [dtype], input_types=[],
-                     attrs={"dtype": dtype_value, "shape": shape}, name=name)
+  op = g._create_op_internal(  # pylint: disable=protected-access
+      "Placeholder", [], [dtype], input_types=[],
+      attrs={"dtype": dtype_value, "shape": shape}, name=name)
   result, = op.outputs
   return result

@@ -417,7 +417,13 @@ void PatternEmitter::emit(StringRef rewriteName) {
   {0}(MLIRContext *context)
       : RewritePattern("{1}", {{)",
                 rewriteName, rootName);
-  interleaveComma(resultOps, os, [&](const Operator *op) {
+  // Sort result operators by name.
+  llvm::SmallVector<const Operator *, 4> sortedResultOps(resultOps.begin(),
+                                                         resultOps.end());
+  llvm::sort(sortedResultOps, [&](const Operator *lhs, const Operator *rhs) {
+    return lhs->getOperationName() < rhs->getOperationName();
+  });
+  interleaveComma(sortedResultOps, os, [&](const Operator *op) {
     os << '"' << op->getOperationName() << '"';
   });
   os << formatv(R"(}, {0}, context) {{})", pattern.getBenefit()) << "\n";

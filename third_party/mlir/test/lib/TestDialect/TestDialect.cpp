@@ -216,6 +216,14 @@ OpFoldResult TestOpWithRegionFold::fold(ArrayRef<Attribute> operands) {
   return operand();
 }
 
+SmallVector<Type, 2> mlir::OpWithInferTypeInterfaceOp::inferReturnTypes(
+    llvm::Optional<Location> location, ArrayRef<Value *> operands,
+    ArrayRef<NamedAttribute> attributes, ArrayRef<Region> regions) {
+  if (location)
+    mlir::emitError(*location) << "expected to fail";
+  return SmallVector<Type, 2>{nullptr};
+}
+
 // Static initialization for Test dialect registration.
 static mlir::DialectRegistration<mlir::TestDialect> testDialect;
 

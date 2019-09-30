@@ -695,6 +695,11 @@ class RNN(Layer):
     inputs, initial_state, constants = self._process_inputs(
         inputs, initial_state, constants)
 
+    self._maybe_reset_cell_dropout_mask(self.cell)
+    if isinstance(self.cell, StackedRNNCells):
+      for cell in self.cell.cells:
+        self._maybe_reset_cell_dropout_mask(cell)
+
     if mask is not None:
       # Time step masks must be the same for each input.
       # TODO(scottzhu): Should we accept multiple different masks?
@@ -865,6 +870,11 @@ class RNN(Layer):
       return output
 
     return ragged_tensor.RaggedTensor.from_tensor(output, nested_row_lengths)
+
+  def _maybe_reset_cell_dropout_mask(self, cell):
+    if isinstance(cell, DropoutRNNCellMixin):
+      cell.reset_dropout_mask()
+      cell.reset_recurrent_dropout_mask()
 
   def reset_states(self, states=None):
     """Reset the recorded states for the stateful RNN layer.
@@ -1521,8 +1531,7 @@ class SimpleRNN(RNN):
     self.input_spec = [InputSpec(ndim=3)]
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self.cell.reset_dropout_mask()
-    self.cell.reset_recurrent_dropout_mask()
+    self._maybe_reset_cell_dropout_mask(self.cell)
     return super(SimpleRNN, self).call(
         inputs, mask=mask, training=training, initial_state=initial_state)
 
@@ -2051,8 +2060,7 @@ class GRU(RNN):
     self.input_spec = [InputSpec(ndim=3)]
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self.cell.reset_dropout_mask()
-    self.cell.reset_recurrent_dropout_mask()
+    self._maybe_reset_cell_dropout_mask(self.cell)
     return super(GRU, self).call(
         inputs, mask=mask, training=training, initial_state=initial_state)
 
@@ -2679,8 +2687,7 @@ class LSTM(RNN):
     self.input_spec = [InputSpec(ndim=3)]
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self.cell.reset_dropout_mask()
-    self.cell.reset_recurrent_dropout_mask()
+    self._maybe_reset_cell_dropout_mask(self.cell)
     return super(LSTM, self).call(
         inputs, mask=mask, training=training, initial_state=initial_state)
 

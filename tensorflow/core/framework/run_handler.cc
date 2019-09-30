@@ -100,7 +100,9 @@ typedef Eigen::RunQueue<Task, 1024> Queue;
 class ThreadWorkSource {
  public:
   ThreadWorkSource()
-      : non_blocking_work_sharding_factor_(2),
+      : non_blocking_work_sharding_factor_(
+            static_cast<int32>(ParamFromEnvWithDefault(
+                "TF_RUN_HANDLER_NUM_OF_NON_BLOCKING_QUEUES", 1))),
         non_blocking_work_queues_(non_blocking_work_sharding_factor_),
         blocking_inflight_(0),
         non_blocking_inflight_(0),

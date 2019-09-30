@@ -290,10 +290,11 @@ def run_functions_eagerly(run_eagerly):
   >>>
   >>> tf.config.experimental_run_functions_eagerly(True)
   >>> sqrt(tf.constant(2.))
-  <tf.Tensor: id=..., shape=(), dtype=float32, numpy=1.4150391>
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.4150391>
   >>> ys
   [1.5, 1.25, 1.375, 1.4375, 1.40625, 1.421875, 1.4140625, 1.4179688, 1.4160156,
   1.4150391]
+  >>> tf.config.experimental_run_functions_eagerly(False)
 
   Calling `tf.config.experimental_run_functions_eagerly(False)` will undo this
   behavior.
@@ -406,6 +407,7 @@ class Function(object):
     self._stateless_fn = None  # GUARDED_BY(self._lock)
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._name = name
+    self._input_signature = input_signature
     self._call_counter = _CallCounter(FREQUENT_TRACING_WARNING_MAX_CALL_HISTORY)
 
   def _defun_with_scope(self, scope):
@@ -497,6 +499,18 @@ class Function(object):
 
     self._stateless_fn = self._defun_with_scope(invalid_creator_scope)
     self._stateless_fn._name = self._name  # pylint: disable=protected-access
+
+  def _clone(self, python_function):
+    return Function(
+        python_function=(self._python_function
+                         if python_function is None else python_function),
+        name=self._name,
+        input_signature=self._input_signature,
+        autograph=self._autograph,
+        experimental_implements=self._implements,
+        experimental_autograph_options=self._experimental_autograph_options,
+        experimental_relax_shapes=self.experimental_relax_shapes,
+        experimental_compile=self._experimental_compile)
 
   def _decorate(self, decorator):
     """Allows the captured Python function to be decorated in place.
@@ -644,9 +658,9 @@ class Function(object):
               "def f():\n"
               "  return v\n"
               "\n"
-              "f()  # <tf.Tensor: ... numpy=1.>\n"
+              "f()  # <tf.Tensor: numpy=1.>\n"
               "v.assign_add(1.)\n"
-              "f()  # <tf.Tensor: ... numpy=2.>")
+              "f()  # <tf.Tensor: numpy=2.>")
         condition = math_ops.logical_and(
             condition, resource_variable_ops.var_is_initialized_op(
                 variable.handle))

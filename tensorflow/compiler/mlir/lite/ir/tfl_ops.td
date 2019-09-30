@@ -543,7 +543,6 @@ def TFL_FullyConnectedOptionsWeightFormatAttr :
     ]>;
 
 // TODO(jpienaar): Update post discussion on semantics of FC OP.
-// TODO(jpienaar): Include more shape verification.
 def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     NoSideEffect, AccumulatorUniformScale<2, 0, 1>]> {
   let summary = "Fully connected op";
@@ -562,6 +561,8 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
   let results = (outs
     Variadic<TensorOf<[F32, QI8, QUI8, QI16, QUI16]>>:$output
   );
+
+  let verifier = [{ return Verify(*this); }];
 
   let hasOptions = 1;
 }
@@ -1654,6 +1655,8 @@ def TFL_PackOp : TFL_Op<"pack", [NoSideEffect, SameOperandsAndResultsScale]> {
   );
 
   let verifier = [{ return Verify(*this); }];
+
+  let hasCanonicalizer = 1;
 
   let hasOptions = 1;
 }

@@ -250,13 +250,40 @@ void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
 void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
               int n_input, int shift, int8_t* output);
 
+// Element-wise multiplication of two quantized vectors with rescaling.
+// Parameters:
+//     - input_1:    batch vector of size n_batch * n_input; 16 bit.
+//     - input_2:    batch vector of size n_batch * n_input; 16 bit.
+//     - multiplier: the multiplier part of scale.
+//     - shift:      the shift part of scale.
+//     - n_batch:    the number of batch.
+//     - n_input:    the size for input and output.
+//     - output:     the 8 bit output of size n_batch * n_input.
+//     - output_zp:  the zero point of output.
+// Output does not need to be initialized.
+// Multiplier ("m") and shift ("s") are connected to scale ("s") with s = m *
+// 2^(s - 31).
 void CwiseMul(const int16_t* input_1, const int16_t* input_2,
               int32_t multiplier, int32_t shift, int32_t n_batch,
               int32_t n_input, int32_t output_zp, int8_t* output);
 
+// Element-wise saturating addition of two quantized vectors without rescaling.
+// Parameters:
+//     - input_1:    batch vector of size n_batch * n_input; 16 bit.
+//     - input_2:    batch vector of size n_batch * n_input; 16 bit.
+//     - n_batch:    the number of batch.
+//     - n_input:    the size for input and output.
+//     - output:     the 8 bit output of size n_batch * n_input.
+// Output does not need to be initialized.
 void CwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
               int n_input, int16_t* output);
 
+// Element-wise in-place clipping of a quantized vector.
+// Parameters:
+//     - input:          batch vector of size n_batch * n_input; 16 bit.
+//     - clipping_value: the value used for clipping.
+//     - n_batch:        the number of batch.
+//     - n_input:        the size for input and output.
 void CwiseClipping(int16_t* input, const int16_t clipping_value,
                    int32_t n_batch, int32_t n_input);
 

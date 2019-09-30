@@ -793,9 +793,6 @@ class CSRSparseMatrixOpsTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testTranspose(self):
-    if not self._gpu_available:
-      return
-
     sparsify = lambda m: m * (m > 0)
     dense_shape = [127, 65]
     data_types = [
@@ -821,9 +818,6 @@ class CSRSparseMatrixOpsTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testLargeBatchTranspose(self):
-    if not self._gpu_available:
-      return
-
     sparsify = lambda m: m * (m > 0)
     dense_shape = [53, 65, 127]
     data_types = [

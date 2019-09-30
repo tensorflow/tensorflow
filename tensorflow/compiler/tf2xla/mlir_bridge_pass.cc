@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 
 namespace tensorflow {
@@ -86,8 +87,8 @@ Status MlirBridgePass::Run(const GraphOptimizationPassOptions& options) {
   }
   GraphDebugInfo debug_info;
   mlir::MLIRContext context;
-  NodeSpecs specs;
-  ExporterConfigs confs;
+  GraphImportConfig specs;
+  GraphExportConfig confs;
   TF_ASSIGN_OR_RETURN(auto module,
                       ConvertGraphToMlir(**options.graph, debug_info,
                                          *options.flib_def, specs, &context));

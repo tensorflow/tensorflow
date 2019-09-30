@@ -153,6 +153,19 @@ tf_cuda_library(
     }),
 )
 
+tf_cc_test(
+    name = "tensor_handle_test",
+    srcs = ["tensor_handle_test.cc"],
+    deps = [
+        ":tensor_handle",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
 tf_cuda_library(
     name = "copy_to_device_node",
     hdrs = [

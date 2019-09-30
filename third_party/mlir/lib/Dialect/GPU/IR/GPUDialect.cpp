@@ -449,12 +449,16 @@ LogicalResult LaunchFuncOp::verify() {
            << getNumKernelOperands() << " kernel operands but expected "
            << numKernelFuncArgs;
   }
-  auto functionType = kernelFunc.getType();
-  for (unsigned i = 0; i < numKernelFuncArgs; ++i) {
-    if (getKernelOperand(i)->getType() != functionType.getInput(i)) {
-      return emitOpError("type of function argument ")
-             << i << " does not match";
-    }
-  }
+  // Due to the ordering of the current impl of lowering and LLVMLowering, type
+  // checks need to be temporarily disabled.
+  // TODO(ntv,zinenko,herhut): reactivate checks once "changing gpu.launchFunc
+  // to encode target module" has landed.
+  // auto functionType = kernelFunc.getType();
+  // for (unsigned i = 0; i < numKernelFuncArgs; ++i) {
+  //   if (getKernelOperand(i)->getType() != functionType.getInput(i)) {
+  //     return emitOpError("type of function argument ")
+  //            << i << " does not match";
+  //   }
+  // }
   return success();
 }

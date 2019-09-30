@@ -21,14 +21,14 @@ limitations under the License.
 
 %include "tensorflow/python/pywrap_tfe.i"
 
-%include "tensorflow/python/lib/core/py_func.i"
 %include "tensorflow/python/lib/core/py_exception_registry.i"
 
 %include "tensorflow/python/lib/io/py_record_reader.i"
 %include "tensorflow/python/lib/io/py_record_writer.i"
 
 %include "tensorflow/python/client/tf_session.i"
-%include "tensorflow/python/client/device_lib.i"
+
+%include "tensorflow/python/lib/core/bfloat16.i"
 
 %include "tensorflow/lite/toco/python/toco.i"
 

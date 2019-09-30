@@ -101,7 +101,7 @@ inline __m256 mm256_n_loadu_epi32(int n, const std::int32_t* src) {
     case 8:
       return _mm256_loadu_si256(reinterpret_cast<__m256i const*>(src));
     default:
-      RUY_DCHECK(n < 9);
+      RUY_DCHECK_LT(n, 9);
       return _mm256_setzero_si256();
   }
 }
@@ -357,7 +357,7 @@ inline __m256 mm256_n_loadu_ps(int i, const float* src) {
     case 8:
       return _mm256_loadu_ps(src);
     default:
-      RUY_DCHECK(i < 9);
+      RUY_DCHECK_LT(i, 9);
       return _mm256_setzero_ps();
   }
 }

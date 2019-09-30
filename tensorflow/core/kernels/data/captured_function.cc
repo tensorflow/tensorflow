@@ -46,7 +46,7 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
     processing_time_ += delta;
   }
 
-  NodeExecStatsInterface* CreateNodeExecStats(const Node* node) override {
+  NodeExecStatsInterface* CreateNodeExecStats(const NodeDef* node) override {
     return new SimpleNodeExecStats(this);
   }
 
@@ -529,6 +529,7 @@ Status CapturedFunction::Instantiate(
   // The context's runtime will be used for all subsequent calls.
   FunctionLibraryRuntime* lib = ctx->flr();
   FunctionLibraryRuntime::InstantiateOptions inst_opts;
+  // TODO(b/141576771): Propagate ctx ConfigProto into inst_opts.config_proto.
   inst_opts.lib_def = metadata_->lib_def();
   inst_opts.create_kernels_eagerly = true;
   inst_opts.default_device_to_target = metadata_->use_default_device();

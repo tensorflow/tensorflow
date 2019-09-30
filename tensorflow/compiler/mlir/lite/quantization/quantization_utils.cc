@@ -60,16 +60,6 @@ static Type GetQuantizedType(Builder builder, Type input_type,
   return converter.convert(quantizedEleType);
 }
 
-TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, FloatAttr min,
-                              FloatAttr max, Type storage_type,
-                              bool narrow_range, bool is_signed) {
-  int storage_type_width = storage_type.cast<IntegerType>().getWidth();
-  Type final_type = GetQuantizedType(
-      builder, input_type, {min.getValueAsDouble()}, {max.getValueAsDouble()},
-      storage_type_width, narrow_range, is_signed);
-  return builder.getTypeAttr(final_type);
-}
-
 TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
                               Attribute max, IntegerAttr num_bits,
                               BoolAttr narrow_range, bool is_signed) {

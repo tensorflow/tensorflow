@@ -69,23 +69,6 @@ static LogicalResult extractValueFromConstOp(Operation *op,
   return success();
 }
 
-static ParseResult parseBinaryLogicalOp(OpAsmParser &parser,
-                                        OperationState &result) {
-  SmallVector<OpAsmParser::OperandType, 2> ops;
-  Type type;
-  if (parser.parseOperandList(ops, 2) || parser.parseColonType(type) ||
-      parser.resolveOperands(ops, type, result.operands)) {
-    return failure();
-  }
-  // Result must be a scalar or vector of boolean type.
-  Type resultType = parser.getBuilder().getIntegerType(1);
-  if (auto opsType = type.dyn_cast<VectorType>()) {
-    resultType = VectorType::get(opsType.getNumElements(), resultType);
-  }
-  result.addTypes(resultType);
-  return success();
-}
-
 template <typename EnumClass>
 static ParseResult
 parseEnumAttribute(EnumClass &value, OpAsmParser &parser,
@@ -147,19 +130,6 @@ static ParseResult parseMemoryAccessAttributes(OpAsmParser &parser,
     }
   }
   return parser.parseRSquare();
-}
-
-// Parses an op that has no inputs and no outputs.
-static ParseResult parseNoIOOp(OpAsmParser &parser, OperationState &state) {
-  if (parser.parseOptionalAttributeDict(state.attributes))
-    return failure();
-  return success();
-}
-
-static void printBinaryLogicalOp(Operation *logicalOp, OpAsmPrinter &printer) {
-  printer << logicalOp->getName() << ' ' << *logicalOp->getOperand(0) << ", "
-          << *logicalOp->getOperand(1);
-  printer << " : " << logicalOp->getOperand(0)->getType();
 }
 
 template <typename LoadStoreOpTy>
@@ -260,12 +230,6 @@ static LogicalResult verifyLoadStorePtrAndValTypes(LoadStoreOpTy op, Value *ptr,
   return success();
 }
 
-// Prints an op that has no inputs and no outputs.
-static void printNoIOOp(Operation *op, OpAsmPrinter &printer) {
-  printer << op->getName();
-  printer.printOptionalAttrDict(op->getAttrs());
-}
-
 static ParseResult parseVariableDecorations(OpAsmParser &parser,
                                             OperationState &state) {
   auto builtInName =
@@ -350,6 +314,80 @@ static Attribute extractCompositeElement(Attribute composite,
   }
 
   return {};
+}
+
+// Get bit width of types.
+static unsigned getBitWidth(Type type) {
+  if (type.isa<spirv::PointerType>()) {
+    // Just return 64 bits for pointer types for now.
+    // TODO: Make sure not caller relies on the actual pointer width value.
+    return 64;
+  }
+  if (type.isIntOrFloat()) {
+    return type.getIntOrFloatBitWidth();
+  }
+  if (auto vectorType = type.dyn_cast<VectorType>()) {
+    assert(vectorType.getElementType().isIntOrFloat());
+    return vectorType.getNumElements() *
+           vectorType.getElementType().getIntOrFloatBitWidth();
+  }
+  llvm_unreachable("unhandled bit width computation for type");
+}
+
+//===----------------------------------------------------------------------===//
+// Common parsers and printers
+//===----------------------------------------------------------------------===//
+
+// Parses an op that has no inputs and no outputs.
+static ParseResult parseNoIOOp(OpAsmParser &parser, OperationState &state) {
+  if (parser.parseOptionalAttributeDict(state.attributes))
+    return failure();
+  return success();
+}
+
+// Prints an op that has no inputs and no outputs.
+static void printNoIOOp(Operation *op, OpAsmPrinter &printer) {
+  printer << op->getName();
+  printer.printOptionalAttrDict(op->getAttrs());
+}
+
+static ParseResult parseUnaryOp(OpAsmParser &parser, OperationState &state) {
+  OpAsmParser::OperandType operandInfo;
+  Type type;
+  if (parser.parseOperand(operandInfo) || parser.parseColonType(type) ||
+      parser.resolveOperands(operandInfo, type, state.operands)) {
+    return failure();
+  }
+  state.addTypes(type);
+  return success();
+}
+
+static void printUnaryOp(Operation *unaryOp, OpAsmPrinter &printer) {
+  printer << unaryOp->getName() << ' ' << *unaryOp->getOperand(0) << " : "
+          << unaryOp->getOperand(0)->getType();
+}
+
+static ParseResult parseBinaryLogicalOp(OpAsmParser &parser,
+                                        OperationState &result) {
+  SmallVector<OpAsmParser::OperandType, 2> ops;
+  Type type;
+  if (parser.parseOperandList(ops, 2) || parser.parseColonType(type) ||
+      parser.resolveOperands(ops, type, result.operands)) {
+    return failure();
+  }
+  // Result must be a scalar or vector of boolean type.
+  Type resultType = parser.getBuilder().getIntegerType(1);
+  if (auto opsType = type.dyn_cast<VectorType>()) {
+    resultType = VectorType::get(opsType.getNumElements(), resultType);
+  }
+  result.addTypes(resultType);
+  return success();
+}
+
+static void printBinaryLogicalOp(Operation *logicalOp, OpAsmPrinter &printer) {
+  printer << logicalOp->getName() << ' ' << *logicalOp->getOperand(0) << ", "
+          << *logicalOp->getOperand(1);
+  printer << " : " << logicalOp->getOperand(0)->getType();
 }
 
 //===----------------------------------------------------------------------===//
@@ -524,6 +562,61 @@ static LogicalResult verify(spirv::AddressOfOp addressOfOp) {
   if (addressOfOp.pointer()->getType() != varOp.type()) {
     return addressOfOp.emitOpError(
         "result type mismatch with the referenced global variable's type");
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.BitcastOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseBitcastOp(OpAsmParser &parser, OperationState &state) {
+  OpAsmParser::OperandType operandInfo;
+  Type operandType, resultType;
+  if (parser.parseOperand(operandInfo) || parser.parseKeyword("from") ||
+      parser.parseType(operandType) || parser.parseKeyword("to") ||
+      parser.parseType(resultType)) {
+    return failure();
+  }
+  if (parser.resolveOperands(operandInfo, operandType, state.operands)) {
+    return failure();
+  }
+  state.addTypes(resultType);
+  return success();
+}
+
+static void print(spirv::BitcastOp bitcastOp, OpAsmPrinter &printer) {
+  printer << spirv::BitcastOp::getOperationName() << ' ';
+  printer.printOperand(bitcastOp.operand());
+  printer << " from " << bitcastOp.operand()->getType() << " to "
+          << bitcastOp.result()->getType();
+}
+
+static LogicalResult verify(spirv::BitcastOp bitcastOp) {
+  // TODO: The SPIR-V spec validation rules are different for different
+  // versions.
+  auto operandType = bitcastOp.operand()->getType();
+  auto resultType = bitcastOp.result()->getType();
+  if (operandType == resultType) {
+    return bitcastOp.emitError(
+        "result type must be different from operand type");
+  }
+  if (operandType.isa<spirv::PointerType>() &&
+      !resultType.isa<spirv::PointerType>()) {
+    return bitcastOp.emitError(
+        "unhandled bit cast conversion from pointer type to non-pointer type");
+  }
+  if (!operandType.isa<spirv::PointerType>() &&
+      resultType.isa<spirv::PointerType>()) {
+    return bitcastOp.emitError(
+        "unhandled bit cast conversion from non-pointer type to pointer type");
+  }
+  auto operandBitWidth = getBitWidth(operandType);
+  auto resultBitWidth = getBitWidth(resultType);
+  if (operandBitWidth != resultBitWidth) {
+    return bitcastOp.emitOpError("mismatch in result type bitwidth ")
+           << resultBitWidth << " and operand type bitwidth "
+           << operandBitWidth;
   }
   return success();
 }
@@ -1055,27 +1148,6 @@ static LogicalResult verify(spirv::FunctionCallOp functionCallOp) {
   }
 
   return success();
-}
-
-//===----------------------------------------------------------------------===//
-// spv.GLSL.UnaryOp
-//===----------------------------------------------------------------------===//
-
-static ParseResult parseGLSLUnaryOp(OpAsmParser &parser,
-                                    OperationState &state) {
-  OpAsmParser::OperandType operandInfo;
-  Type type;
-  if (parser.parseOperand(operandInfo) || parser.parseColonType(type) ||
-      parser.resolveOperands(operandInfo, type, state.operands)) {
-    return failure();
-  }
-  state.addTypes(type);
-  return success();
-}
-
-static void printGLSLUnaryOp(Operation *unaryOp, OpAsmPrinter &printer) {
-  printer << unaryOp->getName() << ' ' << *unaryOp->getOperand(0) << " : "
-          << unaryOp->getOperand(0)->getType();
 }
 
 //===----------------------------------------------------------------------===//

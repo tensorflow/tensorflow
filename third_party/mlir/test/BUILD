@@ -39,6 +39,7 @@ gentbl(
     td_srcs = [
         "@local_config_mlir//:include/mlir/IR/OpBase.td",
         "@local_config_mlir//:include/mlir/Analysis/CallInterfaces.td",
+        "@local_config_mlir//:include/mlir/Analysis/InferTypeOpInterface.td",
     ],
 )
 
@@ -54,11 +55,10 @@ cc_library(
     includes = ["lib/TestDialect"],
     deps = [
         ":TestOpsIncGen",
-        "@llvm//:support",
+        "@local_config_mlir//:Analysis",
         "@local_config_mlir//:Dialect",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
-        "@local_config_mlir//:Support",
         "@local_config_mlir//:TransformUtils",
         "@local_config_mlir//:Transforms",
     ],

@@ -609,11 +609,22 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
   // However since we are only allowed to specify the filter at the "Node"
   // level there is no good way to allow the above behavior. So we
   // disallow any sort of constant folding on Variant nodes for now.
+  //
+  // Also do not consider constant folding Shape ops. When there is a dynamic
+  // dimension in a tensor, TF2XLA currently represent them as the static
+  // upperbound shape, which can be constant folded and then lose the info
+  // that this Shape is dynamic.
   auto cf_consider_fn = [](const Node* n) {
     for (const auto& output_arg : n->op_def().output_arg()) {
       if (output_arg.type() == DT_VARIANT) {
         return false;
       }
+    }
+    const auto& ts = n->type_string();
+    // XLA has special logic to handle dynamic shapes, don't constant fold
+    // them.
+    if (ts == "Shape" || ts == "ShapeN" || ts == "Size") {
+      return false;
     }
     return true;
   };

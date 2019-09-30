@@ -115,6 +115,13 @@ Status LowerFunctionalOpsPass::Run(
                                           ? *keep_lowered_nodes_fetchable_
                                           : !HasArgsOrRetvals(*g);
 
+  // We disable lowering control flow to switch/merge variants for the
+  // single-threaded executor, which does not support it.
+  const bool functional_control_flow =
+      options.session_options &&
+      (options.session_options->config.experimental().executor_type() ==
+       "SINGLE_THREADED_EXECUTOR");
+
   // Lower all If, Case, While ops that have the `kLowerUsingSwitchMergeAttr`
   // attr set and inline all function calls into the graph.
   // We start at `i` = 2 to skip the source and sink nodes.
@@ -136,7 +143,7 @@ Status LowerFunctionalOpsPass::Run(
       continue;
     }
 
-    if (LowerUsingSwitchMergeIsOn(n)) {
+    if (!functional_control_flow && LowerUsingSwitchMergeIsOn(n)) {
       if (n->IsIfNode()) {
         TF_RETURN_IF_ERROR(RewriteIfNode(n, g, keep_lowered_nodes_fetchable));
       } else if (n->type_string() == "Case") {

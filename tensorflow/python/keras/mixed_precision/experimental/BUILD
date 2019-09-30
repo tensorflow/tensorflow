@@ -93,6 +93,7 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
     ],
 )

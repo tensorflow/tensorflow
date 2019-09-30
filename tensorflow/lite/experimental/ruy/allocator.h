@@ -73,7 +73,7 @@ class AlignedAllocator {
   }
 
   void* AllocateAlignedBytes(std::ptrdiff_t num_bytes) {
-    RUY_DCHECK(num_bytes > 0);
+    RUY_DCHECK_GT(num_bytes, 0);
     RUY_DCHECK((num_bytes & (kAlignment - 1)) == 0);
     if (void* p = AllocateFast(num_bytes)) {
       return p;

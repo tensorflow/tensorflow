@@ -681,6 +681,8 @@ cuda_py_test(
     srcs = ["def_function_test.py"],
     additional_deps = [
         ":def_function",
+        "//tensorflow/python/autograph/core",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",

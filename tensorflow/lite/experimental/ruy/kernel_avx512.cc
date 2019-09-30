@@ -63,7 +63,7 @@ inline std::int32_t mm512_get1_epi32(const __m512i v, int i) {
     case 7:
       return _mm256_extract_epi32(a, 7);
     default:
-      RUY_DCHECK(i < 16);
+      RUY_DCHECK_LT(i, 16);
       return 0;
   }
 }

@@ -7,9 +7,10 @@ func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
 // CHECK: {
 // CHECK-NEXT:   version: 3,
 // CHECK-NEXT:   operator_codes: [ {
-// CHECK-NEXT:     builtin_code: SUB
+// CHECK-NEXT:     builtin_code: SUB,
+// CHECK-NEXT:     version: 1
 // CHECK-NEXT:   }, {
-// CHECK-EMPTY:
+// CHECK-NEXT:     version: 1
 // CHECK-NEXT:   } ],
 // CHECK-NEXT:   subgraphs: [ {
 // CHECK-NEXT:     tensors: [ {

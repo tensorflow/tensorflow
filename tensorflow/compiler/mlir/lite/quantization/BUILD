@@ -46,6 +46,21 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "quantization_config",
+    srcs = [
+        "quantization_config.cc",
+    ],
+    hdrs = [
+        "quantization_config.h",
+    ],
+    deps = [
+        "//tensorflow/core:protos_all_proto_cc",
+        "@com_google_absl//absl/strings",
+        "@llvm//:support",
+    ],
+)
+
 tf_native_cc_binary(
     name = "op_quant_spec_getters_gen",
     srcs = [

@@ -371,7 +371,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
     cond_graph.name += "_rewritten"
     body_graph.name += "_rewritten"
 
-    new_inputs = body_grad_graph.empty_tensor_lists
+    new_inputs = body_grad_graph.extra_inputs
     new_outputs = body_graph.outputs[orig_num_params:]
 
     while_op._set_func_attr("cond", util.create_new_tf_function(cond_graph))
@@ -850,8 +850,9 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     while_op_needs_rewrite: True if any non-resource intermediates were
       captured, meaning the forward While op needs to be rewritten to output the
       corresponding accumulators.
-    empty_tensor_lists: list of EmptyTensorList tensors to be used as initial
-      input to the new accumulators in the forward graph.
+    extra_inputs: list of EmptyTensorList tensors to be used as initial input to
+    the new accumulators in the forward graph. It may also contain external
+    captures of the custom gradient function.
     popped_tensor_lists: dict from the captured accumulator placeholder to the
       TensorList obtained after popping the intermediate tensor from it. The
       values of this dict need to be added to the list of outputs.
@@ -861,7 +862,7 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
                maximum_iterations, forward_while_op, body_graph_inputs,
                body_graph_outputs):
     super(_WhileBodyGradFuncGraph, self).__init__(name)
-    self.empty_tensor_lists = []
+    self.extra_inputs = []
     self.popped_tensor_lists = {}
     # FuncGraph for the body of the forward While op.
     self._forward_graph = forward_body_graph
@@ -885,7 +886,7 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
 
   @property
   def while_op_needs_rewrite(self):
-    return self.empty_tensor_lists
+    return self.extra_inputs
 
   def capture(self, tensor, name=None, whitelisted=False):
     """Selectively captures external tensors.
@@ -908,9 +909,17 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     """
     if (not whitelisted and tensor.graph is not self and
         tensor.graph != self._forward_graph):
-      raise ValueError("Attempting to capture tensor %s which is not in the "
-                       "forward graph but in %s." %
-                       (str(tensor), _graph_name(tensor.graph)))
+      with self._forward_cond_graph.as_default():
+        self._forward_cond_graph.capture(tensor)
+      with self._forward_graph.as_default():
+        already_captured = ops.tensor_id(
+            tensor) in self._forward_graph._captures
+        if not already_captured:
+          self.extra_inputs.append(tensor)
+        tensor = self._forward_graph.capture(tensor)
+        if not already_captured:
+          self._forward_graph.outputs.append(tensor)
+
     return super(_WhileBodyGradFuncGraph, self).capture(tensor, name)
 
   def _capture_helper(self, tensor, name):
@@ -987,7 +996,7 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
               element_shape=tensor.shape,
               max_num_elements=self._maximum_iterations,
               name=_build_accumulator_name(tensor))
-      self.empty_tensor_lists.append(tensor_list)
+      self.extra_inputs.append(tensor_list)
 
       # Push the intermediate tensor to the tensor list. This captures
       # `tensor_list`.

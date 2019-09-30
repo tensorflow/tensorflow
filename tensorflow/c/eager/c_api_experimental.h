@@ -401,6 +401,21 @@ TF_CAPI_EXPORT extern void TFE_ContextSetExecutorForThread(TFE_Context*,
 TF_CAPI_EXPORT extern TFE_Executor* TFE_ContextGetExecutorForThread(
     TFE_Context*);
 
+// -----------------------------------------------------------------------------
+// Dynamic cluster API.
+
+// Update an existing context with a new set of servers defined in a ServerDef
+// proto. Servers can be added to and removed from the list of remote workers
+// in the context. New set of servers identified by the ServerDef must be up
+// when the context is updated.
+//
+// This API is for experimental usage and may be subject to change.
+TF_CAPI_EXPORT extern void TFE_ContextUpdateServerDef(TFE_Context* ctx,
+                                                      int keep_alive_secs,
+                                                      const void* proto,
+                                                      size_t proto_len,
+                                                      TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

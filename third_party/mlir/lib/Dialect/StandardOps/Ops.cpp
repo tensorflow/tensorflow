@@ -358,7 +358,7 @@ static LogicalResult verify(AllocOp op) {
   // the affine map, plus the number of dynamic dimensions specified in the
   // memref type.
   unsigned numDynamicDims = memRefType.getNumDynamicDims();
-  if (op.getOperation()->getNumOperands() != numDynamicDims + numSymbols)
+  if (op.getNumOperands() != numDynamicDims + numSymbols)
     return op.emitOpError(
         "operand count does not equal dimension plus symbol operand count");
 
@@ -474,11 +474,9 @@ static void print(OpAsmPrinter &p, BranchOp op) {
   p.printSuccessorAndUseList(op.getOperation(), 0);
 }
 
-Block *BranchOp::getDest() { return getOperation()->getSuccessor(0); }
+Block *BranchOp::getDest() { return getSuccessor(0); }
 
-void BranchOp::setDest(Block *block) {
-  return getOperation()->setSuccessor(block, 0);
-}
+void BranchOp::setDest(Block *block) { return setSuccessor(block, 0); }
 
 void BranchOp::eraseOperand(unsigned index) {
   getOperation()->eraseSuccessorOperand(0, index);
@@ -1754,17 +1752,9 @@ static LogicalResult verify(LoadOp op) {
   if (op.getType() != op.getMemRefType().getElementType())
     return op.emitOpError("result type must match element type of memref");
 
-  if (op.getMemRefType().getRank() != op.getNumOperands() - 1)
+  if (op.getNumOperands() != 1 + op.getMemRefType().getRank())
     return op.emitOpError("incorrect number of indices for load");
 
-  for (auto *idx : op.getIndices())
-    if (!idx->getType().isIndex())
-      return op.emitOpError("index to load must have 'index' type");
-
-  // TODO: Verify we have the right number of indices.
-
-  // TODO: in Function verify that the indices are parameters, IV's, or the
-  // result of an affine.apply.
   return success();
 }
 
@@ -2133,14 +2123,6 @@ static LogicalResult verify(StoreOp op) {
   if (op.getNumOperands() != 2 + op.getMemRefType().getRank())
     return op.emitOpError("store index operand count not equal to memref rank");
 
-  for (auto *idx : op.getIndices())
-    if (!idx->getType().isIndex())
-      return op.emitOpError("index to load must have 'index' type");
-
-  // TODO: Verify we have the right number of indices.
-
-  // TODO: in Function verify that the indices are parameters, IV's, or the
-  // result of an affine.apply.
   return success();
 }
 

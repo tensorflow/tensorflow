@@ -1746,7 +1746,10 @@ void Value::print(raw_ostream &os) {
   }
 }
 
-void Value::dump() { print(llvm::errs()); }
+void Value::dump() {
+  print(llvm::errs());
+  llvm::errs() << "\n";
+}
 
 void Operation::print(raw_ostream &os) {
   // Handle top-level operations.

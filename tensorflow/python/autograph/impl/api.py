@@ -585,7 +585,7 @@ def to_graph(entity, recursive=True, experimental_optional_features=None):
   >>> converted_f = to_graph(f)
   >>> x = tf.constant(2)
   >>> converted_f(x)  # converted_foo is like a TensorFlow Op.
-  <tf.Tensor: id=..., shape=(), dtype=int32, numpy=4>
+  <tf.Tensor: shape=(), dtype=int32, numpy=4>
 
   Supported Python entities include:
     * functions

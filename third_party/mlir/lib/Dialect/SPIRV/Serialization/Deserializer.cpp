@@ -293,9 +293,6 @@ private:
   sliceInstruction(spirv::Opcode &opcode, ArrayRef<uint32_t> &operands,
                    Optional<spirv::Opcode> expectedOpcode = llvm::None);
 
-  /// Returns the next instruction's opcode if exists.
-  Optional<spirv::Opcode> peekOpcode();
-
   /// Processes a SPIR-V instruction with the given `opcode` and `operands`.
   /// This method is the main entrance for handling SPIR-V instruction; it
   /// checks the instruction opcode and dispatches to the corresponding handler.
@@ -1749,12 +1746,6 @@ Deserializer::sliceInstruction(spirv::Opcode &opcode,
   operands = binary.slice(curOffset + 1, wordCount - 1);
   curOffset = nextOffset;
   return success();
-}
-
-Optional<spirv::Opcode> Deserializer::peekOpcode() {
-  if (curOffset >= binary.size())
-    return llvm::None;
-  return extractOpcode(binary[curOffset]);
 }
 
 LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,

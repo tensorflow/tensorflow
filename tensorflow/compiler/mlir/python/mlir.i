@@ -40,7 +40,7 @@ string ImportGraphDef(const string &proto, const string &pass_pipeline, TF_Statu
     return "// error";
   }
   GraphDebugInfo debug_info;
-  NodeSpecs specs;
+  GraphImportConfig specs;
   mlir::MLIRContext context;
   auto module = ConvertGraphdefToMlir(graphdef, debug_info, specs, &context);
   if (!module.ok()) {

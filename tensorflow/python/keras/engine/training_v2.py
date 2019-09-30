@@ -133,8 +133,9 @@ def run_one_epoch(model,
           # Now we know the cardinality of the input(dataset or generator).
           steps_per_epoch = step
           aggregator.steps = steps_per_epoch
-          progbar.params['steps'] = steps_per_epoch
-          progbar.progbar.target = steps_per_epoch
+          if mode == ModeKeys.TRAIN:
+            progbar.params['steps'] = steps_per_epoch
+            progbar.progbar.target = steps_per_epoch
         else:
           callbacks.model.stop_training = True
           logging.warning(
@@ -332,6 +333,13 @@ class Loop(training_utils.TrainingLoop):
                 total_epochs=epochs)
             cbks.make_logs(model, epoch_logs, training_result, ModeKeys.TRAIN)
 
+            # In the case of steps_per_epoch = None, the final cardinality will
+            # be determined when the inputs are fully consumed (eg dataset or
+            # generator). Update the steps_per_epoch to the new value.
+            if (steps_per_epoch is None
+                and training_context.progbar.progbar.target is not None):
+              steps_per_epoch = training_context.progbar.progbar.target
+
             # Evaluation
             if (do_validation and
                 training_utils.should_run_validation(validation_freq, epoch) and
@@ -378,6 +386,9 @@ class Loop(training_utils.TrainingLoop):
                       total_epochs=1)
                   cbks.make_logs(model, epoch_logs, eval_result, ModeKeys.TEST,
                                  prefix='val_')
+                if (validation_steps is None
+                    and eval_context.progbar.progbar.target is not None):
+                  validation_steps = eval_context.progbar.progbar.target
 
     return model.history
 

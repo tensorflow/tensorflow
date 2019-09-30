@@ -107,13 +107,13 @@ class Exporter {
   // one entry function, which is identified by name "main". This entry function
   // is converted to the base of the graph graph. The rest of the functions are
   // converted to the library functions in that graph.
-  static Status Convert(mlir::ModuleOp module, const ExporterConfigs& configs,
+  static Status Convert(mlir::ModuleOp module, const GraphExportConfig& configs,
                         std::unique_ptr<Graph>* graph,
                         FunctionLibraryDefinition* flib_def);
 
   // Converts a given FuncOp to a FunctionDef and adds it to the function
   // definition library
-  static Status ConvertLibFunction(const ExporterConfigs& configs,
+  static Status ConvertLibFunction(const GraphExportConfig& configs,
                                    const Dialect* tf_dialect,
                                    mlir::FuncOp function,
                                    FunctionDefLibrary* flib);
@@ -122,7 +122,7 @@ class Exporter {
   // Later on, this graph can be converted a function definition and added to
   // another graph.
   static StatusOr<std::unique_ptr<Graph>> Convert(
-      const ExporterConfigs& configs, const Dialect* tf_dialect,
+      const GraphExportConfig& configs, const Dialect* tf_dialect,
       mlir::FuncOp function, FunctionDefLibrary* flib);
 
  private:
@@ -377,7 +377,7 @@ Status Exporter::AddNextIterationNode(Operation* inst) {
 }
 
 StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
-    const ExporterConfigs& configs, const Dialect* tf_dialect,
+    const GraphExportConfig& configs, const Dialect* tf_dialect,
     mlir::FuncOp function, FunctionDefLibrary* flib) {
   if (function.getBlocks().size() != 1) {
     return errors::FailedPrecondition(
@@ -502,7 +502,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   return graph;
 }
 
-Status Exporter::ConvertLibFunction(const ExporterConfigs& configs,
+Status Exporter::ConvertLibFunction(const GraphExportConfig& configs,
                                     const Dialect* tf_dialect,
                                     mlir::FuncOp function,
                                     FunctionDefLibrary* flib) {
@@ -560,7 +560,8 @@ Status Exporter::ConvertLibFunction(const ExporterConfigs& configs,
   return Status::OK();
 }
 
-Status Exporter::Convert(mlir::ModuleOp module, const ExporterConfigs& configs,
+Status Exporter::Convert(mlir::ModuleOp module,
+                         const GraphExportConfig& configs,
                          std::unique_ptr<Graph>* graph,
                          FunctionLibraryDefinition* flib_def) {
   mlir::Identifier entry_func_id =
@@ -596,7 +597,8 @@ Status Exporter::Convert(mlir::ModuleOp module, const ExporterConfigs& configs,
 }
 }  // namespace
 
-Status ConvertMlirToGraph(mlir::ModuleOp module, const ExporterConfigs& configs,
+Status ConvertMlirToGraph(mlir::ModuleOp module,
+                          const GraphExportConfig& configs,
                           std::unique_ptr<Graph>* graph,
                           FunctionLibraryDefinition* flib_def) {
   mlir::PassManager pass_manager(module.getContext());
@@ -609,7 +611,7 @@ Status ConvertMlirToGraph(mlir::ModuleOp module, const ExporterConfigs& configs,
 }
 
 StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
-    mlir::ModuleOp module, const ExporterConfigs& configs) {
+    mlir::ModuleOp module, const GraphExportConfig& configs) {
   FunctionLibraryDefinition flib_def(OpRegistry::Global(),
                                      FunctionDefLibrary());
   auto graph = absl::make_unique<Graph>(flib_def);

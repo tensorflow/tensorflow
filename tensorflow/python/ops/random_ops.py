@@ -208,26 +208,25 @@ def random_uniform(shape,
   Examples:
 
   >>> tf.random.uniform(shape=[2])
-  <tf.Tensor: id=..., shape=(2,), dtype=float32, numpy=array([..., ...],
-  dtype=float32)>
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([..., ...], dtype=float32)>
   >>> tf.random.uniform(shape=[], minval=-1., maxval=0.)
-  <tf.Tensor: id=..., shape=(), dtype=float32, numpy=-...>
+  <tf.Tensor: shape=(), dtype=float32, numpy=-...>
   >>> tf.random.uniform(shape=[], minval=5, maxval=10, dtype=tf.int64)
-  <tf.Tensor: id=..., shape=(), dtype=int64, numpy=...>
+  <tf.Tensor: shape=(), dtype=int64, numpy=...>
 
   The `seed` argument produces a deterministic sequence of tensors across
   multiple calls. To repeat that sequence, use `tf.random.set_seed`:
 
   >>> tf.random.set_seed(5)
   >>> tf.random.uniform(shape=[], maxval=3, dtype=tf.int32, seed=10)
-  <tf.Tensor: id=..., shape=(), dtype=int32, numpy=2>
+  <tf.Tensor: shape=(), dtype=int32, numpy=2>
   >>> tf.random.uniform(shape=[], maxval=3, dtype=tf.int32, seed=10)
-  <tf.Tensor: id=..., shape=(), dtype=int32, numpy=0>
+  <tf.Tensor: shape=(), dtype=int32, numpy=0>
   >>> tf.random.set_seed(5)
   >>> tf.random.uniform(shape=[], maxval=3, dtype=tf.int32, seed=10)
-  <tf.Tensor: id=..., shape=(), dtype=int32, numpy=2>
+  <tf.Tensor: shape=(), dtype=int32, numpy=2>
   >>> tf.random.uniform(shape=[], maxval=3, dtype=tf.int32, seed=10)
-  <tf.Tensor: id=..., shape=(), dtype=int32, numpy=0>
+  <tf.Tensor: shape=(), dtype=int32, numpy=0>
 
   Without `tf.random.set_seed` but with a `seed` argument is specified, small
   changes to function graphs or previously executed operations will change the

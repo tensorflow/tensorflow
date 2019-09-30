@@ -335,8 +335,6 @@ class InferenceContext {
 
   AttrSlice attrs() const { return AttrSlice(*node_def_); }
 
-  string op() const;
-
   // idx can be negative for an offset from end of dimensions.
   // idx must be in the range [-1 * s.rank, s.rank).
   DimensionHandle Dim(ShapeHandle s, int64 idx) {
