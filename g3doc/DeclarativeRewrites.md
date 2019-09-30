@@ -226,6 +226,29 @@ In general, arguments in the the result pattern will be passed directly to the
 the pattern by following the exact same order as the ODS `arguments` definition.
 Otherwise, a custom `build()` method that matches the argument list is required.
 
+Right now all ODS-generated `build()` methods require specifying the result
+type(s), unless the op has known traits like `SameOperandsAndResultType` that
+we can use to auto-generate a `build()` method with result type deduction.
+When generating an op to replace the result of the matched root op, we can use
+the matched root op's result type when calling the ODS-generated builder.
+Otherwise (e.g., generating an [auxiliary op](#supporting-auxiliary-ops) or
+generating an op with a nested result pattern), DRR will not be able to deduce
+the result type(s). The pattern author will need to define a custom builder
+that has result type deduction ability via `OpBuilder` in ODS. For example,
+in the following pattern
+
+```tblgen
+def : Pat<(AOp $input, $attr), (COp (BOp) $attr)>;
+```
+
+`BOp` is generated via a nested result pattern; DRR won't be able to deduce the
+result type for it. A custom builder for `BOp` should be defined and it should
+deduce the result type by itself.
+
+Failing to define such a builder will result in an error at C++ compilation
+time saying the call to `BOp::build()` cannot be resolved because of the number
+of parameters mismatch.
+
 #### Generating DAG of operations
 
 `dag` objects can be nested to generate a DAG of operations:
