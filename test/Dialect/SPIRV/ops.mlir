@@ -607,6 +607,113 @@ spv.module "Logical" "GLSL450" {
 // -----
 
 //===----------------------------------------------------------------------===//
+// spv.LogicalAnd
+//===----------------------------------------------------------------------===//
+
+func @logicalBinary(%arg0 : i1, %arg1 : i1, %arg2 : i1)
+{
+  // CHECK: [[TMP:%.*]] = spv.LogicalAnd {{%.*}}, {{%.*}} : i1
+  %0 = spv.LogicalAnd %arg0, %arg1 : i1
+  // CHECK: {{%.*}} = spv.LogicalAnd [[TMP]], {{%.*}} : i1
+  %1 = spv.LogicalAnd %0, %arg2 : i1
+  return
+}
+
+func @logicalBinary2(%arg0 : vector<4xi1>, %arg1 : vector<4xi1>)
+{
+  // CHECK: {{%.*}} = spv.LogicalAnd {{%.*}}, {{%.*}} : vector<4xi1>
+  %0 = spv.LogicalAnd %arg0, %arg1 : vector<4xi1>
+  return
+}
+
+// -----
+
+func @logicalBinary(%arg0 : i1, %arg1 : i1)
+{
+  // expected-error @+2 {{expected ':'}}
+  %0 = spv.LogicalAnd %arg0, %arg1
+  return
+}
+
+// -----
+
+func @logicalBinary(%arg0 : i1, %arg1 : i1)
+{
+  // expected-error @+2 {{expected non-function type}}
+  %0 = spv.LogicalAnd %arg0, %arg1 :
+  return
+}
+
+// -----
+
+func @logicalBinary(%arg0 : i1, %arg1 : i1)
+{
+  // expected-error @+1 {{custom op 'spv.LogicalAnd' expected 2 operands}}
+  %0 = spv.LogicalAnd %arg0 : i1
+  return
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// spv.LogicalNot
+//===----------------------------------------------------------------------===//
+
+func @logicalUnary(%arg0 : i1, %arg1 : i1)
+{
+  // CHECK: [[TMP:%.*]] = spv.LogicalNot {{%.*}} : i1
+  %0 = spv.LogicalNot %arg0 : i1
+  // CHECK: {{%.*}} = spv.LogicalNot [[TMP]] : i1
+  %1 = spv.LogicalNot %0 : i1
+  return
+}
+
+func @logicalUnary2(%arg0 : vector<4xi1>)
+{
+  // CHECK: {{%.*}} = spv.LogicalNot {{%.*}} : vector<4xi1>
+  %0 = spv.LogicalNot %arg0 : vector<4xi1>
+  return
+}
+
+// -----
+
+func @logicalUnary(%arg0 : i1)
+{
+  // expected-error @+2 {{expected ':'}}
+  %0 = spv.LogicalNot %arg0
+  return
+}
+
+// -----
+
+func @logicalUnary(%arg0 : i1)
+{
+  // expected-error @+2 {{expected non-function type}}
+  %0 = spv.LogicalNot %arg0 :
+  return
+}
+
+// -----
+
+func @logicalUnary(%arg0 : i1)
+{
+  // expected-error @+1 {{expected SSA operand}}
+  %0 = spv.LogicalNot : i1
+  return
+}
+
+// -----
+
+func @logicalUnary(%arg0 : i32)
+{
+  // expected-error @+1 {{'spv.LogicalNot' op operand #0 must be 1-bit integer or vector of 1-bit integer values of length 2/3/4, but got 'i32'}}
+  %0 = spv.LogicalNot %arg0 : i32
+  return
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // spv.MemoryBarrier
 //===----------------------------------------------------------------------===//
 
