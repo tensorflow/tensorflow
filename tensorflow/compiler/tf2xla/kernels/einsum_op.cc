@@ -38,8 +38,12 @@ class EinsumOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaOp lhs = ctx->Input(0);
-    xla::XlaOp rhs = ctx->Input(1);
-    ctx->SetOutput(0, xla::Einsum(lhs, rhs, equation_));
+    if (equation_.find(",") == equation_.npos) {
+      ctx->SetOutput(0, xla::Einsum(lhs, equation_));
+    } else {
+      xla::XlaOp rhs = ctx->Input(1);
+      ctx->SetOutput(0, xla::Einsum(lhs, rhs, equation_));
+    }
   }
 
  private:

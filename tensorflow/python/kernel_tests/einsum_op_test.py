@@ -68,7 +68,6 @@ class EinsumOpTest(test.TestCase):
     self._check('aabcc->ac', (3, 3, 5, 4, 4))
     self._check('aabcd->ad', (3, 3, 5, 4, 4))
 
-  @test_util.disable_xla('b/131919749')
   def testUnaryEllipsis(self):
     # Unary cases with ellipsis.
     # Edge cases.
@@ -110,7 +109,6 @@ class EinsumOpTest(test.TestCase):
     self._check('ba,b->', (3, 2), (3,))
     self._check('ab,ab->', (3, 4), (3, 4))
 
-  @test_util.disable_xla('b/131919749')
   def testRepeatedIndices(self):
     # Repeated indices.
     self._check('ijj,k->ik', (2, 3, 3), (4,))
@@ -143,7 +141,6 @@ class EinsumOpTest(test.TestCase):
     self._check('...abc,...abcd->...d', (1, 1, 2, 3, 4), (5, 2, 3, 4, 6))
     self._check('ab...,b->ab...', (2, 3, 1, 1, 5), (3,))
 
-  @test_util.disable_xla('b/131919749')
   def testBroadcastingWithRepeatedIndices(self):
     # Broadcasting with repeated indices.
     self._check('ij,jk...k->i...', (3, 2), (2, 4, 1, 4))

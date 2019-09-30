@@ -168,6 +168,53 @@ XlaOp UpperTriangle(XlaOp x) { return Triangle(x, false); }
 
 XlaOp LowerTriangle(XlaOp x) { return Triangle(x, true); }
 
+namespace {
+std::vector<int64> EinsumDiagonalLabels(absl::Span<const int64> config) {
+  std::vector<int64> unique_labels;
+  for (auto label = config.begin(); label != config.end(); ++label) {
+    auto first_label = absl::c_find(config, *label);
+    if (first_label == label) {
+      unique_labels.push_back(*label);
+    }
+  }
+  if (unique_labels.size() == config.size()) {
+    unique_labels.clear();
+  }
+  return unique_labels;
+}
+}  // namespace
+
+xla::XlaOp EinsumDiagonal(XlaOp x, absl::Span<const int64> config) {
+  XlaBuilder* builder = x.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    if (EinsumDiagonalLabels(config).empty()) {
+      return x;
+    }
+    TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
+    Shape iota_shape = x_shape;
+    iota_shape.set_element_type(S32);
+    XlaOp mask = ConstantR0(builder, true);
+
+    absl::InlinedVector<int64, 8> reduce_dims;
+    for (auto label = config.begin(); label != config.end(); ++label) {
+      const int64 dim = label - config.begin();
+      auto first_label = absl::c_find(config, *label);
+      if (first_label == label) {
+        continue;
+      }
+      reduce_dims.push_back(dim);
+      const int64 first_dim = first_label - config.begin();
+      mask = And(mask, Eq(Iota(builder, iota_shape, first_dim),
+                          Iota(builder, iota_shape, dim)));
+    }
+    auto zero = ScalarLike(x, 0);
+    return Reduce(Select(mask, x, zero), zero,
+                  CreateScalarIdentityWithZeroComputation(
+                      x_shape.element_type(), builder),
+                  reduce_dims);
+  });
+}
+
 Status ValidateEinsumNumericDimensions(absl::Span<const int64> x_config,
                                        absl::Span<const int64> y_config,
                                        absl::Span<const int64> output_config) {
@@ -200,6 +247,7 @@ Status ValidateEinsumNumericDimensions(absl::Span<const int64> x_config,
   }
   return Status::OK();
 }
+
 namespace {
 // Helper method to remove dimensions from a shape and dot dimension numbers
 // used to implment implicit broadcasting.
@@ -232,6 +280,20 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
                   xla::PrecisionConfig::Precision precision) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    auto x_diagonal_labels = EinsumDiagonalLabels(x_config);
+    auto y_diagonal_labels = EinsumDiagonalLabels(y_config);
+    if (!x_diagonal_labels.empty() && !y_diagonal_labels.empty()) {
+      return Einsum(EinsumDiagonal(x, x_config), x_diagonal_labels,
+                    EinsumDiagonal(y, y_config), y_diagonal_labels,
+                    output_config, precision);
+    } else if (!x_diagonal_labels.empty()) {
+      return Einsum(EinsumDiagonal(x, x_config), x_diagonal_labels, y, y_config,
+                    output_config, precision);
+    } else if (!y_diagonal_labels.empty()) {
+      return Einsum(x, x_config, EinsumDiagonal(y, y_config), y_diagonal_labels,
+                    output_config, precision);
+    }
+
     TF_RETURN_IF_ERROR(
         ValidateEinsumNumericDimensions(x_config, y_config, output_config));
     TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
@@ -484,10 +546,38 @@ StatusOr<std::array<std::vector<int64>, 3>> ParseEinsumString(
   return einsum_config_numeric;
 }
 
+std::string NormalizeEinsumString(absl::string_view einsum_config) {
+  if (einsum_config.find("->") != einsum_config.npos) {
+    return "";
+  }
+  bool has_ellipsis = einsum_config.find("...") != einsum_config.npos;
+  std::map<char, int64> chars;
+  for (char c : einsum_config) {
+    if (absl::ascii_isalpha(c)) {
+      ++chars[c];
+    }
+  }
+  std::string new_config(einsum_config.begin(), einsum_config.end());
+  new_config.append("->");
+  if (has_ellipsis) {
+    new_config.append("...");
+  }
+  for (auto p : chars) {
+    if (p.second == 1) {
+      new_config.push_back(p.first);
+    }
+  }
+  return new_config;
+}
+
 XlaOp Einsum(XlaOp x, XlaOp y, absl::string_view einsum_config,
              PrecisionConfig::Precision precision) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    auto new_config = NormalizeEinsumString(einsum_config);
+    if (!new_config.empty()) {
+      return Einsum(x, y, new_config, precision);
+    }
     TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
     TF_ASSIGN_OR_RETURN(Shape y_shape, builder->GetShape(y));
     TF_ASSIGN_OR_RETURN(
@@ -496,6 +586,12 @@ XlaOp Einsum(XlaOp x, XlaOp y, absl::string_view einsum_config,
     return Einsum(x, einsum_config_numeric[0], y, einsum_config_numeric[1],
                   einsum_config_numeric[2], precision);
   });
+}
+
+XlaOp Einsum(XlaOp x, absl::string_view einsum_config,
+             PrecisionConfig::Precision precision) {
+  return Einsum(ScalarLike(x, 1), x, absl::StrCat(",", einsum_config),
+                precision);
 }
 
 XlaOp TransposeInMinorDims(XlaOp x) {
