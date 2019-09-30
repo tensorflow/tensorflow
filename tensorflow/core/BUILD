@@ -167,11 +167,13 @@ package_group(
 )
 
 # Export the BUILD file so automated tooling can check licenses
-exports_files(["BUILD"])
+exports_files([
+    "BUILD",
+    "framework/types.proto",
+    "ops/ops.pbtxt",
+])
 
 package_group(name = "experimental_access")
-
-exports_files(["ops/ops.pbtxt"])
 
 # -----------------------------------------------------------------------------
 # Public targets
@@ -312,10 +314,6 @@ closure_proto_library(
     visibility = ["//visibility:public"],
     deps = [":example_protos"],
 )
-
-exports_files([
-    "framework/types.proto",
-])
 
 tf_proto_library(
     name = "protos_test",
