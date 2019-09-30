@@ -138,34 +138,6 @@ std::string GetDataType(DataType type) {
 
 std::string GetDataType4(DataType type) { return GetDataType(type) + "4"; }
 
-std::string GetTensorDeclaration(TensorStorageType storage_type,
-                                 AccessType access, DataType data_type) {
-  switch (storage_type) {
-    case TensorStorageType::BUFFER:
-      return absl::StrCat("__global ", GetDataType4(data_type), "*");
-    case TensorStorageType::TEXTURE_2D:
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-      return GetImageModifier(access) + " image2d_t";
-    case TensorStorageType::TEXTURE_ARRAY:
-      return GetImageModifier(access) + " image2d_array_t";
-    case TensorStorageType::IMAGE_BUFFER:
-      if (access == AccessType::WRITE) {
-        return absl::StrCat("__global ", GetDataType4(data_type), "*");
-      } else {
-        return GetImageModifier(access) + " image1d_buffer_t";
-      }
-    case TensorStorageType::UNKNOWN:
-      return "";
-  }
-}
-
-std::string GetTensorDeclaration(TensorStorageType storage_type,
-                                 const std::string& tensor_name,
-                                 AccessType access, DataType data_type) {
-  return absl::StrCat(GetTensorDeclaration(storage_type, access, data_type),
-                      " ", tensor_name);
-}
-
 TensorCodeGenerator::TensorCodeGenerator(const std::string& name,
                                          const std::string& uniform_size_name,
                                          const TensorDescriptor& descriptor)
@@ -174,8 +146,26 @@ TensorCodeGenerator::TensorCodeGenerator(const std::string& name,
       descriptor_(descriptor) {}
 
 std::string TensorCodeGenerator::GetDeclaration(AccessType access_type) const {
-  return GetTensorDeclaration(descriptor_.storage_type, tensor_name_,
-                              access_type, descriptor_.data_type);
+  switch (descriptor_.storage_type) {
+    case TensorStorageType::BUFFER:
+      return absl::StrCat("__global ", GetDataType4(descriptor_.data_type),
+                          "* ", tensor_name_);
+    case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+      return GetImageModifier(access_type) + " image2d_t " + tensor_name_;
+    case TensorStorageType::TEXTURE_ARRAY:
+      return GetImageModifier(access_type) + " image2d_array_t " + tensor_name_;
+    case TensorStorageType::IMAGE_BUFFER:
+      if (access_type == AccessType::WRITE) {
+        return absl::StrCat("__global ", GetDataType4(descriptor_.data_type),
+                            "* ", tensor_name_);
+      } else {
+        return GetImageModifier(access_type) + " image1d_buffer_t " +
+               tensor_name_;
+      }
+    case TensorStorageType::UNKNOWN:
+      return "error";
+  }
 }
 
 std::string TensorCodeGenerator::Read3D(const std::string& x,

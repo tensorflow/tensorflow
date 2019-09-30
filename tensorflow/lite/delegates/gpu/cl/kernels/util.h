@@ -39,13 +39,6 @@ std::string GetCommonDefines(CalculationsPrecision precision);
 std::string GetDataType(DataType type);
 std::string GetDataType4(DataType type);
 
-std::string GetTensorDeclaration(TensorStorageType storage_type,
-                                 AccessType access, DataType data_type);
-
-std::string GetTensorDeclaration(TensorStorageType storage_type,
-                                 const std::string& tensor_name,
-                                 AccessType access, DataType data_type);
-
 enum class TextureAddressMode {
   DONT_CARE,  // translated to CLK_ADDRESS_NONE
   ZERO,       // translated to CLK_ADDRESS_CLAMP

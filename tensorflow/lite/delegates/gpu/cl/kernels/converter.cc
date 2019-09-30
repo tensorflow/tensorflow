@@ -137,9 +137,8 @@ class FromTensorConverter : public OpenClConverterImpl {
 const sampler_t smp_zero = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP | CLK_FILTER_NEAREST;
 
 __kernel void from_tensor()" +
-        GetTensorDeclaration(src_tensor_type, AccessType::READ,
-                             input_def.object_def.data_type) +
-        " src, " + params_kernel.first + R"(, int4 size) {
+        src_tensor.GetDeclaration(AccessType::READ) + ", " +
+        params_kernel.first + R"(, int4 size) {
   int x = get_global_id(0);
   int y = get_global_id(1);
   int d = get_global_id(2);
@@ -240,9 +239,8 @@ class ToTensorConverter : public OpenClConverterImpl {
 
 __kernel void to_tensor()" +
         params_kernel.first + ", " +
-        GetTensorDeclaration(dst_tensor_type, AccessType::WRITE,
-                             output_def.object_def.data_type) +
-        R"( dst, int4 size) {
+        dst_tensor.GetDeclaration(AccessType::WRITE) +
+        R"(, int4 size) {
   int x = get_global_id(0);
   int y = get_global_id(1);
   int d = get_global_id(2);
