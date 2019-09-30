@@ -82,6 +82,11 @@ func @array_type_zero_stide(!spv.array<4xi32 [0]>) -> ()
 
 // -----
 
+// expected-error @+1 {{expected array length greater than 0}}
+func @array_type_zero_length(!spv.array<0xf32>) -> ()
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // PointerType
 //===----------------------------------------------------------------------===//
