@@ -36,7 +36,7 @@ void TestMemRefStrideCalculation::runOnFunction() {
   getFunction().walk([&](AllocOp allocOp) {
     auto memrefType = allocOp.getResult()->getType().cast<MemRefType>();
     SmallVector<int64_t, 4> strideVector;
-    if (failed(memrefType.getStrides(strideVector))) {
+    if (failed(memrefType.getStridesAndOffset(strideVector))) {
       llvm::outs() << "MemRefType " << memrefType << " cannot be converted to "
                    << "strided form\n";
       return;
