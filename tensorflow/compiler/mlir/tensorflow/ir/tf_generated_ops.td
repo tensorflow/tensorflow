@@ -42,11 +42,11 @@ an output element, this operation computes \\(y = |x|\\).
   }];
 
   let arguments = (ins
-    TF_FpOrI32OrI64Tensor:$x
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8]>:$x
   );
 
   let results = (outs
-    TF_FpOrI32OrI64Tensor:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8]>:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -263,6 +263,42 @@ If `condition` evaluates to false, print the list of tensors in `data`.
   let hasCanonicalizer = 1;
 }
 
+def TF_AssignAddVariableOpOp : TF_Op<"AssignAddVariableOp", []> {
+  let summary = "Adds a value to the current value of a variable.";
+
+  let description = [{
+Any ReadVariableOp with a control dependency on this op is guaranteed to
+see the incremented value or a subsequent newer one.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$resource,
+    TF_Tensor:$value
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_AssignVariableOpOp : TF_Op<"AssignVariableOp", []> {
+  let summary = "Assigns a new value to a variable.";
+
+  let description = [{
+Any ReadVariableOp with a control dependency on this op is guaranteed to return
+this value or a subsequent newer value of the variable.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$resource,
+    TF_Tensor:$value
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
+}
+
 def TF_AvgPoolOp : TF_Op<"AvgPool", [NoSideEffect]> {
   let summary = "Performs average pooling on the input.";
 
@@ -449,12 +485,11 @@ InvalidArgumentError: Cannot bitcast from 1 to 18 [Op:Bitcast]
 >>> equality_cast = tf.cast(a, tf.complex128)
 >>> print(equality_cast)
 tf.Tensor([1.+0.j 2.+0.j 3.+0.j], shape=(3,), dtype=complex128)
-```
 
 Example 2:
 
 >>> tf.bitcast(tf.constant(0xffffffff, dtype=tf.uint32), tf.uint8)
-<tf.Tensor: ... shape=(4,), dtype=uint8, numpy=array([255, 255, 255, 255], dtype=uint8)>
+<tf.Tensor: shape=(4,), dtype=uint8, numpy=array([255, 255, 255, 255], dtype=uint8)>
 
 Example 3:
 
@@ -1611,6 +1646,18 @@ def TF_GreaterOp : TF_Op<"Greater", [Broadcastable, NoSideEffect]>,
   let description = [{
 *NOTE*: `Greater` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+Example:
+
+```python
+x = tf.constant([5, 4, 6])
+y = tf.constant([5, 2, 5])
+tf.math.greater(x, y) ==> [False, True, True]
+
+x = tf.constant([5, 4, 6])
+y = tf.constant([5])
+tf.math.greater(x, y) ==> [False, False, True]
+```
   }];
 
   let arguments = (ins
@@ -1632,6 +1679,18 @@ def TF_GreaterEqualOp : TF_Op<"GreaterEqual", [Broadcastable, NoSideEffect]>,
   let description = [{
 *NOTE*: `GreaterEqual` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+Example:
+
+```python
+x = tf.constant([5, 4, 6, 7])
+y = tf.constant([5, 2, 5, 10])
+tf.math.greater_equal(x, y) ==> [True, True, True, False]
+
+x = tf.constant([5, 4, 6, 7])
+y = tf.constant([5])
+tf.math.greater_equal(x, y) ==> [True, False, True, True]
+```
   }];
 
   let arguments = (ins
@@ -1801,6 +1860,18 @@ def TF_LessOp : TF_Op<"Less", [Broadcastable, NoSideEffect]>,
   let description = [{
 *NOTE*: `Less` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+Example:
+
+```python
+x = tf.constant([5, 4, 6])
+y = tf.constant([5])
+tf.math.less(x, y) ==> [False, True, False]
+
+x = tf.constant([5, 4, 6])
+y = tf.constant([5, 6, 7])
+tf.math.less(x, y) ==> [False, True, True]
+```
   }];
 
   let arguments = (ins
@@ -1822,6 +1893,18 @@ def TF_LessEqualOp : TF_Op<"LessEqual", [Broadcastable, NoSideEffect]>,
   let description = [{
 *NOTE*: `LessEqual` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+Example:
+
+```python
+x = tf.constant([5, 4, 6])
+y = tf.constant([5])
+tf.math.less_equal(x, y) ==> [True, True, False]
+
+x = tf.constant([5, 4, 6])
+y = tf.constant([5, 6, 6])
+tf.math.less_equal(x, y) ==> [True, True, True]
+```
   }];
 
   let arguments = (ins
@@ -1841,6 +1924,13 @@ def TF_LogOp : TF_Op<"Log", [NoSideEffect, SameOperandsAndResultType]> {
 
   let description = [{
 I.e., \\(y = \log_e x\\).
+
+Example:
+
+```python
+x = tf.constant([0, 0.5, 1, 5])
+tf.math.log(x) ==> [-inf, -0.6931472,  0. ,  1.609438]
+```
   }];
 
   let arguments = (ins
@@ -2192,7 +2282,7 @@ Example usage:
 import tensorflow as tf
 from tensorflow.compiler.mlir.tensorflow.gen_mlir_passthrough_op import mlir_passthrough_op
 
-mlir_module = '''
+mlir_module = '''python
 func @main(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10x10xf32> {
    %add = "magic.op"(%arg0, %arg1) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10x10xf32>
    return %ret : tensor<10x10xf32>
@@ -2938,6 +3028,29 @@ of the tensor. Rank is also known as "order", "degree", or "ndims."
   ];
 }
 
+def TF_ReadVariableOpOp : TF_Op<"ReadVariableOp", []> {
+  let summary = "Reads the value of a variable.";
+
+  let description = [{
+The tensor returned by this operation is immutable.
+
+The value returned by this operation is guaranteed to be influenced by all the
+writes on which this operation depends directly or indirectly, and to not be
+influenced by any of the writes which depend directly or indirectly on this
+operation.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$resource
+  );
+
+  let results = (outs
+    TF_Tensor:$value
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_RealDivOp : TF_Op<"RealDiv", [Broadcastable, NoSideEffect]>,
                    WithBroadcastableBinOpBuilder {
   let summary = "Returns x / y element-wise for real types.";
@@ -2987,6 +3100,10 @@ def TF_ReluOp : TF_Op<"Relu", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes rectified linear: `max(features, 0)`.";
 
   let description = [{
+See: https://en.wikipedia.org/wiki/Rectifier_(neural_networks)
+Example usage:
+>>> tf.nn.relu([-2., 0., -0., 3.]).numpy()
+array([ 0.,  0., -0.,  3.], dtype=float32)
   }];
 
   let arguments = (ins
@@ -4258,6 +4375,10 @@ num_elements: optional. If not -1, the number of elements in the list.
   );
 
   TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_TileOp : TF_Op<"Tile", [NoSideEffect]> {
@@ -4269,6 +4390,27 @@ The output tensor's i'th dimension has `input.dims(i) * multiples[i]` elements,
 and the values of `input` are replicated `multiples[i]` times along the 'i'th
 dimension. For example, tiling `[a b c d]` by `[2]` produces
 `[a b c d a b c d]`.
+
+>>> a = tf.constant([[1,2,3],[4,5,6]], tf.int32)
+>>> b = tf.constant([1,2], tf.int32)
+>>> tf.tile(a, b)
+<tf.Tensor: shape=(2, 6), dtype=int32, numpy=
+array([[1, 2, 3, 1, 2, 3],
+       [4, 5, 6, 4, 5, 6]], dtype=int32)>
+>>> c = tf.constant([2,1], tf.int32)
+>>> tf.tile(a, c)
+<tf.Tensor: shape=(4, 3), dtype=int32, numpy=
+array([[1, 2, 3],
+       [4, 5, 6],
+       [1, 2, 3],
+       [4, 5, 6]], dtype=int32)>
+>>> d = tf.constant([2,2], tf.int32)
+>>> tf.tile(a, d)
+<tf.Tensor: shape=(4, 6), dtype=int32, numpy=
+array([[1, 2, 3, 1, 2, 3],
+       [4, 5, 6, 4, 5, 6],
+       [1, 2, 3, 1, 2, 3],
+       [4, 5, 6, 4, 5, 6]], dtype=int32)>
   }];
 
   let arguments = (ins

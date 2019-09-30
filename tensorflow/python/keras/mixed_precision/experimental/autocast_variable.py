@@ -91,11 +91,7 @@ class AutoCastVariable(variables.Variable):
     val = self._variable.value()
     if not self._should_cast():
       return val
-    # We colocate_with(None) to ignore the existing device constraints, so that
-    # the cast is always done on the variable's device
-    with ops.colocate_with(None, ignore_existing=True):
-      with ops.device(val.device):
-        return math_ops.cast(val, self.dtype)
+    return math_ops.cast(val, self.dtype)
 
   def read_value(self):
     val = self._variable.read_value()
@@ -128,9 +124,7 @@ class AutoCastVariable(variables.Variable):
     val = ops.internal_convert_to_tensor(self._variable,
                                          self._variable.dtype, name,
                                          as_ref=False)
-    with ops.colocate_with(None, ignore_existing=True):
-      with ops.device(val.device):
-        return math_ops.cast(val, self.dtype)
+    return math_ops.cast(val, self.dtype)
 
   def _should_act_as_resource_variable(self):
     """Pass resource_variable_ops.is_resource_variable check."""
@@ -329,21 +323,32 @@ ops.register_tensor_conversion_function(
 ops.register_dense_tensor_like_type(AutoCastVariable)
 
 
-# We have DistributedVariable subclass to pass
-# isinstance(..., DistributedVariable) checks when wrapping a
-# DistributedVariable.
-# TODO(reedwm): We should not wrap DistributedVariable, but instead have
-# DistributedVariable wrap AutoCastVariable. Subclassing DistributedVariable is
-# messy, because we do not fully implement the interface of DistributedVariable.
-class AutoCastDistributedVariable(AutoCastVariable,
-                                  distribute_values.DistributedVariable):
-  """Version of AutoCastVariable that subclasses DistributedVariable."""
+def create_autocast_variable(variable):
+  """Creates an AutoCastVariable that wraps another variable.
 
-  def __init__(self, variable):
-    if not isinstance(variable, distribute_values.DistributedValues):
-      raise ValueError('variable must be of type DistributedValues, '
-                       'but got: %s' % variable)
-    super(AutoCastDistributedVariable, self).__init__(variable)
+  This typically just returns `AutoCastVariable(variable)`. But, if the variable
+  is a DistributedVariable or one of its subclasses, we instead dynamically
+  create a class that subclasses from both AutoCastVariable and
+  variable.__class__. This is so the returned variable will still pass
+  `isinstance(variable, variable.__class__)`, which is required for
+  DistributedVariables and its subclasses to work properly.
 
-  def __repr__(self):
-    return distribute_values.DistributedVariable.__repr__(self)
+  Args:
+    variable: A floating-point resource variable to wrap.
+
+  Returns:
+    An AutoCastVariable that wraps the variable.
+  """
+  if not isinstance(variable, distribute_values.DistributedVariable):
+    return AutoCastVariable(variable)
+
+  class AutoCastDistributedVariable(AutoCastVariable, variable.__class__):
+
+    def __repr__(self):
+      # pylint: disable=missing-format-attribute
+      return ('<AutoCastDistributedVariable dtype={v.dtype.name} '
+              'true_dtype={v.true_dtype.name} inner_variable={v._variable}>'
+             ).format(v=self)
+      # pylint: enable=missing-format-attribute
+
+  return AutoCastDistributedVariable(variable)

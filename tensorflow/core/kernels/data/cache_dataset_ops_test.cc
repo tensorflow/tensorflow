@@ -36,21 +36,14 @@ class CacheDatasetParams : public DatasetParams {
         input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
   }
 
-  Status GetInputs(const std::vector<Tensor*>& input_datasets,
-                   std::vector<std::unique_ptr<Tensor>>* created_tensors,
-                   gtl::InlinedVector<TensorValue, 4>* inputs) const override {
-    inputs->clear();
-    TF_RETURN_IF_ERROR(AddDatasetInputs(input_datasets, 1, inputs));
+  std::vector<Tensor> GetInputTensors() const override {
     Tensor filename_tensor =
         CreateTensor<tstring>(TensorShape({}), {filename_});
-    AddTensorInputs({filename_tensor}, created_tensors, inputs);
-    return Status::OK();
+    return {filename_tensor};
   }
 
-  Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override {
-    *input_placeholder = {CacheDatasetOp::kInputDataset,
-                          CacheDatasetOp::kFileName};
+  Status GetInputNames(std::vector<string>* input_names) const override {
+    *input_names = {CacheDatasetOp::kInputDataset, CacheDatasetOp::kFileName};
     return Status::OK();
   }
 

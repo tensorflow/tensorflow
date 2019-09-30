@@ -37,9 +37,9 @@ class SPV_GLSLOp<string mnemonic, int opcode, list<OpTrait> traits = []> :
   SPV_ExtInstOp<mnemonic, "GLSL", "GLSL.std.450", opcode, traits>;
 
 // Base class for GLSL unary ops.
-class SPV_GLSLUnaryOp<string mnemonic, Type resultType, Type operandType,
-                      int opcode, list<OpTrait> traits = []> :
-  SPV_GLSLOp<mnemonic, opcode, traits> {
+class SPV_GLSLUnaryOp<string mnemonic, int opcode, Type resultType,
+                      Type operandType, list<OpTrait> traits = []> :
+  SPV_GLSLOp<mnemonic, opcode, !listconcat([NoSideEffect], traits)> {
 
   let arguments = (ins
     SPV_ScalarOrVectorOf<operandType>:$operand
@@ -49,9 +49,9 @@ class SPV_GLSLUnaryOp<string mnemonic, Type resultType, Type operandType,
     SPV_ScalarOrVectorOf<resultType>:$result
   );
 
-  let parser = [{ return parseGLSLUnaryOp(parser, result); }];
+  let parser = [{ return parseUnaryOp(parser, result); }];
 
-  let printer = [{ return printGLSLUnaryOp(getOperation(), p); }];
+  let printer = [{ return printUnaryOp(getOperation(), p); }];
 
   let verifier = [{ return success(); }];
 }
@@ -60,7 +60,34 @@ class SPV_GLSLUnaryOp<string mnemonic, Type resultType, Type operandType,
 // the operand type.
 class SPV_GLSLUnaryArithmaticOp<string mnemonic, int opcode, Type type,
                                 list<OpTrait> traits = []> :
-  SPV_GLSLUnaryOp<mnemonic, type, type, opcode, traits>;
+  SPV_GLSLUnaryOp<mnemonic, opcode, type, type, traits>;
+
+// Base class for GLSL binary ops.
+class SPV_GLSLBinaryOp<string mnemonic, int opcode, Type resultType,
+                        Type operandType, list<OpTrait> traits = []> :
+  SPV_GLSLOp<mnemonic, opcode, !listconcat([NoSideEffect], traits)> {
+
+  let arguments = (ins
+    SPV_ScalarOrVectorOf<operandType>:$lhs,
+    SPV_ScalarOrVectorOf<operandType>:$rhs
+  );
+
+  let results = (outs
+    SPV_ScalarOrVectorOf<resultType>:$result
+  );
+
+  let parser = [{ return impl::parseBinaryOp(parser, result); }];
+
+  let printer = [{ return impl::printBinaryOp(getOperation(), p); }];
+
+  let verifier = [{ return success(); }];
+}
+
+// Base class for GLSL Binary arithmatic ops where operand types and
+// return type matches.
+class SPV_GLSLBinaryArithmaticOp<string mnemonic, int opcode, Type type,
+                                 list<OpTrait> traits = []> :
+  SPV_GLSLBinaryOp<mnemonic, opcode, type, type, traits>;
 
 // -----
 
@@ -82,16 +109,47 @@ def SPV_GLSLExpOp : SPV_GLSLUnaryArithmaticOp<"Exp", 27, FloatOfWidths<[16, 32]>
     restricted-float-scalar-vector-type ::=
       restricted-float-scalar-type |
       `vector<` integer-literal `x` restricted-float-scalar-type `>`
-    exp-op ::= ssa-id `=` `spv.glsl.Exp` ssa-use `:`
+    exp-op ::= ssa-id `=` `spv.GLSL.Exp` ssa-use `:`
                restricted-float-scalar-vector-type
     ```
     For example:
 
     ```
-    %2 = spv.glsl.Exp %0 : f32
-    %3 = spv.glsl.Exp %1 : vector<3xf16>
+    %2 = spv.GLSL.Exp %0 : f32
+    %3 = spv.GLSL.Exp %1 : vector<3xf16>
     ```
   }];
 }
+
+// -----
+
+def SPV_GLSLFMaxOp : SPV_GLSLBinaryArithmaticOp<"FMax", 40, SPV_Float> {
+  let summary = "Return maximum of two floating-point operands";
+
+  let description = [{
+    Result is y if x < y; otherwise result is x. Which operand is the
+    result is undefined if one of the operands is a NaN.
+
+    The operands must all be a scalar or vector whose component type
+    is floating-point.
+
+    Result Type and the type of all operands must be the same
+    type. Results are computed per component.
+
+    ### Custom assembly format
+    ``` {.ebnf}
+    fmax-op ::= ssa-id `=` `spv.GLSL.FMax` ssa-use `:`
+                restricted-float-scalar-vector-type
+    ```
+    For example:
+
+    ```
+    %2 = spv.GLSL.FMax %0, %1 : f32
+    %3 = spv.GLSL.FMax %0, %1 : vector<3xf16>
+    ```
+  }];
+}
+
+// -----
 
 #endif // SPIRV_GLSL_OPS

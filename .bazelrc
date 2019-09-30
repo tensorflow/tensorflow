@@ -170,6 +170,14 @@ build:rbe --strategy=TestRunner=remote
 build:rbe --tls_enabled
 test:rbe --test_env=USER=anon
 
+# Options to build TensorFlow 1.x or 2.x.
+build:v1 --define=tf_api_version=1
+build:v2 --define=tf_api_version=2
+test:v1 --action_env=TF2_BEHAVIOR=0
+test:v2 --action_env=TF2_BEHAVIOR=1
+build --config=v1
+test --config=v1
+
 # Default options should come above this line
 
 # Options from ./configure

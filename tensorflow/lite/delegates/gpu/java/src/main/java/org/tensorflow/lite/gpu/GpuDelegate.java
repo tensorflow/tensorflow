@@ -65,8 +65,8 @@ public class GpuDelegate implements Delegate, Closeable {
     /**
      * Sets the inference preference for precision/compilation/runtime tradeoffs.
      *
-     * @param preference One of `PREFERENCE_FAST_SINGLE_ANSWER` (default),
-     *     `PREFERENCE_SUSTAINED_SPEED`.
+     * @param preference One of `INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER` (default),
+     *     `INFERENCE_PREFERENCE_SUSTAINED_SPEED`.
      */
     public Options setInferencePreference(int preference) {
       this.inferencePreference = preference;

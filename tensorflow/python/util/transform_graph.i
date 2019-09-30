@@ -20,7 +20,6 @@ limitations under the License.
 %{
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/stat_summarizer.h"
-#include "tensorflow/python/lib/core/py_func.h"
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"

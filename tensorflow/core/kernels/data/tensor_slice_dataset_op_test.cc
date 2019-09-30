@@ -99,10 +99,9 @@ TEST_P(ParameterizedGetNextTest, GetNext) {
   auto test_case = GetParam();
   TF_ASSERT_OK(Initialize(test_case.dataset_params));
 
-  std::vector<string> input_placeholder;
-  TF_ASSERT_OK(
-      test_case.dataset_params.GetInputPlaceholder(&input_placeholder));
-  size_t num_tensors_per_slice = input_placeholder.size();
+  std::vector<string> input_names;
+  TF_ASSERT_OK(test_case.dataset_params.GetInputNames(&input_names));
+  size_t num_tensors_per_slice = input_names.size();
   bool end_of_sequence = false;
   std::vector<Tensor> out_tensors;
   int cur_slice = 0;

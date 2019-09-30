@@ -77,7 +77,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -97,7 +96,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -117,7 +115,11 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
+<<<<<<< HEAD
     xla_enable_strict_auto_jit = True,
+=======
+    tags = ["no_rocm"],
+>>>>>>> google-upstream/master
 )
 
 cuda_py_test(
@@ -137,7 +139,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -157,7 +158,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -177,7 +177,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -197,7 +196,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -221,11 +219,13 @@ cuda_py_test(
     ],
     shard_count = 8,
     tags = [
+<<<<<<< HEAD
         "no_rocm",
         "no_cuda",
+=======
+>>>>>>> google-upstream/master
         "no_windows",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -240,7 +240,6 @@ cuda_py_test(
         "//tensorflow/python/keras",
     ],
     shard_count = 4,
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -262,5 +261,4 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 2,
-    xla_enable_strict_auto_jit = True,
 )

@@ -31,27 +31,22 @@ class SamplingDatasetParams : public DatasetParams {
                         string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
-        rate_(CreateTensor<float>(TensorShape({}), {rate})) {
+        rate_(rate) {
     input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
     iterator_prefix_ = name_utils::IteratorPrefix(
         input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
   }
 
-  Status GetInputs(const std::vector<Tensor*>& input_datasets,
-                   std::vector<std::unique_ptr<Tensor>>* created_tensors,
-                   gtl::InlinedVector<TensorValue, 4>* inputs) const override {
-    inputs->clear();
-    TF_RETURN_IF_ERROR(AddDatasetInputs(input_datasets, 1, inputs));
-    AddTensorInputs({rate_, seed_tensor_, seed2_tensor_}, created_tensors,
-                    inputs);
-    return Status::OK();
+  std::vector<Tensor> GetInputTensors() const override {
+    Tensor rate = CreateTensor<float>(TensorShape({}), {rate_});
+    Tensor seed_tensor = CreateTensor<int64>(TensorShape({}), {seed_tensor_});
+    Tensor seed2_tensor = CreateTensor<int64>(TensorShape({}), {seed2_tensor_});
+    return {rate, seed_tensor, seed2_tensor};
   }
 
-  Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override {
-    *input_placeholder = {SamplingDatasetOp::kInputDataset,
-                          SamplingDatasetOp::kRate, SamplingDatasetOp::kSeed,
-                          SamplingDatasetOp::kSeed2};
+  Status GetInputNames(std::vector<string>* input_names) const override {
+    *input_names = {SamplingDatasetOp::kInputDataset, SamplingDatasetOp::kRate,
+                    SamplingDatasetOp::kSeed, SamplingDatasetOp::kSeed2};
 
     return Status::OK();
   }
@@ -66,10 +61,10 @@ class SamplingDatasetParams : public DatasetParams {
 
  private:
   // Target sample rate, range (0,1], wrapped in a scalar Tensor
-  Tensor rate_;
+  float rate_;
   // Boxed versions of kRandomSeed and kRandomSeed2.
-  Tensor seed_tensor_ = CreateTensor<int64>(TensorShape({}), {kRandomSeed});
-  Tensor seed2_tensor_ = CreateTensor<int64>(TensorShape({}), {kRandomSeed2});
+  int64 seed_tensor_ = kRandomSeed;
+  int64 seed2_tensor_ = kRandomSeed2;
 };
 
 class SamplingDatasetOpTest : public DatasetOpsTestBaseV2 {};

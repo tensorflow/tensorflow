@@ -343,6 +343,7 @@ tf_xla_py_test(
     name = "concat_ops_test",
     size = "medium",
     srcs = ["concat_ops_test.py"],
+    tags = ["many_xla_args"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -396,6 +397,7 @@ tf_xla_py_test(
     srcs = ["depthwise_conv_op_test.py"],
     shard_count = 5,
     tags = [
+        "no_rocm",
         "noasan",
         "nomsan",
         "notsan",
@@ -762,10 +764,9 @@ tf_xla_py_test(
     name = "random_ops_test",
     size = "small",
     srcs = ["random_ops_test.py"],
-    shard_count = 5,
+    shard_count = 10,
     tags = [
         "notap",  # TODO(b/141057424): flaky on TPU
-        "notsan",  # b/140243598
     ],
     deps = [
         ":xla_test",

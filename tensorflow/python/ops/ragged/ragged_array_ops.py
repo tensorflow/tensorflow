@@ -326,7 +326,8 @@ def _tile_ragged_splits(rt_input, multiples, const_multiples=None):
 
   >>> rt = tf.ragged.constant([[1, 2], [3]])
   >>> _tile_ragged_splits(rt, [3, 2])
-  [<tf.Tensor: ..., numpy=array([ 0,  4,  6, 10, 12, 16, 18])>]
+  [<tf.Tensor: shape=(7,), dtype=int64,
+  numpy=array([ 0,  4,  6, 10, 12, 16, 18])>]
   """
   ragged_rank = rt_input.ragged_rank
   nested_splits = rt_input.nested_row_splits

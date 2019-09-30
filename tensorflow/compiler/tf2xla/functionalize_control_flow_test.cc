@@ -130,14 +130,14 @@ TEST(FunctionalizeControlFlow, Conditional) {
     // then body.
     {
       Scope scope = Scope::NewRootScope().ExitOnError();
-      auto arg_0 = ops::_Arg(scope.WithOpName("_arg0"), DT_BOOL, 0);
-      auto arg_1 = ops::_Arg(scope.WithOpName("_arg1"), DT_INT32, 1);
-      auto arg_2 = ops::_Arg(scope.WithOpName("_arg2"), DT_INT32, 2);
+      auto arg_0 = ops::_Arg(scope.WithOpName("arg0"), DT_BOOL, 0);
+      auto arg_1 = ops::_Arg(scope.WithOpName("arg1"), DT_INT32, 1);
+      auto arg_2 = ops::_Arg(scope.WithOpName("arg2"), DT_INT32, 2);
       auto identity = ops::Identity(scope.WithOpName("cond/Identity"), arg_0);
       auto cond = ops::Const(
           scope.WithOpName("cond").WithControlDependencies(identity), 17);
       auto mul = ops::Mul(scope.WithOpName("cond/Mul"), arg_1, cond);
-      auto retval0 = ops::_Retval(scope.WithOpName("_retval0_RetVal"), mul, 0);
+      auto retval0 = ops::_Retval(scope.WithOpName("retval0_RetVal"), mul, 0);
 
       GraphDef expected;
       TF_EXPECT_OK(scope.ToGraphDef(&expected));
@@ -155,14 +155,14 @@ TEST(FunctionalizeControlFlow, Conditional) {
     // else body.
     {
       Scope scope = Scope::NewRootScope().ExitOnError();
-      auto arg_0 = ops::_Arg(scope.WithOpName("_arg0"), DT_BOOL, 0);
-      auto arg_1 = ops::_Arg(scope.WithOpName("_arg1"), DT_INT32, 1);
-      auto arg_2 = ops::_Arg(scope.WithOpName("_arg2"), DT_INT32, 2);
+      auto arg_0 = ops::_Arg(scope.WithOpName("arg0"), DT_BOOL, 0);
+      auto arg_1 = ops::_Arg(scope.WithOpName("arg1"), DT_INT32, 1);
+      auto arg_2 = ops::_Arg(scope.WithOpName("arg2"), DT_INT32, 2);
       auto identity = ops::Identity(scope.WithOpName("cond/Identity_1"), arg_0);
       auto cond_1 = ops::Const(
           scope.WithOpName("cond_1").WithControlDependencies(identity), 23);
       auto add = ops::Add(scope.WithOpName("cond/false/add"), arg_2, cond_1);
-      auto retval0 = ops::_Retval(scope.WithOpName("_retval0_RetVal"), add, 0);
+      auto retval0 = ops::_Retval(scope.WithOpName("retval0_RetVal"), add, 0);
 
       GraphDef expected;
       TF_EXPECT_OK(scope.ToGraphDef(&expected));
@@ -277,11 +277,11 @@ TEST(FunctionalizeControlFlow, OneLoopVar) {
     // Condition graph
     {
       Scope scope = Scope::NewRootScope().ExitOnError();
-      auto arg = ops::_Arg(scope.WithOpName("_arg0"), DT_INT32, 0);
+      auto arg = ops::_Arg(scope.WithOpName("arg0"), DT_INT32, 0);
       auto ten = ops::Const<int32>(
           scope.WithOpName("while/Less/y").WithControlDependencies(arg), 10);
       auto less = ops::Less(scope.WithOpName("while/Less"), arg, ten);
-      auto retval = ops::_Retval(scope.WithOpName("_retval0_RetVal"), less, 0);
+      auto retval = ops::_Retval(scope.WithOpName("retval0_RetVal"), less, 0);
 
       GraphDef expected;
       TF_EXPECT_OK(scope.ToGraphDef(&expected));
@@ -298,12 +298,12 @@ TEST(FunctionalizeControlFlow, OneLoopVar) {
     // Body graph.
     {
       Scope scope = Scope::NewRootScope().ExitOnError();
-      auto arg = ops::_Arg(scope.WithOpName("_arg0"), DT_INT32, 0);
+      auto arg = ops::_Arg(scope.WithOpName("arg0"), DT_INT32, 0);
       auto identity = ops::Identity(scope.WithOpName("while/Identity"), arg);
       auto one = ops::Const<int32>(
           scope.WithOpName("while/add/y").WithControlDependencies(identity), 1);
       auto add = ops::Add(scope.WithOpName("while/add"), identity, one);
-      auto retval = ops::_Retval(scope.WithOpName("_retval0_RetVal"), add, 0);
+      auto retval = ops::_Retval(scope.WithOpName("retval0_RetVal"), add, 0);
 
       GraphDef expected;
       TF_EXPECT_OK(scope.ToGraphDef(&expected));
@@ -426,12 +426,12 @@ TEST(FunctionalizeControlFlow, NoinlineLoopBody) {
     // Body graph.
     {
       Scope scope = Scope::NewRootScope().ExitOnError();
-      auto arg = ops::_Arg(scope.WithOpName("_arg0"), DT_INT32, 0);
+      auto arg = ops::_Arg(scope.WithOpName("arg0"), DT_INT32, 0);
       TF_ASSERT_OK(
           AddNoinlineFunctionToGraph(noinline_node_name, scope.graph()));
       auto identity = ops::Identity(scope.WithOpName("while/Identity"), arg);
       NodeDef retval;
-      retval.set_name("_retval0_RetVal");
+      retval.set_name("retval0_RetVal");
       retval.set_op(FunctionLibraryDefinition::kRetOp);
       *retval.add_input() = noinline_node_name;
       (*retval.mutable_attr())["T"].set_type(DT_INT32);
@@ -544,11 +544,11 @@ TEST(FunctionalizeControlFlow, OneLoopVarWithoutExit) {
     // Condition graph
     {
       Scope scope = Scope::NewRootScope().ExitOnError();
-      auto arg = ops::_Arg(scope.WithOpName("_arg0"), DT_INT32, 0);
+      auto arg = ops::_Arg(scope.WithOpName("arg0"), DT_INT32, 0);
       auto ten = ops::Const<int32>(
           scope.WithOpName("while/Less/y").WithControlDependencies(arg), 10);
       auto less = ops::Less(scope.WithOpName("while/Less"), arg, ten);
-      auto retval = ops::_Retval(scope.WithOpName("_retval0_RetVal"), less, 0);
+      auto retval = ops::_Retval(scope.WithOpName("retval0_RetVal"), less, 0);
 
       GraphDef expected;
       TF_EXPECT_OK(scope.ToGraphDef(&expected));
@@ -565,12 +565,12 @@ TEST(FunctionalizeControlFlow, OneLoopVarWithoutExit) {
     // Body graph.
     {
       Scope scope = Scope::NewRootScope().ExitOnError();
-      auto arg = ops::_Arg(scope.WithOpName("_arg0"), DT_INT32, 0);
+      auto arg = ops::_Arg(scope.WithOpName("arg0"), DT_INT32, 0);
       auto identity = ops::Identity(scope.WithOpName("while/Identity"), arg);
       auto one = ops::Const<int32>(
           scope.WithOpName("while/add/y").WithControlDependencies(identity), 1);
       auto add = ops::Add(scope.WithOpName("while/add"), identity, one);
-      auto retval = ops::_Retval(scope.WithOpName("_retval0_RetVal"), add, 0);
+      auto retval = ops::_Retval(scope.WithOpName("retval0_RetVal"), add, 0);
 
       GraphDef expected;
       TF_EXPECT_OK(scope.ToGraphDef(&expected));
@@ -695,8 +695,8 @@ TEST(FunctionalizeControlFlow, TwoLoopVars) {
     // Condition graph.
     {
       Scope scope = Scope::NewRootScope().ExitOnError();
-      auto arg0 = ops::_Arg(scope.WithOpName("_arg0"), DT_INT32, 0);
-      auto arg1 = ops::_Arg(scope.WithOpName("_arg1"), DT_INT32, 1);
+      auto arg0 = ops::_Arg(scope.WithOpName("arg0"), DT_INT32, 0);
+      auto arg1 = ops::_Arg(scope.WithOpName("arg1"), DT_INT32, 1);
       auto three = ops::Const<int32>(scope.WithOpName("while/cond/three")
                                          .WithControlDependencies(arg0.output),
                                      3);
@@ -706,7 +706,7 @@ TEST(FunctionalizeControlFlow, TwoLoopVars) {
                                        .WithControlDependencies(arg0.output),
                                    10);
       auto less = ops::Less(scope.WithOpName("while/cond/Less"), cond_add, ten);
-      auto retval = ops::_Retval(scope.WithOpName("_retval0_RetVal"), less, 0);
+      auto retval = ops::_Retval(scope.WithOpName("retval0_RetVal"), less, 0);
 
       GraphDef expected;
       TF_EXPECT_OK(scope.ToGraphDef(&expected));
@@ -723,8 +723,8 @@ TEST(FunctionalizeControlFlow, TwoLoopVars) {
     // Body graph.
     {
       Scope scope = Scope::NewRootScope().ExitOnError();
-      auto arg0 = ops::_Arg(scope.WithOpName("_arg0"), DT_INT32, 0);
-      auto arg1 = ops::_Arg(scope.WithOpName("_arg1"), DT_INT32, 1);
+      auto arg0 = ops::_Arg(scope.WithOpName("arg0"), DT_INT32, 0);
+      auto arg1 = ops::_Arg(scope.WithOpName("arg1"), DT_INT32, 1);
 
       auto identity_x =
           ops::Identity(scope.WithOpName("while/Identity/x"), arg0);
@@ -740,8 +740,8 @@ TEST(FunctionalizeControlFlow, TwoLoopVars) {
 
       auto add = ops::Add(scope.WithOpName("while/add"), identity_x, one);
       auto mul = ops::Add(scope.WithOpName("while/mul"), identity_y, two);
-      auto retval0 = ops::_Retval(scope.WithOpName("_retval0_RetVal"), add, 0);
-      auto retval1 = ops::_Retval(scope.WithOpName("_retval1_RetVal"), mul, 1);
+      auto retval0 = ops::_Retval(scope.WithOpName("retval0_RetVal"), add, 0);
+      auto retval1 = ops::_Retval(scope.WithOpName("retval1_RetVal"), mul, 1);
 
       GraphDef expected;
       TF_EXPECT_OK(scope.ToGraphDef(&expected));
@@ -944,16 +944,16 @@ TEST(FunctionalizeControlFlow, Complex) {
     // Outer condition graph.
     {
       Scope scope = Scope::NewRootScope().ExitOnError();
-      auto arg0 = ops::_Arg(scope.WithOpName("_arg0"), DT_INT32, 0);
-      auto arg1 = ops::_Arg(scope.WithOpName("_arg1"), DT_INT32, 1);
-      auto arg2 = ops::_Arg(scope.WithOpName("_arg2"), DT_INT32, 2);
-      auto arg3 = ops::_Arg(scope.WithOpName("_arg3"), DT_RESOURCE, 3);
+      auto arg0 = ops::_Arg(scope.WithOpName("arg0"), DT_INT32, 0);
+      auto arg1 = ops::_Arg(scope.WithOpName("arg1"), DT_INT32, 1);
+      auto arg2 = ops::_Arg(scope.WithOpName("arg2"), DT_INT32, 2);
+      auto arg3 = ops::_Arg(scope.WithOpName("arg3"), DT_RESOURCE, 3);
 
       auto ten = ops::Const<int32>(
           scope.WithOpName("outer/Less/y").WithControlDependencies(arg0.output),
           10);
       auto less = ops::Less(scope.WithOpName("outer/Less_i"), arg0, ten);
-      auto retval = ops::_Retval(scope.WithOpName("_retval0_RetVal"), less, 0);
+      auto retval = ops::_Retval(scope.WithOpName("retval0_RetVal"), less, 0);
 
       GraphDef expected;
       TF_EXPECT_OK(scope.ToGraphDef(&expected));
@@ -980,10 +980,10 @@ TEST(FunctionalizeControlFlow, Complex) {
           FindWhileCondAndBody(result.gdef, &inner_cond_fn, &inner_body_fn));
 
       Scope scope = Scope::NewRootScope().ExitOnError();
-      auto arg0 = ops::_Arg(scope.WithOpName("_arg0"), DT_INT32, 0);
-      auto arg1 = ops::_Arg(scope.WithOpName("_arg1"), DT_INT32, 1);
-      auto arg2 = ops::_Arg(scope.WithOpName("_arg2"), DT_INT32, 2);
-      auto arg3 = ops::_Arg(scope.WithOpName("_arg3"), DT_RESOURCE, 3);
+      auto arg0 = ops::_Arg(scope.WithOpName("arg0"), DT_INT32, 0);
+      auto arg1 = ops::_Arg(scope.WithOpName("arg1"), DT_INT32, 1);
+      auto arg2 = ops::_Arg(scope.WithOpName("arg2"), DT_INT32, 2);
+      auto arg3 = ops::_Arg(scope.WithOpName("arg3"), DT_RESOURCE, 3);
 
       auto identity_i = ops::Identity(scope.WithOpName("outer/Identity"), arg0);
       auto one_j = ops::Const<int32>(
@@ -1002,11 +1002,10 @@ TEST(FunctionalizeControlFlow, Complex) {
                            while_op[0].op(), while_op[1].op()}),
                    identity_i, one_outer);
 
-      auto retval0 =
-          ops::_Retval(scope.WithOpName("_retval0_RetVal"), add_i, 0);
-      auto retval1 = ops::_Retval(scope.WithOpName("_retval1_RetVal"), arg1, 1);
-      auto retval2 = ops::_Retval(scope.WithOpName("_retval2_RetVal"), arg2, 2);
-      auto retval3 = ops::_Retval(scope.WithOpName("_retval3_RetVal"), arg3, 3);
+      auto retval0 = ops::_Retval(scope.WithOpName("retval0_RetVal"), add_i, 0);
+      auto retval1 = ops::_Retval(scope.WithOpName("retval1_RetVal"), arg1, 1);
+      auto retval2 = ops::_Retval(scope.WithOpName("retval2_RetVal"), arg2, 2);
+      auto retval3 = ops::_Retval(scope.WithOpName("retval3_RetVal"), arg3, 3);
 
       GraphDef expected;
       TF_EXPECT_OK(scope.ToGraphDef(&expected));
@@ -1021,18 +1020,17 @@ TEST(FunctionalizeControlFlow, Complex) {
     // Inner condition graph.
     {
       Scope scope = Scope::NewRootScope().ExitOnError();
-      auto arg0 = ops::_Arg(scope.WithOpName("_arg0"), DT_INT32, 0);
-      auto arg1 = ops::_Arg(scope.WithOpName("_arg1"), DT_INT32, 1);
-      auto arg2 = ops::_Arg(scope.WithOpName("_arg2"), DT_INT32, 2);
-      auto arg3 = ops::_Arg(scope.WithOpName("_arg3"), DT_RESOURCE, 3);
+      auto arg0 = ops::_Arg(scope.WithOpName("arg0"), DT_INT32, 0);
+      auto arg1 = ops::_Arg(scope.WithOpName("arg1"), DT_INT32, 1);
+      auto arg2 = ops::_Arg(scope.WithOpName("arg2"), DT_INT32, 2);
+      auto arg3 = ops::_Arg(scope.WithOpName("arg3"), DT_RESOURCE, 3);
 
       auto five = ops::Const<int32>(
           scope.WithOpName("outer/inner/Five").WithControlDependencies(arg0),
           5);
       auto less_j =
           ops::Less(scope.WithOpName("outer/inner/Less_j"), arg0, five);
-      auto retval =
-          ops::_Retval(scope.WithOpName("_retval0_RetVal"), less_j, 0);
+      auto retval = ops::_Retval(scope.WithOpName("retval0_RetVal"), less_j, 0);
 
       GraphDef expected;
       TF_EXPECT_OK(scope.ToGraphDef(&expected));
@@ -1050,10 +1048,10 @@ TEST(FunctionalizeControlFlow, Complex) {
     // Inner body graph.
     {
       Scope scope = Scope::NewRootScope().ExitOnError();
-      auto arg0 = ops::_Arg(scope.WithOpName("_arg0"), DT_INT32, 0);
-      auto arg1 = ops::_Arg(scope.WithOpName("_arg1"), DT_INT32, 1);
-      auto arg2 = ops::_Arg(scope.WithOpName("_arg2"), DT_INT32, 2);
-      auto arg3 = ops::_Arg(scope.WithOpName("_arg3"), DT_RESOURCE, 3);
+      auto arg0 = ops::_Arg(scope.WithOpName("arg0"), DT_INT32, 0);
+      auto arg1 = ops::_Arg(scope.WithOpName("arg1"), DT_INT32, 1);
+      auto arg2 = ops::_Arg(scope.WithOpName("arg2"), DT_INT32, 2);
+      auto arg3 = ops::_Arg(scope.WithOpName("arg3"), DT_RESOURCE, 3);
 
       auto identity_j =
           ops::Identity(scope.WithOpName("outer/inner/Identity_j"), arg0);
@@ -1075,12 +1073,11 @@ TEST(FunctionalizeControlFlow, Complex) {
       auto add_j =
           ops::Add(scope.WithOpName("outer/inner/add_j"), identity_j, one);
 
-      auto retval0 =
-          ops::_Retval(scope.WithOpName("_retval0_RetVal"), add_j, 0);
+      auto retval0 = ops::_Retval(scope.WithOpName("retval0_RetVal"), add_j, 0);
       auto retval1 =
-          ops::_Retval(scope.WithOpName("_retval1_RetVal"), identity_k, 1);
-      auto retval2 = ops::_Retval(scope.WithOpName("_retval2_RetVal"), arg2, 2);
-      auto retval3 = ops::_Retval(scope.WithOpName("_retval3_RetVal"), arg3, 3);
+          ops::_Retval(scope.WithOpName("retval1_RetVal"), identity_k, 1);
+      auto retval2 = ops::_Retval(scope.WithOpName("retval2_RetVal"), arg2, 2);
+      auto retval3 = ops::_Retval(scope.WithOpName("retval3_RetVal"), arg3, 3);
 
       GraphDef expected;
       TF_EXPECT_OK(scope.ToGraphDef(&expected));

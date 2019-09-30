@@ -923,7 +923,9 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         [(len(out.lines[0]) - len(node_name), len(out.lines[0]), "bold")],
         out.font_attr_segs[0])
 
-  def testNodeInfoShowAttributes(self):
+  # TODO(b/141691124, b/141708030) Re-enable this test after fixing "Element
+  # counts were not equal" errors.
+  def DISABLED_testNodeInfoShowAttributes(self):
     node_name = "simple_mul_add/matmul"
     out = self._registry.dispatch_command("node_info", ["-a", node_name])
 

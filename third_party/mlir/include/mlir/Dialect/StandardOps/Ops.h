@@ -23,6 +23,7 @@
 #ifndef MLIR_DIALECT_STANDARDOPS_OPS_H
 #define MLIR_DIALECT_STANDARDOPS_OPS_H
 
+#include "mlir/Analysis/CallInterfaces.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Dialect.h"

@@ -71,10 +71,12 @@ class SingleThreadedExecutorImpl : public Executor {
       }
 
       if (n->IsControlFlow()) {
-        return errors::Unimplemented(
-            "Single-threaded executor does not support control flow.  But saw "
-            "control flow node ",
-            n->name());
+        return errors::FailedPrecondition(
+            "Single-threaded executor does not support low level control flow, "
+            " but saw control flow node ",
+            n->name(),
+            ".  Perhaps your graph contains old-style control flow primitives? "
+            "Try using tf.compat.v1.enable_control_flow_v2().");
       }
       if (n->IsSend() || n->IsHostSend() || n->IsRecv() || n->IsHostRecv()) {
         return errors::Unimplemented(

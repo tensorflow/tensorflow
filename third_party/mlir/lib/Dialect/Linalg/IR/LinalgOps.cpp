@@ -406,14 +406,14 @@ static ParseResult parseLoadOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 4> indexInfo;
   ViewType type;
 
-  auto affineIntTy = parser.getBuilder().getIndexType();
+  auto indexTy = parser.getBuilder().getIndexType();
   return failure(
       parser.parseOperand(viewInfo) ||
       parser.parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
       parser.parseOptionalAttributeDict(result.attributes) ||
       parser.parseColonType(type) ||
       parser.resolveOperand(viewInfo, type, result.operands) ||
-      parser.resolveOperands(indexInfo, affineIntTy, result.operands) ||
+      parser.resolveOperands(indexInfo, indexTy, result.operands) ||
       parser.addTypeToList(type.getElementType(), result.types));
 }
 
@@ -438,15 +438,14 @@ static void print(OpAsmPrinter &p, RangeOp op) {
 static ParseResult parseRangeOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 3> rangeInfo(3);
   RangeType type;
-  auto affineIntTy = parser.getBuilder().getIndexType();
-  return failure(
-      parser.parseOperand(rangeInfo[0]) || parser.parseColon() ||
-      parser.parseOperand(rangeInfo[1]) || parser.parseColon() ||
-      parser.parseOperand(rangeInfo[2]) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
-      parser.parseColonType(type) ||
-      parser.resolveOperands(rangeInfo, affineIntTy, result.operands) ||
-      parser.addTypeToList(type, result.types));
+  auto indexTy = parser.getBuilder().getIndexType();
+  return failure(parser.parseOperand(rangeInfo[0]) || parser.parseColon() ||
+                 parser.parseOperand(rangeInfo[1]) || parser.parseColon() ||
+                 parser.parseOperand(rangeInfo[2]) ||
+                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseColonType(type) ||
+                 parser.resolveOperands(rangeInfo, indexTy, result.operands) ||
+                 parser.addTypeToList(type, result.types));
 }
 
 //===----------------------------------------------------------------------===//
@@ -538,7 +537,7 @@ static ParseResult parseStoreOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 4> indexInfo;
   ViewType viewType;
 
-  auto affineIntTy = parser.getBuilder().getIndexType();
+  auto indexTy = parser.getBuilder().getIndexType();
   return failure(
       parser.parseOperand(storeValueInfo) || parser.parseComma() ||
       parser.parseOperand(viewInfo) ||
@@ -548,7 +547,7 @@ static ParseResult parseStoreOp(OpAsmParser &parser, OperationState &result) {
       parser.resolveOperand(storeValueInfo, viewType.getElementType(),
                             result.operands) ||
       parser.resolveOperand(viewInfo, viewType, result.operands) ||
-      parser.resolveOperands(indexInfo, affineIntTy, result.operands));
+      parser.resolveOperands(indexInfo, indexTy, result.operands));
 }
 
 static LogicalResult verify(linalg::StoreOp op) {

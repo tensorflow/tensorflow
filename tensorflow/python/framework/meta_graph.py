@@ -184,28 +184,16 @@ def stripped_op_list_for_graph(graph_def):
 
   Returns:
     An `OpList` of ops used by the graph.
-
-  Raises:
-    ValueError: If an unregistered op is used.
   """
-  # This is the Python equivalent of StrippedOpListForGraph in C++.
-  # Unfortunately, since the Python op registry can differ from that in C++, we
-  # can't remove the duplication using swig (at least naively).
-  # TODO(irving): Support taking graphs directly.
-
+  # This is similar to StrippedOpListForGraph in C++, but unlike its
+  # C++ counterpart, this version does not require all ops to be registered.
+  # This is done to support Prelu fusion in tfjs.
   used_ops = ops_used_by_graph_def(graph_def)
-
-  # These internal ops used by functions are not registered, so we need to
-  # whitelist them.  # TODO(irving): Do something better here.
-  op_whitelist = ("_Arg", "_Retval", "_ListToArray", "_ArrayToList")
   op_defs = []
   for op in sorted(used_ops):
     op_def = op_def_registry.get(op)
     if op_def is not None:
       op_defs.append(op_def)
-    elif op not in op_whitelist:
-      raise ValueError("Op %s is used by the graph, but is not registered" % op)
-
   return op_def_pb2.OpList(op=op_defs)
 
 

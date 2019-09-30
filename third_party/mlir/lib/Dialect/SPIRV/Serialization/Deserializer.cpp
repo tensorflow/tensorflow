@@ -112,11 +112,14 @@ private:
   /// Process SPIR-V OpName with `operands`.
   LogicalResult processName(ArrayRef<uint32_t> operands);
 
-  /// Method to process an OpDecorate instruction.
+  /// Processes an OpDecorate instruction.
   LogicalResult processDecoration(ArrayRef<uint32_t> words);
 
-  // Method to process an OpMemberDecorate instruction.
+  // Processes an OpMemberDecorate instruction.
   LogicalResult processMemberDecoration(ArrayRef<uint32_t> words);
+
+  /// Processes an OpMemberName instruction.
+  LogicalResult processMemberName(ArrayRef<uint32_t> words);
 
   /// Gets the FuncOp associated with a result <id> of OpFunction.
   FuncOp getFunction(uint32_t id) { return funcMap.lookup(id); }
@@ -290,9 +293,6 @@ private:
   sliceInstruction(spirv::Opcode &opcode, ArrayRef<uint32_t> &operands,
                    Optional<spirv::Opcode> expectedOpcode = llvm::None);
 
-  /// Returns the next instruction's opcode if exists.
-  Optional<spirv::Opcode> peekOpcode();
-
   /// Processes a SPIR-V instruction with the given `opcode` and `operands`.
   /// This method is the main entrance for handling SPIR-V instruction; it
   /// checks the instruction opcode and dispatches to the corresponding handler.
@@ -409,6 +409,10 @@ private:
   DenseMap<uint32_t,
            DenseMap<uint32_t, DenseMap<spirv::Decoration, ArrayRef<uint32_t>>>>
       memberDecorationMap;
+
+  // Result <id> to member name.
+  // struct-type-<id> -> (struct-member-index -> name)
+  DenseMap<uint32_t, DenseMap<uint32_t, StringRef>> memberNameMap;
 
   // Result <id> to extended instruction set name.
   DenseMap<uint32_t, StringRef> extendedInstSets;
@@ -617,11 +621,17 @@ LogicalResult Deserializer::processDecoration(ArrayRef<uint32_t> words) {
     typeDecorations[words[0]] = static_cast<uint32_t>(words[2]);
     break;
   case spirv::Decoration::Block:
+  case spirv::Decoration::BufferBlock:
     if (words.size() != 2) {
       return emitError(unknownLoc, "OpDecoration with ")
              << decorationName << "needs a single target <id>";
     }
-    // Block decoration does not affect spv.struct type.
+    // Block decoration does not affect spv.struct type, but is still stored for
+    // verification.
+    // TODO: Update StructType to contain this information since
+    // it is needed for many validation rules.
+    decorations[words[0]].set(opBuilder.getIdentifier(attrName),
+                              opBuilder.getUnitAttr());
     break;
   default:
     return emitError(unknownLoc, "unhandled Decoration : '") << decorationName;
@@ -647,6 +657,20 @@ LogicalResult Deserializer::processMemberDecoration(ArrayRef<uint32_t> words) {
     decorationOperands = words.slice(3);
   }
   memberDecorationMap[words[0]][words[1]][decoration] = decorationOperands;
+  return success();
+}
+
+LogicalResult Deserializer::processMemberName(ArrayRef<uint32_t> words) {
+  if (words.size() < 3) {
+    return emitError(unknownLoc, "OpMemberName must have at least 3 operands");
+  }
+  unsigned wordIndex = 2;
+  auto name = decodeStringLiteral(words, wordIndex);
+  if (wordIndex != words.size()) {
+    return emitError(unknownLoc,
+                     "unexpected trailing words in OpMemberName instruction");
+  }
+  memberNameMap[words[0]][words[1]] = name;
   return success();
 }
 
@@ -964,9 +988,8 @@ LogicalResult Deserializer::processType(spirv::Opcode opcode,
       return emitError(
           unknownLoc, "OpTypeInt must have bitwidth and signedness parameters");
     }
-    if (operands[2] == 0) {
-      return emitError(unknownLoc, "unhandled unsigned OpTypeInt");
-    }
+    // TODO: Ignoring the signedness right now. Need to handle this effectively
+    // in the MLIR representation.
     typeMap[operands[0]] = opBuilder.getIntegerType(operands[1]);
     break;
   case spirv::Opcode::OpTypeFloat: {
@@ -1102,10 +1125,13 @@ Deserializer::processRuntimeArrayType(ArrayRef<uint32_t> operands) {
 }
 
 LogicalResult Deserializer::processStructType(ArrayRef<uint32_t> operands) {
-  // TODO(ravishankarm) : Regarding to the spec spv.struct must support zero
-  // amount of members.
-  if (operands.size() < 2) {
-    return emitError(unknownLoc, "OpTypeStruct must have at least 2 operand");
+  if (operands.empty()) {
+    return emitError(unknownLoc, "OpTypeStruct must have at least result <id>");
+  }
+  if (operands.size() == 1) {
+    // Handle empty struct.
+    typeMap[operands[0]] = spirv::StructType::getEmpty(context);
+    return success();
   }
 
   SmallVector<Type, 0> memberTypes;
@@ -1148,6 +1174,8 @@ LogicalResult Deserializer::processStructType(ArrayRef<uint32_t> operands) {
   }
   typeMap[operands[0]] =
       spirv::StructType::get(memberTypes, layoutInfo, memberDecorationsInfo);
+  // TODO(ravishankarm): Update StructType to have member name as attribute as
+  // well.
   return success();
 }
 
@@ -1720,12 +1748,6 @@ Deserializer::sliceInstruction(spirv::Opcode &opcode,
   return success();
 }
 
-Optional<spirv::Opcode> Deserializer::peekOpcode() {
-  if (curOffset >= binary.size())
-    return llvm::None;
-  return extractOpcode(binary[curOffset]);
-}
-
 LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
                                                ArrayRef<uint32_t> operands,
                                                bool deferInstructions) {
@@ -1743,6 +1765,8 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
     return processExtInst(operands);
   case spirv::Opcode::OpExtInstImport:
     return processExtInstImport(operands);
+  case spirv::Opcode::OpMemberName:
+    return processMemberName(operands);
   case spirv::Opcode::OpMemoryModel:
     return processMemoryModel(operands);
   case spirv::Opcode::OpEntryPoint:
@@ -1759,6 +1783,14 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
     break;
   case spirv::Opcode::OpName:
     return processName(operands);
+  case spirv::Opcode::OpModuleProcessed:
+  case spirv::Opcode::OpString:
+  case spirv::Opcode::OpSource:
+  case spirv::Opcode::OpSourceContinued:
+  case spirv::Opcode::OpSourceExtension:
+    // TODO: This is debug information embedded in the binary which should be
+    // translated into the spv.module.
+    return success();
   case spirv::Opcode::OpTypeVoid:
   case spirv::Opcode::OpTypeBool:
   case spirv::Opcode::OpTypeInt:

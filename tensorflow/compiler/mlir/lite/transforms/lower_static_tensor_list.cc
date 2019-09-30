@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Block.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
@@ -392,6 +393,46 @@ struct ConvertTensorListLength : public ConversionPattern {
     rewriter.replaceOpWithNewOp<TF::GatherOp>(
         op, op.getType(), shape, CreateI32SplatConst(op, &rewriter, {}, 0),
         /*validate_indices=*/true_attr);
+    return matchSuccess();
+  }
+};
+
+struct ConvertTensorListStack : public ConversionPattern {
+  explicit ConvertTensorListStack(MLIRContext *context)
+      : ConversionPattern(TF::TensorListStackOp::getOperationName(), 1,
+                          context) {}
+
+  PatternMatchResult matchAndRewrite(
+      Operation *operation, ArrayRef<Value *> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    auto op = llvm::cast<TF::TensorListStackOp>(operation);
+    Location loc = op.getLoc();
+    Value *input = operands[0];
+    Value *element_shape = operands[1];
+
+    // If the `element_shape` is a known constant (which is defined when calling
+    // `tensor_list_stack`) and also valid (not scalar), we rewrite this op to a
+    // trivial Reshape op (that doesn't actually change the input's shape) and
+    // also populate the shape info to the op result. The shape of the
+    // tensorlist is inferred from `num_elements` and `element_shape`.
+    auto ranked_type = element_shape->getType().dyn_cast<RankedTensorType>();
+    DenseIntElementsAttr dense_elem_attr;
+    if ((ranked_type && ranked_type.getRank() == 0) ||
+        !matchPattern(element_shape, m_Constant(&dense_elem_attr))) {
+      // If no constant is spotted, just forward the operand.
+      rewriter.replaceOp(op, {input}, llvm::None);
+      return matchSuccess();
+    }
+
+    auto shape_type = rewriter.getTensorType({-1}, rewriter.getIntegerType(32));
+    auto new_shape = rewriter.create<TF::ShapeOp>(loc, shape_type, input);
+    SmallVector<int64_t, 8> output_shape = {op.num_elements().getSExtValue()};
+    for (auto dim : dense_elem_attr.getIntValues())
+      output_shape.push_back(dim.getSExtValue());
+    auto result_type =
+        rewriter.getTensorType(output_shape, getElementTypeOrSelf(input));
+    rewriter.replaceOpWithNewOp<TF::ReshapeOp>(op, result_type, input,
+                                               new_shape);
     return matchSuccess();
   }
 };

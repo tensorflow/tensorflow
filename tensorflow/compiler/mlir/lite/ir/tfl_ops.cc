@@ -519,6 +519,56 @@ OpFoldResult ConcatenationOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// FullyConnectedOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult Verify(FullyConnectedOp op) {
+  ShapedType input_type = op.input()->getType().cast<ShapedType>();
+  ShapedType filter_type = op.filter()->getType().cast<ShapedType>();
+  if (filter_type.hasRank() && filter_type.getRank() != 2) {
+    return op.emitOpError("expect 2d filter, got ") << filter_type;
+  }
+
+  if (!input_type.hasStaticShape() || !filter_type.hasStaticShape()) {
+    return mlir::success();
+  }
+
+  // Input's element size must be multiple of parameter's z_in dimension.
+  const int z_in = filter_type.getDimSize(1);
+  const int num_input_elements = input_type.getNumElements();
+  if (num_input_elements % z_in != 0) {
+    return op.emitOpError(llvm::formatv(
+               "expect 'input' num_elements % {0} == 0, got input type ", z_in))
+           << input_type;
+  }
+
+  // TODO(jpienaar): Include more shape verification for SHUFFLED4x16INT8
+  // format.
+  if (op.weights_format() == "DEFAULT") {
+    ShapedType output_type =
+        (*op.output().begin())->getType().cast<ShapedType>();
+    if (!output_type.hasStaticShape()) {
+      return mlir::success();
+    }
+
+    const int num_output_elements = output_type.getNumElements();
+    const int z_out = filter_type.getDimSize(0);
+    if (num_output_elements % z_out != 0) {
+      return op.emitOpError(llvm::formatv(
+                 "expect 'output' num_elements % {0} == 0, got ", z_out))
+             << output_type;
+    }
+
+    if (num_input_elements / z_in != num_output_elements / z_out) {
+      return op.emitOpError(
+          "num_input_elements / z_in != num_output_elements / z_out");
+    }
+  }
+
+  return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
 // GatherOp
 //===----------------------------------------------------------------------===//
 
@@ -626,6 +676,46 @@ static LogicalResult Verify(PackOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// PReluOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(PReluOp op) {
+  auto input_type = op.input()->getType().cast<ShapedType>();
+  auto alpha_type = op.alpha()->getType().cast<ShapedType>();
+  auto output_type = op.output()->getType().cast<ShapedType>();
+
+  if (input_type.hasStaticShape() && alpha_type.hasStaticShape()) {
+    if (input_type.getRank() != alpha_type.getRank() + 1) {
+      return op.emitOpError("'alpha' should have one less rank than 'input'.");
+    }
+
+    // Check if alpha is broadcastable
+    for (int i = 0; i < alpha_type.getRank(); i++) {
+      if (alpha_type.getDimSize(i) != input_type.getDimSize(i + 1) &&
+          alpha_type.getDimSize(i) != 1) {
+        return op.emitOpError(
+            llvm::formatv("'alpha' is not broadcastable at dimension {0}.", i));
+      }
+    }
+  }
+
+  if (input_type.hasStaticShape() && output_type.hasStaticShape()) {
+    if (input_type.getRank() != output_type.getRank()) {
+      return op.emitOpError("'input' and 'output' should have the same rank.");
+    }
+
+    // Check if input and output shapes are same
+    for (int i = 0; i < input_type.getRank(); i++) {
+      if (input_type.getDimSize(i) != output_type.getDimSize(i)) {
+        return op.emitOpError(
+            "'input' and 'output' should have the same shape.");
+      }
+    }
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ReshapeOp
 //===----------------------------------------------------------------------===//
 
@@ -694,6 +784,68 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
   results.insert<RemoveAdjacentReshape>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// PackOp
+//===----------------------------------------------------------------------===//
+
+// Remove redunant unpack pack op.
+// If a unpack op is followed by a pack op, we can remove the pack op, if the
+// unpack op is only consumed by the pack op, it will be removed as well.
+// An example illustration is:
+//                  Unpack [5, 8, 9], axis = 1
+//                /       \
+//            value  ...  value [5, 9], 8 values in total
+//              \           /
+//                 pack,   axis = 1
+//                   |
+//               value   [5, 8, 9]
+//
+//   This can actually be simplified into just:
+//
+//           =>   Value [5, 8, 9]
+// TODO(b/133341698): Move to tablegen when variadic is supported.
+struct RemoveRedunantUnpackPack : public RewritePattern {
+  explicit RemoveRedunantUnpackPack(MLIRContext *context)
+      : RewritePattern(PackOp::getOperationName(), 2, context) {}
+
+  PatternMatchResult matchAndRewrite(Operation *op,
+                                     PatternRewriter &rewriter) const override {
+    TFL::PackOp pack_op = cast<TFL::PackOp>(op);
+    Operation *first_input = pack_op.getOperand(0)->getDefiningOp();
+    if (!first_input) return matchFailure();
+    auto input_unpack_op = dyn_cast_or_null<TFL::UnpackOp>(first_input);
+    if (!input_unpack_op) return matchFailure();
+
+    // The unpack & pack should have the same axis & num inputs/outputs.
+    if (pack_op.axis() != input_unpack_op.axis() ||
+        pack_op.values_count() != input_unpack_op.num())
+      return matchFailure();
+
+    const int total_pack_inputs = pack_op.getNumOperands();
+    if (total_pack_inputs != input_unpack_op.getNumResults())
+      return matchFailure();
+    for (auto input_output :
+         llvm::zip(pack_op.getOperands(), input_unpack_op.getResults())) {
+      Value *pack_input = std::get<0>(input_output);
+      Value *unpack_output = std::get<1>(input_output);
+      // Make sure the ordering is the same for the pack op & unpack op.
+      if (pack_input != unpack_output) return matchFailure();
+    }
+
+    // Replace the pack's output to the unpack's input.
+    rewriter.replaceOp(pack_op, input_unpack_op.getOperand());
+    // At this point, we don't manually remove the redundant pack op & unpack op
+    // (we cannot actually), but trust the PatterRewriter to garbage collect
+    // these two ops.
+    return matchSuccess();
+  }
+};
+
+void PackOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                         MLIRContext *context) {
+  results.insert<RemoveRedunantUnpackPack>(context);
 }
 
 //===----------------------------------------------------------------------===//

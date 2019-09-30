@@ -120,14 +120,14 @@ def all_feedables():
   return feedable_tensors
 
 
-def opt_cfg():
+def opt_cfg(do_constant_folding=True):
   return config_pb2.ConfigProto(
       allow_soft_placement=True,
       graph_options=config_pb2.GraphOptions(
           optimizer_options=config_pb2.OptimizerOptions(
               opt_level=config_pb2.OptimizerOptions.L1,
               do_function_inlining=True,
-              do_constant_folding=True)))
+              do_constant_folding=do_constant_folding)))
 
 
 def isum(s, maximum_iterations=None):
@@ -1004,6 +1004,47 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
       r = control_flow_ops.cond(pred, fn1, fn2)
       self.evaluate(r)
+
+  @test_util.run_deprecated_v1
+  @test_util.enable_control_flow_v2
+  def testDisableLoweringSwitchMerge(self):
+    if test_util.is_gpu_available():
+      self.skipTest(
+          "Single threaded executor doesn't support partitioned graphs.  "
+          "Skipping GPU test.")
+    # Make pred feedable to ensure we don't constant-fold it out.
+    run_opts = config_pb2.RunOptions(
+        trace_level=config_pb2.RunOptions.FULL_TRACE)
+    run_metadata_no_lowering = config_pb2.RunMetadata()
+    run_metadata_with_lowering = config_pb2.RunMetadata()
+
+    config = opt_cfg(do_constant_folding=False)
+
+    pred = array_ops.placeholder_with_default(
+        constant_op.constant(True), shape=())
+    r = control_flow_ops.cond(pred, lambda: True, lambda: False)
+
+    with session.Session(config=config) as sess:
+      r_value = sess.run(
+          r, options=run_opts, run_metadata=run_metadata_with_lowering)
+      self.assertEqual(r_value, True)
+
+    # Use the single threaded executor, which disables control flow lowering.
+    config.experimental.executor_type = "SINGLE_THREADED_EXECUTOR"
+    with session.Session(config=config) as sess:
+      r_value = sess.run(
+          r, options=run_opts, run_metadata=run_metadata_no_lowering)
+      self.assertEqual(r_value, True)
+
+    self.assertTrue(  # pylint: disable=g-complex-comprehension
+        any("switch" in ns.node_name
+            for dev_stat in run_metadata_with_lowering.step_stats.dev_stats
+            for ns in dev_stat.node_stats))
+
+    self.assertTrue(  # pylint: disable=g-complex-comprehension
+        all("switch" not in ns.node_name
+            for dev_stat in run_metadata_no_lowering.step_stats.dev_stats
+            for ns in dev_stat.node_stats))
 
   @test_util.run_v1_only("b/120545219")
   def testCondGrad_1(self):

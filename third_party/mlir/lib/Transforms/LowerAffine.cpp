@@ -335,7 +335,7 @@ public:
     // Now we just have to handle the condition logic.
     auto integerSet = op.getIntegerSet();
     Value *zeroConstant = rewriter.create<ConstantIndexOp>(loc, 0);
-    SmallVector<Value *, 8> operands(op.getOperation()->getOperands());
+    SmallVector<Value *, 8> operands(op.getOperands());
     auto operandsRef = llvm::makeArrayRef(operands);
 
     // Calculate cond as a conjunction without short-circuiting.

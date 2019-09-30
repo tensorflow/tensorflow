@@ -196,6 +196,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla:xla_proto",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_proto_cc",
         "//tensorflow/core/platform:logging",
@@ -260,6 +261,7 @@ cc_library(
         ":tensorflow_passes",
         "//tensorflow/cc/saved_model:loader_lite",
         "//tensorflow/compiler/jit:shape_inference_helpers",
+        "//tensorflow/compiler/tf2xla:functionalize_control_flow",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -527,7 +529,6 @@ cc_library(
     deps = [
         ":convert_graphdef",
         ":mlir_roundtrip_flags",
-        ":mlir_roundtrip_pass",
         "//tensorflow/compiler/tf2xla:functionalize_control_flow_pass_registration",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",

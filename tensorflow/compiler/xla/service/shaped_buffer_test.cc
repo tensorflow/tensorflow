@@ -58,8 +58,9 @@ class TestAllocator : public se::DeviceMemoryAllocator {
   // Pull in two-arg overload of Allocate.
   using se::DeviceMemoryAllocator::Allocate;
 
-  StatusOr<se::OwningDeviceMemory> Allocate(
-      int device_ordinal, uint64 size, bool /*retry_on_failure*/) override {
+  StatusOr<se::OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
+                                            bool /*retry_on_failure*/,
+                                            int64 /*memory_space*/) override {
     // By contract, we must return null if size == 0.
     if (size == 0) {
       return se::OwningDeviceMemory();

@@ -72,7 +72,6 @@ load(
     "if_linux_x86_64",
     "if_mobile",
     "if_not_windows",
-    "if_windows",
     "tf_android_core_proto_headers",
     "tf_android_core_proto_sources",
     "tf_cc_test",
@@ -247,6 +246,7 @@ ADDITIONAL_CORE_PROTO_SRCS = [
     "protobuf/data/experimental/snapshot.proto",
     # TODO(ebrevdo): Re-enable once CriticalSection is in core.
     # "protobuf/critical_section.proto",
+    "protobuf/debug_event.proto",
     "protobuf/meta_graph.proto",
     "protobuf/named_tensor.proto",
     "protobuf/remote_tensor_handle.proto",
@@ -931,6 +931,7 @@ tf_cuda_library(
         "util/batch_util.h",
         "util/bcast.h",
         "util/matmul_bcast.h",
+        "util/debug_events_writer.h",
         "util/device_name_utils.h",
         "util/dump_graph.h",
         "util/events_writer.h",
@@ -1115,6 +1116,7 @@ cc_library(
         "framework/type_traits.h",
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/platform:byte_order.h",
+        "//tensorflow/core/platform:cpu_info.h",
         "//tensorflow/core/platform:default/dynamic_annotations.h",
         "//tensorflow/core/platform:default/integral_types.h",
         "//tensorflow/core/platform:default/logging.h",
@@ -1128,8 +1130,7 @@ cc_library(
         "//tensorflow/core/platform:thread_annotations.h",
         "//tensorflow/core/platform:tstring.h",
         "//tensorflow/core/platform:types.h",
-        "//tensorflow/core/platform:cpu_info.h",
-    ] + if_windows(["//tensorflow/core/platform:windows/integral_types.h"]),
+    ],
     visibility = ["//visibility:public"],
     deps =
         if_mobile([

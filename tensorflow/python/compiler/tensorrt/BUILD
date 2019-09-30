@@ -100,7 +100,6 @@ cuda_py_test(
         "no_rocm",
         "nomac",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_tests(
@@ -139,7 +138,6 @@ cuda_py_tests(
         "no_rocm",
         "nomac",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_tests(
@@ -159,7 +157,6 @@ cuda_py_tests(
         "nomac",
         "notap",  # b/140261407
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -187,5 +184,4 @@ cuda_py_test(
         "no_rocm",
         "nomac",
     ],
-    xla_enable_strict_auto_jit = True,
 )

@@ -430,6 +430,7 @@ py_library(
 py_test(
     name = "ragged_tensor_test",
     size = "medium",
+    timeout = "long",
     srcs = ["ragged_tensor_test.py"],
     python_version = "PY2",
     shard_count = 4,

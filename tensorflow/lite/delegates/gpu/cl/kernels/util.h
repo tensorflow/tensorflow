@@ -36,27 +36,6 @@ namespace cl {
 
 std::string GetCommonDefines(CalculationsPrecision precision);
 
-std::string GetGlobalAddress(TensorStorageType storage_type,
-                             const std::string& size_name,
-                             const std::string& var_name, const std::string& x,
-                             const std::string& y, const std::string& z);
-std::string ReadGlobalFLT4(TensorStorageType storage_type,
-                           const std::string& tensor_name,
-                           const std::string& size_name, const std::string& x,
-                           const std::string& y, const std::string& z);
-std::string ReadGlobalFLT4(TensorStorageType storage_type,
-                           const std::string& tensor_name,
-                           const std::string& global_address);
-std::string WriteGlobalFLT4(TensorStorageType storage_type,
-                            const std::string& tensor_name,
-                            const std::string& size_name,
-                            const std::string& var_name, const std::string& x,
-                            const std::string& y, const std::string& z);
-std::string WriteGlobalFLT4(TensorStorageType storage_type,
-                            const std::string& tensor_name,
-                            const std::string& var_name,
-                            const std::string& global_address);
-
 std::string GetDataType(DataType type);
 std::string GetDataType4(DataType type);
 
@@ -67,8 +46,6 @@ std::string GetTensorDeclaration(TensorStorageType storage_type,
                                  const std::string& tensor_name,
                                  AccessType access, DataType data_type);
 
-std::string GenerateGlobal3DCoords(TensorStorageType storage_type);
-
 enum class TextureAddressMode {
   DONT_CARE,  // translated to CLK_ADDRESS_NONE
   ZERO,       // translated to CLK_ADDRESS_CLAMP
@@ -78,15 +55,12 @@ class TensorCodeGenerator {
  public:
   TensorCodeGenerator(const std::string& name,
                       const std::string& uniform_size_name,
-                      TensorStorageType storage_type, AccessType access);
-
-  TensorCodeGenerator(const std::string& name,
-                      const std::string& uniform_size_name,
                       const TensorDescriptor& descriptor);
 
-  std::string GetDeclaration() const;
-
   std::string GetDeclaration(AccessType access) const;
+
+  std::string GetAddress(const std::string& var_name, const std::string& x,
+                         const std::string& y, const std::string& z) const;
 
   // This function (and functions below) accept TextureAddressMode, but this
   // argument applicable only for texture types. Buffer types ignore this
@@ -95,37 +69,56 @@ class TensorCodeGenerator {
       const std::string& x, const std::string& y, const std::string& z,
       TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
 
+  // Read4D supports BUFFER and IMAGE_BUFFER storage types.
+  std::string Read4D(const std::string& x, const std::string& y,
+                     const std::string& z, const std::string& b) const;
+
   // Optimization for textures, so as in opencl we can use read_imagef for any
   // texture type.
   std::string ReadAsFloat3D(
       const std::string& x, const std::string& y, const std::string& z,
       TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
 
+  std::string Write3D(const std::string& var_name, const std::string& x,
+                      const std::string& y, const std::string& z) const;
+
+  // Write4D supports BUFFER and IMAGE_BUFFER storage types.
+  std::string Write4D(const std::string& var_name, const std::string& x,
+                      const std::string& y, const std::string& z,
+                      const std::string& b) const;
+
   std::string Read3D(
       const std::string& global_address,
       TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
-
   // Optimization for textures, so as in opencl we can use read_imagef for any
   // texture type.
   std::string ReadAsFloat3D(
       const std::string& global_address,
       TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
-
-  std::string GetAddress(const std::string& var_name, const std::string& x,
-                         const std::string& y, const std::string& z) const;
-
-  std::string Write3D(const std::string& var_name, const std::string& x,
-                      const std::string& y, const std::string& z) const;
-
   std::string Write3D(const std::string& var_name,
                       const std::string& global_address) const;
 
  private:
-  std::string name_;
+  std::string GetGlobalAddressNoDeclaration(const std::string& x,
+                                            const std::string& y,
+                                            const std::string& z) const;
+  std::string GetGlobalAddressNoDeclaration(const std::string& x,
+                                            const std::string& y,
+                                            const std::string& z,
+                                            const std::string& b) const;
+
+  std::string ReadGlobalFLT4(const std::string& global_address,
+                             TextureAddressMode address_mode) const;
+
+  std::string ReadGlobalFloat4(const std::string& global_address,
+                               TextureAddressMode address_mode) const;
+
+  std::string WriteGlobalFLT4(const std::string& var_name,
+                              const std::string& global_address) const;
+
+  std::string tensor_name_;
   std::string uniform_size_name_;
-  TensorStorageType storage_type_;
-  AccessType access_;
-  DataType data_type_ = DataType::UNKNOWN;
+  TensorDescriptor descriptor_;
 };
 
 template <DataType S, typename T>

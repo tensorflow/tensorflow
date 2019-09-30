@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import os
 import sys
 import traceback
@@ -212,6 +213,17 @@ class BaseLayerTest(keras_parameterized.TestCase):
     model.compile(rmsprop.RMSprop(0.001), loss='mse')
     model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
     self.assertEqual(model.outputs[0].shape.as_list(), [None, 3])
+
+  def test_deepcopy(self):
+    with context.eager_mode():
+      bias_reg = lambda x: 1e-3 * math_ops.reduce_sum(x)
+      layer = keras.layers.Conv2D(32, (3, 3), bias_regularizer=bias_reg)
+      # Call the Layer on data to generate regularize losses.
+      layer(array_ops.ones((1, 10, 10, 3)))
+      self.assertLen(layer.losses, 1)
+      new_layer = copy.deepcopy(layer)
+      self.assertEqual(new_layer.bias_regularizer, bias_reg)
+      self.assertEqual(layer.get_config(), new_layer.get_config())
 
   @keras_parameterized.run_all_keras_modes
   def test_add_loss_correctness(self):

@@ -614,7 +614,7 @@ py_test(
 
 cuda_py_test(
     name = "check_numerics_callback_test",
-    size = "small",
+    size = "medium",
     srcs = ["lib/check_numerics_callback_test.py"],
     additional_deps = [
         ":check_numerics_callback",
@@ -886,7 +886,7 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
     ],
-    xla_enable_strict_auto_jit = False,  # Tests TF:Classic implementation
+    xla_enable_strict_auto_jit = False,  # Tests TF:Classic implementation.
 )
 
 cuda_py_test(
@@ -1275,7 +1275,7 @@ sh_test(
 
 sh_test(
     name = "examples_v2_test",
-    size = "small",
+    size = "medium",
     srcs = ["examples/v2/examples_v2_test.sh"],
     data = [
         ":debug_fibonacci_v2",

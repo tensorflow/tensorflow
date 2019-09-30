@@ -149,7 +149,9 @@ __kernel void from_tensor()" +
         params_kernel.second + "\n}";
     queue_ = environment->queue();
     dims_ = input_def.dimensions;
-    return CreateKernel(shader_src, "from_tensor", environment, &kernel_);
+    return environment->program_cache()->GetOrCreateCLKernel(
+        shader_src, "from_tensor", environment->context(),
+        environment->device(), &kernel_);
   }
 
   Status Convert(const TensorObject& input_obj,
@@ -251,7 +253,9 @@ __kernel void to_tensor()" +
         dst_tensor.Write3D("result", "x", "y", "d") + ";\n}";
     queue_ = environment->queue();
     dims_ = output_def.dimensions;
-    return CreateKernel(shader_src, "to_tensor", environment, &kernel_);
+    return environment->program_cache()->GetOrCreateCLKernel(
+        shader_src, "to_tensor", environment->context(), environment->device(),
+        &kernel_);
   }
 
   Status Convert(const TensorObject& input_obj,

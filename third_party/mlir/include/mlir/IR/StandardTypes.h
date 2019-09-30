@@ -391,7 +391,7 @@ public:
   /// order followed by the constant offset, to make indexing intuitive into the
   /// result.
   static constexpr int64_t kDynamicStride = std::numeric_limits<int64_t>::min();
-  LogicalResult getStrides(SmallVectorImpl<int64_t> &strides) const;
+  LogicalResult getStridesAndOffset(SmallVectorImpl<int64_t> &strides) const;
 
   static bool kindof(unsigned kind) { return kind == StandardTypes::MemRef; }
 

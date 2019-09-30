@@ -795,7 +795,6 @@ def make_hardswish_tests(options):
   def build_graph(parameters):
     inp = tf.placeholder(
         dtype=tf.float32, name="input", shape=parameters["input_shape"])
-
     out = inp * tf.nn.relu6(inp + np.float32(3)) * np.float32(1. / 6.)
 
     return [inp], [out]
@@ -807,7 +806,7 @@ def make_hardswish_tests(options):
         outputs, feed_dict=dict(zip(inputs, [input_values])))
 
   # Add additional validation if we are using toco.
-  # Flex and mlir doesn't yet support this. TODO(b/139193008): Fix
+  # Flex doesn't yet support this.
   if not options.run_with_flex:
     options.tflite_convert_function = functools.partial(
         _tflite_convert_verify_num_ops,
@@ -827,8 +826,9 @@ def _tflite_convert_verify_num_ops(tflite_convert_function, *args, **kwargs):
   interpreter = tf.lite.Interpreter(model_content=tflite_model_binary)
   interpreter.allocate_tensors()
   if len(interpreter.get_tensor_details()) != num_ops:
-    raise RuntimeError("Expected to generate two node graph got %r " %
-                       interpreter.get_tensor_details())
+    raise RuntimeError(
+        "Expected to generate two node graph got %s " %
+        "\n".join(str(x) for x in interpreter.get_tensor_details()))
   return result
 
 
@@ -2635,7 +2635,8 @@ def make_shape_tests(options):
 
   test_parameters = [{
       "input_dtype": [tf.float32, tf.int32],
-      "input_shape": [[], [0], [1, 1, 1, 3], [2, 3, 4, 5], [5, 5], [10]],
+      "input_shape": [[1, 4]],
+      "new_shape": [[1, 4], [4, 1], [2, 2]],
       "out_type": [tf.int32, tf.int64],
   }]
 
@@ -2643,15 +2644,26 @@ def make_shape_tests(options):
     """Build the shape op testing graph."""
     # Note that we intentionally leave out the shape from the input placeholder
     # to prevent the Shape operation from being optimized out during conversion.
-    input_value = tf.placeholder(dtype=parameters["input_dtype"], name="input")
-    out = tf.shape(input_value, out_type=parameters["out_type"])
-    return [input_value], [out]
+    # TODO(haoliang): Test shape op directly after we have better support for
+    # dynamic input. Currently we need to introduce a Reshape op to prevent
+    # shape being constant-folded.
+    input_value = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        shape=parameters["input_shape"],
+        name="input")
+    shape_of_new_shape = [len(parameters["new_shape"])]
+    new_shape = tf.placeholder(
+        dtype=tf.int32, shape=shape_of_new_shape, name="new_shape")
+    reshaped = tf.reshape(input_value, shape=new_shape)
+    out = tf.shape(reshaped, out_type=parameters["out_type"])
+    return [input_value, new_shape], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
     input_value = create_tensor_data(parameters["input_dtype"],
                                      parameters["input_shape"])
-    return [input_value], sess.run(
-        outputs, feed_dict=dict(zip(inputs, [input_value])))
+    new_shape = np.array(parameters["new_shape"])
+    return [input_value, new_shape], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_value, new_shape])))
 
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 

@@ -437,6 +437,19 @@ class KerasLayerTest(keras_parameterized.TestCase):
     del layer.x
     self.assertEqual(layer.trainable_weights, [])
 
+  @test_util.run_in_graph_and_eager_modes
+  @testing_utils.enable_v2_dtype_behavior
+  def test_build_and_call_layer_in_function(self):
+    layer = AddLayer(dtype=policy.Policy('mixed_float16'))
+    @def_function.function
+    def f():
+      return layer(1.)
+    y = f()
+    self.evaluate(variables.global_variables_initializer())
+    self.assertEqual(y.dtype, 'float16')
+    self.assertEqual(layer.v.dtype, 'float32')
+    self.assertEqual(self.evaluate(y), 2.)
+
 
 class KerasModelTest(keras_parameterized.TestCase):
   """Test mixed precision with Keras models."""
