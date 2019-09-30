@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Contains Loss Scaling Gradient Tape."""
+"""Contains Loss Scale Gradient Tape."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -26,8 +26,8 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("mixed_precision.experimental.LossScalingGradientTape", v1=[])
-class LossScalingGradientTape(backprop.GradientTape):
+@tf_export("mixed_precision.experimental.LossScaleGradientTape", v1=[])
+class LossScaleGradientTape(backprop.GradientTape):
   """A gradient tape that scales losses and unscales resulting gradients.
 
   Operates as a normal gradient tape, but takes in a
@@ -51,7 +51,7 @@ class LossScalingGradientTape(backprop.GradientTape):
   model_loss_scale = tf.train.experimental.DynamicLossScale()
 
   for step in training_steps:
-    with LossScalingGradientTape(model_loss_scale) as tape:
+    with LossScaleGradientTape(model_loss_scale) as tape:
       logits = ...  # Run model and get logits
       loss = tf.nn.softmax_cross_entropy_with_logits(logits=logits,
                                                      labels=labels)
@@ -66,7 +66,7 @@ class LossScalingGradientTape(backprop.GradientTape):
                loss_scale,
                persistent=False,
                watch_accessed_variables=True):
-    """Creates a new LossScalingGradientTape.
+    """Creates a new LossScaleGradientTape.
 
     Args:
       loss_scale: `tf.train.experimental.LossScale` object that
@@ -89,8 +89,8 @@ class LossScalingGradientTape(backprop.GradientTape):
       raise ValueError("`loss_scale` must be an instance of LossScale.")
 
     # always make a persistent tape to loop over loss scaling
-    super(LossScalingGradientTape, self).__init__(True,
-                                                  watch_accessed_variables)
+    super(LossScaleGradientTape, self).__init__(True,
+                                                watch_accessed_variables)
     self._outer_persistent = persistent
     self._loss_scale = loss_scale
 
@@ -142,7 +142,7 @@ class LossScalingGradientTape(backprop.GradientTape):
         loss_scale = self._loss_scale()
         scaled_target = nest.map_structure(lambda t: t * loss_scale, target)
 
-      old_grads = super(LossScalingGradientTape, self).gradient(
+      old_grads = super(LossScaleGradientTape, self).gradient(
           scaled_target, sources, output_gradients, unconnected_gradients)
       inv_loss_scale = 1.0 / self._loss_scale()
       grads = nest.map_structure(lambda g: inv_loss_scale * g, old_grads)
