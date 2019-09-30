@@ -75,8 +75,8 @@ struct GraphPruning : public FunctionPass<GraphPruning> {
 
 }  // namespace
 
-FunctionPassBase *CreateTFExecutorGraphPruningPass() {
-  return new GraphPruning();
+std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorGraphPruningPass() {
+  return std::make_unique<GraphPruning>();
 }
 
 static PassRegistration<GraphPruning> pass(

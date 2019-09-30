@@ -34,6 +34,7 @@ def glob_lit_tests(
     native.py_test(
         name = "glob_lit_tests",
         srcs = ["@llvm//:lit"],
+        tags = ["no_rocm"],
         args = [
             "tensorflow/compiler/mlir --config-prefix=runlit",
         ],

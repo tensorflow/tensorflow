@@ -56,8 +56,44 @@ static void injectGpuIndexOperations(Location loc, FuncOp kernelFunc) {
   }
 }
 
+// Move all constant arguments of the given kernel function into the function,
+// thereby reducing the number of kernel arguments.
+static gpu::LaunchFuncOp inlineConstants(FuncOp kernelFunc,
+                                         gpu::LaunchFuncOp launch) {
+  OpBuilder kernelBuilder(kernelFunc.getBody());
+  auto &firstBlock = kernelFunc.getBody().front();
+  llvm::SmallVector<Value *, 8> newLaunchArgs;
+  for (int i = launch.getNumKernelOperands() - 1; i >= 0; --i) {
+    auto operandOp = launch.getKernelOperand(i)->getDefiningOp();
+    auto constant = dyn_cast_or_null<ConstantOp>(operandOp);
+    if (!constant) {
+      newLaunchArgs.push_back(launch.getKernelOperand(i));
+      continue;
+    }
+    auto newConstant = kernelBuilder.clone(*operandOp);
+    firstBlock.getArgument(i)->replaceAllUsesWith(newConstant->getResult(0));
+    firstBlock.eraseArgument(i);
+  }
+  if (newLaunchArgs.size() == launch.getNumKernelOperands())
+    return launch;
+
+  std::reverse(newLaunchArgs.begin(), newLaunchArgs.end());
+  OpBuilder LaunchBuilder(launch);
+  SmallVector<Type, 8> newArgumentTypes;
+  newArgumentTypes.reserve(firstBlock.getNumArguments());
+  for (auto value : firstBlock.getArguments()) {
+    newArgumentTypes.push_back(value->getType());
+  }
+  kernelFunc.setType(LaunchBuilder.getFunctionType(newArgumentTypes, {}));
+  auto newLaunch = LaunchBuilder.create<gpu::LaunchFuncOp>(
+      launch.getLoc(), kernelFunc, launch.getGridSizeOperandValues(),
+      launch.getBlockSizeOperandValues(), newLaunchArgs);
+  launch.erase();
+  return newLaunch;
+}
+
 // Outline the `gpu.launch` operation body into a kernel function. Replace
-// `gpu.return` operations by `std.return` in the generated functions.
+// `gpu.return` operations by `std.return` in the generated function.
 static FuncOp outlineKernelFunc(gpu::LaunchOp launchOp) {
   Location loc = launchOp.getLoc();
   SmallVector<Type, 4> kernelOperandTypes(launchOp.getKernelOperandTypes());
@@ -71,7 +107,7 @@ static FuncOp outlineKernelFunc(gpu::LaunchOp launchOp) {
   outlinedFunc.setAttr(gpu::GPUDialect::getKernelFuncAttrName(),
                        builder.getUnitAttr());
   injectGpuIndexOperations(loc, outlinedFunc);
-  outlinedFunc.walk([](mlir::gpu::Return op) {
+  outlinedFunc.walk([](gpu::Return op) {
     OpBuilder replacer(op);
     replacer.create<ReturnOp>(op.getLoc());
     op.erase();
@@ -80,36 +116,91 @@ static FuncOp outlineKernelFunc(gpu::LaunchOp launchOp) {
 }
 
 // Replace `gpu.launch` operations with an `gpu.launch_func` operation launching
-// `kernelFunc`.
+// `kernelFunc`. The kernel func contains the body of the `gpu.launch` with
+// constant region arguments inlined.
 static void convertToLaunchFuncOp(gpu::LaunchOp &launchOp, FuncOp kernelFunc) {
   OpBuilder builder(launchOp);
   SmallVector<Value *, 4> kernelOperandValues(
       launchOp.getKernelOperandValues());
-  builder.create<gpu::LaunchFuncOp>(
+  auto launchFuncOp = builder.create<gpu::LaunchFuncOp>(
       launchOp.getLoc(), kernelFunc, launchOp.getGridSizeOperandValues(),
       launchOp.getBlockSizeOperandValues(), kernelOperandValues);
+  inlineConstants(kernelFunc, launchFuncOp);
   launchOp.erase();
 }
 
 namespace {
 
+/// Pass that moves the kernel of each LaunchOp into its separate nested module.
+///
+/// This pass moves the kernel code of each LaunchOp into a function created
+/// inside a nested module. It also creates an external function of the same
+/// name in the parent module.
+///
+/// The kernel modules are intended to be compiled to a cubin blob independently
+/// in a separate pass. The external functions can then be annotated with the
+/// symbol of the cubin accessor function.
 class GpuKernelOutliningPass : public ModulePass<GpuKernelOutliningPass> {
 public:
   void runOnModule() override {
     ModuleManager moduleManager(getModule());
     for (auto func : getModule().getOps<FuncOp>()) {
-      func.walk([&](mlir::gpu::LaunchOp op) {
+      // Insert just after the function.
+      Block::iterator insertPt(func.getOperation()->getNextNode());
+      func.walk([&](gpu::LaunchOp op) {
         FuncOp outlinedFunc = outlineKernelFunc(op);
-        moduleManager.insert(outlinedFunc);
+
+        // Potentially renames outlinedFunc to make symbol unique.
+        moduleManager.insert(insertPt, outlinedFunc);
+
+        // Potentially changes signature, pulling in constants.
         convertToLaunchFuncOp(op, outlinedFunc);
+
+        // Create clone and move body from outlinedFunc.
+        auto kernelFunc = outlinedFunc.cloneWithoutRegions();
+        kernelFunc.getBody().takeBody(outlinedFunc.getBody());
+
+        // Create nested module and insert kernelFunc.
+        auto kernelModule = createKernelModule(kernelFunc, moduleManager);
+        getModule().insert(insertPt, kernelModule);
       });
     }
+  }
+
+private:
+  // Returns a module containing kernelFunc and all callees (recursive).
+  ModuleOp createKernelModule(FuncOp kernelFunc,
+                              const ModuleManager &parentModuleManager) {
+    auto context = getModule().getContext();
+    auto kernelModule = ModuleOp::create(UnknownLoc::get(context));
+    kernelModule.setAttr(gpu::GPUDialect::getKernelModuleAttrName(),
+                         UnitAttr::get(context));
+    ModuleManager moduleManager(kernelModule);
+
+    llvm::SmallVector<FuncOp, 8> funcsToInsert = {kernelFunc};
+    while (!funcsToInsert.empty()) {
+      FuncOp func = funcsToInsert.pop_back_val();
+      moduleManager.insert(func);
+
+      // TODO(b/141098412): Support any op with a callable interface.
+      func.walk([&](CallOp call) {
+        auto callee = call.callee();
+        if (moduleManager.lookupSymbol<FuncOp>(callee))
+          return;
+
+        auto calleeFromParent =
+            parentModuleManager.lookupSymbol<FuncOp>(callee);
+        funcsToInsert.push_back(calleeFromParent.clone());
+      });
+    }
+
+    return kernelModule;
   }
 };
 
 } // namespace
 
-std::unique_ptr<ModulePassBase> mlir::createGpuKernelOutliningPass() {
+std::unique_ptr<OpPassBase<ModuleOp>> mlir::createGpuKernelOutliningPass() {
   return std::make_unique<GpuKernelOutliningPass>();
 }
 

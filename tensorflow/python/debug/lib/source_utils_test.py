@@ -75,6 +75,20 @@ class GuessIsTensorFlowLibraryTest(test_util.TensorFlowTestCase):
     self.assertTrue(
         source_utils.guess_is_tensorflow_py_library(x.op.traceback[-1][0]))
 
+  def testDebuggerExampleFilePathReturnsFalse(self):
+    self.assertFalse(
+        source_utils.guess_is_tensorflow_py_library(os.path.normpath(
+            "site-packages/tensorflow/python/debug/examples/debug_mnist.py")))
+    self.assertFalse(
+        source_utils.guess_is_tensorflow_py_library(os.path.normpath(
+            "site-packages/tensorflow/python/debug/examples/v1/example_v1.py")))
+    self.assertFalse(
+        source_utils.guess_is_tensorflow_py_library(os.path.normpath(
+            "site-packages/tensorflow/python/debug/examples/v2/example_v2.py")))
+    self.assertFalse(
+        source_utils.guess_is_tensorflow_py_library(os.path.normpath(
+            "site-packages/tensorflow/python/debug/examples/v3/example_v3.py")))
+
   def testNonPythonFileRaisesException(self):
     with self.assertRaisesRegexp(ValueError, r"is not a Python source file"):
       source_utils.guess_is_tensorflow_py_library(

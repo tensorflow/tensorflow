@@ -111,17 +111,49 @@ def : Pat<(TFL_MulOp (TFL_DepthwiseConv2DOp $input,
 // TODO(fengliuai): move this to the sanity check of pre-quantize pass.
 def : Pat<(TFL_QuantizeOp (TFL_DequantizeOp $in), $qt), (replaceWithValue $in)>;
 
+
 // Constraint that makes sure both operands are the same operands.
 def EqualOperands : Constraint<CPred<"$0 == $1">>;
+
 
 // Checks if the operand has rank == n
 class OperandHasRank<int n> : Constraint<
   CPred<"$0->getType().cast<ShapedType>().getRank() == " # n>>;
 
+// Matching HardSwish
+def : Pat<
+  (TFL_MulOp
+    (TFL_MulOp
+     $x, (TFL_AddOp
+          $y,
+          (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "3.0f">),
+          TFL_AF_Relu6),
+     TFL_AF_None),
+    (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.166666666f">),
+     TFL_AF_None),
+  (TFL_HardSwishOp $x),
+  [(EqualOperands $x, $y)]>;
+
+def : Pat<
+  (TFL_MulOp
+    $x,
+    (TFL_MulOp
+     (TFL_AddOp
+      $y,
+      (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "3.0f">),
+      TFL_AF_Relu6),
+     (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.166666666f">),
+     TFL_AF_None),
+     TFL_AF_None),
+  (TFL_HardSwishOp $x),
+  [(EqualOperands $x, $y)]>;
+
 // This pattern constructs L2NormalizationOp from
 // Mul->Rsqrt->Sum->Square
 // Currently L2Normalization doesn't support activation function
 // in TFLite.
+// TODO(karimnosseir): Add constraints that the kernel code assumes.
+// constraint on axis and depth.
 def : Pat<(TFL_MulOp $operand1,
                      (TFL_RsqrtOp
                         (TFL_SumOp
@@ -130,13 +162,14 @@ def : Pat<(TFL_MulOp $operand1,
                            $keep_dims)),
                      TFL_AF_None),
            (TFL_L2NormalizationOp $operand1, TFL_AF_None),
-           [(EqualOperands $operand1, $square_operand),
-            (OperandHasRank<1> $operand1)]>;
+           [(EqualOperands $operand1, $square_operand)]>;
 
 // This pattern constructs L2NormalizationOp from
 // Div->sqrt->Sum->Square
 // Currently L2Normalization doesn't support activation function
 // in TFLite.
+// TODO(karimnosseir): Add constraints that the kernel code assumes.
+// constraint on axis and depth.
 def : Pat<(TFL_DivOp $operand1,
                      (TFL_SqrtOp
                         (TFL_SumOp
@@ -145,5 +178,4 @@ def : Pat<(TFL_DivOp $operand1,
                            $keep_dims)),
                      TFL_AF_None),
            (TFL_L2NormalizationOp $operand1, TFL_AF_None),
-           [(EqualOperands $operand1, $square_operand),
-            (OperandHasRank<1> $operand1)]>;
+           [(EqualOperands $operand1, $square_operand)]>;

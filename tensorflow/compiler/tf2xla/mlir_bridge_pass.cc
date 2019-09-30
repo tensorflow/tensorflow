@@ -16,23 +16,26 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/mlir_bridge_pass.h"
 
 #include "llvm/Support/raw_os_ostream.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 
 namespace tensorflow {
 
-// Dump the MLIR module to disk.
+// Dumps the MLIR module to disk.
 // This require the TF_DUMP_GRAPH_PREFIX to be set to a path that exist (or can
 // be created).
-static void DumpModule(mlir::ModuleOp module) {
-  std::string prefix = getenv("TF_DUMP_GRAPH_PREFIX");
-  if (prefix.empty()) {
+static void DumpModule(mlir::ModuleOp module, llvm::StringRef file_prefix) {
+  const char* prefix_env = getenv("TF_DUMP_GRAPH_PREFIX");
+  if (!prefix_env) {
     LOG(WARNING)
         << "Failed to dump MLIR module because dump location is not "
         << " specified through TF_DUMP_GRAPH_PREFIX environment variable.";
     return;
   }
+  std::string prefix = prefix_env;
 
   auto* env = tensorflow::Env::Default();
   auto status = env->RecursivelyCreateDir(prefix);
@@ -41,7 +44,7 @@ static void DumpModule(mlir::ModuleOp module) {
                         "': " + status.error_message();
     return;
   }
-  prefix += "/mlir_bridge_after_";
+  prefix += "/" + file_prefix.str();
   if (!tensorflow::Env::Default()->CreateUniqueFileName(&prefix, ".mlir")) {
     LOG(WARNING) << "cannot create unique filename, won't dump MLIR module.";
     return;
@@ -84,15 +87,18 @@ Status MlirBridgePass::Run(const GraphOptimizationPassOptions& options) {
   }
   GraphDebugInfo debug_info;
   mlir::MLIRContext context;
-  NodeSpecs specs;
-  ExporterConfigs confs;
+  GraphImportConfig specs;
+  GraphExportConfig confs;
   TF_ASSIGN_OR_RETURN(auto module,
                       ConvertGraphToMlir(**options.graph, debug_info,
                                          *options.flib_def, specs, &context));
 
-  // TODO(aminim): Actually call into bridge passes here.
+  if (VLOG_IS_ON(1)) DumpModule(*module, "mlir_bridge_before_");
 
-  if (VLOG_IS_ON(1)) DumpModule(*module);
+  // Run the bridge now
+  TF_RETURN_IF_ERROR(mlir::TFTPU::TPUBridge(*module));
+
+  if (VLOG_IS_ON(1)) DumpModule(*module, "mlir_bridge_after_");
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       ConvertMlirToGraph(*module, confs, options.graph, options.flib_def),

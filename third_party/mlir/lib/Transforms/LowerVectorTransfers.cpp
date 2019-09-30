@@ -361,7 +361,7 @@ VectorTransferRewriter<VectorTransferWriteOp>::matchAndRewrite(
 
 struct LowerVectorTransfersPass
     : public FunctionPass<LowerVectorTransfersPass> {
-  void runOnFunction() {
+  void runOnFunction() override {
     OwningRewritePatternList patterns;
     auto *context = &getContext();
     patterns.insert<VectorTransferRewriter<vector::VectorTransferReadOp>,
@@ -373,7 +373,7 @@ struct LowerVectorTransfersPass
 
 } // end anonymous namespace
 
-std::unique_ptr<FunctionPassBase> mlir::createLowerVectorTransfersPass() {
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createLowerVectorTransfersPass() {
   return std::make_unique<LowerVectorTransfersPass>();
 }
 

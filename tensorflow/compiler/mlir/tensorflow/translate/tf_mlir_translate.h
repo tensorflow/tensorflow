@@ -31,23 +31,21 @@ namespace tensorflow {
 // `input_filename` into a MLIR module. Creates MLIR entities into the
 // given MLIR `context`.
 mlir::OwningModuleRef GraphdefToMlirTranslateFunction(
-    absl::string_view input_filename, absl::string_view debug_info_file,
-    absl::string_view input_arrays, absl::string_view input_dtypes,
-    absl::string_view input_shapes, absl::string_view output_arrays,
-    absl::string_view inference_type, absl::string_view min_values,
-    absl::string_view max_values, bool prune_unused_nodes,
-    bool convert_legacy_fed_inputs, bool graph_as_function,
+    std::unique_ptr<llvm::MemoryBuffer> input,
+    absl::string_view debug_info_file, absl::string_view input_arrays,
+    absl::string_view input_dtypes, absl::string_view input_shapes,
+    absl::string_view output_arrays, bool prune_unused_nodes,
+    bool convert_legacy_fed_inputs, bool graph_as_function, bool upgrade_legacy,
     mlir::MLIRContext* context);
 
 // Similar as the above function, but replaces all constant tensors
 // with randomly generated splat values.
 mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
-    absl::string_view input_filename, absl::string_view debug_info_file,
-    absl::string_view input_arrays, absl::string_view input_dtypes,
-    absl::string_view input_shapes, absl::string_view output_arrays,
-    absl::string_view inference_type, absl::string_view min_values,
-    absl::string_view max_values, bool prune_unused_nodes,
-    bool convert_legacy_fed_inputs, bool graph_as_function,
+    std::unique_ptr<llvm::MemoryBuffer> input,
+    absl::string_view debug_info_file, absl::string_view input_arrays,
+    absl::string_view input_dtypes, absl::string_view input_shapes,
+    absl::string_view output_arrays, bool prune_unused_nodes,
+    bool convert_legacy_fed_inputs, bool graph_as_function, bool upgrade_legacy,
     mlir::MLIRContext* context);
 
 // Converts a TensorFlow SavedModel stored in the directory with the given

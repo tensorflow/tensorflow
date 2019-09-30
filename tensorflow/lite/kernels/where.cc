@@ -65,8 +65,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 
-  // As output will be a 2D tensor of indices, we use int32 as data type.
-  output->type = kTfLiteInt32;
+  // As output will be a 2D tensor of indices, use int64 to be consistent with
+  // tensorflow.
+  output->type = kTfLiteInt64;
 
   // Exit early if cond is a non-const tensor. Set output tensor to dynamic so
   // output size can be determined in Eval.
@@ -89,7 +90,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   reference_ops::SelectTrueCoords(GetTensorShape(cond_tensor),
                                   GetTensorData<bool>(cond_tensor),
-                                  GetTensorData<int32_t>(output));
+                                  GetTensorData<int64_t>(output));
   return kTfLiteOk;
 }
 }  // namespace where

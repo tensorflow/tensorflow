@@ -1078,6 +1078,7 @@ def map_structure_with_tuple_paths_up_to(shallow_tree, func, *inputs, **kwargs):
 
   Example:
 
+  ```python
   lowercase = {'a': 'a', 'b': ('b0', 'b1')}
   uppercase = {'a': 'A', 'b': ('B0', 'B1')}
 
@@ -1089,9 +1090,9 @@ def map_structure_with_tuple_paths_up_to(shallow_tree, func, *inputs, **kwargs):
                                        print_path_and_values,
                                        lowercase,
                                        uppercase)
-  >>> path: ('a',), values: ('a', 'A')
-  >>> path: ('b', 0), values: ('b0', 'B0')
-  >>> path: ('b', 1), values: ('b1', 'B1')
+  path: ('a',), values: ('a', 'A')
+  path: ('b', 0), values: ('b0', 'B0')
+  path: ('b', 1), values: ('b1', 'B1')
 
   shallow_tree = {'b': None}
   map_structure_with_tuple_paths_up_to(shallow_tree,
@@ -1099,7 +1100,7 @@ def map_structure_with_tuple_paths_up_to(shallow_tree, func, *inputs, **kwargs):
                                        lowercase,
                                        uppercase,
                                        check_types=False)
-  >>> path: ('b', 1), values: (('bo', 'b1'), ('B0', 'B1'))
+  path: ('b', 1), values: (('bo', 'b1'), ('B0', 'B1'))
 
   shallow_tree = {'a': None, 'b': {1: None}}
   map_structure_with_tuple_paths_up_to(shallow_tree,
@@ -1107,8 +1108,9 @@ def map_structure_with_tuple_paths_up_to(shallow_tree, func, *inputs, **kwargs):
                                        lowercase,
                                        uppercase,
                                        check_types=False)
-  >>> path: ('a',), values: ('a', 'A')
-  >>> path: ('b', 1), values: ('b1', B1')
+  path: ('a',), values: ('a', 'A')
+  path: ('b', 1), values: ('b1', B1')
+  ```
 
   Args:
     shallow_tree: a shallow tree, common to all the inputs.
@@ -1250,16 +1252,16 @@ def yield_flat_paths(nest, expand_composites=False):
   E.g. if we have a tuple `value = Foo(a=3, b=Bar(c=23, d=42))`
 
   ```shell
-  >>> nest.flatten(value)
+  nest.flatten(value)
   [3, 23, 42]
-  >>> list(nest.yield_flat_paths(value))
+  list(nest.yield_flat_paths(value))
   [('a',), ('b', 'c'), ('b', 'd')]
   ```
 
   ```shell
-  >>> list(nest.yield_flat_paths({'a': [3]}))
+  list(nest.yield_flat_paths({'a': [3]}))
   [('a', 0)]
-  >>> list(nest.yield_flat_paths({'a': 3}))
+  list(nest.yield_flat_paths({'a': 3}))
   [('a',)]
   ```
 

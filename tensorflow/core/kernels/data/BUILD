@@ -26,11 +26,14 @@ cc_library(
     srcs = ["dataset_test_base.cc"],
     hdrs = ["dataset_test_base.h"],
     deps = [
+        ":batch_dataset_op",
         ":dataset_utils",
         ":iterator_ops",
+        ":map_dataset_op",
         ":name_utils",
         ":range_dataset_op",
         ":take_dataset_op",
+        ":tensor_slice_dataset_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -55,6 +58,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -63,6 +67,7 @@ tf_cc_test(
     srcs = ["dataset_utils_test.cc"],
     deps = [
         ":dataset_utils",
+        "//tensorflow/cc:cc_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -114,18 +119,6 @@ cc_library(
         "//tensorflow/core/grappler/optimizers/data",
         "//tensorflow/core/grappler/optimizers/data:function_utils",
         "//tensorflow/core/grappler/optimizers/data:graph_utils",
-    ],
-)
-
-tf_cc_test(
-    name = "rewrite_utils_test",
-    srcs = ["rewrite_utils_test.cc"],
-    deps = [
-        ":rewrite_utils",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
     ],
 )
 
@@ -821,6 +814,7 @@ tf_kernel_library(
     srcs = ["shuffle_dataset_op.cc"],
     hdrs = ["shuffle_dataset_op.h"],
     deps = [
+        ":dataset_utils",
         ":name_utils",
         ":random_seed_ops",
         "//tensorflow/core:dataset_ops_op_lib",
@@ -1381,18 +1375,18 @@ tf_kernel_library(
     ],
 )
 
-# Used by mobile builds.
+# A file group which contains all operators which are known to work on mobile.
 filegroup(
-    name = "dataset_ops_srcs",
+    name = "android_all_op_kernels",
     srcs = glob(
         [
             "*.cc",
             "*.h",
         ],
         exclude = [
-            "rewrite_utils*",  # includes grappler dependency, which isn't supported on mobile.
-            "optimize_dataset*",  # includes grappler dependency, which isn't supported on mobile.
             "dataset_ops*",  # includes grappler dependency, which isn't supported on mobile.
+            "optimize_dataset_op.*",  # includes grappler dependency, which isn't supported on mobile.
+            "rewrite_utils*",  # includes grappler dependency, which isn't supported on mobile.
             "*test.cc",
             "*test.h",
             "*_test_*",

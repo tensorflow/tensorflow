@@ -609,6 +609,7 @@ cc_test(
         ":softmax",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],

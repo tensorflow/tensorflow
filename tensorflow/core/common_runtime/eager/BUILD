@@ -1,6 +1,7 @@
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+    "tf_copts",
     "tf_cuda_library",
 )
 load(
@@ -152,6 +153,19 @@ tf_cuda_library(
     }),
 )
 
+tf_cc_test(
+    name = "tensor_handle_test",
+    srcs = ["tensor_handle_test.cc"],
+    deps = [
+        ":tensor_handle",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
 tf_cuda_library(
     name = "copy_to_device_node",
     hdrs = [
@@ -282,6 +296,7 @@ cc_library(
 cc_library(
     name = "mkl_eager_op_rewrite",
     srcs = ["mkl_eager_op_rewrite.cc"],
+    copts = tf_copts(allow_exceptions = True),
     deps = [
         ":eager_op_rewrite_registry",
         "//tensorflow/core:framework",

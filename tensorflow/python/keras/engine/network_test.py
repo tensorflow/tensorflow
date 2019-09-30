@@ -28,6 +28,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import input_layer as input_layer_lib
 from tensorflow.python.keras.engine import network as network_lib
 from tensorflow.python.keras.engine import training
@@ -1728,6 +1729,129 @@ class DTypeTest(keras_parameterized.TestCase):
     network = IdentityNetwork(autocast=False)
     self.assertEqual(network.dtype, 'float32')
     self.assertEqual(network(array_ops.constant(1, 'float64')).dtype, 'float64')
+
+
+class AttrTrackingLayer(base_layer.Layer):
+  """Count how many times `dynamic` and `stateful` are called.
+
+  These counts are used to test that the attribute cache behaves as expected.
+  """
+  def __init__(self, *args, **kwargs):
+    self.stateful_count = 0
+    self.dynamic_count = 0
+    super(AttrTrackingLayer, self).__init__(*args, **kwargs)
+
+  @base_layer.Layer.stateful.getter
+  def stateful(self):
+    self.stateful_count += 1
+    return super(AttrTrackingLayer, self).stateful
+
+  @property
+  def dynamic(self):
+    self.dynamic_count += 1
+    return super(AttrTrackingLayer, self).dynamic
+
+
+class CacheCorrectnessTest(keras_parameterized.TestCase):
+  def layer_and_network_test(self):
+    # Top level layer
+    network = network_lib.Network()
+
+    layer_0 = AttrTrackingLayer()
+
+    sub_network = network_lib.Network()
+    layer_1 = AttrTrackingLayer(dynamic=True)
+    layer_2 = AttrTrackingLayer()
+    sub_network.sub_layers = [layer_1, layer_2]
+
+    network.sub_layer = layer_0
+
+    for _ in range(2):
+      self.assertEqual(network.dynamic, False)
+      self.assertEqual(network.stateful, False)
+
+      # The second pass should be a cache hit.
+      self.assertEqual(layer_0.dynamic_count, 1)
+      self.assertEqual(layer_0.stateful_count, 1)
+
+    # Mutations of the sub-layer should force recalculation of the network's
+    # stateful attribute. (mutations bubble up.)
+    layer_0.stateful = True
+    self.assertEqual(network.stateful, True)
+    self.assertEqual(layer_0.stateful_count, 2)
+
+    layer_0.stateful = False
+    self.assertEqual(network.stateful, False)
+    self.assertEqual(layer_0.stateful_count, 3)
+
+    # But changing stateful should not affect dynamic.
+    self.assertEqual(network.dynamic, False)
+    self.assertEqual(layer_0.dynamic_count, 1)
+
+    network.sub_network = sub_network
+
+    # Adding to the topology should invalidate the cache and reflect in the top
+    # level network.
+    self.assertEqual(network.dynamic, True)
+    self.assertEqual(layer_0.dynamic_count, 2)
+    self.assertEqual(layer_1.dynamic_count, 1)
+
+    # Still dynamic, but we need to recompute.
+    sub_network.sub_layers.pop()
+    self.assertEqual(network.dynamic, True)
+    self.assertEqual(layer_0.dynamic_count, 3)
+    self.assertEqual(layer_1.dynamic_count, 2)
+
+    # Now that we've removed the dynamic layer deep in the layer hierarchy, we
+    # need to make sure that that bubbles up through all the levels.
+    sub_network.sub_layers.pop()
+    self.assertEqual(network.dynamic, False)
+    self.assertEqual(layer_0.dynamic_count, 4)
+    self.assertEqual(layer_1.dynamic_count, 2)
+
+    # Now check with a tracked dict.
+    sub_network.sub_layers = {
+        "layer_1": layer_1,
+        "layer_2": layer_2,
+    }
+
+    self.assertEqual(network.dynamic, True)
+    self.assertEqual(layer_0.dynamic_count, 5)
+    self.assertEqual(layer_1.dynamic_count, 3)
+
+    # In-place assignment should still invalidate the cache.
+    sub_network.sub_layers["layer_1"] = layer_1
+    self.assertEqual(network.dynamic, True)
+    self.assertEqual(layer_0.dynamic_count, 6)
+    self.assertEqual(layer_1.dynamic_count, 4)
+
+    sub_network.sub_layers["layer_1"] = None
+    for _ in range(2):
+      self.assertEqual(network.dynamic, False)
+      self.assertEqual(layer_0.dynamic_count, 7)
+      self.assertEqual(layer_1.dynamic_count, 4)
+
+    layer_3 = AttrTrackingLayer()
+    layer_3.stateful = True
+
+    sub_network.sub_layers = None
+    self.assertEqual(network.dynamic, False)
+    self.assertEqual(network.stateful, False)
+
+    # Test duplicate layers.
+    sub_network.sub_layers = [layer_1, layer_1, layer_1, layer_3]
+    self.assertEqual(network.dynamic, True)
+    self.assertEqual(network.stateful, True)
+
+    for _ in range(3):
+      sub_network.sub_layers.pop()
+      self.assertEqual(network.dynamic, True)
+      self.assertEqual(network.stateful, False)
+
+    sub_network.sub_layers.pop()
+    self.assertEqual(network.dynamic, False)
+    self.assertEqual(network.stateful, False)
+
 
 
 if __name__ == '__main__':

@@ -212,14 +212,10 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
       }
       // TODO(b/32495713): We aren't checking the called computations.
       break;
-    case HloOpcode::kGetDimensionSize: {
-      int64 dimension_number = instr.dimensions(0);
-      const HloInstructionProto& operand =
-          *(LookUpInstructionByHandle(instr.operand_ids(0)).ValueOrDie());
-      Shape operand_shape(operand.shape());
-      if (operand_shape.is_dynamic_dimension(dimension_number)) {
-        *is_constant = false;
-      }
+    case HloOpcode::kGetDimensionSize:
+    case HloOpcode::kSetDimensionSize: {
+      // DimensionSize is always considered constant in XLA -- If a dynamic
+      // dimension is presented, -1 is returned.
       break;
     }
 
@@ -268,8 +264,8 @@ Status XlaBuilder::SetDynamicBinding(int64 dynamic_size_param_num,
       for (int64 index : target_param_index) {
         param_shape_ptr = param_shape_ptr->mutable_tuple_shapes(index);
       }
-      // TODO(b/121223198): Set `is_dynamic` to the parameter shape when XLA
-      // backend can handle dynamic dimensions.
+      param_shape_ptr->set_dynamic_dimension(target_dim_num,
+                                             /*is_dynamic=*/true);
       *instr.mutable_shape() = param_shape.ToProto();
     }
   }
@@ -435,6 +431,7 @@ StatusOr<XlaOp> XlaBuilder::InDimBroadcast(
   for (int64 dim : broadcast_dimensions) {
     instr.add_dimensions(dim);
   }
+
   return AddInstruction(std::move(instr), HloOpcode::kBroadcast, {operand});
 }
 
@@ -468,11 +465,21 @@ StatusOr<XlaOp> XlaBuilder::AddBroadcastSequence(const Shape& output_shape,
           << operand_shape << "; output_shape: " << output_shape;
     }
   }
+
+  Shape reshaped_shape =
+      ShapeUtil::MakeShape(operand_shape.element_type(), reshaped_dimensions);
+
+  std::vector<std::pair<int64, int64>> unmodified_dims =
+      ShapeUtil::DimensionsUnmodifiedByReshape(operand_shape, reshaped_shape);
+
+  for (auto& unmodified : unmodified_dims) {
+    if (operand_shape.is_dynamic_dimension(unmodified.first)) {
+      reshaped_shape.set_dynamic_dimension(unmodified.second, true);
+    }
+  }
+
   // Eliminate the size one dimensions.
-  TF_ASSIGN_OR_RETURN(XlaOp reshaped_operand,
-                      Reshape(ShapeUtil::MakeShape(operand_shape.element_type(),
-                                                   reshaped_dimensions),
-                              operand));
+  TF_ASSIGN_OR_RETURN(XlaOp reshaped_operand, Reshape(reshaped_shape, operand));
   // Broadcast 'reshape' up to the larger size.
   return InDimBroadcast(broadcast_shape, reshaped_operand,
                         broadcast_dimensions);
@@ -1746,10 +1753,12 @@ XlaOp XlaBuilder::Scatter(const XlaOp& input, const XlaOp& scatter_indices,
                           const XlaOp& updates,
                           const XlaComputation& update_computation,
                           const ScatterDimensionNumbers& dimension_numbers,
-                          bool indices_are_sorted) {
+                          bool indices_are_sorted, bool unique_indices) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     instr.set_indices_are_sorted(indices_are_sorted);
+
+    instr.set_unique_indices(unique_indices);
 
     TF_ASSIGN_OR_RETURN(const Shape& input_shape, GetShape(input));
     TF_ASSIGN_OR_RETURN(const Shape& scatter_indices_shape,
@@ -2413,6 +2422,19 @@ XlaOp XlaBuilder::GetDimensionSize(const XlaOp& operand, int64 dimension) {
   });
 }
 
+XlaOp XlaBuilder::SetDimensionSize(XlaOp operand, XlaOp val, int64 dimension) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const auto& operand_shape, GetShape(operand));
+    TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferSetDimensionSizeShape(
+                                         operand_shape, dimension));
+    *instr.mutable_shape() = shape.ToProto();
+    instr.add_dimensions(dimension);
+    return AddInstruction(std::move(instr), HloOpcode::kSetDimensionSize,
+                          {operand, val});
+  });
+}
+
 StatusOr<bool> XlaBuilder::IsConstant(const XlaOp& operand) const {
   TF_RETURN_IF_ERROR(first_error_);
 
@@ -2426,7 +2448,7 @@ StatusOr<bool> XlaBuilder::IsConstant(const XlaOp& operand) const {
 }
 
 StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
-    const XlaOp& root_op) {
+    XlaOp root_op, bool dynamic_dimension_is_minus_one) {
   TF_ASSIGN_OR_RETURN(bool is_constant, IsConstant(root_op));
   if (!is_constant) {
     auto op_status = LookUpInstruction(root_op);
@@ -2481,9 +2503,12 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
       TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
                           LookUpInstructionByHandle(operand_handle));
 
-      TF_RET_CHECK(!operand_proto->shape().is_dynamic_dimension(dimension));
-      auto constant_dimension_size =
-          static_cast<uint32>(operand_proto->shape().dimensions(dimension));
+      int32 constant_dimension_size = -1;
+      if (!(operand_proto->shape().is_dynamic_dimension(dimension) &&
+            dynamic_dimension_is_minus_one)) {
+        constant_dimension_size =
+            static_cast<int32>(operand_proto->shape().dimensions(dimension));
+      }
 
       Literal literal = LiteralUtil::CreateR0(constant_dimension_size);
 
@@ -3390,10 +3415,10 @@ XlaOp Gather(const XlaOp input, const XlaOp start_indices,
 XlaOp Scatter(const XlaOp input, const XlaOp scatter_indices,
               const XlaOp updates, const XlaComputation& update_computation,
               const ScatterDimensionNumbers& dimension_numbers,
-              bool indices_are_sorted) {
+              bool indices_are_sorted, bool unique_indices) {
   return input.builder()->Scatter(input, scatter_indices, updates,
                                   update_computation, dimension_numbers,
-                                  indices_are_sorted);
+                                  indices_are_sorted, unique_indices);
 }
 
 void Send(const XlaOp operand, const ChannelHandle& handle) {
@@ -3477,6 +3502,10 @@ XlaOp Iota(XlaBuilder* builder, const Shape& shape, int64 iota_dimension) {
 
 XlaOp GetDimensionSize(const XlaOp operand, int64 dimension) {
   return operand.builder()->GetDimensionSize(operand, dimension);
+}
+
+XlaOp SetDimensionSize(const XlaOp operand, const XlaOp val, int64 dimension) {
+  return operand.builder()->SetDimensionSize(operand, val, dimension);
 }
 
 }  // namespace xla

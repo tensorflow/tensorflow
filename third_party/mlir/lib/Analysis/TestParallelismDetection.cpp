@@ -36,8 +36,8 @@ struct TestParallelismDetection
 
 } // end anonymous namespace
 
-FunctionPassBase *mlir::createParallelismDetectionTestPass() {
-  return new TestParallelismDetection();
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createParallelismDetectionTestPass() {
+  return std::make_unique<TestParallelismDetection>();
 }
 
 // Walks the function and emits a note for all 'affine.for' ops detected as

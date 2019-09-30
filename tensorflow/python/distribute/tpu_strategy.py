@@ -38,6 +38,7 @@ from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device_spec
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -99,6 +100,11 @@ class TPUStrategy(distribute_lib.Strategy):
     """
     super(TPUStrategy, self).__init__(TPUExtended(
         self, tpu_cluster_resolver, device_assignment=device_assignment))
+    distribute_lib.distribution_strategy_gauge.get_cell("V2").set("TPUStrategy")
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_workers").set(self.extended.num_hosts)
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_replicas_per_worker").set(self.extended.num_replicas_per_host)
 
   # TODO(cjfj): Modify `_call_for_each_replica` in `TPUExtended` such that this
   # can use the default implementation.
@@ -135,6 +141,11 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
     """
     super(TPUStrategyV1, self).__init__(TPUExtended(
         self, tpu_cluster_resolver, steps_per_run, device_assignment))
+    distribute_lib.distribution_strategy_gauge.get_cell("V1").set("TPUStrategy")
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_workers").set(self.extended.num_hosts)
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_replicas_per_worker").set(self.extended.num_replicas_per_host)
 
   @property
   def steps_per_run(self):
@@ -174,15 +185,22 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self._tpu_metadata = get_tpu_system_metadata(self._tpu_cluster_resolver)
     self._device_assignment = device_assignment
 
-    # TODO(jhseu): Switch to DeviceAssignment to support pods and model
-    # parallelism.
     self._tpu_devices = [d.name for d in self._tpu_metadata.devices
                          if "device:TPU:" in d.name]
 
+    # Only create variables for the number of replicas we're running.
+    if device_assignment is not None:
+      job_name = device_spec.DeviceSpecV2.from_string(self._tpu_devices[0]).job
+
+      self._tpu_devices = []
+      for replica_id in range(device_assignment.num_replicas):
+        tpu_device = device_assignment.tpu_device(
+            replica=replica_id, logical_core=0, job=job_name)
+        tpu_device = device_util.canonicalize(tpu_device)
+        self._tpu_devices.append(tpu_device)
+
     self._host_device = device_util.get_host_for_device(self._tpu_devices[0])
 
-    # Only create variables for the number of replicas we're running.
-    self._tpu_devices = self._tpu_devices[:self._num_replicas_in_sync]
     self._device_map = values.ReplicaDeviceMap(self._tpu_devices)
 
     # Preload the data onto the TPUs.

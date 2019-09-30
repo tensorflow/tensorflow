@@ -57,8 +57,10 @@ class MlirCompiler : public Compiler {
   }
 
   struct IRHook {
+    enum class LoweringStage { LHLO, GPU, LLVM };
+
     std::function<void(mlir::ModuleOp)> callback;
-    bool apply_on_lowered;
+    LoweringStage stage;
   };
 
   void SetModuleHook(IRHook module_hook);

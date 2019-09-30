@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <string.h>
 
+#include "absl/types/span.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#include "tensorflow/core/distributed_runtime/eager/cluster_function_library_runtime.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
@@ -42,6 +44,13 @@ namespace {
 class TestEagerServiceImpl : public EagerServiceImpl {
  public:
   explicit TestEagerServiceImpl(const WorkerEnv* env) : EagerServiceImpl(env) {}
+  Status GetEagerContext(const uint64 context_id, EagerContext** ctx) {
+    ServerContext* context = nullptr;
+    TF_RETURN_IF_ERROR(GetServerContext(context_id, &context));
+    core::ScopedUnref context_unref(context);
+    *ctx = context->Context();
+    return Status::OK();
+  }
   Status GetTensorHandle(const uint64 context_id,
                          const RemoteTensorHandleInternal& remote_handle,
                          tensorflow::TensorHandle** handle) {
@@ -54,10 +63,49 @@ class TestEagerServiceImpl : public EagerServiceImpl {
   }
 };
 
-class DummyEagerClientCache : public EagerClientCache {
-  Status GetClient(const string& target, EagerClient** client) override {
-    return errors::Unimplemented("");
+class FakeEagerClient : public EagerClient {
+ public:
+  FakeEagerClient() {}
+  ~FakeEagerClient() override {}
+
+  void SetServiceImpl(TestEagerServiceImpl* impl) { impl_ = impl; }
+
+#define CLIENT_METHOD(method)                                         \
+  void method##Async(const method##Request* request,                  \
+                     method##Response* response, StatusCallback done) \
+      override {                                                      \
+    done(impl_->method(request, response));                           \
   }
+
+  CLIENT_METHOD(CreateContext);
+  CLIENT_METHOD(UpdateContext);
+  CLIENT_METHOD(Enqueue);
+  CLIENT_METHOD(WaitQueueDone);
+  CLIENT_METHOD(KeepAlive);
+  CLIENT_METHOD(CloseContext);
+  CLIENT_METHOD(RegisterFunction);
+#undef CLIENT_METHOD
+
+  void StreamingEnqueueAsync(const EnqueueRequest* request,
+                             EnqueueResponse* response,
+                             StatusCallback done) override {
+    done(errors::Unimplemented(""));
+  }
+
+ private:
+  TestEagerServiceImpl* impl_;
+};
+
+class DummyEagerClientCache : public EagerClientCache {
+ public:
+  DummyEagerClientCache() : client_(new FakeEagerClient) {}
+  Status GetClient(const string& target, EagerClient** client) override {
+    *client = client_.get();
+    return Status::OK();
+  }
+
+ private:
+  std::unique_ptr<EagerClient> client_;
 };
 
 class FakeCache : public TestWorkerCache {
@@ -65,6 +113,10 @@ class FakeCache : public TestWorkerCache {
       std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
     eager_client_cache->reset(new DummyEagerClientCache);
     return Status::OK();
+  }
+
+  void ListWorkers(std::vector<string>* workers) const override {
+    workers->push_back("/job:localhost/replica:0/task:0");
   }
 };
 
@@ -303,6 +355,110 @@ TEST_F(EagerServiceImplTest, BasicFunctionTest) {
   EXPECT_EQ(10, actual(1));
   EXPECT_EQ(15, actual(2));
   EXPECT_EQ(22, actual(3));
+
+  CloseContextRequest close_context_request;
+  close_context_request.set_context_id(context_id);
+  CloseContextResponse close_context_response;
+  TF_ASSERT_OK(eager_service_impl.CloseContext(&close_context_request,
+                                               &close_context_response));
+}
+
+// Test executes a function through EagerClusterFunctionLibraryRuntime.
+TEST_F(EagerServiceImplTest, ClusterFLRTest) {
+  TestEagerServiceImpl eager_service_impl(&worker_env_);
+
+  uint64 context_id = random::New64();
+
+  CreateContextRequest request;
+  request.mutable_server_def()->set_job_name("localhost");
+  request.mutable_server_def()->set_task_index(0);
+  request.set_context_id(context_id);
+  CreateContextResponse response;
+  TF_ASSERT_OK(eager_service_impl.CreateContext(&request, &response));
+
+  const string target_device = "/job:localhost/replica:0/task:0/device:CPU:0";
+
+  // Make the fake EagerClient use the local eager_service_impl.
+  EagerContext* ctx = nullptr;
+  TF_ASSERT_OK(eager_service_impl.GetEagerContext(context_id, &ctx));
+  Device* device;
+  TF_ASSERT_OK(ctx->FindDeviceFromName(target_device.c_str(), &device));
+  EagerClient* client;
+  TF_ASSERT_OK(ctx->GetClient(device, &client));
+  FakeEagerClient* fake_client = static_cast<FakeEagerClient*>(client);
+  fake_client->SetServiceImpl(&eager_service_impl);
+
+  auto eager_cluster_flr =
+      absl::make_unique<EagerClusterFunctionLibraryRuntime>(ctx, nullptr);
+  tensorflow::FunctionDef fdef = MatMulFunction();
+
+  // Create the remote input for MatMulFunction.
+  EnqueueRequest remote_enqueue_request;
+  remote_enqueue_request.set_context_id(context_id);
+  EnqueueResponse remote_enqueue_response;
+  std::unordered_map<string, AttrValue> const_attrs;
+  AttrValue val;
+  val.set_type(tensorflow::DataType::DT_FLOAT);
+  const_attrs.insert({"dtype", val});
+  val.Clear();
+  SetTensorProto(val.mutable_tensor());
+  const_attrs.insert({"value", val});
+  AddOperationToEnqueueRequest(1, "Const", {}, const_attrs, target_device,
+                               &remote_enqueue_request);
+  TF_ASSERT_OK(eager_service_impl.Enqueue(&remote_enqueue_request,
+                                          &remote_enqueue_response));
+
+  // Instantiate MatMulFunction.
+  FunctionLibraryRuntime::InstantiateOptions options;
+  options.target = target_device;
+  options.is_multi_device_function = true;
+  options.input_devices.push_back(target_device);
+  FunctionLibraryRuntime::Handle handle;
+  FunctionLibraryDefinition func_lib_def{OpRegistry::Global(), {}};
+  TF_ASSERT_OK(func_lib_def.AddFunctionDef(fdef));
+  TF_ASSERT_OK(eager_cluster_flr->Instantiate(
+      fdef.signature().name(), func_lib_def, AttrSlice(&fdef.attr()), options,
+      &handle));
+
+  // Run MatMulFunction.
+  FunctionLibraryRuntime::Options opts;
+  const int64 step_id = opts.step_id;
+  Notification done;
+  Status status;
+  RemoteTensorHandle input;
+  input.set_op_id(1);
+  input.set_output_num(0);
+  input.set_op_device(target_device);
+  input.set_device(target_device);
+  eager_cluster_flr->Run(opts, handle, 2, {&input},
+                         [&status, &done](const Status& s) {
+                           status = s;
+                           done.Notify();
+                         });
+  done.WaitForNotification();
+  TF_ASSERT_OK(status);
+
+  const tensorflow::Tensor* t = nullptr;
+  tensorflow::TensorHandle* tensor_handle;
+  TF_ASSERT_OK(eager_service_impl.GetTensorHandle(
+      context_id, RemoteTensorHandleInternal(2, 0), &tensor_handle));
+  TF_ASSERT_OK(tensor_handle->Tensor(&t));
+  auto actual = t->flat<float>();
+  EXPECT_EQ(4, actual.size());
+  EXPECT_EQ(7, actual(0));
+  EXPECT_EQ(10, actual(1));
+  EXPECT_EQ(15, actual(2));
+  EXPECT_EQ(22, actual(3));
+
+  Status cleanup_status;
+  bool callback_is_called = false;
+  eager_cluster_flr->CleanUp(
+      step_id, handle, [&cleanup_status, &callback_is_called](const Status& s) {
+        callback_is_called = true;
+        cleanup_status.Update(s);
+      });
+  EXPECT_TRUE(callback_is_called);
+  TF_ASSERT_OK(cleanup_status);
 
   CloseContextRequest close_context_request;
   close_context_request.set_context_id(context_id);

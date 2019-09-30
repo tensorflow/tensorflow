@@ -814,14 +814,15 @@ static LogicalResult vectorizeRootOrTerminal(Value *iv,
   // as needed by various targets.
   if (auto load = dyn_cast<AffineLoadOp>(opInst)) {
     OpBuilder b(opInst);
-    SmallVector<Value *, 4> mapOperands(load.getIndices());
+    SmallVector<Value *, 4> mapOperands(load.getMapOperands());
     SmallVector<Value *, 8> indices;
     indices.reserve(load.getMemRefType().getRank());
     if (load.getAffineMap() !=
         b.getMultiDimIdentityMap(load.getMemRefType().getRank())) {
       computeMemoryOpIndices(opInst, load.getAffineMap(), mapOperands, indices);
     } else {
-      indices.append(load.getIndices().begin(), load.getIndices().end());
+      indices.append(load.getMapOperands().begin(),
+                     load.getMapOperands().end());
     }
     auto permutationMap =
         makePermutationMap(opInst, indices, state->strategy->loopToVectorDim);
@@ -1038,7 +1039,7 @@ static Operation *vectorizeOneOperation(Operation *opInst,
     auto *value = store.getValueToStore();
     auto *vectorValue = vectorizeOperand(value, opInst, state);
 
-    SmallVector<Value *, 4> mapOperands(store.getIndices());
+    SmallVector<Value *, 4> mapOperands(store.getMapOperands());
     SmallVector<Value *, 8> indices;
     indices.reserve(store.getMemRefType().getRank());
     if (store.getAffineMap() !=
@@ -1046,7 +1047,8 @@ static Operation *vectorizeOneOperation(Operation *opInst,
       computeMemoryOpIndices(opInst, store.getAffineMap(), mapOperands,
                              indices);
     } else {
-      indices.append(store.getIndices().begin(), store.getIndices().end());
+      indices.append(store.getMapOperands().begin(),
+                     store.getMapOperands().end());
     }
 
     auto permutationMap =
@@ -1276,7 +1278,7 @@ void Vectorize::runOnFunction() {
   LLVM_DEBUG(dbgs() << "\n");
 }
 
-std::unique_ptr<FunctionPassBase>
+std::unique_ptr<OpPassBase<FuncOp>>
 mlir::createVectorizePass(llvm::ArrayRef<int64_t> virtualVectorSize) {
   return std::make_unique<Vectorize>(virtualVectorSize);
 }

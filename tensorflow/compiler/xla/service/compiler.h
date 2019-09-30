@@ -96,6 +96,21 @@ class AotCompilationOptions {
     static_device_assignment_ = device_assignment;
   }
 
+  FusionConfigCollection fusion_config_collection() const {
+    return fusion_config_collection_;
+  }
+  void set_fusion_config_collection(
+      FusionConfigCollection fusion_config_collection) {
+    fusion_config_collection_ = fusion_config_collection;
+  }
+
+  const std::vector<std::vector<bool>>& fusion_config() const {
+    return fusion_config_;
+  }
+  void set_fusion_config(const std::vector<std::vector<bool>>& fusion_config) {
+    fusion_config_ = fusion_config;
+  }
+
  protected:
   AotCompilationOptions();
 
@@ -103,6 +118,9 @@ class AotCompilationOptions {
   se::DeviceMemoryAllocator* device_allocator_ = nullptr;
   DebugOptions debug_options_;
   absl::optional<DeviceAssignment> static_device_assignment_;
+  std::vector<std::vector<bool>> fusion_config_;
+  FusionConfigCollection fusion_config_collection_ =
+      FusionConfigCollection::kOff;
 };
 
 // Abstract superclass describing metadata produced during ahead-of-time

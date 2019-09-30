@@ -65,8 +65,8 @@ struct QuantizedLstmParameter {
   int32_t layer_norm_output_scale_a;
   int32_t layer_norm_output_scale_b;
   // Quantized clip value for cell and projection. Zero value means no clipping.
-  int32_t quantized_cell_clip;
-  int32_t quantized_proj_clip;
+  int16_t quantized_cell_clip;
+  int8_t quantized_proj_clip;
   int32_t hidden_zp;
   int32_t cell_scale;
   std::vector<int32_t> inv_large_value;

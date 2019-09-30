@@ -73,24 +73,41 @@ enum class ObjectType {
 };
 
 struct OpenGlBuffer {
+  OpenGlBuffer() = default;
+  explicit OpenGlBuffer(GLuint new_id) : id(new_id) {}
+
   GLuint id = GL_INVALID_INDEX;
 };
 
 struct OpenGlTexture {
+  OpenGlTexture() = default;
+  OpenGlTexture(GLuint new_id, GLenum new_format)
+      : id(new_id), format(new_format) {}
+
   GLuint id = GL_INVALID_INDEX;
   GLenum format = GL_INVALID_ENUM;
 };
 
 struct OpenClBuffer {
-  cl_mem memobj;
+  OpenClBuffer() = default;
+  explicit OpenClBuffer(cl_mem new_memobj) : memobj(new_memobj) {}
+
+  cl_mem memobj = nullptr;
 };
 
 struct OpenClTexture {
-  cl_mem memobj;
+  OpenClTexture() = default;
+  explicit OpenClTexture(cl_mem new_memobj) : memobj(new_memobj) {}
+
+  cl_mem memobj = nullptr;
   // TODO(akulik): should it specify texture format?
 };
 
 struct CpuMemory {
+  CpuMemory() = default;
+  CpuMemory(void* new_data, size_t new_size_bytes)
+      : data(new_data), size_bytes(new_size_bytes) {}
+
   void* data = nullptr;
   size_t size_bytes = 0;
 };

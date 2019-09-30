@@ -58,7 +58,7 @@ struct TestLoopFusion : public FunctionPass<TestLoopFusion> {
 
 } // end anonymous namespace
 
-std::unique_ptr<FunctionPassBase> mlir::createTestLoopFusionPass() {
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createTestLoopFusionPass() {
   return std::make_unique<TestLoopFusion>();
 }
 

@@ -129,6 +129,17 @@ FunctionDefLibrary CreateFunctionDefLibWithConstFunction(const string& name) {
   return fdef_lib;
 }
 
+FunctionDefLibrary CreateFunctionDefLibWithInt32Input(const string& name) {
+  FunctionDefLibrary fdef_lib;
+  FunctionDef func = FunctionDefHelper::Create(
+      /*function_name=*/name, /*in_def=*/{"in: int32"},
+      /*out_def=*/{"out: int32"},
+      /*attr_def=*/{}, /*node_def=*/{{{"out"}, "Identity", {"in"}}},
+      /*ret_def=*/{{"out", "out:output:0"}});
+  *fdef_lib.add_function() = std::move(func);
+  return fdef_lib;
+}
+
 TEST_F(BuildXlaOpsTest, ControlDepsPreserved) {
   const char* kXlaDeviceName = "/job:worker/replica:0/task:0/device:XLA_CPU:0";
   Scope root = Scope::NewRootScope().WithDevice(kXlaDeviceName).ExitOnError();
@@ -138,8 +149,10 @@ TEST_F(BuildXlaOpsTest, ControlDepsPreserved) {
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(fdef_lib));
   Node* call;
   TF_ASSERT_OK(MakeXlaCompiledKernel(root.graph(), "cluster_0", "C", &call));
+  call->AddAttr(kXlaHasReferenceVarsAttr, false);
   call->set_requested_device(kXlaDeviceName);
   Node* write_op = MakeWrite(root, "write");
+  write_op->AddAttr(kXlaHasReferenceVarsAttr, false);
   root.graph()->AddControlEdge(call, write_op);
 
   std::unique_ptr<Graph> graph;
@@ -180,8 +193,10 @@ TEST_F(BuildXlaOpsTest, OnNonXlaDevice) {
   Node* call;
   TF_ASSERT_OK(MakeXlaCompiledKernel(root.graph(), "cluster_0", "C", &call));
   TF_ASSERT_OK(root.DoShapeInference(call));
+  call->AddAttr(kXlaHasReferenceVarsAttr, false);
 
   Node* write_op = MakeWrite(root, Output(call), "write_result");
+  write_op->AddAttr(kXlaHasReferenceVarsAttr, false);
 
   auto xla_compile = NodeWith(Op("_XlaCompile"), Attr("must_compile", false));
   auto predicated_compilation_key =
@@ -215,8 +230,10 @@ TEST_F(BuildXlaOpsTest, OnXlaDevice) {
   TF_ASSERT_OK(MakeXlaCompiledKernel(root.graph(), "cluster_0", "C", &call));
   call->set_requested_device(kXlaDeviceName);
   TF_ASSERT_OK(root.DoShapeInference(call));
+  call->AddAttr(kXlaHasReferenceVarsAttr, false);
 
   Node* write_op = MakeWrite(root, Output(call), "write_result");
+  write_op->AddAttr(kXlaHasReferenceVarsAttr, false);
 
   std::unique_ptr<Graph> graph;
   TF_ASSERT_OK(BuildXlaOps(root, fdef_lib, &graph));
@@ -239,6 +256,7 @@ TEST_F(BuildXlaOpsTest, NoExtraMergeForEdgeToSink) {
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(fdef_lib));
   Node* call;
   TF_ASSERT_OK(MakeXlaCompiledKernel(root.graph(), "cluster_0", "C", &call));
+  call->AddAttr(kXlaHasReferenceVarsAttr, false);
 
   std::unique_ptr<Graph> graph;
   TF_ASSERT_OK(BuildXlaOps(root, fdef_lib, &graph));
@@ -248,5 +266,58 @@ TEST_F(BuildXlaOpsTest, NoExtraMergeForEdgeToSink) {
                                            NodeWith(Op("PartitionedCall")),
                                            NodeWith(Op("NoOp")))));
 }
+
+#ifdef GOOGLE_CUDA
+// This tests a rewrite that only makes sense and is active in a CUDA-enabled
+// build.  Specifically we check that we insert an IdentityN op to avoid extra
+// device-to-host copies.
+TEST_F(BuildXlaOpsTest, NoDeviceToHostCopiesForClustersWithInt32Inputs) {
+  const char* kXlaDeviceName = "/job:worker/replica:0/task:0/device:GPU:0";
+  Scope root = Scope::NewRootScope()
+                   .WithDevice(kXlaDeviceName)
+                   .WithAssignedDevice(kXlaDeviceName)
+                   .ExitOnError();
+
+  FunctionDefLibrary fdef_lib =
+      CreateFunctionDefLibWithInt32Input("cluster_int32");
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(fdef_lib));
+  Node* call;
+  TF_ASSERT_OK(
+      MakeXlaCompiledKernel(root.graph(), "cluster_int32", "C", &call));
+  call->set_requested_device(kXlaDeviceName);
+  call->AddAttr(kXlaHasReferenceVarsAttr, false);
+
+  auto var =
+      ops::VarHandleOp(root.WithOpName("var"), DT_INT32, TensorShape({}));
+  auto int32_on_device =
+      ops::ReadVariableOp(root.WithOpName("int32_on_device"), var, DT_INT32);
+
+  root.graph()->AddEdge(int32_on_device.node(), 0, call, 0);
+
+  std::unique_ptr<Graph> graph;
+  TF_ASSERT_OK(BuildXlaOps(root, fdef_lib, &graph));
+
+  Node* partitioned_call_op = nullptr;
+  for (Node* n : graph->op_nodes()) {
+    if (n->type_string() == "PartitionedCall") {
+      ASSERT_EQ(partitioned_call_op, nullptr);
+      partitioned_call_op = n;
+    }
+  }
+
+  ASSERT_NE(partitioned_call_op, nullptr);
+  auto xla_compile = NodeWith(Op("_XlaCompile"));
+  auto switch_on_compilation_pred =
+      NodeWith(Op("Switch"), Inputs(Out(0, xla_compile), Out(1, xla_compile)));
+  auto ctrl_dep =
+      NodeWith(Op("Identity"), Inputs(Out(0, switch_on_compilation_pred)));
+  // Check that we pipe int32 inputs through an IdentityN to avoid extra D2H
+  // copies.
+  EXPECT_THAT(
+      partitioned_call_op,
+      NodeWith(Inputs(Out(NodeWith(Op("IdentityN"), CtrlDeps(ctrl_dep))))));
+}
+#endif
+
 }  // namespace
 }  // namespace tensorflow

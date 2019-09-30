@@ -1,4 +1,5 @@
 load(":build_defs.bzl", "cuda_header_library")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like
 
@@ -163,6 +164,14 @@ cc_library(
 cc_library(
     name = "libdevice_root",
     data = [":cuda-nvvm"],
+)
+
+bzl_library(
+    name = "build_defs_bzl",
+    srcs = ["build_defs.bzl"],
+    deps = [
+        "@bazel_skylib//lib:selects",
+    ],
 )
 
 genrule(

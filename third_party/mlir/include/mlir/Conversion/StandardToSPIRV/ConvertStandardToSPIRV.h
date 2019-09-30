@@ -33,20 +33,12 @@ namespace mlir {
 class LoadOp;
 class ReturnOp;
 class StoreOp;
-namespace spirv {
-class SPIRVDialect;
-}
 
 /// Type conversion from Standard Types to SPIR-V Types.
 class SPIRVBasicTypeConverter : public TypeConverter {
 public:
-  explicit SPIRVBasicTypeConverter(MLIRContext *context);
-
   /// Converts types to SPIR-V supported types.
   virtual Type convertType(Type t);
-
-protected:
-  spirv::SPIRVDialect *spirvDialect;
 };
 
 /// Converts a function type according to the requirements of a SPIR-V entry

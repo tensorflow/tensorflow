@@ -40,6 +40,11 @@ class PublicAPIVisitor(object):
 
     # Modules/classes we want to suppress entirely.
     self._private_map = {
+        'tf': [
+            'compiler',
+            'core',
+            'python',
+        ],
         # Some implementations have this internal module that we shouldn't
         # expose.
         'tf.flags': ['cpp_flags'],
@@ -50,8 +55,6 @@ class PublicAPIVisitor(object):
     # Each entry maps a module path to a name to ignore in traversal.
     self._do_not_descend_map = {
         'tf': [
-            'compiler',
-            'core',
             'examples',
             'flags',  # Don't add flags
             # TODO(drpng): This can be removed once sealed off.
@@ -60,7 +63,6 @@ class PublicAPIVisitor(object):
             'pywrap_tensorflow',
             # TODO(drpng): This can be removed once sealed.
             'user_ops',
-            'python',
             'tools',
             'tensorboard',
         ],

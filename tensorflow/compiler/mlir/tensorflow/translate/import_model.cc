@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
@@ -48,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
+#include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
@@ -93,7 +95,7 @@ class ImporterBase {
  protected:
   explicit ImporterBase(
       const FunctionLibraryDefinition& flib, const GraphDebugInfo& debug_info,
-      const NodeSpecs& specs, mlir::ModuleOp module,
+      const GraphImportConfig& specs, mlir::ModuleOp module,
       std::unordered_map<std::string, std::string>* tf_name_to_mlir_name)
       : builder_(module.getContext()),
         module_(module),
@@ -287,7 +289,7 @@ class ImporterBase {
   mlir::MLIRContext* context_;
   std::unordered_map<std::string, std::string>* tf_name_to_mlir_name_;
   const FunctionLibraryDefinition& graph_flib_;
-  const NodeSpecs& specs_;
+  const GraphImportConfig& specs_;
   const GraphDebugInfo& debug_info_;
   NodeValueMap node_values_;
   std::unique_ptr<ShapeRefiner> shape_refiner_;
@@ -313,7 +315,7 @@ bool HasNonPrimaryOutputInUse(const GraphDef& graph_def,
 // is in use and therefore can not be replaced by the Placeholder node that only
 // has a single output.
 Status UpdateLegacyFedInputNode(const GraphDef& graph_def,
-                                const NodeSpecs::InputArrays& inputs,
+                                const GraphImportConfig::InputArrays& inputs,
                                 NodeDef* node) {
   const std::string& node_name = node->name();
   auto it = inputs.find(node_name);
@@ -343,7 +345,7 @@ Status UpdateLegacyFedInputNode(const GraphDef& graph_def,
 //   the GraphDef.
 // - Replacing LegacyFedInput nodes with Placeholder nodes if
 //   convert_legacy_fed_inputs option is enabled.
-Status PreprocessGraphDef(const NodeSpecs* specs, GraphDef* graph_def) {
+Status PreprocessGraphDef(const GraphImportConfig* specs, GraphDef* graph_def) {
   const tensorflow::OpRegistrationData* op_reg_data;
   for (auto& node_def : *graph_def->mutable_node()) {
     // TODO(hinsu): Completely deprecate support for LegacyFedInput ops. One
@@ -375,6 +377,7 @@ Status ImporterBase::RemoveBackedges(const Graph& graph) {
   graph_ = absl::make_unique<Graph>(graph.flib_def());
   GraphConstructorOptions opts;
   opts.allow_internal_ops = true;
+  opts.add_default_attributes = false;
   TF_RETURN_IF_ERROR(::tensorflow::ConvertGraphDefToGraph(
       opts, std::move(graph_def), graph_.get()));
 
@@ -476,7 +479,8 @@ Status ImporterBase::AddNodesToShapeRefiner() {
     auto it = specs_.inputs.find(node->name());
     if (it != specs_.inputs.end()) {
       auto node_name = node->op_def().name();
-      if (node_name != "Placeholder" && node_name != "LegacyFedInput") {
+      if (node_name != "Placeholder" && node_name != "LegacyFedInput" &&
+          node_name != "_Arg") {
         // We do not handle the case where the input node has multple outputs
         if (node->num_outputs() > 1) {
           return errors::FailedPrecondition(absl::StrCat(
@@ -495,6 +499,35 @@ Status ImporterBase::AddNodesToShapeRefiner() {
     // Adds the node to the shape refiner.
     TF_RETURN_WITH_CONTEXT_IF_ERROR(shape_refiner_->AddNode(node),
                                     GetLocationStr(*node));
+
+    // We currently have no other way to get shapes from ReadVariableOp's.
+    // Some graphs seem to have _output_shapes attributes on them, so use that
+    // if possible.
+    // TODO(silvasean): Ideally, we would do this in a separate shape inference
+    // pass to avoid adding complexity to the importer. But right now, we don't
+    // have an MLIR-native shape inference pass, so we need to do this while we
+    // still have the Graph around, i.e. here, in the importer.
+    if (node->op_def().name() == "ReadVariableOp") {
+      // TODO(silvasean): In some graphs, this seems to be annotated on every
+      // node. Why and by whom?
+      // TODO(b/140588338): We should ideally incorporate that information for
+      // all nodes, but right now, this can result in e.g. an Identity node with
+      // signature such as
+      // `(tensor<?x?xf32>) -> tensor<?x9216xf32>` which fails the verifier
+      // (which checks for exact type equality; _output_shapes results in
+      // us shoehorning in the more-precise type on the output).
+      if (const AttrValue* attr = node->attrs().Find("_output_shapes")) {
+        auto& list = attr->list();
+        for (auto shape : llvm::enumerate(list.shape())) {
+          auto* node_context = shape_refiner_->GetContext(node);
+          shape_inference::ShapeHandle handle;
+          TF_RETURN_WITH_CONTEXT_IF_ERROR(
+              node_context->MakeShapeFromShapeProto(shape.value(), &handle),
+              GetLocationStr(*node));
+          node_context->set_output(shape.index(), handle);
+        }
+      }
+    }
 
     // If it is the argument node, the shape handle is set explicitly, so it
     // can be propagated to the body nodes of the function.
@@ -845,10 +878,24 @@ Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
     attributes.push_back(builder_.getNamedAttr(grad_string, gradient_attr));
   }
 
-  // Converts the graph to a MLIR function and adds it to the module. Uses the
-  // default node spec without any inputs or outputs as the function graph has
-  // special '_Arg' and '_Retval' ops for argument and return values.
-  NodeSpecs specs;
+  // Converts the graph to a MLIR function and adds it to the module.
+  // We populate the NodeSpec so that all the _Arg ops get their shape
+  // added correctly.
+  GraphImportConfig specs;
+  for (const auto& name_and_value : func_def->attr()) {
+    if (name_and_value.first == "_input_shapes") {
+      auto& list = name_and_value.second.list();
+      auto& signature = func_def->signature();
+      DCHECK_EQ(list.shape_size(), signature.input_arg_size());
+      for (int i = 0; i < list.shape_size(); i++) {
+        auto& input_arg = signature.input_arg(i);
+        auto& array_info = specs.inputs[input_arg.name()];
+        array_info.imported_dtype = input_arg.type();
+        array_info.shape = list.shape(i);
+      }
+    }
+  }
+
   ImporterBase child_importer(graph_flib_, debug_info_, specs, module_,
                               tf_name_to_mlir_name_);
   TF_RETURN_IF_ERROR(child_importer.PrepareConvert(*fbody->graph));
@@ -939,26 +986,6 @@ Status ImporterBase::ConvertFunctionArgAndRets(
     mlir::OperationState state(inst->getLoc(),
                                inst_name.str().append(".input"));
     state.attributes.append(inst->getAttrs().begin(), inst->getAttrs().end());
-
-    // If there are quantization specifications, add them as the attributes
-    auto name = inst->getAttrOfType<mlir::StringAttr>("name").getValue();
-    auto input_spec_it = specs_.inputs.find(name.str());
-    if (input_spec_it != specs_.inputs.end()) {
-      auto input_spec = input_spec_it->second;
-      if (IsQuantizationType(input_spec.final_dtype)) {
-        // Uses the MLIR built-in type so it can be handled easily later.
-        auto final_type = mlir::IntegerType::get(
-            GetQuantizationTypeWidth(input_spec.final_dtype), context_);
-        state.attributes.push_back(builder_.getNamedAttr(
-            "min", builder_.getF32FloatAttr(input_spec.min_value)));
-        state.attributes.push_back(builder_.getNamedAttr(
-            "max", builder_.getF32FloatAttr(input_spec.max_value)));
-        state.attributes.push_back(
-            builder_.getNamedAttr("type", builder_.getTypeAttr(final_type)));
-        inst->getParentOfType<mlir::FuncOp>().setAttr("tf.quantize",
-                                                      builder_.getUnitAttr());
-      }
-    }
 
     for (auto* r : inst->getResults()) state.types.push_back(r->getType());
 
@@ -1090,9 +1117,10 @@ mlir::Location ImporterBase::GetLocation(const NodeDef& node_def) {
     for (int i = 0, e = original_nodes.size(); i != e; ++i) {
       auto node_name = original_nodes[i];
       auto func_name = (i < original_funcs.size()) ? original_funcs[i] : "";
-      // Use the catenation of function and node names as the lookup key. This
-      // is to match the utility of generating the GraphDebugInfo.
-      node_call_sites.push_back(node_name_to_call_site(func_name + node_name));
+      // Use the catenation of function and node names as the lookup key.
+      // This matches the way that the key is formed on the python side.
+      std::string key = node_name + "@" + func_name;
+      node_call_sites.push_back(node_name_to_call_site(key));
     }
     return mlir::FusedLoc::get(node_call_sites, context_);
   }
@@ -1128,8 +1156,8 @@ mlir::Operation* ImporterBase::createOperation(
   // Dispatch based on the name and create the appropriate operation.
   if (node.IsSwitch()) {
     // Switch and _SwitchN both are in switch class, differentiate based on
-    // number of outputs.
-    if (node.num_outputs() > 2) {
+    // op name.
+    if (node.op_def().name() == "_SwitchN") {
       return builder_.create<mlir::tf_executor::SwitchNOp>(loc, types, operands,
                                                            result.attributes);
     }
@@ -1399,16 +1427,22 @@ StatusOr<mlir::FunctionType> ImporterBase::InferLibFunctionType(
     const FunctionBody& fbody) {
   mlir::Builder builder(context_);
 
+  // The FunctionBody contains a graph with a single-output _Arg node for each
+  // function argument and a single-input _Retval node for each function return
+  // value.
+  //
+  // We already populated the ShapeRefiner with all the information about the
+  // shapes of these graph edges, so we just query it to build the corresponding
+  // MLIR function type signature.
+
   llvm::SmallVector<mlir::Type, 4> arg_types;
   arg_types.reserve(fbody.arg_types.size());
-  for (auto dataType : fbody.arg_types) {
-    mlir::Type element_type;
-    TF_RETURN_IF_ERROR(
-        ::tensorflow::ConvertDataType(dataType, builder, &element_type));
-    // TODO(hinsu): Derive shape of function arguments based on shapes available
-    // at call sites of this function. That way it is possible to have a
-    // partially known shape in some cases instead of unranked tensor types.
-    arg_types.push_back(builder.getTensorType(element_type));
+  for (auto arg : fbody.arg_nodes) {
+    // Find node in the graph using the node id instead of using `arg` directly
+    // because the graph has been cloned.
+    auto* node = graph_->FindNodeId(arg->id());
+    TF_ASSIGN_OR_RETURN(auto type, InferOutputType(*node, /*idx=*/0, builder));
+    arg_types.push_back(type);
   }
 
   llvm::SmallVector<mlir::Type, 4> ret_types;
@@ -1417,9 +1451,6 @@ StatusOr<mlir::FunctionType> ImporterBase::InferLibFunctionType(
     // Find node in the graph using the node id instead of using `ret` directly
     // because the graph has been cloned.
     auto* node = graph_->FindNodeId(ret->id());
-
-    // Return type of the function is type of the only input of the respective
-    // return node in the function.
     TF_ASSIGN_OR_RETURN(auto type, InferInputType(*node, /*idx=*/0, builder));
     ret_types.push_back(type);
   }
@@ -1439,12 +1470,13 @@ class GraphDefImporter : public ImporterBase {
   static StatusOr<mlir::OwningModuleRef> Convert(
       mlir::MLIRContext* context, const Graph& graph,
       const GraphDebugInfo& debug_info,
-      const FunctionLibraryDefinition& flib_def, const NodeSpecs& specs);
+      const FunctionLibraryDefinition& flib_def,
+      const GraphImportConfig& specs);
 
  private:
   explicit GraphDefImporter(
       const FunctionLibraryDefinition& flib, const GraphDebugInfo& debug_info,
-      const NodeSpecs& specs, mlir::ModuleOp module,
+      const GraphImportConfig& specs, mlir::ModuleOp module,
       std::unordered_map<std::string, std::string>* tf_name_to_mlir_name)
       : ImporterBase(flib, debug_info, specs, module, tf_name_to_mlir_name) {}
 
@@ -1454,7 +1486,7 @@ class GraphDefImporter : public ImporterBase {
   // information for the function returns are inferred by the shape refiner in
   // ImporterBase.
   StatusOr<mlir::FunctionType> InferMainFunctionType(
-      const NodeSpecs& specs, mlir::MLIRContext* context,
+      const GraphImportConfig& specs, mlir::MLIRContext* context,
       absl::InlinedVector<OutputTensor, 4>* arg_nodes,
       absl::InlinedVector<OutputTensor, 4>* ret_nodes);
 };
@@ -1462,7 +1494,7 @@ class GraphDefImporter : public ImporterBase {
 StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
     mlir::MLIRContext* context, const Graph& graph,
     const GraphDebugInfo& debug_info, const FunctionLibraryDefinition& flib_def,
-    const NodeSpecs& specs) {
+    const GraphImportConfig& specs) {
   mlir::OwningModuleRef module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
@@ -1500,10 +1532,10 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
       std::string s;
       llvm::raw_string_ostream ss(s);
       auto node_name = [&](const Node* node) { ss << node->name(); };
-      mlir::interleaveComma(graph_fbody->arg_nodes, ss, node_name);
+      mlir::interleave(graph_fbody->arg_nodes, ss, node_name, ",");
       auto inputs = b.getNamedAttr("inputs", b.getStringAttr(ss.str()));
       s.clear();
-      mlir::interleaveComma(graph_fbody->ret_nodes, ss, node_name);
+      mlir::interleave(graph_fbody->ret_nodes, ss, node_name, ",");
       auto outputs = b.getNamedAttr("outputs", b.getStringAttr(ss.str()));
 
       attrs.push_back(b.getNamedAttr("tf.entry_function",
@@ -1524,12 +1556,13 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
       mlir::Builder b(context);
       std::string s;
       llvm::raw_string_ostream ss(s);
-      mlir::interleaveComma(
+      mlir::interleave(
           specs.inputs, ss,
-          [&](const std::pair<std::string, ArrayInfo>& v) { ss << v.first; });
+          [&](const std::pair<std::string, ArrayInfo>& v) { ss << v.first; },
+          ",");
       auto inputs = b.getNamedAttr("inputs", b.getStringAttr(ss.str()));
       s.clear();
-      mlir::interleaveComma(specs.output_arrays, ss);
+      mlir::interleave(specs.output_arrays, ss, ",");
       auto outputs = b.getNamedAttr("outputs", b.getStringAttr(ss.str()));
 
       attrs.push_back(b.getNamedAttr("tf.entry_function",
@@ -1558,7 +1591,7 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
 }
 
 StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
-    const NodeSpecs& specs, mlir::MLIRContext* context,
+    const GraphImportConfig& specs, mlir::MLIRContext* context,
     absl::InlinedVector<OutputTensor, 4>* arg_nodes,
     absl::InlinedVector<OutputTensor, 4>* ret_nodes) {
   // Finds out all the input nodes and output nodes.
@@ -1651,7 +1684,7 @@ class SavedModelImporter : public ImporterBase {
  private:
   explicit SavedModelImporter(
       const FunctionLibraryDefinition& flib, const GraphDebugInfo& debug_info,
-      const NodeSpecs& specs, mlir::ModuleOp module,
+      const GraphImportConfig& specs, mlir::ModuleOp module,
       std::unordered_map<std::string, std::string>* tf_name_to_mlir_name)
       : ImporterBase(flib, debug_info, specs, module, tf_name_to_mlir_name) {}
 };
@@ -1659,7 +1692,7 @@ class SavedModelImporter : public ImporterBase {
 StatusOr<mlir::OwningModuleRef> SavedModelImporter::Convert(
     const MetaGraphDef& meta_graph, const GraphDebugInfo& debug_info,
     bool add_default_attributes, mlir::MLIRContext* context) {
-  NodeSpecs specs;
+  GraphImportConfig specs;
   mlir::OwningModuleRef module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
@@ -1667,6 +1700,7 @@ StatusOr<mlir::OwningModuleRef> SavedModelImporter::Convert(
   const auto& graphdef = meta_graph.graph_def();
   GraphConstructorOptions options;
   options.allow_internal_ops = true;
+  options.add_default_attributes = add_default_attributes;
   Graph graph(OpRegistry::Global());
 
   GraphDef preprocessed_graphdef(graphdef);
@@ -1688,12 +1722,17 @@ StatusOr<mlir::OwningModuleRef> SavedModelImporter::Convert(
 }
 }  // namespace
 
+Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def) {
+  return FunctionalizeControlFlow(graph, flib_def);
+}
+
 StatusOr<mlir::OwningModuleRef> ConvertGraphdefToMlir(
     const GraphDef& graphdef, const GraphDebugInfo& debug_info,
-    const NodeSpecs& specs, mlir::MLIRContext* context,
+    const GraphImportConfig& specs, mlir::MLIRContext* context,
     bool add_default_attributes) {
   GraphConstructorOptions options;
   options.allow_internal_ops = true;
+  options.add_default_attributes = add_default_attributes;
   Graph graph(OpRegistry::Global());
 
   GraphDef preprocessed_graphdef(graphdef);
@@ -1702,15 +1741,20 @@ StatusOr<mlir::OwningModuleRef> ConvertGraphdefToMlir(
   }
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
       options, std::move(preprocessed_graphdef), &graph));
-
   return ConvertGraphToMlir(graph, debug_info, graph.flib_def(), specs,
                             context);
 }
 
 StatusOr<mlir::OwningModuleRef> ConvertGraphToMlir(
     const Graph& graph, const GraphDebugInfo& debug_info,
-    const FunctionLibraryDefinition& flib_def, const NodeSpecs& specs,
+    const FunctionLibraryDefinition& flib_def, const GraphImportConfig& specs,
     mlir::MLIRContext* context) {
+  // TODO(jpienaar): Remove need to const_cast.
+  if (specs.upgrade_legacy) {
+    TF_RETURN_IF_ERROR(
+        UpgradeLegacyGraph(const_cast<Graph*>(&graph),
+                           const_cast<FunctionLibraryDefinition*>(&flib_def)));
+  }
   return GraphDefImporter::Convert(context, graph, debug_info, flib_def, specs);
 }
 
@@ -1719,6 +1763,15 @@ StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
     mlir::MLIRContext* context, bool add_default_attributes) {
   return SavedModelImporter::Convert(saved_model.meta_graph_def, debug_info,
                                      add_default_attributes, context);
+}
+
+std::string MlirModuleToString(mlir::ModuleOp module) {
+  std::string txt_module;
+  {
+    llvm::raw_string_ostream os{txt_module};
+    module.print(os);
+  }
+  return txt_module;
 }
 
 }  // namespace tensorflow

@@ -17,15 +17,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
 class ZipDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+    dataset_serialization_test_base.DatasetSerializationTestBase,
+    parameterized.TestCase):
 
   def _build_dataset(self, arr):
     components = [
@@ -39,6 +43,7 @@ class ZipDatasetSerializationTest(
     ]
     return dataset_ops.Dataset.zip((datasets[0], (datasets[1], datasets[2])))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testCore(self):
     # Equal length components
     arr = [37.0, 38.0, 39.0, 40.0]

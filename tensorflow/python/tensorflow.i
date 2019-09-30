@@ -17,21 +17,16 @@ limitations under the License.
  * The includes are intentionally not alphabetically sorted, as the order of
  * includes follows dependency order */
 
+%include "tensorflow/python/util/py_checkpoint_reader.i"
+
 %include "tensorflow/python/pywrap_tfe.i"
 
-%include "tensorflow/python/util/port.i"
-%include "tensorflow/python/util/py_checkpoint_reader.i"
-%include "tensorflow/python/util/tfprof.i"
-
-%include "tensorflow/python/lib/core/py_func.i"
 %include "tensorflow/python/lib/core/py_exception_registry.i"
 
 %include "tensorflow/python/lib/io/py_record_reader.i"
 %include "tensorflow/python/lib/io/py_record_writer.i"
-%include "tensorflow/python/client/events_writer.i"
 
 %include "tensorflow/python/client/tf_session.i"
-%include "tensorflow/python/client/device_lib.i"
 
 %include "tensorflow/python/lib/core/bfloat16.i"
 
@@ -42,7 +37,6 @@ limitations under the License.
 
 %include "tensorflow/python/framework/python_op_gen.i"
 
-%include "tensorflow/python/framework/cpp_shape_inference.i"
 %include "tensorflow/python/platform/stacktrace_handler.i"
 %include "tensorflow/python/util/kernel_registry.i"
 
@@ -52,8 +46,9 @@ limitations under the License.
 %include "tensorflow/python/grappler/item.i"
 %include "tensorflow/python/grappler/tf_optimizer.i"
 %include "tensorflow/python/grappler/cost_analyzer.i"
-%include "tensorflow/python/grappler/graph_analyzer.i"
 %include "tensorflow/python/grappler/model_analyzer.i"
 
 %include "tensorflow/python/util/traceme.i"
 %include "tensorflow/python/util/scoped_annotation.i"
+
+%include "tensorflow/compiler/mlir/python/mlir.i"

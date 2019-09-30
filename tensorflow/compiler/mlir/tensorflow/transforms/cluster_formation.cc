@@ -173,54 +173,62 @@ void BuildLaunchForCluster(const Cluster& c, OpBuilder* builder) {
   ReplaceLiveOutExternalUses(live_outs, launch_op);
 }
 
-void ClusterFormationPass::runOnFunction() {
-  OpBuilder builder(getFunction().getContext());
-  getFunction().walk([&](tf_executor::IslandOp island) {
-    // Iteratively find clusters of different devices within an island.
-    // Whenever we see an operation that is assigned to an accelerator device
-    // (ie. device != ""), we try to merge it into the last cluster of same
-    // device. If that is infeasible (say because of violating def-before-use),
-    // create a new cluster with that operation and move on.
-    llvm::MapVector<StringRef, Cluster> nearest_clusters;
-    for (Operation& op : llvm::make_early_inc_range(island.GetBody())) {
-      auto device = GetDevice(&op);
-      if (device == "") continue;
+void BuildClusters(Block* block, OpBuilder builder) {
+  // Iteratively find clusters of different devices within an island.
+  // Whenever we see an operation that is assigned to an accelerator device
+  // (ie. device != ""), we try to merge it into the last cluster of same
+  // device. If that is infeasible (say because of violating def-before-use),
+  // create a new cluster with that operation and move on.
+  llvm::MapVector<StringRef, Cluster> nearest_clusters;
+  for (Operation& op : llvm::make_early_inc_range(*block)) {
+    auto device = GetDevice(&op);
+    if (device == "") continue;
 
-      // If no cluster of same device has been formed yet, create a new cluster
-      // with op alone.
-      auto it = nearest_clusters.find(device);
-      if (it == nearest_clusters.end()) {
-        nearest_clusters[device] = Cluster{{&op}, device};
-        continue;
-      }
-
-      // Check if it is legal to merge op into nearest cluster of same device.
-      // If positive, update cluster and move on to next operation.
-      Cluster& nearest_cluster = it->second;
-      if (CanMergeIntoCluster(nearest_cluster, &op)) {
-        nearest_cluster.ops.emplace_back(&op);
-        continue;
-      }
-
-      // If nearest cluster of same device can not absorb `op`, then that
-      // cluster needs to be finalized by building a `tf_device.launch` op with
-      // a region that contains all operations in clusters.
-      BuildLaunchForCluster(nearest_cluster, &builder);
-
-      // Create a new cluster to hold op alone and update nearest_clusters.
+    // If no cluster of same device has been formed yet, create a new cluster
+    // with op alone.
+    auto it = nearest_clusters.find(device);
+    if (it == nearest_clusters.end()) {
       nearest_clusters[device] = Cluster{{&op}, device};
+      continue;
     }
 
-    // At the end, there might be left-over found clusters that need to be
-    // built.
-    for (auto& device_cluster : nearest_clusters)
-      BuildLaunchForCluster(device_cluster.second, &builder);
+    // Check if it is legal to merge op into nearest cluster of same device.
+    // If positive, update cluster and move on to next operation.
+    Cluster& nearest_cluster = it->second;
+    if (CanMergeIntoCluster(nearest_cluster, &op)) {
+      nearest_cluster.ops.emplace_back(&op);
+      continue;
+    }
+
+    // If nearest cluster of same device can not absorb `op`, then that
+    // cluster needs to be finalized by building a `tf_device.launch` op with
+    // a region that contains all operations in clusters.
+    BuildLaunchForCluster(nearest_cluster, &builder);
+
+    // Create a new cluster to hold op alone and update nearest_clusters.
+    nearest_clusters[device] = Cluster{{&op}, device};
+  }
+
+  // At the end, there might be left-over found clusters that need to be
+  // built.
+  for (auto& device_cluster : nearest_clusters)
+    BuildLaunchForCluster(device_cluster.second, &builder);
+}
+
+void ClusterFormationPass::runOnFunction() {
+  OpBuilder builder(getFunction().getContext());
+
+  // Operates on individual blocks independently of if they are directly in the
+  // function body or if they are nested in individual `tf_executor.island`.
+  for (Block& block : getFunction().getBody()) BuildClusters(&block, builder);
+  getFunction().walk([&](tf_executor::IslandOp island) {
+    BuildClusters(&island.GetBody(), builder);
   });
 }
 
 }  // namespace
 
-std::unique_ptr<FunctionPassBase> CreateClusterFormationPass() {
+std::unique_ptr<OpPassBase<FuncOp>> CreateClusterFormationPass() {
   return std::make_unique<ClusterFormationPass>();
 }
 

@@ -887,6 +887,97 @@ inline void LstmStepWithAuxInput(
   }
 }
 
+// Fully quantized lstm kernel. Currently supports both cifg and non-cifg.
+//
+// Input activatoin of size n_batch * n_input:
+//   input_ptr
+//
+// LSTM weights:
+// Quantized input weights of size 'n_cell * n_input':
+//   input_to_input_weight_ptr            - optional
+//   input_to_forget_weight_ptr           - optional
+//   input_to_cell_weight_ptr             - optional
+//   input_to_output_weight_ptr           - optional
+//
+// Quantized recurrent weights of size 'n_cell * n_output':
+//   recurrent_to_input_weight_ptr        - optional
+//   recurrent_to_forget_weights_ptr
+//   recurrent_to_cell_weights_ptr
+//   recurrent_to_input_weights_ptr
+//
+// Quantized peephole weights of size 'n_cell', representing diagonal matrices.
+//   cell_to_input_weights               - optional
+//   cell_to_cell_weights                - optional
+//   cell_to_output_weights              - optional
+//
+// Quantized projection weights of size 'n_output * n_cell'
+//   proj_weight_ptr                     - optional
+//
+// Weight scales (scalars) for each of the weights above.
+//   effective_input_to_input_scale_a    - optional
+//   effective_input_to_input_scale_b    - optional
+//   effective_input_to_forget_scale_a
+//   effective_input_to_forget_scale_b
+//   effective_input_to_cell_scale_a
+//   effective_input_to_cell_scale_b
+//   effective_input_to_output_scale_a
+//   effective_input_to_output_scale_b
+//   effective_recurrent_to_input_scale_a    - optional
+//   effective_recurrent_to_input_scale_b    - optional
+//   effective_recurrent_to_forget_scale_a
+//   effective_recurrent_to_forget_scale_b
+//   effective_recurrent_to_cell_scale_a
+//   effective_recurrent_to_cell_scale_b
+//   effective_recurrent_to_output_scale_a
+//   effective_recurrent_to_output_scale_b
+//   effective_proj_scale_a                  - optional
+//   effective_proj_scale_b                  - optional
+//
+// Gate biases of size 'n_cell':
+//   input_bias_ptr                 - optional
+//   forget_bias_ptr
+//   cell_bias_ptr
+//   output_bias_ptr
+//
+// Layer norm coefficients of size 'n_cell', representing diagonal matrices.
+//   layer_norm_input_weight_ptr    - optional
+//   layer_norm_forput_weight_ptr   - optional
+//   layer_norm_cell_weight_ptr     - optional
+//   layer_norm_output_weight_ptr   - optional
+//
+// Layer norm scales of size 'n_cell'.
+//   layer_norm_input_scale_a     - optional
+//   layer_norm_input_scale_b     - optional
+//   layer_norm_forget_scale_a    - optional
+//   layer_norm_forget_scale_b    - optional
+//   layer_norm_cell_scale_a      - optional
+//   layer_norm_cell_scale_b      - optional
+//   layer_norm_output_scale_a    - optional
+//   layer_norm_output_scale_b    - optional
+//
+// Scalar values:
+//   quantized_cell_clip: quantized clip value for cell.
+//   quantized_proj_clip: quantized clip value for projection.
+//   cell_scale: the POT scale for cell state.
+//
+// Zero points:
+//   activation_zp: zero point of activation
+//   hidden_zp: zero point for hidden state.
+//
+// Temporary pre-allocated storage for the calculation. Each is of size n_cell *
+// n_batch.
+//   scratch_0:
+//   scratch_1
+//   scratch_2
+//   scratch_3
+//   scratch_4
+//   scratch_5: this scratch buffer is created purely for optimizing the
+//              MatrixBatchVectorMultiplyAccumulate.
+//
+// Outputs:
+//   output_state_ptr - size 'n_batch * n_output'
+//   cell_state_ptr   - size 'n_batch * n_cell'
+//   output_ptr       - size 'n_batch * n_output'
 inline void LstmStepQuantized(
     const int8_t* input_ptr, const int8_t* input_to_input_weight_ptr,
     int32_t effective_input_to_input_scale_a,
@@ -934,7 +1025,7 @@ inline void LstmStepQuantized(
     int32_t layer_norm_output_scale_a, int32_t layer_norm_output_scale_b,
     const int32_t* input_bias_ptr, const int32_t* forget_bias_ptr,
     const int32_t* cell_bias_ptr, const int32_t* output_bias_ptr,
-    int32 quantized_cell_clip, int32 quantized_proj_clip, int32_t cell_scale,
+    int16_t quantized_cell_clip, int8_t quantized_proj_clip, int32_t cell_scale,
     const int32_t* inv_large_value,
     const int32_t* input_to_forget_effective_bias,
     const int32_t* recurrent_to_forget_effective_bias,

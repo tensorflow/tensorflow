@@ -33,7 +33,6 @@ cc_library(
     hdrs = [
         "quantization_utils.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         "@com_google_absl//absl/memory",
         "@llvm//:support",
@@ -44,6 +43,21 @@ cc_library(
         # TODO(fengliuai): remove this dependence.
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/core:lib_proto_parsing",
+    ],
+)
+
+cc_library(
+    name = "quantization_config",
+    srcs = [
+        "quantization_config.cc",
+    ],
+    hdrs = [
+        "quantization_config.h",
+    ],
+    deps = [
+        "//tensorflow/core:protos_all_proto_cc",
+        "@com_google_absl//absl/strings",
+        "@llvm//:support",
     ],
 )
 

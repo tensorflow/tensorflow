@@ -25,6 +25,7 @@ from six.moves import xrange, zip  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -226,19 +227,8 @@ def _DefaultGradYs(grad_ys,
   return new_grad_ys
 
 
-def IsTrainable(tensor_or_dtype):
-  if isinstance(tensor_or_dtype, ops.Tensor):
-    dtype = tensor_or_dtype.dtype
-  else:
-    dtype = tensor_or_dtype
-  dtype = dtypes.as_dtype(dtype)
-  return dtype.base_dtype in (dtypes.float16, dtypes.float32, dtypes.float64,
-                              dtypes.complex64, dtypes.complex128,
-                              dtypes.resource, dtypes.variant)
-
-
 def _IsBackpropagatable(tensor):
-  if IsTrainable(tensor):
+  if backprop_util.IsTrainable(tensor):
     return True
   dtype = dtypes.as_dtype(tensor.dtype)
   return dtype.base_dtype == dtypes.bfloat16
@@ -403,7 +393,7 @@ def _Captures(func_graph):
     return func_graph.captures
   else:
     assert isinstance(func_graph, framework_function._FuncGraph)  # pylint: disable=protected-access
-    return func_graph._captured.items()  # pylint: disable=protected-access
+    return func_graph.captures
 
 
 def _MaybeCaptured(t):
@@ -592,7 +582,7 @@ def _GradientsHelper(ys,
     if loop_state:
       loop_exits = loop_state.ProcessUnusedLoopExits(pending_count, to_ops_set)
       for y in loop_exits:
-        if IsTrainable(y):
+        if backprop_util.IsTrainable(y):
           _SetGrad(grads, y, loop_state.ZerosLikeForExit(y))
           queue.append(y.op)
 
@@ -658,7 +648,8 @@ def _GradientsHelper(ys,
           # therefore dC/doutput[i] is 0.
           for i, out_grad in enumerate(out_grads):
             if (not isinstance(out_grad, ops.Tensor) and not out_grad) and (
-                (not grad_fn and is_func_call) or IsTrainable(op.outputs[i])):
+                (not grad_fn and is_func_call)
+                or backprop_util.IsTrainable(op.outputs[i])):
               # Only trainable outputs or outputs for a function call that
               # will use SymbolicGradient get a zero gradient. Gradient
               # functions should ignore the gradient for other outputs.
@@ -765,7 +756,7 @@ def _UpdatePendingAndEnqueueReady(grads, op, queue, pending_count, loop_state,
             # For an unused exit, if it has trainable outputs, backprop
             # a zero gradient. Otherwise, just ignore it.
             for y in grad_state.unused_exits:
-              if IsTrainable(y):
+              if backprop_util.IsTrainable(y):
                 _SetGrad(grads, y, loop_state.ZerosLikeForExit(y))
               queue.append(y.op)
           else:

@@ -27,6 +27,8 @@ namespace mlir_gpu {
 // Tests that verify IR emitted by the CPU/GPU backend is as expected.
 class MlirIrGenTestBase : public CodegenTestBase {
  protected:
+  using LoweringStage = MlirCompiler::IRHook::LoweringStage;
+
   // Compiles the given HLO module to MLIR IR and verifies the IR matches the
   // given pattern. `pattern` is in the FileCheck pattern matching syntax
   // (http://llvm.org/docs/CommandGuide/FileCheck.html).
@@ -37,13 +39,14 @@ class MlirIrGenTestBase : public CodegenTestBase {
   // steps to LLVM IR are applied; otherwise, the IR before lowering is
   // matched.
   void CompileAndVerifyIr(std::unique_ptr<HloModule> hlo_module,
-                          const string& pattern, bool match_lowered_ir = false);
+                          const string& pattern,
+                          LoweringStage stage = LoweringStage::LHLO);
 
   // A thin wrapper around CompileAndVerifyIr that parses `hlo_text` to create
   // an HLO module.
   void CompileAndVerifyIr(const string& hlo_text,
                           const string& expected_llvm_ir,
-                          bool match_lowered_ir = false);
+                          LoweringStage stage = LoweringStage::LHLO);
 
   // Compiles and returns module with optimizations from a given HLO.
   StatusOr<std::unique_ptr<HloModule>> GetOptimizedModule(

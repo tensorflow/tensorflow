@@ -53,6 +53,7 @@ class ConvPowerVR : public GPUOperation {
   struct ConvParams {
     int3 block_size;
     int3 work_group_size;
+    int3 work_group_launch_order;
     int src_depth_loop_size;
     bool explicit_sync;
     bool x_kernel_is_1;
@@ -75,9 +76,7 @@ class ConvPowerVR : public GPUOperation {
                                   ConvPowerVR* result);
 
   friend std::string GenerateConvPowerVR1x1(
-      const TensorDescriptor& src_descriptor,
-      const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
-      const ConvParams& conv_params,
+      const OperationDef& op_def, const ConvParams& conv_params,
       const std::vector<ElementwiseOperation*>& linked_operations);
 
   friend ConvParams GuessBestParams(const CLDevice& device,

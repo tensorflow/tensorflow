@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
@@ -1735,6 +1736,114 @@ TEST_F(XlaCompilerTest, WhileWithResources) {
   xla::Literal expected2 = xla::LiteralUtil::CreateR0<int32>(1);
   xla::Literal expected_literal =
       xla::LiteralUtil::MakeTuple({&expected0, &expected1, &expected2});
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(expected_literal, actual_literal));
+}
+
+TEST_F(XlaCompilerTest, SetShardingForReturnedTuple) {
+  // Builds a graph that returns its only argument.
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
+  auto b = ops::_Retval(scope.WithOpName("B"), a, 0);
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  // Sets _XlaSharding attribute for the _Retval node.
+  auto node_name_index = graph->BuildNodeNameIndex();
+  Node* ret_node = node_name_index["B"];
+  ASSERT_NE(ret_node, nullptr);
+  xla::Array<int64> tile_assignment({2});
+  tile_assignment.FillIota(0);
+  xla::HloSharding sharding = xla::HloSharding::Tile(tile_assignment);
+  ret_node->AddAttr("_XlaSharding", sharding.ToProto().SerializeAsString());
+
+  // Builds a description of the arguments.
+  std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({2});
+
+  // Compiles the graph.
+  XlaCompiler compiler(DefaultOptions());
+
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "test",
+                                     std::move(graph), args,
+                                     /*user_aliases=*/{}, &result));
+
+  // Tests that we set sharding on the root TUPLE instruction.
+  const auto& hlo_module_proto = result.computation->proto();
+  ASSERT_EQ(hlo_module_proto.computations_size(), 1);
+  const auto& hlo_computation_proto = hlo_module_proto.computations(0);
+  absl::optional<xla::HloInstructionProto> root_instruction_proto;
+  for (const auto& inst : hlo_computation_proto.instructions()) {
+    if (inst.id() == hlo_computation_proto.root_id()) {
+      root_instruction_proto = inst;
+      break;
+    }
+  }
+  ASSERT_TRUE(root_instruction_proto);
+  xla::Shape tuple_shape = xla::ShapeUtil::MakeTupleShape(
+      {xla::ShapeUtil::MakeShape(xla::S32, {2})});
+  xla::HloSharding tuple_sharding = xla::HloSharding::Tuple(
+      tuple_shape, std::vector<xla::HloSharding>{sharding});
+  EXPECT_EQ(root_instruction_proto->sharding().SerializeAsString(),
+            tuple_sharding.ToProto().SerializeAsString());
+}
+
+TEST_F(XlaCompilerTest, DoNotConstantFoldShapeOp) {
+  // When we have a dynamic shape input followed by a Shape op, the Shape op
+  // should return dynamic size:
+  //
+  // [2, b] // b's static size is 3 and dynamic size is 2
+  //   |
+  //  Size // should return 2, 2
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
+  auto b = ops::_Arg(scope.WithOpName("B"), DT_INT32, 1);
+  auto shape = ops::Shape(scope.WithOpName("shape"), a);
+  (void)ops::_Retval(scope.WithOpName("retval"), shape, 0);
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  // Builds a description of the arguments.
+  std::vector<XlaCompiler::Argument> args(2);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({2, 3});
+  // Indicates that first dimension is dynamic, and arg 1 holds the runtime
+  // value of it.
+  args[0].dynamic_dim_to_arg_num_map.insert({1, 1});
+
+  // Arg 1 holds the dynamic size.
+  args[1].kind = XlaCompiler::Argument::kParameter;
+  args[1].type = DT_INT32;
+  args[1].shape = TensorShape({});
+
+  // Compiles the graph.
+  XlaCompiler compiler(DefaultOptions());
+
+  XlaCompiler::CompilationResult result;
+  auto options = XlaCompiler::CompileOptions();
+  options.resolve_compile_time_constants = false;
+  TF_ASSERT_OK(compiler.CompileGraph(options, "test", std::move(graph), args,
+                                     /*user_aliases=*/{}, &result));
+
+  xla::Literal literal0 =
+      xla::LiteralUtil::CreateR2<int32>({{0, 1, 2}, {3, 4, 5}});
+  xla::Literal literal1 = xla::LiteralUtil::CreateR0<int32>(2);
+  std::unique_ptr<xla::GlobalData> data0 =
+      client_->TransferToServer(literal0).ConsumeValueOrDie();
+  std::unique_ptr<xla::GlobalData> data1 =
+      client_->TransferToServer(literal1).ConsumeValueOrDie();
+
+  // Prepare arguments.
+  std::unique_ptr<xla::GlobalData> actual =
+      client_->Execute(*result.computation, {data0.get(), data1.get()})
+          .ConsumeValueOrDie();
+  xla::Literal actual_literal = client_->Transfer(*actual).ConsumeValueOrDie();
+  // The dynamic size of the op is <2, 2> instead of static size <2, 3>
+  xla::Literal expected = xla::LiteralUtil::CreateR1<int32>({2, 2});
+  xla::Literal expected_literal = xla::LiteralUtil::MakeTuple({&expected});
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(expected_literal, actual_literal));
 }
 

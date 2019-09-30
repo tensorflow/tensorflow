@@ -36,8 +36,7 @@ class Sigmoid : public ElementwiseOperation {
   Sigmoid(const Sigmoid&) = delete;
   Sigmoid& operator=(const Sigmoid&) = delete;
 
-  std::string GetCoreCode(const std::string& src, const std::string& z_coord,
-                          const std::string& address) const override;
+  std::string GetCoreCode(const LinkingContext& context) const override;
 };
 
 Sigmoid CreateSigmoid(const OperationDef& definition);

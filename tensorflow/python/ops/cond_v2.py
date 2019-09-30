@@ -25,6 +25,7 @@ from __future__ import print_function
 
 import collections
 
+from tensorflow.python.eager import backprop_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
@@ -270,6 +271,8 @@ def _build_cond(pred,
 
   # TODO(b/110167197) this approach requires cond_v2 to have at least 1 output
   if_op = tensors[0].op
+  if_op._true_graph = true_graph
+  if_op._false_graph = false_graph
   util.maybe_set_lowering_attr(if_op)
   util.maybe_propagate_compile_time_consts_in_xla(if_op)
 
@@ -300,11 +303,15 @@ def get_func_graphs(op):
     for Case).
   """
 
-  def _get_func_graph_for_branch(name_attr_list):
+  def _get_func_graph_for_branch(name_attr_list, cached_attr_name=None):
     """Generates and returns a FuncGraph for the given branch."""
+    func_graph = None
+    if cached_attr_name is not None:
+      func_graph = getattr(op, cached_attr_name, None)
     inputs = op.inputs[1:]  # First input is pred.
-    input_shapes = [t.shape for t in inputs]
-    func_graph = util.get_func_graph(op, input_shapes, name_attr_list.name)
+    if func_graph is None:
+      input_shapes = [t.shape for t in inputs]
+      func_graph = util.get_func_graph(op, input_shapes, name_attr_list.name)
     for external_t, internal_t in zip(inputs, func_graph.inputs):
       custom_gradient.copy_handle_data(external_t, internal_t)
     func_graph.reset_captures(zip(inputs, func_graph.inputs))
@@ -313,9 +320,12 @@ def get_func_graphs(op):
     return func_graph
 
   if op.type in ["If", "StatelessIf"]:
-    return (_get_func_graph_for_branch(op.get_attr("then_branch")),
-            _get_func_graph_for_branch(op.get_attr("else_branch")))
+    return (_get_func_graph_for_branch(
+        op.get_attr("then_branch"), "_true_graph"),
+            _get_func_graph_for_branch(
+                op.get_attr("else_branch"), "_false_graph"))
   elif op.type == "Case":
+    # TODO(b/141114088): investigate whether to cache graphs in forward pass
     return [_get_func_graph_for_branch(branch_fn)
             for branch_fn in op.get_attr("branches")]
   else:
@@ -344,7 +354,7 @@ def _grad_fn(func_graph, grads):
   ys = []
   grad_ys = []
   for y, grad_y in zip(func_graph.outputs, grads):
-    if not gradients_util.IsTrainable(y):
+    if not backprop_util.IsTrainable(y):
       continue
     ys.append(y)
     grad_ys.append(grad_y)

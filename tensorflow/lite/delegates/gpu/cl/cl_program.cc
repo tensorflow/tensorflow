@@ -84,6 +84,8 @@ std::string CompilerOptionToString(const CLDevice& device,
       }
     case CompilerOptions::POWERVR_FP16:
       return "-cl-fast-relaxed-math";
+    case CompilerOptions::CL_OPT_DISABLE:
+      return "-cl-opt-disable";
   }
 }
 

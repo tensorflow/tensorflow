@@ -132,16 +132,18 @@ def uniquify(lst, equality_fn):
 
 
 def gen_operand_kind_enum_attr(operand_kind):
-  """Generates the TableGen I32EnumAttr definition for the given operand kind.
+  """Generates the TableGen EnumAttr definition for the given operand kind.
 
   Returns:
     - The operand kind's name
-    - A string containing the TableGen I32EnumAttr definition
+    - A string containing the TableGen EnumAttr definition
   """
   if 'enumerants' not in operand_kind:
     return '', ''
 
   kind_name = operand_kind['kind']
+  is_bit_enum = operand_kind['category'] == 'BitEnum'
+  kind_category = 'Bit' if is_bit_enum else 'I32'
   kind_acronym = ''.join([c for c in kind_name if c >= 'A' and c <= 'Z'])
   kind_cases = [(case['enumerant'], case['value'])
                 for case in operand_kind['enumerants']]
@@ -150,9 +152,10 @@ def gen_operand_kind_enum_attr(operand_kind):
 
   # Generate the definition for each enum case
   fmt_str = 'def SPV_{acronym}_{symbol} {colon:>{offset}} '\
-            'I32EnumAttrCase<"{symbol}", {value}>;'
+            '{category}EnumAttrCase<"{symbol}", {value}>;'
   case_defs = [
       fmt_str.format(
+          category=kind_category,
           acronym=kind_acronym,
           symbol=case[0],
           value=case[1],
@@ -174,12 +177,13 @@ def gen_operand_kind_enum_attr(operand_kind):
 
   # Generate the enum attribute definition
   enum_attr = 'def SPV_{name}Attr :\n    '\
-      'I32EnumAttr<"{name}", "valid SPIR-V {name}", [\n{cases}\n    ]> {{\n'\
+      '{category}EnumAttr<"{name}", "valid SPIR-V {name}", [\n{cases}\n'\
+      '    ]> {{\n'\
       '  let returnType = "::mlir::spirv::{name}";\n'\
       '  let convertFromStorage = '\
             '"static_cast<::mlir::spirv::{name}>($_self.getInt())";\n'\
       '  let cppNamespace = "::mlir::spirv";\n}}'.format(
-          name=kind_name, cases=case_names)
+          name=kind_name, category=kind_category, cases=case_names)
   return kind_name, case_defs + '\n\n' + enum_attr
 
 
@@ -379,15 +383,15 @@ def get_op_definition(instruction, doc, existing_info, inst_category):
              'form\n{assembly}}}];\n')
   if inst_category == 'Op':
     fmt_str +='\n  let arguments = (ins{args});\n\n'\
-              '  let results = (outs{results});\n\n'
+              '  let results = (outs{results});\n'
 
   fmt_str +='{extras}'\
             '}}\n'
 
   opname = instruction['opname'][2:]
-  category_args = existing_info.get('category_args', None)
-  if category_args is None:
-    category_args = ', '
+  category_args = existing_info.get('category_args', '')
+  # Make sure we have ', ' to separate the category arguments from traits
+  category_args = category_args.rstrip(', ') + ', '
 
   summary, description = doc.split('\n', 1)
   wrapper = textwrap.TextWrapper(

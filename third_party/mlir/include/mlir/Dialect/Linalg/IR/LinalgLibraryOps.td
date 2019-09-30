@@ -73,44 +73,113 @@ def ViewTraits : NativeOpTrait<"linalg::ViewTraits">;
 def LinalgLibraryInterface : OpInterface<"LinalgOp"> {
   let methods = [
     /// Query the number of inputs and outputs from the operation.
-    InterfaceMethod<"unsigned", "getNumInputs">,
-    InterfaceMethod<"unsigned", "getNumOutputs">,
-    InterfaceMethod<"unsigned", "getNumInputsAndOutputs">,
-    InterfaceMethod<"Operation::operand_range", "getInputs">,
-    InterfaceMethod<"Operation::operand_range", "getOutputs">,
-    InterfaceMethod<"Operation::operand_range", "getInputsAndOutputs">,
+    InterfaceMethod<
+      "Query the number of inputs from the current operation.",
+      "unsigned", "getNumInputs"
+    >,
+    InterfaceMethod<
+      "Query the number of outputs from the current operation.",
+      "unsigned", "getNumOutputs"
+    >,
+    InterfaceMethod<
+      "Query the number of inputs and outputs from the current operation.",
+      "unsigned", "getNumInputsAndOutputs"
+    >,
+    InterfaceMethod<
+      "Query the input operands from the current operation.",
+      "Operation::operand_range", "getInputs"
+    >,
+    InterfaceMethod<
+      "Query the output operands from the current operation.",
+      "Operation::operand_range", "getOutputs"
+    >,
+    InterfaceMethod<
+      "Query the input and output operands from the current operation.",
+      "Operation::operand_range", "getInputsAndOutputs"
+    >,
 
     /// Query the number of each type of loop.
-    InterfaceMethod<"unsigned", "getNumParallelLoops">,
-    InterfaceMethod<"unsigned", "getNumReductionLoops">,
-    InterfaceMethod<"unsigned", "getNumWindowLoops">,
-    InterfaceMethod<"unsigned", "getNumLoops", (ins), [{
+    InterfaceMethod<
+      "Query the number of parallel loops within the current operation.",
+      "unsigned", "getNumParallelLoops"
+    >,
+    InterfaceMethod<
+      "Query the number of reduction loops within the current operation.",
+      "unsigned", "getNumReductionLoops"
+    >,
+    InterfaceMethod<
+      "Query the number of window loops within the current operation.",
+      "unsigned", "getNumWindowLoops"
+    >,
+    InterfaceMethod<
+      "Query the number of loops within the current operation.",
+      "unsigned", "getNumLoops", (ins), [{
       return op.getNumParallelLoops() + op.getNumReductionLoops() +
              op.getNumWindowLoops();
     }]>,
 
     /// Get a specific input/output at the given index.
-    InterfaceMethod<"Value *", "getInput", (ins "unsigned":$i)>,
-    InterfaceMethod<"Value *", "getOutput", (ins "unsigned":$i)>,
+    InterfaceMethod<"Query the input for the given index.",
+      "Value *", "getInput", (ins "unsigned":$i)
+    >,
+    InterfaceMethod<"Query the output for the given index.",
+      "Value *", "getOutput", (ins "unsigned":$i)
+    >,
 
     /// Get the index of the given value, or None if the value is not an input.
-    InterfaceMethod<"llvm::Optional<unsigned>", "getIndexOfInput",
-                    (ins "Value *":$view)>,
-    InterfaceMethod<"llvm::Optional<unsigned>", "getIndexOfOutput",
-                    (ins "Value *":$view)>,
+    InterfaceMethod<[{
+        Query the index of the given input value, or `None` if the value is not
+        an input.
+      }],
+      "llvm::Optional<unsigned>", "getIndexOfInput", (ins "Value *":$view)
+    >,
+    InterfaceMethod<[{
+        Query the index of the given view value, or `None` if the value is not
+        an view.
+      }],
+      "llvm::Optional<unsigned>", "getIndexOfOutput", (ins "Value *":$view)
+    >,
 
     /// Get the view type of the input/output at the given index.
-    InterfaceMethod<"ViewType", "getInputViewType", (ins "unsigned":$i)>,
-    InterfaceMethod<"ViewType", "getOutputViewType", (ins "unsigned":$i)>,
+    InterfaceMethod<"Query the view type for the given input.",
+      "ViewType", "getInputViewType", (ins "unsigned":$i)
+    >,
+    InterfaceMethod<"Query the view type for the given output.",
+      "ViewType", "getOutputViewType", (ins "unsigned":$i)
+    >,
 
     /// Create an operation with the given location and operands.
-    StaticInterfaceMethod<"Operation *", "create",
+    StaticInterfaceMethod<[{
+        Create an operation of the current type with the given location,
+        operands, and attributes.
+      }],
+      "Operation *", "create",
       (ins "OpBuilder &":$builder, "Location":$loc,
            "ArrayRef<Value *>":$operands,
            "ArrayRef<NamedAttribute>":$attributes), [{
         return builder.create<ConcreteOp>(loc, ArrayRef<Type>{}, operands,
                                           attributes);
-      }]>
+      }]
+    >,
+
+    /// Clone an operation with the given location and operands. This is used to
+    /// abstract away the optional underlying region creation.
+    InterfaceMethod<[{
+        Clone the current operation with the given location and operands. This
+        is used to abstract away the optional underlying region creation.
+      }],
+      "Operation *", "clone",
+      (ins "OpBuilder &":$b, "Location":$loc, "ArrayRef<Value *>":$operands), [{
+        BlockAndValueMapping map;
+        unsigned numRegions = op.getOperation()->getNumRegions();
+        Operation *res = create(b, loc, operands, op.getAttrs());
+        assert(res->getNumRegions() == numRegions && "inconsistent # regions");
+        for (unsigned ridx = 0; ridx < numRegions; ++ridx)
+          op.getOperation()->getRegion(ridx).cloneInto(
+            &res->getRegion(ridx), map);
+        return res;
+      }]
+    >
   ];
 }
 
@@ -180,7 +249,7 @@ def CopyOp : LinalgLibrary_Op<"copy", [NInputsAndOutputs<1, 1>]> {
   // TODO(ntv) this should go away once the usage of OptionalAttr triggers
   // emission of builders with default arguments left unspecified.
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Value *input, Value *output", [{
+    "Builder *builder, OperationState &result, Value *input, Value *output", [{
     return build(
       builder, result, input, output, AffineMapAttr(), AffineMapAttr());
   }]>];

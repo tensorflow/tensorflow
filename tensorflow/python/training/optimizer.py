@@ -605,7 +605,7 @@ class Optimizer(
         # on the same device as the variable.
         # TODO(apassos): figure out how to get the variable name here.
         if (context.executing_eagerly() or
-            isinstance(var, resource_variable_ops.BaseResourceVariable)
+            resource_variable_ops.is_resource_variable(var)
             and not var._in_graph_mode):  # pylint: disable=protected-access
           scope_name = ""
         else:

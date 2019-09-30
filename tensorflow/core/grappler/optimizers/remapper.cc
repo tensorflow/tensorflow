@@ -263,13 +263,7 @@ bool IsGpuCompatibleConv2D(const NodeDef* conv2d) {
 
 bool IsCpuCompatibleMatMul(const NodeDef* matmul) {
   DCHECK(IsMatMul(*matmul)) << "Expected MatMul op";
-#ifndef INTEL_MKL
-  // Temporarily disable Matmul fusions if MKL is enabled.
-  // TODO(Intel) renable Matmul fusions when enabled by MKL DNN.
   return NodeIsOnCpu(matmul) && IsCpuCompatibleDataType(matmul);
-#else
-  return false;
-#endif  // !INTEL_MKL
 }
 
 // Checks if we can rewrite a pattern to the `_Fused{Conv2D,MatMul}` on CPU.
@@ -337,8 +331,20 @@ inline bool HasControlFaninOrFanout(const utils::MutableNodeView& node_view) {
          node_view.NumControlledFanouts() > 0;
 }
 
+// Returns true if at most one fanout reads output at port 0 (output used once).
 inline bool HasAtMostOneFanoutAtPort0(const utils::MutableNodeView& node_view) {
   return node_view.GetRegularFanout(0).size() <= 1;
+}
+
+// Returns true if at most one fanout reads actual tensor data at output port 0
+// (output used once for any data computation).
+inline bool HasAtMostOneDataFanoutAtPort0(
+    const utils::MutableNodeView& node_view) {
+  const auto predicate = [](const auto& fanout) -> bool {
+    const NodeDef* node = fanout.node_view()->node();
+    return !IsShape(*node) && !IsRank(*node);
+  };
+  return absl::c_count_if(node_view.GetRegularFanout(0), predicate) <= 1;
 }
 
 bool FindContractionWithBias(const RemapperContext& ctx, int node_index,
@@ -777,7 +783,7 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
 
     // Check that only one node consumes the 0-th output of a FusedBatchNorm.
     if (HasControlFaninOrFanout(fused_batch_norm) ||
-        !HasAtMostOneFanoutAtPort0(fused_batch_norm) ||
+        !HasAtMostOneDataFanoutAtPort0(fused_batch_norm) ||
         IsInPreserveSet(ctx, fused_batch_norm_node_def))
       return false;
 

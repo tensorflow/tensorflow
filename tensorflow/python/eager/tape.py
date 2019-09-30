@@ -142,10 +142,12 @@ def should_record_backprop(tensors):
   return pywrap_tensorflow.TFE_Py_TapeSetShouldRecordBackprop(tensors)
 
 
-def record_operation(op_type, output_tensors, input_tensors, backward_function):
+def record_operation(op_type, output_tensors, input_tensors, backward_function,
+                     forward_function=None):
   """Records the operation on all tapes in the stack."""
   pywrap_tensorflow.TFE_Py_TapeSetRecordOperation(
-      op_type, output_tensors, input_tensors, backward_function)
+      op_type, output_tensors, input_tensors, backward_function,
+      forward_function)
 
 
 def record_operation_backprop_only(op_type, output_tensors, input_tensors,

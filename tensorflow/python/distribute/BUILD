@@ -119,7 +119,6 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -156,6 +155,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/data",
@@ -218,6 +218,7 @@ py_library(
 
 py_test(
     name = "distribute_coordinator_test",
+    size = "medium",
     srcs = ["distribute_coordinator_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
@@ -267,6 +268,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
@@ -470,7 +472,6 @@ cuda_py_test(
         "//tensorflow/python:io_ops",
         "//tensorflow/python:util",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_test(
@@ -678,7 +679,6 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_xla_py_test(
@@ -736,7 +736,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -762,7 +761,6 @@ cuda_py_test(
         # TODO(b/138143527): Re-enable after fixing Guitar failure.
         # "multi_and_single_gpu",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -775,7 +773,6 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
     ],
     grpc_enabled = True,
-    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -964,7 +961,6 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -997,7 +993,6 @@ cuda_py_test(
         "no_rocm",
         "no_windows_gpu",  # TODO(b/130551176)
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -1023,7 +1018,6 @@ cuda_py_test(
         "guitar",
         "multi_and_single_gpu",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 distribute_py_test(
@@ -1152,9 +1146,10 @@ distribute_py_test(
     name = "ctl_correctness_test",
     srcs = ["ctl_correctness_test.py"],
     main = "ctl_correctness_test.py",
-    shard_count = 3,
+    shard_count = 10,
     tags = [
         "multi_and_single_gpu",
+        "noguitar",  # b/140755528
     ],
     deps = [
         "//tensorflow/python:keras_lib",
@@ -1233,4 +1228,6 @@ cuda_py_test(
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/133330625)
     ],
+    # b/141096229: Non-atomic AssignAdd
+    xla_enable_strict_auto_jit = False,
 )

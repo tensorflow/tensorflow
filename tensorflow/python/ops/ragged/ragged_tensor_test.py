@@ -32,6 +32,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor_value
@@ -678,6 +679,13 @@ class RaggedTensorTest(test_util.TensorFlowTestCase,
           value_rowids=value_rowids,
           nrows=array_ops.expand_dims(nrows, 0))
 
+  def testCondWithTensorsFromValueIds(self):
+    # b/141166460
+    rt = RaggedTensor.from_value_rowids([1, 2, 3], [0, 0, 2])
+    c = array_ops.placeholder_with_default(True, None)
+    result = control_flow_ops.cond(c, lambda: rt, lambda: rt)
+    self.assertAllEqual(rt, result)
+
   def testGraphMismatch(self):
     if not context.executing_eagerly():
       with ops.Graph().as_default():
@@ -912,12 +920,31 @@ class RaggedTensorTest(test_util.TensorFlowTestCase,
        [[row] for row in EXAMPLE_RAGGED_TENSOR_2D]),
 
       # Slicing inner ragged dimensions.
-      (SLICE_BUILDER[-1:, 1:4],
-       [row[1:4] for row in EXAMPLE_RAGGED_TENSOR_2D[-1:]]),
+      (SLICE_BUILDER[-1:,
+                     1:4], [row[1:4] for row in EXAMPLE_RAGGED_TENSOR_2D[-1:]]),
       (SLICE_BUILDER[:, 1:4], [row[1:4] for row in EXAMPLE_RAGGED_TENSOR_2D]),
       (SLICE_BUILDER[:, -2:], [row[-2:] for row in EXAMPLE_RAGGED_TENSOR_2D]),
-      # TODO(edloper): Add tests for strided slices, once support is added.
-  )
+
+      # Strided slices
+      (SLICE_BUILDER[::2], EXAMPLE_RAGGED_TENSOR_2D[::2]),
+      (SLICE_BUILDER[::-1], EXAMPLE_RAGGED_TENSOR_2D[::-1]),
+      (SLICE_BUILDER[::-2], EXAMPLE_RAGGED_TENSOR_2D[::-2]),
+      (SLICE_BUILDER[::-3], EXAMPLE_RAGGED_TENSOR_2D[::-3]),
+      (SLICE_BUILDER[:, ::2], [row[::2] for row in EXAMPLE_RAGGED_TENSOR_2D]),
+      (SLICE_BUILDER[:, ::-1], [row[::-1] for row in EXAMPLE_RAGGED_TENSOR_2D]),
+      (SLICE_BUILDER[:, ::-2], [row[::-2] for row in EXAMPLE_RAGGED_TENSOR_2D]),
+      (SLICE_BUILDER[:, ::-3], [row[::-3] for row in EXAMPLE_RAGGED_TENSOR_2D]),
+      (SLICE_BUILDER[:, 2::-1],
+       [row[2::-1] for row in EXAMPLE_RAGGED_TENSOR_2D]),
+      (SLICE_BUILDER[:, -1::-1],
+       [row[-1::-1] for row in EXAMPLE_RAGGED_TENSOR_2D]),
+      (SLICE_BUILDER[..., -1::-1],
+       [row[-1::-1] for row in EXAMPLE_RAGGED_TENSOR_2D]),
+      (SLICE_BUILDER[:, 2::-2],
+       [row[2::-2] for row in EXAMPLE_RAGGED_TENSOR_2D]),
+      (SLICE_BUILDER[::-1, ::-1],
+       [row[::-1] for row in EXAMPLE_RAGGED_TENSOR_2D[::-1]]),
+  )  # pyformat: disable
   def testRaggedTensorGetItemWithRaggedRank1(self, slice_spec, expected):
     """Test that rt.__getitem__(slice_spec) == expected."""
     # Ragged tensor
@@ -926,6 +953,21 @@ class RaggedTensorTest(test_util.TensorFlowTestCase,
 
     self.assertAllEqual(rt, EXAMPLE_RAGGED_TENSOR_2D)
     self._TestGetItem(rt, slice_spec, expected)
+
+  def testStridedSlices(self):
+    test_value = [[1, 2, 3, 4, 5], [6, 7], [8, 9, 10], [], [9],
+                  [1, 2, 3, 4, 5, 6, 7, 8]]
+    rt = ragged_factory_ops.constant(test_value)
+    for start in [-2, -1, None, 0, 1, 2]:
+      for stop in [-2, -1, None, 0, 1, 2]:
+        for step in [-3, -2, -1, 1, 2, 3]:
+          # Slice outer dimension
+          self.assertAllEqual(rt[start:stop:step], test_value[start:stop:step],
+                              'slice=%s:%s:%s' % (start, stop, step))
+          # Slice inner dimension
+          self.assertAllEqual(rt[:, start:stop:step],
+                              [row[start:stop:step] for row in test_value],
+                              'slice=%s:%s:%s' % (start, stop, step))
 
   # pylint: disable=invalid-slice-index
   @parameterized.parameters(
@@ -1027,6 +1069,8 @@ class RaggedTensorTest(test_util.TensorFlowTestCase,
 
       # Strided slices
       (SLICE_BUILDER[::2], EXAMPLE_RAGGED_TENSOR_4D[::2]),
+      (SLICE_BUILDER[::-1], EXAMPLE_RAGGED_TENSOR_4D[::-1]),
+      (SLICE_BUILDER[::-2], EXAMPLE_RAGGED_TENSOR_4D[::-2]),
       (SLICE_BUILDER[1::2], EXAMPLE_RAGGED_TENSOR_4D[1::2]),
       (SLICE_BUILDER[:, ::2], [row[::2] for row in EXAMPLE_RAGGED_TENSOR_4D]),
       (SLICE_BUILDER[:, 1::2], [row[1::2] for row in EXAMPLE_RAGGED_TENSOR_4D]),
@@ -1034,10 +1078,15 @@ class RaggedTensorTest(test_util.TensorFlowTestCase,
        [[v[::2] for v in row] for row in EXAMPLE_RAGGED_TENSOR_4D]),
       (SLICE_BUILDER[:, :, 1::2],
        [[v[1::2] for v in row] for row in EXAMPLE_RAGGED_TENSOR_4D]),
-
-      # TODO(edloper): Add tests for strided slices, once support is added.
-      # TODO(edloper): Add tests slicing inner ragged dimensions, one support
-      # is added.
+      (SLICE_BUILDER[:, :, ::-1],
+       [[v[::-1] for v in row] for row in EXAMPLE_RAGGED_TENSOR_4D]),
+      (SLICE_BUILDER[:, :, ::-2],
+       [[v[::-2] for v in row] for row in EXAMPLE_RAGGED_TENSOR_4D]),
+      (SLICE_BUILDER[..., ::-1, :],
+       [[v[::-1] for v in row] for row in EXAMPLE_RAGGED_TENSOR_4D]),
+      (SLICE_BUILDER[..., ::-1],
+       [[[v[::-1] for v in col] for col in row]
+        for row in EXAMPLE_RAGGED_TENSOR_4D]),
   )
   def testRaggedTensorGetItemWithRaggedRank2(self, slice_spec, expected):
     """Test that rt.__getitem__(slice_spec) == expected."""
@@ -1832,6 +1881,8 @@ class RaggedTensorSpecTest(test_util.TensorFlowTestCase,
        RaggedTensorSpec([None, None], dtypes.float32, 1)),
       (RaggedTensorSpec([32, 2], dtypes.float32, 0),
        RaggedTensorSpec([2], dtypes.float32, -1)),
+      (RaggedTensorSpec([32, None, 4], dtypes.float32, 1, dtypes.int32),
+       RaggedTensorSpec([None, 4], dtypes.float32, 0, dtypes.int32)),
   ])  # pyformat: disable
   def testUnbatch(self, spec, expected):
     self.assertEqual(spec._unbatch(), expected)

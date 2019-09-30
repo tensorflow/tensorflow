@@ -135,11 +135,8 @@ Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
 
   TF_RETURN_IF_ERROR(ValidateGraphDefForDevices(gdef));
 
-  if (gdef.versions().producer() >= 5) {
-    // Validate the graph: we assume that merging two valid graphs
-    // should maintain graph validity.
-    TF_RETURN_IF_ERROR(graph::ValidateGraphDef(gdef, *item->lib_def));
-  }
+  // We don't explicitly Validate the graph def because ConvertGraphDefToGraph
+  // does that below.
 
   item->proc_flr.reset(new ProcessFunctionLibraryRuntime(
       device_mgr_, worker_env_->env, gdef.versions().producer(),
@@ -151,6 +148,7 @@ Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
   GraphConstructorOptions opts;
   opts.allow_internal_ops = true;
   opts.expect_device_spec = true;
+  opts.validate_nodes = true;
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, gdef, &graph));
 
   // Splits "graph" into multiple subgraphs by device names.
@@ -418,7 +416,7 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
                             CancellationManager* cancellation_manager,
                             const NamedTensors& in, StatusCallback done) {
   const uint64 start_time_usecs = Env::Default()->NowMicros();
-  string session_id_meta = strings::StrCat("RunGraph #id=", step_id, "#");
+  string session_id_meta = strings::StrCat("RunGraph#id=", step_id, "#");
   auto* activity = new profiler::TraceMe(absl::string_view(session_id_meta),
                                          profiler::TraceMeLevel::kInfo);
   // Lookup an item. Holds one ref while executing.

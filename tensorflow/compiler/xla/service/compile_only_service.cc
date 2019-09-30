@@ -83,7 +83,8 @@ CompileOnlyService::CompileAheadOfTime(
         std::unique_ptr<HloModuleConfig> module_config,
         CreateModuleConfig(
             ProgramShape(instance.computation.host_program_shape()),
-            instance.argument_layouts, &execution_options));
+            instance.argument_layouts, &execution_options,
+            options.fusion_config_collection(), options.fusion_config()));
 
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModule> hlo_module,

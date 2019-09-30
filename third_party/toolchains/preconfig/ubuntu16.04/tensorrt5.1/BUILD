@@ -4,6 +4,7 @@
 licenses(["notice"])
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_default_copts")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -25,6 +26,14 @@ cc_library(
     deps = [
         ":tensorrt_headers",
         "@local_config_cuda//cuda",
+    ],
+)
+
+bzl_library(
+    name = "build_defs_bzl",
+    srcs = ["build_defs.bzl"],
+    deps = [
+        "@bazel_skylib//lib:selects",
     ],
 )
 

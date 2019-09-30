@@ -142,9 +142,10 @@ class InputWorkers(object):
     self._device_map = device_map
     self._logical_device = logical_device
     if worker_device_pairs is None:
+      devices = device_map.logical_to_actual_devices(logical_device)
       worker_device_pairs = ((
-          device_util.canonicalize("/device:CPU:0"),
-          device_map.logical_to_actual_devices(logical_device)),)
+          device_util.canonicalize("/device:CPU:0", devices[0]),
+          devices),)
     self._input_worker_devices = tuple(d for d, _ in worker_device_pairs)
     self._fed_devices = tuple(tuple(device_util.canonicalize(d) for d in f)
                               for _, f in worker_device_pairs)
@@ -484,6 +485,11 @@ class DistributedDataset(_IterableInput):
         # pylint: disable=protected-access
         with ops.colocate_with(dataset._variant_tensor):
           dataset = distribute._RebatchDataset(dataset, split_batch_by)
+          # Add a prefetch to pipeline rebatching for performance.
+          # TODO(rachelim): Instead of inserting an extra prefetch stage here,
+          # leverage static graph rewrites to insert _RebatchDataset before
+          # the final `prefetch` if it exists.
+          dataset = dataset.prefetch(split_batch_by)
       except errors.InvalidArgumentError as e:
         if "without encountering a batch" in str(e):
           six.reraise(

@@ -480,7 +480,7 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
     struct uniforms {
       int4 stride;
       int4 padding;
-      int4 dillation;
+      int4 dilation;
       int4 size;
       int4 channel_multiplier;
     };
@@ -499,7 +499,7 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
 
       for(int ky = 0; ky < kernel_y; ++ky) {
         for(int kx = 0; kx < kernel_x; ++kx) {
-          int2 coords  = int2(gid.xy) * params.stride.xy + int2(kx, ky) * params.dillation.xy -
+          int2 coords  = int2(gid.xy) * params.stride.xy + int2(kx, ky) * params.dilation.xy -
             params.padding.xy;
           const bool outside = coords.x < 0 || coords.y < 0 ||
             coords.x >= params.size.x || coords.y >= params.size.y;

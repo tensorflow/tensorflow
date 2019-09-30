@@ -115,8 +115,25 @@ class AnfTransformer(transformer.Base):
     """
     super(AnfTransformer, self).__init__(ctx)
     if config is None:
+      # These could be pulled out, but are generally considered to already be in
+      # A-normal form.  Thus they are left in by default, but could be pulled
+      # out if the configuration calls for it.
+      try:
+        # TODO(b/140808434): Fix this.
+        # gast pre-0.3
+        literal_node_types = (
+            gast.Num, gast.Str, gast.Bytes, gast.NameConstant,
+            gast.Name  # Name is here to cover True, False, and None in Python 2
+        )
+      except AttributeError:
+        # gast 0.3+
+        literal_node_types = (
+            gast.Constant,
+            gast.Name  # Name is here to cover True, False, and None in Python 2
+        )
+
       self._overrides = [
-          (ASTEdgePattern(ANY, ANY, self._literal_nodes), LEAVE),
+          (ASTEdgePattern(ANY, ANY, literal_node_types), LEAVE),
           (ASTEdgePattern(ANY, ANY, gast.expr), REPLACE)]
     else:
       self._overrides = config
@@ -133,32 +150,6 @@ class AnfTransformer(transformer.Base):
 
   def _add_pending_statement(self, stmt):
     self._pending_statements.append(stmt)
-
-  # These can't meaningfully be pulled out into their own assignment statements.
-  _trivial_nodes = (
-      # Variable names
-      gast.Name,
-      # Non-nodes that show up as AST fields
-      bool, six.string_types,
-      # Binary operators
-      gast.Add, gast.Sub, gast.Mult, gast.Div, gast.Mod, gast.Pow, gast.LShift,
-      gast.RShift, gast.BitOr, gast.BitXor, gast.BitAnd, gast.FloorDiv,
-      # Unary operators
-      gast.Invert, gast.Not, gast.UAdd, gast.USub,
-      # Comparison operators
-      gast.Eq, gast.NotEq, gast.Lt, gast.LtE, gast.Gt, gast.GtE,
-      gast.Is, gast.IsNot, gast.In, gast.NotIn,
-      # Other leaf nodes that don't make sense standalone.
-      gast.expr_context, gast.Ellipsis,
-  )
-
-  # These could be pulled out, but are generally considered to already be in
-  # A-normal form.  Thus they are left in by default, but could be pulled out
-  # if the configuration calls for it.
-  _literal_nodes = (
-      gast.Num, gast.Str, gast.Bytes, gast.NameConstant,
-      gast.Name  # Name is here to cover True, False, and None in Python 2
-  )
 
   def _match(self, pattern, parent, field, child):
     if pattern is ANY:
@@ -199,8 +190,7 @@ class AnfTransformer(transformer.Base):
     """
     if node is None:
       return node
-    if (isinstance(node, self._trivial_nodes) and
-        not _is_py2_name_constant(node)):
+    if _is_trivial(node):
       return node
     if isinstance(node, list):
       # If something's field was actually a list, e.g., variadic arguments.
@@ -499,6 +489,51 @@ def _is_py2_name_constant(node):
   return isinstance(node, gast.Name) and node.id in ['True', 'False', 'None']
 
 
+def _is_trivial(node):
+  """Returns whether to consider the given node 'trivial'.
+
+  The definition of 'trivial' is a node that can't meaningfully be pulled out
+  into its own assignment statement.
+
+  This is surprisingly difficult to do robustly across versions of Python and
+  gast, as the parsing of constants has changed, if I may, constantly.
+
+  Args:
+    node: An AST node to check for triviality
+
+  Returns:
+    trivial: A Python `bool` indicating whether the node is trivial.
+  """
+  trivial_node_types = (
+      # Variable names
+      gast.Name,
+      # Non-nodes that show up as AST fields
+      bool, six.string_types,
+      # Binary operators
+      gast.Add, gast.Sub, gast.Mult, gast.Div, gast.Mod, gast.Pow,
+      gast.LShift, gast.RShift, gast.BitOr, gast.BitXor, gast.BitAnd,
+      gast.FloorDiv,
+      # Unary operators
+      gast.Invert, gast.Not, gast.UAdd, gast.USub,
+      # Comparison operators
+      gast.Eq, gast.NotEq, gast.Lt, gast.LtE, gast.Gt, gast.GtE,
+      gast.Is, gast.IsNot, gast.In, gast.NotIn,
+      # Other leaf nodes that don't make sense standalone.
+      gast.expr_context,
+  )
+  if isinstance(node, trivial_node_types) and not _is_py2_name_constant(node):
+    return True
+  try:
+    # gast pre-0.3
+    if isinstance(node, gast.Ellipsis):
+      return True
+  except AttributeError:
+    # gast 0.3+
+    if isinstance(node, gast.Constant) and node.value == Ellipsis:
+      return True
+  return False
+
+
 def transform(node, ctx, config=None, gensym_source=None):
   """Converts the given node to A-normal form (ANF).
 
@@ -563,6 +598,7 @@ def transform(node, ctx, config=None, gensym_source=None):
   If no configuration is supplied, the default behavior is to transform all
   expressions except literal constants, which is defined as a configuration as
   ```python
+  # For Python 3, and gast library versions before 0.3
   literals = (gast.Num, gast.Str, gast.Bytes, gast.NameConstant)
   [(anf.ASTEdgePattern(anf.ANY, anf.ANY, literals), anf.LEAVE),
    (anf.ASTEdgePattern(anf.ANY, anf.ANY, gast.expr), anf.REPLACE)]

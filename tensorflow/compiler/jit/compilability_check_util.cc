@@ -130,17 +130,24 @@ RecursiveCompilabilityChecker::FindUncompilableNodes(
   return uncompilable_nodes;
 }
 
-bool RecursiveCompilabilityChecker::HasXLAKernel(const Node& node) const {
+bool RecursiveCompilabilityChecker::HasXLAKernel(
+    const Node& node, string* uncompilable_reason) const {
   // There is a SymbolicGradient kernel on the XLA_JIT device, but the gradient
   // is really a kind of function call and will be handled by
   // IsCompilableCall().
-  if (node.type_string() == "SymbolicGradient") return false;
+  if (node.type_string() == "SymbolicGradient") {
+    *uncompilable_reason =
+        "SymbolicGradient should be handled by IsCompilableCall().";
+    return false;
+  }
   if (node.type_string() == "Const") {
     // Skip Const op with type DT_STRING, since XLA doesn't support it, but the
     // registered Const KernelDef says that it does, to support no-op Assert for
     // tfcompile.
     const AttrValue* attr = node.attrs().Find("dtype");
     if (attr != nullptr && attr->type() == DT_STRING) {
+      *uncompilable_reason =
+          "Const op with type DT_STRING is not supported by XLA.";
       return false;
     }
   }
@@ -150,10 +157,16 @@ bool RecursiveCompilabilityChecker::HasXLAKernel(const Node& node) const {
   // such nodes out of XLA clusters.
   if (HasForwardedRefInput(node)) {
     VLOG(2) << "Rejecting " << node.name() << ": Identity with unsafe cast.";
+    *uncompilable_reason = "Identity with unsafe cast.";
     return false;
   }
 
-  return FindKernelDef(jit_device_type_, node.def(), nullptr, nullptr).ok();
+  Status s = FindKernelDef(jit_device_type_, node.def(), nullptr, nullptr);
+  if (!s.ok()) {
+    *uncompilable_reason = s.error_message();
+    return false;
+  }
+  return true;
 }
 
 // Tests whether 'if_node' is compilable. Every operator in the then_branch and
@@ -336,16 +349,17 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
     return false;
   }
 
+  string uncompilable_reason;
   if (IsFunctionCall(*lib_runtime->GetFunctionLibraryDefinition(), node)) {
     if (!IsCompilableCall(node.def(), lib_runtime, stack_trace,
                           encapsulating_function, uncompilable_nodes)) {
       LogNotCompilable(node, "unsupported function");
       return false;
     }
-  } else if (!HasXLAKernel(node)) {
-    absl::string_view uncompilable_reason = "unsupported op";
-    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
-                              encapsulating_function, uncompilable_nodes);
+  } else if (!HasXLAKernel(node, &uncompilable_reason)) {
+    MaybeMarkUncompilableNode(
+        absl::StrCat("unsupported op: ", uncompilable_reason), *stack_trace,
+        encapsulating_function, uncompilable_nodes);
     LogNotCompilable(node, uncompilable_reason);
     return false;
   }

@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/graph_def_util.h"
+#include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -270,7 +271,7 @@ Status DeviceRequiresCompilation(const jit::DeviceInfoCache& device_info_cache,
 }
 
 // Replaces `n` with a `PartitionedCall` op that calls the same function.
-Status ReplaceFunctionCallWithPartitionedCall(
+xla::StatusOr<Node*> ReplaceFunctionCallWithPartitionedCall(
     const GraphOptimizationPassOptions& options,
     const FunctionLibraryDefinition& flib_def, Node* n, Graph* g,
     const NameAttrList& func, const Scope& root) {
@@ -313,7 +314,7 @@ Status ReplaceFunctionCallWithPartitionedCall(
   }
 
   g->RemoveNode(n);
-  return Status::OK();
+  return call.operation.node();
 }
 
 xla::StatusOr<jit::DeviceId> InferDeviceForCluster(
@@ -374,6 +375,69 @@ std::vector<Output> GetXlaRunArgs(const Scope& s,
   return xla_run_args;
 }
 
+xla::StatusOr<MemoryTypeVector> GetOutputMemoryTypes(const Scope& root,
+                                                     Node* n) {
+  MemoryTypeVector input_mtypes, output_mtypes;
+  DeviceType device_type("");
+  TF_RETURN_IF_ERROR(
+      DeviceNameToDeviceType(n->assigned_device_name(), &device_type));
+  TF_RETURN_IF_ERROR(MemoryTypesForNode(root.graph()->op_registry(),
+                                        device_type, n->def(), &input_mtypes,
+                                        &output_mtypes));
+  return output_mtypes;
+}
+
+// Predicate INT32 typed inputs to `n` on the deadness of
+// `predicate_as_control`.
+//
+// This is a performance optimization.  Since INT32 arguments to a
+// PartitionedCall are placed on the host, a producer that produces them on the
+// device will incur a D2H copy, even if the PartitionedCall is not executed
+// (i.e. even if we choose to execute the XLA compiled computation via _XlaRun).
+// To prevent this, we add control dependencies to make the int32 input edges
+// into the PartitionedCall dead.  With this change the D2H copy only happens if
+// the PartitionedCall is actually executed.
+Status PredicateInt32Inputs(const Scope& root, Node* n,
+                            Operation predicate_as_control) {
+  std::vector<Output> int32_inputs;
+  std::vector<int> int32_inputs_input_idxs;
+  for (const Edge* e : n->in_edges()) {
+    if (e->IsControlEdge()) {
+      continue;
+    }
+
+    if (e->src()->output_type(e->src_output()) == DT_INT32) {
+      TF_ASSIGN_OR_RETURN(MemoryTypeVector source_output_mem_types,
+                          GetOutputMemoryTypes(root, e->src()));
+      if (source_output_mem_types[e->src_output()] == DEVICE_MEMORY) {
+        int32_inputs.push_back(Output(e->src(), e->src_output()));
+        int32_inputs_input_idxs.push_back(e->dst_input());
+      }
+    }
+  }
+
+  if (int32_inputs.empty()) {
+    return Status::OK();
+  }
+
+  // Create a single IdentityN that is dead if and only if
+  // `predicate_as_control` is dead.
+  //
+  // IdentityN is also special in that, unlike `Identity`, it does not place
+  // int32 inputs in host memory.  Placing int32 inputs in host memory would
+  // defeat the purpose of adding this indirection.
+  ops::IdentityN identity_n(root.WithOpName("int32_id_n"), int32_inputs);
+  root.graph()->AddControlEdge(predicate_as_control.node(),
+                               identity_n.operation.node());
+
+  for (int i = 0; i < int32_inputs.size(); i++) {
+    TF_RETURN_IF_ERROR(root.graph()->UpdateEdge(identity_n[i].node(), i, n,
+                                                int32_inputs_input_idxs[i]));
+  }
+
+  return Status::OK();
+}
+
 Status ReplaceNodeWithXlaCompileAndXlaRun(
     jit::DeviceInfoCache* device_info_cache,
     const GraphOptimizationPassOptions& options,
@@ -408,6 +472,11 @@ Status ReplaceNodeWithXlaCompileAndXlaRun(
                                /*resources=*/cluster_info.resource_inputs,
                                /*must_compile=*/requires_compilation,
                                cluster_info.function);
+
+  bool has_ref_attr;
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(n->attrs(), kXlaHasReferenceVarsAttr, &has_ref_attr));
+  xla_compile.operation.node()->AddAttr(kXlaHasReferenceVarsAttr, has_ref_attr);
   TF_RETURN_IF_ERROR(
       CopyIncomingControlEdges(g, /*from=*/n, /*to=*/xla_compile.key.node()));
 
@@ -457,12 +526,17 @@ Status ReplaceNodeWithXlaCompileAndXlaRun(
     // original node we set out to rewrite.  We just wire in the correct control
     // deps and we're done.
     RemoveAllIncomingControlEdges(g, n);
-    g->AddControlEdge(
-        DataToControl(root, inverse_predicated_compilation_key).node(), n);
+    Operation inverse_predicate_as_control =
+        DataToControl(root, inverse_predicated_compilation_key);
+    g->AddControlEdge(inverse_predicate_as_control.node(), n);
     n->ClearAttr(kXlaCompiledKernelAttr);
 
-    TF_RETURN_IF_ERROR(ReplaceFunctionCallWithPartitionedCall(
-        options, flib_def, n, g, cluster_info.function, root));
+    TF_ASSIGN_OR_RETURN(Node* const pco, ReplaceFunctionCallWithPartitionedCall(
+                                             options, flib_def, n, g,
+                                             cluster_info.function, root));
+
+    TF_RETURN_IF_ERROR(
+        PredicateInt32Inputs(root, pco, inverse_predicate_as_control));
   }
 
   return Status::OK();

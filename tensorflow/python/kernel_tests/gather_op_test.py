@@ -205,6 +205,10 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     gather_t = array_ops.gather(params, indices, axis=axis)
     self.assertEqual(None, gather_t.shape)
 
+  @test_util.disable_xla(
+      "Assertion inside an op is not supported in XLA. Instead XLA clamps the "
+      "index to be in bounds and returns the indexed value there (Don't rely "
+      "on this behavior).")
   def testBadIndicesCPU(self):
     with test_util.force_cpu():
       params = [[0, 1, 2], [3, 4, 5]]

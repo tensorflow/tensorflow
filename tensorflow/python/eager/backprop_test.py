@@ -48,7 +48,6 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops.signal import fft_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import training
 from tensorflow.python.util import nest
@@ -1491,24 +1490,25 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     def f(x):
 
       @custom_gradient.custom_gradient(primals=(x,))
-      def g(unused_dz):
+      def g(dz):
 
         def h(unused_ddz):
           return 2.2
 
-        return x * 2.1, h
+        return x * 2.1 * dz, h
 
       return x + 1., g
 
     with backprop.GradientTape(persistent=True) as t:
       with backprop.GradientTape(persistent=True) as tt:
         v = variables.Variable(1.)
-        self.evaluate(v.initializer)
+        w = variables.Variable(0.)
+        self.evaluate([v.initializer, w.initializer])
         t.watch(v)
         tt.watch(v)
-        output = f(v)
+        output = f(v + w)
         self.assertAllClose(2., output)
-      g = tt.gradient(output, v)
+      g = tt.gradient(output, v, output_gradients=1. + w)
       self.assertAllClose(2.1, g)
     gg = t.gradient(g, v)
     self.assertAllClose(2.2, gg)
@@ -1577,23 +1577,6 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     g = backprop.GradientTape()
     with self.assertRaisesRegexp(ValueError, 'ndarray'):
       g.watch(np.array(1.))
-
-  def testOpWithNoAttrs(self):
-
-    @function.defun(autograph=False)
-    def f():
-      with backprop.GradientTape() as tape:
-        xs = random_ops.random_normal([10, 32])
-        tape.watch(xs)
-        # The `rfft()` op has no defined attrs, which exercises a different
-        # branch in the Python op wrapper code generator for recording
-        # gradients.
-        ys = fft_ops.rfft(xs)
-        self.assertEmpty(ys.op.node_def.attr)
-      gs = tape.gradient(ys, xs)
-      self.assertIsNotNone(gs)
-
-    f.get_concrete_function()
 
 
 class JacobianTest(test.TestCase):

@@ -315,7 +315,7 @@ class HloComputation {
   // instruction. Removes old instruction from computation. Precondition:
   // old_instruction and new_instruction must have the compatible shapes.
   // If |new_instruction| doesn't have any sharding information it will
-  // recieve the sharding information of |old_instruction|.
+  // receive the sharding information of |old_instruction|.
   Status ReplaceInstruction(HloInstruction* old_instruction,
                             HloInstruction* new_instruction);
 

@@ -199,7 +199,8 @@ void ExecutorToControlDialectConversion::runOnFunction() {
   graph.erase();
 }
 
-std::unique_ptr<FunctionPassBase> CreateTFExecutorToControlDialectConversion() {
+std::unique_ptr<OpPassBase<FuncOp>>
+CreateTFExecutorToControlDialectConversion() {
   return std::make_unique<ExecutorToControlDialectConversion>();
 }
 

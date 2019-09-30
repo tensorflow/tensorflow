@@ -35,7 +35,7 @@ static StatusOr<mlir::OwningModuleRef> Import(
     MLIRContext* context) {
   // TODO(fengliuai): get debug info at runtime.
   GraphDebugInfo debug_info;
-  NodeSpecs specs;
+  GraphImportConfig specs;
   TF_ASSIGN_OR_RETURN(
       auto module,
       ConvertGraphToMlir(graph, debug_info, *options.flib_def, specs, context));
@@ -51,7 +51,7 @@ static StatusOr<mlir::OwningModuleRef> Import(
 static Status Export(mlir::OwningModuleRef module,
                      const GraphOptimizationPassOptions& options,
                      std::unique_ptr<Graph>* graph) {
-  ExporterConfigs confs;
+  GraphExportConfig confs;
   return ConvertMlirToGraph(*module, confs, graph, options.flib_def);
 }
 
@@ -67,7 +67,7 @@ Status MlirRoundtripPass::Run(const GraphOptimizationPassOptions& options) {
 
   // If the graph is partitioned, then try and round trip them individually.
   for (auto& it : *options.partition_graphs) {
-    VLOG(1) << "Roundtripping: " << it.first << " " << it.second;
+    VLOG(1) << "Roundtripping: " << it.first;
     // TODO(jpienaar): Roundtrip results in different failures, investigate.
     TF_RETURN_IF_ERROR(Import(options, *it.second, &context).status());
   }

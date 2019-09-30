@@ -43,7 +43,7 @@ class ExecutorOpts;
 class StepStatsCollector;
 class RendezvousMgrInterface;
 class DeviceMgr;
-struct WorkerSession;
+class WorkerSession;
 
 // GraphMgr keeps track of a set of graphs that are registered with a
 // TensorFlow worker. Each registered graph is identified by a handle

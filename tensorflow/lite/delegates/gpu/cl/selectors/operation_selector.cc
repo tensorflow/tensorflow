@@ -33,11 +33,10 @@ namespace cl {
 
 Status GPUOperationFromNode(const CreationContext& creation_context,
                             const OperationDef& op_def, ModelHints hints,
-                            const GraphFloat32& graph, const Node& node,
+                            const std::vector<Value<TensorRef<BHWC>>*>& inputs,
+                            const std::vector<Value<TensorRef<BHWC>>*>& outputs,
+                            const Node& node,
                             std::unique_ptr<GPUOperation>* gpu_op) {
-  auto inputs = graph.FindInputs(node.id);
-  auto outputs = graph.FindOutputs(node.id);
-
   auto op_type = OperationTypeFromString(node.operation.type);
   switch (op_type) {
     case OperationType::ABS: {
@@ -64,7 +63,8 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
       }
     }
     case OperationType::APPLY_MASK: {
-      SelectApplyMask(op_def, gpu_op);
+      SelectApplyMask(op_def, inputs[0]->tensor.shape, inputs[1]->tensor.shape,
+                      gpu_op);
       return OkStatus();
     }
     case OperationType::CONCAT: {

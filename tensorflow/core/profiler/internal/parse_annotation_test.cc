@@ -53,6 +53,12 @@ TEST(ParseAnnotationTest, SimpleNameTest) {
   EXPECT_TRUE(annotation.metadata.empty());
 }
 
+TEST(ParseAnnotationTest, SimpleNameWithWhitespaceTest) {
+  Annotation annotation = ParseAnnotation("name ");
+  EXPECT_EQ(annotation.name, "name");
+  EXPECT_TRUE(annotation.metadata.empty());
+}
+
 TEST(ParseAnnotationTest, EmptyMetadataTest) {
   Annotation annotation = ParseAnnotation("name#");
   EXPECT_EQ(annotation.name, "name");
@@ -70,7 +76,7 @@ TEST(ParseAnnotationTest, EmptyMetadataTest) {
 TEST(ParseAnnotationTest, SingleMetadataTest) {
   Annotation annotation = ParseAnnotation("name#key=value#");
   EXPECT_EQ(annotation.name, "name");
-  EXPECT_EQ(annotation.metadata.size(), 1);
+  ASSERT_EQ(annotation.metadata.size(), 1);
   EXPECT_EQ(annotation.metadata.at(0).key, "key");
   EXPECT_EQ(annotation.metadata.at(0).value, "value");
 }
@@ -78,7 +84,7 @@ TEST(ParseAnnotationTest, SingleMetadataTest) {
 TEST(ParseAnnotationTest, MultipleMetadataTest) {
   Annotation annotation = ParseAnnotation("name#k1=v1,k2=v2,k3=v3#");
   EXPECT_EQ(annotation.name, "name");
-  EXPECT_EQ(annotation.metadata.size(), 3);
+  ASSERT_EQ(annotation.metadata.size(), 3);
   EXPECT_EQ(annotation.metadata.at(0).key, "k1");
   EXPECT_EQ(annotation.metadata.at(0).value, "v1");
   EXPECT_EQ(annotation.metadata.at(1).key, "k2");
@@ -87,17 +93,34 @@ TEST(ParseAnnotationTest, MultipleMetadataTest) {
   EXPECT_EQ(annotation.metadata.at(2).value, "v3");
 }
 
-TEST(ParseAnnotationTest, ExtraCharactersTest) {
-  Annotation annotation = ParseAnnotation("name#k1=v1,k2=,k3=v3,k4=v4=#more#");
+TEST(ParseAnnotationTest, MultipleMetadataWithWhitespaceTest) {
+  Annotation annotation = ParseAnnotation("name # k1 = v1, ,k2=v2 #");
   EXPECT_EQ(annotation.name, "name");
-  EXPECT_EQ(annotation.metadata.size(), 2);
+  ASSERT_EQ(annotation.metadata.size(), 2);
   EXPECT_EQ(annotation.metadata.at(0).key, "k1");
   EXPECT_EQ(annotation.metadata.at(0).value, "v1");
-  // "k2=" is ignored due to missing value.
-  EXPECT_EQ(annotation.metadata.at(1).key, "k3");
-  EXPECT_EQ(annotation.metadata.at(1).value, "v3");
-  // "k4=v4=" is ignored due to extra '='.
-  // "more#" is ignored.
+  EXPECT_EQ(annotation.metadata.at(1).key, "k2");
+  EXPECT_EQ(annotation.metadata.at(1).value, "v2");
+}
+
+TEST(ParseAnnotationTest, KeyValueSeparatorTest) {
+  Annotation annotation = ParseAnnotation("name#=v1,k2=,k3==v3,k4=v4=#");
+  EXPECT_EQ(annotation.name, "name");
+  ASSERT_EQ(annotation.metadata.size(), 2);
+  // "=v1" is ignored due to empty key.
+  // "k2=" is ignored due to empty value.
+  // "=" in value is OK.
+  EXPECT_EQ(annotation.metadata.at(0).key, "k3");
+  EXPECT_EQ(annotation.metadata.at(0).value, "=v3");
+  EXPECT_EQ(annotation.metadata.at(1).key, "k4");
+  EXPECT_EQ(annotation.metadata.at(1).value, "v4=");
+}
+
+TEST(ParseAnnotationTest, ExtraMetadataSeparatorTest) {
+  Annotation annotation = ParseAnnotation("name##k1=v1#");
+  EXPECT_EQ(annotation.name, "name");
+  // "k1=v1" is ignored due to extra metadata separator.
+  EXPECT_TRUE(annotation.metadata.empty());
 }
 
 }  // namespace

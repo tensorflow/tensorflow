@@ -55,6 +55,15 @@ class _CustomMapping(collections_abc.Mapping):
     return len(self._wrapped)
 
 
+class _CustomSequenceThatRaisesException(collections.Sequence):
+
+  def __len__(self):
+    return 1
+
+  def __getitem__(self, item):
+    raise ValueError("Cannot get item: %s" % item)
+
+
 class NestTest(parameterized.TestCase, test.TestCase):
 
   PointXY = collections.namedtuple("Point", ["x", "y"])  # pylint: disable=invalid-name
@@ -1208,6 +1217,11 @@ class NestTest(parameterized.TestCase, test.TestCase):
   def testMapWithTuplePathsIncompatibleStructures(self, s1, s2, error_type):
     with self.assertRaises(error_type):
       nest.map_structure_with_tuple_paths(lambda path, *s: 0, s1, s2)
+
+  def testFlattenCustomSequenceThatRaisesException(self):  # b/140746865
+    seq = _CustomSequenceThatRaisesException()
+    with self.assertRaisesRegexp(ValueError, "Cannot get item"):
+      nest.flatten(seq)
 
 
 class NestBenchmark(test.Benchmark):

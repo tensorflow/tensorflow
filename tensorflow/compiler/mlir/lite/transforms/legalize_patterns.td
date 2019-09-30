@@ -20,6 +20,10 @@ include "mlir/Dialect/StandardOps/Ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
+def NonOpaqueElementsAttr : ElementsAttrBase<
+  CPred<"!$_self.isa<OpaqueElementsAttr>()">,
+  "non-opaque constant tensor">;
+
 def F32ElementsAttr : ElementsAttrBase<
   CPred<"$_self.cast<ElementsAttr>().getType().getElementType().isF32()">, "float constant tensor">;
 
@@ -33,17 +37,9 @@ class ExtractI32At<int i> : NativeCodeCall<
 def Merge2AttrsToArray : NativeCodeCall<"$_builder.getArrayAttr({$0, $1})">;
 
 // Use the tensor type information from $0 and convert min $1, max $2 and
-// storage type $3 to a QuantizedType.
-def ConvertToQuantType : NativeCodeCall<
-    "GetQuantizedTypeAttr($_builder, $0->getType(), $1, $2, $3.getValue())">;
-
-// Use the tensor type information from $0 and convert min $1, max $2 and
 // numBits $3 and narrowRange $4 to a QuantizedType.
 def ConvertToQuantTypeFromAttrs : NativeCodeCall<
     "GetQuantizedTypeAttr($_builder, $0->getType(), $1, $2, $3, $4)">;
-
-// Predicate that holds if all the three attributes are set.
-def HasAll3Attrs : Constraint<CPred<"HasAll3Attrs($0, $1, $2)">>;
 
 // Converts an integer attribute $0 to 32-bit with builder.
 def convertIntAttrTo32Bit : NativeCodeCall<
@@ -56,7 +52,12 @@ def ExtractSingleElementAsInteger : NativeCodeCall<
 //===----------------------------------------------------------------------===//
 // Nullary ops patterns.
 //===----------------------------------------------------------------------===//
+
 def : Pat<(TF_ConstOp ElementsAttr:$value), (TFL_ConstOp $value)>;
+
+// Convert to std constant for statically shaped, non-opaque constants.
+def : Pat<(TF_ConstOp:$res NonOpaqueElementsAttr:$value), (ConstantOp $value),
+          [(AnyStaticShapeTensor $res)], (addBenefit 10)>;
 
 //===----------------------------------------------------------------------===//
 // Unary ops patterns.
@@ -65,6 +66,7 @@ def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "NHWC">;
 def IsIntList1XY1 : AttrConstraint<CPred<"TFIntListIs1XY1($_self)">>;
 
 def : Pat<(TF_AbsOp $arg), (TFL_AbsOp $arg)>;
+def : Pat<(TF_AddNOp $inputs, $N), (TFL_AddNOp $inputs)>;
 
 def : Pat<(TF_AvgPoolOp $value,
               IsIntList1XY1:$ksize,
@@ -124,12 +126,10 @@ def : Pat<(TF_MinimumOp $arg1, $arg2), (TFL_MinimumOp $arg1, $arg2)>;
 def : Pat<(TF_OneHotOp $indices, $depth, $on_value, $off_value, $axis),
           (TFL_OneHotOp $indices, $depth, $on_value, $off_value,
            (convertIntAttrTo32Bit $axis))>;
+def : Pat<(TF_PowOp $x, $y), (TFL_PowOp $x, $y)>;
 def : Pat<(TF_RangeOp $start, $limit, $delta), (TFL_RangeOp $start, $limit, $delta)>;
 def : Pat<(TF_Relu6Op $arg), (TFL_Relu6Op $arg)>;
 def : Pat<(TF_ReluOp $arg), (TFL_ReluOp $arg)>;
-// The second operand is captured in the type for this transform.
-def : Pat<(TF_ReshapeOp:$res AnyStaticShapeTensor:$arg, $ignored),
-          (TFL_ReshapeOp $arg), [(AnyStaticShapeTensor $res)]>;
 def : Pat<(TF_ReverseSequenceOp $input, $seq_lengths, $seq_dim, $batch_dim),
           (TFL_ReverseSequenceOp $input, $seq_lengths,
            (convertIntAttrTo32Bit $seq_dim),
@@ -152,16 +152,6 @@ def : Pat<(TF_TanhOp $arg), (TFL_TanhOp $arg)>;
 def : Pat<(TF_TransposeOp $arg, $perm), (TFL_TransposeOp $arg, $perm)>;
 def : Pat<(TF_WhereOp $arg), (TFL_WhereOp $arg)>;
 def : Pat<(TF_ZerosLikeOp $arg), (TFL_ZerosLikeOp $arg)>;
-
-// The following two rules can both match an tf.Placeholder.input node with
-// min/max/type attributes, so we increase the benefit of the first rule by one
-// so the tfl.quantize and tfl.dequantize ops will be inserted if it matches.
-def : Pat<(TF_PlaceholderInputOp $inputs, $min, $max, $type),
-          (TFL_DequantizeOp
-              (TFL_QuantizeOp
-                  (TFL_InputOp $inputs),
-                  (ConvertToQuantType $inputs, $min, $max, $type))),
-          [(HasAll3Attrs $min, $max, $type)], (addBenefit 1)>;
 def : Pat<(TF_PlaceholderInputOp $inputs, $min, $max, $type),
           (TFL_InputOp $inputs)>;
 
@@ -190,7 +180,8 @@ def : Pat<(TF_GatherV2Op $params, $indices,
 
 def : Pat<(TF_FloorDivOp $l, $r), (TFL_FloorDivOp $l, $r)>;
 
-def : Pat<(TF_NotEqualOp $l, $r), (TFL_NotEqualOp $l, $r)>;
+def : Pat<(TF_NotEqualOp $l, $r, /*incompatible_shape_error=*/ConstBoolAttrTrue),
+          (TFL_NotEqualOp $l, $r)>;
 
 def : Pat<(TF_LogicalAndOp $l, $r), (TFL_LogicalAndOp $l, $r)>;
 
@@ -251,7 +242,7 @@ def : Pat<(TF_ReluOp (TF_SquaredDifferenceOp $l, $r)),
 
 def : Pat<(TF_ReverseV2Op $arg0, $arg1), (TFL_ReverseV2Op $arg0, $arg1)>;
 
-def : Pat<(TF_EqualOp $arg0, $arg1), (TFL_EqualOp $arg0, $arg1)>;
+def : Pat<(TF_EqualOp $arg0, $arg1, /*incompatible_shape_error=*/ConstBoolAttrTrue), (TFL_EqualOp $arg0, $arg1)>;
 
 def : Pat<(TF_PadOp $arg0, $arg1), (TFL_PadOp $arg0, $arg1)>;
 
@@ -307,3 +298,14 @@ def : Pat<(TF_FloorModOp $arg0, $arg1), (TFL_FloorModOp $arg0, $arg1)>;
 def : Pat<(TF_ExpOp $arg0), (TFL_ExpOp $arg0)>;
 
 def : Pat<(TF_LRNOp $arg0, $radius, F32Attr:$bias, F32Attr:$alpha, F32Attr:$beta), (TFL_LocalResponseNormalizationOp $arg0, (convertIntAttrTo32Bit $radius), $bias, $alpha, $beta)>;
+
+def : Pat<
+  (TF_NonMaxSuppressionV4Op $boxes, $scores, $max_output_size, $iou_threshold, $score_threshold, $pad_to_max_output_size),
+  (TFL_NonMaxSuppressionV4Op $boxes, $scores, $max_output_size, $iou_threshold, $score_threshold)>;
+
+def : Pat<
+  (TF_NonMaxSuppressionV5Op $boxes, $scores, $max_output_size, $iou_threshold, $score_threshold, $soft_nms_sigma, $pad_to_max_output_size),
+  (TFL_NonMaxSuppressionV5Op $boxes, $scores, $max_output_size, $iou_threshold, $score_threshold, $soft_nms_sigma)>;
+
+def : Pat<(TF_MatrixDiagOp $diagonal), (TFL_MatrixDiagOp $diagonal)>;
+
