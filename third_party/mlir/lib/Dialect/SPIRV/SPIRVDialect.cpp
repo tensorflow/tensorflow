@@ -194,6 +194,13 @@ static Type parseArrayType(SPIRVDialect const &dialect, StringRef spec,
     return Type();
   }
 
+  // According to the SPIR-V spec:
+  // "Length is the number of elements in the array. It must be at least 1."
+  if (!count) {
+    emitError(loc, "expected array length greater than 0");
+    return Type();
+  }
+
   if (spec.trim().empty()) {
     emitError(loc, "expected element type");
     return Type();
