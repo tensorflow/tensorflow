@@ -67,6 +67,7 @@ struct LegalizeTF : public FunctionPass<LegalizeTF> {
 DECL_CONVERT_OP(Concat);
 DECL_CONVERT_OP(ConcatV2);
 DECL_CONVERT_OP(MatMul);
+DECL_CONVERT_OP(MatrixDiagV2);
 DECL_CONVERT_OP(Pack);
 DECL_CONVERT_OP(Reshape);
 DECL_CONVERT_OP(Split);
@@ -223,6 +224,48 @@ PatternMatchResult ConvertTFUnpackOp::matchAndRewrite(
   return matchSuccess();
 }
 
+PatternMatchResult ConvertTFMatrixDiagV2Op::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tf_matrix_diag_v2_op = cast<TF::MatrixDiagV2Op>(op);
+
+  if (tf_matrix_diag_v2_op.getNumOperands() != 5) return matchFailure();
+
+  auto input = tf_matrix_diag_v2_op.diagonal();
+  auto output_type = tf_matrix_diag_v2_op.output()->getType();
+
+  // Extract k constant tensor and check value = 0.
+  ElementsAttr k;
+  if (!matchPattern(tf_matrix_diag_v2_op.k(), m_Constant(&k)))
+    return matchFailure();
+  if (ExtractSingleElementAsInteger(k).getInt() != 0) return matchFailure();
+
+  // Extract num_rows constant tensor and check value = -1.
+  ElementsAttr num_rows;
+  if (!matchPattern(tf_matrix_diag_v2_op.num_rows(), m_Constant(&num_rows)))
+    return matchFailure();
+  if (ExtractSingleElementAsInteger(num_rows).getInt() != -1)
+    return matchFailure();
+
+  // Extract num_cols constant tensor and check value = -1.
+  ElementsAttr num_cols;
+  if (!matchPattern(tf_matrix_diag_v2_op.num_cols(), m_Constant(&num_cols)))
+    return matchFailure();
+  if (ExtractSingleElementAsInteger(num_cols).getInt() != -1)
+    return matchFailure();
+
+  // Verify padding_value is an integer tensor with all 0s.
+  ElementsAttr padding_value;
+  if (!matchPattern(tf_matrix_diag_v2_op.padding_value(),
+                    m_Constant(&padding_value)))
+    return matchFailure();
+  for (auto value : padding_value.getValues<APInt>()) {
+    if (value != 0) return matchFailure();
+  }
+
+  rewriter.replaceOpWithNewOp<MatrixDiagOp>(op, output_type, input);
+  return matchSuccess();
+}
+
 void LegalizeTF::runOnFunction() {
   OwningRewritePatternList patterns;
   auto* ctx = &getContext();
@@ -231,8 +274,8 @@ void LegalizeTF::runOnFunction() {
   // Add the generated patterns to the list.
   populateWithGenerated(ctx, &patterns);
   patterns.insert<ConvertTFConcatOp, ConvertTFConcatV2Op, ConvertTFMatMulOp,
-                  ConvertTFPackOp, ConvertTFReshapeOp, ConvertTFSplitOp,
-                  ConvertTFSplitVOp, ConvertTFUnpackOp>(ctx);
+                  ConvertTFMatrixDiagV2Op, ConvertTFPackOp, ConvertTFReshapeOp,
+                  ConvertTFSplitOp, ConvertTFSplitVOp, ConvertTFUnpackOp>(ctx);
   applyPatternsGreedily(func, patterns);
 }
 
