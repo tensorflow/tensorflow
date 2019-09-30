@@ -176,6 +176,8 @@ cc_library(
         "transforms/materialize_mlir_passthrough_op.cc",
         "transforms/optimize.cc",
         "transforms/raise_control_flow.cc",
+        "transforms/shape_inference.cc",
+        "transforms/shape_inference_pass.cc",
         "transforms/sink_constant.cc",
         "transforms/tpu_cluster_formation.cc",
         "transforms/tpu_rewrite_pass.cc",
@@ -185,12 +187,14 @@ cc_library(
     hdrs = [
         "transforms/bridge.h",
         "transforms/passes.h",
+        "transforms/shape_inference.h",
     ],
     includes = ["include"],
     deps = [
         ":convert_tensor",
         ":convert_type",
         ":error_util",
+        ":export_tf_dialect_op",
         ":tensorflow",
         ":tensorflow_optimize_inc_gen",
         "//tensorflow/compiler/mlir/lite:validators",

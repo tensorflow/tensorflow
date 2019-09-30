@@ -30,6 +30,9 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateTFFunctionalControlFlowToCFG();
 // attached as an attribute.
 std::unique_ptr<OpPassBase<FuncOp>> CreateMaterializePassthroughOpPass();
 
+// Performs Shape Inference on the TensorFlow dialect using the global registry.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateTFShapeInferencePass();
+
 // Optimizes Tensorflow graph.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass();
 
