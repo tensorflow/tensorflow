@@ -175,6 +175,62 @@ struct QuantizationPattern : public RewritePattern {
   }
 };
 
+// Converts quantize ops with unsigned quantized types to these with signed
+// quantized types and preserves the scales.
+template <typename Q>
+struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
+  using BaseType = ConvertUnsignedToSigned<Q>;
+  using QType = quant::QuantizedType;
+
+  explicit ConvertUnsignedToSigned(MLIRContext* context)
+      : OpRewritePattern<Q>(context, 1) {}
+
+  PatternMatchResult matchAndRewrite(Q op,
+                                     PatternRewriter& rewriter) const override {
+    Type output_type = op.output()->getType();
+    auto qtype = QType::getQuantizedElementType(output_type);
+    if (!qtype || qtype.isSigned()) return this->matchFailure();
+
+    int num_bits = qtype.getStorageTypeIntegralWidth();
+    // This is a positive value, and will be applied on zero points and fixed
+    // point ranges.
+    int64_t offset =
+        QType::getDefaultMininumForInteger(/*isSigned=*/false, num_bits) -
+        QType::getDefaultMininumForInteger(/*isSigned=*/true, num_bits);
+
+    auto flags = quant::QuantizationFlags::Signed;
+    QType new_qtype;
+    if (auto uqtype = qtype.template dyn_cast<quant::UniformQuantizedType>()) {
+      new_qtype = quant::UniformQuantizedType::getChecked(
+          flags, qtype.getStorageType(), qtype.getExpressedType(),
+          uqtype.getScale(), uqtype.getZeroPoint() - offset,
+          uqtype.getStorageTypeMin() - offset,
+          uqtype.getStorageTypeMax() - offset, op.getLoc());
+    } else if (auto aqtype = qtype.template dyn_cast<
+                             quant::UniformQuantizedPerAxisType>()) {
+      auto zero_points = aqtype.getZeroPoints();
+      llvm::SmallVector<int64_t, 4> new_zero_points(zero_points.begin(),
+                                                    zero_points.end());
+      for (int i = 0, e = new_zero_points.size(); i != e; ++i) {
+        new_zero_points[i] -= offset;
+      }
+      new_qtype = quant::UniformQuantizedPerAxisType::getChecked(
+          flags, qtype.getStorageType(), qtype.getExpressedType(),
+          aqtype.getScales(), new_zero_points, aqtype.getQuantizedDimension(),
+          aqtype.getStorageTypeMin() - offset,
+          aqtype.getStorageTypeMax() - offset, op.getLoc());
+    } else {
+      return this->matchFailure();
+    }
+
+    Type new_output_type = new_qtype.castFromExpressedType(
+        QType::castToExpressedType(output_type));
+    rewriter.replaceOpWithNewOp<Q>(op, new_output_type, op.input(),
+                                   rewriter.getTypeAttr(new_output_type));
+    return this->matchSuccess();
+  }
+};
+
 // Converts the min/max/num_bits/narrow_range information to a
 // QuantizedType, and then returns the attribute containing the QuantizedType.
 // The `min` and `max` arguments can be FloatAttr or DenseFPElementsAttr and
@@ -183,7 +239,7 @@ struct QuantizationPattern : public RewritePattern {
 // if it is using signed int symmetric quantization.
 TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
                               Attribute max, IntegerAttr num_bits,
-                              BoolAttr narrow_range, bool is_signed = false);
+                              BoolAttr narrow_range, bool is_signed);
 
 // Casts the `target` type to a quantized type by using the quantization
 // parameters from the type in the `source` type attribute.

@@ -443,16 +443,16 @@ node {
   }
 }
 
-# TODO(fengliuai): make the storage type signed.
-# MLIR-LABEL: func @main(%arg0: tensor<1x1x1x256x!quant.uniform<u8:f32, 0.21632751372549019:155>>) -> tensor<1x6x31x!quant.uniform<u8:f32, 0.09363494573854933:150>>
+
+# MLIR-LABEL: func @main(%arg0: tensor<1x1x1x256x!quant.uniform<i8:f32, 0.21632751372549019:27>>) -> tensor<1x6x31x!quant.uniform<i8:f32, 0.09363494573854933:22>>
 # MLIR:     attributes  {tf.entry_function = {inputs = "input", outputs = "output"}
 # MLIR:   %[[shape:.*]] = constant dense<[1, -1, 31]> : tensor<3xi32>
-# MLIR:   %[[input:.*]] = "tfl.pseudo_input"(%arg0) : (tensor<1x1x1x256x!quant.uniform<u8:f32, 0.21632751372549019:155>>)
+# MLIR:   %[[input:.*]] = "tfl.pseudo_input"(%arg0) : (tensor<1x1x1x256x!quant.uniform<i8:f32, 0.21632751372549019:27>>)
 # MLIR:   %[[bias:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<186x!quant.uniform<i32:f32:0
-# MLIR:   %[[weight:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<186x1x1x256x!quant.uniform<u8<1:255>:f32:0, {0.12581039038230116:128,
+# MLIR:   %[[weight:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<186x1x1x256x!quant.uniform<i8<-127:127>:f32:0, {0.12581039038230116,
 # MLIR:   %[[conv:.*]] = "tfl.conv_2d"(%[[input]], %[[weight]], %[[bias]]) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}
-# MLIR:   %[[reshape:.*]] = "tfl.reshape"(%[[conv]], %[[shape]]) : (tensor<1x1x1x186x!quant.uniform<u8:f32, 0.09363494573854933:150>>, tensor<3xi32>)
-# MLIR:   return %[[reshape]] : tensor<1x6x31x!quant.uniform<u8:f32, 0.09363494573854933:150>>
+# MLIR:   %[[reshape:.*]] = "tfl.reshape"(%[[conv]], %[[shape]]) : (tensor<1x1x1x186x!quant.uniform<i8:f32, 0.09363494573854933:22>>, tensor<3xi32>)
+# MLIR:   return %[[reshape]] : tensor<1x6x31x!quant.uniform<i8:f32, 0.09363494573854933:22>>
 # MLIR: }
 
 
@@ -460,7 +460,7 @@ node {
 # CHECK:   version: 3,
 # CHECK:   operator_codes: [ {
 # CHECK:     builtin_code: CONV_2D,
-# CHECK:     version: 1
+# CHECK:     version: 3
 # CHECK:   }, {
 # CHECK:     builtin_code: RESHAPE,
 # CHECK:     version: 1
@@ -476,12 +476,12 @@ node {
 # CHECK:       }
 # CHECK:     }, {
 # CHECK:       shape: [ 1, 1, 1, 256 ],
-# CHECK:       type: UINT8,
+# CHECK:       type: INT8,
 # CHECK:       buffer: 2,
 # CHECK:       name: "input",
 # CHECK:       quantization: {
 # CHECK:         scale: [ 0.216328 ],
-# CHECK:         zero_point: [ 155 ]
+# CHECK:         zero_point: [ 27 ]
 # CHECK:       }
 # CHECK:     }, {
 # CHECK:       shape: [ 186 ],
@@ -494,30 +494,30 @@ node {
 # CHECK:       }
 # CHECK:     }, {
 # CHECK:       shape: [ 186, 1, 1, 256 ],
-# CHECK:       type: UINT8,
+# CHECK:       type: INT8,
 # CHECK:       buffer: 4,
 # CHECK:       name: "tfl.pseudo_qconst1",
 # CHECK:       quantization: {
 # CHECK:         scale: [ 0.12581, 0.001755, 0.001908, 0.001967, 0.007431,
-# CHECK:         zero_point: [ 128, 128, 128, 128, 128, 128, 128, 128, 128,
+# CHECK:         zero_point: [ 0, 0, 0, 0, 0, 0, 0, 0, 0,
 # CHECK:       }
 # CHECK:     }, {
 # CHECK:       shape: [ 1, 1, 1, 186 ],
-# CHECK:       type: UINT8,
+# CHECK:       type: INT8,
 # CHECK:       buffer: 5,
 # CHECK:       name: "tfl.conv_2d",
 # CHECK:       quantization: {
 # CHECK:         scale: [ 0.093635 ],
-# CHECK:         zero_point: [ 150 ]
+# CHECK:         zero_point: [ 22 ]
 # CHECK:       }
 # CHECK:     }, {
 # CHECK:       shape: [ 1, 6, 31 ],
-# CHECK:       type: UINT8,
+# CHECK:       type: INT8,
 # CHECK:       buffer: 6,
 # CHECK:       name: "output",
 # CHECK:       quantization: {
 # CHECK:         scale: [ 0.093635 ],
-# CHECK:         zero_point: [ 150 ]
+# CHECK:         zero_point: [ 22 ]
 # CHECK:       }
 # CHECK:     } ],
 # CHECK:     inputs: [ 1 ],
@@ -547,7 +547,7 @@ node {
 # CHECK:   }, {
 # CHECK:     data: [ 245, 255, 255, 255, 186, 254, 255, 255, 213, 254, 255, 255,
 # CHECK:   }, {
-# CHECK:     data: [ 136, 136, 136, 136, 136, 136, 136, 136, 136, 136, 136, 136,
+# CHECK:     data: [ 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
 # CHECK:   }, {
 # CHECK-EMPTY
 # CHECK:   }, {

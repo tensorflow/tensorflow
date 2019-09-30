@@ -136,8 +136,9 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
         rewriter.getI64IntegerAttr(tf_op.num_bits().getSExtValue());
     BoolAttr narrow_range = rewriter.getBoolAttr(tf_op.narrow_range());
     Type res_type = tf_op.getType();
-    TypeAttr qtype = GetQuantizedTypeAttr(rewriter, res_type, min_value,
-                                          max_value, num_bits, narrow_range);
+    TypeAttr qtype =
+        GetQuantizedTypeAttr(rewriter, res_type, min_value, max_value, num_bits,
+                             narrow_range, /*is_signed=*/false);
     if (!qtype) this->matchFailure();
 
     // Finally, use the quantization parameter to create the quantize and

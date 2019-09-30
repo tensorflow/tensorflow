@@ -336,6 +336,7 @@ cc_library(
         ":validators",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/core:protos_all_proto_cc",
         "@com_google_absl//absl/memory",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
