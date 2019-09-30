@@ -1108,12 +1108,14 @@ lists, which would be unbearably inefficient).
 MLIR now supports a multithreaded pass manager. We do this through several
 design choices:
 
-1) MLIR makes use of extensive uniqued immutable data structures (affine
-expressions, types, etc are all immutable, uniqued, and immortal). 2) constants
-are defined in per-function pools, instead of being globally uniqued. 3)
-functions themselves are not SSA values either, so they don't have the same
-problem as constants. 4) FunctionPasses are copied (through their copy ctor)
-into one instance per thread, avoiding sharing of local state across threads.
+1.  MLIR makes use of extensive uniqued immutable data structures (affine
+    expressions, types, etc are all immutable, uniqued, and immortal).
+2.  Constants are defined in per-function pools, instead of being globally
+    uniqued.
+3.  Functions themselves are not SSA values either, so they don't have the same
+    problem as constants.
+4.  FunctionPasses are copied (through their copy ctor) into one instance per
+    thread, avoiding sharing of local state across threads.
 
 This allows MLIR function passes to support efficient multithreaded compilation
 and code generation.
