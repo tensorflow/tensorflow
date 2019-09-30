@@ -2243,6 +2243,7 @@ tf_pyclif_proto_library(
 
 tf_pyclif_proto_library(
     name = "framework/graph_pyclif",
+    deprecated_proto_lib_visibility = True,  # TODO(b/136847937)
     proto_lib = ":protos_all_cc",
     proto_srcfile = "framework/graph.proto",
     visibility = ["//visibility:public"],
