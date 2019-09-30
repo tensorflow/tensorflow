@@ -2022,6 +2022,58 @@ TEST_F(ScatterGatherShapeInferenceTest, TensorFlowBatchDynamicSlice) {
       << ShapeUtil::HumanString(gather_shape);
 }
 
+TEST_F(ScatterGatherShapeInferenceTest, DynamicGatherEntireDimension) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape gather_shape,
+      ShapeInference::InferGatherShape(
+          ShapeUtil::MakeShape(F32, {3, 2, 1}, {false, true, false}),
+          ShapeUtil::MakeShape(S64, {}),
+          HloGatherInstruction::MakeGatherDimNumbers(
+              /*offset_dims=*/{0, 1},
+              /*collapsed_slice_dims=*/{0},
+              /*start_index_map=*/{0},
+              /*index_vector_dim=*/0),
+          /*slice_sizes=*/{1, 2, 1}));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      gather_shape, ShapeUtil::MakeShape(F32, {2, 1}, {true, false})))
+      << ShapeUtil::HumanString(gather_shape);
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, DynamicGatherCollapsedDimension) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape gather_shape,
+      ShapeInference::InferGatherShape(
+          ShapeUtil::MakeShape(F32, {3, 2, 1}, {true, false, false}),
+          ShapeUtil::MakeShape(S64, {}),
+          HloGatherInstruction::MakeGatherDimNumbers(
+              /*offset_dims=*/{0, 1},
+              /*collapsed_slice_dims=*/{0},
+              /*start_index_map=*/{0},
+              /*index_vector_dim=*/0),
+          /*slice_sizes=*/{1, 2, 1}));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      gather_shape, ShapeUtil::MakeShape(F32, {2, 1}, {false, false})))
+      << ShapeUtil::HumanString(gather_shape);
+}
+
+TEST_F(ScatterGatherShapeInferenceTest, DynamicIndices) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape gather_shape,
+      ShapeInference::InferGatherShape(
+          ShapeUtil::MakeShape(F32, {3, 2, 2}),
+          ShapeUtil::MakeShape(S64, {3, 4, 2}, {false, true, false}),
+          HloGatherInstruction::MakeGatherDimNumbers(
+              /*offset_dims=*/{2, 3},
+              /*collapsed_slice_dims=*/{0},
+              /*start_index_map=*/{0, 1},
+              /*index_vector_dim=*/2),
+          /*slice_sizes=*/{1, 2, 2}));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      gather_shape,
+      ShapeUtil::MakeShape(F32, {3, 4, 2, 2}, {false, true, false, false})))
+      << ShapeUtil::HumanString(gather_shape);
+}
+
 TEST_F(ScatterGatherShapeInferenceTest, NonDefaultGatherIndicesLeafDim_A) {
   TF_ASSERT_OK_AND_ASSIGN(
       Shape gather_shape,

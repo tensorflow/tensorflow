@@ -3053,12 +3053,20 @@ static Status ValidateGatherDimensionNumbers(
   }
 
   std::vector<int64> expanded_start_indices_shape;
+  // Also tracks if an output dimension is dynamic.
+  std::vector<bool> expanded_start_indices_shape_dynamic_dimensions;
   expanded_start_indices_shape.reserve(start_indices_shape.dimensions_size());
+  expanded_start_indices_shape_dynamic_dimensions.reserve(
+      start_indices_shape.dimensions_size());
   absl::c_copy(start_indices_shape.dimensions(),
                std::back_inserter(expanded_start_indices_shape));
+  absl::c_copy(
+      start_indices_shape.dynamic_dimensions(),
+      std::back_inserter(expanded_start_indices_shape_dynamic_dimensions));
   if (expanded_start_indices_shape.size() ==
       gather_dim_numbers.index_vector_dim()) {
     expanded_start_indices_shape.push_back(1);
+    expanded_start_indices_shape_dynamic_dimensions.push_back(false);
   }
 
   TF_RETURN_IF_ERROR(ValidateGatherDimensionNumbers(
@@ -3109,8 +3117,12 @@ static Status ValidateGatherDimensionNumbers(
   int64 gather_dims_seen = 0;
   std::vector<int64> output_dim_bounds;
   output_dim_bounds.reserve(result_rank);
+
+  std::vector<bool> output_dim_is_dynamic;
+  output_dim_is_dynamic.reserve(result_rank);
   for (int64 i = 0; i < result_rank; i++) {
     int64 current_bound;
+    bool dim_dynamic = false;
     bool is_window_index =
         absl::c_binary_search(gather_dim_numbers.offset_dims(), i);
     if (is_window_index) {
@@ -3118,18 +3130,36 @@ static Status ValidateGatherDimensionNumbers(
                                    offset_dims_seen)) {
         offset_dims_seen++;
       }
+      // Gathering an entire dynamic dimension creates dynamic dimension.
+      //
+      // e.g.,:
+      //
+      // gather(input: [1,<=2,1], slice_sizes={1,2,1})
+      //
+      // creates
+      //
+      // [<=2, 1]
+      if (slice_sizes[offset_dims_seen] ==
+          input_shape.dimensions(offset_dims_seen)) {
+        dim_dynamic = input_shape.is_dynamic_dimension(offset_dims_seen);
+      }
       current_bound = slice_sizes[offset_dims_seen++];
     } else {
       if (gather_dims_seen == gather_dim_numbers.index_vector_dim()) {
         gather_dims_seen++;
       }
+      // Forward dynamic dimensions from indices.
+      dim_dynamic =
+          expanded_start_indices_shape_dynamic_dimensions[gather_dims_seen];
+
       current_bound = expanded_start_indices_shape[gather_dims_seen++];
     }
-
+    output_dim_is_dynamic.push_back(dim_dynamic);
     output_dim_bounds.push_back(current_bound);
   }
 
-  return ShapeUtil::MakeShape(input_shape.element_type(), output_dim_bounds);
+  return ShapeUtil::MakeShape(input_shape.element_type(), output_dim_bounds,
+                              output_dim_is_dynamic);
 }
 
 namespace {
