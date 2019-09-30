@@ -91,7 +91,100 @@ class SPV_GLSLBinaryArithmaticOp<string mnemonic, int opcode, Type type,
 
 // -----
 
-def SPV_GLSLExpOp : SPV_GLSLUnaryArithmaticOp<"Exp", 27, FloatOfWidths<[16, 32]>> {
+def SPV_GLSLFAbsOp : SPV_GLSLUnaryArithmaticOp<"FAbs", 4, SPV_Float> {
+  let summary = "Absolute value of operand";
+
+  let description = [{
+    Result is x if x >= 0; otherwise result is -x.
+
+    The operand x must be a scalar or vector whose component type is
+    floating-point.
+
+    Result Type and the type of x must be the same type. Results are computed
+    per component.
+
+    ### Custom assembly format
+    ``` {.ebnf}
+    float-scalar-vector-type ::= float-type |
+                                 `vector<` integer-literal `x` float-type `>`
+    abs-op ::= ssa-id `=` `spv.GLSL.FAbs` ssa-use `:`
+               float-scalar-vector-type
+    ```
+    For example:
+
+    ```
+    %2 = spv.GLSL.FAbs %0 : f32
+    %3 = spv.GLSL.FAbs %1 : vector<3xf16>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_GLSLCeilOp : SPV_GLSLUnaryArithmaticOp<"Ceil", 9, SPV_Float> {
+  let summary = "Rounds up to the next whole number";
+
+  let description = [{
+    Result is the value equal to the nearest whole number that is greater than
+    or equal to x.
+
+    The operand x must be a scalar or vector whose component type is
+    floating-point.
+
+    Result Type and the type of x must be the same type. Results are computed
+    per component.
+
+    ### Custom assembly format
+    ``` {.ebnf}
+    float-scalar-vector-type ::= float-type |
+                                 `vector<` integer-literal `x` float-type `>`
+    ceil-op ::= ssa-id `=` `spv.GLSL.Ceil` ssa-use `:`
+                float-scalar-vector-type
+    ```
+    For example:
+
+    ```
+    %2 = spv.GLSL.Ceil %0 : f32
+    %3 = spv.GLSL.Ceil %1 : vector<3xf16>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_GLSLCosOp : SPV_GLSLUnaryArithmaticOp<"Cos", 14, SPV_Float16or32> {
+  let summary = "Cosine of operand in radians";
+
+  let description = [{
+    The standard trigonometric cosine of x radians.
+
+    The operand x must be a scalar or vector whose component type is 16-bit or
+    32-bit floating-point.
+
+    Result Type and the type of x must be the same type. Results are computed
+    per component.
+
+    ### Custom assembly format
+    ``` {.ebnf}
+    restricted-float-scalar-type ::=  `f16` | `f32`
+    restricted-float-scalar-vector-type ::=
+      restricted-float-scalar-type |
+      `vector<` integer-literal `x` restricted-float-scalar-type `>`
+    cos-op ::= ssa-id `=` `spv.GLSL.Cos` ssa-use `:`
+               restricted-float-scalar-vector-type
+    ```
+    For example:
+
+    ```
+    %2 = spv.GLSL.Cos %0 : f32
+    %3 = spv.GLSL.Cos %1 : vector<3xf16>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_GLSLExpOp : SPV_GLSLUnaryArithmaticOp<"Exp", 27, SPV_Float16or32> {
   let summary = "Exponentiation of Operand 1";
 
   let description = [{
@@ -123,6 +216,70 @@ def SPV_GLSLExpOp : SPV_GLSLUnaryArithmaticOp<"Exp", 27, FloatOfWidths<[16, 32]>
 
 // -----
 
+def SPV_GLSLFloorOp : SPV_GLSLUnaryArithmaticOp<"Floor", 8, SPV_Float> {
+  let summary = "Rounds down to the next whole number";
+
+  let description = [{
+    Result is the value equal to the nearest whole number that is less than or
+    equal to x.
+
+    The operand x must be a scalar or vector whose component type is
+    floating-point.
+
+    Result Type and the type of x must be the same type. Results are computed
+    per component.
+
+    ### Custom assembly format
+    ``` {.ebnf}
+    float-scalar-vector-type ::= float-type |
+                                 `vector<` integer-literal `x` float-type `>`
+    floor-op ::= ssa-id `=` `spv.GLSL.Floor` ssa-use `:`
+                float-scalar-vector-type
+    ```
+    For example:
+
+    ```
+    %2 = spv.GLSL.Floor %0 : f32
+    %3 = spv.GLSL.Floor %1 : vector<3xf16>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_GLSLLogOp : SPV_GLSLUnaryArithmaticOp<"Log", 28, SPV_Float16or32> {
+  let summary = "Natural logarithm of the operand";
+
+  let description = [{
+    Result is the natural logarithm of x, i.e., the value y which satisfies the
+    equation x = ey. Result is undefined if x ≤ 0.
+
+    The operand x must be a scalar or vector whose component type is 16-bit or
+    32-bit floating-point.
+
+    Result Type and the type of x must be the same type. Results are computed
+    per component.
+
+    ### Custom assembly format
+    ``` {.ebnf}
+    restricted-float-scalar-type ::=  `f16` | `f32`
+    restricted-float-scalar-vector-type ::=
+      restricted-float-scalar-type |
+      `vector<` integer-literal `x` restricted-float-scalar-type `>`
+    log-op ::= ssa-id `=` `spv.GLSL.Log` ssa-use `:`
+               restricted-float-scalar-vector-type
+    ```
+    For example:
+
+    ```
+    %2 = spv.GLSL.Log %0 : f32
+    %3 = spv.GLSL.Log %1 : vector<3xf16>
+    ```
+  }];
+}
+
+// -----
+
 def SPV_GLSLFMaxOp : SPV_GLSLBinaryArithmaticOp<"FMax", 40, SPV_Float> {
   let summary = "Return maximum of two floating-point operands";
 
@@ -138,8 +295,10 @@ def SPV_GLSLFMaxOp : SPV_GLSLBinaryArithmaticOp<"FMax", 40, SPV_Float> {
 
     ### Custom assembly format
     ``` {.ebnf}
+    float-scalar-vector-type ::= float-type |
+                                 `vector<` integer-literal `x` float-type `>`
     fmax-op ::= ssa-id `=` `spv.GLSL.FMax` ssa-use `:`
-                restricted-float-scalar-vector-type
+                float-scalar-vector-type
     ```
     For example:
 
@@ -151,5 +310,126 @@ def SPV_GLSLFMaxOp : SPV_GLSLBinaryArithmaticOp<"FMax", 40, SPV_Float> {
 }
 
 // -----
+
+def SPV_GLSLInverseSqrtOp : SPV_GLSLUnaryArithmaticOp<"InverseSqrt", 32, SPV_Float> {
+  let summary = "Reciprocal of sqrt(operand)";
+
+  let description = [{
+    Result is the reciprocal of sqrt x. Result is undefined if x ≤ 0.
+
+    The operand x must be a scalar or vector whose component type is
+    floating-point.
+
+    Result Type and the type of x must be the same type. Results are computed
+    per component.
+
+    ### Custom assembly format
+    ``` {.ebnf}
+    float-scalar-vector-type ::= float-type |
+                                 `vector<` integer-literal `x` float-type `>`
+    rsqrt-op ::= ssa-id `=` `spv.GLSL.InverseSqrt` ssa-use `:`
+                 float-scalar-vector-type
+    ```
+    For example:
+
+    ```
+    %2 = spv.GLSL.InverseSqrt %0 : f32
+    %3 = spv.GLSL.InverseSqrt %1 : vector<3xf16>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_GLSLFMinOp : SPV_GLSLBinaryArithmaticOp<"FMin", 37, SPV_Float> {
+  let summary = "Return minimum of two floating-point operands";
+
+  let description = [{
+    Result is y if y < x; otherwise result is x. Which operand is the result is
+    undefined if one of the operands is a NaN.
+
+    The operands must all be a scalar or vector whose component type is
+    floating-point.
+
+    Result Type and the type of all operands must be the same type. Results are
+    computed per component.
+
+    ### Custom assembly format
+    ``` {.ebnf}
+    float-scalar-vector-type ::= float-type |
+                                 `vector<` integer-literal `x` float-type `>`
+    fmin-op ::= ssa-id `=` `spv.GLSL.FMin` ssa-use `:`
+                float-scalar-vector-type
+    ```
+    For example:
+
+    ```
+    %2 = spv.GLSL.FMin %0, %1 : f32
+    %3 = spv.GLSL.FMin %0, %1 : vector<3xf16>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_GLSLFSignOp : SPV_GLSLUnaryArithmaticOp<"FSign", 6, SPV_Float> {
+  let summary = "Returns the sign of the operand";
+
+  let description = [{
+    Result is 1.0 if x > 0, 0.0 if x = 0, or -1.0 if x < 0.
+
+    The operand x must be a scalar or vector whose component type is
+    floating-point.
+
+    Result Type and the type of x must be the same type. Results are computed
+    per component.
+
+    ### Custom assembly format
+    ``` {.ebnf}
+    float-scalar-vector-type ::= float-type |
+                                 `vector<` integer-literal `x` float-type `>`
+    sign-op ::= ssa-id `=` `spv.GLSL.FSign` ssa-use `:`
+                float-scalar-vector-type
+    ```
+    For example:
+
+    ```
+    %2 = spv.GLSL.FSign %0 : f32
+    %3 = spv.GLSL.FSign %1 : vector<3xf16>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_GLSLTanhOp : SPV_GLSLUnaryArithmaticOp<"Tanh", 21, SPV_Float16or32> {
+  let summary = "Hyperbolic tangent of operand in radians";
+
+  let description = [{
+    Hyperbolic tangent of x radians.
+
+    The operand x must be a scalar or vector whose component type is 16-bit or
+    32-bit floating-point.
+
+    Result Type and the type of x must be the same type. Results are computed
+    per component.
+
+    ### Custom assembly format
+    ``` {.ebnf}
+    restricted-float-scalar-type ::=  `f16` | `f32`
+    restricted-float-scalar-vector-type ::=
+      restricted-float-scalar-type |
+      `vector<` integer-literal `x` restricted-float-scalar-type `>`
+    tanh-op ::= ssa-id `=` `spv.GLSL.Tanh` ssa-use `:`
+                restricted-float-scalar-vector-type
+    ```
+    For example:
+
+    ```
+    %2 = spv.GLSL.Tanh %0 : f32
+    %3 = spv.GLSL.Tanh %1 : vector<3xf16>
+    ```
+  }];
+}
 
 #endif // SPIRV_GLSL_OPS
