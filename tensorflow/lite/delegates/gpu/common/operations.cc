@@ -163,6 +163,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"softmax", OperationType::SOFTMAX},
           {"sqrt", OperationType::SQRT},
           {"square", OperationType::SQUARE},
+          {"squared_diff", OperationType::SQUARED_DIFF},
           {"subtract", OperationType::SUB},
           {"tanh", OperationType::TANH},
           {"upsample_2d", OperationType::UPSAMPLE_2D},
