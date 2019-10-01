@@ -179,6 +179,27 @@ else
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/minimal_logging_ios.cc
 endif
 
+# Enable ArmNN delegate
+BUILD_WITH_ARMNN ?= false
+ifeq ($(BUILD_WITH_ARMNN),true)
+    # Extend flags
+    CXXFLAGS += --std=c++14
+
+    # Add includes
+    INCLUDES += \
+    -I$(ARMNN_DIR) \
+    -I$(ARMNN_DIR)/src \
+    -I$(ARMNN_DIR)/src/armnn \
+    -I$(ARMNN_DIR)/src/backends \
+    -I$(ARMNN_DIR)/include
+
+    # Add core files
+    CORE_CC_ALL_SRCS += $(wildcard tensorflow/lite/delegates/armnn/*.cc)
+
+    # Add libs
+    LIBS += -L$(ARMNN_BUILD_PATH)
+    LIBS += -larmnn
+endif
 
 # Filter out all the excluded files.
 TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
@@ -203,6 +224,16 @@ BENCHMARK_LIB_SRCS := $(filter-out \
 	$(BENCHMARK_SRCS_DIR)/benchmark_plus_flex_main.cc, \
 	$(BENCHMARK_ALL_SRCS))
 
+# Label image sources
+LABEL_IMAGE_SRCS_DIR := tensorflow/lite/examples/label_image
+LABEL_IMAGE_ALL_SRCS := \
+	$(wildcard $(LABEL_IMAGE_SRCS_DIR)/*.cc) \
+	$(EVALUATION_UTILS_SRCS)
+
+LABEL_IMAGE_SRCS := $(filter-out \
+	$(wildcard $(LABEL_IMAGE_SRCS_DIR)/*_test.cc), \
+	$(LABEL_IMAGE_ALL_SRCS)) \
+
 # These target-specific makefiles should modify or replace options like
 # CXXFLAGS or LIBS to work for a specific targetted architecture. All logic
 # based on platforms or architectures should happen within these files, to
@@ -215,7 +246,7 @@ ALL_SRCS := \
 	$(PROFILER_SUMMARIZER_SRCS) \
 	$(TF_LITE_CC_SRCS) \
 	$(BENCHMARK_LIB_SRCS) \
-  $(CMD_LINE_TOOLS_SRCS)
+	$(CMD_LINE_TOOLS_SRCS)
 
 # Where compiled objects are stored.
 GENDIR := $(MAKEFILE_DIR)/gen/$(TARGET)_$(TARGET_ARCH)/
@@ -227,6 +258,7 @@ LIB_PATH := $(LIBDIR)$(LIB_NAME)
 BENCHMARK_LIB := $(LIBDIR)$(BENCHMARK_LIB_NAME)
 BENCHMARK_BINARY := $(BINDIR)$(BENCHMARK_BINARY_NAME)
 BENCHMARK_PERF_OPTIONS_BINARY := $(BINDIR)$(BENCHMARK_PERF_OPTIONS_BINARY_NAME)
+LABEL_IMAGE_BINARY := $(BINDIR)label_image
 MINIMAL_BINARY := $(BINDIR)minimal
 
 CXX := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}g++
@@ -235,6 +267,9 @@ AR := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}ar
 
 MINIMAL_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(MINIMAL_SRCS))))
+
+LABEL_IMAGE_OBJS := $(addprefix $(OBJDIR), \
+$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(LABEL_IMAGE_SRCS))))
 
 LIB_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(TF_LITE_CC_SRCS)))))
@@ -261,7 +296,7 @@ $(OBJDIR)%.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # The target that's compiled if there's no command-line arguments.
-all: $(LIB_PATH)  $(MINIMAL_BINARY) $(BENCHMARK_BINARY) $(BENCHMARK_PERF_OPTIONS_BINARY)
+all: $(LIB_PATH) $(MINIMAL_BINARY) $(BENCHMARK_BINARY) $(BENCHMARK_PERF_OPTIONS_BINARY) $(LABEL_IMAGE_BINARY)
 
 # The target that's compiled for micro-controllers
 micro: $(LIB_PATH)
@@ -304,6 +339,14 @@ $(BENCHMARK_PERF_OPTIONS_BINARY) : $(BENCHMARK_PERF_OPTIONS_OBJ) $(BENCHMARK_LIB
 	$(LIBFLAGS) $(BENCHMARK_LIB) $(LDFLAGS) $(LIBS)
 
 benchmark: $(BENCHMARK_BINARY) $(BENCHMARK_PERF_OPTIONS_BINARY)
+
+$(LABEL_IMAGE_BINARY): $(LABEL_IMAGE_OBJS) $(LIB_PATH)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) \
+	-o $(LABEL_IMAGE_BINARY) $(LABEL_IMAGE_OBJS) \
+	$(LIBFLAGS) $(LIB_PATH) $(LDFLAGS) $(LIBS)
+
+label_image: $(LABEL_IMAGE_BINARY)
 
 libdir:
 	@echo $(LIBDIR)
