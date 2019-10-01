@@ -2775,7 +2775,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
 /* static */ StatusOr<Shape> ShapeInference::InferReshapeShape(
     const Shape& operand, absl::Span<const int64> dimensions,
-    absl::Span<const int64> new_sizes) {
+    absl::Span<const int64> new_sizes, int64 inferred_dimension) {
   TF_RETURN_IF_ERROR(ExpectArray(operand, "reshape"));
 
   Shape inferred_shape =
@@ -2803,11 +2803,111 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         StrJoin(dimensions, ","), ShapeUtil::HumanString(operand));
   }
 
-  std::vector<std::pair<int64, int64>> unmodified_dims =
-      ShapeUtil::DimensionsUnmodifiedByReshape(operand, inferred_shape);
-  for (auto& unmodified : unmodified_dims) {
-    if (operand.is_dynamic_dimension(unmodified.first)) {
-      inferred_shape.set_dynamic_dimension(unmodified.second, true);
+  // Propagate dynamic dimension.
+  auto common_factors = CommonFactors(operand.dimensions(), new_sizes);
+  for (int64 input_dim = 0; input_dim < operand.rank(); ++input_dim) {
+    if (!operand.is_dynamic_dimension(input_dim)) {
+      continue;
+    }
+
+    string reshape_debug_str = absl::StrFormat(
+        "output: %s, input: %s, input_dim: "
+        "%lld",
+        ShapeUtil::HumanString(inferred_shape), ShapeUtil::HumanString(operand),
+        input_dim);
+
+    int64 input_dim_start = -1;
+    int64 input_dim_end = -1;
+    int64 output_dim_start = -1;
+    int64 output_dim_end = -1;
+    // Find common_factors that the input_dim belongs to.
+    for (int64 i = 0; i < common_factors.size() - 1; ++i) {
+      auto start = common_factors[i];
+      auto end = common_factors[i + 1];
+      if (input_dim >= start.first && input_dim < end.first) {
+        input_dim_start = start.first;
+        input_dim_end = end.first;
+        output_dim_start = start.second;
+        output_dim_end = end.second;
+        break;
+      }
+    }
+    for (auto common_factor : common_factors) {
+      //
+      // For reshapes like:
+      //  [<=5]
+      //    | Reshape
+      //  [1, 5]
+      //
+      //  The input dynamic dimension can go into either dynamic dimensions.
+      //  However, the return value of common factors only returns
+      //  input: 5
+      //  output: 5
+      //
+      //  We need to expand common factor to include degenerated output
+      //  dimensions:
+      //  input: 5
+      //  output: 1, 5
+      //
+      //  such that in the logic later on we can consider both dimensions as
+      //  candidate.
+      if (common_factor.first == input_dim_start) {
+        output_dim_start = std::min(output_dim_start, common_factor.second);
+      }
+      if (common_factor.first == input_dim_end) {
+        output_dim_end = std::max(output_dim_end, common_factor.second);
+      }
+    }
+
+    // Calculate output dynamic reshape dimension.
+    int64 output_dynamic_dimension = -1;
+
+    if (operand.dimensions(input_dim) == 1) {
+      // If dynamic dimension is size 1, it can only be most-major or
+      // most-minor.
+      if (input_dim == 0) {
+        output_dynamic_dimension = 0;
+      }
+      if (output_dynamic_dimension == operand.rank() - 1) {
+        output_dynamic_dimension = new_sizes.size() - 1;
+      }
+
+      if (output_dynamic_dimension == -1) {
+        return Unimplemented(
+            "Dynamic degenerated dimension that's not most-minor nor "
+            "most-major is not supported: %s",
+            reshape_debug_str);
+      }
+    }
+
+    if ((input_dim_end - input_dim_start) > 1 &&
+        (output_dim_end - output_dim_start) > 1) {
+      // We don't support the case when a dynamic dimension is both combined
+      // with and splitted into other dimensions:
+      //
+      //  [x, yz]
+      //     | Reshape
+      //  [xy, z]
+      return Unimplemented(
+          "Dynamic input dimension to reshape that is both splitted and "
+          "combined is not supported: %s",
+          reshape_debug_str);
+    }
+
+    if (output_dynamic_dimension == -1 &&
+        output_dim_end - output_dim_start == 1) {
+      // Only one possible output dimension.
+      output_dynamic_dimension = output_dim_start;
+    }
+    if (output_dynamic_dimension == -1 &&
+        output_dim_end - output_dim_start > 1) {
+      // Multiple output can be dynamic, use "inferred_dimension" to tie-break.
+      output_dynamic_dimension = inferred_dimension;
+    }
+
+    if (output_dynamic_dimension != -1) {
+      // TODO(yunxing): Turn this into a CHECK.
+      inferred_shape.set_dynamic_dimension(output_dynamic_dimension, true);
     }
   }
 
