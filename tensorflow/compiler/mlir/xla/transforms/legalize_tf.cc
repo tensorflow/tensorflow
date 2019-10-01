@@ -94,6 +94,24 @@ static xla_hlo::ConstOp GetMinValueForType(Type ty, Location loc,
   return rewriter->create<xla_hlo::ConstOp>(loc, attr);
 }
 
+// Returns an integer constant for the given int or float element type.
+static xla_hlo::ConstOp GetScalarForType(Type ty, Location loc,
+                                         int64_t raw_value,
+                                         PatternRewriter *rewriter) {
+  RankedTensorType scalar_ty = rewriter->getTensorType({}, ty);
+
+  DenseElementsAttr attr;
+  if (auto float_ty = ty.dyn_cast_or_null<FloatType>()) {
+    APFloat value(float_ty.getFloatSemantics(), raw_value);
+    attr = DenseElementsAttr::get(scalar_ty, value);
+  } else {
+    auto int_ty = ty.cast<IntegerType>();
+    APInt value(int_ty.getWidth(), raw_value, true);
+    attr = DenseElementsAttr::get(scalar_ty, value);
+  }
+  return rewriter->create<xla_hlo::ConstOp>(loc, attr);
+}
+
 // Builds body for reduce op by using the using the template binary op as the
 // reducer op.
 template <typename Op>
@@ -368,6 +386,7 @@ class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
 //    %softmax = "xla_hlo.div"(%exp, %sum_f16) {broadcast_dimensions = 0}
 //            : (tensor<BxNxf16>, tensor<Bxf16>) -> tensor<BxNxf16>
 //
+// TODO(hinsu): Use tf.Max and tf.Sum instead of lowering directly to xla.
 class ConvertSoftmaxOp : public OpRewritePattern<TF::SoftmaxOp> {
  public:
   explicit ConvertSoftmaxOp(MLIRContext *context)
@@ -548,6 +567,156 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
   }
 };
 
+/// Converts a generic OpTy tensorflow op to a xla_hlo.reduce op over
+/// ReductionOp.
+/// `is_accumulation` controls whether it uses higher precision for the actual
+/// reduction. This is set to false for ops like max where there is no precision
+/// concerns.
+template <typename Derived, typename OpTy, typename ReductionOp,
+          bool is_accumulation = true>
+class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
+  using OpRewritePattern<OpTy>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(OpTy op,
+                                     PatternRewriter &rewriter) const override {
+    // TODO(b/141785544): Update this to not require static shapes.
+    // Input shape needs to be static to convert negative indices in TensorFlow
+    // to absolute indices required by HLO.
+    auto input_ty = op.input()->getType().template dyn_cast<RankedTensorType>();
+    if (!input_ty || !input_ty.hasStaticShape()) return this->matchFailure();
+    ArrayRef<int64_t> input_shape = input_ty.getShape();
+
+    DenseIntElementsAttr dimensions;
+    if (!matchPattern(op.reduction_indices(), m_Constant(&dimensions)) ||
+        dimensions.getType().getRank() != 1)
+      return this->matchFailure();
+
+    // Build the final shape from input_shape and dimensions using a bitmap
+    // to mark the reduced dimensions.
+    SmallVector<bool, 4> reduced_dimensions_bitmap(input_shape.size(), false);
+    SmallVector<int64_t, 4> xla_dimensions;
+    for (APInt index_raw : dimensions.getValues<APInt>()) {
+      int64_t index = index_raw.getSExtValue();
+      int64_t rank = input_shape.size();
+      if ((index < -rank || index >= rank)) return this->matchFailure();
+      index = (index + rank) % rank;
+      reduced_dimensions_bitmap[index] = true;
+      xla_dimensions.push_back(index);
+    }
+    SmallVector<int64_t, 4> reduced_shape;
+    reduced_shape.reserve(input_shape.size());
+    int64_t divisor_count = 1;
+    for (size_t i = 0; i < input_shape.size(); ++i) {
+      if (!reduced_dimensions_bitmap[i]) {
+        // If we are not reducing along dimension i.
+        int64_t dim = input_shape[i];
+        reduced_shape.push_back(dim);
+      } else {
+        divisor_count *= input_shape[i];
+      }
+    }
+
+    Location loc = op.getLoc();
+    Type element_type = input_ty.getElementType();
+    // Convert to an accumulation type to not lose precision when doing
+    // repeated arithmetic operations.
+    Type reduce_element_type =
+        is_accumulation ? GetAccumulationType(element_type) : element_type;
+    auto casted_input = rewriter.create<xla_hlo::ConvertOp>(
+        loc, rewriter.getTensorType(input_shape, reduce_element_type),
+        op.input());
+
+    // Each reduction op can have a different initial value.
+    Value *init = static_cast<const Derived *>(this)->GetInitialValue(
+        reduce_element_type, loc, rewriter);
+
+    Type reduced_out_type =
+        rewriter.getTensorType(reduced_shape, reduce_element_type);
+    // TODO(hinsu): Infer reduced_out_type.
+    auto reduction = rewriter.create<xla_hlo::ReduceOp>(
+        loc, reduced_out_type, casted_input.getResult(), init,
+        GetI64ElementsAttr(xla_dimensions, &rewriter));
+    BuildReduceBody<ReductionOp>(reduce_element_type, &reduction.body(),
+                                 &rewriter);
+    Value *result = reduction.getResult(0);
+
+    // The mean op needs to divide by the product of the reduced dimensions.
+    if (std::is_same<OpTy, TF::MeanOp>::value) {
+      auto divisor =
+          GetScalarForType(reduce_element_type, loc, divisor_count, &rewriter);
+      result = rewriter.create<xla_hlo::DivOp>(
+          loc, reduced_out_type, result, divisor.getResult(),
+          /* broadcast_dimensions= */ DenseIntElementsAttr());
+    }
+
+    Type reduced_final_type =
+        rewriter.getTensorType(reduced_shape, element_type);
+    result =
+        rewriter.create<xla_hlo::ConvertOp>(loc, reduced_final_type, result);
+
+    // Need to reshape back after the reduction if we're keeping the reduced
+    // dimensions.
+    if (op.keep_dims()) {
+      result = rewriter.create<xla_hlo::ReshapeOp>(loc, op.getType(), result);
+    }
+    rewriter.replaceOp(op, {result}, {op.reduction_indices()});
+
+    return this->matchSuccess();
+  }
+};
+
+// Converts Mean op to HLO Reduce op.
+//
+//   %init = constant dense<...> : tensor<T>
+//   %sum = "xla_hlo.reduce"(%inp, %init) ["xla_hlo.add"]
+//               {dimensions = ...}
+//   %divisor = constant dense<...> : tensor<T>
+//   %mean = "xla_hlo.div"(%sum, %divisor)
+class ConvertMeanOp
+    : public GenericConvertReductionOp<ConvertMeanOp, TF::MeanOp,
+                                       xla_hlo::AddOp> {
+ public:
+  using GenericConvertReductionOp::GenericConvertReductionOp;
+
+  Value *GetInitialValue(Type reduce_element_type, Location loc,
+                         PatternRewriter &rewriter) const {
+    return GetScalarForType(reduce_element_type, loc, 0, &rewriter);
+  }
+};
+
+// Converts Sum op to HLO Reduce op.
+//
+//   %init = constant dense<...> : tensor<T>
+//   %sum = "xla_hlo.reduce"(%inp, %init) ["xla_hlo.add"]
+//               {dimensions = ...}
+class ConvertSumOp : public GenericConvertReductionOp<ConvertSumOp, TF::SumOp,
+                                                      xla_hlo::AddOp> {
+ public:
+  using GenericConvertReductionOp::GenericConvertReductionOp;
+
+  Value *GetInitialValue(Type reduce_element_type, Location loc,
+                         PatternRewriter &rewriter) const {
+    return GetScalarForType(reduce_element_type, loc, 0, &rewriter);
+  }
+};
+
+// Converts Max op to HLO Reduce op.
+//
+//   %init = constant dense<...> : tensor<T>
+//   %sum = "xla_hlo.reduce"(%inp, %init) ["xla_hlo.max"]
+//               {dimensions = ...}
+class ConvertMaxOp
+    : public GenericConvertReductionOp<ConvertMaxOp, TF::MaxOp, xla_hlo::MaxOp,
+                                       /* is_accumulation= */ false> {
+ public:
+  using GenericConvertReductionOp::GenericConvertReductionOp;
+
+  Value *GetInitialValue(Type reduce_element_type, Location loc,
+                         PatternRewriter &rewriter) const {
+    return GetMinValueForType(reduce_element_type, loc, &rewriter);
+  }
+};
+
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 }  // end anonymous namespace
 }  // end namespace xla
@@ -565,10 +734,10 @@ LogicalResult mlir::xla_hlo::legalizeTF(Operation *op) {
   // here for lowering to HLO.
   mlir::TF::PopulateLoweringTFPatterns(context, &patterns);
 
-  patterns
-      .insert<mlir::xla::ConvertMaxPoolOp, mlir::xla::ConvertSigmoidOp,
-              mlir::xla::ConvertSoftmaxOp, mlir::xla::ConvertStridedSliceOp>(
-          op->getContext());
+  patterns.insert<mlir::xla::ConvertMaxPoolOp, mlir::xla::ConvertSigmoidOp,
+                  mlir::xla::ConvertSoftmaxOp, mlir::xla::ConvertStridedSliceOp,
+                  mlir::xla::ConvertMeanOp, mlir::xla::ConvertSumOp,
+                  mlir::xla::ConvertMaxOp>(op->getContext());
 
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();
