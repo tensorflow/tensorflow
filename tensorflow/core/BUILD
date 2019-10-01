@@ -1842,7 +1842,7 @@ filegroup(
             "common_runtime/gpu_device_factory.*",
         ],
     ),
-    visibility = ["//visibility:public"],
+    visibility = ["//visibility:private"],
 )
 
 filegroup(
