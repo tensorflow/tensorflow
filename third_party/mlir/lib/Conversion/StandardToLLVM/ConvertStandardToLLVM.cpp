@@ -715,37 +715,6 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
   }
 };
 
-// Helper structure which extracts the necessary information from CallOp-like
-// ops for the purpose of generating an LLVM::CallOp.
-struct FunctionInfo {
-  FunctionType type;
-  CallInterfaceCallable callable;
-};
-static FunctionInfo getFuncOp(ModuleOp module, CallOp op) {
-  return FunctionInfo{module.lookupSymbol<FuncOp>(op.getCallee()).getType(),
-                      SymbolRefAttr::get(op.getCallee(), op.getContext())};
-}
-static FunctionInfo getFuncOp(ModuleOp module, CallIndirectOp op) {
-  if (auto fAttr = op.getCallableForCallee().dyn_cast<SymbolRefAttr>())
-    return FunctionInfo{module.lookupSymbol<FuncOp>(fAttr.getValue()).getType(),
-                        fAttr};
-  // Else, this must be an SSA value of FunctionType type.
-  Value *fValue = op.getCallableForCallee().get<Value *>();
-  FunctionType fType = fValue->getType().cast<FunctionType>();
-  return FunctionInfo{fType, fValue};
-}
-template <typename CallOpType>
-static LLVM::CallOp
-createLLVMCall(FunctionInfo fInfo, ConversionPatternRewriter &rewriter,
-               Location loc, Type returnType, ArrayRef<Value *> operands) {
-  if (fInfo.callable.dyn_cast<Value *>())
-    return rewriter.create<LLVM::CallOp>(loc, returnType, operands);
-  auto fAttr = fInfo.callable.get<SymbolRefAttr>();
-  auto namedFAttr = rewriter.getNamedAttr("callee", fAttr);
-  return rewriter.create<LLVM::CallOp>(loc, returnType, operands,
-                                       ArrayRef<NamedAttribute>{namedFAttr});
-}
-
 // A CallOp automatically promotes MemRefType to a sequence of alloca/store and
 // passes the pointer to the MemRef across function boundaries.
 template <typename CallOpType>
@@ -759,24 +728,21 @@ struct CallOpInterfaceLowering : public LLVMLegalizationPattern<CallOpType> {
                   ConversionPatternRewriter &rewriter) const override {
     OperandAdaptor<CallOpType> transformed(operands);
     auto callOp = cast<CallOpType>(op);
-    auto module = op->getParentOfType<ModuleOp>();
-    FunctionInfo fInfo = getFuncOp(module, callOp);
-    auto functionType = fInfo.type;
 
     // Pack the result types into a struct.
     Type packedResult;
     unsigned numResults = callOp.getNumResults();
+    auto resultTypes = llvm::to_vector<4>(callOp.getResultTypes());
     if (numResults != 0) {
-      if (!(packedResult =
-                this->lowering.packFunctionResults(functionType.getResults())))
+      if (!(packedResult = this->lowering.packFunctionResults(resultTypes)))
         return this->matchFailure();
     }
 
     SmallVector<Value *, 4> opOperands(op->getOperands());
     auto promoted = this->lowering.promoteMemRefDescriptors(
         op->getLoc(), opOperands, operands, rewriter);
-    auto newOp = createLLVMCall<CallOpType>(fInfo, rewriter, op->getLoc(),
-                                            packedResult, promoted);
+    auto newOp = rewriter.create<LLVM::CallOp>(op->getLoc(), packedResult,
+                                               promoted, op->getAttrs());
 
     // If < 2 results, packingdid not do anything and we can just return.
     if (numResults < 2) {
