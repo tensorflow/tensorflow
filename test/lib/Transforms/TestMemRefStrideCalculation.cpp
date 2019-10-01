@@ -35,15 +35,13 @@ void TestMemRefStrideCalculation::runOnFunction() {
   llvm::outs() << "Testing: " << getFunction().getName() << "\n";
   getFunction().walk([&](AllocOp allocOp) {
     auto memrefType = allocOp.getResult()->getType().cast<MemRefType>();
-    SmallVector<int64_t, 4> strideVector;
-    if (failed(memrefType.getStridesAndOffset(strideVector))) {
+    int64_t offset;
+    SmallVector<int64_t, 4> strides;
+    if (failed(memrefType.getStridesAndOffset(strides, offset))) {
       llvm::outs() << "MemRefType " << memrefType << " cannot be converted to "
                    << "strided form\n";
       return;
     }
-    ArrayRef<int64_t> strides(strideVector);
-    auto offset = strides.back();
-    strides = strides.drop_back();
     llvm::outs() << "MemRefType offset: ";
     if (offset == MemRefType::kDynamicStrideOrOffset)
       llvm::outs() << "?";

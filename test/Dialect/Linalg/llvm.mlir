@@ -1,4 +1,9 @@
-// RUN: mlir-opt %s -linalg-lower-to-llvm-dialect | FileCheck %s
+// RUN: mlir-opt %s -linalg-convert-to-llvm
+// RUN: mlir-opt %s -linalg-convert-to-llvm | FileCheck %s
+
+#strided1D = (d0)[s0] -> (d0 + s0)
+#strided2D = (d0, d1)[s0, s1] -> (d0 * s1 + s0 + d1)
+#strided3D = (d0, d1, d2)[s0, s1, s2] -> (d0 * s1 + s0 + d1 * s2 + d2)
 
 func @buffer_size(%arg0: !linalg.buffer<?xf32>) {
   %c1 = constant 1 : index
@@ -44,7 +49,7 @@ func @range(%arg0: index) {
 //  CHECK-NEXT:   llvm.insertvalue %{{.*}}, %{{.*}}[2] : !llvm<"{ i64, i64, i64 }">
 
 func @view(%arg0: !linalg.buffer<?xf32>, %arg1: !linalg.range) {
-  %0 = linalg.view %arg0[%arg1] : !linalg.buffer<?xf32> -> !linalg.view<?xf32>
+  %0 = linalg.view %arg0[%arg1] : !linalg.buffer<?xf32> -> memref<?xf32, #strided1D>
   return
 }
 // CHECK-LABEL: func @view
@@ -64,7 +69,7 @@ func @view(%arg0: !linalg.buffer<?xf32>, %arg1: !linalg.range) {
 //  CHECK-NEXT:   llvm.return
 
 func @view3d(%arg0: !linalg.buffer<?xf32>, %arg1: !linalg.range, %arg2: !linalg.range, %arg3: !linalg.range) {
-  %0 = linalg.view %arg0[%arg1, %arg2, %arg3] : !linalg.buffer<?xf32> -> !linalg.view<?x?x?xf32>
+  %0 = linalg.view %arg0[%arg1, %arg2, %arg3] : !linalg.buffer<?xf32> -> memref<?x?x?xf32, #strided3D>
   return
 }
 // CHECK-LABEL: func @view3d
@@ -78,22 +83,23 @@ func @view3d(%arg0: !linalg.buffer<?xf32>, %arg1: !linalg.range, %arg2: !linalg.
 //  CHECK-NEXT:   llvm.insertvalue %{{.*}}, %{{.*}}[3, 1] : !llvm<"{ float*, i64, [3 x i64], [3 x i64] }">
 
 func @slice(%arg0: !linalg.buffer<?xf32>, %arg1: !linalg.range) {
-  %0 = linalg.view %arg0[%arg1] : !linalg.buffer<?xf32> -> !linalg.view<?xf32>
-  %1 = linalg.slice %0[%arg1] : !linalg.view<?xf32>, !linalg.range, !linalg.view<?xf32>
+  %0 = linalg.view %arg0[%arg1] : !linalg.buffer<?xf32> -> memref<?xf32, #strided1D>
+  %1 = linalg.slice %0[%arg1] : memref<?xf32, #strided1D>, !linalg.range, memref<?xf32, #strided1D>
   return
 }
 // CHECK-LABEL: func @slice
 //   insert ptr for view op
 //       CHECK:   llvm.insertvalue %{{.*}}, %{{.*}}[0] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
 //   insert data ptr for slice op
-//       CHECK:   llvm.insertvalue %{{.*}}, %{{.*}}[0] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
-//  CHECK-NEXT:   llvm.extractvalue %{{.*}}[3, 0] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
+//       CHECK:   llvm.extractvalue %{{.*}}[3, 0] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
 //  CHECK-NEXT:   llvm.extractvalue %{{.*}}[1] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
 //  CHECK-NEXT:   llvm.extractvalue %{{.*}}[0] : !llvm<"{ i64, i64, i64 }">
 //  CHECK-NEXT:   llvm.mul %{{.*}}, %{{.*}} : !llvm.i64
 //  CHECK-NEXT:   llvm.add %{{.*}}, %{{.*}} : !llvm.i64
 //    insert offset
+//       CHECK:   llvm.insertvalue %{{.*}}, %{{.*}}[0] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
 //  CHECK-NEXT:   llvm.insertvalue %{{.*}}, %{{.*}}[1] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
+//  CHECK-NEXT:   llvm.mlir.constant(0 : index)
 //  CHECK-NEXT:   llvm.extractvalue %{{.*}}[0] : !llvm<"{ i64, i64, i64 }">
 //  CHECK-NEXT:   llvm.extractvalue %{{.*}}[1] : !llvm<"{ i64, i64, i64 }">
 //  CHECK-NEXT:   llvm.extractvalue %{{.*}}[2] : !llvm<"{ i64, i64, i64 }">
@@ -112,24 +118,24 @@ func @slice(%arg0: !linalg.buffer<?xf32>, %arg1: !linalg.range) {
 //  CHECK-NEXT:   llvm.insertvalue %{{.*}}, %{{.*}}[2, 0] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
 //  CHECK-NEXT:   llvm.insertvalue %{{.*}}, %{{.*}}[3, 0] : !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">
 
-func @dot(%arg0: !linalg.view<?xf32>, %arg1: !linalg.view<?xf32>, %arg2: !linalg.view<f32>) {
-  linalg.dot(%arg0, %arg1, %arg2) : !linalg.view<?xf32>, !linalg.view<?xf32>, !linalg.view<f32>
+func @dot(%arg0: memref<?xf32, #strided1D>, %arg1: memref<?xf32, #strided1D>, %arg2: memref<f32>) {
+  linalg.dot(%arg0, %arg1, %arg2) : memref<?xf32, #strided1D>, memref<?xf32, #strided1D>, memref<f32>
   return
 }
-//      CHECK-LABEL: func @dot(%{{.*}}: !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">, %{{.*}}: !llvm<"{ float*, i64, [1 x i64], [1 x i64] }">, %{{.*}}: !llvm<"{ float*, i64, [0 x i64], [0 x i64] }">) {
+//      CHECK-LABEL: func @dot(%{{.*}}: !llvm<"{ float*, i64, [1 x i64], [1 x i64] }*">, %{{.*}}: !llvm<"{ float*, i64, [1 x i64], [1 x i64] }*">, %{{.*}}: !llvm<"{ float*, i64 }*">) {
 //    CHECK-COUNT-3:   llvm.mlir.constant(1 : index){{.*[[:space:]].*}}llvm.alloca{{.*[[:space:]].*}}llvm.store
-//       CHECK-NEXT:   llvm.call @linalg_dot_viewxf32_viewxf32_viewf32(%{{.*}}, %{{.*}}, %{{.*}}) : (!llvm<"{ float*, i64, [1 x i64], [1 x i64] }*">, !llvm<"{ float*, i64, [1 x i64], [1 x i64] }*">, !llvm<"{ float*, i64, [0 x i64], [0 x i64] }*">) -> ()
+//       CHECK-NEXT:   llvm.call @linalg_dot_viewsxf32_viewsxf32_viewf32(%{{.*}}, %{{.*}}, %{{.*}}) : (!llvm<"{ float*, i64, [1 x i64], [1 x i64] }*">, !llvm<"{ float*, i64, [1 x i64], [1 x i64] }*">, !llvm<"{ float*, i64 }*">) -> ()
 
-func @dim(%arg0: !linalg.view<?x?xf32>) {
-  %0 = linalg.dim %arg0, 1 : !linalg.view<?x?xf32>
+func @dim(%arg0: memref<?x?xf32, #strided2D>) {
+  %0 = dim %arg0, 1 : memref<?x?xf32, #strided2D>
   return
 }
-// CHECK-LABEL: func @dim(%{{.*}}: !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">) {
+// CHECK-LABEL: func @dim(%{{.*}}: !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">) {
 //       CHECK:   llvm.extractvalue %{{.*}}[2, 1] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
 
-func @subview(%arg0: !linalg.view<?x?xf32>) {
+func @subview(%arg0: memref<?x?xf32, #strided2D>) {
   %c0 = constant 0 : index
-  %0 = linalg.subview %arg0[%c0, %c0, %c0, %c0, %c0, %c0] : !linalg.view<?x?xf32>
+  %0 = linalg.subview %arg0[%c0, %c0, %c0, %c0, %c0, %c0] : memref<?x?xf32, #strided2D>
   return
 }
 // CHECK-LABEL: func @subview
@@ -156,37 +162,37 @@ func @subview(%arg0: !linalg.view<?x?xf32>) {
 //  CHECK-NEXT:   llvm.select %{{.*}}, %{{.*}}, %{{.*}} : !llvm.i1, !llvm.i64
 //  CHECK-NEXT:   llvm.mul %{{.*}}, %{{.*}} : !llvm.i64
 
-func @view_with_range_and_index(%arg0: !linalg.view<?x?xf64>) {
+func @view_with_range_and_index(%arg0: memref<?x?xf64, #strided2D>) {
   %c0 = constant 0 : index
   %c1 = constant 1 : index
   %R = linalg.range %c0:%c1:%c1 : !linalg.range
   loop.for %i0 = %c0 to %c1 step %c1 {
-    %1 = linalg.slice %arg0[%i0, %R] : !linalg.view<?x?xf64>, index, !linalg.range, !linalg.view<?xf64>
+    %1 = linalg.slice %arg0[%i0, %R] : memref<?x?xf64, #strided2D>, index, !linalg.range, memref<?xf64, #strided1D>
   }
   return
 }
 // CHECK-LABEL: func @view_with_range_and_index
 // loop-body.
 //       CHECK:   llvm.mlir.undef : !llvm<"{ double*, i64, [1 x i64], [1 x i64] }">
-//       CHECK:   llvm.insertvalue %{{.*}}, %{{.*}}[0] : !llvm<"{ double*, i64, [1 x i64], [1 x i64] }">
 //       CHECK:   llvm.extractvalue %{{.*}}[3, 0] : !llvm<"{ double*, i64, [2 x i64], [2 x i64] }">
 //       CHECK:   llvm.extractvalue %{{.*}}[3, 1] : !llvm<"{ double*, i64, [2 x i64], [2 x i64] }">
 //       CHECK:   llvm.extractvalue %{{.*}}[1] : !llvm<"{ double*, i64, [2 x i64], [2 x i64] }">
+//       CHECK:   llvm.insertvalue %{{.*}}, %{{.*}}[0] : !llvm<"{ double*, i64, [1 x i64], [1 x i64] }">
 //       CHECK:   llvm.insertvalue %{{.*}}[1] : !llvm<"{ double*, i64, [1 x i64], [1 x i64] }">
 //       CHECK:   llvm.extractvalue %{{.*}}[0] : !llvm<"{ i64, i64, i64 }">
 //       CHECK:   llvm.extractvalue %{{.*}}[1] : !llvm<"{ i64, i64, i64 }">
 //       CHECK:   llvm.insertvalue %{{.*}}[2, 0] : !llvm<"{ double*, i64, [1 x i64], [1 x i64] }">
 //       CHECK:   llvm.insertvalue %{{.*}}[3, 0] : !llvm<"{ double*, i64, [1 x i64], [1 x i64] }">
 
-func @copy(%arg0: !linalg.view<?x?x?xf32>, %arg1: !linalg.view<?x?x?xf32>) {
-  linalg.copy(%arg0, %arg1) : !linalg.view<?x?x?xf32>, !linalg.view<?x?x?xf32>
+func @copy(%arg0: memref<?x?x?xf32, #strided3D>, %arg1: memref<?x?x?xf32, #strided3D>) {
+  linalg.copy(%arg0, %arg1) : memref<?x?x?xf32, #strided3D>, memref<?x?x?xf32, #strided3D>
   return
 }
 // CHECK-LABEL: func @copy
-//       CHECK:   llvm.call @linalg_copy_viewxxxf32_viewxxxf32(%{{.*}}, %{{.*}}) : (!llvm<"{ float*, i64, [3 x i64], [3 x i64] }*">, !llvm<"{ float*, i64, [3 x i64], [3 x i64] }*">) -> ()
+//       CHECK:   llvm.call @linalg_copy_viewsxsxsxf32_viewsxsxsxf32(%{{.*}}, %{{.*}}) : (!llvm<"{ float*, i64, [3 x i64], [3 x i64] }*">, !llvm<"{ float*, i64, [3 x i64], [3 x i64] }*">) -> ()
 
-func @transpose(%arg0: !linalg.view<?x?x?xf32>) {
-  %0 = linalg.transpose %arg0 (i, j, k) -> (k, i, j) : !linalg.view<?x?x?xf32>
+func @transpose(%arg0: memref<?x?x?xf32, #strided3D>) {
+  %0 = linalg.transpose %arg0 (i, j, k) -> (k, i, j) : memref<?x?x?xf32, #strided3D>
   return
 }
 // CHECK-LABEL: func @transpose
@@ -200,10 +206,10 @@ func @transpose(%arg0: !linalg.view<?x?x?xf32>) {
 //       CHECK:   llvm.extractvalue {{.*}}[2, 2] : !llvm<"{ float*, i64, [3 x i64], [3 x i64] }">
 //       CHECK:    llvm.insertvalue {{.*}}[2, 1] : !llvm<"{ float*, i64, [3 x i64], [3 x i64] }">
 
-func @copy_transpose(%arg0: !linalg.view<?x?x?xf32>, %arg1: !linalg.view<?x?x?xf32>) {
+func @copy_transpose(%arg0: memref<?x?x?xf32, #strided3D>, %arg1: memref<?x?x?xf32, #strided3D>) {
   linalg.copy(%arg0, %arg1) {inputPermutation = (i, j, k) -> (i, k, j),
                              outputPermutation = (i, j, k) -> (k, j, i)}
-    : !linalg.view<?x?x?xf32>, !linalg.view<?x?x?xf32>
+    : memref<?x?x?xf32, #strided3D>, memref<?x?x?xf32, #strided3D>
   return
 }
 // CHECK-LABEL: func @copy
@@ -227,4 +233,4 @@ func @copy_transpose(%arg0: !linalg.view<?x?x?xf32>, %arg1: !linalg.view<?x?x?xf
 //         CHECK:    llvm.insertvalue {{.*}}[2, 0] : !llvm<"{ float*, i64, [3 x i64], [3 x i64] }">
 // Call external copy after promoting input and output structs to pointers
 // CHECK-COUNT-2:   llvm.mlir.constant(1 : index){{.*[[:space:]].*}}llvm.alloca{{.*[[:space:]].*}}llvm.store
-//         CHECK:   llvm.call @linalg_copy_viewxxxf32_viewxxxf32(%{{.*}}, %{{.*}}) : (!llvm<"{ float*, i64, [3 x i64], [3 x i64] }*">, !llvm<"{ float*, i64, [3 x i64], [3 x i64] }*">) -> ()
+//         CHECK:   llvm.call @linalg_copy_viewsxsxsxf32_viewsxsxsxf32(%{{.*}}, %{{.*}}) : (!llvm<"{ float*, i64, [3 x i64], [3 x i64] }*">, !llvm<"{ float*, i64, [3 x i64], [3 x i64] }*">) -> ()

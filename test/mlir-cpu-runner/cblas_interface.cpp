@@ -29,23 +29,21 @@ template <typename T, int N> struct ViewType {
   unsigned long strides[N];
 };
 
-// This is separated out to avoid `unsigned long sizes[0]` which triggers:
-//   warning: ISO C++ forbids zero-size array [-Wpedantic]
 template <typename T> struct ViewType<T, 0> {
   T *data;
   unsigned long offset;
 };
 
 extern "C" void linalg_fill_viewf32_f32(ViewType<float, 0> *X, float f) {
-  *(X->data + X->offset) = f;
+  X->data[X->offset] = f;
 }
 
-extern "C" void linalg_fill_viewxf32_f32(ViewType<float, 1> *X, float f) {
+extern "C" void linalg_fill_viewsxf32_f32(ViewType<float, 1> *X, float f) {
   for (unsigned i = 0; i < X->sizes[0]; ++i)
     *(X->data + X->offset + i * X->strides[0]) = f;
 }
 
-extern "C" void linalg_fill_viewxxf32_f32(ViewType<float, 2> *X, float f) {
+extern "C" void linalg_fill_viewsxsxf32_f32(ViewType<float, 2> *X, float f) {
   for (unsigned i = 0; i < X->sizes[0]; ++i)
     for (unsigned j = 0; j < X->sizes[1]; ++j)
       *(X->data + X->offset + i * X->strides[0] + j * X->strides[1]) = f;
@@ -56,16 +54,16 @@ extern "C" void linalg_copy_viewf32_viewf32(ViewType<float, 0> *I,
   O->data[O->offset] = I->data[I->offset];
 }
 
-extern "C" void linalg_copy_viewxf32_viewxf32(ViewType<float, 1> *I,
-                                              ViewType<float, 1> *O) {
+extern "C" void linalg_copy_viewsxf32_viewsxf32(ViewType<float, 1> *I,
+                                                ViewType<float, 1> *O) {
   assert(I->sizes[0] == O->sizes[0]);
   for (unsigned i = 0; i < I->sizes[0]; ++i)
     O->data[O->offset + i * O->strides[0]] =
         I->data[I->offset + i * I->strides[0]];
 }
 
-extern "C" void linalg_copy_viewxxf32_viewxxf32(ViewType<float, 2> *I,
-                                                ViewType<float, 2> *O) {
+extern "C" void linalg_copy_viewsxsxf32_viewsxsxf32(ViewType<float, 2> *I,
+                                                    ViewType<float, 2> *O) {
   assert(I->sizes[0] == O->sizes[0]);
   assert(I->sizes[1] == O->sizes[1]);
   auto so0 = O->strides[0], so1 = O->strides[1];
@@ -76,18 +74,18 @@ extern "C" void linalg_copy_viewxxf32_viewxxf32(ViewType<float, 2> *I,
           I->data[I->offset + i * si0 + j * si1];
 }
 
-extern "C" void linalg_dot_viewxf32_viewxf32_viewf32(ViewType<float, 1> *X,
-                                                     ViewType<float, 1> *Y,
-                                                     ViewType<float, 0> *Z) {
+extern "C" void linalg_dot_viewsxf32_viewsxf32_viewf32(ViewType<float, 1> *X,
+                                                       ViewType<float, 1> *Y,
+                                                       ViewType<float, 0> *Z) {
   assert(X->strides[0] == 1);
   assert(Y->strides[0] == 1);
   assert(X->sizes[0] == Y->sizes[0] && "Expected X and Y of same size");
-  *(Z->data + Z->offset) +=
+  Z->data[Z->offset] +=
       cblas_sdot(X->sizes[0], X->data + X->offset, X->strides[0],
                  Y->data + Y->offset, Y->strides[0]);
 }
 
-extern "C" void linalg_matmul_viewxxf32_viewxxf32_viewxxf32(
+extern "C" void linalg_matmul_viewsxsxf32_viewsxsxf32_viewsxsxf32(
     ViewType<float, 2> *A, ViewType<float, 2> *B, ViewType<float, 2> *C) {
   assert(A->strides[1] == B->strides[1]);
   assert(A->strides[1] == C->strides[1]);
