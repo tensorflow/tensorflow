@@ -565,7 +565,7 @@ Status RewriteDynamicReshapeSingleDim(
 StatusOr<bool> RewriteDynamicReshape(
     HloInstruction* reshape,
     DynamicDimensionInference* dynamic_dimension_inference) {
-  bool changed;
+  bool changed = false;
   HloInstruction* operand = reshape->mutable_operand(0);
 
   // We append sort instructions after reshape if there is a dynamic input, and
