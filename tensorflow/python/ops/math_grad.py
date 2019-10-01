@@ -204,7 +204,7 @@ def _SumGrad(op, grad):
 
   input_shape = array_ops.shape(op.inputs[0])
 
-  if compat.forward_compatible(2019, 9, 23):
+  if compat.forward_compatible(2019, 10, 23):
     if not op.get_attr("keep_dims"):
       with ops.colocate_with(input_shape):
         # TODO(apassos) remove this once device placement for eager ops makes
