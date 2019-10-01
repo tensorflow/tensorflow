@@ -58,6 +58,28 @@ py_library(
     ],
 )
 
+tf_py_test(
+    name = "async_checkpoint_test",
+    size = "medium",
+    srcs = ["async_checkpoint_test.py"],
+    additional_deps = [
+        ":async_checkpoint",
+        ":tpu_estimator",
+        ":tpu_lib",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python:platform",
+    ],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",
+        "nogpu",
+        "noguitar",
+        "nomac",
+        "notap",
+        "tpu",
+    ],
+)
+
 py_library(
     name = "preempted_hook_py",
     srcs = ["preempted_hook.py"],
