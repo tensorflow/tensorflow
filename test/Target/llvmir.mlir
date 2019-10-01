@@ -796,6 +796,12 @@ func @ops(%arg0: !llvm.float, %arg1: !llvm.float, %arg2: !llvm.i32, %arg3: !llvm
   %14 = llvm.or %arg2, %arg3 : !llvm.i32
 // CHECK-NEXT: %19 = xor i32 %2, %3
   %15 = llvm.xor %arg2, %arg3 : !llvm.i32
+// CHECK-NEXT: %20 = shl i32 %2, %3
+  %16 = llvm.shl %arg2, %arg3 : !llvm.i32
+// CHECK-NEXT: %21 = lshr i32 %2, %3
+  %17 = llvm.lshr %arg2, %arg3 : !llvm.i32
+// CHECK-NEXT: %22 = ashr i32 %2, %3
+  %18 = llvm.ashr %arg2, %arg3 : !llvm.i32
 
   llvm.return %10 : !llvm<"{ float, i32 }">
 }
