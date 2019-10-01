@@ -511,6 +511,27 @@ func @abs_rankless(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   return %0 : tensor<*xf32>
 }
 
+// CHECK-LABEL: func @cast_dynamic_i2f
+func @cast_dynamic_i2f(%arg0: tensor<?xi32>) -> tensor<?xf32> {
+  // CHECK: "tf.Cast"(%arg0) : (tensor<?xi32>) -> tensor<?xf32>
+  %0 = "tf.Cast"(%arg0) : (tensor<?xi32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @cast_i2f
+func @cast_i2f(%arg0: tensor<2xi32>) -> tensor<2xf32> {
+  // CHECK: "xla_hlo.convert"(%arg0) : (tensor<2xi32>) -> tensor<2xf32>
+  %0 = "tf.Cast"(%arg0) : (tensor<2xi32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
+// CHECK-LABEL: func @cast_c2f
+func @cast_c2f(%arg0: tensor<2x!tf.complex64>) -> tensor<2xf32> {
+  // CHECK: "tf.Cast"(%arg0) : (tensor<2x!tf.complex64>) -> tensor<2xf32>
+  %0 = "tf.Cast"(%arg0) : (tensor<2x!tf.complex64>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
 // CHECK-LABEL: @ceil
 func @ceil(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK:  "xla_hlo.ceil"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
