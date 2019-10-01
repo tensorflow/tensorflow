@@ -217,6 +217,8 @@ cc_library(
         "xla_cpu_backend.cc",
     ] + if_cuda_is_configured([
         "xla_gpu_backend.cc",
+    ]) + if_rocm_is_configured([
+        "xla_gpu_backend.cc",
     ]),
     hdrs = [
         "const_analysis.h",
