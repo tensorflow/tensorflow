@@ -54,7 +54,8 @@ ops.NotDifferentiable('ExtractGlimpse')
 ops.NotDifferentiable('NonMaxSuppression')
 ops.NotDifferentiable('NonMaxSuppressionV2')
 ops.NotDifferentiable('NonMaxSuppressionWithOverlaps')
-
+ops.NotDifferentiable('BatchedNonMaxSuppression')
+ops.NotDifferentiable('CombinedNonMaxSuppression')
 
 # pylint: disable=invalid-name
 def _assert(cond, ex_type, msg):
@@ -2836,6 +2837,88 @@ def non_max_suppression_padded(boxes,
                                                   max_output_size,
                                                   iou_threshold,
                                                   score_threshold)
+
+
+@tf_export('image.batched_non_max_suppression')
+def batched_non_max_suppression(boxes,
+                               scores,
+                               box_counts,
+                               max_output_size,
+                               iou_threshold=0.5,
+                               score_threshold=float('-inf'),
+                               pad_to_max_output_size=False,
+                               algorithm='auto',
+                               name=None):
+  """Greedily selects a subset of bounding boxes in descending order of score.
+
+  Performs algorithmically equivalent operation to tf.image.non_max_suppression,
+  with the addition of an optional parameter which zero-pads the output to
+  be of size `max_output_size` or maximum of the batch elements
+  The output of this operation is a tuple containing the set of integers
+  indexing into the input collection of bounding boxes representing the selected
+  boxes and the number of valid indices in the index set.  The bounding box
+  coordinates corresponding to the selected indices can then be obtained using
+  the `tf.slice` and `tf.gather` operations.  For example:
+    ```python
+    selected_indices_padded, num_valid = tf.image.batched_non_max_suppression(
+        boxes, scores,box_counts, max_output_size, iou_threshold,
+        score_threshold, pad_to_max_output_size=True)
+    selected_indices = tf.slice(
+        selected_indices_padded, tf.constant([0]), num_valid)
+    selected_boxes = tf.gather(boxes, selected_indices)
+    ```
+  `algorithm` option defines which approach to use for box elimination. As of now
+  there is 2 approaches, `Look-Forward` eliminates lesser scored boxes for any
+  given box. On the other hand, `Look-Backward` checks whether any of the previously
+  accepted boxes eliminates a given box. Both has advantages and disadvantages. LF
+  tends to perform better when box count is large and max_output_size is also large.
+  LB tends to perform better when max_output_size is relatively small compared to
+  total number of boxes. Default option makes a guess about which algorithm to use.
+
+  Args:
+    boxes: A 3-D float `Tensor` of shape `[batch,num_boxes, 4]`.
+    scores: A 2-D float `Tensor` of shape `[batch,num_boxes]` representing a single
+      score corresponding to each box (each row of boxes).
+    box_counts: A 1-D int `Tensor` of shape `[batch]` representing number of boxes
+      on given batch element
+    max_output_size: A scalar integer `Tensor` representing the maximum number
+      of boxes to be selected by non max suppression.
+    iou_threshold: A float representing the threshold for deciding whether boxes
+      overlap too much with respect to IOU.
+    score_threshold: A float representing the threshold for deciding when to
+      remove boxes based on score.
+    pad_to_max_output_size: bool.  If True, size of `selected_indices` output is
+      padded to `max_output_size` otherwise it will be padded to maximum of the batch
+    algorithm: An attribute to choose which algorithmic approach to use ['auto', 'lf','lb']
+    name: A name for the operation (optional).
+
+  Returns:
+    selected_indices: A 2-D integer `Tensor` of shape `[batch,M]` representing the
+      selected indices from the boxes tensor, where `M <= max_output_size`.
+    valid_outputs: A 1-D integer `Tensor` of shape `[batch]` denoting how many elements in
+    `selected_indices` are valid.  Valid elements occur first, then padding.
+  """
+  with ops.name_scope(name, 'batched_non_max_suppression'):
+    iou_threshold = ops.convert_to_tensor(iou_threshold, name='iou_threshold')
+    score_threshold = ops.convert_to_tensor(score_threshold,
+                                            name='score_threshold')
+    algo_dict = {"auto":-1, "lb":0, "lf":1}
+    algo = -1
+    if isinstance(algorithm, int):
+      if algorithm < -1 or algorithm > 1:
+        algo = -1
+      else:
+        algo = algorithm
+    elif isinstance(algorithm, str) and algorithm.lower() in algo_dict:
+      algo = algo_dict[algorithm.lower()]
+
+    return gen_image_ops.batched_non_max_suppression(boxes, scores, box_counts,
+                                                     max_output_size,
+                                                     iou_threshold,
+                                                     score_threshold,
+                                                     pad_to_max_output_size,
+                                                     algorithm=algo,
+                                                     name=name)
 
 
 @tf_export('image.non_max_suppression_overlaps')

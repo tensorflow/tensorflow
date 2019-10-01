@@ -18,10 +18,6 @@ limitations under the License.
 #include <limits>
 
 #include "absl/strings/str_cat.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "third_party/cub/device/device_radix_sort.cuh"
-#include "third_party/cub/device/device_segmented_radix_sort.cuh"
-#include "third_party/cub/device/device_select.cuh"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -29,14 +25,19 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 #include "tensorflow/stream_executor/stream_executor.h"
+#include "third_party/cub/device/device_radix_sort.cuh"
+#include "third_party/cub/device/device_segmented_radix_sort.cuh"
+#include "third_party/cub/device/device_select.cuh"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
-#define TF_RETURN_IF_CUDA_ERROR(result)                   \
-  do {                                                    \
-    cudaError_t error(result);                            \
-    if (!SE_PREDICT_TRUE(error == cudaSuccess)) {         \
-      return errors::Internal("Cuda call failed with ",   \
-                              cudaGetErrorString(error)); \
-    }                                                     \
+#define TF_RETURN_IF_CUDA_ERROR(result)                                        \
+  do {                                                                         \
+    cudaError_t error(result);                                                 \
+    if (!SE_PREDICT_TRUE(error == cudaSuccess)) {                              \
+      return errors::Internal("Cuda call failed with ",                        \
+                              cudaGetErrorString(error), " at ", __FUNCTION__, \
+                              ":", __LINE__);                                  \
+    }                                                                          \
   } while (0)
 
 #define TF_OP_REQUIRES_CUDA_SUCCESS(context, result)                   \
@@ -53,6 +54,9 @@ struct __align__(16) Box {
   float x1, y1, x2, y2;
 };
 
+using absl::StrAppend;
+using absl::StrCat;
+
 namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -68,12 +72,15 @@ constexpr int kNmsBoxesPerThread = 8 * sizeof(int);
 // thread.
 constexpr int NumBits(int n) { return (n == 0) ? 0 : NumBits(n >> 1) + 1; }
 constexpr int kNmsBoxesPerThreadModuloMask = kNmsBoxesPerThread - 1;
-constexpr int kNmsBoxesPerThreadShiftBits =
-    NumBits(kNmsBoxesPerThreadModuloMask);
+// constexpr int kNmsBoxesPerThreadShiftBits =
+//     NumBits(kNmsBoxesPerThreadModuloMask);
 
 constexpr int kNmsBlockDim = 16;
 constexpr int kNmsBlockDimMax = 128;
-constexpr int kNmsChunkSize = 2000;
+// constexpr int kNmsChunkSize = 2000;
+constexpr int kNmsReductionChunkSize = 256;
+constexpr int kNmsReductionChunkMask = kNmsReductionChunkSize - 1;
+constexpr int kNmsReductionChunkShift = NumBits(kNmsReductionChunkMask);
 
 template <typename T>
 __device__ EIGEN_STRONG_INLINE void Swap(T& a, T& b) {
@@ -120,22 +127,60 @@ __device__ EIGEN_STRONG_INLINE void Flipped<true>(Box& box) {
   if (box.y1 > box.y2) Swap(box.y1, box.y2);
 }
 template <typename T>
-__device__ EIGEN_STRONG_INLINE bool CheckBit(T* bit_mask, int bit) {
+__device__ EIGEN_STRONG_INLINE bool CheckBit(const T* bit_mask, int bit) {
+  constexpr int kShiftLen = NumBits(8 * sizeof(T)) - 1;
+  constexpr int kRemainderMask = 8 * sizeof(T) - 1;
+  const int bin = bit >> kShiftLen;
+  return (bit_mask[bin] >> (bit & kRemainderMask)) & 1;
+}
+template <typename T>
+__device__ EIGEN_STRONG_INLINE void SetBit(T* bit_mask, int bit) {
   constexpr int kShiftLen = NumBits(8 * sizeof(T)) - 1;
   constexpr int kRemainderMask = 8 * sizeof(T) - 1;
   int bin = bit >> kShiftLen;
-  return (bit_mask[bin] >> (bit & kRemainderMask)) & 1;
+  atomicOr(bit_mask + bin, T(1) << (bit & kRemainderMask));
 }
 
+template <typename T>
+__device__ EIGEN_STRONG_INLINE void ClearBit(T* bit_mask, int bit) {
+  constexpr int kShiftLen = NumBits(8 * sizeof(T)) - 1;
+  constexpr int kRemainderMask = 8 * sizeof(T) - 1;
+  int bin = bit >> kShiftLen;
+  atomicAnd(bit_mask + bin, ~(T(1) << (bit & kRemainderMask)));
+}
+
+__global__ void FlipBoxes(Box* boxes, const int* num_batch_boxes,
+                          const int* box_strides, const int batch_size) {
+  // for (int b = 0; b < batch_size; ++b) {
+  // int box_offset = box_strides[b];
+  for (const int y : CudaGridRangeY(batch_size)) {
+    int box_offset = box_strides[y];
+    Box* curr_boxes = boxes + box_offset;
+    // if (threadIdx.x == 0) {
+    //   printf(" FBx batch=%d, box_offset=%d, num_batch_boxes=%d boxes@ %p \n",
+    //   y,
+    //          box_offset, num_batch_boxes[y],curr_boxes);
+    // }
+
+    for (int i : GpuGridRangeX(num_batch_boxes[y])) {
+      Flipped<true>(curr_boxes[i]);
+    }
+  }
+  // }
+}
+
+
 // Produce a global bitmask (result_mask) of selected boxes from bitmask
-// generated by NMSKernel Abort early if max_boxes boxes are selected. Bitmask
-// is num_boxes*bit_mask_len bits indicating whether to keep or remove a box.
-__global__ void NMSReduce(const int* bitmask, const int bit_mask_len,
-                          const int num_boxes, const int max_boxes,
-                          char* result_mask) {
+// generated by NMSKernel Abort early if max_boxes boxes are selected.
+// Bitmask is num_boxes*bit_mask_len bits indicating whether to keep or
+// remove a box.
+__launch_bounds__(1024) __global__
+    void NMSReduce(const int* bitmask, const int bit_mask_len,
+                   const int num_boxes, const int max_boxes,
+                   char* result_mask) {
   extern __shared__ int local[];
   // set global mask to accept all boxes
-  for (int box : CudaGridRangeX(bit_mask_len)) {
+  for (int box : GpuGridRangeX(bit_mask_len)) {
     local[box] = 0xFFFFFFFF;
   }
   __syncthreads();
@@ -148,7 +193,7 @@ __global__ void NMSReduce(const int* bitmask, const int bit_mask_len,
     accepted_boxes += 1;
     int offset = box * bit_mask_len;
     // update global mask with current box's mask
-    for (int b : CudaGridRangeX(bit_mask_len)) {
+    for (int b : GpuGridRangeX(bit_mask_len)) {
       local[b] &= ~bitmask[offset + b];
     }
     __syncthreads();
@@ -259,10 +304,16 @@ __global__ void IndexMultiSelect(const int num_elements, const Index* indices,
 }
 
 template <typename T>
-__global__ void Iota(const int num_elements, const T offset, T* to_fill) {
-  for (int idx : CudaGridRangeX(num_elements)) {
-    to_fill[idx] = static_cast<T>(idx) + offset;
+__global__ void Iota(const int num_elements, const T offset, T* to_fill,
+                     int batch_size = 1) {
+  // for (int i = 0; i < batch_size; ++i) {
+  for (int i : CudaGridRangeY(batch_size)) {
+    T* img = to_fill + (i * num_elements);
+    for (int idx : CudaGridRangeX(num_elements)) {
+      img[idx] = static_cast<T>(idx) + offset;
+    }
   }
+  // }
 }
 
 Status NmsGpu(const float* d_sorted_boxes_float_ptr, const int num_boxes,
@@ -334,7 +385,7 @@ Status NmsGpu(const float* d_sorted_boxes_float_ptr, const int num_boxes,
   TF_CHECK_OK(GpuLaunchKernel(Iota<int>, config.block_count,
                               config.thread_per_block, 0, device.stream(),
                               config.virtual_thread_count, 0,
-                              d_indices.flat<int>().data()));
+                              d_indices.flat<int>().data(), 1));
 
   char* selected = (char*)(selected_boxes.flat<int8>().data());
   TF_CHECK_OK(GpuLaunchKernel(NMSReduce, 1, 1024, bit_mask_len * sizeof(int),
@@ -385,6 +436,7 @@ struct GreaterThanCubOp {
     return (val > threshold_);
   }
 };
+
 // Use DeviceSelect::If to count number of elements.
 // TODO(sami) Not really a good way. Perhaps consider using thrust?
 template <typename Op>
@@ -417,6 +469,36 @@ Status CountIf(OpKernelContext* context, const float* dev_array, const Op& op,
                             sizeof(int));
   TF_RETURN_IF_CUDA_ERROR(cudaEventRecord(copy_done, device.stream()));
   TF_RETURN_IF_CUDA_ERROR(cudaEventSynchronize(copy_done));
+  return Status::OK();
+}
+
+template <typename Op>
+Status CountIf(OpKernelContext* context, const float* dev_array, const Op& op,
+               const int* num_elements, const int batch_size,
+               const int max_boxes, Tensor& device_counts) {
+  Tensor scratch_output;
+  Tensor workspace;
+  Tensor element_count;
+  size_t workspace_size = 0;
+  int* element_counts = device_counts.flat<int>().data();
+  auto cuda_stream = tensorflow::GetGpuStream(context);
+  auto device = context->eigen_gpu_device();
+  cub::DeviceSelect::If(nullptr, workspace_size, static_cast<float*>(nullptr),
+                        static_cast<float*>(nullptr),
+                        static_cast<int*>(nullptr), max_boxes, op, cuda_stream);
+
+  TF_RETURN_IF_ERROR(context->allocate_temp(
+      DataType::DT_FLOAT, TensorShape({max_boxes}), &scratch_output));
+  TF_RETURN_IF_ERROR(context->allocate_temp(
+      DataType::DT_INT8, TensorShape({(int64)workspace_size}), &workspace));
+  int64 box_offset = 0;
+  for (int t = 0; t < batch_size; ++t) {
+    TF_RETURN_IF_CUDA_ERROR(cub::DeviceSelect::If(
+        workspace.flat<int8>().data(), workspace_size, dev_array + box_offset,
+        scratch_output.flat<float>().data(), element_counts + t,
+        num_elements[t], op, cuda_stream));
+    box_offset += max_boxes;
+  }
   return Status::OK();
 }
 
@@ -477,7 +559,7 @@ Status DoNMS(OpKernelContext* context, const Tensor& boxes,
   TF_CHECK_OK(GpuLaunchKernel(Iota<int>, config.block_count,
                               config.thread_per_block, 0, device.stream(),
                               config.virtual_thread_count, 0,
-                              d_indices.flat<int>().data()));
+                              d_indices.flat<int>().data(), 1));
   TF_RETURN_IF_CUDA_ERROR(cudaGetLastError());
   cuda_ret = cub::DeviceRadixSort::SortPairsDescending(
       d_cub_sort_buffer.flat<int8>().data(), cub_sort_temp_storage_bytes,
@@ -563,7 +645,9 @@ Status DoNMS(OpKernelContext* context, const Tensor& boxes,
 
 Status CheckValidInputs(const Tensor& boxes, const Tensor& scores,
                         const Tensor& max_output_size,
-                        const Tensor& iou_threshold) {
+                        const Tensor& iou_threshold,
+                        const Tensor* box_counts = nullptr,
+                        bool is_batch = false) {
   if (!TensorShapeUtils::IsScalar(max_output_size.shape())) {
     return errors::InvalidArgument("max_output_size must be 0-D, got shape ",
                                    max_output_size.shape().DebugString());
@@ -576,20 +660,30 @@ Status CheckValidInputs(const Tensor& boxes, const Tensor& scores,
   if (iou_threshold_val < 0 || iou_threshold_val > 1) {
     return errors::InvalidArgument("iou_threshold must be in [0, 1]");
   }
-  if (boxes.dims() != 2) {
-    return errors::InvalidArgument("boxes must be a rank 2 tensor!");
+  int batch_offset = (is_batch ? 1 : 0);
+  if (boxes.dims() != 2 + batch_offset) {
+    return errors::InvalidArgument(
+        StrCat("boxes must be a rank ", 2 + batch_offset, " tensor!"));
   }
-  int num_boxes = boxes.dim_size(0);
-  if (boxes.dim_size(1) != 4) {
-    return errors::InvalidArgument("boxes must be Nx4");
+  int num_boxes = boxes.dim_size(batch_offset);
+  if (boxes.dim_size(1 + batch_offset) != 4) {
+    return errors::InvalidArgument(
+        StrCat("boxes must be", (is_batch ? " Bx" : " "), "Nx4"));
   }
-  if (scores.dims() != 1) {
-    return errors::InvalidArgument("scores must be a vector!");
+  if (scores.dims() != 1 + batch_offset) {
+    return errors::InvalidArgument(
+        StrCat("scores must be ", (is_batch ? "2D" : "1D"), "!"));
   }
-  if (scores.dim_size(0) != num_boxes) {
+  if (scores.dim_size(batch_offset) != num_boxes) {
     return errors::InvalidArgument(
         "scores has incompatible shape");  // message must be exactly this
                                            // otherwise tests fail!
+  }
+  if (is_batch) {
+    if (box_counts->dim_size(0) != boxes.dim_size(0)) {
+      return errors::InvalidArgument(
+          "Box counts size should be equal to batch size");
+    }
   }
   return Status::OK();
 }
@@ -735,6 +829,7 @@ class NonMaxSuppressionV4GPUOp : public OpKernel {
   bool pad_to_max_output_size_;
 };
 
+
 REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV2")
                             .TypeConstraint<float>("T")
                             .Device(DEVICE_GPU)
@@ -743,13 +838,13 @@ REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV2")
                         NonMaxSuppressionV2GPUOp);
 
 // TODO(laigd): enable once b/141559125 is fixed.
-// REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV3")
-//                             .TypeConstraint<float>("T")
-//                             .Device(DEVICE_GPU)
-//                             .HostMemory("iou_threshold")
-//                             .HostMemory("max_output_size")
-//                             .HostMemory("score_threshold"),
-//                         NonMaxSuppressionV3GPUOp);
+REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV3")
+                            .TypeConstraint<float>("T")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("iou_threshold")
+                            .HostMemory("max_output_size")
+                            .HostMemory("score_threshold"),
+                        NonMaxSuppressionV3GPUOp);
 
 REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV4")
                             .TypeConstraint<float>("T")
