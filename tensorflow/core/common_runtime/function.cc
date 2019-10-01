@@ -395,7 +395,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   // object, and an executor is created for the graph.
   struct Item {
     uint64 instantiation_counter = 0;
-    const Graph* graph = nullptr;                        // Owned by exec.
+    std::unique_ptr<const Graph> graph = nullptr;
     const FunctionLibraryDefinition* lib_def = nullptr;  // Not owned.
     FunctionBody* func_graph = nullptr;
     Executor* exec = nullptr;
@@ -952,14 +952,13 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   };
   params.rendezvous_factory = (*item)->rendezvous_factory;
   params.session_metadata = session_metadata_;
-  Graph* graph = g.get();
   std::unique_ptr<Executor> exec;
-  TF_RETURN_IF_ERROR(NewExecutor(executor_type, params, std::move(g), &exec));
+  TF_RETURN_IF_ERROR(NewExecutor(executor_type, params, *g, &exec));
   {
     // Guard item since it is already inserted in items_.
     mutex_lock l(mu_);
     if ((*item)->exec == nullptr) {
-      (*item)->graph = graph;
+      (*item)->graph = std::move(g);
       (*item)->exec = exec.release();
     }
   }
@@ -1230,7 +1229,7 @@ string FunctionLibraryRuntimeImpl::DebugString(Handle handle) {
   LocalHandle local_handle = parent_->GetHandleOnDevice(device_name_, handle);
   Status s = GetOrCreateItem(local_handle, &item);
   if (s.ok()) {
-    return tensorflow::DebugString(item->graph);
+    return tensorflow::DebugString(item->graph.get());
   } else {
     return s.ToString();
   }

@@ -475,7 +475,7 @@ Status DatasetOpsTestBase::RunFunction(
   };
 
   Executor* cur_exec;
-  TF_RETURN_IF_ERROR(NewLocalExecutor(params, std::move(g), &cur_exec));
+  TF_RETURN_IF_ERROR(NewLocalExecutor(params, *g, &cur_exec));
   exec.reset(cur_exec);
   FunctionCallFrame frame(arg_types, ret_types);
   TF_RETURN_IF_ERROR(frame.SetArgs(args));

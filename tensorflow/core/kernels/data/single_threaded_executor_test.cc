@@ -67,7 +67,7 @@ class ExecutorTest : public ::testing::Test {
       DeleteNonCachedKernel(kernel);
     };
     delete exec_;
-    TF_CHECK_OK(NewSingleThreadedExecutor(params, std::move(graph), &exec_));
+    TF_CHECK_OK(NewSingleThreadedExecutor(params, *graph, &exec_));
     runner_ = [](std::function<void()> fn) { fn(); };
     rendez_ = NewLocalRendezvous();
   }

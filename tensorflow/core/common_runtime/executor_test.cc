@@ -77,7 +77,7 @@ class ExecutorTest : public ::testing::Test {
       return Status::OK();
     };
     delete exec_;
-    TF_CHECK_OK(NewLocalExecutor(params, std::move(graph), &exec_));
+    TF_CHECK_OK(NewLocalExecutor(params, *graph, &exec_));
     runner_ = [this](std::function<void()> fn) { thread_pool_->Schedule(fn); };
   }
 

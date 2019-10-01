@@ -736,8 +736,8 @@ Status DirectSession::RunInternal(
     std::unordered_map<string, const Graph*> device_to_graph;
     for (const PerPartitionExecutorsAndLib& partition :
          executors_and_keys->items) {
-      const Graph* graph = partition.graph;
-      const string device = partition.flib->device()->name();
+      const Graph* graph = partition.graph.get();
+      const string& device = partition.flib->device()->name();
       device_to_graph[device] = graph;
     }
 
@@ -748,7 +748,7 @@ Status DirectSession::RunInternal(
     CostGraphDef* cost_graph = run_metadata->mutable_cost_graph();
     for (const auto& item : executors_and_keys->items) {
       TF_RETURN_IF_ERROR(
-          cost_model_manager_.AddToCostGraphDef(item.graph, cost_graph));
+          cost_model_manager_.AddToCostGraphDef(item.graph.get(), cost_graph));
     }
   }
 
@@ -1353,13 +1353,12 @@ Status DirectSession::CreateExecutors(
     TF_RETURN_IF_ERROR(EnsureMemoryTypes(DeviceType(device->device_type()),
                                          device->name(),
                                          partition_graph.get()));
-    // NewLocalExecutor takes ownership of partition_graph.
-    item->graph = partition_graph.get();
+    item->graph = std::move(partition_graph);
     item->executor = nullptr;
     item->device = device;
     auto executor_type = options_.config.experimental().executor_type();
-    TF_RETURN_IF_ERROR(NewExecutor(
-        executor_type, params, std::move(partition_graph), &item->executor));
+    TF_RETURN_IF_ERROR(
+        NewExecutor(executor_type, params, *item->graph, &item->executor));
   }
 
   // Cache the mapping from input/output names to graph elements to

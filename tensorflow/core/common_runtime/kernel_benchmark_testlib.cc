@@ -88,16 +88,14 @@ Benchmark::Benchmark(const string& device, Graph* g,
 
   if (init) {
     std::unique_ptr<Executor> init_exec;
-    TF_CHECK_OK(NewExecutor(executor_type, params, std::unique_ptr<Graph>(init),
-                            &init_exec));
+    TF_CHECK_OK(NewExecutor(executor_type, params, *init, &init_exec));
     Executor::Args args;
     args.rendezvous = rendez_;
     args.runner = runner;
     TF_CHECK_OK(init_exec->Run(args));
   }
 
-  TF_CHECK_OK(
-      NewExecutor(executor_type, params, std::unique_ptr<Graph>(g), &exec_));
+  TF_CHECK_OK(NewExecutor(executor_type, params, *g, &exec_));
 }
 
 Benchmark::~Benchmark() {
