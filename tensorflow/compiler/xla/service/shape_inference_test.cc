@@ -1117,6 +1117,18 @@ TEST_F(ShapeInferenceTest, InferCompareShape) {
                                inferred_status.ValueOrDie()));
 }
 
+TEST_F(ShapeInferenceTest, InferReshapeDegenerateCombine) {
+  // [1, <=1]
+  //   | reshape
+  // [<=1]
+  //
+  // Both output dimension can be dynamic, use inferred_dimension to tie-break.
+  auto operand = ShapeUtil::MakeShape(F32, {1, 1}, {false, true});
+  auto status = ShapeInference::InferReshapeShape(operand, {1, 0}, {1},
+                                                  /*inferred_dimension=*/-1);
+  ASSERT_EQ(ShapeUtil::MakeShape(F32, {1}, {true}), status.ValueOrDie());
+}
+
 TEST_F(ShapeInferenceTest, InferReshapeSplit) {
   // [<=10]
   //   | reshape
@@ -1126,19 +1138,18 @@ TEST_F(ShapeInferenceTest, InferReshapeSplit) {
   auto operand = ShapeUtil::MakeShape(F32, {10}, {true});
   auto status = ShapeInference::InferReshapeShape(operand, {0}, {1, 10},
                                                   /*inferred_dimension=*/0);
-  ASSERT_TRUE(ShapeUtil::Equal(
-      ShapeUtil::MakeShape(F32, {1, 10}, {true, false}), status.ValueOrDie()));
+  ASSERT_EQ(ShapeUtil::MakeShape(F32, {1, 10}, {true, false}),
+            status.ValueOrDie());
 }
 
 TEST_F(ShapeInferenceTest, InferReshapeCombine) {
   // [6, <=10]
   //   | reshape
-  // [60]
+  // [<=60]
   auto operand = ShapeUtil::MakeShape(F32, {6, 10}, {false, true});
   auto status = ShapeInference::InferReshapeShape(operand, {1, 0}, {60},
                                                   /*inferred_dimension=*/-11);
-  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {60}, {true}),
-                               status.ValueOrDie()));
+  ASSERT_EQ(ShapeUtil::MakeShape(F32, {60}, {true}), status.ValueOrDie());
 }
 
 TEST_F(ShapeInferenceTest, UnchangedDimension) {
@@ -1148,9 +1159,8 @@ TEST_F(ShapeInferenceTest, UnchangedDimension) {
   auto operand = ShapeUtil::MakeShape(F32, {6, 10}, {false, true});
   auto status = ShapeInference::InferReshapeShape(operand, {1, 0}, {2, 3, 10},
                                                   /*inferred_dimension=*/-11);
-  ASSERT_TRUE(ShapeUtil::Equal(
-      ShapeUtil::MakeShape(F32, {2, 3, 10}, {false, false, true}),
-      status.ValueOrDie()));
+  ASSERT_EQ(ShapeUtil::MakeShape(F32, {2, 3, 10}, {false, false, true}),
+            status.ValueOrDie());
 }
 
 TEST_F(ShapeInferenceTest, BroadcastScalar) {

@@ -2832,6 +2832,20 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         break;
       }
     }
+    if ((input_dim_end - input_dim_start) > 1 &&
+        (output_dim_end - output_dim_start) > 1) {
+      // We don't support the case when a dynamic dimension is both combined
+      // with and splitted into other dimensions:
+      //
+      //  [x, yz]
+      //     | Reshape
+      //  [xy, z]
+      return Unimplemented(
+          "Dynamic input dimension to reshape that is both splitted and "
+          "combined is not supported: %s",
+          reshape_debug_str);
+    }
+
     for (auto common_factor : common_factors) {
       //
       // For reshapes like:
@@ -2868,7 +2882,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       if (input_dim == 0) {
         output_dynamic_dimension = 0;
       }
-      if (output_dynamic_dimension == operand.rank() - 1) {
+      if (input_dim == operand.rank() - 1) {
         output_dynamic_dimension = new_sizes.size() - 1;
       }
 
@@ -2880,20 +2894,6 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       }
     }
 
-    if ((input_dim_end - input_dim_start) > 1 &&
-        (output_dim_end - output_dim_start) > 1) {
-      // We don't support the case when a dynamic dimension is both combined
-      // with and splitted into other dimensions:
-      //
-      //  [x, yz]
-      //     | Reshape
-      //  [xy, z]
-      return Unimplemented(
-          "Dynamic input dimension to reshape that is both splitted and "
-          "combined is not supported: %s",
-          reshape_debug_str);
-    }
-
     if (output_dynamic_dimension == -1 &&
         output_dim_end - output_dim_start == 1) {
       // Only one possible output dimension.
@@ -2901,13 +2901,23 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     }
     if (output_dynamic_dimension == -1 &&
         output_dim_end - output_dim_start > 1) {
-      // Multiple output can be dynamic, use "inferred_dimension" to tie-break.
+      // Multiple outputs can be dynamic, use "inferred_dimension" to tie-break.
       output_dynamic_dimension = inferred_dimension;
     }
 
     if (output_dynamic_dimension != -1) {
       // TODO(yunxing): Turn this into a CHECK.
       inferred_shape.set_dynamic_dimension(output_dynamic_dimension, true);
+    } else {
+      std::vector<int64> output_non_degenerated;
+      for (int64 i = output_dim_start; i < output_dim_end; ++i) {
+        if (new_sizes[i] != 1) {
+          output_non_degenerated.push_back(i);
+        }
+      }
+      if (output_non_degenerated.size() == 1) {
+        inferred_shape.set_dynamic_dimension(output_non_degenerated[0], true);
+      }
     }
   }
 
