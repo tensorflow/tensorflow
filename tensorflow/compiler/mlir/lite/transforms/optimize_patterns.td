@@ -80,6 +80,34 @@ def : Pat<(TFL_AddOp (TFL_DepthwiseConv2DOp $input, $filter,
                           $padding, $stride_h, $stride_w,
                           $multiplier)>;
 
+// If we see an sub op adding a constant value to a convolution op with constant
+// bias, we can fuse the sub into the convolution op by constant folding the
+// bias and the sub op's constant operand.
+// The following pattern restricts to float constant values for now.
+def : Pat<(TFL_SubOp (TFL_Conv2DOp $input, $filter,
+                          (ConstantOp F32ElementsAttr:$bias),
+                          $h_factor, $w_factor, TFL_AF_None,
+                          $padding, $stride_h, $stride_w),
+                     (ConstantOp F32ElementsAttr:$value), $act_fn),
+          (TFL_Conv2DOp $input, $filter,
+                        (TFL_SubOp (ConstantOp $bias),
+                                   (ConstantOp $value), TFL_AF_None),
+                        $h_factor, $w_factor, $act_fn,
+                        $padding, $stride_h, $stride_w)>;
+def : Pat<(TFL_SubOp (TFL_DepthwiseConv2DOp $input, $filter,
+                          (ConstantOp F32ElementsAttr:$bias),
+                          $h_factor, $w_factor, TFL_AF_None,
+                          $padding, $stride_h, $stride_w,
+                          $multiplier),
+                     (ConstantOp F32ElementsAttr:$value), $act_fn),
+          (TFL_DepthwiseConv2DOp $input, $filter,
+                          (TFL_SubOp (ConstantOp $bias),
+                                     (ConstantOp $value),
+                                     TFL_AF_None),
+                          $h_factor, $w_factor, $act_fn,
+                          $padding, $stride_h, $stride_w,
+                          $multiplier)>;
+
 def BroadcastableElementsAttrs :
     Constraint<CPred<"IsBroadcastableElementsAttrs($0, $1)">>;
 
