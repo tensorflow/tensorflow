@@ -1110,7 +1110,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
 
   MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
   std::unordered_set<string> whitelist;
-  auto vall_ops = XlaOpRegistry::GetAllRegisteredOps();;
+  auto vall_ops = XlaOpRegistry::GetAllRegisteredOps();
   std::unordered_set<string> all_ops(vall_ops.begin(), vall_ops.end());
 
   for (auto s : absl::StrSplit(flags->tf_xla_supported_nodes, ",")) {
@@ -1176,11 +1176,51 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
       // Fill => Broadcast
       // BroadcastTo => Broadcast + maybe Reshape
       added = true;
-      whitelist.insert({"BroadcastTo", "ExpandDims", "Fill", "Max", "Mean",
-                        "NoOp", "Prod", "Range", "Rank", "Reshape", "Shape",
-                        "ShapeN", "Size", "Squeeze", "Sum", "Transpose",
-                        "ZerosLike", "OnesLike"});
+      whitelist.insert({"BroadcastTo",
+                        "ExpandDims",
+                        "Fill",
+                        "Max",
+                        "Mean",
+                        "NoOp",
+                        "Prod",
+                        "Range",
+                        "Rank",
+                        "Reshape",
+                        "Shape",
+                        "ShapeN",
+                        "Size",
+                        "Squeeze",
+                        "Sum",
+                        "Transpose",
+                        "ZerosLike",
+                        "OnesLike",
+                        "BroadcastArgs",
+                        "BroadcastGradientArgs",
+                        "BiasAddGrad" /*(Reduce)*/,
+                        "OneHot",
+                        "Concat",
+                        "ConcatV2",
+                        "ConcatOffset",
+                        "Const",
+                        "MirrorPad",
+                        "Pack",
+                        "Pad",
+                        "PadV2",
+                        "Reverse",
+                        "ReverseV2",
+                        "ReverseSequence",
+                        "Slice",
+                        "Split",
+                        "SplitV",
+                        "StridedSlice",
+                        "StridedSliceGrad",
+                        "ResourceStridedSliceAssign",
+                        "Tile",
+                        "Transpose",
+                        "InvertPermutation",
+                        "Unpack"});
     }
+
     if (!added && s.size() > 0) {
       if (all_ops.count(string(s)) == 0) {
         return errors::InvalidArgument(
