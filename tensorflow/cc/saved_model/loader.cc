@@ -444,7 +444,7 @@ Status LoadSavedModel(const SessionOptions& session_options,
       ->set_optimize_for_static_graph(true);
   // TODO(mrry): Consider specializing the session creation to reduce peak
   // RAM consumption by using `Session::Create(GraphDef&&)`.
-  TF_RETURN_IF_ERROR(LoadSavedModel(session_options, run_options, export_dir,
+  TF_RETURN_IF_ERROR(LoadSavedModel(rewritten_options, run_options, export_dir,
                                     tags, &legacy_bundle));
   *bundle = SavedModelBundleLite(
       absl::make_unique<LiteSessionWrapper>(std::move(legacy_bundle.session)),
