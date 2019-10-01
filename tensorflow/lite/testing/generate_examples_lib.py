@@ -5367,7 +5367,7 @@ def generate_examples(options):
   else:
     # Remove suffixes to extract the test name from the output name.
     test_name = re.sub(
-        r"(_(|toco-flex|forward-compat))?\.zip$", "", out, count=1)
+        r"(_(|toco-flex|forward-compat|edgetpu))?\.zip$", "", out, count=1)
 
   test_function_name = "make_%s_tests" % test_name
   if test_function_name not in _MAKE_TEST_FUNCTIONS_MAP:
