@@ -43,6 +43,7 @@ enum class TextureAddressMode {
 
 class TensorCodeGenerator {
  public:
+  TensorCodeGenerator() = default;
   TensorCodeGenerator(const std::string& name,
                       const std::string& uniform_size_name,
                       const TensorDescriptor& descriptor);

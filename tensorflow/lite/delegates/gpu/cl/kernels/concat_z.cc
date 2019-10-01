@@ -37,81 +37,95 @@ bool IsAllChannelsX4(const std::vector<int>& channels) {
 }
 
 std::string GetConcatKernelCode(
-    const OperationDef& definition, const std::vector<int>& channels,
+    const OperationDef& op_def, const std::vector<int>& channels,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  std::vector<std::shared_ptr<TensorCodeGenerator>> srcs(channels.size());
+  std::vector<TensorCodeGenerator> srcs(channels.size());
   for (int i = 0; i < channels.size(); ++i) {
     const std::string tensor_name = "src_data_" + std::to_string(i);
     const std::string uniform_name = "src_size_" + std::to_string(i);
-    srcs[i] = std::shared_ptr<TensorCodeGenerator>(new TensorCodeGenerator(
-        tensor_name, uniform_name, definition.src_tensors[i]));
+    srcs[i] =
+        TensorCodeGenerator(tensor_name, uniform_name, op_def.src_tensors[i]);
   }
-  TensorCodeGenerator dst("dst_data", "dst_size", definition.dst_tensors[0]);
+  TensorCodeGenerator dst("dst_data", "dst_size", op_def.dst_tensors[0]);
 
-  std::string code = GetCommonDefines(definition.precision);
+  auto read_src = [&](const TensorCodeGenerator& tensor, const std::string& x,
+                      const std::string& y, const std::string& z) {
+    if (op_def.batch_support) {
+      return tensor.Read4D(x, y, z, "B");
+    } else {
+      return tensor.Read3D(x, y, z, TextureAddressMode::DONT_CARE);
+    }
+  };
+
+  auto write_dst = [&](const std::string& var_name, const std::string& x,
+                       const std::string& y, const std::string& z) {
+    if (op_def.batch_support) {
+      return dst.Write4D(var_name, x, y, z, "B");
+    } else {
+      return dst.Write3D(var_name, x, y, z);
+    }
+  };
+
+  std::string c = GetCommonDefines(op_def.precision);
   const std::string postfix[] = {".x", ".y", ".z", ".w"};
 
-  code += "__kernel void main_function(\n";
+  c += "__kernel void main_function(\n";
   for (const auto& src : srcs) {
-    code += src->GetDeclaration(AccessType::READ) + ",\n";
+    c += src.GetDeclaration(AccessType::READ) + ",\n";
   }
-  code += dst.GetDeclaration(AccessType::WRITE);
-  code += GetArgsDeclaration(linked_operations);
+  c += dst.GetDeclaration(AccessType::WRITE);
+  c += GetArgsDeclaration(linked_operations);
   for (int i = 0; i < channels.size(); ++i) {
     const std::string uniform_name = "src_size_" + std::to_string(i);
-    code += "    int4 " + uniform_name + ",\n";
+    c += "    int4 " + uniform_name + ",\n";
   }
-  code += "    int4 dst_size\n";
-  code += ") {\n";
-  code += "  int X = get_global_id(0);\n";
-  code += "  int Y = get_global_id(1);\n";
-  code += "  if (X >= dst_size.x || Y >= dst_size.y) { \n";
-  code += "    return; \n";
-  code += "  } \n";
+  if (op_def.batch_support) {
+    c += "    int BATCH_SIZE,  \n";
+  }
+  c += "    int4 dst_size\n";
+  c += ") {\n";
+  c += "  int X = get_global_id(0);\n";
+  c += "  int Y = get_global_id(1);\n";
+  c += "  if (X >= dst_size.x || Y >= dst_size.y) return;\n";
+  if (op_def.batch_support) {
+    c += "  int B = get_global_id(2);\n";
+    c += "  if (B >= BATCH_SIZE) return;\n";
+  }
 
   if (IsAllChannelsX4(channels)) {
     // When all channels % 4 == 0 we can read/assign/write FLT4 elements easily.
     // Also it is easy to write a loop in this case, to prevent long kernel
     // generation.
-    code += "  int Z = 0;\n";
+    c += "  int Z = 0;\n";
     for (int i = 0; i < channels.size(); ++i) {
       const std::string uniform_name = "src_size_" + std::to_string(i);
       const int depth = IntegralDivideRoundUp(channels[i], 4);
       if (depth % 2 == 0) {
         // We can read more at once inside of loop in case depth % 2 == 0
         // it should be better for reading latency hiding
-        code += "  for (int i = 0; i < " + uniform_name + ".w; i += 2) {\n";
-        code += "    FLT4 result0 = " +
-                srcs[i]->Read3D("X", "Y", "i", TextureAddressMode::DONT_CARE) +
-                ";\n";
-        code +=
-            "    FLT4 result1 = " +
-            srcs[i]->Read3D("X", "Y", "i + 1", TextureAddressMode::DONT_CARE) +
-            ";\n";
-        code += "    " + dst.GetAddress("dst_adr0", "X", "Y", "Z") + "\n";
-        code += "    " + dst.GetAddress("dst_adr1", "X", "Y", "Z + 1") + "\n";
+        c += "  for (int i = 0; i < " + uniform_name + ".w; i += 2) {\n";
+        c += "    FLT4 result0 = " + read_src(srcs[i], "X", "Y", "i") + ";\n";
+        c += "    FLT4 result1 = " + read_src(srcs[i], "X", "Y", "i+1") + ";\n";
         const LinkingContext context_0{"result0", "X", "Y", "Z"};
         const LinkingContext context_1{"result1", "X", "Y", "Z + 1"};
-        code += PostProcess(linked_operations, context_0);
-        code += PostProcess(linked_operations, context_1);
-        code += "    " + dst.Write3D("result0", "X", "Y", "Z");
-        code += "    " + dst.Write3D("result1", "X", "Y", "Z + 1");
-        code += "    Z += 2;\n";
-        code += "  }\n";
+        c += PostProcess(linked_operations, context_0);
+        c += PostProcess(linked_operations, context_1);
+        c += "    " + write_dst("result0", "X", "Y", "Z");
+        c += "    " + write_dst("result1", "X", "Y", "Z + 1");
+        c += "    Z += 2;\n";
+        c += "  }\n";
       } else {
-        code += "  for (int i = 0; i < " + uniform_name + ".w; ++i) {\n";
-        code += "    FLT4 result = " +
-                srcs[i]->Read3D("X", "Y", "i", TextureAddressMode::DONT_CARE) +
-                ";\n";
+        c += "  for (int i = 0; i < " + uniform_name + ".w; ++i) {\n";
+        c += "    FLT4 result = " + read_src(srcs[i], "X", "Y", "i") + ";\n";
         const LinkingContext context{"result", "X", "Y", "Z"};
-        code += PostProcess(linked_operations, context);
-        code += "    " + dst.Write3D("result", "X", "Y", "Z");
-        code += "    Z++;\n";
-        code += "  }\n";
+        c += PostProcess(linked_operations, context);
+        c += "    " + write_dst("result", "X", "Y", "Z");
+        c += "    Z++;\n";
+        c += "  }\n";
       }
     }
   } else {
-    code += "  FLT4 result = (FLT4)(0.0);\n";
+    c += "  FLT4 result = (FLT4)(0.0);\n";
     int out_channel = 0;
     int read_index = 0;
     int z = 0;
@@ -120,21 +134,19 @@ std::string GetConcatKernelCode(
       for (int d = 0; d < depth; ++d) {
         const int channels_in_group = std::min(4, channels[i] - d * 4);
         const std::string temp_name = "t" + std::to_string(read_index);
-        code += "  FLT4 " + temp_name + " = ";
-        code += srcs[i]->Read3D("X", "Y", std::to_string(d),
-                                TextureAddressMode::DONT_CARE) +
-                ";\n";
-        for (int c = 0; c < channels_in_group; ++c) {
-          code += "  result" + postfix[out_channel] + " = ";
-          code += temp_name + postfix[c] + ";\n";
+        c += "  FLT4 " + temp_name + " = " +
+             read_src(srcs[i], "X", "Y", std::to_string(d)) + ";\n";
+        for (int ch = 0; ch < channels_in_group; ++ch) {
+          c += "  result" + postfix[out_channel] + " = ";
+          c += temp_name + postfix[ch] + ";\n";
           out_channel++;
           if (out_channel == 4) {
             out_channel = 0;
-            code += "  {\n";
+            c += "  {\n";
             const LinkingContext context{"result", "X", "Y", std::to_string(z)};
-            code += PostProcess(linked_operations, context);
-            code += "  " + dst.Write3D("result", "X", "Y", std::to_string(z));
-            code += "  }\n";
+            c += PostProcess(linked_operations, context);
+            c += "  " + write_dst("result", "X", "Y", std::to_string(z));
+            c += "  }\n";
             z++;
           }
         }
@@ -142,15 +154,15 @@ std::string GetConcatKernelCode(
       }
     }
     if (out_channel != 0) {
-      code += "  {\n";
+      c += "  {\n";
       const LinkingContext context{"result", "X", "Y", std::to_string(z)};
-      code += PostProcess(linked_operations, context);
-      code += "  " + dst.Write3D("result", "X", "Y", std::to_string(z));
-      code += "  }\n";
+      c += PostProcess(linked_operations, context);
+      c += "  " + write_dst("result", "X", "Y", std::to_string(z));
+      c += "  }\n";
     }
   }
-  code += "}\n";
-  return code;
+  c += "}\n";
+  return c;
 }
 }  // namespace
 
@@ -196,6 +208,9 @@ Status ConcatZ::BindArguments() {
               IntegralDivideRoundUp(channels_[i], 4));
     RETURN_IF_ERROR(kernel_.SetBytesAuto(size));
   }
+  if (definition_.batch_support) {
+    RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->Batch()));
+  }
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetSizeWithDepth()));
   return OkStatus();
 }
@@ -203,7 +218,7 @@ Status ConcatZ::BindArguments() {
 int3 ConcatZ::GetGridSize() const {
   const int grid_x = dst_[0]->Width();
   const int grid_y = dst_[0]->Height();
-  const int grid_z = 1;
+  const int grid_z = dst_[0]->Batch();
   return int3(grid_x, grid_y, grid_z);
 }
 
