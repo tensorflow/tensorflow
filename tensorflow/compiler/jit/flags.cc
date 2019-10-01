@@ -81,9 +81,16 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
       Flag("tf_xla_supported_nodes",
            &mark_for_compilation_flags->tf_xla_supported_nodes,
            "Limit the nodes clustered to XLA to those nodes. If multiple, "
-           "separate them by comma. Shortcut: PW: all point-wise operation. "
-           "RED: All reduction operation. FUSIBLE: all nodes that XLA can fuse "
-           "in some cases."),
+           "separate them by comma. Shortcuts: "
+           " PW: All point-wise operations."
+           " RED: All reduction operations."
+           " SMALL: Mixed small operations."
+           " PWRED: TF operation that get converted to PW+RED operation in XLA."
+           " REDUCEWINDOW: TF operation like MaxPool/AvgPool that get converted to ReduceWindow in XLA."
+           " REDUCEWINDOPW: Operation that get converted to ReduceWindow + PW (LRN, LRNGrad)"
+           " BN: TF FusedBatchNorm* operations."
+           " FUSIBLE: all nodes that XLA can fuse (All the above)"
+           "in some cases. You can also put any TF operation name."),
       Flag("tf_xla_clustering_debug",
            &mark_for_compilation_flags->tf_xla_clustering_debug,
            "Dump graphs during XLA compilation."),
