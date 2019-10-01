@@ -124,6 +124,8 @@ diff <my_cc_file> /tmp/my_cc_file.cc
 Changes to TensorFlow Python code should conform to
 [Google Python Style Guide](https://github.com/google/styleguide/blob/gh-pages/pyguide.md)
 
+Use 2 space instead of 4 space.
+
 Use `pylint` to check your Python changes. To install `pylint` and
 retrieve TensorFlow's custom style definition:
 
