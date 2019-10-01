@@ -341,8 +341,8 @@ class EagerContext : public core::RefCounted {
   }
 
   // If true, then tensors should be shipped across processes via the
-  // EagerService.SendTensor RPC. If false, _Send/_Recv ops should be used
-  // instead (which in-turn use WorkerService.RecvTensor RPCs).
+  // EagerService.Enqueue(SendTensorOp). If false, _Send/_Recv ops should be
+  // used instead (which in-turn use WorkerService.RecvTensor RPCs).
   bool UseSendTensorRPC() { return use_send_tensor_rpc_; }
 
   tensorflow::ServerInterface* GetServer() { return server_.get(); }

@@ -461,38 +461,6 @@ Status EagerServiceImpl::RegisterFunction(
                                             request->is_component_function());
 }
 
-Status EagerServiceImpl::SendTensor(const SendTensorRequest* request,
-                                    SendTensorResponse* response) {
-  ServerContext* context = nullptr;
-  TF_RETURN_IF_ERROR(GetServerContext(request->context_id(), &context));
-  core::ScopedUnref context_unref(context);
-
-  tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2> tensors;
-  for (const auto& tensor_proto : request->tensors()) {
-    Tensor tensor;
-    if (!tensor.FromProto(tensor_proto)) {
-      return errors::InvalidArgument("Unable to parse tensor proto");
-    }
-
-    TensorHandle* tensor_handle = nullptr;
-    TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(tensor, &tensor_handle));
-    TensorHandle* copied_handle = nullptr;
-    EagerContext* ctx = context->Context();
-    Device* device;
-    TF_RETURN_IF_ERROR(
-        ctx->FindDeviceFromName(request->device_name().c_str(), &device));
-    TF_RETURN_IF_ERROR(EagerCopyToDevice(tensor_handle, ctx, &ctx->Executor(),
-                                         device, false, &copied_handle));
-    tensors.push_back(copied_handle);
-    tensor_handle->Unref();
-  }
-
-  context->Context()->RemoteMgr()->AddOperationOutputs(tensors,
-                                                       request->op_id());
-
-  return Status::OK();
-}
-
 Status EagerServiceImpl::SendTensor(const SendTensorOp& send_tensor,
                                     EagerContext* eager_context) {
   tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2> tensors;
