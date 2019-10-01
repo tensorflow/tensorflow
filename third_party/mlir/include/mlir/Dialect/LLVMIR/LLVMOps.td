@@ -145,6 +145,9 @@ def LLVM_SRemOp : LLVM_ArithmeticOp<"srem", "CreateSRem">;
 def LLVM_AndOp : LLVM_ArithmeticOp<"and", "CreateAnd">;
 def LLVM_OrOp : LLVM_ArithmeticOp<"or", "CreateOr">;
 def LLVM_XOrOp : LLVM_ArithmeticOp<"xor", "CreateXor">;
+def LLVM_ShlOp : LLVM_ArithmeticOp<"shl", "CreateShl">;
+def LLVM_LShrOp : LLVM_ArithmeticOp<"lshr", "CreateLShr">;
+def LLVM_AShrOp : LLVM_ArithmeticOp<"ashr", "CreateAShr">;
 
 // Predicate for integer comparisons.
 def ICmpPredicateEQ  : I64EnumAttrCase<"eq", 0>;
