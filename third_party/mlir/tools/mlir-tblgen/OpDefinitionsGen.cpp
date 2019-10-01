@@ -1060,7 +1060,8 @@ void OpEmitter::genCanonicalizerDecls() {
 }
 
 void OpEmitter::genFolderDecls() {
-  bool hasSingleResult = op.getNumResults() == 1;
+  bool hasSingleResult =
+      op.getNumResults() == 1 && op.getNumVariadicResults() == 0;
 
   if (def.getValueAsBit("hasFolder")) {
     if (hasSingleResult) {

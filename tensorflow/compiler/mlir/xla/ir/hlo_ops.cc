@@ -452,6 +452,22 @@ OpFoldResult ReverseOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// ReduceOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ReduceOp::fold(ArrayRef<Attribute> operands,
+                             SmallVectorImpl<OpFoldResult>& results) {
+  // No dimensions to reduce.
+  if (dimensions().getNumElements() == 0) {
+    for (Value* input : this->operands()) {
+      results.push_back(input);
+    }
+    return success();
+  }
+  return failure();
+}
+
+//===----------------------------------------------------------------------===//
 // SelectOp
 //===----------------------------------------------------------------------===//
 
