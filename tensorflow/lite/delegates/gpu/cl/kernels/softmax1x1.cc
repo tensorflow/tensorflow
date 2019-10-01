@@ -33,69 +33,83 @@ std::string GetSoftmaxKernelCode(
   TensorCodeGenerator dst_tensor("dst_data", "tensor_size",
                                  op_def.dst_tensors[0]);
 
-  std::string code = GetCommonDefines(op_def.precision);
-  code += "__kernel void main_function(\n";
-  code += src_tensor.GetDeclaration(AccessType::READ);
-  code += GetArgsDeclaration(linked_operations);
-  code += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
-  code += "    int4 tensor_size,\n";
-  code += "    int2 size,\n";
-  code += "    float4 mask\n";
-  code += ") {\n";
-  code += "  int offset = 0;\n";
-  code += "  float sum = 0.0f;\n";
-  code += "  int s = 0;\n";
-  code += "  int tid = get_local_id(0);\n";
-  code += "  do {\n";
-  code += "    int z = offset + tid;\n";
-  code += "    if (z < size.x) {\n";
-  code += "      float4 mask_temp = z == size.x - 1 ? mask : (float4)(1.0f);\n";
-  code +=
-      "      float4 src = " +
-      src_tensor.ReadAsFloat3D("0", "0", "z", TextureAddressMode::DONT_CARE) +
-      ";\n";
-  code += "      sum += dot(mask_temp, exp(src));\n";
-  code += "      offset += 32;\n";
-  code += "    }\n";
-  code += "    s++;\n";
-  code += "  } while (s < size.y);\n";
-  code += "\n";
-  code += "  __local float4 tmp[8];\n";
-  code += "  __local float* tmpx1 = (__local float*)tmp;\n";
-  code += "  tmpx1[tid] = sum;\n";
-  code += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
-  code += "  if (tid == 0) {\n";
-  code += "    sum = dot((float4)(1.0f), tmp[0]);\n";
-  code += "    sum += dot((float4)(1.0f), tmp[1]);\n";
-  code += "    sum += dot((float4)(1.0f), tmp[2]);\n";
-  code += "    sum += dot((float4)(1.0f), tmp[3]);\n";
-  code += "    sum += dot((float4)(1.0f), tmp[4]);\n";
-  code += "    sum += dot((float4)(1.0f), tmp[5]);\n";
-  code += "    sum += dot((float4)(1.0f), tmp[6]);\n";
-  code += "    sum += dot((float4)(1.0f), tmp[7]);\n";
-  code += "    tmpx1[0] = 1.0f / sum;\n";
-  code += "  }\n";
-  code += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
-  code += "  sum = tmpx1[0];\n";
-  code += "\n";
-  code += "  offset = 0;\n";
-  code += "  s = 0;\n";
-  code += "  do {\n";
-  code += "    int z = offset + tid;\n";
-  code += "    if (z < size.x) {\n";
-  code +=
-      "      FLT4 value = TO_FLT4(exp(" +
-      src_tensor.ReadAsFloat3D("0", "0", "z", TextureAddressMode::DONT_CARE) +
-      ") * sum);\n";
-  const LinkingContext context{"value", "0", "0", "z"};
-  code += PostProcess(linked_operations, context);
-  code += "    " + dst_tensor.Write3D("value", "0", "0", "z");
-  code += "      offset += 32;\n";
-  code += "    }\n";
-  code += "    s++;\n";
-  code += "  } while (s < size.y);\n";
-  code += "}\n";
-  return code;
+  auto read_src = [&](const std::string& x, const std::string& y,
+                      const std::string& z) {
+    if (op_def.batch_support) {
+      return src_tensor.ReadAsFloat4D(x, y, z, "B");
+    } else {
+      return src_tensor.ReadAsFloat3D(x, y, z, TextureAddressMode::DONT_CARE);
+    }
+  };
+
+  std::string c = GetCommonDefines(op_def.precision);
+  c += "__kernel void main_function(\n";
+  c += src_tensor.GetDeclaration(AccessType::READ);
+  c += GetArgsDeclaration(linked_operations);
+  c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
+  c += "    int4 tensor_size,\n";
+  c += "    int2 size,\n";
+  if (op_def.batch_support) {
+    c += "    int BATCH_SIZE,  \n";
+  }
+  c += "    float4 mask\n";
+  c += ") {\n";
+  if (op_def.batch_support) {
+    c += "  int B = get_global_id(1);\n";
+    c += "  if (B >= BATCH_SIZE) return;\n";
+  }
+  c += "  int offset = 0;\n";
+  c += "  float sum = 0.0f;\n";
+  c += "  int s = 0;\n";
+  c += "  int tid = get_local_id(0);\n";
+  c += "  do {\n";
+  c += "    int z = offset + tid;\n";
+  c += "    if (z < size.x) {\n";
+  c += "      float4 mask_temp = z == size.x - 1 ? mask : (float4)(1.0f);\n";
+  c += "      float4 src = " + read_src("0", "0", "z") + ";\n";
+  c += "      sum += dot(mask_temp, exp(src));\n";
+  c += "      offset += 32;\n";
+  c += "    }\n";
+  c += "    s++;\n";
+  c += "  } while (s < size.y);\n";
+  c += "\n";
+  c += "  __local float4 tmp[8];\n";
+  c += "  __local float* tmpx1 = (__local float*)tmp;\n";
+  c += "  tmpx1[tid] = sum;\n";
+  c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
+  c += "  if (tid == 0) {\n";
+  c += "    sum = dot((float4)(1.0f), tmp[0]);\n";
+  c += "    sum += dot((float4)(1.0f), tmp[1]);\n";
+  c += "    sum += dot((float4)(1.0f), tmp[2]);\n";
+  c += "    sum += dot((float4)(1.0f), tmp[3]);\n";
+  c += "    sum += dot((float4)(1.0f), tmp[4]);\n";
+  c += "    sum += dot((float4)(1.0f), tmp[5]);\n";
+  c += "    sum += dot((float4)(1.0f), tmp[6]);\n";
+  c += "    sum += dot((float4)(1.0f), tmp[7]);\n";
+  c += "    tmpx1[0] = 1.0f / sum;\n";
+  c += "  }\n";
+  c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
+  c += "  sum = tmpx1[0];\n";
+  c += "\n";
+  c += "  offset = 0;\n";
+  c += "  s = 0;\n";
+  c += "  do {\n";
+  c += "    int z = offset + tid;\n";
+  c += "    if (z < size.x) {\n";
+  c += "      FLT4 res = TO_FLT4(exp(" + read_src("0", "0", "z") + ")*sum);\n";
+  const LinkingContext context{"res", "0", "0", "z"};
+  c += PostProcess(linked_operations, context);
+  if (op_def.batch_support) {
+    c += "    " + dst_tensor.Write4D("res", "0", "0", "z", "B");
+  } else {
+    c += "    " + dst_tensor.Write3D("res", "0", "0", "z");
+  }
+  c += "      offset += 32;\n";
+  c += "    }\n";
+  c += "    s++;\n";
+  c += "  } while (s < size.y);\n";
+  c += "}\n";
+  return c;
 }
 }  // namespace
 
@@ -126,10 +140,14 @@ Status Softmax1x1::AddToQueue(CLCommandQueue* queue) {
   const int depth = src_[0]->Depth();
   RETURN_IF_ERROR(
       kernel_.SetBytesAuto(int2(depth, IntegralDivideRoundUp(depth, 32))));
+  if (definition_.batch_support) {
+    RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->Batch()));
+  }
   RETURN_IF_ERROR(
       kernel_.SetBytesAuto(GetMaskForLastPlane(src_[0]->Channels())));
 
-  return queue->DispatchImplicit(kernel_, {32u, 1u, 1u}, {32u, 1u, 1u});
+  return queue->DispatchImplicit(kernel_, {32, dst_[0]->Batch(), 1},
+                                 {32, 1, 1});
 }
 
 Softmax1x1 CreateSoftmax1x1(const OperationDef& definition) {
