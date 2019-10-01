@@ -5037,21 +5037,24 @@ def repeat_with_axis(data, repeats, axis, name=None):
   Returns:
     A tensor with `max(N, 1)` dimensions.  Has the same shape as `data`,
     except that dimension `axis` has size `sum(repeats)`.
-  #### Examples:
-    >>> repeat(['a', 'b', 'c'], repeats=[3, 0, 2], axis=0)
-    <tf.Tensor: shape=(5,), dtype=string,
-    numpy=array([b'a', b'a', b'a', b'c', b'c'], dtype=object)>
-    >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=0)
-    <tf.Tensor: shape=(5, 2), dtype=int32, numpy=
-    array([[1, 2],
-           [1, 2],
-           [3, 4],
-           [3, 4],
-           [3, 4]], dtype=int32)>
-    >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=1)
-    <tf.Tensor: shape=(2, 5), dtype=int32, numpy=
-    array([[1, 1, 2, 2, 2],
-           [3, 3, 4, 4, 4]], dtype=int32)>
+
+  Example usage:
+
+  >>> repeat(['a', 'b', 'c'], repeats=[3, 0, 2], axis=0)
+  <tf.Tensor: shape=(5,), dtype=string,
+  numpy=array([b'a', b'a', b'a', b'c', b'c'], dtype=object)>
+  >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=0)
+  <tf.Tensor: shape=(5, 2), dtype=int32, numpy=
+  array([[1, 2],
+         [1, 2],
+         [3, 4],
+         [3, 4],
+         [3, 4]], dtype=int32)>
+  >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=1)
+  <tf.Tensor: shape=(2, 5), dtype=int32, numpy=
+  array([[1, 1, 2, 2, 2],
+         [3, 3, 4, 4, 4]], dtype=int32)>
+
   """
   if not isinstance(axis, int):
     raise TypeError("axis must be an int; got %s" % type(axis).__name__)
@@ -5165,31 +5168,33 @@ def repeat(input, repeats, axis=None, name=None):  # pylint: disable=redefined-b
     A Tensor which has the same shape as `input`, except along the given axis.
       If axis is None then the output array is flattened to match the flattened
       input array.
-  #### Examples:
 
-    >>> repeat(['a', 'b', 'c'], repeats=[3, 0, 2], axis=0)
-    <tf.Tensor: shape=(5,), dtype=string,
-    numpy=array([b'a', b'a', b'a', b'c', b'c'], dtype=object)>
+  Example usage:
 
-    >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=0)
-    <tf.Tensor: shape=(5, 2), dtype=int32, numpy=
-    array([[1, 2],
-           [1, 2],
-           [3, 4],
-           [3, 4],
-           [3, 4]], dtype=int32)>
+  >>> repeat(['a', 'b', 'c'], repeats=[3, 0, 2], axis=0)
+  <tf.Tensor: shape=(5,), dtype=string,
+  numpy=array([b'a', b'a', b'a', b'c', b'c'], dtype=object)>
 
-    >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=1)
-    <tf.Tensor: shape=(2, 5), dtype=int32, numpy=
-    array([[1, 1, 2, 2, 2],
-           [3, 3, 4, 4, 4]], dtype=int32)>
+  >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=0)
+  <tf.Tensor: shape=(5, 2), dtype=int32, numpy=
+  array([[1, 2],
+         [1, 2],
+         [3, 4],
+         [3, 4],
+         [3, 4]], dtype=int32)>
 
-    >>> repeat(3, repeats=4)
-    <tf.Tensor: shape=(4,), dtype=int32, numpy=array([3, 3, 3, 3], dtype=int32)>
+  >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=1)
+  <tf.Tensor: shape=(2, 5), dtype=int32, numpy=
+  array([[1, 1, 2, 2, 2],
+         [3, 3, 4, 4, 4]], dtype=int32)>
 
-    >>> repeat([[1,2], [3,4]], repeats=2)
-    <tf.Tensor: shape=(8,), dtype=int32,
-    numpy=array([1, 1, 2, 2, 3, 3, 4, 4], dtype=int32)>
+  >>> repeat(3, repeats=4)
+  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([3, 3, 3, 3], dtype=int32)>
+
+  >>> repeat([[1,2], [3,4]], repeats=2)
+  <tf.Tensor: shape=(8,), dtype=int32,
+  numpy=array([1, 1, 2, 2, 3, 3, 4, 4], dtype=int32)>
+
   """
   if axis is None:
     input = reshape(input, [-1])
