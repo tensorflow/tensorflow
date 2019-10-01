@@ -112,6 +112,7 @@ public class EagerSessionTest {
   public void buildingOpWithClosedSessionFails() {
     EagerSession s = EagerSession.create();
     s.close();
+      //attempttoclose
     try {
       buildOp(s);
       fail();
