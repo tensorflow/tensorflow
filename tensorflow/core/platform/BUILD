@@ -243,6 +243,14 @@ cc_library(
 )
 
 cc_library(
+    name = "jpeg",
+    hdrs = ["jpeg.h"],
+    deps = [
+        "@libjpeg_turbo//:jpeg",
+    ],
+)
+
+cc_library(
     name = "load_library",
     textual_hdrs = ["load_library.h"],
     deps = tf_platform_helper_deps("load_library_impl"),

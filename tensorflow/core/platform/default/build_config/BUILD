@@ -221,7 +221,7 @@ cc_library(
     name = "jpeg",
     copts = tf_copts(),
     deps = [
-        "@jpeg",
+        "@libjpeg_turbo//:jpeg",
     ],
 )
 
