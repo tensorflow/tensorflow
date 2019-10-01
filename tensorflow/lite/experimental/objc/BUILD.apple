@@ -72,6 +72,7 @@ ios_unit_test(
     name = "Tests",
     size = "medium",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
+    runner = "//googlemac/iPhone/Shared/Testing/EarlGrey/Runner:IOS_12_2",
     tags = TFL_DEFAULT_TAGS + TFL_DISABLED_SANITIZER_TAGS,
     deps = [
         ":TestsLibrary",
