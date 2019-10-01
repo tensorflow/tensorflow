@@ -140,13 +140,16 @@ def linspace(start_in, stop_in, num, name=None, axis=0):
 
     shape = array_ops.shape(expanded_start)
     ndims = array_ops.shape(shape)[0]
+
+    axis = array_ops.where_v2(axis >= 0, axis, ndims + axis)
+
     # to avoid having negative values in the range or zero division
     # The result is sliced in the end so a correct result is returned for num == 1.
     div = gen_math_ops.maximum(num - 1., 1.)
     delta = (expanded_stop - expanded_start) / div
     # If num < 0, we will throw exception in the range
     # otherwise use the same div for delta
-    range_end = array_ops.where(num_int >= 0, div, -1)
+    range_end = array_ops.where_v2(num_int >= 0, div, -1)
     num_range = range(1., range_end, dtype=start.dtype)
     shape_range = range(ndims)
     ones_like_shape_range = array_ops.ones_like(shape_range)
