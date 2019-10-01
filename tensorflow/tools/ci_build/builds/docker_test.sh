@@ -109,7 +109,7 @@ if [ "${IMAGE_TYPE}" == "gpu" ]; then
   libs=$(\ls /usr/lib/x86_64-linux-gnu/libcuda.* | xargs -I{} echo '-v {}:{}')
   GPU_EXTRA_PARAMS="${devices} ${libs}"
 elif [ "${IMAGE_TYPE}" == "rocm" ]; then
-  ROCM_EXTRA_PARAMS="--device=/dev/kfd --device=/dev/dri --group-add video"
+  ROCM_EXTRA_PARAMS="--device=/dev/kfd --device=/dev/dri --cap-add=SYS_PTRACE --security-opt seccomp=unconfined --group-add video"
 else
   GPU_EXTRA_PARAMS=""
   ROCM_EXTRA_PARAMS=""
