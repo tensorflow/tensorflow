@@ -2596,8 +2596,8 @@ def matmul(a,
   """Multiplies matrix `a` by matrix `b`, producing `a` * `b`.
 
   The inputs must, following any transpositions, be tensors of rank >= 2
-  where the inner 2 dimensions specify valid matrix multiplication arguments,
-  and any further outer dimensions match.
+  where the inner 2 dimensions specify valid matrix multiplication dimensions,
+  and any further outer dimensions specify matching batch size.
 
   Both matrices must be of the same type. The supported types are:
   `float16`, `float32`, `float64`, `int32`, `complex64`, `complex128`.
@@ -2612,62 +2612,60 @@ def matmul(a,
   This optimization is only available for plain matrices (rank-2 tensors) with
   datatypes `bfloat16` or `float32`.
 
-  For example:
+  A simple 2-D tensor matrix multiplication:
+  >>> a = tf.constant([1, 2, 3, 4, 5, 6], shape=[2, 3])
+  >>> a  # 2-D tensor
+  <tf.Tensor: shape=(2, 3), dtype=int32, numpy=
+  array([[1, 2, 3],
+         [4, 5, 6]], dtype=int32)>
+  >>> b = tf.constant([7, 8, 9, 10, 11, 12], shape=[3, 2])
+  >>> b  # 2-D tensor
+  <tf.Tensor: shape=(3, 2), dtype=int32, numpy=
+  array([[ 7,  8],
+         [ 9, 10],
+         [11, 12]], dtype=int32)>
+  >>> c = tf.matmul(a, b)
+  >>> c  # `a` * `b`
+  <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
+  array([[ 58,  64],
+         [139, 154]], dtype=int32)>
 
-  ```python
-  # 2-D tensor `a`
-  # [[1, 2, 3],
-  #  [4, 5, 6]]
-  a = tf.constant([1, 2, 3, 4, 5, 6], shape=[2, 3])
+  A batch matrix multiplication with batch shape [2]
+  >>> a = tf.constant(np.arange(1, 13, dtype=np.int32), shape=[2, 2, 3])
+  >>> a  # 3-D tensor
+  <tf.Tensor: shape=(2, 2, 3), dtype=int32, numpy=
+  array([[[ 1,  2,  3],
+          [ 4,  5,  6]],
+         [[ 7,  8,  9],
+          [10, 11, 12]]], dtype=int32)>
+  >>> b = tf.constant(np.arange(13, 25, dtype=np.int32), shape=[2, 3, 2])
+  >>> b  # 3-D tensor
+  <tf.Tensor: shape=(2, 3, 2), dtype=int32, numpy=
+  array([[[13, 14],
+          [15, 16],
+          [17, 18]],
+         [[19, 20],
+          [21, 22],
+          [23, 24]]], dtype=int32)>
+  >>> c = tf.matmul(a, b)
+  >>> c  # `a` * `b`
+  <tf.Tensor: shape=(2, 2, 2), dtype=int32, numpy=
+  array([[[ 94, 100],
+          [229, 244]],
+         [[508, 532],
+          [697, 730]]], dtype=int32)>
 
-  # 2-D tensor `b`
-  # [[ 7,  8],
-  #  [ 9, 10],
-  #  [11, 12]]
-  b = tf.constant([7, 8, 9, 10, 11, 12], shape=[3, 2])
-
-  # `a` * `b`
-  # [[ 58,  64],
-  #  [139, 154]]
-  c = tf.matmul(a, b)
-
-
-  # 3-D tensor `a`
-  # [[[ 1,  2,  3],
-  #   [ 4,  5,  6]],
-  #  [[ 7,  8,  9],
-  #   [10, 11, 12]]]
-  a = tf.constant(np.arange(1, 13, dtype=np.int32),
-                  shape=[2, 2, 3])
-
-  # 3-D tensor `b`
-  # [[[13, 14],
-  #   [15, 16],
-  #   [17, 18]],
-  #  [[19, 20],
-  #   [21, 22],
-  #   [23, 24]]]
-  b = tf.constant(np.arange(13, 25, dtype=np.int32),
-                  shape=[2, 3, 2])
-
-  # `a` * `b`
-  # [[[ 94, 100],
-  #   [229, 244]],
-  #  [[508, 532],
-  #   [697, 730]]]
-  c = tf.matmul(a, b)
-
-  # Since python >= 3.5 the @ operator is supported (see PEP 465).
-  # In TensorFlow, it simply calls the `tf.matmul()` function, so the
-  # following lines are equivalent:
-  d = a @ b @ [[10.], [11.]]
-  d = tf.matmul(tf.matmul(a, b), [[10.], [11.]])
-  ```
+  Since python >= 3.5 the @ operator is supported
+  (see [PEP 465](https://www.python.org/dev/peps/pep-0465/)). In TensorFlow,
+  it simply calls the `tf.matmul()` function, so the following lines are
+  equivalent:
+  >>> d = a @ b @ [[10], [11]]
+  >>> d = tf.matmul(tf.matmul(a, b), [[10], [11]])
 
   Args:
-    a: `Tensor` of type `float16`, `float32`, `float64`, `int32`, `complex64`,
-      `complex128` and rank > 1.
-    b: `Tensor` with same type and rank as `a`.
+    a: `tf.Tensor` of type `float16`, `float32`, `float64`, `int32`,
+      `complex64`, `complex128` and rank > 1.
+    b: `tf.Tensor` with same type and rank as `a`.
     transpose_a: If `True`, `a` is transposed before multiplication.
     transpose_b: If `True`, `b` is transposed before multiplication.
     adjoint_a: If `True`, `a` is conjugated and transposed before
@@ -2679,19 +2677,19 @@ def matmul(a,
     name: Name for the operation (optional).
 
   Returns:
-    A `Tensor` of the same type as `a` and `b` where each inner-most matrix is
-    the product of the corresponding matrices in `a` and `b`, e.g. if all
+    A `tf.Tensor` of the same type as `a` and `b` where each inner-most matrix
+    is the product of the corresponding matrices in `a` and `b`, e.g. if all
     transpose or adjoint attributes are `False`:
 
-    `output`[..., i, j] = sum_k (`a`[..., i, k] * `b`[..., k, j]),
-    for all indices i, j.
+    `output[..., i, j] = sum_k (a[..., i, k] * b[..., k, j])`,
+    for all indices `i`, `j`.
 
     Note: This is matrix product, not element-wise product.
 
 
   Raises:
-    ValueError: If transpose_a and adjoint_a, or transpose_b and adjoint_b
-      are both set to True.
+    ValueError: If `transpose_a` and `adjoint_a`, or `transpose_b` and
+      `adjoint_b` are both set to `True`.
   """
   with ops.name_scope(name, "MatMul", [a, b]) as name:
     if transpose_a and adjoint_a:
