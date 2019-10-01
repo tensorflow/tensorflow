@@ -71,9 +71,9 @@ class EagerOpRewriteTest {
 };
 
 TEST(EagerOpRewriteTest, Conv2D) {
-  const string kOrigOpName = "Conv2D";
+  const string orig_op_name = "Conv2D";
   std::unique_ptr<tensorflow::EagerOperation> orig_op =
-      EagerOpRewriteTest::CreateOp(kOrigOpName);
+      EagerOpRewriteTest::CreateOp(orig_op_name);
 
   orig_op->MutableAttrs()->Set("T", DT_FLOAT);
   orig_op->MutableAttrs()->Set("padding", "VALID");
@@ -82,9 +82,9 @@ TEST(EagerOpRewriteTest, Conv2D) {
 }
 
 TEST(EagerOpRewriteTest, Conv2D_Explicit_Padding) {
-  const string kOrigOpName = "Conv2D";
+  const string orig_op_name = "Conv2D";
   std::unique_ptr<tensorflow::EagerOperation> orig_op =
-      EagerOpRewriteTest::CreateOp(kOrigOpName);
+      EagerOpRewriteTest::CreateOp(orig_op_name);
 
   orig_op->MutableAttrs()->Set("T", DT_FLOAT);
   orig_op->MutableAttrs()->Set("padding", "EXPLICIT");
@@ -93,9 +93,9 @@ TEST(EagerOpRewriteTest, Conv2D_Explicit_Padding) {
 }
 
 TEST(EagerOpRewriteTest, Conv2DBackpropInput) {
-  const string kOrigOpName = "Conv2DBackpropInput";
+  const string orig_op_name = "Conv2DBackpropInput";
   std::unique_ptr<tensorflow::EagerOperation> orig_op =
-      EagerOpRewriteTest::CreateOp(kOrigOpName);
+      EagerOpRewriteTest::CreateOp(orig_op_name);
 
   orig_op->MutableAttrs()->Set("T", DT_FLOAT);
   orig_op->MutableAttrs()->Set("padding", "VALID");
@@ -105,9 +105,9 @@ TEST(EagerOpRewriteTest, Conv2DBackpropInput) {
 }
 
 TEST(EagerOpRewriteTest, Conv2DBackpropFilter) {
-  const string kOrigOpName = "Conv2DBackpropFilter";
+  const string orig_op_name = "Conv2DBackpropFilter";
   std::unique_ptr<tensorflow::EagerOperation> orig_op =
-      EagerOpRewriteTest::CreateOp(kOrigOpName);
+      EagerOpRewriteTest::CreateOp(orig_op_name);
 
   orig_op->MutableAttrs()->Set("T", DT_FLOAT);
   orig_op->MutableAttrs()->Set("padding", "VALID");
@@ -117,9 +117,9 @@ TEST(EagerOpRewriteTest, Conv2DBackpropFilter) {
 }
 
 TEST(EagerOpRewriteTest, BatchMatMul) {
-  const string kOrigOpName = "BatchMatMul";
+  const string orig_op_name = "BatchMatMul";
   std::unique_ptr<tensorflow::EagerOperation> orig_op =
-      EagerOpRewriteTest::CreateOp(kOrigOpName);
+      EagerOpRewriteTest::CreateOp(orig_op_name);
 
   orig_op->MutableAttrs()->Set("T", DT_FLOAT);
 
@@ -127,9 +127,9 @@ TEST(EagerOpRewriteTest, BatchMatMul) {
 }
 
 TEST(EagerOpRewriteTest, MatMul) {
-  const string kOrigOpName = "MatMul";
+  const string orig_op_name = "MatMul";
   std::unique_ptr<tensorflow::EagerOperation> orig_op =
-      EagerOpRewriteTest::CreateOp(kOrigOpName);
+      EagerOpRewriteTest::CreateOp(orig_op_name);
 
   orig_op->MutableAttrs()->Set("T", DT_FLOAT);
 
