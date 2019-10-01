@@ -409,3 +409,29 @@ func @CheckNumerics(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   // CHECK-LABEL: CheckNumerics
   // CHECK:  return %arg0 : tensor<3xf32>
 }
+
+// CHECK-LABEL: @NoPadStridedSliceNonNewAxisMask
+func @NoPadStridedSliceNonNewAxisMask(%arg0: tensor<1x2x3x1xf32>) -> tensor<1x2x3x1xf32> {
+  %cst = constant dense<0> : tensor<4xi32>
+  %cst_0 = constant dense<1> : tensor<4xi32>
+  %0 = "tf.StridedSlice"(%arg0, %cst, %cst, %cst_0) {begin_mask = 15 : i64, ellipsis_mask = 0 : i64, end_mask = 15 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<1x2x3x1xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x2x3x1xf32>
+  return %0 : tensor<1x2x3x1xf32>
+
+  // CHECK: %cst = constant dense<0> : tensor<4xi32>
+  // CHECK: %cst_0 = constant dense<1> : tensor<4xi32>
+  // CHECK: %0 = "tf.StridedSlice"(%arg0, %cst, %cst, %cst_0) {begin_mask = 15 : i64, ellipsis_mask = 0 : i64, end_mask = 15 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<1x2x3x1xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x2x3x1xf32>
+}
+
+// CHECK-LABEL: @PadStridedSliceNewAxisMask
+func @PadStridedSliceNewAxisMask(%arg0: tensor<2x3xf32>) -> tensor<1x2x3x1xf32> {
+  %cst = constant dense<0> : tensor<4xi32>
+  %cst_0 = constant dense<1> : tensor<4xi32>
+  %0 = "tf.StridedSlice"(%arg0, %cst, %cst, %cst_0) {begin_mask = 6 : i64, ellipsis_mask = 0 : i64, end_mask = 6 : i64, new_axis_mask = 9 : i64, shrink_axis_mask = 0 : i64} : (tensor<2x3xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x2x3x1xf32>
+  return %0 : tensor<1x2x3x1xf32>
+
+  // CHECK: %cst = constant dense<0> : tensor<4xi32>
+  // CHECK: %cst_0 = constant dense<1> : tensor<4xi32>
+  // CHECK: %[[cst_1:.*]] = constant dense<[1, 2, 3, 1]> : tensor<4xi32>
+  // CHECK: %0 = "tf.Reshape"(%arg0, %[[cst_1]]) : (tensor<2x3xf32>, tensor<4xi32>) -> tensor<1x2x3x1xf32>
+  // CHECK: %1 = "tf.StridedSlice"(%0, %cst, %cst, %cst_0) {begin_mask = 15 : i64, ellipsis_mask = 0 : i64, end_mask = 15 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<1x2x3x1xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x2x3x1xf32>
+}

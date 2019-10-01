@@ -287,12 +287,6 @@ def : Pat<(TF_MirrorPadOp $arg0, $arg1, $cst), (TFL_MirrorPadOp $arg0, $arg1, $c
 def : Pat<(TF_SparseToDenseOp $sparse_indices, $output_shape, $sparse_values, $default_value, $validate_indices),
           (TFL_SparseToDenseOp $sparse_indices, $output_shape, $sparse_values, $default_value)>;
 
-def : Pat<
-  (TF_StridedSliceOp $input, $begin, $end, $strides, $begin_mask, $end_mask, $ellipsis_mask, $new_axis_mask, $shrink_axis_mask),
-  (TFL_StridedSliceOp $input, $begin, $end, $strides,
-    (convertIntAttrTo32Bit $begin_mask), (convertIntAttrTo32Bit $end_mask), (convertIntAttrTo32Bit $ellipsis_mask),
-    (convertIntAttrTo32Bit $new_axis_mask), (convertIntAttrTo32Bit $shrink_axis_mask))>;
-
 def : Pat<(TF_UniqueOp $arg0),(TFL_UniqueOp $arg0)>;
 
 def : Pat<(TF_FloorModOp $arg0, $arg1), (TFL_FloorModOp $arg0, $arg1)>;
