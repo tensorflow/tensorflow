@@ -1598,18 +1598,128 @@ def internal_operation_seed():
   return context()._internal_operation_seed()  # pylint: disable=protected-access
 
 
-@tf_export("executing_eagerly")
+@tf_export("executing_eagerly", v1=[])
 def executing_eagerly():
-  """Returns True if the current thread has eager execution enabled.
+  """Checks whether the current thread has eager execution enabled.
 
-  Eager execution is typically enabled via
-  `tf.compat.v1.enable_eager_execution`, but may also be enabled within the
-  context of a Python function via tf.contrib.eager.py_func.
+  Eager execution is enabled by default and this API returns `True`
+  in most of cases. However, this API might return `False` in the following use
+  cases.
+
+  *  Executing inside `tf.function`, unless under `tf.init_scope` or
+     `tf.config.experimental_run_functions_eagerly(True)` is previously called.
+  *  Executing inside a transformation function for `tf.dataset`.
+  *  `tf.compat.v1.disable_eager_execution()` is called.
+
+  General case:
+
+  >>> print(tf.executing_eagerly())
+  True
+
+  Inside `tf.function`:
+
+  >>> @tf.function
+  ... def fn():
+  ...   with tf.init_scope():
+  ...     print(tf.executing_eagerly())
+  ...   print(tf.executing_eagerly())
+  >>> fn()
+  True
+  False
+
+  Inside `tf.function` after
+
+  `tf.config.experimental_run_functions_eagerly(True)` is called:
+  >>> tf.config.experimental_run_functions_eagerly(True)
+  >>> @tf.function
+  ... def fn():
+  ...   with tf.init_scope():
+  ...     print(tf.executing_eagerly())
+  ...   print(tf.executing_eagerly())
+  >>> fn()
+  True
+  True
+  >>> tf.config.experimental_run_functions_eagerly(False)
+
+  Inside a transformation function for `tf.dataset`:
+
+  >>> def data_fn(x):
+  ...   print(tf.executing_eagerly())
+  ...   return x
+  >>> dataset = tf.data.Dataset.range(100)
+  >>> dataset = dataset.map(data_fn)
+  False
+
+  Returns:
+    `True` if the current thread has eager execution enabled.
   """
   if context_safe() is None:
     return default_execution_mode == EAGER_MODE
 
   return context().executing_eagerly()
+
+
+@tf_export(v1=["executing_eagerly"])
+def executing_eagerly_v1():
+  """Checks whether the current thread has eager execution enabled.
+
+  Eager execution is typically enabled via
+  `tf.compat.v1.enable_eager_execution`, but may also be enabled within the
+  context of a Python function via tf.contrib.eager.py_func.
+
+  When eager execution is enabled, returns `True` in most cases. However,
+  this API might return `False` in the following use cases.
+
+  *  Executing inside `tf.function`, unless under `tf.init_scope` or
+     `tf.config.experimental_run_functions_eagerly(True)` is previously called.
+  *  Executing inside a transformation function for `tf.dataset`.
+  *  `tf.compat.v1.disable_eager_execution()` is called.
+
+  >>> tf.compat.v1.enable_eager_execution()
+
+  General case:
+
+  >>> print(tf.executing_eagerly())
+  True
+
+  Inside `tf.function`:
+
+  >>> @tf.function
+  ... def fn():
+  ...   with tf.init_scope():
+  ...     print(tf.executing_eagerly())
+  ...   print(tf.executing_eagerly())
+  >>> fn()
+  True
+  False
+
+  Inside `tf.function`
+  after  `tf.config.experimental_run_functions_eagerly(True)` is called:
+
+  >>> tf.config.experimental_run_functions_eagerly(True)
+  >>> @tf.function
+  ... def fn():
+  ...   with tf.init_scope():
+  ...     print(tf.executing_eagerly())
+  ...   print(tf.executing_eagerly())
+  >>> fn()
+  True
+  True
+  >>> tf.config.experimental_run_functions_eagerly(False)
+
+  Inside a transformation function for `tf.dataset`:
+
+  >>> def data_fn(x):
+  ...   print(tf.executing_eagerly())
+  ...   return x
+  >>> dataset = tf.data.Dataset.range(100)
+  >>> dataset = dataset.map(data_fn)
+  False
+
+  Returns:
+    `True` if the current thread has eager execution enabled.
+  """
+  return executing_eagerly()
 
 
 def in_eager_mode():
