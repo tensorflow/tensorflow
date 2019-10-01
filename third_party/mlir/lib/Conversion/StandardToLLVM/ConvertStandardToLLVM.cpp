@@ -150,8 +150,9 @@ static unsigned kOffsetPosInMemRefDescriptor = 1;
 static unsigned kSizePosInMemRefDescriptor = 2;
 static unsigned kStridePosInMemRefDescriptor = 3;
 Type LLVMTypeConverter::convertMemRefType(MemRefType type) {
+  int64_t offset;
   SmallVector<int64_t, 4> strides;
-  bool strideSuccess = succeeded(type.getStridesAndOffset(strides));
+  bool strideSuccess = succeeded(type.getStridesAndOffset(strides, offset));
   assert(strideSuccess &&
          "Non-strided layout maps must have been normalized away");
   (void)strideSuccess;
@@ -568,15 +569,16 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
     if (isSupportedMemRefType(type))
       return matchSuccess();
 
-    SmallVector<int64_t, 4> stridesAndOffset;
-    auto successStrides = type.getStridesAndOffset(stridesAndOffset);
+    int64_t offset;
+    SmallVector<int64_t, 4> strides;
+    auto successStrides = type.getStridesAndOffset(strides, offset);
     if (failed(successStrides))
       return matchFailure();
 
     // Dynamic strides are ok if they can be deduced from dynamic sizes (which
     // is guaranteed when succeeded(successStrides)).
     // Dynamic offset however can never be alloc'ed.
-    if (stridesAndOffset.back() != MemRefType::kDynamicStrideOrOffset)
+    if (offset != MemRefType::kDynamicStrideOrOffset)
       return matchFailure();
 
     return matchSuccess();
@@ -648,15 +650,17 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
     allocated = rewriter.create<LLVM::BitcastOp>(op->getLoc(), elementPtrType,
                                                  ArrayRef<Value *>(allocated));
 
-    SmallVector<int64_t, 4> stridesAndOffset;
-    auto successStrides = type.getStridesAndOffset(stridesAndOffset);
+    int64_t offset;
+    SmallVector<int64_t, 4> strides;
+    auto successStrides = type.getStridesAndOffset(strides, offset);
     assert(succeeded(successStrides) && "unexpected non-strided memref");
     (void)successStrides;
+    assert(offset != MemRefType::kDynamicStrideOrOffset &&
+           "unexpected dynamic offset");
 
-    ArrayRef<int64_t> strides = ArrayRef<int64_t>(stridesAndOffset).drop_back();
     // 0-D memref corner case: they have size 1 ...
     assert((type.getRank() == 0 && strides.empty() && sizes.size() == 1) ||
-           (strides.size() == sizes.size()) && "unexpected number of stride");
+           (strides.size() == sizes.size()) && "unexpected number of strides");
 
     // Create the MemRef descriptor.
     auto structType = lowering.convertType(type);
@@ -668,14 +672,15 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
         rewriter.getIndexArrayAttr(kPtrPosInMemRefDescriptor));
     memRefDescriptor = rewriter.create<LLVM::InsertValueOp>(
         op->getLoc(), structType, memRefDescriptor,
-        createIndexConstant(rewriter, op->getLoc(), stridesAndOffset.back()),
+        createIndexConstant(rewriter, op->getLoc(), offset),
         rewriter.getIndexArrayAttr(kOffsetPosInMemRefDescriptor));
 
     if (type.getRank() == 0)
-      // No size/stride arrays in 0-D memref, use the descriptor value.
+      // No size/stride descriptor in memref, return the descriptor value.
       return rewriter.replaceOp(op, memRefDescriptor);
 
-    // Store all sizes in the descriptor.
+    // Store all sizes in the descriptor. Only dynamic sizes are passed in as
+    // operands to AllocOp.
     Value *runningStride = nullptr;
     // Iterate strides in reverse order, compute runningStride and strideValues.
     auto nStrides = strides.size();
@@ -874,29 +879,25 @@ struct MemRefCastOpLowering : public LLVMLegalizationPattern<MemRefCastOp> {
 struct DimOpLowering : public LLVMLegalizationPattern<DimOp> {
   using LLVMLegalizationPattern<DimOp>::LLVMLegalizationPattern;
 
-  PatternMatchResult match(Operation *op) const override {
-    auto dimOp = cast<DimOp>(op);
-    MemRefType type = dimOp.getOperand()->getType().cast<MemRefType>();
-    return isSupportedMemRefType(type) ? matchSuccess() : matchFailure();
-  }
-
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               ConversionPatternRewriter &rewriter) const override {
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     auto dimOp = cast<DimOp>(op);
     OperandAdaptor<DimOp> transformed(operands);
     MemRefType type = dimOp.getOperand()->getType().cast<MemRefType>();
 
     auto shape = type.getShape();
     int64_t index = dimOp.getIndex();
-    // Extract dynamic size from the memref descriptor and define static size
-    // as a constant.
+    // Extract dynamic size from the memref descriptor.
     if (ShapedType::isDynamic(shape[index]))
       rewriter.replaceOpWithNewOp<LLVM::ExtractValueOp>(
           op, getIndexType(), transformed.memrefOrTensor(),
           rewriter.getI64ArrayAttr({kSizePosInMemRefDescriptor, index}));
     else
+      // Use constant for static size.
       rewriter.replaceOp(
           op, createIndexConstant(rewriter, op->getLoc(), shape[index]));
+    return matchSuccess();
   }
 };
 
@@ -945,19 +946,18 @@ struct LoadStoreOpLowering : public LLVMLegalizationPattern<Derived> {
   Value *getStridedElementPtr(Location loc, Type elementTypePtr,
                               Value *memRefDescriptor,
                               ArrayRef<Value *> indices,
-                              ArrayRef<int64_t> stridesAndOffset,
+                              ArrayRef<int64_t> strides, int64_t offset,
                               ConversionPatternRewriter &rewriter) const {
     auto indexTy = this->getIndexType();
     Value *base = rewriter.create<LLVM::ExtractValueOp>(
         loc, elementTypePtr, memRefDescriptor,
         rewriter.getIndexArrayAttr(kPtrPosInMemRefDescriptor));
-    Value *offset =
-        stridesAndOffset.back() == MemRefType::kDynamicStrideOrOffset
+    Value *offsetValue =
+        offset == MemRefType::kDynamicStrideOrOffset
             ? rewriter.create<LLVM::ExtractValueOp>(
                   loc, indexTy, memRefDescriptor,
                   rewriter.getIndexArrayAttr(kOffsetPosInMemRefDescriptor))
-            : this->createIndexConstant(rewriter, loc, stridesAndOffset.back());
-    auto strides = stridesAndOffset.drop_back();
+            : this->createIndexConstant(rewriter, loc, offset);
     for (int i = 0, e = indices.size(); i < e; ++i) {
       Value *stride;
       if (strides[i] != MemRefType::kDynamicStrideOrOffset) {
@@ -973,9 +973,10 @@ struct LoadStoreOpLowering : public LLVMLegalizationPattern<Derived> {
       }
       Value *additionalOffset =
           rewriter.create<LLVM::MulOp>(loc, indices[i], stride);
-      offset = rewriter.create<LLVM::AddOp>(loc, offset, additionalOffset);
+      offsetValue =
+          rewriter.create<LLVM::AddOp>(loc, offsetValue, additionalOffset);
     }
-    return rewriter.create<LLVM::GEPOp>(loc, elementTypePtr, base, offset);
+    return rewriter.create<LLVM::GEPOp>(loc, elementTypePtr, base, offsetValue);
   }
 
   Value *getDataPtr(Location loc, MemRefType type, Value *memRefDesc,
@@ -983,12 +984,13 @@ struct LoadStoreOpLowering : public LLVMLegalizationPattern<Derived> {
                     ConversionPatternRewriter &rewriter,
                     llvm::Module &module) const {
     auto ptrType = getMemRefElementPtrType(type, this->lowering);
-    SmallVector<int64_t, 4> stridesAndOffset;
-    auto res = type.getStridesAndOffset(stridesAndOffset);
-    assert(succeeded(res) && "expected strided MemRef");
-    (void)res;
-    return getStridedElementPtr(loc, ptrType, memRefDesc, indices,
-                                stridesAndOffset, rewriter);
+    int64_t offset;
+    SmallVector<int64_t, 4> strides;
+    auto successStrides = type.getStridesAndOffset(strides, offset);
+    assert(succeeded(successStrides) && "unexpected non-strided memref");
+    (void)successStrides;
+    return getStridedElementPtr(loc, ptrType, memRefDesc, indices, strides,
+                                offset, rewriter);
   }
 };
 
