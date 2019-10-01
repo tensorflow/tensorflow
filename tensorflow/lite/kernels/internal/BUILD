@@ -1,6 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 
 package(
     default_visibility = [
@@ -318,7 +318,7 @@ cc_test(
     srcs = ["tensor_test.cc"],
     deps = [
         ":tensor",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -345,7 +345,7 @@ cc_test(
     srcs = ["quantization_util_test.cc"],
     deps = [
         ":quantization_util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1010,4 +1010,4 @@ genrule(
     visibility = ["//visibility:private"],
 )
 
-tflite_portable_test_suite()
+tflite_portable_test_suite_combined(combine_conditions = {"deps": ["//testing/base/public:gunit_main"]})
