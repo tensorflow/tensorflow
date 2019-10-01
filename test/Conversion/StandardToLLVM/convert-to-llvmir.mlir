@@ -60,6 +60,14 @@ func @simple_caller() {
   return
 }
 
+// Check that function call attributes persist during conversion.
+// CHECK-LABEL: @call_with_attributes
+func @call_with_attributes() {
+  // CHECK: llvm.call @simple_loop() {baz = [1, 2, 3, 4], foo = "bar"} : () -> ()
+  call @simple_loop() {foo="bar", baz=[1,2,3,4]} : () -> ()
+  return
+}
+
 // CHECK-LABEL: func @ml_caller() {
 // CHECK-NEXT:  llvm.call @simple_loop() : () -> ()
 // CHECK-NEXT:  llvm.call @more_imperfectly_nested_loops() : () -> ()
