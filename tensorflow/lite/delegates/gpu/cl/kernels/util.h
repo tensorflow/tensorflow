@@ -52,6 +52,10 @@ class TensorCodeGenerator {
   std::string GetAddress(const std::string& var_name, const std::string& x,
                          const std::string& y, const std::string& z) const;
 
+  std::string GetAddress(const std::string& var_name, const std::string& x,
+                         const std::string& y, const std::string& z,
+                         const std::string& b) const;
+
   // This function (and functions below) accept TextureAddressMode, but this
   // argument applicable only for texture types. Buffer types ignore this
   // parameter.
@@ -67,6 +71,11 @@ class TensorCodeGenerator {
   // texture type.
   std::string ReadAsFloat3D(
       const std::string& x, const std::string& y, const std::string& z,
+      TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
+
+  std::string ReadAsFloat4D(
+      const std::string& x, const std::string& y, const std::string& z,
+      const std::string& b,
       TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
 
   std::string Write3D(const std::string& var_name, const std::string& x,
@@ -96,6 +105,8 @@ class TensorCodeGenerator {
                                             const std::string& y,
                                             const std::string& z,
                                             const std::string& b) const;
+  std::string DeclareAddress(const std::string& var_name,
+                             const std::string& address) const;
 
   std::string tensor_name_;
   std::string uniform_size_name_;

@@ -176,23 +176,25 @@ std::string TensorCodeGenerator::ReadAsFloat3D(
   return ReadAsFloat(GetGlobalAddressNoDeclaration(x, y, z), address_mode);
 }
 
+std::string TensorCodeGenerator::ReadAsFloat4D(
+    const std::string& x, const std::string& y, const std::string& z,
+    const std::string& b, TextureAddressMode address_mode) const {
+  return ReadAsFloat(GetGlobalAddressNoDeclaration(x, y, z, b), address_mode);
+}
+
 std::string TensorCodeGenerator::GetAddress(const std::string& var_name,
                                             const std::string& x,
                                             const std::string& y,
                                             const std::string& z) const {
-  const std::string address = GetGlobalAddressNoDeclaration(x, y, z);
-  switch (descriptor_.storage_type) {
-    case TensorStorageType::BUFFER:
-    case TensorStorageType::IMAGE_BUFFER:
-      return absl::StrCat("int ", var_name, " = ", address, ";\n");
-    case TensorStorageType::TEXTURE_2D:
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-      return absl::StrCat("int2 ", var_name, " = ", address, ";\n");
-    case TensorStorageType::TEXTURE_ARRAY:
-      return absl::StrCat("int4 ", var_name, " = ", address, ";\n");
-    case TensorStorageType::UNKNOWN:
-      return "";
-  }
+  return DeclareAddress(var_name, GetGlobalAddressNoDeclaration(x, y, z));
+}
+
+std::string TensorCodeGenerator::GetAddress(const std::string& var_name,
+                                            const std::string& x,
+                                            const std::string& y,
+                                            const std::string& z,
+                                            const std::string& b) const {
+  return DeclareAddress(var_name, GetGlobalAddressNoDeclaration(x, y, z, b));
 }
 
 std::string TensorCodeGenerator::GetGlobalAddressNoDeclaration(
@@ -225,6 +227,22 @@ std::string TensorCodeGenerator::GetGlobalAddressNoDeclaration(
           uniform_size_name_);
     default:
       return "error";
+  }
+}
+
+std::string TensorCodeGenerator::DeclareAddress(
+    const std::string& var_name, const std::string& address) const {
+  switch (descriptor_.storage_type) {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
+      return absl::StrCat("int ", var_name, " = ", address, ";\n");
+    case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+      return absl::StrCat("int2 ", var_name, " = ", address, ";\n");
+    case TensorStorageType::TEXTURE_ARRAY:
+      return absl::StrCat("int4 ", var_name, " = ", address, ";\n");
+    case TensorStorageType::UNKNOWN:
+      return "";
   }
 }
 

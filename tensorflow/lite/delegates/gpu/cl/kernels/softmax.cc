@@ -32,44 +32,53 @@ std::string GetSoftmaxKernelCode(
   TensorCodeGenerator src_tensor("src_data", "size", op_def.src_tensors[0]);
   TensorCodeGenerator dst_tensor("dst_data", "size", op_def.dst_tensors[0]);
 
+  auto read_src = [&](const std::string& x, const std::string& y,
+                      const std::string& z) {
+    if (op_def.batch_support) {
+      return src_tensor.ReadAsFloat4D(x, y, z, "B");
+    } else {
+      return src_tensor.ReadAsFloat3D(x, y, z, TextureAddressMode::DONT_CARE);
+    }
+  };
+
   std::string code = GetCommonDefines(op_def.precision);
   code += "__kernel void main_function(\n";
   code += src_tensor.GetDeclaration(AccessType::READ);
   code += GetArgsDeclaration(linked_operations);
   code += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
-  code += "    int4 size,\n";
-  code += "    float4 mask\n";
+  code += "    int4 size,       \n";
+  if (op_def.batch_support) {
+    code += "    int BATCH_SIZE,  \n";
+  }
+  code += "    float4 mask      \n";
   code += ") {\n";
   code += "  int X = get_global_id(0);\n";
   code += "  int Y = get_global_id(1);\n";
-  code += "  if (X >= size.x || Y >= size.y) { \n";
-  code += "    return; \n";
-  code += "  } \n";
+  code += "  if (X >= size.x || Y >= size.y) return; \n";
+  if (op_def.batch_support) {
+    code += "  int B = get_global_id(2);\n";
+    code += "  if (B >= BATCH_SIZE) return;\n";
+  }
   code += "  float sum = 0.0f;\n";
   code += "  for (int d = 0; d < size.w - 1; ++d) {\n";
-  code +=
-      "    float4 t = " +
-      src_tensor.ReadAsFloat3D("X", "Y", "d", TextureAddressMode::DONT_CARE) +
-      ";\n";
+  code += "    float4 t = " + read_src("X", "Y", "d") + ";\n";
   code += "    sum += dot((float4)(1.0f), exp(t));\n";
   code += "  }\n";
   code += "  {\n";
-  code += "    float4 t = " +
-          src_tensor.ReadAsFloat3D("X", "Y", "size.w - 1",
-                                   TextureAddressMode::DONT_CARE) +
-          ";\n";
+  code += "    float4 t = " + read_src("X", "Y", "size.w - 1") + ";\n";
   code += "    sum += dot(mask, exp(t));\n";
   code += "  }\n";
   code += "  for (int d = 0; d < size.w; ++d) {\n";
-  code +=
-      "    float4 t = " +
-      src_tensor.ReadAsFloat3D("X", "Y", "d", TextureAddressMode::DONT_CARE) +
-      ";\n";
+  code += "    float4 t = " + read_src("X", "Y", "d") + ";\n";
   code += "    t = exp(t) / sum;\n";
   code += "    FLT4 result = TO_FLT4(t);\n";
   const LinkingContext context{"result", "X", "Y", "d"};
   code += PostProcess(linked_operations, context);
-  code += "    " + dst_tensor.Write3D("result", "X", "Y", "d");
+  if (op_def.batch_support) {
+    code += "    " + dst_tensor.Write4D("result", "X", "Y", "d", "B");
+  } else {
+    code += "    " + dst_tensor.Write3D("result", "X", "Y", "d");
+  }
   code += "  }\n";
   code += "}\n";
   return code;
@@ -103,6 +112,9 @@ Status Softmax::BindArguments() {
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetSizeWithDepth()));
+  if (definition_.batch_support) {
+    RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->Batch()));
+  }
   RETURN_IF_ERROR(
       kernel_.SetBytesAuto(GetMaskForLastPlane(src_[0]->Channels())));
   return OkStatus();
@@ -111,7 +123,7 @@ Status Softmax::BindArguments() {
 int3 Softmax::GetGridSize() const {
   const int grid_x = dst_[0]->Width();
   const int grid_y = dst_[0]->Height();
-  const int grid_z = 1;
+  const int grid_z = dst_[0]->Batch();
   return int3(grid_x, grid_y, grid_z);
 }
 
