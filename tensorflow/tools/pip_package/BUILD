@@ -141,7 +141,7 @@ filegroup(
         "@functools32_archive//:LICENSE",
         "@gast_archive//:PKG-INFO",
         "@gemmlowp//:LICENSE",
-        "@gif_archive//:COPYING",
+        "@gif//:COPYING",
         "@highwayhash//:LICENSE",
         "@hwloc//:COPYING",
         "@icu//:icu4c/LICENSE",

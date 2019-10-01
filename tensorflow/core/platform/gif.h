@@ -16,15 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_GIF_H_
 #define TENSORFLOW_CORE_PLATFORM_GIF_H_
 
-#include "tensorflow/core/platform/platform.h"
-
-#if defined(PLATFORM_GOOGLE) && !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/platform/google/build_config/gif.h"
-#elif defined(PLATFORM_POSIX) || defined(PLATFORM_WINDOWS) || \
-    defined(PLATFORM_POSIX_ANDROID) || defined(IS_MOBILE_PLATFORM)
-#include <gif_lib.h>
-#else
-#error Define the appropriate PLATFORM_<foo> macro for this platform
-#endif
+#include "gif_lib.h"  // TF:gif
 
 #endif  // TENSORFLOW_CORE_PLATFORM_GIF_H_

@@ -219,6 +219,14 @@ cc_library(
 )
 
 cc_library(
+    name = "gif",
+    hdrs = ["gif.h"],
+    deps = [
+        "@gif",
+    ],
+)
+
+cc_library(
     name = "grpc_services",
     hdrs = ["grpc_services.h"],
     deps = [

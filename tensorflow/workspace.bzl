@@ -285,7 +285,7 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     tf_http_archive(
-        name = "gif_archive",
+        name = "gif",
         build_file = clean_dep("//third_party:gif.BUILD"),
         patch_file = clean_dep("//third_party:gif_fix_strtok_r.patch"),
         sha256 = "31da5562f44c5f15d63340a09a4fd62b48c45620cd302f77a6d9acf0077879bd",

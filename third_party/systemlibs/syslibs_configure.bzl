@@ -23,7 +23,7 @@ VALID_LIBS = [
     "flatbuffers",
     "functools32_archive",
     "gast_archive",
-    "gif_archive",
+    "gif",
     "grpc",
     "hwloc",
     "icu",
