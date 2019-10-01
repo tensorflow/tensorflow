@@ -219,19 +219,19 @@ def SameOperandElementTypeOp : TEST_Op<"same_operand_type",
 
 def SameOperandAndResultElementTypeOp : TEST_Op<"same_operand_and_result_type",
     [SameOperandsAndResultElementType]> {
-  let arguments = (ins AnyVectorOrTensor:$x, AnyVectorOrTensor:$y);
-  let results = (outs AnyVectorOrTensor:$res);
+  let arguments = (ins Variadic<AnyVectorOrTensor>:$args);
+  let results = (outs Variadic<AnyVectorOrTensor>:$res);
 }
 
 def SameOperandShapeOp : TEST_Op<"same_operand_shape", [SameOperandsShape]> {
-  let arguments = (ins AnyVectorOrTensor:$x, AnyVectorOrTensor:$y);
+  let arguments = (ins Variadic<AnyVectorOrTensor>:$args);
   let results = (outs AnyVectorOrTensor:$res);
 }
 
 def SameOperandAndResultShapeOp : TEST_Op<"same_operand_and_result_shape",
     [SameOperandsAndResultShape]> {
-  let arguments = (ins AnyVectorOrTensor:$x, AnyVectorOrTensor:$y);
-  let results = (outs AnyVectorOrTensor:$res);
+  let arguments = (ins Variadic<AnyVectorOrTensor>:$args);
+  let results = (outs Variadic<AnyVectorOrTensor>:$res);
 }
 
 def ArgAndResHaveFixedElementTypesOp :

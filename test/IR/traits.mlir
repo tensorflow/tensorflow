@@ -45,6 +45,20 @@ func @failedSameOperandAndResultElementType(%t10x10 : tensor<10x10xf32>, %t1: te
 
 // -----
 
+func @failedSameOperandAndResultElementType() {
+  // expected-error@+1 {{expected 1 or more operands}}
+  %0 = "test.same_operand_and_result_type"() : () -> tensor<1xf32>
+}
+
+// -----
+
+func @failedSameOperandAndResultElementType(%t1: tensor<1xf32>) {
+  // expected-error@+1 {{expected 1 or more results}}
+  "test.same_operand_and_result_type"(%t1) : (tensor<1xf32>) -> ()
+}
+
+// -----
+
 // CHECK: succeededSameOperandShape
 func @succeededSameOperandShape(%t10x10 : tensor<10x10xf32>, %t1: tensor<1xf32>, %tr: tensor<*xf32>) {
   %0 = "test.same_operand_shape"(%t1, %t1) : (tensor<1xf32>, tensor<1xf32>) -> (tensor<10x10xf32>)
@@ -62,6 +76,13 @@ func @failedSameOperandShape(%t10x10 : tensor<10x10xf32>, %t1: tensor<1xf32>) {
 
 // -----
 
+func @failedSameOperandShape() {
+  // expected-error@+1 {{expected 1 or more operands}}
+  %0 = "test.same_operand_shape"() : () -> (tensor<1xf32>)
+}
+
+// -----
+
 // CHECK: succeededSameOperandAndResultShape
 func @succeededSameOperandAndResultShape(%t10x10 : tensor<10x10xf32>, %t1: tensor<1xf32>, %tr: tensor<*xf32>) {
   %0 = "test.same_operand_and_result_shape"(%t1, %t1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
@@ -75,6 +96,20 @@ func @succeededSameOperandAndResultShape(%t10x10 : tensor<10x10xf32>, %t1: tenso
 func @failedSameOperandAndResultShape(%t10x10 : tensor<10x10xf32>, %t1: tensor<1xf32>) {
   // expected-error@+1 {{requires the same shape for all operands and results}}
   %0 = "test.same_operand_and_result_shape"(%t1, %t10x10) : (tensor<1xf32>, tensor<10x10xf32>) -> tensor<10x10xf32>
+}
+
+// -----
+
+func @failedSameOperandAndResultShape() {
+  // expected-error@+1 {{expected 1 or more operands}}
+  %0 = "test.same_operand_and_result_shape"() : () -> (tensor<1xf32>)
+}
+
+// -----
+
+func @failedSameOperandAndResultShape(%t1: tensor<1xf32>) {
+  // expected-error@+1 {{expected 1 or more results}}
+  "test.same_operand_and_result_shape"(%t1) : (tensor<1xf32>) -> ()
 }
 
 // -----
