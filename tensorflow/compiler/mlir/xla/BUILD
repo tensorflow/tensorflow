@@ -116,6 +116,21 @@ cc_library(
 )
 
 cc_library(
+    name = "lhlo_legalize_to_linalg",
+    srcs = ["transforms/lhlo_legalize_to_linalg.cc"],
+    deps = [
+        ":lhlo",
+        "@com_google_absl//absl/memory",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Linalg",
+        "@local_config_mlir//:Pass",
+        "@local_config_mlir//:StandardOps",
+        "@local_config_mlir//:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "hlo_legalize_to_lhlo",
     srcs = ["transforms/hlo_legalize_to_lhlo.cc"],
     deps = [
