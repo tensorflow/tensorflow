@@ -1184,13 +1184,10 @@ floormod = gen_math_ops.floor_mod
 
 def _add_dispatch(x, y, name=None):
   """Dispatches to add for strings and add_v2 for all other types."""
-  if fwd_compat.forward_compatible(2019, 6, 25):
-    if x.dtype == dtypes.string:
-      return gen_math_ops.add(x, y, name=name)
-    else:
-      return gen_math_ops.add_v2(x, y, name=name)
-  else:
+  if x.dtype == dtypes.string:
     return gen_math_ops.add(x, y, name=name)
+  else:
+    return gen_math_ops.add_v2(x, y, name=name)
 
 
 def _mul_dispatch(x, y, name=None):
@@ -2710,16 +2707,9 @@ def matmul(a,
     a_shape = a._shape_tuple()  # pylint: disable=protected-access
     b_shape = b._shape_tuple()  # pylint: disable=protected-access
 
-    if fwd_compat.forward_compatible(2019, 4, 25):
-      output_may_have_non_empty_batch_shape = (
-          (a_shape is None or len(a_shape) > 2) or
-          (b_shape is None or len(b_shape) > 2))
-      batch_mat_mul_fn = gen_math_ops.batch_mat_mul_v2
-    else:
-      output_may_have_non_empty_batch_shape = (
-          (a_shape is None or len(a_shape) > 2) and
-          (b_shape is None or len(b_shape) > 2))
-      batch_mat_mul_fn = gen_math_ops.batch_mat_mul
+    output_may_have_non_empty_batch_shape = (
+        (a_shape is None or len(a_shape) > 2) or
+        (b_shape is None or len(b_shape) > 2))
 
     if (not a_is_sparse and
         not b_is_sparse) and output_may_have_non_empty_batch_shape:
@@ -2731,7 +2721,8 @@ def matmul(a,
       if transpose_b:
         b = conj(b)
         adjoint_b = True
-      return batch_mat_mul_fn(a, b, adj_x=adjoint_a, adj_y=adjoint_b, name=name)
+      return gen_math_ops.batch_mat_mul_v2(
+          a, b, adj_x=adjoint_a, adj_y=adjoint_b, name=name)
 
     # Neither matmul nor sparse_matmul support adjoint, so we conjugate
     # the matrix and use transpose instead. Conj() is a noop for real
