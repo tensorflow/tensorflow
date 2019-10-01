@@ -557,7 +557,7 @@ def SPV_C_SubgroupBallotKHR                         : I32EnumAttrCase<"SubgroupB
 def SPV_C_DrawParameters                            : I32EnumAttrCase<"DrawParameters", 4427>;
 def SPV_C_SubgroupVoteKHR                           : I32EnumAttrCase<"SubgroupVoteKHR", 4431>;
 def SPV_C_StorageBuffer16BitAccess                  : I32EnumAttrCase<"StorageBuffer16BitAccess", 4433>;
-def SPV_C_UniformAndStorageBuffer16BitAccess        : I32EnumAttrCase<"UniformAndStorageBuffer16BitAccess", 4434>;
+def SPV_C_StorageUniform16                          : I32EnumAttrCase<"StorageUniform16", 4434>;
 def SPV_C_StoragePushConstant16                     : I32EnumAttrCase<"StoragePushConstant16", 4435>;
 def SPV_C_StorageInputOutput16                      : I32EnumAttrCase<"StorageInputOutput16", 4436>;
 def SPV_C_DeviceGroup                               : I32EnumAttrCase<"DeviceGroup", 4437>;
@@ -652,10 +652,9 @@ def SPV_CapabilityAttr :
       SPV_C_GroupNonUniformShuffle, SPV_C_GroupNonUniformShuffleRelative,
       SPV_C_GroupNonUniformClustered, SPV_C_GroupNonUniformQuad, SPV_C_ShaderLayer,
       SPV_C_ShaderViewportIndex, SPV_C_SubgroupBallotKHR, SPV_C_DrawParameters,
-      SPV_C_SubgroupVoteKHR, SPV_C_StorageBuffer16BitAccess,
-      SPV_C_UniformAndStorageBuffer16BitAccess, SPV_C_StoragePushConstant16,
-      SPV_C_StorageInputOutput16, SPV_C_DeviceGroup, SPV_C_MultiView,
-      SPV_C_VariablePointersStorageBuffer, SPV_C_VariablePointers,
+      SPV_C_SubgroupVoteKHR, SPV_C_StorageBuffer16BitAccess, SPV_C_StorageUniform16,
+      SPV_C_StoragePushConstant16, SPV_C_StorageInputOutput16, SPV_C_DeviceGroup,
+      SPV_C_MultiView, SPV_C_VariablePointersStorageBuffer, SPV_C_VariablePointers,
       SPV_C_AtomicStorageOps, SPV_C_SampleMaskPostDepthCoverage,
       SPV_C_StorageBuffer8BitAccess, SPV_C_UniformAndStorageBuffer8BitAccess,
       SPV_C_StoragePushConstant8, SPV_C_DenormPreserve, SPV_C_DenormFlushToZero,

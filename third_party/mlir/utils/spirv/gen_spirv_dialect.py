@@ -26,6 +26,7 @@
 # The 'operand_kinds' dict of spirv.core.grammar.json contains all supported
 # SPIR-V enum classes.
 
+import itertools
 import re
 import requests
 import textwrap
@@ -109,26 +110,36 @@ def split_list_into_sublists(items, offset):
   return chuncks
 
 
-def uniquify(lst, equality_fn):
-  """Returns a list after pruning duplicate elements.
+def uniquify_enum_cases(lst):
+  """Prunes duplicate enum cases from the list.
 
   Arguments:
-   - lst: List whose elements are to be uniqued.
-   - equality_fn: Function used to compare equality between elements of the
-     list.
+   - lst: List whose elements are to be uniqued. Assumes each element is a
+     (symbol, value) pair and elements already sorted according to value.
 
   Returns:
-   - A list with all duplicated removed. The order of elements is same as the
-     original list, with only the first occurence of duplicates retained.
+   - A list with all duplicates removed. The elements are sorted according to
+     value and, for each value, uniqued according to symbol.
+     original list,
   """
-  keys = set()
-  unique_lst = []
-  for elem in lst:
-    key = equality_fn(elem)
-    if key not in keys:
-      unique_lst.append(elem)
-      keys.add(key)
-  return unique_lst
+  cases = lst
+  uniqued_cases = []
+
+  # First sort according to the value
+  cases.sort(key=lambda x: x[1])
+
+  # Then group them according to the value
+  for _, groups in itertools.groupby(cases, key=lambda x: x[1]):
+    # For each value, sort according to the enumerant symbol.
+    sorted_group = sorted(groups, key=lambda x: x[0])
+    # Keep the "smallest" case, which is typically the symbol without extension
+    # suffix. But we have special cases that we want to fix.
+    case = sorted_group[0]
+    if case[0] == 'HlslSemanticGOOGLE':
+      case = sorted_group[1]
+    uniqued_cases.append(case)
+
+  return uniqued_cases
 
 
 def gen_operand_kind_enum_attr(operand_kind):
@@ -147,7 +158,7 @@ def gen_operand_kind_enum_attr(operand_kind):
   kind_acronym = ''.join([c for c in kind_name if c >= 'A' and c <= 'Z'])
   kind_cases = [(case['enumerant'], case['value'])
                 for case in operand_kind['enumerants']]
-  kind_cases = uniquify(kind_cases, lambda x: x[1])
+  kind_cases = uniquify_enum_cases(kind_cases)
   max_len = max([len(symbol) for (symbol, _) in kind_cases])
 
   # Generate the definition for each enum case
