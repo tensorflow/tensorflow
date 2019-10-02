@@ -72,7 +72,6 @@ ios_unit_test(
     name = "common_test",
     testonly = 1,
     minimum_os_version = "10.0",
-    runner = "//googlemac/iPhone/Shared/Testing/EarlGrey/Runner:IOS_12_2",
     tags = [
         "notap",
         "tflite_not_portable_android",
@@ -109,7 +108,6 @@ ios_unit_test(
     name = "compiled_model_test",
     testonly = 1,
     minimum_os_version = "10.0",
-    runner = "//googlemac/iPhone/Shared/Testing/EarlGrey/Runner:IOS_12_2",
     tags = [
         "notap",
         "tflite_not_portable_android",
@@ -178,7 +176,6 @@ ios_unit_test(
     name = "environment_test",
     testonly = 1,
     minimum_os_version = "10.0",
-    runner = "//googlemac/iPhone/Shared/Testing/EarlGrey/Runner:IOS_12_2",
     tags = [
         "notap",
         "tflite_not_portable_android",
@@ -220,7 +217,6 @@ ios_unit_test(
     name = "inference_context_test",
     testonly = 1,
     minimum_os_version = "10.0",
-    runner = "//googlemac/iPhone/Shared/Testing/EarlGrey/Runner:IOS_12_2",
     tags = [
         "notap",
         "tflite_not_portable_android",
