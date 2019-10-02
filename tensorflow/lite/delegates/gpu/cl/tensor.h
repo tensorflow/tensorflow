@@ -95,8 +95,6 @@ class Tensor {
     switch (descriptor_.storage_type) {
       case TensorStorageType::BUFFER:
       case TensorStorageType::IMAGE_BUFFER:
-        return (((b * Depth() + d) * shape_.h + y) * shape_.w + x) * 4 +
-               sub_d;  // BDHWC4
       case TensorStorageType::TEXTURE_ARRAY:
         return (((d * shape_.h + y) * shape_.w + x) * shape_.b + b) * 4 +
                sub_d;  // DHWBC4

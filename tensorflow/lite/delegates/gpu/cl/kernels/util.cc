@@ -234,9 +234,20 @@ std::string TensorCodeGenerator::GetGlobalAddressNoDeclaration(
   switch (descriptor_.storage_type) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
-      return absl::Substitute("(((($3) * $4 + $2) * $5 + ($1)) * $6 + ($0))", x,
-                              y, z, b, sizes_.depth, sizes_.height,
-                              sizes_.width);
+      return absl::Substitute("(((($3) * $4 + $2) * $5 + ($1)) * $6 + ($0))", b,
+                              x, y, z, sizes_.height, sizes_.width,
+                              sizes_.batch_size);
+    case TensorStorageType::TEXTURE_2D:
+      return absl::Substitute("(int2)(($0) * ($4) + ($1), ($2) * $5 + ($3))", x,
+                              b, y, z, sizes_.batch_size, sizes_.depth);
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+      return absl::Substitute("(int2)(($0) * ($3) + ($1), ($2))", x, b, y,
+                              sizes_.batch_size);
+    case TensorStorageType::TEXTURE_ARRAY:
+      return absl::Substitute("(int4)(($0) * ($4) + ($1), ($2), ($3), 0)", x, b,
+                              y, z, sizes_.batch_size);
+    case TensorStorageType::UNKNOWN:
+      return "error";
     default:
       return "error";
   }
