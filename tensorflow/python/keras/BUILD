@@ -1022,12 +1022,14 @@ tf_py_test(
     size = "medium",
     srcs = ["layers/recurrent_test.py"],
     additional_deps = [
-        "no_cuda",
-        "no_rocm",
         ":keras",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+        "no_cuda",
+        "no_rocm",
     ],
     shard_count = 10,
 )
