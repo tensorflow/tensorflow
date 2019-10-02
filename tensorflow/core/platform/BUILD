@@ -178,9 +178,8 @@ cc_library(
     name = "dynamic_annotations",
     hdrs = ["dynamic_annotations.h"],
     deps = [
-        ":dynamic_annotations_impl",
         ":platform",
-    ],
+    ] + tf_mobile_aware_deps("dynamic_annotations_impl"),
 )
 
 cc_library(
@@ -219,6 +218,14 @@ cc_library(
 )
 
 cc_library(
+    name = "gif",
+    hdrs = ["gif.h"],
+    deps = [
+        "@gif",
+    ],
+)
+
+cc_library(
     name = "grpc_services",
     hdrs = ["grpc_services.h"],
     deps = [
@@ -243,9 +250,31 @@ cc_library(
 )
 
 cc_library(
+    name = "jpeg",
+    hdrs = ["jpeg.h"],
+    deps = [
+        "@libjpeg_turbo//:jpeg",
+    ],
+)
+
+cc_library(
     name = "load_library",
     textual_hdrs = ["load_library.h"],
     deps = tf_platform_helper_deps("load_library_impl"),
+)
+
+cc_library(
+    name = "logger",
+    srcs = ["logger.cc"],
+    hdrs = ["logger.h"],
+    deps = [
+        ":env",
+        ":logging",
+        ":protobuf",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_protobuf//:protobuf",
+    ],
 )
 
 cc_library(
@@ -346,6 +375,15 @@ cc_library(
         "platform_strings_computed.h",
     ],
     hdrs = ["platform_strings.h"],
+)
+
+cc_library(
+    name = "png",
+    hdrs = ["png.h"],
+    deps = [
+        ":platform",
+        "@png",
+    ],
 )
 
 cc_library(

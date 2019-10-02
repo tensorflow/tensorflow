@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
@@ -24,7 +25,6 @@ limitations under the License.
 
 namespace xla {
 namespace mlir_gpu {
-
 namespace {
 
 using ::mlir::ArrayRef;
@@ -34,6 +34,7 @@ using ::mlir::Identifier;
 using ::mlir::Location;
 using ::mlir::NamedAttribute;
 using ::mlir::OpBuilder;
+using ::mlir::ShapedType;
 using ::mlir::Type;
 using ::mlir::Value;
 
@@ -125,11 +126,66 @@ Status HloDialectEmitter::HandleParameter(HloInstruction* param) {
   return Status::OK();
 }
 
+namespace {
+
+template <typename CppType>
+::mlir::DenseElementsAttr CreateDenseAttrFromLiteral(const ShapedType& type,
+                                                     const Literal& literal) {
+  auto data_span = literal.data<CppType>();
+  return ::mlir::DenseElementsAttr::get(
+      type, llvm::makeArrayRef(data_span.data(), data_span.size()));
+}
+
+}  // namespace
+
+Status HloDialectEmitter::HandleConstant(HloInstruction* constant) {
+  TF_ASSIGN_OR_RETURN(auto type,
+                      ConvertTensorType(constant->shape(), builder_));
+  const auto& literal = constant->literal();
+  auto element_type = constant->shape().element_type();
+
+  mlir::DenseElementsAttr value;
+  switch (element_type) {
+    case PrimitiveType::PRED:
+      value = CreateDenseAttrFromLiteral<bool>(type, literal);
+      break;
+    case PrimitiveType::F16:
+      value = CreateDenseAttrFromLiteral<float>(type, literal);
+      break;
+    case PrimitiveType::F32:
+      value = CreateDenseAttrFromLiteral<float>(type, literal);
+      break;
+    case PrimitiveType::F64:
+      value = CreateDenseAttrFromLiteral<double>(type, literal);
+      break;
+    case PrimitiveType::S8:
+      value = CreateDenseAttrFromLiteral<int8>(type, literal);
+      break;
+    case PrimitiveType::S16:
+      value = CreateDenseAttrFromLiteral<int16>(type, literal);
+      break;
+    case PrimitiveType::S32:
+      value = CreateDenseAttrFromLiteral<int32>(type, literal);
+      break;
+    case PrimitiveType::S64:
+      value = CreateDenseAttrFromLiteral<int64>(type, literal);
+      break;
+    default:
+      return tensorflow::errors::Internal(
+          absl::StrCat("Unsupported type: ", PrimitiveType_Name(element_type)));
+  }
+
+  auto const_value =
+      builder_.create<hlo::ConstOp>(builder_.getUnknownLoc(), type, value);
+  instruction_to_values_[constant] = const_value;
+  return Status::OK();
+}
+
 Status HloDialectEmitter::FinishVisit(HloInstruction* root) {
-  auto resultValue = instruction_to_values_[root];
-  auto resultMemref = arguments_.back();
-  builder_.create<::mlir::TensorStoreOp>(builder_.getUnknownLoc(), resultValue,
-                                         resultMemref);
+  auto result_value = instruction_to_values_[root];
+  auto result_memref = arguments_.back();
+  builder_.create<::mlir::TensorStoreOp>(builder_.getUnknownLoc(), result_value,
+                                         result_memref);
   return Status::OK();
 }
 

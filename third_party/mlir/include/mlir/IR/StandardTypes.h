@@ -375,23 +375,23 @@ public:
   ///      where K and ki's are constants or symbols.
   ///
   /// A stride specification is a list of integer values that are either static
-  /// or dynamic (encoded with kDynamicStride). Strides encode the distance in
-  /// the number of elements between successive entries along a particular
-  /// dimension.
-  /// For example, `memref<42x16xf32, (64 * d0 + d1)>` specifies a view into a
-  /// non-contiguous memory region of `42` by `16` `f32` elements in which the
-  /// distance between two consecutive elements along the outer dimension is `1`
-  /// and the distance between two consecutive elements along the inner
-  /// dimension is `64`.
+  /// or dynamic (encoded with kDynamicStrideOrOffset). Strides encode the
+  /// distance in the number of elements between successive entries along a
+  /// particular dimension. For example, `memref<42x16xf32, (64 * d0 + d1)>`
+  /// specifies a view into a non-contiguous memory region of `42` by `16` `f32`
+  /// elements in which the distance between two consecutive elements along the
+  /// outer dimension is `1` and the distance between two consecutive elements
+  /// along the inner dimension is `64`.
   ///
   /// If a simple strided form cannot be extracted from the composition of the
   /// layout map, returns llvm::None.
   ///
   /// The convention is that the strides for dimensions d0, .. dn appear in
-  /// order followed by the constant offset, to make indexing intuitive into the
-  /// result.
-  static constexpr int64_t kDynamicStride = std::numeric_limits<int64_t>::min();
-  LogicalResult getStridesAndOffset(SmallVectorImpl<int64_t> &strides) const;
+  /// order to make indexing intuitive into the result.
+  static constexpr int64_t kDynamicStrideOrOffset =
+      std::numeric_limits<int64_t>::min();
+  LogicalResult getStridesAndOffset(SmallVectorImpl<int64_t> &strides,
+                                    int64_t &offset) const;
 
   static bool kindof(unsigned kind) { return kind == StandardTypes::MemRef; }
 
@@ -491,6 +491,29 @@ public:
 
   static bool kindof(unsigned kind) { return kind == StandardTypes::None; }
 };
+
+/// Given a list of strides (in which MemRefType::kDynamicStrideOrOffset
+/// represents a dynamic value), return the single result AffineMap which
+/// represents the linearized strided layout map. Dimensions correspond to the
+/// offset followed by the strides in order. Symbols are inserted for each
+/// dynamic dimension in order. A stride cannot take value `0`.
+///
+/// Examples:
+/// =========
+///
+///   1. For offset: 0 strides: ?, ?, 1 return
+///         (i, j, k)[M, N]->(M * i + N * j + k)
+///
+///   2. For offset: 3 strides: 32, ?, 16 return
+///         (i, j, k)[M]->(3 + 32 * i + M * j + 16 * k)
+///
+///   3. For offset: ? strides: ?, ?, ? return
+///         (i, j, k)[off, M, N, P]->(off + M * i + N * j + P * k)
+AffineMap makeStridedLinearLayoutMap(ArrayRef<int64_t> strides, int64_t offset,
+                                     MLIRContext *context);
+
+bool isStrided(MemRefType t);
+
 } // end namespace mlir
 
 #endif // MLIR_IR_STANDARDTYPES_H

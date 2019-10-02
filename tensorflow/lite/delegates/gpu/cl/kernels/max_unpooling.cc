@@ -62,16 +62,15 @@ std::string GetMaxUnoolingKernelCode(
     code += "  FLT4 src = (FLT4)(0.0f);\n";
     code += "  int4 ind = (int4)(0);\n";
     code += "  if (!outside) {\n";
-    code +=
-        "    src = " + src.Read3D("src_adr", TextureAddressMode::DONT_CARE) +
-        ";\n";
+    code += "    src = " + src.Read("src_adr", TextureAddressMode::DONT_CARE) +
+            ";\n";
     code += "    ind = convert_int4(" +
-            src_ind.Read3D("src_adr", TextureAddressMode::DONT_CARE) + ");\n";
+            src_ind.Read("src_adr", TextureAddressMode::DONT_CARE) + ");\n";
     code += "  }\n";
   } else {
-    code += "  FLT4 src = " + src.Read3D("src_adr", address_mode) + ";\n";
+    code += "  FLT4 src = " + src.Read("src_adr", address_mode) + ";\n";
     code += "  int4 ind = convert_int4(" +
-            src_ind.Read3D("src_adr", address_mode) + ");\n";
+            src_ind.Read("src_adr", address_mode) + ");\n";
   }
   code += "  int t_x = X - (src_x * stride.x - padding.x);\n";
   code += "  int t_y = Y - (src_y * stride.y - padding.y);\n";

@@ -1,6 +1,6 @@
-path: "tensorflow.mixed_precision.experimental.LossScalingGradientTape"
+path: "tensorflow.mixed_precision.experimental.LossScaleGradientTape"
 tf_class {
-  is_instance: "<class \'tensorflow.python.training.experimental.loss_scaling_gradient_tape.LossScalingGradientTape\'>"
+  is_instance: "<class \'tensorflow.python.training.experimental.loss_scaling_gradient_tape.LossScaleGradientTape\'>"
   is_instance: "<class \'tensorflow.python.eager.backprop.GradientTape\'>"
   is_instance: "<type \'object\'>"
   member_method {

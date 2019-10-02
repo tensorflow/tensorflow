@@ -215,6 +215,8 @@ def HLO_ReduceOp: HLO_Op<"reduce", [
 
   let results = (outs Variadic<HLO_TensorOrTuple>);
 
+  let hasFolder = 1;
+
   // TODO(hinsu): Verify that the attached body arguments and results are
   // compatible with reduce op's operands.
   let regions = (region SizedRegion<1>:$body);

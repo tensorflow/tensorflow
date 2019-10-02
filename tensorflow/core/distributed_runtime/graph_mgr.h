@@ -108,7 +108,7 @@ class GraphMgr {
   typedef GraphMgr ME;
 
   struct ExecutionUnit {
-    Graph* graph = nullptr;                 // not owned.
+    std::unique_ptr<Graph> graph = nullptr;
     Device* device = nullptr;               // not owned.
     Executor* root = nullptr;               // not owned.
     FunctionLibraryRuntime* lib = nullptr;  // not owned.

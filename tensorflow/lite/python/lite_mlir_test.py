@@ -429,7 +429,6 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase):
 
   @test_util.run_v2_only
   def testKerasLSTM(self):
-    self.skipTest('b/138657502')
     input_data = constant_op.constant(
         np.array(np.random.random_sample((10, 10, 10)), dtype=np.float32))
 
@@ -447,7 +446,9 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase):
 
     # Check values from converted model.
     expected_value = concrete_func(input_data)
-    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+    # TODO(haoliang): Remove this `reshape` op since it's not necessary.
+    actual_value = np.reshape(
+        self._evaluateTFLiteModel(tflite_model, [input_data]), (10, 10))
     for expected, actual in zip(expected_value, actual_value):
       np.testing.assert_almost_equal(expected, actual)
 

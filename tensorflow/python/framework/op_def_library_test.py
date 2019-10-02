@@ -1048,11 +1048,33 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         attr { key: 'M' value { i: 0 } }
         """, op.node_def)
 
-      with self.assertRaises(TypeError) as cm:
-        op_def_library.apply_op("InPolymorphicTwice", a=[], b=[3, 4, 5])
-      self.assertEqual(str(cm.exception),
-                       "Don't know how to infer type variable from empty input "
-                       "list passed to input 'a' of 'InPolymorphicTwice' Op.")
+      op = op_def_library.apply_op(
+          "InPolymorphicTwice", a=[], b=[3, 4], name="p")
+      self.assertProtoEquals("""
+        name: 'p' op: 'InPolymorphicTwice' input: 'p/b_0' input: 'p/b_1'
+        attr { key: 'T' value { type: DT_INT32 } }
+        attr { key: 'N' value { i: 0 } }
+        attr { key: 'M' value { i: 2 } }
+        """, op.node_def)
+
+      op = op_def_library.apply_op(
+          "InPolymorphicTwice", a=[], b=[3.0, 4.0], name="q")
+      self.assertProtoEquals("""
+        name: 'q' op: 'InPolymorphicTwice' input: 'q/b_0' input: 'q/b_1'
+        attr { key: 'T' value { type: DT_FLOAT } }
+        attr { key: 'N' value { i: 0 } }
+        attr { key: 'M' value { i: 2 } }
+        """, op.node_def)
+
+      # Empty input lists: assume defaut type for T.
+      op = op_def_library.apply_op(
+          "InPolymorphicTwice", a=[], b=[], name="r")
+      self.assertProtoEquals("""
+        name: 'r' op: 'InPolymorphicTwice'
+        attr { key: 'T' value { type: DT_INT32 } }
+        attr { key: 'N' value { i: 0 } }
+        attr { key: 'M' value { i: 0 } }
+        """, op.node_def)
 
       with self.assertRaises(TypeError) as cm:
         op_def_library.apply_op(

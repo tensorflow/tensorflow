@@ -109,6 +109,7 @@ struct NNAPIOpMappingArgs {
   std::vector<int>* model_state_outputs;
   std::vector<int>* model_state_tfl_inputs;
   std::vector<std::tuple<int, int>>* feedback_loops;
+  int* nnapi_errno;
 };
 
 // RAII NN API Model Destructor for use with std::unique_ptr
@@ -199,11 +200,20 @@ class NNAPIDelegateKernel {
                        std::vector<string>* map_failures = nullptr);
 
   // Initialize the kernel (a NN model).
-  TfLiteStatus Init(TfLiteContext* context, const TfLiteDelegateParams* params);
+  // Any NNAPI Related error causing this method to fail will have the
+  // associated error number stored in nnapi_errno
+  TfLiteStatus Init(TfLiteContext* context, const TfLiteDelegateParams* params,
+                    int* nnapi_errno);
 
-  TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node);
+  // Any NNAPI Related error causing this method to fail will have the
+  // associated error number stored in nnapi_errno
+  TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node,
+                       int* nnapi_errno);
 
-  TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node);
+  // Any NNAPI Related error causing this method to fail will have the
+  // associated error number stored in nnapi_errno
+  TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node,
+                      int* nnapi_errno);
 
  private:
   // Access to NNApi.
@@ -237,13 +247,15 @@ class NNAPIDelegateKernel {
   void AddDequantizeOperatorsWhereNeeded(const TfLiteContext* context,
                                          int builtin_code,
                                          const TfLiteNode* node,
-                                         NNAPIOpBuilder* builder);
+                                         NNAPIOpBuilder* builder,
+                                         int* nnapi_errno);
 
-  TfLiteStatus AddOpsAndTensors(TfLiteContext* context);
+  TfLiteStatus AddOpsAndTensors(TfLiteContext* context, int* nnapi_errno);
 
   TfLiteStatus BuildGraph(TfLiteContext* context,
                           const TfLiteIntArray* input_tensors,
-                          const TfLiteIntArray* output_tensors);
+                          const TfLiteIntArray* output_tensors,
+                          int* nnapi_errno);
 };
 
 }  // namespace nnapi

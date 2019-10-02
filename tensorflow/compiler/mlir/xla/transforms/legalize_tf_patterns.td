@@ -200,6 +200,10 @@ foreach Mapping = [
  def : Pat<(Mapping[0] HLO_Tensor:$input),
            (Mapping[1] $input)>;
 }
+// TODO(bixia): Lower Cast with a Complex type source operand or with
+// Truncate=True for floating point value conversions.
+def : Pat<(TF_CastOp HLO_Tensor:$arg, ConstBoolAttrFalse),
+          (HLO_ConvertOp $arg)>;
 
 def : Pat<(TF_TransposeOp:$res AnyStaticShapeTensor:$arg,
            (TF_ConstOp I64ElementsAttr:$permutation)),

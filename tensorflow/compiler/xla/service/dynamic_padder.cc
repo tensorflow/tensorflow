@@ -12,8 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/compiler/xla/service/dynamic_padder.h"
-
 #include <algorithm>
 #include <vector>
 
@@ -23,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
+#include "tensorflow/compiler/xla/service/dynamic_padder.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -124,7 +123,6 @@ bool ShouldSkipPadOnOperand(const HloInstruction* inst, int64 operand_num,
   }
   return false;
 }
-
 }  // namespace
 
 StatusOr<bool> DynamicPadder::Run(HloModule* module) {

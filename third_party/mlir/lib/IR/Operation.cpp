@@ -767,7 +767,7 @@ static LogicalResult verifyShapeMatch(Type type1, Type type2) {
 }
 
 LogicalResult OpTrait::impl::verifySameOperandsShape(Operation *op) {
-  if (op->getNumOperands() == 0)
+  if (failed(verifyAtLeastNOperands(op, 1)))
     return failure();
 
   auto type = op->getOperand(0)->getType();
@@ -779,7 +779,8 @@ LogicalResult OpTrait::impl::verifySameOperandsShape(Operation *op) {
 }
 
 LogicalResult OpTrait::impl::verifySameOperandsAndResultShape(Operation *op) {
-  if (op->getNumOperands() == 0 || op->getNumResults() == 0)
+  if (failed(verifyAtLeastNOperands(op, 1)) ||
+      failed(verifyAtLeastNResults(op, 1)))
     return failure();
 
   auto type = op->getOperand(0)->getType();
@@ -797,7 +798,7 @@ LogicalResult OpTrait::impl::verifySameOperandsAndResultShape(Operation *op) {
 }
 
 LogicalResult OpTrait::impl::verifySameOperandsElementType(Operation *op) {
-  if (op->getNumOperands() == 0)
+  if (failed(verifyAtLeastNOperands(op, 1)))
     return failure();
 
   auto type = op->getOperand(0)->getType().dyn_cast<ShapedType>();
@@ -818,7 +819,8 @@ LogicalResult OpTrait::impl::verifySameOperandsElementType(Operation *op) {
 
 LogicalResult
 OpTrait::impl::verifySameOperandsAndResultElementType(Operation *op) {
-  if (op->getNumOperands() == 0 || op->getNumResults() == 0)
+  if (failed(verifyAtLeastNOperands(op, 1)) ||
+      failed(verifyAtLeastNResults(op, 1)))
     return failure();
 
   auto type = op->getResult(0)->getType().dyn_cast<ShapedType>();
@@ -850,7 +852,8 @@ OpTrait::impl::verifySameOperandsAndResultElementType(Operation *op) {
 }
 
 LogicalResult OpTrait::impl::verifySameOperandsAndResultType(Operation *op) {
-  if (op->getNumOperands() == 0 || op->getNumResults() == 0)
+  if (failed(verifyAtLeastNOperands(op, 1)) ||
+      failed(verifyAtLeastNResults(op, 1)))
     return failure();
 
   auto type = op->getResult(0)->getType();

@@ -151,10 +151,10 @@ std::string GenerateConvCode(
   }
   c += "  for (int s = 0; s < src_size.w; ++s) {\n";
   if (is_image_buffer) {
-    c += "    FLT4 src0 = " + src_tensor.Read3D("addr_0") + ";\n";
-    c += "    FLT4 src1 = " + src_tensor.Read3D("addr_1") + ";\n";
-    c += "    FLT4 src2 = " + src_tensor.Read3D("addr_2") + ";\n";
-    c += "    FLT4 src3 = " + src_tensor.Read3D("addr_3") + ";\n";
+    c += "    FLT4 src0 = " + src_tensor.Read("addr_0") + ";\n";
+    c += "    FLT4 src1 = " + src_tensor.Read("addr_1") + ";\n";
+    c += "    FLT4 src2 = " + src_tensor.Read("addr_2") + ";\n";
+    c += "    FLT4 src3 = " + src_tensor.Read("addr_3") + ";\n";
   }
   std::string fc0 = "(int2)(Z, " + f_y + ")";
   std::string fc1 = "(int2)(Z + 1, " + f_y + ")";

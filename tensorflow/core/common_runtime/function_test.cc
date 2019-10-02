@@ -104,7 +104,7 @@ class FunctionTest : public ::testing::Test {
       return Status::OK();
     };
     Executor* exec;
-    TF_CHECK_OK(NewLocalExecutor(params, std::move(g), &exec));
+    TF_CHECK_OK(NewLocalExecutor(params, *g, &exec));
     exec_.reset(exec);
   }
 
@@ -603,8 +603,7 @@ class DummyExecutorRegistrar {
 
  private:
   class Factory : public ExecutorFactory {
-    Status NewExecutor(const LocalExecutorParams& params,
-                       std::unique_ptr<const Graph> graph,
+    Status NewExecutor(const LocalExecutorParams& params, const Graph& graph,
                        std::unique_ptr<Executor>* out_executor) override {
       return errors::Internal("This is a dummy.");
     }

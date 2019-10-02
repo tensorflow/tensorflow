@@ -571,3 +571,26 @@ def set_virtual_device_configuration(device, virtual_devices):
     RuntimeError: Runtime is already initialized.
   """
   context.context().set_virtual_device_configuration(device, virtual_devices)
+
+
+@tf_export('config.experimental.enable_mlir_bridge')
+def enable_mlir_bridge():
+  """Enables experimental MLIR-Based TensorFlow Compiler Bridge.
+
+  DO NOT USE, DEV AND TESTING ONLY AT THE MOMENT.
+
+  NOTE: MLIR-Based TensorFlow Compiler is under active development and has
+  missing features, please refrain from using. This API exists for development
+  and testing only.
+
+  TensorFlow Compiler Bridge (TF Bridge) is responsible for translating parts
+  of TensorFlow graph into a form that can be accepted as an input by a backend
+  compiler such as XLA.
+  """
+  context.context().enable_mlir_bridge = True
+
+
+@tf_export('config.experimental.disable_mlir_bridge')
+def disable_mlir_bridge():
+  """Disables experimental MLIR-Based TensorFlow Compiler Bridge."""
+  context.context().enable_mlir_bridge = False

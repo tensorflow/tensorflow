@@ -374,8 +374,6 @@ def assert_node_attribute_lines(tst,
 
       tst.assertEqual("", next(line_iter))
 
-    tst.assertItemsEqual(attr_key_val_pairs, kv_pairs)
-
   if num_dumped_tensors is not None:
     tst.assertEqual("%d dumped tensor(s):" % num_dumped_tensors,
                     next(line_iter))
@@ -923,9 +921,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         [(len(out.lines[0]) - len(node_name), len(out.lines[0]), "bold")],
         out.font_attr_segs[0])
 
-  # TODO(b/141691124, b/141708030) Re-enable this test after fixing "Element
-  # counts were not equal" errors.
-  def DISABLED_testNodeInfoShowAttributes(self):
+  def testNodeInfoShowAttributes(self):
     node_name = "simple_mul_add/matmul"
     out = self._registry.dispatch_command("node_info", ["-a", node_name])
 

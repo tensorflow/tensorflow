@@ -21,11 +21,13 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 // NOLINTNEXTLINE
 static llvm::cl::list<std::string> quantize_whitelist(
@@ -33,6 +35,12 @@ static llvm::cl::list<std::string> quantize_whitelist(
     llvm::cl::desc("comma seprarated list of whitelisted functions to be "
                    "quantized. Only used in tests"),
     llvm::cl::CommaSeparated);
+
+// NOLINTNEXTLINE
+static llvm::cl::opt<bool> quantize_signed(
+    "tfl-test-quantize-signed", llvm::cl::value_desc("bool"),
+    llvm::cl::desc("signed inference type. Only used in tests"),
+    llvm::cl::init(false));
 
 //===----------------------------------------------------------------------===//
 // The prepare-quantize Pass.
@@ -49,8 +57,13 @@ namespace {
 // training quantization simpler.
 class PrepareQuantizePass : public FunctionPass<PrepareQuantizePass> {
  public:
-  // Constructor used by the PassRegistration.
-  explicit PrepareQuantizePass() {}
+  // Constructor used by the PassRegistration and enforce uint8 quantization.
+  explicit PrepareQuantizePass() {
+    if (quantize_signed)
+      quant_specs_.inference_type = tensorflow::DT_QINT8;
+    else
+      quant_specs_.inference_type = tensorflow::DT_QUINT8;
+  }
 
   // Constructor used by manually creating the pass.
   explicit PrepareQuantizePass(const QuantizationSpecs& quant_specs)
@@ -107,9 +120,10 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
   }
 
   OpBuilder builder(func);
-  auto num_bits = builder.getI32IntegerAttr(
-      GetQuantizationTypeWidth(quant_specs_.inference_type));
-  auto narrow_range = builder.getBoolAttr(false);
+  bool is_signed = quant_specs_.IsSignedInferneceType();
+  IntegerAttr num_bits =
+      builder.getI32IntegerAttr(quant_specs_.GetQuantizationTypeWidth());
+  BoolAttr narrow_range = builder.getBoolAttr(false);
 
   for (int i = 0, e = func.getNumArguments(); i != e; ++i) {
     Value* arg = func.getArgument(i);
@@ -128,7 +142,8 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
         auto min_max = GetMinMaxValuesForArgument(func_name, i);
         TypeAttr params = GetQuantizedTypeAttr(
             builder, input_type, builder.getF64FloatAttr(min_max.first),
-            builder.getF64FloatAttr(min_max.second), num_bits, narrow_range);
+            builder.getF64FloatAttr(min_max.second), num_bits, narrow_range,
+            is_signed);
         builder.setInsertionPoint(input->getBlock(),
                                   ++Block::iterator(input_op));
         auto q_op = builder.create<TFL::QuantizeOp>(loc, params.getValue(),
@@ -147,15 +162,24 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
 #include "tensorflow/compiler/mlir/lite/utils/generated_op_quant_spec_getters.inc"
 
 void PrepareQuantizePass::runOnFunction() {
+  FuncOp func = getFunction();
+
   // Set the quantization parameters for the quantizable input nodes. If this
   // failed, return the function immediately.
   // TODO(fengliuai): send the signal to the pass manager.
-  if (SetInputNodesQuantizationParams(getFunction())) return;
+  if (SetInputNodesQuantizationParams(func)) return;
 
-  // TODO(fengliuai): set the sign by the inference type from the spec
-  bool quantize_sign = false;
-  ApplyQuantizationParamsPropagation(getFunction(), quantize_sign,
-                                     GetOpQuantSpec);
+  // During the legalization, unsigned quantized type is used, so we have to
+  // convert all of them to signed.
+  bool is_signed = quant_specs_.IsSignedInferneceType();
+  if (is_signed) {
+    OwningRewritePatternList patterns;
+    patterns.insert<ConvertUnsignedToSigned<TFL::QuantizeOp>>(
+        func.getContext());
+    applyPatternsGreedily(func, patterns);
+  }
+
+  ApplyQuantizationParamsPropagation(func, is_signed, GetOpQuantSpec);
 }
 
 }  // namespace

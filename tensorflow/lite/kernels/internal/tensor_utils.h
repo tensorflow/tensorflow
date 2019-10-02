@@ -178,7 +178,7 @@ void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
 //     - layer_norm_scale_a: multiplier for scale factor.
 //     - layer_norm_scale_b: shift for scale factor.
 //     - variance_limit: the guard to make sure the inverse does not overflow.
-//     - n_batch: the number of batch.
+//     - n_batch: the number of batches.
 //     - n_input: the size for input and output.
 //     - output:  the 16 bit output
 void ApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
@@ -189,7 +189,7 @@ void ApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
 // Apply Sigmoid to a quantized vector.
 // Parameters:
 //     - input: batch vector of size n_batch * n_input; 16 bit.
-//     - n_batch: the number of batch.
+//     - n_batch: the number of batches.
 //     - n_input: the size for input and output.
 //     - output:  the 16 bit output
 // The input is in Q3.12 format and the output is in Q0.15 format.
@@ -199,7 +199,7 @@ void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
 // Apply Tanh to a quantized vector.
 // Parameters:
 //     - input: batch vector of size n_batch * n_input; 16 bit.
-//     - n_batch: the number of batch.
+//     - n_batch: the number of batches.
 //     - n_input: the size for input and output.
 //     - output:  the 16 bit output
 // The input is in Q0.15 format and the output is in Q0.15 format.
@@ -209,7 +209,7 @@ void ApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
 // Apply Tanh to a quantized vector.
 // Parameters:
 //     - input: batch vector of size n_batch * n_input; 16 bit.
-//     - n_batch: the number of batch.
+//     - n_batch: the number of batches.
 //     - n_input: the size for input and output.
 //     - output:  the 16 bit output
 // The input is in Q3.12 format and the output is in Q0.15 format.
@@ -219,7 +219,7 @@ void ApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
 // Apply Tanh to a quantized vector.
 // Parameters:
 //     - input: batch vector of size n_batch * n_input; 16 bit.
-//     - n_batch: the number of batch.
+//     - n_batch: the number of batches.
 //     - n_input: the size for input and output.
 //     - output:  the 16 bit output
 // The input is in Q4.11 format and the output is in Q0.15 format.
@@ -230,7 +230,7 @@ void ApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
 // Parameters:
 //     - input_1: batch vector of size n_batch * n_input; 16 bit.
 //     - input_2: batch vector of size n_batch * n_input; 16 bit.
-//     - n_batch: the number of batch.
+//     - n_batch: the number of batches.
 //     - n_input: the size for input and output.
 //     - shift:   the shift needed to produce the output.
 //     - output:  the 16 bit output of size n_batch * n_input.
@@ -242,7 +242,7 @@ void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
 // Parameters:
 //     - input_1: batch vector of size n_batch * n_input; 16 bit.
 //     - input_2: batch vector of size n_batch * n_input; 16 bit.
-//     - n_batch: the number of batch.
+//     - n_batch: the number of batches.
 //     - n_input: the size for input and output.
 //     - shift:   the shift needed to produce the output.
 //     - output:  the 8 bit output of size n_batch * n_input.
@@ -256,7 +256,7 @@ void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
 //     - input_2:    batch vector of size n_batch * n_input; 16 bit.
 //     - multiplier: the multiplier part of scale.
 //     - shift:      the shift part of scale.
-//     - n_batch:    the number of batch.
+//     - n_batch:    the number of batches.
 //     - n_input:    the size for input and output.
 //     - output:     the 8 bit output of size n_batch * n_input.
 //     - output_zp:  the zero point of output.
@@ -271,7 +271,7 @@ void CwiseMul(const int16_t* input_1, const int16_t* input_2,
 // Parameters:
 //     - input_1:    batch vector of size n_batch * n_input; 16 bit.
 //     - input_2:    batch vector of size n_batch * n_input; 16 bit.
-//     - n_batch:    the number of batch.
+//     - n_batch:    the number of batches.
 //     - n_input:    the size for input and output.
 //     - output:     the 8 bit output of size n_batch * n_input.
 // Output does not need to be initialized.
@@ -282,11 +282,17 @@ void CwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
 // Parameters:
 //     - input:          batch vector of size n_batch * n_input; 16 bit.
 //     - clipping_value: the value used for clipping.
-//     - n_batch:        the number of batch.
+//     - n_batch:        the number of batches.
 //     - n_input:        the size for input and output.
 void CwiseClipping(int16_t* input, const int16_t clipping_value,
                    int32_t n_batch, int32_t n_input);
 
+// Element-wise in-place clipping of a quantized vector.
+// Parameters:
+//     - input:          batch vector of size n_batch * n_input; 8 bit.
+//     - clipping_value: the value used for clipping.
+//     - n_batch:        the number of batches.
+//     - n_input:        the size for input and output.
 void CwiseClipping(int8_t* input, const int8_t clipping_value, int32_t n_batch,
                    int32_t n_input);
 

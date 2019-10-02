@@ -672,7 +672,7 @@ PyLocalExecutable::PyLocalExecutable(
     local_replicas_.push_back(replica);
     device_ordinals_.push_back(*device_ordinal);
   }
-  CHECK_GE(local_replicas_.size(), 1);
+  CHECK_GE(local_replicas_.size(), 1) << device_assignment_.ToString();
 }
 
 StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(

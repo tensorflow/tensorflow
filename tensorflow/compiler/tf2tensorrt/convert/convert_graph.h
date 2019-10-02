@@ -35,6 +35,7 @@ namespace convert {
 struct ConversionParams {
   const GraphDef* input_graph_def = nullptr;
   const std::vector<string>* output_names = nullptr;
+  string trt_logger_name;
   size_t max_batch_size = 1;
   size_t max_workspace_size_bytes = 1 << 30;
   GraphDef* output_graph_def = nullptr;

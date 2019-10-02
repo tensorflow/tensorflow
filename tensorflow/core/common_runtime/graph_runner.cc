@@ -171,8 +171,7 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
   };
 
   Executor* executor;
-  TF_RETURN_IF_ERROR(
-      NewLocalExecutor(params, std::move(graph_to_run), &executor));
+  TF_RETURN_IF_ERROR(NewLocalExecutor(params, *graph_to_run, &executor));
   std::unique_ptr<Executor> executor_unref(executor);
 
   Executor::Args args;

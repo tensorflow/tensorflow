@@ -756,6 +756,13 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
               ragged_factory_ops.constant_value([[1]])
           ],
           result_is_list=True),
+      dict(
+          op=array_ops.reverse,
+          kwargs={
+              'tensor': ragged_factory_ops.constant_value([[1, 2, 3], [4, 5]]),
+              'axis': [0, -1]
+          },
+          expected=ragged_factory_ops.constant_value([[5, 4], [3, 2, 1]]))
   ])
   def testRaggedDispatch(self, op, expected, args=(), result_is_list=False,
                          kwargs=None):
@@ -802,7 +809,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
         'strings.substr', 'strings.to_hash_bucket_fast',
         'strings.to_hash_bucket_strong', 'strings.to_hash_bucket',
         'strings.to_number', 'strings.unicode_script', 'tile', 'truncatediv',
-        'truncatemod', 'zeros_like', 'dynamic_partition'
+        'truncatemod', 'zeros_like', 'dynamic_partition', 'reverse'
     ]
 
     # Ops that should be listed as supported in v1 only.

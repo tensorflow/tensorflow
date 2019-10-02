@@ -447,19 +447,34 @@ static void accumulateStrides(MutableArrayRef<int64_t> strides,
     seen[pos] = true;
     return;
   }
-  if (strides[pos] != MemRefType::kDynamicStride)
+  if (strides[pos] != MemRefType::kDynamicStrideOrOffset)
     // Already seen case accumulates unless they are already saturated.
     strides[pos] += val;
+}
+
+// This sums multiple offsets as they are seen. In the particular case of
+// accumulating a dynamic offset with either a static of dynamic one, this
+// saturates to MemRefType::kDynamicStrideOrOffset.
+static void accumulateOffset(int64_t &offset, bool &seenOffset, int64_t val) {
+  if (!seenOffset) {
+    // Newly seen case, sets value
+    offset = val;
+    seenOffset = true;
+    return;
+  }
+  if (offset != MemRefType::kDynamicStrideOrOffset)
+    // Already seen case accumulates unless they are already saturated.
+    offset += val;
 }
 
 /// Takes a single AffineExpr `e` and populates the `strides` and `seen` arrays
 /// with the strides values for each dim position and whether a value exists at
 /// that position, respectively.
 /// The convention is that the strides for dimensions d0, .. dn appear in
-/// order followed by the constant offset, to make indexing intuitive into the
-/// result.
+/// order to make indexing intuitive into the result.
 static void extractStrides(AffineExpr e, MutableArrayRef<int64_t> strides,
-                           MutableArrayRef<bool> seen, bool &failed) {
+                           int64_t &offset, MutableArrayRef<bool> seen,
+                           bool &seenOffset, bool &failed) {
   auto bin = e.dyn_cast<AffineBinaryOpExpr>();
   if (!bin)
     return;
@@ -474,7 +489,7 @@ static void extractStrides(AffineExpr e, MutableArrayRef<int64_t> strides,
     auto dim = bin.getLHS().cast<AffineDimExpr>();
     auto cst = bin.getRHS().dyn_cast<AffineConstantExpr>();
     if (!cst) {
-      strides[dim.getPosition()] = MemRefType::kDynamicStride;
+      strides[dim.getPosition()] = MemRefType::kDynamicStrideOrOffset;
       seen[dim.getPosition()] = true;
     } else {
       accumulateStrides(strides, seen, dim.getPosition(), cst.getValue());
@@ -485,11 +500,11 @@ static void extractStrides(AffineExpr e, MutableArrayRef<int64_t> strides,
     for (auto e : {bin.getLHS(), bin.getRHS()}) {
       if (auto cst = e.dyn_cast<AffineConstantExpr>()) {
         // Independent constants cumulate.
-        accumulateStrides(strides, seen, seen.size() - 1, cst.getValue());
+        accumulateOffset(offset, seenOffset, cst.getValue());
       } else if (auto sym = e.dyn_cast<AffineSymbolExpr>()) {
         // Independent symbols saturate.
-        strides.back() = MemRefType::kDynamicStride;
-        seen.back() = true;
+        offset = MemRefType::kDynamicStrideOrOffset;
+        seenOffset = true;
       } else if (auto dim = e.dyn_cast<AffineDimExpr>()) {
         // Independent symbols cumulate 1.
         accumulateStrides(strides, seen, dim.getPosition(), 1);
@@ -501,25 +516,27 @@ static void extractStrides(AffineExpr e, MutableArrayRef<int64_t> strides,
   llvm_unreachable("unexpected binary operation");
 }
 
-// Fallback cases for terminal dim/sym/cst that are not part of a binary op
-// (i.e. single term).
+// Fallback cases for terminal dim/sym/cst that are not part of a binary op (
+// i.e. single term).
 static void extractStridesFromTerm(AffineExpr e,
                                    MutableArrayRef<int64_t> strides,
-                                   MutableArrayRef<bool> seen) {
+                                   int64_t &offset, MutableArrayRef<bool> seen,
+                                   bool &seenOffset) {
   if (auto cst = e.dyn_cast<AffineConstantExpr>()) {
-    assert(!seen.back() && "unexpected `seen` bit with single term");
-    strides.back() = cst.getValue();
-    seen.back() = true;
+    assert(!seenOffset && "unexpected `seen` bit with single term");
+    offset = cst.getValue();
+    seenOffset = true;
     return;
   }
   if (auto sym = e.dyn_cast<AffineSymbolExpr>()) {
-    assert(!seen.back() && "unexpected `seen` bit with single term");
-    strides.back() = MemRefType::kDynamicStride;
-    seen.back() = true;
+    assert(!seenOffset && "unexpected `seen` bit with single term");
+    offset = MemRefType::kDynamicStrideOrOffset;
+    seenOffset = true;
     return;
   }
   if (auto dim = e.dyn_cast<AffineDimExpr>()) {
-    assert(!seen.back() && "unexpected `seen` bit with single term");
+    assert(!seen[dim.getPosition()] &&
+           "unexpected `seen` bit with single term");
     strides[dim.getPosition()] = 1;
     seen[dim.getPosition()] = true;
     return;
@@ -527,8 +544,8 @@ static void extractStridesFromTerm(AffineExpr e,
   llvm_unreachable("unexpected binary operation");
 }
 
-LogicalResult
-MemRefType::getStridesAndOffset(SmallVectorImpl<int64_t> &strides) const {
+LogicalResult MemRefType::getStridesAndOffset(SmallVectorImpl<int64_t> &strides,
+                                              int64_t &offset) const {
   auto affineMaps = getAffineMaps();
   // For now strides are only computed on a single affine map with a single
   // result (i.e. the closed subset of linearization maps that are compatible
@@ -540,7 +557,7 @@ MemRefType::getStridesAndOffset(SmallVectorImpl<int64_t> &strides) const {
   if (affineMaps.empty() || affineMaps[0].isIdentity()) {
     if (getRank() == 0) {
       // Handle 0-D corner case.
-      strides.push_back(0);
+      offset = 0;
       return success();
     }
     stridedExpr = makeCanonicalStridedLayoutExpr(getShape(), getContext());
@@ -551,27 +568,28 @@ MemRefType::getStridesAndOffset(SmallVectorImpl<int64_t> &strides) const {
     return failure();
 
   bool failed = false;
-  strides = SmallVector<int64_t, 4>(getRank() + 1, 0);
-  SmallVector<bool, 4> seen(getRank() + 1, false);
+  strides = SmallVector<int64_t, 4>(getRank(), 0);
+  bool seenOffset = false;
+  SmallVector<bool, 4> seen(getRank(), false);
   if (stridedExpr.isa<AffineBinaryOpExpr>()) {
     stridedExpr.walk([&](AffineExpr e) {
       if (!failed)
-        extractStrides(e, strides, seen, failed);
+        extractStrides(e, strides, offset, seen, seenOffset, failed);
     });
   } else {
-    extractStridesFromTerm(stridedExpr, strides, seen);
+    extractStridesFromTerm(stridedExpr, strides, offset, seen, seenOffset);
   }
 
   // Constant offset may not be present in `stridedExpr` which means it is
   // implicitly 0.
-  if (!seen.back()) {
-    seen.back() = true;
-    strides.back() = 0;
-  }
+  if (!seenOffset)
+    offset = 0;
+
   if (failed || !llvm::all_of(seen, [](bool b) { return b; })) {
     strides.clear();
     return failure();
   }
+
   return success();
 }
 
@@ -630,3 +648,46 @@ void TupleType::getFlattenedTypes(SmallVectorImpl<Type> &types) {
 
 /// Return the number of element types.
 size_t TupleType::size() const { return getImpl()->size(); }
+
+AffineMap mlir::makeStridedLinearLayoutMap(ArrayRef<int64_t> strides,
+                                           int64_t offset,
+                                           MLIRContext *context) {
+  AffineExpr expr;
+  unsigned nSymbols = 0;
+
+  // AffineExpr for offset.
+  // Static case.
+  if (offset != MemRefType::kDynamicStrideOrOffset) {
+    auto cst = getAffineConstantExpr(offset, context);
+    expr = cst;
+  } else {
+    // Dynamic case, new symbol for the offset.
+    auto sym = getAffineSymbolExpr(nSymbols++, context);
+    expr = sym;
+  }
+
+  // AffineExpr for strides.
+  for (auto en : llvm::enumerate(strides)) {
+    auto dim = en.index();
+    auto stride = en.value();
+    assert(stride != 0 && "Invalid stride specification");
+    auto d = getAffineDimExpr(dim, context);
+    AffineExpr mult;
+    // Static case.
+    if (stride != MemRefType::kDynamicStrideOrOffset)
+      mult = getAffineConstantExpr(stride, context);
+    else
+      // Dynamic case, new symbol for each new stride.
+      mult = getAffineSymbolExpr(nSymbols++, context);
+    expr = expr + d * mult;
+  }
+
+  return AffineMap::get(strides.size(), nSymbols, expr);
+}
+
+bool mlir::isStrided(MemRefType t) {
+  int64_t offset;
+  SmallVector<int64_t, 4> stridesAndOffset;
+  auto res = t.getStridesAndOffset(stridesAndOffset, offset);
+  return succeeded(res);
+}

@@ -48,7 +48,9 @@ std::string GetFullyConnectedBatchedKernelCode(
   c += "  if (Z >= dst_size.w || B >= BATCH_SIZE) return;\n";
   c += "  ACCUM_FLT4 s = (ACCUM_FLT4)(0.0f);\n";
   c += "  for (int i = 0; i < src_size.w; ++i) {\n";
-  c += "    FLT4 v = " + src_tensor.Read4D("0", "0", "i", "B") + ";\n";
+  c += "    FLT4 v = " +
+       src_tensor.Read4D("0", "0", "i", "B", TextureAddressMode::DONT_CARE) +
+       ";\n";
   c += "    FLT4 m0 = READ_IMAGE(filters, smp_none, (int2)(Z * 4 + 0, i));\n";
   c += "    FLT4 m1 = READ_IMAGE(filters, smp_none, (int2)(Z * 4 + 1, i));\n";
   c += "    FLT4 m2 = READ_IMAGE(filters, smp_none, (int2)(Z * 4 + 2, i));\n";

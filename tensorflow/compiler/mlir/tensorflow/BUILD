@@ -49,6 +49,30 @@ gentbl(
 )
 
 gentbl(
+    name = "tf_saved_model_inc_gen",
+    tbl_outs = [
+        (
+            "-gen-op-decls",
+            "ir/tf_saved_model.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "ir/tf_saved_model.cc.inc",
+        ),
+        (
+            "-gen-op-doc",
+            "g3doc/tf_saved_model.md",
+        ),
+    ],
+    tblgen = "@local_config_mlir//:mlir-tblgen",
+    td_file = "ir/tf_saved_model_ops.td",
+    td_srcs = [
+        "@local_config_mlir//:include/mlir/IR/OpBase.td",
+        "@local_config_mlir//:include/mlir/Dialect/StandardOps/Ops.td",
+    ],
+)
+
+gentbl(
     name = "tensorflow_executor_inc_gen",
     tbl_outs = [
         (
@@ -122,6 +146,7 @@ cc_library(
         "ir/tf_ops.cc",
         "ir/tf_ops.cc.inc",
         "ir/tf_ops.h.inc",
+        "ir/tf_saved_model.cc",
         "ir/tf_types.cc",
     ],
     hdrs = [
@@ -129,6 +154,7 @@ cc_library(
         "ir/tf_device.h",
         "ir/tf_executor.h",
         "ir/tf_ops.h",
+        "ir/tf_saved_model.h",
         "ir/tf_traits.h",
         "ir/tf_types.def",
         "ir/tf_types.h",
@@ -143,6 +169,8 @@ cc_library(
         ":tensorflow_device_ops_inc_gen",
         ":tensorflow_executor_inc_gen",
         ":tensorflow_ops_inc_gen",
+        ":tf_saved_model_inc_gen",
+        "//tensorflow/cc/saved_model:loader_lite",
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/core:lib",
         "@llvm//:support",
@@ -176,6 +204,8 @@ cc_library(
         "transforms/materialize_mlir_passthrough_op.cc",
         "transforms/optimize.cc",
         "transforms/raise_control_flow.cc",
+        "transforms/shape_inference.cc",
+        "transforms/shape_inference_pass.cc",
         "transforms/sink_constant.cc",
         "transforms/tpu_cluster_formation.cc",
         "transforms/tpu_rewrite_pass.cc",
@@ -185,12 +215,14 @@ cc_library(
     hdrs = [
         "transforms/bridge.h",
         "transforms/passes.h",
+        "transforms/shape_inference.h",
     ],
     includes = ["include"],
     deps = [
         ":convert_tensor",
         ":convert_type",
         ":error_util",
+        ":export_tf_dialect_op",
         ":tensorflow",
         ":tensorflow_optimize_inc_gen",
         "//tensorflow/compiler/mlir/lite:validators",
@@ -590,6 +622,7 @@ cc_library(
         "//tensorflow/core:protos_all_proto_cc",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Parser",
@@ -670,6 +703,7 @@ genrule(
     ],
     cmd = ("$(location :derived_attr_populator_gen) " +
            "-I external/local_config_mlir/include " +
+           "-I external/org_tensorflow " +
            "$(location //tensorflow/compiler/mlir/tensorflow:ir/tf_ops.td) " + " -o $@"),
     tools = [":derived_attr_populator_gen"],
 )

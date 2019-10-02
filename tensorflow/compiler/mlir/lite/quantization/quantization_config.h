@@ -29,13 +29,6 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 
-// Is this dtype a quantization type from TensorFlow.
-bool IsQuantizationType(tensorflow::DataType dtype);
-
-// Gets the width of this quantization type. Returns 0 if it isn't a
-// quantization type.
-int64_t GetQuantizationTypeWidth(tensorflow::DataType dtype);
-
 struct QuantizationSpecs {
   // Which function this node quant specifications belong to.
   std::string target_func = "main";
@@ -66,6 +59,34 @@ struct QuantizationSpecs {
 
   // Whether run the passes to only quantize the weights.
   bool RunWeightQuantization() const { return weight_quantization; }
+
+  // Whether this inference type represents a signed storage type.
+  bool IsSignedInferneceType() {
+    switch (inference_type) {
+      case tensorflow::DT_QUINT8:
+      case tensorflow::DT_QUINT16:
+        return false;
+      default:
+        return true;
+    }
+  }
+
+  // Gets the width of this quantization type. Returns 0 if it isn't a
+  // quantization type.
+  int64_t GetQuantizationTypeWidth() {
+    switch (inference_type) {
+      case tensorflow::DT_QINT8:
+      case tensorflow::DT_QUINT8:
+        return 8;
+      case tensorflow::DT_QINT16:
+      case tensorflow::DT_QUINT16:
+        return 16;
+      case tensorflow::DT_QINT32:
+        return 32;
+      default:
+        return 0;
+    }
+  }
 };
 
 // Parses the command line flag strings to the quantization specification for

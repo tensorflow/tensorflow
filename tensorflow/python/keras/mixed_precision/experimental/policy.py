@@ -54,10 +54,10 @@ class Policy(object):
   not match the computation dtype, variables will be automatically casted to the
   computation dtype to avoid type errors.
 
-  Policies also have a `tf.train.experimental.LossScale` instance, which is used
-  by `tf.keras.Model`s to performance loss scaling. Loss scaling is only done by
-  Models in `Model.fit` and `Model.train_on_batch`. Layers which are not Models
-  ignore the loss scale.
+  Policies also have a `tf.mixed_precision.experimental.LossScale` instance,
+  which is used by `tf.keras.Model`s to performance loss scaling. Loss scaling
+  is only done by Models in `Model.fit` and `Model.train_on_batch`. Layers which
+  are not Models ignore the loss scale.
 
   Policies are constructed by passing a string to the constructor, e.g.
   `tf.keras.mixed_precision.experimental.Policy('float32')`. The string
@@ -167,11 +167,11 @@ class Policy(object):
           precision training.
         * 'infer' (deprecated): Infer the compute and variable dtype from the
           input dtype.
-      loss_scale: A `tf.train.experimental.LossScale`, or a value convertible to
-        one such as "dynamic". Defaults to using no loss scaling unless `name`
-        is "mixed_float16", in which case this defaults to "dynamic". Only
-        `tf.keras.Model`s, not layers, use the loss scale, and it is only used
-        during `Model.fit` or `Model.train_on_batch`.
+      loss_scale: A `tf.mixed_precision.experimental.LossScale`, or a value
+        convertible to one such as "dynamic". Defaults to using no loss scaling
+        unless `name` is "mixed_float16", in which case this defaults to
+        "dynamic". Only `tf.keras.Model`s, not layers, use the loss scale, and
+        it is only used during `Model.fit` or `Model.train_on_batch`.
 
     """
     if isinstance(name, dtypes.DType):
@@ -317,7 +317,7 @@ class Policy(object):
     """Returns the loss scale of this Policy.
 
     Returns:
-      A `tf.train.experimental.LossScale`, or None.
+      A `tf.mixed_precision.experimental.LossScale`, or None.
     """
     return self._loss_scale
 

@@ -134,7 +134,7 @@ class DirectSession : public Session {
   // We create one executor and its dependent library runtime for
   // every partition.
   struct PerPartitionExecutorsAndLib {
-    Graph* graph = nullptr;                  // not owned.
+    std::unique_ptr<Graph> graph = nullptr;
     Device* device = nullptr;                // not owned.
     FunctionLibraryRuntime* flib = nullptr;  // not owned.
     std::unique_ptr<Executor> executor;

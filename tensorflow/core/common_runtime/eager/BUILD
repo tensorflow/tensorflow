@@ -149,6 +149,7 @@ tf_cuda_library(
             "//tensorflow/core:session_options",
             "//tensorflow/core/distributed_runtime/eager:eager_client",
             "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle_data",
+            "//tensorflow/core/profiler/lib:traceme",
         ],
     }),
 )

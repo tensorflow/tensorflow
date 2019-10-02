@@ -416,7 +416,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     memory and run into byte limits of graph serialization. If `tensors`
     contains one or more large NumPy arrays, consider the alternative described
     in [this
-    guide](https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
+    guide](https://tensorflow.org/guide/data#consuming_numpy_arrays).
 
     Args:
       tensors: A dataset element.
@@ -459,7 +459,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     memory and run into byte limits of graph serialization. If `tensors`
     contains one or more large NumPy arrays, consider the alternative described
     in [this guide](
-    https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
+    https://tensorflow.org/guide/data#consuming_numpy_arrays).
 
     Args:
       tensors: A dataset element, with each component having the same size in
@@ -1609,10 +1609,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     reduce_func = wrapped_func.function
     reduce_func.add_to_graph(ops.get_default_graph())
 
-    # TODO(b/141256846): Apply options once optimizing stateful input pipelines
-    # in tf.functions is supported.
-    # dataset = self._apply_options()
-    dataset = self
+    dataset = self._apply_options()
 
     # pylint: disable=protected-access
     return structure.from_compatible_tensor_list(

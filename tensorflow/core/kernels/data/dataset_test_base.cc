@@ -475,7 +475,7 @@ Status DatasetOpsTestBase::RunFunction(
   };
 
   Executor* cur_exec;
-  TF_RETURN_IF_ERROR(NewLocalExecutor(params, std::move(g), &cur_exec));
+  TF_RETURN_IF_ERROR(NewLocalExecutor(params, *g, &cur_exec));
   exec.reset(cur_exec);
   FunctionCallFrame frame(arg_types, ret_types);
   TF_RETURN_IF_ERROR(frame.SetArgs(args));
@@ -947,8 +947,6 @@ Status BatchDatasetParams::CreateFactory(FunctionDef* fdef) const {
 string BatchDatasetParams::op_name() const {
   return BatchDatasetOp::kDatasetType;
 }
-
-int BatchDatasetParams::op_version() const { return op_version_; }
 
 std::vector<Tensor> MapDatasetParams::GetInputTensors() const {
   return other_arguments_;

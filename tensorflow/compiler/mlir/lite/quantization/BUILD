@@ -1,4 +1,8 @@
 load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
+load(
+    "//tensorflow/core/platform:default/build_config.bzl",
+    "tf_proto_library",
+)
 
 package(
     default_visibility = [
@@ -22,6 +26,14 @@ filegroup(
         "@local_config_mlir//:OpBaseTdFiles",
         "@local_config_mlir//:QuantizationOpsTdFiles",
     ],
+)
+
+tf_proto_library(
+    name = "quantization_info_proto",
+    srcs = [
+        "quantization_info.proto",
+    ],
+    cc_api_version = 2,
 )
 
 cc_library(
