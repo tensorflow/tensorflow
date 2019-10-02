@@ -1,3 +1,5 @@
+RM = rm -f
+
 SRCS := \
 %{SRCS}%
 
@@ -19,3 +21,7 @@ LDFLAGS += %{LINKER_FLAGS}%
 	$(CXX) $(CXXFLAGS) -o $@ $(OBJS) $(LDFLAGS)
 
 all: %{EXECUTABLE}%
+
+clean:
+	-$(RM) $(OBJS)
+	-$(RM) %{EXECUTABLE}%
