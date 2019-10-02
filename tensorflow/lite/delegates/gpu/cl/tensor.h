@@ -98,11 +98,13 @@ class Tensor {
         return (((b * Depth() + d) * shape_.h + y) * shape_.w + x) * 4 +
                sub_d;  // BDHWC4
       case TensorStorageType::TEXTURE_ARRAY:
-        return ((d * shape_.h + y) * shape_.w + x) * 4 + sub_d;  // DHWC4
+        return (((d * shape_.h + y) * shape_.w + x) * shape_.b + b) * 4 +
+               sub_d;  // DHWBC4
       case TensorStorageType::TEXTURE_2D:
-        return ((y * Depth() + d) * shape_.w + x) * 4 + sub_d;  // HDWC4
+        return (((y * Depth() + d) * shape_.w + x) * shape_.b + b) * 4 +
+               sub_d;  // HDWBC4
       case TensorStorageType::SINGLE_TEXTURE_2D:
-        return (y * shape_.w + x) * shape_.c + sub_d;
+        return ((y * shape_.w + x) * shape_.b + b) * shape_.c + sub_d;  // HWBC
       case TensorStorageType::UNKNOWN:
         return -1;
     }
