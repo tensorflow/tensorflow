@@ -74,4 +74,14 @@ Status MlirRoundtripPass::Run(const GraphOptimizationPassOptions& options) {
   return Status::OK();
 }
 
+Status MlirImportPass::Run(const GraphOptimizationPassOptions& options) {
+  MLIRContext context;
+  if (options.graph) {
+    if (!Import(options, **options.graph, &context).ok()) {
+      // TODO(prakalps): Update metric on failure.
+    }
+  }
+  return Status::OK();
+}
+
 }  // namespace tensorflow
