@@ -31,9 +31,9 @@ class LossScaleGradientTape(backprop.GradientTape):
   """A gradient tape that scales losses and unscales resulting gradients.
 
   Operates as a normal gradient tape, but takes in a
-  `tf.train.experimental.LossScale` object. Losses are scaled up by some amount
-  before the gradients are calculated and the resulting gradients are scaled
-  down by the same amount.
+  `tf.mixed_precision.experimental.LossScale` object. Losses are scaled up by
+  some amount before the gradients are calculated and the resulting gradients
+  are scaled down by the same amount.
 
   This has no net mathematical effect, but can be used to prevent vanishing
   gradients, for example in the case of mixed precision training.
@@ -48,7 +48,7 @@ class LossScaleGradientTape(backprop.GradientTape):
   Usage:
   ```
   opt = tf.keras.optimizers.SGD(1.0)
-  model_loss_scale = tf.train.experimental.DynamicLossScale()
+  model_loss_scale = tf.mixed_precision.experimental.DynamicLossScale()
 
   for step in training_steps:
     with LossScaleGradientTape(model_loss_scale) as tape:
@@ -69,10 +69,10 @@ class LossScaleGradientTape(backprop.GradientTape):
     """Creates a new LossScaleGradientTape.
 
     Args:
-      loss_scale: `tf.train.experimental.LossScale` object that
+      loss_scale: `tf.mixed_precision.experimental.LossScale` object that
         manages what quantity to scale by. This is typically either a
         FixedLossScale object with a constant scalar or a
-        `tf.train.experimental.DynamicLossScale` object that will
+        `tf.mixed_precision.experimental.DynamicLossScale` object that will
         adjust the scalar appropriately if any non-finite gradients are
         encountered.
       persistent: Boolean controlling whether a persistent gradient tape is
