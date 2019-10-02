@@ -29,7 +29,7 @@ For information on upgrading your existing TensorFlow 1.x models, please refer t
 * Enable v2 control flow as part of `tf.enable_v2_behavior()` and `TF2_BEHAVIOR=1`.
 * Fixes autocomplete for most TensorFlow API references by switching to use relative imports in API `__init__.py` files.
 * Auto Mixed-Precision graph optimizer simplifies converting models to `float16` for acceleration on Volta and Turing Tensor Cores. This feature can be enabled by wrapping an optimizer class with `tf.train.experimental.enable_mixed_precision_graph_rewrite()`.
-* Add environment variable `TF_CUDNN_DETERMINISTIC`. Setting to `TRUE` or "1" forces the selection of deterministic cuDNN convolution and max-pooling algorithms. When this is enabled, the algorithm selection procedure itself is also deterministic.
+* Add environment variable `TF_CUDNN_DETERMINISTIC`. Setting to "true" or "1" forces the selection of deterministic cuDNN convolution and max-pooling algorithms. When this is enabled, the algorithm selection procedure itself is also deterministic.
 
 ## Breaking Changes
 * Many backwards incompatible API changes have been made to clean up the APIs and make them more consistent.
