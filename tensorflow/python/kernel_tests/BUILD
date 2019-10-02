@@ -3757,6 +3757,7 @@ cuda_py_test(
         "//tensorflow/python/ops/linalg/sparse:gen_sparse_csr_matrix_ops",
     ],
     main = "sparse_csr_matrix_ops_test.py",
+    shard_count = 10,
     tags = ["no_rocm"],
 )
 
