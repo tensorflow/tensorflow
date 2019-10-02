@@ -28,6 +28,15 @@ tensorflow/lite/experimental/micro/examples/gesture_recognition/output_handler_t
 OUTPUT_HANDLER_TEST_HDRS := \
 tensorflow/lite/experimental/micro/examples/gesture_recognition/output_handler.h
 
+GESTURE_PREDICTOR_TEST_SRCS := \
+tensorflow/lite/experimental/micro/examples/gesture_recognition/constants.cc \
+tensorflow/lite/experimental/micro/examples/gesture_recognition/gesture_predictor.cc \
+tensorflow/lite/experimental/micro/examples/gesture_recognition/gesture_predictor_test.cc
+
+GESTURE_PREDICTOR_TEST_HDRS := \
+tensorflow/lite/experimental/micro/examples/gesture_recognition/constants.h \
+tensorflow/lite/experimental/micro/examples/gesture_recognition/gesture_predictor.h \
+
 GESTURE_RECOGNITION_TEST_SRCS := \
 tensorflow/lite/experimental/micro/examples/gesture_recognition/gesture_recognition_test.cc \
 tensorflow/lite/experimental/micro/examples/gesture_recognition/gesture_recognition_model_data.cc \
@@ -41,13 +50,19 @@ tensorflow/lite/experimental/micro/examples/gesture_recognition/circle_micro_fea
 
 GESTURE_RECOGNITION_SRCS := \
 tensorflow/lite/experimental/micro/examples/gesture_recognition/main.cc \
+tensorflow/lite/experimental/micro/examples/gesture_recognition/main_functions.cc \
+tensorflow/lite/experimental/micro/examples/gesture_recognition/constants.cc \
 tensorflow/lite/experimental/micro/examples/gesture_recognition/gesture_recognition_model_data.cc \
 tensorflow/lite/experimental/micro/examples/gesture_recognition/accelerometer_handler.cc \
+tensorflow/lite/experimental/micro/examples/gesture_recognition/gesture_predictor.cc \
 tensorflow/lite/experimental/micro/examples/gesture_recognition/output_handler.cc
 
 GESTURE_RECOGNITION_HDRS := \
+tensorflow/lite/experimental/micro/examples/gesture_recognition/main_functions.h \
+tensorflow/lite/experimental/micro/examples/gesture_recognition/constants.h \
 tensorflow/lite/experimental/micro/examples/gesture_recognition/gesture_recognition_model_data.h \
 tensorflow/lite/experimental/micro/examples/gesture_recognition/accelerometer_handler.h \
+tensorflow/lite/experimental/micro/examples/gesture_recognition/gesture_predictor.h \
 tensorflow/lite/experimental/micro/examples/gesture_recognition/output_handler.h
 
 # Find any platform-specific rules for this example.
@@ -60,6 +75,10 @@ $(ACCELEROMETER_HANDLER_TEST_SRCS),$(ACCELEROMETER_HANDLER_TEST_HDRS)))
 # Tests the output handler
 $(eval $(call microlite_test,gesture_output_handler_test,\
 $(OUTPUT_HANDLER_TEST_SRCS),$(OUTPUT_HANDLER_TEST_HDRS)))
+
+# Tests the gesture predictor
+$(eval $(call microlite_test,gesture_predictor_test,\
+$(GESTURE_PREDICTOR_TEST_SRCS),$(GESTURE_PREDICTOR_TEST_HDRS)))
 
 # Tests loading and running the gesture recognition model
 $(eval $(call microlite_test,gesture_recognition_test,\

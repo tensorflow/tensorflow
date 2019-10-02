@@ -17,12 +17,12 @@ limitations under the License.
 
 int begin_index = 0;
 
-TfLiteStatus SetupAccelerometer(const tflite::ErrorReporter* error_reporter) {
+TfLiteStatus SetupAccelerometer(tflite::ErrorReporter* error_reporter) {
   return kTfLiteOk;
 }
 
-bool ReadAccelerometer(const tflite::ErrorReporter* error_reporter,
-                       float* input, int length) {
+bool ReadAccelerometer(tflite::ErrorReporter* error_reporter, float* input,
+                       int length, bool reset_buffer) {
   begin_index += 3;
   // Reset begin_index to simulate behavior of loop buffer
   if (begin_index >= 600) begin_index = 0;
@@ -34,5 +34,3 @@ bool ReadAccelerometer(const tflite::ErrorReporter* error_reporter,
     return true;
   } else { return false; }
 }
-
-int PredictGesture(float* output) { return 3; }

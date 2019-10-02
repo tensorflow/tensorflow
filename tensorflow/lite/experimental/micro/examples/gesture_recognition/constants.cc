@@ -13,15 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/micro/examples/gesture_recognition/main_functions.h"
+#include "tensorflow/lite/experimental/micro/examples/gesture_recognition/constants.h"
 
-// This is the default main used on systems that have the standard C entry
-// point. Other devices (for example FreeRTOS or ESP32) that have different
-// requirements for entry code (like an app_main function) should specialize
-// this main.cc file in a target-specific subfolder.
-int main(int argc, char* argv[]) {
-  setup();
-  while (true) {
-    loop();
-  }
-}
+// The number of expected consecutive inferences for each gesture type.
+// These defaults were established with the SparkFun Edge board.
+const int kConsecutiveInferenceThresholds[3] = {15, 12, 10};

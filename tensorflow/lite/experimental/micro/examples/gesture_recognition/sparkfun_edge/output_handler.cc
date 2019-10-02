@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/lite/experimental/micro/tools/make/downloads/AmbiqSuite-Rel2.0.0/mcu/apollo3/am_mcu_apollo.h"
 #include "tensorflow/lite/experimental/micro/tools/make/downloads/AmbiqSuite-Rel2.0.0/utils/am_util.h"
 
-
 void HandleOutput(tflite::ErrorReporter* error_reporter, int kind) {
   // The first time this method runs, set up our LEDs correctly
   static bool is_initialized = false;
@@ -65,5 +64,4 @@ void HandleOutput(tflite::ErrorReporter* error_reporter, int kind) {
     am_hal_gpio_output_clear(AM_BSP_GPIO_LED_BLUE);
     am_hal_gpio_output_set(AM_BSP_GPIO_LED_GREEN);
   }
-  am_util_delay_ms(10);
 }

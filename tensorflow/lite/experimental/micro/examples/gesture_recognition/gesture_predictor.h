@@ -13,15 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/micro/examples/gesture_recognition/main_functions.h"
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_GESTURE_RECOGNITION_GESTURE_PREDICTOR_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_GESTURE_RECOGNITION_GESTURE_PREDICTOR_H_
 
-// This is the default main used on systems that have the standard C entry
-// point. Other devices (for example FreeRTOS or ESP32) that have different
-// requirements for entry code (like an app_main function) should specialize
-// this main.cc file in a target-specific subfolder.
-int main(int argc, char* argv[]) {
-  setup();
-  while (true) {
-    loop();
-  }
-}
+extern int PredictGesture(float* output);
+
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_GESTURE_RECOGNITION_GESTURE_PREDICTOR_H_
