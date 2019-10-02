@@ -45,12 +45,10 @@ def replace_main(line):
   return line
 
 
-def replace_example_ino_main(input_text):
-  """Removes the default main used for examples."""
+def check_ino_functions(input_text):
+  """Ensures the required functions exist."""
   # We're moving to an Arduino-friendly structure for all our examples, so they
   # have to have a setup() and loop() function, just like their IDE expects.
-  # This means we have a default main that just calls these functions at the end
-  # of every main.cc in the examples, but we have to remove it before export.
   if not re.search(r'void setup\(\) \{', input_text):
     raise Exception(
         'All examples must have a setup() function for Arduino compatiblity\n' +
@@ -58,15 +56,7 @@ def replace_example_ino_main(input_text):
   if not re.search(r'void loop\(\) \{', input_text):
     raise Exception(
         'All examples must have a loop() function for Arduino compatiblity')
-  main_string = (r'int main\(int argc, char\* argv\[\]\) {\n  setup\(\);\n  '
-                 r'while \(true\) \{\n    loop\(\);\n  \}\n\}')
-  main_match = re.search(main_string, input_text, re.MULTILINE)
-  if not main_match:
-    raise Exception(
-        'Expected form of the main function in the example .cc file not found!'
-    )
-  output = re.sub(main_string, '', input_text, re.MULTILINE)
-  return output
+  return input_text
 
 
 def add_example_ino_library_include(input_text):
@@ -111,7 +101,7 @@ def main(unused_args, flags):
   output_text = '\n'.join(output_lines)
 
   if flags.is_example_ino:
-    output_text = replace_example_ino_main(output_text)
+    output_text = check_ino_functions(output_text)
     output_text = add_example_ino_library_include(output_text)
 
   sys.stdout.write(output_text)

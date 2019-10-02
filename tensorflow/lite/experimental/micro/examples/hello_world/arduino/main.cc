@@ -13,15 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/micro/examples/micro_vision/main_functions.h"
+#include "tensorflow/lite/experimental/micro/examples/hello_world/main_functions.h"
 
-// This is the default main used on systems that have the standard C entry
-// point. Other devices (for example FreeRTOS or ESP32) that have different
-// requirements for entry code (like an app_main function) should specialize
-// this main.cc file in a target-specific subfolder.
-int main(int argc, char* argv[]) {
-  setup();
-  while (true) {
-    loop();
-  }
-}
+// Arduino automatically calls the setup() and loop() functions in a sketch, so
+// where other systems need their own main routine in this file, it can be left
+// empty.
