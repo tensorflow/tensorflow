@@ -72,6 +72,7 @@ TfLiteRegistration* Register_SQUARE();
 TfLiteRegistration* Register_STRIDED_SLICE();
 TfLiteRegistration* Register_SVDF();
 TfLiteRegistration* Register_UNPACK();
+TfLiteRegistration* Register_CONCATENATION();
 
 }  // namespace micro
 }  // namespace ops

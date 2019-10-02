@@ -66,6 +66,7 @@ AllOpsResolver::AllOpsResolver() {
   AddBuiltin(BuiltinOperator_DEQUANTIZE, Register_DEQUANTIZE(), 1, 4);
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
   AddBuiltin(BuiltinOperator_RELU6, Register_RELU6());
+  AddBuiltin(BuiltinOperator_CONCATENATION, Register_CONCATENATION());
 }
 
 }  // namespace micro
