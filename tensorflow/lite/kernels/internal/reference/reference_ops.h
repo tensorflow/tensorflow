@@ -349,56 +349,6 @@ inline void AddN(const RuntimeShape& input_shape, const size_t num_inputs,
 // reference_ops.h. Once an optimized version is implemented and NdArrayDesc<T>
 // is no longer referenced in this file, move NdArrayDesc<T> from types.h to
 // reference_ops.h.
-template <typename T>
-void BroadcastMul4DSlow(const ArithmeticParams& params,
-                        const RuntimeShape& unextended_input1_shape,
-                        const T* input1_data,
-                        const RuntimeShape& unextended_input2_shape,
-                        const T* input2_data,
-                        const RuntimeShape& unextended_output_shape,
-                        T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastMul4DSlow");
-  T output_activation_min;
-  T output_activation_max;
-  GetActivationParams(params, &output_activation_min, &output_activation_max);
-
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
-                                      unextended_input2_shape, &desc1, &desc2);
-
-  // In Tensorflow, the dimensions are canonically named (batch_number, row,
-  // col, channel), with extents (batches, height, width, depth), with the
-  // trailing dimension changing most rapidly (channels has the smallest stride,
-  // typically 1 element).
-  //
-  // In generated C code, we store arrays with the dimensions reversed. The
-  // first dimension has smallest stride.
-  //
-  // We name our variables by their Tensorflow convention, but generate C code
-  // nesting loops such that the innermost loop has the smallest stride for the
-  // best cache behavior.
-  for (int b = 0; b < output_shape.Dims(0); ++b) {
-    for (int y = 0; y < output_shape.Dims(1); ++y) {
-      for (int x = 0; x < output_shape.Dims(2); ++x) {
-        for (int c = 0; c < output_shape.Dims(3); ++c) {
-          output_data[Offset(output_shape, b, y, x, c)] =
-              ActivationFunctionWithMinMax(
-                  input1_data[SubscriptToIndex(desc1, b, y, x, c)] *
-                      input2_data[SubscriptToIndex(desc2, b, y, x, c)],
-                  output_activation_min, output_activation_max);
-        }
-      }
-    }
-  }
-}
-
 inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
                                  const RuntimeShape& unswitched_input1_shape,
                                  const uint8* unswitched_input1_data,
