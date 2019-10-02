@@ -23,6 +23,7 @@ import re
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -1700,6 +1701,27 @@ class RaggedTensorTest(test_util.TensorFlowTestCase,
                                                [[6], [7]], [[8], [9]]])
     self.assertAllEqual(decoded_rt, expected_rt)
 
+  def testUnbatchVariant(self):  # b/141789000
+    rt = ragged_factory_ops.constant([[1, 2, 3], [4, 5], [], [6, 7, 8, 9]])
+    batched = rt._to_variant(batched_input=True)
+    for i in range(4):
+      row = RaggedTensor._from_variant(
+          batched[i], dtype=dtypes.int32, output_ragged_rank=0)
+      self.assertAllEqual(rt[i], row)
+
+  def testUnbatchVariantInDataset(self):
+    rt = ragged_factory_ops.constant([[1, 2, 3], [4, 5], [], [6, 7, 8, 9]])
+    ds = dataset_ops.Dataset.from_tensor_slices(rt)
+    if context.executing_eagerly():
+      for i, value in enumerate(ds):
+        self.assertAllEqual(rt[i], value)
+    else:
+      it = dataset_ops.make_one_shot_iterator(ds)
+      out = it.get_next()
+      with self.cached_session() as sess:
+        for i in range(3):
+          self.assertAllEqual(sess.run(rt[i]), out)
+
   def testFromVariantInvalidParams(self):
     rt = ragged_factory_ops.constant([[0], [1], [2], [3]])
     batched_variant = rt._to_variant(batched_input=True)
@@ -1847,12 +1869,19 @@ class RaggedTensorSpecTest(test_util.TensorFlowTestCase,
     self.assertEqual(rt_spec._flat_tensor_specs,
                      [tensor_spec.TensorSpec(None, dtypes.variant)])
 
-  @parameterized.parameters([
+  @parameterized.named_parameters([
       {
+          'testcase_name': 'RaggedRank0',
+          'rt_spec': RaggedTensorSpec(ragged_rank=0),
+          'rt': [1.0, 2.0, 3.0],
+      },
+      {
+          'testcase_name': 'RaggedRank1',
           'rt_spec': RaggedTensorSpec(ragged_rank=1),
           'rt': [[1.0, 2.0], [3.0]]
       },
       {
+          'testcase_name': 'RaggedRank2',
           'rt_spec': RaggedTensorSpec(shape=[2, None, None]),
           'rt': [[[1.0, 2.0], [3.0]], [[], [4.0]]]
       },
@@ -1862,6 +1891,28 @@ class RaggedTensorSpecTest(test_util.TensorFlowTestCase,
     tensor_list = rt_spec._to_tensor_list(rt)
     rt_reconstructed = rt_spec._from_tensor_list(tensor_list)
     self.assertAllEqual(rt, rt_reconstructed)
+
+  @parameterized.named_parameters([
+      # TODO(b/141789000) Test ragged_rank=0 when support is added.
+      {
+          'testcase_name': 'RaggedRank1',
+          'rt_spec': RaggedTensorSpec(ragged_rank=1),
+          'rt': [[1.0, 2.0], [3.0]]
+      },
+      {
+          'testcase_name': 'RaggedRank2',
+          'rt_spec': RaggedTensorSpec(shape=[2, None, None]),
+          'rt': [[[1.0, 2.0], [3.0]], [[], [4.0]]]
+      },
+  ])
+  def testToFromBatchedTensorList(self, rt_spec, rt):
+    rt = ragged_factory_ops.constant(rt)
+    tensor_list = rt_spec._to_batched_tensor_list(rt)
+    rt_reconstructed = rt_spec._from_tensor_list(tensor_list)
+    self.assertAllEqual(rt, rt_reconstructed)
+    first_row = rt_spec._unbatch()._from_tensor_list(
+        [t[0] for t in tensor_list])
+    self.assertAllEqual(rt[0], first_row)
 
   @parameterized.parameters([
       (RaggedTensorSpec([2, None], dtypes.float32, 1), 32,
