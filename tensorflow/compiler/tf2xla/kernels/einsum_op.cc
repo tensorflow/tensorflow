@@ -28,13 +28,14 @@ namespace {
 constexpr std::array<DataType, 6> kEinsumTypes = {
     {DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_COMPLEX128}};
 
-class EinsumOp : public XlaOpKernel {
+// Kernel which compiles XlaEinsum, an einsum op accepting two inputs.
+class XlaEinsumOp : public XlaOpKernel {
  public:
-  explicit EinsumOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+  explicit XlaEinsumOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("equation", &equation_));
   }
 
-  ~EinsumOp() override = default;
+  ~XlaEinsumOp() override = default;
 
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaOp lhs = ctx->Input(0);
@@ -48,10 +49,51 @@ class EinsumOp : public XlaOpKernel {
 
  private:
   string equation_;
+  TF_DISALLOW_COPY_AND_ASSIGN(XlaEinsumOp);
+};
+
+// Kernel which compiles Einsum, an einsum op accepting a list of inputs.
+class EinsumOp : public XlaOpKernel {
+ public:
+  explicit EinsumOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("equation", &equation_));
+  }
+
+  ~EinsumOp() override = default;
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    std::vector<xla::XlaOp> input_handles;
+    std::vector<TensorShape> input_shapes;
+    OP_REQUIRES_OK(ctx,
+                   ctx->InputList("inputs", &input_handles, &input_shapes));
+
+    if (equation_.find(",") == equation_.npos) {
+      OP_REQUIRES(
+          ctx, input_handles.size() == 1,
+          errors::InvalidArgument(
+              "Einsum Op has ", input_handles.size(), " inputs ",
+              " but expected 1 input since there is no ',' in equation: ",
+              equation_));
+      ctx->SetOutput(0, xla::Einsum(input_handles[0], equation_));
+    } else {
+      OP_REQUIRES(
+          ctx, input_handles.size() == 2,
+          errors::InvalidArgument(
+              "Einsum Op has ", input_handles.size(), " inputs ",
+              " but expected 2 inputs since there is a ',' in equation: ",
+              equation_));
+      ctx->SetOutput(
+          0, xla::Einsum(input_handles[0], input_handles[1], equation_));
+    }
+  }
+
+ private:
+  string equation_;
   TF_DISALLOW_COPY_AND_ASSIGN(EinsumOp);
 };
 
-REGISTER_XLA_OP(Name("XlaEinsum").TypeConstraint("T", kEinsumTypes), EinsumOp);
+REGISTER_XLA_OP(Name("XlaEinsum").TypeConstraint("T", kEinsumTypes),
+                XlaEinsumOp);
 REGISTER_XLA_OP(Name("Einsum").TypeConstraint("T", kEinsumTypes), EinsumOp);
 
 }  // namespace
