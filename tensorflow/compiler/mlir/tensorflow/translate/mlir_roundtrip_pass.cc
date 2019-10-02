@@ -74,7 +74,4 @@ Status MlirRoundtripPass::Run(const GraphOptimizationPassOptions& options) {
   return Status::OK();
 }
 
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 0,
-                      MlirRoundtripPass);
-
 }  // namespace tensorflow

@@ -4730,7 +4730,7 @@ py_library(
         "//third_party/py/numpy",
         "@six_archive//:six",
         "//tensorflow/tools/compatibility:all_renames_v2",
-    ] + if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass"]),
+    ] + if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration"]),
 )
 
 tf_py_test(

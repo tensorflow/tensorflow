@@ -218,6 +218,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self._require_static_shapes = True
 
     self.experimental_enable_get_next_as_optional = True
+    self.experimental_enable_dynamic_batch_size = True
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate(colocate_with_variable, self)
@@ -539,16 +540,13 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     # This method needs to take host_id as input for correct computation.
     max_models_per_host = (self._tpu_metadata.num_of_cores_per_host //
                            self._device_assignment.num_cores_per_replica)
-    models_per_host = min(self._device_assignment.num_replicas,
-                          max_models_per_host)
-    return models_per_host * self._device_assignment.num_cores_per_replica
+    return min(self._device_assignment.num_replicas, max_models_per_host)
 
   @property
   def _num_replicas_in_sync(self):
     if self._device_assignment is None:
       return self._tpu_metadata.num_cores
-    return (self._device_assignment.num_replicas *
-            self._device_assignment.num_cores_per_replica)
+    return self._device_assignment.num_replicas
 
   @property
   def experimental_between_graph(self):
@@ -659,7 +657,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
       # Construct and pass `maximum_shapes` so that we could support dynamic
       # shapes using dynamic padder.
-      if replicate_inputs:
+      if self.experimental_enable_dynamic_batch_size and replicate_inputs:
         maximum_shapes = []
         flattened_list = nest.flatten(replicate_inputs[0])
         for input_tensor in flattened_list:

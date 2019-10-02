@@ -295,7 +295,10 @@ def _get_arg_spec(f, params, param_args):
   if params is None:
     if not args:
       return range(len(param_args))
-    return range(len(args))
+    if args[0] == "self":
+      return range(len(args) - 1)
+    else:
+      return range(len(args))
   elif all(isinstance(x, six.string_types) for x in params):
     return [args.index(n) for n in params]
   elif all(isinstance(x, int) for x in params):

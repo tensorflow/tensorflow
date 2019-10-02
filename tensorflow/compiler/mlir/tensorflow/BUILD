@@ -423,6 +423,15 @@ cc_library(
 )
 
 cc_library(
+    name = "mlir_roundtrip_pass_registration",
+    srcs = ["translate/mlir_roundtrip_pass_registration.cc"],
+    deps = [
+        ":mlir_roundtrip_pass",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "mlir_roundtrip_flags",
     srcs = ["translate/mlir_roundtrip_flags.cc"],
     hdrs = ["translate/mlir_roundtrip_flags.h"],

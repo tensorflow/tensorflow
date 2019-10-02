@@ -388,7 +388,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
         &remote_device_mgr));
   } else {
     ctx->context->ClearCaches();
-    remote_device_mgr = std::move(ctx->context->ReleaseRemoteDeviceMgr());
+    remote_device_mgr = ctx->context->ReleaseRemoteDeviceMgr();
     if (remote_device_mgr == nullptr) {
       LOG_AND_RETURN_IF_ERROR(tensorflow::errors::InvalidArgument(
           "Updating context with invalid a valid set of remote devices."));

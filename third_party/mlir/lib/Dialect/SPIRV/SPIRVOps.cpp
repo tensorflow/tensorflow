@@ -334,6 +334,12 @@ static unsigned getBitWidth(Type type) {
   llvm_unreachable("unhandled bit width computation for type");
 }
 
+/// Returns true if the given `block` only contains one `spv._merge` op.
+static inline bool isMergeBlock(Block &block) {
+  return !block.empty() && std::next(block.begin()) == block.end() &&
+         isa<spirv::MergeOp>(block.front());
+}
+
 //===----------------------------------------------------------------------===//
 // Common parsers and printers
 //===----------------------------------------------------------------------===//
@@ -1326,12 +1332,6 @@ static void print(spirv::LoopOp loopOp, OpAsmPrinter &printer) {
                       /*printBlockTerminators=*/true);
 }
 
-/// Returns true if the given `block` only contains one `spv._merge` op.
-static inline bool isMergeBlock(Block &block) {
-  return std::next(block.begin()) == block.end() &&
-         isa<spirv::MergeOp>(block.front());
-}
-
 /// Returns true if the given `srcBlock` contains only one `spv.Branch` to the
 /// given `dstBlock`.
 static inline bool hasOneBranchOpTo(Block &srcBlock, Block &dstBlock) {
@@ -1429,16 +1429,19 @@ static LogicalResult verify(spirv::LoopOp loopOp) {
 }
 
 Block *spirv::LoopOp::getHeaderBlock() {
+  assert(!body().empty() && "op region should not be empty!");
   // The second block is the loop header block.
   return &*std::next(body().begin());
 }
 
 Block *spirv::LoopOp::getContinueBlock() {
+  assert(!body().empty() && "op region should not be empty!");
   // The second to last block is the loop continue block.
   return &*std::prev(body().end(), 2);
 }
 
 Block *spirv::LoopOp::getMergeBlock() {
+  assert(!body().empty() && "op region should not be empty!");
   // The last block is the loop merge block.
   return &body().back();
 }
@@ -1451,7 +1454,7 @@ void spirv::LoopOp::addEntryAndMergeBlock() {
   OpBuilder builder(mergeBlock);
 
   // Add a spv._merge op into the merge block.
-  builder.create<spirv::MergeOp>(builder.getUnknownLoc());
+  builder.create<spirv::MergeOp>(getLoc());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1459,10 +1462,16 @@ void spirv::LoopOp::addEntryAndMergeBlock() {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult verify(spirv::MergeOp mergeOp) {
+  auto *parentOp = mergeOp.getParentOp();
+  if (!parentOp ||
+      (!isa<spirv::SelectionOp>(parentOp) && !isa<spirv::LoopOp>(parentOp)))
+    return mergeOp.emitOpError(
+        "expected parent op to be 'spv.selection' or 'spv.loop'");
+
   Block &parentLastBlock = mergeOp.getParentRegion()->back();
   if (mergeOp.getOperation() != parentLastBlock.getTerminator())
     return mergeOp.emitOpError(
-        "can only be used in the last block of 'spv.loop'");
+        "can only be used in the last block of 'spv.selection' or 'spv.loop'");
   return success();
 }
 
@@ -1805,6 +1814,93 @@ static LogicalResult verify(spirv::SelectOp op) {
     }
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.selection
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseSelectionOp(OpAsmParser &parser,
+                                    OperationState &state) {
+  // TODO(antiagainst): support selection control properly
+  Builder builder = parser.getBuilder();
+  state.addAttribute("selection_control",
+                     builder.getI32IntegerAttr(
+                         static_cast<uint32_t>(spirv::SelectionControl::None)));
+
+  return parser.parseRegion(*state.addRegion(), /*arguments=*/{},
+                            /*argTypes=*/{});
+}
+
+static void print(spirv::SelectionOp selectionOp, OpAsmPrinter &printer) {
+  auto *op = selectionOp.getOperation();
+
+  printer << spirv::SelectionOp::getOperationName();
+  printer.printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false,
+                      /*printBlockTerminators=*/true);
+}
+
+static LogicalResult verify(spirv::SelectionOp selectionOp) {
+  auto *op = selectionOp.getOperation();
+
+  // We need to verify that the blocks follow the following layout:
+  //
+  //                     +--------------+
+  //                     | header block |
+  //                     +--------------+
+  //                          / | \
+  //                           ...
+  //
+  //
+  //         +---------+   +---------+   +---------+
+  //         | case #0 |   | case #1 |   | case #2 |  ...
+  //         +---------+   +---------+   +---------+
+  //
+  //
+  //                           ...
+  //                          \ | /
+  //                            v
+  //                     +-------------+
+  //                     | merge block |
+  //                     +-------------+
+
+  auto &region = op->getRegion(0);
+  // Allow empty region as a degenerated case, which can come from
+  // optimizations.
+  if (region.empty())
+    return success();
+
+  // The last block is the merge block.
+  if (!isMergeBlock(region.back()))
+    return selectionOp.emitOpError(
+        "last block must be the merge block with only one 'spv._merge' op");
+
+  if (std::next(region.begin()) == region.end())
+    return selectionOp.emitOpError("must have a selection header block");
+
+  return success();
+}
+
+Block *spirv::SelectionOp::getHeaderBlock() {
+  assert(!body().empty() && "op region should not be empty!");
+  // The first block is the loop header block.
+  return &body().front();
+}
+
+Block *spirv::SelectionOp::getMergeBlock() {
+  assert(!body().empty() && "op region should not be empty!");
+  // The last block is the loop merge block.
+  return &body().back();
+}
+
+void spirv::SelectionOp::addMergeBlock() {
+  assert(body().empty() && "entry and merge block already exist");
+  auto *mergeBlock = new Block();
+  body().push_back(mergeBlock);
+  OpBuilder builder(mergeBlock);
+
+  // Add a spv._merge op into the merge block.
+  builder.create<spirv::MergeOp>(getLoc());
 }
 
 //===----------------------------------------------------------------------===//
