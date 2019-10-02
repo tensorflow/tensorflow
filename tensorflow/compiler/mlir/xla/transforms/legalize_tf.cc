@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
+#include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Transforms/DialectConversion.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -359,9 +360,12 @@ class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
   }
 };
 
-// Converts Softmax op to HLO ops computing softmax with the following formula:
+// Converts Softmax and LogSoftmax to HLO ops, computing softmax with the
+// following formulas:
 //
 //     softmax = div(exp(logits), sum(exp(logits)))
+
+//     log_softmax = sub(logits, log(sum(exp(logits))))
 //
 // Sample result with 2-d f16 inputs with B batches of with N elements each.
 //
@@ -383,23 +387,29 @@ class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
 //            : (tensor<BxNxf32>, tensor<1xf32>) -> tensor<Bxf32>
 //
 //    %sum_f16 = "xla_hlo.convert"(%sum) : (tensor<BxNxbf32>) -> tensor<BxNxf16>
+//
+//    // Softmax computation:
 //    %softmax = "xla_hlo.div"(%exp, %sum_f16) {broadcast_dimensions = 0}
 //            : (tensor<BxNxf16>, tensor<Bxf16>) -> tensor<BxNxf16>
 //
 // TODO(hinsu): Use tf.Max and tf.Sum instead of lowering directly to xla.
-class ConvertSoftmaxOp : public OpRewritePattern<TF::SoftmaxOp> {
+template <typename OpTy, bool use_log = true>
+class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
  public:
   explicit ConvertSoftmaxOp(MLIRContext *context)
-      : OpRewritePattern<TF::SoftmaxOp>(context, 1) {}
+      : OpRewritePattern<OpTy>(context, 1) {}
 
-  PatternMatchResult matchAndRewrite(TF::SoftmaxOp op,
+  PatternMatchResult matchAndRewrite(OpTy op,
                                      PatternRewriter &rewriter) const override {
     Value *logits = op.logits();
 
     // Softmax converter requires ranked type because the XLA reduce ops used
     // while lowering requires dimensions attribute to reduce along.
     RankedTensorType type = logits->getType().dyn_cast<RankedTensorType>();
-    if (!type) return matchFailure();
+    if (!type) return Pattern::matchFailure();
+
+    auto loc = op.getLoc();
+
     int rank = type.getRank();
 
     // Note that the TensorFlow Softmax op verifies that the input rank is
@@ -407,7 +417,6 @@ class ConvertSoftmaxOp : public OpRewritePattern<TF::SoftmaxOp> {
     // valid.
     auto batch_dims = GetI64ElementsAttrForSeq(0, rank - 1, &rewriter);
     auto reduce_dim = GetI64ElementsAttrForSeq(rank - 1, rank, &rewriter);
-    Location loc = op.getLoc();
 
     // Exponential of input values and then their sum can be very large here.
     // Division with large denominator is numerically unstable. To improve
@@ -450,9 +459,17 @@ class ConvertSoftmaxOp : public OpRewritePattern<TF::SoftmaxOp> {
     // Convert the summation result back to the original element type and divide
     // exponentials by the summations.
     sum = rewriter.create<xla_hlo::ConvertOp>(loc, reduce_out_type, sum);
-    rewriter.replaceOpWithNewOp<xla_hlo::DivOp>(op, op.getType(), exp, sum,
-                                                batch_dims);
-    return matchSuccess();
+
+    if (use_log) {
+      Value *log = rewriter.create<xla_hlo::LogOp>(loc, reduce_out_type, sum);
+      rewriter.replaceOpWithNewOp<xla_hlo::SubOp>(
+          op, op.getType(), shifted_logits, log, batch_dims);
+    } else {
+      rewriter.replaceOpWithNewOp<xla_hlo::DivOp>(op, op.getType(), exp, sum,
+                                                  batch_dims);
+    }
+
+    return Pattern::matchSuccess();
   }
 };
 
@@ -733,11 +750,12 @@ LogicalResult mlir::xla_hlo::legalizeTF(Operation *op) {
   // level TensorFlow ops. So, we don't have to target all the TensorFlow ops
   // here for lowering to HLO.
   mlir::TF::PopulateLoweringTFPatterns(context, &patterns);
-
   patterns.insert<mlir::xla::ConvertMaxPoolOp, mlir::xla::ConvertSigmoidOp,
-                  mlir::xla::ConvertSoftmaxOp, mlir::xla::ConvertStridedSliceOp,
-                  mlir::xla::ConvertMeanOp, mlir::xla::ConvertSumOp,
-                  mlir::xla::ConvertMaxOp>(op->getContext());
+                  mlir::xla::ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
+                  mlir::xla::ConvertSoftmaxOp<TF::SoftmaxOp, false>,
+                  mlir::xla::ConvertStridedSliceOp, mlir::xla::ConvertMeanOp,
+                  mlir::xla::ConvertSumOp, mlir::xla::ConvertMaxOp>(
+      op->getContext());
 
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();

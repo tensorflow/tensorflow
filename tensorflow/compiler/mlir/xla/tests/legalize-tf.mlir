@@ -442,6 +442,41 @@ func @rank4_softmax(%arg0: tensor<2x3x4x5xf16>) -> tensor<2x3x4x5xf16> {
 }
 
 //===----------------------------------------------------------------------===//
+// LogSoftmax op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @simple_logsoftmax
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<2x3xf32>)
+func @simple_logsoftmax(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+
+  // Verify reduce op for max computation and its body.
+  // CHECK: %[[NEG_INF:.*]] = "xla_hlo.constant"() {value = dense<0xFF800000> : tensor<f32>}
+  // CHECK: %[[MAX:.*]] = "xla_hlo.reduce"(%[[ARG0]], %[[NEG_INF]])
+  // CHECK:  xla_hlo.max
+  // CHECK: "xla_hlo.return"
+  // CHECK: {dimensions = dense<1> : tensor<1xi64>} : (tensor<2x3xf32>, tensor<f32>) -> tensor<2xf32>
+
+  // CHECK: %[[SHIFTED_INP:.*]] = "xla_hlo.sub"(%[[ARG0]], %[[MAX]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
+  // CHECK: %[[EXP:.*]] = "xla_hlo.exp"(%[[SHIFTED_INP]])
+  // CHECK: %[[CASTED_EXP:.*]] = "xla_hlo.convert"(%[[EXP]]) : (tensor<2x3xf32>) -> tensor<2x3xf32>
+
+  // Verify reduce op for summation and its body.
+  // CHECK: %[[ZERO:.*]] = "xla_hlo.constant"() {value = dense<0.000000e+00> : tensor<f32>}
+  // CHECK: %[[SUM:.*]] = "xla_hlo.reduce"(%[[CASTED_EXP]], %[[ZERO]])
+  // CHECK:  xla_hlo.add
+  // CHECK: "xla_hlo.return"
+  // CHECK: {dimensions = dense<1> : tensor<1xi64>}
+  // CHECK: %[[CASTED_SUM:.*]] = "xla_hlo.convert"(%[[SUM]]) : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK: %[[LOG:.*]] = "xla_hlo.log"(%[[CASTED_SUM]]) : (tensor<2xf32>) -> tensor<2xf32>
+
+  // CHECK: %[[RESULT:.*]] = "xla_hlo.sub"(%[[SHIFTED_INP]], %[[LOG]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
+  // return %[[RESULT]]
+
+  %0 = "tf.LogSoftmax"(%arg0) : (tensor<2x3xf32>) -> tensor<2x3xf32>
+  return %0: tensor<2x3xf32>
+}
+
+//===----------------------------------------------------------------------===//
 // Transpose op legalization.
 //===----------------------------------------------------------------------===//
 
