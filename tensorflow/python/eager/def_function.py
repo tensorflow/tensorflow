@@ -28,6 +28,7 @@ from tensorflow.python.eager import function as function_lib
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -695,15 +696,28 @@ class Function(object):
   def _initialize_uninitialized_variables(self, initializers):
     """Make and call a `ConcreteFunction` which initializes variables."""
 
+    if not initializers:
+      return
+
     # Note: using defun here avoids an infinite recursion.
     @function_lib.defun
     def initialize_variables():
       op_map = object_identity.ObjectIdentityDictionary()
-      for v, init in initializers:
+      # Stack all the var_is_initialized values into one tensor and intepret the
+      # numpy value. This will reduce the number of RPCs between client and
+      # worker in the remote case.
+      with ops.init_scope():
+        var_is_initialized = []
+        for v, _ in initializers:
+          var_is_initialized.append(
+              resource_variable_ops.var_is_initialized_op(v.handle))
+        var_is_initialized = array_ops.stack(var_is_initialized).numpy()
+
+      for (v, init), is_initialized in zip(initializers, var_is_initialized):
         with ops.init_scope():
-          if resource_variable_ops.var_is_initialized_op(v.handle):
-            # Ignore variables which are already initialized at trace time.
+          if is_initialized:
             continue
+
         op_map = lift_to_graph.lift_to_graph(
             [init], ops.get_default_graph(), op_map=op_map)
         v.assign(op_map[init], read_value=False)
