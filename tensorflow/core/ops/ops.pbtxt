@@ -31183,7 +31183,6 @@ op {
     name: "output_ragged_rank"
     type: "int"
     has_minimum: true
-    minimum: 1
   }
   attr {
     name: "Tvalues"
@@ -31192,6 +31191,9 @@ op {
   attr {
     name: "Tsplits"
     type: "type"
+    default_value {
+      type: DT_INT64
+    }
     allowed_values {
       list {
         type: DT_INT32
@@ -31324,7 +31326,6 @@ op {
     name: "RAGGED_RANK"
     type: "int"
     has_minimum: true
-    minimum: 1
   }
   attr {
     name: "Tvalues"
@@ -31333,6 +31334,9 @@ op {
   attr {
     name: "Tsplits"
     type: "type"
+    default_value {
+      type: DT_INT64
+    }
     allowed_values {
       list {
         type: DT_INT32
