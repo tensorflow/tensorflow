@@ -1506,8 +1506,7 @@ def tf_mkl_kernel_library(
         hdrs = None,
         deps = None,
         alwayslink = 1,
-        copts = tf_copts(allow_exceptions = True) + tf_openmp_copts(),
-        **kwargs):
+        copts = tf_copts(allow_exceptions = True) + tf_openmp_copts()):
     """A rule to build MKL-based TensorFlow kernel libraries."""
 
     if not bool(srcs):
@@ -1526,7 +1525,7 @@ def tf_mkl_kernel_library(
         )
 
     # -fno-exceptions in nocopts breaks compilation if header modules are enabled.
-    features = ["-use_header_modules"] + kwargs.pop("features", [])
+    disable_header_modules = ["-use_header_modules"]
 
     native.cc_library(
         name = name,
@@ -1535,8 +1534,7 @@ def tf_mkl_kernel_library(
         deps = deps,
         alwayslink = alwayslink,
         copts = copts,
-        features = features,
-        **kwargs
+        features = disable_header_modules,
     )
 
 register_extension_info(

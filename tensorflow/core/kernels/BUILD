@@ -152,7 +152,6 @@ tf_kernel_library(
         "strided_slice_op.h",
         "strided_slice_op_impl.h",
     ],
-    features = ["-parse_headers"],
     gpu_srcs = [
         "slice_op.h",
         "strided_slice_op.h",
@@ -266,7 +265,6 @@ tf_kernel_library(
         "concat_lib.h",
         "concat_lib_cpu.h",
     ],
-    features = ["-parse_headers"],
     gpu_copts = if_not_windows([
         "-Wno-pass-failed",  # clang misses #pragma loop optimizations
     ]),
@@ -291,7 +289,6 @@ cc_library(
         "concat_lib.h",
         "concat_lib_cpu.h",
     ],
-    features = ["-parse_headers"],
     deps = ["//third_party/eigen3"],
 )
 
@@ -331,7 +328,6 @@ tf_kernel_library(
 cc_library(
     name = "conv_2d_hdrs",
     hdrs = ["conv_2d.h"],
-    features = ["-parse_headers"],
     deps = [
         ":eigen_helpers",
         "//third_party/eigen3",
@@ -506,7 +502,6 @@ cc_library(
 cc_library(
     name = "ops_util_hdrs",
     hdrs = ["ops_util.h"],
-    features = ["-parse_headers"],
     deps = ["//third_party/eigen3"],
 )
 
@@ -604,7 +599,6 @@ cc_library(
     name = "queue_base",
     srcs = ["queue_base.cc"],
     hdrs = ["queue_base.h"],
-    features = ["-parse_headers"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -681,7 +675,6 @@ tf_kernel_library(
     name = "split_lib",
     srcs = ["split_lib_cpu.cc"],
     hdrs = ["split_lib.h"],
-    features = ["-parse_headers"],
     gpu_srcs = [
         "split_lib_gpu.cu.cc",
         "split_lib.h",
@@ -707,7 +700,6 @@ cc_library(
 cc_library(
     name = "typed_queue",
     hdrs = ["typed_queue.h"],
-    features = ["-parse_headers"],
     deps = [
         ":queue_base",
         "//tensorflow/core:framework",
@@ -718,7 +710,6 @@ cc_library(
     name = "training_op_helpers",
     srcs = ["training_op_helpers.cc"],
     hdrs = ["training_op_helpers.h"],
-    features = ["-parse_headers"],
     visibility = [
         ":friends",
         ":optimizer_helper_friends",
@@ -741,7 +732,6 @@ alias(
 
 cc_header_only_library(
     name = "bounds_check_lib",
-    features = ["-parse_headers"],
     deps = [":bounds_check"],
 )
 
@@ -787,7 +777,6 @@ cc_library(
 cc_library(
     name = "eigen_contraction_kernel",
     hdrs = ["eigen_contraction_kernel.h"],
-    features = ["-parse_headers"],
     deps = select({
         ":no_mkldnn_contraction_kernel": [":eigen_contraction_kernel_no_mkl"],
         "//conditions:default": [":eigen_contraction_kernel_with_mkl"],
@@ -831,7 +820,6 @@ cc_library(
 cc_library(
     name = "redux_functor",
     hdrs = ["redux_functor.h"],
-    features = ["-parse_headers"],
     deps = [
         "//tensorflow/core:framework",
         "//third_party/eigen3",
@@ -893,7 +881,6 @@ cc_library(
     hdrs = [
         "eigen_spatial_convolutions-inl.h",
     ],
-    features = ["-parse_headers"],
     deps = [
         ":eigen_convolution_helpers",
     ],
@@ -904,7 +891,6 @@ cc_library(
     hdrs = [
         "eigen_convolution_helpers.h",
     ],
-    features = ["-parse_headers"],
 )
 
 cc_library(
@@ -921,7 +907,6 @@ cc_library(
 
 cc_header_only_library(
     name = "image_resizer_state_lib",
-    features = ["-parse_headers"],
     deps = [":image_resizer_state"],
 )
 
@@ -1122,7 +1107,6 @@ tf_cc_test(
 
 tf_kernel_library(
     name = "gather_nd_op",
-    features = ["-parse_headers"],
     prefix = "gather_nd_op",
     deps = ARRAY_DEPS,
 )
@@ -1175,7 +1159,6 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "mirror_pad_op",
-    features = ["-parse_headers"],
     prefix = "mirror_pad_op",
     deps = ARRAY_DEPS,
 )
@@ -1263,7 +1246,6 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "slice_op",
-    features = ["-parse_headers"],
     prefix = "slice_op",
     deps = ARRAY_DEPS + [":strided_slice_op"],
 )
@@ -1304,7 +1286,6 @@ tf_kernel_library(
     name = "tile_ops",
     srcs = ["tile_functor_cpu.cc"],
     hdrs = ["tile_functor.h"],
-    features = ["-parse_headers"],
     gpu_srcs = [
         "tile_functor.h",
         "tile_functor_gpu.h",
@@ -1987,7 +1968,6 @@ tf_cc_test(
 
 tf_kernel_library(
     name = "gather_functor",
-    features = ["-parse_headers"],
     prefix = "gather_functor",
     visibility = [":friends"],
     deps = [
@@ -2004,7 +1984,6 @@ cc_library(
         "gather_functor.h",
         "gather_functor_batched.h",
     ],
-    features = ["-parse_headers"],
 )
 
 tf_kernel_library(
@@ -2406,7 +2385,6 @@ cc_library(
 
 cc_header_only_library(
     name = "lookup_headers_lib",
-    features = ["-parse_headers"],
     deps = [":lookup"],
 )
 
@@ -2730,7 +2708,6 @@ cc_library(
         "conditional_accumulator.h",
         "conditional_accumulator_base_op.h",
     ],
-    features = ["-parse_headers"],
     deps = [
         ":conditional_accumulator_base",
         ":fill_functor",
@@ -2750,7 +2727,6 @@ tf_kernel_library(
     name = "tensor_array",
     srcs = ["tensor_array.cc"],
     hdrs = ["tensor_array.h"],
-    features = ["-parse_headers"],
     visibility = ["//visibility:private"],
     deps = [
         ":aggregate_ops",
@@ -2784,7 +2760,6 @@ tf_kernel_library(
     name = "list_kernels",
     srcs = ["list_kernels.cc"],
     hdrs = ["list_kernels.h"],
-    features = ["-parse_headers"],
     gpu_srcs = [
         "list_kernels.cu.cc",
         "list_kernels.h",
@@ -3089,7 +3064,6 @@ cc_library(
         "eigen_benchmark.h",
         ":eigen_helpers",
     ],
-    features = ["-parse_headers"],
     deps = [
         "//tensorflow/core:framework",
         "//third_party/eigen3",
@@ -3837,7 +3811,6 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "cwise_op",
-    features = ["-parse_headers"],
     prefix = "cwise_op",
     deps = MATH_DEPS,
 )
@@ -3898,7 +3871,6 @@ tf_mkl_kernel_library(
 
 tf_kernel_library(
     name = "reduction_ops",
-    features = ["-parse_headers"],
     gpu_srcs = ["reduction_gpu_kernels.cu.h"],
     prefix = "reduction_ops",
     deps = MATH_DEPS + [":transpose_functor"] + if_cuda([
@@ -4305,7 +4277,6 @@ tf_kernel_library(
         ":xsmm_backward_convolutions": ["TENSORFLOW_USE_LIBXSMM_BACKWARD_CONVOLUTIONS"],
         "//conditions:default": [],
     }),
-    features = ["-parse_headers"],
     prefix = "conv_ops",
     deps = [
         ":bounds_check",
@@ -4345,7 +4316,6 @@ tf_kernel_library(
     name = "depthwise_conv_op",
     srcs = ["depthwise_conv_op.cc"],
     hdrs = ["depthwise_conv_op.h"],
-    features = ["-parse_headers"],
     gpu_copts = if_not_windows([
         "-Wno-pass-failed",  # clang misses #pragma loop optimizations
     ]),
@@ -4376,7 +4346,6 @@ tf_kernel_library(
     hdrs = [
         "depthwise_conv_op.h",
     ],
-    features = ["-parse_headers"],
     prefix = "depthwise_conv_grad_op",
     deps = [
         ":bounds_check",
@@ -4448,7 +4417,6 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "bias_op",
-    features = ["-parse_headers"],
     prefix = "bias_op",
     deps = NN_DEPS + [
         ":redux_functor",
@@ -4677,7 +4645,6 @@ tf_kernel_library(
         "pooling_ops_3d.h",
         "pooling_ops_common.h",
     ] + if_sycl(["pooling_ops_3d_sycl.h"]),
-    features = ["-parse_headers"],
     gpu_srcs = [
         "avgpooling_op.h",
         "avgpooling_op_gpu.cu.cc",
@@ -4728,7 +4695,6 @@ cc_library(
         "maxpooling_op.h",
         "pooling_ops_common.h",
     ],
-    features = ["-parse_headers"],
     deps = [
         ":eigen_helpers",
         ":ops_util_hdrs",
@@ -4904,7 +4870,6 @@ RANDOM_OPS_DEPS = [
 
 tf_kernel_library(
     name = "random_op",
-    features = ["-parse_headers"],
     prefix = "random_op",
     deps = RANDOM_OPS_DEPS,
 )
@@ -4933,7 +4898,6 @@ tf_cuda_cc_test(
 
 tf_kernel_library(
     name = "stateful_random_ops",
-    features = ["-parse_headers"],
     prefix = "stateful_random_ops",
     deps = [
         ":bounds_check",
@@ -5365,7 +5329,6 @@ tf_kernel_library(
         "scatter_nd_op.h",
         "scatter_nd_op_cpu_impl.h",
     ],
-    features = ["-parse_headers"],
     gpu_copts = if_not_windows([
         "-Wno-pass-failed",  # clang misses #pragma loop optimizations
     ]),
@@ -5383,7 +5346,6 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "variable_ops",
-    features = ["-parse_headers"],
     prefix = "variable_ops",
     deps = STATE_DEPS,
 )
@@ -7281,7 +7243,6 @@ tf_mkl_kernel_library(
         "meta_support.h",
         "reference_gemm.h",
     ],
-    features = ["-parse_headers"],
     deps = [
         ":bounds_check",
         ":ops_util",
@@ -7489,7 +7450,6 @@ cc_library(
     name = "quantization_utils",
     srcs = ["quantization_utils.cc"],
     hdrs = ["quantization_utils.h"],
-    features = ["-parse_headers"],
     deps = [
         "//tensorflow/core:framework",
         "@gemmlowp",
@@ -7652,7 +7612,6 @@ tf_mkl_kernel_library(
         "mkl_quantized_conv_ops.h",
         "no_op.h",
     ],
-    features = ["-parse_headers"],
     prefix = "mkl_conv",
     deps = [
         ":bounds_check",
@@ -7874,7 +7833,6 @@ tf_mkl_kernel_library(
         "cwise_ops_common.h",
         "cwise_ops_gradients.h",
     ],
-    features = ["-parse_headers"],
     prefix = "mkl_cwise_ops_common",
     deps = NN_DEPS + mkl_deps() + [":cwise_op"],
 )
@@ -8097,7 +8055,6 @@ cc_library(
         "fill_functor.h",
         "meta_support.h",
     ],
-    features = ["-parse_headers"],
     deps = [
         ":bounds_check",
         ":quantization_utils",
@@ -8112,7 +8069,6 @@ cc_library(
 # functionality in their own custom ops.
 cc_header_only_library(
     name = "cwise_lib_hdrs",
-    features = ["-parse_headers"],
     deps = [
         ":cwise_lib",
     ],
@@ -8122,7 +8078,6 @@ cc_header_only_library(
 # e.g. for selective registration.
 cc_header_only_library(
     name = "quantize_and_dequantize_op_hdrs",
-    features = ["-parse_headers"],
     deps = [
         ":quantize_and_dequantize_op",
     ],
