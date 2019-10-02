@@ -50,7 +50,7 @@ class EagerClusterFunctionLibraryRuntime
            FunctionLibraryRuntime::DoneCallback done) override;
 
   void Run(const FunctionLibraryRuntime::Options& opts,
-           FunctionLibraryRuntime::LocalHandle handle, const int64 op_id,
+           FunctionLibraryRuntime::LocalHandle handle,
            absl::Span<eager::RemoteTensorHandle* const> args,
            FunctionLibraryRuntime::DoneCallback done) override;
 

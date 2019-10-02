@@ -92,7 +92,7 @@ void EagerClusterFunctionLibraryRuntime::Run(
 
 void EagerClusterFunctionLibraryRuntime::Run(
     const FunctionLibraryRuntime::Options& opts,
-    FunctionLibraryRuntime::LocalHandle handle, const int64 op_id,
+    FunctionLibraryRuntime::LocalHandle handle,
     absl::Span<eager::RemoteTensorHandle* const> args,
     FunctionLibraryRuntime::DoneCallback done) {
   FunctionData* function_data = nullptr;
@@ -117,6 +117,11 @@ void EagerClusterFunctionLibraryRuntime::Run(
 
   EagerOperation* op = function_data->op.get();
 
+  if (!opts.op_id.has_value()) {
+    done(
+        errors::Internal("op_id is not set for remote function: ", op->Name()));
+  }
+
   eager::EnqueueRequest* request = new eager::EnqueueRequest;
   request->set_context_id(function_data->context_id);
   eager::Operation* remote_op = request->add_queue()->mutable_operation();
@@ -128,7 +133,7 @@ void EagerClusterFunctionLibraryRuntime::Run(
   // The remote component function should use the same op_id as its parent
   // multi-device function's in order to get the global unqiue op_id generated
   // by the master context.
-  remote_op->set_id(op_id);
+  remote_op->set_id(opts.op_id.value());
   remote_op->set_name(op->Name());
   op->Attrs().FillAttrValueMap(remote_op->mutable_attrs());
   remote_op->set_device(function_data->target);
