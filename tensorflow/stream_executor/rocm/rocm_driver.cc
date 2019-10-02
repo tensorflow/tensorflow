@@ -323,20 +323,19 @@ static port::Status InternalInit() {
       absl::StrCat("failed call to hipDeviceGet: ", ToString(res))};
 }
 
-/* static */ bool GpuDriver::GetDeviceName(hipDevice_t device,
-                                           string* device_name) {
+/* static */ port::Status GpuDriver::GetDeviceName(hipDevice_t device,
+                                                   string* device_name) {
   static const size_t kCharLimit = 64;
   absl::InlinedVector<char, 4> chars(kCharLimit);
   hipError_t res =
       tensorflow::wrap::hipDeviceGetName(chars.begin(), kCharLimit - 1, device);
   if (res != hipSuccess) {
-    LOG(ERROR) << "failed to get device name for " << device << ": "
-               << ToString(res);
-    return false;
+    return port::InternalError(
+        absl::StrCat("Failed to get device name: ", ToString(res)));
   }
   chars[kCharLimit - 1] = '\0';
   *device_name = chars.begin();
-  return true;
+  return port::Status::OK();
 }
 
 bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,

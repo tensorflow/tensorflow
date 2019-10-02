@@ -1094,7 +1094,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
 
   {
     string device_name;
-    (void)GpuDriver::GetDeviceName(device, &device_name);
+    TF_RETURN_IF_ERROR(GpuDriver::GetDeviceName(device, &device_name));
     builder.set_name(device_name);
   }
 

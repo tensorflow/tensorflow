@@ -372,19 +372,16 @@ static port::Status InternalInit() {
   return port::Status::OK();
 }
 
-/* static */ bool GpuDriver::GetDeviceName(CUdevice device,
-                                           string* device_name) {
+/* static */ port::Status GpuDriver::GetDeviceName(CUdevice device,
+                                                   string* device_name) {
   static const size_t kCharLimit = 64;
   absl::InlinedVector<char, 4> chars(kCharLimit);
-  CUresult res = cuDeviceGetName(chars.begin(), kCharLimit - 1, device);
-  if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "failed to get device name for " << device << ": "
-               << ToString(res);
-    return false;
-  }
+  RETURN_IF_CUDA_RES_ERROR(
+      cuDeviceGetName(chars.begin(), kCharLimit - 1, device),
+      "Failed to get device name");
   chars[kCharLimit - 1] = '\0';
   *device_name = chars.begin();
-  return true;
+  return port::Status::OK();
 }
 
 bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,

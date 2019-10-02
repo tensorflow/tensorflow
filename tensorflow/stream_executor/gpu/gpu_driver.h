@@ -148,7 +148,8 @@ class GpuDriver {
 
   // Given a device handle, returns the name reported by the driver for the
   // device.
-  static bool GetDeviceName(GpuDeviceHandle device, string* device_name);
+  static port::Status GetDeviceName(GpuDeviceHandle device,
+                                    string* device_name);
 
   // Given a device to create a context for, returns a context handle into the
   // context outparam, which must not be null.
