@@ -112,7 +112,6 @@ load(
     "tf_additional_lib_deps",
     "tf_additional_libdevice_data",
     "tf_additional_libdevice_deps",
-    "tf_additional_minimal_lib_srcs",
     "tf_additional_monitoring_hdrs",
     "tf_additional_numa_copts",
     "tf_additional_numa_deps",
@@ -430,6 +429,7 @@ cc_library(
     copts = tf_copts() + tf_additional_numa_copts(),
     visibility = [":__subpackages__"],
     deps = [
+        "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:platform",
         "//tensorflow/core/platform:thread_annotations",
         ":platform_base",
@@ -1105,9 +1105,6 @@ cc_library(
 
 cc_library(
     name = "framework_lite",
-    srcs = [
-        "//tensorflow/core/platform:legacy_minimal_lib_srcs",
-    ],
     hdrs = [
         "framework/numeric_types.h",
         "framework/tensor_types.h",
@@ -1117,7 +1114,6 @@ cc_library(
         "//tensorflow/core/platform:cpu_info.h",
         "//tensorflow/core/platform:default/integral_types.h",
         "//tensorflow/core/platform:default/logging.h",
-        "//tensorflow/core/platform:default/mutex.h",
         "//tensorflow/core/platform:dynamic_annotations.h",
         "//tensorflow/core/platform:macros.h",
         "//tensorflow/core/platform:mutex.h",
@@ -1137,6 +1133,7 @@ cc_library(
             "//tensorflow/core/lib/bfloat16",
             "//tensorflow/core/platform:dynamic_annotations",
             "//tensorflow/core/platform:thread_annotations",
+            "//tensorflow/core/platform:mutex",
             "//tensorflow/core/platform/default/build_config:minimal",
             "//tensorflow/core/platform:types",
         ],
@@ -2507,6 +2504,7 @@ cc_library(
                "//tensorflow/core/platform:abi",
                "//tensorflow/core/platform:annotation",
                "//tensorflow/core/platform:cpu_info",
+               "//tensorflow/core/platform:mutex",
                "//tensorflow/core/platform:numbers",
                "//tensorflow/core/platform:platform_strings",
                "//tensorflow/core/platform:scanner",

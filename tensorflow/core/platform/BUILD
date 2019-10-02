@@ -13,7 +13,6 @@ load(
     "tf_additional_lib_hdrs",
     "tf_additional_lib_srcs",
     "tf_additional_libdevice_srcs",
-    "tf_additional_minimal_lib_srcs",
     "tf_additional_monitoring_srcs",
     "tf_additional_proto_hdrs",
     "tf_additional_rocdl_deps",
@@ -298,9 +297,7 @@ cc_library(
 cc_library(
     name = "mutex",
     textual_hdrs = ["mutex.h"],
-    deps = [
-        ":mutex_impl",
-    ],
+    deps = tf_mobile_aware_deps("mutex_impl"),
 )
 
 cc_library(
@@ -654,6 +651,7 @@ filegroup(
             "**/stream_executor.h",
             "**/env_time.cc",
             "**/logger.cc",
+            "**/mutex.cc",
             "**/logging.cc",
             "**/human_readable_json.cc",
             "**/rocm.h",
@@ -751,6 +749,7 @@ filegroup(
             "**/monitoring.cc",
             "**/cuda_libdevice_path.cc",
             "**/logger.cc",
+            "**/mutex.cc",
             "**/logging.cc",
             "**/human_readable_json.cc",
             "**/rocm_rocdl_path.cc",
@@ -772,12 +771,6 @@ filegroup(
 filegroup(
     name = "legacy_test_srcs",
     srcs = tf_additional_test_srcs(),
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
-    name = "legacy_minimal_lib_srcs",
-    srcs = tf_additional_minimal_lib_srcs(),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
