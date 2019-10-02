@@ -322,7 +322,7 @@ void mlir::linalg::SliceOp::build(Builder *b, OperationState &result,
   auto memRefType = base->getType().cast<MemRefType>();
   int64_t offset;
   SmallVector<int64_t, 4> strides;
-  auto res = memRefType.getStridesAndOffset(strides, offset);
+  auto res = getStridesAndOffset(memRefType, strides, offset);
   assert(succeeded(res) && strides.size() == indexings.size());
   (void)res;
 
@@ -466,7 +466,7 @@ void mlir::linalg::TransposeOp::build(Builder *b, OperationState &result,
   // Compute permuted strides.
   int64_t offset;
   SmallVector<int64_t, 4> strides;
-  auto res = memRefType.getStridesAndOffset(strides, offset);
+  auto res = getStridesAndOffset(memRefType, strides, offset);
   assert(succeeded(res) && strides.size() == static_cast<unsigned>(rank));
   (void)res;
   auto map = makeStridedLinearLayoutMap(strides, offset, b->getContext());

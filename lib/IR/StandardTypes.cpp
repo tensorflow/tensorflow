@@ -23,7 +23,6 @@
 #include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/Twine.h"
-#include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
 using namespace mlir::detail;
@@ -544,9 +543,10 @@ static void extractStridesFromTerm(AffineExpr e,
   llvm_unreachable("unexpected binary operation");
 }
 
-LogicalResult MemRefType::getStridesAndOffset(SmallVectorImpl<int64_t> &strides,
-                                              int64_t &offset) const {
-  auto affineMaps = getAffineMaps();
+LogicalResult mlir::getStridesAndOffset(MemRefType t,
+                                        SmallVectorImpl<int64_t> &strides,
+                                        int64_t &offset) {
+  auto affineMaps = t.getAffineMaps();
   // For now strides are only computed on a single affine map with a single
   // result (i.e. the closed subset of linearization maps that are compatible
   // with striding semantics).
@@ -555,12 +555,12 @@ LogicalResult MemRefType::getStridesAndOffset(SmallVectorImpl<int64_t> &strides,
     return failure();
   AffineExpr stridedExpr;
   if (affineMaps.empty() || affineMaps[0].isIdentity()) {
-    if (getRank() == 0) {
+    if (t.getRank() == 0) {
       // Handle 0-D corner case.
       offset = 0;
       return success();
     }
-    stridedExpr = makeCanonicalStridedLayoutExpr(getShape(), getContext());
+    stridedExpr = makeCanonicalStridedLayoutExpr(t.getShape(), t.getContext());
   } else if (affineMaps[0].getNumResults() == 1) {
     stridedExpr = affineMaps[0].getResult(0);
   }
@@ -568,9 +568,9 @@ LogicalResult MemRefType::getStridesAndOffset(SmallVectorImpl<int64_t> &strides,
     return failure();
 
   bool failed = false;
-  strides = SmallVector<int64_t, 4>(getRank(), 0);
+  strides = SmallVector<int64_t, 4>(t.getRank(), 0);
   bool seenOffset = false;
-  SmallVector<bool, 4> seen(getRank(), false);
+  SmallVector<bool, 4> seen(t.getRank(), false);
   if (stridedExpr.isa<AffineBinaryOpExpr>()) {
     stridedExpr.walk([&](AffineExpr e) {
       if (!failed)
@@ -688,6 +688,6 @@ AffineMap mlir::makeStridedLinearLayoutMap(ArrayRef<int64_t> strides,
 bool mlir::isStrided(MemRefType t) {
   int64_t offset;
   SmallVector<int64_t, 4> stridesAndOffset;
-  auto res = t.getStridesAndOffset(stridesAndOffset, offset);
+  auto res = getStridesAndOffset(t, stridesAndOffset, offset);
   return succeeded(res);
 }

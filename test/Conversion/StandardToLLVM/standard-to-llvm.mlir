@@ -11,3 +11,9 @@ func @address_space(%arg0 : memref<32xf32, (d0) -> (d0), 7>) {
   std.return
 }
 
+// CHECK-LABEL: func @strided_memref(
+func @strided_memref(%ind: index) {
+  %0 = alloc()[%ind] : memref<32x64xf32, (i, j)[M] -> (32 + M * i + j)>
+  std.return
+}
+
