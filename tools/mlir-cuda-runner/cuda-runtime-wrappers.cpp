@@ -85,7 +85,7 @@ template <typename T, int N> struct MemRefType {
   T *data;
   int64_t offset;
   int64_t sizes[N];
-  long strides[N];
+  int64_t strides[N];
 };
 
 // Allows to register a pointer with the CUDA runtime. Helpful until
