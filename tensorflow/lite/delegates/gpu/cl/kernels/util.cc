@@ -128,9 +128,18 @@ std::string GetCommonDefines(CalculationsPrecision precision) {
 TensorCodeGenerator::TensorCodeGenerator(const std::string& name,
                                          const std::string& uniform_size_name,
                                          const TensorDescriptor& descriptor)
-    : tensor_name_(name),
-      uniform_size_name_(uniform_size_name),
-      descriptor_(descriptor) {}
+    : tensor_name_(name), descriptor_(descriptor) {
+  sizes_.width = uniform_size_name + ".x";
+  sizes_.height = uniform_size_name + ".y";
+  sizes_.channels = uniform_size_name + ".z";
+  sizes_.depth = uniform_size_name + ".w";
+  sizes_.batch_size = "BATCH_SIZE";
+}
+
+TensorCodeGenerator::TensorCodeGenerator(const std::string& name,
+                                         const SizeVariablesNames& sizes,
+                                         const TensorDescriptor& descriptor)
+    : tensor_name_(name), sizes_(sizes), descriptor_(descriptor) {}
 
 std::string TensorCodeGenerator::GetDeclaration(AccessType access_type) const {
   switch (descriptor_.storage_type) {
@@ -202,11 +211,11 @@ std::string TensorCodeGenerator::GetGlobalAddressNoDeclaration(
   switch (descriptor_.storage_type) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
-      return absl::Substitute("((($2) * $3.y + ($1)) * $3.x + ($0))", x, y, z,
-                              uniform_size_name_);
+      return absl::Substitute("((($2) * $3 + ($1)) * $4 + ($0))", x, y, z,
+                              sizes_.height, sizes_.width);
     case TensorStorageType::TEXTURE_2D:
-      return absl::Substitute("(int2)(($0), ($1) * $3.w + ($2))", x, y, z,
-                              uniform_size_name_);
+      return absl::Substitute("(int2)(($0), ($1) * $3 + ($2))", x, y, z,
+                              sizes_.depth);
     case TensorStorageType::SINGLE_TEXTURE_2D:
       return absl::StrCat("(int2)(", x, ", ", y, ")");
     case TensorStorageType::TEXTURE_ARRAY:
@@ -225,9 +234,9 @@ std::string TensorCodeGenerator::GetGlobalAddressNoDeclaration(
   switch (descriptor_.storage_type) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
-      return absl::Substitute(
-          "(((($3) * $4.w + $2) * $4.y + ($1)) * $4.x + ($0))", x, y, z, b,
-          uniform_size_name_);
+      return absl::Substitute("(((($3) * $4 + $2) * $5 + ($1)) * $6 + ($0))", x,
+                              y, z, b, sizes_.depth, sizes_.height,
+                              sizes_.width);
     default:
       return "error";
   }
