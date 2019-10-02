@@ -431,6 +431,7 @@ cc_library(
     visibility = [":__subpackages__"],
     deps = [
         "//tensorflow/core/platform:platform",
+        "//tensorflow/core/platform:thread_annotations",
         ":platform_base",
         "@com_google_absl//absl/base",
         "//tensorflow/core/platform/default/build_config:port",
@@ -1135,6 +1136,7 @@ cc_library(
             "//third_party/eigen3",
             "//tensorflow/core/lib/bfloat16",
             "//tensorflow/core/platform:dynamic_annotations",
+            "//tensorflow/core/platform:thread_annotations",
             "//tensorflow/core/platform/default/build_config:minimal",
             "//tensorflow/core/platform:types",
         ],
