@@ -58,21 +58,30 @@ Status EagerClusterFunctionLibraryRuntime::Instantiate(
   const FunctionLibraryDefinition& func_lib_def =
       options.lib_def ? *options.lib_def : lib_def;
 
-  RegisterFunctionRequest request;
+  EnqueueRequest* request = new EnqueueRequest;
+  EnqueueResponse* response = new EnqueueResponse;
+
   const uint64 context_id = ctx_->GetContextId();
-  request.set_context_id(context_id);
+  request->set_context_id(context_id);
+
+  RegisterFunctionOp* register_function =
+      request->add_queue()->mutable_register_function();
   // TODO(yujingzhang): add FunctionDefLibrary to RegisterFunctionRequest to
   // support nested functions.
-  *request.mutable_function_def() = *func_lib_def.Find(function_name);
-  request.set_is_component_function(true);
+  *register_function->mutable_function_def() =
+      *func_lib_def.Find(function_name);
+  register_function->set_is_component_function(true);
 
   Status status;
   Notification done;
-  RegisterFunctionResponse response;
-  eager_client->RegisterFunctionAsync(&request, &response, [&](Status s) {
-    status = s;
-    done.Notify();
-  });
+  // TODO(yujingzhang): make this call async.
+  eager_client->StreamingEnqueueAsync(
+      request, response, [request, response, &status, &done](const Status& s) {
+        status = s;
+        delete request;
+        delete response;
+        done.Notify();
+      });
   done.WaitForNotification();
   TF_RETURN_IF_ERROR(status);
 

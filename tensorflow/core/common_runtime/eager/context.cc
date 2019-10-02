@@ -21,6 +21,7 @@ limitations under the License.
 // Required for IS_MOBILE_PLATFORM
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/platform.h"
@@ -398,39 +399,31 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
   // Only client context can register function on remote worker context.
   if (remote_device_manager_ == nullptr) return Status::OK();
 #if !defined(IS_MOBILE_PLATFORM)
-  BlockingCounter blocking_counter(static_cast<int>(remote_contexts_.size()));
+  std::shared_ptr<eager::EnqueueRequest> request(new eager::EnqueueRequest);
+  request->set_context_id(GetContextId());
 
-  eager::RegisterFunctionRequest request;
-  request.set_context_id(GetContextId());
-  *request.mutable_function_def() = fdef;
-  StripDefaultAttributes(*OpRegistry::Global(),
-                         request.mutable_function_def()->mutable_node_def());
-  std::vector<eager::RegisterFunctionResponse> responses(
-      remote_contexts_.size());
-  std::vector<Status> statuses(remote_contexts_.size());
+  eager::RegisterFunctionOp* register_function =
+      request->add_queue()->mutable_register_function();
+  *register_function->mutable_function_def() = fdef;
+  StripDefaultAttributes(
+      *OpRegistry::Global(),
+      register_function->mutable_function_def()->mutable_node_def());
 
-  int i = 0;
   for (const auto& target : remote_contexts_) {
     eager::EagerClient* eager_client;
-    statuses[i] = remote_eager_workers_->GetClient(target, &eager_client);
-    if (!statuses[i].ok()) {
-      blocking_counter.DecrementCount();
-      continue;
-    }
+    TF_RETURN_IF_ERROR(remote_eager_workers_->GetClient(target, &eager_client));
 
-    eager_client->RegisterFunctionAsync(
-        &request, &responses[i],
-        [i, &statuses, &blocking_counter](const Status& status) {
-          statuses[i] = status;
-          blocking_counter.DecrementCount();
+    eager::EnqueueResponse* response = new eager::EnqueueResponse();
+    eager_client->StreamingEnqueueAsync(
+        request.get(), response, [request, response](const Status& status) {
+          if (!status.ok()) {
+            LOG(ERROR) << "Failed to register function remotely due to "
+                       << status.error_message()
+                       << "\nThis shouldn't happen, please file a bug to "
+                          "tensorflow team.";
+          }
+          delete response;
         });
-
-    i++;
-  }
-  blocking_counter.Wait();
-
-  for (int i = 0; i < remote_contexts_.size(); i++) {
-    TF_RETURN_IF_ERROR(statuses[i]);
   }
 #endif  // !IS_MOBILE_PLATFORM
   return Status::OK();
@@ -441,39 +434,33 @@ Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
     const std::vector<string>& remote_workers) {
 #if !defined(IS_MOBILE_PLATFORM)
   // Register multiple functions on selected remote workers.
-  int num_requests = function_defs.size() * remote_workers.size();
-  BlockingCounter counter(num_requests);
-  std::vector<Status> statuses(num_requests);
   uint64 context_id = GetContextId();
   for (int i = 0; i < remote_workers.size(); i++) {
     eager::EagerClient* eager_client;
     Status s =
         remote_eager_workers_->GetClient(remote_workers[i], &eager_client);
     if (!s.ok()) {
-      for (int j = 0; j < function_defs.size(); j++) {
-        statuses[i * function_defs.size() + j] = s;
-        counter.DecrementCount();
-      }
       continue;
     }
     for (int j = 0; j < function_defs.size(); j++) {
-      eager::RegisterFunctionRequest request;
-      request.set_context_id(context_id);
-      *request.mutable_function_def() = *function_defs[j];
-      auto* response = new eager::RegisterFunctionResponse();
-      int request_idx = i * function_defs.size() + j;
-      eager_client->RegisterFunctionAsync(
-          &request, response,
-          [request_idx, &statuses, response, &counter](const Status& s) {
-            statuses[request_idx] = s;
+      auto* request = new eager::EnqueueRequest;
+      request->set_context_id(context_id);
+      eager::RegisterFunctionOp* register_function =
+          request->add_queue()->mutable_register_function();
+      *register_function->mutable_function_def() = *function_defs[j];
+      auto* response = new eager::EnqueueResponse;
+      eager_client->StreamingEnqueueAsync(
+          request, response, [request, response](const Status& s) {
+            if (!s.ok()) {
+              LOG(ERROR) << "Failed to register function remotely due to "
+                         << s.error_message()
+                         << "\nThis shouldn't happen, please file a bug to "
+                            "tensorflow team.";
+            }
+            delete request;
             delete response;
-            counter.DecrementCount();
           });
     }
-  }
-  counter.Wait();
-  for (int i = 0; i < num_requests; i++) {
-    TF_RETURN_IF_ERROR(statuses[i]);
   }
 #endif  // !IS_MOBILE_PLATFORM
   return Status::OK();

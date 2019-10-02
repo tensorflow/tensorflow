@@ -84,13 +84,12 @@ class FakeEagerClient : public EagerClient {
   CLIENT_METHOD(WaitQueueDone);
   CLIENT_METHOD(KeepAlive);
   CLIENT_METHOD(CloseContext);
-  CLIENT_METHOD(RegisterFunction);
 #undef CLIENT_METHOD
 
   void StreamingEnqueueAsync(const EnqueueRequest* request,
                              EnqueueResponse* response,
                              StatusCallback done) override {
-    done(errors::Unimplemented(""));
+    done(impl_->Enqueue(request, response));
   }
 
  private:
@@ -312,13 +311,14 @@ TEST_F(EagerServiceImplTest, BasicFunctionTest) {
 
   TF_ASSERT_OK(eager_service_impl.CreateContext(&request, &response));
 
-  RegisterFunctionRequest register_function_request;
-  register_function_request.set_context_id(context_id);
-  *register_function_request.mutable_function_def() = MatMulFunction();
-  RegisterFunctionResponse register_function_response;
+  EnqueueRequest enqueue_request;
+  enqueue_request.set_context_id(context_id);
+  RegisterFunctionOp* register_function =
+      enqueue_request.add_queue()->mutable_register_function();
+  *register_function->mutable_function_def() = MatMulFunction();
+  EnqueueResponse enqueue_response;
 
-  TF_ASSERT_OK(eager_service_impl.RegisterFunction(
-      &register_function_request, &register_function_response));
+  TF_ASSERT_OK(eager_service_impl.Enqueue(&enqueue_request, &enqueue_response));
 
   EnqueueRequest remote_enqueue_request;
   remote_enqueue_request.set_context_id(context_id);
