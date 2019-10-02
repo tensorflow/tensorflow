@@ -165,9 +165,9 @@ std::string TensorCodeGenerator::Read3D(const std::string& x,
 std::string TensorCodeGenerator::Read4D(const std::string& x,
                                         const std::string& y,
                                         const std::string& z,
-                                        const std::string& b) const {
-  return Read(GetGlobalAddressNoDeclaration(x, y, z, b),
-              TextureAddressMode::DONT_CARE);
+                                        const std::string& b,
+                                        TextureAddressMode address_mode) const {
+  return Read(GetGlobalAddressNoDeclaration(x, y, z, b), address_mode);
 }
 
 std::string TensorCodeGenerator::ReadAsFloat3D(
@@ -219,6 +219,9 @@ std::string TensorCodeGenerator::GetGlobalAddressNoDeclaration(
 std::string TensorCodeGenerator::GetGlobalAddressNoDeclaration(
     const std::string& x, const std::string& y, const std::string& z,
     const std::string& b) const {
+  if (b.empty()) {
+    return GetGlobalAddressNoDeclaration(x, y, z);
+  }
   switch (descriptor_.storage_type) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:

@@ -39,17 +39,9 @@ std::string GetConcatKernelCode(
   }
   TensorCodeGenerator dst("dst_data", "dst_size", op_def.dst_tensors[0]);
 
-  auto read_src = [&](const TensorCodeGenerator& tensor, const std::string& x,
-                      const std::string& y, const std::string& z) {
-    if (op_def.batch_support) {
-      return tensor.Read4D(x, y, z, "B");
-    } else {
-      return tensor.Read3D(x, y, z, TextureAddressMode::DONT_CARE);
-    }
-  };
-
   std::string c = GetCommonDefines(op_def.precision);
 
+  const std::string batch_id = op_def.batch_support ? "batch_id" : "";
   c += "__kernel void main_function(\n";
   for (const auto& src : srcs) {
     c += src.GetDeclaration(AccessType::READ) + ",\n";
@@ -72,9 +64,9 @@ std::string GetConcatKernelCode(
   c += "  int X = get_global_id(0);\n";
   c += "  int Y = get_global_id(1);\n";
   if (op_def.batch_support) {
-    c += "  int B = get_global_id(2) / dst_size.w;\n";
-    c += "  int Z = get_global_id(2) - B * dst_size.w;\n";
-    c += "  if (Z >= dst_size.w || B >= BATCH_SIZE) return;\n";
+    c += "  int batch_id = get_global_id(2) / dst_size.w;\n";
+    c += "  int Z = get_global_id(2) - batch_id * dst_size.w;\n";
+    c += "  if (Z >= dst_size.w || batch_id >= BATCH_SIZE) return;\n";
   } else {
     c += "  int Z = get_global_id(2);\n";
     c += "  if (Z >= dst_size.w) return;\n";
@@ -83,16 +75,15 @@ std::string GetConcatKernelCode(
     const std::string offset_name = "dst_offset_" + std::to_string(i);
     const std::string size_name = "src_size_" + std::to_string(i);
     c += "  if (X < " + size_name + ".x && Y < " + size_name + ".y) { \n";
-    c += "    FLT4 result = " + read_src(srcs[i], "X", "Y", "Z") + ";\n";
+    c +=
+        "    FLT4 result = " +
+        srcs[i].Read4D("X", "Y", "Z", batch_id, TextureAddressMode::DONT_CARE) +
+        ";\n";
     c += "    int dst_x = X + " + offset_name + ".x;\n";
     c += "    int dst_y = Y + " + offset_name + ".y;\n";
     const LinkingContext context{"result", "dst_x", "dst_y", "Z"};
     c += PostProcess(linked_operations, context);
-    if (op_def.batch_support) {
-      c += "    " + dst.Write4D("result", "dst_x", "dst_y", "Z", "B");
-    } else {
-      c += "    " + dst.Write3D("result", "dst_x", "dst_y", "Z");
-    }
+    c += "    " + dst.Write4D("result", "dst_x", "dst_y", "Z", batch_id);
     c += "  } \n";
   }
   c += "}\n";

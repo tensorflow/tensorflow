@@ -65,8 +65,10 @@ class TensorCodeGenerator {
       TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
 
   // Read4D supports BUFFER and IMAGE_BUFFER storage types.
-  std::string Read4D(const std::string& x, const std::string& y,
-                     const std::string& z, const std::string& b) const;
+  std::string Read4D(
+      const std::string& x, const std::string& y, const std::string& z,
+      const std::string& b,
+      TextureAddressMode address_mode = TextureAddressMode::ZERO) const;
 
   // Optimization for textures, so as in opencl we can use read_imagef for any
   // texture type.

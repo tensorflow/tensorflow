@@ -33,15 +33,7 @@ std::string GetSoftmaxKernelCode(
   TensorCodeGenerator dst_tensor("dst_data", "tensor_size",
                                  op_def.dst_tensors[0]);
 
-  auto read_src = [&](const std::string& x, const std::string& y,
-                      const std::string& z) {
-    if (op_def.batch_support) {
-      return src_tensor.ReadAsFloat4D(x, y, z, "B");
-    } else {
-      return src_tensor.ReadAsFloat3D(x, y, z, TextureAddressMode::DONT_CARE);
-    }
-  };
-
+  const std::string batch_id = op_def.batch_support ? "batch_id" : "";
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ);
@@ -55,8 +47,8 @@ std::string GetSoftmaxKernelCode(
   c += "    float4 mask\n";
   c += ") {\n";
   if (op_def.batch_support) {
-    c += "  int B = get_global_id(1);\n";
-    c += "  if (B >= BATCH_SIZE) return;\n";
+    c += "  int batch_id = get_global_id(1);\n";
+    c += "  if (batch_id >= BATCH_SIZE) return;\n";
   }
   c += "  int offset = 0;\n";
   c += "  float sum = 0.0f;\n";
@@ -66,7 +58,10 @@ std::string GetSoftmaxKernelCode(
   c += "    int z = offset + tid;\n";
   c += "    if (z < size.x) {\n";
   c += "      float4 mask_temp = z == size.x - 1 ? mask : (float4)(1.0f);\n";
-  c += "      float4 src = " + read_src("0", "0", "z") + ";\n";
+  c += "      float4 src = " +
+       src_tensor.ReadAsFloat4D("0", "0", "z", batch_id,
+                                TextureAddressMode::DONT_CARE) +
+       ";\n";
   c += "      sum += dot(mask_temp, exp(src));\n";
   c += "      offset += 32;\n";
   c += "    }\n";
@@ -96,14 +91,13 @@ std::string GetSoftmaxKernelCode(
   c += "  do {\n";
   c += "    int z = offset + tid;\n";
   c += "    if (z < size.x) {\n";
-  c += "      FLT4 res = TO_FLT4(exp(" + read_src("0", "0", "z") + ")*sum);\n";
+  c += "      FLT4 res = TO_FLT4(exp(" +
+       src_tensor.ReadAsFloat4D("0", "0", "z", batch_id,
+                                TextureAddressMode::DONT_CARE) +
+       ")*sum);\n";
   const LinkingContext context{"res", "0", "0", "z"};
   c += PostProcess(linked_operations, context);
-  if (op_def.batch_support) {
-    c += "    " + dst_tensor.Write4D("res", "0", "0", "z", "B");
-  } else {
-    c += "    " + dst_tensor.Write3D("res", "0", "0", "z");
-  }
+  c += "    " + dst_tensor.Write4D("res", "0", "0", "z", batch_id);
   c += "      offset += 32;\n";
   c += "    }\n";
   c += "    s++;\n";

@@ -48,27 +48,10 @@ std::string GetConcatKernelCode(
   }
   TensorCodeGenerator dst("dst_data", "dst_size", op_def.dst_tensors[0]);
 
-  auto read_src = [&](const TensorCodeGenerator& tensor, const std::string& x,
-                      const std::string& y, const std::string& z) {
-    if (op_def.batch_support) {
-      return tensor.Read4D(x, y, z, "B");
-    } else {
-      return tensor.Read3D(x, y, z, TextureAddressMode::DONT_CARE);
-    }
-  };
-
-  auto write_dst = [&](const std::string& var_name, const std::string& x,
-                       const std::string& y, const std::string& z) {
-    if (op_def.batch_support) {
-      return dst.Write4D(var_name, x, y, z, "B");
-    } else {
-      return dst.Write3D(var_name, x, y, z);
-    }
-  };
-
   std::string c = GetCommonDefines(op_def.precision);
   const std::string postfix[] = {".x", ".y", ".z", ".w"};
 
+  const std::string batch_id = op_def.batch_support ? "batch_id" : "";
   c += "__kernel void main_function(\n";
   for (const auto& src : srcs) {
     c += src.GetDeclaration(AccessType::READ) + ",\n";
@@ -88,8 +71,8 @@ std::string GetConcatKernelCode(
   c += "  int Y = get_global_id(1);\n";
   c += "  if (X >= dst_size.x || Y >= dst_size.y) return;\n";
   if (op_def.batch_support) {
-    c += "  int B = get_global_id(2);\n";
-    c += "  if (B >= BATCH_SIZE) return;\n";
+    c += "  int batch_id = get_global_id(2);\n";
+    c += "  if (batch_id >= BATCH_SIZE) return;\n";
   }
 
   if (IsAllChannelsX4(channels)) {
@@ -104,22 +87,31 @@ std::string GetConcatKernelCode(
         // We can read more at once inside of loop in case depth % 2 == 0
         // it should be better for reading latency hiding
         c += "  for (int i = 0; i < " + uniform_name + ".w; i += 2) {\n";
-        c += "    FLT4 result0 = " + read_src(srcs[i], "X", "Y", "i") + ";\n";
-        c += "    FLT4 result1 = " + read_src(srcs[i], "X", "Y", "i+1") + ";\n";
+        c += "    FLT4 result0 = " +
+             srcs[i].Read4D("X", "Y", "i", batch_id,
+                            TextureAddressMode::DONT_CARE) +
+             ";\n";
+        c += "    FLT4 result1 = " +
+             srcs[i].Read4D("X", "Y", "i + 1", batch_id,
+                            TextureAddressMode::DONT_CARE) +
+             ";\n";
         const LinkingContext context_0{"result0", "X", "Y", "Z"};
         const LinkingContext context_1{"result1", "X", "Y", "Z + 1"};
         c += PostProcess(linked_operations, context_0);
         c += PostProcess(linked_operations, context_1);
-        c += "    " + write_dst("result0", "X", "Y", "Z");
-        c += "    " + write_dst("result1", "X", "Y", "Z + 1");
+        c += "    " + dst.Write4D("result0", "X", "Y", "Z", batch_id);
+        c += "    " + dst.Write4D("result1", "X", "Y", "Z + 1", batch_id);
         c += "    Z += 2;\n";
         c += "  }\n";
       } else {
         c += "  for (int i = 0; i < " + uniform_name + ".w; ++i) {\n";
-        c += "    FLT4 result = " + read_src(srcs[i], "X", "Y", "i") + ";\n";
+        c += "    FLT4 result = " +
+             srcs[i].Read4D("X", "Y", "i", batch_id,
+                            TextureAddressMode::DONT_CARE) +
+             ";\n";
         const LinkingContext context{"result", "X", "Y", "Z"};
         c += PostProcess(linked_operations, context);
-        c += "    " + write_dst("result", "X", "Y", "Z");
+        c += "    " + dst.Write4D("result", "X", "Y", "Z", batch_id);
         c += "    Z++;\n";
         c += "  }\n";
       }
@@ -135,7 +127,9 @@ std::string GetConcatKernelCode(
         const int channels_in_group = std::min(4, channels[i] - d * 4);
         const std::string temp_name = "t" + std::to_string(read_index);
         c += "  FLT4 " + temp_name + " = " +
-             read_src(srcs[i], "X", "Y", std::to_string(d)) + ";\n";
+             srcs[i].Read4D("X", "Y", std::to_string(d), batch_id,
+                            TextureAddressMode::DONT_CARE) +
+             ";\n";
         for (int ch = 0; ch < channels_in_group; ++ch) {
           c += "  result" + postfix[out_channel] + " = ";
           c += temp_name + postfix[ch] + ";\n";
@@ -145,7 +139,8 @@ std::string GetConcatKernelCode(
             c += "  {\n";
             const LinkingContext context{"result", "X", "Y", std::to_string(z)};
             c += PostProcess(linked_operations, context);
-            c += "  " + write_dst("result", "X", "Y", std::to_string(z));
+            c += "  " +
+                 dst.Write4D("result", "X", "Y", std::to_string(z), batch_id);
             c += "  }\n";
             z++;
           }
@@ -157,7 +152,7 @@ std::string GetConcatKernelCode(
       c += "  {\n";
       const LinkingContext context{"result", "X", "Y", std::to_string(z)};
       c += PostProcess(linked_operations, context);
-      c += "  " + write_dst("result", "X", "Y", std::to_string(z));
+      c += "  " + dst.Write4D("result", "X", "Y", "Z", std::to_string(z));
       c += "  }\n";
     }
   }
