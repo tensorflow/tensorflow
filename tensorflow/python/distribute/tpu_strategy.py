@@ -539,16 +539,13 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     # This method needs to take host_id as input for correct computation.
     max_models_per_host = (self._tpu_metadata.num_of_cores_per_host //
                            self._device_assignment.num_cores_per_replica)
-    models_per_host = min(self._device_assignment.num_replicas,
-                          max_models_per_host)
-    return models_per_host * self._device_assignment.num_cores_per_replica
+    return min(self._device_assignment.num_replicas, max_models_per_host)
 
   @property
   def _num_replicas_in_sync(self):
     if self._device_assignment is None:
       return self._tpu_metadata.num_cores
-    return (self._device_assignment.num_replicas *
-            self._device_assignment.num_cores_per_replica)
+    return self._device_assignment.num_replicas
 
   @property
   def experimental_between_graph(self):
