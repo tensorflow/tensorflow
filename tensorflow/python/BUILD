@@ -5626,6 +5626,7 @@ tf_py_test(
     name = "convert_to_constants_test",
     size = "small",
     srcs = ["framework/convert_to_constants_test.py"],
+    tags = ["no_rocm_v2"],
     additional_deps = [
         ":convert_to_constants",
         "client_testlib",
