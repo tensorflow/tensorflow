@@ -379,6 +379,15 @@ cc_library(
 )
 
 cc_library(
+    name = "png",
+    hdrs = ["png.h"],
+    deps = [
+        ":platform",
+        "@png",
+    ],
+)
+
+cc_library(
     name = "prefetch",
     hdrs = ["prefetch.h"],
     deps = [":platform"],

@@ -37,7 +37,7 @@ VALID_LIBS = [
     "org_sqlite",
     "pasta",
     "pcre",
-    "png_archive",
+    "png",
     "six_archive",
     "snappy",
     "swig",

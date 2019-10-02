@@ -157,7 +157,7 @@ filegroup(
         "@opt_einsum_archive//:LICENSE",
         "@pasta//:LICENSE",
         "@pcre//:LICENCE",
-        "@png_archive//:LICENSE",
+        "@png//:LICENSE",
         "@com_google_protobuf//:LICENSE",
         "@six_archive//:LICENSE",
         "@snappy//:COPYING",
