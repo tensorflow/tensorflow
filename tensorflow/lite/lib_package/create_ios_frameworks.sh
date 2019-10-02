@@ -85,7 +85,7 @@ rm -f tmp.tar
 cd $TFLITE_DIR/../..
 echo "Generate LICENSE files and copy to target"
 bazel build //tensorflow/tools/lib_package:clicenses_generate
-cp ../../LICENSE $FW_DIR_TFLITE
+cp $TFLITE_DIR/../../LICENSE $FW_DIR_TFLITE
 cp $TFLITE_DIR/../../bazel-genfiles/tensorflow/tools/lib_package/THIRD_PARTY_TF_C_LICENSES \
    $FW_DIR_TFLITE
 
