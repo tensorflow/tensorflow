@@ -30,7 +30,7 @@ build:ios_arm64 --cpu=ios_arm64
 build:ios_x86_64 --config=ios
 build:ios_x86_64 --cpu=ios_x86_64
 build:ios_fat --config=ios
-build:ios_fat --ios_multi_cpus=armv7,arm64
+build:ios_fat --ios_multi_cpus=armv7,arm64,x86_64
 build:ios_fat --copt -Wno-c++11-narrowing
 
 # Config to use a mostly-static build and disable modular op registration
