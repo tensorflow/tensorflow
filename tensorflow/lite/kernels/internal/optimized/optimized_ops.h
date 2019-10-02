@@ -5147,6 +5147,10 @@ inline void MultiplyByQuantizedMultiplier4Rows(
     int32x4_t* result_val_3, int32x4_t* result_val_4) {
   using gemmlowp::RoundingDivideByPOT;
   using gemmlowp::SaturatingRoundingDoublingHighMul;
+
+// The vector type support for SaturatingRoundingDoublingHighMulth in gemmlowp
+// is limited to NEON.
+#ifdef GEMMLOWP_NEON
   int32x4_t left_shifted_one_dup = vdupq_n_s32(left_shifted_one);
   *result_val_1 = RoundingDivideByPOT(
       SaturatingRoundingDoublingHighMul(
@@ -5164,6 +5168,80 @@ inline void MultiplyByQuantizedMultiplier4Rows(
       SaturatingRoundingDoublingHighMul(
           vmulq_s32(input_val_4, left_shifted_one_dup), multiplier),
       right_shift);
+#else
+  int32_t vals[4];
+  vals[0] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_1, 0) * left_shifted_one, multiplier),
+      right_shift);
+  vals[1] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_1, 1) * left_shifted_one, multiplier),
+      right_shift);
+  vals[2] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_1, 2) * left_shifted_one, multiplier),
+      right_shift);
+  vals[3] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_1, 3) * left_shifted_one, multiplier),
+      right_shift);
+  *result_val_1 = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
+
+  vals[0] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_2, 0) * left_shifted_one, multiplier),
+      right_shift);
+  vals[1] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_2, 1) * left_shifted_one, multiplier),
+      right_shift);
+  vals[2] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_2, 2) * left_shifted_one, multiplier),
+      right_shift);
+  vals[3] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_2, 3) * left_shifted_one, multiplier),
+      right_shift);
+  *result_val_2 = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
+
+  vals[0] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_3, 0) * left_shifted_one, multiplier),
+      right_shift);
+  vals[1] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_3, 1) * left_shifted_one, multiplier),
+      right_shift);
+  vals[2] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_3, 2) * left_shifted_one, multiplier),
+      right_shift);
+  vals[3] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_3, 3) * left_shifted_one, multiplier),
+      right_shift);
+  *result_val_3 = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
+
+  vals[0] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_4, 0) * left_shifted_one, multiplier),
+      right_shift);
+  vals[1] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_4, 1) * left_shifted_one, multiplier),
+      right_shift);
+  vals[2] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_4, 2) * left_shifted_one, multiplier),
+      right_shift);
+  vals[3] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_4, 3) * left_shifted_one, multiplier),
+      right_shift);
+  *result_val_4 = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
+#endif
 }
 
 #endif
