@@ -54,7 +54,7 @@ REQUIRED_PACKAGES = [
     'astor >= 0.6.0',
     'backports.weakref >= 1.0rc1;python_version<"3.4"',
     'enum34 >= 1.1.6;python_version<"3.4"',
-    'gast >= 0.2.0',
+    'gast == 0.2.2',
     'google_pasta >= 0.1.6',
     'keras_applications >= 1.0.6',
     'keras_preprocessing >= 1.0.5',
