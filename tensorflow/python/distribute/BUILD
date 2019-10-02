@@ -443,8 +443,10 @@ py_library(
         ":input_ops",
         ":values",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:multi_device_iterator_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
     ],
 )
 
@@ -703,7 +705,12 @@ distribute_py_test(
     deps = [
         ":collective_all_reduce_strategy",
         ":mirrored_strategy",
+        ":reduce_util",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:input_lib",
@@ -712,6 +719,8 @@ distribute_py_test(
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )
