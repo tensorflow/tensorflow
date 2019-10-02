@@ -47,7 +47,7 @@ DOCLINES = __doc__.split('\n')
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '1.14.0'
+_VERSION = '2.0.0'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.7.0',
@@ -63,7 +63,7 @@ REQUIRED_PACKAGES = [
     'six >= 1.10.0',
     'protobuf >= 3.6.1',
     'tensorboard >= 2.0.0, < 2.1.0',
-    'tensorflow_estimator >= 1.14.0rc0, < 1.15.0rc0',
+    'tensorflow_estimator >= 2.0.0, < 2.1.0',
     'termcolor >= 1.1.0',
     'wrapt >= 1.11.1',
     # python3 requires wheel 0.26

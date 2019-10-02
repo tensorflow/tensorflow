@@ -1258,6 +1258,7 @@ sh_test(
     ],
     tags = [
         "no_windows",
+        "v1only",
     ],
 )
 
