@@ -810,6 +810,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":_pywrap_events_writer",
+        ":_pywrap_py_func",  # TODO(b/142001480): remove once the bug is fixed.
         ":_pywrap_stat_summarizer",
         ":_pywrap_tfprof",
         ":_pywrap_util_port",
