@@ -343,7 +343,10 @@ tf_xla_py_test(
     name = "concat_ops_test",
     size = "medium",
     srcs = ["concat_ops_test.py"],
-    tags = ["many_xla_args"],
+    tags = [
+        "many_xla_args",
+        "no_rocm",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -354,7 +357,6 @@ tf_xla_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
-    tags = ["no_rocm"],
 )
 
 tf_xla_py_test(
