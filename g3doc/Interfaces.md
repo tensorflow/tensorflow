@@ -124,26 +124,29 @@ registration.
 
 ```c++
 struct ExampleOpInterfaceTraits {
-/// Define a base concept class that defines the virtual interface that needs
-/// to be overridden.
-struct Concept {
-  virtual ~Concept();
-  virtual unsigned getNumInputs(Operation *op) = 0;
-};
+  /// Define a base concept class that defines the virtual interface that needs
+  /// to be overridden.
+  struct Concept {
+    virtual ~Concept();
+    virtual unsigned getNumInputs(Operation *op) = 0;
+  };
 
-/// Define a model class that specializes a concept on a given operation type.
-template <typename OpT>
-struct Model {
-  /// Override the method to dispatch on the concrete operation.
-  unsigned getNumInputs(Operation *op) final {
-    return llvm::cast<OpT>(op).getNumInputs();
-  }
-};
+  /// Define a model class that specializes a concept on a given operation type.
+  template <typename OpT>
+  struct Model : public Concept {
+    /// Override the method to dispatch on the concrete operation.
+    unsigned getNumInputs(Operation *op) final {
+      return llvm::cast<OpT>(op).getNumInputs();
+    }
+  };
 };
 
 class ExampleOpInterface : public OpInterface<ExampleOpInterface,
                                               ExampleOpInterfaceTraits> {
 public:
+  /// Use base class constructor to support LLVM-style casts.
+  using OpInterface<ExampleOpInterface, ExampleOpInterfaceTraits>::OpInterface;
+
   /// The interface dispatches to 'getImpl()', an instance of the concept.
   unsigned getNumInputs() {
     return getImpl()->getNumInputs(getOperation());
@@ -169,7 +172,7 @@ public:
 /// interface.
 Operation *op = ...;
 if (ExampleOpInterface example = dyn_cast<ExampleOpInterface>(op))
- llvm::errs() << "num inputs = " << example.getNumInputs() << "\n";
+  llvm::errs() << "num inputs = " << example.getNumInputs() << "\n";
 ```
 
 #### Utilizing the ODS Framework
