@@ -463,9 +463,10 @@ string XlaCompiler::Argument::HumanString() const {
       return absl::StrCat("kind=constant", common,
                           " value=", constant_value.DebugString());
     case kResource: {
-      string output = absl::StrCat("kind=resource", common, " resource_kind=",
-                                   XlaResource::KindToString(resource_kind),
-                                   " initialized=", initialized);
+      string output = absl::StrCat(
+          "kind=resource", common,
+          " resource_kind=", XlaResource::KindToString(resource_kind),
+          " initialized=", initialized, " is_fast_mem=", fast_mem);
       if (max_array_size >= 0) {
         absl::StrAppend(&output, " max_array_size=", max_array_size);
       }
@@ -800,8 +801,7 @@ Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
           TF_ASSIGN_OR_RETURN(*xla_shape,
                               options_.shape_representation_fn(
                                   absl::get<TensorShape>(arg.shape), arg.type,
-                                  /*use_fast_memory=*/false));
-
+                                  /*use_fast_memory=*/arg.fast_mem));
           return Status::OK();
         }
         case XlaResource::kTensorArray: {
