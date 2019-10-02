@@ -235,12 +235,6 @@ cc_library(
 )
 
 cc_library(
-    name = "host_info",
-    hdrs = ["host_info.h"],
-    deps = [":types"],
-)
-
-cc_library(
     name = "human_readable_json",
     textual_hdrs = ["human_readable_json.h"],
     deps = [
