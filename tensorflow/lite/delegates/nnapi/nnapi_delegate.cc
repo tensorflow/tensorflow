@@ -3399,6 +3399,11 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
                                               TfLiteDelegate* delegate) {
   int* nnapi_errno = &(static_cast<Data*>(delegate->data_)->nnapi_errno);
 
+  // Resetting the error code when the delegate is initialized
+  // by TFLite. This causes the error to be reset if reusing the same
+  // StatefulNnApiDelegate after a failure
+  *nnapi_errno = 0;
+
   // Do not check nodes_ if NN API is unavailable.
   const NnApi* nnapi = NnApiImplementation();
   if (nnapi->android_sdk_version < kMinSdkVersionForNNAPI ||
