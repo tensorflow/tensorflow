@@ -124,6 +124,7 @@ def : Pat<(TF_MaxPoolOp $value,
 
 def : Pat<(TF_MaximumOp $arg1, $arg2), (TFL_MaximumOp $arg1, $arg2)>;
 def : Pat<(TF_MinimumOp $arg1, $arg2), (TFL_MinimumOp $arg1, $arg2)>;
+def : Pat<(TF_NegOp $arg), (TFL_NegOp $arg)>;
 def : Pat<(TF_OneHotOp $indices, $depth, $on_value, $off_value, $axis),
           (TFL_OneHotOp $indices, $depth, $on_value, $off_value,
            (convertIntAttrTo32Bit $axis))>;

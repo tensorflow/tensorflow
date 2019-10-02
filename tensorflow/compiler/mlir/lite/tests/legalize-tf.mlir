@@ -232,6 +232,13 @@ func @square(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
 // CHECK:  %0 = "tfl.square"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
 }
 
+func @neg(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
+  %0 = "tf.Neg"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+// CHECK-LABEL: neg
+// CHECK:  %0 = "tfl.neg"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+}
+
 func @log(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.Log"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
   return %0 : tensor<8x16xf32>
