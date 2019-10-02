@@ -20,6 +20,7 @@ load(
     "tf_additional_rocdl_srcs",
     "tf_additional_tensor_coding_deps",
     "tf_additional_test_srcs",
+    "tf_logging_absl_deps",
     "tf_platform_hdrs",
     "tf_platform_srcs",
     "tf_protobuf_compiler_deps",
@@ -28,8 +29,8 @@ load(
 load(
     "//tensorflow/core/platform:default/build_refactor.bzl",
     "tf_instantiate_platform_libraries",
-    "tf_mobile_aware_deps",
     "tf_platform_helper_deps",
+    "tf_mobile_aware_deps",
 )
 load(
     "//tensorflow:tensorflow.bzl",
@@ -61,7 +62,6 @@ tf_instantiate_platform_libraries(names = [
     "env",
     "env_time",
     "human_readable_json",
-    "logging",
     "load_library",
     "mutex",
     "net",
@@ -279,8 +279,15 @@ cc_library(
 
 cc_library(
     name = "logging",
-    textual_hdrs = ["logging.h"],
-    deps = tf_mobile_aware_deps("logging_impl"),
+    srcs = tf_platform_hdrs(["logging.h"]) + tf_platform_srcs(["logging.cc"]),
+    hdrs = ["logging.h"],
+    deps = [
+        ":env_time",
+        ":macros",
+        ":platform",
+        ":types",
+        "//tensorflow/core/platform/default/build_config:base",
+    ] + tf_logging_absl_deps(),
 )
 
 cc_library(
