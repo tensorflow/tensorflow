@@ -681,21 +681,15 @@ cuda_py_test(
     ],
 )
 
-tf_xla_py_test(
+distribute_py_test(
     name = "checkpointing_test",
     srcs = ["checkpointing_test.py"],
-    disabled_backends = [
-        # Only makes sense on TPUs
-        "cpu",
-        "gpu",
-        "cpu_ondemand",
-    ],
-    tags = [
-        "no_oss",
-    ],
+    main = "checkpointing_test.py",
     deps = [
         ":tpu_strategy",
         "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras",
         "//tensorflow/python/training/tracking:util",
