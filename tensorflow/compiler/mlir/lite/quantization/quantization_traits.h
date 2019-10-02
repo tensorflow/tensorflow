@@ -114,10 +114,7 @@ class AccumulatorUniformScale {
 //
 template <typename ConcreteType>
 class NoQuantizableResult
-    : public QuantizationSpecTraitBase<ConcreteType, NoQuantizableResult> {
- public:
-  static bool IsQuantizable() { return false; }
-};
+    : public QuantizationSpecTraitBase<ConcreteType, NoQuantizableResult> {};
 
 }  // namespace quant
 }  // namespace OpTrait

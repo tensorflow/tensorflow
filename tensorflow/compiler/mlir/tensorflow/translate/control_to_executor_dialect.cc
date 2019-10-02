@@ -237,7 +237,7 @@ void ControlToExecutorDialectConversion::runOnFunction() {
   }
 }
 
-FunctionPassBase *CreateTFControlToExecutorDialectConversion() {
+OpPassBase<FuncOp> *CreateTFControlToExecutorDialectConversion() {
   return new ControlToExecutorDialectConversion();
 }
 

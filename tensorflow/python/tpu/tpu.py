@@ -77,6 +77,7 @@ _UNCONNECTED_OPS_TO_PRUNE = set(["Placeholder", "VarHandleOp"])
 _MAX_WARNING_LINES = 5
 
 _TPU_REPLICATE_ATTR = "_tpu_replicate"
+_POST_DEVICE_REWRITE_ATTR = "_post_device_rewrite"
 _TPU_COMPILATION_STATUS_ATTR = "_tpu_compilation_status"
 _OUTSIDE_COMPILATION_ATTR = "_xla_outside_compilation"
 
@@ -707,7 +708,13 @@ def _pad_all_input(inputs, padded_shapes):
             need_padding[idx][i] = True
         maximum_static_shapes[idx] = max(input_shape,
                                          maximum_static_shapes[idx])
-      input_shape_tensors[idx].append(array_ops.shape(input_tensor))
+
+      # Append _POST_DEVICE_REWRITE_ATTR attributes to the real shape ops.
+      real_input_shape = array_ops.shape(input_tensor)
+      real_input_shape.op._set_attr(  # pylint: disable=protected-access
+          _POST_DEVICE_REWRITE_ATTR,
+          attr_value_pb2.AttrValue(b=True))
+      input_shape_tensors[idx].append(real_input_shape)
 
   maximum_shapes = []
   for shapes_per_input in input_shape_tensors:
@@ -737,7 +744,7 @@ def _pad_all_input(inputs, padded_shapes):
               padding_map.padding_arg_index = real_shape_idx
               padding_maps.append(padding_map)
             real_shapes[core_idx].append(
-                math_ops.cast(input_shape_tensor[i], dtypes.uint32))
+                math_ops.cast(input_shape_tensor[i], dtypes.int32))
 
         paddings = []
         for i, s in enumerate(padded_shape.dims):
@@ -763,6 +770,12 @@ def _pad_all_input(inputs, padded_shapes):
               lambda: input_tensor)
         else:
           padded_input = array_ops.pad(input_tensor, paddings)
+
+        # Append _POST_DEVICE_REWRITE_ATTR attributes to all padded inputs.
+        padded_input.op._set_attr(  # pylint: disable=protected-access
+            _POST_DEVICE_REWRITE_ATTR,
+            attr_value_pb2.AttrValue(b=True))
+
         padded_inputs[core_idx].append(padded_input)
       else:
         padded_inputs[core_idx].append(input_tensor)

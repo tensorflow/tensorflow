@@ -1,6 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 
 package(
     default_visibility = [
@@ -122,6 +122,13 @@ config_setting(
     name = "ios_arm64",
     values = {
         "cpu": "ios_arm64",
+    },
+)
+
+config_setting(
+    name = "ios_arm64e",
+    values = {
+        "cpu": "ios_arm64e",
     },
 )
 
@@ -311,7 +318,7 @@ cc_test(
     srcs = ["tensor_test.cc"],
     deps = [
         ":tensor",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -338,7 +345,7 @@ cc_test(
     srcs = ["quantization_util_test.cc"],
     deps = [
         ":quantization_util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -366,6 +373,7 @@ cc_library(
         "reference/conv.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
+        "reference/dequantize.h",
         "reference/floor.h",
         "reference/fully_connected.h",
         "reference/integer_ops/add.h",
@@ -381,6 +389,7 @@ cc_library(
         "reference/integer_ops/pooling.h",
         "reference/integer_ops/softmax.h",
         "reference/integer_ops/tanh.h",
+        "reference/logistic.h",
         "reference/maximum_minimum.h",
         "reference/mul.h",
         "reference/neg.h",
@@ -388,6 +397,7 @@ cc_library(
         "reference/pooling.h",
         "reference/prelu.h",
         "reference/process_broadcast_shapes.h",
+        "reference/quantize.h",
         "reference/reference_ops.h",
         "reference/round.h",
         "reference/softmax.h",
@@ -433,15 +443,18 @@ cc_library(
         "reference/conv.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
+        "reference/dequantize.h",
         "reference/floor.h",
         "reference/fully_connected.h",
         "reference/legacy_reference_ops.h",
+        "reference/logistic.h",
         "reference/maximum_minimum.h",
         "reference/mul.h",
         "reference/neg.h",
         "reference/pooling.h",
         "reference/prelu.h",
         "reference/process_broadcast_shapes.h",
+        "reference/quantize.h",
         "reference/reference_ops.h",
         "reference/round.h",
         "reference/softmax.h",
@@ -638,6 +651,9 @@ cc_library(
             ":neon_tensor_utils",
         ],
         ":ios_arm64": [
+            ":neon_tensor_utils",
+        ],
+        ":ios_arm64e": [
             ":neon_tensor_utils",
         ],
         ":raspberry_pi_with_neon": [
@@ -996,4 +1012,4 @@ genrule(
     visibility = ["//visibility:private"],
 )
 
-tflite_portable_test_suite()
+tflite_portable_test_suite_combined(combine_conditions = {"deps": ["//testing/base/public:gunit_main"]})

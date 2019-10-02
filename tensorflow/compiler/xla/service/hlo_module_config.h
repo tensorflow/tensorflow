@@ -27,6 +27,12 @@ limitations under the License.
 
 namespace xla {
 
+enum class FusionConfigCollection {
+  kOff,      // Do not collect configuration.
+  kPerEdge,  // Collect per-edge configuration.
+  kPerNode,  // Collect per-node configuration.
+};
+
 // This class gathers all settings and values which affect the compiled
 // executable outside of the HLO code itself. This include layouts of inputs and
 // outputs to the module and settings such as HLO profiling. Together the
@@ -40,6 +46,9 @@ class HloModuleConfig {
   // optimization. If sharded, XLA will create separate sharding/unsharding
   // programs, and the caller is responsible to call the XLA-generated
   // sharding/unsharding programs before and after the sharded main program.
+  //
+  // If the variable is not updated and there is not a corresponding output, use
+  // {-1} as the output_shape_index.
   //
   // The sharding/unsharding programs will include all the input/output pairs in
   // shardable_value_update_pairs() as a flat tuple in their inputs/outputs,
@@ -154,6 +163,21 @@ class HloModuleConfig {
     alias_passthrough_params_ = alias_passthrough_params;
   }
 
+  FusionConfigCollection fusion_config_collection() const {
+    return fusion_config_collection_;
+  }
+  void set_fusion_config_collection(
+      FusionConfigCollection fusion_config_collection) {
+    fusion_config_collection_ = fusion_config_collection;
+  }
+
+  const std::vector<std::vector<bool>>& fusion_config() const {
+    return fusion_config_;
+  }
+  std::vector<std::vector<bool>>* mutable_fusion_config() {
+    return &fusion_config_;
+  }
+
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
@@ -177,6 +201,11 @@ class HloModuleConfig {
   std::vector<ShardableValueUpdatePair> shardable_value_update_pairs_;
 
   bool alias_passthrough_params_ = false;
+
+  FusionConfigCollection fusion_config_collection_ =
+      FusionConfigCollection::kOff;
+
+  std::vector<std::vector<bool>> fusion_config_;
 };
 
 }  // namespace xla

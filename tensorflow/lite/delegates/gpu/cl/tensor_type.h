@@ -28,6 +28,7 @@ namespace cl {
 enum class TensorStorageType {
   UNKNOWN,
   BUFFER,
+  IMAGE_BUFFER,
   TEXTURE_2D,
   TEXTURE_ARRAY,
   SINGLE_TEXTURE_2D

@@ -26,7 +26,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'opt\', \'loss_scale\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'optimizer\', \'loss_scale\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "add_slot"

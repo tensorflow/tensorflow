@@ -62,6 +62,20 @@ public:
   /// Returns the LLVM dialect.
   LLVM::LLVMDialect *getDialect() { return llvmDialect; }
 
+  /// Promote the LLVM struct representation of all MemRef descriptors to stack
+  /// and use pointers to struct to avoid the complexity of the
+  /// platform-specific C/C++ ABI lowering related to struct argument passing.
+  SmallVector<Value *, 4> promoteMemRefDescriptors(Location loc,
+                                                   ArrayRef<Value *> opOperands,
+                                                   ArrayRef<Value *> operands,
+                                                   OpBuilder &builder);
+
+  /// Promote the LLVM struct representation of one MemRef descriptor to stack
+  /// and use pointer to struct to avoid the complexity of the platform-specific
+  /// C/C++ ABI lowering related to struct argument passing.
+  Value *promoteOneMemRefDescriptor(Location loc, Value *operand,
+                                    OpBuilder &builder);
+
 protected:
   /// LLVM IR module used to parse/create types.
   llvm::Module *module;
@@ -102,9 +116,6 @@ private:
   // Get the LLVM representation of the index type based on the bitwidth of the
   // pointer as defined by the data layout of the module.
   LLVM::LLVMType getIndexType();
-
-  // Wrap the given LLVM IR type into an LLVM IR dialect type.
-  Type wrap(llvm::Type *llvmType);
 
   // Extract an LLVM IR dialect type.
   LLVM::LLVMType unwrap(Type type);

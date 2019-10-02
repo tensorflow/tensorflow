@@ -23,6 +23,7 @@
 #include "mlir/Support/STLExtras.h"
 #include "mlir/TableGen/Format.h"
 #include "mlir/TableGen/GenInfo.h"
+#include "mlir/TableGen/OpInterfaces.h"
 #include "mlir/TableGen/OpTrait.h"
 #include "mlir/TableGen/Operator.h"
 #include "llvm/ADT/StringExtras.h"
@@ -541,6 +542,9 @@ private:
   // Generates the traits used by the object.
   void genTraits();
 
+  // Generate the OpInterface methods.
+  void genOpInterfaceMethods();
+
 private:
   // The TableGen record for this op.
   // TODO(antiagainst,zinenko): OpEmitter should not have a Record directly,
@@ -577,6 +581,7 @@ OpEmitter::OpEmitter(const Operator &op)
   genVerifier();
   genCanonicalizerDecls();
   genFolderDecls();
+  genOpInterfaceMethods();
 }
 
 void OpEmitter::emitDecl(const Operator &op, raw_ostream &os) {
@@ -665,8 +670,8 @@ static void generateNamedOperandGetters(const Operator &op, Class &opClass,
 
   if (numVariadicOperands == 0) {
     // We still need to match the return type, which is a range.
-    m.body() << "return {std::next(" << rangeBeginCall << ", index), std::next("
-             << rangeBeginCall << ", index + 1)};";
+    m.body() << "  return {std::next(" << rangeBeginCall
+             << ", index), std::next(" << rangeBeginCall << ", index + 1)};";
   } else {
     // Because the op can have arbitrarily interleaved variadic and non-variadic
     // operands, we need to embed a list in the "sink" getter method for
@@ -693,10 +698,10 @@ static void generateNamedOperandGetters(const Operator &op, Class &opClass,
 
     if (operand.isVariadic()) {
       auto &m = opClass.newMethod(rangeType, operand.name);
-      m.body() << "return getODSOperands(" << i << ");";
+      m.body() << "  return getODSOperands(" << i << ");";
     } else {
       auto &m = opClass.newMethod("Value *", operand.name);
-      m.body() << "return *getODSOperands(" << i << ").begin();";
+      m.body() << "  return *getODSOperands(" << i << ").begin();";
     }
   }
 }
@@ -727,7 +732,7 @@ void OpEmitter::genNamedResultGetters() {
                               "unsigned index");
 
   if (numVariadicResults == 0) {
-    m.body() << "return {std::next(getOperation()->result_begin(), index), "
+    m.body() << "  return {std::next(getOperation()->result_begin(), index), "
                 "std::next(getOperation()->result_begin(), index + 1)};";
   } else {
     llvm::SmallVector<StringRef, 4> isVariadic;
@@ -749,10 +754,10 @@ void OpEmitter::genNamedResultGetters() {
 
     if (result.isVariadic()) {
       auto &m = opClass.newMethod("Operation::result_range", result.name);
-      m.body() << "return getODSResults(" << i << ");";
+      m.body() << "  return getODSResults(" << i << ");";
     } else {
       auto &m = opClass.newMethod("Value *", result.name);
-      m.body() << "return *getODSResults(" << i << ").begin();";
+      m.body() << "  return *getODSResults(" << i << ").begin();";
     }
   }
 }
@@ -763,7 +768,7 @@ void OpEmitter::genNamedRegionGetters() {
     const auto &region = op.getRegion(i);
     if (!region.name.empty()) {
       auto &m = opClass.newMethod("Region &", region.name);
-      m.body() << formatv("return this->getOperation()->getRegion({0});", i);
+      m.body() << formatv("  return this->getOperation()->getRegion({0});", i);
     }
   }
 }
@@ -778,7 +783,7 @@ void OpEmitter::genSeparateParamBuilder() {
 
   // Push all result types to the operation state
   for (int i = 0, e = op.getNumResults(); i < e; ++i) {
-    m.body() << "  " << builderOpState << "->addTypes(" << resultNames[i]
+    m.body() << "  " << builderOpState << ".addTypes(" << resultNames[i]
              << ");\n";
   }
 }
@@ -805,7 +810,7 @@ void OpEmitter::genCollectiveTypeParamBuilder() {
   genCodeForAddingArgAndRegionForBuilder(m.body());
 
   // Push all result types to the operation state
-  m.body() << formatv("  {0}->addTypes(resultTypes);\n", builderOpState);
+  m.body() << formatv("  {0}.addTypes(resultTypes);\n", builderOpState);
 }
 
 void OpEmitter::genUseOperandAsResultTypeBuilder() {
@@ -824,7 +829,7 @@ void OpEmitter::genUseOperandAsResultTypeBuilder() {
   const char *index = op.getOperand(0).isVariadic() ? ".front()" : "";
   std::string resultType =
       formatv("{0}{1}->getType()", getArgumentName(op, 0), index).str();
-  m.body() << "  " << builderOpState << "->addTypes({" << resultType;
+  m.body() << "  " << builderOpState << ".addTypes({" << resultType;
   for (int i = 1; i != numResults; ++i)
     m.body() << ", " << resultType;
   m.body() << "});\n\n";
@@ -850,7 +855,7 @@ void OpEmitter::genUseAttrAsResultTypeBuilder() {
   } else {
     resultType = formatv("{0}.getType()", namedAttr.name);
   }
-  m.body() << "  " << builderOpState << "->addTypes({" << resultType;
+  m.body() << "  " << builderOpState << ".addTypes({" << resultType;
   for (int i = 1; i != numResults; ++i)
     m.body() << ", " << resultType;
   m.body() << "});\n\n";
@@ -919,7 +924,7 @@ void OpEmitter::genCollectiveParamBuilder() {
   int numNonVariadicOperands = numOperands - numVariadicOperands;
   // Signature
   std::string params =
-      std::string("Builder *, OperationState *") + builderOpState +
+      std::string("Builder *, OperationState &") + builderOpState +
       ", ArrayRef<Type> resultTypes, ArrayRef<Value *> operands, "
       "ArrayRef<NamedAttribute> attributes";
   auto &m = opClass.newMethod("void", "build", params, OpMethod::MP_Static);
@@ -930,7 +935,7 @@ void OpEmitter::genCollectiveParamBuilder() {
     body << "  assert(resultTypes.size()"
          << (numVariadicResults != 0 ? " >= " : " == ") << numNonVariadicResults
          << "u && \"mismatched number of return types\");\n";
-  body << "  " << builderOpState << "->addTypes(resultTypes);\n";
+  body << "  " << builderOpState << ".addTypes(resultTypes);\n";
 
   // Operands
   if (numVariadicOperands == 0 || numNonVariadicOperands != 0)
@@ -938,17 +943,17 @@ void OpEmitter::genCollectiveParamBuilder() {
          << (numVariadicOperands != 0 ? " >= " : " == ")
          << numNonVariadicOperands
          << "u && \"mismatched number of parameters\");\n";
-  body << "  " << builderOpState << "->addOperands(operands);\n\n";
+  body << "  " << builderOpState << ".addOperands(operands);\n\n";
 
   // Attributes
   body << "  for (const auto& pair : attributes)\n"
        << "    " << builderOpState
-       << "->addAttribute(pair.first, pair.second);\n";
+       << ".addAttribute(pair.first, pair.second);\n";
 
   // Create the correct number of regions
   if (int numRegions = op.getNumRegions()) {
     for (int i = 0; i < numRegions; ++i)
-      m.body() << "  (void)" << builderOpState << "->addRegion();\n";
+      m.body() << "  (void)" << builderOpState << ".addRegion();\n";
   }
 }
 
@@ -959,7 +964,7 @@ void OpEmitter::buildParamList(std::string &paramList,
   auto numResults = op.getNumResults();
   resultTypeNames.reserve(numResults);
 
-  paramList = "Builder *, OperationState *";
+  paramList = "Builder *, OperationState &";
   paramList.append(builderOpState);
 
   switch (kind) {
@@ -1018,7 +1023,7 @@ void OpEmitter::buildParamList(std::string &paramList,
 void OpEmitter::genCodeForAddingArgAndRegionForBuilder(OpMethodBody &body) {
   // Push all operands to the result
   for (int i = 0, e = op.getNumOperands(); i < e; ++i) {
-    body << "  " << builderOpState << "->addOperands(" << getArgumentName(op, i)
+    body << "  " << builderOpState << ".addOperands(" << getArgumentName(op, i)
          << ");\n";
   }
 
@@ -1029,7 +1034,7 @@ void OpEmitter::genCodeForAddingArgAndRegionForBuilder(OpMethodBody &body) {
       if (emitNotNullCheck) {
         body << formatv("  if ({0}) ", namedAttr.name) << "{\n";
       }
-      body << formatv("  {0}->addAttribute(\"{1}\", {1});\n", builderOpState,
+      body << formatv("  {0}.addAttribute(\"{1}\", {1});\n", builderOpState,
                       namedAttr.name);
       if (emitNotNullCheck) {
         body << "  }\n";
@@ -1040,7 +1045,7 @@ void OpEmitter::genCodeForAddingArgAndRegionForBuilder(OpMethodBody &body) {
   // Create the correct number of regions
   if (int numRegions = op.getNumRegions()) {
     for (int i = 0; i < numRegions; ++i)
-      body << "  (void)" << builderOpState << "->addRegion();\n";
+      body << "  (void)" << builderOpState << ".addRegion();\n";
   }
 }
 
@@ -1055,7 +1060,8 @@ void OpEmitter::genCanonicalizerDecls() {
 }
 
 void OpEmitter::genFolderDecls() {
-  bool hasSingleResult = op.getNumResults() == 1;
+  bool hasSingleResult =
+      op.getNumResults() == 1 && op.getNumVariadicResults() == 0;
 
   if (def.getValueAsBit("hasFolder")) {
     if (hasSingleResult) {
@@ -1071,12 +1077,36 @@ void OpEmitter::genFolderDecls() {
   }
 }
 
+void OpEmitter::genOpInterfaceMethods() {
+  for (const auto &trait : op.getTraits()) {
+    auto opTrait = dyn_cast<tblgen::InterfaceOpTrait>(&trait);
+    if (!opTrait || !opTrait->shouldDeclareMethods())
+      continue;
+    auto interface = opTrait->getOpInterface();
+    for (auto method : interface.getMethods()) {
+      // Don't declare if the method has a body.
+      if (method.getBody())
+        continue;
+      std::string args;
+      llvm::raw_string_ostream os(args);
+      mlir::interleaveComma(method.getArguments(), os,
+                            [&](const OpInterfaceMethod::Argument &arg) {
+                              os << arg.type << " " << arg.name;
+                            });
+      opClass.newMethod(method.getReturnType(), method.getName(), os.str(),
+                        method.isStatic() ? OpMethod::MP_Static
+                                          : OpMethod::MP_None,
+                        /*declOnly=*/true);
+    }
+  }
+}
+
 void OpEmitter::genParser() {
   if (!hasStringAttribute(def, "parser"))
     return;
 
   auto &method = opClass.newMethod(
-      "ParseResult", "parse", "OpAsmParser *parser, OperationState *result",
+      "ParseResult", "parse", "OpAsmParser &parser, OperationState &result",
       OpMethod::MP_Static);
   FmtContext fctx;
   fctx.addSubst("cppClass", opClass.getClassName());
@@ -1090,7 +1120,7 @@ void OpEmitter::genPrinter() {
   if (!codeInit)
     return;
 
-  auto &method = opClass.newMethod("void", "print", "OpAsmPrinter *p");
+  auto &method = opClass.newMethod("void", "print", "OpAsmPrinter &p");
   FmtContext fctx;
   fctx.addSubst("cppClass", opClass.getClassName());
   auto printer = codeInit->getValue().ltrim().rtrim(" \t\v\f\r");
@@ -1218,7 +1248,7 @@ void OpEmitter::genOperandResultVerifier(OpMethodBody &body,
                   &fctx.withSelf("v->getType()"))
          << ")) {\n"
          << formatv("        return emitOpError(\"{0} #\") << index "
-                    "<< \" must be {1}\";\n",
+                    "<< \" must be {1}, but got \" << v->getType();\n",
                     valueKind, constraint.getDescription())
          << "      }\n" // if
          << "      ++index;\n"
@@ -1285,6 +1315,8 @@ void OpEmitter::genTraits() {
 
   for (const auto &trait : op.getTraits()) {
     if (auto opTrait = dyn_cast<tblgen::NativeOpTrait>(&trait))
+      opClass.addTrait(opTrait->getTrait());
+    else if (auto opTrait = dyn_cast<tblgen::InterfaceOpTrait>(&trait))
       opClass.addTrait(opTrait->getTrait());
   }
 

@@ -1253,6 +1253,7 @@ TEST(FloatActivationsOpTest, LogSoftmax) {
 
 TEST(QuantizedActivationsOpTest, LogSoftmaxUint8) {
   const float kLogSoftmaxQuantizedTolerance = 16 / 256.0;
+  // Corresponds to input scale of 20/255.
   QuantizedActivationsOpModel m(
       BuiltinOperator_LOG_SOFTMAX,
       /*input=*/{TensorType_UINT8, {2, 4}, -10, 10},

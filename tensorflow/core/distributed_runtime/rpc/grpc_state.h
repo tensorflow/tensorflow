@@ -46,8 +46,15 @@ class RPCState : public GrpcClientCQTag {
            thread::ThreadPool* threadpool, int32 max_retries = 0,
            bool fail_fast = true)
       : RPCState(stub, cq, method, request, response, std::move(done),
-                 call_opts, threadpool, fail_fast,
-                 /*timeout_in_ms=*/0, max_retries) {}
+                 call_opts, threadpool,
+#if defined(PLATFORM_GOOGLE)
+                 // TODO(b/140260119): Always set fail_fast to false.
+                 fail_fast,
+#else
+                 /*fail_fast=*/false,
+#endif  // PLATFORM_GOOGLE
+                 /*timeout_in_ms=*/0, max_retries) {
+  }
 
   template <typename Request>
   RPCState(::grpc::GenericStub* stub, ::grpc::CompletionQueue* cq,
@@ -79,12 +86,7 @@ class RPCState : public GrpcClientCQTag {
 
   void StartCall() {
     context_.reset(new ::grpc::ClientContext());
-#if defined(PLATFORM_GOOGLE)
-    // TODO(b/140260119): set fail_fast to false
     context_->set_wait_for_ready(!fail_fast_);
-#else
-    context_->set_wait_for_ready(true);
-#endif  // PLATFORM_GOOGLE
     if (timeout_in_ms_ > 0) {
       context_->set_deadline(
           gpr_time_from_millis(timeout_in_ms_, GPR_TIMESPAN));

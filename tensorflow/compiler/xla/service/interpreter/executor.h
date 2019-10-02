@@ -68,7 +68,7 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
     return port::UnimplementedError("Not Implemented");
   }
 
-  void *Allocate(uint64 size) override;
+  DeviceMemoryBase Allocate(uint64 size, int64 memory_space) override;
   void *GetSubBuffer(DeviceMemoryBase *parent, uint64 offset_bytes,
                      uint64 size_bytes) override;
   void Deallocate(DeviceMemoryBase *mem) override;

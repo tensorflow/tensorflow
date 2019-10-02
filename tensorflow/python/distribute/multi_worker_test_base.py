@@ -242,9 +242,10 @@ class MultiWorkerTestBase(test.TestCase):
   """Base class for testing multi node strategy and dataset."""
 
   @classmethod
-  def setUpClass(cls):
+  def setUpClass(cls, num_workers=2, num_ps=1):  # pylint: disable=g-missing-super-call
     """Create a local cluster with 2 workers."""
-    cls._cluster_spec = create_in_process_cluster(num_workers=2, num_ps=1)
+    cls._cluster_spec = create_in_process_cluster(num_workers=num_workers,
+                                                  num_ps=num_ps)
     cls._default_target = 'grpc://' + cls._cluster_spec['worker'][0]
 
   def setUp(self):
@@ -357,6 +358,14 @@ class MultiWorkerTestBase(test.TestCase):
         t.start()
         threads.append(t)
     self._coord.join(threads)
+
+
+class SingleWorkerTestBase(MultiWorkerTestBase):
+  """Base class for testing remote single worker strategy and dataset."""
+
+  @classmethod
+  def setUpClass(cls):
+    super(SingleWorkerTestBase, cls).setUpClass(num_workers=1, num_ps=0)
 
 
 class MockOsEnv(collections_abc.Mapping):

@@ -32,7 +32,7 @@ class Allocator;
 class AllocatorMemoryUsed;
 class CostModelManager;
 class Graph;
-class Node;
+class NodeDef;
 class NodeExecStats;
 class OpKernelContext;
 class StepStats;
@@ -94,15 +94,16 @@ class NodeExecStatsInterface {
 class NodeExecStatsWrapper : public NodeExecStatsInterface {
  public:
   // Does not take ownership of `node` or `step_stats_collector`.
-  NodeExecStatsWrapper(const Node* node,
+  NodeExecStatsWrapper(const NodeDef* node,
                        StepStatsCollector* step_stats_collector);
 
   // Takes ownership of 'stats' but not `node` or `step_stats_collector`.
-  NodeExecStatsWrapper(std::unique_ptr<NodeExecStats> stats, const Node* node,
+  NodeExecStatsWrapper(std::unique_ptr<NodeExecStats> stats,
+                       const NodeDef* node,
                        StepStatsCollector* step_stats_collector);
 
   // Destructor calls Finalize() to release the TrackingAllocators.
-  ~NodeExecStatsWrapper() { Finalize(); }
+  ~NodeExecStatsWrapper() override { Finalize(); }
 
   void Done(const string& device) override;
   void RecordExecutorStarted() override;
@@ -131,7 +132,7 @@ class NodeExecStatsWrapper : public NodeExecStatsInterface {
   gtl::InlinedVector<std::pair<AllocatorMemoryUsed*, TrackingAllocator*>, 2>
       allocations_;
   std::unique_ptr<NodeExecStats> stats_;
-  const Node* const node_;                          // Not owned.
+  const NodeDef* const node_;                       // Not owned.
   StepStatsCollector* const step_stats_collector_;  // Not owned.
 };
 
@@ -145,7 +146,7 @@ class StepStatsCollectorInterface {
 
   // Creates an instance of `NodeExecStatsInterface` that should be used for
   // collecting statistics about individual node execution.
-  virtual NodeExecStatsInterface* CreateNodeExecStats(const Node* node) = 0;
+  virtual NodeExecStatsInterface* CreateNodeExecStats(const NodeDef* node) = 0;
 
   // Generates a string reporting the currently used memory based
   // on ResourceExhausted OOM `err` message.
@@ -179,7 +180,7 @@ class StepStatsCollector : public StepStatsCollectorInterface {
   void SaveThreadName(const string& device, const uint32 thread_id,
                       const string& thread_name);
 
-  NodeExecStatsInterface* CreateNodeExecStats(const Node* node) override;
+  NodeExecStatsInterface* CreateNodeExecStats(const NodeDef* node) override;
   string ReportAllocsOnResourceExhausted(const string& err) override;
 
   // The following 2 Finalize methods populate the StepStats passed

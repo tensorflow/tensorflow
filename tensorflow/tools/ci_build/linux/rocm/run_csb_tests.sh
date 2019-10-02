@@ -48,9 +48,6 @@ bazel test \
       -- \
       //tensorflow/... \
       -//tensorflow/compiler/... \
-      -//tensorflow/contrib/... \
       -//tensorflow/lite/... \
       -//tensorflow/python/compiler/tensorrt/... \
-
-
 

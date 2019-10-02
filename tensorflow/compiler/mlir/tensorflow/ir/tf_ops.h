@@ -38,6 +38,8 @@ class TensorFlowDialect : public Dialect {
  public:
   TensorFlowDialect(MLIRContext *context);
 
+  static StringRef getDialectNamespace() { return "tf"; }
+
   // Gradient attribute ("tf.gradient") in the list of NamedAttibutes in a
   // function references to its gradient function. This attribute in TensorFlow
   // Dialect is used to model TF GradientDef. GetGradientAttrName() returns the
@@ -53,6 +55,12 @@ class TensorFlowDialect : public Dialect {
 
   // Prints a type registered to this dialect.
   void printType(Type ty, raw_ostream &os) const override;
+
+  // Parses resource type with potential subtypes.
+  Type ParseResourceType(StringRef spec, Location loc) const;
+
+  // Prints resource type with potential subtypes.
+  void PrintResourceType(ResourceType ty, raw_ostream &os) const;
 
   // Parse and print variant type. It may have subtypes inferred using shape
   // inference.

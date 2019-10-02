@@ -136,7 +136,7 @@ def execute_with_cancellation(op_name,
 def execute_with_callbacks(op_name, num_outputs, inputs, attrs, ctx, name=None):
   """Monkey-patch to execute to enable execution callbacks."""
   tensors = quick_execute(op_name, num_outputs, inputs, attrs, ctx, name)
-  for callback in ctx.post_execution_callbacks:
+  for callback in ctx.op_callbacks:
     callback(op_name, tuple(inputs), attrs, tensors, name)
 
   return tensors
@@ -150,8 +150,8 @@ def must_record_gradient():
   return False
 
 
-def record_gradient(unused_op_name, unused_inputs, unused_attrs, unused_results,
-                    unused_name):
+def record_gradient(unused_op_name, unused_inputs, unused_attrs,
+                    unused_results):
   """Import backprop if you want gradients recorded."""
   pass
 
@@ -235,6 +235,8 @@ def make_tensor(v, arg_name):
 
 def args_to_matching_eager(l, ctx, default_dtype=None):
   """Convert sequence `l` to eager same-type Tensors."""
+  if (not l) and (default_dtype is not None):
+    return default_dtype, []  # List is empty; assume default dtype.
   EagerTensor = ops.EagerTensor  # pylint: disable=invalid-name
   for x in l:
     if not isinstance(x, EagerTensor):

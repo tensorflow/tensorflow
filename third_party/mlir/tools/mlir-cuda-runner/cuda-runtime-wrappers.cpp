@@ -80,29 +80,42 @@ extern "C" int32_t mcuStreamSynchronize(void *stream) {
 
 /// Helper functions for writing mlir example code
 
-// A struct that corresponds to how MLIR represents unknown-length 1d memrefs.
-struct memref_t {
-  float *values;
-  intptr_t length;
+// A struct that corresponds to how MLIR represents memrefs.
+template <typename T, int N> struct MemRefType {
+  T *data;
+  int64_t offset;
+  int64_t sizes[N];
+  long strides[N];
 };
 
 // Allows to register a pointer with the CUDA runtime. Helpful until
 // we have transfer functions implemented.
-extern "C" void mcuMemHostRegister(const memref_t arg, int32_t flags) {
+extern "C" void mcuMemHostRegister(const MemRefType<float, 1> *arg,
+                                   int32_t flags) {
   reportErrorIfAny(
-      cuMemHostRegister(arg.values, arg.length * sizeof(float), flags),
+      cuMemHostRegister(arg->data, arg->sizes[0] * sizeof(float), flags),
       "MemHostRegister");
+  for (int pos = 0; pos < arg->sizes[0]; pos++) {
+    arg->data[pos] = 1.23f;
+  }
+}
+
+// Allows to register a pointer with the CUDA runtime. Helpful until
+// we have transfer functions implemented.
+extern "C" void mcuMemHostRegisterPtr(void *ptr, int32_t flags) {
+  reportErrorIfAny(cuMemHostRegister(ptr, sizeof(void *), flags),
+                   "MemHostRegister");
 }
 
 /// Prints the given float array to stderr.
-extern "C" void mcuPrintFloat(const memref_t arg) {
-  if (arg.length == 0) {
+extern "C" void mcuPrintFloat(const MemRefType<float, 1> *arg) {
+  if (arg->sizes[0] == 0) {
     llvm::outs() << "[]\n";
     return;
   }
-  llvm::outs() << "[" << arg.values[0];
-  for (int pos = 1; pos < arg.length; pos++) {
-    llvm::outs() << ", " << arg.values[pos];
+  llvm::outs() << "[" << arg->data[0];
+  for (int pos = 1; pos < arg->sizes[0]; pos++) {
+    llvm::outs() << ", " << arg->data[pos];
   }
   llvm::outs() << "]\n";
 }

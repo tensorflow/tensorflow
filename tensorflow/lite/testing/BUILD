@@ -1,6 +1,7 @@
 load(
     "//tensorflow/lite:build_def.bzl",
     "gen_zip_test",
+    "gen_zipped_test_file",
     "generated_test_models_all",
     "merged_test_models",
 )
@@ -12,12 +13,20 @@ load(
     "tf_cc_binary",
     "tf_cc_test",
 )
+# Placeholder for Google-internal load statements.
 
 package(
     default_visibility = [
         "//visibility:public",
     ],
     licenses = ["notice"],  # Apache 2.0
+)
+
+gen_zipped_test_file(
+    name = "zip_conv_edgetpu",
+    file = "conv_edgetpu.zip",
+    flags = " --make_edgetpu_tests",
+    toco = "//tensorflow/lite/toco:toco",  # Unused
 )
 
 [gen_zip_test(
@@ -345,6 +354,7 @@ cc_library(
         "init_tensorflow.h",
     ],
     visibility = [
+        "//tensorflow/lite/delegates/flex:__subpackages__",
         "//tensorflow/lite/java/src/main/native:__subpackages__",
         "//tensorflow/lite/testing:__subpackages__",
         "//tensorflow/lite/tools/benchmark:__subpackages__",

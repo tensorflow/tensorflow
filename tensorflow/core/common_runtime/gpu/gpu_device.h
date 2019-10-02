@@ -55,7 +55,7 @@ class BaseGPUDevice : public LocalDevice {
                 Bytes memory_limit, const DeviceLocality& locality,
                 TfGpuId tf_gpu_id, const string& physical_device_desc,
                 Allocator* gpu_allocator, Allocator* cpu_allocator,
-                bool sync_every_op, int32 max_streams);
+                bool sync_every_op);
 
   ~BaseGPUDevice() override;
 
@@ -70,9 +70,6 @@ class BaseGPUDevice : public LocalDevice {
   void ConsumeListOfAccessedTensors(
       DeviceContext* device_context,
       const TensorReferenceVector& tensor_refs) override;
-
-  Status FillContextMap(const Graph* graph,
-                        DeviceContextMap* device_context_map) override;
 
   void Compute(OpKernel* op_kernel, OpKernelContext* context) override;
 
@@ -137,21 +134,23 @@ class BaseGPUDevice : public LocalDevice {
   friend class GPUDeviceTestHelper;
   struct StreamGroup {
     se::Stream* compute = nullptr;
+#if TENSORFLOW_USE_ROCM
+    se::Stream* nccl = nullptr;
+#endif
     se::Stream* host_to_device = nullptr;
     se::Stream* device_to_host = nullptr;
     gtl::InlinedVector<se::Stream*, 4> device_to_device;
   };
   class StreamGroupFactory;
 
-  gtl::InlinedVector<StreamGroup*, 4> streams_;
+  StreamGroup* stream_;
   mutex scratch_init_mutex_;
-  gtl::InlinedVector<char*, 4> scratch_;
-  std::vector<GPUDeviceContext*> device_contexts_;
+  char* scratch_ = nullptr;
+  GPUDeviceContext* device_context_;
   GpuDeviceInfo* gpu_device_info_ = nullptr;
   mutex trace_mu_;
   TfGpuId tf_gpu_id_;
   const bool sync_every_op_ = false;
-  const int32 max_streams_;
   EventMgr* em_ = nullptr;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
   std::unique_ptr<GPUKernelTracker> kernel_tracker_;

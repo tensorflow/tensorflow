@@ -36,41 +36,14 @@ const double kAbsoluteThreshold = 1e-4f;
 
 // Returns the value in the given position in a tensor.
 template <typename T>
-T Value(const TfLitePtrUnion& data, int index);
-template <>
-float Value(const TfLitePtrUnion& data, int index) {
-  return data.f[index];
-}
-template <>
-int32_t Value(const TfLitePtrUnion& data, int index) {
-  return data.i32[index];
-}
-template <>
-int64_t Value(const TfLitePtrUnion& data, int index) {
-  return data.i64[index];
-}
-template <>
-uint8_t Value(const TfLitePtrUnion& data, int index) {
-  return data.uint8[index];
-}
-template <>
-int8_t Value(const TfLitePtrUnion& data, int index) {
-  return data.int8[index];
-}
-template <>
-bool Value(const TfLitePtrUnion& data, int index) {
-  return data.b[index];
-}
-
-template <>
-std::complex<float> Value(const TfLitePtrUnion& data, int index) {
-  return std::complex<float>(data.c64[index].re, data.c64[index].im);
+T Value(const TfLitePtrUnion& data, int index) {
+  return reinterpret_cast<T*>(data.raw)[index];
 }
 
 template <typename T>
 void SetTensorData(const std::vector<T>& values, TfLitePtrUnion* data) {
   T* input_ptr = reinterpret_cast<T*>(data->raw);
-  for (const T& v : values) {
+  for (const auto& v : values) {
     *input_ptr = v;
     ++input_ptr;
   }

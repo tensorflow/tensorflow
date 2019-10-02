@@ -35,7 +35,6 @@ from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.losses import binary_crossentropy
 from tensorflow.python.keras.losses import categorical_crossentropy
 from tensorflow.python.keras.losses import categorical_hinge
-from tensorflow.python.keras.losses import cosine_similarity
 from tensorflow.python.keras.losses import hinge
 from tensorflow.python.keras.losses import kullback_leibler_divergence
 from tensorflow.python.keras.losses import logcosh
@@ -429,11 +428,14 @@ class Mean(Reduce):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.Mean()
-  m.update_state([1, 3, 5, 7])
-  print('Final result: ', m.result().numpy())  # Final result: 4.0
-  ```
+  >>> m = tf.keras.metrics.Mean()
+  >>> _ = m.update_state([1, 3, 5, 7])
+  >>> m.result().numpy()
+  4.0
+  >>> m.reset_states()
+  >>> _ = m.update_state([1, 3, 5, 7], sample_weight=[1, 1, 0, 0])
+  >>> m.result().numpy()
+  2.0
 
   Usage with tf.keras API:
 
@@ -609,11 +611,14 @@ class Accuracy(MeanMetricWrapper):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.Accuracy()
-  m.update_state([1, 2, 3, 4], [0, 2, 3, 4])
-  print('Final result: ', m.result().numpy())  # Final result: 0.75
-  ```
+  >>> m = tf.keras.metrics.Accuracy()
+  >>> _ = m.update_state([1, 2, 3, 4], [0, 2, 3, 4])
+  >>> m.result().numpy()
+  0.75
+  >>> m.reset_states()
+  >>> _ = m.update_state([1, 2, 3, 4], [0, 2, 3, 4], sample_weight=[1, 1, 0, 0])
+  >>> m.result().numpy()
+  0.5
 
   Usage with tf.keras API:
 
@@ -695,11 +700,11 @@ class CategoricalAccuracy(MeanMetricWrapper):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.CategoricalAccuracy()
-  m.update_state([[0, 0, 1], [0, 1, 0]], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
-  print('Final result: ', m.result().numpy())  # Final result: 0.5
-  ```
+  >>> m = tf.keras.metrics.CategoricalAccuracy()
+  >>> _ = m.update_state([[0, 0, 1], [0, 1, 0]], [[0.1, 0.9, 0.8],
+  ...                     [0.05, 0.95, 0]])
+  >>> m.result().numpy()
+  0.5
 
   Usage with tf.keras API:
 
@@ -743,11 +748,10 @@ class SparseCategoricalAccuracy(MeanMetricWrapper):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.SparseCategoricalAccuracy()
-  m.update_state([[2], [1]], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
-  print('Final result: ', m.result().numpy())  # Final result: 0.5
-  ```
+  >>> m = tf.keras.metrics.SparseCategoricalAccuracy()
+  >>> _ = m.update_state([[2], [1]], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
+  >>> m.result().numpy()
+  0.5
 
   Usage with tf.keras API:
 
@@ -1927,11 +1931,11 @@ class MeanAbsoluteError(MeanMetricWrapper):
   the mean absolute error is 3/4 (0.75).
 
   Usage:
-  ```python
-  m = tf.keras.metrics.MeanAbsoluteError()
-  m.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
-  print('Final result: ', m.result().numpy())  # Final result: 0.75
-  ```
+
+  >>> m = MeanAbsoluteError()
+  >>> _ = m.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
+  >>> m.result().numpy()
+  0.75
 
   Usage with tf.keras API:
 
@@ -1955,11 +1959,10 @@ class MeanAbsolutePercentageError(MeanMetricWrapper):
 
   Usage:
 
-  ```python
-  m = tf.keras.metrics.MeanAbsolutePercentageError()
-  m.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
-  print('Final result: ', m.result().numpy())  # Final result: 5e+08
-  ```
+  >>> m = tf.keras.metrics.MeanAbsolutePercentageError()
+  >>> _ = m.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
+  >>> m.result().numpy()
+  500000000.0
 
   Usage with tf.keras API:
 
@@ -2805,13 +2808,22 @@ def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
   return math_ops.cast(
       nn.in_top_k(y_pred, math_ops.cast(y_true, 'int32'), k), K.floatx())
 
+
+def cosine_proximity(y_true, y_pred, axis=-1):
+  """Computes the cosine similarity between labels and predictions."""
+  y_true = nn.l2_normalize(y_true, axis=axis)
+  y_pred = nn.l2_normalize(y_pred, axis=axis)
+  return math_ops.reduce_sum(y_true * y_pred, axis=axis)
+
 # Aliases
 
+acc = ACC = accuracy
+bce = BCE = binary_crossentropy
 mse = MSE = mean_squared_error
 mae = MAE = mean_absolute_error
 mape = MAPE = mean_absolute_percentage_error
 msle = MSLE = mean_squared_logarithmic_error
-cosine_proximity = cosine_similarity
+cosine_similarity = cosine_proximity
 
 
 def clone_metric(metric):

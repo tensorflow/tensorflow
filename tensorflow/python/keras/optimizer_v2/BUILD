@@ -77,7 +77,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -97,7 +96,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -118,7 +116,6 @@ cuda_py_test(
     ],
     shard_count = 4,
     tags = ["no_rocm"],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -138,7 +135,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -158,7 +154,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -178,7 +173,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -198,24 +192,15 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
-    xla_enable_strict_auto_jit = True,
 )
 
-py_test(
+cuda_py_test(
     name = "optimizer_v2_test",
     size = "medium",
     srcs = ["optimizer_v2_test.py"],
-    python_version = "PY2",
-    shard_count = 8,
-    tags = [
-        "no_gpu",  # b/127001953
-        "no_windows",
-        # TODO(b/127092862): Re-enable this test in Kokoro.
-        "no_oss",
-        "notap",  # b/140242244
-    ],
-    deps = [
+    additional_deps = [
         ":optimizer_v2",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:clip_ops",
@@ -227,7 +212,13 @@ py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/keras",
-        "@absl_py//absl/testing:parameterized",
+    ],
+    shard_count = 8,
+    tags = [
+        "manual",
+        "no_oss",
+        "no_windows",
+        "notap",
     ],
 )
 
@@ -243,7 +234,6 @@ cuda_py_test(
         "//tensorflow/python/keras",
     ],
     shard_count = 4,
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -265,5 +255,4 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 2,
-    xla_enable_strict_auto_jit = True,
 )

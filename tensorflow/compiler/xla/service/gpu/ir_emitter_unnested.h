@@ -52,12 +52,6 @@ namespace gpu {
 class IrEmitterUnnested : public IrEmitter,
                           private ThunkEmitter::EmissionContext {
  public:
-  // A function object to prepare for the code generation for a tiling kernel.
-  using KernelPrologueGenerator = std::function<void(llvm::Value* lane_id)>;
-
-  // A function object to finalize the code generation for a tiling kernel.
-  using KernelEpilogueGenerator = std::function<void(llvm::Value* lane_id)>;
-
   // A function object to generate code to process one element in a tile.
   //
   // hlo: the instruction for which the code is generated for.
@@ -70,6 +64,8 @@ class IrEmitterUnnested : public IrEmitter,
   using EmitElementFunction = std::function<void(
       const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
       llvm::Value* x_loc, int64 x_iter_num)>;
+
+  using ConstantGenerator = std::function<llvm::Value*(int64)>;
 
   // A function to generate the code to emit the entire tile.
   using TileElementGenerator = std::function<void(
@@ -188,7 +184,12 @@ class IrEmitterUnnested : public IrEmitter,
   // Emits code for an in-place scatter, modifying `thunk`s launch dimensions in
   // the process. `scatter` may be fused, scatter indices are taken from
   // `scatter_indices_gen`, updates from`updates_gen`. The output buffer is
-  // expected to have the operand values in it already.
+  // expected to have the operand values in it already. If unique_indices
+  // is false, we will use an atomic update. Using false for unique_indices
+  // is safe only when it is guaranteed that there are no duplicate
+  // indices.
+  // When using unique_indices=true, it is the caller's responsibility to
+  // ensure there is no overlap.
   Status EmitScatter(Thunk* thunk, HloInstruction* scatter,
                      const llvm_ir::ElementGenerator& scatter_indices_gen,
                      const llvm_ir::ElementGenerator& updates_gen);
@@ -206,11 +207,11 @@ class IrEmitterUnnested : public IrEmitter,
 
   // Emits a kernel for the hlo instruction using the given kernel mapping
   // scheme.
-  void EmitTilingKernel(const KernelMappingScheme& mapping_scheme,
-                        llvm::Type* index_ty,
-                        TileElementGenerator tile_element_generator,
-                        KernelPrologueGenerator kernel_prologue_generator,
-                        KernelEpilogueGenerator kernel_epilogue_generator);
+  //
+  // Returns lane_id as an LLVM value.
+  llvm::Value* EmitTilingKernel(
+      const KernelMappingScheme& mapping_scheme, llvm::Type* index_ty,
+      const TileElementGenerator& tile_element_generator);
 
   // Emits code to process a tensor element in a tile for the given kCopy HLO
   // that performs a 0-2-1 transpose.
@@ -230,6 +231,9 @@ class IrEmitterUnnested : public IrEmitter,
 
   // Emits code to process a tensor element in a tile for the given input hlo
   // that is either a unnested kReduce or a kInput fusion.
+  //
+  // Calculates and stores the temporary reduction value in the corresponding
+  // alloca.
   void EmitTileElementForReduction(
       HloInstruction* unnested_hlo, const Shape& reduction_operand_shape,
       absl::Span<HloInstruction* const> output_instructions,
@@ -238,6 +242,9 @@ class IrEmitterUnnested : public IrEmitter,
       absl::Span<HloComputation* const> reducers, int64 x_iter_num);
 
   // Prepares for the code generation for a tile block of a reduction kernel.
+  //
+  // Create accumulator alloca's, populate them with initial values, and store
+  // inside reduction_info.
   void EmitPrologueForReduction(
       HloInstruction* unnested_hlo, ReductionCodegenInfo* reduction_info,
       absl::Span<HloInstruction* const> reduce_instructions,
@@ -248,7 +255,8 @@ class IrEmitterUnnested : public IrEmitter,
                                    ReductionCodegenInfo* kernel_info,
                                    GpuElementalIrEmitter* elemental_emitter);
 
-  // Wraps up the code generation for a tile block of a reduction kernel.
+  // Wraps up the code generation for a tile block of a reduction kernel: write
+  // the calculated output into the output tensor.
   void EmitEpilogueForReduction(
       HloInstruction* unnested_hlo, const ReductionCodegenInfo& reduction_info,
       absl::Span<const HloInstruction* const> reduce_instructions,

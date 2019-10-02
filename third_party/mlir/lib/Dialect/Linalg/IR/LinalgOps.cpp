@@ -45,80 +45,6 @@ using namespace mlir::edsc;
 using namespace mlir::edsc::intrinsics;
 using namespace mlir::linalg;
 
-namespace {
-/// Fold constant dimensions into an alloc operation.
-struct SimplifyDimOp : public OpRewritePattern<linalg::DimOp> {
-  using OpRewritePattern<linalg::DimOp>::OpRewritePattern;
-
-  PatternMatchResult matchAndRewrite(linalg::DimOp dimOp,
-                                     PatternRewriter &rewriter) const override;
-};
-} // end namespace
-
-PatternMatchResult
-SimplifyDimOp::matchAndRewrite(linalg::DimOp dimOp,
-                               PatternRewriter &rewriter) const {
-  auto *viewProducingOp = dimOp.view()->getDefiningOp();
-  auto subView = dyn_cast_or_null<SubViewOp>(viewProducingOp);
-  auto slice = dyn_cast_or_null<SliceOp>(viewProducingOp);
-  auto view = dyn_cast_or_null<ViewOp>(viewProducingOp);
-  assert(subView || slice || view);
-
-  unsigned dim = dimOp.getIndex();
-  Value *min, *max, *step;
-  if (view) {
-    // Cannot traverse block arguments, fail.
-    if (isa<BlockArgument>(view.getRange(dim)))
-      return matchFailure();
-    // Record min, max, step for further processing.
-    auto range = cast<RangeOp>(view.getRange(dim)->getDefiningOp());
-    std::tie(min, max, step) =
-        std::make_tuple(range.min(), range.max(), range.step());
-  } else if (subView) {
-    // Record min, max, step for further processing.
-    auto range = subView.getRange(dim);
-    std::tie(min, max, step) =
-        std::make_tuple(range.min, range.max, range.step);
-  } else {
-    // Taking the dim of a slice must take a range (since other dims have been
-    // rank-reduced).
-    auto *rangeValue = slice.getRanges()[dim];
-    // Cannot traverse block arguments, fail.
-    if (isa<BlockArgument>(rangeValue))
-      return matchFailure();
-    auto range = cast<RangeOp>(rangeValue->getDefiningOp());
-    // Record min, max, step for further processing.
-    std::tie(min, max, step) =
-        std::make_tuple(range.min(), range.max(), range.step());
-  }
-
-  // Only support constant steps of 1 atm.
-  auto constant = dyn_cast_or_null<ConstantIndexOp>(step->getDefiningOp());
-  if (!constant || constant.getValue() != 1)
-    return matchFailure();
-
-  // Circumvent affine constraints:
-  //   emit an affine_apply when possible, otherwise emit a `subi`.
-  bool validAffineMin = isValidDim(min) || isValidSymbol(min) ||
-                        isa_and_nonnull<ConstantIndexOp>(min->getDefiningOp());
-  bool validAffineMax = isValidDim(max) || isValidSymbol(max) ||
-                        isa_and_nonnull<ConstantIndexOp>(max->getDefiningOp());
-
-  OpBuilder b(dimOp);
-  ScopedContext scope(b, dimOp.getLoc());
-  // Emit `subi`.
-  if (!validAffineMin || !validAffineMax) {
-    rewriter.replaceOp(dimOp, {subi(max, min)}, {dimOp.view()});
-    return matchSuccess();
-  }
-
-  // Emit affine_apply.
-  using edsc::op::operator-;
-  rewriter.replaceOp(dimOp, {ValueHandle(max) - ValueHandle(min)},
-                     {dimOp.view()});
-  return matchSuccess();
-}
-
 ///////////////////// Operations defined with Tablegen /////////////////////////
 // For such operations that do not correspond to library calls (i.e. defined in
 // LinalgOps.td), we define an overloaded `print` function and a
@@ -128,31 +54,31 @@ SimplifyDimOp::matchAndRewrite(linalg::DimOp dimOp,
 // BufferAllocOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, BufferAllocOp op) {
-  *p << op.getOperationName() << " ";
+static void print(OpAsmPrinter &p, BufferAllocOp op) {
+  p << op.getOperationName() << " ";
   if (!llvm::empty(op.size()))
-    *p << *op.getOperand(0);
+    p << *op.getOperand(0);
   if (op.alignment().hasValue() && op.alignment()->getSExtValue() != 0)
-    p->printOptionalAttrDict(op.getAttrs());
+    p.printOptionalAttrDict(op.getAttrs());
   else
-    p->printOptionalAttrDict(op.getAttrs(),
-                             BufferAllocOp::getAlignmentAttrName());
-  *p << " : " << op.getBufferType();
+    p.printOptionalAttrDict(op.getAttrs(),
+                            BufferAllocOp::getAlignmentAttrName());
+  p << " : " << op.getBufferType();
 }
 
-static ParseResult parseBufferAllocOp(OpAsmParser *parser,
-                                      OperationState *result) {
+static ParseResult parseBufferAllocOp(OpAsmParser &parser,
+                                      OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 1> sizeInfo;
   BufferType bufferType;
-  auto indexTy = parser->getBuilder().getIndexType();
-  if (parser->parseOperandList(sizeInfo) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(bufferType))
+  auto indexTy = parser.getBuilder().getIndexType();
+  if (parser.parseOperandList(sizeInfo) ||
+      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseColonType(bufferType))
     return failure();
   if (sizeInfo.empty())
-    return parser->addTypeToList(bufferType, result->types);
-  return failure(parser->resolveOperands(sizeInfo, indexTy, result->operands) ||
-                 parser->addTypeToList(bufferType, result->types));
+    return parser.addTypeToList(bufferType, result.types);
+  return failure(parser.resolveOperands(sizeInfo, indexTy, result.operands) ||
+                 parser.addTypeToList(bufferType, result.types));
 }
 
 static LogicalResult verify(BufferAllocOp op) {
@@ -181,79 +107,50 @@ static LogicalResult verify(BufferAllocOp op) {
 // BufferDeallocOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, BufferDeallocOp op) {
-  *p << op.getOperationName() << " " << *op.buffer();
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.getBufferType();
+static void print(OpAsmPrinter &p, BufferDeallocOp op) {
+  p << op.getOperationName() << " " << *op.buffer();
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.getBufferType();
 }
 
-static ParseResult parseBufferDeallocOp(OpAsmParser *parser,
-                                        OperationState *result) {
+static ParseResult parseBufferDeallocOp(OpAsmParser &parser,
+                                        OperationState &result) {
   OpAsmParser::OperandType bufferInfo;
   BufferType bufferType;
-  if (parser->parseOperand(bufferInfo) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(bufferType))
+  if (parser.parseOperand(bufferInfo) ||
+      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseColonType(bufferType))
     return failure();
-  return parser->resolveOperands(bufferInfo, bufferType, result->operands);
+  return parser.resolveOperands(bufferInfo, bufferType, result.operands);
 }
 
 //===----------------------------------------------------------------------===//
 // BufferSizeOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, BufferSizeOp op) {
-  *p << op.getOperationName() << " " << *op.buffer();
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.buffer()->getType();
+static void print(OpAsmPrinter &p, BufferSizeOp op) {
+  p << op.getOperationName() << " " << *op.buffer();
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.buffer()->getType();
 }
 
-static ParseResult parseBufferSizeOp(OpAsmParser *parser,
-                                     OperationState *result) {
+static ParseResult parseBufferSizeOp(OpAsmParser &parser,
+                                     OperationState &result) {
   OpAsmParser::OperandType op;
   Type type;
-  return failure(parser->parseOperand(op) ||
-                 parser->parseOptionalAttributeDict(result->attributes) ||
-                 parser->parseColonType(type) ||
-                 parser->resolveOperand(op, type, result->operands) ||
-                 parser->addTypeToList(parser->getBuilder().getIndexType(),
-                                       result->types));
-}
-
-//===----------------------------------------------------------------------===//
-// DimOp
-//===----------------------------------------------------------------------===//
-void mlir::linalg::DimOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<SimplifyDimOp>(context);
-}
-
-static void print(OpAsmPrinter *p, linalg::DimOp op) {
-  *p << op.getOperationName() << " " << *op.getOperand() << ", "
-     << op.getIndex();
-  p->printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"index"});
-  *p << " : " << op.getOperand()->getType();
-}
-
-static ParseResult parseDimOp(OpAsmParser *parser, OperationState *result) {
-  OpAsmParser::OperandType operandInfo;
-  IntegerAttr indexAttr;
-  Type type;
-  Type indexType = parser->getBuilder().getIndexType();
-  return failure(parser->parseOperand(operandInfo) || parser->parseComma() ||
-                 parser->parseAttribute(indexAttr, indexType, "index",
-                                        result->attributes) ||
-                 parser->parseOptionalAttributeDict(result->attributes) ||
-                 parser->parseColonType(type) ||
-                 parser->resolveOperand(operandInfo, type, result->operands) ||
-                 parser->addTypeToList(indexType, result->types));
+  return failure(
+      parser.parseOperand(op) ||
+      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseColonType(type) ||
+      parser.resolveOperand(op, type, result.operands) ||
+      parser.addTypeToList(parser.getBuilder().getIndexType(), result.types));
 }
 
 //===----------------------------------------------------------------------===//
 // GenericOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, GenericOp op) {
+static void print(OpAsmPrinter &p, GenericOp op) {
   auto attrNames = op.linalgTraitAttrNames();
   llvm::StringSet<> linalgTraitAttrsSet;
   linalgTraitAttrsSet.insert(attrNames.begin(), attrNames.end());
@@ -263,41 +160,40 @@ static void print(OpAsmPrinter *p, GenericOp op) {
       attrs.push_back(attr);
   }
   auto dictAttr = DictionaryAttr::get(attrs, op.getContext());
-  *p << op.getOperationName() << " " << dictAttr << " ";
-  p->printOperands(op.getOperands());
+  p << op.getOperationName() << " " << dictAttr << " ";
+  p.printOperands(op.getOperands());
   if (!op.region().empty())
-    p->printRegion(op.region());
-  p->printOptionalAttrDict(op.getAttrs(), attrNames);
-  *p << ": ";
-  interleaveComma(op.getOperandTypes(), *p);
+    p.printRegion(op.region());
+  p.printOptionalAttrDict(op.getAttrs(), attrNames);
+  p << ": ";
+  interleaveComma(op.getOperandTypes(), p);
 }
 
-static ParseResult parseGenericOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseGenericOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 8> operandsInfo, regionOperandsInfo;
   DictionaryAttr dictAttr;
   // Parse the core linalg traits that must check into a dictAttr.
-  // The name is unimportant as we will overwrite result->attributes.
+  // The name is unimportant as we will overwrite result.attributes.
   // The core linalg traits must contain the information necessary to pass the
   // verifier.
-  if (parser->parseAttribute(dictAttr, "_", result->attributes) ||
-      parser->parseOperandList(operandsInfo))
+  if (parser.parseAttribute(dictAttr, "_", result.attributes) ||
+      parser.parseOperandList(operandsInfo))
     return failure();
-  result->attributes.assign(dictAttr.getValue().begin(),
-                            dictAttr.getValue().end());
+  result.attributes.assign(dictAttr.getValue().begin(),
+                           dictAttr.getValue().end());
 
-  Region &region = *result->addRegion();
+  Region &region = *result.addRegion();
   SmallVector<Type, 8> operandTypes, regionTypes;
   // Optional attributes may be added.
   // Either Optional "fun" attribute or region must be specified.
   if (!dictAttr.get("fun") &&
-      parser->parseOptionalRegion(region, regionOperandsInfo, regionTypes))
+      parser.parseOptionalRegion(region, regionOperandsInfo, regionTypes))
     return failure();
-  if (parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonTypeList(operandTypes))
+  if (parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseColonTypeList(operandTypes))
     return failure();
-  return parser->resolveOperands(operandsInfo, operandTypes,
-                                 parser->getCurrentLocation(),
-                                 result->operands);
+  return parser.resolveOperands(operandsInfo, operandTypes,
+                                parser.getCurrentLocation(), result.operands);
 }
 
 static LogicalResult verify(GenericOp op) {
@@ -391,116 +287,88 @@ static LogicalResult verify(GenericOp op) {
 }
 
 //===----------------------------------------------------------------------===//
-// LoadOp
-//===----------------------------------------------------------------------===//
-
-static void print(OpAsmPrinter *p, linalg::LoadOp op) {
-  *p << op.getOperationName() << " " << *op.view() << '[';
-  p->printOperands(op.indices());
-  *p << ']';
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.getViewType();
-}
-
-static ParseResult parseLoadOp(OpAsmParser *parser, OperationState *result) {
-  OpAsmParser::OperandType viewInfo;
-  SmallVector<OpAsmParser::OperandType, 4> indexInfo;
-  ViewType type;
-
-  auto affineIntTy = parser->getBuilder().getIndexType();
-  return failure(
-      parser->parseOperand(viewInfo) ||
-      parser->parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(type) ||
-      parser->resolveOperand(viewInfo, type, result->operands) ||
-      parser->resolveOperands(indexInfo, affineIntTy, result->operands) ||
-      parser->addTypeToList(type.getElementType(), result->types));
-}
-
-static LogicalResult verify(linalg::LoadOp op) {
-  if (op.getRank() != llvm::size(op.indices()))
-    return op.emitOpError("expected ")
-           << op.getRank() << " indices, got " << llvm::size(op.indices());
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // RangeOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, RangeOp op) {
-  *p << op.getOperationName() << " " << *op.min() << ":" << *op.max() << ":"
-     << *op.step();
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.getResult()->getType();
+static void print(OpAsmPrinter &p, RangeOp op) {
+  p << op.getOperationName() << " " << *op.min() << ":" << *op.max() << ":"
+    << *op.step();
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.getResult()->getType();
 }
 
-static ParseResult parseRangeOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseRangeOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 3> rangeInfo(3);
   RangeType type;
-  auto affineIntTy = parser->getBuilder().getIndexType();
-  return failure(
-      parser->parseOperand(rangeInfo[0]) || parser->parseColon() ||
-      parser->parseOperand(rangeInfo[1]) || parser->parseColon() ||
-      parser->parseOperand(rangeInfo[2]) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(type) ||
-      parser->resolveOperands(rangeInfo, affineIntTy, result->operands) ||
-      parser->addTypeToList(type, result->types));
+  auto indexTy = parser.getBuilder().getIndexType();
+  return failure(parser.parseOperand(rangeInfo[0]) || parser.parseColon() ||
+                 parser.parseOperand(rangeInfo[1]) || parser.parseColon() ||
+                 parser.parseOperand(rangeInfo[2]) ||
+                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseColonType(type) ||
+                 parser.resolveOperands(rangeInfo, indexTy, result.operands) ||
+                 parser.addTypeToList(type, result.types));
 }
 
 //===----------------------------------------------------------------------===//
 // SliceOp
 //===----------------------------------------------------------------------===//
 
-void mlir::linalg::SliceOp::build(Builder *b, OperationState *result,
+void mlir::linalg::SliceOp::build(Builder *b, OperationState &result,
                                   Value *base, ArrayRef<Value *> indexings) {
-  result->addOperands(base);
-  result->addOperands(indexings);
+  result.addOperands(base);
+  result.addOperands(indexings);
 
-  ViewType viewType = base->getType().cast<ViewType>();
-  unsigned rank = viewType.getRank();
-  for (auto *i : indexings)
-    if (!i->getType().isa<RangeType>())
-      rank--;
-  Type elementType = viewType.getElementType();
-  result->addTypes({ViewType::get(b->getContext(), elementType, rank)});
+  auto memRefType = base->getType().cast<MemRefType>();
+  int64_t offset;
+  SmallVector<int64_t, 4> strides;
+  auto res = memRefType.getStridesAndOffset(strides, offset);
+  assert(succeeded(res) && strides.size() == indexings.size());
+  (void)res;
+
+  unsigned rank = memRefType.getRank();
+  // TODO(ntv): propagate static size and stride information when available.
+  SmallVector<int64_t, 4> sizes(rank, -1); // -1 encodes dynamic size.
+  Type elementType = memRefType.getElementType();
+  result.addTypes({MemRefType::get(
+      sizes, elementType,
+      {makeStridedLinearLayoutMap(strides, offset, b->getContext())},
+      memRefType.getMemorySpace())});
 }
 
-static void print(OpAsmPrinter *p, SliceOp op) {
-  *p << SliceOp::getOperationName() << " " << *op.view() << "[";
-  p->printOperands(op.indexings());
-  *p << "] ";
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.getBaseViewType();
+static void print(OpAsmPrinter &p, SliceOp op) {
+  p << SliceOp::getOperationName() << " " << *op.view() << "[";
+  p.printOperands(op.indexings());
+  p << "] ";
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.getBaseViewType();
   for (auto indexing : op.indexings()) {
-    *p << ", " << indexing->getType();
+    p << ", " << indexing->getType();
   }
-  *p << ", " << op.getType();
+  p << ", " << op.getType();
 }
 
-static ParseResult parseSliceOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseSliceOp(OpAsmParser &parser, OperationState &result) {
   OpAsmParser::OperandType baseInfo;
   SmallVector<OpAsmParser::OperandType, 8> operands;
   SmallVector<Type, 8> types;
-  if (parser->parseOperand(baseInfo) ||
-      parser->parseOperandList(operands, OpAsmParser::Delimiter::Square) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonTypeList(types))
+  if (parser.parseOperand(baseInfo) ||
+      parser.parseOperandList(operands, OpAsmParser::Delimiter::Square) ||
+      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseColonTypeList(types))
     return failure();
 
   if (types.size() < 2)
-    return parser->emitError(parser->getCurrentLocation(),
-                             "expected at least input and result view types");
+    return parser.emitError(parser.getCurrentLocation(),
+                            "expected at least input and result view types");
 
   ArrayRef<Type> indexingTypes = ArrayRef<Type>(types).drop_front().drop_back();
   return failure(
-      parser->resolveOperand(baseInfo, types.front(), result->operands) ||
+      parser.resolveOperand(baseInfo, types.front(), result.operands) ||
       (!operands.empty() &&
-       parser->resolveOperands(operands, indexingTypes,
-                               operands.front().location, result->operands)) ||
-      parser->addTypeToList(types.back(), result->types));
+       parser.resolveOperands(operands, indexingTypes,
+                              operands.front().location, result.operands)) ||
+      parser.addTypeToList(types.back(), result.types));
 }
 
 static LogicalResult verify(SliceOp op) {
@@ -521,65 +389,43 @@ static LogicalResult verify(SliceOp op) {
 }
 
 //===----------------------------------------------------------------------===//
-// StoreOp
-//===----------------------------------------------------------------------===//
-
-static void print(OpAsmPrinter *p, linalg::StoreOp op) {
-  *p << op.getOperationName() << " " << *op.value();
-  *p << ", " << *op.view() << '[';
-  p->printOperands(op.indices());
-  *p << ']';
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.getViewType();
-}
-
-static ParseResult parseStoreOp(OpAsmParser *parser, OperationState *result) {
-  OpAsmParser::OperandType storeValueInfo;
-  OpAsmParser::OperandType viewInfo;
-  SmallVector<OpAsmParser::OperandType, 4> indexInfo;
-  ViewType viewType;
-
-  auto affineIntTy = parser->getBuilder().getIndexType();
-  return failure(
-      parser->parseOperand(storeValueInfo) || parser->parseComma() ||
-      parser->parseOperand(viewInfo) ||
-      parser->parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(viewType) ||
-      parser->resolveOperand(storeValueInfo, viewType.getElementType(),
-                             result->operands) ||
-      parser->resolveOperand(viewInfo, viewType, result->operands) ||
-      parser->resolveOperands(indexInfo, affineIntTy, result->operands));
-}
-
-static LogicalResult verify(linalg::StoreOp op) {
-  if (op.value()->getType() != op.getViewType().getElementType())
-    return op.emitOpError("expected value type to match view element type");
-  if (op.getRank() != llvm::size(op.indices()))
-    return op.emitOpError("expected ")
-           << op.getRank() << " indices, got " << llvm::size(op.indices());
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // SubViewOp
 //===----------------------------------------------------------------------===//
-
-static void print(OpAsmPrinter *p, SubViewOp op) {
-  *p << op.getOperationName() << " " << *op.getOperand(0) << "[";
-  auto ranges = op.getRanges();
-  interleaveComma(ranges, *p, [&p](const SubViewOp::Range &i) {
-    *p << *i.min << ", " << *i.max << ", " << *i.step;
-  });
-  *p << "]";
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.getViewType();
+void mlir::linalg::SubViewOp::build(Builder *b, OperationState &result,
+                                    Value *view, ArrayRef<Value *> ranges,
+                                    Type resultType,
+                                    ArrayRef<NamedAttribute> attrs) {
+  // If the result type is not specified, assume sizes are fully dynamic.
+  // Strides don't change though.
+  // TODO(ntv) for canonicalization it may be better to use a (min, size, step)
+  // instead of a (min, max, step) abstraction.
+  if (!resultType) {
+    auto rank = ranges.size();
+    SmallVector<int64_t, 4> sizes(rank, -1);
+    auto memRefType = view->getType().cast<MemRefType>();
+    Type elementType = memRefType.getElementType();
+    resultType = MemRefType::get(sizes, elementType, memRefType.getAffineMaps(),
+                                 memRefType.getMemorySpace());
+  }
+  build(b, result, resultType, view, ranges);
+  result.addAttributes(attrs);
 }
 
-static ParseResult parseSubViewOp(OpAsmParser *parser, OperationState *result) {
+static void print(OpAsmPrinter &p, SubViewOp op) {
+  p << op.getOperationName() << " " << *op.getOperand(0) << "[";
+  auto ranges = op.getRanges();
+  interleaveComma(ranges, p, [&p](const SubViewOp::Range &i) {
+    p << *i.min << ", " << *i.max << ", " << *i.step;
+  });
+  p << "]";
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.getViewType();
+}
+
+static ParseResult parseSubViewOp(OpAsmParser &parser, OperationState &result) {
   OpAsmParser::OperandType inputView, resultView;
-  Type viewType;
-  if (parser->parseOperand(inputView))
+  MemRefType memRefType;
+  if (parser.parseOperand(inputView))
     return failure();
 
   SmallVector<OpAsmParser::OperandType, 12> ops;
@@ -587,126 +433,153 @@ static ParseResult parseSubViewOp(OpAsmParser *parser, OperationState *result) {
   //    linalg.subview %0[%1, %2, %3, %4, %5, %6]
   // to something resembling
   //    linalg.subview %0[%1:%2:%3][%4:%5:%6]
-  if (parser->parseOperandList(ops, OpAsmParser::Delimiter::Square) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(viewType))
+  if (parser.parseOperandList(ops, OpAsmParser::Delimiter::Square) ||
+      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseColonType(memRefType))
     return failure();
 
-  auto indexTy = parser->getBuilder().getIndexType();
+  auto indexTy = parser.getBuilder().getIndexType();
   return failure(
-      parser->resolveOperand(inputView, viewType, result->operands) ||
-      parser->resolveOperands(ops, indexTy, result->operands) ||
-      parser->addTypeToList(viewType, result->types));
+      parser.resolveOperand(inputView, memRefType, result.operands) ||
+      parser.resolveOperands(ops, indexTy, result.operands) ||
+      parser.addTypeToList(memRefType, result.types));
 }
 
 //===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//
-void mlir::linalg::TransposeOp::build(Builder *b, OperationState *result,
+void mlir::linalg::TransposeOp::build(Builder *b, OperationState &result,
                                       Value *view, AffineMapAttr permutation,
                                       ArrayRef<NamedAttribute> attrs) {
-  // TODO(ntv): once views have static dimensions, compute the permuted type.
-  build(b, result, view->getType(), view, attrs);
-  result->addAttribute(TransposeOp::getPermutationAttrName(), permutation);
+  auto permutationMap = permutation.getValue();
+  assert(permutationMap);
+
+  auto memRefType = view->getType().cast<MemRefType>();
+  auto rank = memRefType.getRank();
+  auto originalSizes = memRefType.getShape();
+  // Compute permuted sizes.
+  SmallVector<int64_t, 4> sizes(rank, 0);
+  for (auto en : llvm::enumerate(permutationMap.getResults()))
+    sizes[en.index()] =
+        originalSizes[en.value().cast<AffineDimExpr>().getPosition()];
+
+  // Compute permuted strides.
+  int64_t offset;
+  SmallVector<int64_t, 4> strides;
+  auto res = memRefType.getStridesAndOffset(strides, offset);
+  assert(succeeded(res) && strides.size() == static_cast<unsigned>(rank));
+  (void)res;
+  auto map = makeStridedLinearLayoutMap(strides, offset, b->getContext());
+  map = permutationMap ? map.compose(permutationMap) : map;
+  // Compute result type.
+  auto resultType = MemRefType::get(sizes, memRefType.getElementType(), map,
+                                    memRefType.getMemorySpace());
+
+  build(b, result, resultType, view, attrs);
+  result.addAttribute(TransposeOp::getPermutationAttrName(), permutation);
 }
 
-static void print(OpAsmPrinter *p, TransposeOp op) {
-  *p << op.getOperationName() << " " << *op.view() << " " << op.permutation();
-  p->printOptionalAttrDict(op.getAttrs(),
-                           {TransposeOp::getPermutationAttrName()});
-  *p << " : " << op.view()->getType();
+static void print(OpAsmPrinter &p, TransposeOp op) {
+  p << op.getOperationName() << " " << *op.view() << " " << op.permutation();
+  p.printOptionalAttrDict(op.getAttrs(),
+                          {TransposeOp::getPermutationAttrName()});
+  p << " : " << op.view()->getType();
 }
 
-static ParseResult parseTransposeOp(OpAsmParser *parser,
-                                    OperationState *result) {
+static ParseResult parseTransposeOp(OpAsmParser &parser,
+                                    OperationState &result) {
   OpAsmParser::OperandType view;
   AffineMapAttr permutation;
-  Type type;
-  return failure(parser->parseOperand(view) ||
-                 parser->parseAttribute(permutation,
-                                        TransposeOp::getPermutationAttrName(),
-                                        result->attributes) ||
-                 parser->parseOptionalAttributeDict(result->attributes) ||
-                 parser->parseColonType(type) ||
-                 parser->resolveOperand(view, type, result->operands) ||
-                 parser->addTypeToList(type, result->types));
+  MemRefType type;
+  return failure(parser.parseOperand(view) ||
+                 parser.parseAttribute(permutation,
+                                       TransposeOp::getPermutationAttrName(),
+                                       result.attributes) ||
+                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseColonType(type) ||
+                 parser.resolveOperand(view, type, result.operands) ||
+                 parser.addTypeToList(type, result.types));
 }
 
 //===----------------------------------------------------------------------===//
 // ViewOp
 //===----------------------------------------------------------------------===//
-void mlir::linalg::ViewOp::build(Builder *b, OperationState *result,
+void mlir::linalg::ViewOp::build(Builder *b, OperationState &result,
                                  Value *buffer, ArrayRef<Value *> ranges,
                                  Type resultType,
                                  ArrayRef<NamedAttribute> attrs) {
+  // If the result type is not specified, assume sizes are fully dynamic.
+  // Strides are set to match an empty layout map which means "contiguous view".
   if (!resultType) {
+    auto rank = ranges.size();
+    SmallVector<int64_t, 4> sizes(rank, -1);
     Type elementType = buffer->getType().cast<BufferType>().getElementType();
-    resultType = ViewType::get(b->getContext(), elementType, ranges.size());
+    resultType = MemRefType::get(sizes, elementType, {}, 0);
   }
   build(b, result, resultType, buffer, ranges);
-  result->addAttributes(attrs);
+  result.addAttributes(attrs);
 }
 
-static void print(OpAsmPrinter *p, ViewOp op) {
-  *p << op.getOperationName() << " " << *op.buffer() << "[";
-  interleaveComma(op.ranges(), *p, [&](Value *v) { *p << *v; });
-  *p << "] ";
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.buffer()->getType() << " -> " << op.getType();
+static void print(OpAsmPrinter &p, ViewOp op) {
+  p << op.getOperationName() << " " << *op.buffer() << "[";
+  interleaveComma(op.ranges(), p, [&](Value *v) { p << *v; });
+  p << "] ";
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.buffer()->getType() << " -> " << op.getType();
 }
 
-static ParseResult parseViewOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseViewOp(OpAsmParser &parser, OperationState &result) {
   OpAsmParser::OperandType bufferInfo;
   SmallVector<OpAsmParser::OperandType, 8> rangesInfo;
   Type bType, vType;
-  if (parser->parseOperand(bufferInfo) ||
-      parser->parseOperandList(rangesInfo, OpAsmParser::Delimiter::Square) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColon() || parser->parseType(bType) ||
-      parser->parseArrow() || parser->parseType(vType)) {
+  if (parser.parseOperand(bufferInfo) ||
+      parser.parseOperandList(rangesInfo, OpAsmParser::Delimiter::Square) ||
+      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseColon() || parser.parseType(bType) || parser.parseArrow() ||
+      parser.parseType(vType)) {
     return failure();
   }
 
-  ViewType viewType = vType.dyn_cast<ViewType>();
-  if (!viewType)
-    return parser->emitError(parser->getNameLoc(), "expected view type");
-  if (viewType.getRank() != rangesInfo.size())
-    return parser->emitError(parser->getNameLoc(), "expected ")
-           << viewType.getRank() << " ranges";
+  MemRefType memRefType = vType.dyn_cast<MemRefType>();
+  if (!memRefType)
+    return parser.emitError(parser.getNameLoc(), "expected memref type");
+  if (static_cast<unsigned>(memRefType.getRank()) != rangesInfo.size())
+    return parser.emitError(parser.getNameLoc(), "expected ")
+           << memRefType.getRank() << " ranges";
   return failure(
-      parser->resolveOperand(bufferInfo, bType, result->operands) ||
+      parser.resolveOperand(bufferInfo, bType, result.operands) ||
       (!rangesInfo.empty() &&
-       parser->resolveOperands(rangesInfo, RangeType::get(vType.getContext()),
-                               result->operands)) ||
-      parser->addTypeToList(viewType, result->types));
+       parser.resolveOperands(rangesInfo, RangeType::get(vType.getContext()),
+                              result.operands)) ||
+      parser.addTypeToList(memRefType, result.types));
 }
 
 //===----------------------------------------------------------------------===//
 // YieldOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter *p, YieldOp op) {
-  *p << op.getOperationName();
+static void print(OpAsmPrinter &p, YieldOp op) {
+  p << op.getOperationName();
   if (op.getNumOperands() > 0) {
-    *p << ' ';
-    p->printOperands(op.operand_begin(), op.operand_end());
+    p << ' ';
+    p.printOperands(op.operand_begin(), op.operand_end());
   }
-  p->printOptionalAttrDict(op.getAttrs());
+  p.printOptionalAttrDict(op.getAttrs());
   if (op.getNumOperands() > 0) {
-    *p << " : ";
-    interleaveComma(op.getOperands(), *p,
-                    [&](Value *e) { p->printType(e->getType()); });
+    p << " : ";
+    interleaveComma(op.getOperands(), p,
+                    [&](Value *e) { p.printType(e->getType()); });
   }
 }
 
-static ParseResult parseYieldOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseYieldOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 2> opInfo;
   SmallVector<Type, 2> types;
-  llvm::SMLoc loc = parser->getCurrentLocation();
-  return failure(parser->parseOperandList(opInfo) ||
-                 parser->parseOptionalAttributeDict(result->attributes) ||
-                 (!opInfo.empty() && parser->parseColonTypeList(types)) ||
-                 parser->resolveOperands(opInfo, types, loc, result->operands));
+  llvm::SMLoc loc = parser.getCurrentLocation();
+  return failure(parser.parseOperandList(opInfo) ||
+                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 (!opInfo.empty() && parser.parseColonTypeList(types)) ||
+                 parser.resolveOperands(opInfo, types, loc, result.operands));
 }
 
 static LogicalResult verify(YieldOp op) {
@@ -750,33 +623,35 @@ static LogicalResult verify(YieldOp op) {
 //
 // ```
 //   linalg.matmul(%0, %1, %2) :
-//     !linalg.view<?x?xf32>, !linalg.view<?x?xf32>, !linalg.view<?x?xf32>
+//     memref<?x?xf32, stride_specification>,
+//     memref<?x?xf32, stride_specification>,
+//     memref<?x?xf32, stride_specification>
 // ```
 //
-// Where %0, %1 and %2 are ssa-values of type ViewType.
-static void printLinalgLibraryOp(OpAsmPrinter *p, Operation *op) {
+// Where %0, %1 and %2 are ssa-values of type MemRefType with strides.
+static void printLinalgLibraryOp(OpAsmPrinter &p, Operation *op) {
   assert(op->getAbstractOperation() && "unregistered operation");
-  *p << op->getName().getStringRef() << "(";
+  p << op->getName().getStringRef() << "(";
   interleave(
       op->getOperands().begin(), op->getOperands().end(),
-      [&](Value *v) { *p << *v; }, [&]() { *p << ", "; });
-  *p << ")";
-  p->printOptionalAttrDict(op->getAttrs());
-  *p << " : ";
+      [&](Value *v) { p << *v; }, [&]() { p << ", "; });
+  p << ")";
+  p.printOptionalAttrDict(op->getAttrs());
+  p << " : ";
   interleave(
       op->getOperands().begin(), op->getOperands().end(),
-      [&](Value *v) { *p << v->getType(); }, [&]() { *p << ", "; });
+      [&](Value *v) { p << v->getType(); }, [&]() { p << ", "; });
 }
 
-static ParseResult parseLinalgLibraryOp(OpAsmParser *parser,
-                                        OperationState *result) {
+static ParseResult parseLinalgLibraryOp(OpAsmParser &parser,
+                                        OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 3> ops;
   SmallVector<Type, 3> types;
-  return failure(parser->parseOperandList(ops, OpAsmParser::Delimiter::Paren) ||
-                 parser->parseOptionalAttributeDict(result->attributes) ||
-                 parser->parseColonTypeList(types) ||
-                 parser->resolveOperands(ops, types, parser->getNameLoc(),
-                                         result->operands));
+  return failure(
+      parser.parseOperandList(ops, OpAsmParser::Delimiter::Paren) ||
+      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseColonTypeList(types) ||
+      parser.resolveOperands(ops, types, parser.getNameLoc(), result.operands));
 }
 
 static LogicalResult verify(FillOp op) {
@@ -832,14 +707,14 @@ verifyStrideOrDilation(ConvOp op, ArrayRef<Attribute> attrs, bool isStride) {
 }
 
 static LogicalResult verify(ConvOp op) {
-  auto oType = op.output()->getType().cast<ViewType>();
-  auto fType = op.filter()->getType().cast<ViewType>();
-  auto iType = op.input()->getType().cast<ViewType>();
+  auto oType = op.output()->getType().cast<MemRefType>();
+  auto fType = op.filter()->getType().cast<MemRefType>();
+  auto iType = op.input()->getType().cast<MemRefType>();
   if (oType.getElementType() != iType.getElementType() ||
       oType.getElementType() != fType.getElementType())
-    return op.emitOpError("expects view elemental types to match");
+    return op.emitOpError("expects memref elemental types to match");
   if (oType.getRank() != iType.getRank() || oType.getRank() != fType.getRank())
-    return op.emitOpError("expects view ranks to match");
+    return op.emitOpError("expects memref ranks to match");
   if (auto strides = op.strides()) {
     if (failed(
             verifyStrideOrDilation(op, strides->getValue(), /*isStride=*/true)))
@@ -1003,11 +878,14 @@ SmallVector<AffineMap, 4> mlir::linalg::loopToOperandRangesMaps(Operation *op) {
 }
 
 static void appendMangledType(llvm::raw_string_ostream &ss, Type t) {
-  if (auto view = t.dyn_cast<ViewType>()) {
+  if (auto memref = t.dyn_cast<MemRefType>()) {
     ss << "view";
-    for (unsigned i = 0, e = view.getRank(); i < e; ++i)
-      ss << "x";
-    appendMangledType(ss, view.getElementType());
+    for (auto size : memref.getShape())
+      if (size < 0)
+        ss << "sx";
+      else
+        ss << size << "x";
+    appendMangledType(ss, memref.getElementType());
   } else if (auto vec = t.dyn_cast<VectorType>()) {
     ss << "vector";
     interleave(

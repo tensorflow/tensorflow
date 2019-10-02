@@ -17,12 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import structure
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 
 
@@ -74,9 +71,8 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
   """
 
   def __init__(self, input_dataset, num_replicas, use_fallback=True):
-    self._input_dataset = input_dataset
 
-    def recalculate_output_shapes(output_shapes):
+    def recalculate_batch_size(output_shapes):
       """Recalculates the output_shapes after dividing it by num_replicas."""
       if len(output_shapes) < 1:
         raise ValueError(
@@ -85,31 +81,24 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
       output_dims = [d.value for d in output_shapes.dims]
 
       if output_dims[0] is not None and output_dims[0] % num_replicas == 0:
-        output_dims[0] = output_dims[0] // num_replicas
-      else:
-        # Set the batch dimension to unknown. If the global batch size does not
-        # divide num_replicas evenly, the minibatches may have different sizes.
-        output_dims[0] = None
-      return tensor_shape.TensorShape(output_dims)
+        return output_dims[0] // num_replicas
 
-    input_types = dataset_ops.get_legacy_output_types(self._input_dataset)
-    input_shapes = dataset_ops.get_legacy_output_shapes(self._input_dataset)
-    input_classes = dataset_ops.get_legacy_output_classes(self._input_dataset)
-    output_shapes = nest.map_structure(recalculate_output_shapes, input_shapes)
+      # Set the batch dimension to unknown. If the global batch size does not
+      # divide num_replicas evenly, the minibatches may have different sizes.
+      return None
 
-    self._element_spec = structure.convert_legacy_structure(
-        input_types, output_shapes, input_classes)
-    if compat.forward_compatible(2019, 8, 13) or not use_fallback:
-      variant_tensor = ged_ops.rebatch_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          num_replicas=num_replicas,
-          use_fallback=use_fallback,
-          **self._flat_structure)
-    else:
-      variant_tensor = ged_ops.rebatch_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          num_replicas=num_replicas,
-          **self._flat_structure)
+    def rebatch(type_spec):
+      # pylint: disable=protected-access
+      batch_size = recalculate_batch_size(type_spec._to_legacy_output_shapes())
+      return type_spec._unbatch()._batch(batch_size)
+      # pylint: enable=protected-access
+
+    self._element_spec = nest.map_structure(
+        rebatch, dataset_ops.get_structure(input_dataset))
+    variant_tensor = ged_ops.rebatch_dataset(
+        input_dataset._variant_tensor,  # pylint: disable=protected-access
+        num_replicas=num_replicas,
+        **self._flat_structure)
     super(_RebatchDataset, self).__init__(input_dataset, variant_tensor)
 
   @property

@@ -126,7 +126,14 @@ ConcatenationOpTest/FourInputsQuantizedMixedRange,29
 ConcatenationOpTest/FourInputsQuantizedMixedRangeClampingLogic,29
 
 # conv_test
-ConvolutionOpTest/ConvolutionOpTest/.+/\d+,29
+ConvolutionOpTest/ConvolutionOpTest.SimpleTestFloatWithDilation/.+,29
+ConvolutionOpTest/ConvolutionOpTest.SimpleTestLargeIrregularQuantized/.+,29
+ConvolutionOpTest/ConvolutionOpTest.SimpleTestQuantizedOutputMultiplierGreaterThan1/.+,29
+ConvolutionOpTest/ConvolutionOpTest.SimpleTestQuantizedWithDilation/.+,29
+ConvolutionOpTest/ConvolutionOpTest.SimplePerChannelTest/.+,29
+ConvolutionOpTest/ConvolutionOpTest/.+Hybrid.+,29/
+ConvolutionOpTest/ConvolutionOpTest/.+/\d+
+
 
 # depthwise_conv_test
 .+ConvolutionOpTest/.+/\d+,29

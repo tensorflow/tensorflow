@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "public/gemmlowp.h"
 #include "tensorflow/lite/experimental/ruy/context.h"
+#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 

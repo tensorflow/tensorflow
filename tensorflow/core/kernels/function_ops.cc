@@ -323,7 +323,9 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
       done);
 
   AttrValueMap attr_values = func_.attr();
+
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
+  // TODO(b/141576771): Propagate ctxt's ConfigProto into opts.config_proto.
   instantiate_opts.target = target_device;
 
   FunctionTarget function_target = {target_device, lib};

@@ -43,7 +43,7 @@ class ExecutorOpts;
 class StepStatsCollector;
 class RendezvousMgrInterface;
 class DeviceMgr;
-struct WorkerSession;
+class WorkerSession;
 
 // GraphMgr keeps track of a set of graphs that are registered with a
 // TensorFlow worker. Each registered graph is identified by a handle
@@ -108,7 +108,7 @@ class GraphMgr {
   typedef GraphMgr ME;
 
   struct ExecutionUnit {
-    Graph* graph = nullptr;                 // not owned.
+    std::unique_ptr<Graph> graph = nullptr;
     Device* device = nullptr;               // not owned.
     Executor* root = nullptr;               // not owned.
     FunctionLibraryRuntime* lib = nullptr;  // not owned.

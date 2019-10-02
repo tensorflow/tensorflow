@@ -58,15 +58,6 @@ static bool OpQuantSpecWriter(raw_ostream &os, RecordKeeper &records) {
 
         OUT(2) << "if (auto tfl = llvm::dyn_cast<" << op.getQualCppClassName()
                << ">(op)) {\n";
-
-        // There is a "NoQuantizableResult" trait, set the flag.
-        if (trait.equals("NoQuantizableResult")) {
-          OUT(4) << "spec->is_quantizable = false;\n";
-        }
-        // There is a "SameOperandsAndResultScale" trait, set the flag.
-        if (trait.equals("SameOperandsAndResultsScale")) {
-          OUT(4) << "spec->requires_same_scale = true;\n";
-        }
         // There is a "FixedResultUniformScale" trait, set the type for result.
         auto trait_str = opTrait->getTrait().str();
         if (fixed_uniform_trait_regex.match(trait_str, &matches)) {

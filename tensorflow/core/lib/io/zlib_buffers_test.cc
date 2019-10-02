@@ -13,12 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace io {
@@ -292,6 +294,42 @@ void TestSkipNBytes(CompressionOptions input_options,
   }
 }
 
+void TestSoftErrorOnDecompress(CompressionOptions input_options) {
+  Env* env = Env::Default();
+  string fname = testing::TmpDir() + "/garbage_data";
+
+  input_options.soft_fail_on_error = true;
+
+  std::unique_ptr<WritableFile> file_writer;
+  TF_ASSERT_OK(env->NewWritableFile(fname, &file_writer));
+  TF_ASSERT_OK(file_writer->Append("nonsense non-gzip data"));
+  TF_ASSERT_OK(file_writer->Flush());
+  TF_ASSERT_OK(file_writer->Close());
+
+  // Test `ReadNBytes` returns an error.
+  {
+    std::unique_ptr<RandomAccessFile> file_reader;
+    TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file_reader));
+    std::unique_ptr<RandomAccessInputStream> input_stream(
+        new RandomAccessInputStream(file_reader.get()));
+    ZlibInputStream in(input_stream.get(), 100, 100, input_options);
+
+    tstring unused;
+    EXPECT_TRUE(errors::IsDataLoss(in.ReadNBytes(5, &unused)));
+  }
+
+  // Test `SkipNBytes` returns an error.
+  {
+    std::unique_ptr<RandomAccessFile> file_reader;
+    TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file_reader));
+    std::unique_ptr<RandomAccessInputStream> input_stream(
+        new RandomAccessInputStream(file_reader.get()));
+    ZlibInputStream in(input_stream.get(), 100, 100, input_options);
+
+    EXPECT_TRUE(errors::IsDataLoss(in.SkipNBytes(5)));
+  }
+}
+
 TEST(ZlibInputStream, TellDefaultOptions) {
   TestTell(CompressionOptions::DEFAULT(), CompressionOptions::DEFAULT());
 }
@@ -314,6 +352,18 @@ TEST(ZlibInputStream, SkipNBytesRawDeflate) {
 
 TEST(ZlibInputStream, SkipNBytesGzip) {
   TestSkipNBytes(CompressionOptions::GZIP(), CompressionOptions::GZIP());
+}
+
+TEST(ZlibInputStream, TestSoftErrorOnDecompressDefaultOptions) {
+  TestSoftErrorOnDecompress(CompressionOptions::DEFAULT());
+}
+
+TEST(ZlibInputStream, TestSoftErrorOnDecompressRaw) {
+  TestSoftErrorOnDecompress(CompressionOptions::RAW());
+}
+
+TEST(ZlibInputStream, TestSoftErrorOnDecompressGzip) {
+  TestSoftErrorOnDecompress(CompressionOptions::GZIP());
 }
 
 }  // namespace io

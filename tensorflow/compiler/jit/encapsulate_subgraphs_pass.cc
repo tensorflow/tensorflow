@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
+#include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -61,6 +62,7 @@ const char* const kXlaNumConstantArgsAttr = "_XlaNumConstantArgs";
 const char* const kXlaNumResourceArgsAttr = "_XlaNumResourceArgs";
 const char* const kXlaHostTransferSequencerAttr =
     "_xla_host_transfer_sequencer";
+const char* const kXlaHasReferenceVarsAttr = "_XlaHasReferenceVars";
 
 void SortControlInputs(GraphDef* gdef) {
   int64 num_nodes = gdef->node_size();
@@ -1311,6 +1313,14 @@ Status EncapsulateSubgraphsPass::Run(
   }
 
   *options.graph = std::move(graph_out);
+  TF_ASSIGN_OR_RETURN(absl::flat_hash_set<Node*> ref_related_nodes,
+                      GetNodesRelatedToRefVariables(**options.graph, flr));
+  for (Node* node : (*options.graph)->nodes()) {
+    bool has_ref_vars = ref_related_nodes.contains(node);
+    node->AddAttr(kXlaHasReferenceVarsAttr, has_ref_vars);
+    VLOG(3) << "Has ref vars = " << has_ref_vars
+            << ", node: " << node->def().SerializeAsString();
+  }
   return Status::OK();
 }
 

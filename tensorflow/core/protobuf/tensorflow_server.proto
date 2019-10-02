@@ -48,4 +48,7 @@ message ServerDef {
   //
   // Acceptable values include: "grpc", "grpc+verbs".
   string protocol = 5;
+
+  // The server port. If not set, then we identify the port from the job_name.
+  int32 port = 6;
 }

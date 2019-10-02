@@ -64,6 +64,7 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_resource_variable_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
@@ -79,6 +80,11 @@ from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
+
+try:
+  import attr  # pylint:disable=g-import-not-at-top
+except ImportError:
+  attr = None
 
 
 def total_function_cache(defined):
@@ -158,6 +164,95 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     c = constant_op.constant(1.0)
     with self.assertRaisesRegexp(AttributeError, 'no attribute'):
       add(c)
+
+  def testImplementsAttributeBasic(self):
+    v = def_function.function(
+        experimental_implements='func')(lambda x, y: x + y)
+    with context.graph_mode(), self.cached_session():
+      a = array_ops.placeholder(dtypes.float32, ())
+      b = array_ops.placeholder(dtypes.float32, ())
+      v(a, b)
+      gradients_impl.gradients(v(a, b), [a, b])
+      fdefs = ops.get_default_graph().as_graph_def().library.function
+      self.assertLen(fdefs, 3)
+      not_present = 0
+      present = 0
+      for f in fdefs:
+        name = f.signature.name
+        if 'forward' in name or 'backward' in name:
+          not_present += 1
+          self.assertNotIn(function.IMPLEMENTS_ATTRIBUTE_NAME, f.attr, f)
+        else:
+          present += 1
+          self.assertEqual(f.attr[function.IMPLEMENTS_ATTRIBUTE_NAME].s,
+                           'func'.encode('ascii'), f)
+      self.assertEqual(not_present, 2, fdefs)
+      self.assertEqual(present, 1, fdefs)
+
+  def testImplementsAttributeAssertsOnSideInput(self):
+    with context.graph_mode(), self.cached_session():
+      z = array_ops.zeros(0)
+      v = def_function.function(
+          experimental_implements='func')(lambda x, y: x + y + z)
+      a = array_ops.ones((1.0,))
+      b = array_ops.ones((1.0,))
+      with self.assertRaisesRegexp(AssertionError,
+                                   'variables are always captured'):
+        v(a, b)
+      functions = ops.get_default_graph().as_graph_def().library.function
+      self.assertEmpty(functions)
+
+  def testImplementsAttributeWorksOnVariables(self):
+    with context.graph_mode(), self.cached_session():
+      v = def_function.function(
+          experimental_implements='func')(lambda x, y: x + y)
+      a = variables.Variable((1.0,))
+      b = variables.Variable((1.0,))
+      r1 = v(a, b)
+      _ = v(a, a)
+      functions = ops.get_default_graph().as_graph_def().library.function
+      # Verify that we created only one function
+      self.assertLen(functions, 1)
+      # Verify that eval() reads the current values.
+      a.initializer.run()
+      b.initializer.run()
+      self.assertEqual(r1.eval(), 2)
+
+      a.assign_add([1]).eval()
+      self.assertEqual(r1.eval(), 3)
+
+  def testImplementsAttributeWorksOnConstants(self):
+    with context.graph_mode(), self.cached_session():
+      v = def_function.function(
+          experimental_implements='func')(lambda x, y: x + y)
+      a = variables.Variable(1.0)
+      r1 = v(a, 2.)
+      r2 = v(2., a)
+      functions = ops.get_default_graph().as_graph_def().library.function
+      self.assertLen(functions, 1)
+      self.assertLen(functions[0].signature.input_arg, 2)
+      # Verify that eval() reads the current values.
+      a.initializer.run()
+      self.assertEqual(r1.eval(), 3)
+      self.assertEqual(r2.eval(), 3)
+
+  def testImplementsAttributeSpecializes(self):
+    with context.graph_mode(), self.cached_session():
+      v = def_function.function(
+          experimental_implements='func')(lambda x, y: x + y)
+      a = variables.Variable(1.0)
+      r1 = v(a, [2.])
+      r2 = v([2., 2], a)
+      functions = ops.get_default_graph().as_graph_def().library.function
+      self.assertLen(functions, 2)
+      # Ensure that all parameters are still there and haven't been inlined!
+
+      self.assertLen(functions[0].signature.input_arg, 2)
+      self.assertLen(functions[1].signature.input_arg, 2)
+      # Verify that eval() reads the current values.
+      a.initializer.run()
+      numpy.testing.assert_equal(r1.eval(), [3.])
+      numpy.testing.assert_equal(r2.eval(), [3., 3.])
 
   def testExternalControlDependency(self):
     with ops.Graph().as_default(), self.test_session():
@@ -357,6 +452,34 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                     math_ops.matmul(b, a).numpy())
     self.assertAllClose(out, expected)
 
+  @parameterized.named_parameters(
+      dict(testcase_name='Defun',
+           function_decorator=function.defun),
+      dict(testcase_name='DefFunction',
+           function_decorator=def_function.function))
+  def testNestedFunctionGraphNotOutOfDate(self, function_decorator):
+    @function_decorator
+    def f():
+      return constant_op.constant(1.)
+
+    class _Model(object):
+
+      @function_decorator
+      def g(self):
+        self.f = f.get_concrete_function()
+
+    model = _Model()
+    model.g()
+    concrete = model.f
+    weak_g_graph = weakref.ref(model.g.get_concrete_function().graph)
+    self.assertIs(weak_g_graph(), concrete.graph.outer_graph)
+    weak_g = weakref.ref(model.g)
+    del model
+    self.assertIsNone(weak_g())
+    self.assertIsNone(weak_g_graph())
+    self.assertIsNotNone(concrete.graph.outer_graph)
+    self.assertIs(ops.get_default_graph(), concrete.graph.outer_graph)
+
   def testGraphEagerIsolation(self):
 
     @function.defun
@@ -382,6 +505,25 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(sq_op.output_shapes, tensor_shape.TensorShape([2, 2]))
     out = sq_op(t)
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
+
+  def testGetConcreteFunctionThreadSafety(self):
+
+    @def_function.function
+    def sq():
+      t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+      return math_ops.matmul(t, t)
+
+    concrete_functions = []
+
+    def thread_func(_):
+      cf = sq.get_concrete_function()
+      concrete_functions.append(cf)
+
+    num_threads = 100
+    pool = multiprocessing.pool.ThreadPool(num_threads)
+    _ = pool.map(thread_func, list(range(num_threads)))
+
+    self.assertLen(set(concrete_functions), 1)
 
   def testInputSpecGraphFunction(self):
     matmul = def_function.function(math_ops.matmul)
@@ -2350,6 +2492,37 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertLen(total_function_cache(defined), 1)
 
     defined([[a, b], c])
+    self.assertLen(total_function_cache(defined), 2)
+
+  def testCacheKeyAttrsClass(self):
+    if attr is None:
+      self.skipTest('attr module is unavailable.')
+
+    @attr.s
+    class TestClass(object):
+      a = attr.ib()
+      b = attr.ib()
+
+    @function.defun
+    def defined(l):
+      return l
+
+    defined(
+        TestClass(
+            constant_op.constant(1.),
+            [constant_op.constant(2.),
+             constant_op.constant(3.)]))
+    self.assertLen(total_function_cache(defined), 1)
+    defined(
+        TestClass(
+            constant_op.constant(1.),
+            [constant_op.constant(2.),
+             constant_op.constant(3.)]))
+    self.assertLen(total_function_cache(defined), 1)
+
+    defined(
+        TestClass([constant_op.constant(1.),
+                   constant_op.constant(2.)], constant_op.constant(3.)))
     self.assertLen(total_function_cache(defined), 2)
 
   def testDecoratedMethod(self):

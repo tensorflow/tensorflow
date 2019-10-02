@@ -29,20 +29,17 @@ namespace mlir {
 class FuncOp;
 class ModuleOp;
 template <typename T> class OpPassBase;
-using FunctionPassBase = OpPassBase<FuncOp>;
-using ModulePassBase = OpPassBase<ModuleOp>;
 
 namespace linalg {
-std::unique_ptr<FunctionPassBase>
-createLinalgFusionPass(ArrayRef<int64_t> tileSizes = {});
+std::unique_ptr<OpPassBase<FuncOp>> createLinalgFusionPass();
 
-std::unique_ptr<FunctionPassBase>
+std::unique_ptr<OpPassBase<FuncOp>>
 createLinalgTilingPass(ArrayRef<int64_t> tileSizes = {},
                        bool promoteViews = false);
 
-std::unique_ptr<FunctionPassBase> createLowerLinalgToLoopsPass();
+std::unique_ptr<OpPassBase<FuncOp>> createLowerLinalgToLoopsPass();
 
-std::unique_ptr<ModulePassBase> createLowerLinalgToLLVMPass();
+std::unique_ptr<OpPassBase<ModuleOp>> createLowerLinalgToLLVMPass();
 } // namespace linalg
 } // namespace mlir
 

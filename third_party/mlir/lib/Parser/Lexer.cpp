@@ -369,7 +369,7 @@ Token Lexer::lexPrefixedIdentifier(const char *tokStart) {
 Token Lexer::lexString(const char *tokStart) {
   assert(curPtr[-1] == '"');
 
-  while (1) {
+  while (true) {
     switch (*curPtr++) {
     case '"':
       return formToken(Token::string, tokStart);

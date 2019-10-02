@@ -943,6 +943,7 @@ class _EagerTensorArray(object):
 # TensorArray is designed to hide an underlying implementation object
 # and as such accesses many of that object's hidden fields.
 # pylint: disable=protected-access
+# pylint:disable=line-too-long
 @tf_export("TensorArray")
 class TensorArray(object):
   """Class wrapping dynamic-sized, per-time-step, write-once Tensor arrays.
@@ -950,6 +951,54 @@ class TensorArray(object):
   This class is meant to be used with dynamic iteration primitives such as
   `while_loop` and `map_fn`.  It supports gradient back-propagation via special
   "flow" control flow dependencies.
+
+  Example 1: plain reading and writing.
+  >>> ta = tf.TensorArray(tf.float32, size=0, dynamic_size=True, clear_after_read=False)
+  >>> ta = ta.write(0, 10)
+  >>> ta = ta.write(1, 20)
+  >>> ta = ta.write(2, 30)
+  >>>
+  >>> ta.read(0)
+  <tf.Tensor: shape=(), dtype=float32, numpy=10.0>
+  >>> ta.read(1)
+  <tf.Tensor: shape=(), dtype=float32, numpy=20.0>
+  >>> ta.read(2)
+  <tf.Tensor: shape=(), dtype=float32, numpy=30.0>
+  >>> ta.stack()
+  <tf.Tensor: shape=(3,), dtype=float32, numpy=array([10., 20., 30.],
+  dtype=float32)>
+
+  Example 2: Fibonacci sequence algorithm that writes in a loop then returns.
+  >>> @tf.function
+  ... def fibonacci(n):
+  ...   ta = tf.TensorArray(tf.float32, size=0, dynamic_size=True)
+  ...   ta = ta.unstack([0., 1.])
+  ...
+  ...   for i in range(2, n):
+  ...     ta = ta.write(i, ta.read(i - 1) + ta.read(i - 2))
+  ...
+  ...   return ta.stack()
+  >>>
+  >>> fibonacci(7)
+  <tf.Tensor: shape=(7,), dtype=float32,
+  numpy=array([0., 1., 1., 2., 3., 5., 8.], dtype=float32)>
+
+  Example 3: A simple loop interacting with a tf.Variable.
+  >>> v = tf.Variable(1)
+  >>>
+  >>> @tf.function
+  ... def f(x):
+  ...   ta = tf.TensorArray(tf.int32, size=0, dynamic_size=True)
+  ...
+  ...   for i in tf.range(x):
+  ...     v.assign_add(i)
+  ...     ta = ta.write(i, v)
+  ...
+  ...   return ta.stack()
+  >>>
+  >>> f(5)
+  <tf.Tensor: shape=(5,), dtype=int32, numpy=array([ 1,  2,  4,  7, 11],
+  dtype=int32)>
   """
 
   def __init__(self,

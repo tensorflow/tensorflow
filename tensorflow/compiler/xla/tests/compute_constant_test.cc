@@ -160,7 +160,7 @@ TEST_F(ComputeConstantTest, GetDimensionSize) {
     auto get_dimension_size = GetDimensionSize(add, 0);
     EXPECT_TRUE(IsConstant(get_dimension_size, &b));
 
-    TF_ASSERT_OK_AND_ASSIGN(auto value, ComputeConstantScalar<uint32>(
+    TF_ASSERT_OK_AND_ASSIGN(auto value, ComputeConstantScalar<int32>(
                                             client, get_dimension_size, &b));
     EXPECT_EQ(value, 1);
   }
@@ -178,7 +178,7 @@ TEST_F(ComputeConstantTest, MultipleGetDimensionSize) {
     EXPECT_TRUE(IsConstant(add_2, &b));
 
     TF_ASSERT_OK_AND_ASSIGN(auto value,
-                            ComputeConstantScalar<uint32>(client, add_2, &b));
+                            ComputeConstantScalar<int32>(client, add_2, &b));
     EXPECT_EQ(value, 2);
   }
 }

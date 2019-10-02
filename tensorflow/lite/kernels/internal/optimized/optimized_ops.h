@@ -98,7 +98,6 @@ using reference_ops::SpaceToBatchND;
 using reference_ops::Split;
 using reference_ops::StridedSlice;
 using reference_ops::Sub16;
-using reference_ops::Transpose;
 
 // TODO(b/80247582) Remove this constant.
 // This will be phased out as the shifts are revised with more thought. Use of a
@@ -3621,93 +3620,77 @@ inline void LogSoftmax(const SoftmaxParams& params,
   }
 }
 
-// Currently just a copy of the reference code.
+// Backwards compatibility. Less optimized than below version.
 inline void LogSoftmax(const SoftmaxParams& params,
                        const RuntimeShape& input_shape, const uint8* input_data,
                        const RuntimeShape& output_shape, uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("LogSoftmax/Uint8");
-  const int32 input_multiplier = params.input_multiplier;
-  const int32 input_left_shift = params.input_left_shift;
-  const int32 reverse_scaling_divisor = params.reverse_scaling_divisor;
-  const int32 reverse_scaling_right_shift = params.reverse_scaling_right_shift;
-  const int diff_min = params.diff_min;
-  // The representation chosen for the input to the exp() function is Q5.26.
-  // We need to leave extra space since values that we skip might be as large as
-  // -32 before multiplying by input_beta_multiplier, and therefore as large as
-  // -16 afterwards.  Note that exp(-8) is definitely not insignificant to
-  // accumulation, but exp(-16) definitely is.
-  static constexpr int kScaledDiffIntegerBits = 5;
-  static constexpr int kAccumulationIntegerBits = 12;
-  static constexpr int kOutputIntegerBits = 4;
-  using FixedPointScaledDiff =
-      gemmlowp::FixedPoint<int32, kScaledDiffIntegerBits>;
-  using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumulationIntegerBits>;
+  reference_ops::LogSoftmax(params, input_shape, input_data, output_shape,
+                            output_data);
+}
 
+// Compute LogSoftmax as (x - x_max) - ln(sum(e^(x_i - x_max)...)
+// as done in tf.nn.log_softmax to prevent underflow and overflow.
+// This is in contrast to just log(softmax(x))
+//
+// To handle quantization, first dequantize the inputs (from doing
+// e^(input scale * val) where we ignore the zero point since it cancels
+// out during subtraction due to the ln) and do a rescale at the end to int8.
+//
+// Notably this makes use of float and is intended as the optimized
+// form for quantized execution on CPU. For a fully integer version,
+// see the reference op.
+//
+// TODO(tflite): notes for optimization:
+// 1) See if e^ is also bottleneck in the reference fully-integer
+// version and apply lookup there and compare.
+// 2) Time spent is currently split between computing max_val, the
+// rint call, and the computation of log_prob.
+inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
+                       const RuntimeShape& input_shape, const uint8* input_data,
+                       const RuntimeShape& output_shape, uint8* output_data) {
+  gemmlowp::ScopedProfilingLabel label("LogSoftmax/Uint8");
   const int trailing_dim = input_shape.DimensionsCount() - 1;
-  const int outer_size =
+  const int excluding_last_dim =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
-  const int depth =
+  const int last_dim =
       MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
 
-  for (int i = 0; i < outer_size; ++i) {
-    const uint8* block_input_data = input_data + i * depth;
-    uint8* block_output_data = output_data + i * depth;
-    uint8 max_in_row = 0;
-    for (int c = 0; c < depth; ++c) {
-      max_in_row = std::max(max_in_row, block_input_data[c]);
+  const int32_t clamp_max = std::numeric_limits<uint8>::max();
+  const int32_t clamp_min = std::numeric_limits<uint8>::min();
+  for (int i = 0; i < excluding_last_dim; ++i) {
+    uint8_t max_val = std::numeric_limits<uint8>::min();
+    // Find max quantized value.
+    for (int j = 0; j < last_dim; ++j) {
+      max_val = std::max(max_val, input_data[j]);
     }
 
-    FixedPointAccum sum_of_exps = FixedPointAccum::Zero();
-    for (int c = 0; c < depth; ++c) {
-      int32 input_diff = static_cast<int32>(block_input_data[c]) - max_in_row;
-      if (input_diff >= diff_min) {
-        const int32 input_diff_rescaled =
-            MultiplyByQuantizedMultiplierGreaterThanOne(
-                input_diff, input_multiplier, input_left_shift);
-        const FixedPointScaledDiff scaled_diff_f8 =
-            FixedPointScaledDiff::FromRaw(input_diff_rescaled);
-        sum_of_exps = sum_of_exps + gemmlowp::Rescale<kAccumulationIntegerBits>(
-                                        exp_on_negative_values(scaled_diff_f8));
-      }
+    float sum_exp = 0.0f;
+    const int32_t max_uint8 = std::numeric_limits<uint8_t>::max();
+    // Offset into table to compute exp(scale*(x - xmax)) instead of
+    // exp(scale*(x)) to prevent overflow.
+    const float* table_offset = &params.table[max_uint8 - max_val];
+    // Calculate sum(exp(scale*(x - x_max))).
+    for (int j = 0; j < last_dim; ++j) {
+      sum_exp += table_offset[input_data[j]];
     }
+    const float log_sum_exp = std::log(sum_exp);
 
-    const int32 fixed_log_sum_of_exps =
-        log_x_for_x_greater_than_or_equal_to_1<kScaledDiffIntegerBits>(
-            sum_of_exps)
-            .raw();
+    const float precomputed = input_scale * max_val + log_sum_exp;
+    for (int j = 0; j < last_dim; ++j) {
+      // Equivalent to input_scale * (input_data[j] - max_val) - log_sum_exp;
+      const float log_prob = input_scale * input_data[j] - precomputed;
 
-    // rescaled_diff_min is smallest representable in
-    // Q(kScaledDiffIntegerBits).(31-kScaledDiffIntegerBits) plus the
-    // log-sub-exps that will be subtracted in the loop.
-    //
-    // The thresholds diff_min, etc are negative.
-    const int rescaled_diff_min =
-        fixed_log_sum_of_exps + std::numeric_limits<int32>::lowest();
-    const int adjusted_diff_min =
-        std::max(diff_min - 1,  // Note use of > below instead of >= above.
-                 MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                     rescaled_diff_min, reverse_scaling_divisor,
-                     -reverse_scaling_right_shift));
+      // TODO(tflite): look into better solution.
+      // Use std::rint over std::round (which is used in
+      // FakeQuant) since it's multiple times faster on tested arm32.
+      const int32_t prob_quantized =
+          std::rint(log_prob / params.scale) + params.zero_point;
 
-    for (int c = 0; c < depth; ++c) {
-      int32 input_diff = static_cast<int32>(block_input_data[c]) - max_in_row;
-      if (input_diff > adjusted_diff_min) {
-        const int32 input_diff_rescaled =
-            MultiplyByQuantizedMultiplierGreaterThanOne(
-                input_diff, input_multiplier, input_left_shift);
-        int32 unsat_output =
-            gemmlowp::RoundingDivideByPOT(
-                (input_diff_rescaled - fixed_log_sum_of_exps),
-                31 - kScaledDiffIntegerBits - kOutputIntegerBits) +
-            255;
-
-        block_output_data[c] = static_cast<uint8>(
-            std::max(std::min(unsat_output, static_cast<int32>(255)), 0));
-      } else {
-        // Set output to smallest value.
-        block_output_data[c] = 0;
-      }
+      output_data[j] = static_cast<uint8_t>(
+          std::max(std::min(clamp_max, prob_quantized), clamp_min));
     }
+    input_data += last_dim;
+    output_data += last_dim;
   }
 }
 
@@ -5164,6 +5147,10 @@ inline void MultiplyByQuantizedMultiplier4Rows(
     int32x4_t* result_val_3, int32x4_t* result_val_4) {
   using gemmlowp::RoundingDivideByPOT;
   using gemmlowp::SaturatingRoundingDoublingHighMul;
+
+// The vector type support for SaturatingRoundingDoublingHighMulth in gemmlowp
+// is limited to NEON.
+#ifdef GEMMLOWP_NEON
   int32x4_t left_shifted_one_dup = vdupq_n_s32(left_shifted_one);
   *result_val_1 = RoundingDivideByPOT(
       SaturatingRoundingDoublingHighMul(
@@ -5181,6 +5168,80 @@ inline void MultiplyByQuantizedMultiplier4Rows(
       SaturatingRoundingDoublingHighMul(
           vmulq_s32(input_val_4, left_shifted_one_dup), multiplier),
       right_shift);
+#else
+  int32_t vals[4];
+  vals[0] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_1, 0) * left_shifted_one, multiplier),
+      right_shift);
+  vals[1] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_1, 1) * left_shifted_one, multiplier),
+      right_shift);
+  vals[2] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_1, 2) * left_shifted_one, multiplier),
+      right_shift);
+  vals[3] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_1, 3) * left_shifted_one, multiplier),
+      right_shift);
+  *result_val_1 = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
+
+  vals[0] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_2, 0) * left_shifted_one, multiplier),
+      right_shift);
+  vals[1] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_2, 1) * left_shifted_one, multiplier),
+      right_shift);
+  vals[2] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_2, 2) * left_shifted_one, multiplier),
+      right_shift);
+  vals[3] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_2, 3) * left_shifted_one, multiplier),
+      right_shift);
+  *result_val_2 = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
+
+  vals[0] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_3, 0) * left_shifted_one, multiplier),
+      right_shift);
+  vals[1] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_3, 1) * left_shifted_one, multiplier),
+      right_shift);
+  vals[2] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_3, 2) * left_shifted_one, multiplier),
+      right_shift);
+  vals[3] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_3, 3) * left_shifted_one, multiplier),
+      right_shift);
+  *result_val_3 = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
+
+  vals[0] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_4, 0) * left_shifted_one, multiplier),
+      right_shift);
+  vals[1] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_4, 1) * left_shifted_one, multiplier),
+      right_shift);
+  vals[2] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_4, 2) * left_shifted_one, multiplier),
+      right_shift);
+  vals[3] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_4, 3) * left_shifted_one, multiplier),
+      right_shift);
+  *result_val_4 = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
+#endif
 }
 
 #endif
@@ -6692,6 +6753,384 @@ inline void Logistic16bitPercision(const LogisticParams& params,
     }
     output_data[c] = output_val;
   }
+}
+
+// Transpose2D only deals with typical 2D matrix transpose ops.
+// Perform transpose by transposing 4x4 blocks of the input, proceeding from
+// left to right (down the rows) of the input, and then from top to bottom.
+template <typename T>
+inline void Transpose2DImpl(const TransposeParams& params,
+                            const RuntimeShape& input_shape,
+                            const T* input_data,
+                            const RuntimeShape& output_shape, T* output_data) {
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 2);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 2);
+  TFLITE_DCHECK_EQ(params.perm_count, 2);
+  TFLITE_DCHECK_EQ(params.perm[0], 1);
+  TFLITE_DCHECK_EQ(params.perm[1], 0);
+
+  const int d0 = input_shape.DimsData()[0];
+  const int d1 = input_shape.DimsData()[1];
+  const int kLines = 4;
+  const int kSkipSize = (kLines - 1) * d1;
+
+  const T* input = input_data;
+
+  int i = 0;
+  for (; i <= d0 - kLines; i += kLines) {
+    T* output = output_data + i;
+
+    const T* input_ptr = input;
+    optimized_ops_preload_l1_keep(input_ptr);
+    input_ptr += d1;
+    optimized_ops_preload_l1_keep(input_ptr);
+    input_ptr += d1;
+    optimized_ops_preload_l1_keep(input_ptr);
+    input_ptr += d1;
+    optimized_ops_preload_l1_keep(input_ptr);
+
+    int j = 0;
+    for (; j <= d1 - kLines; j += kLines) {
+      input_ptr = input;
+      const T a00 = input_ptr[0];
+      const T a01 = input_ptr[1];
+      const T a02 = input_ptr[2];
+      const T a03 = input_ptr[3];
+      input_ptr += d1;
+      const T a10 = input_ptr[0];
+      const T a11 = input_ptr[1];
+      const T a12 = input_ptr[2];
+      const T a13 = input_ptr[3];
+      input_ptr += d1;
+      const T a20 = input_ptr[0];
+      const T a21 = input_ptr[1];
+      const T a22 = input_ptr[2];
+      const T a23 = input_ptr[3];
+      input_ptr += d1;
+      const T a30 = input_ptr[0];
+      const T a31 = input_ptr[1];
+      const T a32 = input_ptr[2];
+      const T a33 = input_ptr[3];
+
+      output[0] = a00;
+      output[1] = a10;
+      output[2] = a20;
+      output[3] = a30;
+      output += d0;
+
+      output[0] = a01;
+      output[1] = a11;
+      output[2] = a21;
+      output[3] = a31;
+      output += d0;
+
+      output[0] = a02;
+      output[1] = a12;
+      output[2] = a22;
+      output[3] = a32;
+      output += d0;
+
+      output[0] = a03;
+      output[1] = a13;
+      output[2] = a23;
+      output[3] = a33;
+      output += d0;
+
+      input += kLines;
+    }
+    if (j == d1) {
+      input += kSkipSize;
+    } else {
+      for (int p = 0; p < kLines; ++p) {
+        for (int q = 0; q < d1 - j; ++q) {
+          *(output + q * d0 + p) = *(input + p * d1 + q);
+        }
+      }
+      input += (d1 - j) + kSkipSize;
+    }
+  }
+  for (; i < d0; ++i) {
+    T* output = output_data + i;
+    for (int j = 0; j < d1; ++j) {
+      *output = *input;
+      output += d0;
+      ++input;
+    }
+  }
+}
+
+template <>
+inline void Transpose2DImpl(const TransposeParams& params,
+                            const RuntimeShape& input_shape,
+                            const int32_t* input_data,
+                            const RuntimeShape& output_shape,
+                            int32_t* output_data) {
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 2);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 2);
+  TFLITE_DCHECK_EQ(params.perm_count, 2);
+  TFLITE_DCHECK_EQ(params.perm[0], 1);
+  TFLITE_DCHECK_EQ(params.perm[1], 0);
+
+  const int d0 = input_shape.DimsData()[0];
+  const int d1 = input_shape.DimsData()[1];
+#ifdef USE_NEON
+  const int kLines = 4;
+  const int kSkipSize = (kLines - 1) * d1;
+#endif
+
+  const int32_t* input = input_data;
+
+  int i = 0;
+#ifdef USE_NEON
+  for (; i <= d0 - kLines; i += kLines) {
+    int32_t* output = output_data + i;
+
+    const int32_t* input_ptr = input;
+    optimized_ops_preload_l1_keep(input_ptr);
+    input_ptr += d1;
+    optimized_ops_preload_l1_keep(input_ptr);
+    input_ptr += d1;
+    optimized_ops_preload_l1_keep(input_ptr);
+    input_ptr += d1;
+    optimized_ops_preload_l1_keep(input_ptr);
+
+    int j = 0;
+    for (; j <= d1 - kLines; j += kLines) {
+      input_ptr = input;
+      int32x4_t a0 = vld1q_s32(input);
+      input_ptr += d1;
+      int32x4_t a1 = vld1q_s32(input_ptr);
+      input_ptr += d1;
+      int32x4_t a2 = vld1q_s32(input_ptr);
+      input_ptr += d1;
+      int32x4_t a3 = vld1q_s32(input_ptr);
+
+      int32x4x2_t tmp1 = vuzpq_s32(a0, a2);
+      int32x4x2_t tmp2 = vuzpq_s32(a1, a3);
+      int32x4x2_t tmp3 = vtrnq_s32(tmp1.val[0], tmp2.val[0]);
+      int32x4x2_t tmp4 = vtrnq_s32(tmp1.val[1], tmp2.val[1]);
+
+      vst1q_s32(output, tmp3.val[0]);
+      output += d0;
+      vst1q_s32(output, tmp4.val[0]);
+      output += d0;
+      vst1q_s32(output, tmp3.val[1]);
+      output += d0;
+      vst1q_s32(output, tmp4.val[1]);
+      output += d0;
+      input += kLines;
+    }
+    if (j == d1) {
+      input += kSkipSize;
+    } else {
+      for (int p = 0; p < kLines; ++p) {
+        for (int q = 0; q < d1 - j; ++q) {
+          *(output + q * d0 + p) = *(input + p * d1 + q);
+        }
+      }
+      input += (d1 - j) + kSkipSize;
+    }
+  }
+#endif
+  for (; i < d0; ++i) {
+    int32_t* output = output_data + i;
+    for (int j = 0; j < d1; ++j) {
+      *output = *input;
+      output += d0;
+      ++input;
+    }
+  }
+}
+
+template <typename T>
+void Transpose2D(const TransposeParams& params, const RuntimeShape& input_shape,
+                 const T* input_data, const RuntimeShape& output_shape,
+                 T* output_data) {
+  // Transpose kernel only does rearranging values not numeric evaluations on
+  // each cell. It's safe to implement per size of scalar type and this trick
+  // keeps the total code size in a reasonable range.
+  switch (sizeof(T)) {
+    case 1:
+      Transpose2DImpl(params, input_shape,
+                      reinterpret_cast<const int8_t*>(input_data), output_shape,
+                      reinterpret_cast<int8_t*>(output_data));
+      break;
+    case 4:
+      Transpose2DImpl(params, input_shape,
+                      reinterpret_cast<const int32_t*>(input_data),
+                      output_shape, reinterpret_cast<int32_t*>(output_data));
+      break;
+    default:
+      // Reroute to the reference version if an optimized method for the given
+      // data is not available.
+      reference_ops::Transpose(params, input_shape, input_data, output_shape,
+                               output_data);
+  }
+}
+
+// TODO(alanchiao): see if we can reduce the number
+// of lines of code in branching without affecting latency.
+template <typename T>
+inline void Transpose3DImpl(const TransposeParams& params,
+                            const RuntimeShape& input_shape,
+                            const T* input_data,
+                            const RuntimeShape& output_shape, T* output_data) {
+  int s1, s2, s3;
+  s1 = input_shape.Dims(0);
+  s2 = input_shape.Dims(1);
+  s3 = input_shape.Dims(2);
+
+  // TODO(b/141169757): generalize the following logics and move to the
+  // Transpose method.
+  const bool hasOneInDimension = (s1 == 1 || s2 == 1 || s3 == 1);
+  // Can fast path as 2D transpose in this case.
+  if (hasOneInDimension) {
+    int d1, d2;
+    bool is_identity = false;
+    // Check for identity to just return.
+    if (s1 == 1) {
+      // (0, 1, 2), (1, 0, 2), (1, 2, 0)
+      if ((params.perm[0] == 0 && params.perm[1] == 1) || params.perm[0] == 1) {
+        is_identity = true;
+      }
+      d1 = s2;
+      d2 = s3;
+    } else if (s2 == 1) {
+      //  (0, 1, 2), (0, 2, 1), (1, 0, 2)
+      if ((params.perm[0] == 1 && params.perm[1] == 0) || params.perm[0] == 0) {
+        is_identity = true;
+      }
+      d1 = s1;
+      d2 = s3;
+    } else {
+      // (0, 1, 2), (0, 2, 1), (2, 0, 1)
+      if ((params.perm[0] == 2 && params.perm[1] == 0) || params.perm[0] == 0) {
+        is_identity = true;
+      }
+      d1 = s1;
+      d2 = s2;
+    }
+
+    if (is_identity) {
+      memcpy(output_data, input_data, sizeof(T) * input_shape.FlatSize());
+      return;
+    }
+
+    TransposeParams new_params;
+    new_params.perm_count = 2;
+    new_params.perm[0] = 1;
+    new_params.perm[1] = 0;
+
+    const RuntimeShape new_input_shape({d1, d2});
+    const RuntimeShape new_output_shape({d2, d1});
+
+    Transpose2D(new_params, new_input_shape, input_data, new_output_shape,
+                output_data);
+    return;
+  }
+
+  int p1, p2, p3;
+  if (params.perm[0] == 2) {
+    p1 = 1;
+  } else if (params.perm[1] == 2) {
+    p2 = 1;
+  } else {
+    p3 = 1;
+  }
+
+  if (params.perm[0] == 1) {
+    p1 = s3;
+  } else if (params.perm[1] == 1) {
+    p2 = s3;
+  } else {
+    p3 = s3;
+  }
+
+  if (params.perm[0] == 0) {
+    p1 = s2 * s3;
+  } else if (params.perm[1] == 0) {
+    p2 = s2 * s3;
+  } else {
+    p3 = s2 * s3;
+  }
+
+  int o_s[3];
+  o_s[0] = input_shape.Dims(params.perm[0]);
+  o_s[1] = input_shape.Dims(params.perm[1]);
+  o_s[2] = input_shape.Dims(params.perm[2]);
+
+  for (int i1 = 0; i1 < o_s[0]; ++i1) {
+    for (int i2 = 0; i2 < o_s[1]; ++i2) {
+      for (int i3 = 0; i3 < o_s[2]; ++i3) {
+        const int i = i1 * p1 + i2 * p2 + i3 * p3;
+        const int o = i1 * o_s[1] * o_s[2] + i2 * o_s[2] + i3;
+        output_data[o] = input_data[i];
+      }
+    }
+  }
+}
+
+template <typename T>
+void Transpose3D(const TransposeParams& params, const RuntimeShape& input_shape,
+                 const T* input_data, const RuntimeShape& output_shape,
+                 T* output_data) {
+  // Transpose kernel only does rearranging values not numeric evaluations on
+  // each cell. It's safe to implement per size of scalar type and this trick
+  // keeps the total code size in a reasonable range.
+  switch (sizeof(T)) {
+    case 1:
+      Transpose3DImpl(params, input_shape,
+                      reinterpret_cast<const int8_t*>(input_data), output_shape,
+                      reinterpret_cast<int8_t*>(output_data));
+      break;
+    case 4:
+      Transpose3DImpl(params, input_shape,
+                      reinterpret_cast<const int32_t*>(input_data),
+                      output_shape, reinterpret_cast<int32_t*>(output_data));
+      break;
+    default:
+      // Reroute to the reference version if an optimized method for the given
+      // data is not available.
+      reference_ops::Transpose(params, input_shape, input_data, output_shape,
+                               output_data);
+  }
+}
+
+template <typename T>
+void Transpose(const TransposeParams& params, const RuntimeShape& input_shape,
+               const T* input_data, const RuntimeShape& output_shape,
+               T* output_data) {
+  const int output_size = output_shape.DimensionsCount();
+  TFLITE_DCHECK_LE(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(output_size, 4);
+  TFLITE_DCHECK_EQ(output_size, params.perm_count);
+
+  // Apply 2-D transpose.
+  if (input_shape.DimensionsCount() == 2 && params.perm[0] == 1 &&
+      params.perm[1] == 0) {
+    Transpose2D(params, input_shape, input_data, output_shape, output_data);
+    return;
+  }
+
+  // TODO(b/141217325): notably Eigen is better suited for
+  // larger inputs whereas Transpose3D is generally
+  // better for smaller ones.
+  //
+  // E.g. on Nexus 5, Eigen is better for size 96^3 and up
+  // and Transpose3D is better for 72^3 and down.
+  //
+  // 96^3 is not mobile-friendly for certain usecases
+  // (e.g. model used in beam search for seq2seq) but is in others.
+  // Consider tradeoffs.
+  if (input_shape.DimensionsCount() == 3) {
+    Transpose3D(params, input_shape, input_data, output_shape, output_data);
+    return;
+  }
+
+  // Reroute to the reference version if an optimized method for the given data
+  // is not available.
+  reference_ops::Transpose(params, input_shape, input_data, output_shape,
+                           output_data);
 }
 
 }  // namespace optimized_ops

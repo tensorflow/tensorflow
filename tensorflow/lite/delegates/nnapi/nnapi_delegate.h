@@ -113,6 +113,11 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
   static const std::vector<MemoryRegistration>& GetTensorMemoryMap(
       TfLiteDelegate* delegate);
 
+  // Returns the int value of the ResultCode returned by the latest
+  // failed call to NNAPI, if any. Zero only in case of NO failed calls since
+  // the construction of this instance of StatefulNnApiDelegate.
+  int GetNnApiErrno() const;
+
  private:
   // Encapsulates all delegate data.
   struct Data {
@@ -126,6 +131,9 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     std::string model_token;
     // Tensor to ANeuralNetworksMemory mapping.
     std::vector<MemoryRegistration> tensor_memory_map;
+    // Constains a non zero value if any NNAPI method call
+    // operation returned a non zero result code.
+    int nnapi_errno;
   };
 
   // Implements TfLiteDelegate::Prepare. Please refer to TFLiteDelegate

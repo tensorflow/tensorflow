@@ -34,6 +34,7 @@ from tensorflow.python.keras import metrics
 from tensorflow.python.keras import models
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
@@ -279,6 +280,31 @@ class TestModelCloning(keras_parameterized.TestCase):
       _ = keras.models.clone_model(model, input_tensors=[x])
       has_placeholder = _has_placeholder(graph)
       self.assertFalse(has_placeholder)
+
+  def test_functional_cloning_with_tensor_kwarg(self):
+    """Test that cloning works with models that use Tensor kwargs."""
+
+    class LayerWithTensorKwarg(keras.layers.Layer):
+
+      def call(self, inputs, tensor=None):
+        if tensor is not None:
+          return inputs * math_ops.cast(tensor, dtypes.float32)
+        else:
+          return inputs
+
+    inputs = keras.layers.Input(shape=(3))
+    t = array_ops.sequence_mask(array_ops.shape(inputs)[1])
+    model = keras.models.Model(inputs, LayerWithTensorKwarg()(inputs, t))
+    model.add_loss(math_ops.reduce_sum(model.outputs))
+
+    input_arr = np.random.random((1, 3)).astype(np.float32)
+    with ops.Graph().as_default():
+      with self.session() as sess:
+        clone = keras.models.clone_model(model)
+        self.assertLen(clone.losses, 1)
+
+        loss = sess.run(clone.losses[0], feed_dict={clone.input: input_arr})
+        self.assertAllClose(np.sum(input_arr), loss)
 
 
 def _has_placeholder(graph):

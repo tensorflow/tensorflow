@@ -31,6 +31,14 @@ cc_library(
     ],
 )
 
+bzl_library(
+    name = "build_defs_bzl",
+    srcs = ["build_defs.bzl"],
+    deps = [
+        "@bazel_skylib//lib:selects",
+    ],
+)
+
 genrule(
     name = "tensorrt_lib",
     outs = [

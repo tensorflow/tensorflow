@@ -76,6 +76,12 @@ REGISTER_OP("TestStringOutput")
     .Output("output2: string")
     .SetShapeFn(shape_inference::UnknownShape);
 
+REGISTER_OP("Namespace>TestStringOutput")
+    .Input("input: float")
+    .Output("output1: float")
+    .Output("output2: string")
+    .SetShapeFn(shape_inference::UnknownShape);
+
 REGISTER_OP("TestAttr")
     .Output("out: T")
     .Attr("T: {float, double}")
@@ -592,7 +598,7 @@ REGISTER_OP("NInTwoTypeVariables")
 REGISTER_OP("InPolymorphicTwice")
     .Input("a: N * T")
     .Input("b: M * T")
-    .Attr("T: type")
+    .Attr("T: type = DT_INT32")
     .Attr("N: int >= 0")
     .Attr("M: int >= 0")
     .SetShapeFn(shape_inference::UnknownShape);

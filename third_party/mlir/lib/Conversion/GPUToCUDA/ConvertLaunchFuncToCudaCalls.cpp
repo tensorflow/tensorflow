@@ -49,6 +49,7 @@ static constexpr const char *cuModuleGetFunctionName = "mcuModuleGetFunction";
 static constexpr const char *cuLaunchKernelName = "mcuLaunchKernel";
 static constexpr const char *cuGetStreamHelperName = "mcuGetStreamHelper";
 static constexpr const char *cuStreamSynchronizeName = "mcuStreamSynchronize";
+static constexpr const char *kMcuMemHostRegisterPtr = "mcuMemHostRegisterPtr";
 
 static constexpr const char *kCubinGetterAnnotation = "nvvm.cubingetter";
 
@@ -216,6 +217,15 @@ void GpuLaunchFuncToCudaCallsPass::declareCudaFunctions(Location loc) {
                            },
                            getCUResultType())));
   }
+  if (!module.lookupSymbol<FuncOp>(kMcuMemHostRegisterPtr)) {
+    module.push_back(FuncOp::create(loc, kMcuMemHostRegisterPtr,
+                                    builder.getFunctionType(
+                                        {
+                                            getPointerType(), /* void *ptr */
+                                            getInt32Type()    /* int32 flags*/
+                                        },
+                                        {})));
+  }
 }
 
 // Generates a parameters array to be used with a CUDA kernel launch call. The
@@ -229,22 +239,45 @@ void GpuLaunchFuncToCudaCallsPass::declareCudaFunctions(Location loc) {
 Value *
 GpuLaunchFuncToCudaCallsPass::setupParamsArray(gpu::LaunchFuncOp launchOp,
                                                OpBuilder &builder) {
+  auto numKernelOperands = launchOp.getNumKernelOperands();
   Location loc = launchOp.getLoc();
   auto one = builder.create<LLVM::ConstantOp>(loc, getInt32Type(),
                                               builder.getI32IntegerAttr(1));
+  // Provision twice as much for the `array` to allow up to one level of
+  // indirection for each argument.
   auto arraySize = builder.create<LLVM::ConstantOp>(
-      loc, getInt32Type(),
-      builder.getI32IntegerAttr(launchOp.getNumKernelOperands()));
+      loc, getInt32Type(), builder.getI32IntegerAttr(numKernelOperands));
   auto array = builder.create<LLVM::AllocaOp>(loc, getPointerPointerType(),
                                               arraySize, /*alignment=*/0);
-  for (int idx = 0, e = launchOp.getNumKernelOperands(); idx < e; ++idx) {
+  for (unsigned idx = 0; idx < numKernelOperands; ++idx) {
     auto operand = launchOp.getKernelOperand(idx);
     auto llvmType = operand->getType().cast<LLVM::LLVMType>();
-    auto memLocation = builder.create<LLVM::AllocaOp>(
+    Value *memLocation = builder.create<LLVM::AllocaOp>(
         loc, llvmType.getPointerTo(), one, /*alignment=*/1);
     builder.create<LLVM::StoreOp>(loc, operand, memLocation);
     auto casted =
         builder.create<LLVM::BitcastOp>(loc, getPointerType(), memLocation);
+
+    // Assume all struct arguments come from MemRef. If this assumption does not
+    // hold anymore then we `launchOp` to lower from MemRefType and not after
+    // LLVMConversion has taken place and the MemRef information is lost.
+    // Extra level of indirection in the `array`:
+    //   the descriptor pointer is registered via @mcuMemHostRegisterPtr
+    if (llvmType.isStructTy()) {
+      auto registerFunc =
+          getModule().lookupSymbol<FuncOp>(kMcuMemHostRegisterPtr);
+      auto zero = builder.create<LLVM::ConstantOp>(
+          loc, getInt32Type(), builder.getI32IntegerAttr(0));
+      builder.create<LLVM::CallOp>(loc, ArrayRef<Type>{},
+                                   builder.getSymbolRefAttr(registerFunc),
+                                   ArrayRef<Value *>{casted, zero});
+      Value *memLocation = builder.create<LLVM::AllocaOp>(
+          loc, getPointerPointerType(), one, /*alignment=*/1);
+      builder.create<LLVM::StoreOp>(loc, casted, memLocation);
+      casted =
+          builder.create<LLVM::BitcastOp>(loc, getPointerType(), memLocation);
+    }
+
     auto index = builder.create<LLVM::ConstantOp>(
         loc, getInt32Type(), builder.getI32IntegerAttr(idx));
     auto gep = builder.create<LLVM::GEPOp>(loc, getPointerPointerType(), array,
@@ -310,10 +343,14 @@ void GpuLaunchFuncToCudaCallsPass::translateGpuLaunchCalls(
   // represents the cubin at runtime.
   // TODO(herhut): This should rather be a static global once supported.
   auto kernelFunction = getModule().lookupSymbol<FuncOp>(launchOp.kernel());
+  if (!kernelFunction) {
+    launchOp.emitError("missing kernel function ") << launchOp.kernel();
+    return signalPassFailure();
+  }
   auto cubinGetter =
       kernelFunction.getAttrOfType<SymbolRefAttr>(kCubinGetterAnnotation);
   if (!cubinGetter) {
-    kernelFunction.emitError("Missing ")
+    kernelFunction.emitError("missing ")
         << kCubinGetterAnnotation << " attribute.";
     return signalPassFailure();
   }
@@ -369,7 +406,7 @@ void GpuLaunchFuncToCudaCallsPass::translateGpuLaunchCalls(
   launchOp.erase();
 }
 
-std::unique_ptr<mlir::ModulePassBase>
+std::unique_ptr<mlir::OpPassBase<mlir::ModuleOp>>
 mlir::createConvertGpuLaunchFuncToCudaCallsPass() {
   return std::make_unique<GpuLaunchFuncToCudaCallsPass>();
 }

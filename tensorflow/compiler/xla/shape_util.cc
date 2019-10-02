@@ -128,6 +128,17 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   return equal;
 }
 
+/* static */ bool ShapeUtil::EqualIgnoringElementType(const Shape& lhs,
+                                                      const Shape& rhs) {
+  bool equal = Shape::Equal().IgnoreElementType()(lhs, rhs);
+  if (!equal && VLOG_IS_ON(3)) {
+    VLOG(3) << "ShapeUtil::EqualIgnoringElementType differ: lhs = "
+            << lhs.ShortDebugString() << ", rhs = " << rhs.ShortDebugString();
+  }
+
+  return equal;
+}
+
 /* static */ bool ShapeUtil::EqualIgnoringFpPrecision(const Shape& lhs,
                                                       const Shape& rhs) {
   bool equal = Shape::Equal().IgnoreFpPrecision()(lhs, rhs);
@@ -507,17 +518,23 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 }
 
 /* static */ bool ShapeUtil::Compatible(const Shape& lhs, const Shape& rhs) {
-  return Shape::Equal().IgnoreLayout()(lhs, rhs);
+  return Shape::Equal().IgnoreDynamicDimension().IgnoreLayout()(lhs, rhs);
 }
 
 /* static */ bool ShapeUtil::CompatibleIgnoringElementType(const Shape& lhs,
                                                            const Shape& rhs) {
-  return Shape::Equal().IgnoreElementType().IgnoreLayout()(lhs, rhs);
+  return Shape::Equal()
+      .IgnoreDynamicDimension()
+      .IgnoreElementType()
+      .IgnoreLayout()(lhs, rhs);
 }
 
 /* static */ bool ShapeUtil::CompatibleIgnoringFpPrecision(const Shape& lhs,
                                                            const Shape& rhs) {
-  return Shape::Equal().IgnoreFpPrecision().IgnoreLayout()(lhs, rhs);
+  return Shape::Equal()
+      .IgnoreDynamicDimension()
+      .IgnoreFpPrecision()
+      .IgnoreLayout()(lhs, rhs);
 }
 
 /* static */ int64 ShapeUtil::GetDimension(const Shape& shape,

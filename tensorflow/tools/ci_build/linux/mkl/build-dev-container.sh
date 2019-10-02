@@ -58,7 +58,7 @@ BUILD_AVX2_CONTAINERS=${BUILD_AVX2_CONTAINERS:-no}
 BUILD_SKX_CONTAINERS=${BUILD_SKX_CONTAINERS:-no}
 BUILD_CLX_CONTAINERS=${BUILD_CLX_CONTAINERS:-no}
 CONTAINER_PORT=${TF_DOCKER_BUILD_PORT:-8888}
-BUILD_TF_V2_CONTAINERS=${BUILD_TF_V2_CONTAINERS:-no}
+BUILD_TF_V2_CONTAINERS=${BUILD_TF_V2_CONTAINERS:-yes}
 ENABLE_SECURE_BUILD=${ENABLE_SECURE_BUILD:-no}
 
 debug "ROOT_CONTAINER=${ROOT_CONTAINER}"
@@ -155,7 +155,7 @@ function test_container()
   debug "ID of the running docker container: ${CONTAINER_ID}"
 
   debug "Performing basic sanity checks on the running container..."
-  TEST_CMD=$(${DOCKER_BINARY} exec ${CONTAINER_ID} bash -c "${PYTHON} -c 'from tensorflow.python import pywrap_tensorflow; print(pywrap_tensorflow.IsMklEnabled())'")
+  TEST_CMD=$(${DOCKER_BINARY} exec ${CONTAINER_ID} bash -c "${PYTHON} -c 'from tensorflow.python import _pywrap_util_port; print(_pywrap_util_port.IsMklEnabled())'")
   debug "Running test command: ${TEST_CMD}"
   if [ "${TEST_CMD}" = "True" ] ; then
       echo "PASS: MKL enabled test in ${TEMP_IMAGE_NAME}"

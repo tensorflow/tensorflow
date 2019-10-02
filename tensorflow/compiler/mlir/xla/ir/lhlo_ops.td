@@ -88,7 +88,11 @@ class LHLO_UnaryElementwiseOp<string mnemonic> :
 
 def LHLO_AbsOp: LHLO_UnaryElementwiseOp<"abs">, BASE_HLO_AbsOp;
 
+def LHLO_CeilOp: LHLO_UnaryElementwiseOp<"ceil">, BASE_HLO_CeilOp;
+
 def LHLO_ConvertOp : LHLO_UnaryElementwiseOp<"convert">, BASE_HLO_ConvertOp;
+
+def LHLO_CosOp: LHLO_UnaryElementwiseOp<"cos">, BASE_HLO_CosOp;
 
 def LHLO_ExpOp: LHLO_UnaryElementwiseOp<"exp">, BASE_HLO_ExpOp;
 
@@ -133,12 +137,13 @@ def LHLO_AndOp: LHLO_BinaryElementwiseOp<"and", []>, BASE_HLO_AndOp;
 // TODO(b/139813999): specify required function signature in a type-safe way.
 def LHLO_ReduceOp: LHLO_Op<"reduce", [SameVariadicOperandSize]>, BASE_HLO_ReduceOp {
   let arguments = (ins
-    Variadic<LHLO_BufferOrTuple>:$operands_and_init,
+    Variadic<LHLO_BufferOrTuple>:$operands,
+    Variadic<LHLO_BufferOrTuple>:$init_values,
     Variadic<LHLO_BufferOrTuple>:$out,
     // TODO(hinsu): Attach computation as a region similar to the
     // xla_hlo.reduce op.
     SymbolRefAttr:$computation,
-    ElementsAttr:$dimensions
+    I64ElementsAttr:$dimensions
   );
 }
 //===----------------------------------------------------------------------===//
@@ -175,12 +180,13 @@ def LHLO_CompareOp: LHLO_Op<"compare", []>, BASE_HLO_CompareOp {
 
 def LHLO_SliceOp: LHLO_Op<
       "slice",
-      [AllTypesMatch<["start_indices", "limit_indices"]>]> {
+      [AllTypesMatch<["start_indices", "limit_indices", "strides"]>]> {
   let arguments = (ins
     LHLO_Buffer:$operand,
     LHLO_Buffer:$output,
-    ElementsAttr:$start_indices,
-    ElementsAttr:$limit_indices
+    I64ElementsAttr:$start_indices,
+    I64ElementsAttr:$limit_indices,
+    I64ElementsAttr:$strides
   );
 }
 
@@ -217,7 +223,7 @@ def LHLO_BroadcastOp : LHLO_Op<"broadcast",
   let arguments = (ins
     LHLO_Buffer:$operand,
     LHLO_Buffer:$output,
-    ElementsAttr:$broadcast_sizes
+    I64ElementsAttr:$broadcast_sizes
   );
 }
 
@@ -243,7 +249,7 @@ def LHLO_ConcatenateOp : LHLO_Op<"concatenate", []>, BASE_HLO_ConcatenateOp {
    let arguments = (ins
      Variadic<LHLO_Buffer>:$val,
      LHLO_Buffer:$output,
-     I64Attr: $dimension
+     I64Attr:$dimension
    );
 }
 
@@ -268,11 +274,11 @@ def LHLO_GatherOp: LHLO_Op<"gather", []>, BASE_HLO_GatherOp {
   let arguments = (ins
     LHLO_Buffer:$operand,
     LHLO_IntBuffer:$start_indices,
-    I64Attr: $index_vector_dim,
-    ElementsAttr: $offset_dims,
-    ElementsAttr: $slice_sizes,
-    ElementsAttr: $collapsed_slice_dims,
-    ElementsAttr: $start_index_map,
+    I64Attr:$index_vector_dim,
+    I64ElementsAttr:$offset_dims,
+    I64ElementsAttr:$slice_sizes,
+    I64ElementsAttr:$collapsed_slice_dims,
+    I64ElementsAttr:$start_index_map,
     LHLO_Buffer:$output
   );
 }
@@ -297,7 +303,7 @@ def LHLO_SelectOp: LHLO_Op<"select", []>, BASE_HLO_SelectOp {
 def LHLO_ReverseOp: LHLO_Op<"reverse", []>, BASE_HLO_ReverseOp {
   let arguments = (ins
     LHLO_Buffer:$operand,
-    ElementsAttr:$dimensions,
+    I64ElementsAttr:$dimensions,
     LHLO_Buffer:$output
   );
 }
@@ -306,17 +312,17 @@ def LHLO_PadOp: LHLO_Op<"pad", []>, BASE_HLO_PadOp {
   let arguments = (ins
     LHLO_Buffer:$operand,
     LHLO_Buffer:$padding_value,
-    ElementsAttr: $edge_padding_low,
-    ElementsAttr: $edge_padding_high,
-    ElementsAttr: $interior_padding,
-    LHLO_Buffer: $output
+    I64ElementsAttr:$edge_padding_low,
+    I64ElementsAttr:$edge_padding_high,
+    I64ElementsAttr:$interior_padding,
+    LHLO_Buffer:$output
   );
 }
 
 def LHLO_TransposeOp: LHLO_Op<"transpose", []>, BASE_HLO_TransposeOp {
   let arguments = (ins
     LHLO_Buffer:$operand,
-    ElementsAttr:$permutation,
+    I64ElementsAttr:$permutation,
     LHLO_Buffer:$output
   );
 }
@@ -342,7 +348,7 @@ def FusionOp : LHLO_Op<"fusion", [SingleBlockImplicitTerminator<"TerminatorOp">]
 
   let skipDefaultBuilders = 1;
   let builders = [
-     OpBuilder<"Builder *builder, OperationState *result, "
+     OpBuilder<"Builder *builder, OperationState &result, "
                "ArrayRef<NamedAttribute> attributes">
    ];
 }

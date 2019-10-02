@@ -46,14 +46,15 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status FunctionalizeControlFlow(const FunctionLibraryDefinition* lookup_library,
-                                Graph* graph,
+// Transformation that converts TensorFlow's graph control flow constructs into
+// functional equivalents.
+Status FunctionalizeControlFlow(Graph* graph,
                                 FunctionLibraryDefinition* library) {
   VLOG(2) << "FunctionalizeControlFlow (initial): "
           << DumpGraphToFile("functionalize_initial", *graph, library);
 
   // Functionalize and remove while loops from graph.
-  TF_RETURN_IF_ERROR(FunctionalizeWhileLoop(lookup_library, graph, library));
+  TF_RETURN_IF_ERROR(FunctionalizeWhileLoop(graph, library));
 
   // FunctionalizeControlFlow is invoked for every function, so the loops's
   // bodies and conditionals that were extracted into functions will be handled
@@ -66,27 +67,13 @@ Status FunctionalizeControlFlow(const FunctionLibraryDefinition* lookup_library,
   return Status::OK();
 }
 
-// Transformation that converts TensorFlow's graph control flow constructs into
-// functional equivalents.
-Status FunctionalizeControlFlow(Graph* graph,
-                                FunctionLibraryDefinition* library) {
-  return FunctionalizeControlFlow(/*lookup_library=*/nullptr, graph, library);
-}
-
 Status FunctionalizeControlFlowForGraphDef(GraphDef* graph_def,
-                                           FunctionLibraryDefinition* library) {
-  return FunctionalizeControlFlowForGraphDef(/*lookup_library=*/nullptr,
-                                             graph_def, library);
-}
-
-Status FunctionalizeControlFlowForGraphDef(
-    const FunctionLibraryDefinition* lookup_library, GraphDef* graph_def,
     FunctionLibraryDefinition* library) {
   FunctionDefLibrary function_lib = graph_def->library();
   Graph graph(OpRegistry::Global());
 
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph({}, *graph_def, &graph));
-  TF_RETURN_IF_ERROR(FunctionalizeControlFlow(lookup_library, &graph, library));
+  TF_RETURN_IF_ERROR(FunctionalizeControlFlow(&graph, library));
   graph.ToGraphDef(graph_def);
   std::swap(*graph_def->mutable_library(), function_lib);
   return Status::OK();
@@ -228,7 +215,7 @@ Status FunctionalizeControlFlowForFunction(
   return ret_status;
 }
 
-Status FunctionalizeControlFlowPass::Run(
+Status FunctionalizeControlFlowForXlaPass::Run(
     const GraphOptimizationPassOptions& options) {
   Graph* graph = options.graph->get();
   if (VLOG_IS_ON(4)) {
@@ -293,6 +280,11 @@ Status FunctionalizeControlFlowPass::Run(
                     options.flib_def);
   }
   return Status::OK();
+}
+
+Status FunctionalizeControlFlowPass::Run(
+    const GraphOptimizationPassOptions& options) {
+  return FunctionalizeControlFlow(options.graph->get(), options.flib_def);
 }
 
 }  // namespace tensorflow

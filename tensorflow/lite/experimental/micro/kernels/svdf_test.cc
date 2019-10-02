@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
-#include "tensorflow/lite/experimental/micro/simple_tensor_allocator.h"
 #include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 #include "tensorflow/lite/experimental/micro/testing/test_utils.h"
 
@@ -146,7 +145,10 @@ void ValidateSVDFGoldens(const int batch_size, const int num_units,
   }
 
   // Bias is an optional tensor:
-  int inputs_array_data[] = {5, 0, 1, 2, kOptionalTensor, 3};
+  // TODO(kreeger): Use input tensor as variable until scratch tensor allocation
+  // has been implemented (cl/263032056)
+  // int inputs_array_data[] = {5, 0, 1, 2, kOptionalTensor, 3};
+  int inputs_array_data[] = {6, 0, 1, 2, kOptionalTensor, 3, 5};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
 
   int outputs_array_data[] = {1, 4};

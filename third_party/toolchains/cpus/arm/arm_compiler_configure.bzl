@@ -1,4 +1,3 @@
-# -*- Python -*-
 """Repository rule for arm compiler autoconfiguration."""
 
 def _tpl(repository_ctx, tpl, substitutions = {}, out = None):

@@ -334,13 +334,10 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
     if sys.platform == 'darwin': return
     destructions = []
     def register_destruction(x):
-      destructions.append(x)
+      destructions.append(x if isinstance(x, str) else x.decode('utf-8'))
       return 0
     # Make a wrapper for the callback so we can send this to ctypes
     delegate = interpreter_wrapper.load_delegate(self._delegate_file)
-    prototype = ctypes.CFUNCTYPE(ctypes.c_int, (ctypes.c_char_p))
-    destroy_callback = prototype(register_destruction)
-    delegate._library.set_destroy_callback(destroy_callback)
     # Make an interpreter with the delegate
     interpreter = interpreter_wrapper.Interpreter(
         model_path=resource_loader.get_path_to_datafile(
@@ -353,8 +350,12 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
 
     interpreter._interpreter.stuff = InterpreterDestroyCallback()
     # Destroy both delegate and interpreter
+    library = delegate._library
+    prototype = ctypes.CFUNCTYPE(ctypes.c_int, (ctypes.c_char_p))
+    library.set_destroy_callback(prototype(register_destruction))
     del delegate
     del interpreter
+    library.set_destroy_callback(None)
     # check the interpreter was destroyed before the delegate
     self.assertEqual(destructions, ['interpreter', 'test_delegate'])
 

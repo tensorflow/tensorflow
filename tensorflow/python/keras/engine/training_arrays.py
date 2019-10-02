@@ -229,7 +229,8 @@ def model_iteration(model,
       verbose=0,  # Handle ProgBarLogger separately in this loop.
       mode=mode)
   # TODO(omalleyt): Handle ProgBar as part of Callbacks once hooks are ready.
-  progbar = training_utils.get_progbar(model, count_mode)
+  progbar = training_utils.get_progbar(
+      model, count_mode, mode != ModeKeys.PREDICT)
   progbar.params = callbacks.params
   progbar.params['verbose'] = verbose
 
@@ -268,7 +269,10 @@ def model_iteration(model,
 
     # Setup work for each epoch
     epoch_logs = {}
-    model.reset_metrics()
+    if mode != ModeKeys.PREDICT:
+      # Collecting and resetting metrics has non-zero cost and will needlessly
+      # slow down model.predict.
+      model.reset_metrics()
     if mode == ModeKeys.TRAIN:
       callbacks.on_epoch_begin(epoch, epoch_logs)
     progbar.on_epoch_begin(epoch, epoch_logs)
@@ -454,6 +458,7 @@ def model_iteration(model,
     if reset_dataset_after_each_epoch and epoch < epochs - 1:
       _reinitialize_iterator(input_iterator, model._distribution_strategy)
 
+  model._successful_loop_finish = True
   callbacks._call_end_hook(mode)
 
   if model._distribution_strategy:

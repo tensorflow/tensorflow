@@ -31,6 +31,7 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl_ml",
 )
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     default_visibility = [":internal"],
@@ -416,6 +417,7 @@ config_setting(
 config_setting(
     name = "api_version_2",
     define_values = {"tf_api_version": "2"},
+    visibility = ["//visibility:public"],
 )
 
 # This flag is defined for select statements that match both
@@ -455,6 +457,22 @@ filegroup(
             "//third_party/mkl:intel_binary_blob",
         ],
     ),
+)
+
+bzl_library(
+    name = "tensorflow_bzl",
+    srcs = ["tensorflow.bzl"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/platform:build_config_root_bzl",
+        "//tensorflow/core/platform:cuda_build_defs_bzl",
+        "//third_party/mkl:build_defs_bzl",
+        "//third_party/mkl_dnn:build_defs_bzl",
+        "//third_party/ngraph:build_defs_bzl",
+        "@local_config_cuda//cuda:build_defs_bzl",
+        "@local_config_rocm//rocm:build_defs_bzl",
+        "@local_config_tensorrt//:build_defs_bzl",
+    ],
 )
 
 cc_library(
@@ -849,7 +867,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = select({
         "api_version_2": [],
-        "//conditions:default": ["//tensorflow/contrib:contrib_py"],
+        "//conditions:default": [],
     }) + [
         ":tensorflow_py_no_contrib",
         "//tensorflow/python/estimator:estimator_py",

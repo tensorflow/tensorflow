@@ -39,7 +39,7 @@ class ScopedAllocatorOp : public OpKernel {
     // the subtensors to be allocated from it, taking into account
     // alignment considerations.
     ScopedAllocatorMgr::PopulateFields(id_, shapes_, dtype_, &fields_);
-    size_t num_bytes = fields_.back().offset + fields_.back().bytes;
+    size_t num_bytes = fields_.back().offset + fields_.back().bytes_allocated;
     num_elements_ = num_bytes / DataTypeSize(dtype_);
     OP_REQUIRES(context, num_bytes % DataTypeSize(dtype_) == 0,
                 errors::InvalidArgument(

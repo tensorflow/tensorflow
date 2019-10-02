@@ -378,10 +378,13 @@ class DistributedDelegate(DistributedValues):
 
   def __getattr__(self, name):
     # The '_use_resource_variables' and the attrs starts with '_self' are used
-    # for restoring the saved_model proto. At the point these attrs are queried,
-    # the variable has not been initialized. Thus it should not query those of
-    # the underlying components.
-    if name.startswith("_self_") or name == "_use_resource_variables":
+    # for restoring the saved_model proto, and '_attribute_sentinel' is used for
+    # Layer tracking. At the point these attrs are queried, the variable has not
+    # been initialized. Thus it should not query those of the underlying
+    # components.
+    if name.startswith("_self_") or name in (
+        "_use_resource_variables", "_attribute_sentinel",
+        "_distributed_container"):
       return super(DistributedDelegate, self).__getattr__(name)
 
     # TODO(priyag): This needs to be made robust against pitfalls from mix use
@@ -594,7 +597,7 @@ DistributedVarOp = collections.namedtuple(
     "DistributedVarOp", ["name", "graph", "traceback", "type"])
 
 
-class DistributedVariable(DistributedDelegate, variables_lib.AbstractVariable):
+class DistributedVariable(DistributedDelegate, variables_lib.Variable):
   """Holds a map from replica to variables."""
   # TODO(josh11b): Support changing the set of variables if e.g. if new
   # devices are joining or a device is to leave.
@@ -1218,7 +1221,7 @@ class SyncOnReadVariable(DistributedVariable):
         # when saving.
         tensor = args[0]
         if self._aggregation == vs.VariableAggregation.SUM:
-          tensor *= 1. / len(self.devices)
+          tensor = math_ops.cast(tensor / len(self.devices), self.dtype)
         return control_flow_ops.group(tuple(
             _assign_on_device(v.device, v, tensor) for v in self._values))
       else:

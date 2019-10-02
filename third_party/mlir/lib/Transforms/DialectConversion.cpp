@@ -33,6 +33,40 @@ using namespace mlir::detail;
 #define DEBUG_TYPE "dialect-conversion"
 
 //===----------------------------------------------------------------------===//
+// Multi-Level Value Mapper
+//===----------------------------------------------------------------------===//
+
+namespace {
+/// This class wraps a BlockAndValueMapping to provide recursive lookup
+/// functionality, i.e. we will traverse if the mapped value also has a mapping.
+struct ConversionValueMapping {
+  /// Lookup a mapped value within the map. If a mapping for the provided value
+  /// does not exist then return the provided value.
+  Value *lookupOrDefault(Value *from) const;
+
+  /// Map a value to the one provided.
+  void map(Value *oldVal, Value *newVal) { mapping.map(oldVal, newVal); }
+
+  /// Drop the last mapping for the given value.
+  void erase(Value *value) { mapping.erase(value); }
+
+private:
+  /// Current value mappings.
+  BlockAndValueMapping mapping;
+};
+} // end anonymous namespace
+
+/// Lookup a mapped value within the map. If a mapping for the provided value
+/// does not exist then return the provided value.
+Value *ConversionValueMapping::lookupOrDefault(Value *from) const {
+  // If this value had a valid mapping, unmap that value as well in the case
+  // that it was also replaced.
+  while (auto *mappedValue = mapping.lookupOrNull(from))
+    from = mappedValue;
+  return from;
+}
+
+//===----------------------------------------------------------------------===//
 // ArgConverter
 //===----------------------------------------------------------------------===//
 namespace {
@@ -62,19 +96,19 @@ struct ArgConverter {
   bool hasBeenConverted(Block *block) const { return argMapping.count(block); }
 
   /// Attempt to convert the signature of the given block.
-  LogicalResult convertSignature(Block *block, BlockAndValueMapping &mapping);
+  LogicalResult convertSignature(Block *block, ConversionValueMapping &mapping);
 
   /// Apply the given signature conversion on the given block.
   void applySignatureConversion(
       Block *block, TypeConverter::SignatureConversion &signatureConversion,
-      BlockAndValueMapping &mapping);
+      ConversionValueMapping &mapping);
 
   /// Convert the given block argument given the provided set of new argument
   /// values that are to replace it. This function returns the operation used
   /// to perform the conversion.
   Operation *convertArgument(BlockArgument *origArg,
                              ArrayRef<Value *> newValues,
-                             BlockAndValueMapping &mapping);
+                             ConversionValueMapping &mapping);
 
   /// A utility function used to create a conversion cast operation with the
   /// given input and result types.
@@ -195,7 +229,7 @@ void ArgConverter::applyRewrites() {
 
 /// Converts the signature of the given entry block.
 LogicalResult ArgConverter::convertSignature(Block *block,
-                                             BlockAndValueMapping &mapping) {
+                                             ConversionValueMapping &mapping) {
   if (auto conversion = typeConverter->convertBlockSignature(block))
     return applySignatureConversion(block, *conversion, mapping), success();
   return failure();
@@ -204,7 +238,7 @@ LogicalResult ArgConverter::convertSignature(Block *block,
 /// Apply the given signature conversion on the given block.
 void ArgConverter::applySignatureConversion(
     Block *block, TypeConverter::SignatureConversion &signatureConversion,
-    BlockAndValueMapping &mapping) {
+    ConversionValueMapping &mapping) {
   unsigned origArgCount = block->getNumArguments();
   auto convertedTypes = signatureConversion.getConvertedTypes();
   if (origArgCount == 0 && convertedTypes.empty())
@@ -236,7 +270,7 @@ void ArgConverter::applySignatureConversion(
 /// to perform the conversion.
 Operation *ArgConverter::convertArgument(BlockArgument *origArg,
                                          ArrayRef<Value *> newValues,
-                                         BlockAndValueMapping &mapping) {
+                                         ConversionValueMapping &mapping) {
   // Handle the cases of 1->0 or 1->1 mappings.
   if (newValues.size() < 2) {
     // Create a temporary producer for the argument during the conversion
@@ -264,7 +298,7 @@ Operation *ArgConverter::convertArgument(BlockArgument *origArg,
 /// A utility function used to create a conversion cast operation with the
 /// given input and result types.
 Operation *ArgConverter::createCast(ArrayRef<Value *> inputs, Type outputType) {
-  return Operation::create(loc, castOpName, inputs, outputType, llvm::None,
+  return Operation::create(loc, castOpName, outputType, inputs, llvm::None,
                            llvm::None, 0, false);
 }
 
@@ -394,7 +428,7 @@ struct ConversionPatternRewriterImpl {
 
   // Mapping between replaced values that differ in type. This happens when
   // replacing a value with one of a different type.
-  BlockAndValueMapping mapping;
+  ConversionValueMapping mapping;
 
   /// Utility used to convert block arguments.
   ArgConverter argConverter;
@@ -440,6 +474,7 @@ void ConversionPatternRewriterImpl::undoBlockActions(
     case BlockActionKind::Split: {
       action.originalBlock->getOperations().splice(
           action.originalBlock->end(), action.block->getOperations());
+      action.block->dropAllUses();
       action.block->erase();
       break;
     }
@@ -465,10 +500,8 @@ void ConversionPatternRewriterImpl::discardRewrites() {
   undoBlockActions();
 
   // Remove any newly created ops.
-  for (auto *op : createdOps) {
-    op->dropAllDefinedValueUses();
+  for (auto *op : llvm::reverse(createdOps))
     op->erase();
-  }
 }
 
 void ConversionPatternRewriterImpl::applyRewrites() {
@@ -574,6 +607,8 @@ ConversionPatternRewriter::~ConversionPatternRewriter() {}
 void ConversionPatternRewriter::replaceOp(
     Operation *op, ArrayRef<Value *> newValues,
     ArrayRef<Value *> valuesToRemoveIfDead) {
+  LLVM_DEBUG(llvm::dbgs() << "** Replacing operation : " << op->getName()
+                          << "\n");
   impl->replaceOp(op, newValues, valuesToRemoveIfDead);
 }
 
@@ -581,6 +616,16 @@ void ConversionPatternRewriter::replaceOp(
 void ConversionPatternRewriter::applySignatureConversion(
     Region *region, TypeConverter::SignatureConversion &conversion) {
   impl->applySignatureConversion(region, conversion);
+}
+
+void ConversionPatternRewriter::replaceUsesOfBlockArgument(BlockArgument *from,
+                                                           Value *to) {
+  for (auto &u : from->getUses()) {
+    if (u.getOwner() == to->getDefiningOp())
+      continue;
+    u.getOwner()->replaceUsesOfWith(from, to);
+  }
+  impl->mapping.map(impl->mapping.lookupOrDefault(from), to);
 }
 
 /// Clone the given operation without cloning its regions.
@@ -609,6 +654,7 @@ void ConversionPatternRewriter::inlineRegionBefore(Region &region,
 /// PatternRewriter hook for creating a new operation.
 Operation *
 ConversionPatternRewriter::createOperation(const OperationState &state) {
+  LLVM_DEBUG(llvm::dbgs() << "** Creating operation : " << state.name << "\n");
   auto *result = OpBuilder::createOperation(state);
   impl->createdOps.push_back(result);
   return result;
@@ -820,8 +866,10 @@ OperationLegalizer::legalizePattern(Operation *op, RewritePattern *pattern,
   for (unsigned i = curState.numCreatedOperations,
                 e = rewriterImpl.createdOps.size();
        i != e; ++i) {
-    if (failed(legalize(rewriterImpl.createdOps[i], rewriter))) {
-      LLVM_DEBUG(llvm::dbgs() << "-- FAIL: Generated operation was illegal.\n");
+    Operation *op = rewriterImpl.createdOps[i];
+    if (failed(legalize(op, rewriter))) {
+      LLVM_DEBUG(llvm::dbgs() << "-- FAIL: Generated operation '"
+                              << op->getName() << "' was illegal.\n");
       return cleanupFailure();
     }
   }
@@ -895,15 +943,15 @@ void OperationLegalizer::computeLegalizationGraphBenefit() {
     // If a mapping for this operation does not exist, then this operation
     // is always legal. Return 0 as the depth for a directly legal operation.
     auto opPatternsIt = legalizerPatterns.find(op);
-    if (opPatternsIt == legalizerPatterns.end())
+    if (opPatternsIt == legalizerPatterns.end() || opPatternsIt->second.empty())
       return 0u;
 
-    auto &minDepth = minPatternDepth[op];
-    if (opPatternsIt->second.empty())
-      return minDepth;
-
     // Initialize the depth to the maximum value.
-    minDepth = std::numeric_limits<unsigned>::max();
+    unsigned minDepth = std::numeric_limits<unsigned>::max();
+
+    // Record this initial depth in case we encounter this op again when
+    // recursively computing the depth.
+    minPatternDepth.try_emplace(op, minDepth);
 
     // Compute the depth for each pattern used to legalize this operation.
     SmallVector<std::pair<RewritePattern *, unsigned>, 4> patternsByDepth;
@@ -917,6 +965,9 @@ void OperationLegalizer::computeLegalizationGraphBenefit() {
       // Update the min depth for this operation.
       minDepth = std::min(minDepth, depth);
     }
+
+    // Update the pattern depth.
+    minPatternDepth[op] = minDepth;
 
     // If the operation only has one legalization pattern, there is no need to
     // sort them.

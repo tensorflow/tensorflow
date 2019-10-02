@@ -56,7 +56,26 @@ def gpu_Return : GPU_Op<"return", [Terminator]>, Arguments<(ins)>,
   }];
 
   let parser = [{ return success(); }];
-  let printer = [{ *p << getOperationName(); }];
+  let printer = [{ p << getOperationName(); }];
+}
+
+def gpu_AllReduce : GPU_Op<"all_reduce", [SameOperandsAndResultType]>,
+    Arguments<(ins AnyType)>, Results<(outs AnyType)> {
+  let summary = "Reduce values among workgroup.";
+  let description = [{
+    The "all_reduce" op reduces the value of every invocation across a local
+    workgroup.
+
+    For example,
+    ```
+      %1 = gpu.all_reduce %0 : f32
+    ```
+    computes the sum of each invocation's %0 value. The value of %1 is always
+    equal for all invocations of a local workgroup.
+
+    Either none or all invocations of a local workgroup need to execute this op
+    in convergence.
+  }];
 }
 
 #endif // GPU_OPS

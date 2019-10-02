@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -255,10 +256,9 @@ class BinaryOpTest(test.TestCase):
     var_x = variables.Variable(x)
     var_y = variables.Variable(y)
 
-    with self.cached_session() as sess:
-      self.evaluate([var_x.initializer, var_y.initializer])
-      left_result = self.evaluate(var_x * y)
-      right_result = self.evaluate(x * var_y)
+    self.evaluate([var_x.initializer, var_y.initializer])
+    left_result = self.evaluate(var_x * y)
+    right_result = self.evaluate(x * var_y)
 
     np_result = x * y
     self.assertAllEqual(np_result, left_result)
@@ -933,7 +933,6 @@ class ComparisonOpTest(test.TestCase):
     self._testBCastByFunc(
         np.not_equal, math_ops.not_equal, include_complex=True)
 
-  @test_util.run_deprecated_v1
   def testShapeMismatch(self):
     dtypes = [np.float16, np.float32, np.float64, np.int32, np.int64]
     funcs = [
@@ -944,8 +943,9 @@ class ComparisonOpTest(test.TestCase):
     y = np.arange(0, 10).reshape([5, 2])
     for t in dtypes:
       for f in funcs:
-        with self.assertRaisesWithPredicateMatch(
-            ValueError, lambda e: "Dimensions must" in str(e)):
+        with self.assertRaisesRegexp(
+            (ValueError, errors.InvalidArgumentError),
+            "Incompatible shapes|Dimensions must be equal"):
           f(x.astype(t), y.astype(t))
 
 

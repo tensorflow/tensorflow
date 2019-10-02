@@ -34,12 +34,14 @@ set(LIBS
   MLIRPass
   MLIRQuantizerTransforms
   MLIRQuantOps
+  MLIRROCDLIR
   MLIRSPIRV
   MLIRSPIRVConversion
   MLIRStandardOps
   MLIRStandardToLLVM
   MLIRTransforms
   MLIRTestDialect
+  MLIRTestPass
   MLIRTestTransforms
   MLIRSupport
   MLIRVectorOps

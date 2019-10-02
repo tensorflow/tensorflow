@@ -22,6 +22,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
 
 namespace tensorflow {
@@ -32,13 +34,16 @@ namespace eager {
 class RemoteExecuteNode : public AsyncEagerNode {
  public:
   RemoteExecuteNode(std::unique_ptr<EnqueueRequest> request, Device* device,
-                    EagerClient* eager_client,
+                    EagerClient* eager_client, const NodeDef& ndef,
+                    FunctionLibraryDefinition* lib_def,
                     const gtl::InlinedVector<TensorHandle*, 4>& inputs,
                     absl::Span<TensorHandle*> retvals)
       : AsyncEagerNode(),
         request_(std::move(request)),
         device_(device),
         eager_client_(eager_client),
+        ndef_(ndef),
+        lib_def_(lib_def),
         inputs_(inputs) {
     // Copy the output handles, since the container for them might get
     // destroyed.
@@ -64,6 +69,8 @@ class RemoteExecuteNode : public AsyncEagerNode {
     }
   }
 
+  Status Prepare() override;
+
   void RunAsync(StatusCallback done) override;
 
   void Abort(Status status) override {
@@ -83,6 +90,8 @@ class RemoteExecuteNode : public AsyncEagerNode {
   std::unique_ptr<EnqueueRequest> request_;
   Device* device_;             // Not owned
   EagerClient* eager_client_;  // Not owned, and must outlive this node.
+  const NodeDef ndef_;
+  const FunctionLibraryDefinition* lib_def_;
   gtl::InlinedVector<TensorHandle*, 4> inputs_;
   gtl::InlinedVector<TensorHandle*, 2> retvals_;
 };

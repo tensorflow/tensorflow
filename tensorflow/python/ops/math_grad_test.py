@@ -20,9 +20,9 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.debug.lib import check_numerics_callback
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import execution_callbacks
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -33,8 +33,6 @@ from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
-
-RAISE = execution_callbacks.ExecutionCallback.RAISE
 
 
 class SquaredDifferenceOpTest(test.TestCase):
@@ -551,13 +549,16 @@ class PowGradTest(test.TestCase):
     self.assertAllClose([-2., 0., 2.], g)
 
   def test_zero_grad_tape(self):
-    with execution_callbacks.errstate(inf_or_nan=RAISE):
+    try:
+      check_numerics_callback.enable_check_numerics()
       x = constant_op.constant([-1, 0., 1.])
       with backprop.GradientTape() as tape:
         tape.watch(x)
         g = tape.gradient(math_ops.pow(x, 2), x)
       g = self.evaluate(g)
       self.assertAllClose([-2., 0., 2.], g)
+    finally:
+      check_numerics_callback.disable_check_numerics()
 
 
 @test_util.run_all_in_graph_and_eager_modes

@@ -89,7 +89,7 @@ message ProcessMetrics {
 
 // Parameters that define how images are preprocessed.
 //
-// Next ID: 5
+// Next ID: 6
 message ImagePreprocessingParams {
   // Required.
   optional int32 image_height = 1;
@@ -103,6 +103,9 @@ message ImagePreprocessingParams {
   // https://github.com/tensorflow/tpu/blob/master/models/experimental/inception/inception_preprocessing.py#L296
   // Set to 0 to disable cropping.
   optional float cropping_fraction = 4 [default = 0.875];
+  // Set this flag if the image is preprocessed and saved as binary file.
+  // In that case, we only do the quantization if needed.
+  optional bool load_raw_images = 5 [default = false];
 }
 
 // Parameters that control TFLite inference.

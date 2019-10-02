@@ -15,24 +15,58 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/mlir_bridge_pass.h"
 
+#include <string>
+
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_os_ostream.h"
+#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
+#include "mlir/IR/Builders.h"  // TF:local_config_mlir
+#include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 
-// Dump the MLIR module to disk.
+// Collects all devices known to the system by name and adds them as an array
+// attribute of string attributes to the module. Device names added are in the
+// following form:
+//   /job:<name>/replica:<replica>/task:<task>/device:<type>:<device_num>
+static void AddDevicesToModule(mlir::ModuleOp module,
+                               const DeviceSet* device_set) {
+  if (!device_set) return;
+
+  // Collect devices as strings in TensorFlow device name form.
+  llvm::SmallVector<std::string, 8> devices;
+  devices.reserve(device_set->devices().size());
+  for (Device* device : device_set->devices())
+    devices.push_back(
+        DeviceNameUtils::ParsedNameToString(device->parsed_name()));
+
+  llvm::SmallVector<llvm::StringRef, 8> device_refs(devices.begin(),
+                                                    devices.end());
+  mlir::Builder builder(module);
+  module.setAttr("tf.devices", builder.getStrArrayAttr(device_refs));
+}
+
+// Dumps the MLIR module to disk.
 // This require the TF_DUMP_GRAPH_PREFIX to be set to a path that exist (or can
 // be created).
-static void DumpModule(mlir::ModuleOp module) {
-  std::string prefix = getenv("TF_DUMP_GRAPH_PREFIX");
-  if (prefix.empty()) {
+static void DumpModule(mlir::ModuleOp module, llvm::StringRef file_prefix) {
+  const char* prefix_env = getenv("TF_DUMP_GRAPH_PREFIX");
+  if (!prefix_env) {
     LOG(WARNING)
         << "Failed to dump MLIR module because dump location is not "
         << " specified through TF_DUMP_GRAPH_PREFIX environment variable.";
     return;
   }
+  std::string prefix = prefix_env;
 
   auto* env = tensorflow::Env::Default();
   auto status = env->RecursivelyCreateDir(prefix);
@@ -41,7 +75,7 @@ static void DumpModule(mlir::ModuleOp module) {
                         "': " + status.error_message();
     return;
   }
-  prefix += "/mlir_bridge_after_";
+  prefix += "/" + file_prefix.str();
   if (!tensorflow::Env::Default()->CreateUniqueFileName(&prefix, ".mlir")) {
     LOG(WARNING) << "cannot create unique filename, won't dump MLIR module.";
     return;
@@ -71,6 +105,7 @@ static void DumpModule(mlir::ModuleOp module) {
   (void)file_writer->Close();
   VLOG(1) << "Dumped MLIR module to " << prefix;
 }
+
 // This runs the first phase of the "bridge", transforming the graph in a form
 // that can be executed with delegation of some computations to an accelerator.
 // This builds on the model of XLA where a subset of the graph is encapsulated
@@ -84,15 +119,20 @@ Status MlirBridgePass::Run(const GraphOptimizationPassOptions& options) {
   }
   GraphDebugInfo debug_info;
   mlir::MLIRContext context;
-  NodeSpecs specs;
-  ExporterConfigs confs;
+  GraphImportConfig specs;
+  GraphExportConfig confs;
   TF_ASSIGN_OR_RETURN(auto module,
                       ConvertGraphToMlir(**options.graph, debug_info,
                                          *options.flib_def, specs, &context));
 
-  // TODO(aminim): Actually call into bridge passes here.
+  AddDevicesToModule(*module, options.device_set);
 
-  if (VLOG_IS_ON(1)) DumpModule(*module);
+  if (VLOG_IS_ON(1)) DumpModule(*module, "mlir_bridge_before_");
+
+  // Run the bridge now
+  TF_RETURN_IF_ERROR(mlir::TFTPU::TPUBridge(*module));
+
+  if (VLOG_IS_ON(1)) DumpModule(*module, "mlir_bridge_after_");
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       ConvertMlirToGraph(*module, confs, options.graph, options.flib_def),

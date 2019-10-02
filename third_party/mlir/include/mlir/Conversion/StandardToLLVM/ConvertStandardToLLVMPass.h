@@ -34,7 +34,6 @@ struct LogicalResult;
 class MLIRContext;
 class ModuleOp;
 template <typename T> class OpPassBase;
-using ModulePassBase = OpPassBase<ModuleOp>;
 class RewritePattern;
 class Type;
 
@@ -58,12 +57,12 @@ void populateStdToLLVMConversionPatterns(LLVMTypeConverter &converter,
                                          OwningRewritePatternList &patterns);
 
 /// Creates a pass to convert the Standard dialect into the LLVMIR dialect.
-std::unique_ptr<ModulePassBase> createLowerToLLVMPass();
+std::unique_ptr<OpPassBase<ModuleOp>> createLowerToLLVMPass();
 
 /// Creates a pass to convert operations to the LLVMIR dialect.  The conversion
 /// is defined by a list of patterns and a type converter that will be obtained
 /// during the pass using the provided callbacks.
-std::unique_ptr<ModulePassBase>
+std::unique_ptr<OpPassBase<ModuleOp>>
 createLowerToLLVMPass(LLVMPatternListFiller patternListFiller,
                       LLVMTypeConverterMaker typeConverterMaker);
 
@@ -72,7 +71,7 @@ createLowerToLLVMPass(LLVMPatternListFiller patternListFiller,
 /// callback and an optional type conversion class, an instance is created
 /// during the pass.
 template <typename TypeConverter = LLVMTypeConverter>
-std::unique_ptr<ModulePassBase>
+std::unique_ptr<OpPassBase<ModuleOp>>
 createLowerToLLVMPass(LLVMPatternListFiller patternListFiller) {
   return createLowerToLLVMPass(patternListFiller, [](MLIRContext *context) {
     return std::make_unique<TypeConverter>(context);

@@ -22,10 +22,11 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
 
 using mlir::Builder;
 using mlir::FunctionPass;
-using mlir::FunctionPassBase;
+using mlir::OpPassBase;
 using mlir::OwningRewritePatternList;
 using mlir::PassRegistration;
 
@@ -123,21 +124,24 @@ struct LegalizeToStandard : public FunctionPass<LegalizeToStandard> {
 };
 }  // end anonymous namespace
 
-std::unique_ptr<mlir::FunctionPassBase>
+std::unique_ptr<mlir::OpPassBase<mlir::FuncOp>>
 mlir::xla_hlo::createLegalizeToStdPass() {
   return std::make_unique<LegalizeToStandard>();
+}
+
+void mlir::xla_hlo::PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
+                                             mlir::MLIRContext *ctx) {
+  mlir::xla_hlo::populateWithGenerated(ctx, patterns);
+  patterns
+      ->insert<mlir::xla_hlo::CompareFConvert, mlir::xla_hlo::CompareIConvert>(
+          ctx);
 }
 
 /// Perform the lowering to standard dialect.
 void LegalizeToStandard::runOnFunction() {
   OwningRewritePatternList patterns;
-  auto func = getFunction();
-
-  mlir::xla_hlo::populateWithGenerated(func.getContext(), &patterns);
-  patterns
-      .insert<mlir::xla_hlo::CompareFConvert, mlir::xla_hlo::CompareIConvert>(
-          &getContext());
-  applyPatternsGreedily(func, patterns);
+  mlir::xla_hlo::PopulateXlaToStdPatterns(&patterns, &getContext());
+  applyPatternsGreedily(getFunction(), patterns);
 }
 
 static PassRegistration<LegalizeToStandard> legalize_pass(

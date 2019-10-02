@@ -22,6 +22,29 @@ cc_library(
 )
 
 cc_library(
+    name = "cluster_function_library_runtime",
+    srcs = [
+        "cluster_function_library_runtime.cc",
+    ],
+    hdrs = [
+        "cluster_function_library_runtime.h",
+    ],
+    deps = [
+        ":eager_client",
+        ":remote_execute_node",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/common_runtime/eager:eager_operation",
+        "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "destroy_tensor_handle_node",
     hdrs = ["destroy_tensor_handle_node.h"],
     deps = [
@@ -49,6 +72,7 @@ cc_library(
     deps = [
         ":eager_client",
         "//tensorflow/core:eager_service_proto_cc",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:eager_executor",
@@ -64,6 +88,7 @@ cc_library(
         "eager_service_impl.h",
     ],
     deps = [
+        ":cluster_function_library_runtime",
         ":remote_mgr",
         ":remote_tensor_handle",
         "//tensorflow:grpc++",
@@ -95,6 +120,7 @@ tf_cc_test(
     name = "eager_service_impl_test",
     srcs = ["eager_service_impl_test.cc"],
     deps = [
+        ":cluster_function_library_runtime",
         ":eager_service_impl",
         ":remote_mgr",
         "//tensorflow/c:c_api",
@@ -111,6 +137,7 @@ tf_cc_test(
         "//tensorflow/core/distributed_runtime:test_utils",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

@@ -36,7 +36,6 @@ class LLVMDialect;
 }
 
 template <typename T> class OpPassBase;
-using ModulePassBase = OpPassBase<ModuleOp>;
 
 using OwnedCubin = std::unique_ptr<std::vector<char>>;
 using CubinGenerator = std::function<OwnedCubin(const std::string &, FuncOp &)>;
@@ -50,7 +49,7 @@ using CubinGenerator = std::function<OwnedCubin(const std::string &, FuncOp &)>;
 /// attached as a string attribute named 'nvvm.cubin' to the kernel function.
 /// After the transformation, the body of the kernel function is removed (i.e.,
 /// it is turned into a declaration).
-std::unique_ptr<ModulePassBase>
+std::unique_ptr<OpPassBase<ModuleOp>>
 createConvertGPUKernelToCubinPass(CubinGenerator cubinGenerator);
 
 /// Creates a pass to convert a gpu.launch_func operation into a sequence of
@@ -59,11 +58,12 @@ createConvertGPUKernelToCubinPass(CubinGenerator cubinGenerator);
 /// This pass does not generate code to call CUDA directly but instead uses a
 /// small wrapper library that exports a stable and conveniently typed ABI
 /// ontop of CUDA.
-std::unique_ptr<ModulePassBase> createConvertGpuLaunchFuncToCudaCallsPass();
+std::unique_ptr<OpPassBase<ModuleOp>>
+createConvertGpuLaunchFuncToCudaCallsPass();
 
 /// Creates a pass to augment a module with getter functions for all contained
 /// cubins as encoded via the 'nvvm.cubin' attribute.
-std::unique_ptr<ModulePassBase> createGenerateCubinAccessorPass();
+std::unique_ptr<OpPassBase<ModuleOp>> createGenerateCubinAccessorPass();
 
 } // namespace mlir
 

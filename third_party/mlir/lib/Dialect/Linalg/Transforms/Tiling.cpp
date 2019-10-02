@@ -19,17 +19,17 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"
+#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
+#include "mlir/Dialect/Linalg/Passes.h"
+#include "mlir/Dialect/Linalg/Utils/Intrinsics.h"
+#include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/EDSC/Helpers.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/OpImplementation.h"
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"
-#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
-#include "mlir/Dialect/Linalg/Passes.h"
-#include "mlir/Dialect/Linalg/Utils/Intrinsics.h"
-#include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/STLExtras.h"
@@ -177,7 +177,7 @@ makeTiledViews(OpBuilder &b, Location loc, LinalgOp linalgOp,
   for (unsigned viewIndex = 0; viewIndex < linalgOp.getNumInputsAndOutputs();
        ++viewIndex) {
     Value *view = *(viewIteratorBegin + viewIndex);
-    unsigned viewRank = view->getType().cast<ViewType>().getRank();
+    unsigned rank = view->getType().cast<MemRefType>().getRank();
     auto map = loopToOperandRangesMaps(linalgOp)[viewIndex];
     // If the view is not tiled, we can use it as is.
     if (!isTiled(map, tileSizes)) {
@@ -187,12 +187,12 @@ makeTiledViews(OpBuilder &b, Location loc, LinalgOp linalgOp,
 
     // Construct a new subview for the tile.
     SmallVector<SubViewOp::Range, 4> subViewOperands;
-    subViewOperands.reserve(viewRank * 3);
-    for (unsigned r = 0; r < viewRank; ++r) {
+    subViewOperands.reserve(rank * 3);
+    for (unsigned r = 0; r < rank; ++r) {
       if (!isTiled(map.getSubMap({r}), tileSizes)) {
-        subViewOperands.push_back(SubViewOp::Range{
-            constant_index(folder, 0), linalg::intrinsics::dim(view, r),
-            constant_index(folder, 1)});
+        subViewOperands.push_back(SubViewOp::Range{constant_index(folder, 0),
+                                                   dim(view, r),
+                                                   constant_index(folder, 1)});
         continue;
       }
 
@@ -261,15 +261,14 @@ static PromotionInfo promoteFullTileBuffer(OpBuilder &b, Location loc,
     auto rank = en.index();
     auto rangeValue = en.value();
     Value *d =
-        isa<linalg::DimOp>(rangeValue.max->getDefiningOp())
+        isa<DimOp>(rangeValue.max->getDefiningOp())
             ? rangeValue.max
             : applyMapToValues(b, loc, getAffineDifferenceMap(b.getContext()),
                                {rangeValue.max, rangeValue.min}, folder)
                   .front();
     allocSize = muli(folder, allocSize, d).getValue();
     fullRanges.push_back(range(folder, zero, d, one));
-    partialRanges.push_back(
-        range(folder, zero, linalg::intrinsics::dim(subView, rank), one));
+    partialRanges.push_back(range(folder, zero, dim(subView, rank), one));
   }
   auto *buffer = allocBuffer(viewType.getElementType(), allocSize);
   auto fullLocalView = view(buffer, fullRanges);
@@ -293,13 +292,13 @@ static PromotionInfo promotePartialTileBuffer(OpBuilder &b, Location loc,
   auto zero = constant_index(folder, 0);
   auto one = constant_index(folder, 1);
 
-  auto viewType = v->getType().cast<ViewType>();
+  auto viewType = v->getType().cast<MemRefType>();
   auto rank = viewType.getRank();
   Value *allocSize = one;
   SmallVector<Value *, 8> partialRanges;
   partialRanges.reserve(rank);
   for (unsigned r = 0; r < rank; ++r) {
-    Value *d = linalg::intrinsics::dim(v, r);
+    Value *d = dim(v, r);
     allocSize = muli(folder, allocSize, d).getValue();
     partialRanges.push_back(range(folder, zero, d, one));
   }
@@ -333,7 +332,7 @@ mlir::linalg::promoteLinalgViews(OpBuilder &b, Location loc,
     auto info = promotionInfo.find(v);
     if (info == promotionInfo.end())
       continue;
-    auto viewType = v->getType().cast<ViewType>();
+    auto viewType = v->getType().cast<MemRefType>();
     // TODO(ntv): value to fill with should be related to the operation.
     // For now, just use APFloat(0.0f).
     auto t = viewType.getElementType().cast<FloatType>();
@@ -397,7 +396,7 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes,
     if (!promote) {
       auto operands = getAssumedNonViewOperands(op);
       views.append(operands.begin(), operands.end());
-      res = op.create(b, loc, views, op.getAttrs());
+      res = op.clone(b, loc, views);
       return;
     }
 
@@ -429,7 +428,7 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes,
     }
     auto operands = getAssumedNonViewOperands(op);
     opViews.append(operands.begin(), operands.end());
-    res = op.create(b, loc, opViews, op.getAttrs());
+    res = op.clone(b, loc, opViews);
 
     // 6. Emit write-back for the promoted output views: copy the partial view.
     for (unsigned i = 0, e = writebackViews.size(); i < e; ++i) {
@@ -513,7 +512,7 @@ struct LinalgTilingPass : public FunctionPass<LinalgTilingPass> {
   LinalgTilingPass() = default;
   LinalgTilingPass(ArrayRef<int64_t> sizes, bool promoteViews);
 
-  void runOnFunction() {
+  void runOnFunction() override {
     tileLinalgOps(getFunction(), tileSizes, promoteViews);
   }
 
@@ -527,7 +526,7 @@ LinalgTilingPass::LinalgTilingPass(ArrayRef<int64_t> sizes, bool promoteViews) {
   this->promoteViews = promoteViews;
 }
 
-std::unique_ptr<FunctionPassBase>
+std::unique_ptr<OpPassBase<FuncOp>>
 mlir::linalg::createLinalgTilingPass(ArrayRef<int64_t> tileSizes,
                                      bool promoteViews) {
   return std::make_unique<LinalgTilingPass>(tileSizes, promoteViews);

@@ -40,7 +40,7 @@ using namespace mlir::edsc::intrinsics;
 using namespace mlir::linalg;
 using namespace mlir::linalg::intrinsics;
 
-using IndexedLinalgValue = TemplatedIndexedValue<linalg_load, linalg_store>;
+using IndexedLinalgValue = TemplatedIndexedValue<std_load, std_store>;
 using edsc::op::operator+;
 using edsc::op::operator==;
 
@@ -191,12 +191,12 @@ public:
 };
 
 // Emits the MLIR for the scalar part of the generic op by:
-//   1. Emitting linalg_load and linalg_store ops for each input and output
+//   1. Emitting std_load and std_store ops for each input and output
 //      view in order. This is achieved by applying the appropriate input or
 //      output map to the enclosing induction variables.
 //   2. Emitting a call to `op.fun()` that takes as arguments the scalars
 //      from point 1. above.
-//   3. Emitting linalg_store to store the results of 2. to the output
+//   3. Emitting std_store to store the results of 2. to the output
 //      views.
 //
 // An example output may resemble:
@@ -205,12 +205,17 @@ public:
 //    loop.for %i = %c0 to %0 step %c1 {
 //      loop.for %j = %c0 to %1 step %c1 {
 //        loop.for %k = %c0 to %4 step %c1 {
-//          %11 = linalg.load %arg0[%i, %j] : !linalg.view<?x?xf32>
-//          %12 = linalg.load %arg1[%i, %j, %k] : !linalg.view<?x?x?xf32>
-//          %13 = linalg.load %arg2[%i, %k, %j] : !linalg.view<?x?x?xf32>
+//          %11 = linalg.load %arg0[%i, %j] :
+//            memref<?x?xf32, stride_specification>
+//          %12 = linalg.load %arg1[%i, %j, %k] :
+//            memref<?x?x?xf32, stride_specification>
+//          %13 = linalg.load %arg2[%i, %k, %j] :
+//            memref<?x?x?xf32, stride_specification>
 //          %14:2 = call @foo(%11, %12, %13) : (f32, f32, f32) -> (f32, f32)
-//          linalg.store %14#0, %arg1[%i, %j, %k] : !linalg.view<?x?x?xf32>
-//          linalg.store %14#1, %arg2[%i, %k, %j] : !linalg.view<?x?x?xf32>
+//          linalg.store %14#0, %arg1[%i, %j, %k] :
+//            memref<?x?x?Xf32, stride_specification>
+//          linalg.store %14#1, %arg2[%i, %k, %j] :
+//            memref<?x?x?Xf32, stride_specification>
 //       }
 //      }
 //    }
@@ -227,19 +232,18 @@ public:
     unsigned nOutputs = genericOp.getNumOutputs();
     SmallVector<Value *, 4> indexedValues(nInputs + nOutputs);
 
-    // 1.a. Emit linalg_load from input views.
+    // 1.a. Emit std_load from input views.
     for (unsigned i = 0, e = nInputs; i < e; ++i) {
       ValueHandleArray indexing(foldedAffineApplies(
           b, loc, genericOp.getInputIndexingMap(i), allIvs, folder));
-      indexedValues[i] = linalg_load(genericOp.getInput(i), indexing);
+      indexedValues[i] = std_load(genericOp.getInput(i), indexing);
     }
 
-    // 1.b. Emit linalg_load from output views.
+    // 1.b. Emit std_load from output views.
     for (unsigned i = 0, e = nOutputs; i < e; ++i) {
       ValueHandleArray indexing(foldedAffineApplies(
           b, loc, genericOp.getOutputIndexingMap(i), allIvs, folder));
-      indexedValues[nInputs + i] =
-          linalg_load(genericOp.getOutput(i), indexing);
+      indexedValues[nInputs + i] = std_load(genericOp.getOutput(i), indexing);
     }
 
     auto funcOp = genericOp.getFunction();
@@ -248,11 +252,11 @@ public:
       Operation *callOp = call(funcOp, indexedValues);
       assert(callOp->getNumResults() == genericOp.getNumOutputs());
 
-      // 3. Emit linalg_store.
+      // 3. Emit std_store.
       for (unsigned i = 0, e = nOutputs; i < e; ++i) {
         ValueHandleArray indexing(foldedAffineApplies(
             b, loc, genericOp.getOutputIndexingMap(i), allIvs, folder));
-        linalg_store(callOp->getResult(i), genericOp.getOutput(i), indexing);
+        std_store(callOp->getResult(i), genericOp.getOutput(i), indexing);
       }
     } else {
       // TODO(ntv): When a region inliner exists, use it.
@@ -271,14 +275,14 @@ public:
           map.map(std::get<0>(it), std::get<1>(it));
       }
 
-      // 3. Emit linalg_store.
+      // 3. Emit std_store.
       auto *yieldOp = cast<YieldOp>(block.back()).getOperation();
       assert(yieldOp->getNumOperands() == nOutputs);
       for (unsigned i = 0, e = nOutputs; i < e; ++i) {
         ValueHandleArray indexing(foldedAffineApplies(
             b, loc, genericOp.getOutputIndexingMap(i), allIvs, folder));
-        linalg_store(map.lookup(yieldOp->getOperand(i)), genericOp.getOutput(i),
-                     indexing);
+        std_store(map.lookup(yieldOp->getOperand(i)), genericOp.getOutput(i),
+                  indexing);
       }
     }
   }
@@ -373,7 +377,7 @@ populateLinalgToLoopRewritePatterns(OwningRewritePatternList &patterns,
 
 namespace {
 struct LowerLinalgToLoopsPass : public FunctionPass<LowerLinalgToLoopsPass> {
-  void runOnFunction();
+  void runOnFunction() override;
 };
 } // namespace
 
@@ -390,7 +394,8 @@ void LowerLinalgToLoopsPass::runOnFunction() {
   }
 }
 
-std::unique_ptr<FunctionPassBase> mlir::linalg::createLowerLinalgToLoopsPass() {
+std::unique_ptr<OpPassBase<FuncOp>>
+mlir::linalg::createLowerLinalgToLoopsPass() {
   return std::make_unique<LowerLinalgToLoopsPass>();
 }
 

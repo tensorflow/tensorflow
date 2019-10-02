@@ -41,10 +41,14 @@ from tensorflow.python.platform import tf_logging as logging
 class BatchCounterCallback(callbacks.Callback):
 
   def __init__(self):
-    self.batch_count = 0
+    self.batch_begin_count = 0
+    self.batch_end_count = 0
+
+  def on_batch_begin(self, *args, **kwargs):
+    self.batch_begin_count += 1
 
   def on_batch_end(self, *args, **kwargs):
-    self.batch_count += 1
+    self.batch_end_count += 1
 
 
 class TestTrainingWithDataset(keras_parameterized.TestCase):
@@ -294,7 +298,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
         self.w = self.add_weight('w', ())
 
       def call(self, inputs):
-        return keras.backend.sum(inputs) + self.w * 0
+        return keras.backend.sum(inputs, axis=1, keepdims=True) + self.w * 0
 
     model = keras.Sequential([SumLayer(input_shape=(2,))])
     model.compile(
@@ -317,11 +321,11 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     history = model.fit(train_dataset,
                         epochs=2, steps_per_epoch=2, verbose=1,
                         validation_data=val_dataset, validation_steps=2)
-    self.assertListEqual(history.history['loss'],
-                         [inputs[:20].sum() / 2, inputs[20:].sum() / 2])
+    self.assertAllClose(history.history['loss'],
+                        [inputs[:20].sum() / 20, inputs[20:].sum() / 20])
     # The validation dataset will be reset at the end of each validation run.
-    self.assertListEqual(history.history['val_loss'],
-                         [inputs[:20].sum() / 2, inputs[:20].sum() / 2])
+    self.assertAllClose(history.history['val_loss'],
+                        [inputs[:20].sum() / 20, inputs[:20].sum() / 20])
 
     # Test correctness with dataset reset.
     train_dataset = dataset_ops.Dataset.from_tensor_slices(
@@ -330,10 +334,12 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
         (inputs, targets)).batch(10)
     history = model.fit(train_dataset,
                         epochs=2, verbose=1, validation_data=val_dataset)
-    self.assertListEqual(history.history['loss'],
-                         [inputs.sum() / 4, inputs.sum() / 4])
-    self.assertListEqual(history.history['val_loss'],
-                         [inputs.sum() / 4, inputs.sum() / 4])
+    self.assertAllClose(
+        history.history['loss'],
+        [inputs.sum() / 40, inputs.sum() / 40])
+    self.assertAllClose(
+        history.history['val_loss'],
+        [inputs.sum() / 40, inputs.sum() / 40])
 
   @tf_test_util.run_deprecated_v1
   def test_dataset_input_shape_validation(self):
@@ -383,7 +389,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     history = model.fit(dataset, epochs=2, verbose=1, callbacks=[batch_counter])
 
     self.assertLen(history.history['loss'], 2)
-    self.assertEqual(batch_counter.batch_count, 20)
+    self.assertEqual(batch_counter.batch_end_count, 20)
     model.evaluate(dataset)
     out = model.predict(dataset)
     self.assertEqual(out.shape[0], 100)
@@ -409,7 +415,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     history = model.fit(dataset, epochs=2, verbose=1, callbacks=[batch_counter])
 
     self.assertLen(history.history['loss'], 2)
-    self.assertEqual(batch_counter.batch_count, 20)
+    self.assertEqual(batch_counter.batch_end_count, 20)
     model.evaluate(dataset)
     out = model.predict(dataset)
     self.assertEqual(out.shape[0], 100)
@@ -456,11 +462,19 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
 
     lines = capture.output.splitlines()
 
-    self.assertIn('1/Unknown', lines[2])
     self.assertIn('10/10', lines[-1])
 
     self.assertLen(history.history['loss'], 2)
-    self.assertEqual(batch_counter.batch_count, 20)
+    # The first epoch will invoke batch begin 11 times, since it doesn't know
+    # the cardinality. The second epoch should just invoke 10 times.
+    if (testing_utils.should_run_eagerly()
+        or testing_utils.should_run_tf_function()):
+      expected_batch_begin_count = 21
+    else:
+      expected_batch_begin_count = 20
+    self.assertEqual(batch_counter.batch_begin_count,
+                     expected_batch_begin_count)
+    self.assertEqual(batch_counter.batch_end_count, 20)
     model.evaluate(dataset)
     out = model.predict(dataset)
     self.assertEqual(out.shape[0], 100)
@@ -502,7 +516,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
           'building your dataset.', str(mock_log.call_args))
 
     self.assertLen(history.history['loss'], 1)
-    self.assertEqual(batch_counter.batch_count, 10)
+    self.assertEqual(batch_counter.batch_end_count, 10)
     model.evaluate(dataset)
     out = model.predict(dataset)
     self.assertEqual(out.shape[0], 100)

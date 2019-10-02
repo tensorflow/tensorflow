@@ -2090,6 +2090,27 @@ class variable_scope(object):
         assert c.name == "foo/c:0"
   ```
 
+  Keep in mind that the counters for `default_name` are discarded once the
+  parent scope is exited. Therefore when the code re-enters the scope (for
+  instance by saving it), all nested default_name counters will be restarted.
+
+  For instance:
+
+  ```python
+  with tf.compat.v1.variable_scope("foo") as vs:
+    with tf.compat.v1.variable_scope(None, default_name="bar"):
+      v = tf.compat.v1.get_variable("a", [1])
+      assert v.name == "foo/bar/a:0", v.name
+    with tf.compat.v1.variable_scope(None, default_name="bar"):
+      v = tf.compat.v1.get_variable("b", [1])
+      assert v.name == "foo/bar_1/b:0"
+
+  with tf.compat.v1.variable_scope(vs):
+    with tf.compat.v1.variable_scope(None, default_name="bar"):
+      v = tf.compat.v1.get_variable("c", [1])
+      assert v.name == "foo/bar/c:0"   # Uses bar instead of bar_2!
+  ```
+
   Basic example of sharing a variable AUTO_REUSE:
 
   ```python

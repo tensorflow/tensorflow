@@ -29,18 +29,17 @@ from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.experimental.ops import scan_ops
-from tensorflow.python.data.experimental.ops import sleep
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import python_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 
@@ -90,6 +89,19 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       i += 4
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
+  def testBatchSizeNotDivisibleByNumReplicas2(self):
+    dataset = dataset_ops.Dataset.range(32).batch(16, drop_remainder=True)
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=5)
+    # This will rebatch into sub-batches of size 4, since
+    # ceil(16 / 5) = 4. However, that means only the first 4 replicas will get
+    # data.
+    expected_output = [[k for k in range(i, i + 4)] for i in range(0, 16, 4)]
+    expected_output.extend([[]])  # Last replica gets an empty batch
+    expected_output.extend(
+        [[k for k in range(i, i + 4)] for i in range(16, 32, 4)])
+    expected_output.extend([[]])  # Last replica gets an empty batch
+    self.assertDatasetProduces(rebatched_dataset, expected_output)
+
   def testTupleOutput(self):
     dataset = dataset_ops.Dataset.range(1024).map(lambda x: (x, x)).batch(32)
     rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
@@ -119,7 +131,9 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     # makes up a complete minibatch.
     expected_output = [[k for k in range(i, i + 8)] for i in range(0, 1024, 8)]  # pylint: disable=g-complex-comprehension
     if not drop_remainder:
-      expected_output.append([k for k in range(1024, 1032)])
+      # The last partial batch of size 8 is split over 4 replicas
+      expected_output.extend(
+          [[k for k in range(i, i + 2)] for i in range(1024, 1032, 2)])
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
   @parameterized.named_parameters(drop_remainder_cases)
@@ -132,7 +146,8 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     expected_output = [[k for k in range(i, i + 8)] for i in range(0, 32, 8)]  # pylint: disable=g-complex-comprehension
     if not drop_remainder:
-      expected_output += [[32, 33]]
+      # The last partial batch of size 2 is split over 4 replicas
+      expected_output += [[32], [33], [], []]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
   def testMultipleBatches(self):
@@ -214,9 +229,8 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset2 = dataset_ops.Dataset.range(32).batch(8)
     dataset = dataset1.concatenate(dataset2)
     rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
-    self.assertEqual(
-        [[None]],
-        [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
+    self.assertEqual([[None]],
+                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
     expected_output = ([[i, i + 1, i + 2, i + 3] for i in range(0, 64, 4)] +
                        [[i, i + 1] for i in range(0, 32, 2)])
     self.assertDatasetProduces(rebatched_dataset, expected_output)
@@ -241,24 +255,6 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     expected_output = [([2 * i, 2 * i + 1, 2 * i + 2, 2 * i + 3], [i, i + 1])
                        for i in range(0, 32, 2)]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
-
-  def testUnsupportedTransformError(self):
-    dataset = dataset_ops.Dataset.range(1024).batch(32).apply(sleep.sleep(10))
-    with self.assertRaises(errors.InvalidArgumentError):
-      rebatched_dataset = distribute._RebatchDataset(
-          dataset, num_replicas=4, use_fallback=False)
-      next_element = self.getNext(rebatched_dataset)
-      self.evaluate(next_element())
-
-  def testUnsupportedTransformInFlatMapError(self):
-    dataset = dataset_ops.Dataset.range(2).flat_map(
-        lambda _: dataset_ops.Dataset.range(32).batch(  # pylint: disable=g-long-lambda
-            32).apply(sleep.sleep(10)))
-    with self.assertRaises(errors.InvalidArgumentError):
-      rebatched_dataset = distribute._RebatchDataset(
-          dataset, num_replicas=4, use_fallback=False)
-      next_element = self.getNext(rebatched_dataset)
-      self.evaluate(next_element())
 
   def testFlatMapBatching(self):
     dataset = dataset_ops.Dataset.range(2).flat_map(
@@ -290,11 +286,8 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
     self.assertEqual([[None]],
                      [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
-    # List of 4 elements where each element is a list of 8 numbering from 0 to
-    # 31 repeated twice.
-    expected_output = [[k for k in range(i, i + 8)]  # pylint: disable=g-complex-comprehension
-                       for i in range(0, 32, 8)  # generates 4 elements
-                       for _ in range(2)]
+    expected_output = [[k for k in range(i, i + 8)] for i in range(0, 32, 8)]
+    expected_output += expected_output
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
   def testParallelInterleaveBatching(self):
@@ -310,11 +303,8 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
     self.assertEqual([[None]],
                      [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
-    # List of 4 elements where each element is a list of 8 numbering from 0 to
-    # 31 repeated twice in collated fashion i.e [0...8], [0...8] etc.
-    expected_output = [[k for k in range(i, i + 8)]  # pylint: disable=g-complex-comprehension
-                       for i in range(0, 32, 8)  # generates 4 elements
-                       for _ in range(2)]
+    expected_output = [[k for k in range(i, i + 8)] for i in range(0, 32, 8)]
+    expected_output += expected_output
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
   def testGroupByWindowStaticBatch(self):
@@ -350,8 +340,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
             key_func=lambda x: x, reduce_func=reduce_fn, window_size=10))
     dataset = distribute._RebatchDataset(dataset, num_replicas=2)
 
-    self.assertEqual([[None]],
-                     [ts.as_list() for ts in _flat_shapes(dataset)])
+    self.assertEqual([[None]], [ts.as_list() for ts in _flat_shapes(dataset)])
 
     # The batches of 5 (value == 0) will be split into minibatches of (3, 2) and
     # the batches of 10 (value == 1) split into minibatches of (5, 5)
@@ -377,8 +366,8 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertEqual([[None]], [ts.as_list() for ts in _flat_shapes(dataset)])
 
-    pairs = [(3, 0), (2, 0), (3, 0), (2, 0), (1, 0), (5, 1), (5, 1), (1, 1),
-             (3, 0), (2, 0), (2, 0), (2, 0), (5, 1), (4, 1)]
+    pairs = [(3, 0), (2, 0), (3, 0), (2, 0), (1, 0), (0, 0), (5, 1), (5, 1),
+             (1, 1), (0, 1), (3, 0), (2, 0), (2, 0), (2, 0), (5, 1), (4, 1)]
     expected_output = [[value] * batch_size for batch_size, value in pairs]
     self.assertDatasetProduces(dataset, expected_output)
 
@@ -449,92 +438,25 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     } for i in range(0, 1024, 8)]  # pylint: disable=g-complex-comprehension
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
-
-@test_util.run_all_in_graph_and_eager_modes
-class RebatchDatasetFallbackTest(test_base.DatasetTestBase):
-
-  def testWithNoBatchDataset(self):
+  def testRaggedTensorDataset(self):
+    # Set up a dataset that produces ragged tensors with a static batch size.
+    row_lengths = np.random.randint(8, size=128)
+    values = np.random.normal(size=np.sum(row_lengths)).astype(np.float32)
     dataset = dataset_ops.Dataset.from_tensor_slices(
-        [[k for k in range(i, i + 32)] for i in range(0, 1024, 32)])  # pylint: disable=g-complex-comprehension
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
-    self.assertEqual([[32]], [ts.as_list() for ts in _flat_shapes(dataset)])
-    self.assertEqual([[8]],
-                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
-
-    expected_output = [[k for k in range(i, i + 8)] for i in range(0, 1024, 8)]  # pylint: disable=g-complex-comprehension
-    self.assertDatasetProduces(rebatched_dataset, expected_output)
-
-  def testWithUnhandledTransformation(self):
-    dataset = dataset_ops.Dataset.range(1024).batch(
-        32, drop_remainder=True).apply(sleep.sleep(10))
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
-    self.assertEqual([[32]], [ts.as_list() for ts in _flat_shapes(dataset)])
-    self.assertEqual([[8]],
-                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
-
-    expected_output = [[k for k in range(i, i + 8)] for i in range(0, 1024, 8)]  # pylint: disable=g-complex-comprehension
-    self.assertDatasetProduces(rebatched_dataset, expected_output)
-
-  def testWithUnhandledTransformationInFlatMap(self):
-    dataset = dataset_ops.Dataset.range(2).flat_map(
-        lambda _: dataset_ops.Dataset.range(32).batch(  # pylint: disable=g-long-lambda
-            32, drop_remainder=True).apply(sleep.sleep(10)))
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
-
-    self.assertEqual([[8]],
-                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
-
-    # Two elements where each element is a list of 4 elements where each element
-    # is a list of 8.
-    expected_output = [
-        [k for k in range(i, i + 8)]  # pylint: disable=g-complex-comprehension
-        for _ in range(2) for i in range(0, 32, 8)]  # generates 4 elements
-    self.assertDatasetProduces(rebatched_dataset, expected_output)
-
-  def testWithUnknownBatchDim(self):
-    dataset = dataset_ops.Dataset.range(1024).batch(
-        32, drop_remainder=False).apply(sleep.sleep(10))
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
-
-    expected_output = [[k for k in range(i, i + 8)] for i in range(0, 1024, 8)]  # pylint: disable=g-complex-comprehension
-    self.assertDatasetProduces(rebatched_dataset, expected_output)
-
-  def testWithUnknownBatchDimInSecondComponent(self):
-    dataset0 = dataset_ops.Dataset.range(1024).batch(32, drop_remainder=True)
-    dataset1 = dataset_ops.Dataset.range(1024).batch(
-        32, drop_remainder=False).apply(sleep.sleep(10))
-    dataset = dataset_ops.Dataset.zip((dataset0, dataset1))
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
-
-    expected_output = [[k for k in range(i, i + 8)] for i in range(0, 1024, 8)]  # pylint: disable=g-complex-comprehension
-    expected_output = [(x, x) for x in expected_output]
-    self.assertDatasetProduces(rebatched_dataset, expected_output)
-
-  def testBatchSizeNotDivisibleByNumReplicas(self):
-    dataset = dataset_ops.Dataset.range(64).batch(
-        32, drop_remainder=True).apply(sleep.sleep(10))
-
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=5)
-
+        ragged_tensor.RaggedTensor.from_row_lengths(values, row_lengths))
+    dataset = dataset.batch(32, drop_remainder=True)
+    dataset = distribute._RebatchDataset(dataset, num_replicas=8)
+    # After rebatching, batch size is now 4.
     expected_output = []
-    i = 0
-    for _ in range(2):  # number of steps
-      # first four minibatches have seven elements
-      for _ in range(4):
-        expected_output.append([k for k in range(i, i + 7)])
-        i += 7
-      # last minibatch has four elements
-      expected_output.append([k for k in range(i, i + 4)])
-      i += 4
-    self.assertDatasetProduces(rebatched_dataset, expected_output)
-
-  def testBatchSizesDontMatch(self):
-    dataset = dataset_ops.Dataset.from_tensors((np.arange(10), np.arange(5)))
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 "Cannot use rebatching fallback"):
-      rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=5)
-      next_element = self.getNext(rebatched_dataset)
-      self.evaluate(next_element())
+    value_index = 0
+    for batch_row_lengths in row_lengths.reshape((-1, 4)):
+      num_values = np.sum(batch_row_lengths)
+      expected_output.append(
+          ragged_tensor.RaggedTensor.from_row_lengths(
+              values[value_index:(value_index + num_values)],
+              batch_row_lengths))
+      value_index += num_values
+    self.assertDatasetProduces(dataset, expected_output)
 
 
 if __name__ == "__main__":

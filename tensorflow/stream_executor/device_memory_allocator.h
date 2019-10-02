@@ -168,23 +168,35 @@ class DeviceMemoryAllocator {
   // fails, the allocation should return immediately without retrying.  An
   // example use case is optional scratch spaces where a failure has only
   // performance impact.
-  virtual port::StatusOr<OwningDeviceMemory> Allocate(
-      int device_ordinal, uint64 size, bool retry_on_failure) = 0;
+  virtual port::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal,
+                                                      uint64 size,
+                                                      bool retry_on_failure,
+                                                      int64 memory_space) = 0;
 
-  // Two-arg version of Allocate(), which sets retry-on-failure to true.
+  // Two-arg version of Allocate(), which sets retry-on-failure to true and
+  // memory_space to default (0).
   //
   // (We don't simply use a default argument on the virtual Allocate function
   // because default args on virtual functions are disallowed by the Google
   // style guide.)
   port::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size) {
-    return Allocate(device_ordinal, size, /*retry_on_failure=*/true);
+    return Allocate(device_ordinal, size, /*retry_on_failure=*/true,
+                    /*memory_space=*/0);
+  }
+
+  // Three-arg version of Allocate(), which sets memory_space to default (0).
+  port::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
+                                              bool retry_on_failure) {
+    return Allocate(device_ordinal, size, retry_on_failure,
+                    /*memory_space=*/0);
   }
 
   // Typed version of the allocation, returning typed memory.
   template <typename ElemT>
   port::StatusOr<ScopedDeviceMemory<ElemT>> Allocate(
-      int device_ordinal, uint64 size, bool retry_on_failure = true) {
-    return Allocate(device_ordinal, size, retry_on_failure);
+      int device_ordinal, uint64 size, bool retry_on_failure = true,
+      int64 memory_space = 0) {
+    return Allocate(device_ordinal, size, retry_on_failure, memory_space);
   }
 
   // Must be a nop for null pointers. Should not be used.
@@ -229,7 +241,8 @@ class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
       absl::Span<StreamExecutor *const> stream_executors);
 
   port::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
-                                              bool retry_on_failure) override;
+                                              bool retry_on_failure,
+                                              int64 memory_space) override;
 
   // Pull in two-arg overload that sets retry_on_failure to true.
   using DeviceMemoryAllocator::Allocate;

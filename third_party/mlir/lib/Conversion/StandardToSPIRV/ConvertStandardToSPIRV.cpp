@@ -30,12 +30,9 @@ using namespace mlir;
 // Type Conversion
 //===----------------------------------------------------------------------===//
 
-SPIRVBasicTypeConverter::SPIRVBasicTypeConverter(MLIRContext *context)
-    : spirvDialect(context->getRegisteredDialect<spirv::SPIRVDialect>()) {}
-
 Type SPIRVBasicTypeConverter::convertType(Type t) {
   // Check if the type is SPIR-V supported. If so return the type.
-  if (spirvDialect->isValidSPIRVType(t)) {
+  if (spirv::SPIRVDialect::isValidType(t)) {
     return t;
   }
 
@@ -252,7 +249,7 @@ class ReturnToSPIRVConversion : public ConversionPattern {
 public:
   ReturnToSPIRVConversion(MLIRContext *context)
       : ConversionPattern(ReturnOp::getOperationName(), 1, context) {}
-  virtual PatternMatchResult
+  PatternMatchResult
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override {
     if (op->getNumOperands()) {

@@ -35,7 +35,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager import wrap_function
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
@@ -63,8 +62,6 @@ from tensorflow.python.ops import variables
 import tensorflow.python.ops.gradients  # pylint: disable=unused-import
 from tensorflow.python.platform import googletest
 from tensorflow.python.util import compat
-
-ops._set_call_cpp_shape_fn(common_shapes.call_cpp_shape_fn)
 
 
 class ResourceTest(test_util.TensorFlowTestCase):
@@ -917,7 +914,7 @@ class OperationTest(test_util.TensorFlowTestCase):
       def test():
         output = control_flow_ops.while_loop(lambda x: x < 3, lambda x: x + 1,
                                              [1])
-        while_op = output.op.inputs[0].op
+        while_op = output.op
         self.assertEqual(while_op.type, "StatelessWhile")
         orig_num_inputs = len(while_op.inputs)
 
@@ -971,7 +968,7 @@ class OperationTest(test_util.TensorFlowTestCase):
       x = test_ops.int_output()
       op = test_ops.int_input_int_output(x, name="myop").op
     with self.assertRaisesRegexp(
-        AttributeError, "'_InputList' object has no attribute 'append'"):
+        AttributeError, "'tuple' object has no attribute 'append'"):
       op.inputs.append(None)
 
 
@@ -2905,9 +2902,6 @@ class AttrScopeTest(test_util.TensorFlowTestCase):
       self.assertAllEqual((None, "bar"), a5)
       self.assertAllEqual(("foo", None), a6)
       self.assertAllEqual((None, None), a7)
-
-
-ops.RegisterShape("KernelLabel")(common_shapes.scalar_shape)
 
 
 class KernelLabelTest(test_util.TensorFlowTestCase):

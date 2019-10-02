@@ -46,14 +46,14 @@ public:
 
   static StringRef getOperationName() { return "module"; }
 
-  static void build(Builder *builder, OperationState *result);
+  static void build(Builder *builder, OperationState &result);
 
   /// Construct a module from the given location.
   static ModuleOp create(Location loc);
 
   /// Operation hooks.
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
+  static ParseResult parse(OpAsmParser &parser, OperationState &result);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
 
   /// Return body of this module.
@@ -111,7 +111,7 @@ class ModuleTerminatorOp
 public:
   using Op::Op;
   static StringRef getOperationName() { return "module_terminator"; }
-  static void build(Builder *, OperationState *) {}
+  static void build(Builder *, OperationState &) {}
 };
 
 //===----------------------------------------------------------------------===//

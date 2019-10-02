@@ -1151,7 +1151,21 @@ void VirtualScheduler::GenerateRunMetadata(RunMetadata* metadata) {
         tensor_descr->mutable_allocation_description()->set_allocated_bytes(
             tensor_size);
       }
-      node_stats->set_timeline_label(node_def->op());
+      if (node_def->op() != "HloGenericOp") {
+        node_stats->set_timeline_label(node_def->op());
+      } else {
+        // For HloGenericOp, display hlo_opcode as timeline label.
+        string timeline_label;
+        if (node_def->attr().count("hlo_opcode") > 0) {
+          absl::StrAppend(&timeline_label,
+                          node_def->attr().at("hlo_opcode").s());
+        }
+        if (node_def->attr().count("_hlo_metadata_op_type") > 0) {
+          absl::StrAppend(&timeline_label, "/",
+                          node_def->attr().at("_hlo_metadata_op_type").s());
+        }
+        node_stats->set_timeline_label(timeline_label);
+      }
       node_stats->set_node_name(node_def->name());
       // Timestamps in microseconds.
       // TODO(b/138165866): Remove once TimelineServer support is no longer

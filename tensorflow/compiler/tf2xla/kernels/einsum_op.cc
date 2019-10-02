@@ -25,7 +25,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-constexpr std::array<DataType, 2> kEinsumTypes = {{DT_BFLOAT16, DT_FLOAT}};
+constexpr std::array<DataType, 6> kEinsumTypes = {
+    {DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_COMPLEX128}};
 
 class EinsumOp : public XlaOpKernel {
  public:
@@ -37,10 +38,12 @@ class EinsumOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaOp lhs = ctx->Input(0);
-    xla::XlaOp rhs = ctx->Input(1);
-    const TensorShape a_shape = ctx->InputShape(0);
-    const TensorShape b_shape = ctx->InputShape(1);
-    ctx->SetOutput(0, xla::Einsum(lhs, rhs, equation_));
+    if (equation_.find(",") == equation_.npos) {
+      ctx->SetOutput(0, xla::Einsum(lhs, equation_));
+    } else {
+      xla::XlaOp rhs = ctx->Input(1);
+      ctx->SetOutput(0, xla::Einsum(lhs, rhs, equation_));
+    }
   }
 
  private:
@@ -49,6 +52,7 @@ class EinsumOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("XlaEinsum").TypeConstraint("T", kEinsumTypes), EinsumOp);
+REGISTER_XLA_OP(Name("Einsum").TypeConstraint("T", kEinsumTypes), EinsumOp);
 
 }  // namespace
 }  // namespace tensorflow

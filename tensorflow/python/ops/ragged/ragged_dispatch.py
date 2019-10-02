@@ -461,6 +461,7 @@ _RAGGED_DISPATCH_OPS = [
                                                            'indices']),
     (array_ops.one_hot, ragged_array_ops.ragged_one_hot, ['indices']),
     (array_ops.rank, ragged_array_ops.rank, ['input']),
+    (array_ops.reverse, ragged_array_ops.reverse, ['tensor']),
     (array_ops.size, _ragged_size_v1, ['input']),
     (array_ops.size_v2, ragged_array_ops.size, ['input']),
     (array_ops.squeeze, _ragged_squeeze_v1, ['input']),

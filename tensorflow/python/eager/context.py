@@ -177,15 +177,12 @@ class _ThreadLocalData(threading.local):
     super(_ThreadLocalData, self).__init__()
     self.device_spec = _starting_device_spec
     self.device_name = ""
-    self.mode = default_execution_mode
     self.is_eager = default_execution_mode == EAGER_MODE
     self.scope_name = ""
-    self.summary_writer = None
-    self.summary_recording = None
-    self.summary_recording_distribution_strategy = True
-    self.summary_step = None
     self.function_call_options = None
     self.executor = None
+    self.op_callbacks = []
+    self.invoking_op_callbacks = False
 
 
 ContextSwitch = collections.namedtuple(
@@ -256,7 +253,13 @@ class LogicalDevice(
 @tf_export("config.experimental.VirtualDeviceConfiguration")
 class VirtualDeviceConfiguration(
     collections.namedtuple("VirtualDeviceConfiguration", ["memory_limit"])):
-  """Configuration class for virtual devices for a PhysicalDevice.
+  """Configuration class for a `LogicalDevice`.
+
+  The class specifies the parameters for a `LogicalDevice` used during runtime
+  initialization. Not all fields are valid for all device types.
+
+  See `tf.config.experimental.get_virtual_device_configuration` and
+  `tf.config.experimental.set_virtual_device_configuration` for usage examples.
 
   Fields:
     memory_limit: (optional) Maximum memory (in MB) to allocate on the virtual
@@ -315,10 +318,6 @@ class _TensorCacheDeleter(object):
       return
     if self._context_id in _tensor_caches_map:
       del _tensor_caches_map[self._context_id]
-
-
-# Thread-local stack of execution callbacks.
-_post_execution_callbacks = threading.local()
 
 
 # TODO(agarwal): rename to EagerContext / EagerRuntime ?
@@ -414,6 +413,7 @@ class Context(object):
     self._inter_op_parallelism_threads = None
     self._soft_device_placement = None
     self._log_device_placement = None
+    self._enable_mlir_bridge = None
     self._optimizer_experimental_options = {}
 
     _python_eager_context_create_counter.get_cell().increase_by(1)
@@ -545,6 +545,35 @@ class Context(object):
     # Clear all the caches in case there are remote tensors in them.
     self._clear_caches()
 
+  def update_server_def(self, server_def, keep_alive_secs=600):
+    """Update a server_def on the context.
+
+    Args:
+      server_def: A tensorflow::ServerDef proto. Enables execution on remote
+        devices.
+      keep_alive_secs: Num. seconds after which the remote end will hang up. As
+        long as the client is still alive, the server state for the context will
+        be kept alive. If the client is killed (or there is some failure), the
+        server will clean up its context keep_alive_secs after the final RPC it
+        receives.
+
+    Raises:
+      ValueError: if server_def is None.
+    """
+    if not server_def:
+      raise ValueError("server_def is None.")
+
+    self._server_def = server_def
+
+    if self._context_handle:
+      server_def_str = server_def.SerializeToString()
+      pywrap_tensorflow.TFE_ContextUpdateServerDef(self._context_handle,
+                                                   keep_alive_secs,
+                                                   server_def_str)
+      self._initialize_logical_devices()
+
+    self._clear_caches()
+
   def enable_collective_ops(self, server_def):
     """Enable distributed collective ops with an appropriate server_def.
 
@@ -635,9 +664,7 @@ class Context(object):
   def _mode(self, mode):
     """A context manager to allow setting the mode to EAGER/GRAPH."""
     ctx = self._thread_local_data
-    old_mode = ctx.mode
     old_is_eager = ctx.is_eager
-    ctx.mode = mode
     ctx.is_eager = mode == EAGER_MODE
     if mode == EAGER_MODE:
       # Entering graph mode does not provide us with sufficient information to
@@ -648,7 +675,6 @@ class Context(object):
       yield
     finally:
       ctx.is_eager = old_is_eager
-      ctx.mode = old_mode
       if mode == EAGER_MODE:
         self.context_switches.pop()
 
@@ -673,46 +699,6 @@ class Context(object):
   def scope_name(self, s):
     """Sets scope name for the current thread."""
     self._thread_local_data.scope_name = s
-
-  @property
-  def summary_writer(self):
-    """Returns default summary writer for the current thread."""
-    return self._thread_local_data.summary_writer
-
-  @summary_writer.setter
-  def summary_writer(self, writer):
-    """Sets default summary writer for the current thread."""
-    self._thread_local_data.summary_writer = writer
-
-  @property
-  def summary_recording(self):
-    """Returns summary recording condition."""
-    return self._thread_local_data.summary_recording
-
-  @summary_recording.setter
-  def summary_recording(self, condition):
-    """Sets summary recording condition."""
-    self._thread_local_data.summary_recording = condition
-
-  @property
-  def summary_recording_distribution_strategy(self):
-    """Returns summary recording condition for distribution strategy."""
-    return self._thread_local_data.summary_recording_distribution_strategy
-
-  @summary_recording_distribution_strategy.setter
-  def summary_recording_distribution_strategy(self, condition):
-    """Sets summary recording condition for distribution strategy."""
-    self._thread_local_data.summary_recording_distribution_strategy = condition
-
-  @property
-  def summary_step(self):
-    """Returns summary step variable."""
-    return self._thread_local_data.summary_step
-
-  @summary_step.setter
-  def summary_step(self, step):
-    """Sets summary step variable."""
-    self._thread_local_data.summary_step = step
 
   @property
   def device_name(self):
@@ -741,6 +727,8 @@ class Context(object):
       ValueError: If name is not a string or is an invalid device name.
       RuntimeError: If device scopes are not properly nested.
     """
+    if isinstance(name, LogicalDevice):
+      name = name.name
     return _EagerDeviceContext(self, name)
 
   def devices(self):
@@ -819,6 +807,9 @@ class Context(object):
 
     if self._log_device_placement is not None:
       config.log_device_placement = self._log_device_placement
+
+    if self._enable_mlir_bridge is not None:
+      config.experimental.enable_mlir_bridge = self._enable_mlir_bridge
 
     def rewriter_toggle(option):
       toggle = self._optimizer_experimental_options.get(option, None)
@@ -1006,41 +997,51 @@ class Context(object):
     self.ensure_initialized()
     return bool(pywrap_tensorflow.TFE_ContextHasFunction(self._handle, name))
 
-  def add_post_execution_callback(self, callback):
-    """Add a post-execution callback to the context.
+  def add_op_callback(self, callback):
+    """Add a post-op callback to the context.
 
-    A post-execution callback is invoked immediately after an eager operation or
-    function has finished execution, providing access to the op's type, name
-    input and output tensors. Multiple execution callbacks can be added, in
-    which case the callbacks will be invoked in the order in which they are
-    added.
+    A post-op callback is invoked immediately after an eager operation or
+    function has finished execution or after a op has been added to a graph,
+    providing access to the op's type, name input and output tensors. Multiple
+    op callbacks can be added, in which case the callbacks will be invoked in
+    the order in which they are added.
 
     Args:
       callback: a callable of the signature
-      `f(op_type, op_name, attrs, inputs, outputs)`.
-      `op_type` is the type of the operation that was just executed (e.g.,
-        `MatMul`).
-      `op_name` is the name of the operation that has was just executed. This
-        name is set by the client who created the operation and can be `None` if
-        it is unset.
-      `attrs` contains the attributes of the operation as a `tuple` of
-        alternating attribute names and attribute values.
-      `inputs` is the `list` of input `Tensor`(s) to the op.
-      `outputs` is the `list` of output `Tensor`(s) from the op.
-       Return value(s) from the callback are ignored.
+        `f(op_type, inputs, attrs, outputs, op_name=None, graph=None)`.
+        See doc strings in `op_callbacks.py` for details on the function
+        signature and its semantics.
     """
-    self.post_execution_callbacks.append(callback)
+    if callback not in self._thread_local_data.op_callbacks:
+      self._thread_local_data.op_callbacks.append(callback)
 
-  def clear_post_execution_callbacks(self):
-    """Clear all post-execution callbacks added to the context."""
-    del self.post_execution_callbacks[:]
+  def remove_op_callback(self, callback):
+    """Remove an already-registered op callback.
+
+    Args:
+      callback: The op callback to be removed.
+
+    Raises:
+      KeyError: If `callback` is not already registered.
+    """
+    if callback not in self._thread_local_data.op_callbacks:
+      raise KeyError(
+          "The specified op callback has not been registered, "
+          "and hence cannot be removed.")
+    del self._thread_local_data.op_callbacks[
+        self._thread_local_data.op_callbacks.index(callback)]
 
   @property
-  def post_execution_callbacks(self):
-    """Get the list of post-execution callbacks added to the context."""
-    if not hasattr(_post_execution_callbacks, "callbacks"):
-      _post_execution_callbacks.callbacks = []
-    return _post_execution_callbacks.callbacks
+  def op_callbacks(self):
+    return self._thread_local_data.op_callbacks
+
+  @property
+  def invoking_op_callbacks(self):
+    return self._thread_local_data.invoking_op_callbacks
+
+  @invoking_op_callbacks.setter
+  def invoking_op_callbacks(self, value):
+    self._thread_local_data.invoking_op_callbacks = value
 
   def _initialize_physical_devices(self):
     """Get local devices visible to the system."""
@@ -1260,6 +1261,16 @@ class Context(object):
           "Virtual devices cannot be modified after being initialized")
 
     self._virtual_device_map[dev] = virtual_devices
+
+  @property
+  def enable_mlir_bridge(self):
+    return self._enable_mlir_bridge
+
+  @enable_mlir_bridge.setter
+  def enable_mlir_bridge(self, enabled):
+    self._enable_mlir_bridge = enabled
+
+    self._thread_local_data.function_call_options = None
 
   @property
   def optimizer_jit(self):
@@ -1587,18 +1598,128 @@ def internal_operation_seed():
   return context()._internal_operation_seed()  # pylint: disable=protected-access
 
 
-@tf_export("executing_eagerly")
+@tf_export("executing_eagerly", v1=[])
 def executing_eagerly():
-  """Returns True if the current thread has eager execution enabled.
+  """Checks whether the current thread has eager execution enabled.
 
-  Eager execution is typically enabled via
-  `tf.compat.v1.enable_eager_execution`, but may also be enabled within the
-  context of a Python function via tf.contrib.eager.py_func.
+  Eager execution is enabled by default and this API returns `True`
+  in most of cases. However, this API might return `False` in the following use
+  cases.
+
+  *  Executing inside `tf.function`, unless under `tf.init_scope` or
+     `tf.config.experimental_run_functions_eagerly(True)` is previously called.
+  *  Executing inside a transformation function for `tf.dataset`.
+  *  `tf.compat.v1.disable_eager_execution()` is called.
+
+  General case:
+
+  >>> print(tf.executing_eagerly())
+  True
+
+  Inside `tf.function`:
+
+  >>> @tf.function
+  ... def fn():
+  ...   with tf.init_scope():
+  ...     print(tf.executing_eagerly())
+  ...   print(tf.executing_eagerly())
+  >>> fn()
+  True
+  False
+
+  Inside `tf.function` after
+
+  `tf.config.experimental_run_functions_eagerly(True)` is called:
+  >>> tf.config.experimental_run_functions_eagerly(True)
+  >>> @tf.function
+  ... def fn():
+  ...   with tf.init_scope():
+  ...     print(tf.executing_eagerly())
+  ...   print(tf.executing_eagerly())
+  >>> fn()
+  True
+  True
+  >>> tf.config.experimental_run_functions_eagerly(False)
+
+  Inside a transformation function for `tf.dataset`:
+
+  >>> def data_fn(x):
+  ...   print(tf.executing_eagerly())
+  ...   return x
+  >>> dataset = tf.data.Dataset.range(100)
+  >>> dataset = dataset.map(data_fn)
+  False
+
+  Returns:
+    `True` if the current thread has eager execution enabled.
   """
   if context_safe() is None:
     return default_execution_mode == EAGER_MODE
 
   return context().executing_eagerly()
+
+
+@tf_export(v1=["executing_eagerly"])
+def executing_eagerly_v1():
+  """Checks whether the current thread has eager execution enabled.
+
+  Eager execution is typically enabled via
+  `tf.compat.v1.enable_eager_execution`, but may also be enabled within the
+  context of a Python function via tf.contrib.eager.py_func.
+
+  When eager execution is enabled, returns `True` in most cases. However,
+  this API might return `False` in the following use cases.
+
+  *  Executing inside `tf.function`, unless under `tf.init_scope` or
+     `tf.config.experimental_run_functions_eagerly(True)` is previously called.
+  *  Executing inside a transformation function for `tf.dataset`.
+  *  `tf.compat.v1.disable_eager_execution()` is called.
+
+  >>> tf.compat.v1.enable_eager_execution()
+
+  General case:
+
+  >>> print(tf.executing_eagerly())
+  True
+
+  Inside `tf.function`:
+
+  >>> @tf.function
+  ... def fn():
+  ...   with tf.init_scope():
+  ...     print(tf.executing_eagerly())
+  ...   print(tf.executing_eagerly())
+  >>> fn()
+  True
+  False
+
+  Inside `tf.function`
+  after  `tf.config.experimental_run_functions_eagerly(True)` is called:
+
+  >>> tf.config.experimental_run_functions_eagerly(True)
+  >>> @tf.function
+  ... def fn():
+  ...   with tf.init_scope():
+  ...     print(tf.executing_eagerly())
+  ...   print(tf.executing_eagerly())
+  >>> fn()
+  True
+  True
+  >>> tf.config.experimental_run_functions_eagerly(False)
+
+  Inside a transformation function for `tf.dataset`:
+
+  >>> def data_fn(x):
+  ...   print(tf.executing_eagerly())
+  ...   return x
+  >>> dataset = tf.data.Dataset.range(100)
+  >>> dataset = dataset.map(data_fn)
+  False
+
+  Returns:
+    `True` if the current thread has eager execution enabled.
+  """
+  return executing_eagerly()
 
 
 def in_eager_mode():
@@ -1851,6 +1972,10 @@ def export_run_metadata():
 
 def set_server_def(server_def):
   context().set_server_def(server_def)
+
+
+def update_server_def(server_def):
+  context().update_server_def(server_def)
 
 
 def add_function(fdef):

@@ -53,7 +53,7 @@ void Canonicalizer::runOnFunction() {
 }
 
 /// Create a Canonicalizer pass.
-std::unique_ptr<FunctionPassBase> mlir::createCanonicalizerPass() {
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createCanonicalizerPass() {
   return std::make_unique<Canonicalizer>();
 }
 

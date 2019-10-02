@@ -99,40 +99,70 @@ class SvdOpGpu : public AsyncOpKernel {
               std::unique_ptr<CudaSolver> solver) {
     // Compute U S V* = M.
     // 1. cuSolver works in column-major rather than row-major.
-    // 2. Gesvd returns V*.
-    // 3. Hence M should be transposed before input and U (rather than V) should
-    // be transposed on output.
+    // 2. Gesvd returns V*. GesvdjBatched returns V.
+    // 3. Hence M should be transposed before input and
+    //    a) U (rather than V) should be transposed on output with Gesvd.
+    //    b) U and V should be transposed on output with GesvdjBatched.
 
-    Tensor u_copy;
-    if (compute_uv_) {
-      TensorShape u_shape;
-      if (full_matrices_) {
+    // get the pointers to input data
+    Scalar* input_ptr;
+    RealScalar* outputS_ptr;
+    auto input_reshaped = M_copy.template flat_inner_dims<Scalar, 3>();
+    input_ptr = input_reshaped.data();
+    const int64 batch_size =
+        M_copy.dims() > 2 ? input_reshaped.dimension(0) : 1;
+    // Gesvdjbatched handles matrices up to 32x32.
+    // TODO(jamessspencer): if not full_matrices, compute full U and V matrices
+    // using Gesvdjbatched and return slices.
+    const bool batched = m <= 32 && n <= 32 && batch_size > 1 && full_matrices_;
+
+    // Copies of U and V if required so can take transposes after SVD.
+    Tensor u_copy, v_copy;
+    Scalar* outputU_ptr = NULL;
+    Scalar* outputV_ptr = NULL;
+    if (compute_uv_ || batched) {
+      TensorShape u_shape, v_shape;
+      if (batched) {
+        // Gesvdjbatched seems to require U and V matrices even if the vectors
+        // aren't computed.
+        TensorShape shapeRaw = M_copy.shape();
+        shapeRaw.RemoveLastDims(2);
+        u_shape = shapeRaw;
+        u_shape.AddDim(m);
+        u_shape.AddDim(m);
+        v_shape = shapeRaw;
+        v_shape.AddDim(n);
+        v_shape.AddDim(n);
+      } else if (full_matrices_) {
         u_shape = U->shape();
+        v_shape = V->shape();
       } else {
         TensorShape shapeRaw = M_copy.shape();
         shapeRaw.RemoveLastDims(2);
         u_shape = shapeRaw;
         u_shape.AddDim(p);
         u_shape.AddDim(m);
+        v_shape = shapeRaw;
+        v_shape.AddDim(p);
+        v_shape.AddDim(n);
       }
       OP_REQUIRES_OK_ASYNC(
           context, solver->allocate_scoped_tensor(U->dtype(), u_shape, &u_copy),
           done);
+      if (batched) {
+        OP_REQUIRES_OK_ASYNC(
+            context,
+            solver->allocate_scoped_tensor(V->dtype(), v_shape, &v_copy), done);
+      }
+      outputU_ptr = u_copy.template flat_inner_dims<Scalar, 3>().data();
+      if (batched) {
+        outputV_ptr = v_copy.template flat_inner_dims<Scalar, 3>().data();
+      } else {
+        outputV_ptr = V->template flat_inner_dims<Scalar, 3>().data();
+      }
     }
 
-    // get the pointers to the data
-    Scalar* input_ptr;
-    RealScalar* outputS_ptr;
-    Scalar* outputU_ptr = NULL;
-    Scalar* outputV_ptr = NULL;
-    auto input_reshaped = M_copy.template flat_inner_dims<Scalar, 3>();
-    input_ptr = input_reshaped.data();
     outputS_ptr = S->template flat_inner_dims<RealScalar, 2>().data();
-    if (compute_uv_) {
-      outputU_ptr = u_copy.template flat_inner_dims<Scalar, 3>().data();
-      outputV_ptr = V->template flat_inner_dims<Scalar, 3>().data();
-    }
-    const int64 batch_size = input_reshaped.dimension(0);
     std::vector<DeviceLapackInfo> dev_info;
     dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "gesvd"));
     int* dev_info_ptr = dev_info.back().mutable_data();
@@ -151,33 +181,44 @@ class SvdOpGpu : public AsyncOpKernel {
                batch_size * m * sizeof(Scalar));
     }
 
-    for (int64 batch = 0; batch < batch_size; ++batch) {
-      Scalar* input = input_ptr + batch * m * n;
-      RealScalar* outputS = outputS_ptr + batch * p;
-      Scalar* outputU = NULL;
-      Scalar* outputVT = NULL;
-      char jobu = 'N';
-      char jobvt = 'N';
-
-      if (compute_uv_) {
-        if (full_matrices_) {
-          outputU = outputU_ptr + batch * m * m;
-          outputVT = outputV_ptr + batch * n * n;
-          jobu = 'A';
-          jobvt = 'A';
-        } else {
-          outputU = outputU_ptr + batch * m * p;
-          outputVT = outputV_ptr + batch * n * p;
-          jobu = 'S';
-          jobvt = 'S';
-        }
-      }
-
+    if (batched) {
+      cusolverEigMode_t jobz = CUSOLVER_EIG_MODE_NOVECTOR;
+      if (compute_uv_) jobz = CUSOLVER_EIG_MODE_VECTOR;
       OP_REQUIRES_OK_ASYNC(
           context,
-          solver->Gesvd(jobu, jobvt, m, n, input, m, outputS, outputU, m,
-                        outputVT, n, dev_info_ptr + batch),
+          solver->GesvdjBatched(jobz, m, n, input_ptr, m, outputS_ptr,
+                                outputU_ptr, m, outputV_ptr, n, dev_info_ptr,
+                                batch_size),
           done);
+    } else {
+      for (int64 batch = 0; batch < batch_size; ++batch) {
+        Scalar* input = input_ptr + batch * m * n;
+        RealScalar* outputS = outputS_ptr + batch * p;
+        Scalar* outputU = NULL;
+        Scalar* outputVT = NULL;
+        char jobu = 'N';
+        char jobvt = 'N';
+
+        if (compute_uv_) {
+          if (full_matrices_) {
+            outputU = outputU_ptr + batch * m * m;
+            outputVT = outputV_ptr + batch * n * n;
+            jobu = 'A';
+            jobvt = 'A';
+          } else {
+            outputU = outputU_ptr + batch * m * p;
+            outputVT = outputV_ptr + batch * n * p;
+            jobu = 'S';
+            jobvt = 'S';
+          }
+        }
+
+        OP_REQUIRES_OK_ASYNC(
+            context,
+            solver->Gesvd(jobu, jobvt, m, n, input, m, outputS, outputU, m,
+                          outputVT, n, dev_info_ptr + batch),
+            done);
+      }
     }
 
     // This is a bug in cuSolver:
@@ -213,6 +254,10 @@ class SvdOpGpu : public AsyncOpKernel {
     if (compute_uv_) {
       auto device = context->eigen_device<GPUDevice>();
       OP_REQUIRES_OK_ASYNC(context, DoMatrixTranspose(device, u_copy, U), done);
+      if (batched) {
+        OP_REQUIRES_OK_ASYNC(context, DoMatrixTranspose(device, v_copy, V),
+                             done);
+      }
     }
 
     CheckResult(context, std::move(done), dev_info, std::move(solver));
@@ -289,6 +334,7 @@ class SvdOpGpu : public AsyncOpKernel {
     }
 
     // Call the SVD: compute V S U* = M*.
+    // Note (m, n) and (U, V) are swapped accordingly.
     RunSVD(context, done, n, m, p, input_copy, S, V, U, std::move(solver));
   }
 

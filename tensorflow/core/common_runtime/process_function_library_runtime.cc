@@ -622,10 +622,9 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
                                     options.output_devices, device_set_,
                                     arg_nodes, ret_nodes));
 
-  std::unique_ptr<MultiDeviceFunctionData> data =
-      absl::make_unique<MultiDeviceFunctionData>(
-          function_name, function_key, ret_node_names.size(),
-          lib_def->ReachableDefinitions(*fdef), std::move(ret_types));
+  auto data = absl::make_unique<MultiDeviceFunctionData>(
+      function_name, function_key, ret_node_names.size(),
+      lib_def->ReachableDefinitions(*fdef), std::move(ret_types));
 
   GraphOptimizationPassOptions optimization_options;
   // TODO(iga): Thread other relevant options from SessionOptions.
@@ -641,13 +640,11 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
 
-  DumpGraph("Before calling Placer", graph.get());
-  // Make the FunctionLibraryRuntime's device the default device if
-  // nothing else is hard coded. This allows the same function definition
-  // to be specialized to different devices depending on the
-  // PartitionedCallOp's device.
   Device* default_device = nullptr;
-  if (!options.target.empty()) {
+  if (options.default_device_to_target && !options.target.empty()) {
+    // Make the `target` device the default device if nothing else is hard
+    // coded. This allows the same function definition to be specialized to
+    // different devices depending on the `PartitionedCallOp` device.
     FunctionLibraryRuntime* flr = GetFLR(options.target);
     if (flr == nullptr) {
       return errors::InvalidArgument(
@@ -659,6 +656,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
 
   // TODO(b/124993244): Smartly merge options in nested defuns, and raise
   // exceptions/warnings in case where nested function call options are ignored.
+  DumpGraph("Before calling Placer", graph.get());
   Placer placer(graph.get(), function_name, optimization_options.flib_def,
                 &device_set_, default_device,
                 options.config_proto.allow_soft_placement(),
@@ -1188,25 +1186,22 @@ void ProcessFunctionLibraryRuntime::RunInternal(
         opts.rets_alloc_attrs;
     std::vector<Tensor>* remote_rets = new std::vector<Tensor>;
     flr->Run(opts, handle, args, remote_rets,
-             std::bind(
-                 [source_device, target_device, target_incarnation, rendezvous,
-                  device_context, rets_alloc_attrs, remote_rets,
-                  rets](const Status& status,
-                        FunctionLibraryRuntime::DoneCallback& done) {
-                   if (!status.ok()) {
-                     delete remote_rets;
-                     done(status);
-                     return;
-                   }
-                   int64 num_returns = remote_rets->size();
-                   delete remote_rets;
-                   // Now receive the return values from the target.
-                   ReceiveTensorsAsync(target_device, source_device, "ret_",
-                                       target_incarnation, num_returns,
-                                       device_context, rets_alloc_attrs,
-                                       rendezvous, rets, std::move(done));
-                 },
-                 std::placeholders::_1, std::move(done)));
+             [source_device, target_device, target_incarnation, rendezvous,
+              device_context, rets_alloc_attrs, remote_rets, rets,
+              done = std::move(done)](const Status& status) mutable {
+               if (!status.ok()) {
+                 delete remote_rets;
+                 done(status);
+                 return;
+               }
+               int64 num_returns = remote_rets->size();
+               delete remote_rets;
+               // Now receive the return values from the target.
+               ReceiveTensorsAsync(target_device, source_device, "ret_",
+                                   target_incarnation, num_returns,
+                                   device_context, rets_alloc_attrs, rendezvous,
+                                   rets, std::move(done));
+             });
     return;
   }
   if (parent_ != nullptr) {
@@ -1239,35 +1234,32 @@ void ProcessFunctionLibraryRuntime::Run(
   rets->reserve(frame->num_retvals());
 
   Run(opts, handle, args, rets,
-      std::bind(
-          [frame, rets](FunctionLibraryRuntime::DoneCallback& done,
-                        // Begin unbound arguments.
-                        const Status& status) {
-            std::unique_ptr<std::vector<Tensor>> rets_releaser(rets);
 
-            if (!status.ok()) {
-              done(status);
-              return;
-            }
+      [frame, rets, done = std::move(done)](const Status& status) {
+        std::unique_ptr<std::vector<Tensor>> rets_releaser(rets);
 
-            if (rets->size() != frame->num_retvals()) {
-              done(errors::Internal(
-                  "Number of return values from function (", rets->size(),
-                  ") did not match expected number of return values (",
-                  frame->num_retvals(), ")."));
-              return;
-            }
+        if (!status.ok()) {
+          done(status);
+          return;
+        }
 
-            for (size_t i = 0; i < frame->num_retvals(); ++i) {
-              Status s = frame->SetRetval(i, (*rets)[i]);
-              if (!s.ok()) {
-                done(s);
-                return;
-              }
-            }
-            done(Status::OK());
-          },
-          std::move(done), std::placeholders::_1));
+        if (rets->size() != frame->num_retvals()) {
+          done(errors::Internal(
+              "Number of return values from function (", rets->size(),
+              ") did not match expected number of return values (",
+              frame->num_retvals(), ")."));
+          return;
+        }
+
+        for (size_t i = 0; i < frame->num_retvals(); ++i) {
+          Status s = frame->SetRetval(i, (*rets)[i]);
+          if (!s.ok()) {
+            done(s);
+            return;
+          }
+        }
+        done(Status::OK());
+      });
 }
 
 void ProcessFunctionLibraryRuntime::CleanUp(

@@ -63,7 +63,7 @@ inline std::int32_t mm512_get1_epi32(const __m512i v, int i) {
     case 7:
       return _mm256_extract_epi32(a, 7);
     default:
-      RUY_DCHECK(i < 16);
+      RUY_DCHECK_LT(i, 16);
       return 0;
   }
 }
@@ -106,24 +106,17 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
       const int residual_cols = std::min(params.dst_cols - col, 16);
 
       __m512i accum_data_v[16];
-      __m512i accum_data_v_low[16];
-      __m512i accum_data_v_high[16];
 
       // Initialize with bias.
       const __mmask16 row_mask =
           (static_cast<std::uint32_t>(1) << residual_rows) - 1;
       const __m512i initial_accum_data =
           _mm512_maskz_loadu_epi32(row_mask, bias_ptr);
-      __m512i initial_accum_data_low = initial_accum_data;
-      __m512i initial_accum_data_high = _mm512_setzero_epi32();
       bias_ptr += bias_ptr_block_increment;
 
       for (int j = 0; j < 16; ++j) {
-        accum_data_v_low[j] = initial_accum_data_low;
-        accum_data_v_high[j] = initial_accum_data_high;
+        accum_data_v[j] = initial_accum_data;
       }
-
-      //
 
       const std::int8_t* lhs_ptr = lhs_col_ptr;
       const std::int8_t* rhs_ptr = rhs_col_ptr;
@@ -154,20 +147,16 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
           __m512i rhs_16_bit_dup_high =
               _mm512_cvtepi8_epi16(dup_rhs_element_high);
 
-          accum_data_v_low[j] = _mm512_add_epi32(
-              accum_data_v_low[j],
+          accum_data_v[j] = _mm512_add_epi32(
+              accum_data_v[j],
               _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
-          accum_data_v_high[j] = _mm512_add_epi32(
-              accum_data_v_high[j],
+          accum_data_v[j] = _mm512_add_epi32(
+              accum_data_v[j],
               _mm512_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
         }
 
         lhs_ptr += 16 * 4;
         rhs_ptr += 16 * 4;
-      }
-      for (int j = 0; j < 16; ++j) {
-        accum_data_v[j] =
-            _mm512_add_epi32(accum_data_v_low[j], accum_data_v_high[j]);
       }
 
       // Move most of this up to bias, or even outside row loop.

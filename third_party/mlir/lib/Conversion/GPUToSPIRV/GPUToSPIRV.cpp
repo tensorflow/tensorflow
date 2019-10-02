@@ -134,7 +134,7 @@ void GPUToSPIRVPass::runOnModule() {
           builder.getI32IntegerAttr(
               static_cast<int32_t>(spirv::AddressingModel::Logical)),
           builder.getI32IntegerAttr(
-              static_cast<int32_t>(spirv::MemoryModel::VulkanKHR)));
+              static_cast<int32_t>(spirv::MemoryModel::GLSL450)));
       OpBuilder moduleBuilder(spvModule.getOperation()->getRegion(0));
       moduleBuilder.clone(*funcOp.getOperation());
       spirvModules.push_back(spvModule);
@@ -142,7 +142,7 @@ void GPUToSPIRVPass::runOnModule() {
   }
 
   /// Dialect conversion to lower the functions with the spirv::ModuleOps.
-  SPIRVBasicTypeConverter basicTypeConverter(context);
+  SPIRVBasicTypeConverter basicTypeConverter;
   SPIRVTypeConverter typeConverter(&basicTypeConverter);
   OwningRewritePatternList patterns;
   patterns.insert<
@@ -166,7 +166,7 @@ void GPUToSPIRVPass::runOnModule() {
   }
 }
 
-ModulePassBase *createGPUToSPIRVPass() { return new GPUToSPIRVPass(); }
+OpPassBase<ModuleOp> *createGPUToSPIRVPass() { return new GPUToSPIRVPass(); }
 
 static PassRegistration<GPUToSPIRVPass>
     pass("convert-gpu-to-spirv", "Convert GPU dialect to SPIR-V dialect");

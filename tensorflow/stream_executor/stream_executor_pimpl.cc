@@ -457,19 +457,20 @@ port::Status StreamExecutor::GetStatus(Stream *stream) {
   return implementation_->GetStatus(stream);
 }
 
-void *StreamExecutor::Allocate(uint64 size) {
+DeviceMemoryBase StreamExecutor::Allocate(uint64 size, int64 memory_space) {
   if (memory_limit_bytes_ > 0 &&
       mem_alloc_bytes_ + size > memory_limit_bytes_) {
     LOG(WARNING) << "Not enough memory to allocate " << size << " on device "
                  << device_ordinal_
                  << " within provided limit. [used=" << mem_alloc_bytes_
                  << ", limit=" << memory_limit_bytes_ << "]";
-    return nullptr;
+    return DeviceMemoryBase();
   }
-  void *buf = implementation_->Allocate(size);
-  VLOG(1) << "Called StreamExecutor::Allocate(size=" << size << ") returns "
-          << buf << StackTraceIfVLOG10();
-  CreateAllocRecord(buf, size);
+  DeviceMemoryBase buf = implementation_->Allocate(size, memory_space);
+  VLOG(1) << "Called StreamExecutor::Allocate(size=" << size
+          << ", memory_space=" << memory_space << ") returns " << buf.opaque()
+          << StackTraceIfVLOG10();
+  CreateAllocRecord(buf.opaque(), size);
 
   return buf;
 }
@@ -866,10 +867,11 @@ StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
       stream_executors_(stream_executors.begin(), stream_executors.end()) {}
 
 port::StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
-    int device_ordinal, uint64 size, bool retry_on_failure) {
+    int device_ordinal, uint64 size, bool retry_on_failure,
+    int64 memory_space) {
   TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
                       GetStreamExecutor(device_ordinal));
-  DeviceMemoryBase result = executor->AllocateArray<uint8>(size);
+  DeviceMemoryBase result = executor->AllocateArray<uint8>(size, memory_space);
   if (size > 0 && result == nullptr) {
     return tensorflow::errors::ResourceExhausted(absl::StrFormat(
         "Failed to allocate request for %s (%uB) on device ordinal %d",

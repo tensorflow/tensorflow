@@ -2,6 +2,7 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "clean_dep",
     "tf_binary_additional_srcs",
     "tf_cc_shared_object",
     "tf_cc_test",
@@ -12,17 +13,17 @@ def tflite_copts():
     copts = [
         "-DFARMHASH_NO_CXX_STRING",
     ] + select({
-        str(Label("//tensorflow:android_arm64")): [
+        clean_dep("//tensorflow:android_arm64"): [
             "-O3",
         ],
-        str(Label("//tensorflow:android_arm")): [
+        clean_dep("//tensorflow:android_arm"): [
             "-mfpu=neon",
             "-O3",
         ],
-        str(Label("//tensorflow:ios_x86_64")): [
+        clean_dep("//tensorflow:ios_x86_64"): [
             "-msse4.1",
         ],
-        str(Label("//tensorflow:windows")): [
+        clean_dep("//tensorflow:windows"): [
             "/DTFL_COMPILE_LIBRARY",
             "/wd4018",  # -Wno-sign-compare
         ],
@@ -33,8 +34,8 @@ def tflite_copts():
 
     return copts
 
-EXPORTED_SYMBOLS = "//tensorflow/lite/java/src/main/native:exported_symbols.lds"
-LINKER_SCRIPT = "//tensorflow/lite/java/src/main/native:version_script.lds"
+EXPORTED_SYMBOLS = clean_dep("//tensorflow/lite/java/src/main/native:exported_symbols.lds")
+LINKER_SCRIPT = clean_dep("//tensorflow/lite/java/src/main/native:version_script.lds")
 
 def tflite_linkopts_unstripped():
     """Defines linker flags to reduce size of TFLite binary.
@@ -49,7 +50,7 @@ def tflite_linkopts_unstripped():
     # In case you wonder why there's no --icf is because the gains were
     # negligible, and created potential compatibility problems.
     return select({
-        "//tensorflow:android": [
+        clean_dep("//tensorflow:android"): [
             "-Wl,--no-export-dynamic",  # Only inc syms referenced by dynamic obj.
             "-Wl,--gc-sections",  # Eliminate unused code and data.
             "-Wl,--as-needed",  # Don't link unused libs.
@@ -70,7 +71,7 @@ def tflite_jni_linkopts_unstripped():
     # In case you wonder why there's no --icf is because the gains were
     # negligible, and created potential compatibility problems.
     return select({
-        "//tensorflow:android": [
+        clean_dep("//tensorflow:android"): [
             "-Wl,--gc-sections",  # Eliminate unused code and data.
             "-Wl,--as-needed",  # Don't link unused libs.
         ],
@@ -80,12 +81,12 @@ def tflite_jni_linkopts_unstripped():
 def tflite_symbol_opts():
     """Defines linker flags whether to include symbols or not."""
     return select({
-        "//tensorflow:android": [
+        clean_dep("//tensorflow:android"): [
             "-latomic",  # Required for some uses of ISO C++11 <atomic> in x86.
         ],
         "//conditions:default": [],
     }) + select({
-        "//tensorflow:debug": [],
+        clean_dep("//tensorflow:debug"): [],
         "//conditions:default": [
             "-s",  # Omit symbol table, for all non debug builds
         ],
@@ -113,11 +114,11 @@ def tflite_jni_binary(
         srcs = []):
     """Builds a jni binary for TFLite."""
     linkopts = linkopts + select({
-        "//tensorflow:macos": [
+        clean_dep("//tensorflow:macos"): [
             "-Wl,-exported_symbols_list,$(location {})".format(exported_symbols),
             "-Wl,-install_name,@rpath/" + name,
         ],
-        "//tensorflow:windows": [],
+        clean_dep("//tensorflow:windows"): [],
         "//conditions:default": [
             "-Wl,--version-script,$(location {})".format(linkscript),
             "-Wl,-soname," + name,
@@ -339,7 +340,6 @@ def generated_test_models():
         "topk",
         "transpose",
         "transpose_conv",
-        "uint8_hardswish",
         "unfused_gru",
         "unidirectional_sequence_lstm",
         "unidirectional_sequence_rnn",
@@ -608,23 +608,30 @@ def gen_zipped_test_file(name, file, toco, flags):
         srcs = [file],
     )
 
-def gen_selected_ops(name, model):
+def gen_selected_ops(name, model, namespace = "", **kwargs):
     """Generate the library that includes only used ops.
 
     Args:
       name: Name of the generated library.
       model: TFLite model to interpret.
+      namespace: Namespace in which to put RegisterSelectedOps.
+      **kwargs: Additional kwargs to pass to genrule.
     """
     out = name + "_registration.cc"
-    tool = "//tensorflow/lite/tools:generate_op_registrations"
+    tool = clean_dep("//tensorflow/lite/tools:generate_op_registrations")
     tflite_path = "//tensorflow/lite"
+
+    # isinstance is not supported in skylark.
+    if type(model) != type([]):
+        model = [model]
     native.genrule(
         name = name,
-        srcs = [model],
+        srcs = model,
         outs = [out],
-        cmd = ("$(location %s) --input_model=$(location %s) --output_registration=$(location %s) --tflite_path=%s") %
-              (tool, model, out, tflite_path[2:]),
+        cmd = ("$(location %s) --namespace=%s --output_registration=$(location %s) --tflite_path=%s $(SRCS)") %
+              (tool, namespace, out, tflite_path[2:]),
         tools = [tool],
+        **kwargs
     )
 
 def flex_dep(target_op_sets):
@@ -641,7 +648,7 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags):
       model_name: Name of the model to test (must be also listed in the 'data'
         dependencies)
       data: List of BUILD targets linking the data.
-      failure_type: List of failure types (none, toco, crash, inference)
+      failure_type: List of failure types (none, toco, crash, inference, evaluation)
         expected for the corresponding combinations of op sets
         ("TFLITE_BUILTINS", "TFLITE_BUILTINS,SELECT_TF_OPS", "SELECT_TF_OPS").
       tags: List of strings of additional tags.

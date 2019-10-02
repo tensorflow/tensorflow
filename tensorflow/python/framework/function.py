@@ -38,7 +38,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
-from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 
@@ -711,7 +710,7 @@ class _FuncGraph(ops.Graph):
     # _FuncGraph.
     self.outputs = []
     # Maps external tensor -> internal tensor (e.g. input placeholder).
-    self._captured = object_identity.ObjectIdentityDictionary()
+    self._captured = {}
     # The external tensors that have been captured as inputs and must be passed
     # to this function (empty if capturing by value, otherwise these are the
     # keys of _captured).
@@ -724,6 +723,11 @@ class _FuncGraph(ops.Graph):
     self.extra_vars = []
 
   # pylint: disable=g-doc-return-or-yield
+
+  @property
+  def outer_graph(self):
+    """The graph active when this _FuncGraph was created."""
+    return self._outer_graph
 
   @tf_contextlib.contextmanager
   def container(self, container_name):
@@ -809,13 +813,18 @@ class _FuncGraph(ops.Graph):
 
   def capture(self, tensor, name=None):
     """Adds the given tensor to this graph and returns the captured tensor."""
-    if tensor in self._captured:
+    if tensor.experimental_ref() in self._captured:
       # Captured already.
-      return self._captured[tensor]
+      return self._captured[tensor.experimental_ref()]
     elif self._capture_by_value:
       return self._add_tensor_and_parents(tensor)
     else:
       return self._capture_tensor_as_extra_input(tensor, name)
+
+  @property
+  def captures(self):
+    """Pairs of tensors and captured tensor."""
+    return [(k.deref(), v) for k, v in self._captured.items()]
 
   def _capture_tensor_as_extra_input(self, tensor, name=None):
     # Substitute with a placeholder.
@@ -839,7 +848,7 @@ class _FuncGraph(ops.Graph):
                                   compat.as_bytes(handle_data))
     # pylint: enable=protected-access
     self.inputs.append(ph)
-    self._captured[tensor] = ph
+    self._captured[tensor.experimental_ref()] = ph
     self.extra_args.append(ph)
     if _is_guaranteed_const(tensor):
       with ops.control_dependencies(None):
@@ -872,7 +881,7 @@ class _FuncGraph(ops.Graph):
         op_def=op_def)
 
     for t, captured_t in zip(op.outputs, captured_op.outputs):
-      self._captured[t] = captured_t
+      self._captured[t.experimental_ref()] = captured_t
 
     return captured_op
 

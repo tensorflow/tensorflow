@@ -71,7 +71,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
 
       # pylint: enable=cell-var-from-loop
 
-      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=output_dtypes)
+      self._test_loop_fn(loop_fn, 3)
 
   def test_unary_cwise_complex_ops(self):
     complex_ops = [
@@ -149,7 +149,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
 
       # pylint: enable=cell-var-from-loop
 
-      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=x.dtype)
+      self._test_loop_fn(loop_fn, 3)
 
   def test_binary_cwise_ops(self):
     logical_ops = [
@@ -218,7 +218,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
         return outputs
       # pylint: enable=cell-var-from-loop
 
-      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=output_dtypes)
+      self._test_loop_fn(loop_fn, 3)
 
   def test_approximate_equal(self):
     x = random_ops.random_uniform([3, 5])
@@ -229,7 +229,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
       y1 = array_ops.gather(y, i)
       return math_ops.approximate_equal(x1, y1)
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.bool])
+    self._test_loop_fn(loop_fn, 3)
 
   def test_addn(self):
     x = random_ops.random_uniform([2, 3, 5])
@@ -252,7 +252,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
       x_0 = array_ops.gather(x, 0)
       return math_ops.cross(x_i, y_i), math_ops.cross(x_0, y_i)
 
-    self._test_loop_fn(loop_fn, 4, loop_fn_dtypes=[dtypes.float32] * 2)
+    self._test_loop_fn(loop_fn, 4)
 
   def test_matmul(self):
     for tr_a in (True, False):
@@ -358,7 +358,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
 
           # pylint: enable=cell-var-from-loop
 
-          self._test_loop_fn(loop_fn, 2, loop_fn_dtypes=[dtypes.bool])
+          self._test_loop_fn(loop_fn, 2)
 
   def test_cum_sum(self):
     x = random_ops.random_uniform([2, 3, 4, 5])
@@ -432,7 +432,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
           if stacked_bias:
             out_dtypes = out_dtypes + [dtypes.int32]
           self._test_loop_fn(
-              loop_fn, 2, loop_fn_dtypes=out_dtypes)
+              loop_fn, 2)
 
   def test_unsorted_segment_sum(self):
     t = random_ops.random_uniform([3, 3, 2])
@@ -453,7 +453,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
                   math_ops.unsorted_segment_sum(data, seg_ids_0, num_segments))
         # pylint: enable=cell-var-from-loop
 
-        self._test_loop_fn(loop_fn, 3, [dtypes.float32] * 3)
+        self._test_loop_fn(loop_fn, 3)
 
   @parameterized.parameters((math_ops.sparse_segment_sum_v2, True),
                             (math_ops.sparse_segment_mean_v2, True),
@@ -493,8 +493,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
         ]
       return outputs
 
-    num_outputs = 8 if with_num_segments else 4
-    self._test_loop_fn(loop_fn, 3, [dtypes.float32] * num_outputs)
+    self._test_loop_fn(loop_fn, 3)
 
   @parameterized.parameters(math_ops.sparse_segment_mean_grad,
                             math_ops.sparse_segment_sqrt_n_grad)
@@ -519,7 +518,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
               math_ops.cast(array_ops.gather(y, i), dtypes.int32))
 
     self._test_loop_fn(
-        loop_fn, 2, loop_fn_dtypes=[dtypes.float32, dtypes.int32])
+        loop_fn, 2)
 
   def test_tanh_axpy(self):
     a = constant_op.constant(3.)
@@ -628,7 +627,7 @@ class LinalgTest(PForTestCase):
     def loop_fn(i):
       return linalg_ops.log_matrix_determinant(array_ops.gather(x, i))
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
+    self._test_loop_fn(loop_fn, 3)
 
   def test_matrix_triangular_solve(self):
     for lower in (True, False):
@@ -655,6 +654,14 @@ class LinalgTest(PForTestCase):
 
             self._test_loop_fn(loop_fn, 2)
 
+  def test_self_adjoint_eig(self):
+    z = random_ops.random_normal([2, 3, 3])
+    x = z + array_ops.matrix_transpose(z)  # Ensure self-adjoint.
+
+    def loop_fn(i):
+      return linalg_ops.self_adjoint_eig(array_ops.gather(x, i))
+
+    self._test_loop_fn(loop_fn, 2)
 
 if __name__ == "__main__":
   test.main()

@@ -38,7 +38,7 @@ pkg_tar(
 pkg_tar(
     name = "libtensorflow_jni",
     srcs = [
-        "include/tensorflow/jni/LICENSE",
+        ":THIRD_PARTY_TF_JNI_LICENSES",
         "//:LICENSE",
         "//tensorflow/java:libtensorflow_jni",
     ],
@@ -123,10 +123,9 @@ pkg_tar(
 pkg_tar(
     name = "clicenses",
     srcs = [
-        ":include/tensorflow/c/LICENSE",
+        ":THIRD_PARTY_TF_C_LICENSES",
         "//:LICENSE",
     ],
-    package_dir = "include/tensorflow/c",
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
     # and https://github.com/bazelbuild/bazel/issues/1580
@@ -150,11 +149,11 @@ genrule(
         "@farmhash_archive//:COPYING",
         "@fft2d//:fft2d/readme2d.txt",
         "@gemmlowp//:LICENSE",
-        "@gif_archive//:COPYING",
+        "@gif//:COPYING",
         "@highwayhash//:LICENSE",
         "@hwloc//:COPYING",
         "@icu//:icu4c/LICENSE",
-        "@jpeg//:LICENSE.md",
+        "@libjpeg_turbo//:LICENSE.md",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@local_config_tensorrt//:LICENSE",
@@ -202,7 +201,7 @@ genrule(
     ) + if_rocm([
         "@rocprim_archive//:LICENSE.txt",
     ]) + tf_additional_license_deps(),
-    outs = ["include/tensorflow/c/LICENSE"],
+    outs = ["THIRD_PARTY_TF_C_LICENSES"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
     tools = [":concat_licenses.sh"],
 )
@@ -222,11 +221,11 @@ genrule(
         "@farmhash_archive//:COPYING",
         "@fft2d//:fft2d/readme2d.txt",
         "@gemmlowp//:LICENSE",
-        "@gif_archive//:COPYING",
+        "@gif//:COPYING",
         "@highwayhash//:LICENSE",
         "@hwloc//:COPYING",
         "@icu//:icu4j/main/shared/licenses/LICENSE",
-        "@jpeg//:LICENSE.md",
+        "@libjpeg_turbo//:LICENSE.md",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@local_config_tensorrt//:LICENSE",
@@ -270,7 +269,7 @@ genrule(
     ]) + if_rocm([
         "@rocprim_archive//:LICENSE.txt",
     ]) + tf_additional_license_deps(),
-    outs = ["include/tensorflow/jni/LICENSE"],
+    outs = ["THIRD_PARTY_TF_JNI_LICENSES"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
     tools = [":concat_licenses.sh"],
 )

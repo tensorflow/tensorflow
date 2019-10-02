@@ -22,6 +22,7 @@
 #ifndef MLIR_IR_FUNCTION_H
 #define MLIR_IR_FUNCTION_H
 
+#include "mlir/Analysis/CallInterfaces.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/FunctionSupport.h"
 #include "mlir/IR/OpDefinition.h"
@@ -37,7 +38,8 @@ namespace mlir {
 /// Function arguments or attributes that establish a symbolic connection(e.g.
 /// symbols referenced by name via a string attribute).
 class FuncOp : public Op<FuncOp, OpTrait::ZeroOperands, OpTrait::ZeroResult,
-                         OpTrait::IsIsolatedFromAbove, OpTrait::FunctionLike> {
+                         OpTrait::IsIsolatedFromAbove, OpTrait::FunctionLike,
+                         CallableOpInterface::Trait> {
 public:
   using Op::Op;
   using Op::print;
@@ -52,15 +54,15 @@ public:
                        ArrayRef<NamedAttribute> attrs,
                        ArrayRef<NamedAttributeList> argAttrs);
 
-  static void build(Builder *builder, OperationState *result, StringRef name,
+  static void build(Builder *builder, OperationState &result, StringRef name,
                     FunctionType type, ArrayRef<NamedAttribute> attrs);
-  static void build(Builder *builder, OperationState *result, StringRef name,
+  static void build(Builder *builder, OperationState &result, StringRef name,
                     FunctionType type, ArrayRef<NamedAttribute> attrs,
                     ArrayRef<NamedAttributeList> argAttrs);
 
   /// Operation hooks.
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
+  static ParseResult parse(OpAsmParser &parser, OperationState &result);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
 
   /// Returns the type of this function.
@@ -103,6 +105,28 @@ public:
   /// to match the signature of the function. The newly inserted entry block is
   /// returned.
   Block *addEntryBlock();
+
+  /// Add a normal block to the end of the function's block list. The function
+  /// should at least already have an entry block.
+  Block *addBlock();
+
+  //===--------------------------------------------------------------------===//
+  // CallableOpInterface
+  //===--------------------------------------------------------------------===//
+
+  /// Returns a region on the current operation that the given callable refers
+  /// to. This may return null in the case of an external callable object, e.g.
+  /// an external function.
+  Region *getCallableRegion(CallInterfaceCallable callable) {
+    assert(callable.get<SymbolRefAttr>().getValue() == getName());
+    return isExternal() ? nullptr : &getBody();
+  }
+
+  /// Returns all of the callable regions of this operation.
+  void getCallableRegions(SmallVectorImpl<Region *> &callables) {
+    if (!isExternal())
+      callables.push_back(&getBody());
+  }
 
 private:
   // This trait needs access to `getNumFuncArguments` and `verifyType` hooks
