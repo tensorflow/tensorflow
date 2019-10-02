@@ -811,7 +811,8 @@ class CudaEventRecorder {
 
     if (it == context_infos_.end()) {
       uint32 context_id = 0;
-      RETURN_IF_CUPTI_ERROR(cuptiGetContextId(context, &context_id));
+      RETURN_IF_CUPTI_ERROR(
+          cupti_interface_->GetContextId(context, &context_id));
       ContextInfo ctx_info = {context_id};
       it = context_infos_.emplace(context, ctx_info).first;
     }
@@ -838,9 +839,11 @@ class CudaEventRecorder {
     int index = stream ? ++ctx_info->num_streams : 0;
     uint32 stream_id = 0;
 #if defined(CUDA_API_PER_THREAD_DEFAULT_STREAM)
-    RETURN_IF_CUPTI_ERROR(cuptiGetStreamIdEx(context, stream, 1, &stream_id));
+    RETURN_IF_CUPTI_ERROR(
+        cupti_interface_->GetStreamIdEx(context, stream, 1, &stream_id));
 #else
-    RETURN_IF_CUPTI_ERROR(cuptiGetStreamIdEx(context, stream, 0, &stream_id));
+    RETURN_IF_CUPTI_ERROR(
+        cupti_interface_->GetStreamIdEx(context, stream, 0, &stream_id));
 #endif
 
     StreamInfo stream_info = {stream_id, static_cast<std::string>(name), index,
