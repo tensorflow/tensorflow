@@ -1589,7 +1589,6 @@ class MklQuantizedConv2DOp
       // TODO(intel-tf): Re-enable bias caching. Currently, the graph obtained
       // after quantize_graph.py does not run with correct accuracy with this
       // feature enabled.
-
       is_bias_const_ = false;
       if (!is_bias_const_ || IsBiasCacheEmpty(context)) {
         size_t depth = min_filter_vector.NumElements();
