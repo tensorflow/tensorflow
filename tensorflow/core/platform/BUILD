@@ -178,9 +178,8 @@ cc_library(
     name = "dynamic_annotations",
     hdrs = ["dynamic_annotations.h"],
     deps = [
-        ":dynamic_annotations_impl",
         ":platform",
-    ],
+    ] + tf_mobile_aware_deps("dynamic_annotations_impl"),
 )
 
 cc_library(
