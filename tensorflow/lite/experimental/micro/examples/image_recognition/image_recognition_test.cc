@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/micro/examples/micro_recognition/image_recognition_model.h"
-#include "tensorflow/lite/experimental/micro/examples/micro_recognition/util.h"
+#include "tensorflow/lite/experimental/micro/examples/image_recognition/image_recognition_model.h"
+#include "tensorflow/lite/experimental/micro/examples/image_recognition/util.h"
 #include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 #include "tensorflow/lite/experimental/micro/micro_interpreter.h"
@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 
-#include "tensorflow/lite/experimental/micro/examples/micro_recognition/first_10_cifar_images.h"
+#include "tensorflow/lite/experimental/micro/examples/image_recognition/first_10_cifar_images.h"
 
 #define IMAGE_ARRAY \
   tensorflow_lite_experimental_micro_tools_make_downloads_cifar10_test_batch_bin
@@ -33,7 +33,7 @@ limitations under the License.
 
 TF_LITE_MICRO_TESTS_BEGIN
 
-TF_LITE_MICRO_TEST(TestMicroRecognitionInvoke) {
+TF_LITE_MICRO_TEST(TestImageRecognitionInvoke) {
   tflite::MicroErrorReporter micro_error_reporter;
   tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/micro/examples/micro_recognition/image_recognition_model.h"
+#include "tensorflow/lite/experimental/micro/examples/image_recognition/image_recognition_model.h"
 
 const unsigned char image_recognition_model_data[] = {
     0x1c, 0x00, 0x00, 0x00, 0x54, 0x46, 0x4c, 0x33, 0x00, 0x00, 0x00, 0x00,

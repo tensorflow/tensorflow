@@ -1,4 +1,4 @@
-# Micro Recognition Example
+# Image Recognition Example
 
 ## Table of Contents
  - [Introduction](#introduction)
@@ -11,7 +11,11 @@
 
 ## Introduction
 This example shows how you can use Tensorflow Lite Micro to perform image
-recognition on a [STM32F746 discovery kit](https://www.st.com/en/evaluation-tools/32f746gdiscovery.html).
+recognition on a [STM32F746 discovery kit](https://www.st.com/en/evaluation-tools/32f746gdiscovery.html)
+with a STM32F4DIS-CAM camera module attached.
+It classifies the captured image into 1 of 10 different classes, and those
+classes are "Plane", "Car", "Bird", "Cat", "Deer", "Dog", "Frog", "Horse",
+"Ship", "Truck".
 
 ## Hardware
 [STM32F746G-DISCO board (Cortex-M7)](https://www.st.com/en/evaluation-tools/32f746gdiscovery.html)\
@@ -22,7 +26,7 @@ These instructions have been tested on Ubuntu 16.04.
 
 ### Building the test case
 ```
-$ make -f tensorflow/lite/experimental/micro/tools/make/Makefile micro_recognition_test
+$ make -f tensorflow/lite/experimental/micro/tools/make/Makefile image_recognition_test
 ```
 This will build and run the test case. As input, the test case uses
 the first 10 images of the test batch included in the [CIFAR10](https://www.cs.toronto.edu/~kriz/cifar.html)
@@ -46,14 +50,14 @@ for Windows, Mac OS X and Linux.
 #### Compiling and flashing
 In order to generate the mbed project, run the following command:
 ```
-$ make -f tensorflow/lite/experimental/micro/tools/make/Makefile TAGS=disco_f746ng generate_micro_recognition_mbed_project
+$ make -f tensorflow/lite/experimental/micro/tools/make/Makefile TAGS=disco_f746ng generate_image_recognition_mbed_project
 ```
 This will copy all of the necessary files needed to build and flash the
 application.
 
 Navigate to the output folder:
 ```
-$ cd tensorflow/lite/experimental/micro/tools/make/gen/linux_x86_64/prj/micro_recognition/mbed/
+$ cd tensorflow/lite/experimental/micro/tools/make/gen/linux_x86_64/prj/image_recognition/mbed/
 ```
 
 The following instructions for compiling and flashing can also be found in the
@@ -63,14 +67,6 @@ To load the dependencies required, run:
 ```
 $ mbed config root .
 $ mbed deploy
-```
-
-TensorFlow requires C++ 11, so the profiles needs to be updated:
-```
-$ python -c 'import fileinput, glob;
-for filename in glob.glob("mbed-os/tools/profiles/*.json"):
-	for line in fileinput.input(filename, inplace=True):
-		print(line.replace("\"-std=gnu++98\"","\"-std=gnu++11\", \"-fpermissive\""))'
 ```
 
 In order to compile, run:
