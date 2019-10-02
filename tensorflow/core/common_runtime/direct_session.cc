@@ -555,7 +555,7 @@ Status DirectSession::RunInternal(
   ExecutorBarrier* barrier = new ExecutorBarrier(
       num_executors, run_state.rendez, [&run_state](const Status& ret) {
         {
-          mutex_lock l(run_state.mu_);
+          mutex_lock l(run_state.mu);
           run_state.status.Update(ret);
         }
         run_state.executors_done.Notify();
@@ -705,7 +705,7 @@ Status DirectSession::RunInternal(
   if (!cancellation_manager_->DeregisterCallback(cancellation_token)) {
     // The step has been cancelled: make sure we don't attempt to receive the
     // outputs as this would make it block forever.
-    mutex_lock l(run_state.mu_);
+    mutex_lock l(run_state.mu);
     run_state.status.Update(errors::Cancelled("Run call was cancelled"));
   }
 
@@ -714,7 +714,7 @@ Status DirectSession::RunInternal(
   }
 
   {
-    mutex_lock l(run_state.mu_);
+    mutex_lock l(run_state.mu);
     TF_RETURN_IF_ERROR(run_state.status);
   }
 
@@ -922,7 +922,7 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   ExecutorBarrier* barrier = new ExecutorBarrier(
       num_executors, run_state->rendez, [run_state](const Status& ret) {
         if (!ret.ok()) {
-          mutex_lock l(run_state->mu_);
+          mutex_lock l(run_state->mu);
           run_state->status.Update(ret);
         }
         run_state->executors_done.Notify();
@@ -1033,7 +1033,7 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
     bool done = true;
     if (s.ok()) {
       {
-        mutex_lock l(run_state->mu_);
+        mutex_lock l(run_state->mu);
         if (!run_state->status.ok()) {
           LOG(WARNING) << "An error unrelated to this prun has been detected. "
                        << run_state->status;
@@ -1474,12 +1474,15 @@ Status DirectSession::GetOrCreateExecutors(
   // The executor_lock_ is intentionally released while executors are
   // being created.
   CallableOptions callable_options;
+  callable_options.mutable_feed()->Reserve(inputs_sorted.size());
   for (const string& input : inputs_sorted) {
     callable_options.add_feed(input);
   }
+  callable_options.mutable_fetch()->Reserve(outputs_sorted.size());
   for (const string& output : outputs_sorted) {
     callable_options.add_fetch(output);
   }
+  callable_options.mutable_target()->Reserve(tn_sorted.size());
   for (const string& target : tn_sorted) {
     callable_options.add_target(target);
   }
@@ -1748,7 +1751,7 @@ void DirectSession::WaitForNotification(RunState* run_state,
       WaitForNotification(&run_state->executors_done, timeout_in_ms);
   if (!status.ok()) {
     {
-      mutex_lock l(run_state->mu_);
+      mutex_lock l(run_state->mu);
       run_state->status.Update(status);
     }
     cm->StartCancel();

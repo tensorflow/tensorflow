@@ -189,8 +189,8 @@ class DirectSession : public Session {
   // is "notified" when all executors are done. 'pending_inputs' are the set
   // of pending feeds and 'pending_outputs' are the set of pending fetches.
   struct RunState {
-    mutex mu_;
-    Status status GUARDED_BY(mu_);
+    mutex mu;
+    Status status GUARDED_BY(mu);
     IntraProcessRendezvous* rendez = nullptr;
     std::unique_ptr<CollectiveExecutor::Handle> collective_executor;
     std::unique_ptr<StepStatsCollector> collector;
@@ -213,7 +213,8 @@ class DirectSession : public Session {
   };
 
   struct RunStateArgs {
-    RunStateArgs(const DebugOptions& options) : debug_options(options) {}
+    explicit RunStateArgs(const DebugOptions& options)
+        : debug_options(options) {}
 
     bool is_partial_run = false;
     string handle;
