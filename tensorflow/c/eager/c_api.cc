@@ -400,7 +400,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     ctx->context->ClearCaches();
     grpc_server->worker_env()->rendezvous_mgr->Cleanup(context_id);
 
-    remote_device_mgr = std::move(ctx->context->ReleaseRemoteDeviceMgr());
+    remote_device_mgr = ctx->context->ReleaseRemoteDeviceMgr();
     if (remote_device_mgr == nullptr) {
       LOG_AND_RETURN_IF_ERROR(tensorflow::errors::InvalidArgument(
           "Updating context with invalid a valid set of remote devices."));
