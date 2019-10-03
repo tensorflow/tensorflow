@@ -420,8 +420,25 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
       for (int d = 0; d < params.depth; d += kAvx8bitInnerSize) {
         const __m256i lhs_data =
             _mm256_load_si256(reinterpret_cast<const __m256i*>(lhs_ptr));
-        __m256i rhs_data =
+        __m256i rhs_data_8bit =
             _mm256_load_si256(reinterpret_cast<const __m256i*>(rhs_ptr));
+
+        // Each "int32" is two 16-bit RHS values, sign extended from 8-bit.
+        std::int32_t rhs_data[16];
+        const __m128i rhs_data_bottom_lane =
+            _mm256_castsi256_si128(rhs_data_8bit);
+        const __m128i rhs_data_top_lane =
+            _mm256_extracti128_si256(rhs_data_8bit, 1);
+        const __m256i rhs_16_bit_dup_low =
+            _mm256_cvtepi8_epi16(rhs_data_bottom_lane);
+        const __m256i rhs_16_bit_dup_high =
+            _mm256_cvtepi8_epi16(rhs_data_top_lane);
+        // Now that we have cast the RHS data, we store it so that each value
+        // can be separately loaded in the accumulation loop.
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(rhs_data),
+                            rhs_16_bit_dup_low);
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(rhs_data + 8),
+                            rhs_16_bit_dup_high);
 
         const __m256i lhs_data_split =
             _mm256_shuffle_epi8(lhs_data, splitter_idx);
@@ -436,19 +453,13 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
         // Take bytes 2, 3, 6, 7, 10, 11, ... expanded to 16-bit.
         const __m256i lhs_16_bit_high = _mm256_permute2x128_si256(
             lhs_data_split_expand_bottom, lhs_data_split_expand_top, 0x31);
-
-        const __m128i rhs_data_bottom_lane = _mm256_castsi256_si128(rhs_data);
         // Accumulate for column 0.
         {
-          const __m128i dup_rhs_element_low =
-              _mm_set1_epi16(_mm_extract_epi16(rhs_data_bottom_lane, 0));
-          const __m128i dup_rhs_element_high =
-              _mm_set1_epi16(_mm_extract_epi16(rhs_data_bottom_lane, 1));
+          const std::int32_t low_rhs_value = rhs_data[0];
+          const std::int32_t high_rhs_value = rhs_data[1];
 
-          const __m256i rhs_16_bit_dup_low =
-              _mm256_cvtepi8_epi16(dup_rhs_element_low);
-          const __m256i rhs_16_bit_dup_high =
-              _mm256_cvtepi8_epi16(dup_rhs_element_high);
+          const __m256i rhs_16_bit_dup_low = _mm256_set1_epi32(low_rhs_value);
+          const __m256i rhs_16_bit_dup_high = _mm256_set1_epi32(high_rhs_value);
 
           accum_data_v0 = _mm256_add_epi32(
               accum_data_v0,
@@ -459,15 +470,11 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
         }
         // Accumulate for column 1.
         {
-          const __m128i dup_rhs_element_low =
-              _mm_set1_epi16(_mm_extract_epi16(rhs_data_bottom_lane, 2));
-          const __m128i dup_rhs_element_high =
-              _mm_set1_epi16(_mm_extract_epi16(rhs_data_bottom_lane, 3));
+          const std::int32_t low_rhs_value = rhs_data[2];
+          const std::int32_t high_rhs_value = rhs_data[3];
 
-          const __m256i rhs_16_bit_dup_low =
-              _mm256_cvtepi8_epi16(dup_rhs_element_low);
-          const __m256i rhs_16_bit_dup_high =
-              _mm256_cvtepi8_epi16(dup_rhs_element_high);
+          const __m256i rhs_16_bit_dup_low = _mm256_set1_epi32(low_rhs_value);
+          const __m256i rhs_16_bit_dup_high = _mm256_set1_epi32(high_rhs_value);
 
           accum_data_v1 = _mm256_add_epi32(
               accum_data_v1,
@@ -478,15 +485,11 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
         }
         // Accumulate for column 2.
         {
-          const __m128i dup_rhs_element_low =
-              _mm_set1_epi16(_mm_extract_epi16(rhs_data_bottom_lane, 4));
-          const __m128i dup_rhs_element_high =
-              _mm_set1_epi16(_mm_extract_epi16(rhs_data_bottom_lane, 5));
+          const std::int32_t low_rhs_value = rhs_data[4];
+          const std::int32_t high_rhs_value = rhs_data[5];
 
-          const __m256i rhs_16_bit_dup_low =
-              _mm256_cvtepi8_epi16(dup_rhs_element_low);
-          const __m256i rhs_16_bit_dup_high =
-              _mm256_cvtepi8_epi16(dup_rhs_element_high);
+          const __m256i rhs_16_bit_dup_low = _mm256_set1_epi32(low_rhs_value);
+          const __m256i rhs_16_bit_dup_high = _mm256_set1_epi32(high_rhs_value);
 
           accum_data_v2 = _mm256_add_epi32(
               accum_data_v2,
@@ -497,15 +500,11 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
         }
         // Accumulate for column 3.
         {
-          const __m128i dup_rhs_element_low =
-              _mm_set1_epi16(_mm_extract_epi16(rhs_data_bottom_lane, 6));
-          const __m128i dup_rhs_element_high =
-              _mm_set1_epi16(_mm_extract_epi16(rhs_data_bottom_lane, 7));
+          const std::int32_t low_rhs_value = rhs_data[6];
+          const std::int32_t high_rhs_value = rhs_data[7];
 
-          const __m256i rhs_16_bit_dup_low =
-              _mm256_cvtepi8_epi16(dup_rhs_element_low);
-          const __m256i rhs_16_bit_dup_high =
-              _mm256_cvtepi8_epi16(dup_rhs_element_high);
+          const __m256i rhs_16_bit_dup_low = _mm256_set1_epi32(low_rhs_value);
+          const __m256i rhs_16_bit_dup_high = _mm256_set1_epi32(high_rhs_value);
 
           accum_data_v3 = _mm256_add_epi32(
               accum_data_v3,
@@ -514,18 +513,13 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
               accum_data_v3,
               _mm256_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
         }
-        const __m128i rhs_data_top_lane = _mm256_extracti128_si256(rhs_data, 1);
         // Accumulate for column 4.
         {
-          const __m128i dup_rhs_element_low =
-              _mm_set1_epi16(_mm_extract_epi16(rhs_data_top_lane, 0));
-          const __m128i dup_rhs_element_high =
-              _mm_set1_epi16(_mm_extract_epi16(rhs_data_top_lane, 1));
+          const std::int32_t low_rhs_value = rhs_data[8];
+          const std::int32_t high_rhs_value = rhs_data[9];
 
-          const __m256i rhs_16_bit_dup_low =
-              _mm256_cvtepi8_epi16(dup_rhs_element_low);
-          const __m256i rhs_16_bit_dup_high =
-              _mm256_cvtepi8_epi16(dup_rhs_element_high);
+          const __m256i rhs_16_bit_dup_low = _mm256_set1_epi32(low_rhs_value);
+          const __m256i rhs_16_bit_dup_high = _mm256_set1_epi32(high_rhs_value);
 
           accum_data_v4 = _mm256_add_epi32(
               accum_data_v4,
@@ -536,15 +530,11 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
         }
         // Accumulate for column 5.
         {
-          const __m128i dup_rhs_element_low =
-              _mm_set1_epi16(_mm_extract_epi16(rhs_data_top_lane, 2));
-          const __m128i dup_rhs_element_high =
-              _mm_set1_epi16(_mm_extract_epi16(rhs_data_top_lane, 3));
+          const std::int32_t low_rhs_value = rhs_data[10];
+          const std::int32_t high_rhs_value = rhs_data[11];
 
-          const __m256i rhs_16_bit_dup_low =
-              _mm256_cvtepi8_epi16(dup_rhs_element_low);
-          const __m256i rhs_16_bit_dup_high =
-              _mm256_cvtepi8_epi16(dup_rhs_element_high);
+          const __m256i rhs_16_bit_dup_low = _mm256_set1_epi32(low_rhs_value);
+          const __m256i rhs_16_bit_dup_high = _mm256_set1_epi32(high_rhs_value);
 
           accum_data_v5 = _mm256_add_epi32(
               accum_data_v5,
@@ -555,15 +545,11 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
         }
         // Accumulate for column 6.
         {
-          const __m128i dup_rhs_element_low =
-              _mm_set1_epi16(_mm_extract_epi16(rhs_data_top_lane, 4));
-          const __m128i dup_rhs_element_high =
-              _mm_set1_epi16(_mm_extract_epi16(rhs_data_top_lane, 5));
+          const std::int32_t low_rhs_value = rhs_data[12];
+          const std::int32_t high_rhs_value = rhs_data[13];
 
-          const __m256i rhs_16_bit_dup_low =
-              _mm256_cvtepi8_epi16(dup_rhs_element_low);
-          const __m256i rhs_16_bit_dup_high =
-              _mm256_cvtepi8_epi16(dup_rhs_element_high);
+          const __m256i rhs_16_bit_dup_low = _mm256_set1_epi32(low_rhs_value);
+          const __m256i rhs_16_bit_dup_high = _mm256_set1_epi32(high_rhs_value);
 
           accum_data_v6 = _mm256_add_epi32(
               accum_data_v6,
@@ -574,15 +560,11 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
         }
         // Accumulate for column 7.
         {
-          const __m128i dup_rhs_element_low =
-              _mm_set1_epi16(_mm_extract_epi16(rhs_data_top_lane, 6));
-          const __m128i dup_rhs_element_high =
-              _mm_set1_epi16(_mm_extract_epi16(rhs_data_top_lane, 7));
+          const std::int32_t low_rhs_value = rhs_data[14];
+          const std::int32_t high_rhs_value = rhs_data[15];
 
-          const __m256i rhs_16_bit_dup_low =
-              _mm256_cvtepi8_epi16(dup_rhs_element_low);
-          const __m256i rhs_16_bit_dup_high =
-              _mm256_cvtepi8_epi16(dup_rhs_element_high);
+          const __m256i rhs_16_bit_dup_low = _mm256_set1_epi32(low_rhs_value);
+          const __m256i rhs_16_bit_dup_high = _mm256_set1_epi32(high_rhs_value);
 
           accum_data_v7 = _mm256_add_epi32(
               accum_data_v7,
