@@ -258,15 +258,12 @@ func @trivial_maps() {
 }
 
 // CHECK-LABEL: func @partial_fold_map
-func @partial_fold_map(%arg0: memref<index>, %arg1: index, %arg2: index) {
+func @partial_fold_map(%arg1: index, %arg2: index) -> index {
   // TODO: Constant fold one index into affine.apply
   %c42 = constant 42 : index
   %2 = affine.apply (d0, d1) -> (d0 - d1) (%arg1, %c42)
-  store %2, %arg0[] : memref<index>
   // CHECK: [[X:%[0-9]+]] = affine.apply [[MAP15]]()[%{{.*}}]
-  // CHECK-NEXT: store [[X]], %{{.*}}
-
-  return
+  return %2 : index
 }
 
 // CHECK-LABEL: func @symbolic_composition_a(%{{.*}}: index, %{{.*}}: index) -> index {
