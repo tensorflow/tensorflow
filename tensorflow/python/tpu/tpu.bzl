@@ -21,6 +21,13 @@ def tpu_py_test(
     """
     tags = tags or []
 
+    tags = [
+        "tpu",
+        "no_pip",
+        "nogpu",
+        "nomac",
+    ] + tags
+
     # TODO(rsopher): do something more useful here.
     native.py_test(
         name = name,
