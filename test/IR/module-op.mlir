@@ -43,3 +43,15 @@ module {
 // CHECK: }
 %0 = "op"() : () -> i32
 
+// -----
+
+// CHECK-LABEL: module @foo
+// CHECK-NOT: attributes
+module @foo {
+  // CHECK: module
+  module {
+    // CHECK: module @bar attributes
+    module @bar attributes {foo.bar} {
+    }
+  }
+}
