@@ -30,17 +30,17 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
-bool NeedStrideCorrection(const OperationDef& op_def, const int2& stride) {
-  return op_def.batch_support && stride.x != 1;
-}
-
 std::string GenerateConvCode(
     const OperationDef& op_def, const int3& block_size, bool is1x1,
-    bool adreno4xx_optimization, const int2& stride, const CLDevice& device,
+    bool adreno4xx_optimization, bool stride_correction, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   std::string c = GetCommonDefines(op_def.precision);
-  TensorCodeGenerator src_tensor("src_data", "src_size", op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", op_def.dst_tensors[0]);
+  TensorCodeGenerator src_tensor("src_data",
+                                 {"src_size.x", "src_size.y", "src_size.z"},
+                                 op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data",
+                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
+                                 op_def.dst_tensors[0]);
 
   const bool is_image_buffer =
       op_def.src_tensors[0].storage_type == TensorStorageType::IMAGE_BUFFER;
@@ -97,25 +97,21 @@ std::string GenerateConvCode(
     c += "    int2 kernel_size,              \n";
     c += "    int2 dilation,                 \n";
   }
-  if (NeedStrideCorrection(op_def, stride)) {
-    c += "    int BATCH_SIZE,  \n";
-  }
   c += "    int2 stride,                     \n";
   c += "    int2 padding                     \n";
   c += ") {\n";
   c += "  int X = get_global_id(0) * " + std::to_string(block_size.x) + ";\n";
   c += "  int Y = get_global_id(1) * " + std::to_string(block_size.y) + ";\n";
   c += "  int Z = get_global_id(2) * " + std::to_string(block_size.z) + ";\n";
-  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) return;\n";
+  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) return;\n";
   std::vector<std::string> s_x(block_size.x);
   std::vector<std::string> s_y(block_size.y);
   for (int x = 0; x < block_size.x; ++x) {
-    if (NeedStrideCorrection(op_def, stride)) {
-      // TODO(sorokin) check perf and optimize with floor() if needed
-      c += "  int p" + xs[x] + " = (X + " + xs[x] + ") / BATCH_SIZE;\n";
-      c += "  int b" + xs[x] + " = (X + " + xs[x] + ") % BATCH_SIZE;\n";
-      c += "  int xc" + xs[x] + " = p" + xs[x] +
-           " * BATCH_SIZE * stride.x + b" + xs[x] + " + padding.x;\n";
+    if (stride_correction) {
+      c += "  int xc" + xs[x] + " = " +
+           GetXStrideCorrected("X + " + xs[x], "src_size.w", "stride.x",
+                               "padding.x") +
+           ";\n";
     } else {
       c += "  int xc" + xs[x] + " = (X +" + xs[x] +
            ") * stride.x + padding.x;\n";
@@ -196,7 +192,7 @@ std::string GenerateConvCode(
       }
     }
   }
-  c += "  for (int s = 0; s < src_size.w; ++s) {\n";
+  c += "  for (int s = 0; s < src_size.z; ++s) {\n";
   if (is_image_buffer) {
     for (int index = 0; index < block_size.x * block_size.y; ++index) {
       const std::string id = std::to_string(index);
@@ -238,7 +234,7 @@ std::string GenerateConvCode(
       c += "     addr_" + id + " += dz_" + id + ";\n";
     }
   }
-  c += "  }\n";  // src_size.w
+  c += "  }\n";  // src_size.z
   if (!is1x1) {
     c += "  }\n";  // kernel_size.x
     c += "  }\n";  // kernel_size.y
@@ -247,7 +243,7 @@ std::string GenerateConvCode(
   std::string dst_x = is1x1 && adreno4xx_optimization ? "xc0" : "X";
   std::string dst_y = is1x1 && adreno4xx_optimization ? "yc0" : "Y";
   for (int z = 0; z < block_size.z; ++z) {
-    c += "  if (Z < dst_size.w) {\n";
+    c += "  if (Z < dst_size.z) {\n";
     c += "    FLT4 bias_val = READ_IMAGE(biases, smp_none, (int2)(Z, 0));\n";
     for (int y = 0; y < block_size.y; ++y) {
       for (int x = 0; x < block_size.x; ++x) {
@@ -338,9 +334,10 @@ Status ConvTexture::Compile(const CreationContext& creation_context) {
       creation_context.device->IsAdreno4xx() &&
       storage_type == TensorStorageType::TEXTURE_ARRAY &&
       definition_.precision == CalculationsPrecision::F16;
-  std::string code =
-      GenerateConvCode(definition_, block_size_, is1x1, adreno4xx_optimization,
-                       stride_, *creation_context.device, linked_operations_);
+  const bool stride_correction = definition_.batch_support && stride_.x != 1;
+  const std::string code = GenerateConvCode(
+      definition_, block_size_, is1x1, adreno4xx_optimization,
+      stride_correction, *creation_context.device, linked_operations_);
   std::vector<CompilerOptions> options;
   if (UseFP16SIMD(*creation_context.device, definition_.precision, is1x1)) {
     options.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
@@ -360,21 +357,12 @@ Status ConvTexture::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  const int4 src_size =
-      int4(src_[0]->Width() * src_[0]->Batch(), src_[0]->Height(),
-           src_[0]->Channels(), src_[0]->Depth());
-  const int4 dst_size =
-      int4(dst_[0]->Width() * dst_[0]->Batch(), dst_[0]->Height(),
-           dst_[0]->Channels(), dst_[0]->Depth());
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_size));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_size));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDB()));
   if (!(kernel_size_.x == 1 && kernel_size_.y == 1)) {
     RETURN_IF_ERROR(kernel_.SetBytesAuto(kernel_size_));
     RETURN_IF_ERROR(kernel_.SetBytesAuto(
         int2(dilation_.x * src_[0]->Batch(), dilation_.y)));
-  }
-  if (NeedStrideCorrection(definition_, stride_)) {
-    RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->Batch()));
   }
   RETURN_IF_ERROR(kernel_.SetBytesAuto(stride_));
   RETURN_IF_ERROR(

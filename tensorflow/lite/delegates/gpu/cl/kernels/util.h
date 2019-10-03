@@ -131,6 +131,13 @@ class TensorCodeGenerator {
   TensorDescriptor descriptor_;
 };
 
+// Calculates correct X coordinate when stride != 1 and batch != 1 for
+// DHWBC4, HDWBC4, HWBC layouts
+std::string GetXStrideCorrected(const std::string& src_x,
+                                const std::string& batch_size,
+                                const std::string& stride_x,
+                                const std::string& padding_x);
+
 template <DataType S, typename T>
 void RearrangeWeightsToOHWI4I4O(const ::tflite::gpu::Tensor<OHWI, S>& weights,
                                 absl::Span<T> dst) {
