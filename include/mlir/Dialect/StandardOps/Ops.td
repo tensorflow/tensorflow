@@ -668,6 +668,41 @@ def SIToFPOp : CastOp<"sitofp">, Arguments<(ins AnyType:$in)> {
   let hasFolder = 0;
 }
 
+def FPExtOp : CastOp<"fpext">, Arguments<(ins AnyType:$in)> {
+  let summary = "cast from floating-point to wider floating-point";
+  let description = [{
+    Cast a floating-point value to a larger floating-point-typed value.
+    The destination type must to be strictly wider than the source type.
+    Only scalars are currently supported.
+  }];
+
+  let extraClassDeclaration = [{
+    /// Return true if `a` and `b` are valid operand and result pairs for
+    /// the operation.
+    static bool areCastCompatible(Type a, Type b);
+  }];
+
+  let hasFolder = 0;
+}
+
+def FPTruncOp : CastOp<"fptrunc">, Arguments<(ins AnyType:$in)> {
+  let summary = "cast from floating-point to narrower floating-point";
+  let description = [{
+    Truncate a floating-point value to a smaller floating-point-typed value.
+    The destination type must be strictly narrower than the source type.
+    If the value cannot be exactly represented, it is rounded using the default
+    rounding mode. Only scalars are currently supported.
+  }];
+
+  let extraClassDeclaration = [{
+    /// Return true if `a` and `b` are valid operand and result pairs for
+    /// the operation.
+    static bool areCastCompatible(Type a, Type b);
+  }];
+
+  let hasFolder = 0;
+}
+
 def LoadOp : Std_Op<"load"> {
   let summary = "load operation";
   let description = [{

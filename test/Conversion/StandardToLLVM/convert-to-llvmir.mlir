@@ -451,6 +451,30 @@ func @sitofp(%arg0 : i32, %arg1 : i64) {
   return
 }
 
+// Checking conversion of integer types to floating point.
+// CHECK-LABEL: @fpext
+func @fpext(%arg0 : f16, %arg1 : f32) {
+// CHECK-NEXT: = llvm.fpext {{.*}} : !llvm.half to !llvm.float
+  %0 = fpext %arg0: f16 to f32
+// CHECK-NEXT: = llvm.fpext {{.*}} : !llvm.half to !llvm.double
+  %1 = fpext %arg0: f16 to f64
+// CHECK-NEXT: = llvm.fpext {{.*}} : !llvm.float to !llvm.double
+  %2 = fpext %arg1: f32 to f64
+  return
+}
+
+// Checking conversion of integer types to floating point.
+// CHECK-LABEL: @fptrunc
+func @fptrunc(%arg0 : f32, %arg1 : f64) {
+// CHECK-NEXT: = llvm.fptrunc {{.*}} : !llvm.float to !llvm.half
+  %0 = fptrunc %arg0: f32 to f16
+// CHECK-NEXT: = llvm.fptrunc {{.*}} : !llvm.double to !llvm.half
+  %1 = fptrunc %arg1: f64 to f16
+// CHECK-NEXT: = llvm.fptrunc {{.*}} : !llvm.double to !llvm.float
+  %2 = fptrunc %arg1: f64 to f32
+  return
+}
+
 // Check sign and zero extension and truncation of integers.
 // CHECK-LABEL: @integer_extension_and_truncation
 func @integer_extension_and_truncation() {

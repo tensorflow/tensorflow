@@ -27,9 +27,9 @@ func @func_with_ops(f32) {
   return
 }
 
-// CHECK-LABEL: func @standard_instrs(%arg0: tensor<4x4x?xf32>, %arg1: f32, %arg2: i32, %arg3: index, %arg4: i64) {
-func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index, i64) {
-^bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32, %idx : index, %j: i64):
+// CHECK-LABEL: func @standard_instrs(%arg0: tensor<4x4x?xf32>, %arg1: f32, %arg2: i32, %arg3: index, %arg4: i64, %arg5: f16) {
+func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index, i64, f16) {
+^bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32, %idx : index, %j: i64, %half: f16):
   // CHECK: %0 = dim %arg0, 2 : tensor<4x4x?xf32>
   %a = "std.dim"(%t){index = 2} : (tensor<4x4x?xf32>) -> index
 
@@ -344,6 +344,12 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index, i64) {
 
   // CHECK: %{{[0-9]+}} = trunci %cst_4 : tensor<42xi32>
   %93 = trunci %tci32 : tensor<42 x i32> to tensor<42 x i16>
+
+  // CHECK: = fpext {{.*}} : f16 to f32
+  %94 = fpext %half : f16 to f32
+
+  // CHECK: = fptrunc {{.*}} : f32 to f16
+  %95 = fptrunc %f : f32 to f16
 
   return
 }

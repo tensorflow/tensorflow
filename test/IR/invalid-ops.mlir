@@ -718,6 +718,70 @@ func @sitofp_f32_to_i32(%arg0 : f32) {
 
 // -----
 
+func @fpext_f32_to_f16(%arg0 : f32) {
+  // expected-error@+1 {{are cast incompatible}}
+  %0 = fpext %arg0 : f32 to f16
+  return
+}
+
+// -----
+
+func @fpext_f16_to_f16(%arg0 : f16) {
+  // expected-error@+1 {{are cast incompatible}}
+  %0 = fpext %arg0 : f16 to f16
+  return
+}
+
+// -----
+
+func @fpext_i32_to_f32(%arg0 : i32) {
+  // expected-error@+1 {{are cast incompatible}}
+  %0 = fpext %arg0 : i32 to f32
+  return
+}
+
+// -----
+
+func @fpext_f32_to_i32(%arg0 : f32) {
+  // expected-error@+1 {{are cast incompatible}}
+  %0 = fpext %arg0 : f32 to i32
+  return
+}
+
+// -----
+
+func @fptrunc_f16_to_f32(%arg0 : f16) {
+  // expected-error@+1 {{are cast incompatible}}
+  %0 = fptrunc %arg0 : f16 to f32
+  return
+}
+
+// -----
+
+func @fptrunc_f32_to_f32(%arg0 : f32) {
+  // expected-error@+1 {{are cast incompatible}}
+  %0 = fptrunc %arg0 : f32 to f32
+  return
+}
+
+// -----
+
+func @fptrunc_i32_to_f32(%arg0 : i32) {
+  // expected-error@+1 {{are cast incompatible}}
+  %0 = fptrunc %arg0 : i32 to f32
+  return
+}
+
+// -----
+
+func @fptrunc_f32_to_i32(%arg0 : f32) {
+  // expected-error@+1 {{are cast incompatible}}
+  %0 = fptrunc %arg0 : f32 to i32
+  return
+}
+
+// -----
+
 func @sexti_index_as_operand(%arg0 : index) {
   // expected-error@+1 {{'index' is not a valid operand type}}
   %0 = sexti %arg0 : index to i128
