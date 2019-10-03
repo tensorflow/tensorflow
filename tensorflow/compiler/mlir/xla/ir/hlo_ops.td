@@ -82,6 +82,9 @@ def HLO_ConstOp : BASE_HLO_ConstOp, HLO_Op<"constant", [NoSideEffect]> {
     "Builder *builder, OperationState &result, Attribute value"
   >];
 
+  let printer = [{ return Print(*this, &p); }];
+  let parser = [{ return ParseConstOp(&parser, &result); }];
+
   let hasFolder = 1;
 
   // Constant has special conversion logic to HLO.

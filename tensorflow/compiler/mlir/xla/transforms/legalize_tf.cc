@@ -295,8 +295,7 @@ class ConvertMaxPoolOp : public OpRewritePattern<TF::MaxPoolOp> {
 // Sample result with 2-d f16 inputs with B batches of with N elements each.
 //
 //    // Create an array of 0.5 the shape of the input array.
-//    %half = "xla_hlo.constant"() {value = dense<5.000000e-01>
-//                           : tensor<f32>} : () -> tensor<f32>
+//    %half = xla_hlo.constant dense<5.000000e-01> : tensor<f32>
 //    %half_array = "xla_hlo.broadcast"(half)
 //                           {broadcast_sizes = dense<2> : tensor<1xi64>}
 //                           : (tensor<f32>) -> tensor<2xf32>

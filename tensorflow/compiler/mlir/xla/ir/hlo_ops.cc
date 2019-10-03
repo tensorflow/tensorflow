@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
+#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h.inc"
 
 namespace mlir {
@@ -82,6 +83,45 @@ static LogicalResult Verify(T op) {
 //===----------------------------------------------------------------------===//
 // ConstOp
 //===----------------------------------------------------------------------===//
+
+static void Print(ConstOp op, OpAsmPrinter* printer) {
+  // Use short form only if the result type matches type of attribute 'value'.
+  bool use_short_form = op.value().getType() == op.getType();
+
+  // Print op name.
+  *printer << op.getOperationName();
+
+  // If short form, elide attribute value while printing the attribute
+  // dictionary.
+  SmallVector<StringRef, 1> elided_attrs;
+  if (use_short_form) elided_attrs.push_back("value");
+  printer->printOptionalAttrDict(op.getAttrs(), elided_attrs);
+
+  if (use_short_form) {
+    *printer << ' ' << op.value();
+  } else {
+    *printer << " : " << op.getType();
+  }
+}
+
+static ParseResult ParseConstOp(OpAsmParser* parser, OperationState* result) {
+  if (parser->parseOptionalAttributeDict(result->attributes)) return failure();
+
+  // If colon is not present after attribute dictionary, it should be short form
+  // and attribute 'value' is outside the dictionary.
+  if (failed(parser->parseOptionalColon())) {
+    Attribute value;
+    if (parser->parseAttribute(value, "value", result->attributes))
+      return failure();
+    return parser->addTypeToList(value.getType(), result->types);
+  }
+
+  // Long form should have type of the result after colon.
+  Type ty;
+  if (parser->parseType(ty)) return failure();
+  result->types.push_back(ty);
+  return success();
+}
 
 OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.empty() && "constant has no operands");
