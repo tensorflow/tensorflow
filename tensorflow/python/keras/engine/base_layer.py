@@ -468,8 +468,10 @@ class Layer(module.Module):
     config = {'name': self.name, 'trainable': self.trainable}
     if hasattr(self, '_batch_input_shape'):
       config['batch_input_shape'] = self._batch_input_shape
+    # TODO(reedwm): Remove the hasattr(self, 'dtype') check. All layers have a
+    # dtype.
     if hasattr(self, 'dtype'):
-      config['dtype'] = self.dtype
+      config['dtype'] = policy.serialize(self._dtype_policy)
     if hasattr(self, 'dynamic'):
       # Only include `dynamic` in the `config` if it is `True`
       if self.dynamic:
@@ -484,7 +486,6 @@ class Layer(module.Module):
     if len(extra_args) > 1 and hasattr(self.get_config, '_is_default'):
       raise NotImplementedError('Layers with arguments in `__init__` must '
                                 'override `get_config`.')
-    # TODO(reedwm): Handle serializing self._dtype_policy.
     return config
 
   @classmethod
@@ -1677,6 +1678,8 @@ class Layer(module.Module):
     """Sets self._dtype_policy."""
     if isinstance(dtype, policy.Policy):
       self._dtype_policy = dtype
+    elif isinstance(dtype, dict):
+      self._dtype_policy = policy.deserialize(dtype)
     elif dtype:
       self._dtype_policy = policy.Policy(dtypes.as_dtype(dtype).name)
     else:
