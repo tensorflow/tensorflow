@@ -65,6 +65,7 @@ tf_instantiate_platform_libraries(names = [
     "notification",
     "platform_port",
     "rocm_rocdl_path",
+    "stacktrace",
     "strong_hash",
     "subprocess",
     "tracing",
@@ -452,16 +453,10 @@ cc_library(
 
 cc_library(
     name = "stacktrace",
-    srcs = tf_platform_srcs([
-        "stacktrace.h",
-        "stacktrace.cc",
-    ]),
     hdrs = ["stacktrace.h"],
     deps = [
-        ":abi",
         ":platform",
-        "//tensorflow/core/platform/default/build_config:stacktrace",
-    ],
+    ] + tf_platform_helper_deps("stacktrace_impl"),
 )
 
 cc_library(
