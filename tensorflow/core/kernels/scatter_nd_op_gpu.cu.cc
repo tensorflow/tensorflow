@@ -72,7 +72,9 @@ template <typename T>
 struct LeftUpdate<std::complex<T>, scatter_nd_op::UpdateOp::SUB> {
   EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC void operator()(
       std::complex<T>* out, const std::complex<T>& val) {
-    LeftUpdate<std::complex<T>, scatter_nd_op::UpdateOp::ADD>()(out, -val);
+    T* ptr = reinterpret_cast<T*>(out);
+    GpuAtomicAdd(ptr, -val.real());
+    GpuAtomicAdd(ptr, -val.imag());
   }
 };
 
