@@ -43,6 +43,20 @@ limitations under the License.
 
 namespace tensorflow {
 
+// TODO(anudhyan): These constants may be tuned based on the performance of
+// 'benchmark_sparse_matrix_mat_vec_mul'. We would like to find constants
+// which work across hardware platforms for typical matrix sizes. It should be
+// possible to observe at least 30-50% improvement as we increase the number
+// of threads by 1. If not, then it may we worth increasing kMaxShards and
+// kNumShardsPerThread. However, once we have too many shards, latency may be
+// dominated by per-shard overhead.
+//
+// Maximum number of shards into which to divide the computation for each CSR
+// Sparse Matrix instance.
+static constexpr int32 kMaxShards = 20;
+// Number of shards allocated to each thread.
+static constexpr int32 kNumShardsPerThread = 3;
+
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
@@ -147,16 +161,6 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
   using MatrixMap = Eigen::Map<Matrix>;
 
  public:
-  // TODO(anudhyan): These constants may be tuned based on the performance of
-  // 'benchmark_sparse_matrix_mat_vec_mul'. We would like to find constants
-  // which work across hardware platforms for typical matrix sizes. It should be
-  // possible to observe at least 30-50% improvement as we increase the number
-  // of threads by 1. If not, then it may we worth increasing kMaxShards and
-  // kNumShardsPerThread. However, once we have too many shards, latency may be
-  // dominated by per-shard overhead.
-  static constexpr int32 kMaxShards = 20;
-  static constexpr int32 kNumShardsPerThread = 3;
-
   explicit CSRMatMulCPUOp(OpKernelConstruction* c)
       : CSRMatMulOp<CPUDevice, T>(c) {}
 
