@@ -30,9 +30,13 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
+bool NeedStrideCorrection(const OperationDef& op_def, const int2& stride) {
+  return op_def.batch_support && stride.x != 1;
+}
+
 std::string GenerateConvCode(
     const OperationDef& op_def, const int3& block_size, bool is1x1,
-    bool adreno4xx_optimization, const CLDevice& device,
+    bool adreno4xx_optimization, const int2& stride, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   std::string c = GetCommonDefines(op_def.precision);
   TensorCodeGenerator src_tensor("src_data", "src_size", op_def.src_tensors[0]);
@@ -93,6 +97,9 @@ std::string GenerateConvCode(
     c += "    int2 kernel_size,              \n";
     c += "    int2 dilation,                 \n";
   }
+  if (NeedStrideCorrection(op_def, stride)) {
+    c += "    int BATCH_SIZE,  \n";
+  }
   c += "    int2 stride,                     \n";
   c += "    int2 padding                     \n";
   c += ") {\n";
@@ -103,7 +110,16 @@ std::string GenerateConvCode(
   std::vector<std::string> s_x(block_size.x);
   std::vector<std::string> s_y(block_size.y);
   for (int x = 0; x < block_size.x; ++x) {
-    c += "  int xc" + xs[x] + " = (X +" + xs[x] + ") * stride.x + padding.x;\n";
+    if (NeedStrideCorrection(op_def, stride)) {
+      // TODO(sorokin) check perf and optimize with floor() if needed
+      c += "  int p" + xs[x] + " = (X + " + xs[x] + ") / BATCH_SIZE;\n";
+      c += "  int b" + xs[x] + " = (X + " + xs[x] + ") % BATCH_SIZE;\n";
+      c += "  int xc" + xs[x] + " = p" + xs[x] +
+           " * BATCH_SIZE * stride.x + b" + xs[x] + " + padding.x;\n";
+    } else {
+      c += "  int xc" + xs[x] + " = (X +" + xs[x] +
+           ") * stride.x + padding.x;\n";
+    }
     s_x[x] = is1x1 ? "xc" + xs[x] : "cx" + xs[x];
   }
   for (int y = 0; y < block_size.y; ++y) {
@@ -324,7 +340,7 @@ Status ConvTexture::Compile(const CreationContext& creation_context) {
       definition_.precision == CalculationsPrecision::F16;
   std::string code =
       GenerateConvCode(definition_, block_size_, is1x1, adreno4xx_optimization,
-                       *creation_context.device, linked_operations_);
+                       stride_, *creation_context.device, linked_operations_);
   std::vector<CompilerOptions> options;
   if (UseFP16SIMD(*creation_context.device, definition_.precision, is1x1)) {
     options.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
@@ -344,19 +360,31 @@ Status ConvTexture::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetSizeWithDepth()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetSizeWithDepth()));
+  const int4 src_size =
+      int4(src_[0]->Width() * src_[0]->Batch(), src_[0]->Height(),
+           src_[0]->Channels(), src_[0]->Depth());
+  const int4 dst_size =
+      int4(dst_[0]->Width() * dst_[0]->Batch(), dst_[0]->Height(),
+           dst_[0]->Channels(), dst_[0]->Depth());
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_size));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_size));
   if (!(kernel_size_.x == 1 && kernel_size_.y == 1)) {
     RETURN_IF_ERROR(kernel_.SetBytesAuto(kernel_size_));
-    RETURN_IF_ERROR(kernel_.SetBytesAuto(dilation_));
+    RETURN_IF_ERROR(kernel_.SetBytesAuto(
+        int2(dilation_.x * src_[0]->Batch(), dilation_.y)));
+  }
+  if (NeedStrideCorrection(definition_, stride_)) {
+    RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->Batch()));
   }
   RETURN_IF_ERROR(kernel_.SetBytesAuto(stride_));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(padding_));
+  RETURN_IF_ERROR(
+      kernel_.SetBytesAuto(int2(padding_.x * src_[0]->Batch(), padding_.y)));
   return OkStatus();
 }
 
 int3 ConvTexture::GetGridSize() const {
-  const int grid_x = IntegralDivideRoundUp(dst_[0]->Width(), block_size_.x);
+  const int grid_x =
+      IntegralDivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(), block_size_.x);
   const int grid_y = IntegralDivideRoundUp(dst_[0]->Height(), block_size_.y);
   const int grid_z = IntegralDivideRoundUp(dst_[0]->Depth(), block_size_.z);
   return int3(grid_x, grid_y, grid_z);
