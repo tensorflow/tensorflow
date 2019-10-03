@@ -138,6 +138,23 @@ class DebugEventsWriter {
   // Takes ownership of graph_execution_trace.
   void WriteGraphExecutionTrace(GraphExecutionTrace* graph_execution_trace);
 
+  // Writes a serialized DebugEvent to one of the debug-events files
+  // concerned with the non-execution events: the SOURCE_FILES, STACK_FRAMES
+  // and GRAPHS files.
+  // NOTE: Actually used in the Python binding, to avoid overhead of
+  // serializing and parsing protos at the language interface.
+  void WriteSerializedNonExecutionDebugEvent(const string& debug_event_str,
+                                             DebugEventFileType type);
+
+  // Writes a serialized DebugEvent to one of the debug-events files
+  // concerned with the execution-related events: the EXECUTION and
+  // GRAPH_EXECUTION_TRACES files. This involves the cyclic-buffer behavior if
+  // cyclic_buffer_size is configured to be >0.
+  // NOTE: Actually used in the Python binding, to avoid overhead of
+  // serializing and parsing protos at the language interface.
+  void WriteSerializedExecutionDebugEvent(const string& debug_event_str,
+                                          DebugEventFileType type);
+
   // EventWriter automatically flushes and closes on destruction, but
   // this method is provided for users who want to write to disk sooner
   // and/or check for success.
@@ -188,9 +205,9 @@ class DebugEventsWriter {
   mutex initialization_mu_;
 
   const int64 cyclic_buffer_size_;
-  std::deque<DebugEvent> execution_buffer_ GUARDED_BY(execution_buffer_mu_);
+  std::deque<string> execution_buffer_ GUARDED_BY(execution_buffer_mu_);
   mutex execution_buffer_mu_;
-  std::deque<DebugEvent> graph_execution_trace_buffer_
+  std::deque<string> graph_execution_trace_buffer_
       GUARDED_BY(graph_execution_trace_buffer_mu_);
   mutex graph_execution_trace_buffer_mu_;
 
