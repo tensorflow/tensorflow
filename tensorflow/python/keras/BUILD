@@ -352,6 +352,7 @@ py_library(
         ":engine_utils",
         ":mode_keys",
         "//tensorflow/python/keras/distribute:multi_worker_training_state",
+        "//tensorflow/tools/docs:doc_controls",
     ],
 )
 
