@@ -1,4 +1,4 @@
-// RUN: mlir-opt -lower-to-cfg %s | FileCheck %s
+// RUN: mlir-opt -convert-loop-to-std %s | FileCheck %s
 
 // CHECK-LABEL: func @simple_std_for_loop(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index) {
 //  CHECK-NEXT:  br ^bb1(%{{.*}} : index)

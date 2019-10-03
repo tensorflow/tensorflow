@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/Conversion/ControlFlowToCFG/ConvertControlFlowToCFG.h"
+#include "mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"

@@ -1,4 +1,4 @@
-//===- ConvertControlFlowToCFG.h - Pass entrypoint --------------*- C++ -*-===//
+//===- ConvertLoopToStandard.h - Pass entrypoint ----------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,8 +15,8 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef MLIR_CONVERSION_CONTROLFLOWTOCFG_CONVERTCONTROLFLOWTOCFG_H_
-#define MLIR_CONVERSION_CONTROLFLOWTOCFG_CONVERTCONTROLFLOWTOCFG_H_
+#ifndef MLIR_CONVERSION_LOOPTOSTANDARD_CONVERTLOOPTOSTANDARD_H_
+#define MLIR_CONVERSION_LOOPTOSTANDARD_CONVERTLOOPTOSTANDARD_H_
 
 #include <memory>
 #include <vector>
@@ -42,4 +42,4 @@ std::unique_ptr<OpPassBase<FuncOp>> createLowerToCFGPass();
 
 } // namespace mlir
 
-#endif // MLIR_CONVERSION_CONTROLFLOWTOCFG_CONVERTCONTROLFLOWTOCFG_H_
+#endif // MLIR_CONVERSION_LOOPTOSTANDARD_CONVERTLOOPTOSTANDARD_H_

@@ -15,7 +15,7 @@ set(LLVM_OPTIONAL_SOURCES
 set(LIBS
   MLIRAffineOps
   MLIRAnalysis
-  MLIRControlFlowToCFG
+  MLIRLoopToStandard
   MLIREDSC
   MLIRLLVMIR
   MLIRParser
@@ -30,7 +30,7 @@ add_llvm_library(Linalg1LLVMConversion
   ConvertToLLVMDialect.cpp
   )
 target_link_libraries(Linalg1LLVMConversion PUBLIC MLIRLLVMIR
-  MLIRControlFlowToCFG MLIRStandardOps)
+  MLIRLoopToStandard MLIRStandardOps)
 
 add_llvm_library(Linalg1
   Analysis.cpp

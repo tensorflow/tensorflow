@@ -1,11 +1,11 @@
-add_llvm_library(MLIRControlFlowToCFG
-  ConvertControlFlowToCFG.cpp
+add_llvm_library(MLIRLoopToStandard
+  ConvertLoopToStandard.cpp
 
   ADDITIONAL_HEADER_DIRS
-  ${MLIR_MAIN_INCLUDE_DIR}/mlir/Conversion/ControlFlowToCFG
+  ${MLIR_MAIN_INCLUDE_DIR}/mlir/Conversion/LoopToStandard
 )
 add_dependencies(
-  MLIRControlFlowToCFG
+  MLIRLoopToStandard
 
   MLIRLoopOps
   MLIRTransforms
@@ -13,7 +13,7 @@ add_dependencies(
   LLVMSupport
 )
 target_link_libraries(
-  MLIRControlFlowToCFG
+  MLIRLoopToStandard
 
   MLIRLoopOps
   MLIRTransforms
