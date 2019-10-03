@@ -31,8 +31,8 @@ flags.DEFINE_boolean(name='test_flag', default=0, help='Test flag')
 
 
 def proc_func_that_adds_task_type_in_return_data(test_obj):
-  multi_process_runner.add_return_data(multi_worker_test_base.get_task_type())
   test_obj.assertTrue(flags.FLAGS.test_flag == 3)
+  return multi_worker_test_base.get_task_type()
 
 
 def proc_func_that_errors():
@@ -44,7 +44,7 @@ def proc_func_that_does_nothing():
 
 
 def proc_func_that_adds_simple_return_data():
-  multi_process_runner.add_return_data('dummy data')
+  return 'dummy_data'
 
 
 def proc_func_that_verifies_args(*args, **kwargs):
@@ -57,42 +57,51 @@ def proc_func_that_verifies_args(*args, **kwargs):
 class MultiProcessRunnerTest(test.TestCase):
 
   def test_multi_process_runner(self):
-    count_dict = {'worker': 2, 'ps': 3, 'evaluator': 1}
+    job_count_dict = {'worker': 2, 'ps': 3, 'evaluator': 2}
     proc_flags = {
         'test_flag': 3,
     }
     returned_data = multi_process_runner.run(
         proc_func_that_adds_task_type_in_return_data,
-        count_dict, proc_flags, args=(self,))
+        multi_process_runner.job_count_to_cluster_spec(job_count_dict),
+        proc_flags=proc_flags,
+        args=(self,))
 
     for data in returned_data:
-      count_dict[data] -= 1
+      job_count_dict[data] -= 1
 
-    self.assertEqual(count_dict['worker'], 0)
-    self.assertEqual(count_dict['ps'], 0)
-    self.assertEqual(count_dict['evaluator'], 0)
+    self.assertEqual(job_count_dict['worker'], 0)
+    self.assertEqual(job_count_dict['ps'], 0)
+    self.assertEqual(job_count_dict['evaluator'], 0)
 
   def test_multi_process_runner_error_propagates_from_subprocesses(self):
-    count_dict = {'worker': 1, 'ps': 1}
+    job_count_dict = {'worker': 1, 'ps': 1}
     with self.assertRaisesRegexp(
         RuntimeError, 'Exception raised by subprocess: RuntimeError: '
                       'This is an error.'):
-      multi_process_runner.run(proc_func_that_errors, count_dict, timeout=20)
+      multi_process_runner.run(
+          proc_func_that_errors,
+          multi_process_runner.job_count_to_cluster_spec(job_count_dict),
+          timeout=20)
 
   def test_multi_process_runner_queue_emptied_between_runs(self):
-    count_dict = {'worker': 2}
+    job_count_dict = {'worker': 2}
+    cluster_spec = multi_process_runner.job_count_to_cluster_spec(
+        job_count_dict)
     returned_data = multi_process_runner.run(
-        proc_func_that_adds_simple_return_data, count_dict)
+        proc_func_that_adds_simple_return_data, cluster_spec)
     self.assertTrue(returned_data)
+    self.assertEqual(returned_data[0], 'dummy_data')
+    self.assertEqual(returned_data[1], 'dummy_data')
     returned_data = multi_process_runner.run(proc_func_that_does_nothing,
-                                             count_dict)
+                                             cluster_spec)
     self.assertFalse(returned_data)
 
   def test_multi_process_runner_args_passed_correctly(self):
-    count_dict = {'worker': 1}
+    job_count_dict = {'worker': 1}
     returned_data = multi_process_runner.run(
         proc_func_that_verifies_args,
-        count_dict,
+        multi_process_runner.job_count_to_cluster_spec(job_count_dict),
         args=('a', 'b'),
         kwargs={'c_k': 'c_v'})
     self.assertEqual(returned_data[0], 'a')
@@ -103,11 +112,13 @@ class MultiProcessRunnerTest(test.TestCase):
 
     def simple_print_func():
       print('This is something printed.')
-      multi_process_runner.add_return_data('This is returned data.')
+      return 'This is returned data.'
 
-    count_dict = {'worker': 2}
+    job_count_dict = {'worker': 2}
     returned_data, std_stream_data = multi_process_runner.run(
-        simple_print_func, count_dict, return_std_stream=True)
+        simple_print_func,
+        multi_process_runner.job_count_to_cluster_spec(job_count_dict),
+        return_std_stream=True)
     num_string_std_stream = len(
         [d for d in std_stream_data if d == 'This is something printed.'])
     num_string_returned_data = len(
@@ -123,15 +134,19 @@ class MultiProcessRunnerTest(test.TestCase):
       time.sleep(20)
       multi_process_runner.add_return_data('bar')
 
-    count_dict = {'worker': 1}
+    job_count_dict = {'worker': 1}
     returned_data = multi_process_runner.run(
-        func_to_exit_in_10_sec, count_dict, time_to_exit=10)
+        func_to_exit_in_10_sec,
+        multi_process_runner.job_count_to_cluster_spec(job_count_dict),
+        time_to_exit=10)
     self.assertLen(returned_data, 1)
 
   def test_signal_doesnt_fire_after_process_exits(self):
-    count_dict = {'worker': 1}
+    job_count_dict = {'worker': 1}
     multi_process_runner.run(
-        proc_func_that_does_nothing, count_dict, time_to_exit=10)
+        proc_func_that_does_nothing,
+        multi_process_runner.job_count_to_cluster_spec(job_count_dict),
+        time_to_exit=10)
     time.sleep(15)
     with self.assertRaisesRegexp(Queue.Empty, ''):
       # If the signal was fired, another message would be added to internal

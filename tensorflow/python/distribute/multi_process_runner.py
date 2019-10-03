@@ -24,6 +24,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import json
 import os
 import signal
@@ -35,14 +36,15 @@ from six.moves import queue as Queue
 
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_process_lib
+from tensorflow.python.eager import context
 from tensorflow.python.platform import test
 
 
-class AvailableQueues(object):
+class _AvailableQueues(object):
   """Names of the available queues used by `multi_process_runner`."""
   # Internal queue is used by `multi_process_runner` internally for
   # communication from subprocesses to the parent process. The message
-  # can be 'OK' in which case the subprocess has ended successfully, or
+  # can be _FINISH_PROPERLY_MESSAGE in which case the subprocess has ended successfully, or
   # the detailed message of an exception if the subprocess has raised
   # one so it can be re-raised by the parent process.
   INTERNAL_QUEUE = 'internal_queue'
@@ -56,12 +58,7 @@ class AvailableQueues(object):
   STD_STREAM_QUEUE = 'std_stream_queue'
 
 
-AVAILABLE_QUEUE_NAMES = [
-    AvailableQueues.INTERNAL_QUEUE, AvailableQueues.PUBLIC_QUEUE,
-    AvailableQueues.STD_STREAM_QUEUE
-]
-
-_FINISH_PROPERLY_MESSAGE = 'Done'
+_FINISH_PROPERLY_MESSAGE = 'OK'
 
 
 class _LogCollector(object):
@@ -86,7 +83,7 @@ def test_main():
 
 
 def run(proc_func,
-        count_dict,
+        cluster_spec,
         proc_flags=None,
         timeout=200,
         time_to_exit=None,
@@ -95,10 +92,20 @@ def run(proc_func,
         kwargs=None):
   """Run functions on local sub-processes.
 
+  Experimental. API subject to change. To fully inspect logging from
+  subprocesses, use following two flags with bazel test:
+  `--test_arg=--logtostderr --test_output=streamed`.
+
   Args:
     proc_func: Function to be run on the processes. This will be run on
       processes for all task types.
-    count_dict: Dict for task_type/count of such task type.
+    cluster_spec: Dict for cluster spec. The following is an example of cluster
+      with three workers and two ps's.
+      {"worker": ["worker0.example.com:2222",
+                  "worker1.example.com:2222",
+                  "worker2.example.com:2222"],
+       "ps": ["ps0.example.com:2222",
+              "ps1.example.com:2222"]}
     proc_flags: Dict that contains the key/values of the flags used on the
       processes.
     timeout: Time out in seconds. If the sub-process takes more than this time
@@ -117,102 +124,107 @@ def run(proc_func,
 
   Returns:
     If `return_std_stream` is False, a list that stores the return data added
-    by processes through `multi_process_runner.add_return_data(data)` call;
-    if `return_std_stream` is True, a two-element tuple of
-    `(return_data_list, std_stream_data_list)`, where `return_data_list` stores
-    the return data added by processes through
-    `multi_process_runner.add_return_data(data)` call, and
-    `std_stream_data_list` stores the messages streamed to stdout and stderr
-    in the subprocesses.
+    by subprocesses through `multi_process_runner.add_return_data(data)` call,
+    or through normal function return; if `return_std_stream` is True, a
+    two-element tuple of `(return_data_list, std_stream_data_list)`, where
+    `return_data_list` stores the return data added by processes through
+    `multi_process_runner.add_return_data(data)` call or through normal function
+    return, and `std_stream_data_list` stores the messages streamed to stdout
+    and stderr in the subprocesses.
 
   Raises:
     RuntimeError: If any of the subprocesses raise an error, or if any of the
       subprocesses does not return or error out within `timeout` seconds.
-
-  TODO(rchao): Open source this with a solution to handle multi_process_lib.
   """
 
+  assert cluster_spec is not None
   assert callable(proc_func)
   processes = []
-  cluster_spec = {}
   args = args or ()
   kwargs = kwargs or {}
 
-  for task_type, count in count_dict.items():
-    cluster_spec[task_type] = [
-        'localhost:{}'.format(multi_worker_test_base.pick_unused_port())
-        for _ in range(count)
-    ]
-
   def wrapper_func(tf_config_as_json, proc_func, proc_flags, time_to_exit,
-                   *arg, **kwargs):
+                   executing_eagerly, *arg, **kwargs):
     """The wrapper function that actually gets run on the process(es)."""
 
-    os.environ['TF_CONFIG'] = tf_config_as_json
-    if proc_flags is not None:
-      for flag_key, flag_value in proc_flags.items():
-        setattr(flags.FLAGS, flag_key, flag_value)
+    @contextlib.contextmanager
+    def runtime_mode(executing_eagerly):
+      if executing_eagerly:
+        with context.eager_mode():
+          yield
+      else:
+        with context.graph_mode():
+          yield
 
-    stdout_collector = _LogCollector(
-        sys.__stdout__) if return_std_stream else None
-    stderr_collector = _LogCollector(
-        sys.__stderr__) if return_std_stream else None
+    with runtime_mode(executing_eagerly):
+      os.environ['TF_CONFIG'] = tf_config_as_json
+      if proc_flags is not None:
+        for flag_key, flag_value in proc_flags.items():
+          setattr(flags.FLAGS, flag_key, flag_value)
 
-    def finish_wrapper_func_properly(finish_message=_FINISH_PROPERLY_MESSAGE):
-      """Call to finish `wrapper_func` properly."""
-      # Clear the alarm.
-      signal.alarm(0)
-      if (return_std_stream and stdout_collector is not None and
-          stderr_collector is not None):
-        # If stdout and stderr are to be collected, add them to std stream
-        # queue.
-        _add_std_stream_data_flattened(stdout_collector.log)
-        _add_std_stream_data_flattened(stderr_collector.log)
-        # Un-redirect stdout and stderr.
-        sys.stdout = sys.__stdout__
-        sys.stderr = sys.__stderr__
-      _get_internal_queue().put(finish_message)
+      stdout_collector = _LogCollector(
+          sys.__stdout__) if return_std_stream else None
+      stderr_collector = _LogCollector(
+          sys.__stderr__) if return_std_stream else None
 
-    if time_to_exit is not None:
+      def finish_wrapper_func_properly(finish_message):
+        """Call to finish `wrapper_func` properly."""
+        # Clear the alarm.
+        signal.alarm(0)
+        if (return_std_stream and stdout_collector is not None and
+            stderr_collector is not None):
+          # If stdout and stderr are to be collected, add them to std stream
+          # queue.
+          _add_std_stream_data_flattened(stdout_collector.log)
+          _add_std_stream_data_flattened(stderr_collector.log)
+          # Un-redirect stdout and stderr.
+          sys.stdout = sys.__stdout__
+          sys.stderr = sys.__stderr__
+        _get_internal_queue().put(finish_message)
 
-      def handler(signum, frame):
-        del signum, frame
-        finish_wrapper_func_properly()
-        # pylint: disable=protected-access
-        os._exit(0)
+      if time_to_exit is not None:
 
-      signal.signal(signal.SIGALRM, handler)
-      signal.alarm(time_to_exit)
+        def handler(signum, frame):
+          del signum, frame
+          finish_wrapper_func_properly(_FINISH_PROPERLY_MESSAGE)
+          # pylint: disable=protected-access
+          os._exit(0)
 
-    if return_std_stream:
-      sys.stdout = stdout_collector
-      sys.stderr = stderr_collector
+        signal.signal(signal.SIGALRM, handler)
+        signal.alarm(time_to_exit)
 
-    try:
-      proc_func(*arg, **kwargs)
-    # pylint: disable=broad-except
-    except Exception as e:
-      # Capture all exceptions to be reported to parent process.
-      finish_wrapper_func_properly(
-          'Exception raised by subprocess: {}: {} {}'.format(
-              e.__class__.__name__, str(e), traceback.format_exc()))
-      return
+      if return_std_stream:
+        sys.stdout = stdout_collector
+        sys.stderr = stderr_collector
 
-    finish_wrapper_func_properly()
+      try:
+        return_data = proc_func(*arg, **kwargs)
+        if return_data is not None:
+          add_return_data(return_data)
+      # pylint: disable=broad-except
+      except Exception as e:
+        # Capture all exceptions to be reported to parent process.
+        finish_wrapper_func_properly(
+            'Exception raised by subprocess: {}: {}. {}'.format(
+                e.__class__.__name__, str(e), traceback.format_exc()))
+        return
+
+      finish_wrapper_func_properly(_FINISH_PROPERLY_MESSAGE)
 
   # Start number of processes according to `count_dict`.
-  for task_type, count in count_dict.items():
-    for task_id in range(count):
+  for job_type, addresses in cluster_spec.items():
+    for task_id, _ in enumerate(addresses):
       tf_config_as_json = json.dumps({
           'cluster': cluster_spec,
           'task': {
-              'type': task_type,
+              'type': job_type,
               'index': task_id
           }
       })
       p = multi_process_lib.Process(
           target=wrapper_func,
-          args=(tf_config_as_json, proc_func, proc_flags, time_to_exit) + args,
+          args=(tf_config_as_json, proc_func, proc_flags, time_to_exit,
+                context.executing_eagerly()) + args,
           kwargs=kwargs)
       p.start()
       processes.append(p)
@@ -220,9 +232,14 @@ def run(proc_func,
   internal_queue_results = []
   for _ in range(len(processes)):
     try:
-      internal_queue_results.append(
-          _get_internal_queue().get(timeout=timeout))
+      internal_queue_results.append(_get_internal_queue().get(timeout=timeout))
     except Queue.Empty:
+      # First check if any of the subprocesses raised exception.
+      for internal_queue_result in internal_queue_results:
+        if internal_queue_result.startswith('Exception raised by subprocess'):
+          # TODO(b/142073790): Recover the original exception type.
+          raise RuntimeError(internal_queue_result)
+      # If none of those did, report time out to user.
       raise RuntimeError(
           'One or more subprocesses timed out. Please inspect logs for '
           'subprocess debugging info. Timeout = {} sec.'.format(timeout))
@@ -246,10 +263,10 @@ def run(proc_func,
     return tuple(
         queue_to_list(multi_process_lib.get_user_data()[queue_name])
         for queue_name in
-        [AvailableQueues.PUBLIC_QUEUE, AvailableQueues.STD_STREAM_QUEUE])
+        [_AvailableQueues.PUBLIC_QUEUE, _AvailableQueues.STD_STREAM_QUEUE])
   else:
     return queue_to_list(
-        multi_process_lib.get_user_data()[AvailableQueues.PUBLIC_QUEUE])
+        multi_process_lib.get_user_data()[_AvailableQueues.PUBLIC_QUEUE])
 
 
 def add_return_data(data):
@@ -268,15 +285,53 @@ def add_return_data(data):
   # TODO(rchao): Incorporate the task type and id information in a data
   # wrapper that becomes what is stored in the queue so we can tell where
   # the data is from.
-  multi_process_lib.get_user_data()[AvailableQueues.PUBLIC_QUEUE].put(data)
+  multi_process_lib.get_user_data()[_AvailableQueues.PUBLIC_QUEUE].put(data)
+
+
+def job_count_to_cluster_spec(job_count_dict):
+  """Convert a job count dict to cluster spec.
+
+  Args:
+    job_count_dict: Dict for task_type/count of such task type.
+        {'worker': 1, 'ps': 1} is an example of a cluster with a worker and a
+          ps.
+
+  Returns:
+    The converted cluster spec dict.
+  """
+
+  cluster_spec = {}
+  for task_type, count in job_count_dict.items():
+    cluster_spec[task_type] = [
+        'localhost:{}'.format(multi_worker_test_base.pick_unused_port())
+        for _ in range(count)
+    ]
+  return cluster_spec
 
 
 def _add_std_stream_data_flattened(data):
   std_stream_queue = multi_process_lib.get_user_data()[
-      AvailableQueues.STD_STREAM_QUEUE]
+      _AvailableQueues.STD_STREAM_QUEUE]
   for d in list(data):
     std_stream_queue.put(d)
 
 
+@contextlib.contextmanager
+def try_run_and_except_connection_error(test_obj):
+  """Context manager to skip cases not considered failures for this test."""
+  # TODO(b/142074107): Remove this try-except once within-loop fault-tolerance
+  # is supported.
+  try:
+    yield
+  except RuntimeError as e:
+    if ('Connection reset by peer' in e.message or
+        'Socket closed' in e.message or
+        'failed to connect to all addresses' in e.message):
+      test_obj.skipTest(
+          'Skipping connection error between processes: {}'.format(e.message))
+    else:
+      raise
+
+
 def _get_internal_queue():
-  return multi_process_lib.get_user_data()[AvailableQueues.INTERNAL_QUEUE]
+  return multi_process_lib.get_user_data()[_AvailableQueues.INTERNAL_QUEUE]
