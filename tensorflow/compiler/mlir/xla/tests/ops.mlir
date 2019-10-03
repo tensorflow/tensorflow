@@ -2,8 +2,7 @@
 
 // -----
 
-func @enforce_static_shapes(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  // expected-error@+1 {{op operand #0 must be statically shaped tensor}}
+func @dynamic_shapes(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "xla_hlo.tanh"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
   return %0: tensor<*xf32>
 }
@@ -347,7 +346,7 @@ func @select_scalar_pred(%arg0: tensor<i1>, %arg1: tensor<2x3xi32>, %arg2: tenso
 // -----
 
 func @select_bad_pred_type(%arg0: tensor<3xi32>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32> {
-  // expected-error@+1 {{must be statically shaped tensor of pred (AKA boolean or 1-bit integer)}}
+  // expected-error@+1 {{must be tensor of pred (AKA boolean or 1-bit integer) values}}
   %0 = "xla_hlo.select"(%arg0, %arg1, %arg2) : (tensor<3xi32>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
   return %0 : tensor<2x3xi32>
 }
