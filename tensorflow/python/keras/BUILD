@@ -96,6 +96,7 @@ py_library(
         "//tensorflow/python:composite_tensor_utils",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:ctc_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
@@ -497,7 +498,6 @@ py_library(
         ":generic_utils",
         ":tf_utils",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:cudnn_rnn_ops_gen",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:embedding_ops",
@@ -799,7 +799,6 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 8,
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -812,7 +811,6 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -830,7 +828,6 @@ cuda_py_test(
         "no_rocm",
         "no_windows_gpu",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -910,7 +907,6 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -1031,6 +1027,10 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    tags = [
+        "no_cuda",
+        "no_rocm",
+    ],
     shard_count = 10,
 )
 
@@ -1045,7 +1045,6 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 2,
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -1058,7 +1057,6 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -1073,7 +1071,6 @@ cuda_py_test(
     ],
     shard_count = 12,
     tags = ["no_rocm"],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -1088,7 +1085,6 @@ cuda_py_test(
     ],
     shard_count = 12,
     tags = ["no_rocm"],
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -1304,7 +1300,6 @@ cuda_py_test(
         "guitar",
         "multi_gpu",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -1320,7 +1315,6 @@ cuda_py_test(
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -1600,6 +1594,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 4,
     tags = [
         "no_windows",
@@ -1666,6 +1661,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 8,
     tags = [
         "no_cuda",

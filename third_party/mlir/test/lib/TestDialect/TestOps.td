@@ -19,10 +19,9 @@
 #else
 #define TEST_OPS
 
-#ifdef OP_BASE
-#else
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
+include "mlir/Analysis/CallInterfaces.td"
+include "mlir/Analysis/InferTypeOpInterface.td"
 
 def TEST_Dialect : Dialect {
   let name = "test";
@@ -195,9 +194,17 @@ def SizedRegionOp : TEST_Op<"sized_region_op", []> {
   let regions = (region SizedRegion<2>:$my_region, SizedRegion<1>);
 }
 
-def FunctionalRegionOp : TEST_Op<"functional_region_op", []> {
+def FunctionalRegionOp : TEST_Op<"functional_region_op",
+    [CallableOpInterface]> {
   let regions = (region AnyRegion:$body);
   let results = (outs FunctionType);
+
+  let extraClassDeclaration = [{
+    Region *getCallableRegion(CallInterfaceCallable) { return &body(); }
+    void getCallableRegions(SmallVectorImpl<Region *> &callables) {
+      callables.push_back(&body());
+    }
+  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -282,6 +289,17 @@ def Operand1AndResultHaveSameElementCount :
   let results = (outs AnyTensor:$res);
 }
 
+def FourEqualsFive :
+    TEST_Op<"four_equals_five", [AllMatch<["5", "4"], "4 equals 5">]>;
+
+def OperandRankEqualsResultSize :
+    TEST_Op<"operand_rank_equals_result_size",
+            [AllMatch<[Rank<"operand">.result, ElementCount<"result">.result],
+                      "operand rank equals result size">]> {
+  let arguments = (ins AnyTensor:$operand);
+  let results = (outs AnyTensor:$result);
+}
+
 def IfFirstOperandIsNoneThenSoIsSecond :
     TEST_Op<"if_first_operand_is_none_then_so_is_second", [PredOpTrait<
     "has either both none type operands or first is not none",
@@ -301,8 +319,7 @@ def ParentOp : TEST_Op<"parent">;
 def ChildOp : TEST_Op<"child", [HasParent<"ParentOp">]>;
 
 
-def TerminatorOp : TEST_Op<"finish", [Terminator]> {
-}
+def TerminatorOp : TEST_Op<"finish", [Terminator]>;
 def SingleBlockImplicitTerminatorOp : TEST_Op<"SingleBlockImplicitTerminator",
     [SingleBlockImplicitTerminator<"TerminatorOp">]> {
   let regions = (region SizedRegion<1>:$region);
@@ -310,6 +327,18 @@ def SingleBlockImplicitTerminatorOp : TEST_Op<"SingleBlockImplicitTerminator",
 
 def I32ElementsAttrOp : TEST_Op<"i32ElementsAttr"> {
   let arguments = (ins I32ElementsAttr:$attr);
+}
+
+def OpWithInferTypeInterfaceOp : TEST_Op<"op_with_infer_type_if",
+    [InferTypeOpInterface]> {
+  let arguments = (ins AnyTensor:$x, AnyTensor:$y);
+  let results = (outs AnyTensor:$res);
+  // TODO(jpienaar): Remove the need to specify these here.
+  let extraClassDeclaration = [{
+    SmallVector<Type, 2> inferReturnTypes(llvm::Optional<Location> location,
+      ArrayRef<Value*> operands, ArrayRef<NamedAttribute> attributes,
+      ArrayRef<Region> regions);
+  }];
 }
 
 def IsNotScalar : Constraint<CPred<"$0.getType().getRank() != 0">>;

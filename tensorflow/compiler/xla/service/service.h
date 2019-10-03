@@ -183,6 +183,16 @@ class Service : public ServiceInterface {
   const Backend& backend() const { return *execute_backend_; }
   Backend* mutable_backend() { return execute_backend_.get(); }
 
+  // Create a Hlo module config for the given program shape and arguments.
+  // execution_options is optional; if not given a default is used.
+  StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
+      const ProgramShape& program_shape,
+      absl::Span<const Shape* const> argument_shapes,
+      const ExecutionOptions* execution_options,
+      FusionConfigCollection fusion_config_collection =
+          FusionConfigCollection::kOff,
+      const std::vector<std::vector<bool>>& fusion_config = {});
+
  private:
   // A private overload for Service itself, used by other methods within this
   // class.
@@ -217,13 +227,6 @@ class Service : public ServiceInterface {
   ResolveAndValidateArguments(
       absl::Span<const GlobalDataHandle* const> arguments,
       absl::Span<se::StreamExecutor* const> stream_executors) const;
-
-  // Create a Hlo module config for the given program shape and arguments.
-  // execution_options is optional; if not given a default is used.
-  StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
-      const ProgramShape& program_shape,
-      absl::Span<const Shape* const> argument_shapes,
-      const ExecutionOptions* execution_options);
 
   // Builds an Executable for the given parameters.
   //

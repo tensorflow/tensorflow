@@ -101,6 +101,17 @@ func @const_int_float() -> tensor<f32> {
 
 // -----
 
+// CHECK-LABEL: func @const_negative_int_float
+func @const_negative_int_float() -> tensor<f32> {
+  // CHECK-NEXT: [[CST:%.+]] = "xla_hlo.constant"() {value = dense<-4.{{0*}}e+00> : tensor<f32>} : () -> tensor<f32>
+  %cst = "xla_hlo.constant"() {value = dense<-4> : tensor<i32>} : () -> tensor<i32>
+  %0 = "xla_hlo.convert"(%cst) : (tensor<i32>) -> tensor<f32>
+  // CHECK-NEXT: return [[CST]]
+  return %0 : tensor<f32>
+}
+
+// -----
+
 // CHECK-LABEL: func @const_int_bf16
 func @const_int_bf16() -> tensor<bf16> {
   // CHECK-NEXT: [[CST:%.+]] = "xla_hlo.constant"() {value = dense<4.{{0*}}e+00> : tensor<bf16>} : () -> tensor<bf16>
@@ -138,6 +149,17 @@ func @const_int_narrowing() -> tensor<i32> {
 func @const_int_widening() -> tensor<i64> {
   // CHECK-NEXT: [[CST:%.+]] = "xla_hlo.constant"() {value = dense<42> : tensor<i64>} : () -> tensor<i64>
   %cst = "xla_hlo.constant"() {value = dense<42> : tensor<i32>} : () -> tensor<i32>
+  %0 = "xla_hlo.convert"(%cst) : (tensor<i32>) -> tensor<i64>
+  // CHECK-NEXT: return [[CST]]
+  return %0 : tensor<i64>
+}
+
+// -----
+
+// CHECK-LABEL: func @const_negative_int_widening
+func @const_negative_int_widening() -> tensor<i64> {
+  // CHECK-NEXT: [[CST:%.+]] = "xla_hlo.constant"() {value = dense<-42> : tensor<i64>} : () -> tensor<i64>
+  %cst = "xla_hlo.constant"() {value = dense<-42> : tensor<i32>} : () -> tensor<i32>
   %0 = "xla_hlo.convert"(%cst) : (tensor<i32>) -> tensor<i64>
   // CHECK-NEXT: return [[CST]]
   return %0 : tensor<i64>

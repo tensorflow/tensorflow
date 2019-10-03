@@ -36,6 +36,13 @@ class SPV_ArithmeticOp<string mnemonic, Type type,
                    !listconcat(traits,
                                [NoSideEffect, SameOperandsAndResultType])>;
 
+class SPV_UnaryArithmeticOp<string mnemonic, Type type,
+                            list<OpTrait> traits = []> :
+      // Operand type same as result type.
+      SPV_UnaryOp<mnemonic, type, type,
+                   !listconcat(traits,
+                               [NoSideEffect, SameOperandsAndResultType])>;
+
 // -----
 
 def SPV_FAddOp : SPV_ArithmeticOp<"FAdd", SPV_Float, [Commutative]> {
@@ -67,7 +74,7 @@ def SPV_FAddOp : SPV_ArithmeticOp<"FAdd", SPV_Float, [Commutative]> {
 
 // -----
 
-def SPV_FDivOp : SPV_ArithmeticOp<"FDiv", SPV_Float> {
+def SPV_FDivOp : SPV_ArithmeticOp<"FDiv", SPV_Float, []> {
   let summary = "Floating-point division of Operand 1 divided by Operand 2.";
 
   let description = [{
@@ -78,6 +85,7 @@ def SPV_FDivOp : SPV_ArithmeticOp<"FDiv", SPV_Float> {
 
      Results are computed per component.  The resulting value is undefined
     if Operand 2 is 0.
+
     ### Custom assembly form
     ``` {.ebnf}
     float-scalar-vector-type ::= float-type |
@@ -97,7 +105,7 @@ def SPV_FDivOp : SPV_ArithmeticOp<"FDiv", SPV_Float> {
 
 // -----
 
-def SPV_FModOp : SPV_ArithmeticOp<"FMod", SPV_Float> {
+def SPV_FModOp : SPV_ArithmeticOp<"FMod", SPV_Float, []> {
   let summary = [{
     The floating-point remainder whose sign matches the sign of Operand 2.
   }];
@@ -162,7 +170,36 @@ def SPV_FMulOp : SPV_ArithmeticOp<"FMul", SPV_Float, [Commutative]> {
 
 // -----
 
-def SPV_FRemOp : SPV_ArithmeticOp<"FRem", SPV_Float> {
+def SPV_FNegateOp : SPV_UnaryArithmeticOp<"FNegate", SPV_Float, []> {
+  let summary = "Floating-point subtract of Operand from zero.";
+
+  let description = [{
+    Result Type must be a scalar or vector of floating-point type.
+
+     The type of Operand must be the same as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    float-scalar-vector-type ::= float-type |
+                                 `vector<` integer-literal `x` float-type `>`
+    fmul-op ::= `spv.FNegate` ssa-use `:` float-scalar-vector-type
+    ```
+
+    For example:
+
+    ```
+    %1 = spv.FNegate %0 : f32
+    %3 = spv.FNegate %2 : vector<4xf32>
+    ```
+  }];
+}
+
+// -----
+
+def SPV_FRemOp : SPV_ArithmeticOp<"FRem", SPV_Float, []> {
   let summary = [{
     The floating-point remainder whose sign matches the sign of Operand 1.
   }];
@@ -197,7 +234,7 @@ def SPV_FRemOp : SPV_ArithmeticOp<"FRem", SPV_Float> {
 
 // -----
 
-def SPV_FSubOp : SPV_ArithmeticOp<"FSub", SPV_Float> {
+def SPV_FSubOp : SPV_ArithmeticOp<"FSub", SPV_Float, []> {
   let summary = "Floating-point subtraction of Operand 2 from Operand 1.";
 
   let description = [{
@@ -299,7 +336,7 @@ def SPV_IMulOp : SPV_ArithmeticOp<"IMul", SPV_Integer, [Commutative]> {
 
 // -----
 
-def SPV_ISubOp : SPV_ArithmeticOp<"ISub", SPV_Integer> {
+def SPV_ISubOp : SPV_ArithmeticOp<"ISub", SPV_Integer, []> {
   let summary = "Integer subtraction of Operand 2 from Operand 1.";
 
   let description = [{
@@ -335,7 +372,7 @@ def SPV_ISubOp : SPV_ArithmeticOp<"ISub", SPV_Integer> {
 
 // -----
 
-def SPV_SDivOp : SPV_ArithmeticOp<"SDiv", SPV_Integer> {
+def SPV_SDivOp : SPV_ArithmeticOp<"SDiv", SPV_Integer, []> {
   let summary = "Signed-integer division of Operand 1 divided by Operand 2.";
 
   let description = [{
@@ -368,7 +405,7 @@ def SPV_SDivOp : SPV_ArithmeticOp<"SDiv", SPV_Integer> {
 
 // -----
 
-def SPV_SModOp : SPV_ArithmeticOp<"SMod", SPV_Integer> {
+def SPV_SModOp : SPV_ArithmeticOp<"SMod", SPV_Integer, []> {
   let summary = [{
     Signed remainder operation for the remainder whose sign matches the sign
     of Operand 2.
@@ -405,7 +442,7 @@ def SPV_SModOp : SPV_ArithmeticOp<"SMod", SPV_Integer> {
 
 // -----
 
-def SPV_SRemOp : SPV_ArithmeticOp<"SRem", SPV_Integer> {
+def SPV_SRemOp : SPV_ArithmeticOp<"SRem", SPV_Integer, []> {
   let summary = [{
     Signed remainder operation for the remainder whose sign matches the sign
     of Operand 1.
@@ -442,7 +479,7 @@ def SPV_SRemOp : SPV_ArithmeticOp<"SRem", SPV_Integer> {
 
 // -----
 
-def SPV_UDivOp : SPV_ArithmeticOp<"UDiv", SPV_Integer> {
+def SPV_UDivOp : SPV_ArithmeticOp<"UDiv", SPV_Integer, []> {
   let summary = "Unsigned-integer division of Operand 1 divided by Operand 2.";
 
   let description = [{

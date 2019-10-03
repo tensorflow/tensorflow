@@ -72,7 +72,6 @@ cuda_py_test(
         "//tensorflow/python/keras",
     ],
     shard_count = 4,
-    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -311,7 +310,6 @@ cuda_py_test(
         "no_oss",  # http://b/119349471
         "tf_integration_test",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -348,7 +346,6 @@ cuda_py_test(
         "nomsan",  # b/140958724
         # TODO(b/123307453): Add "multi_and_single_gpu",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -373,7 +370,6 @@ cuda_py_test(
         "noguitar",
         "notap",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -396,7 +392,6 @@ cuda_py_test(
         "no_oss",
         "nomsan",  # b/140958724
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -418,7 +413,6 @@ cuda_py_test(
         "nomsan",  # b/140958724
         "notap",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_library(

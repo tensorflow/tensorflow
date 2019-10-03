@@ -389,9 +389,9 @@ def get_op_definition(instruction, doc, existing_info, inst_category):
             '}}\n'
 
   opname = instruction['opname'][2:]
-  category_args = existing_info.get('category_args', None)
-  if category_args is None:
-    category_args = ', '
+  category_args = existing_info.get('category_args', '')
+  # Make sure we have ', ' to separate the category arguments from traits
+  category_args = category_args.rstrip(', ') + ', '
 
   summary, description = doc.split('\n', 1)
   wrapper = textwrap.TextWrapper(

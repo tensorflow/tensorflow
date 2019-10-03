@@ -32,6 +32,7 @@ cuda_py_test(
         "//tensorflow/python/ops/signal",
     ],
     xla_enable_strict_auto_jit = True,
+    tags = ["no_rocm"],
 )
 
 cuda_py_test(
@@ -51,7 +52,6 @@ cuda_py_test(
         "no_rocm",
         "optonly",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -63,7 +63,6 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/ops/signal",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -79,6 +78,7 @@ cuda_py_test(
         "//tensorflow/python/ops/signal",
     ],
     xla_enable_strict_auto_jit = True,
+    tags = ["no_rocm"],
 )
 
 cuda_py_test(
@@ -97,7 +97,6 @@ cuda_py_test(
         "//tensorflow/python/ops/signal",
         "//tensorflow/python:platform_test",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -115,7 +114,6 @@ cuda_py_test(
         "//tensorflow/python/ops/signal",
         "//tensorflow/python:platform_test",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -140,7 +138,6 @@ cuda_py_test(
         "no_rocm",
         "nomac",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -156,5 +153,4 @@ cuda_py_test(
         "//tensorflow/python/ops/signal",
         "//tensorflow/python:platform_test",
     ],
-    xla_enable_strict_auto_jit = True,
 )

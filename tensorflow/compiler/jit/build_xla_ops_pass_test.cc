@@ -149,8 +149,10 @@ TEST_F(BuildXlaOpsTest, ControlDepsPreserved) {
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(fdef_lib));
   Node* call;
   TF_ASSERT_OK(MakeXlaCompiledKernel(root.graph(), "cluster_0", "C", &call));
+  call->AddAttr(kXlaHasReferenceVarsAttr, false);
   call->set_requested_device(kXlaDeviceName);
   Node* write_op = MakeWrite(root, "write");
+  write_op->AddAttr(kXlaHasReferenceVarsAttr, false);
   root.graph()->AddControlEdge(call, write_op);
 
   std::unique_ptr<Graph> graph;
@@ -191,8 +193,10 @@ TEST_F(BuildXlaOpsTest, OnNonXlaDevice) {
   Node* call;
   TF_ASSERT_OK(MakeXlaCompiledKernel(root.graph(), "cluster_0", "C", &call));
   TF_ASSERT_OK(root.DoShapeInference(call));
+  call->AddAttr(kXlaHasReferenceVarsAttr, false);
 
   Node* write_op = MakeWrite(root, Output(call), "write_result");
+  write_op->AddAttr(kXlaHasReferenceVarsAttr, false);
 
   auto xla_compile = NodeWith(Op("_XlaCompile"), Attr("must_compile", false));
   auto predicated_compilation_key =
@@ -226,8 +230,10 @@ TEST_F(BuildXlaOpsTest, OnXlaDevice) {
   TF_ASSERT_OK(MakeXlaCompiledKernel(root.graph(), "cluster_0", "C", &call));
   call->set_requested_device(kXlaDeviceName);
   TF_ASSERT_OK(root.DoShapeInference(call));
+  call->AddAttr(kXlaHasReferenceVarsAttr, false);
 
   Node* write_op = MakeWrite(root, Output(call), "write_result");
+  write_op->AddAttr(kXlaHasReferenceVarsAttr, false);
 
   std::unique_ptr<Graph> graph;
   TF_ASSERT_OK(BuildXlaOps(root, fdef_lib, &graph));
@@ -250,6 +256,7 @@ TEST_F(BuildXlaOpsTest, NoExtraMergeForEdgeToSink) {
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(fdef_lib));
   Node* call;
   TF_ASSERT_OK(MakeXlaCompiledKernel(root.graph(), "cluster_0", "C", &call));
+  call->AddAttr(kXlaHasReferenceVarsAttr, false);
 
   std::unique_ptr<Graph> graph;
   TF_ASSERT_OK(BuildXlaOps(root, fdef_lib, &graph));
@@ -278,6 +285,7 @@ TEST_F(BuildXlaOpsTest, NoDeviceToHostCopiesForClustersWithInt32Inputs) {
   TF_ASSERT_OK(
       MakeXlaCompiledKernel(root.graph(), "cluster_int32", "C", &call));
   call->set_requested_device(kXlaDeviceName);
+  call->AddAttr(kXlaHasReferenceVarsAttr, false);
 
   auto var =
       ops::VarHandleOp(root.WithOpName("var"), DT_INT32, TensorShape({}));

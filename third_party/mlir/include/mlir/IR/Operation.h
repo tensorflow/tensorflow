@@ -52,8 +52,8 @@ class Operation final
 public:
   /// Create a new Operation with the specific fields.
   static Operation *create(Location location, OperationName name,
-                           ArrayRef<Value *> operands,
                            ArrayRef<Type> resultTypes,
+                           ArrayRef<Value *> operands,
                            ArrayRef<NamedAttribute> attributes,
                            ArrayRef<Block *> successors, unsigned numRegions,
                            bool resizableOperandList);
@@ -61,8 +61,8 @@ public:
   /// Overload of create that takes an existing NamedAttributeList to avoid
   /// unnecessarily uniquing a list of attributes.
   static Operation *create(Location location, OperationName name,
-                           ArrayRef<Value *> operands,
                            ArrayRef<Type> resultTypes,
+                           ArrayRef<Value *> operands,
                            const NamedAttributeList &attributes,
                            ArrayRef<Block *> successors, unsigned numRegions,
                            bool resizableOperandList);
@@ -637,6 +637,9 @@ class OperandTypeIterator final
 
 public:
   using reference = Type;
+
+  /// Provide a const deference method.
+  Type operator*() const { return unwrap(*I); }
 
   /// Initializes the operand type iterator to the specified operand iterator.
   OperandTypeIterator(OperandIterator it)

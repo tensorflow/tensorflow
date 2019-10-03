@@ -184,32 +184,6 @@ func @placeholder_int(%arg0: tensor<i32>) -> tensor<i32> {
 // CHECK-NEXT:  "tfl.pseudo_input"(%arg0) : (tensor<i32>) -> tensor<i32>
 }
 
-func @placeholder_min(%arg0: tensor<f32>) -> tensor<f32> {
-  %0 = "tf.Placeholder.input"(%arg0) {name = "Input", min = -0.1 : f32} : (tensor<f32>) -> tensor<f32>
-  return %0: tensor<f32>
-
-// CHECK-LABEL: @placeholder_min
-// CHECK:  %0 = "tfl.pseudo_input"(%arg0) : (tensor<f32>) -> tensor<f32>
-}
-
-func @placeholder_type(%arg0: tensor<f32>) -> tensor<f32> {
-  %0 = "tf.Placeholder.input"(%arg0) {name = "Input", type = i8} : (tensor<f32>) -> tensor<f32>
-  return %0: tensor<f32>
-
-// CHECK-LABEL: @placeholder_type
-// CHECK:  %0 = "tfl.pseudo_input"(%arg0) : (tensor<f32>) -> tensor<f32>
-}
-
-func @placeholder_min_max(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
-  %0 = "tf.Placeholder.input"(%arg0) {name = "Input", min = -0.1 : f32, max = 0.1 : f32, type = i8} : (tensor<2x3xf32>) -> tensor<2x3xf32>
-  return %0: tensor<2x3xf32>
-
-// CHECK-LABEL: @placeholder_min_max
-// CHECK:  %0 = "tfl.pseudo_input"(%arg0) : (tensor<2x3xf32>) -> tensor<2x3xf32>
-// CHECK:  %1 = "tfl.quantize"(%0) {qtype = tensor<2x3x!quant.uniform<u8:f32, 7.8431373717738134E-4:128>>}
-// CHECK:  %2 = "tfl.dequantize"(%1) : (tensor<2x3x!quant.uniform<u8:f32, 7.8431373717738134E-4:128>>)
-}
-
 func @shape(%arg0: tensor<?x1001xf32>) -> tensor<2xi32> {
   %0 = "tf.Shape"(%arg0) {T = "tfdtype$DT_FLOAT", out_type = "tfdtype$DT_INT32"} : (tensor<?x1001xf32>) -> tensor<2xi32>
   %1 = "tf.Shape"(%arg0) {T = "tfdtype$DT_FLOAT"} : (tensor<?x1001xf32>) -> tensor<2xi32>

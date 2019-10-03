@@ -340,6 +340,13 @@ func @relu(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   return %0: tensor<1xi32>
 }
 
+// CHECK-LABEL: func @relu_non_static_input
+func @relu_non_static_input(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+  // CHECK: tf.Relu
+  %0 = "tf.Relu"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+  return %0: tensor<?xi32>
+}
+
 // CHECK-LABEL: func @relu6
 func @relu6(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   // CHECK-NEXT: %[[ZERO:.*]] = "xla_hlo.constant"() {value = dense<0> : tensor<1xi32>}
@@ -435,6 +442,51 @@ func @rank4_softmax(%arg0: tensor<2x3x4x5xf16>) -> tensor<2x3x4x5xf16> {
 }
 
 //===----------------------------------------------------------------------===//
+// Transpose op legalization.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: @transpose_noop
+func @transpose_noop(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %permutation = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi64>} : () -> (tensor<2xi64>)
+  // CHECK: "xla_hlo.transpose"
+  %0 = "tf.Transpose"(%arg0, %permutation) : (tensor<2x3xf32>, tensor<2xi64>) -> tensor<2x3xf32>
+  return %0 : tensor<2x3xf32>
+}
+
+// CHECK-LABEL: @transpose_2d
+func @transpose_2d(%arg0: tensor<2x3xf32>) -> tensor<3x2xf32> {
+  %permutation = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> (tensor<2xi64>)
+  // CHECK: "xla_hlo.transpose"
+  %0 = "tf.Transpose"(%arg0, %permutation) : (tensor<2x3xf32>, tensor<2xi64>) -> tensor<3x2xf32>
+  return %0 : tensor<3x2xf32>
+}
+
+// CHECK-LABEL: @transpose_3d
+func @transpose_3d(%arg0: tensor<1x2x3xf32>) -> tensor<3x2x1xf32> {
+  %permutation = "tf.Const"() {value = dense<[2, 1, 0]> : tensor<3xi64>} : () -> (tensor<3xi64>)
+  // CHECK: "xla_hlo.transpose"
+  %0 = "tf.Transpose"(%arg0, %permutation) : (tensor<1x2x3xf32>, tensor<3xi64>) -> tensor<3x2x1xf32>
+  return %0 : tensor<3x2x1xf32>
+}
+
+// CHECK-LABEL: @transpose_dynamic_2d
+func @transpose_dynamic_2d(%arg0: tensor<?x4xf32>) -> tensor<4x?xf32> {
+  %permutation = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> (tensor<2xi64>)
+  // CHECK: "tf.Transpose"
+  %0 = "tf.Transpose"(%arg0, %permutation) : (tensor<?x4xf32>, tensor<2xi64>) -> tensor<4x?xf32>
+  return %0 : tensor<4x?xf32>
+}
+
+// CHECK-LABEL: @transpose_rankless_2d
+func @transpose_rankless_2d(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  %permutation = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> (tensor<2xi64>)
+  // CHECK: "tf.Transpose"
+  %0 = "tf.Transpose"(%arg0, %permutation) : (tensor<*xf32>, tensor<2xi64>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+
+//===----------------------------------------------------------------------===//
 // Unary op legalizations.
 //===----------------------------------------------------------------------===//
 
@@ -445,11 +497,39 @@ func @abs(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   return %0 : tensor<2xf32>
 }
 
+// CHECK-LABEL: func @abs_dynamic
+func @abs_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK:  "tf.Abs"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  %0 = "tf.Abs"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @abs_rankless
+func @abs_rankless(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK:  "tf.Abs"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  %0 = "tf.Abs"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
 // CHECK-LABEL: @ceil
 func @ceil(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK:  "xla_hlo.ceil"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   %0 = "tf.Ceil"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   return %0 : tensor<2xf32>
+}
+
+// CHECK-LABEL: func @ceil_dynamic
+func @ceil_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK:  "tf.Ceil"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  %0 = "tf.Ceil"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @ceil_rankless
+func @ceil_rankless(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK:  "tf.Ceil"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  %0 = "tf.Ceil"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL: @cos
@@ -459,11 +539,39 @@ func @cos(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   return %0 : tensor<2xf32>
 }
 
+// CHECK-LABEL: func @cos_dynamic
+func @cos_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK:  "tf.Cos"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  %0 = "tf.Cos"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @cos_rankless
+func @cos_rankless(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK:  "tf.Cos"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  %0 = "tf.Cos"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
 // CHECK-LABEL: @exp
 func @exp(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK:  "xla_hlo.exp"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   %0 = "tf.Exp"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   return %0 : tensor<2xf32>
+}
+
+// CHECK-LABEL: func @exp_dynamic
+func @exp_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK:  "tf.Exp"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  %0 = "tf.Exp"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @exp_rankless
+func @exp_rankless(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK:  "tf.Exp"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  %0 = "tf.Exp"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL: @floor
@@ -473,11 +581,39 @@ func @floor(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   return %0 : tensor<2xf32>
 }
 
+// CHECK-LABEL: func @floor_dynamic
+func @floor_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK:  "tf.Floor"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  %0 = "tf.Floor"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @floor_rankless
+func @floor_rankless(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK:  "tf.Floor"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  %0 = "tf.Floor"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
 // CHECK-LABEL: @neg
 func @neg(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK:  "xla_hlo.neg"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   %0 = "tf.Neg"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   return %0 : tensor<2xf32>
+}
+
+// CHECK-LABEL: func @neg_dynamic
+func @neg_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK:  "tf.Neg"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  %0 = "tf.Neg"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @neg_rankless
+func @neg_rankless(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK:  "tf.Neg"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  %0 = "tf.Neg"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL: @sigmoid
@@ -492,12 +628,48 @@ func @sigmoid(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   return %0 : tensor<2xf32>
 }
 
+// CHECK-LABEL: func @rsqrt
+func @rsqrt(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK:  "xla_hlo.rsqrt"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  %0 = "tf.Rsqrt"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
+// CHECK-LABEL: func @rsqrt_dynamic
+func @rsqrt_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK:  "tf.Rsqrt"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  %0 = "tf.Rsqrt"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @rsqrt_rankless
+func @rsqrt_rankless(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK:  "tf.Rsqrt"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  %0 = "tf.Rsqrt"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
 // CHECK-LABEL: func @tanh
 func @tanh(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK:  "xla_hlo.tanh"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   %0 = "tf.Tanh"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   return %0 : tensor<2xf32>
 }
+
+// CHECK-LABEL: func @tanh_dynamic
+func @tanh_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK:  "tf.Tanh"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  %0 = "tf.Tanh"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @tanh_rankless
+func @tanh_rankless(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK:  "tf.Tanh"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  %0 = "tf.Tanh"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
 
 // CHECK-LABEL: reshape
 func @reshape(%arg0: tensor<2xf32>, %arg1: tensor<2xi32>) -> tensor<1x1xf32> {

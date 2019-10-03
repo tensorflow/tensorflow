@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/amdgpu_compiler.h"
 
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
@@ -73,7 +73,7 @@ Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   HloPassPipeline pipeline("conv_canonicalization");
   pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                             /*allow_mixed_precision=*/false);
-  pipeline.AddPass<CudnnConvRewriter>();
+  pipeline.AddPass<GpuConvRewriter>();
   pipeline.AddPass<GpuConvPaddingLegalization>();
 
   pipeline.AddPass<HloConstantFolding>();

@@ -65,6 +65,7 @@ class GrpcEagerServiceImpl : public AsyncServiceInterface {
                        &GrpcEagerServiceImpl::method##Handler, false);        \
   }
   HANDLER(CreateContext);
+  HANDLER(UpdateContext);
   HANDLER(Enqueue);
   HANDLER(WaitQueueDone);
   HANDLER(KeepAlive);

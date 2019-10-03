@@ -470,7 +470,6 @@ static void extractStrides(AffineExpr e, MutableArrayRef<int64_t> strides,
     failed = true;
     return;
   }
-
   if (bin.getKind() == AffineExprKind::Mul) {
     auto dim = bin.getLHS().cast<AffineDimExpr>();
     auto cst = bin.getRHS().dyn_cast<AffineConstantExpr>();
@@ -482,7 +481,6 @@ static void extractStrides(AffineExpr e, MutableArrayRef<int64_t> strides,
     }
     return;
   }
-
   if (bin.getKind() == AffineExprKind::Add) {
     for (auto e : {bin.getLHS(), bin.getRHS()}) {
       if (auto cst = e.dyn_cast<AffineConstantExpr>()) {
@@ -500,11 +498,37 @@ static void extractStrides(AffineExpr e, MutableArrayRef<int64_t> strides,
     }
     return;
   }
-
   llvm_unreachable("unexpected binary operation");
 }
 
-LogicalResult MemRefType::getStrides(SmallVectorImpl<int64_t> &strides) const {
+// Fallback cases for terminal dim/sym/cst that are not part of a binary op
+// (i.e. single term).
+static void extractStridesFromTerm(AffineExpr e,
+                                   MutableArrayRef<int64_t> strides,
+                                   MutableArrayRef<bool> seen) {
+  if (auto cst = e.dyn_cast<AffineConstantExpr>()) {
+    assert(!seen.back() && "unexpected `seen` bit with single term");
+    strides.back() = cst.getValue();
+    seen.back() = true;
+    return;
+  }
+  if (auto sym = e.dyn_cast<AffineSymbolExpr>()) {
+    assert(!seen.back() && "unexpected `seen` bit with single term");
+    strides.back() = MemRefType::kDynamicStride;
+    seen.back() = true;
+    return;
+  }
+  if (auto dim = e.dyn_cast<AffineDimExpr>()) {
+    assert(!seen.back() && "unexpected `seen` bit with single term");
+    strides[dim.getPosition()] = 1;
+    seen[dim.getPosition()] = true;
+    return;
+  }
+  llvm_unreachable("unexpected binary operation");
+}
+
+LogicalResult
+MemRefType::getStridesAndOffset(SmallVectorImpl<int64_t> &strides) const {
   auto affineMaps = getAffineMaps();
   // For now strides are only computed on a single affine map with a single
   // result (i.e. the closed subset of linearization maps that are compatible
@@ -513,19 +537,31 @@ LogicalResult MemRefType::getStrides(SmallVectorImpl<int64_t> &strides) const {
   if (affineMaps.size() > 1)
     return failure();
   AffineExpr stridedExpr;
-  if (affineMaps.empty() || affineMaps[0].isIdentity())
+  if (affineMaps.empty() || affineMaps[0].isIdentity()) {
+    if (getRank() == 0) {
+      // Handle 0-D corner case.
+      strides.push_back(0);
+      return success();
+    }
     stridedExpr = makeCanonicalStridedLayoutExpr(getShape(), getContext());
-  else if (affineMaps[0].getNumResults() == 1)
+  } else if (affineMaps[0].getNumResults() == 1) {
     stridedExpr = affineMaps[0].getResult(0);
+  }
   if (!stridedExpr)
     return failure();
+
   bool failed = false;
   strides = SmallVector<int64_t, 4>(getRank() + 1, 0);
   SmallVector<bool, 4> seen(getRank() + 1, false);
-  stridedExpr.walk([&](AffineExpr e) {
-    if (!failed)
-      extractStrides(e, strides, seen, failed);
-  });
+  if (stridedExpr.isa<AffineBinaryOpExpr>()) {
+    stridedExpr.walk([&](AffineExpr e) {
+      if (!failed)
+        extractStrides(e, strides, seen, failed);
+    });
+  } else {
+    extractStridesFromTerm(stridedExpr, strides, seen);
+  }
+
   // Constant offset may not be present in `stridedExpr` which means it is
   // implicitly 0.
   if (!seen.back()) {

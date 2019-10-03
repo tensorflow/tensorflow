@@ -202,6 +202,28 @@ objc_library(
     ],
 )
 
+objc_library(
+    name = "inference_context_test_lib",
+    testonly = 1,
+    srcs = ["inference_context_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":inference_context",
+        "//tensorflow/lite/delegates/gpu/metal/kernels:test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "inference_context_test",
+    testonly = 1,
+    minimum_os_version = "10.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":inference_context_test_lib"],
+)
+
 cc_library(
     name = "runtime_options",
     hdrs = ["runtime_options.h"],

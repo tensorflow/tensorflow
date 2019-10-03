@@ -53,6 +53,17 @@ public:
   /// Return the name of the attribute used for symbol names.
   static StringRef getSymbolAttrName() { return "sym_name"; }
 
+  /// Returns the operation registered with the given symbol name with the
+  /// regions of 'symbolTableOp'. 'symbolTableOp' is required to be an operation
+  /// with the 'OpTrait::SymbolTable' trait.
+  static Operation *lookupSymbolIn(Operation *symbolTableOp, StringRef symbol);
+
+  /// Returns the operation registered with the given symbol name within the
+  /// closes parent operation of, or including, 'from' with the
+  /// 'OpTrait::SymbolTable' trait. Returns nullptr if no valid symbol was
+  /// found.
+  static Operation *lookupNearestSymbolFrom(Operation *from, StringRef symbol);
+
 private:
   MLIRContext *context;
 
@@ -88,16 +99,7 @@ public:
   /// name exists. Symbol names never include the @ on them. Note: This
   /// performs a linear scan of held symbols.
   Operation *lookupSymbol(StringRef name) {
-    // Look for a symbol with the given name.
-    for (auto &block : this->getOperation()->getRegion(0)) {
-      for (auto &op : block) {
-        auto nameAttr = op.template getAttrOfType<StringAttr>(
-            mlir::SymbolTable::getSymbolAttrName());
-        if (nameAttr && nameAttr.getValue() == name)
-          return &op;
-      }
-    }
-    return nullptr;
+    return mlir::SymbolTable::lookupSymbolIn(this->getOperation(), name);
   }
   template <typename T> T lookupSymbol(StringRef name) {
     return dyn_cast_or_null<T>(lookupSymbol(name));

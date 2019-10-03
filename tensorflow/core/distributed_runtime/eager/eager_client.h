@@ -34,6 +34,7 @@ class EagerClient {
                              StatusCallback done) = 0;
 
   CLIENT_METHOD(CreateContext);
+  CLIENT_METHOD(UpdateContext);
   CLIENT_METHOD(Enqueue);
   CLIENT_METHOD(WaitQueueDone);
   CLIENT_METHOD(KeepAlive);

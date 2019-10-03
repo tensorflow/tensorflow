@@ -65,6 +65,14 @@ class WorkerSession {
       DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
       std::unique_ptr<DynamicDeviceMgr> remote_device_mgr);
 
+  // Update an existing worker session with new set of remote workers and
+  // devices. Added devices will be owned by the worker session, and removed
+  // devices will be freed by their names.
+  Status UpdateWorkerCacheAndDevices(
+      std::unique_ptr<WorkerCacheInterface> new_worker_cache,
+      std::vector<std::unique_ptr<tensorflow::Device>> added_remote_devices,
+      const std::vector<string>& removed_remote_devices);
+
   ~WorkerSession();
 
  private:
@@ -81,7 +89,7 @@ class WorkerSession {
   const string worker_name_;
 
   // Object from which WorkerInterface instances can be obtained.
-  const std::unique_ptr<WorkerCacheInterface> worker_cache_;
+  std::unique_ptr<WorkerCacheInterface> worker_cache_;
 
   // graph_mgr keeps track of the registered graphs of this session.
   //
@@ -93,7 +101,7 @@ class WorkerSession {
 
   const std::unique_ptr<DeviceMgr> device_mgr_;
   DeviceMgr* const borrowed_device_mgr_;  // Not owned.
-  const std::unique_ptr<DynamicDeviceMgr> remote_device_mgr_;
+  std::unique_ptr<DynamicDeviceMgr> remote_device_mgr_;
 };
 
 }  // namespace tensorflow

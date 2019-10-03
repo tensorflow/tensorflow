@@ -705,9 +705,9 @@ cc_library(
 )
 
 cc_library(
-    name = "cudnn_conv_rewriter",
-    srcs = ["cudnn_conv_rewriter.cc"],
-    hdrs = ["cudnn_conv_rewriter.h"],
+    name = "gpu_conv_rewriter",
+    srcs = ["gpu_conv_rewriter.cc"],
+    hdrs = ["gpu_conv_rewriter.h"],
     deps = [
         ":backend_configs",
         ":ir_emission_utils",
@@ -722,10 +722,10 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "cudnn_conv_rewriter_test",
-    srcs = ["cudnn_conv_rewriter_test.cc"],
+    name = "gpu_conv_rewriter_test",
+    srcs = ["gpu_conv_rewriter_test.cc"],
     deps = [
-        ":cudnn_conv_rewriter",
+        ":gpu_conv_rewriter",
         ":ir_emission_utils",
         "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/compiler/xla:test",
@@ -1070,12 +1070,12 @@ cc_library(
     deps = [
         ":alias_passthrough_params",
         ":cudnn_batchnorm_rewriter",
-        ":cudnn_conv_rewriter",
         ":cudnn_pad_for_convolutions",
         ":fusion_merger",
         ":gpu_constants",
         ":gpu_conv_algorithm_picker",
         ":gpu_conv_padding_legalization",
+        ":gpu_conv_rewriter",
         ":gpu_copy_insertion",
         ":gpu_executable",
         ":gpu_hlo_schedule",
@@ -1184,7 +1184,6 @@ cc_library(
     ],
     deps = [
         ":cublas_gemm_pad_for_tensor_cores",
-        ":cudnn_conv_rewriter",
         ":cudnn_fused_conv_rewriter",
         ":cudnn_pad_for_convolutions",
         ":cusolver_rewriter",
@@ -1193,6 +1192,7 @@ cc_library(
         ":gpu_compiler",
         ":gpu_conv_algorithm_picker",
         ":gpu_conv_padding_legalization",
+        ":gpu_conv_rewriter",
         ":gpu_layout_assignment",
         ":stream_executor_util",
         ":target_constants",
@@ -1245,10 +1245,10 @@ cc_library(
         "amdgpu_compiler.h"
     ],
     deps = [
-        ":cudnn_conv_rewriter",
         ":gpu_compiler",
         ":gpu_conv_algorithm_picker",
         ":gpu_conv_padding_legalization",
+        ":gpu_conv_rewriter",
         ":gpu_layout_assignment",
         ":target_constants",
         "//tensorflow/compiler/xla:statusor",
@@ -1490,8 +1490,7 @@ cc_library(
 tf_cc_test(
     name = "buffer_comparator_test",
     srcs = ["buffer_comparator_test.cc"],
-    tags = ["no_rocm"]
-     + tf_cuda_tests_tags(),
+    tags = ["no_rocm"] + tf_cuda_tests_tags(),
     deps = [
         ":buffer_comparator",
         "//tensorflow/compiler/xla:shape_util",

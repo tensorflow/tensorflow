@@ -1283,12 +1283,12 @@ def equal(x, y, name=None):
   >>> x = tf.constant([2, 4])
   >>> y = tf.constant(2)
   >>> tf.math.equal(x, y)
-  <tf.Tensor: id=..., shape=(2,), dtype=bool, numpy=array([ True,  False])>
+  <tf.Tensor: shape=(2,), dtype=bool, numpy=array([ True,  False])>
 
   >>> x = tf.constant([2, 4])
   >>> y = tf.constant([2, 4])
   >>> tf.math.equal(x, y)
-  <tf.Tensor: id=..., shape=(2,), dtype=bool, numpy=array([ True,  True])>
+  <tf.Tensor: shape=(2,), dtype=bool, numpy=array([ True,  True])>
 
   Args:
     x: A `tf.Tensor` or `tf.SparseTensor` or `tf.IndexedSlices`.
@@ -1318,12 +1318,12 @@ def not_equal(x, y, name=None):
   >>> x = tf.constant([2, 4])
   >>> y = tf.constant(2)
   >>> tf.math.not_equal(x, y)
-  <tf.Tensor: id=..., shape=(2,), dtype=bool, numpy=array([False,  True])>
+  <tf.Tensor: shape=(2,), dtype=bool, numpy=array([False,  True])>
 
   >>> x = tf.constant([2, 4])
   >>> y = tf.constant([2, 4])
   >>> tf.math.not_equal(x, y)
-  <tf.Tensor: id=..., shape=(2,), dtype=bool, numpy=array([False,  False])>
+  <tf.Tensor: shape=(2,), dtype=bool, numpy=array([False,  False])>
 
   Args:
     x: A `tf.Tensor` or `tf.SparseTensor` or `tf.IndexedSlices`.

@@ -2542,7 +2542,7 @@ tf_module {
   }
   member_method {
     name: "ParseExampleDataset"
-    argspec: "args=[\'input_dataset\', \'num_parallel_calls\', \'dense_defaults\', \'sparse_keys\', \'dense_keys\', \'sparse_types\', \'dense_shapes\', \'output_types\', \'output_shapes\', \'sloppy\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'num_parallel_calls\', \'dense_defaults\', \'sparse_keys\', \'dense_keys\', \'sparse_types\', \'dense_shapes\', \'output_types\', \'output_shapes\', \'sloppy\', \'ragged_keys\', \'ragged_value_types\', \'ragged_split_types\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'[]\', \'[]\', \'[]\', \'None\'], "
   }
   member_method {
     name: "ParseExampleV2"
@@ -3047,6 +3047,10 @@ tf_module {
   member_method {
     name: "RecordInput"
     argspec: "args=[\'file_pattern\', \'file_random_seed\', \'file_shuffle_shift_ratio\', \'file_buffer_size\', \'file_parallelism\', \'batch_size\', \'compression_type\', \'name\'], varargs=None, keywords=None, defaults=[\'301\', \'0\', \'10000\', \'16\', \'32\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "Recv"
+    argspec: "args=[\'tensor_type\', \'tensor_name\', \'send_device\', \'send_device_incarnation\', \'recv_device\', \'client_terminated\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "RecvTPUEmbeddingActivations"
@@ -3631,6 +3635,10 @@ tf_module {
   member_method {
     name: "SeluGrad"
     argspec: "args=[\'gradients\', \'outputs\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "Send"
+    argspec: "args=[\'tensor\', \'tensor_name\', \'send_device\', \'send_device_incarnation\', \'recv_device\', \'client_terminated\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "SendTPUEmbeddingGradients"

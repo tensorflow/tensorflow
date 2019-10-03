@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -245,13 +246,14 @@ LogicalResult SetMetadataProtoFromLaunchFuncOp(
     else
       arg->set_kind(tensorflow::tpu::TPUCompileMetadataProto::Arg::PARAMETER);
 
-    // Unranked and partial shapes are not populated.
+    // Populate argument shapes.
+    *arg->mutable_shape() = tensorflow::TensorShapeProto();
     if (auto ranked_tensor_type = operand_type.dyn_cast<RankedTensorType>()) {
-      if (ranked_tensor_type.hasStaticShape()) {
-        tensorflow::TensorShapeProto shape_proto;
-        ConvertToTensorShapeProto(ranked_tensor_type.getShape(), &shape_proto);
-        *arg->mutable_shape() = std::move(shape_proto);
-      }
+      tensorflow::TensorShapeProto shape_proto;
+      ConvertToTensorShapeProto(ranked_tensor_type.getShape(), &shape_proto);
+      *arg->mutable_shape() = std::move(shape_proto);
+    } else {
+      arg->mutable_shape()->set_unknown_rank(true);
     }
 
     // TODO(lyandy): Determine proper sharding of args once topology and devices
@@ -307,7 +309,9 @@ Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func,
 
   for (auto operand_and_idx : llvm::enumerate(launch_func.getOperands())) {
     // Skip adding shape op for operands that have static shapes.
-    if (metadata.args(operand_and_idx.index()).has_shape()) continue;
+    tensorflow::PartialTensorShape shape(
+        metadata.args(operand_and_idx.index()).shape());
+    if (shape.IsFullyDefined()) continue;
 
     auto shape_op = builder->create<TF::ShapeOp>(
         launch_func.getLoc(),

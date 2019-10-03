@@ -28,6 +28,8 @@
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
+include "mlir/Analysis/CallInterfaces.td"
+
 def Std_Dialect : Dialect {
   let name = "std";
   let cppNamespace = "";
@@ -212,7 +214,7 @@ def BranchOp : Std_Op<"br", [Terminator]> {
   }];
 }
 
-def CallOp : Std_Op<"call"> {
+def CallOp : Std_Op<"call", [CallOpInterface]> {
   let summary = "call operation";
   let description = [{
     The "call" operation represents a direct call to a function.  The operands
@@ -250,10 +252,15 @@ def CallOp : Std_Op<"call"> {
 
     operand_iterator arg_operand_begin() { return operand_begin(); }
     operand_iterator arg_operand_end() { return operand_end(); }
+
+    /// Return the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() {
+      return getAttrOfType<SymbolRefAttr>("callee");
+    }
   }];
 }
 
-def CallIndirectOp : Std_Op<"call_indirect"> {
+def CallIndirectOp : Std_Op<"call_indirect", [CallOpInterface]> {
   let summary = "indirect call operation";
   let description = [{
     The "call_indirect" operation represents an indirect call to a value of
@@ -285,12 +292,16 @@ def CallIndirectOp : Std_Op<"call_indirect"> {
 
     operand_iterator arg_operand_begin() { return ++operand_begin(); }
     operand_iterator arg_operand_end() { return operand_end(); }
+
+    /// Return the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() { return getCallee(); }
   }];
 
   let hasCanonicalizer = 1;
 }
 
-def CmpIOp : Std_Op<"cmpi", [NoSideEffect, SameTypeOperands, SameOperandsAndResultShape]> {
+def CmpIOp : Std_Op<"cmpi",
+    [NoSideEffect, SameTypeOperands, SameOperandsAndResultShape]> {
   let summary = "integer comparison operation";
   let description = [{
     The "cmpi" operation compares its two operands according to the integer
@@ -335,7 +346,8 @@ def CmpIOp : Std_Op<"cmpi", [NoSideEffect, SameTypeOperands, SameOperandsAndResu
   let hasFolder = 1;
 }
 
-def CmpFOp : Std_Op<"cmpf", [NoSideEffect, SameTypeOperands, SameOperandsAndResultShape]> {
+def CmpFOp : Std_Op<"cmpf",
+    [NoSideEffect, SameTypeOperands, SameOperandsAndResultShape]> {
   let summary = "floating-point comparison operation";
   let description = [{
     The "cmpf" operation compares its two operands according to the float
@@ -421,12 +433,12 @@ def CondBranchOp : Std_Op<"cond_br", [Terminator]> {
 
     /// Return the destination if the condition is true.
     Block *getTrueDest() {
-      return getOperation()->getSuccessor(trueIndex);
+      return getSuccessor(trueIndex);
     }
 
     /// Return the destination if the condition is false.
     Block *getFalseDest() {
-      return getOperation()->getSuccessor(falseIndex);
+      return getSuccessor(falseIndex);
     }
 
     // Accessors for operands to the 'true' destination.
@@ -451,7 +463,7 @@ def CondBranchOp : Std_Op<"cond_br", [Terminator]> {
     }
 
     unsigned getNumTrueOperands()  {
-      return getOperation()->getNumSuccessorOperands(trueIndex);
+      return getNumSuccessorOperands(trueIndex);
     }
 
     /// Erase the operand at 'index' from the true operand list.
@@ -478,7 +490,7 @@ def CondBranchOp : Std_Op<"cond_br", [Terminator]> {
     }
 
     unsigned getNumFalseOperands() {
-      return getOperation()->getNumSuccessorOperands(falseIndex);
+      return getNumSuccessorOperands(falseIndex);
     }
 
     /// Erase the operand at 'index' from the false operand list.
@@ -614,8 +626,7 @@ def ExtractElementOp : Std_Op<"extract_element", [NoSideEffect]> {
     Value *getAggregate() { return getOperand(0); }
 
     operand_range getIndices() {
-      return {getOperation()->operand_begin() + 1,
-              getOperation()->operand_end()};
+      return {operand_begin() + 1, operand_end()};
     }
   }];
 
@@ -688,9 +699,7 @@ def LoadOp : Std_Op<"load"> {
       return getMemRef()->getType().cast<MemRefType>();
     }
 
-    operand_range getIndices() {
-      return {getOperation()->operand_begin() + 1, getOperation()->operand_end()};
-    }
+    operand_range getIndices() { return {operand_begin() + 1, operand_end()}; }
   }];
 
   let hasCanonicalizer = 1;
@@ -833,7 +842,8 @@ def SelectOp : Std_Op<"select", [NoSideEffect, SameOperandsAndResultShape]> {
   let hasFolder = 1;
 }
 
-def SignExtendIOp : Std_Op<"sexti", [NoSideEffect, SameOperandsAndResultShape]> {
+def SignExtendIOp : Std_Op<"sexti",
+    [NoSideEffect, SameOperandsAndResultShape]> {
   let summary = "integer sign extension operation";
   let description = [{
     The integer sign extension operation takes an integer input of
@@ -871,6 +881,32 @@ def ShlISOp : IntArithmeticOp<"shlis"> {
   let summary = "signed integer shift left";
 }
 
+def SplatOp : Std_Op<"splat", [NoSideEffect]> {
+  let summary = "splat or broadcast operation";
+  let description = [{
+    The "splat" op reads a value of integer or float type and broadcasts it into
+    a vector or a tensor. The output of splat is thus a new value of either
+    vector or tensor type with elemental type being its operand's type.
+    When the result is a tensor, it has to be statically shaped.
+
+      %1 = splat %0 : vector<8xi32>
+      %2 = splat %0 : tensor<4x8xi32>
+
+    // TODO: handle broadcast to dynamically shaped tensors.
+  }];
+
+  let arguments = (ins AnyTypeOf<[AnyInteger, AnyFloat],
+                                 "integer or float type">:$input);
+  let results = (outs AnyTypeOf<[AnyVector, AnyStaticShapeTensor]>:$aggregate);
+
+  let builders =
+      [OpBuilder<"Builder *builder, OperationState &result, Value *element, "
+                  "Type aggregateType",
+                  [{ build(builder, result, aggregateType, element); }]>];
+
+  let hasFolder = 1;
+}
+
 def SubFOp : FloatArithmeticOp<"subf"> {
   let summary = "floating point subtraction operation";
   let hasFolder = 1;
@@ -894,7 +930,8 @@ def StoreOp : Std_Op<"store"> {
       store %v, %A[%i, %j] : memref<4x128xf32, (d0, d1) -> (d0, d1), 0>
   }];
 
-  let arguments = (ins AnyType:$value, AnyMemRef:$memref, Variadic<Index>:$indices);
+  let arguments = (ins AnyType:$value, AnyMemRef:$memref,
+                   Variadic<Index>:$indices);
 
   let builders = [OpBuilder<
     "Builder *, OperationState &result, Value *valueToStore, Value *memref", [{
@@ -912,7 +949,7 @@ def StoreOp : Std_Op<"store"> {
       }
 
       operand_range getIndices() {
-        return {getOperation()->operand_begin() + 2, getOperation()->operand_end()};
+        return {operand_begin() + 2, operand_end()};
       }
   }];
 

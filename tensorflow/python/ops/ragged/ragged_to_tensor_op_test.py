@@ -34,7 +34,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
-from tensorflow.python.ops.ragged import ragged_conversion_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensor
@@ -97,31 +96,56 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
     dt = rt.to_tensor()
     self.assertAllEqual(dt, [[9, 8, 7], [0, 0, 0], [6, 5, 0], [4, 0, 0]])
 
-  @parameterized.parameters(
+  @parameterized.named_parameters(
+      # Simple 2D ragged tensors (with one ragged dimension)
       {
-          'rt_input': [],
-          'ragged_rank': 1,
-          'expected': [],
-          'expected_shape': [0, 0],
+          'testcase_name': 'shape_2xN',
+          'rt_input': [[0, 1, 2], [], [3]],
+          'expected': [[0, 1, 2], [0, 0, 0], [3, 0, 0]]
       },
       {
+          'testcase_name': 'shape_2xN_default_0D',
+          'rt_input': [[0, 1, 2], [], [3]],
+          'default': 5,
+          'expected': [[0, 1, 2], [5, 5, 5], [3, 5, 5]]
+      },
+      {
+          'testcase_name': 'empty_first_row',
+          'rt_input': [[], [], [3, 4], []],
+          'expected': [[0, 0], [0, 0], [3, 4], [0, 0]]
+      },
+      {
+          'testcase_name': 'empty_last_row',
+          'rt_input': [[0, 1, 2], [], [3], []],
+          'expected': [[0, 1, 2], [0, 0, 0], [3, 0, 0], [0, 0, 0]]
+      },
+      {
+          'testcase_name': 'shape_4xN',
           'rt_input': [[1, 2, 3], [], [4], [5, 6]],
           'expected': [[1, 2, 3], [0, 0, 0], [4, 0, 0], [5, 6, 0]]
       },
       {
+          'testcase_name': 'shape_4xN_default_0D',
           'rt_input': [[1, 2, 3], [], [4], [5, 6]],
           'default': 9,
           'expected': [[1, 2, 3], [9, 9, 9], [4, 9, 9], [5, 6, 9]]
       },
       {
-          'rt_input': [[[1], [2], [3]], [], [[4]], [[5], [6]]],
-          'ragged_rank':
-              1,
-          'default': [9],
-          'expected': [[[1], [2], [3]], [[9], [9], [9]], [[4], [9], [9]],
-                       [[5], [6], [9]]]
+          'testcase_name': 'shape_2xN_already_dense',
+          'rt_input': [[6, 7, 8], [9, 10, 11]],
+          'expected': [[6, 7, 8], [9, 10, 11]],
       },
       {
+          'testcase_name': 'shape_2xN_string_already_dense',
+          'rt_input': [[b'a', b'b', b'c'],
+                       [b'd', b'e', b'antidisestablishmentarianism']],
+          'ragged_rank': 1,
+          'expected': [[b'a', b'b', b'c'],
+                       [b'd', b'e', b'antidisestablishmentarianism']],
+      },
+      # 3D ragged tensors with two ragged dimensions
+      {
+          'testcase_name': 'shape_4xNxM',
           'rt_input': [[[1, 2], [], [3, 4]], [], [[5]], [[6, 7], [8]]],
           'expected': [
               [[1, 2], [0, 0], [3, 4]],  #
@@ -131,9 +155,9 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
           ]
       },
       {
+          'testcase_name': 'shape_4xNxM_default_0D',
           'rt_input': [[[1, 2], [], [3, 4]], [], [[5]], [[6, 7], [8]]],
-          'default':
-              9,
+          'default': 9,
           'expected': [
               [[1, 2], [9, 9], [3, 4]],  #
               [[9, 9], [9, 9], [9, 9]],  #
@@ -142,149 +166,194 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
           ]
       },
       {
+          'testcase_name': 'shape_1xNx1_default_0D',
           'rt_input': [[[1], [2], [3]]],
           'ragged_rank': 1,
           'default': 0,
           'expected': [[[1], [2], [3]]],
       },
       {
+          'testcase_name': 'shape_2xNx2_already_dense',
+          'rt_input': [[[6, 7], [8, 9], [10, 11]],
+                       [[12, 13], [14, 15], [16, 17]]],
+          'ragged_rank': 1,
+          'expected': [[[6, 7], [8, 9], [10, 11]],
+                       [[12, 13], [14, 15], [16, 17]]],
+      },
+      {
+          'testcase_name': 'shape_2xNx2_already_dense_default_1D',
+          'rt_input': [[[6, 7], [8, 9], [10, 11]],
+                       [[12, 13], [14, 15], [16, 17]]],
+          'ragged_rank': 1,
+          'default': [31, 32],
+          'expected': [[[6, 7], [8, 9], [10, 11]],
+                       [[12, 13], [14, 15], [16, 17]]],
+      },
+      {
+          'testcase_name': 'shape_2xNx2_string_already_dense',
+          'rt_input': [[[b'a', b'b'], [b'c', b'd'], [b'e', b'f']],
+                       [[b'g', b'jalapeno'], [b'kangaroo', b'llama'],
+                        [b'manzana', b'nectar']]],
+          'ragged_rank': 1,
+          'expected': [[[b'a', b'b'], [b'c', b'd'], [b'e', b'f']],
+                       [[b'g', b'jalapeno'], [b'kangaroo', b'llama'],
+                        [b'manzana', b'nectar']]],
+      },
+      # 3D ragged tensors with one ragged dimension
+      {
+          'testcase_name': 'shape_4xNx1_default_1D',
+          'rt_input': [[[1], [2], [3]], [], [[4]], [[5], [6]]],
+          'ragged_rank': 1,
+          'default': [9],
+          'expected': [[[1], [2], [3]],
+                       [[9], [9], [9]],
+                       [[4], [9], [9]],
+                       [[5], [6], [9]]]
+      },
+      {
+          'testcase_name': 'shape_2xNx2_default_0D',
+          'rt_input': [[[6, 7], [8, 9], [10, 11]],
+                       [[12, 13], [14, 15]]],
+          'ragged_rank': 1,
+          'default': 2,
+          'expected': [[[6, 7], [8, 9], [10, 11]],
+                       [[12, 13], [14, 15], [2, 2]]],
+      },
+      {
+          'testcase_name': 'shape_2xNx2_default_1D',
+          'rt_input': [[[6, 7], [8, 9], [10, 11]],
+                       [[12, 13], [14, 15]]],
+          'ragged_rank': 1,
+          'default': [2, 3],
+          'expected': [[[6, 7], [8, 9], [10, 11]],
+                       [[12, 13], [14, 15], [2, 3]]],
+      },
+      # 4D ragged tensors with 3 ragged dimensions
+      {
+          'testcase_name': 'shape_1xNxMxK_default_0D',
           'rt_input': [[[[1], [2]], [], [[3]]]],
           'default': 9,
           'expected': [[[[1], [2]], [[9], [9]], [[3], [9]]]],
       },
-  )
-  def testRaggedTensorToTensor(self,
-                               rt_input,
-                               expected,
-                               ragged_rank=None,
-                               default=None,
-                               expected_shape=None):
-    rt = ragged_factory_ops.constant(rt_input, ragged_rank=ragged_rank)
-    dt = rt.to_tensor(default)
-    self.assertIsInstance(dt, ops.Tensor)
-    self.assertEqual(rt.dtype, dt.dtype)
-    self.assertTrue(dt.shape.is_compatible_with(rt.shape))
-    if expected_shape is not None:
-      expected = np.ndarray(expected_shape, buffer=np.array(expected))
-    self.assertAllEqual(dt, expected)
-
-  @parameterized.parameters(
+      # Broadcast default
       {
-          'rt_input': [[1, 2, 3]],
-          'default': [0],
-          'error': (ValueError, r'Shape \(1,\) must have rank at most 0'),
-      },
-      {
-          'rt_input': [[[1, 2], [3, 4]], [[5, 6]]],
+          'testcase_name': 'shape_2xNx2x2_default_2x1',
+          'rt_input': [[[[1, 2], [3, 4]]], []],
           'ragged_rank': 1,
-          'default': [7, 8, 9],
-          'error': (ValueError, r'Shapes \(3,\) and \(2,\) are incompatible'),
+          'default': [[5], [6]],
+          'expected': [[[[1, 2], [3, 4]]],
+                       [[[5, 5], [6, 6]]]],
       },
       {
-          'rt_input': [[1, 2, 3]],
-          'default': 'a',
-          'error': (TypeError, '.*'),
+          'testcase_name': 'shape_2xNx2x2_default_1x2',
+          'rt_input': [[[[1, 2], [3, 4]]], []],
+          'ragged_rank': 1,
+          'default': [[5, 6]],
+          'expected': [[[[1, 2], [3, 4]]],
+                       [[[5, 6], [5, 6]]]],
       },
-  )
-  def testError(self, rt_input, default, error, ragged_rank=None):
-    rt = ragged_factory_ops.constant(rt_input, ragged_rank=ragged_rank)
-    with self.assertRaisesRegexp(error[0], error[1]):
-      rt.to_tensor(default)
-
-
-# This covers the tests above, but with the new implementation.
-@test_util.run_all_in_graph_and_eager_modes
-class RaggedTensorToTensorOpNewTest(test_util.TensorFlowTestCase,
-                                    parameterized.TestCase):
-
-  def testDocStringExamples(self):
-    """Example from ragged_to_tensor.__doc__."""
-    rt = ragged_factory_ops.constant([[9, 8, 7], [], [6, 5], [4]])
-    dt = ragged_conversion_ops.ragged_to_dense(rt)
-    self.assertAllEqual(dt, [[9, 8, 7], [0, 0, 0], [6, 5, 0], [4, 0, 0]])
-
-  @parameterized.parameters(
+      # Explicit shape
       {
+          'testcase_name': 'shape_4xN_with_crop',
+          'rt_input': [[0, 1, 2, 3], [], [4], []],
+          'shape': [2, 3],
+          'expected': [[0, 1, 2], [0, 0, 0]],
+      },
+      {
+          'testcase_name': 'shape_2xN_with_pad',
+          'rt_input': [[1, 2], [3]],
+          'shape': [3, 3],
+          'expected': [[1, 2, 0], [3, 0, 0], [0, 0, 0]],
+      },
+      {
+          'testcase_name': 'shape_4xN_with_crop_and_pad',
+          'rt_input': [[0, 1, 2, 3], [], [4], []],
+          'shape': [2, 8],
+          'expected': [[0, 1, 2, 3, 0, 0, 0, 0],
+                       [0, 0, 0, 0, 0, 0, 0, 0]],
+      },
+      {
+          'testcase_name': 'shape_4xN_with_tuple_shape',
+          'rt_input': [[0, 1, 2, 3], [], [4], []],
+          'shape': (2, 3),
+          'expected': [[0, 1, 2], [0, 0, 0]],
+      },
+      {
+          'testcase_name': 'shape_4xN_with_tensorshape_shape',
+          'rt_input': [[0, 1, 2, 3], [], [4], []],
+          'shape': tensor_shape.TensorShape([2, 3]),
+          'expected': [[0, 1, 2], [0, 0, 0]],
+      },
+      {
+          'testcase_name': 'shape_4xN_with_partial_shape',
+          'rt_input': [[0, 1, 2, 3], [], [4], []],
+          'shape': tensor_shape.TensorShape([2, None]),
+          'expected': [[0, 1, 2, 3], [0, 0, 0, 0]],
+      },
+      # Empty tensors
+      {
+          'testcase_name': 'shape_0xN',
           'rt_input': [],
           'ragged_rank': 1,
           'expected': [],
           'expected_shape': [0, 0],
       },
       {
-          'rt_input': [[1, 2, 3], [], [4], [5, 6]],
-          'expected': [[1, 2, 3], [0, 0, 0], [4, 0, 0], [5, 6, 0]]
+          'testcase_name': 'shape_0xNxM',
+          'rt_input': [],
+          'ragged_rank': 2,
+          'expected': [],
+          'expected_shape': [0, 0, 0],
       },
+      # {
+      #     'testcase_name': 'shape_0xNx2',
+      #     'rt_input': [],
+      #     'ragged_rank': 1,
+      #     'inner_shape': [2],
+      #     'expected': [],
+      #     'expected_shape': [0, 0, 2],
+      # },
       {
-          'rt_input': [[1, 2, 3], [], [4], [5, 6]],
-          'default': 9,
-          'expected': [[1, 2, 3], [9, 9, 9], [4, 9, 9], [5, 6, 9]]
+          'testcase_name': 'shape_2xN_empty',
+          'rt_input': [[], []],
+          'expected': [[], []],
+          'expected_shape': [2, 0],
       },
-      {
-          'rt_input': [[[1], [2], [3]], [], [[4]], [[5], [6]]],
-          'ragged_rank':
-              1,
-          'default': [9],
-          'expected': [[[1], [2], [3]], [[9], [9], [9]], [[4], [9], [9]],
-                       [[5], [6], [9]]]
-      },
-      {
-          'rt_input': [[[1, 2], [], [3, 4]], [], [[5]], [[6, 7], [8]]],
-          'expected': [
-              [[1, 2], [0, 0], [3, 4]],  #
-              [[0, 0], [0, 0], [0, 0]],  #
-              [[5, 0], [0, 0], [0, 0]],  #
-              [[6, 7], [8, 0], [0, 0]],  #
-          ]
-      },
-      {
-          'rt_input': [[[1, 2], [], [3, 4]], [], [[5]], [[6, 7], [8]]],
-          'default':
-              9,
-          'expected': [
-              [[1, 2], [9, 9], [3, 4]],  #
-              [[9, 9], [9, 9], [9, 9]],  #
-              [[5, 9], [9, 9], [9, 9]],  #
-              [[6, 7], [8, 9], [9, 9]],  #
-          ]
-      },
-      {
-          'rt_input': [[[1], [2], [3]]],
-          'ragged_rank': 1,
-          'default': 0,
-          'expected': [[[1], [2], [3]]],
-      },
-      {
-          'rt_input': [[[[1], [2]], [], [[3]]]],
-          'default': 9,
-          'expected': [[[[1], [2]], [[9], [9]], [[3], [9]]]],
-      },
-  )
+  )  # pyformat: disable
   def testRaggedTensorToTensor(self,
                                rt_input,
                                expected,
                                ragged_rank=None,
+                               inner_shape=None,
                                default=None,
+                               shape=None,
                                expected_shape=None):
-    rt1 = ragged_factory_ops.constant(rt_input, ragged_rank=ragged_rank)
-    dt1 = ragged_conversion_ops.ragged_to_dense(rt1, default_value=default)
+    rt1 = ragged_factory_ops.constant(
+        rt_input, ragged_rank=ragged_rank, inner_shape=inner_shape)
     rt2 = rebuild_ragged_tensor_with_value_rowids(rt1)
-    dt2 = ragged_conversion_ops.ragged_to_dense(rt2, default_value=default)
-
-    for (rt, dt) in [(rt1, dt1), (rt2, dt2)]:
-      self.assertIsInstance(dt, ops.Tensor)
-      self.assertEqual(rt.dtype, dt.dtype)
-      self.assertTrue(dt.shape.is_compatible_with(rt.shape))
-      if expected_shape is not None:
-        expected = np.ndarray(expected_shape, buffer=np.array(expected))
-      self.assertAllEqual(dt, expected)
+    for rt in [rt1, rt2]:
+      for use_placeholder in [False, True]:
+        if use_placeholder:
+          if default is not None:
+            default = make_placeholder(default)
+          rt = nest.map_structure(make_placeholder, rt, expand_composites=True)
+        dt = rt.to_tensor(default_value=default, shape=shape)
+        self.assertIsInstance(dt, ops.Tensor)
+        self.assertEqual(rt.dtype, dt.dtype)
+        if shape is not None:
+          self.assertTrue(dt.shape.is_compatible_with(shape))
+        else:
+          self.assertTrue(dt.shape.is_compatible_with(rt.shape))
+        if expected_shape is not None:
+          expected = np.ndarray(expected_shape, buffer=np.array(expected))
+        self.assertAllEqual(dt, expected)
 
   @parameterized.parameters([
       {
           'rt_input': [[1, 2, 3]],
           'default': 'a',
           'error_type': TypeError,
-          'error': r"Expected int32 passed to parameter 'default_value'|"
-                   r"Cannot convert 'a' to EagerTensor of dtype int32",
+          'error': r'Expected int32|Cannot convert',
       },
       {
           'rt_input': [[1, 2, 3]],
@@ -327,217 +396,51 @@ class RaggedTensorToTensorOpNewTest(test_util.TensorFlowTestCase,
 
     rt = ragged_factory_ops.constant(rt_input, ragged_rank=ragged_rank)
     with self.assertRaisesRegexp(error_type, error):
-      self.evaluate(
-          ragged_conversion_ops.ragged_to_dense(
-              rt, default_value=default, shape=shape))
+      self.evaluate(rt.to_tensor(default_value=default, shape=shape))
     rt_placeholder = nest.map_structure(
         make_placeholder, rt, expand_composites=True)
     with self.assertRaisesRegexp(error_type, error):
       self.evaluate(
-          ragged_conversion_ops.ragged_to_dense(
-              rt_placeholder, default_value=default, shape=shape))
+          rt_placeholder.to_tensor(default_value=default, shape=shape))
 
-
-@test_util.run_all_in_graph_and_eager_modes
-class RaggedToTensorOpAdditionalTests(test_util.TensorFlowTestCase,
-                                      parameterized.TestCase):
-
-  def _compare_to_reference(self,
-                            ragged_tensor,
-                            expected=None,
-                            default_value=None):
-    treatment = ragged_conversion_ops.ragged_to_dense(
-        ragged_tensor, default_value=default_value)
-    control = ragged_tensor.to_tensor(default_value=default_value)
-    self.assertAllEqual(control, treatment)
-    if expected is not None:
-      self.assertAllEqual(expected, treatment)
-
-  def test_already_dense_simple(self):
-    """This studies a tensor initialized with value_rowids and nrows."""
-    input_data = RaggedTensor.from_value_rowids(
-        values=constant_op.constant([6, 7, 8, 9, 10, 11], dtype=dtypes.int64),
-        value_rowids=constant_op.constant([0, 0, 0, 1, 1, 1],
-                                          dtype=dtypes.int64),
-        nrows=constant_op.constant(2, dtype=dtypes.int64),
-        validate=True)
-    self._compare_to_reference(input_data, [[6, 7, 8], [9, 10, 11]])
-
-  def test_already_dense_with_dense_values_and_default(self):
-    """This studies a tensor initialized with value_rowids and nrows."""
-    input_data = RaggedTensor.from_value_rowids(
-        values=constant_op.constant(
-            [[6, 7], [8, 9], [10, 11], [12, 13], [14, 15], [16, 17]],
-            dtype=dtypes.int64),
-        value_rowids=constant_op.constant([0, 0, 0, 1, 1, 1],
-                                          dtype=dtypes.int64),
-        nrows=constant_op.constant(2, dtype=dtypes.int64),
-        validate=True)
-    self._compare_to_reference(
-        input_data,
-        [[[6, 7], [8, 9], [10, 11]], [[12, 13], [14, 15], [16, 17]]],
-        default_value=constant_op.constant([31, 32], dtype=dtypes.int64))
-
-  def test_already_dense_with_dense_values(self):
-    """This studies a tensor initialized with value_rowids and nrows."""
-    input_data = RaggedTensor.from_value_rowids(
-        values=constant_op.constant(
-            [[6, 7], [8, 9], [10, 11], [12, 13], [14, 15], [16, 17]],
-            dtype=dtypes.int64),
-        value_rowids=constant_op.constant([0, 0, 0, 1, 1, 1],
-                                          dtype=dtypes.int64),
-        nrows=constant_op.constant(2, dtype=dtypes.int64),
-        validate=True)
-    self._compare_to_reference(
-        input_data,
-        [[[6, 7], [8, 9], [10, 11]], [[12, 13], [14, 15], [16, 17]]])
-
-  def test_ragged_with_dense_values_and_default(self):
-    """This studies a tensor initialized with value_rowids and nrows."""
-    input_data = RaggedTensor.from_value_rowids(
-        values=constant_op.constant(
-            [[6, 7], [8, 9], [10, 11], [12, 13], [14, 15]], dtype=dtypes.int64),
-        value_rowids=constant_op.constant([0, 0, 0, 1, 1], dtype=dtypes.int64),
-        nrows=constant_op.constant(2, dtype=dtypes.int64),
-        validate=True)
-    self._compare_to_reference(
-        input_data, [[[6, 7], [8, 9], [10, 11]], [[12, 13], [14, 15], [2, 3]]],
-        default_value=[2, 3])
-
-  def test_ragged_with_dense_values_and_small_default(self):
-    """This studies a tensor initialized with value_rowids and nrows."""
-    input_data = RaggedTensor.from_value_rowids(
-        values=constant_op.constant(
-            [[6, 7], [8, 9], [10, 11], [12, 13], [14, 15]], dtype=dtypes.int64),
-        value_rowids=constant_op.constant([0, 0, 0, 1, 1], dtype=dtypes.int64),
-        nrows=constant_op.constant(2, dtype=dtypes.int64),
-        validate=True)
-    self._compare_to_reference(
-        input_data, [[[6, 7], [8, 9], [10, 11]], [[12, 13], [14, 15], [2, 2]]],
-        default_value=2)
-
-  def test_already_dense_with_dense_values_string(self):
-    """This studies a tensor initialized with value_rowids and nrows."""
-    input_data = RaggedTensor.from_value_rowids(
-        values=constant_op.constant(
-            [[b'a', b'b'], [b'c', b'd'], [b'e', b'f'], [b'g', b'jalapeno'],
-             [b'kangaroo', b'llama'], [b'manzana', b'nectar']],
-            dtype=dtypes.string),
-        value_rowids=constant_op.constant([0, 0, 0, 1, 1, 1],
-                                          dtype=dtypes.int64),
-        nrows=constant_op.constant(2, dtype=dtypes.int64),
-        validate=True)
-    self._compare_to_reference(input_data,
-                               [[[b'a', b'b'], [b'c', b'd'], [b'e', b'f']],
-                                [[b'g', b'jalapeno'], [b'kangaroo', b'llama'],
-                                 [b'manzana', b'nectar']]])
-
-  def test_already_dense_with_string(self):
-    """This studies a tensor initialized with value_rowids and nrows."""
-    input_data = RaggedTensor.from_value_rowids(
-        values=constant_op.constant(
-            ['a', 'b', 'c', 'd', 'e', 'antidisestablishmentarianism'],
-            dtype=dtypes.string),
-        value_rowids=constant_op.constant([0, 0, 0, 1, 1, 1],
-                                          dtype=dtypes.int64),
-        nrows=constant_op.constant(2, dtype=dtypes.int64),
-        validate=True)
-    self._compare_to_reference(
-        input_data,
-        [[b'a', b'b', b'c'], [b'd', b'e', b'antidisestablishmentarianism']])
-
-  def test_already_dense(self):
-    input_data = ragged_factory_ops.constant([[0, 1, 2], [3, 4, 5]])
-    self._compare_to_reference(input_data, [[0, 1, 2], [3, 4, 5]])
-
-  def test_true_ragged(self):
-    input_data = ragged_factory_ops.constant([[0, 1, 2], [], [3]])
-    self._compare_to_reference(input_data, [[0, 1, 2], [0, 0, 0], [3, 0, 0]])
-
-  def test_true_ragged_default_3(self):
-    input_data = ragged_factory_ops.constant([[0, 1, 2], [], [3]])
-    self._compare_to_reference(
-        input_data, [[0, 1, 2], [3, 3, 3], [3, 3, 3]], default_value=3)
-
-  def test_three_dimensional_ragged(self):
-    input_data = ragged_factory_ops.constant([[[0, 1, 2], []], [], [[3]]])
-    self._compare_to_reference(
-        input_data, [[[0, 1, 2], [3, 3, 3]], [[3, 3, 3], [3, 3, 3]],
-                     [[3, 3, 3], [3, 3, 3]]],
-        default_value=3)
-
-  def test_empty_tensor(self):
-    input_data = RaggedTensor.from_value_rowids(
-        values=constant_op.constant([], dtype=dtypes.int64),
-        value_rowids=constant_op.constant([], dtype=dtypes.int64),
-        nrows=constant_op.constant(2, dtype=dtypes.int64),
-        validate=True)
-    self._compare_to_reference(input_data, [[], []], default_value=3)
-
-  def test_empty_last(self):
-    input_data = ragged_factory_ops.constant([[0, 1, 2], [], [3], []])
-    self._compare_to_reference(input_data,
-                               [[0, 1, 2], [0, 0, 0], [3, 0, 0], [0, 0, 0]])
-
-  def test_shape_limit(self):
+  def test_shape_limit_shape_is_tensor(self):
     input_data = ragged_factory_ops.constant([[0, 1, 2, 3], [], [4], []])
-    actual = ragged_conversion_ops.ragged_to_dense(input_data, shape=[2, 3])
+    actual = input_data.to_tensor(
+        shape=constant_op.constant([2, 3], dtype=dtypes.int64))
     self.assertAllEqual(actual, [[0, 1, 2], [0, 0, 0]])
     self.assertEqual(actual.shape.as_list(), [2, 3])
 
-  def test_shape_limit_tuple(self):
+  def test_shape_limit_shape_is_tensor_unknown_rank(self):
     input_data = ragged_factory_ops.constant([[0, 1, 2, 3], [], [4], []])
-    actual = ragged_conversion_ops.ragged_to_dense(input_data, shape=(2, 3))
-    self.assertAllEqual(actual, [[0, 1, 2], [0, 0, 0]])
-    self.assertEqual(actual.shape.as_list(), [2, 3])
+    actual = input_data.to_tensor(
+        shape=constant_op.constant(-1, dtype=dtypes.int64))
+    self.assertAllEqual(
+        actual, [[0, 1, 2, 3], [0, 0, 0, 0], [4, 0, 0, 0], [0, 0, 0, 0]])
+    self.assertTrue(actual.shape.is_compatible_with([4, 4]))
 
-  def test_shape_limit_tensor_shape(self):
+  def test_shape_limit_shape_is_tensor_unknown_dim(self):
     input_data = ragged_factory_ops.constant([[0, 1, 2, 3], [], [4], []])
-    actual = ragged_conversion_ops.ragged_to_dense(
-        input_data, shape=tensor_shape.TensorShape([2, 3]))
-    self.assertAllEqual(actual, [[0, 1, 2], [0, 0, 0]])
-    self.assertEqual(actual.shape.as_list(), [2, 3])
-
-  def test_shape_half_limit_tensor_shape(self):
-    input_data = ragged_factory_ops.constant([[0, 1, 2, 3], [], [4], []])
-    actual = ragged_conversion_ops.ragged_to_dense(
-        input_data, shape=tensor_shape.TensorShape([2, None]))
+    actual = input_data.to_tensor(
+        shape=constant_op.constant([2, -1], dtype=dtypes.int64))
     self.assertAllEqual(actual, [[0, 1, 2, 3], [0, 0, 0, 0]])
-
-  def test_skip_eager_shape_half_limit_tensor_shape(self):
-    # Eager would produce a shape of [2, 4]
-    input_data = ragged_factory_ops.constant([[0, 1, 2, 3], [], [4], []])
-    actual = ragged_conversion_ops.ragged_to_dense(
-        input_data, shape=tensor_shape.TensorShape([2, None]))
-    result = actual.shape.as_list()
-    # This is equal to [2, 4] in eager, or [2, None] in non-eager.
-    self.assertEqual(result[0], 2)
-
-  def test_shape_limit_shape_is_tensor_int64(self):
-    input_data = ragged_factory_ops.constant([[0, 1, 2, 3], [], [4], []])
-    actual = ragged_conversion_ops.ragged_to_dense(
-        input_data, shape=constant_op.constant([2, 3], dtype=dtypes.int64))
-    self.assertAllEqual(actual, [[0, 1, 2], [0, 0, 0]])
-    self.assertEqual(actual.shape.as_list(), [2, 3])
+    self.assertTrue(actual.shape.is_compatible_with([2, None]))
 
   def test_shape_limit_shape_is_tensor_int32(self):
     input_data = ragged_factory_ops.constant([[0, 1, 2, 3], [], [4], []])
-    actual = ragged_conversion_ops.ragged_to_dense(
-        input_data, shape=constant_op.constant([2, 3], dtype=dtypes.int32))
+    actual = input_data.to_tensor(
+        shape=constant_op.constant([2, 3], dtype=dtypes.int32))
     self.assertAllEqual(actual, [[0, 1, 2], [0, 0, 0]])
     self.assertEqual(actual.shape.as_list(), [2, 3])
 
   def test_shape_expand_first_dim(self):
     input_data = ragged_factory_ops.constant([[0, 1, 2], [], [3]])
-    actual = ragged_conversion_ops.ragged_to_dense(input_data, shape=[4, 4])
+    actual = input_data.to_tensor(shape=[4, 4])
     self.assertAllEqual(
         actual, [[0, 1, 2, 0], [0, 0, 0, 0], [3, 0, 0, 0], [0, 0, 0, 0]])
     self.assertEqual(actual.shape.as_list(), [4, 4])
 
   def test_value_transposed(self):
-    # This test tries to get a tensor in columnar format, where I am uncertain
-    # as to whether the underlying op, which copies data in the raw format,
-    # could fail.
+    # Check that transposed data is not an issue.
     my_value = array_ops.transpose(
         constant_op.constant([[0, 1, 2, 3], [4, 5, 6, 7]]))
     input_data = RaggedTensor.from_value_rowids(
@@ -545,38 +448,30 @@ class RaggedToTensorOpAdditionalTests(test_util.TensorFlowTestCase,
         value_rowids=constant_op.constant([0, 1, 2, 3], dtype=dtypes.int64),
         nrows=constant_op.constant(4, dtype=dtypes.int64),
         validate=True)
-    self._compare_to_reference(input_data,
-                               [[[0, 4]], [[1, 5]], [[2, 6]], [[3, 7]]])
+    self.assertAllEqual(input_data, [[[0, 4]], [[1, 5]], [[2, 6]], [[3, 7]]])
 
-  # This fails on the older version of to_tensor.
   def test_broadcast_default(self):
-    # This test is commented out. The functionality here is not supported.
     # The dense dimension here is 2 x 2
     input_data = ragged_factory_ops.constant([[[[1, 2], [3, 4]]], []],
                                              ragged_rank=1)
     # This placeholder has a 2 x 1 dimension.
     default_value = make_placeholder([[5], [6]])
-    actual = ragged_conversion_ops.ragged_to_dense(
-        input_data, default_value=default_value)
+    actual = input_data.to_tensor(default_value=default_value)
     expected = [[[[1, 2], [3, 4]]], [[[5, 5], [6, 6]]]]
     self.assertAllEqual(actual, expected)
 
-  # This fails on the older version of to_tensor.
   def test_broadcast_default_no_placeholder(self):
-    # Again, this functionality is not supported. It fails more gracefully
-    # when creating the op.
     input_data = ragged_factory_ops.constant([[[[1, 2], [3, 4]]], []],
                                              ragged_rank=1)
     # default_value has a 2 x 1 dimension.
     default_value = constant_op.constant([[5], [6]], shape=None)
-    actual = ragged_conversion_ops.ragged_to_dense(
-        input_data, default_value=default_value)
+    actual = input_data.to_tensor(default_value=default_value)
     expected = [[[[1, 2], [3, 4]]], [[[5, 5], [6, 6]]]]
     self.assertAllEqual(actual, expected)
 
   def test_shape_expand_second_dim(self):
     input_data = ragged_factory_ops.constant([[0, 1, 2], [], [3], []])
-    actual = ragged_conversion_ops.ragged_to_dense(input_data, shape=[3, 4])
+    actual = input_data.to_tensor(shape=[3, 4])
     self.assertAllEqual(actual, [[0, 1, 2, 0], [0, 0, 0, 0], [3, 0, 0, 0]])
 
   def test_empty_tensor_with_shape(self):
@@ -585,8 +480,7 @@ class RaggedToTensorOpAdditionalTests(test_util.TensorFlowTestCase,
         value_rowids=constant_op.constant([], dtype=dtypes.int64),
         nrows=constant_op.constant(2, dtype=dtypes.int64),
         validate=True)
-    actual = ragged_conversion_ops.ragged_to_dense(
-        input_data, default_value=3, shape=[2, 3])
+    actual = input_data.to_tensor(default_value=3, shape=[2, 3])
     self.assertAllEqual(actual, [[3, 3, 3], [3, 3, 3]])
 
   # pylint: disable=bad-whitespace
@@ -752,8 +646,7 @@ class RaggedToTensorOpAdditionalTests(test_util.TensorFlowTestCase,
         rt_val = self.wrap_in_placeholder(rt_val, shape_info)
         default_val = self.wrap_in_placeholder(default_value, shape_info)
         shape_val = self.wrap_in_placeholder(shape, shape_info)
-        out = ragged_conversion_ops.ragged_to_dense(rt_val, default_val,
-                                                    shape_val)
+        out = rt_val.to_tensor(default_val, shape=shape_val)
         self.assertAllClose(out, output_value)
 
         actual_flat_values_grad, actual_default_grad = gradients_impl.gradients(
@@ -896,28 +789,12 @@ class RaggedToDenseBenchmark(googletest.Benchmark):
           mbs=mbs,
           extras=extras)
 
-      ragged_to_dense_with_splits = ragged_conversion_ops.ragged_to_dense(
-          splits_rt_placeholder, default_value=default_value)
-      self.run_op_benchmark(
-          op_or_tensor=ragged_to_dense_with_splits.op,
-          name='ragged_to_dense_with_splits',
-          feed_dict=splits_feed_dict,
-          **run_op_benchmark_kwargs)
-
       ragged_to_tensor_with_splits = splits_rt_placeholder.to_tensor(
           default_value=default_value)
       self.run_op_benchmark(
           op_or_tensor=ragged_to_tensor_with_splits.op,
           name='ragged_to_tensor_with_splits',
           feed_dict=splits_feed_dict,
-          **run_op_benchmark_kwargs)
-
-      ragged_to_dense_with_rowids = ragged_conversion_ops.ragged_to_dense(
-          rowids_rt_placeholder, default_value=default_value)
-      self.run_op_benchmark(
-          op_or_tensor=ragged_to_dense_with_rowids.op,
-          name='ragged_to_dense_with_rowids',
-          feed_dict=rowids_feed_dict,
           **run_op_benchmark_kwargs)
 
       ragged_to_tensor_with_rowids = rowids_rt_placeholder.to_tensor(

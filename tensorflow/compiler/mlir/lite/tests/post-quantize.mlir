@@ -1,5 +1,40 @@
 // RUN: tf-opt %s -tfl-post-quantize | FileCheck %s --dump-input-on-failure
 
+// CHECK-LABEL: RemoveUnused
+func @RemoveUnused(%arg0: tensor<4xf32>, %arg1: tensor<i32>) -> (tensor<2xf32>,tensor<2xf32>) {
+  %in = "tfl.pseudo_input"(%arg0) : (tensor<4xf32>) -> tensor<4xf32>
+  %cst = "tfl.pseudo_input"(%arg1) : (tensor<i32>) -> tensor<i32>
+  %0 = "tfl.quantize"(%in) {qtype = tensor<4x!quant.uniform<u8:f32, 1.0>>} : (tensor<4xf32>) -> tensor<4x!quant.uniform<u8:f32, 1.0>>
+  %1:4 = "tfl.split"(%cst, %0) {num_splits = 4 : i32} : (tensor<i32>, tensor<4x!quant.uniform<u8:f32, 1.0>>)
+  -> (tensor<2x!quant.uniform<u8:f32, 1.0>>, tensor<2x!quant.uniform<u8:f32, 1.0>>,tensor<2x!quant.uniform<u8:f32, 1.0>>, tensor<2x!quant.uniform<u8:f32, 1.0>>)
+  %2 = "tfl.dequantize"(%1#0) : (tensor<2x!quant.uniform<u8:f32, 1.0>>) -> tensor<2xf32>
+  %3 = "tfl.dequantize"(%1#1) : (tensor<2x!quant.uniform<u8:f32, 1.0>>) -> tensor<2xf32>
+
+  // unused quantization ops should be removed as well.
+  %4 = "tfl.dequantize"(%1#2) : (tensor<2x!quant.uniform<u8:f32, 1.0>>) -> tensor<2xf32>
+  %5 = "tfl.quantize"(%4) {qtype = tensor<2x!quant.uniform<u8:f32, 1.0>>} : (tensor<2xf32>) -> (tensor<2x!quant.uniform<u8:f32, 1.0>>)
+  %6 = tfl.add %5, %5 {fused_activation_function = "NONE"} : tensor<2x!quant.uniform<u8:f32, 1.0>>
+
+  return %2, %3 : tensor<2xf32>, tensor<2xf32>
+
+// CHECK-NEXT: %[[in1:.*]] = "tfl.pseudo_input"(%arg0)
+// CHECK-NEXT: %[[in2:.*]] = "tfl.pseudo_input"(%arg1)
+// CHECK-NEXT: %[[split:.*]]:4 = "tfl.split"(%[[in2]], %[[in1]])
+// CHECK-NEXT: return %[[split]]#0, %[[split]]#1
+}
+
+// CHECK-LABEL: NotRemoveIfNoInputs
+func @NotRemoveIfNoInputs(%arg0: tensor<4xf32>, %arg1: tensor<i32>) -> (tensor<2x!quant.uniform<u8:f32, 1.0>>) {
+  %0 = "tfl.quantize"(%arg0) {qtype = tensor<4x!quant.uniform<u8:f32, 1.0>>} : (tensor<4xf32>) -> tensor<4x!quant.uniform<u8:f32, 1.0>>
+  %1:2 = "tfl.split"(%arg1, %0) {num_splits = 2 : i32} : (tensor<i32>, tensor<4x!quant.uniform<u8:f32, 1.0>>)
+  -> (tensor<2x!quant.uniform<u8:f32, 1.0>>, tensor<2x!quant.uniform<u8:f32, 1.0>>)
+  return %1#0 : tensor<2x!quant.uniform<u8:f32, 1.0>>
+
+// CHECK-NEXT: %[[in1:.*]] = "tfl.quantize"(%arg0)
+// CHECK-NEXT: %[[split:.*]]:2 = "tfl.split"(%arg1, %[[in1]])
+// CHECK-NEXT: return %[[split]]#0
+}
+
 func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x1001xf32> {
   %cst = constant dense<[1, 1001]> : tensor<2xi32>
   %0 = "tfl.pseudo_input"(%arg0) : (tensor<1x224x224x3xf32>) -> tensor<1x224x224x3xf32>

@@ -315,7 +315,7 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
                              TfGpuId tf_gpu_id,
                              const string& physical_device_desc,
                              Allocator* gpu_allocator, Allocator* cpu_allocator,
-                             bool sync_every_op, int32 max_streams)
+                             bool sync_every_op)
     : LocalDevice(options, Device::BuildDeviceAttributes(name, DEVICE_GPU,
                                                          memory_limit, locality,
                                                          physical_device_desc)),
@@ -323,46 +323,39 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
       cpu_allocator_(cpu_allocator),
       scoped_allocator_mgr_(new ScopedAllocatorMgr(name)),
       tf_gpu_id_(tf_gpu_id),
-      sync_every_op_(sync_every_op),
-      max_streams_(max_streams) {
+      sync_every_op_(sync_every_op) {
   GPUProcessState::singleton()->EnableGPUDevice();
 }
 
 BaseGPUDevice::~BaseGPUDevice() {
   delete gpu_device_info_;
-  for (auto sb : scratch_) gpu_allocator_->DeallocateRaw(sb);
-  for (auto ctx : device_contexts_) ctx->Unref();
+  gpu_allocator_->DeallocateRaw(scratch_);
+  device_context_->Unref();
 }
 
 // This should be idempotent if already initialized.
 Status BaseGPUDevice::InitScratchBuffers() {
   mutex_lock l(scratch_init_mutex_);
-  if (scratch_.size() < max_streams_) {
-    for (int i = 0; i < max_streams_; i++) {
-      DCHECK(streams_[i]);
-      if (scratch_.size() > i && scratch_[i]) continue;
-      size_t scratch_buffer_size =
-          Eigen::kGpuScratchSize + sizeof(unsigned int);
-      MEMDEBUG_CACHE_OP("ScratchBuffer");
-      void* scratch_buffer = gpu_allocator_->AllocateRaw(
-          Allocator::kAllocatorAlignment, scratch_buffer_size);
-      if (scratch_buffer == nullptr) {
-        return errors::FailedPrecondition(
-            "Failed to allocate scratch buffer for device ",
-            tf_gpu_id_.value());
-      }
-      se::DeviceMemory<char> mem(
-          se::DeviceMemoryBase(scratch_buffer, scratch_buffer_size));
-
-      bool ok = executor_->SynchronousMemZero(
-          &mem, Eigen::kGpuScratchSize + sizeof(unsigned int));
-      if (!ok) {
-        return errors::FailedPrecondition(
-            "Failed to memcopy into scratch buffer for device ",
-            tf_gpu_id_.value());
-      }
-      scratch_.push_back(static_cast<char*>(scratch_buffer));
+  if (!scratch_) {
+    DCHECK(stream_);
+    size_t scratch_buffer_size = Eigen::kGpuScratchSize + sizeof(unsigned int);
+    MEMDEBUG_CACHE_OP("ScratchBuffer");
+    void* scratch_buffer = gpu_allocator_->AllocateRaw(
+        Allocator::kAllocatorAlignment, scratch_buffer_size);
+    if (scratch_buffer == nullptr) {
+      return errors::FailedPrecondition(
+          "Failed to allocate scratch buffer for device ", tf_gpu_id_.value());
     }
+    se::DeviceMemory<char> mem(
+        se::DeviceMemoryBase(scratch_buffer, scratch_buffer_size));
+    bool ok = executor_->SynchronousMemZero(
+        &mem, Eigen::kGpuScratchSize + sizeof(unsigned int));
+    if (!ok) {
+      return errors::FailedPrecondition(
+          "Failed to memcopy into scratch buffer for device ",
+          tf_gpu_id_.value());
+    }
+    scratch_ = static_cast<char*>(scratch_buffer);
   }
   return Status::OK();
 }
@@ -376,22 +369,15 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
 
   executor_ = executor_status.ValueOrDie();
 
-  if (max_streams_ < 1) {
-    return errors::InvalidArgument("Invalid value for max_streams.");
-  }
-
-  // Create the specified number of GPU streams
-  for (int i = 0; i < max_streams_; i++) {
-    streams_.push_back(StreamGroupFactory::Global().GetOrCreate(
-        tf_gpu_id_, i, executor_, options.config.gpu_options()));
-    device_contexts_.push_back(new GPUDeviceContext(
-        i, streams_.back()->compute,
+  stream_ = StreamGroupFactory::Global().GetOrCreate(
+      tf_gpu_id_, 0, executor_, options.config.gpu_options());
+  device_context_ =
+      new GPUDeviceContext(0, stream_->compute,
 #if TENSORFLOW_USE_ROCM
-        streams_.back()->nccl,
+                           stream_->nccl,
 #endif
-        streams_.back()->host_to_device, streams_.back()->device_to_host,
-        streams_.back()->device_to_device));
-  }
+                           stream_->host_to_device, stream_->device_to_host,
+                           stream_->device_to_device);
 
   em_ = EventMgrFactory::Singleton()->GetEventMgr(executor_,
                                                   options.config.gpu_options());
@@ -406,11 +392,6 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   if (timestamped_allocator_ ||
       (tracker_params.max_interval > 0 || tracker_params.max_bytes > 0 ||
        tracker_params.max_pending > 0)) {
-    if (max_streams_ > 1) {
-      LOG(FATAL) << "max_streams > 1 was specified together with "
-                    "timestamped_allocator and/or kernel tracking.  This is an "
-                    "unsupported combination.";
-    }
     SharedCounter* timing_counter = nullptr;
     if (timestamped_allocator_) {
       // In this case the SharedCounter was already created and set in the
@@ -422,13 +403,13 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
       DCHECK(timing_counter);
     }
     kernel_tracker_.reset(new GPUKernelTracker(
-        tracker_params, Env::Default(), streams_[0]->compute, timing_counter,
+        tracker_params, Env::Default(), stream_->compute, timing_counter,
         timestamped_allocator_ ? gpu_allocator_ : nullptr, em_));
   }
 
   gpu_device_info_ = new GpuDeviceInfo;
-  gpu_device_info_->stream = streams_[0]->compute;
-  gpu_device_info_->default_context = device_contexts_[0];
+  gpu_device_info_->stream = stream_->compute;
+  gpu_device_info_->default_context = device_context_;
   gpu_device_info_->event_mgr = em_;
   PlatformGpuId platform_gpu_id;
   TF_RETURN_IF_ERROR(
@@ -486,45 +467,10 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
 }
 
 bool BaseGPUDevice::RequiresRecordingAccessedTensors() const {
-  // When there is no more than one stream, we release the tensor reference
+  // Since there is only one stream, we release the tensor reference
   // at the end of the kernel launch, instead of at the end of the kernel
   // execution.
-  return streams_.size() > 1;
-}
-
-Status BaseGPUDevice::FillContextMap(const Graph* graph,
-                                     DeviceContextMap* device_context_map) {
-  VLOG(2) << "FillContextMap";
-
-  const size_t num_streams = streams_.size();
-  // Special case for single stream.
-  if (num_streams == 1) {
-    return Status::OK();
-  }
-  const int64 before = Env::Default()->NowMicros();
-  gpu_stream_util::AssignStreamsOpts opts;
-  opts.max_streams = static_cast<int32>(num_streams);
-  std::unordered_map<int, int> node_to_stream_id;
-  TF_RETURN_IF_ERROR(
-      gpu_stream_util::AssignStreams(graph, opts, &node_to_stream_id));
-  int64 elapsed = Env::Default()->NowMicros() - before;
-  VLOG(3) << "AssignStreams took " << elapsed << "us";
-
-  // Fill in the context map.  It is OK for this map to contain
-  // duplicate DeviceContexts so long as we increment the refcount.
-  device_context_map->resize(graph->num_node_ids());
-  for (Node* n : graph->nodes()) {
-    auto mapped_stream = node_to_stream_id[n->id()];
-    CHECK_LE(mapped_stream, num_streams);
-    auto ctx = device_contexts_[mapped_stream];
-    VLOG(3) << "Assigned stream " << node_to_stream_id[n->id()]
-            << " ==> stream[" << ctx->stream_id() << "] for node id " << n->id()
-            << " " << n->type_string() << " " << n->name();
-    ctx->Ref();
-    (*device_context_map)[n->id()] = ctx;
-  }
-
-  return Status::OK();
+  return false;
 }
 
 string BaseGPUDevice::ComputeOpKernelDebugString(const OpKernel& op_kernel,
@@ -541,7 +487,7 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   // directly), we need to establish a stacked-scoped environment
   // that directs it to execute on the proper device.  Otherwise we
   // expect the Op to use StreamExecutor directly and correctly.
-  GPUDeviceContext* gpu_device_context = device_contexts_[0];
+  GPUDeviceContext* gpu_device_context = device_context_;
   if (context->op_device_context() != nullptr) {
     gpu_device_context =
         static_cast<GPUDeviceContext*>(context->op_device_context());
@@ -550,45 +496,12 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   const auto stream_id = gpu_device_context->stream_id();
 
   const bool vlog_1 = VLOG_IS_ON(1);
-  const bool vlog_2 = vlog_1 && VLOG_IS_ON(2);
 
   if (vlog_1) {
     VLOG(1) << "GpuDevice::ComputeHelper "
             << ComputeOpKernelDebugString(*op_kernel, stream_id);
   }
 
-  const auto num_streams = streams_.size();
-  if (num_streams > 1) {
-    // If this op's device context is different from the other contexts,
-    // we must wait on the stream.
-    for (int i = 0; i < context->num_inputs(); ++i) {
-      const GPUDeviceContext* idc =
-          static_cast<GPUDeviceContext*>(context->input_device_context(i));
-      OP_REQUIRES(context, idc != nullptr,
-                  errors::Internal("Input device context ", i,
-                                   " was not set properly."));
-      if (vlog_2) {
-        const void* base;
-        size_t len;
-        if (context->has_input(i)) {
-          if (IsRefType(context->input_dtype(i))) {
-            Tensor tensor = context->mutable_input(i, false);
-            base = DMAHelper::base(&tensor);
-            len = tensor.TotalBytes();
-          } else {
-            const Tensor& tensor = context->input(i);
-            base = DMAHelper::base(&tensor);
-            len = tensor.TotalBytes();
-          }
-          LOG(INFO) << "Input " << i << " " << base << "  " << len;
-          LOG(INFO) << "  stream[" << stream_id << "].ThenWaitFor(stream["
-                    << idc->stream_id() << "])"
-                    << ((idc->stream() == stream) ? " not needed" : "");
-        }
-      }
-      if (idc->stream() != stream) stream->ThenWaitFor(idc->stream());
-    }
-  }
   if (kernel_tracker_.get()) {
     context->set_record_memory_consumption(true);
     if (pending_cap_ > 0) {
@@ -634,7 +547,7 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
 
 void BaseGPUDevice::ConsumeListOfAccessedTensors(
     DeviceContext* device_context, const TensorReferenceVector& tensor_refs) {
-  GPUDeviceContext* gpu_device_context = device_contexts_[0];
+  GPUDeviceContext* gpu_device_context = device_context_;
   if (device_context != nullptr) {
     gpu_device_context = static_cast<GPUDeviceContext*>(device_context);
   }
@@ -649,7 +562,7 @@ Status BaseGPUDevice::Sync() { return GPUUtil::SyncAll(this); }
 void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
                                  OpKernelContext* context,
                                  AsyncOpKernel::DoneCallback done) {
-  GPUDeviceContext* gpu_device_context = device_contexts_[0];
+  GPUDeviceContext* gpu_device_context = device_context_;
   if (context->op_device_context() != nullptr) {
     gpu_device_context =
         static_cast<GPUDeviceContext*>(context->op_device_context());
@@ -662,7 +575,7 @@ void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
           << stream_id << "]";
 
   ScopedActivateExecutorContext scoped_activation{stream->parent()};
-  op_kernel->ComputeAsync(context, done);
+  op_kernel->ComputeAsync(context, std::move(done));
 }
 
 Status BaseGPUDevice::MaybeCopyTensorToGPU(
@@ -710,7 +623,7 @@ Status BaseGPUDevice::MaybeCopyTensorToGPU(
     };
 
     tracing::ScopedAnnotation annotation("MakeTensorFromProto");
-    device_contexts_[0]->CopyCPUTensorToDevice(
+    device_context_->CopyCPUTensorToDevice(
         &from, this, copy, std::move(wrapped_done),
         !timestamped_allocator_ /*sync_dst_compute*/);
     return Status::OK();
@@ -979,10 +892,11 @@ void BaseGPUDevice::ReinitializeDevice(OpKernelContext* context,
   ConcretePerOpGpuDevice* concrete_device =
       static_cast<ConcretePerOpGpuDevice*>(device);
   DCHECK(concrete_device);
+  DCHECK_EQ(stream_id, 0);
   const gpuStream_t* gpu_stream = reinterpret_cast<const gpuStream_t*>(
-      streams_[stream_id]->compute->implementation()->GpuStreamMemberHack());
+      stream_->compute->implementation()->GpuStreamMemberHack());
   concrete_device->Reinitialize(context, gpu_stream, tf_gpu_id_, allocator,
-                                scratch_[stream_id]);
+                                scratch_);
 }
 
 PerOpGpuDevice* BaseGPUDevice::MakeGpuDevice() {
@@ -999,7 +913,7 @@ Status BaseGPUDevice::ReinitializeGpuDevice(OpKernelContext* context,
     const int stream_id = gpu_dc->stream_id();
     VLOG(1) << "  eigen_gpu_device(" << dc << ") => stream[" << stream_id
             << "]";
-    CHECK_LT(stream_id, streams_.size());
+    CHECK_EQ(stream_id, 0);
     ReinitializeDevice(context, device, stream_id, allocator);
   } else {
     ReinitializeDevice(context, device, 0, allocator);

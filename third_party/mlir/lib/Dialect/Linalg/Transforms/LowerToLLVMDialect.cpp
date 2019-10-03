@@ -450,8 +450,7 @@ public:
     auto sliceOp = cast<SliceOp>(op);
     BaseViewConversionHelper helper(op, sliceOp.getViewType(), rewriter,
                                     lowering);
-    LLVMType elementTy = helper.elementTy, int64Ty = helper.int64Ty,
-             viewDescriptorTy = helper.viewDescriptorTy;
+    LLVMType elementTy = helper.elementTy, int64Ty = helper.int64Ty;
     Value *desc = helper.desc;
 
     auto viewType = sliceOp.getBaseViewType();

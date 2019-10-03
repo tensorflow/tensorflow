@@ -1100,7 +1100,6 @@ cc_library(
     copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AVR"],
     deps = [
         ":config",
-        ":mc",
         ":support",
     ],
 )

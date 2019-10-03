@@ -24,7 +24,6 @@ import collections
 import numpy as np
 
 from tensorflow.python.eager import context
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend as K
@@ -37,9 +36,9 @@ from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
@@ -687,8 +686,19 @@ class RNN(Layer):
            training=None,
            initial_state=None,
            constants=None):
+    # The input should be dense, padded with zeros. If a ragged input is fed
+    # into the layer, it is padded and the row lengths are used for masking.
+    inputs, row_lengths = self._convert_inputs_if_ragged(inputs)
+    is_ragged_input = (row_lengths is not None)
+    self._validate_args_if_ragged(is_ragged_input, mask)
+
     inputs, initial_state, constants = self._process_inputs(
         inputs, initial_state, constants)
+
+    self._maybe_reset_cell_dropout_mask(self.cell)
+    if isinstance(self.cell, StackedRNNCells):
+      for cell in self.cell.cells:
+        self._maybe_reset_cell_dropout_mask(cell)
 
     if mask is not None:
       # Time step masks must be the same for each input.
@@ -743,15 +753,6 @@ class RNN(Layer):
           new_states = [new_states]
         return output, new_states
 
-    # `input_length` is passed as the `maximum_iterations` arg to tf.while_loop.
-    # We only specify that when building for XLA since that causes slowdowns
-    # on GPU in TF.
-    if (not context.executing_eagerly() and
-        control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph())):
-      input_length = timesteps
-    else:
-      input_length = None
-
     last_output, outputs, states = K.rnn(
         step,
         inputs,
@@ -760,9 +761,10 @@ class RNN(Layer):
         go_backwards=self.go_backwards,
         mask=mask,
         unroll=self.unroll,
-        input_length=input_length,
+        input_length=row_lengths if row_lengths is not None else timesteps,
         time_major=self.time_major,
         zero_output_for_mask=self.zero_output_for_mask)
+
     if self.stateful:
       updates = []
       for state_, state in zip(nest.flatten(self.states), nest.flatten(states)):
@@ -770,7 +772,8 @@ class RNN(Layer):
       self.add_update(updates)
 
     if self.return_sequences:
-      output = outputs
+      output = self._maybe_convert_to_ragged(is_ragged_input, outputs,
+                                             row_lengths)
     else:
       output = last_output
 
@@ -822,6 +825,56 @@ class RNN(Layer):
                        ' states but was passed ' + str(len(initial_state)) +
                        ' initial states.')
     return inputs, initial_state, constants
+
+  def _convert_inputs_if_ragged(self, inputs):
+    """Converts any ragged tensors to dense."""
+
+    def _convert_ragged_input(inputs):
+      if isinstance(inputs, ragged_tensor.RaggedTensor):
+        return inputs.to_tensor()
+      return inputs
+
+    flat_inputs = nest.flatten(inputs)
+    contains_ragged = K.py_any(
+        isinstance(i, ragged_tensor.RaggedTensor) for i in flat_inputs)
+
+    if not contains_ragged:
+      return inputs, None
+
+    inputs = nest.map_structure(_convert_ragged_input, inputs)
+    # Multiple mask are not yet supported, so one mask is used on all inputs.
+    # We approach this similarly when using row lengths to ignore steps.
+    nested_row_lengths = math_ops.cast(flat_inputs[0].nested_row_lengths()[0],
+                                       'int32')
+
+    return inputs, nested_row_lengths
+
+  def _validate_args_if_ragged(self, is_ragged_input, mask):
+    if not is_ragged_input:
+      return
+
+    if mask is not None:
+      raise ValueError('The mask that was passed in was ' + str(mask) +
+                       ' and cannot be applied to RaggedTensor inputs. Please '
+                       'make sure that there is no mask passed in by upstream '
+                       'layers.')
+    if self.unroll:
+      raise ValueError('The input received constains RaggedTensors and does '
+                       'not support unrolling. Disable unrolling by passing '
+                       '`unroll=False` in the RNN Layer constructor.')
+
+  def _maybe_convert_to_ragged(self, is_ragged_input, output,
+                               nested_row_lengths):
+    """Converts any ragged input back to its initial structure."""
+    if not is_ragged_input:
+      return output
+
+    return ragged_tensor.RaggedTensor.from_tensor(output, nested_row_lengths)
+
+  def _maybe_reset_cell_dropout_mask(self, cell):
+    if isinstance(cell, DropoutRNNCellMixin):
+      cell.reset_dropout_mask()
+      cell.reset_recurrent_dropout_mask()
 
   def reset_states(self, states=None):
     """Reset the recorded states for the stateful RNN layer.
@@ -1478,8 +1531,7 @@ class SimpleRNN(RNN):
     self.input_spec = [InputSpec(ndim=3)]
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self.cell.reset_dropout_mask()
-    self.cell.reset_recurrent_dropout_mask()
+    self._maybe_reset_cell_dropout_mask(self.cell)
     return super(SimpleRNN, self).call(
         inputs, mask=mask, training=training, initial_state=initial_state)
 
@@ -1930,7 +1982,7 @@ class GRU(RNN):
       efficient because it avoids transposes at the beginning and end of the
       RNN calculation. However, most TensorFlow data is batch-major, so by
       default this function accepts input and emits output in batch-major
-      form. 
+      form.
     reset_after: GRU convention (whether to apply reset gate after or
       before matrix multiplication). False = "before" (default),
       True = "after" (CuDNN compatible).
@@ -2008,8 +2060,7 @@ class GRU(RNN):
     self.input_spec = [InputSpec(ndim=3)]
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self.cell.reset_dropout_mask()
-    self.cell.reset_recurrent_dropout_mask()
+    self._maybe_reset_cell_dropout_mask(self.cell)
     return super(GRU, self).call(
         inputs, mask=mask, training=training, initial_state=initial_state)
 
@@ -2636,8 +2687,7 @@ class LSTM(RNN):
     self.input_spec = [InputSpec(ndim=3)]
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self.cell.reset_dropout_mask()
-    self.cell.reset_recurrent_dropout_mask()
+    self._maybe_reset_cell_dropout_mask(self.cell)
     return super(LSTM, self).call(
         inputs, mask=mask, training=training, initial_state=initial_state)
 

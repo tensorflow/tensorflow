@@ -268,7 +268,8 @@ static void EmitBuiltinOptionsToAttributes(const RecordKeeper &record_keeper,
   for (const auto *def : defs) {
     if (!def->getValueAsBit("hasOptions")) continue;
     auto option_name = GetOperatorOptionName(*def);
-    os << formatv("  if(const auto *op = op_union.As{0}()) {\n", option_name);
+    os << formatv("  if(const auto *op = op_union.As{0}())", option_name);
+    os << " {\n";
 
     // We only care about options that are in arguments
     auto *arg_values = def->getValueAsDag("arguments");

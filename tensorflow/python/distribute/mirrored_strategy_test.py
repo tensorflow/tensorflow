@@ -49,6 +49,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras.engine import training as keras_training
 from tensorflow.python.keras.layers import core as keras_core
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
@@ -66,7 +67,6 @@ GPU_TEST = "test_gpu" in sys.argv[0]
         distribution=[
             strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
             strategy_combinations.mirrored_strategy_with_two_gpus,
-            strategy_combinations.mirrored_strategy_with_two_gpus_remote,
         ],
         mode=["graph", "eager"]))
 class MirroredTwoDeviceDistributionTest(
@@ -372,6 +372,22 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
       self.assertEqual((0, 1), self.evaluate(result.values))
       self.assertLen(traces, distribution.num_replicas_in_sync)
 
+  def testNestedFunctionInCallForEachReplicaWithMergeCall(self, distribution):
+    def merge_fn(_):
+      pass
+
+    @def_function.function
+    def model_fn():
+      def body_fn(i):
+        ds_context.get_replica_context().merge_call(merge_fn)
+        return i + 1
+      return control_flow_ops.while_loop_v2(lambda i: i < 2, body_fn, [0])
+
+    with distribution.scope():
+      with self.assertRaisesRegexp(
+          RuntimeError, "`merge_call` called while defining a new graph."):
+        distribution.extended.call_for_each_replica(model_fn)
+
   def testFunctionInCallForEachReplicaWithMergeCall(self, distribution):
     def merge_fn(_):
       pass
@@ -382,9 +398,29 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
       return 0.
 
     with distribution.scope():
-      with self.assertRaisesRegexp(
-          RuntimeError, "`merge_call` called while defining a new graph."):
-        distribution.extended.call_for_each_replica(model_fn)
+      self.assertEqual(
+          self.evaluate(distribution.extended.call_for_each_replica(model_fn)),
+          0.)
+
+  def testFunctionInCallForEachReplicaCached(self, distribution):
+    traces = []
+
+    @def_function.function
+    def model_fn():
+      traces.append(None)
+
+    self.assertEmpty(traces)
+
+    for i in range(10):
+      distribution.extended.call_for_each_replica(model_fn)
+
+      if i == 0:
+        num_devices = len(traces)
+        self.assertGreater(num_devices, 0)
+      else:
+        # model_fn should not have been re-evaluated so the length should remain
+        # the same.
+        self.assertLen(traces, num_devices)
 
 
 @combinations.generate(
@@ -1155,10 +1191,8 @@ class MultiWorkerMirroredStrategyTest(
                 "Mirrored",
                 # pylint: disable=g-long-lambda
                 lambda: mirrored_strategy.MirroredStrategy(
-                    devices=["/job:worker/task:0/gpu:0"],
-                    cross_device_ops=cross_device_ops_lib.MultiWorkerAllReduce([
-                        "/job:worker/task:0"
-                    ], context.num_gpus())),
+                    devices=["/job:worker/task:0/gpu:{}".format(
+                        i) for i in range(context.num_gpus())]),
                 required_gpus=1)
         ],
         mode=["graph"]))

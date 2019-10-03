@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle_data.h"
@@ -268,6 +269,10 @@ TensorHandle::TensorHandle(OutputGraphNode symbolic_tensor, DataType dtype)
   is_ready_notification_.Notify();
 }
 
+bool TensorHandle::IsReady() {
+  return is_ready_notification_.HasBeenNotified();
+}
+
 Status TensorHandle::WaitReady() {
   is_ready_notification_.WaitForNotification();
   return is_poisoned_;
@@ -288,14 +293,20 @@ Device* TensorHandle::DeviceOrHostCPU(EagerContext* ctx) const {
 }
 
 Status TensorHandle::Shape(tensorflow::TensorShape* shape) {
-  TF_RETURN_IF_ERROR(WaitReady());
-  return tensor_handle_data_->Shape(shape);
+  if (!IsReady() && inference_shape_.IsFullyDefined()) {
+    bool fill = inference_shape_.AsTensorShape(shape);
+    DCHECK(fill);
+    return Status::OK();
+  } else {
+    TF_RETURN_IF_ERROR(WaitReady());
+    return tensor_handle_data_->Shape(shape);
+  }
 }
 
 Status TensorHandle::InferenceShape(
     shape_inference::InferenceContext* const inference_context,
     shape_inference::ShapeHandle* shape_handle) {
-  if (is_ready_notification_.HasBeenNotified()) {
+  if (IsReady()) {
     TF_RETURN_IF_ERROR(is_poisoned_);
     std::vector<shape_inference::DimensionHandle> dims_handle;
     int num_dims;
@@ -308,15 +319,14 @@ Status TensorHandle::InferenceShape(
     *shape_handle = inference_context->MakeShape(dims_handle);
     return Status::OK();
   } else {
-    if (inference_num_dims_ ==
-        shape_inference::InferenceContext::kUnknownRank) {
+    if (inference_shape_.unknown_rank()) {
       *shape_handle = inference_context->UnknownShape();
       return Status::OK();
     }
     std::vector<shape_inference::DimensionHandle> dims_handle(
-        inference_num_dims_);
-    for (int i = 0; i < inference_num_dims_; i++) {
-      dims_handle[i] = inference_context->MakeDim(inference_dims_[i]);
+        inference_shape_.dims());
+    for (int i = 0; i < dims_handle.size(); i++) {
+      dims_handle[i] = inference_context->MakeDim(inference_shape_.dim_size(i));
     }
     *shape_handle = inference_context->MakeShape(dims_handle);
     return Status::OK();
@@ -326,60 +336,69 @@ Status TensorHandle::InferenceShape(
 void TensorHandle::SetInferenceShape(
     shape_inference::InferenceContext* const inference_context,
     const shape_inference::ShapeHandle& shape_handle) {
-  inference_num_dims_ = inference_context->Rank(shape_handle);
-  if (inference_num_dims_ == shape_inference::InferenceContext::kUnknownRank) {
+  auto num_dims = inference_context->Rank(shape_handle);
+  std::vector<int64> dims;
+  if (num_dims == shape_inference::InferenceContext::kUnknownRank) {
+    inference_shape_ = PartialTensorShape();
     return;
   }
-  inference_dims_.resize(inference_num_dims_);
-  for (size_t i = 0; i < inference_num_dims_; ++i) {
-    inference_dims_[i] =
-        inference_context->Value(inference_context->Dim(shape_handle, i));
+  DCHECK_GE(num_dims, 0);
+  dims.resize(num_dims);
+  for (size_t i = 0; i < num_dims; ++i) {
+    dims[i] = inference_context->Value(inference_context->Dim(shape_handle, i));
   }
+  auto s = PartialTensorShape::MakePartialShape(dims.data(), num_dims,
+                                                &inference_shape_);
+  DCHECK(s.ok());
 }
 
 Status TensorHandle::CopyInferenceShape(TensorHandle* other) {
-  if (is_ready_notification_.HasBeenNotified()) {
+  if (IsReady()) {
     TF_RETURN_IF_ERROR(is_poisoned_);
     return Status::OK();
   }
-  if (other->is_ready_notification_.HasBeenNotified()) {
-    TF_RETURN_IF_ERROR(
-        other->tensor_handle_data_->NumDims(&inference_num_dims_));
-    if (inference_num_dims_ > 0) {
-      inference_dims_.resize(inference_num_dims_);
-      for (size_t i = 0; i < inference_num_dims_; ++i) {
-        TF_RETURN_IF_ERROR(
-            other->tensor_handle_data_->Dim(i, &inference_dims_[i]));
-      }
-    }
+  if (other->IsReady()) {
+    TensorShape other_shape;
+    TF_RETURN_IF_ERROR(other->Shape(&other_shape));
+    inference_shape_ = other_shape;
   } else {
-    inference_num_dims_ = other->inference_num_dims_;
-    if (inference_num_dims_ > 0) {
-      inference_dims_.resize(inference_num_dims_);
-      for (size_t i = 0; i < inference_num_dims_; ++i) {
-        inference_dims_[i] = other->inference_dims_[i];
-      }
-    }
+    inference_shape_ = other->inference_shape_;
   }
   return Status::OK();
 }
 
 Status TensorHandle::NumDims(int* num_dims) {
   DCHECK(num_dims != nullptr);
-  TF_RETURN_IF_ERROR(WaitReady());
-  return tensor_handle_data_->NumDims(num_dims);
+  if (!IsReady() && !inference_shape_.unknown_rank()) {
+    *num_dims = inference_shape_.dims();
+    return Status::OK();
+  } else {
+    TF_RETURN_IF_ERROR(WaitReady());
+    return tensor_handle_data_->NumDims(num_dims);
+  }
 }
 
 Status TensorHandle::Dim(int dim_index, int64* dim) {
   DCHECK(dim != nullptr);
-  TF_RETURN_IF_ERROR(WaitReady());
-  return tensor_handle_data_->Dim(dim_index, dim);
+  if (!IsReady() && !inference_shape_.unknown_rank() &&
+      inference_shape_.dim_size(dim_index) != -1) {
+    *dim = inference_shape_.dim_size(dim_index);
+    return Status::OK();
+  } else {
+    TF_RETURN_IF_ERROR(WaitReady());
+    return tensor_handle_data_->Dim(dim_index, dim);
+  }
 }
 
 Status TensorHandle::NumElements(int64* num_elements) {
   DCHECK(num_elements != nullptr);
-  TF_RETURN_IF_ERROR(WaitReady());
-  return tensor_handle_data_->NumElements(num_elements);
+  if (!IsReady() && inference_shape_.IsFullyDefined()) {
+    *num_elements = inference_shape_.num_elements();
+    return Status::OK();
+  } else {
+    TF_RETURN_IF_ERROR(WaitReady());
+    return tensor_handle_data_->NumElements(num_elements);
+  }
 }
 
 #if !defined(IS_MOBILE_PLATFORM)

@@ -1418,6 +1418,66 @@ func @testDepthToSpaceInvalidOutputType(%arg0: tensor<1x1x1x4xf32>) -> tensor<1x
 
 // -----
 
+func @testPReluWrongOutputRank(%arg0: tensor<10x10x10x10xf32>, %arg1: tensor<1x1x10xf32>) -> tensor<10x10x10xf32> {
+  // expected-error @+1 {{'input' and 'output' should have the same rank}}
+  %0 = "tfl.prelu"(%arg0, %arg1) : (tensor<10x10x10x10xf32>, tensor<1x1x10xf32>) -> tensor<10x10x10xf32>
+  return %0 : tensor<10x10x10xf32>
+}
+
+// -----
+
+func @testPReluWrongOutputShape(%arg0: tensor<1x2x3x4xf32>, %arg1: tensor<2x3x4xf32>) -> tensor<1x2x3x5xf32> {
+  // expected-error @+1 {{'input' and 'output' should have the same shape}}
+  %0 = "tfl.prelu"(%arg0, %arg1) : (tensor<1x2x3x4xf32>, tensor<2x3x4xf32>) -> tensor<1x2x3x5xf32>
+  return %0 : tensor<1x2x3x5xf32>
+}
+
+// -----
+
+func @testPReluWrongAlphaRank(%arg0: tensor<7x3x2x14xf32>, %arg1: tensor<2x7x3x2x14xf32>) -> tensor<7x3x2x14xf32> {
+  // expected-error @+1 {{'alpha' should have one less rank than 'input'.}}
+  %0 = "tfl.prelu"(%arg0, %arg1) : (tensor<7x3x2x14xf32>, tensor<2x7x3x2x14xf32>) -> tensor<7x3x2x14xf32>
+  return %0 : tensor<7x3x2x14xf32>
+}
+
+// -----
+
+func @testPReluInvalidBroadcast(%arg0: tensor<15x14x2x14xf32>, %arg1: tensor<1x1x3xf32>) -> tensor<15x14x2x14xf32> {
+  // expected-error @+1 {{'alpha' is not broadcastable at dimension 2.}}
+  %0 = "tfl.prelu"(%arg0, %arg1) : (tensor<15x14x2x14xf32>, tensor<1x1x3xf32>) -> tensor<15x14x2x14xf32>
+  return %0 : tensor<15x14x2x14xf32>
+}
+
+// -----
+
+func @testPReluValidSameSize(%arg0: tensor<16x20x20x13xf32>, %arg1: tensor<20x20x13xf32>) -> tensor<16x20x20x13xf32> {
+  %0 = "tfl.prelu"(%arg0, %arg1) : (tensor<16x20x20x13xf32>, tensor<20x20x13xf32>) -> tensor<16x20x20x13xf32>
+  return %0 : tensor<16x20x20x13xf32>
+}
+
+// -----
+
+func @testPReluValidBroadcast(%arg0: tensor<19x7x12x14xf32>, %arg1: tensor<1x1x14xf32>) -> tensor<19x7x12x14xf32> {
+  %0 = "tfl.prelu"(%arg0, %arg1) : (tensor<19x7x12x14xf32>, tensor<1x1x14xf32>) -> tensor<19x7x12x14xf32>
+  return %0 : tensor<19x7x12x14xf32>
+}
+
+// -----
+
+func @testPReluValidFullBroadcast(%arg0: tensor<7x8x9x10xf32>, %arg1: tensor<1x1x1xf32>) -> tensor<7x8x9x10xf32> {
+  %0 = "tfl.prelu"(%arg0, %arg1) : (tensor<7x8x9x10xf32>, tensor<1x1x1xf32>) -> tensor<7x8x9x10xf32>
+  return %0 : tensor<7x8x9x10xf32>
+}
+
+// -----
+
+func @testPReluValidQuantized(%arg0: tensor<1x96x96x16x!quant.uniform<u8:f32, 0.00784:128>>, %arg1: tensor<1x1x16x!quant.uniform<u8<1:255>:f32, 0.004846:14>>) -> tensor<1x96x96x16x!quant.uniform<u8:f32, 0.00784:128>> {
+  %0 = "tfl.prelu"(%arg0, %arg1) : (tensor<1x96x96x16x!quant.uniform<u8:f32, 0.00784:128>>, tensor<1x1x16x!quant.uniform<u8<1:255>:f32, 0.004846:14>>) -> tensor<1x96x96x16x!quant.uniform<u8:f32, 0.00784:128>>
+  return %0 : tensor<1x96x96x16x!quant.uniform<u8:f32, 0.00784:128>>
+}
+
+// -----
+
 func @testSlice(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>, %arg2: tensor<3xi32>) -> tensor<?x3x5xf32> {
   %0 = "tfl.slice"(%arg0, %arg1, %arg2) : (tensor<2x3x5xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<?x3x5xf32>
   return %0 : tensor<?x3x5xf32>
@@ -1840,4 +1900,50 @@ func @testNonMaxSuppressionV5WithWrongBoxShape(%arg0: tensor<3x2xf32>, %arg1: te
   // expected-error @+1 {{'tfl.non_max_suppression_v5' op failed to verify that boxes should have dim[1] == 4}}
   %0, %1, %2 = "tfl.non_max_suppression_v5"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5) : (tensor<3x2xf32>, tensor<3xf32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<2xi32>, tensor<2xf32>, tensor<i32>)
   return %0, %1, %2 : tensor<2xi32>, tensor<2xf32>, tensor<i32>
+}
+
+// -----
+
+func @fully_connected(%arg0: tensor<1x37xf32>, %arg1: tensor<40x37xf32>, %arg2: tensor<40xf32>) -> tensor<1x40xf32> {
+  %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x37xf32>, tensor<40x37xf32>, tensor<40xf32>) -> tensor<1x40xf32>
+  return %0 : tensor<1x40xf32>
+}
+
+// -----
+
+func @fully_connected_no_bias(%arg0: tensor<2x2x10xf32>, %arg1: tensor<40x40xf32>, %arg2: none) -> tensor<1x40xf32> {
+  %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<2x2x10xf32>, tensor<40x40xf32>, none) -> tensor<1x40xf32>
+  return %0 : tensor<1x40xf32>
+}
+
+// -----
+
+func @testFullyConnectedWith3DFilter(%arg0: tensor<1x37xf32>, %arg1: tensor<40x2x37xf32>, %arg2: tensor<40xf32>) -> tensor<1x40xf32> {
+  // expected-error @+1 {{expect 2d filter, got 'tensor<40x2x37xf32>'}}
+  %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x37xf32>, tensor<40x2x37xf32>, tensor<40xf32>) -> tensor<1x40xf32>
+  return %0 : tensor<1x40xf32>
+}
+
+// -----
+
+func @testFullyConnectedWithBadInputShape(%arg0: tensor<2x2x11xf32>, %arg1: tensor<40x40xf32>, %arg2: none) -> tensor<40xf32> {
+  // expected-error @+1 {{expect 'input' num_elements % 40 == 0, got input type 'tensor<2x2x11xf32>'}}
+  %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<2x2x11xf32>, tensor<40x40xf32>, none) -> tensor<1x40xf32>
+  return %0 : tensor<1x40xf32>
+}
+
+// -----
+
+func @testFullyConnectedWithBadBatch(%arg0: tensor<1x37xf32>, %arg1: tensor<40x37xf32>, %arg2: tensor<40xf32>) -> tensor<2x40xf32> {
+  // expected-error @+1 {{num_input_elements / z_in != num_output_elements / z_out}}
+  %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x37xf32>, tensor<40x37xf32>, tensor<40xf32>) -> tensor<2x40xf32>
+  return %0 : tensor<2x40xf32>
+}
+
+// -----
+
+func @testFullyConnectedWithBadOutputShape(%arg0: tensor<1x37xf32>, %arg1: tensor<40x37xf32>, %arg2: tensor<40xf32>) -> tensor<1x41xf32> {
+  // expected-error @+1 {{expect 'output' num_elements % 40 == 0, got 'tensor<1x41xf32>'}}
+  %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x37xf32>, tensor<40x37xf32>, tensor<40xf32>) -> tensor<1x41xf32>
+  return %0 : tensor<1x41xf32>
 }

@@ -1,3 +1,5 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
 licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like
 
 package(default_visibility = ["//visibility:public"])
@@ -133,6 +135,11 @@ cc_library(
     deps = [
         "@local_config_rocm//rocm:rocm_headers",
     ],
+)
+
+bzl_library(
+    name = "build_defs_bzl",
+    srcs = ["build_defs.bzl"],
 )
 
 %{copy_rules}

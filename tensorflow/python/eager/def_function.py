@@ -33,6 +33,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
+
+
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
@@ -244,6 +246,11 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
         # Note: this cond is always guaranteed to run because we're inside a
         # defun which will insert automatic control dependencies. It will only
         # execute assign_fn if lifting failed.
+        graph = ops.get_default_graph()
+
+        # Capture the handle ahead of time in order to avoid querying the shape
+        # of the handle which helps async execution performance
+        graph.capture(self._handle, shape=())
         control_flow_ops.cond(
             resource_variable_ops.var_is_initialized_op(self._handle),
             not_assign_fn, assign_fn)
@@ -283,10 +290,11 @@ def run_functions_eagerly(run_eagerly):
   >>>
   >>> tf.config.experimental_run_functions_eagerly(True)
   >>> sqrt(tf.constant(2.))
-  <tf.Tensor: id=..., shape=(), dtype=float32, numpy=1.4150391>
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.4150391>
   >>> ys
   [1.5, 1.25, 1.375, 1.4375, 1.40625, 1.421875, 1.4140625, 1.4179688, 1.4160156,
   1.4150391]
+  >>> tf.config.experimental_run_functions_eagerly(False)
 
   Calling `tf.config.experimental_run_functions_eagerly(False)` will undo this
   behavior.
@@ -325,6 +333,7 @@ class Function(object):
                name,
                input_signature=None,
                autograph=True,
+               experimental_implements=None,
                experimental_autograph_options=None,
                experimental_relax_shapes=False,
                experimental_compile=None):
@@ -338,6 +347,29 @@ class Function(object):
         function is instantiated for each inferred input signature.
       autograph: whether `python_function` should be converted to graph mode.
         See https://www.tensorflow.org/guide/autograph for more information.
+      experimental_implements: If provided, contains a name of a "known"
+        function this implements. For example "mycompany.my_recurrent_cell".
+        This is stored as an attribute in the serialized representation,
+        which can then be detected and manipulated when processing serialized
+        graph.
+        See
+        https://github.com/tensorflow/community/blob/master/rfcs/20190610-standardizing-composite_ops.md
+        for details.  For an example of utilizing this attribute see:
+        https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/lite/transforms/prepare_composite_functions_tf.cc
+        The code above automatically detects and substitutes function that
+        implements "embedded_matmul" and allows TFLite to substitute its own
+        implementations. For instance, a tensorflow user can use this
+         attribute to mark that their function also implements
+        `embedded_matmul``` (perhaps more efficiently!)
+        by specifying it using this flag.
+
+        ```python
+        @tf.function(
+            experimental_implements="lingvo.SimpleEmbeddingLayer.EmbMatmul")
+        def embedding_matmul(a, b):
+           # custom implementation here
+        ```
+
       experimental_autograph_options: optional tuple of
         tensorflow.autograph.Feature values. Allows enabling additional
         conversion options when autograph is set to True.
@@ -365,6 +397,7 @@ class Function(object):
     self._python_function = python_function
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
         python_function, input_signature)
+    self._implements = experimental_implements
     self._autograph = autograph
     self._experimental_autograph_options = experimental_autograph_options
     self.experimental_relax_shapes = experimental_relax_shapes
@@ -374,6 +407,7 @@ class Function(object):
     self._stateless_fn = None  # GUARDED_BY(self._lock)
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._name = name
+    self._input_signature = input_signature
     self._call_counter = _CallCounter(FREQUENT_TRACING_WARNING_MAX_CALL_HISTORY)
 
   def _defun_with_scope(self, scope):
@@ -406,12 +440,13 @@ class Function(object):
 
   def _defun(self, fn):
     """Returns a defun generated from the input function."""
-    attributes = None
+    attributes = {}
+    if self._implements is not None:
+      attributes[function_lib.IMPLEMENTS_ATTRIBUTE_NAME] = self._implements
     if self._experimental_compile is not None:
-      if self._experimental_compile:
-        attributes = {"_XlaCompile": True}
-      else:
-        attributes = {"_XlaCompile": False}
+      attributes.update(_XlaCompile=bool(self._experimental_compile))
+    if not attributes:
+      attributes = None
     return function_lib.defun_with_attributes(
         fn,
         input_signature=self.input_signature,
@@ -464,6 +499,18 @@ class Function(object):
 
     self._stateless_fn = self._defun_with_scope(invalid_creator_scope)
     self._stateless_fn._name = self._name  # pylint: disable=protected-access
+
+  def _clone(self, python_function):
+    return Function(
+        python_function=(self._python_function
+                         if python_function is None else python_function),
+        name=self._name,
+        input_signature=self._input_signature,
+        autograph=self._autograph,
+        experimental_implements=self._implements,
+        experimental_autograph_options=self._experimental_autograph_options,
+        experimental_relax_shapes=self.experimental_relax_shapes,
+        experimental_compile=self._experimental_compile)
 
   def _decorate(self, decorator):
     """Allows the captured Python function to be decorated in place.
@@ -611,9 +658,9 @@ class Function(object):
               "def f():\n"
               "  return v\n"
               "\n"
-              "f()  # <tf.Tensor: ... numpy=1.>\n"
+              "f()  # <tf.Tensor: numpy=1.>\n"
               "v.assign_add(1.)\n"
-              "f()  # <tf.Tensor: ... numpy=2.>")
+              "f()  # <tf.Tensor: numpy=2.>")
         condition = math_ops.logical_and(
             condition, resource_variable_ops.var_is_initialized_op(
                 variable.handle))
@@ -659,7 +706,7 @@ class Function(object):
             continue
         op_map = lift_to_graph.lift_to_graph(
             [init], ops.get_default_graph(), op_map=op_map)
-        v.assign(op_map[init])
+        v.assign(op_map[init], read_value=False)
 
     with ops.init_scope():
       return initialize_variables.get_concrete_function()()
@@ -700,8 +747,9 @@ class Function(object):
     @function_lib.defun
     def initialize_variables():
       for v, init in initializers:
-        v.assign(lift_to_graph.lift_to_graph(
-            [init], ops.get_default_graph())[init])
+        v.assign(
+            lift_to_graph.lift_to_graph([init], ops.get_default_graph())[init],
+            read_value=False)
 
     return initialize_variables.get_concrete_function()
 
@@ -870,6 +918,7 @@ class Function(object):
 def function(func=None,
              input_signature=None,
              autograph=True,
+             experimental_implements=None,
              experimental_autograph_options=None,
              experimental_relax_shapes=False,
              experimental_compile=None):
@@ -1050,6 +1099,27 @@ def function(func=None,
       graph. Data-dependent control flow requires `autograph=True`. For more
       information, see the [tf.function and AutoGraph guide](
       https://www.tensorflow.org/beta/guide/autograph).
+    experimental_implements: If provided, contains a name of a "known" function
+      this implements. For example "mycompany.my_recurrent_cell".
+      This is stored as an attribute in inference function,
+      which can then be detected when processing serialized function.
+      See
+      https://github.com/tensorflow/community/blob/master/rfcs/20190610-standardizing-composite_ops.md
+      for details.  For an example of utilizing this attribute see:
+      https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/lite/transforms/prepare_composite_functions_tf.cc
+      The code above automatically detects and substitutes function that
+      implements "embedded_matmul" and allows TFLite to substitute its own
+      implementations. For instance, a tensorflow user can use this
+       attribute to mark that their function also implements
+      `embedded_matmul``` (perhaps more efficiently!)
+      by specifying it using this flag.
+
+        ```python
+        @tf.function(experimental_implements="embedded_matmul"):
+        def embedding_matmul(a, b):
+           # custom implementation here
+        ```
+
     experimental_autograph_options: Optional tuple of
       `tf.autograph.experimental.Feature` values.
     experimental_relax_shapes: When True, `tf.function` may generate fewer,
@@ -1081,7 +1151,8 @@ def function(func=None,
             autograph=autograph,
             experimental_autograph_options=experimental_autograph_options,
             experimental_relax_shapes=experimental_relax_shapes,
-            experimental_compile=experimental_compile))
+            experimental_compile=experimental_compile,
+            experimental_implements=experimental_implements))
 
   # This code path is for the `foo = tf.function(foo, ...)` use case
   if func is not None:

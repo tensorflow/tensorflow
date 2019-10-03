@@ -543,7 +543,6 @@ def TFL_FullyConnectedOptionsWeightFormatAttr :
     ]>;
 
 // TODO(jpienaar): Update post discussion on semantics of FC OP.
-// TODO(jpienaar): Include more shape verification.
 def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     NoSideEffect, AccumulatorUniformScale<2, 0, 1>]> {
   let summary = "Fully connected op";
@@ -562,6 +561,8 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
   let results = (outs
     Variadic<TensorOf<[F32, QI8, QUI8, QI16, QUI16]>>:$output
   );
+
+  let verifier = [{ return Verify(*this); }];
 
   let hasOptions = 1;
 }
@@ -1116,6 +1117,23 @@ def TFL_GreaterOp : TFL_Op<"greater", [NoSideEffect, NoQuantizableResult]> {
   let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
 }
 
+def TFL_HardSwishOp: TFL_Op<"hard_swish", [NoSideEffect,
+                                          SameOperandsAndResultType]> {
+  let summary = "Hardswish activation function.";
+  let description = [{
+    Computes hard-swish activation function
+      f(x) -> (x * relu6(x+3))/6
+    element-wise.
+  }];
+
+  let arguments = (ins TensorOf<[F32, QUI8, QI8]>:$input);
+
+  let results = (outs TensorOf<[F32, QUI8, QI8]>:$out);
+
+  let hasOptions = 0;
+}
+
+
 // NoSideEffect trait is not added to the op intentionally to prevent it from
 // getting removed if the input is unused. The generated FlatBuffer needs to
 // have a tensor along with the metadata for each of the subgraph inputs.
@@ -1638,6 +1656,8 @@ def TFL_PackOp : TFL_Op<"pack", [NoSideEffect, SameOperandsAndResultsScale]> {
 
   let verifier = [{ return Verify(*this); }];
 
+  let hasCanonicalizer = 1;
+
   let hasOptions = 1;
 }
 
@@ -1747,6 +1767,28 @@ def TFL_PowOp : TFL_Op<"pow", [Broadcastable, NoSideEffect, NoQuantizableResult]
   let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
 
   let builders = [TFL_BroadcastableBinaryBuilder];
+}
+
+def TFL_PReluOp : TFL_Op<"prelu", [NoSideEffect]> {
+  let summary = "Parameterized Relu operator";
+
+  let description = [{
+    Parameterized Relu operator
+      x -> x >= 0 ? x : (alpha * x)
+    where alpha is a trainable tensor.
+    alpha should have one less rank than the input as it doesn't have the batch
+    dimension, and the other dimensions either should be the same size as input
+    or size 1, where it is broadcasted in the second case.
+  }];
+
+  let arguments = (
+    ins TensorOf<[F32, QUI8]>:$input,
+    TensorOf<[F32, QUI8]>:$alpha
+  );
+
+  let results = (outs TensorOf<[F32, QUI8]>:$output);
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TFL_RankOp: TFL_Op<"rank", [NoSideEffect]> {
@@ -2583,8 +2625,7 @@ in the unique output `y`. In other words:
 //===----------------------------------------------------------------------===//
 // Quantization ops.
 //===----------------------------------------------------------------------===//
-def TFL_DequantizeOp: TFL_Op<"dequantize", [
-    NoSideEffect, NoQuantizableResult]> {
+def TFL_DequantizeOp: TFL_Op<"dequantize", [NoQuantizableResult]> {
   let summary = "Dequantize operator";
 
   let description = [{
@@ -2638,7 +2679,7 @@ def TFL_QConstOp : Op<TFL_Dialect, "pseudo_qconst", [
 }
 
 def TFL_QuantizeOp: TFL_Op<"quantize", [
-    NoSideEffect, FirstAttrDerivedResultType, NoQuantizableResult]> {
+    FirstAttrDerivedResultType, NoQuantizableResult]> {
   let summary = "Quantize operator";
 
   let description = [{

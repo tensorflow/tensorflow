@@ -202,10 +202,10 @@ ParseResult mlir::parseDimAndSymbolList(OpAsmParser &parser,
   numDims = opInfos.size();
 
   // Parse the optional symbol operands.
-  auto affineIntTy = parser.getBuilder().getIndexType();
+  auto indexTy = parser.getBuilder().getIndexType();
   if (parser.parseOperandList(opInfos,
                               OpAsmParser::Delimiter::OptionalSquare) ||
-      parser.resolveOperands(opInfos, affineIntTy, operands))
+      parser.resolveOperands(opInfos, indexTy, operands))
     return failure();
   return success();
 }
@@ -358,7 +358,7 @@ static LogicalResult verify(AllocOp op) {
   // the affine map, plus the number of dynamic dimensions specified in the
   // memref type.
   unsigned numDynamicDims = memRefType.getNumDynamicDims();
-  if (op.getOperation()->getNumOperands() != numDynamicDims + numSymbols)
+  if (op.getNumOperands() != numDynamicDims + numSymbols)
     return op.emitOpError(
         "operand count does not equal dimension plus symbol operand count");
 
@@ -474,11 +474,9 @@ static void print(OpAsmPrinter &p, BranchOp op) {
   p.printSuccessorAndUseList(op.getOperation(), 0);
 }
 
-Block *BranchOp::getDest() { return getOperation()->getSuccessor(0); }
+Block *BranchOp::getDest() { return getSuccessor(0); }
 
-void BranchOp::setDest(Block *block) {
-  return getOperation()->setSuccessor(block, 0);
-}
+void BranchOp::setDest(Block *block) { return setSuccessor(block, 0); }
 
 void BranchOp::eraseOperand(unsigned index) {
   getOperation()->eraseSuccessorOperand(0, index);
@@ -1658,14 +1656,14 @@ static ParseResult parseExtractElementOp(OpAsmParser &parser,
   SmallVector<OpAsmParser::OperandType, 4> indexInfo;
   ShapedType type;
 
-  auto affineIntTy = parser.getBuilder().getIndexType();
+  auto indexTy = parser.getBuilder().getIndexType();
   return failure(
       parser.parseOperand(aggregateInfo) ||
       parser.parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
       parser.parseOptionalAttributeDict(result.attributes) ||
       parser.parseColonType(type) ||
       parser.resolveOperand(aggregateInfo, type, result.operands) ||
-      parser.resolveOperands(indexInfo, affineIntTy, result.operands) ||
+      parser.resolveOperands(indexInfo, indexTy, result.operands) ||
       parser.addTypeToList(type.getElementType(), result.types));
 }
 
@@ -1739,14 +1737,14 @@ static ParseResult parseLoadOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 4> indexInfo;
   MemRefType type;
 
-  auto affineIntTy = parser.getBuilder().getIndexType();
+  auto indexTy = parser.getBuilder().getIndexType();
   return failure(
       parser.parseOperand(memrefInfo) ||
       parser.parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
       parser.parseOptionalAttributeDict(result.attributes) ||
       parser.parseColonType(type) ||
       parser.resolveOperand(memrefInfo, type, result.operands) ||
-      parser.resolveOperands(indexInfo, affineIntTy, result.operands) ||
+      parser.resolveOperands(indexInfo, indexTy, result.operands) ||
       parser.addTypeToList(type.getElementType(), result.types));
 }
 
@@ -1754,17 +1752,9 @@ static LogicalResult verify(LoadOp op) {
   if (op.getType() != op.getMemRefType().getElementType())
     return op.emitOpError("result type must match element type of memref");
 
-  if (op.getMemRefType().getRank() != op.getNumOperands() - 1)
+  if (op.getNumOperands() != 1 + op.getMemRefType().getRank())
     return op.emitOpError("incorrect number of indices for load");
 
-  for (auto *idx : op.getIndices())
-    if (!idx->getType().isIndex())
-      return op.emitOpError("index to load must have 'index' type");
-
-  // TODO: Verify we have the right number of indices.
-
-  // TODO: in Function verify that the indices are parameters, IV's, or the
-  // result of an affine.apply.
   return success();
 }
 
@@ -2044,6 +2034,55 @@ static LogicalResult verify(SignExtendIOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// SplatOp
+//===----------------------------------------------------------------------===//
+
+static void print(OpAsmPrinter &p, SplatOp op) {
+  p << "splat " << *op.getOperand();
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.getType();
+}
+
+static ParseResult parseSplatOp(OpAsmParser &parser, OperationState &result) {
+  OpAsmParser::OperandType splatValueInfo;
+  ShapedType shapedType;
+
+  return failure(parser.parseOperand(splatValueInfo) ||
+                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseColonType(shapedType) ||
+                 parser.resolveOperand(splatValueInfo,
+                                       shapedType.getElementType(),
+                                       result.operands) ||
+                 parser.addTypeToList(shapedType, result.types));
+}
+
+static LogicalResult verify(SplatOp op) {
+  // TODO: we could replace this by a trait.
+  if (op.getOperand()->getType() !=
+      op.getType().cast<ShapedType>().getElementType())
+    return op.emitError("operand should be of elemental type of result type");
+
+  return success();
+}
+
+// Constant folding hook for SplatOp.
+OpFoldResult SplatOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.size() == 1 && "splat takes one operand");
+
+  auto constOperand = operands.front();
+  if (!constOperand ||
+      (!constOperand.isa<IntegerAttr>() && !constOperand.isa<FloatAttr>()))
+    return {};
+
+  auto shapedType = getType().cast<ShapedType>();
+  assert(shapedType.getElementType() == constOperand.getType() &&
+         "incorrect input attribute type for folding");
+
+  // SplatElementsAttr::get treats single value for second arg as being a splat.
+  return SplatElementsAttr::get(shapedType, {constOperand});
+}
+
+//===----------------------------------------------------------------------===//
 // StoreOp
 //===----------------------------------------------------------------------===//
 
@@ -2062,7 +2101,7 @@ static ParseResult parseStoreOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 4> indexInfo;
   MemRefType memrefType;
 
-  auto affineIntTy = parser.getBuilder().getIndexType();
+  auto indexTy = parser.getBuilder().getIndexType();
   return failure(
       parser.parseOperand(storeValueInfo) || parser.parseComma() ||
       parser.parseOperand(memrefInfo) ||
@@ -2072,7 +2111,7 @@ static ParseResult parseStoreOp(OpAsmParser &parser, OperationState &result) {
       parser.resolveOperand(storeValueInfo, memrefType.getElementType(),
                             result.operands) ||
       parser.resolveOperand(memrefInfo, memrefType, result.operands) ||
-      parser.resolveOperands(indexInfo, affineIntTy, result.operands));
+      parser.resolveOperands(indexInfo, indexTy, result.operands));
 }
 
 static LogicalResult verify(StoreOp op) {
@@ -2084,14 +2123,6 @@ static LogicalResult verify(StoreOp op) {
   if (op.getNumOperands() != 2 + op.getMemRefType().getRank())
     return op.emitOpError("store index operand count not equal to memref rank");
 
-  for (auto *idx : op.getIndices())
-    if (!idx->getType().isIndex())
-      return op.emitOpError("index to load must have 'index' type");
-
-  // TODO: Verify we have the right number of indices.
-
-  // TODO: in Function verify that the indices are parameters, IV's, or the
-  // result of an affine.apply.
   return success();
 }
 

@@ -39,7 +39,7 @@ class OpenCLOperationTest : public ::testing::Test {
  public:
   void SetUp() override {
     ASSERT_OK(LoadOpenCL());
-    ASSERT_OK(CreateDefaultEnvironment(&env_));
+    ASSERT_OK(CreateEnvironment(&env_));
     creation_context_.device = env_.GetDevicePtr();
     creation_context_.context = &env_.context();
     creation_context_.queue = env_.queue();

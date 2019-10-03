@@ -22,7 +22,6 @@ from __future__ import print_function
 from tensorflow.compiler.tf2xla.python import xla as xla_ops
 from tensorflow.python.compiler.xla import xla
 from tensorflow.python.eager import def_function
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -54,7 +53,7 @@ class PForTest(PForTestCase):
       outputs = [z1, z2, z3, z4, z5]
       return outputs
 
-    self._test_loop_fn(loop_fn, num_loop, loop_fn_dtypes=[dtypes.float32] * 5)
+    self._test_loop_fn(loop_fn, num_loop)
 
   def test_xla(self):
 

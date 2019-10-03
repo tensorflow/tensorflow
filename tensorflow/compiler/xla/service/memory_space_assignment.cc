@@ -222,7 +222,8 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
   }
 
   if (defining_position.instruction->parent() != use.instruction->parent() ||
-      !use.instruction->called_computations().empty()) {
+      (!use.instruction->called_computations().empty() &&
+       use.instruction->opcode() != HloOpcode::kFusion)) {
     VLOG(3) << "Use is in a different computation or calls a computation.";
     // Fail because we do not allow asynchronous copies while in the bodies of
     // other computation.

@@ -121,6 +121,7 @@ cuda_py_test(
         "//tensorflow/python:util",
     ],
     xla_enable_strict_auto_jit = True,
+    tags = ["no_rocm"],
 )
 
 cuda_py_test(
@@ -140,7 +141,6 @@ cuda_py_test(
         "no_mac",
         "no_windows",
     ],
-    xla_enable_strict_auto_jit = True,
     xla_enabled = True,
 )
 
@@ -156,7 +156,6 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python/eager:backprop",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -172,7 +171,6 @@ cuda_py_test(
     ],
     shard_count = 5,
     tags = ["optonly"],  # Too slow in non-opt mode
-    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -202,5 +200,4 @@ cuda_py_test(
         "//tensorflow/python/ops/losses",
     ],
     tags = ["optonly"],  # Too slow in non-opt mode
-    xla_enable_strict_auto_jit = True,
 )

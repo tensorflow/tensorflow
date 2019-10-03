@@ -27,8 +27,10 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import manip_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
@@ -417,7 +419,8 @@ def tridiagonal_solve(diagonals,
       shape depends of `diagonals_format`, see description above. Must be
       `float32`, `float64`, `complex64`, or `complex128`.
     rhs: A `Tensor` of shape [..., M] or [..., M, K] and with the same dtype as
-      `diagonals`.
+      `diagonals`. Note that if the shape of `rhs` and/or `diags` isn't known
+      statically, `rhs` will be treated as a matrix rather than a vector.
     diagonals_format: one of `matrix`, `sequence`, or `compact`. Default is
       `compact`.
     transpose_rhs: If `True`, `rhs` is transposed before solving (has no effect
@@ -486,23 +489,16 @@ def tridiagonal_solve(diagonals,
           'Expected last two dimensions of diagonals to be same, got {} and {}'
           .format(m1, m2))
     m = m1 or m2
-    if not m:
-      raise ValueError('The size of the matrix needs to be known for '
-                       'diagonals_format="matrix"')
-
-    # Extract diagonals; use input[..., 0, 0] as "dummy" m-th elements of sub-
-    # and superdiagonal.
-    # gather_nd slices into first indices, whereas we need to slice into the
-    # last two, so transposing back and forth is necessary.
-    dummy_idx = [0, 0]
-    indices = ([[[1, 0], [0, 0], dummy_idx]] +
-               [[[i + 1, i], [i, i], [i - 1, i]] for i in range(1, m - 1)] +
-               [[dummy_idx, [m - 1, m - 1], [m - 2, m - 1]]])
-    diagonals = array_ops.transpose(
-        array_ops.gather_nd(array_ops.transpose(diagonals), indices))
-    return _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
-                                             conjugate_rhs, partial_pivoting,
-                                             name)
+    diagonals = gen_array_ops.matrix_diag_part_v2(
+        diagonals, k=(-1, 1), padding_value=0.)
+    # matrix_diag_part pads at the end. Because the subdiagonal has the
+    # convention of having the padding in the front, we need to rotate the last
+    # Tensor.
+    superdiag, d, subdiag = array_ops.unstack(diagonals, num=3, axis=-2)
+    subdiag = manip_ops.roll(subdiag, shift=1, axis=-1)
+    diagonals = array_ops.stack((superdiag, d, subdiag), axis=-2)
+    return _tridiagonal_solve_compact_format(
+        diagonals, rhs, transpose_rhs, conjugate_rhs, partial_pivoting, name)
 
   raise ValueError('Unrecognized diagonals_format: {}'.format(diagonals_format))
 
@@ -510,19 +506,24 @@ def tridiagonal_solve(diagonals,
 def _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
                                       conjugate_rhs, partial_pivoting, name):
   """Helper function used after the input has been cast to compact form."""
-  diags_rank, rhs_rank = len(diagonals.shape), len(rhs.shape)
+  diags_rank, rhs_rank = diagonals.shape.rank, rhs.shape.rank
 
-  if diags_rank < 2:
-    raise ValueError(
-        'Expected diagonals to have rank at least 2, got {}'.format(diags_rank))
-  if rhs_rank != diags_rank and rhs_rank != diags_rank - 1:
-    raise ValueError('Expected the rank of rhs to be {} or {}, got {}'.format(
-        diags_rank - 1, diags_rank, rhs_rank))
+  # If we know the rank of the diagonal tensor, do some static checking.
+  if diags_rank:
+    if diags_rank < 2:
+      raise ValueError(
+          'Expected diagonals to have rank at least 2, got {}'.format(
+              diags_rank))
+    if rhs_rank and rhs_rank != diags_rank and rhs_rank != diags_rank - 1:
+      raise ValueError('Expected the rank of rhs to be {} or {}, got {}'.format(
+          diags_rank - 1, diags_rank, rhs_rank))
+    if (rhs_rank and not diagonals.shape[:-2].is_compatible_with(
+        rhs.shape[:diags_rank - 2])):
+      raise ValueError('Batch shapes {} and {} are incompatible'.format(
+          diagonals.shape[:-2], rhs.shape[:diags_rank - 2]))
+
   if diagonals.shape[-2] and diagonals.shape[-2] != 3:
     raise ValueError('Expected 3 diagonals got {}'.format(diagonals.shape[-2]))
-  if not diagonals.shape[:-2].is_compatible_with(rhs.shape[:diags_rank - 2]):
-    raise ValueError('Batch shapes {} and {} are incompatible'.format(
-        diagonals.shape[:-2], rhs.shape[:diags_rank - 2]))
 
   def check_num_lhs_matches_num_rhs():
     if (diagonals.shape[-1] and rhs.shape[-2] and
@@ -531,7 +532,7 @@ def _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
                        'sides to be equal, got {} and {}'.format(
                            diagonals.shape[-1], rhs.shape[-2]))
 
-  if rhs_rank == diags_rank - 1:
+  if rhs_rank and diags_rank and rhs_rank == diags_rank - 1:
     # Rhs provided as a vector, ignoring transpose_rhs
     if conjugate_rhs:
       rhs = math_ops.conj(rhs)
@@ -610,25 +611,24 @@ def tridiagonal_matmul(diagonals, rhs, diagonals_format='compact', name=None):
   elif diagonals_format == 'matrix':
     m1 = tensor_shape.dimension_value(diagonals.shape[-1])
     m2 = tensor_shape.dimension_value(diagonals.shape[-2])
-    if not m1 or not m2:
-      raise ValueError('The size of the matrix needs to be known for '
-                       'diagonals_format="matrix"')
-    if m1 != m2:
+    if m1 and m2 and m1 != m2:
       raise ValueError(
           'Expected last two dimensions of diagonals to be same, got {} and {}'
           .format(m1, m2))
 
-    # TODO(b/131695260): use matrix_diag_part when it supports extracting
-    # arbitrary diagonals.
     maindiag = array_ops.matrix_diag_part(diagonals)
-    diagonals = array_ops.transpose(diagonals)
-    dummy_index = [0, 0]
-    superdiag_indices = [[i + 1, i] for i in range(0, m1 - 1)] + [dummy_index]
-    subdiag_indices = [dummy_index] + [[i - 1, i] for i in range(1, m1)]
-    superdiag = array_ops.transpose(
-        array_ops.gather_nd(diagonals, superdiag_indices))
-    subdiag = array_ops.transpose(
-        array_ops.gather_nd(diagonals, subdiag_indices))
+    superdiag = gen_array_ops.matrix_diag_part_v2(
+        diagonals, k=1, padding_value=0.)
+    superdiag = array_ops.concat(
+        [superdiag,
+         array_ops.zeros_like(
+             superdiag[..., 0])[..., array_ops.newaxis]],
+        axis=-1)
+    subdiag = gen_array_ops.matrix_diag_part_v2(
+        diagonals, k=-1, padding_value=0.)
+    subdiag = array_ops.concat([
+        array_ops.zeros_like(subdiag[..., 0])[..., array_ops.newaxis],
+        subdiag], axis=-1)
   else:
     raise ValueError('Unrecognized diagonals_format: %s' % diagonals_format)
 

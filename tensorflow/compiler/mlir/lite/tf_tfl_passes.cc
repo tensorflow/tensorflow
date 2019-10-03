@@ -32,14 +32,6 @@ CreateTFExecutorToControlDialectConversion();
 
 namespace tensorflow {
 
-bool ShouldRunQuantizePasses(mlir::ModuleOp m) {
-  if (mlir::FuncOp main_fn = m.lookupSymbol<mlir::FuncOp>("main")) {
-    return main_fn.getAttrOfType<mlir::UnitAttr>("tf.quantize") !=
-           mlir::Attribute();
-  }
-  return false;
-}
-
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
                                 mlir::PassManager* pass_manager) {
   pass_manager->addPass(mlir::tf_executor::CreateSwitchFoldPass());
@@ -54,6 +46,21 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass());
   }
 
+  // The ophint extractions happen before lots of other passes:
+  // The assumption of ophint-extraction is each ophinted region is a black-box
+  // and nodes within this black-box is NOT connected to the nodes OUTSIDE the
+  // black-box.
+  // Some passes may merge nodes together (such as const nodes), however, this
+  // will break the ophint-extraction assumption. (The nodes within the black
+  // box is not isolated anymore).
+  // So ophint extraction and legalization needs to happen before
+  // the canonicalization pass.
+  if (pass_config.emit_builtin_tflite_ops) {
+    pass_manager->addPass(mlir::TFL::CreateExtractOphintPass());
+    // Convert composite op pass will happen after ophint extraction pass.
+    pass_manager->addPass(mlir::TFL::CreateLegalizeOphintFuncOpPass());
+  }
+
   // TODO(jpienaar): Revise post dialect constants.
   pass_manager->addPass(mlir::TF::CreateDecodeConstantPass());
   // Canonicalization includes const folding, which is utilized here to optimize
@@ -64,19 +71,15 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   // The below passes only make sense if Builtin TFLite ops are enabled
   // for emission.
   if (pass_config.emit_builtin_tflite_ops) {
-    pass_manager->addPass(mlir::TFL::CreateExtractOphintPass());
-    // Convert composite op pass will happen after ophint extraction pass.
-    pass_manager->addPass(mlir::TFL::CreateLegalizeOphintFuncOpPass());
-
     // Prepare for TFLite dialect, rerun canonicalization, and then legalize to
     // the TFLite dialect.
     pass_manager->addPass(mlir::TFL::CreatePrepareTFPass());
     pass_manager->addPass(mlir::createCanonicalizerPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeTFPass());
     pass_manager->addPass(mlir::TFL::CreateOptimizePass());
-    if (pass_config.run_quantize) {
-      pass_manager->addPass(mlir::TFL::CreatePrepareQuantizePass(
-          /*quantize_sign=*/false));
+    if (pass_config.quant_specs.RunPropagationAndRewriteQuantizationPasses()) {
+      pass_manager->addPass(
+          mlir::TFL::CreatePrepareQuantizePass(pass_config.quant_specs));
       pass_manager->addPass(mlir::TFL::CreateQuantizePass());
       pass_manager->addPass(mlir::TFL::CreatePostQuantizePass(
           pass_config.emit_quant_adaptor_ops));

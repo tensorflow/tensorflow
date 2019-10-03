@@ -413,12 +413,10 @@ Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
           << DumpGraphToFile("loop_condition", *cond_graph, library)
           << " body: " << DumpGraphToFile("loop_body", *body_graph);
 
-  static std::atomic<int64> sequence_num(0LL);
-  int64 id = ++sequence_num;
   NameAttrList cond_name;
-  cond_name.set_name(absl::StrCat("_functionalize_cond_", id));
+  cond_name.set_name(library->UniqueFunctionName("_functionalize_cond_"));
   NameAttrList body_name;
-  body_name.set_name(absl::StrCat("_functionalize_body_", id));
+  body_name.set_name(library->UniqueFunctionName("_functionalize_body_"));
   FunctionDef cond_fdef;
   TF_RETURN_IF_ERROR(
       GraphToFunctionDef(*cond_graph, cond_name.name(), &cond_fdef));

@@ -103,6 +103,13 @@ TF_LITE_MICRO_TEST(TestAllocateTensors) {
   TF_LITE_MICRO_EXPECT_EQ(
       0, (reinterpret_cast<int64_t>(context.tensors[2].data.raw) %
           kExpectedAlignment));
+
+  TF_LITE_MICRO_EXPECT_NE(context.tensors[1].data.raw,
+                          context.tensors[0].data.raw);
+  TF_LITE_MICRO_EXPECT_NE(context.tensors[2].data.raw,
+                          context.tensors[0].data.raw);
+  TF_LITE_MICRO_EXPECT_NE(context.tensors[1].data.raw,
+                          context.tensors[2].data.raw);
 }
 
 TF_LITE_MICRO_TEST(TestPreallocatedInput) {

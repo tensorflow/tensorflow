@@ -66,6 +66,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/delegates/flex/whitelisted_flex_ops.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/version.h"
 
 using llvm::dyn_cast;
@@ -689,14 +690,15 @@ uint32_t Translator::GetOpcodeIndex(const std::string& op_name,
   // If the insert succeeded, the opcode has not been created already. Create a
   // new operator code and update its index value in the map.
   if (it.second) {
-    // TODO(antiagainst): Some TFLite ops supports version > 1, like
-    // DepthwiseConv2DOptions. Handle version properly.
     it.first->second = opcodes_.size();
     auto custom_code = builtin == tflite::BuiltinOperator_CUSTOM
                            ? builder_.CreateString(op_name)
                            : BufferOffset<flatbuffers::String>();
+    // Use version 0 for builtin op. This is a way to serialize version field to
+    // flatbuffer (since 0 is non default) and it will be corrected later.
+    int32_t op_version = builtin != tflite::BuiltinOperator_CUSTOM ? 0 : 1;
     opcodes_.push_back(CreateOperatorCode(builder_, /*builtin_code=*/builtin,
-                                          custom_code, /*version=*/1));
+                                          custom_code, op_version));
   }
   return it.first->second;
 }
@@ -820,7 +822,7 @@ void Translator::InitializeNamesFromAttribute(FuncOp fn) {
   llvm::SmallVector<llvm::StringRef, 2> input_names;
   llvm::SmallVector<llvm::StringRef, 2> output_names;
   if (auto str = dict_attr.get("inputs").dyn_cast<mlir::StringAttr>()) {
-    str.getValue().split(input_names, " ,", /*MaxSplit=*/-1,
+    str.getValue().split(input_names, ',', /*MaxSplit=*/-1,
                          /*KeepEmpty=*/false);
     if (input_names.size() != fn.getNumArguments()) {
       fn.emitWarning() << "invalid entry function specification";
@@ -828,12 +830,12 @@ void Translator::InitializeNamesFromAttribute(FuncOp fn) {
     }
     for (auto it : llvm::enumerate(fn.getArguments())) {
       name_mapper_.InitOpName(*it.value()->user_begin(),
-                              input_names[it.index()]);
+                              input_names[it.index()].trim());
     }
   }
 
   if (auto str = dict_attr.get("outputs").dyn_cast<mlir::StringAttr>()) {
-    str.getValue().split(output_names, " ,", /*MaxSplit=*/-1,
+    str.getValue().split(output_names, ',', /*MaxSplit=*/-1,
                          /*KeepEmpty=*/false);
     auto term = fn.getBlocks().back().getTerminator();
     if (output_names.size() != term->getNumOperands()) {
@@ -848,7 +850,7 @@ void Translator::InitializeNamesFromAttribute(FuncOp fn) {
       // insert an op so that we can have a buffer named such. This cannot
       // currently happen due to pseudo_input nodes.
       if (auto op = it.value()->getDefiningOp()) {
-        name_mapper_.InitOpName(op, output_names[it.index()]);
+        name_mapper_.InitOpName(op, output_names[it.index()].trim());
       } else {
         fn.emitWarning() << "output is not due to an op and '"
                          << output_names[it.index()]
@@ -1065,6 +1067,7 @@ Optional<std::string> Translator::TranslateInternal() {
       builder_.CreateVector(subgraphs), description,
       builder_.CreateVector(buffers_), metadata_buffer, *metadata);
   tflite::FinishModelBuffer(builder_, model);
+  tflite::UpdateOpVersion(builder_.GetBufferPointer());
 
   // Return serialized string for the built FlatBuffer.
   return std::string(reinterpret_cast<const char*>(builder_.GetBufferPointer()),

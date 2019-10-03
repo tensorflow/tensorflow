@@ -718,13 +718,21 @@ objc_library(
         "Metal",
     ],
     deps = [
+        "//tensorflow/lite/delegates/gpu/common:convert",
+        "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:api",
+        "//tensorflow/lite/delegates/gpu/metal:common",
+        "//tensorflow/lite/delegates/gpu/metal:compiled_model",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
+        "@FP16",
+        "@com_google_absl//absl/random",
     ],
 )
 

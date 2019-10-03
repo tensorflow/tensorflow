@@ -233,6 +233,8 @@ Status WriteMetadataFile(const string& hash_dir,
   auto writer = absl::make_unique<SnapshotWriter>(file.get());
   TF_RETURN_IF_ERROR(writer->WriteRecord(metadata.SerializeAsString()));
   TF_RETURN_IF_ERROR(writer->Close());
+  TF_RETURN_IF_ERROR(file->Sync());
+  TF_RETURN_IF_ERROR(file->Close());
 
   TF_RETURN_IF_ERROR(
       Env::Default()->RenameFile(tmp_filename, metadata_filename));
@@ -246,37 +248,46 @@ Status ReadMetadataFile(const string& hash_dir,
   TF_RETURN_IF_ERROR(Env::Default()->FileExists(metadata_filename));
 
   std::unique_ptr<RandomAccessFile> file;
-  TF_CHECK_OK(Env::Default()->NewRandomAccessFile(metadata_filename, &file));
+  TF_RETURN_IF_ERROR(
+      Env::Default()->NewRandomAccessFile(metadata_filename, &file));
 
   tstring record_bytes;
   auto reader = absl::make_unique<SnapshotReader>(file.get());
-  TF_CHECK_OK(reader->ReadRecord(&record_bytes));
+  TF_RETURN_IF_ERROR(reader->ReadRecord(&record_bytes));
 
   metadata->ParseFromString(record_bytes);
   return Status::OK();
 }
 
-SnapshotMode DetermineOpState(
-    const Status& file_status,
-    const experimental::SnapshotMetadataRecord& metadata,
-    const uint64 pending_snapshot_expiry_seconds) {
+Status DetermineOpState(const Status& file_status,
+                        const experimental::SnapshotMetadataRecord& metadata,
+                        const uint64 pending_snapshot_expiry_seconds,
+                        SnapshotMode* mode) {
   if (errors::IsNotFound(file_status)) {
-    return WRITER;
+    *mode = WRITER;
+    return Status::OK();
+  }
+
+  if (!file_status.ok()) {
+    return file_status;
   }
 
   if (metadata.finalized()) {
     // File found, snapshot has been finalized.
-    return READER;
+    *mode = READER;
+    return Status::OK();
   }
 
   if (metadata.creation_timestamp() >=
       (static_cast<int64>(Env::Default()->NowMicros()) -
        pending_snapshot_expiry_seconds * 1000000)) {
     // Someone else is already writing and time has not expired.
-    return PASSTHROUGH;
+    *mode = PASSTHROUGH;
+    return Status::OK();
   } else {
     // Time has expired, we write regardless.
-    return WRITER;
+    *mode = WRITER;
+    return Status::OK();
   }
 }
 
@@ -509,8 +520,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         if (iterator_ == nullptr) {
           experimental::SnapshotMetadataRecord metadata;
           Status s = ReadMetadataFile(hash_dir_, &metadata);
-          state_ = DetermineOpState(
-              s, metadata, dataset()->pending_snapshot_expiry_seconds_);
+          TF_RETURN_IF_ERROR(DetermineOpState(
+              ReadMetadataFile(hash_dir_, &metadata), metadata,
+              dataset()->pending_snapshot_expiry_seconds_, &state_));
 
           switch (state_) {
             case WRITER:
@@ -993,6 +1005,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
           if (cancelled || snapshot_failed) {
             TF_RETURN_IF_ERROR((*writer)->Close());
+            TF_RETURN_IF_ERROR((*file)->Sync());
             TF_RETURN_IF_ERROR((*file)->Close());
             if (snapshot_failed) {
               return errors::Internal(
@@ -1013,6 +1026,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             if (*bytes_written > dataset()->shard_size_bytes_) {
               // If we exceed the shard size, we get a new file and reset.
               TF_RETURN_IF_ERROR((*writer)->Close());
+              TF_RETURN_IF_ERROR((*file)->Sync());
               TF_RETURN_IF_ERROR((*file)->Close());
               *snapshot_data_filename = GetSnapshotFilename();
               TF_RETURN_IF_ERROR(Env::Default()->NewAppendableFile(
@@ -1033,6 +1047,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
           if (*end_of_processing) {
             TF_RETURN_IF_ERROR((*writer)->Close());
+            TF_RETURN_IF_ERROR((*file)->Sync());
             TF_RETURN_IF_ERROR((*file)->Close());
             mutex_lock l(mu_);
             if (!written_final_metadata_file_) {

@@ -106,7 +106,6 @@ class EinsumOpTest(test.TestCase):
     # Based on https://github.com/google/jax/issues/37#issuecomment-448572187
     self._check('sa,shb->shab', (2, 1), (2, 3, 4))
 
-  @test_util.disable_xla('b/131919749')
   def testReducedIndices(self):
     self._check('ba,b->', (3, 2), (3,))
     self._check('ab,ab->', (3, 4), (3, 4))
@@ -120,10 +119,19 @@ class EinsumOpTest(test.TestCase):
     self._check('aab,bc->ac', (2, 2, 3), (3, 4))
     self._check('aab,bcc->ac', (2, 2, 3), (3, 4, 4))
 
-  @test_util.disable_xla('b/131919749')
+  def testEllipsis(self):
+    # Batch matmul with ellipsis but without broadcasting.
+    self._check('...mk,...kn->...mn', (5, 1, 2, 3), (5, 1, 3, 4))
+    # Empty batch dimensions.
+    self._check('...mk,...kn->...mn', (2, 3), (3, 4))
+    # Tensor contraction with transpose.
+    self._check('...ija,aijb...->ba...ij', (1, 2, 2, 3, 1), (1, 2, 3, 4, 1, 2))
+    # Output subscripts may omit ellipsis when batch shape is empty.
+    self._check('...mk,...kn->mn', (2, 3), (3, 4))
+    self._check('...mk,kn->mn', (2, 3), (3, 4))
+    self._check('mk,...kn->mn', (2, 3), (3, 4))
+
   def testBroadcasting(self):
-    # Batch matmul without broadcasting.
-    self._check('...ij,...jk->...ik', (5, 1, 2, 3), (5, 1, 3, 4))
     # Batch matmul with broadcasting.
     self._check('...ij,...jk->...ik', (1, 2, 3), (3, 5))
     self._check('...ij,...jk->...ik', (2, 3), (1, 3, 5))
@@ -344,11 +352,13 @@ class EinsumGradTest(test.TestCase):
     self._check_gradient('aab,bc->ac', (1, 1, 0), (0, 10))
     self._check_gradient('aaab,bc->c', (0, 0, 0, 3), (3, 4))
 
-  @test_util.disable_xla('b/131919749')
   def testBroadcasting(self):
     self._check_gradient('...ij,...jk->...ik', (3, 2), (2, 4))
     self._check_gradient('ij...,jk...->ik...', (3, 2, 1), (2, 4))
     self._check_gradient('...ij,...jk->...ik', (3, 1, 3, 2), (1, 5, 2, 4))
+
+  @test_util.disable_xla('b/131919749')
+  def testBroadcastingWithRepeatedLabels(self):
     self._check_gradient('ij,jk...k->i...', (3, 2), (2, 4, 1, 4))
     self._check_gradient('aab,b...c->a...c', (1, 1, 3), (3, 1, 1, 4))
 

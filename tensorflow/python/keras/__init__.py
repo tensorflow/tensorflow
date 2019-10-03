@@ -42,7 +42,6 @@ from tensorflow.python.keras import premade
 from tensorflow.python.keras import preprocessing
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras import utils
-from tensorflow.python.keras import wrappers
 from tensorflow.python.keras.layers import Input
 from tensorflow.python.keras.models import Model
 from tensorflow.python.keras.models import Sequential
