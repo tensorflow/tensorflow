@@ -953,33 +953,34 @@ void impl::buildBinaryOp(Builder *builder, OperationState &result, Value *lhs,
   result.types.push_back(lhs->getType());
 }
 
-ParseResult impl::parseBinaryOp(OpAsmParser &parser, OperationState &result) {
+ParseResult impl::parseOneResultSameOperandTypeOp(OpAsmParser &parser,
+                                                  OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 2> ops;
   Type type;
-  return failure(parser.parseOperandList(ops, 2) ||
+  return failure(parser.parseOperandList(ops) ||
                  parser.parseOptionalAttributeDict(result.attributes) ||
                  parser.parseColonType(type) ||
                  parser.resolveOperands(ops, type, result.operands) ||
                  parser.addTypeToList(type, result.types));
 }
 
-void impl::printBinaryOp(Operation *op, OpAsmPrinter &p) {
-  assert(op->getNumOperands() == 2 && "binary op should have two operands");
-  assert(op->getNumResults() == 1 && "binary op should have one result");
+void impl::printOneResultOp(Operation *op, OpAsmPrinter &p) {
+  assert(op->getNumResults() == 1 && "op should have one result");
 
   // If not all the operand and result types are the same, just use the
   // generic assembly form to avoid omitting information in printing.
   auto resultType = op->getResult(0)->getType();
-  if (op->getOperand(0)->getType() != resultType ||
-      op->getOperand(1)->getType() != resultType) {
+  if (llvm::any_of(op->getOperandTypes(),
+                   [&](Type type) { return type != resultType; })) {
     p.printGenericOp(op);
     return;
   }
 
-  p << op->getName() << ' ' << *op->getOperand(0) << ", " << *op->getOperand(1);
+  p << op->getName() << ' ';
+  p.printOperands(op->getOperands());
   p.printOptionalAttrDict(op->getAttrs());
   // Now we can output only one type for all operands and the result.
-  p << " : " << op->getResult(0)->getType();
+  p << " : " << resultType;
 }
 
 //===----------------------------------------------------------------------===//

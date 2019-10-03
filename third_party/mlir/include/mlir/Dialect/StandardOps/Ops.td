@@ -82,7 +82,7 @@ class ArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
   let results = (outs AnyType);
 
   let parser = [{
-    return impl::parseBinaryOp(parser, result);
+    return impl::parseOneResultSameOperandTypeOp(parser, result);
   }];
 
   let printer = [{

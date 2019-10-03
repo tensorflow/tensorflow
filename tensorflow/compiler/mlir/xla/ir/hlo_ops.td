@@ -153,8 +153,8 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
     BroadcastDimAttr:$broadcast_dimensions
   );
   let results = (outs HLO_Tensor);
-  let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
-  let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 }
 
 def HLO_AddOp : HLO_BinaryElementwiseOp<"add",
