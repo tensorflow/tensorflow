@@ -300,13 +300,14 @@ Example:
 ### Module
 
 ``` {.ebnf}
-module ::= `module` (`attributes` attribute-dict)? region
+module ::= `module` symbol-ref-id? (`attributes` attribute-dict)? region
 ```
 
 An MLIR module represents an opaque top-level container operation. It contains a
 single region containing a single block that is comprised of any operations.
 Operations within this region must not implicitly capture values defined above
-it.
+it. Modules have an optional symbol name that can be used to refer to them in
+operations.
 
 ### Functions
 
