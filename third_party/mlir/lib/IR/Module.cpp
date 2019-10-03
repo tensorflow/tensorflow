@@ -25,16 +25,16 @@ using namespace mlir;
 // Module Operation.
 //===----------------------------------------------------------------------===//
 
-void ModuleOp::build(Builder *builder, OperationState &result, StringRef name) {
+void ModuleOp::build(Builder *builder, OperationState &result,
+                     Optional<StringRef> name) {
   ensureTerminator(*result.addRegion(), *builder, result.location);
-  if (!name.empty())
-    result.attributes.push_back(
-        builder->getNamedAttr(mlir::SymbolTable::getSymbolAttrName(),
-                              builder->getSymbolRefAttr(name)));
+  if (name)
+    result.attributes.push_back(builder->getNamedAttr(
+        mlir::SymbolTable::getSymbolAttrName(), builder->getStringAttr(*name)));
 }
 
 /// Construct a module from the given context.
-ModuleOp ModuleOp::create(Location loc, StringRef name) {
+ModuleOp ModuleOp::create(Location loc, Optional<StringRef> name) {
   OperationState state(loc, "module");
   Builder builder(loc->getContext());
   ModuleOp::build(&builder, state, name);
@@ -65,15 +65,13 @@ ParseResult ModuleOp::parse(OpAsmParser &parser, OperationState &result) {
 void ModuleOp::print(OpAsmPrinter &p) {
   p << "module";
 
-  StringRef name = getName();
-  if (!name.empty())
-    p << " @" << name;
+  Optional<StringRef> name = getName();
+  if (name)
+    p << " @" << *name;
 
   // Print the module attributes.
   auto attrs = getAttrs();
-  if (!attrs.empty() &&
-      !(attrs.size() == 1 && attrs.front().first.strref() ==
-                                 mlir::SymbolTable::getSymbolAttrName())) {
+  if (!attrs.empty() && !(attrs.size() == 1 && name)) {
     p << " attributes";
     p.printOptionalAttrDict(attrs, {mlir::SymbolTable::getSymbolAttrName()});
   }
@@ -112,9 +110,9 @@ LogicalResult ModuleOp::verify() {
 Region &ModuleOp::getBodyRegion() { return getOperation()->getRegion(0); }
 Block *ModuleOp::getBody() { return &getBodyRegion().front(); }
 
-StringRef ModuleOp::getName() {
+Optional<StringRef> ModuleOp::getName() {
   if (auto nameAttr =
           getAttrOfType<StringAttr>(mlir::SymbolTable::getSymbolAttrName()))
     return nameAttr.getValue();
-  return {};
+  return llvm::None;
 }
