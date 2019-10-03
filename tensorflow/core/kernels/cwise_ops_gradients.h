@@ -174,6 +174,79 @@ struct functor_traits<scalar_rsqrt_gradient_op<T>> {
   };
 };
 
+#define SQRT_PI 1.772453850905516027298167483341
+#define SQRT_2PI 2.506628274631000502415765284811
+
+// Gradient for the erfinv function
+template <typename T>
+struct scalar_erfinv_gradient_op {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_erfinv_gradient_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T
+  operator()(const T& output, const T& output_gradient) const {
+    // grad * sqrt(pi) / 2 * exp(erfinv(x) ** 2)
+    if (output_gradient == T(0)) {
+      return T(0);
+    } else {
+      return static_cast<T>(0.5 * SQRT_PI) * numext::exp(output * output) *
+             output_gradient;
+    }
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet
+  packetOp(const Packet& output, const Packet& output_gradient) const {
+    const Packet const_half_sqrt_pi =
+        pset1<Packet>(static_cast<T>(0.5 * SQRT_PI));
+    return pmul(pmul(const_half_sqrt_pi, pexp(pmul(output, output))),
+                output_gradient);
+  }
+};
+template <typename T>
+struct functor_traits<scalar_erfinv_gradient_op<T>> {
+  enum {
+#if TENSORFLOW_USE_ROCM
+    PacketAccess = false,
+#else
+    PacketAccess = packet_traits<T>::HasNdtri,
+#endif
+    Cost = 10 * NumTraits<T>::MulCost + scalar_div_cost<T, PacketAccess>::value,
+  };
+};
+
+// Gradient for the ndtri function
+template <typename T>
+struct scalar_ndtri_gradient_op {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_ndtri_gradient_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T
+  // grad * sqrt(2 * pi) * exp(ndtri(x) ** 2 / 2)
+  operator()(const T& output, const T& output_gradient) const {
+    if (output_gradient == T(0)) {
+      return T(0);
+    } else {
+      return static_cast<T>(SQRT_2PI) * numext::exp(output * output / 2.) *
+             output_gradient;
+    }
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet
+  packetOp(const Packet& output, const Packet& output_gradient) const {
+    const Packet const_sqrt_two_pi = pset1<Packet>(static_cast<T>(SQRT_2PI));
+    return pmul(pmul(const_sqrt_two_pi,
+                     pexp(pdiv(pmul(output, output), pset1<Packet>(2.)))),
+                output_gradient);
+  }
+};
+template <typename T>
+struct functor_traits<scalar_ndtri_gradient_op<T>> {
+  enum {
+#if TENSORFLOW_USE_ROCM
+    PacketAccess = false,
+#else
+    PacketAccess = packet_traits<T>::HasNdtri,
+#endif
+    Cost = 10 * NumTraits<T>::MulCost + scalar_div_cost<T, PacketAccess>::value,
+  };
+};
+
 }  // end namespace internal
 }  // end namespace Eigen
 
@@ -233,6 +306,12 @@ struct rsqrt_grad : base<T, Eigen::internal::scalar_rsqrt_gradient_op<T>> {};
 
 template <typename T>
 struct igamma_grad_a : base<T, Eigen::internal::scalar_igamma_der_a_op<T>> {};
+
+template <typename T>
+struct erfinv_grad : base<T, Eigen::internal::scalar_erfinv_gradient_op<T>> {};
+
+template <typename T>
+struct ndtri_grad : base<T, Eigen::internal::scalar_ndtri_gradient_op<T>> {};
 
 }  // end namespace functor
 

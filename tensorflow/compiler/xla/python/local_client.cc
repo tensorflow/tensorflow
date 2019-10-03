@@ -275,11 +275,15 @@ PyLocalClient::DeserializeExecutable(
 
 Status PyLocalClient::TransferToInfeed(const LiteralSlice& literal,
                                        int device_ordinal) {
+  TF_RETURN_IF_ERROR(
+      CheckDeviceOrdinal(device_ordinal, "PyLocalClient::TransferToInfeed"));
   return client_->TransferToInfeedLocal(literal, device_ordinal);
 }
 
 StatusOr<Literal> PyLocalClient::TransferFromOutfeed(const Shape& shape,
                                                      int device_ordinal) {
+  TF_RETURN_IF_ERROR(
+      CheckDeviceOrdinal(device_ordinal, "PyLocalClient::TransferFromOutfeed"));
   return client_->TransferFromOutfeedLocal(shape, device_ordinal);
 }
 
@@ -287,6 +291,16 @@ StatusOr<DeviceAssignment> PyLocalClient::GetDefaultDeviceAssignment(
     int num_replicas) const {
   return client_->backend().computation_placer()->AssignDevices(
       num_replicas, /*computation_count=*/1);
+}
+
+Status PyLocalClient::CheckDeviceOrdinal(int device_ordinal,
+                                         absl::string_view caller_name) {
+  if (device_ordinal < 0 || device_ordinal >= local_device_count()) {
+    return InvalidArgument(
+        "%s got bad device_ordinal: %d (num_local_devices=%d)", caller_name,
+        device_ordinal, local_device_count());
+  }
+  return Status::OK();
 }
 
 /* static */
@@ -297,7 +311,8 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromLiterals(
   tensorflow::profiler::TraceMe traceme("PyLocalBuffer::FromLiterals");
   VLOG(1) << "PyLocalBuffer::FromLiterals: shape: " << tuple_shape.ToString()
           << " device ordinal: " << device_ordinal;
-
+  TF_RETURN_IF_ERROR(client->CheckDeviceOrdinal(device_ordinal,
+                                                "PyLocalBuffer::FromLiterals"));
   DeviceState* device = &client->device_state(device_ordinal);
   TransferManager* transfer_manager =
       client->client()->backend().transfer_manager();
@@ -401,6 +416,8 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromLiterals(
 /* static */ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::MakeTuple(
     const std::vector<PyLocalBuffer*> buffers,
     std::shared_ptr<PyLocalClient> client, int device_ordinal) {
+  TF_RETURN_IF_ERROR(
+      client->CheckDeviceOrdinal(device_ordinal, "PyLocalBuffer::MakeTuple"));
   std::vector<Shape> host_shapes;
   std::vector<std::shared_ptr<SharedDeviceBuffer>> device_buffers;
   host_shapes.reserve(buffers.size());
@@ -660,6 +677,8 @@ PyLocalExecutable::PyLocalExecutable(
     : client_(std::move(client)),
       executable_(std::move(executable)),
       device_assignment_(std::move(device_assignment)) {
+  VLOG(1) << "PyLocalExecutable device_assignment:\n"
+          << device_assignment_.ToString();
   int num_replicas = device_assignment_.replica_count();
   for (int replica = 0; replica < num_replicas; ++replica) {
     int device_id = device_assignment_(replica, 0);

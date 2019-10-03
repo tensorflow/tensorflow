@@ -766,7 +766,7 @@ cuda_py_test(
 
 tf_py_test(
     name = "parsing_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["parsing_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",

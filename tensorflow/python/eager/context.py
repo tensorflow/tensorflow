@@ -1653,10 +1653,11 @@ def executing_eagerly():
   Returns:
     `True` if the current thread has eager execution enabled.
   """
-  if context_safe() is None:
+  ctx = context_safe()
+  if ctx is None:
     return default_execution_mode == EAGER_MODE
 
-  return context().executing_eagerly()
+  return ctx.executing_eagerly()
 
 
 @tf_export(v1=["executing_eagerly"])

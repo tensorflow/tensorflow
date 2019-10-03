@@ -1095,7 +1095,7 @@ def div(x, y, name=None):
 @deprecation.deprecated_endpoints("div_no_nan")
 @dispatch.add_dispatch_support
 def div_no_nan(x, y, name=None):
-  """Computes an unsafe divide which returns 0 if the y is zero.
+  """Computes a safe divide which returns 0 if the y is zero.
 
   Args:
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`.

@@ -1,4 +1,4 @@
-//===- ConvertControlFlowToCFG.cpp - ControlFlow to CFG conversion --------===//
+//===- ConvertLoopToStandard.cpp - ControlFlow to CFG conversion ----------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -20,7 +20,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Conversion/ControlFlowToCFG/ConvertControlFlowToCFG.h"
+#include "mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
@@ -38,7 +38,7 @@ using namespace mlir::loop;
 
 namespace {
 
-struct ControlFlowToCFGPass : public FunctionPass<ControlFlowToCFGPass> {
+struct LoopToStandardPass : public FunctionPass<LoopToStandardPass> {
   void runOnFunction() override;
 };
 
@@ -261,7 +261,7 @@ void mlir::populateLoopToStdConversionPatterns(
   patterns.insert<ForLowering, IfLowering, TerminatorLowering>(ctx);
 }
 
-void ControlFlowToCFGPass::runOnFunction() {
+void LoopToStandardPass::runOnFunction() {
   OwningRewritePatternList patterns;
   populateLoopToStdConversionPatterns(patterns, &getContext());
   ConversionTarget target(getContext());
@@ -271,8 +271,9 @@ void ControlFlowToCFGPass::runOnFunction() {
 }
 
 std::unique_ptr<OpPassBase<FuncOp>> mlir::createLowerToCFGPass() {
-  return std::make_unique<ControlFlowToCFGPass>();
+  return std::make_unique<LoopToStandardPass>();
 }
 
-static PassRegistration<ControlFlowToCFGPass>
-    pass("lower-to-cfg", "Convert control flow operations to ");
+static PassRegistration<LoopToStandardPass>
+    pass("convert-loop-to-std", "Convert Loop dialect to Standard dialect, "
+                                "replacing structured control flow with a CFG");

@@ -220,6 +220,18 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
     },
+    "stacktrace": {
+        "name": "stacktrace_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:default/stacktrace.h",
+        ],
+        "deps": [
+            "//tensorflow/core/platform:abi",
+            "//tensorflow/core/platform:platform",
+        ],
+        "tags": ["no_oss", "manual"],
+        "visibility": ["//visibility:private"],
+    },
     "strong_hash": {
         "name": "strong_hash_impl",
         "textual_hdrs": [
@@ -403,6 +415,20 @@ TF_WINDOWS_PLATFORM_LIBRARIES = {
         ],
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
+    },
+    "stacktrace": {
+        "name": "windows_stacktrace_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:windows/stacktrace.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:windows/stacktrace.cc",
+        ],
+        "deps": [
+            "//tensorflow/core/platform:mutex",
+        ],
+        "tags": ["no_oss", "manual"],
+        "visibility": ["//visibility:private"],
     },
     "subprocess": {
         "name": "windows_subprocess_impl",

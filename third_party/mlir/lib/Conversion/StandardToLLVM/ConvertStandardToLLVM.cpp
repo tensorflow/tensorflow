@@ -21,7 +21,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
-#include "mlir/Conversion/ControlFlowToCFG/ConvertControlFlowToCFG.h"
+#include "mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
@@ -152,7 +152,7 @@ static unsigned kStridePosInMemRefDescriptor = 3;
 Type LLVMTypeConverter::convertMemRefType(MemRefType type) {
   int64_t offset;
   SmallVector<int64_t, 4> strides;
-  bool strideSuccess = succeeded(type.getStridesAndOffset(strides, offset));
+  bool strideSuccess = succeeded(getStridesAndOffset(type, strides, offset));
   assert(strideSuccess &&
          "Non-strided layout maps must have been normalized away");
   (void)strideSuccess;
@@ -571,14 +571,14 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
 
     int64_t offset;
     SmallVector<int64_t, 4> strides;
-    auto successStrides = type.getStridesAndOffset(strides, offset);
+    auto successStrides = getStridesAndOffset(type, strides, offset);
     if (failed(successStrides))
       return matchFailure();
 
     // Dynamic strides are ok if they can be deduced from dynamic sizes (which
-    // is guaranteed when succeeded(successStrides)).
-    // Dynamic offset however can never be alloc'ed.
-    if (offset != MemRefType::kDynamicStrideOrOffset)
+    // is guaranteed when succeeded(successStrides)). Dynamic offset however can
+    // never be alloc'ed.
+    if (offset == MemRefType::kDynamicStrideOrOffset)
       return matchFailure();
 
     return matchSuccess();
@@ -652,15 +652,16 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
 
     int64_t offset;
     SmallVector<int64_t, 4> strides;
-    auto successStrides = type.getStridesAndOffset(strides, offset);
+    auto successStrides = getStridesAndOffset(type, strides, offset);
     assert(succeeded(successStrides) && "unexpected non-strided memref");
     (void)successStrides;
     assert(offset != MemRefType::kDynamicStrideOrOffset &&
            "unexpected dynamic offset");
 
     // 0-D memref corner case: they have size 1 ...
-    assert((type.getRank() == 0 && strides.empty() && sizes.size() == 1) ||
-           (strides.size() == sizes.size()) && "unexpected number of strides");
+    assert(((type.getRank() == 0 && strides.empty() && sizes.size() == 1) ||
+            (strides.size() == sizes.size())) &&
+           "unexpected number of strides");
 
     // Create the MemRef descriptor.
     auto structType = lowering.convertType(type);
@@ -952,7 +953,7 @@ struct LoadStoreOpLowering : public LLVMLegalizationPattern<Derived> {
     auto ptrType = getMemRefElementPtrType(type, this->lowering);
     int64_t offset;
     SmallVector<int64_t, 4> strides;
-    auto successStrides = type.getStridesAndOffset(strides, offset);
+    auto successStrides = getStridesAndOffset(type, strides, offset);
     assert(succeeded(successStrides) && "unexpected non-strided memref");
     (void)successStrides;
     return getStridedElementPtr(loc, ptrType, memRefDesc, indices, strides,

@@ -22,10 +22,8 @@ limitations under the License.
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 
 extern int begin_index;
-extern TfLiteStatus SetupAccelerometer(
-    const tflite::ErrorReporter* error_reporter);
-extern bool ReadAccelerometer(const tflite::ErrorReporter* error_reporter,
-                              float* input, int length);
-extern int PredictGesture(float* output);
+extern TfLiteStatus SetupAccelerometer(tflite::ErrorReporter* error_reporter);
+extern bool ReadAccelerometer(tflite::ErrorReporter* error_reporter,
+                              float* input, int length, bool reset_buffer);
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_GESTURE_RECOGNITION_ACCELEROMETER_HANDLER_H_

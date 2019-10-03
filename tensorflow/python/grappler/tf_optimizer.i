@@ -60,6 +60,7 @@ limitations under the License.
   #include "tensorflow/core/framework/device_base.h"
   #include "tensorflow/core/common_runtime/device_factory.h"
   #include "tensorflow/core/framework/device_attributes.pb.h"
+  #include "tensorflow/core/framework/graph_def_util.h"
   #include "tensorflow/core/framework/graph.pb.h"
   #include "tensorflow/core/grappler/grappler_item.h"
   #include "tensorflow/core/grappler/grappler_item_builder.h"
@@ -111,10 +112,15 @@ PyObject* TF_OptimizeGraph(
     tensorflow::GraphDef out_graph;
     tensorflow::grappler::MetaOptimizer optimizer(cpu_device, config_proto);
     tensorflow::Status s = optimizer.Optimize(cluster.get(), *grappler_item, &out_graph);
+    tensorflow::Set_TF_Status_from_Status(status, s);
+    if (!s.ok()) {
+       Py_RETURN_NONE;
+    }
+    tensorflow::StripDefaultAttributes(*tensorflow::OpRegistry::Global(),
+                                       out_graph.mutable_node());
     if (verbose) {
       optimizer.PrintResult();
     }
-    tensorflow::Set_TF_Status_from_Status(status, s);
     string out_graph_str = out_graph.SerializeAsString();
     PyObject* ret = PyBytes_FromStringAndSize(out_graph_str.data(),
                                               out_graph_str.size());

@@ -44,6 +44,11 @@ enum class TextureAddressMode {
 class TensorCodeGenerator {
  public:
   struct SizeVariablesNames {
+    SizeVariablesNames() = default;
+    SizeVariablesNames(const std::string& width_name,
+                       const std::string& height_name,
+                       const std::string& depth_name);
+
     std::string width = "unknown";
     std::string height = "unknown";
     std::string channels = "unknown";

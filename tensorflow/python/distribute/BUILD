@@ -443,8 +443,10 @@ py_library(
         ":input_ops",
         ":values",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:multi_device_iterator_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
     ],
 )
 
@@ -681,21 +683,15 @@ cuda_py_test(
     ],
 )
 
-tf_xla_py_test(
+distribute_py_test(
     name = "checkpointing_test",
     srcs = ["checkpointing_test.py"],
-    disabled_backends = [
-        # Only makes sense on TPUs
-        "cpu",
-        "gpu",
-        "cpu_ondemand",
-    ],
-    tags = [
-        "no_oss",
-    ],
+    main = "checkpointing_test.py",
     deps = [
         ":tpu_strategy",
         "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras",
         "//tensorflow/python/training/tracking:util",
@@ -709,7 +705,12 @@ distribute_py_test(
     deps = [
         ":collective_all_reduce_strategy",
         ":mirrored_strategy",
+        ":reduce_util",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:input_lib",
@@ -718,6 +719,8 @@ distribute_py_test(
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )

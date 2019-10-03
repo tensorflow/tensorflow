@@ -227,6 +227,30 @@ tf_cuda_library(
     }),
 )
 
+tf_cuda_library(
+    name = "process_function_library_runtime",
+    srcs = [
+        "process_function_library_runtime.cc",
+    ],
+    hdrs = [
+        "process_function_library_runtime.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "@com_google_absl//absl/types:variant",
+            "//tensorflow/core:core_cpu_lib",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
+            "//tensorflow/core:protos_all_cc",
+        ],
+    }),
+)
+
 tf_cc_test(
     name = "kernel_and_device_test",
     srcs = ["kernel_and_device_test.cc"],

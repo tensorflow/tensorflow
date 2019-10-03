@@ -113,7 +113,7 @@ TfLiteStatus PopulateQuantizedLstmParams(
     lstm_eval::QuantizedLstmParameter* quantized_lstm_param) {
   std::vector<float> intermediate_scale;
   std::vector<int32> intermediate_zp;
-  for (int i = 0; i < 13; ++i) {
+  for (int i = 0; i < 5; ++i) {
     // Calculate intermediate tensors.
     TfLiteTensor* intermediate =
         &context->tensors[node->intermediates->data[i]];
@@ -301,27 +301,27 @@ TfLiteStatus PopulateQuantizedLstmParams(
                                          intermediate_scale[0];
   }
   effective_input_to_forget_scale =
-      input_to_forget_weight_scale * input_scale / intermediate_scale[3];
+      input_to_forget_weight_scale * input_scale / intermediate_scale[1];
   effective_recurrent_to_forget_scale = recurrent_to_forget_weight_scale *
+                                        activation_scale /
+                                        intermediate_scale[1];
+
+  effective_input_to_cell_scale =
+      input_to_cell_weight_scale * input_scale / intermediate_scale[2];
+  effective_recurrent_to_cell_scale =
+      recurrent_to_cell_weight_scale * activation_scale / intermediate_scale[2];
+
+  effective_input_to_output_scale =
+      input_to_output_weight_scale * input_scale / intermediate_scale[3];
+  effective_recurrent_to_output_scale = recurrent_to_output_weight_scale *
                                         activation_scale /
                                         intermediate_scale[3];
 
-  effective_input_to_cell_scale =
-      input_to_cell_weight_scale * input_scale / intermediate_scale[6];
-  effective_recurrent_to_cell_scale =
-      recurrent_to_cell_weight_scale * activation_scale / intermediate_scale[6];
-
-  effective_input_to_output_scale =
-      input_to_output_weight_scale * input_scale / intermediate_scale[9];
-  effective_recurrent_to_output_scale = recurrent_to_output_weight_scale *
-                                        activation_scale /
-                                        intermediate_scale[9];
-
   effective_hidden_scale =
-      std::pow(2, -15) / intermediate_scale[12] * std::pow(2, -15);
+      std::pow(2, -15) / intermediate_scale[4] * std::pow(2, -15);
 
   effective_proj_scale =
-      proj_weight_scale * intermediate_scale[12] / activation_scale;
+      proj_weight_scale * intermediate_scale[4] / activation_scale;
 
   if (use_peephole) {
     if (!use_cifg) {
@@ -331,10 +331,10 @@ TfLiteStatus PopulateQuantizedLstmParams(
     }
     effective_cell_to_forget_scale = std::pow(2, cell_scale) *
                                      cell_to_forget_weight_scale /
-                                     intermediate_scale[3];
+                                     intermediate_scale[1];
     effective_cell_to_output_scale = std::pow(2, cell_scale) *
                                      cell_to_output_weight_scale /
-                                     intermediate_scale[9];
+                                     intermediate_scale[3];
   }
 
   // Decompose scales.
@@ -394,7 +394,7 @@ TfLiteStatus PopulateQuantizedLstmParams(
                      &quantized_lstm_param->layer_norm_output_scale_a,
                      &quantized_lstm_param->layer_norm_output_scale_b);
 
-  quantized_lstm_param->hidden_zp = intermediate_zp[12];
+  quantized_lstm_param->hidden_zp = intermediate_zp[4];
 
   // TODO(jianlijianli): add support for cifg.
   // 10000 is used to make sure the kernel logic does not overflow.
@@ -743,7 +743,7 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
       &op_data->quantized_lstm_param;
 
   const TfLiteTensor* intermediate =
-      &context->tensors[node->intermediates->data[12]];
+      &context->tensors[node->intermediates->data[4]];
   const auto* params = reinterpret_cast<TfLiteAffineQuantization*>(
       intermediate->quantization.params);
   const int32_t hidden_zp = params->zero_point->data[0];

@@ -11,6 +11,7 @@ screen.
 ## Table of contents
 
 -   [Getting started](#getting-started)
+-   [Deploy to Arduino](#deploy-to-arduino)
 -   [Deploy to SparkFun Edge](#deploy-to-sparkfun-edge)
 
 ## Getting started
@@ -47,6 +48,134 @@ To understand how TensorFlow Lite does this, you can look at the source in
 It's a fairly small amount of code that creates an interpreter, gets a handle to
 a model that's been compiled into the program, and then invokes the interpreter
 with the model and sample inputs.
+
+## Deploy to Arduino
+
+The following instructions will help you build and deploy this sample
+to [Arduino](https://www.arduino.cc/) devices.
+
+The sample has been tested with the following devices:
+
+- [Arduino Nano 33 BLE Sense](https://store.arduino.cc/usa/nano-33-ble-sense-with-headers)
+
+### Obtain and import the library
+
+To use this sample application with Arduino, we've created an Arduino library
+that includes it as an example that you can open in the Arduino Desktop IDE.
+
+Download the current nightly build of the library: [hello_world.zip](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/tensorflow/lite/experimental/micro/tools/make/gen/arduino_x86_64/prj/gesture_recognition/gesture_recognition.zip)
+
+Next, import this zip file into the Arduino Desktop IDE by going to `Sketch ->
+Include Library -> Add .ZIP Library...`.
+
+### Install and patch the accelerometer driver
+
+This example depends on the [Arduino_LSM9DS1](https://github.com/arduino-libraries/Arduino_LSM9DS1)
+library to communicate with the device's accelerometer. However, the library
+must be patched in order to enable the accelerometer's FIFO buffer.
+
+Follow these steps to install and patch the driver:
+
+#### Install the correct version
+
+In the Arduino IDE, go to `Tools -> Manage Libraries...` and search for
+`Arduino_LSM9DS1`. **Install version 1.0.0 of the driver** to ensure the
+following instructions work.
+
+#### Patch the driver
+
+The driver will be installed to your `Arduino/libraries` directory, in the
+subdirectory `Arduino_LSM9DS1`.
+
+Open the following file:
+
+```
+Arduino_LSM9DS1/src/LSM9DS1.cpp
+```
+
+Go to the function named `LSM9DS1Class::begin()`. Insert the following lines at
+the end of the function, immediately before the `return 1` statement:
+
+```cpp
+// Enable FIFO (see docs https://www.st.com/resource/en/datasheet/DM00103319.pdf)
+writeRegister(LSM9DS1_ADDRESS, 0x23, 0x02);
+// Set continuous mode
+writeRegister(LSM9DS1_ADDRESS, 0x2E, 0xC0);
+```
+
+Next, go to the function named `LSM9DS1Class::accelerationAvailable()`. You will
+see the following lines:
+
+```cpp
+if (readRegister(LSM9DS1_ADDRESS, LSM9DS1_STATUS_REG) & 0x01) {
+  return 1;
+}
+```
+
+Comment out those lines and replace them with the following:
+
+```cpp
+// Read FIFO_SRC. If any of the rightmost 8 bits have a value, there is data
+if (readRegister(LSM9DS1_ADDRESS, 0x2F) & 63) {
+  return 1;
+}
+```
+
+Next, save the file. Patching is now complete.
+
+### Load and run the example
+
+Once the library has been added, go to `File -> Examples`. You should see an
+example near the bottom of the list named `TensorFlowLite`. Select
+it and click `gesture_recognition` to load the example.
+
+Use the Arduino Desktop IDE to build and upload the example. Once it is running,
+you should see the built-in LED on your device flashing.
+
+Open the Arduino Serial Monitor (`Tools -> Serial Monitor`).
+
+You will see the following message:
+
+```
+Magic starts！
+```
+
+Hold the Arduino with its components facing upwards and the USB cable to your
+left. Perform the gestures "WING", "RING"(clockwise), and "SLOPE", and you
+should see the corresponding output:
+
+```
+WING:
+*         *         *
+ *       * *       *
+  *     *   *     *
+   *   *     *   *
+    * *       * *
+     *         *
+```
+
+```
+RING:
+          *
+       *     *
+     *         *
+    *           *
+     *         *
+       *     *
+          *
+```
+
+```
+SLOPE:
+        *
+       *
+      *
+     *
+    *
+   *
+  *
+ * * * * * * * *
+```
 
 ## Deploy to SparkFun Edge
 

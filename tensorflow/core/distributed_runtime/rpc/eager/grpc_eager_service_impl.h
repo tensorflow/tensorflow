@@ -70,7 +70,6 @@ class GrpcEagerServiceImpl : public AsyncServiceInterface {
   HANDLER(WaitQueueDone);
   HANDLER(KeepAlive);
   HANDLER(CloseContext);
-  HANDLER(RegisterFunction);
 #undef HANDLER
 
   // Called when a new request has been received as part of a StreamingEnqueue

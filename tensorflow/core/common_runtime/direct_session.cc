@@ -754,12 +754,18 @@ Status DirectSession::RunInternal(
 
   // If requested via RunOptions, output the partition graphs.
   if (run_options.output_partition_graphs()) {
-    protobuf::RepeatedPtrField<GraphDef>* partition_graph_defs =
-        run_metadata->mutable_partition_graphs();
-    for (const PerPartitionExecutorsAndLib& exec_and_lib :
-         executors_and_keys->items) {
-      GraphDef* partition_graph_def = partition_graph_defs->Add();
-      exec_and_lib.graph->ToGraphDef(partition_graph_def);
+    if (options_.config.experimental().disable_output_partition_graphs()) {
+      return errors::InvalidArgument(
+          "RunOptions.output_partition_graphs() is not supported when "
+          "disable_output_partition_graphs is true.");
+    } else {
+      protobuf::RepeatedPtrField<GraphDef>* partition_graph_defs =
+          run_metadata->mutable_partition_graphs();
+      for (const PerPartitionExecutorsAndLib& exec_and_lib :
+           executors_and_keys->items) {
+        GraphDef* partition_graph_def = partition_graph_defs->Add();
+        exec_and_lib.graph->ToGraphDef(partition_graph_def);
+      }
     }
   }
   metrics::UpdateGraphExecTime(options_.env->NowMicros() - start_time_usecs);
@@ -1353,12 +1359,16 @@ Status DirectSession::CreateExecutors(
     TF_RETURN_IF_ERROR(EnsureMemoryTypes(DeviceType(device->device_type()),
                                          device->name(),
                                          partition_graph.get()));
-    item->graph = std::move(partition_graph);
+
     item->executor = nullptr;
     item->device = device;
     auto executor_type = options_.config.experimental().executor_type();
     TF_RETURN_IF_ERROR(
-        NewExecutor(executor_type, params, *item->graph, &item->executor));
+        NewExecutor(executor_type, params, *partition_graph, &item->executor));
+    if (!options_.config.experimental().disable_output_partition_graphs() ||
+        options_.config.graph_options().build_cost_model() > 0) {
+      item->graph = std::move(partition_graph);
+    }
   }
 
   // Cache the mapping from input/output names to graph elements to

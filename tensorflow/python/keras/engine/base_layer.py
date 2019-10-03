@@ -83,6 +83,8 @@ _TF_OP_LAYER_NAME_PREFIX = 'tf_op_layer_'
 
 _keras_layers_gauge = monitoring.BoolGauge('/tensorflow/api/keras/layers',
                                            'keras layers usage', 'method')
+_keras_model_gauge = monitoring.BoolGauge(
+    '/tensorflow/api/keras/premade_models', 'premade keras model usage', 'type')
 
 
 @keras_export('keras.layers.Layer')

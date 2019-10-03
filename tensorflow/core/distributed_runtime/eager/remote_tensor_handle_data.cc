@@ -27,21 +27,6 @@ namespace {
 void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
                                uint64 context_id, uint64 op_id, int output_num,
                                bool ready) {
-  if (ctx->GetContextId() != context_id) {
-    // This means that this tensor was pointing to a remote device, which
-    // has been changed out from under us. Simply return since there is
-    // nothing we can do.
-    return;
-  }
-
-  eager::EagerClient* eager_client;
-  Status status = ctx->GetClient(remote_task, &eager_client);
-  if (!status.ok()) {
-    LOG(INFO) << "Unable to destroy remote tensor handle because the target "
-              << remote_task << " is no longer available.";
-    return;
-  }
-
   std::unique_ptr<eager::EnqueueRequest> request(new eager::EnqueueRequest);
   request->set_context_id(context_id);
 
@@ -51,8 +36,8 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
 
   VLOG(3) << "Sending request to delete " << request->DebugString();
   std::unique_ptr<EagerNode> node(
-      absl::make_unique<eager::DestroyTensorHandleNode>(std::move(request),
-                                                        eager_client, ready));
+      absl::make_unique<eager::DestroyTensorHandleNode>(std::move(request), ctx,
+                                                        remote_task, ready));
   auto& executor = ctx->Executor();
   if (executor.Async()) {
     Status status = executor.AddOrExecute(std::move(node));

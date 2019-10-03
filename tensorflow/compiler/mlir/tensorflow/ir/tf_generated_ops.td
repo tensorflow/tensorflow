@@ -452,6 +452,10 @@ Broadcasting is supported, so `value` may have any number of dimensions.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_BitcastOp : TF_Op<"Bitcast", [NoSideEffect]> {

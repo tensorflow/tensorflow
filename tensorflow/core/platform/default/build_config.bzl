@@ -529,13 +529,6 @@ def tf_additional_monitoring_srcs():
         "default/monitoring.cc",
     ]
 
-def tf_additional_minimal_lib_srcs():
-    return [
-        "default/integral_types.h",
-        "default/mutex.h",
-        "default/mutex_data.h",
-    ]
-
 def tf_additional_proto_hdrs():
     return [
         "default/integral_types.h",

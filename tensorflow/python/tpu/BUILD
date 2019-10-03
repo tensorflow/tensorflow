@@ -68,6 +68,7 @@ tf_py_test(
         ":tpu_lib",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python:platform",
+        "//tensorflow/python:lib",
     ],
     srcs_version = "PY2AND3",
     tags = [

@@ -61,6 +61,11 @@ class Tensor {
   int4 GetSizeWithDepth() const {
     return int4(shape_.w, shape_.h, shape_.c, Depth());
   }
+
+  // returns int4(width * batch, height, depth, batch)
+  int4 GetWBatchedHDB() const {
+    return int4(shape_.w * shape_.b, shape_.h, Depth(), shape_.b);
+  }
   enum DataType DataType() const { return descriptor_.data_type; }
   TensorStorageType StorageType() const { return descriptor_.storage_type; }
 
@@ -95,8 +100,6 @@ class Tensor {
     switch (descriptor_.storage_type) {
       case TensorStorageType::BUFFER:
       case TensorStorageType::IMAGE_BUFFER:
-        return (((b * Depth() + d) * shape_.h + y) * shape_.w + x) * 4 +
-               sub_d;  // BDHWC4
       case TensorStorageType::TEXTURE_ARRAY:
         return (((d * shape_.h + y) * shape_.w + x) * shape_.b + b) * 4 +
                sub_d;  // DHWBC4

@@ -386,8 +386,10 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
       auto node = absl::make_unique<ClientTensorHandleDeleteNode>(
           context, std::move(handle_to_decref));
       s = context->Context()->Executor().AddOrExecute(std::move(node));
-    } else {
+    } else if (item.has_send_tensor()) {
       s = SendTensor(item.send_tensor(), context->Context());
+    } else {
+      s = RegisterFunction(item.register_function(), context->Context());
     }
 
     if (!s.ok()) {
@@ -449,16 +451,12 @@ Status EagerServiceImpl::CloseContext(const CloseContextRequest* request,
 }
 
 Status EagerServiceImpl::RegisterFunction(
-    const RegisterFunctionRequest* request,
-    RegisterFunctionResponse* response) {
-  ServerContext* context = nullptr;
-  TF_RETURN_IF_ERROR(GetServerContext(request->context_id(), &context));
-  core::ScopedUnref context_unref(context);
-
+    const RegisterFunctionOp& register_function, EagerContext* eager_context) {
   // If the function is a component of a multi-device function, we only need to
   // register it locally.
-  return context->Context()->AddFunctionDef(request->function_def(),
-                                            request->is_component_function());
+  return eager_context->AddFunctionDef(
+      register_function.function_def(),
+      register_function.is_component_function());
 }
 
 Status EagerServiceImpl::SendTensor(const SendTensorOp& send_tensor,

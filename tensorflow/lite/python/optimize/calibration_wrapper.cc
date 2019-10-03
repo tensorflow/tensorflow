@@ -164,14 +164,19 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value) {
   }
 
   if (PyArray_NDIM(array) != tensor->dims->size) {
-    PyErr_SetString(PyExc_ValueError, "Cannot set tensor: Dimension mismatch");
+    PyErr_Format(
+        PyExc_ValueError,
+        "Cannot set tensor: Dimension count mismatch, expected %d but found %d",
+        tensor->dims->size, PyArray_NDIM(array));
     return nullptr;
   }
 
   for (int j = 0; j < PyArray_NDIM(array); j++) {
     if (tensor->dims->data[j] != PyArray_SHAPE(array)[j]) {
-      PyErr_SetString(PyExc_ValueError,
-                      "Cannot set tensor: Dimension mismatch");
+      PyErr_Format(PyExc_ValueError,
+                   "Cannot set tensor: Size mismatch, expected %d for dim "
+                   "%d but found %ld",
+                   tensor->dims->data[j], j, PyArray_SHAPE(array)[j]);
       return nullptr;
     }
   }

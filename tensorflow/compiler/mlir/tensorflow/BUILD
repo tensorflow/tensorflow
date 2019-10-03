@@ -204,6 +204,7 @@ cc_library(
         "transforms/materialize_mlir_passthrough_op.cc",
         "transforms/optimize.cc",
         "transforms/raise_control_flow.cc",
+        "transforms/resource_op_lifting.cc",
         "transforms/shape_inference.cc",
         "transforms/shape_inference_pass.cc",
         "transforms/sink_constant.cc",
@@ -223,6 +224,7 @@ cc_library(
         ":convert_type",
         ":error_util",
         ":export_tf_dialect_op",
+        ":mangling_util",
         ":tensorflow",
         ":tensorflow_optimize_inc_gen",
         "//tensorflow/compiler/mlir/lite:validators",
@@ -425,6 +427,15 @@ cc_library(
 cc_library(
     name = "mlir_roundtrip_pass_registration",
     srcs = ["translate/mlir_roundtrip_pass_registration.cc"],
+    deps = [
+        ":mlir_roundtrip_pass",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "mlir_import_pass_registration",
+    srcs = ["translate/mlir_import_pass_registration.cc"],
     deps = [
         ":mlir_roundtrip_pass",
     ],
