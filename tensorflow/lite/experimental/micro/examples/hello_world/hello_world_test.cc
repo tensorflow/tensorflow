@@ -52,9 +52,7 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
 
   // Allocate memory from the tensor_arena for the model's tensors
   TfLiteStatus allocation_status = interpreter.AllocateTensors();
-  if (allocation_status != kTfLiteOk) {
-    error_reporter->Report("Tensor allocation failed\n");
-  }
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, allocation_status);
 
   // Obtain a pointer to the model's input tensor
   TfLiteTensor* input = interpreter.input(0);
@@ -78,9 +76,6 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
 
   // Run the model on this input and check that it succeeds
   TfLiteStatus invoke_status = interpreter.Invoke();
-  if (invoke_status != kTfLiteOk) {
-    error_reporter->Report("Invoke failed\n");
-  }
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 
   // Obtain a pointer to the output tensor and make sure it has the
@@ -99,27 +94,22 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   // Run inference on several more values and confirm the expected outputs
   input->data.f[0] = 1.;
   invoke_status = interpreter.Invoke();
-  if (invoke_status != kTfLiteOk) {
-    error_reporter->Report("Invoke failed\n");
-  }
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 
   value = output->data.f[0];
   TF_LITE_MICRO_EXPECT_NEAR(0.841, value, 0.05);
 
   input->data.f[0] = 3.;
   invoke_status = interpreter.Invoke();
-  if (invoke_status != kTfLiteOk) {
-    error_reporter->Report("Invoke failed\n");
-  }
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 
   value = output->data.f[0];
   TF_LITE_MICRO_EXPECT_NEAR(0.141, value, 0.05);
 
   input->data.f[0] = 5.;
   invoke_status = interpreter.Invoke();
-  if (invoke_status != kTfLiteOk) {
-    error_reporter->Report("Invoke failed\n");
-  }
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
+
   value = output->data.f[0];
   TF_LITE_MICRO_EXPECT_NEAR(-0.959, value, 0.05);
 }
