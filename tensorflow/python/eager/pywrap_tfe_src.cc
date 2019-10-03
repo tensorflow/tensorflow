@@ -43,7 +43,17 @@ using tensorflow::string;
 using tensorflow::strings::Printf;
 
 namespace {
-
+// NOTE: Items are retrieved from and returned to these unique_ptrs, and they
+// act as arenas. This is important if the same thread requests 2 items without
+// releasing one.
+// The following sequence of events on the same thread will still succeed:
+// - GetOp <- Returns existing.
+// - GetOp <- Allocates and returns a new pointer.
+// - ReleaseOp <- Sets the item in the unique_ptr.
+// - ReleaseOp <- Sets the item in the unique_ptr, deleting the old one.
+// This occurs when a PyFunc kernel is run. This behavior makes it safe in that
+// case, as well as the case where python decides to reuse the underlying
+// C++ thread in 2 python threads case.
 thread_local std::unique_ptr<TFE_Op> thread_local_eager_operation =  // NOLINT
     nullptr;
 thread_local std::unique_ptr<TF_Status> thread_local_tf_status =  // NOLINT
