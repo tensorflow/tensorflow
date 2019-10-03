@@ -636,13 +636,10 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
 std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
     const {
   tflite::OpResolver* resolver = nullptr;
-#ifdef TFLITE_CUSTOM_OPS_HEADER
-  resolver = new tflite::MutableOpResolver();
-  RegisterSelectedOps(static_cast<tflite::MutableOpResolver*>(resolver));
-#else
   resolver = new tflite::ops::builtin::BuiltinOpResolver();
+#ifdef TFLITE_CUSTOM_OPS_HEADER
+  RegisterSelectedOps(static_cast<tflite::MutableOpResolver*>(resolver));
 #endif
-
   return std::unique_ptr<tflite::OpResolver>(resolver);
 }
 
