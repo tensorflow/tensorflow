@@ -19,14 +19,8 @@ limitations under the License.
 namespace tensorflow {
 REGISTER2(UnaryOp, CPU, "Ndtri", functor::ndtri, float, double);
 REGISTER2(UnaryOp, CPU, "Erfinv", functor::erfinv, float, double);
-REGISTER2(SimpleBinaryOp, CPU, "NdtriGrad", functor::ndtri_grad, float, double);
-REGISTER2(SimpleBinaryOp, CPU, "ErfinvGrad", functor::erfinv_grad, float,
-          double);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER2(UnaryOp, GPU, "Ndtri", functor::ndtri, float, double);
 REGISTER2(UnaryOp, GPU, "Erfinv", functor::erfinv, float, double);
-REGISTER2(SimpleBinaryOp, GPU, "NdtriGrad", functor::ndtri_grad, float, double);
-REGISTER2(SimpleBinaryOp, GPU, "ErfinvGrad", functor::erfinv_grad, float,
-          double);
 #endif
 }  // namespace tensorflow
