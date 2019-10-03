@@ -290,7 +290,18 @@ ConvTexture::ConvTexture(const OperationDef& definition,
       stride_(attr.strides.w, attr.strides.h),
       padding_(-attr.padding.prepended.w, -attr.padding.prepended.h),
       dilation_(attr.dilations.w, attr.dilations.h),
+      block_size_(2, 2, 2),
       work_group_size_(4, 4, 2) {}
+
+ConvTexture::ConvTexture(const OperationDef& definition,
+                         const FullyConnectedAttributes& attr)
+    : GPUOperation(definition),
+      kernel_size_(1, 1),
+      stride_(1, 1),
+      padding_(0, 0),
+      dilation_(1, 1),
+      block_size_(4, 1, 2),
+      work_group_size_(16, 1, 2) {}
 
 ConvTexture::ConvTexture(ConvTexture&& operation)
     : GPUOperation(std::move(operation)),
@@ -394,16 +405,15 @@ Status CreateConvTexture(const CreationContext& creation_context,
                          const Convolution2DAttributes& attr,
                          ConvTexture* result) {
   *result = ConvTexture(definition, attr);
-  RETURN_IF_ERROR(
-      result->UploadWeights(attr.weights, creation_context.context));
-  LinearStorageCreateInfo create_info;
-  create_info.storage_type = LinearStorageType::TEXTURE_2D;
-  create_info.data_type = definition.GetDataType();
-  create_info.aligned_size = attr.weights.shape.o;
-  RETURN_IF_ERROR(CreateLinearStorage(
-      create_info, attr.bias, creation_context.context, &result->biases_));
+  return result->UploadData(attr.weights, attr.bias, creation_context.context);
+}
 
-  return OkStatus();
+Status CreateConvTexture(const CreationContext& creation_context,
+                         const OperationDef& definition,
+                         const FullyConnectedAttributes& attr,
+                         ConvTexture* result) {
+  *result = ConvTexture(definition, attr);
+  return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
 }  // namespace cl

@@ -56,8 +56,19 @@ class ConvTexture : public GPUOperation {
                                   const OperationDef& definition,
                                   const Convolution2DAttributes& attr,
                                   ConvTexture* result);
+  friend Status CreateConvTexture(const CreationContext& creation_context,
+                                  const OperationDef& definition,
+                                  const FullyConnectedAttributes& attr,
+                                  ConvTexture* result);
   ConvTexture(const OperationDef& definition,
               const Convolution2DAttributes& attr);
+  ConvTexture(const OperationDef& definition,
+              const FullyConnectedAttributes& attr);
+  template <DataType T>
+  Status UploadData(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+                    const ::tflite::gpu::Tensor<Linear, T>& biases,
+                    CLContext* context);
+
   template <DataType T>
   Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
                        CLContext* context);
@@ -86,6 +97,19 @@ class ConvTexture : public GPUOperation {
   CLKernel kernel_;
   int3 work_group_size_;
 };
+
+template <DataType T>
+Status ConvTexture::UploadData(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+                               const ::tflite::gpu::Tensor<Linear, T>& biases,
+                               CLContext* context) {
+  RETURN_IF_ERROR(UploadWeights(weights, context));
+  LinearStorageCreateInfo create_info;
+  create_info.storage_type = LinearStorageType::TEXTURE_2D;
+  create_info.data_type = definition_.GetDataType();
+  create_info.aligned_size = weights.shape.o;
+  RETURN_IF_ERROR(CreateLinearStorage(create_info, biases, context, &biases_));
+  return OkStatus();
+}
 
 template <DataType T>
 Status ConvTexture::UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
@@ -188,6 +212,11 @@ void ConvTexture::RearrangeWeightsData(
 Status CreateConvTexture(const CreationContext& creation_context,
                          const OperationDef& definition,
                          const Convolution2DAttributes& attr,
+                         ConvTexture* result);
+
+Status CreateConvTexture(const CreationContext& creation_context,
+                         const OperationDef& definition,
+                         const FullyConnectedAttributes& attr,
                          ConvTexture* result);
 
 }  // namespace cl
