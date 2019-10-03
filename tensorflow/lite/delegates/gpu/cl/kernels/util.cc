@@ -125,6 +125,11 @@ std::string GetCommonDefines(CalculationsPrecision precision) {
   return result;
 }
 
+TensorCodeGenerator::SizeVariablesNames::SizeVariablesNames(
+    const std::string& width_name, const std::string& height_name,
+    const std::string& depth_name)
+    : width(width_name), height(height_name), depth(depth_name) {}
+
 TensorCodeGenerator::TensorCodeGenerator(const std::string& name,
                                          const std::string& uniform_size_name,
                                          const TensorDescriptor& descriptor)
