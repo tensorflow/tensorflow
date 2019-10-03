@@ -58,9 +58,6 @@ auto* tf_data_bytes_read_counter = monitoring::Counter<1>::New(
 auto* tf_data_elements_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/elements", "tf.data elements", "name");
 
-auto* tf_data_fingerprint_counter = monitoring::Counter<1>::New(
-    "/tensorflow/data/fingerprint", "tf.data fingerprint", "name");
-
 auto* tf_data_optimization_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/optimization", "tf.data optimization", "name");
 
@@ -118,10 +115,6 @@ void RecordTFDataBytesRead(const string& name, int64 num_bytes) {
 
 void RecordTFDataElements(const string& name, int64 num_elements) {
   tf_data_elements_counter->GetCell(name)->IncrementBy(num_elements);
-}
-
-void RecordTFDataFingerprint(const string& name, int64 num_changes) {
-  tf_data_fingerprint_counter->GetCell(name)->IncrementBy(num_changes);
 }
 
 void RecordTFDataOptimization(const string& name, int64 num_changes) {

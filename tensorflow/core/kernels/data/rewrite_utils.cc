@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/rewrite_utils.h"
 
 #include "tensorflow/core/common_runtime/graph_runner.h"
-#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_def_util.h"
@@ -142,7 +141,7 @@ Status ApplyRewrites(OpKernelContext* ctx,
 
 Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
                       std::function<RewriterConfig(void)> config_factory,
-                      bool optimize_function_library, bool record_fingerprint,
+                      bool optimize_function_library,
                       DatasetBase** rewritten_input) {
   SerializationContext::Params params;
   std::vector<std::pair<string, Tensor>> input_list;
@@ -176,8 +175,9 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
   TF_RETURN_IF_ERROR(
       ctx->function_library()->Clone(&lib_def, &pflr, &flr, true));
 
-  // Some functions may have been modified without having their names changed
-  // (for example, nested dataset graphs from FlatMap or Interleave).
+  // Some functions may have been modified without having their names
+  // changed (for example, nested dataset graphs from FlatMap or
+  // Interleave).
   TF_RETURN_IF_ERROR(AddToFunctionLibrary(lib_def.get(), graph_def.library()));
 
   Graph graph(OpRegistry::Global());
@@ -189,36 +189,6 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
       graph_runner.Run(&graph, flr, input_list, {output_node}, &outputs));
   TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(outputs[0], rewritten_input));
   (*rewritten_input)->Ref();
-
-  if (record_fingerprint) {
-    (*ctx->runner())(std::bind(
-        [](const GraphDef& graph_def,
-           const std::vector<std::pair<string, Tensor>>& input_list,
-           const string& output_node) {
-          const NodeDef* node_def;
-          for (const auto& node : graph_def.node()) {
-            if (node.name() == output_node) {
-              node_def = &node;
-            }
-          }
-          uint64 hash = 0;
-          Status s = HashNode(graph_def, *node_def, &hash);
-          if (!s.ok()) {
-            VLOG(3) << "Failed to hash graph: " << s.ToString();
-            return;
-          }
-          for (const auto& pair : input_list) {
-            hash = Hash64CombineUnordered(hash, Hash64(pair.first));
-            hash = Hash64CombineUnordered(
-                hash, Hash64(string(pair.second.tensor_data())));
-          }
-          string graph_hash =
-              strings::StrCat(strings::Hex(hash, strings::kZeroPad16));
-          metrics::RecordTFDataFingerprint(graph_hash, 1);
-        },
-        std::move(graph_def), std::move(input_list), std::move(output_node)));
-  }
-
   return Status::OK();
 }
 
