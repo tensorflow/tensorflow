@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
-#include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -25,15 +24,15 @@ limitations under the License.
 namespace tensorflow {
 
 template <typename InputShape>
-static Graph* BroadcastTo(int size, InputShape input_shape) {
+static Graph* BroadcastTo(int dim0, int dim1, InputShape input_shape) {
   Graph* g = new Graph(OpRegistry::Global());
 
-  Tensor input(DT_FLOAT, input_shape(size));
+  Tensor input(DT_FLOAT, input_shape(dim0, dim1));
   input.flat<float>() = input.flat<float>().setRandom();
 
   Tensor shape(DT_INT32, TensorShape({2}));
-  shape.flat<int32>()(0) = size;
-  shape.flat<int32>()(1) = size;
+  shape.flat<int32>()(0) = dim0;
+  shape.flat<int32>()(1) = dim1;
 
   Node* node;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "BroadcastTo")
@@ -45,40 +44,42 @@ static Graph* BroadcastTo(int size, InputShape input_shape) {
   return g;
 }
 
-#define BM_BroadcastTo_InnerDim(SIZE, type)                             \
-  static void BM_BroadcastTo_Inner##_##type##_##SIZE(int iters) {       \
-    testing::UseRealTime();                                             \
-    testing::ItemsProcessed(static_cast<int64>(iters) * SIZE * SIZE);   \
-    test::Benchmark(#type, BroadcastTo(SIZE,                            \
-                                       [](int size) {                   \
-                                         return TensorShape({size, 1}); \
-                                       }))                              \
-        .Run(iters);                                                    \
-  }                                                                     \
-  BENCHMARK(BM_BroadcastTo_Inner##_##type##_##SIZE);
+#define BM_BroadcastTo_InnerDim(DIM0, DIM1, type)                          \
+  static void BM_BroadcastTo_Inner##_##type##_##DIM0##_##DIM1(int iters) { \
+    testing::UseRealTime();                                                \
+    testing::ItemsProcessed(static_cast<int64>(iters) * DIM0 * DIM1);      \
+    test::Benchmark(#type, BroadcastTo(DIM0, DIM1,                         \
+                                       [](int dim0, int dim1) {            \
+                                         return TensorShape({dim0, 1});    \
+                                       }))                                 \
+        .Run(iters);                                                       \
+  }                                                                        \
+  BENCHMARK(BM_BroadcastTo_Inner##_##type##_##DIM0##_##DIM1);
 
-#define BM_BroadcastTo_OuterDim(SIZE, type)                             \
-  static void BM_BroadcastTo_Outer##_##type##_##SIZE(int iters) {       \
-    testing::UseRealTime();                                             \
-    testing::ItemsProcessed(static_cast<int64>(iters) * SIZE * SIZE);   \
-    test::Benchmark(#type, BroadcastTo(SIZE,                            \
-                                       [](int size) {                   \
-                                         return TensorShape({1, size}); \
-                                       }))                              \
-        .Run(iters);                                                    \
-  }                                                                     \
-  BENCHMARK(BM_BroadcastTo_Outer##_##type##_##SIZE);
+#define BM_BroadcastTo_OuterDim(DIM0, DIM1, type)                          \
+  static void BM_BroadcastTo_Outer##_##type##_##DIM0##_##DIM1(int iters) { \
+    testing::UseRealTime();                                                \
+    testing::ItemsProcessed(static_cast<int64>(iters) * DIM0 * DIM1);      \
+    test::Benchmark(#type, BroadcastTo(DIM0, DIM1,                         \
+                                       [](int dim0, int dim1) {            \
+                                         return TensorShape({1, dim1});    \
+                                       }))                                 \
+        .Run(iters);                                                       \
+  }                                                                        \
+  BENCHMARK(BM_BroadcastTo_Outer##_##type##_##DIM0##_##DIM1);
 
-BM_BroadcastTo_InnerDim(64, cpu);
-BM_BroadcastTo_InnerDim(128, cpu);
-BM_BroadcastTo_InnerDim(256, cpu);
-BM_BroadcastTo_InnerDim(512, cpu);
-BM_BroadcastTo_InnerDim(1024, cpu);
+BM_BroadcastTo_InnerDim(64, 64, cpu);
+BM_BroadcastTo_InnerDim(128, 128, cpu);
+BM_BroadcastTo_InnerDim(256, 256, cpu);
+BM_BroadcastTo_InnerDim(512, 512, cpu);
+BM_BroadcastTo_InnerDim(1024, 1024, cpu);
+BM_BroadcastTo_InnerDim(500, 20000, cpu);
 
-BM_BroadcastTo_OuterDim(64, cpu);
-BM_BroadcastTo_OuterDim(128, cpu);
-BM_BroadcastTo_OuterDim(256, cpu);
-BM_BroadcastTo_OuterDim(512, cpu);
-BM_BroadcastTo_OuterDim(1024, cpu);
+BM_BroadcastTo_OuterDim(64, 64, cpu);
+BM_BroadcastTo_OuterDim(128, 128, cpu);
+BM_BroadcastTo_OuterDim(256, 256, cpu);
+BM_BroadcastTo_OuterDim(512, 512, cpu);
+BM_BroadcastTo_OuterDim(1024, 1024, cpu);
+BM_BroadcastTo_OuterDim(500, 20000, cpu);
 
 }  // end namespace tensorflow
