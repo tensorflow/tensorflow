@@ -221,7 +221,6 @@ Status ShapeRefiner::AddNode(const Node* node) {
   // For each 'input' of this node, fetch the corresponding shape
   // from 'input's InferenceContext, and store into a vector
   // indexed by 'node's input.
-  std::vector<const Node*> input_nodes(node->num_inputs());
   std::vector<ShapeHandle> input_shapes(node->num_inputs());
   std::vector<std::unique_ptr<std::vector<ShapeAndType>>>
       input_handle_shapes_and_types(node->num_inputs());
@@ -239,7 +238,6 @@ Status ShapeRefiner::AddNode(const Node* node) {
     if (it == node_to_context_.end()) {
       // v1 control flow adds loops to the graph; we have to break them
       // somewhere, so we'll ignore this input and leave its shape undefined.
-      input_nodes[e->dst_input()] = input;
       // We don't have a context yet. We'll make one below and use that to
       // generate an unknown shape. An uninitialized ShapeHandle is already an
       // unknown shape, but there are debug checks that each input was
@@ -249,7 +247,6 @@ Status ShapeRefiner::AddNode(const Node* node) {
     }
 
     InferenceContext* c = it->second->get_context();
-    input_nodes[e->dst_input()] = input;
     input_shapes[e->dst_input()] = c->output(e->src_output());
 
     const auto* in_v = c->output_handle_shapes_and_types(e->src_output());
