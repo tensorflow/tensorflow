@@ -192,6 +192,19 @@ tf_cuda_library(
     }),
 )
 
+cc_library(
+    name = "shape_inference",
+    srcs = ["shape_inference.cc"],
+    hdrs = ["shape_inference.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":tensor_handle",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
 KERNEL_AND_DEVICE_DEPS = [
     "//tensorflow/core:core_cpu_lib",
     "//tensorflow/core:framework",
