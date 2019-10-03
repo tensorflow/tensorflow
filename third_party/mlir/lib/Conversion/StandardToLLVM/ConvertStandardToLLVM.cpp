@@ -659,8 +659,9 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
            "unexpected dynamic offset");
 
     // 0-D memref corner case: they have size 1 ...
-    assert((type.getRank() == 0 && strides.empty() && sizes.size() == 1) ||
-           (strides.size() == sizes.size()) && "unexpected number of strides");
+    assert(((type.getRank() == 0 && strides.empty() && sizes.size() == 1) ||
+            (strides.size() == sizes.size())) &&
+           "unexpected number of strides");
 
     // Create the MemRef descriptor.
     auto structType = lowering.convertType(type);
