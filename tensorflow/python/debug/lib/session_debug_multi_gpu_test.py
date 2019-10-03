@@ -22,13 +22,13 @@ import shutil
 import tempfile
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.framework import test_util
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest

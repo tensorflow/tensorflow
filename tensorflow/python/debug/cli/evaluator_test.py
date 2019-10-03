@@ -19,9 +19,9 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import test_util
 from tensorflow.python.debug.cli import evaluator
 from tensorflow.python.debug.lib import debug_data
-from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 

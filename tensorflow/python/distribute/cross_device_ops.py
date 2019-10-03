@@ -22,6 +22,7 @@ import collections
 import enum
 import six
 
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.client import device_lib
 from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import device_util
@@ -30,7 +31,6 @@ from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops

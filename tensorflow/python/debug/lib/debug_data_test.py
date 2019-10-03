@@ -26,8 +26,8 @@ import numpy as np
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import tensor_pb2
-from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.framework import test_util
+from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test

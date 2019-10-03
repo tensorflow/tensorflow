@@ -38,8 +38,8 @@ import datetime
 import os
 import threading
 
-from tensorflow.python import _pywrap_events_writer
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import _pywrap_events_writer
 from tensorflow.python.eager import context
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.platform import gfile
