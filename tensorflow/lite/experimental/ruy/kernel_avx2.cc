@@ -382,6 +382,19 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
     void* dst_ptr = dst_col_ptr;
     const std::int32_t* bias_ptr = bias_col_ptr;
 
+    const std::int32_t lhs_zero_point = params.lhs_zero_point;
+    const bool has_rhs_sums_offsets =
+        (params.flags & RUY_ASM_FLAG_HAS_RHS_SUMS) && lhs_zero_point;
+    std::int32_t rhs_sums_offsets[8];
+    if (has_rhs_sums_offsets) {
+      const __m256i rhs_sums_offset_v = _mm256_mullo_epi32(
+          _mm256_set1_epi32(lhs_zero_point),
+          _mm256_loadu_si256(
+              reinterpret_cast<__m256i const*>(&params.rhs_sums[col])));
+      _mm256_storeu_si256(reinterpret_cast<__m256i*>(rhs_sums_offsets),
+                          rhs_sums_offset_v);
+    }
+
     for (int row = params.start_row; row <= params.last_row;
          row += kAvx8bitBlockSize) {
       const int residual_rows =
@@ -402,9 +415,25 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
       __m256i accum_data_v7;
 
       // Initialize with bias.
-      const __m256i initial_accum_data =
+      __m256i initial_accum_data =
           intrin_utils::mm256_n_loadu_epi32(residual_rows, bias_ptr);
       bias_ptr += bias_ptr_block_increment;
+
+      // Adjustments common across columns.
+      const std::int32_t rhs_zero_point = params.rhs_zero_point;
+      if ((params.flags & RUY_ASM_FLAG_HAS_LHS_SUMS) && rhs_zero_point) {
+        const __m256i lhs_sums_offset = _mm256_mullo_epi32(
+            _mm256_set1_epi32(rhs_zero_point),
+            _mm256_loadu_si256(
+                reinterpret_cast<__m256i const*>(&params.lhs_sums[row])));
+        initial_accum_data =
+            _mm256_sub_epi32(initial_accum_data, lhs_sums_offset);
+      }
+      const std::int32_t prod_zp_depth = params.prod_zp_depth;
+      if (prod_zp_depth) {
+        initial_accum_data = _mm256_add_epi32(initial_accum_data,
+                                              _mm256_set1_epi32(prod_zp_depth));
+      }
 
       accum_data_v0 = initial_accum_data;
       accum_data_v1 = initial_accum_data;
@@ -415,12 +444,32 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
       accum_data_v6 = initial_accum_data;
       accum_data_v7 = initial_accum_data;
 
+      // Adjustments differing across columns.
+      if (has_rhs_sums_offsets) {
+        accum_data_v0 = _mm256_sub_epi32(
+            accum_data_v0, _mm256_set1_epi32(rhs_sums_offsets[0]));
+        accum_data_v1 = _mm256_sub_epi32(
+            accum_data_v1, _mm256_set1_epi32(rhs_sums_offsets[1]));
+        accum_data_v2 = _mm256_sub_epi32(
+            accum_data_v2, _mm256_set1_epi32(rhs_sums_offsets[2]));
+        accum_data_v3 = _mm256_sub_epi32(
+            accum_data_v3, _mm256_set1_epi32(rhs_sums_offsets[3]));
+        accum_data_v4 = _mm256_sub_epi32(
+            accum_data_v4, _mm256_set1_epi32(rhs_sums_offsets[4]));
+        accum_data_v5 = _mm256_sub_epi32(
+            accum_data_v5, _mm256_set1_epi32(rhs_sums_offsets[5]));
+        accum_data_v6 = _mm256_sub_epi32(
+            accum_data_v6, _mm256_set1_epi32(rhs_sums_offsets[6]));
+        accum_data_v7 = _mm256_sub_epi32(
+            accum_data_v7, _mm256_set1_epi32(rhs_sums_offsets[7]));
+      }
+
       const std::int8_t* lhs_ptr = lhs_col_ptr;
       const std::int8_t* rhs_ptr = rhs_col_ptr;
       for (int d = 0; d < params.depth; d += kAvx8bitInnerSize) {
         const __m256i lhs_data =
             _mm256_load_si256(reinterpret_cast<const __m256i*>(lhs_ptr));
-        __m256i rhs_data_8bit =
+        const __m256i rhs_data_8bit =
             _mm256_load_si256(reinterpret_cast<const __m256i*>(rhs_ptr));
 
         // Each "int32" is two 16-bit RHS values, sign extended from 8-bit.
@@ -578,58 +627,6 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
         rhs_ptr += kAvx8bitBlockSize * kAvx8bitInnerSize;
       }
 
-      // Move most of this up to bias, or even outside row loop.
-
-      const std::int32_t lhs_zero_point = params.lhs_zero_point;
-      const std::int32_t rhs_zero_point = params.rhs_zero_point;
-      const std::int32_t prod_zp_depth = params.prod_zp_depth;
-      if ((params.flags & RUY_ASM_FLAG_HAS_LHS_SUMS) && rhs_zero_point) {
-        const __m256i lhs_sums_offset = _mm256_mullo_epi32(
-            _mm256_set1_epi32(rhs_zero_point),
-            intrin_utils::mm256_n_loadu_epi32(8, &params.lhs_sums[row]));
-        accum_data_v0 = _mm256_sub_epi32(accum_data_v0, lhs_sums_offset);
-        accum_data_v1 = _mm256_sub_epi32(accum_data_v1, lhs_sums_offset);
-        accum_data_v2 = _mm256_sub_epi32(accum_data_v2, lhs_sums_offset);
-        accum_data_v3 = _mm256_sub_epi32(accum_data_v3, lhs_sums_offset);
-        accum_data_v4 = _mm256_sub_epi32(accum_data_v4, lhs_sums_offset);
-        accum_data_v5 = _mm256_sub_epi32(accum_data_v5, lhs_sums_offset);
-        accum_data_v6 = _mm256_sub_epi32(accum_data_v6, lhs_sums_offset);
-        accum_data_v7 = _mm256_sub_epi32(accum_data_v7, lhs_sums_offset);
-      }
-      if (((params.flags & RUY_ASM_FLAG_HAS_RHS_SUMS) && lhs_zero_point) ||
-          prod_zp_depth) {
-        __m256i non_lhs_sums_offset = _mm256_mullo_epi32(
-            _mm256_set1_epi32(lhs_zero_point),
-            intrin_utils::mm256_n_loadu_epi32(8, &params.rhs_sums[col]));
-        non_lhs_sums_offset = _mm256_sub_epi32(
-            non_lhs_sums_offset, _mm256_set1_epi32(prod_zp_depth));
-
-        accum_data_v0 = _mm256_sub_epi32(
-            accum_data_v0,
-            _mm256_set1_epi32(_mm256_extract_epi32(non_lhs_sums_offset, 0)));
-        accum_data_v1 = _mm256_sub_epi32(
-            accum_data_v1,
-            _mm256_set1_epi32(_mm256_extract_epi32(non_lhs_sums_offset, 1)));
-        accum_data_v2 = _mm256_sub_epi32(
-            accum_data_v2,
-            _mm256_set1_epi32(_mm256_extract_epi32(non_lhs_sums_offset, 2)));
-        accum_data_v3 = _mm256_sub_epi32(
-            accum_data_v3,
-            _mm256_set1_epi32(_mm256_extract_epi32(non_lhs_sums_offset, 3)));
-        accum_data_v4 = _mm256_sub_epi32(
-            accum_data_v4,
-            _mm256_set1_epi32(_mm256_extract_epi32(non_lhs_sums_offset, 4)));
-        accum_data_v5 = _mm256_sub_epi32(
-            accum_data_v5,
-            _mm256_set1_epi32(_mm256_extract_epi32(non_lhs_sums_offset, 5)));
-        accum_data_v6 = _mm256_sub_epi32(
-            accum_data_v6,
-            _mm256_set1_epi32(_mm256_extract_epi32(non_lhs_sums_offset, 6)));
-        accum_data_v7 = _mm256_sub_epi32(
-            accum_data_v7,
-            _mm256_set1_epi32(_mm256_extract_epi32(non_lhs_sums_offset, 7)));
-      }
-
       if (params.dst_type_id != DstTypeId<std::int32_t>::kValue) {
         __m256i m_vector;
         __m256i e_vector;
@@ -641,10 +638,8 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
               residual_rows, &params.multiplier_exponent[row]);
         } else {
           // These arrays have size LhsCols, and are pre-filled.
-          m_vector = intrin_utils::mm256_n_loadu_epi32(
-              residual_rows, params.multiplier_fixedpoint);
-          e_vector = intrin_utils::mm256_n_loadu_epi32(
-              residual_rows, params.multiplier_exponent);
+          m_vector = _mm256_set1_epi32(params.multiplier_fixedpoint[0]);
+          e_vector = _mm256_set1_epi32(params.multiplier_exponent[0]);
         }
 
         const __m256i m_64bit_low =
