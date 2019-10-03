@@ -66,6 +66,7 @@ tf_instantiate_platform_libraries(names = [
     "platform_port",
     "rocm_rocdl_path",
     "stacktrace",
+    "stacktrace_handler",
     "strong_hash",
     "subprocess",
     "tracing",
@@ -461,12 +462,8 @@ cc_library(
 
 cc_library(
     name = "stacktrace_handler",
-    srcs = tf_platform_srcs(["stacktrace_handler.cc"]),
-    hdrs = ["stacktrace_handler.h"],
-    deps = [
-        ":platform",
-        ":stacktrace",
-    ],
+    textual_hdrs = ["stacktrace_handler.h"],
+    deps = tf_platform_helper_deps("stacktrace_handler_impl"),
 )
 
 cc_library(

@@ -512,6 +512,7 @@ def tf_additional_lib_srcs(exclude = []):
         "default/port.cc",
         "default/posix_file_system.cc",
         "default/subprocess.cc",
+        "default/stacktrace_handler.cc",
     ])
     return select({
         "//tensorflow:windows": windows_srcs,
