@@ -68,8 +68,10 @@ TFE_Op* GetOp(TFE_Context* ctx, const char* op_or_function_name,
 }
 
 void ReturnOp(TFE_Op* object) {
-  object->Clear();
-  thread_local_eager_operation.reset(object);
+  if (object) {
+    object->Clear();
+    thread_local_eager_operation.reset(object);
+  }
 }
 
 TF_Status* ReleaseThreadLocalStatus() {
