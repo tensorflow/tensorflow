@@ -171,10 +171,11 @@ def get_python_path(environ_cp, python_bin_path):
   if environ_cp.get('PYTHONPATH'):
     python_paths = environ_cp.get('PYTHONPATH').split(':')
   try:
+    stderr = open(os.devnull, 'wb')
     library_paths = run_shell([
         python_bin_path, '-c',
         'import site; print("\\n".join(site.getsitepackages()))'
-    ]).split('\n')
+    ], stderr=stderr).split('\n')
   except subprocess.CalledProcessError:
     library_paths = [
         run_shell([
