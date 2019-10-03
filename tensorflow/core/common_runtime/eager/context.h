@@ -301,8 +301,7 @@ class EagerContext : public core::RefCounted {
   // can still be accessed, and will automatically register existing functions
   // if there are newly added hosts.
   Status UpdateRemoteMaster(
-      std::unique_ptr<ServerInterface> server, WorkerEnv* worker_env,
-      std::shared_ptr<WorkerSession> worker_session,
+      WorkerEnv* worker_env, std::shared_ptr<WorkerSession> worker_session,
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       std::unique_ptr<DynamicDeviceMgr> remote_device_manager,
       const std::vector<string>& add_remote_contexts,

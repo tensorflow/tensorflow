@@ -741,8 +741,7 @@ Status EagerContext::InitializeRemoteMaster(
 }
 
 Status EagerContext::UpdateRemoteMaster(
-    std::unique_ptr<ServerInterface> server, WorkerEnv* worker_env,
-    std::shared_ptr<WorkerSession> worker_session,
+    WorkerEnv* worker_env, std::shared_ptr<WorkerSession> worker_session,
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     std::unique_ptr<DynamicDeviceMgr> remote_device_manager,
     const std::vector<string>& add_remote_contexts,
@@ -774,7 +773,7 @@ Status EagerContext::UpdateRemoteMaster(
   }
   std::vector<const FunctionDef*> function_defs = ListRegisteredFunctions();
   TF_RETURN_IF_ERROR(SetMasterContextState(
-      std::move(server), worker_env, std::move(worker_session),
+      nullptr, worker_env, std::move(worker_session),
       std::move(remote_eager_workers), std::move(remote_device_manager),
       context_id, GetContextViewId() + 1, r, local_device_mgr, keep_alive_secs,
       cluster_flr, nullptr));
@@ -792,6 +791,9 @@ Status EagerContext::UpdateRemoteMaster(
   return Status::OK();
 }
 
+// Set distributed execution related fields in the master context. Passing
+// nullptr to `server` will update the existing GRPC server in context (instead
+// of resetting with a new server).
 Status EagerContext::SetMasterContextState(
     std::unique_ptr<ServerInterface> server, WorkerEnv* worker_env,
     std::shared_ptr<WorkerSession> worker_session,
@@ -818,14 +820,16 @@ Status EagerContext::SetMasterContextState(
   if (rendezvous_ != nullptr) rendezvous_->Unref();
   rendezvous_ = r;
 
-  // Memory leak!
-  if (server_ != nullptr) {
-    LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
-                    "Servers don't support clean shutdown.";
-    server_.release();
+  if (server != nullptr) {
+    // Memory leak!
+    if (server_ != nullptr) {
+      LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
+                      "Servers don't support clean shutdown.";
+      server_.release();
+    }
+    server_ = std::move(server);
   }
-
-  server_ = std::move(server);
+  DCHECK(server_ != nullptr);
   if (remote_mgr != nullptr) {
     remote_mgr_ = std::move(remote_mgr);
   }

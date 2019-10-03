@@ -24,7 +24,6 @@ limitations under the License.
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/server_builder.h"
-
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/process_util.h"
@@ -47,9 +46,11 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker_cache_wrapper.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -76,7 +77,7 @@ RendezvousMgrInterface* NewRpcRendezvousMgr(const WorkerEnv* env) {
 }  // namespace
 
 GrpcServer::GrpcServer(const ServerDef& server_def, Env* env)
-    : server_def_(server_def), env_(env), state_(NEW) {}
+    : env_(env), state_(NEW), server_def_(server_def) {}
 
 GrpcServer::~GrpcServer() {
   TF_CHECK_OK(Stop());
@@ -112,20 +113,20 @@ GrpcServer::~GrpcServer() {
 
 void GrpcServer::MaybeMutateBuilder(::grpc::ServerBuilder* builder) {}
 
-// Look up the port that has been requested for this task in `server_def_`.
-Status GrpcServer::GetPort(int* port) const {
+// Look up the port that has been requested for this task in `server_def`.
+Status GrpcServer::GetPort(const ServerDef& server_def, int* port) const {
   *port = -1;
-  for (const auto& job : server_def_.cluster().job()) {
-    if (job.name() == server_def_.job_name()) {
-      auto iter = job.tasks().find(server_def_.task_index());
+  for (const auto& job : server_def.cluster().job()) {
+    if (job.name() == server_def.job_name()) {
+      auto iter = job.tasks().find(server_def.task_index());
       if (iter == job.tasks().end()) {
-        return errors::InvalidArgument("Task ", server_def_.task_index(),
+        return errors::InvalidArgument("Task ", server_def.task_index(),
                                        " was not defined in job \"",
-                                       server_def_.job_name(), "\"");
+                                       server_def.job_name(), "\"");
       }
 
-      if (server_def_.port() != 0) {
-        *port = server_def_.port();
+      if (server_def.port() != 0) {
+        *port = server_def.port();
       } else {
         auto colon_index = iter->second.find_last_of(':');
         if (!strings::safe_strto32(iter->second.substr(colon_index + 1),
@@ -139,7 +140,7 @@ Status GrpcServer::GetPort(int* port) const {
     }
   }
   if (*port == -1) {
-    return errors::Internal("Job \"", server_def_.job_name(),
+    return errors::Internal("Job \"", server_def.job_name(),
                             "\" was not defined in cluster");
   }
 
@@ -156,7 +157,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   // otherwise if 'task_index=-1' the program will abort.
 
   int requested_port;
-  TF_RETURN_IF_ERROR(GetPort(&requested_port));
+  TF_RETURN_IF_ERROR(GetPort(server_def_, &requested_port));
 
   SessionOptions sess_opts;
   ConfigProto config = server_def_.default_session_config();
@@ -386,6 +387,47 @@ Status GrpcServer::AddMasterEagerContextToEagerService(
   auto* eager_service =
       static_cast<eager::GrpcEagerServiceImpl*>(eager_service_);
   return eager_service->CreateMasterContext(context_id, context);
+}
+
+Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
+  mutex_lock l(mu_);
+  server_def_ = server_def;
+  WorkerCacheInterface* worker_cache;
+  WorkerCacheFactoryOptions worker_cache_factory_options(server_def_);
+  TF_RETURN_IF_ERROR(
+      WorkerCacheFactory(worker_cache_factory_options, &worker_cache));
+  if (worker_cache == nullptr) {
+    return errors::InvalidArgument(
+        "Failed to build worker cache with the provided server def.");
+  }
+
+  string default_worker_name;
+  string unused;
+  if (!DeviceNameUtils::SplitDeviceName(master_env_.local_devices[0]->name(),
+                                        &default_worker_name, &unused)) {
+    return errors::Internal("Could not parse worker name.");
+  }
+  std::unique_ptr<DeviceResolverDistributed> dev_resolver(
+      new DeviceResolverDistributed(worker_env_.device_mgr, worker_cache,
+                                    default_worker_name));
+  std::unique_ptr<CollectiveParamResolverDistributed> param_resolver(
+      new CollectiveParamResolverDistributed(
+          server_def_.default_session_config(), worker_env_.device_mgr,
+          dev_resolver.get(), worker_cache, default_worker_name));
+  worker_env_.collective_executor_mgr = new RpcCollectiveExecutorMgr(
+      server_def_.default_session_config(), worker_env_.device_mgr,
+      std::move(dev_resolver), std::move(param_resolver), worker_cache,
+      default_worker_name);
+
+  worker_env_.session_mgr = new SessionMgr(
+      &worker_env_, SessionMgr::WorkerNameFromServerDef(server_def_),
+      std::unique_ptr<WorkerCacheInterface>(worker_cache),
+      [this](const ServerDef& server_def, WorkerCacheInterface** worker_cache) {
+        WorkerCacheFactoryOptions options(server_def);
+        return WorkerCacheFactory(options, worker_cache);
+      });
+  master_env_.worker_cache = worker_cache;
+  return Status::OK();
 }
 
 Status GrpcServer::Stop() {
