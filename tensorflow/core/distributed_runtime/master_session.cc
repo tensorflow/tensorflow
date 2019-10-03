@@ -1917,6 +1917,13 @@ Status MasterSession::DoRunWithLocalExecution(
   std::unique_ptr<ProfileHandler> ph;
   FillPerStepState(rcg, req.options(), step_id, count, &pss, &ph);
 
+  if (pss.collect_partition_graphs &&
+      session_opts_.config.experimental().disable_output_partition_graphs()) {
+    return errors::InvalidArgument(
+        "RunOptions.output_partition_graphs() is not supported when "
+        "disable_output_partition_graphs is true.");
+  }
+
   Status s = rcg->RunPartitions(env_, step_id, count, &pss, opts, req, resp,
                                 &cancellation_manager_, false);
 
