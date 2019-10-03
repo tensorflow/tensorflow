@@ -165,21 +165,21 @@ func @calls(%arg0: i32) {
 
 func @func_with_ops(f32) {
 ^bb0(%a : f32):
-  %sf = addf %a, %a, %a : f32  // expected-error {{custom op 'std.addf' expected 2 operands}}
+  %sf = addf %a, %a, %a : f32  // expected-error {{'std.addf' op expected 2 operands}}
 }
 
 // -----
 
 func @func_with_ops(f32) {
 ^bb0(%a : f32):
-  %sf = addf(%a, %a) : f32  // expected-error {{unexpected delimiter}}
+  %sf = addf(%a, %a) : f32  // expected-error {{expected ':'}}
 }
 
 // -----
 
 func @func_with_ops(f32) {
 ^bb0(%a : f32):
-  %sf = addf{%a, %a} : f32  // expected-error {{invalid operand}}
+  %sf = addf{%a, %a} : f32  // expected-error {{expected attribute name}}
 }
 
 // -----
