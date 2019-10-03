@@ -42,7 +42,7 @@ struct DeviceInfo {
   // Read bandwidth to intermediate memory in GB per second.
   double intermediate_read_gb_per_sec;
 
-  // Read bandwidth to intermediate memory in GB per second.
+  // Write bandwidth to intermediate memory in GB per second.
   double intermediate_write_gb_per_sec;
 
   DeviceInfo()
