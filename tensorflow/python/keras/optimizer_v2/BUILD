@@ -217,6 +217,7 @@ cuda_py_test(
     tags = [
         "manual",
         "no_oss",
+        "no_rocm",
         "no_windows",
         "notap",
     ],
