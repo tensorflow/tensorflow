@@ -675,6 +675,20 @@ cc_test(
 )
 
 cc_library(
+    name = "lstm",
+    srcs = ["lstm.cc"],
+    hdrs = ["lstm.h"],
+    deps = [
+        ":gpu_operation",
+        ":util",
+        ":work_group_picking",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+    ],
+)
+
+cc_library(
     name = "max_unpooling",
     srcs = ["max_unpooling.cc"],
     hdrs = ["max_unpooling.h"],
