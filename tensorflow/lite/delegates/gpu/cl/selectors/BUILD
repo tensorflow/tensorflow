@@ -103,6 +103,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl/kernels:concat_xy",
         "//tensorflow/lite/delegates/gpu/cl/kernels:concat_z",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:lstm",
         "//tensorflow/lite/delegates/gpu/cl/kernels:max_unpooling",
         "//tensorflow/lite/delegates/gpu/cl/kernels:multiply_add",
         "//tensorflow/lite/delegates/gpu/cl/kernels:padding",
