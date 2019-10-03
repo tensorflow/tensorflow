@@ -1145,7 +1145,11 @@ void KernelFloatAvx2(const KernelParamsFloat<8, 8>& params) {
       const float* rhs_ptr = rhs_col_ptr;
       for (int d = 0; d < params.depth; ++d) {
         const __m256 lhs_data = _mm256_loadu_ps(lhs_ptr);
-        const __m256 rhs_data = _mm256_loadu_ps(rhs_ptr);
+        // In this version RHS values are loaded individually rather than first
+        // loading together and then extract with broadcasting. This is because
+        // AVX flavours and instrinsics and compilers in combination do not
+        // handle this pattern of extraction very well.
+        const float* rhs_data = rhs_ptr;
 
         for (int j = 0; j < 8; ++j) {
           const __m256 dup_rhs_element_j = _mm256_set1_ps(rhs_data[j]);
@@ -1204,7 +1208,7 @@ void KernelFloatAvx2(const KernelParamsFloat<8, 8>& params) {
       const float* rhs_ptr = rhs_col_ptr;
       for (int d = 0; d < params.depth; ++d) {
         const __m256 lhs_data = _mm256_loadu_ps(lhs_ptr);
-        const __m256 rhs_data = _mm256_loadu_ps(rhs_ptr);
+        const float* rhs_data = rhs_ptr;
 
         for (int j = 0; j < 8; ++j) {
           const __m256 dup_rhs_element_j = _mm256_set1_ps(rhs_data[j]);
