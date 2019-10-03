@@ -708,8 +708,8 @@ bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
 
   strings::StrAppend(&result_,
                      "  _ctx = _context._context or _context.context()\n"
-                     "  if _ctx._thread_local_data.is_eager:",
-                     "\n");
+                     "  tld = _ctx._thread_local_data\n",
+                     "  if tld.is_eager:", "\n");
   if (eager_not_allowed_error.empty()) {
     AddEagerFastPathExecute();
   } else {
@@ -762,9 +762,9 @@ bool GenEagerPythonOp::AddEagerFallbackCode(
 }
 
 void GenEagerPythonOp::AddEagerFastPathExecute() {
-  string fastpath_execute_params = strings::StrCat(
-      "_ctx._context_handle, _ctx._thread_local_data.device_name, \"",
-      op_def_.name(), "\", ", "name, _ctx.op_callbacks");
+  string fastpath_execute_params =
+      strings::StrCat("_ctx._context_handle, tld.device_name, \"",
+                      op_def_.name(), "\", ", "name, tld.op_callbacks");
   string fallback_params;
 
   for (int i = 0; i < api_def_.in_arg_size(); i++) {

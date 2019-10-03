@@ -60,6 +60,7 @@ class DType(object):
   The `tf.as_dtype()` function converts numpy types and string type
   names to a `DType` object.
   """
+  __slots__ = ["_type_enum"]
 
   def __init__(self, type_enum):
     """Creates a new `DataType`.
@@ -261,11 +262,14 @@ class DType(object):
     """Returns True iff this DType refers to the same type as `other`."""
     if other is None:
       return False
-    try:
-      dtype = as_dtype(other).as_datatype_enum
-      return self._type_enum == dtype  # pylint: disable=protected-access
-    except TypeError:
-      return False
+
+    if type(other) != DType:  # pylint: disable=unidiomatic-typecheck
+      try:
+        other = as_dtype(other)
+      except TypeError:
+        return False
+
+    return self._type_enum == other._type_enum  # pylint: disable=protected-access
 
   def __ne__(self, other):
     """Returns True iff self != other."""
