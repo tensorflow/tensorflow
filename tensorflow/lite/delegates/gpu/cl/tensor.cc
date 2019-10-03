@@ -54,8 +54,8 @@ Status CreateImageBufferFromBuffer(const CLContext& context, cl_mem memory,
 Status CreateTensor(const CLContext& context, const CLDevice& device,
                     const BHWC& shape, const TensorDescriptor& descriptor,
                     cl_mem memory, Tensor* result) {
-  const bool shared = memory != nullptr;
-  if (!shared) {
+  const bool memory_owner = memory == nullptr;
+  if (memory_owner) {
     CLMemory mem;
     RETURN_IF_ERROR(
         AllocateTensorMemory(context, device, shape, descriptor, &mem));
@@ -67,9 +67,9 @@ Status CreateTensor(const CLContext& context, const CLDevice& device,
         context, memory, descriptor.data_type,
         shape.b * shape.w * shape.h * IntegralDivideRoundUp(shape.c, 4),
         &image_memory));
-    *result = Tensor(memory, shared, image_memory, shape, descriptor);
+    *result = Tensor(memory, memory_owner, image_memory, shape, descriptor);
   } else {
-    *result = Tensor(memory, shared, shape, descriptor);
+    *result = Tensor(memory, memory_owner, shape, descriptor);
   }
   return OkStatus();
 }
