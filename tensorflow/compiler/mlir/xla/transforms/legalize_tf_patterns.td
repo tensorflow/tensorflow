@@ -50,24 +50,12 @@ def : Pattern<
 //===----------------------------------------------------------------------===//
 // Bias op patterns.
 //===----------------------------------------------------------------------===//
-def Is1DShapeTensor
-    : Type<CPred<"$_self.isa<RankedTensorType>() && "
-                 "$_self.cast<RankedTensorType>().getRank() == 1">>;
-def IsAtleast3DShapeTensor
-    : Type<CPred<"$_self.isa<RankedTensorType>() && "
-                 "$_self.cast<RankedTensorType>().getRank() > 2">>;
-
 def BiasAddFeatureDimension : NativeCodeCall<
     "getBiasFeatureDimension($_builder, $0, $1)">;
-def ValidBiasAddFeatureDimension : Constraint<
-    CPred<"hasValidBiasFeatureDimension($0, $1, $2)">,
-    "valid biasAdd feature dimension">;
 
-def : Pat<(TF_BiasAddOp IsAtleast3DShapeTensor:$input, Is1DShapeTensor:$bias,
-                        TF_ConvnetDataFormatAttr:$data_format),
+def : Pat<(TF_BiasAddOp AnyStaticShapeTensor:$input, $bias, $data_format),
           (HLO_AddOp $input, $bias,
-              (BiasAddFeatureDimension $data_format, $input)),
-          [(ValidBiasAddFeatureDimension $data_format, $input, $bias)]>;
+              (BiasAddFeatureDimension $data_format, $input))>;
 
 //===----------------------------------------------------------------------===//
 // Binary op patterns.

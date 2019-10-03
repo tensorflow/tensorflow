@@ -37,23 +37,6 @@ func @biasAdd_NCHW(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) -> tens
   return %0 : tensor<1x32x10x32xi32>
 }
 
-// In the next two tests, the replacement fails because the bias dimension does
-// not have the same size as the feature dimension.
-
-// CHECK-LABEL: func @biasAdd_NHWC_invalid
-func @biasAdd_NHWC_invalid(%arg0: tensor<1x32x10x2xi32>, %arg1: tensor<32xi32>) -> tensor<1x32x10x2xi32> {
-  // CHECK-NOT: xla_hlo.add
-  %0 = "tf.BiasAdd"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", data_format = "NHWC"} : (tensor<1x32x10x2xi32>, tensor<32xi32>) -> tensor<1x32x10x2xi32>
-  return %0 : tensor<1x32x10x2xi32>
-}
-
-// CHECK-LABEL: func @biasAdd_NCHW_invalid
-func @biasAdd_NCHW_invalid(%arg0: tensor<1x10x10x32xi32>, %arg1: tensor<32xi32>) -> tensor<1x10x10x32xi32> {
-  // CHECK-NOT: xla_hlo.add
-  %0 = "tf.BiasAdd"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", data_format = "NCHW"} : (tensor<1x10x10x32xi32>, tensor<32xi32>) -> tensor<1x10x10x32xi32>
-  return %0 : tensor<1x10x10x32xi32>
-}
-
 //===----------------------------------------------------------------------===//
 // Binary op legalizations.
 //===----------------------------------------------------------------------===//

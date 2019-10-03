@@ -146,17 +146,6 @@ static IntegerAttr getFeatureDimensionAttr(Builder &b, StringAttr format,
 // Bias op utilities.
 //===----------------------------------------------------------------------===//
 
-/// Returns whether the biasAdd feature dimension is valid or not.
-static bool hasValidBiasFeatureDimension(StringAttr format, Value *input,
-                                         Value *bias) {
-  auto inputType = input->getType().cast<RankedTensorType>();
-  auto biasType = bias->getType().cast<RankedTensorType>();
-
-  // There must be enough biases as the feature dimension of the input tensor.
-  size_t featureDim = getFeatureDimension(format, inputType);
-  return biasType.getDimSize(0) == inputType.getDimSize(featureDim);
-}
-
 /// Return a 1D DenseIntElementsAttr for the feature dimension of a BiasAdd.
 static DenseIntElementsAttr getBiasFeatureDimension(Builder &b,
                                                     StringAttr format,
