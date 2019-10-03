@@ -1081,6 +1081,15 @@ struct SIToFPLowering
   using Super::Super;
 };
 
+struct FPExtLowering : public OneToOneLLVMOpLowering<FPExtOp, LLVM::FPExtOp> {
+  using Super::Super;
+};
+
+struct FPTruncLowering
+    : public OneToOneLLVMOpLowering<FPTruncOp, LLVM::FPTruncOp> {
+  using Super::Super;
+};
+
 struct SignExtendIOpLowering
     : public OneToOneLLVMOpLowering<SignExtendIOp, LLVM::SExtOp> {
   using Super::Super;
@@ -1264,9 +1273,10 @@ void mlir::populateStdToLLVMConversionPatterns(
       DivFOpLowering, FuncOpConversion, IndexCastOpLowering, LoadOpLowering,
       MemRefCastOpLowering, MulFOpLowering, MulIOpLowering, OrOpLowering,
       RemISOpLowering, RemIUOpLowering, RemFOpLowering, ReturnOpLowering,
-      SelectOpLowering, SIToFPLowering, SignExtendIOpLowering, SplatOpLowering,
-      StoreOpLowering, SubFOpLowering, SubIOpLowering, TruncateIOpLowering,
-      XOrOpLowering, ZeroExtendIOpLowering>(*converter.getDialect(), converter);
+      SelectOpLowering, SIToFPLowering, FPExtLowering, FPTruncLowering,
+      SignExtendIOpLowering, SplatOpLowering, StoreOpLowering, SubFOpLowering,
+      SubIOpLowering, TruncateIOpLowering, XOrOpLowering,
+      ZeroExtendIOpLowering>(*converter.getDialect(), converter);
 }
 
 // Convert types using the stored LLVM IR module.

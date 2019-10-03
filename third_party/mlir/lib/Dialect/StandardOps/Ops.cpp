@@ -2339,6 +2339,28 @@ static LogicalResult verify(ZeroExtendIOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// FPExtOp
+//===----------------------------------------------------------------------===//
+
+bool FPExtOp::areCastCompatible(Type a, Type b) {
+  if (auto fa = a.dyn_cast<FloatType>())
+    if (auto fb = b.dyn_cast<FloatType>())
+      return fa.getWidth() < fb.getWidth();
+  return false;
+}
+
+//===----------------------------------------------------------------------===//
+// FPTruncOp
+//===----------------------------------------------------------------------===//
+
+bool FPTruncOp::areCastCompatible(Type a, Type b) {
+  if (auto fa = a.dyn_cast<FloatType>())
+    if (auto fb = b.dyn_cast<FloatType>())
+      return fa.getWidth() > fb.getWidth();
+  return false;
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
