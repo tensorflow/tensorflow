@@ -2,7 +2,6 @@
 
 // TILE-1D-DAG: #[[strided2D:.*]] = (d0, d1)[s0, s1] -> (d0 * s1 + s0 + d1)
 // TILE-1D-DAG: #[[strided2DnoOffset:.*]] = (d0, d1)[s0] -> (d0 * s0 + d1)
-#strided2D = (d0, d1)[s0, s1] -> (d0 * s1 + s0 + d1)
 
 func @matmul(%arg0: !linalg.buffer<?xf32>, %arg1: index, %arg2: index, %arg3: index) {
   %c0 = constant 0 : index
@@ -10,10 +9,10 @@ func @matmul(%arg0: !linalg.buffer<?xf32>, %arg1: index, %arg2: index, %arg3: in
   %I = linalg.range %c0:%arg1:%c1 : !linalg.range
   %J = linalg.range %c0:%arg2:%c1 : !linalg.range
   %K = linalg.range %c0:%arg3:%c1 : !linalg.range
-  %A = linalg.view %arg0[%I, %K] : !linalg.buffer<?xf32> -> memref<?x?xf32, #strided2D>
-  %B = linalg.view %arg0[%K, %J] : !linalg.buffer<?xf32> -> memref<?x?xf32, #strided2D>
-  %C = linalg.view %arg0[%I, %J] : !linalg.buffer<?xf32> -> memref<?x?xf32, #strided2D>
-  linalg.matmul(%A, %B, %C) : memref<?x?xf32, #strided2D>, memref<?x?xf32, #strided2D>, memref<?x?xf32, #strided2D>
+  %A = linalg.view %arg0[%I, %K] : !linalg.buffer<?xf32> -> memref<?x?xf32, offset: ?, strides: [?, 1]>
+  %B = linalg.view %arg0[%K, %J] : !linalg.buffer<?xf32> -> memref<?x?xf32, offset: ?, strides: [?, 1]>
+  %C = linalg.view %arg0[%I, %J] : !linalg.buffer<?xf32> -> memref<?x?xf32, offset: ?, strides: [?, 1]>
+  linalg.matmul(%A, %B, %C) : memref<?x?xf32, offset: ?, strides: [?, 1]>, memref<?x?xf32, offset: ?, strides: [?, 1]>, memref<?x?xf32, offset: ?, strides: [?, 1]>
   return
 }
 // TILE-1D-LABEL: func @matmul(%{{.*}}: !linalg.buffer<?xf32>, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index) {

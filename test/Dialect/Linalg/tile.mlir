@@ -14,16 +14,14 @@
 //  TILE-02-DAG: #[[strided1D:.*]] = (d0)[s0] -> (d0 + s0)
 // TILE-002-DAG: #[[strided1D:.*]] = (d0)[s0] -> (d0 + s0)
 // TILE-234-DAG: #[[strided1D:.*]] = (d0)[s0] -> (d0 + s0)
-#strided1D = (d0)[s0] -> (d0 + s0)
-// CHECK-DAG: #[[strided2D:.*]] = (d0, d1)[s0, s1] -> (d0 * s1 + s0 + d1)
+
 //   TILE-2-DAG: #[[strided2D:.*]] = (d0, d1)[s0, s1] -> (d0 * s1 + s0 + d1)
 //  TILE-02-DAG: #[[strided2D:.*]] = (d0, d1)[s0, s1] -> (d0 * s1 + s0 + d1)
 // TILE-002-DAG: #[[strided2D:.*]] = (d0, d1)[s0, s1] -> (d0 * s1 + s0 + d1)
 // TILE-234-DAG: #[[strided2D:.*]] = (d0, d1)[s0, s1] -> (d0 * s1 + s0 + d1)
-#strided2D = (d0, d1)[s0, s1] -> (d0 * s1 + s0 + d1)
 
-func @matmul(%arg0: memref<?x?xf32, #strided2D>, %arg1: memref<?x?xf32, #strided2D>, %arg2: memref<?x?xf32, #strided2D>) {
-  linalg.matmul(%arg0, %arg1, %arg2) : memref<?x?xf32, #strided2D>, memref<?x?xf32, #strided2D>, memref<?x?xf32, #strided2D>
+func @matmul(%arg0: memref<?x?xf32, offset: ?, strides: [?, 1]>, %arg1: memref<?x?xf32, offset: ?, strides: [?, 1]>, %arg2: memref<?x?xf32, offset: ?, strides: [?, 1]>) {
+  linalg.matmul(%arg0, %arg1, %arg2) : memref<?x?xf32, offset: ?, strides: [?, 1]>, memref<?x?xf32, offset: ?, strides: [?, 1]>, memref<?x?xf32, offset: ?, strides: [?, 1]>
   return
 }
 // TILE-2-LABEL: func @matmul(
@@ -78,8 +76,8 @@ func @matmul(%arg0: memref<?x?xf32, #strided2D>, %arg1: memref<?x?xf32, #strided
 //
 //       TILE-234:        linalg.matmul(%[[sAik]], %[[sBkj]], %[[sCij]]) : memref<?x?xf32, #[[strided2D]]>, memref<?x?xf32, #[[strided2D]]>, memref<?x?xf32, #[[strided2D]]>
 
-func @matvec(%arg0: memref<?x?xf32, #strided2D>, %arg1: memref<?xf32, #strided1D>, %arg2: memref<?xf32, #strided1D>) {
-  linalg.matvec(%arg0, %arg1, %arg2) : memref<?x?xf32, #strided2D>, memref<?xf32, #strided1D>, memref<?xf32, #strided1D>
+func @matvec(%arg0: memref<?x?xf32, offset: ?, strides: [?, 1]>, %arg1: memref<?xf32, offset: ?, strides: [1]>, %arg2: memref<?xf32, offset: ?, strides: [1]>) {
+  linalg.matvec(%arg0, %arg1, %arg2) : memref<?x?xf32, offset: ?, strides: [?, 1]>, memref<?xf32, offset: ?, strides: [1]>, memref<?xf32, offset: ?, strides: [1]>
   return
 }
 // TILE-2-LABEL: func @matvec(
@@ -120,8 +118,8 @@ func @matvec(%arg0: memref<?x?xf32, #strided2D>, %arg1: memref<?xf32, #strided1D
 //
 //       TILE-234:      linalg.matvec(%[[sAij]], %[[sBj]], %[[sCi]]) : memref<?x?xf32, #[[strided2D]]>, memref<?xf32, #[[strided1D]]>, memref<?xf32, #[[strided1D]]>
 
-func @dot(%arg0: memref<?xf32, #strided1D>, %arg1: memref<?xf32, #strided1D>, %arg2: memref<f32>) {
-  linalg.dot(%arg0, %arg1, %arg2) : memref<?xf32, #strided1D>, memref<?xf32, #strided1D>, memref<f32>
+func @dot(%arg0: memref<?xf32, offset: ?, strides: [1]>, %arg1: memref<?xf32, offset: ?, strides: [1]>, %arg2: memref<f32>) {
+  linalg.dot(%arg0, %arg1, %arg2) : memref<?xf32, offset: ?, strides: [1]>, memref<?xf32, offset: ?, strides: [1]>, memref<f32>
   return
 }
 // TILE-2-LABEL: func @dot(
@@ -148,8 +146,8 @@ func @dot(%arg0: memref<?xf32, #strided1D>, %arg1: memref<?xf32, #strided1D>, %a
 //       TILE-234:    %[[sBi:.*]] = linalg.subview %{{.*}}[%{{.*}}, %[[b]], %{{.*}}] : memref<?xf32, #[[strided1D]]>
 //       TILE-234:    linalg.dot(%[[sAi]], %[[sBi]], %{{.*}}) : memref<?xf32, #[[strided1D]]>, memref<?xf32, #[[strided1D]]>, memref<f32>
 
-func @fill(%arg0: memref<?x?xf32, #strided2D>, %arg1: f32) {
-  linalg.fill(%arg0, %arg1) : memref<?x?xf32, #strided2D>, f32
+func @fill(%arg0: memref<?x?xf32, offset: ?, strides: [?, 1]>, %arg1: f32) {
+  linalg.fill(%arg0, %arg1) : memref<?x?xf32, offset: ?, strides: [?, 1]>, f32
   return
 }
 // TILE-2-LABEL: func @fill
@@ -179,13 +177,13 @@ func @fill(%arg0: memref<?x?xf32, #strided2D>, %arg1: f32) {
   n_views = [2, 1]
 }
 
-func @pointwise(%arg0: memref<?x?xf32, #strided2D>, %arg1: memref<?x?xf32, #strided2D>,
-                %arg2: memref<?x?xf32, #strided2D>) {
+func @pointwise(%arg0: memref<?x?xf32, offset: ?, strides: [?, 1]>, %arg1: memref<?x?xf32, offset: ?, strides: [?, 1]>,
+                %arg2: memref<?x?xf32, offset: ?, strides: [?, 1]>) {
   linalg.generic #pointwise_2d_trait %arg0, %arg1, %arg2 {
   ^bb0(%arg4: f32, %arg5: f32, %arg6: f32):   // no predecessors
     %4 = addf %arg4, %arg5 : f32
     linalg.yield %4 : f32
-  }: memref<?x?xf32, #strided2D>, memref<?x?xf32, #strided2D>, memref<?x?xf32, #strided2D>
+  }: memref<?x?xf32, offset: ?, strides: [?, 1]>, memref<?x?xf32, offset: ?, strides: [?, 1]>, memref<?x?xf32, offset: ?, strides: [?, 1]>
   return
 }
 // TILE-2-LABEL: func @pointwise

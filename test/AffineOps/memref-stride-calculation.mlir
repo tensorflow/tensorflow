@@ -17,6 +17,8 @@ func @f(%0: index) {
 
   %11 = alloc() : memref<3x4x5xf32, (i, j, k)->(i, j, k)>
 // CHECK: MemRefType offset: 0 strides: 20, 5, 1
+  %b11 = alloc() : memref<3x4x5xf32, offset: 0, strides: [20, 5, 1]>
+// CHECK: MemRefType offset: 0 strides: 20, 5, 1
   %12 = alloc(%0) : memref<3x4x?xf32, (i, j, k)->(i, j, k)>
 // CHECK: MemRefType offset: 0 strides: ?, ?, 1
   %13 = alloc(%0) : memref<3x?x5xf32, (i, j, k)->(i, j, k)>
@@ -32,11 +34,19 @@ func @f(%0: index) {
 // CHECK: MemRefType offset: 1 strides: 32, 16, ?
   %22 = alloc()[%0] : memref<3x4x5xf32, (i, j, k)[M]->(32 * i + M * j + 16 * k + 3)>
 // CHECK: MemRefType offset: 3 strides: 32, ?, 16
+  %b22 = alloc(%0)[%0, %0] : memref<3x4x?xf32, offset: 0, strides: [?, ?, 1]>
+// CHECK: MemRefType offset: 0 strides: ?, ?, 1
   %23 = alloc(%0)[%0] : memref<3x?x5xf32, (i, j, k)[M]->(M * i + 32 * j + 16 * k + 7)>
 // CHECK: MemRefType offset: 7 strides: ?, 32, 16
+  %b23 = alloc(%0)[%0] : memref<3x?x5xf32, offset: 0, strides: [?, 5, 1]>
+// CHECK: MemRefType offset: 0 strides: ?, 5, 1
   %24 = alloc(%0)[%0] : memref<3x?x5xf32, (i, j, k)[M]->(M * i + 32 * j + 16 * k + M)>
 // CHECK: MemRefType offset: ? strides: ?, 32, 16
+  %b24 = alloc(%0)[%0, %0] : memref<3x?x5xf32, offset: ?, strides: [?, 32, 16]>
+// CHECK: MemRefType offset: ? strides: ?, 32, 16
   %25 = alloc(%0, %0)[%0, %0] : memref<?x?x16xf32, (i, j, k)[M, N]->(M * i + N * j + k + 1)>
+// CHECK: MemRefType offset: 1 strides: ?, ?, 1
+  %b25 = alloc(%0, %0)[%0, %0] : memref<?x?x16xf32, offset: 1, strides: [?, ?, 1]>
 // CHECK: MemRefType offset: 1 strides: ?, ?, 1
   %26 = alloc(%0)[] : memref<?xf32, (i)[M]->(i)>
 // CHECK: MemRefType offset: 0 strides: 1

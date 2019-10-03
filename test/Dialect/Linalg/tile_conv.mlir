@@ -6,10 +6,9 @@
 // TILE-23004-DAG: #[[D0x30pS0x10:.*]] = (d0) -> (d0 * 30)
 // TILE-23004-DAG: #[[D0x30pS0x10p90:.*]] = (d0)[s0] -> (d0 * 30 + s0 * 10 + 90)
 // TILE-23004-DAG: #[[strided4D:.*]] = (d0, d1, d2, d3)[s0, s1, s2, s3] -> (d0 * s1 + s0 + d1 * s2 + d2 * s3 + d3)
-#strided4D = (d0, d1, d2, d3)[s0, s1, s2, s3] -> (d0 * s1 + s0 + d1 * s2 + d2 * s3 + d3)
 
-func @conv(%arg0: memref<?x?x?x?xf32, #strided4D>, %arg1: memref<?x?x?x?xf32, #strided4D>, %arg2: memref<?x?x?x?xf32, #strided4D>) {
-  linalg.conv(%arg0, %arg1, %arg2) {dilations = [10, 20], strides = [30, 40]} : memref<?x?x?x?xf32, #strided4D>, memref<?x?x?x?xf32, #strided4D>, memref<?x?x?x?xf32, #strided4D>
+func @conv(%arg0: memref<?x?x?x?xf32, offset: ?, strides: [?, ?, ?, 1]>, %arg1: memref<?x?x?x?xf32, offset: ?, strides: [?, ?, ?, 1]>, %arg2: memref<?x?x?x?xf32, offset: ?, strides: [?, ?, ?, 1]>) {
+  linalg.conv(%arg0, %arg1, %arg2) {dilations = [10, 20], strides = [30, 40]} : memref<?x?x?x?xf32, offset: ?, strides: [?, ?, ?, 1]>, memref<?x?x?x?xf32, offset: ?, strides: [?, ?, ?, 1]>, memref<?x?x?x?xf32, offset: ?, strides: [?, ?, ?, 1]>
   return
 }
 // TILE-23004-LABEL: func @conv(
