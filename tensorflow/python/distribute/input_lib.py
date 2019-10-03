@@ -482,6 +482,11 @@ class DistributedDataset(_IterableInput):
     if split_batch_by:
       try:
         dataset = distribute._RebatchDataset(dataset, split_batch_by)  # pylint: disable=protected-access
+        # Add a prefetch to pipeline rebatching for performance.
+        # TODO(rachelim): Instead of inserting an extra prefetch stage here,
+        # leverage static graph rewrites to insert _RebatchDataset before
+        # the final `prefetch` if it exists.
+        dataset = dataset.prefetch(split_batch_by)
       except errors.InvalidArgumentError as e:
         if "without encountering a batch" in str(e):
           six.reraise(
