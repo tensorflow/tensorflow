@@ -195,6 +195,7 @@ class FunctionLibraryRuntimeOverlay : public FunctionLibraryRuntime {
       const override;
 
   Env* env() override;
+  const ConfigProto* const config_proto() override;
   Device* device() override;
   const Device* device() const override;
   std::function<void(std::function<void()>)>* runner() override;
@@ -277,6 +278,10 @@ bool FunctionLibraryRuntimeOverlay::IsStateful(
 
 Env* FunctionLibraryRuntimeOverlay::env() { return base_flr_->env(); }
 
+const ConfigProto* const FunctionLibraryRuntimeOverlay::config_proto() {
+  return base_flr_->config_proto();
+}
+
 Device* FunctionLibraryRuntimeOverlay::device() { return base_flr_->device(); }
 
 const Device* FunctionLibraryRuntimeOverlay::device() const {
@@ -317,7 +322,8 @@ Status FunctionLibraryRuntimeOverlay::Clone(
 
 class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
  public:
-  FunctionLibraryRuntimeImpl(const DeviceMgr* dmgr, Env* env, Device* device,
+  FunctionLibraryRuntimeImpl(const DeviceMgr* dmgr, Env* env,
+                             const ConfigProto* config, Device* device,
                              int graph_def_version,
                              const FunctionLibraryDefinition* lib_def,
                              thread::ThreadPool* default_thread_pool,
@@ -361,6 +367,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   const DeviceMgr* device_mgr() const override { return device_mgr_; }
   Env* env() override { return env_; }
+  const ConfigProto* const config_proto() override { return config_; }
   int graph_def_version() const override { return graph_def_version_; }
 
   string DebugString(Handle h) override;
@@ -376,6 +383,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   const DeviceMgr* const device_mgr_;
   Device* const device_;
   Env* const env_;
+  const ConfigProto* const config_;
   const int graph_def_version_;
   const FunctionLibraryDefinition* const base_lib_def_;
   GraphOptimizer optimizer_;
@@ -442,8 +450,8 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 };
 
 FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
-    const DeviceMgr* dmgr, Env* env, Device* device, int graph_def_version,
-    const FunctionLibraryDefinition* lib_def,
+    const DeviceMgr* dmgr, Env* env, const ConfigProto* config, Device* device,
+    int graph_def_version, const FunctionLibraryDefinition* lib_def,
     thread::ThreadPool* default_thread_pool,
     const OptimizerOptions& optimizer_options,
     const CustomKernelCreator* custom_kernel_creator,
@@ -452,6 +460,7 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
     : device_mgr_(dmgr),
       device_(device),
       env_(env),
+      config_(config),
       graph_def_version_(graph_def_version),
       base_lib_def_(lib_def),
       optimizer_(optimizer_options),
@@ -1283,14 +1292,15 @@ void RegisterDefaultCustomKernelCreator(CustomKernelCreator* c) {
 }
 
 std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
-    const DeviceMgr* device_mgr, Env* env, Device* device,
-    int graph_def_version, const FunctionLibraryDefinition* lib_def,
-    thread::ThreadPool* thread_pool, const OptimizerOptions& optimizer_options,
+    const DeviceMgr* device_mgr, Env* env, const ConfigProto* config,
+    Device* device, int graph_def_version,
+    const FunctionLibraryDefinition* lib_def, thread::ThreadPool* thread_pool,
+    const OptimizerOptions& optimizer_options,
     const CustomKernelCreator* custom_kernel_creator,
     const SessionMetadata* session_metadata,
     ProcessFunctionLibraryRuntime* parent) {
   return std::unique_ptr<FunctionLibraryRuntime>(new FunctionLibraryRuntimeImpl(
-      device_mgr, env, device, graph_def_version, lib_def, thread_pool,
+      device_mgr, env, config, device, graph_def_version, lib_def, thread_pool,
       optimizer_options, custom_kernel_creator, session_metadata, parent));
 }
 

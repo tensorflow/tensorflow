@@ -752,6 +752,9 @@ class FunctionLibraryRuntime {
   // Returns the environment on which the function executes.
   virtual Env* env() = 0;
 
+  // Returns the ConfigProto passed to the session used to create the function.
+  virtual const ConfigProto* const config_proto() = 0;
+
   // Returns a debug string showing the definition of the function of
   // 'handle'.
   virtual string DebugString(Handle handle) = 0;

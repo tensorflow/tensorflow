@@ -447,6 +447,9 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   for (const auto& da : local_device_attributes) {
     *base_request.add_cluster_device_attributes() = da;
   }
+  base_request.mutable_server_def()
+      ->mutable_default_session_config()
+      ->MergeFrom(server_def.default_session_config());
 
   std::unique_ptr<tensorflow::eager::EagerClientCache> remote_eager_workers;
   LOG_AND_RETURN_IF_ERROR(

@@ -1196,11 +1196,12 @@ Status EncapsulateSubgraphsPass::Run(
 
   std::unique_ptr<DeviceMgr> device_mgr =
       absl::make_unique<StaticDeviceMgr>(std::move(devices));
-  OptimizerOptions opts;
+  const auto* config = &options.session_options->config;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
-      new ProcessFunctionLibraryRuntime(device_mgr.get(),
-                                        options.session_options->env,
-                                        TF_GRAPH_DEF_VERSION, library, opts));
+      new ProcessFunctionLibraryRuntime(
+          device_mgr.get(), options.session_options->env,
+          /*config=*/config, TF_GRAPH_DEF_VERSION, library,
+          config->graph_options().optimizer_options()));
   FunctionLibraryRuntime* flr =
       pflr->GetFLR("/job:localhost/replica:0/task:0/device:CPU:0");
   if (flr == nullptr) {

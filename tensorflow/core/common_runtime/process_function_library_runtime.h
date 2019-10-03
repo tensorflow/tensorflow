@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/function.h"
@@ -41,8 +42,8 @@ class ProcessFunctionLibraryRuntime {
   // DeviceMgr. Caller needs to make sure that device_mgr, lib_def and parent
   // (if provided) outlive this object.
   ProcessFunctionLibraryRuntime(
-      const DeviceMgr* device_mgr, Env* env, int graph_def_version,
-      const FunctionLibraryDefinition* lib_def,
+      const DeviceMgr* device_mgr, Env* env, const ConfigProto* config,
+      int graph_def_version, const FunctionLibraryDefinition* lib_def,
       const OptimizerOptions& optimizer_options,
       thread::ThreadPool* thread_pool = nullptr,
       DistributedFunctionLibraryRuntime* parent = nullptr,
@@ -158,6 +159,8 @@ class ProcessFunctionLibraryRuntime {
   const DeviceMgr* device_mgr() { return device_mgr_; }
 
   const DeviceSet* device_set() { return &device_set_; }
+
+  const ConfigProto* config() const { return config_ ? &(*config_) : nullptr; }
 
   const FunctionLibraryDefinition* GetFunctionLibraryDefinition() const {
     return lib_def_;
@@ -381,6 +384,7 @@ class ProcessFunctionLibraryRuntime {
   mutable mutex mu_;
 
   Env* const env_;
+  const absl::optional<const ConfigProto> config_;
   const DeviceMgr* const device_mgr_;
   DeviceSet device_set_;
   const FunctionLibraryDefinition* lib_def_;

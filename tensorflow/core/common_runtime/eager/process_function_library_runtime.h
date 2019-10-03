@@ -45,15 +45,15 @@ class EagerProcessFunctionLibraryRuntime
     : public ProcessFunctionLibraryRuntime {
  public:
   EagerProcessFunctionLibraryRuntime(
-      const DeviceMgr* device_mgr, Env* env, int graph_def_version,
-      const FunctionLibraryDefinition* lib_def,
+      const DeviceMgr* device_mgr, Env* env, const ConfigProto* config,
+      int graph_def_version, const FunctionLibraryDefinition* lib_def,
       const OptimizerOptions& optimizer_options,
       thread::ThreadPool* thread_pool = nullptr,
       DistributedFunctionLibraryRuntime* parent = nullptr,
       const CustomKernelCreator* custom_kernel_creator = nullptr)
-      : ProcessFunctionLibraryRuntime(device_mgr, env, graph_def_version,
-                                      lib_def, optimizer_options, thread_pool,
-                                      parent, custom_kernel_creator) {}
+      : ProcessFunctionLibraryRuntime(
+            device_mgr, env, config, graph_def_version, lib_def,
+            optimizer_options, thread_pool, parent, custom_kernel_creator) {}
 
 #if !defined(IS_MOBILE_PLATFORM)
   void Run(const FunctionLibraryRuntime::Options& opts,

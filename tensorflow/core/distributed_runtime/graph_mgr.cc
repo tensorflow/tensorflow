@@ -121,13 +121,11 @@ Status GraphMgr::DecorateAndPublishGraphForDebug(
 //
 // "executors" are filled with one executor per device if success and
 // the caller takes the ownership of returned executors.
-Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
-                          WorkerSession* session,
-                          const GraphOptions& graph_options,
-                          const DebugOptions& debug_options,
-                          int64 collective_graph_key,
-                          DistributedFunctionLibraryRuntime* cluster_flr,
-                          Item* item) {
+Status GraphMgr::InitItem(
+    const string& handle, const GraphDef& gdef, WorkerSession* session,
+    const GraphOptions& graph_options, const DebugOptions& debug_options,
+    const ConfigProto& config_proto, int64 collective_graph_key,
+    DistributedFunctionLibraryRuntime* cluster_flr, Item* item) {
   item->session = handle;
   item->collective_graph_key = collective_graph_key;
   item->lib_def.reset(
@@ -139,9 +137,10 @@ Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
   // does that below.
 
   item->proc_flr.reset(new ProcessFunctionLibraryRuntime(
-      device_mgr_, worker_env_->env, gdef.versions().producer(),
-      item->lib_def.get(), graph_options.optimizer_options(),
-      worker_env_->compute_pool, cluster_flr));
+      device_mgr_, worker_env_->env, /*config=*/&config_proto,
+      gdef.versions().producer(), item->lib_def.get(),
+      graph_options.optimizer_options(), worker_env_->compute_pool,
+      cluster_flr));
 
   // Constructs the graph out of "gdef".
   Graph graph(OpRegistry::Global());
@@ -287,16 +286,14 @@ Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
   return Status::OK();
 }
 
-Status GraphMgr::Register(const string& handle, const GraphDef& gdef,
-                          WorkerSession* session,
-                          const GraphOptions& graph_options,
-                          const DebugOptions& debug_options,
-                          int64 collective_graph_key,
-                          DistributedFunctionLibraryRuntime* cluster_flr,
-                          string* graph_handle) {
+Status GraphMgr::Register(
+    const string& handle, const GraphDef& gdef, WorkerSession* session,
+    const GraphOptions& graph_options, const DebugOptions& debug_options,
+    const ConfigProto& config_proto, int64 collective_graph_key,
+    DistributedFunctionLibraryRuntime* cluster_flr, string* graph_handle) {
   Item* item = new Item;
   Status s = InitItem(handle, gdef, session, graph_options, debug_options,
-                      collective_graph_key, cluster_flr, item);
+                      config_proto, collective_graph_key, cluster_flr, item);
   if (!s.ok()) {
     item->Unref();
     return s;

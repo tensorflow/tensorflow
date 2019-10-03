@@ -84,8 +84,8 @@ class OpsTestBase : public ::testing::Test {
     flib_def_ = absl::make_unique<FunctionLibraryDefinition>(
         OpRegistry::Global(), FunctionDefLibrary{});
     pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
-        device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION,
-        flib_def_.get(), OptimizerOptions());
+        device_mgr_.get(), Env::Default(), /*config=*/nullptr,
+        TF_GRAPH_DEF_VERSION, flib_def_.get(), OptimizerOptions());
   }
 
   ~OpsTestBase() override {

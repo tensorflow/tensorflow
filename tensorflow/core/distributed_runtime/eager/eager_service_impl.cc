@@ -128,9 +128,10 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   LOG(INFO) << "Creating " << (request->async() ? "async" : "sync")
             << " eager service context with rendezvous_id on host "
             << port::Hostname() << " " << worker_session->worker_name();
+  SessionOptions opts;
+  opts.config = request->server_def().default_session_config();
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
-      SessionOptions(),
-      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
+      opts, tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
       tensorflow::ContextMirroringPolicy::MIRRORING_NONE, request->async(),
       device_mgr, false, r, GetDefaultCustomKernelCreator(),
       worker_session->cluster_flr());
