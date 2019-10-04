@@ -185,6 +185,7 @@ def make_logs(model, logs, outputs, mode, prefix=''):
   return logs
 
 
+@keras_export('keras.callbacks.CallbackList')
 class CallbackList(object):
   """Container abstracting a list of callbacks.
 
