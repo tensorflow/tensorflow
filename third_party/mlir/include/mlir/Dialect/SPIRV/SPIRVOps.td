@@ -324,7 +324,7 @@ def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [InModuleScope]> {
   let arguments = (ins
     SymbolRefAttr:$fn,
     SPV_ExecutionModeAttr:$execution_mode,
-    OptionalAttr<I32ArrayAttr>:$values
+    I32ArrayAttr:$values
   );
 
   let results = (outs);
@@ -332,6 +332,11 @@ def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [InModuleScope]> {
   let verifier = [{ return success(); }];
 
   let autogenSerialization = 0;
+
+  let builders = [OpBuilder<[{Builder *builder, OperationState &state,
+                              FuncOp function,
+                              spirv::ExecutionMode executionMode,
+                              ArrayRef<int32_t> params}]>];
 }
 
 // -----
@@ -380,6 +385,10 @@ def SPV_LoadOp : SPV_Op<"Load", []> {
   let results = (outs
     SPV_Type:$value
   );
+
+  let builders = [OpBuilder<[{Builder *builder, OperationState &state,
+                  Value *basePtr, /*optional*/IntegerAttr memory_access,
+                  /*optional*/IntegerAttr alignment}]>];
 }
 
 // -----
