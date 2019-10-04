@@ -2154,7 +2154,9 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
 
 bool IsFunctionCall(const FunctionLibraryDefinition& lib_def,
                     const Node& node) {
-  return node.IsFunctionCall();
+  return node.IsPartitionedCall() ||
+         node.type_string() == FunctionLibraryDefinition::kGradientOp ||
+         lib_def.Find(node.def().op()) != nullptr;
 }
 
 bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
