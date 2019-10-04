@@ -779,52 +779,6 @@ filegroup(
 )
 
 filegroup(
-    name = "legacy_platform_port_srcs",
-    srcs = tf_platform_hdrs([
-        "cpu_info.h",
-    ]) + tf_platform_srcs([
-        "port.cc",
-    ]),
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
-    name = "legacy_platform_env_srcs",
-    srcs = tf_platform_srcs([
-        "env.cc",
-        "load_library.cc",
-    ]) + tf_platform_hdrs([
-        "wide_char.h",
-    ]),
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
-    name = "legacy_file_system_hdrs",
-    srcs = tf_platform_hdrs([
-        "windows_file_system.h",
-    ]),
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
-    name = "legacy_platform_other_srcs",
-    srcs = tf_platform_srcs([
-        "subprocess.cc",
-        "net.cc",
-        "tracing.cc",
-    ]) + tf_platform_hdrs([
-        "tracing.h",
-        "error.h",
-        "context.h",
-        "fingerprint.h",
-        "subprocess.h",
-        "tracing_impl.h",
-    ]),
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
     name = "legacy_human_readable_json_src",
     srcs = tf_platform_srcs(["human_readable_json.cc"]),
     visibility = ["//tensorflow/core:__pkg__"],
