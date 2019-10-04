@@ -102,7 +102,7 @@ public:
   }
 };
 
-// A pass that replaces all occurences of GPU device operations with their
+// A pass that replaces all occurrences of GPU device operations with their
 // corresponding ROCDL equivalent.
 //
 // This pass only handles device code and is not meant to be run on GPU host

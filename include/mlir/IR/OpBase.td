@@ -998,7 +998,7 @@ def ArrayAttr : ArrayAttrBase<CPred<"$_self.isa<ArrayAttr>()">,
 // `element` specifies the element attribute kind stored in this array.
 class TypedArrayAttrBase<Attr element, string description>: ArrayAttrBase<
     And<[
-      // Guranatee this is an ArrayAttr first
+      // Guarantee this is an ArrayAttr first
       CPred<"$_self.isa<ArrayAttr>()">,
       // Guarantee all elements satisfy the constraints from `element`
       Concat<"llvm::all_of($_self.cast<ArrayAttr>(), "

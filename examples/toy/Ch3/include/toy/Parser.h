@@ -140,7 +140,7 @@ private:
       auto *firstLiteral = llvm::dyn_cast<LiteralExprAST>(values.front().get());
       if (!firstLiteral)
         return parseError<ExprAST>("uniform well-nested dimensions",
-                                   "inside literal expession");
+                                   "inside literal expression");
 
       // Append the nested dimensions to the current level
       auto &firstDims = firstLiteral->getDims();
@@ -151,10 +151,10 @@ private:
         auto *exprLiteral = llvm::cast<LiteralExprAST>(expr.get());
         if (!exprLiteral)
           return parseError<ExprAST>("uniform well-nested dimensions",
-                                     "inside literal expession");
+                                     "inside literal expression");
         if (exprLiteral->getDims() != firstDims)
           return parseError<ExprAST>("uniform well-nested dimensions",
-                                     "inside literal expession");
+                                     "inside literal expression");
       }
     }
     return std::make_unique<LiteralExprAST>(std::move(loc), std::move(values),

@@ -38,7 +38,7 @@
 using namespace mlir;
 
 namespace {
-// Create a call to llvm intrisic
+// Create a call to llvm intrinsic
 static llvm::Value *createIntrinsicCall(llvm::IRBuilder<> &builder,
                                         llvm::Intrinsic::ID intrinsic,
                                         ArrayRef<llvm::Value *> args = {}) {

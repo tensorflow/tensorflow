@@ -435,7 +435,7 @@ public:
   HandlerID registerHandler(const HandlerTy &handler);
 
   /// Set the diagnostic handler with a function that returns void. This is a
-  /// convient wrapper for handlers that always completely process the given
+  /// convenient wrapper for handlers that always completely process the given
   /// diagnostic.
   template <typename FuncTy, typename RetT = decltype(std::declval<FuncTy>()(
                                  std::declval<Diagnostic &>()))>

@@ -1683,7 +1683,7 @@ static LogicalResult verify(ExtractElementOp op) {
 }
 
 OpFoldResult ExtractElementOp::fold(ArrayRef<Attribute> operands) {
-  assert(!operands.empty() && "extract_element takes atleast one operand");
+  assert(!operands.empty() && "extract_element takes at least one operand");
 
   // The aggregate operand must be a known constant.
   Attribute aggregate = operands.front();

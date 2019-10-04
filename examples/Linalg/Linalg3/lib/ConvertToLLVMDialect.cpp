@@ -132,7 +132,7 @@ struct LinalgTypeConverter : public LLVMTypeConverter {
 } // end anonymous namespace
 
 // Helper function that allocates the descriptor converters and adds load/store
-// coverters to the list.
+// converters to the list.
 static void populateLinalg3ToLLVMConversionPatterns(
     mlir::OwningRewritePatternList &patterns, mlir::MLIRContext *context) {
   patterns.insert<LoadOpConversion, StoreOpConversion>(context);

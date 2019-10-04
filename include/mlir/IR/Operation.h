@@ -112,7 +112,7 @@ public:
   /// Return the context this operation is associated with.
   MLIRContext *getContext();
 
-  /// Return the dialact this operation is associated with, or nullptr if the
+  /// Return the dialect this operation is associated with, or nullptr if the
   /// associated dialect is not registered.
   Dialect *getDialect();
 
@@ -569,7 +569,7 @@ private:
   /// model.
   Block *getParent() const { return block; }
 
-  /// The operation block that containts this operation.
+  /// The operation block that contains this operation.
   Block *block = nullptr;
 
   /// This holds information about the source location the operation was defined
@@ -721,7 +721,7 @@ private:
 
   /// The operation whose uses are being iterated over.
   Operation *op;
-  /// The result of op whoses uses are being iterated over.
+  /// The result of op who's uses are being iterated over.
   Operation::result_iterator res;
   /// The use of the result.
   Value::use_iterator use;

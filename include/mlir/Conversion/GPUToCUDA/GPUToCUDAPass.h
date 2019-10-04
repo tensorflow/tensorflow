@@ -57,7 +57,7 @@ createConvertGPUKernelToCubinPass(CubinGenerator cubinGenerator);
 ///
 /// This pass does not generate code to call CUDA directly but instead uses a
 /// small wrapper library that exports a stable and conveniently typed ABI
-/// ontop of CUDA.
+/// on top of CUDA.
 std::unique_ptr<OpPassBase<ModuleOp>>
 createConvertGpuLaunchFuncToCudaCallsPass();
 

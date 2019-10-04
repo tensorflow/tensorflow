@@ -104,7 +104,7 @@ private:
   /// The builder is a helper class to create IR inside a function. It is
   /// re-initialized every time we enter a function and kept around as a
   /// convenience for emitting individual operations.
-  /// The builder is stateful, in particular it keeeps an "insertion point":
+  /// The builder is stateful, in particular it keeps an "insertion point":
   /// this is where the next operations will be introduced.
   std::unique_ptr<mlir::OpBuilder> builder;
 
