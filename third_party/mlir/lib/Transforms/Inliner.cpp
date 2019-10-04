@@ -157,10 +157,10 @@ static void inlineCallsInSCC(Inliner &inliner,
       continue;
 
     CallOpInterface call = it.call;
-    LogicalResult inlineResult = inlineRegion(
-        inliner, it.targetNode->getCallableRegion(), call,
-        llvm::to_vector<8>(call.getArgOperands()),
-        llvm::to_vector<8>(call.getOperation()->getResults()), call.getLoc());
+    Region *targetRegion = it.targetNode->getCallableRegion();
+    LogicalResult inlineResult = inlineCall(
+        inliner, call, cast<CallableOpInterface>(targetRegion->getParentOp()),
+        targetRegion);
     if (failed(inlineResult))
       continue;
 
