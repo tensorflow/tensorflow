@@ -446,11 +446,8 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase):
 
     # Check values from converted model.
     expected_value = concrete_func(input_data)
-    # TODO(haoliang): Remove this `reshape` op since it's not necessary.
-    actual_value = np.reshape(
-        self._evaluateTFLiteModel(tflite_model, [input_data]), (10, 10))
-    for expected, actual in zip(expected_value, actual_value):
-      np.testing.assert_almost_equal(expected, actual)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
+    np.testing.assert_almost_equal(expected_value, actual_value)
 
 
 class TestFlexMode(test_util.TensorFlowTestCase):
