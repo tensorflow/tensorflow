@@ -155,7 +155,7 @@ static bool isValidAffineIndexOperand(Value *value) {
 }
 
 /// Utility function to verify that a set of operands are valid dimension and
-/// symbol identifiers. The operands should be layed out such that the dimension
+/// symbol identifiers. The operands should be laid out such that the dimension
 /// operands are before the symbol operands. This function returns failure if
 /// there was an invalid operand. An operation is provided to emit any necessary
 /// errors.

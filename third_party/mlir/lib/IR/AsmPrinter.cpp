@@ -356,7 +356,7 @@ protected:
   void printLocationInternal(LocationAttr loc, bool pretty = false);
   void printDenseElementsAttr(DenseElementsAttr attr);
 
-  /// This enum is used to represent the binding stength of the enclosing
+  /// This enum is used to represent the binding strength of the enclosing
   /// context that an AffineExprStorage is being printed in, so we can
   /// intelligently produce parens.
   enum class BindingStrength {

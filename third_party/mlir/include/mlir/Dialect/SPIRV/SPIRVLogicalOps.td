@@ -886,7 +886,7 @@ def SPV_UGreaterThanOp : SPV_LogicalBinaryOp<"UGreaterThan", SPV_Integer, []> {
     For example:
 
     ```
-    %4 = spv.UGreaterhan %0, %1 : i32
+    %4 = spv.UGreaterThan %0, %1 : i32
     %5 = spv.UGreaterThan %2, %3 : vector<4xi32>
 
     ```
