@@ -137,10 +137,15 @@ class Analyzer(cfg.GraphVisitor):
       # their ids are used in equality checks.
       if node not in self.gen_map:
         node_symbols = {}
+        # Every modification receives a definition.
         for s in node_scope.modified:
           def_ = self._definition_factory()
-          if s in node_scope.params:
-            def_.param_of = weakref.ref(node_scope.params[s])
+          node_symbols[s] = def_
+        # Every param receives a definition. Params are not necessarily
+        # considered as "modified".
+        for s, p in node_scope.params.items():
+          def_ = self._definition_factory()
+          def_.param_of = weakref.ref(p)
           node_symbols[s] = def_
         self.gen_map[node] = _NodeState(node_symbols)
 
