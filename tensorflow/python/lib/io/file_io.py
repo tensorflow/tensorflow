@@ -656,9 +656,9 @@ def walk(top, in_order=True):
 
   Yields:
     Each yield is a 3-tuple:  the pathname of a directory, followed by lists of
-    all its subdirectories and leaf files.
-    (dirname, [subdirname, subdirname, ...], [filename, filename, ...])
-    as strings
+    all its subdirectories and leaf files. That is, each yield looks like:
+    `(dirname, [subdirname, subdirname, ...], [filename, filename, ...])`.
+    Each item is a string.
   """
   return walk_v2(top, in_order)
 
@@ -676,9 +676,9 @@ def walk_v2(top, topdown=True, onerror=None):
 
   Yields:
     Each yield is a 3-tuple:  the pathname of a directory, followed by lists of
-    all its subdirectories and leaf files.
-    (dirname, [subdirname, subdirname, ...], [filename, filename, ...])
-    as strings
+    all its subdirectories and leaf files. That is, each yield looks like:
+    `(dirname, [subdirname, subdirname, ...], [filename, filename, ...])`.
+    Each item is a string.
   """
   top = compat.as_str_any(top)
   try:
