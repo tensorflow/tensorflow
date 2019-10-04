@@ -96,7 +96,8 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
     case OperationType::FULLY_CONNECTED: {
       auto attr =
           absl::any_cast<FullyConnectedAttributes>(node.operation.attributes);
-      return SelectFullyConnected(attr, creation_context, op_def, gpu_op);
+      return SelectFullyConnected(attr, creation_context, op_def,
+                                  inputs[0]->tensor.shape.b, gpu_op);
     }
     case OperationType::HARD_SWISH:
       *gpu_op = HardSwish::Create(op_def);

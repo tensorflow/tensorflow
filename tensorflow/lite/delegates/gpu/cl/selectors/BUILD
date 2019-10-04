@@ -69,6 +69,7 @@ cc_library(
     srcs = ["fully_connected_selector.cc"],
     hdrs = ["fully_connected_selector.h"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/cl/kernels:conv_texture",
         "//tensorflow/lite/delegates/gpu/cl/kernels:fully_connected_texture",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common:operations",
