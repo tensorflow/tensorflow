@@ -186,6 +186,9 @@ LogicalResult mlir::inlineRegion(InlinerInterface &interface, Region *src,
   if (!shouldCloneInlinedRegion)
     remapInlinedOperands(newBlocks, mapper);
 
+  // Process the newly inlined blocks.
+  interface.processInlinedBlocks(newBlocks);
+
   // Handle the case where only a single block was inlined.
   if (std::next(newBlocks.begin()) == newBlocks.end()) {
     // Have the interface handle the terminator of this block.

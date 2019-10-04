@@ -24,6 +24,7 @@
 
 #include "mlir/IR/DialectInterface.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/Region.h"
 
 namespace mlir {
 
@@ -115,6 +116,11 @@ class InlinerInterface
 public:
   using Base::Base;
   virtual ~InlinerInterface();
+
+  /// Process a set of blocks that have been inlined. This callback is invoked
+  /// *before* inlined terminator operations have been processed.
+  virtual void
+  processInlinedBlocks(llvm::iterator_range<Region::iterator> inlinedBlocks) {}
 
   /// These hooks mirror the hooks for the DialectInlinerInterface, with default
   /// implementations that call the hook on the handler for the dialect 'op' is

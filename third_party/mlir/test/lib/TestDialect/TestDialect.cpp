@@ -49,6 +49,10 @@ struct TestInlinerInterface : public DialectInlinerInterface {
   // Analysis Hooks
   //===--------------------------------------------------------------------===//
 
+  bool isLegalToInline(Region *, Region *, BlockAndValueMapping &) const final {
+    // Inlining into test dialect regions is legal.
+    return true;
+  }
   bool isLegalToInline(Operation *, Region *,
                        BlockAndValueMapping &) const final {
     return true;

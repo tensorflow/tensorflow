@@ -39,7 +39,8 @@ def CallOpInterface : OpInterface<"CallOpInterface"> {
   let description = [{
     A call-like operation is one that transfers control from one sub-routine to
     another. These operations may be traditional direct calls `call @foo`, or
-    indirect calls to other operations `call_indirect %foo`.
+    indirect calls to other operations `call_indirect %foo`. An operation that
+    uses this interface, must *not* also provide the `CallableOpInterface`.
   }];
 
   let methods = [
@@ -49,6 +50,12 @@ def CallOpInterface : OpInterface<"CallOpInterface"> {
         SSA value.
       }],
       "CallInterfaceCallable", "getCallableForCallee"
+    >,
+    InterfaceMethod<[{
+        Returns the operands within this call that are used as arguments to the
+        callee.
+      }],
+      "Operation::operand_range", "getArgOperands"
     >,
   ];
 }
