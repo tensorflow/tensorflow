@@ -608,8 +608,8 @@ Status InferenceContext::SetInputTensor(ValueId id, const TensorFloat32& tensor,
 Status InferenceContext::GetOutputTensor(ValueId id, CLCommandQueue* queue,
                                          TensorFloat32* result) {
   const auto& gpu_tensor = *GetTensor(id);
-  const int4 dst_size = gpu_tensor.GetSizeWithDepth();
-  const auto dst_shape = BHWC(1, dst_size.y, dst_size.x, dst_size.z);
+  const auto dst_shape = BHWC(gpu_tensor.Batch(), gpu_tensor.Height(),
+                              gpu_tensor.Width(), gpu_tensor.Channels());
   result->id = id;
   result->shape = dst_shape;
   result->data.resize(dst_shape.DimensionsProduct());
