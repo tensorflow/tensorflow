@@ -176,6 +176,10 @@ class Node {
   bool IsMetadata() const { return class_ == NC_METADATA; }
   bool IsFakeParam() const { return class_ == NC_FAKE_PARAM; }
   bool IsPartitionedCall() const { return class_ == NC_PARTITIONED_CALL; }
+  bool IsFunctionCall() const {
+    return class_ == NC_PARTITIONED_CALL || class_ == NC_FUNCTION_OP ||
+           class_ == NC_SYMBOLIC_GRADIENT;
+  }
   bool IsIfNode() const { return class_ == NC_IF; }
   bool IsWhileNode() const { return class_ == NC_WHILE; }
   // Is this node a function input
@@ -225,7 +229,8 @@ class Node {
 
   NodeProperties* properties() const { return props_.get(); }
 
-  void Initialize(int id, int cost_id, std::shared_ptr<NodeProperties> props);
+  void Initialize(int id, int cost_id, std::shared_ptr<NodeProperties> props,
+                  bool is_function_op);
 
   // Releases memory from props_, in addition to restoring *this to its
   // uninitialized state.
@@ -269,6 +274,8 @@ class Node {
     NC_COLLECTIVE,
     NC_FAKE_PARAM,
     NC_PARTITIONED_CALL,
+    NC_FUNCTION_OP,
+    NC_SYMBOLIC_GRADIENT,
     NC_IF,
     NC_WHILE,
     NC_ARG,
@@ -673,7 +680,7 @@ class Graph {
   //
   // Ownership of the returned Node is not transferred to caller.
   Node* AllocateNode(std::shared_ptr<NodeProperties> props,
-                     const Node* cost_node);
+                     const Node* cost_node, bool is_function_op);
   void ReleaseNode(Node* node);
   // Insert edge in free_edges_ for possible reuse.
   void RecycleEdge(const Edge* edge);
