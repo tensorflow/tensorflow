@@ -319,6 +319,37 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       self.assertRegexpMatches(printed.contents(), expected_log)
 
   @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_progbar_logging_training_validation(self):
+    model = self._get_model(input_shape=(2,))
+
+    def generator():
+      for _ in range(100):
+        yield [1, 1], 1
+
+    training = dataset_ops.Dataset \
+        .from_generator(
+            generator=generator,
+            output_types=('float64', 'float64'),
+            output_shapes=([2], [])) \
+        .batch(2) \
+        .repeat()
+    validation = dataset_ops.Dataset \
+        .from_generator(
+            generator=generator,
+            output_types=('float64', 'float64'),
+            output_shapes=([2], [])) \
+        .batch(2)
+    expected_log = (
+        r'(?s).*1/2.*20/20.*- loss:.*- my_acc:.*- val_loss:.*- val_my_acc:'
+        r'.*2/2.*20/20.*- loss:.*- my_acc:.*- val_loss:.*- val_my_acc:.*')
+
+    with self.captureWritesToStream(sys.stdout) as printed:
+      model.fit(
+          x=training, validation_data=validation, epochs=2, steps_per_epoch=20)
+      self.assertRegexpMatches(printed.contents(), expected_log)
+
+  @keras_parameterized.run_with_all_model_types
   def test_ModelCheckpoint(self):
     if h5py is None:
       return  # Skip test if models cannot be saved.
