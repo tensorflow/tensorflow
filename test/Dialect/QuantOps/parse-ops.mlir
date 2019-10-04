@@ -50,7 +50,7 @@ func @validStatistics(%arg0: tensor<8x4x3xf32>) -> tensor<8x4x3xf32> {
       [-1.0, 1.0],
       [-8.0, 8.0],
       [-0.5, 0.5]
-    ]> : tensor<3x2xf32>
+    ]> : tensor<3x2xf32>, axis = 2 : i64
   } : (tensor<8x4x3xf32>) -> tensor<8x4x3xf32>
   return %1 : tensor<8x4x3xf32>
 }
