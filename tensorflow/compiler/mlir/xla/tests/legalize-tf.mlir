@@ -138,6 +138,107 @@ func @broadcast_sub(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2x
   return %0: tensor<1x2xi32>
 }
 
+//===----------------------------------------------------------------------===//
+// Equality op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @equal
+func @equal(%arg0: tensor<2xi32>) -> tensor<2xi1> {
+  // CHECK-NEXT:  "xla_hlo.compare"(%arg0, %arg0) {comparison_direction = "EQ"}
+  %0 = "tf.Equal"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+  return %0: tensor<2xi1>
+}
+
+// CHECK-LABEL: func @equal_dynamic
+func @equal_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<?xi1> {
+  // CHECK-NEXT:  "xla_hlo.compare"(%arg0, %arg1) {comparison_direction = "EQ"}
+  %0 = "tf.Equal"(%arg0, %arg1) : (tensor<?xi32>, tensor<1xi32>) -> tensor<?xi1>
+  return %0: tensor<?xi1>
+}
+
+// CHECK-LABEL: func @equal_broadcast
+func @equal_broadcast(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
+  // CHECK-NEXT: "xla_hlo.compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = "EQ"}
+  %0 = "tf.Equal"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
+  return %0: tensor<1x2xi1>
+}
+
+// CHECK-LABEL: func @equal_broadcast_no_incompatible_shapes_error
+func @equal_broadcast_no_incompatible_shapes_error(%arg0: tensor<2xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
+  // CHECK-NEXT: "tf.Equal"(%arg0, %arg1) {incompatible_shape_error = false}
+  %0 = "tf.Equal"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<2xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
+  return %0: tensor<1x2xi1>
+}
+
+// CHECK-LABEL: func @equal_incompatible_shape_broadcastable
+func @equal_incompatible_shape_broadcastable(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<?xi1> {
+  // CHECK-NEXT: "tf.Equal"(%arg0, %arg1) {incompatible_shape_error = false}
+  %0 = "tf.Equal"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<?xi32>, tensor<1xi32>) -> tensor<?xi1>
+  return %0: tensor<?xi1>
+}
+
+// CHECK-LABEL: func @equal_incompatible_shape_dynamic
+func @equal_incompatible_shape_dynamic(%arg0: tensor<2xi32>, %arg1: tensor<?xi32>) -> tensor<*xi1> {
+  // CHECK-NEXT: "tf.Equal"(%arg0, %arg1) {incompatible_shape_error = false}
+  %0 = "tf.Equal"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<2xi32>, tensor<?xi32>) -> tensor<*xi1>
+  return %0: tensor<*xi1>
+}
+
+// CHECK-LABEL: func @equal_incompatible_shape_both_dynamic
+func @equal_incompatible_shape_both_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> tensor<*xi1> {
+  // CHECK-NEXT: "tf.Equal"(%arg0, %arg1) {incompatible_shape_error = false}
+  %0 = "tf.Equal"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<?xi32>, tensor<?xi32>) -> tensor<*xi1>
+  return %0: tensor<*xi1>
+}
+
+// CHECK-LABEL: func @notequal
+func @notequal(%arg0: tensor<2xi32>) -> tensor<2xi1> {
+  // CHECK-NEXT:  "xla_hlo.compare"(%arg0, %arg0) {comparison_direction = "NE"}
+  %0 = "tf.NotEqual"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+  return %0: tensor<2xi1>
+}
+
+// CHECK-LABEL: func @notequal_dynamic
+func @notequal_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<?xi1> {
+  // CHECK-NEXT:  "xla_hlo.compare"(%arg0, %arg1) {comparison_direction = "NE"}
+  %0 = "tf.NotEqual"(%arg0, %arg1) : (tensor<?xi32>, tensor<1xi32>) -> tensor<?xi1>
+  return %0: tensor<?xi1>
+}
+
+// CHECK-LABEL: func @notequal_broadcast
+func @notequal_broadcast(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
+  // CHECK-NEXT: "xla_hlo.compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = "NE"}
+  %0 = "tf.NotEqual"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
+  return %0: tensor<1x2xi1>
+}
+
+// CHECK-LABEL: func @notequal_broadcast_no_incompatible_shapes_error
+func @notequal_broadcast_no_incompatible_shapes_error(%arg0: tensor<2xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
+  // CHECK-NEXT: "tf.NotEqual"(%arg0, %arg1) {incompatible_shape_error = false}
+  %0 = "tf.NotEqual"(%arg0, %arg1) {incompatible_shape_error = false} : (tensor<2xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
+  return %0: tensor<1x2xi1>
+}
+
+// CHECK-LABEL: func @notequal_incompatible_shape_broadcastable
+func @notequal_incompatible_shape_broadcastable(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<?xi1> {
+  // CHECK-NEXT: "tf.NotEqual"(%arg0, %arg1) {incompatible_shape_error = false}
+  %0 = "tf.NotEqual"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<?xi32>, tensor<1xi32>) -> tensor<?xi1>
+  return %0: tensor<?xi1>
+}
+
+// CHECK-LABEL: func @notequal_incompatible_shape_dynamic
+func @notequal_incompatible_shape_dynamic(%arg0: tensor<2xi32>, %arg1: tensor<?xi32>) -> tensor<*xi1> {
+  // CHECK-NEXT: "tf.NotEqual"(%arg0, %arg1) {incompatible_shape_error = false}
+  %0 = "tf.NotEqual"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<2xi32>, tensor<?xi32>) -> tensor<*xi1>
+  return %0: tensor<*xi1>
+}
+
+// CHECK-LABEL: func @notequal_incompatible_shape_both_dynamic
+func @notequal_incompatible_shape_both_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> tensor<*xi1> {
+  // CHECK-NEXT: "tf.NotEqual"(%arg0, %arg1) {incompatible_shape_error = false}
+  %0 = "tf.NotEqual"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<?xi32>, tensor<?xi32>) -> tensor<*xi1>
+  return %0: tensor<*xi1>
+}
 
 //===----------------------------------------------------------------------===//
 // Compare op legalizations.
@@ -232,14 +333,12 @@ func @concat_v2_1d_axis(%arg0: tensor<3x3xf32>, %arg1: tensor<3x3xf32>) -> tenso
 // CHECK-LABEL: func @concat_v2_non_const_axis
 func @concat_v2_non_const_axis(%arg0: tensor<3x3xf32>, %arg1: tensor<3x3xf32>, %axis: tensor<i64>) -> tensor<3x6xf32> {
   // CHECK: "tf.ConcatV2"
-
   %1 = "tf.ConcatV2"(%arg0, %arg1, %axis) {N = 2 : i64} : (tensor<3x3xf32>, tensor<3x3xf32>, tensor<i64>) -> tensor<3x6xf32>
   return %1 : tensor<3x6xf32>
 }
 
 // CHECK-LABEL: func @concat_v2_unranked
 func @concat_v2_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK: "tf.ConcatV2"
 
   %axis = "tf.Const"() { value = dense<0> : tensor<i64> } : () -> tensor<i64>
   %1 = "tf.ConcatV2"(%arg0, %arg1, %axis) {N = 2 : i64} : (tensor<*xf32>, tensor<*xf32>, tensor<i64>) -> tensor<*xf32>
@@ -490,7 +589,6 @@ func @transpose_3d(%arg0: tensor<1x2x3xf32>) -> tensor<3x2x1xf32> {
 // CHECK-LABEL: @transpose_dynamic_2d
 func @transpose_dynamic_2d(%arg0: tensor<?x4xf32>) -> tensor<4x?xf32> {
   %permutation = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> (tensor<2xi64>)
-  // CHECK: "tf.Transpose"
   %0 = "tf.Transpose"(%arg0, %permutation) : (tensor<?x4xf32>, tensor<2xi64>) -> tensor<4x?xf32>
   return %0 : tensor<4x?xf32>
 }
@@ -498,7 +596,6 @@ func @transpose_dynamic_2d(%arg0: tensor<?x4xf32>) -> tensor<4x?xf32> {
 // CHECK-LABEL: @transpose_rankless_2d
 func @transpose_rankless_2d(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %permutation = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> (tensor<2xi64>)
-  // CHECK: "tf.Transpose"
   %0 = "tf.Transpose"(%arg0, %permutation) : (tensor<*xf32>, tensor<2xi64>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -545,7 +642,6 @@ func @cast_i2f(%arg0: tensor<2xi32>) -> tensor<2xf32> {
 
 // CHECK-LABEL: func @cast_c2f
 func @cast_c2f(%arg0: tensor<2x!tf.complex64>) -> tensor<2xf32> {
-  // CHECK: "tf.Cast"(%arg0) : (tensor<2x!tf.complex64>) -> tensor<2xf32>
   %0 = "tf.Cast"(%arg0) : (tensor<2x!tf.complex64>) -> tensor<2xf32>
   return %0 : tensor<2xf32>
 }

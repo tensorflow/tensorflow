@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
+#include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
@@ -176,6 +177,36 @@ static ElementsAttr getSplat(Builder &b, Value *val, T constant) {
   else
     llvm_unreachable("unhandled element type");
   return DenseElementsAttr::get(valType, elementAttr);
+}
+
+// Returns whether the two values are guaranteed to be broadcastable to the
+// same shape, this broadcasts size 1 tensors up to any rank. Dynamic dimensions
+// must be broadcasted with a size 1 tensor or another dynamic dimension.
+// Returns false on rankless.
+static bool AreBroadcastCompatible(Value *x, Value *y) {
+  auto x_rankless = x->getType().dyn_cast<RankedTensorType>();
+  auto y_rankless = y->getType().dyn_cast<RankedTensorType>();
+  if (!x_rankless || !y_rankless) {
+    return false;
+  }
+
+  // Check that the shapes can be broadcasted.
+  auto shape_x = x_rankless.getShape();
+  auto shape_y = y_rankless.getShape();
+
+  int rank_diff = shape_x.size() - shape_y.size();
+  int offset_x = rank_diff > 0 ? rank_diff : 0;
+  int offset_y = rank_diff < 0 ? -rank_diff : 0;
+  for (int i = 0, s = std::min(shape_x.size(), shape_y.size()); i < s; i++) {
+    int index_x = i + offset_x;
+    int index_y = i + offset_y;
+    if ((shape_x[index_x] == -1 && shape_y[index_y] != 1) ||
+        (shape_y[index_y] == -1 && shape_x[index_x] != 1)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 static DenseIntElementsAttr getBroadcastDimensionsAttr(Builder &b, Value *x,
