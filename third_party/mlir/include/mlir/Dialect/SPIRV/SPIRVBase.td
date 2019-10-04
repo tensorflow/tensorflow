@@ -73,6 +73,7 @@ class SPV_OpCode<string name, int val> {
 // Begin opcode section. Generated from SPIR-V spec; DO NOT MODIFY!
 
 def SPV_OC_OpNop                    : I32EnumAttrCase<"OpNop", 0>;
+def SPV_OC_OpUndef                  : I32EnumAttrCase<"OpUndef", 1>;
 def SPV_OC_OpSourceContinued        : I32EnumAttrCase<"OpSourceContinued", 2>;
 def SPV_OC_OpSource                 : I32EnumAttrCase<"OpSource", 3>;
 def SPV_OC_OpSourceExtension        : I32EnumAttrCase<"OpSourceExtension", 4>;
@@ -173,7 +174,7 @@ def SPV_OC_OpModuleProcessed        : I32EnumAttrCase<"OpModuleProcessed", 330>;
 
 def SPV_OpcodeAttr :
     I32EnumAttr<"Opcode", "valid SPIR-V instructions", [
-      SPV_OC_OpNop, SPV_OC_OpSourceContinued, SPV_OC_OpSource,
+      SPV_OC_OpNop, SPV_OC_OpUndef, SPV_OC_OpSourceContinued, SPV_OC_OpSource,
       SPV_OC_OpSourceExtension, SPV_OC_OpName, SPV_OC_OpMemberName, SPV_OC_OpString,
       SPV_OC_OpExtension, SPV_OC_OpExtInstImport, SPV_OC_OpExtInst,
       SPV_OC_OpMemoryModel, SPV_OC_OpEntryPoint, SPV_OC_OpExecutionMode,
