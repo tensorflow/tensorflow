@@ -341,7 +341,8 @@ XlaOp ErfInv(XlaOp x) {
       0.00943887047f,   1.00167406f,     2.83297682f};
 
   auto one = ScalarLike(x, 1.0);
-  auto w = -Log((one - x) * (one + x));
+  auto w = -Log1p(one - x * x);
+  //auto w = -Log((one - x) * (one + x));
 
   auto lt = Lt(w, ScalarLike(x, 5.0));
   auto coefficient = [&](int i) {
