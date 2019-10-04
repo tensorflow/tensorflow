@@ -747,6 +747,23 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     # `model.fit()` should work regardless of the presence of `TF_CONFIG`.
     model.fit(train_ds, epochs=1, callbacks=[callback])
 
+  def test_fit_with_ModelCheckpoint_with_dir_as_h5_filepath(self):
+    (model, train_ds, callback,
+     filepath) = self._get_dummy_resource_for_model_checkpoint_testing()
+
+    temp_dir = self.get_temp_dir()
+    filepath = os.path.join(temp_dir, 'temp.h5')
+
+    self.assertFalse(os.path.exists(filepath))
+    os.mkdir(filepath)
+    self.assertTrue(os.path.exists(filepath))
+
+    callback = keras.callbacks.ModelCheckpoint(filepath=filepath)
+
+    with self.assertRaisesRegexp(IOError, 'Please specify a non-directory '
+                                          'filepath for ModelCheckpoint.'):
+      model.fit(train_ds, epochs=1, callbacks=[callback])
+
   def test_EarlyStopping(self):
     with self.cached_session():
       np.random.seed(123)
