@@ -85,8 +85,8 @@ struct ResourceOpLiftingPass : public FunctionPass<ResourceOpLiftingPass> {
 // %res_val = tf.ReadVariableOp(%res)
 // %1 = tf.AddV2(%res_val, %0)
 // tf.AssignVariableOp(%res, %1)
-LogicalResult RewriteAssignAddVariableOp(
-    TF::AssignAddVariableOpOp assign_add_op, OpBuilder* builder) {
+LogicalResult RewriteAssignAddVariableOp(TF::AssignAddVariableOp assign_add_op,
+                                         OpBuilder* builder) {
   // Read mangled dtype, which indicates type of data stored in resource
   // variable. It can then be used to construct type needed for both
   // ReadVariableOp and AssignVariableOp.
@@ -105,14 +105,14 @@ LogicalResult RewriteAssignAddVariableOp(
 
   builder->setInsertionPoint(assign_add_op);
 
-  auto read_variable_op = builder->create<TF::ReadVariableOpOp>(
+  auto read_variable_op = builder->create<TF::ReadVariableOp>(
       assign_add_op.getLoc(), type, assign_add_op.resource());
   read_variable_op.setAttr(builder->getIdentifier("dtype"), mangled_dtype_attr);
 
   auto add_op = builder->create<TF::AddV2Op>(
       assign_add_op.getLoc(), read_variable_op.value(), assign_add_op.value());
 
-  auto assign_variable_op = builder->create<TF::AssignVariableOpOp>(
+  auto assign_variable_op = builder->create<TF::AssignVariableOp>(
       assign_add_op.getLoc(), assign_add_op.resource(), add_op.z());
   assign_variable_op.setAttr(builder->getIdentifier("dtype"),
                              mangled_dtype_attr);
@@ -130,7 +130,7 @@ LogicalResult RewriteAssignAddVariableOp(
 // TODO(ycao): Add support for other composite resource store ops.
 LogicalResult MaybeRewriteCompositeResourceStore(Operation* op,
                                                  OpBuilder* builder) {
-  if (auto assign_add_op = dyn_cast<TF::AssignAddVariableOpOp>(op)) {
+  if (auto assign_add_op = dyn_cast<TF::AssignAddVariableOp>(op)) {
     return RewriteAssignAddVariableOp(assign_add_op, builder);
   }
   return success();
@@ -146,13 +146,13 @@ void ForwardStoreToLoad(tf_device::LaunchOp launch_op) {
   // resource_handle_to_last_store_op keeps track of the most recent (last)
   // store to each resource. Non-existent entry indicates that a resource has
   // not been stored to yet.
-  llvm::SmallDenseMap<Value*, TF::AssignVariableOpOp>
+  llvm::SmallDenseMap<Value*, TF::AssignVariableOp>
       resource_handle_to_last_store_op;
 
   // Only iterate through ops directly in launch_op's body as we can't handle
   // ops nested deeper in regions.
   for (Operation& op : llvm::make_early_inc_range(launch_op.GetBody())) {
-    if (auto read_variable_op = dyn_cast<TF::ReadVariableOpOp>(&op)) {
+    if (auto read_variable_op = dyn_cast<TF::ReadVariableOp>(&op)) {
       Value* resource = read_variable_op.resource();
       auto last_store = resource_handle_to_last_store_op[resource];
       if (!last_store) continue;
@@ -164,7 +164,7 @@ void ForwardStoreToLoad(tf_device::LaunchOp launch_op) {
       continue;
     }
 
-    if (auto assign_variable_op = dyn_cast<TF::AssignVariableOpOp>(&op)) {
+    if (auto assign_variable_op = dyn_cast<TF::AssignVariableOp>(&op)) {
       Value* resource = assign_variable_op.resource();
       auto last_store = resource_handle_to_last_store_op[resource];
       // Previous store ops to same resource can be erased.
@@ -179,12 +179,12 @@ void ForwardStoreToLoad(tf_device::LaunchOp launch_op) {
 // forwarding has been performed on this launch_op such that all loads of same
 // resource are on its initial values.
 void HoistResourceLoads(tf_device::LaunchOp launch_op) {
-  llvm::SmallDenseMap<Value*, TF::ReadVariableOpOp> resource_to_read_ops;
+  llvm::SmallDenseMap<Value*, TF::ReadVariableOp> resource_to_read_ops;
 
   // Only iterate through ops directly in launch_op's body as we can't handle
   // ops nested deeper in regions.
   for (Operation& op : llvm::make_early_inc_range(launch_op.GetBody())) {
-    auto read_variable_op = dyn_cast<TF::ReadVariableOpOp>(&op);
+    auto read_variable_op = dyn_cast<TF::ReadVariableOp>(&op);
     if (!read_variable_op) continue;
     Value* resource = read_variable_op.resource();
 
@@ -220,7 +220,7 @@ bool AppendResourceStoreValueToReturn(tf_device::LaunchOp launch_op) {
   // Only iterate through ops directly in launch_op's body as we can't handle
   // ops nested deeper in regions.
   for (Operation& op : launch_op.GetBody()) {
-    auto assign_variable_op = dyn_cast<TF::AssignVariableOpOp>(&op);
+    auto assign_variable_op = dyn_cast<TF::AssignVariableOp>(&op);
     if (!assign_variable_op) continue;
     Value* resource = assign_variable_op.resource();
     if (!resource) continue;
@@ -280,7 +280,7 @@ void SinkResourceStores(tf_device::LaunchOp launch_op, OpBuilder* builder) {
   // Clone all resource store ops and map their operands to values returned from
   // new_launch_op.
   for (Operation& op : llvm::make_early_inc_range(new_launch_op.GetBody())) {
-    if (dyn_cast<TF::AssignVariableOpOp>(&op)) {
+    if (dyn_cast<TF::AssignVariableOp>(&op)) {
       builder->clone(op, mapper);
       op.erase();
     }
