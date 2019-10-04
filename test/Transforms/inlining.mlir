@@ -72,3 +72,36 @@ func @no_inline_external() {
   call @func_external() : () -> ()
   return
 }
+
+// Check that multiple levels of calls will be inlined.
+func @multilevel_func_a() {
+  return
+}
+func @multilevel_func_b() {
+  call @multilevel_func_a() : () -> ()
+  return
+}
+
+// CHECK-LABEL: func @inline_multilevel
+func @inline_multilevel() {
+  // CHECK-NOT: call
+  %fn = "test.functional_region_op"() ({
+    call @multilevel_func_b() : () -> ()
+    "test.return"() : () -> ()
+  }) : () -> (() -> ())
+
+  call_indirect %fn() : () -> ()
+  return
+}
+
+// Check that recursive calls are not inlined.
+// CHECK-LABEL: func @no_inline_recursive
+func @no_inline_recursive() {
+  // CHECK: test.functional_region_op
+  // CHECK-NOT: test.functional_region_op
+  %fn = "test.functional_region_op"() ({
+    call @no_inline_recursive() : () -> ()
+    "test.return"() : () -> ()
+  }) : () -> (() -> ())
+  return
+}
