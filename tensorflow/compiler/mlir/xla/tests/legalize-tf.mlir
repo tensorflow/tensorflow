@@ -497,6 +497,36 @@ func @simple_softmax(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   return %0: tensor<2x3xf32>
 }
 
+// CHECK-LABEL: func @dynamic_softmax
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<?x?xf32>)
+func @dynamic_softmax(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+
+  // Verify reduce op for max computation and its body.
+  // CHECK: %[[NEG_INF:.*]] = xla_hlo.constant dense<0xFF800000> : tensor<f32>
+  // CHECK: %[[MAX:.*]] = "xla_hlo.reduce"(%[[ARG0]], %[[NEG_INF]])
+  // CHECK:  xla_hlo.max
+  // CHECK: "xla_hlo.return"
+  // CHECK: {dimensions = dense<1> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
+
+  // CHECK: %[[SHIFTED_INP:.*]] = "xla_hlo.sub"(%[[ARG0]], %[[MAX]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
+  // CHECK: %[[EXP:.*]] = "xla_hlo.exp"(%[[SHIFTED_INP]])
+  // CHECK: %[[CASTED_EXP:.*]] = "xla_hlo.convert"(%[[EXP]]) : (tensor<?x?xf32>) -> tensor<?x?xf32>
+
+  // Verify reduce op for summation and its body.
+  // CHECK: %[[ZERO:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK: %[[SUM:.*]] = "xla_hlo.reduce"(%[[CASTED_EXP]], %[[ZERO]])
+  // CHECK:  xla_hlo.add
+  // CHECK: "xla_hlo.return"
+  // CHECK: {dimensions = dense<1> : tensor<1xi64>}
+  // CHECK: %[[CASTED_SUM:.*]] = "xla_hlo.convert"(%[[SUM]]) : (tensor<?xf32>) -> tensor<?xf32>
+
+  // CHECK: %[[RESULT:.*]] = "xla_hlo.div"(%[[EXP]], %[[CASTED_SUM]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
+  // return %[[RESULT]]
+
+  %0 = "tf.Softmax"(%arg0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
+  return %0: tensor<?x?xf32>
+}
+
 // CHECK-LABEL: bf16_softmax
 func @bf16_softmax(%arg0: tensor<2x3xbf16>) -> tensor<2x3xbf16> {
   // Verify that conversion to f32 and then back to bf16 are introduced.
@@ -589,6 +619,7 @@ func @transpose_3d(%arg0: tensor<1x2x3xf32>) -> tensor<3x2x1xf32> {
 // CHECK-LABEL: @transpose_dynamic_2d
 func @transpose_dynamic_2d(%arg0: tensor<?x4xf32>) -> tensor<4x?xf32> {
   %permutation = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> (tensor<2xi64>)
+  // CHECK: "tf.Transpose"
   %0 = "tf.Transpose"(%arg0, %permutation) : (tensor<?x4xf32>, tensor<2xi64>) -> tensor<4x?xf32>
   return %0 : tensor<4x?xf32>
 }
@@ -596,6 +627,7 @@ func @transpose_dynamic_2d(%arg0: tensor<?x4xf32>) -> tensor<4x?xf32> {
 // CHECK-LABEL: @transpose_rankless_2d
 func @transpose_rankless_2d(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %permutation = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> (tensor<2xi64>)
+  // CHECK: "tf.Transpose"
   %0 = "tf.Transpose"(%arg0, %permutation) : (tensor<*xf32>, tensor<2xi64>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -642,6 +674,7 @@ func @cast_i2f(%arg0: tensor<2xi32>) -> tensor<2xf32> {
 
 // CHECK-LABEL: func @cast_c2f
 func @cast_c2f(%arg0: tensor<2x!tf.complex64>) -> tensor<2xf32> {
+  // CHECK: "tf.Cast"
   %0 = "tf.Cast"(%arg0) : (tensor<2x!tf.complex64>) -> tensor<2xf32>
   return %0 : tensor<2xf32>
 }
