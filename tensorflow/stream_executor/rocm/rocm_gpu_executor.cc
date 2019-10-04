@@ -273,24 +273,21 @@ port::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   rocm_kernel->set_arity(spec.arity());
 
   KernelMetadata kernel_metadata;
-  if (!GetKernelMetadata(rocm_kernel, &kernel_metadata)) {
-    LOG(WARNING) << "Unable to get metadata for kernel " << kernelname;
-  }
+  TF_RETURN_IF_ERROR(GetKernelMetadata(rocm_kernel, &kernel_metadata));
   kernel->set_metadata(kernel_metadata);
   kernel->set_name(*kernelname);
   return port::Status::OK();
 }
 
-bool GpuExecutor::GetKernelMetadata(GpuKernel* rocm_kernel,
-                                    KernelMetadata* kernel_metadata) {
+port::Status GpuExecutor::GetKernelMetadata(GpuKernel* rocm_kernel,
+                                            KernelMetadata* kernel_metadata) {
   int value = 0;
   // TODO(ROCm) implement this feature in HIP
   kernel_metadata->set_registers_per_thread(value);
 
   // TODO(ROCm) implement this feature in HIP
   kernel_metadata->set_shared_memory_bytes(value);
-
-  return true;
+  return port::Status::OK();
 }
 
 port::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
