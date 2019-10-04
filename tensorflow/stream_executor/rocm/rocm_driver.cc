@@ -446,28 +446,27 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                       "Feature not supported on ROCm platform (LoadCubin)"};
 }
 
-/* static */ bool GpuDriver::LoadHsaco(GpuContext* context,
-                                       const char* hsaco_contents,
-                                       hipModule_t* module) {
+/* static */ port::Status GpuDriver::LoadHsaco(GpuContext* context,
+                                               const char* hsaco_contents,
+                                               hipModule_t* module) {
   absl::Notification notification;
-  bool ret = true;
-  GetDriverExecutor()->Schedule(
-      [context, hsaco_contents, module, &ret, &notification]() {
-        ScopedActivateContext activation{context};
-        void* hsaco_data = const_cast<char*>(hsaco_contents);
+  port::Status ret = port::Status::OK();
+  GetDriverExecutor()->Schedule([context, hsaco_contents, module, &ret,
+                                 &notification]() {
+    ScopedActivateContext activation{context};
+    void* hsaco_data = const_cast<char*>(hsaco_contents);
 
-        hipError_t res =
-            tensorflow::wrap::hipModuleLoadData(module, hsaco_data);
+    hipError_t res = tensorflow::wrap::hipModuleLoadData(module, hsaco_data);
 
-        if (res != hipSuccess) {
-          LOG(ERROR) << "failed to load HSACO: " << ToString(res);
-          ret = false;
-          notification.Notify();
-        }
+    if (res != hipSuccess) {
+      ret = port::InternalError(
+          absl::StrCat("Failed to load HSACO: ", ToString(res)));
+      notification.Notify();
+    }
 
-        CHECK(module != nullptr);
-        notification.Notify();
-      });
+    CHECK(module != nullptr);
+    notification.Notify();
+  });
   notification.WaitForNotification();
 
   return ret;

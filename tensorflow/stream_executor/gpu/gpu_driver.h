@@ -220,8 +220,8 @@ class GpuDriver {
   // Loads HSACO with the ROCM runtime and stores the resulting handle in
   // "module". Any error logs that are produced are logged internally.
   // (supported on ROCm only)
-  static bool LoadHsaco(GpuContext* context, const char* hsaco_contents,
-                        GpuModuleHandle* module);
+  static port::Status LoadHsaco(GpuContext* context, const char* hsaco_contents,
+                                GpuModuleHandle* module);
 
   // Retrieves a named kernel from a loaded module, and places the resulting
   // handle into function (outparam) on success. Neither kernel_name nor

@@ -280,7 +280,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
       EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
   // (supported on ROCm only)
-  bool LoadModuleFromHsaco(const char* hsaco, GpuModuleHandle* module)
+  port::Status LoadModuleFromHsaco(const char* hsaco, GpuModuleHandle* module)
       EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
   bool UnloadGpuBinary(const void* gpu_binary)

@@ -634,11 +634,11 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return ret;
 }
 
-/* static */ bool GpuDriver::LoadHsaco(GpuContext* context,
-                                       const char* hsaco_contents,
-                                       CUmodule* module) {
-  LOG(ERROR) << "Feature not supported on CUDA platform (LoadHsaco)";
-  return false;
+/* static */ port::Status GpuDriver::LoadHsaco(GpuContext* context,
+                                               const char* hsaco_contents,
+                                               CUmodule* module) {
+  return port::InternalError(
+      "Feature not supported on CUDA platform (LoadHsaco)");
 }
 
 /* static */ bool GpuDriver::SynchronousMemsetUint8(GpuContext* context,

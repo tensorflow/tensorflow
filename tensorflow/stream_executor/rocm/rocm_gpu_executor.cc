@@ -253,9 +253,7 @@ port::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     module = in_memory_modules_[hsaco];
 
     if (module == nullptr) {
-      if (!GpuDriver::LoadHsaco(context_, hsaco, &module)) {
-        return port::InternalError("Failed to load HSACO");
-      }
+      TF_RETURN_IF_ERROR(GpuDriver::LoadHsaco(context_, hsaco, &module));
     }
     kernel_to_gpu_binary_[kernel] = hsaco;
   } else {
@@ -369,11 +367,9 @@ port::Status GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
   // TODO(ROCm): Need  generic term instead of cubin/cuda/ptx
   if (spec.has_cuda_cubin_in_memory()) {
     absl::MutexLock lock{&in_memory_modules_mu_};
-    if (!LoadModuleFromHsaco(
-            reinterpret_cast<const char*>(spec.cuda_cubin_in_memory().data()),
-            &hip_module)) {
-      return port::InternalError("Failed loading module from HSACO");
-    }
+    TF_RETURN_IF_ERROR(LoadModuleFromHsaco(
+        reinterpret_cast<const char*>(spec.cuda_cubin_in_memory().data()),
+        &hip_module));
     *module_handle = ModuleHandle(const_cast<void*>(
         static_cast<const void*>(spec.cuda_cubin_in_memory().data())));
     return port::Status::OK();
@@ -392,15 +388,13 @@ port::Status GpuExecutor::LoadModuleFromPtx(const char* ptx,
   LOG(FATAL) << "Feature not supported on ROCM platform (LoadModuleFromPtx)";
 }
 
-bool GpuExecutor::LoadModuleFromHsaco(const char* hsaco, hipModule_t* module) {
+port::Status GpuExecutor::LoadModuleFromHsaco(const char* hsaco,
+                                              hipModule_t* module) {
   uint64_t module_refcount;
   std::tie(*module, module_refcount) = gpu_binary_to_module_[hsaco];
 
   if (*module == nullptr) {
-    if (!GpuDriver::LoadHsaco(context_, hsaco, module)) {
-      LOG(ERROR) << "failed to load : HSACO \n";
-      return false;
-    }
+    TF_RETURN_IF_ERROR(GpuDriver::LoadHsaco(context_, hsaco, module));
     module_refcount = 1;
     in_memory_modules_[hsaco] = *module;
     VLOG(3) << "Loaded HSACO " << static_cast<const void*>(hsaco)
@@ -411,7 +405,7 @@ bool GpuExecutor::LoadModuleFromHsaco(const char* hsaco, hipModule_t* module) {
             << " is already loaded as module " << *module;
   }
   gpu_binary_to_module_[hsaco] = {*module, module_refcount};
-  return true;
+  return port::Status::OK();
 }
 
 // This is a non-essential operation; if there's a failure, proceed without

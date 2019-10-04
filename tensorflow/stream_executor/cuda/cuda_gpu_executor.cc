@@ -254,9 +254,10 @@ port::Status GpuExecutor::LoadModuleFromPtx(const char* ptx, CUmodule* module) {
   return port::Status::OK();
 }
 
-bool GpuExecutor::LoadModuleFromHsaco(const char* hsaco, CUmodule* module) {
-  LOG(ERROR) << "Feature not supported on CUDA platform (LoadModuleFromHsaco)";
-  return false;
+port::Status GpuExecutor::LoadModuleFromHsaco(const char* hsaco,
+                                              CUmodule* module) {
+  return port::InternalError(
+      "Feature not supported on CUDA platform (LoadModuleFromHsaco)");
 }
 
 port::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
