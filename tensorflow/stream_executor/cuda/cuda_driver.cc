@@ -641,29 +641,21 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
       "Feature not supported on CUDA platform (LoadHsaco)");
 }
 
-/* static */ bool GpuDriver::SynchronousMemsetUint8(GpuContext* context,
-                                                    CUdeviceptr location,
-                                                    uint8 value, size_t size) {
+/* static */ port::Status GpuDriver::SynchronousMemsetUint8(
+    GpuContext* context, CUdeviceptr location, uint8 value, size_t size) {
   ScopedActivateContext activation(context);
-  CUresult res = cuMemsetD8(location, value, size);
-  if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "failed to memset memory: " << ToString(res);
-    return false;
-  }
-  return true;
+  RETURN_IF_CUDA_RES_ERROR(cuMemsetD8(location, value, size),
+                           "Failed to memset memory");
+  return port::Status::OK();
 }
 
-/* static */ bool GpuDriver::SynchronousMemsetUint32(GpuContext* context,
-                                                     CUdeviceptr location,
-                                                     uint32 value,
-                                                     size_t uint32_count) {
+/* static */ port::Status GpuDriver::SynchronousMemsetUint32(
+    GpuContext* context, CUdeviceptr location, uint32 value,
+    size_t uint32_count) {
   ScopedActivateContext activation(context);
-  CUresult res = cuMemsetD32(location, value, uint32_count);
-  if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "failed to memset memory: " << ToString(res);
-    return false;
-  }
-  return true;
+  RETURN_IF_CUDA_RES_ERROR(cuMemsetD32(location, value, uint32_count),
+                           "Failed to memset memory");
+  return port::Status::OK();
 }
 
 /* static */ bool GpuDriver::AsynchronousMemsetUint8(GpuContext* context,

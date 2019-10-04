@@ -472,30 +472,28 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return ret;
 }
 
-/* static */ bool GpuDriver::SynchronousMemsetUint8(GpuContext* context,
-                                                    hipDeviceptr_t location,
-                                                    uint8 value, size_t size) {
+/* static */ port::Status GpuDriver::SynchronousMemsetUint8(
+    GpuContext* context, hipDeviceptr_t location, uint8 value, size_t size) {
   ScopedActivateContext activation{context};
   hipError_t res = tensorflow::wrap::hipMemsetD8(location, value, size);
   if (res != hipSuccess) {
-    LOG(ERROR) << "failed to memset memory: " << ToString(res);
-    return false;
+    return port::InternalError(
+        absl::StrCat("failed to memset memory: ", ToString(res)));
   }
-  return true;
+  return port::Status::OK();
 }
 
-/* static */ bool GpuDriver::SynchronousMemsetUint32(GpuContext* context,
-                                                     hipDeviceptr_t location,
-                                                     uint32 value,
-                                                     size_t uint32_count) {
+/* static */ port::Status GpuDriver::SynchronousMemsetUint32(
+    GpuContext* context, hipDeviceptr_t location, uint32 value,
+    size_t uint32_count) {
   ScopedActivateContext activation{context};
   void* pointer = absl::bit_cast<void*>(location);
   hipError_t res = tensorflow::wrap::hipMemsetD32(pointer, value, uint32_count);
   if (res != hipSuccess) {
-    LOG(ERROR) << "failed to memset memory: " << ToString(res);
-    return false;
+    return port::InternalError(
+        absl::StrCat("failed to memset memory: ", ToString(res)));
   }
-  return true;
+  return port::Status::OK();
 }
 
 /* static */ bool GpuDriver::AsynchronousMemsetUint8(GpuContext* context,
