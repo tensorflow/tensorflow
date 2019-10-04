@@ -211,7 +211,6 @@ tf_cuda_library(
     hdrs = ["utils/trt_logger.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":logger_registry",
         "//tensorflow/core:lib_proto_parsing",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
@@ -301,19 +300,6 @@ tf_cc_test(
     ],
 )
 
-tf_cuda_library(
-    name = "logger_registry",
-    srcs = ["convert/logger_registry.cc"],
-    hdrs = [
-        "convert/logger_registry.h",
-    ],
-    copts = tf_copts(),
-    deps = [
-        "@com_google_absl//absl/strings",
-        "//tensorflow/core:lib",
-    ] + if_tensorrt([":tensorrt_lib"]),
-)
-
 # Library for the node-level conversion portion of TensorRT operation creation
 tf_cuda_library(
     name = "trt_conversion",
@@ -328,7 +314,6 @@ tf_cuda_library(
         "convert/trt_optimization_pass.h",
     ],
     deps = [
-        ":logger_registry",
         ":segment",
         ":trt_allocator",
         ":trt_plugins",
