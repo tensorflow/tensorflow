@@ -3067,13 +3067,27 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
     op_inputs = inputs;
   }
 
-  tensorflow::eager::ForwardFunction<PyObject> forward_function(
+  tensorflow::eager::ForwardFunction<PyObject> py_forward_function(
       [op_name, attrs, inputs, results](
           const std::vector<PyObject*>& input_tangents,
           std::vector<PyObject*>* output_tangents) {
         return CallJVPFunction(op_name, attrs, inputs, results, input_tangents,
                                output_tangents);
       });
+  tensorflow::eager::ForwardFunction<PyObject>* forward_function;
+  if (c_op_name == "While" || c_op_name == "StatelessWhile" ||
+      c_op_name == "If" || c_op_name == "StatelessIf") {
+    // Control flow contains non-hashable attributes. Handling them in Python is
+    // a headache, so instead we'll stay as close to GradientTape's handling as
+    // possible (a null forward function means the accumulator forwards to a
+    // tape).
+    //
+    // This is safe to do since we'll only see control flow when graph building,
+    // in which case we can rely on pruning.
+    forward_function = nullptr;
+  } else {
+    forward_function = &py_forward_function;
+  }
 
   PyObject* num_inputs = PyLong_FromLong(PySequence_Size(inputs));
 
@@ -3128,7 +3142,7 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
 
         delete backward_function;
       },
-      &forward_function);
+      forward_function);
 
   Py_DECREF(num_inputs);
   if (op_outputs_tuple_created) Py_DECREF(op_outputs);
