@@ -45,6 +45,7 @@ from tensorflow.python.ops import random_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.platform import build_info
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.compat import collections_abc
@@ -4239,7 +4240,7 @@ def _get_noise_shape(x, noise_shape):
 @deprecation.deprecated_args(None, "Please use `rate` instead of `keep_prob`. "
                              "Rate should be set to `rate = 1 - keep_prob`.",
                              "keep_prob")
-def dropout(x, keep_prob=None, noise_shape=None, seed=None, name=None,
+def dropout(x, keep_prob=None, noise_shape=None, seed=0, name=None,
             rate=None):
   """Computes dropout.
 
@@ -4290,7 +4291,7 @@ def dropout(x, keep_prob=None, noise_shape=None, seed=None, name=None,
 
 
 @tf_export("nn.dropout", v1=[])
-def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
+def dropout_v2(x, rate, noise_shape=None, seed=0, name=None):
   """Computes dropout: randomly sets elements to zero to prevent overfitting.
 
   Note: The behavior of dropout has changed between TensorFlow 1.x and 2.x.
@@ -4388,6 +4389,10 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
         return x
 
     noise_shape = _get_noise_shape(x, noise_shape)
+
+    if build_info.is_rocm_build:
+      return gen_nn_ops.dropout(x,rate,noise_shape=noise_shape,seed=seed)
+
     # Sample a uniform distribution on [0.0, 1.0) and select values larger than
     # rate.
     #

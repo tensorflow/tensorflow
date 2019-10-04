@@ -326,6 +326,26 @@ REGISTER_OP("BiasAddV1")
     .SetShapeFn(shape_inference::BiasAddShape);
 // --------------------------------------------------------------------------
 
+REGISTER_OP("Dropout")
+    .Input("input: T")
+    .Input("rate: T")
+    .Input("noise_shape: int32")
+    .Input("seed: uint64")
+    .Output("output: T")
+    .Attr("T: {half, float, double}")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("DropoutGrad")
+    .Input("gradients: T")
+    .Input("rate: T")
+    .Input("noise_shape: int32")
+    .Input("seed: uint64")
+    .Output("backprops: T")
+    .Attr("T: {half, float, double}")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+// --------------------------------------------------------------------------
+
 REGISTER_OP("Conv2D")
     .Input("input: T")
     .Input("filter: T")
@@ -3143,7 +3163,7 @@ REGISTER_OP("_ROCmFusedConvolutionBiasActivation")
       return Status::OK();
     })
     .Doc(R"doc(
-    Computes a fused kernel which implements: 
+    Computes a fused kernel which implements:
       Conv2D op, followed by
       BiasAdd op, followed by
       any activation op (None, Sigmoid, Relu, Relu6, Tanh)
@@ -3197,7 +3217,7 @@ REGISTER_OP("_ROCmFusedBatchNormActivationInference")
       return Status::OK();
     })
     .Doc(R"doc(
-    Computes a fused kernel which implements: 
+    Computes a fused kernel which implements:
       FusedBatchNorm / FusedBatchNormV2 (inference only), followed by
       any activation op (None, Sigmoid, Relu, Relu6, Tanh)
     Supports only tensors of type float, half.
@@ -3257,7 +3277,7 @@ REGISTER_OP("_ROCmFusedBatchNormActivationForward")
       return Status::OK();
     })
     .Doc(R"doc(
-    Computes a fused kernel which implements: 
+    Computes a fused kernel which implements:
       FusedBatchNorm / FusedBatchNormV2 (training-fwd only), followed by
       any activation op (None, Sigmoid, Relu, Relu6, Tanh)
     Supports only tensors of type float, half.
@@ -3321,7 +3341,7 @@ REGISTER_OP("_ROCmFusedBatchNormActivationBackward")
       return Status::OK();
     })
     .Doc(R"doc(
-    Computes a fused kernel which implements: 
+    Computes a fused kernel which implements:
       FusedBatchNorm / FusedBatchNormV2 (training-bwd only), followed by
       any activation op (None, Sigmoid, Relu, Relu6, Tanh)
     Supports only tensors of type float, half.
@@ -3360,7 +3380,7 @@ REGISTER_OP("_ROCmFusedAddRelu")
       return Status::OK();
     })
     .Doc(R"doc(
-    Computes a fused kernel which implements: 
+    Computes a fused kernel which implements:
       Add op (element-wise), followed by
       Relu Op
     Supports only tensors of type {half, float}.
@@ -3390,7 +3410,7 @@ REGISTER_OP("_ROCmFusedAddNReluGrad")
       return Status::OK();
     })
     .Doc(R"doc(
-    Computes a fused kernel which implements: 
+    Computes a fused kernel which implements:
       AddN Op, Relu Op followed by
       ReluGrad Op
     Supports only tensors of type {half, float}.

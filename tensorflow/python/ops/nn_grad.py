@@ -23,6 +23,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.platform import build_info
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
@@ -1067,6 +1068,19 @@ def _L2LossGrad(op, grad):
   """
   return op.inputs[0] * grad
 
+def ConditionalRegister(dec, condition):
+  def decorator(func):
+    if condition:
+      return dec(func)
+    else:
+      return func
+  return decorator
+
+@ConditionalRegister(ops.RegisterGradient("Dropout"),build_info.is_rocm_build)
+def _DropoutGrad(op, grad):
+  dx =  gen_nn_ops.dropout_grad(
+          grad, op.inputs[1], op.inputs[2], op.inputs[3])
+  return [dx, None, None, None]
 
 @ops.RegisterGradient("TopK")
 @ops.RegisterGradient("TopKV2")
