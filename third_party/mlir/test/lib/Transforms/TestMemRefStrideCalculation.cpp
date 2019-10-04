@@ -43,13 +43,13 @@ void TestMemRefStrideCalculation::runOnFunction() {
       return;
     }
     llvm::outs() << "MemRefType offset: ";
-    if (offset == MemRefType::kDynamicStrideOrOffset)
+    if (offset == MemRefType::getDynamicStrideOrOffset())
       llvm::outs() << "?";
     else
       llvm::outs() << offset;
     llvm::outs() << " strides: ";
     interleaveComma(strides, llvm::outs(), [&](int64_t v) {
-      if (v == MemRefType::kDynamicStrideOrOffset)
+      if (v == MemRefType::getDynamicStrideOrOffset())
         llvm::outs() << "?";
       else
         llvm::outs() << v;

@@ -656,7 +656,7 @@ ParseResult Parser::parseStridedLayout(int64_t &offset,
   if (!maybeOffset && !question)
     return emitError("invalid offset");
   offset = maybeOffset ? static_cast<int64_t>(maybeOffset.getValue())
-                       : MemRefType::kDynamicStrideOrOffset;
+                       : MemRefType::getDynamicStrideOrOffset();
   consumeToken();
 
   if (!consumeIf(Token::comma))
@@ -996,7 +996,7 @@ ParseResult Parser::parseStrideList(SmallVectorImpl<int64_t> &dimensions) {
     return success();
   while (true) {
     if (consumeIf(Token::question)) {
-      dimensions.push_back(MemRefType::kDynamicStrideOrOffset);
+      dimensions.push_back(MemRefType::getDynamicStrideOrOffset());
     } else {
       // This must be an integer value.
       int64_t val;
