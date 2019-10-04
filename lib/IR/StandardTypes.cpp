@@ -453,14 +453,14 @@ static void accumulateStrides(MutableArrayRef<int64_t> strides,
     seen[pos] = true;
     return;
   }
-  if (strides[pos] != MemRefType::kDynamicStrideOrOffset)
+  if (strides[pos] != MemRefType::getDynamicStrideOrOffset())
     // Already seen case accumulates unless they are already saturated.
     strides[pos] += val;
 }
 
 // This sums multiple offsets as they are seen. In the particular case of
 // accumulating a dynamic offset with either a static of dynamic one, this
-// saturates to MemRefType::kDynamicStrideOrOffset.
+// saturates to MemRefType::getDynamicStrideOrOffset().
 static void accumulateOffset(int64_t &offset, bool &seenOffset, int64_t val) {
   if (!seenOffset) {
     // Newly seen case, sets value
@@ -468,7 +468,7 @@ static void accumulateOffset(int64_t &offset, bool &seenOffset, int64_t val) {
     seenOffset = true;
     return;
   }
-  if (offset != MemRefType::kDynamicStrideOrOffset)
+  if (offset != MemRefType::getDynamicStrideOrOffset())
     // Already seen case accumulates unless they are already saturated.
     offset += val;
 }
@@ -501,7 +501,7 @@ static void extractStrides(AffineExpr e, MutableArrayRef<int64_t> strides,
     }
     auto cst = bin.getRHS().dyn_cast<AffineConstantExpr>();
     if (!cst) {
-      strides[dim.getPosition()] = MemRefType::kDynamicStrideOrOffset;
+      strides[dim.getPosition()] = MemRefType::getDynamicStrideOrOffset();
       seen[dim.getPosition()] = true;
     } else {
       accumulateStrides(strides, seen, dim.getPosition(), cst.getValue());
@@ -515,7 +515,7 @@ static void extractStrides(AffineExpr e, MutableArrayRef<int64_t> strides,
         accumulateOffset(offset, seenOffset, cst.getValue());
       } else if (auto sym = e.dyn_cast<AffineSymbolExpr>()) {
         // Independent symbols saturate.
-        offset = MemRefType::kDynamicStrideOrOffset;
+        offset = MemRefType::getDynamicStrideOrOffset();
         seenOffset = true;
       } else if (auto dim = e.dyn_cast<AffineDimExpr>()) {
         // Independent symbols cumulate 1.
@@ -542,7 +542,7 @@ static void extractStridesFromTerm(AffineExpr e,
   }
   if (auto sym = e.dyn_cast<AffineSymbolExpr>()) {
     assert(!seenOffset && "unexpected `seen` bit with single term");
-    offset = MemRefType::kDynamicStrideOrOffset;
+    offset = MemRefType::getDynamicStrideOrOffset();
     seenOffset = true;
     return;
   }
@@ -670,7 +670,7 @@ AffineMap mlir::makeStridedLinearLayoutMap(ArrayRef<int64_t> strides,
 
   // AffineExpr for offset.
   // Static case.
-  if (offset != MemRefType::kDynamicStrideOrOffset) {
+  if (offset != MemRefType::getDynamicStrideOrOffset()) {
     auto cst = getAffineConstantExpr(offset, context);
     expr = cst;
   } else {
@@ -687,7 +687,7 @@ AffineMap mlir::makeStridedLinearLayoutMap(ArrayRef<int64_t> strides,
     auto d = getAffineDimExpr(dim, context);
     AffineExpr mult;
     // Static case.
-    if (stride != MemRefType::kDynamicStrideOrOffset)
+    if (stride != MemRefType::getDynamicStrideOrOffset())
       mult = getAffineConstantExpr(stride, context);
     else
       // Dynamic case, new symbol for each new stride.
