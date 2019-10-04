@@ -105,3 +105,39 @@ func @no_inline_recursive() {
   }) : () -> (() -> ())
   return
 }
+
+// Check that we can convert types for inputs and results as necessary.
+func @convert_callee_fn(%arg : i32) -> i32 {
+  return %arg : i32
+}
+func @convert_callee_fn_multi_arg(%a : i32, %b : i32) -> () {
+  return
+}
+func @convert_callee_fn_multi_res() -> (i32, i32) {
+  %res = constant 0 : i32
+  return %res, %res : i32, i32
+}
+
+// CHECK-LABEL: func @inline_convert_call
+func @inline_convert_call() -> i16 {
+  // CHECK: %[[INPUT:.*]] = constant
+  %test_input = constant 0 : i16
+
+  // CHECK: %[[CAST_INPUT:.*]] = "test.cast"(%[[INPUT]]) : (i16) -> i32
+  // CHECK: %[[CAST_RESULT:.*]] = "test.cast"(%[[CAST_INPUT]]) : (i32) -> i16
+  // CHECK-NEXT: return %[[CAST_RESULT]]
+  %res = "test.conversion_call_op"(%test_input) { callee=@convert_callee_fn } : (i16) -> (i16)
+  return %res : i16
+}
+
+// CHECK-LABEL: func @no_inline_convert_call
+func @no_inline_convert_call() {
+  // CHECK: "test.conversion_call_op"
+  %test_input_i16 = constant 0 : i16
+  %test_input_i64 = constant 0 : i64
+  "test.conversion_call_op"(%test_input_i16, %test_input_i64) { callee=@convert_callee_fn_multi_arg } : (i16, i64) -> ()
+
+  // CHECK: "test.conversion_call_op"
+  %res_2:2 = "test.conversion_call_op"() { callee=@convert_callee_fn_multi_res } : () -> (i16, i64)
+  return
+}

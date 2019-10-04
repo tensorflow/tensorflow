@@ -80,10 +80,16 @@ def CallableOpInterface : OpInterface<"CallableOpInterface"> {
       "Region *", "getCallableRegion", (ins "CallInterfaceCallable":$callable)
     >,
     InterfaceMethod<[{
-        Returns all of the callable regions of this operation
+        Returns all of the callable regions of this operation.
       }],
       "void", "getCallableRegions",
               (ins "SmallVectorImpl<Region *> &":$callables)
+    >,
+    InterfaceMethod<[{
+        Returns the results types that the given callable region produces when
+        executed.
+      }],
+      "ArrayRef<Type>", "getCallableResults", (ins "Region *":$callable)
     >,
   ];
 }
