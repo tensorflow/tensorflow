@@ -15,8 +15,8 @@ object.
 
 Please see the links below for more details:
 
-- [Saved Model Guide](https://www.tensorflow.org/beta/guide/saved_model)
-- [Checkpoint Guide](https://www.tensorflow.org/beta/guide/checkpoints)
+- [Saved Model Guide](https://www.tensorflow.org/guide/saved_model)
+- [Checkpoint Guide](https://www.tensorflow.org/guide/checkpoint)
 
 ## Keras SavedModel implementation
 

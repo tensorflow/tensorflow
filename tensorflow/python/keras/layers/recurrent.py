@@ -189,7 +189,7 @@ class StackedRNNCells(Layer):
 class RNN(Layer):
   """Base class for recurrent layers.
 
-  See [the Keras RNN API guide](https://www.tensorflow.org/beta/guide/keras/rnn)
+  See [the Keras RNN API guide](https://www.tensorflow.org/guide/keras/rnn)
   for details about the usage of RNN API.
 
   Arguments:
@@ -982,7 +982,7 @@ class RNN(Layer):
 class AbstractRNNCell(Layer):
   """Abstract object representing an RNN cell.
 
-  See [the Keras RNN API guide](https://www.tensorflow.org/beta/guide/keras/rnn)
+  See [the Keras RNN API guide](https://www.tensorflow.org/guide/keras/rnn)
   for details about the usage of RNN API.
 
   This is the base class for implementing RNN cells with custom behavior.
@@ -1202,7 +1202,7 @@ class DropoutRNNCellMixin(object):
 class SimpleRNNCell(DropoutRNNCellMixin, Layer):
   """Cell class for SimpleRNN.
 
-  See [the Keras RNN API guide](https://www.tensorflow.org/beta/guide/keras/rnn)
+  See [the Keras RNN API guide](https://www.tensorflow.org/guide/keras/rnn)
   for details about the usage of RNN API.
 
   This class processes one step within the whole time sequence input, whereas
@@ -1393,7 +1393,7 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
 class SimpleRNN(RNN):
   """Fully-connected RNN where the output is to be fed back to input.
 
-  See [the Keras RNN API guide](https://www.tensorflow.org/beta/guide/keras/rnn)
+  See [the Keras RNN API guide](https://www.tensorflow.org/guide/keras/rnn)
   for details about the usage of RNN API.
 
   Arguments:
