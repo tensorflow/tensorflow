@@ -701,15 +701,8 @@ TfLiteStatus PrecomputeZeroPointTimesWeightWithBias(
   }
   if (zero_point != 0) {
     const int8_t* weight = GetTensorData<int8_t>(weight_tensor);
-    // TODO(b/142062560): optimize this.
-    for (int i = 0; i < row; ++i) {
-      int32_t accu = 0;
-      for (int j = 0; j < col; ++j) {
-        int weight_val = weight[i * col + j];
-        accu += weight_val * zero_point;
-      }
-      output->get()[i] = accu;
-    }
+    tensor_utils::MatrixScalarMultiplyAccumulate(weight, zero_point, row, col,
+                                                 output->get());
   }
   return kTfLiteOk;
 }

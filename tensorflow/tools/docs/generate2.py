@@ -162,7 +162,7 @@ if LooseVersion(tf.__version__) < LooseVersion('2'):
     other projects like [`tensorflow_io`](https://github.com/tensorflow/io), or
     [`tensorflow_addons`](https://github.com/tensorflow/addons). For instructions
     on how to upgrade see the
-    [Migration guide](https://www.tensorflow.org/beta/guide/migration_guide).
+    [Migration guide](https://www.tensorflow.org/guide/migrate).
     """
 else:
   tf.raw_ops.__doc__ += _raw_ops_doc

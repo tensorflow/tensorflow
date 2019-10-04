@@ -367,8 +367,9 @@ public:
   /// Returns the memory space in which data referred to by this memref resides.
   unsigned getMemorySpace() const;
 
-  static constexpr int64_t kDynamicStrideOrOffset =
-      std::numeric_limits<int64_t>::min();
+  static int64_t getDynamicStrideOrOffset() {
+    return std::numeric_limits<int64_t>::min();
+  }
 
   static bool kindof(unsigned kind) { return kind == StandardTypes::MemRef; }
 
@@ -477,7 +478,7 @@ public:
 ///      where K and ki's are constants or symbols.
 ///
 /// A stride specification is a list of integer values that are either static
-/// or dynamic (encoded with kDynamicStrideOrOffset). Strides encode the
+/// or dynamic (encoded with getDynamicStrideOrOffset()). Strides encode the
 /// distance in the number of elements between successive entries along a
 /// particular dimension. For example, `memref<42x16xf32, (64 * d0 + d1)>`
 /// specifies a view into a non-contiguous memory region of `42` by `16` `f32`
@@ -494,7 +495,7 @@ LogicalResult getStridesAndOffset(MemRefType t,
                                   SmallVectorImpl<int64_t> &strides,
                                   int64_t &offset);
 
-/// Given a list of strides (in which MemRefType::kDynamicStrideOrOffset
+/// Given a list of strides (in which MemRefType::getDynamicStrideOrOffset()
 /// represents a dynamic value), return the single result AffineMap which
 /// represents the linearized strided layout map. Dimensions correspond to the
 /// offset followed by the strides in order. Symbols are inserted for each

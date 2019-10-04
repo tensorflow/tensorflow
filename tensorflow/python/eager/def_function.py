@@ -565,7 +565,7 @@ class Function(object):
           "due to passing python objects instead of tensors. Also, tf.function "
           "has experimental_relax_shapes=True option that relaxes argument "
           "shapes that can avoid unnecessary retracing. Please refer to "
-          "https://www.tensorflow.org/beta/tutorials/eager/tf_function#python_or_tensor_args"
+          "https://www.tensorflow.org/tutorials/customization/performance#python_or_tensor_args"
           " and https://www.tensorflow.org/api_docs/python/tf/function for more "
           "details.".format(recent_tracing_count, self._call_counter.call_count,
                             self._python_function))
@@ -1112,7 +1112,7 @@ def function(func=None,
     autograph: Whether autograph should be applied on `func` before tracing a
       graph. Data-dependent control flow requires `autograph=True`. For more
       information, see the [tf.function and AutoGraph guide](
-      https://www.tensorflow.org/beta/guide/autograph).
+      https://www.tensorflow.org/guide/function).
     experimental_implements: If provided, contains a name of a "known" function
       this implements. For example "mycompany.my_recurrent_cell".
       This is stored as an attribute in inference function,

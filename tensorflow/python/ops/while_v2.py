@@ -37,6 +37,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util_v2 as util
 from tensorflow.python.ops import custom_gradient
+from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gradients_util
@@ -508,7 +509,8 @@ def _zeros_like(op_output):
   """Like array_ops.zeros_like() but also accepts resource var handles."""
   if op_output.dtype == dtypes.resource:
     return array_ops.zeros(
-        gen_resource_variable_ops.variable_shape(op_output))
+        gen_resource_variable_ops.variable_shape(op_output),
+        dtype=default_gradient.get_zeros_dtype(op_output))
   return array_ops.zeros_like(op_output)
 
 

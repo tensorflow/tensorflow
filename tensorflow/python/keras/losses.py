@@ -62,7 +62,7 @@ class Loss(object):
   'SUM_OVER_BATCH_SIZE' will raise an error.
 
   Please see
-  https://www.tensorflow.org/alpha/tutorials/distribute/training_loops for more
+  https://www.tensorflow.org/tutorials/distribute/custom_training for more
   details on this.
 
   You can implement 'SUM_OVER_BATCH_SIZE' using global batch size like:
@@ -83,7 +83,7 @@ class Loss(object):
       When used with `tf.distribute.Strategy`, outside of built-in training
       loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
       `SUM_OVER_BATCH_SIZE` will raise an error. Please see
-      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      https://www.tensorflow.org/tutorials/distribute/custom_training
       for more details on this.
     name: Optional name for the op.
   """
@@ -169,7 +169,7 @@ class Loss(object):
           'reduction=tf.keras.losses.Reduction.NONE)\n....\n'
           '    loss = tf.reduce_sum(loss_obj(labels, predictions)) * '
           '(1. / global_batch_size)\n```\nPlease see '
-          'https://www.tensorflow.org/alpha/tutorials/distribute/training_loops'
+          'https://www.tensorflow.org/tutorials/distribute/custom_training'
           ' for more details.')
 
     if self.reduction == losses_utils.ReductionV2.AUTO:
@@ -190,7 +190,7 @@ class LossFunctionWrapper(Loss):
       When used with `tf.distribute.Strategy`, outside of built-in training
       loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
       `SUM_OVER_BATCH_SIZE` will raise an error. Please see
-      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      https://www.tensorflow.org/tutorials/distribute/custom_training
       for more details on this.
     name: (Optional) name for the loss.
     **kwargs: The keyword arguments that are passed on to `fn`.
@@ -387,7 +387,7 @@ class BinaryCrossentropy(LossFunctionWrapper):
       When used with `tf.distribute.Strategy`, outside of built-in training
       loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
       `SUM_OVER_BATCH_SIZE` will raise an error. Please see
-      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      https://www.tensorflow.org/tutorials/distribute/custom_training
       for more details on this.
     name: (Optional) Name for the op.
   """
@@ -451,7 +451,7 @@ class CategoricalCrossentropy(LossFunctionWrapper):
       When used with `tf.distribute.Strategy`, outside of built-in training
       loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
       `SUM_OVER_BATCH_SIZE` will raise an error. Please see
-      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      https://www.tensorflow.org/tutorials/distribute/custom_training
       for more details on this.
     name: Optional name for the op.
   """
@@ -512,7 +512,7 @@ class SparseCategoricalCrossentropy(LossFunctionWrapper):
       When used with `tf.distribute.Strategy`, outside of built-in training
       loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
       `SUM_OVER_BATCH_SIZE` will raise an error. Please see
-      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      https://www.tensorflow.org/tutorials/distribute/custom_training
       for more details on this.
     name: Optional name for the op.
   """
@@ -746,7 +746,7 @@ class Huber(LossFunctionWrapper):
       When used with `tf.distribute.Strategy`, outside of built-in training
       loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
       `SUM_OVER_BATCH_SIZE` will raise an error. Please see
-      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      https://www.tensorflow.org/tutorials/distribute/custom_training
       for more details on this.
     name: Optional name for the op.
   """
@@ -1128,7 +1128,7 @@ class CosineSimilarity(LossFunctionWrapper):
       When used with `tf.distribute.Strategy`, outside of built-in training
       loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
       `SUM_OVER_BATCH_SIZE` will raise an error. Please see
-      https://www.tensorflow.org/alpha/tutorials/distribute/training_loops
+      https://www.tensorflow.org/tutorials/distribute/custom_training
       for more details on this.
     name: Optional name for the op.
   """

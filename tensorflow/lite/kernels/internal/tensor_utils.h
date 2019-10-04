@@ -169,6 +169,23 @@ void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
                                          int32_t n_output, int32_t output_zp,
                                          int32_t* scratch, int8_t* output);
 
+// Multiplies a matrix with a scalar and reduce the result on each row to a
+// scalar.
+// Parameters:
+//     - matrix: matrix of size n_row * n_col
+//     - scalar: the scalar that is multiplied to each element in the matrix
+//     - n_row:  the row count of the matrix
+//     - n_col:  the column count of the matrix
+//     - output: the 32bit output
+// Note: We do not need saturation because the int8 * int8 is safe from overflow
+// in (2^31-1) / (2^14) = 131072, which is bigger than the n_row. Non-zero
+// initial output value is not exceiptionally large.
+//
+// TODO(b/142062560): optimize this.
+void MatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,
+                                    int32_t n_row, int32_t n_col,
+                                    int32_t* output);
+
 // Apply Layer Normalization (https://arxiv.org/abs/1607.06450) to a Quantized
 // vector.
 // Parameters:

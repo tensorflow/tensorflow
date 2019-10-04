@@ -277,6 +277,16 @@ void PortableApplyLayerNorm(const int16_t* input,
   }
 }
 
+void PortableMatrixScalarMultiplyAccumulate(const int8_t* matrix,
+                                            int32_t scalar, int32_t n_row,
+                                            int32_t n_col, int32_t* output) {
+  for (int i = 0; i < n_row; ++i) {
+    for (int j = 0; j < n_col; ++j) {
+      output[i] += matrix[i * n_col + j] * scalar;
+    }
+  }
+}
+
 void PortableApplySigmoid(const int16_t* input, int32_t n_batch,
                           int32_t n_input, int16_t* output) {
   for (int batch = 0; batch < n_batch; ++batch) {

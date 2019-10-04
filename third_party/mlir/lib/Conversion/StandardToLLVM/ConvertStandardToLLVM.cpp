@@ -578,7 +578,7 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
     // Dynamic strides are ok if they can be deduced from dynamic sizes (which
     // is guaranteed when succeeded(successStrides)). Dynamic offset however can
     // never be alloc'ed.
-    if (offset == MemRefType::kDynamicStrideOrOffset)
+    if (offset == MemRefType::getDynamicStrideOrOffset())
       return matchFailure();
 
     return matchSuccess();
@@ -655,7 +655,7 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
     auto successStrides = getStridesAndOffset(type, strides, offset);
     assert(succeeded(successStrides) && "unexpected non-strided memref");
     (void)successStrides;
-    assert(offset != MemRefType::kDynamicStrideOrOffset &&
+    assert(offset != MemRefType::getDynamicStrideOrOffset() &&
            "unexpected dynamic offset");
 
     // 0-D memref corner case: they have size 1 ...
@@ -688,7 +688,7 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
     SmallVector<Value *, 4> strideValues(nStrides, nullptr);
     for (auto indexedStride : llvm::enumerate(llvm::reverse(strides))) {
       int64_t index = nStrides - 1 - indexedStride.index();
-      if (strides[index] == MemRefType::kDynamicStrideOrOffset)
+      if (strides[index] == MemRefType::getDynamicStrideOrOffset())
         // Identity layout map is enforced in the match function, so we compute:
         //   `runningStride *= sizes[index]`
         runningStride = runningStride
@@ -920,14 +920,14 @@ struct LoadStoreOpLowering : public LLVMLegalizationPattern<Derived> {
         loc, elementTypePtr, memRefDescriptor,
         rewriter.getIndexArrayAttr(kPtrPosInMemRefDescriptor));
     Value *offsetValue =
-        offset == MemRefType::kDynamicStrideOrOffset
+        offset == MemRefType::getDynamicStrideOrOffset()
             ? rewriter.create<LLVM::ExtractValueOp>(
                   loc, indexTy, memRefDescriptor,
                   rewriter.getIndexArrayAttr(kOffsetPosInMemRefDescriptor))
             : this->createIndexConstant(rewriter, loc, offset);
     for (int i = 0, e = indices.size(); i < e; ++i) {
       Value *stride;
-      if (strides[i] != MemRefType::kDynamicStrideOrOffset) {
+      if (strides[i] != MemRefType::getDynamicStrideOrOffset()) {
         // Use static stride.
         auto attr =
             rewriter.getIntegerAttr(rewriter.getIndexType(), strides[i]);
