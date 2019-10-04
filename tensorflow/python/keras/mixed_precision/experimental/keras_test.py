@@ -42,7 +42,6 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.layers import core
-from tensorflow.python.keras.layers import recurrent
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.mixed_precision.experimental import test_util as mp_test_util
@@ -1147,55 +1146,6 @@ class KerasModelTest(keras_parameterized.TestCase):
     # TODO(reedwm): Always save/restore the loss scale with Model.save().
     self.assertIn(backend.get_value(loss_scale()), (1, 2))
     self.assertIn(backend.get_value(loss_scale._num_good_steps), (0, 1))
-
-
-class RnnTest(keras_parameterized.TestCase):
-  """Test mixed precision with RNNs."""
-
-  # TODO(b/136512020): Support and test recurrent_v2.GRU.
-  @parameterized.named_parameters(
-      {
-          'testcase_name': 'base_simple',
-          'strategy_fn': default_strategy_fn,
-          'rnn_class': recurrent.SimpleRNN,
-      }, {
-          'testcase_name': 'distribute_simple',
-          'strategy_fn': create_mirrored_strategy,
-          'rnn_class': recurrent.SimpleRNN,
-      }, {
-          'testcase_name': 'base_gru',
-          'strategy_fn': default_strategy_fn,
-          'rnn_class': recurrent.GRU,
-      }, {
-          'testcase_name': 'distribute_gru',
-          'strategy_fn': create_mirrored_strategy,
-          'rnn_class': recurrent.GRU,
-      })
-  @test_util.run_in_graph_and_eager_modes
-  # RNNs do not work properly with GradientTape in graph mode when V1 control
-  # flow is used.
-  @test_util.enable_control_flow_v2
-  def test_rnn(self, strategy_fn, rnn_class):
-    x = array_ops.ones((2, 3, 4), dtype=dtypes.float16)
-    strategy = strategy_fn()
-    with strategy.scope(), policy.policy_scope('infer_float32_vars'):
-      layer = rnn_class(units=4)
-
-      def run_fn():
-        with backprop.GradientTape() as tape:
-          y = layer(x)
-          self.assertEqual(y.dtype, dtypes.float16)
-        opt = gradient_descent.SGD(1.)
-        grads = tape.gradient(y, layer.trainable_weights)
-        return opt.apply_gradients(zip(grads, layer.trainable_weights))
-
-      op = strategy.experimental_run(run_fn)
-      if not context.executing_eagerly():
-        self.evaluate(variables.global_variables_initializer())
-        self.evaluate(op)
-
-      for v in layer.weights:
-        self.assertEqual(v.dtype, dtypes.float32)
 
 
 if __name__ == '__main__':
