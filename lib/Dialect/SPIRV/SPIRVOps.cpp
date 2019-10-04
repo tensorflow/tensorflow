@@ -2033,6 +2033,23 @@ static LogicalResult verify(spirv::StoreOp storeOp) {
 }
 
 //===----------------------------------------------------------------------===//
+// spv.Undef
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseUndefOp(OpAsmParser &parser, OperationState &state) {
+  Type type;
+  if (parser.parseColonType(type)) {
+    return failure();
+  }
+  state.addTypes(type);
+  return success();
+}
+
+static void print(spirv::UndefOp undefOp, OpAsmPrinter &printer) {
+  printer << spirv::UndefOp::getOperationName() << " : " << undefOp.getType();
+}
+
+//===----------------------------------------------------------------------===//
 // spv.Variable
 //===----------------------------------------------------------------------===//
 
