@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
-#include "absl/types/variant.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -35,7 +34,26 @@ namespace tensorflow {
 namespace eager {
 
 #if !defined(IS_MOBILE_PLATFORM)
-using VariantFunctionArg = absl::variant<Tensor, eager::RemoteTensorHandle*>;
+class EagerFunctionArgs : public FunctionArgsInterface {
+ public:
+  EagerFunctionArgs(const std::vector<absl::optional<Tensor>>* tensor_args,
+                    std::function<Status(const int, RemoteTensorHandle*)>
+                        serialize_remote_handle)
+      : tensor_args_(tensor_args),
+        serialize_remote_handle_(std::move(serialize_remote_handle)) {}
+
+  ~EagerFunctionArgs() override{};
+
+  Status GetLocalArg(const int index, Tensor* val) const override;
+
+  Status GetRemoteArg(const int index,
+                      eager::RemoteTensorHandle* val) const override;
+
+ private:
+  const std::vector<absl::optional<Tensor>>* tensor_args_;
+  std::function<Status(const int, eager::RemoteTensorHandle*)>
+      serialize_remote_handle_;
+};
 #endif  // IS_MOBILE_PLATFORM
 
 // A ProcessFunctionLibraryRuntime which supports running functions with inputs
@@ -58,9 +76,8 @@ class EagerProcessFunctionLibraryRuntime
 #if !defined(IS_MOBILE_PLATFORM)
   void Run(const FunctionLibraryRuntime::Options& opts,
            FunctionLibraryRuntime::Handle handle,
-           const std::vector<VariantFunctionArg>& args,
-           std::vector<Tensor>* rets,
-           FunctionLibraryRuntime::DoneCallback done) const;
+           const FunctionArgsInterface& args, std::vector<Tensor>* rets,
+           FunctionLibraryRuntime::DoneCallback done) const override;
 
  private:
   void RunRemoteDevice(

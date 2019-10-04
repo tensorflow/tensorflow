@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <string.h>
 
-#include "absl/types/span.h"
+#include <memory>
+
+#include "absl/types/optional.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/common_runtime/eager/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
@@ -398,10 +400,11 @@ TEST_F(EagerServiceImplTest, EagerPFLRTest) {
   FunctionLibraryDefinition func_lib_def{OpRegistry::Global(), {}};
   auto device_mgr = absl::make_unique<StaticDeviceMgr>(
       DeviceFactory::NewDevice("CPU", {}, "/job:localhost/replica:0/task:1"));
-  auto eager_pflr = absl::make_unique<EagerProcessFunctionLibraryRuntime>(
-      device_mgr.get(), Env::Default(), /*config=*/nullptr,
-      TF_GRAPH_DEF_VERSION, &func_lib_def, OptimizerOptions(), nullptr,
-      eager_cluster_flr.get(), nullptr);
+  std::unique_ptr<ProcessFunctionLibraryRuntime> eager_pflr =
+      absl::make_unique<EagerProcessFunctionLibraryRuntime>(
+          device_mgr.get(), Env::Default(), /*config=*/nullptr,
+          TF_GRAPH_DEF_VERSION, &func_lib_def, OptimizerOptions(), nullptr,
+          eager_cluster_flr.get(), nullptr);
 
   tensorflow::FunctionDef fdef = MatMulFunction();
   TF_ASSERT_OK(func_lib_def.AddFunctionDef(fdef));
@@ -442,9 +445,16 @@ TEST_F(EagerServiceImplTest, EagerPFLRTest) {
   input.set_output_num(0);
   input.set_op_device(local_device);
   input.set_device(local_device);
-  VariantFunctionArg arg(&input);
+  std::vector<RemoteTensorHandle> inputs = {input};
   std::vector<Tensor> outputs;
-  eager_pflr->Run(opts, handle, {arg}, &outputs,
+  const std::vector<absl::optional<Tensor>> tensor_args = {absl::nullopt};
+  const EagerFunctionArgs args(
+      &tensor_args,
+      [&inputs](const int i, RemoteTensorHandle* handle) -> Status {
+        *handle = inputs.at(i);
+        return Status::OK();
+      });
+  eager_pflr->Run(opts, handle, args, &outputs,
                   [&status, &done](const Status& s) {
                     status = s;
                     done.Notify();

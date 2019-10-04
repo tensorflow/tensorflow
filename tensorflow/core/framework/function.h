@@ -848,7 +848,7 @@ class DistributedFunctionLibraryRuntime {
   // TODO(yujingzhang): Support outputting tensors on remote devices.
   virtual void Run(const FunctionLibraryRuntime::Options& opts,
                    FunctionLibraryRuntime::LocalHandle handle,
-                   absl::Span<eager::RemoteTensorHandle* const> args,
+                   std::vector<eager::RemoteTensorHandle>* args,
                    FunctionLibraryRuntime::DoneCallback done) {
     done(errors::Unimplemented("Unimplemented."));
   }

@@ -102,7 +102,7 @@ void EagerClusterFunctionLibraryRuntime::Run(
 void EagerClusterFunctionLibraryRuntime::Run(
     const FunctionLibraryRuntime::Options& opts,
     FunctionLibraryRuntime::LocalHandle handle,
-    absl::Span<eager::RemoteTensorHandle* const> args,
+    std::vector<eager::RemoteTensorHandle>* args,
     FunctionLibraryRuntime::DoneCallback done) {
   FunctionData* function_data = nullptr;
   {
@@ -134,8 +134,8 @@ void EagerClusterFunctionLibraryRuntime::Run(
   eager::EnqueueRequest* request = new eager::EnqueueRequest;
   request->set_context_id(function_data->context_id);
   eager::Operation* remote_op = request->add_queue()->mutable_operation();
-  for (size_t i = 0; i < args.size(); ++i) {
-    remote_op->add_inputs()->Swap(args[i]);
+  for (size_t i = 0; i < args->size(); ++i) {
+    remote_op->add_inputs()->Swap(&(*args)[i]);
   }
   // TODO(yujingzhang): add step_id to eager::Operation to make sure that all
   // component functions use the same step id.

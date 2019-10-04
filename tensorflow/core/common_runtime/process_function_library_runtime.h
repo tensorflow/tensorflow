@@ -35,6 +35,18 @@ limitations under the License.
 
 namespace tensorflow {
 
+class FunctionArgsInterface {
+ public:
+  virtual ~FunctionArgsInterface() {}
+
+  virtual Status GetLocalArg(const int index, Tensor* val) const = 0;
+
+#if !defined(IS_MOBILE_PLATFORM)
+  virtual Status GetRemoteArg(const int index,
+                              eager::RemoteTensorHandle* val) const = 0;
+#endif  // IS_MOBILE_PLATFORM
+};
+
 // A class that stores all the FunctionLibraryRuntime objects, one per device.
 class ProcessFunctionLibraryRuntime {
  public:
@@ -156,6 +168,13 @@ class ProcessFunctionLibraryRuntime {
            FunctionLibraryRuntime::Handle handle, CallFrameInterface* frame,
            FunctionLibraryRuntime::DoneCallback done) const;
 
+  virtual void Run(const FunctionLibraryRuntime::Options& opts,
+                   FunctionLibraryRuntime::Handle handle,
+                   const FunctionArgsInterface& args, std::vector<Tensor>* rets,
+                   FunctionLibraryRuntime::DoneCallback done) const {
+    done(errors::Unimplemented("Unimplemented."));
+  }
+
   const DeviceMgr* device_mgr() { return device_mgr_; }
 
   const DeviceSet* device_set() { return &device_set_; }
@@ -172,7 +191,7 @@ class ProcessFunctionLibraryRuntime {
   struct InternalArgs {
     std::vector<Tensor> local_args;
 #if !defined(IS_MOBILE_PLATFORM)
-    std::vector<eager::RemoteTensorHandle*> remote_args;
+    std::vector<eager::RemoteTensorHandle> remote_args;
 #endif  // IS_MOBILE_PLATFORM
   };
 
@@ -181,16 +200,16 @@ class ProcessFunctionLibraryRuntime {
     explicit InternalArgsView(gtl::ArraySlice<Tensor> tensors)
         : local_args(tensors) {}
 
-    explicit InternalArgsView(const InternalArgs& args)
-        : local_args(args.local_args) {
+    explicit InternalArgsView(InternalArgs* args)
+        : local_args(args->local_args) {
 #if !defined(IS_MOBILE_PLATFORM)
-      remote_args = args.remote_args;
+      remote_args = &args->remote_args;
 #endif  // IS_MOBILE_PLATFORM
     }
 
     gtl::ArraySlice<Tensor> local_args;
 #if !defined(IS_MOBILE_PLATFORM)
-    absl::Span<eager::RemoteTensorHandle* const> remote_args;
+    std::vector<eager::RemoteTensorHandle>* remote_args = nullptr;
 #endif  // IS_MOBILE_PLATFORM
   };
 
@@ -268,7 +287,8 @@ class ProcessFunctionLibraryRuntime {
       FunctionLibraryRuntime::Handle handle, std::vector<Tensor>* rets,
       std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
       FunctionLibraryRuntime::DoneCallback done,
-      std::function<InternalArgs(const ComponentFunctionData& comp_data)>
+      std::function<Status(const ComponentFunctionData& comp_data,
+                           InternalArgs* args)>
           get_component_args) const;
 
   FunctionLibraryRuntime::DoneCallback ApplyCleanUpToDoneCallback(

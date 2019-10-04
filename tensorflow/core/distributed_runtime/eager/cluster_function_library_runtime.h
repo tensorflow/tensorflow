@@ -51,7 +51,7 @@ class EagerClusterFunctionLibraryRuntime
 
   void Run(const FunctionLibraryRuntime::Options& opts,
            FunctionLibraryRuntime::LocalHandle handle,
-           absl::Span<eager::RemoteTensorHandle* const> args,
+           std::vector<eager::RemoteTensorHandle>* args,
            FunctionLibraryRuntime::DoneCallback done) override;
 
   void CleanUp(uint64 step_id, FunctionLibraryRuntime::LocalHandle handle,
