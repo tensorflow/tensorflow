@@ -95,4 +95,18 @@ Executes a TensorFlow function previously compiled into a LocalExecutable by an
 _XlaCompile op.
 )");
 
+REGISTER_OP("_XlaMerge")
+    .Input("partitioned_call: T")
+    .Input("xla_run: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    })
+    .Doc(R"(XLA Merge Op. For use by the XLA JIT only.
+
+Merges the outputs from the TensorFlow fallback execution and the _XlaRun node.
+)");
+
 }  // namespace tensorflow

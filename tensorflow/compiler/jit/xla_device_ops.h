@@ -72,6 +72,11 @@ class XlaAssignVariableOp : public OpKernel {
 #define REGISTER_XLA_RUN_KERNEL(DEVICE, KERNEL, TYPES) \
   REGISTER_KERNEL_BUILDER(Name("_XlaRun").Device(DEVICE), KERNEL);
 
+#define REGISTER_XLA_MERGE_KERNEL(DEVICE, KERNEL, TYPES)  \
+  REGISTER_KERNEL_BUILDER(Name("_XlaMerge")               \
+                              .Device(DEVICE),            \
+                          KERNEL);
+
 #define REGISTER_XLA_DEVICE_KERNELS(DEVICE, TYPES)                             \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("Const").Device(DEVICE).TypeConstraint("dtype", TYPES),             \
