@@ -179,8 +179,8 @@ class GpuDriver {
 
   // Sets the preferred cache configuration for the specified function.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html#group__CUDA__EXEC_1g40f8c11e81def95dc0072a375f965681
-  static bool FuncSetCacheConfig(GpuFunctionHandle function,
-                                 GpuFuncCachePreference cache_config);
+  static port::Status FuncSetCacheConfig(GpuFunctionHandle function,
+                                         GpuFuncCachePreference cache_config);
 
   // Gets the preferred shared memory bank configuration for the specified
   // CONTEXT (not function!), either default or four- or eight-byte bank size.

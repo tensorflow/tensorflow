@@ -364,17 +364,16 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   return port::Status::OK();
 }
 
-/* static */ bool GpuDriver::FuncSetCacheConfig(hipFunction_t function,
-                                                hipFuncCache_t cache_config) {
+/* static */ port::Status GpuDriver::FuncSetCacheConfig(
+    hipFunction_t function, hipFuncCache_t cache_config) {
   hipError_t res =
       tensorflow::wrap::hipFuncSetCacheConfig(function, cache_config);
   if (res != hipSuccess) {
-    LOG(ERROR) << "failed to set ROCM kernel cache config. kernel: " << function
-               << ", config: " << cache_config << ", result: " << ToString(res);
-    return false;
+    return port::InternalError(absl::StrCat(
+        "failed to set ROCM kernel cache config: ", ToString(res)));
   }
 
-  return true;
+  return port::Status::OK();
 }
 
 /* static */ port::StatusOr<hipSharedMemConfig>

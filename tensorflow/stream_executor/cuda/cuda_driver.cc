@@ -511,16 +511,11 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   return port::Status::OK();
 }
 
-/* static */ bool GpuDriver::FuncSetCacheConfig(CUfunction function,
-                                                CUfunc_cache cache_config) {
-  CUresult res = cuFuncSetCacheConfig(function, cache_config);
-  if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "failed to set CUDA kernel cache config. kernel: " << function
-               << ", config: " << cache_config << ", result: " << ToString(res);
-    return false;
-  }
-
-  return true;
+/* static */ port::Status GpuDriver::FuncSetCacheConfig(
+    CUfunction function, CUfunc_cache cache_config) {
+  RETURN_IF_CUDA_RES_ERROR(cuFuncSetCacheConfig(function, cache_config),
+                           "Failed to set CUDA kernel cache config");
+  return port::Status::OK();
 }
 
 /* static */ port::StatusOr<CUsharedconfig>
