@@ -512,6 +512,7 @@ def tf_additional_lib_srcs(exclude = []):
         "default/port.cc",
         "default/posix_file_system.cc",
         "default/subprocess.cc",
+        "default/stacktrace_handler.cc",
     ])
     return select({
         "//tensorflow:windows": windows_srcs,
@@ -601,15 +602,9 @@ def tf_additional_test_deps():
 
 def tf_additional_test_srcs():
     return [
+        "default/test.cc",
         "default/test_benchmark.cc",
-    ] + select({
-        "//tensorflow:windows": [
-            "windows/test.cc",
-        ],
-        "//conditions:default": [
-            "posix/test.cc",
-        ],
-    })
+    ]
 
 def tf_kernel_tests_linkstatic():
     return 0

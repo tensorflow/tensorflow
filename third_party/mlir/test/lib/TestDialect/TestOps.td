@@ -194,6 +194,26 @@ def SizedRegionOp : TEST_Op<"sized_region_op", []> {
   let regions = (region SizedRegion<2>:$my_region, SizedRegion<1>);
 }
 
+//===----------------------------------------------------------------------===//
+// Test Call Interfaces
+//===----------------------------------------------------------------------===//
+
+def ConversionCallOp : TEST_Op<"conversion_call_op",
+    [CallOpInterface]> {
+  let arguments = (ins Variadic<AnyType>:$inputs, SymbolRefAttr:$callee);
+  let results = (outs Variadic<AnyType>);
+
+  let extraClassDeclaration = [{
+    /// Get the argument operands to the called function.
+    operand_range getArgOperands() { return inputs(); }
+
+    /// Return the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() {
+      return getAttrOfType<SymbolRefAttr>("callee");
+    }
+  }];
+}
+
 def FunctionalRegionOp : TEST_Op<"functional_region_op",
     [CallableOpInterface]> {
   let regions = (region AnyRegion:$body);
@@ -203,6 +223,9 @@ def FunctionalRegionOp : TEST_Op<"functional_region_op",
     Region *getCallableRegion(CallInterfaceCallable) { return &body(); }
     void getCallableRegions(SmallVectorImpl<Region *> &callables) {
       callables.push_back(&body());
+    }
+    ArrayRef<Type> getCallableResults(Region *) {
+      return getType().cast<FunctionType>().getResults();
     }
   }];
 }

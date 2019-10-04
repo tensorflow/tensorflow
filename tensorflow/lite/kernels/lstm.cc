@@ -21,6 +21,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/activation_functor.h"
@@ -680,7 +681,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
 }
 
 TfLiteStatus PrecomputeZeroPointTimesWeightWithBias(
-    TfLiteContext* context, int32_t zero_pint,
+    TfLiteContext* context, int32_t zero_point,
     const TfLiteTensor* weight_tensor, const TfLiteTensor* bias_tensor,
     std::unique_ptr<int32_t[]>* output) {
   if (weight_tensor == nullptr) {
@@ -689,19 +690,26 @@ TfLiteStatus PrecomputeZeroPointTimesWeightWithBias(
 
   const RuntimeShape& weight_shape = GetTensorShape(weight_tensor);
   TF_LITE_ENSURE_EQ(context, weight_shape.DimensionsCount(), 2);
-  int row = weight_shape.Dims(0);
-  int col = weight_shape.Dims(1);
-  const int8_t* weight = GetTensorData<int8_t>(weight_tensor);
-  const int32_t* bias =
-      bias_tensor == nullptr ? nullptr : GetTensorData<int32_t>(bias_tensor);
-  output->reset(new int32_t[row]);
-  for (int i = 0; i < row; ++i) {
-    int32_t accu = bias == nullptr ? 0 : bias[i];
-    for (int j = 0; j < col; ++j) {
-      int weight_val = weight[i * col + j];
-      accu += weight_val * zero_pint;
+  const int row = weight_shape.Dims(0);
+  const int col = weight_shape.Dims(1);
+  *output = absl::make_unique<int32_t[]>(row);
+  if (bias_tensor == nullptr) {
+    memset(output->get(), 0, row * sizeof(int32_t));
+  } else {
+    const int32_t* bias = GetTensorData<int32_t>(bias_tensor);
+    memcpy(output->get(), bias, row * sizeof(int32_t));
+  }
+  if (zero_point != 0) {
+    const int8_t* weight = GetTensorData<int8_t>(weight_tensor);
+    // TODO(b/142062560): optimize this.
+    for (int i = 0; i < row; ++i) {
+      int32_t accu = 0;
+      for (int j = 0; j < col; ++j) {
+        int weight_val = weight[i * col + j];
+        accu += weight_val * zero_point;
+      }
+      output->get()[i] = accu;
     }
-    output->get()[i] = accu;
   }
   return kTfLiteOk;
 }

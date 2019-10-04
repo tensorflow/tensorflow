@@ -26,7 +26,6 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/logger_registry.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/segment/segment.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
@@ -418,15 +417,16 @@ Status CreateTRTNode(const ConversionParams& params,
   // Build the engine and get its serialized representation.
   string segment_string;
   if (info.engine_type == EngineInfo::EngineType::TRTStatic) {
-    auto trt_logger = GetLoggerRegistry()->LookUp(params.trt_logger_name);
     // Create static engine for fp32/fp16 mode.
+    Logger trt_logger;
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     // TODO(sami): What happens if 1st dim is not batch?
     TF_RETURN_IF_ERROR(ConvertGraphDefToEngine(
         info.segment_graph_def,
         calibrate_int8 ? TrtPrecisionMode::FP32 : info.precision_mode,
-        max_batch_size, info.max_workspace_size_bytes, input_shapes, trt_logger,
-        alloc, /*calibrator=*/nullptr, &engine, info.use_calibration,
+        max_batch_size, info.max_workspace_size_bytes, input_shapes,
+        &trt_logger, alloc, /*calibrator=*/nullptr, &engine,
+        info.use_calibration,
         /*convert_successfully=*/nullptr));
     TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
     segment_string = string(static_cast<const char*>(engine_data->data()),

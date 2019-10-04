@@ -24,8 +24,9 @@ import six
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.mixed_precision.experimental import loss_scale as keras_loss_scale_module
+from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.platform import tf_logging
-from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.training.experimental import mixed_precision_global_state
 from tensorflow.python.util.tf_export import keras_export
 
@@ -306,12 +307,15 @@ class Policy(object):
 
     if loss_scale == USE_DEFAULT:
       loss_scale = 'dynamic' if name == 'mixed_float16' else None
+      self._using_default_loss_scale = True
+    else:
+      self._using_default_loss_scale = False
     if loss_scale and self._compute_dtype not in (None, 'float16'):
       tf_logging.warn('Creating a Policy with a loss scale is only useful for '
                       'float16 policies. You passed loss_scale=%r for policy '
                       '%s. Consider not passing any loss_scale instead.' %
                       (loss_scale, name))
-    self._loss_scale = loss_scale_module.get(loss_scale)
+    self._loss_scale = keras_loss_scale_module.get(loss_scale)
 
   def _parse_name(self, name):
     """Parses a Policy name into a compute and variable dtype.
@@ -425,6 +429,25 @@ class Policy(object):
 
   def __repr__(self):
     return '<Policy "%s", loss_scale=%s>' % (self._name, self.loss_scale)
+
+  def get_config(self):
+    config = {
+        'name': self.name
+    }
+    if not self._using_default_loss_scale:
+      # We only include the loss scale if the default loss scale is not used.
+      # This allows us to change the loss scale config format without breaking
+      # users who use the default loss scale.
+      config['loss_scale'] = keras_loss_scale_module.serialize(self.loss_scale)
+    return config
+
+  @classmethod
+  def from_config(cls, config, custom_objects=None):
+    if 'loss_scale' in config and isinstance(config['loss_scale'], dict):
+      config = config.copy()
+      config['loss_scale'] = keras_loss_scale_module.deserialize(
+          config['loss_scale'], custom_objects=custom_objects)
+    return cls(**config)
 
 
 def with_input_dtype(policy, dtype):
@@ -556,3 +579,55 @@ def policy_scope(policy):
     yield
   finally:
     set_policy(old_policy)
+
+
+def _is_convertible_to_dtype(dtype):
+  try:
+    dtypes.as_dtype(dtype)
+    return True
+  except TypeError:
+    return False
+
+
+def _policy_equivalent_to_dtype(policy):
+  """Returns True if the Policy is equivalent to a single dtype.
+
+  A policy is equivalent to a single dtype if the policy's compute and variable
+  dtypes are the same and the policy does not cause the layer/model to have
+  additional behavior, such as loss scaling.
+
+  The "infer" policy is considered equivalent to a single dtype.
+
+  Args:
+    policy: A Policy.
+
+  Returns:
+    True, if the policy is equivalent to a single dtype.
+  """
+  # We use type() instead of isinstance because a sublcass of Policy is never
+  # equivalent to a dtype.
+  return (type(policy) == Policy and  # pylint: disable=unidiomatic-typecheck
+          list(policy.get_config().keys()) == ['name'] and
+          (policy.name == 'infer' or _is_convertible_to_dtype(policy.name)))
+
+
+def serialize(policy):
+  if _policy_equivalent_to_dtype(policy):
+    # We return either None or the policy name for compatibility with older
+    # versions of Keras. If the policy name is returned, it is a dtype string
+    # such as 'float32'.
+    return None if policy.name == 'infer' else policy.name
+  return generic_utils.serialize_keras_object(policy)
+
+
+def deserialize(config, custom_objects=None):
+  if isinstance(config, str) and _is_convertible_to_dtype(config):
+    return Policy(config)
+  if config is None:
+    return Policy('infer')
+  module_objects = {'Policy': Policy}
+  return generic_utils.deserialize_keras_object(
+      config,
+      module_objects=module_objects,
+      custom_objects=custom_objects,
+      printable_module_name='dtype policy')

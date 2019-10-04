@@ -147,9 +147,8 @@ Status ConvertSegmentToGraphDef(
 Status ConvertGraphDefToEngine(
     const GraphDef& gdef, TrtPrecisionMode precision_mode, int max_batch_size,
     size_t max_workspace_size_bytes,
-    const std::vector<PartialTensorShape>& input_shapes,
-    nvinfer1::ILogger* logger, nvinfer1::IGpuAllocator* allocator,
-    TRTInt8Calibrator* calibrator,
+    const std::vector<PartialTensorShape>& input_shapes, Logger* logger,
+    nvinfer1::IGpuAllocator* allocator, TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
     bool* convert_successfully);
 
@@ -444,8 +443,7 @@ class Converter {
   };
 
   Converter(nvinfer1::INetworkDefinition* trt_network,
-            TrtPrecisionMode precision_mode, bool use_calibration,
-            nvinfer1::ILogger* trt_logger);
+            TrtPrecisionMode precision_mode, bool use_calibration);
 
   //////////////////////////////////////////////////////////////////////////////
   // Methods used by the TRT engine builder to build a TRT network from a TF

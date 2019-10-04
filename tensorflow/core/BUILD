@@ -812,7 +812,6 @@ cc_library(
     srcs = [
         "util/reporter.cc",
         "//tensorflow/core/platform:legacy_test_srcs",
-        "//tensorflow/core/platform:test.cc",
     ],
     hdrs = [
         "util/reporter.h",
@@ -834,28 +833,8 @@ cc_library(
         ":protos_all_cc",
         "//tensorflow/core/platform/default/build_config:gtest",
         "//tensorflow/core/kernels:required",
+        "@com_google_googletest//:gtest",
     ] + tf_additional_test_deps(),
-)
-
-# Testing libraries - lite versions that don't depend on all of "lib" or
-# "lib_internal". Instead, they only need a much smaller set of support
-# libraries such as ":platform_base" and ":core_stringpiece".
-cc_library(
-    name = "test_lite",
-    testonly = 1,
-    srcs = [
-        "//tensorflow/core/platform:test.cc",
-    ],
-    hdrs = [
-        "//tensorflow/core/platform:test.h",
-        "//tensorflow/core/platform:test_benchmark.h",
-    ],
-    copts = tf_copts(),
-    deps = [
-        ":platform_base",
-        "//tensorflow/core/platform",
-        "//tensorflow/core/platform/default/build_config:gtest",
-    ],
 )
 
 # This build rule (along with :framework_internal, :lib, and :lib_internal)
@@ -2096,7 +2075,6 @@ filegroup(
         ":framework/tensor_testutil.h",
         ":util/reporter.cc",
         ":util/reporter.h",
-        "//tensorflow/core/platform:test.cc",
         "//tensorflow/core/platform:test.h",
     ],
     visibility = ["//visibility:public"],
@@ -3693,26 +3671,6 @@ cc_library(
         ":lib_internal",
         ":test",  # buildcleaner: keep
         "//tensorflow/core/platform/default/build_config:test_main",
-    ],
-    alwayslink = 1,
-)
-
-# This is the lite version of a main() for tests. It does not include any
-# support for reporting benchmark results when running on TPUs.
-cc_library(
-    name = "test_lite_main",
-    testonly = 1,
-    srcs = ["//tensorflow/core/platform:test_main.cc"],
-    copts = tf_copts(),
-    deps = [
-        # TODO(ahentz): we don't want to depend on "lib" here. It used to be
-        # that "core_stringpiece" was enough but that recently changed and
-        # we now need at least "str_util".
-        ":lib",
-        ":test_lite",
-        "//tensorflow/core/platform",
-        "//tensorflow/core/platform:stacktrace_handler",
-        "//tensorflow/core/platform/default/build_config:test_lite_main",
     ],
     alwayslink = 1,
 )

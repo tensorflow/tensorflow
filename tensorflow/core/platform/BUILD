@@ -66,8 +66,10 @@ tf_instantiate_platform_libraries(names = [
     "platform_port",
     "rocm_rocdl_path",
     "stacktrace",
+    "stacktrace_handler",
     "strong_hash",
     "subprocess",
+    "test",
     "tracing",
     "types",
     "unbounded_work_queue",
@@ -461,12 +463,8 @@ cc_library(
 
 cc_library(
     name = "stacktrace_handler",
-    srcs = tf_platform_srcs(["stacktrace_handler.cc"]),
-    hdrs = ["stacktrace_handler.h"],
-    deps = [
-        ":platform",
-        ":stacktrace",
-    ],
+    textual_hdrs = ["stacktrace_handler.h"],
+    deps = tf_platform_helper_deps("stacktrace_handler_impl"),
 )
 
 cc_library(
@@ -554,6 +552,13 @@ cc_library(
         "//tensorflow/core/lib/core:refcount",
         "//tensorflow/core/lib/strings:string_utils",
     ] + tf_additional_tensor_coding_deps(),
+)
+
+cc_library(
+    name = "test",
+    testonly = True,
+    textual_hdrs = ["test.h"],
+    deps = [":test_impl"],
 )
 
 cc_library(

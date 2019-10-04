@@ -80,9 +80,9 @@ EagerContext::EagerContext(
       thread_pool_(NewThreadPoolFromSessionOptions(opts)),
       custom_kernel_creator_(custom_kernel_creator),
       pflr_(new ProcessFunctionLibraryRuntime(
-          device_mgr, opts.env, TF_GRAPH_DEF_VERSION, &func_lib_def_,
-          opts.config.graph_options().optimizer_options(), thread_pool_.get(),
-          cluster_flr, custom_kernel_creator_)),
+          device_mgr, opts.env, &opts.config, TF_GRAPH_DEF_VERSION,
+          &func_lib_def_, opts.config.graph_options().optimizer_options(),
+          thread_pool_.get(), cluster_flr, custom_kernel_creator_)),
       log_device_placement_(opts.config.log_device_placement()),
       allow_soft_placement_(opts.config.allow_soft_placement()),
       num_active_steps_(0),
@@ -697,9 +697,13 @@ Status EagerContext::StoreCollectiveOpsServer(
     }
   }
 
+  const ConfigProto* config = pflr_ ? pflr_->config() : nullptr;
   pflr_.reset(new ProcessFunctionLibraryRuntime(
-      local_unowned_device_manager_, env_, TF_GRAPH_DEF_VERSION, &func_lib_def_,
-      {}, thread_pool_.get()));
+      local_unowned_device_manager_, env_, /*config=*/config,
+      TF_GRAPH_DEF_VERSION, &func_lib_def_,
+      /*optimizer_options=*/
+      config ? config->graph_options().optimizer_options() : OptimizerOptions(),
+      thread_pool_.get()));
 
   // Memory leak!
   if (server_ != nullptr) {
@@ -849,9 +853,11 @@ Status EagerContext::SetMasterContextState(
       entry.second->ClearError();
     }
   }
+  const auto* config = pflr_->config();
   pflr_.reset(new ProcessFunctionLibraryRuntime(
-      local_unowned_device_manager_, env_, TF_GRAPH_DEF_VERSION, &func_lib_def_,
-      {}, thread_pool_.get(), cluster_flr, custom_kernel_creator_));
+      local_unowned_device_manager_, env_, config, TF_GRAPH_DEF_VERSION,
+      &func_lib_def_, config->graph_options().optimizer_options(),
+      thread_pool_.get(), cluster_flr, custom_kernel_creator_));
 
   keep_alive_secs_ = keep_alive_secs;
   sleep_for_secs_ = std::max(1, keep_alive_secs_ / 2);
@@ -995,9 +1001,10 @@ Status EagerContext::UpdateRemoteWorker(
   }
 
   SessionOptions options = SessionOptions();
+  const auto* config = pflr_->config();
   pflr_.reset(new ProcessFunctionLibraryRuntime(
-      worker_session_device_mgr, options.env, TF_GRAPH_DEF_VERSION,
-      FuncLibDef(), options.config.graph_options().optimizer_options(),
+      worker_session_device_mgr, options.env, config, TF_GRAPH_DEF_VERSION,
+      FuncLibDef(), config->graph_options().optimizer_options(),
       thread_pool_.get(), cluster_flr, custom_kernel_creator_));
   return Status::OK();
 }

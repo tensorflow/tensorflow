@@ -232,6 +232,21 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         "tags": ["no_oss", "manual"],
         "visibility": ["//visibility:private"],
     },
+    "stacktrace_handler": {
+        "name": "stacktrace_handler_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:stacktrace_handler.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:default/stacktrace_handler.cc",
+        ],
+        "deps": [
+            "//tensorflow/core/platform",
+            "//tensorflow/core/platform:stacktrace",
+        ],
+        "tags": ["no_oss", "manual"],
+        "visibility": ["//visibility:private"],
+    },
     "strong_hash": {
         "name": "strong_hash_impl",
         "textual_hdrs": [
@@ -259,6 +274,27 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
             "//tensorflow/core/platform:logging",
             "//tensorflow/core/platform:macros",
             "//tensorflow/core/platform:mutex",
+            "//tensorflow/core/platform:types",
+        ],
+        "tags": ["no_oss", "manual"],
+        "visibility": ["//visibility:private"],
+    },
+    "test": {
+        "name": "test_impl",
+        "testonly": True,
+        "srcs": [
+            "//tensorflow/core/platform:default/test.cc",
+        ],
+        "hdrs": [
+            "//tensorflow/core/platform:test.h",
+        ],
+        "deps": [
+            "@com_google_googletest//:gtest",
+            "//tensorflow/core/lib/strings:string_utils",
+            "//tensorflow/core/platform",
+            "//tensorflow/core/platform:logging",
+            "//tensorflow/core/platform:macros",
+            "//tensorflow/core/platform:net",
             "//tensorflow/core/platform:types",
         ],
         "tags": ["no_oss", "manual"],
@@ -426,6 +462,22 @@ TF_WINDOWS_PLATFORM_LIBRARIES = {
         ],
         "deps": [
             "//tensorflow/core/platform:mutex",
+        ],
+        "tags": ["no_oss", "manual"],
+        "visibility": ["//visibility:private"],
+    },
+    "stacktrace_handler": {
+        "name": "windows_stacktrace_handler_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:stacktrace_handler.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:windows/stacktrace_handler.cc",
+        ],
+        "deps": [
+            "//tensorflow/core/platform:mutex",
+            "//tensorflow/core/platform:stacktrace",
+            "//tensorflow/core/platform:types",
         ],
         "tags": ["no_oss", "manual"],
         "visibility": ["//visibility:private"],

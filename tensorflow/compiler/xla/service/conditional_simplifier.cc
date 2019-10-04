@@ -410,6 +410,128 @@ bool RemoveUnusedTupleElements(HloInstruction* conditional_op) {
   }
   return true;
 }
+
+// Merges duplicate(identical) elements in result tuple.
+//
+// Two tuple elements(indices) are duplicate if they return identical value
+// (from the same HloInstruction source) in every branch. In other words, if
+// replacing j-th with i-th tuple index results in an invariant, i-th/j-th are
+// identical and we can safely replace all GTE j-th (users this conditional
+// instruction) with GTE i-th.
+//
+// Afterwards, any unused j-th tuple index will be removed by
+// RemoveUnusedTupleElements and the size of tuple shape will be reduced.
+// E.g.
+//
+// Before:
+//       gte          add
+//      /   \        /   \
+//      |   |        |   |
+//     on_true      on_false
+//    (f32, f32)   (f32, f32)
+//         |           |
+//          \         /
+//          conditional
+//          (f32, f32)
+//            |    |
+//           gte  gte
+//            \    /
+//            tuple
+//          (f32, f32)
+//
+// After:
+//       gte          add
+//        |            |
+//     on_true      on_false
+//      (f32)        (f32)
+//         |           |
+//          \         /
+//          conditional
+//             (f32)
+//               |
+//              gte
+//              |  \
+//              |   |
+//              tuple
+//            (f32, f32)
+bool MergeDuplicateTupleElements(HloInstruction* conditional) {
+  if (conditional->user_count() == 0 ||
+      conditional == conditional->parent()->root_instruction() ||
+      !conditional->shape().IsTuple()) {
+    VLOG(3) << "Skip MergeDuplicateTupleElements due not tuple shape nor root "
+               "instruction:\n"
+            << conditional->ToShortString();
+    return false;
+  }
+
+  for (const HloInstruction* user : conditional->users()) {
+    if (user->opcode() != HloOpcode::kGetTupleElement) {
+      VLOG(3) << "Skip MergeDuplicateTupleElements due not all users are "
+                 "kGetTupleElement:\n"
+              << conditional->ToShortString();
+      return false;
+    }
+  }
+
+  for (const HloComputation* branch : conditional->branch_computations()) {
+    if (branch->root_instruction()->opcode() != HloOpcode::kTuple) {
+      VLOG(3) << "Skip MergeDuplicateTupleElements due not all branch roots "
+                 "are kTuple:\n"
+              << conditional->ToShortString();
+      return false;
+    }
+  }
+
+  // For example,
+  //
+  //    tuple index   |         0      1      2
+  //    ------------------------------------------
+  //    branch #0 root: tuple(gte-0, add-0, add-0)
+  //    branch #1 root: tuple(rng-1, add-1, add-1)
+  //    branch #2 root: tuple(add-2, add-2, add-2)
+  //
+  // vectorize(0) will be [gte-0, rng-1, add-2]
+  // vectorize(1) will be [add-0, add-1, add-2]
+  // vectorize(2) will be [add-0, add-1, add-2]
+  //
+  // In this case, vectorize(1), vectorize(2) are equal and index 1, 2 are
+  // identical.
+  auto vectorize_branches_root_tuple_ith_operand = [conditional](int64 i) {
+    std::vector<const HloInstruction*> operands;
+    absl::c_transform(conditional->branch_computations(),
+                      std::back_inserter(operands),
+                      [i](const HloComputation* branch) {
+                        return branch->root_instruction()->operand(i);
+                      });
+    return operands;
+  };
+
+  auto replace_root_user_gte_jth_with_gte_ith = [conditional](int64 i,
+                                                              int64 j) {
+    bool changed = false;
+    for (HloInstruction* user : conditional->users()) {
+      if (user->tuple_index() == j) {
+        user->set_tuple_index(i);
+        changed |= true;
+      }
+    }
+    return changed;
+  };
+
+  bool changed = false;
+  std::map<std::vector<const HloInstruction*>, int64> index_collision_table;
+  for (int i = 0; i < conditional->shape().tuple_shapes_size(); ++i) {
+    const std::vector<const HloInstruction*> ith_operands_vector =
+        vectorize_branches_root_tuple_ith_operand(i);
+    const auto emplace_res =
+        index_collision_table.emplace(ith_operands_vector, i);
+    if (!emplace_res.second) {
+      changed |=
+          replace_root_user_gte_jth_with_gte_ith(emplace_res.first->second, i);
+    }
+  }
+  return changed;
+}
 }  // namespace
 
 StatusOr<bool> ConditionalSimplifier::Run(HloModule* module) {
@@ -431,6 +553,7 @@ StatusOr<bool> ConditionalSimplifier::Run(HloModule* module) {
 
   std::map<HloComputation*, std::set<int64>> changed_computations;
   for (HloInstruction* conditional_op : conditional_ops) {
+    changed |= MergeDuplicateTupleElements(conditional_op);
     changed |= RemoveUnusedTupleElements(conditional_op);
     changed |= ReplaceRootWithEmptyTupleIfNoUsers(conditional_op);
     TF_ASSIGN_OR_RETURN(bool result, TryRemoveConditional(conditional_op));

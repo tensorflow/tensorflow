@@ -42,6 +42,9 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
 
 #else  // RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
+namespace {
+namespace intrin_utils {
+
 inline std::int32_t mm512_get1_epi32(const __m512i v, int i) {
   __m256i a =
       i < 8 ? _mm512_extracti32x8_epi32(v, 0) : _mm512_extracti32x8_epi32(v, 1);
@@ -67,10 +70,8 @@ inline std::int32_t mm512_get1_epi32(const __m512i v, int i) {
       return 0;
   }
 }
-
-inline __m512i mm512_set1_epi32(__m512i* v, int i, std::int32_t x) {
-  return *v = _mm512_mask_set1_epi32(*v, 1 << i, x);
-}
+}  // namespace intrin_utils
+}  // namespace
 
 void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
   gemmlowp::ScopedProfilingLabel label("Kernel kAvx512");
@@ -182,8 +183,8 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
 
         for (int j = 0; j < 16; ++j) {
           accum_data_v[j] = _mm512_sub_epi32(
-              accum_data_v[j],
-              _mm512_set1_epi32(mm512_get1_epi32(non_lhs_sums_offset, j)));
+              accum_data_v[j], _mm512_set1_epi32(intrin_utils::mm512_get1_epi32(
+                                   non_lhs_sums_offset, j)));
         }
       }
 

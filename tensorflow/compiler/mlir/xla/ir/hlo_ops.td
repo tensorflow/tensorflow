@@ -82,6 +82,9 @@ def HLO_ConstOp : BASE_HLO_ConstOp, HLO_Op<"constant", [NoSideEffect]> {
     "Builder *builder, OperationState &result, Attribute value"
   >];
 
+  let printer = [{ return Print(*this, &p); }];
+  let parser = [{ return ParseConstOp(&parser, &result); }];
+
   let hasFolder = 1;
 
   // Constant has special conversion logic to HLO.
@@ -153,8 +156,8 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
     BroadcastDimAttr:$broadcast_dimensions
   );
   let results = (outs HLO_Tensor);
-  let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
-  let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 }
 
 def HLO_AddOp : HLO_BinaryElementwiseOp<"add",

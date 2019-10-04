@@ -96,7 +96,9 @@ PyObject* TF_OptimizeGraph(
       GCluster cluster,
       const tensorflow::ConfigProto& config_proto,
       const tensorflow::MetaGraphDef& metagraph,
-      bool verbose, const string& graph_id, TF_Status* status) {
+      bool verbose, const string& graph_id,
+      bool strip_default_attributes,
+      TF_Status* status) {
     tensorflow::grappler::ItemConfig item_config;
     item_config.apply_optimizations = false;
     item_config.ignore_user_placement = false;
@@ -116,8 +118,10 @@ PyObject* TF_OptimizeGraph(
     if (!s.ok()) {
        Py_RETURN_NONE;
     }
-    tensorflow::StripDefaultAttributes(*tensorflow::OpRegistry::Global(),
-                                       out_graph.mutable_node());
+    if (strip_default_attributes) {
+      tensorflow::StripDefaultAttributes(*tensorflow::OpRegistry::Global(),
+                                         out_graph.mutable_node());
+    }
     if (verbose) {
       optimizer.PrintResult();
     }
@@ -134,7 +138,7 @@ PyObject* TF_OptimizeGraph(
     GCluster cluster,
     const tensorflow::ConfigProto& config_proto,
     const tensorflow::MetaGraphDef& metagraph, bool verbose,
-    const string& graph_id, TF_Status* status);
+    const string& graph_id, bool strip_default_attributes, TF_Status* status);
 
 
 

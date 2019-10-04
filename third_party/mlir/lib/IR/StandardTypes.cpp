@@ -492,7 +492,13 @@ static void extractStrides(AffineExpr e, MutableArrayRef<int64_t> strides,
     return;
   }
   if (bin.getKind() == AffineExprKind::Mul) {
-    auto dim = bin.getLHS().cast<AffineDimExpr>();
+    // LHS may be more complex than just a single dim (e.g. multiple syms and
+    // dims). Bail out for now and revisit when we have evidence this is needed.
+    auto dim = bin.getLHS().dyn_cast<AffineDimExpr>();
+    if (!dim) {
+      failed = true;
+      return;
+    }
     auto cst = bin.getRHS().dyn_cast<AffineConstantExpr>();
     if (!cst) {
       strides[dim.getPosition()] = MemRefType::kDynamicStrideOrOffset;

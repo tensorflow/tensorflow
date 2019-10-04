@@ -305,9 +305,7 @@ port::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   cuda_kernel->set_arity(spec.arity());
 
   KernelMetadata kernel_metadata;
-  if (!GetKernelMetadata(cuda_kernel, &kernel_metadata)) {
-    LOG(WARNING) << "unable to get metadata for kernel " << *kernelname;
-  }
+  TF_RETURN_IF_ERROR(GetKernelMetadata(cuda_kernel, &kernel_metadata));
   kernel->set_metadata(kernel_metadata);
   kernel->set_name(*kernelname);
   return port::Status::OK();
@@ -384,22 +382,18 @@ bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
   return UnloadGpuBinary(gpu_binary);
 }
 
-bool GpuExecutor::GetKernelMetadata(GpuKernel* cuda_kernel,
-                                    KernelMetadata* kernel_metadata) {
+port::Status GpuExecutor::GetKernelMetadata(GpuKernel* cuda_kernel,
+                                            KernelMetadata* kernel_metadata) {
   int value;
-  if (!GpuDriver::FuncGetAttribute(CU_FUNC_ATTRIBUTE_NUM_REGS,
-                                   *cuda_kernel->gpu_function_ptr(), &value)) {
-    return false;
-  }
+  TF_RETURN_IF_ERROR(GpuDriver::FuncGetAttribute(
+      CU_FUNC_ATTRIBUTE_NUM_REGS, *cuda_kernel->gpu_function_ptr(), &value));
   kernel_metadata->set_registers_per_thread(value);
 
-  if (!GpuDriver::FuncGetAttribute(CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
-                                   *cuda_kernel->gpu_function_ptr(), &value)) {
-    return false;
-  }
+  TF_RETURN_IF_ERROR(
+      GpuDriver::FuncGetAttribute(CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
+                                  *cuda_kernel->gpu_function_ptr(), &value));
   kernel_metadata->set_shared_memory_bytes(value);
-
-  return true;
+  return port::Status::OK();
 }
 
 port::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,

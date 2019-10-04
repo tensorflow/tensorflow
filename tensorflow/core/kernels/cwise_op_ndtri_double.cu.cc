@@ -22,8 +22,6 @@ namespace tensorflow {
 namespace functor {
 DEFINE_UNARY1(ndtri, double);
 DEFINE_UNARY1(erfinv, double);
-DEFINE_SIMPLE_BINARY1(ndtri_grad, double);
-DEFINE_SIMPLE_BINARY1(erfinv_grad, double);
 }  // namespace functor
 }  // namespace tensorflow
 

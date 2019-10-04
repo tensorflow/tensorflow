@@ -49,7 +49,7 @@ void mlir::registerDialectAllocator(const DialectAllocatorFunction &function) {
 }
 
 /// Registers a function to set specific hooks for a specific dialect, typically
-/// used through the DialectHooksRegistreation template.
+/// used through the DialectHooksRegistration template.
 void mlir::registerDialectHooksSetter(const DialectHooksSetter &function) {
   assert(
       function &&

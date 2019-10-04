@@ -348,6 +348,18 @@ std::string TensorCodeGenerator::Write(
   }
 }
 
+std::string GetXStrideCorrected(const std::string& src_x,
+                                const std::string& batch_size,
+                                const std::string& stride_x,
+                                const std::string& padding_x) {
+  // TODO(sorokin) check perf and optimize with floor() if needed
+  // int p0 = src_x / batch_size;\n";
+  // int b0 = src_x % batch_size;\n";
+  // return p0 * stride_x * batch_size + b0 + padding_x;\n";
+  return absl::Substitute("((($0) / $1) * $2 * $1 + (($0) % $1) + $3)", src_x,
+                          batch_size, stride_x, padding_x);
+}
+
 TextureAddressMode GetFastestZeroMode(const CLDevice& device) {
   return device.IsAdreno3xx() ? TextureAddressMode::DONT_CARE
                               : TextureAddressMode::ZERO;

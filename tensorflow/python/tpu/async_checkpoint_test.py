@@ -103,7 +103,7 @@ class AsyncCheckpointingTest(test.TestCase):
     checkpoint_interval = 5
     config = tpu_config.RunConfig(
         master=resolver.master(),
-        model_dir=FLAGS.model_dir,
+        model_dir=os.path.join(FLAGS.model_dir, 'runconfig'),
         save_checkpoints_steps=1000,
         keep_checkpoint_max=11,  # off by one
         tpu_config=tpu_config.TPUConfig(

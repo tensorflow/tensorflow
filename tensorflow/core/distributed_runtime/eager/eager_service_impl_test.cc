@@ -234,7 +234,6 @@ TEST_F(EagerServiceImplTest, BasicTest) {
 
   TF_ASSERT_OK(eager_service_impl.CreateContext(&request, &response));
 
-
   EnqueueRequest remote_enqueue_request;
   remote_enqueue_request.set_context_id(context_id);
   EnqueueResponse remote_enqueue_response;
@@ -400,8 +399,9 @@ TEST_F(EagerServiceImplTest, EagerPFLRTest) {
   auto device_mgr = absl::make_unique<StaticDeviceMgr>(
       DeviceFactory::NewDevice("CPU", {}, "/job:localhost/replica:0/task:1"));
   auto eager_pflr = absl::make_unique<EagerProcessFunctionLibraryRuntime>(
-      device_mgr.get(), Env::Default(), TF_GRAPH_DEF_VERSION, &func_lib_def,
-      OptimizerOptions(), nullptr, eager_cluster_flr.get(), nullptr);
+      device_mgr.get(), Env::Default(), /*config=*/nullptr,
+      TF_GRAPH_DEF_VERSION, &func_lib_def, OptimizerOptions(), nullptr,
+      eager_cluster_flr.get(), nullptr);
 
   tensorflow::FunctionDef fdef = MatMulFunction();
   TF_ASSERT_OK(func_lib_def.AddFunctionDef(fdef));

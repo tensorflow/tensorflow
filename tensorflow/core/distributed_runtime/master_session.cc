@@ -472,6 +472,7 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
     c->req.set_session_handle(session_handle_);
     c->req.set_create_worker_session_called(!should_deregister_);
     c->req.mutable_graph_def()->Swap(&graph_partitions[part.name]);
+    *c->req.mutable_config_proto() = session_opts_.config;
     *c->req.mutable_graph_options() = session_opts_.config.graph_options();
     *c->req.mutable_debug_options() =
         callable_opts_.run_options().debug_options();

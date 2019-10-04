@@ -745,7 +745,7 @@ struct CallOpInterfaceLowering : public LLVMLegalizationPattern<CallOpType> {
     auto newOp = rewriter.create<LLVM::CallOp>(op->getLoc(), packedResult,
                                                promoted, op->getAttrs());
 
-    // If < 2 results, packingdid not do anything and we can just return.
+    // If < 2 results, packing did not do anything and we can just return.
     if (numResults < 2) {
       SmallVector<Value *, 4> results(newOp.getResults());
       rewriter.replaceOp(op, results);
@@ -980,7 +980,7 @@ struct LoadOpLowering : public LoadStoreOpLowering<LoadOp> {
   }
 };
 
-// Store opreation is lowered to obtaining a pointer to the indexed element,
+// Store operation is lowered to obtaining a pointer to the indexed element,
 // and storing the given value to it.
 struct StoreOpLowering : public LoadStoreOpLowering<StoreOp> {
   using Base::Base;
@@ -1078,6 +1078,15 @@ struct CmpFOpLowering : public LLVMLegalizationPattern<CmpFOp> {
 
 struct SIToFPLowering
     : public OneToOneLLVMOpLowering<SIToFPOp, LLVM::SIToFPOp> {
+  using Super::Super;
+};
+
+struct FPExtLowering : public OneToOneLLVMOpLowering<FPExtOp, LLVM::FPExtOp> {
+  using Super::Super;
+};
+
+struct FPTruncLowering
+    : public OneToOneLLVMOpLowering<FPTruncOp, LLVM::FPTruncOp> {
   using Super::Super;
 };
 
@@ -1264,9 +1273,10 @@ void mlir::populateStdToLLVMConversionPatterns(
       DivFOpLowering, FuncOpConversion, IndexCastOpLowering, LoadOpLowering,
       MemRefCastOpLowering, MulFOpLowering, MulIOpLowering, OrOpLowering,
       RemISOpLowering, RemIUOpLowering, RemFOpLowering, ReturnOpLowering,
-      SelectOpLowering, SIToFPLowering, SignExtendIOpLowering, SplatOpLowering,
-      StoreOpLowering, SubFOpLowering, SubIOpLowering, TruncateIOpLowering,
-      XOrOpLowering, ZeroExtendIOpLowering>(*converter.getDialect(), converter);
+      SelectOpLowering, SIToFPLowering, FPExtLowering, FPTruncLowering,
+      SignExtendIOpLowering, SplatOpLowering, StoreOpLowering, SubFOpLowering,
+      SubIOpLowering, TruncateIOpLowering, XOrOpLowering,
+      ZeroExtendIOpLowering>(*converter.getDialect(), converter);
 }
 
 // Convert types using the stored LLVM IR module.

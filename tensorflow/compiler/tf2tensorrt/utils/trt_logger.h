@@ -31,8 +31,6 @@ class Logger : public nvinfer1::ILogger {
   Logger(string name = "DefaultLogger") : name_(name) {}
   void log(nvinfer1::ILogger::Severity severity, const char* msg) override;
 
-  static Logger* GetLogger();
-
  private:
   string name_;
 };

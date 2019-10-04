@@ -583,6 +583,17 @@ filegroup(
 )
 
 cc_library(
+    name = "GPUCommonTransforms",
+    hdrs = ["lib/Conversion/GPUCommon/IndexIntrinsicsOpLowering.h"],
+    deps = [
+        ":GPUDialect",
+        ":LLVMDialect",
+        ":LLVMTransforms",
+        "@llvm//:support",
+    ],
+)
+
+cc_library(
     name = "GPUToNVVMTransforms",
     srcs = ["lib/Conversion/GPUToNVVM/LowerGpuOpsToNVVMOps.cpp"],
     hdrs = [
@@ -590,14 +601,12 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":GPUCommonTransforms",
         ":GPUDialect",
-        ":IR",
-        ":LLVMDialect",
         ":LLVMTransforms",
         ":NVVMDialect",
         ":Pass",
         ":Transforms",
-        "@llvm//:support",
     ],
     alwayslink = 1,
 )
@@ -610,14 +619,12 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":GPUCommonTransforms",
         ":GPUDialect",
-        ":IR",
-        ":LLVMDialect",
         ":LLVMTransforms",
         ":Pass",
         ":ROCDLDialect",
         ":Transforms",
-        "@llvm//:support",
     ],
     alwayslink = 1,
 )

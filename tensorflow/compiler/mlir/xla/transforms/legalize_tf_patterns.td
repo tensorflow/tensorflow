@@ -32,6 +32,7 @@ def CastIntElementsAttr : NativeCodeCall<"$0.cast<DenseIntElementsAttr>()">;
 def FeatureDimension : NativeCodeCall<
     "getFeatureDimensionAttr($_builder, $0, $1)">;
 def FalseBoolAttr : AttrConstraint<CPred<"!$_self.getValue()">>;
+def TrueBoolAttr : AttrConstraint<CPred<"$_self.getValue()">>;
 
 def : Pattern<
     (TF_FusedBatchNormOp:$root $x, $scale, $offset, $mean, $variance, $epsilon,
@@ -65,6 +66,10 @@ def : Pat<(TF_BiasAddOp AnyStaticShapeTensor:$input, $bias, $data_format),
 def BinBroadcastDimensions : NativeCodeCall<
     "getBroadcastDimensionsAttr($_builder, $0, $1)">;
 
+// Check that two values can be broadcasted together
+def AreBroadcastCompatible : Constraint<CPred<"AreBroadcastCompatible($0, $1)">,
+    "types must be broadcastable">;
+
 class DirectBinaryPat<Op FromOp, Op ToOp>
   : Pat<(FromOp AnyTensor:$l, AnyTensor:$r),
         (ToOp $l, $r, (BinBroadcastDimensions $l, $r))>;
@@ -91,6 +96,16 @@ def : DirectComparePat<TF_GreaterOp, HLO_COMPARISON_DIRECTION_GT>;
 def : DirectComparePat<TF_GreaterEqualOp, HLO_COMPARISON_DIRECTION_GE>;
 def : DirectComparePat<TF_LessOp, HLO_COMPARISON_DIRECTION_LT>;
 def : DirectComparePat<TF_LessEqualOp, HLO_COMPARISON_DIRECTION_LE>;
+
+class EqualityPat<Op FromOp, StrEnumAttrCase direction>
+    : Pat<(FromOp AnyTensor:$l, AnyTensor:$r,
+           TrueBoolAttr:$incompatible_shape_error),
+        (HLO_CompareOp $l, $r, (BinBroadcastDimensions $l, $r), direction),
+        [(AreBroadcastCompatible $l, $r)]>;
+
+def : EqualityPat<TF_EqualOp, HLO_COMPARISON_DIRECTION_EQ>;
+def : EqualityPat<TF_NotEqualOp, HLO_COMPARISON_DIRECTION_NE>;
+
 
 //===----------------------------------------------------------------------===//
 // Concat op patterns.
@@ -188,6 +203,7 @@ foreach Mapping = [
  def : Pat<(Mapping[0] HLO_Tensor:$input),
            (Mapping[1] $input)>;
 }
+
 // TODO(bixia): Lower Cast with a Complex type source operand or with
 // Truncate=True for floating point value conversions.
 def : Pat<(TF_CastOp HLO_Tensor:$arg, ConstBoolAttrFalse),

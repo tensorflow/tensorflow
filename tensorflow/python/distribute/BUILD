@@ -1,6 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 load("//tensorflow/core/platform:default/distribute.bzl", "distribute_py_test")
 
 package(
@@ -132,6 +131,7 @@ py_library(
         ":distribute_lib",
         ":mirrored_strategy",
         ":one_device_strategy",
+        ":sharded_variable",
         "//tensorflow/python/distribute/experimental",
     ],
 )
@@ -776,6 +776,32 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
     ],
     grpc_enabled = True,
+)
+
+py_library(
+    name = "sharded_variable",
+    srcs = ["sharded_variable.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/training/saving:saveable_object_util",
+        "//tensorflow/python/training/tracking:base",
+    ],
+)
+
+tf_py_test(
+    name = "sharded_variable_test",
+    size = "small",
+    srcs = ["sharded_variable_test.py"],
+    additional_deps = [
+        ":sharded_variable",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/training/tracking:util",
+    ],
 )
 
 py_library(

@@ -1338,6 +1338,8 @@ def not_equal(x, y, name=None):
 
 def tensor_equals(self, other):
   """Compares two tensors element-wise for equality."""
+  if other is None:
+    return False
   g = getattr(self, "graph", None)
   if (ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions() and
       (g is None or g._building_function)):  # pylint: disable=protected-access
@@ -1352,6 +1354,8 @@ def tensor_equals(self, other):
 
 def tensor_not_equals(self, other):
   """Compares two tensors element-wise for equality."""
+  if other is None:
+    return True
   if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():
     if fwd_compat.forward_compatible(2019, 9, 25):
       return gen_math_ops.not_equal(self, other, incompatible_shape_error=False)

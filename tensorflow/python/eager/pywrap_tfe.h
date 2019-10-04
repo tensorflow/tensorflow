@@ -372,4 +372,9 @@ PyObject* TFE_Py_SetEagerContext(PyObject* python_context);
 // some point.
 PyObject* GetPyEagerContext();
 
+// These are exposed since there is SWIG code that calls these.
+// Returns a pre-allocated status if it exists.
+TF_Status* GetStatus();
+// Returns the pre-allocated status to the code.
+void ReturnStatus(TF_Status* status);
 #endif  // TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_

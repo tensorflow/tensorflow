@@ -13,16 +13,44 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <signal.h>
-
-#include "tensorflow/core/platform/net.h"
 #include "tensorflow/core/platform/test.h"
+
+#include <cstdlib>
 
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/net.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace testing {
+
+string TmpDir() {
+  // 'bazel test' sets TEST_TMPDIR
+  const char* env = getenv("TEST_TMPDIR");
+  if (env && env[0] != '\0') {
+    return env;
+  }
+  env = getenv("TMPDIR");
+  if (env && env[0] != '\0') {
+    return env;
+  }
+  return "/tmp";
+}
+
+string SrcDir() {
+  // Bazel makes data dependencies available via a relative path.
+  return "";
+}
+
+int RandomSeed() {
+  const char* env = getenv("TEST_RANDOM_SEED");
+  int result;
+  if (env && sscanf(env, "%d", &result) == 1) {
+    return result;
+  }
+  return 301;
+}
 
 int PickUnusedPortOrDie() { return internal::PickUnusedPortOrDie(); }
 

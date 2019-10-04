@@ -1292,7 +1292,7 @@ Status DirectSession::CreateExecutors(
           ? &options_.config.experimental().session_metadata()
           : nullptr;
   func_info->proc_flr.reset(new ProcessFunctionLibraryRuntime(
-      device_mgr_.get(), options_.env, graph_def_version,
+      device_mgr_.get(), options_.env, &options_.config, graph_def_version,
       func_info->flib_def.get(), optimizer_opts, thread_pools_[0].first,
       nullptr, nullptr, session_metadata));
 

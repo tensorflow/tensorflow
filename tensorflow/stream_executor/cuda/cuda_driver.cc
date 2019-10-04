@@ -504,16 +504,11 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   CreatedContexts::Remove(context->context());
 }
 
-/* static */ bool GpuDriver::FuncGetAttribute(CUfunction_attribute attribute,
-                                              CUfunction func,
-                                              int* attribute_value) {
-  CUresult res = cuFuncGetAttribute(attribute_value, attribute, func);
-  if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "failed to query kernel attribute. kernel: " << func
-               << ", attribute: " << attribute;
-    return false;
-  }
-  return true;
+/* static */ port::Status GpuDriver::FuncGetAttribute(
+    CUfunction_attribute attribute, CUfunction func, int* attribute_value) {
+  RETURN_IF_CUDA_RES_ERROR(cuFuncGetAttribute(attribute_value, attribute, func),
+                           "Failed to query kernel attribute: ", attribute);
+  return port::Status::OK();
 }
 
 /* static */ bool GpuDriver::FuncSetCacheConfig(CUfunction function,
