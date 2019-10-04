@@ -313,8 +313,9 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
         "' is neither a type of a primitive operation nor a name "
         "of a function registered in binary running on ",
         port::Hostname(),
-        ". Make sure the operation or function is "
-        "registered in the binary running in this process.");
+        ". One possible root cause is the client and server binaries are not "
+        "built with the same version. Please make sure the operation or "
+        "function is registered in the binary running in this process.");
   }
   op.reset(new tensorflow::EagerOperation(eager_context, name, is_function,
                                           types, eager_executor));
