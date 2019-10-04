@@ -141,14 +141,13 @@ TfLiteStatus SymmetricQuantizeFloatsToInt16(ModelT* model, TensorT* tensor,
 
   BufferT* buffer = model->buffers[tensor->buffer].get();
   float* float_data = reinterpret_cast<float*>(buffer->data.data());
-  int32_t float_data_size = buffer->data.size() / sizeof(float);
   uint64_t num_elements;
   TF_LITE_ENSURE_STATUS(NumElements(*tensor, &num_elements));
 
   std::vector<int16_t> final_buffer(num_elements);
   const int32_t kScale = std::numeric_limits<int16_t>::max();
 
-  for (int32_t i = 0; i < float_data_size; i++) {
+  for (size_t i = 0; i < num_elements; i++) {
     float scaling_factor_inv = (scaling_factor == 0) ? 0 : 1.0 / scaling_factor;
     const int32_t quantized_value =
         static_cast<int32_t>(TfLiteRound(float_data[i] * scaling_factor_inv));
@@ -327,14 +326,13 @@ TfLiteStatus SymmetricPerLayerBiasQuantize(ModelT* model, TensorT* tensor,
 
   BufferT* buffer = model->buffers[tensor->buffer].get();
   float* float_data = reinterpret_cast<float*>(buffer->data.data());
-  int32_t float_data_size = buffer->data.size() / sizeof(float);
   uint64_t num_elements;
   TF_LITE_ENSURE_STATUS(NumElements(*tensor, &num_elements));
 
   std::vector<int32_t> final_buffer(num_elements);
   const int32_t kScale = std::numeric_limits<int32_t>::max();
 
-  for (int32_t i = 0; i < float_data_size; i++) {
+  for (size_t i = 0; i < num_elements; i++) {
     float scaling_factor_inv = (scaling_factor == 0) ? 0 : 1.0 / scaling_factor;
     const int32_t quantized_value = tflite::SafeCast<int32_t>(
         TfLiteRound(float_data[i] * scaling_factor_inv));
