@@ -1,5 +1,8 @@
 // RUN: mlir-opt %s | mlir-opt | FileCheck %s
 
+// Test that we can lower all the way to LLVM without crashing, don't check results here.
+// RUN: mlir-opt %s --linalg-convert-to-llvm -o=/dev/null 2>&1
+
 // CHECK-DAG: #[[strided1D:.*]] = (d0)[s0] -> (d0 + s0)
 // CHECK-DAG: #[[strided2D:.*]] = (d0, d1)[s0, s1] -> (d0 * s1 + s0 + d1)
 // CHECK-DAG: #[[strided2D42by1SymbolicOffset:.*]] = (d0, d1)[s0] -> (d0 * 42 + s0 + d1)
@@ -201,7 +204,7 @@ func @const_buffer_view(%arg0: index, %arg1: index, %arg2: index) {
   n_views = [1, 1],
   n_loop_types = [3, 0, 0],
   fun = @foo,
-  library_call = "external_function_name"
+  library_call = "some_external_function_name_1"
 }
 func @foo(%0: vector<3x4xi4>, %1: f32) -> f32 {
   %f0 = constant 0.0 : f32
@@ -213,13 +216,13 @@ func @generic(%arg0: memref<?x?xvector<3x4xi4>, offset: ?, strides: [?, 1]>, %ar
 }
 // CHECK-LABEL: func @foo
 // CHECK-LABEL: func @generic
-//       CHECK:   linalg.generic {fun = @foo, indexing_maps = [#{{.*}}, #{{.*}}], library_call = "external_function_name", n_loop_types = [3, 0, 0], n_views = [1, 1]} %{{.*}}, %{{.*}} {foo = 1 : i64}: memref<?x?xvector<3x4xi4>, #[[strided2D]]>, memref<?x?x?xf32, #[[strided3D]]>
+//       CHECK:   linalg.generic {fun = @foo, indexing_maps = [#{{.*}}, #{{.*}}], library_call = "some_external_function_name_1", n_loop_types = [3, 0, 0], n_views = [1, 1]} %{{.*}}, %{{.*}} {foo = 1 : i64}: memref<?x?xvector<3x4xi4>, #[[strided2D]]>, memref<?x?x?xf32, #[[strided3D]]>
 
 #trait2 = {
   indexing_maps = #accesses,
   n_views = [1, 1],
   n_loop_types = [3, 0, 0],
-  library_call = "external_function_name"
+  library_call = "some_external_function_name_2"
 }
 func @generic_region(%arg0: memref<?x?xvector<3x4xi4>, offset: ?, strides: [?, 1]>, %arg1: memref<?x?x?xf32, offset: ?, strides: [?, ?, 1]>) {
   linalg.generic #trait2 %arg0, %arg1 {
@@ -229,7 +232,7 @@ func @generic_region(%arg0: memref<?x?xvector<3x4xi4>, offset: ?, strides: [?, 1
   return
 }
 // CHECK-LABEL: func @generic_region
-//       CHECK:   linalg.generic {indexing_maps = [#{{.*}}, #{{.*}}], library_call = "external_function_name", n_loop_types = [3, 0, 0], n_views = [1, 1]} %{{.*}}, %{{.*}} {
+//       CHECK:   linalg.generic {indexing_maps = [#{{.*}}, #{{.*}}], library_call = "some_external_function_name_2", n_loop_types = [3, 0, 0], n_views = [1, 1]} %{{.*}}, %{{.*}} {
 //       CHECK:    ^{{.*}}(%{{.*}}: vector<3x4xi4>, %{{.*}}: f32):    // no predecessors
 //       CHECK:      linalg.yield %{{.*}} : f32
 //       CHECK:    } {foo = 1 : i64}: memref<?x?xvector<3x4xi4>, #[[strided2D]]>, memref<?x?x?xf32, #[[strided3D]]>

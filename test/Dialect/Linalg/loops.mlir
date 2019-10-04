@@ -1,5 +1,8 @@
 // RUN: mlir-opt %s -linalg-lower-to-loops | FileCheck %s
 
+// Test that we can lower all the way to LLVM without crashing, don't check results here.
+// RUN: mlir-opt %s --linalg-convert-to-llvm -o=/dev/null 2>&1
+
 // CHECK-DAG: #[[strided1D:.*]] = (d0)[s0] -> (d0 + s0)
 // CHECK-DAG: #[[strided2D:.*]] = (d0, d1)[s0, s1] -> (d0 * s1 + s0 + d1)
 // CHECK-DAG: #[[strided3D:.*]] = (d0, d1, d2)[s0, s1, s2] -> (d0 * s1 + s0 + d1 * s2 + d2)
@@ -228,7 +231,7 @@ func @foo(%0: f32, %1: f32, %2: f32) -> (f32, f32) {
   n_loop_types = [3, 0, 0],
   indexing_maps = #accesses,
   fun = @foo,
-  library_call = "external_function_name",
+  library_call = "some_external_function_name_1",
   doc = "B(i,j,k), C(i,k,j) = foo(A(i, j), B(i,j,k), C(i,k,j))"
 }
 func @generic_function(%arg0: memref<?x?xf32, offset: ?, strides: [?, 1]>, %arg1: memref<?x?x?xf32, offset: ?, strides: [?, ?, 1]>, %arg2: memref<?x?x?xf32, offset: ?, strides: [?, ?, 1]>) {
@@ -252,7 +255,7 @@ func @generic_function(%arg0: memref<?x?xf32, offset: ?, strides: [?, 1]>, %arg1
   n_views = [1, 2],
   n_loop_types = [3, 0, 0],
   indexing_maps = #accesses,
-  library_call = "external_function_name",
+  library_call = "some_external_function_name_2",
   doc = "B(i,j,k), C(i,k,j) = foo(A(i, j), B(i,j,k), C(i,k,j))"
 }
 func @generic_region(%arg0: memref<?x?xf32, offset: ?, strides: [?, 1]>, %arg1: memref<?x?x?xf32, offset: ?, strides: [?, ?, 1]>, %arg2: memref<?x?x?xf32, offset: ?, strides: [?, ?, 1]>) {

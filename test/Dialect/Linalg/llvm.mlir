@@ -1,4 +1,3 @@
-// RUN: mlir-opt %s -linalg-convert-to-llvm
 // RUN: mlir-opt %s -linalg-convert-to-llvm | FileCheck %s
 
 func @buffer_size(%arg0: !linalg.buffer<?xf32>) {
