@@ -2908,6 +2908,7 @@ Status ConvertConv3DBackpropInputV2(OpConverterParams* params) {
 }
 
 Status ConvertPool3D(OpConverterParams* params) {
+  const int kNumDims = 5;
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
@@ -2928,26 +2929,44 @@ Status ConvertPool3D(OpConverterParams* params) {
     return errors::Unimplemented("Unsupported padding type: ", padding_type,
                                  ", at ", node_def.name());
   }
-  if (params->validation_only) return Status::OK();
-
-  nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   const auto data_format = attrs.get<string>("data_format");
   const bool is_ndhwc = (data_format == "NDHWC");
+  const int c_index = is_ndhwc ? 4 : 1;
   const int d_index = is_ndhwc ? 1 : 2;
   const int h_index = is_ndhwc ? 2 : 3;
   const int w_index = is_ndhwc ? 3 : 4;
+  const auto tf_stride = attrs.get<std::vector<int64>>("strides");
+  if (tf_stride.size() != kNumDims) {
+    return errors::InvalidArgument(
+        "Pooling strides field must specify 5 dimensions, at ",
+        node_def.name());
+  }
+  if (tf_stride[0] != 1 || tf_stride[c_index] != 1) {
+    return errors::Unimplemented(
+        "stride must be 1 for batch and channel dimensions, at ",
+        node_def.name());
+  }
+  const auto tf_kernel = attrs.get<std::vector<int64>>("ksize");
+  if (tf_kernel.size() != kNumDims) {
+    return errors::InvalidArgument(
+        "Pooling ksize field must specify 5 dimensions, at ", node_def.name());
+  }
+  if (tf_kernel[0] != 1 || tf_kernel[c_index] != 1) {
+    return errors::Unimplemented(
+        "ksize must be 1 for batch and channel dimensions, at ",
+        node_def.name());
+  }
+  if (params->validation_only) return Status::OK();
 
+  nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   if (data_format == "NDHWC") {
     // NDHWC => NCDHW
     TF_RETURN_IF_ERROR(
         params->converter->TransposeTensor(tensor, {0, 4, 1, 2, 3}, &tensor));
   }
 
-  const auto tf_stride = attrs.get<std::vector<int64>>("strides");
   const nvinfer1::Dims3 stride(tf_stride[d_index], tf_stride[h_index],
                                tf_stride[w_index]);
-
-  const auto tf_kernel = attrs.get<std::vector<int64>>("ksize");
   const nvinfer1::Dims3 ksize(tf_kernel[d_index], tf_kernel[h_index],
                               tf_kernel[w_index]);
 
