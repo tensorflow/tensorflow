@@ -154,6 +154,28 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
     },
+    "logging": {
+        "name": "logging_impl",
+        "hdrs": [
+            "//tensorflow/core/platform:logging.h",
+        ],
+        "textual_hdrs": [
+            "//tensorflow/core/platform:default/logging.h",
+        ],
+        "srcs": [
+            "//tensorflow/core/platform:default/logging.cc",
+        ],
+        "deps": [
+            "@com_google_absl//absl/base",
+            "@com_google_absl//absl/strings",
+            "//tensorflow/core/platform",
+            "//tensorflow/core/platform:env_time",
+            "//tensorflow/core/platform:macros",
+            "//tensorflow/core/platform:types",
+        ],
+        "visibility": ["//visibility:private"],
+        "tags": ["no_oss", "manual"],
+    },
     "mutex": {
         "name": "mutex_impl",
         "hdrs": [
@@ -581,3 +603,6 @@ def tf_platform_helper_deps(name):
         "//tensorflow:windows": [":windows_" + name],
         "//conditions:default": [":" + name],
     })
+
+def tf_logging_deps():
+    return [":logging_impl"]
