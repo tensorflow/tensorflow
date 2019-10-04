@@ -645,7 +645,6 @@ cc_library(
     name = "platform_other",
     srcs = [
         "//tensorflow/core/platform:cpu_feature_guard.cc",
-        "//tensorflow/core/platform:denormal.cc",
         "//tensorflow/core/platform:legacy_platform_other_srcs",
         "//tensorflow/core/platform:profile_utils/android_armv7a_cpu_utils_helper.cc",
         "//tensorflow/core/platform:profile_utils/clock_cycle_profiler.cc",
@@ -667,6 +666,7 @@ cc_library(
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:abi",
         "//tensorflow/core/platform:annotation",
+        "//tensorflow/core/platform:denormal",
         "//tensorflow/core/platform:notification",
         "//tensorflow/core/platform:setround",
         "//tensorflow/core/platform:stacktrace",
@@ -2485,6 +2485,7 @@ cc_library(
                "//tensorflow/core/platform:abi",
                "//tensorflow/core/platform:annotation",
                "//tensorflow/core/platform:cpu_info",
+               "//tensorflow/core/platform:denormal",
                "//tensorflow/core/platform:dynamic_annotations",
                "//tensorflow/core/platform:mutex",
                "//tensorflow/core/platform:notification",

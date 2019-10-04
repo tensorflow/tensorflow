@@ -714,6 +714,7 @@ filegroup(
         exclude = [
             "annotation.h",
             "dynamic_annotations.h",
+            "denormal.h",
             "gif.h",
             "jpeg.h",
             "png.h",
@@ -751,6 +752,7 @@ filegroup(
             "abi.cc",
             "annotation.cc",
             "cpu_info.cc",
+            "denormal.cc",
             "numbers.cc",
             "platform_strings.cc",
             "protobuf.cc",
