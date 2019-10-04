@@ -602,15 +602,9 @@ def tf_additional_test_deps():
 
 def tf_additional_test_srcs():
     return [
+        "default/test.cc",
         "default/test_benchmark.cc",
-    ] + select({
-        "//tensorflow:windows": [
-            "windows/test.cc",
-        ],
-        "//conditions:default": [
-            "posix/test.cc",
-        ],
-    })
+    ]
 
 def tf_kernel_tests_linkstatic():
     return 0

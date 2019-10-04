@@ -69,6 +69,7 @@ tf_instantiate_platform_libraries(names = [
     "stacktrace_handler",
     "strong_hash",
     "subprocess",
+    "test",
     "tracing",
     "types",
     "unbounded_work_queue",
@@ -551,6 +552,13 @@ cc_library(
         "//tensorflow/core/lib/core:refcount",
         "//tensorflow/core/lib/strings:string_utils",
     ] + tf_additional_tensor_coding_deps(),
+)
+
+cc_library(
+    name = "test",
+    testonly = True,
+    textual_hdrs = ["test.h"],
+    deps = [":test_impl"],
 )
 
 cc_library(

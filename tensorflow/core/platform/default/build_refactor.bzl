@@ -279,6 +279,27 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         "tags": ["no_oss", "manual"],
         "visibility": ["//visibility:private"],
     },
+    "test": {
+        "name": "test_impl",
+        "testonly": True,
+        "srcs": [
+            "//tensorflow/core/platform:default/test.cc",
+        ],
+        "hdrs": [
+            "//tensorflow/core/platform:test.h",
+        ],
+        "deps": [
+            "@com_google_googletest//:gtest",
+            "//tensorflow/core/lib/strings:string_utils",
+            "//tensorflow/core/platform",
+            "//tensorflow/core/platform:logging",
+            "//tensorflow/core/platform:macros",
+            "//tensorflow/core/platform:net",
+            "//tensorflow/core/platform:types",
+        ],
+        "tags": ["no_oss", "manual"],
+        "visibility": ["//visibility:private"],
+    },
     "tracing": {
         "name": "tracing_impl",
         "textual_hdrs": [
