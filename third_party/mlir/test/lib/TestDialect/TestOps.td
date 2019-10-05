@@ -236,14 +236,14 @@ def FunctionalRegionOp : TEST_Op<"functional_region_op",
 
 def SameOperandElementTypeOp : TEST_Op<"same_operand_element_type",
     [SameOperandsElementType]> {
-  let arguments = (ins AnyVectorOrTensor, AnyVectorOrTensor);
-  let results = (outs AnyVectorOrTensor);
+  let arguments = (ins AnyType, AnyType);
+  let results = (outs AnyType);
 }
 
 def SameOperandAndResultElementTypeOp : TEST_Op<"same_operand_and_result_element_type",
     [SameOperandsAndResultElementType]> {
-  let arguments = (ins Variadic<AnyVectorOrTensor>);
-  let results = (outs Variadic<AnyVectorOrTensor>);
+  let arguments = (ins Variadic<AnyType>);
+  let results = (outs Variadic<AnyType>);
 }
 
 def SameOperandShapeOp : TEST_Op<"same_operand_shape", [SameOperandsShape]> {
