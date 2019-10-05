@@ -158,6 +158,7 @@ cc_library(
         "lib/pop3.h",
         "lib/progress.c",
         "lib/progress.h",
+        "lib/quic.h",
         "lib/rand.c",
         "lib/rand.h",
         "lib/rtsp.c",
