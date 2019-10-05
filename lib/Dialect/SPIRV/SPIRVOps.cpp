@@ -1745,7 +1745,7 @@ static LogicalResult verify(spirv::ReferenceOfOp referenceOfOp) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult verify(spirv::ReturnOp returnOp) {
-  auto funcOp = cast<FuncOp>(returnOp.getParentOp());
+  auto funcOp = returnOp.getParentOfType<FuncOp>();
   auto numOutputs = funcOp.getType().getNumResults();
   if (numOutputs != 0)
     return returnOp.emitOpError("cannot be used in functions returning value")
@@ -1774,7 +1774,7 @@ static void print(spirv::ReturnValueOp retValOp, OpAsmPrinter &printer) {
 }
 
 static LogicalResult verify(spirv::ReturnValueOp retValOp) {
-  auto funcOp = cast<FuncOp>(retValOp.getParentOp());
+  auto funcOp = retValOp.getParentOfType<FuncOp>();
   auto numFnResults = funcOp.getType().getNumResults();
   if (numFnResults != 1)
     return retValOp.emitOpError(
