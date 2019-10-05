@@ -485,8 +485,9 @@ def assert_negative(x, data=None, summarize=None, message=None, name=None):  # p
           'Condition x < 0 did not hold element-wise:',
           'x (%s) = ' % name, x]
     zero = ops.convert_to_tensor(0, dtype=x.dtype)
-    return _binary_assert('<', 'assert_less', math_ops.less, np.less, x, zero, data,
-                        summarize, message=None, name=None, allow_empty=True)
+    return _binary_assert('<', 'assert_less', math_ops.less, np.less,
+                          x, zero, data, summarize,
+                          message=None, name=None, allow_empty=True)
 
 
 @tf_export('debugging.assert_positive', v1=[])
@@ -537,8 +538,9 @@ def assert_positive(x, data=None, summarize=None, message=None, name=None):  # p
           message, 'Condition x > 0 did not hold element-wise:',
           'x (%s) = ' % name, x]
     zero = ops.convert_to_tensor(0, dtype=x.dtype)
-    return _binary_assert('<', 'assert_less', math_ops.less, np.less, zero, x, data,
-                        summarize, message=None, name=None, allow_empty=True)
+    return _binary_assert('<', 'assert_less', math_ops.less, np.less,
+                          zero, x, data, summarize,
+                          message=None, name=None, allow_empty=True)
 
 
 @tf_export('debugging.assert_non_negative', v1=[])
@@ -592,8 +594,10 @@ def assert_non_negative(x, data=None, summarize=None, message=None, name=None): 
           'Condition x >= 0 did not hold element-wise:',
           'x (%s) = ' % name, x]
     zero = ops.convert_to_tensor(0, dtype=x.dtype)
-    return _binary_assert('<=', 'assert_less_equal', math_ops.less_equal,
-                        np.less_equal, zero, x, data, summarize, message=None, name=None, allow_empty=True)
+    return _binary_assert('<=', 'assert_less_equal',
+                          math_ops.less_equal, np.less_equal,
+                          zero, x, data, summarize,
+                          message=None, name=None, allow_empty=True)
 
 
 @tf_export('debugging.assert_non_positive', v1=[])
@@ -647,8 +651,10 @@ def assert_non_positive(x, data=None, summarize=None, message=None, name=None): 
           'Condition x <= 0 did not hold element-wise:'
           'x (%s) = ' % name, x]
     zero = ops.convert_to_tensor(0, dtype=x.dtype)
-    return _binary_assert('<=', 'assert_less_equal', math_ops.less_equal,
-                          np.less_equal, x, zero, data, summarize, message=None, name=None, allow_empty=True)
+    return _binary_assert('<=', 'assert_less_equal',
+                          math_ops.less_equal, np.less_equal,
+                          x, zero, data, summarize,
+                          message=None, name=None, allow_empty=True)
 
 
 @tf_export('debugging.assert_equal', 'assert_equal', v1=[])
