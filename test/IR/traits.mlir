@@ -1,12 +1,16 @@
 // RUN: mlir-opt %s -split-input-file -verify-diagnostics | FileCheck %s
 
 // CHECK: succeededSameOperandsElementType
-func @succeededSameOperandsElementType(%t10x10 : tensor<10x10xf32>, %t1f: tensor<1xf32>, %v1: vector<1xf32>, %t1i: tensor<1xi32>) {
+func @succeededSameOperandsElementType(%t10x10 : tensor<10x10xf32>, %t1f: tensor<1xf32>, %v1: vector<1xf32>, %t1i: tensor<1xi32>, %sf: f32) {
   %0 = "test.same_operand_element_type"(%t1f, %t1f) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xi32>
   %1 = "test.same_operand_element_type"(%t1f, %t10x10) : (tensor<1xf32>, tensor<10x10xf32>) -> tensor<1xi32>
   %2 = "test.same_operand_element_type"(%t10x10, %v1) : (tensor<10x10xf32>, vector<1xf32>) -> tensor<1xi32>
   %3 = "test.same_operand_element_type"(%v1, %t1f) : (vector<1xf32>, tensor<1xf32>) -> tensor<1xi32>
   %4 = "test.same_operand_element_type"(%v1, %t1f) : (vector<1xf32>, tensor<1xf32>) -> tensor<121xi32>
+  %5 = "test.same_operand_element_type"(%sf, %sf) : (f32, f32) -> i32
+  %6 = "test.same_operand_element_type"(%sf, %t1f) : (f32, tensor<1xf32>) -> tensor<121xi32>
+  %7 = "test.same_operand_element_type"(%sf, %v1) : (f32, vector<1xf32>) -> tensor<121xi32>
+  %8 = "test.same_operand_element_type"(%sf, %t10x10) : (f32, tensor<10x10xf32>) -> tensor<121xi32>
   return
 }
 
@@ -26,13 +30,24 @@ func @failedSameOperandAndResultElementType_no_operands() {
 
 // -----
 
+func @failedSameOperandElementType_scalar_type_mismatch(%si: i32, %sf: f32) {
+  // expected-error@+1 {{requires the same element type for all operands}}
+  %0 = "test.same_operand_element_type"(%sf, %si) : (f32, i32) -> tensor<1xf32>
+}
+
+// -----
+
 // CHECK: succeededSameOperandAndResultElementType
-func @succeededSameOperandAndResultElementType(%t10x10 : tensor<10x10xf32>, %t1f: tensor<1xf32>, %v1: vector<1xf32>, %t1i: tensor<1xi32>) {
+func @succeededSameOperandAndResultElementType(%t10x10 : tensor<10x10xf32>, %t1f: tensor<1xf32>, %v1: vector<1xf32>, %t1i: tensor<1xi32>, %sf: f32) {
   %0 = "test.same_operand_and_result_element_type"(%t1f, %t1f) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
   %1 = "test.same_operand_and_result_element_type"(%t1f, %t10x10) : (tensor<1xf32>, tensor<10x10xf32>) -> tensor<1xf32>
   %2 = "test.same_operand_and_result_element_type"(%t10x10, %v1) : (tensor<10x10xf32>, vector<1xf32>) -> tensor<1xf32>
   %3 = "test.same_operand_and_result_element_type"(%v1, %t1f) : (vector<1xf32>, tensor<1xf32>) -> tensor<1xf32>
   %4 = "test.same_operand_and_result_element_type"(%v1, %t1f) : (vector<1xf32>, tensor<1xf32>) -> tensor<121xf32>
+  %5 = "test.same_operand_and_result_element_type"(%sf, %sf) : (f32, f32) -> f32
+  %6 = "test.same_operand_and_result_element_type"(%sf, %t1f) : (f32, tensor<1xf32>) -> tensor<121xf32>
+  %7 = "test.same_operand_and_result_element_type"(%sf, %v1) : (f32, vector<1xf32>) -> tensor<121xf32>
+  %8 = "test.same_operand_and_result_element_type"(%sf, %t10x10) : (f32, tensor<10x10xf32>) -> tensor<121xf32>
   return
 }
 
@@ -48,6 +63,13 @@ func @failedSameOperandAndResultElementType_operand_result_mismatch(%t1f: tensor
 func @failedSameOperandAndResultElementType_operand_mismatch(%t1f: tensor<1xf32>, %t1i: tensor<1xi32>) {
   // expected-error@+1 {{requires the same element type for all operands and results}}
   %0 = "test.same_operand_and_result_element_type"(%t1f, %t1i) : (tensor<1xf32>, tensor<1xi32>) -> tensor<1xf32>
+}
+
+// -----
+
+func @failedSameOperandAndResultElementType_result_mismatch(%t1f: tensor<1xf32>) {
+  // expected-error@+1 {{requires the same element type for all operands and results}}
+  %0:2 = "test.same_operand_and_result_element_type"(%t1f) : (tensor<1xf32>) -> (tensor<1xf32>, tensor<1xi32>)
 }
 
 // -----
