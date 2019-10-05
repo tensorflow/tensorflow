@@ -232,9 +232,48 @@ struct ConvertTensorListInitOp : public ConversionPattern {
 
     Value *element_shape = operands[0];
     auto shape_dtype = getElementTypeOrSelf(element_shape->getType());
-    Type element_dtype = op.element_dtype();
+
+    DenseIntElementsAttr dense_elem_attr;
+    if (matchPattern(element_shape, m_Constant(&dense_elem_attr))) {
+      // Note: It's technically unsafe to rewrite
+      //     TensorListReserve(num_element, element_shape)
+      // to
+      //     Fill(Concat(num_element, element_shape), 0)
+      // because element_shape may contain -1 to represent unknown dimension.
+      //
+      // In real world use cases (e.g. Keras RNN), `element_shape` is usually
+      // a constant, and the first dimension of `element_shape` is usually
+      // batch dimension. Currently TFLiteConverter always rewrite unknown
+      // batch dimension to 1, therefore we also rewrite unknown dimension in
+      // `element_shape` to 1 here.
+      //
+      // This workaround enables converting Keras RNN without specifying batch
+      // dimension. This isn't guaranteed to work, but it doesn't break any
+      // non-broken cases either (since it's already broken if `element_shape`
+      // contains -1).
+      // TODO(b/142096690): Support dynamic element shape and remove the
+      // workaround.
+      SmallVector<int32_t, 4> new_element_shape_values;
+
+      auto int_values = dense_elem_attr.getIntValues();
+      for (auto it = int_values.begin(); it != int_values.end(); ++it) {
+        auto dim_value = (*it).getSExtValue();
+        if (it == int_values.begin() && dim_value == -1) {
+          dim_value = 1;
+        }
+        new_element_shape_values.push_back(dim_value);
+      }
+
+      auto attr = DenseIntElementsAttr::get<int32_t>(
+          element_shape->getType().cast<ShapedType>(),
+          new_element_shape_values);
+      auto new_element_shape = rewriter.create<ConstantOp>(
+          op.getLoc(), element_shape->getType(), attr);
+      element_shape = new_element_shape;
+    }
 
     int64_t result_rank = -1;  // -1 means unknown result rank.
+    Type element_dtype = op.element_dtype();
     Type result_type = rewriter.getTensorType(element_dtype);
     if (auto element_type =
             op.element_type().template dyn_cast<RankedTensorType>()) {
