@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_ALGORITHM_PICKER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_ALGORITHM_PICKER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONV_ALGORITHM_PICKER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONV_ALGORITHM_PICKER_H_
 
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
@@ -32,17 +32,17 @@ namespace gpu {
 
 // Modifies CustomCalls to cudnn convolutions, choosing the best algorithm for
 // each and adding explicit scratch space to the CustomCalls.
-class CudnnConvAlgorithmPicker : public HloModulePass {
+class GpuConvAlgorithmPicker : public HloModulePass {
  public:
   // If the `allocator` parameter is not null, we will use it to allocate temp
   // memory while timing the various convolution algorithms.  If it's null,
   // we'll use the default allocator on the StreamExecutor.
-  CudnnConvAlgorithmPicker(se::StreamExecutor* stream_exec,
-                           se::DeviceMemoryAllocator* allocator)
+  GpuConvAlgorithmPicker(se::StreamExecutor* stream_exec,
+                         se::DeviceMemoryAllocator* allocator)
       : stream_exec_(stream_exec), allocator_(allocator) {}
 
   absl::string_view name() const override {
-    return "cudnn-conv-algorithm-picker";
+    return "gpu-conv-algorithm-picker";
   }
 
   StatusOr<bool> Run(HloModule* module) override;
@@ -52,14 +52,19 @@ class CudnnConvAlgorithmPicker : public HloModulePass {
   StatusOr<bool> RunOnInstruction(HloInstruction* instr);
   StatusOr<tensorflow::AutotuneResult> PickBestAlgorithm(
       const HloCustomCallInstruction* instr);
-  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCache(
-      const HloCustomCallInstruction* instr);
 
-  se::StreamExecutor* stream_exec_;                   // never null
-  se::DeviceMemoryAllocator* allocator_;              // may be null
+  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheCuda(
+      const HloCustomCallInstruction* instr,
+      se::DeviceMemoryAllocator* allocator, se::Stream* stream);
+
+  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheRocm(
+      const HloCustomCallInstruction* instr,
+      se::DeviceMemoryAllocator* allocator, se::Stream* stream);
+
+  se::StreamExecutor* stream_exec_;       // never null
+  se::DeviceMemoryAllocator* allocator_;  // may be null
 };
 
 }  // namespace gpu
 }  // namespace xla
-
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_ALGORITHM_PICKER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONV_ALGORITHM_PICKER_H_
