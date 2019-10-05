@@ -341,16 +341,6 @@ class TFETest(test_util.TensorFlowTestCase):
     ctx.execution_mode = context.SYNC
     self.assertEqual(context.SYNC, ctx.execution_mode)
 
-    self.assertIsNone(ctx.summary_writer)
-    ctx.summary_writer = 'mock'
-    self.assertEqual('mock', ctx.summary_writer)
-    self.assertIsNone(ctx.summary_recording)
-    ctx.summary_recording = 'mock'
-    self.assertEqual('mock', ctx.summary_recording)
-    self.assertIsNone(ctx.summary_step)
-    ctx.summary_step = 'mock'
-    self.assertEqual('mock', ctx.summary_step)
-
     self.assertEqual('', ctx.device_name)
     self.assertEqual(ctx.device_name, ctx.device_spec.to_string())
     with ctx.device('GPU:0'):
@@ -364,6 +354,17 @@ class TFETest(test_util.TensorFlowTestCase):
           self.assertEqual('/job:localhost/replica:0/task:0/device:CPU:0',
                            ctx.device_name)
           self.assertEqual(ctx.device_name, ctx.device_spec.to_string())
+        with ctx.device(ctx.list_logical_devices('CPU')[0]):
+          self.assertEqual('/job:localhost/replica:0/task:0/device:CPU:0',
+                           ctx.device_name)
+          self.assertEqual(ctx.device_name, ctx.device_spec.to_string())
+
+    gpus = ctx.list_logical_devices('GPU')
+    if gpus:
+      with ctx.device(gpus[0]):
+        self.assertEqual('/job:localhost/replica:0/task:0/device:GPU:0',
+                         ctx.device_name)
+        self.assertEqual(ctx.device_name, ctx.device_spec.to_string())
 
     has_cpu_device = False
     for x in ctx.devices():
@@ -434,9 +435,6 @@ class TFETest(test_util.TensorFlowTestCase):
       return [
           ctx.executing_eagerly(),
           ctx.scope_name,
-          ctx.summary_writer,
-          ctx.summary_recording,
-          ctx.summary_step,
           ctx.device_name,
           ctx.num_gpus()
       ]

@@ -131,6 +131,13 @@ TfLiteStatus MicroAllocator::AllocateTensors() {
     current->first_created = 0;
   }
 
+  // Mark all outputs as persistent to the end of the invocation.
+  for (size_t i = 0; i < subgraph_->outputs()->size(); ++i) {
+    const int tensor_index = subgraph_->outputs()->Get(i);
+    TensorInfo* current = &tensor_info[tensor_index];
+    current->last_used = operators_->size() - 1;
+  }
+
   // Figure out when the first and last use of each tensor is.
   for (int i = (operators_->size() - 1); i >= 0; --i) {
     const auto* op = operators_->Get(i);
@@ -157,6 +164,15 @@ TfLiteStatus MicroAllocator::AllocateTensors() {
         (current->first_created == -1) && (current->last_used != -1);
     const bool is_preallocated_input =
         (current->runtime_tensor->data.raw != nullptr);
+    const bool has_partial_lifetime =
+        !is_read_only &&
+        ((current->first_created == -1) || (current->last_used == -1));
+    if (has_partial_lifetime) {
+      error_reporter_->Report(
+          "Logic error in memory planner, tensor %d has an invalid lifetime",
+          i);
+      return kTfLiteError;
+    }
     if (!is_read_only && !is_preallocated_input) {
       current->needs_allocating = true;
     }
@@ -303,6 +319,32 @@ TfLiteStatus MicroAllocator::InitializeRuntimeTensor(
             b);
     result->params.zero_point =
         flatbuffers::EndianScalar(result->params.zero_point);
+
+    // Populate per-channel quantization params.
+    int channels = src_quantization->scale()->size();
+    TfLiteAffineQuantization* quantization =
+        reinterpret_cast<TfLiteAffineQuantization*>(
+            memory_allocator_.AllocateFromTail(sizeof(TfLiteAffineQuantization),
+                                               sizeof(int)));
+    int* zero_point_array =
+        reinterpret_cast<int*>(memory_allocator_.AllocateFromTail(
+            channels * sizeof(int) + sizeof(int), sizeof(int)));
+    int* scale_array =
+        reinterpret_cast<int*>(memory_allocator_.AllocateFromTail(
+            channels * sizeof(float) + sizeof(int), sizeof(int)));
+    zero_point_array[0] = channels;
+    scale_array[0] = channels;
+    int* zero_point_data = &zero_point_array[1];
+    float* scale_data = reinterpret_cast<float*>(&scale_array[1]);
+    for (int i = 0; i < channels; i++) {
+      zero_point_data[i] = src_quantization->zero_point()->Get(i);
+      scale_data[i] = src_quantization->scale()->Get(i);
+    }
+    quantization->scale = reinterpret_cast<TfLiteFloatArray*>(scale_array);
+    quantization->zero_point =
+        reinterpret_cast<TfLiteIntArray*>(zero_point_array);
+
+    result->quantization = {kTfLiteAffineQuantization, quantization};
   }
   // Copy the name, if there is one.
   if (flatbuffer_tensor.name()->c_str() != nullptr) {

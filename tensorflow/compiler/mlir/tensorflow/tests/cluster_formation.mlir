@@ -6,6 +6,33 @@ module {
   // CHECK-LABEL: func @singlecluster
   // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<?xi32>)
   func @singlecluster(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+    // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"(%[[ARG_0]])
+    %2 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+
+    // CHECK: %[[TPU0_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK: %[[B_OUTPUT:[0-9]*]] = "tf.B"(%[[A_OUTPUT]]) : (tensor<?xi32>) -> tensor<?xi32>
+    %3 = "tf.B"(%2) {device = "tpu0"} : (tensor<?xi32>) -> tensor<?xi32>
+
+    // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[A_OUTPUT]], %[[B_OUTPUT]]) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
+    %4 = "tf.C"(%2, %3) {device = "tpu0"} : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
+
+    // CHECK: "tf_device.return"(%[[C_OUTPUT]])
+    // CHECK: {device = "tpu0"} : () -> tensor<?xi32>
+
+    // CHECK: %[[D_OUTPUT:[0-9]*]] = "tf.D"(%[[TPU0_OUTPUT]])
+    %5 = "tf.D"(%4) : (tensor<?xi32>) -> tensor<?xi32>
+    return %5 : tensor<?xi32>
+  }
+}
+
+// -----
+
+// Simple case, single device cluster, nested in a tf_executor.graph
+
+module {
+  // CHECK-LABEL: func @singlecluster
+  // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<?xi32>)
+  func @singlecluster(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = tf_executor.graph {
       %1:2 = tf_executor.island {
 

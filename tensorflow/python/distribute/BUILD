@@ -1,6 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 load("//tensorflow/core/platform:default/distribute.bzl", "distribute_py_test")
 
 package(
@@ -119,7 +118,6 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -133,6 +131,7 @@ py_library(
         ":distribute_lib",
         ":mirrored_strategy",
         ":one_device_strategy",
+        ":sharded_variable",
         "//tensorflow/python/distribute/experimental",
     ],
 )
@@ -156,6 +155,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/data",
@@ -268,6 +268,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
@@ -442,8 +443,10 @@ py_library(
         ":input_ops",
         ":values",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:multi_device_iterator_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
     ],
 )
 
@@ -471,7 +474,6 @@ cuda_py_test(
         "//tensorflow/python:io_ops",
         "//tensorflow/python:util",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_test(
@@ -679,24 +681,17 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
-tf_xla_py_test(
+distribute_py_test(
     name = "checkpointing_test",
     srcs = ["checkpointing_test.py"],
-    disabled_backends = [
-        # Only makes sense on TPUs
-        "cpu",
-        "gpu",
-        "cpu_ondemand",
-    ],
-    tags = [
-        "no_oss",
-    ],
+    main = "checkpointing_test.py",
     deps = [
         ":tpu_strategy",
         "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras",
         "//tensorflow/python/training/tracking:util",
@@ -710,7 +705,12 @@ distribute_py_test(
     deps = [
         ":collective_all_reduce_strategy",
         ":mirrored_strategy",
+        ":reduce_util",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:input_lib",
@@ -719,6 +719,8 @@ distribute_py_test(
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -737,7 +739,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -763,7 +764,6 @@ cuda_py_test(
         # TODO(b/138143527): Re-enable after fixing Guitar failure.
         # "multi_and_single_gpu",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -776,7 +776,32 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
     ],
     grpc_enabled = True,
-    xla_enable_strict_auto_jit = True,
+)
+
+py_library(
+    name = "sharded_variable",
+    srcs = ["sharded_variable.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/training/saving:saveable_object_util",
+        "//tensorflow/python/training/tracking:base",
+    ],
+)
+
+tf_py_test(
+    name = "sharded_variable_test",
+    size = "small",
+    srcs = ["sharded_variable_test.py"],
+    additional_deps = [
+        ":sharded_variable",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/training/tracking:util",
+    ],
 )
 
 py_library(
@@ -965,7 +990,6 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -998,7 +1022,6 @@ cuda_py_test(
         "no_rocm",
         "no_windows_gpu",  # TODO(b/130551176)
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -1024,7 +1047,6 @@ cuda_py_test(
         "guitar",
         "multi_and_single_gpu",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 distribute_py_test(
@@ -1234,5 +1256,35 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/133330625)
+    ],
+    # b/141096229: Non-atomic AssignAdd
+    xla_enable_strict_auto_jit = False,
+)
+
+py_library(
+    name = "multi_process_runner",
+    srcs = ["multi_process_runner.py"],
+    deps = [
+        ":multi_process_lib",
+        ":multi_worker_test_base",
+        "//tensorflow/python:client_testlib",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "multi_process_lib",
+    srcs = ["multi_process_lib.py"],
+    deps = ["@six_archive//:six"],
+)
+
+py_test(
+    name = "multi_process_runner_test",
+    srcs = ["multi_process_runner_test.py"],
+    python_version = "PY3",
+    shard_count = 12,
+    deps = [
+        ":multi_process_runner",
+        "//tensorflow/python/eager:test",
     ],
 )

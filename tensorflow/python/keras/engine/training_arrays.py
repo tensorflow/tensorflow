@@ -458,6 +458,7 @@ def model_iteration(model,
     if reset_dataset_after_each_epoch and epoch < epochs - 1:
       _reinitialize_iterator(input_iterator, model._distribution_strategy)
 
+  model._successful_loop_finish = True
   callbacks._call_end_hook(mode)
 
   if model._distribution_strategy:

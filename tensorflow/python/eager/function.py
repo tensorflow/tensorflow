@@ -58,6 +58,7 @@ from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import resource_variable_ops
+
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
@@ -78,6 +79,7 @@ ag_ctx = lazy_loader.LazyLoader(
 
 FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
+IMPLEMENTS_ATTRIBUTE_NAME = "_implements"
 
 
 def _make_input_signature_hashable(elem):
@@ -618,6 +620,18 @@ class _DelayedRewriteGradientFunctions(object):
 
       forward_function_name = _forward_name(self._func_graph.name)
 
+      # NB: forward and backward function have their  "_implements"
+      # attribute set to None if it was present. This is because we don't
+      # support replacing those functions. If we do want for those functions
+      # to have implements function we need to provide a mechanism that
+      # would allow to identify all functions that call this one
+      # and trace and update their signatures as well. At the moment
+      # we disable this, until the tooling for doing this becomes available.
+      # See:
+      # https://github.com/tensorflow/community/blob/master/rfcs/20190610-standardizing-composite_ops.md#appendix-future-support-for-optimizing-gradient-functions
+      common_attributes = dict(self._attrs)
+      common_attributes.pop(IMPLEMENTS_ATTRIBUTE_NAME, None)
+
       existing_outputs = object_identity.ObjectIdentitySet(
           self._func_graph.outputs)
       for capture in captures_from_forward:
@@ -626,15 +640,14 @@ class _DelayedRewriteGradientFunctions(object):
           self._func_graph.outputs.append(capture)
       backward_function_attr = _parse_func_attrs(
           {FORWARD_FUNCTION_ATTRIBUTE_NAME: forward_function_name})
-      backward_function_attr.update(self._attrs)
+      backward_function_attr.update(common_attributes)
 
       backward_function = ConcreteFunction(
           backwards_graph, attrs=backward_function_attr)
       forward_function_attr = _parse_func_attrs({
           BACKWARD_FUNCTION_ATTRIBUTE_NAME:
           backward_function.name})
-      forward_function_attr.update(self._attrs)
-
+      forward_function_attr.update(common_attributes)
       forward_function = _EagerDefinedFunction(
           forward_function_name, self._func_graph, self._func_graph.inputs,
           self._func_graph.outputs, forward_function_attr)
@@ -930,13 +943,29 @@ class _TapeGradientFunctions(object):
       # under forward accumulators to get symbolic output JVPs, then set those
       # as outputs of the new wrapped forward function.
       with forwardprop_util.push_forwardprop_state():
-        for forward_input in self._func_graph.inputs:
-          # Add captures for existing forward inputs, in the same order they
-          # were in the original forward function.
-          array_ops.identity(forward_input)
+        forward_captures = {
+            ops.tensor_id(internal): external
+            for external, internal in self._func_graph.captures}
+        for input_index, real_input in enumerate(self._func_graph.inputs):
+          # This loop is more or less equivalent to running tf.identity on each
+          # of self._func_graph.inputs. However, doing that also captures jvps
+          # for resource handles, which confuses the jvp capturing code below
+          # (since primal inputs are interwoven with jvp inputs).
+          input_placeholder = array_ops.placeholder(
+              dtype=real_input.dtype,
+              shape=real_input.shape)
+          capture = forward_captures.get(ops.tensor_id(real_input))
+          if capture is not None:
+            forward_wrapper_graph.add_capture(capture, input_placeholder)
+            if capture.dtype == dtypes.resource:
+              custom_gradient.copy_handle_data(capture, input_placeholder)
+          else:
+            forward_wrapper_graph.inputs.append(input_placeholder)
         for inp, arg in zip(forward_wrapper_graph.inputs, inference_args):
           tape.record_operation(
-              "captured_value", [inp], [arg], lambda x: [x])
+              "captured_value", [inp], [arg],
+              backward_function=lambda x: [x],
+              forward_function=lambda x: [x])
         num_inference_inputs = len(inference_args)
         for tape_indices in self._forwardprop_input_indices:
           for input_index, jvp_index in tape_indices:
@@ -958,7 +987,8 @@ class _TapeGradientFunctions(object):
                 "captured_value",
                 [jvp_placeholder],
                 [external_jvp],
-                lambda x: [x])
+                backward_function=lambda x: [x],
+                forward_function=lambda x: [x])
         forward_inputs = forward_wrapper_graph.inputs[:num_inference_inputs]
         gradient_name = self._delayed_rewrite_functions.register()
         with ops.get_default_graph().gradient_override_map(
@@ -981,7 +1011,7 @@ class _TapeGradientFunctions(object):
           forward_function.signature.name,
           forward_outputs, forward_inputs, py_backward, None)
       output_indices, output_tangents = (
-          pywrap_tensorflow.TFE_Py_PackForwardGradients(forward_outputs))
+          pywrap_tensorflow.TFE_Py_PackJVPs(forward_outputs))
       output_tangents = [forward_wrapper_graph.capture(t)
                          for t in output_tangents]
     return _ForwardWrapper(
@@ -1154,8 +1184,8 @@ class _TapeGradientFunctions(object):
     def _backward_function_wrapper(*args):
       """Process output gradients and call the backward function."""
       if not backward.outputs:
+        return backward.structured_outputs
 
-        return self._backward.structured_outputs
       processed_args = []
       input_index = 0
       for output_index, arg in enumerate(args):
@@ -1389,6 +1419,34 @@ class ConcreteFunction(object):
     self._func_graph = func_graph
     self._captured_inputs = self._func_graph.external_captures
     self._captured_closures = self._func_graph.deferred_external_captures
+    if attrs and IMPLEMENTS_ATTRIBUTE_NAME in attrs:
+      # The alternative is to silently drop "implements" tag
+      # but it seems likely it would lead to hard to catch bugs.
+      # Another alternative is to make func_body to preserve the order
+      # of arguments if variables are present. Yet another option
+      # is to automatically replace variables as arguments to functions
+      # to v.read_value() whenever "implements" tag is present
+      # Anytime we annotate existing function we probably want to wrap
+      # it with safe read_value for backward compatibility.
+      has_resource_vars = any(inp.dtype == dtypes.resource
+                              for inp in self.inputs)
+
+      assert not any(
+          (has_resource_vars, self._captured_inputs, self._captured_closures)
+      ), ('Function {name} has "{attr}={value}" attribute and thus can not '
+          "depend on any tensors outside of its signature or modify variables. "
+          "\n\nNote: variables are always captured and cause function "
+          "re-tracing for every variable called.\n"
+          "  inputs: {inputs}\n  captures: {captured}\n"
+          "  closures: {closures}.\n\n"
+          "To pass a variable to such function use  "
+          "use variable.read_value().".format(
+              name=func_graph.name,
+              attr=IMPLEMENTS_ATTRIBUTE_NAME,
+              value=attrs[IMPLEMENTS_ATTRIBUTE_NAME],
+              inputs=self.inputs,
+              captured=self._captured_inputs,
+              closures=self._captured_closures))
     self._output_shapes = tuple(
         output.shape for output in self._func_graph.outputs)
     self._attrs = _parse_func_attrs(attrs or {})
@@ -1523,26 +1581,22 @@ class ConcreteFunction(object):
     if default_graph.building_function and not self._func_graph.saveable:
       default_graph.mark_as_unsaveable(self._func_graph.saving_errors)
 
-    if any(isinstance(a, composite_tensor.CompositeTensor) for a in args):
-      raise AssertionError("Expected all args to be Tensors or Variables; "
-                           "but got CompositeTensor: %r" % args)
-
     if (tape.could_possibly_record() or
         hasattr(ops.get_default_graph(), "watch_variable")):
       for v in self._func_graph.variables:
         resource_variable_ops.variable_accessed(v)
 
     tensor_inputs = []
-    variables_used = object_identity.ObjectIdentitySet([])
+    variables_used = set([])
     for i, arg in enumerate(args):
       if isinstance(arg, resource_variable_ops.BaseResourceVariable):
         # We can pass a variable more than once, and in this case we need to
         # pass its handle only once.
-        if arg.handle in variables_used:
+        if id(arg.handle) in variables_used:
           continue
         resource_variable_ops.variable_accessed(arg)
         tensor_inputs.append(arg.handle)
-        variables_used.add(arg.handle)
+        variables_used.add(id(arg.handle))
       elif isinstance(arg, ops.Tensor):
         tensor_inputs.append(arg)
         if not executing_eagerly:
@@ -1825,8 +1879,19 @@ class FunctionSpec(object):
   """Specification of how to bind arguments to a function."""
 
   @staticmethod
-  def from_function_and_signature(python_function, input_signature):
-    """Create a FunctionSpec instance given a python function and signature."""
+  def from_function_and_signature(python_function, input_signature,
+                                  is_pure=False):
+    """Create a FunctionSpec instance given a python function and signature.
+
+    Args:
+      python_function: a function to inspect
+      input_signature: a signature of the function (None, if variable)
+      is_pure: if True all input arguments (including variables and constants)
+      will be converted to tensors and no variable changes allowed.
+
+    Returns:
+      instance of FunctionSpec
+    """
     fullargspec = tf_inspect.getfullargspec(python_function)
     # Treat a wrapped partial function as a special case. For all arguments that
     # were overridden with keywords in the partial:
@@ -1893,12 +1958,14 @@ class FunctionSpec(object):
             kwonlydefaults={},
             annotations=fullargspec.annotations)
     is_method = tf_inspect.ismethod(python_function)
-    return FunctionSpec(fullargspec, is_method, [], {}, input_signature)
+    return FunctionSpec(fullargspec, is_method, [], {}, input_signature,
+                        is_pure=is_pure)
 
   def __init__(self, fullargspec, is_method, args_to_prepend, kwargs_to_include,
-               input_signature):
+               input_signature, is_pure=False):
     self._fullargspec = fullargspec
     self._is_method = is_method
+    self._is_pure = is_pure
     del args_to_prepend
     del kwargs_to_include
     self._default_values = fullargspec.defaults
@@ -1963,6 +2030,11 @@ class FunctionSpec(object):
   def flat_input_signature(self):
     return self._flat_input_signature
 
+  def _convert_variables_to_tensors(self, args, kwargs):
+    args = [ops.convert_to_tensor(x) for x in args]
+    kwargs = {kw: ops.convert_to_tensor(x) for kw, x in kwargs.items()}
+    return tuple(args), kwargs
+
   def canonicalize_function_inputs(self, *args, **kwargs):
     """Canonicalizes `args` and `kwargs`.
 
@@ -1987,6 +2059,8 @@ class FunctionSpec(object):
         argument when an input signature is specified, or when the inputs
         do not conform to the input signature.
     """
+    if self._is_pure:
+      args, kwargs = self._convert_variables_to_tensors(args, kwargs)
     if self._input_signature is not None:
       if len(args) > len(self._input_signature):
         raise TypeError(
@@ -2197,8 +2271,9 @@ class Function(object):
         argspec has keyword arguments.
     """
     self._python_function = python_function
+    pure_function = attributes and IMPLEMENTS_ATTRIBUTE_NAME in attributes
     self._function_spec = FunctionSpec.from_function_and_signature(
-        python_function, input_signature)
+        python_function, input_signature, is_pure=pure_function)
     self._name = name
     self._autograph = autograph
     self._autograph_options = autograph_options

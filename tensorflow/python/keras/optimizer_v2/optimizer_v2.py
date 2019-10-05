@@ -305,8 +305,8 @@ class OptimizerV2(trackable.Trackable):
       name: Optional name for the returned operation.
 
     Returns:
-      An Operation that updates the variables in `var_list`.  If `global_step`
-      was not `None`, that operation also increments `global_step`.
+      An `Operation` that updates the variables in `var_list`. The `iterations`
+      will be automatically increased by 1.
 
     Raises:
       ValueError: If some of the variables are not `Variable` objects.
@@ -417,7 +417,7 @@ class OptimizerV2(trackable.Trackable):
 
     Returns:
       An `Operation` that applies the specified gradients. The `iterations`
-        will be automatically increased by 1.
+      will be automatically increased by 1.
 
     Raises:
       TypeError: If `grads_and_vars` is malformed.
@@ -582,6 +582,15 @@ class OptimizerV2(trackable.Trackable):
       else:
         initial_value = initializer
       strategy = distribute_ctx.get_strategy()
+      if not strategy.extended.variable_created_in_scope(var):
+        raise ValueError(
+            "Trying to create optimizer slot variable under the scope for "
+            "tf.distribute.Strategy ({}), which is different from the scope "
+            "used for the original variable ({}). Make sure the slot "
+            "variables are created under the same strategy scope. This may "
+            "happen if you're restoring from a checkpoint outside the scope"
+            .format(strategy, var))
+
       with strategy.extended.colocate_vars_with(var):
         weight = tf_variables.Variable(
             name="%s/%s" % (var._shared_name, slot_name),  # pylint: disable=protected-access

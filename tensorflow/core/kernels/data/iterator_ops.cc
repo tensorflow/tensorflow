@@ -355,16 +355,18 @@ FunctionLibraryRuntime* IteratorHandleOp::CreatePrivateFLR(
   // in its resource manager. The existing device will outlive the
   // IteratorResource, because we are storing the IteratorResource
   // in that device's resource manager.
+
   *device_mgr =
       absl::make_unique<StaticDeviceMgr>(RenamedDevice::NewRenamedDevice(
           ctx->device()->name(), down_cast<Device*>(ctx->device()),
           false /* owns_underlying */, false /* isolate_session_state */));
   *flib_def = absl::make_unique<FunctionLibraryDefinition>(
       *ctx->function_library()->GetFunctionLibraryDefinition());
+  const auto* config = ctx->function_library()->config_proto();
   *pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
-      device_mgr->get(), ctx->env(), graph_def_version_, flib_def->get(),
-      OptimizerOptions{} /* TODO(mrry): OptimizerOptions? */,
-      nullptr /* TODO(mrry): ClusterFLR */);
+      device_mgr->get(), ctx->env(),
+      /*config=*/config, graph_def_version_, flib_def->get(),
+      config->graph_options().optimizer_options());
 
   return (*pflr)->GetFLR(ctx->device()->name());
 }

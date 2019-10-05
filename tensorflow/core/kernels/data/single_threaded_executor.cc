@@ -71,10 +71,12 @@ class SingleThreadedExecutorImpl : public Executor {
       }
 
       if (n->IsControlFlow()) {
-        return errors::Unimplemented(
-            "Single-threaded executor does not support control flow.  But saw "
-            "control flow node ",
-            n->name());
+        return errors::FailedPrecondition(
+            "Single-threaded executor does not support low level control flow, "
+            " but saw control flow node ",
+            n->name(),
+            ".  Perhaps your graph contains old-style control flow primitives? "
+            "Try using tf.compat.v1.enable_control_flow_v2().");
       }
       if (n->IsSend() || n->IsHostSend() || n->IsRecv() || n->IsHostRecv()) {
         return errors::Unimplemented(
@@ -359,12 +361,10 @@ class SingleThreadedExecutorRegistrar {
 
  private:
   class Factory : public ExecutorFactory {
-    Status NewExecutor(const LocalExecutorParams& params,
-                       std::unique_ptr<const Graph> graph,
+    Status NewExecutor(const LocalExecutorParams& params, const Graph& graph,
                        std::unique_ptr<Executor>* out_executor) override {
       Executor* ret;
-      TF_RETURN_IF_ERROR(
-          NewSingleThreadedExecutor(params, std::move(graph), &ret));
+      TF_RETURN_IF_ERROR(NewSingleThreadedExecutor(params, graph, &ret));
       out_executor->reset(ret);
       return Status::OK();
     }
@@ -375,11 +375,9 @@ static SingleThreadedExecutorRegistrar registrar;
 }  // namespace
 
 Status NewSingleThreadedExecutor(const LocalExecutorParams& params,
-                                 std::unique_ptr<const Graph> graph,
-                                 Executor** executor) {
-  std::unique_ptr<SingleThreadedExecutorImpl> impl =
-      absl::make_unique<SingleThreadedExecutorImpl>(params);
-  TF_RETURN_IF_ERROR(impl->Initialize(*graph));
+                                 const Graph& graph, Executor** executor) {
+  auto impl = absl::make_unique<SingleThreadedExecutorImpl>(params);
+  TF_RETURN_IF_ERROR(impl->Initialize(graph));
   *executor = impl.release();
   return Status::OK();
 }

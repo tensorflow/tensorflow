@@ -79,12 +79,18 @@ ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 })",
                      R"(
 ;CHECK: func @add_kernel(%[[ARG0:.*]]: [[TYPE:!llvm<.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]
-;CHECK: %[[GEP0:.*]] = llvm.getelementptr %[[ARG0]][[INDEX:.*]]
+;CHECK: %[[LD0:.*]] = llvm.load %[[ARG0]] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
+;CHECK: %[[LD1:.*]] = llvm.load %[[ARG1]] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
+;CHECK: %[[LD2:.*]] = llvm.load %[[ARG2]] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
+;CHECK: %[[PTR0:.*]] = llvm.extractvalue %[[LD0]][0 : index]
+;CHECK: %[[GEP0:.*]] = llvm.getelementptr %[[PTR0]][[INDEX:.*]]
 ;CHECK: %[[VAL0:.*]] = llvm.load %[[GEP0]]
-;CHECK: %[[GEP1:.*]] = llvm.getelementptr %[[ARG1]][[INDEX]]
+;CHECK: %[[PTR1:.*]] = llvm.extractvalue %[[LD1]][0 : index]
+;CHECK: %[[GEP1:.*]] = llvm.getelementptr %[[PTR1]][[INDEX]]
 ;CHECK: %[[VAL1:.*]] = llvm.load %[[GEP1]]
 ;CHECK: %[[VAL2:.*]] = llvm.fadd %[[VAL0]], %[[VAL1]]
-;CHECK: %[[GEP2:.*]] = llvm.getelementptr %[[ARG2]][[INDEX]]
+;CHECK: %[[PTR2:.*]] = llvm.extractvalue %[[LD2]][0 : index]
+;CHECK: %[[GEP2:.*]] = llvm.getelementptr %[[PTR2]][[INDEX]]
 ;CHECK: llvm.store %[[VAL2]], %[[GEP2]]
       )",
                      LoweringStage::LLVM);

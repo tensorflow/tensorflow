@@ -73,8 +73,16 @@ class SPV_OpCode<string name, int val> {
 // Begin opcode section. Generated from SPIR-V spec; DO NOT MODIFY!
 
 def SPV_OC_OpNop                    : I32EnumAttrCase<"OpNop", 0>;
+def SPV_OC_OpUndef                  : I32EnumAttrCase<"OpUndef", 1>;
+def SPV_OC_OpSourceContinued        : I32EnumAttrCase<"OpSourceContinued", 2>;
+def SPV_OC_OpSource                 : I32EnumAttrCase<"OpSource", 3>;
+def SPV_OC_OpSourceExtension        : I32EnumAttrCase<"OpSourceExtension", 4>;
 def SPV_OC_OpName                   : I32EnumAttrCase<"OpName", 5>;
+def SPV_OC_OpMemberName             : I32EnumAttrCase<"OpMemberName", 6>;
+def SPV_OC_OpString                 : I32EnumAttrCase<"OpString", 7>;
 def SPV_OC_OpExtension              : I32EnumAttrCase<"OpExtension", 10>;
+def SPV_OC_OpExtInstImport          : I32EnumAttrCase<"OpExtInstImport", 11>;
+def SPV_OC_OpExtInst                : I32EnumAttrCase<"OpExtInst", 12>;
 def SPV_OC_OpMemoryModel            : I32EnumAttrCase<"OpMemoryModel", 14>;
 def SPV_OC_OpEntryPoint             : I32EnumAttrCase<"OpEntryPoint", 15>;
 def SPV_OC_OpExecutionMode          : I32EnumAttrCase<"OpExecutionMode", 16>;
@@ -85,6 +93,7 @@ def SPV_OC_OpTypeInt                : I32EnumAttrCase<"OpTypeInt", 21>;
 def SPV_OC_OpTypeFloat              : I32EnumAttrCase<"OpTypeFloat", 22>;
 def SPV_OC_OpTypeVector             : I32EnumAttrCase<"OpTypeVector", 23>;
 def SPV_OC_OpTypeArray              : I32EnumAttrCase<"OpTypeArray", 28>;
+def SPV_OC_OpTypeRuntimeArray       : I32EnumAttrCase<"OpTypeRuntimeArray", 29>;
 def SPV_OC_OpTypeStruct             : I32EnumAttrCase<"OpTypeStruct", 30>;
 def SPV_OC_OpTypePointer            : I32EnumAttrCase<"OpTypePointer", 32>;
 def SPV_OC_OpTypeFunction           : I32EnumAttrCase<"OpTypeFunction", 33>;
@@ -100,6 +109,7 @@ def SPV_OC_OpSpecConstantComposite  : I32EnumAttrCase<"OpSpecConstantComposite",
 def SPV_OC_OpFunction               : I32EnumAttrCase<"OpFunction", 54>;
 def SPV_OC_OpFunctionParameter      : I32EnumAttrCase<"OpFunctionParameter", 55>;
 def SPV_OC_OpFunctionEnd            : I32EnumAttrCase<"OpFunctionEnd", 56>;
+def SPV_OC_OpFunctionCall           : I32EnumAttrCase<"OpFunctionCall", 57>;
 def SPV_OC_OpVariable               : I32EnumAttrCase<"OpVariable", 59>;
 def SPV_OC_OpLoad                   : I32EnumAttrCase<"OpLoad", 61>;
 def SPV_OC_OpStore                  : I32EnumAttrCase<"OpStore", 62>;
@@ -107,6 +117,8 @@ def SPV_OC_OpAccessChain            : I32EnumAttrCase<"OpAccessChain", 65>;
 def SPV_OC_OpDecorate               : I32EnumAttrCase<"OpDecorate", 71>;
 def SPV_OC_OpMemberDecorate         : I32EnumAttrCase<"OpMemberDecorate", 72>;
 def SPV_OC_OpCompositeExtract       : I32EnumAttrCase<"OpCompositeExtract", 81>;
+def SPV_OC_OpBitcast                : I32EnumAttrCase<"OpBitcast", 124>;
+def SPV_OC_OpFNegate                : I32EnumAttrCase<"OpFNegate", 127>;
 def SPV_OC_OpIAdd                   : I32EnumAttrCase<"OpIAdd", 128>;
 def SPV_OC_OpFAdd                   : I32EnumAttrCase<"OpFAdd", 129>;
 def SPV_OC_OpISub                   : I32EnumAttrCase<"OpISub", 130>;
@@ -121,6 +133,11 @@ def SPV_OC_OpSRem                   : I32EnumAttrCase<"OpSRem", 138>;
 def SPV_OC_OpSMod                   : I32EnumAttrCase<"OpSMod", 139>;
 def SPV_OC_OpFRem                   : I32EnumAttrCase<"OpFRem", 140>;
 def SPV_OC_OpFMod                   : I32EnumAttrCase<"OpFMod", 141>;
+def SPV_OC_OpLogicalEqual           : I32EnumAttrCase<"OpLogicalEqual", 164>;
+def SPV_OC_OpLogicalNotEqual        : I32EnumAttrCase<"OpLogicalNotEqual", 165>;
+def SPV_OC_OpLogicalOr              : I32EnumAttrCase<"OpLogicalOr", 166>;
+def SPV_OC_OpLogicalAnd             : I32EnumAttrCase<"OpLogicalAnd", 167>;
+def SPV_OC_OpLogicalNot             : I32EnumAttrCase<"OpLogicalNot", 168>;
 def SPV_OC_OpSelect                 : I32EnumAttrCase<"OpSelect", 169>;
 def SPV_OC_OpIEqual                 : I32EnumAttrCase<"OpIEqual", 170>;
 def SPV_OC_OpINotEqual              : I32EnumAttrCase<"OpINotEqual", 171>;
@@ -144,29 +161,38 @@ def SPV_OC_OpFOrdLessThanEqual      : I32EnumAttrCase<"OpFOrdLessThanEqual", 188
 def SPV_OC_OpFUnordLessThanEqual    : I32EnumAttrCase<"OpFUnordLessThanEqual", 189>;
 def SPV_OC_OpFOrdGreaterThanEqual   : I32EnumAttrCase<"OpFOrdGreaterThanEqual", 190>;
 def SPV_OC_OpFUnordGreaterThanEqual : I32EnumAttrCase<"OpFUnordGreaterThanEqual", 191>;
+def SPV_OC_OpControlBarrier         : I32EnumAttrCase<"OpControlBarrier", 224>;
+def SPV_OC_OpMemoryBarrier          : I32EnumAttrCase<"OpMemoryBarrier", 225>;
 def SPV_OC_OpLoopMerge              : I32EnumAttrCase<"OpLoopMerge", 246>;
+def SPV_OC_OpSelectionMerge         : I32EnumAttrCase<"OpSelectionMerge", 247>;
 def SPV_OC_OpLabel                  : I32EnumAttrCase<"OpLabel", 248>;
 def SPV_OC_OpBranch                 : I32EnumAttrCase<"OpBranch", 249>;
 def SPV_OC_OpBranchConditional      : I32EnumAttrCase<"OpBranchConditional", 250>;
 def SPV_OC_OpReturn                 : I32EnumAttrCase<"OpReturn", 253>;
 def SPV_OC_OpReturnValue            : I32EnumAttrCase<"OpReturnValue", 254>;
+def SPV_OC_OpModuleProcessed        : I32EnumAttrCase<"OpModuleProcessed", 330>;
 
 def SPV_OpcodeAttr :
     I32EnumAttr<"Opcode", "valid SPIR-V instructions", [
-      SPV_OC_OpNop, SPV_OC_OpName, SPV_OC_OpExtension, SPV_OC_OpMemoryModel,
-      SPV_OC_OpEntryPoint, SPV_OC_OpExecutionMode, SPV_OC_OpCapability,
-      SPV_OC_OpTypeVoid, SPV_OC_OpTypeBool, SPV_OC_OpTypeInt, SPV_OC_OpTypeFloat,
-      SPV_OC_OpTypeVector, SPV_OC_OpTypeArray, SPV_OC_OpTypeStruct,
-      SPV_OC_OpTypePointer, SPV_OC_OpTypeFunction, SPV_OC_OpConstantTrue,
-      SPV_OC_OpConstantFalse, SPV_OC_OpConstant, SPV_OC_OpConstantComposite,
-      SPV_OC_OpConstantNull, SPV_OC_OpSpecConstantTrue, SPV_OC_OpSpecConstantFalse,
-      SPV_OC_OpSpecConstant, SPV_OC_OpSpecConstantComposite, SPV_OC_OpFunction,
-      SPV_OC_OpFunctionParameter, SPV_OC_OpFunctionEnd, SPV_OC_OpVariable,
-      SPV_OC_OpLoad, SPV_OC_OpStore, SPV_OC_OpAccessChain, SPV_OC_OpDecorate,
-      SPV_OC_OpMemberDecorate, SPV_OC_OpCompositeExtract, SPV_OC_OpIAdd,
-      SPV_OC_OpFAdd, SPV_OC_OpISub, SPV_OC_OpFSub, SPV_OC_OpIMul, SPV_OC_OpFMul,
-      SPV_OC_OpUDiv, SPV_OC_OpSDiv, SPV_OC_OpFDiv, SPV_OC_OpUMod, SPV_OC_OpSRem,
-      SPV_OC_OpSMod, SPV_OC_OpFRem, SPV_OC_OpFMod, SPV_OC_OpSelect, SPV_OC_OpIEqual,
+      SPV_OC_OpNop, SPV_OC_OpUndef, SPV_OC_OpSourceContinued, SPV_OC_OpSource,
+      SPV_OC_OpSourceExtension, SPV_OC_OpName, SPV_OC_OpMemberName, SPV_OC_OpString,
+      SPV_OC_OpExtension, SPV_OC_OpExtInstImport, SPV_OC_OpExtInst,
+      SPV_OC_OpMemoryModel, SPV_OC_OpEntryPoint, SPV_OC_OpExecutionMode,
+      SPV_OC_OpCapability, SPV_OC_OpTypeVoid, SPV_OC_OpTypeBool, SPV_OC_OpTypeInt,
+      SPV_OC_OpTypeFloat, SPV_OC_OpTypeVector, SPV_OC_OpTypeArray,
+      SPV_OC_OpTypeRuntimeArray, SPV_OC_OpTypeStruct, SPV_OC_OpTypePointer,
+      SPV_OC_OpTypeFunction, SPV_OC_OpConstantTrue, SPV_OC_OpConstantFalse,
+      SPV_OC_OpConstant, SPV_OC_OpConstantComposite, SPV_OC_OpConstantNull,
+      SPV_OC_OpSpecConstantTrue, SPV_OC_OpSpecConstantFalse, SPV_OC_OpSpecConstant,
+      SPV_OC_OpSpecConstantComposite, SPV_OC_OpFunction, SPV_OC_OpFunctionParameter,
+      SPV_OC_OpFunctionEnd, SPV_OC_OpFunctionCall, SPV_OC_OpVariable, SPV_OC_OpLoad,
+      SPV_OC_OpStore, SPV_OC_OpAccessChain, SPV_OC_OpDecorate,
+      SPV_OC_OpMemberDecorate, SPV_OC_OpCompositeExtract, SPV_OC_OpBitcast,
+      SPV_OC_OpFNegate, SPV_OC_OpIAdd, SPV_OC_OpFAdd, SPV_OC_OpISub, SPV_OC_OpFSub,
+      SPV_OC_OpIMul, SPV_OC_OpFMul, SPV_OC_OpUDiv, SPV_OC_OpSDiv, SPV_OC_OpFDiv,
+      SPV_OC_OpUMod, SPV_OC_OpSRem, SPV_OC_OpSMod, SPV_OC_OpFRem, SPV_OC_OpFMod,
+      SPV_OC_OpLogicalEqual, SPV_OC_OpLogicalNotEqual, SPV_OC_OpLogicalOr,
+      SPV_OC_OpLogicalAnd, SPV_OC_OpLogicalNot, SPV_OC_OpSelect, SPV_OC_OpIEqual,
       SPV_OC_OpINotEqual, SPV_OC_OpUGreaterThan, SPV_OC_OpSGreaterThan,
       SPV_OC_OpUGreaterThanEqual, SPV_OC_OpSGreaterThanEqual, SPV_OC_OpULessThan,
       SPV_OC_OpSLessThan, SPV_OC_OpULessThanEqual, SPV_OC_OpSLessThanEqual,
@@ -175,8 +201,10 @@ def SPV_OpcodeAttr :
       SPV_OC_OpFOrdGreaterThan, SPV_OC_OpFUnordGreaterThan,
       SPV_OC_OpFOrdLessThanEqual, SPV_OC_OpFUnordLessThanEqual,
       SPV_OC_OpFOrdGreaterThanEqual, SPV_OC_OpFUnordGreaterThanEqual,
-      SPV_OC_OpLoopMerge, SPV_OC_OpLabel, SPV_OC_OpBranch,
-      SPV_OC_OpBranchConditional, SPV_OC_OpReturn, SPV_OC_OpReturnValue
+      SPV_OC_OpControlBarrier, SPV_OC_OpMemoryBarrier, SPV_OC_OpLoopMerge,
+      SPV_OC_OpSelectionMerge, SPV_OC_OpLabel, SPV_OC_OpBranch,
+      SPV_OC_OpBranchConditional, SPV_OC_OpReturn, SPV_OC_OpReturnValue,
+      SPV_OC_OpModuleProcessed
       ]> {
     let returnType = "::mlir::spirv::Opcode";
     let convertFromStorage = "static_cast<::mlir::spirv::Opcode>($_self.getInt())";
@@ -184,7 +212,6 @@ def SPV_OpcodeAttr :
 }
 
 // End opcode section. Generated from SPIR-V spec; DO NOT MODIFY!
-
 
 //===----------------------------------------------------------------------===//
 // SPIR-V type definitions
@@ -202,7 +229,9 @@ def SPV_Void : TypeAlias<NoneType, "void type">;
 def SPV_Bool : IntOfWidths<[1]>;
 def SPV_Integer : IntOfWidths<[8, 16, 32, 64]>;
 def SPV_Float : FloatOfWidths<[16, 32, 64]>;
-def SPV_Vector : VectorOf<[SPV_Bool, SPV_Integer, SPV_Float]>;
+def SPV_Float16or32 : FloatOfWidths<[16, 32]>;
+def SPV_Vector : VectorOfLengthAndType<[2, 3, 4],
+                                       [SPV_Bool, SPV_Integer, SPV_Float]>;
 // Component type check is done in the type parser for the following SPIR-V
 // dialect-specific types so we use "Any" here.
 def SPV_AnyPtr : Type<SPV_IsPtrType, "any SPIR-V pointer type">;
@@ -213,19 +242,67 @@ def SPV_AnyStruct : Type<SPV_IsStructType, "any SPIR-V struct type">;
 def SPV_Numerical : AnyTypeOf<[SPV_Integer, SPV_Float]>;
 def SPV_Scalar : AnyTypeOf<[SPV_Numerical, SPV_Bool]>;
 def SPV_Aggregrate : AnyTypeOf<[SPV_AnyArray, SPV_AnyStruct]>;
-def SPV_Composite: AnyTypeOf<[SPV_Vector, SPV_AnyArray, SPV_AnyStruct]>;
+def SPV_Composite :
+    AnyTypeOf<[SPV_Vector, SPV_AnyArray, SPV_AnyRTArray, SPV_AnyStruct]>;
 def SPV_Type : AnyTypeOf<[
     SPV_Void, SPV_Bool, SPV_Integer, SPV_Float, SPV_Vector,
     SPV_AnyPtr, SPV_AnyArray, SPV_AnyRTArray, SPV_AnyStruct
   ]>;
 
-class SPV_ScalarOrVectorOf<Type type> : AnyTypeOf<[type, VectorOf<[type]>]>;
+class SPV_ScalarOrVectorOf<Type type> :
+    AnyTypeOf<[type, VectorOfLengthAndType<[2, 3, 4], [type]>]>;
+
+def SPV_ScalarOrVector : AnyTypeOf<[SPV_Scalar, SPV_Vector]>;
+def SPV_ScalarOrVectorOrPtr : AnyTypeOf<[SPV_ScalarOrVector, SPV_AnyPtr]>;
 
 // TODO(antiagainst): Use a more appropriate way to model optional operands
 class SPV_Optional<Type type> : Variadic<type>;
 
 // TODO(ravishankarm): From 1.4, this should also include Composite type.
 def SPV_SelectType : AnyTypeOf<[SPV_Scalar, SPV_Vector, SPV_AnyPtr]>;
+
+//===----------------------------------------------------------------------===//
+// SPIR-V BitEnum definition
+//===----------------------------------------------------------------------===//
+
+// A bit enum case stored with 32-bit IntegerAttr. `val` here is *not* the
+// ordinal number of the bit that is set. It is the 32-bit integer with only
+// one bit set.
+class BitEnumAttrCase<string sym, int val> :
+    EnumAttrCaseInfo<sym, val>,
+    IntegerAttrBase<I32, "case " # sym> {
+  let predicate = CPred<
+    "$_self.cast<IntegerAttr>().getValue().getSExtValue() & " # val # "u">;
+}
+
+// A bit enum stored with 32-bit IntegerAttr.
+//
+// Op attributes of this kind are stored as IntegerAttr. Extra verification will
+// be generated on the integer to make sure only allowed bit are set.
+class BitEnumAttr<string name, string description,
+                  list<BitEnumAttrCase> cases> :
+    EnumAttrInfo<name, cases>, IntegerAttrBase<I32, description> {
+  let predicate = And<[
+    IntegerAttrBase<I32, "">.predicate,
+    // Make sure we don't have unknown bit set.
+    CPred<"!($_self.cast<IntegerAttr>().getValue().getZExtValue() & (~(" #
+          StrJoin<!foreach(case, cases, case.value # "u"), "|">.result #
+          ")))">
+  ]>;
+
+  let underlyingType = "uint32_t";
+
+  // We need to return a string because we may concatenate symbols for multiple
+  // bits together.
+  let symbolToStringFnRetType = "std::string";
+
+  // The string used to separate bit enum cases in strings.
+  string separator = "|";
+
+  // Turn off the autogen with EnumsGen. SPIR-V needs custom logic here and
+  // we will use our own autogen logic.
+  let skipAutoGen = 1;
+}
 
 //===----------------------------------------------------------------------===//
 // SPIR-V extension definitions
@@ -483,7 +560,7 @@ def SPV_C_SubgroupBallotKHR                         : I32EnumAttrCase<"SubgroupB
 def SPV_C_DrawParameters                            : I32EnumAttrCase<"DrawParameters", 4427>;
 def SPV_C_SubgroupVoteKHR                           : I32EnumAttrCase<"SubgroupVoteKHR", 4431>;
 def SPV_C_StorageBuffer16BitAccess                  : I32EnumAttrCase<"StorageBuffer16BitAccess", 4433>;
-def SPV_C_UniformAndStorageBuffer16BitAccess        : I32EnumAttrCase<"UniformAndStorageBuffer16BitAccess", 4434>;
+def SPV_C_StorageUniform16                          : I32EnumAttrCase<"StorageUniform16", 4434>;
 def SPV_C_StoragePushConstant16                     : I32EnumAttrCase<"StoragePushConstant16", 4435>;
 def SPV_C_StorageInputOutput16                      : I32EnumAttrCase<"StorageInputOutput16", 4436>;
 def SPV_C_DeviceGroup                               : I32EnumAttrCase<"DeviceGroup", 4437>;
@@ -578,10 +655,9 @@ def SPV_CapabilityAttr :
       SPV_C_GroupNonUniformShuffle, SPV_C_GroupNonUniformShuffleRelative,
       SPV_C_GroupNonUniformClustered, SPV_C_GroupNonUniformQuad, SPV_C_ShaderLayer,
       SPV_C_ShaderViewportIndex, SPV_C_SubgroupBallotKHR, SPV_C_DrawParameters,
-      SPV_C_SubgroupVoteKHR, SPV_C_StorageBuffer16BitAccess,
-      SPV_C_UniformAndStorageBuffer16BitAccess, SPV_C_StoragePushConstant16,
-      SPV_C_StorageInputOutput16, SPV_C_DeviceGroup, SPV_C_MultiView,
-      SPV_C_VariablePointersStorageBuffer, SPV_C_VariablePointers,
+      SPV_C_SubgroupVoteKHR, SPV_C_StorageBuffer16BitAccess, SPV_C_StorageUniform16,
+      SPV_C_StoragePushConstant16, SPV_C_StorageInputOutput16, SPV_C_DeviceGroup,
+      SPV_C_MultiView, SPV_C_VariablePointersStorageBuffer, SPV_C_VariablePointers,
       SPV_C_AtomicStorageOps, SPV_C_SampleMaskPostDepthCoverage,
       SPV_C_StorageBuffer8BitAccess, SPV_C_UniformAndStorageBuffer8BitAccess,
       SPV_C_StoragePushConstant8, SPV_C_DenormPreserve, SPV_C_DenormFlushToZero,
@@ -843,14 +919,14 @@ def SPV_ExecutionModelAttr :
   let cppNamespace = "::mlir::spirv";
 }
 
-def SPV_FC_None       : I32EnumAttrCase<"None", 0x0000>;
-def SPV_FC_Inline     : I32EnumAttrCase<"Inline", 0x0001>;
-def SPV_FC_DontInline : I32EnumAttrCase<"DontInline", 0x0002>;
-def SPV_FC_Pure       : I32EnumAttrCase<"Pure", 0x0004>;
-def SPV_FC_Const      : I32EnumAttrCase<"Const", 0x0008>;
+def SPV_FC_None       : BitEnumAttrCase<"None", 0x0000>;
+def SPV_FC_Inline     : BitEnumAttrCase<"Inline", 0x0001>;
+def SPV_FC_DontInline : BitEnumAttrCase<"DontInline", 0x0002>;
+def SPV_FC_Pure       : BitEnumAttrCase<"Pure", 0x0004>;
+def SPV_FC_Const      : BitEnumAttrCase<"Const", 0x0008>;
 
 def SPV_FunctionControlAttr :
-    I32EnumAttr<"FunctionControl", "valid SPIR-V FunctionControl", [
+    BitEnumAttr<"FunctionControl", "valid SPIR-V FunctionControl", [
       SPV_FC_None, SPV_FC_Inline, SPV_FC_DontInline, SPV_FC_Pure, SPV_FC_Const
     ]> {
   let returnType = "::mlir::spirv::FunctionControl";
@@ -928,19 +1004,19 @@ def SPV_LinkageTypeAttr :
   let cppNamespace = "::mlir::spirv";
 }
 
-def SPV_LC_None               : I32EnumAttrCase<"None", 0x0000>;
-def SPV_LC_Unroll             : I32EnumAttrCase<"Unroll", 0x0001>;
-def SPV_LC_DontUnroll         : I32EnumAttrCase<"DontUnroll", 0x0002>;
-def SPV_LC_DependencyInfinite : I32EnumAttrCase<"DependencyInfinite", 0x0004>;
-def SPV_LC_DependencyLength   : I32EnumAttrCase<"DependencyLength", 0x0008>;
-def SPV_LC_MinIterations      : I32EnumAttrCase<"MinIterations", 0x0010>;
-def SPV_LC_MaxIterations      : I32EnumAttrCase<"MaxIterations", 0x0020>;
-def SPV_LC_IterationMultiple  : I32EnumAttrCase<"IterationMultiple", 0x0040>;
-def SPV_LC_PeelCount          : I32EnumAttrCase<"PeelCount", 0x0080>;
-def SPV_LC_PartialCount       : I32EnumAttrCase<"PartialCount", 0x0100>;
+def SPV_LC_None               : BitEnumAttrCase<"None", 0x0000>;
+def SPV_LC_Unroll             : BitEnumAttrCase<"Unroll", 0x0001>;
+def SPV_LC_DontUnroll         : BitEnumAttrCase<"DontUnroll", 0x0002>;
+def SPV_LC_DependencyInfinite : BitEnumAttrCase<"DependencyInfinite", 0x0004>;
+def SPV_LC_DependencyLength   : BitEnumAttrCase<"DependencyLength", 0x0008>;
+def SPV_LC_MinIterations      : BitEnumAttrCase<"MinIterations", 0x0010>;
+def SPV_LC_MaxIterations      : BitEnumAttrCase<"MaxIterations", 0x0020>;
+def SPV_LC_IterationMultiple  : BitEnumAttrCase<"IterationMultiple", 0x0040>;
+def SPV_LC_PeelCount          : BitEnumAttrCase<"PeelCount", 0x0080>;
+def SPV_LC_PartialCount       : BitEnumAttrCase<"PartialCount", 0x0100>;
 
 def SPV_LoopControlAttr :
-    I32EnumAttr<"LoopControl", "valid SPIR-V LoopControl", [
+    BitEnumAttr<"LoopControl", "valid SPIR-V LoopControl", [
       SPV_LC_None, SPV_LC_Unroll, SPV_LC_DontUnroll, SPV_LC_DependencyInfinite,
       SPV_LC_DependencyLength, SPV_LC_MinIterations, SPV_LC_MaxIterations,
       SPV_LC_IterationMultiple, SPV_LC_PeelCount, SPV_LC_PartialCount
@@ -950,16 +1026,16 @@ def SPV_LoopControlAttr :
   let cppNamespace = "::mlir::spirv";
 }
 
-def SPV_MA_None                 : I32EnumAttrCase<"None", 0x0000>;
-def SPV_MA_Volatile             : I32EnumAttrCase<"Volatile", 0x0001>;
-def SPV_MA_Aligned              : I32EnumAttrCase<"Aligned", 0x0002>;
-def SPV_MA_Nontemporal          : I32EnumAttrCase<"Nontemporal", 0x0004>;
-def SPV_MA_MakePointerAvailable : I32EnumAttrCase<"MakePointerAvailable", 0x0008>;
-def SPV_MA_MakePointerVisible   : I32EnumAttrCase<"MakePointerVisible", 0x0010>;
-def SPV_MA_NonPrivatePointer    : I32EnumAttrCase<"NonPrivatePointer", 0x0020>;
+def SPV_MA_None                 : BitEnumAttrCase<"None", 0x0000>;
+def SPV_MA_Volatile             : BitEnumAttrCase<"Volatile", 0x0001>;
+def SPV_MA_Aligned              : BitEnumAttrCase<"Aligned", 0x0002>;
+def SPV_MA_Nontemporal          : BitEnumAttrCase<"Nontemporal", 0x0004>;
+def SPV_MA_MakePointerAvailable : BitEnumAttrCase<"MakePointerAvailable", 0x0008>;
+def SPV_MA_MakePointerVisible   : BitEnumAttrCase<"MakePointerVisible", 0x0010>;
+def SPV_MA_NonPrivatePointer    : BitEnumAttrCase<"NonPrivatePointer", 0x0020>;
 
 def SPV_MemoryAccessAttr :
-    I32EnumAttr<"MemoryAccess", "valid SPIR-V MemoryAccess", [
+    BitEnumAttr<"MemoryAccess", "valid SPIR-V MemoryAccess", [
       SPV_MA_None, SPV_MA_Volatile, SPV_MA_Aligned, SPV_MA_Nontemporal,
       SPV_MA_MakePointerAvailable, SPV_MA_MakePointerVisible,
       SPV_MA_NonPrivatePointer
@@ -980,6 +1056,65 @@ def SPV_MemoryModelAttr :
     ]> {
   let returnType = "::mlir::spirv::MemoryModel";
   let convertFromStorage = "static_cast<::mlir::spirv::MemoryModel>($_self.getInt())";
+  let cppNamespace = "::mlir::spirv";
+}
+
+def SPV_MS_None                   : BitEnumAttrCase<"None", 0x0000>;
+def SPV_MS_Acquire                : BitEnumAttrCase<"Acquire", 0x0002>;
+def SPV_MS_Release                : BitEnumAttrCase<"Release", 0x0004>;
+def SPV_MS_AcquireRelease         : BitEnumAttrCase<"AcquireRelease", 0x0008>;
+def SPV_MS_SequentiallyConsistent : BitEnumAttrCase<"SequentiallyConsistent", 0x0010>;
+def SPV_MS_UniformMemory          : BitEnumAttrCase<"UniformMemory", 0x0040>;
+def SPV_MS_SubgroupMemory         : BitEnumAttrCase<"SubgroupMemory", 0x0080>;
+def SPV_MS_WorkgroupMemory        : BitEnumAttrCase<"WorkgroupMemory", 0x0100>;
+def SPV_MS_CrossWorkgroupMemory   : BitEnumAttrCase<"CrossWorkgroupMemory", 0x0200>;
+def SPV_MS_AtomicCounterMemory    : BitEnumAttrCase<"AtomicCounterMemory", 0x0400>;
+def SPV_MS_ImageMemory            : BitEnumAttrCase<"ImageMemory", 0x0800>;
+def SPV_MS_OutputMemory           : BitEnumAttrCase<"OutputMemory", 0x1000>;
+def SPV_MS_MakeAvailable          : BitEnumAttrCase<"MakeAvailable", 0x2000>;
+def SPV_MS_MakeVisible            : BitEnumAttrCase<"MakeVisible", 0x4000>;
+def SPV_MS_Volatile               : BitEnumAttrCase<"Volatile", 0x8000>;
+
+def SPV_MemorySemanticsAttr :
+    BitEnumAttr<"MemorySemantics", "valid SPIR-V MemorySemantics", [
+      SPV_MS_None, SPV_MS_Acquire, SPV_MS_Release, SPV_MS_AcquireRelease,
+      SPV_MS_SequentiallyConsistent, SPV_MS_UniformMemory, SPV_MS_SubgroupMemory,
+      SPV_MS_WorkgroupMemory, SPV_MS_CrossWorkgroupMemory,
+      SPV_MS_AtomicCounterMemory, SPV_MS_ImageMemory, SPV_MS_OutputMemory,
+      SPV_MS_MakeAvailable, SPV_MS_MakeVisible, SPV_MS_Volatile
+    ]> {
+  let returnType = "::mlir::spirv::MemorySemantics";
+  let convertFromStorage = "static_cast<::mlir::spirv::MemorySemantics>($_self.getInt())";
+  let cppNamespace = "::mlir::spirv";
+}
+
+def SPV_S_CrossDevice : I32EnumAttrCase<"CrossDevice", 0>;
+def SPV_S_Device      : I32EnumAttrCase<"Device", 1>;
+def SPV_S_Workgroup   : I32EnumAttrCase<"Workgroup", 2>;
+def SPV_S_Subgroup    : I32EnumAttrCase<"Subgroup", 3>;
+def SPV_S_Invocation  : I32EnumAttrCase<"Invocation", 4>;
+def SPV_S_QueueFamily : I32EnumAttrCase<"QueueFamily", 5>;
+
+def SPV_ScopeAttr :
+    I32EnumAttr<"Scope", "valid SPIR-V Scope", [
+      SPV_S_CrossDevice, SPV_S_Device, SPV_S_Workgroup, SPV_S_Subgroup,
+      SPV_S_Invocation, SPV_S_QueueFamily
+    ]> {
+  let returnType = "::mlir::spirv::Scope";
+  let convertFromStorage = "static_cast<::mlir::spirv::Scope>($_self.getInt())";
+  let cppNamespace = "::mlir::spirv";
+}
+
+def SPV_SC_None        : BitEnumAttrCase<"None", 0x0000>;
+def SPV_SC_Flatten     : BitEnumAttrCase<"Flatten", 0x0001>;
+def SPV_SC_DontFlatten : BitEnumAttrCase<"DontFlatten", 0x0002>;
+
+def SPV_SelectionControlAttr :
+    BitEnumAttr<"SelectionControl", "valid SPIR-V SelectionControl", [
+      SPV_SC_None, SPV_SC_Flatten, SPV_SC_DontFlatten
+    ]> {
+  let returnType = "::mlir::spirv::SelectionControl";
+  let convertFromStorage = "static_cast<::mlir::spirv::SelectionControl>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -1067,7 +1202,7 @@ def SPV_SamplerUseAttr:
 // Check that an op can only be used within the scope of a FuncOp.
 def InFunctionScope : PredOpTrait<
   "op must appear in a 'func' block",
-  CPred<"llvm::isa_and_nonnull<FuncOp>($_op.getParentOp())">>;
+  CPred<"($_op.getParentOfType<FuncOp>())">>;
 
 // Check that an op can only be used within the scope of a SPIR-V ModuleOp.
 def InModuleScope : PredOpTrait<
@@ -1085,9 +1220,9 @@ class SPV_Op<string mnemonic, list<OpTrait> traits = []> :
   // For each SPIR-V op, the following static functions need to be defined
   // in SPVOps.cpp:
   //
-  // * static ParseResult parse<op-c++-class-name>(OpAsmParser *parser,
-  //                                               OperationState *result)
-  // * static void print(OpAsmPrinter *p, <op-c++-class-name> op)
+  // * static ParseResult parse<op-c++-class-name>(OpAsmParser &parser,
+  //                                               OperationState &result)
+  // * static void print(OpAsmPrinter &p, <op-c++-class-name> op)
   // * static LogicalResult verify(<op-c++-class-name> op)
   let parser = [{ return ::parse$cppClass(parser, result); }];
   let printer = [{ return ::print(*this, p); }];
@@ -1096,8 +1231,7 @@ class SPV_Op<string mnemonic, list<OpTrait> traits = []> :
   // Specifies whether this op has a direct corresponding SPIR-V binary
   // instruction opcode. The (de)serializer use this field to determine whether
   // to auto-generate an entry in the (de)serialization dispatch table for this
-  // op. If set, this field also futher enables `autogenSerialization` (see
-  // below for details).
+  // op.
   bit hasOpcode = 1;
 
   // Name of the corresponding SPIR-V op. Only valid to use when hasOpcode is 1.
@@ -1115,16 +1249,32 @@ class SPV_Op<string mnemonic, list<OpTrait> traits = []> :
   // these methods is required.
   //
   // Note:
-  //
   // 1) If hasOpcode is set but autogenSerialization is not set, the
   //    (de)serializer dispatch method still calls the above method for
   //    (de)serializing this op.
-  //
-  // 2) If hasOpcode is not set, then this field is not interpreted; this op's
-  //    (de)serialization method will not be auto-generated regardless. Neither
-  //    does the handling in the (de)serialization dispatch table. Both
-  //    (de)serializing this op and its dispatch should be handled manually.
+  // 2) If hasOpcode is not set, but autogenSerialization is set, the
+  //    above methods for (de)serialization are generated, but there is no
+  //    entry added in the dispatch tables to invoke these methods. The
+  //    dispatch needs to be handled manually. SPV_ExtInstOps are an
+  //    example of this.
   bit autogenSerialization = 1;
+}
+
+class SPV_UnaryOp<string mnemonic, Type resultType, Type operandType,
+                  list<OpTrait> traits = []> :
+      SPV_Op<mnemonic, traits> {
+  let arguments = (ins
+    SPV_ScalarOrVectorOf<operandType>:$operand
+  );
+
+  let results = (outs
+    SPV_ScalarOrVectorOf<resultType>:$result
+  );
+
+  let parser = [{ return ::parseUnaryOp(parser, result); }];
+  let printer = [{ return ::printUnaryOp(getOperation(), p); }];
+  // No additional verification needed in addition to the ODS-generated ones.
+  let verifier = [{ return success(); }];
 }
 
 class SPV_BinaryOp<string mnemonic, Type resultType, Type operandsType,
@@ -1134,13 +1284,35 @@ class SPV_BinaryOp<string mnemonic, Type resultType, Type operandsType,
     SPV_ScalarOrVectorOf<operandsType>:$operand1,
     SPV_ScalarOrVectorOf<operandsType>:$operand2
   );
+
   let results = (outs
     SPV_ScalarOrVectorOf<resultType>:$result
   );
-  let parser = [{ return impl::parseBinaryOp(parser, result); }];
-  let printer = [{ return impl::printBinaryOp(getOperation(), p); }];
+
+  let parser = [{ return impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let printer = [{ return impl::printOneResultOp(getOperation(), p); }];
   // No additional verification needed in addition to the ODS-generated ones.
   let verifier = [{ return success(); }];
+}
+
+class SPV_ExtInstOp<string mnemonic, string setPrefix, string setName,
+                    int opcode, list<OpTrait> traits = []> :
+  SPV_Op<setPrefix # "." # mnemonic, traits> {
+
+  // Extended instruction sets have no direct opcode (they share the
+  // same `OpExtInst` instruction). So the hasOpcode field is set to
+  // false. So no entry corresponding to these ops are added in the
+  // dispatch functions for (de)serialization. The methods for
+  // (de)serialization are still automatically generated (since
+  // autogenSerialization remains 1). A separate method is generated
+  // for dispatching extended instruction set ops.
+  let hasOpcode = 0;
+
+  // Opcode within extended instruction set.
+  int extendedInstOpcode = opcode;
+
+  // Name used to import the extended instruction set.
+  string extendedInstSetName = setName;
 }
 
 #endif // SPIRV_BASE

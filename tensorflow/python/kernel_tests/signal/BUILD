@@ -32,7 +32,6 @@ cuda_py_tests(
         "//tensorflow/python/ops/signal",
     ],
     tags = ["no_rocm"],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_tests(
@@ -52,7 +51,6 @@ cuda_py_tests(
         "no_rocm",
         "optonly",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_tests(
@@ -64,13 +62,13 @@ cuda_py_tests(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/ops/signal",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_tests(
     name = "mfcc_ops_test",
     srcs = ["mfcc_ops_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
@@ -79,13 +77,13 @@ cuda_py_tests(
         "//tensorflow/python/ops/signal",
     ],
     tags = ["no_rocm"],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_tests(
     name = "reconstruction_ops_test",
     srcs = ["reconstruction_ops_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:gradients",
@@ -97,7 +95,6 @@ cuda_py_tests(
         "//tensorflow/python/ops/signal",
         "//tensorflow/python:platform_test",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_tests(
@@ -115,7 +112,6 @@ cuda_py_tests(
         "//tensorflow/python/ops/signal",
         "//tensorflow/python:platform_test",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_tests(
@@ -140,7 +136,6 @@ cuda_py_tests(
         "no_rocm",
         "nomac",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_tests(
@@ -156,5 +151,4 @@ cuda_py_tests(
         "//tensorflow/python/ops/signal",
         "//tensorflow/python:platform_test",
     ],
-    xla_enable_strict_auto_jit = True,
 )

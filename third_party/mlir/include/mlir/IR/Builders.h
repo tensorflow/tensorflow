@@ -131,6 +131,8 @@ public:
   FloatAttr getF32FloatAttr(float value);
   FloatAttr getF64FloatAttr(double value);
 
+  IntegerAttr getI8IntegerAttr(int8_t value);
+  IntegerAttr getI16IntegerAttr(int16_t value);
   IntegerAttr getI32IntegerAttr(int32_t value);
   IntegerAttr getI64IntegerAttr(int64_t value);
 
@@ -278,6 +280,12 @@ public:
     setInsertionPoint(op->getBlock(), Block::iterator(op));
   }
 
+  /// Sets the insertion point to the node after the specified operation, which
+  /// will cause subsequent insertions to go right after it.
+  void setInsertionPointAfter(Operation *op) {
+    setInsertionPoint(op->getBlock(), ++Block::iterator(op));
+  }
+
   /// Sets the insertion point to the start of the specified block.
   void setInsertionPointToStart(Block *block) {
     setInsertionPoint(block, block->begin());
@@ -313,7 +321,7 @@ public:
   template <typename OpTy, typename... Args>
   OpTy create(Location location, Args &&... args) {
     OperationState state(location, OpTy::getOperationName());
-    OpTy::build(this, &state, std::forward<Args>(args)...);
+    OpTy::build(this, state, std::forward<Args>(args)...);
     auto *op = createOperation(state);
     auto result = dyn_cast<OpTy>(op);
     assert(result && "Builder didn't return the right type");

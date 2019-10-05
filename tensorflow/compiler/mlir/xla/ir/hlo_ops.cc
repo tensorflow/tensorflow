@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Dialect.h"  // TF:local_config_mlir
@@ -42,6 +43,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
+#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h.inc"
 
 namespace mlir {
@@ -82,6 +84,45 @@ static LogicalResult Verify(T op) {
 // ConstOp
 //===----------------------------------------------------------------------===//
 
+static void Print(ConstOp op, OpAsmPrinter* printer) {
+  // Use short form only if the result type matches type of attribute 'value'.
+  bool use_short_form = op.value().getType() == op.getType();
+
+  // Print op name.
+  *printer << op.getOperationName();
+
+  // If short form, elide attribute value while printing the attribute
+  // dictionary.
+  SmallVector<StringRef, 1> elided_attrs;
+  if (use_short_form) elided_attrs.push_back("value");
+  printer->printOptionalAttrDict(op.getAttrs(), elided_attrs);
+
+  if (use_short_form) {
+    *printer << ' ' << op.value();
+  } else {
+    *printer << " : " << op.getType();
+  }
+}
+
+static ParseResult ParseConstOp(OpAsmParser* parser, OperationState* result) {
+  if (parser->parseOptionalAttributeDict(result->attributes)) return failure();
+
+  // If colon is not present after attribute dictionary, it should be short form
+  // and attribute 'value' is outside the dictionary.
+  if (failed(parser->parseOptionalColon())) {
+    Attribute value;
+    if (parser->parseAttribute(value, "value", result->attributes))
+      return failure();
+    return parser->addTypeToList(value.getType(), result->types);
+  }
+
+  // Long form should have type of the result after colon.
+  Type ty;
+  if (parser->parseType(ty)) return failure();
+  result->types.push_back(ty);
+  return success();
+}
+
 OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.empty() && "constant has no operands");
 
@@ -90,7 +131,7 @@ OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
 }
 
 // Builds a constant op with the specified attribute `value`.
-void ConstOp::build(Builder* builder, OperationState* result, Attribute value) {
+void ConstOp::build(Builder* builder, OperationState& result, Attribute value) {
   Type type;
   if (auto elemAttr = value.dyn_cast<ElementsAttr>()) {
     type = elemAttr.getType();
@@ -105,8 +146,8 @@ void ConstOp::build(Builder* builder, OperationState* result, Attribute value) {
 
   // TODO: support other XLA specific types.
   assert(type && "unsupported attribute type for building xla_hlo.constant");
-  result->types.push_back(type);
-  result->addAttribute("value", value);
+  result.types.push_back(type);
+  result.addAttribute("value", value);
 }
 
 //===----------------------------------------------------------------------===//
@@ -116,7 +157,7 @@ void ConstOp::build(Builder* builder, OperationState* result, Attribute value) {
 OpFoldResult IotaOp::fold(ArrayRef<Attribute> operands) {
   const auto output_type = getResult()->getType().cast<ShapedType>();
   const auto output_size = output_type.getNumElements();
-  const auto dimension = iota_dimension().getLimitedValue();
+  const auto dimension = iota_dimension().getSExtValue();
   const auto max_dim_size = output_type.getDimSize(dimension);
   int bitwidth = output_type.getElementType().getIntOrFloatBitWidth();
 
@@ -182,7 +223,7 @@ ElementsAttr ConvertElements(const ElementsAttr& elements, Type newType) {
     return elements.mapValues(
         newType,
         llvm::function_ref<func_type>([&newFloatType](const APInt& intVal) {
-          APFloat newDouble(static_cast<double>(intVal.getLimitedValue()));
+          APFloat newDouble(static_cast<double>(intVal.getSExtValue()));
           bool losesInfo = false;
           newDouble.convert(newFloatType.getFloatSemantics(),
                             llvm::APFloat::rmNearestTiesToEven, &losesInfo);
@@ -193,7 +234,7 @@ ElementsAttr ConvertElements(const ElementsAttr& elements, Type newType) {
   // Int -> Int
   return elements.mapValues(
       newType, llvm::function_ref<func_type>([&bitWidth](const APInt& intVal) {
-        return APInt(bitWidth, intVal.getLimitedValue());
+        return APInt(bitWidth, intVal.getSExtValue());
       }));
 }
 
@@ -441,6 +482,32 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// ReverseOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult ReverseOp::fold(ArrayRef<Attribute> operands) {
+  // No dimensions to reverse.
+  if (dimensions().getNumElements() == 0) return operand();
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// ReduceOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ReduceOp::fold(ArrayRef<Attribute> operands,
+                             SmallVectorImpl<OpFoldResult>& results) {
+  // No dimensions to reduce.
+  if (dimensions().getNumElements() == 0) {
+    for (Value* input : this->operands()) {
+      results.push_back(input);
+    }
+    return success();
+  }
+  return failure();
+}
+
+//===----------------------------------------------------------------------===//
 // SelectOp
 //===----------------------------------------------------------------------===//
 
@@ -521,6 +588,60 @@ static LogicalResult Verify(PadOp op) {
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// SliceOp
+//===----------------------------------------------------------------------===//
+
+void SliceOp::build(Builder* builder, OperationState& result, Value* operand,
+                    DenseIntElementsAttr start_indices,
+                    DenseIntElementsAttr limit_indices,
+                    DenseIntElementsAttr strides) {
+  return build(
+      builder, result,
+      InferOutputTypes(builder, operand, start_indices, limit_indices, strides),
+      operand, start_indices, limit_indices, strides);
+}
+
+// Returns output dimension size for slice result for the given arguments.
+// Returns -1 if arguments are illegal.
+static int64_t InferSliceDim(int64_t input_dim, int64_t start, int64_t end,
+                             int64_t stride) {
+  if (input_dim == -1 || start < 0 || start > end || end > input_dim ||
+      stride == 0)
+    return -1;
+
+  return llvm::divideCeil(end - start, stride);
+}
+
+Type SliceOp::InferOutputTypes(Builder* builder, Value* operand,
+                               DenseIntElementsAttr start_indices,
+                               DenseIntElementsAttr limit_indices,
+                               DenseIntElementsAttr strides) {
+  Type ty = operand->getType();
+  RankedTensorType ranked_ty = ty.dyn_cast<RankedTensorType>();
+  if (!ranked_ty) return ty;
+  int64_t rank = ranked_ty.getRank();
+
+  // Illegal attributes.
+  ShapedType attr_ty = start_indices.getType();
+  if (attr_ty.getRank() != 1 || attr_ty.getNumElements() != rank ||
+      !attr_ty.getElementType().isInteger(64) ||
+      limit_indices.getType() != attr_ty || strides.getType() != attr_ty)
+    return ty;
+
+  SmallVector<int64_t, 4> start(start_indices.getValues<int64_t>());
+  SmallVector<int64_t, 4> limit(limit_indices.getValues<int64_t>());
+  SmallVector<int64_t, 4> stride_vals(strides.getValues<int64_t>());
+
+  SmallVector<int64_t, 4> shape;
+  shape.reserve(rank);
+  for (int64_t i = 0, e = rank; i != e; i++) {
+    shape.push_back(InferSliceDim(ranked_ty.getDimSize(i), start[i], limit[i],
+                                  stride_vals[i]));
+  }
+  return builder->getTensorType(shape, ranked_ty.getElementType());
 }
 
 //===----------------------------------------------------------------------===//

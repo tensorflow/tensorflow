@@ -28,6 +28,8 @@
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
+include "mlir/Analysis/CallInterfaces.td"
+
 def Std_Dialect : Dialect {
   let name = "std";
   let cppNamespace = "";
@@ -37,10 +39,10 @@ def Std_Dialect : Dialect {
 class Std_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<Std_Dialect, mnemonic, traits> {
   // For every standard op, there needs to be a:
-  //   * void print(OpAsmPrinter *p, ${C++ class of Op} op)
+  //   * void print(OpAsmPrinter &p, ${C++ class of Op} op)
   //   * LogicalResult verify(${C++ class of Op} op)
-  //   * ParseResult parse${C++ class of Op}(OpAsmParser *parser,
-  //                                         OperationState *result)
+  //   * ParseResult parse${C++ class of Op}(OpAsmParser &parser,
+  //                                         OperationState &result)
   // functions.
   let printer = [{ return ::print(p, *this); }];
   let verifier = [{ return ::verify(*this); }];
@@ -55,7 +57,7 @@ class CastOp<string mnemonic, list<OpTrait> traits = []> :
   let results = (outs AnyType);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Value *source, Type destType", [{
+    "Builder *builder, OperationState &result, Value *source, Type destType", [{
        impl::buildCastOp(builder, result, source, destType);
   }]>];
 
@@ -80,7 +82,7 @@ class ArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
   let results = (outs AnyType);
 
   let parser = [{
-    return impl::parseBinaryOp(parser, result);
+    return impl::parseOneResultSameOperandTypeOp(parser, result);
   }];
 
   let printer = [{
@@ -149,8 +151,8 @@ def AllocOp : Std_Op<"alloc"> {
   let results = (outs AnyMemRef);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, MemRefType memrefType", [{
-       result->types.push_back(memrefType);
+    "Builder *builder, OperationState &result, MemRefType memrefType", [{
+       result.types.push_back(memrefType);
      }]
   >];
 
@@ -161,6 +163,12 @@ def AllocOp : Std_Op<"alloc"> {
     /// which bind to the symbols of the memref's layout map.
     unsigned getNumSymbolicOperands() {
       return getNumOperands() - getType().getNumDynamicDims();
+    }
+
+    /// Returns the symbolic operands (the ones in square brackets), which bind
+    /// to the symbols of the memref's layout map.
+    operand_range getSymbolicOperands() {
+      return {operand_begin() + getType().getNumDynamicDims(), operand_end()};
     }
   }];
 
@@ -189,9 +197,9 @@ def BranchOp : Std_Op<"br", [Terminator]> {
   let arguments = (ins Variadic<AnyType>:$operands);
 
   let builders = [OpBuilder<
-    "Builder *, OperationState *result, Block *dest,"
+    "Builder *, OperationState &result, Block *dest,"
     "ArrayRef<Value *> operands = {}", [{
-      result->addSuccessor(dest, operands);
+      result.addSuccessor(dest, operands);
   }]>];
 
   // BranchOp is fully verified by traits.
@@ -206,7 +214,7 @@ def BranchOp : Std_Op<"br", [Terminator]> {
   }];
 }
 
-def CallOp : Std_Op<"call"> {
+def CallOp : Std_Op<"call", [CallOpInterface]> {
   let summary = "call operation";
   let description = [{
     The "call" operation represents a direct call to a function.  The operands
@@ -220,17 +228,17 @@ def CallOp : Std_Op<"call"> {
   let results = (outs Variadic<AnyType>);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, FuncOp callee,"
+    "Builder *builder, OperationState &result, FuncOp callee,"
     "ArrayRef<Value *> operands = {}", [{
-      result->addOperands(operands);
-      result->addAttribute("callee", builder->getSymbolRefAttr(callee));
-      result->addTypes(callee.getType().getResults());
+      result.addOperands(operands);
+      result.addAttribute("callee", builder->getSymbolRefAttr(callee));
+      result.addTypes(callee.getType().getResults());
   }]>, OpBuilder<
-    "Builder *builder, OperationState *result, StringRef callee,"
+    "Builder *builder, OperationState &result, StringRef callee,"
     "ArrayRef<Type> results, ArrayRef<Value *> operands = {}", [{
-      result->addOperands(operands);
-      result->addAttribute("callee", builder->getSymbolRefAttr(callee));
-      result->addTypes(results);
+      result.addOperands(operands);
+      result.addAttribute("callee", builder->getSymbolRefAttr(callee));
+      result.addTypes(results);
   }]>];
 
   let extraClassDeclaration = [{
@@ -244,10 +252,15 @@ def CallOp : Std_Op<"call"> {
 
     operand_iterator arg_operand_begin() { return operand_begin(); }
     operand_iterator arg_operand_end() { return operand_end(); }
+
+    /// Return the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() {
+      return getAttrOfType<SymbolRefAttr>("callee");
+    }
   }];
 }
 
-def CallIndirectOp : Std_Op<"call_indirect"> {
+def CallIndirectOp : Std_Op<"call_indirect", [CallOpInterface]> {
   let summary = "indirect call operation";
   let description = [{
     The "call_indirect" operation represents an indirect call to a value of
@@ -262,11 +275,11 @@ def CallIndirectOp : Std_Op<"call_indirect"> {
   let results = (outs Variadic<AnyType>);
 
   let builders = [OpBuilder<
-    "Builder *, OperationState *result, Value *callee,"
+    "Builder *, OperationState &result, Value *callee,"
     "ArrayRef<Value *> operands = {}", [{
-      result->operands.push_back(callee);
-      result->addOperands(operands);
-      result->addTypes(callee->getType().cast<FunctionType>().getResults());
+      result.operands.push_back(callee);
+      result.addOperands(operands);
+      result.addTypes(callee->getType().cast<FunctionType>().getResults());
   }]>];
 
   let extraClassDeclaration = [{
@@ -279,12 +292,16 @@ def CallIndirectOp : Std_Op<"call_indirect"> {
 
     operand_iterator arg_operand_begin() { return ++operand_begin(); }
     operand_iterator arg_operand_end() { return operand_end(); }
+
+    /// Return the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() { return getCallee(); }
   }];
 
   let hasCanonicalizer = 1;
 }
 
-def CmpIOp : Std_Op<"cmpi", [NoSideEffect, SameTypeOperands, SameOperandsAndResultShape]> {
+def CmpIOp : Std_Op<"cmpi",
+    [NoSideEffect, SameTypeOperands, SameOperandsAndResultShape]> {
   let summary = "integer comparison operation";
   let description = [{
     The "cmpi" operation compares its two operands according to the integer
@@ -311,7 +328,7 @@ def CmpIOp : Std_Op<"cmpi", [NoSideEffect, SameTypeOperands, SameOperandsAndResu
   let results = (outs BoolLike);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, CmpIPredicate predicate,"
+    "Builder *builder, OperationState &result, CmpIPredicate predicate,"
     "Value *lhs, Value *rhs", [{
       ::buildCmpIOp(builder, result, predicate, lhs, rhs);
   }]>];
@@ -329,7 +346,8 @@ def CmpIOp : Std_Op<"cmpi", [NoSideEffect, SameTypeOperands, SameOperandsAndResu
   let hasFolder = 1;
 }
 
-def CmpFOp : Std_Op<"cmpf", [NoSideEffect, SameTypeOperands, SameOperandsAndResultShape]> {
+def CmpFOp : Std_Op<"cmpf",
+    [NoSideEffect, SameTypeOperands, SameOperandsAndResultShape]> {
   let summary = "floating-point comparison operation";
   let description = [{
     The "cmpf" operation compares its two operands according to the float
@@ -357,7 +375,7 @@ def CmpFOp : Std_Op<"cmpf", [NoSideEffect, SameTypeOperands, SameOperandsAndResu
   let results = (outs BoolLike);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, CmpFPredicate predicate,"
+    "Builder *builder, OperationState &result, CmpFPredicate predicate,"
     "Value *lhs, Value *rhs", [{
       ::buildCmpFOp(builder, result, predicate, lhs, rhs);
   }]>];
@@ -395,12 +413,12 @@ def CondBranchOp : Std_Op<"cond_br", [Terminator]> {
   let arguments = (ins I1:$condition, Variadic<AnyType>:$branchOperands);
 
   let builders = [OpBuilder<
-    "Builder *, OperationState *result, Value *condition,"
+    "Builder *, OperationState &result, Value *condition,"
     "Block *trueDest, ArrayRef<Value *> trueOperands,"
     "Block *falseDest, ArrayRef<Value *> falseOperands", [{
-      result->addOperands(condition);
-      result->addSuccessor(trueDest, trueOperands);
-      result->addSuccessor(falseDest, falseOperands);
+      result.addOperands(condition);
+      result.addSuccessor(trueDest, trueOperands);
+      result.addSuccessor(falseDest, falseOperands);
   }]>];
 
   // CondBranchOp is fully verified by traits.
@@ -415,12 +433,12 @@ def CondBranchOp : Std_Op<"cond_br", [Terminator]> {
 
     /// Return the destination if the condition is true.
     Block *getTrueDest() {
-      return getOperation()->getSuccessor(trueIndex);
+      return getSuccessor(trueIndex);
     }
 
     /// Return the destination if the condition is false.
     Block *getFalseDest() {
-      return getOperation()->getSuccessor(falseIndex);
+      return getSuccessor(falseIndex);
     }
 
     // Accessors for operands to the 'true' destination.
@@ -445,7 +463,7 @@ def CondBranchOp : Std_Op<"cond_br", [Terminator]> {
     }
 
     unsigned getNumTrueOperands()  {
-      return getOperation()->getNumSuccessorOperands(trueIndex);
+      return getNumSuccessorOperands(trueIndex);
     }
 
     /// Erase the operand at 'index' from the true operand list.
@@ -472,7 +490,7 @@ def CondBranchOp : Std_Op<"cond_br", [Terminator]> {
     }
 
     unsigned getNumFalseOperands() {
-      return getOperation()->getNumSuccessorOperands(falseIndex);
+      return getNumSuccessorOperands(falseIndex);
     }
 
     /// Erase the operand at 'index' from the false operand list.
@@ -500,7 +518,7 @@ def ConstantOp : Std_Op<"constant", [NoSideEffect]> {
   let results = (outs AnyType);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Attribute value",
+    "Builder *builder, OperationState &result, Attribute value",
     [{ build(builder, result, value.getType(), value); }]>];
 
   let extraClassDeclaration = [{
@@ -548,7 +566,7 @@ def DimOp : Std_Op<"dim", [NoSideEffect]> {
   let results = (outs Index);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Value *memrefOrTensor,"
+    "Builder *builder, OperationState &result, Value *memrefOrTensor,"
     "unsigned index", [{
       auto indexType = builder->getIndexType();
       auto indexAttr = builder->getIntegerAttr(indexType, index);
@@ -597,7 +615,7 @@ def ExtractElementOp : Std_Op<"extract_element", [NoSideEffect]> {
   let results = (outs AnyType);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Value *aggregate,"
+    "Builder *builder, OperationState &result, Value *aggregate,"
     "ArrayRef<Value *> indices = {}", [{
       auto resType = aggregate->getType().cast<ShapedType>()
                                          .getElementType();
@@ -608,8 +626,7 @@ def ExtractElementOp : Std_Op<"extract_element", [NoSideEffect]> {
     Value *getAggregate() { return getOperand(0); }
 
     operand_range getIndices() {
-      return {getOperation()->operand_begin() + 1,
-              getOperation()->operand_end()};
+      return {operand_begin() + 1, operand_end()};
     }
   }];
 
@@ -651,6 +668,41 @@ def SIToFPOp : CastOp<"sitofp">, Arguments<(ins AnyType:$in)> {
   let hasFolder = 0;
 }
 
+def FPExtOp : CastOp<"fpext">, Arguments<(ins AnyType:$in)> {
+  let summary = "cast from floating-point to wider floating-point";
+  let description = [{
+    Cast a floating-point value to a larger floating-point-typed value.
+    The destination type must to be strictly wider than the source type.
+    Only scalars are currently supported.
+  }];
+
+  let extraClassDeclaration = [{
+    /// Return true if `a` and `b` are valid operand and result pairs for
+    /// the operation.
+    static bool areCastCompatible(Type a, Type b);
+  }];
+
+  let hasFolder = 0;
+}
+
+def FPTruncOp : CastOp<"fptrunc">, Arguments<(ins AnyType:$in)> {
+  let summary = "cast from floating-point to narrower floating-point";
+  let description = [{
+    Truncate a floating-point value to a smaller floating-point-typed value.
+    The destination type must be strictly narrower than the source type.
+    If the value cannot be exactly represented, it is rounded using the default
+    rounding mode. Only scalars are currently supported.
+  }];
+
+  let extraClassDeclaration = [{
+    /// Return true if `a` and `b` are valid operand and result pairs for
+    /// the operation.
+    static bool areCastCompatible(Type a, Type b);
+  }];
+
+  let hasFolder = 0;
+}
+
 def LoadOp : Std_Op<"load"> {
   let summary = "load operation";
   let description = [{
@@ -667,12 +719,12 @@ def LoadOp : Std_Op<"load"> {
   let results = (outs AnyType);
 
   let builders = [OpBuilder<
-    "Builder *, OperationState *result, Value *memref,"
+    "Builder *, OperationState &result, Value *memref,"
     "ArrayRef<Value *> indices = {}", [{
       auto memrefType = memref->getType().cast<MemRefType>();
-      result->addOperands(memref);
-      result->addOperands(indices);
-      result->types.push_back(memrefType.getElementType());
+      result.addOperands(memref);
+      result.addOperands(indices);
+      result.types.push_back(memrefType.getElementType());
   }]>];
 
   let extraClassDeclaration = [{
@@ -682,9 +734,7 @@ def LoadOp : Std_Op<"load"> {
       return getMemRef()->getType().cast<MemRefType>();
     }
 
-    operand_range getIndices() {
-      return {getOperation()->operand_begin() + 1, getOperation()->operand_end()};
-    }
+    operand_range getIndices() { return {operand_begin() + 1, operand_end()}; }
   }];
 
   let hasCanonicalizer = 1;
@@ -750,7 +800,7 @@ def RankOp : Std_Op<"rank", [NoSideEffect]> {
   let verifier = ?;
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Value *tensor", [{
+    "Builder *builder, OperationState &result, Value *tensor", [{
       auto indexType = builder->getIndexType();
       build(builder, result, indexType, tensor);
     }]>];
@@ -788,7 +838,7 @@ def ReturnOp : Std_Op<"return", [Terminator, HasParent<"FuncOp">]> {
   let arguments = (ins Variadic<AnyType>:$operands);
 
   let builders = [OpBuilder<
-    "Builder *b, OperationState *result", [{ build(b, result, llvm::None); }]
+    "Builder *b, OperationState &result", [{ build(b, result, llvm::None); }]
   >];
 }
 
@@ -812,10 +862,10 @@ def SelectOp : Std_Op<"select", [NoSideEffect, SameOperandsAndResultShape]> {
   let results = (outs AnyType);
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Value *condition,"
+    "Builder *builder, OperationState &result, Value *condition,"
     "Value *trueValue, Value *falseValue", [{
-      result->addOperands({condition, trueValue, falseValue});
-      result->addTypes(trueValue->getType());
+      result.addOperands({condition, trueValue, falseValue});
+      result.addTypes(trueValue->getType());
   }]>];
 
   let extraClassDeclaration = [{
@@ -826,8 +876,70 @@ def SelectOp : Std_Op<"select", [NoSideEffect, SameOperandsAndResultShape]> {
 
   let hasFolder = 1;
 }
+
+def SignExtendIOp : Std_Op<"sexti",
+    [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = "integer sign extension operation";
+  let description = [{
+    The integer sign extension operation takes an integer input of
+    width M and an integer destination type of width N. The destination
+    bit-width must be larger than the input bit-width (N > M).
+    The top-most (N - M) bits of the output are filled with copies
+    of the most-significant bit of the input.
+
+      %1 = constant 5 : i3            // %1 is 0b101
+      %2 = sexti %1 : i3 to i6        // %2 is 0b111101
+      %3 = constant 2 : i3            // %3 is 0b010
+      %4 = sexti %3 : i3 to i6        // %4 is 0b000010
+
+      %5 = sexti %0 : vector<2 x i32> to vector<2 x i64>
+  }];
+
+  let arguments = (ins IntegerLike:$value);
+  let results = (outs IntegerLike);
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *value, Type destType", [{
+      result.addOperands(value);
+      result.addTypes(destType);
+  }]>];
+
+  let parser = [{
+    return impl::parseCastOp(parser, result);
+  }];
+  let printer = [{
+    return printStandardCastOp(this->getOperation(), p);
+  }];
+}
+
 def ShlISOp : IntArithmeticOp<"shlis"> {
   let summary = "signed integer shift left";
+}
+
+def SplatOp : Std_Op<"splat", [NoSideEffect]> {
+  let summary = "splat or broadcast operation";
+  let description = [{
+    The "splat" op reads a value of integer or float type and broadcasts it into
+    a vector or a tensor. The output of splat is thus a new value of either
+    vector or tensor type with elemental type being its operand's type.
+    When the result is a tensor, it has to be statically shaped.
+
+      %1 = splat %0 : vector<8xi32>
+      %2 = splat %0 : tensor<4x8xi32>
+
+    // TODO: handle broadcast to dynamically shaped tensors.
+  }];
+
+  let arguments = (ins AnyTypeOf<[AnyInteger, AnyFloat],
+                                 "integer or float type">:$input);
+  let results = (outs AnyTypeOf<[AnyVector, AnyStaticShapeTensor]>:$aggregate);
+
+  let builders =
+      [OpBuilder<"Builder *builder, OperationState &result, Value *element, "
+                  "Type aggregateType",
+                  [{ build(builder, result, aggregateType, element); }]>];
+
+  let hasFolder = 1;
 }
 
 def SubFOp : FloatArithmeticOp<"subf"> {
@@ -853,12 +965,13 @@ def StoreOp : Std_Op<"store"> {
       store %v, %A[%i, %j] : memref<4x128xf32, (d0, d1) -> (d0, d1), 0>
   }];
 
-  let arguments = (ins AnyType:$value, AnyMemRef:$memref, Variadic<Index>:$indices);
+  let arguments = (ins AnyType:$value, AnyMemRef:$memref,
+                   Variadic<Index>:$indices);
 
   let builders = [OpBuilder<
-    "Builder *, OperationState *result, Value *valueToStore, Value *memref", [{
-      result->addOperands(valueToStore);
-      result->addOperands(memref);
+    "Builder *, OperationState &result, Value *valueToStore, Value *memref", [{
+      result.addOperands(valueToStore);
+      result.addOperands(memref);
   }]>];
 
   let extraClassDeclaration = [{
@@ -871,7 +984,7 @@ def StoreOp : Std_Op<"store"> {
       }
 
       operand_range getIndices() {
-        return {getOperation()->operand_begin() + 2, getOperation()->operand_end()};
+        return {operand_begin() + 2, operand_end()};
       }
   }];
 
@@ -922,12 +1035,12 @@ def TensorLoadOp : Std_Op<"tensor_load",
   let verifier = ?;
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Value *memref", [{
+    "Builder *builder, OperationState &result, Value *memref", [{
       auto memrefType = memref->getType().cast<MemRefType>();
       auto resultType = builder->getTensorType(memrefType.getShape(),
           memrefType.getElementType());
-      result->addOperands(memref);
-      result->addTypes(resultType);
+      result.addOperands(memref);
+      result.addTypes(resultType);
   }]>];
 
 
@@ -957,10 +1070,74 @@ def TensorStoreOp : Std_Op<"tensor_store",
   let verifier = ?;
 }
 
+def TruncateIOp : Std_Op<"trunci", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = "integer truncation operation";
+  let description = [{
+    The integer truncation operation takes an integer input of
+    width M and an integer destination type of width N. The destination
+    bit-width must be smaller than the input bit-width (N < M).
+    The top-most (N - M) bits of the input are discareded.
+
+      %1 = constant 21 : i5           // %1 is 0b10101
+      %2 = trunci %1 : i5 to i4       // %2 is 0b0101
+      %3 = trunci %1 : i5 to i3       // %3 is 0b101
+
+      %5 = trunci %0 : vector<2 x i32> to vector<2 x i16>
+  }];
+
+  let arguments = (ins IntegerLike:$value);
+  let results = (outs IntegerLike);
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *value, Type destType", [{
+      result.addOperands(value);
+      result.addTypes(destType);
+  }]>];
+
+  let parser = [{
+    return impl::parseCastOp(parser, result);
+  }];
+  let printer = [{
+    return printStandardCastOp(this->getOperation(), p);
+  }];
+}
 
 def XOrOp : IntArithmeticOp<"xor", [Commutative]> {
   let summary = "integer binary xor";
   let hasFolder = 1;
+}
+
+def ZeroExtendIOp : Std_Op<"zexti", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = "integer zero extension operation";
+  let description = [{
+    The integer zero extension operation takes an integer input of
+    width M and an integer destination type of width N. The destination
+    bit-width must be larger than the input bit-width (N > M).
+    The top-most (N - M) bits of the output are filled with zeros.
+
+      %1 = constant 5 : i3            // %1 is 0b101
+      %2 = zexti %1 : i3 to i6        // %2 is 0b000101
+      %3 = constant 2 : i3            // %3 is 0b010
+      %4 = zexti %3 : i3 to i6        // %4 is 0b000010
+
+      %5 = zexti %0 : vector<2 x i32> to vector<2 x i64>
+  }];
+
+  let arguments = (ins IntegerLike:$value);
+  let results = (outs IntegerLike);
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *value, Type destType", [{
+      result.addOperands(value);
+      result.addTypes(destType);
+  }]>];
+
+  let parser = [{
+    return impl::parseCastOp(parser, result);
+  }];
+  let printer = [{
+    return printStandardCastOp(this->getOperation(), p);
+  }];
 }
 
 #endif // STANDARD_OPS

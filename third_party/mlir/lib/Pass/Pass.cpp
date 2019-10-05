@@ -25,6 +25,7 @@
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Module.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Mutex.h"
 #include "llvm/Support/Parallel.h"
@@ -225,9 +226,8 @@ OpPassManager &OpPassManager::nest(StringRef nestedName) {
   return nest(OperationName(nestedName, getContext()));
 }
 
-/// Add the given pass to this pass manager. The pass must either be an opaque
-/// `OperationPass`, or an `OpPass` that operates on operations of the same
-/// type as this pass manager.
+/// Add the given pass to this pass manager. If this pass has a concrete
+/// operation type, it must be the same type as this pass manager.
 void OpPassManager::addPass(std::unique_ptr<Pass> pass) {
   // If this pass runs on a different operation than this pass manager, then
   // implicitly nest a pass manager for this operation.
@@ -314,7 +314,8 @@ OpToOpPassAdaptor::OpToOpPassAdaptor(OpPassManager &&mgr)
 /// Run the held pipeline over all nested operations.
 void OpToOpPassAdaptor::runOnOperation() {
   auto am = getAnalysisManager();
-  auto currentThreadID = llvm::get_threadid();
+  PassInstrumentation::PipelineParentInfo parentInfo = {llvm::get_threadid(),
+                                                        this};
   auto *instrumentor = am.getPassInstrumentor();
   for (auto &region : getOperation()->getRegions()) {
     for (auto &block : region) {
@@ -325,10 +326,10 @@ void OpToOpPassAdaptor::runOnOperation() {
 
         // Run the held pipeline over the current operation.
         if (instrumentor)
-          instrumentor->runBeforePipeline(mgr->getOpName(), currentThreadID);
+          instrumentor->runBeforePipeline(mgr->getOpName(), parentInfo);
         auto result = runPipeline(*mgr, &op, am.slice(&op));
         if (instrumentor)
-          instrumentor->runAfterPipeline(mgr->getOpName(), currentThreadID);
+          instrumentor->runAfterPipeline(mgr->getOpName(), parentInfo);
 
         if (failed(result))
           return signalPassFailure();
@@ -380,7 +381,8 @@ void OpToOpPassAdaptorParallel::runOnOperation() {
   std::atomic<unsigned> opIt(0);
 
   // Get the current thread for this adaptor.
-  auto parentThreadID = llvm::get_threadid();
+  PassInstrumentation::PipelineParentInfo parentInfo = {llvm::get_threadid(),
+                                                        this};
   auto *instrumentor = am.getPassInstrumentor();
 
   // An atomic failure variable for the async executors.
@@ -405,10 +407,10 @@ void OpToOpPassAdaptorParallel::runOnOperation() {
           assert(pm && "expected valid pass manager for operation");
 
           if (instrumentor)
-            instrumentor->runBeforePipeline(pm->getOpName(), parentThreadID);
+            instrumentor->runBeforePipeline(pm->getOpName(), parentInfo);
           auto pipelineResult = runPipeline(*pm, it.first, it.second);
           if (instrumentor)
-            instrumentor->runAfterPipeline(pm->getOpName(), parentThreadID);
+            instrumentor->runAfterPipeline(pm->getOpName(), parentInfo);
 
           // Drop this thread from being tracked by the diagnostic handler.
           // After this task has finished, the thread may be used outside of
@@ -466,13 +468,12 @@ void PassManager::disableMultithreading(bool disable) {
   getImpl().disableThreads = disable;
 }
 
-/// Add the provided instrumentation to the pass manager. This takes ownership
-/// over the given pointer.
-void PassManager::addInstrumentation(PassInstrumentation *pi) {
+/// Add the provided instrumentation to the pass manager.
+void PassManager::addInstrumentation(std::unique_ptr<PassInstrumentation> pi) {
   if (!instrumentor)
-    instrumentor.reset(new PassInstrumentor());
+    instrumentor = std::make_unique<PassInstrumentor>();
 
-  instrumentor->addInstrumentation(pi);
+  instrumentor->addInstrumentation(std::move(pi));
 }
 
 //===----------------------------------------------------------------------===//
@@ -554,19 +555,21 @@ PassInstrumentor::PassInstrumentor() : impl(new PassInstrumentorImpl()) {}
 PassInstrumentor::~PassInstrumentor() {}
 
 /// See PassInstrumentation::runBeforePipeline for details.
-void PassInstrumentor::runBeforePipeline(const OperationName &name,
-                                         uint64_t parentThreadID) {
+void PassInstrumentor::runBeforePipeline(
+    const OperationName &name,
+    const PassInstrumentation::PipelineParentInfo &parentInfo) {
   llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
   for (auto &instr : impl->instrumentations)
-    instr->runBeforePipeline(name, parentThreadID);
+    instr->runBeforePipeline(name, parentInfo);
 }
 
 /// See PassInstrumentation::runAfterPipeline for details.
-void PassInstrumentor::runAfterPipeline(const OperationName &name,
-                                        uint64_t parentThreadID) {
+void PassInstrumentor::runAfterPipeline(
+    const OperationName &name,
+    const PassInstrumentation::PipelineParentInfo &parentInfo) {
   llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
-  for (auto &instr : impl->instrumentations)
-    instr->runAfterPipeline(name, parentThreadID);
+  for (auto &instr : llvm::reverse(impl->instrumentations))
+    instr->runAfterPipeline(name, parentInfo);
 }
 
 /// See PassInstrumentation::runBeforePass for details.
@@ -606,11 +609,11 @@ void PassInstrumentor::runAfterAnalysis(llvm::StringRef name, AnalysisID *id,
     instr->runAfterAnalysis(name, id, op);
 }
 
-/// Add the given instrumentation to the collection. This takes ownership over
-/// the given pointer.
-void PassInstrumentor::addInstrumentation(PassInstrumentation *pi) {
+/// Add the given instrumentation to the collection.
+void PassInstrumentor::addInstrumentation(
+    std::unique_ptr<PassInstrumentation> pi) {
   llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
-  impl->instrumentations.emplace_back(pi);
+  impl->instrumentations.emplace_back(std::move(pi));
 }
 
 constexpr AnalysisID mlir::detail::PreservedAnalyses::allAnalysesID;

@@ -13,19 +13,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/platform/env.h"
+
 #include <sys/stat.h>
+
 #include <deque>
 #include <utility>
 #include <vector>
+
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/protobuf.h"
+
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
 #endif
 #if defined(__FreeBSD__)
 #include <sys/sysctl.h>
-#include <sys/types.h>
 #endif
 #if defined(PLATFORM_WINDOWS)
 #include <windows.h>
+#undef DeleteFile
+#undef CopyFile
 #include "tensorflow/core/platform/windows/wide_char.h"
 #define PATH_MAX MAX_PATH
 #else
@@ -34,14 +47,6 @@ limitations under the License.
 #include <sys/types.h>
 #include <unistd.h>
 #endif
-
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/env_time.h"
-#include "tensorflow/core/platform/host_info.h"
-#include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 
@@ -467,9 +472,7 @@ class FileStream : public ::tensorflow::protobuf::io::ZeroCopyInputStream {
     pos_ += count;
     return true;
   }
-  int64_t ByteCount() const override {
-    return pos_;
-  }
+  int64_t ByteCount() const override { return pos_; }
   Status status() const { return status_; }
 
   bool Next(const void** data, int* size) override {

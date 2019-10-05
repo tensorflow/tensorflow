@@ -58,4 +58,12 @@ TEST(RuyTest, TestBigPowerOfTwoDepthWithAvoidAliasing) {
   TestLinearAllOrders<TestSetType>(40, 4096, 50);
 }
 
+TEST(RuyTest, TestGEMV) {
+  for (int size = 1025; size <= 1409; size += 384) {
+    for (int depth = 350; depth < 500; depth += 47) {
+      TestLinearAllOrders<TestSetType>(size, depth, 1);
+    }
+  }
+}
+
 }  // namespace ruy

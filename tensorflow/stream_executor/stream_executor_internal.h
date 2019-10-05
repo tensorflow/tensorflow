@@ -196,7 +196,10 @@ class StreamExecutorInterface {
 
   // Releases any state associated with the kernel.
   virtual void UnloadKernel(const KernelBase *kernel) {}
-  virtual DeviceMemoryBase Allocate(uint64 size) = 0;
+  virtual DeviceMemoryBase Allocate(uint64 size, int64 memory_space) = 0;
+  DeviceMemoryBase Allocate(uint64 size) {
+    return Allocate(size, /*memory_space=*/0);
+  }
   virtual void *GetSubBuffer(DeviceMemoryBase *parent, uint64 offset,
                              uint64 size) = 0;
   virtual void Deallocate(DeviceMemoryBase *mem) = 0;
@@ -214,9 +217,10 @@ class StreamExecutorInterface {
   virtual bool HostMemoryRegister(void *mem, uint64 size) = 0;
   virtual bool HostMemoryUnregister(void *mem) = 0;
   virtual bool SynchronizeAllActivity() = 0;
-  virtual bool SynchronousMemZero(DeviceMemoryBase *location, uint64 size) = 0;
-  virtual bool SynchronousMemSet(DeviceMemoryBase *location, int value,
-                                 uint64 size) = 0;
+  virtual port::Status SynchronousMemZero(DeviceMemoryBase *location,
+                                          uint64 size) = 0;
+  virtual port::Status SynchronousMemSet(DeviceMemoryBase *location, int value,
+                                         uint64 size) = 0;
   virtual port::Status SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
                                          const void *host_src, uint64 size) = 0;
   virtual port::Status SynchronousMemcpy(void *host_dst,
@@ -300,11 +304,11 @@ class StreamExecutorInterface {
   // before dispatching events to it).
   // Returns true if the listener was successfully registered, false otherwise.
   // Does not take ownership of listener.
-  virtual bool RegisterTraceListener(TraceListener* listener) { return false; }
+  virtual bool RegisterTraceListener(TraceListener *listener) { return false; }
 
   // Unregisters the specified listener from the device-specific Executor.
   // Returns true if the listener was successfully registered, false otherwise.
-  virtual bool UnregisterTraceListener(TraceListener* listener) {
+  virtual bool UnregisterTraceListener(TraceListener *listener) {
     return false;
   }
 

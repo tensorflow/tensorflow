@@ -11,11 +11,13 @@ upper_tabs:
   lower_tabs:
     # Subsite tabs
     other:
-    - name: Guide & Tutorials
+    - name: Guide
       contents:
       - title: Overview
         path: /mlir/overview
       - heading: Dialects
+      - title: Overview
+        path: /mlir/dialects
       - title: TensorFlow
         path: /mlir/tf_ops
       - title: TensorFlow Lite

@@ -1578,6 +1578,48 @@ array shaped.
 | `dimension` | `int64` | A value in the interval `[0, n)` that specifies the |
 :             :         : dimension                                           :
 
+## SetDimensionSize
+
+See also
+[`XlaBuilder::SetDimensionSize`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Sets the dynamic size of XlaOp's given dimension. The operand must be
+array shaped.
+
+<b> `SetDimensionSize(operand, size, dimension)` </b>
+
+| Arguments   | Type    | Semantics                                           |
+| ----------- | ------- | --------------------------------------------------- |
+| `operand`   | `XlaOp` | n dimensional input array.                          |
+| `size`      | `XlaOp` | int32 representing the runtime dynamic size.        |
+| `dimension` | `int64` | A value in the interval `[0, n)` that specifies the |
+:             :         : dimension.                                          :
+
+Pass through the operand as result, with dynamic dimension tracked by the
+compiler.
+
+Padded values will be ignored by downstream reduction ops.
+
+```
+let v: f32[10] = f32[10]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+let five: s32 = 5;
+let six: s32 = 6;
+
+// Setting dynamic dimension size doesn't change the upper bound of the static
+// shape.
+let padded_v_five: f32[10] = set_dimension_size(v, five, /*dimension=*/0);
+let padded_v_six: f32[10] = set_dimension_size(v, six, /*dimension=*/0);
+
+// sum == 1 + 2 + 3 + 4 + 5
+let sum:f32[] = reduce_sum(padded_v_five);
+// product == 1 * 2 * 3 * 4 * 5
+let product:f32[] = reduce_product(padded_v_five);
+
+// Changing padding size will yield different result.
+// sum == 1 + 2 + 3 + 4 + 5 + 6
+let sum':f32[] = reduce_sum(padded_v_six);
+```
+
 ## GetTupleElement
 
 See also

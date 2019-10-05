@@ -4,13 +4,16 @@
 // CHECK: {
 // CHECK-NEXT:   version: 3,
 // CHECK-NEXT:   operator_codes: [ {
-// CHECK-NEXT:     builtin_code: LESS
+// CHECK-NEXT:     builtin_code: LESS,
+// CHECK-NEXT:     version: 1
 // CHECK-NEXT:   }, {
-// CHECK-NEXT:     builtin_code: IF
+// CHECK-NEXT:     builtin_code: IF,
+// CHECK-NEXT:     version: 1
 // CHECK-NEXT:   }, {
-// CHECK-EMPTY:
+// CHECK-NEXT:     version: 1
 // CHECK-NEXT:   }, {
-// CHECK-NEXT:     builtin_code: MUL
+// CHECK-NEXT:     builtin_code: MUL,
+// CHECK-NEXT:     version: 1
 // CHECK-NEXT:   } ],
 // CHECK-NEXT:   subgraphs: [ {
 // CHECK-NEXT:     tensors: [ {

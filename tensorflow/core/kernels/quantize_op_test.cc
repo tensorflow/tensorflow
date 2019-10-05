@@ -260,7 +260,7 @@ TEST_P(ParameterizedQuantizeOpTest, QuantizeV2Qint8ScaledNarrowRange) {
 }
 
 // Instantiate parameterized tests for axis = -1, 1, 3.
-INSTANTIATE_TEST_SUITE_P(, ParameterizedQuantizeOpTest,
+INSTANTIATE_TEST_SUITE_P(All, ParameterizedQuantizeOpTest,
                          ::testing::Values(-1, 1, 3));
 
 TEST_F(QuantizedOpTest, QuantizeV2Qint8ScaledSmallInputRange) {

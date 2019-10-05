@@ -64,9 +64,8 @@ public:
     return nest(OpT::getOperationName());
   }
 
-  /// Add the given pass to this pass manager. The pass must either be an opaque
-  /// `OperationPass`, or an `OpPass` that operates on operations of the same
-  /// type as this pass manager.
+  /// Add the given pass to this pass manager. If this pass has a concrete
+  /// operation type, it must be the same type as this pass manager.
   void addPass(std::unique_ptr<Pass> pass);
 
   /// Returns the number of passes held by this manager.
@@ -126,9 +125,8 @@ public:
   // Instrumentations
   //===--------------------------------------------------------------------===//
 
-  /// Add the provided instrumentation to the pass manager. This takes ownership
-  /// over the given pointer.
-  void addInstrumentation(PassInstrumentation *pi);
+  /// Add the provided instrumentation to the pass manager.
+  void addInstrumentation(std::unique_ptr<PassInstrumentation> pi);
 
   /// Add an instrumentation to print the IR before and after pass execution.
   /// * 'shouldPrintBeforePass' and 'shouldPrintAfterPass' correspond to filter

@@ -853,14 +853,14 @@ TEST_F(XlaBuilderTest, DynamicReshape) {
                                    /*target_param_index=*/{0},
                                    /*target_dim_num=*/3));
   auto gte = GetTupleElement(p0, 0);  // f32[2, 3, <=4, <=5, 6]
-  Reshape(gte, /*new_sizes=*/{6, 4, 1, 5, 2, 3});
+  Reshape(gte, /*new_sizes=*/{6, 4, 5, 2, 3});
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result_shape =
       module->entry_computation()->root_instruction()->shape();
   EXPECT_TRUE(result_shape.is_dynamic_dimension(1));
-  EXPECT_TRUE(result_shape.is_dynamic_dimension(3));
+  EXPECT_TRUE(result_shape.is_dynamic_dimension(2));
   EXPECT_TRUE(ContainersEqual(result_shape.dynamic_dimensions(),
-                              {false, true, false, true, false, false}))
+                              {false, true, true, false, false}))
       << result_shape;
 }
 

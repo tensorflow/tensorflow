@@ -612,6 +612,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       instruction =
           CreateGetDimensionSize(shape, operands(0), proto.dimensions(0));
       break;
+    case HloOpcode::kSetDimensionSize:
+      TF_RET_CHECK(proto.dimensions_size() == 1);
+      instruction = CreateSetDimensionSize(shape, operands(0), operands(1),
+                                           proto.dimensions(0));
+      break;
     case HloOpcode::kReshape: {
       int64 inferred_dimension = -1;
       if (!proto.dimensions().empty()) {
@@ -1183,6 +1188,14 @@ HloInstruction::CreateGetDimensionSize(const Shape& shape,
 }
 
 /* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateSetDimensionSize(const Shape& shape,
+                                       HloInstruction* operand,
+                                       HloInstruction* val, int64 dimension) {
+  return absl::make_unique<HloSetDimensionSizeInstruction>(shape, operand, val,
+                                                           dimension);
+}
+
+/* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateBroadcastSequence(
     const Shape& output_shape, HloInstruction* operand,
     const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
@@ -1468,6 +1481,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kDot:
     case HloOpcode::kDomain:
     case HloOpcode::kGetDimensionSize:
+    case HloOpcode::kSetDimensionSize:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kCholesky:
       clone = CloneWithNewOperandsImpl(shape, new_operands, context);
@@ -1927,6 +1941,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kDot:
     case HloOpcode::kDomain:
     case HloOpcode::kGetDimensionSize:
+    case HloOpcode::kSetDimensionSize:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kCholesky:
       LOG(FATAL) << "Base class impl called for opcode with subclass: "
@@ -2869,6 +2884,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleIota(this);
     case HloOpcode::kGetDimensionSize:
       return visitor->HandleGetDimensionSize(this);
+    case HloOpcode::kSetDimensionSize:
+      return visitor->HandleSetDimensionSize(this);
     case HloOpcode::kTriangularSolve:
       return visitor->HandleTriangularSolve(this);
     case HloOpcode::kCholesky:
@@ -3509,6 +3526,9 @@ int64 HloInstruction::concatenate_dimension() const {
 }
 
 int64 HloInstruction::dimension() const {
+  if (auto set_size = DynCast<HloSetDimensionSizeInstruction>(this)) {
+    return set_size->dimension();
+  }
   return Cast<HloGetDimensionSizeInstruction>(this)->dimension();
 }
 

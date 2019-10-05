@@ -142,7 +142,7 @@ class DatasetTestBase(test.TestCase):
         mode, it should use an initializable iterator to iterate through the
         dataset (e.g. when it contains stateful nodes). Defaults to False.
       num_test_iterations: Number of times `dataset` will be iterated. Defaults
-        to 2.
+        to 1.
       assert_items_equal: Tests expected_output has (only) the same elements
         regardless of order.
       expected_error_iter: How many times to iterate before expecting an error,

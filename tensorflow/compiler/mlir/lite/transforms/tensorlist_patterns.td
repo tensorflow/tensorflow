@@ -15,7 +15,6 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/StandardOps/Ops.td"
-include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 def CreateTFShapeOp : NativeCodeCall<
@@ -27,22 +26,6 @@ def CreateTFShapeOp : NativeCodeCall<
 // into regular tensors. We also assume that each element in the `TensorList` has
 // a same constant shape.
 //===----------------------------------------------------------------------===//
-def ConvertTFTensorListFromTensor : Pat<
+def ConvertTensorListFromTensor : Pat<
   (TF_TensorListFromTensorOp $tensor, $element_shape),
   (replaceWithValue $tensor)>;
-
-def ConvertTFTensorListStack : Pat<
-  (TF_TensorListStackOp $input, $element_shape, $num_elements),
-  (replaceWithValue $input)>;
-
-def ConvertTFTensorListGetItem : Pat<
-  (TF_TensorListGetItemOp $input, $index, $element_shape),
-  (TF_GatherOp $input, $index, (NativeCodeCall<"$_builder.getBoolAttr(true)">))>;
-
-// TensorListLength is equivalent to the size of the first dimension of the
-// input tensorlist, rewrite it to a combination of Gather and Shape op.
-def ConvertTFTensorListLength: Pat<
-  (TF_TensorListLengthOp:$old_value $input),
-  (TF_GatherOp
-    (CreateTFShapeOp $old_value, $input, /*use 32bit*/ConstBoolAttrTrue),
-    (ConstantOp ConstantAttr<I32ElementsAttr, "0">), ConstBoolAttrTrue)>;

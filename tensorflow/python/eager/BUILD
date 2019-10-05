@@ -170,7 +170,6 @@ cuda_py_test(
         ":monitoring",
         ":test",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -194,7 +193,6 @@ cuda_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/core/profiler:protos_all_py",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -236,7 +234,6 @@ cuda_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -262,7 +259,6 @@ cuda_py_test(
         "no_rocm",
         "no_windows",  #TODO(b/139745667)
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -275,7 +271,6 @@ cuda_py_test(
         "//tensorflow/python/distribute:mirrored_strategy",
     ],
     shard_count = 5,
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -294,7 +289,6 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:pywrap_tensorflow",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -309,7 +303,6 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:math_ops",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -325,7 +318,6 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -343,7 +335,6 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
     ],
     shard_count = 5,
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -362,6 +353,7 @@ cuda_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:gradients",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:indexed_slices",
@@ -432,7 +424,6 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -514,6 +505,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":forwardprop_util",
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:util",
@@ -547,7 +539,23 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python/keras",
     ],
-    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
+    name = "remote_benchmarks_test",
+    srcs = ["remote_benchmarks_test.py"],
+    additional_deps = [
+        ":backprop",
+        ":context",
+        ":forwardprop",
+        ":function",
+        ":test",
+        ":profiler",
+        ":remote",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:random_ops",
+    ],
 )
 
 tf_py_logged_benchmark(
@@ -594,7 +602,6 @@ cuda_py_test(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:tensor_shape",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -674,6 +681,8 @@ cuda_py_test(
     srcs = ["def_function_test.py"],
     additional_deps = [
         ":def_function",
+        "//tensorflow/python/autograph/core",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
@@ -769,6 +778,26 @@ cuda_py_test(
     tags = [
         "no_oss",  # This test launches local server.
         "optonly",  # times out
+    ],
+)
+
+tf_py_test(
+    name = "remote_cloud_tpu_test",
+    size = "medium",
+    srcs = ["remote_cloud_tpu_test.py"],
+    additional_deps = [
+        ":remote",
+        ":context",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/tpu:tpu_strategy_util",
+    ],
+    tags = [
+        "no_pip",
+        "nogpu",
+        "noguitar",
+        "nomac",
+        "notap",
+        "tpu",
     ],
 )
 

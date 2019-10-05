@@ -150,8 +150,8 @@ def must_record_gradient():
   return False
 
 
-def record_gradient(unused_op_name, unused_inputs, unused_attrs, unused_results,
-                    unused_name):
+def record_gradient(unused_op_name, unused_inputs, unused_attrs,
+                    unused_results):
   """Import backprop if you want gradients recorded."""
   pass
 
@@ -235,6 +235,8 @@ def make_tensor(v, arg_name):
 
 def args_to_matching_eager(l, ctx, default_dtype=None):
   """Convert sequence `l` to eager same-type Tensors."""
+  if (not l) and (default_dtype is not None):
+    return default_dtype, []  # List is empty; assume default dtype.
   EagerTensor = ops.EagerTensor  # pylint: disable=invalid-name
   for x in l:
     if not isinstance(x, EagerTensor):

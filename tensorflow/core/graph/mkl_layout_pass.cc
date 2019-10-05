@@ -273,6 +273,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.fused_batch_norm_v3 = "FusedBatchNormV3";
     csinfo_.fused_batch_norm_grad_v3 = "FusedBatchNormGradV3";
     csinfo_.fused_conv2d = "_FusedConv2D";
+    csinfo_.fused_matmul = "_FusedMatMul";
     csinfo_.identity = "Identity";
     csinfo_.leakyrelu = "LeakyRelu";
     csinfo_.leakyrelu_grad = "LeakyReluGrad";
@@ -294,6 +295,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.mkl_depthwise_conv2d_grad_filter =
         "_MklDepthwiseConv2dNativeBackpropFilter";
     csinfo_.mkl_fused_conv2d = "_MklFusedConv2D";
+    csinfo_.mkl_fused_matmul = "_MklFusedMatMul";
     csinfo_.mkl_pad_with_conv2d = "_MklPadWithConv2D";
     csinfo_.mkl_pad_with_fused_conv2d = "_MklPadWithFusedConv2D";
     csinfo_.pad = "Pad";
@@ -478,6 +480,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.fused_conv2d, csinfo_.mkl_fused_conv2d,
                       CopyAttrsFusedConv2D, FusedConv2DRewrite,
                       kRewriteForLayoutPropagation});
+    rinfo_.push_back({csinfo_.fused_matmul, csinfo_.mkl_fused_matmul,
+                      CopyAttrsAll, FusedMatMulRewrite});
+
 #ifndef ENABLE_MKLDNN_V1
     rinfo_.push_back({csinfo_.identity,
                       mkl_op_registry::GetMklOpName(csinfo_.identity),
@@ -905,6 +910,7 @@ rinfo_.push_back({csinfo_.tanh_grad,
     string fused_batch_norm_v3;
     string fused_batch_norm_grad_v3;
     string fused_conv2d;
+    string fused_matmul;
     string identity;
     string leakyrelu;
     string leakyrelu_grad;
@@ -924,6 +930,7 @@ rinfo_.push_back({csinfo_.tanh_grad,
     string mkl_depthwise_conv2d_grad_input;
     string mkl_depthwise_conv2d_grad_filter;
     string mkl_fused_conv2d;
+    string mkl_fused_matmul;
     string mkl_pad_with_conv2d;
     string mkl_pad_with_fused_conv2d;
     string mul;
@@ -1453,6 +1460,22 @@ rinfo_.push_back({csinfo_.tanh_grad,
     return false;
   }
 
+  // Rewrite rule for _FusedMatMul.
+  // @return - true (no transpose attribute for input 1 and only has 1 post op);
+  //           false otherwise.
+  static bool FusedMatMulRewrite(const Node* n) {
+    bool trans_a;
+    std::vector<string> fused_ops;
+
+    // Do not rewrite with transpose attribute because reorder has performance
+    // impact.
+    TF_CHECK_OK(GetNodeAttr(n->def(), "transpose_a", &trans_a));
+    // Do not rewrite with more than 1 post op because MKL-DNN doesn't support.
+    TF_CHECK_OK(GetNodeAttr(n->def(), "fused_ops", &fused_ops));
+
+    return (!trans_a) && (fused_ops.size() == 1);
+  }
+
   // Check if we are performing pooling on depth or batch. If it is, then we
   // do not rewrite MaxPool node to Mkl version.
   // @return - true (if it is not a depth/batch wise pooling case);
@@ -1547,10 +1570,27 @@ rinfo_.push_back({csinfo_.tanh_grad,
     DCHECK(n);
     Node* filter_node = nullptr;
     TF_CHECK_OK(n->input_node(0, &filter_node));
+    bool narrow_range = false;
+    int axis = -1;
     string mode_string;
     string round_mode_string;
+    TryGetNodeAttr(n->def(), "narrow_range", &narrow_range);
+    TryGetNodeAttr(n->def(), "axis", &axis);
     TF_CHECK_OK(GetNodeAttr(n->def(), "mode", &mode_string));
     TF_CHECK_OK(GetNodeAttr(n->def(), "round_mode", &round_mode_string));
+    if (narrow_range) {
+      VLOG(1) << "QuantizeOpRewrite: narrow range is enabled for quantization."
+              << "This case is not optimized by Intel MKL, "
+              << "thus using Eigen op for Quantize op ";
+      return false;
+    }
+    if (axis != -1) {
+      VLOG(1) << "QuantizeOpRewrite: dimension is specified for "
+              << "per slice quantization."
+              << "This case is not optimized by Intel MKL, "
+              << "thus using Eigen op for Quantize op ";
+      return false;
+    }
     if (mode_string != "SCALED" || round_mode_string != "HALF_TO_EVEN") {
       VLOG(1) << "QuantizeOpRewrite: Mode is not SCALED and/or"
               << "rounding mode is not HALF_TO_EVEN. "
@@ -3536,6 +3576,7 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
       n->type_string() != csinfo_.pad_with_fused_conv2d &&
       n->type_string() != csinfo_.conv2d_grad_filter_with_bias &&
       n->type_string() != csinfo_.fused_conv2d &&
+      n->type_string() != csinfo_.fused_matmul &&
       !mkl_op_registry::IsMklOp(mkl_op_registry::GetMklOpName(n->type_string()),
                                 T)) {
     return nullptr;

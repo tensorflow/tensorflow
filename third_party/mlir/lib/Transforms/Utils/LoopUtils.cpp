@@ -42,7 +42,6 @@
 #define DEBUG_TYPE "LoopUtils"
 
 using namespace mlir;
-using llvm::MapVector;
 using llvm::SetVector;
 using llvm::SmallMapVector;
 
@@ -368,10 +367,7 @@ void getPerfectlyNestedLoopsImpl(
     unsigned maxLoops = std::numeric_limits<unsigned>::max()) {
   for (unsigned i = 0; i < maxLoops; ++i) {
     forOps.push_back(rootForOp);
-    // FIXME: ForOp and AffineForOp currently provide different names to access
-    // the region ("region" and "getRegion").  Remove this generic access when
-    // AffineForOp moves to ODS and also gets "region".
-    Block &body = rootForOp.getOperation()->getRegion(0).front();
+    Block &body = rootForOp.region().front();
     if (body.begin() != std::prev(body.end(), 2))
       return;
 
@@ -1548,6 +1544,7 @@ static LogicalResult generateCopy(
   replaceAllMemRefUsesWith(memref, fastMemRef,
                            /*extraIndices=*/{}, indexRemap,
                            /*extraOperands=*/regionSymbols,
+                           /*symbolOperands=*/{},
                            /*domInstFilter=*/&*begin,
                            /*postDomInstFilter=*/&*postDomFilter);
 
@@ -1667,7 +1664,7 @@ uint64_t mlir::affineDataCopyGenerate(Block::iterator begin,
       LLVM_DEBUG(llvm::dbgs() << "over-approximating to the entire memref\n");
       if (!getFullMemRefAsRegion(opInst, copyDepth, region.get())) {
         LLVM_DEBUG(
-            opInst->emitError("Non-constant memref sizes not yet supported"));
+            opInst->emitError("non-constant memref sizes not yet supported"));
         error = true;
         return;
       }
@@ -1702,7 +1699,7 @@ uint64_t mlir::affineDataCopyGenerate(Block::iterator begin,
             // If the union fails, we will overapproximate.
             if (!getFullMemRefAsRegion(opInst, copyDepth, region.get())) {
               LLVM_DEBUG(opInst->emitError(
-                  "Non-constant memref sizes not yet supported"));
+                  "non-constant memref sizes not yet supported"));
               error = true;
               return true;
             }

@@ -313,7 +313,7 @@ void ConvertLSTMCellSimpleToFusedLSTM::UpdateFuncSignature() {
     fused_func_op_.setAttr("tf._implements",
                            builder_.getStringAttr(GetCompositeOpName()));
   }
-  SmallVector<int64_t, 2> output_shape{1, n_output_};
+  SmallVector<int64_t, 2> output_shape{1, -1};
   auto input_types = fused_func_op_.getType().getInputs();
   auto output_type = builder_.getTensorType(
       output_shape,
@@ -350,7 +350,17 @@ void ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
       builder_.getF32FloatAttr(10.0), builder_.getF32FloatAttr(0.0),
       builder_.getStringAttr("FULL"));
 
-  builder_.create<mlir::ReturnOp>(fused_func_op_.getLoc(), lstm_.getResult());
+  // Cast the static shaped lstm result to FuncOp's signature -
+  // Ranked but unknown 2nd dimension to support stacking these.
+  SmallVector<int64_t, 2> func_output_shape = {1, -1};
+  auto func_result_type = builder_.getTensorType(
+      func_output_shape,
+      input_->getType().cast<RankedTensorType>().getElementType());
+
+  auto tensor_cast = builder_.create<mlir::TensorCastOp>(
+      fused_func_op_.getLoc(), lstm_.getResult(), func_result_type);
+  builder_.create<mlir::ReturnOp>(fused_func_op_.getLoc(),
+                                  tensor_cast.getResult());
 }
 
 LogicalResult ConvertLSTMCellSimpleToFusedLSTM::Initialize() {

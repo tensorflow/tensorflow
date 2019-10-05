@@ -197,10 +197,8 @@ for configuring NDK and SDK.
 
 ```
 bazel build -c opt \
-  --config=android_arm \
+  --config=android_arm64 \
   --cxxopt='--std=c++11' \
-  --copt=-D__ANDROID_TYPES_FULL__ \
-  --copt=-DSUPPORT_SELECTIVE_REGISTRATION \
   //tensorflow/lite/tools/evaluation/tasks/coco_object_detection:run_eval
 ```
 

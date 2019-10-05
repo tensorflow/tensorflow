@@ -26,7 +26,7 @@ namespace gpu {
 namespace cl {
 namespace {
 
-Status SelectConvolutionTransposedTextureArray(
+Status SelectConvolutionTransposedAdreno(
     const ConvolutionTransposedAttributes& attr,
     const CreationContext& creation_context, const OperationDef& op_def,
     std::unique_ptr<GPUOperation>* ptr) {
@@ -50,7 +50,7 @@ Status SelectConvolutionTransposedTextureArray(
   return OkStatus();
 }
 
-Status SelectConvolutionTransposedTexture2D(
+Status SelectConvolutionTransposedPowerVR(
     const ConvolutionTransposedAttributes& attr,
     const CreationContext& creation_context, const OperationDef& op_def,
     std::unique_ptr<GPUOperation>* ptr) {
@@ -74,29 +74,14 @@ Status SelectConvolutionTransposedTexture2D(
   return OkStatus();
 }
 
-Status SelectConvolutionTransposedBuffer(
+Status SelectConvolutionTransposedMali(
     const ConvolutionTransposedAttributes& attr,
     const CreationContext& creation_context, const OperationDef& op_def,
     std::unique_ptr<GPUOperation>* ptr) {
-  if (!creation_context.device->IsMali() &&
-      IsConvolutionTransposedThinSupported(*creation_context.device, attr)) {
-    ConvolutionTransposedThin conv;
-    RETURN_IF_ERROR(
-        CreateConvolutionTransposedThin(creation_context, op_def, attr, &conv));
-    *ptr = absl::make_unique<ConvolutionTransposedThin>(std::move(conv));
-  } else if (!creation_context.device->IsMali() &&
-             IsConvolutionTransposed3x3ThinSupported(*creation_context.device,
-                                                     attr)) {
-    ConvolutionTransposed3x3Thin conv;
-    RETURN_IF_ERROR(CreateConvolutionTransposed3x3Thin(creation_context, op_def,
-                                                       attr, &conv));
-    *ptr = absl::make_unique<ConvolutionTransposed3x3Thin>(std::move(conv));
-  } else {
-    ConvolutionTransposed conv;
-    RETURN_IF_ERROR(
-        CreateConvolutionTransposed(creation_context, op_def, attr, &conv));
-    *ptr = absl::make_unique<ConvolutionTransposed>(std::move(conv));
-  }
+  ConvolutionTransposed conv;
+  RETURN_IF_ERROR(
+      CreateConvolutionTransposed(creation_context, op_def, attr, &conv));
+  *ptr = absl::make_unique<ConvolutionTransposed>(std::move(conv));
   return OkStatus();
 }
 }  // namespace
@@ -105,19 +90,19 @@ Status SelectConvolutionTransposed(const ConvolutionTransposedAttributes& attr,
                                    const CreationContext& creation_context,
                                    const OperationDef& op_def,
                                    std::unique_ptr<GPUOperation>* ptr) {
-  switch (op_def.GetPrimaryStorageType()) {
-    case TensorStorageType::TEXTURE_ARRAY:
-      return SelectConvolutionTransposedTextureArray(attr, creation_context,
-                                                     op_def, ptr);
-    case TensorStorageType::TEXTURE_2D:
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-      return SelectConvolutionTransposedTexture2D(attr, creation_context,
-                                                  op_def, ptr);
-    case TensorStorageType::BUFFER:
-      return SelectConvolutionTransposedBuffer(attr, creation_context, op_def,
+  switch (creation_context.device->vendor()) {
+    case Vendor::QUALCOMM:
+      return SelectConvolutionTransposedAdreno(attr, creation_context, op_def,
                                                ptr);
+    case Vendor::POWERVR:
+      return SelectConvolutionTransposedPowerVR(attr, creation_context, op_def,
+                                                ptr);
+    case Vendor::MALI:
+      return SelectConvolutionTransposedMali(attr, creation_context, op_def,
+                                             ptr);
     default:
-      return InternalError("Unknown storage type.");
+      return SelectConvolutionTransposedAdreno(attr, creation_context, op_def,
+                                               ptr);
   }
 }
 

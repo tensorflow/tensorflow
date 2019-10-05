@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -102,7 +103,7 @@ Status RemoteCopyNode::RunLocalSend(EagerOperation* op) {
   gtl::InlinedVector<TensorValue, 4> input_vector(1);
   TF_RETURN_IF_ERROR(src_->TensorValue(&input_vector[0]));
 
-  return kernel->Run(input_vector, nullptr, nullptr, nullptr, nullptr, nullptr);
+  return kernel->Run(input_vector, nullptr, nullptr);
 }
 
 void RemoteCopyNode::StartSend() {
@@ -184,7 +185,7 @@ Status RemoteCopyNode::RunLocalRecv(EagerOperation* op,
   TF_RETURN_IF_ERROR(CreateUncachedKernelAndDeviceOp(op, &kernel));
 
   gtl::InlinedVector<TensorValue, 4> input_vector;
-  return kernel->Run(input_vector, outputs, nullptr, nullptr, nullptr,
+  return kernel->Run(input_vector, outputs,
                      captured_state_->recv_cancellation());
 }
 
@@ -332,6 +333,11 @@ void RemoteCopyNode::StartRemoteSendTensor(StatusCallback done) {
         done(s);
         delete response;
       });
+}
+
+Status RemoteCopyNode::Prepare() {
+  TF_RETURN_IF_ERROR(captured_state_->dst()->CopyInferenceShape(src_));
+  return Status::OK();
 }
 
 void RemoteCopyNode::RunAsync(StatusCallback done) {

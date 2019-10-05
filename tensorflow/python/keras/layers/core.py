@@ -67,18 +67,30 @@ class Masking(Layer):
   Example:
 
   Consider a Numpy data array `x` of shape `(samples, timesteps, features)`,
-  to be fed to an LSTM layer.
-  You want to mask timestep #3 and #5 because you lack data for
-  these timesteps. You can:
+  to be fed to an LSTM layer. You want to mask timestep #3 and #5 because you
+  lack data for these timesteps. You can:
 
   - Set `x[:, 3, :] = 0.` and `x[:, 5, :] = 0.`
   - Insert a `Masking` layer with `mask_value=0.` before the LSTM layer:
 
   ```python
-  model = Sequential()
-  model.add(Masking(mask_value=0., input_shape=(timesteps, features)))
-  model.add(LSTM(32))
+  samples, timesteps, features = 32, 10, 8
+  inputs = np.random.random([samples, timesteps, features]).astype(np.float32)
+  inputs[:, 3, :] = 0.
+  inputs[:, 5, :] = 0.
+
+  model = tf.keras.models.Sequential()
+  model.add(tf.keras.layers.Masking(mask_value=0.,
+                                    input_shape=(timesteps, features)))
+  model.add(tf.keras.layers.LSTM(32))
+
+  output = model(inputs)
+  # The time step 3 and 5 will be skipped from LSTM calculation.
   ```
+
+  See [the masking and padding
+  guide](https://www.tensorflow.org/guide/keras/masking_and_padding)
+  for more details.
   """
 
   def __init__(self, mask_value=0., **kwargs):

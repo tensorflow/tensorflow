@@ -5,7 +5,7 @@
 
 HloModule main.5
 
-// CHECK-LABEL: func @main(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<4xf32> {
+// CHECK-LABEL: func @main
 ENTRY %foo.5 (Arg_0.1: f32[4], Arg_1.2: f32[4], Arg_2.3: f32[], Arg_3.4: f32[]) -> f32[4] {
   %Arg_0.1 = f32[4] parameter(0)
   %Arg_1.2 = f32[4] parameter(1)
@@ -13,16 +13,15 @@ ENTRY %foo.5 (Arg_0.1: f32[4], Arg_1.2: f32[4], Arg_2.3: f32[], Arg_3.4: f32[]) 
   %Arg_3.4 = f32[] parameter(3)
 
   // Add two tensors
-  // CHECK-NEXT:   %0 = "xla_hlo.add"(%arg0, %arg1) {name = "add.3"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  // CHECK-NEXT: xla_hlo.add %arg0, %arg1
   %add.3 = f32[4] add(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
 
   // Add two scalars
-  // CHECK-NEXT: %1 = "xla_hlo.add"(%arg2, %arg3) {name = "add.4"} : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK-NEXT: xla_hlo.add %arg2, %arg3
   %add.4 = f32[] add(f32[] %Arg_2.3, f32[] %Arg_3.4)
 
   // Add a tensor and scalar
-  // CHECK-NEXT: %2 = "xla_hlo.add"(%0, %1) {name = "add.5"} : (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
-  // CHECK-NEXT: return %2 : tensor<4xf32>
+  // CHECK-NEXT: "xla_hlo.add"(%0, %1)
   ROOT %add.5 = f32[4] add(f32[4] %add.3, f32[] %add.4)
 }
 

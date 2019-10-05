@@ -113,8 +113,7 @@ TEST_F(RemoteMgrTest, SerializeLocalTensorHandleWithRemoteMirror) {
   const uint64 op_id = 2;
   const int output_num = 3;
   auto tensor_handle_data = absl::make_unique<RemoteTensorHandleData>(
-      op_id, output_num, t.shape(), /*eager_client=*/nullptr, context_id_,
-      ctx_);
+      op_id, output_num, t.shape(), /*remote_task=*/"", context_id_, ctx_);
   TF_ASSERT_OK(
       handle->AddRemoteMirror(std::move(tensor_handle_data), remote_device_));
   RemoteTensorHandle remote_handle;
@@ -134,8 +133,8 @@ TEST_F(RemoteMgrTest, SerializeRemoteTensorHandle) {
   const int output_num = 1;
   TensorHandle* handle;
   TF_ASSERT_OK(TensorHandle::CreateRemoteHandle(
-      op_id, output_num, t.shape(), /*eager_client=*/nullptr, context_id_,
-      DT_FLOAT, remote_device_,
+      op_id, output_num, t.shape(), /*remote_task=*/"", context_id_, DT_FLOAT,
+      remote_device_,
       /*resource_device=*/nullptr, ctx_, &handle));
   RemoteTensorHandle remote_handle;
   TF_ASSERT_OK(remote_mgr.SerializeRemoteTensorHandle(

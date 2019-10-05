@@ -19,6 +19,7 @@ namespace micro {
 TfLiteRegistration* Register_DEPTHWISE_CONV_2D();
 TfLiteRegistration* Register_FULLY_CONNECTED();
 TfLiteRegistration* Register_SOFTMAX();
+TfLiteRegistration* Register_LOGISTIC();
 TfLiteRegistration* Register_SVDF();
 TfLiteRegistration* Register_CONV_2D();
 TfLiteRegistration* Register_AVERAGE_POOL_2D();
@@ -54,7 +55,8 @@ TfLiteRegistration* Register_SPLIT();
 TfLiteRegistration* Register_UNPACK();
 TfLiteRegistration* Register_NEG();
 TfLiteRegistration* Register_ADD();
-
+TfLiteRegistration* Register_QUANTIZE();
+TfLiteRegistration* Register_DEQUANTIZE();
 AllOpsResolver::AllOpsResolver() {
   AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D, Register_DEPTHWISE_CONV_2D());
   AddBuiltin(BuiltinOperator_FULLY_CONNECTED, Register_FULLY_CONNECTED(),
@@ -62,6 +64,7 @@ AllOpsResolver::AllOpsResolver() {
              /* max_version */ 4);
   AddBuiltin(BuiltinOperator_MAX_POOL_2D, Register_MAX_POOL_2D());
   AddBuiltin(BuiltinOperator_SOFTMAX, Register_SOFTMAX());
+  AddBuiltin(BuiltinOperator_LOGISTIC, Register_LOGISTIC());
   AddBuiltin(BuiltinOperator_SVDF, Register_SVDF());
   AddBuiltin(BuiltinOperator_CONV_2D, Register_CONV_2D());
   AddBuiltin(BuiltinOperator_AVERAGE_POOL_2D, Register_AVERAGE_POOL_2D());
@@ -98,6 +101,8 @@ AllOpsResolver::AllOpsResolver() {
   AddBuiltin(BuiltinOperator_UNPACK, Register_UNPACK());
   AddBuiltin(BuiltinOperator_NEG, Register_NEG());
   AddBuiltin(BuiltinOperator_ADD, Register_ADD());
+  AddBuiltin(BuiltinOperator_QUANTIZE, Register_QUANTIZE(), 1, 4);
+  AddBuiltin(BuiltinOperator_DEQUANTIZE, Register_DEQUANTIZE(), 1, 4);
 }
 
 }  // namespace micro

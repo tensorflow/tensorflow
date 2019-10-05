@@ -103,6 +103,8 @@ cc_binary(
     name = "micro_vision",
     srcs = [
         "main.cc",
+        "main_functions.cc",
+        "main_functions.h",
     ],
     deps = [
         ":detection_responder",

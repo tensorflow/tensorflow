@@ -38,6 +38,23 @@ cc_library(
     srcs = ["tf_mlir_opt_main.cc"],
     deps = [
         ":init_mlir",
+        ":passes",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:logging",
+        "@llvm//:support",
+        "@local_config_mlir//:MlirOptLib",
+        "@local_config_mlir//:Pass",
+        "@local_config_mlir//:Support",
+        "@local_config_mlir//test:TestTransforms",
+    ],
+)
+
+cc_library(
+    name = "passes",
+    visibility = [
+        "//tensorflow/python:__subpackages__",
+    ],
+    deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_dialect_registration",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_legalize_tf",
@@ -49,23 +66,18 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_test_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/mlir/xla:hlo",
+        "//tensorflow/compiler/mlir/xla:hlo_legalize_to_lhlo",
         "//tensorflow/compiler/mlir/xla:lhlo",
         "//tensorflow/compiler/mlir/xla:lhlo_legalize_to_affine",
+        "//tensorflow/compiler/mlir/xla:lhlo_legalize_to_linalg",
         "//tensorflow/compiler/mlir/xla:xla_dialect_registration",
         "//tensorflow/compiler/mlir/xla:xla_legalize_control_flow",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/xla:xla_legalize_to_standard",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/platform:logging",
-        "@llvm//:support",
+        "//tensorflow/compiler/mlir/xla:xla_lower_general_dot",
         "@local_config_mlir//:AffineDialectRegistration",
-        "@local_config_mlir//:MlirOptLib",
-        "@local_config_mlir//:Pass",
         "@local_config_mlir//:QuantOps",
         "@local_config_mlir//:QuantOpsDialectRegistration",
-        "@local_config_mlir//:Support",
-        "@local_config_mlir//test:TestDialect",
-        "@local_config_mlir//test:TestTransforms",
     ],
 )
 
@@ -83,6 +95,7 @@ tf_cc_binary(
     name = "tf-opt",
     deps = [
         ":tf_mlir_opt_main",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
     ],
 )
@@ -102,6 +115,7 @@ tf_cc_binary(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_proto_cc",
         "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/strings",
         "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Support",

@@ -36,7 +36,7 @@ class ExtendedInferenceContext {
  public:
   ExtendedInferenceContext(
       std::unique_ptr<shape_inference::InferenceContext> ic, const Node* node)
-      : inference_context_(std::move(ic)) {
+      : inference_context_(std::move(ic)), op_(node->name()) {
     input_types_.reserve(node->num_inputs());
     for (int i = 0; i < node->num_inputs(); i++) {
       input_types_.push_back(node->input_type(i));
@@ -58,6 +58,8 @@ class ExtendedInferenceContext {
     return inference_context_.get();
   }
 
+  std::string op() const { return op_; }
+
   // Sets nested inference info.
   // For composite ops (user-defined functions) only.
   // Inference for trivial ops must not call this setter.
@@ -69,6 +71,7 @@ class ExtendedInferenceContext {
 
  private:
   std::unique_ptr<shape_inference::InferenceContext> inference_context_;
+  std::string op_;
   std::vector<DataType> input_types_;
   std::vector<DataType> output_types_;
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/selectors/fully_connected_selector.h"
 
 #include "absl/memory/memory.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/conv_texture.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/fully_connected_texture.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -26,12 +27,18 @@ namespace cl {
 
 Status SelectFullyConnected(const FullyConnectedAttributes& attr,
                             const CreationContext& creation_context,
-                            const OperationDef& op_def,
+                            const OperationDef& op_def, int batch_size,
                             std::unique_ptr<GPUOperation>* ptr) {
-  FullyConnectedTexture fc;
-  RETURN_IF_ERROR(
-      CreateFullyConnectedTexture(creation_context, op_def, attr, &fc));
-  *ptr = absl::make_unique<FullyConnectedTexture>(std::move(fc));
+  if (op_def.batch_support) {
+    ConvTexture conv;
+    RETURN_IF_ERROR(CreateConvTexture(creation_context, op_def, attr, &conv));
+    *ptr = absl::make_unique<ConvTexture>(std::move(conv));
+  } else {
+    FullyConnectedTexture fc;
+    RETURN_IF_ERROR(
+        CreateFullyConnectedTexture(creation_context, op_def, attr, &fc));
+    *ptr = absl::make_unique<FullyConnectedTexture>(std::move(fc));
+  }
   return OkStatus();
 }
 

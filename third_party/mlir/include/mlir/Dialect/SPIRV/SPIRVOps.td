@@ -56,6 +56,12 @@ include "mlir/Dialect/SPIRV/SPIRVLogicalOps.td"
 include "mlir/Dialect/SPIRV/SPIRVStructureOps.td"
 #endif // SPIRV_STRUCTURE_OPS
 
+#ifdef SPIRV_GLSL_OPS
+#else
+// Pull in ops for extended instruction set for GLSL
+include "mlir/Dialect/SPIRV/SPIRVGLSLOps.td"
+#endif // SPIRV_GLSL_OPS
+
 // -----
 
 def SPV_AccessChainOp : SPV_Op<"AccessChain", [NoSideEffect]> {
@@ -114,8 +120,60 @@ def SPV_AccessChainOp : SPV_Op<"AccessChain", [NoSideEffect]> {
     SPV_AnyPtr:$component_ptr
   );
 
-  let builders = [OpBuilder<[{Builder *builder, OperationState *state,
+  let builders = [OpBuilder<[{Builder *builder, OperationState &state,
                               Value *basePtr, ArrayRef<Value *> indices}]>];
+}
+
+// -----
+
+def SPV_BitcastOp : SPV_Op<"Bitcast", [NoSideEffect]> {
+  let summary = "Bit pattern-preserving type conversion.";
+
+  let description = [{
+    Result Type must be an OpTypePointer, or a scalar or vector of
+    numerical-type.
+
+    Operand must have a type of OpTypePointer, or a scalar or vector of
+    numerical-type. It must be a different type than Result Type.
+
+    If either Result Type or Operand is a pointer, the other must be a
+    pointer (diverges from the SPIR-V spec).
+
+    If Result Type has a different number of components than Operand, the
+    total number of bits in Result Type must equal the total number of bits
+    in Operand. Let L be the type, either Result Type or Operand’s type,
+    that has the larger number of components. Let S be the other type, with
+    the smaller number of components. The number of components in L must be
+    an integer multiple of the number of components in S. The first
+    component (that is, the only or lowest-numbered component) of S maps to
+    the first components of L, and so on,  up to the last component of S
+    mapping to the last components of L. Within this mapping, any single
+    component of S (mapping to multiple components of L) maps its lower-
+    ordered bits to the lower-numbered components of L.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    bitcast-op ::= ssa-id `=` `spv.Bitcast` ssa-use
+                   `from` operand-type `to` result-type
+    ```
+
+    For example:
+
+    ```
+    %1 = spv.Bitcast %0 from f32 to i32
+    %1 = spv.Bitcast %0 from vector<2xf32> to i64
+    %1 = spv.Bitcast %0 from !spv.ptr<f32 to Function> to !spv.ptr<i32, Function>
+    ```
+  }];
+
+  let arguments = (ins
+    SPV_ScalarOrVectorOrPtr:$operand
+  );
+
+  let results = (outs
+    SPV_ScalarOrVectorOrPtr:$result
+  );
 }
 
 // -----
@@ -166,6 +224,72 @@ def SPV_CompositeExtractOp : SPV_Op<"CompositeExtract", [NoSideEffect]> {
 
 // -----
 
+def SPV_ControlBarrierOp : SPV_Op<"ControlBarrier", []> {
+  let summary = [{
+    Wait for other invocations of this module to reach the current point of
+    execution.
+  }];
+
+  let description = [{
+    All invocations of this module within Execution scope must reach this
+    point of execution before any invocation will proceed beyond it.
+
+    When Execution is Workgroup or larger, behavior is undefined if this
+    instruction is used in control flow that is non-uniform within
+    Execution. When Execution is Subgroup or Invocation, the behavior of
+    this instruction in non-uniform control flow is defined by the client
+    API.
+
+    If Semantics is not None, this instruction also serves as an
+    OpMemoryBarrier instruction, and must also perform and adhere to the
+    description and semantics of an OpMemoryBarrier instruction with the
+    same Memory and Semantics operands.  This allows atomically specifying
+    both a control barrier and a memory barrier (that is, without needing
+    two instructions). If Semantics is None, Memory is ignored.
+
+    Before version 1.3, it is only valid to use this instruction with
+    TessellationControl, GLCompute, or Kernel execution models. There is no
+    such restriction starting with version 1.3.
+
+    When used with the TessellationControl execution model, it also
+    implicitly synchronizes the Output Storage Class:  Writes to Output
+    variables performed by any invocation executed prior to a
+    OpControlBarrier will be visible to any other invocation after return
+    from that OpControlBarrier.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    scope ::= `"CrossDevice"` | `"Device"` | `"Workgroup"` | ...
+
+    memory-semantics ::= `"None"` | `"Acquire"` | "Release"` | ...
+
+    control-barrier-op ::= `spv.ControlBarrier` scope, scope, memory-semantics
+    ```
+
+    For example:
+
+    ```
+    spv.ControlBarrier "Workgroup", "Device", "Acquire|UniformMemory"
+
+    ```
+  }];
+
+  let arguments = (ins
+    SPV_ScopeAttr:$execution_scope,
+    SPV_ScopeAttr:$memory_scope,
+    SPV_MemorySemanticsAttr:$memory_semantics
+  );
+
+  let results = (outs);
+
+  let verifier = [{ return verifyMemorySemantics(*this); }];
+
+  let autogenSerialization = 0;
+}
+
+// -----
+
 def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [InModuleScope]> {
   let summary = "Declare an execution mode for an entry point.";
 
@@ -200,7 +324,7 @@ def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [InModuleScope]> {
   let arguments = (ins
     SymbolRefAttr:$fn,
     SPV_ExecutionModeAttr:$execution_mode,
-    OptionalAttr<I32ArrayAttr>:$values
+    I32ArrayAttr:$values
   );
 
   let results = (outs);
@@ -208,6 +332,11 @@ def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [InModuleScope]> {
   let verifier = [{ return success(); }];
 
   let autogenSerialization = 0;
+
+  let builders = [OpBuilder<[{Builder *builder, OperationState &state,
+                              FuncOp function,
+                              spirv::ExecutionMode executionMode,
+                              ArrayRef<int32_t> params}]>];
 }
 
 // -----
@@ -256,6 +385,60 @@ def SPV_LoadOp : SPV_Op<"Load", []> {
   let results = (outs
     SPV_Type:$value
   );
+
+  let builders = [OpBuilder<[{Builder *builder, OperationState &state,
+                  Value *basePtr, /*optional*/IntegerAttr memory_access,
+                  /*optional*/IntegerAttr alignment}]>];
+}
+
+// -----
+
+def SPV_MemoryBarrierOp : SPV_Op<"MemoryBarrier", []> {
+  let summary = "Control the order that memory accesses are observed.";
+
+  let description = [{
+    Ensures that memory accesses issued before this instruction will be
+    observed before memory accesses issued after this instruction. This
+    control is ensured only for memory accesses issued by this invocation
+    and observed by another invocation executing within Memory scope. If the
+    Vulkan memory model is declared, this ordering only applies to memory
+    accesses that use the NonPrivatePointer memory operand or
+    NonPrivateTexel image operand.
+
+    Semantics declares what kind of memory is being controlled and what kind
+    of control to apply.
+
+    To execute both a memory barrier and a control barrier, see
+    OpControlBarrier.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    scope ::= `"CrossDevice"` | `"Device"` | `"Workgroup"` | ...
+
+    memory-semantics ::= `"None"` | `"Acquire"` | `"Release"` | ...
+
+    memory-barrier-op ::= `spv.MemoryBarrier` scope, memory-semantics
+    ```
+
+    For example:
+
+    ```
+    spv.MemoryBarrier "Device", "Acquire|UniformMemory"
+
+    ```
+  }];
+
+  let arguments = (ins
+    SPV_ScopeAttr:$memory_scope,
+    SPV_MemorySemanticsAttr:$memory_semantics
+  );
+
+  let results = (outs);
+
+  let verifier = [{ return verifyMemorySemantics(*this); }];
+
+  let autogenSerialization = 0;
 }
 
 // -----
@@ -298,6 +481,41 @@ def SPV_StoreOp : SPV_Op<"Store", []> {
   );
 
   let results = (outs);
+}
+
+// -----
+
+def SPV_UndefOp : SPV_Op<"Undef", []> {
+  let summary = "Make an intermediate object whose value is undefined.";
+
+  let description = [{
+    Result Type is the type of object to make.
+
+    Each consumption of Result <id> yields an arbitrary, possibly different
+    bit pattern or abstract value resulting in possibly different concrete,
+    abstract, or opaque values.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    undef-op ::= `spv.Undef` `:` sprirv-type
+    ```
+
+    For example:
+
+    ```
+    %0 = spv.Undef : f32
+    %1 = spv.Undef : !spv.struct<!spv.array<4 x vector<4xi32>>>
+    ```
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    SPV_Type:$result
+  );
+
+  let verifier = [{ return success(); }];
 }
 
 // -----

@@ -51,8 +51,7 @@ class Add : public ElementwiseOperation {
 
  private:
   std::string GetElementWiseCode(
-      const TensorDescriptor& src_descriptor,
-      const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
+      const OperationDef& op_def,
       const std::vector<ElementwiseOperation*>& linked_operations);
 
   int link_index_;

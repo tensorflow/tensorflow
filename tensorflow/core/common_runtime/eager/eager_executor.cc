@@ -92,6 +92,12 @@ Status EagerExecutor::AddOrExecute(std::unique_ptr<EagerNode> node) {
   item->node = std::move(node);
   item->state = NodeState::kPENDING;
 
+  status = item->node->Prepare();
+  if (!status.ok()) {
+    item->node->Abort(status);
+    return status;
+  }
+
   // If we are unable to add the node to the queue, we must call Abort. However,
   // we want to do that outside of the scope of the lock since the Abort may
   // try to call EagerExecutor::Add()
@@ -176,10 +182,10 @@ void EagerExecutor::NodeDone(core::RefCountPtr<NodeItem> item,
                              const Status& status) {
   VLOG(3) << "Node Done: [id " << item->id << "] " << item->node->DebugString()
           << " with status: " << status.ToString();
-  DCHECK(item->state != NodeState::kDONE);
   std::vector<core::RefCountPtr<NodeItem>> items_to_destroy;
   {
     mutex_lock l(node_queue_mutex_);
+    DCHECK(item->state != NodeState::kDONE);
     auto previous_state = item->state;
     item->state = NodeState::kDONE;
     if (!status_.ok()) return;
@@ -200,12 +206,14 @@ void EagerExecutor::NodeDone(core::RefCountPtr<NodeItem> item,
     if (!status.ok()) {
       need_notification = true;
       status_ = status;
-      // We remove any pending ops so that we don't try to execute them if
-      // ClearError is called.
-      errors::AppendToMessage(&status_,
-                              "Encountered when executing an operation using "
-                              "EagerExecutor. This error cancels all future "
-                              "operations and poisons their output tensors.");
+      if (Async()) {
+        // We remove any pending ops so that we don't try to execute them if
+        // ClearError is called.
+        errors::AppendToMessage(&status_,
+                                "Encountered when executing an operation using "
+                                "EagerExecutor. This error cancels all future "
+                                "operations and poisons their output tensors.");
+      }
       while (!node_queue_.empty()) {
         items_to_destroy.push_back(std::move(node_queue_.front()));
         node_queue_.pop();

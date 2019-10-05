@@ -28,17 +28,16 @@ namespace cl {
 namespace {
 
 std::string GenerateConvolutionTransposedCode(
-    const TensorDescriptor& src_descriptor,
-    const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
-    const LinearStorage& biases, int src_depth, int dst_depth,
-    const CLDevice& device,
+    const OperationDef& op_def, const LinearStorage& biases, int src_depth,
+    int dst_depth, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
+  TensorCodeGenerator src_tensor("src_data", "src_size", op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data", "dst_size", op_def.dst_tensors[0]);
+  const auto src_tensor_type = op_def.src_tensors[0].storage_type;
 
-  std::string c = GetCommonDefines(precision);
+  std::string c = GetCommonDefines(op_def.precision);
 
-  switch (precision) {
+  switch (op_def.precision) {
     case CalculationsPrecision::F32:
     case CalculationsPrecision::F16:
       c += "#define CONV(R, SRC, F, i) \\\n";
@@ -78,7 +77,7 @@ std::string GenerateConvolutionTransposedCode(
   for (int s = 0; s < src_depth; ++s) {
     const std::string z = std::to_string(s);
     c += "  {\n";
-    if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+    if (src_tensor_type == TensorStorageType::BUFFER) {
       c += "  bool x_in = X + 1 < src_size.x;\n";
       c += "  bool y_in = Y + 1 < src_size.y;\n";
       c += "  FLT4 src0 = " + src_tensor.Read3D("X", "Y", z) + ";\n";
@@ -94,6 +93,20 @@ std::string GenerateConvolutionTransposedCode(
       c += "  if (x_in && y_in) {\n";
       c += "    src3 = " + src_tensor.Read3D("X + 1", "Y + 1", z) + ";\n";
       c += "  }\n";
+    } else if (src_tensor_type == TensorStorageType::IMAGE_BUFFER) {
+      c += "  " + src_tensor.GetAddress("c0", "X", "Y", z) + ";\n";
+      c += "  " + src_tensor.GetAddress("c1", "X + 1", "Y", z) + ";\n";
+      c += "  " + src_tensor.GetAddress("c2", "X", "Y + 1", z) + ";\n";
+      c += "  " + src_tensor.GetAddress("c3", "X + 1", "Y + 1", z) + ";\n";
+      c += "  bool x_in = X + 1 < src_size.x;\n";
+      c += "  bool y_in = Y + 1 < src_size.y;\n";
+      c += "  c1 = select(-1, c1, x_in);\n";
+      c += "  c2 = select(-1, c2, y_in);\n";
+      c += "  c3 = select(-1, c3, x_in && y_in);\n";
+      c += "  FLT4 src0 = " + src_tensor.Read("c0") + ";\n";
+      c += "  FLT4 src1 = " + src_tensor.Read("c1") + ";\n";
+      c += "  FLT4 src2 = " + src_tensor.Read("c2") + ";\n";
+      c += "  FLT4 src3 = " + src_tensor.Read("c3") + ";\n";
     } else {
       const auto mode = GetFastestZeroMode(device);
       c += "  FLT4 src0 = " + src_tensor.Read3D("X", "Y", z, mode) + ";\n";
@@ -183,8 +196,7 @@ ConvolutionTransposed3x3Thin& ConvolutionTransposed3x3Thin::operator=(
 Status ConvolutionTransposed3x3Thin::Compile(
     const CreationContext& creation_context) {
   const auto code = GenerateConvolutionTransposedCode(
-      definition_.src_tensors[0], definition_.dst_tensors[0],
-      definition_.precision, biases_, IntegralDivideRoundUp(src_channels_, 4),
+      definition_, biases_, IntegralDivideRoundUp(src_channels_, 4),
       IntegralDivideRoundUp(dst_channels_, 4), *creation_context.device,
       linked_operations_);
 
@@ -199,7 +211,7 @@ Status ConvolutionTransposed3x3Thin::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtr()));
+  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetSizeWithDepth()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetSizeWithDepth()));
   return OkStatus();

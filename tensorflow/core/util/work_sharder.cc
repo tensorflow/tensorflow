@@ -20,14 +20,14 @@ limitations under the License.
 
 namespace tensorflow {
 
-/* ABSL_CONST_INIT */ thread_local int per_thread_max_parallism = 1000000;
+/* ABSL_CONST_INIT */ thread_local int per_thread_max_parallelism = 1000000;
 
 void SetPerThreadMaxParallelism(int max_parallelism) {
   CHECK_LE(0, max_parallelism);
-  per_thread_max_parallism = max_parallelism;
+  per_thread_max_parallelism = max_parallelism;
 }
 
-int GetPerThreadMaxParallelism() { return per_thread_max_parallism; }
+int GetPerThreadMaxParallelism() { return per_thread_max_parallelism; }
 
 void Shard(int max_parallelism, thread::ThreadPool* workers, int64 total,
            int64 cost_per_unit, std::function<void(int64, int64)> work) {

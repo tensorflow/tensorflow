@@ -189,6 +189,19 @@ def run_graph_optimizations(graph_def,
   """
   meta_graph = _export_meta_graph(graph_def=graph_def, graph=graph)
 
+  signature = _meta_graph_pb2.SignatureDef()
+  for array in input_arrays:
+    signature.inputs[array.name].name = array.name
+    signature.inputs[array.name].dtype = array.dtype.as_datatype_enum
+    signature.inputs[array.name].tensor_shape.CopyFrom(array.shape.as_proto())
+
+  for array in output_arrays:
+    signature.outputs[array.name].name = array.name
+    signature.outputs[array.name].dtype = array.dtype.as_datatype_enum
+    signature.outputs[array.name].tensor_shape.CopyFrom(array.shape.as_proto())
+
+  meta_graph.signature_def["not_used_key"].CopyFrom(signature)
+
   # We need to add a collection called 'train_op' so that grappler
   # knows what the outputs are.
   fetch_collection = _meta_graph_pb2.CollectionDef()
@@ -279,6 +292,7 @@ def build_debug_info_func(original_graph):
     A function which retrieves the stack traces from the original graph and
     converts them to a `GraphDebugInfo` for a given set of nodes.
   """
+
   def f(original_nodes):
     """Function to create `GraphDebugInfo` for the given `original_nodes`."""
     if not original_graph:
@@ -312,7 +326,7 @@ def get_debug_info(nodes_to_debug_info_func, converted_graph):
 
   Args:
     nodes_to_debug_info_func: The method to collect the op debug info for the
-    nodes.
+      nodes.
     converted_graph: A `GraphDef` after optimization and transfermation.
 
   Returns:

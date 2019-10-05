@@ -23,11 +23,8 @@
 #include "mlir/Analysis/Utils.h"
 
 #include "mlir/Analysis/AffineAnalysis.h"
-#include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
-#include "mlir/IR/Builders.h"
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -847,7 +844,7 @@ MemRefAccess::MemRefAccess(Operation *loadOrStoreOpInst) {
     opInst = loadOrStoreOpInst;
     auto loadMemrefType = loadOp.getMemRefType();
     indices.reserve(loadMemrefType.getRank());
-    for (auto *index : loadOp.getIndices()) {
+    for (auto *index : loadOp.getMapOperands()) {
       indices.push_back(index);
     }
   } else {
@@ -857,7 +854,7 @@ MemRefAccess::MemRefAccess(Operation *loadOrStoreOpInst) {
     memref = storeOp.getMemRef();
     auto storeMemrefType = storeOp.getMemRefType();
     indices.reserve(storeMemrefType.getRank());
-    for (auto *index : storeOp.getIndices()) {
+    for (auto *index : storeOp.getMapOperands()) {
       indices.push_back(index);
     }
   }
@@ -879,6 +876,24 @@ unsigned mlir::getNestingDepth(Operation &op) {
       depth++;
   }
   return depth;
+}
+
+/// Equal if both affine accesses are provably equivalent (at compile
+/// time) when considering the memref, the affine maps and their respective
+/// operands. The equality of access functions + operands is checked by
+/// subtracting fully composed value maps, and then simplifying the difference
+/// using the expression flattener.
+/// TODO: this does not account for aliasing of memrefs.
+bool MemRefAccess::operator==(const MemRefAccess &rhs) const {
+  if (memref != rhs.memref)
+    return false;
+
+  AffineValueMap diff, thisMap, rhsMap;
+  getAccessMap(&thisMap);
+  rhs.getAccessMap(&rhsMap);
+  AffineValueMap::difference(thisMap, rhsMap, &diff);
+  return llvm::all_of(diff.getAffineMap().getResults(),
+                      [](AffineExpr e) { return e == 0; });
 }
 
 /// Returns the number of surrounding loops common to 'loopsA' and 'loopsB',
@@ -916,7 +931,7 @@ static Optional<int64_t> getMemoryFootprintBytes(Block &block,
     if (failed(
             region->compute(opInst,
                             /*loopDepth=*/getNestingDepth(*block.begin())))) {
-      return opInst->emitError("Error obtaining memory region\n");
+      return opInst->emitError("error obtaining memory region\n");
     }
 
     auto it = regions.find(region->memref);

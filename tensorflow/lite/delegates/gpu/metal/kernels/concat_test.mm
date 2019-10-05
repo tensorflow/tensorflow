@@ -28,14 +28,14 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
-using ::tflite::gpu::ConcatAttributes;
 using ::tflite::gpu::Axis;
 using ::tflite::gpu::BHWC;
+using ::tflite::gpu::ConcatAttributes;
 using ::tflite::gpu::DataType;
+using ::tflite::gpu::OperationType;
+using ::tflite::gpu::TensorRef;
 using ::tflite::gpu::metal::CompareVectors;
 using ::tflite::gpu::metal::SingleOpModel;
-using ::tflite::gpu::TensorRef;
-using ::tflite::gpu::OperationType;
 
 @interface ConcatTest : XCTestCase
 @end

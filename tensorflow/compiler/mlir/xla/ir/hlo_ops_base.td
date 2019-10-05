@@ -61,6 +61,17 @@ class BASE_HLO_AbsOp {
   }];
 }
 
+class BASE_HLO_CeilOp {
+  string summary = "Ceil operator";
+
+  string description = [{
+    Returns `Ceil(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
 class BASE_HLO_ConvertOp {
   string summary = "Convert operator";
 
@@ -69,6 +80,17 @@ class BASE_HLO_ConvertOp {
     float to int.
 
     See https://www.tensorflow.org/xla/operation_semantics#convertelementtype.
+  }];
+}
+
+class BASE_HLO_CosOp {
+  string summary = "Cos operator";
+
+  string description = [{
+    Returns `Cos(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
 }
 

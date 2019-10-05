@@ -102,6 +102,15 @@ def load(path, compile=True):  # pylint: disable=redefined-builtin
   return model
 
 
+def _is_graph_network(node):
+  # pylint: disable=protected-access
+  return (
+      isinstance(node, RevivedNetwork) and
+      node._serialized_attributes['metadata'].get('is_graph_network', False) and
+      hasattr(node, '_config'))
+  # pylint: enable=protected-access
+
+
 class KerasObjectLoader(tf_load.Loader):
   """Loader that recreates Keras objects."""
 
@@ -117,8 +126,7 @@ class KerasObjectLoader(tf_load.Loader):
     for node in self._nodes:
       if isinstance(node, RevivedLayer):
         node.built = True
-        is_graph_network = node._serialized_attributes['metadata'].get(
-            'is_graph_network', False)
+        is_graph_network = _is_graph_network(node)
         if not (isinstance(node, models_lib.Sequential) or is_graph_network):
           if hasattr(node.keras_api, 'call_and_return_conditional_losses'):
             node.call = utils.use_wrapped_call(
@@ -135,8 +143,7 @@ class KerasObjectLoader(tf_load.Loader):
           inputs = call_fn.input_signature[0]
 
         # Set model inputs and outputs.
-        is_graph_network = node._serialized_attributes['metadata'].get(
-            'is_graph_network', False)
+        is_graph_network = _is_graph_network(node)
         if isinstance(node, models_lib.Sequential):
           with trackable.no_automatic_dependency_tracking_scope(node):
             node._layers = []

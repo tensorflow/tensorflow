@@ -42,6 +42,9 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
 
 #else  // RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
+namespace {
+namespace intrin_utils {
+
 inline std::int32_t mm512_get1_epi32(const __m512i v, int i) {
   __m256i a =
       i < 8 ? _mm512_extracti32x8_epi32(v, 0) : _mm512_extracti32x8_epi32(v, 1);
@@ -63,14 +66,12 @@ inline std::int32_t mm512_get1_epi32(const __m512i v, int i) {
     case 7:
       return _mm256_extract_epi32(a, 7);
     default:
-      RUY_DCHECK(i < 16);
+      RUY_DCHECK_LT(i, 16);
       return 0;
   }
 }
-
-inline __m512i mm512_set1_epi32(__m512i* v, int i, std::int32_t x) {
-  return *v = _mm512_mask_set1_epi32(*v, 1 << i, x);
-}
+}  // namespace intrin_utils
+}  // namespace
 
 void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
   gemmlowp::ScopedProfilingLabel label("Kernel kAvx512");
@@ -106,24 +107,17 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
       const int residual_cols = std::min(params.dst_cols - col, 16);
 
       __m512i accum_data_v[16];
-      __m512i accum_data_v_low[16];
-      __m512i accum_data_v_high[16];
 
       // Initialize with bias.
       const __mmask16 row_mask =
           (static_cast<std::uint32_t>(1) << residual_rows) - 1;
       const __m512i initial_accum_data =
           _mm512_maskz_loadu_epi32(row_mask, bias_ptr);
-      __m512i initial_accum_data_low = initial_accum_data;
-      __m512i initial_accum_data_high = _mm512_setzero_epi32();
       bias_ptr += bias_ptr_block_increment;
 
       for (int j = 0; j < 16; ++j) {
-        accum_data_v_low[j] = initial_accum_data_low;
-        accum_data_v_high[j] = initial_accum_data_high;
+        accum_data_v[j] = initial_accum_data;
       }
-
-      //
 
       const std::int8_t* lhs_ptr = lhs_col_ptr;
       const std::int8_t* rhs_ptr = rhs_col_ptr;
@@ -154,20 +148,16 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
           __m512i rhs_16_bit_dup_high =
               _mm512_cvtepi8_epi16(dup_rhs_element_high);
 
-          accum_data_v_low[j] = _mm512_add_epi32(
-              accum_data_v_low[j],
+          accum_data_v[j] = _mm512_add_epi32(
+              accum_data_v[j],
               _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
-          accum_data_v_high[j] = _mm512_add_epi32(
-              accum_data_v_high[j],
+          accum_data_v[j] = _mm512_add_epi32(
+              accum_data_v[j],
               _mm512_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
         }
 
         lhs_ptr += 16 * 4;
         rhs_ptr += 16 * 4;
-      }
-      for (int j = 0; j < 16; ++j) {
-        accum_data_v[j] =
-            _mm512_add_epi32(accum_data_v_low[j], accum_data_v_high[j]);
       }
 
       // Move most of this up to bias, or even outside row loop.
@@ -193,8 +183,8 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
 
         for (int j = 0; j < 16; ++j) {
           accum_data_v[j] = _mm512_sub_epi32(
-              accum_data_v[j],
-              _mm512_set1_epi32(mm512_get1_epi32(non_lhs_sums_offset, j)));
+              accum_data_v[j], _mm512_set1_epi32(intrin_utils::mm512_get1_epi32(
+                                   non_lhs_sums_offset, j)));
         }
       }
 
@@ -421,7 +411,11 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
         const float* rhs_ptr = rhs_col_ptr + 8 * mmm;
         for (int d = 0; d < (params.depth - 1); ++d) {
           const __m512 lhs_data = _mm512_loadu_ps(lhs_ptr);
-          const __m256 rhs_data = _mm256_loadu_ps(rhs_ptr);
+          // In this version RHS values are loaded individually rather than
+          // first loading together and then extract with broadcasting. This is
+          // because AVX flavours and instrinsics and compilers in combination
+          // do not handle this pattern of extraction very well.
+          const float* rhs_data = rhs_ptr;
           lhs_ptr += 16;
           rhs_ptr += 16;
 
@@ -454,7 +448,7 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
         }
         {
           const __m512 lhs_data = _mm512_loadu_ps(lhs_ptr);
-          const __m256 rhs_data = _mm256_loadu_ps(rhs_ptr);
+          const float* rhs_data = rhs_ptr;
           {
             const __m512 dup_rhs_element_j0 = _mm512_set1_ps(rhs_data[0]);
             accum_data_v0 =
@@ -526,7 +520,7 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
         const float* rhs_ptr = rhs_col_ptr + 8 * mmm;
         for (int d = 0; d < (params.depth - 1); ++d) {
           const __m512 lhs_data = _mm512_loadu_ps(lhs_ptr);
-          const __m256 rhs_data = _mm256_loadu_ps(rhs_ptr);
+          const float* rhs_data = rhs_ptr;
           lhs_ptr += 16;
           rhs_ptr += 16;
           {
@@ -558,7 +552,7 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
         }
         {
           const __m512 lhs_data = _mm512_loadu_ps(lhs_ptr);
-          const __m256 rhs_data = _mm256_loadu_ps(rhs_ptr);
+          const float* rhs_data = rhs_ptr;
           {
             const __m512 dup_rhs_element_j0 = _mm512_set1_ps(rhs_data[0]);
             accum_data_v0 =
@@ -646,7 +640,7 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
         const float* rhs_ptr = rhs_col_ptr + 8 * mmm;
         for (int d = 0; d < (params.depth - 1); ++d) {
           const __m512 lhs_data = _mm512_loadu_ps(lhs_ptr);
-          const __m256 rhs_data = _mm256_loadu_ps(rhs_ptr);
+          const float* rhs_data = rhs_ptr;
           lhs_ptr += 16;
           rhs_ptr += 16;
           {
@@ -678,7 +672,7 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
         }
         {
           const __m512 lhs_data = _mm512_loadu_ps(lhs_ptr);
-          const __m256 rhs_data = _mm256_loadu_ps(rhs_ptr);
+          const float* rhs_data = rhs_ptr;
           {
             const __m512 dup_rhs_element_j0 = _mm512_set1_ps(rhs_data[0]);
             accum_data_v0 =
@@ -777,7 +771,7 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
         const float* rhs_ptr = rhs_col_ptr + 8 * mmm;
         for (int d = 0; d < params.depth; ++d) {
           const __m512 lhs_data = _mm512_loadu_ps(lhs_ptr);
-          const __m256 rhs_data = _mm256_loadu_ps(rhs_ptr);
+          const float* rhs_data = rhs_ptr;
 
           for (int j = 0; j < 8; ++j) {
             const __m512 dup_rhs_element_j = _mm512_set1_ps(rhs_data[j]);

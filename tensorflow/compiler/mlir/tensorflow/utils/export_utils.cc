@@ -112,6 +112,17 @@ Status ConvertAttribute(const mlir::StringAttr& attr, AttrValue* value) {
   return Status::OK();
 }
 
+Status ConvertAttribute(mlir::Type type, AttrValue* value) {
+  DataType dtype;
+  TF_RETURN_IF_ERROR(ConvertToDataType(type, &dtype));
+  value->set_type(dtype);
+  return Status::OK();
+}
+
+Status ConvertAttribute(const mlir::TypeAttr& type, AttrValue* value) {
+  return ConvertAttribute(type.getValue(), value);
+}
+
 Status ConvertAttribute(const mlir::UnitAttr& attr, AttrValue* value) {
   value->clear_value();
   return Status::OK();
@@ -152,9 +163,18 @@ Status ConvertAttribute(const mlir::ArrayAttr& attr, AttrValue* value) {
       TF_RETURN_IF_ERROR(ConvertToTensorProto(attr, &tensor));
       *list->add_tensor() = tensor;
     } else if (auto attr = a.dyn_cast<mlir::SymbolRefAttr>()) {
-      AttrValue attrVal;
-      TF_RETURN_IF_ERROR(ConvertAttribute(attr, &attrVal));
-      *list->add_func() = attrVal.func();
+      AttrValue attr_val;
+      TF_RETURN_IF_ERROR(ConvertAttribute(attr, &attr_val));
+      *list->add_func() = attr_val.func();
+    } else if (auto attr = a.dyn_cast<mlir::TypeAttr>()) {
+      AttrValue attr_val;
+      // For type attributes, we only propagate the element type.
+      mlir::Type elt_type = attr.getValue();
+      if (auto shaped_type = elt_type.dyn_cast<mlir::ShapedType>()) {
+        elt_type = shaped_type.getElementType();
+      }
+      TF_RETURN_IF_ERROR(ConvertAttribute(elt_type, &attr_val));
+      list->add_type(attr_val.type());
     } else {
       return errors::Unimplemented("Unhandled attribute!");
     }
@@ -262,7 +282,7 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       ConvertAttributes(inst->getAttrs(), attrs_to_ignore,
                         node_def->mutable_attr()),
-      "TensorFlow node name: ", name.str());
+      "while converting attributes for node: ", name.str());
 
   // Add the node debug info.
   TF_RETURN_IF_ERROR(ConvertLocation(
@@ -327,13 +347,21 @@ Status ConvertAttributes(
         TF_RETURN_IF_ERROR(
             ConvertAttribute(attr.cast<mlir::ElementsAttr>(), &value));
         break;
+      case mlir::StandardAttributes::Type:
+        TF_RETURN_IF_ERROR(
+            ConvertAttribute(attr.cast<mlir::TypeAttr>(), &value));
+        break;
       case mlir::StandardAttributes::Unit:
         TF_RETURN_IF_ERROR(
             ConvertAttribute(attr.cast<mlir::UnitAttr>(), &value));
         break;
-      // AffineMap and Type kinds are not implemented.
+      // AffineMap kind is not implemented.
+      case mlir::StandardAttributes::AffineMap:
+        return errors::Unimplemented("AffineMap attribute (needed for '",
+                                     name_strref, "') unimplemented");
       default:
-        return errors::Unimplemented("Unhandled attribute kind");
+        return errors::Unimplemented("Unhandled attribute kind for attribute '",
+                                     name_strref, '\'');
     }
     // According to the NodeDef proto definition, an attribute name from the
     // input TensorFlow GraphDef shouldn't contain '.'. If it does appear in
@@ -361,7 +389,7 @@ Status SetAttribute(absl::string_view name, mlir::Type type,
                     AttrValueMap* values) {
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertScalarTypeToDataType(type, &dtype));
-
+  if (tensorflow::IsRefType(dtype)) dtype = tensorflow::RemoveRefType(dtype);
   AttrValue value;
   value.set_type(dtype);
 

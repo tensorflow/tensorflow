@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 from absl import logging
 
 from tensorflow.core.protobuf.tensorflow_server_pb2 import ServerDef
@@ -125,11 +124,12 @@ def connect_to_cluster(cluster_spec_or_resolver,
     job_def.tasks[0] = "localhost:{}".format(local_port)
 
   server_def = ServerDef(
-      cluster=cluster_def, job_name=job_name, task_index=task_index,
-      protocol=protocol)
+      cluster=cluster_def,
+      job_name=job_name,
+      task_index=task_index,
+      protocol=protocol,
+      default_session_config=context.context().config)
 
-  # TODO(nareshmodi): Make this default since it works in more situations.
-  os.environ["TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC"] = "1"
   context.set_server_def(server_def)
 
   if make_master_device_default and isinstance(

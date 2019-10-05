@@ -32,15 +32,13 @@ from sklearn.preprocessing import StandardScaler
 
 from tensorflow.python import keras
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.wrappers import scikit_learn
 from tensorflow.python.platform import test
 
 from keras import backend as K
 from keras.layers import Activation, Concatenate, Conv2D, Dense, Flatten, Input
 from keras.models import Model, Sequential
 from keras.utils.np_utils import to_categorical
-
-from keras.wrappers.scikit_learn import (BaseWrapper, KerasClassifier,
-                                         KerasRegressor)
 
 INPUT_DIM = 5
 HIDDEN_DIM = 5
@@ -119,7 +117,7 @@ class ScikitLearnAPIWrapperTest(test.TestCase):
 
   def test_classify_build_fn(self):
     with self.cached_session():
-      clf = KerasClassifier(
+      clf = scikit_learn.KerasClassifier(
           build_fn=build_fn_clf,
           hidden_dim=HIDDEN_DIM,
           batch_size=BATCH_SIZE,
@@ -135,7 +133,7 @@ class ScikitLearnAPIWrapperTest(test.TestCase):
         return build_fn_clf(input_shape, output_shape, hidden_dim)
 
     with self.cached_session():
-      clf = KerasClassifier(
+      clf = scikit_learn.KerasClassifier(
           build_fn=ClassBuildFnClf(),
           hidden_dim=HIDDEN_DIM,
           batch_size=BATCH_SIZE,
@@ -145,7 +143,7 @@ class ScikitLearnAPIWrapperTest(test.TestCase):
 
   def test_classify_inherit_class_build_fn(self):
 
-    class InheritClassBuildFnClf(KerasClassifier):
+    class InheritClassBuildFnClf(scikit_learn.KerasClassifier):
 
       def __call__(self, input_shape, output_shape, hidden_dim):
         return build_fn_clf(input_shape, output_shape, hidden_dim)
@@ -161,7 +159,7 @@ class ScikitLearnAPIWrapperTest(test.TestCase):
 
   def test_regression_build_fn(self):
     with self.cached_session():
-      reg = KerasRegressor(
+      reg = scikit_learn.KerasRegressor(
           build_fn=build_fn_reg,
           hidden_dim=HIDDEN_DIM,
           batch_size=BATCH_SIZE,
@@ -177,7 +175,7 @@ class ScikitLearnAPIWrapperTest(test.TestCase):
         return build_fn_reg(input_shape, output_shape, hidden_dim)
 
     with self.cached_session():
-      reg = KerasRegressor(
+      reg = scikit_learn.KerasRegressor(
           build_fn=ClassBuildFnReg(),
           hidden_dim=HIDDEN_DIM,
           batch_size=BATCH_SIZE,
@@ -187,7 +185,7 @@ class ScikitLearnAPIWrapperTest(test.TestCase):
 
   def test_regression_inherit_class_build_fn(self):
 
-    class InheritClassBuildFnReg(KerasRegressor):
+    class InheritClassBuildFnReg(scikit_learn.KerasRegressor):
 
       def __call__(self, input_shape, output_shape, hidden_dim):
         return build_fn_reg(input_shape, output_shape, hidden_dim)
@@ -282,13 +280,13 @@ def build_fn_multi(input_shape, output_shape, hidden_layer_sizes=[]):
     return model
 
 
-CONFIG = {'MLPRegressor': (load_boston, KerasRegressor, build_fn_regs,
+CONFIG = {'MLPRegressor': (load_boston, scikit_learn.KerasRegressor, build_fn_regs,
                            (BaggingRegressor, AdaBoostRegressor)),
-          'MLPClassifier': (load_iris, KerasClassifier, build_fn_clss,
+          'MLPClassifier': (load_iris, scikit_learn.KerasClassifier, build_fn_clss,
                             (BaggingClassifier, AdaBoostClassifier)),
-          'CNNClassifier': (load_digits8x8, KerasClassifier, build_fn_clscs,
+          'CNNClassifier': (load_digits8x8, scikit_learn.KerasClassifier, build_fn_clscs,
                             (BaggingClassifier, AdaBoostClassifier)),
-          'CNNClassifierF': (load_digits8x8, KerasClassifier, build_fn_clscf,
+          'CNNClassifierF': (load_digits8x8, scikit_learn.KerasClassifier, build_fn_clscf,
                              (BaggingClassifier, AdaBoostClassifier))}
 
 
@@ -336,7 +334,7 @@ def test_calibratedclassifiercv():
     """Tests compatibility with Scikit-learn's calibrated classifier CV."""
     for config in ['MLPClassifier']:
         loader, _, build_fn, _ = CONFIG[config]
-        base_estimator = KerasClassifier(build_fn, epochs=1)
+        base_estimator = scikit_learn.KerasClassifier(build_fn, epochs=1)
         estimator = CalibratedClassifierCV(base_estimator=base_estimator)
         check(estimator, loader)
 
@@ -345,7 +343,7 @@ def test_transformedtargetregressor():
     """Tests compatibility with Scikit-learn's transformed target regressor."""
     for config in ['MLPRegressor']:
         loader, _, build_fn, _ = CONFIG[config]
-        base_estimator = KerasCRegressor(build_fn, epochs=1)
+        base_estimator = scikit_learn.KerasRegressor(build_fn, epochs=1)
         estimator = TransformedTargetRegressor(regressor=base_estimator,
                                                transformer=StandardScaler())
         check(estimator, loader)
@@ -353,7 +351,7 @@ def test_transformedtargetregressor():
 
 def test_standalone_multi():
     """Tests standalone estimator with multiple inputs and outputs."""
-    estimator = BaseWrapper(build_fn_multi, epochs=1)
+    estimator = scikit_learn.BaseWrapper(build_fn_multi, epochs=1)
     data = load_iris()
     features = data.data
     klass = data.target.reshape((-1, 1)).astype(np.float32)

@@ -22,6 +22,7 @@ import os
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python import tf2
 from tensorflow.python.client import session
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -45,7 +46,7 @@ class TestModels(test_util.TensorFlowTestCase):
 
   def _run(self, flags_str, should_succeed):
     output_file = os.path.join(self.get_temp_dir(), 'model.tflite')
-    tflite_bin = resource_loader.get_path_to_datafile('tflite_convert.par')
+    tflite_bin = resource_loader.get_path_to_datafile('tflite_convert')
     cmdline = '{0} --output_file={1} {2}'.format(tflite_bin, output_file,
                                                  flags_str)
 
@@ -54,9 +55,9 @@ class TestModels(test_util.TensorFlowTestCase):
       with gfile.Open(output_file, 'rb') as model_file:
         content = model_file.read()
       self.assertEqual(content is not None, should_succeed)
+      os.remove(output_file)
     else:
       self.assertFalse(should_succeed)
-    os.remove(output_file)
 
   def _getKerasModelFile(self):
     x = np.array([[1.], [2.]])
@@ -76,7 +77,11 @@ class TestModels(test_util.TensorFlowTestCase):
 
 class TfLiteConvertV1Test(TestModels):
 
-  @test_util.run_v1_only('b/138396996, b/139096799')
+  def _run(self, flags_str, should_succeed):
+    if tf2.enabled():
+      flags_str += ' --enable_v1_converter'
+    super(TfLiteConvertV1Test, self)._run(flags_str, should_succeed)
+
   def testFrozenGraphDef(self):
     with ops.Graph().as_default():
       in_tensor = array_ops.placeholder(
@@ -156,6 +161,14 @@ class TfLiteConvertV2Test(TestModels):
                  .format(keras_file))
     self._run(flags_str, should_succeed=True)
     os.remove(keras_file)
+
+  def testMissingRequired(self):
+    self._run('--invalid_args', should_succeed=False)
+
+  def testMutuallyExclusive(self):
+    self._run(
+        '--keras_model_file=model.h5 --saved_model_dir=/tmp/',
+        should_succeed=False)
 
 
 if __name__ == '__main__':

@@ -31,7 +31,6 @@ from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
-from tensorflow.python.distribute import values as distribute_values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import function
@@ -84,6 +83,8 @@ _TF_OP_LAYER_NAME_PREFIX = 'tf_op_layer_'
 
 _keras_layers_gauge = monitoring.BoolGauge('/tensorflow/api/keras/layers',
                                            'keras layers usage', 'method')
+_keras_model_gauge = monitoring.BoolGauge(
+    '/tensorflow/api/keras/premade_models', 'premade keras model usage', 'type')
 
 
 @keras_export('keras.layers.Layer')
@@ -148,122 +149,10 @@ class Layer(module.Module):
   `Layer.dtype` property. The dtype is specified with the `dtype` constructor
   argument. In TensorFlow 2, the dtype defaults to `tf.keras.backend.floatx()`
   if no dtype is passed. `floatx()` itself defaults to "float32". Additionally,
-  layers will cast their inputs to the layer's dtype in TensorFlow 2. For
-  example:
-
-  ```
-  x = tf.ones((4, 4, 4, 4), dtype='float64')
-  layer = tf.keras.layers.Conv2D(filters=4, kernel_size=2)
-  print(layer.dtype)  # float32
-
-  # `layer` casts it's inputs to layer.dtype, which is float32, and does
-  # computations in float32.
-  y = layer(x)
-  ```
-
-  Currently, only tensors in the first argument to the layer's `call` method are
-  casted. For example:
-
-  ```
-  class MyLayer(tf.keras.layers.Layer):
-    # Bug! `b` will not be casted.
-    def call(self, a, b):
-      return a + 1., b + 1.
-
-  a = tf.constant(1., dtype="float32")
-  b = tf.constant(1., dtype="float32")
-
-  layer = MyLayer(dtype="float64")
-  x, y = layer(a, b)
-  print(x.dtype)  # float64
-  print(y.dtype)  # float32. Not casted since `b` was not passed to first input
-  ```
-
-  It is recommended to accept tensors only in the first argument. This way,
-  all tensors are casted to the layer's dtype. `MyLayer` should therefore be
-  written as:
-
-  ```
-  class MyLayer(tf.keras.layers.Layer):
-    # Now, all tensor inputs will be casted.
-    def call(self, inputs):
-      a, b = inputs
-      return a + 1., b + 1.
-
-  a = tf.constant(1., dtype="float32")
-  b = tf.constant(1., dtype="float32")
-
-  layer = MyLayer(dtype="float64")
-  x, y = layer((a, b))
-  print(x.dtype)  # float64
-  print(y.dtype)  # float64.
-  ```
-
-  In a future minor release, tensors in other arguments may be casted as well.
-
-  Currently, other arguments are not automatically casted for
-  technical reasons, but this may change in a future minor release.
-
-  A layer subclass can prevent its inputs from being autocasted by passing
-  `autocast=False` to the layer constructor. For example:
-
-  ```
-  class MyLayer(tf.keras.layers.Layer):
-
-    def __init__(self, **kwargs):
-      kwargs['autocast']=False
-      super(MyLayer, self).__init__(**kwargs)
-
-    def call(self, inp):
-      return inp
-
-  x = tf.ones((4, 4, 4, 4), dtype='float64')
-  layer = MyLayer()
-  print(layer.dtype)  # float32.
-  y = layer(x)  # MyLayer will not cast inputs to it's dtype of float32
-  print(y.dtype)  # float64
-  ```
-
-  #### Running models in float64 in TensorFlow 2
-
-  If you want to run a Model in float64, you can set floatx to be float64 by
-  calling `tf.keras.backend.set_floatx('float64')`. This will cause all layers
-  to default to float64 instead of float32:
-
-  ```
-  tf.keras.backend.set_floatx('float64')
-  layer1 = tf.keras.layers.Dense(4)
-  layer2 = tf.keras.layers.Dense(4)
-
-  x = tf.ones((4, 4))
-  y = layer2(layer1(x))  # Both layers run in float64
-  ```
-
-  Alternatively, you can pass `dtype='float64'` to each individual layer. Note
-  that if you have any layers which contain other layers as members, you must
-  ensure each sublayer gets `dtype='float64'` passed to it's constructor as
-  well:
-
-  ```
-  layer1 = tf.keras.layers.Dense(4, dtype='float64')
-  layer2 = tf.keras.layers.Dense(4, dtype='float64')
-
-  x = tf.ones((4, 4))
-  y = layer2(layer1(x))  # Both layers run in float64
-
-  class NestedLayer(tf.keras.layers.Layer):
-    def __init__(self, **kwargs):
-      super(NestedLayer, self).__init__(**kwargs)
-      self.dense = tf.keras.layers.Dense(4, dtype=kwargs.get('dtype'))
-
-    def call(self, inp):
-      return self.dense(inp)
-
-  layer3 = NestedLayer(dtype='float64')
-  z = layer3(x)  # layer3's dense layer runs in float64, since NestedLayer
-                 # correcty passed it's dtype to it's dense layer
-
-  ```
+  layers will cast their inputs to the layer's dtype in TensorFlow 2. When mixed
+  precision is used, layers may have different computation and variable dtypes.
+  See `tf.keras.mixed_precision.experimental.Policy` for details on layer
+  dtypes.
   """
 
   # See tf.Module for the usage of this property.
@@ -396,6 +285,27 @@ class Layer(module.Module):
     return inputs
 
   @doc_controls.for_subclass_implementers
+  def _add_trackable(self, trackable_object, trainable):
+    """Adds a Trackable object to this layer's state.
+
+    Arguments:
+      trackable_object: The tf.tracking.Trackable object to add.
+      trainable: Boolean, whether the variable should be part of the layer's
+        "trainable_variables" (e.g. variables, biases) or
+        "non_trainable_variables" (e.g. BatchNorm mean and variance).
+
+    Returns:
+      The tf.tracking.Trackable object.
+    """
+    if trainable:
+      self._trainable_weights.append(
+          base_layer_utils.TrackableWeightHandler(trackable_object))
+    else:
+      self._non_trainable_weights.append(
+          base_layer_utils.TrackableWeightHandler(trackable_object))
+    return trackable_object
+
+  @doc_controls.for_subclass_implementers
   def add_weight(self,
                  name=None,
                  shape=None,
@@ -503,10 +413,7 @@ class Layer(module.Module):
       old_getter = getter
       def getter(*args, **kwargs):  # pylint: disable=function-redefined
         variable = old_getter(*args, **kwargs)
-        if isinstance(variable, distribute_values.DistributedVariable):
-          return autocast_variable.AutoCastDistributedVariable(variable)
-        else:
-          return autocast_variable.AutoCastVariable(variable)
+        return autocast_variable.create_autocast_variable(variable)
 
     variable = self._add_variable_with_custom_getter(
         name=name,
@@ -561,8 +468,10 @@ class Layer(module.Module):
     config = {'name': self.name, 'trainable': self.trainable}
     if hasattr(self, '_batch_input_shape'):
       config['batch_input_shape'] = self._batch_input_shape
+    # TODO(reedwm): Remove the hasattr(self, 'dtype') check. All layers have a
+    # dtype.
     if hasattr(self, 'dtype'):
-      config['dtype'] = self.dtype
+      config['dtype'] = policy.serialize(self._dtype_policy)
     if hasattr(self, 'dynamic'):
       # Only include `dynamic` in the `config` if it is `True`
       if self.dynamic:
@@ -577,7 +486,6 @@ class Layer(module.Module):
     if len(extra_args) > 1 and hasattr(self.get_config, '_is_default'):
       raise NotImplementedError('Layers with arguments in `__init__` must '
                                 'override `get_config`.')
-    # TODO(reedwm): Handle serializing self._dtype_policy.
     return config
 
   @classmethod
@@ -1338,22 +1246,39 @@ class Layer(module.Module):
             layer's specifications.
     """
     params = self.weights
-    if len(params) != len(weights):
-      raise ValueError('You called `set_weights(weights)` on layer "' +
-                       self.name + '" with a  weight list of length ' +
-                       str(len(weights)) + ', but the layer was expecting ' +
-                       str(len(params)) + ' weights. Provided weights: ' +
-                       str(weights)[:50] + '...')
-    if not params:
-      return
+
+    expected_num_weights = 0
+    for param in params:
+      if isinstance(param, base_layer_utils.TrackableWeightHandler):
+        expected_num_weights += param.num_tensors
+      else:
+        expected_num_weights += 1
+
+    if expected_num_weights != len(weights):
+      raise ValueError(
+          'You called `set_weights(weights)` on layer "%s" '
+          'with a weight list of length %s, but the layer was '
+          'expecting %s weights. Provided weights: %s...' %
+          (self.name, len(weights), expected_num_weights, str(weights)[:50]))
+
+    weight_index = 0
     weight_value_tuples = []
-    for p, w in zip(params, weights):
-      ref_shape = p.shape
-      if not ref_shape.is_compatible_with(w.shape):
-        raise ValueError('Layer weight shape ' + str(ref_shape) +
-                         ' not compatible with '
-                         'provided weight shape ' + str(w.shape))
-      weight_value_tuples.append((p, w))
+    for param in params:
+      if isinstance(param, base_layer_utils.TrackableWeightHandler):
+        num_tensors = param.num_tensors
+        tensors = weights[weight_index:weight_index + num_tensors]
+        param.set_weights(tensors)
+        weight_index += num_tensors
+      else:
+        weight = weights[weight_index]
+        ref_shape = param.shape
+        if not ref_shape.is_compatible_with(weight.shape):
+          raise ValueError(
+              'Layer weight shape %s not compatible with provided weight '
+              'shape %s' % (ref_shape, weight.shape))
+        weight_value_tuples.append((param, weight))
+        weight_index += 1
+
     backend.batch_set_value(weight_value_tuples)
 
   def get_weights(self):
@@ -1362,8 +1287,14 @@ class Layer(module.Module):
     Returns:
         Weights values as a list of numpy arrays.
     """
-    params = self.weights
-    return backend.batch_get_value(params)
+    weights = self.weights
+    output_weights = []
+    for weight in weights:
+      if isinstance(weight, base_layer_utils.TrackableWeightHandler):
+        output_weights.extend(weight.get_tensors())
+      else:
+        output_weights.append(weight)
+    return backend.batch_get_value(output_weights)
 
   def get_updates_for(self, inputs):
     """Retrieves updates relevant to a specific set of inputs.
@@ -1747,18 +1678,12 @@ class Layer(module.Module):
     """Sets self._dtype_policy."""
     if isinstance(dtype, policy.Policy):
       self._dtype_policy = dtype
+    elif isinstance(dtype, dict):
+      self._dtype_policy = policy.deserialize(dtype)
     elif dtype:
       self._dtype_policy = policy.Policy(dtypes.as_dtype(dtype).name)
     else:
       self._dtype_policy = policy.global_policy()
-
-    if self._dtype_policy.should_cast_variables and backend.is_tpu_strategy(
-        ds_context.get_strategy()):
-      # TODO(b/137859335): Supoprt this. AutoCastVariables currently do not work
-      # properly when wrapping TPUMirroredVariables.
-      raise ValueError('DType Policies ending in "_with_float32_vars" are '
-                       'not yet supported with TPUStrategy. Got policy: %s' %
-                       self._dtype_policy.name)
 
     # This has no impact on the layer behavior, and is only used for printing
     # warnings.
@@ -2463,6 +2388,20 @@ class Layer(module.Module):
     return (self._trackable_saved_model_saver
             .list_functions_for_serialization(serialization_cache))
 
+  def __getstate__(self):
+    # Override to support `copy.deepcopy` and pickling.
+    # Thread-local objects cannot be copied in Python 3, so pop these.
+    # Thread-local objects are used to cache losses in MirroredStrategy, and
+    # so shouldn't be copied.
+    state = self.__dict__.copy()
+    state.pop('_thread_local', None)
+    return state
+
+  def __setstate__(self, state):
+    state['_thread_local'] = threading.local()
+    # Bypass Trackable logic as `__dict__` already contains this info.
+    object.__setattr__(self, '__dict__', state)
+
 
 class TensorFlowOpLayer(Layer):
   """Wraps a TensorFlow Operation in a Layer.
@@ -2560,7 +2499,7 @@ class TensorFlowOpLayer(Layer):
         attrs.append(attr_name)
         attrs.append(op.get_attr(attr_name))
       attrs = tuple(attrs)
-      execute.record_gradient(op_type, op.inputs, attrs, op.outputs, op.name)
+      execute.record_gradient(op_type, op.inputs, attrs, op.outputs)
 
       if len(op.outputs) == 1:
         return op.outputs[0]

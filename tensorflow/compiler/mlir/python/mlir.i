@@ -17,6 +17,9 @@ limitations under the License.
 
 %{
 
+#include "mlir/Pass/PassRegistry.h"
+#include "mlir/Pass/PassManager.h"
+#include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
@@ -29,7 +32,7 @@ namespace swig {
 // returning it as a string.
 // This is an early experimental API, ideally we should return a wrapper object
 // around a Python binding to the MLIR module.
-string ImportGraphDef(const string &proto, TF_Status* status) {
+string ImportGraphDef(const string &proto, const string &pass_pipeline, TF_Status* status) {
   GraphDef graphdef;
   auto s = tensorflow::LoadProtoFromBuffer(proto, &graphdef);
   if (!s.ok()) {
@@ -37,7 +40,7 @@ string ImportGraphDef(const string &proto, TF_Status* status) {
     return "// error";
   }
   GraphDebugInfo debug_info;
-  NodeSpecs specs;
+  GraphImportConfig specs;
   mlir::MLIRContext context;
   auto module = ConvertGraphdefToMlir(graphdef, debug_info, specs, &context);
   if (!module.ok()) {
@@ -45,7 +48,70 @@ string ImportGraphDef(const string &proto, TF_Status* status) {
     return "// error";
   }
 
+  // Run the pass_pipeline on the module if not empty.
+  if (!pass_pipeline.empty()) {
+    mlir::PassManager pm(&context);
+    std::string error;
+    llvm::raw_string_ostream error_stream(error);
+    if (failed(mlir::parsePassPipeline(pass_pipeline, pm, error_stream))) {
+      TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                   ("Invalid pass_pipeline: " + error_stream.str()).c_str());
+      return "// error";
+    }
+
+    mlir::StatusScopedDiagnosticHandler statusHandler(&context);
+    if (failed(pm.run(*module.ValueOrDie()))) {
+      Set_TF_Status_from_Status(status, statusHandler.ConsumeStatus());
+      return "// error";
+    }
+  }
   return MlirModuleToString(*module.ConsumeValueOrDie());
+}
+
+// Load a SavedModel and return a textual MLIR string corresponding to it.
+//
+// Args:
+//   saved_model_path: File path from which to load the SavedModel.
+//   exported_names_str: Comma-separated list of names to export.
+//                       Empty means "export all".
+//
+// Returns:
+//   A string of textual MLIR representing the raw imported SavedModel.
+string ExperimentalConvertSavedModelToMlir(
+    const string &saved_model_path,
+    const string &exported_names_str,
+    TF_Status* status) {
+  // Load the saved model into a SavedModelBundle.
+
+  // TODO(silvasean): Add support for tags, if needed.
+  // The default "serve" tag seems to be enough.
+  std::unordered_set<string> tags;
+  tags.insert("serve");
+  SessionOptions session_options;
+  RunOptions run_options;
+  tensorflow::SavedModelBundle bundle;
+  auto load_status = LoadSavedModel(session_options, run_options,
+                                    saved_model_path, tags, &bundle);
+  if (!load_status.ok()) {
+    Set_TF_Status_from_Status(status, load_status);
+    return "// error";
+  }
+
+  // Convert the SavedModelBundle to an MLIR module.
+
+  std::vector<string> exported_names =
+      absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
+  // TODO(silvasean): Use SaveOptions.save_debug_info to get debug info.
+  GraphDebugInfo debug_info;
+  mlir::MLIRContext context;
+  auto module_or = ConvertSavedModelToMlir(bundle, debug_info, &context,
+      absl::Span<std::string>(exported_names));
+  if (!module_or.status().ok()) {
+    Set_TF_Status_from_Status(status, module_or.status());
+    return "// error";
+  }
+
+  return MlirModuleToString(*module_or.ConsumeValueOrDie());
 }
 
 }  // namespace swig
@@ -58,17 +124,31 @@ string ImportGraphDef(const string &proto, TF_Status* status) {
 %unignore tensorflow;
 %unignore tensorflow::swig;
 %unignore tensorflow::swig::ImportGraphDef;
+%unignore tensorflow::swig::ExperimentalConvertSavedModelToMlir;
 
 // Wrap this function
 namespace tensorflow {
 namespace swig {
-static string ImportGraphDef(const string &graphdef, TF_Status* status);
+static string ImportGraphDef(const string &graphdef,
+                             const string &pass_pipeline,
+                             TF_Status* status);
+static string ExperimentalConvertSavedModelToMlir(
+    const string &saved_model_path,
+    const string &exported_names,
+    TF_Status* status);
 }  // namespace swig
 }  // namespace tensorflow
 
 %insert("python") %{
-def import_graphdef(graphdef):
-  return ImportGraphDef(str(graphdef).encode('utf-8')).decode('utf-8');
+def import_graphdef(graphdef, pass_pipeline):
+  return ImportGraphDef(str(graphdef).encode('utf-8'), pass_pipeline.encode('utf-8')).decode('utf-8');
+
+def experimental_convert_saved_model_to_mlir(saved_model_path,
+                                             exported_names):
+  return ExperimentalConvertSavedModelToMlir(
+    str(saved_model_path).encode('utf-8'),
+    str(exported_names).encode('utf-8')
+  ).decode('utf-8');
 %}
 
 %unignoreall

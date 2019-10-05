@@ -19,10 +19,9 @@
 #else
 #define TEST_OPS
 
-#ifdef OP_BASE
-#else
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
+include "mlir/Analysis/CallInterfaces.td"
+include "mlir/Analysis/InferTypeOpInterface.td"
 
 def TEST_Dialect : Dialect {
   let name = "test";
@@ -119,13 +118,13 @@ def TypeArrayAttrOp : TEST_Op<"type_array_attr"> {
 }
 def TypeStringAttrWithTypeOp : TEST_Op<"string_attr_with_type"> {
   let arguments = (ins StrAttr:$attr);
-  let printer = [{ *p << getAttr("attr"); }];
+  let printer = [{ p << getAttr("attr"); }];
   let parser = [{
     Attribute attr;
     Type stringType = OpaqueType::get(Identifier::get("foo",
-                                      result->getContext()), "string",
-                                      result->getContext());
-    return parser->parseAttribute(attr, stringType, "attr", result->attributes);
+                                      result.getContext()), "string",
+                                      result.getContext());
+    return parser.parseAttribute(attr, stringType, "attr", result.attributes);
   }];
 }
 
@@ -162,6 +161,23 @@ def I64EnumAttrOp : TEST_Op<"i64_enum_attr"> {
   let results = (outs I32:$val);
 }
 
+def FloatElementsAttrOp : TEST_Op<"float_elements_attr"> {
+  let arguments = (ins
+      RankedF32ElementsAttr<[2]>:$scalar_f32_attr,
+      RankedF64ElementsAttr<[4, 8]>:$tensor_f64_attr
+  );
+}
+
+// A pattern that updates dense<[3.0, 4.0]> to dense<[5.0, 6.0]>.
+// This tests both matching and generating float elements attributes.
+def UpdateFloatElementsAttr : Pat<
+  (FloatElementsAttrOp
+    ConstantAttr<RankedF32ElementsAttr<[2]>, "{3.0f, 4.0f}">:$f32attr,
+    $f64attr),
+  (FloatElementsAttrOp
+    ConstantAttr<RankedF32ElementsAttr<[2]>, "{5.0f, 6.0f}">:$f32attr,
+    $f64attr)>;
+
 //===----------------------------------------------------------------------===//
 // Test Regions
 //===----------------------------------------------------------------------===//
@@ -178,36 +194,67 @@ def SizedRegionOp : TEST_Op<"sized_region_op", []> {
   let regions = (region SizedRegion<2>:$my_region, SizedRegion<1>);
 }
 
-def FunctionalRegionOp : TEST_Op<"functional_region_op", []> {
+//===----------------------------------------------------------------------===//
+// Test Call Interfaces
+//===----------------------------------------------------------------------===//
+
+def ConversionCallOp : TEST_Op<"conversion_call_op",
+    [CallOpInterface]> {
+  let arguments = (ins Variadic<AnyType>:$inputs, SymbolRefAttr:$callee);
+  let results = (outs Variadic<AnyType>);
+
+  let extraClassDeclaration = [{
+    /// Get the argument operands to the called function.
+    operand_range getArgOperands() { return inputs(); }
+
+    /// Return the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() {
+      return getAttrOfType<SymbolRefAttr>("callee");
+    }
+  }];
+}
+
+def FunctionalRegionOp : TEST_Op<"functional_region_op",
+    [CallableOpInterface]> {
   let regions = (region AnyRegion:$body);
   let results = (outs FunctionType);
+
+  let extraClassDeclaration = [{
+    Region *getCallableRegion(CallInterfaceCallable) { return &body(); }
+    void getCallableRegions(SmallVectorImpl<Region *> &callables) {
+      callables.push_back(&body());
+    }
+    ArrayRef<Type> getCallableResults(Region *) {
+      return getType().cast<FunctionType>().getResults();
+    }
+  }];
 }
 
 //===----------------------------------------------------------------------===//
 // Test Traits
 //===----------------------------------------------------------------------===//
 
-def SameOperandElementTypeOp : TEST_Op<"same_operand_type",
+def SameOperandElementTypeOp : TEST_Op<"same_operand_element_type",
     [SameOperandsElementType]> {
-  let arguments = (ins AnyVectorOrTensor:$x, AnyVectorOrTensor:$y);
-  let results = (outs AnyVectorOrTensor:$res);
+  let arguments = (ins AnyType, AnyType);
+  let results = (outs AnyType);
 }
 
-def SameOperandAndResultElementTypeOp : TEST_Op<"same_operand_and_result_type",
+def SameOperandAndResultElementTypeOp : TEST_Op<"same_operand_and_result_element_type",
     [SameOperandsAndResultElementType]> {
-  let arguments = (ins AnyVectorOrTensor:$x, AnyVectorOrTensor:$y);
-  let results = (outs AnyVectorOrTensor:$res);
+  let arguments = (ins Variadic<AnyType>);
+  let results = (outs Variadic<AnyType>);
 }
 
 def SameOperandShapeOp : TEST_Op<"same_operand_shape", [SameOperandsShape]> {
-  let arguments = (ins AnyVectorOrTensor:$x, AnyVectorOrTensor:$y);
-  let results = (outs AnyVectorOrTensor:$res);
+  let arguments = (ins Variadic<AnyVectorOrTensor>);
+  let results = (outs AnyVectorOrTensor);
 }
 
 def SameOperandAndResultShapeOp : TEST_Op<"same_operand_and_result_shape",
     [SameOperandsAndResultShape]> {
-  let arguments = (ins AnyVectorOrTensor:$x, AnyVectorOrTensor:$y);
-  let results = (outs AnyVectorOrTensor:$res);
+  let arguments = (ins Variadic<AnyVectorOrTensor>);
+  let results = (outs Variadic<AnyVectorOrTensor>);
 }
 
 def ArgAndResHaveFixedElementTypesOp :
@@ -265,6 +312,17 @@ def Operand1AndResultHaveSameElementCount :
   let results = (outs AnyTensor:$res);
 }
 
+def FourEqualsFive :
+    TEST_Op<"four_equals_five", [AllMatch<["5", "4"], "4 equals 5">]>;
+
+def OperandRankEqualsResultSize :
+    TEST_Op<"operand_rank_equals_result_size",
+            [AllMatch<[Rank<"operand">.result, ElementCount<"result">.result],
+                      "operand rank equals result size">]> {
+  let arguments = (ins AnyTensor:$operand);
+  let results = (outs AnyTensor:$result);
+}
+
 def IfFirstOperandIsNoneThenSoIsSecond :
     TEST_Op<"if_first_operand_is_none_then_so_is_second", [PredOpTrait<
     "has either both none type operands or first is not none",
@@ -275,8 +333,8 @@ def IfFirstOperandIsNoneThenSoIsSecond :
 }
 
 def BroadcastableOp : TEST_Op<"broadcastable", [Broadcastable]> {
-  let arguments = (ins AnyTensor:$x, AnyTensor:$y);
-  let results = (outs AnyTensor:$res);
+  let arguments = (ins AnyTensor, AnyTensor);
+  let results = (outs AnyTensor);
 }
 
 // There the "HasParent" trait.
@@ -284,8 +342,7 @@ def ParentOp : TEST_Op<"parent">;
 def ChildOp : TEST_Op<"child", [HasParent<"ParentOp">]>;
 
 
-def TerminatorOp : TEST_Op<"finish", [Terminator]> {
-}
+def TerminatorOp : TEST_Op<"finish", [Terminator]>;
 def SingleBlockImplicitTerminatorOp : TEST_Op<"SingleBlockImplicitTerminator",
     [SingleBlockImplicitTerminator<"TerminatorOp">]> {
   let regions = (region SizedRegion<1>:$region);
@@ -293,6 +350,12 @@ def SingleBlockImplicitTerminatorOp : TEST_Op<"SingleBlockImplicitTerminator",
 
 def I32ElementsAttrOp : TEST_Op<"i32ElementsAttr"> {
   let arguments = (ins I32ElementsAttr:$attr);
+}
+
+def OpWithInferTypeInterfaceOp : TEST_Op<"op_with_infer_type_if",
+    [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let arguments = (ins AnyTensor, AnyTensor);
+  let results = (outs AnyTensor);
 }
 
 def IsNotScalar : Constraint<CPred<"$0.getType().getRank() != 0">>;
@@ -306,13 +369,13 @@ def UpdateAttr : Pat<(I32ElementsAttrOp $attr),
 //===----------------------------------------------------------------------===//
 
 def OpA : TEST_Op<"op_a"> {
-  let arguments = (ins I32:$operand, I32Attr:$attr);
-  let results = (outs I32:$result);
+  let arguments = (ins I32, I32Attr:$attr);
+  let results = (outs I32);
 }
 
 def OpB : TEST_Op<"op_b"> {
-  let arguments = (ins I32:$operand, I32Attr:$attr);
-  let results = (outs I32:$result);
+  let arguments = (ins I32, I32Attr:$attr);
+  let results = (outs I32);
 }
 
 // Test named pattern.
@@ -322,10 +385,10 @@ def TestNamedPatternRule : Pat<(OpA $input, $attr), (OpB $input, $attr)>;
 def : Pat<(OpA (OpA $input, $attr), $bttr), (OpB $input, $bttr)>;
 
 // Test added benefit.
-def OpD : TEST_Op<"op_d">, Arguments<(ins I32:$arg)>, Results<(outs I32:$res)>;
-def OpE : TEST_Op<"op_e">, Arguments<(ins I32:$arg)>, Results<(outs I32:$res)>;
-def OpF : TEST_Op<"op_f">, Arguments<(ins I32:$arg)>, Results<(outs I32:$res)>;
-def OpG : TEST_Op<"op_g">, Arguments<(ins I32:$arg)>, Results<(outs I32:$res)>;
+def OpD : TEST_Op<"op_d">, Arguments<(ins I32)>, Results<(outs I32)>;
+def OpE : TEST_Op<"op_e">, Arguments<(ins I32)>, Results<(outs I32)>;
+def OpF : TEST_Op<"op_f">, Arguments<(ins I32)>, Results<(outs I32)>;
+def OpG : TEST_Op<"op_g">, Arguments<(ins I32)>, Results<(outs I32)>;
 // Verify that bumping benefit results in selecting different op.
 def : Pat<(OpD $input), (OpE $input)>;
 def : Pat<(OpD $input), (OpF $input), [], (addBenefit 10)>;
@@ -334,13 +397,13 @@ def : Pat<(OpG $input), (OpB $input, ConstantAttr<I32Attr, "20">:$attr)>;
 def : Pat<(OpG (OpG $input)), (OpB $input, ConstantAttr<I32Attr, "34">:$attr)>;
 
 // Test patterns for zero-result op.
-def OpH : TEST_Op<"op_h">, Arguments<(ins I32:$arg)>, Results<(outs)>;
-def OpI : TEST_Op<"op_i">, Arguments<(ins I32:$arg)>, Results<(outs)>;
+def OpH : TEST_Op<"op_h">, Arguments<(ins I32)>, Results<(outs)>;
+def OpI : TEST_Op<"op_i">, Arguments<(ins I32)>, Results<(outs)>;
 def : Pat<(OpH $input), (OpI $input)>;
 
 // Test patterns for zero-input op.
-def OpJ : TEST_Op<"op_j">, Arguments<(ins)>, Results<(outs I32:$res)>;
-def OpK : TEST_Op<"op_k">, Arguments<(ins)>, Results<(outs I32:$res)>;
+def OpJ : TEST_Op<"op_j">, Arguments<(ins)>, Results<(outs I32)>;
+def OpK : TEST_Op<"op_k">, Arguments<(ins)>, Results<(outs I32)>;
 def : Pat<(OpJ), (OpK)>;
 
 // Test NativeCodeCall.
@@ -350,11 +413,11 @@ def OpNativeCodeCall1 : TEST_Op<"native_code_call1"> {
     BoolAttr:$choice,
     I64Attr:$attr1, I64Attr:$attr2
   );
-  let results = (outs I32:$output);
+  let results = (outs I32);
 }
 def OpNativeCodeCall2 : TEST_Op<"native_code_call2"> {
   let arguments = (ins I32:$input, I64ArrayAttr:$attr);
-  let results = (outs I32:$output);
+  let results = (outs I32);
 }
 // Native code call to invoke a C++ function
 def CreateOperand: NativeCodeCall<"chooseOperand($0, $1, $2)">;
@@ -378,11 +441,11 @@ def : Pat<(OpNativeCodeCall1 $input1, $input2,
 // Test AllAttrConstraintsOf.
 def OpAllAttrConstraint1 : TEST_Op<"all_attr_constraint_of1"> {
   let arguments = (ins I64ArrayAttr:$attr);
-  let results = (outs I32:$output);
+  let results = (outs I32);
 }
 def OpAllAttrConstraint2 : TEST_Op<"all_attr_constraint_of2"> {
   let arguments = (ins I64ArrayAttr:$attr);
-  let results = (outs I32:$output);
+  let results = (outs I32);
 }
 def Constraint0 : AttrConstraint<
     CPred<"$_self.cast<ArrayAttr>().getValue()[0]."
@@ -411,7 +474,7 @@ def TestOpWithRegionFoldNoSideEffect : TEST_Op<
 // Op for testing folding of outer op with inner ops.
 def TestOpWithRegionFold : TEST_Op<"op_with_region_fold"> {
   let arguments = (ins I32:$operand);
-  let results = (outs I32:$result);
+  let results = (outs I32);
   let regions = (region SizedRegion<1>:$region);
   let hasFolder = 1;
 }
@@ -422,29 +485,29 @@ def TestOpWithRegionFold : TEST_Op<"op_with_region_fold"> {
 // Test symbol binding.
 def OpSymbolBindingA : TEST_Op<"symbol_binding_a", []> {
   let arguments = (ins I32:$operand, I64Attr:$attr);
-  let results = (outs I32:$result);
+  let results = (outs I32);
 }
 def OpSymbolBindingB : TEST_Op<"symbol_binding_b", []> {
   let arguments = (ins I32:$operand);
-  let results = (outs I32:$result);
+  let results = (outs I32);
 
   let builders = [
     OpBuilder<
-      "Builder *builder, OperationState *state, Value *operand",
+      "Builder *builder, OperationState &state, Value *operand",
       [{
-        state->types.assign({builder->getIntegerType(32)});
-        state->addOperands({operand});
+        state.types.assign({builder->getIntegerType(32)});
+        state.addOperands({operand});
       }]>
   ];
 }
 def OpSymbolBindingC : TEST_Op<"symbol_binding_c", []> {
   let arguments = (ins I32:$operand);
-  let results = (outs I32:$result);
+  let results = (outs I32);
   let builders = OpSymbolBindingB.builders;
 }
 def OpSymbolBindingD : TEST_Op<"symbol_binding_d", []> {
   let arguments = (ins I32:$input1, I32:$input2, I64Attr:$attr);
-  let results = (outs I32:$result);
+  let results = (outs I32);
 }
 def HasOneUse: Constraint<CPred<"$0->hasOneUse()">, "has one use">;
 def : Pattern<
@@ -469,11 +532,11 @@ def OpAttrMatch1 : TEST_Op<"match_op_attribute1"> {
     DefaultValuedAttr<I32Attr, "42">:$default_valued_attr,
     I32Attr:$more_attr
   );
-  let results = (outs I32:$output);
+  let results = (outs I32);
 }
 def OpAttrMatch2 : TEST_Op<"match_op_attribute2"> {
   let arguments = OpAttrMatch1.arguments;
-  let results = (outs I32:$output);
+  let results = (outs I32);
 }
 def MoreConstraint : AttrConstraint<
     CPred<"$_self.cast<IntegerAttr>().getInt() == 4">, "more constraint">;
@@ -493,7 +556,7 @@ def OpAttrMatch4 : TEST_Op<"match_op_attribute4"> {
 def : Pat<(OpAttrMatch3 $attr), (OpAttrMatch4 ConstUnitAttr, $attr)>;
 
 // Test with constant attr.
-def OpC : TEST_Op<"op_c">, Arguments<(ins I32:$arg)>, Results<(outs I32:$res)>;
+def OpC : TEST_Op<"op_c">, Arguments<(ins I32)>, Results<(outs I32)>;
 def : Pat<(OpC $input), (OpB $input, ConstantAttr<I32Attr, "17">:$attr)>;
 
 // Test string enum attribute in rewrites.
@@ -534,12 +597,12 @@ def TwoResultOp : TEST_Op<"two_result"> {
 
   let builders = [
     OpBuilder<
-      "Builder *builder, OperationState *state, IntegerAttr kind",
+      "Builder *builder, OperationState &state, IntegerAttr kind",
       [{
         auto i32 = builder->getIntegerType(32);
         auto f32 = builder->getF32Type();
-        state->types.assign({i32, f32});
-        state->addAttribute("kind", kind);
+        state.types.assign({i32, f32});
+        state.addAttribute("kind", kind);
       }]>
   ];
 }
@@ -560,7 +623,7 @@ def OneResultOp2 : TEST_Op<"one_result2"> {
 }
 
 def OneResultOp3 : TEST_Op<"one_result3"> {
-  let arguments = (ins F32:$input);
+  let arguments = (ins F32);
   let results = (outs I32:$result1);
 }
 
@@ -604,12 +667,12 @@ def : Pattern<
 // Test Patterns (Variadic Ops)
 
 def OneVResOneVOperandOp1 : TEST_Op<"one_variadic_out_one_variadic_in1"> {
-  let arguments = (ins Variadic<I32>:$inputs);
-  let results = (outs Variadic<I32>:$outputs);
+  let arguments = (ins Variadic<I32>);
+  let results = (outs Variadic<I32>);
 }
 def OneVResOneVOperandOp2 : TEST_Op<"one_variadic_out_one_variadic_in2"> {
-  let arguments = (ins Variadic<I32>:$inputs);
-  let results = (outs Variadic<I32>:$outputs);
+  let arguments = (ins Variadic<I32>);
+  let results = (outs Variadic<I32>);
 }
 
 // Rewrite an op with one variadic operand and one variadic result to
@@ -661,7 +724,7 @@ def MixedVResultOp2 : TEST_Op<"mixed_variadic_out2", [SameVariadicResultSize]> {
 def : Pat<(MixedVResultOp1), (MixedVResultOp2)>;
 
 def OneI32ResultOp : TEST_Op<"one_i32_out"> {
-  let results = (outs I32:$output);
+  let results = (outs I32);
 }
 
 def MixedVOperandOp3 : TEST_Op<"mixed_variadic_in3",
@@ -673,7 +736,7 @@ def MixedVOperandOp3 : TEST_Op<"mixed_variadic_in3",
     I32Attr:$count
   );
 
-  let results = (outs I32:$output);
+  let results = (outs I32);
 }
 
 def MixedVResultOp3 : TEST_Op<"mixed_variadic_out3",
@@ -690,14 +753,14 @@ def MixedVResultOp3 : TEST_Op<"mixed_variadic_out3",
   // result type. So need to provide a builder not requiring result types.
   let builders = [
     OpBuilder<
-      "Builder *builder, OperationState *state, IntegerAttr count",
+      "Builder *builder, OperationState &state, IntegerAttr count",
       [{
         auto i32Type = builder->getIntegerType(32);
-        state->addTypes(i32Type); // $ouput1
+        state.addTypes(i32Type); // $ouput1
         SmallVector<Type, 4> types(count.getInt(), i32Type);
-        state->addTypes(types); // $ouput2
-        state->addTypes(types); // $ouput3
-        state->addAttribute("count", count);
+        state.addTypes(types); // $ouput2
+        state.addTypes(types); // $ouput3
+        state.addAttribute("count", count);
       }]>
   ];
 }
@@ -720,14 +783,14 @@ def Test_LegalizerEnum_Failure : StrEnumAttrCase<"Failure">;
 def Test_LegalizerEnum : StrEnumAttr<"Success", "Failure",
   [Test_LegalizerEnum_Success, Test_LegalizerEnum_Failure]>;
 
-def ILLegalOpA : TEST_Op<"illegal_op_a">, Results<(outs I32:$res)>;
-def ILLegalOpB : TEST_Op<"illegal_op_b">, Results<(outs I32:$res)>;
-def ILLegalOpC : TEST_Op<"illegal_op_c">, Results<(outs I32:$res)>;
-def ILLegalOpD : TEST_Op<"illegal_op_d">, Results<(outs I32:$res)>;
-def ILLegalOpE : TEST_Op<"illegal_op_e">, Results<(outs I32:$res)>;
-def ILLegalOpF : TEST_Op<"illegal_op_f">, Results<(outs I32:$res)>;
+def ILLegalOpA : TEST_Op<"illegal_op_a">, Results<(outs I32)>;
+def ILLegalOpB : TEST_Op<"illegal_op_b">, Results<(outs I32)>;
+def ILLegalOpC : TEST_Op<"illegal_op_c">, Results<(outs I32)>;
+def ILLegalOpD : TEST_Op<"illegal_op_d">, Results<(outs I32)>;
+def ILLegalOpE : TEST_Op<"illegal_op_e">, Results<(outs I32)>;
+def ILLegalOpF : TEST_Op<"illegal_op_f">, Results<(outs I32)>;
 def LegalOpA : TEST_Op<"legal_op_a">,
-  Arguments<(ins Test_LegalizerEnum:$status)>, Results<(outs I32:$res)>;
+  Arguments<(ins Test_LegalizerEnum:$status)>, Results<(outs I32)>;
 
 // Check that smaller pattern depths are chosen, i.e. prioritize more direct
 // mappings.
@@ -746,7 +809,7 @@ def : Pat<(ILLegalOpE), (LegalOpA Test_LegalizerEnum_Success)>;
 
 // Check that patterns use the most up-to-date value when being replaced.
 def TestRewriteOp : TEST_Op<"rewrite">,
-  Arguments<(ins AnyType:$input)>, Results<(outs AnyType:$res)>;
+  Arguments<(ins AnyType)>, Results<(outs AnyType)>;
 def : Pat<(TestRewriteOp $input), (replaceWithValue $input)>;
 
 //===----------------------------------------------------------------------===//
@@ -755,17 +818,30 @@ def : Pat<(TestRewriteOp $input), (replaceWithValue $input)>;
 
 def TestRegionBuilderOp : TEST_Op<"region_builder">;
 def TestReturnOp : TEST_Op<"return", [Terminator]>,
-  Arguments<(ins Variadic<AnyType>:$inputs)>;
+  Arguments<(ins Variadic<AnyType>)>;
 def TestCastOp : TEST_Op<"cast">,
-  Arguments<(ins Variadic<AnyType>:$inputs)>, Results<(outs AnyType:$res)>;
+  Arguments<(ins Variadic<AnyType>)>, Results<(outs AnyType)>;
 def TestInvalidOp : TEST_Op<"invalid", [Terminator]>,
-  Arguments<(ins Variadic<AnyType>:$inputs)>;
+  Arguments<(ins Variadic<AnyType>)>;
+def TestTypeProducerOp : TEST_Op<"type_producer">,
+  Results<(outs AnyType)>;
+def TestTypeConsumerOp : TEST_Op<"type_consumer">,
+  Arguments<(ins AnyType)>;
 def TestValidOp : TEST_Op<"valid", [Terminator]>,
-  Arguments<(ins Variadic<AnyType>:$inputs)>;
+  Arguments<(ins Variadic<AnyType>)>;
+
+//===----------------------------------------------------------------------===//
+// Test parser.
+//===----------------------------------------------------------------------===//
+
+def WrappedKeywordOp : TEST_Op<"wrapped_keyword"> {
+  let arguments = (ins StrAttr:$keyword);
+  let parser = [{ return ::parse$cppClass(parser, result); }];
+  let printer = [{ return ::print(p, *this); }];
+}
 
 //===----------------------------------------------------------------------===//
 // Test region argument list parsing.
-//===----------------------------------------------------------------------===//
 
 def IsolatedRegionOp : TEST_Op<"isolated_region", [IsolatedFromAbove]> {
   let summary =  "isolated region operation";
@@ -774,7 +850,7 @@ def IsolatedRegionOp : TEST_Op<"isolated_region", [IsolatedFromAbove]> {
     argument is of index type.
   }];
 
-  let arguments = (ins Index:$input);
+  let arguments = (ins Index);
   let regions = (region SizedRegion<1>:$region);
   let parser = [{ return ::parse$cppClass(parser, result); }];
   let printer = [{ return ::print(p, *this); }];
@@ -788,7 +864,7 @@ def WrappingRegionOp : TEST_Op<"wrapping_region",
     parseGenericOperation from the custom parser.
   }];
 
-  let results = (outs Variadic<AnyType>:$outputs);
+  let results = (outs Variadic<AnyType>);
   let regions = (region SizedRegion<1>:$region);
   let parser = [{ return ::parse$cppClass(parser, result); }];
   let printer = [{ return ::print(p, *this); }];

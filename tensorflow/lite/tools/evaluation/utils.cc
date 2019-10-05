@@ -50,8 +50,9 @@ bool ReadFileLines(const std::string& file_path,
   return true;
 }
 
-TfLiteStatus GetSortedFileNames(const std::string& directory,
-                                std::vector<std::string>* result) {
+TfLiteStatus GetSortedFileNames(
+    const std::string& directory, std::vector<std::string>* result,
+    const std::unordered_set<std::string>& extensions) {
   DIR* dir;
   struct dirent* ent;
   if (result == nullptr) {
@@ -61,8 +62,15 @@ TfLiteStatus GetSortedFileNames(const std::string& directory,
   std::string dir_path = StripTrailingSlashes(directory);
   if ((dir = opendir(dir_path.c_str())) != nullptr) {
     while ((ent = readdir(dir)) != nullptr) {
+      if (ent->d_type == DT_DIR) continue;
       std::string filename(std::string(ent->d_name));
-      if (filename.size() <= 2) continue;
+      size_t lastdot = filename.find_last_of(".");
+      std::string ext = lastdot != std::string::npos ? filename.substr(lastdot)
+                                                     : std::string();
+      std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+      if (!extensions.empty() && extensions.find(ext) == extensions.end()) {
+        continue;
+      }
       result->emplace_back(dir_path + "/" + filename);
     }
     closedir(dir);
@@ -99,22 +107,19 @@ Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate(
 
 #if defined(__ANDROID__)
 Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
-    tflite::FlatBufferModel* model, TfLiteGpuDelegateOptions* options) {
-  return Interpreter::TfLiteDelegatePtr(TfLiteGpuDelegateCreate(options),
-                                        &TfLiteGpuDelegateDelete);
+    tflite::FlatBufferModel* model, TfLiteGpuDelegateOptionsV2* options) {
+  return Interpreter::TfLiteDelegatePtr(TfLiteGpuDelegateV2Create(options),
+                                        &TfLiteGpuDelegateV2Delete);
 }
 #endif  // defined(__ANDROID__)
 
 Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
     tflite::FlatBufferModel* model) {
 #if defined(__ANDROID__)
-  TfLiteGpuDelegateOptions options = TfLiteGpuDelegateOptionsDefault();
-  options.metadata =
-      model ? TfLiteGpuDelegateGetModelMetadata(model->GetModel()) : nullptr;
-  options.compile_options.precision_loss_allowed = 1;
-  options.compile_options.preferred_gl_object_type =
-      TFLITE_GL_OBJECT_TYPE_FASTEST;
-  options.compile_options.dynamic_batch_enabled = 0;
+  TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
+  options.is_precision_loss_allowed = 1;
+  options.inference_preference =
+      TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
 
   return CreateGPUDelegate(model, &options);
 #else

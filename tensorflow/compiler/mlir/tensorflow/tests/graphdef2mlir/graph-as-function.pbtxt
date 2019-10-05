@@ -5,7 +5,7 @@
 # functions are converted.
 
 # CHECK:      func @main(%arg0: tensor<*x!tf.resource>, %arg1: tensor<*x!tf.resource>) -> (tensor<f32>, tensor<f32>)
-# CHECK:      attributes {tf.entry_function = {inputs = "args_0, args_1", outputs = "rets_0_RetVal, rets_1_RetVal"}} {
+# CHECK:      attributes {tf.entry_function = {inputs = "args_0,args_1", outputs = "rets_0_RetVal,rets_1_RetVal"}} {
 # CHECK:          %[[ISLAND_0:[0-9]]]:2 = tf_executor.island wraps "tf.Const"
 # CHECK:          %[[ISLAND_1:[0-9]]]:2 = tf_executor.island wraps "tf.Identity"(%[[ISLAND_0]]#0)
 # CHECK:          %[[ISLAND_2:[0-9]]]:2 = tf_executor.island wraps "tf.StatefulPartitionedCall"

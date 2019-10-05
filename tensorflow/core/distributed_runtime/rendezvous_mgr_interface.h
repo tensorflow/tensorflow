@@ -25,7 +25,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-struct WorkerSession;
+class WorkerSession;
 
 // RemoteRendezvous follow a 2-part initialization. First the objects are
 // constructed. Eventually, they will be initialized. Clients of the

@@ -176,6 +176,7 @@ cc_library(
         ":arithmetic",
         ":constants",
         ":slicing",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
@@ -186,6 +187,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
@@ -195,6 +197,7 @@ xla_test(
     name = "matrix_test",
     srcs = ["matrix_test.cc"],
     deps = [
+        ":constants",
         ":matrix",
         ":slicing",
         "//tensorflow/compiler/xla:status",

@@ -612,7 +612,9 @@ class BaseResourceVariable(variables.VariableV1):
       # Note that if a control flow context is active the input of the read op
       # might not actually be the handle. This line bypasses it.
       tape.record_operation(
-          "ReadVariableOp", [result], [self._handle], lambda x: [x])
+          "ReadVariableOp", [result], [self._handle],
+          backward_function=lambda x: [x],
+          forward_function=lambda x: [x])
     return result
 
   def read_value(self):

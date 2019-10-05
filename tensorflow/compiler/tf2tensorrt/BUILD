@@ -22,7 +22,6 @@ load(
     "tf_proto_library",
 )
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
-# Placeholder for Google-internal load statements.
 
 package(
     default_visibility = ["//visibility:public"],
@@ -212,6 +211,7 @@ tf_cuda_library(
     hdrs = ["utils/trt_logger.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":logger_registry",
         "//tensorflow/core:lib_proto_parsing",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
@@ -301,6 +301,19 @@ tf_cc_test(
     ],
 )
 
+tf_cuda_library(
+    name = "logger_registry",
+    srcs = ["convert/logger_registry.cc"],
+    hdrs = [
+        "convert/logger_registry.h",
+    ],
+    copts = tf_copts(),
+    deps = [
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core:lib",
+    ] + if_tensorrt([":tensorrt_lib"]),
+)
+
 # Library for the node-level conversion portion of TensorRT operation creation
 tf_cuda_library(
     name = "trt_conversion",
@@ -315,6 +328,7 @@ tf_cuda_library(
         "convert/trt_optimization_pass.h",
     ],
     deps = [
+        ":logger_registry",
         ":segment",
         ":trt_allocator",
         ":trt_plugins",
@@ -457,6 +471,8 @@ tf_gpu_kernel_library(
     srcs = ["plugin/plugin_cast.cu.cc"],
     deps = [
         ":trt_plugins",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core:framework_lite",
     ] + if_tensorrt([
         "@local_config_cuda//cuda:cuda_headers",

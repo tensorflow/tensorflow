@@ -571,7 +571,7 @@ class FuncGraph(ops.Graph):
         op_type, inputs, dtypes, input_types, name, attrs, op_def,
         compute_device)
 
-  def capture(self, tensor, name=None):
+  def capture(self, tensor, name=None, shape=None):
     """Captures `tensor` if it's external to this graph.
 
     If `tensor` is from a different graph, returns a placeholder for it.
@@ -583,6 +583,7 @@ class FuncGraph(ops.Graph):
     Args:
       tensor: Tensor. May be from this FuncGraph or a different graph.
       name: Optional name if a placeholder is created.
+      shape: Optional shape if a placeholder is created.
 
     Returns:
       Tensor from this FuncGraph.
@@ -612,7 +613,7 @@ class FuncGraph(ops.Graph):
         return self.capture_eager_tensor(tensor, name)
 
       # Large EagerTensors and resources are captured with Placeholder ops
-      return self._capture_helper(tensor, name)
+      return self._capture_helper(tensor, name, shape)
     if tensor.graph is not self:
       if name is None:
         name = tensor.op.name
@@ -629,16 +630,17 @@ class FuncGraph(ops.Graph):
       return self._capture_helper(tensor, name)
     return tensor
 
-  def _capture_helper(self, tensor, name):
+  def _capture_helper(self, tensor, name, shape=None):
     capture = self._captures.get(ops.tensor_id(tensor))
     if capture is None:
       placeholder = _create_substitute_placeholder(
-          tensor, name=name, dtype=tensor.dtype)
+          tensor, name=name, dtype=tensor.dtype, shape=shape)
       self.add_capture(tensor, placeholder)
     else:
       placeholder = capture[1]
     tape.record_operation("captured_value", [placeholder], [tensor],
-                          lambda x: [x])
+                          backward_function=lambda x: [x],
+                          forward_function=lambda x: [x])
     return placeholder
 
   @property
@@ -684,7 +686,8 @@ class FuncGraph(ops.Graph):
     """Add given distributed variable to captures with given placeholder."""
     self._captures[ops.tensor_id(variable)] = (variable, placeholder)
     tape.record_operation("captured_value", [placeholder], [variable],
-                          lambda x: [x])
+                          backward_function=lambda x: [x],
+                          forward_function=lambda x: [x])
 
   def capture_eager_tensor(self, tensor, name):
     capture = self._captures.get(ops.tensor_id(tensor))
@@ -699,7 +702,8 @@ class FuncGraph(ops.Graph):
     else:
       graph_const = capture[1]
     tape.record_operation("captured_value", [graph_const], [tensor],
-                          lambda x: [x])
+                          backward_function=lambda x: [x],
+                          forward_function=lambda x: [x])
     return graph_const
 
   @property
@@ -1069,13 +1073,15 @@ def pack_sequence_as(structure, flat_sequence):
   return nest.pack_sequence_as(structure, flat_sequence, expand_composites=True)
 
 
-def _create_substitute_placeholder(value, name=None, dtype=None):
+def _create_substitute_placeholder(value, name=None, dtype=None, shape=None):
   """Creates a placeholder for `value` and propagates shape info to it."""
   # Note: setting ops.control_dependencies(None) ensures we always put
   # capturing placeholders outside of any control flow context.
+  if shape is None:
+    shape = value.shape
   with ops.control_dependencies(None):
     placeholder = graph_placeholder(
-        dtype=dtype or value.dtype, shape=value.shape, name=name)
+        dtype=dtype or value.dtype, shape=shape, name=name)
   custom_gradient.copy_handle_data(value, placeholder)
   return placeholder
 

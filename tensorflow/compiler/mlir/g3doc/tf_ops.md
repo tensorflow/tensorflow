@@ -172,6 +172,7 @@ gives module error.
 For example,
 
 Example 1:
+
 ```python
 >>> a = [1., 2., 3.]
 >>> equality_bitcast = tf.bitcast(a,tf.complex128)
@@ -180,12 +181,16 @@ tensorflow.python.framework.errors_impl.InvalidArgumentError: Cannot bitcast fro
 >>> print(equality_cast)
 tf.Tensor([1.+0.j 2.+0.j 3.+0.j], shape=(3,), dtype=complex128)
 ```
+
 Example 2:
+
 ```python
 >>> tf.bitcast(tf.constant(0xffffffff, dtype=tf.uint32), tf.uint8)
 <tf.Tensor: ... shape=(4,), dtype=uint8, numpy=array([255, 255, 255, 255], dtype=uint8)>
 ```
+
 Example 3:
+
 ```python
 >>> x = [1., 2., 3.]
 >>> y = [0., 2., 3.]

@@ -49,17 +49,17 @@ class HLO_Op<string mnemonic, list<OpTrait> traits> :
 //===----------------------------------------------------------------------===//
 
 // Any integer tensor types
-def HLO_IntTensor : StaticShapeTensorOf<[HLO_Int]>;
+def HLO_IntTensor : TensorOf<[HLO_Int]>;
 
 // Any floating-point tensor types
-def HLO_FpTensor : StaticShapeTensorOf<[AnyFloat]>;
+def HLO_FpTensor : TensorOf<[AnyFloat]>;
 
-def HLO_PredTensor : StaticShapeTensorOf<[HLO_Pred]>;
+def HLO_PredTensor : TensorOf<[HLO_Pred]>;
 
 // Any integer or floating-point tensor types
-def HLO_IntOrFpTensor : StaticShapeTensorOf<[HLO_Int, AnyFloat]>;
+def HLO_IntOrFpTensor : TensorOf<[HLO_Int, AnyFloat]>;
 
-def HLO_Tensor : StaticShapeTensorOf<[AnyFloat, AnyInteger]>;
+def HLO_Tensor : TensorOf<[AnyFloat, AnyInteger]>;
 
 def HLO_Tuple : NestedTupleOf<[HLO_Tensor]>;
 
@@ -79,8 +79,11 @@ def HLO_ConstOp : BASE_HLO_ConstOp, HLO_Op<"constant", [NoSideEffect]> {
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Attribute value"
+    "Builder *builder, OperationState &result, Attribute value"
   >];
+
+  let printer = [{ return Print(*this, &p); }];
+  let parser = [{ return ParseConstOp(&parser, &result); }];
 
   let hasFolder = 1;
 
@@ -112,6 +115,8 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits>:
 
 def HLO_AbsOp: HLO_UnaryElementwiseOp<"abs", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_AbsOp;
 
+def HLO_CeilOp: HLO_UnaryElementwiseOp<"ceil", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CeilOp;
+
 def HLO_ConvertOp : HLO_UnaryElementwiseOp<
       "convert", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_ConvertOp {
   let hasFolder = 1;
@@ -120,6 +125,8 @@ def HLO_ConvertOp : HLO_UnaryElementwiseOp<
   // HLO converter until we have a method to call the special constructor.
   let hasCustomHLOConverter = 1;
 }
+
+def HLO_CosOp: HLO_UnaryElementwiseOp<"cos", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CosOp;
 
 def HLO_ExpOp: HLO_UnaryElementwiseOp<"exp", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_ExpOp;
 
@@ -131,7 +138,7 @@ def HLO_NegOp: HLO_UnaryElementwiseOp<"neg", [NoSideEffect, SameOperandsAndResul
 
 def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_RsqrtOp;
 
-def HLO_SignOp: HLO_UnaryElementwiseOp<"sign", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_SignOp;
+def HLO_SignOp: HLO_UnaryElementwiseOp<"sign", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_SignOp;
 
 def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
     [ResultsAreFloatLike, NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_TanhOp;
@@ -149,8 +156,8 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
     BroadcastDimAttr:$broadcast_dimensions
   );
   let results = (outs HLO_Tensor);
-  let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
-  let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 }
 
 def HLO_AddOp : HLO_BinaryElementwiseOp<"add",
@@ -209,7 +216,9 @@ def HLO_ReduceOp: HLO_Op<"reduce", [
     I64ElementsAttr:$dimensions
   );
 
-  let results = (outs Variadic<HLO_Tensor>);
+  let results = (outs Variadic<HLO_TensorOrTuple>);
+
+  let hasFolder = 1;
 
   // TODO(hinsu): Verify that the attached body arguments and results are
   // compatible with reduce op's operands.
@@ -271,6 +280,21 @@ def HLO_SliceOp: HLO_Op<
   );
 
   let results = (outs HLO_Tensor);
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *operand, "
+    "DenseIntElementsAttr start_indices, DenseIntElementsAttr limit_indices, "
+    "DenseIntElementsAttr strides"
+  >];
+
+  let extraClassDeclaration = [{
+    // Infers output type for given operand and attributes. Result type is
+    // unranked if any of the attributes is illegal.
+    static Type InferOutputTypes(Builder *builder, Value *operand,
+                                 DenseIntElementsAttr start_indices,
+                                 DenseIntElementsAttr limit_indices,
+                                 DenseIntElementsAttr strides);
+  }];
 
   // TODO(b/129422361) Two of the required arguments comes from the start and
   // limit indices which aren't handled by the codegen.
@@ -462,13 +486,15 @@ def HLO_SelectOp: HLO_Op<"select", [NoSideEffect]>, BASE_HLO_SelectOp {
 }
 
 def HLO_ReverseOp: HLO_Op<"reverse",
-      [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ReverseOp {
+      [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_ReverseOp {
   let arguments = (ins
     HLO_Tensor:$operand,
     I64ElementsAttr:$dimensions
   );
 
   let results = (outs HLO_Tensor);
+
+  let hasFolder = 1;
 
   // TODO(b/129422361): ReverseOp has a custom constructor for HLO.
   let hasCustomHLOConverter = 1;

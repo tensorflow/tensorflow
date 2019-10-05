@@ -20,6 +20,7 @@
 
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/STLExtras.h"
+#include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace mlir {
@@ -37,21 +38,31 @@ struct PassInstrumentorImpl;
 /// before running a pipeline.
 class PassInstrumentation {
 public:
+  /// This struct represents information related to the parent pass of pipeline.
+  /// It includes information that allows for effectively linking pipelines that
+  /// run on different threads.
+  struct PipelineParentInfo {
+    /// The thread of the parent pass that the current pipeline was spawned
+    /// from. Note: This is acquired from llvm::get_threadid().
+    uint64_t parentThreadID;
+
+    /// The pass that spawned this pipeline.
+    Pass *parentPass;
+  };
+
   virtual ~PassInstrumentation() = 0;
 
   /// A callback to run before a pass pipeline is executed. This function takes
-  /// the name of the operation type being operated on, and a thread id
-  /// corresponding to the parent thread this pipeline was spawned from.
-  /// Note: The parent thread id is collected via llvm::get_threadid().
+  /// the name of the operation type being operated on, and information related
+  /// to the parent that spawned this pipeline.
   virtual void runBeforePipeline(const OperationName &name,
-                                 uint64_t parentThreadID) {}
+                                 const PipelineParentInfo &parentInfo) {}
 
   /// A callback to run after a pass pipeline has executed. This function takes
-  /// the name of the operation type being operated on, and a thread id
-  /// corresponding to the parent thread this pipeline was spawned from.
-  /// Note: The parent thread id is collected via llvm::get_threadid().
+  /// the name of the operation type being operated on, and information related
+  /// to the parent that spawned this pipeline.
   virtual void runAfterPipeline(const OperationName &name,
-                                uint64_t parentThreadID) {}
+                                const PipelineParentInfo &parentInfo) {}
 
   /// A callback to run before a pass is executed. This function takes a pointer
   /// to the pass to be executed, as well as the current operation being
@@ -92,10 +103,14 @@ public:
   ~PassInstrumentor();
 
   /// See PassInstrumentation::runBeforePipeline for details.
-  void runBeforePipeline(const OperationName &name, uint64_t parentThreadID);
+  void
+  runBeforePipeline(const OperationName &name,
+                    const PassInstrumentation::PipelineParentInfo &parentInfo);
 
   /// See PassInstrumentation::runAfterPipeline for details.
-  void runAfterPipeline(const OperationName &name, uint64_t parentThreadID);
+  void
+  runAfterPipeline(const OperationName &name,
+                   const PassInstrumentation::PipelineParentInfo &parentInfo);
 
   /// See PassInstrumentation::runBeforePass for details.
   void runBeforePass(Pass *pass, Operation *op);
@@ -112,14 +127,36 @@ public:
   /// See PassInstrumentation::runAfterAnalysis for details.
   void runAfterAnalysis(llvm::StringRef name, AnalysisID *id, Operation *op);
 
-  /// Add the given instrumentation to the collection. This takes ownership over
-  /// the given pointer.
-  void addInstrumentation(PassInstrumentation *pi);
+  /// Add the given instrumentation to the collection.
+  void addInstrumentation(std::unique_ptr<PassInstrumentation> pi);
 
 private:
   std::unique_ptr<detail::PassInstrumentorImpl> impl;
 };
 
 } // end namespace mlir
+
+namespace llvm {
+template <> struct DenseMapInfo<mlir::PassInstrumentation::PipelineParentInfo> {
+  using T = mlir::PassInstrumentation::PipelineParentInfo;
+  using PairInfo = DenseMapInfo<std::pair<uint64_t, void *>>;
+
+  static T getEmptyKey() {
+    auto pair = PairInfo::getEmptyKey();
+    return {pair.first, reinterpret_cast<mlir::Pass *>(pair.second)};
+  }
+  static T getTombstoneKey() {
+    auto pair = PairInfo::getTombstoneKey();
+    return {pair.first, reinterpret_cast<mlir::Pass *>(pair.second)};
+  }
+  static unsigned getHashValue(T val) {
+    return PairInfo::getHashValue({val.parentThreadID, val.parentPass});
+  }
+  static bool isEqual(T lhs, T rhs) {
+    return lhs.parentThreadID == rhs.parentThreadID &&
+           lhs.parentPass == rhs.parentPass;
+  }
+};
+} // end namespace llvm
 
 #endif // MLIR_PASS_PASSINSTRUMENTATION_H_

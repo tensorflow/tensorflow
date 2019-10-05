@@ -38,3 +38,39 @@ tensorflow::tfprof::Profile
 tensorflow::tfprof::PrintModelAnalysis
 tensorflow::tfprof::SerializeToString
 
+[graph_analyzer_tool] # graph_analyzer
+tensorflow::grappler::graph_analyzer::GraphAnalyzerTool
+
+[bfloat16_lib] # bfloat16
+tensorflow::RegisterNumpyBfloat16
+tensorflow::Bfloat16PyType
+
+[events_writer] # events_writer
+tensorflow::EventsWriter::Init
+tensorflow::EventsWriter::InitWithSuffix
+tensorflow::EventsWriter::WriteSerializedEvent
+tensorflow::EventsWriter::Flush
+tensorflow::EventsWriter::Close
+
+[py_func_lib] # py_func
+tensorflow::InitializePyTrampoline
+
+[framework_internal_impl] # op_def_registry
+tensorflow::OpRegistry::Global
+tensorflow::OpRegistry::LookUpOpDef
+tensorflow::RemoveNonDeprecationDescriptionsFromOpDef
+
+[status]  # device_lib
+tensorflow::Status::code
+tensorflow::Status::error_message
+tensorflow::Status::ok()
+
+[core_cpu_impl]  # device_lib
+tensorflow::Device::attributes
+tensorflow::DeviceFactory::AddDevices
+tensorflow::SessionOptions::SessionOptions
+
+[protos_all]  # device_lib
+tensorflow::ConfigProto::ConfigProto
+tensorflow::ConfigProto::ParseFromString
+tensorflow::DeviceAttributes::SerializeToString

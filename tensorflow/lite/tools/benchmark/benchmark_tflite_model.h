@@ -67,6 +67,7 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
 
  private:
   struct InputTensorData {
+    InputTensorData() : bytes(0) { data.raw = nullptr; }
     TfLitePtrUnion data;
     size_t bytes;
   };

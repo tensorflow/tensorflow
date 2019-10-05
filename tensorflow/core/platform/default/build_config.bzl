@@ -1,8 +1,6 @@
 # Platform-specific build configurations.
 
 load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
-load("//tensorflow:tensorflow.bzl", "if_not_mobile")
-load("//tensorflow:tensorflow.bzl", "if_windows")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
@@ -441,10 +439,10 @@ def tf_proto_library(
         cc_grpc_version = None,
         j2objc_api_version = 1,
         js_codegen = "jspb",
-        provide_cc_alias = False,
-        make_default_target_header_only = False):
+        make_default_target_header_only = False,
+        exports = []):
     """Make a proto library, possibly depending on other proto libraries."""
-    _ignore = (js_codegen, provide_cc_alias)
+    _ignore = (js_codegen, exports)
 
     tf_proto_library_cc(
         name = name,
@@ -491,6 +489,7 @@ def tf_additional_lib_hdrs(exclude = []):
         "posix/error.h",
     ], exclude = exclude + [
         "default/subprocess.h",
+        "default/posix_file_system.h",
     ])
     return select({
         "//tensorflow:windows": windows_hdrs,
@@ -506,11 +505,14 @@ def tf_additional_lib_srcs(exclude = []):
         "windows/*.cc",
         "posix/error.cc",
     ], exclude = exclude + [
+        "default/env.cc",
         "default/env_time.cc",
         "default/load_library.cc",
         "default/net.cc",
         "default/port.cc",
+        "default/posix_file_system.cc",
         "default/subprocess.cc",
+        "default/stacktrace_handler.cc",
     ])
     return select({
         "//tensorflow:windows": windows_srcs,
@@ -528,20 +530,11 @@ def tf_additional_monitoring_srcs():
         "default/monitoring.cc",
     ]
 
-def tf_additional_minimal_lib_srcs():
-    return [
-        "default/integral_types.h",
-        "default/mutex.h",
-        "default/mutex_data.h",
-    ]
-
 def tf_additional_proto_hdrs():
     return [
         "default/integral_types.h",
         "default/logging.h",
-    ] + if_windows([
-        "windows/integral_types.h",
-    ])
+    ]
 
 def tf_additional_human_readable_json_deps():
     return []
@@ -609,15 +602,9 @@ def tf_additional_test_deps():
 
 def tf_additional_test_srcs():
     return [
+        "default/test.cc",
         "default/test_benchmark.cc",
-    ] + select({
-        "//tensorflow:windows": [
-            "windows/test.cc",
-        ],
-        "//conditions:default": [
-            "posix/test.cc",
-        ],
-    })
+    ]
 
 def tf_kernel_tests_linkstatic():
     return 0
@@ -745,11 +732,8 @@ def tf_additional_numa_copts():
 def tf_additional_rpc_deps():
     return []
 
-def tf_logging_absl_deps():
-    return [
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/strings",
-    ]
+def tf_additional_tensor_coding_deps():
+    return []
 
 def tf_protobuf_deps():
     return [

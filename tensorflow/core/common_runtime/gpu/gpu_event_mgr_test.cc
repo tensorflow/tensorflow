@@ -301,10 +301,10 @@ class GPUDeviceTestHelper {
   BaseGPUDevice* gpu() { return gpu_.get(); }
   Allocator* gpu_allocator() { return gpu_allocator_; }
   Allocator* host_allocator() { return host_allocator_; }
-  se::Stream* compute_stream() { return gpu_->streams_[0]->compute; }
-  se::Stream* h2d_stream() { return gpu_->streams_[0]->host_to_device; }
-  se::Stream* d2h_stream() { return gpu_->streams_[0]->device_to_host; }
-  se::Stream* d2d_stream() { return gpu_->streams_[0]->device_to_device[0]; }
+  se::Stream* compute_stream() { return gpu_->stream_->compute; }
+  se::Stream* h2d_stream() { return gpu_->stream_->host_to_device; }
+  se::Stream* d2h_stream() { return gpu_->stream_->device_to_host; }
+  se::Stream* d2d_stream() { return gpu_->stream_->device_to_device[0]; }
   EventMgr* event_mgr() { return gpu_->em_; }
   int pending_cap() { return gpu_->pending_cap_; }
 

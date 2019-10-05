@@ -28,6 +28,7 @@ from tensorflow.python.framework import op_callbacks
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 
 def limit_string_length(string, max_len=50):
@@ -49,9 +50,14 @@ def limit_string_length(string, max_len=50):
 _CHECK_NUMERICS_CALLBACK_SKIP_OPS = (
     # TODO(b/139668453): The following skipped ops are related to a limitation
     # in the op callback.
+    b"Enter",
+    b"Exit",
     b"Identity",
     b"If",
+    b"Merge",
+    b"NextIteration",
     b"StatelessIf",
+    b"Switch",
     b"While",
 )
 
@@ -208,6 +214,7 @@ CheckNumericsConfig = collections.namedtuple(
 _state = threading.local()
 
 
+@tf_export("debugging.enable_check_numerics")
 def enable_check_numerics(stack_height_limit=30,
                           path_length_limit=50):
   r"""Enable tensor numerics checking in an eager/graph unified fashion.
@@ -302,6 +309,7 @@ def enable_check_numerics(stack_height_limit=30,
       threading.current_thread().name)
 
 
+@tf_export("debugging.disable_check_numerics")
 def disable_check_numerics():
   """Disable the eager/graph unified numerics checking mechanism.
 

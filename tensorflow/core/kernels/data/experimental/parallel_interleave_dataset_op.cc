@@ -716,7 +716,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           // CHECKPOINT_MARKER_C
           // Non-OK iterator creation status has been notified to the
           // client.
-          workers_[thread_index].cond_var.notify_one();
+          if (dataset()->sloppy_) {
+            sloppy_cond_var_.notify_one();
+          } else {
+            workers_[thread_index].cond_var.notify_one();
+          }
         } else {
           bool end_of_sequence = false;
           while (!end_of_sequence) {

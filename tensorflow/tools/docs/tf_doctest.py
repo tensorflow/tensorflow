@@ -36,15 +36,23 @@ import doctest  # pylint: disable=g-import-not-at-top, g-bad-import-order
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string('module', '', 'A specific module to run doctest on.')
-flags.DEFINE_boolean('list', False,
+flags.DEFINE_string('module', None, 'A specific module to run doctest on.')
+flags.DEFINE_boolean('list', None,
                      'List all the modules in the core package imported.')
+flags.DEFINE_string('file', None, 'A specific file to run doctest on.')
+
+flags.mark_flags_as_mutual_exclusive(['module', 'file'])
+flags.mark_flags_as_mutual_exclusive(['list', 'file'])
 
 PACKAGE = 'tensorflow.python.'
 
 
 def find_modules():
-  """Finds all the modules in the core package imported."""
+  """Finds all the modules in the core package imported.
+
+  Returns:
+    A list containing all the modules in tensorflow.python.
+  """
 
   tf_modules = []
   for name, module in sys.modules.items():
@@ -76,6 +84,29 @@ def filter_on_submodules(all_modules, submodule):
   return filtered_modules
 
 
+def get_module_and_inject_docstring(file_path):
+  """Replaces the docstring of the module with the changed file's content.
+
+  Args:
+    file_path: Path to the file
+
+  Returns:
+    A list containing the module changed by the file.
+  """
+
+  file_path = os.path.abspath(file_path)
+  mod_index = file_path.find(PACKAGE.replace('.', os.sep))
+  file_mod_name, _ = os.path.splitext(file_path[mod_index:])
+  file_module = sys.modules[file_mod_name.replace(os.sep, '.')]
+
+  with open(file_path, 'r') as f:
+    content = f.read()
+
+  file_module.__doc__ = content
+
+  return [file_module]
+
+
 class TfTestCase(tf.test.TestCase):
 
   def set_up(self, test):
@@ -90,19 +121,21 @@ class CustomOutputChecker(doctest.OutputChecker):
 
   This allows it to be customized before they are compared.
   """
+  ID_RE = re.compile(r'\bid=(\d+)\b')
+  ADDRESS_RE = re.compile(r'\bat 0x[0-9a-f]*?>')
 
   def check_output(self, want, got, optionflags):
     # Replace tf.Tensor's id with ellipsis(...) because tensor's id can change
     # on each execution. Users may forget to use ellipsis while writing
     # examples in docstrings, so replacing the id with `...` makes it safe.
-    want = re.sub(r'\bid=(\d+)\b', r'id=...', want)
+    want = self.ID_RE.sub('id=...', want)
+    want = self.ADDRESS_RE.sub('at ...>', want)
     return doctest.OutputChecker.check_output(self, want, got, optionflags)
 
   _MESSAGE = textwrap.dedent("""\n
         #############################################################
-        Check the doctest documentation
-        (https://docs.python.org/3/library/doctest.html) on how to
-        write testable docstrings.
+        Check the documentation
+        (https://www.tensorflow.org/community/contribute/docs_ref) on how to write testable docstrings.
         #############################################################""")
 
   def output_difference(self, example, got, optionflags):
@@ -125,6 +158,9 @@ def load_tests(unused_loader, tests, unused_ignore):
       print(mod.__name__)
     print('**************************************************')
     return tests
+
+  if FLAGS.file:
+    tf_modules = get_module_and_inject_docstring(FLAGS.file)
 
   for module in tf_modules:
     testcase = TfTestCase()

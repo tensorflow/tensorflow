@@ -1,9 +1,8 @@
-// RUN: tf-opt %s -verify-diagnostics -split-input-file | FileCheck %s
+// RUN: tf-opt %s -verify-diagnostics -split-input-file | tf-opt | FileCheck %s
 
 // -----
 
-func @enforce_static_shapes(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  // expected-error@+1 {{op operand #0 must be statically shaped tensor}}
+func @dynamic_shapes(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "xla_hlo.tanh"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
   return %0: tensor<*xf32>
 }
@@ -347,7 +346,7 @@ func @select_scalar_pred(%arg0: tensor<i1>, %arg1: tensor<2x3xi32>, %arg2: tenso
 // -----
 
 func @select_bad_pred_type(%arg0: tensor<3xi32>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32> {
-  // expected-error@+1 {{must be statically shaped tensor of pred (AKA boolean or 1-bit integer)}}
+  // expected-error@+1 {{must be tensor of pred (AKA boolean or 1-bit integer) values}}
   %0 = "xla_hlo.select"(%arg0, %arg1, %arg2) : (tensor<3xi32>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
   return %0 : tensor<2x3xi32>
 }
@@ -491,11 +490,30 @@ func @get_tuple_element_index_out_of_bounds(%arg0: tuple<tensor<f32>, tensor<i32
 
 // CHECK-LABEL: func @reduce_window
 func @reduce_window(%arg0: tensor<4x4xi32>) -> tensor<2x2xi32> {
-  %cst = constant dense<0> : tensor<i32>
+  %cst = xla_hlo.constant dense<0> : tensor<i32>
   %0 = "xla_hlo.reduce_window"(%arg0, %cst) ( {
     ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):       // no predecessors
     %6 = "xla_hlo.max"(%arg1, %arg2) : (tensor<i32>, tensor<i32>) -> tensor<i32>
     "xla_hlo.return"(%6) : (tensor<i32>) -> ()
   }) {window_dimensions = dense<[2, 2]> : tensor<2xi64>, window_strides = dense<[2, 2]> : tensor<2xi64>, padding = dense<[2, 2]> : tensor<2xi64>} : (tensor<4x4xi32>, tensor<i32>) -> tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
+}
+
+// -----
+
+// Verifiers HLO constant op custom printing and parsing.
+// CHECK-LABEL: func @constants
+func @constants() -> () {
+  // CHECK: xla_hlo.constant dense<0> : tensor<i32>
+  %0 = "xla_hlo.constant"() {value = dense<0> : tensor<i32>} : () -> (tensor<i32>)
+
+  // CHECK: xla_hlo.constant {extra_attr = 3 : i32} dense<0> : tensor<i32>
+  %1 = "xla_hlo.constant"() {extra_attr = 3 : i32, value = dense<0> : tensor<i32>} : () -> (tensor<i32>)
+
+  // CHECK: xla_hlo.constant {value = dense<0> : tensor<i32>} : tensor<*xi32>
+  %2 = "xla_hlo.constant"() {value = dense<0> : tensor<i32>} : () -> (tensor<*xi32>)
+
+  // CHECK: xla_hlo.constant {extra_attr = 3 : i32, value = dense<0> : tensor<i32>} : tensor<*xi32>
+  %3 = "xla_hlo.constant"() {extra_attr = 3 : i32, value = dense<0> : tensor<i32>} : () -> (tensor<*xi32>)
+  return
 }

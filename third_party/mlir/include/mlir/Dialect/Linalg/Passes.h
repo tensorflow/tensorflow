@@ -31,8 +31,7 @@ class ModuleOp;
 template <typename T> class OpPassBase;
 
 namespace linalg {
-std::unique_ptr<OpPassBase<FuncOp>>
-createLinalgFusionPass(ArrayRef<int64_t> tileSizes = {});
+std::unique_ptr<OpPassBase<FuncOp>> createLinalgFusionPass();
 
 std::unique_ptr<OpPassBase<FuncOp>>
 createLinalgTilingPass(ArrayRef<int64_t> tileSizes = {},

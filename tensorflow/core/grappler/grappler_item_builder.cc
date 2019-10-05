@@ -256,7 +256,7 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
 
   // Create the function library runtime.
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
-      new ProcessFunctionLibraryRuntime(dvc_mgr.get(), env,
+      new ProcessFunctionLibraryRuntime(dvc_mgr.get(), env, &options.config,
                                         graph_def.versions().producer(),
                                         &function_library, *optimizer_opts));
   FunctionLibraryRuntime* flr = pflr->GetFLR(cpu_device->name());
