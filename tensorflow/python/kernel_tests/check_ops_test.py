@@ -315,6 +315,17 @@ First 2 elements of y:
     else:
       self.assertEqual(check_op.type, "NoOp")
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_raises_when_empty_and_non_equal_shapes(self):
+    value = constant_op.constant([1.0], name="value")
+    empty = constant_op.constant([], name="empty")
+    with self.assertRaisesRegexp(
+        (errors.InvalidArgumentError, ValueError),
+        (r"Condition x == y did not hold")):
+      with ops.control_dependencies([check_ops.assert_equal(value, empty)]):
+        out = array_ops.identity(value)
+      self.evaluate(out)
+
 
 class AssertNoneEqualTest(test.TestCase):
 
