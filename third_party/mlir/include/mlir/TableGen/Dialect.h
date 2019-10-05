@@ -41,6 +41,20 @@ public:
   // Returns the C++ namespaces that ops of this dialect should be placed into.
   StringRef getCppNamespace() const;
 
+  // Returns the summary description of the dialect. Returns empty string if
+  // none.
+  StringRef getSummary() const;
+
+  // Returns the description of the dialect. Returns empty string if none.
+  StringRef getDescription() const;
+
+  // Returns whether two dialects are equal by checking the equality of the
+  // underlying record.
+  bool operator==(const Dialect &other) const;
+
+  // Compares two dialects by comparing the names of the dialects.
+  bool operator<(const Dialect &other) const;
+
 private:
   const llvm::Record &def;
 };
