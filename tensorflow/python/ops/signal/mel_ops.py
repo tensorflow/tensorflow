@@ -102,6 +102,9 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
   `num_spectrogram_bins` linearly sampled frequency information from
   `[0, sample_rate / 2]` into `num_mel_bins` frequency information from
   `[lower_edge_hertz, upper_edge_hertz]` on the [mel scale][mel].
+  
+  The implementation follows a mel scale formula, 2595 * log10(1 + f/700), where
+  f is linear frequency in hertz. This is also known as `htk`. 
 
   For example, the returned matrix `A` can be used to right-multiply a
   spectrogram `S` of shape `[frames, num_spectrogram_bins]` of linear
