@@ -608,6 +608,7 @@ class LinSpaceTest(test.TestCase):
           self._LinSpace(np.array(0., np.float64), .1, 12)[[0, -1]],
           np.array([0., .1], np.float64))
 
+
 class LinSpaceNdTest(test.TestCase):
 
   def _gpu_modes(self):
@@ -619,28 +620,28 @@ class LinSpaceNdTest(test.TestCase):
   def _LinSpace(self, start, stop, num, axis=0):
     with ops.Graph().as_default() as graph:
       with self.session(graph=graph, force_gpu=self.force_gpu):
-        tf_ans = math_ops.linspace_nd(start, stop, num, axis=axis, name="linspace")
+        tf_ans = math_ops.linspace_nd(start, stop, num, axis=axis)
         return self.evaluate(tf_ans)
 
   def _LinSpaceNumConstant(self, start, stop, num, axis=0):
     with ops.Graph().as_default() as graph:
       num_constant = constant_op.constant(num)
       with self.session(graph=graph, force_gpu=self.force_gpu):
-        tf_ans = math_ops.linspace_nd(start, stop, num_constant, axis=axis, name="linspace")
+        tf_ans = math_ops.linspace_nd(start, stop, num_constant, axis=axis)
         return self.evaluate(tf_ans)
 
   def _LinspaceNoneShape(self, start, stop, num, graph_shape=None, axis=0):
     with ops.Graph().as_default() as graph:
       num_tensor = array_ops.placeholder(dtypes.int32)
-      start_tensor = array_ops.placeholder(dtypes.float32, shape=graph_shape)
-      stop_tensor = array_ops.placeholder(dtypes.float32, shape=graph_shape)
-      ans_tensor = math_ops.linspace_nd(start_tensor, stop_tensor, num_tensor, axis=axis, name="linspace")
+      start_t = array_ops.placeholder(dtypes.float32, shape=graph_shape)
+      stop_t = array_ops.placeholder(dtypes.float32, shape=graph_shape)
+      ans_tensor = math_ops.linspace_nd(start_t, stop_t, num_tensor, axis=axis)
 
       with self.session(graph=graph, force_gpu=self.force_gpu) as sess:
         feed_dict = {
-          start_tensor: start,
-          stop_tensor: stop,
-          num_tensor: num
+            start_t: start,
+            stop_t: stop,
+            num_tensor: num
         }
         return sess.run(ans_tensor, feed_dict=feed_dict)
 

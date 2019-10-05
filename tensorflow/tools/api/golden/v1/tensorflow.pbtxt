@@ -1565,6 +1565,10 @@ tf_module {
     argspec: "args=[\'start\', \'stop\', \'num\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "linspace_nd"
+    argspec: "args=[\'start\', \'stop\', \'num\',  \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "load_file_system_library"
     argspec: "args=[\'library_filename\'], varargs=None, keywords=None, defaults=None"
   }
