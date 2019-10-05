@@ -405,79 +405,12 @@ filegroup(
     visibility = ["//visibility:private"],
 )
 
-# Headers that are not exported as part of ":lib".
-filegroup(
-    name = "platform_port_internal_hdrs",
-    srcs = [
-        "//tensorflow/core/platform:demangle.h",
-        "//tensorflow/core/platform:host_info.h",
-        "//tensorflow/core/platform:snappy.h",
-    ],
-    visibility = ["//visibility:private"],
-)
-
-cc_library(
-    name = "platform_port",
-    srcs = [
-        "//tensorflow/core/platform:cpu_info.cc",
-        "//tensorflow/core/platform:legacy_platform_port_srcs",
-    ],
-    hdrs = [
-        ":platform_port_hdrs",
-        ":platform_port_internal_hdrs",
-    ],
-    copts = tf_copts() + tf_additional_numa_copts(),
-    visibility = [":__subpackages__"],
-    deps = [
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:platform",
-        "//tensorflow/core/platform:dynamic_annotations",
-        "//tensorflow/core/platform:thread_annotations",
-        ":platform_base",
-        "@com_google_absl//absl/base",
-        "//tensorflow/core/platform/default/build_config:port",
-        "@snappy",
-    ] + tf_additional_numa_deps(),
-)
-
 filegroup(
     name = "platform_protobuf_hdrs",
     srcs = [
         "//tensorflow/core/platform:protobuf.h",
     ],
     visibility = ["//visibility:private"],
-)
-
-# Headers that are not exported as part of ":lib".
-filegroup(
-    name = "platform_protobuf_internal_hdrs",
-    srcs = [
-        "//tensorflow/core/platform:protobuf_internal.h",
-    ],
-    visibility = ["//visibility:private"],
-)
-
-cc_library(
-    name = "platform_protobuf",
-    srcs = [
-        "//tensorflow/core/lib/core:legacy_lib_core_status_header",
-        "//tensorflow/core/platform:protobuf.cc",
-        "//tensorflow/core/platform:protobuf.h",
-        "//tensorflow/core/platform:protobuf_util.cc",
-    ],
-    hdrs = [
-        ":platform_protobuf_hdrs",
-        ":platform_protobuf_internal_hdrs",
-    ],
-    copts = tf_copts(),
-    visibility = [":__subpackages__"],
-    deps = [
-        ":platform_base",
-        ":platform_port",
-        "//tensorflow/core/platform",
-        "//tensorflow/core/platform/default/build_config:protobuf",
-        "@com_google_protobuf//:protobuf",
-    ],
 )
 
 cc_library(
@@ -527,44 +460,6 @@ filegroup(
     visibility = ["//visibility:private"],
 )
 
-# Headers that are not exported as part of ":lib".
-filegroup(
-    name = "platform_env_internal_hdrs",
-    srcs = [
-        "//tensorflow/core/platform:load_library.h",
-    ],
-    visibility = ["//visibility:private"],
-)
-
-cc_library(
-    name = "platform_env",
-    srcs = [
-        "//tensorflow/core/platform:env.cc",
-        "//tensorflow/core/platform:file_system.cc",
-        "//tensorflow/core/platform:legacy_platform_env_srcs",
-    ],
-    hdrs = [
-        ":platform_env_hdrs",
-        ":platform_env_internal_hdrs",
-    ],
-    copts = tf_copts(),
-    visibility = [
-        ":__subpackages__",
-        "//tensorflow/c:__subpackages__",
-    ],
-    deps = [
-        ":lib",
-        ":lib_internal",
-        ":platform_base",
-        ":platform_port",
-        ":platform_protobuf",
-        "//tensorflow/core/lib/core:error_codes_proto_cc",
-        "//tensorflow/core/platform",
-        "//tensorflow/core/platform/default/build_config:env",
-        "//tensorflow/core/platform/default/build_config:port",
-    ],
-)
-
 filegroup(
     name = "platform_file_system_hdrs",
     srcs = [
@@ -572,24 +467,6 @@ filegroup(
         "//tensorflow/core/platform:null_file_system.h",
     ],
     visibility = ["//visibility:private"],
-)
-
-cc_library(
-    name = "platform_file_system",
-    srcs = [
-        "//tensorflow/core/platform:file_system_helper.cc",
-        "//tensorflow/core/platform:legacy_file_system_hdrs",
-    ],
-    hdrs = [
-        ":platform_file_system_hdrs",
-    ],
-    copts = tf_copts(),
-    visibility = [":__subpackages__"],
-    deps = [
-        ":lib",
-        ":platform_env",
-        "//tensorflow/core/platform",
-    ],
 )
 
 filegroup(
@@ -627,54 +504,6 @@ tf_cc_test(
         ":test",
         ":test_main",
         "@com_google_absl//absl/memory",
-    ],
-)
-
-# Headers that are not exported as part of ":lib".
-filegroup(
-    name = "platform_other_internal_hdrs",
-    srcs = [
-        "//tensorflow/core/platform:denormal.h",
-        "//tensorflow/core/platform:setround.h",
-        "//tensorflow/core/platform:tracing.h",
-    ],
-    visibility = ["//visibility:private"],
-)
-
-cc_library(
-    name = "platform_other",
-    srcs = [
-        "//tensorflow/core/platform:cpu_feature_guard.cc",
-        "//tensorflow/core/platform:legacy_platform_other_srcs",
-        "//tensorflow/core/platform:profile_utils/android_armv7a_cpu_utils_helper.cc",
-        "//tensorflow/core/platform:profile_utils/clock_cycle_profiler.cc",
-        "//tensorflow/core/platform:profile_utils/cpu_utils.cc",
-        "//tensorflow/core/platform:tracing.cc",
-    ],
-    hdrs = [
-        ":platform_other_hdrs",
-        ":platform_other_internal_hdrs",
-    ],
-    copts = tf_copts(),
-    visibility = [":__subpackages__"],
-    deps = [
-        ":lib",
-        ":platform_base",
-        ":platform_env",
-        ":platform_port",
-        ":platform_protobuf",
-        "//tensorflow/core/platform",
-        "//tensorflow/core/platform:abi",
-        "//tensorflow/core/platform:annotation",
-        "//tensorflow/core/platform:denormal",
-        "//tensorflow/core/platform:notification",
-        "//tensorflow/core/platform:setround",
-        "//tensorflow/core/platform:stacktrace",
-        "//tensorflow/core/platform:strong_hash",
-        "//tensorflow/core/platform/default/build_config:other",
-        "//tensorflow/core/platform/default/build_config:platformlib",
-        "//tensorflow/core/platform/default/build_config:port",
-        "@com_google_absl//absl/time",
     ],
 )
 

@@ -836,6 +836,8 @@ cc_library(
         "//tensorflow/core/lib/core:status",
         "@com_google_absl//absl/strings",
         "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Support",
     ],
 )
 
@@ -849,6 +851,9 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:test",
         "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Support",
     ],
 )

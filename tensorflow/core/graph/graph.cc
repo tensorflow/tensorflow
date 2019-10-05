@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/while_context.h"
@@ -91,7 +90,6 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
         {"FakeParam", NC_FAKE_PARAM},
         {"PartitionedCall", NC_PARTITIONED_CALL},
         {"StatefulPartitionedCall", NC_PARTITIONED_CALL},
-        {"SymbolicGradient", NC_SYMBOLIC_GRADIENT},
         {"If", NC_IF},
         {"StatelessIf", NC_IF},
         {"While", NC_WHILE},
@@ -139,8 +137,7 @@ Node::Node()
       while_ctx_(nullptr) {}
 
 void Node::Initialize(int id, int cost_id,
-                      std::shared_ptr<NodeProperties> props,
-                      bool is_function_op) {
+                      std::shared_ptr<NodeProperties> props) {
   DCHECK_EQ(id_, -1);
   DCHECK(in_edges_.empty());
   DCHECK(out_edges_.empty());
@@ -149,11 +146,7 @@ void Node::Initialize(int id, int cost_id,
 
   props_ = std::move(props);
   // Initialize the class_ based on the type string
-  if (is_function_op) {
-    class_ = NC_FUNCTION_OP;
-  } else {
-    class_ = GetNodeClassForOp(props_->node_def.op());
-  }
+  class_ = GetNodeClassForOp(props_->node_def.op());
 }
 
 void Node::Clear() {
@@ -424,31 +417,28 @@ const VersionDef& Graph::versions() const { return *versions_; }
 void Graph::set_versions(const VersionDef& versions) { *versions_ = versions; }
 
 Node* Graph::AddNode(NodeDef node_def, Status* status) {
-  const OpRegistrationData* op_reg_data;
-  status->Update(ops_.LookUp(node_def.op(), &op_reg_data));
+  const OpDef* op_def;
+  status->Update(ops_.LookUpOpDef(node_def.op(), &op_def));
   if (!status->ok()) return nullptr;
 
   DataTypeVector inputs;
   DataTypeVector outputs;
-  status->Update(
-      InOutTypesForNode(node_def, op_reg_data->op_def, &inputs, &outputs));
+  status->Update(InOutTypesForNode(node_def, *op_def, &inputs, &outputs));
   if (!status->ok()) {
     *status = AttachDef(*status, node_def);
     return nullptr;
   }
 
-  Node* node = AllocateNode(
-      std::make_shared<NodeProperties>(&op_reg_data->op_def,
-                                       std::move(node_def), inputs, outputs),
-      nullptr, op_reg_data->is_function_op);
+  Node* node = AllocateNode(std::make_shared<NodeProperties>(
+                                op_def, std::move(node_def), inputs, outputs),
+                            nullptr);
   return node;
 }
 
 Node* Graph::CopyNode(const Node* node) {
   DCHECK(!node->IsSource());
   DCHECK(!node->IsSink());
-  Node* copy =
-      AllocateNode(node->props_, node, node->class_ == Node::NC_FUNCTION_OP);
+  Node* copy = AllocateNode(node->props_, node);
   copy->set_assigned_device_name(node->assigned_device_name());
 
   // Since the OpDef of a function may be owned by the Graph that owns 'node',
@@ -773,7 +763,7 @@ Status Graph::IsValidInputTensor(const Node* node, int idx) const {
 }
 
 Node* Graph::AllocateNode(std::shared_ptr<NodeProperties> props,
-                          const Node* cost_node, bool is_function_op) {
+                          const Node* cost_node) {
   Node* node = nullptr;
   if (free_nodes_.empty()) {
     node = new (arena_.Alloc(sizeof(Node))) Node;  // placement new
@@ -784,7 +774,7 @@ Node* Graph::AllocateNode(std::shared_ptr<NodeProperties> props,
   node->graph_ = this;
   const int id = nodes_.size();
   int cost_id = cost_node ? cost_node->cost_id() : id;
-  node->Initialize(id, cost_id, std::move(props), is_function_op);
+  node->Initialize(id, cost_id, std::move(props));
   nodes_.push_back(node);
   ++num_nodes_;
   return node;

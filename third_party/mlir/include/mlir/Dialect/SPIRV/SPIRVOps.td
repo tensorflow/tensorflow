@@ -485,6 +485,41 @@ def SPV_StoreOp : SPV_Op<"Store", []> {
 
 // -----
 
+def SPV_UndefOp : SPV_Op<"Undef", []> {
+  let summary = "Make an intermediate object whose value is undefined.";
+
+  let description = [{
+    Result Type is the type of object to make.
+
+    Each consumption of Result <id> yields an arbitrary, possibly different
+    bit pattern or abstract value resulting in possibly different concrete,
+    abstract, or opaque values.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    undef-op ::= `spv.Undef` `:` sprirv-type
+    ```
+
+    For example:
+
+    ```
+    %0 = spv.Undef : f32
+    %1 = spv.Undef : !spv.struct<!spv.array<4 x vector<4xi32>>>
+    ```
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    SPV_Type:$result
+  );
+
+  let verifier = [{ return success(); }];
+}
+
+// -----
+
 def SPV_VariableOp : SPV_Op<"Variable", []> {
   let summary = [{
     Allocate an object in memory, resulting in a pointer to it, which can be
