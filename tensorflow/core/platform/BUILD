@@ -127,8 +127,21 @@ cc_library(
     hdrs = ["cpu_feature_guard.h"],
     deps = [
         ":byte_order",
+        ":cpu_info",
         ":logging",
-        ":platform_port",
+    ],
+)
+
+cc_library(
+    name = "cpu_info",
+    srcs = ["cpu_info.cc"],
+    hdrs = ["cpu_info.h"],
+    copts = tf_copts(),
+    deps = [
+        ":byte_order",
+        ":logging",
+        ":platform",
+        ":types",
     ],
 )
 
@@ -155,10 +168,10 @@ cc_library(
     hdrs = ["denormal.h"],
     deps = [
         ":byte_order",
+        ":cpu_info",
         ":logging",
         ":macros",
         ":platform",
-        ":platform_port",
     ],
 )
 
@@ -320,6 +333,10 @@ cc_library(
 
 cc_library(
     name = "platform_port",
+    srcs = [
+        "cpu_info.cc",
+    ],
+    copts = tf_copts(),
     textual_hdrs = [
         "cpu_info.h",
         "demangle.h",
@@ -329,7 +346,11 @@ cc_library(
         "numa.h",
         "snappy.h",
     ],
-    deps = tf_platform_helper_deps("platform_port_impl"),
+    deps = [
+        ":logging",
+        ":platform",
+        ":types",
+    ] + tf_platform_helper_deps("platform_port_impl"),
 )
 
 cc_library(
@@ -617,7 +638,6 @@ filegroup(
             "**/logger.cc",
             "**/mutex.cc",
             "**/logging.cc",
-            "**/port.cc",
             "**/human_readable_json.cc",
             "**/rocm.h",
             "**/rocm_rocdl_path.cc",
@@ -721,7 +741,6 @@ filegroup(
             "**/logger.cc",
             "**/mutex.cc",
             "**/logging.cc",
-            "**/port.cc",
             "**/human_readable_json.cc",
             "**/rocm_rocdl_path.cc",
             "abi.cc",

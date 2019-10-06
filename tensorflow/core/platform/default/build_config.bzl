@@ -609,6 +609,10 @@ def tf_additional_test_srcs():
 def tf_kernel_tests_linkstatic():
     return 0
 
+def tf_additional_lib_defines():
+    """Additional defines needed to build TF libraries."""
+    return []
+
 def tf_additional_lib_deps():
     """Additional dependencies needed to build TF libraries."""
     return [
@@ -663,6 +667,12 @@ def tf_lib_proto_compiler_deps():
         "@com_google_protobuf//:protoc_lib",
     ]
 
+def tf_additional_numa_lib_defines():
+    return select({
+        "//tensorflow:with_numa_support": ["TENSORFLOW_USE_NUMA"],
+        "//conditions:default": [],
+    })
+
 def tf_py_clif_cc(name, visibility = None, **kwargs):
     pass
 
@@ -695,6 +705,29 @@ def tf_additional_binary_deps():
             "//third_party/mkl:intel_binary_blob",
         ],
     )
+
+def tf_additional_numa_deps():
+    return select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:macos": [],
+        "//conditions:default": [
+            "@hwloc",
+        ],
+    })
+
+def tf_additional_numa_copts():
+    return select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:macos": [],
+        "//conditions:default": [
+            "-Ithird_party/hwloc/hwloc-master/include",
+            "-DTENSORFLOW_USE_NUMA",
+        ],
+    })
 
 def tf_additional_rpc_deps():
     return []
