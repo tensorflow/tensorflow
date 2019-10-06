@@ -31,7 +31,6 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import tf2
 from tensorflow.python.eager import executor
 from tensorflow.python.eager import monitoring
-from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.util import compat
 from tensorflow.python.util import is_in_graph_mode
