@@ -931,7 +931,7 @@ void ReshapeOp::build(Builder *builder, OperationState &result, Value *tensor,
       const_shape.push_back(val);
     }
 
-    // Compute the value of the uknown dimension.
+    // Compute the value of the unknown dimension.
     if (flatten) {
       // Compute number of elements in tensor shape.
       auto tshape = ttype.getShape();

@@ -44,13 +44,13 @@ struct OpQuantSpec {
   // Maps the operand index of a bias input to its quantization specifications,
   // including the non-bias operand indexes and the method retrieving
   // quantization parameters from list of parameters of the non-bias operands.
-  // This map is empty if the op doesn't havea bias operand.
+  // This map is empty if the op doesn't have a bias operand.
   std::unordered_map<int, std::pair<std::vector<int>, AccumulatorScaleFunc>>
       biases_params;
 
   // Quantization parameters for value restricted outputs. This is the
   // "hard-coded" parameters and should be used unconditionally for the
-  // quantized op. This vector is empty if the op doesn't have value resctricted
+  // quantized op. This vector is empty if the op doesn't have value restricted
   // outputs.
   llvm::DenseMap<SignedInteger, QuantParamsForResults> restricted_output_params;
 };

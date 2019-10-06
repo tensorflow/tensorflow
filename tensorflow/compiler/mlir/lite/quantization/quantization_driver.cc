@@ -89,7 +89,7 @@ struct RequantizeState {
 // iteration), this process stops if the existing parameters are the immutable,
 // or adding `requantize` op to resolve the conflicts.
 //
-// After the algorithm is converaged, pairs of tfl.quantize and tfl.dequantize
+// After the algorithm is converged, pairs of tfl.quantize and tfl.dequantize
 // are inserted to the right position to materialize the propagation and
 // requantize results.
 //

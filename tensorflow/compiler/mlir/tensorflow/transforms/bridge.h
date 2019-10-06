@@ -23,7 +23,7 @@ namespace mlir {
 namespace TFTPU {
 
 // Run all the passes involved in transforming the graph before execution so
-// that it is suitable for targetting TPUs.
+// that it is suitable for targeting TPUs.
 tensorflow::Status TPUBridge(ModuleOp module);
 
 }  // namespace TFTPU

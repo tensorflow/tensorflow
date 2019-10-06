@@ -328,7 +328,7 @@ void ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
   // LSTM op.
   UpdateFuncSignature();
 
-  // Transoform the weights, projection, bias and layer norm coefficients
+  // Transform the weights, projection, bias and layer norm coefficients
   // to generate operands for the TFL fused LSTM op.
   GenerateFusedOpOperands();
 

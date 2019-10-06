@@ -790,7 +790,7 @@ void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // PackOp
 //===----------------------------------------------------------------------===//
 
-// Remove redunant unpack pack op.
+// Remove redundant unpack pack op.
 // If a unpack op is followed by a pack op, we can remove the pack op, if the
 // unpack op is only consumed by the pack op, it will be removed as well.
 // An example illustration is:

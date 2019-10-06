@@ -92,7 +92,7 @@ namespace {
 
 // Stateful helper class to import a TensorFlow model into an MLIR Module.
 //
-// This is the base class that contains common utilties shared between the
+// This is the base class that contains common utilities shared between the
 // GraphDef importer and SavedModel importer.
 //
 // A subclass is expected to call `PrepareConvert` first to perform necessary
@@ -1095,7 +1095,7 @@ mlir::Location ImporterBase::GetLocation(const NodeDef& node_def) {
   // For NextIteration nodes, location is used to pair source and sink nodes.
   // Hence, we use node name as location to keep it unique.
   // TODO(prakalps): In future the plan is to use tokens to pair source/sink
-  // nodes. Then NextIteration nodes would not need to be handled seprately.
+  // nodes. Then NextIteration nodes would not need to be handled separately.
   if (node_def.op() == "NextIteration")
     return node_name_to_call_site(node_def.name());
 

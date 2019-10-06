@@ -40,7 +40,7 @@ constexpr char kLayerNormalizedLstmCellSimple[] =
 // that also contains other supporting ops needed to construct the operands for
 // the fused op. The caller provides the containing FuncOp as input with
 // arguments specifying the input, weight, projection and bias.
-// The weight, pprojection, bias and layer norm scale all need to be
+// The weight, projection, bias and layer norm scale all need to be
 // RankedTensorType.
 // This class sets the layer norm coefficients to NoneType.
 class ConvertLSTMCellSimpleToFusedLSTM {
@@ -168,7 +168,7 @@ class ConvertLSTMCellSimpleToFusedLSTM {
 // fused op is contained within a FuncOp that also contains other supporting ops
 // needed to construct the operands for the fused op. The caller provides the
 // containing FuncOp as input with arguments specifying the input, weight,
-// projection, bias and layer norm scale. The weight, pprojection, bias and
+// projection, bias and layer norm scale. The weight, projection, bias and
 // layer norm scale all need to be RankedTensorType.
 // This class overrides the layer norm coefficient setters from the base class.
 class ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM

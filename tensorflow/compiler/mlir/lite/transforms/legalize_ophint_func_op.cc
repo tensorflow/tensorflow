@@ -164,7 +164,7 @@ LogicalResult BuildUnidirectionalSequenceLSTMOp(FuncOp composite_func_op,
   // The output type set is somewhat adhoc here: The fused op only have exact
   // one output while the call_op can have more than one output. (but we only
   // take the last one).
-  // And here we check the outputs are not used (execpet the last one) if the
+  // And here we check the outputs are not used (except the last one) if the
   // call_op has more than one output.
   if (call_op.getNumResults() > 1) {
     for (int i = 0; i < call_op.getNumResults() - 1; ++i) {
