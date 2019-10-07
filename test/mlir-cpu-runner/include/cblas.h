@@ -17,6 +17,8 @@
 #ifndef MLIR_CPU_RUNNER_CBLAS_H_
 #define MLIR_CPU_RUNNER_CBLAS_H_
 
+#include "mlir_runner_utils.h"
+
 #ifdef _WIN32
 #ifndef MLIR_CBLAS_EXPORT
 #ifdef cblas_EXPORTS
