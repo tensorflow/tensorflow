@@ -581,7 +581,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
   }];
 
   let arguments = (ins
-    TensorOf<[F32, I8, I32, I64, TFL_Str, QI8, QUI8]>:$params,
+    TensorOf<[F32, I1, I8, I32, I64, TFL_Str, QI8, QUI8]>:$params,
     TensorOf<[I32, I64]>:$indices,
     I32Attr:$axis
   );
@@ -594,7 +594,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
   ];
 
   let results = (outs
-    TensorOf<[F32, I16, I32, I64, TFL_Str, QI8, QUI8]>:$output
+    TensorOf<[F32, I1, I8, I32, I64, TFL_Str, QI8, QUI8]>:$output
   );
 
   let hasOptions = 1;
