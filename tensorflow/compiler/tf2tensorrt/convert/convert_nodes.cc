@@ -2970,8 +2970,8 @@ Status ConvertPool3D(OpConverterParams* params) {
   const nvinfer1::Dims3 ksize(tf_kernel[d_index], tf_kernel[h_index],
                               tf_kernel[w_index]);
 
-  nvinfer1::INetworkDefinition* network = params->converter->network();
-  nvinfer1::IPoolingLayer* layer = network->addPoolingNd(*tensor, type, ksize);
+  nvinfer1::IPoolingLayer* layer =
+      params->converter->network()->addPoolingNd(*tensor, type, ksize);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
 
   params->converter->MarkQuantizationRangesAsInferrable(tensor,
