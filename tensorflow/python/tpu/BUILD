@@ -21,6 +21,24 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+exports_files(["tpu_test_wrapper.py"])
+
+py_test(
+    name = "tpu_test_wrapper_test",
+    srcs = [
+        "tpu_test_wrapper.py",
+        "tpu_test_wrapper_test.py",
+    ],
+    main = "tpu_test_wrapper_test.py",
+    python_version = "PY3",
+    tags = ["no_pip"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform",
+        "@absl_py//absl/testing:flagsaver",
+    ],
+)
+
 py_library(
     name = "tpu_py",
     srcs = ["ops/tpu_ops.py"],
