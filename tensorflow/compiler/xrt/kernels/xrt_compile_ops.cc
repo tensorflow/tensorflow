@@ -93,8 +93,7 @@ Status XRTCompileOp::Compile(OpKernelContext* ctx,
   // We are guaranteed that the underlying device object won't be deleted out
   // from under us, while the ScopedRef is live.
   class XRTGenericDeviceAccessor::ScopedRef device_ref;
-  TF_RETURN_IF_ERROR(
-      XRTGenericDeviceAccessor::InitScopedRef(ctx, 0, &device_ref));
+  TF_RETURN_IF_ERROR(XRTGenericDeviceAccessor::InitScopedRef(ctx, &device_ref));
 
   xla::LocalClient* client = device_ref.client();
 
