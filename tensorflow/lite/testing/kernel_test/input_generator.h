@@ -18,6 +18,10 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
+#include "testing/base/public/googletest.h"
+#endif
+
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/model.h"
@@ -25,6 +29,23 @@ limitations under the License.
 
 namespace tflite {
 namespace testing {
+
+#if defined(PLATFORM_GOOGLE)
+string TmpDir() { return FLAGS_test_tmpdir; }
+#else
+string TmpDir() {
+  // 'bazel test' sets TEST_TMPDIR
+  const char* env = getenv("TEST_TMPDIR");
+  if (env && env[0] != '\0') {
+    return env;
+  }
+  env = getenv("TMPDIR");
+  if (env && env[0] != '\0') {
+    return env;
+  }
+  return "/tmp";
+}
+#endif
 
 // Generate random input, or read input from a file for kernel diff test.
 // Needs to load the tflite graph to get information like tensor shape and
