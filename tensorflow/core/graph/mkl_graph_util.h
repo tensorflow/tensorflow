@@ -152,7 +152,7 @@ static inline bool IsMklLayoutDependentOp(const string& op_name,
 
   // Restrict quantized ops to QUINT8 and QINT8 for now
   if (kernel.find(kMklQuantizedOpLabelPattern) != string::npos) {
-    return (Tinput == DT_QUINT8 && Tfilter == DT_QINT8);
+    return (Tfilter == DT_QINT8);
   }
   return false;
 }
