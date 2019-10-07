@@ -36,18 +36,13 @@ class LMDBDatasetParams : public DatasetParams {
         filenames_(CreateTensor<std::string>(
             TensorShape({static_cast<int>(filenames.size())}), filenames)) {}
 
-  virtual Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override {
-    *input_placeholder = {LMDBDatasetOp::kFileNames};
-    return Status::OK();
+  virtual std::vector<Tensor> GetInputTensors() const override {
+    return {filenames_};
   }
 
-  virtual Status GetInputs(
-      const std::vector<Tensor*>& input_datasets,
-      std::vector<std::unique_ptr<Tensor>>* created_tensors,
-      gtl::InlinedVector<TensorValue, 4>* inputs) const override {
-    inputs->clear();
-    AddTensorInputs({filenames_}, created_tensors, inputs);
+  virtual Status GetInputNames(
+      std::vector<string>* input_placeholder) const override {
+    *input_placeholder = {LMDBDatasetOp::kFileNames};
     return Status::OK();
   }
 
