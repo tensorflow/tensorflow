@@ -33,7 +33,7 @@ namespace tblgen {
 // and provides helper methods for accessing them.
 class Dialect {
 public:
-  explicit Dialect(const llvm::Record *def) : def(*def) {}
+  explicit Dialect(const llvm::Record *def) : def(def) {}
 
   // Returns the name of this dialect.
   StringRef getName() const;
@@ -55,8 +55,11 @@ public:
   // Compares two dialects by comparing the names of the dialects.
   bool operator<(const Dialect &other) const;
 
+  // Returns whether the dialect is defined.
+  operator bool() const { return def != nullptr; }
+
 private:
-  const llvm::Record &def;
+  const llvm::Record *def;
 };
 } // end namespace tblgen
 } // end namespace mlir
