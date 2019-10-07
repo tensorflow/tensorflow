@@ -2311,6 +2311,7 @@ cc_library(
                "@com_google_absl//absl/strings",
                "//third_party/eigen3",
                "//tensorflow/core/lib/bfloat16",
+               "//tensorflow/core/lib/math:math_util",
                "//tensorflow/core/platform:abi",
                "//tensorflow/core/platform:annotation",
                "//tensorflow/core/platform:cpu_info",
