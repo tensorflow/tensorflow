@@ -245,7 +245,7 @@ class ResizeBicubicOpTest(test.TestCase):
                                             align_corners=align_corners)
       with self.cached_session():
         err = gradient_checker.compute_gradient_error(
-          input_tensor, in_shape, resize_out, out_shape, x_init_value=x)
+            input_tensor, in_shape, resize_out, out_shape, x_init_value=x)
       self.assertLess(err, 1e-3)
 
   @test_util.run_deprecated_v1
@@ -347,14 +347,14 @@ class CropAndResizeOpTest(test.TestCase):
     box_ind = np.array([0, 1], dtype=np.int32)
 
     crops = image_ops.crop_and_resize(
-      constant_op.constant(
-        image, shape=image_shape),
-      constant_op.constant(
-        boxes, shape=[num_boxes, 4]),
-      constant_op.constant(
-        box_ind, shape=[num_boxes]),
-      constant_op.constant(
-        crop_size, shape=[2]))
+        constant_op.constant(
+          image, shape=image_shape),
+        constant_op.constant(
+          boxes, shape=[num_boxes, 4]),
+        constant_op.constant(
+          box_ind, shape=[num_boxes]),
+         constant_op.constant(
+          crop_size, shape=[2]))
     with self.session(use_gpu=True) as sess:
       self.assertEqual(crops_shape, list(crops.get_shape()))
       crops = self.evaluate(crops)
