@@ -60,7 +60,7 @@ tensorflow::OpRegistry::Global
 tensorflow::OpRegistry::LookUpOpDef
 tensorflow::RemoveNonDeprecationDescriptionsFromOpDef
 
-[status]  # device_lib
+[lib_internal_impl]  # device_lib
 tensorflow::Status::code
 tensorflow::Status::error_message
 tensorflow::Status::ok()

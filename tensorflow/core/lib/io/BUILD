@@ -1,6 +1,12 @@
 package(
     default_visibility = [
-        "//tensorflow:__subpackages__",
+        "//tensorflow/core/lib/core:__pkg__",
+        "//tensorflow/core/lib/gtl:__pkg__",
+        "//tensorflow/core/lib/hash:__pkg__",
+        "//tensorflow/core/lib/io:__pkg__",
+        "//tensorflow/core/lib/random:__pkg__",
+        "//tensorflow/core/lib/strings:__pkg__",
+        "//tensorflow/core/platform:__pkg__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )

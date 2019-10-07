@@ -209,7 +209,6 @@ cc_library(
     deps = if_gpu_is_configured([
         "gpu_driver_header",
         "gpu_helpers_header",
-        "//tensorflow/core/lib/gtl:cleanup",
         "//tensorflow/core:lib",
         "//tensorflow/core:regexp_internal",
         "//tensorflow/core:cuda_libdevice_path",

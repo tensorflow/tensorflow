@@ -5190,7 +5190,7 @@ genrule(
         "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
         "//tensorflow/core:framework_internal_impl",  # op_def_registry
-        "//tensorflow/core/lib/core:status",  # device_lib
+        "//tensorflow/core:lib_internal_impl",  # device_lib
         "//tensorflow/core:core_cpu_impl",  # device_lib
     ],
     outs = ["pybind_symbol_target_libs_file.txt"],
