@@ -203,7 +203,7 @@ class MemorySpaceAssignment {
 
   using AllocationSequence = std::list<std::unique_ptr<Allocation>>;
   using AllocationMap =
-      absl::flat_hash_map<const HloBuffer*, AllocationSequence>;
+      absl::flat_hash_map<const HloValue*, AllocationSequence>;
 
   // Runs the MemorySpaceAssignment pass. alternate_memory_space is the
   // architecture-specific integer value that describes the alternate memory.
@@ -272,6 +272,15 @@ class MemorySpaceAssignment {
   std::vector<HloPosition> pending_positions_in_alternate_mem_;
 };
 
+// This struct contains mandatory memory assignments at a given time. E.g., an
+// input's required memory assignment time would correspond to the definition
+// time of the parameter instruction, and an output's time would correspnd to
+// the time of last use.
+struct RequiredMemoryAssignment {
+  MemorySpaceAssignment::MemorySpace memory_space;
+  int64 time;
+};
+
 // This class inherits from GlobalDecreasingSizeBestFitHeap with a notion of
 // maximum size.
 class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
@@ -319,6 +328,9 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
       BufferInterval alternate_mem_interval,
       HloInstruction* non_bitcast_operand,
       MemorySpaceAssignment::AllocationSequence* allocations);
+
+  // Adds input and outputs as required assignments.
+  void AddInputAndOutputRequiredAssignments();
 
   // Given a buffer interval, returns the colocated intervals. Unlike the
   // similar GlobalDecreasingSizeBestFitHeap::GetTransitiveColocations, it
@@ -373,6 +385,10 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   int64 max_outstanding_async_copies_;
   std::vector<std::pair<BufferInterval, ChunkCandidate>> pending_chunks_;
   std::vector<std::pair<int64, int64>> pending_async_copies_;
+  // This map contains required memory assignments for HloValues (e.g., input
+  // and outputs).
+  absl::flat_hash_map<const HloValue*, std::vector<RequiredMemoryAssignment>>
+      required_assignments_;
 };
 
 }  // namespace xla

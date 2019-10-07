@@ -1168,5 +1168,60 @@ TEST_F(MemorySpaceAssignmentTest, TupleInput) {
   AssignMemorySpace(module.get());
 }
 
+TEST_F(MemorySpaceAssignmentTest, InputOutputAlias) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
+  HloInstruction* p = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "p"));
+  HloInstruction* p0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, p, 0));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* p1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, p, 1));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+  HloInstruction* negate7 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, add));
+  HloInstruction* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({p0, add}));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(
+      computation, {p, p0, negate0, negate1, negate2, negate3, negate4, negate5,
+                    negate6, p1, add, negate7, tuple});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  // Make input {0} alias with output {0} and input {1} alias with output {1}.
+  TF_CHECK_OK(module->input_output_alias_config().SetUpAlias(
+      {0}, 0, {0}, HloInputOutputAliasConfig::AliasKind::kSystemAlias));
+  TF_CHECK_OK(module->input_output_alias_config().SetUpAlias(
+      {1}, 0, {1}, HloInputOutputAliasConfig::AliasKind::kSystemAlias));
+
+  AssignMemorySpace(module.get());
+
+  // Make sure the input is in the default memory space.
+  EXPECT_EQ(p->shape().tuple_shapes(0).layout().memory_space(),
+            kDefaultMemorySpace);
+  EXPECT_EQ(p->shape().tuple_shapes(1).layout().memory_space(),
+            kDefaultMemorySpace);
+}
+
 }  // namespace
 }  // namespace xla

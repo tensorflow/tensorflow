@@ -53,24 +53,24 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
           << ", min prefetch interval = " << min_prefetch_interval_
           << ", max prefetch interval = " << max_prefetch_interval_;
 
+  AddInputAndOutputRequiredAssignments();
+
   for (auto& interval : sorted_buffer_intervals) {
     if (!interval.need_allocation) {
       continue;
     }
 
     // Skip if we have already allocated for this buffer.
-    const HloBuffer& buffer =
-        alias_analysis_.GetBufferContainingValue(*interval.buffer);
-    if (allocation_map_->contains(&buffer)) {
+    if (allocation_map_->contains(interval.buffer)) {
       continue;
     }
 
     // If the buffer is a tuple, don't use this algorithm for now. The buffers
-    // that are pointed to by the tuple will still use this algorithm.
-    // TODO(berkin): Because tuples are cheap to place in the alternate memory
-    // (they are just pointers) we don't need to use prefetch/evict logic.
-    if (buffer.values()[0]->shape().IsTuple()) {
-      VLOG(4) << "Keeping buffer " << buffer.ToString()
+    // that are pointed to by the tuple will still use this algorithm.  Because
+    // tuples are cheap to place in the alternate memory (they are just
+    // pointers) we don't need to use prefetch/evict logic.
+    if (interval.buffer->shape().IsTuple()) {
+      VLOG(4) << "Keeping value " << interval.buffer->ToShortString()
               << " in default mem because it is a tuple.";
       continue;
     }
@@ -89,9 +89,6 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
       }
     }
 
-    MemorySpaceAssignment::AllocationSequence* allocation_sequence =
-        &(*allocation_map_)[&buffer];
-
     // At this point, none of the colocated buffers contain any phi buffers.
     for (const BufferInterval* colocated_interval : colocated_intervals) {
       if (keep_in_default_memory) {
@@ -99,6 +96,8 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
       }
       const HloValue* value = colocated_interval->buffer;
       const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
+      MemorySpaceAssignment::AllocationSequence* allocation_sequence =
+          &(*allocation_map_)[value];
       int64 definition_time =
           instruction_schedule.at(value->defining_instruction());
       // Sort the uses by the use time.
@@ -141,7 +140,7 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
 
   if (VLOG_IS_ON(3)) {
     for (const auto& alloc_pair : *allocation_map_) {
-      VLOG(3) << "Allocation for " << alloc_pair.first->ToString();
+      VLOG(3) << "Allocation for " << alloc_pair.first->ToShortString();
       for (const auto& alloc : alloc_pair.second) {
         std::string addr_str = ": default";
         if (alloc->memory_space() == MemorySpace::kAlternate) {
@@ -155,6 +154,52 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
   }
 
   return result_;
+}
+
+void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
+  // Go through the parameters and outputs and pin them to default memory by
+  // adding a required assignment.
+  // TODO(berkin): If these values are already marked alternate memory, use
+  // those instead.
+  const HloDataflowAnalysis& dataflow_analysis =
+      alias_analysis_.dataflow_analysis();
+  const HloModule& module = dataflow_analysis.module();
+  const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
+  HloComputation* entry_computation = module.entry_computation();
+  for (HloInstruction* parameter_instruction :
+       entry_computation->parameter_instructions()) {
+    int64 parameter_instruction_time =
+        instruction_schedule.at(parameter_instruction);
+    ShapeUtil::ForEachSubshape(
+        parameter_instruction->shape(),
+        [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+          for (const HloValue* value :
+               dataflow_analysis.GetValueSet(parameter_instruction, index)
+                   .values()) {
+            VLOG(3) << "Adding required assignment for parameter value = "
+                    << value->ToShortString()
+                    << " time = " << parameter_instruction_time;
+            required_assignments_[value].push_back(
+                {/*memory_space=*/MemorySpace::kDefault,
+                 /*time=*/parameter_instruction_time});
+          }
+        });
+  }
+  HloInstruction* root_instruction = entry_computation->root_instruction();
+  int64 root_instruction_time = instruction_schedule.at(root_instruction);
+  ShapeUtil::ForEachSubshape(
+      root_instruction->shape(),
+      [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+        for (const HloValue* value :
+             dataflow_analysis.GetValueSet(root_instruction, index).values()) {
+          VLOG(3) << "Adding required assignment for output value = "
+                  << value->ToShortString()
+                  << " time = " << root_instruction_time;
+          required_assignments_[value].push_back(
+              {/*memory_space=*/MemorySpace::kDefault,
+               /*time=*/root_instruction_time});
+        }
+      });
 }
 
 void AlternateMemoryBestFitHeap::CommitPendingChunks() {
@@ -214,8 +259,37 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
                   : "");
   CHECK_LE(start_time, end_time);
 
+  // There could be a requirement to pin this buffer to default memory either at
+  // the definition site (e.g., parameters) or at the use site (e.g., outputs).
+  // If there is a definition requirement, then we're allowed to prefetch, but
+  // if it's a use requirement, we cannot prefetch the buffer. If the use
+  // expects the buffer to be in default memory, we cannot prefetch it because
+  // if we did, it would be in alternate memory instead.
+  bool definition_requires_buffer_in_default_mem = false;
+  bool use_requires_buffer_in_default_mem = false;
+  auto required_assignment_it = required_assignments_.find(buffer);
+  if (required_assignment_it != required_assignments_.end()) {
+    for (const RequiredMemoryAssignment& required_assignment :
+         required_assignment_it->second) {
+      VLOG(3) << "Required assignment at time = " << required_assignment.time;
+      // TODO(berkin): Handle memory requirements for alternate memory space.
+      if (required_assignment.memory_space == MemorySpace::kDefault) {
+        if (required_assignment.time == start_time) {
+          definition_requires_buffer_in_default_mem = true;
+          VLOG(3) << "Definition requires buffer in default memory.";
+        }
+        if (required_assignment.time == end_time) {
+          use_requires_buffer_in_default_mem = true;
+          VLOG(3) << "Use requires buffer in default memory.";
+        }
+      }
+    }
+  }
+
   // First try keeping the allocation entirely in the alternate memory.
-  if (TryAllocatingInAlternateMemoryNoCopy(
+  if (!definition_requires_buffer_in_default_mem &&
+      !use_requires_buffer_in_default_mem &&
+      TryAllocatingInAlternateMemoryNoCopy(
           start_time, end_time, last_use_time, defining_position, use,
           alternate_mem_interval, non_bitcast_operand, allocations)) {
     return true;
@@ -298,6 +372,15 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
     allocations->push_back(absl::make_unique<MemorySpaceAssignment::Allocation>(
         non_bitcast_operand, defining_position, MemorySpace::kDefault,
         kDummyChunk, start_time, end_time));
+  }
+
+  // If the use requires the buffer to be in default memory, don't try to
+  // prefetch.
+  if (use_requires_buffer_in_default_mem) {
+    VLOG(4)
+        << "Not trying to prefetch because use requires buffer in default mem.";
+    allocations->back()->AddUse(use);
+    return true;
   }
 
   // Try partially placing the buffer in the alternate space. The time that is
