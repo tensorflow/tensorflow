@@ -39,15 +39,18 @@ class PresetAssignments {
     sizes_.emplace_back(memory_space, size);
   }
 
-  absl::Span<const std::pair<const HloPosition, const HeapSimulator::Chunk>>
-  chunks() const {
+  absl::Span<const std::pair<HloPosition, HeapSimulator::Chunk>> chunks()
+      const {
     return chunks_;
   }
 
   absl::Span<const std::pair<int64, int64>> sizes() const { return sizes_; }
 
+  // Remove the chunks_ entry that corresponds to instruction.
+  void RemoveAssignmentForInstruction(const HloInstruction* instruction);
+
  private:
-  std::vector<std::pair<const HloPosition, const HeapSimulator::Chunk>> chunks_;
+  std::vector<std::pair<HloPosition, HeapSimulator::Chunk>> chunks_;
   std::vector<std::pair<int64, int64>> sizes_;
 };
 
@@ -129,7 +132,7 @@ class MemorySpaceAssignment {
     virtual HloInstruction* instruction() const { return instruction_; }
 
     // Returns the defining position for this allocation.
-    HloPosition defining_position() const { return defining_position_; }
+    virtual HloPosition defining_position() const { return defining_position_; }
 
     const std::vector<HloUse>& uses() const { return uses_; }
     MemorySpace memory_space() const { return memory_space_; }
@@ -139,6 +142,12 @@ class MemorySpaceAssignment {
     int64 end_time() const { return end_time_; }
 
    protected:
+    // Descend to the shape_index element of the tuple and replace that with
+    // new_instruction.
+    StatusOr<HloInstruction*> ReplaceTupleWith(HloInstruction* new_instruction,
+                                               HloInstruction* tuple,
+                                               ShapeIndex shape_index);
+
     HloInstruction* instruction_;
     HloPosition defining_position_;
     std::vector<HloUse> uses_;
@@ -155,7 +164,7 @@ class MemorySpaceAssignment {
     CopyAllocation(const Allocation& prev_allocation, MemorySpace memory_space,
                    Chunk chunk, int64 start_time, int64 end_time)
         : Allocation(/*instruction=*/nullptr,
-                     prev_allocation.defining_position(), memory_space, chunk,
+                     /*defining_position=*/{nullptr, {}}, memory_space, chunk,
                      start_time, end_time),
           prev_allocation_(prev_allocation),
           copy_start_schedule_after_(start_time),
@@ -172,6 +181,19 @@ class MemorySpaceAssignment {
         return instruction_;
       } else {
         return prev_allocation_.instruction();
+      }
+    }
+
+    HloPosition defining_position() const override {
+      // Unless explicitly set, the defining position of a copy allocation in
+      // retrieved from the previous allocation. This is because we don't create
+      // new CopyStart/CopyDone instructions until later and the position should
+      // point to the previous (copy or otherwise) allocation's position for the
+      // original defining position.
+      if (defining_position_.instruction == nullptr) {
+        return prev_allocation_.defining_position();
+      } else {
+        return defining_position_;
       }
     }
 
@@ -239,6 +261,12 @@ class MemorySpaceAssignment {
   // Process calls Process methods of the allocations after the allocations have
   // been finalized.
   Status Process();
+
+  // Process() might have altered the computation graph by inserting kTuple and
+  // kGetTupleElement instructions. SimplifyGraph performs a simple DCE and
+  // tuple simplification operation (e.g., given GetTupleElement(Tuple(a, b),
+  // 1), simply forwards b). Runs to fixed point.
+  Status SimplifyGraph();
 
   // FixSchedule inserts asynchronous copies in the schedule.
   Status FixSchedule();

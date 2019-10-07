@@ -1168,6 +1168,212 @@ TEST_F(MemorySpaceAssignmentTest, TupleInput) {
   AssignMemorySpace(module.get());
 }
 
+TEST_F(MemorySpaceAssignmentTest, TupleToTuple1) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
+  auto module = CreateNewVerifiedModule();
+
+  HloComputation::Builder fusion0_builder("fusion0");
+  HloInstruction* fusion0_param0 = fusion0_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* fusion0_param1 = fusion0_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape, "p1"));
+  fusion0_builder.AddInstruction(
+      HloInstruction::CreateTuple({fusion0_param0, fusion0_param1}));
+  HloComputation* fusion0_computation =
+      module->AddEmbeddedComputation(fusion0_builder.Build());
+
+  HloComputation::Builder fusion1_builder("fusion1");
+  HloInstruction* fusion1_param = fusion1_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "p"));
+  HloInstruction* fusion1_element0 = fusion1_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, fusion1_param, 0));
+  HloInstruction* fusion1_element1 = fusion1_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, fusion1_param, 1));
+  fusion1_builder.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kAdd, fusion1_element0, fusion1_element1));
+  HloComputation* fusion1_computation =
+      module->AddEmbeddedComputation(fusion1_builder.Build());
+
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* fusion0 = builder.AddInstruction(HloInstruction::CreateFusion(
+      tuple_shape, HloInstruction::FusionKind::kCustom, {p0, p0},
+      fusion0_computation));
+  HloInstruction* element0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, fusion0, 0));
+  HloInstruction* element1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, fusion0, 1));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add0 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, element0, element1));
+  HloInstruction* add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, add0, negate6));
+  HloInstruction* fusion1 = builder.AddInstruction(
+      HloInstruction::CreateFusion(shape, HloInstruction::FusionKind::kCustom,
+                                   {fusion0}, fusion1_computation));
+  HloInstruction* mul = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, add1, fusion1));
+
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(
+      computation,
+      {p0, fusion0, element0, element1, negate0, negate1, negate2, negate3,
+       negate4, negate5, negate6, add0, add1, fusion1, mul});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get(), -1, 5);
+  EXPECT_THAT(fusion1,
+              op::Fusion(op::Tuple(
+                  op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                                op::GetTupleElement(op::Fusion(), 0)),
+                  op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                                op::GetTupleElement(op::Fusion(), 1)))));
+}
+
+TEST_F(MemorySpaceAssignmentTest, TupleToTuple2) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
+  Shape nested_tuple_shape = ShapeUtil::MakeTupleShape({shape, tuple_shape});
+  auto module = CreateNewVerifiedModule();
+
+  HloComputation::Builder fusion0_builder("fusion0");
+  HloInstruction* fusion0_param0 = fusion0_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* fusion0_param1 = fusion0_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* fusion0_tuple = fusion0_builder.AddInstruction(
+      HloInstruction::CreateTuple({fusion0_param0, fusion0_param1}));
+  fusion0_builder.AddInstruction(
+      HloInstruction::CreateTuple({fusion0_param0, fusion0_tuple}));
+  HloComputation* fusion0_computation =
+      module->AddEmbeddedComputation(fusion0_builder.Build());
+
+  HloComputation::Builder fusion1_builder("fusion1");
+  HloInstruction* fusion1_param = fusion1_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, nested_tuple_shape, "p"));
+  HloInstruction* fusion1_element0 = fusion1_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, fusion1_param, 0));
+  HloInstruction* fusion1_element1 = fusion1_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(tuple_shape, fusion1_param, 1));
+  HloInstruction* fusion1_element2 = fusion1_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, fusion1_element1, 1));
+  fusion1_builder.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kAdd, fusion1_element0, fusion1_element2));
+  HloComputation* fusion1_computation =
+      module->AddEmbeddedComputation(fusion1_builder.Build());
+
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* fusion0 = builder.AddInstruction(HloInstruction::CreateFusion(
+      nested_tuple_shape, HloInstruction::FusionKind::kCustom, {p0, p0},
+      fusion0_computation));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* fusion1 = builder.AddInstruction(
+      HloInstruction::CreateFusion(shape, HloInstruction::FusionKind::kCustom,
+                                   {fusion0}, fusion1_computation));
+
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(
+      computation, {p0, fusion0, negate0, negate1, negate2, negate3, negate4,
+                    negate5, negate6, fusion1});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get(), -1, 5);
+
+  EXPECT_THAT(
+      fusion1,
+      op::Fusion(op::Tuple(
+          op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                        op::GetTupleElement(op::Fusion(), 0)),
+          op::Tuple(
+              op::AsyncCopy(
+                  kAlternateMemorySpace, kDefaultMemorySpace,
+                  op::GetTupleElement(op::GetTupleElement(op::Fusion(), 1), 0)),
+              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                            op::GetTupleElement(
+                                op::GetTupleElement(op::Fusion(), 1), 1))))));
+}
+
+TEST_F(MemorySpaceAssignmentTest, TupleToTuple3) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
+  auto module = CreateNewVerifiedModule();
+
+  HloComputation::Builder fusion0_builder("fusion0");
+  HloInstruction* fusion0_param0 = fusion0_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* fusion0_param1 = fusion0_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape, "p1"));
+  fusion0_builder.AddInstruction(
+      HloInstruction::CreateTuple({fusion0_param0, fusion0_param1}));
+  HloComputation* fusion0_computation =
+      module->AddEmbeddedComputation(fusion0_builder.Build());
+
+  HloComputation::Builder fusion1_builder("fusion1");
+  HloInstruction* fusion1_param = fusion1_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "p"));
+  HloInstruction* fusion1_element0 = fusion1_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, fusion1_param, 0));
+  HloInstruction* fusion1_element1 = fusion1_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, fusion1_param, 1));
+  fusion1_builder.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kAdd, fusion1_element0, fusion1_element1));
+  HloComputation* fusion1_computation =
+      module->AddEmbeddedComputation(fusion1_builder.Build());
+
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* fusion0 = builder.AddInstruction(HloInstruction::CreateFusion(
+      tuple_shape, HloInstruction::FusionKind::kCustom, {p0, p0},
+      fusion0_computation));
+  HloInstruction* fusion1 = builder.AddInstruction(
+      HloInstruction::CreateFusion(shape, HloInstruction::FusionKind::kCustom,
+                                   {fusion0}, fusion1_computation));
+
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, fusion0, fusion1});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get());
+  EXPECT_THAT(fusion1, op::Fusion(op::Fusion()));
+}
+
 TEST_F(MemorySpaceAssignmentTest, InputOutputAlias) {
   HloComputation::Builder builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
