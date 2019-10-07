@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package third_party.tensorflow.compiler.mlir.lite.quantization;
+package mlir.quant;
 
 option cc_enable_arenas = true;
 
@@ -56,7 +56,7 @@ message QuantizationInfo {
       string name = 1;
 
       // An regex can be used to match multiple tensors.
-      string name_regexp = 2;
+      string name_regex = 2;
     }
 
     // The quantization parameters for the tensor. If it is for per-axis, the
