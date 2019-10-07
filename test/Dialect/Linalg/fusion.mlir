@@ -366,3 +366,46 @@ func @pointwise(%A: memref<?x?xf32, offset: 0, strides: [?, ?]>, %B: memref<?x?x
 //       CHECK:         addf
 //       CHECK:       linalg.generic
 //       CHECK:         mulf
+
+
+func @pointwise_no_view(%M: index, %N: index) {
+  %c1 = constant 1 : index
+  %c0 = constant 0 : index
+  %c3 = constant 3 : index
+  %c2 = constant 2 : index
+  %A = alloc (%M, %N): memref<?x?xf32>
+  %B = alloc (%M, %N): memref<?x?xf32>
+  %C = alloc (%M, %N): memref<?x?xf32>
+  %D = alloc (%M, %N): memref<?x?xf32>
+  %E = alloc (%M, %N): memref<?x?xf32>
+  linalg.generic #pointwise_2d_trait %A, %A, %B {
+  ^bb0(%e: f32, %arg5: f32, %arg6: f32):   // no predecessors
+    %2 = addf %e, %arg5 : f32
+    linalg.yield %2 : f32
+  }: memref<?x?xf32>, memref<?x?xf32>, memref<?x?xf32>
+  %0 = dim %B, 0 : memref<?x?xf32>
+  %1 = dim %B, 1 : memref<?x?xf32>
+  loop.for %e = %c0 to %0 step %c2 {
+    loop.for %arg5 = %c0 to %1 step %c3 {
+      %2 = affine.apply #map0(%e)
+      %3 = affine.apply #map1(%arg5)
+      %4 = linalg.subview %B[%e, %2, %c1, %arg5, %3, %c1] : memref<?x?xf32>
+      %5 = linalg.subview %C[%e, %2, %c1, %arg5, %3, %c1] : memref<?x?xf32>
+      %6 = linalg.subview %D[%e, %2, %c1, %arg5, %3, %c1] : memref<?x?xf32>
+      linalg.generic #pointwise_2d_trait %4, %5, %6 {
+      ^bb0(%arg6: f32, %arg7: f32, %arg8: f32):       // no predecessors
+        %7 = mulf %arg6, %arg7 : f32
+        linalg.yield %7 : f32
+      }: memref<?x?xf32>, memref<?x?xf32>, memref<?x?xf32>
+    }
+  }
+  return
+}
+// CHECK-LABEL: func @pointwise_no_view
+//       CHECK:   loop.for
+//       CHECK:     loop.for
+//   CHECK-NOT:   loop.for
+//       CHECK:       linalg.generic
+//       CHECK:         addf
+//       CHECK:       linalg.generic
+//       CHECK:         mulf
