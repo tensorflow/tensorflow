@@ -27,9 +27,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-class ShapeRefiner;
-class ShapeRefinerTest;
-
 namespace grappler {
 class GraphProperties;
 class SymbolicShapeManager;
@@ -72,7 +69,6 @@ class DimensionHandle {
   friend class InferenceContext;
   friend class ShapeInferenceTest;
   friend class ShapeInferenceTestutil;
-  friend class ::tensorflow::ShapeRefinerTest;
   friend class ::tensorflow::grappler::GraphProperties;
   friend class ::tensorflow::grappler::SymbolicShapeManager;
 
@@ -111,7 +107,6 @@ class ShapeHandle {
   friend class InferenceContext;
   friend class ShapeInferenceTest;
   friend class ShapeInferenceTestutil;
-  friend class ::tensorflow::ShapeRefinerTest;
   friend class ::tensorflow::grappler::SymbolicShapeManager;
 
   // Intentionally copyable.
@@ -654,9 +649,6 @@ class InferenceContext {
   };
 
   friend class ::tensorflow::grappler::GraphProperties;
-
-  // Friend for user-defined function shape inference purposes.
-  friend class ::tensorflow::ShapeRefiner;
 
   friend class ShapeInferenceTest;      // For testing Relax functions.
   friend class ShapeInferenceTestutil;  // For testing shapes.
