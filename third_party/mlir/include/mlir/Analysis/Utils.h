@@ -183,7 +183,7 @@ struct MemRefRegion {
   explicit MemRefRegion(Location loc) : loc(loc) {}
 
   /// Computes the memory region accessed by this memref with the region
-  /// represented as constraints symbolic/parameteric in 'loopDepth' loops
+  /// represented as constraints symbolic/parametric in 'loopDepth' loops
   /// surrounding opInst. The computed region's 'cst' field has exactly as many
   /// dimensional identifiers as the rank of the memref, and *potentially*
   /// additional symbolic identifiers which could include any of the loop IVs

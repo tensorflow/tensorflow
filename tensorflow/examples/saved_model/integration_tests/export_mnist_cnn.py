@@ -44,7 +44,7 @@ flags.DEFINE_bool(
     'use_keras_save_api', False,
     'Uses tf.keras.models.save_model() on the feature extractor '
     'instead of tf.saved_model.save() on a manually wrapped version. '
-    'With this, the exported model as no hparams.')
+    'With this, the exported model has no hparams.')
 flags.DEFINE_bool(
     'fast_test_mode', False,
     'Shortcut training for running in unit tests.')

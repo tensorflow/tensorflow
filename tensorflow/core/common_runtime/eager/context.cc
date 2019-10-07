@@ -21,6 +21,7 @@ limitations under the License.
 // Required for IS_MOBILE_PLATFORM
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/platform.h"
@@ -79,9 +80,9 @@ EagerContext::EagerContext(
       thread_pool_(NewThreadPoolFromSessionOptions(opts)),
       custom_kernel_creator_(custom_kernel_creator),
       pflr_(new ProcessFunctionLibraryRuntime(
-          device_mgr, opts.env, TF_GRAPH_DEF_VERSION, &func_lib_def_,
-          opts.config.graph_options().optimizer_options(), thread_pool_.get(),
-          cluster_flr, custom_kernel_creator_)),
+          device_mgr, opts.env, &opts.config, TF_GRAPH_DEF_VERSION,
+          &func_lib_def_, opts.config.graph_options().optimizer_options(),
+          thread_pool_.get(), cluster_flr, custom_kernel_creator_)),
       log_device_placement_(opts.config.log_device_placement()),
       allow_soft_placement_(opts.config.allow_soft_placement()),
       num_active_steps_(0),
@@ -398,39 +399,31 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
   // Only client context can register function on remote worker context.
   if (remote_device_manager_ == nullptr) return Status::OK();
 #if !defined(IS_MOBILE_PLATFORM)
-  BlockingCounter blocking_counter(static_cast<int>(remote_contexts_.size()));
+  std::shared_ptr<eager::EnqueueRequest> request(new eager::EnqueueRequest);
+  request->set_context_id(GetContextId());
 
-  eager::RegisterFunctionRequest request;
-  request.set_context_id(GetContextId());
-  *request.mutable_function_def() = fdef;
-  StripDefaultAttributes(*OpRegistry::Global(),
-                         request.mutable_function_def()->mutable_node_def());
-  std::vector<eager::RegisterFunctionResponse> responses(
-      remote_contexts_.size());
-  std::vector<Status> statuses(remote_contexts_.size());
+  eager::RegisterFunctionOp* register_function =
+      request->add_queue()->mutable_register_function();
+  *register_function->mutable_function_def() = fdef;
+  StripDefaultAttributes(
+      *OpRegistry::Global(),
+      register_function->mutable_function_def()->mutable_node_def());
 
-  int i = 0;
   for (const auto& target : remote_contexts_) {
     eager::EagerClient* eager_client;
-    statuses[i] = remote_eager_workers_->GetClient(target, &eager_client);
-    if (!statuses[i].ok()) {
-      blocking_counter.DecrementCount();
-      continue;
-    }
+    TF_RETURN_IF_ERROR(remote_eager_workers_->GetClient(target, &eager_client));
 
-    eager_client->RegisterFunctionAsync(
-        &request, &responses[i],
-        [i, &statuses, &blocking_counter](const Status& status) {
-          statuses[i] = status;
-          blocking_counter.DecrementCount();
+    eager::EnqueueResponse* response = new eager::EnqueueResponse();
+    eager_client->StreamingEnqueueAsync(
+        request.get(), response, [request, response](const Status& status) {
+          if (!status.ok()) {
+            LOG(ERROR) << "Failed to register function remotely due to "
+                       << status.error_message()
+                       << "\nThis shouldn't happen, please file a bug to "
+                          "tensorflow team.";
+          }
+          delete response;
         });
-
-    i++;
-  }
-  blocking_counter.Wait();
-
-  for (int i = 0; i < remote_contexts_.size(); i++) {
-    TF_RETURN_IF_ERROR(statuses[i]);
   }
 #endif  // !IS_MOBILE_PLATFORM
   return Status::OK();
@@ -441,39 +434,33 @@ Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
     const std::vector<string>& remote_workers) {
 #if !defined(IS_MOBILE_PLATFORM)
   // Register multiple functions on selected remote workers.
-  int num_requests = function_defs.size() * remote_workers.size();
-  BlockingCounter counter(num_requests);
-  std::vector<Status> statuses(num_requests);
   uint64 context_id = GetContextId();
   for (int i = 0; i < remote_workers.size(); i++) {
     eager::EagerClient* eager_client;
     Status s =
         remote_eager_workers_->GetClient(remote_workers[i], &eager_client);
     if (!s.ok()) {
-      for (int j = 0; j < function_defs.size(); j++) {
-        statuses[i * function_defs.size() + j] = s;
-        counter.DecrementCount();
-      }
       continue;
     }
     for (int j = 0; j < function_defs.size(); j++) {
-      eager::RegisterFunctionRequest request;
-      request.set_context_id(context_id);
-      *request.mutable_function_def() = *function_defs[j];
-      auto* response = new eager::RegisterFunctionResponse();
-      int request_idx = i * function_defs.size() + j;
-      eager_client->RegisterFunctionAsync(
-          &request, response,
-          [request_idx, &statuses, response, &counter](const Status& s) {
-            statuses[request_idx] = s;
+      auto* request = new eager::EnqueueRequest;
+      request->set_context_id(context_id);
+      eager::RegisterFunctionOp* register_function =
+          request->add_queue()->mutable_register_function();
+      *register_function->mutable_function_def() = *function_defs[j];
+      auto* response = new eager::EnqueueResponse;
+      eager_client->StreamingEnqueueAsync(
+          request, response, [request, response](const Status& s) {
+            if (!s.ok()) {
+              LOG(ERROR) << "Failed to register function remotely due to "
+                         << s.error_message()
+                         << "\nThis shouldn't happen, please file a bug to "
+                            "tensorflow team.";
+            }
+            delete request;
             delete response;
-            counter.DecrementCount();
           });
     }
-  }
-  counter.Wait();
-  for (int i = 0; i < num_requests; i++) {
-    TF_RETURN_IF_ERROR(statuses[i]);
   }
 #endif  // !IS_MOBILE_PLATFORM
   return Status::OK();
@@ -710,9 +697,13 @@ Status EagerContext::StoreCollectiveOpsServer(
     }
   }
 
+  const ConfigProto* config = pflr_ ? pflr_->config() : nullptr;
   pflr_.reset(new ProcessFunctionLibraryRuntime(
-      local_unowned_device_manager_, env_, TF_GRAPH_DEF_VERSION, &func_lib_def_,
-      {}, thread_pool_.get()));
+      local_unowned_device_manager_, env_, /*config=*/config,
+      TF_GRAPH_DEF_VERSION, &func_lib_def_,
+      /*optimizer_options=*/
+      config ? config->graph_options().optimizer_options() : OptimizerOptions(),
+      thread_pool_.get()));
 
   // Memory leak!
   if (server_ != nullptr) {
@@ -754,8 +745,7 @@ Status EagerContext::InitializeRemoteMaster(
 }
 
 Status EagerContext::UpdateRemoteMaster(
-    std::unique_ptr<ServerInterface> server, WorkerEnv* worker_env,
-    std::shared_ptr<WorkerSession> worker_session,
+    WorkerEnv* worker_env, std::shared_ptr<WorkerSession> worker_session,
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     std::unique_ptr<DynamicDeviceMgr> remote_device_manager,
     const std::vector<string>& add_remote_contexts,
@@ -787,7 +777,7 @@ Status EagerContext::UpdateRemoteMaster(
   }
   std::vector<const FunctionDef*> function_defs = ListRegisteredFunctions();
   TF_RETURN_IF_ERROR(SetMasterContextState(
-      std::move(server), worker_env, std::move(worker_session),
+      nullptr, worker_env, std::move(worker_session),
       std::move(remote_eager_workers), std::move(remote_device_manager),
       context_id, GetContextViewId() + 1, r, local_device_mgr, keep_alive_secs,
       cluster_flr, nullptr));
@@ -805,6 +795,9 @@ Status EagerContext::UpdateRemoteMaster(
   return Status::OK();
 }
 
+// Set distributed execution related fields in the master context. Passing
+// nullptr to `server` will update the existing GRPC server in context (instead
+// of resetting with a new server).
 Status EagerContext::SetMasterContextState(
     std::unique_ptr<ServerInterface> server, WorkerEnv* worker_env,
     std::shared_ptr<WorkerSession> worker_session,
@@ -831,14 +824,16 @@ Status EagerContext::SetMasterContextState(
   if (rendezvous_ != nullptr) rendezvous_->Unref();
   rendezvous_ = r;
 
-  // Memory leak!
-  if (server_ != nullptr) {
-    LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
-                    "Servers don't support clean shutdown.";
-    server_.release();
+  if (server != nullptr) {
+    // Memory leak!
+    if (server_ != nullptr) {
+      LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
+                      "Servers don't support clean shutdown.";
+      server_.release();
+    }
+    server_ = std::move(server);
   }
-
-  server_ = std::move(server);
+  DCHECK(server_ != nullptr);
   if (remote_mgr != nullptr) {
     remote_mgr_ = std::move(remote_mgr);
   }
@@ -858,9 +853,11 @@ Status EagerContext::SetMasterContextState(
       entry.second->ClearError();
     }
   }
+  const auto* config = pflr_->config();
   pflr_.reset(new ProcessFunctionLibraryRuntime(
-      local_unowned_device_manager_, env_, TF_GRAPH_DEF_VERSION, &func_lib_def_,
-      {}, thread_pool_.get(), cluster_flr, custom_kernel_creator_));
+      local_unowned_device_manager_, env_, config, TF_GRAPH_DEF_VERSION,
+      &func_lib_def_, config->graph_options().optimizer_options(),
+      thread_pool_.get(), cluster_flr, custom_kernel_creator_));
 
   keep_alive_secs_ = keep_alive_secs;
   sleep_for_secs_ = std::max(1, keep_alive_secs_ / 2);
@@ -1004,9 +1001,10 @@ Status EagerContext::UpdateRemoteWorker(
   }
 
   SessionOptions options = SessionOptions();
+  const auto* config = pflr_->config();
   pflr_.reset(new ProcessFunctionLibraryRuntime(
-      worker_session_device_mgr, options.env, TF_GRAPH_DEF_VERSION,
-      FuncLibDef(), options.config.graph_options().optimizer_options(),
+      worker_session_device_mgr, options.env, config, TF_GRAPH_DEF_VERSION,
+      FuncLibDef(), config->graph_options().optimizer_options(),
       thread_pool_.get(), cluster_flr, custom_kernel_creator_));
   return Status::OK();
 }

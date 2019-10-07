@@ -112,7 +112,7 @@ TEST_F(NnApiErrnoTest, HasTheStatusOfTheNnApiCallFailedCallingInit) {
 }
 
 TEST_F(NnApiErrnoTest, HasTheStatusOfTheNnApiCallFailedCallingInvoke) {
-  nnapi_mock_->AddOperandReturns<-4>();
+  nnapi_mock_->ModelFinishReturns<-4>();
 
   FloatAddOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
                     {TensorType_FLOAT32, {1, 2, 2, 1}},
@@ -126,6 +126,60 @@ TEST_F(NnApiErrnoTest, HasTheStatusOfTheNnApiCallFailedCallingInvoke) {
   EXPECT_EQ(m.InvokeWithoutAssert(), kTfLiteOk);
   // The delegate should store the value of the failure
   EXPECT_EQ(m.GetDelegate()->GetNnApiErrno(), -4);
+}
+
+TEST_F(NnApiErrnoTest, ErrnoIsResetWhenRestoringDelegateForModel) {
+  nnapi_mock_->ModelFinishReturns<-4>();
+
+  FloatAddOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+
+  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
+  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+
+  // Failure is detected and the delegate is disabled.
+  // Execution runs without it and succeeds
+  EXPECT_EQ(m.InvokeWithoutAssert(), kTfLiteOk);
+  // The delegate should store the value of the failure
+  EXPECT_EQ(m.GetDelegate()->GetNnApiErrno(), -4);
+
+  nnapi_mock_->ModelFinishReturns<0>();
+
+  // Need to restore the delegate since it was disabled because of the
+  // previous failure.
+  m.ApplyDelegate();
+  EXPECT_EQ(m.InvokeWithoutAssert(), kTfLiteOk);
+
+  // The error is still the last one recorded
+  EXPECT_EQ(m.GetDelegate()->GetNnApiErrno(), 0);
+}
+
+TEST_F(NnApiErrnoTest, ErrnoIsUpdatedInCaseOfAnotherFailure) {
+  nnapi_mock_->ModelFinishReturns<-4>();
+
+  FloatAddOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+
+  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
+  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+
+  // Failure is detected and the delegate is disabled.
+  // Execution runs without it and succeeds
+  EXPECT_EQ(m.InvokeWithoutAssert(), kTfLiteOk);
+  // The delegate should store the value of the failure
+  EXPECT_EQ(m.GetDelegate()->GetNnApiErrno(), -4);
+
+  nnapi_mock_->ModelFinishReturns<-5>();
+
+  // Need to restore the delegate since it was disabled because of the
+  // previous failure.
+  m.ApplyDelegate();
+  EXPECT_EQ(m.InvokeWithoutAssert(), kTfLiteOk);
+
+  // The error is still the last one recorded
+  EXPECT_EQ(m.GetDelegate()->GetNnApiErrno(), -5);
 }
 
 }  // namespace

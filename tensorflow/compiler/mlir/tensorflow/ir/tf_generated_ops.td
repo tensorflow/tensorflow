@@ -263,7 +263,7 @@ If `condition` evaluates to false, print the list of tensors in `data`.
   let hasCanonicalizer = 1;
 }
 
-def TF_AssignAddVariableOpOp : TF_Op<"AssignAddVariableOp", []> {
+def TF_AssignAddVariableOp : TF_Op<"AssignAddVariableOp", []> {
   let summary = "Adds a value to the current value of a variable.";
 
   let description = [{
@@ -281,7 +281,7 @@ see the incremented value or a subsequent newer one.
   TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_AssignVariableOpOp : TF_Op<"AssignVariableOp", []> {
+def TF_AssignVariableOp : TF_Op<"AssignVariableOp", []> {
   let summary = "Assigns a new value to a variable.";
 
   let description = [{
@@ -452,6 +452,10 @@ Broadcasting is supported, so `value` may have any number of dimensions.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_BitcastOp : TF_Op<"Bitcast", [NoSideEffect]> {
@@ -2206,7 +2210,6 @@ tf.matrix_diag(diagonal, k = -1, num_rows = 3, padding = 9)
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-
 def TF_MaxOp : TF_Op<"Max", [NoSideEffect]> {
   let summary = [{
 Computes the maximum of elements across dimensions of a tensor.
@@ -2371,7 +2374,7 @@ pad(t, paddings) ==> [[2, 1, 1, 2, 3, 3, 2]
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_MlirPassthroughOpOp : TF_Op<"MlirPassthroughOp", [NoSideEffect]> {
+def TF_MlirPassthroughOp : TF_Op<"MlirPassthroughOp", [NoSideEffect]> {
   let summary = [{
 Wraps an arbitrary MLIR computation expressed as a module with a main() function.
   }];
@@ -3139,7 +3142,7 @@ of the tensor. Rank is also known as "order", "degree", or "ndims."
   ];
 }
 
-def TF_ReadVariableOpOp : TF_Op<"ReadVariableOp", []> {
+def TF_ReadVariableOp : TF_Op<"ReadVariableOp", []> {
   let summary = "Reads the value of a variable.";
 
   let description = [{
@@ -3252,13 +3255,16 @@ def TF_ReshapeOp : TF_Op<"Reshape", [NoSideEffect]> {
 Given `tensor`, this operation returns a tensor that has the same values
 as `tensor` with shape `shape`.
 
-If one component of `shape` is the special value -1, the size of that dimension
-is computed so that the total size remains constant.  In particular, a `shape`
-of `[-1]` flattens into 1-D.  At most one component of `shape` can be -1.
+If one component of 1-D tensor `shape` is the special value -1, the size of that
+dimension is computed so that the total size remains constant.  In particular, a
+`shape` of `[-1]` flattens into 1-D.  At most one component of `shape` may be
+unknown.
 
-If `shape` is 1-D or higher, then the operation returns a tensor with shape
+The `shape` must be 1-D and the operation returns a tensor with shape
 `shape` filled with the values of `tensor`. In this case, the number of elements
 implied by `shape` must be the same as the number of elements in `tensor`.
+
+It is an error if `shape` is not 1-D.
 
 For example:
 

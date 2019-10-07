@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -148,7 +147,10 @@ void ProcessState::TestOnlyReset() {
     if (a != default_cpu_allocator) delete a;
   }
   cpu_allocators_.clear();
-  gtl::STLDeleteElements(&cpu_al_);
+  for (Allocator* a : cpu_al_) {
+    delete a;
+  }
+  cpu_al_.clear();
 }
 
 }  // namespace tensorflow

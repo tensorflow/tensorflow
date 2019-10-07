@@ -271,7 +271,7 @@ class TFLiteConverterV2(TFLiteConverterBase):
     target_spec: Experimental flag, subject to change. Specification of target
       device.
     optimizations: Experimental flag, subject to change. A list of optimizations
-      to apply when converting the model. E.g. `[Optimize.DEFAULT]
+      to apply when converting the model. E.g. `[Optimize.DEFAULT]`
     representative_dataset: A representative dataset that can be used to
       generate input and output samples for the model. The converter can use the
       dataset to evaluate different optimizations.
@@ -317,7 +317,8 @@ class TFLiteConverterV2(TFLiteConverterBase):
 
     Args:
       funcs: List of TensorFlow ConcreteFunctions. The list should not contain
-        duplicate elements.
+        duplicate elements. Currently converter can only convert a single
+        ConcreteFunction. Converting multiple functions is under development.
 
     Returns:
       TFLiteConverter object.

@@ -645,7 +645,7 @@ public:
 };
 
 /// This class provides verification for ops that are known to have the same
-/// operand element type.
+/// operand element type (or the type itself if it is scalar).
 ///
 template <typename ConcreteType>
 class SameOperandsElementType
@@ -657,7 +657,7 @@ public:
 };
 
 /// This class provides verification for ops that are known to have the same
-/// operand and result element type.
+/// operand and result element type (or the type itself if it is scalar).
 ///
 template <typename ConcreteType>
 class SameOperandsAndResultElementType
@@ -1144,11 +1144,12 @@ private:
 namespace impl {
 void buildBinaryOp(Builder *builder, OperationState &result, Value *lhs,
                    Value *rhs);
-ParseResult parseBinaryOp(OpAsmParser &parser, OperationState &result);
+ParseResult parseOneResultSameOperandTypeOp(OpAsmParser &parser,
+                                            OperationState &result);
 // Prints the given binary `op` in custom assembly form if both the two operands
 // and the result have the same time. Otherwise, prints the generic assembly
 // form.
-void printBinaryOp(Operation *op, OpAsmPrinter &p);
+void printOneResultOp(Operation *op, OpAsmPrinter &p);
 } // namespace impl
 
 // These functions are out-of-line implementations of the methods in CastOp,

@@ -898,7 +898,7 @@ void OpEmitter::genBuilder() {
   //    attribute, and
   genSeparateParamBuilder();
   // 2. one having a stand-alone parameter for each operand / attribute and
-  //    an aggregrated parameter for all result types, and
+  //    an aggregated parameter for all result types, and
   genCollectiveTypeParamBuilder();
   // 3. one having an aggregated parameter for all result types / operands /
   //    attributes, and

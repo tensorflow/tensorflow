@@ -124,8 +124,11 @@ def connect_to_cluster(cluster_spec_or_resolver,
     job_def.tasks[0] = "localhost:{}".format(local_port)
 
   server_def = ServerDef(
-      cluster=cluster_def, job_name=job_name, task_index=task_index,
-      protocol=protocol)
+      cluster=cluster_def,
+      job_name=job_name,
+      task_index=task_index,
+      protocol=protocol,
+      default_session_config=context.context().config)
 
   context.set_server_def(server_def)
 

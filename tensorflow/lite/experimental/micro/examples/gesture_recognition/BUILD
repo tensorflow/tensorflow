@@ -50,6 +50,16 @@ tflite_micro_cc_test(
 )
 
 cc_library(
+    name = "constants",
+    srcs = [
+        "constants.cc",
+    ],
+    hdrs = [
+        "constants.h",
+    ],
+)
+
+cc_library(
     name = "accelerometer_handler",
     srcs = [
         "accelerometer_handler.cc",
@@ -71,6 +81,32 @@ tflite_micro_cc_test(
     deps = [
         ":accelerometer_handler",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+cc_library(
+    name = "gesture_predictor",
+    srcs = [
+        "gesture_predictor.cc",
+    ],
+    hdrs = [
+        "gesture_predictor.h",
+    ],
+    deps = [
+        ":constants",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "gesture_predictor_test",
+    srcs = [
+        "gesture_predictor_test.cc",
+    ],
+    deps = [
+        ":constants",
+        ":gesture_predictor",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
@@ -107,6 +143,8 @@ cc_binary(
     name = "gesture_recognition",
     srcs = [
         "main.cc",
+        "main_functions.cc",
+        "main_functions.h",
     ],
     copts = [
         "-Werror",
@@ -117,6 +155,8 @@ cc_binary(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/examples/gesture_recognition:accelerometer_handler",
+        "//tensorflow/lite/experimental/micro/examples/gesture_recognition:constants",
+        "//tensorflow/lite/experimental/micro/examples/gesture_recognition:gesture_predictor",
         "//tensorflow/lite/experimental/micro/examples/gesture_recognition:gesture_recognition_model_data",
         "//tensorflow/lite/experimental/micro/examples/gesture_recognition:output_handler",
         "//tensorflow/lite/experimental/micro/kernels:all_ops_resolver",

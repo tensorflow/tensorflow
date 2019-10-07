@@ -31,16 +31,8 @@ axis3bit16_t data_raw_acceleration;
 float save_data[600] = {0.0};
 // Most recent position in the save_data buffer
 int begin_index = 0;
-// How many times the most recent gesture has been matched in a row
-int continuous_count = 0;
-// The result of the last prediction
-// 0: wing("W"), 1: ring("O"), 2: slope("angle"), 3: negative
-int last_predict = -1;
 // True if there is not yet enough data to run inference
 bool pending_initial_data = true;
-// The number of continuous predictions expected for each gesture, since they
-// take varying amounts of time to complete
-int should_continuous_count[3] = {15, 12, 10};
 
 TfLiteStatus SetupAccelerometer(tflite::ErrorReporter* error_reporter) {
   // Set the clock frequency.
@@ -80,9 +72,17 @@ TfLiteStatus SetupAccelerometer(tflite::ErrorReporter* error_reporter) {
   return kTfLiteOk;
 }
 
-// TODO(dansitu): Change return type to TfLiteStatus
 bool ReadAccelerometer(tflite::ErrorReporter* error_reporter, float* input,
-                       int length) {
+                       int length, bool reset_buffer) {
+  // Clear the buffer if required, e.g. after a successful prediction
+  if (reset_buffer) {
+    memset(save_data, 0, 600 * sizeof(float));
+    begin_index = 0;
+    pending_initial_data = true;
+    // Wait 10ms after a reset to avoid hang
+    am_util_delay_ms(10);
+  }
+  // Check FIFO buffer for new samples
   lis2dh12_fifo_src_reg_t status;
   if (lis2dh12_fifo_status_get(&dev_ctx, &status)) {
     error_reporter->Report("Failed to get FIFO status.");
@@ -141,41 +141,4 @@ bool ReadAccelerometer(tflite::ErrorReporter* error_reporter, float* input,
     input[i] = save_data[ring_array_index];
   }
   return true;
-}
-
-// TODO(dansitu): Refactor to allow reuse by other boards and unit testing of
-// logic
-// Return the result of the last prediction
-// 0: wing("W"), 1: ring("O"), 2: slope("angle"), 3: negative
-int PredictGesture(float* output) {
-  if (pending_initial_data) return 3;
-  // Find whichever output has a probability > 0.8 (they sum to 1)
-  int this_predict = -1;
-  for (int i = 0; i < 3; i++) {
-    if (output[i] > 0.8) this_predict = i;
-  }
-  // No gesture was detected above the threshold
-  if (this_predict == -1) {
-    continuous_count = 0;
-    last_predict = 3;
-    return 3;
-  }
-  if (last_predict == this_predict)
-    continuous_count += 1;
-  else
-    continuous_count = 0;
-  last_predict = this_predict;
-  // If we haven't yet had enough consecutive matches for this gesture,
-  // report a negative result
-  if (continuous_count < should_continuous_count[this_predict]) {
-    return 3;
-  }
-  // Otherwise, we've seen a positive result, so clear all our variables
-  // and report it
-  continuous_count = 0;
-  memset(save_data, 0, 600 * sizeof(float));
-  begin_index = 0;
-  last_predict = -1;
-  pending_initial_data = true;
-  return this_predict;
 }

@@ -21,7 +21,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
-#include "mlir/Conversion/ControlFlowToCFG/ConvertControlFlowToCFG.h"
+#include "mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
@@ -152,7 +152,7 @@ static unsigned kStridePosInMemRefDescriptor = 3;
 Type LLVMTypeConverter::convertMemRefType(MemRefType type) {
   int64_t offset;
   SmallVector<int64_t, 4> strides;
-  bool strideSuccess = succeeded(type.getStridesAndOffset(strides, offset));
+  bool strideSuccess = succeeded(getStridesAndOffset(type, strides, offset));
   assert(strideSuccess &&
          "Non-strided layout maps must have been normalized away");
   (void)strideSuccess;
@@ -571,14 +571,14 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
 
     int64_t offset;
     SmallVector<int64_t, 4> strides;
-    auto successStrides = type.getStridesAndOffset(strides, offset);
+    auto successStrides = getStridesAndOffset(type, strides, offset);
     if (failed(successStrides))
       return matchFailure();
 
     // Dynamic strides are ok if they can be deduced from dynamic sizes (which
-    // is guaranteed when succeeded(successStrides)).
-    // Dynamic offset however can never be alloc'ed.
-    if (offset != MemRefType::kDynamicStrideOrOffset)
+    // is guaranteed when succeeded(successStrides)). Dynamic offset however can
+    // never be alloc'ed.
+    if (offset == MemRefType::getDynamicStrideOrOffset())
       return matchFailure();
 
     return matchSuccess();
@@ -652,15 +652,16 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
 
     int64_t offset;
     SmallVector<int64_t, 4> strides;
-    auto successStrides = type.getStridesAndOffset(strides, offset);
+    auto successStrides = getStridesAndOffset(type, strides, offset);
     assert(succeeded(successStrides) && "unexpected non-strided memref");
     (void)successStrides;
-    assert(offset != MemRefType::kDynamicStrideOrOffset &&
+    assert(offset != MemRefType::getDynamicStrideOrOffset() &&
            "unexpected dynamic offset");
 
     // 0-D memref corner case: they have size 1 ...
-    assert((type.getRank() == 0 && strides.empty() && sizes.size() == 1) ||
-           (strides.size() == sizes.size()) && "unexpected number of strides");
+    assert(((type.getRank() == 0 && strides.empty() && sizes.size() == 1) ||
+            (strides.size() == sizes.size())) &&
+           "unexpected number of strides");
 
     // Create the MemRef descriptor.
     auto structType = lowering.convertType(type);
@@ -687,7 +688,7 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
     SmallVector<Value *, 4> strideValues(nStrides, nullptr);
     for (auto indexedStride : llvm::enumerate(llvm::reverse(strides))) {
       int64_t index = nStrides - 1 - indexedStride.index();
-      if (strides[index] == MemRefType::kDynamicStrideOrOffset)
+      if (strides[index] == MemRefType::getDynamicStrideOrOffset())
         // Identity layout map is enforced in the match function, so we compute:
         //   `runningStride *= sizes[index]`
         runningStride = runningStride
@@ -744,7 +745,7 @@ struct CallOpInterfaceLowering : public LLVMLegalizationPattern<CallOpType> {
     auto newOp = rewriter.create<LLVM::CallOp>(op->getLoc(), packedResult,
                                                promoted, op->getAttrs());
 
-    // If < 2 results, packingdid not do anything and we can just return.
+    // If < 2 results, packing did not do anything and we can just return.
     if (numResults < 2) {
       SmallVector<Value *, 4> results(newOp.getResults());
       rewriter.replaceOp(op, results);
@@ -919,14 +920,14 @@ struct LoadStoreOpLowering : public LLVMLegalizationPattern<Derived> {
         loc, elementTypePtr, memRefDescriptor,
         rewriter.getIndexArrayAttr(kPtrPosInMemRefDescriptor));
     Value *offsetValue =
-        offset == MemRefType::kDynamicStrideOrOffset
+        offset == MemRefType::getDynamicStrideOrOffset()
             ? rewriter.create<LLVM::ExtractValueOp>(
                   loc, indexTy, memRefDescriptor,
                   rewriter.getIndexArrayAttr(kOffsetPosInMemRefDescriptor))
             : this->createIndexConstant(rewriter, loc, offset);
     for (int i = 0, e = indices.size(); i < e; ++i) {
       Value *stride;
-      if (strides[i] != MemRefType::kDynamicStrideOrOffset) {
+      if (strides[i] != MemRefType::getDynamicStrideOrOffset()) {
         // Use static stride.
         auto attr =
             rewriter.getIntegerAttr(rewriter.getIndexType(), strides[i]);
@@ -952,7 +953,7 @@ struct LoadStoreOpLowering : public LLVMLegalizationPattern<Derived> {
     auto ptrType = getMemRefElementPtrType(type, this->lowering);
     int64_t offset;
     SmallVector<int64_t, 4> strides;
-    auto successStrides = type.getStridesAndOffset(strides, offset);
+    auto successStrides = getStridesAndOffset(type, strides, offset);
     assert(succeeded(successStrides) && "unexpected non-strided memref");
     (void)successStrides;
     return getStridedElementPtr(loc, ptrType, memRefDesc, indices, strides,
@@ -979,7 +980,7 @@ struct LoadOpLowering : public LoadStoreOpLowering<LoadOp> {
   }
 };
 
-// Store opreation is lowered to obtaining a pointer to the indexed element,
+// Store operation is lowered to obtaining a pointer to the indexed element,
 // and storing the given value to it.
 struct StoreOpLowering : public LoadStoreOpLowering<StoreOp> {
   using Base::Base;
@@ -1077,6 +1078,15 @@ struct CmpFOpLowering : public LLVMLegalizationPattern<CmpFOp> {
 
 struct SIToFPLowering
     : public OneToOneLLVMOpLowering<SIToFPOp, LLVM::SIToFPOp> {
+  using Super::Super;
+};
+
+struct FPExtLowering : public OneToOneLLVMOpLowering<FPExtOp, LLVM::FPExtOp> {
+  using Super::Super;
+};
+
+struct FPTruncLowering
+    : public OneToOneLLVMOpLowering<FPTruncOp, LLVM::FPTruncOp> {
   using Super::Super;
 };
 
@@ -1263,9 +1273,10 @@ void mlir::populateStdToLLVMConversionPatterns(
       DivFOpLowering, FuncOpConversion, IndexCastOpLowering, LoadOpLowering,
       MemRefCastOpLowering, MulFOpLowering, MulIOpLowering, OrOpLowering,
       RemISOpLowering, RemIUOpLowering, RemFOpLowering, ReturnOpLowering,
-      SelectOpLowering, SIToFPLowering, SignExtendIOpLowering, SplatOpLowering,
-      StoreOpLowering, SubFOpLowering, SubIOpLowering, TruncateIOpLowering,
-      XOrOpLowering, ZeroExtendIOpLowering>(*converter.getDialect(), converter);
+      SelectOpLowering, SIToFPLowering, FPExtLowering, FPTruncLowering,
+      SignExtendIOpLowering, SplatOpLowering, StoreOpLowering, SubFOpLowering,
+      SubIOpLowering, TruncateIOpLowering, XOrOpLowering,
+      ZeroExtendIOpLowering>(*converter.getDialect(), converter);
 }
 
 // Convert types using the stored LLVM IR module.

@@ -15,7 +15,6 @@ cc_library(
         ":depthwise_conv",
         ":elementwise",
         ":fully_connected",
-        ":hard_swish",
         ":max_unpooling",
         ":mul",
         ":padding",
@@ -269,18 +268,6 @@ ios_unit_test(
         "tflite_not_portable_android",
     ],
     deps = [":fully_connected_test_lib"],
-)
-
-cc_library(
-    name = "hard_swish",
-    srcs = ["hard_swish.cc"],
-    hdrs = ["hard_swish.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
-    ],
 )
 
 cc_library(

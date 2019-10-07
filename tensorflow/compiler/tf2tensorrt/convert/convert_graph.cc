@@ -730,14 +730,15 @@ Status ConvertAfterShapes(const ConversionParams& params) {
         CreateTRTNode(params, engine_segments, i, params.max_batch_size, &graph,
                       alloc.get(), &engine_nodes);
 
-    string msg =
-        StrCat("TensorRT node ", engine.engine_name, " added for segment ", i,
-               " consisting of ", converted_segments.at(i).size(), " nodes");
+    string msg = StrCat("segment ", i, " consisting of ",
+                        converted_segments.at(i).size(), " nodes by ",
+                        engine.engine_name);
     if (status.ok()) {
-      LOG(INFO) << msg << " succeeded.";
+      LOG(INFO) << "Replaced " << msg << ".";
     } else {
       // Graph is not modified.
-      LOG(WARNING) << msg << " failed: " << status << ". Fallback to TF...";
+      LOG(WARNING) << "Cannot replace " << msg
+                   << " (keeping original segment).";
     }
     if (VLOG_IS_ON(1)) {
       msg = "Segment consists of nodes: ";

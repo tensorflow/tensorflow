@@ -28,16 +28,16 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
-using ::tflite::gpu::PReLUAttributes;
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::DataType;
 using ::tflite::gpu::HWC;
 using ::tflite::gpu::Linear;
-using ::tflite::gpu::metal::CompareVectors;
-using ::tflite::gpu::metal::SingleOpModel;
+using ::tflite::gpu::OperationType;
+using ::tflite::gpu::PReLUAttributes;
 using ::tflite::gpu::Tensor;
 using ::tflite::gpu::TensorRef;
-using ::tflite::gpu::OperationType;
+using ::tflite::gpu::metal::CompareVectors;
+using ::tflite::gpu::metal::SingleOpModel;
 
 @interface SoftmaxTest : XCTestCase
 @end

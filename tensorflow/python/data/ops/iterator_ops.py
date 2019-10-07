@@ -764,7 +764,7 @@ class IteratorSpec(type_spec.TypeSpec):
   def _component_specs(self):
     return (
         tensor_spec.TensorSpec([], dtypes.resource),
-        tensor_spec.TensorSpec([], dtypes.scalar),
+        tensor_spec.TensorSpec([], dtypes.variant),
     )
 
   def _to_components(self, value):

@@ -76,9 +76,9 @@ class SPV_GLSLBinaryOp<string mnemonic, int opcode, Type resultType,
     SPV_ScalarOrVectorOf<resultType>:$result
   );
 
-  let parser = [{ return impl::parseBinaryOp(parser, result); }];
+  let parser = [{ return impl::parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return impl::printBinaryOp(getOperation(), p); }];
+  let printer = [{ return impl::printOneResultOp(getOperation(), p); }];
 
   let verifier = [{ return success(); }];
 }

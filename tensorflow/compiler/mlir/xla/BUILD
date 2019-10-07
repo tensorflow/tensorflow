@@ -12,6 +12,7 @@ package_group(
     packages = [
         "//babelfish/device/...",
         "//learning/brain/experimental/mlir/...",
+        "//learning/brain/experimental/swift_mlir/...",
         "//learning/brain/google/xla/kernels/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/compiler/xla/...",
@@ -166,7 +167,6 @@ cc_library(
     ],
     deps = [
         ":hlo",
-        "//tensorflow/compiler/mlir/tensorflow",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
@@ -182,7 +182,6 @@ cc_library(
     deps = [
         ":hlo",
         ":xla_legalize_to_standard_inc_gen",
-        "//tensorflow/compiler/mlir/tensorflow",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
@@ -198,7 +197,6 @@ cc_library(
     deps = [
         ":hlo",
         ":xla_dialect_registration",
-        "//tensorflow/compiler/mlir/tensorflow",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",

@@ -25,7 +25,6 @@ import collections
 import re
 import string
 
-import sys
 import numpy as np
 import opt_einsum
 
@@ -42,13 +41,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
-
-# pylint: disable=g-import-not-at-top
-if sys.version_info[0] > 2:
-  import functools
-else:
-  import functools32 as functools
-# pylint: enable=g-import-not-at-top
 
 
 # TODO(b/27419586) Change docstring for required dtype of x once int allowed
@@ -712,7 +704,6 @@ def _einsum_v2(equation, *inputs, **kwargs):
     return inputs[0]
 
 
-@functools.lru_cache(maxsize=128)
 def _get_opt_einsum_contract_path(equation, shaped_inputs_tuple, optimize):
   """Returns the (memoized) result of opt_einsum.contract_path."""
   # Note: We use einsum_call=True, which is an internal api for opt_einsum,

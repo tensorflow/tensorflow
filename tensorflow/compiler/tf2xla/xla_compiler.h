@@ -153,6 +153,9 @@ class XlaCompiler {
     // For a kResource, has this resource been initialized?
     bool initialized = false;
 
+    // For a kResource, is this resource on Fast Memory.
+    bool fast_mem = false;
+
     // For a TensorArray or Stack resource, what is the array's declared size?
     // (Used for lazy initialization.)
     int64 max_array_size = -1;

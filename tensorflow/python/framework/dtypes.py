@@ -60,6 +60,7 @@ class DType(object):
   The `tf.as_dtype()` function converts numpy types and string type
   names to a `DType` object.
   """
+  __slots__ = ["_type_enum"]
 
   def __init__(self, type_enum):
     """Creates a new `DataType`.
@@ -132,7 +133,7 @@ class DType(object):
 
   @property
   def is_bool(self):
-    """Returns whether this is a boolean data type"""
+    """Returns whether this is a boolean data type."""
     return self.base_dtype == bool
 
   @property
@@ -188,10 +189,10 @@ class DType(object):
     # there is no simple way to get the min value of a dtype, we have to check
     # float and int types separately
     try:
-      return np.finfo(self.as_numpy_dtype()).min
+      return np.finfo(self.as_numpy_dtype).min
     except:  # bare except as possible raises by finfo not documented
       try:
-        return np.iinfo(self.as_numpy_dtype()).min
+        return np.iinfo(self.as_numpy_dtype).min
       except:
         if self.base_dtype == bfloat16:
           return _np_bfloat16(float.fromhex("-0x1.FEp127"))
@@ -212,10 +213,10 @@ class DType(object):
     # there is no simple way to get the max value of a dtype, we have to check
     # float and int types separately
     try:
-      return np.finfo(self.as_numpy_dtype()).max
+      return np.finfo(self.as_numpy_dtype).max
     except:  # bare except as possible raises by finfo not documented
       try:
-        return np.iinfo(self.as_numpy_dtype()).max
+        return np.iinfo(self.as_numpy_dtype).max
       except:
         if self.base_dtype == bfloat16:
           return _np_bfloat16(float.fromhex("0x1.FEp127"))
@@ -261,11 +262,14 @@ class DType(object):
     """Returns True iff this DType refers to the same type as `other`."""
     if other is None:
       return False
-    try:
-      dtype = as_dtype(other).as_datatype_enum
-      return self._type_enum == dtype  # pylint: disable=protected-access
-    except TypeError:
-      return False
+
+    if type(other) != DType:  # pylint: disable=unidiomatic-typecheck
+      try:
+        other = as_dtype(other)
+      except TypeError:
+        return False
+
+    return self._type_enum == other._type_enum  # pylint: disable=protected-access
 
   def __ne__(self, other):
     """Returns True iff self != other."""

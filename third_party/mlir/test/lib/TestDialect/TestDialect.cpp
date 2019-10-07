@@ -49,12 +49,16 @@ struct TestInlinerInterface : public DialectInlinerInterface {
   // Analysis Hooks
   //===--------------------------------------------------------------------===//
 
+  bool isLegalToInline(Region *, Region *, BlockAndValueMapping &) const final {
+    // Inlining into test dialect regions is legal.
+    return true;
+  }
   bool isLegalToInline(Operation *, Region *,
                        BlockAndValueMapping &) const final {
     return true;
   }
 
-  bool shouldAnalyzeRecursively(Operation *op) const override {
+  bool shouldAnalyzeRecursively(Operation *op) const final {
     // Analyze recursively if this is not a functional region operation, it
     // froms a separate functional scope.
     return !isa<FunctionalRegionOp>(op);
@@ -77,6 +81,21 @@ struct TestInlinerInterface : public DialectInlinerInterface {
     assert(returnOp.getNumOperands() == valuesToRepl.size());
     for (const auto &it : llvm::enumerate(returnOp.getOperands()))
       valuesToRepl[it.index()]->replaceAllUsesWith(it.value());
+  }
+
+  /// Attempt to materialize a conversion for a type mismatch between a call
+  /// from this dialect, and a callable region. This method should generate an
+  /// operation that takes 'input' as the only operand, and produces a single
+  /// result of 'resultType'. If a conversion can not be generated, nullptr
+  /// should be returned.
+  Operation *materializeCallConversion(OpBuilder &builder, Value *input,
+                                       Type resultType,
+                                       Location conversionLoc) const final {
+    // Only allow conversion for i16/i32 types.
+    if (!(resultType.isInteger(16) || resultType.isInteger(32)) ||
+        !(input->getType().isInteger(16) || input->getType().isInteger(32)))
+      return nullptr;
+    return builder.create<TestCastOp>(conversionLoc, resultType, input);
   }
 };
 } // end anonymous namespace

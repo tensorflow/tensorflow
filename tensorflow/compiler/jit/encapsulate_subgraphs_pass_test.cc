@@ -513,8 +513,9 @@ Status Encapsulate(GraphDef* graphdef, FunctionDefLibrary* library,
   OptimizerOptions opts;
   auto device_mgr = absl::make_unique<StaticDeviceMgr>(std::move(devices));
   auto pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
-      device_mgr.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def.get(),
-      opts, /*default_thread_pool=*/nullptr, /*cluster_flr=*/nullptr);
+      device_mgr.get(), Env::Default(), /*config=*/nullptr,
+      TF_GRAPH_DEF_VERSION, lib_def.get(), opts,
+      /*default_thread_pool=*/nullptr, /*cluster_flr=*/nullptr);
   auto flr = pflr->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
 
   std::unique_ptr<Graph> graph_out;

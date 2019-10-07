@@ -859,6 +859,73 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       self.assertIsNone(acc.jvp(result))
 
 
+@def_function.function
+def _has_loop(iters, y):
+  ret = 0.
+  for i in math_ops.range(iters):
+    ret += y * math_ops.cast(i, dtypes.float32)
+  return ret
+
+
+@def_function.function
+def _has_cond(k, y):
+  if k > 1:
+    ret = 3. * y
+  else:
+    ret = 0.
+  return ret
+
+
+@def_function.function
+def _fprop_while(iters, y):
+  with forwardprop.ForwardAccumulator(y, 1.) as acc:
+    ret = 0.
+    for i in math_ops.range(iters):
+      ret += y * math_ops.cast(i, dtypes.float32)
+  return acc.jvp(ret)
+
+
+@def_function.function
+def _fprop_cond(k, y):
+  with forwardprop.ForwardAccumulator(y, 1.) as acc:
+    if k > 1:
+      ret = 3. * y
+    else:
+      ret = 0.
+  return acc.jvp(ret)
+
+
+class ControlFlowTests(test.TestCase):
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testOfFunctionWhile(self):
+    y = constant_op.constant(1.)
+    with forwardprop.ForwardAccumulator(y, 1.) as acc:
+      self.assertAllClose(
+          10., acc.jvp(_has_loop(constant_op.constant(5), y)))
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testOfFunctionCond(self):
+    y = constant_op.constant(1.)
+    with forwardprop.ForwardAccumulator(y, 1.) as acc:
+      self.assertAllClose(
+          3., acc.jvp(_has_cond(constant_op.constant(5), y)))
+      self.assertAllClose(
+          0., acc.jvp(_has_cond(constant_op.constant(0), y)))
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testInFunctionWhile(self):
+    self.assertAllClose(
+        10., _fprop_while(constant_op.constant(5), constant_op.constant(1.)))
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testInFunctionCond(self):
+    self.assertAllClose(
+        3., _fprop_cond(constant_op.constant(5), constant_op.constant(1.)))
+    self.assertAllClose(
+        0., _fprop_cond(constant_op.constant(0), constant_op.constant(1.)))
+
+
 class HessianTests(test.TestCase, parameterized.TestCase):
 
   def testHessian1D(self):

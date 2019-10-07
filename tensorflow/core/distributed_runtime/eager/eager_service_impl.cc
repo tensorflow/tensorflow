@@ -128,9 +128,10 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   LOG(INFO) << "Creating " << (request->async() ? "async" : "sync")
             << " eager service context with rendezvous_id on host "
             << port::Hostname() << " " << worker_session->worker_name();
+  SessionOptions opts;
+  opts.config = request->server_def().default_session_config();
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
-      SessionOptions(),
-      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
+      opts, tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
       tensorflow::ContextMirroringPolicy::MIRRORING_NONE, request->async(),
       device_mgr, false, r, GetDefaultCustomKernelCreator(),
       worker_session->cluster_flr());
@@ -312,8 +313,9 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
         "' is neither a type of a primitive operation nor a name "
         "of a function registered in binary running on ",
         port::Hostname(),
-        ". Make sure the operation or function is "
-        "registered in the binary running in this process.");
+        ". One possible root cause is the client and server binaries are not "
+        "built with the same version. Please make sure the operation or "
+        "function is registered in the binary running in this process.");
   }
   op.reset(new tensorflow::EagerOperation(eager_context, name, is_function,
                                           types, eager_executor));
@@ -386,8 +388,10 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
       auto node = absl::make_unique<ClientTensorHandleDeleteNode>(
           context, std::move(handle_to_decref));
       s = context->Context()->Executor().AddOrExecute(std::move(node));
-    } else {
+    } else if (item.has_send_tensor()) {
       s = SendTensor(item.send_tensor(), context->Context());
+    } else {
+      s = RegisterFunction(item.register_function(), context->Context());
     }
 
     if (!s.ok()) {
@@ -449,16 +453,12 @@ Status EagerServiceImpl::CloseContext(const CloseContextRequest* request,
 }
 
 Status EagerServiceImpl::RegisterFunction(
-    const RegisterFunctionRequest* request,
-    RegisterFunctionResponse* response) {
-  ServerContext* context = nullptr;
-  TF_RETURN_IF_ERROR(GetServerContext(request->context_id(), &context));
-  core::ScopedUnref context_unref(context);
-
+    const RegisterFunctionOp& register_function, EagerContext* eager_context) {
   // If the function is a component of a multi-device function, we only need to
   // register it locally.
-  return context->Context()->AddFunctionDef(request->function_def(),
-                                            request->is_component_function());
+  return eager_context->AddFunctionDef(
+      register_function.function_def(),
+      register_function.is_component_function());
 }
 
 Status EagerServiceImpl::SendTensor(const SendTensorOp& send_tensor,

@@ -206,12 +206,14 @@ void EagerExecutor::NodeDone(core::RefCountPtr<NodeItem> item,
     if (!status.ok()) {
       need_notification = true;
       status_ = status;
-      // We remove any pending ops so that we don't try to execute them if
-      // ClearError is called.
-      errors::AppendToMessage(&status_,
-                              "Encountered when executing an operation using "
-                              "EagerExecutor. This error cancels all future "
-                              "operations and poisons their output tensors.");
+      if (Async()) {
+        // We remove any pending ops so that we don't try to execute them if
+        // ClearError is called.
+        errors::AppendToMessage(&status_,
+                                "Encountered when executing an operation using "
+                                "EagerExecutor. This error cancels all future "
+                                "operations and poisons their output tensors.");
+      }
       while (!node_queue_.empty()) {
         items_to_destroy.push_back(std::move(node_queue_.front()));
         node_queue_.pop();

@@ -204,6 +204,7 @@ cc_library(
         "transforms/materialize_mlir_passthrough_op.cc",
         "transforms/optimize.cc",
         "transforms/raise_control_flow.cc",
+        "transforms/resource_op_lifting.cc",
         "transforms/shape_inference.cc",
         "transforms/shape_inference_pass.cc",
         "transforms/sink_constant.cc",
@@ -223,6 +224,7 @@ cc_library(
         ":convert_type",
         ":error_util",
         ":export_tf_dialect_op",
+        ":mangling_util",
         ":tensorflow",
         ":tensorflow_optimize_inc_gen",
         "//tensorflow/compiler/mlir/lite:validators",
@@ -418,6 +420,24 @@ cc_library(
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:StandardOps",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "mlir_roundtrip_pass_registration",
+    srcs = ["translate/mlir_roundtrip_pass_registration.cc"],
+    deps = [
+        ":mlir_roundtrip_pass",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "mlir_import_pass_registration",
+    srcs = ["translate/mlir_import_pass_registration.cc"],
+    deps = [
+        ":mlir_roundtrip_pass",
     ],
     alwayslink = 1,
 )
@@ -703,6 +723,7 @@ genrule(
     ],
     cmd = ("$(location :derived_attr_populator_gen) " +
            "-I external/local_config_mlir/include " +
+           "-I external/org_tensorflow " +
            "$(location //tensorflow/compiler/mlir/tensorflow:ir/tf_ops.td) " + " -o $@"),
     tools = [":derived_attr_populator_gen"],
 )
@@ -803,4 +824,36 @@ cc_library(
         "@local_config_mlir//:IR",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "tpu_rewrite_device_util",
+    srcs = ["utils/tpu_rewrite_device_util.cc"],
+    hdrs = ["utils/tpu_rewrite_device_util.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/core:status",
+        "@com_google_absl//absl/strings",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "tpu_rewrite_device_util_test",
+    size = "small",
+    srcs = ["utils/tpu_rewrite_device_util_test.cc"],
+    deps = [
+        ":tpu_rewrite_device_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:test",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Support",
+    ],
 )

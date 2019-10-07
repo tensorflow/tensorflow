@@ -1,14 +1,8 @@
 # Description: Operations defined for Cloud TPUs
 
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_custom_op_library",
-    "tf_gen_op_libs",
-    "tf_gen_op_wrapper_py",
-    "tf_py_test",
-)
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library")
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 # Do not add anymore paths here. You do not need to be in the visibility list
 # to use TPU symbols. They are accessible from tf.contrib.tpu in TF 1.x and
@@ -58,25 +52,19 @@ py_library(
     ],
 )
 
-tf_py_test(
+tpu_py_test(
     name = "async_checkpoint_test",
     size = "medium",
     srcs = ["async_checkpoint_test.py"],
-    additional_deps = [
+    disable_experimental = True,
+    deps = [
         ":async_checkpoint",
         ":tpu_estimator",
         ":tpu_lib",
-        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python:lib",
         "//tensorflow/python:platform",
-    ],
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_pip",
-        "nogpu",
-        "noguitar",
-        "nomac",
-        "notap",
-        "tpu",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//third_party/py/numpy",
     ],
 )
 

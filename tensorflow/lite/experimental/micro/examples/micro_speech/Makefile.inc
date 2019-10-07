@@ -271,6 +271,7 @@ tensorflow/lite/experimental/micro/examples/micro_speech/command_responder.h
 
 MICRO_SPEECH_SRCS := \
 tensorflow/lite/experimental/micro/examples/micro_speech/main.cc \
+tensorflow/lite/experimental/micro/examples/micro_speech/main_functions.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/audio_provider.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/feature_provider.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/no_micro_features_data.cc \
@@ -288,10 +289,12 @@ tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/yes_micr
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/recognize_commands.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/command_responder.h \
+tensorflow/lite/experimental/micro/examples/micro_speech/main_functions.h \
 $(MICRO_FEATURES_GENERATOR_HDRS)
 
 MICRO_SPEECH_MOCK_SRCS := \
 tensorflow/lite/experimental/micro/examples/micro_speech/main.cc \
+tensorflow/lite/experimental/micro/examples/micro_speech/main_functions.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/audio_provider_mock.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/no_1000ms_sample_data.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/yes_1000ms_sample_data.cc \
@@ -314,6 +317,7 @@ tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/yes_micr
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/recognize_commands.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/command_responder.h \
+tensorflow/lite/experimental/micro/examples/micro_speech/main_functions.h \
 $(MICRO_FEATURES_GENERATOR_HDRS)
 
 # Find any platform-specific rules for this example.

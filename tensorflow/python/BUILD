@@ -466,6 +466,23 @@ tf_python_pybind_extension(
 )
 
 tf_python_pybind_extension(
+    name = "_pywrap_debug_events_writer",
+    srcs = ["client/debug_events_writer_wrapper.cc"],
+    module_name = "_pywrap_debug_events_writer",
+    deps = [
+        ":pybind11_absl",
+        ":pybind11_proto",
+        ":pybind11_status",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/strings",
+        "@pybind11",
+    ],
+)
+
+tf_python_pybind_extension(
     name = "_pywrap_events_writer",
     srcs = ["client/events_writer_wrapper.cc"],
     module_name = "_pywrap_events_writer",
@@ -809,7 +826,9 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":_pywrap_debug_events_writer",
         ":_pywrap_events_writer",
+        ":_pywrap_py_func",  # TODO(b/142001480): remove once the bug is fixed.
         ":_pywrap_stat_summarizer",
         ":_pywrap_tfprof",
         ":_pywrap_util_port",
@@ -4730,7 +4749,7 @@ py_library(
         "//third_party/py/numpy",
         "@six_archive//:six",
         "//tensorflow/tools/compatibility:all_renames_v2",
-    ] + if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass"]),
+    ] + if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration"]),
 )
 
 tf_py_test(

@@ -39,6 +39,8 @@ message QueueItem {
     RemoteTensorHandle handle_to_decref = 1;
     Operation operation = 2;
     SendTensorOp send_tensor = 3;
+    // Takes a FunctionDef and makes it enqueable on the remote worker.
+    RegisterFunctionOp register_function = 4;
   }
 }
 
@@ -139,17 +141,13 @@ message CloseContextRequest {
 
 message CloseContextResponse {}
 
-message RegisterFunctionRequest {
-  fixed64 context_id = 1;
-
-  FunctionDef function_def = 2;
+message RegisterFunctionOp {
+  FunctionDef function_def = 1;
 
   // If true, it means that function_def is produced by graph partition during
   // multi-device function instantiation.
-  bool is_component_function = 3;
+  bool is_component_function = 2;
 }
-
-message RegisterFunctionResponse {}
 
 message SendTensorOp {
   // All remote tensors are identified by <Op ID, Output num>. To mimic this
@@ -218,8 +216,4 @@ service EagerService {
   // Closes the context. No calls to other methods using the existing context ID
   // are valid after this.
   rpc CloseContext(CloseContextRequest) returns (CloseContextResponse);
-
-  // Takes a FunctionDef and makes it enqueable on the remote worker.
-  rpc RegisterFunction(RegisterFunctionRequest)
-      returns (RegisterFunctionResponse);
 }

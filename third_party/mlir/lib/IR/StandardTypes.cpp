@@ -23,7 +23,6 @@
 #include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/Twine.h"
-#include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
 using namespace mlir::detail;
@@ -342,6 +341,13 @@ MemRefType MemRefType::getImpl(ArrayRef<int64_t> shape, Type elementType,
                                Optional<Location> location) {
   auto *context = elementType.getContext();
 
+  // Check that memref is formed from allowed types.
+  if (!elementType.isIntOrFloat() && !elementType.isa<VectorType>()) {
+    if (location)
+      emitError(*location, "invalid memref element type");
+    return nullptr;
+  }
+
   for (int64_t s : shape) {
     // Negative sizes are not allowed except for `-1` that means dynamic size.
     if (s < -1) {
@@ -447,14 +453,14 @@ static void accumulateStrides(MutableArrayRef<int64_t> strides,
     seen[pos] = true;
     return;
   }
-  if (strides[pos] != MemRefType::kDynamicStrideOrOffset)
+  if (strides[pos] != MemRefType::getDynamicStrideOrOffset())
     // Already seen case accumulates unless they are already saturated.
     strides[pos] += val;
 }
 
 // This sums multiple offsets as they are seen. In the particular case of
 // accumulating a dynamic offset with either a static of dynamic one, this
-// saturates to MemRefType::kDynamicStrideOrOffset.
+// saturates to MemRefType::getDynamicStrideOrOffset().
 static void accumulateOffset(int64_t &offset, bool &seenOffset, int64_t val) {
   if (!seenOffset) {
     // Newly seen case, sets value
@@ -462,7 +468,7 @@ static void accumulateOffset(int64_t &offset, bool &seenOffset, int64_t val) {
     seenOffset = true;
     return;
   }
-  if (offset != MemRefType::kDynamicStrideOrOffset)
+  if (offset != MemRefType::getDynamicStrideOrOffset())
     // Already seen case accumulates unless they are already saturated.
     offset += val;
 }
@@ -486,10 +492,16 @@ static void extractStrides(AffineExpr e, MutableArrayRef<int64_t> strides,
     return;
   }
   if (bin.getKind() == AffineExprKind::Mul) {
-    auto dim = bin.getLHS().cast<AffineDimExpr>();
+    // LHS may be more complex than just a single dim (e.g. multiple syms and
+    // dims). Bail out for now and revisit when we have evidence this is needed.
+    auto dim = bin.getLHS().dyn_cast<AffineDimExpr>();
+    if (!dim) {
+      failed = true;
+      return;
+    }
     auto cst = bin.getRHS().dyn_cast<AffineConstantExpr>();
     if (!cst) {
-      strides[dim.getPosition()] = MemRefType::kDynamicStrideOrOffset;
+      strides[dim.getPosition()] = MemRefType::getDynamicStrideOrOffset();
       seen[dim.getPosition()] = true;
     } else {
       accumulateStrides(strides, seen, dim.getPosition(), cst.getValue());
@@ -503,7 +515,7 @@ static void extractStrides(AffineExpr e, MutableArrayRef<int64_t> strides,
         accumulateOffset(offset, seenOffset, cst.getValue());
       } else if (auto sym = e.dyn_cast<AffineSymbolExpr>()) {
         // Independent symbols saturate.
-        offset = MemRefType::kDynamicStrideOrOffset;
+        offset = MemRefType::getDynamicStrideOrOffset();
         seenOffset = true;
       } else if (auto dim = e.dyn_cast<AffineDimExpr>()) {
         // Independent symbols cumulate 1.
@@ -530,7 +542,7 @@ static void extractStridesFromTerm(AffineExpr e,
   }
   if (auto sym = e.dyn_cast<AffineSymbolExpr>()) {
     assert(!seenOffset && "unexpected `seen` bit with single term");
-    offset = MemRefType::kDynamicStrideOrOffset;
+    offset = MemRefType::getDynamicStrideOrOffset();
     seenOffset = true;
     return;
   }
@@ -544,9 +556,10 @@ static void extractStridesFromTerm(AffineExpr e,
   llvm_unreachable("unexpected binary operation");
 }
 
-LogicalResult MemRefType::getStridesAndOffset(SmallVectorImpl<int64_t> &strides,
-                                              int64_t &offset) const {
-  auto affineMaps = getAffineMaps();
+LogicalResult mlir::getStridesAndOffset(MemRefType t,
+                                        SmallVectorImpl<int64_t> &strides,
+                                        int64_t &offset) {
+  auto affineMaps = t.getAffineMaps();
   // For now strides are only computed on a single affine map with a single
   // result (i.e. the closed subset of linearization maps that are compatible
   // with striding semantics).
@@ -555,12 +568,12 @@ LogicalResult MemRefType::getStridesAndOffset(SmallVectorImpl<int64_t> &strides,
     return failure();
   AffineExpr stridedExpr;
   if (affineMaps.empty() || affineMaps[0].isIdentity()) {
-    if (getRank() == 0) {
+    if (t.getRank() == 0) {
       // Handle 0-D corner case.
       offset = 0;
       return success();
     }
-    stridedExpr = makeCanonicalStridedLayoutExpr(getShape(), getContext());
+    stridedExpr = makeCanonicalStridedLayoutExpr(t.getShape(), t.getContext());
   } else if (affineMaps[0].getNumResults() == 1) {
     stridedExpr = affineMaps[0].getResult(0);
   }
@@ -568,9 +581,9 @@ LogicalResult MemRefType::getStridesAndOffset(SmallVectorImpl<int64_t> &strides,
     return failure();
 
   bool failed = false;
-  strides = SmallVector<int64_t, 4>(getRank(), 0);
+  strides = SmallVector<int64_t, 4>(t.getRank(), 0);
   bool seenOffset = false;
-  SmallVector<bool, 4> seen(getRank(), false);
+  SmallVector<bool, 4> seen(t.getRank(), false);
   if (stridedExpr.isa<AffineBinaryOpExpr>()) {
     stridedExpr.walk([&](AffineExpr e) {
       if (!failed)
@@ -657,7 +670,7 @@ AffineMap mlir::makeStridedLinearLayoutMap(ArrayRef<int64_t> strides,
 
   // AffineExpr for offset.
   // Static case.
-  if (offset != MemRefType::kDynamicStrideOrOffset) {
+  if (offset != MemRefType::getDynamicStrideOrOffset()) {
     auto cst = getAffineConstantExpr(offset, context);
     expr = cst;
   } else {
@@ -674,7 +687,7 @@ AffineMap mlir::makeStridedLinearLayoutMap(ArrayRef<int64_t> strides,
     auto d = getAffineDimExpr(dim, context);
     AffineExpr mult;
     // Static case.
-    if (stride != MemRefType::kDynamicStrideOrOffset)
+    if (stride != MemRefType::getDynamicStrideOrOffset())
       mult = getAffineConstantExpr(stride, context);
     else
       // Dynamic case, new symbol for each new stride.
@@ -688,6 +701,6 @@ AffineMap mlir::makeStridedLinearLayoutMap(ArrayRef<int64_t> strides,
 bool mlir::isStrided(MemRefType t) {
   int64_t offset;
   SmallVector<int64_t, 4> stridesAndOffset;
-  auto res = t.getStridesAndOffset(stridesAndOffset, offset);
+  auto res = getStridesAndOffset(t, stridesAndOffset, offset);
   return succeeded(res);
 }

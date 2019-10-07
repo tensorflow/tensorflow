@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/Conversion/ControlFlowToCFG/ConvertControlFlowToCFG.h"
+#include "mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -545,6 +545,20 @@ public:
   }
 };
 
+// YieldOp produces and LLVM::ReturnOp.
+class YieldOpConversion : public LLVMOpLowering {
+public:
+  explicit YieldOpConversion(MLIRContext *context, LLVMTypeConverter &lowering_)
+      : LLVMOpLowering(YieldOp::getOperationName(), context, lowering_) {}
+
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(op, operands);
+    return matchSuccess();
+  }
+};
+
 // Get function definition for the LinalgOp. If it doesn't exist, insert a
 // definition.
 template <typename LinalgOp>
@@ -673,13 +687,35 @@ public:
   }
 };
 
+/// A non-conversion rewrite pattern kicks in to convert SubViewOp into RangeOps
+/// and SliceOps.
+class SubViewOpConversion : public OpRewritePattern<SubViewOp> {
+public:
+  using OpRewritePattern<SubViewOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(SubViewOp op,
+                                     PatternRewriter &rewriter) const override {
+    auto *view = op.getView();
+    SmallVector<Value *, 8> ranges;
+    for (auto sliceRange : op.getRanges())
+      ranges.push_back(rewriter.create<RangeOp>(
+          op.getLoc(), sliceRange.min, sliceRange.max, sliceRange.step));
+    rewriter.replaceOpWithNewOp<SliceOp>(op, view, ranges);
+    return matchSuccess();
+  }
+};
+
 /// Populate the given list with patterns that convert from Linalg to Standard.
 static void
 populateLinalgToStandardConversionPatterns(OwningRewritePatternList &patterns,
                                            MLIRContext *ctx) {
+  // TODO(ntv) ConvOp conversion needs to export a descriptor with relevant
+  // attribute values such as kernel striding and dilation.
   patterns.insert<CopyTransposeConversion, LinalgOpConversion<CopyOp>,
                   LinalgOpConversion<DotOp>, LinalgOpConversion<FillOp>,
-                  LinalgOpConversion<MatmulOp>>(ctx);
+                  LinalgOpConversion<MatvecOp>, LinalgOpConversion<MatmulOp>,
+                  LinalgOpConversion<ConvOp>, LinalgOpConversion<GenericOp>,
+                  SubViewOpConversion>(ctx);
 }
 
 /// Populate the given list with patterns that convert from Linalg to LLVM.
@@ -689,7 +725,8 @@ populateLinalgToLLVMConversionPatterns(LinalgTypeConverter &converter,
                                        MLIRContext *ctx) {
   patterns.insert<BufferAllocOpConversion, BufferDeallocOpConversion,
                   BufferSizeOpConversion, RangeOpConversion, SliceOpConversion,
-                  TransposeOpConversion, ViewOpConversion>(ctx, converter);
+                  TransposeOpConversion, ViewOpConversion, YieldOpConversion>(
+      ctx, converter);
 }
 
 namespace {
@@ -698,27 +735,17 @@ struct LowerLinalgToLLVMPass : public ModulePass<LowerLinalgToLLVMPass> {
 };
 } // namespace
 
-// This is currently written as a standalone function because the lowering to
-// affine will look different than lowering to LLVM and it is still unclear how
-// everything will be eventually structured.
-static void lowerLinalgSubViewOps(FuncOp &f) {
-  f.walk([&](SubViewOp op) {
-    OpBuilder b(op);
-    ScopedContext scope(b, op.getLoc());
-    auto *view = op.getView();
-    SmallVector<Value *, 8> ranges;
-    for (auto sliceRange : op.getRanges())
-      ranges.push_back(range(sliceRange.min, sliceRange.max, sliceRange.step));
-    op.replaceAllUsesWith(slice(view, ranges));
-    op.erase();
-  });
-}
-
 void LowerLinalgToLLVMPass::runOnModule() {
   auto module = getModule();
 
-  for (auto f : module.getOps<FuncOp>())
-    lowerLinalgSubViewOps(f);
+  // Dialect conversion does not allow ignoring regions so we preprocess
+  // GenericOp to always drop its region. This is a temporary solution until we
+  // can write lowering to loops as a canonicalization but this requires folding
+  // + DialectConversion to interplay nicely.
+  // The subsequent conversion will not legalize GenericOp atm it does not have
+  // an external library attribute.
+  // TODO(riverriddle, ntv) DialectConversion + folding.
+  module.walk([&](GenericOp op) { op.region().getBlocks().clear(); });
 
   // Convert to the LLVM IR dialect using the converter defined above.
   OwningRewritePatternList patterns;

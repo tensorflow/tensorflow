@@ -73,6 +73,7 @@ class SPV_OpCode<string name, int val> {
 // Begin opcode section. Generated from SPIR-V spec; DO NOT MODIFY!
 
 def SPV_OC_OpNop                    : I32EnumAttrCase<"OpNop", 0>;
+def SPV_OC_OpUndef                  : I32EnumAttrCase<"OpUndef", 1>;
 def SPV_OC_OpSourceContinued        : I32EnumAttrCase<"OpSourceContinued", 2>;
 def SPV_OC_OpSource                 : I32EnumAttrCase<"OpSource", 3>;
 def SPV_OC_OpSourceExtension        : I32EnumAttrCase<"OpSourceExtension", 4>;
@@ -163,6 +164,7 @@ def SPV_OC_OpFUnordGreaterThanEqual : I32EnumAttrCase<"OpFUnordGreaterThanEqual"
 def SPV_OC_OpControlBarrier         : I32EnumAttrCase<"OpControlBarrier", 224>;
 def SPV_OC_OpMemoryBarrier          : I32EnumAttrCase<"OpMemoryBarrier", 225>;
 def SPV_OC_OpLoopMerge              : I32EnumAttrCase<"OpLoopMerge", 246>;
+def SPV_OC_OpSelectionMerge         : I32EnumAttrCase<"OpSelectionMerge", 247>;
 def SPV_OC_OpLabel                  : I32EnumAttrCase<"OpLabel", 248>;
 def SPV_OC_OpBranch                 : I32EnumAttrCase<"OpBranch", 249>;
 def SPV_OC_OpBranchConditional      : I32EnumAttrCase<"OpBranchConditional", 250>;
@@ -172,7 +174,7 @@ def SPV_OC_OpModuleProcessed        : I32EnumAttrCase<"OpModuleProcessed", 330>;
 
 def SPV_OpcodeAttr :
     I32EnumAttr<"Opcode", "valid SPIR-V instructions", [
-      SPV_OC_OpNop, SPV_OC_OpSourceContinued, SPV_OC_OpSource,
+      SPV_OC_OpNop, SPV_OC_OpUndef, SPV_OC_OpSourceContinued, SPV_OC_OpSource,
       SPV_OC_OpSourceExtension, SPV_OC_OpName, SPV_OC_OpMemberName, SPV_OC_OpString,
       SPV_OC_OpExtension, SPV_OC_OpExtInstImport, SPV_OC_OpExtInst,
       SPV_OC_OpMemoryModel, SPV_OC_OpEntryPoint, SPV_OC_OpExecutionMode,
@@ -200,8 +202,9 @@ def SPV_OpcodeAttr :
       SPV_OC_OpFOrdLessThanEqual, SPV_OC_OpFUnordLessThanEqual,
       SPV_OC_OpFOrdGreaterThanEqual, SPV_OC_OpFUnordGreaterThanEqual,
       SPV_OC_OpControlBarrier, SPV_OC_OpMemoryBarrier, SPV_OC_OpLoopMerge,
-      SPV_OC_OpLabel, SPV_OC_OpBranch, SPV_OC_OpBranchConditional, SPV_OC_OpReturn,
-      SPV_OC_OpReturnValue, SPV_OC_OpModuleProcessed
+      SPV_OC_OpSelectionMerge, SPV_OC_OpLabel, SPV_OC_OpBranch,
+      SPV_OC_OpBranchConditional, SPV_OC_OpReturn, SPV_OC_OpReturnValue,
+      SPV_OC_OpModuleProcessed
       ]> {
     let returnType = "::mlir::spirv::Opcode";
     let convertFromStorage = "static_cast<::mlir::spirv::Opcode>($_self.getInt())";
@@ -1102,6 +1105,19 @@ def SPV_ScopeAttr :
   let cppNamespace = "::mlir::spirv";
 }
 
+def SPV_SC_None        : BitEnumAttrCase<"None", 0x0000>;
+def SPV_SC_Flatten     : BitEnumAttrCase<"Flatten", 0x0001>;
+def SPV_SC_DontFlatten : BitEnumAttrCase<"DontFlatten", 0x0002>;
+
+def SPV_SelectionControlAttr :
+    BitEnumAttr<"SelectionControl", "valid SPIR-V SelectionControl", [
+      SPV_SC_None, SPV_SC_Flatten, SPV_SC_DontFlatten
+    ]> {
+  let returnType = "::mlir::spirv::SelectionControl";
+  let convertFromStorage = "static_cast<::mlir::spirv::SelectionControl>($_self.getInt())";
+  let cppNamespace = "::mlir::spirv";
+}
+
 def SPV_SC_UniformConstant        : I32EnumAttrCase<"UniformConstant", 0>;
 def SPV_SC_Input                  : I32EnumAttrCase<"Input", 1>;
 def SPV_SC_Uniform                : I32EnumAttrCase<"Uniform", 2>;
@@ -1273,8 +1289,8 @@ class SPV_BinaryOp<string mnemonic, Type resultType, Type operandsType,
     SPV_ScalarOrVectorOf<resultType>:$result
   );
 
-  let parser = [{ return impl::parseBinaryOp(parser, result); }];
-  let printer = [{ return impl::printBinaryOp(getOperation(), p); }];
+  let parser = [{ return impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let printer = [{ return impl::printOneResultOp(getOperation(), p); }];
   // No additional verification needed in addition to the ODS-generated ones.
   let verifier = [{ return success(); }];
 }

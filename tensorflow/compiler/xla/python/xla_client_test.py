@@ -543,6 +543,22 @@ class BufferTest(ComputationTest):
     arg0_buffer.copy_to_host_async()
     np.testing.assert_equal(arg0, arg0_buffer.to_py())
 
+  def testDevice(self):
+    x = np.arange(8)
+    for device in xla_client.get_local_backend().local_devices():
+      buf = xla_client.Buffer.from_pyval(x, device=device)
+      self.assertEqual(buf.device(), device)
+      np.testing.assert_equal(x, buf.to_py())
+
+  def testInvalidDevice(self):
+    t = np.array(1.)
+    with self.assertRaisesRegexp(
+        RuntimeError,
+        r"PyLocalBuffer::FromLiterals got bad device_ordinal: 100 "
+        r"\(num_local_devices=\d+\)"):
+      # TODO(skyewm): figure out how to test this with a Device
+      xla_client.Buffer.from_pyval(t, device=100)
+
 
 class SingleOpTest(ComputationTest):
   """Tests for single ops.

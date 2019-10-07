@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 
 #include <iterator>
+#include <tuple>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -1775,7 +1776,27 @@ ObjectNames::ObjectNames(const SavedObjectGraph& object_graph,
   for (auto& kv : object_names_) {
     // Make object names map independent of our particular choice of object
     // graph traversal.
-    std::sort(kv.second.begin(), kv.second.end());
+    std::sort(kv.second.begin(), kv.second.end(),
+              [](absl::string_view a, absl::string_view b) {
+                // The sort order here influences the "pretty name" we assign
+                // below. We want the most debuggable name to be first.
+                //
+                // Debuggability heuristics:
+                // 1. Names that end in digits are likely to be internal aliases
+                // to the "real" names.
+                // 2. Longer names are more likely to be internal aliases.
+                //
+                // Example set of object names created by Keras for the weight
+                // matrix of a fully connected layer on a trivial FC mnist
+                // model:
+                // - `model.layer-1.kernel` (this is the "best" name)
+                // - `model.keras_api.layers.1.kernel`
+                // - `model.variables.0`
+                // - `model.keras_api.layers.1.keras_api.trainable_variables.0`
+                // - ... 10 more long aliases ending in digits ...
+                return std::make_tuple(isdigit(a.back()), a.size(), a) <
+                       std::make_tuple(isdigit(b.back()), b.size(), b);
+              });
     for (const std::string& name : kv.second) {
       if (IsExported(name)) {
         exported_names_[kv.first].push_back(SaveString(name));

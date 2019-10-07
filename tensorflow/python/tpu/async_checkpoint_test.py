@@ -18,14 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import glob
 import os
 
 import numpy as np
 
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import variable_scope
@@ -46,6 +47,10 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string('tpu', '', 'TPU to use in this test.')
 flags.DEFINE_string('zone', None, 'Name of GCP zone with TPU.')
 flags.DEFINE_string('project', None, 'Name of GCP project with TPU.')
+flags.DEFINE_string(
+    'model_dir',
+    os.environ.get('TEST_UNDECLARED_OUTPUTS_DIR'),
+    'GCS path to store model and checkpoints.')
 
 
 def input_fn(params):
@@ -98,6 +103,7 @@ class AsyncCheckpointingTest(test.TestCase):
     checkpoint_interval = 5
     config = tpu_config.RunConfig(
         master=resolver.master(),
+        model_dir=os.path.join(FLAGS.model_dir, 'runconfig'),
         save_checkpoints_steps=1000,
         keep_checkpoint_max=11,  # off by one
         tpu_config=tpu_config.TPUConfig(
@@ -113,7 +119,6 @@ class AsyncCheckpointingTest(test.TestCase):
         params={},
     )
 
-    checkpoint_dir = os.environ.get('TEST_UNDECLARED_OUTPUTS_DIR')
     i = 10
     mock_listener = test.mock.create_autospec(
         basic_session_run_hooks.CheckpointSaverListener)
@@ -122,16 +127,17 @@ class AsyncCheckpointingTest(test.TestCase):
         max_steps=i * 10,
         hooks=[
             async_checkpoint.AsyncCheckpointSaverHook(
-                checkpoint_dir,
+                FLAGS.model_dir,
                 save_steps=checkpoint_interval,
                 listeners=[mock_listener])
         ])
 
     current_step = estimator_lib._load_global_step_from_checkpoint_dir(
-        checkpoint_dir)  # pylint: disable=protected-access,line-too-long
+        FLAGS.model_dir)  # pylint: disable=protected-access
 
     # TODO(power) -- identify a better way to count the number of checkpoints.
-    checkpoints = glob.glob(checkpoint_dir + '/model.ckpt*.meta')
+    checkpoints = file_io.get_matching_files(
+        FLAGS.model_dir + '/model.ckpt*.meta')
     checkpoint_count = len(checkpoints)
     logging.info('Found %d checkpoints: %s', checkpoint_count, checkpoints)
     self.assertLessEqual(checkpoint_count, 10)
@@ -141,4 +147,5 @@ class AsyncCheckpointingTest(test.TestCase):
 
 
 if __name__ == '__main__':
+  v2_compat.disable_v2_behavior()
   test.main()

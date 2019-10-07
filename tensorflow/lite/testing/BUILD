@@ -261,6 +261,7 @@ cc_library(
     name = "util",
     hdrs = ["util.h"],
     deps = [
+        "//tensorflow/core/platform:logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string",
         "//tensorflow/lite/core/api",

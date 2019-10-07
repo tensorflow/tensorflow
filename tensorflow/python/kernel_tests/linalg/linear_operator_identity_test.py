@@ -470,39 +470,53 @@ class LinearOperatorScaledIdentityTest(
     operator1 = linalg_lib.LinearOperatorIdentity(num_rows=2)
     operator2 = linalg_lib.LinearOperatorScaledIdentity(
         num_rows=2, multiplier=3.)
-    self.assertTrue(isinstance(
+    self.assertIsInstance(
         operator1.matmul(operator1),
-        linalg_lib.LinearOperatorIdentity))
+        linalg_lib.LinearOperatorIdentity)
 
-    self.assertTrue(isinstance(
+    self.assertIsInstance(
         operator1.matmul(operator1),
-        linalg_lib.LinearOperatorIdentity))
+        linalg_lib.LinearOperatorIdentity)
+
+    self.assertIsInstance(
+        operator2.matmul(operator2),
+        linalg_lib.LinearOperatorScaledIdentity)
 
     operator_matmul = operator1.matmul(operator2)
-    self.assertTrue(isinstance(
+    self.assertIsInstance(
         operator_matmul,
-        linalg_lib.LinearOperatorScaledIdentity))
+        linalg_lib.LinearOperatorScaledIdentity)
     self.assertAllClose(3., self.evaluate(operator_matmul.multiplier))
 
     operator_matmul = operator2.matmul(operator1)
-    self.assertTrue(isinstance(
+    self.assertIsInstance(
         operator_matmul,
-        linalg_lib.LinearOperatorScaledIdentity))
+        linalg_lib.LinearOperatorScaledIdentity)
     self.assertAllClose(3., self.evaluate(operator_matmul.multiplier))
 
   def test_identity_solve(self):
     operator1 = linalg_lib.LinearOperatorIdentity(num_rows=2)
     operator2 = linalg_lib.LinearOperatorScaledIdentity(
         num_rows=2, multiplier=3.)
-    self.assertTrue(isinstance(
+    self.assertIsInstance(
         operator1.solve(operator1),
-        linalg_lib.LinearOperatorIdentity))
+        linalg_lib.LinearOperatorIdentity)
+
+    self.assertIsInstance(
+        operator2.solve(operator2),
+        linalg_lib.LinearOperatorScaledIdentity)
 
     operator_solve = operator1.solve(operator2)
-    self.assertTrue(isinstance(
+    self.assertIsInstance(
         operator_solve,
-        linalg_lib.LinearOperatorScaledIdentity))
+        linalg_lib.LinearOperatorScaledIdentity)
     self.assertAllClose(3., self.evaluate(operator_solve.multiplier))
+
+    operator_solve = operator2.solve(operator1)
+    self.assertIsInstance(
+        operator_solve,
+        linalg_lib.LinearOperatorScaledIdentity)
+    self.assertAllClose(1. / 3., self.evaluate(operator_solve.multiplier))
 
   def test_scaled_identity_cholesky_type(self):
     operator = linalg_lib.LinearOperatorScaledIdentity(

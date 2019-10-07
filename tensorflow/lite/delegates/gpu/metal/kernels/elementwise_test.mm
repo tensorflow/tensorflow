@@ -30,10 +30,10 @@ limitations under the License.
 
 using ::tflite::gpu::DataType;
 using ::tflite::gpu::BHWC;
-using ::tflite::gpu::metal::CompareVectors;
-using ::tflite::gpu::metal::SingleOpModel;
 using ::tflite::gpu::OperationType;
 using ::tflite::gpu::TensorRef;
+using ::tflite::gpu::metal::CompareVectors;
+using ::tflite::gpu::metal::SingleOpModel;
 
 @interface ElementwiseTest : XCTestCase
 @end

@@ -15,6 +15,7 @@ tensorflow/lite/experimental/micro/examples/hello_world/constants.h
 
 HELLO_WORLD_SRCS := \
 tensorflow/lite/experimental/micro/examples/hello_world/main.cc \
+tensorflow/lite/experimental/micro/examples/hello_world/main_functions.cc \
 tensorflow/lite/experimental/micro/examples/hello_world/sine_model_data.cc \
 tensorflow/lite/experimental/micro/examples/hello_world/output_handler.cc \
 tensorflow/lite/experimental/micro/examples/hello_world/constants.cc
@@ -22,7 +23,8 @@ tensorflow/lite/experimental/micro/examples/hello_world/constants.cc
 HELLO_WORLD_HDRS := \
 tensorflow/lite/experimental/micro/examples/hello_world/sine_model_data.h \
 tensorflow/lite/experimental/micro/examples/hello_world/output_handler.h \
-tensorflow/lite/experimental/micro/examples/hello_world/constants.h
+tensorflow/lite/experimental/micro/examples/hello_world/constants.h \
+tensorflow/lite/experimental/micro/examples/hello_world/main_functions.h
 
 #Find any platform-specific rules for this example.
 include $(wildcard tensorflow/lite/experimental/micro/examples/hello_world/*/Makefile.inc)

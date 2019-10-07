@@ -49,17 +49,17 @@ class HLO_Op<string mnemonic, list<OpTrait> traits> :
 //===----------------------------------------------------------------------===//
 
 // Any integer tensor types
-def HLO_IntTensor : StaticShapeTensorOf<[HLO_Int]>;
+def HLO_IntTensor : TensorOf<[HLO_Int]>;
 
 // Any floating-point tensor types
-def HLO_FpTensor : StaticShapeTensorOf<[AnyFloat]>;
+def HLO_FpTensor : TensorOf<[AnyFloat]>;
 
-def HLO_PredTensor : StaticShapeTensorOf<[HLO_Pred]>;
+def HLO_PredTensor : TensorOf<[HLO_Pred]>;
 
 // Any integer or floating-point tensor types
-def HLO_IntOrFpTensor : StaticShapeTensorOf<[HLO_Int, AnyFloat]>;
+def HLO_IntOrFpTensor : TensorOf<[HLO_Int, AnyFloat]>;
 
-def HLO_Tensor : StaticShapeTensorOf<[AnyFloat, AnyInteger]>;
+def HLO_Tensor : TensorOf<[AnyFloat, AnyInteger]>;
 
 def HLO_Tuple : NestedTupleOf<[HLO_Tensor]>;
 
@@ -81,6 +81,9 @@ def HLO_ConstOp : BASE_HLO_ConstOp, HLO_Op<"constant", [NoSideEffect]> {
   let builders = [OpBuilder<
     "Builder *builder, OperationState &result, Attribute value"
   >];
+
+  let printer = [{ return Print(*this, &p); }];
+  let parser = [{ return ParseConstOp(&parser, &result); }];
 
   let hasFolder = 1;
 
@@ -153,8 +156,8 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
     BroadcastDimAttr:$broadcast_dimensions
   );
   let results = (outs HLO_Tensor);
-  let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
-  let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 }
 
 def HLO_AddOp : HLO_BinaryElementwiseOp<"add",

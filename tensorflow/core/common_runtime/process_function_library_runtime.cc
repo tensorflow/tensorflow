@@ -65,32 +65,35 @@ Status ProcessFunctionLibraryRuntime::FunctionData::DistributedInit(
 }
 
 ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
-    const DeviceMgr* device_mgr, Env* env, int graph_def_version,
-    const FunctionLibraryDefinition* lib_def,
+    const DeviceMgr* device_mgr, Env* env, const ConfigProto* config,
+    int graph_def_version, const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options,
     thread::ThreadPool* default_thread_pool,
     DistributedFunctionLibraryRuntime* parent,
     const CustomKernelCreator* custom_kernel_creator,
     const SessionMetadata* session_metadata)
-    : env_(env),
+    : parent_(parent),
+      env_(env),
+      config_(config ? absl::make_optional(*config) : absl::nullopt),
       device_mgr_(device_mgr),
       lib_def_(lib_def),
       default_thread_pool_(default_thread_pool),
       flr_map_(new std::unordered_map<Device*,
                                       std::unique_ptr<FunctionLibraryRuntime>>),
       next_handle_(0),
-      parent_(parent),
       session_metadata_(session_metadata) {
   if (device_mgr == nullptr) {
     (*flr_map_)[nullptr] = NewFunctionLibraryRuntime(
-        nullptr, env, nullptr, graph_def_version, lib_def_, default_thread_pool,
-        optimizer_options, custom_kernel_creator, session_metadata_, this);
+        nullptr, env, config_ ? &(*config_) : nullptr, nullptr,
+        graph_def_version, lib_def_, default_thread_pool, optimizer_options,
+        custom_kernel_creator, session_metadata_, this);
     return;
   }
   for (Device* d : device_mgr->ListDevices()) {
     (*flr_map_)[d] = NewFunctionLibraryRuntime(
-        device_mgr, env, d, graph_def_version, lib_def_, default_thread_pool,
-        optimizer_options, custom_kernel_creator, session_metadata_, this);
+        device_mgr, env, config_ ? &(*config_) : nullptr, d, graph_def_version,
+        lib_def_, default_thread_pool, optimizer_options, custom_kernel_creator,
+        session_metadata_, this);
   }
 
   DeviceMgr const* all_devices = device_mgr_;
@@ -874,12 +877,22 @@ Status ProcessFunctionLibraryRuntime::GetOutputDevices(
   return Status::OK();
 }
 
+void ProcessFunctionLibraryRuntime::RunRemoteDevice(
+    const FunctionLibraryRuntime::Options& opts,
+    FunctionLibraryRuntime::Handle local_handle, const InternalArgsView& args,
+    std::vector<Tensor>* rets,
+    FunctionLibraryRuntime::DoneCallback done) const {
+  parent_->Run(opts, local_handle, args.local_args, rets, std::move(done));
+}
+
 void ProcessFunctionLibraryRuntime::RunMultiDevice(
     const FunctionLibraryRuntime::Options& opts,
-    FunctionLibraryRuntime::Handle handle, gtl::ArraySlice<Tensor> args,
-    std::vector<Tensor>* rets,
+    FunctionLibraryRuntime::Handle handle, std::vector<Tensor>* rets,
     std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
-    FunctionLibraryRuntime::DoneCallback done) const {
+    FunctionLibraryRuntime::DoneCallback done,
+    std::function<Status(const ComponentFunctionData& comp_data,
+                         InternalArgs* args)>
+        get_component_args) const {
   if (opts.create_rendezvous) {
     // FLR->Run() is the default entry point. It checks for cancellation,
     // creates rendezvous, etc.
@@ -924,8 +937,14 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     opts_copy.rets_alloc_attrs = comp_data.ret_alloc_attrs_;
     opts_copy.remote_execution = false;
 
-    std::vector<Tensor> comp_args =
-        GetArgsForIndices(comp_data.arg_indices_, args);
+    InternalArgs comp_args;
+    Status s = get_component_args(comp_data, &comp_args);
+    if (!s.ok()) {
+      VLOG(2) << "Failed to get component function arguments: " << s;
+      refcounted_done->UpdateStatus(s);
+      refcounted_done->Unref();
+      continue;
+    }
     std::vector<Tensor>* comp_rets = new std::vector<Tensor>;
     rets->resize(data->num_outputs_);
 
@@ -940,7 +959,7 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
               << " with handle " << handle;
       VLOG(4) << "    with " << opts_copy.DebugString();
 
-      flr->Run(opts_copy, handle, comp_args, comp_rets,
+      flr->Run(opts_copy, handle, comp_args.local_args, comp_rets,
                [comp_rets, rets, comp_data, refcounted_done,
                 data](const Status& status) {
                  if (!status.ok()) {
@@ -965,8 +984,9 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
       VLOG(1) << "Running component function on device " << target
               << " with handle " << handle;
       VLOG(4) << "    with " << opts_copy.DebugString();
+      InternalArgsView comp_args_view(&comp_args);
       RunInternal(
-          opts_copy, handle, comp_args, comp_rets, cleanup_items,
+          opts_copy, handle, comp_args_view, comp_rets, cleanup_items,
           [comp_rets, rets, comp_data, refcounted_done](const Status& status) {
             if (!status.ok()) {
               VLOG(2) << "Component function execution failed: " << status;
@@ -1101,36 +1121,50 @@ Status ProcessFunctionLibraryRuntime::ReleaseHandle(
   return errors::InvalidArgument("Handle not found: ", handle);
 }
 
+FunctionLibraryRuntime::DoneCallback
+ProcessFunctionLibraryRuntime::ApplyCleanUpToDoneCallback(
+    std::vector<std::unique_ptr<CleanUpItem>>* items,
+    FunctionLibraryRuntime::DoneCallback done) const {
+  return [this, items, done](const Status& status) {
+    auto* local_status = new Status(status);
+    CleanUp(items, [local_status, done](const Status& cleanup_status) {
+      local_status->Update(cleanup_status);
+      done(*local_status);
+      delete local_status;
+    });
+    delete items;
+  };
+}
+
 void ProcessFunctionLibraryRuntime::Run(
     const FunctionLibraryRuntime::Options& opts,
     FunctionLibraryRuntime::Handle handle, gtl::ArraySlice<Tensor> args,
     std::vector<Tensor>* rets,
     FunctionLibraryRuntime::DoneCallback done) const {
   auto* cleanup_items = new std::vector<std::unique_ptr<CleanUpItem>>;
-  done = [this, cleanup_items, done](const Status& status) {
-    auto* local_status = new Status(status);
-    CleanUp(cleanup_items, [local_status, done](const Status& cleanup_status) {
-      local_status->Update(cleanup_status);
-      done(*local_status);
-      delete local_status;
-    });
-    delete cleanup_items;
-  };
+  done = ApplyCleanUpToDoneCallback(cleanup_items, done);
   bool multi_device;
   {
     tf_shared_lock l(mu_);
     multi_device = mdevice_data_.find(handle) != mdevice_data_.end();
   }
   if (multi_device) {
-    return RunMultiDevice(opts, handle, args, rets, cleanup_items,
-                          std::move(done));
+    auto get_component_args = [&args](const ComponentFunctionData& comp_data,
+                                      InternalArgs* comp_args) -> Status {
+      comp_args->local_args = GetArgsForIndices(comp_data.arg_indices_, args);
+      return Status::OK();
+    };
+    return RunMultiDevice(opts, handle, rets, cleanup_items, std::move(done),
+                          std::move(get_component_args));
   }
-  RunInternal(opts, handle, args, rets, cleanup_items, std::move(done));
+  InternalArgsView internal_args(args);
+  RunInternal(opts, handle, internal_args, rets, cleanup_items,
+              std::move(done));
 }
 
 void ProcessFunctionLibraryRuntime::RunInternal(
     const FunctionLibraryRuntime::Options& opts,
-    FunctionLibraryRuntime::Handle handle, gtl::ArraySlice<Tensor> args,
+    FunctionLibraryRuntime::Handle handle, const InternalArgsView& args,
     std::vector<Tensor>* rets,
     std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
     FunctionLibraryRuntime::DoneCallback done) const {
@@ -1176,8 +1210,9 @@ void ProcessFunctionLibraryRuntime::RunInternal(
     }
 
     // Send the args over to the target device.
-    s = SendTensors(source_device, target_device, "arg_", src_incarnation, args,
-                    device_context, opts.args_alloc_attrs, rendezvous);
+    s = SendTensors(source_device, target_device, "arg_", src_incarnation,
+                    args.local_args, device_context, opts.args_alloc_attrs,
+                    rendezvous);
     if (!s.ok()) {
       done(s);
       return;
@@ -1185,7 +1220,7 @@ void ProcessFunctionLibraryRuntime::RunInternal(
     const std::vector<AllocatorAttributes>& rets_alloc_attrs =
         opts.rets_alloc_attrs;
     std::vector<Tensor>* remote_rets = new std::vector<Tensor>;
-    flr->Run(opts, handle, args, remote_rets,
+    flr->Run(opts, handle, args.local_args, remote_rets,
              [source_device, target_device, target_incarnation, rendezvous,
               device_context, rets_alloc_attrs, remote_rets, rets,
               done = std::move(done)](const Status& status) mutable {
@@ -1210,7 +1245,7 @@ void ProcessFunctionLibraryRuntime::RunInternal(
     cleanup_item->step_id = opts.step_id;
     cleanup_item->local_handle = local_handle;
     cleanup_items->emplace_back(std::move(cleanup_item));
-    parent_->Run(opts, local_handle, args, rets, std::move(done));
+    RunRemoteDevice(opts, local_handle, args, rets, std::move(done));
     return;
   }
   done(errors::Internal("Could not find device"));
@@ -1305,9 +1340,9 @@ Status ProcessFunctionLibraryRuntime::Clone(
     *out_lib_def = absl::make_unique<FunctionLibraryDefinition>(*lib_def_);
   }
   *out_pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
-      device_mgr_, env, graph_def_version, out_lib_def->get(),
-      optimizer_options, default_thread_pool_, parent_, custom_kernel_creator,
-      session_metadata_);
+      device_mgr_, env, config_ ? &(*config_) : nullptr, graph_def_version,
+      out_lib_def->get(), optimizer_options, default_thread_pool_, parent_,
+      custom_kernel_creator, session_metadata_);
   return Status::OK();
 }
 

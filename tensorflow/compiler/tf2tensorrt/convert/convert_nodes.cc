@@ -5605,6 +5605,17 @@ Status ConvertGraphDefToEngine(
   // Apply user provided quantization ranges to tensors
   converter.MaybeApplyQuantizationRanges();
 
+  if VLOG_IS_ON (2) {
+    VLOG(2) << "Created TensorRT network with the following layers:";
+    for (int i = 0; i < trt_network->getNbLayers(); i++) {
+      auto layer = trt_network->getLayer(i);
+      VLOG(2) << "    " << layer->getName() << " ("
+              << "type: " << static_cast<int>(layer->getType())
+              << ", precision: " << static_cast<int>(layer->getPrecision())
+              << ")";
+    }
+  }
+
   // Build the engine.
   VLOG(1) << "Starting engine creation";
   engine->reset(builder->buildCudaEngine(*converter.network()));
