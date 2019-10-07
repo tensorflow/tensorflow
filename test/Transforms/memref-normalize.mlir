@@ -22,10 +22,12 @@ func @permute() {
 // CHECK-NEXT: dealloc [[MEM]]
 // CHECK-NEXT: return
 
-// CHECK-LABEL: func @shift()
-func @shift() {
-  // CHECK-NOT:  memref<64xf32, (d0) -> (d0 + 1)>
+// CHECK-LABEL: func @shift
+func @shift(%idx : index) {
+  // CHECK-NEXT: alloc() : memref<65xf32>
   %A = alloc() : memref<64xf32, (d0) -> (d0 + 1)>
+  // CHECK-NEXT: affine.load %{{.*}}[symbol(%arg0) + 1] : memref<65xf32>
+  affine.load %A[%idx] : memref<64xf32, (d0) -> (d0 + 1)>
   affine.for %i = 0 to 64 {
     affine.load %A[%i] : memref<64xf32, (d0) -> (d0 + 1)>
     // CHECK: %{{.*}} = affine.load %{{.*}}[%arg{{.*}} + 1] : memref<65xf32>
@@ -59,10 +61,12 @@ func @invalid_map() {
 }
 
 // A tiled layout.
-// CHECK-LABEL: func @data_tiling()
-func @data_tiling() {
+// CHECK-LABEL: func @data_tiling
+func @data_tiling(%idx : index) {
+  // CHECK: alloc() : memref<8x32x8x16xf32>
   %A = alloc() : memref<64x512xf32, (d0, d1) -> (d0 floordiv 8, d1 floordiv 16, d0 mod 8, d1 mod 16)>
-  // CHECK: %{{.*}} = alloc() : memref<8x32x8x16xf32>
+  // CHECK: affine.load %{{.*}}[symbol(%arg0) floordiv 8, symbol(%arg0) floordiv 16, symbol(%arg0) mod 8, symbol(%arg0) mod 16]
+  affine.load %A[%idx, %idx] : memref<64x512xf32, (d0, d1) -> (d0 floordiv 8, d1 floordiv 16, d0 mod 8, d1 mod 16)>
   return
 }
 
