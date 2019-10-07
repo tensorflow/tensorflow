@@ -386,6 +386,9 @@ void ModulePrinter::printTrailingLocation(Location loc) {
 
 void ModulePrinter::printLocationInternal(LocationAttr loc, bool pretty) {
   switch (loc.getKind()) {
+  case StandardAttributes::OpaqueLocation:
+    printLocationInternal(loc.cast<OpaqueLoc>().getFallbackLocation(), pretty);
+    break;
   case StandardAttributes::UnknownLocation:
     if (pretty)
       os << "[unknown]";
@@ -722,6 +725,7 @@ void ModulePrinter::printAttribute(Attribute attr, bool mayElideType) {
   case StandardAttributes::FileLineColLocation:
   case StandardAttributes::FusedLocation:
   case StandardAttributes::NameLocation:
+  case StandardAttributes::OpaqueLocation:
   case StandardAttributes::UnknownLocation:
     printLocation(attr.cast<LocationAttr>());
     break;
