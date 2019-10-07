@@ -66,6 +66,9 @@ class Tensor {
   int4 GetWBatchedHDB() const {
     return int4(shape_.w * shape_.b, shape_.h, Depth(), shape_.b);
   }
+
+  int4 GetWHDB() const { return int4(shape_.w, shape_.h, Depth(), shape_.b); }
+
   enum DataType DataType() const { return descriptor_.data_type; }
   TensorStorageType StorageType() const { return descriptor_.storage_type; }
 

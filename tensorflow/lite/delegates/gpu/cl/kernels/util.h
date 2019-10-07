@@ -48,12 +48,16 @@ class TensorCodeGenerator {
     SizeVariablesNames(const std::string& width_name,
                        const std::string& height_name,
                        const std::string& depth_name);
+    SizeVariablesNames(const std::string& width_name,
+                       const std::string& height_name,
+                       const std::string& depth_name,
+                       const std::string& batch_name);
 
     std::string width = "unknown";
     std::string height = "unknown";
     std::string channels = "unknown";
     std::string depth = "unknown";
-    std::string batch_size = "unknown";
+    std::string batch = "unknown";
   };
   TensorCodeGenerator() = default;
   TensorCodeGenerator(const std::string& name,

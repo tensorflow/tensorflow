@@ -26,18 +26,10 @@ namespace cl {
 namespace {
 
 std::string GetLSTMCode(const OperationDef& op_def, const CLDevice& device) {
-  TensorCodeGenerator::SizeVariablesNames state_size;
-  state_size.batch_size = "BATCH_SIZE";
-  state_size.width = "1";
-  state_size.height = "1";
-  state_size.channels = "";
-  state_size.depth = "state_size.w";
-  TensorCodeGenerator::SizeVariablesNames src_size;
-  src_size.batch_size = "BATCH_SIZE";
-  src_size.width = "1";
-  src_size.height = "1";
-  src_size.channels = "";
-  src_size.depth = "src_size.w";
+  const TensorCodeGenerator::SizeVariablesNames state_size(
+      "1", "1", "state_size.w", "BATCH_SIZE");
+  const TensorCodeGenerator::SizeVariablesNames src_size("1", "1", "src_size.w",
+                                                         "BATCH_SIZE");
 
   TensorCodeGenerator intermediate("src_data", src_size, op_def.src_tensors[0]);
   TensorCodeGenerator prev_state("prev_state", state_size,
