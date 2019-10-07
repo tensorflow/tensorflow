@@ -136,8 +136,10 @@ void SymmetricPerChannelQuantization(const float* const input,
 TfLiteStatus SymmetricQuantizeFloatsToInt16(ModelT* model, TensorT* tensor,
                                             float input_scale,
                                             float weight_scale) {
-  // Compute scales.
-  float scaling_factor = input_scale * weight_scale;
+  // Compute scale and inverse of scale.
+  const float scaling_factor = input_scale * weight_scale;
+  const float scaling_factor_inv =
+      (scaling_factor == 0) ? 0 : 1.0 / scaling_factor;
 
   BufferT* buffer = model->buffers[tensor->buffer].get();
   float* float_data = reinterpret_cast<float*>(buffer->data.data());
@@ -148,7 +150,6 @@ TfLiteStatus SymmetricQuantizeFloatsToInt16(ModelT* model, TensorT* tensor,
   const int32_t kScale = std::numeric_limits<int16_t>::max();
 
   for (size_t i = 0; i < num_elements; i++) {
-    float scaling_factor_inv = (scaling_factor == 0) ? 0 : 1.0 / scaling_factor;
     const int32_t quantized_value =
         static_cast<int32_t>(TfLiteRound(float_data[i] * scaling_factor_inv));
     final_buffer[i] = std::min(kScale, std::max(-kScale, quantized_value));
@@ -321,8 +322,10 @@ TfLiteStatus SymmetricQuantizeTensorPerChannel(ModelT* model, TensorT* tensor,
 TfLiteStatus SymmetricPerLayerBiasQuantize(ModelT* model, TensorT* tensor,
                                            float input_scale,
                                            float weight_scale) {
-  // Compute scales.
-  float scaling_factor = input_scale * weight_scale;
+  // Compute scale and inverse of scale.
+  const float scaling_factor = input_scale * weight_scale;
+  const float scaling_factor_inv =
+      (scaling_factor == 0) ? 0 : 1.0 / scaling_factor;
 
   BufferT* buffer = model->buffers[tensor->buffer].get();
   float* float_data = reinterpret_cast<float*>(buffer->data.data());
@@ -333,7 +336,6 @@ TfLiteStatus SymmetricPerLayerBiasQuantize(ModelT* model, TensorT* tensor,
   const int32_t kScale = std::numeric_limits<int32_t>::max();
 
   for (size_t i = 0; i < num_elements; i++) {
-    float scaling_factor_inv = (scaling_factor == 0) ? 0 : 1.0 / scaling_factor;
     const int32_t quantized_value = tflite::SafeCast<int32_t>(
         TfLiteRound(float_data[i] * scaling_factor_inv));
     final_buffer[i] = std::min(kScale, std::max(-kScale, quantized_value));
