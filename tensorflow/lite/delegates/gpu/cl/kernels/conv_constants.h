@@ -56,7 +56,7 @@ class ConvConstants : public GPUOperation {
       : GPUOperation(definition),
         kernel_size_(attr.weights.shape.w, attr.weights.shape.h),
         stride_(attr.strides.w, attr.strides.h),
-        padding_(attr.padding.prepended.w, attr.padding.prepended.h),
+        padding_(-attr.padding.prepended.w, -attr.padding.prepended.h),
         dilation_(attr.dilations.w, attr.dilations.h),
         src_channels_(attr.weights.shape.i),
         dst_channels_(attr.weights.shape.o) {}

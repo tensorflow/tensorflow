@@ -218,7 +218,7 @@ class TensorHandle : public core::RefCounted {
   // If the contents of the Tensor pointed to by this handle is yet to be
   // computed by a EagerNode, this function will block till that computation is
   // done and the handle is "ready".
-  Status WaitReady();
+  Status WaitReady(const char* caller);
 
   // TODO(b/136608821): device_ == nullptr iff Host CPU:0
   // This was expedient, but perhaps worth revisiting ('device_' should always

@@ -56,6 +56,7 @@ class DequantizeOp : public OpKernel {
     } else if (mode_string == "SCALED") {
       mode_ = QUANTIZE_MODE_SCALED;
     }
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("axis", &axis_));
   }
 
@@ -133,10 +134,12 @@ class DequantizeOp : public OpKernel {
             output);
       }
     } else if (mode_ == QUANTIZE_MODE_SCALED) {
+      const int min_output_value =
+          std::numeric_limits<T>::min() + (narrow_range_ ? 1 : 0);
       const float scale_factor =
           std::numeric_limits<T>::min() == 0
               ? (max_range / std::numeric_limits<T>::max())
-              : std::max(min_range / std::numeric_limits<T>::min(),
+              : std::max(min_range / min_output_value,
                          max_range / std::numeric_limits<T>::max());
       const auto& input_tensor = input.flat<T>();
       output->flat<float>() =
@@ -168,10 +171,12 @@ class DequantizeOp : public OpKernel {
           ((input.template cast<float>() + half_range) * scale_factor) +
           min_range;
     } else if (mode_ == QUANTIZE_MODE_SCALED) {
+      const int min_output_value =
+          std::numeric_limits<T>::min() + (narrow_range_ ? 1 : 0);
       const float scale_factor =
           std::numeric_limits<T>::min() == 0
               ? (max_range / std::numeric_limits<T>::max())
-              : std::max(min_range / std::numeric_limits<T>::min(),
+              : std::max(min_range / min_output_value,
                          max_range / std::numeric_limits<T>::max());
       output.device(d) = input.template cast<float>() * scale_factor;
     }
@@ -180,6 +185,7 @@ class DequantizeOp : public OpKernel {
  private:
   int mode_;
   int axis_;
+  bool narrow_range_;
 };
 
 REGISTER_KERNEL_BUILDER(

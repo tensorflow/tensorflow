@@ -217,9 +217,10 @@ class StreamExecutorInterface {
   virtual bool HostMemoryRegister(void *mem, uint64 size) = 0;
   virtual bool HostMemoryUnregister(void *mem) = 0;
   virtual bool SynchronizeAllActivity() = 0;
-  virtual bool SynchronousMemZero(DeviceMemoryBase *location, uint64 size) = 0;
-  virtual bool SynchronousMemSet(DeviceMemoryBase *location, int value,
-                                 uint64 size) = 0;
+  virtual port::Status SynchronousMemZero(DeviceMemoryBase *location,
+                                          uint64 size) = 0;
+  virtual port::Status SynchronousMemSet(DeviceMemoryBase *location, int value,
+                                         uint64 size) = 0;
   virtual port::Status SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
                                          const void *host_src, uint64 size) = 0;
   virtual port::Status SynchronousMemcpy(void *host_dst,

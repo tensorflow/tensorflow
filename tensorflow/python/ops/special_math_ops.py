@@ -25,7 +25,6 @@ import collections
 import re
 import string
 
-import sys
 import numpy as np
 import opt_einsum
 
@@ -42,13 +41,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
-
-# pylint: disable=g-import-not-at-top
-if sys.version_info[0] > 2:
-  import functools
-else:
-  import functools32 as functools
-# pylint: enable=g-import-not-at-top
 
 
 # TODO(b/27419586) Change docstring for required dtype of x once int allowed
@@ -685,16 +677,10 @@ def _einsum_v2(equation, *inputs, **kwargs):
     resolved_equation, resolved_input_shapes, ellipsis_label = (
         _einsum_v2_parse_and_resolve_equation(equation, input_shapes))
 
-    # Use xla_einsum if executing on TPU and if the operation is a 2 input
-    # einsum supported by XlaEinsumOp.
-    has_enclosing_tpu_context = _enclosing_tpu_context() is not None
-
     if len(inputs) <= 2:  # No need to call opt_einsum.
       # Replace back ellipses that were removed for opt_einsum.
       if ellipsis_label:
         resolved_equation = resolved_equation.replace(ellipsis_label, '...')
-      if has_enclosing_tpu_context and len(inputs) == 2:
-        return gen_xla_ops.xla_einsum(inputs[0], inputs[1], resolved_equation)
       return gen_linalg_ops.einsum(inputs, resolved_equation)
 
     # Send fully specified shapes to opt_einsum, since it cannot handle unknown
@@ -714,17 +700,10 @@ def _einsum_v2(equation, *inputs, **kwargs):
         # Replace back ellipses that were removed for opt_einsum.
         binary_equation = binary_equation.replace(ellipsis_label, '...')
       operands = list(map(inputs.pop, operand_indices))
-      # Use xla_einsum if executing on TPU and if the operation is a 2 input
-      # einsum supported by XlaEinsumOp.
-      if has_enclosing_tpu_context and len(operands) == 2:
-        inputs.append(
-            gen_xla_ops.xla_einsum(operands[0], operands[1], binary_equation))
-      else:
-        inputs.append(gen_linalg_ops.einsum(operands, binary_equation))
+      inputs.append(gen_linalg_ops.einsum(operands, binary_equation))
     return inputs[0]
 
 
-@functools.lru_cache(maxsize=128)
 def _get_opt_einsum_contract_path(equation, shaped_inputs_tuple, optimize):
   """Returns the (memoized) result of opt_einsum.contract_path."""
   # Note: We use einsum_call=True, which is an internal api for opt_einsum,

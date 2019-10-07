@@ -51,20 +51,11 @@ Status CreateImageBufferFromBuffer(const CLContext& context, cl_mem memory,
   return OkStatus();
 }
 
-bool SupportsBatch(const TensorStorageType& storage_type) {
-  return storage_type == TensorStorageType::BUFFER ||
-         storage_type == TensorStorageType::IMAGE_BUFFER;
-}
-
 Status CreateTensor(const CLContext& context, const CLDevice& device,
                     const BHWC& shape, const TensorDescriptor& descriptor,
                     cl_mem memory, Tensor* result) {
-  if (shape.b != 1 && !SupportsBatch(descriptor.storage_type)) {
-    return UnimplementedError(absl::StrCat("Batch is not supported for ",
-                                           ToString(descriptor.storage_type)));
-  }
-  const bool shared = memory != nullptr;
-  if (!shared) {
+  const bool memory_owner = memory == nullptr;
+  if (memory_owner) {
     CLMemory mem;
     RETURN_IF_ERROR(
         AllocateTensorMemory(context, device, shape, descriptor, &mem));
@@ -76,9 +67,9 @@ Status CreateTensor(const CLContext& context, const CLDevice& device,
         context, memory, descriptor.data_type,
         shape.b * shape.w * shape.h * IntegralDivideRoundUp(shape.c, 4),
         &image_memory));
-    *result = Tensor(memory, shared, image_memory, shape, descriptor);
+    *result = Tensor(memory, memory_owner, image_memory, shape, descriptor);
   } else {
-    *result = Tensor(memory, shared, shape, descriptor);
+    *result = Tensor(memory, memory_owner, shape, descriptor);
   }
   return OkStatus();
 }
@@ -137,11 +128,11 @@ int3 Tensor::GetFullTensorRegion() const {
     case TensorStorageType::BUFFER:
     case TensorStorageType::TEXTURE_ARRAY:
     case TensorStorageType::IMAGE_BUFFER:
-      return {shape_.w, shape_.h, Depth()};
+      return {shape_.w * shape_.b, shape_.h, Depth()};
     case TensorStorageType::TEXTURE_2D:
-      return {shape_.w, shape_.h * Depth(), 1};
+      return {shape_.w * shape_.b, shape_.h * Depth(), 1};
     case TensorStorageType::SINGLE_TEXTURE_2D:
-      return {shape_.w, shape_.h, 1};
+      return {shape_.w * shape_.b, shape_.h, 1};
     case TensorStorageType::UNKNOWN:
       return {-1, -1, -1};
   }
@@ -186,7 +177,7 @@ uint64_t Tensor::GetMemorySizeInBytes() const {
     case TensorStorageType::TEXTURE_2D:
       return flt4_size * shape_.b * shape_.w * shape_.h * Depth();
     case TensorStorageType::SINGLE_TEXTURE_2D:
-      return flt_size * shape_.w * shape_.h * shape_.c;
+      return flt_size * shape_.w * shape_.h * shape_.c * shape_.b;
     default:
       return 0;
   }
@@ -302,16 +293,18 @@ bool CanCreateTensorWithShape(const CLContext& context, const CLDevice& device,
       return shape.b * shape.w * shape.h * depth <=
              device.GetInfo().image_buffer_max_size;
     case TensorStorageType::TEXTURE_ARRAY:
-      return shape.b == 1 && shape.w <= device.GetInfo().image2d_max_width &&
+      return shape.b == 1 &&
+             shape.w * shape.b <= device.GetInfo().image2d_max_width &&
              shape.h <= device.GetInfo().image2d_max_height &&
              depth <= device.GetInfo().image_array_max_layers;
     case TensorStorageType::TEXTURE_2D:
-      return shape.b == 1 && shape.w <= device.GetInfo().image2d_max_width &&
+      return shape.b == 1 &&
+             shape.w * shape.b <= device.GetInfo().image2d_max_width &&
              shape.h * depth <= device.GetInfo().image2d_max_height;
     case TensorStorageType::SINGLE_TEXTURE_2D:
       return shape.b == 1 && shape.c <= 4 &&
              context.IsFloatTexture2DSupported(shape.c, descriptor.data_type) &&
-             shape.w <= device.GetInfo().image2d_max_width &&
+             shape.w * shape.b <= device.GetInfo().image2d_max_width &&
              shape.h <= device.GetInfo().image2d_max_height;
     default:
       return false;
@@ -354,7 +347,7 @@ Status AllocateTensorMemory(const CLContext& context, const CLDevice& device,
     case TensorStorageType::TEXTURE_2D: {
       cl_image_desc desc;
       desc.image_type = CL_MEM_OBJECT_IMAGE2D;
-      desc.image_width = shape.w;
+      desc.image_width = shape.w * shape.b;
       desc.image_height = shape.h * depth;
       desc.image_depth = 0;
       desc.image_row_pitch = 0;
@@ -382,7 +375,7 @@ Status AllocateTensorMemory(const CLContext& context, const CLDevice& device,
     case TensorStorageType::TEXTURE_ARRAY: {
       cl_image_desc desc;
       desc.image_type = CL_MEM_OBJECT_IMAGE2D_ARRAY;
-      desc.image_width = shape.w;
+      desc.image_width = shape.w * shape.b;
       desc.image_height = shape.h;
       desc.image_depth = 0;
       int layers_count = depth;
@@ -422,7 +415,7 @@ Status AllocateTensorMemory(const CLContext& context, const CLDevice& device,
       }
       cl_image_desc desc;
       desc.image_type = CL_MEM_OBJECT_IMAGE2D;
-      desc.image_width = shape.w;
+      desc.image_width = shape.w * shape.b;
       desc.image_height = shape.h;
       desc.image_depth = 0;
       desc.image_row_pitch = 0;

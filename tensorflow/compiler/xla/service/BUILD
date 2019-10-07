@@ -2302,6 +2302,7 @@ xla_test(
     deps = [
         ":dynamic_padder",
         ":hlo",
+        ":hlo_get_dimension_size_rewriter",
         ":hlo_matchers",
         ":hlo_parser",
         ":hlo_runner",

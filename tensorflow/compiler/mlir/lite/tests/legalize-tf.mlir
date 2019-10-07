@@ -30,13 +30,13 @@ func @LeakyRelu(%arg0: tensor<1xf32>) -> tensor<1xf32> {
 
 func @biasAdd(%arg0: tensor<1x10x10x32xf32>, %arg1: tensor<32xf32>) -> tensor<1x10x10x32xf32> {
   %0 = "tf.BiasAdd"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", data_format = "NHWC"} : (tensor<1x10x10x32xf32>, tensor<32xf32>) -> tensor<1x10x10x32xf32>
-  %1 = "tf.BiasAdd"(%0, %arg0) {T = "tfdtype$DT_FLOAT", data_format = "NHWC"} : (tensor<1x10x10x32xf32>, tensor<1x10x10x32xf32>) -> tensor<1x10x10x32xf32>
+  %1 = "tf.BiasAdd"(%0, %arg1) {T = "tfdtype$DT_FLOAT", data_format = "NHWC"} : (tensor<1x10x10x32xf32>, tensor<32xf32>) -> tensor<1x10x10x32xf32>
   %2 = "tf.Relu6"(%1) : (tensor<1x10x10x32xf32>) -> tensor<1x10x10x32xf32>
   return %2 : tensor<1x10x10x32xf32>
 
 // CHECK-LABEL: biasAdd
 // CHECK:  %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<1x10x10x32xf32>, tensor<32xf32>) -> tensor<1x10x10x32xf32>
-// CHECK:  %1 = tfl.add %0, %arg0 {fused_activation_function = "RELU6"} : tensor<1x10x10x32xf32>
+// CHECK:  %1 = "tfl.add"(%0, %arg1) {fused_activation_function = "RELU6"} : (tensor<1x10x10x32xf32>, tensor<32xf32>) -> tensor<1x10x10x32xf32>
 }
 
 func @biasAddInt(%arg0: tensor<1x10x10x32xi32>, %arg1: tensor<32xi32>) -> tensor<1x10x10x32xi32> {
@@ -230,6 +230,20 @@ func @square(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
   return %0 : tensor<8x16xf32>
 // CHECK-LABEL: square
 // CHECK:  %0 = "tfl.square"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+}
+
+func @neg(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
+  %0 = "tf.Neg"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+// CHECK-LABEL: neg
+// CHECK:  %0 = "tfl.neg"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+}
+
+func @log(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
+  %0 = "tf.Log"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+// CHECK-LABEL: log
+// CHECK:  %0 = "tfl.log"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
 }
 
 func @log_softmax(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
@@ -657,6 +671,39 @@ func @matrix_diag(%arg0: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
 // CHECK:  %0 = "tfl.matrix_diag"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16x16xf32>
 }
 
+func @matrix_diag_v2_no_match(%arg0: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
+  // this should have been 0.
+  %0 = constant dense<[1]> : tensor<1xi32>
+
+  %1 = constant dense<[-1]> : tensor<1xi32>
+  %2 = constant dense<[-1]> : tensor<1xi32>
+  %3 = constant dense<[0, 0]> : tensor<2xi32>
+  %4 = "tf.MatrixDiagV2"(%arg0, %0, %1, %2, %3) : (tensor<8x16xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<2xi32>) -> tensor<8x16x16xf32>
+  return %4 : tensor<8x16x16xf32>
+
+// CHECK-LABEL:   func @matrix_diag_v2_no_match(
+// CHECK-SAME:                                  [[VAL_0:%.*]]: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
+// CHECK:           [[VAL_1:%.*]] = constant dense<1> : tensor<1xi32>
+// CHECK:           [[VAL_2:%.*]] = constant dense<-1> : tensor<1xi32>
+// CHECK:           [[VAL_3:%.*]] = constant dense<0> : tensor<2xi32>
+// CHECK:           [[VAL_4:%.*]] = "tf.MatrixDiagV2"([[VAL_0]], [[VAL_1]], [[VAL_2]], [[VAL_2]], [[VAL_3]]) : (tensor<8x16xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<2xi32>) -> tensor<8x16x16xf32>
+// CHECK:           return [[VAL_4]] : tensor<8x16x16xf32>
+}
+
+func @matrix_diag_v2(%arg0: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
+  %0 = constant dense<[0]> : tensor<1xi32>
+  %1 = constant dense<[-1]> : tensor<1xi32>
+  %2 = constant dense<[-1]> : tensor<1xi32>
+  %3 = constant dense<[0, 0]> : tensor<2xi32>
+  %4 = "tf.MatrixDiagV2"(%arg0, %0, %1, %2, %3) : (tensor<8x16xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<2xi32>) -> tensor<8x16x16xf32>
+  return %4 : tensor<8x16x16xf32>
+
+// CHECK-LABEL:   func @matrix_diag_v2(
+// CHECK-SAME:                         [[VAL_5:%.*]]: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
+// CHECK:           [[VAL_6:%.*]] = "tfl.matrix_diag"([[VAL_5]]) : (tensor<8x16xf32>) -> tensor<8x16x16xf32>
+// CHECK:           return [[VAL_6]] : tensor<8x16x16xf32>
+}
+
 func @maximum(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.Maximum"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
   return %0 : tensor<8x16xf32>
@@ -945,6 +992,19 @@ func @strided_slice(%arg0: tensor<12x2x2x5xf32>, %arg1: tensor<1xi32>, %arg2: te
   return %0 : tensor<1x2x2x5xf32>
   // CHECK-LABEL: strided_slice
   // CHECK: "tfl.strided_slice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32>
+}
+
+func @strided_slice_with_constant_attributes(%arg0: tensor<10x10x10xf32>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<10x10xf32> {
+  %cst = constant dense<-1> : tensor<1xi32>
+  %cst_1 = constant dense<0> : tensor<1xi32>
+  %cst_2 = constant dense<1> : tensor<1xi32>
+  %0 = "tf.StridedSlice"(%arg0, %cst, %cst_1, %cst_2) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64} : (tensor<10x10x10xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<10x10xf32>
+  return %0 : tensor<10x10xf32>
+  // CHECK-LABEL: strided_slice_with_constant_attributes
+  // CHECK-DAG: [[BEGIN:%cst.*]] = constant dense<[-1, 0, 0]> : tensor<3xi32>
+  // CHECK-DAG: [[END:%cst.*]] = constant dense<[0, 10, 10]> : tensor<3xi32>
+  // CHECK-DAG: [[STRIDES:%cst.*]] = constant dense<1> : tensor<3xi32>
+  // CHECK-NEXT: "tfl.strided_slice"(%arg0, [[BEGIN]], [[END]], [[STRIDES]]) {begin_mask = 6 : i32, ellipsis_mask = 0 : i32, end_mask = 6 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 1 : i32} : (tensor<10x10x10xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<10x10xf32>
 }
 
 func @slice1Tensor(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>, %arg2: tensor<3xi32>) -> tensor<?x3x5xf32> {

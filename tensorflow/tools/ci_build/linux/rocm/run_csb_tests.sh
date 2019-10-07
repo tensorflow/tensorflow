@@ -38,7 +38,7 @@ yes "" | $PYTHON_BIN_PATH configure.py
 bazel test \
       --config=rocm \
       -k \
-      --test_tag_filters=gpu,-no_gpu,-no_rocm,-benchmark-test,-no_oss,-oss_serial, \
+      --test_tag_filters=gpu,-no_gpu,-no_rocm,-benchmark-test,-no_oss,-oss_serial,-rocm_multi_gpu, \
       --test_timeout 600,900,2400,7200 \
       --test_output=errors \
       --jobs=${N_JOBS} \
@@ -50,7 +50,10 @@ bazel test \
       -//tensorflow/compiler/... \
       -//tensorflow/lite/... \
       -//tensorflow/python/compiler/tensorrt/... \
+<<<<<<< HEAD
 # Run tests requiring more than one GPU separately.
+=======
+>>>>>>> google-upstream/master
 && bazel test \
       --config=rocm \
       -k \

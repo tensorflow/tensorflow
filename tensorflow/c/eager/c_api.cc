@@ -348,30 +348,40 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
       tensorflow::strings::StrCat("/job:", server_def.job_name(),
                                   "/replica:0/task:", server_def.task_index());
 
-  std::unique_ptr<tensorflow::ServerInterface> server;
-  LOG_AND_RETURN_IF_ERROR(tensorflow::NewServer(server_def, &server));
+  // List of current remote workers before updating server_def. Unused if
+  // resetting the server_def.
+  std::vector<string> curr_remote_workers;
+  // List of updated remote workers.
+  std::vector<string> remote_workers;
 
-  tensorflow::GrpcServer* grpc_server =
-      dynamic_cast<tensorflow::GrpcServer*>(server.get());
-  if (grpc_server == nullptr) {
-    LOG_AND_RETURN_IF_ERROR(tensorflow::errors::Internal(
-        "Currently, TFE_NewContext only supports tensorflow::GrpcServer."));
+  // New server created for new server_def. Unused if updating server_def.
+  std::unique_ptr<tensorflow::ServerInterface> new_server;
+  tensorflow::GrpcServer* grpc_server;
+  if (reset_context) {
+    LOG_AND_RETURN_IF_ERROR(tensorflow::NewServer(server_def, &new_server));
+    grpc_server = dynamic_cast<tensorflow::GrpcServer*>(new_server.get());
+    LOG_AND_RETURN_IF_ERROR(
+        ListRemoteWorkers(grpc_server, worker_name, &remote_workers));
+  } else {
+    LOG_AND_RETURN_IF_ERROR(ListRemoteWorkers(
+        ctx->context->GetServer(), worker_name, &curr_remote_workers));
+    // No need to check the cast here, since `ListRemoteWorkers` already checks
+    // if the server is a GRPC server or not.
+    grpc_server =
+        dynamic_cast<tensorflow::GrpcServer*>(ctx->context->GetServer());
+    LOG_AND_RETURN_IF_ERROR(grpc_server->UpdateServerDef(server_def));
+    LOG_AND_RETURN_IF_ERROR(
+        ListRemoteWorkers(grpc_server, worker_name, &remote_workers));
   }
 
   tensorflow::uint64 context_id = ctx->context->GetContextId();
   if (reset_context) {
     context_id = tensorflow::EagerContext::NewContextId();
+    // Make master eager context accessible by local eager service, which might
+    // receive send tensor requests from remote workers.
+    LOG_AND_RETURN_IF_ERROR(grpc_server->AddMasterEagerContextToEagerService(
+        context_id, ctx->context));
   }
-  // Make master eager context accessible by local eager service, which might
-  // receive send tensor requests from remote workers.
-  LOG_AND_RETURN_IF_ERROR(grpc_server->AddMasterEagerContextToEagerService(
-      context_id, ctx->context));
-
-  std::vector<string> remote_workers;
-  grpc_server->master_env()->worker_cache->ListWorkers(&remote_workers);
-  remote_workers.erase(
-      std::remove(remote_workers.begin(), remote_workers.end(), worker_name),
-      remote_workers.end());
 
   // When updating an existing context, populate the following lists with:
   // * added_workers: set(remote_workers) - set(curr_remote_workers)
@@ -388,30 +398,33 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
         &remote_device_mgr));
   } else {
     ctx->context->ClearCaches();
-    remote_device_mgr = std::move(ctx->context->ReleaseRemoteDeviceMgr());
+    grpc_server->worker_env()->rendezvous_mgr->Cleanup(context_id);
+
+    remote_device_mgr = ctx->context->ReleaseRemoteDeviceMgr();
     if (remote_device_mgr == nullptr) {
       LOG_AND_RETURN_IF_ERROR(tensorflow::errors::InvalidArgument(
           "Updating context with invalid a valid set of remote devices."));
     }
-    std::vector<string> curr_remote_workers;
-    LOG_AND_RETURN_IF_ERROR(ListRemoteWorkers(
-        ctx->context->GetServer(), worker_name, &curr_remote_workers));
     std::sort(curr_remote_workers.begin(), curr_remote_workers.end());
     std::sort(remote_workers.begin(), remote_workers.end());
     DifferentiateWorkerLists(&curr_remote_workers, &remote_workers,
                              &added_workers, &removed_workers,
                              &existing_workers);
     if (!added_workers.empty()) {
-      for (const string& w : added_workers) {
-        VLOG(1) << "Updating cluster with added worker " << w;
+      if (VLOG_IS_ON(1)) {
+        for (const string& w : added_workers) {
+          VLOG(1) << "Updating cluster with added worker " << w;
+        }
       }
       LOG_AND_RETURN_IF_ERROR(AddRemoteDevicesToMgr(
           added_workers, grpc_server->master_env()->worker_cache,
           remote_device_mgr.get()));
     }
     if (!removed_workers.empty()) {
-      for (const string& w : removed_workers) {
-        VLOG(1) << "Updating cluster with removed worker " << w;
+      if (VLOG_IS_ON(1)) {
+        for (const string& w : removed_workers) {
+          VLOG(1) << "Updating cluster with removed worker " << w;
+        }
       }
       LOG_AND_RETURN_IF_ERROR(
           RemoveRemoteDevicesFromMgr(removed_workers, remote_device_mgr.get()));
@@ -434,6 +447,9 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   for (const auto& da : local_device_attributes) {
     *base_request.add_cluster_device_attributes() = da;
   }
+  base_request.mutable_server_def()
+      ->mutable_default_session_config()
+      ->MergeFrom(server_def.default_session_config());
 
   std::unique_ptr<tensorflow::eager::EagerClientCache> remote_eager_workers;
   LOG_AND_RETURN_IF_ERROR(
@@ -452,10 +468,17 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
         CreateRemoteContexts(added_workers, context_id, keep_alive_secs,
                              server_def, remote_eager_workers.get(),
                              ctx->context->Executor().Async(), base_request));
-    LOG_AND_RETURN_IF_ERROR(UpdateRemoteContexts(
-        existing_workers, context_id, ctx->context->GetContextViewId() + 1,
-        server_def, remote_eager_workers.get(),
-        ctx->context->Executor().Async(), base_request));
+    if (!existing_workers.empty()) {
+      if (VLOG_IS_ON(1)) {
+        for (const string& w : existing_workers) {
+          VLOG(1) << "Updating cluster with existing worker " << w;
+        }
+      }
+      LOG_AND_RETURN_IF_ERROR(UpdateRemoteContexts(
+          existing_workers, context_id, ctx->context->GetContextViewId() + 1,
+          server_def, remote_eager_workers.get(),
+          ctx->context->Executor().Async(), base_request));
+    }
   }
 
   tensorflow::RemoteRendezvous* r =
@@ -480,13 +503,13 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
 
   if (reset_context) {
     LOG_AND_RETURN_IF_ERROR(ctx->context->InitializeRemoteMaster(
-        std::move(server), grpc_server->worker_env(), worker_session,
+        std::move(new_server), grpc_server->worker_env(), worker_session,
         std::move(remote_eager_workers), std::move(remote_device_mgr),
         remote_workers, context_id, r, device_mgr, keep_alive_secs,
         worker_session->cluster_flr(), std::move(remote_mgr)));
   } else {
     LOG_AND_RETURN_IF_ERROR(ctx->context->UpdateRemoteMaster(
-        std::move(server), grpc_server->worker_env(), worker_session,
+        grpc_server->worker_env(), worker_session,
         std::move(remote_eager_workers), std::move(remote_device_mgr),
         added_workers, removed_workers, context_id, r, device_mgr,
         keep_alive_secs, worker_session->cluster_flr()));

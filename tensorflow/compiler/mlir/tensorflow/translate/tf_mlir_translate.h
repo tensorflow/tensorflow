@@ -20,6 +20,7 @@ limitations under the License.
 #include <unordered_set>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 
@@ -54,7 +55,8 @@ mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
 mlir::OwningModuleRef SavedModelToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
-    absl::string_view debug_info_file, mlir::MLIRContext* context);
+    absl::Span<std::string> exported_names, absl::string_view debug_info_file,
+    mlir::MLIRContext* context);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_TF_MLIR_TRANSLATE_H_

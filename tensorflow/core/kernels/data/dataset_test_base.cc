@@ -419,8 +419,9 @@ Status DatasetOpsTestBase::InitFunctionLibraryRuntime(
 
   OptimizerOptions opts;
   pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
-      device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
-      opts, thread_pool_.get(), nullptr /* cluster_flr */);
+      device_mgr_.get(), Env::Default(), /*config=*/nullptr,
+      TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, thread_pool_.get(),
+      nullptr /* cluster_flr */);
   flr_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
   if (thread_pool_ == nullptr) {
     runner_ = [](std::function<void()> fn) { fn(); };
@@ -475,7 +476,7 @@ Status DatasetOpsTestBase::RunFunction(
   };
 
   Executor* cur_exec;
-  TF_RETURN_IF_ERROR(NewLocalExecutor(params, std::move(g), &cur_exec));
+  TF_RETURN_IF_ERROR(NewLocalExecutor(params, *g, &cur_exec));
   exec.reset(cur_exec);
   FunctionCallFrame frame(arg_types, ret_types);
   TF_RETURN_IF_ERROR(frame.SetArgs(args));
@@ -947,8 +948,6 @@ Status BatchDatasetParams::CreateFactory(FunctionDef* fdef) const {
 string BatchDatasetParams::op_name() const {
   return BatchDatasetOp::kDatasetType;
 }
-
-int BatchDatasetParams::op_version() const { return op_version_; }
 
 std::vector<Tensor> MapDatasetParams::GetInputTensors() const {
   return other_arguments_;

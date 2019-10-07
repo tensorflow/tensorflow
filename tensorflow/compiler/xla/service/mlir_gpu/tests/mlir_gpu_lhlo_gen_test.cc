@@ -79,9 +79,9 @@ ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 })",
                      R"(
 ;CHECK: func @add_kernel(%[[ARG0:.*]]: [[TYPE:!llvm<.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]
-;CHECK: %[[LD0:.*]] = llvm.load %[[ARG0]] : !llvm<"{ float*, [2 x i64] }*">
-;CHECK: %[[LD1:.*]] = llvm.load %[[ARG1]] : !llvm<"{ float*, [2 x i64] }*">
-;CHECK: %[[LD2:.*]] = llvm.load %[[ARG2]] : !llvm<"{ float*, [2 x i64] }*">
+;CHECK: %[[LD0:.*]] = llvm.load %[[ARG0]] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
+;CHECK: %[[LD1:.*]] = llvm.load %[[ARG1]] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
+;CHECK: %[[LD2:.*]] = llvm.load %[[ARG2]] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
 ;CHECK: %[[PTR0:.*]] = llvm.extractvalue %[[LD0]][0 : index]
 ;CHECK: %[[GEP0:.*]] = llvm.getelementptr %[[PTR0]][[INDEX:.*]]
 ;CHECK: %[[VAL0:.*]] = llvm.load %[[GEP0]]

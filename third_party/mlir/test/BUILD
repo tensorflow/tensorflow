@@ -89,6 +89,7 @@ cc_library(
         "lib/Transforms/TestLoopMapping.cpp",
         "lib/Transforms/TestLoopParametricTiling.cpp",
         "lib/Transforms/TestMemRefStrideCalculation.cpp",
+        "lib/Transforms/TestOpaqueLoc.cpp",
         "lib/Transforms/TestVectorizationUtils.cpp",
     ],
     includes = ["lib/TestDialect"],

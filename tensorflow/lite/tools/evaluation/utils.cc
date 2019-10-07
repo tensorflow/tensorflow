@@ -50,8 +50,9 @@ bool ReadFileLines(const std::string& file_path,
   return true;
 }
 
-TfLiteStatus GetSortedFileNames(const std::string& directory,
-                                std::vector<std::string>* result) {
+TfLiteStatus GetSortedFileNames(
+    const std::string& directory, std::vector<std::string>* result,
+    const std::unordered_set<std::string>& extensions) {
   DIR* dir;
   struct dirent* ent;
   if (result == nullptr) {
@@ -61,8 +62,15 @@ TfLiteStatus GetSortedFileNames(const std::string& directory,
   std::string dir_path = StripTrailingSlashes(directory);
   if ((dir = opendir(dir_path.c_str())) != nullptr) {
     while ((ent = readdir(dir)) != nullptr) {
+      if (ent->d_type == DT_DIR) continue;
       std::string filename(std::string(ent->d_name));
-      if (filename.size() <= 2) continue;
+      size_t lastdot = filename.find_last_of(".");
+      std::string ext = lastdot != std::string::npos ? filename.substr(lastdot)
+                                                     : std::string();
+      std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+      if (!extensions.empty() && extensions.find(ext) == extensions.end()) {
+        continue;
+      }
       result->emplace_back(dir_path + "/" + filename);
     }
     closedir(dir);

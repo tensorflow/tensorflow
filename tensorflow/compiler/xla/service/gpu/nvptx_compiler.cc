@@ -188,7 +188,7 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   // The new tuple and gte instructions then be simplified away, because
   // nobody is expected to use the scratch value.
   //
-  // However, if we were to run CudnnConvAlgorithmPicker after fusion
+  // However, if we were to run GpuConvAlgorithmPicker after fusion
   // the gte(customcall, 0) would probably already be into a fusion node.  We
   // can't simplify across HloComputation boundaries, so in this case we
   // wouldn't be able to simplify away the new_tuple bits.

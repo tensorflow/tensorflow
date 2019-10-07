@@ -49,6 +49,11 @@ void DumpToFileInDirOrStdout(const HloModule& module,
                              absl::string_view file_suffix,
                              absl::string_view contents);
 
+// Dumps the given execution options if dumping is enabled. Exactly
+// where and in what formats it's dumped is determined by the debug options.
+void DumpExecutionOptions(const ExecutionOptions& execution_options,
+                          const DebugOptions& debug_options);
+
 // Dumps the given HLO module if dumping is enabled for the module.  Exactly
 // where and in what formats it's dumped is determined by the module's config.
 //

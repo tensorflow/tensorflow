@@ -226,6 +226,44 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_OptimizeForStaticGraph) {
       absl::StrContains(s.error_message(), "optimize_for_static_graph"));
 }
 
+TEST_F(DirectSessionMinusAXTest,
+       RunSimpleNetwork_DisableOutputPartitionGraphs) {
+  Initialize({3, 2, -1, 0});
+  SessionOptions options(DefaultSessionOptions());
+  options.config.mutable_experimental()->set_disable_output_partition_graphs(
+      true);
+  auto session = absl::WrapUnique(NewSession(options));
+
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+  std::vector<std::pair<string, Tensor>> inputs;
+
+  // Request two targets: one fetch output and one non-fetched output.
+  std::vector<string> output_names = {y_ + ":0"};
+  std::vector<string> target_nodes = {y_neg_};
+  std::vector<Tensor> outputs;
+  Status s = session->Run(inputs, output_names, target_nodes, &outputs);
+  TF_ASSERT_OK(s);
+
+  ASSERT_EQ(1, outputs.size());
+  // The first output should be initialized and have the correct
+  // output.
+  auto mat = outputs[0].matrix<float>();
+  ASSERT_TRUE(outputs[0].IsInitialized());
+  EXPECT_FLOAT_EQ(5.0, mat(0, 0));
+
+  // The Run() call should fail when `output_partition_graphs` is set to true.
+  RunOptions run_options;
+  run_options.set_output_partition_graphs(true);
+  RunMetadata run_metadata;
+  s = session->Run(run_options, inputs, output_names, target_nodes, &outputs,
+                   &run_metadata);
+
+  EXPECT_TRUE(errors::IsInvalidArgument(s));
+  EXPECT_TRUE(
+      absl::StrContains(s.error_message(), "disable_output_partition_graphs"));
+}
+
 TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
   Initialize({3, 2, -1, 0});
   auto session = CreateSession();

@@ -221,7 +221,7 @@ void LaunchOp::print(OpAsmPrinter &p) {
 //   (%region_arg, %region_arg, %region_arg) in
 //   (%region_arg = %operand, %region_arg = %operand, %region_arg = %operand)
 // where %region_arg are percent-identifiers for the region arguments to be
-// introduced futher (SSA defs), and %operand are percent-identifiers for the
+// introduced further (SSA defs), and %operand are percent-identifiers for the
 // SSA value uses.
 static ParseResult
 parseSizeAssignment(OpAsmParser &parser,
@@ -267,10 +267,10 @@ ParseResult LaunchOp::parse(OpAsmParser &parser, OperationState &result) {
       kNumConfigRegionAttributes);
   MutableArrayRef<OpAsmParser::OperandType> regionArgsRef(regionArgs);
 
-  // Parse the size assignment segments: the first segment assigns grid siezs
+  // Parse the size assignment segments: the first segment assigns grid sizes
   // and defines values for block identifiers; the second segment assigns block
-  // sies and defines values for thread identifiers.  In the region argument
-  // list, identifiers preceed sizes, and block-related values preceed
+  // sizes and defines values for thread identifiers.  In the region argument
+  // list, identifiers precede sizes, and block-related values precede
   // thread-related values.
   if (parser.parseKeyword(getBlocksKeyword().data()) ||
       parseSizeAssignment(parser, sizesRef.take_front(3),
@@ -338,7 +338,7 @@ class PropagateConstantBounds : public OpRewritePattern<LaunchOp> {
 
   PatternMatchResult matchAndRewrite(LaunchOp launchOp,
                                      PatternRewriter &rewriter) const override {
-    auto oringInsertionPoint = rewriter.saveInsertionPoint();
+    auto origInsertionPoint = rewriter.saveInsertionPoint();
     rewriter.setInsertionPointToStart(&launchOp.getBody().front());
 
     // Traverse operands passed to kernel and check if some of them are known
@@ -365,7 +365,7 @@ class PropagateConstantBounds : public OpRewritePattern<LaunchOp> {
       kernelArg->replaceAllUsesWith(internalConstant);
       launchOp.eraseKernelArgument(index);
     }
-    rewriter.restoreInsertionPoint(oringInsertionPoint);
+    rewriter.restoreInsertionPoint(origInsertionPoint);
 
     if (!found)
       return matchFailure();

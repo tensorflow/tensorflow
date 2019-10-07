@@ -28,6 +28,7 @@ from tensorflow.python.eager import function as function_lib
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -564,7 +565,7 @@ class Function(object):
           "due to passing python objects instead of tensors. Also, tf.function "
           "has experimental_relax_shapes=True option that relaxes argument "
           "shapes that can avoid unnecessary retracing. Please refer to "
-          "https://www.tensorflow.org/beta/tutorials/eager/tf_function#python_or_tensor_args"
+          "https://www.tensorflow.org/tutorials/customization/performance#python_or_tensor_args"
           " and https://www.tensorflow.org/api_docs/python/tf/function for more "
           "details.".format(recent_tracing_count, self._call_counter.call_count,
                             self._python_function))
@@ -695,15 +696,28 @@ class Function(object):
   def _initialize_uninitialized_variables(self, initializers):
     """Make and call a `ConcreteFunction` which initializes variables."""
 
+    if not initializers:
+      return
+
     # Note: using defun here avoids an infinite recursion.
     @function_lib.defun
     def initialize_variables():
       op_map = object_identity.ObjectIdentityDictionary()
-      for v, init in initializers:
+      # Stack all the var_is_initialized values into one tensor and intepret the
+      # numpy value. This will reduce the number of RPCs between client and
+      # worker in the remote case.
+      with ops.init_scope():
+        var_is_initialized = []
+        for v, _ in initializers:
+          var_is_initialized.append(
+              resource_variable_ops.var_is_initialized_op(v.handle))
+        var_is_initialized = array_ops.stack(var_is_initialized).numpy()
+
+      for (v, init), is_initialized in zip(initializers, var_is_initialized):
         with ops.init_scope():
-          if resource_variable_ops.var_is_initialized_op(v.handle):
-            # Ignore variables which are already initialized at trace time.
+          if is_initialized:
             continue
+
         op_map = lift_to_graph.lift_to_graph(
             [init], ops.get_default_graph(), op_map=op_map)
         v.assign(op_map[init], read_value=False)
@@ -1098,7 +1112,7 @@ def function(func=None,
     autograph: Whether autograph should be applied on `func` before tracing a
       graph. Data-dependent control flow requires `autograph=True`. For more
       information, see the [tf.function and AutoGraph guide](
-      https://www.tensorflow.org/beta/guide/autograph).
+      https://www.tensorflow.org/guide/function).
     experimental_implements: If provided, contains a name of a "known" function
       this implements. For example "mycompany.my_recurrent_cell".
       This is stored as an attribute in inference function,

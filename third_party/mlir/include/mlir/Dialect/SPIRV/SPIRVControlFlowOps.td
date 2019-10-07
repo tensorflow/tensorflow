@@ -256,7 +256,7 @@ def SPV_LoopOp : SPV_Op<"loop"> {
 
 // -----
 
-def SPV_MergeOp : SPV_Op<"_merge", [HasParent<"LoopOp">, Terminator]> {
+def SPV_MergeOp : SPV_Op<"_merge", [Terminator]> {
   let summary = "A special terminator for merging a structured selection/loop.";
 
   let description = [{
@@ -332,6 +332,53 @@ def SPV_ReturnValueOp : SPV_Op<"ReturnValue", [InFunctionScope, Terminator]> {
   );
 
   let results = (outs);
+}
+
+def SPV_SelectionOp : SPV_Op<"selection"> {
+  let summary = "Define a structured selection.";
+
+  let description = [{
+    SPIR-V can explicitly declare structured control-flow constructs using merge
+    instructions. These explicitly declare a header block before the control
+    flow diverges and a merge block where control flow subsequently converges.
+    These blocks delimit constructs that must nest, and can only be entered
+    and exited in structured ways. See "2.11. Structured Control Flow" of the
+    SPIR-V spec for more details.
+
+    Instead of having a `spv.SelectionMerge` op to directly model selection
+    merge instruction for indicating the merge target, we use regions to delimit
+    the boundary of the selection: the merge target is the next op following the
+    `spv.selection` op. This way it's easier to discover all blocks belonging to
+    the selection and it plays nicer with the MLIR system.
+
+    The `spv.selection` region should contain at least two blocks: one selection
+    header block, and one selection merge. The selection header block should be
+    the first block. The selection merge block should be the last block.
+    The merge block should only contain a `spv._merge` op.
+  }];
+
+  let arguments = (ins
+    SPV_SelectionControlAttr:$selection_control
+  );
+
+  let results = (outs);
+
+  let regions = (region AnyRegion:$body);
+
+  let extraClassDeclaration = [{
+    // Returns the selection header block.
+    Block *getHeaderBlock();
+
+    // Returns the selection merge block.
+    Block *getMergeBlock();
+
+    // Adds a selection merge block containing one spv._merge op.
+    void addMergeBlock();
+  }];
+
+  let hasOpcode = 0;
+
+  let autogenSerialization = 0;
 }
 
 #endif // SPIRV_CONTROLFLOW_OPS

@@ -227,8 +227,6 @@ class BatchDatasetParams : public DatasetParams {
 
   string op_name() const override;
 
-  int op_version() const override;
-
  private:
   int64 batch_size_;
   bool drop_remainder_;

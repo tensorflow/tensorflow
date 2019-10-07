@@ -216,9 +216,16 @@ cuda_py_test(
     ],
     shard_count = 8,
     tags = [
+<<<<<<< HEAD
         "no_rocm",
         "no_cuda",
+=======
+        "manual",
+        "no_oss",
+        "no_rocm",
+>>>>>>> google-upstream/master
         "no_windows",
+        "notap",
     ],
 )
 

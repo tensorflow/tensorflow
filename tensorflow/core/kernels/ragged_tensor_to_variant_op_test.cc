@@ -525,7 +525,10 @@ TEST_F(RaggedTensorToVariantKernelTest, ShapeFnTestBatched) {
 
   // Tests with len(ragged_splits)==0.
   (*op.node_def.mutable_attr())["RAGGED_RANK"].set_i(0);
-  INFER_ERROR("Shape inference should have returned error", op, "?");
+  INFER_ERROR(
+      "ragged_rank=0 is not currently supported "
+      "when batched_input=true.",
+      op, "?");
 
   // Tests with len(ragged_splits)==1.
   (*op.node_def.mutable_attr())["RAGGED_RANK"].set_i(1);
@@ -563,7 +566,7 @@ TEST_F(RaggedTensorToVariantKernelTest, ShapeFnTestNotBatched) {
 
   // Tests with len(ragged_splits)==0.
   (*op.node_def.mutable_attr())["RAGGED_RANK"].set_i(0);
-  INFER_ERROR("Shape inference should have returned error", op, "?");
+  INFER_OK(op, "?", "[]");
 
   // Tests with len(ragged_splits)==1.
   (*op.node_def.mutable_attr())["RAGGED_RANK"].set_i(1);
@@ -592,19 +595,20 @@ TEST_F(RaggedTensorToVariantKernelTest, ShapeFnTestNotBatched) {
   INFER_OK(op, "?;?;?;[5]", "[]");
 }
 
-TEST_F(RaggedTensorToVariantKernelTest, NoSplits) {
-  const auto dtype = DataTypeToEnum<int>::v();
-  TF_ASSERT_OK(NodeDefBuilder("tested_op", "RaggedTensorToVariant")
-                   .Input(FakeInput(0))
-                   .Input(FakeInput(dtype))
-                   .Attr("RAGGED_RANK", 0)
-                   .Attr("Tvalues", dtype)
-                   .Attr("Tsplits", DT_INT64)
-                   .Attr("batched_input", true)
-                   .Finalize(node_def()));
-  EXPECT_TRUE(absl::StartsWith(
-      InitOp().error_message(),
-      "Value for attr 'RAGGED_RANK' of 0 must be at least minimum 1"));
+TEST_F(RaggedTensorToVariantKernelTest, NonRaggedInput) {
+  const std::vector<int> values = {1, 2, 3, 4, 5, 6};
+  Tensor expected_values(DT_INT32, TensorShape({6}));
+  test::FillValues<int>(&expected_values, values);
+
+  BuildEncodeRaggedTensorGraph<int, int64>({}, TensorShape({6}), values, false);
+  TF_ASSERT_OK(RunOpKernel());
+
+  const auto& encoded_scalar = GetOutput(0)->scalar<Variant>()();
+  const Variant& encoded_values =
+      encoded_scalar.get<Tensor>()->vec<Variant>()(0);
+
+  test::ExpectTensorEqual<int>(*encoded_values.get<Tensor>(), expected_values);
 }
+
 }  // namespace
 }  // namespace tensorflow

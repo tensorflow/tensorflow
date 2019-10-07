@@ -96,7 +96,13 @@ Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
   AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
+<<<<<<< HEAD
   pipeline.AddPass<GpuConvAlgorithmPicker>(stream_exec, device_allocator);
+=======
+
+  pipeline.AddPass<GpuConvAlgorithmPicker>(stream_exec, device_allocator);
+
+>>>>>>> google-upstream/master
   // Clean up new_tuple described above.
   pipeline.AddPass<TupleSimplifier>();
 

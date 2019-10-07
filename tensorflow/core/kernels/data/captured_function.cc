@@ -529,10 +529,11 @@ Status CapturedFunction::Instantiate(
   // The context's runtime will be used for all subsequent calls.
   FunctionLibraryRuntime* lib = ctx->flr();
   FunctionLibraryRuntime::InstantiateOptions inst_opts;
-  // TODO(b/141576771): Propagate ctx ConfigProto into inst_opts.config_proto.
   inst_opts.lib_def = metadata_->lib_def();
   inst_opts.create_kernels_eagerly = true;
   inst_opts.default_device_to_target = metadata_->use_default_device();
+  inst_opts.config_proto =
+      lib->config_proto() ? *lib->config_proto() : ConfigProto();
   if (!metadata_->use_inter_op_parallelism()) {
     inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
   }

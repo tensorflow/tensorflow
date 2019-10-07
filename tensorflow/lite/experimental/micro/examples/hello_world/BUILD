@@ -64,6 +64,8 @@ cc_binary(
     name = "hello_world",
     srcs = [
         "main.cc",
+        "main_functions.cc",
+        "main_functions.h",
     ],
     copts = [
         "-Werror",

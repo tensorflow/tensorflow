@@ -165,7 +165,7 @@ public:
 // source memref, destination memref, and the tag memref have the same
 // restrictions as any load/store. The optional stride arguments should be of
 // 'index' type, and specify a stride for the slower memory space (memory space
-// with a lower memory space id), tranferring chunks of
+// with a lower memory space id), transferring chunks of
 // number_of_elements_per_stride every stride until %num_elements are
 // transferred. Either both or no stride arguments should be specified.
 //

@@ -3643,8 +3643,6 @@ inline void LogSoftmax(const SoftmaxParams& params,
 // TODO(tflite): notes for optimization:
 // 1) See if e^ is also bottleneck in the reference fully-integer
 // version and apply lookup there and compare.
-// 2) Time spent is currently split between computing max_val, the
-// rint call, and the computation of log_prob.
 inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
                        const RuntimeShape& input_shape, const uint8* input_data,
                        const RuntimeShape& output_shape, uint8* output_data) {
@@ -3675,17 +3673,19 @@ inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
     }
     const float log_sum_exp = std::log(sum_exp);
 
-    const float precomputed = input_scale * max_val + log_sum_exp;
+    // params.scale is the output scale.
+    const float scale = input_scale / params.scale;
+    const float precomputed =
+        (input_scale * max_val + log_sum_exp) / params.scale;
     for (int j = 0; j < last_dim; ++j) {
-      // Equivalent to input_scale * (input_data[j] - max_val) - log_sum_exp;
-      const float log_prob = input_scale * input_data[j] - precomputed;
+      // Equivalent to (input_scale * (input_data[j] - max_val) - log_sum_exp) /
+      // output_scale.
+      const float log_prob = scale * input_data[j] - precomputed;
 
       // TODO(tflite): look into better solution.
       // Use std::rint over std::round (which is used in
       // FakeQuant) since it's multiple times faster on tested arm32.
-      const int32_t prob_quantized =
-          std::rint(log_prob / params.scale) + params.zero_point;
-
+      const int32_t prob_quantized = std::rint(log_prob) + params.zero_point;
       output_data[j] = static_cast<uint8_t>(
           std::max(std::min(clamp_max, prob_quantized), clamp_min));
     }
@@ -5147,6 +5147,10 @@ inline void MultiplyByQuantizedMultiplier4Rows(
     int32x4_t* result_val_3, int32x4_t* result_val_4) {
   using gemmlowp::RoundingDivideByPOT;
   using gemmlowp::SaturatingRoundingDoublingHighMul;
+
+// The vector type support for SaturatingRoundingDoublingHighMulth in gemmlowp
+// is limited to NEON.
+#ifdef GEMMLOWP_NEON
   int32x4_t left_shifted_one_dup = vdupq_n_s32(left_shifted_one);
   *result_val_1 = RoundingDivideByPOT(
       SaturatingRoundingDoublingHighMul(
@@ -5164,6 +5168,80 @@ inline void MultiplyByQuantizedMultiplier4Rows(
       SaturatingRoundingDoublingHighMul(
           vmulq_s32(input_val_4, left_shifted_one_dup), multiplier),
       right_shift);
+#else
+  int32_t vals[4];
+  vals[0] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_1, 0) * left_shifted_one, multiplier),
+      right_shift);
+  vals[1] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_1, 1) * left_shifted_one, multiplier),
+      right_shift);
+  vals[2] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_1, 2) * left_shifted_one, multiplier),
+      right_shift);
+  vals[3] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_1, 3) * left_shifted_one, multiplier),
+      right_shift);
+  *result_val_1 = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
+
+  vals[0] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_2, 0) * left_shifted_one, multiplier),
+      right_shift);
+  vals[1] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_2, 1) * left_shifted_one, multiplier),
+      right_shift);
+  vals[2] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_2, 2) * left_shifted_one, multiplier),
+      right_shift);
+  vals[3] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_2, 3) * left_shifted_one, multiplier),
+      right_shift);
+  *result_val_2 = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
+
+  vals[0] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_3, 0) * left_shifted_one, multiplier),
+      right_shift);
+  vals[1] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_3, 1) * left_shifted_one, multiplier),
+      right_shift);
+  vals[2] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_3, 2) * left_shifted_one, multiplier),
+      right_shift);
+  vals[3] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_3, 3) * left_shifted_one, multiplier),
+      right_shift);
+  *result_val_3 = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
+
+  vals[0] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_4, 0) * left_shifted_one, multiplier),
+      right_shift);
+  vals[1] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_4, 1) * left_shifted_one, multiplier),
+      right_shift);
+  vals[2] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_4, 2) * left_shifted_one, multiplier),
+      right_shift);
+  vals[3] = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vgetq_lane_s32(input_val_4, 3) * left_shifted_one, multiplier),
+      right_shift);
+  *result_val_4 = vld1q_s32(reinterpret_cast<int32_t*>(&vals));
+#endif
 }
 
 #endif
