@@ -254,9 +254,10 @@ port::Status GpuExecutor::LoadModuleFromPtx(const char* ptx, CUmodule* module) {
   return port::Status::OK();
 }
 
-bool GpuExecutor::LoadModuleFromHsaco(const char* hsaco, CUmodule* module) {
-  LOG(ERROR) << "Feature not supported on CUDA platform (LoadModuleFromHsaco)";
-  return false;
+port::Status GpuExecutor::LoadModuleFromHsaco(const char* hsaco,
+                                              CUmodule* module) {
+  return port::InternalError(
+      "Feature not supported on CUDA platform (LoadModuleFromHsaco)");
 }
 
 port::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
@@ -420,7 +421,8 @@ port::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
 
   if (cuda_kernel->GetPreferredCacheConfig() !=
       KernelCacheConfig::kNoPreference) {
-    GpuDriver::FuncSetCacheConfig(cufunc, cuda_kernel->GetGpuCacheConfig());
+    TF_RETURN_IF_ERROR(GpuDriver::FuncSetCacheConfig(
+        cufunc, cuda_kernel->GetGpuCacheConfig()));
   }
 
   void **kernel_params = const_cast<void **>(args.argument_addresses().data());
@@ -545,7 +547,8 @@ bool GpuExecutor::SynchronizeAllActivity() {
   return GpuDriver::SynchronizeContext(context_);
 }
 
-bool GpuExecutor::SynchronousMemZero(DeviceMemoryBase* location, uint64 size) {
+port::Status GpuExecutor::SynchronousMemZero(DeviceMemoryBase* location,
+                                             uint64 size) {
   if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
       size % 4 == 0) {
     return GpuDriver::SynchronousMemsetUint32(
@@ -555,8 +558,8 @@ bool GpuExecutor::SynchronousMemZero(DeviceMemoryBase* location, uint64 size) {
                                            0x0, size);
 }
 
-bool GpuExecutor::SynchronousMemSet(DeviceMemoryBase* location, int value,
-                                    uint64 size) {
+port::Status GpuExecutor::SynchronousMemSet(DeviceMemoryBase* location,
+                                            int value, uint64 size) {
   if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
       size % 4 == 0) {
     // cudaMemset reinterprets "value" as a uint8.

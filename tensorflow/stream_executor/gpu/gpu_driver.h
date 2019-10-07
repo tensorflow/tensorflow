@@ -179,8 +179,8 @@ class GpuDriver {
 
   // Sets the preferred cache configuration for the specified function.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html#group__CUDA__EXEC_1g40f8c11e81def95dc0072a375f965681
-  static bool FuncSetCacheConfig(GpuFunctionHandle function,
-                                 GpuFuncCachePreference cache_config);
+  static port::Status FuncSetCacheConfig(GpuFunctionHandle function,
+                                         GpuFuncCachePreference cache_config);
 
   // Gets the preferred shared memory bank configuration for the specified
   // CONTEXT (not function!), either default or four- or eight-byte bank size.
@@ -220,8 +220,8 @@ class GpuDriver {
   // Loads HSACO with the ROCM runtime and stores the resulting handle in
   // "module". Any error logs that are produced are logged internally.
   // (supported on ROCm only)
-  static bool LoadHsaco(GpuContext* context, const char* hsaco_contents,
-                        GpuModuleHandle* module);
+  static port::Status LoadHsaco(GpuContext* context, const char* hsaco_contents,
+                                GpuModuleHandle* module);
 
   // Retrieves a named kernel from a loaded module, and places the resulting
   // handle into function (outparam) on success. Neither kernel_name nor
@@ -246,14 +246,16 @@ class GpuDriver {
 
   // Performs a synchronous memset of the device memory segment via cuMemsetD8.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g6e582bf866e9e2fb014297bfaf354d7b
-  static bool SynchronousMemsetUint8(GpuContext* context, GpuDevicePtr location,
-                                     uint8 value, size_t size);
+  static port::Status SynchronousMemsetUint8(GpuContext* context,
+                                             GpuDevicePtr location, uint8 value,
+                                             size_t size);
 
   // Performs a synchronous memset of the device memory segment via cuMemsetD32.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g983e8d8759acd1b64326317481fbf132
-  static bool SynchronousMemsetUint32(GpuContext* context,
-                                      GpuDevicePtr location, uint32 value,
-                                      size_t uint32_count);
+  static port::Status SynchronousMemsetUint32(GpuContext* context,
+                                              GpuDevicePtr location,
+                                              uint32 value,
+                                              size_t uint32_count);
 
   // Performs an asynchronous memset of the device memory segment via
   // cuMemsetD8Async.

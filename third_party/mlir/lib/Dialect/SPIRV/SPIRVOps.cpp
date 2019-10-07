@@ -545,6 +545,11 @@ static LogicalResult verify(spirv::AccessChainOp accessChainOp) {
 // spv._address_of
 //===----------------------------------------------------------------------===//
 
+void spirv::AddressOfOp::build(Builder *builder, OperationState &state,
+                               spirv::GlobalVariableOp var) {
+  build(builder, state, var.type(), builder->getSymbolRefAttr(var));
+}
+
 static ParseResult parseAddressOfOp(OpAsmParser &parser,
                                     OperationState &state) {
   SymbolRefAttr varRefAttr;
@@ -981,11 +986,22 @@ static void print(spirv::ControlBarrierOp op, OpAsmPrinter &printer) {
 // spv.EntryPoint
 //===----------------------------------------------------------------------===//
 
+void spirv::EntryPointOp::build(Builder *builder, OperationState &state,
+                                spirv::ExecutionModel executionModel,
+                                FuncOp function,
+                                ArrayRef<Attribute> interfaceVars) {
+  build(builder, state,
+        builder->getI32IntegerAttr(static_cast<int32_t>(executionModel)),
+        builder->getSymbolRefAttr(function),
+        builder->getArrayAttr(interfaceVars));
+}
+
 static ParseResult parseEntryPointOp(OpAsmParser &parser,
                                      OperationState &state) {
   spirv::ExecutionModel execModel;
   SmallVector<OpAsmParser::OperandType, 0> identifiers;
   SmallVector<Type, 0> idTypes;
+  SmallVector<Attribute, 4> interfaceVars;
 
   SymbolRefAttr fn;
   if (parseEnumAttribute(execModel, parser, state) ||
@@ -995,7 +1011,6 @@ static ParseResult parseEntryPointOp(OpAsmParser &parser,
 
   if (!parser.parseOptionalComma()) {
     // Parse the interface variables
-    SmallVector<Attribute, 4> interfaceVars;
     do {
       // The name of the interface variable attribute isnt important
       auto attrName = "var_symbol";
@@ -1006,9 +1021,9 @@ static ParseResult parseEntryPointOp(OpAsmParser &parser,
       }
       interfaceVars.push_back(var);
     } while (!parser.parseOptionalComma());
-    state.addAttribute(kInterfaceAttrName,
-                       parser.getBuilder().getArrayAttr(interfaceVars));
   }
+  state.addAttribute(kInterfaceAttrName,
+                     parser.getBuilder().getArrayAttr(interfaceVars));
   return success();
 }
 
@@ -1016,9 +1031,10 @@ static void print(spirv::EntryPointOp entryPointOp, OpAsmPrinter &printer) {
   printer << spirv::EntryPointOp::getOperationName() << " \""
           << stringifyExecutionModel(entryPointOp.execution_model()) << "\" @"
           << entryPointOp.fn();
-  if (auto interface = entryPointOp.interface()) {
+  auto interfaceVars = entryPointOp.interface().getValue();
+  if (!interfaceVars.empty()) {
     printer << ", ";
-    interleaveComma(interface.getValue().getValue(), printer);
+    interleaveComma(interfaceVars, printer);
   }
 }
 
@@ -1031,6 +1047,15 @@ static LogicalResult verify(spirv::EntryPointOp entryPointOp) {
 //===----------------------------------------------------------------------===//
 // spv.ExecutionMode
 //===----------------------------------------------------------------------===//
+
+void spirv::ExecutionModeOp::build(Builder *builder, OperationState &state,
+                                   FuncOp function,
+                                   spirv::ExecutionMode executionMode,
+                                   ArrayRef<int32_t> params) {
+  build(builder, state, builder->getSymbolRefAttr(function),
+        builder->getI32IntegerAttr(static_cast<int32_t>(executionMode)),
+        builder->getI32ArrayAttr(params));
+}
 
 static ParseResult parseExecutionModeOp(OpAsmParser &parser,
                                         OperationState &state) {
@@ -1061,13 +1086,13 @@ static void print(spirv::ExecutionModeOp execModeOp, OpAsmPrinter &printer) {
           << execModeOp.fn() << " \""
           << stringifyExecutionMode(execModeOp.execution_mode()) << "\"";
   auto values = execModeOp.values();
-  if (!values) {
+  if (!values.size()) {
     return;
   }
   printer << ", ";
-  interleaveComma(
-      values.getValue().cast<ArrayAttr>(), printer,
-      [&](Attribute a) { printer << a.cast<IntegerAttr>().getInt(); });
+  interleaveComma(values, printer, [&](Attribute a) {
+    printer << a.cast<IntegerAttr>().getInt();
+  });
 }
 
 //===----------------------------------------------------------------------===//
@@ -1260,6 +1285,14 @@ static LogicalResult verify(spirv::GlobalVariableOp varOp) {
 //===----------------------------------------------------------------------===//
 // spv.LoadOp
 //===----------------------------------------------------------------------===//
+
+void spirv::LoadOp::build(Builder *builder, OperationState &state,
+                          Value *basePtr, IntegerAttr memory_access,
+                          IntegerAttr alignment) {
+  auto ptrType = basePtr->getType().cast<spirv::PointerType>();
+  build(builder, state, ptrType.getPointeeType(), basePtr, memory_access,
+        alignment);
+}
 
 static ParseResult parseLoadOp(OpAsmParser &parser, OperationState &state) {
   // Parse the storage class specification
@@ -1598,7 +1631,7 @@ static LogicalResult verify(spirv::ModuleOp moduleOp) {
                  << entryPointOp.fn() << "' not found in 'spv.module'";
         }
         if (auto interface = entryPointOp.interface()) {
-          for (auto varRef : interface.getValue().getValue()) {
+          for (Attribute varRef : interface) {
             auto varSymRef = varRef.dyn_cast<SymbolRefAttr>();
             if (!varSymRef) {
               return entryPointOp.emitError(
@@ -1712,7 +1745,7 @@ static LogicalResult verify(spirv::ReferenceOfOp referenceOfOp) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult verify(spirv::ReturnOp returnOp) {
-  auto funcOp = cast<FuncOp>(returnOp.getParentOp());
+  auto funcOp = returnOp.getParentOfType<FuncOp>();
   auto numOutputs = funcOp.getType().getNumResults();
   if (numOutputs != 0)
     return returnOp.emitOpError("cannot be used in functions returning value")
@@ -1741,7 +1774,7 @@ static void print(spirv::ReturnValueOp retValOp, OpAsmPrinter &printer) {
 }
 
 static LogicalResult verify(spirv::ReturnValueOp retValOp) {
-  auto funcOp = cast<FuncOp>(retValOp.getParentOp());
+  auto funcOp = retValOp.getParentOfType<FuncOp>();
   auto numFnResults = funcOp.getType().getNumResults();
   if (numFnResults != 1)
     return retValOp.emitOpError(
@@ -1997,6 +2030,23 @@ static LogicalResult verify(spirv::StoreOp storeOp) {
     return failure();
   }
   return verifyMemoryAccessAttribute(storeOp);
+}
+
+//===----------------------------------------------------------------------===//
+// spv.Undef
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseUndefOp(OpAsmParser &parser, OperationState &state) {
+  Type type;
+  if (parser.parseColonType(type)) {
+    return failure();
+  }
+  state.addTypes(type);
+  return success();
+}
+
+static void print(spirv::UndefOp undefOp, OpAsmPrinter &printer) {
+  printer << spirv::UndefOp::getOperationName() << " : " << undefOp.getType();
 }
 
 //===----------------------------------------------------------------------===//

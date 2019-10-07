@@ -645,7 +645,7 @@ public:
 };
 
 /// This class provides verification for ops that are known to have the same
-/// operand element type.
+/// operand element type (or the type itself if it is scalar).
 ///
 template <typename ConcreteType>
 class SameOperandsElementType
@@ -657,7 +657,7 @@ public:
 };
 
 /// This class provides verification for ops that are known to have the same
-/// operand and result element type.
+/// operand and result element type (or the type itself if it is scalar).
 ///
 template <typename ConcreteType>
 class SameOperandsAndResultElementType

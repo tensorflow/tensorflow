@@ -142,7 +142,7 @@ tf_cc_test(
         "//tensorflow/core/distributed_runtime:test_utils",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
-        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 

@@ -379,6 +379,22 @@ func @matmul_notranspose(%arg0: tensor<5x7xf32>, %arg1: tensor<7x11xf32>) -> ten
   return %0 : tensor<5x11xf32>
 }
 
+// CHECK-LABEL: matmul_notranspose_dynamic
+func @matmul_notranspose_dynamic(%arg0: tensor<?x7xf32>, %arg1: tensor<7x?xf32>) -> tensor<?x?xf32> {
+  // CHECK: "xla_hlo.dot"(%arg0, %arg1)
+  %0 = "tf.MatMul"(%arg0, %arg1) {transpose_a = false, transpose_b = false} : (tensor<?x7xf32>, tensor<7x?xf32>) -> tensor<?x?xf32>
+
+  return %0 : tensor<?x?xf32>
+}
+
+// CHECK-LABEL: matmul_notranspose_unranked
+func @matmul_notranspose_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK: "xla_hlo.dot"(%arg0, %arg1)
+  %0 = "tf.MatMul"(%arg0, %arg1) {transpose_a = false, transpose_b = false} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+
+  return %0 : tensor<*xf32>
+}
+
 //===----------------------------------------------------------------------===//
 // MaxPool op legalizations.
 //===----------------------------------------------------------------------===//

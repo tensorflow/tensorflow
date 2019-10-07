@@ -63,30 +63,24 @@ class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
 
     EnqueueResponse* response = new EnqueueResponse;
     bool ready = ready_;
-    auto context = ctx_;
-    context->Ref();
     // NOTE(fishx): Don't use StreamingEnqueueAsync here. When a
     // StreamingEnqueueAsync request fails all following requests will fail as
     // well. We don't want this request poison following requests since it is
     // safe to ignore a failing destroy tensor handle request.
     eager_client->EnqueueAsync(
         request_.get(), response,
-        [response, ready, context, context_id,
-         done](const tensorflow::Status& s) {
+        [response, ready, done](const tensorflow::Status& s) {
           // Omit the warning if:
           // 1. The remote tensor isn't ready.
-          // 2. ServerDef has been reset.
-          // 3. Lost connection to remote worker. In this case client will
+          // 2. Lost connection to remote worker. In this case client will
           //    crash. We don't want to spam user with redundant warning logs.
-          if (!s.ok() && ready && context->GetContextId() == context_id &&
-              s.code() != errors::Code::UNAVAILABLE) {
+          if (!s.ok() && ready && s.code() != errors::Code::UNAVAILABLE) {
             LOG(WARNING) << "Ignoring an error encountered when deleting "
                             "remote tensors handles: "
                          << s.ToString();
           }
-          context->Unref();
-          delete response;
           done(Status::OK());
+          delete response;
         });
   }
 

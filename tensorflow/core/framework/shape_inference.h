@@ -331,7 +331,6 @@ class InferenceContext {
   }
 
   static int32 Rank(ShapeHandle s) {
-    DCHECK(s.IsSet());
     return s.IsSet() ? s->rank_ : kUnknownRank;
   }
   static bool RankKnown(ShapeHandle s) {

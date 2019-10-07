@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Correctness tests for tf.keras LSTM model using DistributionStrategy."""
+"""Correctness tests for tf.keras RNN models using DistributionStrategy."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -29,9 +29,12 @@ from tensorflow.python.keras.layers import recurrent_v2 as rnn_v2
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
 
 
-class DistributionStrategyLstmModelCorrectnessTest(
+class _DistributionStrategyRnnModelCorrectnessTest(
     keras_correctness_test_base
     .TestDistributionStrategyEmbeddingModelCorrectnessBase):
+
+  def _get_layer_class(self):
+    raise NotImplementedError
 
   def get_model(self,
                 max_words=10,
@@ -40,22 +43,15 @@ class DistributionStrategyLstmModelCorrectnessTest(
                 experimental_run_tf_function=None,
                 input_shapes=None):
     del input_shapes
-
-    if tf2.enabled():
-      if not context.executing_eagerly():
-        self.skipTest("LSTM v2 and legacy graph mode don't work together.")
-      lstm = rnn_v2.LSTM
-    else:
-      lstm = rnn_v1.LSTM
+    rnn_cls = self._get_layer_class()
 
     with keras_correctness_test_base.MaybeDistributionScope(distribution):
       word_ids = keras.layers.Input(
           shape=(max_words,), dtype=np.int32, name='words')
       word_embed = keras.layers.Embedding(input_dim=20, output_dim=10)(word_ids)
-      lstm_embed = lstm(units=4, return_sequences=False)(
-          word_embed)
+      rnn_embed = rnn_cls(units=4, return_sequences=False)(word_embed)
 
-      preds = keras.layers.Dense(2, activation='softmax')(lstm_embed)
+      preds = keras.layers.Dense(2, activation='softmax')(rnn_embed)
       model = keras.Model(inputs=[word_ids], outputs=[preds])
 
       if initial_weights:
@@ -69,6 +65,38 @@ class DistributionStrategyLstmModelCorrectnessTest(
           metrics=['sparse_categorical_accuracy'],
           experimental_run_tf_function=experimental_run_tf_function)
     return model
+
+
+class DistributionStrategyGruModelCorrectnessTest(
+    _DistributionStrategyRnnModelCorrectnessTest):
+
+  def _get_layer_class(self):
+    if tf2.enabled():
+      if not context.executing_eagerly():
+        self.skipTest("GRU v2 and legacy graph mode don't work together.")
+      return rnn_v2.GRU
+    else:
+      return rnn_v1.GRU
+
+  @combinations.generate(
+      keras_correctness_test_base.test_combinations_for_embedding_model())
+  def test_gru_model_correctness(self, distribution, use_numpy,
+                                 use_validation_data,
+                                 experimental_run_tf_function):
+    self.run_correctness_test(distribution, use_numpy, use_validation_data,
+                              experimental_run_tf_function)
+
+
+class DistributionStrategyLstmModelCorrectnessTest(
+    _DistributionStrategyRnnModelCorrectnessTest):
+
+  def _get_layer_class(self):
+    if tf2.enabled():
+      if not context.executing_eagerly():
+        self.skipTest("LSTM v2 and legacy graph mode don't work together.")
+      return rnn_v2.LSTM
+    else:
+      return rnn_v1.LSTM
 
   @combinations.generate(
       keras_correctness_test_base.test_combinations_for_embedding_model())

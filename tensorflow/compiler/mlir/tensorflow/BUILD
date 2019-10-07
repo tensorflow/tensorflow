@@ -825,3 +825,35 @@ cc_library(
     ],
     alwayslink = 1,
 )
+
+cc_library(
+    name = "tpu_rewrite_device_util",
+    srcs = ["utils/tpu_rewrite_device_util.cc"],
+    hdrs = ["utils/tpu_rewrite_device_util.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/core:status",
+        "@com_google_absl//absl/strings",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "tpu_rewrite_device_util_test",
+    size = "small",
+    srcs = ["utils/tpu_rewrite_device_util_test.cc"],
+    deps = [
+        ":tpu_rewrite_device_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:test",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Support",
+    ],
+)

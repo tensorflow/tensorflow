@@ -55,3 +55,11 @@ def zeros_like(t):
     return array_ops.zeros(*shape_and_dtype(t))
   else:
     return array_ops.zeros_like(t)
+
+
+def ones_like(t):
+  """Like array_ops.ones_like, but respects resource handles."""
+  if t.dtype == dtypes.resource:
+    return array_ops.ones(*shape_and_dtype(t))
+  else:
+    return array_ops.ones_like(t)

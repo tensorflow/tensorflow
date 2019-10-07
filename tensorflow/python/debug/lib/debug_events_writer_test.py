@@ -53,7 +53,7 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
 
   def tearDown(self):
     if os.path.isdir(self.dump_root):
-      shutil.rmtree(self.dump_root)
+      shutil.rmtree(self.dump_root, ignore_errors=True)
     super(PywrapeventsWriterTest, self).tearDown()
 
   def testMultiThreadedConstructorCallWorks(self):

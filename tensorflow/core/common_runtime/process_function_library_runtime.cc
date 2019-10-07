@@ -890,7 +890,8 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     FunctionLibraryRuntime::Handle handle, std::vector<Tensor>* rets,
     std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
     FunctionLibraryRuntime::DoneCallback done,
-    std::function<InternalArgs(const ComponentFunctionData& comp_data)>
+    std::function<Status(const ComponentFunctionData& comp_data,
+                         InternalArgs* args)>
         get_component_args) const {
   if (opts.create_rendezvous) {
     // FLR->Run() is the default entry point. It checks for cancellation,
@@ -936,7 +937,14 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     opts_copy.rets_alloc_attrs = comp_data.ret_alloc_attrs_;
     opts_copy.remote_execution = false;
 
-    InternalArgs comp_args = get_component_args(comp_data);
+    InternalArgs comp_args;
+    Status s = get_component_args(comp_data, &comp_args);
+    if (!s.ok()) {
+      VLOG(2) << "Failed to get component function arguments: " << s;
+      refcounted_done->UpdateStatus(s);
+      refcounted_done->Unref();
+      continue;
+    }
     std::vector<Tensor>* comp_rets = new std::vector<Tensor>;
     rets->resize(data->num_outputs_);
 
@@ -976,7 +984,7 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
       VLOG(1) << "Running component function on device " << target
               << " with handle " << handle;
       VLOG(4) << "    with " << opts_copy.DebugString();
-      InternalArgsView comp_args_view(comp_args);
+      InternalArgsView comp_args_view(&comp_args);
       RunInternal(
           opts_copy, handle, comp_args_view, comp_rets, cleanup_items,
           [comp_rets, rets, comp_data, refcounted_done](const Status& status) {
@@ -1141,11 +1149,10 @@ void ProcessFunctionLibraryRuntime::Run(
     multi_device = mdevice_data_.find(handle) != mdevice_data_.end();
   }
   if (multi_device) {
-    auto get_component_args =
-        [&args](const ComponentFunctionData& comp_data) -> InternalArgs {
-      InternalArgs comp_args;
-      comp_args.local_args = GetArgsForIndices(comp_data.arg_indices_, args);
-      return comp_args;
+    auto get_component_args = [&args](const ComponentFunctionData& comp_data,
+                                      InternalArgs* comp_args) -> Status {
+      comp_args->local_args = GetArgsForIndices(comp_data.arg_indices_, args);
+      return Status::OK();
     };
     return RunMultiDevice(opts, handle, rets, cleanup_items, std::move(done),
                           std::move(get_component_args));

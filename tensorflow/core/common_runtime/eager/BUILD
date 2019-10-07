@@ -254,7 +254,7 @@ tf_cuda_library(
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
-            "@com_google_absl//absl/types:variant",
+            "@com_google_absl//absl/types:optional",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",

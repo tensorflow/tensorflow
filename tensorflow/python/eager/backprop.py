@@ -38,6 +38,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
@@ -635,11 +636,8 @@ def _fast_fill(value, shape, dtype):
 
 def _zeros(shape, dtype):
   """Helper to return (possibly cached) zero tensors in eager mode."""
-  if (dtype == dtypes.variant
-      or dtype == dtypes.string
-      or dtype == dtypes.resource):
-    # TODO(apassos): need to save enough information about variant tensors to do
-    # a zeros
+  # Note: variants will use _zeros_like
+  if dtype == dtypes.string or dtype == dtypes.resource:
     return None
 
   ctx = context.context()
@@ -687,6 +685,8 @@ _default_vspace = imperative_grad.VSpace(
     aggregate_fn=_aggregate_grads,
     zeros_fn=_zeros,
     ones_fn=_ones,
+    zeros_like_fn=default_gradient.zeros_like,
+    ones_like_fn=default_gradient.ones_like,
     graph_shape_fn=gen_array_ops.shape)
 pywrap_tensorflow.TFE_Py_RegisterVSpace(_default_vspace)
 

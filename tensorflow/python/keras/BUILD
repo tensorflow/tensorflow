@@ -486,6 +486,8 @@ py_library(
         "layers/pooling.py",
         "layers/preprocessing/normalization.py",
         "layers/preprocessing/normalization_v1.py",
+        "layers/preprocessing/text_vectorization.py",
+        "layers/preprocessing/text_vectorization_v1.py",
         "layers/recurrent.py",
         "layers/recurrent_v2.py",
         "layers/rnn_cell_wrapper_v2.py",
@@ -972,6 +974,19 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     main = "normalization_test.py",
+)
+
+tf_py_test(
+    name = "preprocessing_text_vectorization_test",
+    size = "medium",
+    srcs = ["layers/preprocessing/text_vectorization_test.py"],
+    additional_deps = [
+        ":keras",
+        ":preprocessing_test_utils",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+    ],
+    main = "text_vectorization_test.py",
 )
 
 tf_py_test(

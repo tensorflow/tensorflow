@@ -33,6 +33,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.util.tf_export import keras_export
 
@@ -366,6 +367,19 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
         activation == 'tanh' and recurrent_activation == 'sigmoid' and
         recurrent_dropout == 0 and not unroll and use_bias and
         reset_after and ops.executing_eagerly_outside_functions())
+
+  def build(self, input_shape):
+    super(GRU, self).build(input_shape)
+
+    if not all(isinstance(v, resource_variable_ops.ResourceVariable)
+               for v in self.weights):
+      # Non-resource variables, such as DistributedVariables and
+      # AutoCastVariables, do not work properly with the implementation
+      # selector, which is used when cuDNN is used. However, by chance, such
+      # variables happen to work in LSTM, so this check is only needed for GRU.
+      # TODO(b/136512020): Make non-resource variables work with the
+      # implementation selector.
+      self.could_use_cudnn = False
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
     # The input should be dense, padded with zeros. If a ragged input is fed

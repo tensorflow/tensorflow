@@ -17,6 +17,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Parser.h"
+#include "mlir/Support/StringExtras.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/StringExtras.h"
@@ -49,6 +50,10 @@ SPIRVDialect::SPIRVDialect(MLIRContext *context)
 
   // Allow unknown operations because SPIR-V is extensible.
   allowUnknownOperations();
+}
+
+std::string SPIRVDialect::getAttributeName(Decoration decoration) {
+  return convertToSnakeCase(stringifyDecoration(decoration));
 }
 
 //===----------------------------------------------------------------------===//

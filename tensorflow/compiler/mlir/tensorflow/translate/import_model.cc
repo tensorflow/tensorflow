@@ -1794,8 +1794,8 @@ ObjectNames::ObjectNames(const SavedObjectGraph& object_graph,
                 // - `model.variables.0`
                 // - `model.keras_api.layers.1.keras_api.trainable_variables.0`
                 // - ... 10 more long aliases ending in digits ...
-                return std::make_tuple(std::isdigit(a.back()), a.size(), a) <
-                       std::make_tuple(std::isdigit(b.back()), b.size(), b);
+                return std::make_tuple(isdigit(a.back()), a.size(), a) <
+                       std::make_tuple(isdigit(b.back()), b.size(), b);
               });
     for (const std::string& name : kv.second) {
       if (IsExported(name)) {

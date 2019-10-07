@@ -253,9 +253,7 @@ port::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     module = in_memory_modules_[hsaco];
 
     if (module == nullptr) {
-      if (!GpuDriver::LoadHsaco(context_, hsaco, &module)) {
-        return port::InternalError("Failed to load HSACO");
-      }
+      TF_RETURN_IF_ERROR(GpuDriver::LoadHsaco(context_, hsaco, &module));
     }
     kernel_to_gpu_binary_[kernel] = hsaco;
   } else {
@@ -314,7 +312,8 @@ port::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
 
   if (rocm_kernel->GetPreferredCacheConfig() !=
       KernelCacheConfig::kNoPreference) {
-    GpuDriver::FuncSetCacheConfig(hipfunc, rocm_kernel->GetGpuCacheConfig());
+    TF_RETURN_IF_ERROR(GpuDriver::FuncSetCacheConfig(
+        hipfunc, rocm_kernel->GetGpuCacheConfig()));
   }
 
   // prepare kernargs
@@ -368,11 +367,9 @@ port::Status GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
   // TODO(ROCm): Need  generic term instead of cubin/cuda/ptx
   if (spec.has_cuda_cubin_in_memory()) {
     absl::MutexLock lock{&in_memory_modules_mu_};
-    if (!LoadModuleFromHsaco(
-            reinterpret_cast<const char*>(spec.cuda_cubin_in_memory().data()),
-            &hip_module)) {
-      return port::InternalError("Failed loading module from HSACO");
-    }
+    TF_RETURN_IF_ERROR(LoadModuleFromHsaco(
+        reinterpret_cast<const char*>(spec.cuda_cubin_in_memory().data()),
+        &hip_module));
     *module_handle = ModuleHandle(const_cast<void*>(
         static_cast<const void*>(spec.cuda_cubin_in_memory().data())));
     return port::Status::OK();
@@ -391,15 +388,13 @@ port::Status GpuExecutor::LoadModuleFromPtx(const char* ptx,
   LOG(FATAL) << "Feature not supported on ROCM platform (LoadModuleFromPtx)";
 }
 
-bool GpuExecutor::LoadModuleFromHsaco(const char* hsaco, hipModule_t* module) {
+port::Status GpuExecutor::LoadModuleFromHsaco(const char* hsaco,
+                                              hipModule_t* module) {
   uint64_t module_refcount;
   std::tie(*module, module_refcount) = gpu_binary_to_module_[hsaco];
 
   if (*module == nullptr) {
-    if (!GpuDriver::LoadHsaco(context_, hsaco, module)) {
-      LOG(ERROR) << "failed to load : HSACO \n";
-      return false;
-    }
+    TF_RETURN_IF_ERROR(GpuDriver::LoadHsaco(context_, hsaco, module));
     module_refcount = 1;
     in_memory_modules_[hsaco] = *module;
     VLOG(3) << "Loaded HSACO " << static_cast<const void*>(hsaco)
@@ -410,7 +405,7 @@ bool GpuExecutor::LoadModuleFromHsaco(const char* hsaco, hipModule_t* module) {
             << " is already loaded as module " << *module;
   }
   gpu_binary_to_module_[hsaco] = {*module, module_refcount};
-  return true;
+  return port::Status::OK();
 }
 
 // This is a non-essential operation; if there's a failure, proceed without
@@ -455,7 +450,8 @@ bool GpuExecutor::SynchronizeAllActivity() {
   return GpuDriver::SynchronizeContext(context_);
 }
 
-bool GpuExecutor::SynchronousMemZero(DeviceMemoryBase* location, uint64 size) {
+port::Status GpuExecutor::SynchronousMemZero(DeviceMemoryBase* location,
+                                             uint64 size) {
   if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
       size % 4 == 0) {
     return GpuDriver::SynchronousMemsetUint32(
@@ -465,8 +461,8 @@ bool GpuExecutor::SynchronousMemZero(DeviceMemoryBase* location, uint64 size) {
                                            0x0, size);
 }
 
-bool GpuExecutor::SynchronousMemSet(DeviceMemoryBase* location, int value,
-                                    uint64 size) {
+port::Status GpuExecutor::SynchronousMemSet(DeviceMemoryBase* location,
+                                            int value, uint64 size) {
   if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
       size % 4 == 0) {
     // hipMemset reinterprets "value" as a uint8.

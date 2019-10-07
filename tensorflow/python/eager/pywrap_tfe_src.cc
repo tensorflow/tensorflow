@@ -1049,9 +1049,17 @@ class PyTapeTensor {
   tensorflow::int64 GetID() const { return id_; }
   tensorflow::DataType GetDType() const { return dtype_; }
 
+  PyObject* OnesLike() const;
+  PyObject* ZerosLike() const;
+
  private:
   tensorflow::int64 id_;
   tensorflow::DataType dtype_;
+
+  // Note that if shape_.index() == 1, meaning shape_ contains a PyObject, that
+  // PyObject is the tensor itself. This is used to support tf.shape(tensor) for
+  // partially-defined shapes and tf.zeros_like(tensor) for variant-dtype
+  // tensors.
   absl::variant<tensorflow::TensorShape, PyObject*> shape_;
 };
 
@@ -1077,8 +1085,16 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
     if (zeros_fn_ == nullptr) {
       return tensorflow::errors::InvalidArgument("invalid vspace");
     }
+    zeros_like_fn_ = PyObject_GetAttrString(py_vspace_, "zeros_like_fn");
+    if (zeros_like_fn_ == nullptr) {
+      return tensorflow::errors::InvalidArgument("invalid vspace");
+    }
     ones_fn_ = PyObject_GetAttrString(py_vspace_, "ones_fn");
     if (ones_fn_ == nullptr) {
+      return tensorflow::errors::InvalidArgument("invalid vspace");
+    }
+    ones_like_fn_ = PyObject_GetAttrString(py_vspace_, "ones_like_fn");
+    if (ones_like_fn_ == nullptr) {
       return tensorflow::errors::InvalidArgument("invalid vspace");
     }
     graph_shape_fn_ = PyObject_GetAttrString(py_vspace_, "graph_shape_fn");
@@ -1092,7 +1108,9 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
     Py_XDECREF(num_elements_);
     Py_XDECREF(aggregate_fn_);
     Py_XDECREF(zeros_fn_);
+    Py_XDECREF(zeros_like_fn_);
     Py_XDECREF(ones_fn_);
+    Py_XDECREF(ones_like_fn_);
     Py_XDECREF(graph_shape_fn_);
 
     Py_DECREF(py_vspace_);
@@ -1139,39 +1157,38 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
 
   void MarkAsResult(PyObject* gradient) const final { Py_INCREF(gradient); }
 
-  PyObject* Zeros(const PyTapeTensor& tensor) const final {
+  PyObject* Ones(PyObject* shape, PyObject* dtype) const {
     if (PyErr_Occurred()) {
       return nullptr;
     }
-    PyObject* py_shape = tensor.GetShape();
-    if (PyErr_Occurred()) {
-      return nullptr;
-    }
-    PyObject* py_dtype = tensor.GetPyDType();
-    if (PyErr_Occurred()) {
-      Py_DECREF(py_shape);
-      return nullptr;
-    }
-    PyObject* arg_list = Py_BuildValue("OO", py_shape, py_dtype);
-    PyObject* result = PyEval_CallObject(zeros_fn_, arg_list);
-    Py_DECREF(arg_list);
-    Py_DECREF(py_dtype);
-    Py_DECREF(py_shape);
-    return reinterpret_cast<PyObject*>(result);
-  }
-
-  PyObject* Ones(const PyTapeTensor& tensor) const final {
-    if (PyErr_Occurred()) {
-      return nullptr;
-    }
-    PyObject* py_shape = tensor.GetShape();
-    PyObject* py_dtype = tensor.GetPyDType();
-    PyObject* arg_list = Py_BuildValue("OO", py_shape, py_dtype);
+    PyObject* arg_list = Py_BuildValue("OO", shape, dtype);
     PyObject* result = PyEval_CallObject(ones_fn_, arg_list);
     Py_DECREF(arg_list);
-    Py_DECREF(py_dtype);
-    Py_DECREF(py_shape);
     return result;
+  }
+
+  PyObject* OnesLike(PyObject* tensor) const {
+    if (PyErr_Occurred()) {
+      return nullptr;
+    }
+    return PyObject_CallFunctionObjArgs(ones_like_fn_, tensor, NULL);
+  }
+
+  PyObject* Zeros(PyObject* shape, PyObject* dtype) const {
+    if (PyErr_Occurred()) {
+      return nullptr;
+    }
+    PyObject* arg_list = Py_BuildValue("OO", shape, dtype);
+    PyObject* result = PyEval_CallObject(zeros_fn_, arg_list);
+    Py_DECREF(arg_list);
+    return result;
+  }
+
+  PyObject* ZerosLike(PyObject* tensor) const {
+    if (PyErr_Occurred()) {
+      return nullptr;
+    }
+    return PyObject_CallFunctionObjArgs(zeros_like_fn_, tensor, NULL);
   }
 
   PyObject* GraphShape(PyObject* tensor) const {
@@ -1238,7 +1255,9 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
   PyObject* num_elements_;
   PyObject* aggregate_fn_;
   PyObject* zeros_fn_;
+  PyObject* zeros_like_fn_;
   PyObject* ones_fn_;
+  PyObject* ones_like_fn_;
   PyObject* graph_shape_fn_;
 };
 PyVSpace* py_vspace = nullptr;
@@ -1281,6 +1300,32 @@ PyObject* PyTapeTensor::GetShape() const {
   }
 
   return py_vspace->GraphShape(absl::get<1>(shape_));
+}
+
+PyObject* PyTapeTensor::OnesLike() const {
+  if (shape_.index() == 1) {
+    PyObject* tensor = absl::get<1>(shape_);
+    return py_vspace->OnesLike(tensor);
+  }
+  PyObject* py_shape = GetShape();
+  PyObject* py_dtype = GetPyDType();
+  PyObject* result = py_vspace->Ones(py_shape, py_dtype);
+  Py_DECREF(py_dtype);
+  Py_DECREF(py_shape);
+  return result;
+}
+
+PyObject* PyTapeTensor::ZerosLike() const {
+  if (shape_.index() == 1) {
+    PyObject* tensor = absl::get<1>(shape_);
+    return py_vspace->ZerosLike(tensor);
+  }
+  PyObject* py_shape = GetShape();
+  PyObject* py_dtype = GetPyDType();
+  PyObject* result = py_vspace->Zeros(py_shape, py_dtype);
+  Py_DECREF(py_dtype);
+  Py_DECREF(py_shape);
+  return result;
 }
 
 class GradientTape
@@ -1829,7 +1874,11 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
       return PyTapeTensor(id, static_cast<tensorflow::DataType>(0),
                           tensorflow::TensorShape({}));
     } else {
-      return PyTapeTensor(id, t->handle->dtype, tensor_shape);
+      if (t->handle->dtype == tensorflow::DT_VARIANT) {
+        return PyTapeTensor(id, t->handle->dtype, tensor);
+      } else {
+        return PyTapeTensor(id, t->handle->dtype, tensor_shape);
+      }
     }
   }
   tensorflow::int64 id = FastTensorId(tensor);
@@ -1848,18 +1897,18 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
                         tensorflow::TensorShape({}));
   }
   static char _shape_tuple[] = "_shape_tuple";
-  PyObject* shape_tuple = PyObject_CallMethod(tensor, _shape_tuple, nullptr);
+  tensorflow::Safe_PyObjectPtr shape_tuple(
+      PyObject_CallMethod(tensor, _shape_tuple, nullptr));
   if (PyErr_Occurred()) {
     return PyTapeTensor(id, static_cast<tensorflow::DataType>(0),
                         tensorflow::TensorShape({}));
   }
 
-  if (ListContainsNone(shape_tuple)) {
+  if (ListContainsNone(shape_tuple.get()) || dtype == tensorflow::DT_VARIANT) {
     return PyTapeTensor(id, dtype, tensor);
   }
 
-  auto l = MakeIntList(shape_tuple);
-  Py_DECREF(shape_tuple);
+  auto l = MakeIntList(shape_tuple.get());
   // Replace -1, which represents accidental Nones which can occur in graph mode
   // and can cause errors in shape cosntruction with 0s.
   for (auto& c : l) {
@@ -2494,7 +2543,7 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
           tensorflow::DataType dtype = FastTensorDtype(sources_obj[i]);
           PyTapeTensor tensor =
               PyTapeTensor(sources_vec[i], dtype, sources_obj[i]);
-          result[i] = py_vspace->Zeros(tensor);
+          result[i] = tensor.ZerosLike();
         } else {
           Py_INCREF(Py_None);
           result[i] = Py_None;
@@ -3018,13 +3067,27 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
     op_inputs = inputs;
   }
 
-  tensorflow::eager::ForwardFunction<PyObject> forward_function(
+  tensorflow::eager::ForwardFunction<PyObject> py_forward_function(
       [op_name, attrs, inputs, results](
           const std::vector<PyObject*>& input_tangents,
           std::vector<PyObject*>* output_tangents) {
         return CallJVPFunction(op_name, attrs, inputs, results, input_tangents,
                                output_tangents);
       });
+  tensorflow::eager::ForwardFunction<PyObject>* forward_function;
+  if (c_op_name == "While" || c_op_name == "StatelessWhile" ||
+      c_op_name == "If" || c_op_name == "StatelessIf") {
+    // Control flow contains non-hashable attributes. Handling them in Python is
+    // a headache, so instead we'll stay as close to GradientTape's handling as
+    // possible (a null forward function means the accumulator forwards to a
+    // tape).
+    //
+    // This is safe to do since we'll only see control flow when graph building,
+    // in which case we can rely on pruning.
+    forward_function = nullptr;
+  } else {
+    forward_function = &py_forward_function;
+  }
 
   PyObject* num_inputs = PyLong_FromLong(PySequence_Size(inputs));
 
@@ -3079,7 +3142,7 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
 
         delete backward_function;
       },
-      &forward_function);
+      forward_function);
 
   Py_DECREF(num_inputs);
   if (op_outputs_tuple_created) Py_DECREF(op_outputs);
