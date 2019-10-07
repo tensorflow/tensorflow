@@ -19,20 +19,20 @@ from __future__ import print_function
 
 import threading
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class DatasetConstructorTest(test_base.DatasetTestBase):
+class DatasetConstructorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def _testFromGenerator(self, generator, elem_sequence, num_repeats,
                          output_types=None):
@@ -52,6 +52,7 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     self.assertDatasetProduces(
         dataset, elem_sequence * num_repeats, num_test_iterations=2)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromGeneratorUsingFunction(self):
     def generator():
       for i in range(1, 100):
@@ -62,18 +63,21 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     self._testFromGeneratorOneShot(generator, elem_sequence, 1)
     self._testFromGeneratorOneShot(generator, elem_sequence, 5)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromGeneratorUsingList(self):
     generator = lambda: [[i] * i for i in range(1, 100)]
     elem_sequence = list(generator())
     self._testFromGenerator(generator, elem_sequence, 1)
     self._testFromGenerator(generator, elem_sequence, 5)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromGeneratorUsingNdarray(self):
     generator = lambda: np.arange(100, dtype=np.int64)
     elem_sequence = list(generator())
     self._testFromGenerator(generator, elem_sequence, 1, output_types=np.int64)
     self._testFromGenerator(generator, elem_sequence, 5, output_types=np.int64)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromGeneratorUsingGeneratorExpression(self):
     # NOTE(mrry): Generator *expressions* are not repeatable (or in
     # general reusable), because they eagerly evaluate the `for`
@@ -85,6 +89,7 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     self._testFromGenerator(generator, elem_sequence, 1)
     self._testFromGenerator(generator, elem_sequence, 5)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromMultipleConcurrentGenerators(self):
     num_inner_repeats = 5
     num_outer_repeats = 100
@@ -169,6 +174,7 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromGeneratorImplicitConversion(self):
     def generator():
       yield [1]
@@ -187,6 +193,7 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromGeneratorString(self):
     def generator():
       yield "foo"
@@ -198,6 +205,7 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     self.assertDatasetProduces(
         dataset, expected_output=[b"foo", b"bar", b"baz"])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromGeneratorTypeError(self):
     def generator():
       yield np.array([1, 2, 3], dtype=np.int64)
@@ -218,6 +226,7 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromGeneratorShapeError(self):
     def generator():
       yield np.array([1, 2, 3], dtype=np.int64)
@@ -237,6 +246,7 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromGeneratorStructureError(self):
     def generator():
       yield 1, 2
@@ -261,6 +271,7 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromGeneratorHeterogeneous(self):
     def generator():
       yield 1
@@ -270,6 +281,7 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
         generator, output_types=dtypes.int64)
     self.assertDatasetProduces(dataset, expected_output=[1, [2, 3]])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromGeneratorStopShort(self):
 
     def generator():
@@ -283,6 +295,7 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     self.assertAllEqual(0, self.evaluate(get_next()))
     self.assertAllEqual(1, self.evaluate(get_next()))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromGeneratorDestructorCalled(self):
     # Use an `Event` to signal that the generator has been deleted.
     event = threading.Event()
@@ -313,6 +326,7 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     # iterator terminates (and the generator iterator is deleted).
     self.assertTrue(event.is_set())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromGeneratorWithArgs(self):
 
     def flat_map_fn(elem):
@@ -329,6 +343,7 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     self.assertDatasetProduces(
         dataset, expected_output=[1, 2, 2, 3, 3, 3, 4, 4, 4, 4])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFromGeneratorWithTwoArgs(self):
 
     def flat_map_fn(elem, message):
@@ -352,6 +367,7 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
                          (1, b"Hi!"), (2, b"Hi!"), (0, b"Hi!"), (1, b"Hi!"),
                          (2, b"Hi!"), (3, b"Hi!")])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testGeneratorDatasetFinalizeFunctionCalled(self):
     # NOTE(mrry): This test tests the internal `_GeneratorDataset`,
     # which affords more control over what the finalize function can do than
@@ -378,6 +394,7 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
       self.evaluate(get_next())
       self.assertTrue(event.is_set())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSharedName(self):
 
     def generator():
