@@ -50,10 +50,7 @@ bazel test \
       -//tensorflow/compiler/... \
       -//tensorflow/lite/... \
       -//tensorflow/python/compiler/tensorrt/... \
-<<<<<<< HEAD
 # Run tests requiring more than one GPU separately.
-=======
->>>>>>> google-upstream/master
 && bazel test \
       --config=rocm \
       -k \

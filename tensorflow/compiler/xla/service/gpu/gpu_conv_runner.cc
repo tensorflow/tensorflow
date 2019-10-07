@@ -229,12 +229,8 @@ Status RunGpuConvImpl(const GpuConvParams& params,
   // first call we need to ensure that the AlgorithmConfig::algorithm is
   // empty. For all subsequent calls, we should use the value retrieved from
   // the backend_config
-<<<<<<< HEAD
-  if ((options.algo_override.has_value()) &&
-=======
   if ((stream->parent()->platform_kind() == se::PlatformKind::kROCm) &&
       (options.algo_override.has_value()) &&
->>>>>>> google-upstream/master
       (*options.algo_override == se::dnn::AlgorithmDesc())) {
     algorithm = AlgorithmConfig();
   } else if (options.algo_override.has_value()) {

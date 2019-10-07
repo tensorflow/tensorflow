@@ -1,10 +1,3 @@
-<<<<<<< HEAD
-# Release 1.14.1
-
-## Bug Fixes and Other Changes 
-
-*  The 1.14.1 whl package is built with ROCm2.7 user-bit environment 
-=======
 # Release 2.0.0
 
 ## Major Features and Improvements
@@ -27,9 +20,9 @@ For information on upgrading your existing TensorFlow 1.x models, please refer t
 * Distribution Strategy: TF 2.0 users will be able to use the [`tf.distribute.Strategy`](https://www.tensorflow.org/beta/guide/distribute_strategy) API to distribute training with minimal code changes, yielding great out-of-the-box performance. It supports distributed training with Keras model.fit, as well as with custom training loops. Multi-GPU support is available, along with experimental support for multi worker and Cloud TPUs. Check out the [guide](https://www.tensorflow.org/beta/guide/distribute_strategy) for more details.
 * Functions, not Sessions. The traditional declarative programming model of building a graph and executing it via a `tf.Session` is discouraged, and replaced with by writing regular Python functions. Using the `tf.function` decorator, such functions can be turned into graphs which can be executed remotely, serialized, and optimized for performance.
 * Unification of `tf.train.Optimizers` and `tf.keras.Optimizers`. Use `tf.keras.Optimizers` for TF2.0. `compute_gradients` is removed as public API, use `GradientTape` to compute gradients.
-* AutoGraph translates Python control flow into TensorFlow expressions, allowing users to write regular Python inside `tf.function`-decorated functions. AutoGraph is also applied in functions used with tf.data, tf.distribute and tf.keras APIs. 
+* AutoGraph translates Python control flow into TensorFlow expressions, allowing users to write regular Python inside `tf.function`-decorated functions. AutoGraph is also applied in functions used with tf.data, tf.distribute and tf.keras APIs.
 * Unification of exchange formats to SavedModel. All TensorFlow ecosystem projects (TensorFlow Lite, TensorFlow JS, TensorFlow Serving, TensorFlow Hub) accept SavedModels. Model state should be saved to and restored from SavedModels.
-* API Changes: Many API symbols have been renamed or removed, and argument names have changed. Many of these changes are motivated by consistency and clarity. The 1.x API remains available in the compat.v1 module. A list of all symbol changes can be found [here](https://docs.google.com/spreadsheets/d/1FLFJLzg7WNP6JHODX5q8BDgptKafq_slHpnHVbJIteQ/edit#gid=0). 
+* API Changes: Many API symbols have been renamed or removed, and argument names have changed. Many of these changes are motivated by consistency and clarity. The 1.x API remains available in the compat.v1 module. A list of all symbol changes can be found [here](https://docs.google.com/spreadsheets/d/1FLFJLzg7WNP6JHODX5q8BDgptKafq_slHpnHVbJIteQ/edit#gid=0).
  * API clean-up, included removing `tf.app`, `tf.flags`, and `tf.logging` in favor of [absl-py](https://github.com/abseil/abseil-py).
 * No more global variables with helper methods like `tf.global_variables_initializer` and `tf.get_global_step`.
 * Add toggles `tf.enable_control_flow_v2()` and `tf.disable_control_flow_v2()` for enabling/disabling v2 control flow.
@@ -44,12 +37,12 @@ For information on upgrading your existing TensorFlow 1.x models, please refer t
   * TensorFlow 2.0.0 is built using devtoolset7 (GCC7) on Ubuntu 16. This may lead to ABI incompatibilities with extensions built against earlier versions of TensorFlow.
   * Tensorflow code now produces 2 different pip packages: tensorflow_core containing all the code (in the future it will contain only the private implementation) and tensorflow which is a virtual pip package doing forwarding to tensorflow_core (and in the future will contain only the public API of tensorflow). We don't expect this to be breaking, unless you were importing directly from the implementation.
   Removed the `freeze_graph` command line tool; `SavedModel` should be used in place of frozen graphs.
-  
+
 * `tf.contrib`:
   * `tf.contrib` has been deprecated, and functionality has been either migrated to the core TensorFlow API, to an ecosystem project such as [tensorflow/addons](https://www.github.com/tensorflow/addons) or [tensorflow/io](https://www.github.com/tensorflow/io), or removed entirely.
   * Remove `tf.contrib.timeseries` dependency on TF distributions.
   * Replace contrib references with `tf.estimator.experimental.*` for apis in `early_stopping.py`.
-  
+
 * `tf.estimator`:
   * Premade estimators in the tf.estimator.DNN/Linear/DNNLinearCombined family have been updated to use `tf.keras.optimizers` instead of the `tf.compat.v1.train.Optimizer`s. If you do not pass in an `optimizer=` arg or if you use a string, the premade estimator will use the Keras optimizer. This is checkpoint breaking, as the optimizers have separate variables. A checkpoint converter tool for converting optimizers is included with the release,  but if you want to avoid any change, switch to the v1 version of the estimator:  `tf.compat.v1.estimator.DNN/Linear/DNNLinearCombined*`.
   * Default aggregation for canned Estimators is now `SUM_OVER_BATCH_SIZE`. To maintain previous default behavior, please pass `SUM` as the loss aggregation method.
@@ -57,13 +50,13 @@ For information on upgrading your existing TensorFlow 1.x models, please refer t
   * `Estimator.export_savedmodel` has been renamed to `export_saved_model`.
   * When saving to SavedModel, Estimators will strip default op attributes. This is almost always the correct behavior, as it is more forwards compatible, but if you require that default attributes to be saved with the model, please use `tf.compat.v1.Estimator`.
   * Feature Columns have been upgraded to be more Eager-friendly and to work with Keras. As a result, `tf.feature_column.input_layer` has been deprecated in favor of `tf.keras.layers.DenseFeatures`. v1 feature columns have direct analogues in v2 except for `shared_embedding_columns`, which are not cross-compatible with v1 and v2. Use `tf.feature_column.shared_embeddings` instead.
-  
+
 * `tf.keras`:
   * `OMP_NUM_THREADS` is no longer used by the default Keras config.  To configure the number of threads, use `tf.config.threading` APIs.
   * `tf.keras.model.save_model` and `model.save` now defaults to saving a TensorFlow SavedModel. HDF5 files are still supported.
   * Deprecated `tf.keras.experimental.export_saved_model` and `tf.keras.experimental.function`. Please use `tf.keras.models.save_model(..., save_format='tf')` and `tf.keras.models.load_model` instead.
   * Layers now default to float32, and automatically cast their inputs to the layer's dtype. If you had a model that used float64, it will probably silently use float32 in TensorFlow 2, and a warning will be issued that starts with `Layer <layer-name>` is casting an input tensor from dtype float64 to the layer's dtype of float32. To fix, either set the default dtype to float64 with `tf.keras.backend.set_floatx('float64')`, or pass `dtype='float64'` to each of the Layer constructors. See `tf.keras.layers.Layer` for more information.
- 
+
 * `tf.lite`:
   * Removed `lite.OpHint`, `lite.experimental`, and `lite.constant` from 2.0 API.
 * Tensors are no longer hashable, but instead compare element-wise with `==` and `!=`. Use `tf.compat.v1.disable_tensor_equality()` to return to the previous behavior.
@@ -82,7 +75,7 @@ If you experience any snags when using TF 2.0, please let us know at the [TF 2.0
 
 * `tf.contrib`:
   * Expose `tf.contrib.proto.*` ops in `tf.io` (they will exist in TF2)
-  
+
 * `tf.data`:
   * Add support for TensorArrays to `tf.data Dataset`.
   * Integrate Ragged Tensors with `tf.data`.
@@ -125,13 +118,13 @@ If you experience any snags when using TF 2.0, please let us know at the [TF 2.0
   * Add support for passing list of lists to the `metrics` argument in Keras `compile`.
   * Add `tf.keras.layers.AbstractRNNCell` as the preferred implementation for RNN cells in TF v2. User can use it to implement RNN cells with custom behavior.
   * Keras training and validation curves are shown on the same plot when using the TensorBoard callback.
-  * Switched Keras `fit/evaluate/predict` execution to use only a single unified path by default unless eager execution has been explicitly disabled, regardless of input type. This unified path places an eager-friendly training step inside of a `tf.function`. With this 
+  * Switched Keras `fit/evaluate/predict` execution to use only a single unified path by default unless eager execution has been explicitly disabled, regardless of input type. This unified path places an eager-friendly training step inside of a `tf.function`. With this
    1.  All input types are converted to `Dataset`.
-   2. The path assumes there is always a distribution strategy. when distribution strategy is not specified the path uses a no-op distribution strategy. 
-   3. The training step is wrapped in `tf.function` unless `run_eagerly=True` is set in compile. The single path execution code does not yet support all use cases. We fallback to the existing v1 execution paths if your model contains the following: 
-     1. `sample_weight_mode` in compile 
-     2. `weighted_metrics` in compile 
-     3. v1 optimizer 
+   2. The path assumes there is always a distribution strategy. when distribution strategy is not specified the path uses a no-op distribution strategy.
+   3. The training step is wrapped in `tf.function` unless `run_eagerly=True` is set in compile. The single path execution code does not yet support all use cases. We fallback to the existing v1 execution paths if your model contains the following:
+     1. `sample_weight_mode` in compile
+     2. `weighted_metrics` in compile
+     3. v1 optimizer
      4. target tensors in compile
 If you are experiencing any issues because of this change, please inform us (file an issue) about your use case and you can unblock yourself by setting `experimental_run_tf_function=False` in compile meanwhile. We have seen couple of use cases where the model usage pattern is not as expected and would not work with this change.
    1. output tensors of one layer is used in the constructor of another.
@@ -147,25 +140,25 @@ If you are experiencing any issues because of this change, please inform us (fil
   * Updates binary cross entropy logic in Keras when input is probabilities. Instead of converting probabilities to logits, we are using the cross entropy formula for probabilities.
   * Added public APIs for `cumsum` and `cumprod` keras backend functions.
   * Add support for temporal sample weight mode in subclassed models.
-  * Raise `ValueError` if an integer is passed to the training APIs. 
+  * Raise `ValueError` if an integer is passed to the training APIs.
   * Added fault-tolerance support for training Keras model via `model.fit()` with `MultiWorkerMirroredStrategy`, tutorial available.
   * Custom Callback tutorial is now available.
   * To train with `tf.distribute`, Keras API is recommended over estimator.
   * `steps_per_epoch` and `steps` arguments are supported with numpy arrays.
-  * New error message when unexpected keys are used in sample_weight/class_weight dictionaries 
+  * New error message when unexpected keys are used in sample_weight/class_weight dictionaries
   * Losses are scaled in Keras compile/fit and not in the optimizers anymore. If you are using custom training loop, we have new utilities to help scale losses `tf.nn.compute_average_loss`, `tf.nn.scale_regularization_loss`.
   * `Layer` apply and add_variable APIs are deprecated.
   * Added support for channels first data format in cross entropy losses with logits and support for tensors with unknown ranks.
   * Error messages will be raised if `add_update`, `add_metric`, `add_loss`, activity regularizers are used inside of a control flow branch.
-  * New loss reduction types: 
-    1. `AUTO`: Indicates that the reduction option will be determined by the usage context. For almost all cases this defaults to `SUM_OVER_BATCH_SIZE`. When    used with `tf.distribute.Strategy`, outside of built-in training loops such as `tf.keras` `compile` and `fit`, we expect reduction value to be `SUM` or `NONE`. Using `AUTO` in that case will raise an error. 
-    2. `NONE`: Weighted losses with one dimension reduced (axis=-1, or axis specified by loss function). When this reduction type used with built-in Keras training loops like `fit`/`evaluate`, the unreduced vector loss is passed to the optimizer but the reported loss will be a scalar value. 
+  * New loss reduction types:
+    1. `AUTO`: Indicates that the reduction option will be determined by the usage context. For almost all cases this defaults to `SUM_OVER_BATCH_SIZE`. When    used with `tf.distribute.Strategy`, outside of built-in training loops such as `tf.keras` `compile` and `fit`, we expect reduction value to be `SUM` or `NONE`. Using `AUTO` in that case will raise an error.
+    2. `NONE`: Weighted losses with one dimension reduced (axis=-1, or axis specified by loss function). When this reduction type used with built-in Keras training loops like `fit`/`evaluate`, the unreduced vector loss is passed to the optimizer but the reported loss will be a scalar value.
     3. `SUM`: Scalar sum of weighted losses. 4. `SUM_OVER_BATCH_SIZE`: Scalar `SUM` divided by number of elements in losses. This reduction type is not supported when used with `tf.distribute.Strategy` outside of built-in training loops like `tf.keras` `compile`/`fit`.
   * Wraps losses passed to the `compile` API (strings and v1 losses) which are not instances of v2 `Loss` class in `LossWrapper` class. => All losses will now use `SUM_OVER_BATCH_SIZE` reduction as default.
   * `model.add_loss(symbolic_tensor)` should work in ambient eager.
-  * Update metric name to always reflect what the user has given in compile. Affects following cases 
-    1. When name is given as 'accuracy'/'crossentropy' 
-    2. When an aliased function name is used eg. 'mse' 
+  * Update metric name to always reflect what the user has given in compile. Affects following cases
+    1. When name is given as 'accuracy'/'crossentropy'
+    2. When an aliased function name is used eg. 'mse'
     3. Removing the `weighted` prefix from weighted metric names.
   * Allow non-Tensors through v2 losses.
   * Add v2 sparse categorical crossentropy metric.
@@ -310,7 +303,7 @@ If you are experiencing any issues because of this change, please inform us (fil
   * Add support for `add_metric` in the graph function mode.
   * Updating cosine similarity loss - removed the negate sign from cosine similarity.
   * Changed default for gradient accumulation for TPU embeddings to true.
-  * Adds summary trace API for collecting graph and profile information. 
+  * Adds summary trace API for collecting graph and profile information.
   * The `precision_mode` argument to `TrtGraphConverter` is now case insensitive.
 
 
@@ -320,7 +313,11 @@ This release contains contributions from many people at Google, as well as:
 
 1e100, a6802739, 4d55397500, a6802739, Abdullah Selek, abenmao, Abolfazl Shahbazi, Adam Richter, Adam Weiss, Ag Ramesh, Alan Du, Albin Joy, Alex, Alex Itkes, Alex Sergeev, Alexander Pivovarov, Alexey Romanov, alhkad, Aman Patel, Amit, Amit Kumar Jaiswal, Amit Srivastava, amoitra, Andreas Eberle, Andrew Lihonosov, Andy Craze, Anshuman Tripathy, Anthony Hsu, Anthony Platanios, Anuj Rawat, arp95, Arpit Shah, Armen Poghosov, armenpoghosov, Astropeak, Ashwin Ramaswami, Arpit Shah, Augustina Ragwitz, Aurelien Geron, AuréLien Geron, avasid, aweers, awesomealex1, Ayush Agrawal, Bas Aarts, Bastian Eichenberger, Bairen Yi, Bayberry Z, Ben Barsdell, Benjamin Peterson, bhack, Bharat Raghunathan, Bhavani Subramanian, Bin Fan, blairhan, BléNesi Attila, Bodin-E, Brandon Carter, Bryan Cutler, candy.dc, Cao Zongyan, Casper Da Costa-Luis, Chao Liu, Chen Guoyin, chenchc, chengchingwen, chie8842, Christian Hansen, Christoph Boeddeker, Christopher Yeh, Clayne Robison, Coady, Patrick, crafet, csukuangfj, ctiijima, Dan Jarvis, Dan Lazewatsky, Daniel Ingram, Daniel Rasmussen, Daniel Salvadori, Dave Airlie, David Norman, Dayananda V, delock, Denis Khalikov, Deven Desai, Dheeraj Rajaram Reddy, Diego Caballero, dmitrievanthony, Donovan Ong, Drew Szurko, Duncan Dean, Duncan Riach, Dustin Neighly, Dwight J Lyle, Eamon Ito-Fisher, eashtian3, Edward Forgacs, EFanZh, ejot, Elroy Ashtian Jr, Eric Schweitz, Evgeniy Polyakov, Fangjun Kuang, Federico Martinez, Fei Hu, Felix Lemke, Filip Matzner, FlashTek, fo40225, formath, FrançOis Chollet, frreiss, Fred Reiss, Frederic Bastien, Fredrik Knutsson, G. Hussain Chinoy, Gabriel, Gautam, gehring, Geoffrey Irving, George Grzegorz Pawelczak, Grzegorz Pawelczak, George Sterpu, Gianluca Varisco, Gleb Popov, Greg Peatfield, Guillaume Klein, Gurpreet Singh, Gustavo Lima Chaves, Gyoung-Yoon Ryoo, haison, Hanton Yang, HanGuo97, Haraldur TóMas HallgríMsson, Hari Shankar, hehongliang, Heungsub Lee, Hoeseong Kim, Huan Li (李卓桓), HåKon Sandsmark, I-Hong, I-Hong Jhuo, Ilham Firdausi Putra, Ilango R, Imran Salam, Innovimax, Jacky Ko, Irene Dea, Ivan Habernal, Jakub Lipinski, Jacky, Jason Zaman, Jason Zavaglia, jayhpark530, jcf94, jefby, Jeff Daily, Jeff Poznanovic, Jeffrey Poznanovic, Jekyll Lai, jer, Jeroen BéDorf, jerryyin, jhalakp, jiakai, Jia Qingtong, Jiankang, JiangXIAO, Joe Bowser, Joe Q, Joe Quadrino, Joel Shapiro, Johan Gunnarsson, Jojimon Varghese, Jonas Rauber, Jonathan Kyl, Jonathan, Joon, Joppe Geluykens, Joseph Friedman, Josh Beal,  jtressle, Julian Niedermeier, Junqin Zhang, Justin Dujardin, Justin Tunis, jwu, K. Hodges, kaixih, Kaixi Hou, kjopek, Karl Lessard, Karl Weinmeister, Karthik Muthuraman, Kashif Rasul, Kay Zhu, Kbhute-Ibm, KDR, Keno Fischer, Kevin Mader, khanhlvg, Kilaru Yasaswi Sri Chandra Gandhi, Koan-Sin Tan, Koock Yoon, kouml, ktaebum, Kyuwon Kim, Lakshay Tokas, Laurent Le Brun, leike666666, leonard951, Leslie-Fang, Letian Kang, Li, Guizi, Loo Rong Jie, Lucas Hendren, Lukas Folle, Lukas Geiger, Luke Han, luxupu, lvli, Ma, Guokai, Mahmoud Abuzaina, Maksym Kysylov, Mandar Deshpande, manhyuk, Manraj Singh Grover, Marco Gaido, Marek Drozdowski, Margaret Maynard-Reid, Mark Ryan, mars20, Mateusz Chudyk, Matt Conley, mbhuiyan, mdfaijul, Mei Jie, Melissa Grueter, merturl, MichaelKonobeev, Michael KäUfl, Michal W. Tarnowski, MickaëL Schoentgen, Miguel Morin, Mihail Salnikov, Mikalai Drabovich, Mike Arpaia, Mike Holcomb, minds, monklof, Moses Marin, mpppk, Mr. Metal, Mshr-H, musikisomorphie, nammbash, Natalia Gimelshein, Nathan Luehr, Nayana-Ibm, Nayana Thorat, neargye, Neeraj Pradhan, Nehal J Wani, Neil, Nick, Nick Lewycky, Niels Ole Salscheider, Niklas SilfverströM, Niranjan Hasabnis, Nuka-137, Nutti, ocjosen, olicht, omeir1, P Sudeepam, Paige Bailey, Palmer Lao, Pan Daoxin, Pariksheet Pinjari, Pasquale Minervini, Patrick J. Lopresti, Patrik Gustavsson, Pavel Akhtyamov, Pavel Samolysov, PENGWA, per1234, PeterLee, Phan Van Nguyen Duc, Philipp Jund, Phillip Kravtsov, Pooya Davoodi, Pranav Marathe, Putra Manggala, Qingqing Cao, R S Nikhil Krishna, Rajeshwar Reddy T, Ramon ViñAs, Rasmus Diederichsen, Reuben Morais, robert, Rohit Gupta, Roland Zimmermann, Roman Soldatow, RonLek, Ruizhe, Ryan Jiang, saishruthi, Saleem Abdulrasool, Samantha Andow, Sami Kama, Sami Kama, Sana-Damani, Saurabh Deoras, sdamani, Sean Morgan, seanshpark, Sebastien Iooss, Serv-Inc, Severen Redwood, Shahzad Lone, Shashank Gupta, shashvat, Shashvat Chand Shahi, Shubham Goyal, Shashi, Sigrid Keydana, Siju, Siju Samuel, sleighsoft, smilu97, Snease-Abq, Son Tran, Spencer Schaber, sremedios, Srini511, srinivasan.narayanamoorthy, Steve Lang, Steve Nesae, Subin, Sumesh Udayakumaran, Sungmann Cho, sunway513, Supriya Rao, sxwang, Tae-Hwan Jung, Taehoon Lee, Takeo Sawada, Taylor Jakobson, Taylor Thornton, Ted Chang, TengLu, terryky, ThisIsIsaac, ThisIsPIRI, Thomas Deegan, Thomas Hagebols, tianyapiaozi, Till Hoffmann, Tim Zaman, tomguluson92, Tongxuan Liu, Trent Lo, Trevor Morris, TungJerry, Tyorden, Uday Bondhugula, v1incent, Vagif, Vasileios Lioutas, vbvg2008, vcarpani, Vijay Ravichandran, Vikram Tiwari,Viktor Gal,  Vishwak Srinivasan, Vincent, Vishnuvardhan Janapati, Vitor-Alves, Vivek Suryamurthy, wangsiyu, wateryzephyr, WeberXie, Wei Wang, WeijieSun, Wen-Heng (Jack) Chung, wenxizhu, Will Battel, William D. Irons, winstonq, wyzhao, Xiaoming (Jason) Cui, Xiaoquan Kong, Xin, Xinping Wang, Yan Facai (颜发才), Yann-Yy, Yasir Modak, Yasuhiro Matsumoto, ymodak, Yong Tang, Yongfeng Gu, Younes Khoudli, Yuan Lin, Yuan (Terry) Tang, Yuchen Ying, Yves-Noel Weweler, zhangyujing, zjjott, zyeric, 王振华 (Zhenhua Wang), 黄鑫
 
->>>>>>> google-upstream/master
+# Release 1.14.1
+
+## Bug Fixes and Other Changes
+
+*  The 1.14.1 whl package is built with ROCm2.7 user-bit environment
 
 # Release 1.14.0
 
@@ -329,7 +326,7 @@ This release contains contributions from many people at Google, as well as:
 *   TF-ROCm integrates the ROCm RCCL library as the collective communication
     routines for mGPU computation
 *   TF-ROCm enables the XLA backend starting 1.14.0 release, currently, it's
-    functionality-complete, performance optimization in progress. 
+    functionality-complete, performance optimization in progress.
 
 ## Known issues
 
@@ -1133,7 +1130,7 @@ Ag Ramesh, Alex Wiltschko, Alexander Pantyukhin, Amogh Mannekote, An Jiaoyang, A
   * [`tf.contrib.estimator.RNNEstimator`](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/contrib/estimator/RNNClassifier)
 * The [distributions.Bijector](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/contrib/distributions/bijectors/Bijector)
   API supports broadcasting for Bijectors with new API changes.
-  
+
 ## Breaking Changes
   * If you're opening empty variable scopes; replace `variable_scope('', ...)` by
     `variable_scope(tf.get_variable_scope(), ...)`.
@@ -1612,7 +1609,7 @@ Samuel He, Sandeep Dcunha, sandipmgiri, Sang Han, scott, Scott Mudge, Se-Won Kim
 Simone Cirillo, Steffen Schmitz, Suvojit Manna, Sylvus, Taehoon Lee, Ted Chang, Thomas Deegan,
 Till Hoffmann, Tim, Toni Kunic, Toon Verstraelen, Tristan Rice, Urs KöSter, Utkarsh Upadhyay,
 Vish (Ishaya) Abrams, Winnie Tsang, Yan Chen, Yan Facai (颜发才), Yi Yang, Yong Tang,
-Youssef Hesham, Yuan (Terry) Tang, Zhengsheng Wei, zxcqwe4906, 张志豪, 田传武 
+Youssef Hesham, Yuan (Terry) Tang, Zhengsheng Wei, zxcqwe4906, 张志豪, 田传武
 
 We are also grateful to all who filed issues or helped resolve them, asked and
 answered questions, and were part of inspiring discussions.

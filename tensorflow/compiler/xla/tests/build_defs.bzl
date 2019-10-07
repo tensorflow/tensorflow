@@ -12,17 +12,10 @@ load(
 all_backends = ["cpu", "gpu"] + plugins.keys()
 
 def filter_backends(backends):
-<<<<<<< HEAD
-    """Removes "gpu" from a backend list if CUDA or ROCM is not enabled.
-
-    This allows us to simply hardcode lists including "gpu" here and in the
-    BUILD file, without causing failures when CUDA or ROCM isn't enabled.'
-=======
     """Removes "gpu" from a backend list if CUDA or ROCm is not enabled.
 
     This allows us to simply hardcode lists including "gpu" here and in the
     BUILD file, without causing failures when CUDA or ROCm isn't enabled.'
->>>>>>> google-upstream/master
 
     Args:
       backends: A list of backends to filter.
