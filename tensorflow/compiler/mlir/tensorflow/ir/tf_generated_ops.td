@@ -4516,6 +4516,9 @@ num_elements: optional. If not -1, the number of elements in the list.
   }];
 }
 
+// TODO(parkers): Add folds for multiples = [1,...].
+// TODO(parkers): Add errors for negative multiples and multiples.size() !=
+// input.rank()
 def TF_TileOp : TF_Op<"Tile", [NoSideEffect]> {
   let summary = "Constructs a tensor by tiling a given tensor.";
 

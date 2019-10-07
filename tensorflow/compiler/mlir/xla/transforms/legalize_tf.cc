@@ -739,7 +739,7 @@ class ConvertSumOp : public GenericConvertReductionOp<ConvertSumOp, TF::SumOp,
 // Converts Max op to HLO Reduce op.
 //
 //   %init = constant dense<...> : tensor<T>
-//   %sum = "xla_hlo.reduce"(%inp, %init) ["xla_hlo.max"]
+//   %max = "xla_hlo.reduce"(%inp, %init) ["xla_hlo.max"]
 //               {dimensions = ...}
 class ConvertMaxOp
     : public GenericConvertReductionOp<ConvertMaxOp, TF::MaxOp, xla_hlo::MaxOp,
@@ -750,6 +750,76 @@ class ConvertMaxOp
   Value *GetInitialValue(Type reduce_element_type, Location loc,
                          PatternRewriter &rewriter) const {
     return GetMinValueForType(reduce_element_type, loc, &rewriter);
+  }
+};
+
+// Converts Tile op to HLO BroadcastInDim and Reshape ops.
+//   For shape [S1, S2] and multiples [M1, M2],
+//     MS1 = M1 * S1; MS2 = M2 * S2
+//
+//   %broadcast = xla_hlo.broadcast_in_dim(%input) {
+//     broadcast_dimensions = [0, 2]
+//   }
+//   %result = "xla_hlo.reshape"(%broadcast) : (tensor<S1xM1xS2xM2xf32>)
+//      -> tensor<MS1xMS2xf32>
+class ConvertTileOp : public OpRewritePattern<TF::TileOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::TileOp op,
+                                     PatternRewriter &rewriter) const override {
+    auto input_ty = op.input()->getType().dyn_cast<RankedTensorType>();
+    if (!input_ty || !input_ty.hasStaticShape()) return matchFailure();
+    ArrayRef<int64_t> input_shape = input_ty.getShape();
+    Type element_type = input_ty.getElementType();
+
+    DenseIntElementsAttr multiples;
+    if (!matchPattern(op.multiples(), m_Constant(&multiples)) ||
+        multiples.getType().getRank() != 1)
+      return matchFailure();
+
+    if (multiples.getNumElements() != input_shape.size()) return matchFailure();
+
+    SmallVector<int64_t, 8> broadcasted_shape;
+    SmallVector<int64_t, 4> broadcast_dimensions;
+    broadcasted_shape.reserve(input_shape.size() * 2);
+    broadcast_dimensions.reserve(input_shape.size());
+    for (auto multiple_and_input :
+         llvm::zip(multiples.getValues<APInt>(), input_shape)) {
+      int64_t multiple = std::get<0>(multiple_and_input).getSExtValue();
+      int64_t input_size = std::get<1>(multiple_and_input);
+
+      if (multiple < 0) return matchFailure();
+
+      // Line input up with the next dimension in broadcasted_shape
+      // when broadcasting.
+      broadcast_dimensions.push_back(broadcasted_shape.size());
+      int64_t output_size = input_size * multiple;
+      if (input_size == 1 || multiple == 1) {
+        // Special case for when normal broadcasting will just work.
+        broadcasted_shape.push_back(output_size);
+      } else {
+        // Tiling will happen for this dimension during the ReshapeOp below.
+        broadcasted_shape.push_back(input_size);
+        broadcasted_shape.push_back(multiple);
+      }
+    }
+    Location loc = op.getLoc();
+    Type broadcasted_type =
+        rewriter.getTensorType(broadcasted_shape, element_type);
+    Type output_type = op.getType();
+
+    Value *result = rewriter.create<xla_hlo::BroadcastInDimOp>(
+        loc, broadcasted_type, op.input(),
+        GetI64ElementsAttr(broadcast_dimensions, &rewriter));
+
+    if (output_type != broadcasted_type) {
+      result = rewriter.create<xla_hlo::ReshapeOp>(loc, output_type, result);
+    }
+
+    rewriter.replaceOp(op, {result}, {op.multiples()});
+
+    return matchSuccess();
   }
 };
 
@@ -773,8 +843,8 @@ LogicalResult mlir::xla_hlo::legalizeTF(Operation *op) {
                   mlir::xla::ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
                   mlir::xla::ConvertSoftmaxOp<TF::SoftmaxOp, false>,
                   mlir::xla::ConvertStridedSliceOp, mlir::xla::ConvertMeanOp,
-                  mlir::xla::ConvertSumOp, mlir::xla::ConvertMaxOp>(
-      op->getContext());
+                  mlir::xla::ConvertSumOp, mlir::xla::ConvertMaxOp,
+                  mlir::xla::ConvertTileOp>(op->getContext());
 
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();

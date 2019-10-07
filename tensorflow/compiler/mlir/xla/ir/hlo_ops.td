@@ -180,6 +180,8 @@ def HLO_SubOp : HLO_BinaryElementwiseOp<"sub",
 
 def HLO_AndOp: HLO_BinaryElementwiseOp<"and", [Commutative, NoSideEffect]>, BASE_HLO_AndOp;
 
+def HLO_OrOp: HLO_BinaryElementwiseOp<"or", [Commutative, NoSideEffect]>, BASE_HLO_OrOp;
+
 //===----------------------------------------------------------------------===//
 // XLA control flow op definitions.
 //===----------------------------------------------------------------------===//

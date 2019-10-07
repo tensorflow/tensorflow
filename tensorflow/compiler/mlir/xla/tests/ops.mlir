@@ -58,7 +58,7 @@ func @broadcast_bad_sizes_rank(%arg0: tensor<3xi32>) -> tensor<1x2x3xi32> {
 // -----
 
 func @broadcast_bad_result_rank(%arg0: tensor<3xi32>) -> tensor<1x2x3xi32> {
-  // expected-error@+1 {{result rank (3) does not match operand rank (1) plus size of broadcast_sizes (3)}}
+  // expected-error@+1 {{result rank (3) does not match operand rank (1) plus size of broadcast_sizes (1)}}
   %0 = "xla_hlo.broadcast"(%arg0) {broadcast_sizes = dense<[2]> : tensor<1xi64>} : (tensor<3xi32>) -> tensor<1x2x3xi32>
   return %0 : tensor<1x2x3xi32>
 }
