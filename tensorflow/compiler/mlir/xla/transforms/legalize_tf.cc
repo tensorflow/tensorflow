@@ -668,7 +668,7 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
     // Input shape needs to be static to convert negative indices in TensorFlow
     // to absolute indices required by HLO.
     auto input_ty = op.input()->getType().template dyn_cast<RankedTensorType>();
-    if (!input_ty || !input_ty.hasStaticShape()) return this->matchFailure();
+    if (!input_ty) return this->matchFailure();
     ArrayRef<int64_t> input_shape = input_ty.getShape();
 
     DenseIntElementsAttr dimensions;
@@ -690,14 +690,11 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
     }
     SmallVector<int64_t, 4> reduced_shape;
     reduced_shape.reserve(input_shape.size());
-    int64_t divisor_count = 1;
     for (size_t i = 0; i < input_shape.size(); ++i) {
       if (!reduced_dimensions_bitmap[i]) {
         // If we are not reducing along dimension i.
         int64_t dim = input_shape[i];
         reduced_shape.push_back(dim);
-      } else {
-        divisor_count *= input_shape[i];
       }
     }
 
@@ -726,6 +723,15 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
 
     // The mean op needs to divide by the product of the reduced dimensions.
     if (std::is_same<OpTy, TF::MeanOp>::value) {
+      int64_t divisor_count = 1;
+      for (size_t i = 0; i < input_shape.size(); ++i) {
+        if (reduced_dimensions_bitmap[i]) {
+          if (TensorType::isDynamic(input_shape[i])) {
+            return this->matchFailure();
+          }
+          divisor_count *= input_shape[i];
+        }
+      }
       auto divisor =
           GetScalarForType(reduce_element_type, loc, divisor_count, &rewriter);
       result = rewriter.create<xla_hlo::DivOp>(
