@@ -57,6 +57,13 @@ An instance of this location allows for attaching a name to a child location.
 This can be useful for representing the locations of variable, or node,
 definitions.
 
+### Opaque Location
+
+An instance of this location essentially contains a pointer to some data
+structure that is external to MLIR and an optional location that can be used if
+the first one is not suitable. Since it contains an external structure, only the
+optional location is used during serialization.
+
 ### Unknown Location
 
 ``` {.ebnf}
