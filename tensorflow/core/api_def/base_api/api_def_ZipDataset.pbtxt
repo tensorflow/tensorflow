@@ -19,19 +19,11 @@ END
   }
   summary: "Creates a dataset that zips together `input_datasets`."
   description: <<END
-The resulting dataset will produce a stream of elements, where elements `k`
-contains the concatenation of the `k`th elements from each of the input
-datasets.
+The resulting dataset will produce a stream of elements, whose elements are 
+created by zipping corresponding elements from each of the input datasets.
 
 The stream will stop as soon as any one of the input datasets runs out 
-of elements, and noerror will be raised if the other datasets contain 
+of elements, and no error will be raised if the other datasets contain 
 additional data.
-
-`ZipDataset` invokes its input datasets serially, one record at a time.
-
-Most instances of this type of dataset come from the `zip()` method in
-`tf.data.DataSet`.  The `hoist_random_uniform`
-static optimization also creates instances of `ZipDataset` while rewriting
-stateful functions into stateless functions.
 END
 }
