@@ -113,7 +113,7 @@ bool IsCustomCallToDnnBatchNorm(const HloInstruction& hlo);
 // memory used by cudnn.  Callers shouldn't inspect scratch_memory, as its value
 // is not well-defined.
 //
-// CudnnConvRewriter lowers kConvolution HLOs to these custom calls.
+// GpuConvRewriter lowers kConvolution HLOs to these custom calls.
 // When it does so, it chooses algorithm -1 and 0 bytes of scratch space.  Later
 // on in the pipeline, CudnnConvAlgorithmChooser chooses an explicit
 // algorithm for each conv and sets the amount of scratch space needed.

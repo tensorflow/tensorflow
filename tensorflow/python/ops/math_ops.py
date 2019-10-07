@@ -1095,7 +1095,7 @@ def div(x, y, name=None):
 @deprecation.deprecated_endpoints("div_no_nan")
 @dispatch.add_dispatch_support
 def div_no_nan(x, y, name=None):
-  """Computes an unsafe divide which returns 0 if the y is zero.
+  """Computes a safe divide which returns 0 if the y is zero.
 
   Args:
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`.
@@ -1184,13 +1184,10 @@ floormod = gen_math_ops.floor_mod
 
 def _add_dispatch(x, y, name=None):
   """Dispatches to add for strings and add_v2 for all other types."""
-  if fwd_compat.forward_compatible(2019, 6, 25):
-    if x.dtype == dtypes.string:
-      return gen_math_ops.add(x, y, name=name)
-    else:
-      return gen_math_ops.add_v2(x, y, name=name)
-  else:
+  if x.dtype == dtypes.string:
     return gen_math_ops.add(x, y, name=name)
+  else:
+    return gen_math_ops.add_v2(x, y, name=name)
 
 
 def _mul_dispatch(x, y, name=None):
@@ -1283,12 +1280,12 @@ def equal(x, y, name=None):
   >>> x = tf.constant([2, 4])
   >>> y = tf.constant(2)
   >>> tf.math.equal(x, y)
-  <tf.Tensor: id=..., shape=(2,), dtype=bool, numpy=array([ True,  False])>
+  <tf.Tensor: shape=(2,), dtype=bool, numpy=array([ True,  False])>
 
   >>> x = tf.constant([2, 4])
   >>> y = tf.constant([2, 4])
   >>> tf.math.equal(x, y)
-  <tf.Tensor: id=..., shape=(2,), dtype=bool, numpy=array([ True,  True])>
+  <tf.Tensor: shape=(2,), dtype=bool, numpy=array([ True,  True])>
 
   Args:
     x: A `tf.Tensor` or `tf.SparseTensor` or `tf.IndexedSlices`.
@@ -1318,12 +1315,12 @@ def not_equal(x, y, name=None):
   >>> x = tf.constant([2, 4])
   >>> y = tf.constant(2)
   >>> tf.math.not_equal(x, y)
-  <tf.Tensor: id=..., shape=(2,), dtype=bool, numpy=array([False,  True])>
+  <tf.Tensor: shape=(2,), dtype=bool, numpy=array([False,  True])>
 
   >>> x = tf.constant([2, 4])
   >>> y = tf.constant([2, 4])
   >>> tf.math.not_equal(x, y)
-  <tf.Tensor: id=..., shape=(2,), dtype=bool, numpy=array([False,  False])>
+  <tf.Tensor: shape=(2,), dtype=bool, numpy=array([False,  False])>
 
   Args:
     x: A `tf.Tensor` or `tf.SparseTensor` or `tf.IndexedSlices`.
@@ -1341,6 +1338,8 @@ def not_equal(x, y, name=None):
 
 def tensor_equals(self, other):
   """Compares two tensors element-wise for equality."""
+  if other is None:
+    return False
   g = getattr(self, "graph", None)
   if (ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions() and
       (g is None or g._building_function)):  # pylint: disable=protected-access
@@ -1355,6 +1354,8 @@ def tensor_equals(self, other):
 
 def tensor_not_equals(self, other):
   """Compares two tensors element-wise for equality."""
+  if other is None:
+    return True
   if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():
     if fwd_compat.forward_compatible(2019, 9, 25):
       return gen_math_ops.not_equal(self, other, incompatible_shape_error=False)
@@ -2596,8 +2597,8 @@ def matmul(a,
   """Multiplies matrix `a` by matrix `b`, producing `a` * `b`.
 
   The inputs must, following any transpositions, be tensors of rank >= 2
-  where the inner 2 dimensions specify valid matrix multiplication arguments,
-  and any further outer dimensions match.
+  where the inner 2 dimensions specify valid matrix multiplication dimensions,
+  and any further outer dimensions specify matching batch size.
 
   Both matrices must be of the same type. The supported types are:
   `float16`, `float32`, `float64`, `int32`, `complex64`, `complex128`.
@@ -2612,62 +2613,60 @@ def matmul(a,
   This optimization is only available for plain matrices (rank-2 tensors) with
   datatypes `bfloat16` or `float32`.
 
-  For example:
+  A simple 2-D tensor matrix multiplication:
+  >>> a = tf.constant([1, 2, 3, 4, 5, 6], shape=[2, 3])
+  >>> a  # 2-D tensor
+  <tf.Tensor: shape=(2, 3), dtype=int32, numpy=
+  array([[1, 2, 3],
+         [4, 5, 6]], dtype=int32)>
+  >>> b = tf.constant([7, 8, 9, 10, 11, 12], shape=[3, 2])
+  >>> b  # 2-D tensor
+  <tf.Tensor: shape=(3, 2), dtype=int32, numpy=
+  array([[ 7,  8],
+         [ 9, 10],
+         [11, 12]], dtype=int32)>
+  >>> c = tf.matmul(a, b)
+  >>> c  # `a` * `b`
+  <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
+  array([[ 58,  64],
+         [139, 154]], dtype=int32)>
 
-  ```python
-  # 2-D tensor `a`
-  # [[1, 2, 3],
-  #  [4, 5, 6]]
-  a = tf.constant([1, 2, 3, 4, 5, 6], shape=[2, 3])
+  A batch matrix multiplication with batch shape [2]
+  >>> a = tf.constant(np.arange(1, 13, dtype=np.int32), shape=[2, 2, 3])
+  >>> a  # 3-D tensor
+  <tf.Tensor: shape=(2, 2, 3), dtype=int32, numpy=
+  array([[[ 1,  2,  3],
+          [ 4,  5,  6]],
+         [[ 7,  8,  9],
+          [10, 11, 12]]], dtype=int32)>
+  >>> b = tf.constant(np.arange(13, 25, dtype=np.int32), shape=[2, 3, 2])
+  >>> b  # 3-D tensor
+  <tf.Tensor: shape=(2, 3, 2), dtype=int32, numpy=
+  array([[[13, 14],
+          [15, 16],
+          [17, 18]],
+         [[19, 20],
+          [21, 22],
+          [23, 24]]], dtype=int32)>
+  >>> c = tf.matmul(a, b)
+  >>> c  # `a` * `b`
+  <tf.Tensor: shape=(2, 2, 2), dtype=int32, numpy=
+  array([[[ 94, 100],
+          [229, 244]],
+         [[508, 532],
+          [697, 730]]], dtype=int32)>
 
-  # 2-D tensor `b`
-  # [[ 7,  8],
-  #  [ 9, 10],
-  #  [11, 12]]
-  b = tf.constant([7, 8, 9, 10, 11, 12], shape=[3, 2])
-
-  # `a` * `b`
-  # [[ 58,  64],
-  #  [139, 154]]
-  c = tf.matmul(a, b)
-
-
-  # 3-D tensor `a`
-  # [[[ 1,  2,  3],
-  #   [ 4,  5,  6]],
-  #  [[ 7,  8,  9],
-  #   [10, 11, 12]]]
-  a = tf.constant(np.arange(1, 13, dtype=np.int32),
-                  shape=[2, 2, 3])
-
-  # 3-D tensor `b`
-  # [[[13, 14],
-  #   [15, 16],
-  #   [17, 18]],
-  #  [[19, 20],
-  #   [21, 22],
-  #   [23, 24]]]
-  b = tf.constant(np.arange(13, 25, dtype=np.int32),
-                  shape=[2, 3, 2])
-
-  # `a` * `b`
-  # [[[ 94, 100],
-  #   [229, 244]],
-  #  [[508, 532],
-  #   [697, 730]]]
-  c = tf.matmul(a, b)
-
-  # Since python >= 3.5 the @ operator is supported (see PEP 465).
-  # In TensorFlow, it simply calls the `tf.matmul()` function, so the
-  # following lines are equivalent:
-  d = a @ b @ [[10.], [11.]]
-  d = tf.matmul(tf.matmul(a, b), [[10.], [11.]])
-  ```
+  Since python >= 3.5 the @ operator is supported
+  (see [PEP 465](https://www.python.org/dev/peps/pep-0465/)). In TensorFlow,
+  it simply calls the `tf.matmul()` function, so the following lines are
+  equivalent:
+  >>> d = a @ b @ [[10], [11]]
+  >>> d = tf.matmul(tf.matmul(a, b), [[10], [11]])
 
   Args:
-    a: `Tensor` of type `float16`, `float32`, `float64`, `int32`, `complex64`,
-      `complex128` and rank > 1.
-    b: `Tensor` with same type and rank as `a`.
+    a: `tf.Tensor` of type `float16`, `float32`, `float64`, `int32`,
+      `complex64`, `complex128` and rank > 1.
+    b: `tf.Tensor` with same type and rank as `a`.
     transpose_a: If `True`, `a` is transposed before multiplication.
     transpose_b: If `True`, `b` is transposed before multiplication.
     adjoint_a: If `True`, `a` is conjugated and transposed before
@@ -2679,19 +2678,19 @@ def matmul(a,
     name: Name for the operation (optional).
 
   Returns:
-    A `Tensor` of the same type as `a` and `b` where each inner-most matrix is
-    the product of the corresponding matrices in `a` and `b`, e.g. if all
+    A `tf.Tensor` of the same type as `a` and `b` where each inner-most matrix
+    is the product of the corresponding matrices in `a` and `b`, e.g. if all
     transpose or adjoint attributes are `False`:
 
-    `output`[..., i, j] = sum_k (`a`[..., i, k] * `b`[..., k, j]),
-    for all indices i, j.
+    `output[..., i, j] = sum_k (a[..., i, k] * b[..., k, j])`,
+    for all indices `i`, `j`.
 
     Note: This is matrix product, not element-wise product.
 
 
   Raises:
-    ValueError: If transpose_a and adjoint_a, or transpose_b and adjoint_b
-      are both set to True.
+    ValueError: If `transpose_a` and `adjoint_a`, or `transpose_b` and
+      `adjoint_b` are both set to `True`.
   """
   with ops.name_scope(name, "MatMul", [a, b]) as name:
     if transpose_a and adjoint_a:
@@ -2712,16 +2711,9 @@ def matmul(a,
     a_shape = a._shape_tuple()  # pylint: disable=protected-access
     b_shape = b._shape_tuple()  # pylint: disable=protected-access
 
-    if fwd_compat.forward_compatible(2019, 4, 25):
-      output_may_have_non_empty_batch_shape = (
-          (a_shape is None or len(a_shape) > 2) or
-          (b_shape is None or len(b_shape) > 2))
-      batch_mat_mul_fn = gen_math_ops.batch_mat_mul_v2
-    else:
-      output_may_have_non_empty_batch_shape = (
-          (a_shape is None or len(a_shape) > 2) and
-          (b_shape is None or len(b_shape) > 2))
-      batch_mat_mul_fn = gen_math_ops.batch_mat_mul
+    output_may_have_non_empty_batch_shape = (
+        (a_shape is None or len(a_shape) > 2) or
+        (b_shape is None or len(b_shape) > 2))
 
     if (not a_is_sparse and
         not b_is_sparse) and output_may_have_non_empty_batch_shape:
@@ -2733,7 +2725,8 @@ def matmul(a,
       if transpose_b:
         b = conj(b)
         adjoint_b = True
-      return batch_mat_mul_fn(a, b, adj_x=adjoint_a, adj_y=adjoint_b, name=name)
+      return gen_math_ops.batch_mat_mul_v2(
+          a, b, adj_x=adjoint_a, adj_y=adjoint_b, name=name)
 
     # Neither matmul nor sparse_matmul support adjoint, so we conjugate
     # the matrix and use transpose instead. Conj() is a noop for real
@@ -3473,14 +3466,14 @@ def reduced_shape(input_shape, axes):
   Returns:
     A 1-D Tensor, the output shape as if keepdims were set to True.
   """
-  # Example:
-  # cast needed for SparseTensor reductions
   if context.executing_eagerly():
     input_shape = input_shape.numpy()
     axes = axes.numpy()
     input_shape[axes] = 1
     return input_shape
 
+  # Example:
+  # cast needed for SparseTensor reductions
   input_shape = cast(input_shape, dtypes.int32)  # [2, 3, 5, 7]
   axes = cast(axes, dtypes.int32)  # [1, 2]
 

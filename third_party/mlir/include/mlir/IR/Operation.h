@@ -52,8 +52,8 @@ class Operation final
 public:
   /// Create a new Operation with the specific fields.
   static Operation *create(Location location, OperationName name,
-                           ArrayRef<Value *> operands,
                            ArrayRef<Type> resultTypes,
+                           ArrayRef<Value *> operands,
                            ArrayRef<NamedAttribute> attributes,
                            ArrayRef<Block *> successors, unsigned numRegions,
                            bool resizableOperandList);
@@ -61,8 +61,8 @@ public:
   /// Overload of create that takes an existing NamedAttributeList to avoid
   /// unnecessarily uniquing a list of attributes.
   static Operation *create(Location location, OperationName name,
-                           ArrayRef<Value *> operands,
                            ArrayRef<Type> resultTypes,
+                           ArrayRef<Value *> operands,
                            const NamedAttributeList &attributes,
                            ArrayRef<Block *> successors, unsigned numRegions,
                            bool resizableOperandList);
@@ -112,7 +112,7 @@ public:
   /// Return the context this operation is associated with.
   MLIRContext *getContext();
 
-  /// Return the dialact this operation is associated with, or nullptr if the
+  /// Return the dialect this operation is associated with, or nullptr if the
   /// associated dialect is not registered.
   Dialect *getDialect();
 
@@ -563,13 +563,13 @@ private:
   }
 
   /// Provide a 'getParent' method for ilist_node_with_parent methods.
-  /// We mark it as const function because ilist_node_with_parent specifically
+  /// We mark it as a const function because ilist_node_with_parent specifically
   /// requires a 'getParent() const' method. Once ilist_node removes this
   /// constraint, we should drop the const to fit the rest of the MLIR const
   /// model.
   Block *getParent() const { return block; }
 
-  /// The operation block that containts this operation.
+  /// The operation block that contains this operation.
   Block *block = nullptr;
 
   /// This holds information about the source location the operation was defined
@@ -637,6 +637,9 @@ class OperandTypeIterator final
 
 public:
   using reference = Type;
+
+  /// Provide a const deference method.
+  Type operator*() const { return unwrap(*I); }
 
   /// Initializes the operand type iterator to the specified operand iterator.
   OperandTypeIterator(OperandIterator it)
@@ -718,7 +721,7 @@ private:
 
   /// The operation whose uses are being iterated over.
   Operation *op;
-  /// The result of op whoses uses are being iterated over.
+  /// The result of op who's uses are being iterated over.
   Operation::result_iterator res;
   /// The use of the result.
   Value::use_iterator use;

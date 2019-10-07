@@ -83,6 +83,12 @@ void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
                    n_output, output_zp, scratch, output);
 }
 
+void MatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,
+                                    int32_t n_row, int32_t n_col,
+                                    int32_t* output) {
+  PortableMatrixScalarMultiplyAccumulate(matrix, scalar, n_row, n_col, output);
+}
+
 void ApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
                     const int32_t* bias, int32_t layer_norm_scale_a,
                     int32_t layer_norm_scale_b, int32_t variance_limit,

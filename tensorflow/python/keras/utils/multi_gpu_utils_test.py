@@ -21,6 +21,7 @@ import numpy as np
 
 from tensorflow.python import data
 from tensorflow.python import keras
+from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.platform import test
 
 
@@ -149,7 +150,7 @@ class TestMultiGPUModel(test.TestCase):
       x_train = np.random.randint(0, 255, input_shape)
       y_train = np.random.randint(0, num_classes, (input_shape[0],))
 
-      y_train = keras.utils.to_categorical(y_train, num_classes)
+      y_train = np_utils.to_categorical(y_train, num_classes)
 
       x_train = x_train.astype('float32')
       y_train = y_train.astype('float32')

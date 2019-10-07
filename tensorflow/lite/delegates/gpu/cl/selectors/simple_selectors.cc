@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/apply_mask.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/concat_xy.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/concat_z.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/lstm.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/max_unpooling.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/multiply_add.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/padding.h"
@@ -51,6 +52,12 @@ void SelectApplyMask(const OperationDef& op_def, const BHWC& src_shape,
                      std::unique_ptr<GPUOperation>* ptr) {
   ApplyMask operation = CreateApplyMask(op_def, src_shape, mask_shape);
   *ptr = absl::make_unique<ApplyMask>(std::move(operation));
+}
+
+void SelectLSTM(const OperationDef& op_def,
+                std::unique_ptr<GPUOperation>* ptr) {
+  LSTM operation = CreateLSTM(op_def);
+  *ptr = absl::make_unique<LSTM>(std::move(operation));
 }
 
 void SelectReLU(const CreationContext& creation_context,

@@ -266,6 +266,17 @@ class BASE_HLO_AndOp {
   }];
 }
 
+class BASE_HLO_OrOp {
+  string summary = "Logical or";
+
+  string description = [{
+    Returns `lhs \/ rhs` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
 class BASE_HLO_ReduceOp {
   string summary = "Reduce operator";
 

@@ -118,7 +118,8 @@ std::string GetSliceCode(const SliceAttributes& attr) {
     }
   }
   code << R"(
-      int linear_index = (gid.z * params.dst_size.y + int(gid.y)) * params.dst_size.x + int(gid.x);
+      int linear_index = (gid.z * params.dst_size.y + int(gid.y)) *
+        params.dst_size.x + int(gid.x);
       $$2
       dst_buffer[linear_index] = value;
     })";

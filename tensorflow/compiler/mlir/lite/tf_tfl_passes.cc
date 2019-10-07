@@ -32,14 +32,6 @@ CreateTFExecutorToControlDialectConversion();
 
 namespace tensorflow {
 
-bool ShouldRunQuantizePasses(mlir::ModuleOp m) {
-  if (mlir::FuncOp main_fn = m.lookupSymbol<mlir::FuncOp>("main")) {
-    return main_fn.getAttrOfType<mlir::UnitAttr>("tf.quantize") !=
-           mlir::Attribute();
-  }
-  return false;
-}
-
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
                                 mlir::PassManager* pass_manager) {
   pass_manager->addPass(mlir::tf_executor::CreateSwitchFoldPass());
@@ -85,9 +77,9 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(mlir::createCanonicalizerPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeTFPass());
     pass_manager->addPass(mlir::TFL::CreateOptimizePass());
-    if (pass_config.run_quantize) {
-      pass_manager->addPass(mlir::TFL::CreatePrepareQuantizePass(
-          /*quantize_sign=*/false));
+    if (pass_config.quant_specs.RunPropagationAndRewriteQuantizationPasses()) {
+      pass_manager->addPass(
+          mlir::TFL::CreatePrepareQuantizePass(pass_config.quant_specs));
       pass_manager->addPass(mlir::TFL::CreateQuantizePass());
       pass_manager->addPass(mlir::TFL::CreatePostQuantizePass(
           pass_config.emit_quant_adaptor_ops));

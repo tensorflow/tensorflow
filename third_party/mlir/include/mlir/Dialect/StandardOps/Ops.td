@@ -82,7 +82,7 @@ class ArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
   let results = (outs AnyType);
 
   let parser = [{
-    return impl::parseBinaryOp(parser, result);
+    return impl::parseOneResultSameOperandTypeOp(parser, result);
   }];
 
   let printer = [{
@@ -300,7 +300,8 @@ def CallIndirectOp : Std_Op<"call_indirect", [CallOpInterface]> {
   let hasCanonicalizer = 1;
 }
 
-def CmpIOp : Std_Op<"cmpi", [NoSideEffect, SameTypeOperands, SameOperandsAndResultShape]> {
+def CmpIOp : Std_Op<"cmpi",
+    [NoSideEffect, SameTypeOperands, SameOperandsAndResultShape]> {
   let summary = "integer comparison operation";
   let description = [{
     The "cmpi" operation compares its two operands according to the integer
@@ -345,7 +346,8 @@ def CmpIOp : Std_Op<"cmpi", [NoSideEffect, SameTypeOperands, SameOperandsAndResu
   let hasFolder = 1;
 }
 
-def CmpFOp : Std_Op<"cmpf", [NoSideEffect, SameTypeOperands, SameOperandsAndResultShape]> {
+def CmpFOp : Std_Op<"cmpf",
+    [NoSideEffect, SameTypeOperands, SameOperandsAndResultShape]> {
   let summary = "floating-point comparison operation";
   let description = [{
     The "cmpf" operation compares its two operands according to the float
@@ -431,12 +433,12 @@ def CondBranchOp : Std_Op<"cond_br", [Terminator]> {
 
     /// Return the destination if the condition is true.
     Block *getTrueDest() {
-      return getOperation()->getSuccessor(trueIndex);
+      return getSuccessor(trueIndex);
     }
 
     /// Return the destination if the condition is false.
     Block *getFalseDest() {
-      return getOperation()->getSuccessor(falseIndex);
+      return getSuccessor(falseIndex);
     }
 
     // Accessors for operands to the 'true' destination.
@@ -461,7 +463,7 @@ def CondBranchOp : Std_Op<"cond_br", [Terminator]> {
     }
 
     unsigned getNumTrueOperands()  {
-      return getOperation()->getNumSuccessorOperands(trueIndex);
+      return getNumSuccessorOperands(trueIndex);
     }
 
     /// Erase the operand at 'index' from the true operand list.
@@ -488,7 +490,7 @@ def CondBranchOp : Std_Op<"cond_br", [Terminator]> {
     }
 
     unsigned getNumFalseOperands() {
-      return getOperation()->getNumSuccessorOperands(falseIndex);
+      return getNumSuccessorOperands(falseIndex);
     }
 
     /// Erase the operand at 'index' from the false operand list.
@@ -624,8 +626,7 @@ def ExtractElementOp : Std_Op<"extract_element", [NoSideEffect]> {
     Value *getAggregate() { return getOperand(0); }
 
     operand_range getIndices() {
-      return {getOperation()->operand_begin() + 1,
-              getOperation()->operand_end()};
+      return {operand_begin() + 1, operand_end()};
     }
   }];
 
@@ -656,6 +657,41 @@ def SIToFPOp : CastOp<"sitofp">, Arguments<(ins AnyType:$in)> {
     floating-point value. If the value cannot be exactly represented, it is
     rounded using the default rounding mode. Only scalars are currently
     supported.
+  }];
+
+  let extraClassDeclaration = [{
+    /// Return true if `a` and `b` are valid operand and result pairs for
+    /// the operation.
+    static bool areCastCompatible(Type a, Type b);
+  }];
+
+  let hasFolder = 0;
+}
+
+def FPExtOp : CastOp<"fpext">, Arguments<(ins AnyType:$in)> {
+  let summary = "cast from floating-point to wider floating-point";
+  let description = [{
+    Cast a floating-point value to a larger floating-point-typed value.
+    The destination type must to be strictly wider than the source type.
+    Only scalars are currently supported.
+  }];
+
+  let extraClassDeclaration = [{
+    /// Return true if `a` and `b` are valid operand and result pairs for
+    /// the operation.
+    static bool areCastCompatible(Type a, Type b);
+  }];
+
+  let hasFolder = 0;
+}
+
+def FPTruncOp : CastOp<"fptrunc">, Arguments<(ins AnyType:$in)> {
+  let summary = "cast from floating-point to narrower floating-point";
+  let description = [{
+    Truncate a floating-point value to a smaller floating-point-typed value.
+    The destination type must be strictly narrower than the source type.
+    If the value cannot be exactly represented, it is rounded using the default
+    rounding mode. Only scalars are currently supported.
   }];
 
   let extraClassDeclaration = [{
@@ -698,9 +734,7 @@ def LoadOp : Std_Op<"load"> {
       return getMemRef()->getType().cast<MemRefType>();
     }
 
-    operand_range getIndices() {
-      return {getOperation()->operand_begin() + 1, getOperation()->operand_end()};
-    }
+    operand_range getIndices() { return {operand_begin() + 1, operand_end()}; }
   }];
 
   let hasCanonicalizer = 1;
@@ -843,7 +877,8 @@ def SelectOp : Std_Op<"select", [NoSideEffect, SameOperandsAndResultShape]> {
   let hasFolder = 1;
 }
 
-def SignExtendIOp : Std_Op<"sexti", [NoSideEffect, SameOperandsAndResultShape]> {
+def SignExtendIOp : Std_Op<"sexti",
+    [NoSideEffect, SameOperandsAndResultShape]> {
   let summary = "integer sign extension operation";
   let description = [{
     The integer sign extension operation takes an integer input of
@@ -930,7 +965,8 @@ def StoreOp : Std_Op<"store"> {
       store %v, %A[%i, %j] : memref<4x128xf32, (d0, d1) -> (d0, d1), 0>
   }];
 
-  let arguments = (ins AnyType:$value, AnyMemRef:$memref, Variadic<Index>:$indices);
+  let arguments = (ins AnyType:$value, AnyMemRef:$memref,
+                   Variadic<Index>:$indices);
 
   let builders = [OpBuilder<
     "Builder *, OperationState &result, Value *valueToStore, Value *memref", [{
@@ -948,7 +984,7 @@ def StoreOp : Std_Op<"store"> {
       }
 
       operand_range getIndices() {
-        return {getOperation()->operand_begin() + 2, getOperation()->operand_end()};
+        return {operand_begin() + 2, operand_end()};
       }
   }];
 

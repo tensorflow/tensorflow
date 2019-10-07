@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -25,9 +26,6 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
-
-class ShapeRefiner;
-class ShapeRefinerTest;
 
 namespace grappler {
 class GraphProperties;
@@ -71,8 +69,6 @@ class DimensionHandle {
   friend class InferenceContext;
   friend class ShapeInferenceTest;
   friend class ShapeInferenceTestutil;
-  friend class ::tensorflow::ShapeRefinerTest;
-  friend class ShapeManager;
   friend class ::tensorflow::grappler::GraphProperties;
   friend class ::tensorflow::grappler::SymbolicShapeManager;
 
@@ -90,7 +86,6 @@ class Shape {
   const std::vector<DimensionHandle> dims_;
 
   friend class InferenceContext;
-  friend class ShapeManager;
   friend class ::tensorflow::grappler::SymbolicShapeManager;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Shape);
@@ -112,8 +107,6 @@ class ShapeHandle {
   friend class InferenceContext;
   friend class ShapeInferenceTest;
   friend class ShapeInferenceTestutil;
-  friend class ::tensorflow::ShapeRefinerTest;
-  friend class ShapeManager;
   friend class ::tensorflow::grappler::SymbolicShapeManager;
 
   // Intentionally copyable.
@@ -177,26 +170,6 @@ class InferenceContext {
                    const std::vector<ShapeHandle>& input_tensors_as_shapes,
                    std::vector<std::unique_ptr<std::vector<ShapeAndType>>>
                        input_handle_shapes_and_types);
-
-  // <input_tensors> is NULL-padded to be the same size as <input_shapes>.
-  //
-  // Elements of <input_tensors_as_shapes> are used for when a shape
-  // function makes a call to MakeShapeFromShapeTensor; in particular, when
-  // the input_tensors[i] is nullptr but the shape represented by it is
-  // partially known from analysis of the graph. <input_tensors_as_shapes>
-  // can have fewer elements than <input_shapes>. Values of
-  // <input_tensors_as_shapes> do not need to outlive the context.
-  //
-  // REQUIRES: <node_def> is not NULL, and must outlive the
-  // InferenceContext.
-  InferenceContext(
-      int graph_def_version, const NodeDef* node_def, const OpDef& op_def,
-      const std::vector<TensorShapeProto>& input_shapes,
-      const std::vector<const Tensor*>& input_tensors,
-      const std::vector<TensorShapeProto>& input_tensors_as_shapes,
-      const std::vector<
-          std::unique_ptr<std::vector<std::pair<TensorShapeProto, DataType>>>>&
-          input_handle_shapes_and_types);
 
   // <input_tensors> is NULL-padded to be the same size as <input_shapes>.
   //
@@ -335,8 +308,6 @@ class InferenceContext {
 
   AttrSlice attrs() const { return AttrSlice(*node_def_); }
 
-  string op() const;
-
   // idx can be negative for an offset from end of dimensions.
   // idx must be in the range [-1 * s.rank, s.rank).
   DimensionHandle Dim(ShapeHandle s, int64 idx) {
@@ -355,7 +326,6 @@ class InferenceContext {
   }
 
   static int32 Rank(ShapeHandle s) {
-    DCHECK(s.IsSet());
     return s.IsSet() ? s->rank_ : kUnknownRank;
   }
   static bool RankKnown(ShapeHandle s) {
@@ -604,8 +574,8 @@ class InferenceContext {
 
   void set_input_handle_shapes_and_types(
       int idx, const std::vector<ShapeAndType>& shapes_and_types) {
-    input_handle_shapes_and_types_[idx].reset(
-        new std::vector<ShapeAndType>(shapes_and_types));
+    input_handle_shapes_and_types_[idx] =
+        absl::make_unique<std::vector<ShapeAndType>>(shapes_and_types);
   }
 
   // Returns the output handle shapes and types, for the resource tensor output
@@ -679,9 +649,6 @@ class InferenceContext {
   };
 
   friend class ::tensorflow::grappler::GraphProperties;
-
-  // Friend for user-defined function shape inference purposes.
-  friend class ::tensorflow::ShapeRefiner;
 
   friend class ShapeInferenceTest;      // For testing Relax functions.
   friend class ShapeInferenceTestutil;  // For testing shapes.

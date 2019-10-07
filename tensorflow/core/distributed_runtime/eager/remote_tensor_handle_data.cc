@@ -51,8 +51,8 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
 
   VLOG(3) << "Sending request to delete " << request->DebugString();
   std::unique_ptr<EagerNode> node(
-      absl::make_unique<eager::DestroyTensorHandleNode>(std::move(request),
-                                                        eager_client, ready));
+      absl::make_unique<eager::DestroyTensorHandleNode>(std::move(request), ctx,
+                                                        remote_task, ready));
   auto& executor = ctx->Executor();
   if (executor.Async()) {
     Status status = executor.AddOrExecute(std::move(node));

@@ -308,12 +308,7 @@ namespace {
 static Status WrappedTensorDeviceCopy(
     const Tensor& from, Tensor* to,
     const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy) {
-  if (from.dtype() == DT_VARIANT) {
-    // TODO(b/116349787): Implement support for nested variants.
-    return errors::Unimplemented(
-        "Support for copying nested variants to device has not yet been "
-        "implemented.");
-  } else if (DMAHelper::CanUseDMA(&from)) {
+  if (DMAHelper::CanUseDMA(&from)) {
     TF_RETURN_IF_ERROR(copy(from, to));
   } else {
     *to = from;

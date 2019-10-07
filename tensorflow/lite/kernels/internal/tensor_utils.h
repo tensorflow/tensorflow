@@ -169,6 +169,23 @@ void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
                                          int32_t n_output, int32_t output_zp,
                                          int32_t* scratch, int8_t* output);
 
+// Multiplies a matrix with a scalar and reduce the result on each row to a
+// scalar.
+// Parameters:
+//     - matrix: matrix of size n_row * n_col
+//     - scalar: the scalar that is multiplied to each element in the matrix
+//     - n_row:  the row count of the matrix
+//     - n_col:  the column count of the matrix
+//     - output: the 32bit output
+// Note: We do not need saturation because the int8 * int8 is safe from overflow
+// in (2^31-1) / (2^14) = 131072, which is bigger than the n_row. Non-zero
+// initial output value is not exceiptionally large.
+//
+// TODO(b/142062560): optimize this.
+void MatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,
+                                    int32_t n_row, int32_t n_col,
+                                    int32_t* output);
+
 // Apply Layer Normalization (https://arxiv.org/abs/1607.06450) to a Quantized
 // vector.
 // Parameters:
@@ -178,7 +195,7 @@ void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
 //     - layer_norm_scale_a: multiplier for scale factor.
 //     - layer_norm_scale_b: shift for scale factor.
 //     - variance_limit: the guard to make sure the inverse does not overflow.
-//     - n_batch: the number of batch.
+//     - n_batch: the number of batches.
 //     - n_input: the size for input and output.
 //     - output:  the 16 bit output
 void ApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
@@ -189,7 +206,7 @@ void ApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
 // Apply Sigmoid to a quantized vector.
 // Parameters:
 //     - input: batch vector of size n_batch * n_input; 16 bit.
-//     - n_batch: the number of batch.
+//     - n_batch: the number of batches.
 //     - n_input: the size for input and output.
 //     - output:  the 16 bit output
 // The input is in Q3.12 format and the output is in Q0.15 format.
@@ -199,7 +216,7 @@ void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
 // Apply Tanh to a quantized vector.
 // Parameters:
 //     - input: batch vector of size n_batch * n_input; 16 bit.
-//     - n_batch: the number of batch.
+//     - n_batch: the number of batches.
 //     - n_input: the size for input and output.
 //     - output:  the 16 bit output
 // The input is in Q0.15 format and the output is in Q0.15 format.
@@ -209,7 +226,7 @@ void ApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
 // Apply Tanh to a quantized vector.
 // Parameters:
 //     - input: batch vector of size n_batch * n_input; 16 bit.
-//     - n_batch: the number of batch.
+//     - n_batch: the number of batches.
 //     - n_input: the size for input and output.
 //     - output:  the 16 bit output
 // The input is in Q3.12 format and the output is in Q0.15 format.
@@ -219,7 +236,7 @@ void ApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
 // Apply Tanh to a quantized vector.
 // Parameters:
 //     - input: batch vector of size n_batch * n_input; 16 bit.
-//     - n_batch: the number of batch.
+//     - n_batch: the number of batches.
 //     - n_input: the size for input and output.
 //     - output:  the 16 bit output
 // The input is in Q4.11 format and the output is in Q0.15 format.
@@ -230,7 +247,7 @@ void ApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
 // Parameters:
 //     - input_1: batch vector of size n_batch * n_input; 16 bit.
 //     - input_2: batch vector of size n_batch * n_input; 16 bit.
-//     - n_batch: the number of batch.
+//     - n_batch: the number of batches.
 //     - n_input: the size for input and output.
 //     - shift:   the shift needed to produce the output.
 //     - output:  the 16 bit output of size n_batch * n_input.
@@ -242,7 +259,7 @@ void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
 // Parameters:
 //     - input_1: batch vector of size n_batch * n_input; 16 bit.
 //     - input_2: batch vector of size n_batch * n_input; 16 bit.
-//     - n_batch: the number of batch.
+//     - n_batch: the number of batches.
 //     - n_input: the size for input and output.
 //     - shift:   the shift needed to produce the output.
 //     - output:  the 8 bit output of size n_batch * n_input.
@@ -250,16 +267,49 @@ void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
 void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
               int n_input, int shift, int8_t* output);
 
+// Element-wise multiplication of two quantized vectors with rescaling.
+// Parameters:
+//     - input_1:    batch vector of size n_batch * n_input; 16 bit.
+//     - input_2:    batch vector of size n_batch * n_input; 16 bit.
+//     - multiplier: the multiplier part of scale.
+//     - shift:      the shift part of scale.
+//     - n_batch:    the number of batches.
+//     - n_input:    the size for input and output.
+//     - output:     the 8 bit output of size n_batch * n_input.
+//     - output_zp:  the zero point of output.
+// Output does not need to be initialized.
+// Multiplier ("m") and shift ("s") are connected to scale ("s") with s = m *
+// 2^(s - 31).
 void CwiseMul(const int16_t* input_1, const int16_t* input_2,
               int32_t multiplier, int32_t shift, int32_t n_batch,
               int32_t n_input, int32_t output_zp, int8_t* output);
 
+// Element-wise saturating addition of two quantized vectors without rescaling.
+// Parameters:
+//     - input_1:    batch vector of size n_batch * n_input; 16 bit.
+//     - input_2:    batch vector of size n_batch * n_input; 16 bit.
+//     - n_batch:    the number of batches.
+//     - n_input:    the size for input and output.
+//     - output:     the 8 bit output of size n_batch * n_input.
+// Output does not need to be initialized.
 void CwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
               int n_input, int16_t* output);
 
+// Element-wise in-place clipping of a quantized vector.
+// Parameters:
+//     - input:          batch vector of size n_batch * n_input; 16 bit.
+//     - clipping_value: the value used for clipping.
+//     - n_batch:        the number of batches.
+//     - n_input:        the size for input and output.
 void CwiseClipping(int16_t* input, const int16_t clipping_value,
                    int32_t n_batch, int32_t n_input);
 
+// Element-wise in-place clipping of a quantized vector.
+// Parameters:
+//     - input:          batch vector of size n_batch * n_input; 8 bit.
+//     - clipping_value: the value used for clipping.
+//     - n_batch:        the number of batches.
+//     - n_input:        the size for input and output.
 void CwiseClipping(int8_t* input, const int8_t clipping_value, int32_t n_batch,
                    int32_t n_input);
 

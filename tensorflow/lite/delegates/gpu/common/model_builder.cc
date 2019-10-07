@@ -95,13 +95,12 @@ Status CreateVectorCopyData<float>(const TfLiteTensor& tensor,
                                    float* tensor_data) {
   switch (tensor.type) {
     case kTfLiteFloat32:
-      std::memcpy(tensor_data, tensor.data.uint8, tensor.bytes);
+      std::memcpy(tensor_data, tensor.data.f, tensor.bytes);
       break;
     case kTfLiteFloat16:
       ConvertFloat16ToFloat32(
           NumElements(&tensor),
-          reinterpret_cast<uint16_t const*>(tensor.data.raw_const),
-          tensor_data);
+          reinterpret_cast<uint16_t const*>(tensor.data.f16), tensor_data);
       break;
     default:
       return InvalidArgumentError("Unsupported data type for float32 tensor");

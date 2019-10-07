@@ -204,7 +204,7 @@ def _SumGrad(op, grad):
 
   input_shape = array_ops.shape(op.inputs[0])
 
-  if compat.forward_compatible(2019, 9, 23):
+  if compat.forward_compatible(2019, 10, 23):
     if not op.get_attr("keep_dims"):
       with ops.colocate_with(input_shape):
         # TODO(apassos) remove this once device placement for eager ops makes
@@ -802,6 +802,24 @@ def _ErfcGrad(op, grad):
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
     return grad * minus_two_over_root_pi * math_ops.exp(-math_ops.square(x))
+
+
+@ops.RegisterGradient("Erfinv")
+def _ErfinvGrad(op, grad):
+  """Returns grad * sqrt(pi) / 2 * exp(erfinv(x)**2)."""
+  root_pi_over_two = constant_op.constant(np.sqrt(np.pi) / 2, dtype=grad.dtype)
+  with ops.control_dependencies([grad]):
+    return grad * root_pi_over_two * math_ops.exp(
+        math_ops.square(op.outputs[0]))
+
+
+@ops.RegisterGradient("Ndtri")
+def _NdtriGrad(op, grad):
+  """Returns grad * sqrt(2 * pi) * exp(ndtri(x)**2 / 2)."""
+  root_two_pi = constant_op.constant(np.sqrt(2 * np.pi), dtype=grad.dtype)
+  with ops.control_dependencies([grad]):
+    return grad * root_two_pi * math_ops.exp(
+        math_ops.square(op.outputs[0]) / 2.)
 
 
 @ops.RegisterGradient("Lgamma")

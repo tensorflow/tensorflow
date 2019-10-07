@@ -374,8 +374,6 @@ def assert_node_attribute_lines(tst,
 
       tst.assertEqual("", next(line_iter))
 
-    tst.assertItemsEqual(attr_key_val_pairs, kv_pairs)
-
   if num_dumped_tensors is not None:
     tst.assertEqual("%d dumped tensor(s):" % num_dumped_tensors,
                     next(line_iter))

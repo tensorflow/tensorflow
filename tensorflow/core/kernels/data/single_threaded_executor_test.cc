@@ -67,7 +67,7 @@ class ExecutorTest : public ::testing::Test {
       DeleteNonCachedKernel(kernel);
     };
     delete exec_;
-    TF_CHECK_OK(NewSingleThreadedExecutor(params, std::move(graph), &exec_));
+    TF_CHECK_OK(NewSingleThreadedExecutor(params, *graph, &exec_));
     runner_ = [](std::function<void()> fn) { fn(); };
     rendez_ = NewLocalRendezvous();
   }
@@ -139,7 +139,7 @@ Rendezvous::ParsedKey Key(const string& sender, const uint64 incarnation,
 
 TEST_F(ExecutorTest, SimpleAdd) {
   // c = a + b
-  std::unique_ptr<Graph> g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto g = absl::make_unique<Graph>(OpRegistry::Global());
   auto in0 = test::graph::Arg(g.get(), 0, DT_FLOAT);
   auto in1 = test::graph::Arg(g.get(), 0, DT_FLOAT);
   auto tmp = test::graph::Add(g.get(), in0, in1);
@@ -163,7 +163,7 @@ TEST_F(ExecutorTest, SelfAdd) {
   //
   // b <- v10
   // All nodes are executed by one thread.
-  std::unique_ptr<Graph> g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto g = absl::make_unique<Graph>(OpRegistry::Global());
   auto v = test::graph::Arg(g.get(), 0, DT_FLOAT);
   const int N = 10;
   for (int i = 1; i <= N; ++i) {
@@ -219,7 +219,7 @@ void BuildTree(int N, Graph* g) {
 }
 
 TEST_F(ExecutorTest, RandomTree) {
-  std::unique_ptr<Graph> g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto g = absl::make_unique<Graph>(OpRegistry::Global());
   BuildTree(4096, g.get());
   Create(std::move(g));
   FunctionCallFrame call_frame({DT_FLOAT}, {DT_FLOAT});
@@ -231,7 +231,7 @@ TEST_F(ExecutorTest, RandomTree) {
 }
 
 TEST_F(ExecutorTest, OpError) {
-  std::unique_ptr<Graph> g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto g = absl::make_unique<Graph>(OpRegistry::Global());
   auto zero = test::graph::Constant(g.get(), V(0.0));
   auto inf = test::graph::Unary(g.get(), "Reciprocal", zero);
   auto check = test::graph::CheckNumerics(g.get(), inf, "message");
@@ -258,8 +258,10 @@ static void BM_executor(int iters, int width, int depth) {
     ready_nodes.push_back(test::graph::NoOp(g, {}));
     ++cur;
   }
+  std::random_device random_device;
+  std::mt19937 rng(random_device());
   for (int i = 0; i < depth; ++i) {
-    std::random_shuffle(ready_nodes.begin(), ready_nodes.end());
+    std::shuffle(ready_nodes.begin(), ready_nodes.end(), rng);
     r = 1 + rand.Rand32() % (ready_nodes.size());
     std::vector<Node*> control_inputs;
     for (int j = 0; j < r; ++j) {

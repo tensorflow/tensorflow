@@ -28,14 +28,14 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
-using ::tflite::gpu::SliceAttributes;
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::DataType;
 using ::tflite::gpu::HWC;
+using ::tflite::gpu::OperationType;
+using ::tflite::gpu::SliceAttributes;
+using ::tflite::gpu::TensorRef;
 using ::tflite::gpu::metal::CompareVectors;
 using ::tflite::gpu::metal::SingleOpModel;
-using ::tflite::gpu::TensorRef;
-using ::tflite::gpu::OperationType;
 
 @interface SliceTest : XCTestCase
 @end
@@ -61,12 +61,131 @@ using ::tflite::gpu::OperationType;
   attr.ends = HWC(1, 2, 2);
   attr.strides = HWC(1, 1, 1);
 
-  SingleOpModel model({ToString(OperationType::SLICE), attr}, {input},
-                      {output});
+  SingleOpModel model({ToString(OperationType::SLICE), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4}));
   auto status = model.Invoke();
   XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
   status = CompareVectors({1, 2, 3, 4}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+}
+
+- (void)testSliceNoStrides {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 1, 2, 2);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 1;
+  output.shape = BHWC(1, 1, 2, 1);
+
+  SliceAttributes attr;
+  attr.starts = HWC(0, 0, 0);
+  attr.ends = HWC(1, 2, 1);
+  attr.strides = HWC(1, 1, 1);
+
+  SingleOpModel model({ToString(OperationType::SLICE), attr}, {input}, {output});
+  XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  status = CompareVectors({1, 3}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+}
+
+- (void)testSliceNoStridesStartOffset {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 1, 2, 2);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 1;
+  output.shape = BHWC(1, 1, 1, 2);
+
+  SliceAttributes attr;
+  attr.starts = HWC(0, 1, 0);
+  attr.ends = HWC(1, 2, 2);
+  attr.strides = HWC(1, 1, 1);
+
+  SingleOpModel model({ToString(OperationType::SLICE), attr}, {input}, {output});
+  XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  status = CompareVectors({3, 4}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+}
+
+- (void)testSliceStridesByHeight {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 4, 1, 1);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 1;
+  output.shape = BHWC(1, 2, 1, 1);
+
+  SliceAttributes attr;
+  attr.starts = HWC(0, 0, 0);
+  attr.ends = HWC(4, 1, 1);
+  attr.strides = HWC(2, 1, 1);
+
+  SingleOpModel model({ToString(OperationType::SLICE), attr}, {input}, {output});
+  XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  status = CompareVectors({1, 3}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+}
+
+- (void)testSliceStridesByWidth {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 1, 4, 1);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 1;
+  output.shape = BHWC(1, 1, 2, 1);
+
+  SliceAttributes attr;
+  attr.starts = HWC(0, 1, 0);
+  attr.ends = HWC(1, 4, 1);
+  attr.strides = HWC(1, 2, 1);
+
+  SingleOpModel model({ToString(OperationType::SLICE), attr}, {input}, {output});
+  XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  status = CompareVectors({2, 4}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+}
+
+- (void)testSliceStridesByChannels {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 1, 1, 4);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 1;
+  output.shape = BHWC(1, 1, 1, 2);
+
+  SliceAttributes attr;
+  attr.starts = HWC(0, 0, 1);
+  attr.ends = HWC(1, 1, 4);
+  attr.strides = HWC(1, 1, 2);
+
+  SingleOpModel model({ToString(OperationType::SLICE), attr}, {input}, {output});
+  XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  status = CompareVectors({2, 4}, model.GetOutput(0), 1e-6f);
   XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
 }
 

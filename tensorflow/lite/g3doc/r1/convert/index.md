@@ -6,7 +6,7 @@ they can be used by the TensorFlow Lite interpreter.
 
 Note: This page contains documentation on the converter API for TensorFlow 1.x.
 The API for TensorFlow 2.0 is available
-[here](https://www.tensorflow.org/lite/r2/convert/).
+[here](https://www.tensorflow.org/lite/convert/).
 
 ## FlatBuffers
 

@@ -363,7 +363,7 @@ TEST_P(ParameterizedQuantizeAndDequantizeTest,
 }
 
 // Instantiate parameterized tests for axis = -1, 1, 3.
-INSTANTIATE_TEST_SUITE_P(, ParameterizedQuantizeAndDequantizeTest,
+INSTANTIATE_TEST_SUITE_P(All, ParameterizedQuantizeAndDequantizeTest,
                          ::testing::Values(-1, 1, 3));
 
 // Convert a 1D tensor with signed 4 bits.

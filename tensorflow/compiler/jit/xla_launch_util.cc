@@ -247,10 +247,8 @@ void XlaComputationLaunchContext::PopulateInputs(
   }
 }
 
-namespace {
-
-bool MustAliasOutput(const xla::HloInputOutputAliasConfig& input_output_alias,
-                     int output_num) {
+static bool MustAliasOutput(
+    const xla::HloInputOutputAliasConfig& input_output_alias, int output_num) {
   xla::ShapeIndex output_index;
   if (input_output_alias.shape().IsTuple()) {
     output_index = {output_num};
@@ -267,30 +265,64 @@ bool MustAliasOutput(const xla::HloInputOutputAliasConfig& input_output_alias,
              xla::HloInputOutputAliasConfig::kUserAlias;
 }
 
-}  // namespace
-
-Tensor XlaComputationLaunchContext::MakeOutputTensor(
-    DataType type, const TensorShape& shape, se::DeviceMemoryBase buffer,
-    int output_num, const xla::HloInputOutputAliasConfig& input_output_alias,
-    Allocator* allocator) {
-  bool is_aliased = false;
+// Returns an aliased tensor if it exists, nullptr otherwise.
+static const Tensor* FindAliasedTensorForOutput(
+    int output_num, OpKernelContext* ctx, int missing_ctx_input_prefix,
+    const xla::HloInputOutputAliasConfig& input_output_alias,
+    absl::Span<const int> input_mapping,
+    const std::map<int, OptionalTensor>& resource_var_snapshots) {
   if (MustAliasOutput(input_output_alias, output_num)) {
     int xla_param = input_output_alias.GetAliasedParameter({output_num})
                         .value()
                         .parameter_number;
-    DCHECK(arg_ptrs_[xla_param] != nullptr);
-    buffer = arg_ptrs_[xla_param]->root_buffer();
-    is_aliased = true;
+    int tf_param = input_mapping[xla_param] - missing_ctx_input_prefix;
+    const Tensor* input_tensor = &ctx->input(tf_param);
+
+    // If input tensor is a resource variable, alias to the snapshot we took at
+    // entry time.
+    if (input_tensor->dtype() == DT_RESOURCE) {
+      auto& v = resource_var_snapshots.at(missing_ctx_input_prefix + tf_param);
+      CHECK(v.present);
+      return &v.value;
+    }
+    return input_tensor;
   }
-  return XlaTensorBuffer::MakeTensor(type, shape,
-                                     /*unref_buffer=*/!is_aliased, buffer,
-                                     allocator);
+  return nullptr;
+}
+
+// Construct the tensor for given type and buffer.
+static Tensor MakeTensor(DataType dtype, const TensorShape& shape,
+                         se::DeviceMemoryBase buffer, Allocator* allocator) {
+  size_t expected_size = shape.num_elements() * DataTypeSize(dtype);
+  auto* tensor_buffer = new XlaTensorBuffer(buffer.opaque(), expected_size,
+                                            buffer.size(), allocator);
+  Tensor t(dtype, shape, tensor_buffer);
+  tensor_buffer->Unref();
+  return t;
+}
+
+// Get aliased tensor, or make a new one for the corresponding output operation.
+static Tensor GetOrCreateTensorForOutput(
+    int output_num, OpKernelContext* ctx, int missing_ctx_input_prefix,
+    const xla::HloInputOutputAliasConfig& input_output_alias,
+    absl::Span<const int> input_mapping,
+    const std::map<int, OptionalTensor>& resource_var_snapshots,
+    DataType output_dtype, const TensorShape& output_shape,
+    se::DeviceMemoryBase output_buffer, Allocator* output_allocator) {
+  if (const Tensor* aliased_tensor = FindAliasedTensorForOutput(
+          output_num, ctx, missing_ctx_input_prefix, input_output_alias,
+          input_mapping, resource_var_snapshots)) {
+    return *aliased_tensor;
+  }
+  return MakeTensor(output_dtype, output_shape, output_buffer,
+                    output_allocator);
 }
 
 Status XlaComputationLaunchContext::PopulateOutputs(
     OpKernelContext* ctx, const XlaCompiler::CompilationResult* kernel,
     ScopedShapedBuffer output, int missing_ctx_input_prefix,
-    const xla::HloInputOutputAliasConfig& input_output_alias) {
+    const xla::HloInputOutputAliasConfig& input_output_alias,
+    const std::map<int, OptionalTensor>& resource_var_snapshots) {
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
 
@@ -408,9 +440,10 @@ Status XlaComputationLaunchContext::PopulateOutputs(
           }
         } else {
           se::DeviceMemoryBase buffer = output.buffer({output_num});
-          Tensor output_tensor =
-              MakeOutputTensor(ctx->expected_output_dtype(i), shape, buffer,
-                               output_num, input_output_alias, allocator);
+          Tensor output_tensor = GetOrCreateTensorForOutput(
+              output_num, ctx, missing_ctx_input_prefix, input_output_alias,
+              kernel->input_mapping, resource_var_snapshots,
+              ctx->expected_output_dtype(i), shape, buffer, allocator);
           output.set_buffer(se::OwningDeviceMemory(), {output_num});
           ctx->set_output(i, output_tensor);
         }
@@ -477,9 +510,10 @@ Status XlaComputationLaunchContext::PopulateOutputs(
     } else {
       se::DeviceMemoryBase buffer = output.buffer({output_num});
       output.set_buffer(se::OwningDeviceMemory(), {output_num});
-      Tensor output_tensor =
-          MakeOutputTensor(write.type, write.shape, buffer, output_num,
-                           input_output_alias, allocator);
+      Tensor output_tensor = GetOrCreateTensorForOutput(
+          output_num, ctx, missing_ctx_input_prefix, input_output_alias,
+          kernel->input_mapping, resource_var_snapshots, write.type,
+          write.shape, buffer, allocator);
       *variable_infos[i].var()->tensor() = output_tensor;
     }
     ++output_num;

@@ -598,7 +598,7 @@ REGISTER_OP("NInTwoTypeVariables")
 REGISTER_OP("InPolymorphicTwice")
     .Input("a: N * T")
     .Input("b: M * T")
-    .Attr("T: type")
+    .Attr("T: type = DT_INT32")
     .Attr("N: int >= 0")
     .Attr("M: int >= 0")
     .SetShapeFn(shape_inference::UnknownShape);

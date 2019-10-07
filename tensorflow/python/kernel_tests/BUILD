@@ -167,7 +167,7 @@ cuda_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "bincount_op_test",
     size = "small",
     srcs = ["bincount_op_test.py"],
@@ -766,7 +766,7 @@ cuda_py_test(
 
 tf_py_test(
     name = "parsing_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["parsing_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -3757,6 +3757,7 @@ cuda_py_test(
         "//tensorflow/python/ops/linalg/sparse:gen_sparse_csr_matrix_ops",
     ],
     main = "sparse_csr_matrix_ops_test.py",
+    shard_count = 10,
     tags = ["no_rocm"],
 )
 

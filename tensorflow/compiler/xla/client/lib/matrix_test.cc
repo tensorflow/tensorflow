@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 
+#include <limits>
+
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
@@ -133,7 +135,6 @@ Array3D<float> BatchedAValsFull() {
 
 XLA_TEST_F(MatrixTest, RowBatchDot) {
   XlaBuilder builder(TestName());
-
   int n = 4;
 
   XlaOp a, row, index;
@@ -177,8 +178,9 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
   auto to_vec = [](absl::string_view s) {
     std::vector<int64> v;
     v.reserve(s.size());
+    int e = -3;
     for (auto c : s) {
-      v.push_back(int64{c});
+      v.push_back(c == '.' ? e++ : int64{c});
     }
     return v;
   };
@@ -188,13 +190,18 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
     return absl::StrCat(x, ",", y, "->", o);
   };
 
-  std::vector<std::vector<string>> good_test_cases = {{"ab", "bc", "ac"},
-                                                      {"Bab", "Bbc", "Bac"},
-                                                      {"ab", "cd", "dcba"},
-                                                      {"abc", "abd", "cbd"}};
+  std::vector<std::vector<string>> good_test_cases = {
+      {"ab", "bc", "ac"},           {"Bab", "Bbc", "Bac"},
+      {"ab", "cd", "dcba"},         {"abc", "abd", "cbd"},
+      {"...ab", "...bc", "...ac"},  {"a...bc", "...abd", "cbd..."},
+      {"...ab", "...bc", "ac"},     {"...b", "...bc", "...c"},
+      {"...abz", "...bc", "...ac"}, {"...ab", "...bcz", "...ac"},
+      {"abz", "bc", "ac"},          {"ab", "bcz", "ac"},
+  };
   for (auto test_case : good_test_cases) {
     auto parse_result_or_status =
-        ParseEinsumString(to_string(test_case[0], test_case[1], test_case[2]));
+        ParseEinsumString(to_string(test_case[0], test_case[1], test_case[2]),
+                          test_case[0].size(), test_case[1].size());
     EXPECT_TRUE(parse_result_or_status.status().ok());
     auto parse_result = parse_result_or_status.ValueOrDie();
     for (int i = 0; i < 3; ++i) {
@@ -206,22 +213,38 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
   }
 
   std::vector<string> einsum_strings_that_fail_parsing = {
-      "", "a", "ab->ba", "ab,bc,cd->ad", "a...b,bc->a...c"};
+      "", "a", "ab->ba", "ab,bc,cd->ad", "a...b...,bc->a...c",
+  };
   for (auto test_case : einsum_strings_that_fail_parsing) {
-    auto parse_result_or_status = ParseEinsumString(test_case);
+    auto parse_result_or_status = ParseEinsumString(test_case, 3, 3);
     EXPECT_FALSE(parse_result_or_status.status().ok());
   }
+  std::vector<std::vector<string>> einsum_strings_that_fail_numeric_validation =
+      {
+          {"a", "b", "c"},
+          {"...a", "...b", "...c"},
+          {"abb", "bcc", "ac"},
+          {"ab", "bc", "ad"},
+      };
 
-  std::vector<string> einsum_strings_that_fail_numeric_validation = {
-      "a,b->c", "ab,bc->acd", "abz,bc->ac", "ab,bcz->ac"};
   for (auto test_case : einsum_strings_that_fail_numeric_validation) {
-    auto parse_result_or_status = ParseEinsumString(test_case);
+    auto parse_result_or_status =
+        ParseEinsumString(to_string(test_case[0], test_case[1], test_case[2]),
+                          test_case[0].size(), test_case[1].size());
     EXPECT_TRUE(parse_result_or_status.status().ok());
     auto parse_result = parse_result_or_status.ValueOrDie();
     EXPECT_FALSE(ValidateEinsumNumericDimensions(
                      parse_result[0], parse_result[1], parse_result[2])
                      .ok());
   }
+}
+
+XLA_TEST_F(MatrixTest, NormalizeEinsumString) {
+  EXPECT_EQ(NormalizeEinsumString("a,b->ab"), "");
+  EXPECT_EQ(NormalizeEinsumString("ba"), "ba->ab");
+  EXPECT_EQ(NormalizeEinsumString("ab,dc"), "ab,dc->abcd");
+  EXPECT_EQ(NormalizeEinsumString("a,b"), "a,b->ab");
+  EXPECT_EQ(NormalizeEinsumString("...ba,ca..."), "...ba,ca...->...bc");
 }
 
 }  // namespace

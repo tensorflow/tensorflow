@@ -29,60 +29,6 @@ namespace shape_inference {
 constexpr int32 InferenceContext::kUnknownRank;
 constexpr int64 InferenceContext::kUnknownDim;
 
-InferenceContext::InferenceContext(
-    int graph_def_version, const NodeDef* node_def, const OpDef& op_def,
-    const std::vector<TensorShapeProto>& input_shapes,
-    const std::vector<const Tensor*>& input_tensors,
-    const std::vector<TensorShapeProto>& input_tensors_as_shapes,
-    const std::vector<
-        std::unique_ptr<std::vector<std::pair<TensorShapeProto, DataType>>>>&
-        input_handle_shapes_and_types)
-    : graph_def_version_(graph_def_version),
-      node_def_(CHECK_NOTNULL(node_def)) {
-  std::vector<ShapeHandle> input_tensors_as_shape_handles;
-  input_tensors_as_shape_handles.reserve(input_tensors_as_shapes.size());
-  for (const TensorShapeProto& p : input_tensors_as_shapes) {
-    ShapeHandle shape;
-    construction_status_.Update(MakeShapeFromShapeProto(p, &shape));
-    if (!construction_status_.ok()) {
-      return;
-    }
-    input_tensors_as_shape_handles.push_back(shape);
-  }
-  PreInputInit(op_def, input_tensors, input_tensors_as_shape_handles);
-  if (!construction_status_.ok()) return;
-  inputs_.reserve(input_shapes.size());
-  for (const TensorShapeProto& p : input_shapes) {
-    ShapeHandle shape;
-    construction_status_.Update(MakeShapeFromShapeProto(p, &shape));
-    if (!construction_status_.ok()) {
-      return;
-    }
-    inputs_.push_back(shape);
-  }
-
-  std::vector<std::unique_ptr<std::vector<ShapeAndType>>> handle_data(
-      input_shapes.size());
-  for (int i = 0; i < input_handle_shapes_and_types.size(); ++i) {
-    const auto& v = input_handle_shapes_and_types[i];
-    if (v == nullptr) {
-      continue;
-    }
-    handle_data[i].reset(new std::vector<ShapeAndType>(v->size()));
-    auto& new_v = *handle_data[i];
-    for (int j = 0; j < v->size(); ++j) {
-      const auto& p = (*v)[j];
-      construction_status_.Update(
-          MakeShapeFromShapeProto(p.first, &new_v[j].shape));
-      if (!construction_status_.ok()) {
-        return;
-      }
-      new_v[j].dtype = p.second;
-    }
-  }
-  PostInputInit(std::move(handle_data));
-}
-
 // Same as above, but with PartialTensorShape instead of TensorShapeProto
 InferenceContext::InferenceContext(
     int graph_def_version, const NodeDef* node_def, const OpDef& op_def,
@@ -218,8 +164,6 @@ Status InferenceContext::output(StringPiece output_name,
   }
   return Status::OK();
 }
-
-string InferenceContext::op() const { return node_def_->op(); }
 
 void InferenceContext::PreInputInit(
     const OpDef& op_def, const std::vector<const Tensor*>& input_tensors,

@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/depthwise_conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/fully_connected.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/hard_swish.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/max_unpooling.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/mul.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/padding.h"
@@ -93,6 +92,25 @@ std::vector<ComputeTaskDescriptorPtr> SelectDepthWiseConv(
   } else {
     return DepthWiseConvolution(id, input_id, output_id, attr, options);
   }
+}
+
+std::vector<ComputeTaskDescriptorPtr> SelectPReLU(
+    const GraphFloat32& graph, int id, ValueId input_id, ValueId output_id,
+    const PReLUAttributes& attr, const metal::RuntimeOptions& options) {
+  auto alpha = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.alpha);
+  if (alpha) {
+    return PReLU(id, input_id, output_id, attr, options);
+  }
+  auto alpha3d = absl::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr.alpha);
+  if (!alpha3d) {
+    return {};
+  }
+  const auto shape = graph.FindInputs(id)[0]->tensor.shape;
+  if (alpha3d->shape.h != shape.h || alpha3d->shape.w != shape.w ||
+      alpha3d->shape.c != shape.c) {
+    return {};
+  }
+  return PReLUFull(id, input_id, output_id, attr, options);
 }
 
 std::vector<ComputeTaskDescriptorPtr> SelectReshape(
@@ -170,9 +188,6 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
           absl::any_cast<FullyConnectedAttributes>(node->operation.attributes),
           options);
       break;
-    case OperationType::HARD_SWISH:
-      *tasks = HardSwish(node_id, inputs[0], outputs[0], options);
-      break;
     case OperationType::MAX_UNPOOLING_2D:
       *tasks = MaxUnpooling(
           node_id, inputs[0], inputs[1], outputs[0],
@@ -195,8 +210,8 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
           absl::any_cast<Pooling2DAttributes>(node->operation.attributes));
       break;
     case OperationType::PRELU:
-      *tasks = PReLU(
-          node_id, inputs[0], outputs[0],
+      *tasks = SelectPReLU(
+          graph, node_id, inputs[0], outputs[0],
           absl::any_cast<PReLUAttributes>(node->operation.attributes), options);
       break;
     case OperationType::RELU:
@@ -228,6 +243,7 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
       break;
     case OperationType::ABS:
     case OperationType::COS:
+    case OperationType::HARD_SWISH:
     case OperationType::LOG:
     case OperationType::RSQRT:
     case OperationType::SIGMOID:

@@ -18,10 +18,10 @@
 #include "mlir/Transforms/ViewOpGraph.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/StandardTypes.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/Support/CommandLine.h"
 
-// NOLINTNEXTLINE
 static llvm::cl::opt<int> elideIfLarger(
     "print-op-graph-elide-if-larger",
     llvm::cl::desc("Upper limit to emit elements attribute rather than elide"),
@@ -80,7 +80,9 @@ std::string DOTGraphTraits<mlir::Block *>::getNodeLabel(mlir::Operation *op,
     // Elide "big" elements attributes.
     auto elements = attr.second.dyn_cast<mlir::ElementsAttr>();
     if (elements && elements.getNumElements() > elideIfLarger) {
-      os << "...";
+      os << std::string(elements.getType().getRank(), '[') << "..."
+         << std::string(elements.getType().getRank(), ']') << " : "
+         << elements.getType();
       continue;
     }
 

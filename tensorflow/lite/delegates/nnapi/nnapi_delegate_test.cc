@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/delegates/nnapi/nnapi_delegate_mock_test.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
+#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
@@ -73,8 +73,6 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
   }
 
   TfLiteStatus AllocateTensors() { return interpreter_->AllocateTensors(); }
-
-  TfLiteStatus InvokeWithoutAssert() { return interpreter_->Invoke(); }
 
  protected:
   void SetData(int index, TensorType type, const std::vector<float>& data) {
@@ -5122,57 +5120,6 @@ TEST(QuantizedPadV2OpTest, UInt8AdvancedDynamicValuedTest) {
 }
 TEST(QuantizedPadV2OpTest, Int8AdvancedDynamicValuedTest) {
   AdvancedDynamicValuedTest<int8_t, TensorType_INT8>();
-}
-
-struct NnApiErrnoTest : ::tflite::delegate::nnapi::NnApiDelegateMockTest {};
-
-TEST_F(NnApiErrnoTest, IsZeroWhenNoErrorOccurs) {
-  StatefulNnApiDelegate::Options force_stateful_delegate_usage;
-  FloatAddOpModel m(force_stateful_delegate_usage,
-                    {TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-
-  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
-  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
-  m.Invoke();
-
-  EXPECT_EQ(m.GetDelegate()->GetNnApiErrno(), 0);
-}
-
-TEST_F(NnApiErrnoTest, HasTheStatusOfTheNnApiCallFailedCallingInit) {
-  nnapi_mock_->ExecutionCreateReturns<8>();
-
-  StatefulNnApiDelegate::Options force_stateful_delegate_usage;
-  FloatAddOpModel m(force_stateful_delegate_usage,
-                    {TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-
-  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
-  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
-
-  EXPECT_EQ(m.InvokeWithoutAssert(), kTfLiteError);
-  EXPECT_EQ(m.GetDelegate()->GetNnApiErrno(), 8);
-}
-
-TEST_F(NnApiErrnoTest, HasTheStatusOfTheNnApiCallFailedCallingInvoke) {
-  nnapi_mock_->AddOperandReturns<-4>();
-
-  StatefulNnApiDelegate::Options force_stateful_delegate_usage;
-  FloatAddOpModel m(force_stateful_delegate_usage,
-                    {TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-
-  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
-  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
-
-  // Failure is detected and the delegate is disabled.
-  // Execution runs without it and succeeds
-  EXPECT_EQ(m.InvokeWithoutAssert(), kTfLiteOk);
-  // The delegate should store the value of the failure
-  EXPECT_EQ(m.GetDelegate()->GetNnApiErrno(), -4);
 }
 
 }  // namespace

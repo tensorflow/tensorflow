@@ -321,7 +321,6 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
   def testCachingDevice(self):
     with self.cached_session():
       var = variables.Variable(2.0)
-      self.assertEqual(var.device, var.value().device)
       self.assertEqual(var.device, var.initialized_value().device)
 
       var_cached = variables.Variable(2.0, caching_device="/job:foo")

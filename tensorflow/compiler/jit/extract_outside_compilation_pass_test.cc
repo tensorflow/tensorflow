@@ -246,8 +246,9 @@ class ExtractOutsideCompilationForFunctionTest : public ::testing::Test {
       bool *has_outside_compilation) {
     OptimizerOptions opts;
     pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
-        device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, fld, opts,
-        /*default_thread_pool=*/nullptr, /*cluster_flr=*/nullptr);
+        device_mgr_.get(), Env::Default(), /*config=*/nullptr,
+        TF_GRAPH_DEF_VERSION, fld, opts,
+        /*default_thread_pool=*/nullptr);
     auto flr = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
     return ExtractOutsideCompilationForFunction(
         xla_cluster_attr_name, outside_compilation_attr_name, xla_cluster_name,
@@ -417,16 +418,8 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, NoHostGraph) {
       host_compute_core, &fld, &shape_inference_graphs,
       &has_outside_compilation));
 
-  // Check host graph is empty.
-  std::unique_ptr<FunctionBody> host_fbody;
-  AttrValue device_ordinal_temp_value;
-  device_ordinal_temp_value.set_i(0);
-  protobuf::Map<string, AttrValue> host_func_attrs;
-  host_func_attrs["_device_ordinal"] = device_ordinal_temp_value;
-  TF_CHECK_OK(FunctionDefToBodyHelper(
-      *fld.Find("host_graph"), AttrSlice(&host_func_attrs), &fld, &host_fbody));
-  Graph *host_graph = host_fbody->graph;
-  EXPECT_EQ(host_graph->num_nodes(), 2);
+  // Check host graph is not created.
+  EXPECT_EQ(fld.Find("host_graph"), nullptr);
 }
 
 REGISTER_OP("XlaSendToHost")

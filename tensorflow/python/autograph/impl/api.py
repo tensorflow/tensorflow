@@ -585,7 +585,7 @@ def to_graph(entity, recursive=True, experimental_optional_features=None):
   >>> converted_f = to_graph(f)
   >>> x = tf.constant(2)
   >>> converted_f(x)  # converted_foo is like a TensorFlow Op.
-  <tf.Tensor: id=..., shape=(), dtype=int32, numpy=4>
+  <tf.Tensor: shape=(), dtype=int32, numpy=4>
 
   Supported Python entities include:
     * functions
@@ -601,7 +601,7 @@ def to_graph(entity, recursive=True, experimental_optional_features=None):
   argument called `self`.
 
   For a tutorial, see the
-  [tf.function and AutoGraph guide](https://www.tensorflow.org/beta/guide/autograph).
+  [tf.function and AutoGraph guide](https://www.tensorflow.org/guide/function).
   For more detailed information, see the
   [AutoGraph reference documentation](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/autograph/g3doc/reference/index.md).
 

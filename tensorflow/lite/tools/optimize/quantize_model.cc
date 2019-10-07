@@ -276,8 +276,8 @@ TfLiteStatus SetInputAndOutputTypes(ModelT* model, const TensorType& input_type,
 }
 
 // Apply constraints to ops if they have any.
-// We have made the restriction that for int8 quantized concat/mean, the inputs
-// and outpus must have the same scale and zero point. The other ones with
+// We have made the restriction that for int8 quantized concat, the inputs and
+// outpus must have the same scale and zero point. The other ones with
 // constraints(averagepool, maxpool, gather, softmax, tanh etc) are handled in
 // QuantizeWeightsAndInput.
 TfLiteStatus ApplyConstraints(ModelT* model,
@@ -296,7 +296,7 @@ TfLiteStatus ApplyConstraints(ModelT* model,
       if (!property.quantizable) {
         continue;
       }
-      // Basically only Concat/Mean passes this check.
+      // Basically only Concat passes this check.
       if (!property.arbitrary_inputs ||
           !property.restrict_same_input_output_scale) {
         continue;
@@ -306,7 +306,8 @@ TfLiteStatus ApplyConstraints(ModelT* model,
       TensorT* output_tensor = subgraph->tensors[op->outputs[0]].get();
       if (!utils::QuantizationParametersExist(output_tensor)) {
         error_reporter->Report(
-            "Unable to get scale or zero point from the tensor at %d.",
+            "Unable to get scale or zero point from the tensor at %d, which "
+            "is the output tensor for concat.",
             op->outputs[0]);
         return kTfLiteError;
       }
@@ -316,7 +317,8 @@ TfLiteStatus ApplyConstraints(ModelT* model,
         TensorT* input_tensor = subgraph->tensors[op->inputs[input_idx]].get();
         if (!utils::QuantizationParametersExist(input_tensor)) {
           error_reporter->Report(
-              "Unable to get scale or zero point from tensor at %d.",
+              "Unable to get scale or zero point from tensor at %d, which is "
+              "an input tensor of concat.",
               op->inputs[input_idx]);
           return kTfLiteError;
         }

@@ -60,7 +60,7 @@ struct ExpressedToQuantizedConverter {
 
 /// Reference implementation of converting between real numbers and values
 /// represented by a UniformQuantizedType.
-/// Note that this is not expected to be speedy and may be superceded eventually
+/// Note that this is not expected to be speedy and may be superseded eventually
 /// by a more optimal implementation.
 /// Also, the interface assumes that quantization is done per-layer and will
 /// need to be wider for various per-channel schemes. As such, this is a
@@ -101,7 +101,7 @@ public:
     // This function is a performance critical code path in quantization
     // since it runs for each single float parameter value.
 
-    // Specalize f32->u8/i8 case to optimize performance.
+    // Specialize f32->u8/i8 case to optimize performance.
     if (&expressedValue.getSemantics() == &APFloat::IEEEsingle() &&
         storageBitWidth == 8 &&
         roundMode == llvm::APFloatBase::rmNearestTiesToAway) {

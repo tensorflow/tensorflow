@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 
 #include <vector>
+
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
@@ -45,6 +47,11 @@ namespace test {
 Benchmark::Benchmark(const string& device, Graph* g,
                      const SessionOptions* options, Graph* init,
                      Rendezvous* rendez, const char* executor_type) {
+  auto cleanup = gtl::MakeCleanup([g, init]() {
+    delete g;
+    delete init;
+  });
+
   SessionOptions default_options;
   if (!options) {
     options = &default_options;
@@ -88,16 +95,14 @@ Benchmark::Benchmark(const string& device, Graph* g,
 
   if (init) {
     std::unique_ptr<Executor> init_exec;
-    TF_CHECK_OK(NewExecutor(executor_type, params, std::unique_ptr<Graph>(init),
-                            &init_exec));
+    TF_CHECK_OK(NewExecutor(executor_type, params, *init, &init_exec));
     Executor::Args args;
     args.rendezvous = rendez_;
     args.runner = runner;
     TF_CHECK_OK(init_exec->Run(args));
   }
 
-  TF_CHECK_OK(
-      NewExecutor(executor_type, params, std::unique_ptr<Graph>(g), &exec_));
+  TF_CHECK_OK(NewExecutor(executor_type, params, *g, &exec_));
 }
 
 Benchmark::~Benchmark() {

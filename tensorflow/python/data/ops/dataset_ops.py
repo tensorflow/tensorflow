@@ -127,7 +127,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   # Dict element with 3 components
   d = {"a": (2, 2), "b": 3}
   # Element containing a dataset
-  e = tf.data.Dataset.from_element(10)
+  e = tf.data.Dataset.from_tensors(10)
   ```
   """
 
@@ -416,7 +416,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     memory and run into byte limits of graph serialization. If `tensors`
     contains one or more large NumPy arrays, consider the alternative described
     in [this
-    guide](https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
+    guide](https://tensorflow.org/guide/data#consuming_numpy_arrays).
 
     Args:
       tensors: A dataset element.
@@ -459,7 +459,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     memory and run into byte limits of graph serialization. If `tensors`
     contains one or more large NumPy arrays, consider the alternative described
     in [this guide](
-    https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
+    https://tensorflow.org/guide/data#consuming_numpy_arrays).
 
     Args:
       tensors: A dataset element, with each component having the same size in
@@ -1609,10 +1609,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     reduce_func = wrapped_func.function
     reduce_func.add_to_graph(ops.get_default_graph())
 
-    # TODO(b/141256846): Apply options once optimizing stateful input pipelines
-    # in tf.functions is supported.
-    # dataset = self._apply_options()
-    dataset = self
+    dataset = self._apply_options()
 
     # pylint: disable=protected-access
     return structure.from_compatible_tensor_list(
@@ -2286,6 +2283,14 @@ class Options(options_lib.OptionsBase):
   optimizations to apply or whether to use performance modeling to dynamically
   tune the parallelism of operations such as `tf.data.Dataset.map` or
   `tf.data.Dataset.interleave`.
+
+  After constructing an `Options` object, use `dataset.with_options(options)` to
+  apply the options to a dataset.
+
+  >>> dataset = tf.data.Dataset.range(3)
+  >>> options = tf.data.Options()
+  >>> # Set options here.
+  >>> dataset = dataset.with_options(options)
   """
 
   experimental_deterministic = options_lib.create_option(
@@ -2561,7 +2566,14 @@ def to_variant(dataset):
     "data.DatasetSpec",
     v1=["data.DatasetSpec", "data.experimental.DatasetStructure"])
 class DatasetSpec(type_spec.BatchableTypeSpec):
-  """Type specification for `tf.data.Dataset`."""
+  """Type specification for `tf.data.Dataset`.
+
+  See `tf.TypeSpec` for more information about TensorFlow type specifications.
+
+  >>> dataset = tf.data.Dataset.range(3)
+  >>> tf.data.DatasetSpec.from_value(dataset)
+  DatasetSpec(TensorSpec(shape=(), dtype=tf.int64, name=None), TensorShape([]))
+  """
 
   __slots__ = ["_element_spec", "_dataset_shape"]
 
@@ -2598,6 +2610,7 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
 
   @staticmethod
   def from_value(value):
+    """Creates a `DatasetSpec` for the given `tf.data.Dataset` value."""
     return DatasetSpec(value.element_spec)  # pylint: disable=protected-access
 
   def _batch(self, batch_size):
@@ -2705,6 +2718,10 @@ class StructuredFunctionWrapper(object):
     func_name = "_".join(
         [readable_transformation_name,
          function_utils.get_func_name(func)])
+    # Sanitize function name to remove symbols that interfere with graph
+    # construction.
+    for symbol in ["<", ">", "\\", "'", " "]:
+      func_name = func_name.replace(symbol, "")
 
     ag_ctx = autograph_ctx.control_status_ctx()
 
@@ -2795,15 +2812,8 @@ class StructuredFunctionWrapper(object):
 
       resource_tracker = tracking.ResourceTracker()
       with tracking.resource_tracker_scope(resource_tracker):
-        self._function = (
-            wrapper_fn._get_concrete_function_internal_garbage_collected())
-
-        # TODO(jsimsa): Garbage collecting functions containing PyFunc nodes
-        # triggers use-after-free. Figure out why and stop excluding functions
-        # with PyFunc nodes from garbage collection.
-        for node in self._function.function_def.node_def:
-          if node.op in ("PyFunc", "PyFuncStateless", "EagerPyFunc"):
-            self._function._garbage_collector.release()
+        # TODO(b/141462134): Switch to using garbage collection.
+        self._function = wrapper_fn._get_concrete_function_internal()
 
         if add_to_graph:
           self._function.add_to_graph(ops.get_default_graph())

@@ -1041,28 +1041,31 @@ inline void LstmStepQuantized(
     int8_t* output_ptr, int16_t* scratch_0_ptr, int16_t* scratch_1_ptr,
     int16_t* scratch_2_ptr, int16_t* scratch_3_ptr, int8_t* scratch_4_ptr,
     int32_t* scratch_5_ptr) {
+  // Get hyper parameters.
+  const bool use_cifg = (input_to_input_weight_ptr == nullptr);
+
+  // Check for nullptrs.
   TFLITE_DCHECK(input_to_forget_effective_bias);
   TFLITE_DCHECK(recurrent_to_forget_effective_bias);
   TFLITE_DCHECK(input_to_cell_effective_bias);
   TFLITE_DCHECK(recurrent_to_cell_effective_bias);
   TFLITE_DCHECK(input_to_output_effective_bias);
   TFLITE_DCHECK(recurrent_to_output_effective_bias);
-  TFLITE_DCHECK(input_to_input_effective_bias);
-  TFLITE_DCHECK(recurrent_to_input_effective_bias);
+  if (!use_cifg) {
+    TFLITE_DCHECK(input_to_input_effective_bias);
+    TFLITE_DCHECK(recurrent_to_input_effective_bias);
+  }
   TFLITE_DCHECK(projection_effective_bias);
 
-  const bool use_cifg = (input_to_input_weight_ptr == nullptr);
-
   // TODO(renjieliu): Handle optional arguments processing here:
-  // case cifg: input_to_input_weights should be nullptr
-  //            recurrent_to_input_weight should be nullptr
-  //            input_bias should be nullptr
   // case not peephole: cell_to_forget_weight should be nullptr
   //                    cell_to_output_weight should be nullptr
   //                    cifg: cell_to_input_weight should be nullptr
 
   // Set scratch to 0.
-  memset(scratch_0_ptr, 0, n_batch * n_cell * sizeof(int16_t));
+  if (!use_cifg) {
+    memset(scratch_0_ptr, 0, n_batch * n_cell * sizeof(int16_t));
+  }
   memset(scratch_1_ptr, 0, n_batch * n_cell * sizeof(int16_t));
   memset(scratch_2_ptr, 0, n_batch * n_cell * sizeof(int16_t));
   memset(scratch_3_ptr, 0, n_batch * n_cell * sizeof(int16_t));

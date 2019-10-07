@@ -17,6 +17,11 @@ limitations under the License.
 
 #include <Python.h>
 
+// clang-format: off
+// Must be inlcluded first.
+#include "tensorflow/python/lib/core/numpy.h"
+// clang-format: on
+
 #include <array>
 
 #include "numpy/arrayobject.h"
@@ -25,7 +30,9 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"

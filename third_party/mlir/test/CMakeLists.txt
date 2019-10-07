@@ -39,6 +39,7 @@ set(MLIR_TEST_DEPENDS
   mlir-translate
   cblas
   cblas_interface
+  mlir_runner_utils
   )
 
 if(LLVM_BUILD_EXAMPLES)

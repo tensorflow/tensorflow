@@ -32,7 +32,7 @@ struct LocalExecutorParams;
 class ExecutorFactory {
  public:
   virtual Status NewExecutor(const LocalExecutorParams& params,
-                             std::unique_ptr<const Graph> graph,
+                             const Graph& graph,
                              std::unique_ptr<Executor>* out_executor) = 0;
   virtual ~ExecutorFactory() {}
 
@@ -42,8 +42,7 @@ class ExecutorFactory {
 };
 
 Status NewExecutor(const string& executor_type,
-                   const LocalExecutorParams& params,
-                   std::unique_ptr<const Graph> graph,
+                   const LocalExecutorParams& params, const Graph& graph,
                    std::unique_ptr<Executor>* out_executor);
 
 }  // namespace tensorflow

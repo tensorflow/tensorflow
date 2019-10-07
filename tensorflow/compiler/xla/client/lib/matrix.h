@@ -90,11 +90,25 @@ xla::XlaOp BatchDot(
 // becomes:
 //   {{0, 1},{2, 1},{0, 2}}
 //
+// Each occurrence of ellipsis ("...") occurring in the input is replaced with
+// the same numeric dimensions. The number of such dimensions is inferred from
+// x_rank and y_rank. For example:
+//   einsum_config: "...ab,...bcd->...acd"
+//   x_rank: 4
+//   y_rank: 5
+// becomes:
+//   {{0, 1, 2, 3},{0, 1, 3, 4, 5},{0, 1, 2, 4, 5}}
+//
 // NOTE: This function is meant for testing, there is no need to call it
 // directly.
 
 StatusOr<std::array<std::vector<int64>, 3>> ParseEinsumString(
-    absl::string_view einsum_config);
+    absl::string_view einsum_config, int64 x_rank, int64 y_rank);
+
+// If an einsum config does not contain an -> one will be added and the output
+// config will be the sorted characters with any ellipsis at the beginning.
+// Returns an empty string if the einsum string already has an ->.
+std::string NormalizeEinsumString(absl::string_view einsum_config);
 
 // Determine if each dimension label is in at least two inputs.
 //
@@ -108,6 +122,13 @@ Status ValidateEinsumNumericDimensions(absl::Span<const int64> x_config,
 xla::XlaOp Einsum(
     xla::XlaOp x, xla::XlaOp y, absl::string_view einsum_config,
     xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT);
+xla::XlaOp Einsum(
+    xla::XlaOp x, absl::string_view einsum_config,
+    xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT);
+
+// Handles repeated indices within an operand by taking the tensor diagonal of
+// the input.
+xla::XlaOp EinsumDiagonal(XlaOp x, absl::Span<const int64> config);
 
 // Same as above but supporting numeric labels on dimensins. So "ab,cb->ac"
 // becomes:

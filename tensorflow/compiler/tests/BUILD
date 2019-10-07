@@ -343,6 +343,7 @@ tf_xla_py_test(
     name = "concat_ops_test",
     size = "medium",
     srcs = ["concat_ops_test.py"],
+    tags = ["many_xla_args"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -421,6 +422,23 @@ tf_xla_py_test(
         "//tensorflow/compiler/tf2xla/python:xla",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
+    ],
+)
+
+tf_xla_py_test(
+    name = "einsum_op_test",
+    size = "medium",
+    srcs = ["einsum_op_test.py"],
+    enabled_backends = [
+        "cpu",
+        "gpu",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:special_math_ops",
     ],
 )
 

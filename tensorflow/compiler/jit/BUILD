@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "cc_header_only_library")
+load("//tensorflow:tensorflow.bzl", "if_mlir", "tf_cc_test", "cc_header_only_library")
 load("//tensorflow/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library", "tf_jit_compilation_passes_extra_deps")
 load("//tensorflow/core/platform:default/build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
@@ -340,9 +340,10 @@ cc_library(
         ":compilation_passes",
         ":xla_activity_logging_listener",
         "//tensorflow/compiler/tf2xla:functionalize_control_flow_pass_registration",
-        "//tensorflow/compiler/tf2xla:mlir_bridge_pass_registration",
         "//tensorflow/core:core_cpu_internal",
-    ] + tf_jit_compilation_passes_extra_deps(),
+    ] + tf_jit_compilation_passes_extra_deps() + if_mlir([
+        "//tensorflow/compiler/tf2xla:mlir_bridge_pass_registration",
+    ]),
     alwayslink = 1,
 )
 
@@ -736,6 +737,9 @@ tf_cc_test(
         "partially_decluster_pass_test.cc",
         "rearrange_function_argument_pass_test.cc",
     ],
+    # TODO(b/141643254) Re-enable msan after fixing use-of-uninitialized-value
+    # error.
+    tags = ["nomsan"],
     deps = [
         ":common",
         ":compilation_passes",
@@ -743,6 +747,7 @@ tf_cc_test(
         ":encapsulate_util",
         ":flags",
         ":node_matchers",
+        ":test_util",
         ":xla_cluster_util",
         ":xla_cpu_device",
         ":xla_gpu_device",

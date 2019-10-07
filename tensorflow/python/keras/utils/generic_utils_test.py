@@ -102,6 +102,17 @@ class SerializeKerasObjectTest(test.TestCase):
     self.assertIsInstance(new_inst, TestClass)
     self.assertEqual(10, new_inst._value)
 
+    # Make sure registering a new class with same name will fail.
+    with self.assertRaisesRegex(ValueError, '.*has already been registered.*'):
+      @keras.utils.generic_utils.register_keras_serializable()  # pylint: disable=function-redefined
+      class TestClass(object):
+
+        def __init__(self, value):
+          self._value = value
+
+        def get_config(self):
+          return {'value': self._value}
+
   def test_serialize_custom_class_with_custom_name(self):
 
     @keras.utils.generic_utils.register_keras_serializable(
@@ -151,18 +162,6 @@ class SerializeKerasObjectTest(test.TestCase):
 
         def __init__(self, value):
           self._value = value
-
-  def test_serialize_custom_objects_with_overwrite_fails(self):
-    with self.assertRaisesRegex(ValueError, '.*has already been registered.*'):
-
-      @keras.utils.generic_utils.register_keras_serializable()  # pylint: disable=unused-variable
-      class TestClass(object):
-
-        def __init__(self, value):
-          self._value = value
-
-        def get_config(self):
-          return {'value': self._value}
 
   def test_serializable_object(self):
 

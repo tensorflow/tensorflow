@@ -162,6 +162,7 @@ enum Kind {
   FileLineColLocation,
   FusedLocation,
   NameLocation,
+  OpaqueLocation,
   UnknownLocation,
 
   // Represents a location as a 'void*' pointer to a front-end's opaque

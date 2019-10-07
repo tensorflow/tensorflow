@@ -41,7 +41,9 @@ Block::~Block() {
   llvm::DeleteContainerPointers(arguments);
 }
 
-Region *Block::getParent() { return parentValidInstOrderPair.getPointer(); }
+Region *Block::getParent() const {
+  return parentValidInstOrderPair.getPointer();
+}
 
 /// Returns the closest surrounding operation that contains this block or
 /// nullptr if this block is unlinked.

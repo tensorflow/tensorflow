@@ -21,6 +21,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_math_ops
@@ -105,7 +106,7 @@ class BincountTest(test_util.TensorFlowTestCase):
 
   def test_negative(self):
     # unsorted_segment_sum will only report InvalidArgumentError on CPU
-    with self.cached_session():
+    with self.cached_session(), ops.device("/CPU:0"):
       with self.assertRaises(errors.InvalidArgumentError):
         self.evaluate(math_ops.bincount([1, 2, 3, -1, 6, 8]))
 
