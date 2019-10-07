@@ -65,7 +65,7 @@ public:
   Optional<StringRef> getName();
 
   /// Print the this module in the custom top-level form.
-  void print(raw_ostream &os);
+  void print(raw_ostream &os, OpPrintingFlags flags = llvm::None);
   void dump();
 
   //===--------------------------------------------------------------------===//

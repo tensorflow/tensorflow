@@ -105,7 +105,9 @@ public:
   MLIRContext *getContext() { return getOperation()->getContext(); }
 
   /// Print the operation to the given stream.
-  void print(raw_ostream &os) { state->print(os); }
+  void print(raw_ostream &os, OpPrintingFlags flags = llvm::None) {
+    state->print(os, flags);
+  }
 
   /// Dump this operation.
   void dump() { state->dump(); }
