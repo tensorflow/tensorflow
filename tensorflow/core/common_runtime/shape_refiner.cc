@@ -191,7 +191,7 @@ Status ShapeRefiner::InferShapesForFunction(
 Status ShapeRefiner::AddNode(const Node* node) {
   // Create the inference context for this node with the existing input shapes.
   std::unique_ptr<InferenceContext> ic(new InferenceContext(
-      graph_def_version_, &node->def(), node->op_def(),
+      graph_def_version_, node->def(), node->op_def(),
       std::vector<ShapeHandle>(node->num_inputs()), {}, {}, {}));
   TF_RETURN_IF_ERROR(ic->construction_status());
 

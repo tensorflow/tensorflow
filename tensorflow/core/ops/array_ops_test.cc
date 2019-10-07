@@ -198,7 +198,7 @@ TEST(ArrayOpsTest, Identity_ShapeFnHandles) {
       new std::vector<std::pair<PartialTensorShape, DataType>>(
           {{PartialTensorShape(), DT_BOOL}}));
   shape_inference::InferenceContext c(
-      TF_GRAPH_DEF_VERSION, &op.node_def, op_reg_data->op_def,
+      TF_GRAPH_DEF_VERSION, op.node_def, op_reg_data->op_def,
       {PartialTensorShape()}, {}, {}, handle_data);
   TF_ASSERT_OK(c.construction_status());
   ASSERT_TRUE(op_reg_data->shape_inference_fn != nullptr);
