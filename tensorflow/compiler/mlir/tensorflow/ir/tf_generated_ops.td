@@ -4450,6 +4450,24 @@ element_shape: a shape compatible with that of elements in the list.
   TF_DerivedOperandTypeAttr element_dtype = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_TensorListResizeOp : TF_Op<"TensorListResize", []> {
+  let summary = "Resizes the list.";
+
+  let description = [{
+input_handle: the input list
+size: size of the output list
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_handle,
+    I32Tensor:$size
+  );
+
+  let results = (outs
+    TF_VariantTensor:$output_handle
+  );
+}
+
 def TF_TensorListSetItemOp : TF_Op<"TensorListSetItem", [NoSideEffect]> {
   let summary = "";
 
