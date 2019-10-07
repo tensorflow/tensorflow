@@ -17,9 +17,6 @@ include "mlir/IR/OpBase.td"
 include "mlir/Dialect/StandardOps/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
-def CreateTFShapeOp : NativeCodeCall<
-    "$_builder.create<TF::ShapeOp>($0->getLoc(), $1, $2)">;
-
 //===----------------------------------------------------------------------===//
 // TensorList transformation patterns.
 // Note that the pattern below rewrites `TensorList` tensors  (which has type DT_VARIANT)
