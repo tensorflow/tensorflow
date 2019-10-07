@@ -6,13 +6,13 @@
 |-----------------|
 | [![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://www.tensorflow.org/api_docs/) |
 
-[TensorFlow](https://www.tensorflow.org/) is an end-to-end open source platform
+[TensorFlow](https://www.tensorflow.org/) is an end-to-end open-source platform
 for machine learning. It has a comprehensive, flexible ecosystem of
 [tools](https://www.tensorflow.org/resources/tools),
 [libraries](https://www.tensorflow.org/resources/libraries-extensions), and
 [community](https://www.tensorflow.org/community) resources that lets
 researchers push the state-of-the-art in ML and developers easily build and
-deploy ML powered applications.
+deploy ML-powered applications.
 
 TensorFlow was originally developed by researchers and engineers working on the
 Google Brain team within Google's Machine Intelligence Research organization for
@@ -41,14 +41,14 @@ See the [TensorFlow install guide](https://www.tensorflow.org/install) for the
 To install the current release for CPU-only:
 
 ```
-$ pip install tensorflow
+$ pip install TensorFlow
 ```
 
 Use the GPU package for
 [CUDA-enabled GPU cards](https://www.tensorflow.org/install/gpu):
 
 ```
-$ pip install tensorflow-gpu
+$ pip install TensorFlow-GPU
 ```
 
 *Nightly binaries are available for testing using the
