@@ -57,10 +57,17 @@ py_library(
 )
 
 py_library(
+    name = "op_callbacks_common",
+    srcs = ["lib/op_callbacks_common.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_library(
     name = "check_numerics_callback",
     srcs = ["lib/check_numerics_callback.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":op_callbacks_common",
         ":source_utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:op_callbacks",

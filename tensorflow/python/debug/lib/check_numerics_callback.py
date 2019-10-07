@@ -23,6 +23,7 @@ import threading
 
 import numpy as np
 
+from tensorflow.python.debug.lib import op_callbacks_common
 from tensorflow.python.debug.lib import source_utils
 from tensorflow.python.framework import op_callbacks
 from tensorflow.python.ops import array_ops
@@ -46,20 +47,6 @@ def limit_string_length(string, max_len=50):
   else:
     return "..." + string[len(string) - max_len:]
 
-
-_CHECK_NUMERICS_CALLBACK_SKIP_OPS = (
-    # TODO(b/139668453): The following skipped ops are related to a limitation
-    # in the op callback.
-    b"Enter",
-    b"Exit",
-    b"Identity",
-    b"If",
-    b"Merge",
-    b"NextIteration",
-    b"StatelessIf",
-    b"Switch",
-    b"While",
-)
 
 # A dictionary that supports looking up the original input tensor names.
 _CHECK_NUMERICS_INPUT_LOOKUP = collections.defaultdict(dict)
@@ -176,7 +163,7 @@ def _check_numerics_callback(op_type,
   """Eager-function unified callback for checking numerics."""
   del attrs, op_name  # Unused
 
-  if compat.as_bytes(op_type) in _CHECK_NUMERICS_CALLBACK_SKIP_OPS:
+  if compat.as_bytes(op_type) in op_callbacks_common.OP_CALLBACK_SKIP_OPS:
     return
   if graph:
     # Under graph mode. Insert check_numerics op.
