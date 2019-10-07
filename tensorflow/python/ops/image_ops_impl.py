@@ -2003,7 +2003,7 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
   `max_jpeg_quality` must be in the interval `[0, 100]`.
 
   Args:
-    image: RGB image or images. Size of the last dimension must be 3.
+    image: 3D image. Size of the last dimension must be 1 or 3.
     min_jpeg_quality: Minimum jpeg encoding quality to use.
     max_jpeg_quality: Maximum jpeg encoding quality to use.
     seed: An operation-specific seed. It will be used in conjunction with the
@@ -2038,23 +2038,22 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
 
 @tf_export('image.adjust_jpeg_quality')
 def adjust_jpeg_quality(image, jpeg_quality, name=None):
-  """Adjust jpeg encoding quality of an RGB image.
+  """Adjust jpeg encoding quality of an image.
 
-  This is a convenience method that adjusts jpeg encoding quality of an
-  RGB image.
+  This is a convenience method that converts an image to uint8 representation,
+  encodes it to jpeg with `jpeg_quality`, decodes it, and then converts back
+  to the original data type.
 
-  `image` is an RGB image.  The image's encoding quality is adjusted
-  to `jpeg_quality`.
   `jpeg_quality` must be in the interval `[0, 100]`.
 
   Args:
-    image: RGB image or images. Size of the last dimension must be 3.
-    jpeg_quality: Python int or Tensor of type int32.  jpeg encoding quality.
+    image: 3D image. Size of the last dimension must be None, 1 or 3.
+    jpeg_quality: Python int or Tensor of type int32. jpeg encoding quality.
     name: A name for this operation (optional).
 
   Returns:
-    Adjusted image(s), same shape and DType as `image`.
-  
+    Adjusted image, same shape and DType as `image`.
+
   Usage Example:
     ```python
     >> import tensorflow as tf
@@ -2065,13 +2064,12 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
     InvalidArgumentError: quality must be in [0,100]
     InvalidArgumentError: image must have 1 or 3 channels
   """
-  with ops.name_scope(name, 'adjust_jpeg_quality', [image]) as name:
+  with ops.name_scope(name, 'adjust_jpeg_quality', [image]):
     image = ops.convert_to_tensor(image, name='image')
+    channels = image.shape.as_list()[-1]
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
-    # Convert to uint8
     image = convert_image_dtype(image, dtypes.uint8)
-    # Encode image to jpeg with given jpeg quality
     if compat.forward_compatible(2019, 4, 4):
       if not _is_tensor(jpeg_quality):
         # If jpeg_quality is a int (not tensor).
@@ -2080,9 +2078,7 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
     else:
       image = gen_image_ops.encode_jpeg(image, quality=jpeg_quality)
 
-    # Decode jpeg image
-    image = gen_image_ops.decode_jpeg(image)
-    # Convert back to original dtype and return
+    image = gen_image_ops.decode_jpeg(image, channels=channels)
     return convert_image_dtype(image, orig_dtype)
 
 

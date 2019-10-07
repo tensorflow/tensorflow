@@ -178,12 +178,12 @@ def constant(value, dtype=None, shape=None, name="Const"):
 
   >>> # Constant 1-D Tensor from a python list.
   >>> tf.constant([1, 2, 3, 4, 5, 6])
-  <tf.Tensor: id=0, shape=(6,), dtype=int32,
+  <tf.Tensor: shape=(6,), dtype=int32,
       numpy=array([1, 2, 3, 4, 5, 6], dtype=int32)>
   >>> # Or a numpy array
   >>> a = np.array([[1, 2, 3], [4, 5, 6]])
   >>> tf.constant(a)
-  <tf.Tensor: id=1, shape=(2, 3), dtype=int64, numpy=
+  <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
     array([[1, 2, 3],
            [4, 5, 6]])>
 
@@ -191,18 +191,18 @@ def constant(value, dtype=None, shape=None, name="Const"):
   `dtype`.
 
   >>> tf.constant([1, 2, 3, 4, 5, 6], dtype=tf.float64)
-  <tf.Tensor: id=2, shape=(6,), dtype=float64,
+  <tf.Tensor: shape=(6,), dtype=float64,
       numpy=array([1., 2., 3., 4., 5., 6.])>
 
   If `shape` is set, the `value` is reshaped to match. Scalars are expanded to
   fill the `shape`:
 
   >>> tf.constant(0, shape=(2, 3))
-    <tf.Tensor: id=5, shape=(2, 3), dtype=int32, numpy=
+    <tf.Tensor: shape=(2, 3), dtype=int32, numpy=
     array([[0, 0, 0],
            [0, 0, 0]], dtype=int32)>
   >>> tf.constant([1, 2, 3, 4, 5, 6], shape=[2, 3])
-  <tf.Tensor: id=8, shape=(2, 3), dtype=int32, numpy=
+  <tf.Tensor: shape=(2, 3), dtype=int32, numpy=
     array([[1, 2, 3],
            [4, 5, 6]], dtype=int32)>
 

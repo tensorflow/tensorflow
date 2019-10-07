@@ -92,6 +92,15 @@ cc_library(
     hdrs = [
         "nnapi_delegate_mock_test.h",
     ],
+    copts = select({
+        "//tensorflow:ios": [
+            "-DNNAPI_DELEGATE_DISABLED",
+        ],
+        "//tensorflow:windows": [
+            "-DNNAPI_DELEGATE_DISABLED",
+        ],
+        "//conditions:default": [],
+    }),
     deps = [
         ":nnapi_delegate",
         "//tensorflow/lite/nnapi:nnapi_implementation",
@@ -107,7 +116,30 @@ cc_test(
         "nnapi_delegate_test.cc",
     ],
     tags = [
-        "no_mac",  #TODO(b/141562975): Re-enable when bug is resolved.
+        "no_windows",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":nnapi_delegate",
+        ":nnapi_delegate_mock_test",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/nnapi:nnapi_implementation",
+        "//tensorflow/lite/nnapi:nnapi_lib",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "nnapi_delegate_errno_test",
+    size = "small",
+    srcs = [
+        "nnapi_delegate_errno_test.cc",
+    ],
+    tags = [
+        "no_mac",
         "no_windows",
         "tflite_not_portable_ios",
     ],

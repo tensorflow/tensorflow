@@ -73,8 +73,13 @@ class SPV_OpCode<string name, int val> {
 // Begin opcode section. Generated from SPIR-V spec; DO NOT MODIFY!
 
 def SPV_OC_OpNop                    : I32EnumAttrCase<"OpNop", 0>;
+def SPV_OC_OpUndef                  : I32EnumAttrCase<"OpUndef", 1>;
+def SPV_OC_OpSourceContinued        : I32EnumAttrCase<"OpSourceContinued", 2>;
+def SPV_OC_OpSource                 : I32EnumAttrCase<"OpSource", 3>;
+def SPV_OC_OpSourceExtension        : I32EnumAttrCase<"OpSourceExtension", 4>;
 def SPV_OC_OpName                   : I32EnumAttrCase<"OpName", 5>;
 def SPV_OC_OpMemberName             : I32EnumAttrCase<"OpMemberName", 6>;
+def SPV_OC_OpString                 : I32EnumAttrCase<"OpString", 7>;
 def SPV_OC_OpExtension              : I32EnumAttrCase<"OpExtension", 10>;
 def SPV_OC_OpExtInstImport          : I32EnumAttrCase<"OpExtInstImport", 11>;
 def SPV_OC_OpExtInst                : I32EnumAttrCase<"OpExtInst", 12>;
@@ -112,6 +117,8 @@ def SPV_OC_OpAccessChain            : I32EnumAttrCase<"OpAccessChain", 65>;
 def SPV_OC_OpDecorate               : I32EnumAttrCase<"OpDecorate", 71>;
 def SPV_OC_OpMemberDecorate         : I32EnumAttrCase<"OpMemberDecorate", 72>;
 def SPV_OC_OpCompositeExtract       : I32EnumAttrCase<"OpCompositeExtract", 81>;
+def SPV_OC_OpBitcast                : I32EnumAttrCase<"OpBitcast", 124>;
+def SPV_OC_OpFNegate                : I32EnumAttrCase<"OpFNegate", 127>;
 def SPV_OC_OpIAdd                   : I32EnumAttrCase<"OpIAdd", 128>;
 def SPV_OC_OpFAdd                   : I32EnumAttrCase<"OpFAdd", 129>;
 def SPV_OC_OpISub                   : I32EnumAttrCase<"OpISub", 130>;
@@ -126,6 +133,11 @@ def SPV_OC_OpSRem                   : I32EnumAttrCase<"OpSRem", 138>;
 def SPV_OC_OpSMod                   : I32EnumAttrCase<"OpSMod", 139>;
 def SPV_OC_OpFRem                   : I32EnumAttrCase<"OpFRem", 140>;
 def SPV_OC_OpFMod                   : I32EnumAttrCase<"OpFMod", 141>;
+def SPV_OC_OpLogicalEqual           : I32EnumAttrCase<"OpLogicalEqual", 164>;
+def SPV_OC_OpLogicalNotEqual        : I32EnumAttrCase<"OpLogicalNotEqual", 165>;
+def SPV_OC_OpLogicalOr              : I32EnumAttrCase<"OpLogicalOr", 166>;
+def SPV_OC_OpLogicalAnd             : I32EnumAttrCase<"OpLogicalAnd", 167>;
+def SPV_OC_OpLogicalNot             : I32EnumAttrCase<"OpLogicalNot", 168>;
 def SPV_OC_OpSelect                 : I32EnumAttrCase<"OpSelect", 169>;
 def SPV_OC_OpIEqual                 : I32EnumAttrCase<"OpIEqual", 170>;
 def SPV_OC_OpINotEqual              : I32EnumAttrCase<"OpINotEqual", 171>;
@@ -152,30 +164,35 @@ def SPV_OC_OpFUnordGreaterThanEqual : I32EnumAttrCase<"OpFUnordGreaterThanEqual"
 def SPV_OC_OpControlBarrier         : I32EnumAttrCase<"OpControlBarrier", 224>;
 def SPV_OC_OpMemoryBarrier          : I32EnumAttrCase<"OpMemoryBarrier", 225>;
 def SPV_OC_OpLoopMerge              : I32EnumAttrCase<"OpLoopMerge", 246>;
+def SPV_OC_OpSelectionMerge         : I32EnumAttrCase<"OpSelectionMerge", 247>;
 def SPV_OC_OpLabel                  : I32EnumAttrCase<"OpLabel", 248>;
 def SPV_OC_OpBranch                 : I32EnumAttrCase<"OpBranch", 249>;
 def SPV_OC_OpBranchConditional      : I32EnumAttrCase<"OpBranchConditional", 250>;
 def SPV_OC_OpReturn                 : I32EnumAttrCase<"OpReturn", 253>;
 def SPV_OC_OpReturnValue            : I32EnumAttrCase<"OpReturnValue", 254>;
+def SPV_OC_OpModuleProcessed        : I32EnumAttrCase<"OpModuleProcessed", 330>;
 
 def SPV_OpcodeAttr :
     I32EnumAttr<"Opcode", "valid SPIR-V instructions", [
-      SPV_OC_OpNop, SPV_OC_OpName, SPV_OC_OpMemberName, SPV_OC_OpExtension,
-      SPV_OC_OpExtInstImport, SPV_OC_OpExtInst, SPV_OC_OpMemoryModel,
-      SPV_OC_OpEntryPoint, SPV_OC_OpExecutionMode, SPV_OC_OpCapability,
-      SPV_OC_OpTypeVoid, SPV_OC_OpTypeBool, SPV_OC_OpTypeInt, SPV_OC_OpTypeFloat,
-      SPV_OC_OpTypeVector, SPV_OC_OpTypeArray, SPV_OC_OpTypeRuntimeArray,
-      SPV_OC_OpTypeStruct, SPV_OC_OpTypePointer, SPV_OC_OpTypeFunction,
-      SPV_OC_OpConstantTrue, SPV_OC_OpConstantFalse, SPV_OC_OpConstant,
-      SPV_OC_OpConstantComposite, SPV_OC_OpConstantNull, SPV_OC_OpSpecConstantTrue,
-      SPV_OC_OpSpecConstantFalse, SPV_OC_OpSpecConstant,
+      SPV_OC_OpNop, SPV_OC_OpUndef, SPV_OC_OpSourceContinued, SPV_OC_OpSource,
+      SPV_OC_OpSourceExtension, SPV_OC_OpName, SPV_OC_OpMemberName, SPV_OC_OpString,
+      SPV_OC_OpExtension, SPV_OC_OpExtInstImport, SPV_OC_OpExtInst,
+      SPV_OC_OpMemoryModel, SPV_OC_OpEntryPoint, SPV_OC_OpExecutionMode,
+      SPV_OC_OpCapability, SPV_OC_OpTypeVoid, SPV_OC_OpTypeBool, SPV_OC_OpTypeInt,
+      SPV_OC_OpTypeFloat, SPV_OC_OpTypeVector, SPV_OC_OpTypeArray,
+      SPV_OC_OpTypeRuntimeArray, SPV_OC_OpTypeStruct, SPV_OC_OpTypePointer,
+      SPV_OC_OpTypeFunction, SPV_OC_OpConstantTrue, SPV_OC_OpConstantFalse,
+      SPV_OC_OpConstant, SPV_OC_OpConstantComposite, SPV_OC_OpConstantNull,
+      SPV_OC_OpSpecConstantTrue, SPV_OC_OpSpecConstantFalse, SPV_OC_OpSpecConstant,
       SPV_OC_OpSpecConstantComposite, SPV_OC_OpFunction, SPV_OC_OpFunctionParameter,
       SPV_OC_OpFunctionEnd, SPV_OC_OpFunctionCall, SPV_OC_OpVariable, SPV_OC_OpLoad,
       SPV_OC_OpStore, SPV_OC_OpAccessChain, SPV_OC_OpDecorate,
-      SPV_OC_OpMemberDecorate, SPV_OC_OpCompositeExtract, SPV_OC_OpIAdd,
-      SPV_OC_OpFAdd, SPV_OC_OpISub, SPV_OC_OpFSub, SPV_OC_OpIMul, SPV_OC_OpFMul,
-      SPV_OC_OpUDiv, SPV_OC_OpSDiv, SPV_OC_OpFDiv, SPV_OC_OpUMod, SPV_OC_OpSRem,
-      SPV_OC_OpSMod, SPV_OC_OpFRem, SPV_OC_OpFMod, SPV_OC_OpSelect, SPV_OC_OpIEqual,
+      SPV_OC_OpMemberDecorate, SPV_OC_OpCompositeExtract, SPV_OC_OpBitcast,
+      SPV_OC_OpFNegate, SPV_OC_OpIAdd, SPV_OC_OpFAdd, SPV_OC_OpISub, SPV_OC_OpFSub,
+      SPV_OC_OpIMul, SPV_OC_OpFMul, SPV_OC_OpUDiv, SPV_OC_OpSDiv, SPV_OC_OpFDiv,
+      SPV_OC_OpUMod, SPV_OC_OpSRem, SPV_OC_OpSMod, SPV_OC_OpFRem, SPV_OC_OpFMod,
+      SPV_OC_OpLogicalEqual, SPV_OC_OpLogicalNotEqual, SPV_OC_OpLogicalOr,
+      SPV_OC_OpLogicalAnd, SPV_OC_OpLogicalNot, SPV_OC_OpSelect, SPV_OC_OpIEqual,
       SPV_OC_OpINotEqual, SPV_OC_OpUGreaterThan, SPV_OC_OpSGreaterThan,
       SPV_OC_OpUGreaterThanEqual, SPV_OC_OpSGreaterThanEqual, SPV_OC_OpULessThan,
       SPV_OC_OpSLessThan, SPV_OC_OpULessThanEqual, SPV_OC_OpSLessThanEqual,
@@ -185,8 +202,9 @@ def SPV_OpcodeAttr :
       SPV_OC_OpFOrdLessThanEqual, SPV_OC_OpFUnordLessThanEqual,
       SPV_OC_OpFOrdGreaterThanEqual, SPV_OC_OpFUnordGreaterThanEqual,
       SPV_OC_OpControlBarrier, SPV_OC_OpMemoryBarrier, SPV_OC_OpLoopMerge,
-      SPV_OC_OpLabel, SPV_OC_OpBranch, SPV_OC_OpBranchConditional, SPV_OC_OpReturn,
-      SPV_OC_OpReturnValue
+      SPV_OC_OpSelectionMerge, SPV_OC_OpLabel, SPV_OC_OpBranch,
+      SPV_OC_OpBranchConditional, SPV_OC_OpReturn, SPV_OC_OpReturnValue,
+      SPV_OC_OpModuleProcessed
       ]> {
     let returnType = "::mlir::spirv::Opcode";
     let convertFromStorage = "static_cast<::mlir::spirv::Opcode>($_self.getInt())";
@@ -211,6 +229,7 @@ def SPV_Void : TypeAlias<NoneType, "void type">;
 def SPV_Bool : IntOfWidths<[1]>;
 def SPV_Integer : IntOfWidths<[8, 16, 32, 64]>;
 def SPV_Float : FloatOfWidths<[16, 32, 64]>;
+def SPV_Float16or32 : FloatOfWidths<[16, 32]>;
 def SPV_Vector : VectorOfLengthAndType<[2, 3, 4],
                                        [SPV_Bool, SPV_Integer, SPV_Float]>;
 // Component type check is done in the type parser for the following SPIR-V
@@ -234,6 +253,7 @@ class SPV_ScalarOrVectorOf<Type type> :
     AnyTypeOf<[type, VectorOfLengthAndType<[2, 3, 4], [type]>]>;
 
 def SPV_ScalarOrVector : AnyTypeOf<[SPV_Scalar, SPV_Vector]>;
+def SPV_ScalarOrVectorOrPtr : AnyTypeOf<[SPV_ScalarOrVector, SPV_AnyPtr]>;
 
 // TODO(antiagainst): Use a more appropriate way to model optional operands
 class SPV_Optional<Type type> : Variadic<type>;
@@ -540,7 +560,7 @@ def SPV_C_SubgroupBallotKHR                         : I32EnumAttrCase<"SubgroupB
 def SPV_C_DrawParameters                            : I32EnumAttrCase<"DrawParameters", 4427>;
 def SPV_C_SubgroupVoteKHR                           : I32EnumAttrCase<"SubgroupVoteKHR", 4431>;
 def SPV_C_StorageBuffer16BitAccess                  : I32EnumAttrCase<"StorageBuffer16BitAccess", 4433>;
-def SPV_C_UniformAndStorageBuffer16BitAccess        : I32EnumAttrCase<"UniformAndStorageBuffer16BitAccess", 4434>;
+def SPV_C_StorageUniform16                          : I32EnumAttrCase<"StorageUniform16", 4434>;
 def SPV_C_StoragePushConstant16                     : I32EnumAttrCase<"StoragePushConstant16", 4435>;
 def SPV_C_StorageInputOutput16                      : I32EnumAttrCase<"StorageInputOutput16", 4436>;
 def SPV_C_DeviceGroup                               : I32EnumAttrCase<"DeviceGroup", 4437>;
@@ -635,10 +655,9 @@ def SPV_CapabilityAttr :
       SPV_C_GroupNonUniformShuffle, SPV_C_GroupNonUniformShuffleRelative,
       SPV_C_GroupNonUniformClustered, SPV_C_GroupNonUniformQuad, SPV_C_ShaderLayer,
       SPV_C_ShaderViewportIndex, SPV_C_SubgroupBallotKHR, SPV_C_DrawParameters,
-      SPV_C_SubgroupVoteKHR, SPV_C_StorageBuffer16BitAccess,
-      SPV_C_UniformAndStorageBuffer16BitAccess, SPV_C_StoragePushConstant16,
-      SPV_C_StorageInputOutput16, SPV_C_DeviceGroup, SPV_C_MultiView,
-      SPV_C_VariablePointersStorageBuffer, SPV_C_VariablePointers,
+      SPV_C_SubgroupVoteKHR, SPV_C_StorageBuffer16BitAccess, SPV_C_StorageUniform16,
+      SPV_C_StoragePushConstant16, SPV_C_StorageInputOutput16, SPV_C_DeviceGroup,
+      SPV_C_MultiView, SPV_C_VariablePointersStorageBuffer, SPV_C_VariablePointers,
       SPV_C_AtomicStorageOps, SPV_C_SampleMaskPostDepthCoverage,
       SPV_C_StorageBuffer8BitAccess, SPV_C_UniformAndStorageBuffer8BitAccess,
       SPV_C_StoragePushConstant8, SPV_C_DenormPreserve, SPV_C_DenormFlushToZero,
@@ -1086,6 +1105,19 @@ def SPV_ScopeAttr :
   let cppNamespace = "::mlir::spirv";
 }
 
+def SPV_SC_None        : BitEnumAttrCase<"None", 0x0000>;
+def SPV_SC_Flatten     : BitEnumAttrCase<"Flatten", 0x0001>;
+def SPV_SC_DontFlatten : BitEnumAttrCase<"DontFlatten", 0x0002>;
+
+def SPV_SelectionControlAttr :
+    BitEnumAttr<"SelectionControl", "valid SPIR-V SelectionControl", [
+      SPV_SC_None, SPV_SC_Flatten, SPV_SC_DontFlatten
+    ]> {
+  let returnType = "::mlir::spirv::SelectionControl";
+  let convertFromStorage = "static_cast<::mlir::spirv::SelectionControl>($_self.getInt())";
+  let cppNamespace = "::mlir::spirv";
+}
+
 def SPV_SC_UniformConstant        : I32EnumAttrCase<"UniformConstant", 0>;
 def SPV_SC_Input                  : I32EnumAttrCase<"Input", 1>;
 def SPV_SC_Uniform                : I32EnumAttrCase<"Uniform", 2>;
@@ -1228,6 +1260,23 @@ class SPV_Op<string mnemonic, list<OpTrait> traits = []> :
   bit autogenSerialization = 1;
 }
 
+class SPV_UnaryOp<string mnemonic, Type resultType, Type operandType,
+                  list<OpTrait> traits = []> :
+      SPV_Op<mnemonic, traits> {
+  let arguments = (ins
+    SPV_ScalarOrVectorOf<operandType>:$operand
+  );
+
+  let results = (outs
+    SPV_ScalarOrVectorOf<resultType>:$result
+  );
+
+  let parser = [{ return ::parseUnaryOp(parser, result); }];
+  let printer = [{ return ::printUnaryOp(getOperation(), p); }];
+  // No additional verification needed in addition to the ODS-generated ones.
+  let verifier = [{ return success(); }];
+}
+
 class SPV_BinaryOp<string mnemonic, Type resultType, Type operandsType,
                    list<OpTrait> traits = []> :
       SPV_Op<mnemonic, traits> {
@@ -1235,11 +1284,13 @@ class SPV_BinaryOp<string mnemonic, Type resultType, Type operandsType,
     SPV_ScalarOrVectorOf<operandsType>:$operand1,
     SPV_ScalarOrVectorOf<operandsType>:$operand2
   );
+
   let results = (outs
     SPV_ScalarOrVectorOf<resultType>:$result
   );
-  let parser = [{ return impl::parseBinaryOp(parser, result); }];
-  let printer = [{ return impl::printBinaryOp(getOperation(), p); }];
+
+  let parser = [{ return impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let printer = [{ return impl::printOneResultOp(getOperation(), p); }];
   // No additional verification needed in addition to the ODS-generated ones.
   let verifier = [{ return success(); }];
 }

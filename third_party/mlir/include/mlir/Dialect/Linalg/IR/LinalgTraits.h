@@ -18,8 +18,9 @@
 #ifndef MLIR_DIALECT_LINALG_LINALGTRAITS_H_
 #define MLIR_DIALECT_LINALG_LINALGTRAITS_H_
 
-#include "mlir/IR/OpDefinition.h"
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/StandardTypes.h"
 #include "mlir/Support/LLVM.h"
 
 namespace mlir {
@@ -81,8 +82,8 @@ public:
     return llvm::None;
   }
   /// Return the `i`-th input view type.
-  mlir::linalg::ViewType getInputViewType(unsigned i) {
-    return getInput(i)->getType().template cast<mlir::linalg::ViewType>();
+  MemRefType getInputViewType(unsigned i) {
+    return getInput(i)->getType().template cast<MemRefType>();
   }
   /// Return the range over input views.
   Operation::operand_range getInputs() {
@@ -102,8 +103,8 @@ public:
     return llvm::None;
   }
   /// Return the `i`-th output view type.
-  mlir::linalg::ViewType getOutputViewType(unsigned i) {
-    return getOutput(i)->getType().template cast<mlir::linalg::ViewType>();
+  MemRefType getOutputViewType(unsigned i) {
+    return getOutput(i)->getType().template cast<MemRefType>();
   }
   /// Return the range over output views.
   Operation::operand_range getOutputs() {
@@ -114,7 +115,7 @@ public:
   /// Return the number of input and output views.
   unsigned getNumInputsAndOutputs() { return nInputs() + nOutputs(); }
   /// Return the `i`-th view type.
-  mlir::linalg::ViewType getViewType(unsigned i) {
+  MemRefType getViewType(unsigned i) {
     return (i < nInputs()) ? getInputViewType(i)
                            : getOutputViewType(i - nInputs());
   }
@@ -127,10 +128,6 @@ public:
     auto nViews = cast<ConcreteType>(op).getNumInputsAndOutputs();
     if (failed(OpTrait::impl::verifyAtLeastNOperands(op, nViews)))
       return failure();
-    for (unsigned i = 0, e = nViews; i < e; ++i) {
-      if (!op->getOperand(i)->getType().dyn_cast<mlir::linalg::ViewType>())
-        return op->emitOpError("operand ") << i << " must have view type ";
-    }
     return success();
   }
 };
@@ -153,36 +150,6 @@ public:
     static unsigned getNumReductionLoops() { return NReduction; }
     static unsigned getNumWindowLoops() { return NWindow; }
     static unsigned getNumLoops() { return NParallel + NReduction + NWindow; }
-  };
-};
-
-/// This class provides the API for ops that are known to have a specified
-/// list of view ranks. This is used as a trait like this:
-///
-///   class MatvecOp : public Op<MatvecOp, OpTrait::ViewRanks<2, 1, 1>::Impl> {
-///
-template <unsigned... Ranks> class ViewRanks {
-public:
-  template <typename ConcreteType>
-  class Impl
-      : public OpTrait::TraitBase<ConcreteType, ViewRanks<Ranks...>::Impl> {
-  public:
-    static LogicalResult verifyTrait(Operation *op) {
-      if (op->getNumOperands() != sizeof...(Ranks))
-        return op->emitError("expected ") << sizeof...(Ranks) << " operands";
-
-      unsigned ranks[]{Ranks...};
-      for (unsigned i = 0, e = op->getNumOperands(); i < e; ++i) {
-        auto viewType =
-            op->getOperand(i)->getType().dyn_cast<mlir::linalg::ViewType>();
-        if (!viewType)
-          return op->emitOpError("operand ") << i << " must have view type ";
-        if (ranks[i] != viewType.getRank())
-          return op->emitOpError("operand ")
-                 << i << " must have rank " << ranks[i];
-      }
-      return success();
-    }
   };
 };
 

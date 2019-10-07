@@ -1,4 +1,8 @@
 load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
+load(
+    "//tensorflow/core/platform:default/build_config.bzl",
+    "tf_proto_library",
+)
 
 package(
     default_visibility = [
@@ -24,6 +28,14 @@ filegroup(
     ],
 )
 
+tf_proto_library(
+    name = "quantization_info_proto",
+    srcs = [
+        "quantization_info.proto",
+    ],
+    cc_api_version = 2,
+)
+
 cc_library(
     name = "quantization_lib",
     srcs = [
@@ -43,6 +55,21 @@ cc_library(
         # TODO(fengliuai): remove this dependence.
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/core:lib_proto_parsing",
+    ],
+)
+
+cc_library(
+    name = "quantization_config",
+    srcs = [
+        "quantization_config.cc",
+    ],
+    hdrs = [
+        "quantization_config.h",
+    ],
+    deps = [
+        "//tensorflow/core:protos_all_proto_cc",
+        "@com_google_absl//absl/strings",
+        "@llvm//:support",
     ],
 )
 

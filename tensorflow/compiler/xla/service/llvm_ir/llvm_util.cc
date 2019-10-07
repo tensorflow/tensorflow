@@ -295,7 +295,7 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
   llvm::AllocaInst* alloca =
       b->CreateAlloca(type, element_count, AsStringRef(name));
   if (alignment != 0) {
-    alloca->setAlignment(alignment);
+    alloca->setAlignment(llvm::MaybeAlign(alignment));
   }
   return alloca;
 }

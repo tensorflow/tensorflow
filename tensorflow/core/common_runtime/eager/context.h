@@ -25,6 +25,7 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
@@ -199,6 +200,7 @@ class EagerContext : public core::RefCounted {
   bool LogMemory() const { return log_memory_; }
 
   Rendezvous* GetRendezvous() const { return rendezvous_; }
+  void ResetRendezvous(Rendezvous* r) { rendezvous_ = r; }
   Rendezvous* CreateRendezvous(const int64 step_id) const {
     if (rendezvous_creator_ != nullptr) {
       return rendezvous_creator_(step_id);
@@ -241,6 +243,9 @@ class EagerContext : public core::RefCounted {
 
   // TODO(apassos) remove the need for this
   void ReleaseDeviceMgr() { local_device_manager_.release(); }
+  std::unique_ptr<tensorflow::DynamicDeviceMgr> ReleaseRemoteDeviceMgr() {
+    return std::move(remote_device_manager_);
+  }
 
   // TODO(apassos) clean up RunMetadata storage.
   mutex* MetadataMu() LOCK_RETURNED(metadata_mu_) { return &metadata_mu_; }
@@ -262,6 +267,7 @@ class EagerContext : public core::RefCounted {
   Status GetClient(const string& remote_task, eager::EagerClient** client);
 
   uint64 GetContextId();
+  uint64 GetContextViewId();
 
   // TODO(nareshmodi): Encapsulate remote state into a separate
   // class/struct.
@@ -288,6 +294,21 @@ class EagerContext : public core::RefCounted {
       std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
           remote_mgr);
 
+  // Update an existing master context with a new set of remote workers (i.e., a
+  // new "view" of cluster membership. Similar to InitializeRemoteMaster but
+  // this will keep the current context_id and increment a context_view_id, will
+  // keep the current resource manager so that resources from the previous view
+  // can still be accessed, and will automatically register existing functions
+  // if there are newly added hosts.
+  Status UpdateRemoteMaster(
+      WorkerEnv* worker_env, std::shared_ptr<WorkerSession> worker_session,
+      std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
+      std::unique_ptr<DynamicDeviceMgr> remote_device_manager,
+      const std::vector<string>& add_remote_contexts,
+      const std::vector<string>& remove_remote_contexts, uint64 context_id,
+      Rendezvous* r, DeviceMgr* local_device_mgr, int keep_alive_secs,
+      DistributedFunctionLibraryRuntime* cluster_flr);
+
   // Similar with InitializeRemoteMaster but this context will not kill remote
   // contexts in shutdown.
   Status InitializeRemoteWorker(
@@ -297,6 +318,15 @@ class EagerContext : public core::RefCounted {
       std::function<Rendezvous*(const int64)> rendezvous_creator,
       std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
           remote_mgr);
+
+  // Similar with InitializeRemoteWorker but will reuse existing context and
+  // increment context_view_id.
+  Status UpdateRemoteWorker(
+      const DeviceMgr* worker_session_device_mgr,
+      std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
+      const DynamicDeviceMgr* remote_device_mgr,
+      const std::vector<string>& remote_contexts, uint64 context_id,
+      DistributedFunctionLibraryRuntime* cluster_flr);
 
   Status StoreCollectiveOpsServer(
       std::unique_ptr<ServerInterface> server, DeviceMgr* device_mgr,
@@ -310,9 +340,11 @@ class EagerContext : public core::RefCounted {
   }
 
   // If true, then tensors should be shipped across processes via the
-  // EagerService.SendTensor RPC. If false, _Send/_Recv ops should be used
-  // instead (which in-turn use WorkerService.RecvTensor RPCs).
+  // EagerService.Enqueue(SendTensorOp). If false, _Send/_Recv ops should be
+  // used instead (which in-turn use WorkerService.RecvTensor RPCs).
   bool UseSendTensorRPC() { return use_send_tensor_rpc_; }
+
+  tensorflow::ServerInterface* GetServer() { return server_.get(); }
 
 #endif  // IS_MOBILE_PLATFORM
 
@@ -331,6 +363,8 @@ class EagerContext : public core::RefCounted {
 
   tensorflow::Env* TFEnv() const { return env_; }
 
+  std::vector<const FunctionDef*> ListRegisteredFunctions();
+
   Status FindDeviceFromName(const char* device_name, Device** device) const;
 
   bool OnSameTask(const Device* first, const Device* second) const;
@@ -341,6 +375,9 @@ class EagerContext : public core::RefCounted {
  private:
   void InitDeviceMapAndAsync();
   Status MaybeRegisterFunctionRemotely(const FunctionDef& fdef);
+  Status RegisterExistingFunctionsOnRemoteWorkers(
+      const std::vector<const FunctionDef*>& function_defs,
+      const std::vector<string>& remote_workers);
 
   const ContextDevicePlacementPolicy default_device_placement_policy_;
   const ContextMirroringPolicy default_mirroring_policy_;
@@ -421,7 +458,19 @@ class EagerContext : public core::RefCounted {
   CollectiveExecutorMgrInterface* unowned_collective_executor_mgr_ = nullptr;
 
 #if !defined(IS_MOBILE_PLATFORM)
-  void CloseRemoteContexts();
+  void CloseAndClearAllRemoteContexts();
+  void CloseRemoteContexts(const std::vector<string>& remote_contexts);
+
+  Status SetMasterContextState(
+      std::unique_ptr<ServerInterface> server, WorkerEnv* worker_env,
+      std::shared_ptr<WorkerSession> worker_session,
+      std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
+      std::unique_ptr<DynamicDeviceMgr> remote_device_manager,
+      uint64 context_id, uint64 context_view_id, Rendezvous* r,
+      DeviceMgr* local_device_mgr, int keep_alive_secs,
+      DistributedFunctionLibraryRuntime* cluster_flr,
+      std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
+          remote_mgr);
 
   // The server_ is not const since we release it when the context is destroyed.
   // Therefore the server_ object is not marked as const (even though it should
@@ -434,6 +483,10 @@ class EagerContext : public core::RefCounted {
   mutex remote_state_mu_;
 
   uint64 context_id_ GUARDED_BY(remote_state_mu_);
+  // The view id of an eager context should be set to 0 when context is created,
+  // and continously incremented when context with the same context_id gets
+  // updated. The view id should be consistent between master and workers.
+  uint64 context_view_id_ GUARDED_BY(remote_state_mu_);
   std::vector<string> remote_contexts_;
 
   int keep_alive_secs_ GUARDED_BY(remote_state_mu_);

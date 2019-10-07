@@ -30,6 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import applications
 from tensorflow.python.keras import layers
 from tensorflow.python.keras import models
 from tensorflow.python.keras import optimizer_v2
@@ -201,6 +202,9 @@ class CheckNumericsCallbackTest(test_util.TensorFlowTestCase):
       self.assertTrue(message.endswith("\n"))
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla(
+      "There is a small inconsistency in the step at which overflow happens: "
+      "128 (without XLA) and 127 (with XLA).")
   def testOverflowInTfFunction(self):
     """Test catching Infinity caused by overflow in a tf.function with while."""
     check_numerics_callback.enable_check_numerics()
@@ -503,6 +507,19 @@ class CheckNumericsCallbackTest(test_util.TensorFlowTestCase):
       self.assertIn("shape: ()\n", message)
     self.assertTrue(re.search(r"Input tensor.*Tensor.*Neg:0", message))
     self.assertIn("-> |   return math_ops.log(-dy)", message)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testMobileNetV2Fit(self):
+    """Test training Keras MobileNetV2 application works w/ check numerics."""
+    check_numerics_callback.enable_check_numerics()
+    model = applications.MobileNetV2(alpha=0.1, weights=None)
+
+    xs = np.zeros([2] + list(model.input_shape[1:]))
+    ys = np.zeros([2] + list(model.output_shape[1:]))
+    model.compile(optimizer="sgd", loss="categorical_crossentropy")
+    epochs = 1
+    history = model.fit(xs, ys, epochs=epochs, verbose=0)
+    self.assertEqual(len(history.history["loss"]), epochs)
 
   # TODO(cais): Tests for Infs and NaNs during distributed execution.
   # TODO(cais): Benchmark the slowdown due to callbacks and inserted nodes.

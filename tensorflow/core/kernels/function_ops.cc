@@ -323,7 +323,16 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
       done);
 
   AttrValueMap attr_values = func_.attr();
+
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
+
+  const auto* config = (ctx->function_library())
+                           ? ctx->function_library()->config_proto()
+                           : nullptr;
+  if (config) {
+    instantiate_opts.config_proto = *config;
+  }
+
   instantiate_opts.target = target_device;
 
   FunctionTarget function_target = {target_device, lib};

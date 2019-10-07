@@ -55,8 +55,8 @@ void AnalyzeAndVerify(
       ConvertGraphDefToGraph(GraphConstructorOptions(), graphdef, graph.get()));
 
   auto pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
-      nullptr, Env::Default(), TF_GRAPH_DEF_VERSION, flib_def,
-      OptimizerOptions());
+      nullptr, Env::Default(), /*config=*/nullptr, TF_GRAPH_DEF_VERSION,
+      flib_def, OptimizerOptions());
   FunctionLibraryRuntime* lib_runtime =
       pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
   absl::flat_hash_map<ResourceUsageAnalysis::NodeInfo,

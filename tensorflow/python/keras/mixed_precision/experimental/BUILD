@@ -93,6 +93,7 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -157,4 +158,17 @@ cuda_py_test(
     ],
     shard_count = 4,
     tags = ["no_windows"],  # b/139083295: bfloat16 tests fail on Windows
+)
+
+cuda_py_test(
+    name = "layer_correctness_test",
+    size = "medium",
+    srcs = ["layer_correctness_test.py"],
+    additional_deps = [
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:one_device_strategy",
+        "//tensorflow/python/keras",
+    ],
 )

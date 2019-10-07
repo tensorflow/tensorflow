@@ -51,6 +51,7 @@ py_library(
         "preprocessing/text.py",
         "testing_utils.py",
         "utils/__init__.py",
+        "utils/all_utils.py",
         "utils/multi_gpu_utils.py",
         "utils/np_utils.py",
         "utils/vis_utils.py",
@@ -352,6 +353,7 @@ py_library(
         ":engine_utils",
         ":mode_keys",
         "//tensorflow/python/keras/distribute:multi_worker_training_state",
+        "//tensorflow/tools/docs:doc_controls",
     ],
 )
 
@@ -485,6 +487,8 @@ py_library(
         "layers/pooling.py",
         "layers/preprocessing/normalization.py",
         "layers/preprocessing/normalization_v1.py",
+        "layers/preprocessing/text_vectorization.py",
+        "layers/preprocessing/text_vectorization_v1.py",
         "layers/recurrent.py",
         "layers/recurrent_v2.py",
         "layers/rnn_cell_wrapper_v2.py",
@@ -943,7 +947,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "normalization_test",
     size = "medium",
     srcs = ["layers/normalization_test.py"],
@@ -971,6 +975,19 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     main = "normalization_test.py",
+)
+
+tf_py_test(
+    name = "preprocessing_text_vectorization_test",
+    size = "medium",
+    srcs = ["layers/preprocessing/text_vectorization_test.py"],
+    additional_deps = [
+        ":keras",
+        ":preprocessing_test_utils",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+    ],
+    main = "text_vectorization_test.py",
 )
 
 tf_py_test(
@@ -1593,6 +1610,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 4,
     tags = [
         "no_windows",
@@ -1659,7 +1677,22 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 8,
+    tags = [
+        "no_rocm",
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
+)
+
+tf_py_test(
+    name = "base_layer_utils_test",
+    srcs = ["engine/base_layer_utils_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+    ],
     tags = [
         "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564

@@ -12,13 +12,13 @@ The Python API for converting TensorFlow models to TensorFlow Lite in TensorFlow
 classmethods to convert a model based on the original model format:
 
 *   `TFLiteConverter.from_saved_model()`: Converts
-    [SavedModel directories](https://www.tensorflow.org/alpha/guide/saved_model).
+    [SavedModel directories](https://www.tensorflow.org/guide/saved_model).
 *   `TFLiteConverter.from_keras_model()`: Converts
-    [`tf.keras` models](https://www.tensorflow.org/alpha/guide/keras/overview).
+    [`tf.keras` models](https://www.tensorflow.org/guide/keras/overview).
 *   `TFLiteConverter.from_concrete_functions()`: Converts
     [concrete functions](concrete_function.md).
 
-Note: The TensorFlow Lite 2.0 alpha had a different version of the
+Note: TensorFlow Lite 2.0 had a different version of the
 `TFLiteConverter` API which only contained the classmethod
 [`from_concrete_function`](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/lite/TFLiteConverter#from_concrete_function).
 The API detailed in this document can be installed using the
@@ -33,7 +33,7 @@ of [changes in the API between 1.X and 2.0](#differences), and
 ### Converting a SavedModel <a name="saved_model"></a>
 
 The following example shows how to convert a
-[SavedModel](https://www.tensorflow.org/alpha/guide/saved_model) into a
+[SavedModel](https://www.tensorflow.org/guide/saved_model) into a
 TensorFlow Lite [`FlatBuffer`](https://google.github.io/flatbuffers/).
 
 ```python
@@ -72,7 +72,7 @@ converter = TFLiteConverter.from_concrete_functions([concrete_func])
 ### Converting a Keras model <a name="keras"></a>
 
 The following example shows how to convert a
-[`tf.keras` model](https://www.tensorflow.org/alpha/guide/keras/overview) into a
+[`tf.keras` model](https://www.tensorflow.org/guide/keras/overview) into a
 TensorFlow Lite [`FlatBuffer`](https://google.github.io/flatbuffers/).
 
 ```python

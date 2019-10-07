@@ -26,6 +26,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -51,8 +52,8 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
         test_samples=10,
         input_shape=(DATA_DIM,),
         num_classes=NUM_CLASSES)
-    y_train = keras.utils.to_categorical(y_train, NUM_CLASSES)
-    y_test = keras.utils.to_categorical(y_test, NUM_CLASSES)
+    y_train = np_utils.to_categorical(y_train, NUM_CLASSES)
+    y_test = np_utils.to_categorical(y_test, NUM_CLASSES)
     return (x_train, y_train), (x_test, y_test)
 
   def create_multi_input_model_from(self, layer1, layer2):

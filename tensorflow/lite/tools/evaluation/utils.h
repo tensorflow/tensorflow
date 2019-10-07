@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOOLS_EVALUATION_UTILS_H_
 
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #if defined(__ANDROID__)
@@ -34,8 +35,17 @@ std::string StripTrailingSlashes(const std::string& path);
 bool ReadFileLines(const std::string& file_path,
                    std::vector<std::string>* lines_output);
 
-TfLiteStatus GetSortedFileNames(const std::string& directory,
-                                std::vector<std::string>* result);
+// If extension set is empty, all files will be listed. The strings in
+// extension set are expected to be in lowercase and include the dot.
+TfLiteStatus GetSortedFileNames(
+    const std::string& directory, std::vector<std::string>* result,
+    const std::unordered_set<std::string>& extensions);
+
+inline TfLiteStatus GetSortedFileNames(const std::string& directory,
+                                       std::vector<std::string>* result) {
+  return GetSortedFileNames(directory, result,
+                            std::unordered_set<std::string>());
+}
 
 Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate();
 

@@ -1901,3 +1901,49 @@ func @testNonMaxSuppressionV5WithWrongBoxShape(%arg0: tensor<3x2xf32>, %arg1: te
   %0, %1, %2 = "tfl.non_max_suppression_v5"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5) : (tensor<3x2xf32>, tensor<3xf32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<2xi32>, tensor<2xf32>, tensor<i32>)
   return %0, %1, %2 : tensor<2xi32>, tensor<2xf32>, tensor<i32>
 }
+
+// -----
+
+func @fully_connected(%arg0: tensor<1x37xf32>, %arg1: tensor<40x37xf32>, %arg2: tensor<40xf32>) -> tensor<1x40xf32> {
+  %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x37xf32>, tensor<40x37xf32>, tensor<40xf32>) -> tensor<1x40xf32>
+  return %0 : tensor<1x40xf32>
+}
+
+// -----
+
+func @fully_connected_no_bias(%arg0: tensor<2x2x10xf32>, %arg1: tensor<40x40xf32>, %arg2: none) -> tensor<1x40xf32> {
+  %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<2x2x10xf32>, tensor<40x40xf32>, none) -> tensor<1x40xf32>
+  return %0 : tensor<1x40xf32>
+}
+
+// -----
+
+func @testFullyConnectedWith3DFilter(%arg0: tensor<1x37xf32>, %arg1: tensor<40x2x37xf32>, %arg2: tensor<40xf32>) -> tensor<1x40xf32> {
+  // expected-error @+1 {{expect 2d filter, got 'tensor<40x2x37xf32>'}}
+  %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x37xf32>, tensor<40x2x37xf32>, tensor<40xf32>) -> tensor<1x40xf32>
+  return %0 : tensor<1x40xf32>
+}
+
+// -----
+
+func @testFullyConnectedWithBadInputShape(%arg0: tensor<2x2x11xf32>, %arg1: tensor<40x40xf32>, %arg2: none) -> tensor<40xf32> {
+  // expected-error @+1 {{expect 'input' num_elements % 40 == 0, got input type 'tensor<2x2x11xf32>'}}
+  %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<2x2x11xf32>, tensor<40x40xf32>, none) -> tensor<1x40xf32>
+  return %0 : tensor<1x40xf32>
+}
+
+// -----
+
+func @testFullyConnectedWithBadBatch(%arg0: tensor<1x37xf32>, %arg1: tensor<40x37xf32>, %arg2: tensor<40xf32>) -> tensor<2x40xf32> {
+  // expected-error @+1 {{num_input_elements / z_in != num_output_elements / z_out}}
+  %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x37xf32>, tensor<40x37xf32>, tensor<40xf32>) -> tensor<2x40xf32>
+  return %0 : tensor<2x40xf32>
+}
+
+// -----
+
+func @testFullyConnectedWithBadOutputShape(%arg0: tensor<1x37xf32>, %arg1: tensor<40x37xf32>, %arg2: tensor<40xf32>) -> tensor<1x41xf32> {
+  // expected-error @+1 {{expect 'output' num_elements % 40 == 0, got 'tensor<1x41xf32>'}}
+  %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x37xf32>, tensor<40x37xf32>, tensor<40xf32>) -> tensor<1x41xf32>
+  return %0 : tensor<1x41xf32>
+}

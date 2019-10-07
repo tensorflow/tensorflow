@@ -12,6 +12,7 @@ package_group(
     packages = [
         "//babelfish/device/...",
         "//learning/brain/experimental/mlir/...",
+        "//learning/brain/experimental/swift_mlir/...",
         "//learning/brain/google/xla/kernels/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/compiler/xla/...",
@@ -116,6 +117,21 @@ cc_library(
 )
 
 cc_library(
+    name = "lhlo_legalize_to_linalg",
+    srcs = ["transforms/lhlo_legalize_to_linalg.cc"],
+    deps = [
+        ":lhlo",
+        "@com_google_absl//absl/memory",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Linalg",
+        "@local_config_mlir//:Pass",
+        "@local_config_mlir//:StandardOps",
+        "@local_config_mlir//:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "hlo_legalize_to_lhlo",
     srcs = ["transforms/hlo_legalize_to_lhlo.cc"],
     deps = [
@@ -151,7 +167,6 @@ cc_library(
     ],
     deps = [
         ":hlo",
-        "//tensorflow/compiler/mlir/tensorflow",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
@@ -167,7 +182,6 @@ cc_library(
     deps = [
         ":hlo",
         ":xla_legalize_to_standard_inc_gen",
-        "//tensorflow/compiler/mlir/tensorflow",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
@@ -183,7 +197,6 @@ cc_library(
     deps = [
         ":hlo",
         ":xla_dialect_registration",
-        "//tensorflow/compiler/mlir/tensorflow",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",

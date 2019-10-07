@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/str_split.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/InitLLVM.h"
@@ -26,11 +28,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
+#include "tensorflow/compiler/mlir/lite/flatbuffer_translate_flags.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
-#include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -131,7 +134,7 @@ int main(int argc, char **argv) {
       tensorflow::LoadFromGraphdefOrMlirSource(
           input_file_name, input_mlir, use_splatted_constant, extra_opdefs,
           debug_info_file, input_arrays, input_dtypes, input_shapes,
-          output_arrays, inference_type, min_values, max_values,
+          output_arrays,
           /*prune_unused_nodes=*/true, &source_mgr, &context);
 
   // If errors occur, the library call in the above already logged the error
@@ -139,35 +142,38 @@ int main(int argc, char **argv) {
   if (!module.ok()) return kTrFailure;
 
   mlir::PassManager pm(&context);
-  bool run_quantize =
-      tensorflow::ShouldRunQuantizePasses(module.ValueOrDie().get());
-  mlir::TFL::PassConfig pass_config;
+
+  // Set the quantization specifications from the command line flags.
+  mlir::TFL::QuantizationSpecs quant_specs;
+  if (mlir::TFL::ParseInputNodeQuantSpecs(input_arrays, min_values, max_values,
+                                          inference_type, &quant_specs)) {
+    llvm::errs() << "Failed to get input quant spec.";
+    return kTrFailure;
+  }
+  if (weight_quantization != "NONE") {
+    quant_specs.weight_quantization = true;
+    if (weight_quantization == "INT8") {
+      quant_specs.inference_type = tensorflow::DT_QINT8;
+    } else if (weight_quantization == "FLOAT16") {
+      quant_specs.inference_type = tensorflow::DT_HALF;
+    } else {
+      llvm::errs() << "Unknown weight quantization " << weight_quantization;
+      return kTrFailure;
+    }
+  }
+
+  mlir::TFL::PassConfig pass_config(quant_specs);
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.emit_quant_adaptor_ops = emit_quant_adaptor_ops;
   pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
-  pass_config.run_quantize = run_quantize;
 
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
 
   std::string result;
-
-  tflite::QuantizedBufferType quantized_type =
-      tflite::QuantizedBufferType::NONE;
-  if (weight_quantization == "NONE") {
-    quantized_type = tflite::QuantizedBufferType::NONE;
-  } else if (weight_quantization == "INT8") {
-    quantized_type = tflite::QuantizedBufferType::INT8;
-  } else if (weight_quantization == "FLOAT16") {
-    quantized_type = tflite::QuantizedBufferType::FLOAT16;
-  } else {
-    llvm::errs() << "Unknown weight quantization " << weight_quantization;
-    return kTrFailure;
-  }
-
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       module.ValueOrDie().get(), output_mlir, emit_builtin_tflite_ops,
       emit_select_tf_ops, emit_custom_ops, emit_quant_adaptor_ops,
-      lower_tensor_list_ops, quantized_type, &result, &pm);
+      lower_tensor_list_ops, quant_specs, &result, &pm);
   if (!status.ok()) return kTrFailure;
 
   std::string error_msg;

@@ -9,6 +9,7 @@ set(LIBS
   MLIRStandardOps
   MLIRTargetLLVMIR
   MLIRTargetNVVMIR
+  MLIRTargetROCDLIR
   MLIRTransforms
   MLIRTranslation
   MLIRSupport

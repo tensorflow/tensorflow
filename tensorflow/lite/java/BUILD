@@ -144,6 +144,7 @@ java_test(
     javacopts = JAVACOPTS,
     tags = [
         "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
+        "v1only",
     ],
     test_class = "org.tensorflow.lite.TensorFlowLiteTest",
     visibility = ["//visibility:private"],

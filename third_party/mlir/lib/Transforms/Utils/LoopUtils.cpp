@@ -367,10 +367,7 @@ void getPerfectlyNestedLoopsImpl(
     unsigned maxLoops = std::numeric_limits<unsigned>::max()) {
   for (unsigned i = 0; i < maxLoops; ++i) {
     forOps.push_back(rootForOp);
-    // FIXME: ForOp and AffineForOp currently provide different names to access
-    // the region ("region" and "getRegion").  Remove this generic access when
-    // AffineForOp moves to ODS and also gets "region".
-    Block &body = rootForOp.getOperation()->getRegion(0).front();
+    Block &body = rootForOp.region().front();
     if (body.begin() != std::prev(body.end(), 2))
       return;
 

@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/test.h"
 
 #if GOOGLE_CUDA
@@ -102,7 +101,10 @@ class TRTEngineOpTestBase : public OpsTestBase {
 
   void ResetInputs() {
     inputs_.clear();
-    gtl::STLDeleteElements(&tensors_);
+    for (auto& temp : tensors_) {
+      delete temp;
+    }
+    tensors_.clear();
   }
 
  private:

@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # Copyright 2019 The MLIR Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,13 +29,14 @@
 # ./define_inst.sh LogicalOp OpFOrdEqual
 set -e
 
-inst_category=$1
+file_name=$1
+inst_category=$2
 
 case $inst_category in
   Op | ArithmeticOp | LogicalOp | ControlFlowOp | StructureOp)
   ;;
   *)
-    echo "Usage : " $0 " <inst_category> (<opname>)*"
+    echo "Usage : " $0 "<filename> <inst_category> (<opname>)*"
     echo "<inst_category> must be one of " \
       "(Op|ArithmeticOp|LogicalOp|ControlFlowOp|StructureOp)"
     exit 1;
@@ -44,11 +44,15 @@ case $inst_category in
 esac
 
 shift
+shift
 
 current_file="$(readlink -f "$0")"
 current_dir="$(dirname "$current_file")"
 
 python3 ${current_dir}/gen_spirv_dialect.py \
   --op-td-path \
-  ${current_dir}/../../include/mlir/Dialect/SPIRV/SPIRV${inst_category}s.td \
+  ${current_dir}/../../include/mlir/Dialect/SPIRV/${file_name} \
   --inst-category $inst_category --new-inst "$@"
+
+${current_dir}/define_opcodes.sh "$@"
+

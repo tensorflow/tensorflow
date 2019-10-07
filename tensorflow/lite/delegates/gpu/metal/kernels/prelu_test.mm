@@ -28,16 +28,16 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
-using ::tflite::gpu::PReLUAttributes;
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::DataType;
 using ::tflite::gpu::HWC;
 using ::tflite::gpu::Linear;
-using ::tflite::gpu::metal::CompareVectors;
-using ::tflite::gpu::metal::SingleOpModel;
+using ::tflite::gpu::OperationType;
+using ::tflite::gpu::PReLUAttributes;
 using ::tflite::gpu::Tensor;
 using ::tflite::gpu::TensorRef;
-using ::tflite::gpu::OperationType;
+using ::tflite::gpu::metal::CompareVectors;
+using ::tflite::gpu::metal::SingleOpModel;
 
 @interface SoftmaxTest : XCTestCase
 @end
@@ -66,8 +66,7 @@ using ::tflite::gpu::OperationType;
   output.ref = 2;
   output.shape = BHWC(1, 2, 2, 1);
 
-  SingleOpModel model({ToString(OperationType::PRELU), attr}, {input},
-                      {output});
+  SingleOpModel model({ToString(OperationType::PRELU), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {-1.0, -2.0, 1.0, 2.0}));
   auto status = model.Invoke();
   XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
@@ -94,12 +93,67 @@ using ::tflite::gpu::OperationType;
   output.ref = 2;
   output.shape = BHWC(1, 2, 2, 1);
 
-  SingleOpModel model({ToString(OperationType::PRELU), attr}, {input},
-                      {output});
+  SingleOpModel model({ToString(OperationType::PRELU), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {-1.0, -2.0, 1.0, 2.0}));
   auto status = model.Invoke();
   XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
   status = CompareVectors({-2, -4, 1, 1}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+}
+
+- (void)testPRelu3DAlphaNoClip {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 2, 2, 1);
+
+  OperationType op_type = OperationType::PRELU;
+  PReLUAttributes attr;
+  attr.clip = 0;
+  Tensor<HWC, DataType::FLOAT32> alpha;
+  alpha.shape = HWC(2, 2, 1);
+  alpha.id = 1;
+  alpha.data = {1, 2, 2, 2};
+  attr.alpha = std::move(alpha);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 2;
+  output.shape = BHWC(1, 2, 2, 1);
+
+  SingleOpModel model({ToString(op_type), attr}, {input}, {output});
+  XCTAssertTrue(model.PopulateTensor(0, {0.0, -1.0, 2.0, -3.0}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  status = CompareVectors({0, -2, 2, -6}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+}
+
+- (void)testPRelu3DAlphaWithClip {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 2, 2, 1);
+
+  OperationType op_type = OperationType::PRELU;
+  PReLUAttributes attr;
+  attr.clip = 1.0;
+  Tensor<HWC, DataType::FLOAT32> alpha;
+  alpha.shape = HWC(2, 2, 1);
+  alpha.id = 1;
+  alpha.data = {1, 2, 2, 2};
+  attr.alpha = std::move(alpha);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 2;
+  output.shape = BHWC(1, 2, 2, 1);
+
+  SingleOpModel model({ToString(op_type), attr}, {input}, {output});
+  XCTAssertTrue(model.PopulateTensor(0, {0.0, -1.0, 2.0, -3.0}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  status = CompareVectors({0, -2, 1, -6}, model.GetOutput(0), 1e-6f);
   XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
 }
 

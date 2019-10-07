@@ -16,11 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_LIB_CORE_PY_FUNC_H_
 #define TENSORFLOW_PYTHON_LIB_CORE_PY_FUNC_H_
 
-// Must be included first
-#include "tensorflow/python/lib/core/numpy.h"
-
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/core/status.h"
+#include <Python.h>
 
 namespace tensorflow {
 

@@ -1,7 +1,6 @@
 # Description:
 #   Contains the Keras OptimizerV2 API (internal TensorFlow version).
 
-load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
@@ -215,8 +214,11 @@ cuda_py_test(
     ],
     shard_count = 8,
     tags = [
+        "manual",
+        "no_oss",
         "no_rocm",
         "no_windows",
+        "notap",
     ],
 )
 

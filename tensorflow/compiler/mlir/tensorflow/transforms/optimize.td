@@ -46,27 +46,30 @@ def FuseMulAndConv2D : Pat<(TF_MulOp (TF_Conv2DOp $input,
 // This rule does the following pattern match and rewrite:
 //
 //       input     bias                    input  value  bias  value
-//          |      /                =>       \    /        \    /
+//          \      /                =>       \    /        \    /
 //          BiasAdd    value                   Mul          Mul
 //                \    /                           \       /
-//                  Mul                             BiasAdd
+//                  Mul                              AddV2
 // This is to enable the FuseMulAndConv2D pattern.
+// Here, root of the result is AddV2 instead of BiasAdd because the value may
+// not have rank one and therefore the second operand may not have rank one
+// that is required by the BiasAdd. BiasAdd with 'NHWC' data format equivalent
+// to AddV2 op.
 def PassthroughMulAndBiasAdd :
   Pat<(TF_MulOp
         (TF_BiasAddOp $input,
-          (ConstantOp F32ElementsAttr:$bias), IsDataFormatNHWC:$same_format),
+          (ConstantOp F32ElementsAttr:$bias), IsDataFormatNHWC:$format),
         (ConstantOp F32ElementsAttr:$value)),
-      (TF_BiasAddOp
+      (TF_AddV2Op
           (TF_MulOp $input, (ConstantOp $value)),
-          (TF_MulOp (ConstantOp $bias), (ConstantOp $value)),
-          $same_format),
+          (TF_MulOp (ConstantOp $bias), (ConstantOp $value))),
       [(DefinedByConv2D $input)]>;
 
 
 // This rule does the following pattern match and rewrite:
 //
 //       input     bias                    input  value  bias  value
-//          |      /                =>       \    /        \    /
+//          \      /                =>       \    /        \    /
 //           AddV2    value                   Mul          Mul
 //                \    /                           \       /
 //                  Mul                             AddV2

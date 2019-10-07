@@ -71,15 +71,15 @@ Status AddRaggedOutputShapes(int num_ragged, bool ragged_rank_2,
   for (int i = 0; i < num_ragged; ++i) {
     c->set_output((*output_idx)++, c->Vector(c->UnknownDim()));
   }
-  // Inner row_splits
+  // Outer row_splits.
+  for (int i = 0; i < num_ragged; ++i) {
+    c->set_output((*output_idx)++, c->Vector(num_splits));
+  }
+  // Inner row_splits  (for ParseSequenceExample feature_list features)
   if (ragged_rank_2) {
     for (int i = 0; i < num_ragged; ++i) {
       c->set_output((*output_idx)++, c->Vector(c->UnknownDim()));
     }
-  }
-  // Outer row_splits.
-  for (int i = 0; i < num_ragged; ++i) {
-    c->set_output((*output_idx)++, c->Vector(num_splits));
   }
   return Status::OK();
 }
@@ -304,6 +304,95 @@ REGISTER_OP("ParseSequenceExample")
       AddDenseLengthsShapes(attrs.num_feature_list_dense, input, c,
                             &output_idx);
 
+      return Status::OK();
+    });
+
+// Differences between ParseSequenceExample and ParseSequenceExampleV2:
+//   * Supports ragged features.
+//   * `serialized` may be a vector or a scalar.  (With v1, `serialized` could
+//      only be a vector).
+//   * Each set of keys is passed with a vector instead of an attr list.
+//   * feature_list_dense_missing_assumed_empty is passed with as a boolean
+//     vector (aligned 1:1 w/ feature_list_dense_kyes) rather than an attrib
+//     containing a list of strings.
+//   * No Ncontext_dense attribute (not needed).
+REGISTER_OP("ParseSequenceExampleV2")
+    .Input("serialized: string")
+    .Input("debug_name: string")
+    // Inputs: context features
+    .Input("context_sparse_keys: string")
+    .Input("context_dense_keys:  string")
+    .Input("context_ragged_keys: string")
+    // Inputs: feature lists
+    .Input("feature_list_sparse_keys: string")
+    .Input("feature_list_dense_keys: string")
+    .Input("feature_list_ragged_keys: string")
+    .Input("feature_list_dense_missing_assumed_empty: bool")
+    .Input("context_dense_defaults: Tcontext_dense")
+    // Outputs: context features
+    .Output("context_sparse_indices: Ncontext_sparse * int64")
+    .Output("context_sparse_values: context_sparse_types")
+    .Output("context_sparse_shapes: Ncontext_sparse * int64")
+    .Output("context_dense_values: Tcontext_dense")
+    .Output("context_ragged_values: context_ragged_value_types")
+    .Output("context_ragged_row_splits: context_ragged_split_types")
+    // Outputs: feature lists
+    .Output("feature_list_sparse_indices: Nfeature_list_sparse * int64")
+    .Output("feature_list_sparse_values: feature_list_sparse_types")
+    .Output("feature_list_sparse_shapes: Nfeature_list_sparse * int64")
+    .Output("feature_list_dense_values: feature_list_dense_types")
+    .Output("feature_list_dense_lengths: Nfeature_list_dense * int64")
+    .Output("feature_list_ragged_values: feature_list_ragged_value_types")
+    .Output("feature_list_ragged_outer_splits: feature_list_ragged_split_types")
+    .Output("feature_list_ragged_inner_splits: feature_list_ragged_split_types")
+    // Attribs: context features
+    .Attr("Ncontext_sparse: int >= 0 = 0")
+    .Attr("Tcontext_dense: list({float,int64,string}) >= 0 = []")  // inferred
+    .Attr("context_sparse_types: list({float,int64,string}) >= 0 = []")
+    .Attr("context_ragged_value_types: list({float,int64,string}) >= 0 = []")
+    .Attr("context_ragged_split_types: list({int32,int64}) >= 0 = []")
+    .Attr("context_dense_shapes: list(shape) >= 0 = []")
+    // Attribs: feature lists
+    .Attr("Nfeature_list_sparse: int >= 0 = 0")
+    .Attr("Nfeature_list_dense: int >= 0 = 0")
+    .Attr("feature_list_dense_types: list({float,int64,string}) >= 0 = []")
+    .Attr("feature_list_sparse_types: list({float,int64,string}) >= 0 = []")
+    .Attr(
+        "feature_list_ragged_value_types: list({float,int64,string}) >= 0 = []")
+    .Attr("feature_list_ragged_split_types: list({int32,int64}) >= 0 = []")
+    .Attr("feature_list_dense_shapes: list(shape) >= 0 = []")
+    .SetShapeFn([](InferenceContext* c) {
+      ParseSequenceExampleAttrs attrs;
+      TF_RETURN_IF_ERROR(attrs.Init(c, /*op_version=*/2));
+      ShapeHandle input;
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 1, &input));
+      ShapeHandle names;
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(1), 1, &names));
+      ShapeHandle feature_list_dense_prefix;
+      TF_RETURN_IF_ERROR(c->Concatenate(input, c->UnknownShapeOfRank(1),
+                                        &feature_list_dense_prefix));
+      DimensionHandle num_examples = c->UnknownDim();
+      if (c->RankKnown(input) && c->Rank(input) == 1) {
+        num_examples = c->Dim(input, 0);
+      }
+
+      int output_idx = 0;
+      // Context outputs.
+      AddSparseOutputShapes(attrs.num_context_sparse, input, 1, c, &output_idx);
+      TF_RETURN_IF_ERROR(AddDenseOutputShapes(attrs.context_dense_shapes, input,
+                                              c, &output_idx));
+      TF_RETURN_IF_ERROR(AddRaggedOutputShapes(attrs.num_context_ragged, false,
+                                               num_examples, c, &output_idx));
+      // FeatureList outputs.
+      AddSparseOutputShapes(attrs.num_feature_list_sparse, input, 2, c,
+                            &output_idx);
+      TF_RETURN_IF_ERROR(AddDenseOutputShapes(attrs.feature_list_dense_shapes,
+                                              feature_list_dense_prefix, c,
+                                              &output_idx));
+      AddDenseLengthsShapes(attrs.num_feature_list_dense, input, c,
+                            &output_idx);
+      TF_RETURN_IF_ERROR(AddRaggedOutputShapes(
+          attrs.num_feature_list_ragged, true, num_examples, c, &output_idx));
       return Status::OK();
     });
 

@@ -103,10 +103,10 @@ std::string GenerateConvolutionTransposedCode(
       c += "  c1 = select(-1, c1, x_in);\n";
       c += "  c2 = select(-1, c2, y_in);\n";
       c += "  c3 = select(-1, c3, x_in && y_in);\n";
-      c += "  FLT4 src0 = " + src_tensor.Read3D("c0") + ";\n";
-      c += "  FLT4 src1 = " + src_tensor.Read3D("c1") + ";\n";
-      c += "  FLT4 src2 = " + src_tensor.Read3D("c2") + ";\n";
-      c += "  FLT4 src3 = " + src_tensor.Read3D("c3") + ";\n";
+      c += "  FLT4 src0 = " + src_tensor.Read("c0") + ";\n";
+      c += "  FLT4 src1 = " + src_tensor.Read("c1") + ";\n";
+      c += "  FLT4 src2 = " + src_tensor.Read("c2") + ";\n";
+      c += "  FLT4 src3 = " + src_tensor.Read("c3") + ";\n";
     } else {
       const auto mode = GetFastestZeroMode(device);
       c += "  FLT4 src0 = " + src_tensor.Read3D("X", "Y", z, mode) + ";\n";

@@ -60,16 +60,6 @@ static Type GetQuantizedType(Builder builder, Type input_type,
   return converter.convert(quantizedEleType);
 }
 
-TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, FloatAttr min,
-                              FloatAttr max, Type storage_type,
-                              bool narrow_range, bool is_signed) {
-  int storage_type_width = storage_type.cast<IntegerType>().getWidth();
-  Type final_type = GetQuantizedType(
-      builder, input_type, {min.getValueAsDouble()}, {max.getValueAsDouble()},
-      storage_type_width, narrow_range, is_signed);
-  return builder.getTypeAttr(final_type);
-}
-
 TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
                               Attribute max, IntegerAttr num_bits,
                               BoolAttr narrow_range, bool is_signed) {
@@ -101,13 +91,68 @@ TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
   return builder.getTypeAttr(final_type);
 }
 
+// Changes the axis of the input per-channel quantized type to match the
+// dimension of the target type. Returns nullptr if it fails.
+static quant::UniformQuantizedPerAxisType ResetAxisAndBroadcast(
+    quant::UniformQuantizedPerAxisType qtype, Type target, int axis) {
+  auto shaped = target.dyn_cast<ShapedType>();
+  if (!shaped) return {};
+
+  // Broadcast the scales and zero points to match the length of the axis-th
+  // dimension of the target type. Currently, it covers two cases:
+  // - for Transpose, the data layout is changed so the `dim[axis]` still equals
+  // to the `scales_size`. The broadcast skips;
+  // - for Reshape, the data layout isn't changed but the innermost dimension is
+  // expand to cover the last two original dimensions. Thus we just need to be
+  // repeated the `scales` dim[2] times to covers the new dim length.
+  //
+  // TODO(b/141709944): after the fix, the `scales` can be for dim[2], thus we
+  // have to repeat each elements in the `scales` locally dim[3] times.
+  auto scales = qtype.getScales();
+  auto zero_points = qtype.getZeroPoints();
+  int target_size = shaped.getDimSize(axis);
+  int scales_size = scales.size();
+  int zero_points_size = zero_points.size();
+
+  SmallVector<double, 4> new_scales;
+  SmallVector<int64_t, 4> new_zero_points;
+  if (scales_size != target_size) {
+    if (target_size % scales_size != 0) return {};
+    for (int i = 0, e = target_size / scales_size; i != e; ++i) {
+      new_scales.insert(new_scales.end(), scales.begin(), scales.end());
+    }
+    scales = new_scales;
+  }
+  if (zero_points_size != target_size) {
+    if (target_size % zero_points_size != 0) return {};
+    for (int i = 0, e = target_size / zero_points_size; i != e; ++i) {
+      new_zero_points.insert(new_zero_points.end(), zero_points.begin(),
+                             zero_points.end());
+    }
+    zero_points = new_zero_points;
+  }
+
+  return quant::UniformQuantizedPerAxisType::get(
+      qtype.getFlags(), qtype.getStorageType(), qtype.getExpressedType(),
+      scales, zero_points, axis, qtype.getStorageTypeMin(),
+      qtype.getStorageTypeMax());
+}
+
 TypeAttr CastQuantizedTypeAttrFromExpressedType(Builder builder,
-                                                TypeAttr source, Type target) {
-  if (!source || !source.getValue().isa<TensorType>()) return {};
-  auto ele_type = source.getValue().cast<TensorType>().getElementType();
-  if (auto quantized_type = ele_type.dyn_cast<quant::QuantizedType>()) {
-    Type final_type = quantized_type.castFromExpressedType(target);
-    if (final_type) return builder.getTypeAttr(final_type);
+                                                TypeAttr source, Type target,
+                                                int axis) {
+  if (auto source_type = source.getValue().dyn_cast_or_null<ShapedType>()) {
+    auto src_ele_type = source_type.getElementType();
+    if (auto quantized_type = src_ele_type.dyn_cast<quant::QuantizedType>()) {
+      if (auto qtype =
+              quantized_type.dyn_cast<quant::UniformQuantizedPerAxisType>()) {
+        quantized_type = ResetAxisAndBroadcast(qtype, target, axis);
+        if (!src_ele_type) return {};
+      }
+      Type final_type = quantized_type.castFromExpressedType(target);
+      if (!final_type) return {};
+      return builder.getTypeAttr(final_type);
+    }
   }
   return {};
 }
@@ -125,9 +170,9 @@ Type GetUniformQuantizedTypeForElementsAttr(ElementsAttr attr,
   if (fp.isSplat()) {
     double single_value =
         FloatAttr::getValueAsDouble(fp.getSplatValue<llvm::APFloat>());
-    // When the single value isn't 0.0, we expand it to a range to include this
-    // single value and 0.0. This will give us a scale and zero point works for
-    // both this value and 0.0.
+    // When the single value isn't 0.0, we expand it to a range to include
+    // this single value and 0.0. This will give us a scale and zero point
+    // works for both this value and 0.0.
     if (single_value < 0.0) {
       min = single_value;
       max = 0.0;
@@ -212,8 +257,8 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
     llvm::SmallVector<int64_t, 4> zero_points(axis_size, 0);
     // TODO(b/141508873): Assume the bias is a 1-D tensor, and set the
     // quantization dim to the last dimension, which is 0. If the bias rank is
-    // larger than 1, this returned quantized type couldn't be used to quantize
-    // the bias.
+    // larger than 1, this returned quantized type couldn't be used to
+    // quantize the bias.
     return quant::UniformQuantizedPerAxisType::getChecked(
         /*flags=*/true, storage_type, expressed_type, scales, zero_points,
         /*quantizedDimension=*/0, storage_type_min, storage_type_max,
@@ -226,7 +271,7 @@ ElementsAttr Quantize(Attribute real_value, Type tensor_type) {
           quant::QuantizedType::getQuantizedElementType(tensor_type)) {
     Type converted_type;
     return quant::quantizeAttr(real_value, q_type, converted_type)
-        .cast<ElementsAttr>();
+        .dyn_cast<ElementsAttr>();
   }
   return {};
 }

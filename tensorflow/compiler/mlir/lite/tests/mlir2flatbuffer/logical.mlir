@@ -5,9 +5,11 @@ func @main(tensor<4xi1>) -> tensor<4xi1> {
   // CHECK:      {
   // CHECK-NEXT:   version: 3,
   // CHECK-NEXT:   operator_codes: [ {
-  // CHECK-NEXT:     builtin_code: LOGICAL_OR
+  // CHECK-NEXT:     builtin_code: LOGICAL_OR,
+  // CHECK-NEXT:     version: 1
   // CHECK-NEXT:   }, {
-  // CHECK-NEXT:     builtin_code: LOGICAL_AND
+  // CHECK-NEXT:     builtin_code: LOGICAL_AND,
+  // CHECK-NEXT:     version: 1
   // CHECK-NEXT:   } ],
   // CHECK-NEXT:   subgraphs: [ {
   // CHECK-NEXT:     tensors: [ {

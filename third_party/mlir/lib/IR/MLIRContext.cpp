@@ -64,7 +64,7 @@ static ValueT safeGetOrCreate(DenseSet<ValueT, DenseInfoT> &container,
       return *it;
   }
 
-  // Aquire a writer-lock so that we can safely create the new instance.
+  // Acquire a writer-lock so that we can safely create the new instance.
   llvm::sys::SmartScopedWriter<true> instanceLock(mutex);
 
   // Check for an existing instance again here, because another writer thread
@@ -86,7 +86,8 @@ struct BuiltinDialect : public Dialect {
                   DictionaryAttr, FloatAttr, SymbolRefAttr, IntegerAttr,
                   IntegerSetAttr, OpaqueAttr, OpaqueElementsAttr,
                   SparseElementsAttr, StringAttr, TypeAttr, UnitAttr>();
-    addAttributes<CallSiteLoc, FileLineColLoc, FusedLoc, NameLoc, UnknownLoc>();
+    addAttributes<CallSiteLoc, FileLineColLoc, FusedLoc, NameLoc, OpaqueLoc,
+                  UnknownLoc>();
 
     addTypes<ComplexType, FloatType, FunctionType, IndexType, IntegerType,
              MemRefType, NoneType, OpaqueType, RankedTensorType, TupleType,
@@ -208,7 +209,7 @@ public:
   using IntegerSets = DenseSet<IntegerSet, IntegerSetKeyInfo>;
   IntegerSets integerSets;
 
-  // Affine expression uniqui'ing.
+  // Affine expression uniquing.
   StorageUniquer affineUniquer;
 
   //===--------------------------------------------------------------------===//
@@ -445,7 +446,7 @@ Identifier Identifier::get(StringRef str, MLIRContext *context) {
       return Identifier(it->getKeyData());
   }
 
-  // Aquire a writer-lock so that we can safely create the new instance.
+  // Acquire a writer-lock so that we can safely create the new instance.
   llvm::sys::SmartScopedWriter<true> contextLock(impl.identifierMutex);
   auto it = impl.identifiers.insert({str, char()}).first;
   return Identifier(it->getKeyData());
@@ -642,7 +643,7 @@ IntegerSet IntegerSet::get(unsigned dimCount, unsigned symbolCount,
                            constructorFn);
   }
 
-  // Otherwise, aquire a writer-lock so that we can safely create the new
+  // Otherwise, acquire a writer-lock so that we can safely create the new
   // instance.
   llvm::sys::SmartScopedWriter<true> affineLock(impl.affineMutex);
   return constructorFn();

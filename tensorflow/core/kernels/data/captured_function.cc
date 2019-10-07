@@ -46,7 +46,7 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
     processing_time_ += delta;
   }
 
-  NodeExecStatsInterface* CreateNodeExecStats(const Node* node) override {
+  NodeExecStatsInterface* CreateNodeExecStats(const NodeDef* node) override {
     return new SimpleNodeExecStats(this);
   }
 
@@ -532,6 +532,8 @@ Status CapturedFunction::Instantiate(
   inst_opts.lib_def = metadata_->lib_def();
   inst_opts.create_kernels_eagerly = true;
   inst_opts.default_device_to_target = metadata_->use_default_device();
+  inst_opts.config_proto =
+      lib->config_proto() ? *lib->config_proto() : ConfigProto();
   if (!metadata_->use_inter_op_parallelism()) {
     inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
   }

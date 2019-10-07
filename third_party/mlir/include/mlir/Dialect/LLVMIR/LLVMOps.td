@@ -130,8 +130,8 @@ class LLVM_ArithmeticOp<string mnemonic, string builderFunc,
            !listconcat([NoSideEffect, SameOperandsAndResultType], traits)>,
     Arguments<(ins LLVM_Type:$lhs, LLVM_Type:$rhs)>,
     LLVM_Builder<"$res = builder." # builderFunc # "($lhs, $rhs);"> {
-  let parser = [{ return impl::parseBinaryOp(parser, result); }];
-  let printer = [{ mlir::impl::printBinaryOp(this->getOperation(), p); }];
+  let parser = [{ return impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let printer = [{ mlir::impl::printOneResultOp(this->getOperation(), p); }];
 }
 
 // Integer binary operations.
@@ -145,6 +145,9 @@ def LLVM_SRemOp : LLVM_ArithmeticOp<"srem", "CreateSRem">;
 def LLVM_AndOp : LLVM_ArithmeticOp<"and", "CreateAnd">;
 def LLVM_OrOp : LLVM_ArithmeticOp<"or", "CreateOr">;
 def LLVM_XOrOp : LLVM_ArithmeticOp<"xor", "CreateXor">;
+def LLVM_ShlOp : LLVM_ArithmeticOp<"shl", "CreateShl">;
+def LLVM_LShrOp : LLVM_ArithmeticOp<"lshr", "CreateLShr">;
+def LLVM_AShrOp : LLVM_ArithmeticOp<"ashr", "CreateAShr">;
 
 // Predicate for integer comparisons.
 def ICmpPredicateEQ  : I64EnumAttrCase<"eq", 0>;
@@ -249,7 +252,7 @@ def LLVM_AllocaOp :
     if ($alignment.hasValue()) {
       auto align = $alignment.getValue().getZExtValue();
       if (align != 0)
-        alloca->setAlignment(align);
+        alloca->setAlignment(llvm::MaybeAlign(align));
     }
     $res = alloca;
   }];

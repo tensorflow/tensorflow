@@ -264,7 +264,7 @@ class VariableMetaclass(type):
 
 @tf_export("Variable", v1=[])
 class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
-  """See the [Variables Guide](https://tensorflow.org/beta/guide/variables).
+  """See the [variable guide](https://tensorflow.org/guide/variable).
 
   A variable maintains shared, persistent state manipulated by a program.
 
@@ -322,9 +322,9 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
   >>> m.trainable_variables
   (<tf.Variable ... shape=(1,) ... numpy=array([1.], dtype=float32)>,)
 
-  This tracking then allows saving variable values to [training
-  checkpoints](https://www.tensorflow.org/beta/guide/checkpoints), or to
-  [SavedModels](https://www.tensorflow.org/beta/guide/saved_model) which include
+  This tracking then allows saving variable values to
+  [training checkpoints](https://www.tensorflow.org/guide/checkpoint), or to
+  [SavedModels](https://www.tensorflow.org/guide/saved_model) which include
   serialized TensorFlow graphs.
 
   Variables are often captured and manipulated by `tf.function`s. This works the
@@ -333,9 +333,9 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
   >>> v = tf.Variable(0.)
   >>> read_and_decrement = tf.function(lambda: v.assign_sub(0.1))
   >>> read_and_decrement()
-  <tf.Tensor: ... shape=(), dtype=float32, numpy=-0.1>
+  <tf.Tensor: shape=(), dtype=float32, numpy=-0.1>
   >>> read_and_decrement()
-  <tf.Tensor: ... shape=(), dtype=float32, numpy=-0.2>
+  <tf.Tensor: shape=(), dtype=float32, numpy=-0.2>
 
   Variables created inside a `tf.function` must be owned outside the function
   and be created only once:
@@ -348,9 +348,9 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
   ...     return self.v * x
   >>> m = M()
   >>> m(2.)
-  <tf.Tensor:... shape=(), dtype=float32, numpy=4.0>
+  <tf.Tensor: shape=(), dtype=float32, numpy=4.0>
   >>> m(3.)
-  <tf.Tensor:... shape=(), dtype=float32, numpy=6.0>
+  <tf.Tensor: shape=(), dtype=float32, numpy=6.0>
   >>> m.v
   <tf.Variable ... shape=() dtype=float32, numpy=2.0>
 

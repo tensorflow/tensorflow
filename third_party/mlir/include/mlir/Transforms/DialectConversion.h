@@ -244,6 +244,9 @@ public:
   void applySignatureConversion(Region *region,
                                 TypeConverter::SignatureConversion &conversion);
 
+  /// Replace all the uses of the block argument `from` with value `to`.
+  void replaceUsesOfBlockArgument(BlockArgument *from, Value *to);
+
   /// Clone the given operation without cloning its regions.
   Operation *cloneWithoutRegions(Operation *op);
   template <typename OpT> OpT cloneWithoutRegions(OpT op) {

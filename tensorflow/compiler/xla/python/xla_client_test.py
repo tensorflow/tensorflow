@@ -543,6 +543,22 @@ class BufferTest(ComputationTest):
     arg0_buffer.copy_to_host_async()
     np.testing.assert_equal(arg0, arg0_buffer.to_py())
 
+  def testDevice(self):
+    x = np.arange(8)
+    for device in xla_client.get_local_backend().local_devices():
+      buf = xla_client.Buffer.from_pyval(x, device=device)
+      self.assertEqual(buf.device(), device)
+      np.testing.assert_equal(x, buf.to_py())
+
+  def testInvalidDevice(self):
+    t = np.array(1.)
+    with self.assertRaisesRegexp(
+        RuntimeError,
+        r"PyLocalBuffer::FromLiterals got bad device_ordinal: 100 "
+        r"\(num_local_devices=\d+\)"):
+      # TODO(skyewm): figure out how to test this with a Device
+      xla_client.Buffer.from_pyval(t, device=100)
+
 
 class SingleOpTest(ComputationTest):
   """Tests for single ops.
@@ -1843,7 +1859,7 @@ class EmbeddedComputationsTest(ComputationTest):
   def testInfeedS32Values(self):
     to_infeed = NumpyArrayS32([1, 2, 3, 4])
     c = self._NewComputation()
-    c.Infeed(xla_client.shape_from_pyval(to_infeed[0]))
+    c.GetTupleElement(c.Infeed(xla_client.shape_from_pyval(to_infeed[0])), 0)
     compiled_c = c.Build().Compile()
     for item in to_infeed:
       xla_client.transfer_to_infeed(item)
@@ -1855,8 +1871,10 @@ class EmbeddedComputationsTest(ComputationTest):
   def testInfeedThenOutfeedS32(self):
     to_round_trip = NumpyArrayS32([1, 2, 3, 4])
     c = self._NewComputation()
-    x = c.Infeed(xla_client.shape_from_pyval(to_round_trip[0]))
-    c.Outfeed(x)
+    x_and_token = c.Infeed(xla_client.shape_from_pyval(to_round_trip[0]))
+    x = c.GetTupleElement(x_and_token, 0)
+    token = c.GetTupleElement(x_and_token, 1)
+    c.Outfeed(x, token)
 
     compiled_c = c.Build().Compile()
 

@@ -1074,8 +1074,8 @@ StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
 Status MarkForCompilationPassImpl::FindCompilationCandidates() {
   OptimizerOptions opts;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
-      new ProcessFunctionLibraryRuntime(nullptr, env_, TF_GRAPH_DEF_VERSION,
-                                        flib_def_, opts));
+      new ProcessFunctionLibraryRuntime(nullptr, env_, /*config=*/nullptr,
+                                        TF_GRAPH_DEF_VERSION, flib_def_, opts));
   FunctionLibraryRuntime* lib_runtime =
       pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
   std::vector<bool> compile_time_const_nodes(graph_->num_node_ids(), false);

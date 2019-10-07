@@ -903,7 +903,7 @@ class NNAPIOpBuilder {
   std::vector<uint32_t> augmented_inputs_;
   std::vector<uint32_t> augmented_outputs_;
 
-  // Return status code of the latest NNAPI call
+  // Return status code of the latest NNAPI call.
   int* nnapi_errno_;
 };
 
@@ -2744,7 +2744,7 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
             ann_type_equivalent == kTfLiteInt32) {
           for (int i = 0; i < num_elements; ++i) {
             reinterpret_cast<int32_t*>(input_ptr)[i] =
-                static_cast<const int32_t>(tensor->data.raw_const[i]);
+                static_cast<const int32_t>(tensor->data.uint8[i]);
           }
         } else if (tensor->type == kTfLiteInt8 &&
                    ann_type_equivalent == kTfLiteUInt8) {
@@ -2757,7 +2757,7 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
                    ann_type_equivalent == kTfLiteInt32) {
           for (int i = 0; i < num_elements; ++i) {
             reinterpret_cast<int32_t*>(input_ptr)[i] =
-                static_cast<const int32_t>(tensor->data.raw_const[i]) + 128;
+                static_cast<const int32_t>(tensor->data.int8[i]) + 128;
           }
         } else {
           context->ReportError(
@@ -3399,6 +3399,11 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
                                               TfLiteDelegate* delegate) {
   int* nnapi_errno = &(static_cast<Data*>(delegate->data_)->nnapi_errno);
 
+  // Resetting the error code when the delegate is initialized
+  // by TFLite. This causes the error to be reset if reusing the same
+  // StatefulNnApiDelegate after a failure
+  *nnapi_errno = 0;
+
   // Do not check nodes_ if NN API is unavailable.
   const NnApi* nnapi = NnApiImplementation();
   if (nnapi->android_sdk_version < kMinSdkVersionForNNAPI ||
@@ -3470,7 +3475,6 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
                  size_t length) -> void* {
         const TfLiteDelegateParams* params =
             reinterpret_cast<const TfLiteDelegateParams*>(buffer);
-
         int* nnapi_errno =
             &(static_cast<Data*>(params->delegate->data_)->nnapi_errno);
         NNAPIDelegateKernel* kernel_state = new NNAPIDelegateKernel;

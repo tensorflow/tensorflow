@@ -217,7 +217,8 @@ cc_test(
     deps = [
         ":cl_test",
         ":conv_powervr",
-        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/cl:precision",
+        "//tensorflow/lite/delegates/gpu/cl:tensor_type",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_googletest//:gtest_main",
@@ -246,6 +247,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -648,6 +650,20 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "lstm",
+    srcs = ["lstm.cc"],
+    hdrs = ["lstm.h"],
+    deps = [
+        ":gpu_operation",
+        ":util",
+        ":work_group_picking",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
     ],
 )
 

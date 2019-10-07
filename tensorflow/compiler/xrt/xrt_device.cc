@@ -39,7 +39,7 @@ namespace tensorflow {
                             " on device with ordinal ",
                             metadata->device_ordinal());
   }
-  scoped_ref->Acquire(metadata->client());
+  scoped_ref->Acquire(metadata->client(), device_ordinal);
   return Status::OK();
 }
 
@@ -47,7 +47,7 @@ namespace tensorflow {
     OpKernelContext* ctx, ScopedRef* scoped_ref) {
   const XlaDevice::Metadata* metadata;
   TF_RETURN_IF_ERROR(XlaDevice::GetMetadata(ctx, &metadata));
-  scoped_ref->Acquire(metadata->client());
+  scoped_ref->Acquire(metadata->client(), metadata->device_ordinal());
   return Status::OK();
 }
 

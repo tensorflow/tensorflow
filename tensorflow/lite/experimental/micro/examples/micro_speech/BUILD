@@ -344,6 +344,8 @@ cc_binary(
     name = "micro_speech",
     srcs = [
         "main.cc",
+        "main_functions.cc",
+        "main_functions.h",
     ],
     deps = [
         ":audio_provider",
@@ -363,6 +365,8 @@ cc_binary(
     name = "micro_speech_mock",
     srcs = [
         "main.cc",
+        "main_functions.cc",
+        "main_functions.h",
     ],
     deps = [
         ":audio_provider_mock",

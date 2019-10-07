@@ -79,29 +79,6 @@ class TileOp : public XlaOpKernel {
       return;
     }
 
-    bool can_tile_with_implicit_broadcast = true;
-    for (int i = 0; i < input_dims; ++i) {
-      int64 multiple = multiples[i];
-      // If the multiple and input dimension are not 1, then tile cannot be
-      // implemented with a single hlo broadcast.
-      if (multiple != 1 && input_shape.dim_size(i) != 1) {
-        can_tile_with_implicit_broadcast = false;
-      }
-    }
-
-    if (can_tile_with_implicit_broadcast) {
-      // Create a constant Zero the size of the output shape to leverage binary
-      // operation broadcast semantics.
-      auto broadcasted_zero = xla::Broadcast(
-          XlaHelpers::Zero(ctx->builder(), ctx->input_type(0)), output_dims);
-      if (ctx->input_type(0) == DT_BOOL) {
-        ctx->SetOutput(0, xla::Or(broadcasted_zero, input));
-      } else {
-        ctx->SetOutput(0, xla::Add(broadcasted_zero, input));
-      }
-      return;
-    }
-
     auto result = BroadcastTo(ctx->Input("input"), output_dims);
     OP_REQUIRES_OK(ctx, result.status());
     ctx->SetOutput(0, result.ValueOrDie());

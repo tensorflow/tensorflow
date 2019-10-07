@@ -35,7 +35,7 @@ static StatusOr<mlir::OwningModuleRef> Import(
     MLIRContext* context) {
   // TODO(fengliuai): get debug info at runtime.
   GraphDebugInfo debug_info;
-  NodeSpecs specs;
+  GraphImportConfig specs;
   TF_ASSIGN_OR_RETURN(
       auto module,
       ConvertGraphToMlir(graph, debug_info, *options.flib_def, specs, context));
@@ -51,7 +51,7 @@ static StatusOr<mlir::OwningModuleRef> Import(
 static Status Export(mlir::OwningModuleRef module,
                      const GraphOptimizationPassOptions& options,
                      std::unique_ptr<Graph>* graph) {
-  ExporterConfigs confs;
+  GraphExportConfig confs;
   return ConvertMlirToGraph(*module, confs, graph, options.flib_def);
 }
 
@@ -74,7 +74,14 @@ Status MlirRoundtripPass::Run(const GraphOptimizationPassOptions& options) {
   return Status::OK();
 }
 
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 0,
-                      MlirRoundtripPass);
+Status MlirImportPass::Run(const GraphOptimizationPassOptions& options) {
+  MLIRContext context;
+  if (options.graph) {
+    if (!Import(options, **options.graph, &context).ok()) {
+      // TODO(prakalps): Update metric on failure.
+    }
+  }
+  return Status::OK();
+}
 
 }  // namespace tensorflow

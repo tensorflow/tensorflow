@@ -512,10 +512,18 @@ static void finalizeDispatchDeserializationFn(StringRef opcode,
   os << "  default:\n";
   os << "    ;\n";
   os << "  }\n";
-  os << formatv(
-      "  return emitError(unknownLoc, \"unhandled deserialization of \") << "
-      "spirv::stringifyOpcode({0});\n",
-      opcode);
+  StringRef opcodeVar("opcodeString");
+  os << formatv("  auto {0} = spirv::stringifyOpcode({1});\n", opcodeVar,
+                opcode);
+  os << formatv("  if (!{0}.empty()) {{\n", opcodeVar);
+  os << formatv("    return emitError(unknownLoc, \"unhandled deserialization "
+                "of \") << {0};\n",
+                opcodeVar);
+  os << "  } else {\n";
+  os << formatv("   return emitError(unknownLoc, \"unhandled opcode \") << "
+                "static_cast<uint32_t>({0});\n",
+                opcode);
+  os << "  }\n";
   os << "}\n";
 }
 
@@ -799,7 +807,7 @@ static void emitStrToSymFnForBitEnum(const Record &enumDef, raw_ostream &os) {
     // Skip the special enumerant for None.
     if (auto val = enumerant.getValue())
       os.indent(6) << formatv(".Case(\"{0}\", {1})\n", enumerant.getSymbol(),
-                              enumerant.getValue());
+                              val);
   }
   os.indent(6) << ".Default(llvm::None);\n";
 

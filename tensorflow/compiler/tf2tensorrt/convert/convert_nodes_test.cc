@@ -657,7 +657,7 @@ class ConverterTest : public ::testing::Test {
     builder_.reset(nvinfer1::createInferBuilder(logger_));
     network_.reset(builder_->createNetwork());
     converter_.reset(new Converter(network_.get(), TrtPrecisionMode::FP32,
-                                   /*use_calibration=*/false));
+                                   /*use_calibration=*/false, &logger_));
     weight_store_ = &converter_->weight_store_;
   }
 
@@ -995,8 +995,9 @@ TEST_F(ConverterTest, MaybeApplyQuantizationRanges) {
   // input -> infer1 -> infer2 -> infer3
   FakeITensor input, infer_1, infer_2, infer_3;
   FakeITensor not_infer;
+  Logger logger;
   Converter int8_converter(/*trt_network=*/nullptr, TrtPrecisionMode::INT8,
-                           /*use_calibration=*/true);
+                           /*use_calibration=*/true, &logger);
   int8_converter.ProvideQuantizationRange(&input, -5.0f, 5.0f);
   int8_converter.ProvideQuantizationRange(&not_infer, -100.0f, 100.0f);
   int8_converter.MarkQuantizationRangesAsInferrable(&input, &infer_1);
@@ -1257,7 +1258,7 @@ class OpConverterTest : public ::testing::Test {
 
     // Reset the converter.
     converter_.reset(new Converter(network_.get(), precision_mode_to_test_,
-                                   /*use_calibration=*/false));
+                                   /*use_calibration=*/false, &logger_));
 
     // Reset other related artifacts.
     scope_ = Scope::NewRootScope();

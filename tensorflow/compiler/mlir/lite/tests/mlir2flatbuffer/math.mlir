@@ -5,15 +5,20 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
   // CHECK:      {
   // CHECK-NEXT:   version: 3,
   // CHECK-NEXT:   operator_codes: [ {
-  // CHECK-NEXT:     builtin_code: SQUARED_DIFFERENCE
+  // CHECK-NEXT:     builtin_code: SQUARED_DIFFERENCE,
+  // CHECK-NEXT:     version: 1
   // CHECK-NEXT:   }, {
-  // CHECK-NEXT:     builtin_code: MUL
+  // CHECK-NEXT:     builtin_code: MUL,
+  // CHECK-NEXT:     version: 1
   // CHECK-NEXT:   }, {
-  // CHECK-NEXT:     builtin_code: DIV
+  // CHECK-NEXT:     builtin_code: DIV,
+  // CHECK-NEXT:     version: 1
   // CHECK-NEXT:   }, {
-  // CHECK-NEXT:     builtin_code: EXP
+  // CHECK-NEXT:     builtin_code: EXP,
+  // CHECK-NEXT:     version: 1
   // CHECK-NEXT:   }, {
-  // CHECK-NEXT:     builtin_code: NEG
+  // CHECK-NEXT:     builtin_code: NEG,
+  // CHECK-NEXT:     version: 1
   // CHECK-NEXT:   } ],
   // CHECK-NEXT:   subgraphs: [ {
   // CHECK-NEXT:     tensors: [ {

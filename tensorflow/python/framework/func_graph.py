@@ -1092,6 +1092,12 @@ def _get_defun_inputs_from_args(args, names, flat_shapes=None):
       args, names, structure=args, flat_shapes=flat_shapes)
 
 
+def _get_composite_tensor_spec(x):
+  """Returns the TypeSpec for x if it's a composite tensor, or x otherwise."""
+  return (x._type_spec  # pylint: disable=protected-access
+          if isinstance(x, composite_tensor.CompositeTensor) else x)
+
+
 def _get_defun_inputs(args, names, structure, flat_shapes=None):
   """Maps python function args to graph-construction inputs.
 
@@ -1135,6 +1141,12 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
              flat_shapes))
     shapes_iter = iter(flat_shapes)
   for arg_value, name in zip(args, names):
+
+    # Replace any composite tensors with their TypeSpecs.  This is important
+    # for ensuring that shape information that's not preserved by the TypeSpec
+    # (such as the number of values in a SparseTensor) gets properly masked.
+    arg_value = nest.map_structure(_get_composite_tensor_spec, arg_value)
+
     flattened = nest.flatten(arg_value, expand_composites=True)
     tensor_specs = [
         arg for arg in flattened if isinstance(arg, tensor_spec.TensorSpec)

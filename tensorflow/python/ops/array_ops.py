@@ -69,10 +69,10 @@ def reshape(tensor, shape, name=None):  # pylint: disable=redefined-outer-name
   [2 3]
   >>> t2 = tf.reshape(t1, [6])
   >>> t2
-  <tf.Tensor: id=394, shape=(6,), dtype=int32,
+  <tf.Tensor: shape=(6,), dtype=int32,
     numpy=array([1, 2, 3, 4, 5, 6], dtype=int32)>
   >>> tf.reshape(t2, [3, 2])
-  <tf.Tensor: id=396, shape=(3, 2), dtype=int32, numpy=
+  <tf.Tensor: shape=(3, 2), dtype=int32, numpy=
     array([[1, 2],
            [3, 4],
            [5, 6]], dtype=int32)>
@@ -109,15 +109,15 @@ def reshape(tensor, shape, name=None):  # pylint: disable=redefined-outer-name
   >>> t = [[1, 2, 3],
   ...      [4, 5, 6]]
   >>> tf.reshape(t, [-1])
-  <tf.Tensor: id=407, shape=(6,), dtype=int32,
+  <tf.Tensor: shape=(6,), dtype=int32,
     numpy=array([1, 2, 3, 4, 5, 6], dtype=int32)>
   >>> tf.reshape(t, [3, -1])
-  <tf.Tensor: id=410, shape=(3, 2), dtype=int32, numpy=
+  <tf.Tensor: shape=(3, 2), dtype=int32, numpy=
     array([[1, 2],
            [3, 4],
            [5, 6]], dtype=int32)>
   >>> tf.reshape(t, [-1, 2])
-  <tf.Tensor: id=413, shape=(3, 2), dtype=int32, numpy=
+  <tf.Tensor: shape=(3, 2), dtype=int32, numpy=
     array([[1, 2],
            [3, 4],
            [5, 6]], dtype=int32)>
@@ -133,7 +133,7 @@ def reshape(tensor, shape, name=None):  # pylint: disable=redefined-outer-name
   >>> print(tf.shape(t).numpy())
   [9]
   >>> tf.reshape(t, [3, 3])
-  <tf.Tensor: id=421, shape=(3, 3), dtype=int32, numpy=
+  <tf.Tensor: shape=(3, 3), dtype=int32, numpy=
     array([[1, 2, 3],
            [4, 5, 6],
            [7, 8, 9]], dtype=int32)>
@@ -143,7 +143,7 @@ def reshape(tensor, shape, name=None):  # pylint: disable=redefined-outer-name
   >>> print(tf.shape(t).numpy())
   [2 2 2]
   >>> tf.reshape(t, [2, 4])
-  <tf.Tensor: id=426, shape=(2, 4), dtype=int32, numpy=
+  <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
     array([[1, 1, 2, 2],
            [3, 3, 4, 4]], dtype=int32)>
 
@@ -157,23 +157,23 @@ def reshape(tensor, shape, name=None):  # pylint: disable=redefined-outer-name
   [3 2 3]
   >>> # Pass '[-1]' to flatten 't'.
   >>> tf.reshape(t, [-1])
-  <tf.Tensor: id=431, shape=(18,), dtype=int32,
+  <tf.Tensor: shape=(18,), dtype=int32,
     numpy=array([1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6],
     dtype=int32)>
   >>> # -- Using -1 to infer the shape --
   >>> # Here -1 is inferred to be 9:
   >>> tf.reshape(t, [2, -1])
-  <tf.Tensor: id=434, shape=(2, 9), dtype=int32, numpy=
+  <tf.Tensor: shape=(2, 9), dtype=int32, numpy=
     array([[1, 1, 1, 2, 2, 2, 3, 3, 3],
            [4, 4, 4, 5, 5, 5, 6, 6, 6]], dtype=int32)>
   >>> # -1 is inferred to be 2:
   >>> tf.reshape(t, [-1, 9])
-  <tf.Tensor: id=437, shape=(2, 9), dtype=int32, numpy=
+  <tf.Tensor: shape=(2, 9), dtype=int32, numpy=
     array([[1, 1, 1, 2, 2, 2, 3, 3, 3],
            [4, 4, 4, 5, 5, 5, 6, 6, 6]], dtype=int32)>
   >>> # -1 is inferred to be 3:
   >>> tf.reshape(t, [ 2, -1, 3])
-  <tf.Tensor: id=440, shape=(2, 3, 3), dtype=int32, numpy=
+  <tf.Tensor: shape=(2, 3, 3), dtype=int32, numpy=
     array([[[1, 1, 1],
             [2, 2, 2],
             [3, 3, 3]],
@@ -349,17 +349,17 @@ def expand_dims_v2(input, axis, name=None):
   >>> t = [[1, 2, 3],[4, 5, 6]] # shape [2, 3]
 
   >>> tf.expand_dims(t, 0)
-  <tf.Tensor: ... shape=(1, 2, 3), dtype=int32, numpy=
+  <tf.Tensor: shape=(1, 2, 3), dtype=int32, numpy=
   array([[[1, 2, 3],
           [4, 5, 6]]], dtype=int32)>
 
   >>> tf.expand_dims(t, 1)
-  <tf.Tensor: ... shape=(2, 1, 3), dtype=int32, numpy=
+  <tf.Tensor: shape=(2, 1, 3), dtype=int32, numpy=
   array([[[1, 2, 3]],
          [[4, 5, 6]]], dtype=int32)>
 
   >>> tf.expand_dims(t, 2)
-  <tf.Tensor: ... shape=(2, 3, 1), dtype=int32, numpy=
+  <tf.Tensor: shape=(2, 3, 1), dtype=int32, numpy=
   array([[[1],
           [2],
           [3]],
@@ -368,7 +368,7 @@ def expand_dims_v2(input, axis, name=None):
           [6]]], dtype=int32)>
 
   >>> tf.expand_dims(t, -1) # Last dimension index. In this case, same as 2.
-  <tf.Tensor: ... shape=(2, 3, 1), dtype=int32, numpy=
+  <tf.Tensor: shape=(2, 3, 1), dtype=int32, numpy=
   array([[[1],
           [2],
           [3]],
@@ -491,8 +491,7 @@ def shape_v2(input, out_type=dtypes.int32, name=None):
 
   >>> t = tf.constant([[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]])
   >>> tf.shape(t)
-  <tf.Tensor: id=391, shape=(3,), dtype=int32, numpy=array([2, 2, 3],
-  dtype=int32)>
+  <tf.Tensor: shape=(3,), dtype=int32, numpy=array([2, 2, 3], dtype=int32)>
   >>> tf.shape(t).numpy()
   array([2, 2, 3], dtype=int32)
 
@@ -1212,13 +1211,13 @@ def stack(values, axis=0, name="stack"):
   >>> y = tf.constant([2, 5])
   >>> z = tf.constant([3, 6])
   >>> tf.stack([x, y, z])
-  <tf.Tensor: id=19, shape=(3, 2), dtype=int32, numpy=
+  <tf.Tensor: shape=(3, 2), dtype=int32, numpy=
   array([[1, 4],
          [2, 5],
          [3, 6]], dtype=int32)>
 
   >> tf.stack([x, y, z], axis=1)
-  <tf.Tensor: id=24, shape=(2, 3), dtype=int32, numpy=
+  <tf.Tensor: shape=(2, 3), dtype=int32, numpy=
   array([[1, 2, 3],
          [4, 5, 6]], dtype=int32)>
 
@@ -1451,14 +1450,14 @@ def concat(values, axis, name="concat"):
   >>> t1 = [[1, 2, 3], [4, 5, 6]]
   >>> t2 = [[7, 8, 9], [10, 11, 12]]
   >>> concat([t1, t2], 0)
-  <tf.Tensor: id=..., shape=(4, 3), dtype=int32, numpy=
+  <tf.Tensor: shape=(4, 3), dtype=int32, numpy=
   array([[ 1,  2,  3],
          [ 4,  5,  6],
          [ 7,  8,  9],
          [10, 11, 12]], dtype=int32)>
 
   >>> concat([t1, t2], 1)
-  <tf.Tensor: id=..., shape=(2, 6), dtype=int32, numpy=
+  <tf.Tensor: shape=(2, 6), dtype=int32, numpy=
   array([[ 1,  2,  3,  7,  8,  9],
          [ 4,  5,  6, 10, 11, 12]], dtype=int32)>
 
@@ -1471,7 +1470,7 @@ def concat(values, axis, name="concat"):
   >>> t1 = [[[1, 2], [2, 3]], [[4, 4], [5, 3]]]
   >>> t2 = [[[7, 4], [8, 4]], [[2, 10], [15, 11]]]
   >>> tf.concat([t1, t2], -1)
-  <tf.Tensor: id=..., shape=(2, 2, 4), dtype=int32, numpy=
+  <tf.Tensor: shape=(2, 2, 4), dtype=int32, numpy=
     array([[[ 1,  2,  7,  4],
             [ 2,  3,  8,  4]],
            [[ 4,  4,  2, 10],
@@ -2407,7 +2406,7 @@ def zeros(shape, dtype=dtypes.float32, name=None):
   all elements set to zero.
 
   >>> tf.zeros([3, 4], tf.int32)
-  <tf.Tensor: id=..., shape=(3, 4), dtype=int32, numpy=
+  <tf.Tensor: shape=(3, 4), dtype=int32, numpy=
   array([[0, 0, 0, 0],
          [0, 0, 0, 0],
          [0, 0, 0, 0]], dtype=int32)>
@@ -2635,7 +2634,7 @@ def ones(shape, dtype=dtypes.float32, name=None):
   all elements set to one.
 
   >>> tf.ones([3, 4], tf.int32)
-  <tf.Tensor: ... shape=(3, 4), dtype=int32, numpy=
+  <tf.Tensor: shape=(3, 4), dtype=int32, numpy=
   array([[1, 1, 1, 1],
          [1, 1, 1, 1],
          [1, 1, 1, 1]], dtype=int32)>
@@ -2953,7 +2952,9 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
   # Restore shape information where possible.
   if not context.executing_eagerly():
     paddings_constant = _get_paddings_constant(paddings)
-    input_shape = result.op.inputs[0].shape
+    input_shape = (
+        tensor_shape.TensorShape(tensor.shape)
+        if isinstance(tensor, ops.Tensor) else result.op.inputs[0].shape)
     if (input_shape.ndims is not None and
         not result.shape.is_fully_defined() and paddings_constant is not None):
       new_shape = []
@@ -3829,10 +3830,6 @@ def squeeze_v2(input, axis=None, name=None):
 
 
 @tf_export(v1=["where"])
-@deprecation.deprecated(
-    date=None,
-    instructions="Use tf.where in 2.0, "
-    "which has the same broadcast rule as np.where")
 @dispatch.add_dispatch_support
 def where(condition, x=None, y=None, name=None):
   """Return the elements, either from `x` or `y`, depending on the `condition`.
@@ -3947,6 +3944,46 @@ def reverse_sequence(input,
                      name=None,
                      seq_dim=None,
                      batch_dim=None):
+  """Reverses variable length slices.
+
+  This op first slices `input` along the dimension `batch_axis`, and for
+  each slice `i`, reverses the first `seq_lengths[i]` elements along the
+  dimension `seq_axis`.
+
+  The elements of `seq_lengths` must obey `seq_lengths[i] <=
+  input.dims[seq_dim]`, and `seq_lengths` must be a vector of length
+  `input.dims[batch_dim]`.
+
+  The output slice `i` along dimension `batch_axis` is then given by
+  input slice `i`, with the first `seq_lengths[i]` slices along
+  dimension `seq_axis` reversed.
+
+  Example usage:
+
+  >>> seq_lengths = [7, 2, 3, 5]
+  >>> input = [[1, 2, 3, 4, 5, 0, 0, 0], [1, 2, 0, 0, 0, 0, 0, 0],
+  ...          [1, 2, 3, 4, 0, 0, 0, 0], [1, 2, 3, 4, 5, 6, 7, 8]]
+  >>> output = reverse_sequence(input, seq_lens, seq_dim=1, batch_dim=0)
+  >>> print(output)
+  <tf.Tensor: id=5, shape=(4, 8), dtype=int32, numpy=
+  array([[0, 0, 5, 4, 3, 2, 1, 0],
+         [2, 1, 0, 0, 0, 0, 0, 0],
+         [3, 2, 1, 4, 0, 0, 0, 0],
+         [5, 4, 3, 2, 1, 6, 7, 8]], dtype=int32)>
+
+  Args:
+    `input`: A `Tensor`. The input to reverse.
+    `seq_lengths`: A `Tensor`. Must be one of the following types: `int32`,
+      `int64`. 1-D with length `input.dims(batch_dim)` and `max(seq_lengths) <=
+      input.dims(seq_dim)`
+    `seq_axis`: An `int`. The dimension which is partially reversed.
+    `batch_axis`: An optional `int`. Defaults to `0`. The dimension along which
+      reversal is performed.
+    `name`: A name for the operation (optional).
+
+  Returns:
+    A Tensor. Has the same type as input.
+  """
   seq_axis = deprecation.deprecated_argument_lookup("seq_axis", seq_axis,
                                                     "seq_dim", seq_dim)
   batch_axis = deprecation.deprecated_argument_lookup("batch_axis", batch_axis,
@@ -4517,7 +4554,7 @@ def quantize_v2(
       raise ValueError("input should have known rank to use negative axis.")
     axis %= input.shape.ndims
 
-  if compat.forward_compatible(2019, 9, 25) or axis >= 0:
+  if compat.forward_compatible(2019, 9, 25) or axis >= 0 or narrow_range:
     return gen_array_ops.quantize_v2(
         input,
         min_range,
@@ -4582,14 +4619,14 @@ def quantize(
 @tf_export("quantization.dequantize", v1=["quantization.dequantize",
                                           "dequantize"])
 @deprecation.deprecated_endpoints("dequantize")
-def dequantize(
+def dequantize(  # pylint: disable=missing-docstring
     input,  # pylint: disable=redefined-builtin
     min_range,
     max_range,
     mode="MIN_COMBINED",
     name=None,
-    axis=None):
-  """Dequantize tensor to the specified range."""
+    axis=None,
+    narrow_range=False):
   if axis is None:
     axis = -1
   elif axis < 0:
@@ -4597,11 +4634,14 @@ def dequantize(
       raise ValueError("input should have known rank to use negative axis.")
     axis %= input.shape.ndims
 
-  if compat.forward_compatible(2019, 9, 25) or axis >= 0:
+  if compat.forward_compatible(2019, 10, 22) or axis >= 0 or narrow_range:
     return gen_array_ops.dequantize(
-        input, min_range, max_range, mode=mode, name=name, axis=axis)
+        input, min_range, max_range, mode=mode, name=name,
+        narrow_range=narrow_range, axis=axis)
   return gen_array_ops.dequantize(
       input, min_range, max_range, mode=mode, name=name)
+
+dequantize.__doc__ = gen_array_ops.dequantize.__doc__
 
 
 @tf_export("quantization.quantize_and_dequantize")
@@ -4997,21 +5037,24 @@ def repeat_with_axis(data, repeats, axis, name=None):
   Returns:
     A tensor with `max(N, 1)` dimensions.  Has the same shape as `data`,
     except that dimension `axis` has size `sum(repeats)`.
-  #### Examples:
-    >>> repeat(['a', 'b', 'c'], repeats=[3, 0, 2], axis=0)
-    <tf.Tensor: ..., shape=(5,), dtype=string,
-    numpy=array([b'a', b'a', b'a', b'c', b'c'], dtype=object)>
-    >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=0)
-    <tf.Tensor: ..., shape=(5, 2), dtype=int32, numpy=
-    array([[1, 2],
-           [1, 2],
-           [3, 4],
-           [3, 4],
-           [3, 4]], dtype=int32)>
-    >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=1)
-    <tf.Tensor: ..., shape=(2, 5), dtype=int32, numpy=
-    array([[1, 1, 2, 2, 2],
-           [3, 3, 4, 4, 4]], dtype=int32)>
+
+  Example usage:
+
+  >>> repeat(['a', 'b', 'c'], repeats=[3, 0, 2], axis=0)
+  <tf.Tensor: shape=(5,), dtype=string,
+  numpy=array([b'a', b'a', b'a', b'c', b'c'], dtype=object)>
+  >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=0)
+  <tf.Tensor: shape=(5, 2), dtype=int32, numpy=
+  array([[1, 2],
+         [1, 2],
+         [3, 4],
+         [3, 4],
+         [3, 4]], dtype=int32)>
+  >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=1)
+  <tf.Tensor: shape=(2, 5), dtype=int32, numpy=
+  array([[1, 1, 2, 2, 2],
+         [3, 3, 4, 4, 4]], dtype=int32)>
+
   """
   if not isinstance(axis, int):
     raise TypeError("axis must be an int; got %s" % type(axis).__name__)
@@ -5125,32 +5168,33 @@ def repeat(input, repeats, axis=None, name=None):  # pylint: disable=redefined-b
     A Tensor which has the same shape as `input`, except along the given axis.
       If axis is None then the output array is flattened to match the flattened
       input array.
-  #### Examples:
 
-    >>> repeat(['a', 'b', 'c'], repeats=[3, 0, 2], axis=0)
-    <tf.Tensor: ..., shape=(5,), dtype=string,
-    numpy=array([b'a', b'a', b'a', b'c', b'c'], dtype=object)>
+  Example usage:
 
-    >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=0)
-    <tf.Tensor: id=..., shape=(5, 2), dtype=int32, numpy=
-    array([[1, 2],
-           [1, 2],
-           [3, 4],
-           [3, 4],
-           [3, 4]], dtype=int32)>
+  >>> repeat(['a', 'b', 'c'], repeats=[3, 0, 2], axis=0)
+  <tf.Tensor: shape=(5,), dtype=string,
+  numpy=array([b'a', b'a', b'a', b'c', b'c'], dtype=object)>
 
-    >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=1)
-    <tf.Tensor: id=..., shape=(2, 5), dtype=int32, numpy=
-    array([[1, 1, 2, 2, 2],
-           [3, 3, 4, 4, 4]], dtype=int32)>
+  >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=0)
+  <tf.Tensor: shape=(5, 2), dtype=int32, numpy=
+  array([[1, 2],
+         [1, 2],
+         [3, 4],
+         [3, 4],
+         [3, 4]], dtype=int32)>
 
-    >>> repeat(3, repeats=4)
-    <tf.Tensor: id=..., shape=(4,), dtype=int32,
-    numpy=array([3, 3, 3, 3], dtype=int32)>
+  >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=1)
+  <tf.Tensor: shape=(2, 5), dtype=int32, numpy=
+  array([[1, 1, 2, 2, 2],
+         [3, 3, 4, 4, 4]], dtype=int32)>
 
-    >>> repeat([[1,2], [3,4]], repeats=2)
-    <tf.Tensor: id=..., shape=(8,), dtype=int32,
-    numpy=array([1, 1, 2, 2, 3, 3, 4, 4], dtype=int32)>
+  >>> repeat(3, repeats=4)
+  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([3, 3, 3, 3], dtype=int32)>
+
+  >>> repeat([[1,2], [3,4]], repeats=2)
+  <tf.Tensor: shape=(8,), dtype=int32,
+  numpy=array([1, 1, 2, 2, 3, 3, 4, 4], dtype=int32)>
+
   """
   if axis is None:
     input = reshape(input, [-1])

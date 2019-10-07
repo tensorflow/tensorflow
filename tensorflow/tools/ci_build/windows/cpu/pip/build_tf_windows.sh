@@ -168,7 +168,7 @@ N_JOBS="${NUMBER_OF_PROCESSORS}"
 bazel test --announce_rc --config=opt -k --test_output=errors \
   ${EXTRA_TEST_FLAGS} \
   --define=no_tensorflow_py_deps=true --test_lang_filters=py \
-  --test_tag_filters=-no_pip,-no_windows,-no_oss,-gpu,-tpu \
+  --test_tag_filters=-no_pip,-no_windows,-no_oss,-gpu,-tpu,-v1only \
   --build_tag_filters=-no_pip,-no_windows,-no_oss,-gpu,-tpu --build_tests_only \
   --test_size_filters=small,medium \
   --jobs="${N_JOBS}" --test_timeout="300,450,1200,3600" \
