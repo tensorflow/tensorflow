@@ -39,18 +39,10 @@ Status SelectConvolutionAdreno(const Convolution2DAttributes& attr,
     ConvConstants conv;
     RETURN_IF_ERROR(CreateConvConstants(creation_context, op_def, attr, &conv));
     *ptr = absl::make_unique<ConvConstants>(std::move(conv));
-  } else if (op_def.src_tensors[0].storage_type != TensorStorageType::BUFFER) {
+  } else {
     ConvTexture conv;
     RETURN_IF_ERROR(CreateConvTexture(creation_context, op_def, attr, &conv));
     *ptr = absl::make_unique<ConvTexture>(std::move(conv));
-  } else if (IsConvBuffer1x1Supported(op_def, attr)) {
-    ConvBuffer1x1 conv;
-    RETURN_IF_ERROR(CreateConvBuffer1x1(creation_context, op_def, attr, &conv));
-    *ptr = absl::make_unique<ConvBuffer1x1>(std::move(conv));
-  } else {
-    ConvBuffer conv;
-    RETURN_IF_ERROR(CreateConvBuffer(creation_context, op_def, attr, &conv));
-    *ptr = absl::make_unique<ConvBuffer>(std::move(conv));
   }
 
   return OkStatus();
