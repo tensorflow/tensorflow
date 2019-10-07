@@ -785,8 +785,9 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
     return failure();
   }
   if (opcode == spirv::Opcode::OpFunctionEnd) {
-    LLVM_DEBUG(llvm::dbgs() << "[fn] completed function " << fnName << " (type="
-                            << fnType << ", id=" << operands[1] << ")\n");
+    LLVM_DEBUG(llvm::dbgs()
+               << "[fn] completed function '" << fnName << "' (type=" << fnType
+               << ", id=" << operands[1] << ")\n");
     return processFunctionEnd(instOperands);
   }
   if (opcode != spirv::Opcode::OpLabel) {
@@ -813,7 +814,7 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
     return failure();
   }
 
-  LLVM_DEBUG(llvm::dbgs() << "[fn] completed function " << fnName << " (type="
+  LLVM_DEBUG(llvm::dbgs() << "[fn] completed function '" << fnName << "' (type="
                           << fnType << ", id=" << operands[1] << ")\n");
   return processFunctionEnd(instOperands);
 }
@@ -1641,8 +1642,8 @@ LogicalResult ControlFlowStructurizer::structurizeImpl() {
   Region &body = op->getRegion(0);
 
   BlockAndValueMapping mapper;
-  // All references to the old merge block should be directed to the loop
-  // merge block in the LoopOp's region.
+  // All references to the old merge block should be directed to the
+  // selection/loop merge block in the SelectionOp/LoopOp's region.
   mapper.map(mergeBlock, &body.back());
 
   collectBlocksInConstruct();
@@ -1673,13 +1674,12 @@ LogicalResult ControlFlowStructurizer::structurizeImpl() {
   // block in this loop construct.
   OpBuilder builder(body);
   for (auto *block : constructBlocks) {
-    assert(block->getNumArguments() == 0 &&
-           "block in loop construct should not have arguments");
-
-    // Create an block and insert it before the loop merge block in the
-    // LoopOp's region.
+    // Create a block and insert it before the selection/loop merge block in the
+    // SelectionOp/LoopOp's region.
     auto *newBlock = builder.createBlock(&body.back());
     mapper.map(block, newBlock);
+    LLVM_DEBUG(llvm::dbgs() << "[cf] cloned block " << newBlock
+                            << " from block " << block << "\n");
 
     for (auto &op : *block)
       newBlock->push_back(op.clone(mapper));
@@ -1714,15 +1714,38 @@ LogicalResult ControlFlowStructurizer::structurizeImpl() {
   }
 
   // All the blocks cloned into the SelectionOp/LoopOp's region can now be
-  // deleted.
+  // cleaned up.
+  LLVM_DEBUG(llvm::dbgs() << "[cf] cleaning up blocks after clone\n");
+  // First we need to drop all uses on ops inside all blocks. This is needed
+  // because we can have blocks referencing SSA values from one another.
   for (auto *block : constructBlocks)
-    block->erase();
+    block->dropAllReferences();
+
+  // Then erase all blocks except the old header block.
+  for (auto *block : constructBlocks) {
+    // The structured selection/loop's entry block does not have arguments.
+    // If the function's header block is also part of the structured control
+    // flow, we cannot just simply erase it because it may contain arguments
+    // matching the function signature and used by the cloned blocks.
+    if (block->isEntryBlock() && isa<FuncOp>(block->getParentOp())) {
+      LLVM_DEBUG(llvm::dbgs() << "[cf] changing entry block " << block
+                              << " to only contain a spv.Branch op\n");
+      // Still keep the function entry block for the potential block arguments,
+      // but replace all ops inside with a branch to the merge block.
+      block->clear();
+      builder.setInsertionPointToEnd(block);
+      builder.create<spirv::BranchOp>(location, mergeBlock);
+    } else {
+      LLVM_DEBUG(llvm::dbgs() << "[cf] erasing block " << block << "\n");
+      block->erase();
+    }
+  }
 
   return success();
 }
 
 LogicalResult Deserializer::structurizeControlFlow() {
-  LLVM_DEBUG(llvm::dbgs() << "[cf] structurizing control flow\n");
+  LLVM_DEBUG(llvm::dbgs() << "[cf] start structurizing control flow\n");
 
   while (!blockMergeInfo.empty()) {
     auto *headerBlock = blockMergeInfo.begin()->first;

@@ -1,15 +1,19 @@
-// RUN: mlir-translate -test-spirv-roundtrip %s | FileCheck %s
+// RUN: mlir-translate -test-spirv-roundtrip -split-input-file %s | FileCheck %s
+
+// Selection with both then and else branches
 
 spv.module "Logical" "GLSL450" {
   func @selection(%cond: i1) -> () {
+// CHECK:        spv.Branch ^bb1
+// CHECK-NEXT: ^bb1:
     %zero = spv.constant 0: i32
     %one = spv.constant 1: i32
     %two = spv.constant 2: i32
     %var = spv.Variable init(%zero) : !spv.ptr<i32, Function>
 
-// CHECK:        spv.Branch ^bb1
-// CHECK-NEXT: ^bb1:
-// CHECK-NEXT:   spv.selection
+// CHECK-NEXT:   spv.selection {
+// CHECK-NEXT:     spv.constant 0
+// CHECK-NEXT:     spv.Variable
     spv.selection {
 // CHECK-NEXT: spv.BranchConditional %{{.*}}, ^bb1, ^bb2
       spv.BranchConditional %cond, ^then, ^else
@@ -47,3 +51,43 @@ spv.module "Logical" "GLSL450" {
 } attributes {
   capabilities = ["Shader"]
 }
+
+// -----
+
+// Selection with only then branch
+// Selection in function entry block
+
+spv.module "Logical" "GLSL450" {
+// CHECK:      func @selection(%[[ARG:.*]]: i1
+  func @selection(%cond: i1) -> (i32) {
+// CHECK:        spv.Branch ^bb1
+// CHECK-NEXT: ^bb1:
+// CHECK-NEXT:   spv.selection
+    spv.selection {
+// CHECK-NEXT: spv.BranchConditional %[[ARG]], ^bb1, ^bb2
+      spv.BranchConditional %cond, ^then, ^merge
+
+// CHECK:        ^bb1:
+    ^then:
+      %zero = spv.constant 0 : i32
+      spv.ReturnValue  %zero : i32
+
+// CHECK:        ^bb2:
+    ^merge:
+// CHECK-NEXT:     spv._merge
+      spv._merge
+    }
+
+    %one = spv.constant 1 : i32
+    spv.ReturnValue  %one : i32
+  }
+
+  func @main() -> () {
+    spv.Return
+  }
+  spv.EntryPoint "GLCompute" @main
+  spv.ExecutionMode @main "LocalSize", 1, 1, 1
+} attributes {
+  capabilities = ["Shader"]
+}
+
