@@ -344,8 +344,8 @@ class Layer(module.Module):
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
-      **kwargs: Additional keyword arguments. Accepted values are `getter`,
-        `collections`, `experimental_autocast` and `caching_device`.
+      **kwargs: Additional keyword arguments. Accepted values are `getter` and
+        `collections`.
 
     Returns:
       The created variable. Usually either a `Variable` or `ResourceVariable`
@@ -362,16 +362,13 @@ class Layer(module.Module):
       shape = ()
     # Validate optional keyword arguments.
     for kwarg in kwargs:
-      if kwarg not in ['getter', 'collections', 'experimental_autocast',
-                       'caching_device']:
+      if kwarg not in ['getter', 'collections', 'experimental_autocast']:
         raise TypeError('Unknown keyword argument:', kwarg)
     getter = kwargs.pop('getter', base_layer_utils.make_variable)
     collections_arg = kwargs.pop('collections', None)
     # 'experimental_autocast' can be set to False by the caller to indicate an
     # AutoCastVariable should never be created.
     autocast = kwargs.pop('experimental_autocast', True)
-    # See the docstring for tf.Variable about the details for caching_device.
-    caching_device = kwargs.pop('caching_device', None)
 
     if dtype is None:
       dtype = self.dtype or backend.floatx()
@@ -417,13 +414,6 @@ class Layer(module.Module):
       def getter(*args, **kwargs):  # pylint: disable=function-redefined
         variable = old_getter(*args, **kwargs)
         return autocast_variable.create_autocast_variable(variable)
-      # Also the caching_device does not work with the mixed precision API,
-      # disable it if it is specified.
-      # TODO(b/142020079): Reenable it once the bug is fixed.
-      if caching_device is not None:
-        tf_logging.warn('`caching_device` does not work with mixed precision '
-                        'API. Ignoring user specified `caching_device`.')
-        caching_device = None
 
     variable = self._add_variable_with_custom_getter(
         name=name,
@@ -441,8 +431,7 @@ class Layer(module.Module):
         use_resource=use_resource,
         collections=collections_arg,
         synchronization=synchronization,
-        aggregation=aggregation,
-        caching_device=caching_device)
+        aggregation=aggregation)
     backend.track_variable(variable)
 
     if regularizer is not None:
