@@ -73,8 +73,6 @@ class TensorListPatternRewriter : public PatternRewriter {
 };
 
 /// Lower TensorList ops in functions for subsequent legalization.
-// TODO(haoliang): Use DialectConversion infra to simplify the rewriting
-// process.
 struct LowerStaticTensorListPass
     : public ModulePass<LowerStaticTensorListPass> {
   void runOnModule() override;
