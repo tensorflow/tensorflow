@@ -1,9 +1,9 @@
 // RUN: mlir-cuda-runner %s --shared-libs=%cuda_wrapper_library_dir/libcuda-runtime-wrappers%shlibext --entry-point-result=void | FileCheck %s
 
-// CHECK: [8.128000e+03, 8.128000e+03, {{.*}}, 8.128000e+03, 8.128000e+03]
+// CHECK: [5.356000e+03, 5.356000e+03, {{.*}}, 5.356000e+03, 5.356000e+03]
 func @main() {
-  %arg = alloc() : memref<16x4x2xf32>
-  %dst = memref_cast %arg : memref<16x4x2xf32> to memref<?x?x?xf32>
+  %arg = alloc() : memref<13x4x2xf32>
+  %dst = memref_cast %arg : memref<13x4x2xf32> to memref<?x?x?xf32>
   %zero = constant 0 : i32
   %one = constant 1 : index
   %sx = dim %dst, 0 : memref<?x?x?xf32>
