@@ -6,7 +6,7 @@
 |-----------------|
 | [![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://www.tensorflow.org/api_docs/) |
 
-[TensorFlow](https://www.tensorflow.org/) is an end-to-end open source platform
+[TensorFlow](https://www.tensorflow.org/) is an end-to-end open-source platform
 for machine learning. It has a comprehensive, flexible ecosystem of
 [tools](https://www.tensorflow.org/resources/tools),
 [libraries](https://www.tensorflow.org/resources/libraries-extensions), and
