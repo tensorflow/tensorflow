@@ -52,18 +52,13 @@ class RandomDatasetParams : public DatasetParams {
         seed_(CreateTensor<int64>(TensorShape({}), {seed})),
         seed2_(CreateTensor<int64>(TensorShape({}), {seed2})) {}
 
-  virtual Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override {
-    *input_placeholder = {RandomDatasetOp::kSeed, RandomDatasetOp::kSeed2};
-    return Status::OK();
+  virtual std::vector<Tensor> GetInputTensors() const override {
+    return {seed_, seed2_};
   }
 
-  virtual Status GetInputs(
-      const std::vector<Tensor*>& input_datasets,
-      std::vector<std::unique_ptr<Tensor>>* created_tensors,
-      gtl::InlinedVector<TensorValue, 4>* inputs) const override {
-    inputs->clear();
-    AddTensorInputs({seed_, seed2_}, created_tensors, inputs);
+  virtual Status GetInputNames(
+      std::vector<string>* input_placeholder) const override {
+    *input_placeholder = {RandomDatasetOp::kSeed, RandomDatasetOp::kSeed2};
     return Status::OK();
   }
 
