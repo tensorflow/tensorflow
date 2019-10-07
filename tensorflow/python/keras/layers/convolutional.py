@@ -145,10 +145,7 @@ class Conv(Layer):
 
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
-    if self.data_format == 'channels_first':
-      channel_axis = 1
-    else:
-      channel_axis = -1
+    channel_axis = self._get_channel_axis()
     if input_shape.dims[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs '
                        'should be defined. Found `None`.')
@@ -176,19 +173,12 @@ class Conv(Layer):
       self.bias = None
     self.input_spec = InputSpec(ndim=self.rank + 2,
                                 axes={channel_axis: input_dim})
-    if self.padding == 'causal':
-      op_padding = 'valid'
-    else:
-      op_padding = self.padding
-    if not isinstance(op_padding, (list, tuple)):
-      op_padding = op_padding.upper()
-
     self._convolution_op = nn_ops.Convolution(
         input_shape,
         filter_shape=self.kernel.shape,
         dilation_rate=self.dilation_rate,
         strides=self.strides,
-        padding=op_padding,
+        padding=self._get_padding_op(),
         data_format=conv_utils.convert_data_format(self.data_format,
                                                    self.rank + 2))
     self.built = True
@@ -270,6 +260,21 @@ class Conv(Layer):
     else:
       causal_padding = [[0, 0], [0, 0], [left_pad, 0]]
     return causal_padding
+
+  def _get_channel_axis(self):
+    if self.data_format == 'channels_first':
+      return 1
+    else:
+      return -1
+
+  def _get_padding_op(self):
+    if self.padding == 'causal':
+      op_padding = 'valid'
+    else:
+      op_padding = self.padding
+    if not isinstance(op_padding, (list, tuple)):
+      op_padding = op_padding.upper()
+    return op_padding
 
 
 @keras_export('keras.layers.Conv1D', 'keras.layers.Convolution1D')
@@ -757,10 +762,7 @@ class Conv2DTranspose(Conv2D):
     if len(input_shape) != 4:
       raise ValueError('Inputs should have rank 4. Received input shape: ' +
                        str(input_shape))
-    if self.data_format == 'channels_first':
-      channel_axis = 1
-    else:
-      channel_axis = -1
+    channel_axis = self._get_channel_axis()
     if input_shape.dims[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs '
                        'should be defined. Found `None`.')
@@ -1030,10 +1032,7 @@ class Conv3DTranspose(Conv3D):
     if len(input_shape) != 5:
       raise ValueError('Inputs should have rank 5, received input shape:',
                        str(input_shape))
-    if self.data_format == 'channels_first':
-      channel_axis = 1
-    else:
-      channel_axis = -1
+    channel_axis = self._get_channel_axis()
     if input_shape.dims[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs '
                        'should be defined, found None: ' + str(input_shape))
@@ -1290,10 +1289,7 @@ class SeparableConv(Conv):
 
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
-    if self.data_format == 'channels_first':
-      channel_axis = 1
-    else:
-      channel_axis = -1
+    channel_axis = self._get_channel_axis()
     if input_shape.dims[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs '
                        'should be defined. Found `None`.')
@@ -1786,10 +1782,7 @@ class DepthwiseConv2D(Conv2D):
       raise ValueError('Inputs to `DepthwiseConv2D` should have rank 4. '
                        'Received input shape:', str(input_shape))
     input_shape = tensor_shape.TensorShape(input_shape)
-    if self.data_format == 'channels_first':
-      channel_axis = 1
-    else:
-      channel_axis = 3
+    channel_axis = self._get_channel_axis()
     if input_shape.dims[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs to '
                        '`DepthwiseConv2D` '

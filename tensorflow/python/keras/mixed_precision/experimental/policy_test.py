@@ -169,9 +169,47 @@ class PolicyTest(test.TestCase):
           'policies. You passed loss_scale=2.0 for policy float32. Consider '
           'not passing any loss_scale instead.')
 
-    for policy_name in 'float16', 'float16_with_float32_vars', 'mixed_float16':
+    for policy_name in 'float16', 'mixed_float16':
       with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
         mp_policy.Policy(policy_name, loss_scale=2.)
+        mock_warn.assert_not_called()
+
+  @testing_utils.enable_v2_dtype_behavior
+  def test_float32_vars_warning(self):
+    with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
+      mp_policy.Policy('infer_with_float32_vars')
+      self.assertEqual(
+          mock_warn.call_args[0][0],
+          "WARNING: The 'infer_with_float32_vars' policy is deprecated and "
+          "will be removed in TensorFlow 2.1. Please use the 'mixed_float16' "
+          "or 'mixed_bfloat16' policy instead.")
+
+    with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
+      mp_policy.Policy('float16_with_float32_vars')
+      self.assertEqual(
+          mock_warn.call_args[0][0],
+          "WARNING: The 'float16_with_float32_vars' policy is deprecated and "
+          "will be removed in TensorFlow 2.1. Please use the 'mixed_float16' "
+          "policy instead.")
+
+    with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
+      mp_policy.Policy('bfloat16_with_float32_vars')
+      self.assertEqual(
+          mock_warn.call_args[0][0],
+          "WARNING: The 'bfloat16_with_float32_vars' policy is deprecated and "
+          "will be removed in TensorFlow 2.1. Please use the 'mixed_bfloat16' "
+          "policy instead.")
+
+    with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
+      mp_policy.Policy('float64_with_float32_vars')
+      self.assertEqual(
+          mock_warn.call_args[0][0],
+          "WARNING: The 'float64_with_float32_vars' policy is deprecated and "
+          "will be removed in TensorFlow 2.1.")
+
+    for policy_name in 'float16', 'float32', 'mixed_float16', 'mixed_bfloat16':
+      with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
+        mp_policy.Policy(policy_name)
         mock_warn.assert_not_called()
 
   @testing_utils.enable_v2_dtype_behavior
@@ -188,6 +226,97 @@ class PolicyTest(test.TestCase):
       self.assertEqual(mp_policy.global_policy().name,
                        'infer_with_float32_vars')
     self.assertEqual(mp_policy.global_policy().name, default_policy)
+
+  @testing_utils.enable_v2_dtype_behavior
+  def test_config(self):
+    for policy in (
+        mp_policy.Policy('float16'),
+        mp_policy.Policy('float32'),
+        mp_policy.Policy('int16'),
+        mp_policy.Policy('mixed_float16'),
+        mp_policy.Policy('mixed_bfloat16'),
+        mp_policy.Policy('infer'),
+        mp_policy.Policy('infer_float32_vars'),
+        mp_policy.Policy('float16_with_float32_vars'),
+        mp_policy.Policy('float32', loss_scale=2.),
+        mp_policy.Policy('float32', loss_scale=None),
+        mp_policy.Policy('mixed_float16', loss_scale=2.),
+        mp_policy.Policy('mixed_float16', loss_scale=None),
+        mp_policy.Policy('mixed_bfloat16', loss_scale=2.),
+        mp_policy.Policy('mixed_bfloat16', loss_scale=None),
+    ):
+      config = policy.get_config()
+      new_policy = mp_policy.Policy.from_config(config)
+      # Comparing strings is the easiest way to ensure the policies are the
+      # same, as policy does not override the == operator.
+      self.assertEqual(str(policy), str(new_policy))
+
+  @testing_utils.enable_v2_dtype_behavior
+  def test_serialization(self):
+    # Test policies that are equivalent to a single dtype
+    for policy_name in 'float16', 'float32', 'int8', 'string', 'bool':
+      policy = mp_policy.Policy(policy_name)
+      config = mp_policy.serialize(policy)
+      self.assertEqual(config, policy_name)
+      new_policy = mp_policy.deserialize(config)
+      self.assertEqual(str(policy), str(new_policy))
+
+    # Test "infer" policy
+    policy = mp_policy.Policy('infer')
+    config = mp_policy.serialize(policy)
+    self.assertIsNone(config)
+    new_policy = mp_policy.deserialize(config)
+    self.assertEqual(str(policy), str(new_policy))
+
+    class MyPolicy(mp_policy.Policy):
+      pass
+
+    # Test policies that do not override the loss scale
+    for policy in (
+        mp_policy.Policy('mixed_float16'),
+        mp_policy.Policy('mixed_bfloat16'),
+        mp_policy.Policy('infer_with_float32_vars'),
+        mp_policy.Policy('float16_with_float32_vars'),
+        MyPolicy('float32')
+    ):
+      config = mp_policy.serialize(policy)
+      self.assertEqual(config, {'class_name': policy.__class__.__name__,
+                                'config': {'name': policy.name}})
+      new_policy = mp_policy.deserialize(config,
+                                         custom_objects={'MyPolicy': MyPolicy})
+      self.assertEqual(str(policy), str(new_policy))
+
+    # Test policies that override the loss scale
+    for policy in (
+        mp_policy.Policy('float32', loss_scale=2.),
+        mp_policy.Policy('float32', loss_scale=None),
+        mp_policy.Policy('mixed_float16', loss_scale=2.),
+        mp_policy.Policy('mixed_float16', loss_scale=None),
+        mp_policy.Policy('mixed_bfloat16', loss_scale=2.),
+        mp_policy.Policy('mixed_bfloat16', loss_scale=None),
+        mp_policy.Policy('infer_with_float32_vars', loss_scale=2.),
+        mp_policy.Policy('infer_with_float32_vars', loss_scale=None),
+        mp_policy.Policy('float16_with_float32_vars', loss_scale=2.),
+        mp_policy.Policy('float16_with_float32_vars', loss_scale=None),
+    ):
+      config = mp_policy.serialize(policy)
+      expected_loss_scale_config = None
+      if policy.loss_scale:
+        expected_loss_scale_config = {
+            'class_name': 'FixedLossScale',
+            'config': {'loss_scale_value': 2.}
+        }
+      self.assertEqual(
+          config, {
+              'class_name': policy.__class__.__name__,
+              'config': {
+                  'name': policy.name,
+                  'loss_scale': expected_loss_scale_config
+              }
+          })
+      new_policy = mp_policy.deserialize(
+          config, custom_objects={'MyPolicy': MyPolicy})
+      self.assertEqual(str(policy), str(new_policy))
 
   @testing_utils.enable_v2_dtype_behavior
   def test_error_if_graph_rewrite_enabled(self):

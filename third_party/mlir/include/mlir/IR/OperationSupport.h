@@ -98,10 +98,10 @@ public:
   bool (&classof)(Operation *op);
 
   /// Use the specified object to parse this ops custom assembly format.
-  ParseResult (&parseAssembly)(OpAsmParser *parser, OperationState *result);
+  ParseResult (&parseAssembly)(OpAsmParser &parser, OperationState &result);
 
   /// This hook implements the AsmPrinter for this operation.
-  void (&printAssembly)(Operation *op, OpAsmPrinter *p);
+  void (&printAssembly)(Operation *op, OpAsmPrinter &p);
 
   /// This hook implements the verifier for this operation.  It should emits an
   /// error message and returns failure if a problem is detected, or returns
@@ -171,8 +171,8 @@ private:
   AbstractOperation(
       StringRef name, Dialect &dialect, OperationProperties opProperties,
       bool (&classof)(Operation *op),
-      ParseResult (&parseAssembly)(OpAsmParser *parser, OperationState *result),
-      void (&printAssembly)(Operation *op, OpAsmPrinter *p),
+      ParseResult (&parseAssembly)(OpAsmParser &parser, OperationState &result),
+      void (&printAssembly)(Operation *op, OpAsmPrinter &p),
       LogicalResult (&verifyInvariants)(Operation *op),
       LogicalResult (&foldHook)(Operation *op, ArrayRef<Attribute> operands,
                                 SmallVectorImpl<OpFoldResult> &results),
@@ -255,7 +255,6 @@ inline llvm::hash_code hash_value(OperationName arg) {
 /// be used as a temporary object on the stack.  It is generally unwise to put
 /// this in a collection.
 struct OperationState {
-  MLIRContext *const context;
   Location location;
   OperationName name;
   SmallVector<Value *, 4> operands;

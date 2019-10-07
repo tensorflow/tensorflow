@@ -146,9 +146,7 @@ class HloModule {
   // information on opcode, shape, operands, and typically a root instruction.
   // This function returns the same hash value for equivalent HLO modules,
   // with respect to HloInstruction::Identical() method.
-  uint64 Hash() const {
-    return entry_computation()->root_instruction()->Hash();
-  }
+  uint64 Hash() const;
 
   // Gets the computations in this module.
   //
@@ -206,7 +204,7 @@ class HloModule {
   std::vector<HloComputation*> MakeNonfusionComputationsSorted() const;
 
   const HloModuleConfig& config() const { return config_; }
-  void set_config(HloModuleConfig& config) { config_ = config; }
+  void set_config(const HloModuleConfig& config) { config_ = config; }
 
   // Return a string representation of the module.
   //
@@ -223,7 +221,14 @@ class HloModule {
   // Creates and returns an HloModuleConfig with an appropriate program shape
   // for the HLO module in the given proto.
   static StatusOr<HloModuleConfig> CreateModuleConfigFromProto(
-      const HloModuleProto& module, const DebugOptions& debug_options);
+      const HloModuleProto& module, const DebugOptions& debug_options,
+      const ExecutionOptions* execution_options = nullptr);
+
+  // Creates and returns an HloModuleConfig with an appropriate program shape
+  // for the HLO module in the given proto.
+  static StatusOr<HloModuleConfig> CreateModuleConfigFromShape(
+      const ProgramShape& program_shape, const DebugOptions& debug_options,
+      const ExecutionOptions* execution_options = nullptr);
 
   // Outlines the given expression from the given computation.
   // instructions_to_outline contains the instructions that form the expression.
@@ -296,10 +301,6 @@ class HloModule {
 
   Status CheckUniqueNamesAndIdsForComputationsAndInstructions() const;
 
-  std::vector<std::vector<bool>>* mutable_fusion_config() {
-    return &fusion_config_;
-  }
-
   // Checks if this config has a list of entry parameters' HLO shardings for
   // SPMD.
   bool has_spmd_parameters_shardings() const {
@@ -371,9 +372,6 @@ class HloModule {
 
   // Bindings for dynamic parameter mapping.
   DynamicParameterBinding dynamic_parameter_binding_;
-
-  // Fusion configuration.
-  std::vector<std::vector<bool>> fusion_config_;
 
   // The HLO shardings of the entry computation's parameters for
   // SPMD-partitioned programs.

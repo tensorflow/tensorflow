@@ -40,6 +40,25 @@ std::string FLT::GetDeclaration() const {
   return absl::StrCat(type, " ", name_);
 }
 
+FLT2::FLT2(CalculationsPrecision precision, const float2& value)
+    : f32_(precision == CalculationsPrecision::F32), active_(true) {
+  if (f32_) {
+    f_value_ = value;
+  } else {
+    h_value_ = half2(value);
+  }
+}
+
+const void* FLT2::GetData() const {
+  return f32_ ? static_cast<const void*>(&f_value_)
+              : static_cast<const void*>(&h_value_);
+}
+
+std::string FLT2::GetDeclaration() const {
+  const std::string type = f32_ ? "float2" : "half2";
+  return absl::StrCat(type, " ", name_);
+}
+
 FLT4::FLT4(CalculationsPrecision precision, const float4& value)
     : f32_(precision == CalculationsPrecision::F32), active_(true) {
   if (f32_) {

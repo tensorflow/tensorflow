@@ -31,12 +31,15 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
 @six.add_metaclass(abc.ABCMeta)
-@tf_export('train.experimental.LossScale')
+@deprecation.deprecated_endpoints('train.experimental.LossScale')
+@tf_export('mixed_precision.experimental.LossScale',
+           'train.experimental.LossScale')
 class LossScale(trackable.Trackable):
   """Loss scale base class.
 
@@ -186,7 +189,9 @@ def get_loss_scale_weights(loss_scale):
   return loss_scale._weights.values()  # pylint: disable=protected-access
 
 
-@tf_export('train.experimental.FixedLossScale')
+@deprecation.deprecated_endpoints('train.experimental.FixedLossScale')
+@tf_export('mixed_precision.experimental.FixedLossScale',
+           'train.experimental.FixedLossScale')
 class FixedLossScale(LossScale):
   """Loss scale with a fixed value.
 
@@ -266,7 +271,9 @@ def _assign_if_finite(var, value):
       control_flow_ops.no_op)
 
 
-@tf_export('train.experimental.DynamicLossScale')
+@deprecation.deprecated_endpoints('train.experimental.DynamicLossScale')
+@tf_export('mixed_precision.experimental.DynamicLossScale',
+           'train.experimental.DynamicLossScale')
 class DynamicLossScale(LossScale):
   """Loss scale that dynamically adjusts itself.
 

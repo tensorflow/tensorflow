@@ -200,6 +200,7 @@ PYBIND11_MODULE(xla_extension, m) {
           },
           "Constructs an array shape.", py::arg("type"), py::arg("dims"),
           py::arg("layout") = absl::nullopt)
+      .def_static("token_shape", []() { return ShapeUtil::MakeTokenShape(); })
       .def("dimensions",
            [](const Shape& shape) -> py::tuple {
              return IntSpanToTuple(shape.dimensions());
@@ -344,6 +345,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("device_count", &PyLocalClient::device_count)
       .def("local_device_count", &PyLocalClient::local_device_count)
       .def("devices", &PyLocalClient::devices)
+      .def("local_devices", &PyLocalClient::local_devices)
       .def("host_id", &PyLocalClient::host_id)
       .def("TransferToInfeed",
            [](PyLocalClient* client, const LiteralSlice& literal,
@@ -364,9 +366,42 @@ PYBIND11_MODULE(xla_extension, m) {
                literal_shared = std::make_shared<Literal>(std::move(literal));
              }
              return LiteralToPython(std::move(literal_shared));
-           });
+           })
+      .def("SerializeExecutable",
+           [](PyLocalClient* client,
+              PyLocalExecutable* executable) -> StatusOr<py::bytes> {
+             TF_ASSIGN_OR_RETURN(std::string serialized,
+                                 client->SerializeExecutable(*executable));
+             return py::bytes(serialized);
+           })
+      .def("DeserializeExecutable", &PyLocalClient::DeserializeExecutable);
 
   py::class_<PyLocalBuffer>(m, "PyLocalBuffer")
+      .def_static(
+          "from_python",
+          [](const pybind11::object& argument,
+             std::shared_ptr<PyLocalClient> client,
+             std::shared_ptr<Device> device)
+              -> StatusOr<std::unique_ptr<PyLocalBuffer>> {
+            GlobalPyRefManager()->CollectGarbage();
+            TF_ASSIGN_OR_RETURN(PythonBufferTree tree,
+                                GetPythonBufferTree(argument));
+            std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref =
+                GlobalPyRefManager()->ManageReferences(
+                    absl::MakeSpan(tree.arrays));
+            tree.arrays.clear();
+
+            std::vector<BorrowingLiteral> leaves;
+            leaves.insert(leaves.end(),
+                          std::make_move_iterator(tree.leaves.begin()),
+                          std::make_move_iterator(tree.leaves.end()));
+
+            py::gil_scoped_release gil_release;
+            return PyLocalBuffer::FromLiterals(
+                std::move(leaves), tree.shape, std::move(py_buffer_ref),
+                std::move(client), device->local_device_ordinal());
+          })
+      // TODO(skyewm): get rid of this overload once everyone passes Device
       .def_static(
           "from_python",
           [](const pybind11::object& argument,
@@ -391,6 +426,13 @@ PYBIND11_MODULE(xla_extension, m) {
                 std::move(client), device_ordinal);
           })
       .def_static("make_tuple", &PyLocalBuffer::MakeTuple)
+      .def("copy_to_device",
+           [](PyLocalBuffer* buffer, std::shared_ptr<Device> dst_device) {
+             GlobalPyRefManager()->CollectGarbage();
+             py::gil_scoped_release gil_release;
+             return buffer->CopyToDevice(dst_device->local_device_ordinal());
+           })
+      // TODO(skyewm): get rid of this overload once everyone passes Device
       .def("copy_to_device",
            [](PyLocalBuffer* buffer, int dst_device_ordinal) {
              GlobalPyRefManager()->CollectGarbage();
@@ -417,7 +459,12 @@ PYBIND11_MODULE(xla_extension, m) {
              return LiteralToPython(std::move(literal));
            })
       .def("shape", &PyLocalBuffer::on_host_shape)
-      .def("device", &PyLocalBuffer::device_ordinal)
+      .def("device",
+           [](PyLocalBuffer* buffer) -> std::shared_ptr<Device> {
+             return buffer->client()->local_devices()[buffer->device_ordinal()];
+           })
+      // TODO(skyewm): get rid of `device_ordinal` once everything uses `device`
+      .def("device_ordinal", &PyLocalBuffer::device_ordinal)
       .def("platform", &PyLocalBuffer::platform_name)
       .def("is_deleted",
            [](const PyLocalBuffer& buffer) {
@@ -520,12 +567,14 @@ PYBIND11_MODULE(xla_extension, m) {
   // XlaBuilder.
   py::module ops = m.def_submodule("ops", "XLA operations");
 
+  ops.def("AfterAll", &AfterAll);
   ops.def("AllReduce",
           static_cast<XlaOp (*)(
               XlaOp, const XlaComputation&, absl::Span<const ReplicaGroup>,
               const absl::optional<ChannelHandle>&)>(&CrossReplicaSum));
   ops.def("AllToAll", &AllToAll);
   ops.def("CollectivePermute", &CollectivePermute);
+  ops.def("CreateToken", &CreateToken);
   ops.def("CrossReplicaSum",
           static_cast<XlaOp (*)(XlaOp, absl::Span<const ReplicaGroup>)>(
               &CrossReplicaSum));
@@ -577,14 +626,15 @@ PYBIND11_MODULE(xla_extension, m) {
           py::arg("dimension_numbers"), py::arg("slice_sizes"),
           py::arg("indices_are_sorted"));
   ops.def("GetTupleElement", &GetTupleElement);
-  ops.def("Infeed", &Infeed, py::arg("builder"), py::arg("shape"),
-          py::arg("config") = "");
+  ops.def("InfeedWithToken", &InfeedWithToken, py::arg("token"),
+          py::arg("shape"), py::arg("config") = "");
   ops.def("Iota",
           static_cast<XlaOp (*)(XlaBuilder*, const Shape&, int64)>(&Iota));
   ops.def("Iota",
           static_cast<XlaOp (*)(XlaBuilder*, PrimitiveType, int64)>(&Iota));
   ops.def("Map", &Map);
-  ops.def("Outfeed", &Outfeed, py::arg("operand"), py::arg("shape_with_layout"),
+  ops.def("OutfeedWithToken", &OutfeedWithToken, py::arg("operand"),
+          py::arg("token"), py::arg("shape_with_layout"),
           py::arg("outfeed_config") = "");
   ops.def("Pad", &Pad);
   ops.def("Parameter", static_cast<XlaOp (*)(XlaBuilder*, int64, const Shape&,
@@ -718,6 +768,8 @@ PYBIND11_MODULE(xla_extension, m) {
   UNARY_OP(ErfInv);
   UNARY_OP(Lgamma);
   UNARY_OP(Digamma);
+  UNARY_OP(BesselI0e);
+  UNARY_OP(BesselI1e);
   UNARY_OP(Acos);
   UNARY_OP(Asin);
   UNARY_OP(Atan);

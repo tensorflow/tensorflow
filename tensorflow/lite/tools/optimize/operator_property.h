@@ -41,6 +41,8 @@ struct OperatorProperty {
 
   // Op has arbitrary number of inputs, such as concat.
   bool arbitrary_inputs = false;
+  // Op has arbitrary number of outputs, such as slice.
+  bool arbitrary_outputs = false;
   // Input indexes -> input tensor property.
   std::vector<std::pair<int, TensorProperty>> inputs = {};
   // Output indexes -> output tensor property.

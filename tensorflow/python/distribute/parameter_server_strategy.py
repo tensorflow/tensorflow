@@ -114,6 +114,10 @@ class ParameterServerStrategy(distribute_lib.Strategy):
     extended = ParameterServerStrategyExtended(
         self, cluster_resolver=cluster_resolver)
     super(ParameterServerStrategy, self).__init__(extended)
+    distribute_lib.distribution_strategy_gauge.get_cell("V2").set(
+        "ParameterServerStrategy")
+    distribute_lib.distribution_strategy_replica_gauge.get_cell("num_ps").set(
+        len(self.extended.parameter_devices))
 
 
 @tf_export(v1=["distribute.experimental.ParameterServerStrategy"])  # pylint: disable=missing-docstring
@@ -126,6 +130,11 @@ class ParameterServerStrategyV1(distribute_lib.StrategyV1):
     super(ParameterServerStrategyV1, self).__init__(
         ParameterServerStrategyExtended(
             self, cluster_resolver=cluster_resolver))
+    distribute_lib.distribution_strategy_gauge.get_cell("V1").set(
+        "ParameterServerStrategy")
+    distribute_lib.distribution_strategy_replica_gauge.get_cell("num_ps").set(
+        len(self.extended.parameter_devices))
+
   __init__.__doc__ = ParameterServerStrategy.__init__.__doc__
 
 
@@ -586,6 +595,12 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
       updated_config.device_filters.append(
           "/job:%s/task:%d" % (self._task_type, self._task_id))
     return updated_config
+
+  def _in_multi_worker_mode(self):
+    """Whether this strategy indicates working in multi-worker settings."""
+    # With a PS job, PS strategy should always be considered as in multi
+    # worker mode.
+    return True
 
   @property
   def _num_replicas_in_sync(self):

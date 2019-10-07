@@ -1,5 +1,3 @@
-# -*- Python -*-
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_binary_additional_srcs",

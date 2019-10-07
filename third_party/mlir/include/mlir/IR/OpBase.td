@@ -27,12 +27,31 @@
 // Common utilities for defining TableGen mechanisms
 //===----------------------------------------------------------------------===//
 
-// Concatenates a list of strings with a separator (default ", ")
-class StrJoin<list<string> strings, string sep = ", "> {
-  string result =
-      !if(!empty(strings), "",
-          !foldl(!head(strings), !tail(strings), prev, cur, prev # sep # cur));
+// A workaround for the inability to define functions in Tablegen.
+//
+// The template parameter defines a string that can be extracted from an
+// instance of this class by accessing the "result" member. Subclasses can take
+// their own template parameters as function "arguments" and use them to
+// populate result.
+// For example, if it didn't already exist, a concat function could be defined
+// like:
+//
+// class StrConcat<list<string> strings> :
+//     StrFunc<!foldl("", strings, prev, cur, prev # cur)>
+//
+// and then called like
+//
+// StrConcat<["a", "b", "c"]>.result
+//
+// to get the string "abc"
+class StrFunc<string r> {
+  string result = r;
 }
+
+// Concatenates a list of strings with a separator (default ", ")
+class StrJoin<list<string> strings, string sep = ", "> :
+    StrFunc<!if(!empty(strings), "",
+         !foldl(!head(strings), !tail(strings), prev, cur, prev # sep # cur))>;
 
 // Concatenates a list of integers into a string with a separator (default ", ")
 class StrJoinInt<list<int> integers, string sep = ", "> :
@@ -363,10 +382,45 @@ class ShapedContainerType<list<Type> allowedTypes, Pred containerPred, string de
     ContainerType<AnyTypeOf<allowedTypes>, containerPred,
                   "$_self.cast<ShapedType>().getElementType()", descr>;
 
+// Whether a shaped type is ranked.
+def HasRankPred : CPred<"$_self.cast<ShapedType>().hasRank()">;
+
+// Whether a shaped type has one of the specified ranks.
+class HasAnyRankOfPred<list<int> ranks> : And<[
+    HasRankPred,
+    Or<!foreach(rank, ranks,
+                CPred<"$_self.cast<ShapedType>().getRank() == " # rank>)>]>;
+
 // Vector types.
 
 class VectorOf<list<Type> allowedTypes> :
   ShapedContainerType<allowedTypes, IsVectorTypePred, "vector">;
+
+// Whether the number of elements of a vector is from the given
+// `allowedLengths` list
+class IsVectorOfLengthPred<list<int> allowedLengths> :
+  And<[IsVectorTypePred,
+       Or<!foreach(allowedlength, allowedLengths,
+                   CPred<[{$_self.cast<VectorType>().getNumElements()
+                           == }]
+                         # allowedlength>)>]>;
+
+// Any vector where the number of elements is from the given
+// `allowedLengths` list
+class VectorOfLength<list<int> allowedLengths> : Type<
+  IsVectorOfLengthPred<allowedLengths>,
+  " of length " # StrJoinInt<allowedLengths, "/">.result>;
+
+
+// Any vector where the number of elements is from the given
+// `allowedLengths` list and the type is from the given `allowedTypes`
+// list
+class VectorOfLengthAndType<list<int> allowedLengths,
+                            list<Type> allowedTypes> : Type<
+  And<[VectorOf<allowedTypes>.predicate,
+       VectorOfLength<allowedLengths>.predicate]>,
+  VectorOf<allowedTypes>.description #
+  VectorOfLength<allowedLengths>.description>;
 
 def AnyVector : VectorOf<[AnyType]>;
 
@@ -396,6 +450,18 @@ def F16Tensor  : TensorOf<[F16]>;
 def F32Tensor  : TensorOf<[F32]>;
 def F64Tensor  : TensorOf<[F64]>;
 
+// Ranked tensor type with one of the specified types and ranks.
+class TensorRankOf<list<Type> allowedTypes, list<int> ranks> :
+    Type<And<[TensorOf<allowedTypes>.predicate, HasAnyRankOfPred<ranks>]>,
+         StrJoin<!foreach(rank, ranks, rank # "D"), "/">.result # " " #
+         TensorOf<allowedTypes>.description>;
+
+class 0DTensorOf<list<Type> allowedTypes> : TensorRankOf<allowedTypes, [0]>;
+class 1DTensorOf<list<Type> allowedTypes> : TensorRankOf<allowedTypes, [1]>;
+class 2DTensorOf<list<Type> allowedTypes> : TensorRankOf<allowedTypes, [2]>;
+class 3DTensorOf<list<Type> allowedTypes> : TensorRankOf<allowedTypes, [3]>;
+class 4DTensorOf<list<Type> allowedTypes> : TensorRankOf<allowedTypes, [4]>;
+
 // Memref type.
 
 // Memrefs are blocks of data with fixed type and rank.
@@ -418,11 +484,30 @@ def F32MemRef  : MemRefOf<[F32]>;
 def F64MemRef  : MemRefOf<[F64]>;
 
 // TODO(b/130064155) Have an easy way to add another constraint to a type.
+class MemRefRankOf<list<Type> allowedTypes, list<int> ranks> :
+    Type<And<[MemRefOf<allowedTypes>.predicate, HasAnyRankOfPred<ranks>]>,
+         StrJoin<!foreach(rank, ranks, rank # "D"), "/">.result # " " #
+         MemRefOf<allowedTypes>.description>;
+
 class StaticShapeMemRefOf<list<Type> allowedTypes>
     : Type<And<[MemRefOf<allowedTypes>.predicate, HasStaticShapePred]>,
            "statically shaped " # MemRefOf<allowedTypes>.description>;
 
 def AnyStaticShapeMemRef : StaticShapeMemRefOf<[AnyType]>;
+
+// For a MemRefType, verify that it has strides.
+def HasStridesPred : CPred<[{ isStrided($_self.cast<MemRefType>()) }]>;
+
+class StridedMemRefOf<list<Type> allowedTypes>
+    : Type<And<[MemRefOf<allowedTypes>.predicate, HasStridesPred]>,
+           "strided " # MemRefOf<allowedTypes>.description>;
+
+def AnyStridedMemRef : StridedMemRefOf<[AnyType]>;
+
+class AnyStridedMemRefOfRank<int rank> :
+  Type<And<[AnyStridedMemRef.predicate,
+            MemRefRankOf<[AnyType], [rank]>.predicate]>,
+       AnyStridedMemRef.description # " of rank " # rank>;
 
 // This represents a generic tuple without any constraints on element type.
 def AnyTuple : Type<IsTupleTypePred, "tuple">;
@@ -631,6 +716,21 @@ def NonNegativeI32Attr : NonNegativeIntAttrBase<
 def NonNegativeI64Attr : NonNegativeIntAttrBase<
     I64, "non-negative 64-bit integer attribute">;
 
+class PositiveIntAttrBase<I attrValType, string descr> :
+    TypedAttrBase<
+      attrValType, "IntegerAttr",
+      And<[IntegerAttrBase<attrValType, "">.predicate,
+           CPred<"$_self.cast<IntegerAttr>().getValue()"
+                 ".isStrictlyPositive()">]>,
+      descr> {
+  let returnType = [{ APInt }];
+}
+
+def PositiveI32Attr : PositiveIntAttrBase<
+    I32, "positive 32-bit integer attribute">;
+def PositiveI64Attr : PositiveIntAttrBase<
+    I64, "positive 64-bit integer attribute">;
+
 // Base class for float attributes of fixed width.
 class FloatAttrBase<F attrValType, string descr> :
     TypedAttrBase<attrValType, "FloatAttr",
@@ -720,6 +820,10 @@ class EnumAttrInfo<string name, list<EnumAttrCaseInfo> cases> {
   // List of all accepted cases
   list<EnumAttrCaseInfo> enumerants = cases;
 
+  // Whether to skip automatically generating C++ enum class and utility
+  // functions for this enum attribute with EnumsGen.
+  bit skipAutoGen = 0;
+
   // The following fields are only used by the EnumsGen backend to generate
   // an enum class definition and conversion utility functions.
 
@@ -757,9 +861,10 @@ class EnumAttrInfo<string name, list<EnumAttrCaseInfo> cases> {
   // corresponding string. It will have the following signature:
   //
   // ```c++
-  // llvm::StringRef <fn-name>(<qualified-enum-class-name>);
+  // <return-type> <fn-name>(<qualified-enum-class-name>);
   // ```
   string symbolToStringFnName = "stringify" # name;
+  string symbolToStringFnRetType = "llvm::StringRef";
 
   // The name of the utility function that returns the max enum value used
   // within the enum class. It will have the following signature:
@@ -814,12 +919,14 @@ class I64EnumAttr<string name, string description,
 //===----------------------------------------------------------------------===//
 // Composite attribute kinds
 
-def DictionaryAttr : Attr<CPred<"$_self.isa<DictionaryAttr>()">,
+class DictionaryAttrBase : Attr<CPred<"$_self.isa<DictionaryAttr>()">,
                           "dictionary of named attribute values"> {
   let storageType = [{ DictionaryAttr }];
   let returnType = [{ DictionaryAttr }];
   let convertFromStorage = "$_self";
 }
+
+def DictionaryAttr : DictionaryAttrBase;
 
 class ElementsAttrBase<Pred condition, string description> :
     Attr<condition, description> {
@@ -828,8 +935,53 @@ class ElementsAttrBase<Pred condition, string description> :
   let convertFromStorage = "$_self";
 }
 
-def ElementsAttr: ElementsAttrBase<CPred<"$_self.isa<ElementsAttr>()">,
+def ElementsAttr : ElementsAttrBase<CPred<"$_self.isa<ElementsAttr>()">,
                                    "constant vector/tensor attribute">;
+
+class IntElementsAttr<int width> : ElementsAttrBase<
+  CPred<"$_self.isa<DenseIntElementsAttr>() &&"
+      "$_self.cast<DenseIntElementsAttr>().getType()."
+      "getElementType().isInteger(" # width # ")">,
+  width # "-bit integer elements attribute"> {
+
+  let storageType = [{ DenseIntElementsAttr }];
+  let returnType = [{ DenseIntElementsAttr }];
+
+  // Note that this is only constructing scalar elements attribute.
+  let constBuilderCall = "DenseElementsAttr::get("
+    "$_builder.getTensorType({}, $_builder.getIntegerType(" # width # ")), "
+    "llvm::makeArrayRef($0)).cast<DenseIntElementsAttr>()";
+  let convertFromStorage = "$_self";
+}
+
+def I32ElementsAttr : IntElementsAttr<32>;
+def I64ElementsAttr : IntElementsAttr<64>;
+
+// A `width`-bit floating point elements attribute. The attribute should be
+// ranked and has a shape as specified in `dims`.
+class RankedFloatElementsAttr<int width, list<int> dims> : ElementsAttrBase<
+  CPred<"$_self.isa<DenseFPElementsAttr>() &&"
+      "$_self.cast<DenseFPElementsAttr>().getType()."
+      "getElementType().isF" # width # "() && "
+      // Check that this is ranked and has the specified shape.
+      "$_self.cast<DenseFPElementsAttr>().getType().hasRank() && "
+      "$_self.cast<DenseFPElementsAttr>().getType().getShape() == "
+      "llvm::ArrayRef<int64_t>({" # StrJoinInt<dims>.result # "})">,
+  width # "-bit float elements attribute of shape [" #
+  StrJoinInt<dims>.result # "]"> {
+
+  let storageType = [{ DenseFPElementsAttr }];
+  let returnType = [{ DenseFPElementsAttr }];
+
+  let constBuilderCall = "DenseElementsAttr::get("
+    "$_builder.getTensorType({" # StrJoinInt<dims>.result #
+    "}, $_builder.getF" # width # "Type()), "
+    "llvm::makeArrayRef($0)).cast<DenseFPElementsAttr>()";
+  let convertFromStorage = "$_self";
+}
+
+class RankedF32ElementsAttr<list<int> dims> : RankedFloatElementsAttr<32, dims>;
+class RankedF64ElementsAttr<list<int> dims> : RankedFloatElementsAttr<64, dims>;
 
 // Base class for array attributes.
 class ArrayAttrBase<Pred condition, string description> :
@@ -846,7 +998,7 @@ def ArrayAttr : ArrayAttrBase<CPred<"$_self.isa<ArrayAttr>()">,
 // `element` specifies the element attribute kind stored in this array.
 class TypedArrayAttrBase<Attr element, string description>: ArrayAttrBase<
     And<[
-      // Guranatee this is an ArrayAttr first
+      // Guarantee this is an ArrayAttr first
       CPred<"$_self.isa<ArrayAttr>()">,
       // Guarantee all elements satisfy the constraints from `element`
       Concat<"llvm::all_of($_self.cast<ArrayAttr>(), "
@@ -876,6 +1028,36 @@ def StrArrayAttr : TypedArrayAttrBase<StrAttr, "string array attribute"> {
 }
 def TypeArrayAttr : TypedArrayAttrBase<TypeAttr, "type array attribute"> {
   let constBuilderCall = ?;
+}
+
+// Attribute information for an Attribute field within a StructAttr.
+class StructFieldAttr<string thisName, Attr thisType> {
+  // Name of this field in the StructAttr.
+  string name = thisName;
+
+  // Attribute type wrapped by the struct attr.
+  Attr type = thisType;
+}
+
+// Structured attribute that wraps a DictionaryAttr and provides both a
+// validation method and set of accessors for a fixed set of fields. This is
+// useful when representing data that would normally be in a structure.
+class StructAttr<string name, Dialect dialect,
+                 list<StructFieldAttr> attributes> : DictionaryAttrBase {
+  // Name for this StructAttr.
+  string className = name;
+
+  // Return type should match the name of the structure.
+  let returnType = name;
+
+  // Storage type should match the name of the structure.
+  let storageType = name;
+
+  // The dialect this StructAttr belongs to.
+  Dialect structDialect = dialect;
+
+  // List of fields that the StructAttr contains.
+  list<StructFieldAttr> fields = attributes;
 }
 
 // Attributes containing symbol references.
@@ -1036,22 +1218,26 @@ class PredOpTrait<string descr, Pred pred> : OpTrait {
 }
 
 // Op supports operand broadcast behavior.
-def Broadcastable    : NativeOpTrait<"BroadcastableTwoOperandsOneResult">;
+def Broadcastable  : NativeOpTrait<"BroadcastableTwoOperandsOneResult">;
 // X op Y == Y op X
-def Commutative      : NativeOpTrait<"IsCommutative">;
+def Commutative  : NativeOpTrait<"IsCommutative">;
 // Op is isolated from above.
 def IsolatedFromAbove : NativeOpTrait<"IsIsolatedFromAbove">;
 // Op results are float or vectors/tensors thereof.
 def ResultsAreFloatLike : NativeOpTrait<"ResultsAreFloatLike">;
 // Op has no side effect.
-def NoSideEffect     : NativeOpTrait<"HasNoSideEffect">;
+def NoSideEffect : NativeOpTrait<"HasNoSideEffect">;
 // Op has the same operand type.
-def SameTypeOperands  : NativeOpTrait<"SameTypeOperands">;
+def SameTypeOperands : NativeOpTrait<"SameTypeOperands">;
+// Op has same shape for all operands.
+def SameOperandsShape : NativeOpTrait<"SameOperandsShape">;
 // Op has same operand and result shape.
-def SameOperandsAndResultShape   : NativeOpTrait<"SameOperandsAndResultShape">;
+def SameOperandsAndResultShape : NativeOpTrait<"SameOperandsAndResultShape">;
 // Op has the same operand and result type.
-def SameOperandsAndResultType    : NativeOpTrait<"SameOperandsAndResultType">;
-// Op has the same operand and result element type.
+def SameOperandsAndResultType : NativeOpTrait<"SameOperandsAndResultType">;
+// Op has the same element type (or type itself, if scalar) for all operands.
+def SameOperandsElementType : NativeOpTrait<"SameOperandsElementType">;
+// Op has the same operand and result element type (or type itself, if scalar).
 def SameOperandsAndResultElementType :
   NativeOpTrait<"SameOperandsAndResultElementType">;
 // Op is a terminator.
@@ -1102,33 +1288,49 @@ class OpInterfaceTrait<string name> : NativeOpTrait<""> {
 // This class represents a single, optionally static, interface method.
 // Note: non-static interface methods have an implicit 'op' parameter
 // corresponding to an instance of the derived operation.
-class InterfaceMethod<string retTy, string methodName,
+class InterfaceMethod<string desc, string retTy, string methodName,
                       dag args = (ins), code methodBody = [{}]> {
-  /// The name of the interface method.
+  // A human-readable description of what this method does.
+  string description = desc;
+
+  // The name of the interface method.
   string name = methodName;
 
-  /// The c++ type-name of the return type.
+  // The c++ type-name of the return type.
   string returnType = retTy;
 
-  /// A dag of string that correspond to the arguments of the method.
+  // A dag of string that correspond to the arguments of the method.
   dag arguments = args;
 
-  /// An optional body to the method.
+  // An optional body to the method.
   code body = methodBody;
 }
 
 // This class represents a single static interface method.
-class StaticInterfaceMethod<string retTy, string methodName,
+class StaticInterfaceMethod<string desc, string retTy, string methodName,
                             dag args = (ins), code methodBody = [{}]>
-    : InterfaceMethod<retTy, methodName, args, methodBody>;
+    : InterfaceMethod<desc, retTy, methodName, args, methodBody>;
 
 // OpInterface represents an interface regarding an op.
 class OpInterface<string name> : OpInterfaceTrait<name> {
+  // A human-readable description of what this interface does.
+  string description = "";
+
   // The name given to the c++ interface class.
   string cppClassName = name;
 
-  /// The list of methods defined by this interface.
+  // The list of methods defined by this interface.
   list<InterfaceMethod> methods = [];
+}
+
+// Whether to declare the op interface methods in the op's header. This class
+// simply wraps an OpInterface but is used to indicate that the method
+// declarations should be generated.
+class DeclareOpInterfaceMethods<OpInterface interface> :
+  OpInterface<interface.cppClassName> {
+    let description = interface.description;
+    let cppClassName = interface.cppClassName;
+    let methods = interface.methods;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1150,14 +1352,14 @@ def region;
 // The signature of the builder is always
 //
 // ```c++
-// static void build(Builder *builder, OperationState *state,
+// static void build(Builder *builder, OperationState &state,
 //                   <other-parameters>...) {
 //   <body>...
 // }
 // ```
 //
 // To define a custom builder, the parameter list (*including* the `Builder
-// *builder, OperationState *state` part) and body should be passed in
+// *builder, OperationState &state` part) and body should be passed in
 // as separate template arguments to this class. This is because we generate
 // op declaration and definition into separate files. If an empty string is
 // passed in for `body`, then *only* the builder declaration will be
@@ -1204,7 +1406,7 @@ class Op<Dialect dialect, string mnemonic, list<OpTrait> props = []> {
   // following signatures:
   //
   // ```c++
-  // static void build(Builder *, OperationState *tblgen_state,
+  // static void build(Builder *, OperationState &tblgen_state,
   //                   Type <result0-name>, Type <result1-name>, ...,
   //                   Value <arg0-name>, Value <arg1-name>, ...,
   //                   Attribute <attr0-name>, Attribute <attr1-name>, ...);
@@ -1212,7 +1414,7 @@ class Op<Dialect dialect, string mnemonic, list<OpTrait> props = []> {
   // * where the attributes follow the same declaration order as in the op.
   //
   // ```c++
-  // static void build(Builder *, OperationState *tblgen_state,
+  // static void build(Builder *, OperationState &tblgen_state,
   //                   ArrayRef<Type> resultTypes,
   //                   ArrayRef<Value> operands,
   //                   ArrayRef<NamedAttribute> attributes);
@@ -1278,6 +1480,44 @@ def HasNoUseOf: Constraint<
 
 // TODO(b/135033717): Improve the autogenerated error messages.
 
+class Rank<string name> :
+    StrFunc<"$" # name # ".getType().cast<ShapedType>().getRank()">;
+
+class ElementCount<string name> :
+  StrFunc<"$" # name # ".getType().cast<ShapedType>().getNumElements()">;
+
+class ElementType<string name> : StrFunc<"getElementTypeOrSelf($" # name # ")">;
+
+class AllMatchPred<list<string> values> :
+    CPred<"llvm::is_splat(llvm::makeArrayRef({"# StrJoin<values>.result #"}))">;
+
+class AllMatch<list<string> values, string description> :
+    PredOpTrait<description, AllMatchPred<values>>;
+
+// TODO(b/135032064): Only works for non-variadic.
+class AllMatchSameOperatorPred<list<string> names, string operator> :
+    AllMatchPred<!foreach(n, names, !subst("$_self", "$" # n, operator))>;
+
+class AllMatchSameOperatorTrait<list<string> names, string operator,
+                                string description> :
+    PredOpTrait<
+        "all of {" # StrJoin<names>.result # "} have same " # description,
+        AllMatchSameOperatorPred<names, operator>>;
+
+class AllElementCountsMatch<list<string> names> :
+    AllMatchSameOperatorTrait<names, ElementCount<"_self">.result,
+                              "element count">;
+
+class AllElementTypesMatch<list<string> names> :
+    AllMatchSameOperatorTrait<names, ElementType<"_self">.result,
+                              "element type">;
+
+class AllRanksMatch<list<string> names> :
+    AllMatchSameOperatorTrait<names, Rank<"_self">.result, "rank">;
+
+class AllTypesMatch<list<string> names> :
+    AllMatchSameOperatorTrait<names, "$_self.getType()", "type">;
+
 // Type Constraint operand `idx`'s Element type is `type`.
 class TCopVTEtIs<int idx, Type type> : And<[
    CPred<"$_op.getNumOperands() > " # idx>,
@@ -1301,24 +1541,6 @@ class ElementTypeIsPred<string name, Type type> : And<[
      type.predicate>]>;
 class ElementTypeIs<string name, Type type> : PredOpTrait<
   "'" # name # "' is " # type.description, ElementTypeIsPred<name, type>>;
-
-// TODO(b/135032064): Only works for non-variadic.
-class AllMatchPred<list<string> names, string operator> :
-    CPred<"llvm::is_splat(llvm::makeArrayRef({" #
-          StrJoin<!foreach(n, names,
-                           !subst("$_self", "$" # n, operator))>.result
-          # "}))">;
-
-class AllMatchTrait<list<string> names, string operator, string description> :
-    PredOpTrait<
-        "all of {" # StrJoin<names>.result # "} have same " # description,
-        AllMatchPred<names, operator>>;
-
-class AllElementTypesMatch<list<string> names> :
-    AllMatchTrait<names, "getElementTypeOrSelf($_self)", "element type">;
-
-class AllTypesMatch<list<string> names> :
-    AllMatchTrait<names, "$_self.getType()", "type">;
 
 // Predicate to verify that the i'th operand and the j'th operand have the same
 // elemental type.

@@ -98,7 +98,7 @@ PyObject* TFE_Py_RegisterGradientFunction(PyObject* e);
 // or functional ops.
 //
 // This function is not thread-safe.
-PyObject* TFE_Py_RegisterForwardGradientFunction(PyObject* e);
+PyObject* TFE_Py_RegisterJVPFunction(PyObject* e);
 
 // Returns 0 if 'status' is TF_OK. Otherwise, raises an exception (using
 // `exception` if not nullptr, else using the class registered via
@@ -161,10 +161,14 @@ void TFE_Py_TapeSetAdd(PyObject* tape);
 // Returns true if the tape stack is empty.
 PyObject* TFE_Py_TapeSetIsEmpty();
 
-PyObject* TFE_Py_TapeSetShouldRecord(PyObject* tensors);
+// Check if any backward tape should record an operation given inputs.
+//
+// Does not take forward accumulators into account.
+PyObject* TFE_Py_TapeSetShouldRecordBackprop(PyObject* tensors);
 
-// Like TFE_Py_TapeSetShouldRecord but with a ternary return:
-//   - 0 if no tape will record (implies TFE_Py_TapeSetShouldRecord is false)
+// Determine possible gradient types, taking forward accumulators into account.
+//   - 0 if no tape will record (implies TFE_Py_TapeSetShouldRecordBackprop
+//     is false and no forward accumulator is watching)
 //   - 1 if first-order gradients may be requested
 //   - 2 if higher-order gradients may be requested
 PyObject* TFE_Py_TapeSetPossibleGradientTypes(PyObject* tensors);
@@ -173,24 +177,64 @@ void TFE_Py_TapeWatch(PyObject* tape, PyObject* tensor);
 void TFE_Py_TapeSetDeleteTrace(tensorflow::int64 tensor_id);
 
 // Stops any gradient recording on the current thread.
+//
+// Includes forward accumulators.
 void TFE_Py_TapeSetStopOnThread();
 
 // Restarts gradient recording on the current thread.
 void TFE_Py_TapeSetRestartOnThread();
 
-// Returns if gradient recording is stopped on the current thread.
+// Checks whether gradient recording is stopped on the current thread.
 PyObject* TFE_Py_TapeSetIsStopped();
 
-// Records an operation in the gradient tape stack.type is a string for the
-// operation type, used in the backprop code. output_tensors should be a list of
-// python ops.Tensor objects. input_tensor_ids should be a list of python
-// integers with the ids of the input tensors of the recorded
-// operation. backward_function should be the function to be called during
-// backprop to, given the gradients of the output tensors, produce the gradients
-// of the input tensors.
-void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
-                                   PyObject* input_tensor_ids,
-                                   PyObject* backward_function);
+// Records an operation for the purpose of gradient computation.
+//
+// Arguments:
+//  - op_type is a string for the operation type, used in the backprop code
+//  - output_tensors are a list of Python Tensor objects output by the operation
+//  - input_tensors are a list of input Tensors to the recorded operation
+//  - backward_function is the function to be called during backprop or
+//    forwardprop to, given the gradients of the output tensors, produce the
+//    gradients of the input tensors. This function is automatically transposed
+//    during forwardprop.
+//  - forward_function is an optional special-case for fowardprop, taking input
+//    jvps and returning output jvps.
+//
+// Records an operation both for backprop (gradient tape) and forwardprop
+// (forward accumulator). Equivalent to calling both
+// TFE_Py_TapeSetRecordOperationBackprop and
+// TFE_Py_TapeSetRecordOperationForwardprop.
+PyObject* TFE_Py_TapeSetRecordOperation(PyObject* op_type,
+                                        PyObject* output_tensors,
+                                        PyObject* input_tensors,
+                                        PyObject* backward_function,
+                                        PyObject* forward_function);
+
+// Records an operation only for backprop (gradient tapes).
+//
+// Same arguments as TFE_Py_TapeSetRecordOperation.
+PyObject* TFE_Py_TapeSetRecordOperationBackprop(PyObject* op_type,
+                                                PyObject* output_tensors,
+                                                PyObject* input_tensors,
+                                                PyObject* backward_function);
+
+// Records an operation only for forwardprop (forward accumulators).
+//
+// Arguments:
+//  - op_type is a string for the operation type, used in the backprop code
+//  - output_tensors are a list of Python Tensor objects output by the operation
+//  - input_tensors are a list of input Tensors to the recorded operation
+//  - backward_function is the function to be called to, given the gradients of
+//    the output tensors, produce the gradients of the input tensors. This
+//    function is automatically transposed to produce output gradients given
+//    input gradients.
+//  - forwardprop_output_indices indicates any output_tensors which contain
+//    JVPs. Typically these will have come from TFE_Py_PackJVPs. May
+//    be None or an empty sequence if there are no JVP outputs from the
+//    operation.
+PyObject* TFE_Py_TapeSetRecordOperationForwardprop(
+    PyObject* op_type, PyObject* output_tensors, PyObject* input_tensors,
+    PyObject* backward_function, PyObject* forwardprop_output_indices);
 
 // Notifies all tapes that a variable has been accessed.
 void TFE_Py_TapeVariableAccessed(PyObject* variable);
@@ -232,16 +276,18 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args);
 
 // Record the gradient for a given op.
 PyObject* TFE_Py_RecordGradient(PyObject* op_name, PyObject* inputs,
-                                PyObject* attrs, PyObject* results,
-                                PyObject* name);
+                                PyObject* attrs, PyObject* results);
 
 // Returns all variables watched by the given tape in the order those variables
 // were created.
 PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape);
 
-// Creates a new forward accumulator and adds it to the active set.
+// Creates a new forward accumulator. Does not add it to the active set.
 PyObject* TFE_Py_ForwardAccumulatorNew();
 
+// Adds a ForwardAccumulator to the active set, meaning it will watch executed
+// operations. It must not already be in the active set.
+PyObject* TFE_Py_ForwardAccumulatorSetAdd(PyObject* accumulator);
 // Removes a forward accumulator from the active set, meaning it will no longer
 // be watching operations.
 void TFE_Py_ForwardAccumulatorSetRemove(PyObject* accumulator);
@@ -254,6 +300,36 @@ void TFE_Py_ForwardAccumulatorWatch(PyObject* accumulator, PyObject* tensor,
 // Looks up the Jacobian-vector product of `tensor` in the forward accumulator
 // `accumulator`. Returns None if no JVP is available.
 PyObject* TFE_Py_ForwardAccumulatorJVP(PyObject* accumulator, PyObject* tensor);
+
+// Temporarily push or pop transient state for accumulators in the active set.
+//
+// Allows an accumulator which is currently processing an operation to
+// temporarily reset its state. This is useful when building forwardprop
+// versions of functions, where an accumulator will trigger function building
+// and then must process captured symbolic tensors while building it. Without
+// pushing and poping, accumulators ignore operations executed as a direct
+// result of their own jvp computations.
+PyObject* TFE_Py_ForwardAccumulatorPushState();
+PyObject* TFE_Py_ForwardAccumulatorPopState();
+
+// Collects state from all current forward accumulators related to `tensors`.
+//
+// This is useful for packing JVPs as function inputs before executing a
+// function which computes primals and JVPs at the same time.
+//
+// Does not include accumulators which are currently in the process of computing
+// a jvp (and so appear somewhere on the current execution stack) or any
+// accumulators more deeply nested.
+//
+// Includes JVPs for `tensors` and any higher-order JVPs for those
+// (recursively). Returns a two-element tuple (indices, jvps):
+//   indices: A sequence of sequences of two-element tuples. Each forward
+//       accumulator is represented as a sequence of tuples with (primal_index,
+//       jvp_index). Both integers index into the concatenated `tensors + jvps`
+//       array.
+//   jvps: A flat list of Tensors. Best interpreted as a sequence to be
+//       appended to `tensors`.
+PyObject* TFE_Py_PackJVPs(PyObject* tensors);
 
 // Returns an EagerTensor of dimension [len(`tensors`)] containing
 // the `slice_dim`'th dimension of each tensor in `tensors`. In other words,
@@ -296,4 +372,9 @@ PyObject* TFE_Py_SetEagerContext(PyObject* python_context);
 // some point.
 PyObject* GetPyEagerContext();
 
+// These are exposed since there is SWIG code that calls these.
+// Returns a pre-allocated status if it exists.
+TF_Status* GetStatus();
+// Returns the pre-allocated status to the code.
+void ReturnStatus(TF_Status* status);
 #endif  // TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_

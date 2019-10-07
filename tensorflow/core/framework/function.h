@@ -18,6 +18,12 @@ limitations under the License.
 
 #include <vector>
 
+// clang-format off
+// Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/platform/platform.h"
+// clang-format on
+
+#include "absl/types/optional.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -34,6 +40,9 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#if !defined(IS_MOBILE_PLATFORM)
+#include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
+#endif  // IS_MOBILE_PLATFORM
 
 namespace tensorflow {
 
@@ -565,14 +574,6 @@ class FunctionLibraryRuntime {
 
     // This interface is EXPERIMENTAL and subject to change.
     //
-    // For multi-device functions, a mapping from _Arg node index to input
-    // tensor shape.
-    // REQUIRES: if input_tensor_shapes.count(i) > 0 then i-th argument type
-    // must not be DT_RESOURCE.
-    std::unordered_map<int, TensorShape> input_tensor_shapes;
-
-    // This interface is EXPERIMENTAL and subject to change.
-    //
     // For multi-device functions, a mapping from _Arg node index to type and
     // shape for input resources.
     // REQUIRES: if input_resource_dtypes_and_shapes.count(i) > 0 then i-th
@@ -627,6 +628,15 @@ class FunctionLibraryRuntime {
     // If set, partitioned functions will be added to `graph_collector`.
     // `graph_collector` must be alive during the call to Instantiate.
     GraphCollector* graph_collector = nullptr;
+
+    // Indicates whether the multi-device function backend should default the
+    // placement of ops without request device to `target`.
+    bool default_device_to_target = true;
+
+    // If true, the optimized Graph will be stored so that
+    // `FunctionLibraryRuntime::DebugString(handle)` contains the optimized
+    // Graph. Otherwise, the unoptimized function Graph will be returned.
+    bool include_optimized_graph_in_debug_string = false;
   };
   typedef uint64 Handle;
   virtual Status Instantiate(const string& function_name, AttrSlice attrs,
@@ -668,6 +678,12 @@ class FunctionLibraryRuntime {
     // MasterSession generates 56-bit random step IDs whose MSB is
     // always 0, so a negative random step ID should suffice.
     const int64 step_id = -std::abs(static_cast<int64>(random::New64()));
+
+    // op_id of the function running in eager mode. Set when we want to copy
+    // remote outputs lazily. All components of a remote multi-device function
+    // should use the same op_id, in order to correctly map remote output
+    // tensors to the remote TensorHandles in the default device.
+    absl::optional<int64> op_id = absl::nullopt;
 
     Rendezvous* rendezvous = nullptr;
     CancellationManager* cancellation_manager = nullptr;
@@ -740,6 +756,9 @@ class FunctionLibraryRuntime {
 
   // Returns the environment on which the function executes.
   virtual Env* env() = 0;
+
+  // Returns the ConfigProto passed to the session used to create the function.
+  virtual const ConfigProto* const config_proto() = 0;
 
   // Returns a debug string showing the definition of the function of
   // 'handle'.
@@ -824,6 +843,17 @@ class DistributedFunctionLibraryRuntime {
                    FunctionLibraryRuntime::LocalHandle handle,
                    gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
                    FunctionLibraryRuntime::DoneCallback done) = 0;
+
+#if !defined(IS_MOBILE_PLATFORM)
+  // TODO(yujingzhang): Support outputting tensors on remote devices.
+  virtual void Run(const FunctionLibraryRuntime::Options& opts,
+                   FunctionLibraryRuntime::LocalHandle handle,
+                   std::vector<eager::RemoteTensorHandle>* args,
+                   FunctionLibraryRuntime::DoneCallback done) {
+    done(errors::Unimplemented("Unimplemented."));
+  }
+#endif  // IS_MOBILE_PLATFORM
+
   virtual void CleanUp(uint64 step_id,
                        FunctionLibraryRuntime::LocalHandle handle,
                        FunctionLibraryRuntime::DoneCallback done) = 0;

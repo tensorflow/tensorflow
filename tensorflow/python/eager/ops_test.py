@@ -326,16 +326,18 @@ class OpsTest(test_util.TensorFlowTestCase):
     # Uses default
     ctx = context.context()
     t, r = execute.args_to_matching_eager([[3, 4]], ctx, dtypes.int32)
-    self.assertEquals(t, dtypes.int32)
-    self.assertEquals(r[0].dtype, dtypes.int32)
+    self.assertEqual(t, dtypes.int32)
+    self.assertEqual(r[0].dtype, dtypes.int32)
     t, r = execute.args_to_matching_eager([[3, 4]], ctx, dtypes.int64)
-    self.assertEquals(t, dtypes.int64)
-    self.assertEquals(r[0].dtype, dtypes.int64)
+    self.assertEqual(t, dtypes.int64)
+    self.assertEqual(r[0].dtype, dtypes.int64)
+    t, r = execute.args_to_matching_eager([], ctx, dtypes.int64)
+    self.assertEqual(t, dtypes.int64)
     # Doesn't use default
     t, r = execute.args_to_matching_eager(
         [['string', 'arg']], ctx, dtypes.int32)
-    self.assertEquals(t, dtypes.string)
-    self.assertEquals(r[0].dtype, dtypes.string)
+    self.assertEqual(t, dtypes.string)
+    self.assertEqual(r[0].dtype, dtypes.string)
 
   def testFlattenLayer(self):
     flatten_layer = core.Flatten()

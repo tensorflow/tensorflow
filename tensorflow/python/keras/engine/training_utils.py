@@ -46,6 +46,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
+from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import array_ops
@@ -347,11 +348,14 @@ class OutputsAggregator(Aggregator):
     self.results = nest.pack_sequence_as(self._structure, self.results)
 
 
-def get_progbar(model, count_mode):
+def get_progbar(model, count_mode, include_metrics=True):
   """Get Progbar."""
-  stateful_metric_names = None
-  if hasattr(model, 'metrics_names'):
-    stateful_metric_names = model.metrics_names[1:]  # Exclude `loss`
+  if include_metrics:
+    stateful_metric_names = getattr(model, 'metrics_names', None)
+    if stateful_metric_names:
+      stateful_metric_names = stateful_metric_names[1:]  # Exclude `loss`
+  else:
+    stateful_metric_names = None
   return cbks.ProgbarLogger(count_mode, stateful_metrics=stateful_metric_names)
 
 
@@ -1900,7 +1904,9 @@ def unpack_validation_data(validation_data):
   """
   if (isinstance(validation_data, (iterator_ops.Iterator,
                                    iterator_ops.IteratorV2,
-                                   dataset_ops.DatasetV2))):
+                                   dataset_ops.DatasetV2,
+                                   data_utils.Sequence))
+      or not hasattr(validation_data, '__len__')):
     val_x = validation_data
     val_y = None
     val_sample_weight = None

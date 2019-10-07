@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -66,6 +67,10 @@ class RemoteMgr {
   Status DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
                                        TensorHandle** out);
 
+  EagerExecutor& GetOrCreateExecutorForStream(uint64 stream_id);
+
+  void DeleteExecutorForStream(uint64 stream_id);
+
  protected:
   mutex next_id_mutex_;
   uint64 next_op_id_ GUARDED_BY(next_id_mutex_) = 1;
@@ -95,6 +100,10 @@ class RemoteMgr {
       GUARDED_BY(remote_tensor_handle_mu_);
 
   EagerContext* parent_;  // not owned.
+
+  mutex executor_map_mu_;
+  std::unordered_map<uint64, EagerExecutor> executor_map_
+      GUARDED_BY(executor_map_mu_);
 };
 
 }  // namespace eager

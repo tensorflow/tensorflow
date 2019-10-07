@@ -22,7 +22,8 @@ import abc
 
 import six
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import _pywrap_utils
+from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.util import nest
 
 
@@ -52,46 +53,6 @@ class CompositeTensor(object):
     """A `TypeSpec` describing the type of this value."""
     raise NotImplementedError("%s._type_spec()" % type(self).__name__)
 
-  # Deprecated -- use self._type_spec._to_components(self) instead.
-  # TODO(b/133606651) Remove all callers and then delete this method.
-  def _to_components(self):
-    """Decomposes this composite tensor into its component tensors.
-
-    Returns:
-      A nested structure of `tf.Tensor`s and `CompositeTensor`s that can be
-      used to reconstruct this composite tensor (along with metadata returned
-      by `_component_metadata`).
-    """
-    return self._type_spec._to_components(self)  # pylint: disable=protected-access
-
-  # Deprecated -- use self._type_spec instead.
-  # TODO(b/133606651) Remove all callers and then delete this method.
-  def _component_metadata(self):
-    """Returns any non-tensor metadata needed to reconstruct a composite tensor.
-
-    Returns:
-      A nested structure of metadata that can be used to reconstruct this
-      composite tensor (along with the tensors returned by `_to_components`).
-    """
-    return self._type_spec
-
-  # Deprecated -- use metadata._from_components(components) instead.
-  # TODO(b/133606651) Remove all callers and then delete this method.
-  @staticmethod
-  def _from_components(components, metadata):
-    """Creates a composite tensor of type `cls` from components.
-
-    Args:
-      components: A nested structure whose values are `tf.Tensor`s or
-        `tf.CompositeTensor`s (as returned by `_to_components`).
-      metadata: A nested structure containing any additional metadata needed to
-        reconstruct the composite tensor (as returned by `_composite_metadata`).
-
-    Returns:
-      A `CompositeTensor` of type `cls`.
-    """
-    return metadata._from_components(components)  # pylint: disable=protected-access
-
   def _shape_invariant_to_type_spec(self, shape):
     """Returns a TypeSpec given a shape invariant (used by `tf.while_loop`).
 
@@ -110,16 +71,6 @@ class CompositeTensor(object):
     raise NotImplementedError("%s._shape_invariant_to_type_spec"
                               % type(self).__name__)
 
-  # TODO(b/133606651) Remove this property, since it's not clear what it should
-  # return if a CompositeTensor has a mix of graph and non-graph components.
-  # Update users to perform an appropraite check themselves.
-  @property
-  def _is_graph_tensor(self):
-    """Returns True if this tensor's components belong to a TF graph."""
-    components = self._type_spec._to_components(self)  # pylint: disable=protected-access
-    tensors = nest.flatten(components, expand_composites=True)
-    return any(hasattr(t, "graph") for t in tensors)
-
   def _consumers(self):
     """Returns a list of `Operation`s that consume this `CompositeTensor`.
 
@@ -131,13 +82,13 @@ class CompositeTensor(object):
     """
     consumers = nest.flatten([
         component.consumers()
-        for component in self._to_components()
+        for component in nest.flatten(self, expand_composites=True)
         if getattr(component, "graph", None) is not None
     ])
     return list(set(consumers))
 
 
-pywrap_tensorflow.RegisterType("CompositeTensor", CompositeTensor)
+_pywrap_utils.RegisterType("CompositeTensor", CompositeTensor)
 
 
 def replace_composites_with_components(structure):

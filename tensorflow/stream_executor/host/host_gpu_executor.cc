@@ -41,7 +41,10 @@ HostExecutor::HostExecutor(const PluginConfig &plugin_config)
 
 HostExecutor::~HostExecutor() {}
 
-void *HostExecutor::Allocate(uint64 size) { return new char[size]; }
+DeviceMemoryBase HostExecutor::Allocate(uint64 size, int64 memory_space) {
+  CHECK_EQ(memory_space, 0);
+  return DeviceMemoryBase(new char[size], size);
+}
 
 void *HostExecutor::GetSubBuffer(DeviceMemoryBase *parent, uint64 offset_bytes,
                                  uint64 size_bytes) {
@@ -52,15 +55,16 @@ void HostExecutor::Deallocate(DeviceMemoryBase *mem) {
   delete[] static_cast<char *>(mem->opaque());
 }
 
-bool HostExecutor::SynchronousMemZero(DeviceMemoryBase *location, uint64 size) {
+port::Status HostExecutor::SynchronousMemZero(DeviceMemoryBase *location,
+                                              uint64 size) {
   memset(location->opaque(), 0, size);
-  return true;
+  return port::Status::OK();
 }
 
-bool HostExecutor::SynchronousMemSet(DeviceMemoryBase *location, int value,
-                                     uint64 size) {
+port::Status HostExecutor::SynchronousMemSet(DeviceMemoryBase *location,
+                                             int value, uint64 size) {
   memset(location->opaque(), value, size);
-  return true;
+  return port::Status::OK();
 }
 
 bool HostExecutor::Memcpy(Stream *stream, void *host_dst,

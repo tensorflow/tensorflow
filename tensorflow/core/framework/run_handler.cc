@@ -100,7 +100,9 @@ typedef Eigen::RunQueue<Task, 1024> Queue;
 class ThreadWorkSource {
  public:
   ThreadWorkSource()
-      : non_blocking_work_sharding_factor_(2),
+      : non_blocking_work_sharding_factor_(
+            static_cast<int32>(ParamFromEnvWithDefault(
+                "TF_RUN_HANDLER_NUM_OF_NON_BLOCKING_QUEUES", 1))),
         non_blocking_work_queues_(non_blocking_work_sharding_factor_),
         blocking_inflight_(0),
         non_blocking_inflight_(0),
@@ -144,12 +146,38 @@ class ThreadWorkSource {
     // resource. The non-blocking threads are used only to compensate for
     // threads that may be blocked on some tasks. There is less need to
     // proactively wake up those threads.
-    static int max_rank_to_wakeup = static_cast<int>(ParamFromEnvWithDefault(
-        "TF_RUN_HANDLER_MAX_RANK_TO_WAKE_UP", kMaxConcurrentHandlers));
+    static int max_rank_to_wakeup = static_cast<int>(
+        ParamFromEnvWithDefault("TF_RUN_HANDLER_MAX_RANK_TO_WAKE_UP",
+                                static_cast<int32>(ParamFromEnvWithDefault(
+                                    "TF_RUN_HANDLER_MAX_CONCURRENT_HANDLERS",
+                                    kMaxConcurrentHandlers))));
     if (max_rank_to_wakeup > 0 &&
         rank_.load(std::memory_order_relaxed) <= max_rank_to_wakeup) {
-      mutex_lock l(waiters_mu_);
-      queue_waiters_.next->cv.notify_one();
+      Waiter* w = nullptr;
+      {
+        mutex_lock l(waiters_mu_);
+        if (queue_waiters_.next != &queue_waiters_) {
+          // Remove waiter from the LIFO queue
+          w = queue_waiters_.next;
+
+          CHECK(w->prev != w);
+          CHECK(w->next != w);
+
+          w->next->prev = w->prev;
+          w->prev->next = w->next;
+
+          // Use `w->next == &w` to indicate that the waiter has been removed
+          // from the queue.
+          w->next = w;
+          w->prev = w;
+        }
+      }
+      if (w != nullptr) {
+        // We call notify_one() without any locks, so we can miss notifications.
+        // The wake up logic is best effort and a thread will wake in short
+        // period of time in case a notification is missed.
+        w->cv.notify_one();
+      }
     }
     VLOG(3) << "Added " << (is_blocking ? "inter" : "intra") << " work from "
             << traceme_id_.load(std::memory_order_relaxed);
@@ -163,18 +191,38 @@ class ThreadWorkSource {
   }
 
   void WaitForWork(int max_sleep_micros) {
+    thread_local Waiter waiter;
+    {
+      mutex_lock l(waiters_mu_);
+      CHECK_EQ(waiter.next, &waiter);
+      CHECK_EQ(waiter.prev, &waiter);
+
+      // Add waiter to the LIFO queue
+      waiter.prev = &queue_waiters_;
+      waiter.next = queue_waiters_.next;
+      waiter.next->prev = &waiter;
+      waiter.prev->next = &waiter;
+    }
+    {
+      mutex_lock l(waiter.mu);
+      // Wait on the condition variable
+      waiter.cv.wait_for(l, std::chrono::microseconds(max_sleep_micros));
+    }
+
     mutex_lock l(waiters_mu_);
-    Waiter waiter;
-    // Add waiter to the LIFO queue
-    waiter.prev = &queue_waiters_;
-    waiter.next = queue_waiters_.next;
-    waiter.next->prev = &waiter;
-    waiter.prev->next = &waiter;
-    // Wait on the condition variable
-    waiter.cv.wait_for(l, std::chrono::microseconds(max_sleep_micros));
-    // Remove waiter from the LIFO queue
-    waiter.next->prev = waiter.prev;
-    waiter.prev->next = waiter.next;
+    // Remove waiter from the LIFO queue. Note even when a waiter wakes up due
+    // to a notification we cannot conclude the waiter is not in the queue.
+    // This is due to the fact that a thread preempted right before notifying
+    // may resume after a waiter got re-added.
+    if (waiter.next != &waiter) {
+      CHECK(waiter.prev != &waiter);
+      waiter.next->prev = waiter.prev;
+      waiter.prev->next = waiter.next;
+      waiter.next = &waiter;
+      waiter.prev = &waiter;
+    } else {
+      CHECK_EQ(waiter.prev, &waiter);
+    }
   }
 
   int TaskQueueSize(bool is_blocking) {
@@ -229,7 +277,12 @@ class ThreadWorkSource {
   // queue them in LIFO order rather than the FIFO order used by a single
   // condition variable.
   struct Waiter {
+    Waiter() {
+      next = this;
+      prev = this;
+    }
     condition_variable cv;
+    mutex mu;
     Waiter* next;
     Waiter* prev;
   };
@@ -364,7 +417,10 @@ class RunHandlerThreadPool {
 
  private:
   struct ThreadData {
-    ThreadData() : thread_work_sources(kMaxConcurrentHandlers) {}
+    ThreadData()
+        : thread_work_sources(static_cast<int32>(
+              ParamFromEnvWithDefault("TF_RUN_HANDLER_MAX_CONCURRENT_HANDLERS",
+                                      kMaxConcurrentHandlers))) {}
     mutex mu;
     condition_variable sources_not_empty;
     std::unique_ptr<Thread> thread;
@@ -554,7 +610,8 @@ class RunHandler::Impl {
 class RunHandlerPool::Impl {
  public:
   explicit Impl(int num_inter_op_threads, int num_intra_op_threads)
-      : max_handlers_(kMaxConcurrentHandlers),
+      : max_handlers_(static_cast<int32>(ParamFromEnvWithDefault(
+            "TF_RUN_HANDLER_MAX_CONCURRENT_HANDLERS", kMaxConcurrentHandlers))),
         run_handler_thread_pool_(new RunHandlerThreadPool(
             num_inter_op_threads, num_intra_op_threads, Env::Default(),
             ThreadOptions(), "tf_run_handler_pool")),

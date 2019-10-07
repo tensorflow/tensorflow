@@ -17,6 +17,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
+#include "tensorflow/compiler/tf2tensorrt/convert/logger_registry.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -54,6 +55,15 @@ void Logger::log(Severity severity, const char* msg) {
     }
   }
 }
+
+// static
+Logger* Logger::GetLogger() {
+  static Logger* logger = new Logger("DefaultLogger");
+  return logger;
+}
+
+REGISTER_TENSORRT_LOGGER("DefaultLogger", Logger::GetLogger());
+
 }  // namespace tensorrt
 }  // namespace tensorflow
 

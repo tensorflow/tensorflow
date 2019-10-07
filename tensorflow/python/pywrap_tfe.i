@@ -20,6 +20,7 @@ limitations under the License.
 %ignore "";
 
 %rename("%s") TF_SetXlaEnableLazyCompilation;
+%rename("%s") TF_SetTfXlaCpuGlobalJit;
 %rename("%s") TF_SetXlaAutoJitMode;
 %rename("%s") TF_SetXlaConstantFoldingDisabled;
 %rename("%s") TF_GetXlaConstantFoldingDisabled;
@@ -42,6 +43,7 @@ limitations under the License.
 %rename("%s") TFE_ContextSetThreadLocalDevicePlacementPolicy;
 %rename("%s") TFE_ContextSetThreadLocalMirroringPolicy;
 %rename("%s") TFE_ContextSetServerDef;
+%rename("%s") TFE_ContextUpdateServerDef;
 %rename("%s") TFE_NewExecutor;
 %rename("%s") TFE_DeleteExecutor;
 %rename("%s") TFE_ExecutorIsAsync;
@@ -60,7 +62,7 @@ limitations under the License.
 %rename("%s") TFE_Py_InitEagerTensor;
 %rename("%s") TFE_Py_SetEagerTensorProfiler;
 %rename("%s") TFE_Py_RegisterExceptionClass;
-%rename("%s") TFE_Py_RegisterForwardGradientFunction;
+%rename("%s") TFE_Py_RegisterJVPFunction;
 %rename("%s") TFE_Py_RegisterGradientFunction;
 %rename("%s") TFE_Py_RegisterFallbackExceptionClass;
 %rename("%s") TFE_Py_Execute;
@@ -75,19 +77,25 @@ limitations under the License.
 %rename("%s") TFE_Py_TapeSetRestartOnThread;
 %rename("%s") TFE_Py_TapeSetIsStopped;
 %rename("%s") TFE_Py_TapeSetIsEmpty;
-%rename("%s") TFE_Py_TapeSetShouldRecord;
+%rename("%s") TFE_Py_TapeSetShouldRecordBackprop;
 %rename("%s") TFE_Py_TapeSetPossibleGradientTypes;
 %rename("%s") TFE_Py_TapeSetDeleteTrace;
 %rename("%s") TFE_Py_TapeSetRecordOperation;
+%rename("%s") TFE_Py_TapeSetRecordOperationBackprop;
+%rename("%s") TFE_Py_TapeSetRecordOperationForwardprop;
 %rename("%s") TFE_Py_TapeGradient;
 %rename("%s") TFE_Py_TapeVariableAccessed;
 %rename("%s") TFE_Py_TapeWatch;
 %rename("%s") TFE_Py_TapeWatchVariable;
 %rename("%s") TFE_Py_TapeWatchedVariables;
 %rename("%s") TFE_Py_ForwardAccumulatorNew;
+%rename("%s") TFE_Py_ForwardAccumulatorSetAdd;
 %rename("%s") TFE_Py_ForwardAccumulatorSetRemove;
 %rename("%s") TFE_Py_ForwardAccumulatorWatch;
 %rename("%s") TFE_Py_ForwardAccumulatorJVP;
+%rename("%s") TFE_Py_ForwardAccumulatorPushState;
+%rename("%s") TFE_Py_ForwardAccumulatorPopState;
+%rename("%s") TFE_Py_PackJVPs;
 %rename("%s") TFE_NewContextOptions;
 %rename("%s") TFE_ContextOptionsSetConfig;
 %rename("%s") TFE_ContextOptionsSetDevicePlacementPolicy;
@@ -171,6 +179,7 @@ limitations under the License.
 
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"
+#include "tensorflow/python/util/util.h"
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
@@ -416,11 +425,11 @@ static PyObject* TFE_ClearScalarCache();
 
 // Create new Status object.
 %typemap(in, numinputs=0) TF_Status *out_status {
-  $1 = TF_NewStatus();
+  $1 = GetStatus();
 }
 
 %typemap(freearg) (TF_Status* out_status) {
- TF_DeleteStatus($1);
+ ReturnStatus($1);
 }
 
 %typemap(argout) (TFE_OutputTensorHandles* outputs, TF_Status* out_status) {

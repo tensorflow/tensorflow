@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/synchronization/barrier.h"
 #include "absl/synchronization/blocking_counter.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -71,8 +72,10 @@ void RunWithFixedBlockSize(int64 block_size, int64 total, ThreadPool* threads) {
     work[i] = false;
   }
   threads->ParallelFor(
-      total, ThreadPool::SchedulingStrategy::kFixedBlockSize,
-      ThreadPool::FixedBlockSizeSchedulingParams(block_size),
+      total,
+      ThreadPool::SchedulingParams(
+          ThreadPool::SchedulingStrategy::kFixedBlockSize /* strategy */,
+          absl::nullopt /* cost_per_unit */, block_size /* block_size */),
       [=, &mu, &num_shards, &num_done_work, &work](int64 start, int64 end) {
         VLOG(1) << "Shard [" << start << "," << end << ")";
         EXPECT_GE(start, 0);
@@ -198,8 +201,8 @@ TEST(ThreadPoolTest, NumShardsUsedByTransformRangeConcurrently) {
                    0 /* block_size */, 7 /* total */));
 }
 
-void RunShardingWithWorkerId(int64 block_size, int64 total,
-                             ThreadPool* threads) {
+void RunFixedBlockSizeShardingWithWorkerId(int64 block_size, int64 total,
+                                           ThreadPool* threads) {
   mutex mu;
   int64 num_done_work = 0;
   std::vector<std::atomic<bool>> work(total);
@@ -213,8 +216,10 @@ void RunShardingWithWorkerId(int64 block_size, int64 total,
   }
 
   threads->ParallelForWithWorkerId(
-      total, ThreadPool::SchedulingStrategy::kAdaptive,
-      ThreadPool::AdaptiveSchedulingParams(block_size),
+      total,
+      ThreadPool::SchedulingParams(
+          ThreadPool::SchedulingStrategy::kFixedBlockSize /* strategy */,
+          absl::nullopt /* cost_per_unit */, block_size /* block_size */),
       [=, &mu, &num_done_work, &work, &threads_running](int64 start, int64 end,
                                                         int id) {
         VLOG(1) << "Shard [" << start << "," << end << ")";
@@ -247,7 +252,7 @@ TEST(ThreadPoolTest, ParallelForFixedBlockSizeSchedulingWithWorkerId) {
     for (int64 block_size : {1, 7, 10, 64, 100, 256, 1000}) {
       for (int64 diff : {0, 1, 11, 102, 1003}) {
         const int64 total = block_size + diff;
-        RunShardingWithWorkerId(block_size, total, &threads);
+        RunFixedBlockSizeShardingWithWorkerId(block_size, total, &threads);
       }
     }
   }
@@ -291,15 +296,18 @@ TEST(ThreadPool, ParallelForWithAdaptiveSchedulingStrategy) {
     for (int i = 0; i < kWorkItems; i++) {
       work[i] = false;
     }
-    pool.ParallelFor(kWorkItems, ThreadPool::SchedulingStrategy::kAdaptive,
-                     ThreadPool::AdaptiveSchedulingParams(kHugeCost),
-                     [&outer_context, &work](int64 begin, int64 end) {
-                       Context inner_context(ContextKind::kThread);
-                       ASSERT_EQ(outer_context, inner_context);
-                       for (int64 i = begin; i < end; ++i) {
-                         ASSERT_FALSE(work[i].exchange(true));
-                       }
-                     });
+    pool.ParallelFor(
+        kWorkItems,
+        ThreadPool::SchedulingParams(
+            ThreadPool::SchedulingStrategy::kAdaptive /* strategy */,
+            kHugeCost /* cost_per_unit */, absl::nullopt /* block_size */),
+        [&outer_context, &work](int64 begin, int64 end) {
+          Context inner_context(ContextKind::kThread);
+          ASSERT_EQ(outer_context, inner_context);
+          for (int64 i = begin; i < end; ++i) {
+            ASSERT_FALSE(work[i].exchange(true));
+          }
+        });
     for (int i = 0; i < kWorkItems; i++) {
       ASSERT_TRUE(work[i]);
     }

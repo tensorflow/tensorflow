@@ -436,7 +436,6 @@ REGISTER_OP("TensorListResize")
     .Input("input_handle: variant")
     .Input("size: int32")
     .Output("output_handle: variant")
-    .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       // Check that `size` has scalar shape.
       shape_inference::ShapeHandle size_shape = c->input(1);

@@ -335,7 +335,7 @@ public:
     // Now we just have to handle the condition logic.
     auto integerSet = op.getIntegerSet();
     Value *zeroConstant = rewriter.create<ConstantIndexOp>(loc, 0);
-    SmallVector<Value *, 8> operands(op.getOperation()->getOperands());
+    SmallVector<Value *, 8> operands(op.getOperands());
     auto operandsRef = llvm::makeArrayRef(operands);
 
     // Calculate cond as a conjunction without short-circuiting.
@@ -381,8 +381,8 @@ class AffineApplyLowering : public OpRewritePattern<AffineApplyOp> {
 public:
   using OpRewritePattern<AffineApplyOp>::OpRewritePattern;
 
-  virtual PatternMatchResult
-  matchAndRewrite(AffineApplyOp op, PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(AffineApplyOp op,
+                                     PatternRewriter &rewriter) const override {
     auto maybeExpandedMap =
         expandAffineMap(rewriter, op.getLoc(), op.getAffineMap(),
                         llvm::to_vector<8>(op.getOperands()));
@@ -400,10 +400,10 @@ class AffineLoadLowering : public OpRewritePattern<AffineLoadOp> {
 public:
   using OpRewritePattern<AffineLoadOp>::OpRewritePattern;
 
-  virtual PatternMatchResult
-  matchAndRewrite(AffineLoadOp op, PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(AffineLoadOp op,
+                                     PatternRewriter &rewriter) const override {
     // Expand affine map from 'affineLoadOp'.
-    SmallVector<Value *, 8> indices(op.getIndices());
+    SmallVector<Value *, 8> indices(op.getMapOperands());
     auto maybeExpandedMap =
         expandAffineMap(rewriter, op.getLoc(), op.getAffineMap(), indices);
     if (!maybeExpandedMap)
@@ -422,10 +422,10 @@ class AffineStoreLowering : public OpRewritePattern<AffineStoreOp> {
 public:
   using OpRewritePattern<AffineStoreOp>::OpRewritePattern;
 
-  virtual PatternMatchResult
-  matchAndRewrite(AffineStoreOp op, PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(AffineStoreOp op,
+                                     PatternRewriter &rewriter) const override {
     // Expand affine map from 'affineStoreOp'.
-    SmallVector<Value *, 8> indices(op.getIndices());
+    SmallVector<Value *, 8> indices(op.getMapOperands());
     auto maybeExpandedMap =
         expandAffineMap(rewriter, op.getLoc(), op.getAffineMap(), indices);
     if (!maybeExpandedMap)
@@ -445,9 +445,8 @@ class AffineDmaStartLowering : public OpRewritePattern<AffineDmaStartOp> {
 public:
   using OpRewritePattern<AffineDmaStartOp>::OpRewritePattern;
 
-  virtual PatternMatchResult
-  matchAndRewrite(AffineDmaStartOp op,
-                  PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(AffineDmaStartOp op,
+                                     PatternRewriter &rewriter) const override {
     SmallVector<Value *, 8> operands(op.getOperands());
     auto operandsRef = llvm::makeArrayRef(operands);
 
@@ -486,9 +485,8 @@ class AffineDmaWaitLowering : public OpRewritePattern<AffineDmaWaitOp> {
 public:
   using OpRewritePattern<AffineDmaWaitOp>::OpRewritePattern;
 
-  virtual PatternMatchResult
-  matchAndRewrite(AffineDmaWaitOp op,
-                  PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(AffineDmaWaitOp op,
+                                     PatternRewriter &rewriter) const override {
     // Expand affine map for DMA tag memref.
     SmallVector<Value *, 8> indices(op.getTagIndices());
     auto maybeExpandedTagMap =
@@ -529,7 +527,7 @@ class LowerAffinePass : public FunctionPass<LowerAffinePass> {
 
 /// Lowers If and For operations within a function into their lower level CFG
 /// equivalent blocks.
-std::unique_ptr<FunctionPassBase> mlir::createLowerAffinePass() {
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createLowerAffinePass() {
   return std::make_unique<LowerAffinePass>();
 }
 

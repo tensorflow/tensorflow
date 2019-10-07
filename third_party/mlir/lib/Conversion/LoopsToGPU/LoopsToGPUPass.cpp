@@ -66,7 +66,7 @@ struct ForLoopMapper : public FunctionPass<ForLoopMapper> {
 };
 } // namespace
 
-std::unique_ptr<FunctionPassBase>
+std::unique_ptr<OpPassBase<FuncOp>>
 mlir::createSimpleLoopsToGPUPass(unsigned numBlockDims,
                                  unsigned numThreadDims) {
   return std::make_unique<ForLoopMapper>(numBlockDims, numThreadDims);

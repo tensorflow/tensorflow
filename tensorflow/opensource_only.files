@@ -1,15 +1,18 @@
-llvm/llvm/projects/google_mlir/WORKSPACE
+llvm/llvm/projects/google_mlir/mlir_configure.bzl
 tensorflow/__init__.py
 tensorflow/api_template.__init__.py
 tensorflow/api_template_v1.__init__.py
 tensorflow/compat_template.__init__.py
 tensorflow/compat_template_v1.__init__.py
-tensorflow/contrib/mpi/BUILD
+tensorflow/core/public/version.h
 tensorflow/python/autograph/core/config.py
+tensorflow/python/distribute/cluster_resolver/tpu_cluster_resolver.py
+tensorflow/python/distribute/cluster_resolver/tpu_cluster_resolver_test.py
 tensorflow/python/tpu/profiler/pip_package/BUILD
 tensorflow/python/tpu/profiler/pip_package/README
 tensorflow/python/tpu/profiler/pip_package/build_pip_package.sh
 tensorflow/python/tpu/profiler/pip_package/setup.py
+tensorflow/python/tpu/tpu.bzl
 tensorflow/stream_executor/build_defs.bzl
 tensorflow/third_party/BUILD
 tensorflow/third_party/__init__.py
@@ -26,6 +29,7 @@ tensorflow/third_party/clang_toolchain/cc_configure_clang.bzl
 tensorflow/third_party/clang_toolchain/download_clang.bzl
 tensorflow/third_party/codegen.BUILD
 tensorflow/third_party/com_google_absl.BUILD
+tensorflow/third_party/com_google_absl_fix_mac_build.patch
 tensorflow/third_party/common.bzl
 tensorflow/third_party/cub.BUILD
 tensorflow/third_party/curl.BUILD
@@ -37,8 +41,11 @@ tensorflow/third_party/eigen3/Eigen/Cholesky
 tensorflow/third_party/eigen3/Eigen/Core
 tensorflow/third_party/eigen3/Eigen/Eigenvalues
 tensorflow/third_party/eigen3/Eigen/LU
+tensorflow/third_party/eigen3/Eigen/OrderingMethods
 tensorflow/third_party/eigen3/Eigen/QR
 tensorflow/third_party/eigen3/Eigen/SVD
+tensorflow/third_party/eigen3/Eigen/SparseCholesky
+tensorflow/third_party/eigen3/Eigen/SparseCore
 tensorflow/third_party/eigen3/LICENSE
 tensorflow/third_party/eigen3/gpu_packet_math.patch
 tensorflow/third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint
@@ -65,6 +72,7 @@ tensorflow/third_party/fft2d/fft2d.h
 tensorflow/third_party/functools32.BUILD
 tensorflow/third_party/gast.BUILD
 tensorflow/third_party/gif.BUILD
+tensorflow/third_party/gif_fix_strtok_r.patch
 tensorflow/third_party/git/BUILD
 tensorflow/third_party/git/BUILD.tpl
 tensorflow/third_party/git/git_configure.bzl
@@ -92,8 +100,6 @@ tensorflow/third_party/gpus/rocm_configure.bzl
 tensorflow/third_party/grpc/BUILD
 tensorflow/third_party/icu/udata.patch
 tensorflow/third_party/jsoncpp.BUILD
-tensorflow/third_party/kafka/BUILD
-tensorflow/third_party/kafka/config.patch
 tensorflow/third_party/libxsmm.BUILD
 tensorflow/third_party/linenoise.BUILD
 tensorflow/third_party/llvm/BUILD
@@ -109,8 +115,6 @@ tensorflow/third_party/mkl/mkl.BUILD
 tensorflow/third_party/mkl_dnn/LICENSE
 tensorflow/third_party/mkl_dnn/mkldnn.BUILD
 tensorflow/third_party/mpi/.gitignore
-tensorflow/third_party/mpi/BUILD
-tensorflow/third_party/mpi_collectives/BUILD
 tensorflow/third_party/nanopb.BUILD
 tensorflow/third_party/nccl/BUILD
 tensorflow/third_party/nccl/LICENSE
@@ -250,7 +254,9 @@ tensorflow/third_party/toolchains/preconfig/ubuntu16.04/tensorrt5.1/build_defs.b
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/tensorrt5/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/bazel_025/BUILD
+tensorflow/third_party/toolchains/preconfig/win_1803/bazel_026/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py36/BUILD
+tensorflow/third_party/toolchains/preconfig/win_1803/py37/BUILD
 tensorflow/third_party/toolchains/remote/BUILD
 tensorflow/third_party/toolchains/remote/BUILD.tpl
 tensorflow/third_party/toolchains/remote/configure.bzl

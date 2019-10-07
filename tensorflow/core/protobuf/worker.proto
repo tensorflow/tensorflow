@@ -31,9 +31,9 @@ import "tensorflow/core/framework/step_stats.proto";
 import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
-import "tensorflow/core/lib/core/error_codes.proto";
 import "tensorflow/core/protobuf/config.proto";
 import "tensorflow/core/protobuf/debug.proto";
+import "tensorflow/core/protobuf/error_codes.proto";
 import "tensorflow/core/protobuf/named_tensor.proto";
 import "tensorflow/core/protobuf/tensorflow_server.proto";
 
@@ -132,6 +132,11 @@ message RegisterGraphRequest {
   // concurrently so that BufRendezvous entries will make the correct
   // values accessible.
   int64 collective_graph_key = 7;
+
+  // ConfigProto from the session in which this graph was created.
+  // Contains additional parameters beyond graph_options, including
+  // the name of the requested executor.
+  ConfigProto config_proto = 8;
 }
 
 message RegisterGraphResponse {

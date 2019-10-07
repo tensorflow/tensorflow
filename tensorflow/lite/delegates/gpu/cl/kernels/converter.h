@@ -25,18 +25,6 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class TensorObjectConverterBuilder {
- public:
-  virtual ~TensorObjectConverterBuilder() = default;
-
-  virtual bool IsSupported(const TensorObjectDef& input,
-                           const TensorObjectDef& output) = 0;
-
-  virtual Status MakeConverter(
-      const TensorObjectDef& input, const TensorObjectDef& output,
-      std::unique_ptr<TensorObjectConverter>* converter) = 0;
-};
-
 // Supports conversions from BHWC to internal OpenCL tensor representation and
 // back. Also supports F16/F32.
 std::unique_ptr<TensorObjectConverterBuilder> NewConverterBuilder(

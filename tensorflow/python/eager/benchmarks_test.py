@@ -25,8 +25,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import gc
-import os
 import time
 
 import numpy as np
@@ -43,7 +41,6 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import forwardprop
 from tensorflow.python.eager import function
 from tensorflow.python.eager import profiler
-from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -55,9 +52,7 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.ops import variables
 from tensorflow.python.training import gradient_descent
-from tensorflow.python.training import server_lib
 
 CPU = "/device:CPU:0"
 GPU = "/device:GPU:0"
@@ -74,7 +69,7 @@ def c_tfe_py_fastpath_execute(a,
   try:
     return pywrap_tensorflow.TFE_Py_FastPathExecute(
         ctx._handle, ctx.device_name, "MatMul", name,
-        ctx._post_execution_callbacks, a, b, "transpose_a", transpose_a,
+        ctx.op_callbacks, a, b, "transpose_a", transpose_a,
         "transpose_b", transpose_b)
   except core._NotOkStatusException as e:
     if name is not None:
@@ -684,8 +679,7 @@ class MicroBenchmarks(test.Benchmark):
       tangent = random_ops.random_uniform(shape).cpu()
 
       def func():
-        with forwardprop.ForwardGradientAccumulator() as acc:
-          acc.watch(m, tangent)
+        with forwardprop.ForwardAccumulator(m, tangent) as acc:
           result = math_ops.matmul(m, m, transpose_b=True)
         return result, acc.jvp(result)
 
@@ -698,8 +692,7 @@ class MicroBenchmarks(test.Benchmark):
     with ops.device(CPU):
       @def_function.function
       def compiled_function(x, tangent):
-        with forwardprop.ForwardGradientAccumulator() as acc:
-          acc.watch(x, tangent)
+        with forwardprop.ForwardAccumulator(x, tangent) as acc:
           result = math_ops.matmul(x, x, transpose_b=True)
         return result, acc.jvp(result)
 
@@ -718,8 +711,7 @@ class MicroBenchmarks(test.Benchmark):
 
       @def_function.function()
       def compiled_function(x, tangent):
-        with forwardprop.ForwardGradientAccumulator() as acc:
-          acc.watch(x, tangent)
+        with forwardprop.ForwardAccumulator(x, tangent) as acc:
           result = matmul(x, x, transpose_b=True)
         return result, acc.jvp(result)
 
@@ -739,8 +731,7 @@ class MicroBenchmarks(test.Benchmark):
       matmul = def_function.function(math_ops.matmul)
 
       def func():
-        with forwardprop.ForwardGradientAccumulator() as acc:
-          acc.watch(m, tangent)
+        with forwardprop.ForwardAccumulator(m, tangent) as acc:
           result = matmul(m, m, transpose_b=True)
         return result, acc.jvp(result)
 
@@ -1095,109 +1086,6 @@ class MicroBenchmarks(test.Benchmark):
 
   def benchmarkFunctionWithFiveHundredResourceInputs(self):
     self._benchmarkFunctionWithResourceInputs(500, 100)
-
-
-class RemoteWorkerMicroBenchmarks(test.Benchmark):
-
-  def __init__(self):
-    # used for remote benchmarks
-    os.environ["TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC"] = "1"
-    self._cached_server1 = server_lib.Server.create_local_server()
-    self._cached_server_target1 = self._cached_server1.target[len("grpc://"):]
-    self._cached_server2 = server_lib.Server.create_local_server()
-    self._cached_server_target2 = self._cached_server2.target[len("grpc://"):]
-
-  def _run(self, func, num_iters=10000, execution_mode=None):
-    total_time = run_benchmark(func, num_iters, execution_mode)
-    mean_us = total_time * 1e6 / num_iters
-    self.report_benchmark(
-        iters=num_iters,
-        wall_time=mean_us,
-        extras={"examples_per_sec": num_iters / total_time})
-
-  def benchmark_send_mirroring_off(self):
-    remote.connect_to_remote_host(self._cached_server_target1)
-
-    x = random_ops.random_uniform((2, 2)).cpu()
-
-    @def_function.function
-    def remote_func(m):
-      return math_ops.matmul(m, m)
-
-    def func(m):
-      with ops.device("job:worker/replica:0/task:0/device:CPU:0"):
-        return remote_func(m)
-
-    context.context().mirroring_policy = context.MIRRORING_NONE
-    self._run(lambda: func(x))
-    # NOTE(b/136184459): Force garbage collecting hanging resources before
-    # subsequent calls to set_server_def, to ensure the destroy resource ops are
-    # executed when their corresponding device and manager are still available.
-    gc.collect()
-
-  def benchmark_send_mirroring_on(self):
-    remote.connect_to_remote_host(self._cached_server_target1)
-
-    x = random_ops.random_uniform((2, 2)).cpu()
-
-    @def_function.function
-    def remote_func(m):
-      return math_ops.matmul(m, m)
-
-    def func(m):
-      with ops.device("job:worker/replica:0/task:0/device:CPU:0"):
-        return remote_func(m)
-
-    context.context().mirroring_policy = context.MIRRORING_ALL
-    self._run(lambda: func(x))
-    # NOTE(b/136184459): Force garbage collecting hanging resources before
-    # subsequent calls to set_server_def, to ensure the destroy resource ops are
-    # executed when their corresponding device and manager are still available.
-    gc.collect()
-
-  def benchmark_worker_mirroring_off(self):
-    remote.connect_to_remote_host(
-        [self._cached_server_target1, self._cached_server_target2])
-
-    with ops.device("job:worker/replica:0/task:1/device:CPU:0"):
-      v = variables.Variable(1.0)
-
-    @def_function.function
-    def remote_func():
-      return 1.0 + v
-
-    def func():
-      with ops.device("job:worker/replica:0/task:0/device:CPU:0"):
-        return remote_func()
-
-    context.context().mirroring_policy = context.MIRRORING_NONE
-    self._run(func)
-    # NOTE(b/136184459): Force garbage collecting hanging resources before
-    # subsequent calls to set_server_def, to ensure the destroy resource ops are
-    # executed when their corresponding device and manager are still available.
-    gc.collect()
-
-  def benchmark_worker_mirroring_on(self):
-    remote.connect_to_remote_host(
-        [self._cached_server_target1, self._cached_server_target2])
-
-    with ops.device("job:worker/replica:0/task:1/device:CPU:0"):
-      v = variables.Variable(1.0)
-
-    @def_function.function
-    def remote_func():
-      return 1.0 + v
-
-    def func():
-      with ops.device("job:worker/replica:0/task:0/device:CPU:0"):
-        return remote_func()
-
-    context.context().mirroring_policy = context.MIRRORING_ALL
-    self._run(func)
-    # NOTE(b/136184459): Force garbage collecting hanging resources before
-    # subsequent calls to set_server_def, to ensure the destroy resource ops are
-    # executed when their corresponding device and manager are still available.
-    gc.collect()
 
 
 if __name__ == "__main__":

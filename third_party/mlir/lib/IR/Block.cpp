@@ -38,11 +38,6 @@ unsigned BlockArgument::getArgNumber() {
 Block::~Block() {
   assert(!verifyInstOrder() && "Expected valid operation ordering.");
   clear();
-
-  for (auto *arg : arguments)
-    if (!arg->use_empty())
-      arg->user_begin()->dump();
-
   llvm::DeleteContainerPointers(arguments);
 }
 
@@ -222,22 +217,6 @@ Block *Block::getSinglePredecessor() {
   auto *firstPred = *it;
   ++it;
   return it == pred_end() ? firstPred : nullptr;
-}
-
-//===----------------------------------------------------------------------===//
-// Operation Walkers
-//===----------------------------------------------------------------------===//
-
-void Block::walk(llvm::function_ref<void(Operation *)> callback) {
-  walk(begin(), end(), callback);
-}
-
-/// Walk the operations in the specified [begin, end) range of this block,
-/// calling the callback for each operation.
-void Block::walk(Block::iterator begin, Block::iterator end,
-                 llvm::function_ref<void(Operation *)> callback) {
-  for (auto &op : llvm::make_early_inc_range(llvm::make_range(begin, end)))
-    op.walk(callback);
 }
 
 //===----------------------------------------------------------------------===//

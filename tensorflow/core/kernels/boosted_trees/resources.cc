@@ -54,7 +54,7 @@ int32 BoostedTreesEnsembleResource::num_trees() const {
 
 int32 BoostedTreesEnsembleResource::next_node(
     const int32 tree_id, const int32 node_id, const int32 index_in_batch,
-    const std::vector<TTypes<int32>::ConstVec>& bucketized_features) const {
+    const std::vector<TTypes<int32>::ConstMatrix>& bucketized_features) const {
   DCHECK_LT(tree_id, tree_ensemble_->trees_size());
   DCHECK_LT(node_id, tree_ensemble_->trees(tree_id).nodes_size());
   const auto& node = tree_ensemble_->trees(tree_id).nodes(node_id);
@@ -62,15 +62,17 @@ int32 BoostedTreesEnsembleResource::next_node(
   switch (node.node_case()) {
     case boosted_trees::Node::kBucketizedSplit: {
       const auto& split = node.bucketized_split();
-      return (bucketized_features[split.feature_id()](index_in_batch) <=
-              split.threshold())
+      const auto bucketized_feature = bucketized_features[split.feature_id()];
+      return bucketized_feature(index_in_batch, split.dimension_id()) <=
+                     split.threshold()
                  ? split.left_id()
                  : split.right_id();
     }
     case boosted_trees::Node::kCategoricalSplit: {
       const auto& split = node.categorical_split();
-      return (bucketized_features[split.feature_id()](index_in_batch) ==
-              split.value())
+      const auto bucketized_feature = bucketized_features[split.feature_id()];
+      return bucketized_feature(index_in_batch, split.dimension_id()) ==
+                     split.value()
                  ? split.left_id()
                  : split.right_id();
     }
@@ -251,15 +253,24 @@ void BoostedTreesEnsembleResource::UpdateGrowingMetadata() const {
 }
 
 // Add a tree to the ensemble and returns a new tree_id.
-int32 BoostedTreesEnsembleResource::AddNewTree(const float weight) {
-  return AddNewTreeWithLogits(weight, 0.0);
+int32 BoostedTreesEnsembleResource::AddNewTree(const float weight,
+                                               const int32 logits_dimension) {
+  const std::vector<float> empty_leaf(logits_dimension);
+  return AddNewTreeWithLogits(weight, empty_leaf, logits_dimension);
 }
 
-int32 BoostedTreesEnsembleResource::AddNewTreeWithLogits(const float weight,
-                                                         const float logits) {
+int32 BoostedTreesEnsembleResource::AddNewTreeWithLogits(
+    const float weight, const std::vector<float>& logits,
+    const int32 logits_dimension) {
   const int32 new_tree_id = tree_ensemble_->trees_size();
   auto* node = tree_ensemble_->add_trees()->add_nodes();
-  node->mutable_leaf()->set_scalar(logits);
+  if (logits_dimension == 1) {
+    node->mutable_leaf()->set_scalar(logits[0]);
+  } else {
+    for (int32 i = 0; i < logits_dimension; ++i) {
+      node->mutable_leaf()->mutable_vector()->add_value(logits[i]);
+    }
+  }
   tree_ensemble_->add_tree_weights(weight);
   tree_ensemble_->add_tree_metadata();
 

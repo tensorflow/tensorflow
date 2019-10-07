@@ -239,7 +239,7 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
   TF_RETURN_IF_ERROR(cpu_factory->CreateDevices(
       options, "/job:localhost/replica:0/task:0", &devices));
   Device* cpu_device = devices[0].get();
-  std::unique_ptr<DeviceMgr> dvc_mgr(new DeviceMgr(std::move(devices)));
+  auto dvc_mgr = absl::make_unique<StaticDeviceMgr>(std::move(devices));
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              graph_def.library());
   Env* env = Env::Default();
@@ -256,7 +256,7 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
 
   // Create the function library runtime.
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
-      new ProcessFunctionLibraryRuntime(dvc_mgr.get(), env,
+      new ProcessFunctionLibraryRuntime(dvc_mgr.get(), env, &options.config,
                                         graph_def.versions().producer(),
                                         &function_library, *optimizer_opts));
   FunctionLibraryRuntime* flr = pflr->GetFLR(cpu_device->name());

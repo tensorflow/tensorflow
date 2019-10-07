@@ -29,6 +29,9 @@ limitations under the License.
 
 namespace tensorflow {
 namespace jit {
+class DeviceInfoCache;
+class DeviceSet;
+
 // Instances of DeviceId represent TensorFlow devices as integers.
 //
 // This helps avoid having to manipulate device names as strings when

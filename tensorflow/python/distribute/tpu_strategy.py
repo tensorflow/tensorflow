@@ -38,6 +38,7 @@ from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device_spec
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -46,7 +47,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.tpu import device_assignment as device_assignment_lib
+from tensorflow.python.tpu import device_assignment as device_assignment_lib  # pylint: disable=unused-import
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
@@ -99,6 +100,11 @@ class TPUStrategy(distribute_lib.Strategy):
     """
     super(TPUStrategy, self).__init__(TPUExtended(
         self, tpu_cluster_resolver, device_assignment=device_assignment))
+    distribute_lib.distribution_strategy_gauge.get_cell("V2").set("TPUStrategy")
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_workers").set(self.extended.num_hosts)
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_replicas_per_worker").set(self.extended.num_replicas_per_host)
 
   # TODO(cjfj): Modify `_call_for_each_replica` in `TPUExtended` such that this
   # can use the default implementation.
@@ -135,6 +141,11 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
     """
     super(TPUStrategyV1, self).__init__(TPUExtended(
         self, tpu_cluster_resolver, steps_per_run, device_assignment))
+    distribute_lib.distribution_strategy_gauge.get_cell("V1").set("TPUStrategy")
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_workers").set(self.extended.num_hosts)
+    distribute_lib.distribution_strategy_replica_gauge.get_cell(
+        "num_replicas_per_worker").set(self.extended.num_replicas_per_host)
 
   @property
   def steps_per_run(self):
@@ -174,29 +185,22 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self._tpu_metadata = get_tpu_system_metadata(self._tpu_cluster_resolver)
     self._device_assignment = device_assignment
 
-    # Device assignment is currently only supported for 1 core case.
-    if self._device_assignment:
-      assert isinstance(self._device_assignment,
-                        device_assignment_lib.DeviceAssignment)
-      if self._device_assignment.num_replicas != 1:
-        raise ValueError("Device assignment is only supported for a single "
-                         "core single replica case currently.")
-      if self._device_assignment.num_cores_per_replica != 1:
-        raise ValueError("Device assignment is only supported for a single "
-                         "core single replica case currently.")
-      if not all(self._device_assignment.core_assignment[0][0] == [0, 0, 0]):
-        raise ValueError("Device assignment is only supported for a single "
-                         "core single replica case currently.")
-
-    # TODO(jhseu): Switch to DeviceAssignment to support pods and model
-    # parallelism.
     self._tpu_devices = [d.name for d in self._tpu_metadata.devices
                          if "device:TPU:" in d.name]
 
+    # Only create variables for the number of replicas we're running.
+    if device_assignment is not None:
+      job_name = device_spec.DeviceSpecV2.from_string(self._tpu_devices[0]).job
+
+      self._tpu_devices = []
+      for replica_id in range(device_assignment.num_replicas):
+        tpu_device = device_assignment.tpu_device(
+            replica=replica_id, logical_core=0, job=job_name)
+        tpu_device = device_util.canonicalize(tpu_device)
+        self._tpu_devices.append(tpu_device)
+
     self._host_device = device_util.get_host_for_device(self._tpu_devices[0])
 
-    # Only create variables for the number of replicas we're running.
-    self._tpu_devices = self._tpu_devices[:self._num_replicas_in_sync]
     self._device_map = values.ReplicaDeviceMap(self._tpu_devices)
 
     # Preload the data onto the TPUs.
@@ -214,6 +218,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self._require_static_shapes = True
 
     self.experimental_enable_get_next_as_optional = True
+    self.experimental_enable_dynamic_batch_size = True
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate(colocate_with_variable, self)
@@ -381,6 +386,9 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   def _create_variable(self, next_creator, *args, **kwargs):
     """Create a TPUMirroredVariable. See `DistributionStrategy.scope`."""
+    if kwargs.pop("tpu_embedding_variable_creator", False):
+      return next_creator(*args, **kwargs)
+
     colocate_with = kwargs.pop("colocate_with", None)
     if colocate_with is None:
       device_map = self._device_map
@@ -535,16 +543,13 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     # This method needs to take host_id as input for correct computation.
     max_models_per_host = (self._tpu_metadata.num_of_cores_per_host //
                            self._device_assignment.num_cores_per_replica)
-    models_per_host = min(self._device_assignment.num_replicas,
-                          max_models_per_host)
-    return models_per_host * self._device_assignment.num_cores_per_replica
+    return min(self._device_assignment.num_replicas, max_models_per_host)
 
   @property
   def _num_replicas_in_sync(self):
     if self._device_assignment is None:
       return self._tpu_metadata.num_cores
-    return (self._device_assignment.num_replicas *
-            self._device_assignment.num_cores_per_replica)
+    return self._device_assignment.num_replicas
 
   @property
   def experimental_between_graph(self):
@@ -655,7 +660,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
       # Construct and pass `maximum_shapes` so that we could support dynamic
       # shapes using dynamic padder.
-      if replicate_inputs:
+      if self.experimental_enable_dynamic_batch_size and replicate_inputs:
         maximum_shapes = []
         flattened_list = nest.flatten(replicate_inputs[0])
         for input_tensor in flattened_list:
@@ -698,6 +703,15 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     self._tpu_function_cache[fn] = tpu_function
     return tpu_function
+
+  def _in_multi_worker_mode(self):
+    """Whether this strategy indicates working in multi-worker settings."""
+    # TPUStrategy has different distributed training structure that the whole
+    # cluster should be treated as single worker from higher-level (e.g. Keras)
+    # library's point of view.
+    # TODO(rchao): Revisit this as we design a fault-tolerance solution for
+    # TPUStrategy.
+    return False
 
 
 class _TPUReplicaContext(distribute_lib.ReplicaContext):

@@ -273,6 +273,13 @@ class BackendUtilsTest(test.TestCase):
     f = keras.backend.function(x, y)
     f(0)
 
+  def test_cast_to_floatx(self):
+    x = keras.backend.variable(1, dtype='float64')
+    x = keras.backend.cast_to_floatx(x)
+    self.assertEqual(x.dtype.name, 'float32')
+    x = keras.backend.cast_to_floatx(2)
+    self.assertEqual(x.dtype.name, 'float32')
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class BackendVariableTest(test.TestCase):
@@ -338,7 +345,7 @@ class BackendVariableTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class BackendLinearAlgebraTest(test.TestCase):
+class BackendLinearAlgebraTest(test.TestCase, parameterized.TestCase):
 
   def test_dot(self):
     x = keras.backend.ones(shape=(2, 3))
@@ -351,13 +358,47 @@ class BackendLinearAlgebraTest(test.TestCase):
     xy = keras.backend.dot(x, y)
     self.assertEqual(xy.shape.as_list(), [32, 28, 4])
 
-  def test_batch_dot(self):
-    x = keras.backend.ones(shape=(32, 20, 1))
-    y = keras.backend.ones(shape=(32, 30, 20))
-    xy = keras.backend.batch_dot(x, y, axes=[1, 2])
-    self.assertEqual(xy.shape.as_list(), [32, 1, 30])
+  @parameterized.parameters(
+      [(2, 3, 4, 5), (2, 5, 6, 7), (2, 3, 4, 6, 7), (3, 1)],
+      [(2, 20, 1), (2, 30, 20), (2, 1, 30), (1, 2)],
+      [(4, 2, 3), (4, 5, 3), (4, 2, 5), (2, 2)],
+      [(4, 2), (4, 2, 3), (4, 3), (1, 1)],
+      [(4, 2), (4, 2, 3), (4, 3), 1],
+      [(4, 2, 3), (4, 3), (4, 2), (2, 1)],
+  )
+  def test_batch_dot(self, x_shape, y_shape, output_shape, axes):
+    x_val = np.random.random(x_shape)
+    y_val = np.random.random(y_shape)
+    x = keras.backend.variable(x_val)
+    y = keras.backend.variable(y_val)
+    xy = keras.backend.batch_dot(x, y, axes=axes)
+    self.assertEqual(tuple(xy.shape.as_list()), output_shape)
+    xy_val = keras.backend.eval(xy)
+    ref_val = self._reference_batch_dot(x_val, y_val, axes)
+    self.assertAllClose(xy_val, ref_val, atol=1e-5)
 
-    # TODO(fchollet): insufficiently tested.
+  def _reference_batch_dot(self, x, y, axes):
+    if isinstance(axes, int):
+      axes = [axes, axes]
+    elif isinstance(axes, tuple):
+      axes = list(axes)
+    if axes is None:
+      if y.ndim == 2:
+        axes = [x.ndim - 1, y.ndim - 1]
+      else:
+        axes = [x.ndim - 1, y.ndim - 2]
+    if axes[0] < 0:
+      axes[0] += x.ndim
+    if axes[1] < 0:
+      axes[1] += y.ndim
+    result = []
+    axes = [axes[0] - 1, axes[1] - 1]
+    for xi, yi in zip(x, y):
+      result.append(np.tensordot(xi, yi, axes))
+    result = np.array(result)
+    if result.ndim == 1:
+      result = np.expand_dims(result, -1)
+    return result
 
   def test_reduction_ops(self):
     ops_to_test = [

@@ -72,7 +72,6 @@ using reference_ops::SpaceToBatchND;
 using reference_ops::Split;
 using reference_ops::StridedSlice;
 using reference_ops::TensorFlowSplit;
-using reference_ops::Transpose;
 
 static constexpr int kDepthwiseReverseShift = -1;
 
@@ -4232,7 +4231,8 @@ inline void LogSoftmax(const uint8* input_data, const RuntimeShape& input_shape,
   params.reverse_scaling_divisor = reverse_scaling_divisor;
   params.reverse_scaling_right_shift = reverse_scaling_right_shift;
   params.diff_min = diff_min;
-  LogSoftmax(params, input_shape, input_data, output_shape, output_data);
+  reference_ops::LogSoftmax(params, input_shape, input_data, output_shape,
+                            output_data);
 }
 
 inline void LogSoftmax(const uint8* input_data, const Dims<4>& input_dims,
@@ -4240,10 +4240,10 @@ inline void LogSoftmax(const uint8* input_data, const Dims<4>& input_dims,
                        int32 reverse_scaling_divisor,
                        int32 reverse_scaling_right_shift, int diff_min,
                        uint8* output_data, const Dims<4>& output_dims) {
-  LogSoftmax(input_data, DimsToShape(input_dims), input_multiplier,
-             input_left_shift, reverse_scaling_divisor,
-             reverse_scaling_right_shift, diff_min, output_data,
-             DimsToShape(output_dims));
+  reference_ops::LogSoftmax(
+      input_data, DimsToShape(input_dims), input_multiplier, input_left_shift,
+      reverse_scaling_divisor, reverse_scaling_right_shift, diff_min,
+      output_data, DimsToShape(output_dims));
 }
 
 inline void Logistic(const LogisticParams& params,
@@ -4916,6 +4916,18 @@ inline void Dequantize(const uint8* input_data, const Dims<4>& input_dims,
 
   Dequantize(op_params, DimsToShape(input_dims), input_data,
              DimsToShape(output_dims), output_data);
+}
+
+template <typename T>
+void Transpose(const T* input, const Dims<4>& input_dims, T* output,
+               const Dims<4>& output_dims, const int* permuted_axes) {
+  TransposeParams params;
+  params.perm_count = 4;
+  for (int i = 0; i < 4; ++i) {
+    params.perm[i] = 3 - permuted_axes[3 - i];
+  }
+  Transpose(params, DimsToShape(input_dims), input, DimsToShape(output_dims),
+            output);
 }
 
 }  // namespace optimized_ops

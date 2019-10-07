@@ -151,9 +151,6 @@ Status HeapSimulator::RunComputation(
 
   HloDataflowAnalysis& dataflow_analysis = alias_analysis.dataflow_analysis();
 
-  algorithm_->SetSchedules(&hlo_live_range->flattened_instruction_sequence(),
-                           &hlo_live_range->instruction_schedule());
-
   // Record the buffer define/free event for each time step. We free all
   // remaining buffers (entry parameter, etc) after the program has finished
   // running, so we set the size of to program_end_time + 1.
@@ -262,6 +259,13 @@ Status HeapSimulator::RunComputation(
             }
 
             if (IgnoreBuffer(operand_value)) {
+              continue;
+            }
+
+            if (!absl::c_linear_search(buffers_freed[i], operand_value)) {
+              // If the operand buffer is not being freed (either because it has
+              // existing users, or it has been reused by other buffers), don't
+              // consider the operand as a candidate of buffer sharing.
               continue;
             }
 

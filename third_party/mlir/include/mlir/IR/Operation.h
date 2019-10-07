@@ -52,20 +52,20 @@ class Operation final
 public:
   /// Create a new Operation with the specific fields.
   static Operation *create(Location location, OperationName name,
-                           ArrayRef<Value *> operands,
                            ArrayRef<Type> resultTypes,
+                           ArrayRef<Value *> operands,
                            ArrayRef<NamedAttribute> attributes,
                            ArrayRef<Block *> successors, unsigned numRegions,
-                           bool resizableOperandList, MLIRContext *context);
+                           bool resizableOperandList);
 
   /// Overload of create that takes an existing NamedAttributeList to avoid
   /// unnecessarily uniquing a list of attributes.
   static Operation *create(Location location, OperationName name,
-                           ArrayRef<Value *> operands,
                            ArrayRef<Type> resultTypes,
+                           ArrayRef<Value *> operands,
                            const NamedAttributeList &attributes,
                            ArrayRef<Block *> successors, unsigned numRegions,
-                           bool resizableOperandList, MLIRContext *context);
+                           bool resizableOperandList);
 
   /// Create a new Operation from the fields stored in `state`.
   static Operation *create(const OperationState &state);
@@ -94,10 +94,16 @@ public:
   Operation *clone(BlockAndValueMapping &mapper);
   Operation *clone();
 
-  /// Create a deep copy of this operation but keep the operation regions empty.
+  /// Create a partial copy of this operation without traversing into attached
+  /// regions. The new operation will have the same number of regions as the
+  /// original one, but they will be left empty.
   /// Operands are remapped using `mapper` (if present), and `mapper` is updated
   /// to contain the results.
   Operation *cloneWithoutRegions(BlockAndValueMapping &mapper);
+
+  /// Create a partial copy of this operation without traversing into attached
+  /// regions. The new operation will have the same number of regions as the
+  /// original one, but they will be left empty.
   Operation *cloneWithoutRegions();
 
   /// Returns the operation block that contains this operation.
@@ -106,7 +112,7 @@ public:
   /// Return the context this operation is associated with.
   MLIRContext *getContext();
 
-  /// Return the dialact this operation is associated with, or nullptr if the
+  /// Return the dialect this operation is associated with, or nullptr if the
   /// associated dialect is not registered.
   Dialect *getDialect();
 
@@ -131,6 +137,17 @@ public:
       if (auto parentOp = llvm::dyn_cast<OpTy>(op))
         return parentOp;
     return OpTy();
+  }
+
+  /// Return true if this operation is a proper ancestor of the `other`
+  /// operation.
+  bool isProperAncestor(Operation *other);
+
+  /// Return true if this operation is an ancestor of the `other` operation. An
+  /// operation is considered as its own ancestor, use `isProperAncestor` to
+  /// avoid this.
+  bool isAncestor(Operation *other) {
+    return this == other || isProperAncestor(other);
   }
 
   /// Replace any uses of 'from' with 'to' within this operation.
@@ -491,16 +508,24 @@ public:
   // Operation Walkers
   //===--------------------------------------------------------------------===//
 
-  /// Walk this operation in postorder, calling the callback for each operation
-  /// including this one.
-  void walk(llvm::function_ref<void(Operation *)> callback);
-
-  /// Specialization of walk to only visit operations of 'T'.
-  template <typename T> void walk(llvm::function_ref<void(T)> callback) {
-    walk([&](Operation *op) {
-      if (auto derivedOp = dyn_cast<T>(op))
-        callback(derivedOp);
-    });
+  /// Walk the operation in postorder, calling the callback for each nested
+  /// operation(including this one). The callback method can take any of the
+  /// following forms:
+  ///   void(Operation*) : Walk all operations opaquely.
+  ///     * op->walk([](Operation *nestedOp) { ...});
+  ///   void(OpT) : Walk all operations of the given derived type.
+  ///     * op->walk([](ReturnOp returnOp) { ...});
+  ///   WalkResult(Operation*|OpT) : Walk operations, but allow for
+  ///                                interruption/cancellation.
+  ///     * op->walk([](... op) {
+  ///         // Interrupt, i.e cancel, the walk based on some invariant.
+  ///         if (some_invariant)
+  ///           return WalkResult::interrupt();
+  ///         return WalkResult::advance();
+  ///       });
+  template <typename FnT, typename RetT = detail::walkResultType<FnT>>
+  RetT walk(FnT &&callback) {
+    return detail::walkOperations(this, std::forward<FnT>(callback));
   }
 
   //===--------------------------------------------------------------------===//
@@ -526,7 +551,7 @@ public:
 private:
   Operation(Location location, OperationName name, unsigned numResults,
             unsigned numSuccessors, unsigned numRegions,
-            const NamedAttributeList &attributes, MLIRContext *context);
+            const NamedAttributeList &attributes);
 
   // Operations are deleted through the destroy() member because they are
   // allocated with malloc.
@@ -544,7 +569,7 @@ private:
   /// model.
   Block *getParent() const { return block; }
 
-  /// The operation block that containts this operation.
+  /// The operation block that contains this operation.
   Block *block = nullptr;
 
   /// This holds information about the source location the operation was defined
@@ -613,6 +638,9 @@ class OperandTypeIterator final
 public:
   using reference = Type;
 
+  /// Provide a const deference method.
+  Type operator*() const { return unwrap(*I); }
+
   /// Initializes the operand type iterator to the specified operand iterator.
   OperandTypeIterator(OperandIterator it)
       : llvm::mapped_iterator<OperandIterator, Type (*)(Value *)>(it, &unwrap) {
@@ -670,6 +698,33 @@ public:
   /// Initializes the result type iterator to the specified result iterator.
   ResultTypeIterator(ResultIterator it)
       : llvm::mapped_iterator<ResultIterator, Type (*)(Value *)>(it, &unwrap) {}
+};
+
+/// This class implements use iterator for the Operation. This iterates over all
+/// uses of all results of an Operation.
+class UseIterator final
+    : public llvm::iterator_facade_base<UseIterator, std::forward_iterator_tag,
+                                        Operation *> {
+public:
+  /// Initialize UseIterator for op, specify end to return iterator to last use.
+  explicit UseIterator(Operation *op, bool end = false);
+
+  UseIterator &operator++();
+  Operation *operator->() { return use->getOwner(); }
+  Operation *operator*() { return use->getOwner(); }
+
+  bool operator==(const UseIterator &other) const;
+  bool operator!=(const UseIterator &other) const;
+
+private:
+  void skipOverResultsWithNoUsers();
+
+  /// The operation whose uses are being iterated over.
+  Operation *op;
+  /// The result of op who's uses are being iterated over.
+  Operation::result_iterator res;
+  /// The use of the result.
+  Value::use_iterator use;
 };
 
 // Implement the inline result iterator methods.

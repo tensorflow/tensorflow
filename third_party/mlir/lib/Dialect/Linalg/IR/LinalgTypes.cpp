@@ -34,7 +34,7 @@ using namespace mlir::linalg;
 
 mlir::linalg::LinalgDialect::LinalgDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context) {
-  addTypes<BufferType, RangeType, ViewType>();
+  addTypes<BufferType, RangeType>();
   addOperations<
 #define GET_OP_LIST
 #include "mlir/Dialect/Linalg/IR/LinalgOps.cpp.inc"
@@ -142,76 +142,10 @@ Type mlir::linalg::LinalgDialect::parseType(StringRef spec,
       return (bufferSize == -1 ? BufferType::get(getContext(), t)
                                : BufferType::get(getContext(), t, bufferSize));
     }
-  } else if (spec.consume_front("view")) {
-    if (spec.consume_front("<") && spec.consume_back(">")) {
-      // Just count the number of ? to get the rank.
-      unsigned rank = 0;
-      for (unsigned i = 0, e = spec.size(); i < e; ++i) {
-        if (spec.consume_front("?")) {
-          ++rank;
-          if (!spec.consume_front("x")) {
-            emitError(loc, "expected a list of '?x' dimension specifiers: ")
-                << spec;
-            return Type();
-          }
-        }
-      }
-      if (auto t = mlir::parseType(spec, context))
-        return ViewType::get(context, t, rank);
-    }
   }
   return (emitError(loc, "unknown Linalg type: " + origSpec), Type());
 }
 
-struct mlir::linalg::ViewTypeStorage : public TypeStorage {
-  /// Underlying Key type to transport the payload needed to construct a custom
-  /// type in a generic way.
-  struct Key {
-    Key(Type elementType, unsigned rank)
-        : elementType(elementType), rank(rank) {}
-    Type elementType;
-    unsigned rank;
-  };
-  /// `KeyTy` is a necessary typename hook for MLIR's custom type unique'ing.
-  using KeyTy = Key;
-
-  /// Construction in the llvm::BumpPtrAllocator given a key.
-  static ViewTypeStorage *construct(TypeStorageAllocator &allocator,
-                                    const Key &key) {
-    return new (allocator.allocate<ViewTypeStorage>()) ViewTypeStorage(key);
-  }
-
-  /// Equality operator for hashing.
-  bool operator==(const Key &key) const {
-    return elementType == key.elementType && rank == key.rank;
-  }
-
-  /// Hashing for unique'ing.
-  static unsigned hashKey(const Key &key) {
-    return llvm::hash_combine(key.elementType, key.rank);
-  }
-
-  unsigned getRank() { return rank; };
-  Type getElementType() { return elementType; };
-
-private:
-  ViewTypeStorage(const Key &key)
-      : elementType(key.elementType), rank(key.rank) {}
-
-  Type elementType;
-  unsigned rank;
-};
-
-ViewType mlir::linalg::ViewType::get(MLIRContext *context, Type elementType,
-                                     unsigned rank) {
-  return Base::get(context, LinalgTypes::View, elementType, rank);
-}
-
-Type mlir::linalg::ViewType::getElementType() {
-  return getImpl()->getElementType();
-}
-
-unsigned mlir::linalg::ViewType::getRank() { return getImpl()->getRank(); }
 
 /// BufferType prints as "buffer<element_type>".
 static void print(BufferType bt, raw_ostream &os) {
@@ -228,28 +162,6 @@ static void print(BufferType bt, raw_ostream &os) {
 /// RangeType prints as just "range".
 static void print(RangeType rt, raw_ostream &os) { os << "range"; }
 
-/// ViewType prints as:
-///
-/// ```{.mlir}
-///   view<?x?xf32>
-/// ```
-///
-/// or
-///
-/// ```{.mlir}
-///   view<?xf32>
-/// ```
-///
-/// for 0-D views (a.k.a pointer to a scalar value).
-static void print(mlir::linalg::ViewType rt, raw_ostream &os) {
-  os << "view<";
-  for (unsigned i = 0, e = rt.getRank(); i < e; ++i) {
-    os << "?x";
-  }
-  os << rt.getElementType();
-  os << ">";
-}
-
 void mlir::linalg::LinalgDialect::printType(Type type, raw_ostream &os) const {
   switch (type.getKind()) {
   default:
@@ -259,9 +171,6 @@ void mlir::linalg::LinalgDialect::printType(Type type, raw_ostream &os) const {
     break;
   case LinalgTypes::Range:
     print(type.cast<RangeType>(), os);
-    break;
-  case LinalgTypes::View:
-    print(type.cast<ViewType>(), os);
     break;
   }
 }

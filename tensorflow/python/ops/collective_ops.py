@@ -60,7 +60,7 @@ def all_reduce(t, group_size, group_key, instance_key, merge_op, final_op,
       merge_op=merge_op,
       final_op=final_op,
       subdiv_offsets=subdiv_offsets,
-      communication_hint=communication_hint)
+      communication_hint=communication_hint.lower())
 
 
 def all_gather(t, group_size, group_key, instance_key,
@@ -93,7 +93,7 @@ def all_gather(t, group_size, group_key, instance_key,
       group_size=group_size,
       group_key=group_key,
       instance_key=instance_key,
-      communication_hint=communication_hint)
+      communication_hint=communication_hint.lower())
 
 
 def broadcast_send(t, shape, dtype, group_size, group_key, instance_key,
@@ -146,7 +146,7 @@ def broadcast_send(t, shape, dtype, group_size, group_key, instance_key,
       group_size=group_size,
       group_key=group_key,
       instance_key=instance_key,
-      communication_hint=communication_hint)
+      communication_hint=communication_hint.lower())
 
 
 def broadcast_recv(shape, dtype, group_size, group_key, instance_key,
@@ -180,4 +180,4 @@ def broadcast_recv(shape, dtype, group_size, group_key, instance_key,
       group_size=group_size,
       group_key=group_key,
       instance_key=instance_key,
-      communication_hint=communication_hint)
+      communication_hint=communication_hint.lower())

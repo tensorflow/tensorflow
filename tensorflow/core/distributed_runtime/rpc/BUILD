@@ -108,6 +108,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -226,6 +227,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:master_interface",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/time",
     ],
     alwayslink = 1,
 )

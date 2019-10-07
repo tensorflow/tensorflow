@@ -1074,8 +1074,8 @@ StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
 Status MarkForCompilationPassImpl::FindCompilationCandidates() {
   OptimizerOptions opts;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
-      new ProcessFunctionLibraryRuntime(nullptr, env_, TF_GRAPH_DEF_VERSION,
-                                        flib_def_, opts));
+      new ProcessFunctionLibraryRuntime(nullptr, env_, /*config=*/nullptr,
+                                        TF_GRAPH_DEF_VERSION, flib_def_, opts));
   FunctionLibraryRuntime* lib_runtime =
       pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
   std::vector<bool> compile_time_const_nodes(graph_->num_node_ids(), false);
@@ -1639,10 +1639,9 @@ std::atomic<int64>* GetPointerToFuel(int64 initial_value) {
 }
 }  // anonymous namespace
 
-bool IsCompilable(
-    FunctionLibraryRuntime* flr, const NodeDef& ndef,
-    std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>*
-        uncompilable_node_info) {
+bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef,
+                  RecursiveCompilabilityChecker::UncompilableNodesMap*
+                      uncompilable_node_info) {
   Device* device = flr->device();
   const XlaOpRegistry::DeviceRegistration* registration;
   CHECK(XlaOpRegistry::GetCompilationDevice(device->device_type(),
@@ -1668,8 +1667,8 @@ bool IsCompilable(
     return checker.IsCompilableCall(ndef, flr);
   }
 
-  std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>
-      uncompilable_node_result = checker.FindUncompilableNodes(ndef, flr);
+  RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_node_result =
+      checker.FindUncompilableNodes(ndef, flr);
   uncompilable_node_info->swap(uncompilable_node_result);
   return uncompilable_node_info->empty();
 }

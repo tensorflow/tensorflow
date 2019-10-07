@@ -59,7 +59,7 @@ Or by setting a configuration value within the program:
 ```
 import tensorflow as tf
 
-tf.config.optimizer_set_jit(True)
+tf.config.optimizer.set_jit(True)
 
 # ... the rest of your program ...
 ```
@@ -140,9 +140,10 @@ XLA programs and the used auto-clustering embedding.
 To generate them for a TensorFlow program running with auto-clustering, launch:
 
 ```
-$ TF_DUMP_GRAPH_PREFIX=/tmp/generated TF_XLA_FLAGS="--tf_xla_clustering_debug
---tf_xla_auto_jit=2" XLA_FLAGS="--dump_hlo_as_text --xla_dump_to=/tmp/generated"
-my/tensorflow/program"
+$ TF_DUMP_GRAPH_PREFIX=/tmp/generated \
+  TF_XLA_FLAGS="--tf_xla_clustering_debug --tf_xla_auto_jit=2" \
+  XLA_FLAGS="--xla_dump_hlo_as_text --xla_dump_to=/tmp/generated" \
+    my/tensorflow/program"
 ```
 
 When filing bugs, attach the contents of the `/tmp/generated` directory

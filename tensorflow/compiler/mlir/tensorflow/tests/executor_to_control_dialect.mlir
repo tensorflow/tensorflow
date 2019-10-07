@@ -97,3 +97,24 @@ func @switchN(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   }
   return %fetches : tensor<*xf32>
 }
+
+// Test if tf_executor dialect ops with Ref types are mapped correctly to the ops in control dialect.
+// CHECK-LABEL: func @ref_tf_executor_ops
+func @ref_tf_executor_ops(%arg0: tensor<4x!tf.f32ref>, %arg1: tensor<4x!tf.f32ref>, %arg3: tensor<i32>, %arg4: tensor<i1> ) -> tensor<4x!tf.f32ref> {
+  %result = tf_executor.graph {
+          // CHECK: _tf.Enter
+          %0:2 = tf_executor.Enter %arg0 frame "while/while_context" : (tensor<4x!tf.f32ref>) -> (tensor<4x!tf.f32ref>, !tf_executor.control)
+          // CHECK: _tf.Exit
+          %1:2 = tf_executor.Exit %arg0 : tensor<4x!tf.f32ref>
+          // CHECK: _tf.Switch
+          %2:3 = tf_executor.Switch %arg0, %arg4 : (tensor<4x!tf.f32ref>, tensor<i1>) -> (tensor<4x!tf.f32ref>, tensor<4x!tf.f32ref>, !tf_executor.control)
+          // CHECK: _tf.Merge
+          %3:3 = tf_executor.Merge %arg0, %arg1 : (tensor<4x!tf.f32ref>, tensor<4x!tf.f32ref>) -> (tensor<4x!tf.f32ref>, tensor<i32>, !tf_executor.control)
+          // CHECK: _tf.NextIteration.source
+          %4:3 = tf_executor.NextIteration.Source : tensor<4x!tf.f32ref>
+          // CHECK: _tf.NextIteration.sink
+          tf_executor.NextIteration.Sink [%4#1] %4#0 : tensor<4x!tf.f32ref>
+          tf_executor.fetch %0#0 : tensor<4x!tf.f32ref>
+  }
+  return %result : tensor<4x!tf.f32ref>
+}

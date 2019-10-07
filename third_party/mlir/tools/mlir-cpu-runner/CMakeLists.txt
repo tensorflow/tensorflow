@@ -3,16 +3,13 @@ add_llvm_executable(mlir-cpu-runner
 )
 llvm_update_compile_flags(mlir-cpu-runner)
 whole_archive_link(mlir-cpu-runner
+  MLIRAffineOps
   MLIRLLVMIR
-  MLIRStandardOps
   MLIRTargetLLVMIR
-  MLIRTransforms
   MLIRTranslation
 )
 target_link_libraries(mlir-cpu-runner PRIVATE
-  MLIRAffineOps
   MLIRAnalysis
-  MLIRControlFlowToCFG
   MLIREDSC
   MLIRExecutionEngine
   MLIRIR
@@ -20,8 +17,6 @@ target_link_libraries(mlir-cpu-runner PRIVATE
   MLIRLLVMIR
   MLIRParser
   MLIRTargetLLVMIR
-  MLIRTransforms
-  MLIRStandardToLLVM
   MLIRSupport
   LLVMCore
   LLVMSupport

@@ -55,6 +55,10 @@ void SwitchNOp::Compute(OpKernelContext* context) {
 REGISTER_KERNEL_BUILDER(
     Name("Switch").Device(DEVICE_DEFAULT).HostMemory("pred"), SwitchOp);
 
+REGISTER_KERNEL_BUILDER(
+    Name("_SwitchN").Device(DEVICE_DEFAULT).HostMemory("output_index"),
+    SwitchNOp);
+
 #define REGISTER_CPU_SWITCH(type)                         \
   REGISTER_KERNEL_BUILDER(Name("Switch")                  \
                               .Device(DEVICE_CPU)         \

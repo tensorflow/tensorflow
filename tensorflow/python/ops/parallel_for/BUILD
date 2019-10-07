@@ -21,6 +21,7 @@ py_library(
         ":control_flow_ops",
         ":gradients",
         ":test_util",
+        "//tensorflow/compiler/tf2xla/python:xla",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:constant_op",
@@ -49,6 +50,7 @@ py_library(
     srcs = ["pfor.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/compiler/tf2xla/python:xla",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:constant_op",
@@ -119,7 +121,6 @@ cuda_py_test(
         "//tensorflow/python:util",
     ],
     tags = ["no_rocm"],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -128,6 +129,8 @@ cuda_py_test(
     additional_deps = [
         ":control_flow_ops",
         ":test_util",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/compiler/tf2xla/python:xla",
         "//tensorflow/python/compiler/xla:xla",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
@@ -138,7 +141,6 @@ cuda_py_test(
         "no_mac",
         "no_windows",
     ],
-    xla_enable_strict_auto_jit = True,
     xla_enabled = True,
 )
 
@@ -154,7 +156,6 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python/eager:backprop",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -170,7 +171,6 @@ cuda_py_test(
     ],
     shard_count = 5,
     tags = ["optonly"],  # Too slow in non-opt mode
-    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -200,5 +200,4 @@ cuda_py_test(
         "//tensorflow/python/ops/losses",
     ],
     tags = ["optonly"],  # Too slow in non-opt mode
-    xla_enable_strict_auto_jit = True,
 )

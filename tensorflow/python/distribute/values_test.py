@@ -687,6 +687,20 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
     vals = self.evaluate(v[0].values)
     self.assertAllEqual(vals[0], vals[1])
 
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+          mode=["graph", "eager"]))
+  def testSelectReplica(self, distribution):
+    with distribution.scope():
+      v = variables_lib.Variable(1.)
+    self.assertIs(v, values.select_replica(0, v))
+
 
 _TPU_STRATEGIES = (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)
 
@@ -1171,8 +1185,8 @@ class PerReplicaTest(test.TestCase, parameterized.TestCase):
   def testIsGraphTensor(self):
     per_replica = values.PerReplica(values.SingleDeviceMap("CPU"),
                                     (constant_op.constant(1.),))
-    self.assertEqual(per_replica._is_graph_tensor,
-                     not context.executing_eagerly())
+    for t in nest.flatten(per_replica, expand_composites=True):
+      self.assertEqual(hasattr(t, "graph"), not context.executing_eagerly())
 
   def testDoesNotTriggerFunctionTracing(self):
     traces = []
@@ -1209,9 +1223,8 @@ class PerReplicaTest(test.TestCase, parameterized.TestCase):
         values.SingleDeviceMap("CPU"), (constant_op.constant(1.),))
     y = f(x)
     self.assertIsNot(x, y)
-    for a, b in zip(x._to_components(), y._to_components()):
-      self.assertAllEqual(a, b)
-    self.assertEqual(x._component_metadata(), y._component_metadata())
+    nest.map_structure(self.assertAllEqual, x, y, expand_composites=True)
+    self.assertEqual(x._type_spec, y._type_spec)
 
   @test_util.run_in_graph_and_eager_modes
   def testCondWithTensorValues(self):

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/jit/test_util.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -33,17 +34,12 @@ namespace {
 Status ClusterScoping(std::unique_ptr<Graph>* graph) {
   FixupSourceAndSinkEdges(graph->get());
 
-  GraphOptimizationPassOptions opt_options;
-  opt_options.graph = graph;
-  FunctionDefLibrary fdef_lib;
-  FunctionLibraryDefinition flib_def(OpRegistry::Global(), fdef_lib);
-  opt_options.flib_def = &flib_def;
-  SessionOptions session_options;
-  session_options.env = Env::Default();
-  session_options.config.mutable_graph_options()
+  GraphOptimizationPassWrapper wrapper;
+  wrapper.session_options.config.mutable_graph_options()
       ->mutable_optimizer_options()
       ->set_global_jit_level(OptimizerOptions::ON_2);
-  opt_options.session_options = &session_options;
+  GraphOptimizationPassOptions opt_options =
+      wrapper.CreateGraphOptimizationPassOptions(graph);
 
   ClusterScopingPass pass;
   return pass.Run(opt_options);

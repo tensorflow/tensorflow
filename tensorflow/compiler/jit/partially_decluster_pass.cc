@@ -295,7 +295,7 @@ Status PartiallyDeclusterGraph(Graph* graph,
   std::vector<bool> compile_time_const_nodes(graph->num_node_ids());
   OptimizerOptions opts;
   auto pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
-      nullptr, env, TF_GRAPH_DEF_VERSION, flib_def, opts);
+      nullptr, env, /*config=*/nullptr, TF_GRAPH_DEF_VERSION, flib_def, opts);
   FunctionLibraryRuntime* lib_runtime =
       pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
   TF_RETURN_IF_ERROR(BackwardsConstAnalysis(*graph, nullptr,

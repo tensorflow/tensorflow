@@ -94,7 +94,7 @@ class DynamicDimensionInferenceTest : public HloTestBase {
 
   std::unique_ptr<HloModule> module_;
   std::unique_ptr<DynamicDimensionInference> inference_;
-  const Shape scalar_shape_ = ShapeUtil::MakeShape(U32, {});
+  const Shape scalar_shape_ = ShapeUtil::MakeShape(S32, {});
 };
 
 TEST_F(DynamicDimensionInferenceTest, ParamTest) {
@@ -555,9 +555,6 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeTestMajorDimension) {
   SCOPED_TRACE(module_->ToString());
   Status status = RunInference();
   EXPECT_NE(inference_->GetDynamicSize(reshape, {}, 0), nullptr);
-  const Literal& multiplier =
-      inference_->GetDynamicSize(reshape, {}, 0)->operand(1)->literal();
-  LiteralTestUtil::ExpectR0Equal<uint32>(10, multiplier);
 }
 
 TEST_F(DynamicDimensionInferenceTest, GatherTest) {
@@ -586,31 +583,6 @@ ENTRY main {
   EXPECT_EQ(inference_->GetDynamicSize(
                 module_->entry_computation()->root_instruction(), {}, 0),
             module_->entry_computation()->parameter_instruction(2));
-}
-
-TEST_F(DynamicDimensionInferenceTest, ReshapeTestUnimplemented) {
-  // Test the ability to trace unmodified reshape dimensions.
-  auto builder = HloComputation::Builder(TestName());
-  auto input_shape = ShapeUtil::MakeShape(F32, {2, 3, 4, 5, 6});
-  auto output_shape = ShapeUtil::MakeShape(F32, {6, 4, 1, 5, 2, 3});
-
-  auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/0, input_shape, "A"));
-
-  builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/1, scalar_shape_, "size_param"));
-
-  builder.AddInstruction(HloInstruction::CreateReshape(output_shape, a_param));
-
-  module_->AddEntryComputation(builder.Build());
-
-  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
-      DynamicParameterBinding::DynamicParameter{1, {}},
-      DynamicParameterBinding::DynamicDimension{0, {}, 1}));
-
-  SCOPED_TRACE(module_->ToString());
-  Status status = RunInference();
-  EXPECT_EQ(status.code(), tensorflow::error::UNIMPLEMENTED);
 }
 
 TEST_F(DynamicDimensionInferenceTest, BroadcastTest) {
@@ -895,7 +867,7 @@ TEST_F(DynamicDimensionInferenceTest, DynamicSliceTest) {
   std::vector<HloInstruction*> params;
   for (int i = 0; i < 2; ++i) {
     params.push_back(builder.AddInstruction(HloInstruction::CreateParameter(
-        i + 2, ShapeUtil::MakeShape(U32, {}), "slice_indices")));
+        i + 2, ShapeUtil::MakeShape(S32, {}), "slice_indices")));
   }
 
   auto* slice = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
@@ -997,7 +969,7 @@ TEST_F(DynamicDimensionInferenceTest, DynamicSliceSingleElementTest) {
   std::vector<HloInstruction*> params;
   for (int i = 0; i < 2; ++i) {
     params.push_back(builder.AddInstruction(HloInstruction::CreateParameter(
-        i + 2, ShapeUtil::MakeShape(U32, {}), "slice_indices")));
+        i + 2, ShapeUtil::MakeShape(S32, {}), "slice_indices")));
   }
 
   auto* slice = builder.AddInstruction(HloInstruction::CreateDynamicSlice(

@@ -492,7 +492,7 @@ struct TestSet final {
   };
 
   ~TestSet() {
-    RUY_CHECK(life_stage == LifeStage::kFinal);
+    RUY_CHECK_EQ(life_stage, LifeStage::kFinal);
     LogCoveredPathsOnDestruction::Singleton();
   }
 
@@ -576,6 +576,13 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::DoMul(TestResultType* result) {
                               prepacked_rhs_ptr);
 }
 
+// When building for WAsm, ASSERT_DEATH is not defined.
+#ifdef ASSERT_DEATH
+#define RUY_ASSERT_DEATH(CONDITION, MESSAGE) ASSERT_DEATH(CONDITION, MESSAGE)
+#else
+#define RUY_ASSERT_DEATH(CONDITION, MESSAGE)
+#endif
+
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::EvalRuy(TestResultType* result) {
   GlobalContext().explicit_tuning = result->tuning;
@@ -589,12 +596,12 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::EvalRuy(TestResultType* result) {
   GlobalContext().SetRuntimeEnabledPaths(result->path);
   if (expected_outcome == ExpectedOutcome::kSuccess) {
     DoMul(result);
-    RUY_CHECK(GlobalContext().last_taken_path == result->path);
+    RUY_CHECK_EQ(GlobalContext().last_taken_path, result->path);
   } else if (expected_outcome == ExpectedOutcome::kDeath) {
     // TODO(benoitjacob) TSan and ASan seem to be breaking ASSERT_DEATH.
     // Report a bug?
 #if (!defined NDEBUG) && (!defined RUY_ASAN) && (!defined RUY_TSAN)
-    ASSERT_DEATH(DoMul(result), "");
+    RUY_ASSERT_DEATH(DoMul(result), "");
 #endif
   } else {
     RUY_CHECK(false);
@@ -1044,9 +1051,9 @@ void EvalOpenBlas(const Matrix<Scalar>& lhs, const Matrix<Scalar>& rhs,
     transposed_rhs = true;
   }
 
-  RUY_CHECK(gemm_lhs.layout.order == Order::kColMajor);
-  RUY_CHECK(gemm_rhs.layout.order == Order::kColMajor);
-  RUY_CHECK(gemm_dst.layout.order == Order::kColMajor);
+  RUY_CHECK_EQ(gemm_lhs.layout.order, Order::kColMajor);
+  RUY_CHECK_EQ(gemm_rhs.layout.order, Order::kColMajor);
+  RUY_CHECK_EQ(gemm_dst.layout.order, Order::kColMajor);
 
   char transa = transposed_lhs ? 'T' : 'N';
   char transb = transposed_rhs ? 'T' : 'N';
@@ -1503,7 +1510,7 @@ void MakeSpecClampFields(const Matrix<LhsScalar>& lhs,
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakeZeroPoints() {
-  RUY_CHECK(life_stage == LifeStage::kInitial);
+  RUY_CHECK_EQ(life_stage, LifeStage::kInitial);
   if (!use_specified_zero_points) {
     MakeRandomScalar(RandomRange::kReasonableSrcZeroPoint, &lhs_zero_point);
     MakeRandomScalar(RandomRange::kReasonableSrcZeroPoint, &rhs_zero_point);
@@ -1519,7 +1526,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeZeroPoints() {
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakeLhsRhs() {
-  RUY_CHECK(life_stage == LifeStage::kHasZeroPoints);
+  RUY_CHECK_EQ(life_stage, LifeStage::kHasZeroPoints);
   MakeRandom(rows, depth, lhs_order, lhs_zero_point, layout_style,
              RandomRange::kAvoidMinValue, &lhs);
   MakeRandom(depth, cols, rhs_order, rhs_zero_point, layout_style,
@@ -1529,7 +1536,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeLhsRhs() {
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakeSpec() {
-  RUY_CHECK(life_stage == LifeStage::kHasLhsRhs);
+  RUY_CHECK_EQ(life_stage, LifeStage::kHasLhsRhs);
 
   if (!getenv("BENCHMARK_ONLY_MATMUL") && (global_random_engine()() & 1)) {
     MakeRandomVector(RandomRange::kBias, rows, &bias_data);
@@ -1570,7 +1577,7 @@ inline bool GetBoolEnvVarOrFalse(const char* name) {
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakeOtherParams() {
-  RUY_CHECK(life_stage == LifeStage::kHasSpec);
+  RUY_CHECK_EQ(life_stage, LifeStage::kHasSpec);
   if (max_num_threads == 0) {
     max_num_threads = GetIntEnvVarOrZero("THREADS");
   }
@@ -1605,7 +1612,7 @@ std::vector<Tuning> EnumerateTuningsForPath(Path path, bool benchmark) {
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakePrepackedMatrices() {
-  RUY_CHECK(life_stage == LifeStage::kHasResultPaths);
+  RUY_CHECK_EQ(life_stage, LifeStage::kHasResultPaths);
 
   // Prepacked matrices are Path-dependent, so create them for each test result.
   for (auto& result : results) {
@@ -1646,7 +1653,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakePrepackedMatrices() {
     PrePackForMul<kAllPaths>(lhs.matrix, rhs.matrix, spec, &GlobalContext(),
                              &null_data_dst, prepacked_lhs_ptr,
                              prepacked_rhs_ptr, alloc_fn);
-    RUY_CHECK(GlobalContext().last_taken_path == result->path);
+    RUY_CHECK_EQ(GlobalContext().last_taken_path, result->path);
   }
 
   life_stage = LifeStage::kHasPrepackedMatrices;
@@ -1654,7 +1661,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakePrepackedMatrices() {
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakeResultPaths() {
-  RUY_CHECK(life_stage == LifeStage::kHasOtherParams);
+  RUY_CHECK_EQ(life_stage, LifeStage::kHasOtherParams);
 
   Path paths_bitfield = static_cast<Path>(GetHexIntEnvVarOrZero("PATHS"));
 
@@ -1669,7 +1676,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeResultPaths() {
   // to allow specifying e.g. ffff to mean 'all paths' regardless of whether all
   // those bits exist as actual paths.
   paths_bitfield = paths_bitfield & kAllPaths;
-  RUY_CHECK(paths_bitfield != Path::kNone);
+  RUY_CHECK_NE(paths_bitfield, Path::kNone);
   paths = PathsBitfieldAsVector(paths_bitfield);
 
 #ifdef RUY_TEST_EXTERNAL_PATHS
@@ -1991,7 +1998,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::Benchmark(
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::Eval() {
-  RUY_CHECK(life_stage == LifeStage::kHasPrepackedMatrices);
+  RUY_CHECK_EQ(life_stage, LifeStage::kHasPrepackedMatrices);
   for (auto& result : results) {
     if (benchmark) {
       Benchmark(result.get());
@@ -2111,7 +2118,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::VerifyNonTrivial() const {
   }
   if (!spec.multiplier_exponent_perchannel) {
     RUY_CHECK_LE(count_clamped, std::floor(2 * kClampRatio * size));
-    if (size > 10) {
+    if (size > 1000) {
       RUY_CHECK(found_distinct_values);
     }
   }
@@ -2119,7 +2126,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::VerifyNonTrivial() const {
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::Verify() {
-  RUY_CHECK(life_stage == LifeStage::kEvaluated);
+  RUY_CHECK_EQ(life_stage, LifeStage::kEvaluated);
   if (expected_outcome == ExpectedOutcome::kSuccess) {
     VerifyTestResults();
     VerifyNonTrivial();

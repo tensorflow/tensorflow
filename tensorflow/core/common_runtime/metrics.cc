@@ -61,6 +61,18 @@ auto* tf_data_elements_counter = monitoring::Counter<1>::New(
 auto* tf_data_optimization_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/optimization", "tf.data optimization", "name");
 
+auto* parse_dense_feature_counter = monitoring::Counter<0>::New(
+    "/tensorflow/data/dense_feature",
+    "The number of dense features parsed by ops for parsing tf.Example.");
+
+auto* parse_sparse_feature_counter = monitoring::Counter<0>::New(
+    "/tensorflow/data/sparse_feature",
+    "The number of sparse features parsed by ops for parsing tf.Example.");
+
+auto* parse_ragged_feature_counter = monitoring::Counter<0>::New(
+    "/tensorflow/data/ragged_feature",
+    "The number of ragged features parsed by ops for parsing tf.Example.");
+
 auto* build_graph_calls = monitoring::Counter<0>::New(
     "/tensorflow/core/graph_build_calls",
     "The number of times TensorFlow has created a new client graph. "
@@ -87,6 +99,10 @@ auto* xla_compilation_time_usecs = monitoring::Counter<0>::New(
     "/tensorflow/core/xla_compilation_time_usecs",
     "The total time spent on compiling XLA graphs in microseconds.");
 
+auto* mlir_import_failure_count = monitoring::Counter<0>::New(
+    "/tensorflow/mlir/import_failure_count",
+    "The number of jobs that failed during mlir import or verification.");
+
 }  // namespace
 
 void RecordTFDataAutotune(const string& name) {
@@ -103,6 +119,18 @@ void RecordTFDataElements(const string& name, int64 num_elements) {
 
 void RecordTFDataOptimization(const string& name, int64 num_changes) {
   tf_data_optimization_counter->GetCell(name)->IncrementBy(num_changes);
+}
+
+void RecordParseDenseFeature(int64 num_features) {
+  parse_dense_feature_counter->GetCell()->IncrementBy(num_features);
+}
+
+void RecordParseSparseFeature(int64 num_features) {
+  parse_sparse_feature_counter->GetCell()->IncrementBy(num_features);
+}
+
+void RecordParseRaggedFeature(int64 num_features) {
+  parse_ragged_feature_counter->GetCell()->IncrementBy(num_features);
 }
 
 void RecordGraphInputTensors(const size_t size) {
@@ -133,6 +161,10 @@ void UpdateXlaCompilationTime(const uint64 compilation_time_usecs) {
     xla_compilations->GetCell()->IncrementBy(1);
     xla_compilation_time_usecs->GetCell()->IncrementBy(compilation_time_usecs);
   }
+}
+
+void IncrementMLIRImportFailureCount() {
+  mlir_import_failure_count->GetCell()->IncrementBy(1);
 }
 
 }  // namespace metrics

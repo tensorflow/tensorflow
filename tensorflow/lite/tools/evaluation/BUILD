@@ -45,7 +45,7 @@ cc_library(
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/lite/delegates/gpu:gl_delegate",
+            "//tensorflow/lite/delegates/gpu:delegate",
         ],
         "//conditions:default": [],
     }),

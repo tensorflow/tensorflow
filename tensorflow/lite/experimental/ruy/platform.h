@@ -87,9 +87,10 @@ limitations under the License.
 //
 // The Android NDK logic excludes earlier and very broken versions of intrinsics
 // headers.
-#if defined(RUY_FORCE_ENABLE_X86_ENHANCEMENTS) ||                            \
-    (defined(__clang__) && defined(__linux__) && !defined(__EMSCRIPTEN__) && \
-     (!defined(__ANDROID_NDK__) ||                                           \
+#if defined(RUY_FORCE_ENABLE_X86_ENHANCEMENTS) ||                          \
+    (defined(__clang__) && (__clang_major__ >= 8) && defined(__linux__) && \
+     !defined(__EMSCRIPTEN__) &&                                           \
+     (!defined(__ANDROID_NDK__) ||                                         \
       (defined(__NDK_MAJOR__) && (__NDK_MAJOR__ >= 20))))
 #define RUY_DONOTUSEDIRECTLY_X86_ENHANCEMENTS 1
 #else
@@ -118,7 +119,8 @@ limitations under the License.
 #endif
 
 // Note does not check for LZCNT or POPCNT.
-#if RUY_PLATFORM(X86_ENHANCEMENTS) && RUY_PLATFORM(X86) && defined(__SSE4_2__)
+#if RUY_PLATFORM(X86_ENHANCEMENTS) && RUY_PLATFORM(X86) && \
+    defined(__SSE4_2__) && defined(__FMA__)
 #define RUY_DONOTUSEDIRECTLY_SSE4_2 1
 #else
 #define RUY_DONOTUSEDIRECTLY_SSE4_2 0
@@ -129,6 +131,13 @@ limitations under the License.
 #define RUY_DONOTUSEDIRECTLY_APPLE 1
 #else
 #define RUY_DONOTUSEDIRECTLY_APPLE 0
+#endif
+
+// Detect Emscripten, typically Wasm.
+#ifdef __EMSCRIPTEN__
+#define RUY_DONOTUSEDIRECTLY_EMSCRIPTEN 1
+#else
+#define RUY_DONOTUSEDIRECTLY_EMSCRIPTEN 0
 #endif
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_RUY_PLATFORM_H_

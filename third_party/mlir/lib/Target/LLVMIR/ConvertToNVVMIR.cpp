@@ -26,7 +26,6 @@
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
-#include "mlir/Support/FileUtilities.h"
 #include "mlir/Target/LLVMIR/ModuleTranslation.h"
 #include "mlir/Translation.h"
 
@@ -38,10 +37,11 @@ using namespace mlir;
 
 namespace {
 static llvm::Value *createIntrinsicCall(llvm::IRBuilder<> &builder,
-                                        llvm::Intrinsic::ID intrinsic) {
+                                        llvm::Intrinsic::ID intrinsic,
+                                        ArrayRef<llvm::Value *> args = {}) {
   llvm::Module *module = builder.GetInsertBlock()->getModule();
-  llvm::Function *fn = llvm::Intrinsic::getDeclaration(module, intrinsic, {});
-  return builder.CreateCall(fn);
+  llvm::Function *fn = llvm::Intrinsic::getDeclaration(module, intrinsic);
+  return builder.CreateCall(fn, args);
 }
 
 class ModuleTranslation : public LLVM::ModuleTranslation {
@@ -91,19 +91,11 @@ std::unique_ptr<llvm::Module> mlir::translateModuleToNVVMIR(ModuleOp m) {
 
 static TranslateFromMLIRRegistration
     registration("mlir-to-nvvmir",
-                 [](ModuleOp module, llvm::StringRef outputFilename) {
-                   if (!module)
-                     return failure();
-
+                 [](ModuleOp module, llvm::raw_ostream &output) {
                    auto llvmModule = mlir::translateModuleToNVVMIR(module);
                    if (!llvmModule)
                      return failure();
 
-                   auto file = openOutputFile(outputFilename);
-                   if (!file)
-                     return failure();
-
-                   llvmModule->print(file->os(), nullptr);
-                   file->keep();
+                   llvmModule->print(output, nullptr);
                    return success();
                  });

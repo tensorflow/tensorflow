@@ -49,11 +49,11 @@ LoopOpsDialect::LoopOpsDialect(MLIRContext *context)
 // ForOp
 //===----------------------------------------------------------------------===//
 
-void ForOp::build(Builder *builder, OperationState *result, Value *lb,
+void ForOp::build(Builder *builder, OperationState &result, Value *lb,
                   Value *ub, Value *step) {
-  result->addOperands({lb, ub, step});
-  Region *bodyRegion = result->addRegion();
-  ForOp::ensureTerminator(*bodyRegion, *builder, result->location);
+  result.addOperands({lb, ub, step});
+  Region *bodyRegion = result.addRegion();
+  ForOp::ensureTerminator(*bodyRegion, *builder, result.location);
   bodyRegion->front().addArgument(builder->getIndexType());
 }
 
@@ -72,42 +72,41 @@ LogicalResult verify(ForOp op) {
   return success();
 }
 
-static void print(OpAsmPrinter *p, ForOp op) {
-  *p << op.getOperationName() << " " << *op.getInductionVar() << " = "
-     << *op.lowerBound() << " to " << *op.upperBound() << " step "
-     << *op.step();
-  p->printRegion(op.region(),
-                 /*printEntryBlockArgs=*/false,
-                 /*printBlockTerminators=*/false);
-  p->printOptionalAttrDict(op.getAttrs());
+static void print(OpAsmPrinter &p, ForOp op) {
+  p << op.getOperationName() << " " << *op.getInductionVar() << " = "
+    << *op.lowerBound() << " to " << *op.upperBound() << " step " << *op.step();
+  p.printRegion(op.region(),
+                /*printEntryBlockArgs=*/false,
+                /*printBlockTerminators=*/false);
+  p.printOptionalAttrDict(op.getAttrs());
 }
 
-static ParseResult parseForOp(OpAsmParser *parser, OperationState *result) {
-  auto &builder = parser->getBuilder();
+static ParseResult parseForOp(OpAsmParser &parser, OperationState &result) {
+  auto &builder = parser.getBuilder();
   OpAsmParser::OperandType inductionVariable, lb, ub, step;
   // Parse the induction variable followed by '='.
-  if (parser->parseRegionArgument(inductionVariable) || parser->parseEqual())
+  if (parser.parseRegionArgument(inductionVariable) || parser.parseEqual())
     return failure();
 
   // Parse loop bounds.
   Type indexType = builder.getIndexType();
-  if (parser->parseOperand(lb) ||
-      parser->resolveOperand(lb, indexType, result->operands) ||
-      parser->parseKeyword("to") || parser->parseOperand(ub) ||
-      parser->resolveOperand(ub, indexType, result->operands) ||
-      parser->parseKeyword("step") || parser->parseOperand(step) ||
-      parser->resolveOperand(step, indexType, result->operands))
+  if (parser.parseOperand(lb) ||
+      parser.resolveOperand(lb, indexType, result.operands) ||
+      parser.parseKeyword("to") || parser.parseOperand(ub) ||
+      parser.resolveOperand(ub, indexType, result.operands) ||
+      parser.parseKeyword("step") || parser.parseOperand(step) ||
+      parser.resolveOperand(step, indexType, result.operands))
     return failure();
 
   // Parse the body region.
-  Region *body = result->addRegion();
-  if (parser->parseRegion(*body, inductionVariable, indexType))
+  Region *body = result.addRegion();
+  if (parser.parseRegion(*body, inductionVariable, indexType))
     return failure();
 
-  ForOp::ensureTerminator(*body, builder, result->location);
+  ForOp::ensureTerminator(*body, builder, result.location);
 
   // Parse the optional attribute list.
-  if (parser->parseOptionalAttributeDict(result->attributes))
+  if (parser.parseOptionalAttributeDict(result.attributes))
     return failure();
 
   return success();
@@ -126,14 +125,14 @@ ForOp mlir::loop::getForInductionVarOwner(Value *val) {
 // IfOp
 //===----------------------------------------------------------------------===//
 
-void IfOp::build(Builder *builder, OperationState *result, Value *cond,
+void IfOp::build(Builder *builder, OperationState &result, Value *cond,
                  bool withElseRegion) {
-  result->addOperands(cond);
-  Region *thenRegion = result->addRegion();
-  Region *elseRegion = result->addRegion();
-  IfOp::ensureTerminator(*thenRegion, *builder, result->location);
+  result.addOperands(cond);
+  Region *thenRegion = result.addRegion();
+  Region *elseRegion = result.addRegion();
+  IfOp::ensureTerminator(*thenRegion, *builder, result.location);
   if (withElseRegion)
-    IfOp::ensureTerminator(*elseRegion, *builder, result->location);
+    IfOp::ensureTerminator(*elseRegion, *builder, result.location);
 }
 
 static LogicalResult verify(IfOp op) {
@@ -150,54 +149,54 @@ static LogicalResult verify(IfOp op) {
   return success();
 }
 
-static ParseResult parseIfOp(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseIfOp(OpAsmParser &parser, OperationState &result) {
   // Create the regions for 'then'.
-  result->regions.reserve(2);
-  Region *thenRegion = result->addRegion();
-  Region *elseRegion = result->addRegion();
+  result.regions.reserve(2);
+  Region *thenRegion = result.addRegion();
+  Region *elseRegion = result.addRegion();
 
-  auto &builder = parser->getBuilder();
+  auto &builder = parser.getBuilder();
   OpAsmParser::OperandType cond;
   Type i1Type = builder.getIntegerType(1);
-  if (parser->parseOperand(cond) ||
-      parser->resolveOperand(cond, i1Type, result->operands))
+  if (parser.parseOperand(cond) ||
+      parser.resolveOperand(cond, i1Type, result.operands))
     return failure();
 
   // Parse the 'then' region.
-  if (parser->parseRegion(*thenRegion, {}, {}))
+  if (parser.parseRegion(*thenRegion, {}, {}))
     return failure();
-  IfOp::ensureTerminator(*thenRegion, parser->getBuilder(), result->location);
+  IfOp::ensureTerminator(*thenRegion, parser.getBuilder(), result.location);
 
   // If we find an 'else' keyword then parse the 'else' region.
-  if (!parser->parseOptionalKeyword("else")) {
-    if (parser->parseRegion(*elseRegion, {}, {}))
+  if (!parser.parseOptionalKeyword("else")) {
+    if (parser.parseRegion(*elseRegion, {}, {}))
       return failure();
-    IfOp::ensureTerminator(*elseRegion, parser->getBuilder(), result->location);
+    IfOp::ensureTerminator(*elseRegion, parser.getBuilder(), result.location);
   }
 
   // Parse the optional attribute list.
-  if (parser->parseOptionalAttributeDict(result->attributes))
+  if (parser.parseOptionalAttributeDict(result.attributes))
     return failure();
 
   return success();
 }
 
-static void print(OpAsmPrinter *p, IfOp op) {
-  *p << IfOp::getOperationName() << " " << *op.condition();
-  p->printRegion(op.thenRegion(),
-                 /*printEntryBlockArgs=*/false,
-                 /*printBlockTerminators=*/false);
+static void print(OpAsmPrinter &p, IfOp op) {
+  p << IfOp::getOperationName() << " " << *op.condition();
+  p.printRegion(op.thenRegion(),
+                /*printEntryBlockArgs=*/false,
+                /*printBlockTerminators=*/false);
 
   // Print the 'else' regions if it exists and has a block.
   auto &elseRegion = op.elseRegion();
   if (!elseRegion.empty()) {
-    *p << " else";
-    p->printRegion(elseRegion,
-                   /*printEntryBlockArgs=*/false,
-                   /*printBlockTerminators=*/false);
+    p << " else";
+    p.printRegion(elseRegion,
+                  /*printEntryBlockArgs=*/false,
+                  /*printBlockTerminators=*/false);
   }
 
-  p->printOptionalAttrDict(op.getAttrs());
+  p.printOptionalAttrDict(op.getAttrs());
 }
 
 //===----------------------------------------------------------------------===//

@@ -1,4 +1,3 @@
-# -*- Python -*-
 """Repository rule for NCCL configuration.
 
 `nccl_configure` depends on the following environment variables:

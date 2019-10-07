@@ -953,9 +953,11 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
   auto filters = options.storage_precision == RuntimeOptions::Precision::FP32
                      ? VectorToUint8Vector(filters_reordered)
                      : VectorFloatToHalf(filters_reordered);
+  auto resized_bias = params.bias.data;
+  resized_bias.resize(params.weights.shape.o, 0.0f);
   auto biases = options.storage_precision == RuntimeOptions::Precision::FP32
-                    ? VectorToUint8Vector(params.bias.data)
-                    : VectorFloatToHalf(params.bias.data);
+                    ? VectorToUint8Vector(resized_bias)
+                    : VectorFloatToHalf(resized_bias);
   desc->immutable_buffers = {
       {"device FilterStripe* const filters", filters},
       {"constant FLT4* const biases", biases},
@@ -1047,9 +1049,11 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed3x3(
   auto filters = options.storage_precision == RuntimeOptions::Precision::FP32
                      ? VectorToUint8Vector(filters_reordered)
                      : VectorFloatToHalf(filters_reordered);
+  auto resized_bias = params.bias.data;
+  resized_bias.resize(params.weights.shape.o, 0.0f);
   auto biases = options.storage_precision == RuntimeOptions::Precision::FP32
-                    ? VectorToUint8Vector(params.bias.data)
-                    : VectorFloatToHalf(params.bias.data);
+                    ? VectorToUint8Vector(resized_bias)
+                    : VectorFloatToHalf(resized_bias);
   border_desc->immutable_buffers = {
       {"device FilterStripe* const filters", filters},
       {"constant FLT4* const biases", biases},
@@ -1137,9 +1141,8 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed3x3(
       }};
 
   desc->immutable_buffers = {
-      {"device FilterStripe* const filters",
-       VectorToUint8Vector(filters_reordered)},
-      {"constant FLT4* const biases", VectorToUint8Vector(params.bias.data)},
+      {"device FilterStripe* const filters", VectorToUint8Vector(filters)},
+      {"constant FLT4* const biases", VectorToUint8Vector(biases)},
   };
 
   desc->uniform_buffers = {

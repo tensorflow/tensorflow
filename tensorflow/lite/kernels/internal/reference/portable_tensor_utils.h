@@ -75,24 +75,34 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
       result_stride);
 }
 
-void MatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, int32_t input_zeropoint,
-    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
-    const int32_t* gate_bias, int32_t n_batch, int32_t n_input,
-    int32_t n_output, int32_t output_zp, int16_t* output) {
+void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
+                                         const int32_t* bias,
+                                         const int8_t* input_to_gate_weights,
+                                         int32_t multiplier, int32_t shift,
+                                         int32_t n_batch, int32_t n_input,
+                                         int32_t n_output, int32_t output_zp,
+                                         int32_t* scratch, int16_t* output) {
   PortableMatrixBatchVectorMultiplyAccumulate(
-      input, input_zeropoint, input_to_gate_weights, multiplier, shift,
-      gate_bias, n_batch, n_input, n_output, output_zp, output);
+      input, bias, input_to_gate_weights, multiplier, shift, n_batch, n_input,
+      n_output, output_zp, scratch, output);
 }
 
-void MatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, int32_t input_zeropoint,
-    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
-    const int32_t* gate_bias, int32_t n_batch, int32_t n_input,
-    int32_t n_output, int32_t output_zp, int8_t* output) {
+void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
+                                         const int32_t* bias,
+                                         const int8_t* input_to_gate_weights,
+                                         int32_t multiplier, int32_t shift,
+                                         int32_t n_batch, int32_t n_input,
+                                         int32_t n_output, int32_t output_zp,
+                                         int32_t* scratch, int8_t* output) {
   PortableMatrixBatchVectorMultiplyAccumulate(
-      input, input_zeropoint, input_to_gate_weights, multiplier, shift,
-      gate_bias, n_batch, n_input, n_output, output_zp, output);
+      input, bias, input_to_gate_weights, multiplier, shift, n_batch, n_input,
+      n_output, output_zp, scratch, output);
+}
+
+void MatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,
+                                    int32_t n_row, int32_t n_col,
+                                    int32_t* output) {
+  PortableMatrixScalarMultiplyAccumulate(matrix, scalar, n_row, n_col, output);
 }
 
 void ApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
@@ -107,6 +117,11 @@ void ApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
 void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
                   int16_t* output) {
   PortableApplySigmoid(input, n_batch, n_input, output);
+}
+
+void ApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
+                int16_t* output) {
+  PortableApplyTanh0(input, n_batch, n_input, output);
 }
 
 void ApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
@@ -124,9 +139,11 @@ void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
   PortableCwiseMul(input_1, input_2, n_batch, n_input, shift, output);
 }
 
-void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
-              int n_input, int shift, int8_t* output) {
-  PortableCwiseMul(input_1, input_2, n_batch, n_input, shift, output);
+void CwiseMul(const int16_t* input_1, const int16_t* input_2,
+              int32_t multiplier, int32_t shift, int32_t n_batch,
+              int32_t n_input, int32_t output_zp, int8_t* output) {
+  PortableCwiseMul(input_1, input_2, multiplier, shift, n_batch, n_input,
+                   output_zp, output);
 }
 
 void CwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
@@ -174,14 +191,6 @@ float VectorVectorDotProduct(const float* vector1, const float* vector2,
   return PortableVectorVectorDotProduct(vector1, vector2, v_size);
 }
 
-void BatchVectorBatchVectorDotProduct(const float* vector1,
-                                      const float* vector2, int v_size,
-                                      int n_batch, float* result,
-                                      int result_stride) {
-  PortableBatchVectorBatchVectorDotProduct(vector1, vector2, v_size, n_batch,
-                                           result, result_stride);
-}
-
 void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
                           float* batch_vector) {
   PortableVectorBatchVectorAdd(vector, v_size, n_batch, batch_vector);
@@ -197,6 +206,10 @@ void ApplyActivationToVector(const float* vector, int v_size,
 }
 
 void Sub1Vector(const float* vector, int v_size, float* result) {
+  PortableSub1Vector(vector, v_size, result);
+}
+
+void Sub1Vector(const int16_t* vector, int v_size, int16_t* result) {
   PortableSub1Vector(vector, v_size, result);
 }
 

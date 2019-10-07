@@ -37,7 +37,9 @@ class GPU_Op<string mnemonic, list<OpTrait> traits = []> :
 
 class GPU_IndexOp<string mnemonic, list<OpTrait> traits = []> :
     GPU_Op<mnemonic, !listconcat(traits, [NoSideEffect])>,
-    Arguments<(ins StrAttr:$dimension)>, Results<(outs Index)>;
+    Arguments<(ins StrAttr:$dimension)>, Results<(outs Index)> {
+  let verifier = [{ return ::verifyIndexOp(*this); }];
+}
 
 def gpu_BlockDim : GPU_IndexOp<"block_dim">;
 def gpu_BlockId : GPU_IndexOp<"block_id">;
@@ -54,7 +56,26 @@ def gpu_Return : GPU_Op<"return", [Terminator]>, Arguments<(ins)>,
   }];
 
   let parser = [{ return success(); }];
-  let printer = [{ *p << getOperationName(); }];
+  let printer = [{ p << getOperationName(); }];
+}
+
+def gpu_AllReduce : GPU_Op<"all_reduce", [SameOperandsAndResultType]>,
+    Arguments<(ins AnyType)>, Results<(outs AnyType)> {
+  let summary = "Reduce values among workgroup.";
+  let description = [{
+    The "all_reduce" op reduces the value of every invocation across a local
+    workgroup.
+
+    For example,
+    ```
+      %1 = gpu.all_reduce %0 : f32
+    ```
+    computes the sum of each invocation's %0 value. The value of %1 is always
+    equal for all invocations of a local workgroup.
+
+    Either none or all invocations of a local workgroup need to execute this op
+    in convergence.
+  }];
 }
 
 #endif // GPU_OPS

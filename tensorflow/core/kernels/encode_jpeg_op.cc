@@ -124,7 +124,7 @@ class EncodeJpegOp : public OpKernel {
                    context->allocate_output(0, TensorShape({}), &output));
     OP_REQUIRES(context,
                 jpeg::Compress(image.flat<uint8>().data(), dim_size1, dim_size0,
-                               adjusted_flags, &output->scalar<string>()()),
+                               adjusted_flags, &output->scalar<tstring>()()),
                 errors::Internal("JPEG encoding failed"));
   }
 
@@ -164,11 +164,11 @@ class EncodeJpegVariableQualityOp : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(quality.shape()),
                 errors::InvalidArgument("quality must be scalar: ",
                                         quality.shape().DebugString()));
+    adjusted_flags.quality = quality.scalar<int>()();
     OP_REQUIRES(context,
                 0 <= adjusted_flags.quality && adjusted_flags.quality <= 100,
                 errors::InvalidArgument("quality must be in [0,100], got ",
                                         adjusted_flags.quality));
-    adjusted_flags.quality = quality.scalar<int>()();
 
     // Autodetect format.
     int channels;
@@ -190,7 +190,7 @@ class EncodeJpegVariableQualityOp : public OpKernel {
                    context->allocate_output(0, TensorShape({}), &output));
     OP_REQUIRES(context,
                 jpeg::Compress(image.flat<uint8>().data(), dim_size1, dim_size0,
-                               adjusted_flags, &output->scalar<string>()()),
+                               adjusted_flags, &output->scalar<tstring>()()),
                 errors::Internal("JPEG encoding failed"));
   }
 };

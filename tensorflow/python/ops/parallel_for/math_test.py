@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.compat import compat
 from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
@@ -35,7 +37,7 @@ from tensorflow.python.platform import test
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class MathTest(PForTestCase):
+class MathTest(PForTestCase, parameterized.TestCase):
 
   def _test_unary_cwise_ops(self, ops, is_complex):
     for op in ops:
@@ -69,7 +71,7 @@ class MathTest(PForTestCase):
 
       # pylint: enable=cell-var-from-loop
 
-      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=output_dtypes)
+      self._test_loop_fn(loop_fn, 3)
 
   def test_unary_cwise_complex_ops(self):
     complex_ops = [
@@ -97,6 +99,7 @@ class MathTest(PForTestCase):
         math_ops.digamma,
         math_ops.erf,
         math_ops.erfc,
+        math_ops.erfinv,
         math_ops.exp,
         math_ops.expm1,
         math_ops.inv,
@@ -105,6 +108,7 @@ class MathTest(PForTestCase):
         math_ops.lgamma,
         math_ops.log,
         math_ops.log1p,
+        math_ops.ndtri,
     ]
     self._test_unary_cwise_ops(real_ops, False)
 
@@ -147,7 +151,7 @@ class MathTest(PForTestCase):
 
       # pylint: enable=cell-var-from-loop
 
-      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=x.dtype)
+      self._test_loop_fn(loop_fn, 3)
 
   def test_binary_cwise_ops(self):
     logical_ops = [
@@ -216,7 +220,7 @@ class MathTest(PForTestCase):
         return outputs
       # pylint: enable=cell-var-from-loop
 
-      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=output_dtypes)
+      self._test_loop_fn(loop_fn, 3)
 
   def test_approximate_equal(self):
     x = random_ops.random_uniform([3, 5])
@@ -227,7 +231,7 @@ class MathTest(PForTestCase):
       y1 = array_ops.gather(y, i)
       return math_ops.approximate_equal(x1, y1)
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.bool])
+    self._test_loop_fn(loop_fn, 3)
 
   def test_addn(self):
     x = random_ops.random_uniform([2, 3, 5])
@@ -250,7 +254,7 @@ class MathTest(PForTestCase):
       x_0 = array_ops.gather(x, 0)
       return math_ops.cross(x_i, y_i), math_ops.cross(x_0, y_i)
 
-    self._test_loop_fn(loop_fn, 4, loop_fn_dtypes=[dtypes.float32] * 2)
+    self._test_loop_fn(loop_fn, 4)
 
   def test_matmul(self):
     for tr_a in (True, False):
@@ -356,7 +360,7 @@ class MathTest(PForTestCase):
 
           # pylint: enable=cell-var-from-loop
 
-          self._test_loop_fn(loop_fn, 2, loop_fn_dtypes=[dtypes.bool])
+          self._test_loop_fn(loop_fn, 2)
 
   def test_cum_sum(self):
     x = random_ops.random_uniform([2, 3, 4, 5])
@@ -430,7 +434,7 @@ class MathTest(PForTestCase):
           if stacked_bias:
             out_dtypes = out_dtypes + [dtypes.int32]
           self._test_loop_fn(
-              loop_fn, 2, loop_fn_dtypes=out_dtypes)
+              loop_fn, 2)
 
   def test_unsorted_segment_sum(self):
     t = random_ops.random_uniform([3, 3, 2])
@@ -451,7 +455,61 @@ class MathTest(PForTestCase):
                   math_ops.unsorted_segment_sum(data, seg_ids_0, num_segments))
         # pylint: enable=cell-var-from-loop
 
-        self._test_loop_fn(loop_fn, 3, [dtypes.float32] * 3)
+        self._test_loop_fn(loop_fn, 3)
+
+  @parameterized.parameters((math_ops.sparse_segment_sum_v2, True),
+                            (math_ops.sparse_segment_mean_v2, True),
+                            (math_ops.sparse_segment_sqrt_n_v2, True),
+                            (math_ops.sparse_segment_sum_v2, False),
+                            (math_ops.sparse_segment_mean_v2, False),
+                            (math_ops.sparse_segment_sqrt_n_v2, False))
+  def test_sparse_segment(self, op_func, with_num_segments):
+    data = random_ops.random_uniform([3, 4, 2])
+    indices = constant_op.constant([[1, 2, 3], [0, 1, 2], [0, 2, 3]])
+    seg_ids = constant_op.constant([[0, 0, 2], [1, 1, 1], [0, 1, 1]])
+    if with_num_segments:
+      num_segments = 3
+    else:
+      num_segments = None
+
+    def loop_fn(i):
+      data_i = array_ops.gather(data, i)
+      data_0 = array_ops.gather(data, 0)
+      indices_i = array_ops.gather(indices, i)
+      indices_0 = array_ops.gather(indices, 0)
+      seg_ids_i = array_ops.gather(seg_ids, i)
+      seg_ids_0 = array_ops.gather(seg_ids, 0)
+      outputs = [
+          op_func(data_0, indices_i, seg_ids_0, num_segments=num_segments),
+          op_func(data_i, indices_i, seg_ids_0, num_segments=num_segments),
+          op_func(data_0, indices_0, seg_ids_0, num_segments=num_segments),
+          op_func(data_i, indices_0, seg_ids_0, num_segments=num_segments)
+      ]
+      if with_num_segments:
+        # For this case, we support loop variant segment_ids as well.
+        outputs += [
+            op_func(data_0, indices_i, seg_ids_i, num_segments=num_segments),
+            op_func(data_i, indices_i, seg_ids_i, num_segments=num_segments),
+            op_func(data_0, indices_0, seg_ids_i, num_segments=num_segments),
+            op_func(data_i, indices_0, seg_ids_i, num_segments=num_segments)
+        ]
+      return outputs
+
+    self._test_loop_fn(loop_fn, 3)
+
+  @parameterized.parameters(math_ops.sparse_segment_mean_grad,
+                            math_ops.sparse_segment_sqrt_n_grad)
+  def test_sparse_segment_grad(self, op_func):
+    grad = random_ops.random_uniform([3, 3, 2])
+    indices = constant_op.constant([1, 2, 3])
+    seg_ids = constant_op.constant([0, 0, 2])
+    dim0 = 4
+
+    def loop_fn(i):
+      grad_i = array_ops.gather(grad, i)
+      return op_func(grad_i, indices, seg_ids, dim0)
+
+    self._test_loop_fn(loop_fn, 3)
 
   def test_cast(self):
     x = constant_op.constant([[1], [2]])
@@ -462,7 +520,7 @@ class MathTest(PForTestCase):
               math_ops.cast(array_ops.gather(y, i), dtypes.int32))
 
     self._test_loop_fn(
-        loop_fn, 2, loop_fn_dtypes=[dtypes.float32, dtypes.int32])
+        loop_fn, 2)
 
   def test_tanh_axpy(self):
     a = constant_op.constant(3.)
@@ -571,7 +629,7 @@ class LinalgTest(PForTestCase):
     def loop_fn(i):
       return linalg_ops.log_matrix_determinant(array_ops.gather(x, i))
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
+    self._test_loop_fn(loop_fn, 3)
 
   def test_matrix_triangular_solve(self):
     for lower in (True, False):
@@ -598,6 +656,14 @@ class LinalgTest(PForTestCase):
 
             self._test_loop_fn(loop_fn, 2)
 
+  def test_self_adjoint_eig(self):
+    z = random_ops.random_normal([2, 3, 3])
+    x = z + array_ops.matrix_transpose(z)  # Ensure self-adjoint.
+
+    def loop_fn(i):
+      return linalg_ops.self_adjoint_eig(array_ops.gather(x, i))
+
+    self._test_loop_fn(loop_fn, 2)
 
 if __name__ == "__main__":
   test.main()

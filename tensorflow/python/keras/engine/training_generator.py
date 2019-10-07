@@ -336,6 +336,7 @@ def model_iteration(model,
     if reset_dataset_after_each_epoch and epoch < epochs - 1:
       generator = dataset_ops.make_one_shot_iterator(original_dataset)
 
+  model._successful_loop_finish = True
   callbacks._call_end_hook(mode)
 
   if enqueuer is not None:

@@ -15,9 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_INPUT_COLOCATION_EXEMPTION_REGISTRY_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_INPUT_COLOCATION_EXEMPTION_REGISTRY_H_
 
-#include <set>
 #include <string>
 
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -40,13 +40,13 @@ class InputColocationExemptionRegistry {
   static InputColocationExemptionRegistry* Global();
 
   // Returns the set of ops exempt from the input colocation constraints.
-  const std::set<string>& Get();
+  const gtl::FlatSet<string>& Get() { return ops_; }
 
   // Registers an op to be excluded from the input colocation constraints.
   void Register(const string& op);
 
  private:
-  std::set<string> ops_;
+  gtl::FlatSet<string> ops_;
 };
 
 namespace input_colocation_exemption_registration {

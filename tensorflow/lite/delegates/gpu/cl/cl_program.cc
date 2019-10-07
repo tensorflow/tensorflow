@@ -82,6 +82,10 @@ std::string CompilerOptionToString(const CLDevice& device,
       } else {
         return "-qcom-accelerate-16-bit=true";
       }
+    case CompilerOptions::POWERVR_FP16:
+      return "-cl-fast-relaxed-math";
+    case CompilerOptions::CL_OPT_DISABLE:
+      return "-cl-opt-disable";
   }
 }
 

@@ -62,6 +62,9 @@ struct CompilationOptions {
   // If true sampler2D and texelFetch will be used to access read only textures.
   // This feature is not supported yet by the OpenGL runtime.
   bool sampler_textures = false;
+
+  // Generate GLSL code compatible with Vulkan.
+  bool vulkan_support = false;
 };
 
 }  // namespace gl

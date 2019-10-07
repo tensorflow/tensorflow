@@ -290,7 +290,6 @@ tf_py_test(
     size = "small",
     srcs = ["iterator_cluster_test.py"],
     additional_deps = [
-        "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
@@ -355,7 +354,6 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     grpc_enabled = True,
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -429,8 +427,8 @@ cuda_py_test(
     tags = [
         "no_oss",
         "no_windows_gpu",
+        "nogpu",  #TODO(b/141255188): Enable test after bug is resolved.
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -446,7 +444,6 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -468,7 +465,6 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:tensor_shape",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -545,10 +541,10 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/data/experimental/ops:optimization",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(

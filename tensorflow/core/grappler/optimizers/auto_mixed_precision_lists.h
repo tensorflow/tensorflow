@@ -121,12 +121,16 @@ class AutoMixedPrecisionLists {
         "Inv",
         "LeakyRelu",
         "LeakyReluGrad",
+        "Log",
+        "Log1p",
+        "LogSoftmax",
         "Mul",
         "Prod",
         "RealDiv",
         "Reciprocal",
         "Sigmoid",
         "SigmoidGrad",
+        "Softmax",
         "Softplus",
         "SoftplusGrad",
         "Sqrt",
@@ -156,13 +160,9 @@ class AutoMixedPrecisionLists {
         "Exp",
         "Expm1",
         "L2Loss",
-        "Log",
-        "Log1p",
-        "LogSoftmax",
         "Mean",
         "Pow",
         "SaveV2",
-        "Softmax",
         "SoftmaxCrossEntropyWithLogits",
         "SparseSoftmaxCrossEntropyWithLogits",
         "Sum",
@@ -177,9 +177,9 @@ class AutoMixedPrecisionLists {
     if (IsPseudoFastMath()) {
       return gtl::FlatSet<string>{};
     }
-    // Note: if a stateful op (such as StackPopV2) is added to the clearlist,
-    // you must also modify the AutoMixedPrecisionImpl class to call
-    // AddDataStructureOpsToMap() with that op
+    // Note: if a data structure op (such as TensorListPopBack) is added to the
+    // clearlist, the AutoMixedPrecisionImpl class must also be modified to call
+    // AddDataStructureOpsToMap() with that op.
     string to_add, to_remove;
     TF_CHECK_OK(ReadStringFromEnvVar(
         "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_CLEARLIST_ADD", "", &to_add));
@@ -271,18 +271,23 @@ class AutoMixedPrecisionLists {
         "Split",
         "SplitV",
         "Squeeze",
-        "StackPopV2",
-        "StackPushV2",
         "StopGradient",
         "StridedSlice",
         "StridedSliceGrad",
         "Switch",
-        "TensorArrayConcatV3",
-        "TensorArrayGatherV3",
-        "TensorArrayReadV3",
-        "TensorArrayScatterV3",
-        "TensorArraySplitV3",
-        "TensorArrayWriteV3",
+        "TensorListConcat",
+        "TensorListConcatV2",
+        "TensorListGather",
+        "TensorListGetItem",
+        "TensorListPopBack",
+        "TensorListPushBack",
+        "TensorListFromTensor",
+        "TensorListScatter",
+        "TensorListScatterV2",
+        "TensorListScatterIntoExistingList",
+        "TensorListSetItem",
+        "TensorListSplit",
+        "TensorListStack",
         "Tile",
         "TopK",
         "TopKV2",

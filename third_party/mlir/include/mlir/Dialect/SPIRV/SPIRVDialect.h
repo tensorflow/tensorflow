@@ -27,11 +27,20 @@
 namespace mlir {
 namespace spirv {
 
+enum class Decoration : uint32_t;
+
 class SPIRVDialect : public Dialect {
 public:
   explicit SPIRVDialect(MLIRContext *context);
 
   static StringRef getDialectNamespace() { return "spv"; }
+
+  /// Checks if the given `type` is valid in SPIR-V dialect.
+  static bool isValidType(Type type);
+
+  /// Returns the attribute name to use when specifying decorations on results
+  /// of operations.
+  static std::string getAttributeName(Decoration decoration);
 
   /// Parses a type registered to this dialect.
   Type parseType(llvm::StringRef spec, Location loc) const override;
@@ -39,8 +48,9 @@ public:
   /// Prints a type registered to this dialect.
   void printType(Type type, llvm::raw_ostream &os) const override;
 
-  /// Checks if a type is valid in SPIR-V dialect.
-  bool isValidSPIRVType(Type t) const;
+  /// Provides a hook for materializing a constant to this dialect.
+  Operation *materializeConstant(OpBuilder &builder, Attribute value, Type type,
+                                 Location loc) override;
 };
 
 } // end namespace spirv

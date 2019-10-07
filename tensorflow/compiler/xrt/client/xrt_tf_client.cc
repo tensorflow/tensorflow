@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/protobuf/eager_service.pb.h"
+#include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
 namespace tensorflow {
@@ -381,14 +381,15 @@ std::shared_ptr<XrtRecvTensorFuture> XrtTfContext::RecvTensor(
 }
 
 Status XrtTfContext::RegisterFunction(const FunctionDef& def) {
-  eager::RegisterFunctionRequest request;
+  eager::EnqueueRequest request;
   request.set_context_id(context_id_);
-  *request.mutable_function_def() = def;
+  auto* register_function = request.add_queue()->mutable_register_function();
+  *register_function->mutable_function_def() = def;
 
-  eager::RegisterFunctionResponse response;
+  eager::EnqueueResponse response;
   Status status;
   absl::Notification done;
-  eager_client_->RegisterFunctionAsync(&request, &response, [&](Status s) {
+  eager_client_->EnqueueAsync(&request, &response, [&](Status s) {
     status = s;
     done.Notify();
   });

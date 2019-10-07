@@ -109,13 +109,12 @@ public:
   using Base::Base;
 
   /// Return a uniqued call location object.
-  static Location get(Location callee, Location caller, MLIRContext *context);
+  static Location get(Location callee, Location caller);
 
   /// Return a call site location which represents a name reference in one line
   /// or a stack of frames. The input frames are ordered from innermost to
   /// outermost.
-  static Location get(Location name, ArrayRef<Location> frames,
-                      MLIRContext *context);
+  static Location get(Location name, ArrayRef<Location> frames);
 
   /// The concrete location information this object presents.
   Location getCallee() const;
@@ -191,7 +190,7 @@ public:
 
   /// Return a uniqued name location object. The child location must not be
   /// another NameLoc.
-  static Location get(Identifier name, Location child, MLIRContext *context);
+  static Location get(Identifier name, Location child);
 
   /// Return a uniqued name location object with an unknown child.
   static Location get(Identifier name, MLIRContext *context);

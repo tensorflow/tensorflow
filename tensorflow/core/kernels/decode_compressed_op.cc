@@ -34,7 +34,7 @@ class MemoryInputStream : public io::InputStreamInterface {
 
   ~MemoryInputStream() override {}
 
-  Status ReadNBytes(int64 bytes_to_read, string* result) override {
+  Status ReadNBytes(int64 bytes_to_read, tstring* result) override {
     result->clear();
     if (bytes_to_read < 0) {
       return errors::InvalidArgument("Can't read a negative number of bytes: ",
@@ -106,7 +106,7 @@ class DecodeCompressedOp : public OpKernel {
             new io::ZlibInputStream(
                 input_stream.get(), static_cast<size_t>(kBufferSize),
                 static_cast<size_t>(kBufferSize), zlib_options));
-        string output_string;
+        tstring output_string;
         Status s = zlib_stream->ReadNBytes(INT_MAX, &output_string);
         OP_REQUIRES(context, (s.ok() || errors::IsOutOfRange(s)), s);
         output_flat(i) = std::move(output_string);

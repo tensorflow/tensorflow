@@ -1,7 +1,9 @@
 load(
     "//tensorflow/lite:build_def.bzl",
     "gen_zip_test",
+    "gen_zipped_test_file",
     "generated_test_models_all",
+    "merged_test_models",
 )
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
@@ -11,12 +13,20 @@ load(
     "tf_cc_binary",
     "tf_cc_test",
 )
+# Placeholder for Google-internal load statements.
 
 package(
     default_visibility = [
         "//visibility:public",
     ],
     licenses = ["notice"],  # Apache 2.0
+)
+
+gen_zipped_test_file(
+    name = "zip_conv_edgetpu",
+    file = "conv_edgetpu.zip",
+    flags = " --make_edgetpu_tests",
+    toco = "//tensorflow/lite/toco:toco",  # Unused
 )
 
 [gen_zip_test(
@@ -64,7 +74,7 @@ package(
             "//tensorflow/core:android_tensorflow_test_lib",
         ],
     }),
-) for conversion_mode, test_name, tags, args in generated_test_models_all()]
+) for conversion_mode, test_name, tags, args in generated_test_models_all() + merged_test_models()]
 
 test_suite(
     name = "generated_zip_tests",
@@ -251,6 +261,7 @@ cc_library(
     name = "util",
     hdrs = ["util.h"],
     deps = [
+        "//tensorflow/core/platform:logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string",
         "//tensorflow/lite/core/api",
@@ -344,6 +355,7 @@ cc_library(
         "init_tensorflow.h",
     ],
     visibility = [
+        "//tensorflow/lite/delegates/flex:__subpackages__",
         "//tensorflow/lite/java/src/main/native:__subpackages__",
         "//tensorflow/lite/testing:__subpackages__",
         "//tensorflow/lite/tools/benchmark:__subpackages__",

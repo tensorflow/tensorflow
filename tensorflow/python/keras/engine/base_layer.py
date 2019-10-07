@@ -21,7 +21,6 @@ from __future__ import print_function
 import collections
 import functools
 import itertools
-import json
 import threading
 
 import numpy as np
@@ -32,7 +31,6 @@ from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
-from tensorflow.python.distribute import values as distribute_values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import function
@@ -55,11 +53,10 @@ from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.mixed_precision.experimental import autocast_variable
 from tensorflow.python.keras.mixed_precision.experimental import policy
-from tensorflow.python.keras.saving.saved_model import save as saved_model
+from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 # A module that only depends on `keras.layers` import these from here.
-from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint: disable=unused-import
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # pylint: disable=unused-import
 from tensorflow.python.module import module
@@ -77,7 +74,6 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
-from tensorflow.python.util import serialization
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
@@ -87,6 +83,8 @@ _TF_OP_LAYER_NAME_PREFIX = 'tf_op_layer_'
 
 _keras_layers_gauge = monitoring.BoolGauge('/tensorflow/api/keras/layers',
                                            'keras layers usage', 'method')
+_keras_model_gauge = monitoring.BoolGauge(
+    '/tensorflow/api/keras/premade_models', 'premade keras model usage', 'type')
 
 
 @keras_export('keras.layers.Layer')
@@ -151,122 +149,10 @@ class Layer(module.Module):
   `Layer.dtype` property. The dtype is specified with the `dtype` constructor
   argument. In TensorFlow 2, the dtype defaults to `tf.keras.backend.floatx()`
   if no dtype is passed. `floatx()` itself defaults to "float32". Additionally,
-  layers will cast their inputs to the layer's dtype in TensorFlow 2. For
-  example:
-
-  ```
-  x = tf.ones((4, 4, 4, 4), dtype='float64')
-  layer = tf.keras.layers.Conv2D(filters=4, kernel_size=2)
-  print(layer.dtype)  # float32
-
-  # `layer` casts it's inputs to layer.dtype, which is float32, and does
-  # computations in float32.
-  y = layer(x)
-  ```
-
-  Currently, only tensors in the first argument to the layer's `call` method are
-  casted. For example:
-
-  ```
-  class MyLayer(tf.keras.layers.Layer):
-    # Bug! `b` will not be casted.
-    def call(self, a, b):
-      return a + 1., b + 1.
-
-  a = tf.constant(1., dtype="float32")
-  b = tf.constant(1., dtype="float32")
-
-  layer = MyLayer(dtype="float64")
-  x, y = layer(a, b)
-  print(x.dtype)  # float64
-  print(y.dtype)  # float32. Not casted since `b` was not passed to first input
-  ```
-
-  It is recommended to accept tensors only in the first argument. This way,
-  all tensors are casted to the layer's dtype. `MyLayer` should therefore be
-  written as:
-
-  ```
-  class MyLayer(tf.keras.layers.Layer):
-    # Now, all tensor inputs will be casted.
-    def call(self, inputs):
-      a, b = inputs
-      return a + 1., b + 1.
-
-  a = tf.constant(1., dtype="float32")
-  b = tf.constant(1., dtype="float32")
-
-  layer = MyLayer(dtype="float64")
-  x, y = layer((a, b))
-  print(x.dtype)  # float64
-  print(y.dtype)  # float64.
-  ```
-
-  In a future minor release, tensors in other arguments may be casted as well.
-
-  Currently, other arguments are not automatically casted for
-  technical reasons, but this may change in a future minor release.
-
-  A layer subclass can prevent its inputs from being autocasted by passing
-  `autocast=False` to the layer constructor. For example:
-
-  ```
-  class MyLayer(tf.keras.layers.Layer):
-
-    def __init__(self, **kwargs):
-      kwargs['autocast']=False
-      super(MyLayer, self).__init__(**kwargs)
-
-    def call(self, inp):
-      return inp
-
-  x = tf.ones((4, 4, 4, 4), dtype='float64')
-  layer = MyLayer()
-  print(layer.dtype)  # float32.
-  y = layer(x)  # MyLayer will not cast inputs to it's dtype of float32
-  print(y.dtype)  # float64
-  ```
-
-  #### Running models in float64 in TensorFlow 2
-
-  If you want to run a Model in float64, you can set floatx to be float64 by
-  calling `tf.keras.backend.set_floatx('float64')`. This will cause all layers
-  to default to float64 instead of float32:
-
-  ```
-  tf.keras.backend.set_floatx('float64')
-  layer1 = tf.keras.layers.Dense(4)
-  layer2 = tf.keras.layers.Dense(4)
-
-  x = tf.ones((4, 4))
-  y = layer2(layer1(x))  # Both layers run in float64
-  ```
-
-  Alternatively, you can pass `dtype='float64'` to each individual layer. Note
-  that if you have any layers which contain other layers as members, you must
-  ensure each sublayer gets `dtype='float64'` passed to it's constructor as
-  well:
-
-  ```
-  layer1 = tf.keras.layers.Dense(4, dtype='float64')
-  layer2 = tf.keras.layers.Dense(4, dtype='float64')
-
-  x = tf.ones((4, 4))
-  y = layer2(layer1(x))  # Both layers run in float64
-
-  class NestedLayer(tf.keras.layers.Layer):
-    def __init__(self, **kwargs):
-      super(NestedLayer, self).__init__(**kwargs)
-      self.dense = tf.keras.layers.Dense(4, dtype=kwargs.get('dtype'))
-
-    def call(self, inp):
-      return self.dense(inp)
-
-  layer3 = NestedLayer(dtype='float64')
-  z = layer3(x)  # layer3's dense layer runs in float64, since NestedLayer
-                 # correcty passed it's dtype to it's dense layer
-
-  ```
+  layers will cast their inputs to the layer's dtype in TensorFlow 2. When mixed
+  precision is used, layers may have different computation and variable dtypes.
+  See `tf.keras.mixed_precision.experimental.Policy` for details on layer
+  dtypes.
   """
 
   # See tf.Module for the usage of this property.
@@ -305,7 +191,7 @@ class Layer(module.Module):
     self._trainable = trainable
     # A stateful layer is a layer whose updates are run during inference too,
     # for instance stateful RNNs.
-    self.stateful = False
+    self._stateful = False
     # Indicates whether `build` needs to be called upon layer call, to create
     # the layer's weights.
     self.built = False
@@ -397,6 +283,27 @@ class Layer(module.Module):
         A tensor or list/tuple of tensors.
     """
     return inputs
+
+  @doc_controls.for_subclass_implementers
+  def _add_trackable(self, trackable_object, trainable):
+    """Adds a Trackable object to this layer's state.
+
+    Arguments:
+      trackable_object: The tf.tracking.Trackable object to add.
+      trainable: Boolean, whether the variable should be part of the layer's
+        "trainable_variables" (e.g. variables, biases) or
+        "non_trainable_variables" (e.g. BatchNorm mean and variance).
+
+    Returns:
+      The tf.tracking.Trackable object.
+    """
+    if trainable:
+      self._trainable_weights.append(
+          base_layer_utils.TrackableWeightHandler(trackable_object))
+    else:
+      self._non_trainable_weights.append(
+          base_layer_utils.TrackableWeightHandler(trackable_object))
+    return trackable_object
 
   @doc_controls.for_subclass_implementers
   def add_weight(self,
@@ -500,15 +407,13 @@ class Layer(module.Module):
         raise ValueError('An initializer for variable %s of type %s is required'
                          ' for layer %s' % (name, dtype.base_dtype, self.name))
 
-    if autocast and self._dtype_policy.should_cast_variables:
+    if (autocast and self._dtype_policy.should_cast_variables and
+        dtype.is_floating):
       # Wrap 'getter' with a version that returns an AutoCastVariable.
       old_getter = getter
       def getter(*args, **kwargs):  # pylint: disable=function-redefined
         variable = old_getter(*args, **kwargs)
-        if isinstance(variable, distribute_values.DistributedVariable):
-          return autocast_variable.AutoCastDistributedVariable(variable)
-        else:
-          return autocast_variable.AutoCastVariable(variable)
+        return autocast_variable.create_autocast_variable(variable)
 
     variable = self._add_variable_with_custom_getter(
         name=name,
@@ -563,8 +468,10 @@ class Layer(module.Module):
     config = {'name': self.name, 'trainable': self.trainable}
     if hasattr(self, '_batch_input_shape'):
       config['batch_input_shape'] = self._batch_input_shape
+    # TODO(reedwm): Remove the hasattr(self, 'dtype') check. All layers have a
+    # dtype.
     if hasattr(self, 'dtype'):
-      config['dtype'] = self.dtype
+      config['dtype'] = policy.serialize(self._dtype_policy)
     if hasattr(self, 'dynamic'):
       # Only include `dynamic` in the `config` if it is `True`
       if self.dynamic:
@@ -579,7 +486,6 @@ class Layer(module.Module):
     if len(extra_args) > 1 and hasattr(self.get_config, '_is_default'):
       raise NotImplementedError('Layers with arguments in `__init__` must '
                                 'override `get_config`.')
-    # TODO(reedwm): Handle serializing self._dtype_policy.
     return config
 
   @classmethod
@@ -910,8 +816,22 @@ class Layer(module.Module):
     return self._name
 
   @property
+  @trackable_layer_utils.cache_recursive_attribute('dynamic')
   def dynamic(self):
+    # NOTE(taylorrobie): Currently self._dynamic is read-only. If that changes
+    #                    then this cache logic must be updated.
     return self._dynamic
+
+  @property
+  @doc_controls.do_not_generate_docs
+  @trackable_layer_utils.cache_recursive_attribute('stateful')
+  def stateful(self):
+    return self._stateful
+
+  @stateful.setter
+  @trackable_layer_utils.invalidate_recursive_cache('stateful')
+  def stateful(self, value):
+    self._stateful = value
 
   @property
   def trainable(self):
@@ -952,7 +872,7 @@ class Layer(module.Module):
   def trainable_weights(self):
     if self.trainable:
       nested = self._gather_children_attribute('trainable_weights')
-      return self._trainable_weights + nested
+      return self._dedup_weights(self._trainable_weights + nested)
     else:
       return []
 
@@ -960,10 +880,12 @@ class Layer(module.Module):
   def non_trainable_weights(self):
     if self.trainable:
       nested = self._gather_children_attribute('non_trainable_weights')
-      return self._non_trainable_weights + nested
+      non_trainable_weights = self._non_trainable_weights + nested
     else:
       nested = self._gather_children_attribute('weights')
-      return self._trainable_weights + self._non_trainable_weights + nested
+      non_trainable_weights = (
+          self._trainable_weights + self._non_trainable_weights + nested)
+    return self._dedup_weights(non_trainable_weights)
 
   @property
   def weights(self):
@@ -1118,7 +1040,7 @@ class Layer(module.Module):
       elif tensor_util.is_tensor(loss):
         eager_losses.append(_tag_unconditional(loss))
 
-    self._callable_losses += callable_losses
+    self._callable_losses.extend(callable_losses)
 
     in_call_context = base_layer_utils.call_context().in_call
     if eager_losses and not in_call_context:
@@ -1126,7 +1048,7 @@ class Layer(module.Module):
           'Expected a symbolic Tensors or a callable for the loss value. '
           'Please wrap your loss computation in a zero argument `lambda`.')
 
-    self._eager_losses += eager_losses
+    self._eager_losses.extend(eager_losses)
 
     if in_call_context:
       for symbolic_loss in symbolic_losses:
@@ -1307,7 +1229,7 @@ class Layer(module.Module):
     # they do not need to be tracked later.
     if ops.executing_eagerly_outside_functions() and call_context.in_call:
       updates = [u for u in updates if callable(u)]
-    self._updates += updates
+    self._updates.extend(updates)
 
   def set_weights(self, weights):
     """Sets the weights of the layer, from Numpy arrays.
@@ -1324,22 +1246,39 @@ class Layer(module.Module):
             layer's specifications.
     """
     params = self.weights
-    if len(params) != len(weights):
-      raise ValueError('You called `set_weights(weights)` on layer "' +
-                       self.name + '" with a  weight list of length ' +
-                       str(len(weights)) + ', but the layer was expecting ' +
-                       str(len(params)) + ' weights. Provided weights: ' +
-                       str(weights)[:50] + '...')
-    if not params:
-      return
+
+    expected_num_weights = 0
+    for param in params:
+      if isinstance(param, base_layer_utils.TrackableWeightHandler):
+        expected_num_weights += param.num_tensors
+      else:
+        expected_num_weights += 1
+
+    if expected_num_weights != len(weights):
+      raise ValueError(
+          'You called `set_weights(weights)` on layer "%s" '
+          'with a weight list of length %s, but the layer was '
+          'expecting %s weights. Provided weights: %s...' %
+          (self.name, len(weights), expected_num_weights, str(weights)[:50]))
+
+    weight_index = 0
     weight_value_tuples = []
-    for p, w in zip(params, weights):
-      ref_shape = p.shape
-      if not ref_shape.is_compatible_with(w.shape):
-        raise ValueError('Layer weight shape ' + str(ref_shape) +
-                         ' not compatible with '
-                         'provided weight shape ' + str(w.shape))
-      weight_value_tuples.append((p, w))
+    for param in params:
+      if isinstance(param, base_layer_utils.TrackableWeightHandler):
+        num_tensors = param.num_tensors
+        tensors = weights[weight_index:weight_index + num_tensors]
+        param.set_weights(tensors)
+        weight_index += num_tensors
+      else:
+        weight = weights[weight_index]
+        ref_shape = param.shape
+        if not ref_shape.is_compatible_with(weight.shape):
+          raise ValueError(
+              'Layer weight shape %s not compatible with provided weight '
+              'shape %s' % (ref_shape, weight.shape))
+        weight_value_tuples.append((param, weight))
+        weight_index += 1
+
     backend.batch_set_value(weight_value_tuples)
 
   def get_weights(self):
@@ -1348,8 +1287,14 @@ class Layer(module.Module):
     Returns:
         Weights values as a list of numpy arrays.
     """
-    params = self.weights
-    return backend.batch_get_value(params)
+    weights = self.weights
+    output_weights = []
+    for weight in weights:
+      if isinstance(weight, base_layer_utils.TrackableWeightHandler):
+        output_weights.extend(weight.get_tensors())
+      else:
+        output_weights.append(weight)
+    return backend.batch_get_value(output_weights)
 
   def get_updates_for(self, inputs):
     """Retrieves updates relevant to a specific set of inputs.
@@ -1733,18 +1678,12 @@ class Layer(module.Module):
     """Sets self._dtype_policy."""
     if isinstance(dtype, policy.Policy):
       self._dtype_policy = dtype
+    elif isinstance(dtype, dict):
+      self._dtype_policy = policy.deserialize(dtype)
     elif dtype:
       self._dtype_policy = policy.Policy(dtypes.as_dtype(dtype).name)
     else:
       self._dtype_policy = policy.global_policy()
-
-    if self._dtype_policy.should_cast_variables and backend.is_tpu_strategy(
-        ds_context.get_strategy()):
-      # TODO(b/137859335): Supoprt this. AutoCastVariables currently do not work
-      # properly when wrapping TPUMirroredVariables.
-      raise ValueError('DType Policies ending in "_with_float32_vars" are '
-                       'not yet supported with TPUStrategy. Got policy: %s' %
-                       self._dtype_policy.name)
 
     # This has no impact on the layer behavior, and is only used for printing
     # warnings.
@@ -2193,6 +2132,7 @@ class Layer(module.Module):
                                  object_identity.ObjectIdentityDictionary())
     return self._obj_reference_counts_dict
 
+  @trackable.no_automatic_dependency_tracking
   def _maybe_create_attribute(self, name, default_value):
     """Create the attribute with the default value if it hasn't been created.
 
@@ -2243,6 +2183,7 @@ class Layer(module.Module):
       super(tracking.AutoTrackable, self).__setattr__(
           '_layers',
           [l for l in self._layers if l is not existing_value])
+      self._attribute_sentinel.invalidate_all()
     if isinstance(existing_value, tf_variables.Variable):
       super(tracking.AutoTrackable, self).__setattr__(
           '_trainable_weights',
@@ -2251,10 +2192,16 @@ class Layer(module.Module):
           '_non_trainable_weights',
           [w for w in self._non_trainable_weights if w is not existing_value])
 
+    # Any time we change `_layers` (either by deleting the attribute or by
+    # reassigning it which will call __delattr__ from __setattr__) the topology
+    # of the subgraph of Layers may change. In that case we will need to
+    # recompute any attribute which depends on that subgraph.
+    if name == '_layers':
+      self._attribute_sentinel.invalidate_all()
+
   def __setattr__(self, name, value):
     if (name == '_self_setattr_tracking' or
         not getattr(self, '_self_setattr_tracking', True) or
-        getattr(self, '_is_graph_network', False) or
         # Exclude @property.setters from tracking
         hasattr(self.__class__, name)):
       try:
@@ -2293,6 +2240,8 @@ class Layer(module.Module):
       # container types which compare equal.
       if not any((layer is value for layer in self._layers)):
         self._layers.append(value)
+        if hasattr(value, '_attribute_sentinel'):
+          value._attribute_sentinel.add_parent(self._attribute_sentinel)
         if hasattr(value, '_use_resource_variables'):
           # Legacy layers (V1 tf.layers) must always use
           # resource variables.
@@ -2341,6 +2290,11 @@ class Layer(module.Module):
               getattr(layer, attribute) for layer in nested_layers))
     return []
 
+  @property
+  @tracking.cached_per_instance
+  def _attribute_sentinel(self):
+    return trackable_layer_utils.AttributeSentinel()
+
   # This is a hack so that the is_layer (within
   # training/trackable/layer_utils.py) check doesn't get the weights attr.
   # TODO(b/110718070): Remove when fixed.
@@ -2349,6 +2303,7 @@ class Layer(module.Module):
 
   def _init_call_fn_args(self):
     # Clear cached call function arguments.
+    self.__class__._call_full_argspec.fget.cache.pop(self, None)
     self.__class__._call_fn_args.fget.cache.pop(self, None)
     self.__class__._call_accepts_kwargs.fget.cache.pop(self, None)
 
@@ -2360,8 +2315,15 @@ class Layer(module.Module):
 
   @property
   @tracking.cached_per_instance
+  def _call_full_argspec(self):
+    # Argspec inspection is expensive and the call spec is used often, so it
+    # makes sense to cache the result.
+    return tf_inspect.getfullargspec(self.call)
+
+  @property
+  @tracking.cached_per_instance
   def _call_fn_args(self):
-    all_args = tf_inspect.getfullargspec(self.call).args
+    all_args = self._call_full_argspec.args
     # Scrub `self` that appears if a decorator was applied.
     if all_args and all_args[0] == 'self':
       return all_args[1:]
@@ -2370,22 +2332,13 @@ class Layer(module.Module):
   @property
   @tracking.cached_per_instance
   def _call_accepts_kwargs(self):
-    return tf_inspect.getfullargspec(self.call).varkw is not None
+    return self._call_full_argspec.varkw is not None
 
   @property
   @tracking.cached_per_instance
   def _should_compute_mask(self):
     return ('mask' in self._call_fn_args or
             getattr(self, 'compute_mask', None) is not None)
-
-  @property
-  def _object_identifier(self):
-    """String stored in object identifier field in the SavedModel proto.
-
-    Returns:
-      A string with the object identifier, which is used at load time.
-    """
-    return '_tf_keras_layer'
 
   @property
   def _eager_losses(self):
@@ -2403,112 +2356,51 @@ class Layer(module.Module):
   def _eager_losses(self, losses):
     self._thread_local._eager_losses = losses
 
-  @property
-  def _tracking_metadata(self):
-    """String stored in metadata field in the SavedModel proto.
-
-    Returns:
-      A serialized JSON storing information necessary for recreating this layer.
-    """
-    # TODO(kathywu): Add support for metrics serialization.
-    # TODO(kathywu): Synchronize with the keras spec (go/keras-json-spec) once
-    # the python config serialization has caught up.
-
-    # Create a dictionary containing python layer state attributes. Any new
-    # attribute that impacts the layer execution in some way should be added to
-    # this dict.
-    # Unlike a model's JSON configuration, which only
-    # contains class_name and each layer's get_config() object, this stores more
-    # information to accurately recreate the layer.
-    # For backwards compatibility, any changes to this list should be additive.
-    # Modifying or removing attributes may only be done with a sufficient
-    # explanation.
-
-    metadata = dict(
-        class_name=type(self).__name__,
-        name=self.name,
-        trainable=self.trainable,
-        expects_training_arg=self._expects_training_arg,
-        dtype=self.dtype,
-        batch_input_shape=getattr(self, '_batch_input_shape', None))
-
-    try:
-      # Store the config dictionary, which is only used by the revived object
-      # to return the original config when revived_obj.get_config() is called.
-      # It is not important for recreating the revived object.
-      metadata['config'] = self.get_config()
-    except NotImplementedError:
-      # in the case of a subclassed model, the get_config() method will throw
-      # a NotImplementedError.
-      pass
-    if self.input_spec is not None:
-      # Layer's input_spec has already been type-checked in the property setter.
-      metadata['input_spec'] = nest.map_structure(
-          lambda x: None if x is None else serialize_keras_object(x),
-          self.input_spec)
-    else:
-      metadata['input_spec'] = None
-    if (self.activity_regularizer is not None and
-        hasattr(self.activity_regularizer, 'get_config')):
-      metadata['activity_regularizer'] = serialize_keras_object(
-          self.activity_regularizer)
-    else:
-      metadata['activity_regularizer'] = None
-    return json.dumps(metadata, default=serialization.get_json_type)
-
-  def _list_extra_dependencies_for_serialization(self, serialization_cache):
-    """Lists extra dependencies to serialize to SavedModel.
-
-    By overriding this method, extra dependencies can be attached to the
-    serialized Layer. For example, this is used to save the list of `variables`
-    and `trainable_variables`, which are python properties in a Layer object,
-    but are represented as a static list in the SavedModel.
-
-    Args:
-      serialization_cache: A dictionary shared between all objects in the same
-        object graph. This object is passed to both
-        `_list_extra_dependencies_for_serialization` and
-        `_list_functions_for_serialization`.
-
-    Returns:
-      A dictionary mapping attribute names to trackable objects. The entire list
-      of attributes are listed in the `saved_model._LayerAttributes` class.
-    """
-    return (saved_model.serialize_all_attributes(self, serialization_cache)
-            .objects_to_serialize)
-
-  def _list_functions_for_serialization(self, serialization_cache):
-    """Lists the functions to include when serializing a Layer.
-
-    Args:
-      serialization_cache: Dictionary passed to all objects in the same object
-        graph during serialization.
-
-    Returns:
-        A dictionary mapping attribute names to `Function` or
-        `ConcreteFunction`. The entire list of attributes are listed in the
-        `saved_model._LayerAttributes` class.
-    """
-    # Create a dictionary containing the layer's call and loss functions.
-    fns = (saved_model.serialize_all_attributes(self, serialization_cache)
-           .functions_to_serialize)
-    # The parent Autotrackable class saves all user-defined tf.functions, and
-    # returns them in _list_functions_for_serialization(). Add these functions
-    # to the dict.
-    fns.update(super(Layer, self)._list_functions_for_serialization(
-        serialization_cache))
-    return fns
-
-  @property
-  def _unique_trainable_weights(self):
-    """Dedupe trainable weights while maintaining order as much as possible."""
-    trainable_weights = self.trainable_weights
+  def _dedup_weights(self, weights):
+    """Dedupe weights while maintaining order as much as possible."""
     output, seen_weights = [], object_identity.ObjectIdentitySet()
-    for w in trainable_weights:
+    for w in weights:
       if w not in seen_weights:
         output.append(w)
+        # Track the Variable's identity to avoid __eq__ issues.
         seen_weights.add(w)
     return output
+
+  # SavedModel properties. Please see keras/saving/saved_model for details.
+
+  @property
+  def _trackable_saved_model_saver(self):
+    return layer_serialization.LayerSavedModelSaver(self)
+
+  @property
+  def _object_identifier(self):
+    return self._trackable_saved_model_saver.object_identifier
+
+  @property
+  def _tracking_metadata(self):
+    return self._trackable_saved_model_saver.tracking_metadata
+
+  def _list_extra_dependencies_for_serialization(self, serialization_cache):
+    return (self._trackable_saved_model_saver
+            .list_extra_dependencies_for_serialization(serialization_cache))
+
+  def _list_functions_for_serialization(self, serialization_cache):
+    return (self._trackable_saved_model_saver
+            .list_functions_for_serialization(serialization_cache))
+
+  def __getstate__(self):
+    # Override to support `copy.deepcopy` and pickling.
+    # Thread-local objects cannot be copied in Python 3, so pop these.
+    # Thread-local objects are used to cache losses in MirroredStrategy, and
+    # so shouldn't be copied.
+    state = self.__dict__.copy()
+    state.pop('_thread_local', None)
+    return state
+
+  def __setstate__(self, state):
+    state['_thread_local'] = threading.local()
+    # Bypass Trackable logic as `__dict__` already contains this info.
+    object.__setattr__(self, '__dict__', state)
 
 
 class TensorFlowOpLayer(Layer):
@@ -2607,7 +2499,7 @@ class TensorFlowOpLayer(Layer):
         attrs.append(attr_name)
         attrs.append(op.get_attr(attr_name))
       attrs = tuple(attrs)
-      execute.record_gradient(op_type, op.inputs, attrs, op.outputs, op.name)
+      execute.record_gradient(op_type, op.inputs, attrs, op.outputs)
 
       if len(op.outputs) == 1:
         return op.outputs[0]

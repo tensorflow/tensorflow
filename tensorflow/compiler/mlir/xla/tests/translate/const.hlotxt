@@ -2,7 +2,7 @@
 
 HloModule tfcompile.7
 
-// CHECK-LABEL: func @main() -> tensor<2x2x1x1xf32> {
+// CHECK-LABEL: func @main
 ENTRY %tfcompile.7 {
 
   // Scalar/0D tensor constant

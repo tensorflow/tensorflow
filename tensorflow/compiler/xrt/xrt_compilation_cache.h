@@ -21,6 +21,8 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xrt/xrt_refptr.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/refcount.h"
 
@@ -230,6 +232,14 @@ class XRTCompilationCache : public ResourceBase {
   // entries_by_last_use_ then the entry has been marked for eviction.
   std::map<int64, CompiledSubgraph*> entries_by_last_use_ GUARDED_BY(mu_);
 };
+
+// Looks up or create an XRTCompilationCache object within the given resource
+// manager, under the default container. The max_number_of_entries sets the
+// maximum number of entries within the cache (which will be LRU-evicted).
+// If max_number_of_entries is set to sero, the size of the cache will be
+// configured using the TF_XRT_COMPILATION_CACHE_SIZE environment variable.
+xla::StatusOr<RefPtr<XRTCompilationCache>> GetOrCreateCompilationCache(
+    ResourceMgr* rm, int64 max_number_of_entries);
 
 }  // namespace tensorflow
 

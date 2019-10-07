@@ -567,6 +567,20 @@ def _tf_dataset_for_stmt(ds, extra_test, body, get_state, set_state, init_vars,
                                          composite_symbol_names)
 
 
+def _general_purpose_scan(ds, init_state, body):
+  """Variant of Dataset.scan with semantics of general-purpose computation."""
+  # Datasets are typically intended for data preprocessing. However, in
+  # autograph loops they usually appear as general-purpose computations (for
+  # example, a custom training loop). These two use cases require significantly
+  # different optimization policies, the most important of which is the device
+  # placement. The flag override for use_default_device below instructs the
+  # runtime to treat the computation as general-purpose, rather than data
+  # preprocessing.
+  # TODO(mdan): s/use_default_device/specialize_for_input_pipeline.
+  # TODO(mdan): Don't use private symbols.
+  return scan_ops._ScanDataset(ds, init_state, body, use_default_device=False)  # pylint:disable=protected-access
+
+
 def _dataset_for_stmt_with_extra_test(ds, extra_test, body, get_state,
                                       set_state, init_vars, basic_symbol_names,
                                       composite_symbol_names):
@@ -610,7 +624,7 @@ def _dataset_for_stmt_with_extra_test(ds, extra_test, body, get_state,
 
   init_state = get_state()
   aug_vars = init_vars, init_state
-  ds = ds.apply(scan_ops.scan(aug_vars, scan_body))
+  ds = _general_purpose_scan(ds, aug_vars, scan_body)
   ds = ds.apply(take_while_ops.take_while(take_while_predicate))
   final_aug_vars = ds.reduce(aug_vars, reduce_body)
   final_vars, final_state = final_aug_vars
@@ -638,7 +652,7 @@ def _dataset_for_stmt_no_extra_test(ds, body, get_state, set_state, init_vars,
   if no_state:
     init_state = (constant_op.constant(0),)
 
-  def reduce_body(aug_vars, iterate):
+  def scan_body(aug_vars, iterate):
     """The main loop body wrapper."""
     loop_vars, state = aug_vars
     if not no_state:
@@ -661,9 +675,20 @@ def _dataset_for_stmt_no_extra_test(ds, body, get_state, set_state, init_vars,
         basic_symbol_names,
         composite_symbol_names,
         include_shapes=False)
-    return new_vars, new_state
+
+    scan_outputs = new_vars, new_state
+    # Note: new_aug_vars is the actual state of scan; scan_outputs is its output
+    # (hence the redundancy).
+    # get_state will pull any mutations that body may have made.
+    new_aug_vars = new_vars, new_state
+    return new_aug_vars, scan_outputs
+
+  def reduce_body(unused_aug_vars, scan_outputs):
+    output_aug_vars, output_state = scan_outputs
+    return output_aug_vars, output_state
 
   aug_vars = init_vars, get_state()
+  ds = _general_purpose_scan(ds, aug_vars, scan_body)
   final_vars, final_state = ds.reduce(aug_vars, reduce_body)
   set_state(final_state)
 

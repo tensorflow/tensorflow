@@ -407,7 +407,7 @@ class SequenceValueIterator : public ValueIterator {
  public:
   explicit SequenceValueIterator(PyObject* iterable)
       : seq_(PySequence_Fast(iterable, "")),
-        size_(PySequence_Fast_GET_SIZE(seq_.get())),
+        size_(seq_.get() ? PySequence_Fast_GET_SIZE(seq_.get()) : 0),
         index_(0) {}
 
   Safe_PyObjectPtr next() override {
@@ -416,8 +416,10 @@ class SequenceValueIterator : public ValueIterator {
       // PySequence_Fast_GET_ITEM returns a borrowed reference.
       PyObject* elem = PySequence_Fast_GET_ITEM(seq_.get(), index_);
       ++index_;
-      Py_INCREF(elem);
-      result.reset(elem);
+      if (elem) {
+        Py_INCREF(elem);
+        result.reset(elem);
+      }
     }
 
     return result;

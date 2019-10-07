@@ -22,16 +22,22 @@ import os
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.mixed_precision.experimental import autocast_variable
+from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_v2
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import gradient_descent as gradient_descent_v1
 from tensorflow.python.training.tracking import util as trackable_utils
 
 TESTCASES = ({
@@ -59,13 +65,6 @@ def get_distribute_scope(distribute):
     return DummyContextManager()
 
 
-def get_autocast_var(var, distribute):
-  if distribute:
-    return autocast_variable.AutoCastDistributedVariable(var)
-  else:
-    return autocast_variable.AutoCastVariable(var)
-
-
 def get_var(val, dtype, name=None):
   return variables.VariableV1(val, use_resource=True, dtype=dtype, name=name)
 
@@ -77,7 +76,7 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
   def test_read(self, distribute):
     with get_distribute_scope(distribute):
       x = get_var(1., dtypes.float32)
-      x = get_autocast_var(x, distribute)
+      x = autocast_variable.create_autocast_variable(x)
       self.evaluate(x.initializer)
 
       # outside of auto cast scope.
@@ -102,11 +101,26 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(x.read_value().dtype, dtypes.float32)
         self.assertEqual(array_ops.identity(x).dtype, dtypes.float32)
 
+  def test_sparse_reads(self):
+    x = get_var([1., 2], dtypes.float32)
+    # DistributedVariables do not support sparse_read or gather_nd, so we pass
+    # distribute=False
+    x = autocast_variable.create_autocast_variable(x)
+    self.evaluate(x.initializer)
+
+    self.assertEqual(x.sparse_read([0]).dtype, dtypes.float32)
+    self.assertEqual(x.gather_nd([0]).dtype, dtypes.float32)
+
+    with ops.get_default_graph()._enable_auto_casting_variables(
+        dtypes.float16):
+      self.assertEqual(x.sparse_read([0]).dtype, dtypes.float16)
+      self.assertEqual(x.gather_nd([0]).dtype, dtypes.float16)
+
   @parameterized.named_parameters(*TESTCASES)
   def test_read_nested_scopes(self, distribute):
     with get_distribute_scope(distribute):
       x = get_var(1., dtypes.float32)
-      x = get_autocast_var(x, distribute)
+      x = autocast_variable.create_autocast_variable(x)
       self.evaluate(x.initializer)
 
       with ops.get_default_graph()._enable_auto_casting_variables(
@@ -126,7 +140,7 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
   def test_dtype_is_not_string(self, distribute):
     with get_distribute_scope(distribute):
       x = get_var(1., dtypes.float32)
-      x = get_autocast_var(x, distribute)
+      x = autocast_variable.create_autocast_variable(x)
       self.assertEqual(x.dtype, dtypes.float32)
       self.assertIsInstance(x.dtype, dtypes.DType)
       self.assertEqual(x.true_dtype, dtypes.float32)
@@ -139,11 +153,80 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
         self.assertIsInstance(x.true_dtype, dtypes.DType)
 
   @parameterized.named_parameters(*TESTCASES)
+  def test_method_delegations(self, distribute):
+    # Test AutoCastVariable correctly delegates Variable methods to the
+    # underlying variable.
+    with get_distribute_scope(distribute):
+      evaluate = self.evaluate
+      for read_dtype in (dtypes.float32, dtypes.float16):
+        x = get_var(7., dtypes.float32)
+        x = autocast_variable.create_autocast_variable(x)
+        with ops.get_default_graph()._enable_auto_casting_variables(
+            read_dtype):
+          evaluate(x.initializer)
+          self.assertEqual(evaluate(x.value()), 7)
+          self.assertEqual(evaluate(x.read_value()), 7)
+          self.assertTrue(x.trainable)
+          self.assertEqual(x.synchronization, x._variable.synchronization)
+          self.assertEqual(x.aggregation, x._variable.aggregation)
+          self.assertEqual(evaluate(x.initialized_value()), 7)
+          if not context.executing_eagerly():
+            if not distribute:
+              # These functions are not supported for DistributedVariables
+              x.load(9)
+              self.assertEqual(x.eval(), 9)
+            self.assertEqual(evaluate(x.initial_value), 7)
+            self.assertEqual(x.op, x._variable.op)
+            self.assertEqual(x.graph, x._variable.graph)
+          if not distribute:
+            # These attributes are not supported for DistributedVariables
+            self.assertIsNone(x.constraint)
+            self.assertEqual(x.initializer, x._variable.initializer)
+          self.assertEqual(evaluate(x.assign(8)), 8)
+          self.assertEqual(evaluate(x.assign_add(2)), 10)
+          self.assertEqual(evaluate(x.assign_sub(3)), 7)
+          self.assertEqual(x.name, x._variable.name)
+          self.assertEqual(x.device, x._variable.device)
+          self.assertEqual(x.shape, ())
+          self.assertEqual(x.get_shape(), ())
+
+        if not distribute:
+          # Test scatter_* methods. These are not supported for
+          # DistributedVariables
+          x = get_var([7, 8], dtypes.float32)
+          x = autocast_variable.create_autocast_variable(x)
+          with ops.get_default_graph()._enable_auto_casting_variables(
+              read_dtype):
+            evaluate(x.initializer)
+            self.assertAllEqual(evaluate(x.value()), [7, 8])
+
+            def slices(val, index):
+              return indexed_slices.IndexedSlices(
+                  values=constant_op.constant(val, dtype=dtypes.float32),
+                  indices=constant_op.constant(index, dtype=dtypes.int32),
+                  dense_shape=constant_op.constant([2], dtype=dtypes.int32))
+
+            self.assertAllEqual(evaluate(x.scatter_sub(slices(1., 0))), [6, 8])
+            self.assertAllEqual(evaluate(x.scatter_add(slices(1., 0))), [7, 8])
+            self.assertAllEqual(evaluate(x.scatter_max(slices(9., 1))), [7, 9])
+            self.assertAllEqual(evaluate(x.scatter_min(slices(8., 1))), [7, 8])
+            self.assertAllEqual(evaluate(x.scatter_mul(slices(2., 1))), [7, 16])
+            self.assertAllEqual(evaluate(x.scatter_div(slices(2., 1))), [7, 8])
+            self.assertAllEqual(
+                evaluate(x.scatter_update(slices(4., 1))), [7, 4])
+            self.assertAllEqual(
+                evaluate(x.scatter_nd_sub([[0], [1]], [1., 2.])), [6, 2])
+            self.assertAllEqual(
+                evaluate(x.scatter_nd_add([[0], [1]], [1., 2.])), [7, 4])
+            self.assertAllEqual(
+                evaluate(x.scatter_nd_update([[0], [1]], [1., 2.])), [1, 2])
+
+  @parameterized.named_parameters(*TESTCASES)
   def test_operator_overloads(self, distribute):
     with get_distribute_scope(distribute):
       for read_dtype in (dtypes.float32, dtypes.float16):
         x = get_var(7., dtypes.float32)
-        x = get_autocast_var(x, distribute)
+        x = autocast_variable.create_autocast_variable(x)
         with ops.get_default_graph()._enable_auto_casting_variables(
             read_dtype):
           self.evaluate(x.initializer)
@@ -178,15 +261,18 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
           self.assertAlmostEqual(7, self.evaluate(abs(x)))
 
           x = get_var([7, 8, 9], dtypes.float32)
-          x = get_autocast_var(x, distribute)
+          x = autocast_variable.create_autocast_variable(x)
           self.evaluate(x.initializer)
           self.assertEqual(self.evaluate(x[1]), 8)
+          if tf2.enabled() and context.executing_eagerly():
+            self.assertAllEqual(x == [7., 8., 10.], [True, True, False])
+            self.assertAllEqual(x != [7., 8., 10.], [False, False, True])
 
   @parameterized.named_parameters(*TESTCASES)
   def test_assign(self, distribute):
     with get_distribute_scope(distribute):
       x = get_var(0., dtypes.float32)
-      x = get_autocast_var(x, distribute)
+      x = autocast_variable.create_autocast_variable(x)
       self.evaluate(x.initializer)
 
       # outside of auto cast scope.
@@ -214,9 +300,17 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
           self.evaluate(x.assign_sub(v2))
 
         # Assign Python floats
+        self.assertAllClose(0., self.evaluate(x.assign(0.)))
         self.assertAllClose(3.14, self.evaluate(x.assign(3.14)))
         self.assertAllClose(3.14 * 2, self.evaluate(x.assign_add(3.14)))
         self.assertAllClose(3.14, self.evaluate(x.assign_sub(3.14)))
+
+        # Use the tf.assign functions instead of the var.assign methods.
+        self.assertAllClose(0., self.evaluate(state_ops.assign(x, 0.)))
+        self.assertAllClose(3.14, self.evaluate(state_ops.assign(x, 3.14)))
+        self.assertAllClose(3.14 * 2,
+                            self.evaluate(state_ops.assign_add(x, 3.14)))
+        self.assertAllClose(3.14, self.evaluate(state_ops.assign_sub(x, 3.14)))
 
       run_and_check()
       # reset x
@@ -231,7 +325,7 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
   def test_assign_stays_in_true_dtype(self, distribute):
     with get_distribute_scope(distribute):
       x = get_var(1., dtypes.float32)
-      x = get_autocast_var(x, distribute)
+      x = autocast_variable.create_autocast_variable(x)
       self.evaluate(x.initializer)
       # small_val is a value such that 1.0 + small_val == 1.0 in fp16, but not
       # in fp32
@@ -258,7 +352,7 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
   def test_checkpoint(self, distribute):
     with get_distribute_scope(distribute):
       x = get_var(1., dtypes.float32)
-      x = get_autocast_var(x, distribute)
+      x = autocast_variable.create_autocast_variable(x)
     self.evaluate(x.initializer)
     self.evaluate(x.assign(123.))
 
@@ -275,25 +369,19 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
       # Wrap a non-variable
       with self.assertRaisesRegexp(ValueError, 'variable must be of type'):
         x = constant_op.constant([1.], dtype=dtypes.float32)
-        get_autocast_var(x, distribute)
+        autocast_variable.create_autocast_variable(x)
 
       # Wrap a non-floating point variable
       with self.assertRaisesRegexp(ValueError,
                                    'variable must be a floating point'):
         x = get_var(1, dtypes.int32)
-        get_autocast_var(x, distribute)
-
-    if distribute:
-      # Wrap a non-distributed variable with AutoCastDistributedVariable
-      with self.assertRaisesRegexp(ValueError, 'variable must be of type'):
-        x = get_var(1., dtypes.float32)
-        get_autocast_var(x, distribute)
+        autocast_variable.create_autocast_variable(x)
 
   def test_repr(self):
     # We do not test with DistributionStrategy because we do not want to rely on
     # the exact __repr__ output of a DistributedVariable.
     x = get_var(1., dtypes.float32, name='x')
-    x = get_autocast_var(x, distribute=False)
+    x = autocast_variable.create_autocast_variable(x)
     if context.executing_eagerly():
       self.assertStartsWith(
           repr(x),
@@ -318,6 +406,36 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
             repr(x),
             "<AutoCastVariable 'x:0' shape=() dtype=float16 true_dtype=float32>"
         )
+
+  def test_repr_distributed(self):
+    with get_distribute_scope(distribute=True):
+      x = get_var(1., dtypes.float32)
+      x = autocast_variable.create_autocast_variable(x)
+      self.assertRegexpMatches(
+          repr(x).replace('\n', ' '),
+          '<AutoCastDistributedVariable dtype=float32 true_dtype=float32 '
+          'inner_variable=MirroredVariable.*>'
+      )
+
+  @parameterized.named_parameters(
+      ('v1', gradient_descent_v1.GradientDescentOptimizer),
+      ('v2', gradient_descent_v2.SGD))
+  def test_optimizer(self, optimizer_class):
+    x = get_var(1., dtypes.float32)
+    x = autocast_variable.create_autocast_variable(x)
+    opt = optimizer_class(1.)
+
+    @def_function.function
+    def f():
+      opt.minimize(lambda: x + 1., var_list=[x])
+
+    if context.executing_eagerly():
+      f()
+    else:
+      op = f()  # pylint: disable=assignment-from-no-return
+      self.evaluate(variables.global_variables_initializer())
+      self.evaluate(op)
+    self.assertEqual(self.evaluate(x), 0)
 
 
 if __name__ == '__main__':

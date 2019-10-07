@@ -44,7 +44,7 @@ class FileIO(object):
 
   The constructor takes the following arguments:
   name: name of the file
-  mode: one of 'r', 'w', 'a', 'r+', 'w+', 'a+'. Append 'b' for bytes mode.
+  mode: one of `r`, `w`, `a`, `r+`, `w+`, `a+`. Append `b` for bytes mode.
 
   Can be used as an iterator to iterate over lines in the file.
 
@@ -113,10 +113,10 @@ class FileIO(object):
     Starts reading from current position in file.
 
     Args:
-      n: Read 'n' bytes if n != -1. If n = -1, reads to end of file.
+      n: Read `n` bytes if `n != -1`. If `n = -1`, reads to end of file.
 
     Returns:
-      'n' bytes of the file (or whole file) in bytes mode or 'n' bytes of the
+      `n` bytes of the file (or whole file) in bytes mode or `n` bytes of the
       string if in string (regular) mode.
     """
     self._preread_check()
@@ -140,7 +140,7 @@ class FileIO(object):
       whence: Valid values for whence are:
         0: start of the file (default)
         1: relative to the current position of the file
-        2: relative to the end of file. offset is usually negative.
+        2: relative to the end of file. `offset` is usually negative.
     """
     # pylint: enable=g-doc-args
     self._preread_check()
@@ -292,7 +292,7 @@ def delete_file(filename):
 
   Raises:
     errors.OpError: Propagates any errors reported by the FileSystem API.  E.g.,
-    NotFoundError if the file does not exist.
+    `NotFoundError` if the file does not exist.
   """
   delete_file_v2(filename)
 
@@ -306,7 +306,7 @@ def delete_file_v2(path):
 
   Raises:
     errors.OpError: Propagates any errors reported by the FileSystem API.  E.g.,
-    NotFoundError if the path does not exist.
+    `NotFoundError` if the path does not exist.
   """
   pywrap_tensorflow.DeleteFile(compat.as_bytes(path))
 
@@ -324,7 +324,7 @@ def read_file_to_string(filename, binary_mode=False):
 
   Raises:
     errors.OpError: Raises variety of errors that are subtypes e.g.
-    NotFoundError etc.
+    `NotFoundError` etc.
   """
   if binary_mode:
     f = FileIO(filename, mode="rb")
@@ -395,12 +395,13 @@ def get_matching_files_v2(pattern):
 
 @tf_export(v1=["gfile.MkDir"])
 def create_dir(dirname):
-  """Creates a directory with the name 'dirname'.
+  """Creates a directory with the name `dirname`.
 
   Args:
     dirname: string, name of the directory to be created
-  Notes: The parent directories need to exist. Use recursive_create_dir instead
-    if there is the possibility that the parent dirs don't exist.
+
+  Notes: The parent directories need to exist. Use `tf.io.gfile.makedirs`
+    instead if there is the possibility that the parent dirs don't exist.
 
   Raises:
     errors.OpError: If the operation fails.
@@ -410,12 +411,13 @@ def create_dir(dirname):
 
 @tf_export("io.gfile.mkdir")
 def create_dir_v2(path):
-  """Creates a directory with the name given by 'path'.
+  """Creates a directory with the name given by `path`.
 
   Args:
     path: string, name of the directory to be created
-  Notes: The parent directories need to exist. Use recursive_create_dir instead
-    if there is the possibility that the parent dirs don't exist.
+
+  Notes: The parent directories need to exist. Use `tf.io.gfile.makedirs`
+    instead if there is the possibility that the parent dirs don't exist.
 
   Raises:
     errors.OpError: If the operation fails.
@@ -656,9 +658,9 @@ def walk(top, in_order=True):
 
   Yields:
     Each yield is a 3-tuple:  the pathname of a directory, followed by lists of
-    all its subdirectories and leaf files.
-    (dirname, [subdirname, subdirname, ...], [filename, filename, ...])
-    as strings
+    all its subdirectories and leaf files. That is, each yield looks like:
+    `(dirname, [subdirname, subdirname, ...], [filename, filename, ...])`.
+    Each item is a string.
   """
   return walk_v2(top, in_order)
 
@@ -676,9 +678,9 @@ def walk_v2(top, topdown=True, onerror=None):
 
   Yields:
     Each yield is a 3-tuple:  the pathname of a directory, followed by lists of
-    all its subdirectories and leaf files.
-    (dirname, [subdirname, subdirname, ...], [filename, filename, ...])
-    as strings
+    all its subdirectories and leaf files. That is, each yield looks like:
+    `(dirname, [subdirname, subdirname, ...], [filename, filename, ...])`.
+    Each item is a string.
   """
   top = compat.as_str_any(top)
   try:
@@ -751,7 +753,7 @@ def filecmp(filename_a, filename_b):
   We check size first and return False quickly if the files are different sizes.
   If they are the same size, we continue to generating a crc for the whole file.
 
-  You might wonder: why not use Python's filecmp.cmp() instead? The answer is
+  You might wonder: why not use Python's `filecmp.cmp()` instead? The answer is
   that the builtin library is not robust to the many different filesystems
   TensorFlow runs on, and so we here perform a similar comparison with
   the more robust FileIO.

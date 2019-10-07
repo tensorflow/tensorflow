@@ -96,6 +96,7 @@ py_library(
         "//tensorflow/python:composite_tensor_utils",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:ctc_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
@@ -296,9 +297,14 @@ py_library(
         "saving/hdf5_format.py",
         "saving/model_config.py",
         "saving/save.py",
+        "saving/saved_model/base_serialization.py",
         "saving/saved_model/constants.py",
+        "saving/saved_model/layer_serialization.py",
         "saving/saved_model/load.py",
+        "saving/saved_model/model_serialization.py",
+        "saving/saved_model/network_serialization.py",
         "saving/saved_model/save.py",
+        "saving/saved_model/save_impl.py",
         "saving/saved_model/serialized_attributes.py",
         "saving/saved_model/utils.py",
         "saving/saved_model_experimental.py",
@@ -346,6 +352,7 @@ py_library(
         ":engine_utils",
         ":mode_keys",
         "//tensorflow/python/keras/distribute:multi_worker_training_state",
+        "//tensorflow/tools/docs:doc_controls",
     ],
 )
 
@@ -479,6 +486,8 @@ py_library(
         "layers/pooling.py",
         "layers/preprocessing/normalization.py",
         "layers/preprocessing/normalization_v1.py",
+        "layers/preprocessing/text_vectorization.py",
+        "layers/preprocessing/text_vectorization_v1.py",
         "layers/recurrent.py",
         "layers/recurrent_v2.py",
         "layers/rnn_cell_wrapper_v2.py",
@@ -492,7 +501,6 @@ py_library(
         ":generic_utils",
         ":tf_utils",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:cudnn_rnn_ops_gen",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:embedding_ops",
@@ -791,7 +799,6 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 8,
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -804,7 +811,6 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -822,7 +828,6 @@ cuda_py_test(
         "no_rocm",
         "no_windows_gpu",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -902,7 +907,6 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -942,7 +946,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "normalization_test",
     size = "medium",
     srcs = ["layers/normalization_test.py"],
@@ -970,6 +974,19 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     main = "normalization_test.py",
+)
+
+tf_py_test(
+    name = "preprocessing_text_vectorization_test",
+    size = "medium",
+    srcs = ["layers/preprocessing/text_vectorization_test.py"],
+    additional_deps = [
+        ":keras",
+        ":preprocessing_test_utils",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+    ],
+    main = "text_vectorization_test.py",
 )
 
 tf_py_test(
@@ -1041,7 +1058,6 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 2,
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -1054,7 +1070,6 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -1069,7 +1084,6 @@ cuda_py_test(
     ],
     shard_count = 12,
     tags = ["no_rocm"],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -1084,7 +1098,6 @@ cuda_py_test(
     ],
     shard_count = 12,
     tags = ["no_rocm"],
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -1197,8 +1210,6 @@ tf_py_test(
     ],
     shard_count = 6,
     tags = [
-        "no_oss",
-        "no_windows",
         "noasan",  # times out
         "notsan",
         "optonly",  # times out
@@ -1302,7 +1313,6 @@ cuda_py_test(
         "guitar",
         "multi_gpu",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -1318,7 +1328,6 @@ cuda_py_test(
     tags = [
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -1507,8 +1516,8 @@ tf_py_test(
     ],
     shard_count = 6,
     tags = [
-        "no_oss",
         "noasan",  # TODO(b/132183295): Re-enable this.
+        "nomac",  # TODO(b/140193633): Re-enable this.
         "notsan",
     ],
 )
@@ -1600,6 +1609,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 4,
     tags = [
         "no_windows",
@@ -1666,7 +1676,22 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 8,
+    tags = [
+        "no_rocm",
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
+)
+
+tf_py_test(
+    name = "base_layer_utils_test",
+    srcs = ["engine/base_layer_utils_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+    ],
     tags = [
         "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564

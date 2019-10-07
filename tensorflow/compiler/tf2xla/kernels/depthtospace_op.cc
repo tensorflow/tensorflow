@@ -57,7 +57,7 @@ class DepthToSpaceOp : public XlaOpKernel {
     xla::XlaBuilder* builder = input.builder();
     auto input_xla_shape = builder->GetShape(input);
     OP_REQUIRES_OK(ctx, input_xla_shape.status());
-    const std::vector<int64>& input_shape =
+    absl::Span<const int64> input_shape =
         input_xla_shape.ValueOrDie().dimensions();
     int input_rank = input_shape.size();
 

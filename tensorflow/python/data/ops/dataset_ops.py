@@ -20,6 +20,7 @@ from __future__ import print_function
 import abc
 import enum
 import functools
+import sys
 import threading
 import warnings
 import weakref
@@ -126,7 +127,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   # Dict element with 3 components
   d = {"a": (2, 2), "b": 3}
   # Element containing a dataset
-  e = tf.data.Dataset.from_element(10)
+  e = tf.data.Dataset.from_tensors(10)
   ```
   """
 
@@ -242,6 +243,9 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     def is_tensor_or_parent_ref(tensor):
       if tensor.dtype._is_ref_dtype:  # pylint: disable=protected-access
         return True
+      # If the captured tensor is an eager tensor, we cannot trace its inputs.
+      if isinstance(tensor, ops._EagerTensorBase):  # pylint: disable=protected-access
+        return False
       return any([is_tensor_or_parent_ref(x) for x in tensor.op.inputs])
 
     for fn in self._functions():
@@ -412,7 +416,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     memory and run into byte limits of graph serialization. If `tensors`
     contains one or more large NumPy arrays, consider the alternative described
     in [this
-    guide](https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
+    guide](https://tensorflow.org/guide/data#consuming_numpy_arrays).
 
     Args:
       tensors: A dataset element.
@@ -426,17 +430,40 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def from_tensor_slices(tensors):
     """Creates a `Dataset` whose elements are slices of the given tensors.
 
+    The given tensors are sliced along their first dimension. This operation
+    preserves the structure of the input tensors, removing the first dimension
+    of each tensor and using it as the dataset dimension. All input tensors
+    must have the same size in their first dimensions.
+
+    ```python
+    # Slicing a 1D tensor produces scalar tensor elements.
+    Dataset.from_tensor_slices([1, 2, 3])  # ==> [ 1, 2, 3 ]
+
+    # Slicing a 2D tensor produces 1D tensor elements.
+    Dataset.from_tensor_slices([[1, 2], [3, 4], [5, 6]])
+    # ==> [ [1, 2], [3, 4], [5, 6] ]
+
+    # Slicing a tuple of 1D tensors produces tuple elements containing scalar
+    tensors.
+    Dataset.from_tensor_slices(([1, 2], [3, 4], [5, 6]))
+    # ==> [ (1, 3, 5), (2, 4, 6) ]
+
+    # Dictionary structure is also preserved.
+    Dataset.from_tensor_slices({"a": [1, 2], "b": [3, 4], "c": [5, 6]})
+    # ==> [ {"a": 1, "b": 3, "c": 5}, {"a": 2, "b": 4, "c:" 6} ]
+    ```
+
     Note that if `tensors` contains a NumPy array, and eager execution is not
     enabled, the values will be embedded in the graph as one or more
     `tf.constant` operations. For large datasets (> 1 GB), this can waste
     memory and run into byte limits of graph serialization. If `tensors`
     contains one or more large NumPy arrays, consider the alternative described
     in [this guide](
-    https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
+    https://tensorflow.org/guide/data#consuming_numpy_arrays).
 
     Args:
       tensors: A dataset element, with each component having the same size in
-        the 0th dimension.
+        the first dimension.
 
     Returns:
       Dataset: A `Dataset`.
@@ -599,20 +626,20 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
         try:
           flattened_values = nest.flatten_up_to(output_types, values)
         except (TypeError, ValueError):
-          raise TypeError(
+          six.reraise(TypeError, TypeError(
               "`generator` yielded an element that did not match the expected "
               "structure. The expected structure was %s, but the yielded "
-              "element was %s." % (output_types, values))
+              "element was %s." % (output_types, values)), sys.exc_info()[2])
         ret_arrays = []
         for ret, dtype in zip(flattened_values, flattened_types):
           try:
             ret_arrays.append(script_ops.FuncRegistry._convert(  # pylint: disable=protected-access
                 ret, dtype=dtype.as_numpy_dtype))
           except (TypeError, ValueError):
-            raise TypeError(
+            six.reraise(TypeError, TypeError(
                 "`generator` yielded an element that could not be converted to "
                 "the expected type. The expected type was %s, but the yielded "
-                "element was %s." % (dtype.name, ret))
+                "element was %s." % (dtype.name, ret)), sys.exc_info()[2])
 
         # Additional type and shape checking to ensure that the components
         # of the generated element match the `output_types` and `output_shapes`
@@ -914,6 +941,39 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     its space in the buffer is replaced by the next (i.e. 1,001-st) element,
     maintaining the 1,000 element buffer.
 
+    `reshuffle_each_iteration` controls whether the shuffle order should be
+    different for each epoch. In TF 1.X, the idiomatic way to create epochs
+    was through the `repeat` transformation:
+
+    ```python
+    d = tf.data.Dataset.range(3)
+    d = d.shuffle(3, reshuffle_each_iteration=True)
+    d = d.repeat(2)  # ==> [ 1, 0, 2, 1, 2, 0 ]
+
+    d = tf.data.Dataset.range(3)
+    d = d.shuffle(3, reshuffle_each_iteration=False)
+    d = d.repeat(2)  # ==> [ 1, 0, 2, 1, 0, 2 ]
+    ```
+
+    In TF 2.0, tf.data.Dataset objects are Python iterables which makes it
+    possible to also create epochs through Python iteration:
+
+    ```python
+    d = tf.data.Dataset.range(3)
+    d = d.shuffle(3, reshuffle_each_iteration=True)
+    for elem in d:
+      # ==> [ 1, 0, 2 ]
+    for elem in d:
+      # ==> [ 1, 2, 0 ]
+
+    d = tf.data.Dataset.range(3)
+    d = d.shuffle(3, reshuffle_each_iteration=False)
+    for elem in d:
+      # ==> [ 1, 0, 2 ]
+    for elem in d:
+      # ==> [ 1, 0, 2 ]
+    ```
+
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
         elements from this dataset from which the new dataset will sample.
@@ -972,6 +1032,21 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
   def shard(self, num_shards, index):
     """Creates a `Dataset` that includes only 1/`num_shards` of this dataset.
+
+    `shard` is a deterministic operator; the Dataset produced by
+    `A.shard(n, i)` will contain all elements of A whose index mod n = i.
+
+    ```python
+    # Create a Dataset with 60 elements.
+    A = tf.data.Dataset.range(60) # ==> [0, 1, 2, 3, ..., 57, 58, 59]
+
+    # Create 3 Datasets, each with 20 elements from Dataset A.
+    B = A.shard(num_shards=3, index=0) # ==> [0, 3, 6, 9, ..., 51, 54, 57]
+    C = A.shard(num_shards=3, index=1) # ==> [1, 4, 7, 10, ..., 52, 55, 58]
+    D = A.shard(num_shards=3, index=2) # ==> [2, 5, 8, 11, ..., 53, 56, 59]
+
+    # There is no overlap between Datasets B, C and D.
+    ```
 
     This dataset operator is very useful when running distributed training, as
     it allows each worker to read a unique subset.
@@ -1534,11 +1609,13 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     reduce_func = wrapped_func.function
     reduce_func.add_to_graph(ops.get_default_graph())
 
+    dataset = self._apply_options()
+
     # pylint: disable=protected-access
     return structure.from_compatible_tensor_list(
         state_structure,
         gen_dataset_ops.reduce_dataset(
-            self._variant_tensor,
+            dataset._variant_tensor,
             structure.to_tensor_list(state_structure, initial_state),
             reduce_func.captured_inputs,
             f=reduce_func,
@@ -1746,7 +1823,7 @@ class DatasetV1(DatasetV2):
     if context.executing_eagerly():
       raise RuntimeError(
           "dataset.make_initializable_iterator is not supported when eager "
-          "execution is enabled.")
+          "execution is enabled. Use `for element in dataset` instead.")
     _ensure_same_dataset_graph(self)
     dataset = self._apply_options()
     if shared_name is None:
@@ -1999,9 +2076,10 @@ class DatasetV1(DatasetV2):
     return DatasetV1Adapter(super(DatasetV1, self).with_options(options))
 
 
-# TODO(b/119044825): Until all `tf.data` unit tests are converted to V2, keep
-# this alias in place.
-Dataset = DatasetV1
+if tf2.enabled():
+  Dataset = DatasetV2
+else:
+  Dataset = DatasetV1
 
 
 class DatasetV1Adapter(DatasetV1):
@@ -2205,6 +2283,14 @@ class Options(options_lib.OptionsBase):
   optimizations to apply or whether to use performance modeling to dynamically
   tune the parallelism of operations such as `tf.data.Dataset.map` or
   `tf.data.Dataset.interleave`.
+
+  After constructing an `Options` object, use `dataset.with_options(options)` to
+  apply the options to a dataset.
+
+  >>> dataset = tf.data.Dataset.range(3)
+  >>> options = tf.data.Options()
+  >>> # Set options here.
+  >>> dataset = dataset.with_options(options)
   """
 
   experimental_deterministic = options_lib.create_option(
@@ -2480,7 +2566,14 @@ def to_variant(dataset):
     "data.DatasetSpec",
     v1=["data.DatasetSpec", "data.experimental.DatasetStructure"])
 class DatasetSpec(type_spec.BatchableTypeSpec):
-  """Type specification for `tf.data.Dataset`."""
+  """Type specification for `tf.data.Dataset`.
+
+  See `tf.TypeSpec` for more information about TensorFlow type specifications.
+
+  >>> dataset = tf.data.Dataset.range(3)
+  >>> tf.data.DatasetSpec.from_value(dataset)
+  DatasetSpec(TensorSpec(shape=(), dtype=tf.int64, name=None), TensorShape([]))
+  """
 
   __slots__ = ["_element_spec", "_dataset_shape"]
 
@@ -2517,6 +2610,7 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
 
   @staticmethod
   def from_value(value):
+    """Creates a `DatasetSpec` for the given `tf.data.Dataset` value."""
     return DatasetSpec(value.element_spec)  # pylint: disable=protected-access
 
   def _batch(self, batch_size):
@@ -2624,6 +2718,10 @@ class StructuredFunctionWrapper(object):
     func_name = "_".join(
         [readable_transformation_name,
          function_utils.get_func_name(func)])
+    # Sanitize function name to remove symbols that interfere with graph
+    # construction.
+    for symbol in ["<", ">", "\\", "'", " "]:
+      func_name = func_name.replace(symbol, "")
 
     ag_ctx = autograph_ctx.control_status_ctx()
 
@@ -2667,8 +2765,11 @@ class StructuredFunctionWrapper(object):
       try:
         self._output_structure = structure.type_spec_from_value(ret)
       except (ValueError, TypeError):
-        raise TypeError("Unsupported return value from function passed to "
-                        "%s: %s." % (transformation_name, ret))
+        six.reraise(
+            TypeError,
+            TypeError("Unsupported return value from function passed to "
+                      "%s: %s." % (transformation_name, ret)),
+            sys.exc_info()[2])
       return ret
 
     if use_legacy_function:
@@ -2711,7 +2812,9 @@ class StructuredFunctionWrapper(object):
 
       resource_tracker = tracking.ResourceTracker()
       with tracking.resource_tracker_scope(resource_tracker):
+        # TODO(b/141462134): Switch to using garbage collection.
         self._function = wrapper_fn._get_concrete_function_internal()
+
         if add_to_graph:
           self._function.add_to_graph(ops.get_default_graph())
       if resource_tracker.resources:
@@ -3272,13 +3375,16 @@ def _padded_shape_to_tensor(padded_shape, input_component_shape):
     # machinery.
     ret = ops.convert_to_tensor(padded_shape, preferred_dtype=dtypes.int64)
     if ret.shape.dims is not None and len(ret.shape.dims) != 1:
-      raise ValueError(
+      six.reraise(ValueError, ValueError(
           "Padded shape %s must be a 1-D tensor of tf.int64 values, but its "
-          "shape was %s." % (padded_shape, ret.shape))
+          "shape was %s." % (padded_shape, ret.shape)), sys.exc_info()[2])
     if ret.dtype != dtypes.int64:
-      raise TypeError(
-          "Padded shape %s must be a 1-D tensor of tf.int64 values, but its "
-          "element type was %s." % (padded_shape, ret.dtype.name))
+      six.reraise(
+          TypeError,
+          TypeError(
+              "Padded shape %s must be a 1-D tensor of tf.int64 values, but "
+              "its element type was %s." % (padded_shape, ret.dtype.name)),
+          sys.exc_info()[2])
     padded_shape_as_shape = tensor_util.constant_value_as_shape(ret)
 
   if not _is_padded_shape_compatible_with(padded_shape_as_shape,

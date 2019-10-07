@@ -81,6 +81,7 @@ static std::vector<GroupedConvolution2DSpec> GetConv2DTestCases() {
     config.kernel_layout = {3, 2, 1, 0};
 
     if (activation_size == 1 && kernel_size == 2) {
+      config.stride = config.pad = config.lhs_dilate = -1;
       // Test for outer dim.
       config.output_dims = {batch, activation_size + kernel_size - 1,
                             activation_size + kernel_size, output_feature};

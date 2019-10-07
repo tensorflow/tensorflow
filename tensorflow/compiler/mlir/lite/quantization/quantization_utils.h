@@ -21,11 +21,14 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
+#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 
 namespace mlir {
 namespace TFL {
@@ -38,14 +41,6 @@ using AccumulatorScaleFunc =
 
 // Quantization spec of an op, driving the quantization algorithm.
 struct OpQuantSpec {
-  // Whether the op has quantizable result. This flag is set to false if the op
-  // has "TFL::NoQuantizableResult" trait.
-  bool is_quantizable = true;
-
-  // Whether it requires same inputs and result scale. This flag is set to true
-  // if the op has "TFL::SameOperandsAndResultScale" trait.
-  bool requires_same_scale = false;
-
   // Maps the operand index of a bias input to its quantization specifications,
   // including the non-bias operand indexes and the method retrieving
   // quantization parameters from list of parameters of the non-bias operands.
@@ -64,127 +59,203 @@ struct OpQuantSpec {
 // op.
 typedef std::unique_ptr<OpQuantSpec> (*OpQuantSpecGetter)(Operation* op);
 
-// A generic rewrite pattern which matches any N-in-1-out operations with
-// quantization parameters propagated to all the operands and results values.
-// The quantization parameters are annotated by the Q/DQ op pairs. Each matched
-// pattern are rewritten by its quantized alternatives.
+// A base rewrite pattern which matches any N-in-M-out operations with
+// quantization parameters propagated to at least one of its operands. The
+// quantization parameters are annotated by the Q/DQ op pairs. Each
+// matched pattern are rewritten by its quantized alternatives.
 //
-// This pattern assumes all the matched ops are quantizable. This assumption is
-// always right, except when a "Q" op is used as a requantize op. For non-"Q"
-// ops, quantization parameters should be propagated to their result.
+// The concret pattern, extends from this base pattern, can specify whether it
+// allows "hybrid" operands or results. These "hybrid" operands and results
+// don't have quantization parameters propagated to, so will be in float in the
+// quantized results. The concret pattern should define the following two
+// functions:
 //
-// This pattern only matches ops which only have one result.
-template <typename Q, typename DQ>
-struct GenericFullQuantizationPattern : public RewritePattern {
-  explicit GenericFullQuantizationPattern(MLIRContext* context)
-      : RewritePattern(Q::getOperationName(), 1, context) {}
+//   bool AllowHybridOperand() const
+//   bool AllowHybridResult() const
+//
+// Full integer quantization disallows "hybrid" operands or results.
+// Weight quantization allows "hybrid" operands and results.
+template <typename ConcretTy, typename Q, typename DQ>
+struct QuantizationPattern : public RewritePattern {
+  using BaseType = QuantizationPattern<ConcretTy, Q, DQ>;
+
+  explicit QuantizationPattern(MLIRContext* context)
+      : RewritePattern(DQ::getOperationName(), 1, context) {}
 
   PatternMatchResult matchAndRewrite(Operation* op,
                                      PatternRewriter& rewriter) const override {
     if (op->getNumResults() != 1) {
       return matchFailure();
     }
-    auto quantize_op = cast<Q>(op);
-    Operation* quantized_op = quantize_op.input()->getDefiningOp();
-    // If it is a block argument, requantize op, or has more than one result, we
-    // shouldn't rewrite this op.
-    if (!quantized_op || llvm::isa<Q>(quantized_op) ||
-        llvm::isa<DQ>(quantized_op)) {
-      return matchFailure();
-    }
-
-    // Collect all the quantized inputs and "clone" the matched op by these
-    // inputs.
-    SmallVector<Value*, 4> inputs;
-    inputs.reserve(quantized_op->getNumOperands());
-    for (auto operand : quantized_op->getOperands()) {
-      Type operand_type = operand->getType();
-      if (operand_type.isa<NoneType>()) {
-        inputs.push_back(operand);
-        continue;
-      }
-      auto operand_ele_type =
-          operand->getType().cast<TensorType>().getElementType();
-      if (auto op_inst = dyn_cast_or_null<DQ>(operand->getDefiningOp())) {
-        inputs.push_back(op_inst.input());
-      } else if (operand_ele_type.isa<IntegerType>()) {
-        // If the operand is an integer tensor, then it doesn't require the
-        // DQ op in the pattern.
-        inputs.push_back(operand);
-      } else {
+    Value* quantized_value = op->getResult(0);
+    for (Operation* quantized_op : quantized_value->getUsers()) {
+      // If it is requantize op, we shouldn't rewrite this op.
+      if (llvm::isa<Q>(quantized_op) || llvm::isa<DQ>(quantized_op)) {
         return matchFailure();
       }
-    }
 
-    // Collect all the quantized outputs and replace them by the results of the
-    // new quantized op.
-    llvm::SmallDenseMap<Value*, int> outputs_replaced;
-    SmallVector<Type, 4> output_types;
-    output_types.reserve(quantized_op->getNumResults());
-    for (auto enumerated_result : llvm::enumerate(quantized_op->getResults())) {
-      Value* result = enumerated_result.value();
-      Type result_type = result->getType();
-      // Add this to the test coverage once we create test ops with none type
-      // results.
-      if (result_type.isa<NoneType>()) {
-        outputs_replaced.insert({result, enumerated_result.index()});
-        output_types.push_back(result_type);
-        continue;
-      }
-      if (!result->hasOneUse()) return matchFailure();
-      Type result_ele_type =
-          result->getType().cast<TensorType>().getElementType();
-      if (auto user = dyn_cast_or_null<Q>(*result->user_begin())) {
-        outputs_replaced.insert({user.output(), enumerated_result.index()});
-        output_types.push_back(user.getType());
-      } else if (result_ele_type.template isa<IntegerType>()) {
-        // If the result is an integer tensor, then it doesn't require the
-        // D op in the pattern.
-        outputs_replaced.insert({result, enumerated_result.index()});
-        output_types.push_back(result_ele_type);
-      } else {
+      // If it is terminator or not quantizable, we shouldn't rewrite.
+      if (quantized_op->isKnownTerminator() ||
+          quantized_op->hasTrait<OpTrait::quant::NoQuantizableResult>()) {
         return matchFailure();
       }
-    }
 
-    // Use OpBuilder so we can use op name to create the new op.
-    OpBuilder builder(quantized_op);
-    OperationState new_state(quantized_op->getLoc(),
-                             quantized_op->getName().getStringRef(), inputs,
-                             output_types, quantized_op->getAttrs());
-    Operation* new_op = builder.createOperation(new_state);
-    for (auto output : outputs_replaced) {
-      output.getFirst()->replaceAllUsesWith(
-          new_op->getResult(output.getSecond()));
+      // Collect all the quantized inputs and "clone" the matched op by these
+      // inputs.
+      SmallVector<Value*, 4> inputs;
+      inputs.reserve(quantized_op->getNumOperands());
+      for (auto operand : quantized_op->getOperands()) {
+        Type operand_type = operand->getType();
+        if (operand_type.isa<NoneType>()) {
+          inputs.push_back(operand);
+          continue;
+        }
+
+        auto ele_type = operand->getType().cast<TensorType>().getElementType();
+        if (auto op_inst = dyn_cast_or_null<DQ>(operand->getDefiningOp())) {
+          inputs.push_back(op_inst.input());
+        } else if (ele_type.isa<IntegerType>()) {
+          // If the operand is an integer tensor, then it doesn't require the
+          // DQ op in the pattern.
+          inputs.push_back(operand);
+        } else if (static_cast<const ConcretTy*>(this)->AllowHybridOperand()) {
+          inputs.push_back(operand);
+        } else {
+          return matchFailure();
+        }
+      }
+
+      // Collect all the quantized outputs and replace them by the results of
+      // the new quantized op.
+      llvm::SmallDenseMap<Value*, int> outputs_replaced;
+      SmallVector<Type, 4> output_types;
+      output_types.reserve(quantized_op->getNumResults());
+      for (auto enumerated_result :
+           llvm::enumerate(quantized_op->getResults())) {
+        Value* result = enumerated_result.value();
+        Type result_type = result->getType();
+        // Add this to the test coverage once we create test ops with none type
+        // results.
+        if (result_type.isa<NoneType>()) {
+          outputs_replaced.insert({result, enumerated_result.index()});
+          output_types.push_back(result_type);
+          continue;
+        }
+        Type result_ele_type =
+            result->getType().cast<TensorType>().getElementType();
+        // If the user is the Quantize op, it must be the only user.
+        if (result->hasOneUse() && llvm::isa<Q>(*result->user_begin())) {
+          auto user = llvm::cast<Q>(*result->user_begin());
+          outputs_replaced.insert({user.output(), enumerated_result.index()});
+          output_types.push_back(user.getType());
+        } else if (result_ele_type.template isa<IntegerType>()) {
+          // If the result is an integer tensor, then it doesn't require the
+          // D op in the pattern.
+          outputs_replaced.insert({result, enumerated_result.index()});
+          output_types.push_back(result->getType());
+        } else if (static_cast<const ConcretTy*>(this)->AllowHybridResult()) {
+          outputs_replaced.insert({result, enumerated_result.index()});
+          output_types.push_back(result->getType());
+        } else {
+          return matchFailure();
+        }
+      }
+
+      rewriter.setInsertionPoint(quantized_op);
+      OperationState new_state(quantized_op->getLoc(),
+                               quantized_op->getName().getStringRef(), inputs,
+                               output_types, quantized_op->getAttrs());
+      Operation* new_op = rewriter.createOperation(new_state);
+      for (auto output : outputs_replaced) {
+        output.getFirst()->replaceAllUsesWith(
+            new_op->getResult(output.getSecond()));
+      }
     }
     return matchSuccess();
   }
 };
 
-// Converts the min/max/storage_type/narrow_range information to a
-// QuantizedType, and then returns the attribute containing the QuantizedType.
-TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, FloatAttr min,
-                              FloatAttr max, Type storage_type,
-                              bool narrow_range = false,
-                              bool is_signed = false);
+// Converts quantize ops with unsigned quantized types to these with signed
+// quantized types and preserves the scales.
+template <typename Q>
+struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
+  using BaseType = ConvertUnsignedToSigned<Q>;
+  using QType = quant::QuantizedType;
+
+  explicit ConvertUnsignedToSigned(MLIRContext* context)
+      : OpRewritePattern<Q>(context, 1) {}
+
+  PatternMatchResult matchAndRewrite(Q op,
+                                     PatternRewriter& rewriter) const override {
+    Type output_type = op.output()->getType();
+    auto qtype = QType::getQuantizedElementType(output_type);
+    if (!qtype || qtype.isSigned()) return this->matchFailure();
+
+    int num_bits = qtype.getStorageTypeIntegralWidth();
+    // This is a positive value, and will be applied on zero points and fixed
+    // point ranges.
+    int64_t offset =
+        QType::getDefaultMininumForInteger(/*isSigned=*/false, num_bits) -
+        QType::getDefaultMininumForInteger(/*isSigned=*/true, num_bits);
+
+    auto flags = quant::QuantizationFlags::Signed;
+    QType new_qtype;
+    if (auto uqtype = qtype.template dyn_cast<quant::UniformQuantizedType>()) {
+      new_qtype = quant::UniformQuantizedType::getChecked(
+          flags, qtype.getStorageType(), qtype.getExpressedType(),
+          uqtype.getScale(), uqtype.getZeroPoint() - offset,
+          uqtype.getStorageTypeMin() - offset,
+          uqtype.getStorageTypeMax() - offset, op.getLoc());
+    } else if (auto aqtype = qtype.template dyn_cast<
+                             quant::UniformQuantizedPerAxisType>()) {
+      auto zero_points = aqtype.getZeroPoints();
+      llvm::SmallVector<int64_t, 4> new_zero_points(zero_points.begin(),
+                                                    zero_points.end());
+      for (int i = 0, e = new_zero_points.size(); i != e; ++i) {
+        new_zero_points[i] -= offset;
+      }
+      new_qtype = quant::UniformQuantizedPerAxisType::getChecked(
+          flags, qtype.getStorageType(), qtype.getExpressedType(),
+          aqtype.getScales(), new_zero_points, aqtype.getQuantizedDimension(),
+          aqtype.getStorageTypeMin() - offset,
+          aqtype.getStorageTypeMax() - offset, op.getLoc());
+    } else {
+      return this->matchFailure();
+    }
+
+    Type new_output_type = new_qtype.castFromExpressedType(
+        QType::castToExpressedType(output_type));
+    rewriter.replaceOpWithNewOp<Q>(op, new_output_type, op.input(),
+                                   rewriter.getTypeAttr(new_output_type));
+    return this->matchSuccess();
+  }
+};
 
 // Converts the min/max/num_bits/narrow_range information to a
 // QuantizedType, and then returns the attribute containing the QuantizedType.
-// Note that this method assumes an unsigned quantization type, which is
-// implicitly defined by FakeQuant* ops in TensorFlow.
+// The `min` and `max` arguments can be FloatAttr or DenseFPElementsAttr and
+// returns UniformQuantizedType or UniformQuantizedPerAxisType respectively.
+// `narrow_range` is set to true for weights and `is_signed` is set to true
+// if it is using signed int symmetric quantization.
 TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
                               Attribute max, IntegerAttr num_bits,
-                              BoolAttr narrow_range);
+                              BoolAttr narrow_range, bool is_signed);
 
 // Casts the `target` type to a quantized type by using the quantization
 // parameters from the type in the `source` type attribute.
 // Examples:
 //   f32 -> !quant.uniform<i8:f32, 1.0>
 //   tensor<4xf32> -> tensor<4x!quant.uniform<i8:f32, 1.0>>
-// The result is wrapped by a type attribute. Returns nullptr if the cast isn't
-// valid.
+// The result is wrapped by a type attribute. Returns nullptr if the cast
+// isn't valid.
+//
+// `axis` is to specify the quantization dimension in the `target` and only
+// used if the element type of `source` is a per-channel quantized type. During
+// the casting, the quantization dimension of the result type needs to be set
+// this new `axis` value.
 TypeAttr CastQuantizedTypeAttrFromExpressedType(Builder builder,
-                                                TypeAttr source, Type target);
+                                                TypeAttr source, Type target,
+                                                int axis);
 
 // Quantizes the elements in the attribute `real_value` by the quantization
 // parameters in `tensor_type`. Returns empty Attribute if the
@@ -192,9 +263,9 @@ TypeAttr CastQuantizedTypeAttrFromExpressedType(Builder builder,
 ElementsAttr Quantize(Attribute real_value, Type tensor_type);
 
 // Returns the quantized type for an element attribute. The quantization
-// parameters in this type is based on the min and max element of the attribute.
-// When the elements in the `attr` are not in floating-point, or the value range
-// isn't straddling zero, an empty type is returned.
+// parameters in this type is based on the min and max element of the
+// attribute. When the elements in the `attr` are not in floating-point, or
+// the value range isn't straddling zero, an empty type is returned.
 Type GetUniformQuantizedTypeForElementsAttr(ElementsAttr attr,
                                             unsigned storage_type_width,
                                             bool is_sign, bool narrow_range);
@@ -213,7 +284,7 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
 void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
                                         OpQuantSpecGetter op_quant_spec_getter);
 
-}  // end namespace TFL
-}  // end namespace mlir
+}  // namespace TFL
+}  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_UTILS_H_

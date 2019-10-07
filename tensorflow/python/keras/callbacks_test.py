@@ -49,6 +49,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.training import adam
 from tensorflow.python.training import checkpoint_management
+from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -315,6 +316,37 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
     with self.captureWritesToStream(sys.stdout) as printed:
       model.fit(x, y, batch_size=10, epochs=2, validation_split=0.2)
+      self.assertRegexpMatches(printed.contents(), expected_log)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_progbar_logging_training_validation(self):
+    model = self._get_model(input_shape=(2,))
+
+    def generator():
+      for _ in range(100):
+        yield [1, 1], 1
+
+    training = dataset_ops.Dataset \
+        .from_generator(
+            generator=generator,
+            output_types=('float64', 'float64'),
+            output_shapes=([2], [])) \
+        .batch(2) \
+        .repeat()
+    validation = dataset_ops.Dataset \
+        .from_generator(
+            generator=generator,
+            output_types=('float64', 'float64'),
+            output_shapes=([2], [])) \
+        .batch(2)
+    expected_log = (
+        r'(?s).*1/2.*20/20.*- loss:.*- my_acc:.*- val_loss:.*- val_my_acc:'
+        r'.*2/2.*20/20.*- loss:.*- my_acc:.*- val_loss:.*- val_my_acc:.*')
+
+    with self.captureWritesToStream(sys.stdout) as printed:
+      model.fit(
+          x=training, validation_data=validation, epochs=2, steps_per_epoch=20)
       self.assertRegexpMatches(printed.contents(), expected_log)
 
   @keras_parameterized.run_with_all_model_types
@@ -746,6 +778,23 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     # `model.fit()` should work regardless of the presence of `TF_CONFIG`.
     model.fit(train_ds, epochs=1, callbacks=[callback])
 
+  def test_fit_with_ModelCheckpoint_with_dir_as_h5_filepath(self):
+    (model, train_ds, callback,
+     filepath) = self._get_dummy_resource_for_model_checkpoint_testing()
+
+    temp_dir = self.get_temp_dir()
+    filepath = os.path.join(temp_dir, 'temp.h5')
+
+    self.assertFalse(os.path.exists(filepath))
+    os.mkdir(filepath)
+    self.assertTrue(os.path.exists(filepath))
+
+    callback = keras.callbacks.ModelCheckpoint(filepath=filepath)
+
+    with self.assertRaisesRegexp(IOError, 'Please specify a non-directory '
+                                          'filepath for ModelCheckpoint.'):
+      model.fit(train_ds, epochs=1, callbacks=[callback])
+
   def test_EarlyStopping(self):
     with self.cached_session():
       np.random.seed(123)
@@ -921,6 +970,30 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       assert (
           float(keras.backend.get_value(
               model.optimizer.lr)) - 0.01 / 4) < keras.backend.epsilon()
+
+      cbks = [
+          keras.callbacks.LearningRateScheduler(
+              lambda epoch, _: learning_rate_schedule.CosineDecay(0.01, 2)
+              (epoch))
+      ]
+      model.compile(
+          loss='categorical_crossentropy',
+          optimizer='sgd',
+          metrics=['accuracy'])
+      model.fit(
+          x_train,
+          y_train,
+          batch_size=BATCH_SIZE,
+          validation_data=(x_test, y_test),
+          callbacks=cbks,
+          epochs=2,
+          verbose=0)
+
+      cosine_decay_np = 0.5 * (1 + np.cos(np.pi * (1 / 2)))
+      decayed_learning_rate = 0.01 * cosine_decay_np
+
+      assert (float(keras.backend.get_value(model.optimizer.lr)) -
+              decayed_learning_rate) < keras.backend.epsilon()
 
   def test_ReduceLROnPlateau(self):
     with self.cached_session():
