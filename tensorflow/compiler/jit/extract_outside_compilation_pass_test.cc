@@ -418,16 +418,8 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, NoHostGraph) {
       host_compute_core, &fld, &shape_inference_graphs,
       &has_outside_compilation));
 
-  // Check host graph is empty.
-  std::unique_ptr<FunctionBody> host_fbody;
-  AttrValue device_ordinal_temp_value;
-  device_ordinal_temp_value.set_i(0);
-  protobuf::Map<string, AttrValue> host_func_attrs;
-  host_func_attrs["_device_ordinal"] = device_ordinal_temp_value;
-  TF_CHECK_OK(FunctionDefToBodyHelper(
-      *fld.Find("host_graph"), AttrSlice(&host_func_attrs), &fld, &host_fbody));
-  Graph *host_graph = host_fbody->graph;
-  EXPECT_EQ(host_graph->num_nodes(), 2);
+  // Check host graph is not created.
+  EXPECT_EQ(fld.Find("host_graph"), nullptr);
 }
 
 REGISTER_OP("XlaSendToHost")
