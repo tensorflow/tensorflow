@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <numeric>
 
+#include "llvm/ADT/Optional.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
@@ -76,6 +77,21 @@ static IntegerAttr GetHLOAxisFromTFAxis(ElementsAttr attr, int64_t rank,
     axis += rank;
   }
   return b->getI64IntegerAttr(axis);
+}
+
+// If `value` is an IntegerAttr, returns the integer value for the HLO axis
+// corresponding to the tensorflow axis. In particular, the tensorflow axis can
+// be negative, in which case, the corresponding HLO axis is
+// (axis + rank-of-the-tensor).
+static llvm::Optional<int64_t> GetIntegerHLOAxisFromTFAxis(Value *value,
+                                                           int64_t rank) {
+  DenseIntElementsAttr attrs;
+  if (!matchPattern(value, m_Constant(&attrs)) ||
+      attrs.getType().getRank() != 0) {
+    return llvm::None;
+  }
+  int64_t axis = attrs.getValue<IntegerAttr>({}).getInt();
+  return axis < 0 ? axis + rank : axis;
 }
 
 // Returns minimum value for the given int or float element type.
@@ -264,6 +280,39 @@ static Type GetAccumulationType(Type ty) {
   // Upcast 16 bit sum reductions to 32 bit to reduce the precision loss from
   // repeated floating point additions.
   return (ty.isF16() || ty.isBF16()) ? FloatType::getF32(ty.getContext()) : ty;
+}
+
+//===----------------------------------------------------------------------===//
+// ArgMax/ArgMin op utilities.
+//===----------------------------------------------------------------------===//
+
+static void BuildArgMinMaxReductionBody(Type input_element_type,
+                                        Type index_element_type,
+                                        StringRef direction, Region *body,
+                                        OpBuilder *builder) {
+  OpBuilder::InsertionGuard insertion_point_gurad(*builder);
+
+  Type input_type = builder->getTensorType(/*shape=*/{}, input_element_type);
+  Type index_type = builder->getTensorType(/*shape=*/{}, index_element_type);
+  Block *block = builder->createBlock(body);
+  block->addArguments({input_type, index_type, input_type, index_type});
+
+  Location loc = body->getLoc();
+  Type compare_type =
+      builder->getTensorType(/*shape=*/{}, builder->getIntegerType(1));
+  StringAttr compare_direction =
+      StringAttr::get(direction, builder->getContext());
+  Value *compare = builder->create<xla_hlo::CompareOp>(
+      loc, compare_type, block->getArgument(0), block->getArgument(2),
+      /*broadcast_dimensions=*/nullptr, compare_direction);
+
+  Value *selected_input = builder->create<xla_hlo::SelectOp>(
+      loc, input_type, compare, block->getArgument(0), block->getArgument(2));
+  Value *selected_index = builder->create<xla_hlo::SelectOp>(
+      loc, index_type, compare, block->getArgument(1), block->getArgument(3));
+
+  Value *return_values[] = {selected_input, selected_index};
+  builder->create<xla_hlo::ReturnOp>(loc, return_values);
 }
 
 //===----------------------------------------------------------------------===//
@@ -663,8 +712,7 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
         op.input());
 
     // Each reduction op can have a different initial value.
-    Value *init = static_cast<const Derived *>(this)->GetInitialValue(
-        reduce_element_type, loc, rewriter);
+    Value *init = Derived::GetInitialValue(reduce_element_type, loc, rewriter);
 
     Type reduced_out_type =
         rewriter.getTensorType(reduced_shape, reduce_element_type);
@@ -714,8 +762,8 @@ class ConvertMeanOp
  public:
   using GenericConvertReductionOp::GenericConvertReductionOp;
 
-  Value *GetInitialValue(Type reduce_element_type, Location loc,
-                         PatternRewriter &rewriter) const {
+  static Value *GetInitialValue(Type reduce_element_type, Location loc,
+                                PatternRewriter &rewriter) {
     return GetScalarForType(reduce_element_type, loc, 0, &rewriter);
   }
 };
@@ -730,8 +778,8 @@ class ConvertSumOp : public GenericConvertReductionOp<ConvertSumOp, TF::SumOp,
  public:
   using GenericConvertReductionOp::GenericConvertReductionOp;
 
-  Value *GetInitialValue(Type reduce_element_type, Location loc,
-                         PatternRewriter &rewriter) const {
+  static Value *GetInitialValue(Type reduce_element_type, Location loc,
+                                PatternRewriter &rewriter) {
     return GetScalarForType(reduce_element_type, loc, 0, &rewriter);
   }
 };
@@ -747,10 +795,110 @@ class ConvertMaxOp
  public:
   using GenericConvertReductionOp::GenericConvertReductionOp;
 
-  Value *GetInitialValue(Type reduce_element_type, Location loc,
-                         PatternRewriter &rewriter) const {
+  static Value *GetInitialValue(Type reduce_element_type, Location loc,
+                                PatternRewriter &rewriter) {
     return GetMinValueForType(reduce_element_type, loc, &rewriter);
   }
+};
+
+// Converts tensorflow ArgMin or ArgMax op to xla_hlo operations that perform
+// a reduction on the original input and the corresponding index. The reduction
+// sub-computation selects the max (or min) value and the index for the value.
+//   Derived: is the resulting derived class of this class.
+//   OpTy: is TF::ArgMaxOp or TF::ArgMinOp.
+template <typename Derived, typename OpTy>
+class ConvertArgMinMaxOp : public OpRewritePattern<OpTy> {
+  using OpRewritePattern<OpTy>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(OpTy op,
+                                     PatternRewriter &rewriter) const override {
+    RankedTensorType input_type =
+        op.input()->getType().template dyn_cast<RankedTensorType>();
+    if (!input_type) {
+      return this->matchFailure();
+    }
+
+    Type input_element_type = input_type.getElementType();
+    // TODO(bixia): Clarify whether tf.ArgMax supports complex data types. If
+    // tf.ArgMax doesn't support complex data types, this check can be removed.
+    if (!input_element_type.isIntOrFloat()) return this->matchFailure();
+
+    Location loc = op.getLoc();
+    Value *init_value =
+        Derived::GetInitialValue(input_element_type, loc, rewriter);
+
+    RankedTensorType output_type =
+        op.output()->getType().template dyn_cast<RankedTensorType>();
+    if (!output_type) {
+      return this->matchFailure();
+    }
+
+    Type index_element_type = output_type.getElementType();
+    Value *index_init_value =
+        GetScalarForType(index_element_type, loc, 0, &rewriter);
+
+    RankedTensorType index_type =
+        rewriter.getTensorType(input_type.getShape(), index_element_type);
+
+    llvm::Optional<int64_t> optional_axis =
+        GetIntegerHLOAxisFromTFAxis(op.dimension(), input_type.getRank());
+    if (!optional_axis.hasValue()) {
+      return this->matchFailure();
+    }
+    int64_t axis = optional_axis.getValue();
+
+    IntegerAttr iota_dimension =
+        IntegerAttr::get(rewriter.getIntegerType(64), axis);
+    Value *index_values =
+        rewriter.create<xla_hlo::IotaOp>(loc, index_type, iota_dimension);
+
+    std::vector<int64_t> dimensions = input_type.getShape();
+    dimensions.erase(dimensions.begin() + axis);
+    ArrayRef<int64_t> reduction_result_shape(dimensions);
+
+    Type input_reduction_result_type = rewriter.getTensorType(
+        reduction_result_shape, input_type.getElementType());
+    Type index_reduction_result_type = rewriter.getTensorType(
+        reduction_result_shape, index_type.getElementType());
+
+    Type result_types[] = {input_reduction_result_type,
+                           index_reduction_result_type};
+    Value *operands[] = {op.input(), index_values};
+    Value *init_values[] = {init_value, index_init_value};
+    DenseIntElementsAttr reduction_dimensions =
+        GetI64ElementsAttr({axis}, &rewriter);
+
+    auto reduction = rewriter.create<xla_hlo::ReduceOp>(
+        loc, llvm::ArrayRef<Type>(result_types),
+        llvm::ArrayRef<Value *>(operands), llvm::ArrayRef<Value *>(init_values),
+        reduction_dimensions);
+    StringRef direction = Derived::GetDirection();
+    BuildArgMinMaxReductionBody(input_element_type, index_element_type,
+                                direction, &reduction.body(), &rewriter);
+
+    rewriter.replaceOp(op, {reduction.getResult(1)});
+    return this->matchSuccess();
+  }
+};
+
+// Converts tensorflow ArgMax op to xla_hlo operations. The actual
+// implementation is in class ConvertArgMinMaxOp:
+//
+//   %init_index = constant dense<...> : tensor<T>
+//   %init = constant dense<...> : tensor<T>
+//   %reduce = "xla_hlo.reduce"(%selected_input, %select_index, %init,
+//                              %init_index) ["xla_hlo.arg_max"]
+class ConvertArgMaxOp
+    : public ConvertArgMinMaxOp<ConvertArgMaxOp, TF::ArgMaxOp> {
+ public:
+  using ConvertArgMinMaxOp::ConvertArgMinMaxOp;
+
+  static Value *GetInitialValue(Type reduce_element_type, Location loc,
+                                PatternRewriter &rewriter) {
+    return GetMinValueForType(reduce_element_type, loc, &rewriter);
+  }
+
+  static StringRef GetDirection() { return "GT"; }
 };
 
 // Converts Tile op to HLO BroadcastInDim and Reshape ops.
@@ -839,7 +987,8 @@ LogicalResult mlir::xla_hlo::legalizeTF(Operation *op) {
   // level TensorFlow ops. So, we don't have to target all the TensorFlow ops
   // here for lowering to HLO.
   mlir::TF::PopulateLoweringTFPatterns(context, &patterns);
-  patterns.insert<mlir::xla::ConvertMaxPoolOp, mlir::xla::ConvertSigmoidOp,
+  patterns.insert<mlir::xla::ConvertArgMaxOp, mlir::xla::ConvertMaxPoolOp,
+                  mlir::xla::ConvertSigmoidOp,
                   mlir::xla::ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
                   mlir::xla::ConvertSoftmaxOp<TF::SoftmaxOp, false>,
                   mlir::xla::ConvertStridedSliceOp, mlir::xla::ConvertMeanOp,
