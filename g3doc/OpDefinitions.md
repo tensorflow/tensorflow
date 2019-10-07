@@ -376,7 +376,7 @@ def MyInterface : OpInterface<"MyInterface"> {
 
 // Interfaces can optionally be wrapped inside DeclareOpInterfaceMethods. This
 // would result in autogenerating declarations for members `foo`, `bar` and
-// `fooStatic`. Methods without bodies are not declared inside the op
+// `fooStatic`. Methods with bodies are not declared inside the op
 // declaration but instead handled by the op interface trait directly.
 def OpWithInferTypeInterfaceOp : Op<...
     [DeclareOpInterfaceMethods<MyInterface>]> { ... }
