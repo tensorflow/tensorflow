@@ -341,9 +341,9 @@ XlaOp ErfInv(XlaOp x) {
       0.00943887047f,   1.00167406f,     2.83297682f};
 
   auto one = ScalarLike(x, 1.0);
-  //Computes logarithm of (1+arg). This function is more precise
-  //than the expression std::log(1+arg) if arg is close to zero.
-  // see ref. https://en.cppreference.com/w/cpp/numeric/math/log1p
+  // Compute logarithm of (1+arg). This function is more precise than
+  // the expression std::log(1+arg) if arg is close to zero.
+  // See ref. https://en.cppreference.com/w/cpp/numeric/math/log1p
   auto w = -Log1p(- x * x);
 
   auto lt = Lt(w, ScalarLike(x, 5.0));
