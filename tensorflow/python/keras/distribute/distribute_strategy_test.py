@@ -37,6 +37,7 @@ from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
+from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
@@ -112,10 +113,10 @@ def get_multi_inputs_multi_outputs_data():
       num_classes=2,
       random_seed=_RANDOM_SEED)
 
-  c_train = keras.utils.to_categorical(c_train)
-  c_test = keras.utils.to_categorical(c_test)
-  d_train = keras.utils.to_categorical(d_train)
-  d_test = keras.utils.to_categorical(d_test)
+  c_train = np_utils.to_categorical(c_train)
+  c_test = np_utils.to_categorical(c_test)
+  d_train = np_utils.to_categorical(d_train)
+  d_test = np_utils.to_categorical(d_test)
 
   train_data = {
       'input_a': a_train,

@@ -32,6 +32,7 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import ResidualWrapper
+from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops.array_ops import concat
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import util as trackable_util
@@ -685,7 +686,7 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       c = keras.Input((3,))
       cell = _RNNCellWithConstants(32, 3)
       custom_objects = {'_RNNCellWithConstants': _RNNCellWithConstants}
-      with keras.utils.CustomObjectScope(custom_objects):
+      with generic_utils.CustomObjectScope(custom_objects):
         layer = keras.layers.Bidirectional(keras.layers.RNN(cell))
       y = layer(x, constants=c)
       model = keras.Model([x, c], y)
@@ -702,7 +703,7 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       weights = model.get_weights()
       config = layer.get_config()
 
-      with keras.utils.CustomObjectScope(custom_objects):
+      with generic_utils.CustomObjectScope(custom_objects):
         layer = keras.layers.Bidirectional.from_config(copy.deepcopy(config))
       y = layer(x, constants=c)
       model = keras.Model([x, c], y)
@@ -711,7 +712,7 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(y_np, y_np_2, atol=1e-4)
 
       # Test flat list inputs
-      with keras.utils.CustomObjectScope(custom_objects):
+      with generic_utils.CustomObjectScope(custom_objects):
         layer = keras.layers.Bidirectional.from_config(copy.deepcopy(config))
       y = layer([x, c])
       model = keras.Model([x, c], y)
@@ -728,7 +729,7 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       s_bac = keras.Input((32,))
       cell = _RNNCellWithConstants(32, 3)
       custom_objects = {'_RNNCellWithConstants': _RNNCellWithConstants}
-      with keras.utils.CustomObjectScope(custom_objects):
+      with generic_utils.CustomObjectScope(custom_objects):
         layer = keras.layers.Bidirectional(keras.layers.RNN(cell))
       y = layer(x, initial_state=[s_for, s_bac], constants=c)
       model = keras.Model([x, s_for, s_bac, c], y)
@@ -750,7 +751,7 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       weights = model.get_weights()
       config = layer.get_config()
 
-      with keras.utils.CustomObjectScope(custom_objects):
+      with generic_utils.CustomObjectScope(custom_objects):
         layer = keras.layers.Bidirectional.from_config(copy.deepcopy(config))
       y = layer(x, initial_state=[s_for, s_bac], constants=c)
       model = keras.Model([x, s_for, s_bac, c], y)
@@ -764,7 +765,7 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       assert np.mean(y_np - y_np_2_different_s) != 0
 
       # Test flat list inputs
-      with keras.utils.CustomObjectScope(custom_objects):
+      with generic_utils.CustomObjectScope(custom_objects):
         layer = keras.layers.Bidirectional.from_config(copy.deepcopy(config))
       y = layer([x, s_for, s_bac, c])
       model = keras.Model([x, s_for, s_bac, c], y)

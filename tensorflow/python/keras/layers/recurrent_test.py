@@ -38,6 +38,7 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.layers import recurrent as rnn_v1
 from tensorflow.python.keras.layers import recurrent_v2 as rnn_v2
+from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -196,7 +197,7 @@ class RNNTest(keras_parameterized.TestCase):
     y_np = model.predict(x_np)
     weights = model.get_weights()
     config = layer.get_config()
-    with keras.utils.CustomObjectScope({'MinimalRNNCell': MinimalRNNCell}):
+    with generic_utils.CustomObjectScope({'MinimalRNNCell': MinimalRNNCell}):
       layer = keras.layers.RNN.from_config(config)
     y = layer(x)
     model = keras.models.Model(x, y)
@@ -223,7 +224,7 @@ class RNNTest(keras_parameterized.TestCase):
     y_np = model.predict(x_np)
     weights = model.get_weights()
     config = layer.get_config()
-    with keras.utils.CustomObjectScope({'MinimalRNNCell': MinimalRNNCell}):
+    with generic_utils.CustomObjectScope({'MinimalRNNCell': MinimalRNNCell}):
       layer = keras.layers.RNN.from_config(config)
     y = layer(x)
     model = keras.models.Model(x, y)
@@ -417,7 +418,7 @@ class RNNTest(keras_parameterized.TestCase):
     weights = model.get_weights()
     config = layer.get_config()
     custom_objects = {'RNNCellWithConstants': RNNCellWithConstants}
-    with keras.utils.CustomObjectScope(custom_objects):
+    with generic_utils.CustomObjectScope(custom_objects):
       layer = keras.layers.RNN.from_config(config.copy())
     y = layer(x, constants=c)
     model = keras.models.Model([x, c], y)
@@ -426,7 +427,7 @@ class RNNTest(keras_parameterized.TestCase):
     self.assertAllClose(y_np, y_np_2, atol=1e-4)
 
     # test flat list inputs.
-    with keras.utils.CustomObjectScope(custom_objects):
+    with generic_utils.CustomObjectScope(custom_objects):
       layer = keras.layers.RNN.from_config(config.copy())
     y = layer([x, c])
     model = keras.models.Model([x, c], y)
@@ -474,7 +475,7 @@ class RNNTest(keras_parameterized.TestCase):
     y_np = model.predict([x_np, c_np])
     weights = model.get_weights()
     config = layer.get_config()
-    with keras.utils.CustomObjectScope(custom_objects):
+    with generic_utils.CustomObjectScope(custom_objects):
       layer = keras.layers.recurrent.RNN.from_config(config.copy())
     y = layer(x, constants=c)
     model = keras.models.Model([x, c], y)
@@ -539,7 +540,7 @@ class RNNTest(keras_parameterized.TestCase):
     weights = model.get_weights()
     config = layer.get_config()
     custom_objects = {'RNNCellWithConstants': RNNCellWithConstants}
-    with keras.utils.CustomObjectScope(custom_objects):
+    with generic_utils.CustomObjectScope(custom_objects):
       layer = keras.layers.RNN.from_config(config.copy())
     y = layer(x, initial_state=s, constants=c)
     model = keras.models.Model([x, s, c], y)
@@ -553,7 +554,7 @@ class RNNTest(keras_parameterized.TestCase):
       self.assertAllClose(y_np, y_np_2_different_s, atol=1e-4)
 
     # test flat list inputs
-    with keras.utils.CustomObjectScope(custom_objects):
+    with generic_utils.CustomObjectScope(custom_objects):
       layer = keras.layers.RNN.from_config(config.copy())
     y = layer([x, s, c])
     model = keras.models.Model([x, s, c], y)
