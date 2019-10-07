@@ -173,6 +173,9 @@ private:
   /// Gets type for a given result <id>.
   Type getType(uint32_t id) { return typeMap.lookup(id); }
 
+  /// Get the type associated with the result <id> of an OpUndef.
+  Type getUndefType(uint32_t id) { return undefMap.lookup(id); }
+
   /// Returns true if the given `type` is for SPIR-V void type.
   bool isVoidType(Type type) const { return type.isa<NoneType>(); }
 
@@ -306,6 +309,10 @@ private:
                                    ArrayRef<uint32_t> operands,
                                    bool deferInstructions = true);
 
+  /// Processes a OpUndef instruction. Adds a spv.Undef operation at the current
+  /// insertion point.
+  LogicalResult processUndef(ArrayRef<uint32_t> operands);
+
   /// Method to dispatch to the specialized deserialization function for an
   /// operation in SPIR-V dialect that is a mirror of an instruction in the
   /// SPIR-V spec. This is auto-generated from ODS. Dispatch is handled for
@@ -395,6 +402,9 @@ private:
 
   // Result <id> to value mapping.
   DenseMap<uint32_t, Value *> valueMap;
+
+  // Mapping from result <id> to undef value of a type.
+  DenseMap<uint32_t, Type> undefMap;
 
   // Result <id> to name mapping.
   DenseMap<uint32_t, StringRef> nameMap;
@@ -1794,6 +1804,9 @@ Value *Deserializer::getValue(uint32_t id) {
         opBuilder.getSymbolRefAttr(constOp.getOperation()));
     return referenceOfOp.reference();
   }
+  if (auto undef = getUndefType(id)) {
+    return opBuilder.create<spirv::UndefOp>(unknownLoc, undef);
+  }
   return valueMap.lookup(id);
 }
 
@@ -1913,10 +1926,24 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
     return processSelectionMerge(operands);
   case spirv::Opcode::OpLoopMerge:
     return processLoopMerge(operands);
+  case spirv::Opcode::OpUndef:
+    return processUndef(operands);
   default:
     break;
   }
   return dispatchToAutogenDeserialization(opcode, operands);
+}
+
+LogicalResult Deserializer::processUndef(ArrayRef<uint32_t> operands) {
+  if (operands.size() != 2) {
+    return emitError(unknownLoc, "OpUndef instruction must have two operands");
+  }
+  auto type = getType(operands[0]);
+  if (!type) {
+    return emitError(unknownLoc, "unknown type <id> with OpUndef instruction");
+  }
+  undefMap[operands[1]] = type;
+  return success();
 }
 
 LogicalResult Deserializer::processExtInst(ArrayRef<uint32_t> operands) {

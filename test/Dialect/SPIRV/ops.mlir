@@ -968,12 +968,12 @@ spv.module "Logical" "GLSL450" {
 // -----
 
 //===----------------------------------------------------------------------===//
-// spv.Undef
+// spv.undef
 //===----------------------------------------------------------------------===//
 
 func @undef() -> () {
-  %0 = spv.Undef : f32
-  %1 = spv.Undef : vector<4xf32>
+  %0 = spv.undef : f32
+  %1 = spv.undef : vector<4xf32>
   spv.Return
 }
 
@@ -981,7 +981,7 @@ func @undef() -> () {
 
 func @undef() -> () {
   // expected-error @+2{{expected non-function type}}
-  %0 = spv.Undef :
+  %0 = spv.undef :
   spv.Return
 }
 
@@ -989,7 +989,7 @@ func @undef() -> () {
 
 func @undef() -> () {
   // expected-error @+2{{expected ':'}}
-  %0 = spv.Undef
+  %0 = spv.undef
   spv.Return
 }
 

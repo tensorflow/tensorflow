@@ -485,7 +485,7 @@ def SPV_StoreOp : SPV_Op<"Store", []> {
 
 // -----
 
-def SPV_UndefOp : SPV_Op<"Undef", []> {
+def SPV_UndefOp : SPV_Op<"undef", []> {
   let summary = "Make an intermediate object whose value is undefined.";
 
   let description = [{
@@ -498,14 +498,14 @@ def SPV_UndefOp : SPV_Op<"Undef", []> {
     ### Custom assembly form
 
     ``` {.ebnf}
-    undef-op ::= `spv.Undef` `:` sprirv-type
+    undef-op ::= `spv.undef` `:` sprirv-type
     ```
 
     For example:
 
     ```
-    %0 = spv.Undef : f32
-    %1 = spv.Undef : !spv.struct<!spv.array<4 x vector<4xi32>>>
+    %0 = spv.undef : f32
+    %1 = spv.undef : !spv.struct<!spv.array<4 x vector<4xi32>>>
     ```
   }];
 
@@ -516,6 +516,9 @@ def SPV_UndefOp : SPV_Op<"Undef", []> {
   );
 
   let verifier = [{ return success(); }];
+
+  let hasOpcode = 0;
+  let autogenSerialization = 0;
 }
 
 // -----
