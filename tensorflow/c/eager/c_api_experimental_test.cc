@@ -83,7 +83,10 @@ void ExecuteWithProfiling(bool async) {
   if (!gpu_device_name.empty()) {
     EXPECT_TRUE(HasSubstr(profile_proto_str, "/device:GPU:0"));
     // device name with "stream:all" is collected by Device Tracer.
+#ifndef TENSORFLOW_USE_ROCM
+    // ROCm platform does not yet support stream level tracing
     EXPECT_TRUE(HasSubstr(profile_proto_str, "stream:all"));
+#endif
   }
   // "/host:CPU" is collected by TraceMe
   EXPECT_TRUE(HasSubstr(profile_proto_str, "/host:CPU"));
