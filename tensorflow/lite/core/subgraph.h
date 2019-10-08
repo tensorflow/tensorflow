@@ -527,6 +527,14 @@ class Subgraph {
   // NOTE: this relies on the order of nodes that is in topological order.
   int next_execution_plan_index_to_prepare_;
 
+  // This is similar to `next_execution_plan_index_to_prepare_`, but it tracks
+  // which nodes' allocation is planned with the arena planner.
+  //
+  // This is a workaround for b/127354079. It shouldn't be necessary if
+  // ArenaPlanner can "rewind" to a specific point.
+  // TODO(b/127354079): Improve ArenaPlanner and remove this mechanism.
+  int next_execution_plan_index_to_plan_allocation_;
+
   // WARNING: This is an experimental interface that is subject to change.
   // This is a list of node indices (to index into nodes_and_registration).
   // This represents a valid topological sort (dependency ordered) execution

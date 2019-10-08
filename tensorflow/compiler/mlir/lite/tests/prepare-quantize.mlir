@@ -1,4 +1,22 @@
-// RUN: tf-opt %s -tfl-prepare-quantize | FileCheck %s
+// RUN: tf-opt %s -tfl-prepare-quantize -tfl-test-quantize-whitelist="quantize_float_placeholder_only" | FileCheck %s
+
+// CHECK-LABEL: quantize_float_placeholder_only
+func @quantize_float_placeholder_only(%arg0: tensor<f32>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xf32>) -> (tensor<f32>, tensor<2x3xi32>, tensor<2x3xf32>) {
+  %0 = "tfl.pseudo_input"(%arg0) : (tensor<f32>) -> tensor<f32>
+  %1 = "tfl.pseudo_input"(%arg1) : (tensor<2x3xi32>) -> tensor<2x3xi32>
+  %2 = "tfl.pseudo_input"(%arg2) : (tensor<2x3xf32>) -> tensor<2x3xf32>
+
+  return %0, %1, %2: tensor<f32>, tensor<2x3xi32>, tensor<2x3xf32>
+
+// CHECK-NEXT: %[[in:.*]] = "tfl.pseudo_input"(%arg0)
+// CHECK-NEXT: %[[q:.*]] = "tfl.quantize"(%[[in]])
+// CHECK-NEXT: %[[dq:.*]] = "tfl.dequantize"(%[[q]])
+// CHECK-NEXT: %[[in_1:.*]] = "tfl.pseudo_input"(%arg1)
+// CHECK-NEXT: %[[in_0:.*]] = "tfl.pseudo_input"(%arg2)
+// CHECK-NEXT: %[[q_0:.*]] = "tfl.quantize"(%[[in_0]])
+// CHECK-NEXT: %[[dq_0:.*]] = "tfl.dequantize"(%[[q_0]])
+// CHECK-NEXT: %[[dq]], %[[in_1]], %[[dq_0]]
+}
 
 // CHECK-LABEL: DequantizeAndQuantize
 func @DequantizeAndQuantize() -> tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>> {
@@ -80,9 +98,9 @@ func @QuantizeFullyConnected(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e
 ^bb0(%arg0: tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>):
   %cst = constant dense<-1.23697901> : tensor<32xf32>
   %2 = "tfl.dequantize"(%arg0) : (tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x224x224x3xf32>
-  %3 = "tfl.pseudo_qconst"() {qtype = tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32, 0.021826678373682216:151>>, value = dense<-76> : tensor<32x3x3x3xi8>} : () -> tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32, 0.021826678373682216:151>>
-  %4 = "tfl.dequantize"(%3) : (tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32, 0.021826678373682216:151>>) -> tensor<32x3x3x3xf32>
-  %5 = "tfl.fully_connected"(%2, %4, %cst) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x224x224x3xf32>, tensor<32x3x3x3xf32>, tensor<32xf32>) -> tensor<1x112x112x32xf32>
+  %3 = "tfl.pseudo_qconst"() {qtype = tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32, 0.021826678373682216:151>>, value = dense<-76> : tensor<32x12xi8>} : () -> tensor<32x12x!quant.uniform<u8<1:255>:f32, 0.021826678373682216:151>>
+  %4 = "tfl.dequantize"(%3) : (tensor<32x12x!quant.uniform<u8<1:255>:f32, 0.021826678373682216:151>>) -> tensor<32x12xf32>
+  %5 = "tfl.fully_connected"(%2, %4, %cst) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x224x224x3xf32>, tensor<32x12xf32>, tensor<32xf32>) -> tensor<1x112x112x32xf32>
   %6 = "tfl.quantize"(%5) {qtype = tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>>} : (tensor<1x112x112x32xf32>) -> tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>>
   return %6 : tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>>
 

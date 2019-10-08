@@ -31,15 +31,6 @@ struct ArrayInfo {
   // specified when passing arbitrary nodes (some node attributes are removed).
   DataType imported_dtype;
 
-  // The node type when the model is exported. By default, this type is as same
-  // as imported type, but transformations, such as quantization, can change
-  // the node type, so user has to specify it.
-  DataType final_dtype;
-
-  // A pair of floating point values which defines the min and max of a value
-  // range for quantization. Both values should be defined at the same time.
-  double min_value, max_value;
-
   // Node "shape" attribute value.
   TensorShapeProto shape;
 };
@@ -77,13 +68,6 @@ struct GraphExportConfig {
   bool export_debug_info = true;
 };
 
-// Is this dtype a quantization type from TensorFlow.
-bool IsQuantizationType(DataType dtype);
-
-// Gets the width of this quantization type. Returns 0 if it isn't a
-// quantization type.
-int64_t GetQuantizationTypeWidth(DataType dtype);
-
 // Parses the command line flag strings to the specification of nodes in
 // the Graph.
 Status ParseOutputArrayInfo(absl::string_view array_names,
@@ -99,19 +83,12 @@ Status ParseOutputArrayInfo(const std::vector<string>& output_names,
 Status ParseInputArrayInfo(absl::string_view array_names,
                            absl::string_view data_types,
                            absl::string_view shapes,
-                           absl::string_view inference_type,
-                           absl::string_view min_values,
-                           absl::string_view max_values,
                            GraphImportConfig::InputArrays* inputs);
 
 Status ParseInputArrayInfo(const std::vector<string>& node_names,
                            const std::vector<string>& node_dtypes,
                            const std::vector<std::vector<int>>& node_shapes,
-                           DataType inference_type,
-                           const std::vector<float>& node_mins,
-                           const std::vector<float>& node_maxs,
                            GraphImportConfig::InputArrays* inputs);
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_MLIR_ROUNDTRIP_FLAGS_H_

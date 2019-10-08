@@ -55,20 +55,19 @@ StatusOr<Node*> CloneConstantsForBetterClusteringPass::CloneNode(
 }
 
 namespace {
-// We only clone host constants for now since we want to avoid increasing memory
-// pressure on GPUs.
-StatusOr<bool> IsSmallHostConstant(Node* n) {
-  if (!n->IsConstant()) {
-    return false;
+StatusOr<bool> IsConstantOnHost(Node* n) {
+  if (n->output_type(0) == DT_INT32) {
+    // TensorFlow always puts int32 tensors on the host.
+    return true;
   }
 
   DeviceNameUtils::ParsedName parsed;
   TF_RET_CHECK(
       DeviceNameUtils::ParseFullName(n->assigned_device_name(), &parsed));
-  if (parsed.type != DEVICE_CPU) {
-    return false;
-  }
+  return parsed.type == DEVICE_CPU;
+}
 
+StatusOr<bool> IsConstantSmall(Node* n) {
   const TensorProto* proto = nullptr;
   TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "value", &proto));
 
@@ -84,6 +83,21 @@ StatusOr<bool> IsSmallHostConstant(Node* n) {
     total_elements *= dim.size();
   }
   return total_elements < kSmallTensorThreshold;
+}
+
+// We only clone host constants for now since we want to avoid increasing memory
+// pressure on GPUs.
+StatusOr<bool> IsSmallHostConstant(Node* n) {
+  if (!n->IsConstant()) {
+    return false;
+  }
+
+  TF_ASSIGN_OR_RETURN(bool is_constant_on_host, IsConstantOnHost(n));
+  if (!is_constant_on_host) {
+    return false;
+  }
+
+  return IsConstantSmall(n);
 }
 
 bool IsInPlaceOp(absl::string_view op_name) {

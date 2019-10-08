@@ -113,6 +113,11 @@ class HloModuleConfig {
   }
   int64 replica_count() const { return replica_count_; }
 
+  void set_num_partitions(int64 num_partitions) {
+    num_partitions_ = num_partitions;
+  }
+  int64 num_partitions() const { return num_partitions_; }
+
   // Return a string which unambiguously represents all the fields of this data
   // structure. Used for generating a cache key for storing the compiled
   // executable.
@@ -186,8 +191,11 @@ class HloModuleConfig {
   // Module/graph-level seed handle.
   uint64 seed_ = 0;
 
-  // The number of replicas to compile this binary for.
+  // The number of replicas (data parallelism) to compile this binary for.
   int64 replica_count_ = 1;
+
+  // The number of partitions (model parallelism) to compile this binary for.
+  int64 num_partitions_ = 1;
 
   // The target maximum parallelism at which to partition HLOs for parallel
   // execution on the CPU backend.

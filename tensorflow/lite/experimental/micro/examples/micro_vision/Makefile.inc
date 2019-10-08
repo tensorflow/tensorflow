@@ -39,11 +39,13 @@ MICRO_VISION_SRCS := \
 tensorflow/lite/experimental/micro/examples/micro_vision/detection_responder.cc \
 tensorflow/lite/experimental/micro/examples/micro_vision/image_provider.cc \
 tensorflow/lite/experimental/micro/examples/micro_vision/main.cc \
+tensorflow/lite/experimental/micro/examples/micro_vision/main_functions.cc \
 $(MICRO_VISION_MODEL_SRCS)
 
 MICRO_VISION_HDRS := \
 tensorflow/lite/experimental/micro/examples/micro_vision/detection_responder.h \
 tensorflow/lite/experimental/micro/examples/micro_vision/image_provider.h \
+tensorflow/lite/experimental/micro/examples/micro_vision/main_functions.h \
 $(MICRO_VISION_MODEL_HDRS)
 
 # Find any platform-specific rules for this example.

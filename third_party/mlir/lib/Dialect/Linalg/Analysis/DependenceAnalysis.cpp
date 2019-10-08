@@ -21,6 +21,7 @@
 
 #include "mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -55,7 +56,7 @@ Value *Aliases::find(Value *v) {
   auto it = aliases.find(v);
   if (it != aliases.end()) {
     assert(((isa<BlockArgument>(it->getSecond()) &&
-             it->getSecond()->getType().isa<ViewType>()) ||
+             it->getSecond()->getType().isa<MemRefType>()) ||
             it->getSecond()->getType().isa<BufferType>()) &&
            "Buffer or block argument expected");
     return it->getSecond();
@@ -64,6 +65,10 @@ Value *Aliases::find(Value *v) {
   while (true) {
     if (isa<BlockArgument>(v))
       return v;
+    if (auto alloc = dyn_cast_or_null<AllocOp>(v->getDefiningOp())) {
+      if (isStrided(alloc.getType()))
+        return alloc.getResult();
+    }
     if (auto slice = dyn_cast_or_null<SliceOp>(v->getDefiningOp())) {
       auto it = aliases.insert(std::make_pair(v, find(slice.view())));
       return it.first->second;

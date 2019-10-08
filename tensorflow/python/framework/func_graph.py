@@ -48,15 +48,6 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util.lazy_loader import LazyLoader
-
-# This is to avoid a circular dependency:
-# function -> func_graph
-function = LazyLoader("function", globals(),
-                      "tensorflow.python.eager.function")
-def_function = LazyLoader(
-    "def_function", globals(),
-    "tensorflow.python.eager.def_function")
 
 WHITELIST_COLLECTIONS = [
     ops.GraphKeys.GLOBAL_VARIABLES,

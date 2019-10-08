@@ -53,6 +53,10 @@ public:
   /// Return the name of the attribute used for symbol names.
   static StringRef getSymbolAttrName() { return "sym_name"; }
 
+  //===--------------------------------------------------------------------===//
+  // Symbol Utilities
+  //===--------------------------------------------------------------------===//
+
   /// Returns the operation registered with the given symbol name with the
   /// regions of 'symbolTableOp'. 'symbolTableOp' is required to be an operation
   /// with the 'OpTrait::SymbolTable' trait.
@@ -63,6 +67,47 @@ public:
   /// 'OpTrait::SymbolTable' trait. Returns nullptr if no valid symbol was
   /// found.
   static Operation *lookupNearestSymbolFrom(Operation *from, StringRef symbol);
+
+  /// This class represents a specific symbol use.
+  class SymbolUse {
+  public:
+    SymbolUse(Operation *op, SymbolRefAttr symbolRef)
+        : owner(op), symbolRef(symbolRef) {}
+
+    /// Return the operation user of this symbol reference.
+    Operation *getUser() const { return owner; }
+
+    /// Return the symbol reference that this use represents.
+    SymbolRefAttr getSymbolRef() const { return symbolRef; }
+
+  private:
+    /// The operation that this access is held by.
+    Operation *owner;
+
+    /// The symbol reference that this use represents.
+    SymbolRefAttr symbolRef;
+  };
+
+  /// Walk all of the uses, for any symbol, that are nested within the given
+  /// operation 'from', invoking the provided callback for each. This does not
+  /// traverse into any nested symbol tables, and will also only return uses on
+  /// 'from' if it does not also define a symbol table.
+  static WalkResult
+  walkSymbolUses(Operation *from, function_ref<WalkResult(SymbolUse)> callback);
+
+  /// Walk all of the uses of the given symbol that are nested within the given
+  /// operation 'from', invoking the provided callback for each. This does not
+  /// traverse into any nested symbol tables, and will also only return uses on
+  /// 'from' if it does not also define a symbol table.
+  static WalkResult
+  walkSymbolUses(StringRef symbol, Operation *from,
+                 function_ref<WalkResult(SymbolUse)> callback);
+
+  /// Return if the given symbol has no uses that are nested within the given
+  /// operation 'from'. This does not traverse into any nested symbol tables,
+  /// and will also only count uses on 'from' if it does not also define a
+  /// symbol table.
+  static bool symbol_use_empty(StringRef symbol, Operation *from);
 
 private:
   MLIRContext *context;

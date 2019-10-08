@@ -16,6 +16,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",

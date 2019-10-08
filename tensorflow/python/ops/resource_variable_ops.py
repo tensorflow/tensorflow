@@ -462,7 +462,7 @@ class BaseResourceVariable(variables.VariableV1):
         trainable=self._trainable,
         constraint=self._constraint,
         dtype=self._dtype,
-        name=self._shared_name + "_copy",
+        name=self._shared_name,
         distribute_strategy=self._distribute_strategy)
     memo[self._unique_id] = copied_variable
     return copied_variable

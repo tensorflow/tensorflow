@@ -99,6 +99,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
         math_ops.digamma,
         math_ops.erf,
         math_ops.erfc,
+        math_ops.erfinv,
         math_ops.exp,
         math_ops.expm1,
         math_ops.inv,
@@ -107,6 +108,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
         math_ops.lgamma,
         math_ops.log,
         math_ops.log1p,
+        math_ops.ndtri,
     ]
     self._test_unary_cwise_ops(real_ops, False)
 

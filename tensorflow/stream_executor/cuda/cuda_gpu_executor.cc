@@ -254,9 +254,10 @@ port::Status GpuExecutor::LoadModuleFromPtx(const char* ptx, CUmodule* module) {
   return port::Status::OK();
 }
 
-bool GpuExecutor::LoadModuleFromHsaco(const char* hsaco, CUmodule* module) {
-  LOG(ERROR) << "Feature not supported on CUDA platform (LoadModuleFromHsaco)";
-  return false;
+port::Status GpuExecutor::LoadModuleFromHsaco(const char* hsaco,
+                                              CUmodule* module) {
+  return port::InternalError(
+      "Feature not supported on CUDA platform (LoadModuleFromHsaco)");
 }
 
 port::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
@@ -305,9 +306,7 @@ port::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   cuda_kernel->set_arity(spec.arity());
 
   KernelMetadata kernel_metadata;
-  if (!GetKernelMetadata(cuda_kernel, &kernel_metadata)) {
-    LOG(WARNING) << "unable to get metadata for kernel " << *kernelname;
-  }
+  TF_RETURN_IF_ERROR(GetKernelMetadata(cuda_kernel, &kernel_metadata));
   kernel->set_metadata(kernel_metadata);
   kernel->set_name(*kernelname);
   return port::Status::OK();
@@ -384,22 +383,18 @@ bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
   return UnloadGpuBinary(gpu_binary);
 }
 
-bool GpuExecutor::GetKernelMetadata(GpuKernel* cuda_kernel,
-                                    KernelMetadata* kernel_metadata) {
+port::Status GpuExecutor::GetKernelMetadata(GpuKernel* cuda_kernel,
+                                            KernelMetadata* kernel_metadata) {
   int value;
-  if (!GpuDriver::FuncGetAttribute(CU_FUNC_ATTRIBUTE_NUM_REGS,
-                                   *cuda_kernel->gpu_function_ptr(), &value)) {
-    return false;
-  }
+  TF_RETURN_IF_ERROR(GpuDriver::FuncGetAttribute(
+      CU_FUNC_ATTRIBUTE_NUM_REGS, *cuda_kernel->gpu_function_ptr(), &value));
   kernel_metadata->set_registers_per_thread(value);
 
-  if (!GpuDriver::FuncGetAttribute(CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
-                                   *cuda_kernel->gpu_function_ptr(), &value)) {
-    return false;
-  }
+  TF_RETURN_IF_ERROR(
+      GpuDriver::FuncGetAttribute(CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
+                                  *cuda_kernel->gpu_function_ptr(), &value));
   kernel_metadata->set_shared_memory_bytes(value);
-
-  return true;
+  return port::Status::OK();
 }
 
 port::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
@@ -426,7 +421,8 @@ port::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
 
   if (cuda_kernel->GetPreferredCacheConfig() !=
       KernelCacheConfig::kNoPreference) {
-    GpuDriver::FuncSetCacheConfig(cufunc, cuda_kernel->GetGpuCacheConfig());
+    TF_RETURN_IF_ERROR(GpuDriver::FuncSetCacheConfig(
+        cufunc, cuda_kernel->GetGpuCacheConfig()));
   }
 
   void **kernel_params = const_cast<void **>(args.argument_addresses().data());
@@ -551,7 +547,8 @@ bool GpuExecutor::SynchronizeAllActivity() {
   return GpuDriver::SynchronizeContext(context_);
 }
 
-bool GpuExecutor::SynchronousMemZero(DeviceMemoryBase* location, uint64 size) {
+port::Status GpuExecutor::SynchronousMemZero(DeviceMemoryBase* location,
+                                             uint64 size) {
   if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
       size % 4 == 0) {
     return GpuDriver::SynchronousMemsetUint32(
@@ -561,8 +558,8 @@ bool GpuExecutor::SynchronousMemZero(DeviceMemoryBase* location, uint64 size) {
                                            0x0, size);
 }
 
-bool GpuExecutor::SynchronousMemSet(DeviceMemoryBase* location, int value,
-                                    uint64 size) {
+port::Status GpuExecutor::SynchronousMemSet(DeviceMemoryBase* location,
+                                            int value, uint64 size) {
   if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
       size % 4 == 0) {
     // cudaMemset reinterprets "value" as a uint8.
@@ -1094,7 +1091,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
 
   {
     string device_name;
-    (void)GpuDriver::GetDeviceName(device, &device_name);
+    TF_RETURN_IF_ERROR(GpuDriver::GetDeviceName(device, &device_name));
     builder.set_name(device_name);
   }
 

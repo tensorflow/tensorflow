@@ -150,7 +150,7 @@ std::vector<ComputeTaskDescriptorPtr> ConcatZ(
              0,
              dimension.w * dimension.h,
          };
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 
@@ -240,7 +240,7 @@ std::vector<ComputeTaskDescriptorPtr> ConcatX(
          std::vector<int> uniform_params{dimension.w, dimension.h,
                                          IntegralDivideRoundUp(dimension.c, 4),
                                          /*padding=*/0};
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 
@@ -330,7 +330,7 @@ std::vector<ComputeTaskDescriptorPtr> ConcatY(
          const auto& dimension = buffers.find(output_id)->second;
          std::vector<int> uniform_params{dimension.w, dimension.h,
                                          IntegralDivideRoundUp(dimension.c, 4)};
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 

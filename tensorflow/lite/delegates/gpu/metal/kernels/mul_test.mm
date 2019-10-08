@@ -28,15 +28,15 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
-using ::tflite::gpu::MultiplyScalarAttributes;
 using ::tflite::gpu::DataType;
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::Linear;
-using ::tflite::gpu::metal::CompareVectors;
-using ::tflite::gpu::metal::SingleOpModel;
+using ::tflite::gpu::MultiplyScalarAttributes;
 using ::tflite::gpu::OperationType;
 using ::tflite::gpu::Tensor;
 using ::tflite::gpu::TensorRef;
+using ::tflite::gpu::metal::CompareVectors;
+using ::tflite::gpu::metal::SingleOpModel;
 
 @interface MulTest : XCTestCase
 @end

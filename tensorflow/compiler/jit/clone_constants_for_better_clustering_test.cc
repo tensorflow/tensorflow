@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/compiler/jit/node_matchers.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -60,7 +61,7 @@ Status CloneConstantsForBetterClustering(const Scope& s,
 const char* kCPU = "/job:localhost/replica:0/task:0/device:CPU:0";
 const char* kGPU = "/job:localhost/replica:0/task:0/device:GPU:0";
 
-TEST(CloneConstantsForBetterClusteringTest, Basic) {
+TEST(CloneConstantsForBetterClusteringTest, HostConstantPlacedOnCpu) {
   Scope root = Scope::NewRootScope().ExitOnError();
   Scope on_gpu = root.WithAssignedDevice(kGPU).WithDevice(kGPU);
   Scope on_cpu = root.WithAssignedDevice(kCPU).WithDevice(kCPU);
@@ -87,7 +88,7 @@ TEST(CloneConstantsForBetterClusteringTest, Basic) {
   EXPECT_NE(tr0_perm.node, tr1_perm.node);
 }
 
-TEST(CloneConstantsForBetterClusteringTest, DontCloneNonHostConstants) {
+TEST(CloneConstantsForBetterClusteringTest, HostConstantPlacedOnGpu) {
   Scope root = Scope::NewRootScope().ExitOnError();
   Scope on_gpu = root.WithAssignedDevice(kGPU).WithDevice(kGPU);
 
@@ -109,6 +110,38 @@ TEST(CloneConstantsForBetterClusteringTest, DontCloneNonHostConstants) {
 
   OutputTensor tr1_perm;
   TF_ASSERT_OK(FindNodeByName(result.get(), "tr1")->input_tensor(1, &tr1_perm));
+
+  EXPECT_NE(tr0_perm.node, tr1_perm.node);
+}
+
+TEST(CloneConstantsForBetterClusteringTest, DontCloneNonHostConstants) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  Scope on_gpu = root.WithAssignedDevice(kGPU).WithDevice(kGPU);
+
+  Output in0 = ops::Placeholder(on_gpu.WithOpName("in0"), DT_FLOAT);
+  Output in1 = ops::Placeholder(on_gpu.WithOpName("in1"), DT_FLOAT);
+
+  Output perm_f32 = ops::Const(on_gpu.WithOpName("perm"), {3.0, 1.0, 2.0, 0.0});
+  Output perm_int0 =
+      ops::Cast(on_gpu.WithOpName("perm_cast_0"), perm_f32, DT_INT32);
+  Output perm_int1 =
+      ops::Cast(on_gpu.WithOpName("perm_cast_1"), perm_f32, DT_INT32);
+
+  {
+    Output tr0 = ops::Transpose(on_gpu.WithOpName("tr0"), in0, perm_int0);
+    Output tr1 = ops::Transpose(on_gpu.WithOpName("tr1"), in1, perm_int1);
+  }
+
+  std::unique_ptr<Graph> result;
+  TF_ASSERT_OK(CloneConstantsForBetterClustering(root, &result));
+
+  OutputTensor tr0_perm;
+  TF_ASSERT_OK(
+      FindNodeByName(result.get(), "perm_cast_0")->input_tensor(0, &tr0_perm));
+
+  OutputTensor tr1_perm;
+  TF_ASSERT_OK(
+      FindNodeByName(result.get(), "perm_cast_1")->input_tensor(0, &tr1_perm));
 
   EXPECT_EQ(tr0_perm.node, tr1_perm.node);
 }

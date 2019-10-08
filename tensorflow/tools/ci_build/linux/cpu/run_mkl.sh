@@ -27,7 +27,7 @@ echo ""
 
 # Run configure.
 export TF_NEED_CUDA=0
-export PYTHON_BIN_PATH=`which python2`
+export PYTHON_BIN_PATH=`which python3`
 yes "" | $PYTHON_BIN_PATH configure.py
 if [[ "$MODE" == "eigen" ]]; then
     CONFIG=""

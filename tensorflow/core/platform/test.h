@@ -28,11 +28,7 @@ limitations under the License.
 // (https://github.com/google/googletest) to discourage over-eager use of mocks
 // that lead to cumbersome class hierarchies and tests that might end up not
 // testing real code in important ways.
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
-#include "tensorflow/core/platform/google/build_config/gunit.h"
-#else
 #include <gtest/gtest.h>
-#endif
 
 namespace tensorflow {
 namespace testing {

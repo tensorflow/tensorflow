@@ -645,6 +645,15 @@ This op has better TPU performnce since it doesn't have explicitly reshape and
 transpose operations as tf.einsum does.
 )doc");
 
+REGISTER_OP("XlaSharding")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+An op which shards the input based on the given sharding attribute.
+)doc");
+
 REGISTER_OP("XlaReplicaId")
     .Output("id: int32")
     .SetShapeFn([](shape_inference::InferenceContext* context) {

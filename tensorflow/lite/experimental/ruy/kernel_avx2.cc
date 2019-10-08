@@ -47,32 +47,7 @@ static constexpr int kAvx8bitBlockSize = 8;
 static constexpr int kAvx8bitInnerSize = 4;
 
 namespace {
-// "_mm256_extract_epi32(ai, i)" is not a function call, and fails on some
-// toolchains when i is not a compile-time constant.
-inline std::int32_t __attribute__((always_inline))
-mm256_get1_epi32(const __m256i ai, int i) {
-  switch (i) {
-    case 0:
-      return _mm256_extract_epi32(ai, 0);
-    case 1:
-      return _mm256_extract_epi32(ai, 1);
-    case 2:
-      return _mm256_extract_epi32(ai, 2);
-    case 3:
-      return _mm256_extract_epi32(ai, 3);
-    case 4:
-      return _mm256_extract_epi32(ai, 4);
-    case 5:
-      return _mm256_extract_epi32(ai, 5);
-    case 6:
-      return _mm256_extract_epi32(ai, 6);
-    case 7:
-      return _mm256_extract_epi32(ai, 7);
-    default:
-      RUY_DCHECK_LT(i, 8);
-      return 0;
-  }
-}
+namespace intrin_utils {
 
 inline __m256 mm256_n_loadu_epi32(int n, const std::int32_t* src) {
   switch (n) {
@@ -169,8 +144,8 @@ inline void mm256_storeu_cvtepi32_epi8(std::uint8_t* dst, const __m256 v) {
 
 inline void mm256_n_storeu_cvtepi32_epi8(std::int8_t* dst, int residual_rows,
                                          const __m256 v) {
-  mm256_n_storeu_cvtepi32_epi8(reinterpret_cast<std::uint8_t*>(dst),
-                               residual_rows, v);
+  intrin_utils::mm256_n_storeu_cvtepi32_epi8(
+      reinterpret_cast<std::uint8_t*>(dst), residual_rows, v);
 }
 
 inline void mm256_storeu_cvtepi32_epi8(std::int8_t* dst, const __m256 v) {
@@ -362,11 +337,12 @@ inline __m256 mm256_n_loadu_ps(int i, const float* src) {
   }
 }
 
-inline void _mm256_n_storeu_ps(float* dst, int residual_rows, const __m256 v) {
+inline void mm256_n_storeu_ps(float* dst, int residual_rows, const __m256 v) {
   for (int i = 0; i < residual_rows; ++i) {
-    dst[i] = mm256_get1_ps(v, i);
+    dst[i] = intrin_utils::mm256_get1_ps(v, i);
   }
 }
+}  // namespace intrin_utils
 }  // namespace
 
 void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
@@ -406,6 +382,19 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
     void* dst_ptr = dst_col_ptr;
     const std::int32_t* bias_ptr = bias_col_ptr;
 
+    const std::int32_t lhs_zero_point = params.lhs_zero_point;
+    const bool has_rhs_sums_offsets =
+        (params.flags & RUY_ASM_FLAG_HAS_RHS_SUMS) && lhs_zero_point;
+    std::int32_t rhs_sums_offsets[8];
+    if (has_rhs_sums_offsets) {
+      const __m256i rhs_sums_offset_v = _mm256_mullo_epi32(
+          _mm256_set1_epi32(lhs_zero_point),
+          _mm256_loadu_si256(
+              reinterpret_cast<__m256i const*>(&params.rhs_sums[col])));
+      _mm256_storeu_si256(reinterpret_cast<__m256i*>(rhs_sums_offsets),
+                          rhs_sums_offset_v);
+    }
+
     for (int row = params.start_row; row <= params.last_row;
          row += kAvx8bitBlockSize) {
       const int residual_rows =
@@ -416,15 +405,63 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
       const __m256i splitter_idx = _mm256_loadu_si256(
           reinterpret_cast<__m256i const*>(splitter_idx_data));
 
-      __m256i accum_data_v[kAvx8bitBlockSize];
+      __m256i accum_data_v0;
+      __m256i accum_data_v1;
+      __m256i accum_data_v2;
+      __m256i accum_data_v3;
+      __m256i accum_data_v4;
+      __m256i accum_data_v5;
+      __m256i accum_data_v6;
+      __m256i accum_data_v7;
 
       // Initialize with bias.
-      const __m256i initial_accum_data =
-          mm256_n_loadu_epi32(residual_rows, bias_ptr);
+      __m256i initial_accum_data =
+          intrin_utils::mm256_n_loadu_epi32(residual_rows, bias_ptr);
       bias_ptr += bias_ptr_block_increment;
 
-      for (int j = 0; j < kAvx8bitBlockSize; ++j) {
-        accum_data_v[j] = initial_accum_data;
+      // Adjustments common across columns.
+      const std::int32_t rhs_zero_point = params.rhs_zero_point;
+      if ((params.flags & RUY_ASM_FLAG_HAS_LHS_SUMS) && rhs_zero_point) {
+        const __m256i lhs_sums_offset = _mm256_mullo_epi32(
+            _mm256_set1_epi32(rhs_zero_point),
+            _mm256_loadu_si256(
+                reinterpret_cast<__m256i const*>(&params.lhs_sums[row])));
+        initial_accum_data =
+            _mm256_sub_epi32(initial_accum_data, lhs_sums_offset);
+      }
+      const std::int32_t prod_zp_depth = params.prod_zp_depth;
+      if (prod_zp_depth) {
+        initial_accum_data = _mm256_add_epi32(initial_accum_data,
+                                              _mm256_set1_epi32(prod_zp_depth));
+      }
+
+      accum_data_v0 = initial_accum_data;
+      accum_data_v1 = initial_accum_data;
+      accum_data_v2 = initial_accum_data;
+      accum_data_v3 = initial_accum_data;
+      accum_data_v4 = initial_accum_data;
+      accum_data_v5 = initial_accum_data;
+      accum_data_v6 = initial_accum_data;
+      accum_data_v7 = initial_accum_data;
+
+      // Adjustments differing across columns.
+      if (has_rhs_sums_offsets) {
+        accum_data_v0 = _mm256_sub_epi32(
+            accum_data_v0, _mm256_set1_epi32(rhs_sums_offsets[0]));
+        accum_data_v1 = _mm256_sub_epi32(
+            accum_data_v1, _mm256_set1_epi32(rhs_sums_offsets[1]));
+        accum_data_v2 = _mm256_sub_epi32(
+            accum_data_v2, _mm256_set1_epi32(rhs_sums_offsets[2]));
+        accum_data_v3 = _mm256_sub_epi32(
+            accum_data_v3, _mm256_set1_epi32(rhs_sums_offsets[3]));
+        accum_data_v4 = _mm256_sub_epi32(
+            accum_data_v4, _mm256_set1_epi32(rhs_sums_offsets[4]));
+        accum_data_v5 = _mm256_sub_epi32(
+            accum_data_v5, _mm256_set1_epi32(rhs_sums_offsets[5]));
+        accum_data_v6 = _mm256_sub_epi32(
+            accum_data_v6, _mm256_set1_epi32(rhs_sums_offsets[6]));
+        accum_data_v7 = _mm256_sub_epi32(
+            accum_data_v7, _mm256_set1_epi32(rhs_sums_offsets[7]));
       }
 
       const std::int8_t* lhs_ptr = lhs_col_ptr;
@@ -432,8 +469,25 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
       for (int d = 0; d < params.depth; d += kAvx8bitInnerSize) {
         const __m256i lhs_data =
             _mm256_load_si256(reinterpret_cast<const __m256i*>(lhs_ptr));
-        __m256i rhs_data =
+        const __m256i rhs_data_8bit =
             _mm256_load_si256(reinterpret_cast<const __m256i*>(rhs_ptr));
+
+        // Each "int32" is two 16-bit RHS values, sign extended from 8-bit.
+        std::int32_t rhs_data[16];
+        const __m128i rhs_data_bottom_lane =
+            _mm256_castsi256_si128(rhs_data_8bit);
+        const __m128i rhs_data_top_lane =
+            _mm256_extracti128_si256(rhs_data_8bit, 1);
+        const __m256i rhs_16_bit_dup_low =
+            _mm256_cvtepi8_epi16(rhs_data_bottom_lane);
+        const __m256i rhs_16_bit_dup_high =
+            _mm256_cvtepi8_epi16(rhs_data_top_lane);
+        // Now that we have cast the RHS data, we store it so that each value
+        // can be separately loaded in the accumulation loop.
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(rhs_data),
+                            rhs_16_bit_dup_low);
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(rhs_data + 8),
+                            rhs_16_bit_dup_high);
 
         const __m256i lhs_data_split =
             _mm256_shuffle_epi8(lhs_data, splitter_idx);
@@ -448,29 +502,124 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
         // Take bytes 2, 3, 6, 7, 10, 11, ... expanded to 16-bit.
         const __m256i lhs_16_bit_high = _mm256_permute2x128_si256(
             lhs_data_split_expand_bottom, lhs_data_split_expand_top, 0x31);
+        // Accumulate for column 0.
+        {
+          const std::int32_t low_rhs_value = rhs_data[0];
+          const std::int32_t high_rhs_value = rhs_data[1];
 
-        for (int j = 0; j < kAvx8bitBlockSize; ++j) {
-          // Mask that drops the 0th element.
-          const __m128i dup_rhs_element_low =
-              _mm_broadcastw_epi16(_mm256_castsi256_si128(rhs_data));
-          // Shift rhs_data, moving next element into 0 position.
-          const __m128i dup_rhs_element_high = _mm_set1_epi16(
-              _mm_extract_epi16(_mm256_castsi256_si128(rhs_data), 1));
-          // Shift rhs_data, moving next element into 0 position.
-          std::int32_t between_lane_data = _mm256_extract_epi32(rhs_data, 4);
-          rhs_data = _mm256_srli_si256(rhs_data, 4);
-          rhs_data = _mm256_insert_epi32(rhs_data, between_lane_data, 3);
+          const __m256i rhs_16_bit_dup_low = _mm256_set1_epi32(low_rhs_value);
+          const __m256i rhs_16_bit_dup_high = _mm256_set1_epi32(high_rhs_value);
 
-          __m256i rhs_16_bit_dup_low =
-              _mm256_cvtepi8_epi16(dup_rhs_element_low);
-          __m256i rhs_16_bit_dup_high =
-              _mm256_cvtepi8_epi16(dup_rhs_element_high);
-
-          accum_data_v[j] = _mm256_add_epi32(
-              accum_data_v[j],
+          accum_data_v0 = _mm256_add_epi32(
+              accum_data_v0,
               _mm256_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
-          accum_data_v[j] = _mm256_add_epi32(
-              accum_data_v[j],
+          accum_data_v0 = _mm256_add_epi32(
+              accum_data_v0,
+              _mm256_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+        }
+        // Accumulate for column 1.
+        {
+          const std::int32_t low_rhs_value = rhs_data[2];
+          const std::int32_t high_rhs_value = rhs_data[3];
+
+          const __m256i rhs_16_bit_dup_low = _mm256_set1_epi32(low_rhs_value);
+          const __m256i rhs_16_bit_dup_high = _mm256_set1_epi32(high_rhs_value);
+
+          accum_data_v1 = _mm256_add_epi32(
+              accum_data_v1,
+              _mm256_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
+          accum_data_v1 = _mm256_add_epi32(
+              accum_data_v1,
+              _mm256_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+        }
+        // Accumulate for column 2.
+        {
+          const std::int32_t low_rhs_value = rhs_data[4];
+          const std::int32_t high_rhs_value = rhs_data[5];
+
+          const __m256i rhs_16_bit_dup_low = _mm256_set1_epi32(low_rhs_value);
+          const __m256i rhs_16_bit_dup_high = _mm256_set1_epi32(high_rhs_value);
+
+          accum_data_v2 = _mm256_add_epi32(
+              accum_data_v2,
+              _mm256_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
+          accum_data_v2 = _mm256_add_epi32(
+              accum_data_v2,
+              _mm256_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+        }
+        // Accumulate for column 3.
+        {
+          const std::int32_t low_rhs_value = rhs_data[6];
+          const std::int32_t high_rhs_value = rhs_data[7];
+
+          const __m256i rhs_16_bit_dup_low = _mm256_set1_epi32(low_rhs_value);
+          const __m256i rhs_16_bit_dup_high = _mm256_set1_epi32(high_rhs_value);
+
+          accum_data_v3 = _mm256_add_epi32(
+              accum_data_v3,
+              _mm256_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
+          accum_data_v3 = _mm256_add_epi32(
+              accum_data_v3,
+              _mm256_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+        }
+        // Accumulate for column 4.
+        {
+          const std::int32_t low_rhs_value = rhs_data[8];
+          const std::int32_t high_rhs_value = rhs_data[9];
+
+          const __m256i rhs_16_bit_dup_low = _mm256_set1_epi32(low_rhs_value);
+          const __m256i rhs_16_bit_dup_high = _mm256_set1_epi32(high_rhs_value);
+
+          accum_data_v4 = _mm256_add_epi32(
+              accum_data_v4,
+              _mm256_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
+          accum_data_v4 = _mm256_add_epi32(
+              accum_data_v4,
+              _mm256_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+        }
+        // Accumulate for column 5.
+        {
+          const std::int32_t low_rhs_value = rhs_data[10];
+          const std::int32_t high_rhs_value = rhs_data[11];
+
+          const __m256i rhs_16_bit_dup_low = _mm256_set1_epi32(low_rhs_value);
+          const __m256i rhs_16_bit_dup_high = _mm256_set1_epi32(high_rhs_value);
+
+          accum_data_v5 = _mm256_add_epi32(
+              accum_data_v5,
+              _mm256_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
+          accum_data_v5 = _mm256_add_epi32(
+              accum_data_v5,
+              _mm256_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+        }
+        // Accumulate for column 6.
+        {
+          const std::int32_t low_rhs_value = rhs_data[12];
+          const std::int32_t high_rhs_value = rhs_data[13];
+
+          const __m256i rhs_16_bit_dup_low = _mm256_set1_epi32(low_rhs_value);
+          const __m256i rhs_16_bit_dup_high = _mm256_set1_epi32(high_rhs_value);
+
+          accum_data_v6 = _mm256_add_epi32(
+              accum_data_v6,
+              _mm256_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
+          accum_data_v6 = _mm256_add_epi32(
+              accum_data_v6,
+              _mm256_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
+        }
+        // Accumulate for column 7.
+        {
+          const std::int32_t low_rhs_value = rhs_data[14];
+          const std::int32_t high_rhs_value = rhs_data[15];
+
+          const __m256i rhs_16_bit_dup_low = _mm256_set1_epi32(low_rhs_value);
+          const __m256i rhs_16_bit_dup_high = _mm256_set1_epi32(high_rhs_value);
+
+          accum_data_v7 = _mm256_add_epi32(
+              accum_data_v7,
+              _mm256_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
+          accum_data_v7 = _mm256_add_epi32(
+              accum_data_v7,
               _mm256_madd_epi16(lhs_16_bit_high, rhs_16_bit_dup_high));
         }
 
@@ -478,49 +627,19 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
         rhs_ptr += kAvx8bitBlockSize * kAvx8bitInnerSize;
       }
 
-      // Move most of this up to bias, or even outside row loop.
-
-      const std::int32_t lhs_zero_point = params.lhs_zero_point;
-      const std::int32_t rhs_zero_point = params.rhs_zero_point;
-      const std::int32_t prod_zp_depth = params.prod_zp_depth;
-      if ((params.flags & RUY_ASM_FLAG_HAS_LHS_SUMS) && rhs_zero_point) {
-        const __m256i lhs_sums_offset =
-            _mm256_mullo_epi32(_mm256_set1_epi32(rhs_zero_point),
-                               mm256_n_loadu_epi32(8, &params.lhs_sums[row]));
-        for (int j = 0; j < kAvx8bitBlockSize; ++j) {
-          accum_data_v[j] = _mm256_sub_epi32(accum_data_v[j], lhs_sums_offset);
-        }
-      }
-      if (((params.flags & RUY_ASM_FLAG_HAS_RHS_SUMS) && lhs_zero_point) ||
-          prod_zp_depth) {
-        __m256i non_lhs_sums_offset =
-            _mm256_mullo_epi32(_mm256_set1_epi32(lhs_zero_point),
-                               mm256_n_loadu_epi32(8, &params.rhs_sums[col]));
-        non_lhs_sums_offset = _mm256_sub_epi32(
-            non_lhs_sums_offset, _mm256_set1_epi32(prod_zp_depth));
-
-        for (int j = 0; j < kAvx8bitBlockSize; ++j) {
-          accum_data_v[j] = _mm256_sub_epi32(
-              accum_data_v[j],
-              _mm256_set1_epi32(mm256_get1_epi32(non_lhs_sums_offset, j)));
-        }
-      }
-
       if (params.dst_type_id != DstTypeId<std::int32_t>::kValue) {
         __m256i m_vector;
         __m256i e_vector;
         // Does not make use of RUY_ASM_FLAG_NEEDS_LEFT_SHIFT.
         if (params.flags & RUY_ASM_FLAG_HAS_PERCHANNEL) {
-          m_vector = mm256_n_loadu_epi32(residual_rows,
-                                         &params.multiplier_fixedpoint[row]);
-          e_vector = mm256_n_loadu_epi32(residual_rows,
-                                         &params.multiplier_exponent[row]);
+          m_vector = intrin_utils::mm256_n_loadu_epi32(
+              residual_rows, &params.multiplier_fixedpoint[row]);
+          e_vector = intrin_utils::mm256_n_loadu_epi32(
+              residual_rows, &params.multiplier_exponent[row]);
         } else {
           // These arrays have size LhsCols, and are pre-filled.
-          m_vector =
-              mm256_n_loadu_epi32(residual_rows, params.multiplier_fixedpoint);
-          e_vector =
-              mm256_n_loadu_epi32(residual_rows, params.multiplier_exponent);
+          m_vector = _mm256_set1_epi32(params.multiplier_fixedpoint[0]);
+          e_vector = _mm256_set1_epi32(params.multiplier_exponent[0]);
         }
 
         const __m256i m_64bit_low =
@@ -544,7 +663,7 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
         const __m256i convert_to_unsigned_64 =
             _mm256_set1_epi64x(0x8000000000000000);
 
-        const __m256i post_scaling_offset = _mm256_add_epi32(
+        __m256i post_scaling_offset = _mm256_add_epi32(
             convert_to_signed_halved, convert_to_signed_halved);
 
         const __m256i offset_vector =
@@ -562,152 +681,419 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
                                   _mm256_extracti128_si256(right_shift, 1))),
             convert_to_unsigned_64);
 
+        if (params.dst_zero_point) {
+          const __m256i dst_zero_point =
+              _mm256_set1_epi32(params.dst_zero_point);
+          // The post-scaling offset is subtracted later, so this has the effect
+          // of adding the zero point.
+          post_scaling_offset =
+              _mm256_sub_epi32(post_scaling_offset, dst_zero_point);
+        }
+
+#if !RUY_OPT_ENABLED(RUY_OPT_NATIVE_ROUNDING)
+        RUY_DCHECK(false);
+#endif
         const __m256i repack_perm = _mm256_setr_epi32(0, 2, 4, 6, 1, 3, 5, 7);
 
-        for (int j = 0; j < kAvx8bitBlockSize; ++j) {
-          accum_data_v[j] = _mm256_sllv_epi32(accum_data_v[j], left_shift);
+        // We cannot do
+        //
+        // scaled_v_low =
+        //     _mm256_srav_epi64(scaled_v_low, final_right_shift_low);
+        // scaled_v_high =
+        //     _mm256_srav_epi64(scaled_v_high, final_right_shift_high);
+        //
+        // since this instruction is not in AVX2. Instead we use
+        // _mm256_srlv_epi64, but this is an unsigned shift, so we applied
+        // offsets before (convert_to_unsigned_64) and after
+        // (convert_to_signed_halved).
+        //
+        // The overall process is, for 64-bit scaled accumulator:
+        // unsigned_accum = signed_accum + 1 << 63;
+        // unsigned_accum = (unsigned_accum >> right_shift) >> 31;
+        // signed_accum = unsigned_accum - ((1 << 32) >> right_shift) / 2 * 2;
+
+        // There are various ways to repack the results, in the absence of
+        // _mm256_cvtepi64_epi32() or anything like it.
+        // A.
+        // accum_data_v[j] =
+        //     _mm256_set_epi32(_mm256_extract_epi32(scaled_v_high, 6),
+        //                      _mm256_extract_epi32(scaled_v_high, 4),
+        //                      _mm256_extract_epi32(scaled_v_high, 2),
+        //                      _mm256_extract_epi32(scaled_v_high, 0),
+        //                      _mm256_extract_epi32(scaled_v_low, 6),
+        //                      _mm256_extract_epi32(scaled_v_low, 4),
+        //                      _mm256_extract_epi32(scaled_v_low, 2),
+        //                      _mm256_extract_epi32(scaled_v_low, 0));
+        // B.
+        // scaled_v_low = _mm256_shuffle_epi32(scaled_v_low, 0xd8);
+        // scaled_v_high = _mm256_shuffle_epi32(scaled_v_high, 0xd8);
+        // accum_data_v[j] =
+        //     _mm256_set_epi64x(_mm256_extract_epi64(scaled_v_high, 2),
+        //                       _mm256_extract_epi64(scaled_v_high, 0),
+        //                       _mm256_extract_epi64(scaled_v_low, 2),
+        //                       _mm256_extract_epi64(scaled_v_low, 0));
+        // C.
+        // scaled_v_low =
+        //     _mm256_permutevar8x32_epi32(scaled_v_low, repack_perm);
+        // scaled_v_high =
+        //     _mm256_permutevar8x32_epi32(scaled_v_high, repack_perm);
+        // accum_data_v[j] =
+        //     _mm256_permute2x128_si256(scaled_v_low, scaled_v_high, 0x20);
+        //
+        // However, we choose the following because it uses two lighter
+        // instructions. The permutation does have a longer latency, but this
+        // loop can be unrolled.
+        // D.
+        // scaled_v_high = _mm256_slli_epi64(scaled_v_high, 32);
+        // __m256i results =
+        //     _mm256_blend_epi32(scaled_v_low, scaled_v_high, 0xaa);
+        // results = _mm256_permutevar8x32_epi32(results, repack_perm);
+        // accum_data_v[j] = _mm256_sub_epi32(results, post_scaling_offset);
+        {
+          __m256i shifted_accum = _mm256_sllv_epi32(accum_data_v0, left_shift);
           // Apply the fixed-point part of the multiplier.
-          __m256i scaled_v_low =
-              _mm256_mul_epi32(_mm256_cvtepi32_epi64(_mm256_extracti128_si256(
-                                   accum_data_v[j], 0)),
-                               m_64bit_low);
-          __m256i scaled_v_high =
-              _mm256_mul_epi32(_mm256_cvtepi32_epi64(_mm256_extracti128_si256(
-                                   accum_data_v[j], 1)),
-                               m_64bit_high);
+          __m256i scaled_v_low = _mm256_mul_epi32(
+              _mm256_cvtepi32_epi64(_mm256_extracti128_si256(shifted_accum, 0)),
+              m_64bit_low);
+          __m256i scaled_v_high = _mm256_mul_epi32(
+              _mm256_cvtepi32_epi64(_mm256_extracti128_si256(shifted_accum, 1)),
+              m_64bit_high);
 
           scaled_v_low = _mm256_add_epi64(scaled_v_low, offset_vector_low);
           scaled_v_high = _mm256_add_epi64(scaled_v_high, offset_vector_high);
-
-          // We cannot do
-          //
-          // scaled_v_low =
-          //     _mm256_srav_epi64(scaled_v_low, final_right_shift_low);
-          // scaled_v_high =
-          //     _mm256_srav_epi64(scaled_v_high, final_right_shift_high);
-          //
-          // since this instruction is not in AVX2. Instead we use
-          // _mm256_srlv_epi64, but this is an unsigned shift, so we applied
-          // offsets before (convert_to_unsigned_64) and after
-          // (convert_to_signed_halved).
-          //
-          // The overall process is, for 64-bit scaled accumulator:
-          // unsigned_accum = signed_accum + 1 << 63;
-          // unsigned_accum = (unsigned_accum >> right_shift) >> 31;
-          // signed_accum = unsigned_accum - ((1 << 32) >> right_shift) / 2 * 2;
 
           scaled_v_low = _mm256_srlv_epi64(scaled_v_low, final_right_shift_low);
           scaled_v_high =
               _mm256_srlv_epi64(scaled_v_high, final_right_shift_high);
 
-          // There are various ways to repack the results, in the absence of
-          // _mm256_cvtepi64_epi32() or anything like it.
-          // A.
-          // accum_data_v[j] =
-          //     _mm256_set_epi32(_mm256_extract_epi32(scaled_v_high, 6),
-          //                      _mm256_extract_epi32(scaled_v_high, 4),
-          //                      _mm256_extract_epi32(scaled_v_high, 2),
-          //                      _mm256_extract_epi32(scaled_v_high, 0),
-          //                      _mm256_extract_epi32(scaled_v_low, 6),
-          //                      _mm256_extract_epi32(scaled_v_low, 4),
-          //                      _mm256_extract_epi32(scaled_v_low, 2),
-          //                      _mm256_extract_epi32(scaled_v_low, 0));
-          // B.
-          // scaled_v_low = _mm256_shuffle_epi32(scaled_v_low, 0xd8);
-          // scaled_v_high = _mm256_shuffle_epi32(scaled_v_high, 0xd8);
-          // accum_data_v[j] =
-          //     _mm256_set_epi64x(_mm256_extract_epi64(scaled_v_high, 2),
-          //                       _mm256_extract_epi64(scaled_v_high, 0),
-          //                       _mm256_extract_epi64(scaled_v_low, 2),
-          //                       _mm256_extract_epi64(scaled_v_low, 0));
-          // C.
-          // scaled_v_low =
-          //     _mm256_permutevar8x32_epi32(scaled_v_low, repack_perm);
-          // scaled_v_high =
-          //     _mm256_permutevar8x32_epi32(scaled_v_high, repack_perm);
-          // accum_data_v[j] =
-          //     _mm256_permute2x128_si256(scaled_v_low, scaled_v_high, 0x20);
-          //
-          // However, we choose the following because it uses two lighter
-          // instructions. The permutation does have a longer latency, but this
-          // loop can be unrolled.
-          // D.
           scaled_v_high = _mm256_slli_epi64(scaled_v_high, 32);
           __m256i results =
               _mm256_blend_epi32(scaled_v_low, scaled_v_high, 0xaa);
           results = _mm256_permutevar8x32_epi32(results, repack_perm);
 
-          accum_data_v[j] = _mm256_sub_epi32(results, post_scaling_offset);
-
-#if !RUY_OPT_ENABLED(RUY_OPT_NATIVE_ROUNDING)
-          RUY_DCHECK(false);
-#endif
+          accum_data_v0 = _mm256_sub_epi32(results, post_scaling_offset);
         }
+        {
+          __m256i shifted_accum = _mm256_sllv_epi32(accum_data_v1, left_shift);
+          // Apply the fixed-point part of the multiplier.
+          __m256i scaled_v_low = _mm256_mul_epi32(
+              _mm256_cvtepi32_epi64(_mm256_extracti128_si256(shifted_accum, 0)),
+              m_64bit_low);
+          __m256i scaled_v_high = _mm256_mul_epi32(
+              _mm256_cvtepi32_epi64(_mm256_extracti128_si256(shifted_accum, 1)),
+              m_64bit_high);
 
-        if (params.dst_zero_point) {
-          __m256i dst_zero_point = _mm256_set1_epi32(params.dst_zero_point);
-          for (int j = 0; j < kAvx8bitBlockSize; ++j) {
-            accum_data_v[j] = _mm256_add_epi32(accum_data_v[j], dst_zero_point);
-          }
+          scaled_v_low = _mm256_add_epi64(scaled_v_low, offset_vector_low);
+          scaled_v_high = _mm256_add_epi64(scaled_v_high, offset_vector_high);
+
+          scaled_v_low = _mm256_srlv_epi64(scaled_v_low, final_right_shift_low);
+          scaled_v_high =
+              _mm256_srlv_epi64(scaled_v_high, final_right_shift_high);
+
+          scaled_v_high = _mm256_slli_epi64(scaled_v_high, 32);
+          __m256i results =
+              _mm256_blend_epi32(scaled_v_low, scaled_v_high, 0xaa);
+          results = _mm256_permutevar8x32_epi32(results, repack_perm);
+
+          accum_data_v1 = _mm256_sub_epi32(results, post_scaling_offset);
         }
-        __m256i clamp_max_v = _mm256_set1_epi32(params.clamp_max);
-        __m256i clamp_min_v = _mm256_set1_epi32(params.clamp_min);
-        for (int j = 0; j < kAvx8bitBlockSize; ++j) {
-          accum_data_v[j] = _mm256_min_epi32(accum_data_v[j], clamp_max_v);
-          accum_data_v[j] = _mm256_max_epi32(accum_data_v[j], clamp_min_v);
+        {
+          __m256i shifted_accum = _mm256_sllv_epi32(accum_data_v2, left_shift);
+          // Apply the fixed-point part of the multiplier.
+          __m256i scaled_v_low = _mm256_mul_epi32(
+              _mm256_cvtepi32_epi64(_mm256_extracti128_si256(shifted_accum, 0)),
+              m_64bit_low);
+          __m256i scaled_v_high = _mm256_mul_epi32(
+              _mm256_cvtepi32_epi64(_mm256_extracti128_si256(shifted_accum, 1)),
+              m_64bit_high);
+
+          scaled_v_low = _mm256_add_epi64(scaled_v_low, offset_vector_low);
+          scaled_v_high = _mm256_add_epi64(scaled_v_high, offset_vector_high);
+
+          scaled_v_low = _mm256_srlv_epi64(scaled_v_low, final_right_shift_low);
+          scaled_v_high =
+              _mm256_srlv_epi64(scaled_v_high, final_right_shift_high);
+
+          scaled_v_high = _mm256_slli_epi64(scaled_v_high, 32);
+          __m256i results =
+              _mm256_blend_epi32(scaled_v_low, scaled_v_high, 0xaa);
+          results = _mm256_permutevar8x32_epi32(results, repack_perm);
+
+          accum_data_v2 = _mm256_sub_epi32(results, post_scaling_offset);
+        }
+        {
+          __m256i shifted_accum = _mm256_sllv_epi32(accum_data_v3, left_shift);
+          // Apply the fixed-point part of the multiplier.
+          __m256i scaled_v_low = _mm256_mul_epi32(
+              _mm256_cvtepi32_epi64(_mm256_extracti128_si256(shifted_accum, 0)),
+              m_64bit_low);
+          __m256i scaled_v_high = _mm256_mul_epi32(
+              _mm256_cvtepi32_epi64(_mm256_extracti128_si256(shifted_accum, 1)),
+              m_64bit_high);
+
+          scaled_v_low = _mm256_add_epi64(scaled_v_low, offset_vector_low);
+          scaled_v_high = _mm256_add_epi64(scaled_v_high, offset_vector_high);
+
+          scaled_v_low = _mm256_srlv_epi64(scaled_v_low, final_right_shift_low);
+          scaled_v_high =
+              _mm256_srlv_epi64(scaled_v_high, final_right_shift_high);
+
+          scaled_v_high = _mm256_slli_epi64(scaled_v_high, 32);
+          __m256i results =
+              _mm256_blend_epi32(scaled_v_low, scaled_v_high, 0xaa);
+          results = _mm256_permutevar8x32_epi32(results, repack_perm);
+
+          accum_data_v3 = _mm256_sub_epi32(results, post_scaling_offset);
+        }
+        {
+          __m256i shifted_accum = _mm256_sllv_epi32(accum_data_v4, left_shift);
+          // Apply the fixed-point part of the multiplier.
+          __m256i scaled_v_low = _mm256_mul_epi32(
+              _mm256_cvtepi32_epi64(_mm256_extracti128_si256(shifted_accum, 0)),
+              m_64bit_low);
+          __m256i scaled_v_high = _mm256_mul_epi32(
+              _mm256_cvtepi32_epi64(_mm256_extracti128_si256(shifted_accum, 1)),
+              m_64bit_high);
+
+          scaled_v_low = _mm256_add_epi64(scaled_v_low, offset_vector_low);
+          scaled_v_high = _mm256_add_epi64(scaled_v_high, offset_vector_high);
+
+          scaled_v_low = _mm256_srlv_epi64(scaled_v_low, final_right_shift_low);
+          scaled_v_high =
+              _mm256_srlv_epi64(scaled_v_high, final_right_shift_high);
+
+          scaled_v_high = _mm256_slli_epi64(scaled_v_high, 32);
+          __m256i results =
+              _mm256_blend_epi32(scaled_v_low, scaled_v_high, 0xaa);
+          results = _mm256_permutevar8x32_epi32(results, repack_perm);
+
+          accum_data_v4 = _mm256_sub_epi32(results, post_scaling_offset);
+        }
+        {
+          __m256i shifted_accum = _mm256_sllv_epi32(accum_data_v5, left_shift);
+          // Apply the fixed-point part of the multiplier.
+          __m256i scaled_v_low = _mm256_mul_epi32(
+              _mm256_cvtepi32_epi64(_mm256_extracti128_si256(shifted_accum, 0)),
+              m_64bit_low);
+          __m256i scaled_v_high = _mm256_mul_epi32(
+              _mm256_cvtepi32_epi64(_mm256_extracti128_si256(shifted_accum, 1)),
+              m_64bit_high);
+
+          scaled_v_low = _mm256_add_epi64(scaled_v_low, offset_vector_low);
+          scaled_v_high = _mm256_add_epi64(scaled_v_high, offset_vector_high);
+
+          scaled_v_low = _mm256_srlv_epi64(scaled_v_low, final_right_shift_low);
+          scaled_v_high =
+              _mm256_srlv_epi64(scaled_v_high, final_right_shift_high);
+
+          scaled_v_high = _mm256_slli_epi64(scaled_v_high, 32);
+          __m256i results =
+              _mm256_blend_epi32(scaled_v_low, scaled_v_high, 0xaa);
+          results = _mm256_permutevar8x32_epi32(results, repack_perm);
+
+          accum_data_v5 = _mm256_sub_epi32(results, post_scaling_offset);
+        }
+        {
+          __m256i shifted_accum = _mm256_sllv_epi32(accum_data_v6, left_shift);
+          // Apply the fixed-point part of the multiplier.
+          __m256i scaled_v_low = _mm256_mul_epi32(
+              _mm256_cvtepi32_epi64(_mm256_extracti128_si256(shifted_accum, 0)),
+              m_64bit_low);
+          __m256i scaled_v_high = _mm256_mul_epi32(
+              _mm256_cvtepi32_epi64(_mm256_extracti128_si256(shifted_accum, 1)),
+              m_64bit_high);
+
+          scaled_v_low = _mm256_add_epi64(scaled_v_low, offset_vector_low);
+          scaled_v_high = _mm256_add_epi64(scaled_v_high, offset_vector_high);
+
+          scaled_v_low = _mm256_srlv_epi64(scaled_v_low, final_right_shift_low);
+          scaled_v_high =
+              _mm256_srlv_epi64(scaled_v_high, final_right_shift_high);
+
+          scaled_v_high = _mm256_slli_epi64(scaled_v_high, 32);
+          __m256i results =
+              _mm256_blend_epi32(scaled_v_low, scaled_v_high, 0xaa);
+          results = _mm256_permutevar8x32_epi32(results, repack_perm);
+
+          accum_data_v6 = _mm256_sub_epi32(results, post_scaling_offset);
+        }
+        {
+          __m256i shifted_accum = _mm256_sllv_epi32(accum_data_v7, left_shift);
+          // Apply the fixed-point part of the multiplier.
+          __m256i scaled_v_low = _mm256_mul_epi32(
+              _mm256_cvtepi32_epi64(_mm256_extracti128_si256(shifted_accum, 0)),
+              m_64bit_low);
+          __m256i scaled_v_high = _mm256_mul_epi32(
+              _mm256_cvtepi32_epi64(_mm256_extracti128_si256(shifted_accum, 1)),
+              m_64bit_high);
+
+          scaled_v_low = _mm256_add_epi64(scaled_v_low, offset_vector_low);
+          scaled_v_high = _mm256_add_epi64(scaled_v_high, offset_vector_high);
+
+          scaled_v_low = _mm256_srlv_epi64(scaled_v_low, final_right_shift_low);
+          scaled_v_high =
+              _mm256_srlv_epi64(scaled_v_high, final_right_shift_high);
+
+          scaled_v_high = _mm256_slli_epi64(scaled_v_high, 32);
+          __m256i results =
+              _mm256_blend_epi32(scaled_v_low, scaled_v_high, 0xaa);
+          results = _mm256_permutevar8x32_epi32(results, repack_perm);
+
+          accum_data_v7 = _mm256_sub_epi32(results, post_scaling_offset);
         }
       }
-
+      const __m256i clamp_max_v = _mm256_set1_epi32(params.clamp_max);
+      const __m256i clamp_min_v = _mm256_set1_epi32(params.clamp_min);
       const bool store_full_block = (residual_rows == kAvx8bitBlockSize) &&
                                     (residual_cols == kAvx8bitBlockSize);
 
+      __m256i accum_data_v[kAvx8bitBlockSize];
+      if (!store_full_block) {
+        accum_data_v[0] = accum_data_v0;
+        accum_data_v[1] = accum_data_v1;
+        accum_data_v[2] = accum_data_v2;
+        accum_data_v[3] = accum_data_v3;
+        accum_data_v[4] = accum_data_v4;
+        accum_data_v[5] = accum_data_v5;
+        accum_data_v[6] = accum_data_v6;
+        accum_data_v[7] = accum_data_v7;
+      }
+
       if (params.dst_type_id == DstTypeId<std::int8_t>::kValue) {
         std::int8_t* tmp_ptr = static_cast<std::int8_t*>(dst_ptr);
-        const int block_col_offset = dst_stride;
         if (store_full_block) {
-          for (int j = 0; j < kAvx8bitBlockSize; ++j) {
-            mm256_storeu_cvtepi32_epi8(tmp_ptr, accum_data_v[j]);
-            tmp_ptr += block_col_offset;
-          }
+          accum_data_v0 = _mm256_min_epi32(accum_data_v0, clamp_max_v);
+          accum_data_v0 = _mm256_max_epi32(accum_data_v0, clamp_min_v);
+          accum_data_v1 = _mm256_min_epi32(accum_data_v1, clamp_max_v);
+          accum_data_v1 = _mm256_max_epi32(accum_data_v1, clamp_min_v);
+          accum_data_v2 = _mm256_min_epi32(accum_data_v2, clamp_max_v);
+          accum_data_v2 = _mm256_max_epi32(accum_data_v2, clamp_min_v);
+          accum_data_v3 = _mm256_min_epi32(accum_data_v3, clamp_max_v);
+          accum_data_v3 = _mm256_max_epi32(accum_data_v3, clamp_min_v);
+          accum_data_v4 = _mm256_min_epi32(accum_data_v4, clamp_max_v);
+          accum_data_v4 = _mm256_max_epi32(accum_data_v4, clamp_min_v);
+          accum_data_v5 = _mm256_min_epi32(accum_data_v5, clamp_max_v);
+          accum_data_v5 = _mm256_max_epi32(accum_data_v5, clamp_min_v);
+          accum_data_v6 = _mm256_min_epi32(accum_data_v6, clamp_max_v);
+          accum_data_v6 = _mm256_max_epi32(accum_data_v6, clamp_min_v);
+          accum_data_v7 = _mm256_min_epi32(accum_data_v7, clamp_max_v);
+          accum_data_v7 = _mm256_max_epi32(accum_data_v7, clamp_min_v);
+          intrin_utils::mm256_storeu_cvtepi32_epi8(&tmp_ptr[0 * dst_stride],
+                                                   accum_data_v0);
+          intrin_utils::mm256_storeu_cvtepi32_epi8(&tmp_ptr[1 * dst_stride],
+                                                   accum_data_v1);
+          intrin_utils::mm256_storeu_cvtepi32_epi8(&tmp_ptr[2 * dst_stride],
+                                                   accum_data_v2);
+          intrin_utils::mm256_storeu_cvtepi32_epi8(&tmp_ptr[3 * dst_stride],
+                                                   accum_data_v3);
+          intrin_utils::mm256_storeu_cvtepi32_epi8(&tmp_ptr[4 * dst_stride],
+                                                   accum_data_v4);
+          intrin_utils::mm256_storeu_cvtepi32_epi8(&tmp_ptr[5 * dst_stride],
+                                                   accum_data_v5);
+          intrin_utils::mm256_storeu_cvtepi32_epi8(&tmp_ptr[6 * dst_stride],
+                                                   accum_data_v6);
+          intrin_utils::mm256_storeu_cvtepi32_epi8(&tmp_ptr[7 * dst_stride],
+                                                   accum_data_v7);
         } else {
           for (int j = 0; j < residual_cols; ++j) {
-            mm256_n_storeu_cvtepi32_epi8(tmp_ptr, residual_rows,
-                                         accum_data_v[j]);
-            tmp_ptr += block_col_offset;
+            __m256 result = accum_data_v[j];
+            result = _mm256_min_epi32(result, clamp_max_v);
+            result = _mm256_max_epi32(result, clamp_min_v);
+            intrin_utils::mm256_n_storeu_cvtepi32_epi8(tmp_ptr, residual_rows,
+                                                       result);
+            tmp_ptr += dst_stride;
           }
         }
         dst_ptr = static_cast<void*>(static_cast<std::int8_t*>(dst_ptr) +
                                      kAvx8bitBlockSize);
       } else if (params.dst_type_id == DstTypeId<std::uint8_t>::kValue) {
         std::uint8_t* tmp_ptr = static_cast<std::uint8_t*>(dst_ptr);
-        const int block_col_offset = dst_stride;
         if (store_full_block) {
-          for (int j = 0; j < kAvx8bitBlockSize; ++j) {
-            mm256_storeu_cvtepi32_epi8(tmp_ptr, accum_data_v[j]);
-            tmp_ptr += block_col_offset;
-          }
+          accum_data_v0 = _mm256_min_epi32(accum_data_v0, clamp_max_v);
+          accum_data_v0 = _mm256_max_epi32(accum_data_v0, clamp_min_v);
+          accum_data_v1 = _mm256_min_epi32(accum_data_v1, clamp_max_v);
+          accum_data_v1 = _mm256_max_epi32(accum_data_v1, clamp_min_v);
+          accum_data_v2 = _mm256_min_epi32(accum_data_v2, clamp_max_v);
+          accum_data_v2 = _mm256_max_epi32(accum_data_v2, clamp_min_v);
+          accum_data_v3 = _mm256_min_epi32(accum_data_v3, clamp_max_v);
+          accum_data_v3 = _mm256_max_epi32(accum_data_v3, clamp_min_v);
+          accum_data_v4 = _mm256_min_epi32(accum_data_v4, clamp_max_v);
+          accum_data_v4 = _mm256_max_epi32(accum_data_v4, clamp_min_v);
+          accum_data_v5 = _mm256_min_epi32(accum_data_v5, clamp_max_v);
+          accum_data_v5 = _mm256_max_epi32(accum_data_v5, clamp_min_v);
+          accum_data_v6 = _mm256_min_epi32(accum_data_v6, clamp_max_v);
+          accum_data_v6 = _mm256_max_epi32(accum_data_v6, clamp_min_v);
+          accum_data_v7 = _mm256_min_epi32(accum_data_v7, clamp_max_v);
+          accum_data_v7 = _mm256_max_epi32(accum_data_v7, clamp_min_v);
+          intrin_utils::mm256_storeu_cvtepi32_epi8(&tmp_ptr[0], accum_data_v0);
+          intrin_utils::mm256_storeu_cvtepi32_epi8(&tmp_ptr[dst_stride],
+                                                   accum_data_v1);
+          intrin_utils::mm256_storeu_cvtepi32_epi8(&tmp_ptr[2 * dst_stride],
+                                                   accum_data_v2);
+          intrin_utils::mm256_storeu_cvtepi32_epi8(&tmp_ptr[3 * dst_stride],
+                                                   accum_data_v3);
+          intrin_utils::mm256_storeu_cvtepi32_epi8(&tmp_ptr[4 * dst_stride],
+                                                   accum_data_v4);
+          intrin_utils::mm256_storeu_cvtepi32_epi8(&tmp_ptr[5 * dst_stride],
+                                                   accum_data_v5);
+          intrin_utils::mm256_storeu_cvtepi32_epi8(&tmp_ptr[6 * dst_stride],
+                                                   accum_data_v6);
+          intrin_utils::mm256_storeu_cvtepi32_epi8(&tmp_ptr[7 * dst_stride],
+                                                   accum_data_v7);
         } else {
           for (int j = 0; j < residual_cols; ++j) {
-            mm256_n_storeu_cvtepi32_epi8(tmp_ptr, residual_rows,
-                                         accum_data_v[j]);
-            tmp_ptr += block_col_offset;
+            __m256 result = accum_data_v[j];
+            result = _mm256_min_epi32(result, clamp_max_v);
+            result = _mm256_max_epi32(result, clamp_min_v);
+            intrin_utils::mm256_n_storeu_cvtepi32_epi8(tmp_ptr, residual_rows,
+                                                       result);
+            tmp_ptr += dst_stride;
           }
         }
         dst_ptr = static_cast<void*>(static_cast<std::uint8_t*>(dst_ptr) +
                                      kAvx8bitBlockSize);
       } else if (params.dst_type_id == DstTypeId<std::int16_t>::kValue) {
         std::int16_t* tmp_ptr = static_cast<std::int16_t*>(dst_ptr);
-        const int block_col_offset = dst_stride;
         if (store_full_block) {
-          for (int j = 0; j < kAvx8bitBlockSize; ++j) {
-            mm256_storeu_cvtepi32_epi16(tmp_ptr, accum_data_v[j]);
-            tmp_ptr += block_col_offset;
-          }
+          accum_data_v0 = _mm256_min_epi32(accum_data_v0, clamp_max_v);
+          accum_data_v0 = _mm256_max_epi32(accum_data_v0, clamp_min_v);
+          accum_data_v1 = _mm256_min_epi32(accum_data_v1, clamp_max_v);
+          accum_data_v1 = _mm256_max_epi32(accum_data_v1, clamp_min_v);
+          accum_data_v2 = _mm256_min_epi32(accum_data_v2, clamp_max_v);
+          accum_data_v2 = _mm256_max_epi32(accum_data_v2, clamp_min_v);
+          accum_data_v3 = _mm256_min_epi32(accum_data_v3, clamp_max_v);
+          accum_data_v3 = _mm256_max_epi32(accum_data_v3, clamp_min_v);
+          accum_data_v4 = _mm256_min_epi32(accum_data_v4, clamp_max_v);
+          accum_data_v4 = _mm256_max_epi32(accum_data_v4, clamp_min_v);
+          accum_data_v5 = _mm256_min_epi32(accum_data_v5, clamp_max_v);
+          accum_data_v5 = _mm256_max_epi32(accum_data_v5, clamp_min_v);
+          accum_data_v6 = _mm256_min_epi32(accum_data_v6, clamp_max_v);
+          accum_data_v6 = _mm256_max_epi32(accum_data_v6, clamp_min_v);
+          accum_data_v7 = _mm256_min_epi32(accum_data_v7, clamp_max_v);
+          accum_data_v7 = _mm256_max_epi32(accum_data_v7, clamp_min_v);
+          intrin_utils::mm256_storeu_cvtepi32_epi16(&tmp_ptr[0], accum_data_v0);
+          intrin_utils::mm256_storeu_cvtepi32_epi16(&tmp_ptr[dst_stride],
+                                                    accum_data_v1);
+          intrin_utils::mm256_storeu_cvtepi32_epi16(&tmp_ptr[2 * dst_stride],
+                                                    accum_data_v2);
+          intrin_utils::mm256_storeu_cvtepi32_epi16(&tmp_ptr[3 * dst_stride],
+                                                    accum_data_v3);
+          intrin_utils::mm256_storeu_cvtepi32_epi16(&tmp_ptr[4 * dst_stride],
+                                                    accum_data_v4);
+          intrin_utils::mm256_storeu_cvtepi32_epi16(&tmp_ptr[5 * dst_stride],
+                                                    accum_data_v5);
+          intrin_utils::mm256_storeu_cvtepi32_epi16(&tmp_ptr[6 * dst_stride],
+                                                    accum_data_v6);
+          intrin_utils::mm256_storeu_cvtepi32_epi16(&tmp_ptr[7 * dst_stride],
+                                                    accum_data_v7);
         } else {
           for (int j = 0; j < residual_cols; ++j) {
-            mm256_n_storeu_cvtepi32_epi16(tmp_ptr, residual_rows,
-                                          accum_data_v[j]);
-            tmp_ptr += block_col_offset;
+            __m256 result = accum_data_v[j];
+            result = _mm256_min_epi32(result, clamp_max_v);
+            result = _mm256_max_epi32(result, clamp_min_v);
+            intrin_utils::mm256_n_storeu_cvtepi32_epi16(tmp_ptr, residual_rows,
+                                                        result);
+            tmp_ptr += dst_stride;
           }
         }
         dst_ptr = static_cast<void*>(static_cast<std::int16_t*>(dst_ptr) +
@@ -715,15 +1101,25 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
       } else if (params.dst_type_id == DstTypeId<std::int32_t>::kValue) {
         if (store_full_block) {
           std::int32_t* tmp_ptr = static_cast<std::int32_t*>(dst_ptr);
-          const int block_col_offset = dst_stride;
-          for (int j = 0; j < kAvx8bitBlockSize; ++j) {
-            mm256_storeu_epi32(tmp_ptr, accum_data_v[j]);
-            tmp_ptr += block_col_offset;
-          }
+          intrin_utils::mm256_storeu_epi32(&tmp_ptr[0], accum_data_v0);
+          intrin_utils::mm256_storeu_epi32(&tmp_ptr[dst_stride], accum_data_v1);
+          intrin_utils::mm256_storeu_epi32(&tmp_ptr[2 * dst_stride],
+                                           accum_data_v2);
+          intrin_utils::mm256_storeu_epi32(&tmp_ptr[3 * dst_stride],
+                                           accum_data_v3);
+          intrin_utils::mm256_storeu_epi32(&tmp_ptr[4 * dst_stride],
+                                           accum_data_v4);
+          intrin_utils::mm256_storeu_epi32(&tmp_ptr[5 * dst_stride],
+                                           accum_data_v5);
+          intrin_utils::mm256_storeu_epi32(&tmp_ptr[6 * dst_stride],
+                                           accum_data_v6);
+          intrin_utils::mm256_storeu_epi32(&tmp_ptr[7 * dst_stride],
+                                           accum_data_v7);
         } else {
           std::int32_t* dst_block_ptr = static_cast<std::int32_t*>(dst_ptr);
           for (int j = 0; j < residual_cols; ++j) {
-            mm256_n_storeu_epi32(dst_block_ptr, residual_rows, accum_data_v[j]);
+            intrin_utils::mm256_n_storeu_epi32(dst_block_ptr, residual_rows,
+                                               accum_data_v[j]);
             dst_block_ptr += dst_stride;
           }
         }
@@ -740,7 +1136,7 @@ void Kernel8bitAvx2(const KernelParams8bit<8, 8>& params) {
                                      kAvx8bitBlockSize * params.dst_stride);
     rhs_col_ptr += kAvx8bitBlockSize * params.rhs_stride;
   }  // End col-block loop.
-}
+}  // NOLINT(readability/fn_size)
 
 void KernelFloatAvx2(const KernelParamsFloat<8, 8>& params) {
   gemmlowp::ScopedProfilingLabel label("Kernel kAvx2");
@@ -783,7 +1179,7 @@ void KernelFloatAvx2(const KernelParamsFloat<8, 8>& params) {
 
       // Initialize with bias.
       const __m256 initial_accum_data =
-          mm256_n_loadu_ps(residual_rows, bias_ptr);
+          intrin_utils::mm256_n_loadu_ps(residual_rows, bias_ptr);
 
       for (int j = 0; j < 8; ++j) {
         accum_data_v[j] = initial_accum_data;
@@ -793,7 +1189,11 @@ void KernelFloatAvx2(const KernelParamsFloat<8, 8>& params) {
       const float* rhs_ptr = rhs_col_ptr;
       for (int d = 0; d < params.depth; ++d) {
         const __m256 lhs_data = _mm256_loadu_ps(lhs_ptr);
-        const __m256 rhs_data = _mm256_loadu_ps(rhs_ptr);
+        // In this version RHS values are loaded individually rather than first
+        // loading together and then extract with broadcasting. This is because
+        // AVX flavours and instrinsics and compilers in combination do not
+        // handle this pattern of extraction very well.
+        const float* rhs_data = rhs_ptr;
 
         for (int j = 0; j < 8; ++j) {
           const __m256 dup_rhs_element_j = _mm256_set1_ps(rhs_data[j]);
@@ -816,7 +1216,8 @@ void KernelFloatAvx2(const KernelParamsFloat<8, 8>& params) {
           float* block_ptr = dst_ptr + j * dst_stride;
           accum_data_v[j] = _mm256_min_ps(accum_data_v[j], clamp_max_v);
           accum_data_v[j] = _mm256_max_ps(accum_data_v[j], clamp_min_v);
-          _mm256_n_storeu_ps(block_ptr, residual_rows, accum_data_v[j]);
+          intrin_utils::mm256_n_storeu_ps(block_ptr, residual_rows,
+                                          accum_data_v[j]);
         }
       }
     }  // End row-block loop.
@@ -842,7 +1243,7 @@ void KernelFloatAvx2(const KernelParamsFloat<8, 8>& params) {
 
       // Initialize with bias.
       const __m256 initial_accum_data =
-          mm256_n_loadu_ps(residual_rows, bias_ptr);
+          intrin_utils::mm256_n_loadu_ps(residual_rows, bias_ptr);
 
       for (int j = 0; j < 8; ++j) {
         accum_data_v[j] = initial_accum_data;
@@ -852,7 +1253,7 @@ void KernelFloatAvx2(const KernelParamsFloat<8, 8>& params) {
       const float* rhs_ptr = rhs_col_ptr;
       for (int d = 0; d < params.depth; ++d) {
         const __m256 lhs_data = _mm256_loadu_ps(lhs_ptr);
-        const __m256 rhs_data = _mm256_loadu_ps(rhs_ptr);
+        const float* rhs_data = rhs_ptr;
 
         for (int j = 0; j < 8; ++j) {
           const __m256 dup_rhs_element_j = _mm256_set1_ps(rhs_data[j]);
@@ -867,7 +1268,8 @@ void KernelFloatAvx2(const KernelParamsFloat<8, 8>& params) {
         float* block_ptr = dst_ptr + j * dst_stride;
         accum_data_v[j] = _mm256_min_ps(accum_data_v[j], clamp_max_v);
         accum_data_v[j] = _mm256_max_ps(accum_data_v[j], clamp_min_v);
-        _mm256_n_storeu_ps(block_ptr, residual_rows, accum_data_v[j]);
+        intrin_utils::mm256_n_storeu_ps(block_ptr, residual_rows,
+                                        accum_data_v[j]);
       }
     }  // End row-block loop.
   }    // End col-block terminal conditional.

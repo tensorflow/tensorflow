@@ -175,8 +175,8 @@ class PassOn : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("_ListToArray").Device(DEVICE_CPU), PassOn);
-REGISTER_KERNEL_BUILDER(Name("_ArrayToList").Device(DEVICE_CPU), PassOn);
+REGISTER_SYSTEM_KERNEL_BUILDER(Name("_ListToArray").Device(DEVICE_CPU), PassOn);
+REGISTER_SYSTEM_KERNEL_BUILDER(Name("_ArrayToList").Device(DEVICE_CPU), PassOn);
 
 #define REGISTER_GPU_KERNELS(type)                                       \
   REGISTER_KERNEL_BUILDER(                                               \
@@ -325,7 +325,14 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   AttrValueMap attr_values = func_.attr();
 
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
-  // TODO(b/141576771): Propagate ctxt's ConfigProto into opts.config_proto.
+
+  const auto* config = (ctx->function_library())
+                           ? ctx->function_library()->config_proto()
+                           : nullptr;
+  if (config) {
+    instantiate_opts.config_proto = *config;
+  }
+
   instantiate_opts.target = target_device;
 
   FunctionTarget function_target = {target_device, lib};

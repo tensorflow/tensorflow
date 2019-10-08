@@ -73,6 +73,9 @@ class AotCompilationOptions {
   // Returns the ID of the platform to which these options apply.
   virtual se::Platform::Id PlatformId() const = 0;
 
+  virtual int64 replica_count() const { return 0; }
+  virtual int64 num_cores() const { return 0; }
+
   // Optional allocator that may be used for allocating temp space on the device
   // during compilation.
   se::DeviceMemoryAllocator* device_allocator() const {
@@ -119,7 +122,8 @@ class AotCompilationOptions {
   DebugOptions debug_options_;
   absl::optional<DeviceAssignment> static_device_assignment_;
   std::vector<std::vector<bool>> fusion_config_;
-  FusionConfigCollection fusion_config_collection_;
+  FusionConfigCollection fusion_config_collection_ =
+      FusionConfigCollection::kOff;
 };
 
 // Abstract superclass describing metadata produced during ahead-of-time

@@ -44,6 +44,9 @@ message TPUCompileMetadataProto {
     // Whether to allow XLA to produce separate programs to shard/unshard this
     // argument. Requires this arg to be an on-device variable.
     EnableXlaSharding enable_xla_sharding = 6;
+
+    // Whether this argument is placed on fast memory or not.
+    bool fast_mem = 7;
   }
   repeated Arg args = 1;
 

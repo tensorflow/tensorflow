@@ -349,13 +349,8 @@ Status BaseGPUDevice::InitScratchBuffers() {
     }
     se::DeviceMemory<char> mem(
         se::DeviceMemoryBase(scratch_buffer, scratch_buffer_size));
-    bool ok = executor_->SynchronousMemZero(
-        &mem, Eigen::kGpuScratchSize + sizeof(unsigned int));
-    if (!ok) {
-      return errors::FailedPrecondition(
-          "Failed to memcopy into scratch buffer for device ",
-          tf_gpu_id_.value());
-    }
+    TF_RETURN_IF_ERROR(executor_->SynchronousMemZero(
+        &mem, Eigen::kGpuScratchSize + sizeof(unsigned int)));
     scratch_ = static_cast<char*>(scratch_buffer);
   }
   return Status::OK();
@@ -472,12 +467,6 @@ bool BaseGPUDevice::RequiresRecordingAccessedTensors() const {
   // at the end of the kernel launch, instead of at the end of the kernel
   // execution.
   return false;
-}
-
-Status BaseGPUDevice::FillContextMap(const Graph* graph,
-                                     DeviceContextMap* device_context_map) {
-  VLOG(2) << "FillContextMap";
-  return Status::OK();
 }
 
 string BaseGPUDevice::ComputeOpKernelDebugString(const OpKernel& op_kernel,

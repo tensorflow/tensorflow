@@ -1683,7 +1683,7 @@ static LogicalResult verify(ExtractElementOp op) {
 }
 
 OpFoldResult ExtractElementOp::fold(ArrayRef<Attribute> operands) {
-  assert(!operands.empty() && "extract_element takes atleast one operand");
+  assert(!operands.empty() && "extract_element takes at least one operand");
 
   // The aggregate operand must be a known constant.
   Attribute aggregate = operands.front();
@@ -2336,6 +2336,28 @@ static LogicalResult verify(ZeroExtendIOp op) {
            << dstType << " must be wider than operand type " << srcType;
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// FPExtOp
+//===----------------------------------------------------------------------===//
+
+bool FPExtOp::areCastCompatible(Type a, Type b) {
+  if (auto fa = a.dyn_cast<FloatType>())
+    if (auto fb = b.dyn_cast<FloatType>())
+      return fa.getWidth() < fb.getWidth();
+  return false;
+}
+
+//===----------------------------------------------------------------------===//
+// FPTruncOp
+//===----------------------------------------------------------------------===//
+
+bool FPTruncOp::areCastCompatible(Type a, Type b) {
+  if (auto fa = a.dyn_cast<FloatType>())
+    if (auto fb = b.dyn_cast<FloatType>())
+      return fa.getWidth() > fb.getWidth();
+  return false;
 }
 
 //===----------------------------------------------------------------------===//

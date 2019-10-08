@@ -425,11 +425,13 @@ class _RestoredResource(tracking.TrackableResource):
     # Overwrite this method to avoid the implementation of
     # base class to re-wrap the polymorphic functions into
     # another layer of `tf.function`.
-    return {
+    functions = {
         "_create_resource": self._create_resource,
         "_initialize": self._initialize,
-        "_destroy_resource": self._destroy_resource,
     }
+    if self._destroy_resource:
+      functions.update(_destroy_resource=self._destroy_resource)
+    return functions
 
 
 def _call_attribute(instance, *args, **kwargs):

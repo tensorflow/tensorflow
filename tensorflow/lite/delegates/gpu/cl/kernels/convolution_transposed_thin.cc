@@ -70,8 +70,7 @@ std::string GenerateConvolutionTransposedCode(
   c += "  " + accum_type + " r[" + std::to_string(kernel_size.y) + "][" +
        std::to_string(kernel_size.x) + "];\n";
   c += "  {\n";
-  c += "  FLT4 src = " +
-       src_tensor.Read3D("X", "Y", "0", TextureAddressMode::DONT_CARE) + ";\n";
+  c += "  FLT4 src = " + src_tensor.Read3D("X", "Y", "0") + ";\n";
   int index = 0;
   for (int y = 0; y < kernel_size.y; ++y) {
     for (int x = 0; x < kernel_size.x; ++x) {

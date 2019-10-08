@@ -29,17 +29,17 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 using ::tflite::gpu::Axis;
+using ::tflite::gpu::BHWC;
 using ::tflite::gpu::Convolution2DAttributes;
 using ::tflite::gpu::DataType;
-using ::tflite::gpu::BHWC;
 using ::tflite::gpu::HW;
 using ::tflite::gpu::Linear;
-using ::tflite::gpu::metal::CompareVectors;
-using ::tflite::gpu::metal::SingleOpModel;
-using ::tflite::gpu::OperationType;
 using ::tflite::gpu::OHWI;
+using ::tflite::gpu::OperationType;
 using ::tflite::gpu::Tensor;
 using ::tflite::gpu::TensorRef;
+using ::tflite::gpu::metal::CompareVectors;
+using ::tflite::gpu::metal::SingleOpModel;
 
 @interface ConvTest : XCTestCase
 @end

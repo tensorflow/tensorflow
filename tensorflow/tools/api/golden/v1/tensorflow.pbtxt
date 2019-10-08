@@ -509,6 +509,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "mixed_precision"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "mlir"
     mtype: "<type \'module\'>"
   }
@@ -1106,7 +1110,7 @@ tf_module {
   }
   member_method {
     name: "dequantize"
-    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'mode\', \'name\', \'axis\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'None\', \'None\'], "
+    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'mode\', \'name\', \'axis\', \'narrow_range\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "deserialize_many_sparse"
@@ -1230,6 +1234,10 @@ tf_module {
   }
   member_method {
     name: "erfc"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "erfinv"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
@@ -1707,6 +1715,10 @@ tf_module {
   member_method {
     name: "multiply"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "ndtri"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "negative"

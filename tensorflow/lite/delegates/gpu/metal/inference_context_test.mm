@@ -31,7 +31,7 @@ using ::tflite::gpu::metal::ComputeTaskDescriptor;
 using ::tflite::gpu::metal::ComputeTaskDescriptorPtr;
 using ::tflite::gpu::metal::GetBestSupportedMetalDevice;
 using ::tflite::gpu::metal::RunGraph;
-using ::tflite::gpu::metal::VectorToUint8Vector;
+using ::tflite::gpu::metal::GetByteBuffer;
 using ::tflite::gpu::TensorFloat32;
 using ::tflite::gpu::uint3;
 using ::tflite::gpu::ValueId;
@@ -119,7 +119,7 @@ static std::vector<ComputeTaskDescriptorPtr> AddUniformLinkable(
   desc->uniform_buffers = {
       {"constant FLT4&",
        [channel_multipliers](const std::map<ValueId, BHWC>& buffers) {
-         return VectorToUint8Vector(channel_multipliers);
+         return GetByteBuffer(channel_multipliers);
        }},
   };
   return {desc};
@@ -138,7 +138,7 @@ static std::vector<ComputeTaskDescriptorPtr> MulArrayLinkable(
   desc->input_buffers = {{input_id}};
   desc->output_buffer = {output_id};
   desc->immutable_buffers = {
-      {"device FLT4* const", VectorToUint8Vector(channel_multipliers)},
+      {"device FLT4* const", GetByteBuffer(channel_multipliers)},
   };
   return {desc};
 }

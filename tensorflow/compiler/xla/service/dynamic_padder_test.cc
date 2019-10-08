@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_get_dimension_size_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -225,6 +226,14 @@ class ExecutionTest : public HloTestBase {
         ParseAndReturnUnverifiedModule(hlo_text, config).ValueOrDie();
     return module;
   }
+  Literal PadAndExecute(std::unique_ptr<HloModule> module,
+                        absl::Span<Literal* const> arguments) {
+    DynamicPadder padder;
+    TF_CHECK_OK(padder.Run(module.get()).status());
+    HloGetDimensionSizeRewriter rewriter;
+    TF_CHECK_OK(rewriter.Run(module.get()).status());
+    return ExecuteAndTransfer(std::move(module), arguments);
+  }
 };
 
 XLA_TEST_F(ExecutionTest, ScatterUpdate) {
@@ -283,7 +292,7 @@ ENTRY main {
       {{10, 20, 30}, {70, 80, 90}, {30, 22, 11}, {-1, 20, -1}});
   DynamicPadder padder;
   TF_CHECK_OK(padder.Run(module_padded.get()).status());
-  Literal padded = ExecuteAndTransfer(
+  Literal padded = PadAndExecute(
       std::move(module_padded),
       {&operand, &scatter_indices_padded, &updates_padded, &dynamic_size});
 
@@ -337,8 +346,8 @@ ENTRY main {
   DynamicPadder padder;
   TF_CHECK_OK(padder.Run(module_padded.get()).status());
   Literal not_padded =
-      ExecuteAndTransfer(std::move(module_padded),
-                         {&operand, &scatter_indices, &updates, &dynamic_size});
+      PadAndExecute(std::move(module_padded),
+                    {&operand, &scatter_indices, &updates, &dynamic_size});
   // Although we have two indices, only the first element is updated because of
   // padding.
   EXPECT_EQ(LiteralUtil::CreateR2<float>(
@@ -391,7 +400,7 @@ ENTRY main {
   auto module = GetHloModule(hlo_text);
   DynamicPadder padder;
   TF_CHECK_OK(padder.Run(module.get()).status());
-  Literal result = ExecuteAndTransfer(std::move(module), {&operand});
+  Literal result = PadAndExecute(std::move(module), {&operand});
 
   // Only first element will be reduced.
   Literal expected = LiteralUtil::CreateR0<int32>(3);
@@ -446,8 +455,8 @@ ENTRY main {
       {{1, 2, 3, 4}, {4, 5, 6, 7}, {1, 2, 3, 4}, {4, 5, 6, 7}});
   DynamicPadder padder;
   TF_CHECK_OK(padder.Run(module_padded.get()).status());
-  Literal padded = ExecuteAndTransfer(std::move(module_padded),
-                                      {&operand_padded, &dynamic_size});
+  Literal padded =
+      PadAndExecute(std::move(module_padded), {&operand_padded, &dynamic_size});
 
   EXPECT_EQ(padded, not_padded);
 }
@@ -476,12 +485,215 @@ ENTRY main {
   // Input has upper bound of 5, dynamic dimension is 3.
   Literal operand = LiteralUtil::CreateR1<int32>({1, 2, 3, 4, 5});
   auto module = GetHloModule(hlo_text);
-  DynamicPadder padder;
-  TF_CHECK_OK(padder.Run(module.get()).status());
-  Literal result = ExecuteAndTransfer(std::move(module), {&operand});
+
+  Literal result = PadAndExecute(std::move(module), {&operand});
 
   // only first 3 elements will be reduced.
   Literal expected = LiteralUtil::CreateR0<int32>(6);
+
+  EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(ExecutionTest, InputMinorDimensionReshape) {
+  const string hlo_text = R"(
+HloModule TensorFlowScatterV1
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  param = s32[1, 2, 5, 1] parameter(0)
+  const = s32[] constant(3)
+  param_padded = s32[1, 2, 5, 1] set-dimension-size(param, const), dimensions={2}
+  reshaped = s32[10] reshape(param_padded)
+  init = s32[] constant(0)
+  ROOT reduce = s32[] reduce(reshaped, init),
+      dimensions={0},
+      to_apply=update_s32
+}
+)";
+
+  // The third dimension has upper bound of 5, dynamic dimension is 3.
+  Literal operand = LiteralUtil::CreateR4<int32>(
+      {{{{1}, {2}, {3}, {4}, {5}}, {{2}, {4}, {6}, {7}, {8}}}});
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand});
+
+  // Only the first 6 elements will be reduced.
+  Literal expected = LiteralUtil::CreateR0<int32>(18);
+
+  EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(ExecutionTest, OutputMinorDimensionReshape) {
+  const string hlo_text = R"(
+HloModule TensorFlowScatterV1
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  param = s32[12] parameter(0)
+  const = s32[] constant(8)
+  param_padded = s32[12] set-dimension-size(param, const), dimensions={0}
+  // Second dimension is dynamic.
+  reshaped = s32[2, 3, 2] reshape(param_padded), inferred_dimension=1
+  init = s32[] constant(0)
+  ROOT reduce = s32[2, 2] reduce(reshaped, init),
+      dimensions={1},
+      to_apply=update_s32
+}
+)";
+
+  // The third dimension has upper bound of 5, dynamic dimension is 3.
+  Literal operand =
+      LiteralUtil::CreateR1<int32>({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11});
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand});
+
+  // After padding and reshape we have
+  //
+  // [[[0, 1],
+  //   [2, 3]
+  //   [P, P]]
+  //  [[4, 5],
+  //   [6, 7],
+  //   [P, P]]]
+  // Reducing on the second dimension gives us
+  //  [0+2, 1+3]
+  //  [4+6, 5+7]
+  //
+  Literal expected = LiteralUtil::CreateR2<int32>({{2, 4}, {10, 12}});
+
+  EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(ExecutionTest, DynamicDimensionReshapeUnchanged) {
+  const string hlo_text = R"(
+HloModule TensorFlowScatterV1
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  param = s32[1, 2, 5, 1] parameter(0)
+  const = s32[] constant(3)
+  param_padded = s32[1, 2, 5, 1] set-dimension-size(param, const), dimensions={2}
+  reshaped = s32[2, 5] reshape(param_padded)
+  init = s32[] constant(0)
+  ROOT reduce = s32[2] reduce(reshaped, init),
+      dimensions={1},
+      to_apply=update_s32
+}
+)";
+
+  // Test dynamic padder in unchanged dimension reshape.
+  Literal operand = LiteralUtil::CreateR4<int32>(
+      {{{{1}, {2}, {3}, {4}, {5}}, {{2}, {4}, {6}, {7}, {8}}}});
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand});
+
+  Literal expected = LiteralUtil::CreateR1<int32>({6, 12});
+
+  EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(ExecutionTest, DegeneratedDimension) {
+  const string hlo_text = R"(
+HloModule TensorFlowScatterV1
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  param = s32[1, 2, 5, 1] parameter(0)
+  size = s32[] constant(0)
+// First dimension is dynamic.
+  param_padded = s32[1, 2, 5, 1] set-dimension-size(param, size),
+    dimensions={0}
+  reshaped = s32[10] reshape(param_padded)
+  init = s32[] constant(0)
+  ROOT reduce = s32[] reduce(reshaped, init),
+      dimensions={0},
+      to_apply=update_s32
+}
+)";
+
+  // First dimension (1) is dynamic. Since dynamic size is 0, result is also 0.
+  Literal operand = LiteralUtil::CreateR4<int32>(
+      {{{{1}, {2}, {3}, {4}, {5}}, {{2}, {4}, {6}, {7}, {8}}}});
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand});
+
+  Literal expected = LiteralUtil::CreateR0<int32>(0);
+
+  EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(ExecutionTest, DoubleDynamicDimension) {
+  const string hlo_text = R"(
+HloModule TensorFlowScatterV1
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  param = s32[2, 3, 3] parameter(0)
+  size = s32[] constant(2)
+  param_padded_partial = s32[2, 3, 3] set-dimension-size(param, size),
+    dimensions={1}
+  param_padded = s32[2, 3, 3] set-dimension-size(param_padded_partial, size),
+    dimensions={2}
+  reshaped = s32[18] reshape(param_padded)
+  init = s32[] constant(0)
+  ROOT reduce = s32[] reduce(reshaped, init),
+      dimensions={0},
+      to_apply=update_s32
+  // ROOT gds = s32[] get-dimension-size(reshaped), dimensions={0}
+}
+)";
+
+  // First dimension (1) is dynamic. Since dynamic size is 0, result is also 0.
+  Literal operand = LiteralUtil::CreateR3<int32>(
+      {{{0, 1, 2}, {3, 4, 5}, {6, 7, 8}}, {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}}});
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand});
+
+  // Padded data looks like this (P is padding which is ignored).
+  // [[0, 1, P]
+  // [3, 4, P]
+  // [P, P, P]]
+  //
+  // [[0, 1, P]
+  // [3, 4, P]
+  // [P, P, P]]
+  //
+  // Reshaping (with correct reshape rewriting) produces:
+  // [0, 1, 3, 4, 0, 1, 3, 4, P, P, P, P, P, P, P, P, P, P]
+  //
+  // Reducing it produces 16
+
+  Literal expected = LiteralUtil::CreateR0<int32>(16);
 
   EXPECT_EQ(result, expected);
 }

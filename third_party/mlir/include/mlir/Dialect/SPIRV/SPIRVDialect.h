@@ -27,6 +27,8 @@
 namespace mlir {
 namespace spirv {
 
+enum class Decoration : uint32_t;
+
 class SPIRVDialect : public Dialect {
 public:
   explicit SPIRVDialect(MLIRContext *context);
@@ -35,6 +37,10 @@ public:
 
   /// Checks if the given `type` is valid in SPIR-V dialect.
   static bool isValidType(Type type);
+
+  /// Returns the attribute name to use when specifying decorations on results
+  /// of operations.
+  static std::string getAttributeName(Decoration decoration);
 
   /// Parses a type registered to this dialect.
   Type parseType(llvm::StringRef spec, Location loc) const override;

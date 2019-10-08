@@ -144,14 +144,16 @@ class XlaDevice : public LocalDevice {
   Status Sync() override;
   void Sync(const DoneCallback& done) override;
 
-  Status FillContextMap(const Graph* graph,
-                        DeviceContextMap* device_context_map) override
+  Status TryGetDeviceContext(DeviceContext** out_context) override
       LOCKS_EXCLUDED(mu_);
 
   Status MakeTensorFromProto(const TensorProto& tensor_proto,
                              const AllocatorAttributes alloc_attrs,
                              Tensor* tensor) override LOCKS_EXCLUDED(mu_);
 
+  // Allocate tensor on fast memory space. This is only applied to the new TPU
+  // hardware which has faster read/write memory. If the hardware doesn't
+  // have such memory space, we fallback to the ordinary memory space.
   Status MakeFastMemTensorFromProto(const TensorProto& tensor_proto,
                                     const AllocatorAttributes alloc_attrs,
                                     Tensor* tensor) LOCKS_EXCLUDED(mu_);

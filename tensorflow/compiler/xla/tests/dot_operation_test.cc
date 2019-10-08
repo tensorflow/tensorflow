@@ -1201,7 +1201,12 @@ XLA_TEST_P(EinsumTest, SimpleEinsumTest) {
       MakeFakeLiteral(ShapeUtil::MakeShape(F32, std::get<1>(GetParam())))
           .ValueOrDie(),
       &builder);
-  Einsum(x, y, std::get<2>(GetParam()));
+  auto config = std::get<2>(GetParam());
+  if (config.find(",") == config.npos) {
+    Einsum(x, config);
+  } else {
+    Einsum(x, y, config);
+  }
   ComputeAndCompare(&builder, {}, ErrorSpec{1e-3, 1e-3});
 }
 
@@ -1231,11 +1236,39 @@ std::vector<EinsumParamType> GetEinsumTestCases() {
       p{v{2, 3, 5, 6}, v{2, 3, 6, 7}, "...mk,...kn->...mn"},
       p{v{5, 6}, v{6, 7}, "...mk,...kn->...mn"},
       p{v{5, 6}, v{6, 7}, "...mk,kn->...mn"},
+      p{v{6, 6}, v{7, 7}, "mm,nn->mn"},
       p{v{1, 2, 5, 6}, v{2, 1, 6, 7}, "...mk,...kn->...mn"},
       p{v{3, 1, 2, 5, 6}, v{2, 1, 6, 7}, "...mk,...kn->...mn"},
       p{v{1, 2, 5, 6}, v{3, 2, 1, 6, 7}, "...mk,...kn->...mn"},
       p{v{1, 2, 5, 6}, v{2, 1, 6, 7}, "...mk,...kn->n"},
       p{v{1, 2, 2, 3, 77}, v{77, 2, 3, 55, 1, 2}, "...ija,aijb...->ba...ij"},
+      p{v{5, 6}, v{6, 7}, "mk,kn"},
+      p{v{5, 6}, v{6, 7}, "mk,kn"},
+      p{v{5, 6, 11}, v{6, 11, 7}, "mkB,kBn"},
+      p{v{5, 6}, v{6, 7}, "ab,cd"},
+      p{v{6}, v{6, 7}, "b,bc"},
+      p{v{5, 6, 7}, v{5, 6, 7}, "abc,abc"},
+      p{v{5, 6, 7}, v{7, 6, 5}, "abc,cba"},
+      p{v{77}, v{77}, "a,a"},
+      p{v{77}, v{77, 55}, "a,ab"},
+      p{v{2, 3, 77}, v{77, 2, 3, 55}, "ija,aijb"},
+      p{v{55}, v{}, "a"},
+      p{v{11, 111}, v{11}, "ab,a"},
+      p{v{16, 34}, v{16, 34}, "ab,ab"},
+      p{v{16, 3, 34}, v{3, 16, 34}, "abc,bac"},
+      p{v{5, 19}, v{}, "ab"},
+      p{v{8, 1, 16, 64}, v{8, 12, 16, 64}, "bqhf,bkhf"},
+      p{v{2, 3, 5, 6}, v{2, 3, 6, 7}, "...mk,...kn"},
+      p{v{5, 6}, v{}, "...mk"},
+      p{v{5, 6, 12, 13}, v{}, "...mk"},
+      p{v{5, 6, 12, 13}, v{}, "m...k"},
+      p{v{5, 6, 12, 13}, v{}, "mk..."},
+      p{v{5, 6}, v{6, 7}, "...mk->km..."},
+      p{v{1, 2, 5, 6}, v{2, 1, 6, 7}, "...mk,...kn"},
+      p{v{3, 1, 2, 5, 6}, v{2, 1, 6, 7}, "...mk,...kn"},
+      p{v{1, 2, 5, 6}, v{3, 2, 1, 6, 7}, "...mk,...kn"},
+      p{v{16, 16, 16}, v{}, "iii"},
+      p{v{1, 2, 2, 3, 77}, v{77, 2, 3, 55, 1, 2}, "...ija,aijb..."},
   };
   return test_cases;
 }

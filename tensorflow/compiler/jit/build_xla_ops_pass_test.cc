@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/node_matchers.h"
+#include "tensorflow/compiler/jit/test_util.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -72,11 +73,11 @@ Status BuildXlaOps(const Scope& s, const FunctionDefLibrary& fdef_lib,
 
   FixupSourceAndSinkEdges(graph.get());
 
-  SessionOptions session_options;
-  GraphOptimizationPassOptions opt_options;
-  opt_options.session_options = &session_options;
+  GraphOptimizationPassWrapper wrapper;
+  GraphOptimizationPassOptions opt_options =
+      wrapper.CreateGraphOptimizationPassOptions(&graph);
   opt_options.flib_def = &flib_def;
-  opt_options.graph = &graph;
+
   BuildXlaOpsPass pass(/*enable_lazy_compilation=*/true);
   TF_RETURN_IF_ERROR(pass.Run(opt_options));
   VLOG(3) << graph->ToGraphDefDebug().DebugString();

@@ -26,7 +26,6 @@ from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
-from tensorflow.python.data.util import structure
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import input_ops
@@ -38,11 +37,13 @@ from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import nest
 
 
@@ -327,7 +328,25 @@ class DistributedIterator(object):
     # get_next() inside.
     flattened_replicas = nest.flatten(replicas)
     for i, replica_data in enumerate(nest.flatten(out_of_range_replicas)):
-      flattened_replicas[i].set_shape(replica_data.get_shape())
+      for target, source in zip(
+          nest.flatten(flattened_replicas[i], expand_composites=True),
+          nest.flatten(replica_data, expand_composites=True)):
+        target.set_shape(source.get_shape())
+      # `SparseTensor` shape is not determined by the shape of its component
+      # tensors. Rather, its shape depends on a tensor's values.
+      if sparse_tensor.is_sparse(replica_data) and replica_data.get_shape():
+        dense_shape = replica_data.get_shape()
+        with ops.device(flattened_replicas[i].op.device):
+          # For partially defined shapes, fill in missing values from tensor.
+          if not dense_shape.is_fully_defined():
+            dense_shape = array_ops.stack([
+                flattened_replicas[i].dense_shape[j] if dim is None else dim
+                for j, dim in enumerate(dense_shape.as_list())
+            ])
+          flattened_replicas[i] = sparse_tensor.SparseTensor(
+              indices=flattened_replicas[i].indices,
+              values=flattened_replicas[i].values,
+              dense_shape=dense_shape)
     replicas = nest.pack_sequence_as(replicas, flattened_replicas)
 
     return values.regroup(self._input_workers.device_map, replicas)
@@ -779,36 +798,47 @@ class DatasetIterator(DistributedIteratorV1):
 def _dummy_tensor_fn(value_structure):
   """A function to create dummy tensors from `value_structure`."""
 
-  def create_dummy_tensor(feature_shape, feature_type):
+  def create_dummy_tensor(type_spec):
     """Create a dummy tensor with possible batch dimensions set to 0."""
-
+    if isinstance(type_spec, ragged_tensor.RaggedTensorSpec):
+      # Splice out the ragged dimensions.
+      # pylint: disable=protected-access
+      feature_shape = type_spec._shape[:1].concatenate(
+          type_spec._shape[(1 + type_spec._ragged_rank):])
+      feature_type = type_spec._dtype
+      # pylint: enable=protected-access
+    else:
+      feature_shape = type_spec.shape
+      feature_type = type_spec.dtype
     # Ideally we should set the batch dimension to 0, however as in
     # DistributionStrategy we don't know the batch dimension, we try to
     # guess it as much as possible. If the feature has unknown dimensions, we
     # will set them to 0. If the feature shape is already static, we guess the
     # first dimension as batch dimension and set it to 0.
-    dims = []
-    for dim in feature_shape.dims:
-      if dim.value is None:
-        dims.append(tensor_shape.Dimension(0))
-      else:
-        dims.append(dim)
-    if feature_shape.is_fully_defined() and dims:
+    dims = ([dim if dim is not None else 0 for dim in feature_shape.as_list()]
+            if feature_shape else [])
+    if dims and (isinstance(type_spec, ragged_tensor.RaggedTensorSpec) or
+                 feature_shape.is_fully_defined()):
       dims[0] = tensor_shape.Dimension(0)
+
+    if isinstance(type_spec, sparse_tensor.SparseTensorSpec):
+      return sparse_tensor.SparseTensor(
+          values=array_ops.zeros(0, feature_type),
+          indices=array_ops.zeros((0, len(dims)), dtypes.int64),
+          dense_shape=dims)
 
     # Create the dummy tensor.
     dummy_tensor = array_ops.zeros(tensor_shape.TensorShape(dims), feature_type)
+    if isinstance(type_spec, ragged_tensor.RaggedTensorSpec):
+      # Reinsert the ragged dimensions with size 0.
+      # pylint: disable=protected-access
+      row_splits = array_ops.zeros(1, type_spec._row_splits_dtype)
+      dummy_tensor = ragged_tensor.RaggedTensor.from_nested_row_splits(
+          dummy_tensor, (row_splits,) * type_spec._ragged_rank, validate=False)
+      # pylint: enable=protected-access
     return dummy_tensor
 
-  result = []
-  # pylint: disable=protected-access
-  for feature_shape, feature_type in zip(
-      structure.get_flat_tensor_shapes(value_structure),
-      structure.get_flat_tensor_types(value_structure)):
-    result.append(create_dummy_tensor(feature_shape, feature_type))
-
-  return nest.pack_sequence_as(value_structure, result)
-  # pylint: enable=protected-access
+  return nest.map_structure(create_dummy_tensor, value_structure)
 
 
 class _SingleWorkerDatasetIterator(object):
@@ -880,8 +910,7 @@ class _SingleWorkerDatasetIterator(object):
           # pylint: disable=unnecessary-lambda
           # pylint: disable=cell-var-from-loop
           real_data = control_flow_ops.cond(
-              data.has_value(),
-              lambda: data.get_value(),
+              data.has_value(), lambda: data.get_value(),
               lambda: _dummy_tensor_fn(data.value_structure))
           result.append(real_data)
           # pylint: enable=cell-var-from-loop

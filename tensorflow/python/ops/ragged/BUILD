@@ -430,6 +430,7 @@ py_library(
 py_test(
     name = "ragged_tensor_test",
     size = "medium",
+    timeout = "long",
     srcs = ["ragged_tensor_test.py"],
     python_version = "PY2",
     shard_count = 4,
@@ -1103,5 +1104,19 @@ py_test(
     deps = [
         ":ragged_string_ops",
         "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "ragged_reverse_op_test",
+    srcs = ["ragged_reverse_op_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ragged_array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

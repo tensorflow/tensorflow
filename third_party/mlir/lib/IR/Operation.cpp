@@ -25,7 +25,9 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
+#include "mlir/IR/TypeUtilities.h"
 #include <numeric>
+
 using namespace mlir;
 
 /// Form the OperationName for an op with the specified string.  This either is
@@ -101,12 +103,12 @@ template <> unsigned BlockOperand::getOperandNumber() {
 
 /// Create a new Operation with the specific fields.
 Operation *Operation::create(Location location, OperationName name,
-                             ArrayRef<Value *> operands,
                              ArrayRef<Type> resultTypes,
+                             ArrayRef<Value *> operands,
                              ArrayRef<NamedAttribute> attributes,
                              ArrayRef<Block *> successors, unsigned numRegions,
                              bool resizableOperandList) {
-  return create(location, name, operands, resultTypes,
+  return create(location, name, resultTypes, operands,
                 NamedAttributeList(attributes), successors, numRegions,
                 resizableOperandList);
 }
@@ -114,8 +116,8 @@ Operation *Operation::create(Location location, OperationName name,
 /// Create a new Operation from operation state.
 Operation *Operation::create(const OperationState &state) {
   unsigned numRegions = state.regions.size();
-  Operation *op = create(state.location, state.name, state.operands,
-                         state.types, state.attributes, state.successors,
+  Operation *op = create(state.location, state.name, state.types,
+                         state.operands, state.attributes, state.successors,
                          numRegions, state.resizableOperandList);
   for (unsigned i = 0; i < numRegions; ++i)
     if (state.regions[i])
@@ -126,8 +128,8 @@ Operation *Operation::create(const OperationState &state) {
 /// Overload of create that takes an existing NamedAttributeList to avoid
 /// unnecessarily uniquing a list of attributes.
 Operation *Operation::create(Location location, OperationName name,
-                             ArrayRef<Value *> operands,
                              ArrayRef<Type> resultTypes,
+                             ArrayRef<Value *> operands,
                              const NamedAttributeList &attributes,
                              ArrayRef<Block *> successors, unsigned numRegions,
                              bool resizableOperandList) {
@@ -572,7 +574,7 @@ Operation *Operation::cloneWithoutRegions(BlockAndValueMapping &mapper) {
   SmallVector<Type, 8> resultTypes(getResultTypes());
   unsigned numRegions = getNumRegions();
   auto *newOp =
-      Operation::create(getLoc(), getName(), operands, resultTypes, attrs,
+      Operation::create(getLoc(), getName(), resultTypes, operands, attrs,
                         successors, numRegions, hasResizableOperandsList());
 
   // Remember the mapping of any results.
@@ -767,7 +769,7 @@ static LogicalResult verifyShapeMatch(Type type1, Type type2) {
 }
 
 LogicalResult OpTrait::impl::verifySameOperandsShape(Operation *op) {
-  if (op->getNumOperands() == 0)
+  if (failed(verifyAtLeastNOperands(op, 1)))
     return failure();
 
   auto type = op->getOperand(0)->getType();
@@ -779,7 +781,8 @@ LogicalResult OpTrait::impl::verifySameOperandsShape(Operation *op) {
 }
 
 LogicalResult OpTrait::impl::verifySameOperandsAndResultShape(Operation *op) {
-  if (op->getNumOperands() == 0 || op->getNumResults() == 0)
+  if (failed(verifyAtLeastNOperands(op, 1)) ||
+      failed(verifyAtLeastNResults(op, 1)))
     return failure();
 
   auto type = op->getOperand(0)->getType();
@@ -797,19 +800,12 @@ LogicalResult OpTrait::impl::verifySameOperandsAndResultShape(Operation *op) {
 }
 
 LogicalResult OpTrait::impl::verifySameOperandsElementType(Operation *op) {
-  if (op->getNumOperands() == 0)
+  if (failed(verifyAtLeastNOperands(op, 1)))
     return failure();
+  auto elementType = getElementTypeOrSelf(op->getOperand(0));
 
-  auto type = op->getOperand(0)->getType().dyn_cast<ShapedType>();
-  if (!type)
-    return op->emitOpError("requires shaped type results");
-  auto elementType = type.getElementType();
-
-  for (auto operandType : llvm::drop_begin(op->getOperandTypes(), 1)) {
-    auto shapedType = operandType.dyn_cast<ShapedType>();
-    if (!shapedType)
-      return op->emitOpError("requires shaped type operands");
-    if (shapedType.getElementType() != elementType)
+  for (auto operand : llvm::drop_begin(op->getOperands(), 1)) {
+    if (getElementTypeOrSelf(operand) != elementType)
       return op->emitOpError("requires the same element type for all operands");
   }
 
@@ -818,30 +814,22 @@ LogicalResult OpTrait::impl::verifySameOperandsElementType(Operation *op) {
 
 LogicalResult
 OpTrait::impl::verifySameOperandsAndResultElementType(Operation *op) {
-  if (op->getNumOperands() == 0 || op->getNumResults() == 0)
+  if (failed(verifyAtLeastNOperands(op, 1)) ||
+      failed(verifyAtLeastNResults(op, 1)))
     return failure();
 
-  auto type = op->getResult(0)->getType().dyn_cast<ShapedType>();
-  if (!type)
-    return op->emitOpError("requires shaped type results");
-  auto elementType = type.getElementType();
+  auto elementType = getElementTypeOrSelf(op->getResult(0));
 
   // Verify result element type matches first result's element type.
   for (auto result : drop_begin(op->getResults(), 1)) {
-    auto resultType = result->getType().dyn_cast<ShapedType>();
-    if (!resultType)
-      return op->emitOpError("requires shaped type results");
-    if (resultType.getElementType() != elementType)
+    if (getElementTypeOrSelf(result) != elementType)
       return op->emitOpError(
           "requires the same element type for all operands and results");
   }
 
   // Verify operand's element type matches first result's element type.
   for (auto operand : op->getOperands()) {
-    auto operandType = operand->getType().dyn_cast<ShapedType>();
-    if (!operandType)
-      return op->emitOpError("requires shaped type operands");
-    if (operandType.getElementType() != elementType)
+    if (getElementTypeOrSelf(operand) != elementType)
       return op->emitOpError(
           "requires the same element type for all operands and results");
   }
@@ -850,7 +838,8 @@ OpTrait::impl::verifySameOperandsAndResultElementType(Operation *op) {
 }
 
 LogicalResult OpTrait::impl::verifySameOperandsAndResultType(Operation *op) {
-  if (op->getNumOperands() == 0 || op->getNumResults() == 0)
+  if (failed(verifyAtLeastNOperands(op, 1)) ||
+      failed(verifyAtLeastNResults(op, 1)))
     return failure();
 
   auto type = op->getResult(0)->getType();
@@ -950,33 +939,34 @@ void impl::buildBinaryOp(Builder *builder, OperationState &result, Value *lhs,
   result.types.push_back(lhs->getType());
 }
 
-ParseResult impl::parseBinaryOp(OpAsmParser &parser, OperationState &result) {
+ParseResult impl::parseOneResultSameOperandTypeOp(OpAsmParser &parser,
+                                                  OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 2> ops;
   Type type;
-  return failure(parser.parseOperandList(ops, 2) ||
+  return failure(parser.parseOperandList(ops) ||
                  parser.parseOptionalAttributeDict(result.attributes) ||
                  parser.parseColonType(type) ||
                  parser.resolveOperands(ops, type, result.operands) ||
                  parser.addTypeToList(type, result.types));
 }
 
-void impl::printBinaryOp(Operation *op, OpAsmPrinter &p) {
-  assert(op->getNumOperands() == 2 && "binary op should have two operands");
-  assert(op->getNumResults() == 1 && "binary op should have one result");
+void impl::printOneResultOp(Operation *op, OpAsmPrinter &p) {
+  assert(op->getNumResults() == 1 && "op should have one result");
 
   // If not all the operand and result types are the same, just use the
   // generic assembly form to avoid omitting information in printing.
   auto resultType = op->getResult(0)->getType();
-  if (op->getOperand(0)->getType() != resultType ||
-      op->getOperand(1)->getType() != resultType) {
+  if (llvm::any_of(op->getOperandTypes(),
+                   [&](Type type) { return type != resultType; })) {
     p.printGenericOp(op);
     return;
   }
 
-  p << op->getName() << ' ' << *op->getOperand(0) << ", " << *op->getOperand(1);
+  p << op->getName() << ' ';
+  p.printOperands(op->getOperands());
   p.printOptionalAttrDict(op->getAttrs());
   // Now we can output only one type for all operands and the result.
-  p << " : " << op->getResult(0)->getType();
+  p << " : " << resultType;
 }
 
 //===----------------------------------------------------------------------===//

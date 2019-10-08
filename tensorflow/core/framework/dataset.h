@@ -297,6 +297,7 @@ class IteratorContext {
       allocator_getter = [device](AllocatorAttributes attrs) {
         return device->GetAllocator(attrs);
       };
+
       thread::ThreadPool* thread_pool =
           ctx->device()->tensorflow_device_thread_pool();
       if (thread_pool) {

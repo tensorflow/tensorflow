@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/platform/env.h"
@@ -44,9 +43,15 @@ namespace tensorrt {
 class TRTEngineResourceOpsTest : public OpsTestBase {
  protected:
   void Reset() {
+    for (auto& temp : tensors_) {
+      delete temp;
+    }
+    for (auto& temp : managed_outputs_) {
+      delete temp;
+    }
+    tensors_.clear();
+    managed_outputs_.clear();
     inputs_.clear();
-    gtl::STLDeleteElements(&tensors_);
-    gtl::STLDeleteElements(&managed_outputs_);
   }
 
   TrtUniquePtrType<nvinfer1::ICudaEngine> CreateTRTEngine() {

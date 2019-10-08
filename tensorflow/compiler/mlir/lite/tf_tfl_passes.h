@@ -22,13 +22,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Quantization passess will run only when the user specifies a quantized type
-// in the `-tf-inference-type` flag, which is converted to the function
-// attribute "tf.quantize" by the importer module.
-// TODO(fengliuai): switch to the cmd flag once the flags are moved to this
-// file with main method.
-bool ShouldRunQuantizePasses(mlir::ModuleOp m);
-
 // Add the TF to TFLite passes, specified in the pass_config, into a
 // pass_manager.
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,

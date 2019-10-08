@@ -96,7 +96,7 @@ py_library(
 py_test(
     name = "tflite_convert_test",
     srcs = ["tflite_convert_test.py"],
-    data = [":tflite_convert.par"],
+    data = [":tflite_convert"],
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",

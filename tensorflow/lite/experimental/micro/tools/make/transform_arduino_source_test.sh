@@ -85,13 +85,6 @@ void setup() {
 
 void loop() {
 }
-
-int main(int argc, char* argv[]) {
-  setup();
-  while (true) {
-    loop();
-  }
-}
 EOF
 
 OUTPUT_EXAMPLE_INO_FILE=${TEST_TMPDIR}/output_regular.cc
@@ -111,12 +104,6 @@ if ! grep -q '#include "foo/fish.h"' ${OUTPUT_EXAMPLE_INO_FILE}; then
   echo "ERROR: No foo/fish.h include found in output '${OUTPUT_EXAMPLE_INO_FILE}'"
   exit 1
 fi
-
-if grep -q 'int main' ${OUTPUT_EXAMPLE_INO_FILE}; then
-  echo "ERROR: main() function wasn't removed from output '${OUTPUT_EXAMPLE_INO_FILE}'"
-  exit 1
-fi
-
 
 INPUT_EXAMPLE_SOURCE_FILE=${TEST_TMPDIR}/input_example_source.h
 cat << EOF > ${INPUT_EXAMPLE_SOURCE_FILE}
