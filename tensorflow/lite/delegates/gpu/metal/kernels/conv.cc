@@ -934,12 +934,12 @@ std::vector<ComputeTaskDescriptorPtr> Convolution(
   auto weights = options.storage_precision == RuntimeOptions::Precision::FP32
                      ? GetByteBuffer(weights_reordered)
                      : VectorFloatToHalf(weights_reordered);
-  auto biases = options.storage_precision == RuntimeOptions::Precision::FP32
-                    ? GetByteBuffer(params.bias.data)
-                    : VectorFloatToHalf(params.bias.data);
   desc->immutable_buffers = {
       {"device FLT4* const weights", weights},
-      {"device FLT4* const biases", biases},
+      {"device FLT4* const biases",
+       GetByteBufferConvertedResized(params.bias.data,
+                                     options.storage_precision,
+                                     params.weights.shape.o)},
   };
 
   desc->uniform_buffers = {
@@ -994,13 +994,12 @@ std::vector<ComputeTaskDescriptorPtr> Convolution1x1(
       options.storage_precision == metal::RuntimeOptions::Precision::FP32
           ? GetByteBuffer(weights_reordered)
           : VectorFloatToHalf(weights_reordered);
-  auto biases =
-      options.storage_precision == metal::RuntimeOptions::Precision::FP32
-          ? GetByteBuffer(params.bias.data)
-          : VectorFloatToHalf(params.bias.data);
   desc->immutable_buffers = {
       {"device FLT4* const filters", weights},
-      {"device FLT4* const biases", biases},
+      {"device FLT4* const biases",
+       GetByteBufferConvertedResized(params.bias.data,
+                                     options.storage_precision,
+                                     params.weights.shape.o)},
   };
 
   desc->uniform_buffers = {
@@ -1056,13 +1055,12 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionGeneric(
       options.storage_precision == metal::RuntimeOptions::Precision::FP32
           ? GetByteBuffer(weights_reordered)
           : VectorFloatToHalf(weights_reordered);
-  auto biases =
-      options.storage_precision == metal::RuntimeOptions::Precision::FP32
-          ? GetByteBuffer(params.bias.data)
-          : VectorFloatToHalf(params.bias.data);
   desc->immutable_buffers = {
       {"device FLT4* const filters", weights},
-      {"device FLT4* const biases", biases},
+      {"device FLT4* const biases",
+       GetByteBufferConvertedResized(params.bias.data,
+                                     options.storage_precision,
+                                     params.weights.shape.o)},
   };
 
   desc->uniform_buffers = {
@@ -1114,13 +1112,12 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionPrecise(
       options.storage_precision == metal::RuntimeOptions::Precision::FP32
           ? GetByteBuffer(weights_reordered)
           : VectorFloatToHalf(weights_reordered);
-  auto biases =
-      options.storage_precision == metal::RuntimeOptions::Precision::FP32
-          ? GetByteBuffer(params.bias.data)
-          : VectorFloatToHalf(params.bias.data);
   desc->immutable_buffers = {
       {"device FLT4* const filters", weights},
-      {"device FLT4* const biases", biases},
+      {"device FLT4* const biases",
+       GetByteBufferConvertedResized(params.bias.data,
+                                     options.storage_precision,
+                                     params.weights.shape.o)},
   };
 
   desc->uniform_buffers = {
@@ -1176,13 +1173,12 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionPrecise1x1PowerVR(
       options.storage_precision == metal::RuntimeOptions::Precision::FP32
           ? GetByteBuffer(weights_reordered)
           : VectorFloatToHalf(weights_reordered);
-  auto biases =
-      options.storage_precision == metal::RuntimeOptions::Precision::FP32
-          ? GetByteBuffer(params.bias.data)
-          : VectorFloatToHalf(params.bias.data);
   desc->immutable_buffers = {
       {"device FLT4* const filters", weights},
-      {"device FLT4* const biases", biases},
+      {"device FLT4* const biases",
+       GetByteBufferConvertedResized(params.bias.data,
+                                     options.storage_precision,
+                                     params.weights.shape.o)},
   };
 
   desc->uniform_buffers = {
