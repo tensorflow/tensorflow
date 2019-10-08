@@ -105,9 +105,9 @@ class HloFunctionImporter {
   // Converts Array ref to an DenseIntElementsAttr.
   mlir::DenseIntElementsAttr Convert(llvm::ArrayRef<int64_t> op_dimensions);
 
-  // Converts the dot dimensions to attributes.
-  mlir::xla_hlo::DotDimensionNumbers ConvertDotDimensionNumbers(
-      xla::HloInstruction* instruction);
+  // Converts the dot dimensions to attribute.
+  mlir::NamedAttribute ConvertDotDimensionNumbers(
+      const DotDimensionNumbers& dnums);
 
   mlir::MLIRContext* context_;
   mlir::ModuleOp module_;

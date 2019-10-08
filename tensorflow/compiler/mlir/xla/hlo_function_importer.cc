@@ -92,13 +92,12 @@ StatusOr<DenseElementsAttr> CreateDenseAttrFromLiteral(ShapedType type,
 
 // Returns whether the instruction is a default dot operation.
 bool DotIsDefault(const HloInstruction* instruction) {
-  auto dot_dimensions = instruction->dot_dimension_numbers();
+  auto dnums = instruction->dot_dimension_numbers();
   DotDimensionNumbers default_dimension_numbers;
   default_dimension_numbers.add_lhs_contracting_dimensions(
       instruction->operand(0)->shape().dimensions_size() == 1 ? 0 : 1);
   default_dimension_numbers.add_rhs_contracting_dimensions(0);
-  return xla::protobuf_util::ProtobufEquals(dot_dimensions,
-                                            default_dimension_numbers);
+  return xla::protobuf_util::ProtobufEquals(dnums, default_dimension_numbers);
 }
 }  // namespace
 
@@ -250,8 +249,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
         MakeAndReturn(DotOp);
       }
 
-      attributes.push_back(builder_->getNamedAttr(
-          "dot_dimension_numbers", ConvertDotDimensionNumbers(instruction)));
+      attributes.push_back(
+          ConvertDotDimensionNumbers(instruction->dot_dimension_numbers()));
       MakeAndReturn(DotGeneralOp);
     }
     case HloOpcode::kCall: {
@@ -581,21 +580,18 @@ mlir::DenseIntElementsAttr HloFunctionImporter::Convert(
       .cast<DenseIntElementsAttr>();
 }
 
-mlir::xla_hlo::DotDimensionNumbers
-HloFunctionImporter::ConvertDotDimensionNumbers(HloInstruction* instruction) {
-  auto dot_dimensions = instruction->dot_dimension_numbers();
+mlir::NamedAttribute HloFunctionImporter::ConvertDotDimensionNumbers(
+    const DotDimensionNumbers& dnums) {
   std::vector<int64_t> rhs_contracting_dimensions(
-      dot_dimensions.rhs_contracting_dimensions().begin(),
-      dot_dimensions.rhs_contracting_dimensions().end());
+      dnums.rhs_contracting_dimensions().begin(),
+      dnums.rhs_contracting_dimensions().end());
   std::vector<int64_t> lhs_contracting_dimensions(
-      dot_dimensions.lhs_contracting_dimensions().begin(),
-      dot_dimensions.lhs_contracting_dimensions().end());
+      dnums.lhs_contracting_dimensions().begin(),
+      dnums.lhs_contracting_dimensions().end());
   std::vector<int64_t> rhs_batch_dimensions(
-      dot_dimensions.rhs_batch_dimensions().begin(),
-      dot_dimensions.rhs_batch_dimensions().end());
+      dnums.rhs_batch_dimensions().begin(), dnums.rhs_batch_dimensions().end());
   std::vector<int64_t> lhs_batch_dimensions(
-      dot_dimensions.lhs_batch_dimensions().begin(),
-      dot_dimensions.lhs_batch_dimensions().end());
+      dnums.lhs_batch_dimensions().begin(), dnums.lhs_batch_dimensions().end());
 
   // Push the attributes into our new DictionaryAttr.
   auto lhs_batch_dims_attr = Convert(lhs_batch_dimensions);
@@ -603,9 +599,10 @@ HloFunctionImporter::ConvertDotDimensionNumbers(HloInstruction* instruction) {
   auto lhs_contracting_dims_attr = Convert(lhs_contracting_dimensions);
   auto rhs_contracting_dims_attr = Convert(rhs_contracting_dimensions);
 
-  return mlir::xla_hlo::DotDimensionNumbers::get(
+  auto attr = mlir::xla_hlo::DotDimensionNumbers::get(
       lhs_batch_dims_attr, rhs_batch_dims_attr, lhs_contracting_dims_attr,
       rhs_contracting_dims_attr, context_);
+  return builder_->getNamedAttr("dot_dimension_numbers", attr);
 }
 
 }  // namespace xla
