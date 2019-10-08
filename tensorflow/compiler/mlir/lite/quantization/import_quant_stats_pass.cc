@@ -200,17 +200,25 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateImportQuantStatsPass(
   return pass;
 }
 
+// Creates an instance pass to import quantization stats to the operations in
+// the function. A custom method to get the name from the op is used because
+// different dialect ops might have different ways to assign the name.
+std::unique_ptr<OpPassBase<FuncOp>>
+CreateImportQuantStatsPassForTFControlDialect(const std::string &stats_str) {
+  auto get_name_func = [](Operation *op) {
+    if (auto name = op->getAttrOfType<StringAttr>("name"))
+      return name.getValue();
+    else
+      return llvm::StringRef("");
+  };
+
+  return CreateImportQuantStatsPass(get_name_func, stats_str);
+}
+
 // Registers this pass with default values, only for test
 static PassRegistration<ImportQuantStatsPass> pass(
     "quant-import-stats", "Import quantization stats to the model", [] {
-      return CreateImportQuantStatsPass(
-          [](Operation *op) {
-            if (auto name = op->getAttrOfType<StringAttr>("name"))
-              return name.getValue();
-            else
-              return StringRef();
-          },
-          quantize_stats);
+      return CreateImportQuantStatsPassForTFControlDialect(quantize_stats);
     });
 
 }  // namespace quant
