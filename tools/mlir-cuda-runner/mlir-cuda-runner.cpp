@@ -117,7 +117,6 @@ static LogicalResult runMLIRPasses(ModuleOp m) {
   kernelPm.addPass(createLowerGpuOpsToNVVMOpsPass());
   kernelPm.addPass(createConvertGPUKernelToCubinPass(&compilePtxToCubin));
   pm.addPass(createLowerToLLVMPass());
-  pm.addPass(createGenerateCubinAccessorPass());
   pm.addPass(createConvertGpuLaunchFuncToCudaCallsPass());
 
   return pm.run(m);

@@ -3,22 +3,28 @@
 module attributes {gpu.container_module} {
 
   // CHECK: llvm.mlir.global constant @[[kernel_name:.*]]("kernel\00")
-
-  func @cubin_getter() -> !llvm<"i8*">
+  // CHECK: llvm.mlir.global constant @[[global:.*]]("CUBIN")
 
   module @kernel_module attributes {gpu.kernel_module} {
     func @kernel(!llvm.float, !llvm<"float*">)
-        attributes { gpu.kernel, nvvm.cubingetter = @cubin_getter }
+        attributes { gpu.kernel, nvvm.cubin = "CUBIN" }
   }
 
+// CHECK: func @[[getter:.*]]() -> !llvm<"i8*">
+// CHECK: %[[addressof:.*]] = llvm.mlir.addressof @[[global]]
+// CHECK: %[[c0:.*]] = llvm.mlir.constant(0 : index)
+// CHECK: %[[gep:.*]] = llvm.getelementptr %[[addressof]][%[[c0]], %[[c0]]]
+// CHECK-SAME: -> !llvm<"i8*">
+// CHECK: llvm.return %[[gep]] : !llvm<"i8*">
 
   func @foo() {
     %0 = "op"() : () -> (!llvm.float)
     %1 = "op"() : () -> (!llvm<"float*">)
     %cst = constant 8 : index
 
+    // CHECK: [[cubin_ptr:%.*]] = llvm.call @[[getter]]
     // CHECK: [[module_ptr:%.*]] = llvm.alloca {{.*}} x !llvm<"i8*"> : (!llvm.i32) -> !llvm<"i8**">
-    // CHECK: llvm.call @mcuModuleLoad([[module_ptr]], {{.*}}) : (!llvm<"i8**">, !llvm<"i8*">) -> !llvm.i32
+    // CHECK: llvm.call @mcuModuleLoad([[module_ptr]], [[cubin_ptr]]) : (!llvm<"i8**">, !llvm<"i8*">) -> !llvm.i32
     // CHECK: [[func_ptr:%.*]] = llvm.alloca {{.*}} x !llvm<"i8*"> : (!llvm.i32) -> !llvm<"i8**">
     // CHECK: llvm.call @mcuModuleGetFunction([[func_ptr]], {{.*}}, {{.*}}) : (!llvm<"i8**">, !llvm<"i8*">, !llvm<"i8*">) -> !llvm.i32
     // CHECK: llvm.call @mcuGetStreamHelper
