@@ -233,7 +233,7 @@ Status RunCudnnBatchNormForwardInference(
       return RunCudnnBatchNormForwardInferenceImpl<float>(&inference_params,
                                                           stream);
     default:
-      LOG(FATAL) << batchnorm->ToString();
+      LOG(FATAL) << batchnorm->ToString() << " is unimplemented";
   }
 }
 
@@ -261,7 +261,7 @@ Status RunCudnnBatchNormForwardTraining(
       return RunCudnnBatchNormForwardTrainingImpl<float>(&forward_params,
                                                          stream);
     default:
-      LOG(FATAL) << batchnorm->ToString();
+      LOG(FATAL) << batchnorm->ToString() << " is unimplemented";
   }
 }
 
@@ -291,7 +291,7 @@ Status RunCudnnBatchNormBackward(
     case F32:
       return RunCudnnBatchNormBackwardImpl<float>(&backward_params, stream);
     default:
-      LOG(FATAL) << batchnorm->ToString();
+      LOG(FATAL) << batchnorm->ToString() << " is unimplemented";
   }
 }
 
