@@ -804,7 +804,7 @@ memref<16x32xf32, #identity, memspace0>
 // The memref index space is of size %M x %N, while %B1 and %B2 bind to the
 // symbols s0, s1 respectively of the layout map #tiled_dynamic. Data tiles of
 // size %B1 x %B2 in the logical space will be stored contiguously in memory.
-// The allocation size will be (%M ceildiv %B1) * %B1 * (%N ceildiv %B2) * %B2 
+// The allocation size will be (%M ceildiv %B1) * %B1 * (%N ceildiv %B2) * %B2
 // f32 elements.
 %T = alloc(%M, %N) [%B1, %B2] : memref<?x?xf32, #tiled_dynamic>
 
@@ -859,7 +859,6 @@ spaces on which the map operates. The index space is always non-negative and
 integral. In addition, an index map must specify the size of each of its range
 dimensions onto which it maps. Index map symbols must be listed in order with
 symbols for dynamic dimension sizes first, followed by other required symbols.
-
 
 ##### Layout Map
 
@@ -1360,7 +1359,22 @@ symbol-ref-attribute ::= symbol-ref-id
 ```
 
 A symbol reference attribute is a literal attribute that represents a named
-reference to a given operation.
+reference to an operation that is nested within an operation with the
+`OpTrait::SymbolTable` trait. As such, this reference is given meaning by the
+nearest parent operation containing the `OpTrait::SymbolTable` trait.
+
+This attribute can only be held internally by
+[array attributes](#array-attribute) and
+[dictionary attributes](#dictionary-attribute)(including the top-level operation
+attribute dictionary), i.e. no other attribute kinds such as Locations or
+extended attribute kinds. If a reference to a symbol is necessary from outside
+of the symbol table that the symbol is defined in, a
+[string attribute](string-attribute) can be used to refer to the symbol name.
+
+**Rationale:** Given that MLIR models global accesses with symbol references, to
+enable efficient multi-threading, it becomes difficult to effectively reason
+about their uses. By restricting the places that can legally hold a symbol
+reference, we can always opaquely reason about a symbols usage characteristics.
 
 #### Type Attribute
 

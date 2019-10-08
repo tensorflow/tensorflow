@@ -42,6 +42,7 @@ set(LIBS
   MLIRStandardToLLVM
   MLIRTransforms
   MLIRTestDialect
+  MLIRTestIR
   MLIRTestPass
   MLIRTestTransforms
   MLIRSupport

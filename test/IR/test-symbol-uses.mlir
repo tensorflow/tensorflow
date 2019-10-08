@@ -1,0 +1,29 @@
+// RUN: mlir-opt %s -test-symbol-uses -verify-diagnostics
+
+
+// Symbol references to the module itself don't affect uses of symbols within
+// its table.
+module attributes {sym.outside_use = @symbol_foo } {
+  // expected-remark@+1 {{function has 2 uses}}
+  func @symbol_foo()
+
+  // expected-remark@+3 {{function has no uses}}
+  // expected-remark@+2 {{found use of function : @symbol_foo}}
+  // expected-remark@+1 {{function contains 2 nested references}}
+  func @symbol_bar() attributes {sym.use = @symbol_foo} {
+    // expected-remark@+1 {{found use of function : @symbol_foo}}
+    "foo.op"() {
+      non_symbol_attr,
+      use = [{ nested_symbol = [@symbol_foo]}],
+      z_other_non_symbol_attr
+    } : () -> ()
+  }
+
+  // expected-remark@+1 {{function has 1 use}}
+  func @symbol_baz()
+
+  // expected-remark@+1 {{found use of function : @symbol_baz}}
+  module attributes {test.reference = @symbol_baz} {
+    "foo.op"() {test.nested_reference = @symbol_baz} : () -> ()
+  }
+}
