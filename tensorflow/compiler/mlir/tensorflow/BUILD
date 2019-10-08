@@ -170,7 +170,6 @@ cc_library(
         ":tensorflow_executor_inc_gen",
         ":tensorflow_ops_inc_gen",
         ":tf_saved_model_inc_gen",
-        "//tensorflow/cc/saved_model:loader_lite",
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/core:lib",
         "@llvm//:support",
