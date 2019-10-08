@@ -141,6 +141,8 @@ py_test(
     shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
+        "no_cuda",
+        "no_rocm",
         "no_windows",
     ],
     deps = [

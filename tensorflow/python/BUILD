@@ -3628,7 +3628,7 @@ cuda_py_test(
         "//tensorflow/python/kernel_tests/random:util",
         "//tensorflow/python/distribute:mirrored_strategy",
     ],
-    tags = ["no_rocm_v2"],
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = False,
 )
 
@@ -5645,7 +5645,10 @@ tf_py_test(
     name = "convert_to_constants_test",
     size = "small",
     srcs = ["framework/convert_to_constants_test.py"],
-    tags = ["no_rocm_v2"],
+    tags = [
+        "no_cuda",
+        "no_rocm",
+    ],
     additional_deps = [
         ":convert_to_constants",
         "client_testlib",

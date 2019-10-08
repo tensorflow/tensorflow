@@ -974,7 +974,10 @@ py_test(
     name = "ragged_map_fn_op_test",
     size = "small",
     srcs = ["ragged_map_fn_op_test.py"],
-    tags = ["no_rocm_v2"],
+    tags = [
+        "no_cuda",
+        "no_rocm",
+    ],
     python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [

@@ -57,6 +57,10 @@ tpu_py_test(
     size = "medium",
     srcs = ["async_checkpoint_test.py"],
     disable_experimental = True,
+    tags = [
+        "no_cuda",
+        "no_rocm",
+    ],
     deps = [
         ":async_checkpoint",
         ":tpu_estimator",
