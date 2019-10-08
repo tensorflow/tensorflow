@@ -311,6 +311,23 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "matrix_solve_op_test",
+    size = "small",
+    timeout = "moderate",
+    srcs = ["matrix_solve_op_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_ops",
+    ],
+)
+
+tf_xla_py_test(
     name = "matrix_triangular_solve_op_test",
     size = "small",
     timeout = "moderate",
