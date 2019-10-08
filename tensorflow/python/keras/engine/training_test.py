@@ -39,9 +39,11 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.callbacks import Callback
+from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
+from tensorflow.python.keras.utils import data_utils
+from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
@@ -1204,8 +1206,8 @@ class TrainingTest(keras_parameterized.TestCase):
     with context.eager_mode():
       np.random.seed(1337)
       train_x = np.ones((100, 4))
-      train_y = keras.utils.to_categorical(np.random.randint(0, 1,
-                                                             size=(100, 1)), 2)
+      train_y = np_utils.to_categorical(
+          np.random.randint(0, 1, size=(100, 1)), 2)
 
       reference_model = testing_utils.get_small_sequential_mlp(16, 2,
                                                                input_dim=4)
@@ -1599,7 +1601,7 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_invalid_batch_size_argument_with_sequence_input(self):
 
-    class DummySequence(keras.utils.Sequence):
+    class DummySequence(data_utils.Sequence):
 
       def __getitem__(self, idx):
         return np.zeros([10, 2]), np.ones([10, 4])
@@ -1673,8 +1675,8 @@ class LossWeightingTest(keras_parameterized.TestCase):
     int_y_test = y_test.copy()
     int_y_train = y_train.copy()
     # convert class vectors to binary class matrices
-    y_train = keras.utils.to_categorical(y_train, num_classes)
-    y_test = keras.utils.to_categorical(y_test, num_classes)
+    y_train = np_utils.to_categorical(y_train, num_classes)
+    y_test = np_utils.to_categorical(y_test, num_classes)
     test_ids = np.where(int_y_test == np.array(weighted_class))[0]
 
     class_weight = dict([(i, 1.) for i in range(num_classes)])
@@ -1742,8 +1744,8 @@ class LossWeightingTest(keras_parameterized.TestCase):
     int_y_test = y_test.copy()
     int_y_train = y_train.copy()
     # convert class vectors to binary class matrices
-    y_train = keras.utils.to_categorical(y_train, num_classes)
-    y_test = keras.utils.to_categorical(y_test, num_classes)
+    y_train = np_utils.to_categorical(y_train, num_classes)
+    y_test = np_utils.to_categorical(y_test, num_classes)
     test_ids = np.where(int_y_test == np.array(weighted_class))[0]
 
     sample_weight = np.ones((y_train.shape[0]))
@@ -1812,8 +1814,8 @@ class LossWeightingTest(keras_parameterized.TestCase):
       int_y_test = y_test.copy()
       int_y_train = y_train.copy()
       # convert class vectors to binary class matrices
-      y_train = keras.utils.to_categorical(y_train, num_classes)
-      y_test = keras.utils.to_categorical(y_test, num_classes)
+      y_train = np_utils.to_categorical(y_train, num_classes)
+      y_test = np_utils.to_categorical(y_test, num_classes)
       test_ids = np.where(int_y_test == np.array(weighted_class))[0]
 
       sample_weight = np.ones((y_train.shape[0]))
@@ -1938,7 +1940,7 @@ class LossWeightingTest(keras_parameterized.TestCase):
           input_shape=(input_dim,),
           num_classes=num_classes)
       # convert class vectors to binary class matrices
-      y_train = keras.utils.to_categorical(y_train, num_classes)
+      y_train = np_utils.to_categorical(y_train, num_classes)
       class_weight = dict([(i, 1.) for i in range(num_classes)])
 
       del class_weight[1]

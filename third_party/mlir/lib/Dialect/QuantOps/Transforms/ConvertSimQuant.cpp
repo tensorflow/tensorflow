@@ -38,7 +38,7 @@ public:
 } // end anonymous namespace
 
 /// Base class rewrites ConstFakeQuant into a qbarrier/dbarrier pair.
-template <typename ConcretRewriteClass, typename FakeQuantOp>
+template <typename ConcreteRewriteClass, typename FakeQuantOp>
 class FakeQuantRewrite : public OpRewritePattern<FakeQuantOp> {
 public:
   using OpRewritePattern<FakeQuantOp>::OpRewritePattern;
@@ -68,7 +68,7 @@ private:
     }
 
     QuantizedType elementType =
-        static_cast<const ConcretRewriteClass *>(this)
+        static_cast<const ConcreteRewriteClass *>(this)
             ->convertFakeQuantAttrsToType(op, converter.expressedType);
 
     if (!elementType) {

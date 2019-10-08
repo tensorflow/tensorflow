@@ -235,6 +235,8 @@ def make_tensor(v, arg_name):
 
 def args_to_matching_eager(l, ctx, default_dtype=None):
   """Convert sequence `l` to eager same-type Tensors."""
+  if (not l) and (default_dtype is not None):
+    return default_dtype, []  # List is empty; assume default dtype.
   EagerTensor = ops.EagerTensor  # pylint: disable=invalid-name
   for x in l:
     if not isinstance(x, EagerTensor):

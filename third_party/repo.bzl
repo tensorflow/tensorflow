@@ -51,7 +51,7 @@ def _execute_and_check_ret_code(repo_ctx, cmd_and_args):
     if result.return_code != 0:
         fail(("Non-zero return code({1}) when executing '{0}':\n" + "Stdout: {2}\n" +
               "Stderr: {3}").format(
-            " ".join(cmd_and_args),
+            " ".join([str(x) for x in cmd_and_args]),
             result.return_code,
             result.stdout,
             result.stderr,

@@ -51,7 +51,8 @@ static constexpr const char *cuGetStreamHelperName = "mcuGetStreamHelper";
 static constexpr const char *cuStreamSynchronizeName = "mcuStreamSynchronize";
 static constexpr const char *kMcuMemHostRegisterPtr = "mcuMemHostRegisterPtr";
 
-static constexpr const char *kCubinGetterAnnotation = "nvvm.cubingetter";
+static constexpr const char *kCubinAnnotation = "nvvm.cubin";
+static constexpr const char *kCubinStorageSuffix = "_cubin_cst";
 
 namespace {
 
@@ -119,7 +120,7 @@ private:
 
   void declareCudaFunctions(Location loc);
   Value *setupParamsArray(gpu::LaunchFuncOp launchOp, OpBuilder &builder);
-  Value *generateKernelNameConstant(FuncOp kernelFunction, Location &loc,
+  Value *generateKernelNameConstant(StringRef name, Location &loc,
                                     OpBuilder &builder);
   void translateGpuLaunchCalls(mlir::gpu::LaunchFuncOp launchOp);
 
@@ -131,10 +132,15 @@ public:
     // Cache the used LLVM types.
     initializeCachedTypes();
 
-    for (auto func : getModule().getOps<FuncOp>()) {
-      func.walk(
-          [this](mlir::gpu::LaunchFuncOp op) { translateGpuLaunchCalls(op); });
-    }
+    getModule().walk([this](mlir::gpu::LaunchFuncOp op) {
+      translateGpuLaunchCalls(op);
+    });
+
+    // GPU kernel modules are no longer necessary since we have a global
+    // constant with the CUBIN data.
+    for (auto m : llvm::make_early_inc_range(getModule().getOps<ModuleOp>()))
+      if (m.getAttrOfType<UnitAttr>(gpu::GPUDialect::getKernelModuleAttrName()))
+        m.erase();
   }
 
 private:
@@ -298,14 +304,12 @@ GpuLaunchFuncToCudaCallsPass::setupParamsArray(gpu::LaunchFuncOp launchOp,
 //   %2 = llvm.getelementptr %0[%1, %1] : !llvm<"i8*">
 // }
 Value *GpuLaunchFuncToCudaCallsPass::generateKernelNameConstant(
-    FuncOp kernelFunction, Location &loc, OpBuilder &builder) {
+    StringRef name, Location &loc, OpBuilder &builder) {
   // Make sure the trailing zero is included in the constant.
-  std::vector<char> kernelName(kernelFunction.getName().begin(),
-                               kernelFunction.getName().end());
+  std::vector<char> kernelName(name.begin(), name.end());
   kernelName.push_back('\0');
 
-  std::string globalName =
-      llvm::formatv("{0}_kernel_name", kernelFunction.getName());
+  std::string globalName = llvm::formatv("{0}_kernel_name", name);
   return LLVM::createGlobalString(
       loc, builder, globalName, StringRef(kernelName.data(), kernelName.size()),
       llvmDialect);
@@ -339,35 +343,36 @@ void GpuLaunchFuncToCudaCallsPass::translateGpuLaunchCalls(
 
   auto zero = builder.create<LLVM::ConstantOp>(loc, getInt32Type(),
                                                builder.getI32IntegerAttr(0));
-  // Emit a call to the cubin getter to retrieve a pointer to the data that
-  // represents the cubin at runtime.
-  // TODO(herhut): This should rather be a static global once supported.
-  auto kernelFunction = getModule().lookupSymbol<FuncOp>(launchOp.kernel());
-  if (!kernelFunction) {
-    launchOp.emitError("missing kernel function ") << launchOp.kernel();
+  // Create an LLVM global with CUBIN extracted from the kernel annotation and
+  // obtain a pointer to the first byte in it.
+  auto kernelModule =
+      getModule().lookupSymbol<ModuleOp>(launchOp.getKernelModuleName());
+  assert(kernelModule && "expected a kernel module");
+
+  auto cubinAttr = kernelModule.getAttrOfType<StringAttr>(kCubinAnnotation);
+  if (!cubinAttr) {
+    kernelModule.emitOpError()
+        << "missing " << kCubinAnnotation << " attribute";
     return signalPassFailure();
   }
-  auto cubinGetter =
-      kernelFunction.getAttrOfType<SymbolRefAttr>(kCubinGetterAnnotation);
-  if (!cubinGetter) {
-    kernelFunction.emitError("missing ")
-        << kCubinGetterAnnotation << " attribute.";
-    return signalPassFailure();
-  }
-  auto data = builder.create<LLVM::CallOp>(
-      loc, ArrayRef<Type>{getPointerType()}, cubinGetter, ArrayRef<Value *>{});
+  assert(kernelModule.getName() && "expected a named module");
+  SmallString<128> nameBuffer(*kernelModule.getName());
+  nameBuffer.append(kCubinStorageSuffix);
+  Value *data = LLVM::createGlobalString(
+      loc, builder, nameBuffer.str(), cubinAttr.getValue(), getLLVMDialect());
+
   // Emit the load module call to load the module data. Error checking is done
   // in the called helper function.
   auto cuModule = allocatePointer(builder, loc);
   FuncOp cuModuleLoad = getModule().lookupSymbol<FuncOp>(cuModuleLoadName);
   builder.create<LLVM::CallOp>(loc, ArrayRef<Type>{getCUResultType()},
                                builder.getSymbolRefAttr(cuModuleLoad),
-                               ArrayRef<Value *>{cuModule, data.getResult(0)});
+                               ArrayRef<Value *>{cuModule, data});
   // Get the function from the module. The name corresponds to the name of
   // the kernel function.
   auto cuOwningModuleRef =
       builder.create<LLVM::LoadOp>(loc, getPointerType(), cuModule);
-  auto kernelName = generateKernelNameConstant(kernelFunction, loc, builder);
+  auto kernelName = generateKernelNameConstant(launchOp.kernel(), loc, builder);
   auto cuFunction = allocatePointer(builder, loc);
   FuncOp cuModuleGetFunction =
       getModule().lookupSymbol<FuncOp>(cuModuleGetFunctionName);

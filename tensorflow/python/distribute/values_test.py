@@ -1185,8 +1185,8 @@ class PerReplicaTest(test.TestCase, parameterized.TestCase):
   def testIsGraphTensor(self):
     per_replica = values.PerReplica(values.SingleDeviceMap("CPU"),
                                     (constant_op.constant(1.),))
-    self.assertEqual(per_replica._is_graph_tensor,
-                     not context.executing_eagerly())
+    for t in nest.flatten(per_replica, expand_composites=True):
+      self.assertEqual(hasattr(t, "graph"), not context.executing_eagerly())
 
   def testDoesNotTriggerFunctionTracing(self):
     traces = []
@@ -1223,9 +1223,8 @@ class PerReplicaTest(test.TestCase, parameterized.TestCase):
         values.SingleDeviceMap("CPU"), (constant_op.constant(1.),))
     y = f(x)
     self.assertIsNot(x, y)
-    for a, b in zip(x._to_components(), y._to_components()):
-      self.assertAllEqual(a, b)
-    self.assertEqual(x._component_metadata(), y._component_metadata())
+    nest.map_structure(self.assertAllEqual, x, y, expand_composites=True)
+    self.assertEqual(x._type_spec, y._type_spec)
 
   @test_util.run_in_graph_and_eager_modes
   def testCondWithTensorValues(self):

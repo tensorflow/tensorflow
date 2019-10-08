@@ -382,6 +382,15 @@ cc_library(
 )
 
 cc_library(
+    name = "pybind11_lib",
+    hdrs = ["lib/core/pybind11_lib.h"],
+    features = ["-parse_headers"],
+    deps = [
+        "@pybind11",
+    ],
+)
+
+cc_library(
     name = "pybind11_status",
     hdrs = ["lib/core/pybind11_status.h"],
     features = ["-parse_headers"],
@@ -435,6 +444,7 @@ tf_python_pybind_extension(
     hdrs = ["util/util.h"],
     module_name = "_pywrap_utils",
     deps = [
+        ":pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -461,6 +471,23 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/core:util_port",
         "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_debug_events_writer",
+    srcs = ["client/debug_events_writer_wrapper.cc"],
+    module_name = "_pywrap_debug_events_writer",
+    deps = [
+        ":pybind11_absl",
+        ":pybind11_proto",
+        ":pybind11_status",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/strings",
         "@pybind11",
     ],
 )
@@ -809,7 +836,9 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":_pywrap_debug_events_writer",
         ":_pywrap_events_writer",
+        ":_pywrap_py_func",  # TODO(b/142001480): remove once the bug is fixed.
         ":_pywrap_stat_summarizer",
         ":_pywrap_tfprof",
         ":_pywrap_util_port",
@@ -4448,7 +4477,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "special_math_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["ops/special_math_ops_test.py"],
     additional_deps = [
         ":array_ops",
@@ -4459,6 +4488,7 @@ cuda_py_test(
         ":special_math_ops",
         "//third_party/py/numpy",
     ],
+    shard_count = 10,
     tags = ["no_windows_gpu"],
 )
 
@@ -4729,7 +4759,7 @@ py_library(
         "//third_party/py/numpy",
         "@six_archive//:six",
         "//tensorflow/tools/compatibility:all_renames_v2",
-    ] + if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass"]),
+    ] + if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration"]),
 )
 
 tf_py_test(
@@ -5170,7 +5200,7 @@ genrule(
         "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
         "//tensorflow/core:framework_internal_impl",  # op_def_registry
-        "//tensorflow/core/lib/core:status",  # device_lib
+        "//tensorflow/core:lib_internal_impl",  # device_lib
         "//tensorflow/core:core_cpu_impl",  # device_lib
     ],
     outs = ["pybind_symbol_target_libs_file.txt"],

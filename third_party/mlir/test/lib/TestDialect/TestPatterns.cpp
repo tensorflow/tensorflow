@@ -52,6 +52,43 @@ static mlir::PassRegistration<TestPatternDriver>
     pass("test-patterns", "Run test dialect patterns");
 
 //===----------------------------------------------------------------------===//
+// ReturnType Driver.
+//===----------------------------------------------------------------------===//
+
+struct ReturnTypeOpMatch : public RewritePattern {
+  ReturnTypeOpMatch(MLIRContext *ctx)
+      : RewritePattern(OpWithInferTypeInterfaceOp::getOperationName(), 1, ctx) {
+  }
+
+  PatternMatchResult matchAndRewrite(Operation *op,
+                                     PatternRewriter &rewriter) const final {
+    if (auto retTypeFn = dyn_cast<InferTypeOpInterface>(op)) {
+      SmallVector<Value *, 4> values;
+      values.reserve(op->getNumOperands());
+      for (auto &operand : op->getOpOperands())
+        values.push_back(operand.get());
+      (void)retTypeFn.inferReturnTypes(op->getLoc(), values, op->getAttrs(),
+                                       op->getRegions());
+    }
+    return matchFailure();
+  }
+};
+
+namespace {
+struct TestReturnTypeDriver : public FunctionPass<TestReturnTypeDriver> {
+  void runOnFunction() override {
+    mlir::OwningRewritePatternList patterns;
+    populateWithGenerated(&getContext(), &patterns);
+    patterns.insert<ReturnTypeOpMatch>(&getContext());
+    applyPatternsGreedily(getFunction(), patterns);
+  }
+};
+} // end anonymous namespace
+
+static mlir::PassRegistration<TestReturnTypeDriver>
+    rt_pass("test-return-type", "Run return type functions");
+
+//===----------------------------------------------------------------------===//
 // Legalization Driver.
 //===----------------------------------------------------------------------===//
 

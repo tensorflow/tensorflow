@@ -145,7 +145,7 @@ input: The return value.
 index: This return value is the index-th return value of the function.
 )doc");
 
-REGISTER_OP("_ListToArray")
+REGISTER_SYSTEM_OP("_ListToArray")
     .Input("input: Tin")
     .Output("output: N * T")
     .Attr("Tin: list(type)")
@@ -156,7 +156,7 @@ REGISTER_OP("_ListToArray")
 Converts a list of tensors to an array of tensors.
 )doc");
 
-REGISTER_OP("_ArrayToList")
+REGISTER_SYSTEM_OP("_ArrayToList")
     .Input("input: N * T")
     .Output("output: out_types")
     .Attr("T: type")

@@ -413,6 +413,7 @@ class Context(object):
     self._inter_op_parallelism_threads = None
     self._soft_device_placement = None
     self._log_device_placement = None
+    self._enable_mlir_bridge = None
     self._optimizer_experimental_options = {}
 
     _python_eager_context_create_counter.get_cell().increase_by(1)
@@ -726,6 +727,8 @@ class Context(object):
       ValueError: If name is not a string or is an invalid device name.
       RuntimeError: If device scopes are not properly nested.
     """
+    if isinstance(name, LogicalDevice):
+      name = name.name
     return _EagerDeviceContext(self, name)
 
   def devices(self):
@@ -804,6 +807,9 @@ class Context(object):
 
     if self._log_device_placement is not None:
       config.log_device_placement = self._log_device_placement
+
+    if self._enable_mlir_bridge is not None:
+      config.experimental.enable_mlir_bridge = self._enable_mlir_bridge
 
     def rewriter_toggle(option):
       toggle = self._optimizer_experimental_options.get(option, None)
@@ -1077,13 +1083,10 @@ class Context(object):
     """
     self._initialize_physical_devices()
 
-    if device_type is not None:
-      return [
-          d for d in self._physical_devices
-          if device_type is None or device_type == d.device_type
-      ]
+    if device_type is None:
+      return list(self._physical_devices)
 
-    return self._physical_devices
+    return [d for d in self._physical_devices if d.device_type == device_type]
 
   def _import_config(self):
     """Import config if passed in during construction.
@@ -1134,26 +1137,21 @@ class Context(object):
   def list_logical_devices(self, device_type=None):
     """Return logical devices."""
     self.ensure_initialized()
+    if device_type is None:
+      return list(self._logical_devices)
 
-    devices = []
-    for dev in self._logical_devices:
-      if device_type is not None and device_type != dev.device_type:
-        continue
-
-      devices.append(dev)
-
-    return devices
+    return [d for d in self._logical_devices if d.device_type == device_type]
 
   def get_visible_devices(self, device_type=None):
     """Get the list of visible devices."""
     self._initialize_physical_devices()
 
     if device_type is None:
-      return self._visible_device_list
-    else:
-      return [
-          d for d in self._visible_device_list if d.device_type == device_type
-      ]
+      return list(self._visible_device_list)
+
+    return [
+        d for d in self._visible_device_list if d.device_type == device_type
+    ]
 
   def set_visible_devices(self, devices, device_type=None):
     """Set the list of visible devices."""
@@ -1255,6 +1253,16 @@ class Context(object):
           "Virtual devices cannot be modified after being initialized")
 
     self._virtual_device_map[dev] = virtual_devices
+
+  @property
+  def enable_mlir_bridge(self):
+    return self._enable_mlir_bridge
+
+  @enable_mlir_bridge.setter
+  def enable_mlir_bridge(self, enabled):
+    self._enable_mlir_bridge = enabled
+
+    self._thread_local_data.function_call_options = None
 
   @property
   def optimizer_jit(self):
@@ -1582,18 +1590,129 @@ def internal_operation_seed():
   return context()._internal_operation_seed()  # pylint: disable=protected-access
 
 
-@tf_export("executing_eagerly")
+@tf_export("executing_eagerly", v1=[])
 def executing_eagerly():
-  """Returns True if the current thread has eager execution enabled.
+  """Checks whether the current thread has eager execution enabled.
+
+  Eager execution is enabled by default and this API returns `True`
+  in most of cases. However, this API might return `False` in the following use
+  cases.
+
+  *  Executing inside `tf.function`, unless under `tf.init_scope` or
+     `tf.config.experimental_run_functions_eagerly(True)` is previously called.
+  *  Executing inside a transformation function for `tf.dataset`.
+  *  `tf.compat.v1.disable_eager_execution()` is called.
+
+  General case:
+
+  >>> print(tf.executing_eagerly())
+  True
+
+  Inside `tf.function`:
+
+  >>> @tf.function
+  ... def fn():
+  ...   with tf.init_scope():
+  ...     print(tf.executing_eagerly())
+  ...   print(tf.executing_eagerly())
+  >>> fn()
+  True
+  False
+
+  Inside `tf.function` after
+
+  `tf.config.experimental_run_functions_eagerly(True)` is called:
+  >>> tf.config.experimental_run_functions_eagerly(True)
+  >>> @tf.function
+  ... def fn():
+  ...   with tf.init_scope():
+  ...     print(tf.executing_eagerly())
+  ...   print(tf.executing_eagerly())
+  >>> fn()
+  True
+  True
+  >>> tf.config.experimental_run_functions_eagerly(False)
+
+  Inside a transformation function for `tf.dataset`:
+
+  >>> def data_fn(x):
+  ...   print(tf.executing_eagerly())
+  ...   return x
+  >>> dataset = tf.data.Dataset.range(100)
+  >>> dataset = dataset.map(data_fn)
+  False
+
+  Returns:
+    `True` if the current thread has eager execution enabled.
+  """
+  ctx = context_safe()
+  if ctx is None:
+    return default_execution_mode == EAGER_MODE
+
+  return ctx.executing_eagerly()
+
+
+@tf_export(v1=["executing_eagerly"])
+def executing_eagerly_v1():
+  """Checks whether the current thread has eager execution enabled.
 
   Eager execution is typically enabled via
   `tf.compat.v1.enable_eager_execution`, but may also be enabled within the
   context of a Python function via tf.contrib.eager.py_func.
-  """
-  if context_safe() is None:
-    return default_execution_mode == EAGER_MODE
 
-  return context().executing_eagerly()
+  When eager execution is enabled, returns `True` in most cases. However,
+  this API might return `False` in the following use cases.
+
+  *  Executing inside `tf.function`, unless under `tf.init_scope` or
+     `tf.config.experimental_run_functions_eagerly(True)` is previously called.
+  *  Executing inside a transformation function for `tf.dataset`.
+  *  `tf.compat.v1.disable_eager_execution()` is called.
+
+  >>> tf.compat.v1.enable_eager_execution()
+
+  General case:
+
+  >>> print(tf.executing_eagerly())
+  True
+
+  Inside `tf.function`:
+
+  >>> @tf.function
+  ... def fn():
+  ...   with tf.init_scope():
+  ...     print(tf.executing_eagerly())
+  ...   print(tf.executing_eagerly())
+  >>> fn()
+  True
+  False
+
+  Inside `tf.function`
+  after  `tf.config.experimental_run_functions_eagerly(True)` is called:
+
+  >>> tf.config.experimental_run_functions_eagerly(True)
+  >>> @tf.function
+  ... def fn():
+  ...   with tf.init_scope():
+  ...     print(tf.executing_eagerly())
+  ...   print(tf.executing_eagerly())
+  >>> fn()
+  True
+  True
+  >>> tf.config.experimental_run_functions_eagerly(False)
+
+  Inside a transformation function for `tf.dataset`:
+
+  >>> def data_fn(x):
+  ...   print(tf.executing_eagerly())
+  ...   return x
+  >>> dataset = tf.data.Dataset.range(100)
+  >>> dataset = dataset.map(data_fn)
+  False
+
+  Returns:
+    `True` if the current thread has eager execution enabled.
+  """
+  return executing_eagerly()
 
 
 def in_eager_mode():

@@ -1042,11 +1042,22 @@ def _create_local_cuda_repository(repository_ctx):
         outs = cuda_lib_outs,
     ))
 
-    copy_rules.append(make_copy_dir_rule(
+    # copy files mentioned in third_party/nccl/build_defs.bzl.tpl
+    copy_rules.append(make_copy_files_rule(
         repository_ctx,
         name = "cuda-bin",
-        src_dir = cuda_config.cuda_toolkit_path + "/bin",
-        out_dir = "cuda/bin",
+        srcs = [
+            cuda_config.cuda_toolkit_path + "/bin/" + "crt/link.stub",
+            cuda_config.cuda_toolkit_path + "/bin/" + "nvlink",
+            cuda_config.cuda_toolkit_path + "/bin/" + "fatbinary",
+            cuda_config.cuda_toolkit_path + "/bin/" + "bin2c",
+        ],
+        outs = [
+            "cuda/bin/" + "crt/link.stub",
+            "cuda/bin/" + "nvlink",
+            "cuda/bin/" + "fatbinary",
+            "cuda/bin/" + "bin2c",
+        ],
     ))
 
     copy_rules.append(make_copy_files_rule(

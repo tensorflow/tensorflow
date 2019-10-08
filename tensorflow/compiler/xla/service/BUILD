@@ -1788,7 +1788,6 @@ cc_library(
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
-        "//tensorflow/core/lib/core:bits",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
         "//tensorflow/stream_executor/lib",
@@ -2302,6 +2301,7 @@ xla_test(
     deps = [
         ":dynamic_padder",
         ":hlo",
+        ":hlo_get_dimension_size_rewriter",
         ":hlo_matchers",
         ":hlo_parser",
         ":hlo_runner",

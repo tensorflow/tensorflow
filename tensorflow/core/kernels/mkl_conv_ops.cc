@@ -1587,6 +1587,11 @@ class MklQuantizedConv2DOp
       // Re-scale bias if either of following 2 conditions are met:
       // 1. Bias is not const;
       // 2. Bias is const, but bias cache is empty (first iteration).
+
+      // TODO(intel-tf): Re-enable bias caching. Currently, the graph obtained
+      // after quantize_graph.py does not run with correct accuracy with this
+      // feature enabled.
+      is_bias_const_ = false;
       if (!is_bias_const_ || IsBiasCacheEmpty(context)) {
         size_t depth = min_filter_vector.NumElements();
         std::vector<float> scales(depth);

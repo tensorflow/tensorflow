@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
 
 #include <stddef.h>
+#include <stdlib.h>
 
 #include <cstdint>
 #include <memory>
@@ -113,6 +114,8 @@ bool emit_custom_ops;
 bool emit_select_tf_ops;
 bool lower_tensor_list_ops;
 bool strip_debug_info;
+// NOLINTNEXTLINE
+std::string output_arrays_string;
 
 // NOLINTNEXTLINE
 static opt<bool, true> emit_builtin_tflite_ops_flag(
@@ -144,6 +147,11 @@ static opt<bool, true> lower_tensor_list_ops_flag(
 static opt<bool, true> strip_debug_info_flag(
     "strip-debug-info", llvm::cl::desc("Strip debug info during export"),
     llvm::cl::location(strip_debug_info), llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+static opt<std::string, true> output_arrays_flag(
+    "output-arrays", llvm::cl::desc("List of output tensors"),
+    llvm::cl::location(output_arrays_string), llvm::cl::init(""));
 
 ABSL_CONST_INIT const absl::string_view kFlexOpNamePrefix = "Flex";
 

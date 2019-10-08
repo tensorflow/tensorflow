@@ -70,6 +70,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_module
+from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
@@ -2675,6 +2676,8 @@ def concatenate(tensors, axis=-1):
 
   if py_all(is_sparse(x) for x in tensors):
     return sparse_ops.sparse_concat(axis, tensors)
+  elif py_all(isinstance(x, ragged_tensor.RaggedTensor) for x in tensors):
+    return ragged_concat_ops.concat(tensors, axis)
   else:
     return array_ops.concat([to_dense(x) for x in tensors], axis)
 
@@ -4058,7 +4061,9 @@ def rnn(step_function,
         return mask_ta.read(time)
 
       def compute_masked_output(mask_t, flat_out, flat_mask):
-        tiled_mask_t = tuple(_expand_mask(mask_t, o) for o in flat_out)
+        tiled_mask_t = tuple(
+            _expand_mask(mask_t, o, fixed_dim=len(mask_t.shape))
+            for o in flat_out)
         return tuple(
             array_ops.where_v2(m, o, fm)
             for m, o, fm in zip(tiled_mask_t, flat_out, flat_mask))

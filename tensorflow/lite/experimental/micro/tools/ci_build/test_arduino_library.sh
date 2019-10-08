@@ -28,7 +28,6 @@ TEMP_BUILD_DIR=/tmp/tflite-arduino-build
 
 LIBRARY_ZIP=${1}
 
-rm -rf ${ARDUINO_LIBRARIES_DIR}
 rm -rf ${TEMP_BUILD_DIR}
 
 mkdir -p ${ARDUINO_HOME_DIR}/libraries
@@ -42,3 +41,5 @@ cd ${TEMP_BUILD_DIR}
 for f in ${ARDUINO_LIBRARIES_DIR}/*/examples/*/*.ino; do
   ${ARDUINO_CLI_TOOL} compile --fqbn arduino:mbed:nano33ble $f
 done
+
+rm -rf ${ARDUINO_LIBRARIES_DIR}

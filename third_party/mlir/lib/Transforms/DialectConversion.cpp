@@ -298,7 +298,7 @@ Operation *ArgConverter::convertArgument(BlockArgument *origArg,
 /// A utility function used to create a conversion cast operation with the
 /// given input and result types.
 Operation *ArgConverter::createCast(ArrayRef<Value *> inputs, Type outputType) {
-  return Operation::create(loc, castOpName, inputs, outputType, llvm::None,
+  return Operation::create(loc, castOpName, outputType, inputs, llvm::None,
                            llvm::None, 0, false);
 }
 
@@ -1015,7 +1015,7 @@ enum OpConversionMode {
   Partial,
 
   // In this mode, all operations must be legal for the given target for the
-  // conversion to succeeed.
+  // conversion to succeed.
   Full,
 
   // In this mode, operations are analyzed for legality. No actual rewrites are

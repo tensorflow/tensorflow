@@ -49,17 +49,17 @@ class HLO_Op<string mnemonic, list<OpTrait> traits> :
 //===----------------------------------------------------------------------===//
 
 // Any integer tensor types
-def HLO_IntTensor : StaticShapeTensorOf<[HLO_Int]>;
+def HLO_IntTensor : TensorOf<[HLO_Int]>;
 
 // Any floating-point tensor types
-def HLO_FpTensor : StaticShapeTensorOf<[AnyFloat]>;
+def HLO_FpTensor : TensorOf<[AnyFloat]>;
 
-def HLO_PredTensor : StaticShapeTensorOf<[HLO_Pred]>;
+def HLO_PredTensor : TensorOf<[HLO_Pred]>;
 
 // Any integer or floating-point tensor types
-def HLO_IntOrFpTensor : StaticShapeTensorOf<[HLO_Int, AnyFloat]>;
+def HLO_IntOrFpTensor : TensorOf<[HLO_Int, AnyFloat]>;
 
-def HLO_Tensor : StaticShapeTensorOf<[AnyFloat, AnyInteger]>;
+def HLO_Tensor : TensorOf<[AnyFloat, AnyInteger]>;
 
 def HLO_Tuple : NestedTupleOf<[HLO_Tensor]>;
 
@@ -81,6 +81,9 @@ def HLO_ConstOp : BASE_HLO_ConstOp, HLO_Op<"constant", [NoSideEffect]> {
   let builders = [OpBuilder<
     "Builder *builder, OperationState &result, Attribute value"
   >];
+
+  let printer = [{ return Print(*this, &p); }];
+  let parser = [{ return ParseConstOp(&parser, &result); }];
 
   let hasFolder = 1;
 
@@ -153,8 +156,8 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
     BroadcastDimAttr:$broadcast_dimensions
   );
   let results = (outs HLO_Tensor);
-  let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
-  let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 }
 
 def HLO_AddOp : HLO_BinaryElementwiseOp<"add",
@@ -176,6 +179,8 @@ def HLO_SubOp : HLO_BinaryElementwiseOp<"sub",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_SubOp;
 
 def HLO_AndOp: HLO_BinaryElementwiseOp<"and", [Commutative, NoSideEffect]>, BASE_HLO_AndOp;
+
+def HLO_OrOp: HLO_BinaryElementwiseOp<"or", [Commutative, NoSideEffect]>, BASE_HLO_OrOp;
 
 //===----------------------------------------------------------------------===//
 // XLA control flow op definitions.
@@ -214,6 +219,8 @@ def HLO_ReduceOp: HLO_Op<"reduce", [
   );
 
   let results = (outs Variadic<HLO_TensorOrTuple>);
+
+  let hasFolder = 1;
 
   // TODO(hinsu): Verify that the attached body arguments and results are
   // compatible with reduce op's operands.
@@ -293,6 +300,20 @@ def HLO_SliceOp: HLO_Op<
 
   // TODO(b/129422361) Two of the required arguments comes from the start and
   // limit indices which aren't handled by the codegen.
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
+      [NoSideEffect, AllElementTypesMatch<["operand", "result"]>,
+       AllTypesMatch<["start_indices", "slice_sizes"]>]> {
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    HLO_Tensor:$start_indices,
+    I64ElementsAttr:$slice_sizes
+  );
+
+  let results = (outs HLO_Tensor:$result);
+
   let hasCustomHLOConverter = 1;
 }
 

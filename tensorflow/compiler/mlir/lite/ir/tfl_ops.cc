@@ -519,6 +519,56 @@ OpFoldResult ConcatenationOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// FullyConnectedOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult Verify(FullyConnectedOp op) {
+  ShapedType input_type = op.input()->getType().cast<ShapedType>();
+  ShapedType filter_type = op.filter()->getType().cast<ShapedType>();
+  if (filter_type.hasRank() && filter_type.getRank() != 2) {
+    return op.emitOpError("expect 2d filter, got ") << filter_type;
+  }
+
+  if (!input_type.hasStaticShape() || !filter_type.hasStaticShape()) {
+    return mlir::success();
+  }
+
+  // Input's element size must be multiple of parameter's z_in dimension.
+  const int z_in = filter_type.getDimSize(1);
+  const int num_input_elements = input_type.getNumElements();
+  if (num_input_elements % z_in != 0) {
+    return op.emitOpError(llvm::formatv(
+               "expect 'input' num_elements % {0} == 0, got input type ", z_in))
+           << input_type;
+  }
+
+  // TODO(jpienaar): Include more shape verification for SHUFFLED4x16INT8
+  // format.
+  if (op.weights_format() == "DEFAULT") {
+    ShapedType output_type =
+        (*op.output().begin())->getType().cast<ShapedType>();
+    if (!output_type.hasStaticShape()) {
+      return mlir::success();
+    }
+
+    const int num_output_elements = output_type.getNumElements();
+    const int z_out = filter_type.getDimSize(0);
+    if (num_output_elements % z_out != 0) {
+      return op.emitOpError(llvm::formatv(
+                 "expect 'output' num_elements % {0} == 0, got ", z_out))
+             << output_type;
+    }
+
+    if (num_input_elements / z_in != num_output_elements / z_out) {
+      return op.emitOpError(
+          "num_input_elements / z_in != num_output_elements / z_out");
+    }
+  }
+
+  return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
 // GatherOp
 //===----------------------------------------------------------------------===//
 

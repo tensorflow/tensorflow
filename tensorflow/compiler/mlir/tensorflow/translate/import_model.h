@@ -48,7 +48,8 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertGraphToMlir(
 // with tf_executor dialect.
 stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
     const SavedModelBundle& saved_model, const GraphDebugInfo& debug_info,
-    mlir::MLIRContext* context, bool add_default_attributes = true);
+    mlir::MLIRContext* context, absl::Span<std::string> exported_names,
+    bool add_default_attributes = true);
 
 // Serialize a MLIR module to a string.
 std::string MlirModuleToString(mlir::ModuleOp m);

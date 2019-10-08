@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
 #include "mlir/Transforms/Passes.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/decode_constant.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -29,8 +30,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/lite/tools/optimize/quantize_weights.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace mlir {
 /// Create a pass to convert from the TFExecutor to the TF control dialect.
@@ -50,10 +52,8 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
     bool use_splatted_constant, const std::vector<std::string>& extra_tf_opdefs,
     absl::string_view debug_info_file, absl::string_view input_arrays,
     absl::string_view input_dtypes, absl::string_view input_shapes,
-    absl::string_view output_arrays, absl::string_view inference_type,
-    absl::string_view min_values, absl::string_view max_values,
-    bool prune_unused_nodes, llvm::SourceMgr* source_mgr,
-    MLIRContext* context) {
+    absl::string_view output_arrays, bool prune_unused_nodes,
+    llvm::SourceMgr* source_mgr, MLIRContext* context) {
   // Set up the input file.
   std::string error_message;
   auto file = mlir::openInputFile(input_filename, &error_message);
@@ -86,14 +86,13 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
   if (use_splatted_constant) {
     return tensorflow::GraphdefToSplattedMlirTranslateFunction(
         std::move(file), debug_info_file, input_arrays, input_dtypes,
-        input_shapes, output_arrays, inference_type, min_values, max_values,
-        prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
+        input_shapes, output_arrays, prune_unused_nodes,
+        /*convert_legacy_fed_inputs=*/true,
         /*graph_as_function=*/false, /*upgrade_legacy=*/true, context);
   }
   return tensorflow::GraphdefToMlirTranslateFunction(
       std::move(file), debug_info_file, input_arrays, input_dtypes,
-      input_shapes, output_arrays, inference_type, min_values, max_values,
-      prune_unused_nodes,
+      input_shapes, output_arrays, prune_unused_nodes,
       /*convert_legacy_fed_inputs=*/true, /*graph_as_function=*/false,
       /*upgrade_legacy=*/true, context);
 }
@@ -101,9 +100,8 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
 Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
     bool emit_select_tf_ops, bool emit_custom_ops, bool emit_quant_adaptor_ops,
-    bool lower_tensor_list_ops,
-    tflite::QuantizedBufferType quantized_buffer_type, std::string* result,
-    mlir::PassManager* pass_manager) {
+    bool lower_tensor_list_ops, const mlir::TFL::QuantizationSpecs& quant_specs,
+    std::string* result, mlir::PassManager* pass_manager) {
   mlir::StatusScopedDiagnosticHandler statusHandler(module.getContext(),
                                                     /*propagate=*/true);
   if (failed(pass_manager->run(module))) {
@@ -117,7 +115,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   }
 
   // Write MLIR TFLite dialect into FlatBuffer
-  if (quantized_buffer_type == tflite::QuantizedBufferType::NONE) {
+  if (!quant_specs.RunWeightQuantization()) {
     if (tflite::MlirToFlatBufferTranslateFunction(
             module, result, emit_builtin_tflite_ops, emit_select_tf_ops,
             emit_custom_ops)) {
@@ -138,12 +136,12 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     const ::tflite::Model* input_model = ::tflite::GetModel(buffer);
 
     ::tflite::optimize::BufferType quantized_type;
-    if (quantized_buffer_type == tflite::QuantizedBufferType::INT8) {
+    if (quant_specs.inference_type == tensorflow::DT_QINT8) {
       quantized_type = ::tflite::optimize::BufferType::QUANTIZED_INT8;
-    } else if (quantized_buffer_type == tflite::QuantizedBufferType::FLOAT16) {
+    } else if (quant_specs.inference_type == tensorflow::DT_HALF) {
       quantized_type = ::tflite::optimize::BufferType::QUANTIZED_FLOAT16;
     } else {
-      return errors::InvalidArgument("Quantized type not recognized");
+      return errors::InvalidArgument("Quantized type not supported");
     }
     if (::tflite::optimize::QuantizeWeights(&q_builder, input_model,
                                             quantized_type) != kTfLiteOk) {

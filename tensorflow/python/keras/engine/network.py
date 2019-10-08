@@ -1025,7 +1025,7 @@ class Network(base_layer.Layer):
     means saving a `tf.keras.Model` using `save_weights` and loading into a
     `tf.train.Checkpoint` with a `Model` attached (or vice versa) will not match
     the `Model`'s variables. See the [guide to training
-    checkpoints](https://www.tensorflow.org/alpha/guide/checkpoints) for details
+    checkpoints](https://www.tensorflow.org/guide/checkpoint) for details
     on the TensorFlow format.
 
     Arguments:

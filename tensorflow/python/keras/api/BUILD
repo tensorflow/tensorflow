@@ -13,6 +13,13 @@ package(
 keras_packages = [
     "tensorflow.python",
     "tensorflow.python.keras",
+    "tensorflow.python.keras.utils.data_utils",
+    "tensorflow.python.keras.utils.generic_utils",
+    "tensorflow.python.keras.utils.io_utils",
+    "tensorflow.python.keras.utils.layer_utils",
+    "tensorflow.python.keras.utils.multi_gpu_utils",
+    "tensorflow.python.keras.utils.np_utils",
+    "tensorflow.python.keras.utils.vis_utils",
     "tensorflow.python.keras.wrappers.scikit_learn",
 ]
 

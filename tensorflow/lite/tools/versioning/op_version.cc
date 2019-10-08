@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 
 namespace tflite {
 
@@ -282,12 +283,18 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 }
 
 TensorType GetTensorType(int32_t idx, const SubGraph* subgraph) {
+  const auto& none_type = static_cast<::tflite::TensorType>(-1);
+  if (idx == -1)
+    // For optional input/output, return none type directly.
+    return none_type;
+
   // Some tests have a graph with invalid tensor index.
+  TFLITE_DCHECK_GE(idx, 0);
   if (subgraph->tensors() && idx < subgraph->tensors()->Length()) {
     return subgraph->tensors()->Get(idx)->type();
   }
   LOG(ERROR) << "Can't access tenor " << idx;
-  return static_cast<::tflite::TensorType>(-1);
+  return none_type;
 }
 
 // Generate OpSignature with the given OperatorCode, Operator and Tensors (from

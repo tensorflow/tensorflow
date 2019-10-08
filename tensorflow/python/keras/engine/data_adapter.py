@@ -363,7 +363,7 @@ class TensorLikeDataAdapter(DataAdapter):
 
 
 class CompositeTensorDataAdapter(DataAdapter):
-  """Adapter that handles Tensor-like objects, e.g. EagerTensor and NumPy."""
+  """Adapter that handles composite tensor."""
 
   @staticmethod
   def can_handle(x, y=None):

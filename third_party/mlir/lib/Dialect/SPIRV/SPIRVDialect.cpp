@@ -17,6 +17,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Parser.h"
+#include "mlir/Support/StringExtras.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/StringExtras.h"
@@ -49,6 +50,10 @@ SPIRVDialect::SPIRVDialect(MLIRContext *context)
 
   // Allow unknown operations because SPIR-V is extensible.
   allowUnknownOperations();
+}
+
+std::string SPIRVDialect::getAttributeName(Decoration decoration) {
+  return convertToSnakeCase(stringifyDecoration(decoration));
 }
 
 //===----------------------------------------------------------------------===//
@@ -191,6 +196,13 @@ static Type parseArrayType(SPIRVDialect const &dialect, StringRef spec,
   if (!parseNumberX(spec, count)) {
     emitError(loc, "expected array element count followed by 'x' but found '")
         << spec << "'";
+    return Type();
+  }
+
+  // According to the SPIR-V spec:
+  // "Length is the number of elements in the array. It must be at least 1."
+  if (!count) {
+    emitError(loc, "expected array length greater than 0");
     return Type();
   }
 

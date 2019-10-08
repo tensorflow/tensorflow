@@ -209,6 +209,19 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     # exception.
     context.set_log_device_placement(False)
 
+  @reset_eager
+  def testEnableMlirBridge(self):
+    # Default value of enable_mlir_bridge is false.
+    self.assertFalse(context.context().config.experimental.enable_mlir_bridge)
+
+    # Tests enabling mlir bridge.
+    config.enable_mlir_bridge()
+    self.assertTrue(context.context().config.experimental.enable_mlir_bridge)
+
+    # Tests disabling mlir bridge.
+    config.disable_mlir_bridge()
+    self.assertFalse(context.context().config.experimental.enable_mlir_bridge)
+
   @test_util.run_gpu_only
   @reset_eager
   def testJit(self):

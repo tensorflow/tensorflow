@@ -3073,6 +3073,7 @@ REGISTER_OP("Dequantize")
     .Output("output: float")
     .Attr("T: quantizedtype")
     .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST', 'SCALED'} = 'MIN_COMBINED'")
+    .Attr("narrow_range: bool = false")
     .Attr("axis: int = -1")
     .SetShapeFn([](InferenceContext* c) {
       int axis = -1;

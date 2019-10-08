@@ -161,6 +161,9 @@ public:
   // not provide enough methods.
   const llvm::Record &getDef() const;
 
+  // Returns the dialect of the op.
+  const Dialect &getDialect() const { return dialect; }
+
 private:
   // Populates the vectors containing operands, attributes, results and traits.
   void populateOpStructure();

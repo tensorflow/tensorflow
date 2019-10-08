@@ -48,8 +48,9 @@ class TestEnv {
     device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
     OptimizerOptions opts;
     pflr_ = tensorflow::MakeUnique<ProcessFunctionLibraryRuntime>(
-        device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, &flib_def_,
-        opts, /*default_thread_pool=*/nullptr, /*cluster_flr=*/nullptr);
+        device_mgr_.get(), Env::Default(), /*config=*/nullptr,
+        TF_GRAPH_DEF_VERSION, &flib_def_, opts,
+        /*default_thread_pool=*/nullptr);
 
     flr_ = pflr_->GetFLR("/job:a/replica:0/task:0/device:CPU:0");
     CHECK(flr_ != nullptr);

@@ -266,8 +266,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
     absl::Span<const Shape* const> argument_shapes,
     const ExecutionOptions* execution_options,
-    FusionConfigCollection fusion_config_collection,
-    const std::vector<std::vector<bool>>& fusion_config) {
+    const AotCompilationOptions* aot_options) {
   auto config = absl::make_unique<HloModuleConfig>(program_shape);
   ComputationLayout* computation_layout =
       config->mutable_entry_computation_layout();
@@ -311,6 +310,9 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     } else {
       config->set_replica_count(options_.number_of_replicas());
     }
+    if (execution_options->num_partitions() > 0) {
+      config->set_num_partitions(execution_options->num_partitions());
+    }
     config->set_seed(execution_options->seed());
     config->set_debug_options(execution_options->debug_options());
   } else {
@@ -334,9 +336,11 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
   config->set_alias_passthrough_params(
       execution_options->alias_passthrough_params());
 
-  if (fusion_config_collection != FusionConfigCollection::kOff) {
-    config->set_fusion_config_collection(fusion_config_collection);
-    *config->mutable_fusion_config() = fusion_config;
+  if (aot_options != nullptr &&
+      aot_options->fusion_config_collection() != FusionConfigCollection::kOff) {
+    config->set_fusion_config_collection(
+        aot_options->fusion_config_collection());
+    *config->mutable_fusion_config() = aot_options->fusion_config();
   }
 
   return std::move(config);
@@ -345,12 +349,14 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
 StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
     absl::Span<const ShapedBuffer* const> arguments,
-    const ExecutionOptions& execution_options) {
+    const ExecutionOptions& execution_options,
+    const AotCompilationOptions* aot_options) {
   std::vector<const Shape*> argument_shapes;
   for (const auto* arg : arguments) {
     argument_shapes.push_back(&arg->on_host_shape());
   }
-  return CreateModuleConfig(program_shape, argument_shapes, &execution_options);
+  return CreateModuleConfig(program_shape, argument_shapes, &execution_options,
+                            aot_options);
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(

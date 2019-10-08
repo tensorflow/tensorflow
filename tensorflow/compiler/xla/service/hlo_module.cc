@@ -383,14 +383,33 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 }
 
 /* static */
-StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
-    const HloModuleProto& module, const DebugOptions& debug_options) {
-  TF_RET_CHECK(module.has_host_program_shape())
-      << "No program shape found in the proto";
-  ProgramShape program_shape(module.host_program_shape());
-
+StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
+    const ProgramShape& program_shape, const DebugOptions& debug_options,
+    const ExecutionOptions* execution_options) {
   HloModuleConfig module_config(ProgramShape{program_shape});
   module_config.set_debug_options(debug_options);
+  if (execution_options) {
+    if (execution_options->num_replicas() > 0) {
+      module_config.set_replica_count(execution_options->num_replicas());
+    }
+    if (execution_options->num_partitions() > 0) {
+      module_config.set_num_partitions(execution_options->num_partitions());
+    }
+    if (execution_options->has_device_assignment()) {
+      TF_ASSIGN_OR_RETURN(std::unique_ptr<DeviceAssignment> device_assignment,
+                          DeviceAssignment::Deserialize(
+                              execution_options->device_assignment()));
+      module_config.set_static_device_assignment(*device_assignment);
+      if (execution_options->num_replicas() > 0) {
+        CHECK_EQ(module_config.static_device_assignment().replica_count(),
+                 module_config.replica_count());
+      }
+      if (execution_options->num_partitions() > 0) {
+        CHECK_EQ(module_config.static_device_assignment().computation_count(),
+                 module_config.num_partitions());
+      }
+    }
+  }
 
   // The module config is constructed with default layouts regardless of what is
   // passed in via the ProgramShape. Set the layouts to the appropriate values.
@@ -404,6 +423,17 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
   TF_RETURN_IF_ERROR(entry_layout->mutable_result_layout()->CopyLayoutFromShape(
       program_shape.result()));
   return module_config;
+}
+
+/* static */
+StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
+    const HloModuleProto& module, const DebugOptions& debug_options,
+    const ExecutionOptions* execution_options) {
+  TF_RET_CHECK(module.has_host_program_shape())
+      << "No program shape found in the proto";
+  ProgramShape program_shape(module.host_program_shape());
+  return CreateModuleConfigFromShape(program_shape, debug_options,
+                                     execution_options);
 }
 
 namespace {

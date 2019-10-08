@@ -972,8 +972,9 @@ class CacheDatasetOp::MemoryDataset : public DatasetBase {
 class CacheDatasetOp::MemoryDatasetV2 : public CacheDatasetOp::MemoryDataset {
  public:
   explicit MemoryDatasetV2(OpKernelContext* ctx, const DatasetBase* input,
-                           MemoryCache* cache, const Tensor& resource_handle)
-      : MemoryDataset(ctx, input, cache), resource_handle_(resource_handle) {}
+                           MemoryCache* cache,
+                           std::unique_ptr<OwnedResourceHandle> handle)
+      : MemoryDataset(ctx, input, cache), handle_(std::move(handle)) {}
 
   Status CheckExternalState() const override {
     return errors::FailedPrecondition(DebugString(),
@@ -989,14 +990,16 @@ class CacheDatasetOp::MemoryDatasetV2 : public CacheDatasetOp::MemoryDataset {
     Node* filename_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddScalar(tstring(""), &filename_node));
     Node* resource_handle_node = nullptr;
-    TF_RETURN_IF_ERROR(b->AddTensor(resource_handle_, &resource_handle_node));
+    Tensor handle(DT_RESOURCE, TensorShape({}));
+    handle.scalar<ResourceHandle>()() = handle_->handle();
+    TF_RETURN_IF_ERROR(b->AddTensor(handle, &resource_handle_node));
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {input_node, filename_node, resource_handle_node}, output));
     return Status::OK();
   }
 
  private:
-  const Tensor resource_handle_;
+  std::unique_ptr<OwnedResourceHandle> handle_;
 };
 
 CacheDatasetOp::CacheDatasetOp(OpKernelConstruction* ctx)
@@ -1013,8 +1016,15 @@ void CacheDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     if (op_version_ == 2) {
       MemoryCache* cache = nullptr;
       OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 2), &cache));
-      // Transferring cache reference ownership onto `MemoryDatasetV2`.
-      *output = new MemoryDatasetV2(ctx, input, cache, ctx->input(2));
+
+      // Create a fresh handle for the resource because the input handle can
+      // become invalid after this op executes.
+      std::unique_ptr<OwnedResourceHandle> handle;
+      OP_REQUIRES_OK(
+          ctx, OwnedResourceHandle::Create(ctx, cache, kMemoryCache, &handle));
+
+      // Ownership of cache is transferred onto `MemoryDatasetV2`.
+      *output = new MemoryDatasetV2(ctx, input, cache, std::move(handle));
     } else {
       *output = new MemoryDataset(ctx, input, /*cache=*/nullptr);
     }

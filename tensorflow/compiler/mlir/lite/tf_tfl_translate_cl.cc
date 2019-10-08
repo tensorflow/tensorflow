@@ -65,3 +65,11 @@ opt<bool> emit_quant_adaptor_ops(
     llvm::cl::desc(
         "Emit Quantize/Dequantize before and after the generated TFLite model"),
     llvm::cl::init(false));
+
+// The path to a quantization stats file to specify value ranges for some of the
+// tensors with known names.
+// NOLINTNEXTLINE
+opt<std::string> quant_stats_file_name("quant-stats",
+                                       llvm::cl::desc("<stats file>"),
+                                       llvm::cl::value_desc("filename"),
+                                       llvm::cl::init(""));

@@ -89,6 +89,7 @@ tf_kernel_library(
         "sequence_ops.cc",
         "shape_op.cc",
         "shape_util.cc",
+        "sharding_op.cc",
         "slice_op.cc",
         "softmax_op.cc",
         "sort_ops.cc",

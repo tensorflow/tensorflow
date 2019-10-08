@@ -62,7 +62,7 @@ limitations under the License.
 %rename("%s") TFE_Py_InitEagerTensor;
 %rename("%s") TFE_Py_SetEagerTensorProfiler;
 %rename("%s") TFE_Py_RegisterExceptionClass;
-%rename("%s") TFE_Py_RegisterForwardGradientFunction;
+%rename("%s") TFE_Py_RegisterJVPFunction;
 %rename("%s") TFE_Py_RegisterGradientFunction;
 %rename("%s") TFE_Py_RegisterFallbackExceptionClass;
 %rename("%s") TFE_Py_Execute;
@@ -95,7 +95,7 @@ limitations under the License.
 %rename("%s") TFE_Py_ForwardAccumulatorJVP;
 %rename("%s") TFE_Py_ForwardAccumulatorPushState;
 %rename("%s") TFE_Py_ForwardAccumulatorPopState;
-%rename("%s") TFE_Py_PackForwardGradients;
+%rename("%s") TFE_Py_PackJVPs;
 %rename("%s") TFE_NewContextOptions;
 %rename("%s") TFE_ContextOptionsSetConfig;
 %rename("%s") TFE_ContextOptionsSetDevicePlacementPolicy;
@@ -425,11 +425,11 @@ static PyObject* TFE_ClearScalarCache();
 
 // Create new Status object.
 %typemap(in, numinputs=0) TF_Status *out_status {
-  $1 = TF_NewStatus();
+  $1 = GetStatus();
 }
 
 %typemap(freearg) (TF_Status* out_status) {
- TF_DeleteStatus($1);
+ ReturnStatus($1);
 }
 
 %typemap(argout) (TFE_OutputTensorHandles* outputs, TF_Status* out_status) {

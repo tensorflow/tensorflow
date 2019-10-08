@@ -64,8 +64,8 @@ static inline bool IsValidTFTensorType(Type type) {
 }
 
 namespace detail {
-// Common implementation of TensorFlow types.  The template argument indicates
-// the concrete derived class per CRTP.  Concrete classes must implement the
+// Common implementation of TensorFlow types. The template argument indicates
+// the concrete derived class per CRTP. Concrete classes must implement the
 // following:
 //   - `static unsigned getTypeKind()` that returns the (fixed) kind of the
 //     type.
@@ -137,20 +137,21 @@ class TensorFlowRefType : public TensorFlowType {
 // NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
 
-// Storage type contains inferred subtypes for VariantType.
-class VariantTypeStorage : public TypeStorage {
+namespace detail {
+// Storage type contains inferred subtypes for TypeWithSubtype.
+class TypeWithSubtypeStorage : public TypeStorage {
  public:
   using KeyTy = ArrayRef<TensorType>;
 
   // NOLINTNEXTLINE
-  static VariantTypeStorage* construct(TypeStorageAllocator& allocator,
-                                       const KeyTy& key) {
+  static TypeWithSubtypeStorage* construct(TypeStorageAllocator& allocator,
+                                           const KeyTy& key) {
     ArrayRef<TensorType> subtypes = allocator.copyInto(key);
-    return new (allocator.allocate<VariantTypeStorage>())
-        VariantTypeStorage(subtypes);
+    return new (allocator.allocate<TypeWithSubtypeStorage>())
+        TypeWithSubtypeStorage(subtypes);
   }
 
-  explicit VariantTypeStorage(const KeyTy& key) : subtypes_(key) {}
+  explicit TypeWithSubtypeStorage(const KeyTy& key) : subtypes_(key) {}
 
   bool operator==(const KeyTy& key) const { return key == subtypes_; }
 
@@ -161,29 +162,35 @@ class VariantTypeStorage : public TypeStorage {
   KeyTy subtypes_;
 };
 
-// TensorFlow variant type is used to support arbitrary custom C++ data types.
-// VariantType stores inferred shape and datatype for subtypes unlike most other
-// data types don't have any associated information. These subtypes are opaque
-// and their interpretation depends on the actual underlying type. For example,
-// variants encoding TensorList type stores the common shape and dtype of the
-// list elements as the only subtype.
-class VariantType
-    : public Type::TypeBase<VariantType, TensorFlowType, VariantTypeStorage> {
+// Common implementation of TensorFlow types with subtypes. These subtypes are
+// opaque and their interpretation depends on the actual underlying type.
+// The template argument indicates the concrete derived class per CRTP. Concrete
+// classes must implement the following:
+//   - `static unsigned getTypeKind()` that returns the (fixed) kind of the
+//     type.
+//   - `static std::string getTypeName()` that returns the name of the type for
+//     verification logging.
+template <typename Derived>
+class TypeWithSubtype
+    : public Type::TypeBase<Derived, TensorFlowType, TypeWithSubtypeStorage> {
  public:
+  using Base = Type::TypeBase<Derived, TensorFlowType, TypeWithSubtypeStorage>;
+  using TFBase = TypeWithSubtype<Derived>;
   using Base::Base;
 
-  static VariantType get(ArrayRef<TensorType> subtypes, MLIRContext* context) {
-    return Base::get(context, TensorFlowTypes::VARIANT, subtypes);
+  static Derived get(ArrayRef<TensorType> subtypes, MLIRContext* context) {
+    return Base::get(context, Derived::getTypeKind(), subtypes);
   }
 
-  static VariantType getChecked(ArrayRef<TensorType> subtypes,
-                                MLIRContext* context, Location loc) {
-    return Base::getChecked(loc, context, TensorFlowTypes::VARIANT, subtypes);
+  static Derived getChecked(ArrayRef<TensorType> subtypes, MLIRContext* context,
+                            Location loc) {
+    return Base::getChecked(loc, context, Derived::getTypeKind(), subtypes);
   }
 
-  static VariantType get(MLIRContext* context) { return get({}, context); }
+  static Derived get(MLIRContext* context) { return get({}, context); }
 
-  static bool kindof(unsigned kind) { return kind == TensorFlowTypes::VARIANT; }
+  // Support method to enable LLVM-style type casting.
+  static bool kindof(unsigned kind) { return kind == Derived::getTypeKind(); }
 
   static LogicalResult verifyConstructionInvariants(
       llvm::Optional<Location> loc, MLIRContext* context,
@@ -192,7 +199,8 @@ class VariantType
     for (TensorType subtype : subtypes) {
       if (!IsValidTFTensorType(subtype)) {
         if (loc) {
-          emitError(*loc) << "invalid VariantType subtype: " << subtype;
+          emitError(*loc) << "invalid " << Derived::getTypeName()
+                          << " subtype: " << subtype;
         }
         return failure();
       }
@@ -200,7 +208,31 @@ class VariantType
     return success();
   }
 
-  ArrayRef<TensorType> getSubtypes() { return getImpl()->subtypes_; }
+  ArrayRef<TensorType> getSubtypes() { return Base::getImpl()->subtypes_; }
+};
+}  // namespace detail
+
+// TensorFlow resource type is used to support TensorFlow resource variables,
+// which represent shared, persistent state manipulated by a TensorFlow program.
+// ResourceType stores shape and datatype for subtypes unlike most other data
+// types that don't have any associated information.
+class ResourceType : public detail::TypeWithSubtype<ResourceType> {
+ public:
+  using TFBase::TFBase;
+  static unsigned getTypeKind() { return TensorFlowTypes::RESOURCE; }
+  static std::string getTypeName() { return "ResourceType"; }
+};
+
+// TensorFlow variant type is used to support arbitrary custom C++ data types.
+// VariantType stores inferred shape and datatype for subtypes unlike most other
+// data types that don't have any associated information. For example, variants
+// encoding TensorList type stores the common shape and dtype of the list
+// elements as the only subtype.
+class VariantType : public detail::TypeWithSubtype<VariantType> {
+ public:
+  using TFBase::TFBase;
+  static unsigned getTypeKind() { return TensorFlowTypes::VARIANT; }
+  static std::string getTypeName() { return "VariantType"; }
 };
 
 }  // end namespace TF
