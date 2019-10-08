@@ -62,8 +62,7 @@ OpAsmPrinter::~OpAsmPrinter() {}
 static llvm::cl::opt<unsigned> elideElementsAttrIfLarger(
     "mlir-elide-elementsattrs-if-larger",
     llvm::cl::desc("Elide ElementsAttrs with \"...\" that have "
-                   "more elements than the given upper limit"),
-    llvm::cl::init(16));
+                   "more elements than the given upper limit"));
 
 static llvm::cl::opt<bool>
     printDebugInfoOpt("mlir-print-debuginfo",
