@@ -2945,8 +2945,9 @@ def softmax(logits, axis=None, name=None, dim=None):
   numpy=array([0.09003057, 0.24472848, 0.66524094], dtype=float32)>
 
   Args:
-    logits: A non-empty `Tensor`. Must be one of the following types: `half`,
-      `float32`, `float64`.
+    logits: A non-empty `Tensor`, or an object whose type has a registered
+      `Tensor` conversion function. Must be one of the following types:
+      `half`,`float32`, `float64`. See also `convert_to_tensor`
     axis: The dimension softmax would be performed on. The default is -1 which
       indicates the last dimension.
     name: A name for the operation (optional).
@@ -2958,6 +2959,11 @@ def softmax(logits, axis=None, name=None, dim=None):
   Raises:
     InvalidArgumentError: if `logits` is empty or `axis` is beyond the last
       dimension of `logits`.
+    TypeError: If no conversion function is registered for `logits` to
+      Tensor.
+    RuntimeError: If a registered conversion function returns an invalid
+      value.
+      
   """
   axis = deprecation.deprecated_argument_lookup("axis", axis, "dim", dim)
   if axis is None:
