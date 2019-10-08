@@ -55,6 +55,10 @@ std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToAffinePass();
 
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLhloPass();
 
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLinalgPass();
+
+std::unique_ptr<OpPassBase<FuncOp>> createLhloFuseLinalg();
+
 }  // namespace xla_lhlo
 }  // namespace mlir
 

@@ -135,6 +135,19 @@ cc_library(
 )
 
 cc_library(
+    name = "lhlo_fuse_linalg",
+    srcs = ["transforms/lhlo_fuse_linalg.cc"],
+    deps = [
+        ":lhlo",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@local_config_mlir//:Linalg",
+        "@local_config_mlir//:LinalgDialectRegistration",
+        "@local_config_mlir//:Pass",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "hlo_legalize_to_lhlo",
     srcs = ["transforms/hlo_legalize_to_lhlo.cc"],
     deps = [
