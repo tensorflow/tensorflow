@@ -1613,6 +1613,7 @@ cc_binary(
         "//test:TestDialect",
         "//test:TestTransforms",
         "@llvm//:support",
+        "@local_config_mlir//test:TestIR",
         "@local_config_mlir//test:TestPass",
     ],
 )
