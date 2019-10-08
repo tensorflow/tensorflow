@@ -10284,6 +10284,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "strip_device_assignment"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "DatasetToSingleElement"
