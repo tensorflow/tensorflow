@@ -59,6 +59,12 @@ OpAsmPrinter::~OpAsmPrinter() {}
 // OpPrintingFlags
 //===----------------------------------------------------------------------===//
 
+static llvm::cl::opt<unsigned> elideElementsAttrIfLarger(
+    "mlir-elide-elementsattrs-if-larger",
+    llvm::cl::desc("Elide ElementsAttrs with \"...\" that have "
+                   "more elements than the given upper limit"),
+    llvm::cl::init(16));
+
 static llvm::cl::opt<bool>
     printDebugInfoOpt("mlir-print-debuginfo",
                       llvm::cl::desc("Print debug info in MLIR output"),
@@ -78,9 +84,23 @@ static llvm::cl::opt<bool>
 
 /// Initialize the printing flags with default supplied by the cl::opts above.
 OpPrintingFlags::OpPrintingFlags()
-    : printDebugInfoFlag(printDebugInfoOpt),
+    : elementsAttrElementLimit(
+          elideElementsAttrIfLarger.getNumOccurrences()
+              ? Optional<int64_t>(elideElementsAttrIfLarger)
+              : Optional<int64_t>()),
+      printDebugInfoFlag(printDebugInfoOpt),
       printDebugInfoPrettyFormFlag(printPrettyDebugInfoOpt),
       printGenericOpFormFlag(printGenericOpFormOpt) {}
+
+/// Enable the elision of large elements attributes, by printing a '...'
+/// instead of the element data, when the number of elements is greater than
+/// `largeElementLimit`. Note: The IR generated with this option is not
+/// parsable.
+OpPrintingFlags &
+OpPrintingFlags::elideLargeElementsAttrs(int64_t largeElementLimit) {
+  elementsAttrElementLimit = largeElementLimit;
+  return *this;
+}
 
 /// Enable printing of debug information. If 'prettyForm' is set to true,
 /// debug information is printed in a more readable 'pretty' form.
@@ -94,6 +114,12 @@ OpPrintingFlags &OpPrintingFlags::enableDebugInfo(bool prettyForm) {
 OpPrintingFlags &OpPrintingFlags::printGenericOpForm() {
   printGenericOpFormFlag = true;
   return *this;
+}
+
+/// Return if the given ElementsAttr should be elided.
+bool OpPrintingFlags::shouldElideElementsAttr(ElementsAttr attr) const {
+  return elementsAttrElementLimit.hasValue() &&
+         *elementsAttrElementLimit < int64_t(attr.getNumElements());
 }
 
 /// Return if debug information should be printed.
@@ -742,7 +768,14 @@ void ModulePrinter::printAttribute(Attribute attr, bool mayElideType) {
   case StandardAttributes::OpaqueElements: {
     auto eltsAttr = attr.cast<OpaqueElementsAttr>();
     os << "opaque<\"" << eltsAttr.getDialect()->getNamespace() << "\", ";
-    os << '"' << "0x" << llvm::toHex(eltsAttr.getValue()) << "\">";
+    os << '"' << "0x";
+
+    // Check for large ElementsAttr elision.
+    if (printerFlags.shouldElideElementsAttr(eltsAttr))
+      os << "...";
+    else
+      os << llvm::toHex(eltsAttr.getValue());
+    os << "\">";
     break;
   }
   case StandardAttributes::DenseElements: {
@@ -811,6 +844,13 @@ void ModulePrinter::printDenseElementsAttr(DenseElementsAttr attr) {
   // Special case for 0-d and splat tensors.
   if (attr.isSplat()) {
     printEltFn(attr, os, 0);
+    return;
+  }
+
+  // Check for large elements attr elision. We explicitly check *after* splat,
+  // as the splat printing is already elided.
+  if (printerFlags.shouldElideElementsAttr(attr)) {
+    os << "...";
     return;
   }
 
