@@ -85,6 +85,18 @@ foreach fromToBinPair = [[TF_AddOp, HLO_AddOp],
   def : DirectBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
 //===----------------------------------------------------------------------===//
+// Logical binary op patterns.
+//===----------------------------------------------------------------------===//
+
+class DirectLogicalBinaryPat<Op FromOp, Op ToOp>
+  : Pat<(FromOp I1Tensor:$l, I1Tensor:$r),
+        (ToOp $l, $r, (BinBroadcastDimensions $l, $r))>;
+
+foreach fromToBinPair = [[TF_LogicalAndOp, HLO_AndOp],
+                         [TF_LogicalOrOp, HLO_OrOp]] in
+  def : DirectLogicalBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
+
+//===----------------------------------------------------------------------===//
 // Compare op patterns.
 //===----------------------------------------------------------------------===//
 

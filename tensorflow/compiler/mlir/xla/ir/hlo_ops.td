@@ -178,9 +178,23 @@ def HLO_MulOp : HLO_BinaryElementwiseOp<"mul",
 def HLO_SubOp : HLO_BinaryElementwiseOp<"sub",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_SubOp;
 
-def HLO_AndOp: HLO_BinaryElementwiseOp<"and", [Commutative, NoSideEffect]>, BASE_HLO_AndOp;
 
-def HLO_OrOp: HLO_BinaryElementwiseOp<"or", [Commutative, NoSideEffect]>, BASE_HLO_OrOp;
+//===----------------------------------------------------------------------===//
+// XLA binary elementwise op definitions.
+//===----------------------------------------------------------------------===//
+
+// See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
+class HLO_BinaryLogicalElementwiseOp<string mnemonic> :
+        HLO_BinaryElementwiseOp<mnemonic, [Commutative, NoSideEffect]> {
+  let arguments = (ins
+    HLO_PredTensor:$lhs,
+    HLO_PredTensor:$rhs,
+    BroadcastDimAttr:$broadcast_dimensions
+  );
+}
+
+def HLO_AndOp: HLO_BinaryLogicalElementwiseOp<"and">, BASE_HLO_AndOp;
+def HLO_OrOp: HLO_BinaryLogicalElementwiseOp<"or">, BASE_HLO_OrOp;
 
 //===----------------------------------------------------------------------===//
 // XLA control flow op definitions.
