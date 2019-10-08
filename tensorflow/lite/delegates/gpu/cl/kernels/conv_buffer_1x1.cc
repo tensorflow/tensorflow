@@ -193,7 +193,6 @@ int GetGridWidth(int width) {
 }  // namespace
 
 ConvBuffer1x1::ConvBuffer1x1(const OperationDef& definition,
-                             const Convolution2DAttributes& attr,
                              int flt4_x_count, int flt4_y_count,
                              int flt8_x_count, int flt8_y_count)
     : GPUOperation(definition),
@@ -322,18 +321,29 @@ Status CreateConvBuffer1x1(const CreationContext& creation_context,
       flt8_x_count = 2;
     }
   }
-  *result = ConvBuffer1x1(definition, attr, flt4_x_count, flt4_y_count,
-                          flt8_x_count, flt8_y_count);
-  RETURN_IF_ERROR(
-      result->UploadWeights(attr.weights, creation_context.context));
-  LinearStorageCreateInfo create_info;
-  create_info.storage_type = LinearStorageType::BUFFER;
-  create_info.data_type = definition.GetDataType();
-  create_info.aligned_size = attr.weights.shape.o;
-  RETURN_IF_ERROR(CreateLinearStorage(
-      create_info, attr.bias, creation_context.context, &result->biases_));
+  *result = ConvBuffer1x1(definition, flt4_x_count, flt4_y_count, flt8_x_count,
+                          flt8_y_count);
+  return result->UploadData(attr.weights, attr.bias, creation_context.context);
+}
 
-  return OkStatus();
+Status CreateConvBuffer1x1(const CreationContext& creation_context,
+                           const OperationDef& definition,
+                           const FullyConnectedAttributes& attr,
+                           ConvBuffer1x1* result) {
+  int flt4_x_count = 1;
+  int flt4_y_count = 1;
+  int flt8_x_count = 1;
+  int flt8_y_count = 1;
+  if (creation_context.device->vendor() == Vendor::MALI) {
+    if (definition.precision == CalculationsPrecision::F16 &&
+        creation_context.device->GetInfo().compute_units_count <= 4) {
+      flt4_x_count = 2;
+      flt8_x_count = 2;
+    }
+  }
+  *result = ConvBuffer1x1(definition, flt4_x_count, flt4_y_count, flt8_x_count,
+                          flt8_y_count);
+  return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
 }  // namespace cl
