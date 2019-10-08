@@ -17,8 +17,11 @@ limitations under the License.
 
 #include <string.h>
 
-#include "absl/types/span.h"
+#include <memory>
+
+#include "absl/types/optional.h"
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/core/common_runtime/eager/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/eager/cluster_function_library_runtime.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
@@ -83,13 +86,12 @@ class FakeEagerClient : public EagerClient {
   CLIENT_METHOD(WaitQueueDone);
   CLIENT_METHOD(KeepAlive);
   CLIENT_METHOD(CloseContext);
-  CLIENT_METHOD(RegisterFunction);
 #undef CLIENT_METHOD
 
   void StreamingEnqueueAsync(const EnqueueRequest* request,
                              EnqueueResponse* response,
                              StatusCallback done) override {
-    done(errors::Unimplemented(""));
+    done(impl_->Enqueue(request, response));
   }
 
  private:
@@ -137,8 +139,8 @@ class EagerServiceImplTest : public ::testing::Test {
     worker_env_.rendezvous_mgr = &rendezvous_mgr_;
     worker_env_.session_mgr = session_mgr_.get();
 
-    device_mgr_ = absl::make_unique<StaticDeviceMgr>(DeviceFactory::NewDevice(
-        "CPU", {}, "/job:localhost/replica:0/task:0/device:CPU:0"));
+    device_mgr_ = absl::make_unique<StaticDeviceMgr>(
+        DeviceFactory::NewDevice("CPU", {}, "/job:localhost/replica:0/task:0"));
     worker_env_.local_devices = device_mgr_->ListDevices();
     worker_env_.device_mgr = device_mgr_.get();
   }
@@ -234,7 +236,6 @@ TEST_F(EagerServiceImplTest, BasicTest) {
 
   TF_ASSERT_OK(eager_service_impl.CreateContext(&request, &response));
 
-
   EnqueueRequest remote_enqueue_request;
   remote_enqueue_request.set_context_id(context_id);
   EnqueueResponse remote_enqueue_response;
@@ -311,13 +312,14 @@ TEST_F(EagerServiceImplTest, BasicFunctionTest) {
 
   TF_ASSERT_OK(eager_service_impl.CreateContext(&request, &response));
 
-  RegisterFunctionRequest register_function_request;
-  register_function_request.set_context_id(context_id);
-  *register_function_request.mutable_function_def() = MatMulFunction();
-  RegisterFunctionResponse register_function_response;
+  EnqueueRequest enqueue_request;
+  enqueue_request.set_context_id(context_id);
+  RegisterFunctionOp* register_function =
+      enqueue_request.add_queue()->mutable_register_function();
+  *register_function->mutable_function_def() = MatMulFunction();
+  EnqueueResponse enqueue_response;
 
-  TF_ASSERT_OK(eager_service_impl.RegisterFunction(
-      &register_function_request, &register_function_response));
+  TF_ASSERT_OK(eager_service_impl.Enqueue(&enqueue_request, &enqueue_response));
 
   EnqueueRequest remote_enqueue_request;
   remote_enqueue_request.set_context_id(context_id);
@@ -363,8 +365,9 @@ TEST_F(EagerServiceImplTest, BasicFunctionTest) {
                                                &close_context_response));
 }
 
-// Test executes a function through EagerClusterFunctionLibraryRuntime.
-TEST_F(EagerServiceImplTest, ClusterFLRTest) {
+// Test executes a remote function through
+// EagerProcessFunctionLibraryRuntime(EagerClusterFunctionLibraryRuntime).
+TEST_F(EagerServiceImplTest, EagerPFLRTest) {
   TestEagerServiceImpl eager_service_impl(&worker_env_);
 
   uint64 context_id = random::New64();
@@ -376,23 +379,37 @@ TEST_F(EagerServiceImplTest, ClusterFLRTest) {
   CreateContextResponse response;
   TF_ASSERT_OK(eager_service_impl.CreateContext(&request, &response));
 
-  const string target_device = "/job:localhost/replica:0/task:0/device:CPU:0";
+  const string local_device = "/job:localhost/replica:0/task:0/device:CPU:0";
+  const string remote_device = "/job:localhost/replica:0/task:1/device:CPU:0";
 
   // Make the fake EagerClient use the local eager_service_impl.
   EagerContext* ctx = nullptr;
   TF_ASSERT_OK(eager_service_impl.GetEagerContext(context_id, &ctx));
+
   Device* device;
-  TF_ASSERT_OK(ctx->FindDeviceFromName(target_device.c_str(), &device));
+  TF_ASSERT_OK(ctx->FindDeviceFromName(local_device.c_str(), &device));
   EagerClient* client;
   TF_ASSERT_OK(ctx->GetClient(device, &client));
   FakeEagerClient* fake_client = static_cast<FakeEagerClient*>(client);
   fake_client->SetServiceImpl(&eager_service_impl);
 
   auto eager_cluster_flr =
-      absl::make_unique<EagerClusterFunctionLibraryRuntime>(ctx, nullptr);
-  tensorflow::FunctionDef fdef = MatMulFunction();
+      absl::make_unique<EagerClusterFunctionLibraryRuntime>(ctx,
+                                                            device_mgr_.get());
 
-  // Create the remote input for MatMulFunction.
+  FunctionLibraryDefinition func_lib_def{OpRegistry::Global(), {}};
+  auto device_mgr = absl::make_unique<StaticDeviceMgr>(
+      DeviceFactory::NewDevice("CPU", {}, "/job:localhost/replica:0/task:1"));
+  std::unique_ptr<ProcessFunctionLibraryRuntime> eager_pflr =
+      absl::make_unique<EagerProcessFunctionLibraryRuntime>(
+          device_mgr.get(), Env::Default(), /*config=*/nullptr,
+          TF_GRAPH_DEF_VERSION, &func_lib_def, OptimizerOptions(), nullptr,
+          eager_cluster_flr.get(), nullptr);
+
+  tensorflow::FunctionDef fdef = MatMulFunction();
+  TF_ASSERT_OK(func_lib_def.AddFunctionDef(fdef));
+
+  // Create an input on local_device for MatMulFunction.
   EnqueueRequest remote_enqueue_request;
   remote_enqueue_request.set_context_id(context_id);
   EnqueueResponse remote_enqueue_response;
@@ -403,38 +420,45 @@ TEST_F(EagerServiceImplTest, ClusterFLRTest) {
   val.Clear();
   SetTensorProto(val.mutable_tensor());
   const_attrs.insert({"value", val});
-  AddOperationToEnqueueRequest(1, "Const", {}, const_attrs, target_device,
+  AddOperationToEnqueueRequest(1, "Const", {}, const_attrs, local_device,
                                &remote_enqueue_request);
   TF_ASSERT_OK(eager_service_impl.Enqueue(&remote_enqueue_request,
                                           &remote_enqueue_response));
 
-  // Instantiate MatMulFunction.
+  // Instantiate MatMulFunction on remote_device.
   FunctionLibraryRuntime::InstantiateOptions options;
-  options.target = target_device;
+  options.target = remote_device;
   options.is_multi_device_function = true;
-  options.input_devices.push_back(target_device);
+  options.input_devices.push_back(local_device);
   FunctionLibraryRuntime::Handle handle;
-  FunctionLibraryDefinition func_lib_def{OpRegistry::Global(), {}};
-  TF_ASSERT_OK(func_lib_def.AddFunctionDef(fdef));
-  TF_ASSERT_OK(eager_cluster_flr->Instantiate(
-      fdef.signature().name(), func_lib_def, AttrSlice(&fdef.attr()), options,
-      &handle));
+  TF_ASSERT_OK(eager_pflr->Instantiate(
+      fdef.signature().name(), AttrSlice(&fdef.attr()), options, &handle));
 
-  // Run MatMulFunction.
+  // Run MatMulFunction on remote_device.
   FunctionLibraryRuntime::Options opts;
   const int64 step_id = opts.step_id;
+  opts.op_id = 2;
   Notification done;
   Status status;
   RemoteTensorHandle input;
   input.set_op_id(1);
   input.set_output_num(0);
-  input.set_op_device(target_device);
-  input.set_device(target_device);
-  eager_cluster_flr->Run(opts, handle, 2, {&input},
-                         [&status, &done](const Status& s) {
-                           status = s;
-                           done.Notify();
-                         });
+  input.set_op_device(local_device);
+  input.set_device(local_device);
+  std::vector<RemoteTensorHandle> inputs = {input};
+  std::vector<Tensor> outputs;
+  const std::vector<absl::optional<Tensor>> tensor_args = {absl::nullopt};
+  const EagerFunctionArgs args(
+      &tensor_args,
+      [&inputs](const int i, RemoteTensorHandle* handle) -> Status {
+        *handle = inputs.at(i);
+        return Status::OK();
+      });
+  eager_pflr->Run(opts, handle, args, &outputs,
+                  [&status, &done](const Status& s) {
+                    status = s;
+                    done.Notify();
+                  });
   done.WaitForNotification();
   TF_ASSERT_OK(status);
 

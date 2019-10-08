@@ -22,11 +22,8 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/core/framework/types.pb.h"
 
-namespace mlir {
-namespace TFL {
-
 // Is this dtype a quantization type from TensorFlow.
-bool IsQuantizationType(tensorflow::DataType dtype) {
+static bool IsQuantizationType(tensorflow::DataType dtype) {
   switch (dtype) {
     case tensorflow::DT_QINT8:
     case tensorflow::DT_QUINT8:
@@ -39,22 +36,8 @@ bool IsQuantizationType(tensorflow::DataType dtype) {
   }
 }
 
-// Gets the width of this quantization type. Returns 0 if it isn't a
-// quantization type.
-int64_t GetQuantizationTypeWidth(tensorflow::DataType dtype) {
-  switch (dtype) {
-    case tensorflow::DT_QINT8:
-    case tensorflow::DT_QUINT8:
-      return 8;
-    case tensorflow::DT_QINT16:
-    case tensorflow::DT_QUINT16:
-      return 16;
-    case tensorflow::DT_QINT32:
-      return 32;
-    default:
-      return 0;
-  }
-}
+namespace mlir {
+namespace TFL {
 
 bool ParseInputNodeQuantSpecs(absl::string_view node_names,
                               absl::string_view min_values,

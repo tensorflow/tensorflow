@@ -402,6 +402,15 @@ def slice(x, start_dims, limit_dims, strides):
   return x[tuple(spec)]
 
 
+sharding = gen_xla_ops.xla_sharding
+
+
+@ops.RegisterGradient("XlaSharding")
+def _sharding_grad(op, grad):
+  del op  # Unused
+  return [grad]
+
+
 sort = gen_xla_ops.xla_sort
 key_value_sort = gen_xla_ops.xla_key_value_sort
 while_loop = gen_xla_ops.xla_while

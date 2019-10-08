@@ -54,24 +54,4 @@ DeviceAttributes Device::BuildDeviceAttributes(
   return da;
 }
 
-Status Device::FillContextMap(const Graph* graph,
-                              DeviceContextMap* device_context_map) {
-  DeviceContext* device_context = nullptr;
-  TF_RETURN_IF_ERROR(TryGetDeviceContext(&device_context));
-  if (device_context) {
-    device_context_map->resize(graph->num_node_ids());
-    for (Node* n : graph->nodes()) {
-      // Increment the refcount for every assignment to a node.
-      device_context->Ref();
-      // Transfers ownership to value in the DeviceContextMap.
-      (*device_context_map)[n->id()] = device_context;
-    }
-
-    // Decrement the refcount, since each node_id in the returned
-    // map has a reference to the context.
-    device_context->Unref();
-  }
-  return Status::OK();
-}
-
 }  // namespace tensorflow

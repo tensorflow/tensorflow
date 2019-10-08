@@ -219,7 +219,7 @@ FusionResult mlir::canFuseLoops(AffineForOp srcForOp, AffineForOp dstForOp,
     return FusionResult::FailBlockDependence;
   }
 
-  // Check if 'srcForOp' precedeces 'dstForOp' in 'block'.
+  // Check if 'srcForOp' precedes 'dstForOp' in 'block'.
   bool isSrcForOpBeforeDstForOp =
       srcForOp.getOperation()->isBeforeInBlock(dstForOp.getOperation());
   // 'forOpA' executes before 'forOpB' in 'block'.

@@ -137,11 +137,16 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                                                         name="init")
 
       copied_variable = copy.deepcopy(variable)
-      copied_variable.assign(4 * np.ones((4, 4, 4)))
+      self.assertEqual(variable.name, copied_variable.name)
+      self.assertEqual(variable.shape, copied_variable.shape)
+      self.assertEqual(variable.device, copied_variable.device)
 
-      # Copying the variable should create a new underlying tensor with distinct
-      # values.
-      self.assertFalse(np.allclose(variable.numpy(), copied_variable.numpy()))
+      # The copied variable should have the same value as the original.
+      self.assertAllEqual(variable.numpy(), copied_variable.numpy())
+
+      # Updates to the copy should not be reflected in the original.
+      copied_variable.assign(4 * np.ones((4, 4, 4)))
+      self.assertNotAllEqual(variable.numpy(), copied_variable.numpy())
 
   @test_util.run_deprecated_v1
   def testGraphDeepCopy(self):

@@ -1521,9 +1521,6 @@ class ParseSequenceExampleTest(test.TestCase):
     kwargs["serialized"] = [kwargs.pop("serialized")]
     kwargs["example_names"] = [kwargs.pop("example_name")
                               ] if "example_name" in kwargs else None
-    # Disable error string matching; it's not consistent for batch mode.
-    if expected_err:
-      expected_err = (expected_err[0], "")
 
     # Add a batch dimension to expected output
     if expected_context_values:
@@ -1531,7 +1528,7 @@ class ParseSequenceExampleTest(test.TestCase):
       for k in expected_context_values:
         v = expected_context_values[k]
         if isinstance(kwargs["context_features"][k],
-                      parsing_ops.FixedLenFeature):
+                      (parsing_ops.FixedLenFeature, parsing_ops.RaggedFeature)):
           new_values[k] = np.expand_dims(v, axis=0)
         else:
           # Sparse tensor.
@@ -1548,6 +1545,9 @@ class ParseSequenceExampleTest(test.TestCase):
                       parsing_ops.FixedLenSequenceFeature):
           expected_length_values[k] = [np.shape(v)[0]]
           new_values[k] = np.expand_dims(v, axis=0)
+        elif isinstance(kwargs["sequence_features"][k],
+                        parsing_ops.RaggedFeature):
+          new_values[k] = np.expand_dims(v, axis=0)
         else:
           # Sparse tensor.
           new_values[k] = (np.insert(v[0], 0, 0, axis=1), v[1],
@@ -1562,6 +1562,7 @@ class ParseSequenceExampleTest(test.TestCase):
         expected_err=expected_err,
         batch=True)
 
+  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleWithSparseAndDenseContext(self):
     original = sequence_example(
         context=features({
@@ -1605,6 +1606,7 @@ class ParseSequenceExampleTest(test.TestCase):
         },
         expected_context_values=expected_context_output)
 
+  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleWithMultipleSizeFeatureLists(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1668,6 +1670,7 @@ class ParseSequenceExampleTest(test.TestCase):
         },
         expected_feat_list_values=expected_feature_list_output)
 
+  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleWithoutDebugName(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1725,6 +1728,7 @@ class ParseSequenceExampleTest(test.TestCase):
         },
         expected_feat_list_values=expected_feature_list_output)
 
+  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleWithSparseAndDenseFeatureLists(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1783,6 +1787,7 @@ class ParseSequenceExampleTest(test.TestCase):
         },
         expected_feat_list_values=expected_feature_list_output)
 
+  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleWithEmptyFeatureInFeatureLists(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1815,6 +1820,7 @@ class ParseSequenceExampleTest(test.TestCase):
         },
         expected_feat_list_values=expected_feature_list_output)
 
+  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleListWithInconsistentDataFails(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1835,6 +1841,7 @@ class ParseSequenceExampleTest(test.TestCase):
         expected_err=(errors_impl.OpError, "Feature list: a, Index: 1."
                       "  Data types don't match. Expected type: int64"))
 
+  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleListWithWrongDataTypeFails(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1855,6 +1862,7 @@ class ParseSequenceExampleTest(test.TestCase):
                       "Feature list: a, Index: 0.  Data types don't match."
                       " Expected type: int64"))
 
+  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleListWithWrongSparseDataTypeFails(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1878,9 +1886,9 @@ class ParseSequenceExampleTest(test.TestCase):
         },
         expected_err=(errors_impl.OpError,
                       "Name: in1, Feature list: a, Index: 2."
-                      "  Data types don't match. Expected type: int64"
-                      "  Feature is: float_list"))
+                      "  Data types don't match. Expected type: int64"))
 
+  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleListWithWrongShapeFails(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1899,10 +1907,44 @@ class ParseSequenceExampleTest(test.TestCase):
                 "a": parsing_ops.FixedLenSequenceFeature((2,), dtypes.int64)
             }
         },
-        expected_err=(errors_impl.OpError, r"Name: in1, Key: a, Index: 1."
-                      r"  Number of int64 values != expected."
-                      r"  values size: 3 but output shape: \[2\]"))
+        expected_err=(
+            errors_impl.OpError,
+            # message from ParseSingleExample.
+            r"Name: in1, Key: a, Index: 1."
+            r"  Number of int64 values != expected."
+            r"  values size: 3 but output shape: \[2\]"
+            # or message from FastParseSequenceExample
+            r"|Feature list 'a' has an unexpected number of values.  "
+            r"Total values size: 5 is not consistent with output "
+            r"shape: \[\?,2\]"))
 
+  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
+  def testSequenceExampleListWithWrongShapeFails2(self):
+    # This exercises a different code path for FastParseSequenceExample than
+    # testSequenceExampleListWithWrongShapeFails (in that test, we can tell that
+    # the shape is bad based on the total number of values; in this test, we
+    # can't tell the shape is bad until we look at individual rows.)
+    original = sequence_example(
+        feature_lists=feature_lists({
+            "a": feature_list([int64_feature([2]),
+                               int64_feature([2, 3, 4])]),
+        }))
+
+    serialized = original.SerializeToString()
+
+    self._testBoth(
+        {
+            "example_name": "in1",
+            "serialized": ops.convert_to_tensor(serialized),
+            "sequence_features": {
+                "a": parsing_ops.FixedLenSequenceFeature((2,), dtypes.int64)
+            }
+        },
+        expected_err=(errors_impl.OpError, r"Name: in1, Key: a, Index: 0."
+                      r"  Number of (int64 )?values != expected."
+                      r"  values size: 1 but output shape: \[2\]"))
+
+  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleWithMissingFeatureListFails(self):
     original = sequence_example(feature_lists=feature_lists({}))
 
@@ -1923,6 +1965,7 @@ class ParseSequenceExampleTest(test.TestCase):
             " feature_list_dense_missing_assumed_empty or"
             " feature_list_dense_defaults?"))
 
+  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleBatch(self):
     first = sequence_example(
         feature_lists=feature_lists({
@@ -1935,14 +1978,21 @@ class ParseSequenceExampleTest(test.TestCase):
                 ])
         }))
     second = sequence_example(
+        context=features({"c": float_feature([7])}),
         feature_lists=feature_lists({
             "a": feature_list([
                 int64_feature([21, 2, 11]),
-            ])
+            ]),
+            "b": feature_list([
+                int64_feature([5]),
+            ]),
         }))
 
     serialized = [first.SerializeToString(), second.SerializeToString()]
 
+    expected_context_output = {
+        "c": np.array([-1, 7], dtype=np.float32),
+    }
     expected_feature_list_output = {
         "a":
             np.array(
@@ -1961,6 +2011,8 @@ class ParseSequenceExampleTest(test.TestCase):
                     ]
                 ],
                 dtype=np.int64),
+        "b":
+            np.array([[0], [5]], dtype=np.int64),
         "d":
             np.empty(shape=(2, 0, 5), dtype=np.float32),  # allowed_missing
     }
@@ -1969,20 +2021,288 @@ class ParseSequenceExampleTest(test.TestCase):
         {
             "example_names": ops.convert_to_tensor(["in1", "in2"]),
             "serialized": ops.convert_to_tensor(serialized),
+            "context_features": {
+                "c":
+                    parsing_ops.FixedLenFeature(
+                        (), dtypes.float32, default_value=-1),
+            },
             "sequence_features": {
                 "a":
                     parsing_ops.FixedLenSequenceFeature((1, 3), dtypes.int64),
+                "b":
+                    parsing_ops.FixedLenSequenceFeature(
+                        (), dtypes.int64, allow_missing=True),
                 "d":
                     parsing_ops.FixedLenSequenceFeature(
                         (5,), dtypes.float32, allow_missing=True),
             }
         },
+        expected_context_values=expected_context_output,
         expected_feat_list_values=expected_feature_list_output,
         expected_length_values={
             "a": [4, 1],
+            "b": [0, 1],
             "d": [0, 0]
         },
         batch=True)
+
+  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
+  def testSerializedContainingRaggedFeatureWithNoPartitions(self):
+    original = [
+        sequence_example(
+            context=features({"a": float_feature([3, 4])}),
+            feature_lists=feature_lists({
+                "b": feature_list([float_feature([5]),
+                                   float_feature([3])]),
+                "c": feature_list([int64_feature([6, 7, 8, 9])])
+            })),
+        sequence_example(
+            context=features({"a": float_feature([9])}),
+            feature_lists=feature_lists({
+                "b": feature_list([]),
+                "c": feature_list([int64_feature([]),
+                                   int64_feature([1, 2, 3])])
+            })),
+        sequence_example(
+            feature_lists=feature_lists({
+                "b":
+                    feature_list([
+                        float_feature([1]),
+                        float_feature([1, 2]),
+                        float_feature([1, 2, 3])
+                    ])
+            })),
+        sequence_example(
+            context=features({"a": feature()}),
+            feature_lists=feature_lists({
+                "b": feature_list([feature()]),
+                "c": feature_list([int64_feature([3, 3, 3])])
+            }))
+    ]
+    serialized = [m.SerializeToString() for m in original]
+
+    context_features = {"a": parsing_ops.RaggedFeature(dtype=dtypes.float32)}
+    sequence_features = {
+        "b":
+            parsing_ops.RaggedFeature(dtype=dtypes.float32),
+        "c":
+            parsing_ops.RaggedFeature(
+                dtype=dtypes.int64, row_splits_dtype=dtypes.int64)
+    }
+
+    expected_a = ragged_factory_ops.constant([[3, 4], [9], [], []],
+                                             dtype=dtypes.float32,
+                                             row_splits_dtype=dtypes.int32)
+    expected_b = ragged_factory_ops.constant(
+        [[[5], [3]], [], [[1], [1, 2], [1, 2, 3]], [[]]],
+        dtype=dtypes.float32,
+        row_splits_dtype=dtypes.int32)
+    expected_c = ragged_factory_ops.constant(
+        [[[6, 7, 8, 9]], [[], [1, 2, 3]], [], [[3, 3, 3]]],
+        dtype=dtypes.int64,
+        row_splits_dtype=dtypes.int64)
+
+    expected_context_output = dict(a=expected_a)
+    expected_feature_list_output = dict(b=expected_b, c=expected_c)
+
+    self._test(
+        {
+            "serialized": ops.convert_to_tensor(serialized),
+            "context_features": context_features,
+            "sequence_features": sequence_features,
+        },
+        expected_context_output,
+        expected_feature_list_output,
+        batch=True)
+
+    self._test(
+        {
+            "serialized": ops.convert_to_tensor(serialized)[0],
+            "context_features": context_features,
+            "sequence_features": sequence_features,
+        },
+        expected_context_values={"a": [3, 4]},
+        expected_feat_list_values={
+            "b": [[5], [3]],
+            "c": [[6, 7, 8, 9]]
+        },
+        batch=False)
+
+    # Test with a larger batch of examples.
+    batch_serialized = serialized * 64
+    batch_context_expected_out = {
+        "a": ragged_concat_ops.concat([expected_a] * 64, axis=0)
+    }
+    batch_feature_list_expected_out = {
+        "b": ragged_concat_ops.concat([expected_b] * 64, axis=0),
+        "c": ragged_concat_ops.concat([expected_c] * 64, axis=0)
+    }
+    self._test(
+        {
+            "serialized": ops.convert_to_tensor(batch_serialized),
+            "context_features": context_features,
+            "sequence_features": sequence_features,
+        },
+        batch_context_expected_out,
+        batch_feature_list_expected_out,
+        batch=True)
+
+  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
+  def testSerializedContainingNestedRaggedFeature(self):
+    """Test RaggedFeatures with nested partitions."""
+    original = [
+        # rt shape: [(batch), 2, None, None]
+        sequence_example(
+            context=features({
+                # a[0] = [[[[1]], [[2, 3], [4]]], [[], [[5, 6, 7]]]]
+                "a_values": float_feature([1, 2, 3, 4, 5, 6, 7]),
+                "a_lengths_axis2": int64_feature([1, 2, 0, 1]),
+                "a_lengths_axis3": int64_feature([1, 2, 1, 3]),
+                "a_splits_axis3": int64_feature([0, 1, 3, 4, 7])
+            }),
+            feature_lists=feature_lists({
+                # b[0] = [[[1], [2, 3, 4]], [[2, 4], [6]]]
+                "b_values":
+                    feature_list(
+                        [float_feature([1, 2, 3, 4]),
+                         float_feature([2, 4, 6])]),
+                "b_splits":
+                    feature_list(
+                        [int64_feature([0, 1, 4]),
+                         int64_feature([0, 2, 3])]),
+            })),
+        sequence_example(
+            # a[1] = []
+            # b[1] = []
+        ),
+        sequence_example(
+            context=features({
+                # a[2] = [[[[1, 2, 3], [4]], [[5], [6], [7, 8]]]]
+                "a_values": float_feature([1, 2, 3, 4, 5, 6, 7, 8]),
+                "a_lengths_axis2": int64_feature([2, 3]),
+                "a_lengths_axis3": int64_feature([3, 1, 1, 1, 2]),
+                "a_splits_axis3": int64_feature([0, 3, 4, 5, 6, 8])
+            }),
+            feature_lists=feature_lists({
+                # b[2] = [[[9], [8, 7, 6], [5]], [[4, 3, 2, 1]], [[0]]]
+                "b_values":
+                    feature_list([
+                        float_feature([9, 8, 7, 6, 5]),
+                        float_feature([4, 3, 2, 1]),
+                        float_feature([0])
+                    ]),
+                "b_splits":
+                    feature_list([
+                        int64_feature([0, 1, 4, 5]),
+                        int64_feature([0, 4]),
+                        int64_feature([0, 1])
+                    ])
+            }))
+    ]
+    serialized = [m.SerializeToString() for m in original]
+
+    context_features = {
+        "a":
+            parsing_ops.RaggedFeature(
+                value_key="a_values",
+                partitions=[
+                    parsing_ops.RaggedFeature.UniformRowLength(2),
+                    parsing_ops.RaggedFeature.RowLengths("a_lengths_axis2"),
+                    parsing_ops.RaggedFeature.RowSplits("a_splits_axis3"),
+                ],
+                dtype=dtypes.float32,
+                row_splits_dtype=dtypes.int64,
+            )
+    }
+    sequence_features = {
+        "b":
+            parsing_ops.RaggedFeature(
+                value_key="b_values",
+                dtype=dtypes.float32,
+                partitions=[parsing_ops.RaggedFeature.RowSplits("b_splits")]),
+        "c":
+            parsing_ops.RaggedFeature(
+                value_key="b_values",
+                dtype=dtypes.float32,
+                partitions=[parsing_ops.RaggedFeature.UniformRowLength(1)]),
+    }
+
+    expected_context = {
+        "a":
+            ragged_factory_ops.constant(
+                [[[[[1]], [[2, 3], [4]]], [[], [[5, 6, 7]]]], [],
+                 [[[[1, 2, 3], [4]], [[5], [6], [7, 8]]]]],
+                dtype=dtypes.float32,
+                row_splits_dtype=dtypes.int64)
+    }
+    expected_feature_list = {
+        "b":
+            ragged_factory_ops.constant(
+                [[[[1], [2, 3, 4]], [[2, 4], [6]]], [],
+                 [[[9], [8, 7, 6], [5]], [[4, 3, 2, 1]], [[0]]]],
+                dtype=dtypes.float32,
+                row_splits_dtype=dtypes.int32),
+        "c":
+            ragged_factory_ops.constant(
+                [[[[1], [2], [3], [4]], [[2], [4], [6]]], [],
+                 [[[9], [8], [7], [6], [5]], [[4], [3], [2], [1]], [[0]]]],
+                ragged_rank=2,
+                dtype=dtypes.float32,
+                row_splits_dtype=dtypes.int32),
+    }
+
+    self._test(
+        dict(
+            serialized=ops.convert_to_tensor(serialized),
+            context_features=context_features,
+            sequence_features=sequence_features),
+        expected_context,
+        expected_feature_list,
+        batch=True)
+
+    self._test(
+        dict(
+            serialized=ops.convert_to_tensor(serialized)[0],
+            context_features=context_features,
+            sequence_features=sequence_features),
+        {"a": expected_context["a"][0]}, {
+            "b": expected_feature_list["b"][0],
+            "c": expected_feature_list["c"][0]
+        },
+        batch=False)
+
+  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
+  def testSerializedContainingMisalignedNestedRaggedFeature(self):
+    """FeatureList with 2 value tensors but only one splits tensor."""
+    original = sequence_example(
+        feature_lists=feature_lists({
+            "b_values":
+                feature_list(
+                    [float_feature([1, 2, 3, 4]),
+                     float_feature([2, 4, 6])]),
+            "b_splits":
+                feature_list([int64_feature([0, 1, 4])]),
+        }))
+    sequence_features = {
+        "b":
+            parsing_ops.RaggedFeature(
+                value_key="b_values",
+                dtype=dtypes.float32,
+                partitions=[parsing_ops.RaggedFeature.RowSplits("b_splits")],
+                validate=True)
+    }
+    self._testBoth(
+        dict(
+            serialized=ops.convert_to_tensor(original.SerializeToString()),
+            sequence_features=sequence_features),
+        expected_err=(
+            (errors_impl.OpError, ValueError),
+            # Message for batch=true:
+            "Feature b: values and partitions are not aligned"
+            # Message for batch=false in graph mode:
+            "|.* do not form a valid RaggedTensor"
+            # Message for batch=false in eager mode:
+            "|Dimensions 2 and 1 are not compatible"))
 
 
 @test_util.run_all_in_graph_and_eager_modes

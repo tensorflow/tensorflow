@@ -60,6 +60,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_legalize_tf",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_optimize",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_quantize",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
@@ -68,7 +69,9 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:hlo",
         "//tensorflow/compiler/mlir/xla:hlo_legalize_to_lhlo",
         "//tensorflow/compiler/mlir/xla:lhlo",
+        "//tensorflow/compiler/mlir/xla:lhlo_fuse_linalg",
         "//tensorflow/compiler/mlir/xla:lhlo_legalize_to_affine",
+        "//tensorflow/compiler/mlir/xla:lhlo_legalize_to_linalg",
         "//tensorflow/compiler/mlir/xla:xla_dialect_registration",
         "//tensorflow/compiler/mlir/xla:xla_legalize_control_flow",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
@@ -94,7 +97,7 @@ tf_cc_binary(
     name = "tf-opt",
     deps = [
         ":tf_mlir_opt_main",
-        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
     ],
 )

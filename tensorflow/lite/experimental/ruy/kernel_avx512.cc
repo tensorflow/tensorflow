@@ -42,6 +42,9 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
 
 #else  // RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
+namespace {
+namespace intrin_utils {
+
 inline std::int32_t mm512_get1_epi32(const __m512i v, int i) {
   __m256i a =
       i < 8 ? _mm512_extracti32x8_epi32(v, 0) : _mm512_extracti32x8_epi32(v, 1);
@@ -67,10 +70,8 @@ inline std::int32_t mm512_get1_epi32(const __m512i v, int i) {
       return 0;
   }
 }
-
-inline __m512i mm512_set1_epi32(__m512i* v, int i, std::int32_t x) {
-  return *v = _mm512_mask_set1_epi32(*v, 1 << i, x);
-}
+}  // namespace intrin_utils
+}  // namespace
 
 void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
   gemmlowp::ScopedProfilingLabel label("Kernel kAvx512");
@@ -182,8 +183,8 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
 
         for (int j = 0; j < 16; ++j) {
           accum_data_v[j] = _mm512_sub_epi32(
-              accum_data_v[j],
-              _mm512_set1_epi32(mm512_get1_epi32(non_lhs_sums_offset, j)));
+              accum_data_v[j], _mm512_set1_epi32(intrin_utils::mm512_get1_epi32(
+                                   non_lhs_sums_offset, j)));
         }
       }
 
@@ -410,7 +411,11 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
         const float* rhs_ptr = rhs_col_ptr + 8 * mmm;
         for (int d = 0; d < (params.depth - 1); ++d) {
           const __m512 lhs_data = _mm512_loadu_ps(lhs_ptr);
-          const __m256 rhs_data = _mm256_loadu_ps(rhs_ptr);
+          // In this version RHS values are loaded individually rather than
+          // first loading together and then extract with broadcasting. This is
+          // because AVX flavours and instrinsics and compilers in combination
+          // do not handle this pattern of extraction very well.
+          const float* rhs_data = rhs_ptr;
           lhs_ptr += 16;
           rhs_ptr += 16;
 
@@ -443,7 +448,7 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
         }
         {
           const __m512 lhs_data = _mm512_loadu_ps(lhs_ptr);
-          const __m256 rhs_data = _mm256_loadu_ps(rhs_ptr);
+          const float* rhs_data = rhs_ptr;
           {
             const __m512 dup_rhs_element_j0 = _mm512_set1_ps(rhs_data[0]);
             accum_data_v0 =
@@ -515,7 +520,7 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
         const float* rhs_ptr = rhs_col_ptr + 8 * mmm;
         for (int d = 0; d < (params.depth - 1); ++d) {
           const __m512 lhs_data = _mm512_loadu_ps(lhs_ptr);
-          const __m256 rhs_data = _mm256_loadu_ps(rhs_ptr);
+          const float* rhs_data = rhs_ptr;
           lhs_ptr += 16;
           rhs_ptr += 16;
           {
@@ -547,7 +552,7 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
         }
         {
           const __m512 lhs_data = _mm512_loadu_ps(lhs_ptr);
-          const __m256 rhs_data = _mm256_loadu_ps(rhs_ptr);
+          const float* rhs_data = rhs_ptr;
           {
             const __m512 dup_rhs_element_j0 = _mm512_set1_ps(rhs_data[0]);
             accum_data_v0 =
@@ -635,7 +640,7 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
         const float* rhs_ptr = rhs_col_ptr + 8 * mmm;
         for (int d = 0; d < (params.depth - 1); ++d) {
           const __m512 lhs_data = _mm512_loadu_ps(lhs_ptr);
-          const __m256 rhs_data = _mm256_loadu_ps(rhs_ptr);
+          const float* rhs_data = rhs_ptr;
           lhs_ptr += 16;
           rhs_ptr += 16;
           {
@@ -667,7 +672,7 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
         }
         {
           const __m512 lhs_data = _mm512_loadu_ps(lhs_ptr);
-          const __m256 rhs_data = _mm256_loadu_ps(rhs_ptr);
+          const float* rhs_data = rhs_ptr;
           {
             const __m512 dup_rhs_element_j0 = _mm512_set1_ps(rhs_data[0]);
             accum_data_v0 =
@@ -766,7 +771,7 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
         const float* rhs_ptr = rhs_col_ptr + 8 * mmm;
         for (int d = 0; d < params.depth; ++d) {
           const __m512 lhs_data = _mm512_loadu_ps(lhs_ptr);
-          const __m256 rhs_data = _mm256_loadu_ps(rhs_ptr);
+          const float* rhs_data = rhs_ptr;
 
           for (int j = 0; j < 8; ++j) {
             const __m512 dup_rhs_element_j = _mm512_set1_ps(rhs_data[j]);

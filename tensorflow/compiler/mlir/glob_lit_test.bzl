@@ -6,6 +6,27 @@
 """Lit runner globbing test
 """
 
+# This is a hack. It is just barely enough to work for our needs.
+# Due to bazel's hermetic builds, if a test is not included in `data`,
+# lit won't see it (and thus won't run it).
+def _run_lit_test(name, data):
+    """Runs lit on all tests it can find in `data` under tensorflow/compiler/mlir."""
+    native.py_test(
+        name = name,
+        srcs = ["@llvm//:lit"],
+        tags = ["no_rocm"],
+        args = [
+            "tensorflow/compiler/mlir --config-prefix=runlit",
+        ],
+        data = data + [
+            "//tensorflow/compiler/mlir:litfiles",
+            "@llvm//:FileCheck",
+            "@llvm//:count",
+            "@llvm//:not",
+        ],
+        main = "lit.py",
+    )
+
 def glob_lit_tests(
         exclude = None,
         test_file_exts = ["mlir"],
@@ -31,18 +52,23 @@ def glob_lit_tests(
       driver: str, label of the driver shell script.
       features: [str], list of extra features to enable.
     """
-    native.py_test(
-        name = "glob_lit_tests",
-        srcs = ["@llvm//:lit"],
-        tags = ["no_rocm"],
-        args = [
-            "tensorflow/compiler/mlir --config-prefix=runlit",
-        ],
-        data = data + [
-            "//tensorflow/compiler/mlir:litfiles",
-            "@llvm//:FileCheck",
-            "@llvm//:count",
-            "@llvm//:not",
-        ] + native.glob(["*." + ext for ext in test_file_exts]),
-        main = "lit.py",
-    )
+    _run_lit_test("glob_lit_tests", data + native.glob(["*." + ext for ext in test_file_exts]))
+
+def lit_test(
+        name,
+        data = [],
+        size = "small",
+        tags = None,
+        driver = None,
+        features = []):
+    """Runs test files under lit.
+
+    Args:
+      name: str, the name of the test.
+      data: [str], labels that should be provided as data inputs.
+      size: str, the size of the test.
+      tags: [str], tags to attach to the test.
+      driver: str, label of the driver shell script.
+      features: [str], list of extra features to enable.
+    """
+    _run_lit_test(name + ".test", data + [name])

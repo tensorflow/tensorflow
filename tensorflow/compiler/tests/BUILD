@@ -426,6 +426,23 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "einsum_op_test",
+    size = "medium",
+    srcs = ["einsum_op_test.py"],
+    enabled_backends = [
+        "cpu",
+        "gpu",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:special_math_ops",
+    ],
+)
+
+tf_xla_py_test(
     name = "reshape_op_test",
     size = "small",
     srcs = ["reshape_op_test.py"],
@@ -996,25 +1013,20 @@ tf_xla_py_test(
     ],
 )
 
-# TODO(b/140174740): Re-enable when fixed.
-#tf_xla_py_test(
-#    name = "unary_ops_test",
-#    size = "medium",
-#    srcs = ["unary_ops_test.py"],
-#    tags = [
-#        "notap",  # b/136030724
-#    ],
-#    deps = [
-#        ":xla_test",
-#        "//third_party/py/numpy",
-#        "//tensorflow/python:array_ops",
-#        "//tensorflow/python:framework",
-#        "//tensorflow/python:math_ops",
-#        "//tensorflow/python:nn_ops",
-#        "//tensorflow/python:nn_ops_gen",
-#        "//tensorflow/python:platform_test",
-#    ],
-#)
+tf_xla_py_test(
+    name = "unary_ops_test",
+    size = "medium",
+    srcs = ["unary_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+    ],
+)
 
 tf_xla_py_test(
     name = "fused_batchnorm_test",

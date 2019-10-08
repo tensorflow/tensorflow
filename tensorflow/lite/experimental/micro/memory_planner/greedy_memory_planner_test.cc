@@ -151,7 +151,7 @@ TF_LITE_MICRO_TEST(TestGreedyMedium) {
       kTfLiteOk, planner.GetOffsetForBuffer(error_reporter, 4, &offset));
   TF_LITE_MICRO_EXPECT_EQ(0, offset);
 
-  // planner.PrintMemoryPlan(error_reporter);
+  planner.PrintMemoryPlan(error_reporter);
 
   TF_LITE_MICRO_EXPECT_EQ(false, planner.DoAnyBuffersOverlap(error_reporter));
 

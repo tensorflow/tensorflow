@@ -15,7 +15,6 @@ cc_library(
         ":depthwise_conv",
         ":elementwise",
         ":fully_connected",
-        ":hard_swish",
         ":max_unpooling",
         ":mul",
         ":padding",
@@ -78,6 +77,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
     ],
 )
 
@@ -272,18 +272,6 @@ ios_unit_test(
 )
 
 cc_library(
-    name = "hard_swish",
-    srcs = ["hard_swish.cc"],
-    hdrs = ["hard_swish.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
-    ],
-)
-
-cc_library(
     name = "max_unpooling",
     srcs = ["max_unpooling.cc"],
     hdrs = ["max_unpooling.h"],
@@ -294,6 +282,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -370,6 +359,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -408,6 +398,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -439,6 +430,7 @@ cc_library(
     srcs = ["prelu.cc"],
     hdrs = ["prelu.h"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/common:convert",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
@@ -483,6 +475,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -521,6 +514,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -558,6 +552,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -672,6 +667,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@com_google_absl//absl/strings",
     ],
 )

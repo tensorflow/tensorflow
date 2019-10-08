@@ -31,10 +31,12 @@ limitations under the License.
 using ::tflite::gpu::AddAttributes;
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::DataType;
+using ::tflite::gpu::Linear;
+using ::tflite::gpu::OperationType;
+using ::tflite::gpu::Tensor;
+using ::tflite::gpu::TensorRef;
 using ::tflite::gpu::metal::CompareVectors;
 using ::tflite::gpu::metal::SingleOpModel;
-using ::tflite::gpu::TensorRef;
-using ::tflite::gpu::OperationType;
 
 @interface AddTest : XCTestCase
 @end
@@ -85,6 +87,34 @@ using ::tflite::gpu::OperationType;
   auto status = model.Invoke();
   XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
   status = CompareVectors({-1.9, 0.3, 0.8, 0.9, 1.2, 2.1}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+}
+
+- (void)testInputTensorWithConstandBroadcast {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 2, 2, 2);
+
+  AddAttributes attr;
+  Tensor<Linear, DataType::FLOAT32> tensor;
+  tensor.shape.v = 2;
+  tensor.id = 1;
+  tensor.data.push_back(10.0);
+  tensor.data.push_back(20.0);
+  attr.param = std::move(tensor);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 2;
+  output.shape = BHWC(1, 2, 2, 2);
+
+  SingleOpModel model({ToString(OperationType::ADD), std::move(attr)}, {input}, {output});
+  XCTAssertTrue(model.PopulateTensor(0, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  status =
+      CompareVectors({11.0, 22.0, 13.0, 24.0, 15.0, 26.0, 17.0, 28.0}, model.GetOutput(0), 1e-6f);
   XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
 }
 

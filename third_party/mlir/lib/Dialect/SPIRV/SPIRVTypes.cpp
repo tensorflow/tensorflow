@@ -56,12 +56,14 @@ struct spirv::detail::ArrayTypeStorage : public TypeStorage {
 };
 
 ArrayType ArrayType::get(Type elementType, unsigned elementCount) {
+  assert(elementCount && "ArrayType needs at least one element");
   return Base::get(elementType.getContext(), TypeKind::Array, elementType,
                    elementCount, 0);
 }
 
 ArrayType ArrayType::get(Type elementType, unsigned elementCount,
                          ArrayType::LayoutInfo layoutInfo) {
+  assert(elementCount && "ArrayType needs at least one element");
   return Base::get(elementType.getContext(), TypeKind::Array, elementType,
                    elementCount, layoutInfo);
 }

@@ -1176,14 +1176,13 @@ Status TrtNodeValidator::ConvertConstToWeights(
   return status;
 }
 
-static void InitializeTrtPlugins() {
+static void InitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {
   static mutex plugin_mutex(LINKER_INITIALIZED);
   static bool plugin_initialized = false;
-  static Logger trt_logger;
   mutex_lock lock(plugin_mutex);
   if (plugin_initialized) return;
 
-  plugin_initialized = initLibNvInferPlugins(&trt_logger, "");
+  plugin_initialized = initLibNvInferPlugins(trt_logger, "");
   if (!plugin_initialized) {
     LOG(ERROR) << "Failed to initialize TensorRT plugins, and conversion may "
                   "fail later.";
@@ -1210,11 +1209,12 @@ static void InitializeTrtPlugins() {
 }
 
 Converter::Converter(nvinfer1::INetworkDefinition* trt_network,
-                     TrtPrecisionMode precision_mode, bool use_calibration)
+                     TrtPrecisionMode precision_mode, bool use_calibration,
+                     nvinfer1::ILogger* trt_logger)
     : trt_network_(trt_network),
       precision_mode_(precision_mode),
       use_calibration_(use_calibration) {
-  InitializeTrtPlugins();
+  InitializeTrtPlugins(trt_logger);
   this->RegisterOpConverters();
 }
 
@@ -2905,6 +2905,95 @@ Status ConvertConv3D(OpConverterParams* params) {
 
 Status ConvertConv3DBackpropInputV2(OpConverterParams* params) {
   return ConvertConv3DHelper(params, 1, /*is_conv3d_backprop_input=*/true);
+}
+
+Status ConvertPool3D(OpConverterParams* params) {
+  const int kNumDims = 5;
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+  nvinfer1::PoolingType type;
+  if (node_def.op() == "MaxPool3D") {
+    type = nvinfer1::PoolingType::kMAX;
+  } else if (node_def.op() == "AvgPool3D") {
+    type = nvinfer1::PoolingType::kAVERAGE;
+  } else {
+    return errors::Unimplemented("Unsupported pooling type: ", node_def.op(),
+                                 ", at ", node_def.name());
+  }
+  TFAttrs attrs(node_def);
+  const string padding_type = attrs.get<string>("padding");
+  if ((padding_type != "SAME") && (padding_type != "VALID")) {
+    return errors::Unimplemented("Unsupported padding type: ", padding_type,
+                                 ", at ", node_def.name());
+  }
+  const auto data_format = attrs.get<string>("data_format");
+  const bool is_ndhwc = (data_format == "NDHWC");
+  const int c_index = is_ndhwc ? 4 : 1;
+  const int d_index = is_ndhwc ? 1 : 2;
+  const int h_index = is_ndhwc ? 2 : 3;
+  const int w_index = is_ndhwc ? 3 : 4;
+  const auto tf_stride = attrs.get<std::vector<int64>>("strides");
+  if (tf_stride.size() != kNumDims) {
+    return errors::InvalidArgument(
+        "Pooling strides field must specify 5 dimensions, at ",
+        node_def.name());
+  }
+  if (tf_stride[0] != 1 || tf_stride[c_index] != 1) {
+    return errors::Unimplemented(
+        "stride must be 1 for batch and channel dimensions, at ",
+        node_def.name());
+  }
+  const auto tf_kernel = attrs.get<std::vector<int64>>("ksize");
+  if (tf_kernel.size() != kNumDims) {
+    return errors::InvalidArgument(
+        "Pooling ksize field must specify 5 dimensions, at ", node_def.name());
+  }
+  if (tf_kernel[0] != 1 || tf_kernel[c_index] != 1) {
+    return errors::Unimplemented(
+        "ksize must be 1 for batch and channel dimensions, at ",
+        node_def.name());
+  }
+  if (params->validation_only) return Status::OK();
+
+  nvinfer1::ITensor* tensor = inputs.at(0).tensor();
+  if (data_format == "NDHWC") {
+    // NDHWC => NCDHW
+    TF_RETURN_IF_ERROR(
+        params->converter->TransposeTensor(tensor, {0, 4, 1, 2, 3}, &tensor));
+  }
+
+  const nvinfer1::Dims3 stride(tf_stride[d_index], tf_stride[h_index],
+                               tf_stride[w_index]);
+  const nvinfer1::Dims3 ksize(tf_kernel[d_index], tf_kernel[h_index],
+                              tf_kernel[w_index]);
+
+  nvinfer1::IPoolingLayer* layer =
+      params->converter->network()->addPoolingNd(*tensor, type, ksize);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+
+  params->converter->MarkQuantizationRangesAsInferrable(tensor,
+                                                        layer->getOutput(0));
+
+  layer->setStrideNd(stride);
+  // VALID padding is the default TRT behavior.
+  if (padding_type == "SAME") {
+    // SAME_UPPER means that post padding is preferred.
+    layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
+  }
+  layer->setName(node_def.name().c_str());
+  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+
+  if (data_format == "NDHWC") {
+    // NCDHW => NDHWC
+    TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
+        output_tensor, {0, 2, 3, 4, 1}, &output_tensor));
+  }
+
+  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return Status::OK();
 }
 #endif  // #if IS_TRT_VERSION_GE(6, 0, 0, 0)
 
@@ -5414,6 +5503,9 @@ static void RegisterValidatableOpConverters(
   for (auto resize_mode : {"ResizeBilinear", "ResizeNearestNeighbor"}) {
     (*registration)[resize_mode] = ConvertResize;
   }
+  for (auto pool_op_type : {"AvgPool3D", "MaxPool3D"}) {
+    (*registration)[pool_op_type] = ConvertPool3D;
+  }
 #endif
   (*registration)["Rsqrt"] = ConvertRsqrt;
   (*registration)["Slice"] = ConvertSlice;
@@ -5476,8 +5568,9 @@ void Converter::RegisterOpConverters() {
 Status ConvertGraphDefToEngine(
     const GraphDef& gdef, TrtPrecisionMode precision_mode, int max_batch_size,
     size_t max_workspace_size_bytes,
-    const std::vector<PartialTensorShape>& input_shapes, Logger* logger,
-    nvinfer1::IGpuAllocator* allocator, TRTInt8Calibrator* calibrator,
+    const std::vector<PartialTensorShape>& input_shapes,
+    nvinfer1::ILogger* trt_logger, nvinfer1::IGpuAllocator* allocator,
+    TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
     bool* convert_successfully) {
   engine->reset();
@@ -5485,7 +5578,7 @@ Status ConvertGraphDefToEngine(
 
   // Create the builder.
   TrtUniquePtrType<nvinfer1::IBuilder> builder(
-      nvinfer1::createInferBuilder(*logger));
+      nvinfer1::createInferBuilder(*trt_logger));
   builder->setMaxBatchSize(max_batch_size);
   builder->setMaxWorkspaceSize(max_workspace_size_bytes);
   builder->setGpuAllocator(allocator);
@@ -5517,7 +5610,8 @@ Status ConvertGraphDefToEngine(
     TF_RETURN_IF_ERROR(TrtPrecisionModeToName(precision_mode, &mode_str));
     VLOG(1) << "Starting engine conversion, precision mode: " << mode_str;
   }
-  Converter converter(trt_network.get(), precision_mode, use_calibration);
+  Converter converter(trt_network.get(), precision_mode, use_calibration,
+                      trt_logger);
   std::vector<Converter::EngineOutputInfo> output_tensors;
   // Graph nodes are already topologically sorted during construction
   for (const auto& node_def : gdef.node()) {
@@ -5602,6 +5696,17 @@ Status ConvertGraphDefToEngine(
 
   // Apply user provided quantization ranges to tensors
   converter.MaybeApplyQuantizationRanges();
+
+  if VLOG_IS_ON (2) {
+    VLOG(2) << "Created TensorRT network with the following layers:";
+    for (int i = 0; i < trt_network->getNbLayers(); i++) {
+      auto layer = trt_network->getLayer(i);
+      VLOG(2) << "    " << layer->getName() << " ("
+              << "type: " << static_cast<int>(layer->getType())
+              << ", precision: " << static_cast<int>(layer->getPrecision())
+              << ")";
+    }
+  }
 
   // Build the engine.
   VLOG(1) << "Starting engine creation";

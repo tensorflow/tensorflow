@@ -19,15 +19,16 @@ from __future__ import print_function
 
 import random
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.client import session
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import tensor_array_ops
@@ -37,10 +38,10 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class FlatMapTest(test_base.DatasetTestBase):
+class FlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   # pylint: disable=g-long-lambda
+  @combinations.generate(test_base.default_test_combinations())
   def testFlatMapDataset(self):
     repeats = [1, 2, 3, 4, 5, 0, 1]
     components = np.array(repeats, dtype=np.int64)
@@ -51,6 +52,7 @@ class FlatMapTest(test_base.DatasetTestBase):
       expected_output.extend([[i]] * i)
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testNestedFlatMapDataset(self):
     repeats = [[1, 2], [3, 4], [5, 0], [1, 7]]
     components = np.array(repeats, dtype=np.int64)
@@ -65,7 +67,8 @@ class FlatMapTest(test_base.DatasetTestBase):
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 
   # Note: no eager mode coverage, session specific test.
-  @test_util.run_deprecated_v1
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1, 2], mode=["graph"]))
   def testSkipEagerSharedResourceNestedFlatMapDataset(self):
     repeats = [[1, 2], [3, 4], [5, 0], [1, 7]]
     components = np.array(repeats, dtype=np.int64)
@@ -98,6 +101,7 @@ class FlatMapTest(test_base.DatasetTestBase):
           sess = random.choice([sess1, sess2])
           sess.run(get_next)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testMapDict(self):
     dataset = dataset_ops.Dataset.range(10).map(
         lambda x: {"foo": x * 2, "bar": x ** 2}).flat_map(
@@ -110,6 +114,7 @@ class FlatMapTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSparse(self):
     def _map_fn(i):
       return sparse_tensor.SparseTensorValue(
@@ -126,6 +131,7 @@ class FlatMapTest(test_base.DatasetTestBase):
         expected_output.append([i, 0] if j % 2 == 0 else [0, -i])
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testTensorArray(self):
     def _map_fn(i):
       i = math_ops.cast(i, dtypes.int32)
@@ -147,6 +153,7 @@ class FlatMapTest(test_base.DatasetTestBase):
 
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testRagged(self):
 
     def _map_fn(i):

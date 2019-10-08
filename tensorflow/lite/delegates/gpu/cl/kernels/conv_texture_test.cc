@@ -46,7 +46,7 @@ TEST_F(OpenCLOperationTest, ConvTextureSimpleWeights) {
   attr.bias.shape = Linear(1);
   attr.bias.data = {0.0f};
 
-  for (auto storage : env_.GetSupportedTextureStorages()) {
+  for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
@@ -81,7 +81,7 @@ TEST_F(OpenCLOperationTest, ConvTexture) {
   attr.bias.shape = Linear(2);
   attr.bias.data = {0.5f, -0.5f};
 
-  for (auto storage : env_.GetSupportedTextureStorages()) {
+  for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;

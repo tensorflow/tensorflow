@@ -247,6 +247,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -566,27 +567,6 @@ cc_library(
 )
 
 cc_library(
-    name = "fully_connected_batched",
-    srcs = ["fully_connected_batched.cc"],
-    hdrs = ["fully_connected_batched.h"],
-    deps = [
-        ":gpu_operation",
-        ":util",
-        ":work_group_picking",
-        "//tensorflow/lite/delegates/gpu/cl:linear_storage",
-        "//tensorflow/lite/delegates/gpu/cl:tensor",
-        "//tensorflow/lite/delegates/gpu/cl:texture2d",
-        "//tensorflow/lite/delegates/gpu/cl:util",
-        "//tensorflow/lite/delegates/gpu/common:data_type",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:tensor",
-        "//tensorflow/lite/delegates/gpu/common:types",
-    ],
-)
-
-cc_library(
     name = "fully_connected_texture",
     srcs = ["fully_connected_texture.cc"],
     hdrs = ["fully_connected_texture.h"],
@@ -670,6 +650,20 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "lstm",
+    srcs = ["lstm.cc"],
+    hdrs = ["lstm.h"],
+    deps = [
+        ":gpu_operation",
+        ":util",
+        ":work_group_picking",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
     ],
 )
 

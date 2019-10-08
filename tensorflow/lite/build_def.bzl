@@ -340,7 +340,6 @@ def generated_test_models():
         "topk",
         "transpose",
         "transpose_conv",
-        "uint8_hardswish",
         "unfused_gru",
         "unidirectional_sequence_lstm",
         "unidirectional_sequence_rnn",

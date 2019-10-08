@@ -29,8 +29,8 @@ void OpsTestBase::SetDevice(const DeviceType& device_type,
   device_ = device.get();
   device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(device));
   pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
-      device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, flib_def_.get(),
-      OptimizerOptions());
+      device_mgr_.get(), Env::Default(), /*config=*/nullptr,
+      TF_GRAPH_DEF_VERSION, flib_def_.get(), OptimizerOptions());
 
   device_type_ = device_type;
 #ifdef GOOGLE_CUDA

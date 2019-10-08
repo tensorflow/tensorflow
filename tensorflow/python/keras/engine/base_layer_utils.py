@@ -32,6 +32,7 @@ from tensorflow.python.ops import control_flow_v2_func_graphs
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import variables as tf_variables
+from tensorflow.python.training.tracking import base as tracking
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 
@@ -692,3 +693,74 @@ def v2_dtype_behavior_enabled():
   if V2_DTYPE_BEHAVIOR is None:
     return tf2.enabled()
   return V2_DTYPE_BEHAVIOR
+
+
+class TrackableWeightHandler(object):
+  """Keras wrapper for handling tracking.Trackable object saving and restoring.
+
+  This class handles Trackables in both V1 and V2 modes, ensuring that they can
+  be saved and restored with the correct data and without adding additional ops
+  on every save.
+
+  Attributes:
+    trackable: The trackable to wrap.
+    num_tensors: The number of tensors that this trackable requires for saving.
+  """
+
+  def __init__(self, trackable):
+    if not isinstance(trackable, tracking.Trackable):
+      raise ValueError('%s is not a Trackable object.' % (trackable,))
+    self._trackable = trackable
+
+    # TODO(b/141682913): Figure out why this is private and fix it.
+    saveables = trackable._gather_saveables_for_checkpoint().values()  # pylint: disable=protected-access
+    if len(saveables) != 1:
+      raise ValueError('Only Trackables with one Saveable are supported.')
+    saveable = list(saveables)[0]
+
+    if ops.executing_eagerly_outside_functions():
+      # If we're in eager mode, we need to defer calling the Trackable's
+      # saveable() callable until data export time.
+      # However, it is safe to call the saveable as many times as we want, so
+      # we will call it now to figure out how many tensors this Trackable will
+      # produce.
+      self._saveable = saveable
+      self._num_tensors = len(self._saveable().specs)
+      self._setter = lambda weights: self._saveable().restore(weights, None)
+      self._getter = lambda: [spec.tensor for spec in self._saveable().specs]
+    else:
+      # If we're in Graph mode, we need to evaluate the Saveable only once and
+      # cache the resulting restore graph. Failing to do this will result in
+      # new assignment ops being added to the graph each time set_weights() is
+      # called.
+      self._placeholder_tensors = []
+      self._saveable = saveable()
+      self._num_tensors = len(self._saveable.specs)
+      for spec in self._saveable.specs:
+        tensor = spec.tensor
+        self._placeholder_tensors.append(
+            array_ops.placeholder(tensor.dtype, tensor.shape))
+      self._assign_op = self._saveable.restore(self._placeholder_tensors, None)
+      self._setter = self._set_weights_v1
+      self._getter = lambda: [spec.tensor for spec in self._saveable.specs]
+
+  @property
+  def num_tensors(self):
+    return self._num_tensors
+
+  def set_weights(self, weights):
+    if len(weights) != self._num_tensors:
+      raise ValueError(
+          ('Weight handler for trackable %s received the wrong number of ' +
+           'weights: expected %s, got %s.') %
+          (self._trackable, self._num_tensors, len(weights)))
+    self._setter(weights)
+
+  def get_tensors(self):
+    return self._getter()
+
+  def _set_weights_v1(self, weights):
+    feed_dict = {}
+    for idx, tensor in enumerate(weights):
+      feed_dict[self._placeholder_tensors[idx]] = tensor
+    backend.get_session().run(self._assign_op, feed_dict)

@@ -326,25 +326,5 @@ TEST(LowerIfWhileTest, WhileInCond) {
   }
 }
 
-TEST(LowerIfWhileTest, RaisesWhenLoweringUnhandledOpType) {
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-
-  Scope root = Scope::NewRootScope().ExitOnError();
-  Node* const_node;
-  Tensor const_val(DT_INT32, TensorShape({}));
-  const_val.scalar<int32>()() = 1;
-  TF_ASSERT_OK(NodeBuilder("const", "Const")
-                   .Attr("value", const_val)
-                   .Attr("dtype", const_val.dtype())
-                   .Attr(kLowerUsingSwitchMergeAttr, true)
-                   .Finalize(root.graph(), &const_node));
-  TF_ASSERT_OK(root.DoShapeInference(const_node));
-  TF_ASSERT_OK(root.ToGraph(graph.get()));
-
-  Status s = Rewrite(&graph);
-  ASSERT_EQ(s.code(), error::INTERNAL);
-  AssertHasSubstr(s.error_message(), "does not support lowering");
-}
-
 }  // namespace
 }  // namespace tensorflow

@@ -99,9 +99,11 @@ class GrpcServer : public ServerInterface {
   // requests from remote workers.
   Status AddMasterEagerContextToEagerService(
       const tensorflow::uint64 context_id, tensorflow::EagerContext* context);
+  // Update the set of workers that can be reached by the GRPC server
+  Status UpdateServerDef(const ServerDef& server_def);
 
  protected:
-  virtual Status GetPort(int* port) const;
+  virtual Status GetPort(const ServerDef& server_def, int* port) const;
   Status Init(const GrpcServerOptions& opts = GrpcServerOptions());
 
   // A subclass can override this method to support secure credentials.
@@ -129,14 +131,12 @@ class GrpcServer : public ServerInterface {
 
 
  private:
-  // The overall server configuration.
-  const ServerDef server_def_;
   Env* env_;
 
   // The port to which this server is bound.
   int bound_port_ = 0;
 
-  // Guards state transitions.
+  // Guards server configuration, server, and state.
   mutex mu_;
 
   // Represents the current state of the server, which changes as follows:
@@ -167,6 +167,9 @@ class GrpcServer : public ServerInterface {
   AsyncServiceInterface* eager_service_ = nullptr;
   std::unique_ptr<Thread> eager_thread_ GUARDED_BY(mu_);
   std::shared_ptr<WorkerSession> worker_session_;
+
+  // The overall server configuration.
+  ServerDef server_def_ GUARDED_BY(mu_);
 
   std::unique_ptr<::grpc::Server> server_ GUARDED_BY(mu_);
 };

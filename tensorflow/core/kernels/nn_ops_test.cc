@@ -778,6 +778,7 @@ static void BM_LRNFloat(int iters, int depth, int cols, int rows,
   std::unique_ptr<OpKernelContext> context(new OpKernelContext(&params));
 
   op->Compute(context.get());
+  testing::UseRealTime();
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
     delete context->release_output(0).tensor;
@@ -859,6 +860,7 @@ static void BM_AvgPool(int iters, int batch_size, int rows, int cols, int depth,
       new OpKernelContext(&params));
 
   op->Compute(avgpool_context.get());
+  testing::UseRealTime();
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
     delete avgpool_context->release_output(0).tensor;
@@ -964,6 +966,7 @@ static void BM_AvgPoolBk(int iters, int batch_size, int rows, int cols,
       new OpKernelContext(&params));
 
   op->Compute(avgpool_context.get());
+  testing::UseRealTime();
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
     delete avgpool_context->release_output(0).tensor;
@@ -1054,6 +1057,7 @@ static void BM_MaxPool(int iters, int batch_size, int rows, int cols, int depth,
       new OpKernelContext(&params));
 
   op->Compute(maxpool_context.get());
+  testing::UseRealTime();
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
     delete maxpool_context->release_output(0).tensor;
@@ -1229,6 +1233,7 @@ static void BM_ReluFloat(int iters, int batch_size, int rows, int cols,
   std::unique_ptr<OpKernelContext> relu_context(new OpKernelContext(&params));
 
   op->Compute(relu_context.get());
+  testing::UseRealTime();
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
     delete relu_context->release_output(0).tensor;
@@ -1302,6 +1307,7 @@ static void BM_SoftplusFloat(int iters, int batch_size, int rows, int cols,
       new OpKernelContext(&params));
 
   op->Compute(softplus_context.get());
+  testing::UseRealTime();
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
     delete softplus_context->release_output(0).tensor;

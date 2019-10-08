@@ -32,90 +32,35 @@ limitations under the License.
 // tensorflow/lite/experimental/micro/mbed/debug_log.cc.
 
 #include "../tensorflow/tensorflow/lite/experimental/micro/debug_log.h"
-#include <cstdio>
 
-extern "C"{
-// Copyright (c) 2014-2016, XMOS Ltd, All rights reserved
-#include <stdarg.h>
 #include <syscall.h>
-#include <limits.h>
 #include <string.h>
-#include <ctype.h>
-
-#undef debug_printf
-
 
 #ifndef DEBUG_PRINTF_BUFSIZE
-#define DEBUG_PRINTF_BUFSIZE 130
+#define DEBUG_PRINTF_BUFSIZE 80
 #endif
 
-
-static void debug_printf(char * fmt, ...)
-{
-  char * marker;
-  int intArg;
-  unsigned int uintArg;
-  char * strArg;
-
+extern "C"{
+void DebugLog(const char* s) 
+{ 
   char buf[DEBUG_PRINTF_BUFSIZE];
   char *end = &buf[DEBUG_PRINTF_BUFSIZE - 1];
-
-  va_list args;
-
-  va_start(args,fmt);
-  marker = fmt;
   char *p = buf;
-  while (*fmt) {
-    if (p > end) {
-      // flush
+
+    int len = strlen(s);
+    if (len > (end - buf)) {
+            // flush
       _write(FD_STDOUT, buf, p - buf);
       p = buf;
     }
-    switch (*fmt) {
-    case '%':
-      fmt++;
-      if (*(fmt) == '-' || *(fmt) == '+' || *(fmt) == '#' || *(fmt) == ' ') {
-        // Ignore flags
-        fmt++;
-      }
-      while (*(fmt) && *(fmt) >= '0' && *(fmt) <= '9') {
-        // Ignore width
-        fmt++;
-      }
-      // Use 'tolower' to ensure both %x/%X do something sensible
-      switch (tolower(*(fmt))) {
-
-      case 's':
-        strArg = va_arg(args, char *);
-        int len = strlen(strArg);
-        if (len > (end - buf)) {
-                // flush
-          _write(FD_STDOUT, buf, p - buf);
-          p = buf;
-        }
-        if (len > (end - buf))
-          len = end - buf;
-        memcpy(p, strArg, len);
-        p += len;
-        break;
-      }
-      break;
-
-    default:
-      *p++ = *fmt;
+    if (len > (end - buf)){
+      len = end - buf;
     }
-    fmt++;
-  }
+    memcpy(p, s, len);
+    p += len;
+
   _write(FD_STDOUT, buf, p - buf);
-  va_end(args);
 
-  return;
-}
-
-
-void DebugLog(const char* s) 
-{ 
-    debug_printf("%s", s); 
 }
 
 }

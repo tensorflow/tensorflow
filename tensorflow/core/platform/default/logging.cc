@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/default/logging.h"
+
+#include "absl/base/internal/sysinfo.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -49,66 +51,6 @@ void TFRemoveLogSink(TFLogSink* sink) {
 }
 
 namespace internal {
-
-#if defined(PLATFORM_POSIX_ANDROID)
-void LogMessage::GenerateLogMessage() {
-  int android_log_level;
-  switch (severity_) {
-    case INFO:
-      android_log_level = ANDROID_LOG_INFO;
-      break;
-    case WARNING:
-      android_log_level = ANDROID_LOG_WARN;
-      break;
-    case ERROR:
-      android_log_level = ANDROID_LOG_ERROR;
-      break;
-    case FATAL:
-      android_log_level = ANDROID_LOG_FATAL;
-      break;
-    default:
-      if (severity_ < INFO) {
-        android_log_level = ANDROID_LOG_VERBOSE;
-      } else {
-        android_log_level = ANDROID_LOG_ERROR;
-      }
-      break;
-  }
-
-  std::stringstream ss;
-  const char* const partial_name = strrchr(fname_, '/');
-  ss << (partial_name != nullptr ? partial_name + 1 : fname_) << ":" << line_
-     << " " << str();
-  __android_log_write(android_log_level, "native", ss.str().c_str());
-
-  // Also log to stderr (for standalone Android apps).
-  std::cerr << "native : " << ss.str() << std::endl;
-
-  // Android logging at level FATAL does not terminate execution, so abort()
-  // is still required to stop the program.
-  if (severity_ == FATAL) {
-    abort();
-  }
-}
-
-#else
-
-void LogMessage::GenerateLogMessage() {
-  static EnvTime* env_time = tensorflow::EnvTime::Default();
-  uint64 now_micros = env_time->NowMicros();
-  time_t now_seconds = static_cast<time_t>(now_micros / 1000000);
-  int32 micros_remainder = static_cast<int32>(now_micros % 1000000);
-  const size_t time_buffer_size = 30;
-  char time_buffer[time_buffer_size];
-  strftime(time_buffer, time_buffer_size, "%Y-%m-%d %H:%M:%S",
-           localtime(&now_seconds));
-
-  // TODO(jeff,sanjay): Replace this with something that logs through the env.
-  fprintf(stderr, "%s.%06d: %c %s:%d] %s\n", time_buffer, micros_remainder,
-          "IWEF"[severity_], fname_, line_, str().c_str());
-}
-#endif
-
 namespace {
 
 int ParseInteger(const char* str, size_t size) {
@@ -197,6 +139,13 @@ VmoduleMap* VmodulesMapFromEnv() {
   return result;
 }
 
+bool EmitThreadIdFromEnv() {
+  const char* tf_env_var_val = getenv("TF_CPP_LOG_THREAD_ID");
+  return tf_env_var_val == nullptr
+             ? false
+             : ParseInteger(tf_env_var_val, strlen(tf_env_var_val)) != 0;
+}
+
 }  // namespace
 
 int64 MinLogLevelFromEnv() {
@@ -239,6 +188,71 @@ LogMessage::~LogMessage() {
     GenerateLogMessage();
   }
 }
+
+#if defined(PLATFORM_POSIX_ANDROID)
+void LogMessage::GenerateLogMessage() {
+  int android_log_level;
+  switch (severity_) {
+    case INFO:
+      android_log_level = ANDROID_LOG_INFO;
+      break;
+    case WARNING:
+      android_log_level = ANDROID_LOG_WARN;
+      break;
+    case ERROR:
+      android_log_level = ANDROID_LOG_ERROR;
+      break;
+    case FATAL:
+      android_log_level = ANDROID_LOG_FATAL;
+      break;
+    default:
+      if (severity_ < INFO) {
+        android_log_level = ANDROID_LOG_VERBOSE;
+      } else {
+        android_log_level = ANDROID_LOG_ERROR;
+      }
+      break;
+  }
+
+  std::stringstream ss;
+  const char* const partial_name = strrchr(fname_, '/');
+  ss << (partial_name != nullptr ? partial_name + 1 : fname_) << ":" << line_
+     << " " << str();
+  __android_log_write(android_log_level, "native", ss.str().c_str());
+
+  // Also log to stderr (for standalone Android apps).
+  std::cerr << "native : " << ss.str() << std::endl;
+
+  // Android logging at level FATAL does not terminate execution, so abort()
+  // is still required to stop the program.
+  if (severity_ == FATAL) {
+    abort();
+  }
+}
+
+#else
+
+void LogMessage::GenerateLogMessage() {
+  static bool log_thread_id = EmitThreadIdFromEnv();
+  static EnvTime* env_time = tensorflow::EnvTime::Default();
+  uint64 now_micros = env_time->NowMicros();
+  time_t now_seconds = static_cast<time_t>(now_micros / 1000000);
+  int32 micros_remainder = static_cast<int32>(now_micros % 1000000);
+  const size_t time_buffer_size = 30;
+  char time_buffer[time_buffer_size];
+  strftime(time_buffer, time_buffer_size, "%Y-%m-%d %H:%M:%S",
+           localtime(&now_seconds));
+  const size_t tid_buffer_size = 10;
+  char tid_buffer[tid_buffer_size] = "";
+  if (log_thread_id) {
+    snprintf(tid_buffer, sizeof(tid_buffer), " %7u",
+             absl::base_internal::GetTID());
+  }
+  // TODO(jeff,sanjay): Replace this with something that logs through the env.
+  fprintf(stderr, "%s.%06d: %c%s %s:%d] %s\n", time_buffer, micros_remainder,
+          "IWEF"[severity_], tid_buffer, fname_, line_, str().c_str());
+}
+#endif
 
 int64 LogMessage::MinVLogLevel() {
   static int64 min_vlog_level = MinVLogLevelFromEnv();

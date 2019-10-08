@@ -99,6 +99,10 @@ auto* xla_compilation_time_usecs = monitoring::Counter<0>::New(
     "/tensorflow/core/xla_compilation_time_usecs",
     "The total time spent on compiling XLA graphs in microseconds.");
 
+auto* mlir_import_failure_count = monitoring::Counter<0>::New(
+    "/tensorflow/mlir/import_failure_count",
+    "The number of jobs that failed during mlir import or verification.");
+
 }  // namespace
 
 void RecordTFDataAutotune(const string& name) {
@@ -157,6 +161,10 @@ void UpdateXlaCompilationTime(const uint64 compilation_time_usecs) {
     xla_compilations->GetCell()->IncrementBy(1);
     xla_compilation_time_usecs->GetCell()->IncrementBy(compilation_time_usecs);
   }
+}
+
+void IncrementMLIRImportFailureCount() {
+  mlir_import_failure_count->GetCell()->IncrementBy(1);
 }
 
 }  // namespace metrics

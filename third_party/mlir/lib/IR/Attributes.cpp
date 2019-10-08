@@ -415,7 +415,7 @@ ElementsAttr ElementsAttr::mapValues(
   }
 }
 
-/// Returns the 1 dimenional flattened row-major index from the given
+/// Returns the 1 dimensional flattened row-major index from the given
 /// multi-dimensional index.
 uint64_t ElementsAttr::getFlattenedIndex(ArrayRef<uint64_t> index) const {
   assert(isValidIndex(index) && "expected valid multi-dimensional index");

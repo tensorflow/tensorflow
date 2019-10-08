@@ -49,6 +49,7 @@ cuda_py_test(
         "no_windows",  # TODO(b/141617449): needs investigation
         "optonly",
         "oss_serial",
+        "v1only",
     ],
 )
 
@@ -67,6 +68,7 @@ cuda_py_test(
         "no_windows",  # TODO(b/141617449): needs investigation
         "optonly",
         "oss_serial",
+        "v1only",
     ],
     # Times out
     xla_enable_strict_auto_jit = False,

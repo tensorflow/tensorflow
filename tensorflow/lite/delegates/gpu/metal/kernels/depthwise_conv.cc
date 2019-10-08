@@ -264,7 +264,7 @@ static std::vector<uint8_t> GetUniformBufferDepthWiseConv3x3Stride1x1(
       0,  // dummy, for alignment
       0,  // dummy, for alignment
   };
-  return VectorToUint8Vector(uniform_params);
+  return GetByteBuffer(uniform_params);
 }
 
 std::string GetKernelDepthWiseConv3x3Stride2() {
@@ -459,7 +459,7 @@ static std::vector<uint8_t> GetUniformBufferDepthWiseConv3x3Stride2(
       0,  // dummy, for alignment
       0,  // dummy, for alignment
   };
-  return VectorToUint8Vector(uniform_params);
+  return GetByteBuffer(uniform_params);
 }
 
 }  // namespace
@@ -568,10 +568,10 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
 
   std::vector<float> filters_reordered = ConvertToPIOHW4(attr.weights);
   auto filters = options.storage_precision == RuntimeOptions::Precision::FP32
-                     ? VectorToUint8Vector(filters_reordered)
+                     ? GetByteBuffer(filters_reordered)
                      : VectorFloatToHalf(filters_reordered);
   auto biases = options.storage_precision == RuntimeOptions::Precision::FP32
-                    ? VectorToUint8Vector(attr.bias.data)
+                    ? GetByteBuffer(attr.bias.data)
                     : VectorFloatToHalf(attr.bias.data);
   desc->immutable_buffers = {
       {"device FLT4* const filters", filters},
@@ -605,7 +605,7 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
              0,
              0,
          };
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 
@@ -646,7 +646,7 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride1x1(
   auto weights_reordered = ReorderWeightsDepthWiseConv3x3Stride1x1(attr);
   auto weights =
       options.storage_precision == metal::RuntimeOptions::Precision::FP32
-          ? VectorToUint8Vector(weights_reordered)
+          ? GetByteBuffer(weights_reordered)
           : VectorFloatToHalf(weights_reordered);
   desc->immutable_buffers = {
       {"device FLT4* const filters", weights},
@@ -713,7 +713,7 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride2(
   auto weights_reordered = ReorderWeightsDepthWiseConv3x3Stride2(attr);
   auto weights =
       options.storage_precision == metal::RuntimeOptions::Precision::FP32
-          ? VectorToUint8Vector(weights_reordered)
+          ? GetByteBuffer(weights_reordered)
           : VectorFloatToHalf(weights_reordered);
   desc->immutable_buffers = {
       {"device FLT4* const filters", weights},

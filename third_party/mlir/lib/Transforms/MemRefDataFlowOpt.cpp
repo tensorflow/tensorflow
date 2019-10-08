@@ -211,7 +211,7 @@ void MemRefDataFlowOpt::runOnFunction() {
   }
 
   // Check if the store fwd'ed memrefs are now left with only stores and can
-  // thus be completely deleted. Note: the canononicalize pass should be able
+  // thus be completely deleted. Note: the canonicalize pass should be able
   // to do this as well, but we'll do it here since we collected these anyway.
   for (auto *memref : memrefsToErase) {
     // If the memref hasn't been alloc'ed in this function, skip.

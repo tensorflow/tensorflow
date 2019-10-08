@@ -39,7 +39,6 @@ class EagerClient {
   CLIENT_METHOD(WaitQueueDone);
   CLIENT_METHOD(KeepAlive);
   CLIENT_METHOD(CloseContext);
-  CLIENT_METHOD(RegisterFunction);
 
 #undef CLIENT_METHOD
 

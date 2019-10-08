@@ -89,10 +89,11 @@ class HostExecutor : public internal::StreamExecutorInterface {
 
   // No "synchronize all activity" implemented for this platform at the moment.
   bool SynchronizeAllActivity() override { return true; }
-  bool SynchronousMemZero(DeviceMemoryBase *location, uint64 size) override;
+  port::Status SynchronousMemZero(DeviceMemoryBase *location,
+                                  uint64 size) override;
 
-  bool SynchronousMemSet(DeviceMemoryBase *location, int value,
-                         uint64 size) override;
+  port::Status SynchronousMemSet(DeviceMemoryBase *location, int value,
+                                 uint64 size) override;
 
   port::Status SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
                                  const void *host_src, uint64 size) override;

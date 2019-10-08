@@ -233,13 +233,13 @@ class StreamExecutor {
 
   // Blocks the caller while "size" bytes are zeroed out (in POD fashion) at the
   // given location in device memory.
-  bool SynchronousMemZero(DeviceMemoryBase *location,
-                          uint64 size) SE_MUST_USE_RESULT;
+  port::Status SynchronousMemZero(DeviceMemoryBase *location,
+                                  uint64 size) SE_MUST_USE_RESULT;
 
   // Blocks the caller while "size" bytes are initialized to "value" (in POD
   // fashion) at the given location in device memory.
-  bool SynchronousMemSet(DeviceMemoryBase *location, int value,
-                         uint64 size) SE_MUST_USE_RESULT;
+  port::Status SynchronousMemSet(DeviceMemoryBase *location, int value,
+                                 uint64 size) SE_MUST_USE_RESULT;
 
   // [deprecated] Blocks the caller while a data segment of the given size is
   // copied from the host source to the device destination.
@@ -831,7 +831,7 @@ DeviceMemory<T> StreamExecutor::AllocateZeroed() {
   }
 
   DeviceMemory<T> result(buf);
-  bool ok = SynchronousMemZero(&result, sizeof(T));
+  bool ok = SynchronousMemZero(&result, sizeof(T)).ok();
   if (!ok) {
     Deallocate(&result);
     return DeviceMemory<T>{};

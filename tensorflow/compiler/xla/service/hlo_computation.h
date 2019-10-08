@@ -141,6 +141,9 @@ class HloComputation {
       int64 param_no, HloInstruction* old_instruction,
       std::unique_ptr<HloInstruction> instruction);
 
+  // Returns true if the computation contains this instruction.
+  bool ContainsInstruction(const HloInstruction* instruction) const;
+
   // Remove an instruction from the computation. The instruction must have no
   // users. Instruction is deallocated with this call.
   Status RemoveInstruction(HloInstruction* instruction);

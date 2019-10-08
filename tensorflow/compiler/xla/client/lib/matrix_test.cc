@@ -213,12 +213,7 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
   }
 
   std::vector<string> einsum_strings_that_fail_parsing = {
-      "",
-      "a",
-      "ab->ba",
-      "ab,bc,cd->ad",
-
-      "a...b...,bc->a...c",
+      "", "a", "ab->ba", "ab,bc,cd->ad", "a...b...,bc->a...c",
   };
   for (auto test_case : einsum_strings_that_fail_parsing) {
     auto parse_result_or_status = ParseEinsumString(test_case, 3, 3);
@@ -242,6 +237,14 @@ XLA_TEST_F(MatrixTest, ParseEinsumString) {
                      parse_result[0], parse_result[1], parse_result[2])
                      .ok());
   }
+}
+
+XLA_TEST_F(MatrixTest, NormalizeEinsumString) {
+  EXPECT_EQ(NormalizeEinsumString("a,b->ab"), "");
+  EXPECT_EQ(NormalizeEinsumString("ba"), "ba->ab");
+  EXPECT_EQ(NormalizeEinsumString("ab,dc"), "ab,dc->abcd");
+  EXPECT_EQ(NormalizeEinsumString("a,b"), "a,b->ab");
+  EXPECT_EQ(NormalizeEinsumString("...ba,ca..."), "...ba,ca...->...bc");
 }
 
 }  // namespace

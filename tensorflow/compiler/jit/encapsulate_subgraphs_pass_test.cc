@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
+
 #include <memory>
 #include <utility>
-
-#include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/jit/encapsulate_util.h"
 #include "tensorflow/compiler/jit/extract_outside_compilation_pass.h"
+#include "tensorflow/compiler/jit/test_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -512,8 +513,9 @@ Status Encapsulate(GraphDef* graphdef, FunctionDefLibrary* library,
   OptimizerOptions opts;
   auto device_mgr = absl::make_unique<StaticDeviceMgr>(std::move(devices));
   auto pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
-      device_mgr.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def.get(),
-      opts, /*default_thread_pool=*/nullptr, /*cluster_flr=*/nullptr);
+      device_mgr.get(), Env::Default(), /*config=*/nullptr,
+      TF_GRAPH_DEF_VERSION, lib_def.get(), opts,
+      /*default_thread_pool=*/nullptr, /*cluster_flr=*/nullptr);
   auto flr = pflr->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
 
   std::unique_ptr<Graph> graph_out;
@@ -2600,13 +2602,9 @@ TEST(EncapsulateSubgraphsTest, RefVariablesMarked) {
   auto graph = absl::make_unique<Graph>(OpRegistry::Global());
   TF_ASSERT_OK(root.ToGraph(graph.get()));
 
-  SessionOptions session_options;
-  session_options.env = Env::Default();
-  GraphOptimizationPassOptions options;
-  options.session_options = &session_options;
-  FunctionLibraryDefinition library(OpRegistry::Global(), {});
-  options.flib_def = &library;
-  options.graph = &graph;
+  GraphOptimizationPassWrapper wrapper;
+  GraphOptimizationPassOptions options =
+      wrapper.CreateGraphOptimizationPassOptions(&graph);
 
   EncapsulateSubgraphsPass pass;
   TF_ASSERT_OK(pass.Run(options));
@@ -2634,15 +2632,9 @@ TEST(EncapsulateSubgraphsTest, NoRefVarsNoAttr) {
   auto graph = absl::make_unique<Graph>(OpRegistry::Global());
   TF_ASSERT_OK(root.ToGraph(graph.get()));
 
-  // TODO(cheshire): reduce boilerplate for creating
-  // GraphOptimizationPassOptions here and elsewhere, probably using a macro.
-  SessionOptions session_options;
-  session_options.env = Env::Default();
-  GraphOptimizationPassOptions options;
-  options.session_options = &session_options;
-  FunctionLibraryDefinition library(OpRegistry::Global(), {});
-  options.flib_def = &library;
-  options.graph = &graph;
+  GraphOptimizationPassWrapper wrapper;
+  GraphOptimizationPassOptions options =
+      wrapper.CreateGraphOptimizationPassOptions(&graph);
 
   EncapsulateSubgraphsPass pass;
   TF_ASSERT_OK(pass.Run(options));
