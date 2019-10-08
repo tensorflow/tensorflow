@@ -71,27 +71,8 @@ CompileOnlyService::CompileAheadOfTime(
   const DebugOptions& debug_options = options.debug_options();
   ExecutionOptions execution_options;
   *execution_options.mutable_debug_options() = debug_options;
-
-  for (const AotXlaComputationInstance& instance : computations) {
-    TF_RET_CHECK(instance.computation.has_host_program_shape());
-    *execution_options.mutable_shape_with_output_layout() =
-        instance.result_layout->ToProto();
-
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<HloModuleConfig> module_config,
-        CreateModuleConfig(
-            ProgramShape(instance.computation.host_program_shape()),
-            instance.argument_layouts, &execution_options, &options));
-
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<HloModule> hlo_module,
-        HloModule::CreateFromProto(instance.computation, *module_config));
-    DumpHloModuleIfEnabled(*hlo_module, "before_optimizations");
-    hlo_modules.push_back(std::move(hlo_module));
-  }
-
   // Capture replica_count, num_cores, and device_assignment in ExecutionOptions
-  // to save in a proto dump.
+  // to later save in a proto dump.
   if (options.replica_count() > 0) {
     execution_options.set_num_replicas(options.replica_count());
     if (options.has_static_device_assignment()) {
@@ -110,6 +91,24 @@ CompileOnlyService::CompileAheadOfTime(
     TF_RETURN_IF_ERROR(options.static_device_assignment().Serialize(
         execution_options.mutable_device_assignment()));
   }
+  for (const AotXlaComputationInstance& instance : computations) {
+    TF_RET_CHECK(instance.computation.has_host_program_shape());
+    *execution_options.mutable_shape_with_output_layout() =
+        instance.result_layout->ToProto();
+
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloModuleConfig> module_config,
+        CreateModuleConfig(
+            ProgramShape(instance.computation.host_program_shape()),
+            instance.argument_layouts, &execution_options, &options));
+
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloModule> hlo_module,
+        HloModule::CreateFromProto(instance.computation, *module_config));
+    DumpHloModuleIfEnabled(*hlo_module, "before_optimizations");
+    hlo_modules.push_back(std::move(hlo_module));
+  }
+
   execution_options.clear_shape_with_output_layout();
   DumpExecutionOptions(execution_options, debug_options);
 
