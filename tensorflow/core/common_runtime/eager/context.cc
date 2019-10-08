@@ -770,7 +770,8 @@ Status EagerContext::UpdateRemoteMaster(
                       remote_context),
           remote_contexts_.end());
     }
-  } else if (!add_remote_contexts.empty()) {
+  }
+  if (!add_remote_contexts.empty()) {
     remote_contexts_.insert(std::end(remote_contexts_),
                             std::begin(add_remote_contexts),
                             std::end(add_remote_contexts));
