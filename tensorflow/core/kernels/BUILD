@@ -7771,12 +7771,7 @@ tf_mkl_kernel_library(
     hdrs = ["no_op.h"],
     prefix = "mkl_tmp_bf16_ops",
     deps = [
-        ":bounds_check",
-        ":ops_util",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
+        ":no_op",
     ] + mkl_deps(),
 )
 

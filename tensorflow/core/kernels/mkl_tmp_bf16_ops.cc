@@ -56,6 +56,7 @@ namespace tensorflow {
 
 TF_CALL_bfloat16(REGISTER_CPU);
 #undef REGISTER_CPU
+
 }
 
 #endif  // ENABLE_INTEL_MKL_BFLOAT16
