@@ -1547,31 +1547,31 @@ cc_library(
     ],
 )
 
-cc_binary(
-    name = "mlir-translate",
-    deps = [
-        ":tools/mlir-translate/mlir-translate",
-    ],
-)
-
 cc_library(
-    name = "tools/mlir-translate/mlir-translate",
+    name = "MlirTranslateMain",
     srcs = ["tools/mlir-translate/mlir-translate.cpp"],
     deps = [
         ":IR",
-        ":LoopDialectRegistration",
         ":Parser",
+        ":Support",
+        ":TranslateClParser",
+        ":Translation",
+        "@llvm//:support",
+    ],
+)
+
+cc_binary(
+    name = "mlir-translate",
+    deps = [
+        ":LoopDialectRegistration",
+        ":MlirTranslateMain",
         ":SPIRVDialectRegistration",
         ":SPIRVTranslateRegistration",
         ":StandardDialectRegistration",
-        ":Support",
         ":TargetLLVMIR",
         ":TargetNVVMIR",
         ":TargetROCDLIR",
-        ":TranslateClParser",
-        ":Translation",
         ":VectorDialectRegistration",
-        "@llvm//:support",
     ],
 )
 

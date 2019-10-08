@@ -513,7 +513,7 @@ tf_cc_binary(
     name = "flatbuffer_translate",
     deps = [
         ":flatbuffer_translate_lib",
-        "@local_config_mlir//:tools/mlir-translate/mlir-translate",
+        "@local_config_mlir//:MlirTranslateMain",
     ],
 )
 
