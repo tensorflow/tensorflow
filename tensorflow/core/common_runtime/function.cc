@@ -1988,7 +1988,16 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     if (input_control_node) {
       bool has_inputs = absl::c_any_of(
           n->in_edges(), [](const Edge* e) { return !e->src()->IsSource(); });
-      if (!has_inputs || IsFunctionCall(flib_def, *n)) {
+      // TODO(b/142280496): We apparently cannot rely on n->IsFunctionCall() for
+      // or-else branch of this if statement, because it sometimes generates an
+      // invalid graph with a control dependency across frames. Therefore we
+      // currently use the old logic from IsFunctionCall(*flib_def, *n) that
+      // look up call nodes in the given flib_def to determine if we should
+      // treat them as function calls.
+      if (!has_inputs ||
+          (n->IsPartitionedCall() ||
+           n->type_string() == FunctionLibraryDefinition::kGradientOp ||
+           flib_def.Find(n->type_string()) != nullptr)) {
         VLOG(4) << "Add control edge from input control node to: "
                 << clone->name();
         g->AddControlEdge(input_control_node, clone, kDoNotCheckDuplicates);
@@ -2160,9 +2169,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
 
 bool IsFunctionCall(const FunctionLibraryDefinition& lib_def,
                     const Node& node) {
-  return node.IsPartitionedCall() ||
-         node.type_string() == FunctionLibraryDefinition::kGradientOp ||
-         lib_def.Find(node.type_string()) != nullptr;
+  return node.IsFunctionCall();
 }
 
 bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
