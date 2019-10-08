@@ -344,7 +344,6 @@ XlaOp ErfInv(XlaOp x) {
   // Compute logarithm of (1+arg) using log1p(arg) which is more
   // precise than log(1+arg) when arg is close to zero.
   // See ref. https://en.cppreference.com/w/cpp/numeric/math/log1p
-
   auto w = -Log1p(- x * x);
 
   auto lt = Lt(w, ScalarLike(x, 5.0));
