@@ -287,7 +287,6 @@ TEST_F(QuantizedConv2DTest, Small) {
 
 TEST_F(QuantizedConv2DTest, SmallS8) {
   const int stride = 1;
-
   const int depth = 1;
   const int image_width = 3;
   const int image_height = 3;
@@ -342,7 +341,6 @@ TEST_F(QuantizedConv2DTest, SmallS8) {
   // | 1 | 4 | 2 |
   // | 0 | 5 |-1 |
   // | 3 |-1 |-3 |
-
   Tensor filter_float(DT_FLOAT,
                       {filter_size, filter_size, depth, filter_count});
   test::FillValues<float>(&filter_float, {1, 4, 2, 0, 5, -1, 3, -1, -3});
