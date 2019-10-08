@@ -1510,8 +1510,7 @@ def _map_graph_network(inputs, outputs):
                 finished_nodes,
                 nodes_in_progress,
                 layer,
-                node_index,
-                tensor_index):
+                node_index):
     """Builds a map of the graph of layers.
 
     This recursively updates the map `layer_indices`,
@@ -1526,7 +1525,6 @@ def _map_graph_network(inputs, outputs):
         layer: Layer from which `tensor` comes from. If not provided,
             will be obtained from `tensor._keras_history`.
         node_index: Node index from which `tensor` comes from.
-        tensor_index: Tensor_index from which `tensor` comes from.
 
     Raises:
         ValueError: if a cycle is detected.
@@ -1537,10 +1535,6 @@ def _map_graph_network(inputs, outputs):
     if node in nodes_in_progress:
       raise ValueError('The tensor ' + str(tensor) + ' at layer "' +
                        layer.name + '" is part of a cycle.')
-
-    # Don't repeat work for shared subgraphs
-    if node in finished_nodes:
-      return
 
     node_key = _make_node_key(layer.name, node_index)
     # Update network_nodes.
@@ -1553,10 +1547,9 @@ def _map_graph_network(inputs, outputs):
     nodes_in_progress.add(node)
 
     # Propagate to all previous tensors connected to this node.
-    for layer, node_index, tensor_index, tensor in node.iterate_inbound(
+    for layer, node_index, _, tensor in node.iterate_inbound(
         include_arguments=True):
-      build_map(tensor, finished_nodes, nodes_in_progress, layer, node_index,
-                tensor_index)
+      build_map(tensor, finished_nodes, nodes_in_progress, layer, node_index)
 
     finished_nodes.add(node)
     nodes_in_progress.remove(node)
@@ -1565,11 +1558,10 @@ def _map_graph_network(inputs, outputs):
   finished_nodes = set()
   nodes_in_progress = set()
   for x in outputs:
-    layer, node_index, tensor_index = x._keras_history  # pylint: disable=protected-access
+    layer, node_index, _ = x._keras_history  # pylint: disable=protected-access
     build_map(x, finished_nodes, nodes_in_progress,
               layer=layer,
-              node_index=node_index,
-              tensor_index=tensor_index)
+              node_index=node_index)
 
   for node in reversed(nodes_in_decreasing_depth):
     # If the depth is not set, the node has no outbound nodes (depth 0).
