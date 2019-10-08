@@ -160,10 +160,10 @@ std::vector<ComputeTaskDescriptorPtr> FullyConnected(
   }
 
   auto filters = options.storage_precision == RuntimeOptions::Precision::FP32
-                     ? VectorToUint8Vector(filters_reordered)
+                     ? GetByteBuffer(filters_reordered)
                      : VectorFloatToHalf(filters_reordered);
   auto biases = options.storage_precision == RuntimeOptions::Precision::FP32
-                    ? VectorToUint8Vector(attr.bias.data)
+                    ? GetByteBuffer(attr.bias.data)
                     : VectorFloatToHalf(attr.bias.data);
   desc->immutable_buffers = {
       {"device FLT4* const matrix", filters},
@@ -180,7 +180,7 @@ std::vector<ComputeTaskDescriptorPtr> FullyConnected(
              static_cast<uint32_t>(attr.weights.shape.o),
              static_cast<uint32_t>(0),
          };
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 
