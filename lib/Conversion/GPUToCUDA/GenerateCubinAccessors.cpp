@@ -61,26 +61,21 @@ private:
     return LLVM::LLVMType::getIntNTy(llvmDialect, bits);
   }
 
-  // Inserts a global constant string containing `blob` into the parent module
-  // of `kernelFunc` and generates the function that returns the address of the
-  // first character of this string.
+  // Inserts a global constant string containing `blob` into the grand-parent
+  // module of `kernelFunc` and generates the function that returns the address
+  // of the first character of this string. Returns the generator function.
   // TODO(herhut): consider fusing this pass with launch-func-to-cuda.
-  void generate(FuncOp kernelFunc, StringAttr blob) {
-    auto stubFunc = getModule().lookupSymbol<FuncOp>(kernelFunc.getName());
-    if (!stubFunc) {
-      kernelFunc.emitError(
-          "corresponding external function not found in parent module");
-      return signalPassFailure();
-    }
-
-    Location loc = stubFunc.getLoc();
-    SmallString<128> nameBuffer(stubFunc.getName());
-    auto module = stubFunc.getParentOfType<ModuleOp>();
-    assert(module && "function must belong to a module");
+  FuncOp generate(FuncOp kernelFunc, StringAttr blob) {
+    Location loc = kernelFunc.getLoc();
+    SmallString<128> nameBuffer(kernelFunc.getName());
+    ModuleOp module = getModule();
+    assert(kernelFunc.getParentOp() &&
+           kernelFunc.getParentOp()->getParentOp() == module &&
+           "expected one level of module nesting");
 
     // Insert the getter function just after the original function.
-    OpBuilder moduleBuilder(module.getBody(), module.getBody()->begin());
-    moduleBuilder.setInsertionPointAfter(stubFunc.getOperation());
+    OpBuilder moduleBuilder(module.getBody());
+    moduleBuilder.setInsertionPointAfter(kernelFunc.getParentOp());
     auto getterType = moduleBuilder.getFunctionType(
         llvm::None, LLVM::LLVMType::getInt8PtrTy(llvmDialect));
     nameBuffer.append(kCubinGetterSuffix);
@@ -89,7 +84,7 @@ private:
     Block *entryBlock = result.addEntryBlock();
 
     // Drop the getter suffix before appending the storage suffix.
-    nameBuffer.resize(stubFunc.getName().size());
+    nameBuffer.resize(kernelFunc.getName().size());
     nameBuffer.append(kCubinStorageSuffix);
 
     // Obtain the address of the first character of the global string containing
@@ -98,25 +93,29 @@ private:
     Value *startPtr = LLVM::createGlobalString(
         loc, builder, StringRef(nameBuffer), blob.getValue(), llvmDialect);
     builder.create<LLVM::ReturnOp>(loc, startPtr);
-
-    // Store the name of the getter on the function for easier lookup.
-    stubFunc.setAttr(kCubinGetterAnnotation, builder.getSymbolRefAttr(result));
+    return result;
   }
 
 public:
   void runOnModule() override {
     llvmDialect = getContext().getRegisteredDialect<LLVM::LLVMDialect>();
 
-    auto modules = getModule().getOps<ModuleOp>();
-    for (auto module : llvm::make_early_inc_range(modules)) {
+    for (auto module : getModule().getOps<ModuleOp>()) {
       if (!module.getAttrOfType<UnitAttr>(
               gpu::GPUDialect::getKernelModuleAttrName()))
         continue;
       for (auto func : module.getOps<FuncOp>()) {
-        if (StringAttr blob = func.getAttrOfType<StringAttr>(kCubinAnnotation))
-          generate(func, blob);
+        if (StringAttr blob =
+                func.getAttrOfType<StringAttr>(kCubinAnnotation)) {
+          FuncOp getter = generate(func, blob);
+
+          // Store the name of the getter on the function for easier lookup and
+          // remove the CUBIN.
+          func.setAttr(kCubinGetterAnnotation,
+                       SymbolRefAttr::get(getter.getName(), func.getContext()));
+          func.removeAttr(kCubinAnnotation);
+        }
       }
-      module.erase();
     }
   }
 

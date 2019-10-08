@@ -1,5 +1,7 @@
 // RUN: mlir-opt -gpu-kernel-outlining -split-input-file -verify-diagnostics %s | FileCheck %s
 
+// CHECK: module attributes {gpu.container_module}
+
 // CHECK-LABEL: func @launch()
 func @launch() {
   // CHECK: %[[ARG0:.*]] = "op"() : () -> f32
@@ -19,7 +21,7 @@ func @launch() {
   // CHECK: %[[BDIMZ:.*]] = constant 28
   %bDimZ = constant 28 : index
 
-  // CHECK: "gpu.launch_func"(%[[GDIMX]], %[[GDIMY]], %[[GDIMZ]], %[[BDIMX]], %[[BDIMY]], %[[BDIMZ]], %[[ARG0]], %[[ARG1]]) {kernel = @launch_kernel} : (index, index, index, index, index, index, f32, memref<?xf32, 1>) -> ()
+  // CHECK: "gpu.launch_func"(%[[GDIMX]], %[[GDIMY]], %[[GDIMZ]], %[[BDIMX]], %[[BDIMY]], %[[BDIMZ]], %[[ARG0]], %[[ARG1]]) {kernel = "launch_kernel", kernel_module = @launch_kernel} : (index, index, index, index, index, index, f32, memref<?xf32, 1>) -> ()
   // CHECK-NOT: gpu.launch blocks
   gpu.launch blocks(%bx, %by, %bz) in (%grid_x = %gDimX, %grid_y = %gDimY,
                                        %grid_z = %gDimZ)
@@ -34,11 +36,9 @@ func @launch() {
   return
 }
 
-// CHECK-LABEL: func @launch_kernel
-// CHECK-SAME: (f32, memref<?xf32, 1>)
-// CHECK-NEXT: attributes {gpu.kernel}
 
-// CHECK-LABEL: func @launch_kernel
+// CHECK-LABEL: module @launch_kernel
+// CHECK-NEXT: func @launch_kernel
 // CHECK-SAME: (%[[KERNEL_ARG0:.*]]: f32, %[[KERNEL_ARG1:.*]]: memref<?xf32, 1>)
 // CHECK-NEXT: attributes {gpu.kernel}
 // CHECK-NEXT: %[[BID:.*]] = "gpu.block_id"() {dimension = "x"} : () -> index
@@ -59,17 +59,19 @@ func @launch() {
 
 // -----
 
+// CHECK: module attributes {gpu.container_module}
+
 func @multiple_launches() {
   // CHECK: %[[CST:.*]] = constant 8 : index
   %cst = constant 8 : index
-  // CHECK: "gpu.launch_func"(%[[CST]], %[[CST]], %[[CST]], %[[CST]], %[[CST]], %[[CST]]) {kernel = @multiple_launches_kernel} : (index, index, index, index, index, index) -> ()
+  // CHECK: "gpu.launch_func"(%[[CST]], %[[CST]], %[[CST]], %[[CST]], %[[CST]], %[[CST]]) {kernel = "multiple_launches_kernel", kernel_module = @multiple_launches_kernel} : (index, index, index, index, index, index) -> ()
   gpu.launch blocks(%bx, %by, %bz) in (%grid_x = %cst, %grid_y = %cst,
                                        %grid_z = %cst)
              threads(%tx, %ty, %tz) in (%block_x = %cst, %block_y = %cst,
                                         %block_z = %cst) {
     gpu.return
   }
-  // CHECK: "gpu.launch_func"(%[[CST]], %[[CST]], %[[CST]], %[[CST]], %[[CST]], %[[CST]]) {kernel = @multiple_launches_kernel_0} : (index, index, index, index, index, index) -> ()
+  // CHECK: "gpu.launch_func"(%[[CST]], %[[CST]], %[[CST]], %[[CST]], %[[CST]], %[[CST]]) {kernel = "multiple_launches_kernel", kernel_module = @multiple_launches_kernel_0} : (index, index, index, index, index, index) -> ()
   gpu.launch blocks(%bx2, %by2, %bz2) in (%grid_x2 = %cst, %grid_y2 = %cst,
                                           %grid_z2 = %cst)
              threads(%tx2, %ty2, %tz2) in (%block_x2 = %cst, %block_y2 = %cst,
@@ -79,8 +81,10 @@ func @multiple_launches() {
   return
 }
 
-// CHECK: func @multiple_launches_kernel()
-// CHECK: func @multiple_launches_kernel_0()
+// CHECK: module @multiple_launches_kernel
+// CHECK: func @multiple_launches_kernel
+// CHECK: module @multiple_launches_kernel_0
+// CHECK: func @multiple_launches_kernel
 
 // -----
 
@@ -89,7 +93,7 @@ func @extra_constants(%arg0 : memref<?xf32>) {
   %cst = constant 8 : index
   %cst2 = constant 2 : index
   %cst3 = constant 3 : index
-  // CHECK: "gpu.launch_func"(%[[CST]], %[[CST]], %[[CST]], %[[CST]], %[[CST]], %[[CST]], %{{.*}}) {kernel = @extra_constants_kernel} : (index, index, index, index, index, index, memref<?xf32>) -> ()
+  // CHECK: "gpu.launch_func"(%[[CST]], %[[CST]], %[[CST]], %[[CST]], %[[CST]], %[[CST]], %{{.*}}) {kernel = "extra_constants_kernel", kernel_module = @extra_constants_kernel} : (index, index, index, index, index, index, memref<?xf32>) -> ()
   gpu.launch blocks(%bx, %by, %bz) in (%grid_x = %cst, %grid_y = %cst,
                                        %grid_z = %cst)
              threads(%tx, %ty, %tz) in (%block_x = %cst, %block_y = %cst,

@@ -135,6 +135,12 @@ public:
       func.walk(
           [this](mlir::gpu::LaunchFuncOp op) { translateGpuLaunchCalls(op); });
     }
+
+    // GPU kernel modules are no longer necessary since we have a global
+    // constant with the CUBIN data.
+    for (auto m : llvm::make_early_inc_range(getModule().getOps<ModuleOp>()))
+      if (m.getAttrOfType<UnitAttr>(gpu::GPUDialect::getKernelModuleAttrName()))
+        m.erase();
   }
 
 private:
@@ -342,11 +348,12 @@ void GpuLaunchFuncToCudaCallsPass::translateGpuLaunchCalls(
   // Emit a call to the cubin getter to retrieve a pointer to the data that
   // represents the cubin at runtime.
   // TODO(herhut): This should rather be a static global once supported.
-  auto kernelFunction = getModule().lookupSymbol<FuncOp>(launchOp.kernel());
-  if (!kernelFunction) {
-    launchOp.emitError("missing kernel function ") << launchOp.kernel();
-    return signalPassFailure();
-  }
+  auto kernelModule =
+      getModule().lookupSymbol<ModuleOp>(launchOp.getKernelModuleName());
+  assert(kernelModule && "expected a kernel module");
+  auto kernelFunction = kernelModule.lookupSymbol<FuncOp>(launchOp.kernel());
+  assert(kernelFunction && "expected a kernel function");
+
   auto cubinGetter =
       kernelFunction.getAttrOfType<SymbolRefAttr>(kCubinGetterAnnotation);
   if (!cubinGetter) {

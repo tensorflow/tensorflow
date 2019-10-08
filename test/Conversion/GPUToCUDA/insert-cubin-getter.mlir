@@ -1,15 +1,15 @@
 // RUN: mlir-opt %s --generate-cubin-accessors | FileCheck %s
 
+module attributes {gpu.container_module} {
+
 // CHECK: llvm.mlir.global constant @[[global:.*]]("CUBIN")
 
-module attributes {gpu.kernel_module} {
-  func @kernel(!llvm.float, !llvm<"float*">)
-  attributes  {nvvm.cubin = "CUBIN"}
-}
-
-func @kernel(!llvm.float, !llvm<"float*">)
-// CHECK: attributes  {gpu.kernel, nvvm.cubingetter = @[[getter:.*]]}
-  attributes  {gpu.kernel}
+  module attributes {gpu.kernel_module} {
+    // CHECK-LABEL: func @kernel
+    func @kernel(!llvm.float, !llvm<"float*">)
+    // CHECK: attributes  {nvvm.cubingetter = @[[getter:.*]]}
+    attributes  {nvvm.cubin = "CUBIN"}
+  }
 
 // CHECK: func @[[getter]]() -> !llvm<"i8*">
 // CHECK: %[[addressof:.*]] = llvm.mlir.addressof @[[global]]
@@ -17,3 +17,4 @@ func @kernel(!llvm.float, !llvm<"float*">)
 // CHECK: %[[gep:.*]] = llvm.getelementptr %[[addressof]][%[[c0]], %[[c0]]]
 // CHECK-SAME: -> !llvm<"i8*">
 // CHECK: llvm.return %[[gep]] : !llvm<"i8*">
+}
