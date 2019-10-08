@@ -303,6 +303,20 @@ def HLO_SliceOp: HLO_Op<
   let hasCustomHLOConverter = 1;
 }
 
+def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
+      [NoSideEffect, AllElementTypesMatch<["operand", "result"]>,
+       AllTypesMatch<["start_indices", "slice_sizes"]>]> {
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    HLO_Tensor:$start_indices,
+    I64ElementsAttr:$slice_sizes
+  );
+
+  let results = (outs HLO_Tensor:$result);
+
+  let hasCustomHLOConverter = 1;
+}
+
 def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
       [NoSideEffect, AllElementTypesMatch<["operand", "result"]>]> {
   let arguments = (ins

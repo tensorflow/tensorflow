@@ -388,6 +388,16 @@ class BASE_HLO_SliceOp {
   }];
 }
 
+class BASE_HLO_DynamicSliceOp {
+  string summary = "Dynamic Slice operator";
+
+  string description = [{
+    Extracts a sub-array from the input array at dynamic start_indices.
+
+    See https://www.tensorflow.org/xla/operation_semantics#dynamicslice.
+  }];
+}
+
 class BASE_HLO_DynamicUpdateSliceOp {
   string summary = "Dynamic Update Slice operator";
 
