@@ -75,6 +75,7 @@ gentbl(
     td_file = "transforms/legalize_tf_patterns.td",
     td_srcs = [
         ":hlo_ops_td_files",
+        "@llvm//:support",
         "@local_config_mlir//:StdOpsTdFiles",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
     ],
@@ -122,8 +123,10 @@ cc_library(
     deps = [
         ":lhlo",
         "@com_google_absl//absl/memory",
+        "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Linalg",
+        "@local_config_mlir//:LinalgDialectRegistration",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Transforms",
