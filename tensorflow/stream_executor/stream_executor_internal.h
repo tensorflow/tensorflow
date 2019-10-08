@@ -229,14 +229,14 @@ class StreamExecutorInterface {
   virtual port::Status SynchronousMemcpyDeviceToDevice(
       DeviceMemoryBase *gpu_dst, const DeviceMemoryBase &gpu_src,
       uint64 size) = 0;
-  virtual bool MemZero(Stream *stream, DeviceMemoryBase *location,
-                       uint64 size) = 0;
-  virtual bool Memset(Stream *stream, DeviceMemoryBase *location, uint8 pattern,
-                      uint64 size) {
-    return false;
+  virtual port::Status MemZero(Stream *stream, DeviceMemoryBase *location,
+                               uint64 size) = 0;
+  virtual port::Status Memset(Stream *stream, DeviceMemoryBase *location,
+                              uint8 pattern, uint64 size) {
+    return port::InternalError("Not implemented");
   }
-  virtual bool Memset32(Stream *stream, DeviceMemoryBase *location,
-                        uint32 pattern, uint64 size) = 0;
+  virtual port::Status Memset32(Stream *stream, DeviceMemoryBase *location,
+                                uint32 pattern, uint64 size) = 0;
   virtual bool Memcpy(Stream *stream, void *host_dst,
                       const DeviceMemoryBase &gpu_src, uint64 size) = 0;
   virtual bool Memcpy(Stream *stream, DeviceMemoryBase *gpu_dst,
