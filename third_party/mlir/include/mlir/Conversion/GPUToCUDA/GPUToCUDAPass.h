@@ -61,10 +61,6 @@ createConvertGPUKernelToCubinPass(CubinGenerator cubinGenerator);
 std::unique_ptr<OpPassBase<ModuleOp>>
 createConvertGpuLaunchFuncToCudaCallsPass();
 
-/// Creates a pass to augment a module with getter functions for all contained
-/// cubins as encoded via the 'nvvm.cubin' attribute.
-std::unique_ptr<OpPassBase<ModuleOp>> createGenerateCubinAccessorPass();
-
 } // namespace mlir
 
 #endif // MLIR_CONVERSION_GPUTOCUDA_GPUTOCUDAPASS_H_

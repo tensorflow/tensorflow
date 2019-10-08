@@ -51,7 +51,10 @@ static constexpr const char *cuGetStreamHelperName = "mcuGetStreamHelper";
 static constexpr const char *cuStreamSynchronizeName = "mcuStreamSynchronize";
 static constexpr const char *kMcuMemHostRegisterPtr = "mcuMemHostRegisterPtr";
 
+static constexpr const char *kCubinAnnotation = "nvvm.cubin";
 static constexpr const char *kCubinGetterAnnotation = "nvvm.cubingetter";
+static constexpr const char *kCubinGetterSuffix = "_cubin";
+static constexpr const char *kCubinStorageSuffix = "_cubin_cst";
 
 namespace {
 
@@ -121,6 +124,7 @@ private:
   Value *setupParamsArray(gpu::LaunchFuncOp launchOp, OpBuilder &builder);
   Value *generateKernelNameConstant(FuncOp kernelFunction, Location &loc,
                                     OpBuilder &builder);
+  FuncOp generateCubinAccessor(FuncOp kernelFunc, StringAttr blob);
   void translateGpuLaunchCalls(mlir::gpu::LaunchFuncOp launchOp);
 
 public:
@@ -131,10 +135,24 @@ public:
     // Cache the used LLVM types.
     initializeCachedTypes();
 
-    for (auto func : getModule().getOps<FuncOp>()) {
-      func.walk(
-          [this](mlir::gpu::LaunchFuncOp op) { translateGpuLaunchCalls(op); });
-    }
+    getModule().walk([this](mlir::gpu::LaunchFuncOp op) {
+      auto gpuModule =
+          getModule().lookupSymbol<ModuleOp>(op.getKernelModuleName());
+      auto kernelFunc = gpuModule.lookupSymbol<FuncOp>(op.kernel());
+      auto cubinAttr = kernelFunc.getAttrOfType<StringAttr>(kCubinAnnotation);
+      if (!cubinAttr)
+        return signalPassFailure();
+      FuncOp getter = generateCubinAccessor(kernelFunc, cubinAttr);
+
+      // Store the name of the getter on the function for easier lookup and
+      // remove the original CUBIN annotation.
+      kernelFunc.setAttr(
+          kCubinGetterAnnotation,
+          SymbolRefAttr::get(getter.getName(), getter.getContext()));
+      kernelFunc.removeAttr(kCubinAnnotation);
+
+      translateGpuLaunchCalls(op);
+    });
 
     // GPU kernel modules are no longer necessary since we have a global
     // constant with the CUBIN data.
@@ -315,6 +333,42 @@ Value *GpuLaunchFuncToCudaCallsPass::generateKernelNameConstant(
   return LLVM::createGlobalString(
       loc, builder, globalName, StringRef(kernelName.data(), kernelName.size()),
       llvmDialect);
+}
+
+// Inserts a global constant string containing `blob` into the grand-parent
+// module of `kernelFunc` and generates the function that returns the address of
+// the first character of this string.
+FuncOp GpuLaunchFuncToCudaCallsPass::generateCubinAccessor(FuncOp kernelFunc,
+                                                           StringAttr blob) {
+  Location loc = kernelFunc.getLoc();
+  SmallString<128> nameBuffer(kernelFunc.getName());
+  ModuleOp module = getModule();
+  assert(kernelFunc.getParentOp() &&
+         kernelFunc.getParentOp()->getParentOp() == module &&
+         "expected one level of module nesting");
+
+  // Insert the getter function just after the GPU kernel module containing
+  // `kernelFunc`.
+  OpBuilder moduleBuilder(module.getBody());
+  moduleBuilder.setInsertionPointAfter(kernelFunc.getParentOp());
+  auto getterType = moduleBuilder.getFunctionType(
+      llvm::None, LLVM::LLVMType::getInt8PtrTy(llvmDialect));
+  nameBuffer.append(kCubinGetterSuffix);
+  auto result = moduleBuilder.create<FuncOp>(
+      loc, StringRef(nameBuffer), getterType, ArrayRef<NamedAttribute>());
+  Block *entryBlock = result.addEntryBlock();
+
+  // Drop the getter suffix before appending the storage suffix.
+  nameBuffer.resize(kernelFunc.getName().size());
+  nameBuffer.append(kCubinStorageSuffix);
+
+  // Obtain the address of the first character of the global string containing
+  // the cubin and return from the getter.
+  OpBuilder builder(entryBlock);
+  Value *startPtr = LLVM::createGlobalString(
+      loc, builder, StringRef(nameBuffer), blob.getValue(), llvmDialect);
+  builder.create<LLVM::ReturnOp>(loc, startPtr);
+  return result;
 }
 
 // Emits LLVM IR to launch a kernel function. Expects the module that contains

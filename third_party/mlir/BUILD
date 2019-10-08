@@ -634,7 +634,6 @@ cc_library(
     srcs = [
         "lib/Conversion/GPUToCUDA/ConvertKernelFuncToCubin.cpp",
         "lib/Conversion/GPUToCUDA/ConvertLaunchFuncToCudaCalls.cpp",
-        "lib/Conversion/GPUToCUDA/GenerateCubinAccessors.cpp",
     ],
     hdrs = ["include/mlir/Conversion/GPUToCUDA/GPUToCUDAPass.h"],
     includes = ["include"],
