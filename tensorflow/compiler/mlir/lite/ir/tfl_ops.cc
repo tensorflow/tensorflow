@@ -275,10 +275,10 @@ void buildComparisonBinOp(Builder *builder, OperationState &result, Value *lhs,
         << rhs->getType();
   result.addOperands({lhs, rhs});
   // Comparison binary ops always return i1 tensor.
-  if (auto shaped_type = result_type.dyn_cast<ShapedType>()) {
-    auto resultShape = shaped_type.getShape();
+  if (auto shaped_type = result_type.dyn_cast<RankedTensorType>()) {
+    auto result_shape = shaped_type.getShape();
     result.types.push_back(
-        builder->getTensorType(resultShape, builder->getI1Type()));
+        builder->getTensorType(result_shape, builder->getI1Type()));
   } else {
     result.types.push_back(builder->getTensorType(builder->getI1Type()));
   }
