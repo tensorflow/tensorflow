@@ -41,8 +41,8 @@ class LMDBDatasetParams : public DatasetParams {
   }
 
   virtual Status GetInputNames(
-      std::vector<string>* input_placeholder) const override {
-    *input_placeholder = {LMDBDatasetOp::kFileNames};
+      std::vector<string>* input_names) const override {
+    *input_names = {LMDBDatasetOp::kFileNames};
     return Status::OK();
   }
 
