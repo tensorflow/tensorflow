@@ -146,7 +146,7 @@ static inline bool IsMklLayoutDependentOp(const string& op_name, DataType T) {
   if (kernel.find(kMklLayoutDependentOpLabelPattern) != string::npos) {
     return (T == DT_FLOAT);
   }
-#endif
+#endif  // ENABLE_INTEL_MKL_BFLOAT16
   return false;
 }
 
