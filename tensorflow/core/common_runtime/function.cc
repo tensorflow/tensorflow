@@ -1935,6 +1935,9 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
       inputs[e->dst_input()] = {e->src(), e->src_output()};
     }
   }
+  if (input_control_node != nullptr) {
+    VLOG(3) << "Created input control node: " << input_control_node->name();
+  }
 
   // ------------------------------------------------------------------------ //
   // Duplicate fbody->graph into 'g'.  First, we copy the nodes of
@@ -1986,6 +1989,8 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
       bool has_inputs = absl::c_any_of(
           n->in_edges(), [](const Edge* e) { return !e->src()->IsSource(); });
       if (!has_inputs || IsFunctionCall(flib_def, *n)) {
+        VLOG(4) << "Add control edge from input control node to: "
+                << clone->name();
         g->AddControlEdge(input_control_node, clone, kDoNotCheckDuplicates);
       }
     }
@@ -2147,6 +2152,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   // ------------------------------------------------------------------------ //
   // 'caller' is replaced with inlined function body nodes and maybe IdentityN
   // to keep it fetchable.
+  VLOG(3) << "Successfully inlined function call node: " << caller->name();
   g->RemoveNode(caller);
 
   return Status::OK();
@@ -2156,7 +2162,7 @@ bool IsFunctionCall(const FunctionLibraryDefinition& lib_def,
                     const Node& node) {
   return node.IsPartitionedCall() ||
          node.type_string() == FunctionLibraryDefinition::kGradientOp ||
-         lib_def.Find(node.def().op()) != nullptr;
+         lib_def.Find(node.type_string()) != nullptr;
 }
 
 bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
