@@ -120,7 +120,7 @@ private:
 
   void declareCudaFunctions(Location loc);
   Value *setupParamsArray(gpu::LaunchFuncOp launchOp, OpBuilder &builder);
-  Value *generateKernelNameConstant(FuncOp kernelFunction, Location &loc,
+  Value *generateKernelNameConstant(StringRef name, Location &loc,
                                     OpBuilder &builder);
   void translateGpuLaunchCalls(mlir::gpu::LaunchFuncOp launchOp);
 
@@ -304,14 +304,12 @@ GpuLaunchFuncToCudaCallsPass::setupParamsArray(gpu::LaunchFuncOp launchOp,
 //   %2 = llvm.getelementptr %0[%1, %1] : !llvm<"i8*">
 // }
 Value *GpuLaunchFuncToCudaCallsPass::generateKernelNameConstant(
-    FuncOp kernelFunction, Location &loc, OpBuilder &builder) {
+    StringRef name, Location &loc, OpBuilder &builder) {
   // Make sure the trailing zero is included in the constant.
-  std::vector<char> kernelName(kernelFunction.getName().begin(),
-                               kernelFunction.getName().end());
+  std::vector<char> kernelName(name.begin(), name.end());
   kernelName.push_back('\0');
 
-  std::string globalName =
-      llvm::formatv("{0}_kernel_name", kernelFunction.getName());
+  std::string globalName = llvm::formatv("{0}_kernel_name", name);
   return LLVM::createGlobalString(
       loc, builder, globalName, StringRef(kernelName.data(), kernelName.size()),
       llvmDialect);
@@ -350,12 +348,10 @@ void GpuLaunchFuncToCudaCallsPass::translateGpuLaunchCalls(
   auto kernelModule =
       getModule().lookupSymbol<ModuleOp>(launchOp.getKernelModuleName());
   assert(kernelModule && "expected a kernel module");
-  auto kernelFunction = kernelModule.lookupSymbol<FuncOp>(launchOp.kernel());
-  assert(kernelFunction && "expected a kernel function");
 
-  auto cubinAttr = kernelFunction.getAttrOfType<StringAttr>(kCubinAnnotation);
+  auto cubinAttr = kernelModule.getAttrOfType<StringAttr>(kCubinAnnotation);
   if (!cubinAttr) {
-    kernelFunction.emitOpError()
+    kernelModule.emitOpError()
         << "missing " << kCubinAnnotation << " attribute";
     return signalPassFailure();
   }
@@ -376,7 +372,7 @@ void GpuLaunchFuncToCudaCallsPass::translateGpuLaunchCalls(
   // the kernel function.
   auto cuOwningModuleRef =
       builder.create<LLVM::LoadOp>(loc, getPointerType(), cuModule);
-  auto kernelName = generateKernelNameConstant(kernelFunction, loc, builder);
+  auto kernelName = generateKernelNameConstant(launchOp.kernel(), loc, builder);
   auto cuFunction = allocatePointer(builder, loc);
   FuncOp cuModuleGetFunction =
       getModule().lookupSymbol<FuncOp>(cuModuleGetFunctionName);

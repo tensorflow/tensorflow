@@ -38,7 +38,8 @@ class LLVMDialect;
 template <typename T> class OpPassBase;
 
 using OwnedCubin = std::unique_ptr<std::vector<char>>;
-using CubinGenerator = std::function<OwnedCubin(const std::string &, FuncOp &)>;
+using CubinGenerator =
+    std::function<OwnedCubin(const std::string &, Location, StringRef)>;
 
 /// Creates a pass to convert kernel functions into CUBIN blobs.
 ///
