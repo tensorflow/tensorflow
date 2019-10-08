@@ -126,25 +126,6 @@ Operation* GetLinalgBodyOp<xla_lhlo::AndOp>(Location loc, Type element_type,
              : nullptr;
 }
 
-// Converts LHLO ops to Linalg generic.
-// Sample result for xla_lhlo::AddOp.
-//
-// "xla_lhlo.add"(%arg1, %arg2, %out) :
-//      (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
-//
-// will be converted to
-//
-// #map0 = (d0, d1) -> (d0, d1)
-// "linalg.generic"(%arg1, %arg2, %out) ( {
-//   ^bb0(%arg4: f32, %arg5: f32):
-//     %0 = addf %arg4, %arg5 : f32
-//     "linalg.yield"(%0) : (f32) -> ()
-//   }) {
-//     indexing_maps = [#map0, #map0, #map0],
-//     n_loop_types = [2, 0, 0],
-//     n_views = [3, 1]
-//   } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
-// }
 template <typename LhloOp>
 class LhloToLinalgOpConverter : public ConversionPattern {
  public:
@@ -229,6 +210,25 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    LhloToLinalgOpConverter<xla_lhlo::SubOp>>(context);
 }
 
+// Converts LHLO ops to Linalg generic.
+// Sample result for xla_lhlo::AddOp.
+//
+// "xla_lhlo.add"(%arg1, %arg2, %out) :
+//      (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
+//
+// will be converted to
+//
+// #map0 = (d0, d1) -> (d0, d1)
+// "linalg.generic"(%arg1, %arg2, %out) ( {
+//   ^bb0(%arg4: f32, %arg5: f32):
+//     %0 = addf %arg4, %arg5 : f32
+//     "linalg.yield"(%0) : (f32) -> ()
+//   }) {
+//     indexing_maps = [#map0, #map0, #map0],
+//     n_loop_types = [2, 0, 0],
+//     n_views = [3, 1]
+//   } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
+// }
 struct LhloLegalizeToLinalg : public FunctionPass<LhloLegalizeToLinalg> {
   void runOnFunction() override {
     OwningRewritePatternList patterns;
