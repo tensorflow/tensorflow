@@ -393,7 +393,7 @@ class SessionTest(test_util.TensorFlowTestCase):
 
       res = sess.run([[], tuple(), {}])
       self.assertTrue(isinstance(res, list))
-      self.assertEquals(3, len(res))
+      self.assertEqual(3, len(res))
       self.assertTrue(isinstance(res[0], list))
       self.assertEqual(0, len(res[0]))
       self.assertTrue(isinstance(res[1], tuple))
@@ -403,7 +403,7 @@ class SessionTest(test_util.TensorFlowTestCase):
 
       res = sess.run([[], tuple(), {}, a])
       self.assertTrue(isinstance(res, list))
-      self.assertEquals(4, len(res))
+      self.assertEqual(4, len(res))
       self.assertTrue(isinstance(res[0], list))
       self.assertEqual(0, len(res[0]))
       self.assertTrue(isinstance(res[1], tuple))
@@ -1231,13 +1231,13 @@ class SessionTest(test_util.TensorFlowTestCase):
                               versions.GRAPH_DEF_VERSION_MIN_CONSUMER),
                              sess.graph_def)
       c = constant_op.constant(5.0, name='c')
-      self.assertEquals(len(sess.graph_def.node), 1)
+      self.assertEqual(len(sess.graph_def.node), 1)
       d = constant_op.constant(6.0, name='d')
-      self.assertEquals(len(sess.graph_def.node), 2)
+      self.assertEqual(len(sess.graph_def.node), 2)
       self.assertAllEqual(c.eval(), 5.0)
       self.assertAllEqual(d.eval(), 6.0)
       e = constant_op.constant(7.0, name='e')
-      self.assertEquals(len(sess.graph_def.node), 3)
+      self.assertEqual(len(sess.graph_def.node), 3)
       self.assertAllEqual(e.eval(), 7.0)
 
   def testUseAfterClose(self):
@@ -1683,7 +1683,9 @@ class SessionTest(test_util.TensorFlowTestCase):
             run_metadata=run_metadata)
 
         self.assertTrue(run_metadata.HasField('step_stats'))
-        self.assertEquals(len(run_metadata.step_stats.dev_stats), 1)
+        # TODO(b/142268415): Should be 1 after separating traceme events from
+        # StepStats.
+        self.assertEqual(len(run_metadata.step_stats.dev_stats), 2)
 
   def testRunOptionsRunMetadata(self):
     run_options = config_pb2.RunOptions(
@@ -1708,7 +1710,9 @@ class SessionTest(test_util.TensorFlowTestCase):
             run_metadata=run_metadata)
 
         self.assertTrue(run_metadata.HasField('step_stats'))
-        self.assertEquals(len(run_metadata.step_stats.dev_stats), 1)
+        # TODO(b/142268415): Should be 1 after separating traceme events from
+        # StepStats.
+        self.assertEqual(len(run_metadata.step_stats.dev_stats), 2)
 
   def testFeedShapeCompatibility(self):
     with session.Session() as sess:

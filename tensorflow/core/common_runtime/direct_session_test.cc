@@ -665,7 +665,9 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetworkWithOpts) {
 
   // Checks RunMetadata is well-formed
   ASSERT_TRUE(run_metadata.has_step_stats());
-  EXPECT_EQ(run_metadata.step_stats().dev_stats_size(), 2);
+  // TODO(b/142268415): Should be 2 after separating traceme events from
+  // StepStats.
+  EXPECT_EQ(run_metadata.step_stats().dev_stats_size(), 3);
 }
 
 TEST_F(DirectSessionMinusAXTest, RunSimpleNetworkWithOpts_Callable) {
@@ -697,7 +699,9 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetworkWithOpts_Callable) {
 
   // Checks RunMetadata is well-formed
   ASSERT_TRUE(run_metadata.has_step_stats());
-  EXPECT_EQ(run_metadata.step_stats().dev_stats_size(), 2);
+  // TODO(b/142268415): Should be 2 after separating traceme events from
+  // StepStats.
+  EXPECT_EQ(run_metadata.step_stats().dev_stats_size(), 3);
 }
 
 TEST_F(DirectSessionMinusAXTest, UseRunHandlerPool) {
