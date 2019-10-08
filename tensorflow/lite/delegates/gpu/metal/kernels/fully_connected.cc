@@ -162,12 +162,11 @@ std::vector<ComputeTaskDescriptorPtr> FullyConnected(
   auto filters = options.storage_precision == RuntimeOptions::Precision::FP32
                      ? GetByteBuffer(filters_reordered)
                      : VectorFloatToHalf(filters_reordered);
-  auto biases = options.storage_precision == RuntimeOptions::Precision::FP32
-                    ? GetByteBuffer(attr.bias.data)
-                    : VectorFloatToHalf(attr.bias.data);
   desc->immutable_buffers = {
       {"device FLT4* const matrix", filters},
-      {"device FLT4* const biases", biases},
+      {"device FLT4* const biases",
+       GetByteBufferConvertedResized(attr.bias.data, options.storage_precision,
+                                     attr.weights.shape.o)},
   };
 
   desc->uniform_buffers = {
