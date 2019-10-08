@@ -1859,18 +1859,48 @@ port::Status ROCMBlas::AllocateStridedBuffer(
         DeviceMemory<MAPPED_T>(*(*temp_memory)->mutable_device_memory());
   }
 
+  char* src_ptr=0;
+  char* dst_ptr=0;
+  uint64_t cur_size=0;
+
+  char *device_memory_ptr = static_cast<char *>(device_memory->opaque());
   for (int i = 0; i < batch_count; ++i) {
-    char *device_memory_ptr = static_cast<char *>(device_memory->opaque());
-    DeviceMemoryBase src_mem = DeviceMemoryBase(raw_ptrs[i], matrix_byte_size);
-    DeviceMemoryBase target_mem = DeviceMemoryBase(
-        device_memory_ptr + i * matrix_byte_size, matrix_byte_size);
-    bool a_status =
-        stream->ThenMemcpy(&target_mem, src_mem, matrix_byte_size).ok();
-    if (!a_status) {
-      return port::Status(
-          port::error::INTERNAL,
-          "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
+    if(cur_size==0)
+    {
+      src_ptr = static_cast<char *>raw_ptrs[i];
+      dst_ptr = device_memory_ptr + i * matrix_byte_size;
+      cur_size = matrix_byte_size;
     }
+    else if(static_cast<char *>raw_ptrs[i] == src_ptr+cur_size)
+    {
+      cur_size += matrix_byte_size;    
+    }
+    else
+    {
+      DeviceMemoryBase src_mem = DeviceMemoryBase(src_ptr, cur_size);
+      DeviceMemoryBase target_mem = DeviceMemoryBase(dst_ptr, cur_size);
+      bool a_status =
+          stream->ThenMemcpy(&target_mem, src_mem, cur_size).ok();
+      if (!a_status) {
+        return port::Status(
+            port::error::INTERNAL,
+            "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
+      }
+      src_ptr = (char*)raw_ptrs[i];
+      dst_ptr = device_memory_ptr + i * matrix_byte_size;
+      cur_size = matrix_byte_size;
+    }
+  }
+  if(cur_size!=0)
+  {
+      DeviceMemoryBase src_mem = DeviceMemoryBase(src_ptr, cur_size);
+      DeviceMemoryBase target_mem = DeviceMemoryBase(dst_ptr, cur_size);
+      bool a_status =
+          stream->ThenMemcpy(&target_mem, src_mem, cur_size).ok();
+      if (!a_status)
+        return port::Status(
+            port::error::INTERNAL,
+            "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
   }
   return port::Status::OK();
 }
