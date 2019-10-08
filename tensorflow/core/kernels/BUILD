@@ -800,6 +800,7 @@ cc_library(
     }),
     deps = [
         "//third_party/eigen3",
+        "//tensorflow/core/platform:dynamic_annotations",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:arm": [],
@@ -814,7 +815,10 @@ cc_library(
     name = "eigen_contraction_kernel_no_mkl",
     srcs = ["eigen_contraction_kernel.cc"],
     hdrs = ["eigen_contraction_kernel.h"],
-    deps = ["//third_party/eigen3"],
+    deps = [
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//third_party/eigen3",
+    ],
 )
 
 cc_library(
