@@ -115,7 +115,7 @@ std::vector<ComputeTaskDescriptorPtr> ElementwiseWithTwoInputs(
        [input_ids](const std::map<ValueId, BHWC>& buffers) {
          const auto& dimension = buffers.find(input_ids[0])->second;
          std::vector<int> uniform_params = {dimension.w, dimension.h, 0, 0};
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 

@@ -4311,6 +4311,195 @@ TEST_F(OpConverterTest, ConvertConv3D) {
                 ElementsAreArray(ok_params[i].expected_output));
   }
 }
+
+TEST_F(OpConverterTest, ConvertPool3D) {
+  // Get nodedef for MaxPool3D and AvgPool3D layers.
+  auto get_pool3d_nodedef = [](std::vector<int> ksize = {1, 1, 1, 1, 1},
+                               std::vector<int> strides = {1, 1, 1, 1, 1},
+                               string padding = "SAME",
+                               string data_format = "NCDHW",
+                               const bool is_max_pooling = true) -> NodeDef {
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+
+    if (is_max_pooling) {
+      ops::MaxPool3D::Attrs attrs =
+          ops::MaxPool3D::Attrs().DataFormat(data_format);
+      auto pool3d = ops::MaxPool3D(s.WithOpName("my_maxpool3d"), input, ksize,
+                                   strides, padding, attrs);
+      return pool3d.operation.node()->def();
+    } else {
+      ops::AvgPool3D::Attrs attrs =
+          ops::AvgPool3D::Attrs().DataFormat(data_format);
+      auto pool3d = ops::AvgPool3D(s.WithOpName("my_avgpool3d"), input, ksize,
+                                   strides, padding, attrs);
+      return pool3d.operation.node()->def();
+    }
+  };
+
+  {
+    // Input is weights, should fail.
+    Reset();
+    NodeDef node_def = get_pool3d_nodedef();
+
+    AddTestWeights<float>("input", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"input\" for MaxPool3D must be a tensor, at my_maxpool3d");
+  }
+
+  struct TestParams {
+    std::vector<int> input_dims;
+    std::vector<float> input;
+    std::vector<int> ksize;
+    std::vector<int> strides;
+    string padding;
+    string data_format;
+    bool is_max_pooling;
+    std::vector<int> expected_output_dims;
+    std::vector<float> expected_output;
+  };
+
+  // Start here
+  const std::vector<float> common_array{-4, 2,  15, 3, 6,   -3, 22, 1,   88,
+                                        56, 36, 1,  1, 105, 1,  16, -28, 1,
+                                        42, 9,  3,  1, 7,   1,  11, 61,  5};
+  const int kPool3DOKCases = 10;
+  TestParams ok_params[kPool3DOKCases] = {
+      // Basic - just 1x1 max pooling - input = output
+      TestParams{/*input_dims=*/{1, 3, 3, 3},
+                 /*input=*/common_array,
+                 /*ksize=*/{1, 1, 1, 1, 1},
+                 /*strides=*/{1, 1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NCDHW",
+                 /*is_max_pooling=*/true,
+                 /*expected_output_dims=*/{1, 3, 3, 3},
+                 /*expected_output=*/common_array},
+      // Basic - just 1x1 avg pooling - input = output
+      TestParams{/*input_dims=*/{1, 3, 3, 3},
+                 /*input=*/common_array,
+                 /*ksize=*/{1, 1, 1, 1, 1},
+                 /*strides=*/{1, 1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NCDHW",
+                 /*is_max_pooling=*/false,
+                 /*expected_output_dims=*/{1, 3, 3, 3},
+                 /*expected_output=*/common_array},
+      // Basic - just 1x1 max pooling - input = output, SAME padding
+      TestParams{/*input_dims=*/{1, 3, 3, 3},
+                 /*input=*/common_array,
+                 /*ksize=*/{1, 1, 1, 1, 1},
+                 /*strides=*/{1, 1, 1, 1, 1},
+                 /*padding=*/"SAME",
+                 /*data_format=*/"NCDHW",
+                 /*is_max_pooling=*/true,
+                 /*expected_output_dims=*/{1, 3, 3, 3},
+                 /*expected_output=*/common_array},
+      // Basic - just 1x1 avg pooling - input = output, SAME padding
+      TestParams{/*input_dims=*/{1, 3, 3, 3},
+                 /*input=*/common_array,
+                 /*ksize=*/{1, 1, 1, 1, 1},
+                 /*strides=*/{1, 1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NCDHW",
+                 /*is_max_pooling=*/false,
+                 /*expected_output_dims=*/{1, 3, 3, 3},
+                 /*expected_output=*/common_array},
+      // 3x3 max pooling
+      TestParams{/*input_dims=*/{1, 3, 3, 3},
+                 /*input=*/common_array,
+                 /*ksize=*/{1, 1, 3, 3, 3},
+                 /*strides=*/{1, 1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NCDHW",
+                 /*is_max_pooling=*/true,
+                 /*expected_output_dims=*/{1, 1, 1, 1},
+                 /*expected_output=*/{105}},
+      // 3x3 avg pooling
+      TestParams{/*input_dims=*/{1, 3, 3, 3},
+                 /*input=*/common_array,
+                 /*ksize=*/{1, 1, 3, 3, 3},
+                 /*strides=*/{1, 1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NCDHW",
+                 /*is_max_pooling=*/false,
+                 /*expected_output_dims=*/{1, 1, 1, 1},
+                 /*expected_output=*/{17}},
+      // 3x3 max pooling, NDHWC
+      TestParams{/*input_dims=*/{3, 3, 3, 1},
+                 /*input=*/common_array,
+                 /*ksize=*/{1, 3, 3, 3, 1},
+                 /*strides=*/{1, 1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NDHWC",
+                 /*is_max_pooling=*/true,
+                 /*expected_output_dims=*/{1, 1, 1, 1},
+                 /*expected_output=*/{105}},
+      // 3x3 avg pooling, NDHWC
+      TestParams{/*input_dims=*/{3, 3, 3, 1},
+                 /*input=*/common_array,
+                 /*ksize=*/{1, 3, 3, 3, 1},
+                 /*strides=*/{1, 1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NDHWC",
+                 /*is_max_pooling=*/false,
+                 /*expected_output_dims=*/{1, 1, 1, 1},
+                 /*expected_output=*/{17}},
+      // Strided max
+      TestParams{
+          /*input_dims=*/{1, 3, 3, 3},
+          /*input=*/{1, 0, 2, 0, 0, 0, 3, 0, 4, 0, 0, 0, 0, 0,
+                     0, 0, 0, 0, 5, 0, 6, 0, 0, 0, 7, 0, 8},
+          /*ksize=*/{1, 1, 1, 1, 1},
+          /*strides=*/{1, 1, 2, 2, 2},
+          /*padding=*/"VALID",
+          /*data_format=*/"NCDHW",
+          /*is_max_pooling=*/true,
+          /*expected_output_dims=*/{1, 2, 2, 2},
+          /*expected_output=*/{1, 2, 3, 4, 5, 6, 7, 8}  // Should only pick up
+                                                        // the corners
+      },
+      // Strided avg
+      TestParams{
+          /*input_dims=*/{1, 3, 3, 3},
+          /*input=*/{1, 0, 2, 0, 0, 0, 3, 0, 4, 0, 0, 0, 0, 0,
+                     0, 0, 0, 0, 5, 0, 6, 0, 0, 0, 7, 0, 8},
+          /*ksize=*/{1, 1, 1, 1, 1},
+          /*strides=*/{1, 1, 2, 2, 2},
+          /*padding=*/"VALID",
+          /*data_format=*/"NCDHW",
+          /*is_max_pooling=*/false,
+          /*expected_output_dims=*/{1, 2, 2, 2},
+          /*expected_output=*/{1, 2, 3, 4, 5, 6, 7, 8}  // Should only pick up
+                                                        // the corners
+      }};
+
+  for (int i = 0; i < kPool3DOKCases; i++) {
+    Reset();
+    NodeDef node_def = get_pool3d_nodedef(
+        ok_params[i].ksize, ok_params[i].strides, ok_params[i].padding,
+        ok_params[i].data_format, ok_params[i].is_max_pooling);
+    AddTestTensor("input", ok_params[i].input_dims);
+    RunValidationAndConversion(node_def);
+    TRT_TensorOrWeights output;
+    string expected_node_name =
+        ok_params[i].is_max_pooling ? "my_maxpool3d" : "my_avgpool3d";
+    TF_EXPECT_OK(GetTensorOrWeights(expected_node_name, &output));
+    ASSERT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
+                             output.tensor()->getDimensions());
+
+    const DataVec input_data{
+        {"input", test::AsTensor<float>(ok_params[i].input)}};
+    DataVec output_data{
+        {expected_node_name,
+         ConstructTensor<float>(ok_params[i].expected_output.size())}};
+    BuildAndRun(input_data, &output_data);
+    EXPECT_THAT(GetSpanForData<float>(output_data[0]),
+                ElementsAreArray(ok_params[i].expected_output));
+  }
+}
 #endif  // IS_TRT_VERSION_GE(6, 0, 0, 0)
 
 TEST_F(OpConverterTest, ConvertTopK) {

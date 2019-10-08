@@ -162,6 +162,17 @@ int main(int argc, char **argv) {
     }
   }
 
+  if (!quant_stats_file_name.empty()) {
+    std::string error_message;
+    auto file = mlir::openInputFile(quant_stats_file_name, &error_message);
+    if (!file) {
+      llvm::errs() << "fail to open quant stats file: "
+                   << quant_stats_file_name;
+      return kTrFailure;
+    }
+    quant_specs.serialized_quant_stats = file->getBuffer().str();
+  }
+
   mlir::TFL::PassConfig pass_config(quant_specs);
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.emit_quant_adaptor_ops = emit_quant_adaptor_ops;

@@ -83,7 +83,7 @@ class Backend(object):
     ]
 
   @abc.abstractmethod
-  def make_tuple(self, c_buffers, device_ordinal):
+  def make_tuple(self, c_buffers, device):
     """Makes a tuple from a sequence of backend buffer objects."""
 
   @abc.abstractmethod
@@ -124,8 +124,8 @@ class LocalBackend(Backend):
       device = self.local_devices()[0]
     return _xla.PyLocalBuffer.from_python(pyval, self.client, device)
 
-  def make_tuple(self, c_buffers, device_ordinal):
-    return _xla.PyLocalBuffer.make_tuple(c_buffers, self.client, device_ordinal)
+  def make_tuple(self, c_buffers, device):
+    return _xla.PyLocalBuffer.make_tuple(c_buffers, self.client, device)
 
   def compile(self, c_computation, compile_options):
     options = _xla.ExecutableBuildOptions()
@@ -392,9 +392,9 @@ class Buffer(object):
     return backend.buffers_from_pyvals(pyvals_and_devices)
 
   @staticmethod
-  def make_tuple(buffers, backend=None, device=0):
+  def make_tuple(buffers, device, backend=None):
     backend = backend or get_local_backend()
-    return backend.make_tuple(buffers, device_ordinal=device)
+    return backend.make_tuple(buffers, device)
 
   # Buffer is not an instantiable type and exists only for its static methods.
   # The underlying buffer objects are C++ object with the following

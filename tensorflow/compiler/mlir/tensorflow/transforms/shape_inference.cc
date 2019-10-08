@@ -115,7 +115,7 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
   // shapes. This object is abstracting the information that the ShapeInference
   // function operates on.
   tensorflow::shape_inference::InferenceContext c(
-      graph_version, node_def.get(), op_reg_data->op_def, input_shapes,
+      graph_version, *node_def, op_reg_data->op_def, input_shapes,
       /*input_tensors=*/{}, /*input_tensors_as_shapes=*/{},
       /*input_handle_shapes_and_types=*/{});
   auto status = c.Run(op_reg_data->shape_inference_fn);

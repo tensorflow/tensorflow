@@ -62,8 +62,10 @@ ConvPowerVR& ConvPowerVR::operator=(ConvPowerVR&& operation) {
 }
 
 Status ConvPowerVR::Compile(const CreationContext& creation_context) {
-  const std::string code =
-      GenerateConvPowerVR1x1(definition_, conv_params_, linked_operations_);
+  const bool stride_correction =
+      definition_.batch_support && stride_padding_.x != 1;
+  const std::string code = GenerateConvPowerVR1x1(
+      definition_, stride_correction, conv_params_, linked_operations_);
   std::vector<CompilerOptions> options;
   if (definition_.precision == CalculationsPrecision::F16 &&
       creation_context.device->IsPowerVR()) {
@@ -82,17 +84,21 @@ Status ConvPowerVR::BindArguments() {
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   if (!conv_params_.x_kernel_is_1 || !conv_params_.y_kernel_is_1) {
-    RETURN_IF_ERROR(kernel_.SetBytesAuto(stride_padding_));
-    RETURN_IF_ERROR(kernel_.SetBytesAuto(kernel_dilation_));
+    RETURN_IF_ERROR(kernel_.SetBytesAuto(
+        int4(stride_padding_.x, stride_padding_.y,
+             stride_padding_.z * src_[0]->Batch(), stride_padding_.w)));
+    RETURN_IF_ERROR(kernel_.SetBytesAuto(
+        int4(kernel_dilation_.x, kernel_dilation_.y,
+             kernel_dilation_.z * src_[0]->Batch(), kernel_dilation_.w)));
   }
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetSizeWithDepth()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetSizeWithDepth()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDB()));
   return OkStatus();
 }
 
 int3 ConvPowerVR::GetGridSize() const {
-  const int grid_x =
-      IntegralDivideRoundUp(dst_[0]->Width(), conv_params_.block_size.x);
+  const int grid_x = IntegralDivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(),
+                                           conv_params_.block_size.x);
   const int grid_y =
       IntegralDivideRoundUp(dst_[0]->Height(), conv_params_.block_size.y);
   const int grid_z =
@@ -116,11 +122,16 @@ Status ConvPowerVR::AddToQueue(CLCommandQueue* queue) {
 }
 
 std::string GenerateConvPowerVR1x1(
-    const OperationDef& op_def, const ConvPowerVR::ConvParams& conv_params,
+    const OperationDef& op_def, bool stride_correction,
+    const ConvPowerVR::ConvParams& conv_params,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   std::string c = GetCommonDefines(op_def.precision);
-  TensorCodeGenerator src_tensor("src_data", "src_size", op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", op_def.dst_tensors[0]);
+  TensorCodeGenerator src_tensor("src_data",
+                                 {"src_size.x", "src_size.y", "src_size.z"},
+                                 op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data",
+                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
+                                 op_def.dst_tensors[0]);
 
   const bool is1x1 = conv_params.x_kernel_is_1 && conv_params.y_kernel_is_1;
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
@@ -180,8 +191,15 @@ std::string GenerateConvPowerVR1x1(
   if (!is1x1) {
     for (int x = 0; x < block_size.x; ++x) {
       const std::string xc = "(X + " + std::to_string(x) + ")";
-      c += "  int xc" + std::to_string(x) + " = " + xc +
-           " * stride_padding.x + stride_padding.z;\n";
+      if (stride_correction) {
+        c += "  int xc" + std::to_string(x) + " = " +
+             GetXStrideCorrected(xc, "src_size.w", "stride_padding.x",
+                                 "stride_padding.z") +
+             ";\n";
+      } else {
+        c += "  int xc" + std::to_string(x) + " = " + xc +
+             " * stride_padding.x + stride_padding.z;\n";
+      }
     }
     for (int y = 0; y < block_size.y; ++y) {
       const std::string yc = "(Y + " + std::to_string(y) + ")";
@@ -194,10 +212,10 @@ std::string GenerateConvPowerVR1x1(
        "];\n";
   if (is1x1) {
     c += "  __global ACCUM_FLT4* filters_loc = filters_buffer + Z * 4 * "
-         "src_size.w;\n";
+         "src_size.z;\n";
   } else {
     c += "  __global ACCUM_FLT4* filters_loc = filters_buffer + Z * 4 * "
-         "src_size.w * kernel_dilation.x * kernel_dilation.y;\n";
+         "src_size.z * kernel_dilation.x * kernel_dilation.y;\n";
   }
   if (buffer_type) {
     c += "  const int src_layer_offset = src_size.x * src_size.y;\n";
@@ -253,6 +271,7 @@ std::string GenerateConvPowerVR1x1(
       }
     }
   };
+  const auto mode = TextureAddressMode::ZERO;
   auto read_src = [&]() {
     for (int y = 0; y < block_size.y; ++y) {
       for (int x = 0; x < block_size.x; ++x) {
@@ -289,10 +308,10 @@ std::string GenerateConvPowerVR1x1(
               is1x1 ? "Y + " + std::to_string(y) : "yck" + std::to_string(y);
           if (op_def.precision == CalculationsPrecision::F32_F16) {
             c += "    src" + id + " = " +
-                 src_tensor.ReadAsFloat3D(xc, yc, "s") + ";\n";
+                 src_tensor.ReadAsFloat3D(xc, yc, "s", mode) + ";\n";
           } else {
-            c +=
-                "    src" + id + " = " + src_tensor.Read3D(xc, yc, "s") + ";\n";
+            c += "    src" + id + " = " + src_tensor.Read3D(xc, yc, "s", mode) +
+                 ";\n";
           }
         }
       }
@@ -333,7 +352,7 @@ std::string GenerateConvPowerVR1x1(
   c += "    filters_loc += " +
        std::to_string(block_size.z * 4 * conv_params.src_depth_loop_size) +
        ";\n";
-  c += "  } while (s < src_size.w);\n";
+  c += "  } while (s < src_size.z);\n";
   if (!is1x1) {
     c += "  };\n";
     c += "  };\n";
@@ -342,11 +361,11 @@ std::string GenerateConvPowerVR1x1(
   c += "  event_t e = async_work_group_copy(data, biases + Z, " +
        std::to_string(block_size.z) + ", 0);\n";
   c += "  SIMD_WAIT_EVENT(e);\n";
-  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) {\n";
+  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) {\n";
   c += "    return;\n";
   c += "  }\n";
   for (int z = 0; z < block_size.z; ++z) {
-    c += "  if (Z + " + std::to_string(z) + " >= dst_size.w) return;\n";
+    c += "  if (Z + " + std::to_string(z) + " >= dst_size.z) return;\n";
     for (int y = 0; y < block_size.y; ++y) {
       for (int x = 0; x < block_size.x; ++x) {
         const std::string xs = "X + " + std::to_string(x);

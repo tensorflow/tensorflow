@@ -121,7 +121,7 @@ void GPUToSPIRVPass::runOnModule() {
   auto module = getModule();
 
   SmallVector<Operation *, 4> spirvModules;
-  for (auto funcOp : module.getOps<FuncOp>()) {
+  module.walk([&module, &spirvModules](FuncOp funcOp) {
     if (gpu::GPUDialect::isKernel(funcOp)) {
       OpBuilder builder(module.getBodyRegion());
       // Create a new spirv::ModuleOp for this function, and clone the
@@ -139,7 +139,7 @@ void GPUToSPIRVPass::runOnModule() {
       moduleBuilder.clone(*funcOp.getOperation());
       spirvModules.push_back(spvModule);
     }
-  }
+  });
 
   /// Dialect conversion to lower the functions with the spirv::ModuleOps.
   SPIRVBasicTypeConverter basicTypeConverter;

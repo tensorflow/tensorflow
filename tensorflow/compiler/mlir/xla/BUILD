@@ -75,6 +75,7 @@ gentbl(
     td_file = "transforms/legalize_tf_patterns.td",
     td_srcs = [
         ":hlo_ops_td_files",
+        "@llvm//:support",
         "@local_config_mlir//:StdOpsTdFiles",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
     ],
@@ -122,11 +123,26 @@ cc_library(
     deps = [
         ":lhlo",
         "@com_google_absl//absl/memory",
+        "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Linalg",
+        "@local_config_mlir//:LinalgDialectRegistration",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "lhlo_fuse_linalg",
+    srcs = ["transforms/lhlo_fuse_linalg.cc"],
+    deps = [
+        ":lhlo",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@local_config_mlir//:Linalg",
+        "@local_config_mlir//:LinalgDialectRegistration",
+        "@local_config_mlir//:Pass",
     ],
     alwayslink = 1,
 )

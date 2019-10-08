@@ -18,11 +18,9 @@
 #ifndef MLIR_DIALECT_LINALG_UTILS_H_
 #define MLIR_DIALECT_LINALG_UTILS_H_
 
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/EDSC/Helpers.h"
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"
-#include "mlir/Dialect/Linalg/Utils/Intrinsics.h"
-#include "mlir/Support/LLVM.h"
 
 namespace mlir {
 class AffineExpr;
@@ -76,6 +74,18 @@ private:
 } // namespace edsc
 
 namespace linalg {
+class LinalgDependenceGraph;
+
+struct FusionInfo {
+  LinalgOp originalProducer;
+  LinalgOp fusedProducer;
+};
+
+// Fuses producer into consumer if the producer is structurally feasible and the
+// fusion would not violate dependencies.
+Optional<FusionInfo> fuseProducerOf(LinalgOp consumer, unsigned consumerIdx,
+                                    LinalgDependenceGraph &graph,
+                                    OperationFolder &state);
 
 /// Returns the linearized list of all view dimensions in a linalgOp. Applying
 /// the inverse, concatenated loopToOperandRangeMaps to this list allows the

@@ -82,11 +82,26 @@ BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 IMPLEMENTS_ATTRIBUTE_NAME = "_implements"
 
 
-def _make_input_signature_hashable(elem):
-  """Ensure elem is hashable even if a Variable is nested in it."""
+def _make_input_signature_hashable(elem, variable_map=None):
+  """Rewrite input signature to be hashable.
+
+  We replace nested variables in the input signature with TensorSpec in order to
+  be hashable.
+
+  Args:
+    elem: Input signature element
+    variable_map: Internal argument used for tracking variable aliases
+
+  Returns:
+    A hashable object for the requested input signature
+  """
+  if variable_map is None:
+    variable_map = {}
+
   # TODO(slebedev): consider using nest.
   if isinstance(elem, tuple):
-    return tuple(map(_make_input_signature_hashable, elem))
+    return tuple(map(lambda e: _make_input_signature_hashable(e, variable_map),
+                     elem))
 
   # If the element is not hashable, assume it is a weakref to a variable
   # and return the dtype & shape. Else, simply return the element
@@ -95,7 +110,15 @@ def _make_input_signature_hashable(elem):
   except TypeError:
     assert isinstance(elem, weakref.ReferenceType)
     v = elem()
-    return v.__class__, tensor_spec.TensorSpec(v.shape, v.dtype)
+    idx = variable_map.get(id(v))
+    if idx is None:
+      idx = len(variable_map)
+      variable_map[id(v)] = idx
+
+    # We include the class name to avoid having different types of variables
+    # having the same hash. We Also include the variable index which allows
+    # us to return a different hash if variables have been aliased in a call.
+    return v.__class__, tensor_spec.TensorSpec(v.shape, v.dtype), idx
 
   return elem
 

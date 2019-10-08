@@ -426,6 +426,8 @@ Status EagerServiceImpl::KeepAlive(const KeepAliveRequest* request,
   TF_RETURN_IF_ERROR(GetServerContext(request->context_id(), &context));
   core::ScopedUnref context_unref(context);
 
+  tensorflow::EagerContext* ctx = context->Context();
+  response->set_context_view_id(ctx->GetContextViewId());
   return Status::OK();
 }
 

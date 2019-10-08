@@ -382,6 +382,15 @@ cc_library(
 )
 
 cc_library(
+    name = "pybind11_lib",
+    hdrs = ["lib/core/pybind11_lib.h"],
+    features = ["-parse_headers"],
+    deps = [
+        "@pybind11",
+    ],
+)
+
+cc_library(
     name = "pybind11_status",
     hdrs = ["lib/core/pybind11_status.h"],
     features = ["-parse_headers"],
@@ -435,6 +444,7 @@ tf_python_pybind_extension(
     hdrs = ["util/util.h"],
     module_name = "_pywrap_utils",
     deps = [
+        ":pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -5190,7 +5200,7 @@ genrule(
         "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
         "//tensorflow/core:framework_internal_impl",  # op_def_registry
-        "//tensorflow/core/lib/core:status",  # device_lib
+        "//tensorflow/core:lib_internal_impl",  # device_lib
         "//tensorflow/core:core_cpu_impl",  # device_lib
     ],
     outs = ["pybind_symbol_target_libs_file.txt"],

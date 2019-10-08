@@ -65,6 +65,9 @@ class TfLiteDriver : public TestRunner {
   string ReadOutput(int id) override;
   void SetThreshold(double relative_threshold, double absolute_threshold);
 
+ protected:
+  Interpreter::TfLiteDelegatePtr delegate_;
+
  private:
   void DeallocateStringTensor(TfLiteTensor* t) {
     if (t) {
@@ -83,7 +86,6 @@ class TfLiteDriver : public TestRunner {
   class Expectation;
 
   std::unique_ptr<OpResolver> resolver_;
-  Interpreter::TfLiteDelegatePtr delegate_;
   std::unique_ptr<FlatBufferModel> model_;
   std::unique_ptr<Interpreter> interpreter_;
   std::map<int, std::unique_ptr<Expectation>> expected_output_;

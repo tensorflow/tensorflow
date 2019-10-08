@@ -311,7 +311,7 @@ static LogicalResult Verify(BroadcastOp op) {
   if (resultRank != expectedRank) {
     return op.emitOpError(
         llvm::formatv("result rank ({0}) does not match operand rank "
-                      "({2}) plus size of broadcast_sizes ({3})",
+                      "({1}) plus size of broadcast_sizes ({2})",
                       resultRank, operandRank, sizesSize));
   }
 

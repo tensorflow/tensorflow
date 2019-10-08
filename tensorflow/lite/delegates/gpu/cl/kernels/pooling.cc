@@ -78,9 +78,7 @@ std::string GetAveragePoolingKernelCode(
   }
   c += "      bool outside = outside_y || x_c < 0 || x_c >= src_size.x;\n";
   if (manual_clamp) {
-    c += "     r += !outside ? " +
-         src_tensor.ReadAsFloat3D("x_c", "y_c", "Z",
-                                  TextureAddressMode::DONT_CARE) +
+    c += "     r += !outside ? " + src_tensor.ReadAsFloat3D("x_c", "y_c", "Z") +
          " : (float4)(0.0f);\n";
   } else {
     c += "      r += " +
@@ -158,9 +156,7 @@ std::string GetMaxPoolingKernelCode(
   }
   c += "      bool outside_x = x_c < 0 || x_c >= src_size.x;\n";
   c += "      if (!outside_x && !outside_y) {\n";
-  c += "        FLT4 src = " +
-       src_tensor.Read3D("x_c", "y_c", "Z", TextureAddressMode::DONT_CARE) +
-       ";\n";
+  c += "        FLT4 src = " + src_tensor.Read3D("x_c", "y_c", "Z") + ";\n";
   if (output_indices) {
     c += "        if (src.x > maximum.x) {\n";
     c += "          indexes.x = index_counter;\n";
