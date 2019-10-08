@@ -74,6 +74,19 @@ func @remap_moved_region_args() {
   return
 }
 
+// CHECK-LABEL: func @remap_cloned_region_args
+func @remap_cloned_region_args() {
+  // CHECK-NEXT: return
+  // CHECK-NEXT: ^bb1(%{{.*}}: f64, %{{.*}}: f64, %{{.*}}: f16, %{{.*}}: f16):
+  // CHECK-NEXT: "test.cast"{{.*}} : (f16, f16) -> f32
+  // CHECK-NEXT: "test.valid"{{.*}} : (f64, f64, f32)
+  "test.region"() ({
+    ^bb1(%i0: i64, %unused: i16, %i1: i64, %2: f32):
+      "test.invalid"(%i0, %i1, %2) : (i64, i64, f32) -> ()
+  }) {legalizer.should_clone} : () -> ()
+  return
+}
+
 // CHECK-LABEL: func @remap_drop_region
 func @remap_drop_region() {
   // CHECK-NEXT: return
