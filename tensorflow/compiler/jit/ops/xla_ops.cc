@@ -106,7 +106,11 @@ REGISTER_OP("_XlaMerge")
     })
     .Doc(R"(XLA Merge Op. For use by the XLA JIT only.
 
-Merges the outputs from the TensorFlow fallback execution and the _XlaRun node.
+Merges the outputs from the PartitionedCall node and the _XlaRun node.
+Unlike the TensorFlow merge op, _XlaMerge supports merging inputs of all types.
+This prevents the need for copy operations, in particluar when an XLA cluster
+has int32 outputs. The _XlaMerge up does not have a value_index output that
+identifies the chosen input.
 )");
 
 }  // namespace tensorflow

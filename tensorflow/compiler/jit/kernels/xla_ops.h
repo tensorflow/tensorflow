@@ -180,9 +180,6 @@ class XlaMergeOp : public OpKernel {
   explicit XlaMergeOp(OpKernelConstruction* ctx);
 
   void Compute(OpKernelContext* ctx) override;
-
- private:
-  const XlaPlatformInfo platform_info_;
 };
 
 }  // namespace tensorflow

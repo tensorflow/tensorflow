@@ -631,7 +631,7 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
 }
 
 XlaMergeOp::XlaMergeOp(OpKernelConstruction* ctx)
-    : OpKernel(ctx), platform_info_(PlatformInfoFromContext(ctx)) {}
+    : OpKernel(ctx) {}
 
 void XlaMergeOp::Compute(OpKernelContext* ctx) {
   VLOG(3) << "XlaMergeOp " << def().name();
