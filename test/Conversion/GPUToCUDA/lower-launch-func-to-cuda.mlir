@@ -5,9 +5,9 @@ module attributes {gpu.container_module} {
   // CHECK: llvm.mlir.global constant @[[kernel_name:.*]]("kernel\00")
   // CHECK: llvm.mlir.global constant @[[global:.*]]("CUBIN")
 
-  module @kernel_module attributes {gpu.kernel_module} {
+  module @kernel_module attributes {gpu.kernel_module, nvvm.cubin = "CUBIN"} {
     func @kernel(!llvm.float, !llvm<"float*">)
-        attributes { gpu.kernel, nvvm.cubin = "CUBIN" }
+        attributes { gpu.kernel }
   }
 
   func @foo() {

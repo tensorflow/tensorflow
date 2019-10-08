@@ -1,10 +1,9 @@
 // RUN: mlir-opt %s --test-kernel-to-cubin -split-input-file | FileCheck %s
 
-module attributes {gpu.kernel_module} {
+// CHECK: attributes {gpu.kernel_module, nvvm.cubin = "CUBIN"}
+module @kernels attributes {gpu.kernel_module} {
   func @kernel(%arg0 : !llvm.float, %arg1 : !llvm<"float*">)
-    // CHECK: attributes  {gpu.kernel, nvvm.cubin = "CUBIN"}
     attributes  { gpu.kernel } {
-    // CHECK-NOT: llvm.return
     llvm.return
   }
 }
