@@ -232,10 +232,11 @@ struct ScatterFunctorBase {
         }
       }
     };
-
+    const float kMovingCost = 2.5f;
+    float shard_cost = kMovingCost * params.dimension(1);
     const DeviceBase::CpuWorkerThreads& worker_threads =
         *(c->device()->tensorflow_cpu_worker_threads());
-    Shard(worker_threads.num_threads, worker_threads.workers, N, 3500.0,
+    Shard(worker_threads.num_threads, worker_threads.workers, N, shard_cost,
           ParallelScatter);  // TODO: Come up with a good cost estimate.
     return bad_index;
   }
@@ -269,14 +270,14 @@ struct ScatterFunctorBase {
     const Index min_n_threshold = 1024;
     const Index ser_par_ratio = 10000;
     // For parallelizing the updates, duplicate entries need to be handled
-    // correctly.Multiple updates to the same index has to be serialized.
+    // correctly. Multiple updates to the same index has to be serialized.
     // This can lead to lock contention which may nullify the benefits of
     // parallelization. Assuming uniform random distribution of the indices, we
     // come up with a rough heuristic and determine whether the updates execute
     // serially or parallelly. Also if 'N' is small, overheads of parallel
     // execution outweigh its benefits and hence we check the value of N.
     const bool execute_serial =
-        ((N < min_n_threshold) || ((N / limit) > ser_par_ratio)) ? true : false;
+        ((N < min_n_threshold) || ((N / limit) > ser_par_ratio));
     if (execute_serial)
       return SerialExecute(c, d, params, updates, indices);
     else

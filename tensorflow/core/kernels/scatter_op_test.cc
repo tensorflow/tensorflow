@@ -204,17 +204,9 @@ TEST_F(ScatterSubOpTest, StressIndexTest) {
   // Feed and run
   const int kRows = 1;
   std::vector<int32> values(kRows, 0);
-  for (int i = 0; i < kRows; i++) {
-    values.at(i) = 0;
-  }
   const int kNumUpdates = 1000000;
   std::vector<int32> indices(kNumUpdates, 0);
-  std::vector<int32> updates(kNumUpdates, 0);
-  for (int i = 0; i < kNumUpdates; i++) {
-    indices.at(i) = 0;
-    updates.at(i) = 1;
-  }
-
+  std::vector<int32> updates(kNumUpdates, 1);
   AddInputFromArray<int32>(TensorShape({kRows}), values);
   AddInputFromArray<int32>(TensorShape({kNumUpdates}), indices);
   AddInputFromArray<int32>(TensorShape({kNumUpdates}), updates);
