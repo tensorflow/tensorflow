@@ -575,7 +575,10 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
                     : VectorFloatToHalf(attr.bias.data);
   desc->immutable_buffers = {
       {"device FLT4* const filters", filters},
-      {"device FLT4* const biases", biases},
+      {"device FLT4* const biases",
+       GetByteBufferConvertedResized(
+           attr.bias.data, options.storage_precision,
+           attr.weights.shape.i * attr.weights.shape.o)},
   };
 
   desc->uniform_buffers = {
