@@ -291,21 +291,6 @@ class Model(network.Network):
     self._experimental_run_tf_function = kwargs.pop(
         'experimental_run_tf_function', True)
 
-    # Prepare Session arguments (legacy).
-    allowed_kwargs = {'feed_dict', 'fetches', 'options', 'run_metadata'}
-    unknown_kwargs = set(kwargs.keys()) - allowed_kwargs
-    if unknown_kwargs:
-      raise TypeError(
-          'Invalid keyword argument(s) in `compile`: %s' % (unknown_kwargs,))
-    self._function_kwargs = kwargs
-    if self._function_kwargs:
-      self._experimental_run_tf_function = False
-      if self.run_eagerly:
-        raise ValueError(
-            'Session keyword arguments are not supported '
-            'when `run_eagerly=True`. You passed the following '
-            'Session arguments: %s' % (self._function_kwargs,))
-
     self._set_optimizer(optimizer)
     is_any_optimizer_v1 = any(isinstance(opt, optimizers.Optimizer)
                               for opt in nest.flatten(self.optimizer))
@@ -431,6 +416,8 @@ class Model(network.Network):
       # Functions for train, test and predict will
       # be compiled lazily when required.
       # This saves time when the user is not using all functions.
+      self._function_kwargs = kwargs
+
       self.train_function = None
       self.test_function = None
       self.predict_function = None
