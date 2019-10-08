@@ -51,7 +51,7 @@ std::vector<uint8_t> GetByteBufferConverted(
     for (const float value : input_vector) {
       const HalfBits converted = fp16_ieee_from_fp32_value(value);
       const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&converted);
-      result.insert(result.end(), bytes, bytes + sizeof(*bytes));
+      result.insert(result.end(), bytes, bytes + sizeof(HalfBits));
     }
     return result;
   }
