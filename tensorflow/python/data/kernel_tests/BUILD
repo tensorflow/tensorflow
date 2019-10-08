@@ -241,9 +241,6 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
     ],
-    tags = [
-        "nomac",  # b/62040583
-    ],
 )
 
 tf_py_test(
