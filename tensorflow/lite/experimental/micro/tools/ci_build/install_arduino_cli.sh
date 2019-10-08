@@ -31,5 +31,5 @@ tar xzf arduino-cli_0.4.0_Linux_64bit.tar.gz
 /tmp/arduino-cli core update-index
 /tmp/arduino-cli core install arduino:mbed
 
-# Required by gesture_recognition
+# Required by magic_wand
 /tmp/arduino-cli lib install Arduino_LSM9DS1@1.0.0

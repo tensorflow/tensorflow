@@ -28,8 +28,8 @@ touch ${EXAMPLES_SUBDIR_FILE}
 TENSORFLOW_SRC_DIR=${LIBRARY_DIR}/src/
 PERSON_DATA_FILE=${TENSORFLOW_SRC_DIR}tensorflow/lite/experimental/micro/tools/make/downloads/person_model_grayscale/person_detect_model_data.cpp
 mkdir -p `dirname ${PERSON_DATA_FILE}`
-echo '#include "tensorflow/lite/experimental/micro/examples/micro_vision/person_detect_model_data.h"' > ${PERSON_DATA_FILE}
-mkdir -p ${LIBRARY_DIR}/examples/micro_vision
+echo '#include "tensorflow/lite/experimental/micro/examples/person_detection/person_detect_model_data.h"' > ${PERSON_DATA_FILE}
+mkdir -p ${LIBRARY_DIR}/examples/person_detection
 
 EXAMPLE_INO_FILE=${LIBRARY_DIR}/examples/something/main.ino
 mkdir -p `dirname ${EXAMPLE_INO_FILE}`
@@ -44,7 +44,7 @@ if [[ ! -f ${EXPECTED_EXAMPLES_SUBDIR_FILE} ]]; then
   exit 1
 fi
 
-EXPECTED_PERSON_DATA_FILE=${LIBRARY_DIR}/examples/micro_vision/person_detect_model_data.cpp
+EXPECTED_PERSON_DATA_FILE=${LIBRARY_DIR}/examples/person_detection/person_detect_model_data.cpp
 if [[ ! -f ${EXPECTED_PERSON_DATA_FILE} ]]; then
   echo "${EXPECTED_PERSON_DATA_FILE} wasn't created."
   exit 1
