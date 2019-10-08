@@ -460,6 +460,13 @@ public:
   OpPrintingFlags();
   OpPrintingFlags(llvm::NoneType) : OpPrintingFlags() {}
 
+  /// Enable the elision of large elements attributes, by printing a '...'
+  /// instead of the element data. Note: The IR generated with this option is
+  /// not parsable. `largeElementLimit` is used to configure what is considered
+  /// to be a "large" ElementsAttr by providing an upper limit to the number of
+  /// elements.
+  OpPrintingFlags &elideLargeElementsAttrs(int64_t largeElementLimit = 16);
+
   /// Enable printing of debug information. If 'prettyForm' is set to true,
   /// debug information is printed in a more readable 'pretty' form. Note: The
   /// IR generated with 'prettyForm' is not parsable.
@@ -467,6 +474,9 @@ public:
 
   /// Always print operations in the generic form.
   OpPrintingFlags &printGenericOpForm();
+
+  /// Return if the given ElementsAttr should be elided.
+  bool shouldElideElementsAttr(ElementsAttr attr) const;
 
   /// Return if debug information should be printed.
   bool shouldPrintDebugInfo() const;
@@ -478,6 +488,10 @@ public:
   bool shouldPrintGenericOpForm() const;
 
 private:
+  /// Elide large elements attributes if the number of elements is larger than
+  /// the upper limit.
+  llvm::Optional<int64_t> elementsAttrElementLimit;
+
   /// Print debug information.
   bool printDebugInfoFlag : 1;
   bool printDebugInfoPrettyFormFlag : 1;
