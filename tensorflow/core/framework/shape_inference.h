@@ -656,8 +656,6 @@ class InferenceContext {
   void PostInputInit(std::vector<std::unique_ptr<std::vector<ShapeAndType>>>
                          input_handle_data);
 
-  DimensionHandle GetDimension(const DimensionOrConstant& d);
-
   Status ReturnUnknownShape(ShapeHandle* out) {
     *out = UnknownShape();
     return Status::OK();
