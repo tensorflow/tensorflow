@@ -566,19 +566,14 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
         return out_shape;
       }};
 
-  std::vector<float> filters_reordered = ConvertToPIOHW4(attr.weights);
-  auto filters = options.storage_precision == RuntimeOptions::Precision::FP32
-                     ? GetByteBuffer(filters_reordered)
-                     : VectorFloatToHalf(filters_reordered);
-  auto biases = options.storage_precision == RuntimeOptions::Precision::FP32
-                    ? GetByteBuffer(attr.bias.data)
-                    : VectorFloatToHalf(attr.bias.data);
+  const int output_channels_count = attr.weights.shape.i * attr.weights.shape.o;
   desc->immutable_buffers = {
-      {"device FLT4* const filters", filters},
+      {"device FLT4* const filters",
+       GetByteBufferConverted(ConvertToPIOHW4(attr.weights),
+                              options.storage_precision)},
       {"device FLT4* const biases",
-       GetByteBufferConvertedResized(
-           attr.bias.data, options.storage_precision,
-           attr.weights.shape.i * attr.weights.shape.o)},
+       GetByteBufferConvertedResized(attr.bias.data, options.storage_precision,
+                                     output_channels_count)},
   };
 
   desc->uniform_buffers = {
@@ -647,12 +642,9 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride1x1(
 
   // For this operation we keep weights and biases in one buffer
   auto weights_reordered = ReorderWeightsDepthWiseConv3x3Stride1x1(attr);
-  auto weights =
-      options.storage_precision == metal::RuntimeOptions::Precision::FP32
-          ? GetByteBuffer(weights_reordered)
-          : VectorFloatToHalf(weights_reordered);
   desc->immutable_buffers = {
-      {"device FLT4* const filters", weights},
+      {"device FLT4* const filters",
+       GetByteBufferConverted(weights_reordered, options.storage_precision)},
   };
 
   desc->uniform_buffers = {
@@ -714,12 +706,9 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride2(
 
   // For this operation we keep weights and biases in one buffer
   auto weights_reordered = ReorderWeightsDepthWiseConv3x3Stride2(attr);
-  auto weights =
-      options.storage_precision == metal::RuntimeOptions::Precision::FP32
-          ? GetByteBuffer(weights_reordered)
-          : VectorFloatToHalf(weights_reordered);
   desc->immutable_buffers = {
-      {"device FLT4* const filters", weights},
+      {"device FLT4* const filters",
+       GetByteBufferConverted(weights_reordered, options.storage_precision)},
   };
 
   desc->uniform_buffers = {

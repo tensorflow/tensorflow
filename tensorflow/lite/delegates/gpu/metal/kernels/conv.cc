@@ -931,11 +931,9 @@ std::vector<ComputeTaskDescriptorPtr> Convolution(
       }};
 
   auto weights_reordered = ReorderWeightsForConvShared(params);
-  auto weights = options.storage_precision == RuntimeOptions::Precision::FP32
-                     ? GetByteBuffer(weights_reordered)
-                     : VectorFloatToHalf(weights_reordered);
   desc->immutable_buffers = {
-      {"device FLT4* const weights", weights},
+      {"device FLT4* const weights",
+       GetByteBufferConverted(weights_reordered, options.storage_precision)},
       {"device FLT4* const biases",
        GetByteBufferConvertedResized(params.bias.data,
                                      options.storage_precision,
@@ -990,12 +988,9 @@ std::vector<ComputeTaskDescriptorPtr> Convolution1x1(
       }};
 
   auto weights_reordered = ReorderWeightsForConv(params, z_out);
-  auto weights =
-      options.storage_precision == metal::RuntimeOptions::Precision::FP32
-          ? GetByteBuffer(weights_reordered)
-          : VectorFloatToHalf(weights_reordered);
   desc->immutable_buffers = {
-      {"device FLT4* const filters", weights},
+      {"device FLT4* const filters",
+       GetByteBufferConverted(weights_reordered, options.storage_precision)},
       {"device FLT4* const biases",
        GetByteBufferConvertedResized(params.bias.data,
                                      options.storage_precision,
@@ -1051,12 +1046,9 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionGeneric(
       }};
 
   auto weights_reordered = ReorderWeightsForConv(params, z_out);
-  auto weights =
-      options.storage_precision == metal::RuntimeOptions::Precision::FP32
-          ? GetByteBuffer(weights_reordered)
-          : VectorFloatToHalf(weights_reordered);
   desc->immutable_buffers = {
-      {"device FLT4* const filters", weights},
+      {"device FLT4* const filters",
+       GetByteBufferConverted(weights_reordered, options.storage_precision)},
       {"device FLT4* const biases",
        GetByteBufferConvertedResized(params.bias.data,
                                      options.storage_precision,
@@ -1108,12 +1100,9 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionPrecise(
       }};
 
   auto weights_reordered = ReorderWeightsForConv(params, z_out);
-  auto weights =
-      options.storage_precision == metal::RuntimeOptions::Precision::FP32
-          ? GetByteBuffer(weights_reordered)
-          : VectorFloatToHalf(weights_reordered);
   desc->immutable_buffers = {
-      {"device FLT4* const filters", weights},
+      {"device FLT4* const filters",
+       GetByteBufferConverted(weights_reordered, options.storage_precision)},
       {"device FLT4* const biases",
        GetByteBufferConvertedResized(params.bias.data,
                                      options.storage_precision,
@@ -1169,12 +1158,9 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionPrecise1x1PowerVR(
       }};
 
   auto weights_reordered = ReorderWeightsForConv(params, z_out);
-  auto weights =
-      options.storage_precision == metal::RuntimeOptions::Precision::FP32
-          ? GetByteBuffer(weights_reordered)
-          : VectorFloatToHalf(weights_reordered);
   desc->immutable_buffers = {
-      {"device FLT4* const filters", weights},
+      {"device FLT4* const filters",
+       GetByteBufferConverted(weights_reordered, options.storage_precision)},
       {"device FLT4* const biases",
        GetByteBufferConvertedResized(params.bias.data,
                                      options.storage_precision,

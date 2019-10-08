@@ -135,9 +135,6 @@ std::vector<uint8_t> GetByteBufferConvertedResized(
     const std::vector<float>& input_vector,
     RuntimeOptions::Precision destination_type, size_t elements_count);
 
-/// Helper function to convert FP32 to FP16 and into stream of bytes.
-std::vector<uint8_t> VectorFloatToHalf(const std::vector<float>& input_vector);
-
 }  // namespace metal
 }  // namespace gpu
 }  // namespace tflite
