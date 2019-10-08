@@ -36,10 +36,9 @@ void CheckInputOutputPrimitivetypeValid(const HloInstruction* hlo) {
   // Check Inputs.
   int64 num_operands = hlo->operand_count();
   PrimitiveType operand_dtype = hlo->operand(0)->shape().element_type();
-  CHECK((operand_dtype == F16) || (operand_dtype == F32))
-      << "Not yet implemented";
+  CHECK(operand_dtype == F16 || operand_dtype == F32) << "Not yet implemented";
 
-  for (auto i = 1; i < num_operands - 2; i++) {
+  for (int i = 1; i < num_operands - 2; i++) {
     if (hlo->custom_call_target() == kCudnnBatchNormBackwardCallTarget &&
         (i == 4)) {
       // The first operand to batchnorm grad is the input and the 4th operand is
@@ -61,7 +60,7 @@ void CheckInputOutputPrimitivetypeValid(const HloInstruction* hlo) {
     CHECK_EQ(hlo->shape().tuple_shapes(0).element_type(), operand_dtype)
         << "Invalid datatype";
 
-    for (auto j = 1; j < hlo->shape().tuple_shapes_size(); j++) {
+    for (int j = 1; j < hlo->shape().tuple_shapes_size(); j++) {
       CHECK_EQ(hlo->shape().tuple_shapes(j).element_type(), F32)
           << "Not yet implemented";
     }
@@ -228,14 +227,14 @@ Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
 
   auto op_profiler =
       params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
-  auto& stream = *params.stream;
+  se::Stream* stream = params.stream;
   TF_RETURN_IF_ERROR(RunCudnnBatchNormBackward(
       hlo_instruction(), operand, output_grad_data, grad_output,
       output_grad_scale, output_grad_offset,
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(scale_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(mean_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(inv_stddev_)),
-      epsilon_, feature_index_, &stream));
+      epsilon_, feature_index_, stream));
 
   // Write the output tuple.
   const int kNumOutputs = 3;
@@ -245,9 +244,9 @@ Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
   ptrs[2] = output_grad_offset.opaque();
   se::DeviceMemory<void*> tuple_addr(
       buffer_allocations.GetDeviceAddress(output_tuple_));
-  SafeH2DMemcpy(tuple_addr, std::move(ptrs), kNumOutputs, &stream);
+  SafeH2DMemcpy(tuple_addr, std::move(ptrs), kNumOutputs, stream);
 
-  if (!stream.ok()) {
+  if (!stream->ok()) {
     return InternalError("BatchNormalizationBackward call failed.");
   }
   return Status::OK();

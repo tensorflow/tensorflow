@@ -26,32 +26,43 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
-StatusOr<CudnnBatchNormKind> GetCudnnBatchNormKind(
-    const HloInstruction* instr) {
-  absl::string_view target = instr->custom_call_target();
-  if (target == kCudnnBatchNormForwardInferenceCallTarget) {
-    return CudnnBatchNormKind::kCudnnBatchNormForwardInference;
-  }
-  if (target == kCudnnBatchNormForwardTrainingCallTarget) {
-    return CudnnBatchNormKind::kCudnnBatchNormForwardTraining;
-  }
-  if (target == kCudnnBatchNormBackwardCallTarget) {
-    return CudnnBatchNormKind::kCudnnBatchNormBackward;
-  }
-  return InternalError("Unexpected call target: %s", target);
-}
 
-void AssignNonOptionalParams(CudnnBatchNormParams& params,
-                             const se::DeviceMemoryBase& operand,
-                             const se::DeviceMemory<float>& scale,
-                             float epsilon) {
-  params.operand = operand;
-  params.scale = scale;
-  params.epsilon = epsilon;
-}
+struct CudnnBatchNormParamsCommon {
+  se::DeviceMemoryBase operand;
+  se::dnn::BatchDescriptor operand_desc;
+  se::dnn::BatchDescriptor scale_offset_desc;
+  se::DeviceMemory<float> scale;
+  float epsilon;
+};
 
-static std::pair<se::dnn::BatchDescriptor /*input_desc*/,
-                 se::dnn::BatchDescriptor /*scale_offset_desc*/>
+struct CudnnBatchNormForwardInferenceParams {
+  CudnnBatchNormParamsCommon common;
+  se::DeviceMemoryBase output;
+  se::DeviceMemory<float> offset;
+  se::DeviceMemory<float> mean;
+  se::DeviceMemory<float> variance;
+};
+
+struct CudnnBatchNormForwardTrainingParams {
+  CudnnBatchNormParamsCommon common;
+  se::DeviceMemoryBase output_data;
+  se::DeviceMemory<float> offset;
+  se::DeviceMemory<float> output_mean;
+  se::DeviceMemory<float> output_inv_stddev;
+};
+
+struct CudnnBatchNormBackwardParams {
+  CudnnBatchNormParamsCommon common;
+  se::DeviceMemoryBase output_grad_data;
+  se::DeviceMemoryBase grad_output;
+  se::DeviceMemory<float> output_grad_scale;
+  se::DeviceMemory<float> output_grad_offset;
+  se::DeviceMemory<float> mean;
+  se::DeviceMemory<float> inv_stddev;
+};
+
+std::pair<se::dnn::BatchDescriptor /*input_desc*/,
+          se::dnn::BatchDescriptor /*scale_offset_desc*/>
 MakeBatchNormDescriptors(const Shape& shape, int64 feature_index) {
   std::vector<int64> logical_to_physical =
       LayoutUtil::MakeLogicalToPhysical(shape.layout());
@@ -95,101 +106,106 @@ MakeBatchNormDescriptors(const Shape& shape, int64 feature_index) {
   return std::make_pair(input_desc, scale_offset_desc);
 }
 
+void AssignCommonParams(const HloInstruction* batchnorm,
+                        CudnnBatchNormParamsCommon* params,
+                        const se::DeviceMemoryBase& operand,
+                        const se::DeviceMemory<float>& scale, float epsilon,
+                        int64 feature_index) {
+  // TF_ASSIGN_OR_RETURN(params->kind, GetCudnnBatchNormKind(batchnorm));
+  // The BatchNormTraining HLO outputs a tuple of three elements: output data,
+  // batch mean, and batch variance.  We want to make our descriptors based on
+  // the shape of the output data. Batchnorm backward call outputs a tuple of
+  // three elements: grad data, grad offset, and grad scale.  We want to make
+  // our descriptors based on the shape of the grad data.
+  const Shape& shape = batchnorm->shape().IsTuple()
+                           ? batchnorm->shape().tuple_shapes(0)
+                           : batchnorm->shape();
+  std::tie(params->operand_desc, params->scale_offset_desc) =
+      MakeBatchNormDescriptors(shape, feature_index);
+  params->operand = operand;
+  params->scale = scale;
+  params->epsilon = epsilon;
+}
+
 template <typename ElemType>
-Status RunCudnnBatchNormImplInternal(CudnnBatchNormParams& params,
-                                     se::Stream* stream) {
+Status RunCudnnBatchNormForwardInferenceImpl(
+    CudnnBatchNormForwardInferenceParams* params, se::Stream* stream) {
   se::DeviceMemory<float> null_device_ptr(nullptr);
-  switch (params.kind) {
-    case CudnnBatchNormKind::kCudnnBatchNormForwardInference: {
-      auto output_buf =
-          se::DeviceMemory<ElemType>(params.forward_inference->output);
-      stream->ThenBatchNormalizationForward(
-          se::DeviceMemory<ElemType>(params.operand),
-          params.scale,                                         //
-          params.forward_inference->offset,                     //
-          params.forward_inference->mean,                       //
-          params.forward_inference->variance,                   //
-          /*side_input=*/null_device_ptr, params.operand_desc,  //
-          params.scale_offset_desc, params.epsilon,             //
-          se::dnn::ActivationMode::kNone,                       //
-          &output_buf,                                          //
-          /*batch_mean=*/nullptr,                               //
-          /*batch_var=*/nullptr,                                //
-          /*saved_mean=*/nullptr,                               //
-          /*saved_inv_var=*/nullptr,                            //
-          /*is_training=*/false,                                //
-          /*var_to_inv_var=*/nullptr,                           //
-          /*inv_var_to_var=*/nullptr,                           //
-          /*reserve_space_allocator=*/nullptr,                  //
-          /*workspace_allocator=*/nullptr);
-      break;
-    }
-    case CudnnBatchNormKind::kCudnnBatchNormForwardTraining: {
-      auto output_data =
-          se::DeviceMemory<ElemType>(params.forward_training->output_data);
-      stream->ThenBatchNormalizationForward(
-          se::DeviceMemory<ElemType>(params.operand),
-          params.scale,                                                   //
-          params.forward_training->offset,                                //
-          /*estimated_mean=*/null_device_ptr,                             //
-          /*estimated_variance=*/null_device_ptr,                         //
-          /*side_input=*/null_device_ptr,                                 //
-          params.operand_desc,                                            //
-          params.scale_offset_desc,                                       //
-          params.epsilon,                                                 //
-          se::dnn::ActivationMode::kNone,                                 //
-          &output_data,                                                   //
-          /*batch_mean=*/&null_device_ptr,                                //
-          /*batch_var=*/&null_device_ptr,                                 //
-          /*saved_mean=*/&params.forward_training->output_mean,           //
-          /*saved_inv_var=*/&params.forward_training->output_inv_stddev,  //
-          /*is_training=*/true,                                           //
-          /*var_to_inv_var=*/nullptr,                                     //
-          /*inv_var_to_var=*/nullptr,                                     //
-          /*reserve_space_allocator=*/nullptr,                            //
-          /*workspace_allocator=*/nullptr);
-      break;
-    }
-    case CudnnBatchNormKind::kCudnnBatchNormBackward: {
-      auto output_grad_data =
-          se::DeviceMemory<ElemType>(params.backward->output_grad_data);
-      stream->ThenBatchNormalizationBackward(
-          se::DeviceMemory<ElemType>(params.backward->grad_output),  //
-          se::DeviceMemory<ElemType>(params.operand),                //
-          params.scale,                                              //
-          params.backward->mean,                                     //
-          params.backward->inv_stddev,                               //
-          params.operand_desc,                                       //
-          params.scale_offset_desc,                                  //
-          params.epsilon,                                            //
-          &output_grad_data,                                         //
-          &params.backward->output_grad_scale,                       //
-          &params.backward->output_grad_offset,                      //
-          /*reserve_space_allocator=*/nullptr,                       //
-          /*workspace_allocator=*/nullptr);
-      break;
-    }
-    default:
-      return InternalError("Invalid Batchnorm kind");
-  }
+  auto output_buf = se::DeviceMemory<ElemType>(params->output);
+  stream->ThenBatchNormalizationForward(
+      se::DeviceMemory<ElemType>(params->common.operand),
+      params->common.scale,                                         //
+      params->offset,                                               //
+      params->mean,                                                 //
+      params->variance,                                             //
+      /*side_input=*/null_device_ptr, params->common.operand_desc,  //
+      params->common.scale_offset_desc, params->common.epsilon,      //
+      se::dnn::ActivationMode::kNone,                               //
+      &output_buf,                                                  //
+      /*batch_mean=*/nullptr,                                       //
+      /*batch_var=*/nullptr,                                        //
+      /*saved_mean=*/nullptr,                                       //
+      /*saved_inv_var=*/nullptr,                                    //
+      /*is_training=*/false,                                        //
+      /*var_to_inv_var=*/nullptr,                                   //
+      /*inv_var_to_var=*/nullptr,                                   //
+      /*reserve_space_allocator=*/nullptr,                          //
+      /*workspace_allocator=*/nullptr);
 
   return Status::OK();
 }
 
-Status RunCudnnBatchNormImpl(const HloInstruction* batchnorm,
-                             CudnnBatchNormParams& params, se::Stream* stream) {
-  PrimitiveType output_primitive_type =
-      batchnorm->shape().IsTuple()
-          ? batchnorm->shape().tuple_shapes(0).element_type()
-          : batchnorm->shape().element_type();
-  switch (output_primitive_type) {
-    case F16:
-      return RunCudnnBatchNormImplInternal<Eigen::half>(params, stream);
-    case F32:
-      return RunCudnnBatchNormImplInternal<float>(params, stream);
-    default:
-      LOG(FATAL) << batchnorm->ToString();
-  }
+template <typename ElemType>
+Status RunCudnnBatchNormForwardTrainingImpl(
+    CudnnBatchNormForwardTrainingParams* params, se::Stream* stream) {
+  se::DeviceMemory<float> null_device_ptr(nullptr);
+  auto output_data = se::DeviceMemory<ElemType>(params->output_data);
+  stream->ThenBatchNormalizationForward(
+      se::DeviceMemory<ElemType>(params->common.operand),
+      params->common.scale,                          //
+      params->offset,                                //
+      /*estimated_mean=*/null_device_ptr,            //
+      /*estimated_variance=*/null_device_ptr,        //
+      /*side_input=*/null_device_ptr,                //
+      params->common.operand_desc,                   //
+      params->common.scale_offset_desc,              //
+      params->common.epsilon,                        //
+      se::dnn::ActivationMode::kNone,                //
+      &output_data,                                  //
+      /*batch_mean=*/&null_device_ptr,               //
+      /*batch_var=*/&null_device_ptr,                //
+      /*saved_mean=*/&params->output_mean,           //
+      /*saved_inv_var=*/&params->output_inv_stddev,  //
+      /*is_training=*/true,                          //
+      /*var_to_inv_var=*/nullptr,                    //
+      /*inv_var_to_var=*/nullptr,                    //
+      /*reserve_space_allocator=*/nullptr,           //
+      /*workspace_allocator=*/nullptr);
+
+  return Status::OK();
+}
+
+template <typename ElemType>
+Status RunCudnnBatchNormBackwardImpl(CudnnBatchNormBackwardParams* params,
+                                     se::Stream* stream) {
+  se::DeviceMemory<float> null_device_ptr(nullptr);
+  auto output_grad_data = se::DeviceMemory<ElemType>(params->output_grad_data);
+  stream->ThenBatchNormalizationBackward(
+      se::DeviceMemory<ElemType>(params->grad_output),     //
+      se::DeviceMemory<ElemType>(params->common.operand),  //
+      params->common.scale,                                //
+      params->mean,                                        //
+      params->inv_stddev,                                  //
+      params->common.operand_desc,                         //
+      params->common.scale_offset_desc,                    //
+      params->common.epsilon,                              //
+      &output_grad_data,                                   //
+      &params->output_grad_scale,                          //
+      &params->output_grad_offset,                         //
+      /*reserve_space_allocator=*/nullptr,                 //
+      /*workspace_allocator=*/nullptr);
+
+  return Status::OK();
 }
 
 }  // namespace
@@ -200,19 +216,25 @@ Status RunCudnnBatchNormForwardInference(
     se::DeviceMemory<float> offset, se::DeviceMemory<float> mean,
     se::DeviceMemory<float> variance, float epsilon, int64 feature_index,
     se::Stream* stream) {
-  CudnnBatchNormParams inference_params;
-  TF_ASSIGN_OR_RETURN(inference_params.kind, GetCudnnBatchNormKind(batchnorm));
-  std::tie(inference_params.operand_desc, inference_params.scale_offset_desc) =
-      MakeBatchNormDescriptors(batchnorm->shape(), feature_index);
+  CudnnBatchNormForwardInferenceParams inference_params;
+  AssignCommonParams(batchnorm, &inference_params.common, operand, scale,
+                     epsilon, feature_index);
+  inference_params.offset = offset;
+  inference_params.mean = mean;
+  inference_params.variance = variance;
+  inference_params.output = output;
 
-  AssignNonOptionalParams(inference_params, operand, scale, epsilon);
-  inference_params.forward_inference.emplace();
-  inference_params.forward_inference->offset = offset;
-  inference_params.forward_inference->mean = mean;
-  inference_params.forward_inference->variance = variance;
-  inference_params.forward_inference->output = output;
-
-  return RunCudnnBatchNormImpl(batchnorm, inference_params, stream);
+  PrimitiveType output_primitive_type = batchnorm->shape().element_type();
+  switch (output_primitive_type) {
+    case F16:
+      return RunCudnnBatchNormForwardInferenceImpl<Eigen::half>(
+          &inference_params, stream);
+    case F32:
+      return RunCudnnBatchNormForwardInferenceImpl<float>(&inference_params,
+                                                          stream);
+    default:
+      LOG(FATAL) << batchnorm->ToString();
+  }
 }
 
 Status RunCudnnBatchNormForwardTraining(
@@ -221,23 +243,26 @@ Status RunCudnnBatchNormForwardTraining(
     se::DeviceMemory<float> output_inv_stddev, se::DeviceMemory<float> scale,
     se::DeviceMemory<float> offset, float epsilon, int64 feature_index,
     se::Stream* stream) {
-  CudnnBatchNormParams forward_params;
-  TF_ASSIGN_OR_RETURN(forward_params.kind, GetCudnnBatchNormKind(batchnorm));
-  // The BatchNormTraining HLO outputs a tuple of three elements: output data,
-  // batch mean, and batch variance.  We want to make our descriptors based on
-  // the shape of the output data.
-  std::tie(forward_params.operand_desc, forward_params.scale_offset_desc) =
-      MakeBatchNormDescriptors(batchnorm->shape().tuple_shapes(0),
-                               feature_index);
+  CudnnBatchNormForwardTrainingParams forward_params;
+  AssignCommonParams(batchnorm, &forward_params.common, operand, scale, epsilon,
+                     feature_index);
+  forward_params.offset = offset;
+  forward_params.output_data = output_data;
+  forward_params.output_mean = output_mean;
+  forward_params.output_inv_stddev = output_inv_stddev;
 
-  AssignNonOptionalParams(forward_params, operand, scale, epsilon);
-  forward_params.forward_training.emplace();
-  forward_params.forward_training->offset = offset;
-  forward_params.forward_training->output_data = output_data;
-  forward_params.forward_training->output_mean = output_mean;
-  forward_params.forward_training->output_inv_stddev = output_inv_stddev;
-
-  return RunCudnnBatchNormImpl(batchnorm, forward_params, stream);
+  PrimitiveType output_primitive_type =
+      batchnorm->shape().tuple_shapes(0).element_type();
+  switch (output_primitive_type) {
+    case F16:
+      return RunCudnnBatchNormForwardTrainingImpl<Eigen::half>(&forward_params,
+                                                               stream);
+    case F32:
+      return RunCudnnBatchNormForwardTrainingImpl<float>(&forward_params,
+                                                         stream);
+    default:
+      LOG(FATAL) << batchnorm->ToString();
+  }
 }
 
 Status RunCudnnBatchNormBackward(
@@ -247,25 +272,27 @@ Status RunCudnnBatchNormBackward(
     se::DeviceMemory<float> output_grad_offset, se::DeviceMemory<float> scale,
     se::DeviceMemory<float> mean, se::DeviceMemory<float> inv_stddev,
     float epsilon, int64 feature_index, se::Stream* stream) {
-  CudnnBatchNormParams backward_params;
-  TF_ASSIGN_OR_RETURN(backward_params.kind, GetCudnnBatchNormKind(batchnorm));
-  // This call outputs a tuple of three elements: grad data, grad offset, and
-  // grad scale.  We want to make our descriptors based on the shape of the grad
-  // data.
-  std::tie(backward_params.operand_desc, backward_params.scale_offset_desc) =
-      MakeBatchNormDescriptors(batchnorm->shape().tuple_shapes(0),
-                               feature_index);
+  CudnnBatchNormBackwardParams backward_params;
+  AssignCommonParams(batchnorm, &backward_params.common, operand, scale,
+                     epsilon, feature_index);
+  backward_params.output_grad_data = output_grad_data;
+  backward_params.grad_output = grad_output;
+  backward_params.output_grad_scale = output_grad_scale;
+  backward_params.output_grad_offset = output_grad_offset;
+  backward_params.mean = mean;
+  backward_params.inv_stddev = inv_stddev;
 
-  AssignNonOptionalParams(backward_params, operand, scale, epsilon);
-  backward_params.backward.emplace();
-  backward_params.backward->output_grad_data = output_grad_data;
-  backward_params.backward->grad_output = grad_output;
-  backward_params.backward->output_grad_scale = output_grad_scale;
-  backward_params.backward->output_grad_offset = output_grad_offset;
-  backward_params.backward->mean = mean;
-  backward_params.backward->inv_stddev = inv_stddev;
-
-  return RunCudnnBatchNormImpl(batchnorm, backward_params, stream);
+  PrimitiveType output_primitive_type =
+      batchnorm->shape().tuple_shapes(0).element_type();
+  switch (output_primitive_type) {
+    case F16:
+      return RunCudnnBatchNormBackwardImpl<Eigen::half>(&backward_params,
+                                                        stream);
+    case F32:
+      return RunCudnnBatchNormBackwardImpl<float>(&backward_params, stream);
+    default:
+      LOG(FATAL) << batchnorm->ToString();
+  }
 }
 
 }  // namespace gpu

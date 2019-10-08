@@ -28,50 +28,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-enum class CudnnBatchNormKind {
-  kCudnnBatchNormForwardInference,
-  kCudnnBatchNormForwardTraining,
-  kCudnnBatchNormBackward,
-};
-StatusOr<CudnnBatchNormKind> GetCudnnBatchNormKind(
-    const HloCustomCallInstruction*);
-
-struct CudnnBatchNormParams {
-  struct ForwardInferenceParams {
-    se::DeviceMemoryBase output;
-    se::DeviceMemory<float> offset;
-    se::DeviceMemory<float> mean;
-    se::DeviceMemory<float> variance;
-  };
-
-  struct ForwardTrainingParams {
-    se::DeviceMemoryBase output_data;
-    se::DeviceMemory<float> offset;
-    se::DeviceMemory<float> output_mean;
-    se::DeviceMemory<float> output_inv_stddev;
-  };
-
-  struct BackwardParams {
-    se::DeviceMemoryBase output_grad_data;
-    se::DeviceMemoryBase grad_output;
-    se::DeviceMemory<float> output_grad_scale;
-    se::DeviceMemory<float> output_grad_offset;
-    se::DeviceMemory<float> mean;
-    se::DeviceMemory<float> inv_stddev;
-  };
-
-  CudnnBatchNormKind kind;
-  se::DeviceMemoryBase operand;
-  se::dnn::BatchDescriptor operand_desc;
-  se::dnn::BatchDescriptor scale_offset_desc;
-  se::DeviceMemory<float> scale;
-  float epsilon;
-
-  absl::optional<ForwardInferenceParams> forward_inference;
-  absl::optional<ForwardTrainingParams> forward_training;
-  absl::optional<BackwardParams> backward;
-};
-
 Status RunCudnnBatchNormForwardInference(
     const HloInstruction* batchnorm, se::DeviceMemoryBase operand,
     se::DeviceMemoryBase output, se::DeviceMemory<float> scale,
