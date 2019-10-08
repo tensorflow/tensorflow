@@ -57,8 +57,8 @@ class RandomDatasetParams : public DatasetParams {
   }
 
   virtual Status GetInputNames(
-      std::vector<string>* input_placeholder) const override {
-    *input_placeholder = {RandomDatasetOp::kSeed, RandomDatasetOp::kSeed2};
+      std::vector<string>* input_names) const override {
+    *input_names = {RandomDatasetOp::kSeed, RandomDatasetOp::kSeed2};
     return Status::OK();
   }
 
