@@ -264,6 +264,12 @@ struct ScatterFunctorBase {
                    typename TTypes<T>::Matrix params,
                    typename TTypes<T>::ConstMatrix updates,
                    typename TTypes<Index>::ConstFlat indices) {
+#ifdef PLATFORM_GOOGLE
+    // The parallel version is significantly slower internally. Only call the
+    // serial version for now.
+    // TODO(penporn): Avoid locking in parallelization (sort beforehand).
+    return SerialExecute(c, d, params, updates, indices);
+#else
     // indices and params sizes were validated in DoCompute().
     const Index N = static_cast<Index>(indices.size());
     const Index limit = static_cast<Index>(params.dimension(0));
@@ -282,6 +288,7 @@ struct ScatterFunctorBase {
       return SerialExecute(c, d, params, updates, indices);
     else
       return ParallelExecute(c, d, params, updates, indices);
+#endif  // PLATFORM_GOOGLE
   }
 };
 
