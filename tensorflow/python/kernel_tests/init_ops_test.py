@@ -718,10 +718,13 @@ class LinSpaceNdTest(test.TestCase):
     self.assertTrue(np.allclose(actual, expected), mess)
 
   def create_nd_inputs_and_expected_output(self, axis):
-    a = np.arange(2 * 3 * 4, dtype=np.float32).reshape((2, 3, 4))
+    a = np.arange(2, dtype=np.float32)
     b = a * 5
-    num = 10
-    expected = np.linspace(a, b, num, axis=axis)
+    num = 5
+
+    res = np.array([[0., 0., 0., 0., 0.],
+                    [1., 2., 3., 4., 5.]])
+    expected = res if axis != 0 else res.T
     return a, b, expected, num
 
   def testNDArrayCompareToNumpyDefaultAxis(self):
@@ -740,10 +743,10 @@ class LinSpaceNdTest(test.TestCase):
       self.assertArrayNear(expected, actual, 1e-5)
 
   def testUnknownShapeAtGraphCreationTime(self):
-    self.base_test_unknown_shape((2, None, 4))
+    self.base_test_unknown_shape((2))
 
   def testNoneValuesInShapeAtGraphCreationTime(self):
-    self.base_test_unknown_shape((None, None, None))
+    self.base_test_unknown_shape((None))
 
   def testNoneShapeAtGraphCreationTime(self):
     self.base_test_unknown_shape(None)
