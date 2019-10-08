@@ -132,9 +132,7 @@ std::string GenerateConvolutionTransposedCode(
     c += "        int x_c = kernel_index * src_size.w * 4;\n";
   }
   c += "        for (int l = 0; l < src_size.w; ++l) {\n";
-  c += "          FLT4 src =" +
-       src_tensor.Read3D("s_x", "s_y", "l", TextureAddressMode::DONT_CARE) +
-       ";\n";
+  c += "          FLT4 src =" + src_tensor.Read3D("s_x", "s_y", "l") + ";\n";
   if (src_tensor_type == TensorStorageType::BUFFER) {
     c += "          FLT16 f0 = filters[f_offset]; f_offset++;\n";
   } else {

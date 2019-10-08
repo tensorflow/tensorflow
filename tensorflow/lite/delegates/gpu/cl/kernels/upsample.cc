@@ -66,21 +66,13 @@ std::string GetUpsampleCode(
     c += "  st.z = st.z * src_size.w + B;\n";
     c += "  X = X * dst_size.w + B;\n";
   }
-  c += "  float4 src0 = " +
-       src_tensor.ReadAsFloat3D("st.x", "st.y", "Z",
-                                TextureAddressMode::DONT_CARE) +
+  c += "  float4 src0 = " + src_tensor.ReadAsFloat3D("st.x", "st.y", "Z") +
        ";\n";
-  c += "  float4 src1 = " +
-       src_tensor.ReadAsFloat3D("st.z", "st.y", "Z",
-                                TextureAddressMode::DONT_CARE) +
+  c += "  float4 src1 = " + src_tensor.ReadAsFloat3D("st.z", "st.y", "Z") +
        ";\n";
-  c += "  float4 src2 = " +
-       src_tensor.ReadAsFloat3D("st.x", "st.w", "Z",
-                                TextureAddressMode::DONT_CARE) +
+  c += "  float4 src2 = " + src_tensor.ReadAsFloat3D("st.x", "st.w", "Z") +
        ";\n";
-  c += "  float4 src3 = " +
-       src_tensor.ReadAsFloat3D("st.z", "st.w", "Z",
-                                TextureAddressMode::DONT_CARE) +
+  c += "  float4 src3 = " + src_tensor.ReadAsFloat3D("st.z", "st.w", "Z") +
        ";\n";
   c += "  FLT4 r0 = TO_FLT4(mix(mix(src0, src1, t.x), mix(src2, src3, t.x), "
        "t.y));\n";

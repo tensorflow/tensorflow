@@ -58,9 +58,7 @@ std::string GetReshapeBatchedCode(
   c += "  int src_y = dst_bhwc4 % src_size.y;\n";
   c += "  int src_b = dst_bhwc4 / src_size.y;\n";
   c += "  FLT4 result =" +
-       src_tensor.Read4D("src_x", "src_y", "src_z", "src_b",
-                         TextureAddressMode::DONT_CARE) +
-       ";\n";
+       src_tensor.Read4D("src_x", "src_y", "src_z", "src_b") + ";\n";
   const LinkingContext context{"result", "X * dst_size.w + B", "Y", "Z"};
   c += PostProcess(linked_operations, context);
   c += "  " + dst_tensor.Write4D("result", "X", "Y", "Z", "B");
@@ -95,10 +93,7 @@ std::string GetReshapeCode(
   c += "  dst_hwc4 = dst_hwc4 / src_size.z;\n";
   c += "  int src_x = dst_hwc4 % src_size.x;\n";
   c += "  int src_y = dst_hwc4 / src_size.x;\n";
-  c += "  FLT4 result =" +
-       src_tensor.Read3D("src_x", "src_y", "src_z",
-                         TextureAddressMode::DONT_CARE) +
-       ";\n";
+  c += "  FLT4 result =" + src_tensor.Read3D("src_x", "src_y", "src_z") + ";\n";
   const LinkingContext context{"result", "X", "Y", "Z"};
   c += PostProcess(linked_operations, context);
   c += "  " + dst_tensor.Write3D("result", "X", "Y", "Z");

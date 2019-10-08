@@ -136,7 +136,7 @@ class FromTensorConverter : public OpenClConverterImpl {
         R"(
 #pragma OPENCL EXTENSION cl_khr_fp16 : enable
 
-const sampler_t smp_zero = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP | CLK_FILTER_NEAREST;
+const sampler_t smp_none = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;
 
 __kernel void from_tensor()" +
         src_tensor.GetDeclaration(AccessType::READ) + ", " +

@@ -271,6 +271,7 @@ std::string GenerateConvPowerVR1x1(
       }
     }
   };
+  const auto mode = TextureAddressMode::ZERO;
   auto read_src = [&]() {
     for (int y = 0; y < block_size.y; ++y) {
       for (int x = 0; x < block_size.x; ++x) {
@@ -307,10 +308,10 @@ std::string GenerateConvPowerVR1x1(
               is1x1 ? "Y + " + std::to_string(y) : "yck" + std::to_string(y);
           if (op_def.precision == CalculationsPrecision::F32_F16) {
             c += "    src" + id + " = " +
-                 src_tensor.ReadAsFloat3D(xc, yc, "s") + ";\n";
+                 src_tensor.ReadAsFloat3D(xc, yc, "s", mode) + ";\n";
           } else {
-            c +=
-                "    src" + id + " = " + src_tensor.Read3D(xc, yc, "s") + ";\n";
+            c += "    src" + id + " = " + src_tensor.Read3D(xc, yc, "s", mode) +
+                 ";\n";
           }
         }
       }
