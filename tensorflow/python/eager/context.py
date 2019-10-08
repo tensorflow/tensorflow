@@ -1083,13 +1083,10 @@ class Context(object):
     """
     self._initialize_physical_devices()
 
-    if device_type is not None:
-      return [
-          d for d in self._physical_devices
-          if device_type is None or device_type == d.device_type
-      ]
+    if device_type is None:
+      return list(self._physical_devices)
 
-    return self._physical_devices
+    return [d for d in self._physical_devices if d.device_type == device_type]
 
   def _import_config(self):
     """Import config if passed in during construction.
@@ -1140,26 +1137,21 @@ class Context(object):
   def list_logical_devices(self, device_type=None):
     """Return logical devices."""
     self.ensure_initialized()
+    if device_type is None:
+      return list(self._logical_devices)
 
-    devices = []
-    for dev in self._logical_devices:
-      if device_type is not None and device_type != dev.device_type:
-        continue
-
-      devices.append(dev)
-
-    return devices
+    return [d for d in self._logical_devices if d.device_type == device_type]
 
   def get_visible_devices(self, device_type=None):
     """Get the list of visible devices."""
     self._initialize_physical_devices()
 
     if device_type is None:
-      return self._visible_device_list
-    else:
-      return [
-          d for d in self._visible_device_list if d.device_type == device_type
-      ]
+      return list(self._visible_device_list)
+
+    return [
+        d for d in self._visible_device_list if d.device_type == device_type
+    ]
 
   def set_visible_devices(self, devices, device_type=None):
     """Set the list of visible devices."""
