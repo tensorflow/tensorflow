@@ -339,8 +339,8 @@ func @concat_v2_non_const_axis(%arg0: tensor<3x3xf32>, %arg1: tensor<3x3xf32>, %
 
 // CHECK-LABEL: func @concat_v2_unranked
 func @concat_v2_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
-
   %axis = "tf.Const"() { value = dense<0> : tensor<i64> } : () -> tensor<i64>
+  // CHECK: "tf.ConcatV2"
   %1 = "tf.ConcatV2"(%arg0, %arg1, %axis) {N = 2 : i64} : (tensor<*xf32>, tensor<*xf32>, tensor<i64>) -> tensor<*xf32>
   return %1 : tensor<*xf32>
 }
