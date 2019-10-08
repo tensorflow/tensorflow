@@ -394,7 +394,7 @@ public:
 
   template <typename Container, typename UnaryFunctor>
   inline void interleaveComma(const Container &c, UnaryFunctor each_fn) const {
-    interleave(c.begin(), c.end(), each_fn, [&]() { os << ", "; });
+    mlir::interleaveComma(c, os, each_fn);
   }
 
   void print(ModuleOp module);
