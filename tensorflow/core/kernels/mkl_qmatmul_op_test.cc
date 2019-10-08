@@ -553,7 +553,7 @@ TEST_F(QuantizedMatMulTest, Small_withWeightCached) {
   LOG(INFO) << " Time taken by first call : " << total_duration_unopt
             << ", Time taken after Caching : " << total_duration_opt;
 
-  // Cached call should be atleast 20% faster
+  // Cached call should be at least 20% faster.
   EXPECT_LT(total_duration_opt, total_duration_unopt * 0.8);
 
   // Compare the result with expected result
