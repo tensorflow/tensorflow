@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf_internal.h"
+#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
@@ -257,6 +258,24 @@ Status GetAssetFileDefs(const MetaGraphDef& meta_graph_def,
   return Status::OK();
 }
 
+Status ReadSavedModelDebugInfoIfPresent(
+    const string& export_dir,
+    std::unique_ptr<GraphDebugInfo>* debug_info_proto) {
+  LOG(INFO) << "Reading SavedModel debug info (if present) from: "
+            << export_dir;
+
+  const string debug_info_pb_path =
+      io::JoinPath(export_dir, "debug", "saved_model_debug_info.pb");
+  if (Env::Default()->FileExists(debug_info_pb_path).ok()) {
+    GraphDebugInfo debug_info;
+    TF_RETURN_IF_ERROR(
+        ReadBinaryProto(Env::Default(), debug_info_pb_path, &debug_info));
+    *debug_info_proto =
+        absl::make_unique<GraphDebugInfo>(std::move(debug_info));
+  }
+  return Status::OK();
+}
+
 Status LoadSavedModelInternal(const SessionOptions& session_options,
                               const RunOptions& run_options,
                               const string& export_dir,
@@ -265,7 +284,8 @@ Status LoadSavedModelInternal(const SessionOptions& session_options,
   const uint64 read_start_microseconds = Env::Default()->NowMicros();
   TF_RETURN_IF_ERROR(ReadMetaGraphDefFromSavedModel(export_dir, tags,
                                                     &bundle->meta_graph_def));
-
+  TF_RETURN_IF_ERROR(
+      ReadSavedModelDebugInfoIfPresent(export_dir, &bundle->debug_info));
   TF_RETURN_IF_ERROR(LoadMetaGraphIntoSession(
       bundle->meta_graph_def, session_options, &bundle->session));
 
