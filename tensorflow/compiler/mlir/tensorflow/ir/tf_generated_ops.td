@@ -758,6 +758,10 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_Conv3DOp : TF_Op<"Conv3D", [NoSideEffect]> {
@@ -788,6 +792,10 @@ Our Conv3D implements a form of cross-correlation.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_CosOp : TF_Op<"Cos", [NoSideEffect, SameOperandsAndResultType]> {

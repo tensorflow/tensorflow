@@ -49,6 +49,7 @@ limitations under the License.
 #include "mlir/Support/STLExtras.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace mlir {
 namespace TF {
@@ -321,8 +322,9 @@ void CastOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // ConcatOp and ConcatV2Op
 //===----------------------------------------------------------------------===//
 
-template <typename OpT, typename = typename std::enable_if_t<
-                            llvm::is_one_of<OpT, ConcatOp, ConcatV2Op>::value>>
+template <typename OpT,
+          typename std::enable_if<llvm::is_one_of<
+              OpT, ConcatOp, ConcatV2Op>::value>::type * = nullptr>
 static LogicalResult Verify(OpT op) {
   // TODO(hinsu): Convert variadic length attributes to derived attributes.
   Operation::operand_range values = op.values();
@@ -401,6 +403,83 @@ void ConstOp::build(Builder *builder, OperationState &result, Type type,
   // Otherwise, default to the attribute builder.
   ConstOp::build(builder, result, value);
   assert(type == result.types[0] && "type mismatch in construction");
+}
+
+//===----------------------------------------------------------------------===//
+// Conv2DOp and Conv3DOp
+//===----------------------------------------------------------------------===//
+
+// Verifies that,
+// * Ranks of operands and result are valid
+// * Number of input channels is divisible by the number of filter input
+//   channels
+// * Length of explicit_paddings attribute is valid and has non negative
+//   elements
+// * strides and dilations attributes have positive elements
+template <typename OpT, typename std::enable_if<llvm::is_one_of<
+                            OpT, Conv2DOp, Conv3DOp>::value>::type * = nullptr>
+static LogicalResult Verify(OpT op) {
+  int num_spatial_dims = std::is_same<OpT, Conv2DOp>() ? 2 : 3;
+  int num_dims = 2 + num_spatial_dims;
+  if (!IsOfRankOrUnranked(op.input(), num_dims) ||
+      !IsOfRankOrUnranked(op.filter(), num_dims))
+    return op.emitOpError()
+           << "requires operands to be " << num_dims << "D tensor";
+  if (!IsOfRankOrUnranked(op.getResult(), num_dims))
+    return op.emitOpError()
+           << "requires result to be " << num_dims << "D tensor";
+
+  int64_t input_channels = -1;
+  if (auto ty = op.input()->getType().template dyn_cast<RankedTensorType>()) {
+    std::string data_format = op.data_format().str();
+    tensorflow::TensorFormat format;
+    auto is_valid = FormatFromString(data_format, &format);
+    DCHECK(is_valid) << data_format;
+    int idx = tensorflow::GetTensorFeatureDimIndex(num_dims, format);
+    input_channels = ty.getDimSize(idx);
+  }
+
+  int64_t filter_channels = -1;
+  if (auto ty = op.filter()->getType().template dyn_cast<RankedTensorType>()) {
+    int idx = tensorflow::GetFilterTensorInputChannelsDimIndex(
+        num_dims, tensorflow::FORMAT_HWIO);
+    filter_channels = ty.getDimSize(idx);
+  }
+
+  if (input_channels != -1 && filter_channels != -1 &&
+      input_channels % filter_channels != 0)
+    return op.emitOpError()
+           << "requires the number of input channels to be divisible by the "
+              "number of filter input channels; found "
+           << input_channels << " and " << filter_channels << ", respectively";
+
+  if (auto paddings =
+          op.template getAttrOfType<ArrayAttr>("explicit_paddings")) {
+    int64_t paddings_size = paddings.size();
+    int64_t expected_size = 2 * num_dims;
+
+    if (paddings_size != 0 && paddings_size != expected_size)
+      return op.emitOpError()
+             << "requires explicit_paddings attribute length to be "
+             << expected_size << "; actual length " << paddings_size;
+
+    auto is_negative = [](Attribute val) {
+      return val.cast<IntegerAttr>().getValue().getSExtValue() < 0;
+    };
+    if (llvm::any_of(paddings.getValue(), is_negative))
+      return op.emitOpError("requires non negative explicit paddings");
+  }
+
+  auto is_not_positive = [](Attribute val) {
+    return val.cast<IntegerAttr>().getValue().getSExtValue() <= 0;
+  };
+
+  if (llvm::any_of(op.strides().getValue(), is_not_positive))
+    return op.emitOpError("requires positive strides");
+  if (llvm::any_of(op.dilations().getValue(), is_not_positive))
+    return op.emitOpError("requires positive dilations");
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

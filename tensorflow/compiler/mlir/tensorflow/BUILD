@@ -171,6 +171,7 @@ cc_library(
         ":tensorflow_ops_inc_gen",
         ":tf_saved_model_inc_gen",
         "//tensorflow/compiler/mlir/lite:validators",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
