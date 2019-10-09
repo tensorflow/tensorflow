@@ -914,11 +914,13 @@ def func_graph_from_py_func(name,
           try:
             return autograph.converted_call(
                 original_func,
-                autograph.ConversionOptions(
+                args,
+                kwargs,
+                options=autograph.ConversionOptions(
                     recursive=True,
                     optional_features=autograph_options,
                     user_requested=True,
-                ), args, kwargs)
+                ))
           except Exception as e:  # pylint:disable=broad-except
             if hasattr(e, "ag_error_metadata"):
               raise e.ag_error_metadata.to_exception(e)
