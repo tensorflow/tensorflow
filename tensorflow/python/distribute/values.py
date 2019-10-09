@@ -470,7 +470,8 @@ class PerReplica(DistributedValues, composite_tensor.CompositeTensor):
 
   @property
   def _type_spec(self):
-    value_specs = [type_spec.type_spec_from_value(v) for v in self._values]
+    value_specs = nest.map_structure(type_spec.type_spec_from_value,
+                                     self._values)
     return PerReplicaSpec(value_specs, self._device_map, self._logical_device)
 
 
