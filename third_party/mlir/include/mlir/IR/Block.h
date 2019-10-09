@@ -231,7 +231,7 @@ public:
         : llvm::mapped_iterator<op_filter_iterator<OpT>, OpT (*)(Operation &)>(
               it, &unwrap) {}
 
-    /// Allow implict conversion to the underlying block iterator.
+    /// Allow implicit conversion to the underlying block iterator.
     operator Block::iterator() const { return this->wrapped(); }
   };
 

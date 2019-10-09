@@ -220,7 +220,7 @@ private:
 } // end namespace mlir
 
 namespace llvm {
-// Provide graph traits for tranversing call graphs using standard graph
+// Provide graph traits for traversing call graphs using standard graph
 // traversals.
 template <> struct GraphTraits<const mlir::CallGraphNode *> {
   using NodeRef = mlir::CallGraphNode *;
