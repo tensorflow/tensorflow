@@ -29,31 +29,34 @@ struct SymbolUsesPass : public ModulePass<SymbolUsesPass> {
 
     for (FuncOp func : module.getOps<FuncOp>()) {
       // Test computing uses on a non symboltable op.
-      unsigned numUses = 0;
-      SymbolTable::walkSymbolUses(func, [&](SymbolTable::SymbolUse) {
-        ++numUses;
-        return WalkResult::advance();
-      });
-      if (numUses != 0)
+      Optional<SymbolTable::UseRange> symbolUses =
+          SymbolTable::getSymbolUses(func);
+
+      // Test the conservative failure case.
+      if (!symbolUses) {
+        func.emitRemark() << "function contains an unknown nested operation "
+                             "that 'may' define a new symbol table";
+        return;
+      }
+      if (unsigned numUses = llvm::size(*symbolUses))
         func.emitRemark() << "function contains " << numUses
                           << " nested references";
 
-      // Test the functionality of symbol_use_empty.
-      if (SymbolTable::symbol_use_empty(func.getName(), module)) {
+      // Test the functionality of symbolKnownUseEmpty.
+      if (SymbolTable::symbolKnownUseEmpty(func.getName(), module)) {
         func.emitRemark() << "function has no uses";
         continue;
       }
 
-      // Test the functionality of walkSymbolUses.
-      numUses = 0;
-      SymbolTable::walkSymbolUses(
-          func.getName(), module, [&](SymbolTable::SymbolUse symbolUse) {
-            symbolUse.getUser()->emitRemark()
-                << "found use of function : " << symbolUse.getSymbolRef();
-            ++numUses;
-            return WalkResult::advance();
-          });
-      func.emitRemark() << "function has " << numUses << " uses";
+      // Test the functionality of getSymbolUses.
+      symbolUses = SymbolTable::getSymbolUses(func.getName(), module);
+      assert(symbolUses.hasValue() && "expected no unknown operations");
+      for (SymbolTable::SymbolUse symbolUse : *symbolUses) {
+        symbolUse.getUser()->emitRemark()
+            << "found use of function : " << symbolUse.getSymbolRef();
+      }
+      func.emitRemark() << "function has " << llvm::size(*symbolUses)
+                        << " uses";
     }
   }
 };
