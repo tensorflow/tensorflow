@@ -362,11 +362,11 @@ void pipelineBuilder(OpPassManager &pm) {
 }
 
 // Register an existing pipeline builder function.
-static PassPipelineRegistration pipeline(
+static PassPipelineRegistration<> pipeline(
   "command-line-arg", "description", pipelineBuilder);
 
 // Register an inline pipeline builder.
-static PassPipelineRegistration pipeline(
+static PassPipelineRegistration<> pipeline(
   "command-line-arg", "description", [](OpPassManager &pm) {
     pm.addPass(std::make_unique<MyPass>());
     pm.addPass(std::make_unique<MyOtherPass>());
@@ -377,7 +377,7 @@ Pipeline registration also allows for simplified registration of
 specifializations for existing passes:
 
 ```c++
-static PassPipelineRegistration foo10(
+static PassPipelineRegistration<> foo10(
     "foo-10", "Foo Pass 10", [] { return std::make_unique<FooPass>(10); } );
 ```
 
@@ -401,15 +401,19 @@ pipeline description. The syntax for this specification is as follows:
 
 ```ebnf
 pipeline          ::= op-name `(` pipeline-element (`,` pipeline-element)* `)`
-pipeline-element  ::= pipeline | pass-name | pass-pipeline-name
+pipeline-element  ::= pipeline | (pass-name | pass-pipeline-name) options?
+options           ::= '{' (key ('=' value)?)+ '}'
 ```
 
 *   `op-name`
-    *   This corresponds to the mneumonic name of an operation to run passes on,
+    *   This corresponds to the mnemonic name of an operation to run passes on,
         e.g. `func` or `module`.
 *   `pass-name` | `pass-pipeline-name`
     *   This corresponds to the command-line argument of a registered pass or
         pass pipeline, e.g. `cse` or `canonicalize`.
+*   `options`
+    *   Options are pass specific key value pairs that are handled as described
+        in the instance specific pass options section.
 
 For example, the following pipeline:
 
@@ -421,6 +425,35 @@ Can also be specified as (via the `-pass-pipeline` flag):
 
 ```shell
 $ mlir-opt foo.mlir -pass-pipeline='func(cse, canonicalize), lower-to-llvm'
+```
+
+### Instance Specific Pass Options
+
+Options may be specified for a parametric pass. Individual options are defined
+using `llvm::cl::opt` flag definition rules. These options will then be parsed
+at pass construction time independently for each instance of the pass. The
+`PassRegistration` and `PassPipelineRegistration` templates take an additional
+optional template parameter that is the Option struct definition to be used for
+that pass. To use pass specific options, create a class that inherits from
+`mlir::PassOptions` and then add a new constructor that takes `const
+MyPassOptions&` and constructs the pass. When using `PassPipelineRegistration`,
+the constructor now takes a function with the signature `void (OpPassManager
+&pm, const MyPassOptions&)` which should construct the passes from the options
+and pass them to the pm. The user code will look like the following:
+
+```c++
+class MyPass ... {
+public:
+  MyPass(const MyPassOptions& options) ...
+};
+
+struct MyPassOptions : public PassOptions<MyPassOptions> {
+  // These just forward onto llvm::cl::list and llvm::cl::opt respectively.
+  Option<int> exampleOption{*this, "flag-name", llvm::cl::desc("...")};
+  List<int> exampleListOption{*this, "list-flag-name", llvm::cl::desc("...")};
+};
+
+static PassRegistration<MyPass, MyPassOptions> pass("my-pass", "description");
 ```
 
 ## Pass Instrumentation
