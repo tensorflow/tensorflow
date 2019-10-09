@@ -2966,6 +2966,7 @@ py_library(
         ":gradients_impl",
         ":gradients_util",
         ":unconnected_gradients",
+        "//tensorflow/python/eager:forwardprop",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:tape",
     ],

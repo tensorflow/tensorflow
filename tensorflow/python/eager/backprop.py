@@ -698,7 +698,7 @@ def _handle_or_self(x):
   return x
 
 
-@tf_export("GradientTape")
+@tf_export("GradientTape", "autodiff.GradientTape", v1=["GradientTape"])
 class GradientTape(object):
   """Record operations for automatic differentiation.
 
