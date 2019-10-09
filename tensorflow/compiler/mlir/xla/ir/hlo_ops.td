@@ -278,6 +278,18 @@ def HLO_CompareOp: HLO_Op<"compare",
     HLO_ComparisonDirectionAttr:$comparison_direction
   );
   let results = (outs HLO_PredTensor);
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *lhs, Value *rhs, "
+    "DenseIntElementsAttr broadcast_dimensions, StringAttr comparison_direction"
+  >];
+
+  let extraClassDeclaration = [{
+    // Infers output type for given operand and attributes.
+    static Type InferOutputTypes(Builder *builder, Value *lhs, Value *rhs,
+                                 DenseIntElementsAttr broadcast_dimensions,
+                                 StringAttr comparison_direction);
+  }];
 }
 
 //===----------------------------------------------------------------------===//
