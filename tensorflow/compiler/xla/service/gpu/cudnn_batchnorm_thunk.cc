@@ -32,18 +32,20 @@ namespace gpu {
 namespace dnn = se::dnn;
 
 namespace {
-void CheckInputOutputPrimitivetypeValid(const HloInstruction* hlo) {
+void CheckInputOutputPrimitivetypeIsValid(const HloInstruction* hlo) {
   // Check Inputs.
   int64 num_operands = hlo->operand_count();
-  PrimitiveType operand_dtype = hlo->operand(0)->shape().element_type();
-  CHECK(operand_dtype == F16 || operand_dtype == F32) << "Not yet implemented";
+  PrimitiveType operand_primitive_type =
+      hlo->operand(0)->shape().element_type();
+  CHECK(operand_primitive_type == F16 || operand_primitive_type == F32)
+      << "Not yet implemented";
 
   for (int i = 1; i < num_operands - 2; i++) {
     if (hlo->custom_call_target() == kCudnnBatchNormBackwardCallTarget &&
-        (i == 4)) {
+        i == 4) {
       // The first operand to batchnorm grad is the input and the 4th operand is
       // the grad_output, both of which can be Eigen::half.
-      CHECK_EQ(hlo->operand(i)->shape().element_type(), operand_dtype)
+      CHECK_EQ(hlo->operand(i)->shape().element_type(), operand_primitive_type)
           << "Invalid datatype";
       continue;
     }
@@ -57,7 +59,8 @@ void CheckInputOutputPrimitivetypeValid(const HloInstruction* hlo) {
 
   // Check Outputs.
   if (hlo->shape().IsTuple()) {
-    CHECK_EQ(hlo->shape().tuple_shapes(0).element_type(), operand_dtype)
+    CHECK_EQ(hlo->shape().tuple_shapes(0).element_type(),
+             operand_primitive_type)
         << "Invalid datatype";
 
     for (int j = 1; j < hlo->shape().tuple_shapes_size(); j++) {
@@ -65,7 +68,7 @@ void CheckInputOutputPrimitivetypeValid(const HloInstruction* hlo) {
           << "Not yet implemented";
     }
   } else {
-    CHECK_EQ(hlo->shape().element_type(), operand_dtype)
+    CHECK_EQ(hlo->shape().element_type(), operand_primitive_type)
         << "Invalid datatype";
   }
 }
@@ -91,7 +94,7 @@ CudnnBatchNormForwardInferenceThunk::CudnnBatchNormForwardInferenceThunk(
            kCudnnBatchNormForwardInferenceCallTarget);
   CHECK(
       LayoutUtil::LayoutsInShapesEqual(hlo->shape(), hlo->operand(0)->shape()));
-  CheckInputOutputPrimitivetypeValid(hlo);
+  CheckInputOutputPrimitivetypeIsValid(hlo);
 }
 
 Status CudnnBatchNormForwardInferenceThunk::ExecuteOnStream(
@@ -141,7 +144,7 @@ CudnnBatchNormForwardTrainingThunk::CudnnBatchNormForwardTrainingThunk(
   CHECK_EQ(hlo->shape().tuple_shapes_size(), 3);
   CHECK(LayoutUtil::LayoutsInShapesEqual(hlo->shape().tuple_shapes(0),
                                          hlo->operand(0)->shape()));
-  CheckInputOutputPrimitivetypeValid(hlo);
+  CheckInputOutputPrimitivetypeIsValid(hlo);
 }
 
 Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
@@ -209,7 +212,7 @@ CudnnBatchNormBackwardThunk::CudnnBatchNormBackwardThunk(
                                          hlo->operand(0)->shape()));
   CHECK(LayoutUtil::LayoutsInShapesEqual(hlo->shape().tuple_shapes(0),
                                          hlo->operand(4)->shape()));
-  CheckInputOutputPrimitivetypeValid(hlo);
+  CheckInputOutputPrimitivetypeIsValid(hlo);
 }
 
 Status CudnnBatchNormBackwardThunk::ExecuteOnStream(

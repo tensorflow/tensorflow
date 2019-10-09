@@ -61,9 +61,13 @@ struct CudnnBatchNormBackwardParams {
   se::DeviceMemory<float> inv_stddev;
 };
 
-std::pair<se::dnn::BatchDescriptor /*input_desc*/,
-          se::dnn::BatchDescriptor /*scale_offset_desc*/>
-MakeBatchNormDescriptors(const Shape& shape, int64 feature_index) {
+struct DnnBatchDescriptors {
+  se::dnn::BatchDescriptor input_desc;
+  se::dnn::BatchDescriptor scale_offset_desc;
+};
+
+DnnBatchDescriptors MakeBatchNormDescriptors(const Shape& shape,
+                                             int64 feature_index) {
   std::vector<int64> logical_to_physical =
       LayoutUtil::MakeLogicalToPhysical(shape.layout());
 
@@ -89,21 +93,20 @@ MakeBatchNormDescriptors(const Shape& shape, int64 feature_index) {
     y_size *= physical_dim_size(physical_dim);
   }
 
-  se::dnn::BatchDescriptor input_desc;
-  input_desc.set_layout(se::dnn::DataLayout::kBatchDepthYX)
+  DnnBatchDescriptors batch_descs;
+  batch_descs.input_desc.set_layout(se::dnn::DataLayout::kBatchDepthYX)
       .set_count(batch_size)
       .set_feature_map_count(shape.dimensions(feature_index))
       .set_height(y_size)
       .set_width(1);
 
-  se::dnn::BatchDescriptor scale_offset_desc;
-  scale_offset_desc.set_layout(se::dnn::DataLayout::kBatchDepthYX)
-      .set_feature_map_count(input_desc.feature_map_count())
+  batch_descs.scale_offset_desc.set_layout(se::dnn::DataLayout::kBatchDepthYX)
+      .set_feature_map_count(batch_descs.input_desc.feature_map_count())
       .set_height(1)
       .set_width(1)
       .set_count(1);
 
-  return std::make_pair(input_desc, scale_offset_desc);
+  return batch_descs;
 }
 
 void AssignCommonParams(const HloInstruction* batchnorm,
@@ -111,7 +114,6 @@ void AssignCommonParams(const HloInstruction* batchnorm,
                         const se::DeviceMemoryBase& operand,
                         const se::DeviceMemory<float>& scale, float epsilon,
                         int64 feature_index) {
-  // TF_ASSIGN_OR_RETURN(params->kind, GetCudnnBatchNormKind(batchnorm));
   // The BatchNormTraining HLO outputs a tuple of three elements: output data,
   // batch mean, and batch variance.  We want to make our descriptors based on
   // the shape of the output data. Batchnorm backward call outputs a tuple of
@@ -120,15 +122,17 @@ void AssignCommonParams(const HloInstruction* batchnorm,
   const Shape& shape = batchnorm->shape().IsTuple()
                            ? batchnorm->shape().tuple_shapes(0)
                            : batchnorm->shape();
-  std::tie(params->operand_desc, params->scale_offset_desc) =
+  DnnBatchDescriptors batch_descs =
       MakeBatchNormDescriptors(shape, feature_index);
+  params->operand_desc = batch_descs.input_desc;
+  params->scale_offset_desc = batch_descs.scale_offset_desc;
   params->operand = operand;
   params->scale = scale;
   params->epsilon = epsilon;
 }
 
 template <typename ElemType>
-Status RunCudnnBatchNormForwardInferenceImpl(
+void RunCudnnBatchNormForwardInferenceImpl(
     CudnnBatchNormForwardInferenceParams* params, se::Stream* stream) {
   se::DeviceMemory<float> null_device_ptr(nullptr);
   auto output_buf = se::DeviceMemory<ElemType>(params->output);
@@ -151,12 +155,10 @@ Status RunCudnnBatchNormForwardInferenceImpl(
       /*inv_var_to_var=*/nullptr,                                   //
       /*reserve_space_allocator=*/nullptr,                          //
       /*workspace_allocator=*/nullptr);
-
-  return Status::OK();
 }
 
 template <typename ElemType>
-Status RunCudnnBatchNormForwardTrainingImpl(
+void RunCudnnBatchNormForwardTrainingImpl(
     CudnnBatchNormForwardTrainingParams* params, se::Stream* stream) {
   se::DeviceMemory<float> null_device_ptr(nullptr);
   auto output_data = se::DeviceMemory<ElemType>(params->output_data);
@@ -181,13 +183,11 @@ Status RunCudnnBatchNormForwardTrainingImpl(
       /*inv_var_to_var=*/nullptr,                    //
       /*reserve_space_allocator=*/nullptr,           //
       /*workspace_allocator=*/nullptr);
-
-  return Status::OK();
 }
 
 template <typename ElemType>
-Status RunCudnnBatchNormBackwardImpl(CudnnBatchNormBackwardParams* params,
-                                     se::Stream* stream) {
+void RunCudnnBatchNormBackwardImpl(CudnnBatchNormBackwardParams* params,
+                                   se::Stream* stream) {
   se::DeviceMemory<float> null_device_ptr(nullptr);
   auto output_grad_data = se::DeviceMemory<ElemType>(params->output_grad_data);
   stream->ThenBatchNormalizationBackward(
@@ -204,8 +204,6 @@ Status RunCudnnBatchNormBackwardImpl(CudnnBatchNormBackwardParams* params,
       &params->output_grad_offset,                         //
       /*reserve_space_allocator=*/nullptr,                 //
       /*workspace_allocator=*/nullptr);
-
-  return Status::OK();
 }
 
 }  // namespace
@@ -227,14 +225,17 @@ Status RunCudnnBatchNormForwardInference(
   PrimitiveType output_primitive_type = batchnorm->shape().element_type();
   switch (output_primitive_type) {
     case F16:
-      return RunCudnnBatchNormForwardInferenceImpl<Eigen::half>(
-          &inference_params, stream);
+      RunCudnnBatchNormForwardInferenceImpl<Eigen::half>(&inference_params,
+                                                         stream);
+      break;
     case F32:
-      return RunCudnnBatchNormForwardInferenceImpl<float>(&inference_params,
-                                                          stream);
+      RunCudnnBatchNormForwardInferenceImpl<float>(&inference_params, stream);
+      break;
     default:
-      LOG(FATAL) << batchnorm->ToString() << " is unimplemented";
+      Unimplemented("Primitive type not implemented for \"%s\" ",
+                            batchnorm->ToString());
   }
+  return Status::OK();
 }
 
 Status RunCudnnBatchNormForwardTraining(
@@ -255,14 +256,17 @@ Status RunCudnnBatchNormForwardTraining(
       batchnorm->shape().tuple_shapes(0).element_type();
   switch (output_primitive_type) {
     case F16:
-      return RunCudnnBatchNormForwardTrainingImpl<Eigen::half>(&forward_params,
-                                                               stream);
+      RunCudnnBatchNormForwardTrainingImpl<Eigen::half>(&forward_params,
+                                                        stream);
+      break;
     case F32:
-      return RunCudnnBatchNormForwardTrainingImpl<float>(&forward_params,
-                                                         stream);
+      RunCudnnBatchNormForwardTrainingImpl<float>(&forward_params, stream);
+      break;
     default:
-      LOG(FATAL) << batchnorm->ToString() << " is unimplemented";
+      Unimplemented("Primitive type not implemented for \"%s\" ",
+                            batchnorm->ToString());
   }
+  return Status::OK();
 }
 
 Status RunCudnnBatchNormBackward(
@@ -286,13 +290,16 @@ Status RunCudnnBatchNormBackward(
       batchnorm->shape().tuple_shapes(0).element_type();
   switch (output_primitive_type) {
     case F16:
-      return RunCudnnBatchNormBackwardImpl<Eigen::half>(&backward_params,
-                                                        stream);
+      RunCudnnBatchNormBackwardImpl<Eigen::half>(&backward_params, stream);
+      break;
     case F32:
-      return RunCudnnBatchNormBackwardImpl<float>(&backward_params, stream);
+      RunCudnnBatchNormBackwardImpl<float>(&backward_params, stream);
+      break;
     default:
-      LOG(FATAL) << batchnorm->ToString() << " is unimplemented";
+      Unimplemented("Primitive type not implemented for \"%s\" ",
+                            batchnorm->ToString());
   }
+  return Status::OK();
 }
 
 }  // namespace gpu
