@@ -429,16 +429,43 @@ def HLO_ConcatenateOp : HLO_Op<"concatenate",
   let hasCustomHLOConverter = 1;
 }
 
+// TODO(hinsu): Make this struct dialect independent so that it can be shared
+// between HLO and LHLO dialect.
+def ConvDimensionNumbers : StructAttr<"ConvDimensionNumbers", HLO_Dialect, [
+  StructFieldAttr<"input_batch_dimension",I64Attr>,
+  StructFieldAttr<"input_feature_dimension", I64Attr>,
+  StructFieldAttr<"input_spatial_dimensions", I64ElementsAttr>,
+  StructFieldAttr<"kernel_input_feature_dimension", I64Attr>,
+  StructFieldAttr<"kernel_output_feature_dimension", I64Attr>,
+  StructFieldAttr<"kernel_spatial_dimensions", I64ElementsAttr>,
+  StructFieldAttr<"output_batch_dimension", I64Attr>,
+  StructFieldAttr<"output_feature_dimension", I64Attr>,
+  StructFieldAttr<"output_spatial_dimensions", I64ElementsAttr>] > {
+
+  let description = "Structure of dimension information for conv op";
+}
+
 def HLO_ConvOp : HLO_Op<"conv", [NoSideEffect]>, BASE_HLO_ConvOp {
   let arguments = (ins
     HLO_Tensor:$lhs,
-    HLO_Tensor:$rhs
+    HLO_Tensor:$rhs,
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$window_strides,
+    // Default value: zero for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$padding,
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$lhs_dilation,
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$rhs_dilation,
+    ConvDimensionNumbers:$dimension_numbers,
+    I64Attr:$feature_group_count,
+    I64Attr:$batch_group_count,
+    HLO_PrecisionConfigAttr:$precision_config
   );
 
   let results = (outs HLO_Tensor);
 
-  // TODO(b/129422361) Needs additional work to handle attributes.
-  // Conv has custom handling because its other args are passed as attributes
+  // TODO(b/129422361): Conv Op has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
 }
 

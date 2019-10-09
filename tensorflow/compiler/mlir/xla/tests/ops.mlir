@@ -1,6 +1,9 @@
 // RUN: tf-opt %s -verify-diagnostics -split-input-file | tf-opt | FileCheck %s
 
-// -----
+// TODO(hinsu): Remove trivial tests that are testing the generation of op
+// definitions.
+
+// Tests for ops with custom constraints, verifiers, printer or parser methods.
 
 func @dynamic_shapes(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "xla_hlo.tanh"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
@@ -157,14 +160,6 @@ func @comp_no_direction(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>) -> tensor<3x
   // expected-error@+1 {{op requires attribute 'comparison_direction'}}
   %0 = "xla_hlo.compare"(%arg0, %arg1) : (tensor<3xi32>, tensor<3xi32>) -> tensor<3xi1>
   return %0 : tensor<3xi1>
-}
-
-// -----
-
-// CHECK-LABEL: func @conv
-func @conv(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>) -> tensor<3xi32> {
-  %0 = "xla_hlo.conv"(%arg0, %arg1) : (tensor<3xi32>, tensor<3xi32>) -> tensor<3xi32>
-  return %0: tensor<3xi32>
 }
 
 // -----
