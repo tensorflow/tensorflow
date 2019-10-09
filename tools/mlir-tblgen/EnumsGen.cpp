@@ -215,7 +215,7 @@ void mlir::tblgen::emitEnumDecl(const Record &enumDef,
   // Emit the enum class definition
   emitEnumClass(enumDef, enumName, underlyingType, description, enumerants, os);
 
-  // Emit coversion function declarations
+  // Emit conversion function declarations
   if (llvm::all_of(enumerants, [](EnumAttrCase enumerant) {
         return enumerant.getValue() >= 0;
       })) {

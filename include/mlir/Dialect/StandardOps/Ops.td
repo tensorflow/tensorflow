@@ -94,7 +94,7 @@ class ArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
 // tensors thereof.  This operation takes two operands and returns one result,
 // each of these is required to be of the same type.  This type may be an
 // integer scalar type, a vector whose element type is an integer type, or an
-// integer tensor.  The custom assembly form of the operaton is as follows
+// integer tensor.  The custom assembly form of the operation is as follows
 //
 //     <op>i %0, %1 : i32
 class IntArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
@@ -773,7 +773,7 @@ def MemRefCastOp : CastOp<"memref_cast"> {
 }
 
 def MulFOp : FloatArithmeticOp<"mulf"> {
-  let summary = "foating point multiplication operation";
+  let summary = "floating point multiplication operation";
   let hasFolder = 1;
 }
 
@@ -1076,7 +1076,7 @@ def TruncateIOp : Std_Op<"trunci", [NoSideEffect, SameOperandsAndResultShape]> {
     The integer truncation operation takes an integer input of
     width M and an integer destination type of width N. The destination
     bit-width must be smaller than the input bit-width (N < M).
-    The top-most (N - M) bits of the input are discareded.
+    The top-most (N - M) bits of the input are discarded.
 
       %1 = constant 21 : i5           // %1 is 0b10101
       %2 = trunci %1 : i5 to i4       // %2 is 0b0101

@@ -306,7 +306,7 @@ public:
 
   void addSuccessor(Block *successor, ArrayRef<Value *> succOperands) {
     successors.push_back(successor);
-    // Insert a sentinal operand to mark a barrier between successor operands.
+    // Insert a sentinel operand to mark a barrier between successor operands.
     operands.push_back(nullptr);
     operands.append(succOperands.begin(), succOperands.end());
   }
