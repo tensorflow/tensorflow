@@ -42,7 +42,7 @@ namespace internal {
 class LogMessage : public std::basic_ostringstream<char> {
  public:
   LogMessage(const char* fname, int line, int severity);
-  ~LogMessage();
+  ~LogMessage() override;
 
   // Returns the minimum log level for VLOG statements.
   // E.g., if MinVLogLevel() is 2, then VLOG(2) statements will produce output,
@@ -81,7 +81,14 @@ struct Voidifier {
 class LogMessageFatal : public LogMessage {
  public:
   LogMessageFatal(const char* file, int line) TF_ATTRIBUTE_COLD;
-  TF_ATTRIBUTE_NORETURN ~LogMessageFatal();
+  TF_ATTRIBUTE_NORETURN ~LogMessageFatal() override;
+};
+
+// LogMessageNull supports the DVLOG macro by simply dropping any log messages.
+class LogMessageNull : public std::basic_ostringstream<char> {
+ public:
+  LogMessageNull() {}
+  ~LogMessageNull() override {}
 };
 
 #define _TF_LOG_INFO \
@@ -122,6 +129,15 @@ class LogMessageFatal : public LogMessage {
   : ::tensorflow::internal::Voidifier() &                        \
           ::tensorflow::internal::LogMessage(__FILE__, __LINE__, \
                                              tensorflow::INFO)
+
+// `DVLOG` behaves like `VLOG` in debug mode (i.e. `#ifndef NDEBUG`).
+// Otherwise, it compiles away and does nothing.
+#ifndef NDEBUG
+#define DVLOG VLOG
+#else
+#define DVLOG(verbose_level) \
+  while (false && (verbose_level) > 0) ::tensorflow::internal::LogMessageNull()
+#endif
 
 // CHECK dies with a fatal error if condition is not true.  It is *not*
 // controlled by NDEBUG, so the check will be executed regardless of
