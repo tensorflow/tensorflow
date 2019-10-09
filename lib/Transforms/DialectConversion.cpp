@@ -284,6 +284,7 @@ void ArgConverter::applySignatureConversion(
   // Remap each of the original arguments as determined by the signature
   // conversion.
   auto &newArgMapping = argMapping[block];
+  OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPointToStart(block);
   for (unsigned i = 0; i != origArgCount; ++i) {
     ArrayRef<Value *> remappedValues;
