@@ -758,6 +758,7 @@ cc_library(
     deps = [
         ":convert_type",
         ":error_util",
+        ":tensorflow_passes",
         "//tensorflow/compiler/mlir/xla:hlo",
         "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
         "//tensorflow/compiler/mlir/xla:type_to_shape",
@@ -770,6 +771,7 @@ cc_library(
         "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Parser",
+        "@local_config_mlir//:StandardOps",
     ],
 )
 
@@ -784,6 +786,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/stream_executor/lib",
     ],
