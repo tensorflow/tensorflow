@@ -169,10 +169,8 @@ class RunMetadataTest(test.TestCase):
     ops.reset_default_graph()
     with ops.device('/cpu:0'):
       tfprof_node, run_meta = _run_model()
-      # TODO(b/142268415): Should be children[0] after separating traceme events
-      # from StepStats.
-      self.assertEqual(tfprof_node.children[1].name, 'MatMul')
-      self.assertGreater(tfprof_node.children[1].exec_micros, 0)
+      self.assertEqual(tfprof_node.children[0].name, 'MatMul')
+      self.assertGreater(tfprof_node.children[0].exec_micros, 0)
 
     ret = _extract_node(run_meta, 'MatMul')
     self.assertEqual(len(ret['cpu:0']), 1)
