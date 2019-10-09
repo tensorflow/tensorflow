@@ -15,8 +15,8 @@
 """Library for running a computation across multiple devices.
 
 See the guide for overview and examples:
-[TensorFlow v1.x](https://www.tensorflow.org/guide/distribute_strategy),
-[TensorFlow v2.x](https://www.tensorflow.org/alpha/guide/distribute_strategy).
+[TensorFlow v2.x](https://www.tensorflow.org/guide/distributed_training),
+[TensorFlow v1.x](https://github.com/tensorflow/docs/blob/master/site/en/r1/guide/distribute_strategy.ipynb).  # pylint: disable=line-too-long
 
 The intent of this library is that you can write an algorithm in a stylized way
 and it will be usable with a variety of different `tf.distribute.Strategy`
@@ -416,18 +416,18 @@ class InputContext(object):
 class Strategy(object):
   """A state & compute distribution policy on a list of devices.
 
-  See [the guide](https://www.tensorflow.org/alpha/guide/distribute_strategy)
+  See [the guide](https://www.tensorflow.org/guide/distributed_training)
   for overview and examples.
 
   In short:
 
   * To use it with Keras `compile`/`fit`,
     [please
-    read](https://www.tensorflow.org/alpha/guide/distribute_strategy#using_tfdistributestrategy_with_keras).
+    read](https://www.tensorflow.org/guide/distributed_training#using_tfdistributestrategy_with_keras).
   * You may pass descendant of `tf.distribute.Strategy` to
     `tf.estimator.RunConfig` to specify how a `tf.estimator.Estimator`
     should distribute its computation. See
-    [guide](https://www.tensorflow.org/alpha/guide/distribute_strategy#using_tfdistributestrategy_with_estimator).
+    [guide](https://www.tensorflow.org/guide/distributed_training#using_tfdistributestrategy_with_estimator_limited_support).
   * Otherwise, use `tf.distribute.Strategy.scope` to specify that a
     strategy should be used when building an executing your model.
     (This puts you in the "cross-replica context" for this strategy, which
@@ -435,7 +435,7 @@ class Strategy(object):
   * If you are writing a custom training loop, you will need to call a few more
     methods,
     [see the
-    guide](https://www.tensorflow.org/alpha/guide/distribute_strategy#using_tfdistributestrategy_with_custom_training_loops):
+    guide](https://www.tensorflow.org/guide/distributed_training#using_tfdistributestrategy_with_custom_training_loops):
 
       * Start by either creating a `tf.data.Dataset` normally or using
         `tf.distribute.experimental_make_numpy_dataset` to make a dataset out of
@@ -491,7 +491,7 @@ class Strategy(object):
 
   See the
   [custom training loop
-  tutorial](https://www.tensorflow.org/alpha/tutorials/distribute/training_loops)
+  tutorial](https://www.tensorflow.org/tutorials/distribute/custom_training)
   for a more detailed example.
 
   Note: `tf.distribute.Strategy` currently does not support TensorFlow's

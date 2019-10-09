@@ -216,9 +216,12 @@ cuda_py_test(
     ],
     shard_count = 8,
     tags = [
-        "no_rocm",
+        "manual",
+        "no_oss",
         "no_cuda",
+        "no_rocm",
         "no_windows",
+        "notap",
     ],
 )
 

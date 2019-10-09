@@ -76,6 +76,9 @@ void UpdateGraphBuildTime(const uint64 running_time_usecs);
 // Updates the metrics stored about time XLA spents compiling graphs.
 void UpdateXlaCompilationTime(const uint64 compilation_time_usecs);
 
+// Increment the number of jobs that failed during import to mlir.
+void IncrementMLIRImportFailureCount();
+
 }  // namespace metrics
 }  // namespace tensorflow
 

@@ -19,9 +19,9 @@ def gentbl(name, tblgen, td_file, tbl_outs, td_srcs = [], td_includes = [], stri
     if td_file not in td_srcs:
         srcs += [td_file]
 
-    # Add google_mlir/include directory as include so derived op td files can
-    # import relative to that.
-    td_includes_str = "-I external/local_config_mlir/include -I external/org_tensorflow "
+    # Add google_mlir/include directory and the directory with generated td
+    # files as includes, so derived op td files can import relative to that.
+    td_includes_str = "-I external/local_config_mlir/include -I external/org_tensorflow -I $(GENDIR) "
     for td_include in td_includes:
         td_includes_str += "-I %s " % td_include
     td_includes_str += "-I $$(dirname $(location %s)) " % td_file

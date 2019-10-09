@@ -765,7 +765,7 @@ class SequenceCategoricalColumnWithIdentityTest(
         'animal', num_buckets=4)
     animal = fc.indicator_column(parent)
 
-    config = animal._get_config()
+    config = animal.get_config()
     self.assertEqual(
         {
             'categorical_column': {
@@ -783,11 +783,11 @@ class SequenceCategoricalColumnWithIdentityTest(
             }
         }, config)
 
-    new_animal = fc.IndicatorColumn._from_config(config)
+    new_animal = fc.IndicatorColumn.from_config(config)
     self.assertEqual(animal, new_animal)
     self.assertIsNot(parent, new_animal.categorical_column)
 
-    new_animal = fc.IndicatorColumn._from_config(
+    new_animal = fc.IndicatorColumn.from_config(
         config,
         columns_by_name={
             serialization._column_name_with_class_name(parent): parent

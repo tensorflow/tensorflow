@@ -28,15 +28,15 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
-using ::tflite::gpu::PadAttributes;
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::DataType;
 using ::tflite::gpu::HWC;
-using ::tflite::gpu::metal::CompareVectors;
-using ::tflite::gpu::metal::SingleOpModel;
+using ::tflite::gpu::OperationType;
+using ::tflite::gpu::PadAttributes;
 using ::tflite::gpu::PaddingContentType;
 using ::tflite::gpu::TensorRef;
-using ::tflite::gpu::OperationType;
+using ::tflite::gpu::metal::CompareVectors;
+using ::tflite::gpu::metal::SingleOpModel;
 
 @interface PaddingTest : XCTestCase
 - (void)runPadOperation:(const HWC&)prepend

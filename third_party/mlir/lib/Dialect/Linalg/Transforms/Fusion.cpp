@@ -186,10 +186,10 @@ static LinalgOp fuse(Value *producedView, LinalgOp producer, LinalgOp consumer,
                  << "existing LoopRange: " << loopRanges[i] << "\n");
     else {
       auto viewDim = getViewDefiningLoopRange(producer, i);
-      loopRanges[i] = SubViewOp::Range{
-          state.create<ConstantIndexOp>(b, loc, 0),
-          linalg::intrinsics::dim(viewDim.view, viewDim.dimension),
-          state.create<ConstantIndexOp>(b, loc, 1)};
+      loopRanges[i] =
+          SubViewOp::Range{state.create<ConstantIndexOp>(b, loc, 0),
+                           dim(viewDim.view, viewDim.dimension),
+                           state.create<ConstantIndexOp>(b, loc, 1)};
       LLVM_DEBUG(llvm::dbgs() << "new LoopRange: " << loopRanges[i] << "\n");
     }
   }

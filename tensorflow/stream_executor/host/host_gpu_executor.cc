@@ -55,15 +55,16 @@ void HostExecutor::Deallocate(DeviceMemoryBase *mem) {
   delete[] static_cast<char *>(mem->opaque());
 }
 
-bool HostExecutor::SynchronousMemZero(DeviceMemoryBase *location, uint64 size) {
+port::Status HostExecutor::SynchronousMemZero(DeviceMemoryBase *location,
+                                              uint64 size) {
   memset(location->opaque(), 0, size);
-  return true;
+  return port::Status::OK();
 }
 
-bool HostExecutor::SynchronousMemSet(DeviceMemoryBase *location, int value,
-                                     uint64 size) {
+port::Status HostExecutor::SynchronousMemSet(DeviceMemoryBase *location,
+                                             int value, uint64 size) {
   memset(location->opaque(), value, size);
-  return true;
+  return port::Status::OK();
 }
 
 bool HostExecutor::Memcpy(Stream *stream, void *host_dst,

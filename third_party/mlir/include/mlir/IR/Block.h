@@ -207,7 +207,7 @@ private:
         : llvm::filter_iterator<Block::iterator, bool (*)(Operation &)>(
               it, end, &filter) {}
 
-    /// Allow implict conversion to the underlying block iterator.
+    /// Allow implicit conversion to the underlying block iterator.
     operator Block::iterator() const { return this->wrapped(); }
   };
 

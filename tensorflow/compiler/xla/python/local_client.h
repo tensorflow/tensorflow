@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
@@ -166,6 +167,10 @@ class PyLocalClient {
   virtual StatusOr<std::unique_ptr<PyLocalExecutable>> DeserializeExecutable(
       const std::string& serialized,
       std::shared_ptr<PyLocalClient> this_shared) const;
+
+  // Returns a bad status containing `caller_name` if `device_ordinal` doesn't
+  // correspond to a local device.
+  Status CheckDeviceOrdinal(int device_ordinal, absl::string_view caller_name);
 
  protected:
   std::string platform_name_;

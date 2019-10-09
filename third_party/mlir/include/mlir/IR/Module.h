@@ -46,10 +46,11 @@ public:
 
   static StringRef getOperationName() { return "module"; }
 
-  static void build(Builder *builder, OperationState &result);
+  static void build(Builder *builder, OperationState &result,
+                    Optional<StringRef> name = llvm::None);
 
-  /// Construct a module from the given location.
-  static ModuleOp create(Location loc);
+  /// Construct a module from the given location with an optional name.
+  static ModuleOp create(Location loc, Optional<StringRef> name = llvm::None);
 
   /// Operation hooks.
   static ParseResult parse(OpAsmParser &parser, OperationState &result);
@@ -59,6 +60,9 @@ public:
   /// Return body of this module.
   Region &getBodyRegion();
   Block *getBody();
+
+  /// Return the name of this module if present.
+  Optional<StringRef> getName();
 
   /// Print the this module in the custom top-level form.
   void print(raw_ostream &os);

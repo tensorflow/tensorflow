@@ -241,6 +241,53 @@ void AssertOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// BiasAddOp
+//===----------------------------------------------------------------------===//
+
+// Verifies that,
+// * the value and bias operands have valid ranks or are unranked.
+// * Channel dimension of the value operand and length of bias matches if they
+//   are not unknown.
+//
+static LogicalResult Verify(BiasAddOp op) {
+  StringRef format = op.data_format();
+  if (format == "NHWC") {
+    if (!HasRankAtLeast(op.value(), 2))
+      return op.emitOpError(
+          "requires value operand to have rank at least two with `NHWC` data "
+          "format");
+  } else {
+    // Op definition requires data_format to be either NHWC or NCHW.
+    DCHECK_EQ(format.str(), "NCHW");
+    if (!HasRankAtLeast(op.value(), 3))
+      return op.emitOpError(
+          "requires value operand to have rank at least three with `NCHW` data "
+          "format");
+  }
+
+  if (!IsOfRankOrUnranked(op.bias(), 1))
+    return op.emitOpError("requires bias operand to have rank exactly one");
+
+  RankedTensorType value_ty =
+      op.value()->getType().dyn_cast<RankedTensorType>();
+  RankedTensorType bias_ty = op.bias()->getType().dyn_cast<RankedTensorType>();
+  if (!bias_ty || !value_ty) return success();
+
+  // TODO(hinsu): Leverage tensor_format.h utility in TensorFlow to compute
+  // dimension indices based on format.
+  int64_t feature_dim_idx = format == "NHWC" ? value_ty.getRank() - 1 : 1;
+  int64_t feature_dim = value_ty.getDimSize(feature_dim_idx);
+  int64_t bias_len = bias_ty.getDimSize(0);
+  if (feature_dim != -1 && bias_len != -1 && feature_dim != bias_len) {
+    return op.emitOpError()
+           << "requires channel dimension and feature dimension to match; "
+              "found "
+           << feature_dim << " and " << bias_len << ", respectively";
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BitcastOp
 //===----------------------------------------------------------------------===//
 
@@ -1309,6 +1356,7 @@ Type TensorFlowDialect::parseType(StringRef data, Location loc) const {
 #define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name)
 // NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
+                      .StartsWith("resource", TensorFlowTypes::RESOURCE)
                       .StartsWith("variant", TensorFlowTypes::VARIANT)
                       .Default(0);
   switch (typeKind) {
@@ -1321,6 +1369,8 @@ Type TensorFlowDialect::parseType(StringRef data, Location loc) const {
 #define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name)
 // NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
+    case TensorFlowTypes::RESOURCE:
+      return ParseResourceType(data, loc);
     case TensorFlowTypes::VARIANT:
       return ParseVariantType(data, loc);
   }
@@ -1345,22 +1395,27 @@ void TensorFlowDialect::printType(Type ty, raw_ostream &os) const {
   }
 }
 
-Type TensorFlowDialect::ParseVariantType(StringRef spec, Location loc) const {
-  bool success = spec.consume_front("variant");
+namespace {
+template <typename TypeWithSubtype>
+Type ParseTypeWithSubtype(MLIRContext *context, StringRef type_with_subtype,
+                          StringRef spec, Location loc) {
+  bool success = spec.consume_front(type_with_subtype);
   DCHECK(success) << spec.str();
 
-  // Default variant type without inferred subtypes.
-  MLIRContext *context = getContext();
-  if (spec.empty()) return VariantType::get(context);
+  // Default type without inferred subtypes.
+  if (spec.empty()) return TypeWithSubtype::get(context);
 
   if (!spec.consume_front("<") || !spec.consume_back(">"))
-    return emitError(loc) << "tf.variant delimiter <...> mismatch", nullptr;
+    return emitError(loc) << "tf." << type_with_subtype
+                          << " delimiter <...> mismatch",
+           nullptr;
 
-  // Most variant types with subtypes have only one subtype.
+  // Most types with subtypes have only one subtype.
   SmallVector<StringRef, 1> subtype_specs;
   llvm::SplitString(spec, subtype_specs, ",");
   if (subtype_specs.empty())
-    return emitError(loc) << "invalid type: tf.variant<>", nullptr;
+    return emitError(loc) << "invalid type: tf." << type_with_subtype << "<>",
+           nullptr;
 
   SmallVector<TensorType, 1> subtypes;
   subtypes.reserve(subtype_specs.size());
@@ -1377,18 +1432,38 @@ Type TensorFlowDialect::ParseVariantType(StringRef spec, Location loc) const {
       return emitError(loc) << "expected TensorType. Found: " << type, nullptr;
     }
   }
-  return VariantType::getChecked(subtypes, context, loc);
+  return TypeWithSubtype::getChecked(subtypes, context, loc);
 }
 
-void TensorFlowDialect::PrintVariantType(VariantType ty,
-                                         raw_ostream &os) const {
-  os << "variant";
+template <typename TypeWithSubtype>
+void PrintTypeWithSubtype(StringRef type, TypeWithSubtype ty, raw_ostream &os) {
+  os << type;
   ArrayRef<TensorType> subtypes = ty.getSubtypes();
   if (subtypes.empty()) return;
 
   os << "<";
   interleaveComma(subtypes, os);
   os << ">";
+}
+}  // anonymous namespace
+
+Type TensorFlowDialect::ParseResourceType(StringRef spec, Location loc) const {
+  return ParseTypeWithSubtype<ResourceType>(getContext(), "resource", spec,
+                                            loc);
+}
+
+void TensorFlowDialect::PrintResourceType(ResourceType ty,
+                                          raw_ostream &os) const {
+  return PrintTypeWithSubtype("resource", ty, os);
+}
+
+Type TensorFlowDialect::ParseVariantType(StringRef spec, Location loc) const {
+  return ParseTypeWithSubtype<VariantType>(getContext(), "variant", spec, loc);
+}
+
+void TensorFlowDialect::PrintVariantType(VariantType ty,
+                                         raw_ostream &os) const {
+  return PrintTypeWithSubtype("variant", ty, os);
 }
 
 Operation *TensorFlowDialect::materializeConstant(OpBuilder &builder,

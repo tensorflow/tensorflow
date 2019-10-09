@@ -72,7 +72,7 @@ class Backend(object):
     """Returns the integer ID of this host."""
 
   @abc.abstractmethod
-  def buffer_from_pyval(self, pyval, device=0):
+  def buffer_from_pyval(self, pyval, device=None):
     """Allocates a fresh buffer and populates it with `pyval`."""
 
   def buffers_from_pyvals(self, pyvals_and_devices):
@@ -113,10 +113,15 @@ class LocalBackend(Backend):
   def devices(self):
     return self.client.devices()
 
+  def local_devices(self):
+    return self.client.local_devices()
+
   def host_id(self):
     return self.client.host_id()
 
-  def buffer_from_pyval(self, pyval, device=0):
+  def buffer_from_pyval(self, pyval, device=None):
+    if device is None:
+      device = self.local_devices()[0]
     return _xla.PyLocalBuffer.from_python(pyval, self.client, device)
 
   def make_tuple(self, c_buffers, device_ordinal):
@@ -365,7 +370,7 @@ class Buffer(object):
   """
 
   @staticmethod
-  def from_pyval(pyval, device=0, backend=None):
+  def from_pyval(pyval, device=None, backend=None):
     """Copies the `pyval` to a freshly allocated on-device buffer."""
     backend = backend or get_local_backend()
     return backend.buffer_from_pyval(pyval, device)

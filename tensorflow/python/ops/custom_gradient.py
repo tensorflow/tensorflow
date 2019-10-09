@@ -229,20 +229,60 @@ def custom_gradient(f=None, primals=None):
     gradient (as calculated by `tf.gradients`) is determined by `f(x)[1]`.
   """
 
-  def decorator(f):
-    def decorated(*args, **kwargs):
-      """Decorated function with custom gradient."""
-      if context.executing_eagerly():
-        return _eager_mode_decorator(f, primals, *args, **kwargs)
-      else:
-        return _graph_mode_decorator(f, primals, *args, **kwargs)
-
-    return tf_decorator.make_decorator(f, decorated)
-
   if f is None:
-    return decorator
-  else:
-    return decorator(f)
+    return lambda f: custom_gradient(f=f, primals=primals)
+
+  @Bind.decorator
+  def decorated(wrapped, args, kwargs):
+    """Decorated function with custom gradient."""
+    if context.executing_eagerly():
+      return _eager_mode_decorator(wrapped, primals, args, kwargs)
+    else:
+      return _graph_mode_decorator(wrapped, primals, args, kwargs)
+
+  return tf_decorator.make_decorator(f, decorated(f))  # pylint: disable=no-value-for-parameter
+
+
+class Bind(object):
+  """When called evaluates `d(f, args, kwargs)` but supports binding `f`.
+
+  >>> @Bind.decorator
+  ... def my_decorator(f, args, kwargs):
+  ...   print("my_decorator called with", args, kwargs)
+  ...   return f(*args, **kwargs)
+
+  >>> class Foo(object):
+  ...   @my_decorator
+  ...   def bar(self, a, b, c):
+  ...     return a * b * c
+
+  >>> Foo.bar(None, 1, 2, c=3)
+  my_decorator called with (None, 1, 2) {'c': 3}
+  6
+
+  >>> foo = Foo()
+  >>> foo.bar(1, 2, c=3)
+  my_decorator called with (1, 2) {'c': 3}
+  6
+  """
+
+  @classmethod
+  def decorator(cls, d):
+    return lambda f: Bind(f, d)
+
+  def __init__(self, f, d):
+    self._f = f
+    self._d = d
+
+  def __get__(self, instance, owner):
+    if instance is not None:
+      f = self._f.__get__(instance, owner)
+      return tf_decorator.make_decorator(f, Bind(f, self._d))
+    else:
+      return self
+
+  def __call__(self, *a, **k):
+    return self._d(self._f, a, k)
 
 
 def get_variable_by_name(var_name):
@@ -285,7 +325,7 @@ def get_dependent_variables(input_ops, output_ops):
   return tf_vars
 
 
-def _graph_mode_decorator(f, primals, *args, **kwargs):
+def _graph_mode_decorator(f, primals, args, kwargs):
   """Implement custom gradient decorator for graph mode."""
   # TODO(rsepassi): Add support for kwargs
   if kwargs:
@@ -396,7 +436,7 @@ def _graph_mode_decorator(f, primals, *args, **kwargs):
       structure=result, flat_sequence=all_tensors[:flat_result_len])
 
 
-def _eager_mode_decorator(f, primals, *args, **kwargs):
+def _eager_mode_decorator(f, primals, args, kwargs):
   """Implement custom gradient decorator for eager mode."""
   with backprop.GradientTape() as tape:
     result, grad_fn = f(*args, **kwargs)

@@ -90,7 +90,8 @@ mlir::OwningModuleRef GraphdefToMlirTranslateFunction(
 mlir::OwningModuleRef SavedModelToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
-    absl::string_view debug_info_file, mlir::MLIRContext* context) {
+    absl::Span<std::string> exported_names, absl::string_view debug_info_file,
+    mlir::MLIRContext* context) {
   SessionOptions session_options;
   RunOptions run_options;
   tensorflow::SavedModelBundle bundle;
@@ -112,7 +113,8 @@ mlir::OwningModuleRef SavedModelToMlirImport(
     }
   }
 
-  auto module_or = ConvertSavedModelToMlir(bundle, debug_info, context);
+  auto module_or =
+      ConvertSavedModelToMlir(bundle, debug_info, context, exported_names);
 
   if (!module_or.status().ok()) {
     LOG(ERROR) << "SavedModel import failed: " << module_or.status();

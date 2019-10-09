@@ -1015,7 +1015,7 @@ enum OpConversionMode {
   Partial,
 
   // In this mode, all operations must be legal for the given target for the
-  // conversion to succeeed.
+  // conversion to succeed.
   Full,
 
   // In this mode, operations are analyzed for legality. No actual rewrites are

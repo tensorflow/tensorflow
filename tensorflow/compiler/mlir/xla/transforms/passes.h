@@ -91,6 +91,8 @@ namespace xla_lhlo {
 
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToAffinePass();
 
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLhloPass();
+
 }  // namespace xla_lhlo
 }  // namespace mlir
 

@@ -89,7 +89,7 @@ class Masking(Layer):
   ```
 
   See [the masking and padding
-  guide](https://www.tensorflow.org/beta/guide/keras/masking_and_padding)
+  guide](https://www.tensorflow.org/guide/keras/masking_and_padding)
   for more details.
   """
 

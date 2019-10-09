@@ -51,6 +51,13 @@ static llvm::cl::opt<std::string> saved_model_tags(
                    "separated by ','"),
     llvm::cl::init("serve"));
 
+// NOLINTNEXTLINE
+static llvm::cl::opt<std::string> saved_model_exported_names(
+    "tf-savedmodel-exported-names",
+    llvm::cl::desc("Names to export from SavedModel, separated by ','. Empty "
+                   "(the default) means export all."),
+    llvm::cl::init(""));
+
 int main(int argc, char** argv) {
   tensorflow::InitMlir y(&argc, &argv);
 
@@ -81,9 +88,12 @@ int main(int argc, char** argv) {
   if (import_saved_model) {
     std::unordered_set<std::string> tags =
         absl::StrSplit(saved_model_tags, ',');
+    std::vector<std::string> exported_names =
+        absl::StrSplit(saved_model_exported_names, ',', absl::SkipEmpty());
 
-    auto module = tensorflow::SavedModelToMlirImport(input_filename, tags,
-                                                     debug_info_file, &context);
+    auto module = tensorflow::SavedModelToMlirImport(
+        input_filename, tags, absl::Span<std::string>(exported_names),
+        debug_info_file, &context);
     if (!module) return 1;
 
     module->print(output->os());

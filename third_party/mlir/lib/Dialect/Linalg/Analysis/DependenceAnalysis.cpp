@@ -55,7 +55,7 @@ Value *Aliases::find(Value *v) {
   auto it = aliases.find(v);
   if (it != aliases.end()) {
     assert(((isa<BlockArgument>(it->getSecond()) &&
-             it->getSecond()->getType().isa<ViewType>()) ||
+             it->getSecond()->getType().isa<MemRefType>()) ||
             it->getSecond()->getType().isa<BufferType>()) &&
            "Buffer or block argument expected");
     return it->getSecond();

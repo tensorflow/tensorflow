@@ -53,7 +53,7 @@ TEST(SliceTest, Identity) {
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {1, 2, 3, 4}));
 }
 
-TEST(SliceTest, NegativeEnds) {
+TEST(SliceTest, NoStrides) {
   TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
@@ -62,21 +62,21 @@ TEST(SliceTest, NegativeEnds) {
   TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
-  output.shape = BHWC(1, 1, 2, 2);
+  output.shape = BHWC(1, 1, 2, 1);
 
   SliceAttributes attr;
   attr.starts = HWC(0, 0, 0);
-  attr.ends = HWC(1, -1, -1);
+  attr.ends = HWC(1, 2, 1);
   attr.strides = HWC(1, 1, 1);
 
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
   ASSERT_OK(model.Invoke(*NewSliceNodeShader()));
-  EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {1, 2, 3, 4}));
+  EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {1, 3}));
 }
 
-TEST(SliceTest, NegativeEndsNonZeroStarts) {
+TEST(SliceTest, NoStridesStartOffset) {
   TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
@@ -85,18 +85,18 @@ TEST(SliceTest, NegativeEndsNonZeroStarts) {
   TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
-  output.shape = BHWC(1, 1, 1, 1);
+  output.shape = BHWC(1, 1, 1, 2);
 
   SliceAttributes attr;
   attr.starts = HWC(0, 1, 0);
-  attr.ends = HWC(0, 1, 1);
+  attr.ends = HWC(1, 2, 2);
   attr.strides = HWC(1, 1, 1);
 
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
   ASSERT_OK(model.Invoke(*NewSliceNodeShader()));
-  EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {3}));
+  EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {3, 4}));
 }
 
 TEST(SliceTest, StridesByHeight) {
@@ -112,7 +112,7 @@ TEST(SliceTest, StridesByHeight) {
 
   SliceAttributes attr;
   attr.starts = HWC(0, 0, 0);
-  attr.ends = HWC(-1, -1, -1);
+  attr.ends = HWC(4, 1, 1);
   attr.strides = HWC(2, 1, 1);
 
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input},
@@ -135,7 +135,7 @@ TEST(SliceTest, StridesByWidth) {
 
   SliceAttributes attr;
   attr.starts = HWC(0, 1, 0);
-  attr.ends = HWC(-1, -1, -1);
+  attr.ends = HWC(1, 4, 1);
   attr.strides = HWC(1, 2, 1);
 
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input},
@@ -154,18 +154,18 @@ TEST(SliceTest, StridesByChannels) {
   TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 1;
-  output.shape = BHWC(1, 1, 1, 1);
+  output.shape = BHWC(1, 1, 1, 2);
 
   SliceAttributes attr;
-  attr.starts = HWC(0, 0, 2);
-  attr.ends = HWC(-1, -1, -1);
-  attr.strides = HWC(1, 1, 3);
+  attr.starts = HWC(0, 0, 1);
+  attr.ends = HWC(1, 1, 4);
+  attr.strides = HWC(1, 1, 2);
 
   SingleOpModel model({ToString(OperationType::SLICE), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
   ASSERT_OK(model.Invoke(*NewSliceNodeShader()));
-  EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {3}));
+  EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {2, 4}));
 }
 
 }  // namespace

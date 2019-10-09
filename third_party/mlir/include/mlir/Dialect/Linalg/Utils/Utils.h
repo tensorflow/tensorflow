@@ -84,9 +84,9 @@ template <typename ConcreteOp>
 SmallVector<Value *, 8> getViewSizes(ConcreteOp linalgOp) {
   SmallVector<Value *, 8> res;
   for (auto v : linalgOp.getInputsAndOutputs()) {
-    ViewType t = v->getType().template cast<ViewType>();
+    MemRefType t = v->getType().template cast<MemRefType>();
     for (unsigned i = 0; i < t.getRank(); ++i)
-      res.push_back(intrinsics::dim(v, i));
+      res.push_back(edsc::intrinsics::dim(v, i));
   }
   return res;
 }

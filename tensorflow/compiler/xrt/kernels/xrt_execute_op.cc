@@ -267,11 +267,8 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
   bool release_inputs = config_proto.release_input_handles();
   bool release_compilation = config_proto.release_compilation_handle();
 
-  XRTCompilationCache* cache;
-  TF_RETURN_IF_ERROR(rm->Lookup<XRTCompilationCache>(
-      rm->default_container(), kXRTCompilationCacheResourceName, &cache));
-  core::ScopedUnref cache_unref(cache);
-
+  TF_ASSIGN_OR_RETURN(
+      auto cache, GetOrCreateCompilationCache(rm, /*max_number_of_entries=*/0));
   // We are guaranteed that the underlying device object won't be deleted out
   // from under us, while the ScopedRef is live.
   class XRTGenericDeviceAccessor::ScopedRef device_ref;
@@ -350,11 +347,8 @@ Status XRTExecuteChainedOp::DoWork(OpKernelContext* context) {
   xrt::XRTChainedExecuteConfig config;
   TF_RET_CHECK(config.ParseFromString(execution_config.scalar<tstring>()()));
 
-  XRTCompilationCache* cache;
-  TF_RETURN_IF_ERROR(rm->Lookup<XRTCompilationCache>(
-      rm->default_container(), kXRTCompilationCacheResourceName, &cache));
-  core::ScopedUnref cache_unref(cache);
-
+  TF_ASSIGN_OR_RETURN(
+      auto cache, GetOrCreateCompilationCache(rm, /*max_number_of_entries=*/0));
   // We are guaranteed that the underlying device object won't be deleted out
   // from under us, while the ScopedRef is live.
   class XRTGenericDeviceAccessor::ScopedRef device_ref;

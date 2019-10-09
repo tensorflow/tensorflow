@@ -1030,7 +1030,7 @@ tf_module {
   }
   member_method {
     name: "Dequantize"
-    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'mode\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'-1\', \'None\'], "
+    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'mode\', \'narrow_range\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'False\', \'-1\', \'None\'], "
   }
   member_method {
     name: "DeserializeIterator"
@@ -1186,6 +1186,10 @@ tf_module {
   }
   member_method {
     name: "Erfc"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "Erfinv"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
@@ -2353,6 +2357,10 @@ tf_module {
     argspec: "args=[\'input\', \'reduction\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "Ndtri"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "Neg"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -2551,6 +2559,10 @@ tf_module {
   member_method {
     name: "ParseSequenceExample"
     argspec: "args=[\'serialized\', \'debug_name\', \'context_dense_defaults\', \'feature_list_dense_missing_assumed_empty\', \'context_sparse_keys\', \'context_dense_keys\', \'feature_list_sparse_keys\', \'feature_list_dense_keys\', \'Ncontext_sparse\', \'Ncontext_dense\', \'Nfeature_list_sparse\', \'Nfeature_list_dense\', \'context_sparse_types\', \'feature_list_dense_types\', \'context_dense_shapes\', \'feature_list_sparse_types\', \'feature_list_dense_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'0\', \'0\', \'[]\', \'[]\', \'[]\', \'[]\', \'[]\', \'None\'], "
+  }
+  member_method {
+    name: "ParseSequenceExampleV2"
+    argspec: "args=[\'serialized\', \'debug_name\', \'context_sparse_keys\', \'context_dense_keys\', \'context_ragged_keys\', \'feature_list_sparse_keys\', \'feature_list_dense_keys\', \'feature_list_ragged_keys\', \'feature_list_dense_missing_assumed_empty\', \'context_dense_defaults\', \'Ncontext_sparse\', \'context_sparse_types\', \'context_ragged_value_types\', \'context_ragged_split_types\', \'context_dense_shapes\', \'Nfeature_list_sparse\', \'Nfeature_list_dense\', \'feature_list_dense_types\', \'feature_list_sparse_types\', \'feature_list_ragged_value_types\', \'feature_list_ragged_split_types\', \'feature_list_dense_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'[]\', \'[]\', \'[]\', \'[]\', \'0\', \'0\', \'[]\', \'[]\', \'[]\', \'[]\', \'[]\', \'None\'], "
   }
   member_method {
     name: "ParseSingleExample"
@@ -2886,7 +2898,7 @@ tf_module {
   }
   member_method {
     name: "RaggedTensorFromVariant"
-    argspec: "args=[\'encoded_ragged\', \'input_ragged_rank\', \'output_ragged_rank\', \'Tvalues\', \'Tsplits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'encoded_ragged\', \'input_ragged_rank\', \'output_ragged_rank\', \'Tvalues\', \'Tsplits\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int64\'>\", \'None\'], "
   }
   member_method {
     name: "RaggedTensorToSparse"

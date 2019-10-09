@@ -33,12 +33,12 @@ using ::tflite::gpu::BHWC;
 using ::tflite::gpu::DataType;
 using ::tflite::gpu::HW;
 using ::tflite::gpu::Linear;
-using ::tflite::gpu::metal::CompareVectors;
-using ::tflite::gpu::metal::SingleOpModel;
-using ::tflite::gpu::Tensor;
-using ::tflite::gpu::TensorRef;
 using ::tflite::gpu::OHWI;
 using ::tflite::gpu::OperationType;
+using ::tflite::gpu::Tensor;
+using ::tflite::gpu::TensorRef;
+using ::tflite::gpu::metal::CompareVectors;
+using ::tflite::gpu::metal::SingleOpModel;
 
 @interface TransposeConvTest : XCTestCase
 @end

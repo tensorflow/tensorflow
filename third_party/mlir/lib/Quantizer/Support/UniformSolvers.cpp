@@ -82,7 +82,7 @@ bool UniformParamsFromMinMaxSolver::compute() {
     auto fMid =
         fns::overshoot(origMinAdj, origMaxAdj, numLevelsDouble, deltaMid);
     if (fMid == 0 || (fMid > 0 && std::fabs(deltaMid - prevDeltaMid) < 1e-15)) {
-      // Solution found (or step size is infinitessimal and an overshoot).
+      // Solution found (or step size is infinitesimal and an overshoot).
       // Empirically, this seems to terminate around 30-50 steps or so.
       // This will find a zero point for exactly representable ranges and
       // will terminate on a small step size for inexact, biasing towards

@@ -350,9 +350,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       std::vector<Tensor> inputs;
       // Iterator created from the input element.
       std::unique_ptr<IteratorBase> iterator;
-      mutex mu;
-      // Buffer for storing the outputs of `iterator`.
-      std::deque<std::shared_ptr<Result>> results GUARDED_BY(mu);
+      // Buffer for storing the outputs of `iterator`. Guarded by `*mu_`.
+      std::deque<std::shared_ptr<Result>> results;
       // Indicates whether the element is used by a worker thread.
       bool in_use = false;
     };
@@ -396,7 +395,6 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       while (true) {
         std::shared_ptr<Element> element = current_elements_[cycle_index_];
         if (element) {
-          mutex_lock l(element->mu);
           if (!element->results.empty()) {
             if (element->results.front()->is_ready) {
               // We found a result.
@@ -461,7 +459,6 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
               break;
             }
           } else {
-            mutex_lock l(element->mu);
             if (!element->in_use && element->iterator &&
                 element->results.size() < block_length) {
               all_elements_busy = false;
@@ -509,7 +506,6 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           if (!element->in_use && element->iterator) {
             int64 num_results;
             {
-              mutex_lock l(element->mu);
               num_results = dataset()->block_length_ - element->results.size();
             }
             if (num_results > 0) {
@@ -577,7 +573,6 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         }
         RecordBufferEnqueue(ctx.get(), result->return_values);
         mutex_lock l(*mu_);
-        mutex_lock l2(element->mu);
         element->results.push_back(result);
         result->is_ready = true;
         cond_var_->notify_all();
@@ -659,7 +654,6 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         auto result = std::make_shared<Result>();
         result->is_ready = true;
         result->status = status;
-        mutex_lock l(element->mu);
         element->results.push_back(std::move(result));
         return element;
       }
@@ -671,7 +665,6 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           auto result = std::make_shared<Result>();
           result->is_ready = true;
           result->status = status;
-          mutex_lock l(element->mu);
           element->results.push_back(std::move(result));
           return element;
         }
@@ -743,7 +736,6 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
               element->inputs[i]));
         }
       }
-      mutex_lock l(element->mu);
       TF_RETURN_IF_ERROR(writer->WriteScalar(
           full_name(strings::StrCat(key_prefix, "[", idx, "]", kResultsSuffix,
                                     kSizeSuffix)),
@@ -809,7 +801,6 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         return Status::OK();
       }
       auto element = std::make_shared<Element>();
-      mutex_lock l(element->mu);
       int64 results_size;
       TF_RETURN_IF_ERROR(reader->ReadScalar(
           full_name(strings::StrCat(key_prefix, "[", idx, "]", kResultsSuffix,

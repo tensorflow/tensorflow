@@ -582,7 +582,7 @@ class SequenceNumericColumn(
     """See 'FeatureColumn` base class."""
     return [self.key]
 
-  def _get_config(self):
+  def get_config(self):
     """See 'FeatureColumn` base class."""
     config = dict(zip(self._fields, self))
     config['normalizer_fn'] = utils.serialize_keras_object(self.normalizer_fn)
@@ -590,7 +590,7 @@ class SequenceNumericColumn(
     return config
 
   @classmethod
-  def _from_config(cls, config, custom_objects=None, columns_by_name=None):
+  def from_config(cls, config, custom_objects=None, columns_by_name=None):
     """See 'FeatureColumn` base class."""
     fc._check_config_keys(config, cls._fields)
     kwargs = fc._standardize_and_copy_config(config)

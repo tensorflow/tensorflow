@@ -56,7 +56,6 @@ class Environment {
   std::vector<CalculationsPrecision> GetSupportedPrecisions() const;
   bool IsSupported(CalculationsPrecision precision) const;
   std::vector<TensorStorageType> GetSupportedTextureStorages() const;
-  std::vector<TensorStorageType> GetSupportedBatchStorages() const;
   std::vector<TensorStorageType> GetSupportedStorages() const;
 
   void SetHighPerformance() const;

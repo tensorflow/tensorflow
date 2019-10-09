@@ -39,8 +39,8 @@ import collections as _collections
 import six as _six
 
 from tensorflow.python import _pywrap_utils
-from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.util.compat import collections_abc as _collections_abc
+from tensorflow.python.util.tf_export import tf_export
 
 
 _SHALLOW_TREE_HAS_INVALID_KEYS = (
@@ -197,7 +197,8 @@ def _yield_sorted_items(iterable):
     for field in iterable._fields:
       yield field, getattr(iterable, field)
   elif _is_composite_tensor(iterable):
-    yield type(iterable).__name__, iterable._to_components()  # pylint: disable=protected-access
+    type_spec = iterable._type_spec  # pylint: disable=protected-access
+    yield type(iterable).__name__, type_spec._to_components(iterable)  # pylint: disable=protected-access
   elif _is_type_spec(iterable):
     # Note: to allow CompositeTensors and their TypeSpecs to have matching
     # structures, we need to use the same key string here.
@@ -233,8 +234,9 @@ def is_nested(seq):
 def flatten(structure, expand_composites=False):
   """Returns a flat list from a given nested structure.
 
-  If nest is not a sequence, tuple, or dict, then returns a single-element list:
-  [nest].
+  If nest is not a sequence, tuple (or a namedtuple), dict, or an attrs class,
+  then returns a single-element list:
+    [nest].
 
   In the case of dict instances, the sequence consists of the values, sorted by
   key to ensure deterministic behavior. This is true also for OrderedDict

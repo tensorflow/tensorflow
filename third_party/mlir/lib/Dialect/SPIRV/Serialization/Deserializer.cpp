@@ -241,12 +241,11 @@ private:
   /// A struct for containing a header block's merge and continue targets.
   struct BlockMergeInfo {
     Block *mergeBlock;
-    Block *continueBlock;
+    Block *continueBlock; // nullptr for spv.selection
 
     BlockMergeInfo() : mergeBlock(nullptr), continueBlock(nullptr) {}
-    BlockMergeInfo(Block *m, Block *c) : mergeBlock(m), continueBlock(c) {}
-
-    operator bool() const { return continueBlock && mergeBlock; }
+    BlockMergeInfo(Block *m, Block *c = nullptr)
+        : mergeBlock(m), continueBlock(c) {}
   };
 
   /// Returns the merge and continue target info for the given `block` if it is
@@ -265,6 +264,9 @@ private:
 
   /// Processes a SPIR-V OpLabel instruction with the given `operands`.
   LogicalResult processLabel(ArrayRef<uint32_t> operands);
+
+  /// Processes a SPIR-V OpSelectionMerge instruction with the given `operands`.
+  LogicalResult processSelectionMerge(ArrayRef<uint32_t> operands);
 
   /// Processes a SPIR-V OpLoopMerge instruction with the given `operands`.
   LogicalResult processLoopMerge(ArrayRef<uint32_t> operands);
@@ -1485,6 +1487,34 @@ LogicalResult Deserializer::processLabel(ArrayRef<uint32_t> operands) {
   return success();
 }
 
+LogicalResult Deserializer::processSelectionMerge(ArrayRef<uint32_t> operands) {
+  if (!curBlock) {
+    return emitError(unknownLoc, "OpSelectionMerge must appear in a block");
+  }
+
+  if (operands.size() < 2) {
+    return emitError(
+        unknownLoc,
+        "OpLoopMerge must specify merge target and selection control");
+  }
+
+  if (static_cast<uint32_t>(spirv::LoopControl::None) != operands[1]) {
+    return emitError(unknownLoc,
+                     "unimplmented OpSelectionMerge selection control: ")
+           << operands[2];
+  }
+
+  auto *mergeBlock = getOrCreateBlock(operands[0]);
+
+  if (!blockMergeInfo.try_emplace(curBlock, mergeBlock).second) {
+    return emitError(
+        unknownLoc,
+        "a block cannot have more than one OpSelectionMerge instruction");
+  }
+
+  return success();
+}
+
 LogicalResult Deserializer::processLoopMerge(ArrayRef<uint32_t> operands) {
   if (!curBlock) {
     return emitError(unknownLoc, "OpLoopMerge must appear in a block");
@@ -1513,8 +1543,9 @@ LogicalResult Deserializer::processLoopMerge(ArrayRef<uint32_t> operands) {
 }
 
 namespace {
-/// A class for putting all blocks in a structured loop in a spv.loop op.
-class LoopStructurizer {
+/// A class for putting all blocks in a structured selection/loop in a
+/// spv.selection/spv.loop op.
+class ControlFlowStructurizer {
 public:
   /// Structurizes the loop at the given `headerBlock`.
   ///
@@ -1523,14 +1554,18 @@ public:
   /// the `headerBlock` will be redirected to the `mergeBlock`.
   static LogicalResult structurize(Location loc, Block *headerBlock,
                                    Block *mergeBlock, Block *continueBlock) {
-    return LoopStructurizer(loc, headerBlock, mergeBlock, continueBlock)
+    return ControlFlowStructurizer(loc, headerBlock, mergeBlock, continueBlock)
         .structurizeImpl();
   }
 
 private:
-  LoopStructurizer(Location loc, Block *header, Block *merge, Block *cont)
+  ControlFlowStructurizer(Location loc, Block *header, Block *merge,
+                          Block *cont)
       : location(loc), headerBlock(header), mergeBlock(merge),
         continueBlock(cont) {}
+
+  /// Creates a new spv.selection op at the beginning of the `mergeBlock`.
+  spirv::SelectionOp createSelectionOp();
 
   /// Creates a new spv.loop op at the beginning of the `mergeBlock`.
   spirv::LoopOp createLoopOp();
@@ -1545,13 +1580,26 @@ private:
 
   Block *headerBlock;
   Block *mergeBlock;
-  Block *continueBlock;
+  Block *continueBlock; // nullptr for spv.selection
 
   llvm::SetVector<Block *> constructBlocks;
 };
 } // namespace
 
-spirv::LoopOp LoopStructurizer::createLoopOp() {
+spirv::SelectionOp ControlFlowStructurizer::createSelectionOp() {
+  // Create a builder and set the insertion point to the beginning of the
+  // merge block so that the newly created SelectionOp will be inserted there.
+  OpBuilder builder(&mergeBlock->front());
+
+  auto control = builder.getI32IntegerAttr(
+      static_cast<uint32_t>(spirv::SelectionControl::None));
+  auto selectionOp = builder.create<spirv::SelectionOp>(location, control);
+  selectionOp.addMergeBlock();
+
+  return selectionOp;
+}
+
+spirv::LoopOp ControlFlowStructurizer::createLoopOp() {
   // Create a builder and set the insertion point to the beginning of the
   // merge block so that the newly created LoopOp will be inserted there.
   OpBuilder builder(&mergeBlock->front());
@@ -1564,7 +1612,7 @@ spirv::LoopOp LoopStructurizer::createLoopOp() {
   return loopOp;
 }
 
-void LoopStructurizer::collectBlocksInConstruct() {
+void ControlFlowStructurizer::collectBlocksInConstruct() {
   assert(constructBlocks.empty() && "expected empty constructBlocks");
 
   // Put the header block in the work list first.
@@ -1573,35 +1621,45 @@ void LoopStructurizer::collectBlocksInConstruct() {
   // For each item in the work list, add its successors under conditions.
   for (unsigned i = 0; i < constructBlocks.size(); ++i) {
     for (auto *successor : constructBlocks[i]->getSuccessors())
-      if (successor != mergeBlock && successor != continueBlock &&
-          constructBlocks.count(successor) == 0) {
+      if (successor != mergeBlock && successor != continueBlock)
         constructBlocks.insert(successor);
-      }
   }
 }
 
-LogicalResult LoopStructurizer::structurizeImpl() {
-  auto loopOp = createLoopOp();
-  if (!loopOp)
+LogicalResult ControlFlowStructurizer::structurizeImpl() {
+  Operation *op = nullptr;
+  bool isLoop = continueBlock != nullptr;
+  if (isLoop) {
+    if (auto loopOp = createLoopOp())
+      op = loopOp.getOperation();
+  } else {
+    if (auto selectionOp = createSelectionOp())
+      op = selectionOp.getOperation();
+  }
+  if (!op)
     return failure();
+  Region &body = op->getRegion(0);
 
   BlockAndValueMapping mapper;
   // All references to the old merge block should be directed to the loop
   // merge block in the LoopOp's region.
-  mapper.map(mergeBlock, &loopOp.body().back());
+  mapper.map(mergeBlock, &body.back());
 
   collectBlocksInConstruct();
-  // Add the loop continue block at the last so it's the second to last block
-  // in LoopOp's region.
-  constructBlocks.insert(continueBlock);
+  if (isLoop) {
+    // Add the loop continue block at the last so it's the second to last block
+    // in LoopOp's region.
+    constructBlocks.insert(continueBlock);
+  }
 
-  // We've identified all blocks belonging to the loop's region. Now need to
-  // "move" them into the loop. Instead of really moving the blocks, in the
-  // following we copy them and remap all values and branches. This is because:
+  // We've identified all blocks belonging to the selection/loop's region. Now
+  // need to "move" them into the selection/loop. Instead of really moving the
+  // blocks, in the following we copy them and remap all values and branches.
+  // This is because:
   // * Inserting a block into a region requires the block not in any region
-  //   before. But loops can nest so we can create loop ops in a nested manner,
-  //   which means some blocks may already be in a loop region when to be moved
-  //   again.
+  //   before. But selections/loops can nest so we can create selection/loop ops
+  //   in a nested manner, which means some blocks may already be in a
+  //   selection/loop region when to be moved again.
   // * It's much trickier to fix up the branches into and out of the loop's
   //   region: we need to treat not-moved blocks and moved blocks differently:
   //   Not-moved blocks jumping to the loop header block need to jump to the
@@ -1611,16 +1669,16 @@ LogicalResult LoopStructurizer::structurizeImpl() {
   //   We cannot use replaceAllUsesWith clearly and it's harder to follow the
   //   logic.
 
-  // Create a corresponding block in the LoopOp's region for each block in
-  // this loop construct.
-  OpBuilder loopBuilder(loopOp.body());
+  // Create a corresponding block in the SelectionOp/LoopOp's region for each
+  // block in this loop construct.
+  OpBuilder builder(body);
   for (auto *block : constructBlocks) {
     assert(block->getNumArguments() == 0 &&
            "block in loop construct should not have arguments");
 
     // Create an block and insert it before the loop merge block in the
     // LoopOp's region.
-    auto *newBlock = loopBuilder.createBlock(&loopOp.body().back());
+    auto *newBlock = builder.createBlock(&body.back());
     mapper.map(block, newBlock);
 
     for (auto &op : *block)
@@ -1636,29 +1694,29 @@ LogicalResult LoopStructurizer::structurizeImpl() {
       if (auto *mappedOp = mapper.lookupOrNull(succOp.get()))
         succOp.set(mappedOp);
   };
-  for (auto &block : loopOp.body()) {
+  for (auto &block : body) {
     block.walk(remapOperands);
   }
 
-  // We have created the LoopOp and "moved" all blocks belonging to the loop
-  // construct into its region. Next we need to fix the connections between
-  // this new LoopOp with existing blocks.
+  // We have created the SelectionOp/LoopOp and "moved" all blocks belonging to
+  // the selection/loop construct into its region. Next we need to fix the
+  // connections between this new SelectionOp/LoopOp with existing blocks.
 
   // All existing incoming branches should go to the merge block, where the
-  // LoopOp resides right now.
+  // SelectionOp/LoopOp resides right now.
   headerBlock->replaceAllUsesWith(mergeBlock);
 
-  // The loop entry block should have a unconditional branch jumping to the
-  // loop header block.
-  loopBuilder.setInsertionPointToEnd(&loopOp.body().front());
-  loopBuilder.create<spirv::BranchOp>(location,
-                                      mapper.lookupOrNull(headerBlock));
-
-  // All the blocks cloned into the LoopOp's region can now be deleted.
-  for (auto *block : constructBlocks) {
-    block->clear();
-    block->erase();
+  if (isLoop) {
+    // The loop entry block should have a unconditional branch jumping to the
+    // loop header block.
+    builder.setInsertionPointToEnd(&body.front());
+    builder.create<spirv::BranchOp>(location, mapper.lookupOrNull(headerBlock));
   }
+
+  // All the blocks cloned into the SelectionOp/LoopOp's region can now be
+  // deleted.
+  for (auto *block : constructBlocks)
+    block->erase();
 
   return success();
 }
@@ -1668,23 +1726,21 @@ LogicalResult Deserializer::structurizeControlFlow() {
 
   while (!blockMergeInfo.empty()) {
     auto *headerBlock = blockMergeInfo.begin()->first;
-    const auto &mergeInfo = blockMergeInfo.begin()->second;
+    LLVM_DEBUG(llvm::dbgs() << "[cf] header block @ " << headerBlock << "\n");
 
+    const auto &mergeInfo = blockMergeInfo.begin()->second;
     auto *mergeBlock = mergeInfo.mergeBlock;
     auto *continueBlock = mergeInfo.continueBlock;
-    LLVM_DEBUG(llvm::dbgs() << "[cf] header block @ " << headerBlock << "\n");
     assert(mergeBlock && "merge block cannot be nullptr");
     LLVM_DEBUG(llvm::dbgs() << "[cf] merge block @ " << mergeBlock << "\n");
-    if (!continueBlock) {
-      return emitError(unknownLoc, "structurizing selection unimplemented");
+    if (continueBlock) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "[cf] continue block @ " << continueBlock << "\n");
     }
-    LLVM_DEBUG(llvm::dbgs()
-               << "[cf] continue block @ " << continueBlock << "\n");
 
-    if (failed(LoopStructurizer::structurize(unknownLoc, headerBlock,
-                                             mergeBlock, continueBlock))) {
+    if (failed(ControlFlowStructurizer::structurize(unknownLoc, headerBlock,
+                                                    mergeBlock, continueBlock)))
       return failure();
-    }
 
     blockMergeInfo.erase(headerBlock);
   }
@@ -1830,6 +1886,8 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
     return processBranch(operands);
   case spirv::Opcode::OpBranchConditional:
     return processBranchConditional(operands);
+  case spirv::Opcode::OpSelectionMerge:
+    return processSelectionMerge(operands);
   case spirv::Opcode::OpLoopMerge:
     return processLoopMerge(operands);
   default:

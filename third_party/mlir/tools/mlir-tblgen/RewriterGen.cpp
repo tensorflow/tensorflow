@@ -163,7 +163,7 @@ private:
 
   raw_ostream &os;
 
-  // Format contexts containing placeholder substitutations.
+  // Format contexts containing placeholder substitutions.
   FmtContext fmtCtx;
 
   // Number of op processed.
@@ -313,7 +313,7 @@ void PatternEmitter::emitAttributeMatch(DagNode tree, int index, int depth,
                       << ";\n";
   } else if (attr.isOptional()) {
     // For a missing attribute that is optional according to definition, we
-    // should just capature a mlir::Attribute() to signal the missing state.
+    // should just capture a mlir::Attribute() to signal the missing state.
     // That is precisely what getAttr() returns on missing attributes.
   } else {
     os.indent(indent) << "if (!tblgen_attr) return matchFailure();\n";

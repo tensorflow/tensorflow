@@ -124,7 +124,7 @@ class CalibratorTest(test_util.TensorFlowTestCase):
       for _ in range(10):
         yield [np.ones(shape=(1, 2, 2, 3), dtype=np.float32)]
 
-    with self.assertRaisesWithRegexpMatch(ValueError, 'Dimension mismatch'):
+    with self.assertRaisesWithRegexpMatch(ValueError, 'Size mismatch'):
       quantizer.calibrate_and_quantize(input_gen, constants.FLOAT,
                                        constants.FLOAT, False)
 

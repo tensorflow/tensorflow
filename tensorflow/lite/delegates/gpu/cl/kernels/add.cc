@@ -26,13 +26,16 @@ namespace gpu {
 namespace cl {
 
 std::string Add::GetElementWiseCode(
-    const TensorDescriptor& src_descriptor,
-    const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
+    const OperationDef& op_def,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
+  TensorCodeGenerator src_tensor("src_data",
+                                 {"src_size.x", "src_size.y", "src_size.z"},
+                                 op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data",
+                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
+                                 op_def.dst_tensors[0]);
 
-  std::string c = GetCommonDefines(precision);
+  std::string c = GetCommonDefines(op_def.precision);
 
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ);
@@ -45,7 +48,7 @@ std::string Add::GetElementWiseCode(
   c += "  int X = get_global_id(0);\n";
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
-  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) { \n";
+  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) { \n";
   c += "    return; \n";
   c += "  } \n";
   c += "  FLT4 src = (FLT4)(0.0);\n";
@@ -106,8 +109,9 @@ std::string Add::GetCoreCode(const LinkingContext& context) const {
         absl::StrCat("src_data_", link_index_, "_", i);
     const std::string size_name =
         "src_size_" + std::to_string(link_index_) + "_" + std::to_string(i);
-    TensorCodeGenerator src_tensor(tensor_name, size_name,
-                                   definition_.src_tensors[i]);
+    TensorCodeGenerator src_tensor(
+        tensor_name, {size_name + ".x", size_name + ".y", size_name + ".z"},
+        definition_.src_tensors[i]);
     if (src_depthes_[i] != dst_depth_) {
       absl::StrAppend(&result, "  if (", context.z_coord, " < ",
                       src_depthes_[i], ") {\n");
@@ -149,15 +153,13 @@ Status Add::BindArguments(CLKernel* kernel) {
     RETURN_IF_ERROR(kernel->SetMemoryAuto(src_[i]->GetMemoryPtr()));
   }
   for (int i = 1; i < src_depthes_.size(); ++i) {
-    RETURN_IF_ERROR(kernel->SetBytesAuto(src_[i]->GetSizeWithDepth()));
+    RETURN_IF_ERROR(kernel->SetBytesAuto(src_[i]->GetWBatchedHDB()));
   }
   return OkStatus();
 }
 
 Status Add::Compile(const CreationContext& creation_context) {
-  const auto code =
-      GetElementWiseCode(definition_.src_tensors[0], definition_.dst_tensors[0],
-                         definition_.precision, linked_operations_);
+  const auto code = GetElementWiseCode(definition_, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);

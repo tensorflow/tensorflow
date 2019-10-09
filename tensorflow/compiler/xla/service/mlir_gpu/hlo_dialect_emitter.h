@@ -41,6 +41,7 @@ class HloDialectEmitter : public DfsHloVisitorWithDefault {
   Status EmitComputation(const HloComputation& computation);
 
   Status DefaultAction(HloInstruction* instr) override;
+  Status HandleConstant(HloInstruction* constant) override;
   Status HandleParameter(HloInstruction* param) override;
 
   Status FinishVisit(HloInstruction* root) override;

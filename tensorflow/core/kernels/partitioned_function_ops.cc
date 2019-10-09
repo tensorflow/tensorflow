@@ -166,7 +166,12 @@ Status PartitionedCallOp::Instantiate(FunctionLibraryRuntime* lib,
                                       std::vector<Tensor>* inputs,
                                       FunctionLibraryRuntime::Handle* handle) {
   FunctionLibraryRuntime::InstantiateOptions opts;
-  // TODO(b/141576771): Propagate ctxt's ConfigProto into opts.config_proto.
+  const auto* config = (ctx->function_library())
+                           ? ctx->function_library()->config_proto()
+                           : nullptr;
+  if (config) {
+    opts.config_proto = *config;
+  }
 
 #ifndef __ANDROID__
   // Android tf library does not include grappler.

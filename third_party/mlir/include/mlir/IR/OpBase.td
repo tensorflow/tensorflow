@@ -495,6 +495,20 @@ class StaticShapeMemRefOf<list<Type> allowedTypes>
 
 def AnyStaticShapeMemRef : StaticShapeMemRefOf<[AnyType]>;
 
+// For a MemRefType, verify that it has strides.
+def HasStridesPred : CPred<[{ isStrided($_self.cast<MemRefType>()) }]>;
+
+class StridedMemRefOf<list<Type> allowedTypes>
+    : Type<And<[MemRefOf<allowedTypes>.predicate, HasStridesPred]>,
+           "strided " # MemRefOf<allowedTypes>.description>;
+
+def AnyStridedMemRef : StridedMemRefOf<[AnyType]>;
+
+class AnyStridedMemRefOfRank<int rank> :
+  Type<And<[AnyStridedMemRef.predicate,
+            MemRefRankOf<[AnyType], [rank]>.predicate]>,
+       AnyStridedMemRef.description # " of rank " # rank>;
+
 // This represents a generic tuple without any constraints on element type.
 def AnyTuple : Type<IsTupleTypePred, "tuple">;
 
@@ -984,7 +998,7 @@ def ArrayAttr : ArrayAttrBase<CPred<"$_self.isa<ArrayAttr>()">,
 // `element` specifies the element attribute kind stored in this array.
 class TypedArrayAttrBase<Attr element, string description>: ArrayAttrBase<
     And<[
-      // Guranatee this is an ArrayAttr first
+      // Guarantee this is an ArrayAttr first
       CPred<"$_self.isa<ArrayAttr>()">,
       // Guarantee all elements satisfy the constraints from `element`
       Concat<"llvm::all_of($_self.cast<ArrayAttr>(), "
@@ -1221,9 +1235,9 @@ def SameOperandsShape : NativeOpTrait<"SameOperandsShape">;
 def SameOperandsAndResultShape : NativeOpTrait<"SameOperandsAndResultShape">;
 // Op has the same operand and result type.
 def SameOperandsAndResultType : NativeOpTrait<"SameOperandsAndResultType">;
-// Op has the same element type for all operands.
+// Op has the same element type (or type itself, if scalar) for all operands.
 def SameOperandsElementType : NativeOpTrait<"SameOperandsElementType">;
-// Op has the same operand and result element type.
+// Op has the same operand and result element type (or type itself, if scalar).
 def SameOperandsAndResultElementType :
   NativeOpTrait<"SameOperandsAndResultElementType">;
 // Op is a terminator.
@@ -1279,16 +1293,16 @@ class InterfaceMethod<string desc, string retTy, string methodName,
   // A human-readable description of what this method does.
   string description = desc;
 
-  /// The name of the interface method.
+  // The name of the interface method.
   string name = methodName;
 
-  /// The c++ type-name of the return type.
+  // The c++ type-name of the return type.
   string returnType = retTy;
 
-  /// A dag of string that correspond to the arguments of the method.
+  // A dag of string that correspond to the arguments of the method.
   dag arguments = args;
 
-  /// An optional body to the method.
+  // An optional body to the method.
   code body = methodBody;
 }
 
@@ -1305,8 +1319,18 @@ class OpInterface<string name> : OpInterfaceTrait<name> {
   // The name given to the c++ interface class.
   string cppClassName = name;
 
-  /// The list of methods defined by this interface.
+  // The list of methods defined by this interface.
   list<InterfaceMethod> methods = [];
+}
+
+// Whether to declare the op interface methods in the op's header. This class
+// simply wraps an OpInterface but is used to indicate that the method
+// declarations should be generated.
+class DeclareOpInterfaceMethods<OpInterface interface> :
+  OpInterface<interface.cppClassName> {
+    let description = interface.description;
+    let cppClassName = interface.cppClassName;
+    let methods = interface.methods;
 }
 
 //===----------------------------------------------------------------------===//

@@ -434,41 +434,15 @@ TfLiteStatus BenchmarkTfLiteModel::ResetInputsAndOutputs() {
   for (int j = 0; j < interpreter_inputs.size(); ++j) {
     int i = interpreter_inputs[j];
     TfLiteTensor* t = interpreter_->tensor(i);
-    if (t->type == kTfLiteFloat32) {
-      std::memcpy(interpreter_->typed_tensor<float>(i), inputs_data_[j].data.f,
-                  inputs_data_[j].bytes);
-    } else if (t->type == kTfLiteFloat16) {
-      std::memcpy(interpreter_->typed_tensor<TfLiteFloat16>(i),
-                  inputs_data_[j].data.f16, inputs_data_[j].bytes);
-    } else if (t->type == kTfLiteInt64) {
-      std::memcpy(interpreter_->typed_tensor<int64_t>(i),
-                  inputs_data_[j].data.i64, inputs_data_[j].bytes);
-    } else if (t->type == kTfLiteInt32) {
-      std::memcpy(interpreter_->typed_tensor<int32_t>(i),
-                  inputs_data_[j].data.i32, inputs_data_[j].bytes);
-    } else if (t->type == kTfLiteInt64) {
-      std::memcpy(interpreter_->typed_tensor<int64_t>(i),
-                  inputs_data_[j].data.i64, inputs_data_[j].bytes);
-    } else if (t->type == kTfLiteInt16) {
-      std::memcpy(interpreter_->typed_tensor<int16_t>(i),
-                  inputs_data_[j].data.i16, inputs_data_[j].bytes);
-    } else if (t->type == kTfLiteUInt8) {
-      std::memcpy(interpreter_->typed_tensor<uint8_t>(i),
-                  inputs_data_[j].data.uint8, inputs_data_[j].bytes);
-    } else if (t->type == kTfLiteInt8) {
-      std::memcpy(interpreter_->typed_tensor<int8_t>(i),
-                  inputs_data_[j].data.int8, inputs_data_[j].bytes);
-    } else if (t->type == kTfLiteString) {
+    if (t->type == kTfLiteString) {
       tflite::DynamicBuffer buffer;
       std::vector<int> sizes = TfLiteIntArrayToVector(t->dims);
       FillRandomString(&buffer, sizes, []() {
         return "we're have some friends over saturday to hang out in the yard";
       });
-      buffer.WriteToTensor(interpreter_->tensor(i), /*new_shape=*/nullptr);
+      buffer.WriteToTensor(t, /*new_shape=*/nullptr);
     } else {
-      TFLITE_LOG(ERROR) << "Don't know how to populate tensor " << t->name
-                        << " of type " << t->type;
-      return kTfLiteError;
+      std::memcpy(t->data.raw, inputs_data_[j].data.raw, inputs_data_[j].bytes);
     }
   }
 
@@ -527,7 +501,6 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
       TFLITE_LOG(INFO) << "Applied " << delegate.first << " delegate.";
     }
   }
-
 
   auto interpreter_inputs = interpreter_->inputs();
 
@@ -663,13 +636,10 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
 std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
     const {
   tflite::OpResolver* resolver = nullptr;
-#ifdef TFLITE_CUSTOM_OPS_HEADER
-  resolver = new tflite::MutableOpResolver();
-  RegisterSelectedOps(static_cast<tflite::MutableOpResolver*>(resolver));
-#else
   resolver = new tflite::ops::builtin::BuiltinOpResolver();
+#ifdef TFLITE_CUSTOM_OPS_HEADER
+  RegisterSelectedOps(static_cast<tflite::MutableOpResolver*>(resolver));
 #endif
-
   return std::unique_ptr<tflite::OpResolver>(resolver);
 }
 

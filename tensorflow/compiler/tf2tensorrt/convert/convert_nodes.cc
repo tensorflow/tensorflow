@@ -1176,14 +1176,13 @@ Status TrtNodeValidator::ConvertConstToWeights(
   return status;
 }
 
-static void InitializeTrtPlugins() {
+static void InitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {
   static mutex plugin_mutex(LINKER_INITIALIZED);
   static bool plugin_initialized = false;
-  static Logger trt_logger;
   mutex_lock lock(plugin_mutex);
   if (plugin_initialized) return;
 
-  plugin_initialized = initLibNvInferPlugins(&trt_logger, "");
+  plugin_initialized = initLibNvInferPlugins(trt_logger, "");
   if (!plugin_initialized) {
     LOG(ERROR) << "Failed to initialize TensorRT plugins, and conversion may "
                   "fail later.";
@@ -1210,11 +1209,12 @@ static void InitializeTrtPlugins() {
 }
 
 Converter::Converter(nvinfer1::INetworkDefinition* trt_network,
-                     TrtPrecisionMode precision_mode, bool use_calibration)
+                     TrtPrecisionMode precision_mode, bool use_calibration,
+                     nvinfer1::ILogger* trt_logger)
     : trt_network_(trt_network),
       precision_mode_(precision_mode),
       use_calibration_(use_calibration) {
-  InitializeTrtPlugins();
+  InitializeTrtPlugins(trt_logger);
   this->RegisterOpConverters();
 }
 
@@ -5476,8 +5476,9 @@ void Converter::RegisterOpConverters() {
 Status ConvertGraphDefToEngine(
     const GraphDef& gdef, TrtPrecisionMode precision_mode, int max_batch_size,
     size_t max_workspace_size_bytes,
-    const std::vector<PartialTensorShape>& input_shapes, Logger* logger,
-    nvinfer1::IGpuAllocator* allocator, TRTInt8Calibrator* calibrator,
+    const std::vector<PartialTensorShape>& input_shapes,
+    nvinfer1::ILogger* trt_logger, nvinfer1::IGpuAllocator* allocator,
+    TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
     bool* convert_successfully) {
   engine->reset();
@@ -5485,7 +5486,7 @@ Status ConvertGraphDefToEngine(
 
   // Create the builder.
   TrtUniquePtrType<nvinfer1::IBuilder> builder(
-      nvinfer1::createInferBuilder(*logger));
+      nvinfer1::createInferBuilder(*trt_logger));
   builder->setMaxBatchSize(max_batch_size);
   builder->setMaxWorkspaceSize(max_workspace_size_bytes);
   builder->setGpuAllocator(allocator);
@@ -5517,7 +5518,8 @@ Status ConvertGraphDefToEngine(
     TF_RETURN_IF_ERROR(TrtPrecisionModeToName(precision_mode, &mode_str));
     VLOG(1) << "Starting engine conversion, precision mode: " << mode_str;
   }
-  Converter converter(trt_network.get(), precision_mode, use_calibration);
+  Converter converter(trt_network.get(), precision_mode, use_calibration,
+                      trt_logger);
   std::vector<Converter::EngineOutputInfo> output_tensors;
   // Graph nodes are already topologically sorted during construction
   for (const auto& node_def : gdef.node()) {
@@ -5602,6 +5604,17 @@ Status ConvertGraphDefToEngine(
 
   // Apply user provided quantization ranges to tensors
   converter.MaybeApplyQuantizationRanges();
+
+  if VLOG_IS_ON (2) {
+    VLOG(2) << "Created TensorRT network with the following layers:";
+    for (int i = 0; i < trt_network->getNbLayers(); i++) {
+      auto layer = trt_network->getLayer(i);
+      VLOG(2) << "    " << layer->getName() << " ("
+              << "type: " << static_cast<int>(layer->getType())
+              << ", precision: " << static_cast<int>(layer->getPrecision())
+              << ")";
+    }
+  }
 
   // Build the engine.
   VLOG(1) << "Starting engine creation";

@@ -130,6 +130,10 @@ pip3 install --upgrade h5py==2.8.0
 pip2 install tf-estimator-nightly==1.14.0.dev2019061801 --no-deps
 pip3 install tf-estimator-nightly==1.14.0.dev2019061801 --no-deps
 
+# Tensorboard
+pip2 install tb-nightly --no-deps
+pip3 install tb-nightly --no-deps
+
 # Argparse
 pip2 install --upgrade argparse
 pip3 install --upgrade argparse

@@ -561,16 +561,16 @@ bool StreamExecutor::SynchronizeAllActivity() {
   return ok;
 }
 
-bool StreamExecutor::SynchronousMemZero(DeviceMemoryBase *location,
-                                        uint64 size) {
+port::Status StreamExecutor::SynchronousMemZero(DeviceMemoryBase *location,
+                                                uint64 size) {
   VLOG(1) << "Called StreamExecutor::SynchronousMemZero(location=" << location
           << ", size=" << size << ")" << StackTraceIfVLOG10();
 
   return implementation_->SynchronousMemZero(location, size);
 }
 
-bool StreamExecutor::SynchronousMemSet(DeviceMemoryBase *location, int value,
-                                       uint64 size) {
+port::Status StreamExecutor::SynchronousMemSet(DeviceMemoryBase *location,
+                                               int value, uint64 size) {
   VLOG(1) << "Called StreamExecutor::SynchronousMemSet(location=" << location
           << ", value=" << value << ", size=" << size << ")"
           << StackTraceIfVLOG10();

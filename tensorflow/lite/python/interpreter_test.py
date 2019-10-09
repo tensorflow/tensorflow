@@ -329,6 +329,7 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
 
   def testDestructionOrder(self):
     """Make sure internal _interpreter object is destroyed before delegate."""
+    self.skipTest('TODO(b/142136355): fix flakiness and re-enable')
     # Track which order destructions were doned in
     # TODO(b/137299813): Enable when we fix for mac
     if sys.platform == 'darwin': return

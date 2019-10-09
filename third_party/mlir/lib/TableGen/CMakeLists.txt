@@ -5,6 +5,7 @@ add_llvm_library(LLVMMLIRTableGen
   Dialect.cpp
   Format.cpp
   Operator.cpp
+  OpInterfaces.cpp
   OpTrait.cpp
   Pattern.cpp
   Predicate.cpp

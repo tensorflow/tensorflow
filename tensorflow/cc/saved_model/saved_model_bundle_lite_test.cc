@@ -113,6 +113,19 @@ TEST_F(LoaderTest, ResourceLeakTest) {
   }
 }
 
+TEST_F(LoaderTest, ExtendFailsTest) {
+  SavedModelBundleLite bundle;
+  SessionOptions session_options;
+  RunOptions run_options;
+
+  const string export_dir =
+      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataSharded);
+  TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
+                              {kSavedModelTagServe}, &bundle));
+  Status s = bundle.GetSession()->Extend({});
+  ASSERT_TRUE(errors::IsUnimplemented(s));
+}
+
 TEST_F(LoaderTest, TagMatch) {
   SavedModelBundleLite bundle;
   SessionOptions session_options;

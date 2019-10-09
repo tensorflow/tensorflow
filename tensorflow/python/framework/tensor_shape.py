@@ -739,6 +739,7 @@ class TensorShape(object):
   for details of shape functions and how to register them. Alternatively,
   the shape may be set explicitly using `tf.Tensor.set_shape`.
   """
+  __slots__ = ["_dims"]
 
   def __init__(self, dims):
     """Creates a new TensorShape with the given dimensions.

@@ -274,9 +274,9 @@ std::string GenerateConvPowerVR1x1(
           if (src_tensor_type == TensorStorageType::IMAGE_BUFFER) {
             if (op_def.precision == CalculationsPrecision::F32_F16) {
               c += "    src" + id + " = " +
-                   src_tensor.ReadAsFloat3D("src_a_" + id) + multiplier + ";\n";
+                   src_tensor.ReadAsFloat("src_a_" + id) + multiplier + ";\n";
             } else {
-              c += "    src" + id + " = " + src_tensor.Read3D("src_a_" + id) +
+              c += "    src" + id + " = " + src_tensor.Read("src_a_" + id) +
                    multiplier + ";\n";
             }
           }

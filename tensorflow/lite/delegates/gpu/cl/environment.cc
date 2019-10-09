@@ -182,14 +182,6 @@ std::vector<TensorStorageType> Environment::GetSupportedTextureStorages()
   return storage_types;
 }
 
-std::vector<TensorStorageType> Environment::GetSupportedBatchStorages() const {
-  std::vector<TensorStorageType> storage_types = {TensorStorageType::BUFFER};
-  if (device_.IsAdreno() && device_.SupportsImageBuffer()) {
-    storage_types.push_back(TensorStorageType::IMAGE_BUFFER);
-  }
-  return storage_types;
-}
-
 std::vector<TensorStorageType> Environment::GetSupportedStorages() const {
   std::vector<TensorStorageType> storage_types = {TensorStorageType::TEXTURE_2D,
                                                   TensorStorageType::BUFFER};

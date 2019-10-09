@@ -243,9 +243,9 @@ cc_library(
     deps = [
         ":backend_configs",
         ":buffer_allocations",
-        ":cudnn_conv_runner",
         ":elemental_ir_emitter",
         ":gpu_constants",
+        ":gpu_conv_runner",
         ":gpu_executable",
         ":hlo_to_ir_bindings",
         ":ir_emission_utils",
@@ -516,7 +516,7 @@ cc_library(
         ":backend_configs",
         ":buffer_allocations",
         ":cusolver_context",
-        ":cudnn_conv_runner",
+        ":gpu_conv_runner",
         ":gpu_debug_info_manager",
         ":gpu_types",
         ":hlo_execution_profiler",
@@ -626,7 +626,7 @@ cc_library(
     deps = [
         ":backend_configs",
         ":buffer_comparator",
-        ":cudnn_conv_runner",
+        ":gpu_conv_runner",
         ":gpu_executable",
         ":ir_emission_utils",
         ":stream_executor_util",
@@ -654,8 +654,8 @@ cc_library(
     deps = [
         ":backend_configs",
         ":buffer_comparator",
-        ":cudnn_conv_runner",
         ":gpu_autotuning_proto",
+        ":gpu_conv_runner",
         ":gpu_executable",
         ":hlo_algorithm_blacklist",
         ":ir_emission_utils",
@@ -683,7 +683,7 @@ cc_library(
 )
 
 cc_library(
-    name = "cudnn_conv_runner",
+    name = "gpu_conv_runner",
     srcs = ["gpu_conv_runner.cc"],
     hdrs = ["gpu_conv_runner.h"],
     deps = [

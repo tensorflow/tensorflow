@@ -67,6 +67,9 @@ def SPV_AddressOfOp : SPV_Op<"_address_of", [InFunctionScope, NoSideEffect]> {
   let hasOpcode = 0;
 
   let autogenSerialization = 0;
+
+  let builders = [OpBuilder<[{Builder *builder, OperationState &state,
+                              spirv::GlobalVariableOp var}]>];
 }
 
 def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {
@@ -174,12 +177,17 @@ def SPV_EntryPointOp : SPV_Op<"EntryPoint", [InModuleScope]> {
   let arguments = (ins
     SPV_ExecutionModelAttr:$execution_model,
     SymbolRefAttr:$fn,
-    OptionalAttr<SymbolRefArrayAttr>:$interface
+    SymbolRefArrayAttr:$interface
   );
 
   let results = (outs);
 
   let autogenSerialization = 0;
+
+  let builders = [OpBuilder<[{Builder *builder, OperationState &state,
+                              spirv::ExecutionModel executionModel,
+                              FuncOp function,
+                              ArrayRef<Attribute> interfaceVars}]>];
 }
 
 

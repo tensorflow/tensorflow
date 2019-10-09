@@ -356,7 +356,7 @@ protected:
   void printLocationInternal(LocationAttr loc, bool pretty = false);
   void printDenseElementsAttr(DenseElementsAttr attr);
 
-  /// This enum is used to represent the binding stength of the enclosing
+  /// This enum is used to represent the binding strength of the enclosing
   /// context that an AffineExprStorage is being printed in, so we can
   /// intelligently produce parens.
   enum class BindingStrength {
@@ -386,6 +386,9 @@ void ModulePrinter::printTrailingLocation(Location loc) {
 
 void ModulePrinter::printLocationInternal(LocationAttr loc, bool pretty) {
   switch (loc.getKind()) {
+  case StandardAttributes::OpaqueLocation:
+    printLocationInternal(loc.cast<OpaqueLoc>().getFallbackLocation(), pretty);
+    break;
   case StandardAttributes::UnknownLocation:
     if (pretty)
       os << "[unknown]";
@@ -722,6 +725,7 @@ void ModulePrinter::printAttribute(Attribute attr, bool mayElideType) {
   case StandardAttributes::FileLineColLocation:
   case StandardAttributes::FusedLocation:
   case StandardAttributes::NameLocation:
+  case StandardAttributes::OpaqueLocation:
   case StandardAttributes::UnknownLocation:
     printLocation(attr.cast<LocationAttr>());
     break;

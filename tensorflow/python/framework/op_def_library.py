@@ -545,15 +545,19 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
           # <number-attr> * <type-attr> case, where we are now setting
           # the <type-attr> based on this input
           if not base_types:
-            raise TypeError(
-                "Don't know how to infer type variable from empty input "
-                "list passed to input '%s' of '%s' Op." %
-                (input_name, op_type_name))
-          attrs[input_arg.type_attr] = base_types[0]
-          inferred_from[input_arg.type_attr] = input_name
-          type_attr = _Attr(op_def, input_arg.type_attr)
-          _SatisfiesTypeConstraint(base_types[0], type_attr,
-                                   param_name=input_name)
+            # If it's in default_type_attr_map, then wait to set it
+            # (in "process remaining attrs", below).
+            if input_arg.type_attr not in default_type_attr_map:
+              raise TypeError(
+                  "Don't know how to infer type variable from empty input "
+                  "list passed to input '%s' of '%s' Op." %
+                  (input_name, op_type_name))
+          else:
+            attrs[input_arg.type_attr] = base_types[0]
+            inferred_from[input_arg.type_attr] = input_name
+            type_attr = _Attr(op_def, input_arg.type_attr)
+            _SatisfiesTypeConstraint(base_types[0], type_attr,
+                                     param_name=input_name)
       elif input_arg.type_attr:
         # <type-attr>
         attr_value = base_types[0]
@@ -620,6 +624,9 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
         # Attrs whose names match Python keywords have an extra '_'
         # appended, so we must check for that as well.
         attrs[attr.name] = keywords.pop(attr.name + "_")
+      elif attr.name in default_type_attr_map:
+        attrs[attr.name] = default_type_attr_map[attr.name]
+        inferred_from.setdefault(attr.name, "Default in OpDef")
       else:
         raise TypeError("No argument for attr " + attr.name)
 

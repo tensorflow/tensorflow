@@ -315,7 +315,10 @@ tf_xla_py_test(
     size = "small",
     timeout = "moderate",
     srcs = ["matrix_triangular_solve_op_test.py"],
-    tags = ["optonly"],
+    tags = [
+        "no_rocm",
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -426,6 +429,23 @@ tf_xla_py_test(
         "//tensorflow/compiler/tf2xla/python:xla",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
+    ],
+)
+
+tf_xla_py_test(
+    name = "einsum_op_test",
+    size = "medium",
+    srcs = ["einsum_op_test.py"],
+    enabled_backends = [
+        "cpu",
+        "gpu",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:special_math_ops",
     ],
 )
 
@@ -957,7 +977,10 @@ tf_xla_py_test(
     srcs = ["tensor_array_ops_test.py"],
     # TensorArray ops are not implemented in the on-demand compilation model yet.
     disabled_backends = ["cpu_ondemand"],
-    tags = ["config-cuda-only"],
+    tags = [
+        "no_rocm",
+        "config-cuda-only",
+    ],
     use_xla_device = False,
     deps = [
         ":xla_test",
@@ -1189,6 +1212,7 @@ cuda_py_test(
     shard_count = 5,
     tags = [
         # TODO(b/134780716): Re-enable this test.
+        "no_rocm",
         "nogpu",
         "no_cuda_on_cpu_tap",
     ],
@@ -1208,6 +1232,7 @@ cuda_py_test(
         "//tensorflow/python:layers",
         "//tensorflow/python:variables",
     ],
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = False,
 )
 
@@ -1294,6 +1319,7 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:variables",
     ],
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = False,
 )
 
@@ -1372,6 +1398,7 @@ tf_xla_py_test(
         "//tensorflow/python:platform_test",
         "@absl_py//absl/testing:parameterized",
     ],
+    tags = ["no_rocm"],
 )
 
 tf_xla_py_test(

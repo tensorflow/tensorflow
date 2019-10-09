@@ -175,7 +175,7 @@ TEST_P(ParameterizedGetNextTest, GetNext) {
     out_tensors.insert(out_tensors.end(), next.begin(), next.end());
   }
   TF_EXPECT_OK(ExpectEqual(out_tensors, test_case.expected_outputs,
-                           /*compare_order*/ true));
+                           /*compare_order=*/true));
 
   // Test the read mode.
   TF_ASSERT_OK(dataset_->MakeIterator(
@@ -190,7 +190,7 @@ TEST_P(ParameterizedGetNextTest, GetNext) {
     out_tensors.insert(out_tensors.end(), next.begin(), next.end());
   }
   TF_EXPECT_OK(ExpectEqual(out_tensors, test_case.expected_outputs,
-                           /*compare_order*/ true));
+                           /*compare_order=*/true));
 }
 
 INSTANTIATE_TEST_SUITE_P(CacheDatasetOpTest, ParameterizedGetNextTest,
@@ -281,20 +281,20 @@ TEST_F(CacheDatasetOpTest, IteratorPrefix) {
 std::vector<IteratorSaveAndRestoreTestCase<CacheDatasetParams>>
 IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/CacheDatasetParams1(),
-           /*breakpoints*/ {0, 2, 4, 11},
+           /*breakpoints=*/{0, 2, 4, 11},
            /*expected_outputs=*/
            CreateTensors<int64>(TensorShape({3, 1}),
                                 {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}})},
           {/*dataset_params=*/CacheDatasetParams2(),
-           /*breakpoints*/ {0, 2, 4, 11},
+           /*breakpoints=*/{0, 2, 4, 11},
            /*expected_outputs=*/{}},
           {/*dataset_params=*/CacheDatasetParams3(),
-           /*breakpoints*/ {0, 2, 4, 11},
+           /*breakpoints=*/{0, 2, 4, 11},
            /*expected_outputs=*/
            CreateTensors<int64>(TensorShape({3, 1}),
                                 {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}})},
           {/*dataset_params=*/CacheDatasetParams4(),
-           /*breakpoints*/ {0, 2, 4, 11},
+           /*breakpoints=*/{0, 2, 4, 11},
            /*expected_outputs=*/{}}};
 }
 

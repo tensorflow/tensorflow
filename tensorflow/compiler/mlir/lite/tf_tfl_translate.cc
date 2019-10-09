@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
+#include "tensorflow/compiler/mlir/lite/flatbuffer_translate_flags.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
@@ -146,7 +147,7 @@ int main(int argc, char **argv) {
   mlir::TFL::QuantizationSpecs quant_specs;
   if (mlir::TFL::ParseInputNodeQuantSpecs(input_arrays, min_values, max_values,
                                           inference_type, &quant_specs)) {
-    llvm::errs() << "UFailed to get input quant spec.";
+    llvm::errs() << "Failed to get input quant spec.";
     return kTrFailure;
   }
   if (weight_quantization != "NONE") {
