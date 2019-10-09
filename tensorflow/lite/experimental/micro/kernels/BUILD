@@ -439,6 +439,18 @@ tflite_micro_cc_test(
     ],
 )
 
+tflite_micro_cc_test(
+    name = "quantization_util_test",
+    srcs = [
+        "quantization_util_test.cc",
+    ],
+    deps = [
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+        "//tensorflow/lite/kernels/internal:quantization_util",
+    ],
+)
+
 cc_library(
     name = "activation_utils",
     hdrs = ["activation_utils.h"],
