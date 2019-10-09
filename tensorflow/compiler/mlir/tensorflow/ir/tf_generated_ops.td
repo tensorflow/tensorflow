@@ -4505,7 +4505,7 @@ element_shape: a shape compatible with that of elements in the list.
   TF_DerivedOperandTypeAttr element_dtype = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_TensorListResizeOp : TF_Op<"TensorListResize", []> {
+def TF_TensorListResizeOp : TF_Op<"TensorListResize", [NoSideEffect]> {
   let summary = "Resizes the list.";
 
   let description = [{
@@ -4571,9 +4571,6 @@ num_elements: optional. If not -1, the number of elements in the list.
   }];
 }
 
-// TODO(parkers): Add folds for multiples = [1,...].
-// TODO(parkers): Add errors for negative multiples and multiples.size() !=
-// input.rank()
 def TF_TileOp : TF_Op<"Tile", [NoSideEffect]> {
   let summary = "Constructs a tensor by tiling a given tensor.";
 
@@ -4617,6 +4614,10 @@ array([[1, 2, 3, 1, 2, 3],
 
   TF_DerivedOperandTypeAttr Tmultiples = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  // TODO(parkers): Add folds for multiples = [1,...].
+  // TODO(parkers): Add errors for negative multiples and multiples.size() !=
+  // input.rank()
 }
 
 def TF_TopKV2Op : TF_Op<"TopKV2", [NoSideEffect]> {
