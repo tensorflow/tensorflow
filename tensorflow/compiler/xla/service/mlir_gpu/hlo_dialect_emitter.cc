@@ -47,7 +47,6 @@ StatusOr<Value*> InsertMlirOp(
   switch (opcode) {
     case HloOpcode::kAdd:
       return {func_builder.create<hlo::AddOp>(loc, rets, args, attrs)};
-
     case HloOpcode::kMultiply:
       return {func_builder.create<hlo::MulOp>(loc, rets, args, attrs)};
     case HloOpcode::kSubtract:
@@ -60,6 +59,8 @@ StatusOr<Value*> InsertMlirOp(
       return {func_builder.create<hlo::MinOp>(loc, rets, args, attrs)};
     case HloOpcode::kMaximum:
       return {func_builder.create<hlo::MaxOp>(loc, rets, args, attrs)};
+    case HloOpcode::kExp:
+      return {func_builder.create<hlo::ExpOp>(loc, rets, args, attrs)};
     default:
       return tensorflow::errors::Internal(absl::StrCat(
           "Opcode ", HloOpcodeString(opcode), " is not supported."));
