@@ -57,6 +57,7 @@ tf_kernel_library(
         "matrix_band_part_op.cc",
         "matrix_diag_ops.cc",
         "matrix_inverse_op.cc",
+        "matrix_solve_op.cc",
         "matrix_triangular_solve_op.cc",
         "mirror_pad_op.cc",
         "next_after_op.cc",

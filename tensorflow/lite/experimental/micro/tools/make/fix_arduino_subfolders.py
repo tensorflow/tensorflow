@@ -41,7 +41,7 @@ def move_person_data(library_dir):
       'person_model_grayscale/person_detect_model_data.cpp'
   )
   new_person_data_path = os.path.join(
-      library_dir, 'examples/micro_vision/person_detect_model_data.cpp')
+      library_dir, 'examples/person_detection/person_detect_model_data.cpp')
   if os.path.exists(old_person_data_path):
     os.rename(old_person_data_path, new_person_data_path)
     # Update include.
@@ -49,7 +49,7 @@ def move_person_data(library_dir):
       file_contents = source_file.read()
     file_contents = file_contents.replace(
         '#include "tensorflow/lite/experimental/micro/examples/' +
-        'micro_vision/person_detect_model_data.h"',
+        'person_detection/person_detect_model_data.h"',
         '#include "person_detect_model_data.h"')
     with open(new_person_data_path, 'w') as source_file:
       source_file.write(file_contents)

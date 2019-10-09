@@ -292,6 +292,7 @@ class Model(network.Network):
         'experimental_run_tf_function', True)
 
     # Prepare Session arguments (legacy).
+    kwargs.pop('cloning', None)  # Legacy DistStrat argument, never used.
     allowed_kwargs = {'feed_dict', 'fetches', 'options', 'run_metadata'}
     unknown_kwargs = set(kwargs.keys()) - allowed_kwargs
     if unknown_kwargs:

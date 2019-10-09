@@ -59,6 +59,8 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
 
   Status HandlePad(HloInstruction* hlo) override;
 
+  Status HandleCustomCall(HloInstruction* hlo) override;
+
   Status HandleBroadcast(HloInstruction* hlo) override;
 
   Status HandleGetDimensionSize(HloInstruction* hlo) override;
@@ -126,9 +128,9 @@ Status DynamicDimensionInferenceVisitor::DefaultAction(HloInstruction* hlo) {
                int64 operand_index, HloInstruction* dynamic_size,
                DimensionConstraint constraint) {
         return UnimplementedStrCat(
-            "Asked to propagate a dynamic dimension from hlo ",
-            operand->ToString(), "@", index.ToString(), "@", dimension,
-            " to hlo ", hlo->ToString(), ", which is not implemented.");
+            "Asked to propagate a dynamic dimension from hlo ", operand->name(),
+            "@", index.ToString(), "@", dimension, " to hlo ", hlo->ToString(),
+            ", which is not implemented.");
       });
 }
 
@@ -168,6 +170,20 @@ Status DynamicDimensionInferenceVisitor::HandleBroadcast(HloInstruction* hlo) {
         int64 broadcast_dim = hlo->dimensions(dimension);
         parent_->SetDynamicSize(hlo, {}, broadcast_dim, dynamic_size,
                                 constraint);
+        return Status::OK();
+      });
+}
+
+Status DynamicDimensionInferenceVisitor::HandleCustomCall(HloInstruction* hlo) {
+  return ForEachOperandDynamicDimension(
+      hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
+               int64 operand_index, HloInstruction* dynamic_size,
+               DimensionConstraint constraint) {
+        if (hlo->custom_call_target() != "Unpad") {
+          return Unimplemented(
+              "CustomCall is not supported to have a dynamic dimension");
+        }
+        parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size, constraint);
         return Status::OK();
       });
 }

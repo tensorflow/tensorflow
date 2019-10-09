@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
@@ -275,10 +276,10 @@ void buildComparisonBinOp(Builder *builder, OperationState &result, Value *lhs,
         << rhs->getType();
   result.addOperands({lhs, rhs});
   // Comparison binary ops always return i1 tensor.
-  if (auto shaped_type = result_type.dyn_cast<ShapedType>()) {
-    auto resultShape = shaped_type.getShape();
+  if (auto shaped_type = result_type.dyn_cast<RankedTensorType>()) {
+    auto result_shape = shaped_type.getShape();
     result.types.push_back(
-        builder->getTensorType(resultShape, builder->getI1Type()));
+        builder->getTensorType(result_shape, builder->getI1Type()));
   } else {
     result.types.push_back(builder->getTensorType(builder->getI1Type()));
   }
@@ -1461,6 +1462,43 @@ OpFoldResult RangeOp::fold(ArrayRef<Attribute> operands) {
   }
 
   return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// TransposeConvOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(TransposeConvOp op) {
+  ShapedType output_type = op.output()->getType().cast<ShapedType>();
+  ShapedType output_shape_type =
+      op.output_shape()->getType().cast<ShapedType>();
+  if (output_type.hasRank() && output_shape_type.hasStaticShape()) {
+    if (output_type.getRank() != output_shape_type.getDimSize(0)) {
+      return op.emitOpError(llvm::formatv(
+          "expect output type has rank = {0}, got output type {1}",
+          output_shape_type.getDimSize(0), output_type));
+    }
+  }
+
+  DenseIntElementsAttr output_shape_elements;
+  if (!matchPattern(op.output_shape(), m_Constant(&output_shape_elements))) {
+    return success();
+  }
+
+  llvm::SmallVector<int64_t, 4> output_shape;
+  output_shape.reserve(output_shape_elements.getNumElements());
+  for (auto dim : output_shape_elements.getValues<int>()) {
+    output_shape.push_back(dim);
+  }
+
+  auto expected_output_type =
+      RankedTensorType::get(output_shape, output_type.getElementType());
+  if (output_type != expected_output_type) {
+    return op.emitOpError(llvm::formatv("expect output type {0}, got {1}",
+                                        expected_output_type, output_type));
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

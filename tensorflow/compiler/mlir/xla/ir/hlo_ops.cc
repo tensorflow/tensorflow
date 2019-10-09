@@ -702,5 +702,31 @@ static LogicalResult Verify(TransposeOp op) {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// CompareOp
+//===----------------------------------------------------------------------===//
+
+void CompareOp::build(Builder* builder, OperationState& result, Value* lhs,
+                      Value* rhs, DenseIntElementsAttr broadcast_dimensions,
+                      StringAttr comparison_direction) {
+  build(builder, result,
+        InferOutputTypes(builder, lhs, rhs, broadcast_dimensions,
+                         comparison_direction),
+        lhs, rhs, broadcast_dimensions, comparison_direction);
+}
+
+Type CompareOp::InferOutputTypes(Builder* builder, Value* lhs, Value* rhs,
+                                 DenseIntElementsAttr broadcast_dimensions,
+                                 StringAttr comparison_direction) {
+  if (!lhs->getType().isa<ShapedType>() || !rhs->getType().isa<ShapedType>())
+    return builder->getTensorType(builder->getI1Type());
+  // TODO(parkers): When binary ops support broadcasting shape inference, reuse
+  // that logic.
+  auto lhs_type = lhs->getType().cast<ShapedType>();
+  auto rhs_type = rhs->getType().cast<ShapedType>();
+  if (lhs_type != rhs_type) return builder->getTensorType(builder->getI1Type());
+  return builder->getTensorType(lhs_type.getShape(), builder->getI1Type());
+}
+
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.cc.inc"

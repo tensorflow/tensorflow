@@ -2252,11 +2252,15 @@ class Operation(object):
     buf = c_api.TF_NewBufferFromString(
         compat.as_bytes(attr_value.SerializeToString()))
     try:
-      # pylint: disable=protected-access
-      c_api.SetAttr(self._graph._c_graph, self._c_op, attr_name, buf)
-      # pylint: enable=protected-access
+      self._set_attr_with_buf(attr_name, buf)
     finally:
       c_api.TF_DeleteBuffer(buf)
+
+  def _set_attr_with_buf(self, attr_name, attr_buf):
+    """Set an attr in the node_def with a pre-allocated buffer."""
+    # pylint: disable=protected-access
+    c_api.SetAttr(self._graph._c_graph, self._c_op, attr_name, attr_buf)
+    # pylint: enable=protected-access
 
   def _set_func_attr(self, attr_name, func_name):
     """Private method used to set a function attribute in the node_def."""

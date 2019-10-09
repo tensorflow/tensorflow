@@ -55,7 +55,7 @@ static llvm::Value *createDeviceFunctionCall(llvm::IRBuilder<> &builder,
                                              StringRef fn_name, int parameter) {
   llvm::Module *module = builder.GetInsertBlock()->getModule();
   llvm::FunctionType *function_type = llvm::FunctionType::get(
-      llvm::Type::getInt32Ty(module->getContext()), // return type.
+      llvm::Type::getInt64Ty(module->getContext()), // return type.
       llvm::Type::getInt32Ty(module->getContext()), // parameter type.
       false);                                       // no variadic arguments.
   llvm::Function *fn = llvm::dyn_cast<llvm::Function>(

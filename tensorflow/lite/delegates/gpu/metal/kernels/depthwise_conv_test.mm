@@ -79,9 +79,8 @@ using ::tflite::gpu::metal::SingleOpModel;
   output.ref = 3;
   output.shape = BHWC(1, 1, 1, 4);
 
-  SingleOpModel model(
-      {ToString(OperationType::DEPTHWISE_CONVOLUTION), std::move(attr)}, {input},
-      {output});
+  SingleOpModel model({ToString(OperationType::DEPTHWISE_CONVOLUTION), std::move(attr)}, {input},
+                      {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 3}));
   auto status = model.Invoke();
   XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
@@ -119,9 +118,8 @@ using ::tflite::gpu::metal::SingleOpModel;
   output.ref = 3;
   output.shape = BHWC(1, 2, 2, 2);
 
-  SingleOpModel model(
-      {ToString(OperationType::DEPTHWISE_CONVOLUTION), std::move(attr)}, {input},
-      {output});
+  SingleOpModel model({ToString(OperationType::DEPTHWISE_CONVOLUTION), std::move(attr)}, {input},
+                      {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 0, 1, 1, 0, 1, 1, 0, 1}));
   auto status = model.Invoke();
   XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
@@ -159,9 +157,8 @@ using ::tflite::gpu::metal::SingleOpModel;
   output.ref = 3;
   output.shape = BHWC(1, 1, 1, 2);
 
-  SingleOpModel model(
-      {ToString(OperationType::DEPTHWISE_CONVOLUTION), std::move(attr)}, {input},
-      {output});
+  SingleOpModel model({ToString(OperationType::DEPTHWISE_CONVOLUTION), std::move(attr)}, {input},
+                      {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 0, 1, 1, 0, 1, 1, 0, 1}));
   auto status = model.Invoke();
   XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());

@@ -162,22 +162,32 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def _variant_tensor(self, _):
     raise ValueError("The _variant_tensor property is read-only")
 
-  def _as_serialized_graph(self, allow_stateful=None):
+  def _as_serialized_graph(self,
+                           allow_stateful=None,
+                           strip_device_assignment=None):
     """Produces serialized graph representation of the dataset.
 
     Args:
       allow_stateful: If true, we allow stateful ops to be present in the graph
       def. In that case, the state in these ops would be thrown away.
+      strip_device_assignment: If true, non-local (i.e. job and task) device
+      assignment is stripped from ops in the serialized graph.
 
     Returns:
       A scalar `tf.Tensor` of `tf.string` type, representing this dataset as a
       serialized graph.
     """
-    if compat.forward_compatible(2019, 9, 16) or allow_stateful:
-      return gen_dataset_ops.dataset_to_graph(self._variant_tensor,
-                                              allow_stateful=allow_stateful)
+    if allow_stateful is None:
+      allow_stateful = False
+
+    if compat.forward_compatible(2019, 11, 16) or strip_device_assignment:
+      return gen_dataset_ops.dataset_to_graph(
+          self._variant_tensor,
+          allow_stateful=allow_stateful,
+          strip_device_assignment=strip_device_assignment)
     else:
-      return gen_dataset_ops.dataset_to_graph(self._variant_tensor)
+      return gen_dataset_ops.dataset_to_graph(
+          self._variant_tensor, allow_stateful=allow_stateful)
 
   def _trace_variant_creation(self):
     """Traces a function which outputs a variant `tf.Tensor` for this dataset.

@@ -689,13 +689,14 @@ bool StreamExecutor::MemcpyDeviceToDevice(Stream *stream,
                                                size);
 }
 
-bool StreamExecutor::MemZero(Stream *stream, DeviceMemoryBase *location,
-                             uint64 size) {
+port::Status StreamExecutor::MemZero(Stream *stream, DeviceMemoryBase *location,
+                                     uint64 size) {
   return implementation_->MemZero(stream, location, size);
 }
 
-bool StreamExecutor::Memset32(Stream *stream, DeviceMemoryBase *location,
-                              uint32 pattern, uint64 size) {
+port::Status StreamExecutor::Memset32(Stream *stream,
+                                      DeviceMemoryBase *location,
+                                      uint32 pattern, uint64 size) {
   CHECK_EQ(0, size % 4)
       << "need 32-bit multiple size to fill with 32-bit pattern";
   return implementation_->Memset32(stream, location, pattern, size);

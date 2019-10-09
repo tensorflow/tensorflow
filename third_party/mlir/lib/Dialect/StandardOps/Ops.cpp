@@ -2215,24 +2215,7 @@ bool TensorCastOp::areCastCompatible(Type a, Type b) {
   if (aT.getElementType() != bT.getElementType())
     return false;
 
-  // If the either are unranked, then the cast is valid.
-  auto aRType = aT.dyn_cast<RankedTensorType>();
-  auto bRType = bT.dyn_cast<RankedTensorType>();
-  if (!aRType || !bRType)
-    return true;
-
-  // If they are both ranked, they have to have the same rank, and any specified
-  // dimensions must match.
-  if (aRType.getRank() != bRType.getRank())
-    return false;
-
-  for (unsigned i = 0, e = aRType.getRank(); i != e; ++i) {
-    int64_t aDim = aRType.getDimSize(i), bDim = bRType.getDimSize(i);
-    if (aDim != -1 && bDim != -1 && aDim != bDim)
-      return false;
-  }
-
-  return true;
+  return succeeded(verifyCompatibleShape(aT, bT));
 }
 
 OpFoldResult TensorCastOp::fold(ArrayRef<Attribute> operands) {

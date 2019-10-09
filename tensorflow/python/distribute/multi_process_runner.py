@@ -29,6 +29,7 @@ import json
 import os
 import signal
 import sys
+import traceback
 
 from absl import flags
 from six.moves import queue as Queue
@@ -203,7 +204,8 @@ def run(proc_func,
       # pylint: disable=broad-except
       except Exception as e:
         # Capture all exceptions to be reported to parent process.
-        finish_wrapper_func_properly(e)
+        finish_wrapper_func_properly(
+            type(e)(str(e) + '\n' + traceback.format_exc()))
         return
 
       finish_wrapper_func_properly(_FINISH_PROPERLY_MESSAGE)
@@ -320,11 +322,10 @@ def try_run_and_except_connection_error(test_obj):
   try:
     yield
   except RuntimeError as e:
-    if ('Connection reset by peer' in e.message or
-        'Socket closed' in e.message or
-        'failed to connect to all addresses' in e.message):
+    if ('Connection reset by peer' in str(e) or 'Socket closed' in str(e) or
+        'failed to connect to all addresses' in str(e)):
       test_obj.skipTest(
-          'Skipping connection error between processes: {}'.format(e.message))
+          'Skipping connection error between processes: {}'.format(str(e)))
     else:
       raise
 

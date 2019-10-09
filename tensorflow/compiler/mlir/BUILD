@@ -116,6 +116,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/xla:xla_mlir_translate",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_proto_cc",
+        "//tensorflow/core:tensorflow",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/strings",
         "@llvm//:support",

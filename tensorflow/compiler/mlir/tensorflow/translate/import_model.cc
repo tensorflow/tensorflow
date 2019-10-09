@@ -938,7 +938,12 @@ Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
     if (name_and_value.first == "_input_shapes") {
       auto& list = name_and_value.second.list();
       auto& signature = func_def->signature();
-      DCHECK_EQ(list.shape_size(), signature.input_arg_size());
+      if (list.shape_size() != signature.input_arg_size()) {
+        return errors::FailedPrecondition(
+            "Number of input arguments must be equal to the length of "
+            "_input_shapes attribute in function '",
+            StringRefToView(func_name), "'.");
+      }
       for (int i = 0; i < list.shape_size(); i++) {
         auto& input_arg = signature.input_arg(i);
         auto& array_info = specs.inputs[input_arg.name()];

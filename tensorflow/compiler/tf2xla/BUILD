@@ -590,11 +590,10 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:device_util",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/core:core_cpu_lib",
-        "//tensorflow/core:framework",
         "@llvm//:support",
-        "@local_config_mlir//:IR",
     ],
     alwayslink = 1,
 )

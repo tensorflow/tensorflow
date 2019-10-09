@@ -758,6 +758,10 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_Conv3DOp : TF_Op<"Conv3D", [NoSideEffect]> {
@@ -788,6 +792,10 @@ Our Conv3D implements a form of cross-correlation.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_CosOp : TF_Op<"Cos", [NoSideEffect, SameOperandsAndResultType]> {
@@ -3303,6 +3311,24 @@ def TF_Relu6Op : TF_Op<"Relu6", [NoSideEffect, SameOperandsAndResultType]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_ReluGradOp : TF_Op<"ReluGrad", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes rectified linear gradients for a Relu operation.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_IntOrFpTensor:$gradients,
+    TF_IntOrFpTensor:$features
+  );
+
+  let results = (outs
+    TF_IntOrFpTensor:$backprops
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ReshapeOp : TF_Op<"Reshape", [NoSideEffect]> {
   let summary = "Reshapes a tensor.";
 
@@ -4505,7 +4531,7 @@ element_shape: a shape compatible with that of elements in the list.
   TF_DerivedOperandTypeAttr element_dtype = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_TensorListResizeOp : TF_Op<"TensorListResize", []> {
+def TF_TensorListResizeOp : TF_Op<"TensorListResize", [NoSideEffect]> {
   let summary = "Resizes the list.";
 
   let description = [{
@@ -4571,9 +4597,6 @@ num_elements: optional. If not -1, the number of elements in the list.
   }];
 }
 
-// TODO(parkers): Add folds for multiples = [1,...].
-// TODO(parkers): Add errors for negative multiples and multiples.size() !=
-// input.rank()
 def TF_TileOp : TF_Op<"Tile", [NoSideEffect]> {
   let summary = "Constructs a tensor by tiling a given tensor.";
 
@@ -4617,6 +4640,10 @@ array([[1, 2, 3, 1, 2, 3],
 
   TF_DerivedOperandTypeAttr Tmultiples = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  // TODO(parkers): Add folds for multiples = [1,...].
+  // TODO(parkers): Add errors for negative multiples and multiples.size() !=
+  // input.rank()
 }
 
 def TF_TopKV2Op : TF_Op<"TopKV2", [NoSideEffect]> {

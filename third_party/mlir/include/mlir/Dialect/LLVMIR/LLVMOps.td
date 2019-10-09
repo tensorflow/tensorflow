@@ -587,4 +587,14 @@ def LLVM_fmuladd : LLVM_Op<"intr.fmuladd", [NoSideEffect]>,
   }];
 }
 
+def LLVM_exp : LLVM_Op<"intr.exp", [NoSideEffect]>,
+                   Arguments<(ins LLVM_Type:$in)>,
+                   Results<(outs LLVM_Type:$res)> {
+  let llvmBuilder = [{
+    llvm::Module *module = builder.GetInsertBlock()->getModule();
+    llvm::Function *fn = llvm::Intrinsic::getDeclaration(
+        module, llvm::Intrinsic::exp, {$in->getType()});
+    $res = builder.CreateCall(fn, {$in});
+  }];
+}
 #endif // LLVMIR_OPS

@@ -307,12 +307,23 @@ public:
   virtual Operation *createOperation(const OperationState &state) = 0;
 
   /// Move the blocks that belong to "region" before the given position in
-  /// another region "parent".  The two regions must be different.  The caller
+  /// another region "parent". The two regions must be different. The caller
   /// is responsible for creating or updating the operation transferring flow
-  // of control to the region and pass it the correct block arguments.
+  /// of control to the region and passing it the correct block arguments.
   virtual void inlineRegionBefore(Region &region, Region &parent,
                                   Region::iterator before);
   void inlineRegionBefore(Region &region, Block *before);
+
+  /// Clone the blocks that belong to "region" before the given position in
+  /// another region "parent". The two regions must be different. The caller is
+  /// responsible for creating or updating the operation transferring flow of
+  /// control to the region and passing it the correct block arguments.
+  virtual void cloneRegionBefore(Region &region, Region &parent,
+                                 Region::iterator before,
+                                 BlockAndValueMapping &mapping);
+  void cloneRegionBefore(Region &region, Region &parent,
+                         Region::iterator before);
+  void cloneRegionBefore(Region &region, Block *before);
 
   /// This method performs the final replacement for a pattern, where the
   /// results of the operation are updated to use the specified list of SSA

@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
 #include "include/pybind11/numpy.h"
 #include "include/pybind11/pybind11.h"
@@ -175,13 +176,55 @@ struct type_caster<xla::BorrowingLiteral> {
   PYBIND11_TYPE_CASTER(xla::BorrowingLiteral, _("xla::BorrowingLiteral"));
 
   // Pybind appears to keep type_casters alive until the callee has run.
-  pybind11::array array;
+  absl::InlinedVector<pybind11::array, 1> arrays;
 
-  bool load(handle handle, bool) {
-    array = pybind11::array::ensure(
-        handle, pybind11::array::c_style |
-                    pybind11::detail::npy_api::NPY_ARRAY_ALIGNED_);
-    if (!array) return false;
+  bool load(handle input, bool) {
+    // TODO(b/79707221): support nested tuples if/when XLA adds support for
+    // nested BorrowingLiterals.
+    if (pybind11::isinstance<pybind11::tuple>(input)) {
+      pybind11::tuple tuple =
+          pybind11::reinterpret_borrow<pybind11::tuple>(input);
+      std::vector<xla::Shape> shapes;
+      std::vector<const char*> buffers;
+      arrays.reserve(tuple.size());
+      shapes.reserve(tuple.size());
+      buffers.reserve(tuple.size());
+      for (pybind11::handle entry : tuple) {
+        auto c = CastToArray(entry);
+        if (!c) {
+          return false;
+        }
+        arrays.push_back(c->array);
+        buffers.push_back(c->buf_ptr);
+        shapes.push_back(c->shape);
+      }
+      value = xla::BorrowingLiteral(buffers,
+                                    xla::ShapeUtil::MakeTupleShape(shapes));
+    } else {
+      auto c = CastToArray(input);
+      if (!c) {
+        return false;
+      }
+      arrays.push_back(c->array);
+      value = xla::BorrowingLiteral(c->buf_ptr, c->shape);
+    }
+    return true;
+  }
+
+ private:
+  struct CastToArrayResult {
+    pybind11::array array;
+    const char* buf_ptr;
+    xla::Shape shape;
+  };
+
+  absl::optional<CastToArrayResult> CastToArray(pybind11::handle h) {
+    pybind11::array array = pybind11::array::ensure(
+        h, pybind11::array::c_style |
+               pybind11::detail::npy_api::NPY_ARRAY_ALIGNED_);
+    if (!array) {
+      return absl::nullopt;
+    }
     pybind11::buffer_info buffer_info = array.request();
 
     absl::InlinedVector<xla::int64, 4> dims(array.ndim());
@@ -199,9 +242,8 @@ struct type_caster<xla::BorrowingLiteral> {
           "Size mismatch for buffer: ", buffer_info.size * buffer_info.itemsize,
           " vs. ", xla::ShapeUtil::ByteSizeOf(shape)));
     }
-    value =
-        xla::BorrowingLiteral(static_cast<const char*>(buffer_info.ptr), shape);
-    return true;
+    return CastToArrayResult{array, static_cast<const char*>(buffer_info.ptr),
+                             shape};
   }
 };
 

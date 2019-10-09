@@ -85,6 +85,18 @@ foreach fromToBinPair = [[TF_AddOp, HLO_AddOp],
   def : DirectBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
 //===----------------------------------------------------------------------===//
+// Logical binary op patterns.
+//===----------------------------------------------------------------------===//
+
+class DirectLogicalBinaryPat<Op FromOp, Op ToOp>
+  : Pat<(FromOp I1Tensor:$l, I1Tensor:$r),
+        (ToOp $l, $r, (BinBroadcastDimensions $l, $r))>;
+
+foreach fromToBinPair = [[TF_LogicalAndOp, HLO_AndOp],
+                         [TF_LogicalOrOp, HLO_OrOp]] in
+  def : DirectLogicalBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
+
+//===----------------------------------------------------------------------===//
 // Compare op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -177,6 +189,13 @@ def : Pat<(TF_ReluOp AnyStaticShapeTensor:$input),
 def : Pat<(TF_Relu6Op AnyStaticShapeTensor:$input),
           (HLO_ClampOp (HLO_ConstOp (ConstantSplat<"0"> $input)), $input,
                        (HLO_ConstOp (ConstantSplat<"6"> $input)))>;
+
+// ReluGrad(gradients, features) = gradients * (features > 0)
+def : Pat<(TF_ReluGradOp AnyStaticShapeTensor:$gradients, AnyStaticShapeTensor:$features),
+          (HLO_SelectOp
+            (HLO_CompareOp $features, (HLO_ConstOp:$zero (ConstantSplat<"0"> $features)),
+              (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_GT),
+            $gradients, $zero)>;
 
 //===----------------------------------------------------------------------===//
 // Relu op patterns.

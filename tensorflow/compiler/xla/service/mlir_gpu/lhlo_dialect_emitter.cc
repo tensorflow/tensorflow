@@ -80,6 +80,9 @@ Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
     case HloOpcode::kMaximum:
       func_builder.create<::mlir::xla_lhlo::MaxOp>(loc, rets, args, attrs);
       break;
+    case HloOpcode::kExp:
+      func_builder.create<::mlir::xla_lhlo::ExpOp>(loc, rets, args, attrs);
+      break;
     default:
       return tensorflow::errors::Internal(absl::StrCat(
           "Opcode ", HloOpcodeString(opcode), " is not supported."));

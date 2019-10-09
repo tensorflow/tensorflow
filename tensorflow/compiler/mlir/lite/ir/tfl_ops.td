@@ -370,6 +370,30 @@ retained with length 1.
   let customOption = "ReducerOptions";
 }
 
+def TFL_TransposeConvOp:
+    TFL_Op<"transpose_conv", [NoSideEffect]> {
+  let summary = "Transpose convolution operator";
+
+  let description = [{
+    Performs transpose convolution operation on input.
+  }];
+
+  let arguments = (
+    ins 1DTensorOf<[I32]>:$output_shape,
+    TensorOf<[F32, TFL_Uint8, QI8, QUI8]>:$weights,
+    TensorOf<[F32, TFL_Uint8, QI8, QUI8]>:$input,
+    TFL_PaddingAttr:$padding,
+    I32Attr:$stride_h,
+    I32Attr:$stride_w
+  );
+
+  let results = (outs AnyTensor:$output);
+
+  let hasOptions = 1;
+
+  let verifier = [{ return Verify(*this); }];
+}
+
 def TFL_AveragePool2DOp:
     TFL_Op<"average_pool_2d", [NoSideEffect, SameOperandsAndResultsScale]> {
   let summary = "Average_pool_2d operator";

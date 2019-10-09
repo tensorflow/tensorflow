@@ -2714,11 +2714,11 @@ PyObject* TFE_Py_PackJVPs(PyObject* tensors) {
 namespace {
 static const int kFastPathExecuteInputStartIndex = 5;
 
-PyObject* GetPythonObjectFromString(const char* s) {
+PyObject* GetPythonObjectFromString(tensorflow::StringPiece s) {
 #if PY_MAJOR_VERSION >= 3
-  return PyUnicode_FromString(s);
+  return PyUnicode_FromStringAndSize(s.data(), s.size());
 #else
-  return PyBytes_FromString(s);
+  return PyBytes_FromStringAndSize(s.data(), s.size());
 #endif
 }
 
@@ -3301,7 +3301,7 @@ bool AddInputToOp(FastPathOpExecInfo* op_exec_info, PyObject* input,
     TFE_OpSetAttrType(op, input_arg.type_attr().data(), dtype);
     if (flattened_attrs != nullptr) {
       flattened_attrs->emplace_back(
-          GetPythonObjectFromString(input_arg.type_attr().data()));
+          GetPythonObjectFromString(input_arg.type_attr()));
       flattened_attrs->emplace_back(PyLong_FromLong(dtype));
     }
   }
@@ -3582,7 +3582,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
       TFE_OpSetAttrInt(op, input_arg.number_attr().data(), len);
       if (op_exec_info.run_callbacks) {
         flattened_attrs->emplace_back(
-            GetPythonObjectFromString(input_arg.number_attr().data()));
+            GetPythonObjectFromString(input_arg.number_attr()));
         flattened_attrs->emplace_back(PyLong_FromLong(len));
       }
       attr_list_sizes[input_arg.number_attr()] = len;
@@ -3649,8 +3649,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
         }
       }
       if (op_exec_info.run_callbacks) {
-        flattened_attrs->emplace_back(
-            GetPythonObjectFromString(attr_name.data()));
+        flattened_attrs->emplace_back(GetPythonObjectFromString(attr_name));
         flattened_attrs->emplace_back(py_attr_value);
       }
       TFE_OpSetAttrTypeList(op, attr_name.data(), attr_value.data(),
@@ -3795,7 +3794,7 @@ struct EncodeResult {
   PyObject* ToPyTuple() {
     PyObject* result = PyTuple_New(2);
 
-    PyTuple_SET_ITEM(result, 0, GetPythonObjectFromString(str.c_str()));
+    PyTuple_SET_ITEM(result, 0, GetPythonObjectFromString(str));
 
     if (objects.empty()) {
       Py_INCREF(Py_None);

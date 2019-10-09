@@ -902,7 +902,7 @@ tf_module {
   }
   member_method {
     name: "DatasetToGraph"
-    argspec: "args=[\'input_dataset\', \'stateful_whitelist\', \'allow_stateful\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'False\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'stateful_whitelist\', \'allow_stateful\', \'strip_device_assignment\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "DatasetToSingleElement"

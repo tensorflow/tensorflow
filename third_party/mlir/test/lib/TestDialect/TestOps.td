@@ -257,6 +257,12 @@ def SameOperandAndResultShapeOp : TEST_Op<"same_operand_and_result_shape",
   let results = (outs Variadic<AnyVectorOrTensor>);
 }
 
+def SameOperandAndResultTypeOp : TEST_Op<"same_operand_and_result_type",
+    [SameOperandsAndResultType]> {
+  let arguments = (ins Variadic<AnyVectorOrTensor>);
+  let results = (outs Variadic<AnyVectorOrTensor>);
+}
+
 def ArgAndResHaveFixedElementTypesOp :
     TEST_Op<"arg_and_res_have_fixed_element_types",
       [PredOpTrait<"fixed type combination",

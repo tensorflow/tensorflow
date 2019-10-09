@@ -26,6 +26,8 @@ from tensorflow.python.autograph.impl import api
 from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
 
+DEFAULT_RECURSIVE = converter.ConversionOptions(recursive=True)
+
 
 class ApiTest(test.TestCase):
 
@@ -34,8 +36,8 @@ class ApiTest(test.TestCase):
     def test_fn(*, a):
       return a
 
-    x = api.converted_call(test_fn, converter.ConversionOptions(recursive=True),
-                           (), {'a': constant_op.constant(-1)})
+    x = api.converted_call(
+        test_fn, (), {'a': constant_op.constant(-1)}, options=DEFAULT_RECURSIVE)
     self.assertEqual(-1, self.evaluate(x))
 
   def test_super_with_no_arg(self):
@@ -54,8 +56,7 @@ class ApiTest(test.TestCase):
       def no_arg(self, x):
         return super().plus_three(x)
 
-    tc = api.converted_call(TestSubclass,
-                            converter.ConversionOptions(recursive=True), (), {})
+    tc = api.converted_call(TestSubclass, (), {}, options=DEFAULT_RECURSIVE)
 
     self.assertEqual(5, tc.no_arg(2))
 

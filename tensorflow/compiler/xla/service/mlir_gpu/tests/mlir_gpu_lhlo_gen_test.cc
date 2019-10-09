@@ -47,6 +47,21 @@ ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
       )");
 }
 
+TEST_F(LhloGenTest, Exp) {
+  CompileAndVerifyIr(R"(
+HloModule Exp
+
+ENTRY %Exp (x: f32[2,2]) -> f32[2,2] {
+  %x = f32[2,2]{1,0} parameter(0)
+  ROOT %exp = f32[2,2]{1,0} exponential(f32[2,2]{1,0} %x)
+})",
+                     R"(
+;CHECK: func @exponential(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
+;CHECK:   "xla_lhlo.exp"(%[[ARG0]], %[[ARG1]]) {name = "exponential"} : ([[TYPE]], [[TYPE]]) -> ()
+;CHECK: }
+      )");
+}
+
 TEST_F(LhloGenTest, AddInGPUDialect) {
   CompileAndVerifyIr(R"(
 HloModule Add
