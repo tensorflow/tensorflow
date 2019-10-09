@@ -70,10 +70,6 @@ Status EagerExecutor::ShutDown() {
   return status_;
 }
 
-bool EagerExecutor::Async() const {
-  return thread_ != nullptr;
-}
-
 const char* EagerExecutor::StateStringLocked() {
   switch (state_) {
     case ExecutorState::kActive:
