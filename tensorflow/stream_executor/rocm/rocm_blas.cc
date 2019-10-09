@@ -1858,50 +1858,41 @@ port::Status ROCMBlas::AllocateStridedBuffer(
     *device_memory =
         DeviceMemory<MAPPED_T>(*(*temp_memory)->mutable_device_memory());
   }
-
-  char* src_ptr=0;
-  char* dst_ptr=0;
-  uint64_t cur_size=0;
-
+  assert(batch_count > 0);
   char *device_memory_ptr = static_cast<char *>(device_memory->opaque());
-  for (int i = 0; i < batch_count; ++i) {
-    if(cur_size==0)
+  char* src_ptr = reinterpret_cast<char *>(raw_ptrs[0]);
+  char* dst_ptr = device_memory_ptr;
+  uint64_t cur_stride_size = matrix_byte_size;
+
+  for (int i = 1; i < batch_count; ++i) {
+    if(reinterpret_cast<char *>(raw_ptrs[i]) == src_ptr+cur_stride_size)
     {
-      src_ptr = static_cast<char *>raw_ptrs[i];
-      dst_ptr = device_memory_ptr + i * matrix_byte_size;
-      cur_size = matrix_byte_size;
-    }
-    else if(static_cast<char *>raw_ptrs[i] == src_ptr+cur_size)
-    {
-      cur_size += matrix_byte_size;    
+      cur_stride_size += matrix_byte_size;    
     }
     else
     {
-      DeviceMemoryBase src_mem = DeviceMemoryBase(src_ptr, cur_size);
-      DeviceMemoryBase target_mem = DeviceMemoryBase(dst_ptr, cur_size);
+      DeviceMemoryBase src_mem = DeviceMemoryBase(src_ptr, cur_stride_size);
+      DeviceMemoryBase target_mem = DeviceMemoryBase(dst_ptr, cur_stride_size);
       bool a_status =
-          stream->ThenMemcpy(&target_mem, src_mem, cur_size).ok();
+          stream->ThenMemcpy(&target_mem, src_mem, cur_stride_size).ok();
       if (!a_status) {
         return port::Status(
             port::error::INTERNAL,
             "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
       }
-      src_ptr = (char*)raw_ptrs[i];
+      src_ptr = reinterpret_cast<char *>(raw_ptrs[i]);
       dst_ptr = device_memory_ptr + i * matrix_byte_size;
-      cur_size = matrix_byte_size;
+      cur_stride_size = matrix_byte_size;
     }
   }
-  if(cur_size!=0)
-  {
-      DeviceMemoryBase src_mem = DeviceMemoryBase(src_ptr, cur_size);
-      DeviceMemoryBase target_mem = DeviceMemoryBase(dst_ptr, cur_size);
-      bool a_status =
-          stream->ThenMemcpy(&target_mem, src_mem, cur_size).ok();
-      if (!a_status)
-        return port::Status(
-            port::error::INTERNAL,
-            "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
-  }
+  DeviceMemoryBase src_mem = DeviceMemoryBase(src_ptr, cur_stride_size);
+  DeviceMemoryBase target_mem = DeviceMemoryBase(dst_ptr, cur_stride_size);
+  bool a_status =
+      stream->ThenMemcpy(&target_mem, src_mem, cur_stride_size).ok();
+  if (!a_status)
+    return port::Status(
+        port::error::INTERNAL,
+        "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
   return port::Status::OK();
 }
 
