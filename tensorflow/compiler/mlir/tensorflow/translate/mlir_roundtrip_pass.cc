@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 
@@ -77,7 +78,7 @@ Status MlirImportPass::Run(const GraphOptimizationPassOptions& options) {
   MLIRContext context;
   if (options.graph) {
     if (!Import(options, **options.graph, &context).ok()) {
-      // TODO(prakalps): Update metric on failure.
+      metrics::IncrementMLIRImportFailureCount();
     }
   }
   return Status::OK();
