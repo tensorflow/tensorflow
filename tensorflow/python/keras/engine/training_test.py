@@ -244,6 +244,38 @@ class CompileTest(keras_parameterized.TestCase):
           run_eagerly=testing_utils.should_run_eagerly(),
           experimental_run_tf_function=testing_utils.should_run_tf_function())
 
+  @keras_parameterized.run_all_keras_modes
+  def test_compile_with_session_kwargs(self):
+    model = testing_utils.get_small_sequential_mlp(
+        num_hidden=10, num_classes=2, input_dim=3)
+
+    # Test that unknown arguments are not accepted
+    with self.assertRaisesRegexp(
+        TypeError,
+        r'Invalid keyword argument'):
+      model.compile(
+          optimizer='adam',
+          loss='mse',
+          foo=True)
+
+    if testing_utils.should_run_eagerly():
+      # Test that Session kwargs cannot be used with run_eagerly
+      with self.assertRaisesRegexp(
+          ValueError,
+          r'not supported when `run_eagerly=True`'):
+        model.compile(
+            optimizer='adam',
+            loss='mse',
+            run_eagerly=True,
+            feed_dict={})
+    else:
+      # Test that Session kwargs trigger legacy path execution
+      model.compile(
+          optimizer='adam',
+          loss='mse',
+          feed_dict={})
+      self.assertFalse(model._experimental_run_tf_function)
+
 
 class TrainingTest(keras_parameterized.TestCase):
 
