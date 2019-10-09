@@ -1251,6 +1251,7 @@ func @should_not_fuse_multi_output_producer() {
   }
   affine.for %i1 = 0 to 10 {
     %v0 = affine.load %a[%i1] : memref<10xf32>
+    %v1 = affine.load %b[%i1] : memref<10xf32>
   }
 
   // CHECK:       affine.for %{{.*}} = 0 to 10 {
@@ -1258,6 +1259,7 @@ func @should_not_fuse_multi_output_producer() {
   // CHECK-NEXT:    affine.store %{{.*}}, %{{.*}}[%{{.*}}] : memref<10xf32>
   // CHECK-NEXT:  }
   // CHECK-NEXT:  affine.for %{{.*}} = 0 to 10 {
+  // CHECK-NEXT:    %{{.*}} = affine.load %{{.*}}[%{{.*}}] : memref<10xf32>
   // CHECK-NEXT:    %{{.*}} = affine.load %{{.*}}[%{{.*}}] : memref<10xf32>
   // CHECK-NEXT:  }
   // CHECK-NEXT:  return
@@ -2264,5 +2266,78 @@ func @affine_2_dependent_mm_fused(%arg0: memref<1024x1024xf32>, %arg1: memref<10
   // CHECK-NEXT:       }
   // CHECK-NEXT:     }
   // CHECK-NEXT:   }
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @should_fuse_self_dependence_multi_store_producer() {
+func @should_fuse_self_dependence_multi_store_producer() {
+  %m = alloc() : memref<10xf32>
+  %local_m = alloc() : memref<10xf32>
+  %cf7 = constant 7.0 : f32
+
+  affine.for %i0 = 0 to 10 {
+    affine.store %cf7, %local_m[%i0] : memref<10xf32>
+    %v0 = affine.load %local_m[%i0] : memref<10xf32>
+    affine.store %v0, %m[%i0] : memref<10xf32>
+  }
+  affine.for %i1 = 0 to 10 {
+    %v1 = affine.load %m[%i1] : memref<10xf32>
+  }
+  // CHECK:      affine.for %[[i0:.*]] = 0 to 10 {
+  // CHECK-NEXT:   affine.store %{{.*}}, [[LOCAL_M:%.*]][%[[i0]]] : memref<10xf32>
+  // CHECK-NEXT:   [[v0:%.*]] = affine.load [[LOCAL_M]][%[[i0]]] : memref<10xf32>
+  // CHECK-NEXT:   affine.store [[v0]], %{{.*}}[0] : memref<1xf32>
+  // CHECK-NEXT:   affine.load %{{.*}}[0] : memref<1xf32>
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @should_fuse_dead_multi_store_producer() {
+func @should_fuse_dead_multi_store_producer() {
+  %m = alloc() : memref<10xf32>
+  %dead_m = alloc() : memref<10xf32>
+  %cf7 = constant 7.0 : f32
+
+  affine.for %i0 = 0 to 10 {
+    affine.store %cf7, %dead_m[%i0] : memref<10xf32>
+    affine.store %cf7, %m[%i0] : memref<10xf32>
+  }
+  affine.for %i1 = 0 to 10 {
+    %v0 = affine.load %m[%i1] : memref<10xf32>
+  }
+  // CHECK:      affine.for %[[i0:.*]] = 0 to 10 {
+  // CHECK-NEXT:   affine.store %{{.*}}, %{{.*}}[%[[i0]]] : memref<10xf32>
+  // CHECK-NEXT:   affine.store %{{.*}}, %{{.*}}[0] : memref<1xf32>
+  // CHECK-NEXT:   affine.load %{{.*}}[0] : memref<1xf32>
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @should_fuse_function_live_out_multi_store_producer
+func @should_fuse_function_live_out_multi_store_producer(%live_in_out_m : memref<10xf32>) {
+  %m = alloc() : memref<10xf32>
+  %cf7 = constant 7.0 : f32
+
+  affine.for %i0 = 0 to 10 {
+    affine.store %cf7, %live_in_out_m[%i0] : memref<10xf32>
+    affine.store %cf7, %m[%i0] : memref<10xf32>
+  }
+  affine.for %i1 = 0 to 10 {
+    %v0 = affine.load %m[%i1] : memref<10xf32>
+  }
+  // CHECK:      affine.for %[[i0:.*]] = 0 to 10 {
+  // CHECK-NEXT:   affine.store %{{.*}}, %{{.*}}[%[[i0]]] : memref<10xf32>
+  // CHECK-NEXT:   affine.store %{{.*}}, %{{.*}}[%[[i0]]] : memref<10xf32>
+  // CHECK-NEXT:   affine.load %{{.*}}[%[[i0]]] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return
   return
 }
