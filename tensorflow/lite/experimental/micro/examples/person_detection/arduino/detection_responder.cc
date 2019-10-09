@@ -15,38 +15,43 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/micro/examples/person_detection/detection_responder.h"
 
-#include "am_bsp.h"  // NOLINT
+#include "Arduino.h"
 
-// This implementation will light up LEDs on the board in response to the
-// inference results.
+// Pins for the built-in RGB LEDs on the Arduino Nano 33 BLE Sense
+const int led_red = 22;
+const int led_green = 23;
+const int led_blue = 24;
+
+// Flash the blue LED after each inference
 void RespondToDetection(tflite::ErrorReporter* error_reporter,
                         uint8_t person_score, uint8_t no_person_score) {
   static bool is_initialized = false;
   if (!is_initialized) {
-    // Setup LED's as outputs.  Leave red LED alone since that's an error
-    // indicator for sparkfun_edge in image_provider.
-    am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_BLUE, g_AM_HAL_GPIO_OUTPUT_12);
-    am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_GREEN, g_AM_HAL_GPIO_OUTPUT_12);
-    am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_YELLOW, g_AM_HAL_GPIO_OUTPUT_12);
+    pinMode(led_green, OUTPUT);
+    pinMode(led_blue, OUTPUT);
     is_initialized = true;
   }
 
-  // Toggle the blue LED every time an inference is performed.
-  static int count = 0;
-  if (++count & 1) {
-    am_hal_gpio_output_set(AM_BSP_GPIO_LED_BLUE);
-  } else {
-    am_hal_gpio_output_clear(AM_BSP_GPIO_LED_BLUE);
-  }
+  // Note: The RGB LEDs on the Arduino Nano 33 BLE
+  // Sense are on when the pin is LOW, off when HIGH.
 
-  // Turn on the green LED if a person was detected.  Turn on the yellow LED
-  // otherwise.
-  am_hal_gpio_output_clear(AM_BSP_GPIO_LED_YELLOW);
-  am_hal_gpio_output_clear(AM_BSP_GPIO_LED_GREEN);
+  // Switch the person/not person LEDs off
+  digitalWrite(led_green, HIGH);
+  digitalWrite(led_red, HIGH);
+
+  // Flash the blue LED after every inference.
+  digitalWrite(led_blue, LOW);
+  delay(100);
+  digitalWrite(led_blue, HIGH);
+
+  // Switch on the green LED when a person is detected,
+  // the red when no person is detected
   if (person_score > no_person_score) {
-    am_hal_gpio_output_set(AM_BSP_GPIO_LED_GREEN);
+    digitalWrite(led_green, LOW);
+    digitalWrite(led_red, HIGH);
   } else {
-    am_hal_gpio_output_set(AM_BSP_GPIO_LED_YELLOW);
+    digitalWrite(led_green, HIGH);
+    digitalWrite(led_red, LOW);
   }
 
   error_reporter->Report("Person score: %d No person score: %d", person_score,
