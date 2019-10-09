@@ -348,13 +348,13 @@ class CropAndResizeOpTest(test.TestCase):
 
     crops = image_ops.crop_and_resize(
         constant_op.constant(
-          image, shape=image_shape),
+            image, shape=image_shape),
         constant_op.constant(
-          boxes, shape=[num_boxes, 4]),
+            boxes, shape=[num_boxes, 4]),
         constant_op.constant(
-          box_ind, shape=[num_boxes]),
-         constant_op.constant(
-          crop_size, shape=[2]))
+            box_ind, shape=[num_boxes]),
+        constant_op.constant(
+            crop_size, shape=[2]))
     with self.session(use_gpu=True) as sess:
       self.assertEqual(crops_shape, list(crops.get_shape()))
       crops = self.evaluate(crops)
