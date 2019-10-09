@@ -489,6 +489,46 @@ ENTRY main {
   EXPECT_EQ(gte_1->tuple_index(), 0);
 }
 
+TEST_F(ConditionalSimplifierTest, SwapTrueFalseToBringTrivialBranchFront) {
+  absl::string_view hlo_string =
+      R"(
+HloModule SwapTrueFalseToBringTrivialBranchFront
+
+on_true {
+  param-true = (f32[]) parameter(0)
+  constant.0 = f32[] constant(0)
+  constant.1 = f32[] constant(1)
+  rng = f32[] rng(constant.0, constant.1), distribution=rng_uniform
+  ROOT tuple-true = (f32[]) tuple(rng)
+}
+
+on_false {
+  ROOT param-false = (f32[]) parameter(0)
+}
+
+ENTRY main {
+  comp = pred[] parameter(0)
+  arg = (f32[]) parameter(1)
+  ROOT conditional = (f32[]) conditional(comp, arg, arg), true_computation=on_true, false_computation=on_false
+}
+)";
+  auto status = ParseAndReturnUnverifiedModule(hlo_string);
+  TF_ASSERT_OK(status.status());
+  HloVerifier v(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false);
+  TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
+  EXPECT_TRUE(
+      ConditionalSimplifier().Run(status.ValueOrDie().get()).ValueOrDie());
+  TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
+  const HloInstruction* conditional =
+      FindInstruction(status.ValueOrDie().get(), "conditional");
+
+  // ".true_false_swapped" suffix is appened to branch names after swapping.
+  EXPECT_EQ(conditional->true_computation()->name(),
+            "on_false.true_false_swapped");
+  EXPECT_EQ(conditional->false_computation()->name(),
+            "on_true.true_false_swapped");
+}
+
 }  // namespace
 
 }  // namespace xla

@@ -532,6 +532,91 @@ bool MergeDuplicateTupleElements(HloInstruction* conditional) {
   }
   return changed;
 }
+
+// If a conditional is unbalanced, with trivial computation in one side and
+// expensive in the other, we swap true/false to always make trivial computation
+// in true-branch.
+//
+// Background:
+// The live range interference analysis in CopyRemover is biased and favorites
+// removing 'copies' from true-branch over false-branch. This is because we have
+// pre-defined instruction execute order (see HloOrdering::ExecutesBefore,
+// copy_insertion.cc) where conditional's (i)th-branch executed before
+// (i+1)th-branch. So by making trivial computation true-branch, we might
+// potentially save copies from true-branch (a.k.a frequent side) and improve
+// performance overall.
+//
+// The transformation invariant is based on:
+//   cond(pred, true_fn, false_fn) == cond(not pred, false_fn, true_fn)
+StatusOr<bool> TrySwapTrueFalse(HloInstruction* conditional) {
+  if (conditional->user_count() == 0 &&
+      conditional != conditional->parent()->root_instruction()) {
+    VLOG(2) << "Skip TrySwapTrueFalse, dangling conditional instruction:\n"
+            << conditional->ToString();
+    return false;
+  }
+  if (conditional->branch_count() != 2 ||
+      conditional->operand(0)->shape().element_type() != PRED) {
+    VLOG(2) << "Skip TrySwapTrueFalse, non-binary conditional instruction:\n"
+            << conditional->ToString();
+    return false;
+  }
+
+  // Returns true if given branch computation is trivial (e.g. just paramter
+  // forward).
+  auto is_trivial = [](const HloComputation* branch) {
+    return absl::c_all_of(branch->instructions(),
+                          [](const HloInstruction* hlo) {
+                            switch (hlo->opcode()) {
+                              case HloOpcode::kCopy:
+                              case HloOpcode::kGetTupleElement:
+                              case HloOpcode::kParameter:
+                              case HloOpcode::kTuple:
+                              case HloOpcode::kAfterAll:
+                                return true;
+                              default:
+                                return false;
+                            }
+                          });
+  };
+
+  HloComputation* true_fn = conditional->true_computation();
+  HloComputation* false_fn = conditional->false_computation();
+
+  const bool do_swap = !is_trivial(true_fn) && is_trivial(false_fn);
+  if (!do_swap) {
+    VLOG(2) << "Skip TrySwapTrueFalse due to conditional instruction is not "
+               "satisfied:\n"
+            << conditional->ToString();
+    return false;
+  }
+
+  VLOG(2) << "Swapping True/False for " << conditional->ToShortString()
+          << " to elide data copy from frequent branch.";
+
+  HloInstruction* new_inverted_pred =
+      conditional->parent()->AddInstruction(HloInstruction::CreateUnary(
+          conditional->operand(0)->shape(), HloOpcode::kNot,
+          conditional->mutable_operand(0)));
+  HloComputation* new_true_fn =
+      conditional->GetModule()->AddEmbeddedComputation(
+          false_fn->Clone(/*suffix=*/"true_false_swapped"));
+  HloComputation* new_false_fn =
+      conditional->GetModule()->AddEmbeddedComputation(
+          true_fn->Clone(/*suffix=*/"true_false_swapped"));
+  HloInstruction* new_true_fn_args = conditional->mutable_operand(2);
+  HloInstruction* new_false_fn_args = conditional->mutable_operand(1);
+
+  conditional->set_branch_computation(0, new_true_fn);
+  conditional->set_branch_computation(1, new_false_fn);
+  TF_RETURN_IF_ERROR(
+      conditional->ReplaceOperandWithDifferentShape(0, new_inverted_pred));
+  TF_RETURN_IF_ERROR(
+      conditional->ReplaceOperandWithDifferentShape(1, new_true_fn_args));
+  TF_RETURN_IF_ERROR(
+      conditional->ReplaceOperandWithDifferentShape(2, new_false_fn_args));
+  return true;
+}
 }  // namespace
 
 StatusOr<bool> ConditionalSimplifier::Run(HloModule* module) {
@@ -558,8 +643,11 @@ StatusOr<bool> ConditionalSimplifier::Run(HloModule* module) {
     changed |= ReplaceRootWithEmptyTupleIfNoUsers(conditional_op);
     TF_ASSIGN_OR_RETURN(bool result, TryRemoveConditional(conditional_op));
     if (!result) {
-      TF_ASSIGN_OR_RETURN(result, TryRemoveUnusedConditionalOperands(
-                                      conditional_op, &changed_computations));
+      TF_ASSIGN_OR_RETURN(bool swapped, TrySwapTrueFalse(conditional_op));
+      TF_ASSIGN_OR_RETURN(bool removed,
+                          TryRemoveUnusedConditionalOperands(
+                              conditional_op, &changed_computations));
+      result |= swapped || removed;
     }
     changed |= result;
   }
