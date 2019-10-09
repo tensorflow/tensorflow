@@ -16,8 +16,10 @@
 # Script for defining a new op using SPIR-V spec from the Internet.
 #
 # Run as:
-# ./define_inst.sh <inst_category> (<opname>)*
+# ./define_inst.sh <filename> <inst_category> (<opname>)*
 
+# <filename> is required, which is the file name of MLIR SPIR-V op definitions
+# spec.
 # <inst_category> is required. It can be one of
 # (Op|ArithmeticOp|LogicalOp|ControlFlowOp|StructureOp). Based on the
 # inst_category the file SPIRV<inst_category>s.td is updated with the
@@ -25,8 +27,8 @@
 # ones in SPIRV<inst_category>s.td
 
 # For example:
-# ./define_inst.sh ArithmeticOp OpIAdd
-# ./define_inst.sh LogicalOp OpFOrdEqual
+# ./define_inst.sh SPIRVArithmeticOps.td ArithmeticOp OpIAdd
+# ./define_inst.sh SPIRVLogicalOps.td LogicalOp OpFOrdEqual
 set -e
 
 file_name=$1
@@ -37,6 +39,7 @@ case $inst_category in
   ;;
   *)
     echo "Usage : " $0 "<filename> <inst_category> (<opname>)*"
+    echo "<filename> is the file name of MLIR SPIR-V op definitions spec"
     echo "<inst_category> must be one of " \
       "(Op|ArithmeticOp|LogicalOp|ControlFlowOp|StructureOp)"
     exit 1;
