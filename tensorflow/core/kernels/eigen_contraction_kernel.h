@@ -137,9 +137,13 @@ struct mkldnn_gemm_kernel</*Scalar*/ float, IndexType, OutputMapper,
 
   static constexpr int kComputeStrideFromBlockDimensions = -1;
 
+  using LhsScalar = float;
+  using RhsScalar = float;
+  using ResScalar = float;
+
   EIGEN_DONT_INLINE
-  void operator()(const OutputMapper& output, const float* blockA,
-                  const float* blockB, const IndexType rows,
+  void operator()(const OutputMapper& output, const LhsScalar* blockA,
+                  const RhsScalar* blockB, const IndexType rows,
                   const IndexType depth, const IndexType cols, float alpha,
                   float beta, int ldA = kComputeStrideFromBlockDimensions,
                   int ldB = kComputeStrideFromBlockDimensions,
@@ -159,12 +163,17 @@ struct mkldnn_gemm_kernel</*Scalar*/ float, IndexType, OutputMapper,
     ldB = ldB == kComputeStrideFromBlockDimensions ? k : ldB;
     const int ldC = static_cast<int>(output.stride());
 
-    mkldnn_status_t st = mkldnn_sgemm(&transposeA, &transposeB, &m, &n, &k,
-                                      &alpha, blockA, &ldA, blockB, &ldB, &beta,
-                                      const_cast<float*>(output.data()), &ldC);
+    mkldnn_status_t st = mkldnn_sgemm(
+        &transposeA, &transposeB, &m, &n, &k, &alpha, blockA, &ldA, blockB,
+        &ldB, &beta, const_cast<ResScalar*>(output.data()), &ldC);
     eigen_assert(st == 0);
 
-    TF_ANNOTATE_MEMORY_IS_INITIALIZED(output.data(), sizeof(float) * m * n);
+#if DYNAMIC_ANNOTATIONS_ENABLED == 1 || defined(MEMORY_SANITIZER)
+    for (IndexType col = 0; col < cols; ++col) {
+      ResScalar* row_base = &output(0, col);
+      TF_ANNOTATE_MEMORY_IS_INITIALIZED(row_base, sizeof(ResScalar) * rows);
+    }
+#endif
 
     // eigen_assert is a no-op in optimized mode so we add these to avoid
     // compiler's unused-variable errors.
@@ -229,7 +238,12 @@ struct mkldnn_gemm_s8u8s32_kernel {
                             C, &ldC, &co);
     eigen_assert(st == 0);
 
-    TF_ANNOTATE_MEMORY_IS_INITIALIZED(C, sizeof(int32_t) * m * n);
+#if DYNAMIC_ANNOTATIONS_ENABLED == 1 || defined(MEMORY_SANITIZER)
+    for (IndexType col = 0; col < cols; ++col) {
+      ResScalar* row_base = &output(0, col);
+      TF_ANNOTATE_MEMORY_IS_INITIALIZED(row_base, sizeof(ResScalar) * rows);
+    }
+#endif
 
     // eigen_assert is a no-op in optimized mode so we add these to avoid
     // compiler's unused-variable errors.
