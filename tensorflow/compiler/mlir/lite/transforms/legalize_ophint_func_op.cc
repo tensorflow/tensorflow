@@ -191,10 +191,10 @@ LogicalResult BuildUnidirectionalSequenceLSTMOp(FuncOp composite_func_op,
   return success();
 }
 
-LogicalResult ConvertTfLiteFusedOpIfAvaiable(StringRef func_name,
-                                             FuncOp composite_func_op,
-                                             CallOp call_op,
-                                             OpBuilder* builder) {
+LogicalResult ConvertTfLiteFusedOpIfAvailable(StringRef func_name,
+                                              FuncOp composite_func_op,
+                                              CallOp call_op,
+                                              OpBuilder* builder) {
   Operation* fused_op = nullptr;
   if (func_name == kUnidirectionalSequenceRnn) {
     // TODO(renjieliu): Validate the func op inputs.
@@ -243,8 +243,8 @@ LogicalResult ConvertCallOps(llvm::StringMap<FuncOp>* composite_func_ops,
       StringRef func_name = composite_func_op.getAttr(kTfLiteFunctionName)
                                 .cast<StringAttr>()
                                 .getValue();
-      if (failed(ConvertTfLiteFusedOpIfAvaiable(func_name, composite_func_op,
-                                                call_op, &builder)))
+      if (failed(ConvertTfLiteFusedOpIfAvailable(func_name, composite_func_op,
+                                                 call_op, &builder)))
         return failure();
 
       composite_func_ops->erase(it);

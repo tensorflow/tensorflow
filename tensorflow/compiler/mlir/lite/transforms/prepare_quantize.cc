@@ -34,7 +34,7 @@ limitations under the License.
 // NOLINTNEXTLINE
 static llvm::cl::list<std::string> quantize_whitelist(
     "tfl-test-quantize-whitelist", llvm::cl::value_desc("list"),
-    llvm::cl::desc("comma seprarated list of whitelisted functions to be "
+    llvm::cl::desc("comma separated list of whitelisted functions to be "
                    "quantized. Only used in tests"),
     llvm::cl::CommaSeparated);
 

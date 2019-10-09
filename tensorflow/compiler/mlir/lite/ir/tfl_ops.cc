@@ -857,8 +857,8 @@ void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 //
 //           =>   Value [5, 8, 9]
 // TODO(b/133341698): Move to tablegen when variadic is supported.
-struct RemoveRedunantUnpackPack : public RewritePattern {
-  explicit RemoveRedunantUnpackPack(MLIRContext *context)
+struct RemoveRedundantUnpackPack : public RewritePattern {
+  explicit RemoveRedundantUnpackPack(MLIRContext *context)
       : RewritePattern(PackOp::getOperationName(), 2, context) {}
 
   PatternMatchResult matchAndRewrite(Operation *op,
@@ -896,7 +896,7 @@ struct RemoveRedunantUnpackPack : public RewritePattern {
 
 void PackOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                          MLIRContext *context) {
-  results.insert<RemoveRedunantUnpackPack>(context);
+  results.insert<RemoveRedundantUnpackPack>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1041,7 +1041,7 @@ struct DropFakeQuant : public RewritePattern {
   }
 
   void rewrite(Operation *op, PatternRewriter &rewriter) const override {
-    // Replace the matched FakeQuantOp by its primiary operand.
+    // Replace the matched FakeQuantOp by its primary operand.
     rewriter.replaceOp(op, op->getOperand(0));
   }
 };
