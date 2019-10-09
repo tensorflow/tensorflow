@@ -49,7 +49,7 @@ class TPUTestWrapperTest(test.TestCase):
 
   @flagsaver.flagsaver(bazel_repo_root='tensorflow/python')
   def test_parent_path(self):
-    filepath = '/filesystem/path/tensorflow/tensorflow/python/tpu/example_test'
+    filepath = '/filesystem/path/tensorflow/python/tpu/example_test.runfiles/tensorflow/python/tpu/example_test'  # pylint: disable=line-too-long
     self.assertEqual(
         tpu_test_wrapper.calculate_parent_python_path(filepath),
         'tensorflow.python.tpu')

@@ -19,7 +19,7 @@ executing the user-provided test file as a py_binary instead. This lets us do
 important work behind the scenes, without complicating the tests themselves.
 
 The main responsibilities of this file are:
-  - Define standard set= of model flags if test did not. This allows us to
+  - Define standard set of model flags if test did not. This allows us to
     safely set flags at the Bazel invocation level using --test_arg.
   - Pick a random directory on GCS to use for each test case, and set it as the
     default value of --model_dir. This is similar to how Bazel provides each
@@ -83,8 +83,8 @@ def calculate_parent_python_path(test_filepath):
   Raises:
     ValueError: if bazel_repo_root does not appear within test_filepath.
   """
-  # We find the first occurance of bazel_repo_root, and drop everything before.
-  split_path = test_filepath.split(FLAGS.bazel_repo_root, 1)
+  # We find the last occurrence of bazel_repo_root, and drop everything before.
+  split_path = test_filepath.rsplit(FLAGS.bazel_repo_root, 1)
   if len(split_path) < 2:
     raise ValueError('Filepath "%s" does not contain repo root "%s"' %
                      (test_filepath, FLAGS.bazel_repo_root))
@@ -132,7 +132,12 @@ def move_test_classes_into_scope():
 
 
 if __name__ == '__main__':
+  # Partially parse flags, since module to import is specified by flag.
+  unparsed = FLAGS(sys.argv, known_only=True)
   move_test_classes_into_scope()
   maybe_define_flags()
+  # Parse remaining flags.
+  FLAGS(unparsed)
+
   set_random_test_dir()
   test.main()
