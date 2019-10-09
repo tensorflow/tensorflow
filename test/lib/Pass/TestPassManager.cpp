@@ -45,13 +45,9 @@ public:
     stringOption = options.stringOption;
     stringListOption.assign(options.stringListOption.begin(),
                             options.stringListOption.end());
-    // Print out a debug representation of the pass in order to allow FileCheck
-    // testing of options parsing.
-    print(llvm::errs());
-    llvm::errs() << "\n";
   }
 
-  void print(raw_ostream &os) {
+  void printAsTextualPipeline(raw_ostream &os) final {
     os << "test-options-pass{";
     if (!listOption.empty()) {
       os << "list=";
@@ -108,6 +104,13 @@ static PassPipelineRegistration<>
     unusedTextual("test-textual-pm-nested-pipeline",
                   "Test a nested pipeline in the pass manager",
                   testNestedPipelineTextual);
+static PassPipelineRegistration<>
+    unusedDump("test-dump-pipeline",
+               "Dumps the pipeline build so far for debugging purposes",
+               [](OpPassManager &pm) {
+                 pm.printAsTextualPipeline(llvm::errs());
+                 llvm::errs() << "\n";
+               });
 
 static PassPipelineRegistration<TestOptionsPass::Options>
     registerOptionsPassPipeline(

@@ -427,6 +427,11 @@ Can also be specified as (via the `-pass-pipeline` flag):
 $ mlir-opt foo.mlir -pass-pipeline='func(cse, canonicalize), lower-to-llvm'
 ```
 
+In order to support round-tripping your pass to the textual representation using
+`OpPassManager::printAsTextualPipeline(raw_ostream&)`, override
+`Pass::printAsTextualPipeline(raw_ostream&)` to format your pass-name and
+options in the format described above.
+
 ### Instance Specific Pass Options
 
 Options may be specified for a parametric pass. Individual options are defined
