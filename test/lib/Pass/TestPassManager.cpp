@@ -34,9 +34,9 @@ public:
   struct Options : public PassOptions<Options> {
     List<int> listOption{*this, "list", llvm::cl::MiscFlags::CommaSeparated,
                          llvm::cl::desc("Example list option")};
-    List<string> stringListOption{*this, "string-list",
-                                  llvm::cl::MiscFlags::CommaSeparated,
-                                  llvm::cl::desc("Example string list option")};
+    List<std::string> stringListOption{
+        *this, "string-list", llvm::cl::MiscFlags::CommaSeparated,
+        llvm::cl::desc("Example string list option")};
     Option<std::string> stringOption{*this, "string",
                                      llvm::cl::desc("Example string option")};
   };
