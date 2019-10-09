@@ -665,6 +665,40 @@ static void printDialectSymbol(raw_ostream &os, StringRef symPrefix,
   os << "<\"" << symString << "\">";
 }
 
+/// Returns if the given string can be represented as a bare identifier.
+static bool isBareIdentifier(StringRef name) {
+  assert(!name.empty() && "invalid name");
+
+  // By making this unsigned, the value passed in to isalnum will always be
+  // in the range 0-255. This is important when building with MSVC because
+  // its implementation will assert. This situation can arise when dealing
+  // with UTF-8 multibyte characters.
+  unsigned char firstChar = static_cast<unsigned char>(name[0]);
+  if (!isalpha(firstChar) && firstChar != '_')
+    return false;
+  return llvm::all_of(name.drop_front(), [](unsigned char c) {
+    return isalnum(c) || c == '_' || c == '$' || c == '.';
+  });
+}
+
+/// Print the given string as a symbol reference. A symbol reference is
+/// represented as a string prefixed with '@'. The reference is surrounded with
+/// ""'s and escaped if it has any special or non-printable characters in it.
+static void printSymbolReference(StringRef symbolRef, raw_ostream &os) {
+  assert(!symbolRef.empty() && "expected valid symbol reference");
+
+  // If the symbol can be represented as a bare identifier, write it directly.
+  if (isBareIdentifier(symbolRef)) {
+    os << '@' << symbolRef;
+    return;
+  }
+
+  // Otherwise, output the reference wrapped in quotes with proper escaping.
+  os << "@\"";
+  printEscapedString(symbolRef, os);
+  os << '"';
+}
+
 void ModulePrinter::printAttribute(Attribute attr, bool mayElideType) {
   if (!attr) {
     os << "<<NULL ATTRIBUTE>>";
@@ -762,7 +796,7 @@ void ModulePrinter::printAttribute(Attribute attr, bool mayElideType) {
     printType(attr.cast<TypeAttr>().getValue());
     break;
   case StandardAttributes::SymbolRef:
-    os << '@' << attr.cast<SymbolRefAttr>().getValue();
+    printSymbolReference(attr.cast<SymbolRefAttr>().getValue(), os);
     break;
   case StandardAttributes::OpaqueElements: {
     auto eltsAttr = attr.cast<OpaqueElementsAttr>();
@@ -1359,6 +1393,11 @@ public:
     interleaveComma(map.getResults(), [&](AffineExpr expr) {
       printAffineExpr(expr, printValueName);
     });
+  }
+
+  /// Print the given string as a symbol reference.
+  void printSymbolName(StringRef symbolRef) override {
+    ::printSymbolReference(symbolRef, os);
   }
 
   // Number of spaces used for indenting nested operations.

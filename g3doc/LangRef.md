@@ -164,7 +164,7 @@ bare-id ::= (letter|[_]) (letter|digit|[_$.])*
 bare-id-list ::= bare-id (`,` bare-id)*
 suffix-id ::= digit+ | ((letter|id-punct) (letter|id-punct|digit)*)
 
-symbol-ref-id ::= `@` bare-id
+symbol-ref-id ::= `@` (bare-id | string-literal)
 ssa-id ::= `%` suffix-id
 ssa-id-list ::= ssa-id (`,` ssa-id)*
 

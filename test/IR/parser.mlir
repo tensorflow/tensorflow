@@ -1089,3 +1089,10 @@ func @wrapped_keyword_test() {
   test.wrapped_keyword foo.keyword
   return
 }
+
+// CHECK-LABEL: func @"\22_string_symbol_reference\22"
+func @"\"_string_symbol_reference\""() {
+  // CHECK: ref = @"\22_string_symbol_reference\22"
+  "foo.symbol_reference"() {ref = @"\"_string_symbol_reference\""} : () -> ()
+  return
+}
