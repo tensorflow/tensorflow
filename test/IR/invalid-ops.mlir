@@ -297,14 +297,6 @@ func @func_with_ops(i1, tensor<42xi32>, tensor<?xi32>) {
 
 // -----
 
-func @func_with_ops(tensor<?xi1>, tensor<42xi32>, tensor<42xi32>) {
-^bb0(%cond : tensor<?xi1>, %t : tensor<42xi32>, %f : tensor<42xi32>):
-  // expected-error@+1 {{requires the same shape for all operands and results}}
-  %r = "std.select"(%cond, %t, %f) : (tensor<?xi1>, tensor<42xi32>, tensor<42xi32>) -> tensor<42xi32>
-}
-
-// -----
-
 func @test_vector.transfer_read(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
