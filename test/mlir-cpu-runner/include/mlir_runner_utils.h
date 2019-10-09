@@ -20,17 +20,17 @@
 #include <cstdint>
 
 #ifdef _WIN32
-#ifndef MLIR_CBLAS_EXPORT
-#ifdef cblas_EXPORTS
+#ifndef MLIR_RUNNER_UTILS_EXPORT
+#ifdef mlir_runner_utils_EXPORTS
 /* We are building this library */
-#define MLIR_CBLAS_EXPORT __declspec(dllexport)
+#define MLIR_RUNNER_UTILS_EXPORT __declspec(dllexport)
 #else
 /* We are using this library */
-#define MLIR_CBLAS_EXPORT __declspec(dllimport)
+#define MLIR_RUNNER_UTILS_EXPORT __declspec(dllimport)
 #endif
 #endif
 #else
-#define MLIR_CBLAS_EXPORT
+#define MLIR_RUNNER_UTILS_EXPORT
 #endif
 
 /// StridedMemRef descriptor type with static rank.
@@ -66,15 +66,15 @@ void printMemRefMetaData(StreamType &os, StridedMemRefType<T, 0> &V) {
      << " offset = " << V.offset;
 }
 
-extern "C" MLIR_CBLAS_EXPORT void
+extern "C" MLIR_RUNNER_UTILS_EXPORT void
 print_memref_0d_f32(StridedMemRefType<float, 0> *M);
-extern "C" MLIR_CBLAS_EXPORT void
+extern "C" MLIR_RUNNER_UTILS_EXPORT void
 print_memref_1d_f32(StridedMemRefType<float, 1> *M);
-extern "C" MLIR_CBLAS_EXPORT void
+extern "C" MLIR_RUNNER_UTILS_EXPORT void
 print_memref_2d_f32(StridedMemRefType<float, 2> *M);
-extern "C" MLIR_CBLAS_EXPORT void
+extern "C" MLIR_RUNNER_UTILS_EXPORT void
 print_memref_3d_f32(StridedMemRefType<float, 3> *M);
-extern "C" MLIR_CBLAS_EXPORT void
+extern "C" MLIR_RUNNER_UTILS_EXPORT void
 print_memref_4d_f32(StridedMemRefType<float, 4> *M);
 
 #endif // MLIR_CPU_RUNNER_MLIRUTILS_H_
