@@ -88,26 +88,58 @@ public:
     SymbolRefAttr symbolRef;
   };
 
-  /// Walk all of the uses, for any symbol, that are nested within the given
+  /// This class implements a range of SymbolRef uses.
+  class UseRange {
+  public:
+    /// This class implements an iterator over the symbol use range.
+    class iterator final
+        : public indexed_accessor_iterator<iterator, const UseRange *,
+                                           const SymbolUse> {
+    public:
+      const SymbolUse *operator->() const { return &object->uses[index]; }
+      const SymbolUse &operator*() const { return object->uses[index]; }
+
+    private:
+      iterator(const UseRange *owner, ptrdiff_t it)
+          : indexed_accessor_iterator<iterator, const UseRange *,
+                                      const SymbolUse>(owner, it) {}
+
+      /// Allow access to the constructor.
+      friend class UseRange;
+    };
+
+    /// Contruct a UseRange from a given set of uses.
+    UseRange(std::vector<SymbolUse> &&uses) : uses(std::move(uses)) {}
+    iterator begin() const { return iterator(this, /*it=*/0); }
+    iterator end() const { return iterator(this, /*it=*/uses.size()); }
+
+  private:
+    std::vector<SymbolUse> uses;
+  };
+
+  /// Get an iterator range for all of the uses, for any symbol, that are nested
+  /// within the given operation 'from'. This does not traverse into any nested
+  /// symbol tables, and will also only return uses on 'from' if it does not
+  /// also define a symbol table. This function returns None if there are any
+  /// unknown operations that may potentially be symbol tables.
+  static Optional<UseRange> getSymbolUses(Operation *from);
+
+  /// Get all of the uses of the given symbol that are nested within the given
   /// operation 'from', invoking the provided callback for each. This does not
   /// traverse into any nested symbol tables, and will also only return uses on
-  /// 'from' if it does not also define a symbol table.
-  static WalkResult
-  walkSymbolUses(Operation *from, function_ref<WalkResult(SymbolUse)> callback);
+  /// 'from' if it does not also define a symbol table. This function returns
+  /// None if there are any unknown operations that may potentially be symbol
+  /// tables.
+  static Optional<UseRange> getSymbolUses(StringRef symbol, Operation *from);
 
-  /// Walk all of the uses of the given symbol that are nested within the given
-  /// operation 'from', invoking the provided callback for each. This does not
-  /// traverse into any nested symbol tables, and will also only return uses on
-  /// 'from' if it does not also define a symbol table.
-  static WalkResult
-  walkSymbolUses(StringRef symbol, Operation *from,
-                 function_ref<WalkResult(SymbolUse)> callback);
-
-  /// Return if the given symbol has no uses that are nested within the given
-  /// operation 'from'. This does not traverse into any nested symbol tables,
-  /// and will also only count uses on 'from' if it does not also define a
-  /// symbol table.
-  static bool symbol_use_empty(StringRef symbol, Operation *from);
+  /// Return if the given symbol is known to have no uses that are nested within
+  /// the given operation 'from'. This does not traverse into any nested symbol
+  /// tables, and will also only count uses on 'from' if it does not also define
+  /// a symbol table. This function will also return false if there are any
+  /// unknown operations that may potentially be symbol tables. This doesn't
+  /// necessarily mean that there are no uses, we just can't convervatively
+  /// prove it.
+  static bool symbolKnownUseEmpty(StringRef symbol, Operation *from);
 
 private:
   MLIRContext *context;
