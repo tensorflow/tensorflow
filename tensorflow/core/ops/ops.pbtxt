@@ -46727,6 +46727,13 @@ op {
     name: "f"
     type: "func"
   }
+  attr {
+    name: "autotuner_thresh"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
 }
 op {
   name: "TPUReplicateMetadata"
