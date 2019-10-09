@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,6 +31,11 @@ limitations under the License.
 
 namespace tflite {
 namespace tensor_utils {
+
+namespace {
+const int32_t kInt16Max = std::numeric_limits<int16_t>::max();
+const int32_t kInt16Min = std::numeric_limits<int16_t>::min();
+}  // namespace
 
 float PortableClip(float f, float abs_limit) {
   float result = (abs_limit < f) ? abs_limit : f;
@@ -232,8 +237,6 @@ void PortableApplyLayerNorm(const int16_t* input,
                             const int32_t* bias, int32_t layer_norm_scale_a,
                             int32_t layer_norm_scale_b, int32_t variance_limit,
                             int n_batch, int n_input, int16_t* output) {
-  const int32_t int16_max = std::numeric_limits<int16_t>::max();
-  const int32_t int16_min = std::numeric_limits<int16_t>::min();
   static const int kOverflowGuard = 1 << 20;
   for (int i = 0; i < n_batch; ++i) {
     int64_t sum = 0;
@@ -271,7 +274,7 @@ void PortableApplyLayerNorm(const int16_t* input,
           static_cast<int32>((val3 > 0 ? val3 + 512 : val3 - 512) / 1024);
       int32 val5 = MultiplyByQuantizedMultiplier(val4, layer_norm_scale_a,
                                                  layer_norm_scale_b + 12);
-      val5 = std::min(std::max(int16_min, val5), int16_max);
+      val5 = std::min(std::max(kInt16Min, val5), kInt16Max);
       output[index] = static_cast<int16_t>(val5);
     }
   }
@@ -378,13 +381,11 @@ void PortableCwiseMul(const int16_t* input_1, const int16_t* input_2,
 
 void PortableCwiseAdd(const int16_t* input_1, const int16_t* input_2,
                       int n_batch, int n_input, int16_t* output) {
-  const int32 int16_max = std::numeric_limits<int16>::max();
-  const int32 int16_min = std::numeric_limits<int16>::min();
   for (int batch = 0; batch < n_batch; ++batch) {
     for (int i = 0; i < n_input; ++i) {
       const int index = batch * n_input + i;
       int32_t sum = input_1[index] + input_2[index];
-      const int32 sum_clamped = std::min(int16_max, std::max(int16_min, sum));
+      const int32 sum_clamped = std::min(kInt16Max, std::max(kInt16Min, sum));
       output[index] = static_cast<int16_t>(sum_clamped);
     }
   }
