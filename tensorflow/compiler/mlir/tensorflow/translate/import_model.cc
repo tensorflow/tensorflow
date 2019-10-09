@@ -146,7 +146,8 @@ class ImporterBase {
       const FunctionLibraryDefinition& flib, const GraphDebugInfo& debug_info,
       const GraphImportConfig& specs, mlir::ModuleOp module,
       std::unordered_map<std::string, std::string>* tf_name_to_mlir_name,
-      NameUniquifier* function_name_uniquifier)
+      NameUniquifier* function_name_uniquifier,
+      llvm::StringRef function_name_for_debug_info = "")
       : builder_(module.getContext()),
         module_(module),
         context_(module.getContext()),
@@ -154,6 +155,7 @@ class ImporterBase {
         graph_flib_(flib),
         specs_(specs),
         debug_info_(debug_info),
+        function_name_for_debug_info_(function_name_for_debug_info),
         function_name_uniquifier_(function_name_uniquifier) {}
 
   // Returns the inferred function signature of the given function body. Input
@@ -342,6 +344,7 @@ class ImporterBase {
   const FunctionLibraryDefinition& graph_flib_;
   const GraphImportConfig& specs_;
   const GraphDebugInfo& debug_info_;
+  llvm::StringRef function_name_for_debug_info_;
   NodeValueMap node_values_;
   std::unique_ptr<ShapeRefiner> shape_refiner_;
   NameUniquifier* function_name_uniquifier_;
@@ -954,7 +957,8 @@ Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
   }
 
   ImporterBase child_importer(graph_flib_, debug_info_, specs, module_,
-                              tf_name_to_mlir_name_, function_name_uniquifier_);
+                              tf_name_to_mlir_name_, function_name_uniquifier_,
+                              func_name);
   TF_RETURN_IF_ERROR(child_importer.PrepareConvert(*fbody->graph));
 
   TF_ASSIGN_OR_RETURN(auto func_type,
@@ -1101,19 +1105,28 @@ Status ImporterBase::ConvertFunctionArgAndRets(
 }
 
 mlir::Location ImporterBase::GetLocation(const NodeDef& node_def) {
+  // TODO(b/142400497): What is the semantic contract for locations?
   const auto& debug_info = debug_info_.traces();
 
-  // Get the CallSiteLoc for a node name.
-  // - If the debug info of the node couldn't be found, the caller of the
-  //   returned CallSiteLoc is set to an UnknownLoc;
-  // - If the debug info of the node is found, the caller of the returned
-  //   CallSiteLoc is set to a call stack which is formed by the debug info.
-  auto node_name_to_call_site = [&](const std::string& name) -> mlir::Location {
-    auto name_id = mlir::Identifier::get(name, context_);
-    const auto& location_it = debug_info.find(name);
+  // Create a location for node `name` in function `function_name`.
+  auto create_location = [&](llvm::StringRef name,
+                             llvm::StringRef function_name) -> mlir::Location {
+    // Use the catenation of function and node names as the lookup key into the
+    // debug info. This matches the way that the key is formed on the python
+    // side.
+    //
+    // We also use this as the name for the NameLoc for ops in function, since
+    // otherwise our names could collide across functions.
+    // For ops in the main graph, we omit the "@function_name" (which, would be
+    // just "@" since function_name would be empty) because some code seems to
+    // depend on the name being this way for correctness.
+    std::string debug_info_key = (name + "@" + function_name).str();
+    std::string name_for_name_loc =
+        function_name.empty() ? name.str() : (name + "@" + function_name).str();
+    auto name_loc_id = mlir::Identifier::get(name_for_name_loc, context_);
+    const auto& location_it = debug_info.find(debug_info_key);
     if (location_it == debug_info.end()) {
-      // Only the node name is stored if the location is unknown.
-      return mlir::NameLoc::get(name_id, context_);
+      return mlir::NameLoc::get(name_loc_id, context_);
     }
 
     // Convert the stack trace to a chain of mlir::CallSiteLocs.
@@ -1127,12 +1140,14 @@ mlir::Location ImporterBase::GetLocation(const NodeDef& node_def) {
                                                      location.col(), context_);
       locations.push_back(file_line_loc);
     }
-    // Handle empty location vector.
-    if (locations.empty()) return mlir::NameLoc::get(name_id, context_);
+
+    // If there are no locations in the stack trace, fall back to just a
+    // NameLoc with no child.
+    if (locations.empty()) return mlir::NameLoc::get(name_loc_id, context_);
 
     // Use the front FileLineColLoc to generate a NameLoc.
     mlir::Location node_name_loc =
-        mlir::NameLoc::get(name_id, locations.front());
+        mlir::NameLoc::get(name_loc_id, locations.front());
 
     // If there are more locations then generate a stack trace, otherwise just
     // return the name loc.
@@ -1147,7 +1162,7 @@ mlir::Location ImporterBase::GetLocation(const NodeDef& node_def) {
   // TODO(prakalps): In future the plan is to use tokens to pair source/sink
   // nodes. Then NextIteration nodes would not need to be handled seprately.
   if (node_def.op() == "NextIteration")
-    return node_name_to_call_site(node_def.name());
+    return create_location(node_def.name(), function_name_for_debug_info_);
 
   auto original_nodes =
       node_def.experimental_debug_info().original_node_names();
@@ -1155,29 +1170,16 @@ mlir::Location ImporterBase::GetLocation(const NodeDef& node_def) {
       node_def.experimental_debug_info().original_func_names();
 
   if (original_nodes.empty()) {
-    // If the original nodes are not defined in the node def, but the current
-    // node name is contained in the debug info file, then we fall back to use
-    // the current node name to get the location info. Otherwise, use a
-    // NameLoc with node name as in a TensorFlow graph the node name is unique.
-    auto& curr_node_name = node_def.name();
-    if (debug_info.find(curr_node_name) == debug_info.end()) {
-      return mlir::NameLoc::get(mlir::Identifier::get(curr_node_name, context_),
-                                context_);
-    } else {
-      return node_name_to_call_site(curr_node_name);
-    }
+    return create_location(node_def.name(), function_name_for_debug_info_);
   } else {
     // If the original nodes are defined, then we use them to get a list of
     // call sites, and then fuse them to a single fused location.
     llvm::SmallVector<mlir::Location, 4> node_call_sites;
     node_call_sites.reserve(original_nodes.size());
-    for (int i = 0, e = original_nodes.size(); i != e; ++i) {
+    for (int i = 0, e = 0; i != e; ++i) {
       auto node_name = original_nodes[i];
       auto func_name = (i < original_funcs.size()) ? original_funcs[i] : "";
-      // Use the catenation of function and node names as the lookup key.
-      // This matches the way that the key is formed on the python side.
-      std::string key = node_name + "@" + func_name;
-      node_call_sites.push_back(node_name_to_call_site(key));
+      node_call_sites.push_back(create_location(node_name, func_name));
     }
     return mlir::FusedLoc::get(node_call_sites, context_);
   }
@@ -1738,9 +1740,8 @@ class SavedModelImporter : public ImporterBase {
   // Main entry point: converts all functions in the given meta graph to an MLIR
   // Module.
   static StatusOr<mlir::OwningModuleRef> Convert(
-      const SavedModelBundle& saved_model, const GraphDebugInfo& debug_info,
-      mlir::MLIRContext* context, absl::Span<std::string> exported_names,
-      bool add_default_attributes);
+      const SavedModelBundle& saved_model, mlir::MLIRContext* context,
+      absl::Span<std::string> exported_names, bool add_default_attributes);
 
  private:
   explicit SavedModelImporter(
@@ -2069,9 +2070,12 @@ Status CreateSavedModelIR(
 }
 
 StatusOr<mlir::OwningModuleRef> SavedModelImporter::Convert(
-    const SavedModelBundle& saved_model, const GraphDebugInfo& debug_info,
-    mlir::MLIRContext* context, absl::Span<std::string> exported_names,
-    bool add_default_attributes) {
+    const SavedModelBundle& saved_model, mlir::MLIRContext* context,
+    absl::Span<std::string> exported_names, bool add_default_attributes) {
+  GraphDebugInfo dummy_debug_info;
+  const GraphDebugInfo& debug_info =
+      saved_model.debug_info ? *saved_model.debug_info : dummy_debug_info;
+
   GraphImportConfig specs;
   mlir::OwningModuleRef module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
@@ -2171,18 +2175,19 @@ StatusOr<mlir::OwningModuleRef> ConvertGraphToMlir(
 }
 
 StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
-    const SavedModelBundle& saved_model, const GraphDebugInfo& debug_info,
-    mlir::MLIRContext* context, absl::Span<std::string> exported_names,
-    bool add_default_attributes) {
-  return SavedModelImporter::Convert(saved_model, debug_info, context,
-                                     exported_names, add_default_attributes);
+    const SavedModelBundle& saved_model, mlir::MLIRContext* context,
+    absl::Span<std::string> exported_names, bool add_default_attributes) {
+  return SavedModelImporter::Convert(saved_model, context, exported_names,
+                                     add_default_attributes);
 }
 
-std::string MlirModuleToString(mlir::ModuleOp module) {
+std::string MlirModuleToString(mlir::ModuleOp module, bool show_debug_info) {
   std::string txt_module;
   {
+    mlir::OpPrintingFlags flags;
+    if (show_debug_info) flags.enableDebugInfo();
     llvm::raw_string_ostream os{txt_module};
-    module.print(os);
+    module.print(os, flags);
   }
   return txt_module;
 }

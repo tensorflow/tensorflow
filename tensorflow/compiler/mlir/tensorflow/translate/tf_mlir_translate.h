@@ -55,8 +55,7 @@ mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
 mlir::OwningModuleRef SavedModelToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
-    absl::Span<std::string> exported_names, absl::string_view debug_info_file,
-    mlir::MLIRContext* context);
+    absl::Span<std::string> exported_names, mlir::MLIRContext* context);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_TF_MLIR_TRANSLATE_H_
