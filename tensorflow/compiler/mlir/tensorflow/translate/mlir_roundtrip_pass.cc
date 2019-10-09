@@ -41,8 +41,7 @@ static StatusOr<mlir::OwningModuleRef> Import(
       ConvertGraphToMlir(graph, debug_info, *options.flib_def, specs, context));
   mlir::StatusScopedDiagnosticHandler status_handler(context);
   if (failed(mlir::verify(*module))) {
-    // TODO(jpienaar): Remove, just simple verification that this works.
-    module->dump();
+    if (VLOG_IS_ON(1)) module->dump();
     return status_handler.ConsumeStatus();
   }
   return module;
