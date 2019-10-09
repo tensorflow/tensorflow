@@ -2967,6 +2967,9 @@ def softmax_v2(logits, axis=None, name=None):
       softmax = tf.exp(logits) / tf.reduce_sum(tf.exp(logits), axis)
 
   Args:
+    logits: A non-empty `Tensor`, or an object whose type has a registered
+      `Tensor` conversion function. Must be one of the following types:
+      `half`,`float32`, `float64`. See also `convert_to_tensor`
     logits: A non-empty `Tensor`. Must be one of the following types: `half`,
       `float32`, `float64`.
     axis: The dimension softmax would be performed on. The default is -1 which
@@ -2979,6 +2982,10 @@ def softmax_v2(logits, axis=None, name=None):
   Raises:
     InvalidArgumentError: if `logits` is empty or `axis` is beyond the last
       dimension of `logits`.
+    TypeError: If no conversion function is registered for `logits` to
+      Tensor.
+    RuntimeError: If a registered Tensor conversion function returns an
+      invalid value.
   """
   if axis is None:
     axis = -1
