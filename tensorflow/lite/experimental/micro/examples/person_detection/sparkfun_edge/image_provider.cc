@@ -167,16 +167,6 @@ TfLiteStatus InitCamera(tflite::ErrorReporter* error_reporter) {
     return kTfLiteError;
   }
 
-  // Put camera into streaming mode - this makes it so that the camera
-  // constantly captures images.  It is still OK to read and image since the
-  // camera uses a double-buffered input.  This means there is always one valid
-  // image to read while the other buffer fills.  Streaming mode allows the
-  // camera to perform auto exposure constantly.
-  if (HM01B0_ERR_OK !=
-      hm01b0_set_mode(&s_HM01B0Cfg, HM01B0_REG_MODE_SELECT_STREAMING, 0)) {
-    return kTfLiteError;
-  }
-
   return kTfLiteOk;
 }
 
@@ -192,14 +182,14 @@ TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int frame_width,
     }
     // Drop a few frames until auto exposure is calibrated.
     for (int i = 0; i < kFramesToInitialize; ++i) {
-      hm01b0_blocking_read_oneframe_scaled(frame, frame_width, frame_height,
-                                           channels);
+      hm01b0_blocking_read_oneframe_scaled(&s_HM01B0Cfg, frame, frame_width,
+                                           frame_height, channels);
     }
     g_is_camera_initialized = true;
   }
 
-  hm01b0_blocking_read_oneframe_scaled(frame, frame_width, frame_height,
-                                       channels);
+  hm01b0_blocking_read_oneframe_scaled(&s_HM01B0Cfg, frame, frame_width,
+                                       frame_height, channels);
 
 #ifdef DEMO_HM01B0_FRAMEBUFFER_DUMP_ENABLE
   hm01b0_framebuffer_dump(frame, frame_width * frame_height * channels);
