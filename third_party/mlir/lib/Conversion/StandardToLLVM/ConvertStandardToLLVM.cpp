@@ -466,6 +466,12 @@ struct BinaryOpLLVMOpLowering : public LLVMLegalizationPattern<SourceOp> {
                                   SourceOp>::value,
                   "expected single result op");
 
+    // Cannot convert ops if their operands are not of LLVM type.
+    for (Value *operand : operands) {
+      if (!operand || !operand->getType().isa<LLVM::LLVMType>())
+        return this->matchFailure();
+    }
+
     auto loc = op->getLoc();
     auto llvmArrayTy = operands[0]->getType().cast<LLVM::LLVMType>();
 
