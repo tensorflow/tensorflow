@@ -71,6 +71,8 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import six
+from six.moves import builtins
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.compat import compat as fwd_compat
@@ -1441,6 +1443,15 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
 
     return gen_math_ops._range(start, limit, delta, name=name)
 
+
+def _range_tensor_conversion_function(value, dtype=None, name=None,
+                                      as_ref=False):
+  del as_ref
+  return range(value.start, value.stop, value.step, dtype=dtype, name=name)
+
+if six.PY3:
+  ops.register_tensor_conversion_function(builtins.range,
+                                          _range_tensor_conversion_function)
 
 # Reduction operations
 def _ReductionDims(x, axis, reduction_indices=None):  # pylint: disable=invalid-name
