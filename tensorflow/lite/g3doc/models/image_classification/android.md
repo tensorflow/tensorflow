@@ -186,7 +186,7 @@ protected void runInference() {
 
 The output of the inference is stored in a byte array `labelProbArray`, which is
 allocated in the subclass's constructor. It consists of a single outer element,
-containing one innner element for each label in the classification model.
+containing one inner element for each label in the classification model.
 
 To run inference, we call `run()` on the interpreter instance, passing the input
 and output buffers as arguments.
