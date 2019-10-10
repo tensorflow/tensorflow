@@ -232,8 +232,8 @@ Status RunCudnnBatchNormForwardInference(
       RunCudnnBatchNormForwardInferenceImpl<float>(&inference_params, stream);
       break;
     default:
-      Unimplemented("Primitive type not implemented for \"%s\" ",
-                            batchnorm->ToString());
+      return Unimplemented("Primitive type not implemented for \"%s\" ",
+                           batchnorm->ToString());
   }
   return Status::OK();
 }
@@ -263,8 +263,8 @@ Status RunCudnnBatchNormForwardTraining(
       RunCudnnBatchNormForwardTrainingImpl<float>(&forward_params, stream);
       break;
     default:
-      Unimplemented("Primitive type not implemented for \"%s\" ",
-                            batchnorm->ToString());
+      return Unimplemented("Primitive type not implemented for \"%s\" ",
+                           batchnorm->ToString());
   }
   return Status::OK();
 }
@@ -296,8 +296,8 @@ Status RunCudnnBatchNormBackward(
       RunCudnnBatchNormBackwardImpl<float>(&backward_params, stream);
       break;
     default:
-      Unimplemented("Primitive type not implemented for \"%s\" ",
-                            batchnorm->ToString());
+      return Unimplemented("Primitive type not implemented for \"%s\" ",
+                           batchnorm->ToString());
   }
   return Status::OK();
 }

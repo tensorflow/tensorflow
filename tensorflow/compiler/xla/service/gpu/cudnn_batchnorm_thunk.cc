@@ -33,6 +33,23 @@ namespace dnn = se::dnn;
 
 namespace {
 void CheckInputOutputPrimitivetypeIsValid(const HloInstruction* hlo) {
+  // All input and output statistics variables must be F32. Also, the last
+  // operand for CudnnBatchNormForwardInference, CudnnBatchNormForwardTraining,
+  // and CudnnBatchNormBackward is the feature_index which must be S64.
+  // The allowed types for non-statistics variables are as follows:
+  // CudnnBatchNormForwardInference:
+  //            operand[0]: {half, float}
+  //                out[0]: {half, float}
+  // CudnnBatchNormForwardTraining:
+  //            operand[0]: {half, float}
+  //                out[0]: {half, float}
+  // CudnnBatchNormBackward:
+  //            operand[0]: {half, float}
+  //            operand[4]: {half, float}
+  //                out[0]: {half, float}
+  // Note non-statics inputs and outputs mentioned above should be of the same
+  // type.
+
   // Check Inputs.
   int64 num_operands = hlo->operand_count();
   PrimitiveType operand_primitive_type =
