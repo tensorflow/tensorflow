@@ -118,9 +118,12 @@ public:
   iterator begin() const { return edges.begin(); }
   iterator end() const { return edges.end(); }
 
+  /// Returns true if this node has any child edges.
+  bool hasChildren() const;
+
 private:
   /// DenseMap info for callgraph edges.
-  struct InterfaceKeyInfo {
+  struct EdgeKeyInfo {
     using BaseInfo =
         DenseMapInfo<llvm::PointerIntPair<CallGraphNode *, 2, Edge::Kind>>;
 
@@ -144,7 +147,7 @@ private:
 
   /// A set of out-going edges from this node to other nodes in the graph.
   llvm::SetVector<Edge, SmallVector<Edge, 4>,
-                  llvm::SmallDenseSet<Edge, 4, InterfaceKeyInfo>>
+                  llvm::SmallDenseSet<Edge, 4, EdgeKeyInfo>>
       edges;
 
   // Provide access to private methods.
