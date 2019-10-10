@@ -156,57 +156,57 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
                                               _mm512_set1_epi32(prod_zp_depth));
       }
 
-      accum_data_v0 = initial_accum_data;
-      accum_data_v1 = initial_accum_data;
-      accum_data_v2 = initial_accum_data;
-      accum_data_v3 = initial_accum_data;
-      accum_data_v4 = initial_accum_data;
-      accum_data_v5 = initial_accum_data;
-      accum_data_v6 = initial_accum_data;
-      accum_data_v7 = initial_accum_data;
-      accum_data_v8 = initial_accum_data;
-      accum_data_v9 = initial_accum_data;
-      accum_data_va = initial_accum_data;
-      accum_data_vb = initial_accum_data;
-      accum_data_vc = initial_accum_data;
-      accum_data_vd = initial_accum_data;
-      accum_data_ve = initial_accum_data;
-      accum_data_vf = initial_accum_data;
-
       // Adjustments differing across columns.
       if (has_rhs_sums_offsets) {
         accum_data_v0 = _mm512_sub_epi32(
-            accum_data_v0, _mm512_set1_epi32(rhs_sums_offsets[0]));
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[0]));
         accum_data_v1 = _mm512_sub_epi32(
-            accum_data_v1, _mm512_set1_epi32(rhs_sums_offsets[1]));
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[1]));
         accum_data_v2 = _mm512_sub_epi32(
-            accum_data_v2, _mm512_set1_epi32(rhs_sums_offsets[2]));
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[2]));
         accum_data_v3 = _mm512_sub_epi32(
-            accum_data_v3, _mm512_set1_epi32(rhs_sums_offsets[3]));
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[3]));
         accum_data_v4 = _mm512_sub_epi32(
-            accum_data_v4, _mm512_set1_epi32(rhs_sums_offsets[4]));
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[4]));
         accum_data_v5 = _mm512_sub_epi32(
-            accum_data_v5, _mm512_set1_epi32(rhs_sums_offsets[5]));
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[5]));
         accum_data_v6 = _mm512_sub_epi32(
-            accum_data_v6, _mm512_set1_epi32(rhs_sums_offsets[6]));
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[6]));
         accum_data_v7 = _mm512_sub_epi32(
-            accum_data_v7, _mm512_set1_epi32(rhs_sums_offsets[7]));
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[7]));
         accum_data_v8 = _mm512_sub_epi32(
-            accum_data_v8, _mm512_set1_epi32(rhs_sums_offsets[8]));
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[8]));
         accum_data_v9 = _mm512_sub_epi32(
-            accum_data_v9, _mm512_set1_epi32(rhs_sums_offsets[9]));
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[9]));
         accum_data_va = _mm512_sub_epi32(
-            accum_data_va, _mm512_set1_epi32(rhs_sums_offsets[10]));
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[10]));
         accum_data_vb = _mm512_sub_epi32(
-            accum_data_vb, _mm512_set1_epi32(rhs_sums_offsets[11]));
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[11]));
         accum_data_vc = _mm512_sub_epi32(
-            accum_data_vc, _mm512_set1_epi32(rhs_sums_offsets[12]));
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[12]));
         accum_data_vd = _mm512_sub_epi32(
-            accum_data_vd, _mm512_set1_epi32(rhs_sums_offsets[13]));
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[13]));
         accum_data_ve = _mm512_sub_epi32(
-            accum_data_ve, _mm512_set1_epi32(rhs_sums_offsets[14]));
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[14]));
         accum_data_vf = _mm512_sub_epi32(
-            accum_data_vf, _mm512_set1_epi32(rhs_sums_offsets[15]));
+            initial_accum_data, _mm512_set1_epi32(rhs_sums_offsets[15]));
+      } else {
+        accum_data_v0 = initial_accum_data;
+        accum_data_v1 = initial_accum_data;
+        accum_data_v2 = initial_accum_data;
+        accum_data_v3 = initial_accum_data;
+        accum_data_v4 = initial_accum_data;
+        accum_data_v5 = initial_accum_data;
+        accum_data_v6 = initial_accum_data;
+        accum_data_v7 = initial_accum_data;
+        accum_data_v8 = initial_accum_data;
+        accum_data_v9 = initial_accum_data;
+        accum_data_va = initial_accum_data;
+        accum_data_vb = initial_accum_data;
+        accum_data_vc = initial_accum_data;
+        accum_data_vd = initial_accum_data;
+        accum_data_ve = initial_accum_data;
+        accum_data_vf = initial_accum_data;
       }
 
       const std::int8_t* lhs_ptr = lhs_col_ptr;
