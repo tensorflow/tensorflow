@@ -240,8 +240,6 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       MakeAndReturn(BroadcastInDimOp);
     }
     case HloOpcode::kDot: {
-      // TODO(b/129709049) The HLO text format elides this in the all DEFAULT
-      // case and the parser sticks it in. Maybe we should too.
       attributes.push_back(ConvertPrecisionConfig(instruction));
 
       // Consider consolidating DotOps together.
@@ -387,6 +385,35 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
           "permutation", ConvertDimensions(instruction->dimensions())));
       MakeAndReturn(TransposeOp);
     }
+    case HloOpcode::kConvolution: {
+      llvm::SmallVector<int64_t, 4> strides, lhs_dilations, rhs_dilations;
+      llvm::SmallVector<int64_t, 8> paddings;
+      for (const auto& dim : instruction->window().dimensions()) {
+        strides.push_back(dim.stride());
+        lhs_dilations.push_back(dim.base_dilation());
+        rhs_dilations.push_back(dim.window_dilation());
+        paddings.push_back(dim.padding_low());
+        paddings.push_back(dim.padding_high());
+      }
+
+      attributes.push_back(
+          builder_->getNamedAttr("window_strides", Convert(strides)));
+      attributes.push_back(ConvertPadding(paddings));
+      attributes.push_back(
+          builder_->getNamedAttr("lhs_dilations", Convert(lhs_dilations)));
+      attributes.push_back(
+          builder_->getNamedAttr("rhs_dilations", Convert(rhs_dilations)));
+      attributes.push_back(ConvertConvDimensionNumbers(
+          instruction->convolution_dimension_numbers()));
+      attributes.push_back(builder_->getNamedAttr(
+          "feature_group_count",
+          builder_->getI64IntegerAttr(instruction->feature_group_count())));
+      attributes.push_back(builder_->getNamedAttr(
+          "batch_group_count",
+          builder_->getI64IntegerAttr(instruction->batch_group_count())));
+      attributes.push_back(ConvertPrecisionConfig(instruction));
+      MakeAndReturn(ConvOp);
+    }
 #define NoAttributeCase(hlo_op_code, mlir_op) \
   case HloOpcode::hlo_op_code: {              \
     MakeAndReturn(mlir_op);                   \
@@ -420,8 +447,6 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       // See operation semantics in
       // g3doc/platforms/xla/g3doc/internal/hlo_semantics#copy
       NoAttributeCase(kCopy, CopyOp);
-      // TODO(b/129422361) Ops below need additional work to handle attributes.
-      NoAttributeCase(kConvolution, ConvOp);
 #undef NoAttributeCase
 #undef MakeAndReturn
     case HloOpcode::kAddDependency:
@@ -539,6 +564,8 @@ StatusOr<Value*> HloFunctionImporter::GetMlirValue(
 
 mlir::NamedAttribute HloFunctionImporter::ConvertPrecisionConfig(
     HloInstruction* instruction) {
+  // TODO(b/129709049) The HLO text format elides this in the all DEFAULT
+  // case and the parser sticks it in. Maybe we should too.
   llvm::SmallVector<mlir::Attribute, 4> operand_precision_attrs;
 
   for (auto prec : instruction->precision_config().operand_precision()) {
@@ -580,6 +607,15 @@ mlir::DenseIntElementsAttr HloFunctionImporter::Convert(
       .cast<DenseIntElementsAttr>();
 }
 
+mlir::NamedAttribute HloFunctionImporter::ConvertPadding(
+    llvm::ArrayRef<int64_t> padding) {
+  auto ty =
+      builder_->getTensorType({2, static_cast<int64_t>(padding.size()) / 2},
+                              builder_->getIntegerType(64));
+  auto attr = builder_->getDenseIntElementsAttr(ty, padding);
+  return builder_->getNamedAttr("padding", attr);
+}
+
 mlir::NamedAttribute HloFunctionImporter::ConvertDotDimensionNumbers(
     const DotDimensionNumbers& dnums) {
   std::vector<int64_t> rhs_contracting_dimensions(
@@ -603,6 +639,30 @@ mlir::NamedAttribute HloFunctionImporter::ConvertDotDimensionNumbers(
       lhs_batch_dims_attr, rhs_batch_dims_attr, lhs_contracting_dims_attr,
       rhs_contracting_dims_attr, context_);
   return builder_->getNamedAttr("dot_dimension_numbers", attr);
+}
+
+mlir::NamedAttribute HloFunctionImporter::ConvertConvDimensionNumbers(
+    const xla::ConvolutionDimensionNumbers& dnums) {
+  llvm::SmallVector<int64_t, 4> input_spatial_dims(
+      dnums.input_spatial_dimensions().begin(),
+      dnums.input_spatial_dimensions().end());
+  llvm::SmallVector<int64_t, 4> kernel_spatial_dims(
+      dnums.kernel_spatial_dimensions().begin(),
+      dnums.kernel_spatial_dimensions().end());
+  llvm::SmallVector<int64_t, 4> output_spatial_dims(
+      dnums.output_spatial_dimensions().begin(),
+      dnums.output_spatial_dimensions().end());
+  auto attr = mlir::xla_hlo::ConvDimensionNumbers::get(
+      builder_->getI64IntegerAttr(dnums.input_batch_dimension()),
+      builder_->getI64IntegerAttr(dnums.input_feature_dimension()),
+      Convert(input_spatial_dims),
+      builder_->getI64IntegerAttr(dnums.kernel_input_feature_dimension()),
+      builder_->getI64IntegerAttr(dnums.kernel_output_feature_dimension()),
+      Convert(kernel_spatial_dims),
+      builder_->getI64IntegerAttr(dnums.output_batch_dimension()),
+      builder_->getI64IntegerAttr(dnums.kernel_output_feature_dimension()),
+      Convert(output_spatial_dims), context_);
+  return builder_->getNamedAttr("dimension_numbers", attr);
 }
 
 }  // namespace xla

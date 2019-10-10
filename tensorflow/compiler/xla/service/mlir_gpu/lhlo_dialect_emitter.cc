@@ -213,17 +213,32 @@ Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
 Status LhloDialectEmitter::HandleFusion(HloInstruction* fusion) {
   TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*fusion));
   OpBuilder func_builder(function.getBody());
-  llvm::SmallVector<Value*, 4> arg_values(function.getArguments());
   auto attribute =
       builder_.getNamedAttr("name", builder_.getStringAttr(fusion->name()));
 
   auto fusion_op = func_builder.create<::mlir::xla_lhlo::FusionOp>(
       builder_.getUnknownLoc(), attribute);
 
-  HloDialectEmitter hlo_emitter(&fusion_op.region(), arg_values);
+  // Load the HLO argument tensors from the corresponding buffers. The last
+  // argument is for the result, so no need to load it.
+  OpBuilder body_builder(fusion_op.region());
+  llvm::SmallVector<Value*, 4> arg_values;
+  for (int i = 0, e = function.getNumArguments() - 1; i < e; ++i) {
+    arg_values.push_back(body_builder.create<::mlir::TensorLoadOp>(
+        builder_.getUnknownLoc(), function.getArgument(i)));
+  }
+  HloDialectEmitter hlo_emitter(body_builder, arg_values);
 
-  TF_RETURN_IF_ERROR(
+  TF_ASSIGN_OR_RETURN(
+      auto result,
       hlo_emitter.EmitComputation(*fusion->fused_instructions_computation()));
+
+  // Insert the write-back from the HLO computation to the result argument
+  // buffer.
+  body_builder.setInsertionPoint(fusion_op.region().back().getTerminator());
+  Value* result_memref = function.getArgument(function.getNumArguments() - 1);
+  body_builder.create<::mlir::TensorStoreOp>(builder_.getUnknownLoc(), result,
+                                             result_memref);
 
   return Status::OK();
 }

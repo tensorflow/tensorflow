@@ -57,12 +57,12 @@ kernel void FunctionName(device TYPE* const src_buffer[[buffer(0)]],
 
   NSDictionary* macrosFloat4 = @{@"TYPE" : @"float4"};
   status = CreateComputeProgram(device, code, functionName, macrosFloat4, &program);
-  XCTAssertTrue(status.ok(), @"%s", status.message().data());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   XCTAssertNotNil(program);
 
   NSDictionary* macrosHalf4 = @{@"TYPE" : @"half4"};
   status = CreateComputeProgram(device, code, functionName, macrosHalf4, &program);
-  XCTAssertTrue(status.ok(), @"%s", status.message().data());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   XCTAssertNotNil(program);
 
   // This compilation is intended to be incorrect

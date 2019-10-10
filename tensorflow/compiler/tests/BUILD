@@ -1412,3 +1412,22 @@ tf_xla_py_test(
         "//tensorflow/python:platform_test",
     ],
 )
+
+tf_xla_py_test(
+    name = "tridiagonal_solve_ops_test",
+    size = "medium",
+    srcs = ["tridiagonal_solve_ops_test.py"],
+    disabled_backends = [
+        "cpu_ondemand",
+        "cpu",
+        "gpu",
+    ],
+    tags = ["optonly"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:standard_ops",
+    ],
+)

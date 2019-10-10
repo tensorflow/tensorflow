@@ -110,9 +110,9 @@ Status SingleOpModel::Invoke() {
   // Allocate internal buffers. Graph is ready to be executed.
   // Fills the output buffer IDs and dimensions.
   std::map<ValueId, BHWC> output_dimensions;
-  QCHECK_OK([graph setInputDimensions:input_dimensions
-                     outputDimensions:&output_dimensions
-                      taskDescriptors:optimized_model]);
+  [graph setInputDimensions:input_dimensions
+           outputDimensions:&output_dimensions
+            taskDescriptors:optimized_model];
 
   std::map<ValueId, id<MTLBuffer>> output_buffers;
   for (const auto& outputDimension : output_dimensions) {
@@ -212,9 +212,9 @@ Status RunGraph(const std::vector<ComputeTaskDescriptorPtr>& nodes, id<MTLDevice
   // Allocate internal buffers. Graph is ready to be executed.
   // Fills the output buffer IDs and dimensions.
   std::map<ValueId, BHWC> outputDimensions;
-  QCHECK_OK([graph setInputDimensions:inputDimensions
-                     outputDimensions:&outputDimensions
-                      taskDescriptors:model]);
+  [graph setInputDimensions:inputDimensions
+           outputDimensions:&outputDimensions
+            taskDescriptors:model];
 
   std::map<ValueId, id<MTLBuffer>> outputBuffers;
   for (const auto& outputDimension : outputDimensions) {

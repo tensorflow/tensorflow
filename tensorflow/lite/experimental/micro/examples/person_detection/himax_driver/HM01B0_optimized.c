@@ -40,7 +40,8 @@ static const int kStrideShift = 1;
 //
 //*****************************************************************************
 uint32_t hm01b0_blocking_read_oneframe_scaled(
-    uint8_t* buffer, int w, int h, int channels) {
+    hm01b0_cfg_t* psCfg, uint8_t* buffer, int w, int h, int channels) {
+  hm01b0_single_frame_capture(psCfg);
 
   // Calculate the number of pixels to crop to get a centered image.
   const int offset_x = (HM01B0_PIXEL_X_NUM - (w * (1 << kStrideShift))) / 2;

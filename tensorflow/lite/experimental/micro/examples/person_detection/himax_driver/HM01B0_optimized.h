@@ -39,7 +39,8 @@ extern "C" {
 //! @return Error code.
 //
 //*****************************************************************************
-uint32_t hm01b0_blocking_read_oneframe_scaled(uint8_t* buffer, int w, int h,
+uint32_t hm01b0_blocking_read_oneframe_scaled(hm01b0_cfg_t* psCfg,
+                                              uint8_t* buffer, int w, int h,
                                               int channels);
 
 #ifdef __cplusplus

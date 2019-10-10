@@ -586,4 +586,15 @@ class BASE_HLO_TransposeOp {
   }];
 }
 
+class BASE_HLO_RngUniformOp {
+  string summary = "RNG with uniform distribution.";
+
+  string description = [{
+    Constructs an output of a given shape with random numbers generated following
+    the uniform distribution over the interval `[a,b)`.
+
+    See https://www.tensorflow.org/xla/operation_semantics#rnguniform.
+  }];
+}
+
 #endif // HLO_OPS_BASE

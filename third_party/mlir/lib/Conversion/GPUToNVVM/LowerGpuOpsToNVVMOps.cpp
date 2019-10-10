@@ -379,10 +379,9 @@ public:
         GPUAllReduceOpLowering>(converter);
 
     ConversionTarget target(getContext());
+    target.addIllegalDialect<gpu::GPUDialect>();
     target.addLegalDialect<LLVM::LLVMDialect>();
     target.addLegalDialect<NVVM::NVVMDialect>();
-    target.addDynamicallyLegalOp<FuncOp>(
-        [&](FuncOp op) { return converter.isSignatureLegal(op.getType()); });
     if (failed(applyPartialConversion(m, target, patterns, &converter)))
       signalPassFailure();
   }

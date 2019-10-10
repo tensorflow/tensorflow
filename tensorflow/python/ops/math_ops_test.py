@@ -720,5 +720,15 @@ class EqualityTest(test_util.TensorFlowTestCase):
     self.assertTrue(math_ops.tensor_not_equals(x, None))
 
 
+class RangeTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConvertToTensorRange(self):
+    values = range(5)
+    tensor = ops.convert_to_tensor(values)
+    self.assertAllEqual((5,), tensor.get_shape().as_list())
+    self.assertAllEqual(values, self.evaluate(tensor))
+
+
 if __name__ == "__main__":
   googletest.main()

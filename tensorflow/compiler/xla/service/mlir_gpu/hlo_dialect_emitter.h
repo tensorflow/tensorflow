@@ -38,13 +38,16 @@ class HloDialectEmitter : public DfsHloVisitorWithDefault {
                     llvm::ArrayRef<::mlir::Value*> arguments)
       : builder_(region), arguments_(arguments) {}
 
-  Status EmitComputation(const HloComputation& computation);
+  HloDialectEmitter(::mlir::OpBuilder builder,
+                    llvm::ArrayRef<::mlir::Value*> arguments)
+      : builder_(builder), arguments_(arguments) {}
+
+  StatusOr<mlir::Value*> EmitComputation(const HloComputation& computation);
 
   Status DefaultAction(HloInstruction* instr) override;
   Status HandleConstant(HloInstruction* constant) override;
   Status HandleParameter(HloInstruction* param) override;
-
-  Status FinishVisit(HloInstruction* root) override;
+  Status HandleReduce(HloInstruction* reduce) override;
 
  private:
   ::mlir::OpBuilder builder_;

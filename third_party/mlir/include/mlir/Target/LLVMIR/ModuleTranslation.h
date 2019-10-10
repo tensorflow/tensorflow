@@ -34,12 +34,13 @@
 
 namespace mlir {
 class Attribute;
-class FuncOp;
 class Location;
 class ModuleOp;
 class Operation;
 
 namespace LLVM {
+
+class LLVMFuncOp;
 
 // Implementation class for module translation.  Holds a reference to the module
 // being translated, and the mappings between the original and the translated
@@ -75,8 +76,8 @@ protected:
 private:
   LogicalResult convertFunctions();
   void convertGlobals();
-  LogicalResult convertOneFunction(FuncOp func);
-  void connectPHINodes(FuncOp func);
+  LogicalResult convertOneFunction(LLVMFuncOp func);
+  void connectPHINodes(LLVMFuncOp func);
   LogicalResult convertBlock(Block &bb, bool ignoreArguments);
 
   template <typename Range>

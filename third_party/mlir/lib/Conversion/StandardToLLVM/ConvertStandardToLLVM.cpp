@@ -95,19 +95,31 @@ Type LLVMTypeConverter::convertFloatType(FloatType type) {
   }
 }
 
+// Except for signatures, MLIR function types are converted into LLVM
+// pointer-to-function types.
+Type LLVMTypeConverter::convertFunctionType(FunctionType type) {
+  SignatureConversion conversion(type.getNumInputs());
+  LLVM::LLVMType converted =
+      convertFunctionSignature(type, /*isVariadic=*/false, conversion);
+  return converted.getPointerTo();
+}
+
 // Function types are converted to LLVM Function types by recursively converting
 // argument and result types.  If MLIR Function has zero results, the LLVM
 // Function has one VoidType result.  If MLIR Function has more than one result,
 // they are into an LLVM StructType in their order of appearance.
-Type LLVMTypeConverter::convertFunctionType(FunctionType type) {
+LLVM::LLVMType LLVMTypeConverter::convertFunctionSignature(
+    FunctionType type, bool isVariadic,
+    LLVMTypeConverter::SignatureConversion &result) {
   // Convert argument types one by one and check for errors.
-  SmallVector<LLVM::LLVMType, 8> argTypes;
-  for (auto t : type.getInputs()) {
-    auto converted = convertType(t);
-    if (!converted)
+  for (auto &en : llvm::enumerate(type.getInputs()))
+    if (failed(convertSignatureArg(en.index(), en.value(), result)))
       return {};
-    argTypes.push_back(unwrap(converted));
-  }
+
+  SmallVector<LLVM::LLVMType, 8> argTypes;
+  argTypes.reserve(llvm::size(result.getConvertedTypes()));
+  for (Type type : result.getConvertedTypes())
+    argTypes.push_back(unwrap(type));
 
   // If function does not return anything, create the void result type,
   // if it returns on element, convert it, otherwise pack the result types into
@@ -118,8 +130,7 @@ Type LLVMTypeConverter::convertFunctionType(FunctionType type) {
           : unwrap(packFunctionResults(type.getResults()));
   if (!resultType)
     return {};
-  return LLVM::LLVMType::getFunctionTy(resultType, argTypes, /*isVarArg=*/false)
-      .getPointerTo();
+  return LLVM::LLVMType::getFunctionTy(resultType, argTypes, isVariadic);
 }
 
 // Convert a MemRef to an LLVM type. The result is a MemRef descriptor which
@@ -249,6 +260,10 @@ public:
         &dialect, getModule().getDataLayout().getPointerSizeInBits());
   }
 
+  LLVM::LLVMType getVoidType() const {
+    return LLVM::LLVMType::getVoidTy(&dialect);
+  }
+
   // Get the MLIR type wrapping the LLVM i8* type.
   LLVM::LLVMType getVoidPtrType() const {
     return LLVM::LLVMType::getInt8PtrTy(&dialect);
@@ -289,7 +304,16 @@ struct FuncOpConversion : public LLVMLegalizationPattern<FuncOp> {
                   ConversionPatternRewriter &rewriter) const override {
     auto funcOp = cast<FuncOp>(op);
     FunctionType type = funcOp.getType();
-    SmallVector<Type, 4> argTypes;
+    // Pack the result types into a struct.
+    Type packedResult;
+    if (type.getNumResults() != 0)
+      if (!(packedResult = lowering.packFunctionResults(type.getResults())))
+        return matchFailure();
+    LLVM::LLVMType resultType = packedResult
+                                    ? packedResult.cast<LLVM::LLVMType>()
+                                    : LLVM::LLVMType::getVoidTy(&dialect);
+
+    SmallVector<LLVM::LLVMType, 4> argTypes;
     argTypes.reserve(type.getNumInputs());
     SmallVector<unsigned, 4> promotedArgIndices;
     promotedArgIndices.reserve(type.getNumInputs());
@@ -297,14 +321,15 @@ struct FuncOpConversion : public LLVMLegalizationPattern<FuncOp> {
     // Convert the original function arguments. Struct arguments are promoted to
     // pointer to struct arguments to allow calling external functions with
     // various ABIs (e.g. compiled from C/C++ on platform X).
-    TypeConverter::SignatureConversion result(type.getNumInputs());
+    auto varargsAttr = funcOp.getAttrOfType<BoolAttr>("std.varargs");
+    TypeConverter::SignatureConversion result(funcOp.getNumArguments());
     for (auto en : llvm::enumerate(type.getInputs())) {
       auto t = en.value();
-      auto converted = lowering.convertType(t);
+      auto converted = lowering.convertType(t).dyn_cast<LLVM::LLVMType>();
       if (!converted)
         return matchFailure();
       if (t.isa<MemRefType>()) {
-        converted = converted.cast<LLVM::LLVMType>().getPointerTo();
+        converted = converted.getPointerTo();
         promotedArgIndices.push_back(en.index());
       }
       argTypes.push_back(converted);
@@ -312,21 +337,24 @@ struct FuncOpConversion : public LLVMLegalizationPattern<FuncOp> {
     for (unsigned idx = 0, e = argTypes.size(); idx < e; ++idx)
       result.addInputs(idx, argTypes[idx]);
 
-    // Pack the result types into a struct.
-    Type packedResult;
-    if (type.getNumResults() != 0) {
-      if (!(packedResult = lowering.packFunctionResults(type.getResults())))
-        return matchFailure();
+    auto llvmType = LLVM::LLVMType::getFunctionTy(
+        resultType, argTypes, varargsAttr && varargsAttr.getValue());
+
+    // Only retain those attributes that are not constructed by build.
+    SmallVector<NamedAttribute, 4> attributes;
+    for (const auto &attr : funcOp.getAttrs()) {
+      if (attr.first.is(SymbolTable::getSymbolAttrName()) ||
+          attr.first.is(impl::getTypeAttrName()) ||
+          attr.first.is("std.varargs"))
+        continue;
+      attributes.push_back(attr);
     }
 
-    // Create a new function with an updated signature.
-    auto newFuncOp = rewriter.cloneWithoutRegions(funcOp);
+    // Create an LLVM funcion.
+    auto newFuncOp = rewriter.create<LLVM::LLVMFuncOp>(
+        op->getLoc(), funcOp.getName(), llvmType, attributes);
     rewriter.inlineRegionBefore(funcOp.getBody(), newFuncOp.getBody(),
                                 newFuncOp.end());
-    newFuncOp.setType(FunctionType::get(
-        result.getConvertedTypes(),
-        packedResult ? ArrayRef<Type>(packedResult) : llvm::None,
-        funcOp.getContext()));
 
     // Tell the rewriter to convert the region signature.
     rewriter.applySignatureConversion(&newFuncOp.getBody(), result);
@@ -627,13 +655,13 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
 
     // Insert the `malloc` declaration if it is not already present.
     auto module = op->getParentOfType<ModuleOp>();
-    FuncOp mallocFunc = module.lookupSymbol<FuncOp>("malloc");
+    auto mallocFunc = module.lookupSymbol<LLVM::LLVMFuncOp>("malloc");
     if (!mallocFunc) {
-      auto mallocType =
-          rewriter.getFunctionType(getIndexType(), getVoidPtrType());
-      mallocFunc =
-          FuncOp::create(rewriter.getUnknownLoc(), "malloc", mallocType);
-      module.push_back(mallocFunc);
+      OpBuilder moduleBuilder(op->getParentOfType<ModuleOp>().getBodyRegion());
+      mallocFunc = moduleBuilder.create<LLVM::LLVMFuncOp>(
+          rewriter.getUnknownLoc(), "malloc",
+          LLVM::LLVMType::getFunctionTy(getVoidPtrType(), getIndexType(),
+                                        /*isVarArg=*/false));
     }
 
     // Allocate the underlying buffer and store a pointer to it in the MemRef
@@ -792,12 +820,14 @@ struct DeallocOpLowering : public LLVMLegalizationPattern<DeallocOp> {
     OperandAdaptor<DeallocOp> transformed(operands);
 
     // Insert the `free` declaration if it is not already present.
-    FuncOp freeFunc =
-        op->getParentOfType<ModuleOp>().lookupSymbol<FuncOp>("free");
+    auto freeFunc =
+        op->getParentOfType<ModuleOp>().lookupSymbol<LLVM::LLVMFuncOp>("free");
     if (!freeFunc) {
-      auto freeType = rewriter.getFunctionType(getVoidPtrType(), {});
-      freeFunc = FuncOp::create(rewriter.getUnknownLoc(), "free", freeType);
-      op->getParentOfType<ModuleOp>().push_back(freeFunc);
+      OpBuilder moduleBuilder(op->getParentOfType<ModuleOp>().getBodyRegion());
+      freeFunc = moduleBuilder.create<LLVM::LLVMFuncOp>(
+          rewriter.getUnknownLoc(), "free",
+          LLVM::LLVMType::getFunctionTy(getVoidType(), getVoidPtrType(),
+                                        /*isVarArg=*/false));
     }
 
     auto type = transformed.memref()->getType().cast<LLVM::LLVMType>();
@@ -1373,9 +1403,6 @@ struct LLVMLoweringPass : public ModulePass<LLVMLoweringPass> {
 
     ConversionTarget target(getContext());
     target.addLegalDialect<LLVM::LLVMDialect>();
-    target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
-      return typeConverter->isSignatureLegal(op.getType());
-    });
     if (failed(applyPartialConversion(m, target, patterns, &*typeConverter)))
       signalPassFailure();
   }

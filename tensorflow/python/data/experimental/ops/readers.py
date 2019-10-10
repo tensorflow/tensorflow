@@ -535,7 +535,7 @@ def make_csv_dataset_v2(
   else:
     # Read files sequentially (if num_parallel_reads=1) or in parallel
     dataset = dataset.apply(
-        interleave_ops.parallel_interleave(
+        interleave_ops._parallel_interleave(
             filename_to_dataset, cycle_length=num_parallel_reads,
             sloppy=sloppy))
 
@@ -884,7 +884,7 @@ def make_batched_features_dataset_v2(file_pattern,
   else:
     # Read files sequentially (if reader_num_threads=1) or in parallel
     dataset = dataset.apply(
-        interleave_ops.parallel_interleave(
+        interleave_ops._parallel_interleave(
             lambda filename: reader(filename, *reader_args),
             cycle_length=reader_num_threads,
             sloppy=sloppy_ordering))

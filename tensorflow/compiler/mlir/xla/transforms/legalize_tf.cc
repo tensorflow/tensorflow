@@ -94,6 +94,17 @@ static llvm::Optional<int64_t> GetIntegerHLOAxisFromTFAxis(Value *value,
   return axis < 0 ? axis + rank : axis;
 }
 
+/// Returns a `ConvertOp` that casts the elements to a i64 type while retaining
+/// the shape of the input value.
+static xla_hlo::ConvertOp CastElementsToI64(Location loc, Value *value,
+                                            PatternRewriter *rewriter) {
+  auto type = value->getType().cast<RankedTensorType>();
+  assert(type && "CastElementsToI64 requires a shaped tensor as input.");
+  ArrayRef<int64_t> shape = type.getShape();
+  auto i64_type = rewriter->getTensorType(shape, rewriter->getIntegerType(64));
+  return rewriter->create<xla_hlo::ConvertOp>(loc, i64_type, value);
+}
+
 // Returns minimum value for the given int or float element type.
 static xla_hlo::ConstOp GetMinValueForType(Type ty, Location loc,
                                            PatternRewriter *rewriter) {
@@ -313,6 +324,75 @@ static void BuildArgMinMaxReductionBody(Type input_element_type,
 
   Value *return_values[] = {selected_input, selected_index};
   builder->create<xla_hlo::ReturnOp>(loc, return_values);
+}
+
+//===----------------------------------------------------------------------===//
+// Slice op utilities.
+//===----------------------------------------------------------------------===//
+
+static bool CanBeTranslatedToDynamicSlice(Value *input, Value *start_indices,
+                                          DenseIntElementsAttr slice_sizes) {
+  auto input_ty = input->getType().dyn_cast<RankedTensorType>();
+  int64_t input_rank = input_ty.getRank();
+  ArrayRef<int64_t> input_shape = input_ty.getShape();
+  DenseIntElementsAttr constant_start_indices;
+  if (!matchPattern(start_indices, m_Constant(&constant_start_indices))) {
+    for (int64_t i = 0; i < input_rank; ++i) {
+      int64_t slice_size = slice_sizes.getValue<IntegerAttr>(i).getInt();
+      int64_t input_size = input_shape[i];
+      if (slice_size < 0 || (input_size != -1 && slice_size > input_size)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  for (int64_t i = 0; i < input_rank; ++i) {
+    int64_t input_size = input_shape[i];
+    int64_t start_index =
+        constant_start_indices.getValue<IntegerAttr>(i).getInt();
+    int64_t slice_size = slice_sizes.getValue<IntegerAttr>(i).getInt();
+    if (start_index < 0) return false;
+    // A slice_size of -1 means "all elements from start_index to the end".
+    // We can't support this semantics for dynamic shapes.
+    if (slice_size == -1) {
+      if (input_size == -1) return false;
+      slice_size = input_size - start_index;
+    }
+    if (input_size != -1 && start_index + slice_size > input_size) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// TF slice size can be -1, which represents all elements from start_index to
+// the end. HLO slice size can't be -1. As such, we need to translate TF slice
+// size -1 to HLO slice size.
+static DenseIntElementsAttr TFSliceSizes2HLOSliceSizes(
+    Value *input, Value *start_indices, DenseIntElementsAttr slice_sizes,
+    Builder *builder) {
+  DenseIntElementsAttr constant_start_indices;
+  if (!matchPattern(start_indices, m_Constant(&constant_start_indices))) {
+    return slice_sizes;
+  }
+
+  auto input_ty = input->getType().dyn_cast<RankedTensorType>();
+  int64_t input_rank = input_ty.getRank();
+  ArrayRef<int64_t> input_shape = input_ty.getShape();
+  SmallVector<int64_t, 4> normalized_sizes;
+
+  for (int64_t i = 0; i < input_rank; ++i) {
+    int64_t input_size = input_shape[i];
+    int64_t start_index =
+        constant_start_indices.getValue<IntegerAttr>(i).getInt();
+    int64_t slice_size = slice_sizes.getValue<IntegerAttr>(i).getInt();
+    normalized_sizes.push_back(slice_size == -1 ? input_size - start_index
+                                                : slice_size);
+  }
+
+  return GetI64ElementsAttr(normalized_sizes, builder);
 }
 
 //===----------------------------------------------------------------------===//

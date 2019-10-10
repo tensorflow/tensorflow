@@ -303,40 +303,70 @@ const hm_script_t sHM01B0InitScript[] = {
         0x2101,
         0x5F,
     },
-    // W 24 2012 07 2 1 ; AE min mean
+    // W 24 2102 0A 2 1 ; AE min mean
     {
         0x2102,
-        0x20,
+        0x0A,
     },
-    // W 24 2104 07 2 1 ; converge out th
+    // W 24 2104 03 2 1 ; AE Threshold
+    {
+        0x2103,
+        0x03,
+    },
+    // W 24 2104 05 2 1 ; AE Threshold
     {
         0x2104,
-        0x07,
+        0x05,
     },
-    // W 24 2105 0C 2 1 ; max INTG Hb
+    // W 24 2105 01 2 1 ; max INTG Hb
     {
         0x2105,
-        0x0C,
+        0x02,
     },
-    // W 24 2106 78 2 1 ; max INTG Lb
+    // W 24 2106 54 2 1 ; max INTG Lb
     {
         0x2106,
-        0x78,
+        0x14,
+    },
+    // W 24 2108 02 2 1 ; max AGain in full
+    {
+        0x2107,
+        0x02,
     },
     // W 24 2108 03 2 1 ; max AGain in full
     {
         0x2108,
         0x03,
     },
-    // W 24 2109 03 2 1 ; max AGain in bin2
+    // W 24 2109 04 2 1 ; max AGain in bin2
     {
         0x2109,
         0x03,
     },
-    // W 24 210B 80 2 1 ; max DGain
+    // W 24 210A 00 2 1 ; min AGAIN
+    {
+        0x210A,
+        0x00,
+    },
+    // W 24 210B C0 2 1 ; max DGain
     {
         0x210B,
         0x80,
+    },
+    // W 24 210C 40 2 1 ; min DGain
+    {
+        0x210C,
+        0x40,
+    },
+    // W 24 210D 20 2 1 ; damping factor
+    {
+        0x210D,
+        0x20,
+    },
+    // W 24 210E 03 2 1 ; FS ctrl
+    {
+        0x210E,
+        0x03,
     },
     // W 24 210F 00 2 1 ; FS 60Hz Hb
     {

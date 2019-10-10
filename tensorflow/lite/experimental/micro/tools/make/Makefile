@@ -97,14 +97,31 @@ tensorflow/lite/core/api/error_reporter.cc \
 tensorflow/lite/core/api/flatbuffer_conversions.cc \
 tensorflow/lite/core/api/op_resolver.cc \
 tensorflow/lite/core/api/tensor_utils.cc \
-tensorflow/lite/kernels/kernel_util.cc \
-tensorflow/lite/kernels/internal/quantization_util.cc
+tensorflow/lite/experimental/microfrontend/lib/fft.cc \
+tensorflow/lite/experimental/microfrontend/lib/fft_util.cc \
+tensorflow/lite/experimental/microfrontend/lib/filterbank.c \
+tensorflow/lite/experimental/microfrontend/lib/filterbank_util.c \
+tensorflow/lite/experimental/microfrontend/lib/frontend.c \
+tensorflow/lite/experimental/microfrontend/lib/frontend_util.c \
+tensorflow/lite/experimental/microfrontend/lib/log_lut.c \
+tensorflow/lite/experimental/microfrontend/lib/log_scale.c \
+tensorflow/lite/experimental/microfrontend/lib/log_scale_util.c \
+tensorflow/lite/experimental/microfrontend/lib/noise_reduction.c \
+tensorflow/lite/experimental/microfrontend/lib/noise_reduction_util.c \
+tensorflow/lite/experimental/microfrontend/lib/pcan_gain_control.c \
+tensorflow/lite/experimental/microfrontend/lib/pcan_gain_control_util.c \
+tensorflow/lite/experimental/microfrontend/lib/window.c \
+tensorflow/lite/experimental/microfrontend/lib/window_util.c \
+tensorflow/lite/kernels/internal/quantization_util.cc \
+tensorflow/lite/kernels/kernel_util.cc
+
 MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SRCS))
 
 MICROLITE_CC_HDRS := \
 $(wildcard tensorflow/lite/experimental/micro/*.h) \
 $(wildcard tensorflow/lite/experimental/micro/kernels/*.h) \
 $(wildcard tensorflow/lite/experimental/micro/memory_planner/*.h) \
+$(wildcard tensorflow/lite/experimental/microfrontend/lib/*.h) \
 LICENSE \
 tensorflow/core/public/version.h \
 tensorflow/lite/c/builtin_op_data.h \

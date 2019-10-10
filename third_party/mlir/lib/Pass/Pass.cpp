@@ -42,6 +42,21 @@ using namespace mlir::detail;
 /// single .o file.
 void Pass::anchor() {}
 
+/// Prints out the pass in the textual representation of pipelines. If this is
+/// an adaptor pass, print with the op_name(sub_pass,...) format.
+void Pass::printAsTextualPipeline(raw_ostream &os) {
+  // Special case for adaptors to use the 'op_name(sub_passes)' format.
+  if (auto *adaptor = getAdaptorPassBase(this)) {
+    interleaveComma(adaptor->getPassManagers(), os, [&](OpPassManager &pm) {
+      os << pm.getOpName() << "(";
+      pm.printAsTextualPipeline(os);
+      os << ")";
+    });
+  } else {
+    os << getName();
+  }
+}
+
 /// Forwarding function to execute this pass.
 LogicalResult Pass::run(Operation *op, AnalysisManager am) {
   passState.emplace(op, am);
@@ -253,6 +268,14 @@ MLIRContext *OpPassManager::getContext() const {
 
 /// Return the operation name that this pass manager operates on.
 const OperationName &OpPassManager::getOpName() const { return impl->name; }
+
+/// Prints out the passes of the pass mangager as the textual representation
+/// of pipelines.
+void OpPassManager::printAsTextualPipeline(raw_ostream &os) {
+  interleaveComma(impl->passes, os, [&](const std::unique_ptr<Pass> &pass) {
+    pass->printAsTextualPipeline(os);
+  });
+}
 
 //===----------------------------------------------------------------------===//
 // OpToOpPassAdaptor
