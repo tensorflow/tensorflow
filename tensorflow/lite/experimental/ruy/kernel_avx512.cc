@@ -102,6 +102,18 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
     void* dst_ptr = dst_col_ptr;
     const std::int32_t* bias_ptr = bias_col_ptr;
 
+    const std::int32_t lhs_zero_point = params.lhs_zero_point;
+    const bool has_rhs_sums_offsets =
+        (params.flags & RUY_ASM_FLAG_HAS_RHS_SUMS) && lhs_zero_point;
+    std::int32_t rhs_sums_offsets[16];
+    if (has_rhs_sums_offsets) {
+      const __m512i rhs_sums_offset_v =
+          _mm512_mullo_epi32(_mm512_set1_epi32(lhs_zero_point),
+                             _mm512_loadu_epi32(&params.rhs_sums[col]));
+      _mm512_storeu_si512(reinterpret_cast<__m512i*>(rhs_sums_offsets),
+                          rhs_sums_offset_v);
+    }
+
     for (int row = params.start_row; row <= params.last_row; row += 16) {
       const int residual_rows = std::min(params.dst_rows - row, 16);
       const int residual_cols = std::min(params.dst_cols - col, 16);
@@ -111,12 +123,34 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
       // Initialize with bias.
       const __mmask16 row_mask =
           (static_cast<std::uint32_t>(1) << residual_rows) - 1;
-      const __m512i initial_accum_data =
-          _mm512_maskz_loadu_epi32(row_mask, bias_ptr);
+      __m512i initial_accum_data = _mm512_maskz_loadu_epi32(row_mask, bias_ptr);
       bias_ptr += bias_ptr_block_increment;
+
+      const std::int32_t rhs_zero_point = params.rhs_zero_point;
+      if ((params.flags & RUY_ASM_FLAG_HAS_LHS_SUMS) && rhs_zero_point) {
+        const __m512i lhs_sums_offset =
+            _mm512_mullo_epi32(_mm512_set1_epi32(rhs_zero_point),
+                               _mm512_loadu_epi32(&params.lhs_sums[row]));
+        initial_accum_data =
+            _mm512_sub_epi32(initial_accum_data, lhs_sums_offset);
+      }
+
+      const std::int32_t prod_zp_depth = params.prod_zp_depth;
+      if (prod_zp_depth != 0) {
+        initial_accum_data = _mm512_add_epi32(initial_accum_data,
+                                              _mm512_set1_epi32(prod_zp_depth));
+      }
 
       for (int j = 0; j < 16; ++j) {
         accum_data_v[j] = initial_accum_data;
+      }
+
+      // Adjustments differing across columns.
+      if (has_rhs_sums_offsets) {
+        for (int j = 0; j < 16; ++j) {
+          accum_data_v[j] = _mm512_sub_epi32(
+              accum_data_v[j], _mm512_set1_epi32(rhs_sums_offsets[j]));
+        }
       }
 
       const std::int8_t* lhs_ptr = lhs_col_ptr;
@@ -126,10 +160,10 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
         __m512i rhs_data = _mm512_loadu_epi8(rhs_ptr);
 
         // Take bytes 0, 1, 4, 5, 8, 9, ... and expand to 16-bit.
-        __m512i lhs_16_bit_low =
+        const __m512i lhs_16_bit_low =
             _mm512_cvtepi8_epi16(_mm512_cvtepi32_epi16(lhs_data));
         // Take bytes 2, 3, 6, 7, 10, 11, ... and expand to 16-bit.
-        __m512i lhs_16_bit_high = _mm512_cvtepi8_epi16(
+        const __m512i lhs_16_bit_high = _mm512_cvtepi8_epi16(
             _mm512_cvtepi32_epi16(_mm512_srli_epi32(lhs_data, 16)));
 
         for (int j = 0; j < 16; ++j) {
@@ -143,9 +177,9 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
           // Shift rhs_data, moving next element into 0 position.
           rhs_data = _mm512_maskz_compress_epi32(shift_mask, rhs_data);
 
-          __m512i rhs_16_bit_dup_low =
+          const __m512i rhs_16_bit_dup_low =
               _mm512_cvtepi8_epi16(dup_rhs_element_low);
-          __m512i rhs_16_bit_dup_high =
+          const __m512i rhs_16_bit_dup_high =
               _mm512_cvtepi8_epi16(dup_rhs_element_high);
 
           accum_data_v[j] = _mm512_add_epi32(
@@ -160,36 +194,6 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
         rhs_ptr += 16 * 4;
       }
 
-      // Move most of this up to bias, or even outside row loop.
-
-      const std::int32_t lhs_zero_point = params.lhs_zero_point;
-      const std::int32_t rhs_zero_point = params.rhs_zero_point;
-      const std::int32_t prod_zp_depth = params.prod_zp_depth;
-      if ((params.flags & RUY_ASM_FLAG_HAS_LHS_SUMS) && rhs_zero_point) {
-        const __m512i lhs_sums_offset =
-            _mm512_mullo_epi32(_mm512_set1_epi32(rhs_zero_point),
-                               _mm512_loadu_epi32(&params.lhs_sums[row]));
-        for (int j = 0; j < 16; ++j) {
-          accum_data_v[j] = _mm512_sub_epi32(accum_data_v[j], lhs_sums_offset);
-        }
-      }
-      if (((params.flags & RUY_ASM_FLAG_HAS_RHS_SUMS) && lhs_zero_point) ||
-          prod_zp_depth) {
-        __m512i non_lhs_sums_offset =
-            _mm512_mullo_epi32(_mm512_set1_epi32(lhs_zero_point),
-                               _mm512_loadu_epi32(&params.rhs_sums[col]));
-        non_lhs_sums_offset = _mm512_sub_epi32(
-            non_lhs_sums_offset, _mm512_set1_epi32(prod_zp_depth));
-
-        for (int j = 0; j < 16; ++j) {
-          accum_data_v[j] = _mm512_sub_epi32(
-              accum_data_v[j], _mm512_set1_epi32(intrin_utils::mm512_get1_epi32(
-                                   non_lhs_sums_offset, j)));
-        }
-      }
-
-      //
-
       if (params.dst_type_id != DstTypeId<std::int32_t>::kValue) {
         __m512i m_vector;
         __m512i e_vector;
@@ -201,10 +205,8 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
                                               &params.multiplier_exponent[row]);
         } else {
           // These arrays have size LhsCols, and are pre-filled.
-          m_vector =
-              _mm512_maskz_loadu_epi32(row_mask, params.multiplier_fixedpoint);
-          e_vector =
-              _mm512_maskz_loadu_epi32(row_mask, params.multiplier_exponent);
+          m_vector = _mm512_set1_epi32(params.multiplier_fixedpoint[0]);
+          e_vector = _mm512_set1_epi32(params.multiplier_exponent[0]);
         }
 
         const __m512i m_64bit_low =
