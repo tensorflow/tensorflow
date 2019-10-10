@@ -872,6 +872,29 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
   free(aligned_vec_free);
 }
 
+void NeonMatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,
+                                        int32_t n_row, int32_t n_col,
+                                        int32_t* output) {
+  static const int kWeightsPerNeonLane = 16;
+  // Processing multiple rows at the same time actually makes it slower. :(
+  for (int i = 0; i < n_row; ++i) {
+    int32x4_t row_sum = vdupq_n_s32(0);
+    int j = 0;
+    const int8_t* row_ptr = matrix + i * n_col;
+    for (; j <= n_col - kWeightsPerNeonLane; j += kWeightsPerNeonLane) {
+      const int8x16_t input_value = vld1q_s8(row_ptr + j);
+      int16x8_t temp = vmovl_s8(vget_low_s8(input_value));
+      temp = vaddw_s8(temp, vget_high_s8(input_value));
+      row_sum = vpadalq_s16(row_sum, temp);
+    }
+    int32_t sum = AccumulateNeonLane(row_sum);
+    for (; j < n_col; ++j) {
+      sum += *(row_ptr + j);
+    }
+    output[i] += sum * scalar;
+  }
+}
+
 inline int64x2x2_t MulAdd(int32x4_t acc, int32x4_t lhs, int32x4_t rhs) {
   int64x2x2_t result;
   const int64x2_t lhs_low = vmovl_s32(vget_low_s32(lhs));
