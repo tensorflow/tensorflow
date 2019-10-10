@@ -454,12 +454,19 @@ static LogicalResult Verify(OpT op) {
               "number of filter input channels; found "
            << input_channels << " and " << filter_channels << ", respectively";
 
-  if (auto paddings =
-          op.template getAttrOfType<ArrayAttr>("explicit_paddings")) {
+  // EXPLICIT padding mode and the associated attribute is limited to Conv2D.
+  // So, fetch attribute by string instead of the op.explicit_paddings()
+  // attribute getter.
+  if (op.padding() == "EXPLICIT") {
+    auto paddings = op.template getAttrOfType<ArrayAttr>("explicit_paddings");
+    if (!paddings)
+      return op.emitOpError() << "requires attribute 'explicit_paddings' with "
+                                 "'EXPLICIT' padding mode";
+
     int64_t paddings_size = paddings.size();
     int64_t expected_size = 2 * num_dims;
 
-    if (paddings_size != 0 && paddings_size != expected_size)
+    if (paddings_size != expected_size)
       return op.emitOpError()
              << "requires explicit_paddings attribute length to be "
              << expected_size << "; actual length " << paddings_size;
@@ -475,8 +482,17 @@ static LogicalResult Verify(OpT op) {
     return val.cast<IntegerAttr>().getValue().getSExtValue() <= 0;
   };
 
+  int64_t strides_size = op.strides().size();
+  if (strides_size != num_dims)
+    return op.emitOpError() << "requires strides attribute length to be "
+                            << num_dims << "; actual length " << strides_size;
   if (llvm::any_of(op.strides().getValue(), is_not_positive))
     return op.emitOpError("requires positive strides");
+
+  int64_t dilations_size = op.strides().size();
+  if (op.dilations().size() != num_dims)
+    return op.emitOpError() << "requires dilations attribute length to be "
+                            << num_dims << "; actual length " << dilations_size;
   if (llvm::any_of(op.dilations().getValue(), is_not_positive))
     return op.emitOpError("requires positive dilations");
 
