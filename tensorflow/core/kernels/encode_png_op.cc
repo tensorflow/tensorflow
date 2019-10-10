@@ -72,6 +72,10 @@ class EncodePngOp : public OpKernel {
                 errors::InvalidArgument(
                     "image must have 1, 2, 3, or 4 channels, got ", channels));
 
+    OP_REQUIRES(context, (image.NumElements() > 0),
+                errors::InvalidArgument(
+                    "image data should not be empty"));
+
     // Encode image to png string
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
