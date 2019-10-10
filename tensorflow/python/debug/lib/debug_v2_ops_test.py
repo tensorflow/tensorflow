@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import glob
 import os
-import shutil
 import tempfile
 
 import numpy as np
@@ -33,6 +32,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import gen_debug_ops
 from tensorflow.python.ops import math_ops
@@ -89,7 +89,7 @@ class DebugIdentityV2OpTest(test_util.TensorFlowTestCase):
   def tearDown(self):
     self.writer.Close()
     if os.path.isdir(self.dump_root):
-      shutil.rmtree(self.dump_root)
+      file_io.delete_recursively(self.dump_root)
     super(DebugIdentityV2OpTest, self).tearDown()
 
   @test_util.run_in_graph_and_eager_modes
