@@ -24,8 +24,8 @@ limitations under the License.
 #include <map>
 #include <vector>
 
-#include "mkldnn.hpp"
 #include "absl/strings/str_join.h"
+#include "mkldnn.hpp"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -570,17 +570,15 @@ class MklConvOp : public OpKernel {
       OP_REQUIRES(context, dilations_.size() == 5,
                   errors::InvalidArgument("Dilation rates field must "
                                           "specify 5 dimensions"));
-      OP_REQUIRES(context,
-                  (GetTensorDim(dilations_, data_format_, 'N') == 1 &&
-                   GetTensorDim(dilations_, data_format_, 'C') == 1),
+      OP_REQUIRES(context, (GetTensorDim(dilations_, data_format_, 'N') == 1 &&
+                            GetTensorDim(dilations_, data_format_, 'C') == 1),
                   errors::InvalidArgument(
                       "Current implementation does not yet support "
                       "dilations rates in the batch and depth dimensions."));
       OP_REQUIRES(
-          context,
-          (GetTensorDim(dilations_, data_format_, '0') > 0 &&
-           GetTensorDim(dilations_, data_format_, '1') > 0 &&
-           GetTensorDim(dilations_, data_format_, '2') > 0),
+          context, (GetTensorDim(dilations_, data_format_, '0') > 0 &&
+                    GetTensorDim(dilations_, data_format_, '1') > 0 &&
+                    GetTensorDim(dilations_, data_format_, '2') > 0),
           errors::InvalidArgument("Dilated rates should be larger than 0."));
     }
   }
@@ -1590,19 +1588,17 @@ class MklQuantizedConv2DOp
       // 1. Bias is not const;
       // 2. Bias is const, but bias cache is empty (first iteration).
 
-      // TODO(intel-tf): Re-enable bias caching. Currently, the graph obtained
-      // after quantize_graph.py does not run with correct accuracy with this
-      // feature enabled.
-      is_bias_const_ = false;
-      if (!is_bias_const_ || IsBiasCacheEmpty(context)) {
-        size_t depth = min_filter_vector.NumElements();
-        std::vector<float> scales(depth);
-        for (size_t i = 0; i < depth; ++i) {
-          scales[i] =
-              int_const_scale_limit /
-              (std::max(std::abs(max_input), std::abs(min_input)) *
-               std::max(std::abs(max_filter[i]), std::abs(min_filter[i])));
-        }
+      size_t depth = min_filter_vector.NumElements();
+      std::vector<float> scales(depth);
+      for (size_t i = 0; i < depth; ++i) {
+        scales[i] =
+            int_const_scale_limit /
+            (std::max(std::abs(max_input), std::abs(min_input)) *
+             std::max(std::abs(max_filter[i]), std::abs(min_filter[i])));
+      }
+      if (!is_bias_const_ || IsBiasCacheEmpty(context) ||
+          !is_scales_valid(scales)) {
+        scales_ = scales;
         mkldnn::primitive_attr bias_attr;
         if (depth == 1) {
           bias_attr.set_output_scales(0, scales);
@@ -1638,6 +1634,14 @@ class MklQuantizedConv2DOp
     }
   }
 
+  bool is_scales_valid(std::vector<float> scales) {
+    for (size_t i = 0; i < scales.size(); i++) {
+      if (scales[i] != scales_[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
   bool is_bias_const_;
   PersistentTensor cached_bias_data_ptensor_ GUARDED_BY(bias_cache_mu_);
 
@@ -1645,6 +1649,7 @@ class MklQuantizedConv2DOp
   memory* scaled_bias_ = nullptr;
 
  private:
+  std::vector<float> scales_;
   mutex bias_cache_mu_;
   // Allocate persistent tensors for cached bias data and
   // cached bias memory descriptor (data format)
