@@ -63,6 +63,9 @@ string GetExplicitPaddingsAttrString();
 Status GetNodeAttr(const NodeDef& node_def, StringPiece attr_name,
                    Padding* value);
 
+// Sets padding value based on the given string padding value.
+Status GetPaddingFromString(StringPiece str_value, Padding* value);
+
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_PADDING_H_
