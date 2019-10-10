@@ -207,6 +207,25 @@ def : Pat<(TF_ReluGradOp AnyStaticShapeTensor:$gradients, AnyStaticShapeTensor:$
 def : Pat<(TF_SelectOp AnyTensor:$condition, AnyTensor:$lhs, AnyTensor:$rhs),
           (HLO_SelectOp $condition, $lhs, $rhs)>;
 
+
+//===----------------------------------------------------------------------===//
+// Slice op patterns.
+//===----------------------------------------------------------------------===//
+
+def CanBeTranslatedToDynamicSlice : Constraint<CPred<
+  "CanBeTranslatedToDynamicSlice($0, $1, $2.cast<DenseIntElementsAttr>())">>;
+
+def TFSliceSizes2HLOSliceSizes : NativeCodeCall<
+    "TFSliceSizes2HLOSliceSizes($0, $1, $2.cast<DenseIntElementsAttr>(),"
+    "&$_builder)">;
+
+def : Pat<(TF_SliceOp HLO_Tensor:$input, HLO_Tensor:$starting_indices,
+           (TF_ConstOp I64ElementsAttr:$slice_sizes)),
+          (HLO_DynamicSliceOp $input, $starting_indices,
+           (TFSliceSizes2HLOSliceSizes $input, $starting_indices, $slice_sizes)),
+          [(CanBeTranslatedToDynamicSlice $input, $starting_indices,
+            $slice_sizes)]>;
+
 //===----------------------------------------------------------------------===//
 // Unary op patterns.
 //===----------------------------------------------------------------------===//
