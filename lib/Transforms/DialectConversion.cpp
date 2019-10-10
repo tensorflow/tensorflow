@@ -345,9 +345,10 @@ namespace {
 /// This is useful when saving and undoing a set of rewrites.
 struct RewriterState {
   RewriterState(unsigned numCreatedOperations, unsigned numReplacements,
-                unsigned numBlockActions)
+                unsigned numBlockActions, unsigned numDeadOperations)
       : numCreatedOperations(numCreatedOperations),
-        numReplacements(numReplacements), numBlockActions(numBlockActions) {}
+        numReplacements(numReplacements), numBlockActions(numBlockActions),
+        numDeadOperations(numDeadOperations) {}
 
   /// The current number of created operations.
   unsigned numCreatedOperations;
@@ -357,6 +358,9 @@ struct RewriterState {
 
   /// The current number of block actions performed.
   unsigned numBlockActions;
+
+  /// The current number of dead operations.
+  unsigned numDeadOperations;
 };
 } // end anonymous namespace
 
@@ -469,6 +473,10 @@ struct ConversionPatternRewriterImpl {
   void remapValues(Operation::operand_range operands,
                    SmallVectorImpl<Value *> &remapped);
 
+  /// Returns true if the given operation is dead, and does not need to be
+  /// converted.
+  bool isOpDead(Operation *op) const;
+
   // Mapping between replaced values that differ in type. This happens when
   // replacing a value with one of a different type.
   ConversionValueMapping mapping;
@@ -484,13 +492,21 @@ struct ConversionPatternRewriterImpl {
 
   /// Ordered list of block operations (creations, splits, motions).
   SmallVector<BlockAction, 4> blockActions;
+
+  /// A set of operations that have been erased/replaced. This is not meant to
+  /// be an exhaustive list of all operations, but the minimal set that can be
+  /// used to detect if a given operation is `dead`. For example, we may add the
+  /// operations that define non-empty regions to the set, but not any of the
+  /// others. This simplifies the amount of memory needed as we can query if the
+  /// parent operation was erased.
+  llvm::SetVector<Operation *> deadOps;
 };
 } // end namespace detail
 } // end namespace mlir
 
 RewriterState ConversionPatternRewriterImpl::getCurrentState() {
   return RewriterState(createdOps.size(), replacements.size(),
-                       blockActions.size());
+                       blockActions.size(), deadOps.size());
 }
 
 void ConversionPatternRewriterImpl::resetState(RewriterState state) {
@@ -508,6 +524,10 @@ void ConversionPatternRewriterImpl::resetState(RewriterState state) {
     createdOps.back()->erase();
     createdOps.pop_back();
   }
+
+  // Pop all of the recorded dead operations that are no longer valid.
+  while (deadOps.size() != state.numDeadOperations)
+    deadOps.pop_back();
 }
 
 void ConversionPatternRewriterImpl::undoBlockActions(
@@ -626,6 +646,17 @@ void ConversionPatternRewriterImpl::replaceOp(
 
   // Record the requested operation replacement.
   replacements.emplace_back(op, newValues);
+
+  // Walk this operation and collect nested operations that define non-empty
+  // regions. We mark such operations as 'dead' so that we know we don't have to
+  // convert them, or their nested ops.
+  if (op->getNumRegions() != 0) {
+    op->walk([&](Operation *op) {
+      if (llvm::any_of(op->getRegions(),
+                       [](Region &region) { return !region.empty(); }))
+        deadOps.insert(op);
+    });
+  }
 }
 
 void ConversionPatternRewriterImpl::notifySplitBlock(Block *block,
@@ -661,6 +692,11 @@ void ConversionPatternRewriterImpl::remapValues(
   remapped.reserve(llvm::size(operands));
   for (Value *operand : operands)
     remapped.push_back(mapping.lookupOrDefault(operand));
+}
+
+bool ConversionPatternRewriterImpl::isOpDead(Operation *op) const {
+  // Check to see if this operation or its parent were erased.
+  return deadOps.count(op) || deadOps.count(op->getParentOp());
 }
 
 //===----------------------------------------------------------------------===//
@@ -875,6 +911,13 @@ OperationLegalizer::legalize(Operation *op,
   if (target.isLegal(op)) {
     LLVM_DEBUG(llvm::dbgs()
                << "-- Success : Operation marked legal by the target\n");
+    return success();
+  }
+
+  // Check to see if the operation is dead and doesn't need to be converted.
+  if (rewriter.getImpl().isOpDead(op)) {
+    LLVM_DEBUG(llvm::dbgs()
+               << "-- Success : Operation marked dead during conversion\n");
     return success();
   }
 

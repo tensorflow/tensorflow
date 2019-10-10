@@ -136,9 +136,9 @@ func @fail_to_convert_illegal_op_in_region() {
 
 // CHECK-LABEL: func @fail_to_convert_region
 func @fail_to_convert_region() {
-  // CHECK-NEXT: "test.drop_op"
+  // CHECK-NEXT: "test.region"
   // CHECK-NEXT: ^bb{{.*}}(%{{.*}}: i64):
-  "test.drop_op"() ({
+  "test.region"() ({
     ^bb1(%i0: i64):
       // expected-error@+1 {{failed to legalize operation 'test.region_builder'}}
       "test.region_builder"() : () -> ()
