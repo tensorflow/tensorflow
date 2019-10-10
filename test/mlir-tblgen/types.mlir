@@ -4,7 +4,7 @@
 
 // CHECK-LABEL: @tuple_success
 func @tuple_success() {
-  %0 = "test.tuple_32_bit"() : () -> (tuple<i32>)
+  "test.tuple_32_bit"() : () -> (tuple<i32>)
   return
 }
 
@@ -12,14 +12,14 @@ func @tuple_success() {
 
 // CHECK-LABEL: @tuple_mixed_success
 func @tuple_mixed_success() {
-  %0 = "test.tuple_32_bit"() : () -> (tuple<i32, f32>)
+  "test.tuple_32_bit"() : () -> (tuple<i32, f32>)
   return
 }
 
 // -----
 
 func @tuple_empty_success() {
-  %0 = "test.tuple_32_bit"() : () -> (tuple<>)
+  "test.tuple_32_bit"() : () -> (tuple<>)
   return
 }
 
@@ -27,7 +27,7 @@ func @tuple_empty_success() {
 
 func @tuple_wrong_type_scalar() {
   // expected-error@+1 {{must be tuple with any combination of 32-bit integer or 32-bit float values}}
-  %0 = "test.tuple_32_bit"() : () -> (tuple<i64>)
+  "test.tuple_32_bit"() : () -> (tuple<i64>)
   return
 }
 
@@ -35,7 +35,7 @@ func @tuple_wrong_type_scalar() {
 
 func @tuple_wrong_type_tensor() {
   // expected-error@+1 {{must be tuple with any combination of 32-bit integer or 32-bit float values}}
-  %0 = "test.tuple_32_bit"() : () -> (tuple<tensor<i32>>)
+  "test.tuple_32_bit"() : () -> (tuple<tensor<i32>>)
   return
 }
 
@@ -43,7 +43,7 @@ func @tuple_wrong_type_tensor() {
 
 // CHECK-LABEL: @nested_tuple_empty_success
 func @nested_tuple_empty_success() {
-  %0 = "test.nested_tuple_32_bit"() : () -> (tuple<>)
+  "test.nested_tuple_32_bit"() : () -> (tuple<>)
   return
 }
 
@@ -51,7 +51,7 @@ func @nested_tuple_empty_success() {
 
 // CHECK-LABEL: @nested_tuple_one_level_success
 func @nested_tuple_one_level_success() {
-  %0 = "test.nested_tuple_32_bit"() : () -> (tuple<i32>)
+  "test.nested_tuple_32_bit"() : () -> (tuple<i32>)
   return
 }
 
@@ -59,7 +59,7 @@ func @nested_tuple_one_level_success() {
 
 // CHECK-LABEL: @nested_tuple_multi_level_success
 func @nested_tuple_multi_level_success() {
-  %0 = "test.nested_tuple_32_bit"() : () -> (tuple<i32, tuple<i32, tuple<i32>>>)
+  "test.nested_tuple_32_bit"() : () -> (tuple<i32, tuple<i32, tuple<i32>>>)
   return
 }
 
@@ -67,7 +67,7 @@ func @nested_tuple_multi_level_success() {
 
 // CHECK-LABEL: @nested_tuple_multi_level_mixed_success
 func @nested_tuple_multi_level_mixed_success() {
-  %0 = "test.nested_tuple_32_bit"() : () -> (tuple<i32, tuple<f32, tuple<i32>>>)
+  "test.nested_tuple_32_bit"() : () -> (tuple<i32, tuple<f32, tuple<i32>>>)
   return
 }
 
@@ -75,7 +75,7 @@ func @nested_tuple_multi_level_mixed_success() {
 
 func @nested_tuple_multi_level_wrong_type() {
   // expected-error@+1 {{must be nested tuple with any combination of 32-bit integer or 32-bit float values}}
-  %0 = "test.nested_tuple_32_bit"() : () -> (tuple<i32, tuple<i32, tuple<i64>>>)
+  "test.nested_tuple_32_bit"() : () -> (tuple<i32, tuple<i32, tuple<i64>>>)
   return
 }
 
@@ -160,8 +160,9 @@ func @multi_tensor_rank_of_wrong_element_type(%arg0: tensor<2xi16>) {
 // -----
 
 // CHECK-LABEL: @fixed_element_types
-func @fixed_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
-  %0 = "test.arg_and_res_have_fixed_element_types"(%arg0, %arg1) {attr = ""} : (tensor<* x i32>, tensor<* x f32>) -> tensor<* x i16>
+func @fixed_element_types(%ti32: tensor<* x i32>, %tf32: tensor<* x f32>, %mi32 : memref<2x3xi32>, %vf32 : vector<2xf32>) {
+  "test.arg_and_res_have_fixed_element_types"(%ti32, %tf32) : (tensor<* x i32>, tensor<* x f32>) -> tensor<* x i16>
+  "test.arg_and_res_have_fixed_element_types"(%mi32, %vf32) : (memref<2x3xi32>, vector<2xf32>) -> memref<1x2xi16>
   return
 }
 
@@ -169,7 +170,7 @@ func @fixed_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
 
 func @fixed_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
   // expected-error@+1 {{'res' is 16-bit integer}}
-  %0 = "test.arg_and_res_have_fixed_element_types"(%arg0, %arg1) {attr = ""}: (tensor<* x i32>, tensor<* x f32>) -> tensor<* x i32>
+  "test.arg_and_res_have_fixed_element_types"(%arg0, %arg1) : (tensor<* x i32>, tensor<* x f32>) -> tensor<* x i32>
   return
 }
 
@@ -177,13 +178,24 @@ func @fixed_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
 
 func @fixed_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
   // expected-error@+1 {{fixed type combination}}
-  %0 = "test.arg_and_res_have_fixed_element_types"(%arg1, %arg0) {attr = ""}: (tensor<* x f32>, tensor<* x i32>) -> tensor<* x i16>
+  "test.arg_and_res_have_fixed_element_types"(%arg1, %arg0) : (tensor<* x f32>, tensor<* x i32>) -> tensor<* x i16>
   return
 }
 
 // -----
 
-func @same_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
+// CHECK-LABEL: same_element_types_success
+func @same_element_types_success(%ti32: tensor<* x i32>, %i32 : i32, %mi32 : memref<2x3xi32>) {
+  "test.operands_have_same_element_type"(%ti32, %ti32): (tensor<* x i32>, tensor<* x i32>) -> ()
+  "test.operands_have_same_element_type"(%i32, %ti32): (i32, tensor<* x i32>) -> ()
+  "test.operands_have_same_element_type"(%i32, %mi32): (i32, memref<2x3xi32>) -> ()
+  return
+}
+
+
+// -----
+
+func @same_element_types_failure(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
   // expected-error@+1 {{verify that all of {x, y} have same element type}}
   "test.operands_have_same_element_type"(%arg1, %arg0): (tensor<* x f32>, tensor<* x i32>) -> ()
   return
@@ -191,33 +203,44 @@ func @same_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
 
 // -----
 
-// CHECK-LABEL: same_element_types
-func @same_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
-  %0 = "test.operand_one_and_result_have_same_element_type"(%arg1, %arg0) : (tensor<* x f32>, tensor<* x i32>) -> tensor<* x f32>
+// CHECK-LABEL: same_element_types_success
+func @same_element_types_success(%ti32: tensor<* x i32>, %tf32: tensor<* x f32>) {
+  "test.operand0_and_result_have_same_element_type"(%tf32, %ti32) : (tensor<* x f32>, tensor<* x i32>) -> tensor<* x f32>
+  "test.operand0_and_result_have_same_element_type"(%tf32, %ti32) : (tensor<* x f32>, tensor<* x i32>) -> memref<2x3xf32>
+  "test.operand0_and_result_have_same_element_type"(%tf32, %ti32) : (tensor<* x f32>, tensor<* x i32>) -> f32
   return
 }
 
 // -----
 
-func @same_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
+func @same_element_types_failure(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
   // expected-error@+1 {{all of {x, res} have same element type}}
-  %0 = "test.operand_one_and_result_have_same_element_type"(%arg1, %arg0) : (tensor<* x f32>, tensor<* x i32>) -> tensor<* x i32>
+  "test.operand0_and_result_have_same_element_type"(%arg1, %arg0) : (tensor<* x f32>, tensor<* x i32>) -> tensor<* x i32>
   return
 }
 
 // -----
 
 // CHECK-LABEL: same_types
-func @same_types(%arg0: tensor<* x i32>, %arg1: tensor<* x i32>) {
-  "test.operands_have_same_type"(%arg0, %arg1) : (tensor<* x i32>, tensor<* x i32>) -> ()
+func @same_types(%ti32: tensor<* x i32>, %tf32: tensor<* x f32>) {
+  "test.operands_have_same_type"(%ti32, %ti32) : (tensor<* x i32>, tensor<* x i32>) -> ()
+  "test.operand0_and_result_have_same_type"(%ti32, %tf32) : (tensor<* x i32>, tensor<* x f32>) -> tensor<* x i32>
   return
 }
 
 // -----
 
-func @same_types_element_mismatch(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
+func @same_types_failure(%ti32: tensor<* x i32>, %i32: i32) {
   // expected-error@+1 {{all of {x, y} have same type}}
-  "test.operands_have_same_type"(%arg0, %arg1) : (tensor<* x i32>, tensor<* x f32>) -> ()
+  "test.operands_have_same_type"(%ti32, %i32) : (tensor<* x i32>, i32) -> ()
+  return
+}
+
+// -----
+
+func @same_types_element_mismatch(%ti32: tensor<* x i32>, %tf32: tensor<* x f32>) {
+  // expected-error@+1 {{all of {x, y} have same type}}
+  "test.operands_have_same_type"(%ti32, %tf32) : (tensor<* x i32>, tensor<* x f32>) -> ()
   return
 }
 
@@ -231,23 +254,18 @@ func @same_types_shape_mismatch(%arg0: tensor<1x2xi32>, %arg1: tensor<2x1xi32>) 
 
 // -----
 
-// CHECK-LABEL: same_types
-func @same_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
-  %0 = "test.operand_one_and_result_have_same_type"(%arg0, %arg1) : (tensor<* x i32>, tensor<* x f32>) -> tensor<* x i32>
+// CHECK-LABEL: same_rank_success
+func @same_rank_success(%t1xi : tensor<1xi32>, %t2xf : tensor<2xf32>, %m3xi : memref<3xi32>, %t1x2xf : tensor<1x2xf32>, %t1x2xi : tensor<1x2xi32>) {
+  "test.operands_have_same_rank"(%t1xi, %t2xf) : (tensor<1xi32>, tensor<2xf32>) -> ()
+  "test.operands_have_same_rank"(%t1xi, %m3xi) : (tensor<1xi32>, memref<3xi32>) -> ()
+  "test.operand0_and_result_have_same_rank"(%t1xi, %t1x2xf) : (tensor<1xi32>, tensor<1x2xf32>) -> (tensor<3xf32>)
+  "test.operand0_and_result_have_same_rank"(%t1x2xi, %t1x2xf) : (tensor<1x2xi32>, tensor<1x2xf32>) -> (tensor<3x3xf64>)
   return
 }
 
 // -----
 
-// CHECK-LABEL: operands_have_same_rank_success
-func @operands_have_same_rank_success(%arg0: tensor<1xi32>, %arg1: tensor<2xf32>) {
-  "test.operands_have_same_rank"(%arg0, %arg1) : (tensor<1xi32>, tensor<2xf32>) -> ()
-  return
-}
-
-// -----
-
-func @operands_have_same_rank_failure(%arg0: tensor<1xi32>, %arg1: tensor<1x2xf32>) {
+func @same_rank_failure(%arg0: tensor<1xi32>, %arg1: tensor<1x2xf32>) {
   // expected-error@+1 {{all of {x, y} have same rank}}
   "test.operands_have_same_rank"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xf32>) -> ()
   return
@@ -255,44 +273,35 @@ func @operands_have_same_rank_failure(%arg0: tensor<1xi32>, %arg1: tensor<1x2xf3
 
 // -----
 
-// CHECK-LABEL: operand1_and_result_have_same_rank_success
-func @operand1_and_result_have_same_rank_success(%arg0: tensor<1xi32>, %arg1: tensor<1x2xf32>, %arg3: tensor<1x2xi32>) {
-  "test.operand1_and_result_have_same_rank"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xf32>) -> (tensor<3xf32>)
-  "test.operand1_and_result_have_same_rank"(%arg3, %arg1) : (tensor<1x2xi32>, tensor<1x2xf32>) -> (tensor<3x3xf64>)
-  return
-}
-
-// -----
-
-func @operand1_and_result_have_same_rank_failure(%arg0: tensor<1xi32>, %arg1: tensor<1x2xf32>) {
+func @same_rank_failure(%arg0: tensor<1xi32>, %arg1: tensor<1x2xf32>) {
   // expected-error@+1 {{all of {x, res} have same rank}}
-  "test.operand1_and_result_have_same_rank"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xf32>) -> (tensor<i32>)
+  "test.operand0_and_result_have_same_rank"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xf32>) -> (tensor<i32>)
   return
 }
 
 // -----
 
-func @operand1_and_result_have_same_rank_failure(%arg0: tensor<1x2xi32>, %arg1: tensor<1x2xf32>) {
+func @same_rank_failure(%arg0: tensor<1x2xi32>, %arg1: tensor<1x2xf32>) {
   // expected-error@+1 {{all of {x, res} have same rank}}
-  "test.operand1_and_result_have_same_rank"(%arg0, %arg1) : (tensor<1x2xi32>, tensor<1x2xf32>) -> (tensor<3xi32>)
+  "test.operand0_and_result_have_same_rank"(%arg0, %arg1) : (tensor<1x2xi32>, tensor<1x2xf32>) -> (tensor<3xi32>)
   return
 }
 
 // -----
 
-// CHECK-LABEL: operand1_and_result_have_same_element_count_success
-func @operand1_and_result_have_same_element_count_success(%arg0: tensor<36xi32>, %arg1: tensor<1x2xf32>, %arg3: tensor<f32>) {
-  "test.operand1_and_result_have_same_element_count"(%arg0, %arg1) : (tensor<36xi32>, tensor<1x2xf32>) -> (tensor<3x4x3xf32>)
-  "test.operand1_and_result_have_same_element_count"(%arg0, %arg1) : (tensor<36xi32>, tensor<1x2xf32>) -> (tensor<3x12xf64>)
-  "test.operand1_and_result_have_same_element_count"(%arg3, %arg1) : (tensor<f32>, tensor<1x2xf32>) -> (tensor<1x1x1xi32>)
+// CHECK-LABEL: same_element_count_success
+func @same_element_count_success(%arg0: tensor<36xi32>, %arg1: tensor<1x2xf32>, %arg3: tensor<f32>) {
+  "test.operand0_and_result_have_same_element_count"(%arg0, %arg1) : (tensor<36xi32>, tensor<1x2xf32>) -> (tensor<3x4x3xf32>)
+  "test.operand0_and_result_have_same_element_count"(%arg0, %arg1) : (tensor<36xi32>, tensor<1x2xf32>) -> (tensor<3x12xf64>)
+  "test.operand0_and_result_have_same_element_count"(%arg3, %arg1) : (tensor<f32>, tensor<1x2xf32>) -> (memref<1x1x1xi32>)
   return
 }
 
 // -----
 
-func @operand1_and_result_have_same_element_count_failure(%arg0: tensor<1xi32>, %arg1: tensor<1x2xf32>) {
+func @same_element_count_failure(%arg0: tensor<1xi32>, %arg1: tensor<1x2xf32>) {
   // expected-error@+1 {{all of {x, res} have same element count}}
-  "test.operand1_and_result_have_same_element_count"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xf32>) -> (tensor<2xi32>)
+  "test.operand0_and_result_have_same_element_count"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xf32>) -> (tensor<2xi32>)
   return
 }
 
@@ -307,8 +316,8 @@ func @four_equals_five() {
 // -----
 
 func @operand_rank_equals_result_size_success(%arg : tensor<1x2x3x4xi32>) {
-  %0 = "test.operand_rank_equals_result_size"(%arg) : (tensor<1x2x3x4xi32>) -> tensor<4xi32>
-  %1 = "test.operand_rank_equals_result_size"(%arg) : (tensor<1x2x3x4xi32>) -> tensor<2x2xf32>
+  "test.operand_rank_equals_result_size"(%arg) : (tensor<1x2x3x4xi32>) -> tensor<4xi32>
+  "test.operand_rank_equals_result_size"(%arg) : (tensor<1x2x3x4xi32>) -> memref<2x2xf32>
   return
 }
 
@@ -316,7 +325,7 @@ func @operand_rank_equals_result_size_success(%arg : tensor<1x2x3x4xi32>) {
 
 func @operand_rank_equals_result_size_failure(%arg : tensor<1x2x3x4xi32>) {
   // expected-error@+1 {{failed to verify that operand rank equals result size}}
-  %0 = "test.operand_rank_equals_result_size"(%arg) : (tensor<1x2x3x4xi32>) -> tensor<2xi32>
+  "test.operand_rank_equals_result_size"(%arg) : (tensor<1x2x3x4xi32>) -> tensor<2xi32>
   return
 }
 
@@ -324,7 +333,7 @@ func @operand_rank_equals_result_size_failure(%arg : tensor<1x2x3x4xi32>) {
 
 func @same_types_element_mismatch(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
   // expected-error@+1 {{all of {x, res} have same type}}
-  %0 = "test.operand_one_and_result_have_same_type"(%arg0, %arg1) : (tensor<* x i32>, tensor<* x f32>) -> tensor<* x f32>
+  "test.operand0_and_result_have_same_type"(%arg0, %arg1) : (tensor<* x i32>, tensor<* x f32>) -> tensor<* x f32>
   return
 }
 
@@ -332,7 +341,7 @@ func @same_types_element_mismatch(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>
 
 func @same_types_shape_mismatch(%arg0: tensor<1x2xi32>, %arg1: tensor<2x1xi32>) {
   // expected-error@+1 {{all of {x, res} have same type}}
-  %0 = "test.operand_one_and_result_have_same_type"(%arg0, %arg1) : (tensor<1x2xi32>, tensor<2x1xi32>) -> tensor<2x1xi32>
+  "test.operand0_and_result_have_same_type"(%arg0, %arg1) : (tensor<1x2xi32>, tensor<2x1xi32>) -> tensor<2x1xi32>
   return
 }
 
