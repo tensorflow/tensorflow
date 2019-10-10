@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import os
 import re
 import sys
 
@@ -65,22 +64,17 @@ def add_example_ino_library_include(input_text):
                 input_text, 1)
 
 
-def replace_example_includes(line, source_path):
+def replace_example_includes(line, _):
   """Updates any includes for local example files."""
   # Because the export process moves the example source and header files out of
   # their default locations into the top-level 'examples' folder in the Arduino
   # library, we have to update any include references to match.
-  if re.match(r'.*\.h', source_path):
-    dir_path = os.path.dirname(source_path)
-    include_match = re.match(r'(.*#include.*")' + dir_path + r'/(.*")', line)
-    if include_match:
-      line = include_match.group(1) + include_match.group(2)
-  else:
-    dir_path = 'tensorflow/lite/experimental/micro/examples/'
-    include_match = re.match(r'(.*#include.*")' + dir_path + r'([^/]+)/(.*")',
-                             line)
-    if include_match:
-      line = include_match.group(1) + include_match.group(3)
+  dir_path = 'tensorflow/lite/experimental/micro/examples/'
+  include_match = re.match(r'(.*#include.*")' + dir_path + r'([^/]+)/(.*")',
+                           line)
+  if include_match:
+    flattened_name = re.sub(r'/', '_', include_match.group(3))
+    line = include_match.group(1) + flattened_name
   return line
 
 

@@ -25,12 +25,14 @@ import os
 
 def rename_example_subfolder_files(library_dir):
   """Moves source files in example subfolders to equivalents at root."""
-  search_path = os.path.join(library_dir, 'examples/*/*', '*.cpp')
-  for cpp_path in glob.glob(search_path):
-    cpp_dir = os.path.dirname(cpp_path)
-    cpp_base = os.path.basename(cpp_path)
-    new_cpp_path = cpp_dir + '_' + cpp_base
-    os.rename(cpp_path, new_cpp_path)
+  patterns = ['*.h', '*.cpp']
+  for pattern in patterns:
+    search_path = os.path.join(library_dir, 'examples/*/*', pattern)
+    for source_file_path in glob.glob(search_path):
+      source_file_dir = os.path.dirname(source_file_path)
+      source_file_base = os.path.basename(source_file_path)
+      new_source_file_path = source_file_dir + '_' + source_file_base
+      os.rename(source_file_path, new_source_file_path)
 
 
 def move_person_data(library_dir):
