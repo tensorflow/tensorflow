@@ -1845,6 +1845,13 @@ tf_gen_op_wrapper_py(
     deps = [":test_ops_kernels"],
 )
 
+tf_gen_op_wrapper_private_py(
+    name = "debug_ops_gen",
+    out = "ops/gen_debug_ops.py",
+    visibility = ["//tensorflow/python/debug:__pkg__"],
+    deps = ["//tensorflow/core:debug_ops_op_lib"],
+)
+
 cc_library(
     name = "test_ops_kernels",
     srcs = ["framework/test_ops.cc"],
