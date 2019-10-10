@@ -4071,6 +4071,14 @@ class PngTest(test_util.TensorFlowTestCase):
         self.assertEqual(image.get_shape().as_list(),
                          [None, None, channels or None])
 
+  def testEmptyTensor(self):
+    with self.cached_session(use_gpu=True) as sess:
+      image = array_ops.reshape(
+          constant_op.constant([], dtypes.uint8), [0, 0, 3])
+      with self.assertRaisesOpError(r"image data should not be empty"):
+        png = image_ops.encode_png(image)
+
+
 
 class GifTest(test_util.TensorFlowTestCase):
 
