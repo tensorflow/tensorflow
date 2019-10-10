@@ -269,13 +269,11 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
             accum_data_v[j] = _mm512_add_epi32(accum_data_v[j], dst_zero_point);
           }
         }
-        __m512i clamp_max_v = _mm512_set1_epi32(params.clamp_max);
-        __m512i clamp_min_v = _mm512_set1_epi32(params.clamp_min);
-        for (int j = 0; j < 16; ++j) {
-          accum_data_v[j] = _mm512_min_epi32(accum_data_v[j], clamp_max_v);
-          accum_data_v[j] = _mm512_max_epi32(accum_data_v[j], clamp_min_v);
-        }
       }
+
+      const __m512i clamp_max_v = _mm512_set1_epi32(params.clamp_max);
+      const __m512i clamp_min_v = _mm512_set1_epi32(params.clamp_min);
+
       const bool store_full_block =
           (residual_rows == 16) && (residual_cols == 16);
 
@@ -284,11 +282,15 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
         const int block_col_offset = dst_stride;
         if (store_full_block) {
           for (int j = 0; j < 16; ++j) {
+            accum_data_v[j] = _mm512_min_epi32(accum_data_v[j], clamp_max_v);
+            accum_data_v[j] = _mm512_max_epi32(accum_data_v[j], clamp_min_v);
             _mm_storeu_epi8(tmp_ptr, _mm512_cvtepi32_epi8(accum_data_v[j]));
             tmp_ptr += block_col_offset;
           }
         } else {
           for (int j = 0; j < residual_cols; ++j) {
+            accum_data_v[j] = _mm512_min_epi32(accum_data_v[j], clamp_max_v);
+            accum_data_v[j] = _mm512_max_epi32(accum_data_v[j], clamp_min_v);
             _mm_mask_storeu_epi8(tmp_ptr, row_mask,
                                  _mm512_cvtepi32_epi8(accum_data_v[j]));
             tmp_ptr += block_col_offset;
@@ -300,11 +302,15 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
         const int block_col_offset = dst_stride;
         if (store_full_block) {
           for (int j = 0; j < 16; ++j) {
+            accum_data_v[j] = _mm512_min_epi32(accum_data_v[j], clamp_max_v);
+            accum_data_v[j] = _mm512_max_epi32(accum_data_v[j], clamp_min_v);
             _mm_storeu_epi8(tmp_ptr, _mm512_cvtepi32_epi8(accum_data_v[j]));
             tmp_ptr += block_col_offset;
           }
         } else {
           for (int j = 0; j < residual_cols; ++j) {
+            accum_data_v[j] = _mm512_min_epi32(accum_data_v[j], clamp_max_v);
+            accum_data_v[j] = _mm512_max_epi32(accum_data_v[j], clamp_min_v);
             _mm_mask_storeu_epi8(tmp_ptr, row_mask,
                                  _mm512_cvtepi32_epi8(accum_data_v[j]));
             tmp_ptr += block_col_offset;
@@ -316,12 +322,16 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
         const int block_col_offset = dst_stride;
         if (store_full_block) {
           for (int j = 0; j < 16; ++j) {
+            accum_data_v[j] = _mm512_min_epi32(accum_data_v[j], clamp_max_v);
+            accum_data_v[j] = _mm512_max_epi32(accum_data_v[j], clamp_min_v);
             _mm256_storeu_epi16(tmp_ptr,
                                 _mm512_cvtepi32_epi16(accum_data_v[j]));
             tmp_ptr += block_col_offset;
           }
         } else {
           for (int j = 0; j < residual_cols; ++j) {
+            accum_data_v[j] = _mm512_min_epi32(accum_data_v[j], clamp_max_v);
+            accum_data_v[j] = _mm512_max_epi32(accum_data_v[j], clamp_min_v);
             _mm256_mask_storeu_epi16(tmp_ptr, row_mask,
                                      _mm512_cvtepi32_epi16(accum_data_v[j]));
             tmp_ptr += block_col_offset;
@@ -333,6 +343,8 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
           std::int32_t* tmp_ptr = static_cast<std::int32_t*>(dst_ptr);
           const int block_col_offset = dst_stride;
           for (int j = 0; j < 16; ++j) {
+            accum_data_v[j] = _mm512_min_epi32(accum_data_v[j], clamp_max_v);
+            accum_data_v[j] = _mm512_max_epi32(accum_data_v[j], clamp_min_v);
             _mm512_storeu_epi32(tmp_ptr, accum_data_v[j]);
             tmp_ptr += block_col_offset;
           }
