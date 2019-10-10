@@ -213,7 +213,24 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
       const std::int8_t* rhs_ptr = rhs_col_ptr;
       for (int d = 0; d < params.depth; d += 4) {
         const __m512i lhs_data = _mm512_loadu_epi8(lhs_ptr);
-        __m512i rhs_data = _mm512_loadu_epi8(rhs_ptr);
+        __m512i rhs_data_8bit = _mm512_loadu_epi8(rhs_ptr);
+
+        // Each "int32" is two 16-bit RHS values, sign extended from 8-bit.
+        std::int32_t rhs_data[32];
+        const __m256i rhs_data_bottom_lane =
+            _mm512_castsi512_si256(rhs_data_8bit);
+        const __m256i rhs_data_top_lane =
+            _mm512_extracti32x8_epi32(rhs_data_8bit, 1);
+        const __m512i rhs_16_bit_dup_low =
+            _mm512_cvtepi8_epi16(rhs_data_bottom_lane);
+        const __m512i rhs_16_bit_dup_high =
+            _mm512_cvtepi8_epi16(rhs_data_top_lane);
+        // Now that we have cast the RHS data, we store it so that each value
+        // can be separately loaded in the accumulation loop.
+        _mm512_storeu_si512(reinterpret_cast<__m256i*>(rhs_data),
+                            rhs_16_bit_dup_low);
+        _mm512_storeu_si512(reinterpret_cast<__m256i*>(rhs_data + 16),
+                            rhs_16_bit_dup_high);
 
         // Take bytes 0, 1, 4, 5, 8, 9, ... and expand to 16-bit.
         const __m512i lhs_16_bit_low =
@@ -222,23 +239,14 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
         const __m512i lhs_16_bit_high = _mm512_cvtepi8_epi16(
             _mm512_cvtepi32_epi16(_mm512_srli_epi32(lhs_data, 16)));
 
-        // Mask that drops the 0th element.
-        static constexpr std::uint16_t shift_mask = 0xfffe;
         // Process column 0.
         {
           __m512i accum_v = accum_data_v0;
-          const __m256i dup_rhs_element_low =
-              _mm256_broadcastw_epi16(_mm512_castsi512_si128(rhs_data));
-          // Shift rhs_data, moving next element into 0 position.
-          const __m256i dup_rhs_element_high = _mm256_set1_epi16(
-              _mm_extract_epi16(_mm512_castsi512_si128(rhs_data), 1));
-          // Shift rhs_data, moving next element into 0 position.
-          rhs_data = _mm512_maskz_compress_epi32(shift_mask, rhs_data);
+          constexpr int index = 0;
 
-          const __m512i rhs_16_bit_dup_low =
-              _mm512_cvtepi8_epi16(dup_rhs_element_low);
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
           const __m512i rhs_16_bit_dup_high =
-              _mm512_cvtepi8_epi16(dup_rhs_element_high);
+              _mm512_set1_epi32(rhs_data[index + 1]);
 
           accum_v = _mm512_add_epi32(
               accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
@@ -249,18 +257,11 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
         // Process column 1.
         {
           __m512i accum_v = accum_data_v1;
-          const __m256i dup_rhs_element_low =
-              _mm256_broadcastw_epi16(_mm512_castsi512_si128(rhs_data));
-          // Shift rhs_data, moving next element into 0 position.
-          const __m256i dup_rhs_element_high = _mm256_set1_epi16(
-              _mm_extract_epi16(_mm512_castsi512_si128(rhs_data), 1));
-          // Shift rhs_data, moving next element into 0 position.
-          rhs_data = _mm512_maskz_compress_epi32(shift_mask, rhs_data);
+          constexpr int index = 2;
 
-          const __m512i rhs_16_bit_dup_low =
-              _mm512_cvtepi8_epi16(dup_rhs_element_low);
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
           const __m512i rhs_16_bit_dup_high =
-              _mm512_cvtepi8_epi16(dup_rhs_element_high);
+              _mm512_set1_epi32(rhs_data[index + 1]);
 
           accum_v = _mm512_add_epi32(
               accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
@@ -271,18 +272,11 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
         // Process column 2.
         {
           __m512i accum_v = accum_data_v2;
-          const __m256i dup_rhs_element_low =
-              _mm256_broadcastw_epi16(_mm512_castsi512_si128(rhs_data));
-          // Shift rhs_data, moving next element into 0 position.
-          const __m256i dup_rhs_element_high = _mm256_set1_epi16(
-              _mm_extract_epi16(_mm512_castsi512_si128(rhs_data), 1));
-          // Shift rhs_data, moving next element into 0 position.
-          rhs_data = _mm512_maskz_compress_epi32(shift_mask, rhs_data);
+          constexpr int index = 4;
 
-          const __m512i rhs_16_bit_dup_low =
-              _mm512_cvtepi8_epi16(dup_rhs_element_low);
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
           const __m512i rhs_16_bit_dup_high =
-              _mm512_cvtepi8_epi16(dup_rhs_element_high);
+              _mm512_set1_epi32(rhs_data[index + 1]);
 
           accum_v = _mm512_add_epi32(
               accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
@@ -293,18 +287,11 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
         // Process column 3.
         {
           __m512i accum_v = accum_data_v3;
-          const __m256i dup_rhs_element_low =
-              _mm256_broadcastw_epi16(_mm512_castsi512_si128(rhs_data));
-          // Shift rhs_data, moving next element into 0 position.
-          const __m256i dup_rhs_element_high = _mm256_set1_epi16(
-              _mm_extract_epi16(_mm512_castsi512_si128(rhs_data), 1));
-          // Shift rhs_data, moving next element into 0 position.
-          rhs_data = _mm512_maskz_compress_epi32(shift_mask, rhs_data);
+          constexpr int index = 6;
 
-          const __m512i rhs_16_bit_dup_low =
-              _mm512_cvtepi8_epi16(dup_rhs_element_low);
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
           const __m512i rhs_16_bit_dup_high =
-              _mm512_cvtepi8_epi16(dup_rhs_element_high);
+              _mm512_set1_epi32(rhs_data[index + 1]);
 
           accum_v = _mm512_add_epi32(
               accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
@@ -315,18 +302,11 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
         // Process column 4.
         {
           __m512i accum_v = accum_data_v4;
-          const __m256i dup_rhs_element_low =
-              _mm256_broadcastw_epi16(_mm512_castsi512_si128(rhs_data));
-          // Shift rhs_data, moving next element into 0 position.
-          const __m256i dup_rhs_element_high = _mm256_set1_epi16(
-              _mm_extract_epi16(_mm512_castsi512_si128(rhs_data), 1));
-          // Shift rhs_data, moving next element into 0 position.
-          rhs_data = _mm512_maskz_compress_epi32(shift_mask, rhs_data);
+          constexpr int index = 8;
 
-          const __m512i rhs_16_bit_dup_low =
-              _mm512_cvtepi8_epi16(dup_rhs_element_low);
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
           const __m512i rhs_16_bit_dup_high =
-              _mm512_cvtepi8_epi16(dup_rhs_element_high);
+              _mm512_set1_epi32(rhs_data[index + 1]);
 
           accum_v = _mm512_add_epi32(
               accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
@@ -337,18 +317,11 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
         // Process column 5.
         {
           __m512i accum_v = accum_data_v5;
-          const __m256i dup_rhs_element_low =
-              _mm256_broadcastw_epi16(_mm512_castsi512_si128(rhs_data));
-          // Shift rhs_data, moving next element into 0 position.
-          const __m256i dup_rhs_element_high = _mm256_set1_epi16(
-              _mm_extract_epi16(_mm512_castsi512_si128(rhs_data), 1));
-          // Shift rhs_data, moving next element into 0 position.
-          rhs_data = _mm512_maskz_compress_epi32(shift_mask, rhs_data);
+          constexpr int index = 10;
 
-          const __m512i rhs_16_bit_dup_low =
-              _mm512_cvtepi8_epi16(dup_rhs_element_low);
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
           const __m512i rhs_16_bit_dup_high =
-              _mm512_cvtepi8_epi16(dup_rhs_element_high);
+              _mm512_set1_epi32(rhs_data[index + 1]);
 
           accum_v = _mm512_add_epi32(
               accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
@@ -359,18 +332,11 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
         // Process column 6.
         {
           __m512i accum_v = accum_data_v6;
-          const __m256i dup_rhs_element_low =
-              _mm256_broadcastw_epi16(_mm512_castsi512_si128(rhs_data));
-          // Shift rhs_data, moving next element into 0 position.
-          const __m256i dup_rhs_element_high = _mm256_set1_epi16(
-              _mm_extract_epi16(_mm512_castsi512_si128(rhs_data), 1));
-          // Shift rhs_data, moving next element into 0 position.
-          rhs_data = _mm512_maskz_compress_epi32(shift_mask, rhs_data);
+          constexpr int index = 12;
 
-          const __m512i rhs_16_bit_dup_low =
-              _mm512_cvtepi8_epi16(dup_rhs_element_low);
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
           const __m512i rhs_16_bit_dup_high =
-              _mm512_cvtepi8_epi16(dup_rhs_element_high);
+              _mm512_set1_epi32(rhs_data[index + 1]);
 
           accum_v = _mm512_add_epi32(
               accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
@@ -381,18 +347,11 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
         // Process column 7.
         {
           __m512i accum_v = accum_data_v7;
-          const __m256i dup_rhs_element_low =
-              _mm256_broadcastw_epi16(_mm512_castsi512_si128(rhs_data));
-          // Shift rhs_data, moving next element into 0 position.
-          const __m256i dup_rhs_element_high = _mm256_set1_epi16(
-              _mm_extract_epi16(_mm512_castsi512_si128(rhs_data), 1));
-          // Shift rhs_data, moving next element into 0 position.
-          rhs_data = _mm512_maskz_compress_epi32(shift_mask, rhs_data);
+          constexpr int index = 14;
 
-          const __m512i rhs_16_bit_dup_low =
-              _mm512_cvtepi8_epi16(dup_rhs_element_low);
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
           const __m512i rhs_16_bit_dup_high =
-              _mm512_cvtepi8_epi16(dup_rhs_element_high);
+              _mm512_set1_epi32(rhs_data[index + 1]);
 
           accum_v = _mm512_add_epi32(
               accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
@@ -403,18 +362,11 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
         // Process column 8.
         {
           __m512i accum_v = accum_data_v8;
-          const __m256i dup_rhs_element_low =
-              _mm256_broadcastw_epi16(_mm512_castsi512_si128(rhs_data));
-          // Shift rhs_data, moving next element into 0 position.
-          const __m256i dup_rhs_element_high = _mm256_set1_epi16(
-              _mm_extract_epi16(_mm512_castsi512_si128(rhs_data), 1));
-          // Shift rhs_data, moving next element into 0 position.
-          rhs_data = _mm512_maskz_compress_epi32(shift_mask, rhs_data);
+          constexpr int index = 16;
 
-          const __m512i rhs_16_bit_dup_low =
-              _mm512_cvtepi8_epi16(dup_rhs_element_low);
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
           const __m512i rhs_16_bit_dup_high =
-              _mm512_cvtepi8_epi16(dup_rhs_element_high);
+              _mm512_set1_epi32(rhs_data[index + 1]);
 
           accum_v = _mm512_add_epi32(
               accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
@@ -425,18 +377,11 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
         // Process column 9.
         {
           __m512i accum_v = accum_data_v9;
-          const __m256i dup_rhs_element_low =
-              _mm256_broadcastw_epi16(_mm512_castsi512_si128(rhs_data));
-          // Shift rhs_data, moving next element into 0 position.
-          const __m256i dup_rhs_element_high = _mm256_set1_epi16(
-              _mm_extract_epi16(_mm512_castsi512_si128(rhs_data), 1));
-          // Shift rhs_data, moving next element into 0 position.
-          rhs_data = _mm512_maskz_compress_epi32(shift_mask, rhs_data);
+          constexpr int index = 18;
 
-          const __m512i rhs_16_bit_dup_low =
-              _mm512_cvtepi8_epi16(dup_rhs_element_low);
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
           const __m512i rhs_16_bit_dup_high =
-              _mm512_cvtepi8_epi16(dup_rhs_element_high);
+              _mm512_set1_epi32(rhs_data[index + 1]);
 
           accum_v = _mm512_add_epi32(
               accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
@@ -447,18 +392,11 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
         // Process column 10.
         {
           __m512i accum_v = accum_data_va;
-          const __m256i dup_rhs_element_low =
-              _mm256_broadcastw_epi16(_mm512_castsi512_si128(rhs_data));
-          // Shift rhs_data, moving next element into 0 position.
-          const __m256i dup_rhs_element_high = _mm256_set1_epi16(
-              _mm_extract_epi16(_mm512_castsi512_si128(rhs_data), 1));
-          // Shift rhs_data, moving next element into 0 position.
-          rhs_data = _mm512_maskz_compress_epi32(shift_mask, rhs_data);
+          constexpr int index = 20;
 
-          const __m512i rhs_16_bit_dup_low =
-              _mm512_cvtepi8_epi16(dup_rhs_element_low);
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
           const __m512i rhs_16_bit_dup_high =
-              _mm512_cvtepi8_epi16(dup_rhs_element_high);
+              _mm512_set1_epi32(rhs_data[index + 1]);
 
           accum_v = _mm512_add_epi32(
               accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
@@ -469,18 +407,11 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
         // Process column 11.
         {
           __m512i accum_v = accum_data_vb;
-          const __m256i dup_rhs_element_low =
-              _mm256_broadcastw_epi16(_mm512_castsi512_si128(rhs_data));
-          // Shift rhs_data, moving next element into 0 position.
-          const __m256i dup_rhs_element_high = _mm256_set1_epi16(
-              _mm_extract_epi16(_mm512_castsi512_si128(rhs_data), 1));
-          // Shift rhs_data, moving next element into 0 position.
-          rhs_data = _mm512_maskz_compress_epi32(shift_mask, rhs_data);
+          constexpr int index = 22;
 
-          const __m512i rhs_16_bit_dup_low =
-              _mm512_cvtepi8_epi16(dup_rhs_element_low);
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
           const __m512i rhs_16_bit_dup_high =
-              _mm512_cvtepi8_epi16(dup_rhs_element_high);
+              _mm512_set1_epi32(rhs_data[index + 1]);
 
           accum_v = _mm512_add_epi32(
               accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
@@ -491,18 +422,11 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
         // Process column 12.
         {
           __m512i accum_v = accum_data_vc;
-          const __m256i dup_rhs_element_low =
-              _mm256_broadcastw_epi16(_mm512_castsi512_si128(rhs_data));
-          // Shift rhs_data, moving next element into 0 position.
-          const __m256i dup_rhs_element_high = _mm256_set1_epi16(
-              _mm_extract_epi16(_mm512_castsi512_si128(rhs_data), 1));
-          // Shift rhs_data, moving next element into 0 position.
-          rhs_data = _mm512_maskz_compress_epi32(shift_mask, rhs_data);
+          constexpr int index = 24;
 
-          const __m512i rhs_16_bit_dup_low =
-              _mm512_cvtepi8_epi16(dup_rhs_element_low);
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
           const __m512i rhs_16_bit_dup_high =
-              _mm512_cvtepi8_epi16(dup_rhs_element_high);
+              _mm512_set1_epi32(rhs_data[index + 1]);
 
           accum_v = _mm512_add_epi32(
               accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
@@ -513,18 +437,11 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
         // Process column 13.
         {
           __m512i accum_v = accum_data_vd;
-          const __m256i dup_rhs_element_low =
-              _mm256_broadcastw_epi16(_mm512_castsi512_si128(rhs_data));
-          // Shift rhs_data, moving next element into 0 position.
-          const __m256i dup_rhs_element_high = _mm256_set1_epi16(
-              _mm_extract_epi16(_mm512_castsi512_si128(rhs_data), 1));
-          // Shift rhs_data, moving next element into 0 position.
-          rhs_data = _mm512_maskz_compress_epi32(shift_mask, rhs_data);
+          constexpr int index = 26;
 
-          const __m512i rhs_16_bit_dup_low =
-              _mm512_cvtepi8_epi16(dup_rhs_element_low);
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
           const __m512i rhs_16_bit_dup_high =
-              _mm512_cvtepi8_epi16(dup_rhs_element_high);
+              _mm512_set1_epi32(rhs_data[index + 1]);
 
           accum_v = _mm512_add_epi32(
               accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
@@ -535,18 +452,11 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
         // Process column 14.
         {
           __m512i accum_v = accum_data_ve;
-          const __m256i dup_rhs_element_low =
-              _mm256_broadcastw_epi16(_mm512_castsi512_si128(rhs_data));
-          // Shift rhs_data, moving next element into 0 position.
-          const __m256i dup_rhs_element_high = _mm256_set1_epi16(
-              _mm_extract_epi16(_mm512_castsi512_si128(rhs_data), 1));
-          // Shift rhs_data, moving next element into 0 position.
-          rhs_data = _mm512_maskz_compress_epi32(shift_mask, rhs_data);
+          constexpr int index = 28;
 
-          const __m512i rhs_16_bit_dup_low =
-              _mm512_cvtepi8_epi16(dup_rhs_element_low);
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
           const __m512i rhs_16_bit_dup_high =
-              _mm512_cvtepi8_epi16(dup_rhs_element_high);
+              _mm512_set1_epi32(rhs_data[index + 1]);
 
           accum_v = _mm512_add_epi32(
               accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
@@ -557,18 +467,11 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
         // Process column 15.
         {
           __m512i accum_v = accum_data_vf;
-          const __m256i dup_rhs_element_low =
-              _mm256_broadcastw_epi16(_mm512_castsi512_si128(rhs_data));
-          // Shift rhs_data, moving next element into 0 position.
-          const __m256i dup_rhs_element_high = _mm256_set1_epi16(
-              _mm_extract_epi16(_mm512_castsi512_si128(rhs_data), 1));
-          // Shift rhs_data, moving next element into 0 position.
-          rhs_data = _mm512_maskz_compress_epi32(shift_mask, rhs_data);
+          constexpr int index = 30;
 
-          const __m512i rhs_16_bit_dup_low =
-              _mm512_cvtepi8_epi16(dup_rhs_element_low);
+          const __m512i rhs_16_bit_dup_low = _mm512_set1_epi32(rhs_data[index]);
           const __m512i rhs_16_bit_dup_high =
-              _mm512_cvtepi8_epi16(dup_rhs_element_high);
+              _mm512_set1_epi32(rhs_data[index + 1]);
 
           accum_v = _mm512_add_epi32(
               accum_v, _mm512_madd_epi16(lhs_16_bit_low, rhs_16_bit_dup_low));
