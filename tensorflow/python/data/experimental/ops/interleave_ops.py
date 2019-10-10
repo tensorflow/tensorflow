@@ -33,6 +33,21 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
+
+def _parallel_interleave(map_func,
+                         cycle_length,
+                         block_length=1,
+                         sloppy=False,
+                         buffer_output_elements=None,
+                         prefetch_input_elements=None):
+  """An internal wrapper for deprecated parallel_interleave."""
+  def _apply_fn(dataset):
+    return readers.ParallelInterleaveDataset(
+        dataset, map_func, cycle_length, block_length, sloppy,
+        buffer_output_elements, prefetch_input_elements)
+
+  return _apply_fn
+
 @deprecation.deprecated(
     None,
     "Use `tf.data.Dataset.interleave(map_func, cycle_length, block_length, "
@@ -88,13 +103,9 @@ def parallel_interleave(map_func,
     A `Dataset` transformation function, which can be passed to
     `tf.data.Dataset.apply`.
   """
-  def _apply_fn(dataset):
-    return readers.ParallelInterleaveDataset(
-        dataset, map_func, cycle_length, block_length, sloppy,
-        buffer_output_elements, prefetch_input_elements)
-
-  return _apply_fn
-
+  return _parallel_interleave(
+      map_func, cycle_length, block_length, sloppy,
+      buffer_output_elements, prefetch_input_elements)
 
 class _DirectedInterleaveDataset(dataset_ops.DatasetV2):
   """A substitute for `Dataset.interleave()` on a fixed list of datasets."""
