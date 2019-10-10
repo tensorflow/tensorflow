@@ -32,34 +32,32 @@ limitations under the License.
 namespace tensorflow {
 
 template <class InputScalar, class OutputScalar>
-class ComplexEigOp : public LinearAlgebraOp<OutputScalar> {
+class EigOp : public LinearAlgebraOp<InputScalar, OutputScalar> {
  public:
-  typedef LinearAlgebraOp<InputScalar> InputBase;
-  typedef LinearAlgebraOp<OutputScalar> OutputBase;
+  typedef LinearAlgebraOp<Scalar> Base;
 
-  explicit ComplexEigOp(OpKernelConstruction* context) : OutputBase(context) {
+  explicit EigOp(OpKernelConstruction* context) : Base(context) {
     OP_REQUIRES_OK(context, context->GetAttr("compute_v", &compute_v_));
   }
 
-  using InputTensorShapes = typename InputBase::TensorShapes;
-  using InputMatrix = typename InputBase::Matrix;
-  using InputMatrixMaps = typename InputBase::MatrixMaps;
-  using InputConstMatrixMap = typename InputBase::ConstMatrixMap;
-  using InputConstMatrixMaps = typename InputBase::ConstMatrixMaps;
+  using TensorShapes = typename Base::TensorShapes;
+  using InputMatrix = typename Base::InputMatrix;
+  using InputMatrixMaps = typename Base::InputMatrixMaps;
+  using InputConstMatrixMap = typename Base::InputConstMatrixMap;
+  using InputConstMatrixMaps = typename Base::InputConstMatrixMaps;
 
-  using OutputTensorShapes = typename OutputBase::TensorShapes;
-  using OutputMatrix = typename OutputBase::Matrix;
-  using OutputMatrixMaps = typename OutputBase::MatrixMaps;
-  using OutputConstMatrixMap = typename OutputBase::ConstMatrixMap;
-  using OutputConstMatrixMaps = typename OutputBase::ConstMatrixMaps;
+  using OutputMatrix = typename Base::OutputMatrix;
+  using OutputMatrixMaps = typename Base::OutputMatrixMaps;
+  using OutputConstMatrixMap = typename Base::OutputConstMatrixMap;
+  using OutputConstMatrixMaps = typename Base::OutputConstMatrixMaps;
 
-  OutputTensorShapes GetOutputMatrixShapes(
-      const InputTensorShapes& input_matrix_shapes) const final {
+  TensorShapes GetOutputMatrixShapes(
+      const TensorShapes& input_matrix_shapes) const final {
     int64 n = input_matrix_shapes[0].dim_size(0);
     if (compute_v_) {
-      return OutputTensorShapes({TensorShape({n}), TensorShape({n, n})});
+      return TensorShapes({TensorShape({n}), TensorShape({n, n})});
     } else {
-      return OutputTensorShapes({TensorShape({n})});
+      return TensorShapes({TensorShape({n})});
     }
   }
 

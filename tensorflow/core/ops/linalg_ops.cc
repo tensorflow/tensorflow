@@ -385,10 +385,11 @@ REGISTER_OP("SelfAdjointEig")
 
 REGISTER_OP("Eig")
     .Input("input: T")
-    .Output("e: T")
-    .Output("v: T")
+    .Output("e: Tout")
+    .Output("v: Tout")
     .Attr("compute_v: bool = True")
-    .Attr("T: {complex64, complex128}")
+    .Attr("T: {float, double, complex64, complex128}")
+    .Attr("Tout: {complex64, complex128}")
     .SetShapeFn(SelfAdjointEigV2ShapeFn);
 
 REGISTER_OP("SelfAdjointEigV2")
