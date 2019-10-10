@@ -425,6 +425,14 @@ LogicalResult ModuleTranslation::convertOneFunction(LLVMFuncOp func) {
   return success();
 }
 
+LogicalResult ModuleTranslation::checkSupportedModuleOps(ModuleOp m) {
+  for (Operation &o : m.getBody()->getOperations())
+    if (!isa<LLVM::LLVMFuncOp>(&o) && !isa<LLVM::GlobalOp>(&o) &&
+        !isa<ModuleTerminatorOp>(&o))
+      return o.emitOpError("unsupported module-level operation");
+  return success();
+}
+
 LogicalResult ModuleTranslation::convertFunctions() {
   // Declare all functions first because there may be function calls that form a
   // call graph with cycles.
