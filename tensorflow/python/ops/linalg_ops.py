@@ -307,9 +307,11 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
 
 @tf_export('linalg.eig', v1=[])
 def eig(tensor, name=None):
-  """Computes the eigen decomposition of a batch of matrices.
+  """Computes the eigen decomposition of a batch of matrices. The eigenvalues
+  and eigenvectors for a non-Hermitian matrix in general are complex. The
+  eigenvectors are not guaranteed to be linearly independent.
 
-  Computes the eigenvalues and eigenvectors of the innermost N-by-N matrices
+  Computes the eigenvalues and right eigenvectors of the innermost N-by-N matrices
   in `tensor` such that
   `tensor[...,:,:] * v[..., :,i] = e[..., i] * v[...,:,i]`, for i=0...N-1.
 

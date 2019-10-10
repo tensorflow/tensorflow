@@ -17,7 +17,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_LINALG_OP("Eig", (ComplexEigOp<complex64>),
+REGISTER_LINALG_OP("Eig", (ComplexEigOp<complex64, complex64>),
                    complex64);
 
 }  // namespace tensorflow

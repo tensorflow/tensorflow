@@ -31,33 +31,40 @@ limitations under the License.
 
 namespace tensorflow {
 
-template <class Scalar>
-class ComplexEigOp : public LinearAlgebraOp<Scalar> {
+template <class InputScalar, class OutputScalar>
+class ComplexEigOp : public LinearAlgebraOp<OutputScalar> {
  public:
-  typedef LinearAlgebraOp<Scalar> Base;
+  typedef LinearAlgebraOp<InputScalar> InputBase;
+  typedef LinearAlgebraOp<OutputScalar> OutputBase;
 
-  explicit ComplexEigOp(OpKernelConstruction* context) : Base(context) {
+  explicit ComplexEigOp(OpKernelConstruction* context) : OutputBase(context) {
     OP_REQUIRES_OK(context, context->GetAttr("compute_v", &compute_v_));
   }
 
-  using TensorShapes = typename Base::TensorShapes;
-  using Matrix = typename Base::Matrix;
-  using MatrixMaps = typename Base::MatrixMaps;
-  using ConstMatrixMap = typename Base::ConstMatrixMap;
-  using ConstMatrixMaps = typename Base::ConstMatrixMaps;
+  using InputTensorShapes = typename InputBase::TensorShapes;
+  using InputMatrix = typename InputBase::Matrix;
+  using InputMatrixMaps = typename InputBase::MatrixMaps;
+  using InputConstMatrixMap = typename InputBase::ConstMatrixMap;
+  using InputConstMatrixMaps = typename InputBase::ConstMatrixMaps;
 
-  TensorShapes GetOutputMatrixShapes(
-      const TensorShapes& input_matrix_shapes) const final {
+  using OutputTensorShapes = typename OutputBase::TensorShapes;
+  using OutputMatrix = typename OutputBase::Matrix;
+  using OutputMatrixMaps = typename OutputBase::MatrixMaps;
+  using OutputConstMatrixMap = typename OutputBase::ConstMatrixMap;
+  using OutputConstMatrixMaps = typename OutputBase::ConstMatrixMaps;
+
+  OutputTensorShapes GetOutputMatrixShapes(
+      const InputTensorShapes& input_matrix_shapes) const final {
     int64 n = input_matrix_shapes[0].dim_size(0);
     if (compute_v_) {
-      return TensorShapes({TensorShape({n}), TensorShape({n, n})});
+      return OutputTensorShapes({TensorShape({n}), TensorShape({n, n})});
     } else {
-      return TensorShapes({TensorShape({n})});
+      return OutputTensorShapes({TensorShape({n})});
     }
   }
 
-  void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
-                     MatrixMaps* outputs) final {
+  void ComputeMatrix(OpKernelContext* context, const InputConstMatrixMaps& inputs,
+                     OutputMatrixMaps* outputs) final {
     const int64 rows = inputs[0].rows();
     if (rows == 0) {
       // If X is an empty matrix (0 rows, 0 col), X * X' == X.
@@ -68,7 +75,7 @@ class ComplexEigOp : public LinearAlgebraOp<Scalar> {
     // This algorithm relies on denormals, so switch them back on locally.
     port::ScopedDontFlushDenormal dont_flush_denormals;
 
-    Eigen::ComplexEigenSolver<Matrix> eig(
+    Eigen::ComplexEigenSolver<OutputMatrix> eig(
         inputs[0],
         compute_v_ ? Eigen::ComputeEigenvectors : Eigen::EigenvaluesOnly);
     // TODO(rmlarsen): Output more detailed error info on failure.
@@ -77,7 +84,7 @@ class ComplexEigOp : public LinearAlgebraOp<Scalar> {
         errors::InvalidArgument("Eigen decomposition was not "
                                 "successful. The input might not be valid."));
 
-    outputs->at(0) = eig.eigenvalues().template cast<Scalar>();
+    outputs->at(0) = eig.eigenvalues().template cast<OutputScalar>();
     if (compute_v_) {
       outputs->at(1) = eig.eigenvectors();
     }
