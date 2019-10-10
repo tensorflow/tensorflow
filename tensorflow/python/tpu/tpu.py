@@ -254,7 +254,11 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     self._pivot = pivot
     self._replicated_vars = {}
 
-  def get_replicated_var_handle(self, name, vars_, device_map=None):
+  def get_replicated_var_handle(self,
+                                name,
+                                vars_,
+                                device_map=None,
+                                is_mirrored=False):
     """Returns a variable handle for replicated TPU variable 'var'.
 
     This is a method used by an experimental replicated variable implementation
@@ -264,7 +268,9 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       name: The common name of the variable.
       vars_: The replicated TPU variables.
       device_map: The DeviceMap used to create the variables if it is a
-      TPUMirroredVariable.
+        TPUMirroredVariable.
+      is_mirrored: Whether the variables are mirrored, which guarantees the
+        values in each replica are always the same.
 
     Returns:
       The handle of the TPU replicated input node.
@@ -302,7 +308,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       graph._set_control_flow_context(self.outer_context)
       handle = tpu_ops.tpu_replicated_input([v.handle for v in replicated_vars],
                                             name=name + "/handle",
-                                            is_mirrored_variable=True)
+                                            is_mirrored_variable=is_mirrored)
       graph._set_control_flow_context(saved_context)
       # pylint: enable=protected-access
     self._replicated_vars[name] = handle
