@@ -827,13 +827,13 @@ TEST_F(DatasetHashUtilsTest, HashInt32Tensor) {
 
   Tensor v1(DT_INT32, TensorShape({2}));
   v1.vec<int32>()(0) = 0;
-  v1.vec<int32>()(0) = 1;
+  v1.vec<int32>()(1) = 1;
   Tensor v2(DT_INT32, TensorShape({2}));
   v2.vec<int32>()(0) = 0;
-  v2.vec<int32>()(0) = 1;
+  v2.vec<int32>()(1) = 1;
   Tensor v3(DT_INT32, TensorShape({2}));
   v3.vec<int32>()(0) = 0;
-  v3.vec<int32>()(0) = 2;
+  v3.vec<int32>()(1) = 2;
 
   EXPECT_EQ(GetHash(v1), GetHash(v2));
   EXPECT_NE(GetHash(v1), GetHash(v3));
