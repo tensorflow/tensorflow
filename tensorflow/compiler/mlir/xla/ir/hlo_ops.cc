@@ -272,6 +272,15 @@ static LogicalResult Verify(GetTupleElementOp op) {
   return success();
 }
 
+OpFoldResult GetTupleElementOp::fold(ArrayRef<Attribute> operands) {
+  if (auto tupleOp =
+          dyn_cast_or_null<xla_hlo::TupleOp>(getOperand()->getDefiningOp())) {
+    return tupleOp.getOperand(index().getLimitedValue());
+  }
+
+  return {};
+}
+
 //===----------------------------------------------------------------------===//
 // TupleOp
 //===----------------------------------------------------------------------===//

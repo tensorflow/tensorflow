@@ -257,6 +257,8 @@ def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]>, BASE_HLO
 
   let results = (outs HLO_TensorOrTuple);
 
+  let hasFolder = 1;
+
   // GetTupleElementOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
 }
