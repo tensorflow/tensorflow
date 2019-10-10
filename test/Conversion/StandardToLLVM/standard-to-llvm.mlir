@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -lower-to-llvm | FileCheck %s
+// RUN: mlir-opt %s -lower-to-llvm -split-input-file -verify-diagnostics | FileCheck %s
 
 // CHECK-LABEL: func @address_space(
 //       CHECK:   %{{.*}}: !llvm<"{ float addrspace(7)*, i64, [1 x i64], [1 x i64] }*">)
@@ -17,3 +17,14 @@ func @strided_memref(%ind: index) {
   std.return
 }
 
+// -----
+
+// This should not crash. The first operation cannot be converted, so the
+// secound should not match. This attempts to convert `return` to `llvm.return`
+// and complains about non-LLVM types.
+func @unknown_source() -> i32 {
+  %0 = "foo"() : () -> i32
+  %1 = addi %0, %0 : i32
+  // expected-error@+1 {{must be LLVM dialect type}}
+  return %1 : i32
+}
