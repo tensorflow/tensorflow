@@ -1,4 +1,4 @@
-# RUN: tf_tfl_translate -tf-input-arrays=input0,input1 -tf-input-shapes=4:4 -tf-input-data-types=DT_INT32,DT_INT32 -tf-output-arrays=output %s -o - --output-mlir -tf-extra-opdefs="name: 'BannaPotatoSaladWithColeslaw' input_arg: { name: 'a' type: DT_INT32 } input_arg: { name: 'b' type: DT_INT32 } output_arg: { name: 'c' type: DT_INT32 }" | FileCheck %s
+# RUN: tf_tfl_translate -tf-input-arrays=input0,input1 -tf-input-shapes=4:4 -tf-input-data-types=DT_INT32,DT_INT32 -tf-output-arrays=output %s -o - --output-mlir -tf-custom-opdefs="name: 'BannaPotatoSaladWithColeslaw' input_arg: { name: 'a' type: DT_INT32 } input_arg: { name: 'b' type: DT_INT32 } output_arg: { name: 'c' type: DT_INT32 }" | FileCheck %s
 
 node {
   name: "output"
