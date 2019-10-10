@@ -138,6 +138,9 @@ def GetHLOAxisFromTFAxis : NativeCodeCall<
 def HasRankedFirstOperand
   : Constraint<CPred<"(*$0.begin())->getType().isa<RankedTensorType>()">>;
 
+def IsShapedTensor
+  : Constraint<CPred<"$0->getType().isa<RankedTensorType>()">>;
+
 // This pattern converts TensorFlow axis format to HLO axis format which
 // doesn't wrap around like TensorFlow and is always positive. For this
 // conversion, use the first input to get inputs rank. Other inputs need not be
@@ -236,3 +239,19 @@ foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp, ] in {
   def : Pat<(TfOp:$res AnyStaticShapeTensor:$arg, $ignored),
             (HLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)]>;
 }
+
+//===----------------------------------------------------------------------===//
+// RngUniform.
+//===----------------------------------------------------------------------===//
+def CastElementsToI64: NativeCodeCall<
+  "CastElementsToI64($0->getLoc(), $1, &$_builder)">;
+
+// TODO(misard,phawkins): handle random number generator seeds/states correctly.
+def : Pat<(TF_RandomUniformOp:$old $shape, $seed, $seed2),
+          (HLO_RngUniformOp
+            (HLO_ConstOp
+              (NativeCodeCall<"$_builder.getFloatAttr(old.dtype(), 0.0)">)),
+            (HLO_ConstOp
+              (NativeCodeCall<"$_builder.getFloatAttr(old.dtype(), 1.0)">)),
+            (CastElementsToI64 $old, $shape)),
+            [(IsShapedTensor $shape)]>;

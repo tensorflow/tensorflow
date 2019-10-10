@@ -650,4 +650,22 @@ def HLO_ReturnOp : HLO_Op<"return", [Terminator]> {
   // TODO(hinsu): Implement custom printer and parser.
 }
 
+//===----------------------------------------------------------------------===//
+// XLA RngUniform Operator.
+//===----------------------------------------------------------------------===//
+def HLO_RngUniformOp : HLO_Op<"rng_uniform", []>, BASE_HLO_RngUniformOp {
+  let arguments = (ins
+    HLO_Tensor:$a,
+    HLO_Tensor:$b,
+    I64Tensor:$shape
+  );
+
+  let results = (outs HLO_Tensor);
+
+  // TODO(bgogul): Disable conversion operator for `RngUniform` as
+  // the default constructor for `xla::RngUniform` takes `Shape` as
+  // the last argument and the default converter does not deal with it.
+  let hasCustomHLOConverter = 1;
+}
+
 #endif // HLO_OPS

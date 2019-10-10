@@ -94,6 +94,17 @@ static llvm::Optional<int64_t> GetIntegerHLOAxisFromTFAxis(Value *value,
   return axis < 0 ? axis + rank : axis;
 }
 
+/// Returns a `ConvertOp` that casts the elements to a i64 type while retaining
+/// the shape of the input value.
+static xla_hlo::ConvertOp CastElementsToI64(Location loc, Value *value,
+                                            PatternRewriter *rewriter) {
+  auto type = value->getType().cast<RankedTensorType>();
+  assert(type && "CastElementsToI64 requires a shaped tensor as input.");
+  ArrayRef<int64_t> shape = type.getShape();
+  auto i64_type = rewriter->getTensorType(shape, rewriter->getIntegerType(64));
+  return rewriter->create<xla_hlo::ConvertOp>(loc, i64_type, value);
+}
+
 // Returns minimum value for the given int or float element type.
 static xla_hlo::ConstOp GetMinValueForType(Type ty, Location loc,
                                            PatternRewriter *rewriter) {
