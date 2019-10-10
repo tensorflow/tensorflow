@@ -44,3 +44,17 @@ func @fmul_tensor(%arg: tensor<4xf32>) -> tensor<4xf32> {
   return %0 : tensor<4xf32>
 }
 
+// CHECK-LABEL: @constval
+func @constval() {
+  // CHECK: spv.constant true
+  %0 = constant true
+  // CHECK: spv.constant 42 : i64
+  %1 = constant 42
+  // CHECK: spv.constant {{[0-9]*\.[0-9]*e?-?[0-9]*}} : f32
+  %2 = constant 0.5 : f32
+  // CHECK: spv.constant dense<[2, 3]> : vector<2xi32>
+  %3 = constant dense<[2, 3]> : vector<2xi32>
+  // CHECK: spv.constant 1 : i32
+  %4 = constant 1 : index
+  return
+}
