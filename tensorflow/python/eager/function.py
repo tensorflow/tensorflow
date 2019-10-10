@@ -34,6 +34,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import _pywrap_utils
+from tensorflow.python.compat import compat as fwd_compat
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
@@ -716,24 +717,14 @@ class _DelayedRewriteGradientFunctions(object):
     return backwards_function._call_flat(  # pylint: disable=protected-access
         cleaned_doutputs, remapped_captures)
 
-  def register(self):
-    """Registers a delayed-rewrite gradient with a unique name (idempotent).
+  def get_gradient_function(self):
+    """Returns gradient function.
 
     The gradient rewrites an inference call op to a forward call op, but does
     not modify a pre-existing forward call op. It then computes the gradient
     from the output's gradients and the side outputs of the forward op.
-
-    Returns:
-      The name under which gradient was registered.
     """
-    if self._gradient_name:
-      return self._gradient_name
-    self._gradient_name = "PartitionedCall-%s" % ops.uid()
-
-    @ops.RegisterGradient(self._gradient_name)
-    def _registered_grad_fn(op, *doutputs):  # pylint: disable=unused-variable
-      return self._rewrite_forward_and_call_backward(op, *doutputs)
-    return self._gradient_name
+    return self._rewrite_forward_and_call_backward
 
   def forward(self, inference_args=None, input_tangents=None):
     """A forward function with only user-specified outputs.
@@ -1013,13 +1004,23 @@ class _TapeGradientFunctions(object):
                 backward_function=lambda x: [x],
                 forward_function=lambda x: [x])
         forward_inputs = forward_wrapper_graph.inputs[:num_inference_inputs]
-        gradient_name = self._delayed_rewrite_functions.register()
-        with ops.get_default_graph().gradient_override_map(
-            {"PartitionedCall": gradient_name,
-             "StatefulPartitionedCall": gradient_name}):
-          forward_outputs = forward_function.call(
-              context.context(),
-              forward_inputs)
+        gradient_function = (
+            self._delayed_rewrite_functions._rewrite_forward_and_call_backward)  # pylint: disable=protected-access
+        with ops.get_default_graph()._override_gradient_function(  # pylint: disable=protected-access
+            {"PartitionedCall": gradient_function,
+             "StatefulPartitionedCall": gradient_function}):
+          # Previously, we relyed on "_gradient_op_type" attribute to restore a
+          # function gradient in function_deserialization.py, So add a dummy
+          # value "PartitionedCallUnused" for the forward compatibility.
+          if fwd_compat.forward_compatible(2019, 11, 16):
+            forward_outputs = forward_function.call(context.context(),
+                                                    forward_inputs)
+          else:
+            with ops.get_default_graph().gradient_override_map(
+                {"PartitionedCall": "PartitionedCallUnused",
+                 "StatefulPartitionedCall": "PartitionedCallUnused"}):
+              forward_outputs = forward_function.call(context.context(),
+                                                      forward_inputs)
         py_backward, _ = self._wrap_backward_function(
             self._func_graph, backward_function, forward_outputs)
       # We will never request backward tape gradients for this operation
@@ -1478,8 +1479,7 @@ class ConcreteFunction(object):
     if shared_func_graph:
       self._garbage_collector = None
     else:
-      self._garbage_collector = ConcreteFunctionGarbageCollector(
-          func_graph)
+      self._garbage_collector = ConcreteFunctionGarbageCollector(func_graph)
 
     # Pairs of forward and backward functions used for computing gradients.
     #
@@ -1668,11 +1668,19 @@ class ConcreteFunction(object):
           ctx, args_with_tangents,
           cancellation_manager=cancellation_manager)
     else:
-      gradient_name = self._delayed_rewrite_functions.register()
-      with ops.get_default_graph().gradient_override_map(
-          {"PartitionedCall": gradient_name,
-           "StatefulPartitionedCall": gradient_name}):
-        flat_outputs = forward_function.call(ctx, args_with_tangents)
+      with ops.get_default_graph()._override_gradient_function(  # pylint: disable=protected-access
+          {"PartitionedCall": self._get_gradient_function(),
+           "StatefulPartitionedCall": self._get_gradient_function()}):
+        # Previously, we relyed on "_gradient_op_type" attribute to restore a
+        # function gradient in function_deserialization.py. So add a dummy
+        # value "PartitionedCallUnused" for the forward compatibility.
+        if fwd_compat.forward_compatible(2019, 11, 16):
+          flat_outputs = forward_function.call(ctx, args_with_tangents)
+        else:
+          with ops.get_default_graph().gradient_override_map(
+              {"PartitionedCall": "PartitionedCallUnused",
+               "StatefulPartitionedCall": "PartitionedCallUnused"}):
+            flat_outputs = forward_function.call(ctx, args_with_tangents)
     forward_backward.record(flat_outputs)
     return self._build_call_outputs(flat_outputs)
 
@@ -1782,9 +1790,9 @@ class ConcreteFunction(object):
     forward_function.add_to_graph(g)
     backward_function.add_to_graph(g)
 
-  def _register_delayed_rewrite_gradient(self):
-    """Registers a delayed-rewrite gradient function and returns the name."""
-    return self._delayed_rewrite_functions.register()
+  def _get_gradient_function(self):
+    """Returns gradient function. It will be lazily created at first call."""
+    return self._delayed_rewrite_functions._rewrite_forward_and_call_backward  # pylint: disable=protected-access
 
   def _select_forward_and_backward_functions(
       self, args, possible_gradient_type, executing_eagerly):
