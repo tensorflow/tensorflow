@@ -26,6 +26,8 @@ import numpy as np
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python import keras
+from tensorflow.python import tf2
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -98,22 +100,32 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
     return os.path.join(temp_dir, dirname)
 
-  @keras_parameterized.run_with_all_model_types
-  def test_model_save_and_load(self):
-    input_arr = np.random.random((1, 3)).astype(np.float32)
-    target_arr = np.random.random((1, 4)).astype(np.float32)
-
+  def _test_save_and_load(self, use_dataset=False):
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
     model.layers[-1].activity_regularizer = regularizers.get('l2')
     model.activity_regularizer = regularizers.get('l2')
     model.compile(
         loss='mse',
         optimizer='rmsprop')
-    model.train_on_batch(input_arr, target_arr)
-
     def callable_loss():
       return math_ops.reduce_sum(model.weights[0])
     model.add_loss(callable_loss)
+
+    x = np.random.random((1, 3))
+    y = np.random.random((1, 4))
+
+    if not tf2.enabled():
+      # The layer autocast behavior only runs when autocast is enabled, so
+      # in V1, the numpy inputs still need to be cast to float32.
+      x = x.astype(np.float32)
+      y = y.astype(np.float32)
+
+    if use_dataset:
+      dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).batch(1)
+      model.fit(dataset)
+    else:
+      model.train_on_batch(x, y)
+
     saved_model_dir = self._save_model_dir()
     tf_save.save(model, saved_model_dir)
     loaded = keras_load.load(saved_model_dir)
@@ -136,6 +148,14 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
       self.assertAllClose(
           sorted(self.evaluate(model.get_losses_for(input_arr))),
           sorted(self.evaluate(loaded.get_losses_for(input_arr))))
+
+  @keras_parameterized.run_with_all_model_types
+  def test_model_save_and_load(self):
+    self._test_save_and_load(use_dataset=True)
+
+  @keras_parameterized.run_with_all_model_types
+  def test_model_save_and_load_dataset(self):
+    self._test_save_and_load(use_dataset=True)
 
   def test_trainable_weights(self):
     layer = keras.layers.Dense(4, name='custom_layer')
@@ -170,8 +190,8 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     model.compile(
         loss='mse',
         optimizer='rmsprop')
-    input_arr = np.random.random((1, 3)).astype(np.float32)
-    target_arr = np.random.random((1, 3)).astype(np.float32)
+    input_arr = np.random.random((1, 3))
+    target_arr = np.random.random((1, 3))
 
     # Test that symbolic losses are maintained (train_on_batch saves symbolic
     # losses.)
@@ -351,8 +371,8 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     model.add(keras.layers.Dropout(0.5))
     model.add(keras.layers.Dense(4, kernel_regularizer=regularizers.get('l2')))
 
-    input_arr = np.random.random((2, 3)).astype(np.float32)
-    target_arr = np.random.random((2, 4)).astype(np.float32)
+    input_arr = np.random.random((2, 3))
+    target_arr = np.random.random((2, 4))
 
     model.compile(
         loss='mse',
@@ -387,11 +407,12 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.assertAllClose(
         model.predict(input_arr),
         loaded.signatures['predict'](
-            ops.convert_to_tensor(input_arr))['predictions'])
+            ops.convert_to_tensor(input_arr.astype('float32')))['predictions'])
 
     feature = {
         'inputs': feature_pb2.Feature(
-            float_list=feature_pb2.FloatList(value=input_arr.flatten()))}
+            float_list=feature_pb2.FloatList(
+                value=input_arr.astype('float32').flatten()))}
     example = example_pb2.Example(
         features=feature_pb2.Features(feature=feature))
     outputs = loaded.signatures['parse_and_predict'](
@@ -500,7 +521,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     inputs = keras.layers.Input(shape=(3))
     model = keras.models.Model(inputs, LayerWithTensorKwarg()(inputs, t))
 
-    input_arr = np.random.random((1, 3)).astype(np.float32)
+    input_arr = np.random.random((1, 3))
     predictions = model.predict(input_arr)
 
     saved_model_dir = self._save_model_dir()

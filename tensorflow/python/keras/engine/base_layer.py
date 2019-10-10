@@ -1736,6 +1736,7 @@ class Layer(module.Module):
     if (self._autocast and compute_dtype and
         dtypes.as_dtype(compute_dtype).is_floating):
       def f(x):
+        """Cast a single Tensor or TensorSpec to the compute dtype."""
         cast_types = (ops.Tensor, sparse_tensor.SparseTensor,
                       ragged_tensor.RaggedTensor)
         if (isinstance(x, cast_types) and x.dtype.is_floating and
@@ -1743,6 +1744,10 @@ class Layer(module.Module):
           if self._dtype_defaulted_to_floatx:
             self._warn_about_input_casting(x.dtype.base_dtype)
           return math_ops.cast(x, compute_dtype)
+        elif isinstance(x, tensor_spec.TensorSpec) and x.dtype.is_floating:
+          # Inputs may be TensorSpecs when this function is called from
+          # model._set_inputs.
+          return tensor_spec.TensorSpec(x.shape, compute_dtype, x.name)
         else:
           return x
       return nest.map_structure(f, inputs)
