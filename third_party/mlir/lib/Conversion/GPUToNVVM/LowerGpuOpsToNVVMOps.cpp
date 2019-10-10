@@ -379,6 +379,7 @@ public:
         GPUAllReduceOpLowering>(converter);
 
     ConversionTarget target(getContext());
+    target.addIllegalDialect<gpu::GPUDialect>();
     target.addLegalDialect<LLVM::LLVMDialect>();
     target.addLegalDialect<NVVM::NVVMDialect>();
     if (failed(applyPartialConversion(m, target, patterns, &converter)))

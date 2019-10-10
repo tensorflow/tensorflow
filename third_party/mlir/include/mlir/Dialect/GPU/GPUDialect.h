@@ -36,7 +36,9 @@ namespace gpu {
 class GPUDialect : public Dialect {
 public:
   /// Create the dialect in the given `context`.
-  GPUDialect(MLIRContext *context);
+  explicit GPUDialect(MLIRContext *context);
+  /// Get dialect namespace.
+  static StringRef getDialectNamespace() { return "gpu"; }
 
   /// Get the name of the attribute used to annotate the modules that contain
   /// kernel modules.
