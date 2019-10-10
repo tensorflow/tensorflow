@@ -309,6 +309,13 @@ def OperandZeroAndResultHaveSameRank :
   let results = (outs AnyShaped:$res);
 }
 
+def OperandZeroAndResultHaveSameShape :
+    TEST_Op<"operand0_and_result_have_same_shape",
+            [AllShapesMatch<["x", "res"]>]> {
+  let arguments = (ins AnyShaped:$x, AnyShaped:$y);
+  let results = (outs AnyShaped:$res);
+}
+
 def OperandZeroAndResultHaveSameElementCount :
     TEST_Op<"operand0_and_result_have_same_element_count",
             [AllElementCountsMatch<["x", "res"]>]> {

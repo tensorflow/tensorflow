@@ -1493,6 +1493,9 @@ def HasNoUseOf: Constraint<
 class Rank<string name> :
     StrFunc<"$" # name # ".getType().cast<ShapedType>().getRank()">;
 
+class Shape<string name> :
+    StrFunc<"$" # name # ".getType().cast<ShapedType>().getShape()">;
+
 class ElementCount<string name> :
   StrFunc<"$" # name # ".getType().cast<ShapedType>().getNumElements()">;
 
@@ -1524,6 +1527,9 @@ class AllElementTypesMatch<list<string> names> :
 
 class AllRanksMatch<list<string> names> :
     AllMatchSameOperatorTrait<names, Rank<"_self">.result, "rank">;
+
+class AllShapesMatch<list<string> names> :
+    AllMatchSameOperatorTrait<names, Shape<"_self">.result, "shape">;
 
 class AllTypesMatch<list<string> names> :
     AllMatchSameOperatorTrait<names, "$_self.getType()", "type">;
