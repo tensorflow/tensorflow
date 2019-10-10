@@ -135,11 +135,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "mkl_dnn",
         build_file = clean_dep("//third_party/mkl_dnn:mkldnn.BUILD"),
-        sha256 = "a198a9bd3c584607e6a467f780beca92c8411cd656fcc8ec6fa5abe73d4af823",
-        strip_prefix = "mkl-dnn-0.20.3",
+        sha256 = "74675e93eef339ff3d9a9be95c15d0c7ad8736a5356c23428ab2e33dcdb8e3e1",
+        strip_prefix = "mkl-dnn-0.20.6",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/intel/mkl-dnn/archive/v0.20.3.tar.gz",
-            "https://github.com/intel/mkl-dnn/archive/v0.20.3.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/intel/mkl-dnn/archive/v0.20.6.tar.gz",
+            "https://github.com/intel/mkl-dnn/archive/v0.20.6.tar.gz",
         ],
     )
 
