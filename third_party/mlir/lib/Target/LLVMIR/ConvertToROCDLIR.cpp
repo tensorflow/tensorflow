@@ -23,6 +23,7 @@
 #include "mlir/Target/ROCDLIR.h"
 
 #include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
@@ -93,7 +94,7 @@ std::unique_ptr<llvm::Module> mlir::translateModuleToROCDLIR(ModuleOp m) {
   // foreach GPU kernel
   // 1. Insert AMDGPU_KERNEL calling convention.
   // 2. Insert amdgpu-flat-workgroup-size(1, 1024) attribute.
-  for (FuncOp func : m.getOps<FuncOp>()) {
+  for (auto func : m.getOps<LLVM::LLVMFuncOp>()) {
     if (!func.getAttrOfType<UnitAttr>(gpu::GPUDialect::getKernelFuncAttrName()))
       continue;
 

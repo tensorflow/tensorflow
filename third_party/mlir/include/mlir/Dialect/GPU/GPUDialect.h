@@ -55,7 +55,7 @@ public:
 
   /// Returns whether the given function is a kernel function, i.e., has the
   /// 'gpu.kernel' attribute.
-  static bool isKernel(FuncOp function);
+  static bool isKernel(Operation *op);
 
   LogicalResult verifyOperationAttribute(Operation *op,
                                          NamedAttribute attr) override;

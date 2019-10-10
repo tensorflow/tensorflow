@@ -543,6 +543,7 @@ cc_library(
     deps = [
         ":GPUOpsIncGen",
         ":IR",
+        ":LLVMDialect",
         ":StandardOps",
         ":Support",
     ],
@@ -1406,6 +1407,7 @@ cc_library(
     deps = [
         ":GPUDialect",
         ":IR",
+        ":LLVMDialect",
         ":LLVMIRModuleTranslation",
         ":NVVMConversionIncGen",
         ":NVVMDialect",
@@ -1429,6 +1431,7 @@ cc_library(
     deps = [
         ":GPUDialect",
         ":IR",
+        ":LLVMDialect",
         ":LLVMIRModuleTranslation",
         ":ROCDLConversionIncGen",
         ":ROCDLDialect",

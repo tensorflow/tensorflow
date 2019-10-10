@@ -64,6 +64,9 @@ public:
   LLVMDialect &getDialect();
   llvm::Type *getUnderlyingType() const;
 
+  /// Utilities to identify types.
+  bool isFloatTy() { return getUnderlyingType()->isFloatTy(); }
+
   /// Array type utilities.
   LLVMType getArrayElementType();
   unsigned getArrayNumElements();
