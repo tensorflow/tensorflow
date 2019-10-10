@@ -18,10 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 from absl import logging
 
 from tensorflow.core.protobuf.tensorflow_server_pb2 import ServerDef
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute.cluster_resolver import cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
@@ -112,7 +114,7 @@ def connect_to_cluster(cluster_spec_or_resolver,
         "`cluster_spec_or_resolver` must be a `ClusterSpec` or a "
         "`ClusterResolver`.")
 
-  cluster_def = cluster_spec.as_cluster_def()
+  cluster_def = copy.deepcopy(cluster_spec.as_cluster_def())
 
   # Automatically add local job, if not part of the cluster spec.
   if job_name not in cluster_spec.jobs:
@@ -130,6 +132,8 @@ def connect_to_cluster(cluster_spec_or_resolver,
       protocol=protocol,
       default_session_config=context.context().config)
 
+  # TODO(b/142500669): Don't leak existing grpc server if calling multiple
+  # times.
   context.set_server_def(server_def)
 
   if make_master_device_default and isinstance(
@@ -153,23 +157,21 @@ def connect_to_cluster(cluster_spec_or_resolver,
 
     master_device = "/job:{}/replica:0/task:{}".format(master_job_name,
                                                        master_task_id)
-    if not _device_stack_is_empty():
-      raise ValueError("`connect_to_cluster` should not be called inside "
-                       "an existing device scope")
-    logging.info("Entering into master device scope: %s", master_device)
+    master_device = device_util.canonicalize(master_device)
+    current_device = device_util.current()
+    if current_device:
+      current_device = device_util.canonicalize(current_device)
+    if current_device and current_device != master_device:
+      raise ValueError("`connect_to_cluster` is called inside existing device "
+                       "scope %s, which is different from the master device "
+                       "scope %s to enter. This is not allowed." %
+                       (current_device, master_device))
     # TODO(b/138389076): Think of the entering device scope behavior in the
     # failure recovery case when dealing with preemptions.
-    ops.device(master_device).__enter__()
+    if not current_device:
+      logging.info("Entering into master device scope: %s", master_device)
+      ops.device(master_device).__enter__()
 
 
 def _strip_prefix(s, prefix):
   return s[len(prefix):] if s.startswith(prefix) else s
-
-
-def _device_stack_is_empty():
-  if context.executing_eagerly():
-    return not bool(context.context().device_name)
-  # pylint: disable=protected-access
-  device_stack = ops.get_default_graph()._device_functions_outer_to_inner
-  # pylint: enable=protected-access
-  return not bool(device_stack)
