@@ -1183,7 +1183,13 @@ class Layer(module.Module):
         on this Layer, when executing in Eager mode.
       inputs: Deprecated, will be automatically inferred.
     """
-    if ds_context.has_strategy() and ds_context.in_cross_replica_context():
+    call_context = base_layer_utils.call_context()
+
+    if (ds_context.has_strategy() and
+        ds_context.in_cross_replica_context() and
+        # When saving the model, the distribution strategy context should be
+        # ignored, following the default path for adding updates.
+        not call_context.saving):
       # Updates don't need to be run in a cross-replica context.
       if (ops.executing_eagerly_outside_functions() and
           not base_layer_utils.is_in_keras_graph()):
@@ -1193,7 +1199,6 @@ class Layer(module.Module):
       return
 
     updates = generic_utils.to_list(updates)
-    call_context = base_layer_utils.call_context()
 
     # All updates can be run immediately in Eager or in a tf.function.
     if base_layer_utils.is_in_eager_or_tf_function():

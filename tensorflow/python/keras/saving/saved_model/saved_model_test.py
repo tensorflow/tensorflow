@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python import keras
+from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.feature_column import feature_column_v2 as fc
@@ -49,6 +50,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load as tf_load
 from tensorflow.python.saved_model import save as tf_save
+from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 
 
@@ -75,6 +77,16 @@ class LayerWithLoss(keras.layers.Layer):
 
   def call(self, inputs):
     self.add_loss(math_ops.reduce_sum(inputs), inputs)
+    return inputs
+
+
+class LayerWithUpdate(keras.layers.Layer):
+
+  def build(self, _):
+    self.v = self.add_weight('v', shape=[], dtype=dtypes.int32)
+
+  def call(self, inputs):
+    self.add_update(self.v.assign_add(math_ops.reduce_sum(inputs)))
     return inputs
 
 
@@ -550,6 +562,39 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
         loaded.get_layer('dense_with_two_inbound_nodes')._inbound_nodes, 2)
     self.assertEqual('CustomAdd', type(loaded.get_layer('custom')).__name__)
     self.assertLen(loaded.get_layer('custom').weights, 1)
+
+  def _testAddUpdate(self, scope):
+    with scope:
+      layer_with_update = LayerWithUpdate()
+      model = testing_utils.get_model_from_layers([layer_with_update],
+                                                  input_shape=(3,),
+                                                  input_dtype=dtypes.int32)
+
+      if testing_utils.get_model_type() == 'subclass':
+        model._set_inputs(constant_op.constant([[1, 2, 3]], dtype=dtypes.int32))
+      self.evaluate(variables.variables_initializer(model.variables))
+      saved_model_dir = self._save_model_dir()
+      model.save(saved_model_dir, save_format='tf')
+
+    loaded = keras_load.load(saved_model_dir)
+    loaded_layer = loaded.layers[-1]
+    self.evaluate(variables.variables_initializer(loaded.variables))
+    self.assertEqual(self.evaluate(loaded_layer.v), 0)
+
+    loaded.predict(constant_op.constant([[1, 2, 3]], dtype=dtypes.int32),
+                   steps=1)
+    self.assertEqual(self.evaluate(loaded_layer.v), 6)
+
+  @keras_parameterized.run_with_all_model_types
+  def testSaveLayerWithUpdates(self):
+    @tf_contextlib.contextmanager
+    def nullcontextmanager():
+      yield
+    self._testAddUpdate(nullcontextmanager())
+
+  @keras_parameterized.run_with_all_model_types
+  def testSaveInStrategyScope(self):
+    self._testAddUpdate(mirrored_strategy.MirroredStrategy().scope())
 
 
 class TestLayerCallTracing(test.TestCase):
