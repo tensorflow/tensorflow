@@ -31,9 +31,9 @@ from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import keras_parameterized
-from tensorflow.python.keras import saving
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
+from tensorflow.python.keras.saving import saved_model_experimental as saving
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.platform import test
 
