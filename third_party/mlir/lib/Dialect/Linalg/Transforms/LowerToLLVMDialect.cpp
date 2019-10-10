@@ -744,15 +744,6 @@ struct LowerLinalgToLLVMPass : public ModulePass<LowerLinalgToLLVMPass> {
 void LowerLinalgToLLVMPass::runOnModule() {
   auto module = getModule();
 
-  // Dialect conversion does not allow ignoring regions so we preprocess
-  // GenericOp to always drop its region. This is a temporary solution until we
-  // can write lowering to loops as a canonicalization but this requires folding
-  // + DialectConversion to interplay nicely.
-  // The subsequent conversion will not legalize GenericOp atm it does not have
-  // an external library attribute.
-  // TODO(riverriddle, ntv) DialectConversion + folding.
-  module.walk([&](GenericOp op) { op.region().getBlocks().clear(); });
-
   // Convert to the LLVM IR dialect using the converter defined above.
   OwningRewritePatternList patterns;
   LinalgTypeConverter converter(&getContext());
