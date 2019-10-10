@@ -34,7 +34,7 @@ namespace tensorflow {
 template <class InputScalar, class OutputScalar>
 class EigOp : public LinearAlgebraOp<InputScalar, OutputScalar> {
  public:
-  typedef LinearAlgebraOp<Scalar> Base;
+  typedef LinearAlgebraOp<InputScalar, OutputScalar> Base;
 
   explicit EigOp(OpKernelConstruction* context) : Base(context) {
     OP_REQUIRES_OK(context, context->GetAttr("compute_v", &compute_v_));
