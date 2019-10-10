@@ -152,8 +152,6 @@ LogicalResult linalg::convertLinalg3ToLLVM(ModuleOp module) {
   ConversionTarget target(*module.getContext());
   target.addLegalDialect<LLVM::LLVMDialect>();
   target.addLegalOp<ModuleOp, ModuleTerminatorOp>();
-  target.addDynamicallyLegalOp<FuncOp>(
-      [&](FuncOp op) { return converter.isSignatureLegal(op.getType()); });
   if (failed(applyFullConversion(module, target, patterns, &converter)))
     return failure();
 

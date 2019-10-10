@@ -25,15 +25,12 @@
 
 namespace mlir {
 
-class FuncOp;
 class Location;
 class ModuleOp;
-class OpBuilder;
-class Value;
 
 namespace LLVM {
 class LLVMDialect;
-}
+} // namespace LLVM
 
 template <typename T> class OpPassBase;
 

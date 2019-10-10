@@ -1,6 +1,6 @@
 // RUN: mlir-translate -mlir-to-rocdlir %s | FileCheck %s
 
-func @rocdl_special_regs() -> !llvm.i32 {
+llvm.func @rocdl_special_regs() -> !llvm.i32 {
   // CHECK-LABEL: rocdl_special_regs
   // CHECK: call i32 @llvm.amdgcn.workitem.id.x()
   %1 = rocdl.workitem.id.x : !llvm.i32
@@ -29,7 +29,7 @@ func @rocdl_special_regs() -> !llvm.i32 {
   llvm.return %1 : !llvm.i32
 }
 
-func @kernel_func() attributes {gpu.kernel} {
+llvm.func @kernel_func() attributes {gpu.kernel} {
   // CHECK-LABEL: amdgpu_kernel void @kernel_func
   llvm.return
 }

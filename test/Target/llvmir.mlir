@@ -29,7 +29,7 @@ llvm.mlir.global @int_global_undef() : !llvm.i64
 //
 
 // CHECK: declare i8* @malloc(i64)
-func @malloc(!llvm.i64) -> !llvm<"i8*">
+llvm.func @malloc(!llvm.i64) -> !llvm<"i8*">
 // CHECK: declare void @free(i8*)
 
 
@@ -41,12 +41,12 @@ func @malloc(!llvm.i64) -> !llvm<"i8*">
 // CHECK-LABEL: define void @empty() {
 // CHECK-NEXT:    ret void
 // CHECK-NEXT:  }
-func @empty() {
+llvm.func @empty() {
   llvm.return
 }
 
 // CHECK-LABEL: @global_refs
-func @global_refs() {
+llvm.func @global_refs() {
   // Check load from globals.
   // CHECK: load i32, i32* @i32_global
   %0 = llvm.mlir.addressof @i32_global : !llvm<"i32*">
@@ -63,11 +63,11 @@ func @global_refs() {
 }
 
 // CHECK-LABEL: declare void @body(i64)
-func @body(!llvm.i64)
+llvm.func @body(!llvm.i64)
 
 
 // CHECK-LABEL: define void @simple_loop() {
-func @simple_loop() {
+llvm.func @simple_loop() {
 // CHECK: br label %[[SIMPLE_bb1:[0-9]+]]
   llvm.br ^bb1
 
@@ -107,7 +107,7 @@ func @simple_loop() {
 // CHECK-NEXT:   call void @simple_loop()
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
-func @simple_caller() {
+llvm.func @simple_caller() {
   llvm.call @simple_loop() : () -> ()
   llvm.return
 }
@@ -124,20 +124,20 @@ func @simple_caller() {
 // CHECK-NEXT:   call void @more_imperfectly_nested_loops()
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
-func @ml_caller() {
+llvm.func @ml_caller() {
   llvm.call @simple_loop() : () -> ()
   llvm.call @more_imperfectly_nested_loops() : () -> ()
   llvm.return
 }
 
 // CHECK-LABEL: declare i64 @body_args(i64)
-func @body_args(!llvm.i64) -> !llvm.i64
+llvm.func @body_args(!llvm.i64) -> !llvm.i64
 // CHECK-LABEL: declare i32 @other(i64, i32)
-func @other(!llvm.i64, !llvm.i32) -> !llvm.i32
+llvm.func @other(!llvm.i64, !llvm.i32) -> !llvm.i32
 
 // CHECK-LABEL: define i32 @func_args(i32 {{%.*}}, i32 {{%.*}}) {
 // CHECK-NEXT: br label %[[ARGS_bb1:[0-9]+]]
-func @func_args(%arg0: !llvm.i32, %arg1: !llvm.i32) -> !llvm.i32 {
+llvm.func @func_args(%arg0: !llvm.i32, %arg1: !llvm.i32) -> !llvm.i32 {
   %0 = llvm.mlir.constant(0 : i32) : !llvm.i32
   llvm.br ^bb1
 
@@ -182,17 +182,17 @@ func @func_args(%arg0: !llvm.i32, %arg1: !llvm.i32) -> !llvm.i32 {
 }
 
 // CHECK: declare void @pre(i64)
-func @pre(!llvm.i64)
+llvm.func @pre(!llvm.i64)
 
 // CHECK: declare void @body2(i64, i64)
-func @body2(!llvm.i64, !llvm.i64)
+llvm.func @body2(!llvm.i64, !llvm.i64)
 
 // CHECK: declare void @post(i64)
-func @post(!llvm.i64)
+llvm.func @post(!llvm.i64)
 
 // CHECK-LABEL: define void @imperfectly_nested_loops() {
 // CHECK-NEXT:   br label %[[IMPER_bb1:[0-9]+]]
-func @imperfectly_nested_loops() {
+llvm.func @imperfectly_nested_loops() {
   llvm.br ^bb1
 
 // CHECK: [[IMPER_bb1]]:
@@ -259,10 +259,10 @@ func @imperfectly_nested_loops() {
 }
 
 // CHECK: declare void @mid(i64)
-func @mid(!llvm.i64)
+llvm.func @mid(!llvm.i64)
 
 // CHECK: declare void @body3(i64, i64)
-func @body3(!llvm.i64, !llvm.i64)
+llvm.func @body3(!llvm.i64, !llvm.i64)
 
 // A complete function transformation check.
 // CHECK-LABEL: define void @more_imperfectly_nested_loops() {
@@ -306,7 +306,7 @@ func @body3(!llvm.i64, !llvm.i64)
 // CHECK: 21:                                     ; preds = %2
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
-func @more_imperfectly_nested_loops() {
+llvm.func @more_imperfectly_nested_loops() {
   llvm.br ^bb1
 ^bb1:	// pred: ^bb0
   %0 = llvm.mlir.constant(0 : index) : !llvm.i64
@@ -359,7 +359,7 @@ func @more_imperfectly_nested_loops() {
 //
 
 // CHECK-LABEL: define void @memref_alloc()
-func @memref_alloc() {
+llvm.func @memref_alloc() {
 // CHECK-NEXT: %{{[0-9]+}} = call i8* @malloc(i64 400)
 // CHECK-NEXT: %{{[0-9]+}} = bitcast i8* %{{[0-9]+}} to float*
 // CHECK-NEXT: %{{[0-9]+}} = insertvalue { float* } undef, float* %{{[0-9]+}}, 0
@@ -377,10 +377,10 @@ func @memref_alloc() {
 }
 
 // CHECK-LABEL: declare i64 @get_index()
-func @get_index() -> !llvm.i64
+llvm.func @get_index() -> !llvm.i64
 
 // CHECK-LABEL: define void @store_load_static()
-func @store_load_static() {
+llvm.func @store_load_static() {
 ^bb0:
 // CHECK-NEXT: %{{[0-9]+}} = call i8* @malloc(i64 40)
 // CHECK-NEXT: %{{[0-9]+}} = bitcast i8* %{{[0-9]+}} to float*
@@ -448,7 +448,7 @@ func @store_load_static() {
 }
 
 // CHECK-LABEL: define void @store_load_dynamic(i64 {{%.*}})
-func @store_load_dynamic(%arg0: !llvm.i64) {
+llvm.func @store_load_dynamic(%arg0: !llvm.i64) {
 // CHECK-NEXT: %{{[0-9]+}} = mul i64 %{{[0-9]+}}, 4
 // CHECK-NEXT: %{{[0-9]+}} = call i8* @malloc(i64 %{{[0-9]+}})
 // CHECK-NEXT: %{{[0-9]+}} = bitcast i8* %{{[0-9]+}} to float*
@@ -518,7 +518,7 @@ func @store_load_dynamic(%arg0: !llvm.i64) {
 }
 
 // CHECK-LABEL: define void @store_load_mixed(i64 {{%.*}})
-func @store_load_mixed(%arg0: !llvm.i64) {
+llvm.func @store_load_mixed(%arg0: !llvm.i64) {
   %0 = llvm.mlir.constant(10 : index) : !llvm.i64
 // CHECK-NEXT: %{{[0-9]+}} = mul i64 2, %{{[0-9]+}}
 // CHECK-NEXT: %{{[0-9]+}} = mul i64 %{{[0-9]+}}, 4
@@ -603,7 +603,7 @@ func @store_load_mixed(%arg0: !llvm.i64) {
 }
 
 // CHECK-LABEL: define { float*, i64 } @memref_args_rets({ float* } {{%.*}}, { float*, i64 } {{%.*}}, { float*, i64 } {{%.*}}) {
-func @memref_args_rets(%arg0: !llvm<"{ float* }">, %arg1: !llvm<"{ float*, i64 }">, %arg2: !llvm<"{ float*, i64 }">) -> !llvm<"{ float*, i64 }"> {
+llvm.func @memref_args_rets(%arg0: !llvm<"{ float* }">, %arg1: !llvm<"{ float*, i64 }">, %arg2: !llvm<"{ float*, i64 }">) -> !llvm<"{ float*, i64 }"> {
   %0 = llvm.mlir.constant(7 : index) : !llvm.i64
 // CHECK-NEXT: %{{[0-9]+}} = call i64 @get_index()
   %1 = llvm.call @get_index() : () -> !llvm.i64
@@ -657,7 +657,7 @@ func @memref_args_rets(%arg0: !llvm<"{ float* }">, %arg1: !llvm<"{ float*, i64 }
 
 
 // CHECK-LABEL: define i64 @memref_dim({ float*, i64, i64 } {{%.*}})
-func @memref_dim(%arg0: !llvm<"{ float*, i64, i64 }">) -> !llvm.i64 {
+llvm.func @memref_dim(%arg0: !llvm<"{ float*, i64, i64 }">) -> !llvm.i64 {
 // Expecting this to create an LLVM constant.
   %0 = llvm.mlir.constant(42 : index) : !llvm.i64
 // CHECK-NEXT: %2 = extractvalue { float*, i64, i64 } %0, 1
@@ -678,12 +678,12 @@ func @memref_dim(%arg0: !llvm<"{ float*, i64, i64 }">) -> !llvm.i64 {
   llvm.return %6 : !llvm.i64
 }
 
-func @get_i64() -> !llvm.i64
-func @get_f32() -> !llvm.float
-func @get_memref() -> !llvm<"{ float*, i64, i64 }">
+llvm.func @get_i64() -> !llvm.i64
+llvm.func @get_f32() -> !llvm.float
+llvm.func @get_memref() -> !llvm<"{ float*, i64, i64 }">
 
 // CHECK-LABEL: define { i64, float, { float*, i64, i64 } } @multireturn() {
-func @multireturn() -> !llvm<"{ i64, float, { float*, i64, i64 } }"> {
+llvm.func @multireturn() -> !llvm<"{ i64, float, { float*, i64, i64 } }"> {
   %0 = llvm.call @get_i64() : () -> !llvm.i64
   %1 = llvm.call @get_f32() : () -> !llvm.float
   %2 = llvm.call @get_memref() : () -> !llvm<"{ float*, i64, i64 }">
@@ -700,7 +700,7 @@ func @multireturn() -> !llvm<"{ i64, float, { float*, i64, i64 } }"> {
 
 
 // CHECK-LABEL: define void @multireturn_caller() {
-func @multireturn_caller() {
+llvm.func @multireturn_caller() {
 // CHECK-NEXT:   %1 = call { i64, float, { float*, i64, i64 } } @multireturn()
 // CHECK-NEXT:   [[ret0:%[0-9]+]] = extractvalue { i64, float, { float*, i64, i64 } } %1, 0
 // CHECK-NEXT:   [[ret1:%[0-9]+]] = extractvalue { i64, float, { float*, i64, i64 } } %1, 1
@@ -734,7 +734,7 @@ func @multireturn_caller() {
 }
 
 // CHECK-LABEL: define <4 x float> @vector_ops(<4 x float> {{%.*}}, <4 x i1> {{%.*}}, <4 x i64> {{%.*}}) {
-func @vector_ops(%arg0: !llvm<"<4 x float>">, %arg1: !llvm<"<4 x i1>">, %arg2: !llvm<"<4 x i64>">) -> !llvm<"<4 x float>"> {
+llvm.func @vector_ops(%arg0: !llvm<"<4 x float>">, %arg1: !llvm<"<4 x i1>">, %arg2: !llvm<"<4 x i64>">) -> !llvm<"<4 x float>"> {
   %0 = llvm.mlir.constant(dense<4.200000e+01> : vector<4xf32>) : !llvm<"<4 x float>">
 // CHECK-NEXT: %4 = fadd <4 x float> %0, <float 4.200000e+01, float 4.200000e+01, float 4.200000e+01, float 4.200000e+01>
   %1 = llvm.fadd %arg0, %0 : !llvm<"<4 x float>">
@@ -763,7 +763,7 @@ func @vector_ops(%arg0: !llvm<"<4 x float>">, %arg1: !llvm<"<4 x i1>">, %arg2: !
 }
 
 // CHECK-LABEL: @ops
-func @ops(%arg0: !llvm.float, %arg1: !llvm.float, %arg2: !llvm.i32, %arg3: !llvm.i32) -> !llvm<"{ float, i32 }"> {
+llvm.func @ops(%arg0: !llvm.float, %arg1: !llvm.float, %arg2: !llvm.i32, %arg3: !llvm.i32) -> !llvm<"{ float, i32 }"> {
 // CHECK-NEXT: fsub float %0, %1
   %0 = llvm.fsub %arg0, %arg1 : !llvm.float
 // CHECK-NEXT: %6 = sub i32 %2, %3
@@ -811,7 +811,7 @@ func @ops(%arg0: !llvm.float, %arg1: !llvm.float, %arg2: !llvm.i32, %arg3: !llvm
 //
 
 // CHECK-LABEL: define void @indirect_const_call(i64 {{%.*}}) {
-func @indirect_const_call(%arg0: !llvm.i64) {
+llvm.func @indirect_const_call(%arg0: !llvm.i64) {
 // CHECK-NEXT:  call void @body(i64 %0)
   %0 = llvm.mlir.constant(@body) : !llvm<"void (i64)*">
   llvm.call %0(%arg0) : (!llvm.i64) -> ()
@@ -820,7 +820,7 @@ func @indirect_const_call(%arg0: !llvm.i64) {
 }
 
 // CHECK-LABEL: define i32 @indirect_call(i32 (float)* {{%.*}}, float {{%.*}}) {
-func @indirect_call(%arg0: !llvm<"i32 (float)*">, %arg1: !llvm.float) -> !llvm.i32 {
+llvm.func @indirect_call(%arg0: !llvm<"i32 (float)*">, %arg1: !llvm.float) -> !llvm.i32 {
 // CHECK-NEXT:  %3 = call i32 %0(float %1)
   %0 = llvm.call %arg0(%arg1) : (!llvm.float) -> !llvm.i32
 // CHECK-NEXT:  ret i32 %3
@@ -833,7 +833,7 @@ func @indirect_call(%arg0: !llvm<"i32 (float)*">, %arg1: !llvm.float) -> !llvm.i
 //
 
 // CHECK-LABEL: define void @cond_br_arguments(i1 {{%.*}}, i1 {{%.*}}) {
-func @cond_br_arguments(%arg0: !llvm.i1, %arg1: !llvm.i1) {
+llvm.func @cond_br_arguments(%arg0: !llvm.i1, %arg1: !llvm.i1) {
 // CHECK-NEXT:   br i1 %0, label %3, label %5
   llvm.cond_br %arg0, ^bb1(%arg0 : !llvm.i1), ^bb2
 
@@ -850,15 +850,14 @@ func @cond_br_arguments(%arg0: !llvm.i1, %arg1: !llvm.i1) {
 }
 
 // CHECK-LABEL: define void @llvm_noalias(float* noalias {{%*.}}) {
-func @llvm_noalias(%arg0: !llvm<"float*"> {llvm.noalias = true}) {
+llvm.func @llvm_noalias(%arg0: !llvm<"float*"> {llvm.noalias = true}) {
   llvm.return
 }
 
 // CHECK-LABEL: @llvm_varargs(...)
-func @llvm_varargs()
-  attributes {std.varargs = true}
+llvm.func @llvm_varargs(...)
 
-func @intpointerconversion(%arg0 : !llvm.i32) -> !llvm.i32 {
+llvm.func @intpointerconversion(%arg0 : !llvm.i32) -> !llvm.i32 {
 // CHECK:      %2 = inttoptr i32 %0 to i32*
 // CHECK-NEXT: %3 = ptrtoint i32* %2 to i32
   %1 = llvm.inttoptr %arg0 : !llvm.i32 to !llvm<"i32*">
@@ -866,19 +865,19 @@ func @intpointerconversion(%arg0 : !llvm.i32) -> !llvm.i32 {
   llvm.return %2 : !llvm.i32
 }
 
-func @stringconstant() -> !llvm<"i8*"> {
+llvm.func @stringconstant() -> !llvm<"i8*"> {
   %1 = llvm.mlir.constant("Hello world!") : !llvm<"i8*">
   // CHECK: ret [12 x i8] c"Hello world!"
   llvm.return %1 : !llvm<"i8*">
 }
 
-func @noreach() {
+llvm.func @noreach() {
 // CHECK:    unreachable
   llvm.unreachable
 }
 
 // CHECK-LABEL: define void @fcmp
-func @fcmp(%arg0: !llvm.float, %arg1: !llvm.float) {
+llvm.func @fcmp(%arg0: !llvm.float, %arg1: !llvm.float) {
   // CHECK: fcmp oeq float %0, %1
   // CHECK-NEXT: fcmp ogt float %0, %1
   // CHECK-NEXT: fcmp oge float %0, %1
@@ -911,7 +910,7 @@ func @fcmp(%arg0: !llvm.float, %arg1: !llvm.float) {
 }
 
 // CHECK-LABEL: @vect
-func @vect(%arg0: !llvm<"<4 x float>">, %arg1: !llvm.i32, %arg2: !llvm.float) {
+llvm.func @vect(%arg0: !llvm<"<4 x float>">, %arg1: !llvm.i32, %arg2: !llvm.float) {
   // CHECK-NEXT: extractelement <4 x float> {{.*}}, i32 {{.*}}
   // CHECK-NEXT: insertelement <4 x float> {{.*}}, float %2, i32 {{.*}}
   // CHECK-NEXT: shufflevector <4 x float> {{.*}}, <4 x float> {{.*}}, <5 x i32> <i32 0, i32 0, i32 0, i32 0, i32 7>
@@ -922,7 +921,7 @@ func @vect(%arg0: !llvm<"<4 x float>">, %arg1: !llvm.i32, %arg2: !llvm.float) {
 }
 
 // CHECK-LABEL: @alloca
-func @alloca(%size : !llvm.i64) {
+llvm.func @alloca(%size : !llvm.i64) {
   //      CHECK: alloca
   //  CHECK-NOT: align
   llvm.alloca %size x !llvm.i32 {alignment = 0} : (!llvm.i64) -> (!llvm<"i32*">)
@@ -932,13 +931,14 @@ func @alloca(%size : !llvm.i64) {
 }
 
 // CHECK-LABEL: @constants
-func @constants() -> !llvm<"<4 x float>"> {
+llvm.func @constants() -> !llvm<"<4 x float>"> {
   // CHECK: ret <4 x float> <float 4.2{{0*}}e+01, float 0.{{0*}}e+00, float 0.{{0*}}e+00, float 0.{{0*}}e+00>
   %0 = llvm.mlir.constant(sparse<[[0]], [4.2e+01]> : vector<4xf32>) : !llvm<"<4 x float>">
   llvm.return %0 : !llvm<"<4 x float>">
 }
 
-func @fp_casts(%fp1 : !llvm<"float">, %fp2 : !llvm<"double">) -> !llvm.i16 {
+// CHECK-LABEL: @fp_casts
+llvm.func @fp_casts(%fp1 : !llvm<"float">, %fp2 : !llvm<"double">) -> !llvm.i16 {
 // CHECK:    fptrunc double {{.*}} to float
   %a = llvm.fptrunc %fp2 : !llvm<"double"> to !llvm<"float">
 // CHECK:    fpext float {{.*}} to double
@@ -948,7 +948,8 @@ func @fp_casts(%fp1 : !llvm<"float">, %fp2 : !llvm<"double">) -> !llvm.i16 {
   llvm.return %c : !llvm.i16
 }
 
-func @integer_extension_and_truncation(%a : !llvm.i32) {
+// CHECK-LABEL: @integer_extension_and_truncation
+llvm.func @integer_extension_and_truncation(%a : !llvm.i32) {
 // CHECK:    sext i32 {{.*}} to i64
 // CHECK:    zext i32 {{.*}} to i64
 // CHECK:    trunc i32 {{.*}} to i16

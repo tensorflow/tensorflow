@@ -1,7 +1,7 @@
 // RUN: mlir-translate -mlir-to-llvmir %s | FileCheck %s
 
 // CHECK-LABEL: @fmuladd_test
-func @fmuladd_test(%arg0: !llvm.float, %arg1: !llvm.float, %arg2: !llvm<"<8 x float>">) {
+llvm.func @fmuladd_test(%arg0: !llvm.float, %arg1: !llvm.float, %arg2: !llvm<"<8 x float>">) {
   // CHECK: call float @llvm.fmuladd.f32.f32.f32
   "llvm.intr.fmuladd"(%arg0, %arg1, %arg0) : (!llvm.float, !llvm.float, !llvm.float) -> !llvm.float
   // CHECK: call <8 x float> @llvm.fmuladd.v8f32.v8f32.v8f32
@@ -10,7 +10,7 @@ func @fmuladd_test(%arg0: !llvm.float, %arg1: !llvm.float, %arg2: !llvm<"<8 x fl
 }
 
 // CHECK-LABEL: @exp_test
-func @exp_test(%arg0: !llvm.float, %arg1: !llvm<"<8 x float>">) {
+llvm.func @exp_test(%arg0: !llvm.float, %arg1: !llvm<"<8 x float>">) {
   // CHECK: call float @llvm.exp.f32
   "llvm.intr.exp"(%arg0) : (!llvm.float) -> !llvm.float
   // CHECK: call <8 x float> @llvm.exp.v8f32

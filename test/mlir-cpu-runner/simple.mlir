@@ -12,12 +12,12 @@
 // RUN: rm %T/test.o
 
 // Declarations of C library functions.
-func @fabsf(!llvm.float) -> !llvm.float
-func @malloc(!llvm.i64) -> !llvm<"i8*">
-func @free(!llvm<"i8*">)
+llvm.func @fabsf(!llvm.float) -> !llvm.float
+llvm.func @malloc(!llvm.i64) -> !llvm<"i8*">
+llvm.func @free(!llvm<"i8*">)
 
 // Check that a simple function with a nested call works.
-func @main() -> !llvm.float {
+llvm.func @main() -> !llvm.float {
   %0 = llvm.mlir.constant(-4.200000e+02 : f32) : !llvm.float
   %1 = llvm.call @fabsf(%0) : (!llvm.float) -> !llvm.float
   llvm.return %1 : !llvm.float
@@ -25,13 +25,13 @@ func @main() -> !llvm.float {
 // CHECK: 4.200000e+02
 
 // Helper typed functions wrapping calls to "malloc" and "free".
-func @allocation() -> !llvm<"float*"> {
+llvm.func @allocation() -> !llvm<"float*"> {
   %0 = llvm.mlir.constant(4 : index) : !llvm.i64
   %1 = llvm.call @malloc(%0) : (!llvm.i64) -> !llvm<"i8*">
   %2 = llvm.bitcast %1 : !llvm<"i8*"> to !llvm<"float*">
   llvm.return %2 : !llvm<"float*">
 }
-func @deallocation(%arg0: !llvm<"float*">) {
+llvm.func @deallocation(%arg0: !llvm<"float*">) {
   %0 = llvm.bitcast %arg0 : !llvm<"float*"> to !llvm<"i8*">
   llvm.call @free(%0) : (!llvm<"i8*">) -> ()
   llvm.return
@@ -39,7 +39,7 @@ func @deallocation(%arg0: !llvm<"float*">) {
 
 // Check that allocation and deallocation works, and that a custom entry point
 // works.
-func @foo() -> !llvm.float {
+llvm.func @foo() -> !llvm.float {
   %0 = llvm.call @allocation() : () -> !llvm<"float*">
   %1 = llvm.mlir.constant(0 : index) : !llvm.i64
   %2 = llvm.mlir.constant(1.234000e+03 : f32) : !llvm.float

@@ -10,7 +10,7 @@ module attributes {gpu.container_module} {
         attributes { gpu.kernel }
   }
 
-  func @foo() {
+  llvm.func @foo() {
     %0 = "op"() : () -> (!llvm.float)
     %1 = "op"() : () -> (!llvm<"float*">)
     %cst = constant 8 : index
@@ -29,7 +29,7 @@ module attributes {gpu.container_module} {
     "gpu.launch_func"(%cst, %cst, %cst, %cst, %cst, %cst, %0, %1) { kernel = "kernel", kernel_module = @kernel_module }
         : (index, index, index, index, index, index, !llvm.float, !llvm<"float*">) -> ()
 
-    return
+    llvm.return
   }
 
 }

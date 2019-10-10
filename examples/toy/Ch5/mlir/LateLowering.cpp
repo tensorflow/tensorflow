@@ -138,14 +138,14 @@ public:
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override {
     // Get or create the declaration of the printf function in the module.
-    FuncOp printfFunc = getPrintf(op->getParentOfType<ModuleOp>());
+    LLVM::LLVMFuncOp printfFunc = getPrintf(op->getParentOfType<ModuleOp>());
 
     auto print = cast<toy::PrintOp>(op);
     auto loc = print.getLoc();
     // We will operate on a MemRef abstraction, we use a type.cast to get one
     // if our operand is still a Toy array.
     Value *operand = memRefTypeCast(rewriter, operands[0]);
-    Type retTy = printfFunc.getType().getResult(0);
+    Type retTy = printfFunc.getType().getFunctionResultType();
 
     // Create our loop nest now
     using namespace edsc;
@@ -218,24 +218,23 @@ private:
 
   /// Return the prototype declaration for printf in the module, create it if
   /// necessary.
-  FuncOp getPrintf(ModuleOp module) const {
-    auto printfFunc = module.lookupSymbol<FuncOp>("printf");
+  LLVM::LLVMFuncOp getPrintf(ModuleOp module) const {
+    auto printfFunc = module.lookupSymbol<LLVM::LLVMFuncOp>("printf");
     if (printfFunc)
       return printfFunc;
 
     // Create a function declaration for printf, signature is `i32 (i8*, ...)`
-    Builder builder(module);
+    OpBuilder builder(module.getBodyRegion());
     auto *dialect =
         module.getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
 
     auto llvmI32Ty = LLVM::LLVMType::getInt32Ty(dialect);
     auto llvmI8PtrTy = LLVM::LLVMType::getInt8Ty(dialect).getPointerTo();
-    auto printfTy = builder.getFunctionType({llvmI8PtrTy}, {llvmI32Ty});
-    printfFunc = FuncOp::create(builder.getUnknownLoc(), "printf", printfTy);
-    // It should be variadic, but we don't support it fully just yet.
-    printfFunc.setAttr("std.varargs", builder.getBoolAttr(true));
-    module.push_back(printfFunc);
-    return printfFunc;
+    auto printfTy = LLVM::LLVMType::getFunctionTy(llvmI32Ty, llvmI8PtrTy,
+                                                  /*isVarArg=*/true);
+    return builder.create<LLVM::LLVMFuncOp>(builder.getUnknownLoc(), "printf",
+                                            printfTy,
+                                            ArrayRef<NamedAttribute>());
   }
 };
 
@@ -369,10 +368,10 @@ struct LateLoweringPass : public ModulePass<LateLoweringPass> {
     ConversionTarget target(getContext());
     target.addLegalDialect<AffineOpsDialect, linalg::LinalgDialect,
                            LLVM::LLVMDialect, StandardOpsDialect>();
-    target.addLegalOp<toy::AllocOp, toy::TypeCastOp>();
     target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
       return typeConverter.isSignatureLegal(op.getType());
     });
+    target.addLegalOp<toy::AllocOp, toy::TypeCastOp>();
     if (failed(applyPartialConversion(getModule(), target, toyPatterns,
                                       &typeConverter))) {
       emitError(UnknownLoc::get(getModule().getContext()),

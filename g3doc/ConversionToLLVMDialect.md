@@ -137,49 +137,27 @@ Examples:
 
 ### Function Signature Conversion
 
-MLIR function type is built into the representation, even the functions in
-dialects including a first-class function type must have the built-in MLIR
-function type. During the conversion to LLVM IR, function signatures are
-converted as follows:
-
--   the outer type remains the built-in MLIR function;
--   function arguments are converted individually following these rules;
--   function results:
-    -   zero-result functions remain zero-result;
-    -   single-result functions have their result type converted according to
-        these rules;
-    -   multi-result functions have a single result type of the wrapped LLVM IR
-        structure type with elements corresponding to the converted original
-        results.
-
-Rationale: function definitions remain analyzable within MLIR without having to
-abstract away the function type. In order to remain consistent with the regular
-MLIR functions, we do not introduce a `void` result type since we cannot create
-a value of `void` type that MLIR passes might expect to be returned from a
-function.
+LLVM IR functions are defined by a custom operation. The function itself has a
+wrapped LLVM IR function type converted as described above. The function
+definition operation uses MLIR syntax.
 
 Examples:
 
 ```mlir {.mlir}
 // zero-ary function type with no results.
 func @foo() -> ()
-// remains as is
-func @foo() -> ()
+// gets LLVM type void().
+llvm.func @foo() -> ()
 
-// unary function with one result
+// function with one result
 func @bar(i32) -> (i64)
-// has its argument and result type converted
-func @bar(!llvm.type<"i32">) -> !llvm.type<"i64">
+// gets converted to LLVM type i64(i32).
+func @bar(!llvm.i32) -> !llvm.i64
 
-// binary function with one result
-func @baz(i32, f32) -> (i64)
-// has its arguments handled separately
-func @baz(!llvm.type<"i32">, !llvm.type<"float">) -> !llvm.type<"i64">
-
-// binary function with two results
+// function with two results
 func @qux(i32, f32) -> (i64, f64)
 // has its result aggregated into a structure type
-func @qux(!llvm.type<"i32">, !llvm.type<"float">) -> !llvm.type<"{i64, double}">
+func @qux(!llvm.i32, !llvm.float) -> !llvm.type<"{i64, double}">
 
 // function-typed arguments or results in higher-order functions
 func @quux(() -> ()) -> (() -> ())
