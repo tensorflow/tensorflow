@@ -607,6 +607,9 @@ py_test(
     srcs = ["lib/debug_events_writer_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",  # b/142475891
+    ],
     deps = [
         ":debug_events_writer",
         "//tensorflow/core:protos_all_py",
@@ -675,6 +678,9 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/keras",
+    ],
+    tags = [
+        "no_windows",  # b/142475891
     ],
 )
 
@@ -751,6 +757,7 @@ py_test(
     python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
+        "no_windows",
         "oss_serial",
     ],
     deps = [
