@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
@@ -39,6 +40,7 @@ namespace tensorflow {
 namespace tensorrt {
 
 namespace convert {
+using ::stream_executor::port::StatusOr;
 
 #define IS_TRT_VERSION_GE(major, minor, patch, build)           \
   ((NV_TENSORRT_MAJOR > major) ||                               \
@@ -443,9 +445,9 @@ class Converter {
     nvinfer1::DataType trt_dtype;
   };
 
-  Converter(nvinfer1::INetworkDefinition* trt_network,
-            TrtPrecisionMode precision_mode, bool use_calibration,
-            nvinfer1::ILogger* trt_logger);
+  static StatusOr<std::unique_ptr<Converter>> Create(
+      nvinfer1::IBuilder* trt_builder, TrtPrecisionMode precision_mode,
+      bool use_calibration, nvinfer1::ILogger* trt_logger);
 
   //////////////////////////////////////////////////////////////////////////////
   // Methods used by the TRT engine builder to build a TRT network from a TF
@@ -464,13 +466,16 @@ class Converter {
   Status RenameAndMarkOutputTensors(
       const std::vector<EngineOutputInfo>& output_tensors);
 
+  // Build a TRT engine using the created network.
+  Status BuildCudaEngine(TrtUniquePtrType<nvinfer1::ICudaEngine>* engine);
+
   //////////////////////////////////////////////////////////////////////////////
   // Methods used by op converters to convert individual TF node and add layers
   // to the TRT network.
 
   // Op converters (e.g. ConvertReshape) need to access the TRT network in order
   // to add TRT layers.
-  nvinfer1::INetworkDefinition* network() { return trt_network_; }
+  nvinfer1::INetworkDefinition* network() { return trt_network_.get(); }
 
   // What precision are we targeting?
   TrtPrecisionMode precision_mode() const { return precision_mode_; }
@@ -521,6 +526,11 @@ class Converter {
                                          const nvinfer1::Dims& dims);
 
  private:
+  Converter(nvinfer1::IBuilder* trt_builder, TrtPrecisionMode precision_mode,
+            bool use_calibration, nvinfer1::ILogger* trt_logger);
+
+  Status Init();
+
   // Verify the provided batch_size is consistent with batch_size_ and update it
   // if necessary.
   Status MaybeUpdateBatchSize(int batch_size);
@@ -549,8 +559,11 @@ class Converter {
   // Tensors/weights added during construction of trt_network_.
   std::unordered_map<string, TRT_TensorOrWeights> trt_tensors_;
 
-  // The TRT networking being built.
-  nvinfer1::INetworkDefinition* trt_network_;
+  // The TRT builder used to create the network and build the engine. Not owned.
+  nvinfer1::IBuilder* trt_builder_;
+
+  // The TRT network being built.
+  TrtUniquePtrType<nvinfer1::INetworkDefinition> trt_network_;
 
   // Store the weights added during construction of trt_network_.
   TrtWeightStore weight_store_;
