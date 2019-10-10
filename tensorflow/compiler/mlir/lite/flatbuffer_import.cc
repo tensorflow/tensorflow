@@ -138,10 +138,10 @@ StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
   // type.
   bool is_weight_buffer = is_constant && (storage_type.getWidth() == 8);
 
-  int64_t storage_min = QuantizedType::getDefaultMininumForInteger(
+  int64_t storage_min = QuantizedType::getDefaultMinimumForInteger(
                             is_signed, storage_type.getWidth()) +
                         is_weight_buffer;
-  int64_t storage_max = QuantizedType::getDefaultMaxinumForInteger(
+  int64_t storage_max = QuantizedType::getDefaultMaximumForInteger(
       is_signed, storage_type.getWidth());
   uint32_t flags =
       is_signed ? mlir::quant::QuantizationFlags::FlagValue::Signed : 0;

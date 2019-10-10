@@ -256,8 +256,8 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
     // This is a positive value, and will be applied on zero points and fixed
     // point ranges.
     int64_t offset =
-        QType::getDefaultMininumForInteger(/*isSigned=*/false, num_bits) -
-        QType::getDefaultMininumForInteger(/*isSigned=*/true, num_bits);
+        QType::getDefaultMinimumForInteger(/*isSigned=*/false, num_bits) -
+        QType::getDefaultMinimumForInteger(/*isSigned=*/true, num_bits);
 
     auto flags = quant::QuantizationFlags::Signed;
     QType new_qtype;
