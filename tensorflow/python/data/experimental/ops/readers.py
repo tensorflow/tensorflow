@@ -209,9 +209,10 @@ def _maybe_shuffle_and_repeat(
   """Optionally shuffle and repeat dataset, as requested."""
   if num_epochs != 1 and shuffle:
     # Use shuffle_and_repeat for perf
-    return dataset.apply(
-        shuffle_ops.shuffle_and_repeat(shuffle_buffer_size, num_epochs,
-                                       shuffle_seed))
+    def _apply_fn(input_dataset):  # pylint: disable=missing-docstring
+      return shuffle_ops._ShuffleAndRepeatDataset(
+          input_dataset, shuffle_buffer_size, num_epochs, shuffle_seed)
+    return dataset.apply(_apply_fn)
   elif shuffle:
     return dataset.shuffle(shuffle_buffer_size, shuffle_seed)
   elif num_epochs != 1:
