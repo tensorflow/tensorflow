@@ -102,9 +102,8 @@ gcc 7.
 ```sh
 git clone https://github.com/llvm/llvm-project.git
 git clone https://github.com/tensorflow/mlir llvm-project/llvm/projects/mlir
-cd llvm-project/
-git checkout $(git log  --grep=$(cat projects/mlir/VERSION.llvm.svn) --pretty="format:%H" -n 1)
-mkdir build && build
+mkdir llvm-project/build
+cd llvm-project/build
 cmake -G Ninja ../llvm -DLLVM_BUILD_EXAMPLES=ON -DLLVM_TARGETS_TO_BUILD="host"
 cmake --build . --target check-mlir
 ```
@@ -117,14 +116,8 @@ REM   $visual-studio-install\Auxiliary\Build\vcvarsall.bat" x64
 REM invoked.
 git clone https://github.com/llvm/llvm-project.git
 git clone https://github.com/tensorflow/mlir llvm-project\llvm\projects\mlir
-cd llvm-project
-cat projects/mlir/VERSION.llvm.svn
-# replace {SVN_VERSION} with the result of the previous command
-git log  --grep={SVN_VERSION} --pretty="format:%H" -n 1
-# replace {GIT_HASH} with the result of the previous command
-git checkout {GIT_HASH}
-mkdir build
-cd build
+mkdir llvm-project\build
+cd llvm-project\build
 cmake ..\llvm -G "Visual Studio 15 2017 Win64" -DLLVM_BUILD_EXAMPLES=ON -DLLVM_TARGETS_TO_BUILD="host" -DCMAKE_BUILD_TYPE=Release -Thost=x64
 cmake --build . --target check-mlir
 ```
