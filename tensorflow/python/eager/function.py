@@ -2660,10 +2660,8 @@ class Function(object):
         return self._define_function_with_shape_relaxation(args, kwargs)
 
       self._function_cache.missed.add(call_context_key)
-      graph_function = self._function_cache.primary.get(cache_key, None)
-      if graph_function is None:
-        graph_function = self._create_graph_function(args, kwargs)
-        self._function_cache.primary[cache_key] = graph_function
+      graph_function = self._create_graph_function(args, kwargs)
+      self._function_cache.primary[cache_key] = graph_function
       return graph_function, args, kwargs
 
 
