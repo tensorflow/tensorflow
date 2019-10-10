@@ -2903,31 +2903,6 @@ pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_PartitionedCallOp : TF_Op<"PartitionedCall", [NoSideEffect]> {
-  let summary = [{
-returns `f(inputs)`, where `f`'s body is placed and partitioned.
-  }];
-
-  let description = [{
-  }];
-
-  let arguments = (ins
-    Variadic<TF_Tensor>:$args,
-
-    SymbolRefAttr:$f,
-    StrAttr:$config,
-    StrAttr:$config_proto,
-    StrAttr:$executor_type
-  );
-
-  let results = (outs
-    Variadic<TF_Tensor>:$output
-  );
-
-  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
-  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
-}
-
 def TF_PowOp : TF_Op<"Pow", [Broadcastable, NoSideEffect]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Computes the power of one value to another.";

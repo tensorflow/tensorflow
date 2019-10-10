@@ -22,6 +22,7 @@ filegroup(
         "ir/tf_op_base.td",
         "ir/tf_ops.td",
         "@local_config_mlir//:OpBaseTdFiles",
+        "@local_config_mlir//:include/mlir/Analysis/CallInterfaces.td",
     ],
 )
 
@@ -160,6 +161,8 @@ cc_library(
         "ir/tf_types.h",
         "transforms/bridge.h",
         "transforms/passes.h",
+        "@local_config_mlir//:include/mlir/Analysis/CallInterfaces.h",
+        "@local_config_mlir//:include/mlir/Transforms/InliningUtils.h",
     ],
     includes = ["include"],
     deps = [
@@ -175,6 +178,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
+        "@local_config_mlir//:CallOpInterfacesIncGen",
         "@local_config_mlir//:Dialect",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Parser",
@@ -714,6 +718,7 @@ tf_native_cc_binary(
 genrule(
     name = "derived_attr_populator_inc",
     srcs = [
+        "@local_config_mlir//:include/mlir/Analysis/CallInterfaces.td",
         "@local_config_mlir//:include/mlir/IR/OpBase.td",
         "ir/tf_generated_ops.td",
         "ir/tf_op_base.td",
