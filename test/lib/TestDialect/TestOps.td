@@ -485,6 +485,12 @@ def TestOpWithRegionFold : TEST_Op<"op_with_region_fold"> {
   let hasFolder = 1;
 }
 
+def TestOpWithVariadicResultsAndFolder: TEST_Op<"op_with_variadic_results_and_folder"> {
+  let arguments = (ins Variadic<I32>:$operands);
+  let results = (outs Variadic<I32>);
+  let hasFolder = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // Test Patterns (Symbol Binding)
 
