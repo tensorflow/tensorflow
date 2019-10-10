@@ -32,7 +32,7 @@ namespace gpu {
 namespace dnn = se::dnn;
 
 namespace {
-void CheckInputOutputPrimitivetypeIsValid(const HloInstruction* hlo) {
+void CheckInputOutputPrimitivetypeAreValid(const HloInstruction* hlo) {
   // All input and output statistics variables must be F32. Also, the last
   // operand for CudnnBatchNormForwardInference, CudnnBatchNormForwardTraining,
   // and CudnnBatchNormBackward is the feature_index which must be S64.
@@ -47,8 +47,8 @@ void CheckInputOutputPrimitivetypeIsValid(const HloInstruction* hlo) {
   //            operand[0]: {half, float}
   //            operand[4]: {half, float}
   //                out[0]: {half, float}
-  // Note non-statics inputs and outputs mentioned above should be of the same
-  // type.
+  // Note non-statistics inputs and outputs mentioned above should be of the
+  // same type.
 
   // Check Inputs.
   int64 num_operands = hlo->operand_count();
@@ -111,7 +111,7 @@ CudnnBatchNormForwardInferenceThunk::CudnnBatchNormForwardInferenceThunk(
            kCudnnBatchNormForwardInferenceCallTarget);
   CHECK(
       LayoutUtil::LayoutsInShapesEqual(hlo->shape(), hlo->operand(0)->shape()));
-  CheckInputOutputPrimitivetypeIsValid(hlo);
+  CheckInputOutputPrimitivetypeAreValid(hlo);
 }
 
 Status CudnnBatchNormForwardInferenceThunk::ExecuteOnStream(
@@ -161,7 +161,7 @@ CudnnBatchNormForwardTrainingThunk::CudnnBatchNormForwardTrainingThunk(
   CHECK_EQ(hlo->shape().tuple_shapes_size(), 3);
   CHECK(LayoutUtil::LayoutsInShapesEqual(hlo->shape().tuple_shapes(0),
                                          hlo->operand(0)->shape()));
-  CheckInputOutputPrimitivetypeIsValid(hlo);
+  CheckInputOutputPrimitivetypeAreValid(hlo);
 }
 
 Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
@@ -229,7 +229,7 @@ CudnnBatchNormBackwardThunk::CudnnBatchNormBackwardThunk(
                                          hlo->operand(0)->shape()));
   CHECK(LayoutUtil::LayoutsInShapesEqual(hlo->shape().tuple_shapes(0),
                                          hlo->operand(4)->shape()));
-  CheckInputOutputPrimitivetypeIsValid(hlo);
+  CheckInputOutputPrimitivetypeAreValid(hlo);
 }
 
 Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
