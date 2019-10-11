@@ -236,6 +236,7 @@ cc_library(
     deps = [
         ":backend_configs",
         ":buffer_allocations",
+        ":cudnn_batchnorm_runner",
         ":elemental_ir_emitter",
         ":gpu_constants",
         ":gpu_conv_runner",
@@ -505,6 +506,7 @@ cc_library(
         ":backend_configs",
         ":buffer_allocations",
         ":cusolver_context",
+        ":cudnn_batchnorm_runner",
         ":gpu_conv_runner",
         ":gpu_debug_info_manager",
         ":gpu_types",
@@ -675,6 +677,28 @@ cc_library(
     name = "gpu_conv_runner",
     srcs = ["gpu_conv_runner.cc"],
     hdrs = ["gpu_conv_runner.h"],
+    deps = [
+        ":backend_configs",
+        ":ir_emission_utils",
+        ":stream_executor_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "cudnn_batchnorm_runner",
+    srcs = ["cudnn_batchnorm_runner.cc"],
+    hdrs = ["cudnn_batchnorm_runner.h"],
     deps = [
         ":backend_configs",
         ":ir_emission_utils",
