@@ -398,6 +398,20 @@ uint32_t hm01b0_set_mirror(hm01b0_cfg_t *psCfg, bool bHmirror, bool bVmirror);
 //*****************************************************************************
 uint32_t hm01b0_blocking_read_oneframe(hm01b0_cfg_t *psCfg, uint8_t *pui8Buffer,
                                        uint32_t ui32BufferLen);
+
+//*****************************************************************************
+//
+//! @brief Read data of one frame from HM01B0.
+//!
+//! @param psCfg            - Pointer to HM01B0 configuration structure.
+//!
+//! This function wakes up the camera and captures a single frame.
+//!
+//! @return Error code.
+//
+//*****************************************************************************
+uint32_t hm01b0_single_frame_capture(hm01b0_cfg_t *psCfg);
+
 #ifdef __cplusplus
 }
 #endif

@@ -525,6 +525,18 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertLen(set(concrete_functions), 1)
 
+  def testGetConcreteFunctionThreadSafetyWithArgs(self):
+    @def_function.function
+    def add_100(*args):
+      return math_ops.add_n(args)
+
+    p = multiprocessing.pool.ThreadPool(2)
+    args = (constant_op.constant(1.),) * 100
+    f1, f2 = p.map(add_100.get_concrete_function, [args] * 2)
+    # I see about len(args) + max(0, len(args) - 3) arguments expected.
+    f1(*args)
+    del f2
+
   def testInputSpecGraphFunction(self):
     matmul = def_function.function(math_ops.matmul)
 

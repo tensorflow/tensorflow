@@ -122,7 +122,7 @@ versions {
 
 # CHECK-LABEL:  func @main() {
 # CHECK:    "tf.foo110"()
-# CHECK:    "tf.foo110$2"()
+# CHECK:    "tf.foo111"()
 
 # CHECK-LABEL:  func @foo110() {
-# CHECK-LABEL:  func @foo110$2() {
+# CHECK-LABEL:  func @foo111() {

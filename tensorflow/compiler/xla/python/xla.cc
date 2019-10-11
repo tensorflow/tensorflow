@@ -458,7 +458,8 @@ PYBIND11_MODULE(xla_extension, m) {
              py::gil_scoped_release gil_release;
              return buffer->BlockHostUntilReady();
            })
-      .def("copy_to_host_async", &PyLocalBuffer::CopyToHostAsync)
+      .def("copy_to_host_async", &PyLocalBuffer::CopyToHostAsync,
+           py::call_guard<py::gil_scoped_release>())
       .def("to_py",
            [](PyLocalBuffer* buffer) -> StatusOr<py::object> {
              GlobalPyRefManager()->CollectGarbage();

@@ -89,7 +89,7 @@ def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {
     more tedious. Therefore, we use a single `spv.constant` op to represent
     them all. Note that conversion between those SPIR-V constant instructions
     and this op is purely mechanical; so it can be scoped to the binary
-    (de)serialzation process.
+    (de)serialization process.
 
     ### Custom assembly form
 
@@ -275,7 +275,7 @@ def SPV_ModuleOp : SPV_Op<"module",
 
     Using an op with a region to define a SPIR-V module enables "embedding"
     SPIR-V modules in other dialects in a clean manner: this op guarantees
-    the validaty and serializability of a SPIR-V module and thus serves as
+    the validity and serializability of a SPIR-V module and thus serves as
     a clear-cut boundary.
 
     This op takes no operands and generates no results. This op should not
@@ -435,7 +435,7 @@ def SPV_SpecConstantOp : SPV_Op<"specConstant", [InModuleScope]> {
     spv.specConstant @spec_const2 = 42 : i32
     ```
 
-    TODO(antiagainst): support composite spec cosntants with another op
+    TODO(antiagainst): support composite spec constants with another op
   }];
 
   let arguments = (ins

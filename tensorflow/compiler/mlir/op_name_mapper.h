@@ -42,6 +42,11 @@ class OpNameMapper {
 
   virtual ~OpNameMapper();
 
+ protected:
+  // Returns true if the name is unique. A derived class can override it if the
+  // class maintains uniqueness in a different scope.
+  virtual bool IsUnique(llvm::StringRef name);
+
  private:
   // Returns name from the location of the operation.
   virtual std::string GetName(mlir::Operation* op) = 0;

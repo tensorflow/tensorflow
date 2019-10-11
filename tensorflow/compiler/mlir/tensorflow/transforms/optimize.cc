@@ -45,7 +45,7 @@ struct TFOptimizePass : public FunctionPass<TFOptimizePass> {
 // NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
 void CreateTFStandardPipeline(OpPassManager &pm) {
   // First operates on the executor dialect:
-  // - eliminate trivial swich/merge
+  // - eliminate trivial switch/merge
   // - fuse islands as much as possible.
   // - materialize the eventual "pass-through" ops by inlining their content.
   pm.addPass(tf_executor::CreateSwitchFoldPass());

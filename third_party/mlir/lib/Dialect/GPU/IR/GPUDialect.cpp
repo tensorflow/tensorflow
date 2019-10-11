@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
@@ -37,9 +38,8 @@ using namespace mlir::gpu;
 
 StringRef GPUDialect::getDialectName() { return "gpu"; }
 
-bool GPUDialect::isKernel(FuncOp function) {
-  UnitAttr isKernelAttr =
-      function.getAttrOfType<UnitAttr>(getKernelFuncAttrName());
+bool GPUDialect::isKernel(Operation *op) {
+  UnitAttr isKernelAttr = op->getAttrOfType<UnitAttr>(getKernelFuncAttrName());
   return static_cast<bool>(isKernelAttr);
 }
 
@@ -92,18 +92,25 @@ LogicalResult GPUDialect::verifyOperationAttribute(Operation *op,
 
     // Check that `launch_func` refers to a well-formed kernel function.
     StringRef kernelName = launchOp.kernel();
-    auto kernelFunction = kernelModule.lookupSymbol<FuncOp>(kernelName);
-    if (!kernelFunction)
+    Operation *kernelFunc = kernelModule.lookupSymbol(kernelName);
+    auto kernelStdFunction = dyn_cast_or_null<FuncOp>(kernelFunc);
+    auto kernelLLVMFunction = dyn_cast_or_null<LLVM::LLVMFuncOp>(kernelFunc);
+    if (!kernelStdFunction && !kernelLLVMFunction)
       return launchOp.emitOpError("kernel function '")
              << kernelName << "' is undefined";
-    if (!kernelFunction.getAttrOfType<mlir::UnitAttr>(
+    if (!kernelFunc->getAttrOfType<mlir::UnitAttr>(
             GPUDialect::getKernelFuncAttrName()))
       return launchOp.emitOpError("kernel function is missing the '")
              << GPUDialect::getKernelFuncAttrName() << "' attribute";
-    if (launchOp.getNumKernelOperands() != kernelFunction.getNumArguments())
-      return launchOp.emitOpError("got ") << launchOp.getNumKernelOperands()
-                                          << " kernel operands but expected "
-                                          << kernelFunction.getNumArguments();
+
+    unsigned actualNumArguments = launchOp.getNumKernelOperands();
+    unsigned expectedNumArguments = kernelLLVMFunction
+                                        ? kernelLLVMFunction.getNumArguments()
+                                        : kernelStdFunction.getNumArguments();
+    if (expectedNumArguments != actualNumArguments)
+      return launchOp.emitOpError("got ")
+             << actualNumArguments << " kernel operands but expected "
+             << expectedNumArguments;
 
     // Due to the ordering of the current impl of lowering and LLVMLowering,
     // type checks need to be temporarily disabled.

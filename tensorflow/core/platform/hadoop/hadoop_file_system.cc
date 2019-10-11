@@ -120,9 +120,6 @@ class LibHDFS {
     // Try to load the library dynamically in case it has been installed
     // to a in non-standard location.
     status_ = TryLoadAndBind(kLibHdfsDso, &handle_);
-    if (!status_.ok()) {
-      LOG(ERROR) << "HadoopFileSystem load error: " << status_.error_message();
-    }
   }
 
   Status status_;

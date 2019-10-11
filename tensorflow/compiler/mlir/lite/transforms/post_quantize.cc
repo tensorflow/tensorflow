@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This transformation pass applies soem clean up steps after quantization.
+// This transformation pass applies some clean up steps after quantization.
 
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir

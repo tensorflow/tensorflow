@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -1208,14 +1209,33 @@ static void InitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {
   }
 }
 
-Converter::Converter(nvinfer1::INetworkDefinition* trt_network,
+// static
+StatusOr<std::unique_ptr<Converter>> Converter::Create(
+    nvinfer1::IBuilder* trt_builder, TrtPrecisionMode precision_mode,
+    bool use_calibration, nvinfer1::ILogger* trt_logger) {
+  std::unique_ptr<Converter> converter = absl::WrapUnique(
+      new Converter(trt_builder, precision_mode, use_calibration, trt_logger));
+  TF_RETURN_IF_ERROR(converter->Init());
+  return converter;
+}
+
+Converter::Converter(nvinfer1::IBuilder* trt_builder,
                      TrtPrecisionMode precision_mode, bool use_calibration,
                      nvinfer1::ILogger* trt_logger)
-    : trt_network_(trt_network),
+    : trt_builder_(trt_builder),
       precision_mode_(precision_mode),
       use_calibration_(use_calibration) {
   InitializeTrtPlugins(trt_logger);
   this->RegisterOpConverters();
+}
+
+Status Converter::Init() {
+  // Create the network.
+  trt_network_.reset(trt_builder_->createNetwork());
+  if (!trt_network_) {
+    return errors::Internal("Failed to create TensorRT network object");
+  }
+  return Status::OK();
 }
 
 Status Converter::ConvertNode(const NodeDef& node_def) {
@@ -1329,6 +1349,27 @@ Status Converter::RenameAndMarkOutputTensors(
             << " with data type " << DebugString(output.trt_dtype)
             << ", which feeds TF node " << output.dest_node_name;
   }
+  if (VLOG_IS_ON(2)) {
+    VLOG(2) << "Created TensorRT network with the following layers:";
+    for (int i = 0; i < network()->getNbLayers(); i++) {
+      auto layer = network()->getLayer(i);
+      VLOG(2) << "    " << layer->getName() << " ("
+              << "type: " << static_cast<int>(layer->getType())
+              << ", precision: " << static_cast<int>(layer->getPrecision())
+              << ")";
+    }
+  }
+  return Status::OK();
+}
+
+Status Converter::BuildCudaEngine(
+    TrtUniquePtrType<nvinfer1::ICudaEngine>* engine) {
+  VLOG(1) << "Starting engine creation";
+  engine->reset(trt_builder_->buildCudaEngine(*network()));
+  if (engine->get() == nullptr) {
+    return errors::Internal("Failed to build TensorRT engine");
+  }
+  VLOG(1) << "Finished conversion";
   return Status::OK();
 }
 
@@ -5597,21 +5638,16 @@ Status ConvertGraphDefToEngine(
     }
   }
 
-  // Create the network.
-  auto trt_network =
-      TrtUniquePtrType<nvinfer1::INetworkDefinition>(builder->createNetwork());
-  if (!trt_network) {
-    return errors::Internal("Failed to create TensorRT network object");
-  }
-
   // Build the network
   if (VLOG_IS_ON(1)) {
     string mode_str;
     TF_RETURN_IF_ERROR(TrtPrecisionModeToName(precision_mode, &mode_str));
     VLOG(1) << "Starting engine conversion, precision mode: " << mode_str;
   }
-  Converter converter(trt_network.get(), precision_mode, use_calibration,
-                      trt_logger);
+  auto statusor = Converter::Create(builder.get(), precision_mode,
+                                    use_calibration, trt_logger);
+  TF_RETURN_IF_ERROR(statusor.status());
+  auto converter = std::move(statusor.ValueOrDie());
   std::vector<Converter::EngineOutputInfo> output_tensors;
   // Graph nodes are already topologically sorted during construction
   for (const auto& node_def : gdef.node()) {
@@ -5657,8 +5693,8 @@ Status ConvertGraphDefToEngine(
       // TODO(laigd): the conversion should always happen at runtime where all
       // the shapes are known, and we can provide a mode to generate the
       // engines offline, by calling sess.run() and cache/serialize the engines.
-      TF_RETURN_IF_ERROR(
-          converter.AddInputTensor(node_name, trt_dtype, trt_dims, batch_size));
+      TF_RETURN_IF_ERROR(converter->AddInputTensor(node_name, trt_dtype,
+                                                   trt_dims, batch_size));
     } else if (IsEngineOutput(node_name)) {
       int32 slot_number = -1;
       if (node_def.op() == "Identity") {
@@ -5688,33 +5724,17 @@ Status ConvertGraphDefToEngine(
       output_tensors.at(slot_number) = {node_def.input(0), node_name,
                                         trt_dtype};
     } else {
-      TF_RETURN_IF_ERROR(converter.ConvertNode(node_def));
+      TF_RETURN_IF_ERROR(converter->ConvertNode(node_def));
     }
   }
-  TF_RETURN_IF_ERROR(converter.RenameAndMarkOutputTensors(output_tensors));
+  TF_RETURN_IF_ERROR(converter->RenameAndMarkOutputTensors(output_tensors));
   if (convert_successfully) *convert_successfully = true;
 
   // Apply user provided quantization ranges to tensors
-  converter.MaybeApplyQuantizationRanges();
-
-  if VLOG_IS_ON (2) {
-    VLOG(2) << "Created TensorRT network with the following layers:";
-    for (int i = 0; i < trt_network->getNbLayers(); i++) {
-      auto layer = trt_network->getLayer(i);
-      VLOG(2) << "    " << layer->getName() << " ("
-              << "type: " << static_cast<int>(layer->getType())
-              << ", precision: " << static_cast<int>(layer->getPrecision())
-              << ")";
-    }
-  }
+  converter->MaybeApplyQuantizationRanges();
 
   // Build the engine.
-  VLOG(1) << "Starting engine creation";
-  engine->reset(builder->buildCudaEngine(*converter.network()));
-  if (engine->get() == nullptr) {
-    return errors::Internal("Failed to build TensorRT engine");
-  }
-  VLOG(1) << "Finished conversion";
+  TF_RETURN_IF_ERROR(converter->BuildCudaEngine(engine));
   return Status::OK();
 }
 

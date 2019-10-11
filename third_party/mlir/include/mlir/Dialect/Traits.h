@@ -40,7 +40,7 @@ namespace util {
 /// given shapes if they are broadcast compatible. Returns false and clears
 /// `resultShape` otherwise.
 ///
-/// The rules for determing the result shape are:
+/// The rules for determining the result shape are:
 ///
 /// Zip together the dimensions in the two given shapes by prepending the shape
 /// with less dimensions with 1s. For each dimension pair, deduces the result

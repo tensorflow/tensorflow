@@ -2509,7 +2509,7 @@ def tf_python_pybind_extension(
         features = features,
         copts = copts,
         hdrs = hdrs,
-        deps = deps + tf_binary_pybind_deps(),
+        deps = deps + tf_binary_pybind_deps() + mkl_deps(),
     )
 
 def if_cuda_or_rocm(if_true, if_false = []):

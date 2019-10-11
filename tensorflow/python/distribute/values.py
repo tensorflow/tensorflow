@@ -617,7 +617,6 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
     # We need to make _keras_initialized a member of DistributedVariable because
     # without this it will use `__getattr__` which will delegate to a component
     # variable.
-    self._id = ops.uid()
     self._keras_initialized = False
     # Typically, a `DistributedVariable`'s initializer is composed of the
     # initializers of the components variables. However, in some cases, such as
@@ -856,6 +855,10 @@ class TPUVariableMixin(object):
       raise NotImplementedError(
           "numpy() is only available when eager execution is enabled.")
 
+  def _is_mirrored(self):
+    raise NotImplementedError(
+        "`TPUVariableMixin._is_mirrored()` must be implemented by subclasses.")
+
   @property
   def handle(self):
     # If we're in a tpu.rewrite(), return the replicated handle.
@@ -865,7 +868,8 @@ class TPUVariableMixin(object):
     else:
       return tpu_context.get_replicated_var_handle(self._handle_id,
                                                    self._values,
-                                                   self._device_map)
+                                                   self._device_map,
+                                                   self._is_mirrored())
 
   @property
   def device(self):
@@ -995,7 +999,7 @@ def create_mirrored_variable(  # pylint: disable=missing-docstring
     raise ValueError(
         "`NONE` variable synchronization mode is not supported with `Mirrored` "
         "distribution strategy. Please change the `synchronization` for "
-        "variable: " + kwargs["name"])
+        "variable: " + str(kwargs["name"]))
   elif synchronization == vs.VariableSynchronization.ON_READ:
     is_sync_on_read = True
   elif synchronization in (
@@ -1226,6 +1230,13 @@ class TPUMirroredVariable(TPUVariableMixin, MirroredVariable):
         gen_resource_variable_ops.assign_variable_op)
     return self._assign_func(f=assign_fn, *args, **kwargs)
 
+  def _is_mirrored(self):
+    if self.aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
+      # TODO(b/142440743): Remove this check once ONLY_FIRST_REPLICA aggregation
+      # works as expected.
+      return False
+    return True
+
 
 class _SyncOnReadSaveable(saver.BaseSaverBuilder.SaveableObject):
   """Class for defining how to restore a SyncOnReadVariable."""
@@ -1388,6 +1399,9 @@ class TPUSyncOnReadVariable(TPUVariableMixin, SyncOnReadVariable):
     else:
       return _make_raw_assign_fn(
           gen_resource_variable_ops.assign_variable_op)(self, *args, **kwargs)
+
+  def _is_mirrored(self):
+    return False
 
 
 def regroup(device_map, values, wrap_class=PerReplica):

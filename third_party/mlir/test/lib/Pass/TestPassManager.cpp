@@ -28,7 +28,6 @@ struct TestModulePass : public ModulePass<TestModulePass> {
 struct TestFunctionPass : public FunctionPass<TestFunctionPass> {
   void runOnFunction() final {}
 };
-
 class TestOptionsPass : public FunctionPass<TestOptionsPass> {
 public:
   struct Options : public PassOptions<Options> {
@@ -45,13 +44,9 @@ public:
     stringOption = options.stringOption;
     stringListOption.assign(options.stringListOption.begin(),
                             options.stringListOption.end());
-    // Print out a debug representation of the pass in order to allow FileCheck
-    // testing of options parsing.
-    print(llvm::errs());
-    llvm::errs() << "\n";
   }
 
-  void print(raw_ostream &os) {
+  void printAsTextualPipeline(raw_ostream &os) final {
     os << "test-options-pass{";
     if (!listOption.empty()) {
       os << "list=";
@@ -73,7 +68,13 @@ public:
   SmallVector<std::string, 4> stringListOption;
   std::string stringOption;
 };
-} // namespace
+
+/// A test pass that always aborts to enable testing the crash recovery
+/// mechanism of the pass manager.
+class TestCrashRecoveryPass : public OperationPass<TestCrashRecoveryPass> {
+  void runOnOperation() final { abort(); }
+};
+} // end anonymous namespace
 
 static void testNestedPipeline(OpPassManager &pm) {
   // Nest a module pipeline that contains:
@@ -101,6 +102,10 @@ static PassRegistration<TestModulePass>
 static PassRegistration<TestFunctionPass>
     unusedFP("test-function-pass", "Test a function pass in the pass manager");
 
+static PassRegistration<TestCrashRecoveryPass>
+    unusedCrashP("test-pass-crash",
+                 "Test a pass in the pass manager that always crashes");
+
 static PassPipelineRegistration<>
     unused("test-pm-nested-pipeline",
            "Test a nested pipeline in the pass manager", testNestedPipeline);
@@ -108,6 +113,13 @@ static PassPipelineRegistration<>
     unusedTextual("test-textual-pm-nested-pipeline",
                   "Test a nested pipeline in the pass manager",
                   testNestedPipelineTextual);
+static PassPipelineRegistration<>
+    unusedDump("test-dump-pipeline",
+               "Dumps the pipeline build so far for debugging purposes",
+               [](OpPassManager &pm) {
+                 pm.printAsTextualPipeline(llvm::errs());
+                 llvm::errs() << "\n";
+               });
 
 static PassPipelineRegistration<TestOptionsPass::Options>
     registerOptionsPassPipeline(

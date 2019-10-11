@@ -21,9 +21,13 @@ set -e
 LIBRARY_DIR=${TEST_TMPDIR}/library
 mkdir -p ${LIBRARY_DIR}
 
-EXAMPLES_SUBDIR_FILE=${LIBRARY_DIR}/examples/something/foo/fish.cpp
-mkdir -p `dirname ${EXAMPLES_SUBDIR_FILE}`
-touch ${EXAMPLES_SUBDIR_FILE}
+EXAMPLES_SUBDIR_CPP=${LIBRARY_DIR}/examples/something/foo/fish.cpp
+mkdir -p `dirname ${EXAMPLES_SUBDIR_CPP}`
+touch ${EXAMPLES_SUBDIR_CPP}
+
+EXAMPLES_SUBDIR_HEADER=${LIBRARY_DIR}/examples/something/foo/fish.h
+mkdir -p `dirname ${EXAMPLES_SUBDIR_HEADER}`
+touch ${EXAMPLES_SUBDIR_HEADER}
 
 TENSORFLOW_SRC_DIR=${LIBRARY_DIR}/src/
 PERSON_DATA_FILE=${TENSORFLOW_SRC_DIR}tensorflow/lite/experimental/micro/tools/make/downloads/person_model_grayscale/person_detect_model_data.cpp
@@ -38,9 +42,15 @@ touch ${EXAMPLE_INO_FILE}
 ${TEST_SRCDIR}/tensorflow/lite/experimental/micro/tools/make/fix_arduino_subfolders \
   ${LIBRARY_DIR}
 
-EXPECTED_EXAMPLES_SUBDIR_FILE=${LIBRARY_DIR}/examples/something/foo_fish.cpp
-if [[ ! -f ${EXPECTED_EXAMPLES_SUBDIR_FILE} ]]; then
-  echo "${EXPECTED_EXAMPLES_SUBDIR_FILE} wasn't created."
+EXPECTED_EXAMPLES_SUBDIR_CPP=${LIBRARY_DIR}/examples/something/foo_fish.cpp
+if [[ ! -f ${EXPECTED_EXAMPLES_SUBDIR_CPP} ]]; then
+  echo "${EXPECTED_EXAMPLES_SUBDIR_CPP} wasn't created."
+  exit 1
+fi
+
+EXPECTED_EXAMPLES_SUBDIR_HEADER=${LIBRARY_DIR}/examples/something/foo_fish.h
+if [[ ! -f ${EXPECTED_EXAMPLES_SUBDIR_HEADER} ]]; then
+  echo "${EXPECTED_EXAMPLES_SUBDIR_HEADER} wasn't created."
   exit 1
 fi
 

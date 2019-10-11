@@ -26,7 +26,7 @@ namespace {
 static mlir::PassPipelineRegistration<> pipeline(
     "tf-tpu-bridge",
     "Run all the passes involved in transforming the graph before execution so "
-    "that it is suitable for targetting TPUs.",
+    "that it is suitable for targeting TPUs.",
     mlir::TFTPU::createTPUBridge);
 
 }  // anonymous namespace

@@ -21,7 +21,6 @@ package_group(
         "//...",
         "//learning/brain/swift/swift_mlir/...",
         "//learning/glassbox/evaluation/compiler/...",
-        "//tensorflow/compiler/tf2xla/...",
         "//tensorflow/core/tfrt_delegate/...",
         "//third_party/tf_runtime_google/...",
     ],
@@ -544,6 +543,7 @@ cc_library(
     deps = [
         ":GPUOpsIncGen",
         ":IR",
+        ":LLVMDialect",
         ":StandardOps",
         ":Support",
     ],
@@ -1407,6 +1407,7 @@ cc_library(
     deps = [
         ":GPUDialect",
         ":IR",
+        ":LLVMDialect",
         ":LLVMIRModuleTranslation",
         ":NVVMConversionIncGen",
         ":NVVMDialect",
@@ -1430,6 +1431,7 @@ cc_library(
     deps = [
         ":GPUDialect",
         ":IR",
+        ":LLVMDialect",
         ":LLVMIRModuleTranslation",
         ":ROCDLConversionIncGen",
         ":ROCDLDialect",

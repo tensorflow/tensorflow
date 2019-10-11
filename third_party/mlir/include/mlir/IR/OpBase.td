@@ -100,7 +100,7 @@ class CPred<code pred> : Pred {
   code predExpr = "(" # pred # ")";
 }
 
-// Kinds of predicate combiners.  These must closesly match the predicates
+// Kinds of predicate combiners.  These must closely match the predicates
 // implemented by the C++ backend (tblgen::PredCombinerKind).
 class PredCombinerKind;
 def PredCombinerAnd : PredCombinerKind;
@@ -622,7 +622,7 @@ class Attr<Pred condition, string descr = ""> :
   // Unset means this is a base-level Attr.
   //
   // This field is used by attribute wrapper classes (DefaultValuedAttr,
-  // OptionalAttr, etc.) to retrive the base-level attribute definition.
+  // OptionalAttr, etc.) to retrieve the base-level attribute definition.
   // This can be used for getting its name; otherwise, we will see
   // "anonymous_<number>" as the attribute def name because of template
   // instantiation.
@@ -1394,7 +1394,7 @@ class Op<Dialect dialect, string mnemonic, list<OpTrait> props = []> {
   // Additional, longer human-readable description of what the op does.
   string description = "";
 
-  // Dag containting the arguments of the op. Default to 0 arguments.
+  // Dag containing the arguments of the op. Default to 0 arguments.
   dag arguments = (ins);
 
   // The list of results of the op. Default to 0 results.
@@ -1493,6 +1493,9 @@ def HasNoUseOf: Constraint<
 class Rank<string name> :
     StrFunc<"$" # name # ".getType().cast<ShapedType>().getRank()">;
 
+class Shape<string name> :
+    StrFunc<"$" # name # ".getType().cast<ShapedType>().getShape()">;
+
 class ElementCount<string name> :
   StrFunc<"$" # name # ".getType().cast<ShapedType>().getNumElements()">;
 
@@ -1524,6 +1527,9 @@ class AllElementTypesMatch<list<string> names> :
 
 class AllRanksMatch<list<string> names> :
     AllMatchSameOperatorTrait<names, Rank<"_self">.result, "rank">;
+
+class AllShapesMatch<list<string> names> :
+    AllMatchSameOperatorTrait<names, Shape<"_self">.result, "shape">;
 
 class AllTypesMatch<list<string> names> :
     AllMatchSameOperatorTrait<names, "$_self.getType()", "type">;
@@ -1664,7 +1670,7 @@ def addBenefit;
 //
 // Then `TwoResultOp` will replace the first two values of `ThreeResultOp`.
 //
-// You can also use `$<name>__N` to explicitly access the N-th reusult.
+// You can also use `$<name>__N` to explicitly access the N-th result.
 // ```
 // def : Pattern<(FiveResultOp ...),
 //               [(TwoResultOp1:$res1__1 ...), (replaceWithValue $res1__0),

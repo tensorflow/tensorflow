@@ -46,7 +46,7 @@ def glob_lit_tests(
       default_size: str, the test size for targets not in "size_override".
       size_override: {str: str}, sizes to use for specific tests.
       data: [str], additional input data to the test.
-      per_test_extra_data: {str: [str]}, extra data to attatch to a given file.
+      per_test_extra_data: {str: [str]}, extra data to attach to a given file.
       default_tags: [str], additional tags to attach to the test.
       tags_override: {str: str}, tags to add to specific tests.
       driver: str, label of the driver shell script.

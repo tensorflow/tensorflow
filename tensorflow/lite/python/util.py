@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,6 +20,9 @@ from __future__ import division
 from __future__ import print_function
 
 import sys
+
+import six
+from six.moves import range
 
 from tensorflow.core.protobuf import config_pb2 as _config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
@@ -74,7 +78,7 @@ def get_tensor_name(tensor):
   Returns:
     str
   """
-  parts = tensor.name.split(":")
+  parts = six.ensure_str(tensor.name).split(":")
   if len(parts) > 2:
     raise ValueError("Tensor name invalid. Expect 0 or 1 colon, got {0}".format(
         len(parts) - 1))
@@ -277,7 +281,8 @@ def is_frozen_graph(sess):
     Bool.
   """
   for op in sess.graph.get_operations():
-    if op.type.startswith("Variable") or op.type.endswith("VariableOp"):
+    if six.ensure_str(op.type).startswith("Variable") or six.ensure_str(
+        op.type).endswith("VariableOp"):
       return False
   return True
 

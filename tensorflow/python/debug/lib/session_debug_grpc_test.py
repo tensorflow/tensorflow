@@ -22,7 +22,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import shutil
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -38,6 +37,7 @@ from tensorflow.python.debug.wrappers import hooks
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -115,7 +115,7 @@ class SessionDebugGrpcTest(session_debug_testlib.SessionDebugTestBase):
 
   def tearDown(self):
     if os.path.isdir(self._server_dump_dir):
-      shutil.rmtree(self._server_dump_dir)
+      file_io.delete_recursively(self._server_dump_dir)
     session_debug_testlib.SessionDebugTestBase.tearDown(self)
 
   def _debug_urls(self, run_number=None):
@@ -345,7 +345,7 @@ class SessionDebugConcurrentTest(
   def tearDown(self):
     ops.reset_default_graph()
     if os.path.isdir(self._server_dump_dir):
-      shutil.rmtree(self._server_dump_dir)
+      file_io.delete_recursively(self._server_dump_dir)
 
   def _get_concurrent_debug_urls(self):
     urls = []

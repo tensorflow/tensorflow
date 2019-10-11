@@ -749,3 +749,10 @@ end:
   am_util_stdio_printf("[%s] - Byte Counts %d\n", __func__, ui32Idx);
   return ui32Err;
 }
+
+uint32_t hm01b0_single_frame_capture(hm01b0_cfg_t* psCfg) {
+  hm01b0_write_reg(psCfg, HM01B0_REG_PMU_PROGRAMMABLE_FRAMECNT, 0x01, 1);
+  hm01b0_write_reg(psCfg, HM01B0_REG_MODE_SELECT,
+                   HM01B0_REG_MODE_SELECT_STREAMING_NFRAMES, 1);
+  hm01b0_write_reg(psCfg, HM01B0_REG_GRP_PARAM_HOLD, 0x01, 1);
+}

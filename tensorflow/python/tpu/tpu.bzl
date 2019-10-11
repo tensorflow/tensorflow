@@ -50,8 +50,12 @@ def tpu_py_test(
         fail('"srcs" should be a list of exactly one python file.')
     test_main = test_main[0]
 
+    wrapper_src = _copy_test_source(
+        "//tensorflow/python/tpu:tpu_test_wrapper.py",
+    )
+
     kwargs["python_version"] = kwargs.get("python_version", "PY3")
-    kwargs["srcs"].append("//tensorflow/python/tpu:tpu_test_wrapper.py")
+    kwargs["srcs"].append(wrapper_src)
     kwargs["deps"].append("//tensorflow/python:client_testlib")
 
     args = [
@@ -61,7 +65,41 @@ def tpu_py_test(
     native.py_test(
         name = name,
         tags = tags,
-        main = "//tensorflow/python/tpu:tpu_test_wrapper.py",
+        main = wrapper_src,
         args = args,
         **kwargs
     )
+
+def _copy_test_source(src):
+    """Creates a genrule copying src into the current directory.
+
+    This silences a Bazel warning, and is necessary for relative import of the
+    user test to work.
+
+    This genrule checks existing rules to avoid duplicating the source if
+    another call has already produced the file. Note that this will fail
+    weirdly if two source files have the same filename, as whichever one is
+    copied in first will win and other tests will unexpectedly run the wrong
+    file. We don't expect to see this case, since we're only copying the one
+    test wrapper around.
+
+    Args:
+        src: The source file we would like to use.
+
+    Returns:
+        The path of a copy of this source file, inside the current package.
+    """
+    name = src.rpartition(":")[-1].rpartition("/")[-1]  # Get basename.
+
+    new_main = "%s/%s" % (native.package_name(), name)
+    new_name = "_gen_" + name
+
+    if not native.existing_rule(new_name):
+        native.genrule(
+            name = new_name,
+            srcs = [src],
+            outs = [new_main],
+            cmd = "cp $< $@",
+        )
+
+    return new_main

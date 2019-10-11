@@ -59,9 +59,9 @@ TensorRef<BHWC> GetTensorRef(int ref, const BHWC& shape) {
                       /*outputs=*/{GetTensorRef(1, shape)});
   XCTAssertTrue(model.PopulateTensor(0, {0.0, -6.2, 2.0, 4.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({0.0, 6.2, 2.0, 4.0}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testCos {
@@ -72,9 +72,9 @@ TensorRef<BHWC> GetTensorRef(int ref, const BHWC& shape) {
                       /*outputs=*/{GetTensorRef(1, shape)});
   XCTAssertTrue(model.PopulateTensor(0, {0.0, 3.1415926, -3.1415926, 1}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({1.0, -1.0, -1.0, 0.540302}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testDiv {
@@ -86,9 +86,9 @@ TensorRef<BHWC> GetTensorRef(int ref, const BHWC& shape) {
   XCTAssertTrue(model.PopulateTensor(0, {0.0, -6.2, 2.0, 4.0}));
   XCTAssertTrue(model.PopulateTensor(1, {1.0, 2.0, -0.5, 4.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({0.0, -3.1, -4.0, 1.0}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testHardSwish {
@@ -99,10 +99,10 @@ TensorRef<BHWC> GetTensorRef(int ref, const BHWC& shape) {
                       /*outputs=*/{GetTensorRef(1, shape)});
   XCTAssertTrue(model.PopulateTensor(0, {-4.5f, -3.0f, -1.5f, 0.0f, 1.5f, 3.0f, 4.5f}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status =
       CompareVectors({0.0f, 0.0f, -0.375f, 0.0f, 1.125f, 3.f, 4.5f}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testLog {
@@ -113,24 +113,23 @@ TensorRef<BHWC> GetTensorRef(int ref, const BHWC& shape) {
                       /*outputs=*/{GetTensorRef(1, shape)});
   XCTAssertTrue(model.PopulateTensor(0, {1.0, 3.1415926, 1.0, 1.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({0.0, 1.14473, 0.0, 0.0}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testPow {
   OperationType op_type = OperationType::POW;
   const BHWC shape(1, 2, 2, 1);
-  SingleOpModel model(
-      {/*type=*/ToString(op_type), /*attributes=*/{}},
-      /*inputs=*/{GetTensorRef(0, shape), GetTensorRef(1, shape)},
-      /*outputs=*/{GetTensorRef(2, shape)});
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape), GetTensorRef(1, shape)},
+                      /*outputs=*/{GetTensorRef(2, shape)});
   XCTAssertTrue(model.PopulateTensor(0, {0.0, 1.0, 2.0, 4.0}));
   XCTAssertTrue(model.PopulateTensor(1, {1.0, 2.0, 3.0, 4.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({0.0, 1.0, 8.0, 256.0}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testRsqrt {
@@ -141,9 +140,9 @@ TensorRef<BHWC> GetTensorRef(int ref, const BHWC& shape) {
                       /*outputs=*/{GetTensorRef(1, shape)});
   XCTAssertTrue(model.PopulateTensor(0, {1.0, 2.0, 4.0, 9.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({1.0, 0.707106, 0.5, 0.333333}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testSigmoid {
@@ -154,9 +153,9 @@ TensorRef<BHWC> GetTensorRef(int ref, const BHWC& shape) {
                       /*outputs=*/{GetTensorRef(1, shape)});
   XCTAssertTrue(model.PopulateTensor(0, {0.0, -6.0, 2.0, 4.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({0.5, 0.002473, 0.880797, 0.982014}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testSin {
@@ -167,9 +166,9 @@ TensorRef<BHWC> GetTensorRef(int ref, const BHWC& shape) {
                       /*outputs=*/{GetTensorRef(1, shape)});
   XCTAssertTrue(model.PopulateTensor(0, {0.0, 3.1415926, -3.1415926, 1.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({0.0, 0.0, 0.0, 0.841471}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testSqrt {
@@ -180,9 +179,9 @@ TensorRef<BHWC> GetTensorRef(int ref, const BHWC& shape) {
                       /*outputs=*/{GetTensorRef(1, shape)});
   XCTAssertTrue(model.PopulateTensor(0, {0.0, 1.0, 2.0, 4.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({0.0, 1.0, 1.414213, 2.0}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testSquare {
@@ -193,24 +192,23 @@ TensorRef<BHWC> GetTensorRef(int ref, const BHWC& shape) {
                       /*outputs=*/{GetTensorRef(1, shape)});
   XCTAssertTrue(model.PopulateTensor(0, {1.0, 2.0, 0.5, -3.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({1.0, 4.0, 0.25, 9.0}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testSquaredDiff {
   OperationType op_type = OperationType::SQUARED_DIFF;
   const BHWC shape(1, 2, 2, 1);
-  SingleOpModel model(
-      {/*type=*/ToString(op_type), /*attributes=*/{}},
-      /*inputs=*/{GetTensorRef(0, shape), GetTensorRef(1, shape)},
-      /*outputs=*/{GetTensorRef(2, shape)});
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape), GetTensorRef(1, shape)},
+                      /*outputs=*/{GetTensorRef(2, shape)});
   XCTAssertTrue(model.PopulateTensor(0, {0.0, 2.0, 2.0, 4.0}));
   XCTAssertTrue(model.PopulateTensor(1, {1.0, 1.0, 5.0, 4.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({1.0, 1.0, 9.0, 0.0}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testSub {
@@ -222,9 +220,9 @@ TensorRef<BHWC> GetTensorRef(int ref, const BHWC& shape) {
   XCTAssertTrue(model.PopulateTensor(0, {0.0, -6.2, 2.0, 4.0}));
   XCTAssertTrue(model.PopulateTensor(1, {1.0, 2.0, 3.0, 4.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({-1.0, -8.2, -1.0, 0.0}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testTanh {
@@ -235,9 +233,9 @@ TensorRef<BHWC> GetTensorRef(int ref, const BHWC& shape) {
                       /*outputs=*/{GetTensorRef(1, shape)});
   XCTAssertTrue(model.PopulateTensor(0, {0.0, -6.0, 2.0, 4.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({0.0, -0.999987, 0.964027, 0.999329}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 @end
