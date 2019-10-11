@@ -886,10 +886,10 @@ def make_batched_features_dataset_v2(file_pattern,
     # Read files sequentially (if reader_num_threads=1) or in parallel
     dataset = core_readers.ParallelInterleaveDataset(
         dataset,
-        filename_to_dataset,
-        cycle_length=num_parallel_reads,
+        lambda filename: reader(filename, *reader_args),
+        cycle_length=reader_num_threads,
         block_length=1,
-        sloppy=sloppy,
+        sloppy=sloppy_ordering,
         buffer_output_elements=None,
         prefetch_input_elements=None)
 
