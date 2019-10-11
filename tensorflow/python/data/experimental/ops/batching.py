@@ -270,7 +270,7 @@ def unbatch():
   # of a dataset.
   a = { ['a', 'b', 'c'], ['a', 'b'], ['a', 'b', 'c', 'd'] }
 
-  a.apply(tf.data.experimental.unbatch()) == {
+  a.unbatch() == {
       'a', 'b', 'c', 'a', 'b', 'a', 'b', 'c', 'd'}
   ```
 

@@ -101,17 +101,54 @@ ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 ;CHECK: %[[LD1:.*]] = llvm.load %[[ARG1]] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
 ;CHECK: %[[LD2:.*]] = llvm.load %[[ARG2]] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
 ;CHECK: %[[PTR0:.*]] = llvm.extractvalue %[[LD0]][0 : index]
-;CHECK: %[[GEP0:.*]] = llvm.getelementptr %[[PTR0]][[INDEX:.*]]
+;CHECK: %[[GEP0:.*]] = llvm.getelementptr %[[PTR0]]
 ;CHECK: %[[VAL0:.*]] = llvm.load %[[GEP0]]
 ;CHECK: %[[PTR1:.*]] = llvm.extractvalue %[[LD1]][0 : index]
-;CHECK: %[[GEP1:.*]] = llvm.getelementptr %[[PTR1]]{{.*}}
+;CHECK: %[[GEP1:.*]] = llvm.getelementptr %[[PTR1]]
 ;CHECK: %[[VAL1:.*]] = llvm.load %[[GEP1]]
 ;CHECK: %[[VAL2:.*]] = llvm.fadd %[[VAL0]], %[[VAL1]]
 ;CHECK: %[[PTR2:.*]] = llvm.extractvalue %[[LD2]][0 : index]
-;CHECK: %[[GEP2:.*]] = llvm.getelementptr %[[PTR2]]{{.*}}
+;CHECK: %[[GEP2:.*]] = llvm.getelementptr %[[PTR2]]
 ;CHECK: llvm.store %[[VAL2]], %[[GEP2]]
       )",
                      LoweringStage::LLVM);
+}
+
+TEST_F(LhloGenTest, AddAsKernel) {
+  CompileAndVerifyIr(R"(
+HloModule Add
+
+ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
+  %x = f32[2,2]{1,0} parameter(0)
+  %y = f32[2,2]{1,0} parameter(1)
+  ROOT %add = f32[2,2]{1,0} add(f32[2,2]{1,0} %x, f32[2,2]{1,0} %y)
+})",
+                     R"(
+;CHECK: func @add_kernel(%[[ARG0:.*]]: [[TYPE:!llvm<.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]
+;CHECK: %[[CST0:.*]] = llvm.mlir.constant(0 : i64)
+;CHECK: %[[GEP0:.*]] = llvm.getelementptr %[[ARG0]][%[[CST0]]]
+;CHECK: %[[BC0:.*]] = llvm.bitcast %[[GEP0]] : !llvm<"i8*"> to !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
+;CHECK: %[[CST1:.*]] = llvm.mlir.constant(0 : i64)
+;CHECK: %[[GEP1:.*]] = llvm.getelementptr %[[ARG1]][%[[CST1]]]
+;CHECK: %[[BC1:.*]] = llvm.bitcast %[[GEP1]] : !llvm<"i8*"> to !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
+;CHECK: %[[CST2:.*]] = llvm.mlir.constant(0 : i64)
+;CHECK: %[[GEP2:.*]] = llvm.getelementptr %[[ARG2]][%[[CST2]]]
+;CHECK: %[[BC2:.*]] = llvm.bitcast %[[GEP2]] : !llvm<"i8*"> to !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
+;CHECK: %[[VL0:.*]] = llvm.load %[[BC0]]
+;CHECK: %[[VL1:.*]] = llvm.load %[[BC1]]
+;CHECK: %[[VL2:.*]] = llvm.load %[[BC2]]
+;CHECK: %[[EV0:.*]] = llvm.extractvalue %[[VL0]][0 : index]
+;CHECK: %[[VGEP0:.*]] = llvm.getelementptr %[[EV0]]
+;CHECK: %[[VAL0:.*]] = llvm.load %[[VGEP0]]
+;CHECK: %[[EV1:.*]] = llvm.extractvalue %[[VL1]][0 : index]
+;CHECK: %[[VGEP1:.*]] = llvm.getelementptr %[[EV1]]
+;CHECK: %[[VAL1:.*]] = llvm.load %[[VGEP1]]
+;CHECK: %[[VAL2:.*]] = llvm.fadd %[[VAL0]], %[[VAL1]]
+;CHECK: %[[EV2:.*]] = llvm.extractvalue %[[VL2]][0 : index]
+;CHECK: %[[SGEP:.*]] = llvm.getelementptr %[[EV2]]
+;CHECK: llvm.store %[[VAL2]], %[[SGEP]]
+      )",
+                     LoweringStage::KERNEL);
 }
 
 TEST_F(LhloGenTest, AddMultiply) {

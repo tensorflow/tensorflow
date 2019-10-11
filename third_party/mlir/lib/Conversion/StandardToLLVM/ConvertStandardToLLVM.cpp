@@ -658,21 +658,24 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
           op->getLoc(), getIndexType(),
           ArrayRef<Value *>{cumulativeSize, sizes[i]});
 
-    // Compute the total amount of bytes to allocate.
+    // Compute the size of an individual element. This emits the MLIR equivalent
+    // of the following sizeof(...) implementation in LLVM IR:
+    //   %0 = getelementptr %elementType* null, %indexType 1
+    //   %1 = ptrtoint %elementType* %0 to %indexType
+    // which is a common pattern of getting the size of a type in bytes.
     auto elementType = type.getElementType();
-    assert((elementType.isIntOrFloat() || elementType.isa<VectorType>()) &&
-           "invalid memref element type");
-    uint64_t elementSize = 0;
-    if (auto vectorType = elementType.dyn_cast<VectorType>())
-      elementSize = vectorType.getNumElements() *
-                    llvm::divideCeil(vectorType.getElementTypeBitWidth(), 8);
-    else
-      elementSize = llvm::divideCeil(elementType.getIntOrFloatBitWidth(), 8);
+    auto convertedPtrType =
+        lowering.convertType(elementType).cast<LLVM::LLVMType>().getPointerTo();
+    auto nullPtr =
+        rewriter.create<LLVM::NullOp>(op->getLoc(), convertedPtrType);
+    auto one = createIndexConstant(rewriter, op->getLoc(), 1);
+    auto gep = rewriter.create<LLVM::GEPOp>(op->getLoc(), convertedPtrType,
+                                            ArrayRef<Value *>{nullPtr, one});
+    auto elementSize =
+        rewriter.create<LLVM::PtrToIntOp>(op->getLoc(), getIndexType(), gep);
     cumulativeSize = rewriter.create<LLVM::MulOp>(
         op->getLoc(), getIndexType(),
-        ArrayRef<Value *>{
-            cumulativeSize,
-            createIndexConstant(rewriter, op->getLoc(), elementSize)});
+        ArrayRef<Value *>{cumulativeSize, elementSize});
 
     // Insert the `malloc` declaration if it is not already present.
     auto module = op->getParentOfType<ModuleOp>();
