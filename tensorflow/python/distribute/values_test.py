@@ -185,6 +185,15 @@ def _device_str(d):
 def _nested_value(d):
   return ("a" + d, ["b" + d, {"c": "d" + d, "e": "f" + d}, "g" + d], "h" + d)
 
+def _make_mirrored_val(init_val=5.0):
+  v = []
+  devices = ["/device:GPU:0", "/device:CPU:0"]
+  for d, _ in zip(devices, ["v", "v/replica"]):
+    with ops.device(d):
+      v.append(constant_op.constant(init_val))
+  device_map = values.ReplicaDeviceMap(devices)
+  mirrored = values.Mirrored(device_map, v)
+  return mirrored
 
 def _make_mirrored():
   v = []
@@ -701,6 +710,30 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
       v = variables_lib.Variable(1.)
     self.assertIs(v, values.select_replica(0, v))
 
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+          mode=["graph", "eager"]))
+  def testModAfterAssign(self, distribution):
+    with distribution.scope():
+      v = variables_lib.Variable(0)
+    def replica_fn():
+      def merge_fn(_):
+        return math_ops.mod(v.assign_add(1), 2)
+      return distribution_strategy_context.get_replica_context().merge_call(
+          merge_fn)
+
+    @def_function.function
+    def foo():
+      distribution.experimental_run_v2(replica_fn)
+
+    foo()
+
 
 _TPU_STRATEGIES = (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)
 
@@ -1137,6 +1170,22 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
     step()
     vals = self.evaluate(v[0].values)
     self.assertAllEqual(vals[0], vals[1])
+
+class MirroredTest(test.TestCase):
+
+  def testAddOp(self):
+    if context.num_gpus() < 1:
+      self.skipTest("A GPU is not available for this test.")
+    mirrored_val = _make_mirrored_val(init_val=3.)
+
+    self.assertEqual(self.evaluate(constant_op.constant(6.)),
+                     self.evaluate(mirrored_val + mirrored_val))
+    self.assertEqual(self.evaluate(constant_op.constant(4.)),
+                     self.evaluate(mirrored_val + 1))
+    self.assertEqual(self.evaluate(mirrored_val + 1),
+                     self.evaluate(math_ops.add(mirrored_val, 1)))
+    self.assertEqual(type(mirrored_val + 1),
+                     type(math_ops.add(mirrored_val, 1)))
 
 
 class PerReplicaTest(test.TestCase, parameterized.TestCase):

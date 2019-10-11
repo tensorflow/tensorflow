@@ -1179,6 +1179,12 @@ def _tensor_conversion_mirrored(var, dtype=None, name=None, as_ref=False):
 ops.register_tensor_conversion_function(MirroredVariable,
                                         _tensor_conversion_mirrored)
 
+def _tensor_conversion_mirrored_val(value, dtype=None, name=None, as_ref=False):
+  return ops.internal_convert_to_tensor(
+      value.get(), dtype=dtype, name=name, as_ref=as_ref)
+
+ops.register_tensor_conversion_function(Mirrored,
+                                        _tensor_conversion_mirrored_val)
 
 def _enclosing_tpu_context():
   """Returns the XLAControlFlowContext, which exists inside a tpu.rewrite()."""
