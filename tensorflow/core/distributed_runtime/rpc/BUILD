@@ -7,7 +7,8 @@ load(
     "tf_cc_test",
     "tf_cuda_library",
 )
-load("//tensorflow:tensorflow.google.bzl", "tf_cuda_cc_test", "tf_cuda_cc_tests")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 
 # For platform specific build config
 load(
